@@ -51,6 +51,18 @@ public class BoxTauschService {
         this.commands = commands;
     }
 
+    /**
+     * AP-15 Folge zu IP-30 (A14/R17): die Mitgliedschaft in einer Gemeinsamen Steuerung geht mit. Nachgereicht statt in
+     * den Konstruktor gelegt, damit kein bestehender Aufrufer sich ändert; ohne Bean (Minimal-Kontexte) gibt es keinen
+     * Verbund-Schritt.
+     */
+    private GemeinsameSteuerungBoxTausch verbund;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void verbund(GemeinsameSteuerungBoxTausch verbund) {
+        this.verbund = verbund;
+    }
+
     public record Ergebnis(UUID oldDeviceId, UUID newDeviceId, UUID siteId, Instant effectiveAt,
             Map<String, Integer> transferred) {}
 
@@ -144,6 +156,11 @@ public class BoxTauschService {
                 """, actor.sub() == null ? "box_tausch" : actor.sub(), actor.name(), newId);
         counts.put("freigaben", jdbc.update("UPDATE device_control_activation SET device_id=? WHERE device_id=?", newId, oldId));
         counts.put("ota_zuordnungen", jdbc.update("UPDATE device_update_target SET device_id=?,published_at=NULL WHERE device_id=?", newId, oldId));
+        // Ohne Gemeinsame Steuerung an der Anlage: eine Abfrage, kein Schreiben, kein Zähler (I6).
+        if (verbund != null) {
+            int mitglieder = verbund.uebertragen(old.siteId(), oldId, newId, at, actor).size();
+            if (mitglieder > 0) counts.put("gemeinsame_steuerung", mitglieder);
+        }
         jdbc.update("UPDATE device SET status='retired',ausgebaut_am=? WHERE id=?", Timestamp.from(at), oldId);
         commands.beimAusbauBeenden(oldId);
         jdbc.update("""

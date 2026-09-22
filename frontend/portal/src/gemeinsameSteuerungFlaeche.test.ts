@@ -75,6 +75,22 @@ describe('AP-15 IP-23 · Zustände (S1: eingerichtet · wird geprüft · aktiv �
     expect(boxZeilen(gsZustand('beobachtet'), e, namen, new Map(), 'B')[1].text)
       .toBe('Box Verwaltung steuert mit, sobald VoltPilot freischaltet · vorgesehener Anteil: Einspeisung 60 kW · Bezug 77 kW');
   });
+  it('nach dem Box-Tausch (A14/R17): die Nachfolgerin wartet auf die Bestätigung — der Satz aus R17', () => {
+    const e = gsEingerichtet();
+    const getauscht = (l: 'anteile_aktiv' | 'angehalten' | 'beobachtet') => {
+      const z = gsZustand(l);
+      return { ...z, mitglieder: z.mitglieder.map((m) => ({ ...m, bestaetigt_am: m.box_id === GS_IDS.e4 ? null : '2026-09-22T08:00:00Z' })) };
+    };
+    const neu = new Map([...namen, [GS_IDS.e4, 'Verwaltung (neu)']]);
+    for (const l of ['anteile_aktiv', 'angehalten'] as const) {
+      expect(boxZeilen(getauscht(l), e, neu, new Map(), 'B').map((z) => z.text)).toEqual([
+        'Box Halle 1 führt die Anlage · regelt am Netzanschluss',
+        'Box Verwaltung (neu) ist angemeldet. VoltPilot schaltet sie für die gemeinsame Steuerung frei.',
+      ]);
+    }
+    // vor dem Freischalten ist kein Mitglied bestätigt — dort bleibt der vorgesehene Anteil
+    expect(boxZeilen(getauscht('beobachtet'), e, neu, new Map(), 'B')[1].text).toContain('sobald VoltPilot freischaltet');
+  });
   it('in Kraft zählen die WIRKSAMEN Anteile, nicht die Auslegung (G4: der Betreiber weicht ab)', () => {
     const e = gsEingerichtet();
     expect(boxZeilen(gsZustand('anteile_aktiv', null, { wirksam: GS_ABWEICHEND }), e, namen, new Map(), 'B')[1].text)
