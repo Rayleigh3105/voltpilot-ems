@@ -129,7 +129,9 @@ class SiteScopeArchitekturTest {
             new Erlaubt("repo/OverviewRepository.java", "telemetry", 1, Grund.UEBER_GERAET, ZAUN_GERAET,
                     "CREATE POLICY site_scope ON device"),
             // Geräte-Daten löschen: das Gerät kommt aus devices.findById, danach die Rollups seiner Anlage.
-            new Erlaubt("repo/SeriesRepository.java", "telemetry", 2, Grund.UEBER_GERAET, "web/DeviceController.java",
+            // Der Neuaufbau nach dem Löschen liest telemetry_anlage_15m(…, site) statt telemetry
+            // (V20260922170000); geblieben sind die beiden DELETE.
+            new Erlaubt("repo/SeriesRepository.java", "telemetry", 1, Grund.UEBER_GERAET, "web/DeviceController.java",
                     "devices.findById(deviceId)"),
             new Erlaubt("repo/SeriesRepository.java", "telemetry_rollup_15m", 3, Grund.UEBER_GERAET,
                     "web/DeviceController.java", "devices.findById(deviceId)"),

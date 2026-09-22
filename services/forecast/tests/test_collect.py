@@ -56,7 +56,9 @@ class _FakeCursor:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
-        if "FROM telemetry" in sql:
+        if "telemetry_fuehrende_box" in sql:  # a one-box site: the raw query of before
+            self._rows = [(None,)]
+        elif "FROM telemetry" in sql:
             column = "load_kw" if "load_kw" in sql else "pv_power_kw"
             site_id, since = params
             self._rows = [
@@ -69,6 +71,9 @@ class _FakeCursor:
 
     def fetchall(self):
         return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
 
 
 class _FakeConnection:
@@ -269,7 +274,9 @@ class _EvalCursor:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
-        if "FROM site_forecast_model_choice" in sql:
+        if "telemetry_fuehrende_box" in sql:  # a one-box site: the raw query of before
+            self._rows = [(None,)]
+        elif "FROM site_forecast_model_choice" in sql:
             # The PER-PLANT switch (V20260826000000): absent by default.
             # ⚠ This branch MUST come before the plain "FROM site" one - the
             # table name contains it as a substring.

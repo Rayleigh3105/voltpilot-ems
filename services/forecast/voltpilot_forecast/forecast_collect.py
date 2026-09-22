@@ -40,6 +40,7 @@ from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
 from voltpilot_forecast import model_choice, registry
+from voltpilot_forecast.anlage import anlage_slot_kw, fuehrende_box
 from voltpilot_forecast.domain import (
     ForecastKind,
     GeoLocation,
@@ -201,6 +202,15 @@ def _telemetry_history(
     if column not in ("load_kw", "pv_power_kw"):
         raise ValueError(f"unsupported telemetry column: {column}")
     with conn.cursor() as cur:
+        # A multi-box site with a determined leading box: the site's quarter-hour
+        # means by the api's one rule (AP-15 W2/B1) - interleaving the boxes'
+        # raw samples would average them. One observation per slot is what
+        # slot_means makes of it anyway.
+        if fuehrende_box(cur, site_id) is not None:
+            return [
+                Observation(ts, kw)
+                for ts, kw in anlage_slot_kw(cur, site_id, column, since, None)
+            ]
         cur.execute(
             f"""
             SELECT time, {column} FROM telemetry

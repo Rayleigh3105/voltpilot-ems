@@ -78,42 +78,27 @@ public class HistoryRepository {
     /**
      * Day-view buckets: 15-min aggregation computed from RAW telemetry on the
      * fly (a single day is small), so "today" is live and not behind the rollup
-     * refresh. Same energy semantics as the rollups (see the migration), plus
-     * the matching day-ahead price and the per-bucket import cost.
+     * refresh. The quarter-hours come from {@code telemetry_anlage_15m}
+     * (V20260922170000) - the very rows {@code refresh_telemetry_rollups}
+     * writes, so a multi-box site with a determined leading box reads its site
+     * sums here too (AP-15 W2/B1: import/export at the leading box, PV summed),
+     * and every other site the expressions of before, word for word - plus the
+     * matching day-ahead price and the per-bucket import cost.
      */
     public List<HistoryBucketDto> dayBuckets(UUID siteId, Instant from, Instant to, String biddingZone) {
         return jdbc.query(
                 "WITH " + PRICE_SLOT_CTE + ", b AS ("
-                        + "  SELECT time_bucket('15 minutes', time) AS bucket,"
-                        + "         avg(pv_power_kw) * 0.25 AS pv_kwh,"
-                        + "         avg(load_kw) * 0.25 AS load_kwh,"
-                        // NULL-safe (audit B2): GREATEST ignores NULLs, so a bare
-                        // greatest(power_kw, 0) fabricated 0 for power-less samples -
-                        // average only over samples where the source channels exist,
-                        // exactly like refresh_telemetry_rollups (V20260712000000).
-                        + "         avg(CASE WHEN power_kw IS NOT NULL"
-                        + "                  THEN greatest(power_kw, 0) END) * 0.25 AS grid_import_kwh,"
-                        + "         avg(CASE WHEN power_kw IS NOT NULL"
-                        + "                  THEN greatest(-power_kw, 0) END) * 0.25 AS grid_export_kwh,"
-                        + "         avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL"
-                        + "                       AND pv_power_kw IS NOT NULL"
-                        + "                  THEN greatest(power_kw - load_kw + pv_power_kw, 0)"
-                        + "             END) * 0.25 AS battery_charge_kwh,"
-                        + "         avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL"
-                        + "                       AND pv_power_kw IS NOT NULL"
-                        + "                  THEN greatest(-(power_kw - load_kw + pv_power_kw), 0)"
-                        + "             END) * 0.25 AS battery_discharge_kwh,"
-                        + "         min(soc_pct) AS soc_min_pct, max(soc_pct) AS soc_max_pct,"
-                        + "         last(soc_pct, time) AS soc_last_pct"
-                        + "  FROM telemetry WHERE site_id = ? AND time >= ? AND time < ?"
-                        + "  GROUP BY 1) "
+                        + "  SELECT bucket, pv_kwh, load_kwh, grid_import_kwh, grid_export_kwh,"
+                        + "         battery_charge_kwh, battery_discharge_kwh,"
+                        + "         soc_min_pct, soc_max_pct, soc_last_pct"
+                        + "  FROM telemetry_anlage_15m(?, ?, ?)) "
                         + "SELECT b.*, p.price_eur_mwh,"
                         + "       " + costEur + " AS cost_eur "
                         + "FROM b " + SITE_TARIFF_JOIN + PRICE_JOIN
                         + "ORDER BY b.bucket",
                 HistoryRepository::mapBucket,
                 biddingZone, Timestamp.from(from), Timestamp.from(to),
-                siteId, Timestamp.from(from), Timestamp.from(to), siteId);
+                Timestamp.from(from), Timestamp.from(to), siteId, siteId);
     }
 
     /**
