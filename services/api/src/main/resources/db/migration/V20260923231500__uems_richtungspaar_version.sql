@@ -49,5 +49,10 @@ COMMENT ON COLUMN messreihe_periode_version.menge_positiv IS
     'Paar nicht traegt oder ein Ersatzwert in der Periode wirkt.';
 COMMENT ON COLUMN messreihe_periode_version.menge_negativ IS
     'Wie messreihe_periode_version.menge_positiv, fuer den negativen Anteil.';
--- Die Tabellenrechte beider Tabellen decken nullbare Zusatzspalten; RLS und
--- FORCE stehen an der Tabelle, nicht an der Spalte.
+-- SELECT/INSERT/DELETE stehen an der Tabelle und decken die Zusatzspalten; RLS
+-- und FORCE ebenso. UPDATE auf messreihe_periode_version ist dagegen SPALTENWEISE
+-- vergeben (V20260914120000: der Nachzug einer vorlaeufigen Version darf nur ihren
+-- Inhalt schreiben, nie Schluessel, Nummer oder Anlass). Das Richtungspaar ist
+-- Inhalt und zieht mit -- darum hier die beiden Spalten dazu, sonst scheitert jeder
+-- Nachzug an "permission denied". messreihe_viertelstunde_version kennt kein UPDATE.
+GRANT UPDATE (menge_positiv, menge_negativ) ON messreihe_periode_version TO ${adminDbUser};
