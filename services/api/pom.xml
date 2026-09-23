@@ -295,6 +295,11 @@
                              aus, in PRODUKTION an. Wer ihn prueft, ruft
                              FunktionBestandLaeufer.lauf() selbst. -->
                         <voltpilot.uems.funktion-bestand.enabled>false</voltpilot.uems.funktion-bestand.enabled>
+                        <!-- Der Nachtrag der Tagesmenge (UEMS AP-08, Captain
+                             15.09.2026 B) ist derselbe Start-Lauf: im Testlauf
+                             aus, in PRODUKTION an. Wer ihn prueft, ruft
+                             TagesmengeNachtragLaeufer.lauf() selbst. -->
+                        <voltpilot.uems.tagesmenge-nachtrag.enabled>false</voltpilot.uems.tagesmenge-nachtrag.enabled>
                         <!-- Der Verdichtungs-Takt der Viertelstundenwerte (UEMS
                              AP-07 IP-12) ist dieselbe @Scheduled-Falle - im
                              Testlauf aus, in PRODUKTION an (application.yml,

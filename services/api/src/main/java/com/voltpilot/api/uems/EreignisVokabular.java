@@ -359,9 +359,12 @@ public final class EreignisVokabular {
     /** AP-08 IP-12 — der Stand eines Ersatzwerts: nie gelöscht, nur zurückgenommen. */
     public static final List<String> ERSATZWERT_STATUS = List.of("wirksam", "zurueckgenommen");
 
-    /** AP-08 IP-12 — die fünf Arten einer Korrektur (§4.6). */
+    /**
+     * AP-08 IP-12 — die Arten einer Korrektur (§4.6); die sechste, {@code menge_nachgetragen}, trägt den Nachtrag
+     * der Tagesmenge an Tagen, die vor AP-08 IP-5 schon endgültig waren (V20260924013000).
+     */
     public static final List<String> KORREKTUR_ART = List.of("nachlieferung_nach_endgueltigkeit",
-            "ablesestaende_nachgetragen", "umklassifizierung", "ersatzwert", "wert_berichtigt");
+            "ablesestaende_nachgetragen", "umklassifizierung", "ersatzwert", "wert_berichtigt", "menge_nachgetragen");
 
     /** AP-08 IP-12 — die Art einer Korrektur, die genau einen Ersatzwert nennt. */
     public static final String KORREKTUR_ART_ERSATZWERT = "ersatzwert";

@@ -209,7 +209,8 @@ meldet ein Mensch (`kunde`) mit Kennung `EW-<Jahr>-<lfd. Nr.>`, Methode aus
 `vorperiode_uebernehmen` · g `vergleichsquelle_uebernehmen`) und Status `wirksam` ·
 `zurueckgenommen`. `correction` trägt `K-<Jahr>-<lfd. Nr.>`, `korrektur_art`
 (`nachlieferung_nach_endgueltigkeit` · `ablesestaende_nachgetragen` · `umklassifizierung` ·
-`ersatzwert` · `wert_berichtigt`) und Status `vorschlag` · `freigegeben` · `abgelehnt` ·
+`ersatzwert` · `wert_berichtigt` · `menge_nachgetragen` — der Nachtrag der Tagesmenge an einem Tag, der vor
+AP-08 IP-5 schon endgültig war, nur als Vorschlag des Systems über den Korrekturweg) und Status `vorschlag` · `freigegeben` · `abgelehnt` ·
 `zurueckgenommen`; `ersatzwert` genau bei der Art `ersatzwert`. **Nie automatisch (E14):** die
 Cloud meldet nur `vorschlag`. **Jeder Statuswechsel ist eine NEUE Meldung** mit eigener
 `ereignis_id` — nie eine Fortschreibung, denn ein Status wird nicht nachgetragen, sondern

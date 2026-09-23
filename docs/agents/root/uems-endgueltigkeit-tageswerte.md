@@ -142,7 +142,9 @@ Summe der Viertelstunden. Genau diese Stände liefert die Zeile.
 **Nachtrag AP-08 IP-5:** die Zeile trägt jetzt `menge`/`menge_zustand`/`kennzeichen`/`kadenz_s`
 aus den Periodenständen, `stand_anfang`/`stand_ende` sind die Stände an den TAGESGRENZEN, und
 `erwartet`/`abdeckung_prozent` zählen fehlende Viertelstunden mit — siehe
-`uems-periodenmengen.md`.
+`uems-periodenmengen.md`. Ein Tag, der VOR IP-5 schon endgültig war, behält Version 1 ohne Menge; die Menge
+kommt nie still, sondern als Korrektur `menge_nachgetragen` (Vorschlag des Systems → Freigabe → Version 2),
+siehe `uems-periodenmengen.md` § „Nachtrag“.
 
 `mittel`, `min_wert`, `max_wert` sind Momentanwert-Fakten, keine Mengen. **Seit AP-08 IP-3**
 rechnet sie `VerbrauchRegeln.momentanwertAusTeilperioden`: Mittel = Summe der guten Werte ÷

@@ -124,7 +124,7 @@ public class KorrekturVorschlagLauf {
         }
     }
 
-    private record Reihe(UUID tenant, UUID entity, String kanal) {}
+    record Reihe(UUID tenant, UUID entity, String kanal) {}
 
     private record Erkennung(int anzahl, Instant letzterEingang, Instant frist) {}
 
@@ -519,7 +519,7 @@ public class KorrekturVorschlagLauf {
      * Die Sperre je Reihe bis zum Ende der Transaktion — unter ihr sind „gibt es schon einen?“ und „anlegen“ EIN
      * Zug. {@code warten}: eine Anfrage wartet, der Lauf überspringt eine gehaltene Reihe bis zum nächsten Takt.
      */
-    private static boolean sperreReihe(Connection con, Reihe r, boolean warten) throws SQLException {
+    static boolean sperreReihe(Connection con, Reihe r, boolean warten) throws SQLException {
         String sql = warten ? "SELECT true FROM pg_advisory_xact_lock(hashtextextended(?, 0))"
                 : "SELECT pg_try_advisory_xact_lock(hashtextextended(?, 0))";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
@@ -532,7 +532,7 @@ public class KorrekturVorschlagLauf {
     }
 
     /** Die Vorschläge derselben Art an genau dieser Reihe dieses Kundenbereichs, mit ihrem Status heute. */
-    private static List<Bestehend> bestehende(Connection con, Reihe r, String art) throws SQLException {
+    static List<Bestehend> bestehende(Connection con, Reihe r, String art) throws SQLException {
         List<Bestehend> aus = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT k.kennung, k.von, k.bis, k.vorschau::text, s.status
@@ -561,7 +561,7 @@ public class KorrekturVorschlagLauf {
      * Legt den Vorschlag an (Fassung 1, Kennung im Jahr der Erfassung in der Zone des Standorts) und hängt den
      * Marker {@code correction} mit Status {@code vorschlag} an — dieselbe Transaktion.
      */
-    private String anlegen(Connection con, Reihe r, String art, Instant von, Instant bis, String begruendung,
+    static String anlegen(Connection con, Reihe r, String art, Instant von, Instant bis, String begruendung,
             ArrayNode vorschau, ProtokollAkteur akteur, ZoneId zone, Instant jetzt) throws SQLException {
         String kennung = MessreiheFassungen.naechsteKennung(new JdbcTemplate(new SingleConnectionDataSource(con, true)),
                 MessreiheKorrekturRepository.TABELLE, "K", r.tenant(), zone);

@@ -31,7 +31,8 @@ oder zurückgerechneter Stand, nie eine Schätzung.
 
 ⚠ **Welche Teile:** ein TAG und ein MONAT aus den Viertelstunden, ein JAHR aus den Monaten. Der
 Monat liest bewusst NICHT die Tageszeilen: ein Tag, der vor IP-5 schon endgültig war, trägt keine
-Menge und wird nie angefasst. Gelesen wird zusätzlich die letzte Viertelstunde mit gutem Wert
+Menge und wird nie STILL angefasst — der Nachtrag läuft nur über den Korrekturweg (§ „Nachtrag“ unten).
+Gelesen wird zusätzlich die letzte Viertelstunde mit gutem Wert
 vor `von` (≤ 1 Tag) und die an `bis` — daraus kommen die Stände an den Grenzen.
 
 ## Der freie Zeitraum (P7)
@@ -68,7 +69,8 @@ seinem jüngsten Monat). Die Stundenzahl eines Tages kommt weiter aus `TagRegeln
 
 - `messreihe_tag` + `menge`, `menge_zustand`, `kennzeichen`, `kadenz_s`; ⚠ `stand_anfang`/
   `stand_ende` sind jetzt die Stände an den TAGESGRENZEN (vorher: erster Stand irgendeiner
-  Viertelstunde). Endgültige Tage von vor IP-5 behalten beides wie gebildet (nie angefasst).
+  Viertelstunde). Endgültige Tage von vor IP-5 behalten in Version 1 beides wie gebildet (nie still
+  angefasst); die Menge kommt als Version 2 über den Korrekturweg (§ „Nachtrag“).
 - `messreihe_periode` (art `monat`|`jahr`, `tag` = erster Kalendertag): Hypertable, Chunk 10 Jahre,
   Aufbewahrung 3 653 Tage, RLS + FORCE, App nur SELECT.
 - `messreihe_periode_arbeit`: durable, Entnahme `FOR UPDATE SKIP LOCKED`, entnehmen und schreiben
@@ -77,6 +79,30 @@ seinem jüngsten Monat). Die Stundenzahl eines Tages kommt weiter aus `TagRegeln
   unveränderte Zeilen in Ruhe. ⚠ Frist und `nachholen()` lesen seit AP-10 IP-10 nur REIHEN
   (`entity_id IS NOT NULL`): Monat und Jahr einer berechneten Messstelle (Spur `berechnet`) rechnet
   `BerechnetePeriodenLauf` aus den Monaten/Jahren ihrer Eingänge (`uems-berechnete-periodenwerte.md`).
+
+## Nachtrag: Tage, die vor IP-5 schon endgültig waren
+
+Captain 15.09.2026, Empfehlung B (nicht A = stiller Nachtrag, nicht C = so lassen): die Menge kommt über den
+REGULÄREN Korrekturweg, weil eine endgültige Zeile nach E5 nie still geändert wird.
+
+- **Erkennung:** `messreihe_tag` endgültig, `menge`, `menge_zustand` UND `kadenz_s` NULL (so steht jede Zeile von
+  vor V20260912205000 — seither schreibt der Tageslauf mindestens die Kadenz) und KEINE Tagesversion ≥ 2
+  (die trägt schon eine Menge nach der Regel von heute).
+- **Vorschlag:** Start-Läufer `uems/TagesmengeNachtragLaeufer` (`bestand_tagesmenge`, Schalter
+  `voltpilot.uems.tagesmenge-nachtrag.enabled`, yml AN, surefire AUS) — je Tag EINE Korrektur der Art
+  `menge_nachgetragen` (V20260924013000, sechstes Wort in `vokabular.korrektur_art`), Ersteller VoltPilot,
+  Marker `correction`/`cloud`/`vorschlag`, Vorschau GENAU eine Periode `tag` (alt = Version 1 ohne Menge, neu =
+  `KaskadeStufen.tag` aus den Viertelstunden). Eine Transaktion je Tag; ein Tag mit Version oder Vorschlag sperrt
+  (IP-14-Sperre), ein Tag ohne bildbare Menge bekommt KEINEN Vorschlag, sondern wird im `Lauf.ohneMenge` gezählt
+  und im Log benannt.
+- **Freigabe:** wie jede Korrektur (`KorrekturFreigabeService`, Rechte `korrektur.freigeben`, Vier-Augen) — der
+  System-Weg kann nicht selbst freigeben (Trigger `messreihe_korrektur_system_nur_vorschlag`).
+- **Wirkung:** `KorrekturKaskade` prüft je Tag, dass die Vorschau „neu“ noch stimmt (sonst `vorschau_veraltet`), und
+  `KaskadeStufen.tag` nennt eine FREIGEGEBENE Nachtrag-Korrektur in `korrekturen` → Version 2 des Tages
+  (`messreihe_periode_version`, „korrigiert (Version 2)“). Version 1 bleibt Zeichen für Zeichen; Monat und Jahr
+  bekommen keine Version (sie lesen die Viertelstunden). ⚠ Rücknahme = Stand VOR der Korrektur: wirkt sonst nichts
+  im Tag, schreibt die Kaskade Version 1 (ohne Menge) als nächste Version.
+- Test: `UemsTagesmengeNachtragTest` (Testcontainers).
 
 ## Grenzen
 

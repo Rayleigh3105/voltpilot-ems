@@ -45,7 +45,8 @@ Viertelstunde, Kennzeichen, Versionen) ist seit IP-13 `uems-ersatzwert-methoden.
 ## Korrektur
 
 `messreihe_korrektur`: `K-<Jahr>-<lfd. Nr.>`, Art (`nachlieferung_nach_endgueltigkeit` ·
-`ablesestaende_nachgetragen` · `umklassifizierung` · `ersatzwert` · `wert_berichtigt`), `reihen` JSONB
+`ablesestaende_nachgetragen` · `umklassifizierung` · `ersatzwert` · `wert_berichtigt` · seit V20260924013000
+`menge_nachgetragen`, `uems-periodenmengen.md` § „Nachtrag“), `reihen` JSONB
 `[{entity_id, messkanal}, …]` (kanonische UUID, keine doppelt), [von, bis) im Raster, Begründung,
 `beleg` (Pflicht bei `wert_berichtigt`), `ersatzwert_kennung` (genau bei Art `ersatzwert`, FK über die
 berechnete `ersatzwert_fassung` = 1; Trigger: Reihe in `reihen`, Zeitraum umfasst), `vorschau` JSONB

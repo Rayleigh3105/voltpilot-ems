@@ -119,6 +119,7 @@ public class KorrekturKaskade {
     private static final String ART_ABLESESTAENDE = "ablesestaende_nachgetragen";
     private static final String ART_UMKLASSIFIZIERUNG = "umklassifizierung";
     private static final String ART_ERSATZWERT = "ersatzwert";
+    private static final String ART_MENGE_NACHGETRAGEN = KorrekturVorschlagRegeln.MENGE_NACHGETRAGEN;
 
     /** Wie viele Kandidaten eine Suche nach Arbeit ansieht (gesperrte Kundenbereiche werden übersprungen). */
     private static final int KANDIDATEN = 20;
@@ -638,7 +639,18 @@ public class KorrekturKaskade {
             reihen = k.reihen();
             von = k.von();
             bis = k.bis();
-            if (!ART_ERSATZWERT.equals(k.art())) {
+            if (ART_MENGE_NACHGETRAGEN.equals(k.art())) {
+                // Der Nachtrag der Tagesmenge ändert keine Viertelstunde: die Tage wirken über KaskadeStufen.tag, die
+                // Freigabe muss nur noch sagen, was sie freigab.
+                if (reihen.size() != 1) {
+                    throw new Abgelehnt(VORSCHAU_FEHLT, "der Nachtrag nennt keine Reihe, die Korrektur hat "
+                            + reihen.size());
+                }
+                if (FREIGEGEBEN.equals(a.status())) {
+                    Reihe r = reihen.get(0);
+                    tageStimmen(con, a, k, new KaskadeStufen.Reihe(a.tenant(), r.entity(), r.kanal()), jetzt);
+                }
+            } else if (!ART_ERSATZWERT.equals(k.art())) {
                 if (reihen.size() != 1) {
                     throw new Abgelehnt(VORSCHAU_FEHLT, "die Vorschau je Viertelstunde nennt keine Reihe, die Korrektur "
                             + "hat " + reihen.size());
@@ -879,6 +891,36 @@ public class KorrekturKaskade {
                         && soll.menge().compareTo(ist.menge()) == 0)
                 && soll.aussage().equals(ist.aussage()) && Objects.equals(soll.erhalten(), ist.erhalten())
                 && Objects.equals(soll.erwartet(), ist.erwartet()) && Objects.equals(soll.abdeckung(), ist.abdeckung());
+    }
+
+    /**
+     * Die FREIGABE eines Nachtrags der Tagesmenge: jeder Tag der Vorschau muss heute noch dieselbe Aussage bilden, die
+     * freigegeben wurde (Menge, Mengenzustand, Kennzeichen ohne „korrigiert“) — sonst ist das eine neue Tatsache und
+     * wird benannt abgelehnt, wie bei einer Viertelstunde.
+     */
+    private void tageStimmen(Connection con, Anlass a, Korrektur k, KaskadeStufen.Reihe r, Instant jetzt)
+            throws SQLException {
+        for (JsonNode p : k.vorschau()) {
+            if (!KorrekturVorschlagRegeln.TAG.equals(p.path("periode").asText())) {
+                throw new Abgelehnt(VORSCHAU_FEHLT, "der Nachtrag " + a.kennung() + " zeigt keinen Tag");
+            }
+            Instant beginn = Instant.parse(p.path("von").asText());
+            ZoneId zone = ReihenKontext.zeitzonen(con, List.of(new ReihenKontext.Frage(r.tenant(), r.entity(),
+                    LocalDate.ofInstant(beginn, ZoneOffset.UTC)))).get(0).zone();
+            LocalDate tag = TagRegeln.tag(beginn, zone);
+            zone = Objects.requireNonNullElse(KaskadeStufen.zoneDerZeile(con, r, KaskadeStufen.TAG, tag), zone);
+            Gebildet soll = stufen.tag(con, r, tag, zone, KaskadeStufen.bestand(con, r, KaskadeStufen.TAG, tag), jetzt);
+            JsonNode n = p.path("neu");
+            List<String> kennzeichen = new ArrayList<>();
+            n.path("kennzeichen").forEach(x -> kennzeichen.add(x.asText()));
+            boolean gleich = soll != null && Objects.equals(soll.inhalt().mengeZustand(), n.path("menge_zustand")
+                    .asText(null)) && soll.inhalt().aussage().equals(kennzeichen)
+                    && (soll.inhalt().menge() == null ? dezimal(n, "menge") == null
+                            : dezimal(n, "menge") != null && soll.inhalt().menge().compareTo(dezimal(n, "menge")) == 0);
+            if (!gleich) {
+                throw new Abgelehnt(VORSCHAU_VERALTET, "Tag " + tag + " von " + a.kennung());
+            }
+        }
     }
 
     // ============================================================================ Tag, Monat, Jahr der Reihe

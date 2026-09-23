@@ -85,7 +85,7 @@ Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.
 
-## Die achtzehn Läufer
+## Die neunzehn Läufer
 
 Der Katalog steht in `UemsLaeuferMelder.KATALOG` und ist VOLLSTÄNDIG: `UemsMetrikenWiringTest` liest
 die Quelltexte von `uems`, `unterstuetzung`, `zugriff` und `chargers` und verlangt für jede Klasse mit
@@ -114,6 +114,7 @@ vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet. Au
 | `bestand_standort` | `BestandsuebernahmeLaeufer` | `voltpilot.uems.bestandsuebernahme.enabled` | Start |
 | `bestand_funktion` | `FunktionBestandLaeufer` | `voltpilot.uems.funktion-bestand.enabled` | Start |
 | `bestand_rechte` | `ZugriffBestandLaeufer` | `voltpilot.uems.zugriff-bestand.enabled` | Start |
+| `bestand_tagesmenge` | `TagesmengeNachtragLaeufer` (Nachtrag der Tagesmenge vor AP-08 IP-5, nur Vorschläge) | `voltpilot.uems.tagesmenge-nachtrag.enabled` | Start |
 
 `uebergabe` und `box_tausch` teilen sich einen Schalter und lesen beide
 `voltpilot.uems.uebergabe.interval-ms` — mit verschiedenen Vorgaben (1 s bzw. 15 s). Das ist Bestand
@@ -164,7 +165,7 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   rechnet, ist Arithmetik auf dem zuletzt gesammelten Zeitpunkt — darum wachsen die Alter zwischen
   zwei Sammel-Läufen weiter, und ein ausgefallener SAMMLER wird an denselben Regeln sichtbar, ohne
   eigene Metrik.
-- **Kardinalität**: drei Arbeitslisten, achtzehn Läufer, ein Wert je Messkunden-Kundenbereich. Keine
+- **Kardinalität**: drei Arbeitslisten, neunzehn Läufer, ein Wert je Messkunden-Kundenbereich. Keine
   Anlage, keine Box, keine Messstelle als Label (Ausnahme mit Absicht: die Box-Sicht unten, nur für
   Boxen mit Bezug) — und `tenant` trägt die INTERNE Kennung, nie einen Namen.
 

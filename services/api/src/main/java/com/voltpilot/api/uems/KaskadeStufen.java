@@ -526,7 +526,59 @@ final class KaskadeStufen {
         String wertart = g.wertart();
         Inhalt basis = grundlage(r, zone, t.teile(), innen, t.werteteile(), g.ereignisse(), g.deklaration(), wertart,
                 g.kadenzS(), beginn, ende, zustand).mitRichtung(Richtungspaar.ausTeilen(t.anteile(), beginn, ende));
-        return mitErsatzwerten(con, r, zone, basis, beginn, ende, t.korrekturen());
+        return nachtrag(con, r, beginn, ende, v1, mitErsatzwerten(con, r, zone, basis, beginn, ende, t.korrekturen()),
+                t.mitVersion());
+    }
+
+    /**
+     * Der Nachtrag der Tagesmenge (Korrektur-Art {@code menge_nachgetragen}, Captain 15.09.2026 B): ein Tag, der vor
+     * AP-08 IP-5 schon endgültig war, trägt in Version 1 keine Menge. Eine FREIGEGEBENE Nachtrag-Korrektur über den Tag
+     * wirkt in ihm — sie steht in {@code korrekturen}, damit eine erste Version entsteht und jede spätere Stufe sie weiter
+     * nennt. Ist sie ZURÜCKGENOMMEN und wirkt sonst nichts (keine Korrektur einer Viertelstunde, kein Ersatzwert, keine
+     * Viertelstunden-Version), gilt wieder der Stand vor ihr (§4.6): Version 1, wie gebildet — nie still angefasst.
+     */
+    private static Gebildet nachtrag(Connection con, Reihe r, Instant beginn, Instant ende, Gespeichert v1,
+            Gebildet gebildet, boolean mitViertelVersion) throws SQLException {
+        List<String> wirksam = new ArrayList<>();
+        boolean zurueckgenommen = false;
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT k.kennung, s.status
+                  FROM messreihe_korrektur k
+                  JOIN LATERAL (SELECT f.status FROM messreihe_korrektur f
+                                 WHERE f.tenant_id = k.tenant_id AND f.kennung = k.kennung
+                                 ORDER BY f.fassung DESC LIMIT 1) s ON true
+                 WHERE k.tenant_id = ? AND k.fassung = 1 AND k.art = ?
+                   AND k.reihen @> jsonb_build_array(jsonb_build_object('entity_id', ?::text, 'messkanal', ?::text))
+                   AND jsonb_array_length(k.reihen) = 1 AND k.von <= ? AND k.bis >= ?
+                 ORDER BY k.kennung
+                """)) {
+            ps.setObject(1, r.tenant());
+            ps.setString(2, KorrekturVorschlagRegeln.MENGE_NACHGETRAGEN);
+            ps.setString(3, r.entity().toString());
+            ps.setString(4, r.kanal());
+            ps.setTimestamp(5, Timestamp.from(beginn));
+            ps.setTimestamp(6, Timestamp.from(ende));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String status = rs.getString(2);
+                    if (EreignisVokabular.KORREKTUR_STATUS.get(1).equals(status)) {
+                        wirksam.add(rs.getString(1));
+                    } else if (EreignisVokabular.KORREKTUR_STATUS.get(3).equals(status)) {
+                        zurueckgenommen = true;
+                    }
+                }
+            }
+        }
+        if (gebildet != null && !wirksam.isEmpty()) {
+            Set<String> k = new LinkedHashSet<>(gebildet.korrekturen());
+            k.addAll(wirksam);
+            return new Gebildet(gebildet.inhalt(), List.copyOf(k), gebildet.ersatzwerte());
+        }
+        if (zurueckgenommen && v1 != null && !mitViertelVersion
+                && (gebildet == null || gebildet.korrekturen().isEmpty() && gebildet.ersatzwerte().isEmpty())) {
+            return new Gebildet(v1.inhalt(), List.of(), List.of());
+        }
+        return gebildet;
     }
 
     /** Die GRUNDLAGE eines Monats aus seinen Viertelstunden (neueste Fassung, ohne Ersatzwerte) samt ihren Teilen. */

@@ -69,12 +69,14 @@ class KorrekturVorschlagRegelnTest {
                 case KorrekturVorschlagRegeln.UMKLASSIFIZIERUNG -> KorrekturVorschlagRegeln.umklassifizierung(
                         e.path("richtung").asText(), zeit(e, "zeitpunkt"),
                         e.path("modul").isNull() ? null : new BigDecimal(e.path("modul").asText()), zone);
+                case KorrekturVorschlagRegeln.MENGE_NACHGETRAGEN -> KorrekturVorschlagRegeln.mengeNachgetragen(
+                        java.time.LocalDate.parse(e.path("tag").asText()), zeit(e, "frist"), zone);
                 default -> throw new AssertionError("unbekannte Art " + c.path("art"));
             };
             assertThat(satz).as(c.path("name").asText()).isEqualTo(c.path("satz").asText());
             gesprochen++;
         }
-        assertThat(gesprochen).isEqualTo(7);
+        assertThat(gesprochen).isEqualTo(8);
     }
 
     /** Eine Begründung passt in die Spalte (10–500 Zeichen, {@code messreihe_korrektur_text_gueltig}). */

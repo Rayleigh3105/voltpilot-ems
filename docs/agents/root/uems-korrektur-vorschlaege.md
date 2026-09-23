@@ -48,6 +48,11 @@ Der Captain hat die Ausnahme „es wird ja nur eine Lücke gefüllt“ ausdrück
    Die Bestätigung ersetzt die Höchstzuwachs-Schranke (Deklaration Modul/Modul je 1 s), nicht den Wertebereich;
    ohne Modul `wertebereich_fehlt`, fremde Reihe `reihe_unbekannt`. Noch ruft keine Route an (IP-16).
 
+4. **Menge nachgetragen** (Captain 15.09.2026, B) — kein Teil dieses Laufs: der Start-Läufer
+   `TagesmengeNachtragLaeufer` legt je Tag, der vor AP-08 IP-5 endgültig war, eine Korrektur `menge_nachgetragen`
+   mit einer Vorschau-Periode `tag` an (dieselben Helfer `anlegen`/`bestehende`/`sperreReihe`, dieselbe Sperre);
+   `uems-periodenmengen.md` § „Nachtrag“.
+
 ## ⚠ Die Doppelvorschlag-Sperre
 
 Fachlicher Schlüssel = Kundenbereich + Art + Reihe + Zeitraum, nie ein Zeitstempel; geprüft unter

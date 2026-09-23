@@ -7,7 +7,8 @@
     "nachlieferung_nach_endgueltigkeit": "Nachgeliefert nach Ablauf der Frist: {anzahl} für {zeitraum}, zuletzt eingegangen am {eingang}; endgültig seit {frist}.",
     "ablesestaende_nachgetragen": "Ablesestände nach Ablauf der Frist eingetragen: Gerätegrenze {zeitpunkt}, eingetragen am {eingang}; endgültig seit {frist}.",
     "umklassifizierung_als_ueberlauf": "Der fallende Stand am {zeitpunkt} ist bisher eine Rücksetzung; auf Wunsch rechnet die Vorschau ihn als Überlauf (Wertebereich {modul}).",
-    "umklassifizierung_als_ruecksetzung": "Der fallende Stand am {zeitpunkt} ist bisher ein Überlauf; auf Wunsch rechnet die Vorschau ihn als Rücksetzung."
+    "umklassifizierung_als_ruecksetzung": "Der fallende Stand am {zeitpunkt} ist bisher ein Überlauf; auf Wunsch rechnet die Vorschau ihn als Rücksetzung.",
+    "menge_nachgetragen": "Menge nachgetragen: der Tag {tag} war schon endgültig, bevor Tagesmengen gebildet wurden, und trägt bisher keine Menge; endgültig seit {frist}."
   },
   "erkennung_notiz": {
     "erledigt": "Aufgenommen in den Korrektur-Vorschlag {kennung}.",
@@ -20,14 +21,16 @@
     "eingang": "wie zeitpunkt: die LETZTE Eingangszeit",
     "frist": "wie zeitpunkt: die FRÜHESTE Frist der Viertelstunden (Ende + 7 Tage)",
     "modul": "der Wertebereich ohne Tausenderpunkt, wie im Kennzeichen „Überlauf hh:mm (Wertebereich 65536)“",
-    "kennung": "die Kennung der Korrektur, K-<Jahr>-<lfd. Nr.>"
+    "kennung": "die Kennung der Korrektur, K-<Jahr>-<lfd. Nr.>",
+    "tag": "der Ortstag als „TT.MM.JJJJ“ (nur menge_nachgetragen; dort ist frist die Frist des Tages, Tagesende + 7 Tage)"
   },
   "vorschau": {
-    "periode": ["viertelstunde"],
+    "periode": ["viertelstunde", "tag"],
     "felder": ["periode", "von", "bis", "aendert", "alt", "neu"],
     "stand": ["version", "menge", "menge_zustand", "kennzeichen", "erhalten", "erwartet", "abdeckung_prozent", "mittel", "energie"],
     "regeln": [
       "Eine Periode je Viertelstunde des Zeitraums, älteste zuerst; von/bis als ISO-8601 UTC.",
+      "Nur menge_nachgetragen: GENAU eine Periode „tag“ über den Ortstag [Tagesanfang, Tagesende) — alt = Version 1 ohne Menge, neu = der Tag aus seinen Viertelstunden nach der Regel von heute (Tagesgrenzen-Stände, menge_zustand, kennzeichen).",
       "alt = die neueste gespeicherte Version (Version 1 aus der Verdichtung, darüber die Menge, der Zustand und die Kennzeichen einer späteren Version); ohne Zeile version = null und menge_zustand „keine Werte“ — nie 0.",
       "neu = was der Verdichtungs-Lauf mit derselben Rechenregel HEUTE schriebe; version ist dort immer null (die Version vergibt erst die Freigabe, IP-17).",
       "Beträge als Dezimaltext, ungerundet; null ist nie 0.",
@@ -89,6 +92,13 @@
       "art": "umklassifizierung",
       "eingabe": {"richtung": "als_ruecksetzung", "zeitpunkt": "2026-10-20T08:03:00Z", "modul": null},
       "satz": "Der fallende Stand am 20.10.2026 10:03 ist bisher ein Überlauf; auf Wunsch rechnet die Vorschau ihn als Rücksetzung."
+    },
+    {
+      "name": "menge-nachgetragen-tag-vor-ip5",
+      "why": "Captain 15.09.2026 (B): der 06.10.2026 war endgültig, bevor AP-08 IP-5 Tagesmengen bildete; seine Frist ist das Tagesende + 7 Tage, 14.10.2026 00:00 Ortszeit.",
+      "art": "menge_nachgetragen",
+      "eingabe": {"tag": "2026-10-06", "frist": "2026-10-13T22:00:00Z"},
+      "satz": "Menge nachgetragen: der Tag 06.10.2026 war schon endgültig, bevor Tagesmengen gebildet wurden, und trägt bisher keine Menge; endgültig seit 14.10.2026 00:00."
     }
   ]
 }

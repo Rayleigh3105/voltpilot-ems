@@ -311,7 +311,8 @@
         "ablesestaende_nachgetragen",
         "umklassifizierung",
         "ersatzwert",
-        "wert_berichtigt"
+        "wert_berichtigt",
+        "menge_nachgetragen"
       ]
     },
     "korrektur_status": {

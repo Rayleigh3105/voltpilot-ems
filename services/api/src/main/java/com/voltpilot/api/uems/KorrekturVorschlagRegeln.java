@@ -39,6 +39,8 @@ public final class KorrekturVorschlagRegeln {
     public static final String NACHLIEFERUNG = "nachlieferung_nach_endgueltigkeit";
     public static final String ABLESESTAENDE = "ablesestaende_nachgetragen";
     public static final String UMKLASSIFIZIERUNG = "umklassifizierung";
+    /** Der Nachtrag der Tagesmenge an einem Tag, der vor AP-08 IP-5 schon endgültig war (Captain 15.09.2026, B). */
+    public static final String MENGE_NACHGETRAGEN = "menge_nachgetragen";
 
     /** Die Richtung einer Umklassifizierung (E4: Rücksetzung ↔ Überlauf). */
     public static final String ALS_UEBERLAUF = "als_ueberlauf";
@@ -67,6 +69,8 @@ public final class KorrekturVorschlagRegeln {
                 + "auf Wunsch rechnet die Vorschau ihn als Überlauf (Wertebereich {modul}).");
         m.put(UMKLASSIFIZIERUNG + "_" + ALS_RUECKSETZUNG, "Der fallende Stand am {zeitpunkt} ist bisher ein Überlauf; "
                 + "auf Wunsch rechnet die Vorschau ihn als Rücksetzung.");
+        m.put(MENGE_NACHGETRAGEN, "Menge nachgetragen: der Tag {tag} war schon endgültig, bevor Tagesmengen gebildet "
+                + "wurden, und trägt bisher keine Menge; endgültig seit {frist}.");
         BEGRUENDUNG = Map.copyOf(m);
     }
 
@@ -74,8 +78,10 @@ public final class KorrekturVorschlagRegeln {
     public static final String NOTIZ_ERLEDIGT = "Aufgenommen in den Korrektur-Vorschlag {kennung}.";
     public static final String NOTIZ_VERWORFEN = "Die nachgelieferten Messwerte ändern keinen Wert der Viertelstunde.";
 
-    /** Die einzige Periode, die IP-14 vorschaut; Tag, Monat und Jahr bildet die Kaskade (IP-17). */
+    /** Die Periode, die IP-14 vorschaut; Tag, Monat und Jahr bildet die Kaskade (IP-17). */
     public static final String VIERTELSTUNDE = "viertelstunde";
+    /** Nur beim Nachtrag der Tagesmenge ({@link #MENGE_NACHGETRAGEN}): die Vorschau zeigt den Tag selbst. */
+    public static final String TAG = "tag";
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final DateTimeFormatter DATUM = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ROOT);
@@ -108,6 +114,14 @@ public final class KorrekturVorschlagRegeln {
             return sprich(UMKLASSIFIZIERUNG + "_" + ALS_RUECKSETZUNG, Map.of("zeitpunkt", zeitpunkt(zeitpunkt, zone)));
         }
         throw new IllegalArgumentException("unbekannte Richtung " + richtung);
+    }
+
+    /**
+     * „Menge nachgetragen: der Tag 06.10.2026 war schon endgültig, …; endgültig seit 14.10.2026 00:00.“ —
+     * {@code frist} ist die Frist des Tages (Tagesende + 7 Tage), {@code tag} der Ortstag.
+     */
+    public static String mengeNachgetragen(LocalDate tag, Instant frist, ZoneId zone) {
+        return sprich(MENGE_NACHGETRAGEN, Map.of("tag", DATUM.format(tag), "frist", zeitpunkt(frist, zone)));
     }
 
     /** „Aufgenommen in den Korrektur-Vorschlag K-2026-0007.“ */
@@ -227,6 +241,22 @@ public final class KorrekturVorschlagRegeln {
             n.set("neu", neu.json());
             return n;
         }
+    }
+
+    /**
+     * Die Vorschau eines Nachtrags der Tagesmenge: EIN Tag {@code [von, bis)}, alt = Version 1 ohne Menge, neu = der
+     * Tag aus seinen Viertelstunden nach der Regel von heute. Dieselbe Form wie eine Viertelstunde, {@code periode} =
+     * {@link #TAG}.
+     */
+    public static ArrayNode vorschauTag(Instant von, Instant bis, Stand alt, Stand neu) {
+        ObjectNode n = JSON.createObjectNode();
+        n.put("periode", TAG);
+        n.put("von", von.toString());
+        n.put("bis", bis.toString());
+        n.put("aendert", !alt.gleich(neu));
+        n.set("alt", alt.json());
+        n.set("neu", neu.json());
+        return JSON.createArrayNode().add(n);
     }
 
     /** Die Vorschau als JSON-Array ({@code messreihe_korrektur.vorschau}), älteste Viertelstunde zuerst. */

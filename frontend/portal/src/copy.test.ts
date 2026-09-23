@@ -1032,7 +1032,7 @@ describe('UEMS AP-08 IP-14 · die Vorschlags-Begründung spricht das Kunden-Wör
   };
 
   it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
-    expect(saetze().length).toBe(13);
+    expect(saetze().length).toBe(15);
   });
 
   it('kein Vorschlags-Satz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {

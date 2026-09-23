@@ -157,7 +157,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
         r.add("voltpilot.consumer-control.enabled", () -> "true");
         r.add("voltpilot.consumer-control.policy-compiler-enabled", () -> "true");
         // Startup runners are invoked synchronously once, in production order, below.
-        for (String flag : List.of("bestandsuebernahme", "funktion-bestand", "zugriff-bestand"))
+        for (String flag : List.of("bestandsuebernahme", "funktion-bestand", "zugriff-bestand", "tagesmenge-nachtrag"))
             r.add("voltpilot.uems." + flag + ".enabled", () -> "false");
         for (String flag : List.of("viertelstunde", "endgueltigkeit", "luecken", "ersatzwert", "kaskade",
                 "berichte", "berichte.struktur", "zeilentexte", "plan-zustellung", "ladepark-grenze", "uebergabe",
@@ -331,7 +331,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
                     .containsExactlyInAnyOrderElementsOf(actualSenders);
         }
         for (String name : List.of("uems.BestandsuebernahmeLaeufer", "uems.FunktionBestandLaeufer",
-                "zugriff.ZugriffBestandLaeufer")) {
+                "zugriff.ZugriffBestandLaeufer", "uems.TagesmengeNachtragLaeufer")) {
             Object runner = context.getBean(Class.forName("com.voltpilot.api." + name));
             Object result = ReflectionTestUtils.invokeMethod(runner, "lauf");
             assertThat((Integer) ReflectionTestUtils.invokeMethod(result, "fehler")).as(name).isZero();
@@ -351,7 +351,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
         }
         Class<?> catalog = Class.forName("com.voltpilot.api.metrics.UemsLaeuferMelder");
         List<?> entries = (List<?>) ReflectionTestUtils.getField(catalog, "KATALOG");
-        assertThat(called).as("Alle 18 Läufer aus docs/agents/root/uems-betriebsueberwachung.md")
+        assertThat(called).as("Alle 19 Läufer aus docs/agents/root/uems-betriebsueberwachung.md")
                 .containsExactlyInAnyOrderElementsOf(entries.stream()
                         .map(e -> (String) ReflectionTestUtils.invokeMethod(e, "klasse")).toList());
         Object reporter = context.getBean(catalog);
@@ -360,10 +360,10 @@ class UemsBestandSteuerungAusEinemStueckTest {
             if (!label.startsWith("bestand_")) assertThat((Optional<?>) ReflectionTestUtils.invokeMethod(reporter,
                     "letzterLauf", label)).as("%s: Takt lief wirklich, kein ausgeschalteter Fruehruecksprung", label).isPresent();
         }
-        assertThat(meters.find("voltpilot_uems_laeufer_fehler").counters()).hasSize(18);
+        assertThat(meters.find("voltpilot_uems_laeufer_fehler").counters()).hasSize(19);
         meters.find("voltpilot_uems_laeufer_fehler").counters().forEach(c ->
                 assertThat(c.count()).as("Läufer darf seinen Fehler nicht nur loggen: %s", c.getId()).isZero());
-        assertPublishersSilent("alle 18 Läufer");
+        assertPublishersSilent("alle 19 Läufer");
     }
 
     @Test @Order(1)

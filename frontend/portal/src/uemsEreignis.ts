@@ -508,6 +508,7 @@ export const KORREKTUR_ART_TEXT: Record<string, string> = {
   umklassifizierung: 'Rücksetzung und Überlauf umklassifiziert',
   ersatzwert: 'Ersatzwert',
   wert_berichtigt: 'Wert berichtigt (mit Beleg)',
+  menge_nachgetragen: 'Menge nachgetragen',
 };
 
 /**

@@ -105,6 +105,8 @@ public class UemsLaeuferMelder {
     public static final String BESTAND_FUNKTION = "bestand_funktion";
     /** {@code ZugriffBestandLaeufer} — Start-Läufer der Rechte. */
     public static final String BESTAND_RECHTE = "bestand_rechte";
+    /** {@code TagesmengeNachtragLaeufer} — Start-Läufer des Nachtrags der Tagesmenge (vor AP-08 IP-5 endgültig). */
+    public static final String BESTAND_TAGESMENGE = "bestand_tagesmenge";
 
     /**
      * Ein Läufer des Katalogs.
@@ -119,8 +121,8 @@ public class UemsLaeuferMelder {
     public record Eintrag(String label, String klasse, List<String> schalter, String takt) {}
 
     /**
-     * ALLE geplanten UEMS-Läufer — achtzehn, in der Reihenfolge der Verarbeitungskette, danach die
-     * drei Start-Läufer. Wer einen Läufer ergänzt, ergänzt ihn hier; sonst ist er unbeobachtet.
+     * ALLE geplanten UEMS-Läufer — neunzehn, in der Reihenfolge der Verarbeitungskette, danach die
+     * vier Start-Läufer. Wer einen Läufer ergänzt, ergänzt ihn hier; sonst ist er unbeobachtet.
      */
     public static final List<Eintrag> KATALOG = List.of(
             new Eintrag(VIERTELSTUNDE, "ViertelstundeLaeufer",
@@ -160,11 +162,13 @@ public class UemsLaeuferMelder {
             new Eintrag(BESTAND_FUNKTION, "FunktionBestandLaeufer",
                     List.of("voltpilot.uems.funktion-bestand.enabled"), "Start"),
             new Eintrag(BESTAND_RECHTE, "ZugriffBestandLaeufer",
-                    List.of("voltpilot.uems.zugriff-bestand.enabled"), "Start"));
+                    List.of("voltpilot.uems.zugriff-bestand.enabled"), "Start"),
+            new Eintrag(BESTAND_TAGESMENGE, "TagesmengeNachtragLaeufer",
+                    List.of("voltpilot.uems.tagesmenge-nachtrag.enabled"), "Start"));
 
-    /** Die drei Start-Läufer der Schicht „Übernahme“ — sie allein zählen je Ergebnis. */
+    /** Die vier Start-Läufer der Schicht „Übernahme“ — sie allein zählen je Ergebnis. */
     public static final List<String> BESTANDS_LAEUFER =
-            List.of(BESTAND_STANDORT, BESTAND_FUNKTION, BESTAND_RECHTE);
+            List.of(BESTAND_STANDORT, BESTAND_FUNKTION, BESTAND_RECHTE, BESTAND_TAGESMENGE);
 
     /**
      * Ein Melder ohne Bindung an die Anwendungs-Registry: die Vorgabe jedes Läufer-Feldes, damit ein

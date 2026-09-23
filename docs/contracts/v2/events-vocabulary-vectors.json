@@ -310,6 +310,13 @@
         "ersatzwert": false,
         "beleg_pflicht": true,
         "wer": "Bearbeiter — nur abgeleitete Werte, nie Rohwerte"
+      },
+      {
+        "code": "menge_nachgetragen",
+        "name": "Menge nachgetragen",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "System je Tag, der vor AP-08 IP-5 schon endgültig war und darum keine Menge trägt (Captain 15.09.2026, Empfehlung B: über den Korrekturweg, nie still)"
       }
     ],
     "korrektur_status": [
