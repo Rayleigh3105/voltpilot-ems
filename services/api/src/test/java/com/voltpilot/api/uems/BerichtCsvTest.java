@@ -158,6 +158,48 @@ class BerichtCsvTest {
         assertThat(zwei).isEqualTo(eins);
     }
 
+    /**
+     * AP-17 IP-22 (S3, R8): Grenz-Satz, Referenzperiode und Basis mit Fassung im Kopf; je Periode eine Zeile mit Urteil,
+     * Band, Kennzeichen und Fassung als Zellen, die rohe Veränderung daneben ohne Urteil; die Zeile des Zeitraums.
+     */
+    @Test
+    void leistungsvergleichHatUrteilUndFassungAlsZellen() throws Exception {
+        ObjectNode abzug = BerichtLeistungsvergleichTest.r8("endgültig").abzug();
+        String kanonisch = BerichtRegeln.kanonisch(abzug);
+        BerichtCsv.Stand stand = new BerichtCsv.Stand(1, t("2028-01-12T09:52:00+01:00"), "Ines Kaltenbach",
+                BerichtRegeln.pruefsumme(kanonisch), null, null);
+        List<String> zeilen = BerichtCsv.zeilen(abzug, stand, t("2028-01-12T10:05:00+01:00"), "Ines Kaltenbach", null);
+
+        assertThat(zeilen.subList(16, 19)).containsExactly("# grenz_satz=" + BerichtRegeln.BEWERTUNG_GRENZ_SATZ,
+                "# referenzperiode=2026-11/2027-10", "# bezugsbasis=BB-0001, Fassung 2");
+        assertThat(zeilen.stream().filter(z -> z.startsWith("# abschnitt=")).toList())
+                .containsExactlyElementsOf(BerichtCsv.ABSCHNITTE_LEISTUNGSVERGLEICH.stream()
+                        .map(a -> "# abschnitt=" + a).toList());
+        int perioden = zeilen.indexOf("# abschnitt=vergleich_je_periode");
+        assertThat(zeilen.get(perioden + 1)).isEqualTo("periode;gemessen;einheit;version;zustand;bedingung;erwartet;"
+                + "delta_prozent;band_prozent;urteil;grund;kennzeichen;bezugsbasis;fassung;roh_gemessen;roh_vormonat;"
+                + "roh_delta_prozent;roh_einflussgroesse_delta_prozent");
+        assertThat(zeilen.get(perioden + 2).split(";", -1)).containsExactly("2027-12", "78000", "kWh", "1", "endgültig",
+                "BZ-1=250000 kg (Fassung 1)", "69098", "12,9", "2,0", "schlechter", "", "", "BB-0001", "2", "78000",
+                "85500", "-8,8", "-21,9");
+        assertThat(zeilen.get(perioden + 3)).isEqualTo("# abschnitt=urteil");
+        assertThat(zeilen.get(perioden + 5).split(";", -1)).containsExactly("2027-12", "1 von 1", "78000", "69098",
+                "12,9", "2,0", "schlechter", "", "", "BB-0001", "2");
+        int basis = zeilen.indexOf("# abschnitt=bezugsbasis");
+        assertThat(zeilen.get(basis + 2)).startsWith("BB-0001;2;regression_eine_variable;2026-11/2027-10;vollstaendig;"
+                + "2027-11-01;;;a=10523, b=0,2343;0,94;3,1;2;sha256:c07b;Ines Kaltenbach;");
+        assertThat(zeilen.get(zeilen.indexOf("# abschnitt=quellenverzeichnis") + 1))
+                .isEqualTo("kennzeichen;name;art;bezug;version;fassung;erster_tag;letzter_tag");
+        assertThat(zeilen).anyMatch(z -> z.startsWith("BB-0001;Bezugsbasis BB-0001;bezugsbasis;vergleich;;2;"));
+        // U1/SP2: die rohe Veränderung trägt kein Wort — auch nicht in der Datei.
+        assertThat(String.join("\n", zeilen)).doesNotContain("gesunken", "ohne_urteil", "Verbesserung");
+
+        byte[] eins = BerichtCsv.datei(EXAKT.readTree(kanonisch), stand, t("2028-01-12T10:05:00+01:00"),
+                "Ines Kaltenbach", null);
+        byte[] zwei = BerichtCsv.datei(EXAKT.readTree(kanonisch), stand, t("2028-01-12T10:05:00+01:00"), "Ines Kaltenbach", null);
+        assertThat(zwei).isEqualTo(eins);
+    }
+
     /** B14 Randfall: Claudias Teilansicht (G3) steht im Kopf, Zeiten in UTC übergeben erscheinen in der Zone. */
     @Test
     void dieTeilansichtStehtImKopf() {
@@ -233,8 +275,12 @@ class BerichtCsvTest {
                     folge.add(a.path("schluessel").asText());
                 }
             });
-            if (BerichtRegeln.OHNE_AUSGABE.contains(v.path("schluessel").asText())) {
-                continue; // AP-17: die Zeilen des Leistungsvergleichs kommen mit IP-22 (der Abzug steht seit IP-21b)
+            if (BerichtRegeln.LEISTUNGSVERGLEICH.equals(v.path("schluessel").asText())) {
+                List<String> alle = new ArrayList<>();
+                v.path("abschnitte").forEach(a -> alle.add(a.path("schluessel").asText()));
+                assertThat(alle).containsExactlyElementsOf(java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of("kopf"), BerichtCsv.ABSCHNITTE_LEISTUNGSVERGLEICH.stream()).toList());
+                continue;
             }
             if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.path("schluessel").asText())) {
                 List<String> alle = new ArrayList<>();

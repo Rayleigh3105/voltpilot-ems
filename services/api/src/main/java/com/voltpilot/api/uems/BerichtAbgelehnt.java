@@ -38,8 +38,8 @@ public final class BerichtAbgelehnt extends RuntimeException {
         /** AP-17 IP-21b (S1, U1): ohne freigegebene Bezugsbasis am letzten Tag des Zeitraums gibt es keinen Entwurf. */
         BASIS_FEHLT("basis_fehlt", 422, "ungesichert — noch kein Stand: Diese Kennzahl hat für den Zeitraum keine "
                 + "freigegebene Bezugsbasis. Geben Sie zuerst eine Bezugsbasis frei."),
-        /** AP-17 IP-21b: PDF und CSV des Leistungsvergleichs folgen (IP-22); der Stand selbst ist abrufbar. */
-        AUSGABE_FEHLT("ausgabe_fehlt", 422, "PDF und CSV gibt es für den Leistungsvergleich noch nicht. Der Stand selbst "
+        /** AP-17 IP-21b: eine Vorlage in {@code OHNE_AUSGABE} — seit IP-22 keine; der Stand selbst bleibt abrufbar. */
+        AUSGABE_FEHLT("ausgabe_fehlt", 422, "PDF und CSV gibt es für diese Vorlage noch nicht. Der Stand selbst "
                 + "ist mit Prüfsumme abrufbar.");
 
         private final String code;

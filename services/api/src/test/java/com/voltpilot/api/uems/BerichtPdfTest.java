@@ -100,6 +100,49 @@ class BerichtPdfTest {
         }
     }
 
+    /**
+     * AP-17 IP-22 (S3, R8): zwei Erzeugungen byte-gleich, {@code /ID} aus der Prüfsumme, der Grenz-Satz im Kopf vor dem
+     * ersten Abschnitt, Berichts- und Referenzperiode mit der zitierten Fassung; Urteil als Wort mit Band, die rohe
+     * Veränderung daneben nur mit Vorzeichen (U1, SP2).
+     */
+    @Test
+    void leistungsvergleichIstByteGleichHatPruefsummenIdUndGrenzSatzImKopf() throws Exception {
+        ObjectNode abzug = BerichtLeistungsvergleichTest.r8("endgültig").abzug();
+        String kanonisch = BerichtRegeln.kanonisch(abzug);
+        BerichtCsv.Stand stand = new BerichtCsv.Stand(1, t("2028-01-12T09:52:00+01:00"), "Ines Kaltenbach",
+                BerichtRegeln.pruefsumme(kanonisch), null, null);
+
+        // Wie im Betrieb aus dem gespeicherten, kanonischen Abzug (BerichtService liest den Stand) — zweimal gelesen.
+        byte[] eins = BerichtPdf.datei(EXAKT.readTree(kanonisch), stand);
+        byte[] zwei = BerichtPdf.datei(EXAKT.readTree(kanonisch), stand);
+        assertThat(zwei).isEqualTo(eins);
+        String pdfText = text(eins);
+        String flach = pdfText.replaceAll("\\s+", " ");
+        assertThat(flach).contains(BerichtRegeln.BEWERTUNG_GRENZ_SATZ);
+        assertThat(flach.indexOf(BerichtRegeln.BEWERTUNG_GRENZ_SATZ)).isLessThan(pdfText.indexOf("\nKennzahl\n"));
+        int vorher = -1;
+        for (String titel : BerichtPdf.ABSCHNITTE_LEISTUNGSVERGLEICH.values().stream().skip(1).toList()) {
+            int stelle = pdfText.indexOf("\n" + titel + "\n", vorher + 1);
+            assertThat(stelle).as(titel).isGreaterThan(vorher);
+            vorher = stelle;
+        }
+        assertThat(flach).contains("Leistungsvergleich", "01.12.2027–31.12.2027 (2027-12)", "Referenzperiode",
+                "(2026-11/2027-10)", "BB-0001, Fassung 2", "KZ-0004 Spritzguss", "Modell mit einer Einflussgröße",
+                "a = 10.523", "b = 0,2343", "Dezember 2027", "Version 1", "BZ-1 250.000 kg", "Fassung 1", "69.098 kWh",
+                "+12,9 %", "schlechter", "± 2 %", "−8,8 %", "−21,9 %", "Zwei Schichten", "Bezugsbasis BB-0001",
+                "Vergleich", BerichtPdf.GRENZEN_SATZ);
+        assertThat(flach).doesNotContain("gesunken", "ohne_urteil", "EnPI", "Baseline", "Normalisierung", "KPI",
+                "Verbesserung", "automatisch bewertet");
+
+        try (PDDocument d = Loader.loadPDF(eins)) {
+            byte[] erwartet = java.util.Arrays.copyOf(MessageDigest.getInstance("SHA-256")
+                    .digest(stand.pruefsumme().getBytes(StandardCharsets.UTF_8)), 16);
+            assertThat(((org.apache.pdfbox.cos.COSString) d.getDocument().getTrailer().getCOSArray(COSName.ID)
+                    .getObject(0)).getBytes())
+                    .containsExactly(erwartet);
+        }
+    }
+
     /** Text-Extraktion: Kennung, Stand, Datenstand und Prüfsumme sind lesbar, nicht nur gezeichnet — dazu B1 an MS-12. */
     @Test
     void dasPdfNenntKennungStandDatenstandUndPruefsummeAlsText() throws Exception {
@@ -200,11 +243,12 @@ class BerichtPdfTest {
                 assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
             }
             assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
-            if (BerichtRegeln.OHNE_AUSGABE.contains(schluessel)) {
-                continue; // AP-17: das Layout des Leistungsvergleichs kommt mit IP-22 (der Abzug steht seit IP-21b)
-            }
             Map<String, String> soll = new LinkedHashMap<>();
             v.path("abschnitte").forEach(a -> soll.put(a.path("schluessel").asText(), a.path("titel").asText()));
+            if (BerichtRegeln.LEISTUNGSVERGLEICH.equals(schluessel)) {
+                assertThat(BerichtPdf.ABSCHNITTE_LEISTUNGSVERGLEICH).containsExactlyEntriesOf(soll); // alle acht (IP-22)
+                continue;
+            }
             Map<String, String> ist = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(schluessel)
                     ? BerichtPdf.ABSCHNITTE_BEWERTUNG
                     : BerichtRegeln.UNTERNEHMEN.equals(v.path("geltung_art").asText())

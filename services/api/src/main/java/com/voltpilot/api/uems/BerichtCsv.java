@@ -36,6 +36,10 @@ import java.util.Objects;
  * trägt sie nicht — dort bleiben die Zellen leer, und das ist die Lücke, nicht die Null. Der Tagesverlauf ist KEIN Wert
  * und erscheint nicht in der CSV; sein Nachweis steht an der Monatszeile. Die Periode einer Kennzahl ist der Zeitraum
  * des Berichts (Q4).
+ *
+ * <p><b>Energetische Bewertung und Leistungsvergleich</b> (AP-16/AP-17 IP-22): statt des 13-Spalten-Trägers je Abschnitt eine
+ * eigene Spaltenzeile ({@link #ABSCHNITTE_BEWERTUNG}, {@link #ABSCHNITTE_LEISTUNGSVERGLEICH}); beide tragen den Grenz-Satz
+ * im Kopf, der Leistungsvergleich dazu Referenzperiode und Bezugsbasis mit Fassung (bericht.md §10 DA3).
  */
 public final class BerichtCsv {
 
@@ -55,12 +59,22 @@ public final class BerichtCsv {
     public static final String MESSMITTEL = "messmittel";
     public static final String QUALITAET = "qualitaet";
     public static final String QUELLENVERZEICHNIS = "quellenverzeichnis";
+    public static final String KENNZAHL = "kennzahl";
+    public static final String BEZUGSBASIS = "bezugsbasis";
+    public static final String VERGLEICH_JE_PERIODE = "vergleich_je_periode";
+    public static final String URTEIL = "urteil";
+    public static final String GRENZEN = "grenzen_und_vorbehalte";
+    public static final String STATISCHE_FAKTOREN = "statische_faktoren";
+    public static final String REFERENZPERIODE = "referenzperiode";
     /** Die Abschnitte mit Zeilen je Geltung, in der Folge der Vorlagen (Fassung 1). */
     public static final List<String> ABSCHNITTE_STANDORT = List.of(MESSSTELLEN, KENNZAHLEN);
     public static final List<String> ABSCHNITTE_UNTERNEHMEN = List.of(STANDORTE, KOSTENSTELLEN, KENNZAHLEN);
     /** Die acht Abschnitte der energetischen Bewertung, je mit eigener Kopfzeile. */
     public static final List<String> ABSCHNITTE_BEWERTUNG = List.of(UMFANG, RANGLISTE, EINSTUFUNGEN,
             MESSABDECKUNG, MESSPLANUNG, MESSMITTEL, QUALITAET, QUELLENVERZEICHNIS);
+    /** AP-17 IP-22: die sieben Abschnitte des Leistungsvergleichs nach dem Kopf, je mit eigener Kopfzeile. */
+    public static final List<String> ABSCHNITTE_LEISTUNGSVERGLEICH = List.of(KENNZAHL, BEZUGSBASIS, VERGLEICH_JE_PERIODE,
+            URTEIL, GRENZEN, STATISCHE_FAKTOREN, QUELLENVERZEICHNIS);
 
     /** Was der Stand über den Abzug hinaus trägt: Nr., Freigabe, Prüfsumme und — wenn ersetzt — durch welche Nr., wann. */
     public record Stand(int nr, Instant freigegebenAm, String freigegebenVon, String pruefsumme, Integer ersetztDurchNr,
@@ -90,8 +104,14 @@ public final class BerichtCsv {
                 zeitraum.path("schluessel").asText(), zone, stand.nr(), zeit(kopf.path("datenstand")),
                 stand.freigegebenAm(), stand.freigegebenVon(), stand.pruefsumme(), erzeugtAm, erzeugtVon, teilansicht)));
         boolean bewertung = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.path("vorlage").asText());
-        if (bewertung) {
+        boolean leistungsvergleich = BerichtRegeln.LEISTUNGSVERGLEICH.equals(kopf.path("vorlage").asText());
+        if (bewertung || leistungsvergleich) {
             raus.add("# grenz_satz=" + BerichtRegeln.BEWERTUNG_GRENZ_SATZ);
+        }
+        if (leistungsvergleich) {
+            raus.add("# " + REFERENZPERIODE + "=" + kopf.path(REFERENZPERIODE).path("schluessel").asText());
+            raus.add("# " + BEZUGSBASIS + "=" + kopf.path(BEZUGSBASIS).path("kennzeichen").asText() + ", Fassung "
+                    + kopf.path(BEZUGSBASIS).path("fassung").asText());
         }
         if (stand.ersetztDurchNr() != null) {
             raus.add("# " + WASSERZEICHEN + "="
@@ -99,6 +119,10 @@ public final class BerichtCsv {
         }
         if (bewertung) {
             bewertung(raus, abzug);
+            return raus;
+        }
+        if (leistungsvergleich) {
+            leistungsvergleich(raus, abzug);
             return raus;
         }
         raus.add(String.join(BerichtRegeln.CSV_TRENNER, BerichtRegeln.CSV_SPALTEN));
@@ -167,6 +191,109 @@ public final class BerichtCsv {
 
         abschnitt(raus, QUELLENVERZEICHNIS, List.of("kennzeichen"));
         abzug.path("kopf").path(QUELLENVERZEICHNIS).forEach(q -> raus.add(csvZeile(text(q))));
+    }
+
+    /**
+     * AP-17 IP-22: der Leistungsvergleich — eine Zeile je Periode mit Urteil, Band, Kennzeichen und Fassung als Zellen, die
+     * rohe Veränderung daneben ohne Urteil (U1); dazu die Zeile des Zeitraums. Zahlen ungerundet mit Dezimalkomma.
+     */
+    private static void leistungsvergleich(List<String> raus, JsonNode abzug) {
+        abschnitt(raus, KENNZAHL, List.of("kennzahl", "name", "rechenform", "einheit"));
+        JsonNode k = abzug.path(KENNZAHL);
+        raus.add(csvZeile(text(k.path("kennzeichen")), text(k.path("name_zum_datenstand")), text(k.path("rechenform")),
+                text(k.path("einheit"))));
+
+        abschnitt(raus, BEZUGSBASIS, List.of("bezugsbasis", "fassung", "methode", "referenzperiode", "datenlage",
+                "gilt_ab", "gilt_bis", "basiswert", "koeffizienten", "r2", "streuung_prozent", "toleranz_prozent",
+                "pruefsumme", "freigegeben_von", "freigegeben_am", "beendet_zum", "beendet_grund"));
+        JsonNode b = abzug.path(BEZUGSBASIS);
+        List<String> koeffizienten = new ArrayList<>();
+        b.path("koeffizienten").fields().forEachRemaining(e -> koeffizienten.add(e.getKey() + "=" + dezimal(e.getValue())));
+        raus.add(csvZeile(text(b.path("kennzeichen")), text(b.path("fassung")), text(b.path("methode")),
+                text(b.path("referenzperiode")), text(b.path("datenlage")), text(b.path("gilt_ab")),
+                text(b.path("gilt_bis")), dezimal(b.path("basiswert")), String.join(", ", koeffizienten),
+                dezimal(b.path("r2")), dezimal(b.path("streuung_prozent")), dezimal(b.path("toleranz_prozent")),
+                text(b.path("pruefsumme")), text(b.path("freigegeben_von")), text(b.path("freigegeben_am")),
+                text(b.path("beendet_zum")), text(b.path("beendet_grund"))));
+
+        abschnitt(raus, VERGLEICH_JE_PERIODE, List.of("periode", "gemessen", "einheit", "version", "zustand",
+                "bedingung", "erwartet", "delta_prozent", "band_prozent", "urteil", "grund", "kennzeichen",
+                "bezugsbasis", "fassung", "roh_gemessen", "roh_vormonat", "roh_delta_prozent",
+                "roh_einflussgroesse_delta_prozent"));
+        String basis = text(b.path("kennzeichen"));
+        abzug.path(VERGLEICH_JE_PERIODE).forEach(m -> {
+            JsonNode r = m.path("bereinigt");
+            JsonNode g = r.path("gemessen");
+            JsonNode roh = m.path("roh");
+            List<String> bedingung = new ArrayList<>();
+            r.path("bedingung").forEach(v -> bedingung.add(v.path("kennzeichen").asText(v.path("name").asText()) + "="
+                    + Objects.requireNonNullElse(dezimal(v.path("wert")), "") + (v.hasNonNull("einheit")
+                            ? " " + v.path("einheit").asText() : "")
+                    + (v.path("fassung").isIntegralNumber() ? " (Fassung " + v.path("fassung").asInt() + ")"
+                            : v.path("version").isIntegralNumber() ? " (Version " + v.path("version").asInt() + ")" : "")));
+            raus.add(csvZeile(text(m.path("periode")),
+                    dezimal(g.path("wert")), text(g.path("einheit")),
+                    text(g.path("version")), text(g.path("zustand")), String.join(", ", bedingung),
+                    dezimal(r.path("erwartet")), dezimal(r.path("delta_prozent")), dezimal(r.path("band_prozent")),
+                    urteil(r.path("urteil")), text(r.path("grund")), String.join(" · ", texte(r.path("kennzeichen"))),
+                    r.path("fassung").isObject() ? basis : null, text(r.path("fassung").path("fassung")),
+                    dezimal(roh.path("gemessen")), dezimal(roh.path("vorher")), dezimal(roh.path("delta_prozent")),
+                    dezimal(roh.path("variable_delta_prozent"))));
+        });
+
+        abschnitt(raus, URTEIL, List.of("zeitraum", "monate", "gemessen", "erwartet", "delta_prozent", "band_prozent",
+                "urteil", "grund", "kennzeichen", "bezugsbasis", "fassung"));
+        JsonNode u = abzug.path(URTEIL);
+        raus.add(csvZeile(abzug.path("kopf").path("zeitraum").path("schluessel").asText(), text(u.path("monate")),
+                dezimal(u.path("gemessen")), dezimal(u.path("erwartet")), dezimal(u.path("delta_prozent")),
+                dezimal(u.path("band_prozent")), urteil(u.path("urteil")), text(u.path("grund")),
+                String.join(" · ", texte(u.path("kennzeichen"))), basis, text(u.path("fassung"))));
+
+        abschnitt(raus, GRENZEN, List.of("merkmal", "periode", "wert"));
+        JsonNode gr = abzug.path(GRENZEN);
+        raus.add(csvZeile("datenlage", null, text(gr.path("datenlage"))));
+        raus.add(csvZeile("toleranz_prozent", null, dezimal(gr.path("toleranz_prozent"))));
+        raus.add(csvZeile("streuung_prozent", null, dezimal(gr.path("streuung_prozent"))));
+        gr.path("kennzeichen").forEach(z -> raus.add(csvZeile("kennzeichen", null, z.asText())));
+        gr.path("nicht_anwendbar").forEach(n -> raus.add(csvZeile("nicht_anwendbar", text(n.path("periode")),
+                text(n.path("grund")))));
+
+        abschnitt(raus, STATISCHE_FAKTOREN, List.of("position", "art", "kennzeichen", "wortlaut", "wert", "einheit",
+                "wert_gueltig_ab", "kopie_am"));
+        abzug.path(STATISCHE_FAKTOREN).forEach(f -> raus.add(csvZeile(text(f.path("position")), text(f.path("art")),
+                text(f.path("kennzeichen")), text(f.path("wortlaut")), dezimal(f.path("wert")), text(f.path("einheit")),
+                text(f.path("wert_gueltig_ab")), text(f.path("kopie_am")))));
+
+        abschnitt(raus, QUELLENVERZEICHNIS, List.of("kennzeichen", "name", "art", "bezug", "version", "fassung",
+                "erster_tag", "letzter_tag"));
+        abzug.path(QUELLENVERZEICHNIS).forEach(q -> raus.add(csvZeile(text(q.path("kennzeichen")),
+                text(q.path("name_zum_datenstand")), text(q.path("art")), text(q.path("bezug")), text(q.path("version")),
+                text(q.path("fassung")), text(q.path("erster_tag")), text(q.path("letzter_tag")))));
+    }
+
+    /** Das Urteil als Kundenwort (SP1): besser · schlechter · im Rahmen · nicht bewertbar; leer ohne Urteil. */
+    private static String urteil(JsonNode n) {
+        String u = text(n);
+        return u == null ? null : BezugsbasisVergleichSatz.URTEIL_WORT.getOrDefault(u, u);
+    }
+
+    /** Eine Zahl des Abzugs (Text oder Zahl) ungerundet mit Dezimalkomma (DA3); leer, wenn keine. */
+    private static String dezimal(JsonNode n) {
+        String t = text(n);
+        if (t == null || t.isBlank()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(t).toPlainString().replace(".", BerichtRegeln.CSV_DEZIMAL);
+        } catch (NumberFormatException e) {
+            return t;
+        }
+    }
+
+    private static List<String> texte(JsonNode n) {
+        List<String> raus = new ArrayList<>();
+        n.forEach(t -> raus.add(t.asText()));
+        return raus;
     }
 
     private static void abschnitt(List<String> raus, String schluessel, List<String> spalten) {

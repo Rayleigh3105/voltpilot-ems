@@ -29284,7 +29284,7 @@ components:
         `gleichzeitig`; 422 `vorlage_unbekannt` (`feld`), `keine_quellen` (`feld`),
         `zeitraum_nicht_zu_ende` (`moeglich_ab`), `werte_vorlaeufig` (`vorlaeufig`, `vorlaeufige`,
         `moeglich_ab`), `begruendung_fehlt` (`feld`, `zeichen`), `basis_fehlt` (Leistungsvergleich ohne freigegebene
-        Bezugsbasis, AP-17 IP-21b), `ausgabe_fehlt` (PDF/CSV des Leistungsvergleichs bis IP-22); 500 `abzug_beschaedigt` (`nr`). Zeitpunkte
+        Bezugsbasis, AP-17 IP-21b), `ausgabe_fehlt` (eine Vorlage ohne PDF/CSV; seit AP-17 IP-22 keine); 500 `abzug_beschaedigt` (`nr`). Zeitpunkte
         der Fakten mit dem Versatz der Zone der Geltung.
       required: [code, message]
       properties:

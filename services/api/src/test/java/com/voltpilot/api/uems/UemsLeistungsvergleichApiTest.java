@@ -203,9 +203,21 @@ class UemsLeistungsvergleichApiTest {
         assertThat(vergleich.body().at("/staende/0/nummer").asInt()).isEqualTo(1);
         assertThat(vergleich.body().get("stand_satz").asText()).startsWith("Stand Nr. 1 vom ");
 
-        // PDF/CSV folgen mit IP-22.
-        assertThat(ruf(w, "/api/v1/berichte/" + kennung + "/staende/1/pdf").body().get("code").asText())
-                .isEqualTo("ausgabe_fehlt");
+        // IP-22 (S3): PDF und CSV des Stands — zwei Abrufe byte-gleich, Grenz-Satz im Kopf, Urteil und Fassung als Zellen.
+        MvcResult pdf = datei(w, "/api/v1/berichte/" + kennung + "/staende/1/pdf");
+        assertThat(pdf.getResponse().getStatus()).as(pdf.getResponse().getContentAsString()).isEqualTo(200);
+        assertThat(pdf.getResponse().getContentType()).startsWith("application/pdf");
+        byte[] pdfEins = pdf.getResponse().getContentAsByteArray();
+        assertThat(new String(pdfEins, 0, 5, StandardCharsets.ISO_8859_1)).isEqualTo("%PDF-");
+        assertThat(datei(w, "/api/v1/berichte/" + kennung + "/staende/1/pdf").getResponse().getContentAsByteArray())
+                .isEqualTo(pdfEins);
+        MvcResult csv = datei(w, "/api/v1/berichte/" + kennung + "/staende/1/csv");
+        assertThat(csv.getResponse().getStatus()).as(csv.getResponse().getContentAsString()).isEqualTo(200);
+        List<String> zeilen = List.of(csv.getResponse().getContentAsString(StandardCharsets.UTF_8).split("\r\n"));
+        assertThat(zeilen).contains("# grenz_satz=" + BerichtRegeln.BEWERTUNG_GRENZ_SATZ, "# bezugsbasis=BB-0001, Fassung 2",
+                "# abschnitt=vergleich_je_periode", "# abschnitt=urteil");
+        String dezember = zeilen.get(zeilen.indexOf("# abschnitt=vergleich_je_periode") + 2);
+        assertThat(dezember).startsWith("2025-12;").contains(";schlechter;", ";BB-0001;2;");
 
         // S4: die Kennzahl ist Beleg — die Archivierung antwortet 409 berichts_belege, nichts ist geschrieben.
         Antwort archiv = schreib(w, HttpMethod.POST, PFAD + "/" + w.kz4() + "/archivieren", null);
@@ -424,6 +436,10 @@ class UemsLeistungsvergleichApiTest {
             j.claim("preferred_username", "Ines Kaltenbach");
             j.claim("tenant_id", w.mandant().toString());
         });
+    }
+
+    private MvcResult datei(Welt w, String pfad) throws Exception {
+        return mvc.perform(request(HttpMethod.GET, pfad).with(ines(w))).andReturn();
     }
 
     private Antwort ruf(Welt w, String pfad) throws Exception {

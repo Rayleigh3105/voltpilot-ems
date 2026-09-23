@@ -85,6 +85,11 @@ public final class BerichtPdf {
             BerichtCsv.RANGLISTE, "Rangliste", BerichtCsv.EINSTUFUNGEN, "Einstufungen",
             BerichtCsv.MESSABDECKUNG, "Messabdeckung", BerichtCsv.MESSPLANUNG, "Messplanung",
             BerichtCsv.MESSMITTEL, "Messmittel", QUALITAET, "Qualität", QUELLENVERZEICHNIS, "Quellenverzeichnis");
+    /** AP-17 IP-22: die acht Abschnitte des Leistungsvergleichs (Kopf inbegriffen), wie {@code bericht-vorlagen.json}. */
+    public static final Map<String, String> ABSCHNITTE_LEISTUNGSVERGLEICH = geordnet(KOPF, "Kopf", BerichtCsv.KENNZAHL,
+            "Kennzahl", BerichtCsv.BEZUGSBASIS, "Bezugsbasis", BerichtCsv.VERGLEICH_JE_PERIODE, "Vergleich je Periode",
+            BerichtCsv.URTEIL, "Urteil", BerichtCsv.GRENZEN, "Grenzen und Vorbehalte", BerichtCsv.STATISCHE_FAKTOREN,
+            "Statische Faktoren", QUELLENVERZEICHNIS, "Quellenverzeichnis");
     /** Die Namen der Vorlagen (Fassung 1, {@code bericht-vorlagen.json}) — der Titel des PDF. */
     public static final Map<String, String> VORLAGEN = geordnet("monatsbericht_standort", "Monatsbericht Standort",
             "jahresbericht_standort", "Jahresbericht Standort", "monatsbericht_unternehmen", "Monatsbericht Unternehmen",
@@ -98,6 +103,14 @@ public final class BerichtPdf {
     private static final Map<String, String> VERGLEICHE = geordnet(BerichtRegeln.VORMONAT, "Vormonat",
             BerichtRegeln.VORJAHRESMONAT, "Vorjahresmonat", BerichtRegeln.VORJAHR, "Vorjahr");
     private static final String TRENNER = " · ";
+    /** Die Methoden der Bezugsbasis in Kundenwörtern (SP1, {@code bezugsbasis.md}). */
+    private static final Map<String, String> METHODEN = geordnet("verhaeltnis", "Verhältnis", "regression_eine_variable",
+            "Modell mit einer Einflussgröße", "regression_zwei_variablen", "Modell mit zwei Einflussgrößen", "gradtage",
+            "Gradtage (G20/15)");
+    private static final Map<String, String> DATENLAGEN = geordnet("vollstaendig", "vollständig", "vorlaeufig",
+            KennzahlRegeln.VORLAEUFIG);
+    private static final Map<String, String> BEZUEGE = geordnet(BerichtRegeln.UNMITTELBAR, "unmittelbar",
+            BerichtRegeln.MITTELBAR, "mittelbar", BerichtRegeln.VERGLEICH, "Vergleich");
     private static final String ENDUNG_KWH = "_kwh";
 
     // A4 hochkant, Maße in Punkt
@@ -131,8 +144,10 @@ public final class BerichtPdf {
         String wasserzeichen = stand.ersetztDurchNr() == null ? null
                 : BerichtRegeln.ersetztDurch(stand.ersetztDurchNr(), stand.ersetztAm(), zone);
         boolean bewertung = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.path("vorlage").asText());
+        boolean leistungsvergleich = BerichtRegeln.LEISTUNGSVERGLEICH.equals(kopf.path("vorlage").asText());
         boolean unternehmen = BerichtRegeln.UNTERNEHMEN.equals(kopf.path("geltung").path("art").asText());
         Map<String, String> abschnitte = bewertung ? ABSCHNITTE_BEWERTUNG
+                : leistungsvergleich ? ABSCHNITTE_LEISTUNGSVERGLEICH
                 : unternehmen ? ABSCHNITTE_UNTERNEHMEN : ABSCHNITTE_STANDORT;
         try (TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(SCHRIFT_DATEI));
                 PDDocument doc = new PDDocument()) {
@@ -157,7 +172,19 @@ public final class BerichtPdf {
                     case BerichtCsv.MESSPLANUNG -> messplanung(s, abzug);
                     case BerichtCsv.MESSMITTEL -> messmittel(s, abzug.path(BerichtCsv.MESSMITTEL));
                     case QUALITAET -> qualitaet(s, abzug.path(QUALITAET), zone);
-                    case QUELLENVERZEICHNIS -> quellenverzeichnis(s, abzug);
+                    case BerichtCsv.KENNZAHL -> kennzahl(s, abzug.path(BerichtCsv.KENNZAHL));
+                    case BerichtCsv.BEZUGSBASIS -> bezugsbasis(s, abzug, zone);
+                    case BerichtCsv.VERGLEICH_JE_PERIODE -> vergleichJePeriode(s, abzug.path(BerichtCsv.VERGLEICH_JE_PERIODE));
+                    case BerichtCsv.URTEIL -> urteil(s, abzug);
+                    case BerichtCsv.GRENZEN -> grenzen(s, abzug);
+                    case BerichtCsv.STATISCHE_FAKTOREN -> statischeFaktoren(s, abzug.path(BerichtCsv.STATISCHE_FAKTOREN));
+                    case QUELLENVERZEICHNIS -> {
+                        if (leistungsvergleich) {
+                            quellenMitBezug(s, abzug.path(QUELLENVERZEICHNIS));
+                        } else {
+                            quellenverzeichnis(s, abzug);
+                        }
+                    }
                     default -> throw new IllegalStateException("Abschnitt " + a.getKey());
                 }
             }
@@ -180,7 +207,8 @@ public final class BerichtPdf {
         JsonNode geltung = kopf.path("geltung");
         s.titel(VORLAGEN.getOrDefault(vorlage, vorlage));
         s.absatz(geltung(geltung), UEBERSCHRIFT, SCHWARZ);
-        if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(vorlage)) {
+        boolean leistungsvergleich = BerichtRegeln.LEISTUNGSVERGLEICH.equals(vorlage);
+        if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(vorlage) || leistungsvergleich) {
             s.abstand(4);
             s.absatz(BerichtRegeln.BEWERTUNG_GRENZ_SATZ, NORMAL, GRAU);
         }
@@ -199,6 +227,16 @@ public final class BerichtPdf {
         }
         paare.add(paar("Zeitraum", zeitraum(kopf.path("zeitraum"), zone)));
         paare.add(paar("Zeitzone", zone.getId()));
+        if (leistungsvergleich) {
+            JsonNode referenz = kopf.path("referenzperiode");
+            paare.add(paar("Referenzperiode", verbunden(" ", text(referenz.path("bezeichnung")),
+                    referenz.hasNonNull("schluessel") ? "(" + referenz.path("schluessel").asText() + ")" : null)));
+            paare.add(paar("Bezugsbasis", basisMitFassung(kopf.path("bezugsbasis").path("kennzeichen"),
+                    kopf.path("bezugsbasis").path("fassung"))));
+            if (!kopf.path("kennzeichen").isEmpty()) {
+                paare.add(paar("Kennzeichen", String.join(TRENNER, liste(kopf.path("kennzeichen")))));
+            }
+        }
         kopf.path("vergleichszeitraeume").forEach(v -> paare.add(paar(
                 VERGLEICHE.getOrDefault(v.path("art").asText(), v.path("art").asText()),
                 verbunden(": ", text(v.path("schluessel")), text(v.path("ergebnis"))))));
@@ -542,6 +580,229 @@ public final class BerichtPdf {
         });
         s.tabelle(List.of(new Spalte("Kennzeichen", 70, false), new Spalte("Name zum Datenstand", 250, false),
                 new Spalte("Version oder Fassung", 0, false)), zeilen);
+    }
+
+    // ================================================================================ Leistungsvergleich (AP-17 IP-22)
+
+    private static void kennzahl(Setzer s, JsonNode k) throws IOException {
+        s.paare(List.of(paar("Kennzahl", benannt(k.path("kennzeichen"), k.path("name_zum_datenstand"))),
+                paar("Einheit", textOderStrich(k.path("einheit")))));
+    }
+
+    /** Die Fassung als Kopie (M4): Methode, Referenzperiode, Basiswert bzw. Koeffizienten, Güte, Toleranz, Freigabe. */
+    private static void bezugsbasis(Setzer s, JsonNode abzug, ZoneId zone) throws IOException {
+        JsonNode b = abzug.path(BerichtCsv.BEZUGSBASIS);
+        String einheit = text(abzug.path(BerichtCsv.KENNZAHL).path("einheit"));
+        JsonNode referenz = abzug.path(KOPF).path("referenzperiode");
+        List<String[]> paare = new ArrayList<>();
+        paare.add(paar("Bezugsbasis", basisMitFassung(b.path("kennzeichen"), b.path("fassung"))));
+        paare.add(paar("Methode", METHODEN.getOrDefault(b.path("methode").asText(), text(b.path("methode")))));
+        paare.add(paar("Referenzperiode", verbunden(" ", text(referenz.path("bezeichnung")),
+                b.hasNonNull("referenzperiode") ? "(" + b.path("referenzperiode").asText() + ")" : null)));
+        paare.add(paar("Datenlage", DATENLAGEN.getOrDefault(b.path("datenlage").asText(), text(b.path("datenlage")))));
+        paare.add(paar("Gilt", verbunden(" ", "seit " + tag(b.path("gilt_ab")),
+                b.hasNonNull("gilt_bis") ? "bis " + tag(b.path("gilt_bis")) : null)));
+        if (b.hasNonNull("basiswert")) {
+            paare.add(paar("Basiswert", wert(b.path("basiswert"), einheit)));
+        }
+        if (b.path("koeffizienten").isObject()) {
+            List<String> k = new ArrayList<>();
+            b.path("koeffizienten").fields().forEachRemaining(e -> k.add(e.getKey() + " = " + wert(e.getValue(), null)));
+            paare.add(paar("Koeffizienten", String.join(TRENNER, k)));
+        }
+        if (b.hasNonNull("r2")) {
+            paare.add(paar("Bestimmtheitsmaß", wert(b.path("r2"), null)));
+        }
+        paare.add(paar("Streuung", band(b.path("streuung_prozent"))));
+        paare.add(paar("Toleranz", band(b.path("toleranz_prozent"))));
+        paare.add(paar("Freigegeben", verbunden(", ", verbunden(" ", text(b.path("freigegeben_von")),
+                b.hasNonNull("freigegeben_rolle") ? "(" + b.path("freigegeben_rolle").asText() + ")" : null),
+                b.hasNonNull("freigegeben_am") ? KorrekturVorschlagRegeln.zeitpunkt(zeit(b.path("freigegeben_am")), zone)
+                        : null)));
+        if (b.hasNonNull("beendet_zum")) {
+            paare.add(paar("Beendet", verbunden(" ", "zum " + tag(b.path("beendet_zum")),
+                    b.hasNonNull("beendet_grund") ? "(" + b.path("beendet_grund").asText() + ")" : null)));
+        }
+        paare.add(paar("Prüfsumme der Fassung", textOderStrich(b.path("pruefsumme"))));
+        s.paare(paare);
+    }
+
+    /**
+     * Je Monat der bereinigte Vergleich mit Urteil als Wort und Band (U2–U4); darunter der Satz des Monats und — getrennt,
+     * ohne Wort — die rohe Veränderung zum Vormonat (U1, VG3, SP2).
+     */
+    private static void vergleichJePeriode(Setzer s, JsonNode monate) throws IOException {
+        if (monate.isEmpty()) {
+            s.absatz("Kein Monat im Zeitraum.", NORMAL, GRAU);
+            return;
+        }
+        String einheit = null;
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        for (JsonNode m : monate) {
+            JsonNode b = m.path("bereinigt");
+            JsonNode g = b.path("gemessen");
+            einheit = einheit == null ? text(g.path("einheit")) : einheit;
+            List<String> gemessen = new ArrayList<>(List.of(wert(g.path("wert"), text(g.path("einheit")))));
+            if (g.path("version").isIntegralNumber()) {
+                gemessen.add("Version " + g.path("version").asInt());
+            }
+            if (g.hasNonNull("zustand")) {
+                gemessen.add(g.path("zustand").asText());
+            }
+            List<String> bedingung = new ArrayList<>();
+            b.path("bedingung").forEach(v -> bedingung.add(verbunden(TRENNER,
+                    verbunden(" ", Objects.requireNonNullElse(text(v.path("kennzeichen")), text(v.path("name"))),
+                            wert(v.path("wert"), text(v.path("einheit")))),
+                    v.path("fassung").isIntegralNumber() ? "Fassung " + v.path("fassung").asInt()
+                            : v.path("version").isIntegralNumber() ? "Version " + v.path("version").asInt() : null,
+                    KennzahlRegeln.VORLAEUFIG.equals(text(v.path("zustand"))) ? KennzahlRegeln.VORLAEUFIG : null)));
+            zeilen.add(List.of(List.of(textOderStrich(m.path("beschriftung"))), gemessen,
+                    bedingung.isEmpty() ? List.of(ErgebnisZustand.OHNE_ZAHL) : bedingung,
+                    List.of(wert(b.path("erwartet"), text(g.path("einheit")))), List.of(abweichung(b.path("delta_prozent"))),
+                    urteilZelle(b), b.path("kennzeichen").isEmpty() ? List.of(ErgebnisZustand.OHNE_ZAHL)
+                            : liste(b.path("kennzeichen"))));
+        }
+        s.tabelle(List.of(new Spalte("Periode", 62, false), new Spalte("Gemessen", 66, true),
+                new Spalte("Bedingung", 92, false), new Spalte("Erwartet", 58, true), new Spalte("Abweichung", 50, true),
+                new Spalte("Urteil", 62, false), new Spalte("Kennzeichen", 0, false)), zeilen);
+        s.abstand(4);
+        for (JsonNode m : monate) {
+            if (m.hasNonNull("satz")) {
+                s.absatz(m.path("satz").asText(), NORMAL, SCHWARZ);
+            }
+        }
+
+        s.zwischentitel("Ohne Bereinigung — Veränderung zum Vormonat, ohne Urteil");
+        List<List<List<String>>> roh = new ArrayList<>();
+        for (JsonNode m : monate) {
+            JsonNode r = m.path("roh");
+            roh.add(List.of(List.of(textOderStrich(m.path("beschriftung"))), List.of(wert(r.path("gemessen"), einheit)),
+                    List.of(wert(r.path("vorher"), einheit)), List.of(abweichung(r.path("delta_prozent"))),
+                    List.of(abweichung(r.path("variable_delta_prozent")))));
+        }
+        s.tabelle(List.of(new Spalte("Periode", 62, false), new Spalte("Gemessen", 80, true),
+                new Spalte("Vormonat", 80, true), new Spalte("Veränderung", 70, true),
+                new Spalte("Einflussgröße", 0, false)), roh);
+    }
+
+    /** Der Zeitraum (U5): Σ gemessen ÷ Σ erwartet gegen die Fassung am letzten Tag — nie ein Mittel. */
+    private static void urteil(Setzer s, JsonNode abzug) throws IOException {
+        JsonNode u = abzug.path(BerichtCsv.URTEIL);
+        String einheit = null;
+        for (JsonNode m : abzug.path(BerichtCsv.VERGLEICH_JE_PERIODE)) {
+            einheit = einheit == null ? text(m.path("bereinigt").path("gemessen").path("einheit")) : einheit;
+        }
+        s.paare(List.of(paar("Monate", textOderStrich(u.path("monate"))),
+                paar("Gemessen", wert(u.path("gemessen"), einheit)),
+                paar("Erwartet", wert(u.path("erwartet"), einheit)),
+                paar("Abweichung", abweichung(u.path("delta_prozent"))),
+                paar("Urteil", String.join(TRENNER, urteilZelle(u))),
+                paar("Bezugsbasis", basisMitFassung(abzug.path(BerichtCsv.BEZUGSBASIS).path("kennzeichen"),
+                        u.path("fassung"))),
+                paar("Kennzeichen", u.path("kennzeichen").isEmpty() ? ErgebnisZustand.OHNE_ZAHL
+                        : String.join(TRENNER, liste(u.path("kennzeichen"))))));
+        if (u.hasNonNull("satz")) {
+            s.abstand(4);
+            s.absatz(u.path("satz").asText(), NORMAL, SCHWARZ);
+        }
+    }
+
+    private static void grenzen(Setzer s, JsonNode abzug) throws IOException {
+        JsonNode g = abzug.path(BerichtCsv.GRENZEN);
+        List<String[]> paare = new ArrayList<>();
+        paare.add(paar("Datenlage", DATENLAGEN.getOrDefault(g.path("datenlage").asText(), text(g.path("datenlage")))));
+        paare.add(paar("Toleranz", band(g.path("toleranz_prozent"))));
+        paare.add(paar("Streuung", band(g.path("streuung_prozent"))));
+        paare.add(paar("Kennzeichen", g.path("kennzeichen").isEmpty() ? ErgebnisZustand.OHNE_ZAHL
+                : String.join(TRENNER, liste(g.path("kennzeichen")))));
+        Map<String, JsonNode> monate = new LinkedHashMap<>();
+        abzug.path(BerichtCsv.VERGLEICH_JE_PERIODE).forEach(m -> monate.put(m.path("periode").asText(), m));
+        g.path("nicht_anwendbar").forEach(n -> {
+            JsonNode m = monate.get(n.path("periode").asText());
+            paare.add(paar(m == null ? n.path("periode").asText() : textOderStrich(m.path("beschriftung")),
+                    m != null && m.hasNonNull("satz") ? m.path("satz").asText() : "nicht bewertbar"));
+        });
+        s.paare(paare);
+        s.abstand(4);
+        s.absatz(GRENZEN_SATZ, NORMAL, GRAU);
+    }
+
+    /** Was jeder Leistungsvergleich über sich selbst sagt (U1, U6): Urteil nur bereinigt, keine Ursache. */
+    static final String GRENZEN_SATZ = "Ein Urteil gibt es nur bereinigt um die Bedingung der Bezugsbasis; die "
+            + "Veränderung ohne Bereinigung trägt keins. Eine Ursache für eine Abweichung nennt der Vergleich nicht.";
+
+    private static void statischeFaktoren(Setzer s, JsonNode faktoren) throws IOException {
+        if (faktoren.isEmpty()) {
+            s.absatz("Keine statischen Faktoren an dieser Fassung.", NORMAL, GRAU);
+            return;
+        }
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        faktoren.forEach(f -> zeilen.add(List.of(
+                List.of(verbunden(" ", text(f.path("kennzeichen")), text(f.path("wortlaut")))),
+                f.hasNonNull("wert") ? List.of(wert(f.path("wert"), text(f.path("einheit"))),
+                        f.hasNonNull("wert_gueltig_ab") ? "gültig ab " + tag(f.path("wert_gueltig_ab"))
+                                : ErgebnisZustand.OHNE_ZAHL) : List.of(ErgebnisZustand.OHNE_ZAHL),
+                List.of(tag(f.path("kopie_am"))))));
+        s.tabelle(List.of(new Spalte("Statischer Faktor", 250, false), new Spalte("Wert zur Fassung", 130, false),
+                new Spalte("Kopie vom", 0, false)), zeilen);
+    }
+
+    /** Das Quellenverzeichnis mit Bezug, Tagen und Version bzw. Fassung (S2). */
+    private static void quellenMitBezug(Setzer s, JsonNode verzeichnis) throws IOException {
+        if (verzeichnis.isEmpty()) {
+            s.absatz("Keine Quelle in diesem Bericht.", NORMAL, GRAU);
+            return;
+        }
+        List<List<List<String>>> zeilen = new ArrayList<>();
+        verzeichnis.forEach(q -> zeilen.add(List.of(List.of(textOderStrich(q.path("kennzeichen"))),
+                List.of(textOderStrich(q.path("name_zum_datenstand"))),
+                List.of(BEZUEGE.getOrDefault(q.path("bezug").asText(), textOderStrich(q.path("bezug")))),
+                List.of(tag(q.path("erster_tag")) + "–" + tag(q.path("letzter_tag"))),
+                List.of(q.path("version").isIntegralNumber() ? "Version " + q.path("version").asInt()
+                        : q.path("fassung").isIntegralNumber() ? "Fassung " + q.path("fassung").asInt()
+                        : ErgebnisZustand.OHNE_ZAHL))));
+        s.tabelle(List.of(new Spalte("Kennzeichen", 64, false), new Spalte("Name zum Datenstand", 170, false),
+                new Spalte("Bezug", 66, false), new Spalte("Zeitraum", 110, false),
+                new Spalte("Version oder Fassung", 0, false)), zeilen);
+    }
+
+    /** Das Urteil als Wort mit Band (U3) — ohne Urteil „nicht bewertbar“; ein Wort nie an einer rohen Zahl. */
+    private static List<String> urteilZelle(JsonNode b) {
+        String wort = BezugsbasisVergleichSatz.URTEIL_WORT.get(b.path("urteil").asText());
+        if (wort == null || "nicht_anwendbar".equals(b.path("urteil").asText())) {
+            return List.of("nicht bewertbar");
+        }
+        return b.hasNonNull("band_prozent") ? List.of(wort, band(b.path("band_prozent"))) : List.of(wort);
+    }
+
+    private static String basisMitFassung(JsonNode kennzeichen, JsonNode fassung) {
+        return verbunden(", ", text(kennzeichen), fassung.isIntegralNumber() ? "Fassung " + fassung.asInt() : null);
+    }
+
+    /** „± 2 %“ — ohne Wert der Strich. */
+    private static String band(JsonNode n) {
+        String p = prozent(n);
+        return ErgebnisZustand.OHNE_ZAHL.equals(p) ? p : "± " + p;
+    }
+
+    /** Eine Veränderung mit Vorzeichen („+12,9 %“, „−8,8 %“) — ein Zeichen, kein Wort (SP2). */
+    private static String abweichung(JsonNode n) {
+        String roh = text(n);
+        if (roh == null || roh.isBlank()) {
+            return ErgebnisZustand.OHNE_ZAHL;
+        }
+        try {
+            BigDecimal d = new BigDecimal(roh);
+            return (d.signum() > 0 ? "+" : d.signum() < 0 ? "−" : "") + ungerundet(d.abs(), ErgebnisZustand.PROZENT);
+        } catch (NumberFormatException e) {
+            return roh;
+        }
+    }
+
+    private static List<String> liste(JsonNode texte) {
+        List<String> raus = new ArrayList<>();
+        texte.forEach(t -> raus.add(t.asText()));
+        return raus;
     }
 
     // ================================================================================ Zellen und Texte

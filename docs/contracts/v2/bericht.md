@@ -170,8 +170,9 @@ Freigabe prüft gemessen und jede Bedingung auf „vorläufig“ (F2, `werte_vor
 Vergleich-Fläche nennt die Stände, die die Basis zitieren (`staende`, „Stand Nr. 1 vom 12.01.2028“, S5). **Belegschutz
 (S4):** zitiert ein freigegebener Leistungsvergleichs-Stand die Kennzahl, antwortet `POST /kennzahlen/{id}/archivieren`
 mit `409 berichts_belege`; das harte Löschen einer zitierten Bezugsgröße ebenso; Basis-Fassungen werden nie gelöscht.
-**Noch nicht:** PDF und CSV (IP-22; bis dahin `422 ausgabe_fehlt`, `BerichtRegeln.OHNE_AUSGABE`) und Kaskade/Anstoß
-(IP-23; bis dahin übergeht `BerichtKaskade` den Leistungsvergleich). `OHNE_LESER` ist leer: anlegbar, die Karte erscheint.
+PDF und CSV des Stands (IP-22) stehen in §10 DA2/DA3; `OHNE_AUSGABE` ist leer (`422 ausgabe_fehlt` bleibt als Code für
+eine künftige Vorlage ohne Ausgabe). **Noch nicht:** Kaskade/Anstoß (IP-23; bis dahin übergeht `BerichtKaskade` den
+Leistungsvergleich). `OHNE_LESER` ist leer: anlegbar, die Karte erscheint.
 
 Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld
 `wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern (`PUT …/wiedervorlage`).
@@ -362,6 +363,30 @@ gepinnten Fingerabdruck `konzept_tabelle.sha256`.
   | `messmittel` | `geraet;einbau;genauigkeitsklasse;pruefungsart;pruefung_am;pruefung_gueltig_bis;beleg;ablage;beleg_sha256` |
   | `qualitaet` | `merkmal;wert` |
   | `quellenverzeichnis` | `kennzeichen` |
+
+  **Leistungsvergleich (AP-17 IP-22, S3):** Auf die 16 Kopfzeilen folgen `# grenz_satz=<Grenz-Satz>` (derselbe Wortlaut),
+  `# referenzperiode=<Schlüssel der zitierten Fassung>` und `# bezugsbasis=<Kennzeichen>, Fassung <n>`; dann die sieben
+  Abschnitte nach dem Kopf, je `# abschnitt=<schluessel>` und GENAU seine Spaltenzeile. Zahlen ungerundet mit Dezimalkomma
+  (leer = keine Zahl, nie 0); das Urteil als Kundenwort (`besser` · `schlechter` · `im Rahmen` · `nicht bewertbar`), die
+  rohe Veränderung steht in den `roh_*`-Zellen derselben Zeile und trägt nie ein Wort (U1, SP2):
+
+  | Abschnitt | CSV-Spalten |
+  |---|---|
+  | `kennzahl` | `kennzahl;name;rechenform;einheit` |
+  | `bezugsbasis` | `bezugsbasis;fassung;methode;referenzperiode;datenlage;gilt_ab;gilt_bis;basiswert;koeffizienten;r2;streuung_prozent;toleranz_prozent;pruefsumme;freigegeben_von;freigegeben_am;beendet_zum;beendet_grund` |
+  | `vergleich_je_periode` | `periode;gemessen;einheit;version;zustand;bedingung;erwartet;delta_prozent;band_prozent;urteil;grund;kennzeichen;bezugsbasis;fassung;roh_gemessen;roh_vormonat;roh_delta_prozent;roh_einflussgroesse_delta_prozent` — eine Zeile je Monat; `bedingung` = `BZ-1=250000 kg (Fassung 1)`, mehrere mit „, “; `bezugsbasis`/`fassung` leer ohne Fassung (`basis_fehlt`/`basis_beendet`) |
+  | `urteil` | `zeitraum;monate;gemessen;erwartet;delta_prozent;band_prozent;urteil;grund;kennzeichen;bezugsbasis;fassung` — die EINE Zeile des Zeitraums (Σ ÷ Σ, U5) |
+  | `grenzen_und_vorbehalte` | `merkmal;periode;wert` — `datenlage`, `toleranz_prozent`, `streuung_prozent`, je Kennzeichen eine Zeile, je Monat ohne Urteil `nicht_anwendbar` mit Grund |
+  | `statische_faktoren` | `position;art;kennzeichen;wortlaut;wert;einheit;wert_gueltig_ab;kopie_am` |
+  | `quellenverzeichnis` | `kennzeichen;name;art;bezug;version;fassung;erster_tag;letzter_tag` |
+
+  Das PDF (DA2) setzt die acht Abschnitte der Vorlage (`BerichtPdf.ABSCHNITTE_LEISTUNGSVERGLEICH`): Kopf mit Grenz-Satz
+  unter dem Titel, Berichtsperiode, Referenzperiode und zitierter Fassung; Kennzahl; Bezugsbasis (Methode als Kundenwort,
+  Basiswert bzw. Koeffizienten, Bestimmtheitsmaß, Streuung, Toleranz, Freigeber und -tag, Prüfsumme der Fassung); Vergleich
+  je Periode als Tabelle (gemessen mit Version, Bedingung mit Fassung, erwartet, Abweichung mit Vorzeichen, Urteil als Wort
+  mit Band, Kennzeichen), darunter der Satz jedes Monats und — getrennt, ohne Wort, nur mit Vorzeichen — die Veränderung
+  zum Vormonat; Urteil des Zeitraums; Grenzen und Vorbehalte (mit dem Satz „keine Ursache“, U6); statische Faktoren;
+  Quellenverzeichnis mit Bezug, Tagen und Version bzw. Fassung. Byte-gleich und `/ID` wie jede Vorlage.
 
   Der bestehende 13-Spalten-Träger und seine vier Vorlagen bleiben byte-gleich. Die Bewertungsdateien entstehen ebenfalls
   nur aus Abzug und Stand; gleiche Abrufangaben ergeben byte-gleiche CSV-Bytes, das PDF ist unabhängig vom Abruf byte-gleich.

@@ -318,7 +318,7 @@ public class BerichtService {
         Zugriff z = zugriff(kennung, wer, handlung);
         Kopf kopf = z.kopf();
         if (BerichtRegeln.OHNE_AUSGABE.contains(kopf.vorlage())) {
-            throw BerichtAbgelehnt.von(Ablehnung.AUSGABE_FEHLT); // AP-17 IP-22 bringt PDF und CSV
+            throw BerichtAbgelehnt.von(Ablehnung.AUSGABE_FEHLT); // seit AP-17 IP-22 keine Vorlage mehr
         }
         StandZeile s = geprueft(kopf, nr);
         Instant ersetztAm = s.ersetztDurchNr() == null ? null : repo.staende(kopf.tenant(), kopf.id()).stream()

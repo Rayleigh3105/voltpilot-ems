@@ -134,7 +134,8 @@ class BerichtLeistungsvergleichTest {
 
     // ================================================================================ R8
 
-    private static BerichtLeistungsvergleich.Ergebnis r8(String zustand) {
+    /** R8 Dezember 2027 (VB-2028-0001): auch der Abzug der PDF-/CSV-Tests (IP-22). */
+    static BerichtLeistungsvergleich.Ergebnis r8(String zustand) {
         BezugsbasisVergleichDto.Fassung fassung = new BezugsbasisVergleichDto.Fassung(2, "regression_eine_variable",
                 "2026-11/2027-10", "vollstaendig", LocalDate.of(2027, 11, 1), null);
         BezugsbasisVergleichDto.Bedingung bz1 = new BezugsbasisVergleichDto.Bedingung(1, "bezugsgroesse", "BZ-1",
