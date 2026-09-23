@@ -92,7 +92,8 @@ class UemsZugriffMigrationTest {
             "20260922220000", // AP-16 IP-5: Umfang mit Standort- und Ausschlussverweisen.
             "20260922230000", // AP-16 IP-8: erweitert bewertung_aenderung aus IP-5.
             "20260922237000", // AP-16 IP-11: Einstufung verweist auf Energieeinsatz und Benutzerrollen.
-            "20260922246000"); // AP-16 IP-19: Messbedarf baut auf dem Energieeinsatz aus IP-3 auf.
+            "20260922246000", // AP-16 IP-19: Messbedarf baut auf dem Energieeinsatz aus IP-3 auf.
+            "20260923234500"); // AP-16 P1: Ort und Größe am Messbedarf aus IP-19 strukturiert.
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

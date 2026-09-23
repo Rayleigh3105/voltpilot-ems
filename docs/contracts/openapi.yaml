@@ -12658,6 +12658,21 @@ paths:
         "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+  /api/v1/unternehmen/messbedarf:
+    get:
+      tags: [energieeinsaetze]
+      summary: Messbedarfe aller Energieeinsätze, wahlweise nur die an einem Standort.
+      description: >-
+        Recht `energieeinsatz.ansehen`; je Bedarf derselbe Standort-Zaun wie an seinem Energieeinsatz. Mit `standort`
+        nur Bedarfe, deren strukturierter Ort (`ort_ziel`) heute an diesem Standort hängt; ein Bedarf nur mit
+        Ort-Wortlaut steht an keinem Standort. Ein unbekannter oder nicht lesbarer Standort ist 404.
+      parameters:
+        - { name: standort, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Messbedarfe, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfListe" } } } }
+        "400": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
   /api/v1/unternehmen/energieeinsaetze/{id}/messbedarf:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -12686,10 +12701,14 @@ paths:
     put:
       tags: [energieeinsaetze]
       summary: Einen offenen Messbedarf bearbeiten.
-      description: Recht `energieeinsatz.verwalten`; ein abgeschlossener Bedarf bleibt unverändert.
+      description: >-
+        Recht `energieeinsatz.verwalten`; ersetzt Wortlaut, Ort, Größe und Frist vollständig. Ein abgeschlossener Bedarf
+        bleibt unverändert (409 `messbedarf_abgeschlossen`); zitiert ihn ein freigegebener Berichtsstand, 409
+        `berichts_belege`.
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MessbedarfAnlegen" } } } }
       responses:
         "200": { description: Bearbeitet, content: { application/json: { schema: { $ref: "#/components/schemas/Messbedarf" } } } }
+        "404": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergieeinsatzAbgelehnt" }
   /api/v1/unternehmen/energieeinsaetze/{id}/messbedarf/{messbedarfId}/einloesen:
@@ -14964,12 +14983,20 @@ components:
     MessbedarfAnlegen:
       type: object
       additionalProperties: false
+      description: >-
+        Ort und Größe gibt es als Wortlaut (`ort`, `groesse`) und optional als Struktur. `ort_id` ist ein Standort,
+        Gebäude oder Bereich des Mandanten (sonst 422 `ort_unbekannt`); `messgroesse`/`richtung` stammen aus dem
+        Größen-Katalog der Messstelle (sonst 422 `groesse_ungueltig`, `richtung` nur mit `messgroesse`). Fehlt der
+        Wortlaut zu einer Struktur, entsteht er daraus — Kurzzeichen des Orts, Größe als „Wirkenergie · Bezug“.
       required: [wortlaut]
       properties:
         wortlaut: { type: string, minLength: 1 }
         ort: { type: string, nullable: true }
         groesse: { type: string, nullable: true }
         frist: { type: string, format: date, nullable: true }
+        ort_id: { type: string, format: uuid, nullable: true }
+        messgroesse: { type: string, nullable: true, example: Wirkenergie }
+        richtung: { type: string, nullable: true, example: Bezug }
     MessbedarfEinloesen:
       type: object
       additionalProperties: false
@@ -14982,10 +15009,24 @@ components:
       required: [begruendung]
       properties:
         begruendung: { type: string, minLength: 1 }
+    MessbedarfOrtZiel:
+      type: object
+      description: Der strukturierte Ort; `standort_*` ist der Standort, an dem er heute hängt (`null`, wenn keiner).
+      required: [id, art, kurzzeichen, name, standort_id, standort_name]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [standort, gebaeude, bereich] }
+        kurzzeichen: { type: string }
+        name: { type: string, nullable: true }
+        standort_id: { type: string, format: uuid, nullable: true }
+        standort_name: { type: string, nullable: true }
     Messbedarf:
       type: object
+      description: >-
+        Ohne Struktur (`ort_ziel`, `messgroesse` null) bleibt der Wortlaut führend für die Anzeige — so liest sich jeder
+        Bedarf aus der Fassung vor der Struktur unverändert.
       required: [id, kennzeichen, energieeinsatz_id, wortlaut, ort, groesse, frist, zustand, messstelle,
-        begruendung, akteur, angelegt_am, geaendert_am]
+        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: '^MB-[1-9][0-9]*$' }
@@ -15014,6 +15055,11 @@ components:
             art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
         angelegt_am: { type: string, format: date-time }
         geaendert_am: { type: string, format: date-time }
+        ort_ziel:
+          allOf: [{ $ref: "#/components/schemas/MessbedarfOrtZiel" }]
+          nullable: true
+        messgroesse: { type: string, nullable: true }
+        richtung: { type: string, nullable: true }
     MessbedarfListe:
       type: object
       required: [messbedarfe]

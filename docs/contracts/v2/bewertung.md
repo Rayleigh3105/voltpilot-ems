@@ -162,6 +162,18 @@ Erfassen und Einlösen erzeugen atomar die Kundenereignisse `messbedarf_erfasst`
 `messbedarf_eingeloest`. Datenhaltung und Protokoll erzwingen RLS einschließlich
 `FORCE ROW LEVEL SECURITY`; die Laufzeitrolle hat kein DELETE-Recht.
 
+Ort und Größe gibt es zusätzlich zum Wortlaut optional als Struktur: `ort_id` ist genau
+ein Standort, Gebäude oder Bereich des Mandanten, `messgroesse`/`richtung` stammen aus dem
+Größen-Katalog der Messstelle (sonst 422 `ort_unbekannt` bzw. `groesse_ungueltig`). Fehlt
+der Wortlaut zu einer Struktur, entsteht er daraus (Kurzzeichen, „Wirkenergie · Bezug“), damit
+Bericht und Messabdeckung, die den Wortlaut lesen, unverändert bleiben. Ohne Struktur bleibt
+der Wortlaut führend für die Anzeige; Bestandszeilen erhalten keine Struktur. Die Antwort nennt
+den strukturierten Ort als `ort_ziel` mit dem Standort, an dem er heute hängt.
+`GET /api/v1/unternehmen/messbedarf` liest alle Bedarfe im Energieeinsatz-Zaun, mit
+`standort` nur die, deren strukturierter Ort dort hängt; ein fremder Standort ist 404.
+Bearbeiten (`PUT …/messbedarf/{id}`) ersetzt alle Felder eines offenen Bedarfs und trifft den
+Belegschutz (409 `berichts_belege`) wie Einlösen und Verwerfen.
+
 **P4:** `prozess_summe_passt` vergleicht die Quell-Messstellen der Terme jeder
 zugeordneten berechneten Messstelle mit den direkt gemessenen Messstellen des
 Prozesses. Jeder äußere Term liefert einen Hinweis mit Summe, Messstelle und optionaler

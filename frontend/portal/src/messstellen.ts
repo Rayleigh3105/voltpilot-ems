@@ -71,6 +71,7 @@ export const FILTER = {
   zustand: 'Zustand',
   alle: 'Alle',
   ohneQuelle: `Nur ohne ${UEMS_QUELLE}`,
+  geplant: 'Nur geplant für einen Energieeinsatz',
   zuruecksetzen: 'Filter zurücksetzen',
 } as const;
 
@@ -409,9 +410,11 @@ export interface RegisterFilter {
   anlage: string | null;
   zustand: Lebenszyklus | null;
   ohneQuelle: boolean;
+  /** UEMS AP-16 IP-19: nur Messstellen, die einen Messbedarf einlösen (`geplantFuerEinsatz=true`). */
+  geplant: boolean;
 }
 
-export const OHNE_FILTER: RegisterFilter = { standort: null, ort: null, anlage: null, zustand: null, ohneQuelle: false };
+export const OHNE_FILTER: RegisterFilter = { standort: null, ort: null, anlage: null, zustand: null, ohneQuelle: false, geplant: false };
 
 /**
  * UEMS AP-13 IP-10: der Ort-Filter aus der Adresse (`#/standort/{id}/messstellen?ort=G-2`) — damit springt die
@@ -439,7 +442,7 @@ export const ortSchluessel = (basis: MessstellenRegister, ort: string): string =
   basis.register.find((z) => z.ort.kennzeichen === ort)?.ort.id ?? ort;
 
 export function filterAktiv(f: RegisterFilter): boolean {
-  return f.standort !== null || f.ort !== null || f.anlage !== null || f.zustand !== null || f.ohneQuelle;
+  return f.standort !== null || f.ort !== null || f.anlage !== null || f.zustand !== null || f.ohneQuelle || f.geplant;
 }
 
 /** Die Parameter der EINEN Abfrage: „Standort › Messstellen“ fragt immer mit seinem Standort. */
@@ -451,6 +454,7 @@ export function registerAnfrage(ebene: MessstellenEbene, f: RegisterFilter, stic
     ...(f.anlage ? { anlage: f.anlage } : {}),
     ...(f.zustand ? { zustand: f.zustand } : {}),
     ...(f.ohneQuelle ? { ohneQuelle: true } : {}),
+    ...(f.geplant ? { geplantFuerEinsatz: true } : {}),
     ...(stichtag ? { stichtag } : {}),
   };
 }
@@ -471,6 +475,8 @@ export interface FilterOptionen {
   ohneQuelle: number;
   /** Gemessene Messstellen überhaupt — der Nenner von „Alle … haben eine Quelle.“ */
   gemessen: number;
+  /** Messstellen, die einen Messbedarf einlösen („geplant für EE-…“) — die Zahl am Schalter. */
+  geplant: number;
   berechnet: number;
 }
 
@@ -488,7 +494,9 @@ export function filterOptionen(basis: MessstellenRegister, ebene: MessstellenEbe
   const zustaende = new Set<Lebenszyklus>();
   let ohneQuelle = 0;
   let gemessen = 0;
+  let geplant = 0;
   for (const z of basis.register) {
+    if ((z.geplant_fuer_einsaetze ?? []).length > 0) geplant += 1;
     const o = z.ort;
     if (ebene.art === 'unternehmen' && o.grund === 'verortet' && o.standort_id) {
       standorte.set(o.standort_id, { value: o.standort_id, label: o.standort_name ?? o.standort ?? OHNE_ANGABE, kz: o.standort ?? '' });
@@ -512,6 +520,7 @@ export function filterOptionen(basis: MessstellenRegister, ebene: MessstellenEbe
     zustaende: LEBENSZYKLEN.filter((z) => zustaende.has(z)).map((z) => ({ value: z, label: lebenszyklusWort(z) })),
     ohneQuelle,
     gemessen,
+    geplant,
     berechnet: basis.register.length - gemessen,
   };
 }
@@ -543,7 +552,7 @@ export function leerzustand(i: {
   if (i.antwort.register.length > 0) return null;
   const f = i.filter;
   if (filterAktiv(f)) {
-    const nurOhneQuelle = f.ohneQuelle && !f.standort && !f.ort && !f.anlage && !f.zustand;
+    const nurOhneQuelle = f.ohneQuelle && !f.standort && !f.ort && !f.anlage && !f.zustand && !f.geplant;
     const o = i.basis ? filterOptionen(i.basis, i.ebene) : null;
     if (nurOhneQuelle && o && o.gemessen > 0) {
       const art = o.berechnet > 0 ? 'gemessenen ' : '';

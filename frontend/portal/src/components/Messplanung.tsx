@@ -9,6 +9,7 @@ import {
   type BewertungMessabdeckungOrt,
   type Energieeinsatz,
   type Messbedarf,
+  type MessbedarfAenderung,
   type Messstelle,
   type MessstelleRegisterZeile,
   type OrtsbaumAmStichtag,
@@ -18,19 +19,21 @@ import { laeuft } from '../bewertung';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { groesseOptionen, ortHinweis, ortOptionen, ortWahlen, richtungOptionen, type OrtWahl } from '../messstelleDialog';
 import {
+  bearbeitenVorbelegung,
   bedarfAnfrage,
   bedarfeSortiert,
   bedarfPruefen,
   bedarfSatz,
   bedarfUnter,
+  einloesenVorbelegung,
   einsatzOptionen,
-  groesseVorbelegung,
   kannEinloesen,
   leererBedarf,
   MESSBEDARF_ZUSTAND,
   messbedarfAblehnung,
   MESSPLANUNG,
   nachStandort,
+  protokollZeilen,
   restVorbelegung,
   type BedarfEingabe,
 } from '../uemsMessplanung';
@@ -84,7 +87,9 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
   const [register, setRegister] = useState<MessstelleRegisterZeile[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<{ art: 'erfassen' } | { art: 'einrichten' | 'verwerfen'; bedarf: Messbedarf } | null>(null);
+  const [dialog, setDialog] = useState<
+    { art: 'erfassen' } | { art: 'einrichten' | 'verwerfen' | 'bearbeiten' | 'protokoll'; bedarf: Messbedarf } | null
+  >(null);
   const [versuch, setVersuch] = useState(0);
   const schreiben = verwalten && laeuft(einsatz);
 
@@ -136,16 +141,24 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
         <ul className="vp-mp-liste" data-testid="messbedarf-liste">
           {bedarfeSortiert(bedarfe).map((b) => (
             <BedarfZeile key={b.id} bedarf={b} orte={orte} register={register}>
-              {schreiben && b.zustand === 'offen' && (
-                <span className="vp-bw-aktionen">
-                  <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf">
-                    {MESSPLANUNG.einrichten}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setDialog({ art: 'verwerfen', bedarf: b })} data-testid="messbedarf-verwerfen-knopf">
-                    {MESSPLANUNG.verwerfen}
-                  </Button>
-                </span>
-              )}
+              <span className="vp-bw-aktionen">
+                {schreiben && b.zustand === 'offen' && (
+                  <>
+                    <Button size="sm" onClick={() => setDialog({ art: 'einrichten', bedarf: b })} data-testid="messbedarf-einrichten-knopf">
+                      {MESSPLANUNG.einrichten}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'bearbeiten', bedarf: b })} data-testid="messbedarf-bearbeiten-knopf">
+                      {MESSPLANUNG.bearbeiten}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setDialog({ art: 'verwerfen', bedarf: b })} data-testid="messbedarf-verwerfen-knopf">
+                      {MESSPLANUNG.verwerfen}
+                    </Button>
+                  </>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => setDialog({ art: 'protokoll', bedarf: b })} data-testid="messbedarf-protokoll-knopf">
+                  {MESSPLANUNG.protokoll}
+                </Button>
+              </span>
             </BedarfZeile>
           ))}
         </ul>
@@ -165,6 +178,18 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
           }}
         />
       )}
+      {dialog?.art === 'bearbeiten' && (
+        <MessbedarfErfassenDialog
+          einsaetze={[einsatz]}
+          bedarf={dialog.bedarf}
+          onClose={() => setDialog(null)}
+          onErfasst={(b) => {
+            setDialog(null);
+            ersetze(b);
+          }}
+        />
+      )}
+      {dialog?.art === 'protokoll' && <MessbedarfProtokollDialog bedarf={dialog.bedarf} onClose={() => setDialog(null)} />}
       {dialog?.art === 'verwerfen' && (
         <MessbedarfVerwerfenDialog
           bedarf={dialog.bedarf}
@@ -247,7 +272,7 @@ function MessbedarfEinloesen({
 }) {
   // Eine Ref, kein State: der Dialog meldet Ort und Stellung im SELBEN Lauf nacheinander (`merke` zweimal).
   const stand = useRef<'offen' | 'laeuft' | 'eingeloest'>('offen');
-  const vorbelegung = useMemo(() => ({ ort: bedarf.ort, hauptgroesse: groesseVorbelegung(bedarf.groesse) }), [bedarf.ort, bedarf.groesse]);
+  const vorbelegung = useMemo(() => einloesenVorbelegung(bedarf), [bedarf]);
 
   function gespeichert(m: Messstelle) {
     if (stand.current !== 'offen' || !kannEinloesen(m)) return;
@@ -273,6 +298,7 @@ export function MessbedarfErfassenDialog({
   einsaetze,
   vorbelegung,
   rest = null,
+  bedarf = null,
   onClose,
   onErfasst,
 }: {
@@ -281,6 +307,8 @@ export function MessbedarfErfassenDialog({
   vorbelegung?: Partial<BedarfEingabe>;
   /** Aus der Rest-Zeile einer Anlage: Wortlaut mit dem Rest, Ort = Standort der Anlage (sobald bekannt). */
   rest?: BewertungMessabdeckungOrt | null;
+  /** Ein offener Bedarf: derselbe Dialog bearbeitet ihn (`PUT …/messbedarf/{id}`). */
+  bedarf?: Messbedarf | null;
   onClose: () => void;
   onErfasst: (b: Messbedarf) => void;
 }) {
@@ -288,7 +316,9 @@ export function MessbedarfErfassenDialog({
   const { standorte, orte } = useOrte();
   const fest = einsaetze.length === 1 ? einsaetze[0] : null;
   const [e, setE] = useState<BedarfEingabe>(() =>
-    leererBedarf(fest?.id ?? '', { ...(rest ? restVorbelegung(rest, null) : {}), ...vorbelegung }),
+    bedarf
+      ? bearbeitenVorbelegung(bedarf, orte)
+      : leererBedarf(fest?.id ?? '', { ...(rest ? restVorbelegung(rest, null) : {}), ...vorbelegung }),
   );
   const [ortBeruehrt, setOrtBeruehrt] = useState(false);
   useEffect(() => {
@@ -296,6 +326,11 @@ export function MessbedarfErfassenDialog({
     const ort = restVorbelegung(rest, standorte).ort;
     if (ort) setE((x) => (x.ort ? x : { ...x, ort }));
   }, [rest, standorte, ortBeruehrt]);
+  // Bearbeiten eines Bedarfs nur mit Ort-Wortlaut: kennen die (nachgeladenen) Ortsbäume das Kurzzeichen, wird es die Wahl.
+  useEffect(() => {
+    if (ortBeruehrt) return;
+    setE((x) => (!x.ort && x.ortWortlaut && orte.some((o) => o.kurzzeichen === x.ortWortlaut) ? { ...x, ort: x.ortWortlaut, ortWortlaut: undefined } : x));
+  }, [orte, ortBeruehrt]);
   const [versucht, setVersucht] = useState(false);
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -314,7 +349,11 @@ export function MessbedarfErfassenDialog({
     setBusy(true);
     setSatz(null);
     try {
-      onErfasst(await api.messbedarfErfassen(e.einsatzId, bedarfAnfrage(e)));
+      onErfasst(
+        await (bedarf
+          ? api.messbedarfBearbeiten(bedarf.energieeinsatz_id, bedarf.id, bedarfAnfrage(e, orte))
+          : api.messbedarfErfassen(e.einsatzId, bedarfAnfrage(e, orte))),
+      );
     } catch (err) {
       setSatz(messbedarfAblehnung(err));
     } finally {
@@ -326,21 +365,28 @@ export function MessbedarfErfassenDialog({
     <Modal
       open
       onClose={onClose}
-      title={MESSPLANUNG.erfassen}
+      title={bedarf ? MESSPLANUNG.bearbeitenTitel : MESSPLANUNG.erfassen}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             {MESSPLANUNG.abbrechen}
           </Button>
           <Button type="submit" form={`${basis}-form`} disabled={busy}>
-            {MESSPLANUNG.erfassen}
+            {bedarf ? MESSPLANUNG.speichern : MESSPLANUNG.erfassen}
           </Button>
         </>
       }
     >
-      <form id={`${basis}-form`} className="vp-bw-form" noValidate onSubmit={(ev) => void senden(ev)} data-testid="messbedarf-erfassen">
+      <form
+        id={`${basis}-form`}
+        className="vp-bw-form"
+        noValidate
+        onSubmit={(ev) => void senden(ev)}
+        data-testid={bedarf ? 'messbedarf-bearbeiten' : 'messbedarf-erfassen'}
+      >
         {fest ? (
           <p className="vp-bw-leise">
+            {bedarf ? `${bedarf.kennzeichen} · ` : ''}
             {fest.kennzeichen} {fest.name}
           </p>
         ) : (
@@ -368,10 +414,10 @@ export function MessbedarfErfassenDialog({
           value={e.ort}
           onChange={(v) => {
             setOrtBeruehrt(true);
-            setE((x) => ({ ...x, ort: v }));
+            setE((x) => ({ ...x, ort: v, ortWortlaut: undefined }));
           }}
           placeholder="ohne Ort"
-          hint={ort ? ortHinweis(ort, '') : undefined}
+          hint={ort ? ortHinweis(ort, '') : e.ortWortlaut ? MESSPLANUNG.bisher(e.ortWortlaut) : undefined}
           search="auto"
         />
         <VpPicker
@@ -379,8 +425,11 @@ export function MessbedarfErfassenDialog({
           label="Größe (optional)"
           options={groesseOptionen()}
           value={e.groesse}
-          onChange={(v) => setE((x) => ({ ...x, groesse: v, richtung: richtungOptionen(v).length === 1 ? richtungOptionen(v)[0].value : '' }))}
+          onChange={(v) =>
+            setE((x) => ({ ...x, groesse: v, richtung: richtungOptionen(v).length === 1 ? richtungOptionen(v)[0].value : '', groesseWortlaut: undefined }))
+          }
           placeholder="ohne Größe"
+          hint={!e.groesse && e.groesseWortlaut ? MESSPLANUNG.bisher(e.groesseWortlaut) : undefined}
         />
         {e.groesse && richtungOptionen(e.groesse).length > 1 && (
           <VpPicker
@@ -393,13 +442,75 @@ export function MessbedarfErfassenDialog({
           />
         )}
         <VpDatePicker id={`${basis}-frist`} label="Frist (optional)" value={e.frist || null} onChange={(v) => setE((x) => ({ ...x, frist: v }))} error={fehler.frist} />
-        <p className="vp-bw-leise">{MESSPLANUNG.erfassenSatz}</p>
+        <p className="vp-bw-leise">{bedarf ? MESSPLANUNG.bearbeitenSatz : MESSPLANUNG.erfassenSatz}</p>
         {satz && (
           <p className="vp-alert vp-alert-err" role="alert">
             {satz}
           </p>
         )}
       </form>
+    </Modal>
+  );
+}
+
+// ------------------------------------------------------------------ Protokoll
+
+/** Das unveränderliche Protokoll eines Bedarfs: wer wann erfasst, bearbeitet, eingelöst oder verworfen hat. */
+export function MessbedarfProtokollDialog({ bedarf, onClose }: { bedarf: Messbedarf; onClose: () => void }) {
+  const [aenderungen, setAenderungen] = useState<MessbedarfAenderung[] | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    api.messbedarfProtokoll(bedarf.energieeinsatz_id, bedarf.id).then(
+      (p) => aktiv && setAenderungen(p.aenderungen),
+      (e) => aktiv && setFehler(messbedarfAblehnung(e)),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [bedarf.energieeinsatz_id, bedarf.id]);
+  const zeilen = aenderungen ? protokollZeilen(aenderungen) : [];
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={MESSPLANUNG.protokollTitel(bedarf.kennzeichen)}
+      footer={
+        <Button variant="ghost" onClick={onClose}>
+          Schließen
+        </Button>
+      }
+    >
+      <div data-testid="messbedarf-protokoll">
+        <p className="vp-mp-wortlaut">{bedarf.wortlaut}</p>
+        {fehler ? (
+          <p className="vp-alert vp-alert-err" role="alert">
+            {fehler}
+          </p>
+        ) : aenderungen === null ? (
+          <p className="vp-bw-leise">Protokoll wird geladen …</p>
+        ) : zeilen.length === 0 ? (
+          <p className="vp-bw-leise">{MESSPLANUNG.protokollLeer}</p>
+        ) : (
+          <ol className="vp-mp-protokoll">
+            {zeilen.map((z) => (
+              <li key={z.id} data-testid="messbedarf-protokoll-eintrag">
+                <span className="vp-mp-kopf">
+                  <strong>{z.art}</strong>
+                  <span className="vp-bw-leise">
+                    {z.wann} · {z.wer}
+                  </span>
+                </span>
+                {z.aenderungen.map((a) => (
+                  <span key={a} className="vp-bw-leise vp-mp-protokoll-feld">
+                    {a}
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
     </Modal>
   );
 }
@@ -474,7 +585,8 @@ export function MessbedarfVerwerfenDialog({ bedarf, onClose, onVerworfen }: { be
 
 /**
  * Die Messbedarfe aller Energieeinsätze, gruppiert nach dem Standort ihres Orts (ohne Ort: eine eigene Gruppe). Lesen
- * über die Einsatz-Route je Einsatz — eine Standort-Route gibt es nicht. Handeln geschieht am Einsatz (Sprung).
+ * über die Standort-Route (`GET /api/v1/unternehmen/messbedarf`, EIN Abruf, `ort_ziel` nennt den Standort); ein Bedarf
+ * nur mit Ort-Wortlaut wird wie bisher über die Ortsbäume zugeordnet. Handeln geschieht am Einsatz (Sprung).
  */
 export function MessplanungStandorte({
   einsaetze,
@@ -492,9 +604,8 @@ export function MessplanungStandorte({
 
   useEffect(() => {
     let aktiv = true;
-    Promise.all(einsaetze.map((e) => api.messbedarfe(e.id).then((l) => l.messbedarfe, () => [] as Messbedarf[]))).then((l) => {
+    api.messbedarfeAlle().then((l) => l.messbedarfe, () => [] as Messbedarf[]).then((alle) => {
       if (!aktiv) return;
-      const alle = l.flat();
       setBedarfe(alle);
       if (alle.some((b) => b.messstelle)) api.messstellenRegister().then((r) => aktiv && setRegister(r.register), () => undefined);
     });

@@ -419,6 +419,8 @@ export const groesseSchluessel = (g: { groesse: string; richtung: string }): str
 export type OrtArt = 'standort' | 'gebaeude' | 'bereich';
 
 export interface OrtWahl {
+  /** Die ID des Standorts, Gebäudes oder Bereichs. */
+  id: string;
   kurzzeichen: string;
   name: string;
   /** „Werk Ahrenberg › Halle 1 › Halle 1 Nord“ */
@@ -446,14 +448,14 @@ export function ortWahlen(
   const out: OrtWahl[] = [];
   for (const s of standorte.standorte.filter(nichtArchiviert)) {
     const am = { standortId: s.id, standortName: s.name };
-    out.push({ kurzzeichen: s.kurzzeichen, name: s.name, pfad: s.name, art: 'standort', ...am });
+    out.push({ id: s.id, kurzzeichen: s.kurzzeichen, name: s.name, pfad: s.name, art: 'standort', ...am });
     const baum = baeume[s.id];
     if (!baum) continue;
     const bereich = (b: OrtsbaumBereich, ueber: string) =>
-      out.push({ kurzzeichen: b.kurzzeichen, name: b.name, pfad: `${ueber} › ${b.name}`, art: 'bereich', ...am });
+      out.push({ id: b.id, kurzzeichen: b.kurzzeichen, name: b.name, pfad: `${ueber} › ${b.name}`, art: 'bereich', ...am });
     for (const g of baum.gebaeude.filter(nichtArchiviert).sort(nachKurzzeichen)) {
       const pfad = `${s.name} › ${g.name}`;
-      out.push({ kurzzeichen: g.kurzzeichen, name: g.name, pfad, art: 'gebaeude', ...am });
+      out.push({ id: g.id, kurzzeichen: g.kurzzeichen, name: g.name, pfad, art: 'gebaeude', ...am });
       for (const b of g.bereiche.filter(nichtArchiviert).sort(nachKurzzeichen)) bereich(b, pfad);
     }
     for (const b of (baum.direktAmStandort?.bereiche ?? []).filter(nichtArchiviert).sort(nachKurzzeichen)) {

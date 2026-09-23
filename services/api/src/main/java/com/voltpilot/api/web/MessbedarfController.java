@@ -15,7 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-/** AP-16 IP-19: Messplanung am Energieeinsatz, ohne Portalfläche. */
+/** AP-16 IP-19: Messplanung am Energieeinsatz; Übersicht je Standort: {@link MessbedarfUebersichtController}. */
 @RestController
 @RequestMapping("/api/v1/unternehmen/energieeinsaetze/{id}/messbedarf")
 public class MessbedarfController {

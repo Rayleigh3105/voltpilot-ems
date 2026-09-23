@@ -6,6 +6,8 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -16,19 +18,35 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
-/** P1: RLS-Repository für Messbedarf und sein append-only Änderungsprotokoll. */
+/**
+ * P1: RLS-Repository für Messbedarf und sein append-only Änderungsprotokoll. Der strukturierte Ort ist genau einer von
+ * {@code standort_id} oder {@code ort_id} (Gebäude/Bereich); seinen Standort heute löst {@link #standorteDerOrte} auf.
+ */
 @Repository
 public class MessbedarfRepository {
     public record Zeile(UUID id, String kennzeichen, UUID einsatzId, String wortlaut, String ort,
             String groesse, LocalDate frist, String zustand, UUID messstelleId, String messstelleKennzeichen,
-            String messstelleName, String begruendung, ProtokollAkteur akteur, Instant createdAt, Instant updatedAt) {}
+            String messstelleName, String begruendung, ProtokollAkteur akteur, Instant createdAt, Instant updatedAt,
+            UUID standortId, String standortKurzzeichen, String standortName,
+            UUID ortId, String ortArt, String ortKurzzeichen, String ortName, String messgroesse, String richtung) {}
+    /** Was Erfassen und Bearbeiten schreiben; höchstens einer von {@code standortId} und {@code ortId}. */
+    public record Felder(String wortlaut, String ort, String groesse, LocalDate frist,
+            UUID standortId, UUID ortId, String messgroesse, String richtung) {}
+    /** Ein wählbarer Ort: {@code art} ist {@code standort}, {@code gebaeude} oder {@code bereich}. */
+    public record OrtRef(UUID id, String art, String kurzzeichen) {}
+    /** Der Standort, an dem ein Gebäude oder Bereich an einem Tag hängt. */
+    public record StandortRef(UUID id, String name) {}
     public record Aenderung(long id, String art, String alt, String neu, ProtokollAkteur akteur, Instant zeit) {}
     public record Planung(UUID einsatzId, String einsatzKennzeichen, String einsatzName) {}
 
     private static final String LESEN = """
-            SELECT b.*, m.kennzeichen AS messstelle_kennzeichen, m.name AS messstelle_name
+            SELECT b.*, m.kennzeichen AS messstelle_kennzeichen, m.name AS messstelle_name,
+                   s.kurzzeichen AS standort_kurzzeichen, s.name AS standort_name,
+                   o.art AS ort_art, o.kurzzeichen AS ort_kurzzeichen, o.name AS ort_name
               FROM messbedarf b
               LEFT JOIN messstelle m ON m.id = b.messstelle_id AND m.tenant_id = b.tenant_id
+              LEFT JOIN standort s ON s.id = b.standort_id AND s.tenant_id = b.tenant_id
+              LEFT JOIN ort o ON o.id = b.ort_id AND o.tenant_id = b.tenant_id
             """;
     private static final RowMapper<Zeile> ZEILE = (rs, n) -> new Zeile(
             rs.getObject("id", UUID.class), rs.getString("kennzeichen"), rs.getObject("einsatz_id", UUID.class),
@@ -36,7 +54,10 @@ public class MessbedarfRepository {
             rs.getObject("frist", LocalDate.class), rs.getString("zustand"),
             rs.getObject("messstelle_id", UUID.class), rs.getString("messstelle_kennzeichen"),
             rs.getString("messstelle_name"), rs.getString("begruendung"), akteur(rs),
-            instant(rs, "created_at"), instant(rs, "updated_at"));
+            instant(rs, "created_at"), instant(rs, "updated_at"),
+            rs.getObject("standort_id", UUID.class), rs.getString("standort_kurzzeichen"), rs.getString("standort_name"),
+            rs.getObject("ort_id", UUID.class), rs.getString("ort_art"), rs.getString("ort_kurzzeichen"),
+            rs.getString("ort_name"), rs.getString("messgroesse"), rs.getString("richtung"));
 
     private final JdbcTemplate jdbc;
     public MessbedarfRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
@@ -47,29 +68,32 @@ public class MessbedarfRepository {
     public Optional<Zeile> finde(UUID id) {
         return jdbc.query(LESEN + " WHERE b.id = ?", ZEILE, id).stream().findFirst();
     }
+    public List<Zeile> alle() {
+        return jdbc.query(LESEN + " ORDER BY b.created_at, b.kennzeichen", ZEILE);
+    }
     public List<Zeile> offene() {
         return jdbc.query(LESEN + " WHERE b.zustand = 'offen' ORDER BY b.created_at, b.kennzeichen", ZEILE);
     }
 
-    public UUID anlegen(UUID einsatzId, String wortlaut, String ort, String groesse, LocalDate frist,
-            ProtokollAkteur wer) {
+    public UUID anlegen(UUID einsatzId, Felder f, ProtokollAkteur wer) {
         UUID id = jdbc.queryForObject("""
                 INSERT INTO messbedarf (tenant_id, einsatz_id, wortlaut, ort, groesse, frist,
-                    actor_sub, actor_name, actor_rolle, actor_art)
-                VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id
-                """, UUID.class, tenant(), einsatzId, wortlaut, ort, groesse, frist,
+                    standort_id, ort_id, messgroesse, richtung, actor_sub, actor_name, actor_rolle, actor_art)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
+                """, UUID.class, tenant(), einsatzId, f.wortlaut(), f.ort(), f.groesse(), f.frist(),
+                f.standortId(), f.ortId(), f.messgroesse(), f.richtung(),
                 wer.sub(), wer.name(), wer.rolle(), wer.art());
         protokoll(id, "erfasst", null, schnappschuss(id), wer);
         return id;
     }
 
-    public boolean bearbeiten(UUID id, String wortlaut, String ort, String groesse, LocalDate frist,
-            ProtokollAkteur wer) {
+    public boolean bearbeiten(UUID id, Felder f, ProtokollAkteur wer) {
         String alt = sperrenOffen(id);
         if (alt == null) return false;
-        jdbc.update("UPDATE messbedarf SET wortlaut=?, ort=?, groesse=?, frist=?, actor_sub=?, actor_name=?, "
-                + "actor_rolle=?, actor_art=?, updated_at=now() WHERE id=?", wortlaut, ort, groesse, frist,
-                wer.sub(), wer.name(), wer.rolle(), wer.art(), id);
+        jdbc.update("UPDATE messbedarf SET wortlaut=?, ort=?, groesse=?, frist=?, standort_id=?, ort_id=?, "
+                + "messgroesse=?, richtung=?, actor_sub=?, actor_name=?, actor_rolle=?, actor_art=?, updated_at=now() "
+                + "WHERE id=?", f.wortlaut(), f.ort(), f.groesse(), f.frist(), f.standortId(), f.ortId(),
+                f.messgroesse(), f.richtung(), wer.sub(), wer.name(), wer.rolle(), wer.art(), id);
         protokoll(id, "bearbeitet", alt, schnappschuss(id), wer);
         return true;
     }
@@ -110,6 +134,47 @@ public class MessbedarfRepository {
                         rs.getString(3), rs.getString(4)))).stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue,
                         Collectors.toList())));
+    }
+
+    /** Ein Standort, Gebäude oder Bereich des Mandanten (RLS); leer, wenn es ihn hier nicht gibt. */
+    public Optional<OrtRef> ortRef(UUID id) {
+        return jdbc.query("""
+                SELECT id, 'standort' AS art, kurzzeichen FROM standort WHERE id = ?
+                UNION ALL SELECT id, art, kurzzeichen FROM ort WHERE id = ?
+                """, (rs, n) -> new OrtRef(rs.getObject("id", UUID.class), rs.getString("art"),
+                        rs.getString("kurzzeichen")), id, id).stream().findFirst();
+    }
+
+    /** Gibt es den Standort hier (RLS)? */
+    public boolean standortSichtbar(UUID id) {
+        return !jdbc.queryForList("SELECT 1 FROM standort WHERE id = ?", Integer.class, id).isEmpty();
+    }
+
+    /**
+     * Der Standort je Gebäude/Bereich an einem Tag: die Kette seiner wirksamen Zuordnungen hinauf (Tage einschließlich,
+     * wie {@code KennzahlRepository.standortVonOrt}). Ein Ort ohne Standort an dem Tag fehlt in der Antwort.
+     */
+    public Map<UUID, StandortRef> standorteDerOrte(Collection<UUID> orte, LocalDate tag) {
+        if (orte.isEmpty()) return Map.of();
+        String liste = orte.stream().map(UUID::toString).collect(Collectors.joining(",", "{", "}"));
+        Map<UUID, StandortRef> aus = new HashMap<>();
+        jdbc.query("""
+                WITH RECURSIVE kette (start, eltern_standort_id, eltern_ort_id, tiefe) AS (
+                    SELECT z.ort_id, z.eltern_standort_id, z.eltern_ort_id, 0 FROM ort_zuordnung z
+                     WHERE z.ort_id = ANY (CAST(? AS uuid[])) AND z.aufgehoben_am IS NULL
+                       AND daterange(z.gueltig_ab, z.gueltig_bis, '[]') @> CAST(? AS date)
+                    UNION ALL
+                    SELECT k.start, z.eltern_standort_id, z.eltern_ort_id, k.tiefe + 1 FROM ort_zuordnung z
+                      JOIN kette k ON z.ort_id = k.eltern_ort_id
+                     WHERE z.aufgehoben_am IS NULL AND daterange(z.gueltig_ab, z.gueltig_bis, '[]') @> CAST(? AS date)
+                       AND k.tiefe < 8)
+                SELECT DISTINCT ON (k.start) k.start, s.id, s.name
+                  FROM kette k JOIN standort s ON s.id = k.eltern_standort_id
+                 ORDER BY k.start, k.tiefe
+                """, rs -> {
+                    aus.put(rs.getObject(1, UUID.class), new StandortRef(rs.getObject(2, UUID.class), rs.getString(3)));
+                }, liste, tag.toString(), tag.toString());
+        return aus;
     }
 
     private String sperrenOffen(UUID id) {
