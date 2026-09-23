@@ -15,7 +15,7 @@ import { useIsPhone } from '../useIsPhone';
 import {
   WAGO_BOX_FAehIGKEIT,
   WAGO_VORLAGE,
-  wagoKarteAusLesung,
+  wagoKartenAusPruefung,
   wagoKopfAnzeige,
   wagoSollAnzeige,
   wagoUrteilAusLesung,
@@ -165,20 +165,10 @@ export function WagoAssistent({
         await api.datenquelleZuweisen(site.id, quelle.id, { device_id: boxId });
         setZugewiesen(true);
       }
-      const anzahl = kopf?.kopf?.kartenzahl ?? 0;
-      const gelesen: Record<string, ProbeAntwort> = {};
-      const erkannt: WagoKarteEntwurf[] = [];
-      for (let index = 1; index <= anzahl; index += 1) {
-        const antwort = await api.testComponentConnection(site.id, {
-          templateRef: WAGO_VORLAGE, templateVersion: 1, role: 'consumer',
-          connection: connection(index), deviceId: boxId,
-        });
-        const karte = wagoKarteAusLesung(index, antwort);
-        gelesen[karte.id] = antwort;
-        erkannt.push(karte);
-      }
-      setKarten(erkannt);
-      setWerte(gelesen);
+      // Steckplatz, Kartentyp und Variante hat die Prüfung in Schritt 1 schon gelesen (Kennwörter);
+      // Schritt 2 zeigt keinen Messwert und liest darum nichts erneut.
+      setKarten(wagoKartenAusPruefung(pruefung));
+      setWerte({});
       setSchritt(2);
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Die Datenquelle konnte nicht zugewiesen werden.');
@@ -194,10 +184,12 @@ export function WagoAssistent({
     setBusy(true); setFehler(null); setWerte({});
     try {
       const gelesen: Record<string, ProbeAntwort> = {};
-      for (const [index, karte] of karten.entries()) {
+      for (const karte of karten) {
+        if (karte.steckplatz == null) continue;
+        // `slot` ist der gelesene Steckplatz, nie die Position der Karte.
         gelesen[karte.id] = await api.testComponentConnection(site.id, {
           templateRef: WAGO_VORLAGE, templateVersion: 1, role: 'consumer',
-          connection: connection(karte.steckplatz ?? index + 1), deviceId: boxId,
+          connection: connection(karte.steckplatz), deviceId: boxId,
         });
       }
       setWerte(gelesen);
@@ -211,23 +203,26 @@ export function WagoAssistent({
     if (karten.some((k) => !k.messaufgabe.trim() || Number(k.wandlerPrimaer) <= 0 || Number(k.wandlerSekundaer) <= 0)) {
       setFehler('Ergänzen Sie bei jeder Karte Messaufgabe und beide Wandlerwerte.'); return;
     }
+    const gesteckt = karten.flatMap((karte) => karte.steckplatz == null ? [] : [{ karte, steckplatz: karte.steckplatz }]);
+    if (gesteckt.length !== karten.length) {
+      setFehler('Der Steckplatz einer Karte ist nicht gelesen. Prüfen Sie den Kopf erneut.'); return;
+    }
     setBusy(true); setFehler(null);
     try {
       // EIN Aufruf: die Karten-Komponenten und ihr Controller mit je einer Karte am Steckplatz
       // entstehen in einer Transaktion — ohne Karte gäbe es weder Registerbild noch Soll-Lesung.
-      const steckplatzVon = (karte: WagoKarteEntwurf, index: number) => karte.steckplatz ?? index + 1;
-      const anlage = await api.wagoKartenAnlegen(site.id, { karten: karten.map((karte, index) => ({
-        steckplatz: steckplatzVon(karte, index),
+      const anlage = await api.wagoKartenAnlegen(site.id, { karten: gesteckt.map(({ karte, steckplatz }) => ({
+        steckplatz,
         kartentyp: karte.typ ? Number(karte.typ.slice(4)) : null,
         komponente: {
           templateRef: WAGO_VORLAGE, templateVersion: 1, label: karte.messaufgabe.trim(), role: 'consumer',
-          connection: connection(steckplatzVon(karte, index)), note: `Energiekarte an Steckplatz ${karte.steckplatz ?? 'unbekannt'}`,
+          connection: connection(steckplatz), note: `Energiekarte an Steckplatz ${steckplatz}`,
         },
       })) });
       const komponenten = await api.siteComponents(site.id);
       const neu: Array<{ karte: WagoKarteEntwurf; entityId: string }> = [];
-      for (const [index, karte] of karten.entries()) {
-        const entityId = anlage.karten.find((k) => k.steckplatz === steckplatzVon(karte, index))?.entityId;
+      for (const { karte, steckplatz } of gesteckt) {
+        const entityId = anlage.karten.find((k) => k.steckplatz === steckplatz)?.entityId;
         const zeile = komponenten.components.find((c) => c.id === entityId);
         if (!zeile) throw new Error('Die neu angelegte Energiekarte wurde nicht zurückgegeben.');
         await api.wagoKarteEintragen(site.id, zeile.id, {
@@ -330,8 +325,8 @@ export function WagoAssistent({
 
   const zurueck = schritt > 1 && !angelegt ? () => setSchritt((schritt - 1) as Schritt) : null;
   let weiter: ReactNode = null;
-  if (schritt === 1) weiter = <Button onClick={() => void weiterAusDatenquelle()} disabled={!kopfErkannt || busy}>{busy ? 'Karten werden gelesen …' : isPhone ? 'Karten lesen' : 'Karten auslesen und weiter'}</Button>;
-  else if (schritt === 2) weiter = <Button onClick={() => setSchritt(3)} disabled={karten.length === 0}>Weiter</Button>;
+  if (schritt === 1) weiter = <Button onClick={() => void weiterAusDatenquelle()} disabled={!kopfErkannt || busy}>{busy ? 'Wird zugewiesen …' : 'Weiter'}</Button>;
+  else if (schritt === 2) weiter = <Button onClick={() => setSchritt(3)} disabled={karten.length === 0 || karten.some((k) => k.steckplatz == null)}>Weiter</Button>;
   else if (angelegt) weiter = <Button onClick={onMessstellen}>{isPhone ? 'Zu den Messstellen' : 'Zur Messstellen-Vorschlagsliste'}</Button>;
   const footer = <>{zurueck ? <Button variant="ghost" onClick={zurueck}>Zurück</Button> : <Button variant="ghost" onClick={onClose}>Abbrechen</Button>}{weiter}</>;
 

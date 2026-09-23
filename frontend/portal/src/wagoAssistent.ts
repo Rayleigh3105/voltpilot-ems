@@ -117,6 +117,8 @@ export interface WagoKarteEntwurf {
   id: string;
   steckplatz: number | null;
   typ: '750-493' | '750-494' | '750-495' | null;
+  /** Die gelesene Variante; `null` = nicht gelesen. */
+  variante: number | null;
   messaufgabe: string;
   wandlerPrimaer: string;
   wandlerSekundaer: string;
@@ -128,6 +130,7 @@ export function neueWagoKarte(nummer: number): WagoKarteEntwurf {
     id: `karte-${nummer}`,
     steckplatz: null,
     typ: null,
+    variante: null,
     messaufgabe: '',
     wandlerPrimaer: '',
     wandlerSekundaer: '',
@@ -135,16 +138,18 @@ export function neueWagoKarte(nummer: number): WagoKarteEntwurf {
   };
 }
 
-export function wagoKarteAusLesung(nummer: number, antwort: ProbeAntwort): WagoKarteEntwurf {
-  const werte = antwort.results?.flatMap((r) => r.reading ? [r.reading] : []) ?? [];
-  const zahl = (name: string) => werte.map((w) => w[name]).find((w): w is number => typeof w === 'number');
-  const steckplatz = zahl('steckplatz');
-  const kartentyp = zahl('kartentyp');
-  return {
-    ...neueWagoKarte(nummer),
-    steckplatz: Number.isInteger(steckplatz) ? steckplatz ?? null : null,
-    typ: kartentyp === 493 || kartentyp === 494 || kartentyp === 495 ? `750-${kartentyp}` : null,
-  };
+/**
+ * B05: die Karten, wie die Datenquellen-Prüfung (`op: wago_kopf`) sie in Schritt 1 gelesen hat —
+ * Steckplatz, Kartentyp und Variante aus den Kennwörtern, kein zweiter Lesevorgang. Fehlendes bleibt
+ * `null`; der Steckplatz ist nie die Position der Karte.
+ */
+export function wagoKartenAusPruefung(pruefung: UemsDatenquellePruefergebnis | null): WagoKarteEntwurf[] {
+  return (pruefung?.wago?.karten ?? []).map((k) => ({
+    ...neueWagoKarte(k.karte),
+    steckplatz: k.steckplatz,
+    typ: k.kartentyp === 493 || k.kartentyp === 494 || k.kartentyp === 495 ? `750-${k.kartentyp}` : null,
+    variante: k.variante,
+  }));
 }
 
 /** Regel aus `docs/wago/erhebungsbogen.md`, ausschließlich aus gelesenen Fakten. */

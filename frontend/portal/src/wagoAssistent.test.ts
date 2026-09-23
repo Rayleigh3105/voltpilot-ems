@@ -1,27 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import type { Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis, WagoSollLesung } from './api';
+import type { Device, EdgeVersion, UemsDatenquellePruefergebnis, UemsWagoKarteGelesen, WagoSollLesung } from './api';
 import {
   WAGO_BOX_FAehIGKEIT,
   wagoAssistentSichtbar,
-  wagoKarteAusLesung,
+  wagoKartenAusPruefung,
   wagoKopfAnzeige,
   wagoSollAnzeige,
   wagoUrteilAusLesung,
 } from './wagoAssistent';
 
 describe('WAGO-Lesung — Regel aus IP-1', () => {
-  const antwort = (steckplatz: number, kartentyp: number): ProbeAntwort => ({
-    requestId: 'probe-1', errorCode: null,
-    results: [{ id: 'karte', ok: true, reading: { steckplatz, kartentyp, spannung_l1: 230.4 } }],
-  });
+  const pruefung = (...karten: UemsWagoKarteGelesen[]) => ({
+    wago: { erkannt: true, satz: '', controller_kennung: 8212, kartenzahl: karten.length, karten },
+  }) as unknown as UemsDatenquellePruefergebnis;
+  const karte = (steckplatz: number | null, kartentyp: number | null, variante: number | null = 0) =>
+    wagoKartenAusPruefung(pruefung({ karte: 1, steckplatz, kartentyp, variante }))[0];
   const kopf = { signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 1, herzschlag: 1 };
 
-  it('übernimmt Steckplatz und Typ aus der Lesung statt aus einer Kundeneingabe', () => {
-    expect(wagoKarteAusLesung(1, antwort(3, 495))).toMatchObject({ steckplatz: 3, typ: '750-495' });
+  it('übernimmt Steckplatz, Typ und Variante aus den Kennwörtern statt aus einer Kundeneingabe', () => {
+    expect(karte(3, 495, 25001)).toMatchObject({ steckplatz: 3, typ: '750-495', variante: 25001 });
+  });
+
+  it('setzt den gelesenen Steckplatz, nie die Position der Karte (Lücke: Karten auf 2 und 5)', () => {
+    const karten = wagoKartenAusPruefung(pruefung(
+      { karte: 1, steckplatz: 2, kartentyp: 494, variante: 0 },
+      { karte: 2, steckplatz: 5, kartentyp: 495, variante: 25001 },
+    ));
+    expect(karten.map((k) => [k.id, k.steckplatz, k.typ])).toEqual([['karte-1', 2, '750-494'], ['karte-2', 5, '750-495']]);
+    expect(wagoKartenAusPruefung(null)).toEqual([]);
   });
 
   it('liefert „belegt je Kunde“ nur für den ausgelesenen PFC100', () => {
-    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8100 }, [wagoKarteAusLesung(1, antwort(2, 495))]).ergebnis)
+    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8100 }, [karte(2, 495)]).ergebnis)
       .toBe('belegt_je_kunde');
   });
 
@@ -31,20 +41,20 @@ describe('WAGO-Lesung — Regel aus IP-1', () => {
   });
 
   it('liefert „nicht unterstützt“ samt Ausweg für eine ausgelesene 750-493', () => {
-    const urteil = wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [wagoKarteAusLesung(1, antwort(2, 493))]);
+    const urteil = wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [karte(2, 493)]);
     expect(urteil.ergebnis).toBe('nicht_unterstuetzt');
     expect(urteil.ausweg).toContain('Energiezähler');
   });
 
   it('nennt die ausgelesene PFC200-Kombination ehrlich „in Prüfung“', () => {
-    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [wagoKarteAusLesung(1, antwort(2, 494))]))
+    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [karte(2, 494)]))
       .toMatchObject({ ergebnis: 'in_pruefung', titel: 'In Prüfung — Einsatz noch nicht bestätigt' });
   });
 
   it('erfindet bei einer unvollständigen Kartenlesung weder Steckplatz noch Typ', () => {
-    const karte = wagoKarteAusLesung(1, { requestId: 'probe-2', errorCode: null, results: [{ id: 'karte', ok: true }] });
-    expect(karte).toMatchObject({ steckplatz: null, typ: null });
-    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [karte]).titel).toContain('Unbekannt');
+    const ungelesen = karte(null, null, null);
+    expect(ungelesen).toMatchObject({ steckplatz: null, typ: null, variante: null });
+    expect(wagoUrteilAusLesung({ ...kopf, controller_kennung: 8212 }, [ungelesen]).titel).toContain('Unbekannt');
   });
 });
 

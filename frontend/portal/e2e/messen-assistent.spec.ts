@@ -69,6 +69,8 @@ interface Cloud {
   /** Was der Assistent an die Datenquellen-Prüfung geschickt hat (AP-05: `op: wago_kopf`, kein Datentyp). */
   wagoPruefAnfragen?: unknown[];
   wagoKomponenten?: Array<{ id: string; definitionVersion: number; label: string }>;
+  /** Der `slot` jedes `component-test` — B05: nur „Echte Werte lesen“, je gelesenem Steckplatz. */
+  wagoWertSlots?: number[];
   /** AP-05 „WAGO-Soll speichern“: was der Assistent an die Soll-Lesung geschickt hat. */
   wagoSollLesungen?: Array<{ geraet: string; body: unknown }>;
   wagoKartenAnlagen?: Array<{ karten: Array<{ steckplatz: number; kartentyp: number | null; komponente: { templateRef: string; label?: string } }> }>;
@@ -237,6 +239,7 @@ async function verdrahte(page: Page, cloud: Cloud) {
     if (/^\/api\/v1\/sites\/[^/]+\/component-test$/.test(pfad) && methode === 'POST' && cloud.wagoFaehig) {
       const body = r.request().postDataJSON() as { connection?: { slot?: number } };
       const slot = Number(body.connection?.slot ?? 1);
+      (cloud.wagoWertSlots ??= []).push(slot);
       return json({ requestId: `wago-wert-${slot}`, errorCode: null, message: null, results: [{
         id: 'verbindung', ok: true, errorCode: null, message: 'Werte gelesen',
         reading: { steckplatz: slot, kartentyp: 494, 'Spannung L1': 230.4, 'Wirkleistung gesamt': 18.7 + slot, 'Zählerstand Bezug': 36912.4 + slot },
@@ -609,8 +612,10 @@ for (const breite of BREITEN) {
       await expect(page.getByText('Herzschlag steht bei 1.731')).toBeVisible();
       await messeUndFotografiere(page, breite, 'wago-kopf');
 
-      await page.getByRole('button', { name: breite < 720 ? 'Karten lesen' : 'Karten auslesen und weiter', exact: true }).click();
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Ausgelesene Energiekarten ergänzen' })).toBeVisible();
+      // B05: Steckplatz, Typ und Variante kommen aus den Kennwörtern der Prüfung — Schritt 2 liest nichts erneut.
+      expect(cloud.wagoWertSlots).toBeUndefined();
       await expect(page.getByText('Steckplatz 1 · 750-494')).toBeVisible();
       await expect(page.getByText('In Prüfung — Einsatz noch nicht bestätigt', { exact: true })).toBeVisible();
       const karten = page.locator('.vp-wago-karten > li');
@@ -628,6 +633,7 @@ for (const breite of BREITEN) {
       await page.getByRole('button', { name: 'Echte Werte lesen', exact: true }).click();
       await expect(page.getByText('Wirkleistung gesamt: 19,7')).toBeVisible();
       await expect(page.getByText('Zählerstand Bezug: 36.913,4')).toBeVisible();
+      expect(cloud.wagoWertSlots).toEqual([1, 2, 3, 4]);
       await messeUndFotografiere(page, breite, 'wago-werte');
       await page.getByRole('button', { name: 'Komponenten anlegen', exact: true }).click();
       await expect(page.getByText('Komponenten angelegt', { exact: true })).toBeVisible();

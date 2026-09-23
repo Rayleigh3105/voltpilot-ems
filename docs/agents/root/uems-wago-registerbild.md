@@ -271,8 +271,9 @@ Befund aus der Soll-Lesung: Schritt 1 des Assistenten schickte einen gewöhnlich
 
 ### Fallen
 
-- ⚠ **Schritt 2 liest die Karten noch einmal** (`component-test` je Steckplatz mit der zertifizierten
-  Vorlage) — die Kennwörter aus Schritt 1 ersetzen diese Lesung nicht; beide kommen aus der Steuerung.
+- Schritt 2 übernimmt die Karten aus diesen Kennwörtern (`wagoKartenAusPruefung`, B05) und liest nichts
+  erneut. `component-test` läuft nur für die Messwerte („Echte Werte lesen“), und `slot` ist dort wie beim
+  Anlegen der gelesene Steckplatz, nie die Karten-Position (sonst 400 an `…/wago/karten`).
 - ⚠ **`WagoSollLesung.Kennung`/`Verbindung` sind jetzt öffentlich**, weil die Prüfung im Paket `uems`
   sie teilt — eine Signaturänderung trifft beide Wege (`GeraetApiTest` und `DatenquelleApiTest` fahren).
 
