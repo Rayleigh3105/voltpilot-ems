@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.EreignisVokabular.Urheber;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -214,7 +215,18 @@ public class BerichtKaskade implements BerichteNaht {
                 id = rs.getObject(1, UUID.class);
             }
         }
-        BerichtAbzugBildung.Ergebnis e = bildung.bilden(con, id, datenstand(con, jetzt, anlass), GEBILDET_VON);
+        UUID vorher = TenantContext.get();
+        BerichtAbzugBildung.Ergebnis e;
+        try {
+            TenantContext.set(tenant);
+            e = bildung.bilden(con, id, datenstand(con, jetzt, anlass), GEBILDET_VON);
+        } finally {
+            if (vorher == null) {
+                TenantContext.clear();
+            } else {
+                TenantContext.set(vorher);
+            }
+        }
         ObjectNode m = meldung(NEU_GEBILDET, tenant + ":" + kennung + ":" + e.datenstand() + ":" + anlass + ":" + zusatz,
                 e.datenstand(), kennung);
         m.put("datenstand", e.datenstand().toString());
