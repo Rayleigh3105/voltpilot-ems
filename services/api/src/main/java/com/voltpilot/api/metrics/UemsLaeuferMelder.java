@@ -93,6 +93,8 @@ public class UemsLaeuferMelder {
      * ein eigenes Label, weil „kein Lauf &gt; 3 × Takt“ hier 45 Minuten heißt, nicht drei Tage.
      */
     public static final String VORBEHALT_VIERTELSTUNDE = "vorbehalt_viertelstunde";
+    /** {@code WetterArchivLaeufer} — Tagesmittel aus dem Wetter-Archiv → Gradtage mit Herkunft {@code bezogen} (AP-17 IP-12b). */
+    public static final String WETTER_ARCHIV = "wetter_archiv";
     /** {@code UebergabeLaeufer}. */
     public static final String UEBERGABE = "uebergabe";
     /** {@code BoxTauschZustellung}. */
@@ -121,7 +123,7 @@ public class UemsLaeuferMelder {
     public record Eintrag(String label, String klasse, List<String> schalter, String takt) {}
 
     /**
-     * ALLE geplanten UEMS-Läufer — neunzehn, in der Reihenfolge der Verarbeitungskette, danach die
+     * ALLE geplanten UEMS-Läufer — zwanzig, in der Reihenfolge der Verarbeitungskette, danach die
      * vier Start-Läufer. Wer einen Läufer ergänzt, ergänzt ihn hier; sonst ist er unbeobachtet.
      */
     public static final List<Eintrag> KATALOG = List.of(
@@ -151,6 +153,8 @@ public class UemsLaeuferMelder {
             new Eintrag(VORBEHALT_VIERTELSTUNDE, "VorbehaltViertelstundeLaeufer",
                     List.of("voltpilot.uems.vorbehalt.enabled", "voltpilot.uems.vorbehalt.viertelstunde.enabled"),
                     "15 min (Minute 10/25/40/55 Europe/Berlin)"),
+            new Eintrag(WETTER_ARCHIV, "WetterArchivLaeufer",
+                    List.of("voltpilot.uems.wetter-archiv.enabled"), "taeglich 06:10 Europe/Berlin"),
             new Eintrag(UEBERGABE, "UebergabeLaeufer",
                     List.of("voltpilot.uems.uebergabe.enabled"), "1 s"),
             new Eintrag(BOX_TAUSCH, "BoxTauschZustellung",

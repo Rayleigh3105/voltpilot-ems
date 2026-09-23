@@ -264,15 +264,16 @@ class UemsBezugsgroesseMigrationTest {
                 new Object[] {"import", "berichtigung", "vorschlag", new BigDecimal("312900")},
                 new Object[] {"messkanal", "berichtigung", "abgelehnt", new BigDecimal("312900")},
                 new Object[] {"import", "ruecknahme", "zurueckgenommen", null},
-                new Object[] {"import", "ruecknahme", "wirksam", new BigDecimal("312400")});
+                new Object[] {"import", "ruecknahme", "wirksam", new BigDecimal("312400")},
+                new Object[] {"bezogen", "berichtigung", "wirksam", new BigDecimal("312900")});
         for (Object[] f : fassungen) {
             zurueckgerollt(root, () -> {
                 UUID bg = bezugsgroesse(root, k, "F.1", "periodenwert", "kg", "monat", "unternehmen");
-                wert(root, mit(erstwert(k, bg), "herkunft_art", f[0], "import_kennung",
-                        f[0].equals("import") ? "I-2026-0001" : null));
-                wert(root, mit(erstwert(k, bg), "fassung", 2, "ersetzt_fassung", 1, "vorgang", f[1], "status", f[2],
+                wert(root, bezogen(mit(erstwert(k, bg), "herkunft_art", f[0], "import_kennung",
+                        f[0].equals("import") ? "I-2026-0001" : null)));
+                wert(root, bezogen(mit(erstwert(k, bg), "fassung", 2, "ersetzt_fassung", 1, "vorgang", f[1], "status", f[2],
                         "betrag", f[3], "begruendung", "ERP-Nachbuchung vom 05.11.2026", "herkunft_art", f[0],
-                        "import_kennung", f[0].equals("import") ? "I-2026-0003" : null));
+                        "import_kennung", f[0].equals("import") ? "I-2026-0003" : null)));
             });
             gezeigt.addAll(List.of("erstwert", "wirksam", (String) f[0], (String) f[1], (String) f[2]));
         }
@@ -827,8 +828,15 @@ class UemsBezugsgroesseMigrationTest {
         return aus;
     }
 
+    /** AP-17 IP-12b: eine bezogene Fassung trägt Quelle, Abrufzeit und ihre Herkunft. */
+    private static Map<String, Object> bezogen(Map<String, Object> spalten) {
+        return !"bezogen".equals(spalten.get("herkunft_art")) ? spalten : mit(spalten, "bezug_quelle",
+                "Open-Meteo-Archiv", "abgerufen_am", java.sql.Timestamp.from(java.time.Instant.parse("2026-11-02T05:10:00Z")),
+                "bezug_herkunft", "{\"zustand\":\"vollständig\"}");
+    }
+
     private static UUID wert(JdbcTemplate db, Map<String, Object> spalten) {
-        String platzhalter = spalten.keySet().stream().map(s -> s.equals("kennzeichen") ? "CAST(? AS jsonb)" : "?")
+        String platzhalter = spalten.keySet().stream().map(s -> s.equals("kennzeichen") || s.equals("bezug_herkunft") ? "CAST(? AS jsonb)" : "?")
                 .collect(Collectors.joining(", "));
         return db.queryForObject("INSERT INTO bezugsgroesse_wert (" + String.join(", ", spalten.keySet()) + ") VALUES ("
                 + platzhalter + ") RETURNING id", UUID.class, spalten.values().toArray());

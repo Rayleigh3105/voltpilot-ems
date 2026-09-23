@@ -70,8 +70,19 @@ Abnahme: `KanalbindungApiTest` (B7 4,9667 h / unvollständig / 95,8 %, 422, Vor/
   (`bezugsdaten.md` §„Wetter-Archiv“). `WetterArchivRegeln` ⟷ `wetterArchiv.ts`: nur Tage vor
   dem Abruftag (Ortszone), Kennzeichen `temperatur_bezogen` (Quelle, Abrufzeit) an jeder Zahl,
   geerbt; Ausfall = Tag fehlt, Monat „x von y Tagen“; ohne Koordinaten `variable_fehlt` mit
-  `UEMS_KOORDINATEN_FEHLEN_SATZ`. Client, Migration und Portal-Zeile folgen (IP-12b/c);
-  `vokabulare.herkunft_art`/`arten` spiegeln bis dahin die Datenbank ohne `bezogen`.
+  `UEMS_KOORDINATEN_FEHLEN_SATZ`. Portal-Zeile und Kundensätze folgen (IP-12c).
+- IP-12b (Client, `V20260924192700`): `bezugsgroesse_wetterbezug` (eine Zeile je Gradtagzahl,
+  G20/15, `von`) entscheidet, WELCHE Bezugsgröße bezogen wird — nicht der Standort.
+  `WetterArchivAbruf` (Takt `WetterArchivLaeufer` täglich 06:10, Schalter
+  `voltpilot.uems.wetter-archiv.enabled`) holt fehlende Archiv-Tage der letzten 60 Tage bis
+  gestern, schreibt `herkunft_art = bezogen` mit `bezug_quelle`, `abgerufen_am` und
+  `bezug_herkunft` (Koordinaten, Zustand, x/y Tage); ein vorhandener Tag wird nie
+  überschrieben, ein unvollständiger Monat bekommt die nächste Fassung. Quelle hinter
+  `WetterArchiv` (heute `OpenMeteoWetterArchiv`, Stub in `UemsWetterArchivAbrufTest`).
+  ⚠ Der Abruf schreibt als Admin ohne UPDATE-Recht: `bezugskanal_eine_quelle()` nimmt für
+  `bezogen` die Elternsperre nicht (Reihen-Sperre wie der Kanal-Lauf), prüft aber weiter den
+  Kanal-Konflikt. ⚠ `bezugsgroesse_wert_abgeschlossen_chk` vergleicht mit `created_at` =
+  echte Uhr — Tests des Abrufs stehen in der Vergangenheit, nicht in 2027.
 - `GET …/kanalbindung/kanaele` liefert passende Katalogkanäle mit erstem Messwert,
   aktuellem Lieferzustand und gemessenen Zustandsbezeichnungen, nur aus sichtbaren Anlagen.
   Das Recht ist `bezugsgroesse.verwalten`; historische Bindungen bleiben über GET lesbar.

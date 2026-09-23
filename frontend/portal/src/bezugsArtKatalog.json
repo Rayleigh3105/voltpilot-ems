@@ -145,7 +145,8 @@
       ],
       "herkunft": [
         "messkanal",
-        "import"
+        "import",
+        "bezogen"
       ]
     },
     "zaehlerstand": {
@@ -224,7 +225,8 @@
       "eingabe",
       "import",
       "messkanal",
-      "stammdatum_ap02"
+      "stammdatum_ap02",
+      "bezogen"
     ],
     "einheiten": {
       "masse": [

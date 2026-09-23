@@ -54,7 +54,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 - **Betriebszeit aus Leistung (AP-16 IP-26, E9)** — gauge-Quelle einer Messstelle, begründete Schwellenfassungen und geerbte Annahmen bis zur Kennzahl; unbekannte Zeit bleibt Lücke · [Vertrag, API und Bestand](uems-betriebszeit-aus-leistung.md)
 
-- **Bezugsgrößen aus Messkanälen (AP-09 IP-17/IP-18)** — minutenweise Bindung von Zähler/Zustand/Temperatur, Gradtage G20/15 mit gespeicherten Parametern und Portal-Dialog, M5/K6-Sperre mit 422, Periodenfassungen mit Zustand/Abdeckung, isolierter Schritt im AP-08-Stundenlauf und Spätankunft-Vorschlag · [Kanalbindung und Nachweise](uems-bezugsgroesse-kanalbindung.md)
+- **Bezugsgrößen aus Messkanälen (AP-09 IP-17/IP-18)** — minutenweise Bindung von Zähler/Zustand/Temperatur, Gradtage G20/15 mit gespeicherten Parametern und Portal-Dialog, M5/K6-Sperre mit 422, Periodenfassungen mit Zustand/Abdeckung, isolierter Schritt im AP-08-Stundenlauf und Spätankunft-Vorschlag; Gradtage aus dem Wetter-Archiv (Herkunft `bezogen`, AP-17 IP-12a/b, täglicher `WetterArchivLaeufer`) · [Kanalbindung und Nachweise](uems-bezugsgroesse-kanalbindung.md)
 
 - **Mandanten-Offboarding mit vorheriger Kontensperre** — gemeinsamer IP-9-Sperrweg, wiederholbares Keycloak-Cleanup, fehlender Mandant sperrt auch alte JWTs bei `/me` · [Reihenfolge und Fehlerfälle](uems-offboarding-kontensperre.md)
 

@@ -71,7 +71,8 @@
       "eingabe",
       "import",
       "messkanal",
-      "stammdatum_ap02"
+      "stammdatum_ap02",
+      "bezogen"
     ],
     "status": [
       "wirksam",
@@ -688,8 +689,9 @@
         ],
         "herkunft": [
           "messkanal",
-          "import"
-        ],
+          "import",
+        "bezogen"
+      ],
         "konzept": {
           "einheiten": "Kd",
           "wertart": "Periodenwert (abgeleitet)",
@@ -2132,7 +2134,7 @@
     "grund_ohne_zahl": "variable_fehlt",
     "wort_tage": "Tagen",
     "grenze": "Nur ein Tag VOR dem Kalendertag des Abrufs in der Ortszone ist ein Archiv-Tag (bis gestern); heute und jeder spätere Tag wird nie geschrieben (Vorhersage nie, AP-09 E13).",
-    "gespeichert_ab": "IP-12b: erst die Migration des Clients nimmt `bezogen` in bezugsdaten_vokabular() und in die Herkunft der Art `gradtagzahl` auf; bis dahin stehen `vokabulare.herkunft_art` und `arten` unverändert (sie spiegeln die Datenbank zeilengleich)."
+    "gespeichert_ab": "IP-12b (V20260924192700): die Migration des Clients nimmt `bezogen` in bezugsdaten_vokabular() und in die Herkunft der Art `gradtagzahl` auf; `vokabulare.herkunft_art` und `arten` spiegeln die Datenbank zeilengleich."
   },
   "zwillinge": {
     "gradtage": [

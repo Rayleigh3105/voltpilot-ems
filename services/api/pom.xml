@@ -300,6 +300,10 @@
                              aus, in PRODUKTION an. Wer ihn prueft, ruft
                              TagesmengeNachtragLaeufer.lauf() selbst. -->
                         <voltpilot.uems.tagesmenge-nachtrag.enabled>false</voltpilot.uems.tagesmenge-nachtrag.enabled>
+                        <!-- Der Tagestakt des Wetter-Archivs (UEMS AP-17 IP-12b) ruft
+                             sonst ein externes Archiv auf. Im Testlauf aus, in
+                             PRODUKTION an; wer ihn prueft, ruft WetterArchivAbruf.lauf(). -->
+                        <voltpilot.uems.wetter-archiv.enabled>false</voltpilot.uems.wetter-archiv.enabled>
                         <!-- Der Verdichtungs-Takt der Viertelstundenwerte (UEMS
                              AP-07 IP-12) ist dieselbe @Scheduled-Falle - im
                              Testlauf aus, in PRODUKTION an (application.yml,

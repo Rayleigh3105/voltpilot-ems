@@ -262,6 +262,14 @@ public class KennzahlEingangLeser {
                     .filter(java.util.Objects::nonNull).map(BezugsgroesseDto.Fassung::kennzeichen)
                     .filter(java.util.Objects::nonNull).flatMap(List::stream)
                     .filter(kz -> kz.startsWith("aus Leistung über ")).distinct().toList();
+            // AP-17 IP-12b: die bezogene Temperatur reicht ihr Kennzeichen weiter — über summierte Tage das JÜNGSTE
+            // (die letzte Abrufzeit), damit ein Monat aus 31 Abrufen nicht 31 Sätze erbt.
+            List<String> bezogen = jeSchluessel.values().stream().map(KennzahlEingangLeser::wirksame)
+                    .filter(f -> f != null && f.kennzeichen() != null && f.eingetragenAm() != null)
+                    .max(java.util.Comparator.comparing(BezugsgroesseDto.Fassung::eingetragenAm))
+                    .map(f -> f.kennzeichen().stream()
+                            .filter(kz -> kz.startsWith(WetterArchivAbruf.KENNZEICHEN_ANFANG)).toList())
+                    .orElse(List.of());
             boolean unvollstaendigeBetriebszeit = false;
             BigDecimal betriebszeitAbdeckung = BigDecimal.ZERO;
             BigDecimal betriebszeitDauer = BigDecimal.ZERO;
@@ -314,8 +322,8 @@ public class KennzahlEingangLeser {
                     annahmen.isEmpty() ? null : unvollstaendigeBetriebszeit ? ErgebnisZustand.UNVOLLSTAENDIG : ErgebnisZustand.VOLLSTAENDIG,
                     KennzahlRegeln.zeitAbdeckung(betriebszeitAbdeckung,betriebszeitDauer),
                     endgueltig, unvollstaendigeBetriebszeit ? "Leistungskanal mit Lücken" : null,
-                    annahmen.stream().distinct().toList()), null, einzeln && letzter != null ? letzter.wirksameFassung() : null,
-                    wirksame == null || wirksame.kennzeichen() == null ? List.of() : wirksame.kennzeichen(),
+                    java.util.stream.Stream.concat(annahmen.stream(), bezogen.stream()).distinct().toList()), null, einzeln && letzter != null ? letzter.wirksameFassung() : null,
+                    wirksame == null || wirksame.kennzeichen() == null ? bezogen : wirksame.kennzeichen(),
                     endgueltig ? ab : null));
         }
         return aus;

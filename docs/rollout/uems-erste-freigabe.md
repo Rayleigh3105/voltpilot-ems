@@ -1001,7 +1001,7 @@ gelöscht. Ein Image-Rückweg steht nach Schritt 10 nicht mehr zur Verfügung (W
 **Die Namen sind die ausdrücklichen Umgebungsplatzhalter der Anwendung** — insbesondere
 keine selbst hergeleiteten Spring-Namen einsetzen.
 
-Die Tabelle nennt alle **24** `VOLTPILOT_UEMS_*_ENABLED`-Schalter aus
+Die Tabelle nennt alle **25** `VOLTPILOT_UEMS_*_ENABLED`-Schalter aus
 `services/api/src/main/resources/application.yml`, in derselben Reihenfolge; gitops PR 37 setzt
 sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vom 23.09.2026).
 
@@ -1022,6 +1022,7 @@ sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vo
 | `VOLTPILOT_UEMS_FUNKTION_BESTAND_ENABLED` | `true` | Ableitung von Funktionen und Teilnahmen beim Start |
 | `VOLTPILOT_UEMS_ZUGRIFF_BESTAND_ENABLED` | `true` | Übernahme der Bestandsrechte aus den Keycloak-Konten beim Start |
 | `VOLTPILOT_UEMS_TAGESMENGE_NACHTRAG_ENABLED` | `true` | den Start-Lauf, der für vor AP-08 endgültige Tage ohne Menge eine Korrektur `menge_nachgetragen` vorschlägt (Freigabe von Hand) |
+| `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` | `true` | den täglichen Abruf des Wetter-Archivs um 06:10 (Tagesmittel → Gradtage mit Herkunft `bezogen`, holt 60 Tage nach); Quelle, Adresse und Schlüssel: `VOLTPILOT_UEMS_WETTER_ARCHIV_QUELLE` (`open-meteo`), `…_BASIS_URL`, `…_SCHLUESSEL` (optional) — noch nicht in gitops PR 37 |
 | `VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED` | `true` | Protokoll abgelaufener Unterstützung und Erinnerung vor Ablauf |
 | `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` | **`false`** | (alter `X-Tenant-Id`-Umschalter bleibt aus) |
 | `VOLTPILOT_UEMS_VIERTELSTUNDE_ENABLED` | `true` | Fünfminutentakt und die einmalige 90-Tage-Rückrechnung |

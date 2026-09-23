@@ -476,6 +476,18 @@ voltpilot:
     # Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
     tagesmenge-nachtrag:
       enabled: ${VOLTPILOT_UEMS_TAGESMENGE_NACHTRAG_ENABLED:true}
+    # UEMS AP-17 IP-12b (E9 = C): der TAKT des Wetter-Archivs - taeglich 06:10
+    # Europe/Berlin holt WetterArchivLaeufer je bezogener Gradtagzahl die Tages-
+    # mittel des Standorts (Koordinaten) und schreibt Gradtage mit Herkunft
+    # `bezogen`; jeder Takt holt fehlende Archiv-Tage der letzten 60 Tage nach,
+    # nie einen Tag nach gestern. Quelle, Adresse und Schluessel (optional) sind
+    # gitops-Werte des Betreibers. `enabled` ist der Not-Aus - Vorgabe AN, im
+    # Testlauf AUS (surefire).
+    wetter-archiv:
+      enabled: ${VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED:true}
+      quelle: ${VOLTPILOT_UEMS_WETTER_ARCHIV_QUELLE:open-meteo}
+      basis-url: ${VOLTPILOT_UEMS_WETTER_ARCHIV_BASIS_URL:https://archive-api.open-meteo.com}
+      schluessel: ${VOLTPILOT_UEMS_WETTER_ARCHIV_SCHLUESSEL:}
     # UEMS AP-03 IP-8: der TAKT der Unterstuetzung - minuetlich traegt AblaufLaeufer
     # abgelaufene Gewaehrungen ins Zugriffsprotokoll ein (ablaufen) und erinnert 7 Tage
     # vor dem Ende. Er BEENDET nichts: der Zugang endet mit endet_am von selbst

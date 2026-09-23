@@ -85,7 +85,7 @@ Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.
 
-## Die neunzehn Läufer
+## Die zwanzig Läufer
 
 Der Katalog steht in `UemsLaeuferMelder.KATALOG` und ist VOLLSTÄNDIG: `UemsMetrikenWiringTest` liest
 die Quelltexte von `uems`, `unterstuetzung`, `zugriff` und `chargers` und verlangt für jede Klasse mit
@@ -108,6 +108,7 @@ vergisst, wird dort rot — sonst bliebe der neue Läufer still unbeobachtet. Au
 | `verbund_bilanz` | `VerbundBilanzLaeufer` (danach im selben Takt die Schätzung des Anteils-Verlusts, `AnteilVerlustSchaetzung` — kein eigener Läufer) | `voltpilot.uems.verbund-bilanz.enabled` | täglich 04:37 Europe/Berlin |
 | `vorbehalt` | `VorbehaltLaeufer` | `voltpilot.uems.vorbehalt.enabled` | täglich 04:52 Europe/Berlin |
 | `vorbehalt_viertelstunde` | `VorbehaltViertelstundeLaeufer` | `…vorbehalt.enabled` UND `…vorbehalt.viertelstunde.enabled` | 15 min (Minute 10/25/40/55 Europe/Berlin) |
+| `wetter_archiv` | `WetterArchivLaeufer` (Tagesmittel aus dem Wetter-Archiv → Gradtage mit Herkunft `bezogen`, AP-17 IP-12b; holt 60 Tage nach) | `voltpilot.uems.wetter-archiv.enabled` | täglich 06:10 Europe/Berlin |
 | `uebergabe` | `UebergabeLaeufer` | `voltpilot.uems.uebergabe.enabled` | 1 s |
 | `box_tausch` | `BoxTauschZustellung` | `voltpilot.uems.uebergabe.enabled` | 15 s |
 | `unterstuetzung` | `AblaufLaeufer` | `voltpilot.uems.unterstuetzung.enabled` | 1 min |
@@ -165,7 +166,7 @@ von vor diesem Paket und hier nur festgehalten, nicht geändert.
   rechnet, ist Arithmetik auf dem zuletzt gesammelten Zeitpunkt — darum wachsen die Alter zwischen
   zwei Sammel-Läufen weiter, und ein ausgefallener SAMMLER wird an denselben Regeln sichtbar, ohne
   eigene Metrik.
-- **Kardinalität**: drei Arbeitslisten, neunzehn Läufer, ein Wert je Messkunden-Kundenbereich. Keine
+- **Kardinalität**: drei Arbeitslisten, zwanzig Läufer, ein Wert je Messkunden-Kundenbereich. Keine
   Anlage, keine Box, keine Messstelle als Label (Ausnahme mit Absicht: die Box-Sicht unten, nur für
   Boxen mit Bezug) — und `tenant` trägt die INTERNE Kennung, nie einen Namen.
 
