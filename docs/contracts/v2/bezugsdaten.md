@@ -271,6 +271,14 @@ Standorts. Eine Temperatur-Datei des Kunden gibt es nicht (bewusst nicht gebaut)
   Satz aus AP-17 §5.8 (`UEMS_KOORDINATEN_FEHLEN_SATZ` in `glossar.ts`): „Für den Standort
   Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. Eine
   Wetterbereinigung über Gradtage ist hier erst möglich, wenn der Standort Koordinaten hat.“
+- **Eine Quelle: keine Eingabe, kein Import** (Nachlese 1). Eine Gradtagzahl mit Zeile in
+  `bezugsgroesse_wetterbezug` wird behandelt wie eine kanalgebundene: Eingabe
+  (`POST …/werte`), Berichtigung, CSV-Übernahme (`POST /api/v1/bezugsdaten/importe`) und die
+  Freigabe eines Vorschlags darauf lehnen mit 409 `wetterbezug_vorhanden` ab — für die ganze
+  Bezugsgröße, nicht erst ab `von` — mit dem Satz „Diese Gradtagzahl bezieht ihr Wetter von
+  VoltPilot. Werte werden hier nicht eingegeben oder importiert; lösen Sie zuerst den
+  Wetterbezug.“ Nur der Abruf des Archivs schreibt. Eine Ablehnung schreibt nichts
+  (`WetterbezugSperre`; Nachweis `BezugswertEingabeApiTest`, `BezugsdatenImportUebernahmeApiTest`).
 
 `WetterArchivRegeln` ⟷ `wetterArchiv.ts` (Regel `wetter_archiv`, Prüfungen im B7-Block,
 Block `wetter_archiv` der Vektor-Datei) sind reine Regeln: Grenze, Kennzeichen,

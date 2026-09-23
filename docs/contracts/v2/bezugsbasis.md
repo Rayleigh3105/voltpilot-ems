@@ -333,7 +333,9 @@ offene Anstöße gelten als beantwortet (`beendet`); Protokoll `bezugsbasis_been
 Kennzahl eine neue Basis bekommen (B1). **Archivierung der Kennzahl** beendet die laufende Basis am Archivierungstag
 mit Grund `nicht_mehr_anwendbar` (Begründung „Kennzahl archiviert“) in derselben Transaktion; ohne Basis geschieht
 nichts (R10). Ein Vergleich danach sagt `nicht_anwendbar`/`basis_beendet` (IP-19) mit dem Satz „Nicht bewertbar:
-Bezugsbasis beendet am …“ (§10).
+Bezugsbasis beendet am …“ (§10). An einer beendeten Basis setzt kein Pfad mehr einen Anstoß (A4, Nachlese 1): weder
+das spätere `kennzahl_archiviert` im Struktur-Läufer noch eine Korrektur eines zitierten Werts — es gibt nichts mehr zu
+beantworten; die Beendigung selbst steht im Protokoll `bezugsbasis_beendet`.
 
 **Übersicht** `GET /api/v1/bezugsbasen/uebersicht` (Recht `bezugsbasis.ansehen` über die Sichtbarkeit der Kennzahl):
 `laufend` · `freigegeben` · `vorlaeufig` · `mit_anstoss` · `ueberpruefung_faellig` und `faellig[]` (am längsten fällig

@@ -345,6 +345,32 @@ class BezugswertEingabeApiTest {
         assertThat(plausibel.body().get("hinweise")).isEmpty();
     }
 
+    /**
+     * AP-17 Nachlese 1: eine an das Wetter-Archiv gebundene Gradtagzahl hat eine Quelle — Eingabe und Berichtigung sind
+     * 409 {@code wetterbezug_vorhanden} wie an einer Kanalbindung, und die Ablehnung schreibt nichts.
+     */
+    @Test
+    void eineWetterGebundeneGradtagzahlNimmtKeineEingabe() throws Exception {
+        Welt w = welt();
+        UUID bz = root.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, periode_art, "
+                + "geltung_art, standort_id, art) VALUES (?, 'BZ-8', 'Gradtagzahl Werk Ahrenberg', 'periodenwert', 'Kd', "
+                + "'monat', 'standort', ?, 'gradtagzahl') RETURNING id", UUID.class, w.mandant(), w.standort());
+        root.update("INSERT INTO bezugsgroesse_wetterbezug (tenant_id, bezugsgroesse_id, von, actor_name, actor_art) "
+                + "VALUES (?, ?, DATE '2025-10-01', 'Jonas Wendlinger', 'kunde')", w.mandant(), bz);
+        String vorher = zustand(w);
+
+        for (Antwort a : List.of(
+                ruf(w.ines(), HttpMethod.POST, PFAD + "/" + bz + "/werte", Map.of("periode", "2025-10", "wert", "412")),
+                ruf(w.ines(), HttpMethod.POST, PFAD + "/" + bz + "/werte/2025-10/berichtigung",
+                        Map.of("wert", "398", "begruendung", BEGRUENDUNG)))) {
+            assertThat(a.status()).as(String.valueOf(a.body())).isEqualTo(409);
+            assertThat(a.body().path("code").asText()).isEqualTo("wetterbezug_vorhanden");
+            assertThat(a.body().path("message").asText()).isEqualTo("Diese Gradtagzahl bezieht ihr Wetter von VoltPilot. "
+                    + "Werte werden hier nicht eingegeben oder importiert; lösen Sie zuerst den Wetterbezug.");
+        }
+        assertThat(zustand(w)).as("die Ablehnung schreibt nichts").isEqualTo(vorher);
+    }
+
     // ================================================================ Mandantenzaun
 
     /** Ein fremder Kundenbereich sieht weder die Bezugsgröße noch den Vorschlag: 404, nie 403. */

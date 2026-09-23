@@ -273,6 +273,49 @@ class UemsBezugsbasisAnstossTest {
                 .containsExactly("nicht_mehr_anwendbar");
     }
 
+    /**
+     * Nachlese 1 (A4, §15): die Archivierungs-Naht der Kennzahl ({@link BezugsbasisPflegeRepository#beiArchivierung}, wie
+     * {@code KennzahlService.archivieren} sie in seiner Transaktion ruft) beendet die Basis am Archivierungstag und
+     * beantwortet den offenen Anstoß mit {@code beendet}. Danach setzt weder der Struktur-Läufer (sein
+     * {@code kennzahl_archiviert}) noch eine Korrektur des zitierten Werts (Pfad 1) einen neuen, offenen Anstoß.
+     */
+    @Test
+    void anEinerBeendetenBasisSetztKeinPfadEinenOffenenAnstoss() {
+        Kunde k = kunde("Beendet");
+        UUID kz1 = kennzahl(k, "KZ-0001");
+        UUID bb2 = basis(k, kz1);
+        UUID fassung1 = fassung(k, bb2, 1, freigegeben(GRUNDLAGE_R7));
+        assertThat(pfadEins(BezugsbasisAnstoss.mitSchalter(true), korrektur(k, "K-2026-0007", KorrekturKaskade.FREIGEGEBEN),
+                List.of(neu(kz1, "KZ-0001", 2)))).hasSize(1);
+
+        Instant am = Instant.parse("2027-02-01T08:03:00Z");
+        long archiv = root.queryForObject("INSERT INTO kennzahl_aenderung (tenant_id, kennzahl_id, art, gilt_ab, rueckwirkend, "
+                + "actor_sub, actor_name, actor_art, created_at) VALUES (?, ?, 'kennzahl_archiviert', ?, false, 'IK', 'Ines', "
+                + "'kunde', ?) RETURNING id", Long.class, k.tenant(), kz1, ts("2027-02-01T08:03:00Z"), Timestamp.from(am));
+        TenantContext.set(k.tenant());
+        new BezugsbasisPflegeRepository(app, new com.fasterxml.jackson.databind.ObjectMapper()).beiArchivierung(k.tenant(),
+                kz1, LocalDate.ofInstant(am, ZONE), am, new ProtokollAkteur("IK", "Ines Kaltenbach", "energiemanager", "kunde"));
+        TenantContext.clear();
+        assertThat(root.queryForMap("SELECT gilt_bis::text AS gilt_bis, beendet_grund FROM bezugsbasis_fassung WHERE id = ?",
+                fassung1)).containsEntry("gilt_bis", "2027-02-01").containsEntry("beendet_grund", "nicht_mehr_anwendbar");
+        assertThat(root.queryForList("SELECT antwort FROM bezugsbasis_anstoss WHERE fassung_id = ?", String.class, fassung1))
+                .containsExactly("beendet");
+
+        // Pfad 2: der Läufer liest die Archivierung — die Fassung gilt am Archivierungstag noch, die Basis ist beendet.
+        BezugsbasisAnstoss.StrukturLauf l = BezugsbasisAnstoss.mitSchalter(true).strukturLauf(admin,
+                Instant.parse("2027-02-01T08:05:00Z"), 200);
+        assertThat(l.gescheitert()).isEmpty();
+        assertThat(gelesen("kennzahl_aenderung", archiv)).isEqualTo("ohne_bezugsbasis");
+        // Pfad 1: eine neue Korrektur desselben zitierten Werts.
+        assertThat(pfadEins(BezugsbasisAnstoss.mitSchalter(true), korrektur(k, "K-2026-0008", KorrekturKaskade.FREIGEGEBEN),
+                List.of(neu(kz1, "KZ-0001", 3)))).isEmpty();
+        assertThat(anstoesse(fassung1)).isOne();
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_anstoss WHERE fassung_id = ? AND antwort IS NULL",
+                Integer.class, fassung1)).isZero();
+        assertThat(root.queryForList("SELECT art FROM bezugsbasis_aenderung WHERE bezugsbasis_id = ? ORDER BY created_at, id",
+                String.class, bb2)).containsExactly("anstoss_gesetzt", "bezugsbasis_beendet");
+    }
+
     @Test
     void schalterAusPfadZweiSetztNurDasWasserzeichenUndHoltNichtsNach() {
         Kunde k = kunde("Schalter 2");

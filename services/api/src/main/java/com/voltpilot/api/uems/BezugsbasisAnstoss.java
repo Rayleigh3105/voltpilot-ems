@@ -49,6 +49,11 @@ import org.springframework.stereotype.Component;
  *       Ein Wortlaut-Faktor löst nie etwas aus (V3). Eine Änderung vor der Freigabe steckt schon in der Grundlage.</li>
  * </ul>
  *
+ * <p><b>Beendete Basis</b> (A4, §15 Pflege; Nachlese 1): beide Pfade übergehen jede Fassung einer Basis mit
+ * {@code beendet_am} — ein Anstoß verlangt eine Antwort, an einer beendeten Basis gibt es keine mehr. Beenden (F4) und
+ * die Archivierungs-Naht der Kennzahl beantworten die offenen Anstöße selbst mit {@code beendet}; was danach gelesen
+ * wird, setzt keinen neuen. Die Historie trägt die Beendigung im Protokoll {@code bezugsbasis_beendet}.
+ *
  * <p><b>Schalter</b> {@value #SCHALTER} (Vorgabe AN): aus → Pfad 1 schweigt, Pfad 2 liest weiter und setzt das
  * Wasserzeichen mit dem Urteil {@code abgeschaltet} — nichts wird nachgeholt. Pfad 2 läuft nur, solange der
  * Struktur-Läufer läuft (Schalter der Berichte, {@code berichte.enabled} und {@code berichte.struktur.enabled}).
@@ -426,7 +431,8 @@ public class BezugsbasisAnstoss {
     /**
      * Die freigegebenen, zur Zeit der Änderung noch geltenden Fassungen, die das geänderte Objekt verweisen — über einen
      * Faktor (nie Wortlaut), eine Variable oder die Kennzahl der Basis. Nur Fassungen, die VOR der Änderung freigegeben
-     * wurden.
+     * wurden, und nur an einer nicht beendeten Basis (A4) — die Archivierungs-Naht beendet die Basis der Kennzahl schon
+     * in ihrer Transaktion, ein späteres {@code kennzahl_archiviert} trifft darum keine Fassung mehr.
      */
     private static List<Fassung> getroffen(Connection con, Zeile z) throws SQLException {
         String text = (z.alt() == null ? "" : z.alt().toString()) + " " + (z.neu() == null ? "" : z.neu().toString());
@@ -519,7 +525,7 @@ public class BezugsbasisAnstoss {
               FROM bezugsbasis_fassung f
               JOIN bezugsbasis b ON b.id = f.bezugsbasis_id AND b.tenant_id = f.tenant_id
               JOIN kennzahl k ON k.id = b.kennzahl_id AND k.tenant_id = b.tenant_id
-             WHERE f.tenant_id = ? AND f.freigabe_status = 'freigegeben'
+             WHERE f.tenant_id = ? AND f.freigabe_status = 'freigegeben' AND b.beendet_am IS NULL
             """;
 
     private static List<Fassung> freigegebene(Connection con, UUID tenant) throws SQLException {

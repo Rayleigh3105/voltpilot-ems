@@ -327,6 +327,18 @@ class BezugsdatenImportUebernahmeApiTest {
         assertThat(anzahl(w,"bezugsdaten_import")).isZero();
     }
 
+    /** AP-17 Nachlese 1: eine an das Wetter-Archiv gebundene Gradtagzahl nimmt keinen Import — 409, nichts geschrieben. */
+    @Test void wetterbezugSperrtDieCsvUebernahmeWieEineKanalbindung() throws Exception {
+        Welt w=welt();
+        UUID b=root.queryForObject("UPDATE bezugsgroesse SET art='gradtagzahl',einheit='Kd',name='Gradtagzahl Werk' WHERE tenant_id=? RETURNING id",UUID.class,w.mandant());
+        root.update("INSERT INTO bezugsgroesse_wetterbezug (tenant_id,bezugsgroesse_id,von,actor_name,actor_art) VALUES (?,?,?,'Jonas Wendlinger','kunde')",w.mandant(),b,java.sql.Date.valueOf(java.time.YearMonth.parse(monat).atDay(1)));
+        JsonNode antwort=importieren(w,csv("412","Kd"),Map.of(),null,null,409);
+        assertThat(antwort.path("code").asText()).isEqualTo("wetterbezug_vorhanden");
+        assertThat(antwort.path("message").asText()).isEqualTo("Diese Gradtagzahl bezieht ihr Wetter von VoltPilot. Werte werden hier nicht eingegeben oder importiert; lösen Sie zuerst den Wetterbezug.");
+        assertThat(anzahl(w,"bezugsgroesse_wert")).isZero();
+        assertThat(anzahl(w,"bezugsdaten_import")).isZero();
+    }
+
     private String csv(String betrag,String einheit) { return "Periode;Menge;Einheit\n"+monat+";"+betrag+";"+einheit+"\n"; }
     private Welt welt() {
         UUID t=root.queryForObject("INSERT INTO tenant(name) VALUES ('IP13') RETURNING id",UUID.class);

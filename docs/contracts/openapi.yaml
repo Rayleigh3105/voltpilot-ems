@@ -11119,6 +11119,10 @@ paths:
         `wiederholung`, nichts geschrieben. Ein unplausibler, gültiger Wert (eine Betriebszeit
         über der Stundenzahl der Periode, bei einer Messstelle als Bezug) geht durch und trägt
         nur den Hinweis `wert_unplausibel` (U6). Eine Ablehnung schreibt nichts.
+        Eine an das Wetter-Archiv gebundene Gradtagzahl (Zeile in `bezugsgroesse_wetterbezug`) hat
+        eine Quelle: 409 `wetterbezug_vorhanden` mit dem Satz „Diese Gradtagzahl bezieht ihr Wetter
+        von VoltPilot. Werte werden hier nicht eingegeben oder importiert; lösen Sie zuerst den
+        Wetterbezug.“ (AP-17 Nachlese 1, wie `kanal_gebunden` an einer Kanalbindung).
       requestBody:
         required: true
         content:
@@ -11160,7 +11164,9 @@ paths:
         `vorschlag` - der Wert bleibt, wie er ist, der Vorschlag steht als `vorschlag` am Wert;
         freigegeben wird über `POST /api/v1/korrekturen/{kennung}/freigeben`, nie von der
         Erstellerin (403 `zweite_person_noetig`). Erst die Freigabe schreibt die Fassung - mit
-        Urheber UND Freigeber - und das Ereignis. Eine Ablehnung schreibt nichts.
+        Urheber UND Freigeber - und das Ereignis. Eine Ablehnung schreibt nichts. An einer
+        wetter-gebundenen Gradtagzahl 409 `wetterbezug_vorhanden` wie beim Eingeben; ebenso die
+        Freigabe eines älteren Vorschlags nach dem Binden.
       requestBody:
         required: true
         content:
@@ -12447,6 +12453,8 @@ paths:
         muss noch gelten. Konflikte bleiben ohne Entscheidung erhalten; ersetzen braucht eine
         Begründung. Teilübernahme braucht den exakten Bestätigungssatz. Bei Vier-Augen entstehen
         Berichtigungs-Vorschläge; Erstwerte wirken sofort. Abbruch schreibt weder Werte noch Import-Zeilen.
+        Eine übernommene Zeile auf eine an das Wetter-Archiv gebundene Gradtagzahl bricht mit 409
+        `wetterbezug_vorhanden` ab (AP-17 Nachlese 1; eine Bezugsgröße, eine Quelle).
       requestBody:
         required: true
         content:
@@ -12471,7 +12479,7 @@ paths:
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { description: Offener Vorschlag oder gleichzeitig veränderter Wert. }
+        "409": { description: "Offener Vorschlag, gleichzeitig veränderter Wert oder `wetterbezug_vorhanden` (Gradtagzahl mit Wetterbezug)." }
         "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
   /api/v1/bezugsdaten/importe/{kennung}:
     get:

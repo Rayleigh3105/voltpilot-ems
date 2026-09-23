@@ -30,6 +30,8 @@ Pfad 2 hängt als Setter an `StrukturAenderungLaeufer` (läuft also nur mit den 
 Fläche/Standort/Anlage (`ort_aenderung`), Prozess/Kostenstelle (`messstelle_aenderung`, Text-Treffer der ID),
 `kennzahl_archiviert`, Bezugsgröße bearbeitet (nicht nur Name) / archiviert; nie Wortlaut; nur Zeilen NACH der Freigabe.
 Schalter `voltpilot.uems.bezugsbasis.enabled`: aus → Pfad 2 schreibt nur Wasserzeichen `abgeschaltet`.
+Beide Pfade lesen nur Fassungen von Basen mit `beendet_am IS NULL` (A4, Nachlese 1): die Archivierungs-Naht beendet
+die Basis in ihrer Transaktion, ihr `kennzahl_archiviert` urteilt danach `ohne_bezugsbasis`.
 ⚠ `bezugsbasis_vokabular()` steht jetzt in ZWEI Migrationen — wer sie weitet, nimmt `('protokoll', 13, 'anstoss_gesetzt')` mit.
 ⚠ A5 (Weitergabe an Leistungsvergleichs-Stände) fehlt: Quellenart `bezugsbasis` kommt mit IP-21a, die Weitergabe mit
 IP-23 (`Gesetzt`-Rückgabe beider Pfade). Nachweis: `UemsBezugsbasisAnstossTest`.
