@@ -30,6 +30,7 @@ import type {
   KostenstelleEnergiePeriode,
   KostenstelleEnergiePosten,
   MessstelleProzesse,
+  MessstelleVerteilung,
   MessstelleRegisterZeile,
   MessstelleWerte,
   MessstelleWerteRaster,
@@ -390,6 +391,56 @@ function mitDoppelt(b: BlockBild, e: KostenstelleEnergie): BlockBild {
         .map((x) => enthaltenSatz(e, x, postenVon(e, x.teil)));
       return saetze.length === 0 ? p : { ...p, doppelt: einmal(saetze) };
     }),
+  };
+}
+
+export const SETZEN_DOPPELT_GESPEICHERT = 'Die Verteilung ist gespeichert.';
+export const SETZEN_DOPPELT_KOSTENSTELLE = `${UEMS_KOSTENSTELLE} {kostenstelle} ab {tag}`;
+
+/** Der Hinweis nach dem Setzen einer Verteilung: je Ziel-Kostenstelle mit Befund ihre Sätze. */
+export interface SetzenDoppeltBild {
+  titel: string;
+  gespeichert: string;
+  kostenstellen: { id: string; kopf: string; saetze: string[] }[];
+  hinweis: string | null;
+}
+
+/**
+ * Die Antwort des PUT `…/verteilung` als Hinweis (Captain „warnen, nicht ablehnen“): dieselben Sätze wie am Posten —
+ * der Satz der Route, und hinter der gesetzten Messstelle ihr gespeicherter Anteil, wenn er unter 100 % liegt. Die Route
+ * prüft genau einen Tag (`am`), darum steht keine Tagesspanne hinter dem Satz. `null` = nichts zählt doppelt (oder das
+ * Feld fehlt): der Dialog schließt wie bisher.
+ */
+export function setzenDoppeltBild(antwort: MessstelleVerteilung, namen: Readonly<Record<string, string>> = {}): SetzenDoppeltBild | null {
+  const befunde = (antwort.doppelzaehlung ?? []).filter((d) => d.enthalten.length > 0 || d.nicht_pruefbar.length > 0);
+  if (befunde.length === 0) return null;
+  const anteilAm = (kostenstelle: string, am: string): string | null => {
+    const a = antwort.anteile.find(
+      (x) => x.kostenstelle.id === kostenstelle && x.gueltig_ab <= am && (x.gueltig_bis === null || x.gueltig_bis >= am),
+    );
+    // Der Dezimaltext der Route als Angabe (ohne Nullen hinter dem Komma), nie gerechnet; 100 % trägt keinen Anteil.
+    const text = a?.anteil_prozent.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+    return text && text !== '100' ? text.replace('.', ',') : null;
+  };
+  return {
+    titel: DOPPELT_TITEL,
+    gespeichert: SETZEN_DOPPELT_GESPEICHERT,
+    kostenstellen: befunde.map((d) => {
+      const anteil = anteilAm(d.kostenstelle.id, d.am);
+      const saetze = [
+        ...d.enthalten.map((x) =>
+          x.teil === antwort.kennzeichen && anteil ? `${x.satz} ${fuelle(DOPPELT_ANTEIL, { anteil })}` : x.satz,
+        ),
+        ...d.nicht_pruefbar.map((n) => n.satz),
+      ];
+      const name = namen[d.kostenstelle.id];
+      return {
+        id: d.kostenstelle.id,
+        kopf: fuelle(SETZEN_DOPPELT_KOSTENSTELLE, { kostenstelle: name ? `${d.kostenstelle.kennzeichen} ${name}` : d.kostenstelle.kennzeichen, tag: tag(d.am) }),
+        saetze: einmal(saetze),
+      };
+    }),
+    hinweis: befunde.some((d) => d.enthalten.length > 0) ? DOPPELT_HINWEIS : null,
   };
 }
 

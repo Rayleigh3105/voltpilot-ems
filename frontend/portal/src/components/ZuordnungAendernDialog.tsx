@@ -14,6 +14,7 @@ import {
   type StandorteAmStichtag,
 } from '../api';
 import { UEMS_KOSTENSTELLE } from '../glossar';
+import { setzenDoppeltBild, type SetzenDoppeltBild } from '../kostenstellenUebersicht';
 import {
   anlageOptionen,
   anlageWahlen,
@@ -114,6 +115,8 @@ export function ZuordnungAendernDialog({
   const [server, setServer] = useState<Partial<Record<AendernFeld, string>>>({});
   const [allgemein, setAllgemein] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Nach dem Setzen einer Verteilung mit Befund: gespeichert ist schon, der Dialog zeigt nur noch den Hinweis.
+  const [doppelt, setDoppelt] = useState<SetzenDoppeltBild | null>(null);
 
   const pruefung = useMemo(() => aendernPruefen(art, form, bestand, kataloge), [art, form, bestand, kataloge]);
   // „Nichts zu ändern“ steht sofort am Feld; Pflichtfelder erst nach dem ersten Senden.
@@ -160,7 +163,14 @@ export function ZuordnungAendernDialog({
       if (art === 'ort') await api.messstelleOrtAendern(id, ortAbTagAnfrage(form, bestand));
       else if (art === 'stellung') await api.messstelleStellungAendern(id, stellungAbTagAnfrage(form, bestand));
       else if (art === 'prozesse') await api.messstelleProzesseSetzen(id, prozesseAbTagAnfrage(form));
-      else await api.messstelleVerteilungSetzen(id, verteilungAbTagAnfrage(form, bestand));
+      else {
+        const antwort = await api.messstelleVerteilungSetzen(id, verteilungAbTagAnfrage(form, bestand));
+        const bild = setzenDoppeltBild(antwort, Object.fromEntries(kataloge.kostenstellen.map((k) => [k.id, k.name])));
+        if (bild) {
+          setDoppelt(bild);
+          return;
+        }
+      }
       onGespeichert(art, form.tag);
     } catch (err) {
       const a = aendernAblehnung(
@@ -186,6 +196,41 @@ export function ZuordnungAendernDialog({
       'anteile',
       form.anteile.map((a, j) => (j === i ? { ...a, ...teil } : a)),
     );
+
+  if (doppelt) {
+    // Warnen, nicht ablehnen: das Setzen ist geschehen; „Verstanden“ (und jedes Schließen) meldet es wie ohne Befund.
+    const verstanden = () => onGespeichert(art, form.tag);
+    return (
+      <Modal
+        open
+        onClose={verstanden}
+        title={AENDERN_TITEL[art]}
+        footer={<Button onClick={verstanden}>{KNOPF.verstanden}</Button>}
+      >
+        <div className="vp-sd vp-za" data-testid="verteilung-doppelzaehlung">
+          <p className="vp-fd-name">
+            {messstelle.kennzeichen} {messstelle.name}
+          </p>
+          <p className="vp-za-gespeichert">{doppelt.gespeichert}</p>
+          <section className="vp-za-doppelt" role="note" aria-label={doppelt.titel}>
+            <h4>{doppelt.titel}</h4>
+            {doppelt.kostenstellen.map((k) => (
+              <div key={k.id} className="vp-za-doppelt-ks">
+                <p className="vp-za-wert">{k.kopf}</p>
+                <ul>
+                  {k.saetze.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {doppelt.hinweis && <p className="vp-za-neben">{doppelt.hinweis}</p>}
+          </section>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       open

@@ -2,11 +2,12 @@ import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Messstelle, type MessstelleWerte, type Protokoll } from '../api';
+import { api, ApiError, type Messstelle, type MessstelleVerteilung, type MessstelleWerte, type Protokoll } from '../api';
 import { ebenenAktiv } from '../ebenenNav';
 import { hashForRoute, messstelleRoute, parseRoute, standortMessstellenRoute } from '../nav';
 import {
   EINFUEHRUNG_TAG,
+  KOSTENSTELLE_IDS,
   kostenstellenAhrenberg,
   MS_IDS,
   ms06,
@@ -384,4 +385,79 @@ it('W14: eine rückwirkende Zuordnung zeigt Thomas den Weg statt des Eintragen-K
   waehleTag('Gilt ab *', '2026-10-19');
   expect(dialog.querySelector('button[type="submit"]')).toBeNull();
   expect(within(dialog).getByRole('note')).toHaveTextContent('Jonas Wendlinger');
+});
+
+describe('MessstelleSeite · Kostenstellen ändern — Hinweis auf doppelte Zählung (Folge PR 1127, Captain „warnen, nicht ablehnen“)', () => {
+  /** Die Antwort des PUT: die gesetzten Anteile ab `gueltig_ab`, dazu der Befund der Route. */
+  function antwort(body: { gueltig_ab: string }, doppelzaehlung: MessstelleVerteilung['doppelzaehlung']): MessstelleVerteilung {
+    return {
+      ...verteilungVon(ms06()),
+      anteile: [
+        { id: 'neu-1', kostenstelle: { id: KOSTENSTELLE_IDS.k4100, kennzeichen: '4100' }, name: 'Spritzguss', anteil_prozent: '70', gueltig_ab: body.gueltig_ab, gueltig_bis: null, endet_mit_kostenstelle: false },
+        { id: 'neu-2', kostenstelle: { id: KOSTENSTELLE_IDS.k4200, kennzeichen: '4200' }, name: 'Montage', anteil_prozent: '30', gueltig_ab: body.gueltig_ab, gueltig_bis: null, endet_mit_kostenstelle: false },
+      ],
+      ...(doppelzaehlung === undefined ? {} : { doppelzaehlung }),
+    };
+  }
+
+  /** MS-06 von 100 % Spritzguss auf 70 % Spritzguss und 30 % Montage — bis vor „eintragen“. */
+  async function setze7030() {
+    render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Kostenstellen ändern ab …' }, WARTEN));
+    const dialog = screen.getByRole('dialog', { name: 'Kostenstellen ändern' });
+    fireEvent.change(within(dialog).getByLabelText('Anteil (%)'), { target: { value: '70' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Kostenstelle hinzufügen' }));
+    fireEvent.click(within(dialog).getByRole('combobox', { name: 'Kostenstelle 2' }));
+    fireEvent.click(await screen.findByRole('option', { name: /^4200/ }, WARTEN));
+    fireEvent.click(within(dialog).getByRole('button', { name: /eintragen$/ }));
+    return dialog;
+  }
+
+  const DOPPELT_4100 = (am: string): NonNullable<MessstelleVerteilung['doppelzaehlung']> => [
+    {
+      kostenstelle: { id: KOSTENSTELLE_IDS.k4100, kennzeichen: '4100' },
+      am,
+      enthalten: [
+        { teil: 'MS-06', summe: 'MS-20', umfang: 'ganz', kette: ['MS-20', 'MS-06'], zeitraeume: [{ von: am, bis: am }], satz: 'MS-06 ist bereits in MS-20 enthalten' },
+      ],
+      nicht_pruefbar: [],
+    },
+  ];
+
+  it('mit Befund: gespeichert, der Dialog bleibt mit dem Satz wie am Posten, „Verstanden“ schließt', async () => {
+    verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+    const put = vi
+      .spyOn(api, 'messstelleVerteilungSetzen')
+      .mockImplementation(async (_id, body) => antwort(body, DOPPELT_4100(body.gueltig_ab)));
+    await setze7030();
+
+    const hinweis = await screen.findByTestId('verteilung-doppelzaehlung', undefined, WARTEN);
+    expect(put).toHaveBeenCalledTimes(1);
+    const tag = put.mock.calls[0][1].gueltig_ab.split('-').reverse().join('.');
+    expect(hinweis).toHaveTextContent('Die Verteilung ist gespeichert.');
+    expect(hinweis).toHaveTextContent(`Kostenstelle 4100 Spritzguss ab ${tag}`);
+    expect(within(hinweis).getByRole('listitem')).toHaveTextContent(/^MS-06 ist bereits in MS-20 enthalten \(Anteil 70 %\)$/);
+    expect(hinweis).not.toHaveTextContent('4200');
+    expect(hinweis).toHaveTextContent('Die Zahlen bleiben, wie sie gemessen und verteilt sind.');
+    // Nichts wird zurückgenommen: kein zweiter Aufruf, kein Abbrechen mehr.
+    const dialog = screen.getByRole('dialog', { name: 'Kostenstellen ändern' });
+    expect(within(dialog).queryByRole('button', { name: 'Abbrechen' })).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Verstanden' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), WARTEN);
+    expect(await within(karte('organisation')).findByText(/^Verteilung ab .* eingetragen/, undefined, WARTEN)).toBeInTheDocument();
+    expect(put).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['leeres doppelzaehlung[]', [] as NonNullable<MessstelleVerteilung['doppelzaehlung']>],
+    ['fehlendes Feld', undefined],
+  ])('ohne Befund (%s): der Dialog schließt sofort wie bisher', async (_fall, doppelzaehlung) => {
+    verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+    vi.spyOn(api, 'messstelleVerteilungSetzen').mockImplementation(async (_id, body) => antwort(body, doppelzaehlung));
+    await setze7030();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), WARTEN);
+    expect(screen.queryByTestId('verteilung-doppelzaehlung')).toBeNull();
+    expect(await within(karte('organisation')).findByText(/^Verteilung ab .* eingetragen/, undefined, WARTEN)).toBeInTheDocument();
+  });
 });

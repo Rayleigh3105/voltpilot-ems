@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   EINFUEHRUNG_TAG,
+  KOSTENSTELLE_IDS,
   kostenstellenAhrenberg,
   MS_IDS,
   ms06,
@@ -331,6 +332,7 @@ async function cloud(
     berechnet = false,
     ohneReihe = null as OhneReihe | null,
     vergleich = false,
+    doppelt = false,
   } = {},
 ): Promise<Gesendet[]> {
   const gesendet: Gesendet[] = [];
@@ -421,7 +423,17 @@ async function cloud(
           }),
         ],
       };
-      return route.fulfill(json(verteilungGespeichert));
+      // `doppelt`: der PUT meldet (nur in seiner Antwort, nie beim GET) MS-06 als schon in MS-20 enthalten — PR 1127.
+      const hinweis: MessstelleVerteilung['doppelzaehlung'] = doppelt
+        ? [{
+            kostenstelle: { id: KOSTENSTELLE_IDS.k4100, kennzeichen: '4100' },
+            am: body.gueltig_ab,
+            enthalten: [{ teil: messstelle.kennzeichen, summe: 'MS-20', umfang: 'ganz', kette: ['MS-20', messstelle.kennzeichen],
+              zeitraeume: [{ von: body.gueltig_ab, bis: body.gueltig_ab }], satz: `${messstelle.kennzeichen} ist bereits in MS-20 enthalten` }],
+            nicht_pruefbar: [],
+          }]
+        : [];
+      return route.fulfill(json({ ...verteilungGespeichert, doppelzaehlung: hinweis }));
     }
     if (pfad.endsWith('/aenderungen')) {
       const protokoll = pfad.includes(MS_IDS.ms10) || pfad.includes(MS_IDS.ms16) || pfad.includes(MS_IDS.ms21)
@@ -639,6 +651,34 @@ test('F10 · Verteilen: 70/30 ergibt live 100 %, 90 % sperrt das Eintragen mit d
   await expect(dialog.getByRole('button', { name: 'Verteilung ab 20.10.2026 eintragen' })).toBeDisabled();
   await messeUndFotografiere(page, breite, 'f10-verteilung-90-gesperrt', { dialog: true });
   expect(gesendet).toEqual([]);
+});
+
+test('Doppelzählung beim Setzen (Folge PR 1127): gespeichert, der Dialog nennt den Satz wie am Posten, „Verstanden“ schließt', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  const gesendet = await cloud(page, { doppelt: true });
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  await page.getByRole('button', { name: 'Kostenstellen ändern ab …' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Kostenstellen ändern' });
+  await dialog.getByLabel('Anteil (%)').first().fill('70');
+  await dialog.getByRole('button', { name: 'Kostenstelle hinzufügen' }).click();
+  const liste = await listeVon(page, dialog.getByRole('combobox', { name: 'Kostenstelle 2' }));
+  await liste.getByRole('option', { name: /^4200 Montage/ }).click();
+  await dialog.getByRole('button', { name: 'Verteilung ab 20.10.2026 eintragen' }).click();
+
+  const hinweis = dialog.getByTestId('verteilung-doppelzaehlung');
+  await expect(hinweis).toContainText('Die Verteilung ist gespeichert.');
+  await expect(hinweis).toContainText('Kostenstelle 4100 Spritzguss ab 20.10.2026');
+  await expect(hinweis.getByRole('listitem')).toHaveText(['MS-06 ist bereits in MS-20 enthalten (Anteil 70 %)']);
+  await expect(dialog.getByRole('button', { name: 'Abbrechen' })).toHaveCount(0);
+  await messeUndFotografiere(page, breite, 'doppelt-beim-setzen', { dialog: true });
+
+  await dialog.getByRole('button', { name: 'Verstanden' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByTestId('karte-organisation')).toContainText('Verteilung ab 20.10.2026 eingetragen');
+  await messeUndFotografiere(page, breite, 'doppelt-nach-verstanden');
+  expect(gesendet.map((g) => `${g.methode} ${g.pfad}`)).toEqual([`PUT /api/v1/messstellen/${MS_IDS.ms06}/verteilung`]);
 });
 
 test('F12 · das Ziel 9000 zeigt sein gemeinsames Ende mit der Kostenstelle', async ({ page }, info) => {

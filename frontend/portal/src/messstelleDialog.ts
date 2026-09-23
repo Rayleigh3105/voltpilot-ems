@@ -78,6 +78,7 @@ export const KNOPF = {
   nebengroesse: `${UEMS_NEBENGROESSE} hinzufügen`,
   entfernen: 'Entfernen',
   speichert: 'Speichern …',
+  verstanden: 'Verstanden',
 } as const;
 
 /** Die Sätze der Pflichtfelder — sie nennen, was fehlt, und den Weg. */

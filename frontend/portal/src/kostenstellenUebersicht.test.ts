@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { KostenstelleEnergie, KostenstelleEnergiePeriode } from './api';
+import type { KostenstelleEnergie, KostenstelleEnergiePeriode, MessstelleVerteilung } from './api';
 import * as MODUL from './kostenstellenUebersicht';
 import {
   ALLE_NICHT_ABRUFBAR,
+  DOPPELT_HINWEIS,
+  DOPPELT_TITEL,
+  setzenDoppeltBild,
   GRUND_SATZ,
   KEINE_SUMME,
   NICHT_ABRUFBAR,
@@ -297,5 +300,76 @@ describe('UEMS AP-13 IP-9 · Reiter und Adresse', () => {
     const s = sprungziel({ art: 'kostenstelle', kennzeichen: '4200', periode: 'monat', am: '2026-10-01' });
     expect(reiterAus(s?.hash ?? '')).toBe('kostenstellen');
     expect(hervorAus(s?.hash ?? '')).toBe('4200');
+  });
+});
+
+describe('setzenDoppeltBild — der Hinweis nach dem Setzen einer Verteilung (Folge PR 1127)', () => {
+  const K4100 = { id: 'k-4100', kennzeichen: '4100' };
+  const K4200 = { id: 'k-4200', kennzeichen: '4200' };
+  const anteil = (k: { id: string; kennzeichen: string }, prozent: string) => ({
+    id: `a-${k.kennzeichen}`,
+    kostenstelle: k,
+    name: k.kennzeichen,
+    anteil_prozent: prozent,
+    gueltig_ab: '2026-11-01',
+    gueltig_bis: null,
+    endet_mit_kostenstelle: false,
+  });
+  const enthalten = (teil: string, summe: string) => ({
+    teil,
+    summe,
+    umfang: 'ganz' as const,
+    kette: [summe, teil],
+    zeitraeume: [{ von: '2026-11-01', bis: '2026-11-01' }],
+    satz: `${teil} ist bereits in ${summe} enthalten`,
+  });
+  const antwort = (kennzeichen: string, doppelzaehlung?: MessstelleVerteilung['doppelzaehlung']): MessstelleVerteilung => ({
+    messstelle_id: 'ms',
+    kennzeichen,
+    am: null,
+    zustand: null,
+    anteile: [anteil(K4100, '70'), anteil(K4200, '30')],
+    ...(doppelzaehlung === undefined ? {} : { doppelzaehlung }),
+  });
+
+  it('ohne Befund null: Feld fehlt, leer, oder nur Einträge ohne Satz', () => {
+    expect(setzenDoppeltBild(antwort('MS-06'))).toBeNull();
+    expect(setzenDoppeltBild(antwort('MS-06', []))).toBeNull();
+    expect(setzenDoppeltBild(antwort('MS-06', [{ kostenstelle: K4200, am: '2026-11-01', enthalten: [], nicht_pruefbar: [] }]))).toBeNull();
+  });
+
+  it('der Satz der Route, der Anteil nur hinter der gesetzten Messstelle, je Kostenstelle mit Namen und Tag', () => {
+    const bild = setzenDoppeltBild(
+      antwort('MS-20', [
+        { kostenstelle: K4100, am: '2026-11-01', enthalten: [enthalten('MS-06', 'MS-20'), enthalten('MS-20', 'MS-21')], nicht_pruefbar: [] },
+        {
+          kostenstelle: K4200,
+          am: '2026-11-01',
+          enthalten: [],
+          nicht_pruefbar: [{ messstelle: 'MS-22', grund: 'formel_kreis', kette: ['MS-22', 'MS-22'], satz: 'Ob MS-22 doppelt zählt, ist nicht prüfbar.' }],
+        },
+      ]),
+      { 'k-4100': 'Spritzguss' },
+    );
+    expect(bild).toEqual({
+      titel: DOPPELT_TITEL,
+      gespeichert: 'Die Verteilung ist gespeichert.',
+      kostenstellen: [
+        { id: 'k-4100', kopf: 'Kostenstelle 4100 Spritzguss ab 01.11.2026', saetze: ['MS-06 ist bereits in MS-20 enthalten', 'MS-20 ist bereits in MS-21 enthalten (Anteil 70 %)'] },
+        { id: 'k-4200', kopf: 'Kostenstelle 4200 ab 01.11.2026', saetze: ['Ob MS-22 doppelt zählt, ist nicht prüfbar.'] },
+      ],
+      hinweis: DOPPELT_HINWEIS,
+    });
+  });
+
+  it('100 % trägt keinen Anteil; nur „nicht prüfbar“ trägt keinen Hinweis auf doppelte Mengen', () => {
+    const voll = { ...antwort('MS-06'), anteile: [anteil(K4100, '100.00')] };
+    expect(setzenDoppeltBild({ ...voll, doppelzaehlung: [{ kostenstelle: K4100, am: '2026-11-01', enthalten: [enthalten('MS-06', 'MS-20')], nicht_pruefbar: [] }] })?.kostenstellen[0].saetze).toEqual([
+      'MS-06 ist bereits in MS-20 enthalten',
+    ]);
+    const kreis = setzenDoppeltBild(
+      antwort('MS-06', [{ kostenstelle: K4100, am: '2026-11-01', enthalten: [], nicht_pruefbar: [{ messstelle: 'MS-06', grund: 'haengt_an_kreis', kette: ['MS-06'], satz: 'nicht prüfbar' }] }]),
+    );
+    expect(kreis?.hinweis).toBeNull();
   });
 });

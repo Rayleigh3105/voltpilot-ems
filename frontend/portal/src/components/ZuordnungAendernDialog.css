@@ -104,3 +104,41 @@
   font-size: var(--vp-c-fs-14);
   overflow-wrap: break-word;
 }
+
+/* Hinweis nach dem Setzen einer Verteilung mit Doppelzählung — Farben wie die Warnung am Posten (Kostenstellen-Sicht). */
+.vp-za-gespeichert {
+  margin: 0;
+}
+
+.vp-za-doppelt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2, 8px);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  background: #fff7ed;
+  color: var(--vp-warn-ink, #b45309);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  min-width: 0;
+}
+
+.vp-za-doppelt h4 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-za-doppelt ul {
+  margin: 2px 0 0;
+  padding-left: 1.25rem;
+}
+
+.vp-za-doppelt li,
+.vp-za-doppelt .vp-za-wert {
+  overflow-wrap: break-word;
+}
+
+.vp-za-doppelt .vp-za-neben {
+  color: inherit;
+}
