@@ -858,7 +858,8 @@ export const darfNachLesen =
 /** Die Anfrage an `GET /api/v1/messstellen/{kennzeichen}/werte` für den Zeitraum des Berichts (Tage einschließlich). */
 export const heuteAnfrage = (b: Pick<Bericht, 'zeitraum_art' | 'zeitraum' | 'zeitzone'>): { raster: 'monat' | 'jahr'; von: string; bis: string } => {
   const z = B.zeitraum(b.zeitraum_art, b.zeitraum, b.zeitzone);
-  return { raster: b.zeitraum_art, von: z.erster_tag, bis: z.letzter_tag };
+  // Eine Datengrundlage (AP-16) liest monatsweise — der „heutige Wert“ gehört zu Monats- und Jahresberichten.
+  return { raster: b.zeitraum_art === 'jahr' ? 'jahr' : 'monat', von: z.erster_tag, bis: z.letzter_tag };
 };
 
 export type HeutigerWert = { art: 'wert' | 'ohne_zahl' | 'nicht_gespeichert' | 'fehler'; text: string };

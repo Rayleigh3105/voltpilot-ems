@@ -2328,6 +2328,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     'components/Messplanung.tsx',
     // IP-24: der Übersichts-Baustein am Unternehmen (Frist, Zahlen, Verantwortliche).
     'components/BewertungBaustein.tsx',
+    // IP-25: der Bewertungsstand — Entwurf, Stände, Revision-Vermerk, Freigabe, PDF/CSV.
+    'components/BewertungStand.tsx',
   ];
   const VERBOTEN = [
     /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,

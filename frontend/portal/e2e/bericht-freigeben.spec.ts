@@ -108,12 +108,14 @@ const aufrufe = (page: Page) =>
   page.evaluate(() => (window as unknown as { __berichtAufrufe: { anlegen: unknown[]; freigeben: string[]; verwerfen: string[] } }).__berichtAufrufe);
 
 test.describe('Bericht anlegen (§5.1)', () => {
-  test('Ines, 10.11.2026 08:55: vier Vorlagen, Werk Ahrenberg, Oktober vorbelegt, eine Kennzahl abgewählt → BR-2026-0001 mit Entwurf', async ({ page }) => {
+  // AP-16 IP-25: Ines trägt `bewertung.abrufen` — die fünfte Karte ist die energetische Bewertung (zuletzt, Datengrundlage).
+  test('Ines, 10.11.2026 08:55: fünf Vorlagen, Werk Ahrenberg, Oktober vorbelegt, eine Kennzahl abgewählt → BR-2026-0001 mit Entwurf', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte&berichte=leer&person=IK', 375, AM_10_11_0850);
     await expect(page.getByText('Es gibt noch keinen Bericht.')).toBeVisible();
     await page.getByTestId('bericht-anlegen-knopf').click();
     const d = page.getByTestId('bericht-anlegen');
-    await expect(d.locator('.vp-bd-karte')).toHaveCount(4);
+    await expect(d.locator('.vp-bd-karte')).toHaveCount(5);
+    await expect(d.locator('.vp-bd-karte').last()).toContainText('Energetische Bewertung');
     await expect(d.locator('.vp-bd-karte').first()).toHaveClass(/is-gewaehlt/);
     await expect(d.locator('.vp-bd-karte').first()).toContainText('Monatsbericht Standort');
     await expect(d.locator('.vp-bd-karte').first()).toContainText('Fassung 1');

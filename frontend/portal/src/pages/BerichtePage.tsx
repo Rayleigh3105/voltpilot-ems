@@ -4,7 +4,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Bericht } from '../api';
-import { ANLEGEN_KNOPF, darf } from '../berichtDialoge';
+import { ANLEGEN_KNOPF, BEWERTUNG_VORLAGE, darf } from '../berichtDialoge';
 import { BerichtAnlegenDialog } from '../components/BerichtAnlegenDialog';
 import { ErrorState, Skeleton } from '../components/States';
 import {
@@ -42,27 +42,32 @@ export function BerichtePage({
   onOeffnen,
   onListe,
   standort = null,
+  onBewertung,
 }: {
   kennung?: string | null;
   onOeffnen: (kennung: string) => void;
   onListe: () => void;
   /** AP-13 IP-2: „Berichte dieses Standorts“; `null` = das Unternehmen. */
   standort?: { id: string; name: string } | null;
+  /** AP-16 IP-25: eine neu angelegte energetische Bewertung öffnet die Seite „Bewertung“ statt der Berichtsseite. */
+  onBewertung?: () => void;
 }) {
   if (kennung) {
     return (
       <BerichtSeite key={kennung} kennung={kennung} onListe={onListe} zurListe={standort ? STANDORT_BERICHTE : undefined} />
     );
   }
-  return <BerichteListe standort={standort} onOeffnen={onOeffnen} />;
+  return <BerichteListe standort={standort} onOeffnen={onOeffnen} onBewertung={onBewertung} />;
 }
 
 function BerichteListe({
   standort,
   onOeffnen,
+  onBewertung,
 }: {
   standort: { id: string; name: string } | null;
   onOeffnen: (kennung: string) => void;
+  onBewertung?: () => void;
 }) {
   const [liste, setListe] = useState<Bericht[] | null>(null);
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
@@ -136,7 +141,8 @@ function BerichteListe({
           standortId={standortId}
           onAngelegt={(b) => {
             setAnlegen(false);
-            onOeffnen(b.kennung);
+            if (b.vorlage === BEWERTUNG_VORLAGE && onBewertung) onBewertung();
+            else onOeffnen(b.kennung);
           }}
           onOeffnen={(kennung) => {
             setAnlegen(false);

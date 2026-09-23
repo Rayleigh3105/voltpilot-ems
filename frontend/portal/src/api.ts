@@ -3049,7 +3049,7 @@ export interface Bericht {
   geltung_art: 'standort' | 'unternehmen';
   geltung_id: string;
   geltung_name: string | null;
-  zeitraum_art: 'monat' | 'jahr';
+  zeitraum_art: 'monat' | 'jahr' | 'datengrundlage';
   zeitraum: string;
   zeitraum_text: string;
   zeitzone: string;
@@ -9417,6 +9417,24 @@ export const api = {
       body: JSON.stringify({ entwurf_datenstand: entwurfDatenstand }),
     }),
   berichtStand: (kennung: string, nr: number) => request<BerichtStand>(`/api/v1/berichte/${kennung}/staende/${nr}`),
+  /**
+   * AP-16 IP-25: die Datei eines Stands (`GET …/staende/{nr}/pdf|csv`, AP-12 IP-10/IP-11) — nur aus dem Abzug, jeder Abruf
+   * protokolliert (`bericht_abgerufen`). Ein Entwurf hat keine Datei (EW4).
+   */
+  berichtDatei: async (kennung: string, nr: number, format: 'pdf' | 'csv'): Promise<Blob> => {
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}/api/v1/berichte/${kennung}/staende/${nr}/${format}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
   /** Verwirft einen offenen Anstoß — die Begründung ist Pflicht (10 bis 500 Zeichen). */
   berichtAnstossVerwerfen: (kennung: string, id: string, begruendung: string) =>
     request<BerichtAnstoss>(`/api/v1/berichte/${kennung}/anstoesse/${id}/verwerfen`, {

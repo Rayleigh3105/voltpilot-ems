@@ -108,12 +108,23 @@ export const KEINE_RECHTE: BerichtRechte = { standorte: new Map(), unternehmen: 
 
 export type Handlung = 'anlegen' | 'freigeben' | 'verwerfen';
 
+/** AP-16: Vorlage und Kennung der energetischen Bewertung (Rechte-Matrix AP-16 §6.1). */
+export const BEWERTUNG_VORLAGE = 'energetische_bewertung';
+export const BEWERTUNG_KENNUNG = 'bewertung.abrufen';
+
 /**
  * Darf die Person die Handlung an dieser Geltung? `rechte = null` heißt: unbekannt — es gibt noch keinen schreibenden Hebel. `geltungId = null` am Standort fragt „an irgendeinem Standort“.
  */
-export const darf = (rechte: BerichtRechte | null, handlung: Handlung, geltungArt: Bericht['geltung_art'], geltungId: string | null): boolean => {
+export const darf = (
+  rechte: BerichtRechte | null,
+  handlung: Handlung,
+  geltungArt: Bericht['geltung_art'],
+  geltungId: string | null,
+  vorlage: string | null = null,
+): boolean => {
   if (rechte === null) return false;
-  const kennung = B.kennung(handlung, geltungArt);
+  // AP-16 §6.1: die energetische Bewertung hat für jede Handlung ihre eigene Kennung (`BerichtRechte.kennung` mit Vorlage).
+  const kennung = vorlage === BEWERTUNG_VORLAGE ? BEWERTUNG_KENNUNG : B.kennung(handlung, geltungArt);
   if (geltungArt === 'unternehmen') return darfInListen(rechte, kennung, null);
   if (geltungId !== null) return darfInListen(rechte, kennung, geltungId);
   return [...rechte.standorte.keys()].some((id) => darfInListen(rechte, kennung, id));
@@ -147,10 +158,10 @@ export interface VorlageKarte {
  * Unternehmens nur mit `bericht.unternehmen` — sonst fehlen sie ganz (§5.5).
  */
 export const vorlageKarten = (rechte: BerichtRechte | null, standortIds: readonly string[]): VorlageKarte[] =>
-  // AP-16 IP-25 hängt die Bewertungsfläche ein; bis dahin bleibt die reine Vertragsvorlage aus dem Bestandsdialog heraus.
-  VORLAGEN.filter((v) => v.schluessel !== 'energetische_bewertung').filter((v) =>
+  // AP-16 IP-25: die energetische Bewertung erscheint nur mit `bewertung.abrufen` (ihre eigene Kennung, §6.1).
+  VORLAGEN.filter((v) =>
     v.geltung_art === 'unternehmen'
-      ? darf(rechte, 'anlegen', 'unternehmen', null)
+      ? darf(rechte, 'anlegen', 'unternehmen', null, v.schluessel)
       : standortIds.some((id) => darf(rechte, 'anlegen', 'standort', id)),
   ).map((v) => ({
     schluessel: v.schluessel,
@@ -173,9 +184,10 @@ export const geltungen = (
   standorte: ReadonlyArray<Pick<StandortAmStichtag, 'id' | 'name' | 'zeitzone' | 'zustand'>>,
   unternehmen: Pick<Unternehmen, 'id' | 'name' | 'zeitzone'> | null,
   rechte: BerichtRechte | null,
+  vorlage: string | null = null,
 ): GeltungWahl[] => {
   if (art === 'unternehmen') {
-    if (!unternehmen?.id || !darf(rechte, 'anlegen', 'unternehmen', null)) return [];
+    if (!unternehmen?.id || !darf(rechte, 'anlegen', 'unternehmen', null, vorlage)) return [];
     return [{ id: unternehmen.id, name: unternehmen.name ?? GELTUNG_WORT.unternehmen, zone: unternehmen.zeitzone ?? ZONE_VORGABE }];
   }
   return standorte
@@ -197,6 +209,14 @@ const JAHRE_ZUR_WAHL = 5;
 /** Die Zeiträume zur Wahl, der laufende zuerst (V5: sein Entwurf ist erlaubt, eine Freigabe nicht). */
 export const zeitraumWahlen = (art: Bericht['zeitraum_art'], jetzt: number, zone: string): Array<{ id: string; label: string }> => {
   const heute = heuteIn(jetzt, zone);
+  if (art === 'datengrundlage') {
+    // AP-16 §5.5: zwölf volle Monate, zuerst die letzten (Vorgabe) — keine läuft, der jüngste Monat ist zu Ende.
+    return Array.from({ length: MONATE_ZUR_WAHL / 2 }, (_, n) => {
+      const bis = monatZurueck(heute.slice(0, 7), n + 1);
+      const s = `${monatZurueck(bis, 11)}/${bis}`;
+      return { id: s, label: B.zeitraum(art, s, zone).bezeichnung };
+    });
+  }
   const schluessel =
     art === 'monat'
       ? Array.from({ length: MONATE_ZUR_WAHL }, (_, n) => monatZurueck(heute.slice(0, 7), n))
@@ -210,6 +230,10 @@ export const zeitraumWahlen = (art: Bericht['zeitraum_art'], jetzt: number, zone
 /** Vorbelegung: der letzte abgeschlossene Monat bzw. das letzte abgeschlossene Jahr (§5.1). */
 export const zeitraumVorgabe = (art: Bericht['zeitraum_art'], jetzt: number, zone: string): string => {
   const heute = heuteIn(jetzt, zone);
+  if (art === 'datengrundlage') {
+    const bis = monatZurueck(heute.slice(0, 7), 1);
+    return `${monatZurueck(bis, 11)}/${bis}`;
+  }
   return art === 'monat' ? monatZurueck(heute.slice(0, 7), 1) : String(Number(heute.slice(0, 4)) - 1);
 };
 
@@ -304,8 +328,9 @@ export const freigabeAntrag = (
 ): B.FreigabeAntrag => {
   const a = abzugAus(entwurf.abzug);
   const werte: B.FreigabeWert[] = [
-    ...a.werte.map((w) => ({ quelle: w.quelle, name: w.name_zum_datenstand ?? null, fassung: w.fassung ?? null, endgueltig_ab: w.endgueltig_ab ?? null })),
-    ...a.kennzahlen.map((k) => ({ quelle: k.quelle, name: k.name_zum_datenstand ?? null, fassung: k.fassung ?? null, endgueltig_ab: null })),
+    // Die energetische Bewertung (AP-16) trägt keine Werte-/Kennzahl-Liste — ihre Zahlen stehen in den Abschnitten.
+    ...(a.werte ?? []).map((w) => ({ quelle: w.quelle, name: w.name_zum_datenstand ?? null, fassung: w.fassung ?? null, endgueltig_ab: w.endgueltig_ab ?? null })),
+    ...(a.kennzahlen ?? []).map((k) => ({ quelle: k.quelle, name: k.name_zum_datenstand ?? null, fassung: k.fassung ?? null, endgueltig_ab: null })),
   ];
   return {
     zeitraum_art: bericht.zeitraum_art,
@@ -354,7 +379,8 @@ export const freigabeVorschau = (a: B.FreigabeAntrag, ersetztNr: number | null, 
   return {
     punkte: [
       { schluessel: 'zeitraum', text: 'Zeitraum zu Ende', erfuellt: Date.parse(a.jetzt) >= Date.parse(z.bis) },
-      { schluessel: 'werte', text: n === 1 ? 'Der Wert ist endgültig' : `Alle ${n} Werte endgültig`, erfuellt: a.werte.every((w) => w.fassung !== VORLAEUFIG) },
+      // Ohne Wert-Liste (energetische Bewertung, AP-16) gibt es keinen Punkt „Alle 0 Werte endgültig“.
+      ...(n === 0 ? [] : [{ schluessel: 'werte' as const, text: n === 1 ? 'Der Wert ist endgültig' : `Alle ${n} Werte endgültig`, erfuellt: a.werte.every((w) => w.fassung !== VORLAEUFIG) }]),
       {
         schluessel: 'entwurf',
         text: `${UEMS_ENTWURF} aktuell (${UEMS_DATENSTAND} ${zeitpunkt(a.datenstand_entwurf, a.zone)})`,

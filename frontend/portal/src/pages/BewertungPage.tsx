@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type BewertungMessabdeckungOrt, type BewertungRangliste, type BewertungUmfang, type Energieeinsatz, type EnergieeinsatzEinstufungFassung } from '../api';
+import { api, type Bericht, type BewertungMessabdeckungOrt, type BewertungRangliste, type BewertungUmfang, type Energieeinsatz, type EnergieeinsatzEinstufungFassung } from '../api';
 import {
   ANLEGEN_KNOPF,
   darfVerwalten,
@@ -24,6 +24,8 @@ import {
   umfangKarte,
   type EinsatzZeile,
 } from '../bewertung';
+import { bewertungWaehlen, darfBewertung, fristKopf, kriterienAnstoss } from '../bewertungStand';
+import { BewertungStand } from '../components/BewertungStand';
 import { EnergieeinsatzAnlegenDialog } from '../components/EnergieeinsatzDialoge';
 import { RanglisteBereich } from '../components/BewertungEntscheidungen';
 import { istWesentlich, Pruefaufgaben } from '../components/EinsatzMessmittel';
@@ -75,6 +77,23 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
   const [dialog, setDialog] = useState<'umfang' | 'anlegen' | null>(null);
   const [rest, setRest] = useState<BewertungMessabdeckungOrt | null>(null);
   const [planVersion, setPlanVersion] = useState(0);
+  // AP-16 IP-25: die Bewertung ist ein Bericht — Stand, Frist und Anstoß-Satz lesen `GET /api/v1/berichte` (nur mit
+  // `bewertung.abrufen`); scheitert die Liste, fehlt nur der Bewertungsstand, nie die Seite.
+  const abrufen = darfBewertung(selbst);
+  const [berichte, setBerichte] = useState<Bericht[] | null>(null);
+  const [berichteVersion, setBerichteVersion] = useState(0);
+  useEffect(() => {
+    if (!abrufen) return;
+    let aktiv = true;
+    api.berichte().then(
+      (r) => aktiv && setBerichte(r.berichte),
+      () => aktiv && setBerichte(null),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [abrufen, berichteVersion]);
+  const frist = abrufen ? fristKopf(bewertungWaehlen(berichte)) : null;
 
   useEffect(() => {
     let aktiv = true;
@@ -111,6 +130,12 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
         <div>
           <h1>{TITEL}</h1>
           <p>{EINSAETZE_TITEL} und Umfang Ihres Unternehmens</p>
+          {frist && (
+            <p className={`vp-bw-frist${frist.faellig ? ' is-warn' : ''}`} data-testid="bewertung-frist-kopf">
+              {frist.satz}
+            </p>
+          )}
+          {frist?.hinweis && <p className="vp-bw-leise" data-testid="bewertung-frist-hinweis">{frist.hinweis}</p>}
         </div>
         {verwalten && liste && (
           <Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setDialog('anlegen')} data-testid="einsatz-anlegen-knopf">
@@ -179,6 +204,11 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
             {karte.teilansicht && <p className="vp-bw-leise">{karte.teilansicht}</p>}
           </section>
 
+          {/* AP-16 IP-25 (§5.5): Entwurf, Stände, Revision-Vermerk, Freigabe, PDF/CSV — erst mit einem Einsatz oder einer Bewertung (R11). */}
+          {abrufen && (liste.length > 0 || bewertungWaehlen(berichte) !== null) && (
+            <BewertungStand selbst={selbst ?? null} berichte={berichte} onGeaendert={() => setBerichteVersion((v) => v + 1)} />
+          )}
+
           {kriterienHinweis && <p className="vp-alert vp-alert-ok" role="status" data-testid="kriterien-hinweis">{kriterienHinweis}</p>}
           {rangliste && <RanglisteBereich
             rangliste={rangliste}
@@ -188,7 +218,8 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
             darfKriterien={kriterienAendern}
             onEinstufung={(id, f) => setHistorien((h) => ({ ...h, [id]: [f, ...(h[id] ?? [])] }))}
             onKriterien={(f) => {
-              setKriterienHinweis(`Kriterien-Fassung ${f.fassung} gilt ab sofort für Rangliste und Vorschlag. Keine Einstufung ändert sich dadurch.`);
+              const anstoss = kriterienAnstoss(berichte);
+              setKriterienHinweis(`Kriterien-Fassung ${f.fassung} gilt ab sofort für Rangliste und Vorschlag. Keine Einstufung ändert sich dadurch.${anstoss ? ` ${anstoss}` : ''}`);
               setVersuch((v) => v + 1);
             }}
           />}

@@ -494,6 +494,11 @@ export const UEMS_BEWERTUNG_SAETZE = {
     `Abweichung zur Vergleichsquelle ${bewertungZahl(abweichung, 1)} % (Toleranz ${bewertungZahl(toleranz)} %) — bitte prüfen.`,
   stand: (jahr: number, nummer: number, datum: string, ersetzt: number, ersetztAm: string, anlass: string) =>
     `Bewertung ${jahr} · Stand Nr. ${nummer} vom ${datum} (ersetzt Nr. ${ersetzt} vom ${ersetztAm} — Anlass: ${anlass}).`,
+  /** IP-25: der erste Stand, ohne Vorgänger. */
+  standErster: (jahr: number, nummer: number, datum: string) => `Bewertung ${jahr} · Stand Nr. ${nummer} vom ${datum}.`,
+  /** IP-25 (R15): nach einer Kriterien-Änderung, wenn ein Bewertungsstand freigegeben ist. */
+  kriterienAnstoss: (nummer: number) =>
+    `Bewertungsstand Nr. ${nummer} bekommt einen Anstoß — dort steht bald „Revision nötig — Kriterien-Fassung geändert“.`,
   frist: (nummer: number, datum: string, tage: number) =>
     `Energetische Bewertung: Stand Nr. ${nummer} vom ${datum} · Überprüfung fällig seit ${tage} Tag${tage === 1 ? '' : 'en'}.`,
   /** IP-24: dieselbe Kopfzeile vor und am Frist-Tag (§5.5 Schritt 4). */

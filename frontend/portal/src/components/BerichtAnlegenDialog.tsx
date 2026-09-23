@@ -22,6 +22,7 @@ import {
   KENNZAHLEN_LADEFEHLER,
   KENNZAHLEN_TITEL,
   kennzahlenDerGeltung,
+  BEWERTUNG_VORLAGE,
   LAEDT,
   VORAUSSETZUNGEN_TITEL,
   VORLAGE_TITEL,
@@ -58,6 +59,7 @@ export function BerichtAnlegenDialog({
   jetzt = () => Date.now(),
   onAngelegt,
   onOeffnen,
+  nurVorlage = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -67,6 +69,8 @@ export function BerichtAnlegenDialog({
   jetzt?: () => number;
   onAngelegt: (bericht: Bericht) => void;
   onOeffnen: (kennung: string) => void;
+  /** AP-16 IP-25: „Bewertung anlegen“ auf der Seite „Bewertung“ — nur diese Vorlage. */
+  nurVorlage?: string | null;
 }) {
   const basis = `vp-bd-${useId().replace(/:/g, '')}`;
   const [daten, setDaten] = useState<{ standorte: StandortAmStichtag[]; unternehmen: Unternehmen | null; kennzahlen: Kennzahl[] | null } | null>(null);
@@ -105,19 +109,21 @@ export function BerichtAnlegenDialog({
   // Alles Weitere leitet sich aus der Wahl ab — eine Vorbelegung ist kein gespeicherter Zustand, sondern die Ableitung,
   // solange die Person nichts anderes gewählt hat.
   const karten = daten
-    ? vorlageKarten(rechte, daten.standorte.map((s) => s.id)).filter((k) => standortId === null || k.geltungArt === 'standort')
+    ? vorlageKarten(rechte, daten.standorte.map((s) => s.id))
+        .filter((k) => standortId === null || k.geltungArt === 'standort')
+        .filter((k) => nurVorlage === null || k.schluessel === nurVorlage)
     : [];
   const karte = karten.find((k) => k.schluessel === vorlage) ?? karten[0] ?? null;
   const wahlen =
     karte && daten
-      ? geltungen(karte.geltungArt, daten.standorte, daten.unternehmen, rechte).filter((g) => standortId === null || g.id === standortId)
+      ? geltungen(karte.geltungArt, daten.standorte, daten.unternehmen, rechte, karte.schluessel).filter((g) => standortId === null || g.id === standortId)
       : [];
   const geltung = wahlen.find((g) => g.id === geltungId) ?? (wahlen.length === 1 ? wahlen[0] : null);
   const zone = geltung?.zone ?? ZONE_VORGABE;
   const jetztMs = jetzt();
   const zeitraeume = karte ? zeitraumWahlen(karte.zeitraumArt, jetztMs, zone) : [];
   const zeitraumWert = karte ? (zeitraeume.some((z) => z.id === zeitraum) ? zeitraum : zeitraumVorgabe(karte.zeitraumArt, jetztMs, zone)) : null;
-  const kennzahlen = karte && geltung && daten?.kennzahlen ? kennzahlenDerGeltung(daten.kennzahlen, karte.geltungArt, geltung.id) : [];
+  const kennzahlen = karte && geltung && karte.schluessel !== BEWERTUNG_VORLAGE && daten?.kennzahlen ? kennzahlenDerGeltung(daten.kennzahlen, karte.geltungArt, geltung.id) : [];
   const vorschau = karte && zeitraumWert ? zeitraumVorschau(karte.zeitraumArt, zeitraumWert, zone, jetztMs) : null;
 
   const wahl = { vorlage: karte?.schluessel ?? null, geltungId: geltung?.id ?? null, zeitraum: zeitraumWert, abgewaehlt };
@@ -230,7 +236,8 @@ export function BerichtAnlegenDialog({
               />
             )}
 
-            {karte && geltung && (
+            {/* Die energetische Bewertung (AP-16) zeigt keine Kennzahlen — es gibt nichts abzuwählen. */}
+            {karte && geltung && karte.schluessel !== BEWERTUNG_VORLAGE && (
               <fieldset className="vp-bd-gruppe" data-testid="bericht-anlegen-kennzahlen">
                 <legend>{KENNZAHLEN_TITEL}</legend>
                 {daten.kennzahlen === null ? (
