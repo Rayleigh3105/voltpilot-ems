@@ -1,6 +1,8 @@
-import { erbe } from './uemsKennzahl';
+import { KENNZEICHEN, erbe, erkenne } from './uemsKennzahl';
 import { betriebszeit } from './betriebszeit';
 import { gradtage } from './gradtage';
+import { HERKUNFT_BEZOGEN, TEMPERATUR_BEZOGEN, VARIABLE_FEHLT, WORT_TAGE, ZONE as WETTER_ZONE, kennzeichenBezogen, wetterArchivMonat } from './wetterArchiv';
+import { UEMS_TEMPERATUR_BEZOGEN } from './glossar';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -181,6 +183,21 @@ describe('Bezugsdaten-Vertrag: Form der Vektor-Datei', () => {
   });
 });
 
+describe('Bezugsdaten-Vertrag: Wetter-Archiv (AP-17 E9 = C)', () => {
+  it('Herkunft, Grund und Kennzeichen sprechen die Wörter der Datei, des Kennzeichen-Vokabulars und des Glossars', () => {
+    const w = vectors.wetter_archiv;
+    expect(HERKUNFT_BEZOGEN).toBe(w.herkunft_art);
+    expect(VARIABLE_FEHLT).toBe(w.grund_ohne_zahl);
+    expect(WORT_TAGE).toBe(w.wort_tage);
+    expect(WETTER_ZONE).toBe(vectors.zeitzone);
+    const k = KENNZEICHEN.find((x) => x.schluessel === w.kennzeichen_schluessel);
+    expect(k?.muster).toBe(w.kennzeichen_muster);
+    expect(k?.muster.startsWith(`${TEMPERATUR_BEZOGEN} (`)).toBe(true);
+    expect(UEMS_TEMPERATUR_BEZOGEN.startsWith(`${TEMPERATUR_BEZOGEN} (`)).toBe(true);
+    expect(erkenne(kennzeichenBezogen(w.quelle_zuerst, '2027-11-01T06:10:00+01:00'))?.schluessel).toBe(w.kennzeichen_schluessel);
+  });
+});
+
 describe('Bezugsdaten-Vertrag: die Vektoren', () => {
   const faelle: Array<[string, Json, Json]> = [];
   for (const fall of vectors.cases) {
@@ -214,6 +231,27 @@ describe('Bezugsdaten-Vertrag: die Vektoren', () => {
         betragGleich(ist.betrag, soll.betrag);
         expect(ist.zustand).toBe(soll.zustand);
         expect(ist.kennzeichen).toEqual(soll.kennzeichen);
+        break;
+      }
+      case 'wetter_archiv': {
+        const ist = wetterArchivMonat(ein.standort, ein.koordinaten, ein.monat, ein.archivtage, ein.raumtemperatur, ein.heizgrenze);
+        expect(ist.abruf).toBe(soll.abruf);
+        expect(ist.grund).toBe(soll.grund);
+        expect(ist.satz).toBe(soll.satz);
+        expect(ist.nie_geschrieben).toEqual(soll.nie_geschrieben);
+        expect(ist.tage.map((t) => t.datum)).toEqual(soll.tage.map((t: Json) => t.datum));
+        ist.tage.forEach((t, i) => {
+          betragGleich(t.betrag, soll.tage[i].betrag);
+          expect(t.zustand).toBe(soll.tage[i].zustand);
+          expect(t.kennzeichen).toEqual(soll.tage[i].kennzeichen);
+        });
+        betragGleich(ist.monat.betrag, soll.monat.betrag);
+        expect(ist.monat.zustand).toBe(soll.monat.zustand);
+        expect(ist.monat.grund).toBe(soll.monat.grund);
+        expect(ist.monat.kennzeichen).toEqual(soll.monat.kennzeichen);
+        // R3: die Kennzahl erbt das Kennzeichen — aus der Bezugsgröße und über weitere Kennzahlen.
+        expect(erbe('bezugsgroesse', null, ist.monat.kennzeichen)).toEqual(soll.monat.erbt);
+        expect(erbe('kennzahl', null, soll.monat.erbt)).toEqual(soll.monat.erbt);
         break;
       }
       case 'zahl': {

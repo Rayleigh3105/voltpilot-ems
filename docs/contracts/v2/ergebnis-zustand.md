@@ -291,6 +291,7 @@ spricht keinen der Sätze. Gesprochen und geprüft werden sie von `uems/Kennzahl
 | 51 | mit Ersatzwert ({text}) (`mit_ersatzwert`) | geerbt | nein | konstruiert |
 | 52 | {bezeichnung} geändert am {datum} ({wechsel}) (`stammdatum_geaendert`) | geerbt | nein | konstruiert |
 | 53 | aus Leistung über {text} kW (Annahme) (`betriebszeit_annahme`, AP-16 E9) | geerbt | nein | konstruiert |
+| 54 | Temperatur von VoltPilot bezogen ({quelle}, abgerufen am {datum} {uhr}) (`temperatur_bezogen`, AP-17 E9) | geerbt | nein | konstruiert |
 | 55 | Berechnung geändert am {datum} (Fassung {von} → {nach}) (`berechnung_geaendert_am`) | eigen | nein | konstruiert |
 | 60 | {mit} von {gesamt} {wort} (`x_von_y`) | beides | nein | K3 |
 | 60 | {mit} von {gesamt} {wort} ({fehlt}) (`x_von_y_fehlt`) | eigen | nein | konstruiert |
@@ -311,7 +312,9 @@ verteilt (…)“, „ab TT.MM.JJJJ“ bleibt (aus einer Kennzahl mit ihrem Gelt
 15.10.2026“), „mit Ersatzwert (…)“, der Übergang eines Stammdatums („Fläche geändert am …“) und
 „x von y Systemen“ bleiben. Seit AP-16 E9 bleibt auch „aus Leistung über x kW (Annahme)“
 aus Bezugsgrößen und weiteren Kennzahlen erhalten, einschließlich der Vereinigung beim
-Verdichten auf gröbere Perioden. Alles andere steht nur in der Herkunft.
+Verdichten auf gröbere Perioden. Seit AP-17 E9 = C bleibt ebenso „Temperatur von VoltPilot
+bezogen (Quelle, abgerufen am …)“ einer bezogenen Gradtagzahl erhalten (R3,
+`bezugsdaten.md` §„Wetter-Archiv“). Alles andere steht nur in der Herkunft.
 
 **Reihenfolge.** Der Rang steigt nie; jeder Satz höchstens einmal; ohne Zahl nur die Sätze mit
 „ohne Zahl: ja“ — nie „berechnet (Kennzahl)“, nie etwas Geerbtes. Eine gröbere Periode aus

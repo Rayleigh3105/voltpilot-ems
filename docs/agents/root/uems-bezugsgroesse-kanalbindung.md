@@ -66,6 +66,12 @@ Abnahme: `KanalbindungApiTest` (B7 4,9667 h / unvollständig / 95,8 %, 422, Vor/
   dürfen keinen neuen Wert bei jedem Takt auslösen. Kein Tagesmittel = NULL; fehlende
   oder unvollständige Tage kennzeichnen die Summe. Angeschnittene Kalendertage werden nicht
   zu ganzen Gradtagen hochgerechnet. Herkunft nennt jede Bindungsregel, auch bei Wechseln.
+- AP-17 E9 = C (IP-12a): dritte Herkunft `bezogen` — Tagesmittel aus dem Wetter-Archiv
+  (`bezugsdaten.md` §„Wetter-Archiv“). `WetterArchivRegeln` ⟷ `wetterArchiv.ts`: nur Tage vor
+  dem Abruftag (Ortszone), Kennzeichen `temperatur_bezogen` (Quelle, Abrufzeit) an jeder Zahl,
+  geerbt; Ausfall = Tag fehlt, Monat „x von y Tagen“; ohne Koordinaten `variable_fehlt` mit
+  `UEMS_KOORDINATEN_FEHLEN_SATZ`. Client, Migration und Portal-Zeile folgen (IP-12b/c);
+  `vokabulare.herkunft_art`/`arten` spiegeln bis dahin die Datenbank ohne `bezogen`.
 - `GET …/kanalbindung/kanaele` liefert passende Katalogkanäle mit erstem Messwert,
   aktuellem Lieferzustand und gemessenen Zustandsbezeichnungen, nur aus sichtbaren Anlagen.
   Das Recht ist `bezugsgroesse.verwalten`; historische Bindungen bleiben über GET lesbar.

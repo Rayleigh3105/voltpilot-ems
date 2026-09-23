@@ -222,6 +222,7 @@ export const KENNZEICHEN: Kennzeichen[] = [
   k('mit_ersatzwert', 'mit Ersatzwert ({text})', T, 51, 'geerbt', 'wert', false),
   k('stammdatum_geaendert', '{bezeichnung} geändert am {datum} ({wechsel})', { bezeichnung: 'bezeichnung', datum: 'datum', wechsel: 'text' }, 52, 'geerbt', 'wert', false),
   k('betriebszeit_annahme', 'aus Leistung über {text} kW (Annahme)', T, 53, 'geerbt', 'wert', false),
+  k('temperatur_bezogen', 'Temperatur von VoltPilot bezogen ({quelle}, abgerufen am {datum} {uhr})', { quelle: 'text', datum: 'datum', uhr: 'text' }, 54, 'geerbt', 'wert', false),
   k('berechnung_geaendert_am', 'Berechnung geändert am {datum} (Fassung {von} → {nach})', { datum: 'datum', von: 'ganzzahl', nach: 'ganzzahl_ab_2' }, 55, 'eigen', 'wert', false),
   k('x_von_y', '{mit} von {gesamt} {wort}', { mit: 'ganzzahl', gesamt: 'ganzzahl', wort: 'wort' }, 60, 'beides', 'wert', false),
   k('x_von_y_fehlt', '{mit} von {gesamt} {wort} ({fehlt})', { mit: 'ganzzahl', gesamt: 'ganzzahl', wort: 'wort', fehlt: 'text' }, 60, 'eigen', 'wert', false),
@@ -250,6 +251,7 @@ export const ERBEND: Erbregel[] = [
   { muster: '^(?!Berechnung\\b).+ geändert am \\d{2}\\.\\d{2}\\.\\d{4} \\(.+\\)$', als: '{0}', von: [BEZUGSGROESSE] },
   { muster: '^\\d+ von \\d+ Systemen$', als: '{0}', von: [MESSSTELLE] },
   { muster: '^aus Leistung über .+ kW \\(Annahme\\)$', als: '{0}', von: [BEZUGSGROESSE, KENNZAHL] },
+  { muster: '^Temperatur von VoltPilot bezogen \\(.+, abgerufen am \\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}\\)$', als: '{0}', von: [BEZUGSGROESSE, KENNZAHL] },
 ];
 
 const MUSTER = new Map<string, RegExp>(
@@ -524,7 +526,7 @@ const teileQuotient = (a: Antrag): Ergebnis => {
 };
 
 const ZEIT_VEREINIGT = new Set([
-  'enthaelt_berechnet', 'enthaelt_verteilt', 'betriebszeit_annahme', 'mit_ersatzwert', 'stammdatum_geaendert', 'berechnung_geaendert_am',
+  'enthaelt_berechnet', 'enthaelt_verteilt', 'betriebszeit_annahme', 'temperatur_bezogen', 'mit_ersatzwert', 'stammdatum_geaendert', 'berechnung_geaendert_am',
   'eingang_ausserhalb', 'bezugsgroesse_archiviert', 'eingang_archiviert',
 ]);
 

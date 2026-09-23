@@ -2123,6 +2123,17 @@
       "`datei` einer Prüfung: `zeilen` (mit `zeilenende`, Vorgabe \\n, und einem Zeilenende auch nach der letzten, außer `ohne_schluss`) ODER `text` (roh) ODER `hex` (rohe Bytes); `fuellen` hängt `anzahl`-mal `zeile` + Zeilenende an; `kodierung` (Vorgabe utf-8) und `bom` (Vorgabe false) machen daraus Bytes. Im Ergebnis wird jedes Feld verglichen, das dasteht; fehlen `zeilen` oder `anzeige`, werden sie nicht verglichen."
     ]
   },
+  "wetter_archiv": {
+    "herkunft": "UEMS AP-17 E9 = C (entschieden 23.09.2026), Auslegungen LA1–LA3, Paket IP-12a: die dritte Herkunft einer Gradtagzahl — von VoltPilot aus einem Wetter-Archiv bezogen. Prosa: bezugsdaten.md §„Wetter-Archiv“. Gerechnet von uems/WetterArchivRegeln ⟷ wetterArchiv.ts (Regel `wetter_archiv`, Prüfungen im B7-Block).",
+    "herkunft_art": "bezogen",
+    "quelle_zuerst": "Open-Meteo-Archiv",
+    "kennzeichen_muster": "Temperatur von VoltPilot bezogen ({quelle}, abgerufen am {datum} {uhr})",
+    "kennzeichen_schluessel": "temperatur_bezogen",
+    "grund_ohne_zahl": "variable_fehlt",
+    "wort_tage": "Tagen",
+    "grenze": "Nur ein Tag VOR dem Kalendertag des Abrufs in der Ortszone ist ein Archiv-Tag (bis gestern); heute und jeder spätere Tag wird nie geschrieben (Vorhersage nie, AP-09 E13).",
+    "gespeichert_ab": "IP-12b: erst die Migration des Clients nimmt `bezogen` in bezugsdaten_vokabular() und in die Herkunft der Art `gradtagzahl` auf; bis dahin stehen `vokabulare.herkunft_art` und `arten` unverändert (sie spiegeln die Datenbank zeilengleich)."
+  },
   "zwillinge": {
     "gradtage": [
       "java",
@@ -2189,6 +2200,10 @@
       "java"
     ],
     "betriebszeit_aus_leistung": [
+      "java",
+      "ts"
+    ],
+    "wetter_archiv": [
       "java",
       "ts"
     ]
@@ -2271,6 +2286,11 @@
       "fall": "alle",
       "feld": "anzeige · herkunft",
       "warum": "Der Anzeigesatz und die Herkunfts-Angaben je Wert stehen unter `beschreibend`: sie sind der Wortlaut für die Portal-Fläche (IP-9/IP-10) und die Spalten der Tabelle (IP-4), nicht das Ergebnis einer Rechnung."
+    },
+    {
+      "fall": "B7",
+      "feld": "vokabulare.herkunft_art · arten.gradtagzahl.herkunft",
+      "warum": "AP-17 IP-12a legt die Herkunft `bezogen` als Vertragswort fest (Schema, Block `wetter_archiv`, Regel `wetter_archiv`); gespeichert wird sie erst mit IP-12b, dessen Migration bezugsdaten_vokabular() und die Art-Tabelle ergänzt — beide Listen dieser Datei spiegeln die Datenbank zeilengleich (UemsBezugsgroesseMigrationTest, UemsBezugsArtMigrationTest) und ziehen dann mit."
     }
   ],
   "plan_abnahmen": {
@@ -5847,6 +5867,1952 @@
               "aus Leistung über 5 kW (Annahme)",
               "aus Leistung über 2 kW (Annahme)"
             ]
+          }
+        },
+        {
+          "regel": "wetter_archiv",
+          "name": "Wetter-Archiv: bezogene Tagesreihe Februar 2027 → Gradtage G20/15 je Tag und Monat, jede Zahl mit Kennzeichen (Quelle, Abrufzeit), die Kennzahl erbt es",
+          "eingang": {
+            "standort": "Werk Ahrenberg",
+            "koordinaten": {
+              "breite": "48.25",
+              "laenge": "11.43"
+            },
+            "raumtemperatur": "20",
+            "heizgrenze": "15",
+            "monat": "2027-02",
+            "archivtage": [
+              {
+                "datum": "2027-02-01",
+                "mittel": "-2.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-02",
+                "mittel": "-0.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-03",
+                "mittel": "1.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-04",
+                "mittel": "3.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-05",
+                "mittel": "2.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-06",
+                "mittel": "0.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-07",
+                "mittel": "-1.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-08",
+                "mittel": "-4.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-09",
+                "mittel": "-5.5",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-10",
+                "mittel": "-3.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-11",
+                "mittel": "0.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-12",
+                "mittel": "4.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-13",
+                "mittel": "6.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-14",
+                "mittel": "7.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-15",
+                "mittel": "5.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-16",
+                "mittel": "2.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-17",
+                "mittel": "1.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-18",
+                "mittel": "-0.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-19",
+                "mittel": "2.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-20",
+                "mittel": "4.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-21",
+                "mittel": "8.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-22",
+                "mittel": "10.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-23",
+                "mittel": "12.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-24",
+                "mittel": "15.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-25",
+                "mittel": "15.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-26",
+                "mittel": "11.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-27",
+                "mittel": "9.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-28",
+                "mittel": "7.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              }
+            ]
+          },
+          "ergebnis": {
+            "abruf": true,
+            "grund": null,
+            "satz": null,
+            "tage": [
+              {
+                "datum": "2027-02-01",
+                "betrag": "22.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-02",
+                "betrag": "20.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-03",
+                "betrag": "18.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-04",
+                "betrag": "16.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-05",
+                "betrag": "17.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-06",
+                "betrag": "19.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-07",
+                "betrag": "21.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-08",
+                "betrag": "24.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-09",
+                "betrag": "25.5",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-10",
+                "betrag": "23",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-11",
+                "betrag": "19.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-12",
+                "betrag": "15.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-13",
+                "betrag": "13.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-14",
+                "betrag": "12.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-15",
+                "betrag": "14.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-16",
+                "betrag": "17.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-17",
+                "betrag": "19",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-18",
+                "betrag": "20.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-19",
+                "betrag": "17.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-20",
+                "betrag": "15.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-21",
+                "betrag": "11.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-22",
+                "betrag": "9.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-23",
+                "betrag": "7.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-24",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-25",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-26",
+                "betrag": "8.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-27",
+                "betrag": "10.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-28",
+                "betrag": "12.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              }
+            ],
+            "nie_geschrieben": [],
+            "monat": {
+              "betrag": "435.3",
+              "zustand": "vollständig",
+              "grund": null,
+              "kennzeichen": [
+                "Gradtage G20/15",
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+              ],
+              "erbt": [
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+              ]
+            }
+          }
+        },
+        {
+          "regel": "wetter_archiv",
+          "name": "Wetter-Archiv: nur Archiv-Tage bis gestern — heute und ein Vorhersage-Tag werden nie geschrieben (Abruf 03.11.2027 00:30, Ortszone)",
+          "eingang": {
+            "standort": "Werk Ahrenberg",
+            "koordinaten": {
+              "breite": "48.25",
+              "laenge": "11.43"
+            },
+            "raumtemperatur": "20",
+            "heizgrenze": "15",
+            "monat": "2027-11",
+            "archivtage": [
+              {
+                "datum": "2027-11-01",
+                "mittel": "6.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-11-03T00:30:00+01:00"
+              },
+              {
+                "datum": "2027-11-02",
+                "mittel": "4.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-11-03T00:30:00+01:00"
+              },
+              {
+                "datum": "2027-11-03",
+                "mittel": "5.5",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-11-03T00:30:00+01:00"
+              },
+              {
+                "datum": "2027-11-04",
+                "mittel": "3.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-11-03T00:30:00+01:00"
+              }
+            ]
+          },
+          "ergebnis": {
+            "abruf": true,
+            "grund": null,
+            "satz": null,
+            "tage": [
+              {
+                "datum": "2027-11-01",
+                "betrag": "13.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 03.11.2027 00:30)"
+                ]
+              },
+              {
+                "datum": "2027-11-02",
+                "betrag": "15.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 03.11.2027 00:30)"
+                ]
+              }
+            ],
+            "nie_geschrieben": [
+              "2027-11-03",
+              "2027-11-04"
+            ],
+            "monat": {
+              "betrag": "28.7",
+              "zustand": "unvollständig",
+              "grund": null,
+              "kennzeichen": [
+                "Gradtage G20/15",
+                "Tagesmittel fehlen oder sind unvollständig",
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 03.11.2027 00:30)",
+                "2 von 30 Tagen"
+              ],
+              "erbt": [
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 03.11.2027 00:30)"
+              ]
+            }
+          }
+        },
+        {
+          "regel": "wetter_archiv",
+          "name": "Wetter-Archiv: Ausfall am 14.02.2027 — der Tag fehlt (nie 0), der Monat ist unvollständig mit „27 von 28 Tagen“",
+          "eingang": {
+            "standort": "Werk Ahrenberg",
+            "koordinaten": {
+              "breite": "48.25",
+              "laenge": "11.43"
+            },
+            "raumtemperatur": "20",
+            "heizgrenze": "15",
+            "monat": "2027-02",
+            "archivtage": [
+              {
+                "datum": "2027-02-01",
+                "mittel": "-2.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-02",
+                "mittel": "-0.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-03",
+                "mittel": "1.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-04",
+                "mittel": "3.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-05",
+                "mittel": "2.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-06",
+                "mittel": "0.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-07",
+                "mittel": "-1.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-08",
+                "mittel": "-4.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-09",
+                "mittel": "-5.5",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-10",
+                "mittel": "-3.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-11",
+                "mittel": "0.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-12",
+                "mittel": "4.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-13",
+                "mittel": "6.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-15",
+                "mittel": "5.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-16",
+                "mittel": "2.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-17",
+                "mittel": "1.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-18",
+                "mittel": "-0.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-19",
+                "mittel": "2.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-20",
+                "mittel": "4.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-21",
+                "mittel": "8.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-22",
+                "mittel": "10.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-23",
+                "mittel": "12.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-24",
+                "mittel": "15.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-25",
+                "mittel": "15.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-26",
+                "mittel": "11.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-27",
+                "mittel": "9.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-28",
+                "mittel": "7.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              }
+            ]
+          },
+          "ergebnis": {
+            "abruf": true,
+            "grund": null,
+            "satz": null,
+            "tage": [
+              {
+                "datum": "2027-02-01",
+                "betrag": "22.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-02",
+                "betrag": "20.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-03",
+                "betrag": "18.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-04",
+                "betrag": "16.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-05",
+                "betrag": "17.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-06",
+                "betrag": "19.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-07",
+                "betrag": "21.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-08",
+                "betrag": "24.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-09",
+                "betrag": "25.5",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-10",
+                "betrag": "23",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-11",
+                "betrag": "19.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-12",
+                "betrag": "15.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-13",
+                "betrag": "13.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-15",
+                "betrag": "14.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-16",
+                "betrag": "17.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-17",
+                "betrag": "19",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-18",
+                "betrag": "20.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-19",
+                "betrag": "17.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-20",
+                "betrag": "15.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-21",
+                "betrag": "11.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-22",
+                "betrag": "9.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-23",
+                "betrag": "7.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-24",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-25",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-26",
+                "betrag": "8.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-27",
+                "betrag": "10.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-28",
+                "betrag": "12.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              }
+            ],
+            "nie_geschrieben": [],
+            "monat": {
+              "betrag": "422.7",
+              "zustand": "unvollständig",
+              "grund": null,
+              "kennzeichen": [
+                "Gradtage G20/15",
+                "Tagesmittel fehlen oder sind unvollständig",
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)",
+                "27 von 28 Tagen"
+              ],
+              "erbt": [
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+              ]
+            }
+          }
+        },
+        {
+          "regel": "wetter_archiv",
+          "name": "Wetter-Archiv: der nächste Abruf holt den 14.02.2027 nach — der Monat ist vollständig, das Kennzeichen nennt den späteren Abruf",
+          "eingang": {
+            "standort": "Werk Ahrenberg",
+            "koordinaten": {
+              "breite": "48.25",
+              "laenge": "11.43"
+            },
+            "raumtemperatur": "20",
+            "heizgrenze": "15",
+            "monat": "2027-02",
+            "archivtage": [
+              {
+                "datum": "2027-02-01",
+                "mittel": "-2.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-02",
+                "mittel": "-0.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-03",
+                "mittel": "1.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-04",
+                "mittel": "3.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-05",
+                "mittel": "2.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-06",
+                "mittel": "0.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-07",
+                "mittel": "-1.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-08",
+                "mittel": "-4.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-09",
+                "mittel": "-5.5",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-10",
+                "mittel": "-3.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-11",
+                "mittel": "0.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-12",
+                "mittel": "4.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-13",
+                "mittel": "6.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-14",
+                "mittel": "7.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-02T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-15",
+                "mittel": "5.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-16",
+                "mittel": "2.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-17",
+                "mittel": "1.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-18",
+                "mittel": "-0.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-19",
+                "mittel": "2.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-20",
+                "mittel": "4.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-21",
+                "mittel": "8.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-22",
+                "mittel": "10.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-23",
+                "mittel": "12.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-24",
+                "mittel": "15.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-25",
+                "mittel": "15.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-26",
+                "mittel": "11.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-27",
+                "mittel": "9.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-28",
+                "mittel": "7.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              }
+            ]
+          },
+          "ergebnis": {
+            "abruf": true,
+            "grund": null,
+            "satz": null,
+            "tage": [
+              {
+                "datum": "2027-02-01",
+                "betrag": "22.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-02",
+                "betrag": "20.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-03",
+                "betrag": "18.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-04",
+                "betrag": "16.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-05",
+                "betrag": "17.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-06",
+                "betrag": "19.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-07",
+                "betrag": "21.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-08",
+                "betrag": "24.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-09",
+                "betrag": "25.5",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-10",
+                "betrag": "23",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-11",
+                "betrag": "19.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-12",
+                "betrag": "15.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-13",
+                "betrag": "13.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-14",
+                "betrag": "12.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 02.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-15",
+                "betrag": "14.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-16",
+                "betrag": "17.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-17",
+                "betrag": "19",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-18",
+                "betrag": "20.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-19",
+                "betrag": "17.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-20",
+                "betrag": "15.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-21",
+                "betrag": "11.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-22",
+                "betrag": "9.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-23",
+                "betrag": "7.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-24",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-25",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-26",
+                "betrag": "8.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-27",
+                "betrag": "10.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-28",
+                "betrag": "12.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              }
+            ],
+            "nie_geschrieben": [],
+            "monat": {
+              "betrag": "435.3",
+              "zustand": "vollständig",
+              "grund": null,
+              "kennzeichen": [
+                "Gradtage G20/15",
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 02.03.2027 06:10)"
+              ],
+              "erbt": [
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 02.03.2027 06:10)"
+              ]
+            }
+          }
+        },
+        {
+          "regel": "wetter_archiv",
+          "name": "Wetter-Archiv: der Archiv-Tag kommt ohne Tagesmittel — er fehlt wie ein Ausfall, nie 0",
+          "eingang": {
+            "standort": "Werk Ahrenberg",
+            "koordinaten": {
+              "breite": "48.25",
+              "laenge": "11.43"
+            },
+            "raumtemperatur": "20",
+            "heizgrenze": "15",
+            "monat": "2027-02",
+            "archivtage": [
+              {
+                "datum": "2027-02-01",
+                "mittel": "-2.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-02",
+                "mittel": "-0.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-03",
+                "mittel": "1.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-04",
+                "mittel": "3.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-05",
+                "mittel": "2.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-06",
+                "mittel": "0.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-07",
+                "mittel": "-1.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-08",
+                "mittel": "-4.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-09",
+                "mittel": "-5.5",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-10",
+                "mittel": "-3.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-11",
+                "mittel": "0.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-12",
+                "mittel": "4.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-13",
+                "mittel": "6.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-14",
+                "mittel": null,
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-15",
+                "mittel": "5.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-16",
+                "mittel": "2.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-17",
+                "mittel": "1.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-18",
+                "mittel": "-0.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-19",
+                "mittel": "2.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-20",
+                "mittel": "4.9",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-21",
+                "mittel": "8.3",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-22",
+                "mittel": "10.6",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-23",
+                "mittel": "12.1",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-24",
+                "mittel": "15.0",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-25",
+                "mittel": "15.4",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-26",
+                "mittel": "11.8",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-27",
+                "mittel": "9.2",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              },
+              {
+                "datum": "2027-02-28",
+                "mittel": "7.7",
+                "quelle": "Open-Meteo-Archiv",
+                "abgerufen_am": "2027-03-01T06:10:00+01:00"
+              }
+            ]
+          },
+          "ergebnis": {
+            "abruf": true,
+            "grund": null,
+            "satz": null,
+            "tage": [
+              {
+                "datum": "2027-02-01",
+                "betrag": "22.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-02",
+                "betrag": "20.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-03",
+                "betrag": "18.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-04",
+                "betrag": "16.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-05",
+                "betrag": "17.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-06",
+                "betrag": "19.6",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-07",
+                "betrag": "21.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-08",
+                "betrag": "24.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-09",
+                "betrag": "25.5",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-10",
+                "betrag": "23",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-11",
+                "betrag": "19.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-12",
+                "betrag": "15.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-13",
+                "betrag": "13.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-15",
+                "betrag": "14.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-16",
+                "betrag": "17.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-17",
+                "betrag": "19",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-18",
+                "betrag": "20.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-19",
+                "betrag": "17.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-20",
+                "betrag": "15.1",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-21",
+                "betrag": "11.7",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-22",
+                "betrag": "9.4",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-23",
+                "betrag": "7.9",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-24",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-25",
+                "betrag": "0",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-26",
+                "betrag": "8.2",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-27",
+                "betrag": "10.8",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              },
+              {
+                "datum": "2027-02-28",
+                "betrag": "12.3",
+                "zustand": "vollständig",
+                "kennzeichen": [
+                  "Gradtage G20/15",
+                  "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+                ]
+              }
+            ],
+            "nie_geschrieben": [],
+            "monat": {
+              "betrag": "422.7",
+              "zustand": "unvollständig",
+              "grund": null,
+              "kennzeichen": [
+                "Gradtage G20/15",
+                "Tagesmittel fehlen oder sind unvollständig",
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)",
+                "27 von 28 Tagen"
+              ],
+              "erbt": [
+                "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)"
+              ]
+            }
+          }
+        },
+        {
+          "regel": "wetter_archiv",
+          "name": "Wetter-Archiv: ganzer Monat ohne Archiv-Tag — keine Zahl, Grund variable_fehlt, nie 0",
+          "eingang": {
+            "standort": "Werk Ahrenberg",
+            "koordinaten": {
+              "breite": "48.25",
+              "laenge": "11.43"
+            },
+            "raumtemperatur": "20",
+            "heizgrenze": "15",
+            "monat": "2027-02",
+            "archivtage": []
+          },
+          "ergebnis": {
+            "abruf": true,
+            "grund": null,
+            "satz": null,
+            "tage": [],
+            "nie_geschrieben": [],
+            "monat": {
+              "betrag": null,
+              "zustand": "keine Werte",
+              "grund": "variable_fehlt",
+              "kennzeichen": [
+                "Gradtage G20/15",
+                "Tagesmittel fehlen oder sind unvollständig",
+                "0 von 28 Tagen"
+              ],
+              "erbt": []
+            }
+          }
+        },
+        {
+          "regel": "wetter_archiv",
+          "name": "Wetter-Archiv: Standort Lindach ohne Koordinaten — kein Abruf, kein Wert, Grund variable_fehlt mit dem Satz aus §5.8",
+          "eingang": {
+            "standort": "Lindach",
+            "koordinaten": null,
+            "raumtemperatur": "20",
+            "heizgrenze": "15",
+            "monat": "2027-02",
+            "archivtage": []
+          },
+          "ergebnis": {
+            "abruf": false,
+            "grund": "variable_fehlt",
+            "satz": "Für den Standort Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. Eine Wetterbereinigung über Gradtage ist hier erst möglich, wenn der Standort Koordinaten hat.",
+            "tage": [],
+            "nie_geschrieben": [],
+            "monat": {
+              "betrag": null,
+              "zustand": "keine Werte",
+              "grund": "variable_fehlt",
+              "kennzeichen": [],
+              "erbt": []
+            }
           }
         }
       ],

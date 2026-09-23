@@ -554,6 +554,21 @@
         "fall": "konstruiert"
       },
       {
+        "schluessel": "temperatur_bezogen",
+        "muster": "Temperatur von VoltPilot bezogen ({quelle}, abgerufen am {datum} {uhr})",
+        "platzhalter": {
+          "quelle": "text",
+          "datum": "datum",
+          "uhr": "text"
+        },
+        "rang": 54,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)",
+        "fall": "konstruiert"
+      },
+      {
         "schluessel": "berechnung_geaendert_am",
         "muster": "Berechnung geändert am {datum} (Fassung {von} → {nach})",
         "platzhalter": {
@@ -803,6 +818,15 @@
           "kennzahl"
         ],
         "warum": "AP-16 E9: die Kundenannahme bleibt an jeder daraus gebildeten Kennzahl sichtbar."
+      },
+      {
+        "muster": "^Temperatur von VoltPilot bezogen \\(.+, abgerufen am \\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}\\)$",
+        "als": "{0}",
+        "von": [
+          "bezugsgroesse",
+          "kennzahl"
+        ],
+        "warum": "AP-17 E9 = C (R3): die Herkunft „von VoltPilot bezogen“ mit Quelle und Abrufzeit bleibt an jeder daraus gebildeten Kennzahl sichtbar."
       }
     ],
     "reihenfolge": [

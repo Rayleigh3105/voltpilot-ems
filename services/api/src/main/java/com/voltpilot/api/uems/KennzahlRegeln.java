@@ -246,6 +246,8 @@ public final class KennzahlRegeln {
             new Kennzeichen("stammdatum_geaendert", "{bezeichnung} geändert am {datum} ({wechsel})",
                     Map.of("bezeichnung", "bezeichnung", "datum", "datum", "wechsel", "text"), 52, "geerbt", "wert", false),
             new Kennzeichen("betriebszeit_annahme", "aus Leistung über {text} kW (Annahme)", T, 53, "geerbt", "wert", false),
+            new Kennzeichen("temperatur_bezogen", "Temperatur von VoltPilot bezogen ({quelle}, abgerufen am {datum} {uhr})",
+                    Map.of("quelle", "text", "datum", "datum", "uhr", "text"), 54, "geerbt", "wert", false),
             new Kennzeichen("berechnung_geaendert_am", "Berechnung geändert am {datum} (Fassung {von} → {nach})",
                     Map.of("datum", "datum", "von", "ganzzahl", "nach", "ganzzahl_ab_2"), 55, "eigen", "wert", false),
             new Kennzeichen("x_von_y", "{mit} von {gesamt} {wort}",
@@ -281,7 +283,9 @@ public final class KennzahlRegeln {
             new Erbregel("^mit Ersatzwert \\(.+\\)$", "{0}", List.of(MESSSTELLE)),
             new Erbregel("^(?!Berechnung\\b).+ geändert am \\d{2}\\.\\d{2}\\.\\d{4} \\(.+\\)$", "{0}", List.of(BEZUGSGROESSE)),
             new Erbregel("^\\d+ von \\d+ Systemen$", "{0}", List.of(MESSSTELLE)),
-            new Erbregel("^aus Leistung über .+ kW \\(Annahme\\)$", "{0}", List.of(BEZUGSGROESSE, KENNZAHL)));
+            new Erbregel("^aus Leistung über .+ kW \\(Annahme\\)$", "{0}", List.of(BEZUGSGROESSE, KENNZAHL)),
+            new Erbregel("^Temperatur von VoltPilot bezogen \\(.+, abgerufen am \\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}\\)$", "{0}",
+                    List.of(BEZUGSGROESSE, KENNZAHL)));
 
     public static final String KENNZEICHEN_UNBEKANNT = "kennzeichen_unbekannt";
     public static final String KENNZEICHEN_STELLE = "kennzeichen_stelle";
@@ -592,7 +596,7 @@ public final class KennzahlRegeln {
     }
 
     /** Was eine Teilperiode an die gröbere Periode vererbt (übernommen, nicht neu gerechnet). */
-    private static final Set<String> ZEIT_VEREINIGT = Set.of("enthaelt_berechnet", "enthaelt_verteilt", "betriebszeit_annahme",
+    private static final Set<String> ZEIT_VEREINIGT = Set.of("enthaelt_berechnet", "enthaelt_verteilt", "betriebszeit_annahme", "temperatur_bezogen",
             "mit_ersatzwert", "stammdatum_geaendert", "berechnung_geaendert_am", "eingang_ausserhalb",
             "bezugsgroesse_archiviert", "eingang_archiviert");
 

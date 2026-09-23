@@ -88,6 +88,22 @@ class BezugsdatenVectorsTest {
         assertThat(Files.exists(REFERENZ)).isTrue();
     }
 
+    /** AP-17 E9 = C: Herkunft, Grund und Kennzeichen des Wetter-Archivs stehen in der Datei und im Kennzeichen-Vokabular. */
+    @Test
+    void wetterArchivSprichtDieWoerterDerDatei() throws Exception {
+        JsonNode w = vektoren().path("wetter_archiv");
+        assertThat(WetterArchivRegeln.HERKUNFT).isEqualTo(w.path("herkunft_art").asText());
+        assertThat(WetterArchivRegeln.VARIABLE_FEHLT).isEqualTo(w.path("grund_ohne_zahl").asText());
+        assertThat(WetterArchivRegeln.WORT_TAGE).isEqualTo(w.path("wort_tage").asText());
+        assertThat(WetterArchivRegeln.ZONE.getId()).isEqualTo(vektoren().path("zeitzone").asText());
+        KennzahlRegeln.Kennzeichen k = KennzahlRegeln.KENNZEICHEN.stream()
+                .filter(x -> x.schluessel().equals(w.path("kennzeichen_schluessel").asText())).findFirst().orElseThrow();
+        assertThat(k.muster()).isEqualTo(w.path("kennzeichen_muster").asText()).startsWith(WetterArchivRegeln.TEMPERATUR_BEZOGEN + " (");
+        String beispiel = WetterArchivRegeln.kennzeichen(w.path("quelle_zuerst").asText(),
+                java.time.OffsetDateTime.parse("2027-11-01T06:10:00+01:00"));
+        assertThat(KennzahlRegeln.erkenne(beispiel)).isEqualTo(k);
+    }
+
     /** Prosa und TS-Zwilling liegen, wo die Datei sie nennt — sonst ist der Gleichlauf nur behauptet. */
     @Test
     void prosaUndTsZwillingLiegen() {
@@ -580,6 +596,39 @@ class BezugsdatenVectorsTest {
                 betrag(why,soll.path("betrag"),ist.betrag());
                 assertThat(ist.zustand()).isEqualTo(soll.path("zustand").asText());
                 assertThat(ist.kennzeichen()).isEqualTo(texte(soll.path("kennzeichen")));
+            }
+            case "wetter_archiv" -> {
+                List<WetterArchivRegeln.Archivtag> archiv=new ArrayList<>();
+                ein.path("archivtage").forEach(t->archiv.add(new WetterArchivRegeln.Archivtag(LocalDate.parse(t.path("datum").asText()),
+                        t.path("mittel").isNull()?null:dezimal(t.path("mittel")),t.path("quelle").asText(),
+                        java.time.OffsetDateTime.parse(t.path("abgerufen_am").asText()))));
+                JsonNode k=ein.path("koordinaten");
+                var ist=WetterArchivRegeln.monat(ein.path("standort").asText(),
+                        k.isNull()?null:new WetterArchivRegeln.Koordinaten(dezimal(k.path("breite")),dezimal(k.path("laenge"))),
+                        java.time.YearMonth.parse(ein.path("monat").asText()),archiv,
+                        dezimal(ein.path("raumtemperatur")),dezimal(ein.path("heizgrenze")));
+                assertThat(ist.abruf()).as(why+" · abruf").isEqualTo(soll.path("abruf").asBoolean());
+                assertThat(ist.grund()).as(why+" · grund").isEqualTo(text(soll.path("grund")));
+                assertThat(ist.satz()).as(why+" · satz").isEqualTo(text(soll.path("satz")));
+                assertThat(ist.nieGeschrieben().stream().map(LocalDate::toString).toList()).as(why+" · nie geschrieben")
+                        .isEqualTo(texte(soll.path("nie_geschrieben")));
+                assertThat(ist.tage()).as(why+" · Tage").hasSize(soll.path("tage").size());
+                for (int i=0;i<ist.tage().size();i++) {
+                    JsonNode t=soll.path("tage").get(i);
+                    var tag=ist.tage().get(i);
+                    assertThat(tag.datum()).hasToString(t.path("datum").asText());
+                    betrag(why+" · "+tag.datum(),t.path("betrag"),tag.betrag());
+                    assertThat(tag.zustand()).isEqualTo(t.path("zustand").asText());
+                    assertThat(tag.kennzeichen()).isEqualTo(texte(t.path("kennzeichen")));
+                }
+                JsonNode m=soll.path("monat");
+                betrag(why+" · Monat",m.path("betrag"),ist.monat().betrag());
+                assertThat(ist.monat().zustand()).as(why+" · Monat").isEqualTo(m.path("zustand").asText());
+                assertThat(ist.monat().grund()).as(why+" · Monat").isEqualTo(text(m.path("grund")));
+                assertThat(ist.monat().kennzeichen()).as(why+" · Monat").isEqualTo(texte(m.path("kennzeichen")));
+                // R3: die Kennzahl erbt das Kennzeichen — aus der Bezugsgröße und über weitere Kennzahlen.
+                assertThat(KennzahlRegeln.erbe("bezugsgroesse",null,ist.monat().kennzeichen())).isEqualTo(texte(m.path("erbt")));
+                assertThat(KennzahlRegeln.erbe("kennzahl",null,texte(m.path("erbt")))).isEqualTo(texte(m.path("erbt")));
             }
             case "kanal" -> {
                 List<Zustandswechsel> wechsel = new ArrayList<>();

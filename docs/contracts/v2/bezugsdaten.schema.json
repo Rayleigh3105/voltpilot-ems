@@ -108,7 +108,7 @@
         },
         "herkunft_art": {
           "type": "array",
-          "items": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
+          "items": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02", "bezogen"] },
           "description": "§4.8: woher ein Wert kommt. Jeder Wert trägt genau eine Art."
         },
         "status": {
@@ -432,6 +432,23 @@
         "items": { "type": "string", "enum": ["java", "ts"] }
       },
       "description": "Je Regel, WELCHE Umsetzung sie prüft. Beide Zwillings-Tests lesen diese Angabe und prüfen genau die Regeln, die sie nennt — so ist eine Regel, die nur eine Seite kennt, DEKLARIERT und nicht stillschweigend übersprungen. Ein Eintrag muss mindestens „java“ nennen."
+    },
+    "wetter_archiv": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "herkunft_art", "quelle_zuerst", "kennzeichen_muster", "kennzeichen_schluessel", "grund_ohne_zahl", "wort_tage", "grenze", "gespeichert_ab"],
+      "description": "AP-17 E9 = C (IP-12a): die Herkunft `bezogen` — Wortlaut und Grenzen, gegen die beide Zwillinge ihre Konstanten prüfen.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "herkunft_art": { "const": "bezogen" },
+        "quelle_zuerst": { "type": "string", "minLength": 1, "description": "LA1: die erste Quelle; welche gilt, ist Konfiguration des Betreibers." },
+        "kennzeichen_muster": { "type": "string", "minLength": 1 },
+        "kennzeichen_schluessel": { "const": "temperatur_bezogen" },
+        "grund_ohne_zahl": { "const": "variable_fehlt" },
+        "wort_tage": { "type": "string", "minLength": 1 },
+        "grenze": { "type": "string", "minLength": 1 },
+        "gespeichert_ab": { "type": "string", "minLength": 1 }
+      }
     },
     "zwillinge_grund": {
       "type": "object",
@@ -772,8 +789,10 @@
         "urheber": { "type": "string", "minLength": 1 },
         "freigeber": { "type": ["string", "null"], "description": "F3: bei eingeschaltetem Vier-Augen-Prinzip die ZWEITE Person; gleich dem Urheber ist nie eine Freigabe." },
         "zeitpunkt": { "$ref": "#/$defs/zeitpunkt" },
-        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
-        "import_kennung": { "type": ["string", "null"] }
+        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02", "bezogen"] },
+        "import_kennung": { "type": ["string", "null"] },
+        "bezug_quelle": { "type": ["string", "null"], "description": "bezogen (AP-17 E9 = C): das Wetter-Archiv, aus dem VoltPilot das Tagesmittel bezogen hat — wie `import_kennung` beim Import." },
+        "abgerufen_am": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "bezogen: wann VoltPilot den Wert abgerufen hat. Quelle und Abrufzeit stehen als Kennzeichen „Temperatur von VoltPilot bezogen (Quelle, abgerufen am …)“ an der Zahl." }
       }
     },
 
@@ -788,8 +807,10 @@
         "status": { "type": "string", "minLength": 1, "description": "„wirksam“, „vorschlag“, „zurueckgenommen“ oder „wirksam bis Fassung n“ für eine abgelöste Fassung." },
         "begruendung": { "type": ["string", "null"] },
         "ersetzt_fassung": { "type": ["integer", "null"], "minimum": 1 },
-        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
-        "import_kennung": { "type": ["string", "null"] }
+        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02", "bezogen"] },
+        "import_kennung": { "type": ["string", "null"] },
+        "bezug_quelle": { "type": ["string", "null"], "description": "bezogen (AP-17 E9 = C): das Wetter-Archiv, aus dem VoltPilot das Tagesmittel bezogen hat — wie `import_kennung` beim Import." },
+        "abgerufen_am": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "bezogen: wann VoltPilot den Wert abgerufen hat. Quelle und Abrufzeit stehen als Kennzeichen „Temperatur von VoltPilot bezogen (Quelle, abgerufen am …)“ an der Zahl." }
       }
     },
 
@@ -934,6 +955,10 @@
         "raumtemperatur": { "$ref": "#/$defs/betrag" },
         "heizgrenze": { "$ref": "#/$defs/betrag" },
         "tage": { "type": "array", "items": { "type": "object", "required": ["mittel", "zustand"], "additionalProperties": false, "properties": { "mittel": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "zustand": { "$ref": "#/$defs/zustand_wort" } } } },
+        "standort": { "type": "string", "minLength": 1, "description": "wetter_archiv: der Standort, für den bezogen wird — er steht im Satz ohne Koordinaten." },
+        "koordinaten": { "anyOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["breite", "laenge"], "properties": { "breite": { "$ref": "#/$defs/betrag" }, "laenge": { "$ref": "#/$defs/betrag" } } }], "description": "wetter_archiv: die Lage des Standorts; null heißt „kein Abruf“ (§5.8)." },
+        "monat": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$", "description": "wetter_archiv: der Kalendermonat, dessen Gradtagzahl gebildet wird." },
+        "archivtage": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["datum", "mittel", "quelle", "abgerufen_am"], "properties": { "datum": { "$ref": "#/$defs/tag" }, "mittel": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "quelle": { "type": "string", "minLength": 1 }, "abgerufen_am": { "$ref": "#/$defs/zeitpunkt" } } }, "description": "wetter_archiv: was das Archiv je Tag geliefert hat. Ein ausgefallener Tag fehlt hier ganz." },
         "leistungen": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["zeit", "kw", "gut"], "properties": { "zeit": { "$ref": "#/$defs/zeitpunkt" }, "kw": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "gut": { "type": "boolean" } } } },
         "schwellen": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["von", "bis", "kw"], "properties": { "von": { "$ref": "#/$defs/zeitpunkt" }, "bis": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }] }, "kw": { "$ref": "#/$defs/betrag" } } } },
         "zustand_gewaehlt": { "type": "string", "minLength": 1, "description": "kanal (K): der Zustand, dessen Dauer gezählt wird." },
@@ -1027,6 +1052,12 @@
         "minuten_im_zustand": { "type": "integer", "minimum": 0, "description": "kanal: die gemessene Zeit im gewählten Zustand." },
         "abdeckung_prozent": { "type": "number", "minimum": 0, "maximum": 100, "description": "kanal: gemessene Zeit ÷ Periodenlänge. ⚠ Zeitbasiert — nicht die wertbasierte Abdeckung der Verbrauchsregel." },
         "gemessene_stunden": { "$ref": "#/$defs/betrag", "description": "kanal: wie viele Stunden der Periode überhaupt gemessen wurden." },
+        "abruf": { "type": "boolean", "description": "wetter_archiv: ob VoltPilot für diesen Standort überhaupt abruft — ohne Koordinaten nie." },
+        "grund": { "type": ["string", "null"], "enum": ["variable_fehlt", null], "description": "wetter_archiv: warum keine Zahl entsteht (G2) — nie 0." },
+        "satz": { "type": ["string", "null"], "description": "wetter_archiv: der Kundensatz zum Grund (§5.8, `UEMS_KOORDINATEN_FEHLEN_SATZ`)." },
+        "tage": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["datum", "betrag", "zustand", "kennzeichen"], "properties": { "datum": { "$ref": "#/$defs/tag" }, "betrag": { "$ref": "#/$defs/betrag" }, "zustand": { "$ref": "#/$defs/zustand_wort" }, "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 } } } }, "description": "wetter_archiv: die geschriebenen Tageswerte in Kd — ein fehlender Tag steht hier nicht, nie als 0." },
+        "nie_geschrieben": { "type": "array", "items": { "$ref": "#/$defs/tag" }, "description": "wetter_archiv: gelieferte Tage, die kein Archiv-Tag sind (heute oder später) — nie geschrieben." },
+        "monat": { "type": "object", "additionalProperties": false, "required": ["betrag", "zustand", "grund", "kennzeichen", "erbt"], "properties": { "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "zustand": { "$ref": "#/$defs/zustand_wort" }, "grund": { "type": ["string", "null"], "enum": ["variable_fehlt", null] }, "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 } }, "erbt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Was eine Kennzahl mit dieser Zahl als Nenner erbt (KennzahlRegeln.erbe)." } }, "description": "wetter_archiv: die Gradtagzahl des Monats über GradtagRegeln, mit „x von y Tagen“, wenn Tage fehlen." },
         "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "kanal: was an dieser Periode zu sagen ist, in der Reihenfolge der Feststellung — Vertrag nach Text UND Reihenfolge." },
         "ablehnung": { "anyOf": [{ "$ref": "#/$defs/ablehnung_code" }, { "type": "null" }], "description": "verwalten: die Ablehnung, oder null — der Vorgang ist erlaubt." },
         "ablehnung_felder": { "type": "array", "items": { "$ref": "#/$defs/bezugsgroesse_feld" }, "description": "verwalten (`bedeutung_fest`): die Felder, die nach dem ersten Wert nicht geändert werden." },
@@ -1309,7 +1340,7 @@
       "properties": {
         "regel": {
           "type": "string",
-          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "stammdatum_eintrag", "kanal", "gradtage", "betriebszeit_aus_leistung", "verwalten", "csv", "vorschau"],
+          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "stammdatum_eintrag", "kanal", "gradtage", "betriebszeit_aus_leistung", "wetter_archiv", "verwalten", "csv", "vorschau"],
           "description": "Welche Regel gefragt wird. `zwillinge` sagt, wer sie prüft."
         },
         "name": { "type": "string", "minLength": 1, "description": "Was die Prüfung behauptet — sie steht in der Meldung, wenn sie bricht." },

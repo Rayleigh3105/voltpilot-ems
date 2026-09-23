@@ -170,8 +170,9 @@ GELESEN (E17) — `GET /api/v1/bezugsflaechen`.
 erwartete Werte, AP-08 Z9). Zwei verschiedene Zahlen mit demselben Namen — die Datei hält
 beide Nachkommastellen-Regeln getrennt (`abdeckung_nachkommastellen`).
 
-**Gradtage (K7, AP-09 IP-18).** Nur ein gemessener Temperaturkanal (`gauge`,
-`quantity=temperature`, °C) am Standort der Bezugsgröße liefert Gradtage in Kd.
+**Gradtage (K7, AP-09 IP-18).** Ein gemessener Temperaturkanal (`gauge`,
+`quantity=temperature`, °C) am Standort der Bezugsgröße liefert Gradtage in Kd; seit AP-17
+E9 = C auch die von VoltPilot bezogene Tagesreihe (§ „Wetter-Archiv“ unten).
 Vorhersage-Wetter ist keine Messquelle. AP-08 M1–M6 bildet das Tagesmittel über gute
 Rohwerte in der Ortszone einschließlich 23-/25-Stunden-Tagen. Die Heizgrenze wird gegen
 das ungerundete Mittel geprüft, nicht gegen AP-08s auf 0,1 gerundete Anzeige. Unterhalb der Heizgrenze
@@ -237,6 +238,47 @@ Annahmen, keine neuen Ahrenberg-Messwerte: dieselben Leistungen liefern bei 5 kW
 bei 2 kW 0,75 h; ein Wechsel zur Monatsmitte bewahrt beide Kennzeichen; Lücken bleiben
 sichtbar. API-Konfiguration gehört zu IP-26; das Portal zeigt die gespeicherten Zahlen und
 Kennzeichen auf bestehenden Flächen, ohne einen neuen Schwellen-Dialog einzuführen.
+
+### Wetter-Archiv (AP-17 E9 = C)
+
+Seit 23.09.2026 hat die Gradtagzahl eine dritte Herkunft neben Messkanal und Import:
+**`bezogen`** — das Tagesmittel der Außentemperatur je Standort, von VoltPilot aus einem
+Wetter-Archiv bezogen, nicht vom Kunden belegt. Die Quelle ist Konfiguration des Betreibers
+(Quelle, Lizenz, Schlüssel als gitops-Werte); zuerst das Open-Meteo-Archiv, die
+DWD-Schnittstelle bleibt als zweite wählbar (LA1). Der Bezug läuft über die Koordinaten des
+Standorts. Eine Temperatur-Datei des Kunden gibt es nicht (bewusst nicht gebaut).
+
+- **Nur Archiv-Tage bis gestern.** Ein Tag ist nur dann ein Archiv-Tag, wenn er VOR dem
+  Kalendertag des Abrufs in der Ortszone liegt. Heute und jeder spätere Tag wird nie
+  geschrieben, auch wenn die Quelle ihn liefert — Vorhersage-Wetter bleibt ausgeschlossen
+  (AP-09 E13, LA2). Ein Abruf am 03.11.2027 um 00:30 schreibt den 02.11., nie den 03.11.
+- **Gradtage über die bestehende Regel.** Jedes Tagesmittel wird mit `GradtagRegeln` ⟷
+  `gradtage.ts` zu Kd (Vorgabe G20/15); der Monat ist die Summe seiner geschriebenen Tage.
+- **Kennzeichen an jeder Zahl.** Jeder Tages- und Monatswert trägt
+  **„Temperatur von VoltPilot bezogen (Quelle, abgerufen am TT.MM.JJJJ hh:mm)“** — Abrufzeit
+  in der Ortszone, ohne Sekunden. Ein Monat nennt je Quelle den spätesten Abruf seiner Tage.
+  Das Kennzeichen ist `temperatur_bezogen`, Rang 54 im Kennzeichen-Vokabular von
+  `ergebnis-zustand-vectors.json` (`kennzahl_kennzeichen`), geerbt: jede Kennzahl mit dieser
+  Zahl als Nenner trägt es weiter — auch über weitere Kennzahlen und gröbere Perioden (R3).
+  An der gespeicherten Fassung stehen Quelle und Abrufzeit wie beim Import die Kennung:
+  `bezug_quelle`, `abgerufen_am` neben `herkunft_art: bezogen`.
+- **Ausfall: der Tag fehlt, nie 0** (LA3). Liefert das Archiv einen Tag nicht oder ohne
+  Tagesmittel, wird nichts geschrieben und nichts interpoliert. Der Monat ist
+  `unvollständig` und trägt „x von y Tagen“ (y = Kalendertage des Monats). Der nächste
+  Abruf holt den Tag nach; danach ist der Monat vollständig und nennt den späteren Abruf.
+  Fehlt der ganze Monat, gibt es keine Zahl: Grund `variable_fehlt`.
+- **Standort ohne Koordinaten: kein Abruf.** Kein Wert, Grund `variable_fehlt`, und der
+  Satz aus AP-17 §5.8 (`UEMS_KOORDINATEN_FEHLEN_SATZ` in `glossar.ts`): „Für den Standort
+  Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. Eine
+  Wetterbereinigung über Gradtage ist hier erst möglich, wenn der Standort Koordinaten hat.“
+
+`WetterArchivRegeln` ⟷ `wetterArchiv.ts` (Regel `wetter_archiv`, Prüfungen im B7-Block,
+Block `wetter_archiv` der Vektor-Datei) sind reine Regeln: Grenze, Kennzeichen,
+Vollständigkeit je Monat, Grund ohne Koordinaten. Der Archiv-Client, sein Abruf-Takt, die
+Speicherung und die Migration, die `bezogen` in `bezugsdaten_vokabular()` und in die
+Herkünfte der Art `gradtagzahl` aufnimmt, kommen mit IP-12b; die Standort-Zeile „Wetter“
+im Portal mit IP-12c. Bis dahin spiegeln `vokabulare.herkunft_art` und `arten` die
+Datenbank unverändert (`_nicht_geprueft`).
 
 ## 5. Was hier NICHT steht
 
@@ -323,7 +365,8 @@ Einheiten und die Perioden.
 - **`konzept`** hält die Zellen der Tabelle §4.2 Zeichen für Zeichen fest, auch die Beispiele aus
   Ahrenberg. Was nur dort steht, ist Beleg, keine Regel: die Zusätze „Dauer“, „Anzahl“,
   „abgeleitet“, die Kadenz „monatlich“ und die Art des Kanals (Zähler, Zustand, Betriebsstunden,
-  Temperatur, §4.9) — `herkunft_art` kennt dafür das eine Wort `messkanal`. „Tag → Monat“ der
+  Temperatur, §4.9) — `herkunft_art` kennt dafür das eine Wort `messkanal`. Die bezogene
+  Temperatur (AP-17 E9 = C) ist das Wort `bezogen` (§ „Wetter-Archiv“). „Tag → Monat“ der
   Gradtagzahl ist gelesen als: Tag und Monat, nicht Woche und Jahr.
 - **`pruefungen`** — passt eine Bezugsgröße zu ihrer Art? `abweichend` nennt ALLE Felder, die
   nicht passen (art · wertart · geltung_art · einheit · periode_art · herkunft_art), leer heißt
