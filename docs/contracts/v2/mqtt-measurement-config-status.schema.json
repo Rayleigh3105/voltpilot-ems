@@ -25,12 +25,14 @@
       "required": ["point_key", "reason"],
       "properties": {
         "point_key": {"$ref": "#/$defs/point_key"},
-        "reason": {"enum": ["unknown_point", "unsupported_catalog", "edge_too_old", "invalid_cadence", "budget_samples", "budget_requests", "budget_duty_cycle", "driver_unavailable", "ocpp_configuration_incompatible", "binding_unavailable"]}
+        "reason": {"enum": ["unknown_point", "unsupported_catalog", "edge_too_old", "invalid_cadence", "budget_samples", "budget_requests", "budget_duty_cycle", "driver_unavailable", "ocpp_configuration_incompatible", "binding_unavailable"]},
+        "entity_id": {"$ref": "#/$defs/uuid"}
       }
     }
   },
   "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/measurement-config-status",
   "x-mqtt": {"qos": 1, "retained": true},
   "x-identity-rule": "The three topic identity segments MUST byte-equal the payload identity fields.",
+  "x-rejection-entity-rule": "Additive, AP-07 IP-18b: entity_id appears ONLY on a rejection of a SHARED POINT - the plan (mqtt-measurement-config x-point-key-rule, sent only to a box reporting measurement_config_per_component) named that point_key once per component. It names the refused component; the point_key may then ALSO stand in accepted, because the box reads it for its other components. A (point_key, entity_id) pair is refused at most once, and a rejection without entity_id (the whole point) never stands beside one with it. Every status of a plan without a shared point is byte for byte the one before: no entity_id. The edge core enforces this rule in WrapStatus (edge-app/core/internal/measurements).",
   "x-reason-binding-unavailable": "Geraeteseite Stufe 3c: the selection named a component (entity_id) the edge cannot resolve to a device it reads - unknown component, a pin naming a source this box does not publish (a removed source, or the core-owned Shelly transport that never reaches Node-RED), or a component without a pin that is not one of the platform-composed types. The point is NOT read; reading it over the primary inverter would produce a wrong value on a right-looking point. It is self-healing: the edge re-applies the plan whenever the registry or the source list changes, so a later push publishes a corrected status."
 }

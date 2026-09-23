@@ -13,9 +13,8 @@
   `Paused` die Ruhe tatsächlich bis zum Widerruf hält. Der gemeinsame Go-Test koppelt beides.
 - `plan_quittung` (AP-15 IP-10) wird gemeldet, weil `agent/plan_result.go` jedes Urteil über einen
   Plan 2.0 quittiert; bewusst keine Zeile in `edge-capabilities.json` · [Plan-Quittung](uems-plan-quittung.md).
-- `measurement_config_per_component` (AP-07 IP-18b Teil 2) ist bekannt, `advertised: false`:
-  der Publisher fragt es schon, die Box meldet es erst mit Core + Node-RED
-  · [geteilter Punkt](uems-geteilter-punkt-box-schluessel.md).
+- `measurement_config_per_component` (AP-07 IP-18b) ist `advertised: true` seit dem Box-Schritt
+  (Core + Node-RED, wirkt erst mit dem Box-Release) · [geteilter Punkt](uems-geteilter-punkt-box-schluessel.md).
 - `edge-supports-vectors.json`: Go `cloud/edge_supports_test.go`, Java
   `EdgeSupportsListenerTest`, TS `edgeSupportsVectors.test.ts` gemeinsam prüfen.
   Die bestehenden `data-source-vectors.json`-Leser prüfen weiterhin die Tabellenregel.

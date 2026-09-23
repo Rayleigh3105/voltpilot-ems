@@ -231,37 +231,103 @@ function compatibleOcpp(points, capability) {
   return { ok: true, changes: { MeterValuesSampledData: csv, StopTxnSampledData: csv } };
 }
 
+/**
+ * The shared points of a plan (AP-07 IP-18b, mqtt-measurement-config 2.0
+ * x-point-key-rule): a point_key that occurs more than once and names an
+ * entity_id at EVERY occurrence. Only such a point reports its components
+ * separately in the status (x-rejection-entity-rule); every other status stays
+ * byte for byte the one of a plan without shared points.
+ */
+function geteiltePunkte(selections) {
+  const zahl = new Map(); const ohne = new Set();
+  for (const s of selections || []) {
+    zahl.set(s.point_key, (zahl.get(s.point_key) || 0) + 1);
+    if (!s.entity_id) ohne.add(s.point_key);
+  }
+  return new Set([...zahl].filter(([key, n]) => n > 1 && !ohne.has(key)).map(([key]) => key));
+}
+
+/** A status rejection; names the component only at a shared point. */
+function ablehnung(pointKey, entityId, reason, geteilt) {
+  return geteilt.has(pointKey) && entityId
+    ? { point_key:pointKey, reason, entity_id:entityId } : { point_key:pointKey, reason };
+}
+
+/** Rejections of planned candidates, one per (point, component). */
+function ablehnungenVon(candidates, reason, geteilt) {
+  const out = new Map();
+  for (const x of candidates) {
+    const key = `${x.requested_key}\u0000${geteilt.has(x.requested_key) ? x.entity_id || '' : ''}`;
+    if (!out.has(key)) out.set(key, ablehnung(x.requested_key, x.entity_id, reason, geteilt));
+  }
+  return [...out.values()];
+}
+
+/** The key of ONE physical read: the same point on the same target. */
+function leseSchluessel(targetKey, pointKey) {
+  return `${targetKey || TARGET_PRIMARY}\u0000${pointKey}`;
+}
+
+/**
+ * ⚠ AP-07 IP-18b: a shared point is READ once per (target, point) at the
+ * fastest cadence of its components; the components keep their own cadence
+ * for their samples. Without a shared point this returns the candidates
+ * unchanged, so the request plan is the one of the merged plan.
+ */
+function lesungenJeZiel(candidates) {
+  const lesungen = new Map();
+  for (const x of candidates) {
+    const key = leseSchluessel(x.target && x.target.key, x.point.point_key);
+    const bisher = lesungen.get(key);
+    if (!bisher) lesungen.set(key, x);
+    else if (x.cadence_s < bisher.cadence_s) lesungen.set(key, { ...bisher, cadence_s:x.cadence_s });
+  }
+  return [...lesungen.values()];
+}
+
 /** Pure atomic apply. Caller swaps active plan only when this returns applied=true. */
 function buildPlan(config, options) {
   options = options || {}; const rejected = []; const valid = [];
+  const geteilt = geteiltePunkte(config && config.selections);
   if (!config || config.catalog_version !== catalogDocument.catalog_version) {
-    return { applied: false, accepted: [], rejected: (config.selections || []).map((s) => ({ point_key:s.point_key, reason:'unsupported_catalog' })) };
+    return { applied: false, accepted: [], rejected: (config.selections || []).map((s) =>
+      ablehnung(s.point_key, s.entity_id, 'unsupported_catalog', geteilt)) };
   }
-  const seen = new Set();
+  // Duplicate rule of the core (measurements.geteiltePunkte): a point once, or
+  // once per component when every occurrence names one.
+  const seen = new Map();
   for (const s of config.selections || []) {
-    if (seen.has(s.point_key)) { rejected.push({ point_key:s.point_key,reason:'unknown_point' }); continue; }
-    seen.add(s.point_key);
+    const komponente = typeof s.entity_id === 'string' ? s.entity_id.toLowerCase() : '';
+    const bisher = seen.get(s.point_key);
+    if (bisher && (bisher.ohne || !komponente || bisher.komponenten.has(komponente))) {
+      rejected.push({ point_key:s.point_key,reason:'unknown_point' }); continue;
+    }
+    const eintrag = bisher || { ohne:false, komponenten:new Set() };
+    if (komponente) eintrag.komponenten.add(komponente); else eintrag.ohne = true;
+    seen.set(s.point_key, eintrag);
+    const komponenteVon = s.entity_id ? { entity_id:s.entity_id } : {};
+    const abgelehnt = (reason) => rejected.push(ablehnung(s.point_key, s.entity_id, reason, geteilt));
     // Resolve once against the PRIMARY's discovery to learn what kind of point
     // this is (a sunspec wildcard TEMPLATE and every non-sunspec point resolve
     // discovery-free), bind it, then resolve again with the bound target's own
     // discovery where that differs.
     let p = resolvePoint(s.point_key, options.discovery, s.definition);
-    if (!p || !p.readable) { rejected.push({ point_key:s.point_key,reason:'unknown_point' }); continue; }
+    if (!p || !p.readable) { abgelehnt('unknown_point'); continue; }
     if (!Number.isInteger(s.cadence_s) || s.cadence_s < (p.min_cadence_s || 1) || s.cadence_s > 86400) {
-      rejected.push({ point_key:s.point_key,reason:'invalid_cadence' }); continue;
+      abgelehnt('invalid_cadence'); continue;
     }
     // ⚠ Stufe 3c: an unresolvable component binding is REFUSED here, never read
     // against the primary inverter's connection.
     const target = resolveTarget(s, p, options.binding);
-    if (target.reason) { rejected.push({ point_key:s.point_key,reason:target.reason }); continue; }
+    if (target.reason) { abgelehnt(target.reason); continue; }
     const discovery = discoveryFor(options, target.key);
     if (discovery !== options.discovery) {
       p = resolvePoint(s.point_key, discovery, s.definition);
-      if (!p || !p.readable) { rejected.push({ point_key:s.point_key,reason:'unknown_point' }); continue; }
+      if (!p || !p.readable) { abgelehnt('unknown_point'); continue; }
     }
     if (['modbus_holding','modbus_input','sunspec_model'].includes(p.source_kind)
         && !p.address && derivedAddresses(p).length === 0) {
-      rejected.push({ point_key:s.point_key,reason:'driver_unavailable' }); continue;
+      abgelehnt('driver_unavailable'); continue;
     }
     // ⚠ A register image without its per-installation parameters cannot be
     // addressed AT ALL - there is no default base address. Refuse the point
@@ -270,19 +336,19 @@ function buildPlan(config, options) {
       const parameter = registerbildFor(options, target.key);
       const kartenzahl = parameter && parameter.kartenzahl;
       if (!Number.isInteger(kartenzahl) || kartenzahl < 1) {
-        rejected.push({ point_key:s.point_key, reason:'driver_unavailable' }); continue;
+        abgelehnt('driver_unavailable'); continue;
       }
       // How many cards exist is the Soll from the Hardwareblatt, never a
       // discovery: the template expands to exactly the planned cards.
       const indizes = p.point_key.includes('[*]')
         ? Array.from({ length:kartenzahl }, (_, i) => i) : [wago.karteIndexAus(p.point_key)];
       if (indizes.some((i) => !Number.isInteger(i) || i >= kartenzahl)) {
-        rejected.push({ point_key:s.point_key, reason:'driver_unavailable' }); continue;
+        abgelehnt('driver_unavailable'); continue;
       }
       for (const index of indizes) {
         const concrete = resolvePoint(s.point_key.replace('[*]', `[${index}]`), discovery);
         if (concrete) valid.push({ point:concrete, cadence_s:s.cadence_s,
-          requested_key:s.point_key, target });
+          requested_key:s.point_key, target, ...komponenteVon });
       }
       continue;
     }
@@ -290,22 +356,25 @@ function buildPlan(config, options) {
       const n = Number(discovery && discovery.models
         && discovery.models[160] && discovery.models[160].moduleCount);
       if (!Number.isInteger(n) || n < 1) {
-        rejected.push({ point_key:s.point_key, reason:'driver_unavailable' }); continue;
+        abgelehnt('driver_unavailable'); continue;
       }
       for (let index = 0; index < n; index++) {
         const key = s.point_key.replace('[*]', `[${index}]`);
         const concrete = resolvePoint(key, discovery);
-        if (concrete) valid.push({ point:concrete,cadence_s:s.cadence_s,requested_key:s.point_key,target });
+        if (concrete) valid.push({ point:concrete,cadence_s:s.cadence_s,requested_key:s.point_key,target,...komponenteVon });
       }
-    } else valid.push({ point:p,cadence_s:s.cadence_s,requested_key:s.point_key,target });
+    } else valid.push({ point:p,cadence_s:s.cadence_s,requested_key:s.point_key,target,...komponenteVon });
   }
   const ocpp = valid.filter((x) => x.point.source_kind === 'ocpp_sampled_value');
   const choreography = compatibleOcpp(ocpp, options.ocppCapability);
   if (!choreography.ok) {
-    for (const x of ocpp) rejected.push({ point_key:x.requested_key,reason:'ocpp_configuration_incompatible' });
+    rejected.push(...ablehnungenVon(ocpp, 'ocpp_configuration_incompatible', geteilt));
   }
   const acceptedCandidates = valid.filter((x) => choreography.ok || x.point.source_kind !== 'ocpp_sampled_value');
-  const prerequisites = acceptedCandidates.flatMap((selected) => {
+  // Everything that costs a REQUEST is planned from the reads; the samples
+  // (one per component) from the accepted candidates.
+  const lesungen = lesungenJeZiel(acceptedCandidates);
+  const prerequisites = lesungen.flatMap((selected) => {
     const lookup = selected.point.decoder && selected.point.decoder.validation
       && selected.point.decoder.validation.lookup;
     if (!lookup) return [];
@@ -316,12 +385,12 @@ function buildPlan(config, options) {
   });
   const uniquePrerequisites = [...new Map(prerequisites.map((item) =>
     [`${item.target.key}:${item.point.point_key}:${item.cadence_s}:${item.trigger_key}`, item])).values()];
-  const alleKandidaten = acceptedCandidates.concat(uniquePrerequisites);
+  const alleKandidaten = lesungen.concat(uniquePrerequisites);
   const blocks = groupModbus(alleKandidaten.filter((x) => !wago.istRegisterbildPunkt(x.point)),
     options).concat(groupRegisterbild(
       alleKandidaten.filter((x) => wago.istRegisterbildPunkt(x.point)), options));
   const nonModbusGroups = new Map();
-  for (const x of acceptedCandidates.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value','wago_registerbild'].includes(v.point.source_kind))) {
+  for (const x of lesungen.filter((v) => !['modbus_holding','modbus_input','sunspec_model','ocpp_sampled_value','wago_registerbild'].includes(v.point.source_kind))) {
     // Same rule as the modbus blocks: one HTTP request per (target, group).
     const key = `${x.target.key}:${x.point.poll_group}:${x.cadence_s}`; nonModbusGroups.set(key, x);
   }
@@ -333,7 +402,7 @@ function buildPlan(config, options) {
       *requestCostMs(x.point.family, x.point.source_kind), 0);
   const { reason:budgetReason, metrics } = budgetMetrics(samples, requests, dutyMs);
   if (budgetReason) {
-    return { applied:false, accepted:[], rejected:acceptedCandidates.map((x)=>({point_key:x.requested_key,reason:budgetReason})).concat(rejected), metrics };
+    return { applied:false, accepted:[], rejected:ablehnungenVon(acceptedCandidates, budgetReason, geteilt).concat(rejected), metrics };
   }
   const accepted = [...new Set(acceptedCandidates.map((x)=>x.requested_key))];
   return { applied:true, revision:config.revision, catalog_version:config.catalog_version,
@@ -353,6 +422,7 @@ class Scheduler {
   next(){return this.control.length?this.control.shift():this.poll.shift();}
 }
 
-module.exports = { LIMITS, COST_MS, buildPlan, groupModbus, groupRegisterbild, registerbildFor,
+module.exports = { LIMITS, COST_MS, buildPlan, geteiltePunkte, ablehnungenVon, leseSchluessel,
+  groupModbus, groupRegisterbild, registerbildFor,
   compatibleOcpp, Scheduler, decoderDependencies, discoveryFor, byteOrderFor, requestCostMs,
   requestsForUnits, estimateSources };

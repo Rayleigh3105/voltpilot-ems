@@ -27,7 +27,11 @@ type StatusExtension struct {
 // sprungprobe (AP-15 IP-21): the agent runs a Sprungprobe order bounded and
 // lowering-only under its own watchdogs and reports it once
 // (agent/sprungprobe.go, internal/sprungprobe).
+// measurement_config_per_component (AP-07 IP-18b): the core accepts a shared
+// point once per component in plan, batch and status
+// (measurements.geteiltePunkte), and the palette reads it once per target and
+// samples it per component (nodered/measurements/measurement-planner.js).
 func BuiltSupports() []string {
 	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
-		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}
+		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component"}
 }

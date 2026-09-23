@@ -109,7 +109,13 @@ func TestOutboxRejectsMalformedProvenanceAndKeepsDuplicatePointRule(t *testing.T
 			})
 		}
 	}
-	duplicate := []byte(`{"catalog_version":"2026.08.25.1","observed_at":"2026-08-25T12:00:00Z","applied_revision":7,"samples":[{"point_key":"x","raw":1,"quality":"good","entity_id":"00000000-0000-0000-0000-0000000000a1"},{"point_key":"x","raw":1,"quality":"good","entity_id":"00000000-0000-0000-0000-0000000000b2"}]}`)
+	// AP-07 IP-18b: two DIFFERENT components at one point are a shared point
+	// (one sample each); the same component twice stays a duplicate.
+	shared := []byte(`{"catalog_version":"2026.08.25.1","observed_at":"2026-08-25T12:00:00Z","applied_revision":7,"samples":[{"point_key":"x","raw":1,"quality":"good","entity_id":"00000000-0000-0000-0000-0000000000a1"},{"point_key":"x","raw":1,"quality":"good","entity_id":"00000000-0000-0000-0000-0000000000b2"}]}`)
+	if _, err := parseBatch(shared); err != nil {
+		t.Fatalf("shared point refused: %v", err)
+	}
+	duplicate := bytes.Replace(shared, []byte("0000000000b2"), []byte("0000000000a1"), 1)
 	if _, err := parseBatch(duplicate); err == nil {
 		t.Fatal("duplicate point accepted")
 	}
