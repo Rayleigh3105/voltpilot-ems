@@ -54,8 +54,8 @@ Seit IP-4 ruft `DatenquelleVorschlagService` die Regel `vorschlagsliste` (Famili
    verworfen.
 5. **Fähigkeiten:** `supports[]` übersteuert (auch leer); sonst zählt die Ordnung des
    Release-Registers (`release_seq`, D5), nie ein String-Vergleich; ein Stempel ohne Release
-   beweist nichts. Heute ist `ab_release` bei BEIDEN Fähigkeiten `null` — wer das Release baut,
-   trägt es ein.
+   beweist nichts. Heute ist `ab_release` bei `data_sources` `null` — wer das Release baut,
+   trägt es ein. „Zuständigkeit ab Zeitpunkt“ ist `keine_faehigkeit` (Cloud-Zeitgeber, B06).
 
 ## Prüfen
 

@@ -13,7 +13,6 @@ const MESSWERTE_GRENZE = 600;
 /** Runtime copy of the reviewed capability table; its vector test pins names and order. */
 export const BOX_FAEHIGKEITEN: TabellenEintrag[] = [
   { code: 'data_sources', name: 'Rückmeldung je Datenquelle', ab_release: null },
-  { code: 'assignment_effective_at', name: 'Zuständigkeit ab Zeitpunkt', ab_release: null },
 ];
 
 export interface BoxQuelleZeile {

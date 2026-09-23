@@ -20,10 +20,11 @@
     "     semver-Beispiel „2.5.0“ des Referenzunternehmens) beweist keine Fähigkeit: sie FEHLT,",
     "     und die Fläche sagt „Update nötig für …“ — nie „kann alles“ (E12 C).",
     "",
-    "⚠ STAND HEUTE: `ab_release` ist bei BEIDEN Fähigkeiten null — kein ausgeliefertes Release",
-    "trägt sie; bis dahin fährt jede Box das Übergangs-Verhalten (E8: die Cloud stellt zum",
-    "Zeitpunkt zu, die Quelle zeigt „Box meldet noch nicht je Quelle“). Wer das Release baut,",
-    "das eine Fähigkeit mitbringt (AP-06 IP-13 für `data_sources`), trägt sein Tag hier ein.",
+    "⚠ STAND HEUTE: `ab_release` ist bei `data_sources` null — kein ausgeliefertes Release",
+    "trägt sie; bis dahin zeigt die Quelle „Box meldet noch nicht je Quelle“. Wer das Release",
+    "baut, das sie mitbringt (AP-06 IP-13), trägt sein Tag hier ein. „Zuständigkeit ab",
+    "Zeitpunkt“ steht seit dem 23.09.2026 unter `keine_faehigkeit`: der Cloud-Zeitgeber erbringt",
+    "sie für jede Box, kein Update bringt sie (B06, E8 = A).",
     "",
     "Was hier BEWUSST fehlt, steht in `keine_faehigkeit`: Dinge, die ohne Box-Fähigkeit",
     "vollständig funktionieren — für sie gibt es keinen Hinweis „Update nötig“."
@@ -31,7 +32,7 @@
   "schema_version": "1.0",
   "$schema_datei": "./edge-capabilities.schema.json",
   "herkunft": "UEMS AP-06 §4.1 (Fähigkeit einer Box), §4.5 (Fähigkeiten und das Verhalten ohne sie), Entscheide E8 = A und E12 = A (Captain, 10.09.2026); Abnahmefall A7.",
-  "stand": "2026-09-11",
+  "stand": "2026-09-23",
   "faehigkeiten": [
     {
       "code": "data_sources",
@@ -39,19 +40,16 @@
       "ermoeglicht": "Die Box meldet im Herzschlag je Datenquelle, ob sie liest, seit wann nicht und warum (Block `data_sources[]`, Fehlerklasse aus dem geschlossenen Vokabular).",
       "ohne": "Rückmeldung nur je Box und die heutige Gesundheit je Messwert; die Datenquelle zeigt „Box meldet noch nicht je Quelle“ und nennt nie eine Ursache.",
       "ab_release": null
-    },
-    {
-      "code": "assignment_effective_at",
-      "name": "Zuständigkeit ab Zeitpunkt",
-      "ermoeglicht": "Die Box bekommt eine Zuständigkeit mit Gültigkeitsbeginn zugestellt und liest erst ab diesem Zeitpunkt.",
-      "ohne": "Die Cloud stellt zum Zeitpunkt zu; die Lücke bei einer Übergabe kann um eine Herzschlag-Kadenz größer sein — sichtbar und benannt.",
-      "ab_release": null
     }
   ],
   "keine_faehigkeit": [
     {
       "was": "Zustellung je Box",
       "warum": "E4: die Cloud setzt den Registry-Push jeder Box aus deren Zuständigkeiten zusammen — jede Box, auch eine alte, liest, was ihr zugestellt wird."
+    },
+    {
+      "was": "Zuständigkeit ab Zeitpunkt",
+      "warum": "E8: der Cloud-Zeitgeber führt die Übergabe zum Zeitpunkt für jede Box aus (Push je Box, Freigabe der neuen Box erst nach der Quittung der alten). Fällt eine der beiden Boxen zum Zeitpunkt aus, wartet die Übergabe, bis sie wieder meldet — sichtbar als „Übergabe ausstehend“. Kein Box-Release bringt eine lokale Zeitsteuerung; das Wort `assignment_effective_at` bleibt nur im Meldevokabular (edge-supports.md)."
     },
     {
       "was": "Nachfolger-Anmeldung",

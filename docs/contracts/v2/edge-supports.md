@@ -54,7 +54,9 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).
   Die Fähigkeit würde eine vorab zugestellte Zuständigkeit erst zum Gültigkeitsbeginn
-  lokal ausführen. Diese lokale Zeitsteuerung ist noch nicht gebaut.
+  lokal ausführen. Diese lokale Zeitsteuerung ist nicht gebaut und nicht geplant (E8 = A);
+  darum steht „Zuständigkeit ab Zeitpunkt“ in `edge-capabilities.json` unter
+  `keine_faehigkeit` und erzeugt nie ein „Update nötig“.
 
 Die Cloud fragt zentral `BoxFaehigkeiten.kann(deviceId, capability)` unter dem aktuellen
 Mandanten ab: **gemeldet ODER laut Versions-Tabelle**. Eine positive Meldung gilt ohne

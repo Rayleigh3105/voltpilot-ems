@@ -5,7 +5,9 @@
 - `BoxFaehigkeiten.kann` ist der Cloud-Einstieg für „kann Box X Fähigkeit Y?“;
   gemeldet ODER laut Versions-Tabelle, RLS-gebunden. Keine eigenen Versionsvergleiche.
 - `assignment_effective_at` ist bekannt, aber lokal nicht gebaut und wird nicht gemeldet.
-  Quellenübergabe zum Zeitpunkt ist heute Cloud-Verhalten, keine lokale Fähigkeit.
+  Quellenübergabe zum Zeitpunkt ist Cloud-Verhalten für jede Box und steht darum in
+  `edge-capabilities.json` unter `keine_faehigkeit` (kein „Update nötig“). Bei Ausfall einer Box
+  wartet die Übergabe auf ihre Quittung („Übergabe ausstehend“), keine Herzschlag-Kadenz.
 - `measurement_sample_provenance` verspricht die gebaute 2.1-Herkunft, keinen neuen Messplan.
 - `events` (seit AP-07 IP-19) verspricht den gebauten Ereignis-Weg `…/v2/events`, nicht das
   ganze Vokabular: sechs Box-Arten, kein `clock_jump` · [Box-Seite](uems-box-ereignisse.md).

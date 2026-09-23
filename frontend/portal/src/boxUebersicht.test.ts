@@ -34,8 +34,19 @@ describe('Box-Übersicht · reine Ableitungen', () => {
       [{ ...version, supports: ['data_sources'], capabilities: ['data_sources'] }], [],
       new Map([['anlage-1', 'Halle 2']]), JETZT,
     );
-    expect(result.find((b) => b.id === 'box-2')?.faehigkeiten).toBe('Software 2.5.0 · Update nötig für: Zuständigkeit ab Zeitpunkt');
+    expect(result.find((b) => b.id === 'box-2')?.faehigkeiten).toBe('Software 2.5.0 · alle Fähigkeiten');
     expect(result.find((b) => b.id === 'box-1')?.faehigkeiten).toContain('Rückmeldung je Datenquelle');
+  });
+
+  it('kein Update-Hinweis für Zuständigkeit ab Zeitpunkt: der Cloud-Zeitgeber erbringt sie für jede Box', () => {
+    const [v] = boxUebersicht(
+      [box('box-2', 'Box Halle 2', true)],
+      [{ ...version, capabilities: ['data_sources'] }], [],
+      new Map([['anlage-1', 'Halle 2']]), JETZT,
+    );
+    expect(v.faehigkeiten).toBe('Software 2.5.0 · alle Fähigkeiten');
+    expect(v.faehigkeiten).not.toContain('Zuständigkeit ab Zeitpunkt');
+    expect(v.updateNoetig).toBe(false);
   });
 
   it('wählt bei mehreren Boxen nur die serverseitig markierte führende Box', () => {
@@ -63,7 +74,7 @@ describe('Box-Übersicht · reine Ableitungen', () => {
     expect(v.rolle).toBe('Führt Halle 2');
     expect(v.quellenSatz).toBe('Liest 1 Datenquelle');
     expect(v.budgetSumme).toBe('Zusammen 6 von 30 Anfragen/min');
-    expect(v.faehigkeiten).toBe('Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt');
+    expect(v.faehigkeiten).toBe('Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle');
     expect(v.updateNoetig).toBe(true);
   });
 

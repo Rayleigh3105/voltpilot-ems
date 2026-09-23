@@ -27,10 +27,11 @@ import org.junit.jupiter.api.Test;
  * und er entsteht aus dem Versionsstempel der CI ({@code <tag>-<12 Zeichen der SHA>},
  * {@code .forgejo/workflows/edge-images.yaml}).
  *
- * <p>Der Punkt der Regel: es ist NICHT so, dass nur alte Boxen den Satz sehen. Beide Fähigkeiten
- * tragen {@code ab_release: null} — <em>kein</em> ausgeliefertes Release trägt sie. Darum sagt
+ * <p>Der Punkt der Regel: es ist NICHT so, dass nur alte Boxen den Satz sehen. Die Fähigkeit der
+ * Tabelle trägt {@code ab_release: null} — <em>kein</em> ausgeliefertes Release trägt sie. Darum sagt
  * die Fläche den Satz auch für die NEUESTE ausgelieferte Box, und ob ihr Release im Register
- * steht, ändert daran nichts. Das ist der Zustand der Flotte, kein Fehlerbild (X2).
+ * steht, ändert daran nichts. Das ist der Zustand der Flotte, kein Fehlerbild (X2). „Zuständigkeit
+ * ab Zeitpunkt“ nennt der Satz seit B06 nicht mehr: der Cloud-Zeitgeber erbringt sie für jede Box.
  */
 class Nw3AusgeliefertesBoxImageTest {
 
@@ -44,10 +45,10 @@ class Nw3AusgeliefertesBoxImageTest {
     private static final String RELEASE = "edge-2026.09.4";
 
     private static final String SATZ = "Software " + GEMELDETER_STAND
-            + " · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt";
+            + " · Update nötig für: Rückmeldung je Datenquelle";
 
     @Test
-    void dieAusgelieferteBoxOhneReleaseImRegisterBrauchtBeideUpdates() throws Exception {
+    void dieAusgelieferteBoxOhneReleaseImRegisterBrauchtDasUpdateJeDatenquelle() throws Exception {
         // Ein Stand, der zu keinem Release des Registers gehört, beweist keine Fähigkeit
         // (Regel 3 des Vertrags). Das ist die Lage jeder Box, deren Release die Cloud
         // (noch) nicht kennt.
@@ -59,14 +60,14 @@ class Nw3AusgeliefertesBoxImageTest {
     }
 
     @Test
-    void auchMitDemReleaseImRegisterBrauchtSieBeideUpdates() throws Exception {
+    void auchMitDemReleaseImRegisterBrauchtSieDasUpdateJeDatenquelle() throws Exception {
         // Und selbst wenn das Register das Release kennt und die Box es meldet: `ab_release`
-        // ist bei beiden Fähigkeiten null, also trägt sie keines — der Satz bleibt derselbe.
+        // ist bei `data_sources` null, also trägt sie es nicht — der Satz bleibt derselbe.
         FaehigkeitenErgebnis e = DatenquelleRegeln.faehigkeiten(
                 new Stand(GEMELDETER_STAND, RELEASE, null), tabelle(), List.of(RELEASE));
 
         assertThat(e.text()).isEqualTo("Software " + RELEASE
-                + " · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt");
+                + " · Update nötig für: Rückmeldung je Datenquelle");
         assertThat(e.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
     }
 

@@ -510,7 +510,7 @@ hauptlauf() {
     --aus "$ARBEIT/faehigkeiten.json"
   local text
   text="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["rest"])' "$ARBEIT/faehigkeiten.json")"
-  if [ "$text" = "Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt" ]; then
+  if [ "$text" = "Update nötig für: Rückmeldung je Datenquelle" ]; then
     melde "7 update noetig" gruen "$text" "$(cat "$ARBEIT/faehigkeiten.json")"
   else
     melde "7 update noetig" rot "unerwarteter Satz: $text" "$(cat "$ARBEIT/faehigkeiten.json")"

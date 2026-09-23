@@ -2531,7 +2531,7 @@
       "name": "a7-box-lindach-2-5-0-update-noetig",
       "familie": "faehigkeiten",
       "abnahme": "A7",
-      "why": "A7 / E8 = A / E12 = A: Box Lindach meldet 2.5.0, keinen Block `supports[]`. Die echte Tabelle (edge-capabilities.json) sagt: kein ausgeliefertes Release trägt die Fähigkeiten — also fehlen beide, und die Fläche nennt sie in der Reihenfolge der Tabelle. „2.5.0“ gehört zu keinem Release des Registers und beweist deshalb auch künftig nichts.",
+      "why": "A7 / E8 = A / E12 = A: Box Lindach meldet 2.5.0, keinen Block `supports[]`. Die echte Tabelle (edge-capabilities.json) sagt: kein ausgeliefertes Release trägt „Rückmeldung je Datenquelle“ — also fehlt sie. „Zuständigkeit ab Zeitpunkt“ ist keine Fähigkeit (keine_faehigkeit, B06): der Cloud-Zeitgeber erbringt sie für jede Box, darum nennt die Fläche sie nie als Update. „2.5.0“ gehört zu keinem Release des Registers und beweist deshalb auch künftig nichts.",
       "input": {
         "box": "E-3",
         "stand": {
@@ -2547,20 +2547,15 @@
             "code": "data_sources",
             "status": "fehlt",
             "nachweis": "tabelle"
-          },
-          {
-            "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "tabelle"
           }
         ],
-        "text": "Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+        "text": "Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle"
       }
     },
     {
       "name": "tabelle-release-traegt-eine-faehigkeit",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "E12 = A: ohne `supports[]` entscheidet die Tabelle über die Ordnung des Release-Registers (release_seq, D5) — edge-2026.10.1 liegt nicht vor edge-2026.10.0, also ist die Rückmeldung je Datenquelle da. Die zweite Fähigkeit trägt noch kein Release. Die Fläche nennt das Release-Tag, nicht den Build.",
       "input": {
         "stand": {
@@ -2605,7 +2600,7 @@
     {
       "name": "tabelle-release-zu-alt",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "E12 = A: edge-2026.09.4 liegt im Register VOR edge-2026.10.0 — die Fähigkeit fehlt.",
       "input": {
         "stand": {
@@ -2650,7 +2645,7 @@
     {
       "name": "stand-ohne-release-beweist-nichts",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "Hausregel `releaseIsRunning`: ein Bestandsbau mit nackter SHA gehört zu KEINEM Release. Er beweist keine Fähigkeit — sie fehlt, statt geraten „ist wohl aktuell“ (E12 C: „kann alles“ wäre falsch).",
       "input": {
         "stand": {
@@ -2695,7 +2690,7 @@
     {
       "name": "alle-faehigkeiten",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "§4.5: eine Box, deren Release beide Fähigkeiten trägt, zeigt „alle Fähigkeiten“.",
       "input": {
         "stand": {
@@ -2740,7 +2735,7 @@
     {
       "name": "supports-uebersteuert-die-tabelle",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
       "input": {
         "stand": {
@@ -2788,7 +2783,7 @@
     {
       "name": "supports-leer-erhaelt-tabelle",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
       "input": {
         "stand": {
@@ -2834,7 +2829,7 @@
       "name": "supports-meldet-mehr-als-die-echte-tabelle",
       "familie": "faehigkeiten",
       "annahme": "Ein künftiges Release edge-2026.10.0 mit Block `supports[]` (AP-06 IP-18) ist angenommen.",
-      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
+      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Namen ohne Tabellenzeile werden ignoriert — so auch `assignment_effective_at`, das seit B06 keine Fähigkeit der Tabelle ist.",
       "input": {
         "stand": {
           "version": "edge-2026.10.0-3bf8c038e1d2",
@@ -2853,11 +2848,6 @@
         "faehigkeiten": [
           {
             "code": "data_sources",
-            "status": "vorhanden",
-            "nachweis": "supports"
-          },
-          {
-            "code": "assignment_effective_at",
             "status": "vorhanden",
             "nachweis": "supports"
           }
@@ -2883,14 +2873,9 @@
             "code": "data_sources",
             "status": "fehlt",
             "nachweis": "tabelle"
-          },
-          {
-            "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "tabelle"
           }
         ],
-        "text": "Software-Stand unbekannt · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+        "text": "Software-Stand unbekannt · Update nötig für: Rückmeldung je Datenquelle"
       }
     },
     {

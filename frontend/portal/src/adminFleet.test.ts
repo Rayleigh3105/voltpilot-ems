@@ -94,7 +94,7 @@ describe('fleetRows', () => {
     });
     expect(groups[0].boxes[0].software.text).toBe('edge-2026.09.0 ✓');
     expect(groups[0].boxes[0].capabilities.map((capability) => capability.name)).toEqual([
-      'Rückmeldung je Datenquelle', 'Zuständigkeit ab Zeitpunkt',
+      'Rückmeldung je Datenquelle',
     ]);
     expect(groups[0].boxes[0].capabilities.every((capability) => capability.status === 'fehlt')).toBe(true);
   });
@@ -106,8 +106,8 @@ describe('fleetRows', () => {
       { deviceId: 'old', externalRef: 'VP-old', name: null, fuehrtAnlage: false,
         lastSeenAt: ago(1000), edge: null, update: null },
     ] })], NOW, []);
-    expect(groups[0].boxes.find((b) => b.deviceId === 'new')?.capabilities.map((c) => c.status)).toEqual(['vorhanden', 'fehlt']);
-    expect(groups[0].boxes.find((b) => b.deviceId === 'old')?.capabilities.map((c) => c.status)).toEqual(['fehlt', 'fehlt']);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'new')?.capabilities.map((c) => c.status)).toEqual(['vorhanden']);
+    expect(groups[0].boxes.find((b) => b.deviceId === 'old')?.capabilities.map((c) => c.status)).toEqual(['fehlt']);
   });
 
   it('sorts attention first - a silent device beats a healthy plant', () => {

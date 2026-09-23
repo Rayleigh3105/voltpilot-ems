@@ -101,8 +101,9 @@ Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (3 Fälle).
 
 ## X2 ist kein Fehlerbild
 
-Beide Fähigkeiten der Tabelle `docs/contracts/v2/edge-capabilities.json` tragen
+Die Fähigkeit der Tabelle `docs/contracts/v2/edge-capabilities.json` trägt
 `ab_release: null`. Darum sagt die Fläche „Update nötig für: Rückmeldung je
-Datenquelle, Zuständigkeit ab Zeitpunkt" auch für die **neueste ausgelieferte**
+Datenquelle" (bis B06, 23.09.2026, zusätzlich „Zuständigkeit ab Zeitpunkt“; das
+Protokoll vom 19.09.2026 zeigt noch den alten Satz) auch für die **neueste ausgelieferte**
 Box, und ob ihr Release im Register steht, ändert daran nichts. Das ist der
 Zustand der ganzen Flotte bis zum Edge-Release, das eine Fähigkeit mitbringt.

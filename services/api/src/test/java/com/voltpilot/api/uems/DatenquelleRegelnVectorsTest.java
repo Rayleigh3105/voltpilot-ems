@@ -462,16 +462,19 @@ class DatenquelleRegelnVectorsTest {
     }
 
     /**
-     * Die echte Tabelle trägt die zwei Fähigkeiten, die AP-06 braucht, in der Reihenfolge des
-     * A7-Satzes — und heute noch kein Release (kein ausgeliefertes Release hat sie).
+     * Die echte Tabelle trägt die Fähigkeit, deren Fehlen der A7-Satz nennt — und heute noch kein
+     * Release (kein ausgeliefertes Release hat sie). „Zuständigkeit ab Zeitpunkt“ steht seit B06
+     * unter {@code keine_faehigkeit}: der Cloud-Zeitgeber erbringt sie für jede Box.
      */
     @Test
     void dieFaehigkeitenTabelleIstDieDesKonzepts() throws Exception {
         List<TabellenEintrag> tab = tabelle(lies(TABELLE).path("faehigkeiten"));
-        assertThat(tab).extracting(TabellenEintrag::code).containsExactly("data_sources", "assignment_effective_at");
+        assertThat(tab).extracting(TabellenEintrag::code).containsExactly("data_sources");
         assertThat(tab).extracting(TabellenEintrag::name)
-                .containsExactly("Rückmeldung je Datenquelle", "Zuständigkeit ab Zeitpunkt");
+                .containsExactly("Rückmeldung je Datenquelle");
         assertThat(tab).extracting(TabellenEintrag::abRelease).containsOnlyNulls();
+        assertThat(lies(TABELLE).path("keine_faehigkeit").findValuesAsText("was"))
+                .contains("Zuständigkeit ab Zeitpunkt");
     }
 
     // ------------------------------------------------ Referenzunternehmen
