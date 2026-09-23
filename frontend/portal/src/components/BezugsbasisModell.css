@@ -1,0 +1,162 @@
+/*
+ * Modell-Ansicht einer Fassung (UEMS AP-17 IP-14). 375 px: Grafik über die volle Breite (viewBox), Legende darunter,
+ * Tafel darunter. Ab 1100 px: Grafik neben der Tafel — im Assistenten (`is-schmal`) bleibt es einspaltig. Keine
+ * Bewegung: die Grafik hat weder Übergang noch Animation.
+ */
+.vp-bbm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  border-top: 1px solid var(--vp-c-border);
+  padding-top: var(--vp-c-space-3);
+  margin-top: var(--vp-c-space-3);
+}
+.vp-bbm h3 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-bbm p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.vp-bbm-kopf {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-fg);
+}
+.vp-bbm-raster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+@media (min-width: 1100px) {
+  .vp-bbm:not(.is-schmal) .vp-bbm-raster {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+  }
+}
+.vp-bbm-grafik {
+  margin: 0;
+  min-width: 0;
+}
+.vp-bbm-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+.vp-bbm-band {
+  fill: var(--vp-c-muted);
+}
+.vp-bbm-achse {
+  stroke: var(--vp-chart-axisline);
+  stroke-width: 1;
+}
+.vp-bbm-marke {
+  stroke: var(--vp-chart-axis);
+  stroke-width: 1;
+}
+.vp-bbm-zahl,
+.vp-bbm-achsentext {
+  fill: var(--vp-chart-axis);
+  font-family: var(--vp-c-font);
+  font-size: 12px;
+}
+.vp-bbm-gerade {
+  stroke: var(--vp-c-primary);
+  stroke-width: 2;
+}
+.vp-bbm-gerade.is-toleriert {
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+.vp-bbm-grundlast {
+  stroke: var(--vp-chart-axis);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.vp-bbm-punkt {
+  fill: var(--vp-chart-ink);
+  stroke: var(--vp-c-card);
+  stroke-width: 1.5;
+}
+.vp-bbm-legende {
+  list-style: none;
+  margin: var(--vp-c-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2) var(--vp-c-space-4);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+}
+.vp-bbm-legende li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vp-bbm-zeichen {
+  display: inline-block;
+  flex: none;
+}
+.vp-bbm-zeichen.is-punkt {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vp-chart-ink);
+}
+.vp-bbm-zeichen.is-gerade {
+  width: 18px;
+  height: 2px;
+  background: var(--vp-c-primary);
+}
+.vp-bbm-zeichen.is-band {
+  width: 14px;
+  height: 10px;
+  background: var(--vp-c-muted);
+  border: 1px solid var(--vp-c-border);
+}
+.vp-bbm-hinweis,
+.vp-bbm-unter {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  margin-top: var(--vp-c-space-2);
+}
+.vp-bbm-tafel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  min-width: 0;
+}
+.vp-bbm-tafel dt {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-600);
+}
+.vp-bbm-tafel dd {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+.vp-bbm-abgelehnt {
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+  border-radius: var(--vp-c-radius-sm);
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-bbm-monate ul {
+  margin: var(--vp-c-space-2) 0 0;
+  padding-left: 1.2em;
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+.vp-bbm-monate summary {
+  cursor: pointer;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}

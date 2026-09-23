@@ -32,7 +32,7 @@ import {
 } from './glossar';
 import { budgetFreiText, folgenSaetze } from './datenquelle';
 import { rechteSeed } from './test/rollenFixtures';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
@@ -1502,6 +1502,10 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'bezugsbasisAnlegen.ts',
     'components/BezugsbasisReiter.tsx',
     'components/BezugsbasisAssistent.tsx',
+    // AP-17 IP-14: die Modell-Ansicht einer Fassung (im Reiter und im Schritt „Vorschau“) und ihre Grafik.
+    'bezugsbasisModell.ts',
+    'components/BezugsbasisModell.tsx',
+    'components/BezugsbasisModellGrafik.tsx',
   ];
   const verboten = (woerter: string[]) => new RegExp(`(^|[^\\p{L}])(${woerter.join('|')})([^\\p{L}]|$)`, 'u');
   const KUNDENSICHT_VERBOTEN = verboten(['KPI', 'Metrik', 'Kenngröße', 'Kenngrößen', 'Dashboard', 'Widget', 'Template']);
@@ -2482,6 +2486,27 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
     return VERBOTEN.filter((re) => re.test(ohneGrenze));
   };
   const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+  /**
+   * IP-14: Teil-Komponenten, die nur INNERHALB einer Fläche mit Grenz-Satz stehen (die Modell-Ansicht im Reiter und im
+   * Assistenten) — der Satz stünde sonst doppelt auf derselben Fläche. Sie gelten weiter als Fläche für Wörter und
+   * Pfeile; statt des Grenz-Satzes muss jede Eltern-Datei sie importieren und selbst den Grenz-Satz tragen (oder selbst
+   * ein Teil sein, dessen Eltern ihn tragen).
+   */
+  const BEZUGSBASIS_TEILE: Record<string, string[]> = {
+    'components/BezugsbasisModell.tsx': ['components/BezugsbasisReiter.tsx', 'components/BezugsbasisAssistent.tsx'],
+    'components/BezugsbasisModellGrafik.tsx': ['components/BezugsbasisModell.tsx'],
+  };
+  const importiert = (eltern: string, teil: string) =>
+    existsSync(join(SRC, eltern)) &&
+    readFileSync(join(SRC, eltern), 'utf8').includes(`from './${teil.replace(/^components\//, '').replace(/\.tsx$/, '')}'`);
+  const grenzeUeberEltern = (teil: string, gesehen: string[] = []): boolean =>
+    (BEZUGSBASIS_TEILE[teil] ?? []).length > 0 &&
+    BEZUGSBASIS_TEILE[teil].every(
+      (eltern) =>
+        !gesehen.includes(eltern) &&
+        importiert(eltern, teil) &&
+        (traegtGrenze(readFileSync(join(SRC, eltern), 'utf8')) || grenzeUeberEltern(eltern, [...gesehen, teil])),
+    );
 
   /**
    * VG3 (E8 = A): ein Pfeil-Wort steht nur an einem bereinigten Urteil — der Satz nennt, was erwartet wurde. An einer
@@ -2556,7 +2581,7 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
     for (const datei of bezugsbasisFlaechen()) {
       const code = readFileSync(join(SRC, datei), 'utf8');
       expect(verstoesse(code), datei).toEqual([]);
-      expect(traegtGrenze(code), datei).toBe(true);
+      expect(datei in BEZUGSBASIS_TEILE ? grenzeUeberEltern(datei) : traegtGrenze(code), datei).toBe(true);
       expect(pfeilTexte(code), `${datei}: Pfeil-Wort an roher Zahl`).toEqual([]);
     }
   });
@@ -2582,6 +2607,14 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
     expect(pfeilTexte('const f = (x: number) => x < 3 ? a : b; <p>{UEMS_NORMGRENZE}</p>')).toEqual([]);
     for (const datei of BEZUGSBASIS_FLAECHEN) {
       expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
+    }
+    // IP-14: ein Teil ohne Eltern oder mit einer Eltern-Datei, die ihn nicht importiert, trägt keinen Grenz-Satz.
+    expect(grenzeUeberEltern('components/BezugsbasisModell.tsx')).toBe(true);
+    expect(grenzeUeberEltern('components/BezugsbasisModellGrafik.tsx')).toBe(true);
+    expect(grenzeUeberEltern('components/BezugsbasisUnbekannt.tsx')).toBe(false);
+    for (const [teil, eltern] of Object.entries(BEZUGSBASIS_TEILE)) {
+      expect(BEZUGSBASIS_NAMENSMUSTER.test(teil), teil).toBe(true);
+      for (const e of eltern) expect(importiert(e, teil), `${e} importiert ${teil}`).toBe(true);
     }
   });
 

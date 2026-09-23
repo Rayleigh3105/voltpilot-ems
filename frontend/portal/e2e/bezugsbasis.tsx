@@ -20,15 +20,18 @@ import '../src/index.css';
  * `bezugsbasisBuehne` (`src/test/bezugsbasisFixtures.ts`) — Ahrenberg hat kein Vier-Augen, „Freigeben“ wirkt sofort.
  * Jeder Locator der Spec ist gegen dieselbe Fläche in `src/bezugsbasisSpecLocatoren.test.tsx` gezählt.
  *
- * Adresse: `?person=IK|CB` (Vorgabe IK, Ines Kaltenbach) · `&lage=keine|freigegeben` (Vorgabe keine) · `&seite=register`
- * zeigt das Register statt der Kennzahl. Eigene Bühne, keine geteilte Datei wird angefasst.
+ * Adresse: `?person=IK|CB` (Vorgabe IK, Ines Kaltenbach) · `&lage=keine|freigegeben|modell` (Vorgabe keine; `modell` ist
+ * BB-0001 Fassung 2 nach R12/R4/R9, IP-14) · `&seite=register` zeigt das Register statt der Kennzahl. Eigene Bühne, keine
+ * geteilte Datei wird angefasst. Ein Entwurf mit einer Methode ≠ Verhältnis antwortet mit dem Modell von R12 (IP-10);
+ * die zweite Variable lehnt die Bühne wie der Server ab, wenn BZ-3 gewählt ist (G4).
  */
 const params = new URLSearchParams(location.search);
 const me = rechteSeed(params.get('person') ?? 'IK').me;
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 
-Object.assign(api, bezugsbasisBuehne(params.get('lage') === 'freigegeben' ? 'freigegeben' : 'keine'));
+const lage = params.get('lage');
+Object.assign(api, bezugsbasisBuehne(lage === 'freigegeben' || lage === 'modell' ? lage : 'keine'));
 
 function Ansicht() {
   const register = params.get('seite') === 'register';

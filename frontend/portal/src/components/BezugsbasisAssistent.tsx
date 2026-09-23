@@ -14,12 +14,14 @@ import {
   type VariablenVorschlag,
 } from '../api';
 import * as B from '../bezugsbasisAnlegen';
+import * as M from '../bezugsbasisModell';
 import { UEMS_EINFLUSSGROESSE, UEMS_NORMGRENZE, UEMS_REFERENZPERIODE, UEMS_STATISCHER_FAKTOR } from '../glossar';
 import { ablehnungSatz } from '../kennzahlAnlegen';
 import { heuteIn } from '../kennzahlKarte';
 import { useRollen } from '../rollen';
 import { datumText } from '../uemsOrtsbaum';
 import { zahlText } from '../zahl';
+import { BezugsbasisModell } from './BezugsbasisModell';
 import { VpPicker } from './VpPicker';
 import './Gesamtwert.css';
 import './Bezugsbasis.css';
@@ -427,11 +429,8 @@ export function BezugsbasisAssistent({
             />
           </div>
         )}
-        {(f.abgelehnte_variablen ?? []).map((a) => (
-          <p key={String(a.objekt)} data-testid="bezugsbasis-abgelehnt">
-            {B.abgelehntSatz(a)}
-          </p>
-        ))}
+        {/* IP-14: Punkte, Gerade, Güte, Spannweite und die abgelehnte zweite Variable (G4) in Kundenwörtern. */}
+        {!anderesModell && <BezugsbasisModell fassung={f} einheit={kennzahl.einheit_anzeige} groessen={M.groessenAusVorschlag(variablen)} imAssistenten />}
         <p className="vp-kz-leise">{B.ENTWURF_HINWEIS}</p>
         {gespeichert && !nachAntrag && freigeben && (
           <FreigabeFormular

@@ -154,13 +154,15 @@ export function faktorenVorschlag(): FaktorenVorschlag {
  * `bezugsbasisSpecLocatoren.test.tsx`, der jeden Locator der Spec gegen genau diese Fläche zählt. Ahrenberg hat kein
  * Vier-Augen: „Freigeben“ wirkt sofort.
  */
-export function bezugsbasisBuehne(lage: 'keine' | 'freigegeben'): Partial<typeof api> {
-  let basis: Bezugsbasis | null = lage === 'freigegeben' ? bb1('freigegeben') : null;
-  let fassung: BezugsbasisFassung | null = basis ? bb1Fassung('freigegeben') : null;
+export function bezugsbasisBuehne(lage: 'keine' | 'freigegeben' | 'modell'): Partial<typeof api> {
+  let basis: Bezugsbasis | null = lage === 'keine' ? null : bb1('freigegeben');
+  // IP-14: `modell` ist BB-0001 Fassung 2 nach R12/R4/R9 (Fassung 1 abgelöst, Fassung 2 mit BZ-3 abgelehnt).
+  let fassung: BezugsbasisFassung | null = lage === 'modell' ? bb1Modell('freigegeben') : basis ? bb1Fassung('freigegeben') : null;
   const kurz = (f: BezugsbasisFassung) => ({
     fassung: f.fassung, referenzperiode: f.referenzperiode, methode: f.methode, datenlage: f.datenlage,
     freigabe_status: f.freigabe_status, basiswert: f.basiswert, gilt_ab: f.gilt_ab, gilt_bis: null, pruefsumme: f.pruefsumme,
   });
+  if (lage === 'modell') basis = { ...basis!, fassungen: [kurz(bb1Fassung('freigegeben')), kurz(fassung!)] };
   const kennzahl = () =>
     kz4(
       basis && fassung
@@ -182,17 +184,148 @@ export function bezugsbasisBuehne(lage: 'keine' | 'freigegeben'): Partial<typeof
     },
     bezugsbasisEntwurf: async (_k, _b, body) => {
       const monate = body.referenzperiode === '2026-10/2026-10' ? 1 : 12;
-      fassung = bb1Fassung('entwurf', { referenzperiode: body.referenzperiode, monate });
+      // IP-14: zwölf Monate tragen die Grundlage von R12; ein Modell rechnet die Fassung, BZ-3 hängt an BZ-1 (G4).
+      const modell = bb1Modell('entwurf', { fassung: 1, anpassungsgruende: [], referenzperiode: body.referenzperiode });
+      fassung =
+        monate === 1
+          ? bb1Fassung('entwurf', { referenzperiode: body.referenzperiode, monate })
+          : body.methode === 'verhaeltnis'
+            ? { ...modell, methode: 'verhaeltnis', koeffizienten: null, r2: null, streuung_prozent: null, abgelehnte_variablen: [] }
+            : { ...modell, abgelehnte_variablen: body.variablen?.includes(BB_IDS.bz3) ? modell.abgelehnte_variablen : [] };
       basis = { ...(basis ?? bb1(null)), fassungen: [kurz(fassung)] };
       return fassung;
     },
     bezugsbasisFassung: async () => fassung!,
     bezugsbasisFreigabe: async () => {
-      fassung = bb1Fassung('freigegeben', { referenzperiode: fassung!.referenzperiode, monate: fassung!.monate });
+      fassung =
+        fassung!.monate === 1
+          ? bb1Fassung('freigegeben', { referenzperiode: fassung!.referenzperiode, monate: fassung!.monate })
+          : { ...fassung!, freigabe_status: 'freigegeben', freigabe: { name: 'Ines Kaltenbach', rolle: 'energiemanager', am: '2027-11-24T10:00:00+01:00' }, freigegeben_am: '2027-11-24T10:00:00+01:00' };
       basis = { ...basis!, fassungen: [kurz(fassung)] };
       return fassung;
     },
     kennzahlVariablenVorschlag: async () => variablenVorschlag(),
     kennzahlFaktorenVorschlag: async () => faktorenVorschlag(),
   };
+}
+
+// ------------------------------------------------------------------------------------------------ IP-14: Modelle
+
+/** Die Monatspaare von BB-0001 Fassung 2 (Referenzdatei 1.8 `bezugsbasen[]`, 11/2026–10/2027): Strom MS-20 und BZ-1 in kg. */
+export const R12_PAARE: ReadonlyArray<readonly [string, string, string]> = [
+  ['2026-11', '85581', '318000'], ['2026-12', '71729', '262000'], ['2027-01', '81291', '298000'], ['2027-02', '81298', '305000'],
+  ['2027-03', '88265', '331000'], ['2027-04', '82016', '309000'], ['2027-05', '86399', '322000'], ['2027-06', '86846', '327000'],
+  ['2027-07', '80732', '296000'], ['2027-08', '69693', '254000'], ['2027-09', '89512', '336000'], ['2027-10', '89638', '341000'],
+];
+/** Die Gradtage von BB-0004 (BZ-8, G20/15) und das Gas MS-21 derselben Monate — zwei Sommermonate mit 0 Kd. */
+export const R3_PAARE: ReadonlyArray<readonly [string, string, string]> = [
+  ['2026-11', '1742', '415'], ['2026-12', '2169', '555'], ['2027-01', '2489', '605'], ['2027-02', '2037', '515'],
+  ['2027-03', '1676', '395'], ['2027-04', '986', '245'], ['2027-05', '511', '95'], ['2027-06', '152', '15'],
+  ['2027-07', '155', '0'], ['2027-08', '90', '0'], ['2027-09', '483', '85'], ['2027-10', '1205', '300'],
+];
+
+const periodeMit = (kz: string, [periode, zaehler, nenner]: readonly [string, string, string], zweite?: { objekt: string; wert: string; einheit: string }) => ({
+  periode,
+  kennzahl: { objekt: kz, wert: nenner === '0' ? '0' : String(Number(zaehler) / Number(nenner)), version: 1, definition_fassung: 1, zustand: 'endgueltig', menge_zustand: null, kennzeichen: [] },
+  zaehler,
+  nenner,
+  ...(zweite ? { variablen: [{ position: 2, objekt: zweite.objekt, wert: zweite.wert, einheit: zweite.einheit, fassung: 1, kennzeichen: [] }] } : {}),
+});
+
+/**
+ * R12/R4/R9: BB-0001 Fassung 2 — Modell mit einer Einflussgröße, a = 10 522,6206 (Datei 10 523), b = 0,2343, R² 0,991,
+ * Streuung 0,8 %, Spannweite 254 000–341 000 kg (toleriert 228 600–375 100); BZ-3 Betriebsstunden abgelehnt (r = 0,997).
+ * Die API-Form (`bezugsbasis.md` §13) mit den Zahlen von `BezugsbasisApiTest`.
+ */
+export function bb1Modell(status: BezugsbasisFassung['freigabe_status'] = 'freigegeben', over: Partial<BezugsbasisFassung> = {}): BezugsbasisFassung {
+  return bb1Fassung(status, {
+    fassung: 2,
+    referenzperiode: '2026-11/2027-10',
+    methode: 'regression_eine_variable',
+    gilt_ab: '2027-11-01',
+    monate: 12,
+    datenlage: 'vollstaendig',
+    datenlage_gruende: [],
+    vorbehalte: [],
+    basiswert: '0.2685',
+    koeffizienten: { a: '10522.6206', b: '0.2343' },
+    r2: '0.991',
+    streuung_prozent: '0.8',
+    abgelehnte_variablen: [{ objekt: 'BZ-3', position: 2, grund: 'variablen_abhaengig', r: 0.997, startwert_r: 0.9 }],
+    kennzeichen: [],
+    variablen: [{ position: 1, rolle: 'nenner', bezugsgroesse_id: BB_IDS.bz1, kennzeichen: 'BZ-1', fassung: 1, spannweite_von: '254000', spannweite_bis: '341000' }],
+    anpassungsgruende: ['referenzperiode_vervollstaendigt', 'methode_geaendert'],
+    gebildet_am: '2027-11-24T09:00:00+01:00',
+    freigegeben_am: status === 'freigegeben' ? '2027-11-24T10:00:00+01:00' : null,
+    grundlage: {
+      referenzperiode: '2026-11/2027-10',
+      methode: 'regression_eine_variable',
+      perioden: R12_PAARE.map((p) => periodeMit('KZ-0004', p)),
+      variablen: [{ position: 1, rolle: 'nenner', objekt: 'BZ-1', fassung: 1, spannweite: { von: 254000, bis: 341000, toleriert_von: 228600, toleriert_bis: 375100 } }],
+    },
+    pruefsumme: 'sha256:631ad82b172485032428a9233d26ba2f8a1351ce425fba81133416349ba1344e',
+    ...over,
+  });
+}
+
+/** M2 (konstruiert, `bezugsbasis-vectors.json`): die Spritzguss-Reihe mit der Gradtagzahl als zweiter, unabhängiger Größe. */
+export function bb1ZweiGroessen(): BezugsbasisFassung {
+  return bb1Modell('entwurf', {
+    methode: 'regression_zwei_variablen',
+    koeffizienten: { a: '10511.8791', b: '0.2343', c: '0.021' },
+    abgelehnte_variablen: [],
+    variablen: [
+      { position: 1, rolle: 'nenner', bezugsgroesse_id: BB_IDS.bz1, kennzeichen: 'BZ-1', fassung: 1, spannweite_von: '254000', spannweite_bis: '341000' },
+      { position: 2, rolle: 'variable', bezugsgroesse_id: 'b2000000-0000-4000-8000-000000000008', kennzeichen: 'BZ-8', fassung: 1, spannweite_von: '0', spannweite_bis: '605' },
+    ],
+    grundlage: {
+      referenzperiode: '2026-11/2027-10',
+      methode: 'regression_zwei_variablen',
+      perioden: R12_PAARE.map((p, i) => periodeMit('KZ-0004', p, { objekt: 'BZ-8', wert: R3_PAARE[i][2], einheit: 'Kd' })),
+      variablen: [
+        { position: 1, rolle: 'nenner', objekt: 'BZ-1', fassung: 1, spannweite: { von: 254000, bis: 341000, toleriert_von: 228600, toleriert_bis: 375100 } },
+        { position: 2, rolle: 'variable', objekt: 'BZ-8', fassung: 1, spannweite: { von: 0, bis: 605, toleriert_von: 0, toleriert_bis: 665.5 } },
+      ],
+    },
+  });
+}
+
+/** R3: KZ-0006 Gasbezug je Gradtag der Verwaltung (P-6), BZ-8 Gradtagzahl am Standort ST-1. */
+export function kz6(over: Partial<Kennzahl> = {}): Kennzahl {
+  return kz4({ id: 'c0de0000-0000-4000-8000-00000000a006', kennzeichen: 'KZ-0006', name: 'Gasbezug je Gradtag', geltung_name: 'P-6 Verwaltung', zweck: null, einheit: 'm³/Kd', einheit_anzeige: 'm³/Kd', ...over });
+}
+
+/**
+ * R3: BB-0004 Fassung 1 — Wetterbereinigung über Gradtage, a = 118,9104 (Datei 119) als witterungsunabhängiger Anteil,
+ * b = 3,8041 m³ je Kd, R² 0,997, Streuung 4,6 %; Spannweite 0–605 Kd (toleriert 0–665,5), wie die API sie rechnet
+ * (die Referenzdatei trägt dort `null`, §12).
+ */
+export function bb4Gas(): BezugsbasisFassung {
+  return bb1Fassung('freigegeben', {
+    bezugsbasis_id: 'bb000000-0000-4000-8000-000000000004',
+    bezugsbasis: 'BB-0004',
+    kennzahl_id: 'c0de0000-0000-4000-8000-00000000a006',
+    kennzahl: 'KZ-0006',
+    referenzperiode: '2026-11/2027-10',
+    methode: 'gradtage',
+    gilt_ab: '2027-11-01',
+    monate: 12,
+    datenlage: 'vollstaendig',
+    datenlage_gruende: [],
+    vorbehalte: [],
+    basiswert: '4.2465',
+    koeffizienten: { a: '118.9104', b: '3.8041' },
+    r2: '0.997',
+    streuung_prozent: '4.6',
+    abgelehnte_variablen: [],
+    kennzeichen: [],
+    variablen: [{ position: 1, rolle: 'nenner', bezugsgroesse_id: 'b2000000-0000-4000-8000-000000000008', kennzeichen: 'BZ-8', fassung: 1, spannweite_von: '0', spannweite_bis: '605' }],
+    grundlage: {
+      referenzperiode: '2026-11/2027-10',
+      methode: 'gradtage',
+      perioden: R3_PAARE.map((p) => periodeMit('KZ-0006', p)),
+      variablen: [{ position: 1, rolle: 'nenner', objekt: 'BZ-8', fassung: 1, spannweite: { von: 0, bis: 605, toleriert_von: 0, toleriert_bis: 665.5 } }],
+    },
+    pruefsumme: 'sha256:0b4147e5c65ada5219b36de8fda7c514be6f15765a811757103055d5453d3998',
+  });
 }

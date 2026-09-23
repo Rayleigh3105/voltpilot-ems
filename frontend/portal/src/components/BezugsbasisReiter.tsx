@@ -7,6 +7,7 @@ import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
 import { datumText } from '../uemsOrtsbaum';
 import { BezugsbasisAssistent, FreigabeFormular } from './BezugsbasisAssistent';
+import { BezugsbasisModellAnFassung } from './BezugsbasisModell';
 import { ErrorState, Skeleton } from './States';
 import './Bezugsbasis.css';
 
@@ -139,6 +140,8 @@ export function BezugsbasisReiter({
                 ))}
             </ol>
           )}
+          {/* IP-14: die Fassung der Basis-Zeile im Einzelnen — Modell mit Punkten und Gerade, oder Basiswert und Monate. */}
+          {lage.fassung && <BezugsbasisModellAnFassung kennzahl={kennzahl} fassung={lage.fassung} />}
         </div>
       )}
       <p className="vp-bb-grenze">{UEMS_NORMGRENZE}</p>
