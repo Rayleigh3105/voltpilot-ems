@@ -57,6 +57,9 @@ public class KanalbindungService {
             BigDecimal raumtemperatur, BigDecimal heizgrenze, UUID messstelle, BigDecimal schwelle,
             String begruendung, ProtokollAkteur wer) {
         var b = bezuege.sperre(id).orElseThrow(KanalbindungService::nichtGefunden);
+        // AP-17 IP-12c: eine Bezugsgröße, eine Quelle — eine an das Wetter-Archiv gebundene Gradtagzahl liest keinen Kanal.
+        if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM bezugsgroesse_wetterbezug WHERE bezugsgroesse_id=?)",Boolean.class,id)))
+            throw new KanalbindungFehler(409,"wetterbezug_vorhanden","Diese Gradtagzahl bezieht Wetter aus dem Archiv. Lösen Sie zuerst den Wetterbezug.");
         minute(von);
         boolean leistung="betriebszeit_aus_leistung".equals(b.art());
         if (leistung) {

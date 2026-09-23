@@ -2,6 +2,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import type { Betriebsart, Site, StandortAmStichtag } from '../api';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
 import { StandortKopf } from '../components/StandortKopf';
+import { StandortWetterZeile } from '../components/StandortWetterZeile';
 import { VersorgungKarte } from '../components/VersorgungKarte';
 import type { StandortEinstieg } from '../ebenenNav';
 import type { Route } from '../nav';
@@ -68,6 +69,7 @@ export function StandortUebersichtPage({
         )}
       </div>
       <VersorgungKarte standort={standort} />
+      <StandortWetterZeile standort={standort} />
       <PortfolioCockpit
         sites={sites}
         onNavigate={onNavigate}

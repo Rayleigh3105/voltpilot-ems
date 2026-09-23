@@ -10892,6 +10892,11 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BezugsgroesseKanalbindung" }
         "404": { description: Bezugsgröße oder Kanal nicht gefunden. }
+        "409":
+          description: "`wetterbezug_vorhanden` (AP-17 IP-12c) — die Gradtagzahl bezieht Wetter aus dem Archiv; erst lösen."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseKanalfehler" }
         "422":
           description: Bindung abgelehnt; Code und Kundensatz nennen den Grund.
           content:
@@ -10954,6 +10959,100 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BezugsgroesseKanalfehler" }
+  /api/v1/bezugsgroessen/{id}/wetterbezug:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bezugsgroessen]
+      summary: Liest die Bindung einer Gradtagzahl an das Wetter-Archiv mit letztem Abruf und Stand (AP-17 IP-12c).
+      description: Recht `messwerte.ansehen`; fremde Bezugsgröße ist 404. `bindung` ist null, solange nichts gebunden ist.
+      responses:
+        "200":
+          description: Wetter-Sicht der Bezugsgröße.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseWetterbezug" }
+        "404": { description: Bezugsgröße nicht gefunden. }
+    put:
+      tags: [bezugsgroessen]
+      summary: Bindet eine Gradtagzahl an das Wetter-Archiv (Herkunft `bezogen`, E9 = C).
+      description: >
+        Recht `bezugsgroesse.verwalten`. Nur Art `gradtagzahl`, Geltung Standort, Periodenart Tag oder Monat,
+        am Standort mit Koordinaten. Kein sofortiger Abruf — der tägliche `WetterArchivLaeufer` holt die Tage ab
+        `von` (höchstens gestern; bei Monatswerten der Erste eines Monats). Dieselbe Bindung noch einmal ist 200 ohne
+        Änderung. Eine Bezugsgröße hat eine Quelle: mit Kanalbindung, mit Werten anderer Herkunft oder mit einer
+        anderen Wetter-Bindung 409. Protokoll `wetter_gebunden`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [von]
+              properties:
+                von: { type: string, format: date }
+                raumtemperatur: { type: number, default: 20, description: "Größer als die Heizgrenze." }
+                heizgrenze: { type: number, default: 15 }
+      responses:
+        "200":
+          description: Gebunden (oder unverändert gebunden).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseWetterbezug" }
+        "404": { description: Bezugsgröße nicht gefunden oder außerhalb des Zugriffs. }
+        "409":
+          description: "`kanalbindung_vorhanden`, `werte_vorhanden` oder `wetterbezug_vorhanden`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseKanalfehler" }
+        "422":
+          description: >
+            `art_passt_nicht`, `grenzen_ungueltig`, `von_ungueltig` oder `koordinaten_fehlen` — dieser mit dem Satz
+            aus AP-17 §5.8: „Für den Standort Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. …“
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseKanalfehler" }
+    delete:
+      tags: [bezugsgroessen]
+      summary: Löst die Bindung an das Wetter-Archiv; die bezogenen Werte bleiben.
+      description: Recht `bezugsgroesse.verwalten`. Ohne Bindung ändert sich nichts. Protokoll `wetter_geloest`.
+      responses:
+        "204": { description: Gelöst (oder war nicht gebunden). }
+        "404": { description: Bezugsgröße nicht gefunden oder außerhalb des Zugriffs. }
+  /api/v1/standorte/{standortId}/wetter:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bezugsgroessen]
+      summary: Die Zeile „Wetter“ am Standort (AP-17 IP-12c).
+      description: >
+        Recht `messwerte.ansehen`; ein Standort außerhalb des Zugriffs ist 404. Koordinaten ja/nein (ohne: der Satz
+        aus §5.8), die an das Wetter-Archiv gebundenen Gradtagzahlen im Zugriff und der späteste Abruf.
+      responses:
+        "200":
+          description: Zeile „Wetter“.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [koordinaten, gradtagzahlen]
+                properties:
+                  koordinaten: { type: boolean }
+                  satz: { type: string }
+                  quelle: { type: string }
+                  letzter_abruf: { type: string, format: date-time }
+                  gradtagzahlen:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, kennzeichen, name]
+                      properties:
+                        id: { type: string, format: uuid }
+                        kennzeichen: { type: string }
+                        name: { type: string }
+                        quelle: { type: string }
+                        letzter_abruf: { type: string, format: date-time }
+        "404": { description: Standort nicht gefunden. }
   /api/v1/bezugsgroessen/{id}/archivieren:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -27434,6 +27533,36 @@ components:
         zustand: { type: string, nullable: true }
         von: { type: string, format: date-time }
         bis: { type: string, format: date-time, nullable: true }
+    BezugsgroesseWetterbezug:
+      type: object
+      description: AP-17 IP-12c — Wetter-Sicht einer Bezugsgröße.
+      required: [moeglich, koordinaten, bindung]
+      properties:
+        moeglich: { type: boolean, description: "Gradtagzahl am Standort mit Tages- oder Monatswerten, nicht archiviert." }
+        koordinaten: { type: boolean }
+        satz: { type: string, description: "Nur ohne Koordinaten an einer Gradtagzahl: der Satz aus AP-17 §5.8." }
+        bindung:
+          nullable: true
+          type: object
+          required: [raumtemperatur, heizgrenze, regel, von, gebunden_von, gebunden_am]
+          properties:
+            raumtemperatur: { type: number }
+            heizgrenze: { type: number }
+            regel: { type: string, example: "Gradtage G20/15" }
+            von: { type: string, format: date }
+            gebunden_von: { type: string }
+            gebunden_am: { type: string, format: date-time }
+            quelle: { type: string, description: "Fehlt vor dem ersten Abruf.", example: "Open-Meteo-Archiv" }
+            letzter_abruf: { type: string, format: date-time, description: "Spätester Abruf eines bezogenen Werts." }
+            stand:
+              type: object
+              description: "Letzter Monat mit bezogenen Tagen: „x von y Tagen“ (y bis gestern, ab `von`; bei Monatswerten aus der gespeicherten Fassung)."
+              required: [monat, tage, tage_erwartet, zustand]
+              properties:
+                monat: { type: string, example: "2027-03" }
+                tage: { type: integer }
+                tage_erwartet: { type: integer }
+                zustand: { type: string, enum: [vollständig, unvollständig] }
     BezugsgroesseKanalfehler:
       type: object
       required: [code, message]

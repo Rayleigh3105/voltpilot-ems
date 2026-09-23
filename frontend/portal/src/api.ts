@@ -9504,6 +9504,12 @@ export const api = {
   kanalbindungen: (id: string) => request<BezugsKanalbindung[]>(`/api/v1/bezugsgroessen/${id}/kanalbindung`),
   kanalBinden: (id: string, body: BezugsKanalAnfrage) => request<BezugsKanalbindung>(`/api/v1/bezugsgroessen/${id}/kanalbindung`, { method: 'POST', body: JSON.stringify(body) }),
   kanalBeenden: (id: string, bindung: string, bis: string) => request<BezugsKanalbindung>(`/api/v1/bezugsgroessen/${id}/kanalbindung/${bindung}/beenden`, { method: 'POST', body: JSON.stringify({ bis }) }),
+  /** AP-17 IP-12c: Wetter-Archiv an der Gradtagzahl — lesen, binden (kein Abruf), lösen (Werte bleiben). */
+  wetterbezug: (id: string) => request<Wetterbezug>(`/api/v1/bezugsgroessen/${id}/wetterbezug`),
+  wetterBinden: (id: string, body: WetterbezugAnfrage) => request<Wetterbezug>(`/api/v1/bezugsgroessen/${id}/wetterbezug`, { method: 'PUT', body: JSON.stringify(body) }),
+  wetterLoesen: (id: string) => request<void>(`/api/v1/bezugsgroessen/${id}/wetterbezug`, { method: 'DELETE' }),
+  /** AP-17 IP-12c: die Zeile „Wetter“ am Standort. */
+  standortWetter: (standortId: string) => request<StandortWetter>(`/api/v1/standorte/${standortId}/wetter`),
   bezugsgroesseWerte: (id: string, abfrage: { von?: string; bis?: string; fassungen?: BezugsgroesseLesart } = {}) => {
     const q = new URLSearchParams();
     if (abfrage.von) q.set('von', abfrage.von);
@@ -9665,6 +9671,21 @@ export const api = {
 export interface BezugsKanalAnfrage {
   entity_id?: string; kanal?: string; zustand?: string; von: string; raumtemperatur?: number; heizgrenze?: number;
   messstelle_id?: string; schwelle_kw?: number; begruendung?: string;
+}
+/** AP-17 IP-12c: `PUT /api/v1/bezugsgroessen/{id}/wetterbezug` — `von` ist ein Tag (bei Monatswerten der Erste). */
+export interface WetterbezugAnfrage { von: string; raumtemperatur?: number; heizgrenze?: number }
+/** Der Stand des letzten Monats mit bezogenen Tagen: `monat` JJJJ-MM, „tage von tage_erwartet Tagen“. */
+export interface WetterStand { monat: string; tage: number; tage_erwartet: number; zustand: string }
+export interface WetterBindung {
+  raumtemperatur: number; heizgrenze: number; regel: string; von: string; gebunden_von: string; gebunden_am: string;
+  quelle?: string; letzter_abruf?: string; stand?: WetterStand;
+}
+/** `GET …/wetterbezug`: `moeglich` (Gradtagzahl am Standort, Tag/Monat), `koordinaten`, ohne Koordinaten der `satz` (§5.8). */
+export interface Wetterbezug { moeglich: boolean; koordinaten: boolean; satz?: string; bindung: WetterBindung | null }
+/** `GET /api/v1/standorte/{id}/wetter`: die Zeile „Wetter“. */
+export interface StandortWetter {
+  koordinaten: boolean; satz?: string; quelle?: string; letzter_abruf?: string;
+  gradtagzahlen: { id: string; kennzeichen: string; name: string; quelle?: string; letzter_abruf?: string }[];
 }
 export interface BezugsKanalbindung extends BezugsKanalAnfrage {
   id: string; entity_id: string; kanal: string; wertart: string; bis: string | null;

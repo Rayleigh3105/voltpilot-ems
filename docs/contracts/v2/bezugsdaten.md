@@ -280,6 +280,27 @@ Herkünfte der Art `gradtagzahl` aufnimmt, kommen mit IP-12b; die Standort-Zeile
 im Portal mit IP-12c. Bis dahin spiegeln `vokabulare.herkunft_art` und `arten` die
 Datenbank unverändert (`_nicht_geprueft`).
 
+**Binden und lesen (IP-12c).** Der Kunde bindet eine Gradtagzahl selbst an das Archiv (Recht
+`bezugsgroesse.verwalten`, wie die Kanalbindung):
+
+- `PUT /api/v1/bezugsgroessen/{id}/wetterbezug` mit `von` (Tag, höchstens gestern; bei
+  Monatswerten der Erste) und optional `raumtemperatur`/`heizgrenze` (Vorgabe G20/15). Nur
+  Art `gradtagzahl`, Geltung Standort, Periodenart Tag oder Monat — sonst 422
+  `art_passt_nicht`; ohne Koordinaten 422 `koordinaten_fehlen` mit dem Satz oben. Eine
+  Bezugsgröße hat eine Quelle: mit Kanalbindung (`kanalbindung_vorhanden`), mit Werten
+  anderer Herkunft (`werte_vorhanden`) oder mit einer anderen Wetter-Bindung
+  (`wetterbezug_vorhanden`) 409; dieselbe Bindung noch einmal ist 200 ohne Änderung.
+  Umgekehrt lehnt `POST …/kanalbindung` an einer Gradtagzahl mit Wetter-Bindung mit 409
+  `wetterbezug_vorhanden` ab. Binden ruft nichts ab — der tägliche Läufer holt die Tage.
+- `DELETE …/wetterbezug` löst die Bindung (204); die bezogenen Werte bleiben mit Kennzeichen.
+  Protokoll `wetter_gebunden` / `wetter_geloest` im Änderungsprotokoll der Bezugsgröße.
+- `GET …/wetterbezug` (Recht `messwerte.ansehen`): `moeglich`, `koordinaten`, ohne
+  Koordinaten `satz`, und `bindung` mit Regel, `von`, `quelle`, `letzter_abruf` und `stand`
+  des letzten Monats mit bezogenen Tagen („x von y Tagen“; bei Tageswerten zählt y ab `von`
+  bis gestern, bei Monatswerten steht die gespeicherte Fassung).
+- `GET /api/v1/standorte/{id}/wetter`: die Zeile „Wetter“ — Koordinaten ja/nein (ohne: der
+  Satz), die gebundenen Gradtagzahlen im Zugriff und der späteste Abruf.
+
 ## 5. Was hier NICHT steht
 
 Die Datei trennt drei Dinge sauber:
