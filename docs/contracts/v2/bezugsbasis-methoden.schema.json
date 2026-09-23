@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.io/contracts/v2/bezugsbasis-methoden.schema.json",
+  "title": "Der Methoden-Katalog der Bezugsbasis (UEMS AP-17 IP-5, §4.5, E4 = A)",
+  "description": "Die Form von docs/contracts/v2/bezugsbasis-methoden.json und ihrer zwei byte-gleichen Kopien (API-Ressource bezugsbasis/, Portal src/bezugsbasis/). Vier Methoden, höchstens zwei Variablen (V5), Startwerte ohne Norm-Herleitung (G6). BezugsbasisMethodenControllerTest hält Datei, Schema, Startwerte und OpenAPI gleich.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "methoden", "parameter"],
+  "properties": {
+    "_comment": { "type": "array", "items": { "type": "string" } },
+    "schema_version": { "type": "string", "const": "1.0" },
+    "$schema_datei": { "type": "string", "const": "./bezugsbasis-methoden.schema.json" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "methoden": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/methode" } },
+    "parameter": { "$ref": "#/$defs/parameter" }
+  },
+  "$defs": {
+    "methode": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Eine Methode der Bereinigung (§4.5): die Zeile der Methoden-Tafel. Die Methode einer Fassung ist eingefroren (M4).",
+      "required": ["kennung", "kundenwort", "formel", "variablen_anzahl", "variablen", "datenbedarf", "mindest_perioden_startwert", "belastbar_ab_monaten_startwert", "grenze", "kennzeichen"],
+      "properties": {
+        "kennung": { "type": "string", "enum": ["verhaeltnis", "regression_eine_variable", "regression_zwei_variablen", "gradtage"], "description": "Stabil; nie umbenannt, nie wiederverwendet." },
+        "kundenwort": { "type": "string", "minLength": 1, "description": "Das Wort der Kundenfläche (§5.8, glossar.ts)." },
+        "formel": { "type": "string", "minLength": 1 },
+        "variablen_anzahl": { "type": "integer", "minimum": 1, "maximum": 2, "description": "Wie viele Variablen die Methode nimmt (V5: höchstens zwei)." },
+        "variablen": { "type": "string", "minLength": 1, "description": "Welche Variablen und ihre Rolle (Nenner der Kennzahl, Gradtagzahl)." },
+        "datenbedarf": { "type": "string", "minLength": 1 },
+        "mindest_perioden_startwert": { "type": "integer", "minimum": 1, "description": "Ab wie vielen abgeschlossenen Monaten die Methode rechnet (G1)." },
+        "belastbar_ab_monaten_startwert": { "type": "integer", "minimum": 1, "description": "Ab wie vielen Monaten die Bezugsbasis nicht mehr vorläufig ist." },
+        "grenze": { "type": "string", "minLength": 1 },
+        "kennzeichen": { "type": "string", "minLength": 1, "description": "Das Kennzeichen an jeder bereinigten Zahl (G5)." }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Die Startwerte (§4.5, G6) — ohne Norm-Herleitung.",
+      "required": ["mindest_monate_referenzperiode", "toleranz_prozent_startwert", "spannweite_prozent_startwert", "abhaengigkeit_r_startwert", "wiedervorlage_monate_startwert", "grundperiode", "hinweis"],
+      "properties": {
+        "mindest_monate_referenzperiode": { "type": "integer", "minimum": 1 },
+        "toleranz_prozent_startwert": { "type": "number", "minimum": 0 },
+        "spannweite_prozent_startwert": { "type": "number", "minimum": 0 },
+        "abhaengigkeit_r_startwert": { "type": "number", "minimum": 0, "maximum": 1 },
+        "wiedervorlage_monate_startwert": { "type": "integer", "minimum": 1 },
+        "grundperiode": { "type": "string", "minLength": 1 },
+        "hinweis": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

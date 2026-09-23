@@ -11549,6 +11549,26 @@ paths:
               schema: { $ref: "#/components/schemas/Bezugsflaechen" }
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/bezugsbasis-methoden:
+    get:
+      tags: [kennzahlen]
+      summary: Der Methoden-Katalog der Bezugsbasis - vier Methoden der Bereinigung mit Datenbedarf, Grenze und Startwerten.
+      description: >
+        Keine eigene Rechte-Kennung (Muster Kennzahl-Vorlagen, AP-11 E9 - kein Kundenobjekt, kein Mandant):
+        jede angemeldete Person liest denselben Katalog. UEMS AP-17 IP-5 (§4.5, E4 = A). Die Antwort ist die
+        Datei docs/contracts/v2/bezugsbasis-methoden.json Byte für Byte (API-Ressource
+        bezugsbasis/bezugsbasis-methoden.json, Portal-Kopie frontend/portal/src/bezugsbasis/); ihre Form ist
+        docs/contracts/v2/bezugsbasis-methoden.schema.json. Vier Methoden - verhaeltnis,
+        regression_eine_variable, regression_zwei_variablen, gradtage - mit Formel, Variablen, Datenbedarf,
+        Mindestumfang, Grenze und Kennzeichen, dazu die Startwerte ohne Norm-Herleitung (G6). Gerechnet wird
+        hier nichts; die Methode einer Fassung ist eingefroren (M4).
+      responses:
+        "200":
+          description: Der Methoden-Katalog.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisMethoden" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/kennzahl-vorlagen:
     get:
       tags: [kennzahlen]
@@ -26096,6 +26116,44 @@ components:
         hat_werte: { type: boolean, description: "Trägt sie einen Wert? Dann ist sie nicht löschbar (V5)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
+    BezugsbasisMethoden:
+      type: object
+      description: Der Methoden-Katalog (bezugsbasis-methoden.schema.json), Byte für Byte die Vertragsdatei.
+      required: [_comment, schema_version, $schema_datei, herkunft, methoden, parameter]
+      properties:
+        _comment: { type: array, items: { type: string }, description: "Entwickler-Doku; keine Kundenfläche." }
+        schema_version: { type: string, description: "Die Fassung der Katalog-Form (1.0)." }
+        $schema_datei: { type: string }
+        herkunft: { type: string }
+        methoden: { type: array, items: { $ref: "#/components/schemas/BezugsbasisMethode" } }
+        parameter: { $ref: "#/components/schemas/BezugsbasisMethodenParameter" }
+    BezugsbasisMethode:
+      type: object
+      description: Eine Methode der Bereinigung (bezugsbasis-methoden.schema.json, $defs/methode).
+      required: [kennung, kundenwort, formel, variablen_anzahl, variablen, datenbedarf, mindest_perioden_startwert, belastbar_ab_monaten_startwert, grenze, kennzeichen]
+      properties:
+        kennung: { type: string, enum: [verhaeltnis, regression_eine_variable, regression_zwei_variablen, gradtage] }
+        kundenwort: { type: string, description: "Etwa „Modell mit einer Einflussgröße“." }
+        formel: { type: string }
+        variablen_anzahl: { type: integer, minimum: 1, maximum: 2 }
+        variablen: { type: string, description: "Welche Variablen und ihre Rolle." }
+        datenbedarf: { type: string }
+        mindest_perioden_startwert: { type: integer, description: "Ab wie vielen abgeschlossenen Monaten die Methode rechnet (G1)." }
+        belastbar_ab_monaten_startwert: { type: integer, description: "Ab wie vielen Monaten die Bezugsbasis nicht mehr vorläufig ist." }
+        grenze: { type: string }
+        kennzeichen: { type: string, description: "Das Kennzeichen an jeder bereinigten Zahl (G5)." }
+    BezugsbasisMethodenParameter:
+      type: object
+      description: Die Startwerte ohne Norm-Herleitung (G6).
+      required: [mindest_monate_referenzperiode, toleranz_prozent_startwert, spannweite_prozent_startwert, abhaengigkeit_r_startwert, wiedervorlage_monate_startwert, grundperiode, hinweis]
+      properties:
+        mindest_monate_referenzperiode: { type: integer }
+        toleranz_prozent_startwert: { type: number }
+        spannweite_prozent_startwert: { type: number }
+        abhaengigkeit_r_startwert: { type: number }
+        wiedervorlage_monate_startwert: { type: integer }
+        grundperiode: { type: string }
+        hinweis: { type: string }
     KennzahlVorlagen:
       type: object
       required: [schema_version, vorlagen]

@@ -2616,6 +2616,34 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
     });
     for (const wort of Object.values(UEMS_BEZUGSBASIS_URTEILE)) expect(verstoesse(wort), wort).toEqual([]);
   });
+
+  /**
+   * AP-17 IP-5: der Methoden-Katalog ist ein Kundentext-Wohnort (Kundenwort und Kennzeichen jeder Methode; IP-9 zeigt
+   * Datenbedarf und Grenze im Assistenten) — er liegt als JSON und wird vom Datei-Walker nicht erfasst. Jedes Kundenwort
+   * steht in einem Satz aus §5.8, jedes Kennzeichen sagt „bereinigt um“, kein Text trägt ein Norm-Wort (SP2).
+   */
+  it('der Methoden-Katalog spricht die Kundenwörter aus §5.8 (IP-5)', () => {
+    const katalog = JSON.parse(readFileSync(join(SRC, 'bezugsbasis/bezugsbasis-methoden.json'), 'utf8')) as {
+      methoden: { kennung: string; kundenwort: string; formel: string; variablen: string; datenbedarf: string; grenze: string; kennzeichen: string }[];
+      parameter: { grundperiode: string; hinweis: string };
+    };
+    expect(katalog.methoden.map((m) => m.kennung)).toEqual(['verhaeltnis', 'regression_eine_variable', 'regression_zwei_variablen', 'gradtage']);
+    const violations: string[] = [];
+    for (const m of katalog.methoden) {
+      if (!SAETZE.some((satz) => satz.includes(m.kundenwort))) violations.push(`${m.kennung}: „${m.kundenwort}“ steht in keinem Satz aus §5.8`);
+      if (!m.kennzeichen.includes(`${UEMS_BEREINIGT} um`)) violations.push(`${m.kennung}: Kennzeichen ohne „bereinigt um“`);
+      for (const text of [m.kundenwort, m.formel, m.variablen, m.datenbedarf, m.grenze, m.kennzeichen]) {
+        for (const re of verstoesse(text)) violations.push(`${m.kennung}: ${re} in „${text}“`);
+      }
+      for (const text of [m.kundenwort, m.kennzeichen]) {
+        for (const { re, why } of FORBIDDEN) if (re.test(text)) violations.push(`${m.kennung}: „${text}“ — ${why}`);
+      }
+    }
+    for (const text of [katalog.parameter.grundperiode, katalog.parameter.hinweis]) {
+      for (const re of verstoesse(text)) violations.push(`parameter: ${re} in „${text}“`);
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
 });
 
 describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)', () => {
