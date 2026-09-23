@@ -11,7 +11,7 @@ import type {
   Funktionen,
 } from './api';
 import type { BerichtRechte } from './berichtDialoge';
-import { UEMS_HAUPTZAEHLER, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
+import { UEMS_HAUPTZAEHLER, UEMS_NOCH_NICHT_GERECHNET_SATZ, uemsGeteiltSatz } from './glossar';
 import { anlageRoute, hashForRoute } from './nav';
 import { datumZeit } from './rechte';
 import type { AnlageSurface } from './surface';
@@ -216,6 +216,8 @@ export interface AbschnittBild {
   key: string;
   titel: string | null;
   tage: TagBild[];
+  /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b): je Fund ein Satz; leer ohne Fund. */
+  geteilt: string[];
 }
 
 export interface LiveBild {
@@ -587,6 +589,7 @@ function hauptzaehlerBild(h: BilanzHauptzaehler, zone: string, ctx: BilanzKontex
         kompakt: ab.werte.length > 1,
         zeilen: zeilenBild(w, ab, h, zone, ctx),
       })),
+      geteilt: (ab.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen)),
     })),
   };
 }

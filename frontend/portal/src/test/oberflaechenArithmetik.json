@@ -9,7 +9,8 @@
     "uemsWerteCache: TTL und LRU-Indizes, keine Menge.",
     "kostenstellenUebersicht ./rechte:ROLLE_KUNDENWORT (PR 1014, Kostenstelle B): nur die Kundenwörter der Rollen für den Satz, wer die Mengen sieht; keine Menge.",
     "kostenstellenUebersicht ./rechte:TEXTE (PR 1014, Kostenstelle B): nur die Satzbausteine weg_ein_kundenadministrator/weg_kundenadministratoren mit den Namen aus /me; keine Menge.",
-    "kostenstellenUebersicht ./glossar:UEMS_BEWERTUNG_SAETZE (AP-16 IP-14): formatiert nur den gelieferten Prozess-Summen-Hinweis; keine Menge."
+    "kostenstellenUebersicht ./glossar:UEMS_BEWERTUNG_SAETZE (AP-16 IP-14): formatiert nur den gelieferten Prozess-Summen-Hinweis; keine Menge.",
+    "anlageEnergiebilanz ./glossar:uemsGeteiltSatz (AP-07 IP-18b Summen-Wächter): reiht nur die gelieferten Kennzeichen zu einem Satz; keine Menge."
   ],
   "dateien": {
     "uemsOberflaechen.ts": {
@@ -264,6 +265,7 @@
       "importe": [
         "./glossar:UEMS_HAUPTZAEHLER",
         "./glossar:UEMS_NOCH_NICHT_GERECHNET_SATZ",
+        "./glossar:uemsGeteiltSatz",
         "./nav:anlageRoute",
         "./nav:hashForRoute",
         "./rechte:datumZeit",

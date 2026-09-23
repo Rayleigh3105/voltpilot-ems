@@ -1,0 +1,27 @@
+/* Summen-Wächter des geteilten Punkts — dieselbe Bernstein-Zeile wie die Doppelzählung der Kostenstelle. */
+.vp-geteilt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: var(--vp-warn-ink, #b45309);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.vp-geteilt-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--vp-warn-ink, #b45309);
+}
+
+.vp-geteilt-hinweis {
+  color: #7c2d12;
+}

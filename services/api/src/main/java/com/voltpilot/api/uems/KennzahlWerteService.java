@@ -68,8 +68,10 @@ public class KennzahlWerteService {
     private final KennzahlService kennzahlen;
     private final KennzahlWerteLeser leser;
     private final WertVersionenLeser vorgaenge;
+    private final JdbcTemplate jdbc;
 
     public KennzahlWerteService(KennzahlRepository repo, KennzahlService kennzahlen, JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
         this.repo = repo;
         this.kennzahlen = kennzahlen;
         this.leser = new KennzahlWerteLeser(jdbc);
@@ -115,7 +117,25 @@ public class KennzahlWerteService {
                     z == null ? List.of() : eingaenge.getOrDefault(z.id(), List.of())));
         }
         return new KennzahlDto.Werte(l.kopf(), a.periode(), a.von(), a.bis(), l.zone().getId(), a.version(),
-                List.copyOf(werte));
+                List.copyOf(werte), geteilteRegister(id, a.von(), a.bis(), l.zone()));
+    }
+
+    /**
+     * Summen-Wächter des geteilten Punkts ({@link GeteiltesRegister}) an einer Zusammenfassung: die Paare der
+     * Fassung, die am LETZTEN Tag gilt (wie {@code definition_fassung}), ihre Messstellen je Σ, deren Quellen den
+     * Zeitraum berühren. Benennt, ändert keine Zahl; jede andere Rechenform hat keine Summe und keinen Fund.
+     */
+    private List<KennzahlDto.GeteiltesRegister> geteilteRegister(UUID id, LocalDate von, LocalDate bis, ZoneId zone) {
+        List<GeteiltesRegister.Summand> summanden = kennzahlen.summandenDerZusammenfassung(id, bis);
+        Set<UUID> ids = new LinkedHashSet<>();
+        summanden.forEach(s -> ids.add(s.messstelleId()));
+        if (ids.size() < 2) {
+            return List.of();
+        }
+        List<GeteiltesRegister.Bindung> bindungen = GeteiltesRegister.lade(jdbc, ids,
+                von.atStartOfDay(zone).toInstant(), bis.plusDays(1).atStartOfDay(zone).toInstant());
+        return GeteiltesRegister.finde(summanden, bindungen).stream()
+                .map(f -> new KennzahlDto.GeteiltesRegister(f.rolle(), f.register(), f.messstellen())).toList();
     }
 
     // ================================================================================ Versionen

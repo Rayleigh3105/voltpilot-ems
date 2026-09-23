@@ -141,7 +141,7 @@ class SiteScopeArchitekturTest {
                     "web/DeviceController.java", "devices.findById(deviceId)"),
             new Erlaubt("measurement/SpeicherklasseHistorie.java", "device_measurement_sample", 1,
                     Grund.UEBER_MESSKOMPONENTE, "uems/MessstelleQuelleRepository.java", "measurement_point"),
-            new Erlaubt("uems/MessstelleFormelWerteRepository.java", "device_measurement_sample", 1,
+            new Erlaubt("uems/MessstelleFormelWerteRepository.java", "device_measurement_sample", 2,
                     Grund.UEBER_MESSKOMPONENTE, "uems/MessstelleFormelWerteRepository.java", "FROM measurement_point mp"),
             new Erlaubt("uems/MessstelleFormelWerteRepository.java", "device_measurement_rollup_15m", 1,
                     Grund.UEBER_MESSKOMPONENTE, "uems/MessstelleFormelWerteRepository.java", "FROM measurement_point mp"),

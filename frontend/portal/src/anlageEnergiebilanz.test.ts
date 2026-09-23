@@ -385,3 +385,21 @@ describe('Herkunfts-Karte mit Versionen', () => {
     expect(ausloeserText(null)).toBeNull();
   });
 });
+
+describe('AP-07 IP-18b Summen-Wächter — geteilter Punkt im Abschnitt', () => {
+  it('nennt zwei Messstellen am selben Register der Box als Satz; ohne Fund kein Satz und keine Zahl anders', () => {
+    const ohne = ahrenbergBilanz(an2, 'monat', '2026-10-01');
+    const mit = structuredClone(ohne);
+    mit.hauptzaehler[0].abschnitte[0].geteilte_register = [
+      { rolle: 'zugeordnet', register: 'sunspec.model_203.totwhimp', messstellen: ['MS-12', 'MS-13'] },
+    ];
+    const vorher = energiebilanzBild(ohne, ctx());
+    const nachher = energiebilanzBild(mit, ctx());
+    expect(vorher.hauptzaehler[0].abschnitte[0].geteilt).toEqual([]);
+    expect(nachher.hauptzaehler[0].abschnitte[0].geteilt).toEqual([
+      'MS-12 und MS-13 hängen am selben Register der VoltPilot-Box.',
+    ]);
+    expect(nachher.hauptzaehler[0].abschnitte[0].tage).toEqual(vorher.hauptzaehler[0].abschnitte[0].tage);
+    expect(alleTexte(nachher)).not.toContain('sunspec');
+  });
+});

@@ -24,6 +24,7 @@ import {
   type VorschlagBild,
   type ZeileBild,
 } from '../anlageEnergiebilanz';
+import { GeteiltesRegisterHinweis } from '../components/GeteiltesRegisterHinweis';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
 import { MiniShareBar } from '../components/MiniChart';
 import { ZeitSegment } from '../components/HistorieWelt';
@@ -236,6 +237,7 @@ function Hauptzaehler({
         hz.abschnitte.map((ab) => (
           <div key={ab.key} className="vp-eb-abschnitt">
             {ab.titel && <h4 className="vp-eb-abschnitt-titel">{ab.titel}</h4>}
+            <GeteiltesRegisterHinweis saetze={ab.geteilt} />
             {ab.tage.map((tag) => (
               <div key={tag.key} className="vp-eb-tag">
                 {tag.titel && tag.titel !== ab.titel && <h5 className="vp-eb-tag-titel">{tag.titel}</h5>}

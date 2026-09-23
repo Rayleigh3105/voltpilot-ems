@@ -161,6 +161,7 @@ class KennzahlSchnittstelleVertragTest {
                 Map.entry("KennzahlVorschau", KennzahlDto.Vorschau.class),
                 Map.entry("KennzahlWerteKennzahl", KennzahlDto.WerteKennzahl.class),
                 Map.entry("KennzahlWerte", KennzahlDto.Werte.class),
+                Map.entry("KennzahlGeteiltesRegister", KennzahlDto.GeteiltesRegister.class),
                 Map.entry("KennzahlWert", KennzahlDto.Wert.class),
                 Map.entry("KennzahlWerteHistorie", KennzahlDto.Historie.class),
                 Map.entry("KennzahlWertVersion", KennzahlDto.Version.class),

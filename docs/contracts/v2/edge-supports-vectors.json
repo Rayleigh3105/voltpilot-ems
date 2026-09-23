@@ -52,8 +52,8 @@
     {
       "name": "measurement_config_per_component",
       "meaning": "Die Box nimmt den Mess-Plan mit geteiltem Punkt an (derselbe point_key einmal je Komponente, jede mit entity_id, mqtt-measurement-config 2.0 x-point-key-rule), liest ihn je Ziel einmal und sendet je Komponente ein Sample mit ihrer entity_id (measurement-samples 2.1); eine Ablehnung nur einer Komponente nennt deren entity_id (mqtt-measurement-config-status x-rejection-entity-rule). Ohne dieses Wort bekommt die Box den zusammengelegten Plan wie bisher (AP-07 IP-18b Teil 2).",
-      "advertised": false,
-      "evidence": "edge-app/core/internal/measurements/geteilter_punkt_test.go (Box-Seite gebaut, aber RUHEND: Entscheid firstmate 23.09.2026, das Wort wird erst gemeldet, wenn Punktzustand, Cloud-Status je Komponente, Revisions-Anstoss und Summen-Waechter gebaut sind; das Einschalten ist ein eigenes Paket)"
+      "advertised": true,
+      "evidence": "edge-app/core/internal/measurements/geteilter_punkt_test.go"
     }
   ],
   "cases": [

@@ -109,14 +109,30 @@ public final class MessstelleFormelDto {
             boolean formelVorhanden,
             boolean eingaengeEingerichtet,
             @JsonInclude(JsonInclude.Include.NON_NULL) FassungAm fassungAm,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY) List<GeteiltesRegister> geteilteRegister) {
 
         public Formel(UUID messstelleId, String schemaVersion, Groesse hauptgroesse, List<Term> terme,
                 boolean formelVorhanden, boolean eingaengeEingerichtet, FassungAm fassungAm) {
             this(messstelleId, schemaVersion, hauptgroesse, terme, formelVorhanden, eingaengeEingerichtet, fassungAm,
                     null);
         }
+
+        /** Ohne Summen-Wächter: auch die Antwort für einen Leser, der nicht jeden Eingang sieht (keine Positionen). */
+        public Formel(UUID messstelleId, String schemaVersion, Groesse hauptgroesse, List<Term> terme,
+                boolean formelVorhanden, boolean eingaengeEingerichtet, FassungAm fassungAm, String ausserhalbZugriff) {
+            this(messstelleId, schemaVersion, hauptgroesse, terme, formelVorhanden, eingaengeEingerichtet, fassungAm,
+                    ausserhalbZugriff, List.of());
+        }
     }
+
+    /**
+     * Summen-Wächter des geteilten Punkts (AP-07 IP-18b): die Terme an den {@code positionen} tragen dasselbe
+     * Vorzeichen und lesen denselben Messpunkt {@code register} derselben Box über zwei Komponenten. Liest jede
+     * Komponente dasselbe Gerät, zählt die Formel den Wert zweimal. Eine Warnung NEBEN den Termen - sie ändert keine
+     * Zahl; ohne Fund fehlt das Feld (Bestand Byte für Byte gleich).
+     */
+    public record GeteiltesRegister(String register, List<Integer> positionen) {}
 
     /**
      * Der Tag, nach dem gefragt war, und die Fassung, die an ihm gilt — {@code fassung} ist

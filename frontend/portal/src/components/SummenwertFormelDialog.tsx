@@ -12,7 +12,8 @@ import {
 import { alsAnfrage, FAKTOR_ANTEIL_HINWEIS, leererFormelEntwurf, type AssistentTyp } from '../formelAssistent';
 import { FormelMessstellen } from './FormelMessstellen';
 import { hauptgroesse } from '../uemsMessstelleFormel';
-import { SUMMENWERT } from "../glossar";
+import { SUMMENWERT, uemsGeteiltSatz } from "../glossar";
+import { GeteiltesRegisterHinweis } from "./GeteiltesRegisterHinweis";
 import { useRollen } from "../rollen";
 import { VpDatePicker } from "./VpDatePicker";
 import { VpPicker } from "./VpPicker";
@@ -49,6 +50,8 @@ export function SummenwertFormelDialog({
   const [busy, setBusy] = useState(false);
   // AP-03 R-A6: fehlen Terme außerhalb des Zugriffs, schriebe „Übernehmen“ die Formel ohne sie — nie.
   const [ausserhalb, setAusserhalb] = useState<string | null>(null);
+  /** Summen-Wächter der gespeicherten Formel (AP-07 IP-18b): je Fund die Schlüssel und Nummern seiner Eingänge. */
+  const [geteilt, setGeteilt] = useState<{ key: string; nr: number }[][]>([]);
   const key = (t: Term) =>
     t.entity_id
       ? `${t.entity_id}:${t.point_key}`
@@ -97,6 +100,10 @@ export function SummenwertFormelDialog({
           ...(t.verteilung_ziel ? { verteilung_ziel: t.verteilung_ziel } : {}),
           ...(t.anteil ? { anteil: t.anteil } : {}),
         }));
+        setGeteilt((f.geteilte_register ?? []).map((g) => g.positionen.flatMap((p) => {
+          const i = f.terme.findIndex((t) => t.position === p);
+          return i < 0 ? [] : [{ key: key(ts[i]), nr: i + 1 }];
+        })));
         const alle = listen.flat();
         setGroessen(Object.fromEntries([
           ...alle.filter(q => q.groesse.groesse && q.groesse.richtung && q.groesse.einheit && q.groesse.wertart).map(q => [q.key, q.groesse as MessstelleGroesse]),
@@ -197,6 +204,7 @@ export function SummenwertFormelDialog({
         </p>
         <p>{typ === 'saldo' ? 'Saldo · Bezug − Abgabe' : 'Summe'}{ableitung?.hauptgroesse && ` · ${ableitung.hauptgroesse.groesse} · ${ableitung.hauptgroesse.richtung} · ${ableitung.hauptgroesse.einheit}`}</p>
         {ausserhalb && <p>Die Formel {ausserhalb}.</p>}
+        <GeteiltesRegisterHinweis saetze={geteilt.map((g) => uemsGeteiltSatz(g.map((e) => namen[e.key] || `Eingang ${e.nr}`)))} />
         {ableitung?.fehler && <p role="alert">Die Messgrößen passen nicht zusammen ({ableitung.grund}).</p>}
         {saldoFehlt && <p>Ein Saldo braucht beide Hauptzähler: Bezug plus, Abgabe minus.</p>}
         {ab < heute && (

@@ -567,6 +567,65 @@ class KennzahlWerteApiTest {
     private static final String K17_BEGRUENDUNG = "Kühlung gehört ab März zum Spritzguss: Zähler MS-24 statt MS-20";
 
     /** Ein Kundenbereich mit den Kennzahlen der Herkunfts-Fälle — angelegt über den Schreibweg, jede mit ihrer Einheit. */
+    // ================================================================ Summen-Wächter des geteilten Punkts
+
+    /**
+     * AP-07 IP-18b Summen-Wächter an der Zusammenfassung: KZ-0003 fasst KZ-0001 (MS-12) und KZ-0002 (MS-18) zusammen.
+     * Lesen MS-12 und MS-18 denselben Kanal DERSELBEN Box über zwei Komponenten (geteilter Punkt), zählt Σ ihn zweimal,
+     * sobald die Box je Komponente sendet. Die Werte-Antwort benennt es neben den Werten und ändert keinen; ohne Fund
+     * (zwei Boxen) und an einem Quotienten (keine Summe) fehlt das Feld.
+     */
+    @Test
+    void zusammenfassungBenenntZweiMessstellenAmSelbenRegisterEinerBox() throws Exception {
+        Welt w = welt();
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) VALUES (?, 'Werk Ahrenberg', ?) "
+                + "RETURNING id", UUID.class, w.mandant(), Timestamp.from(Instant.parse("2020-01-01T00:00:00Z")));
+        UUID box12 = quelle(w, site, "MS-12");
+        UUID box18 = quelle(w, site, "MS-18");
+        String pfad = PFAD + "/" + w.kz().get("KZ-0003") + "/werte?periode=jahr&von=2026-01-01&bis=2026-12-31";
+        JsonNode vorher = ok(ruf(w, pfad));
+        assertThat(vorher.has("geteilte_register")).as("zwei Boxen: kein Fund, kein Feld").isFalse();
+
+        root.update("UPDATE device_measurement_selection SET device_id = ? WHERE device_id = ?", box12, box18);
+        JsonNode nachher = ok(ruf(w, pfad));
+        assertThat(nachher.get("geteilte_register")).hasSize(1);
+        JsonNode fund = nachher.get("geteilte_register").get(0);
+        assertThat(fund.get("rolle").asText()).isEqualTo("zaehler");
+        assertThat(fund.get("register").asText()).isEqualTo(ENERGIE);
+        assertThat(fund.get("messstellen")).extracting(JsonNode::asText).containsExactly("MS-12", "MS-18");
+        assertThat(nachher.get("werte")).as("benennen, nicht rechnen").isEqualTo(vorher.get("werte"));
+        JsonNode quotient = ok(ruf(w, PFAD + "/" + w.kz().get("KZ-0001")
+                + "/werte?periode=monat&von=2026-10-01&bis=2026-10-31"));
+        assertThat(quotient.has("geteilte_register")).as("ein Quotient hat keine Summe").isFalse();
+    }
+
+    private static final String ENERGIE = "sunspec.model_203.totwhimp";
+
+    /** Box, Komponente, Auswahlzeile und führende Quelle der Hauptgröße (Wirkenergie Bezug) einer Messstelle. */
+    private static UUID quelle(Welt w, UUID site, String kennzeichen) {
+        UUID t = w.mandant();
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) RETURNING id",
+                UUID.class, t, site, "VP-KZ-" + kennzeichen + "-" + UUID.randomUUID());
+        UUID komponente = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type, device_id, communication, connection_json, created_at) VALUES (?, ?, 'modbus-generic', ?, "
+                + "'modbus-generic', ?, 'modbus_tcp', '{\"unit_id\":1}'::jsonb, ?) RETURNING id", UUID.class, t, site,
+                "Zähler " + kennzeichen, box, Timestamp.from(Instant.parse("2020-01-01T00:00:00Z")));
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, now(), '2026.09.11.1', 'test', "
+                + "'pending_edge', 'energy_counter', 'fifteen_minute')", t, site, box, komponente, ENERGIE);
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ?", UUID.class,
+                komponente);
+        UUID ms = root.queryForObject("SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = ?", UUID.class, t,
+                kennzeichen);
+        root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, geraet_id, "
+                + "kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, actor_name, actor_art) "
+                + "VALUES (?,?,'Wirkenergie','Bezug',?,?,?,'counter','zaehlerstand','fuehrend',?,false,?,'test','voltpilot')",
+                t, ms, komponente, geraet, ENERGIE, Timestamp.from(Instant.parse("2020-01-01T00:00:00Z")),
+                Timestamp.from(Instant.parse("2020-01-01T00:01:00Z")));
+        return box;
+    }
+
     private Welt welt() throws Exception {
         int nr = NR.incrementAndGet();
         UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class, "Kennzahl-Werte #" + nr);

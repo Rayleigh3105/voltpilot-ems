@@ -44,3 +44,15 @@ it('mit Eingängen außerhalb des Zugriffs: Hinweis statt Übernehmen, nie eine 
   fireEvent.click(knopf);
   expect(speichern).not.toHaveBeenCalled();
 });
+
+it('AP-07 IP-18b: zwei Eingänge am selben Register der Box — Warnung im Dialog, Übernehmen bleibt möglich', async () => {
+  const term = (position: number, entity_id: string) => ({ position, eingang_art: 'messkanal', entity_id, point_key: 'gen-port', quell_messstelle_id: null, vorzeichen: '+', faktor: 1, gilt_als_erzeugung: false, groesse: null, eingerichtet: true });
+  vi.spyOn(api, 'messstelleFormel').mockResolvedValue({ messstelle_id: 'm1', schema_version: '1.0', hauptgroesse: null, formel_vorhanden: true, eingaenge_eingerichtet: true,
+    terme: [term(0, 'e1'), term(1, 'e2')], geteilte_register: [{ register: 'gen-port', positionen: [0, 1] }] });
+  vi.spyOn(api, 'siteEntities').mockResolvedValue({ entities: [] } as unknown as Awaited<ReturnType<typeof api.siteEntities>>);
+  render(<SummenwertFormelDialog siteId="s1" messstelle={m} onClose={() => {}} onGespeichert={() => {}} />);
+  const note = await screen.findByRole('note');
+  expect(note).toHaveTextContent('Möglicherweise doppelt gezählt: Eingang 1 und Eingang 2 hängen am selben Register der VoltPilot-Box.');
+  expect(note).not.toHaveTextContent('gen-port');
+  expect(screen.getByRole('button', { name: 'Übernehmen' })).not.toBeDisabled();
+});

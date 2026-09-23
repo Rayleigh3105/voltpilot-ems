@@ -180,6 +180,30 @@ public class KennzahlService {
                 kat.fassungen(id).stream().map(f -> fassungDarstellung(f, kat, zone)).toList());
     }
 
+    /**
+     * Die Summanden einer Zusammenfassung am Tag für den Summen-Wächter ({@link GeteiltesRegister}): je Paar der
+     * Fassung, die an dem Tag gilt, seine Messstellen in ihrer Rolle ({@code zaehler} · {@code nenner}) - Σ Zähler
+     * und Σ Nenner sind die zwei Summen. Leer für jede andere Rechenform. Liest nur, prüft keinen Zugriff (das tut
+     * der Einstieg an der Zusammenfassung).
+     */
+    List<GeteiltesRegister.Summand> summandenDerZusammenfassung(UUID id, LocalDate tag) {
+        Katalog kat = katalog();
+        Optional<FassungZeile> f = kat.fassungAm(id, tag);
+        if (f.isEmpty() || !KennzahlRegeln.ZUSAMMENFASSUNG.equals(f.get().rechenform())) {
+            return List.of();
+        }
+        List<GeteiltesRegister.Summand> aus = new ArrayList<>();
+        for (EingangZeile paar : kat.eingaenge(f.get().id())) {
+            if (!KennzahlRegeln.KENNZAHL.equals(paar.art())) {
+                continue;
+            }
+            kat.fassungAm(paar.objektId(), tag).ifPresent(pf -> kat.eingaenge(pf.id()).stream()
+                    .filter(e -> KennzahlRegeln.MESSSTELLE.equals(e.art()))
+                    .forEach(e -> aus.add(new GeteiltesRegister.Summand(e.objektId(), e.kennzeichen(), e.rolle()))));
+        }
+        return List.copyOf(aus);
+    }
+
     /** Welche Fassung galt am Tag {@code am} ({@code null} = heute in der Zeitzone der Kennzahl)? */
     public KennzahlDto.Berechnung berechnung(UUID id, LocalDate am) {
         Katalog kat = katalog();

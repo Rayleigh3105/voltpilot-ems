@@ -193,6 +193,83 @@ class BilanzApiTest {
     }
 
     /**
+     * AP-07 IP-18b Summen-Wächter an der Formel-Messstelle: MS-30 = MS-12 (Messstellen-Term) + Energie-Kanal der
+     * Komponente von MS-13 (Messkanal-Term). Lesen beide danach denselben Kanal DERSELBEN Box über zwei Komponenten,
+     * zählt die Formel ihn zweimal, sobald die Box je Komponente sendet. Die Formel-Antwort nennt beide Positionen und
+     * ändert keinen Term; ohne Fund fehlt das Feld (Bestand Byte für Byte gleich).
+     */
+    @Test
+    void formelBenenntZweiTermeAmSelbenRegisterEinerBoxOhneDassSichEinTermAendert() throws Exception {
+        Welt w = halle2();
+        UUID ms30 = formel(w, "MS-30", "Wirkenergie", "kWh", "Zählerstand",
+                new Object[] {"messstelle", null, null, w.messstellen().get("MS-12")},
+                new Object[] {"messkanal", w.komponenten().get("MS-13"), ENERGIE, null});
+        String pfad = "/api/v1/messstellen/" + ms30 + "/formel";
+        JsonNode vorher = ok(ruf(w, HttpMethod.GET, pfad, null), 200);
+        assertThat(vorher.has("geteilte_register")).as("zwei Boxen: kein Fund, kein Feld").isFalse();
+
+        root.update("UPDATE device_measurement_selection SET device_id = ? WHERE entity_id = ?",
+                w.boxen().get("MS-12"), w.komponenten().get("MS-13"));
+        Map<String, String> stand = Bestandsschutz.fingerabdruck(root, List.of());
+        JsonNode nachher = ok(ruf(w, HttpMethod.GET, pfad, null), 200);
+        assertThat(Bestandsschutz.abweichungen(stand, Bestandsschutz.fingerabdruck(root, List.of())))
+                .as("die Formel liest nur").isEmpty();
+        assertThat(nachher.get("geteilte_register")).hasSize(1);
+        JsonNode fund = nachher.get("geteilte_register").get(0);
+        assertThat(fund.get("register").asText()).isEqualTo(ENERGIE);
+        assertThat(fund.get("positionen")).extracting(JsonNode::asInt).containsExactly(0, 1);
+        assertThat(nachher.get("terme")).as("benennen, nicht ändern").isEqualTo(vorher.get("terme"));
+
+        UUID ms31 = formel(w, "MS-31", "Wirkenergie", "kWh", "Zählerstand",
+                new Object[] {"messstelle", null, null, w.messstellen().get("MS-12")},
+                new Object[] {"messkanal", w.komponenten().get("MS-13"), ENERGIE, null});
+        root.update("UPDATE messstelle_formel_term SET vorzeichen = '-' WHERE messstelle_id = ? AND position = 1", ms31);
+        assertThat(ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + ms31 + "/formel", null), 200)
+                .has("geteilte_register")).as("verschiedene Vorzeichen sind zwei Summen").isFalse();
+    }
+
+    /**
+     * AP-07 IP-18b, {@code MessstelleFormelWerteRepository#verlauf15m} (Lesart A): die Box-Verdichtung enthält den
+     * geteilten Punkt nicht - der 15-min-Verlauf eines Messkanal-Terms an ihm blieb leer. Jetzt kommt ein Bucket, den
+     * die Verdichtung nicht hat, aus den Zeilen SEINER Komponente (Mittel 5 kW), nie aus denen der anderen (9 kW).
+     * Ohne geteilten Punkt liest der Verlauf weiter nur die Verdichtung - auch neben Rohzeilen ohne Komponente.
+     */
+    @Test
+    void verlaufEinesMesskanalTermsAmGeteiltenPunktLiestSeineKomponente() throws Exception {
+        Welt w = halle2();
+        UUID box = w.boxen().get("MS-12");
+        UUID a = w.komponenten().get("MS-12");
+        UUID b = w.komponenten().get("MS-13");
+        root.update("UPDATE device_measurement_selection SET device_id = ? WHERE entity_id = ?", box, b);
+        UUID ms32 = formel(w, "MS-32", "Wirkleistung", "kW", "Momentanwert",
+                new Object[] {"messkanal", b, LEISTUNG, null});
+        Instant bucket = Instant.ofEpochSecond(Instant.now().getEpochSecond() / 900 * 900).minus(Duration.ofHours(2));
+        rohwert(w, box, b, bucket.plusSeconds(60), 4000, 900);
+        rohwert(w, box, b, bucket.plusSeconds(300), 6000, 900);
+        rohwert(w, box, a, bucket.plusSeconds(120), 9000, 900);
+        rohwert(w, box, b, bucket.plusSeconds(600), 99000, 300);
+        JsonNode punkte = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + ms32 + "/verlauf", null), 200)
+                .get("punkte");
+        assertThat(punkte).hasSize(1);
+        assertThat(Instant.parse(punkte.get(0).get("zeit").asText())).isEqualTo(bucket);
+        assertThat(punkte.get(0).get("wert").asDouble()).as("nur Komponente B, nur Kadenz 900 s").isEqualTo(5.0);
+
+        // Bestand: ein heutiger Punkt liest nur die Verdichtung, Rohzeilen ohne Komponente ändern nichts.
+        UUID box14 = w.boxen().get("MS-14");
+        UUID ms33 = formel(w, "MS-33", "Wirkleistung", "kW", "Momentanwert",
+                new Object[] {"messkanal", w.komponenten().get("MS-14"), LEISTUNG, null});
+        root.update("INSERT INTO device_measurement_rollup_15m (bucket, tenant_id, site_id, device_id, point_key, "
+                + "aggregation_kind, avg_numeric, sample_count, catalog_version) VALUES (?, ?, ?, ?, ?, 'gauge', 3000, 3, ?)",
+                Timestamp.from(bucket), w.mandant(), w.anlage(), box14, LEISTUNG, KATALOG);
+        rohwert(w, box14, null, bucket.plusSeconds(60), 7000, 900);
+        JsonNode bestand = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + ms33 + "/verlauf", null), 200)
+                .get("punkte");
+        assertThat(bestand).hasSize(1);
+        assertThat(Instant.parse(bestand.get(0).get("zeit").asText())).isEqualTo(bucket);
+        assertThat(bestand.get(0).get("wert").asDouble()).as("die Verdichtung, wie vorher").isEqualTo(3.0);
+    }
+
+    /**
      * AP-07 IP-18b, {@code MessstelleFormelWerteRepository#frischester}: MS-12 und MS-13 lesen die Leistung als
      * geteilten Punkt an EINER Box, und die Box sendet je Komponente ({@code edge_entity_id}). Jeder Term des
      * Live-Rests liest den Wert SEINER Komponente - vorher nahm jeder die jüngste Zeile des Punkts, beide also 7,9 kW,
@@ -635,6 +712,34 @@ class BilanzApiTest {
         w.komponenten().put(kennzeichen, komponente);
         w.boxen().put(kennzeichen, box);
         return messstelle;
+    }
+
+    /** Eine berechnete Messstelle mit einer Fassung „gilt seit Beginn“: je Term {eingang_art, entity_id, point_key, quelle}. */
+    private UUID formel(Welt w, String kennzeichen, String groesse, String einheit, String wertart, Object[]... terme) {
+        UUID t = w.mandant();
+        UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, ?, ?, 'berechnet', 'Strom', ?, 'Bezug', ?, ?) RETURNING id",
+                UUID.class, t, kennzeichen, "Summe " + kennzeichen, groesse, einheit, wertart);
+        UUID fassung = root.queryForObject("INSERT INTO messstelle_formel_fassung (tenant_id, messstelle_id, nummer, "
+                + "formel_typ, herkunft, actor_sub, actor_name, actor_art) VALUES (?, ?, 1, 'gewichtete_summe', 'anlage', "
+                + "'sub-test', 'Test', 'kunde') RETURNING id", UUID.class, t, ms);
+        for (int i = 0; i < terme.length; i++) {
+            root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, eingang_art, "
+                    + "entity_id, point_key, quell_messstelle_id, vorzeichen, faktor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '+', 1)",
+                    t, ms, fassung, i, terme[i][0], terme[i][1], terme[i][2], terme[i][3]);
+        }
+        w.messstellen().put(kennzeichen, ms);
+        return ms;
+    }
+
+    /** Ein Leistungswert (W) an der Box; mit {@code komponente} wie die Box ihn je Komponente sendet. */
+    private void rohwert(Welt w, UUID box, UUID komponente, Instant zeit, double watt, int kadenz) {
+        root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, entity_id, "
+                + "edge_entity_id, role, long_term_cadence_s) VALUES (?, ?, ?, (SELECT site_id FROM device WHERE id = ?), "
+                + "?, ?, ?, ?, 'good', ?, ?, 'gauge', ?, ?, 'fuehrend', ?)",
+                Timestamp.from(zeit), Timestamp.from(zeit), w.mandant(), box, box, LEISTUNG, watt, watt, KATALOG,
+                SEQ.incrementAndGet(), komponente, komponente, kadenz);
     }
 
     /** Die Momentaufnahme 20.10.2026 10:15 als frische Leistungswerte (W) — je Box und Kanal. */

@@ -51,14 +51,17 @@ class MessstelleFormelSchnittstelleVertragTest {
     void dieFormelTraegtDieFelderVonVorIp3UndNurFassungAmDazu() {
         List<String> dto = felder(MessstelleFormelDto.Formel.class);
         assertThat(dto).containsExactly("messstelle_id", "schema_version", "hauptgroesse", "terme",
-                "formel_vorhanden", "eingaenge_eingerichtet", "fassung_am", "ausserhalb_zugriff");
+                "formel_vorhanden", "eingaenge_eingerichtet", "fassung_am", "ausserhalb_zugriff", "geteilte_register");
         assertThat(map(schema("MessstelleFormel"), "properties").keySet()).containsExactlyElementsOf(dto);
         // Pflicht sind genau die Felder von vor IP-3 — fassung_am gibt es nur mit `am`, ausserhalb_zugriff nur mit
         // einem Eingang außerhalb des Zugriffs (AP-03 R-A6).
         assertThat(liste(schema("MessstelleFormel"), "required")).containsExactlyElementsOf(dto.subList(0, 6));
         assertThat(interfaceFelder("MessstelleFormel")).containsExactly("messstelle_id", "schema_version",
                 "hauptgroesse", "terme", "formel_vorhanden", "eingaenge_eingerichtet", "fassung_am?",
-                "ausserhalb_zugriff?");
+                "ausserhalb_zugriff?", "geteilte_register?");
+        // AP-07 IP-18b Summen-Wächter: geteilte_register fehlt ohne Fund (NON_EMPTY) — darum optional.
+        assertThat(map(schema("MessstelleFormelGeteiltesRegister"), "properties").keySet())
+                .containsExactlyElementsOf(felder(MessstelleFormelDto.GeteiltesRegister.class));
 
         assertThat(map(schema("MessstelleFormelTerm"), "properties").keySet())
                 .containsExactlyElementsOf(felder(MessstelleFormelDto.Term.class));

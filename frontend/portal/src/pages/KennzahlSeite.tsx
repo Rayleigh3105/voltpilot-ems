@@ -6,7 +6,9 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DangerZone } from '../components/DangerZone';
+import { GeteiltesRegisterHinweis } from '../components/GeteiltesRegisterHinweis';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
+import { uemsGeteiltSatz } from '../glossar';
 import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
@@ -260,6 +262,11 @@ export function KennzahlSeite({
                   karte={wk.karte}
                   grund={wk.grund}
                   versionen={einstieg && <VersionenEinstieg einstieg={einstieg} onOeffnen={() => setVersionenOffen(true)} />}
+                />
+              )}
+              {aktuell && (
+                <GeteiltesRegisterHinweis
+                  saetze={(aktuell.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen))}
                 />
               )}
               {aktuell && (

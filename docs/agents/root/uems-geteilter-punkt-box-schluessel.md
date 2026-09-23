@@ -79,9 +79,12 @@ Geräteseite nicht stillsteht; ein stehender Wert sähe aus wie ein aktueller.
 
 - `MessstelleFormelWerteRepository#frischester` (Live-Wert eines Formel-/Rest-Terms) liest nur Zeilen der
   Box (`edge_entity_id IS NULL`) und der EIGENEN Komponente des Terms, nie den Wert der anderen
-  (`BilanzApiTest#amGeteiltenPunktLiestJederTermDenWertSeinerKomponente`). ⚠ Offen: `verlauf15m` liest die
-  Box-Verdichtung, die den geteilten Punkt nicht enthält — der 15-min-Verlauf eines Messkanal-Terms an einem
-  geteilten Punkt bleibt nach dem Einschalten leer.
+  (`BilanzApiTest#amGeteiltenPunktLiestJederTermDenWertSeinerKomponente`). `verlauf15m` (Lesart A): liest
+  weiter die Box-Verdichtung; nur ein Bucket, den sie nicht hat, kommt aus den Zeilen der EIGENEN Komponente
+  (`edge_entity_id`, Regel der Verdichtung: gut, Kadenz 900 s, gauge-Mittel/letzter Stand/counter-Differenz).
+  Ohne geteilten Punkt gibt es keine solche Zeile, das Ergebnis ist das von vorher
+  (`BilanzApiTest#verlaufEinesMesskanalTermsAmGeteiltenPunktLiestSeineKomponente`). ⚠ Die erste Differenz im
+  Zeitraum zählt ab dem ersten Wert (wie jeder Refresh der Verdichtung), keine Migration.
 - `appendTransitions` (Wechsel-Ereignisse) eines einfachen Punkts vergleicht weiter mit der
   letzten Zeile seines `point_key`, auch mit einer, die eine Komponente genannt hat. Das betrifft
   nur einen Punkt, der von geteilt zu einfach wechselt.
@@ -90,14 +93,15 @@ Geräteseite nicht stillsteht; ein stehender Wert sähe aus wie ein aktueller.
   Komponente im Plan (`MeasurementPlan#composeJeKomponente`, Vertrag `x-point-key-rule`, bleibt
   2.0). Jede andere Box bekommt den zusammengelegten Plan byte-gleich
   (`MessplanJeKomponenteBestandTest`, wörtliche Kopie von vorher).
-- Box-Schritt, gebaut aber RUHEND: Core `measurements.geteiltePunkte` ist die eine
+- Box-Schritt, EINGESCHALTET: Core `measurements.geteiltePunkte` ist die eine
   Duplikat-Regel für `ParseConfig`, `parseBatch` und `WrapStatus` (Paar zulässig, dieselbe
   Komponente zweimal oder ein Vorkommen ohne Komponente = Duplikat). `BuiltSupports` meldet das
-  Wort NICHT (Entscheid firstmate 23.09.2026, `cloud/geteilter_punkt_ruhend_test.go`). Gebaut sind
-  Punktzustand, Cloud-Status je Komponente, Revisions-Anstoß (Abschnitt unten) und der Summen-Wächter
-  an der Bilanz, `frischester` liest je Komponente (oben); offen vor dem Einschalten: Wächter an
-  Kennzahl-`zusammenfassung` und Formel-Messstelle, seine Anzeige im Portal und `verlauf15m` (unten)
-  — Entscheid firstmate 23.09.2026: erst das Folgepaket „Summen-Wächter komplett“, dann der
+  Wort (Einschalt-Commit nach Entscheid firstmate 23.09.2026 A, `cloud/geteilter_punkt_gemeldet_test.go`,
+  Vektor `advertised: true`); wirksam erst mit einem Box-Release, eine Box ohne das Wort bekommt weiter
+  den zusammengelegten Plan. Gebaut sind
+  Punktzustand, Cloud-Status je Komponente, Revisions-Anstoß (Abschnitt unten), der Summen-Wächter
+  an Bilanz, Formel und Kennzahl samt Portal-Anzeige, `frischester` und `verlauf15m` je Komponente
+  (oben) — Entscheid firstmate 23.09.2026 A: erst das Folgepaket „Summen-Wächter komplett“, dann der
   Einschalt-Commit (`BuiltSupports`, Vektor `advertised: true`, Ruhend-Test umdrehen). Node-RED `buildPlan` plant Anfragen aus `lesungenJeZiel` (ein Lesen je Ziel und Punkt,
   schnellste Kadenz), Samples je Komponente; die Laufzeit taktet Lesen (`due`) und Sample
   (`probenDue`) getrennt und dekodiert je Lesen einmal (Decoder halten Vorwerte). Beweise:
@@ -122,4 +126,12 @@ Geräteseite nicht stillsteht; ein stehender Wert sähe aus wie ein aktueller.
   die Cloud kann „dasselbe Gerät“ nicht von „zwei Geräte hinter demselben Katalogpunkt“ trennen.
   Bilanz: `abschnitte[].geteilte_register` (fehlt ohne Fund), je Rolle zwei Messstellen, deren
   führende Quelle der Hauptgröße zeitgleich denselben `point_key` derselben Box über zwei
-  Komponenten liest (`BilanzApiTest`, `GeteiltesRegisterTest`).
+  Komponenten liest (`BilanzApiTest`, `GeteiltesRegisterTest`). Formel (`GET …/formel`):
+  `geteilte_register[{register, positionen}]`, je Vorzeichen eine Summe; ein Messkanal-Term über
+  seine Komponente, ein Messstellen-Term über die führende Quelle; fehlt immer mit
+  `ausserhalb_zugriff` (Positionen verrieten verborgene Terme). Kennzahl (`GET …/werte`, nur
+  `zusammenfassung`): `geteilte_register[{rolle zaehler|nenner, register, messstellen}]`, Paare der
+  Fassung am letzten Tag (`KennzahlWerteApiTest`). Portal: eine Zeile
+  `components/GeteiltesRegisterHinweis.tsx` (Wörter `UEMS_GETEILT_*`/`uemsGeteiltSatz` in
+  `glossar.ts`) im Energiebilanz-Abschnitt, im Formel-Dialog (`SummenwertFormelDialog`, es gibt
+  keine lesende Formel-Fläche) und auf der Kennzahl-Seite über dem Verlauf; nie der `point_key`.

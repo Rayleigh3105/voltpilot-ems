@@ -2124,6 +2124,14 @@ export interface MessstelleFormel {
   fassung_am?: { tag: string; fassung: MessstelleFormelFassung | null };
   /** NUR mit einem Eingang außerhalb des Zugriffs (AP-03 R-A6): der Hinweis; Terme außerhalb fehlen. */
   ausserhalb_zugriff?: string;
+  /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b): fehlt ohne Fund; ändert keine Zahl. */
+  geteilte_register?: MessstelleFormelGeteiltesRegister[];
+}
+
+/** Terme mit demselben Vorzeichen lesen denselben Messpunkt derselben Box über zwei Komponenten (`position` der Terme). */
+export interface MessstelleFormelGeteiltesRegister {
+  register: string;
+  positionen: number[];
 }
 
 /** Ein fehlender/veralteter Term des Live-Werts — genannt, nie verschwiegen. */
@@ -2962,6 +2970,15 @@ export interface KennzahlWerte {
   /** Die angefragte Version; `null` = je Schritt die neueste. */
   version: number | null;
   werte: KennzahlWert[];
+  /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b), nur an einer Zusammenfassung: fehlt ohne Fund. */
+  geteilte_register?: KennzahlGeteiltesRegister[];
+}
+
+/** In Σ `rolle` der Paare lesen die `messstellen` denselben Messpunkt derselben Box über zwei Komponenten. */
+export interface KennzahlGeteiltesRegister {
+  rolle: 'zaehler' | 'nenner';
+  register: string;
+  messstellen: string[];
 }
 
 /** Eine Entscheidung hinter einer Version — die Form der Messstelle mit dem weiteren Vorgang `berechnung`. */
@@ -3585,6 +3602,15 @@ export interface BilanzAbschnitt {
   }>;
   ausserhalb: string[];
   werte: BilanzWerte[];
+  /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b): fehlt ohne Fund; ändert keine Zahl. */
+  geteilte_register?: BilanzGeteiltesRegister[];
+}
+
+/** In der Summe `rolle` lesen die `messstellen` denselben Messpunkt derselben Box über zwei Komponenten. */
+export interface BilanzGeteiltesRegister {
+  rolle: 'zufluss' | 'abfluss' | 'zugeordnet';
+  register: string;
+  messstellen: string[];
 }
 
 /** Der Rest JETZT in kW (F18): `wert` null, sobald ein Term fehlt oder veraltet ist — nie 0. */

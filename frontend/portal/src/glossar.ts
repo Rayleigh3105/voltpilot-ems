@@ -172,6 +172,22 @@ export const UEMS_KOMPONENTE = 'Komponente';
 export const UEMS_BOX = 'VoltPilot-Box';
 
 /**
+ * Summen-Wächter des geteilten Punkts (AP-07 IP-18b): zwei Messstellen (oder Eingänge) einer Summe lesen denselben
+ * Wert an derselben Box über zwei Komponenten. Lesen beide dasselbe Gerät, zählt die Summe ihn zweimal; hängen zwei
+ * Geräte hinter demselben Anschluss, stimmt sie. Darum eine Warnung neben den Zahlen, nie eine Sperre (Muster
+ * Kostenstelle „Doppelt gezählt“). Energiebilanz, Formel und Kennzahl sprechen dieselben Sätze.
+ */
+export const UEMS_GETEILT_TITEL = 'Möglicherweise doppelt gezählt';
+export const UEMS_GETEILT_HINWEIS =
+  'Lesen beide dasselbe Gerät, enthält die Summe diesen Wert zweimal. Die Zahlen bleiben, wie sie gemessen sind.';
+
+/** „MS-12 und MS-13 hängen am selben Register der VoltPilot-Box.“ */
+export function uemsGeteiltSatz(namen: readonly string[]): string {
+  const liste = namen.length <= 1 ? namen.join('') : `${namen.slice(0, -1).join(', ')} und ${namen.slice(-1).join('')}`;
+  return `${liste} hängen am selben Register der ${UEMS_BOX}.`;
+}
+
+/**
  * Hat eine Anlage mehrere Boxen, ist EINE davon die führende (AP-06 E3): sie
  * bildet die Anlagen-Summe und empfängt den Fahrplan. Ein gespeicherter,
  * sichtbarer Fakt — nie geraten.

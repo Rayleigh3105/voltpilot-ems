@@ -205,7 +205,23 @@ public final class KennzahlDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Werte(WerteKennzahl kennzahl, String periode, LocalDate von, LocalDate bis, String zeitzone,
-            Integer version, List<Wert> werte) {}
+            Integer version, List<Wert> werte,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY) List<GeteiltesRegister> geteilteRegister) {
+
+        public Werte(WerteKennzahl kennzahl, String periode, LocalDate von, LocalDate bis, String zeitzone,
+                Integer version, List<Wert> werte) {
+            this(kennzahl, periode, von, bis, zeitzone, version, werte, List.of());
+        }
+    }
+
+    /**
+     * Summen-Wächter des geteilten Punkts (AP-07 IP-18b) an einer Zusammenfassung: in der Summe {@code rolle}
+     * ({@code zaehler} · {@code nenner} der Paare) lesen die {@code messstellen} denselben Messpunkt {@code register}
+     * derselben Box über zwei Komponenten. Liest jede Komponente dasselbe Gerät, zählt Σ den Wert zweimal. Eine
+     * Warnung NEBEN den Werten - sie ändert keine; ohne Fund fehlt das Feld (Bestand Byte für Byte gleich).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GeteiltesRegister(String rolle, String register, List<String> messstellen) {}
 
     /**
      * Ein Schritt — die Trägerform des Messstellen-Werts ({@code MessstelleWerteDto.Wert}) für eine Kennzahl: statt

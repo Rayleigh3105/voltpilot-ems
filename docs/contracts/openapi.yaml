@@ -24778,6 +24778,21 @@ components:
           type: string
           description: "NUR wenn ein Eingang (auch über eine berechnete Messstelle oder einen Rest) außerhalb des Zugriffs des Lesers liegt (AP-03 R-A3/R-A6): dann fehlt jeder Term, der eine Messstelle oder die Komponente eines Messkanal-Terms außerhalb nennt, die übrigen sind lückenlos durchnummeriert. Ohne Namen, ohne Anzahl."
           example: "umfasst Standorte außerhalb Ihres Zugriffs"
+        geteilte_register:
+          type: array
+          items: { $ref: "#/components/schemas/MessstelleFormelGeteiltesRegister" }
+          description: >
+            Summen-Wächter des geteilten Punkts (AP-07 IP-18b): Terme mit demselben Vorzeichen lesen denselben Messpunkt
+            derselben Box über zwei Komponenten (ein Messkanal-Term über seine Komponente, ein Messstellen-Term über die
+            führende Quelle der Hauptgröße), an dem Tag der Fassung. Liest jede Komponente dasselbe Gerät, zählt die
+            Formel den Wert zweimal. Eine Warnung neben den Termen - sie ändert keine Zahl. Fehlt ohne Fund und fehlt
+            immer zusammen mit `ausserhalb_zugriff`.
+    MessstelleFormelGeteiltesRegister:
+      type: object
+      required: [register, positionen]
+      properties:
+        register: { type: string, description: "Der Messpunkt (point_key) an der Box.", example: sunspec.model_203.totwhimp }
+        positionen: { type: array, items: { type: integer }, minItems: 2, example: [0, 1], description: "Die `position` der Terme." }
     MessstelleFormelFassungEintragen:
       type: object
       additionalProperties: false
@@ -26130,6 +26145,21 @@ components:
         zeitzone: { type: string }
         version: { type: integer, nullable: true, description: "Die angefragte Version; null = je Schritt die neueste." }
         werte: { type: array, items: { $ref: "#/components/schemas/KennzahlWert" } }
+        geteilte_register:
+          type: array
+          items: { $ref: "#/components/schemas/KennzahlGeteiltesRegister" }
+          description: >
+            Summen-Wächter des geteilten Punkts (AP-07 IP-18b), nur an einer Zusammenfassung: in Σ Zähler oder Σ Nenner
+            der Paare (Fassungen am letzten Tag) lesen zwei Messstellen denselben Messpunkt derselben Box über zwei
+            Komponenten. Liest jede Komponente dasselbe Gerät, zählt die Summe den Wert zweimal. Eine Warnung neben den
+            Werten - sie ändert keine. Fehlt ohne Fund.
+    KennzahlGeteiltesRegister:
+      type: object
+      required: [rolle, register, messstellen]
+      properties:
+        rolle: { type: string, enum: [zaehler, nenner] }
+        register: { type: string, description: "Der Messpunkt (point_key) an der Box.", example: sunspec.model_203.totwhimp }
+        messstellen: { type: array, items: { type: string }, minItems: 2, example: [MS-12, MS-18] }
     KennzahlWert:
       type: object
       description: >

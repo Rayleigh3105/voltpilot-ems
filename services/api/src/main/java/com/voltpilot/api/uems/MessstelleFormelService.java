@@ -482,7 +482,8 @@ public class MessstelleFormelService {
         Optional<FassungZeile> fassung = fassungAm(fassungen.wirksame(id), tag);
         FormelStand stand = terme.stand(id, tag);
         List<MessstelleFormelDto.Term> aus = new ArrayList<>();
-        for (TermZeile t : fassung.map(f -> terme.derFassung(f.id())).orElse(List.of())) {
+        List<TermZeile> zeilen = fassung.map(f -> terme.derFassung(f.id())).orElse(List.of());
+        for (TermZeile t : zeilen) {
             aus.add(new MessstelleFormelDto.Term(t.position(), t.eingangArt(), t.entityId(),
                     t.pointKey(), t.quellMessstelleId(), t.vorzeichen(), t.faktor(),
                     t.giltAlsErzeugung(), dtoGroesse(groesse(t)), eingerichtet(t), t.verteilungZiel(),
@@ -493,7 +494,44 @@ public class MessstelleFormelService {
                 : new MessstelleFormelDto.FassungAm(tag, fassung.map(f -> fassungDto(f, zone)).orElse(null));
         return new MessstelleFormelDto.Formel(id, SCHEMA_VERSION,
                 new MessstelleFormelDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                aus, stand.vorhanden(), stand.eingerichtet(), fassungAm);
+                aus, stand.vorhanden(), stand.eingerichtet(), fassungAm, null,
+                geteilteRegister(zeilen, tag, zone));
+    }
+
+    /**
+     * Summen-Wächter des geteilten Punkts ({@link GeteiltesRegister}) für die Terme einer Fassung am Tag: je
+     * Vorzeichen (eine Summe) die Terme, die denselben Messpunkt derselben Box über zwei Komponenten lesen - ein
+     * Messkanal-Term über seine Komponente, ein Messstellen-Term über die führende Quelle der Hauptgröße. Benennt
+     * die Positionen, ändert keine Zahl. Ein Messstellen-Term auf eine berechnete Messstelle liest keine Box.
+     */
+    private List<MessstelleFormelDto.GeteiltesRegister> geteilteRegister(List<TermZeile> zeilen, LocalDate tag,
+            ZoneId zone) {
+        if (zeilen.size() < 2) {
+            return List.of();
+        }
+        Instant von = tag.atStartOfDay(zone).toInstant();
+        Instant bis = tag.plusDays(1).atStartOfDay(zone).toInstant();
+        List<GeteiltesRegister.Summand> summanden = new ArrayList<>();
+        List<GeteiltesRegister.Bindung> bindungen = new ArrayList<>();
+        Set<UUID> messstellenTerme = new LinkedHashSet<>();
+        for (TermZeile t : zeilen) {
+            String position = String.valueOf(t.position());
+            if (MESSKANAL.equals(t.eingangArt()) && t.entityId() != null) {
+                UUID schluessel = UUID.nameUUIDFromBytes(("term:" + t.position()).getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8));
+                summanden.add(new GeteiltesRegister.Summand(schluessel, position, t.vorzeichen()));
+                werte.quelle(t.entityId(), t.pointKey()).ifPresent(q -> bindungen.add(new GeteiltesRegister.Bindung(
+                        schluessel, q.deviceId(), t.pointKey(), t.entityId(), von, null)));
+            } else if (t.quellMessstelleId() != null) {
+                summanden.add(new GeteiltesRegister.Summand(t.quellMessstelleId(), position, t.vorzeichen()));
+                messstellenTerme.add(t.quellMessstelleId());
+            }
+        }
+        bindungen.addAll(werte.bindungen(messstellenTerme, von, bis));
+        return GeteiltesRegister.finde(summanden, bindungen).stream()
+                .map(f -> new MessstelleFormelDto.GeteiltesRegister(f.register(),
+                        f.messstellen().stream().map(Integer::valueOf).sorted().toList()))
+                .toList();
     }
 
     private MessstelleFormelDto.Fassung fassungDto(FassungZeile f, ZoneId zone) {
@@ -894,7 +932,7 @@ public class MessstelleFormelService {
             return Map.of();
         }
         Map<Instant, Double> out = new TreeMap<>();
-        werte.verlauf15m(l.quelle(), l.pointKey(), "Momentanwert", von, bis).forEach((b, w) ->
+        werte.verlauf15m(l.quelle(), l.pointKey(), l.entityId(), "Momentanwert", von, bis).forEach((b, w) ->
                 out.put(b, MessstelleFormelRegeln.normiere(w, l.einheit(), RestLive.EINHEIT)));
         return out;
     }
@@ -1158,7 +1196,8 @@ public class MessstelleFormelService {
             Map<LocalDate, AnteilLeseweg.Lesung> jeTag = new java.util.HashMap<>();
             if (MESSKANAL.equals(t.eingangArt())) {
                 Optional<Quelle> q = werte.quelle(t.entityId(), t.pointKey());
-                roh = q.isEmpty() ? Map.of() : werte.verlauf15m(q.get(), t.pointKey(), wertart, von, bis);
+                roh = q.isEmpty() ? Map.of()
+                        : werte.verlauf15m(q.get(), t.pointKey(), t.entityId(), wertart, von, bis);
                 von_einheit = kanalEinheit(t.pointKey(), ziel);
             } else {
                 roh = bausteinVerlauf(t.quellMessstelleId(), wertart, von, bis, zone, besucht, tiefe);
@@ -1211,7 +1250,7 @@ public class MessstelleFormelService {
             if (ref == null) {
                 return Map.of();
             }
-            Map<Instant, Double> roh = werte.verlauf15m(ref.quelle(), ref.pointKey(),
+            Map<Instant, Double> roh = werte.verlauf15m(ref.quelle(), ref.pointKey(), ref.entityId(),
                     q.hauptgroesse().wertart(), von, bis);
             Map<Instant, Double> out = new TreeMap<>();
             roh.forEach((b, w) -> out.put(b, MessstelleFormelRegeln.normiere(w, ref.einheit(),
