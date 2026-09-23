@@ -48,10 +48,13 @@ nur ihre Reihe (`entity_id`), also Messstelle, Viertelstunde und Kennzahl.
   Komponente im Plan (`MeasurementPlan#composeJeKomponente`, Vertrag `x-point-key-rule`, bleibt
   2.0). Jede andere Box bekommt den zusammengelegten Plan byte-gleich
   (`MessplanJeKomponenteBestandTest`, wörtliche Kopie von vorher).
-- Box-Schritt (wirkt erst mit dem Box-Release): Core `measurements.geteiltePunkte` ist die eine
+- Box-Schritt, gebaut aber RUHEND: Core `measurements.geteiltePunkte` ist die eine
   Duplikat-Regel für `ParseConfig`, `parseBatch` und `WrapStatus` (Paar zulässig, dieselbe
-  Komponente zweimal oder ein Vorkommen ohne Komponente = Duplikat); `BuiltSupports` meldet das
-  Wort. Node-RED `buildPlan` plant Anfragen aus `lesungenJeZiel` (ein Lesen je Ziel und Punkt,
+  Komponente zweimal oder ein Vorkommen ohne Komponente = Duplikat). `BuiltSupports` meldet das
+  Wort NICHT (Entscheid firstmate 23.09.2026, `cloud/geteilter_punkt_ruhend_test.go`): erst nach
+  Punktzustand, Cloud-Status je Komponente, Revisions-Anstoß und einem Summen-Wächter gegen zwei
+  an A und B gebundene Messstellen desselben Registers (sonst doppelt gezählt); Einschalten ist
+  ein eigenes Paket. Node-RED `buildPlan` plant Anfragen aus `lesungenJeZiel` (ein Lesen je Ziel und Punkt,
   schnellste Kadenz), Samples je Komponente; die Laufzeit taktet Lesen (`due`) und Sample
   (`probenDue`) getrennt und dekodiert je Lesen einmal (Decoder halten Vorwerte). Beweise:
   `geteilter_punkt_test.go`, `measurement-geteilter-punkt.test.js` (Budget über jeden
