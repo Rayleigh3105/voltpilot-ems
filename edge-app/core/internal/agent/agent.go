@@ -82,6 +82,8 @@ type Agent struct {
 	measurementIdentity measurements.Identity
 	measurementRevision int64
 	measurementConfig   []byte
+	// Serializes "measurement-status.json + cloud send" (measurements.go).
+	measurementStatusMu sync.Mutex
 
 	// The SECOND outbox of the box: its own event stream on .../v2/events
 	// (UEMS AP-07 IP-19). Its own sequence, its own FIFO - never mixed with
