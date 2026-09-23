@@ -179,17 +179,18 @@ class KennzahlSchnittstelleVertragTest {
     @Test
     @SuppressWarnings("unchecked")
     void dieRoutenStehenInOpenApi() {
-        Map<String, List<String>> erwartet = Map.of(
-                "/api/v1/kennzahlen", List.of("get", "post"),
-                "/api/v1/kennzahlen/vorschau", List.of("post"),
-                "/api/v1/kennzahlen/paare", List.of("parameters", "get"),
-                "/api/v1/kennzahlen/{id}", List.of("parameters", "get", "put", "delete"),
-                "/api/v1/kennzahlen/{id}/archivieren", List.of("parameters", "post"),
-                "/api/v1/kennzahlen/{id}/fassungen", List.of("parameters", "get", "post"),
-                "/api/v1/kennzahlen/{id}/berechnung", List.of("parameters", "get"),
-                "/api/v1/kennzahlen/{id}/werte", List.of("parameters", "get"),
-                "/api/v1/kennzahlen/{id}/werte/versionen", List.of("parameters", "get"),
-                "/api/v1/kennzahlen/{id}/variablen-vorschlag", List.of("parameters", "get"));
+        Map<String, List<String>> erwartet = Map.ofEntries(
+                Map.entry("/api/v1/kennzahlen", List.of("get", "post")),
+                Map.entry("/api/v1/kennzahlen/vorschau", List.of("post")),
+                Map.entry("/api/v1/kennzahlen/paare", List.of("parameters", "get")),
+                Map.entry("/api/v1/kennzahlen/{id}", List.of("parameters", "get", "put", "delete")),
+                Map.entry("/api/v1/kennzahlen/{id}/archivieren", List.of("parameters", "post")),
+                Map.entry("/api/v1/kennzahlen/{id}/fassungen", List.of("parameters", "get", "post")),
+                Map.entry("/api/v1/kennzahlen/{id}/berechnung", List.of("parameters", "get")),
+                Map.entry("/api/v1/kennzahlen/{id}/werte", List.of("parameters", "get")),
+                Map.entry("/api/v1/kennzahlen/{id}/werte/versionen", List.of("parameters", "get")),
+                Map.entry("/api/v1/kennzahlen/{id}/variablen-vorschlag", List.of("parameters", "get")),
+                Map.entry("/api/v1/kennzahlen/{id}/faktoren-vorschlag", List.of("parameters", "get")));
         erwartet.forEach((pfad, methoden) -> assertThat(((Map<String, Object>) pfade.get(pfad)).keySet()).as(pfad)
                 .containsExactlyInAnyOrderElementsOf(methoden));
         // Die Bezugsbasis an der Kennzahl (AP-17 IP-7) hält BezugsbasisGrundlageTest fest.

@@ -222,6 +222,61 @@ Die Monats-Zeilen der Referenzdatei 1.8 (`bezugsbasen[].fassungen[].grundlage`) 
 Löschweg: eine Bezugsgröße, die Variable einer Fassung ist (auch eines aufgehobenen Entwurfs), lehnt `DELETE
 /api/v1/bezugsgroessen/{id}` mit 409 `bezugsgroesse_in_verwendung` und `bezugsbasen: ["BB-…"]` ab.
 
+## 14. Faktoren-Vorschlag (V3, E6 = A; IP-16a)
+
+`GET /api/v1/kennzahlen/{id}/faktoren-vorschlag?stichtag=JJJJ-MM-TT` schlägt die statischen Faktoren vor, die die
+**Struktur der Geltung** der Kennzahl am Stichtag hergibt (ohne `stichtag`: heute in der Zeitzone der Kennzahl). Ein
+Lese-Weg: nichts wird gespeichert, nichts geändert. Die Liste an der Fassung mit der Kopie zum Freigabetag und der
+Anstoß `struktur_geaendert` kommen mit IP-16b; ein `wortlaut`-Faktor wird nie vorgeschlagen — den schreibt der Kunde.
+Rechte: gelesen wird wie die Kennzahl (`messwerte.ansehen`), Zaun über die Kennzahl — wer sie nicht ganz sieht, bekommt
+404, nie 403 und nie einen Teil der Struktur. Ein unbekannter Parameter oder ein Stichtag, der kein Tag ist, ist 400
+`anfrage_ungueltig` mit `feld`. Java: `uems/FaktorenVorschlag`, Route `web/FaktorenVorschlagController`.
+
+**Die Struktur der Geltung** sind die Orte der Geltung und die Messstellen, die am Stichtag darin liegen — jede
+Zuordnung tagesgenau, der letzte Tag eingeschlossen, aufgehobene nie:
+
+| Geltung | Messstellen | Fläche je Ort | Standorte |
+|---|---|---|---|
+| `unternehmen` | alle verorteten | die Standorte (eigene Fläche, sonst Summe der Gebäude) | alle |
+| `standort` | am Standort und in seinen Orten | seine Gebäude; ohne Gebäude er selbst | er selbst |
+| `gebaeude` · `bereich` | im Ort (ein Gebäude mit seinen Bereichen) | der Ort selbst | sein Standort |
+| `prozess` | zugeordnet dem Prozess oder einem Unterprozess (eine Ebene) | die Gebäude der Messstellen (ein Bereich zählt zu seinem Gebäude) | die der Messstellen |
+| `kostenstelle` | mit einem Anteil an der Kostenstelle | wie `prozess` | wie `prozess` |
+| `messstelle` | sie selbst | wie `prozess` | wie `prozess` |
+
+Anlagen: die Anlagen, an denen die Messstellen am Stichtag stehen (im Unternehmen und am Standort zusätzlich jede dort
+zugeordnete Anlage). Prozesse: im Unternehmen alle, beim Prozess er und seine Unterprozesse, sonst die der Messstellen.
+Kostenstellen: im Unternehmen alle, bei der Kostenstelle sie selbst, sonst die der Messstellen. **Ein Objekt ohne
+Gültigkeit am Stichtag entfällt** — ein Ort, den es noch nicht oder nicht mehr gibt, ein Prozess vor seinem `gueltig_ab`,
+eine Anlage ohne Standort an dem Tag.
+
+**Antwort** (alle Felder stehen immer da; `null` heißt unbekannt, nie 0): `kennzahl_id`, `kennzeichen`, `geltung_art`,
+`geltung_id`, `geltung_name`, `stichtag`, `faktoren`, `flaeche`, `hinweis`. Je Kandidat in `faktoren` (Reihenfolge:
+Fläche, Standorte, Anlagen, Prozesse, Kostenstellen; darin nach Kennung):
+
+- `art` — `faktor_art` ohne `wortlaut`; `objekt_id` und `kennung` (G-2, ST-1, P-1, 4100; eine Anlage hat keine Kennung,
+  `null`) und `bezeichnung`;
+- `wert` und `einheit` **nur bei der Fläche** (ganze m² am Stichtag, Einheit `m²`), bei allen anderen `null` — sie sind
+  ein Verweis ohne Zahl;
+- `gueltig_ab` und `gueltig_bis` (einschließlich, `null` = offen): das Flächen-Intervall, das Bestehen des Standorts,
+  die Zuordnung der Anlage zu ihrem Standort, die Gültigkeit von Prozess und Kostenstelle;
+- `satz` — „Fläche Halle 2 (G-2): 3 100 m² am 01.10.2026 · gültig 01.10.2026 bis 31.12.2026.“ ·
+  „Standort Werk Ahrenberg (ST-1) · gültig ab 01.01.2026 · Verweis ohne Zahl.“
+
+`flaeche` ist die Fläche der Geltung als Summe der Flächen-Kandidaten: `wert`, `einheit`, `objekte` (die summierten
+Kennungen), `ohne_flaeche`, `gueltig_ab`/`gueltig_bis` (der Schnitt der Teil-Gültigkeiten) und `satz` —
+„Fläche der Geltung am 01.01.2027: 3 400 m² (G-2) · gültig ab 01.01.2027.“ Fehlt einem Ort der Geltung die Fläche am
+Stichtag, ist `wert` `null` und `ohne_flaeche` nennt ihn: „… keine Summe — für G-3 ist an diesem Tag keine Fläche
+eingetragen.“ — nie eine Teilsumme, nie 0 (AP-02 E3). `hinweis`: „Vorschlag aus der Struktur am 01.10.2026 — nichts
+ist gespeichert. Statische Faktoren gelten erst mit der Bezugsbasis, die Sie freigeben.“
+
+R5/KZ-0005 (Geltung G-2): am 01.10.2026 schlägt die Route „Fläche G-2 3 100 m²“ (gültig bis 31.12.2026) vor, am
+01.01.2027 „3 400 m²“ ab 01.01.2027 — genau die Kopie, die BB-0003 Fassung 1 bzw. 2 in der Referenzdatei 1.8 trägt;
+dazu ST-1 und die Prozesse und Kostenstellen der Messstellen in Halle 2. **Keine Vektoren:** die Stichtags-Auswahl ist
+die tagesgenaue Regel der Ortsstruktur (`OrtsbaumAbleitung`, `ortsbaum-vectors.json`) und der Zuordnungen (daterange
+`[]`), keine neue reine Regel; geprüft wird die Route in `FaktorenVorschlagApiTest` und die Form in
+`FaktorenVorschlagSchnittstelleVertragTest`.
+
 ## Prüfen
 
 ```bash

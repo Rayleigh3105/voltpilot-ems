@@ -11918,6 +11918,30 @@ paths:
         "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}/faktoren-vorschlag:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: stichtag, in: query, required: false, schema: { type: string, format: date, example: "2026-10-01" }, description: "Der Tag (JJJJ-MM-TT); ohne ihn heute in der Zeitzone der Kennzahl." }
+    get:
+      tags: [kennzahlen]
+      summary: Die statischen Faktoren, die die Struktur der Geltung einer Kennzahl am Stichtag vorschlägt - nichts wird gespeichert.
+      description: >
+        Recht `messwerte.ansehen`, Zaun über die Kennzahl (wer sie nicht ganz sieht, bekommt 404, nie 403).
+        UEMS AP-17 IP-16a (V3, E6 = A), Vertrag docs/contracts/v2/bezugsbasis.md §14. Aus der Struktur der
+        Geltung am Stichtag: die Fläche je Ort (mit Zahl und Einheit m²) und als Summe, Standorte, Anlagen,
+        Prozesse (eine Ebene) und Kostenstellen (je als Verweis ohne Zahl) - jeder Kandidat mit Gültigkeit
+        und Kundensatz. Ein Objekt ohne Gültigkeit am Stichtag entfällt; fehlt einem Ort der Geltung die
+        Fläche, ist die Summe null mit `ohne_flaeche`, nie 0. Ein Lese-Weg: keine Zeile wird geschrieben;
+        die Liste an der Fassung mit der Kopie zum Freigabetag baut IP-16b. Ein unbekannter Parameter ist 400.
+      responses:
+        "200":
+          description: Der Vorschlag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FaktorenVorschlag" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
   /api/v1/kennzahlen/{id}/werte:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -26318,6 +26342,46 @@ components:
         gebildet_von: { type: string }
         grundlage: { type: object, additionalProperties: true, description: "Der gespeicherte kanonische Text, roh eingebettet (F3)." }
         pruefsumme: { type: string, description: "sha256: über die Grundlage." }
+    FaktorenVorschlag:
+      type: object
+      description: Der Vorschlag statischer Faktoren (bezugsbasis.md §14) - nichts davon ist gespeichert.
+      required: [kennzahl_id, kennzeichen, geltung_art, geltung_id, geltung_name, stichtag, faktoren, flaeche, hinweis]
+      properties:
+        kennzahl_id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: "KZ-0005" }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle] }
+        geltung_id: { type: string, format: uuid }
+        geltung_name: { type: string, nullable: true }
+        stichtag: { type: string, format: date }
+        faktoren: { type: array, items: { $ref: "#/components/schemas/FaktorenVorschlagFaktor" }, description: "Fläche, Standorte, Anlagen, Prozesse, Kostenstellen - in dieser Reihenfolge." }
+        flaeche: { $ref: "#/components/schemas/FaktorenVorschlagFlaeche" }
+        hinweis: { type: string, description: "„Vorschlag aus der Struktur am … - nichts ist gespeichert. …“" }
+    FaktorenVorschlagFaktor:
+      type: object
+      description: Ein Kandidat; `wert` und `einheit` nur bei der Fläche, sonst ein Verweis ohne Zahl.
+      required: [art, objekt_id, kennung, bezeichnung, wert, einheit, gueltig_ab, gueltig_bis, satz]
+      properties:
+        art: { type: string, enum: [flaeche, standort, anlage, prozess, kostenstelle], description: "Vokabular `faktor_art` ohne `wortlaut` (den schreibt der Kunde)." }
+        objekt_id: { type: string, format: uuid }
+        kennung: { type: string, nullable: true, description: "G-2, ST-1, P-1, 4100 - eine Anlage hat keine Kennung (null)." }
+        bezeichnung: { type: string }
+        wert: { type: integer, nullable: true, minimum: 1, description: "Nur bei `flaeche`: m² am Stichtag." }
+        einheit: { type: string, nullable: true, enum: ["m²", null] }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Einschließlich; null = offen." }
+        satz: { type: string, example: "Fläche Halle 2 (G-2): 3 100 m² am 01.10.2026 · gültig 01.10.2026 bis 31.12.2026." }
+    FaktorenVorschlagFlaeche:
+      type: object
+      description: Die Fläche der Geltung als Summe der Flächen-Kandidaten - null, sobald einem Ort der Geltung die Fläche fehlt.
+      required: [wert, einheit, objekte, ohne_flaeche, gueltig_ab, gueltig_bis, satz]
+      properties:
+        wert: { type: integer, nullable: true }
+        einheit: { type: string, enum: ["m²"] }
+        objekte: { type: array, items: { type: string }, description: "Die Kennungen der summierten Orte." }
+        ohne_flaeche: { type: array, items: { type: string }, description: "Orte der Geltung ohne Fläche am Stichtag." }
+        gueltig_ab: { type: string, format: date, nullable: true, description: "Der Schnitt der Teil-Gültigkeiten." }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        satz: { type: string }
     BezugsbasisMethoden:
       type: object
       description: Der Methoden-Katalog (bezugsbasis-methoden.schema.json), Byte für Byte die Vertragsdatei.
