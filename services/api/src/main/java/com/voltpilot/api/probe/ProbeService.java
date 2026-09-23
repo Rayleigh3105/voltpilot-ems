@@ -243,6 +243,15 @@ public class ProbeService {
      *     anything the box reported about the device.
      */
     public Optional<ProbeResult> probeBox(UUID boxId, List<ProbeRequest.Op> ops, String requestedBy) {
+        return probeBox(boxId, null, ops, requestedBy);
+    }
+
+    /**
+     * Wie oben, mit dem Op {@code wago_kopf} als erstem Schritt (AP-05, Soll-Lesung am
+     * WAGO-Gerät). Dieselbe Box-Auflösung, derselbe Umschlag, dieselbe kurze Wartezeit.
+     */
+    public Optional<ProbeResult> probeBox(UUID boxId, ProbePublisher.WagoKopfOp kopf,
+            List<ProbeRequest.Op> ops, String requestedBy) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Box nicht gefunden.");
@@ -257,7 +266,11 @@ public class ProbeService {
         String requestId = newRequestId();
         CompletableFuture<ProbeResult> future = registry.register(requestId, box.id());
         try {
-            pub.publish(tenantId, box.siteId(), box.id(), requestId, Instant.now(), requestedBy, ops);
+            if (kopf == null) {
+                pub.publish(tenantId, box.siteId(), box.id(), requestId, Instant.now(), requestedBy, ops);
+            } else {
+                pub.publish(tenantId, box.siteId(), box.id(), requestId, Instant.now(), requestedBy, kopf, ops);
+            }
         } catch (Exception e) {
             registry.forget(requestId);
             log.warn("box probe {} could not be published: {}", requestId, e.getMessage());

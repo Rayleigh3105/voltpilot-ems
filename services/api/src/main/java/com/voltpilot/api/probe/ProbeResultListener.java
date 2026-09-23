@@ -236,6 +236,16 @@ public class ProbeResultListener {
                             ok ? null : text(line), samples));
                     continue;
                 }
+                JsonNode kopfNode = line.get("wago_kopf");
+                if (kopfNode != null && kopfNode.isObject()) {
+                    // AP-05 IP-7: der Kopf eines WAGO-Registerbilds. Er steht AUCH bei ok=false
+                    // (was stand denn dort?); ohne beide Pflichtfelder ist er keine Aussage.
+                    ProbeResult.WagoKopf kopf = wagoKopf(kopfNode);
+                    results.add(ProbeResult.OpResult.ausKopf(id, ok && kopf != null,
+                            ok && kopf != null ? null : code(line), ok && kopf != null ? null : text(line),
+                            kopf));
+                    continue;
+                }
                 JsonNode readingNode = line.get("reading");
                 if (readingNode != null && readingNode.isObject()) {
                     // A test_connection line (Einheitsmodell Stufe 1). Its honesty
@@ -298,6 +308,27 @@ public class ProbeResultListener {
         }
         registry.complete(deviceId, requestId,
                 new ProbeResult(requestId, code(json), text(json), results));
+    }
+
+    /** Der Kopf-Block — oder {@code null}, wenn {@code signatur_ok}/{@code erkannt} fehlen. */
+    private static ProbeResult.WagoKopf wagoKopf(JsonNode n) {
+        JsonNode sig = n.get("signatur_ok");
+        JsonNode erkannt = n.get("erkannt");
+        if (sig == null || !sig.isBoolean() || erkannt == null || !erkannt.isBoolean()) {
+            return null;
+        }
+        String grund = n.path("grund").asText("");
+        if (!Set.of("signatur_fremd", "hauptversion_fremd", "laenge_ungueltig", "wortfolge_abweichend")
+                .contains(grund)) {
+            grund = null;
+        }
+        JsonNode kennung = n.get("controller_kennung");
+        Long controller = kennung != null && kennung.canConvertToLong() && kennung.isIntegralNumber()
+                && kennung.asLong() >= 0 && kennung.asLong() <= 4_294_967_295L ? kennung.asLong() : null;
+        return new ProbeResult.WagoKopf(sig.asBoolean(), erkannt.asBoolean(), grund,
+                optInt(n, "hauptversion"), optInt(n, "nebenversion"), optInt(n, "kopflaenge"),
+                optInt(n, "kartenblocklaenge"), optInt(n, "kartenzahl"), optInt(n, "herzschlag"),
+                controller, text(n, "typenschild"));
     }
 
     private static Integer optInt(JsonNode node, String field) {

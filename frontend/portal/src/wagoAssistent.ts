@@ -1,4 +1,4 @@
-import type { Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis } from './api';
+import type { Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis, WagoSollLesung } from './api';
 
 /**
  * AP-05 IP-10: reine Regeln des Assistenten „WAGO-Steuerung anbinden“.
@@ -157,4 +157,32 @@ export function wagoUrteilAusLesung(kopf: WagoKopf | null, karten: readonly Wago
     ergebnis: 'in_pruefung', titel: 'In Prüfung — Einsatz noch nicht bestätigt',
     satz: 'Die Kombination wurde ausgelesen, ist aber noch nicht für den Einsatz bestätigt. Für 750-494 bleibt die Messwert-Tabelle unbelegt.', ausweg: null,
   };
+}
+
+export interface WagoSollAnzeige {
+  titel: string;
+  satz: string;
+  zeilen: string[];
+  abweichend: boolean;
+}
+
+/**
+ * AP-05 „WAGO-Soll speichern“: was die Steuerung als Soll geliefert hat. Nur Anzeige — das Soll
+ * kommt ausschließlich aus der Lesung, nie aus einem Eingabefeld. Fehlendes bleibt „nicht gelesen“.
+ */
+export function wagoSollAnzeige(lesung: WagoSollLesung): WagoSollAnzeige {
+  const zeilen: string[] = [];
+  const { controllerKennung, karten } = lesung.soll;
+  zeilen.push(`Controller-Kennung ${controllerKennung === null ? 'nicht gelesen' : String(controllerKennung)}`);
+  for (const k of karten) {
+    zeilen.push(`Steckplatz ${k.steckplatz ?? 'unbekannt'} · ${k.typ ?? 'Kartentyp nicht gelesen'} · `
+      + `Variante ${k.variante === null ? 'nicht gelesen' : String(k.variante)}`);
+  }
+  const titel: Record<WagoSollLesung['ergebnis'], string> = {
+    gespeichert: 'Soll aus der Steuerung gespeichert',
+    unveraendert: 'Soll von der Steuerung bestätigt',
+    abweichung: 'Steuerung weicht vom gespeicherten Soll ab',
+    nicht_gelesen: 'Soll nicht gelesen',
+  };
+  return { titel: titel[lesung.ergebnis], satz: lesung.satz, zeilen, abweichend: lesung.ergebnis === 'abweichung' };
 }

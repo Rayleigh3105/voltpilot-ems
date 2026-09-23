@@ -6,10 +6,12 @@ import com.voltpilot.api.components.WagoMetadataService.GeraetEintrag;
 import com.voltpilot.api.components.WagoMetadataService.Karte;
 import com.voltpilot.api.components.WagoMetadataService.KartenEintrag;
 import com.voltpilot.api.components.WagoMetadataService.Kartenwechsel;
+import com.voltpilot.api.components.WagoSollLesung;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.security.Principal;
+import org.springframework.security.core.Authentication;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,8 +24,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class WagoMetadataController {
     private final WagoMetadataService service;
-    public WagoMetadataController(WagoMetadataService service) {
+    private final WagoSollLesung soll;
+    public WagoMetadataController(WagoMetadataService service, WagoSollLesung soll) {
         this.service = service;
+        this.soll = soll;
     }
 
     /** Recht: {@code messwerte.ansehen}. */
@@ -63,5 +67,19 @@ public class WagoMetadataController {
     @Recht(value = "geraet.einrichten", ziel = RechtZiel.GERAET)
     public Geraet geraet(@PathVariable UUID id, @Valid @RequestBody GeraetEintrag in) {
         return service.eintragen(id, in);
+    }
+
+    /**
+     * Recht: {@code geraet.einrichten}. Das Soll des Registerbilds (Controller-Kennung, je Karte
+     * Variante und Kartentyp) AUS DER STEUERUNG lesen und in leere Stellen speichern — nie aus einer
+     * Eingabe; der Körper nennt nur die Box, die liest. Eine abweichende Lesung überschreibt nichts,
+     * sie steht in der Antwort und im Journal am Einbau. Die Antwort ist ein ehrlicher Ausgang (200),
+     * auch wenn die Box schweigt.
+     */
+    @PostMapping("/api/v1/geraete/{id}/wago/soll-lesen")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.GERAET)
+    public WagoSollLesung.Ergebnis sollLesen(@PathVariable UUID id,
+            @RequestBody WagoSollLesung.Eingabe in, Authentication auth) {
+        return soll.lesen(id, in, OrtAnfrage.akteur(auth));
     }
 }

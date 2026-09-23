@@ -10408,6 +10408,39 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/EinstellungAbgelehnt" }
         "422": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+  /api/v1/geraete/{id}/wago/soll-lesen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [geraete]
+      summary: Das Soll eines WAGO-Registerbilds aus der Steuerung lesen und speichern (AP-05, Folgepaket der Verdrahtung).
+      description: >
+        Recht `geraet.einrichten`; ein Gerät außerhalb des Zugriffs oder ohne Hersteller WAGO ist 404.
+        Die Box `deviceId` liest über die gemeinsame Verbindung der heute zugeordneten Energiekarten
+        den Kopf (`wago_kopf`, IP-7) und je Karte Steckplatz, Kartentyp und Variante (Vertrag
+        `wago-registerbild.md` §4, Offset 0-2). Gespeichert wird AUSSCHLIESSLICH aus dieser Lesung und
+        nur in leere Stellen: `geraet.controller_kennung`, je Karte `geraet_teil.variante` und - wenn
+        leer - der Kartentyp. Weicht eine Lesung von einem gespeicherten Soll ab (oder passen
+        Steckplatz/Kartentyp nicht zur Karte im Bestand), wird nichts überschrieben: `ergebnis`
+        `abweichung` und ein Eintrag `wago_soll_abweichung` im Protokoll des Geräts. Schweigt die Box
+        oder steht kein v1-Registerbild dort, ist die Antwort ein ehrlicher Ausgang (200,
+        `nicht_gelesen`). Fehlendes Soll heißt an der Box „nicht geprüft“, nie 0.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WagoSollLesenEingabe" }
+      responses:
+        "200":
+          description: Der Ausgang der Lesung und das gespeicherte Soll danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WagoSollLesung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Keine Energiekarte mit Steckplatz zugeordnet oder keine gemeinsame Verbindung der Karten.
   /api/v1/geraete/{id}/messmittel:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -27410,6 +27443,38 @@ components:
         takt: { type: string, nullable: true, example: "Takt 60 s wählen" }
         boxen: { type: array, items: { $ref: "#/components/schemas/DatenquelleBudgetBox" } }
         andere_box: { type: string, nullable: true, example: "Box Halle 2 wählen (29 Anfragen/min frei)" }
+    WagoSollLesenEingabe:
+      type: object
+      required: [deviceId]
+      properties:
+        deviceId: { type: string, format: uuid, description: Die Box, die die Steuerung liest. }
+    WagoSollKarte:
+      type: object
+      properties:
+        steckplatz: { type: integer, nullable: true }
+        typ: { type: string, nullable: true, description: "Kartentyp als Text der Karte (z. B. 750-495)." }
+        variante: { type: integer, nullable: true, minimum: 0, maximum: 65535, description: "Gelesen; null = nicht gelesen, nie 0." }
+    WagoSoll:
+      type: object
+      properties:
+        controllerKennung: { type: integer, format: int64, nullable: true, minimum: 0, maximum: 4294967295 }
+        karten: { type: array, items: { $ref: "#/components/schemas/WagoSollKarte" } }
+    WagoSollLesung:
+      type: object
+      required: [ergebnis, satz, soll, abweichungen]
+      properties:
+        ergebnis: { type: string, enum: [gespeichert, unveraendert, abweichung, nicht_gelesen] }
+        satz: { type: string }
+        soll: { $ref: "#/components/schemas/WagoSoll" }
+        abweichungen:
+          type: array
+          items:
+            type: object
+            properties:
+              feld: { type: string, enum: [controller_kennung, kartenzahl, steckplatz, kartentyp, variante] }
+              steckplatz: { type: integer, nullable: true }
+              soll: { type: integer, format: int64, nullable: true }
+              gelesen: { type: integer, format: int64, nullable: true }
     MessmittelAngaben:
       type: object
       description: AP-16 IP-15/IP-16 (G1–G4). NULL heißt nicht erhoben; Hersteller- und Einbau-Angaben bleiben getrennt.

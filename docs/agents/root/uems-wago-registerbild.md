@@ -202,12 +202,47 @@ demselben Box-Release** wie die Aktivierung, kein eigener Laufzeitstand.
 
 ### Fallen
 
-- ⚠ **Variante und Controller-Kennung speichert die api nicht** (Entscheid firstmate B): sie fehlen
-  im Dokument und werden dann NICHT geprüft (`liesKarte`), nie als 0 — eine 750-495 hat Variante
-  25001. Steckplatz und Kartentyp bleiben die geprüfte Identität. Speichern ist das Folgepaket
-  `vp-uems-b05-wago-soll-speichern`.
+- ⚠ **Variante und Controller-Kennung gehen nur mit, wenn gelesen** (Entscheid firstmate B): ohne
+  gespeichertes Soll fehlen sie im Dokument und werden NICHT geprüft (`liesKarte`), nie als 0 — eine
+  750-495 hat Variante 25001. Gespeichert werden sie seit dem Folgepaket nur aus der Lesung (nächster
+  Abschnitt); fehlend bleibt das Dokument Byte für Byte wie in der Verdrahtung.
 - ⚠ **Karte n = n-te Karte nach Steckplatz.** Ein Kartenpunkt nennt den Index im Registerbild;
   `karte[*]` mit `entity_id` dehnt der Planer auf ALLE Karten des Controllers aus — eine
   Karten-Komponente muss ihren konkreten Index wählen.
 - ⚠ Der 750-494-Messwert bleibt `unknown_point`, auch MIT Registerbild (Befund 4, `readable: false`).
   Der Zählerstand der 750-495 kommt roh (`conditional_factor` nach Messbereich) — kein Faktor geraten.
+
+## Soll speichern: Controller-Kennung und Variante aus der Lesung (23.09.2026)
+
+Folgepaket der Verdrahtung (Entscheid firstmate B: `variante`/`controller_kennung` im Vertrag wahlfrei,
+fehlend = nicht geprüft). Die Cloud kennt das Soll jetzt, sobald die Steuerung einmal gelesen wurde.
+
+- Migration `V20260924050000__uems_wago_soll.sql`: `geraet.controller_kennung` (UInt32) und
+  `geraet_teil.variante` (UInt16), NULL = noch nicht gelesen, kein Backfill; Spalten-Grants;
+  `geraet_aenderung.art` um `wago_soll_gelesen`/`wago_soll_abweichung` erweitert (Vereinigung).
+- `POST /api/v1/geraete/{id}/wago/soll-lesen` (`WagoSollLesung`, Recht `geraet.einrichten`, Körper nur
+  `deviceId` der lesenden Box): Probe `wago_kopf` über die EINE gemeinsame Verbindung der heute
+  zugeordneten Karten-Komponenten (`ip`/`port`/`mb_slave_id`/`base_address`/`function_code`/`word_order`),
+  danach je Karte die drei u16-Kennwörter Offset 0–2 (Steckplatz, Kartentyp, Variante) an
+  `Basis + Kopflänge + (n-1)·Blocklänge` aus dem gelesenen Kopf, zwei Karten je Probe (≤ 8 Schritte).
+- Gespeichert wird nur in LEERE Stellen; ein leerer `geraet_teil.typ` bekommt `750-<kartentyp>`.
+  Abweichende Kennung/Variante, Kartenzahl ≠ Bestand, Steckplatz ≠ Karte n (nach Steckplatz sortiert)
+  oder Kartentyp ≠ Freitext → `ergebnis: abweichung`, nichts überschrieben, Journal `wago_soll_abweichung`.
+- api reicht `wago_kopf` jetzt durch: `ProbePublisher.WagoKopfOp`/`ProbeService.probeBox(box, kopf, ops, …)`,
+  `ProbeResult.WagoKopf` mit Vertragsnamen (`wago_kopf`, snake_case) im `ProbeResultListener`.
+- Anzeige: `GET /geraete/{id}/wago` (`controllerKennung`, `karten`), `GET …/components/{id}/wago`
+  (`variante`, `controllerKennung`) → `WagoKarte` an der Messstelle; der Assistent ruft die Lesung nach
+  „Komponenten anlegen“ selbst auf und zeigt sie (`wagoSollAnzeige`) — kein Eingabefeld.
+- Nachweis: `GeraetApiTest#wagoSollWirdAusDerLesungGespeichertUndAbweichungGemeldet`,
+  `wagoKarte.test.ts`, `wagoAssistent.test.ts`, `e2e/messen-assistent.spec.ts`, `e2e/wago-karte.spec.ts`.
+
+### Fallen
+
+- ⚠ **Die Datenquellen-Prüfung des Assistenten ist KEIN `wago_kopf`.** `DatenquelleService.pruefen` schickt
+  einen gewöhnlichen `read`; der Assistent sendet dazu `data_type: 'uint16'`, das die api mit 400 ablehnt
+  (`u16`). Der Kopf im Schritt 1 ist darum heute nur auf der E2E-Bühne sichtbar; die Soll-Lesung am Gerät
+  ist der erste echte `wago_kopf`-Weg der Cloud.
+- ⚠ **Ohne `geraet_teil`-Zeilen gibt es kein Soll.** Die Anlege-Trigger legen je Komponente ein Gerät,
+  aber keine Energiekarte an — Lesung und Publisher brauchen die Karte mit Steckplatz am Controller.
+- ⚠ **Ein Kartenwechsel beginnt ohne Variante** (`karteWechseln` nennt seine Spalten) — die neue Karte ist
+  eine andere Karte; erst die nächste Lesung füllt ihr Soll.

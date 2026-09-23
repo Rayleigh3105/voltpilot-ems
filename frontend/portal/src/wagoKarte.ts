@@ -49,7 +49,27 @@ export function kartenAngaben(karte: WagoKartenangaben): string[] {
       : karte.anwenderskalierung ? 'eingeschaltet — die Karte rechnet den Wandler selbst um'
         : 'ausgeschaltet — die Karte liefert Werte ohne den Wandler'}`,
     `Register 35: ${karte.register35 === null ? NICHT_ERFASST : String(karte.register35)}`,
+    ...sollAngaben(karte),
   ];
+}
+
+/** Ein Soll, das die Steuerung noch nicht geliefert hat — die Box prüft es dann nicht. */
+export const NICHT_GELESEN = 'noch nicht aus der Steuerung gelesen';
+
+/**
+ * AP-05 „WAGO-Soll speichern“: das GELESENE Soll der Karte — nur Anzeige, kein Eingabefeld (es
+ * kommt ausschließlich aus der Lesung der Steuerung). Eine ältere Antwort ohne die Felder zeigt
+ * nichts dazu; `null` heißt „noch nicht gelesen“, nie 0.
+ */
+export function sollAngaben(karte: WagoKartenangaben): string[] {
+  const zeilen: string[] = [];
+  if (karte.variante !== undefined) {
+    zeilen.push(`Kartenvariante: ${karte.variante === null ? NICHT_GELESEN : String(karte.variante)}`);
+  }
+  if (karte.controllerKennung !== undefined) {
+    zeilen.push(`Controller-Kennung: ${karte.controllerKennung === null ? NICHT_GELESEN : String(karte.controllerKennung)}`);
+  }
+  return zeilen;
 }
 
 /**

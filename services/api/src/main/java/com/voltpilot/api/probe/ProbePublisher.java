@@ -88,9 +88,16 @@ public class ProbePublisher {
     public synchronized void publish(UUID tenantId, UUID siteId, UUID deviceId,
             String requestId, Instant requestedAt, String requestedBy,
             List<ProbeRequest.Op> ops) throws Exception {
+        publish(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, null, ops);
+    }
+
+    /** Wie oben, mit dem WAGO-Kopf als ERSTEM Schritt (AP-05 IP-7, Soll-Lesung am Gerät). */
+    public synchronized void publish(UUID tenantId, UUID siteId, UUID deviceId,
+            String requestId, Instant requestedAt, String requestedBy, WagoKopfOp kopf,
+            List<ProbeRequest.Op> ops) throws Exception {
         String topic = probeTopic(tenantId, siteId, deviceId);
         MqttMessage message = new MqttMessage(
-                envelope(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, ops));
+                envelope(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, kopf, ops));
         message.setQos(1);
         message.setRetained(false);
         connected().publish(topic, message);
@@ -142,6 +149,15 @@ public class ProbePublisher {
         // is exactly the record someone would want; the audit trail names WHO
         // and WHAT, never WHERE in their network.
         log.debug("published switch op {} ({}, NON-retained)", requestId, op.op());
+    }
+
+    /**
+     * Der Op {@code wago_kopf} (Vertrag {@code op_wago_kopf}): liest NUR die zwölf Kopfwörter
+     * eines VoltPilot-Registerbilds WAGO v1. Basisadresse, Registerart und Wortfolge sind
+     * Parameter der Anlage; das Typenschild wird nie erfragt — es ist nie ein Identitätsbeweis.
+     */
+    public record WagoKopfOp(String id, String host, Integer port, Integer unitId,
+            String registerKind, int address, String wordOrder) {
     }
 
     /**
@@ -235,11 +251,26 @@ public class ProbePublisher {
 
     static byte[] envelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
             Instant requestedAt, String requestedBy, List<ProbeRequest.Op> ops) {
+        return envelope(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, null, ops);
+    }
+
+    static byte[] envelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, WagoKopfOp kopf, List<ProbeRequest.Op> ops) {
         StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
         sb.append(",\"ops\":[");
+        if (kopf != null) {
+            sb.append("{\"op\":\"wago_kopf\",\"transport\":\"modbus_tcp\"")
+                    .append(",\"id\":\"").append(esc(kopf.id())).append('"')
+                    .append(",\"host\":\"").append(esc(kopf.host().trim())).append('"')
+                    .append(",\"port\":").append(kopf.port() == null ? 502 : kopf.port())
+                    .append(",\"unit_id\":").append(kopf.unitId() == null ? 1 : kopf.unitId())
+                    .append(",\"register_kind\":\"").append(esc(kopf.registerKind())).append('"')
+                    .append(",\"address\":").append(kopf.address())
+                    .append(",\"word_order\":\"").append(esc(kopf.wordOrder())).append("\"}");
+        }
         for (int i = 0; i < ops.size(); i++) {
             ProbeRequest.Op op = ops.get(i);
-            if (i > 0) {
+            if (i > 0 || kopf != null) {
                 sb.append(',');
             }
             sb.append("{\"op\":\"read\",\"transport\":\"modbus_tcp\"")

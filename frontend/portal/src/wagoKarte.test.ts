@@ -18,6 +18,8 @@ import {
   kartenwechselFolgen,
   kartenwechselPruefen,
   kannKartenangabenHaben,
+  NICHT_GELESEN,
+  sollAngaben,
 } from './wagoKarte';
 
 const ZONE = 'Europe/Berlin';
@@ -158,5 +160,23 @@ describe('die dokumentierten Angaben behaupten nichts', () => {
   it('nennt eingeschaltet und ausgeschaltet mit ihrer Bedeutung', () => {
     expect(kartenAngaben(karte({ anwenderskalierung: true }))[1]).toContain('rechnet den Wandler selbst um');
     expect(kartenAngaben(karte({ anwenderskalierung: false }))[1]).toContain('ohne den Wandler');
+  });
+});
+
+describe('das gelesene Soll (AP-05 „WAGO-Soll speichern“) ist nur Anzeige', () => {
+  it('zeigt Variante und Controller-Kennung aus der Lesung', () => {
+    expect(sollAngaben(karte({ variante: 25001, controllerKennung: 7 })))
+      .toEqual(['Kartenvariante: 25001', 'Controller-Kennung: 7']);
+  });
+
+  it('noch nicht gelesen ist nie eine Null', () => {
+    const zeilen = sollAngaben(karte({ variante: null, controllerKennung: null }));
+    expect(zeilen).toEqual([`Kartenvariante: ${NICHT_GELESEN}`, `Controller-Kennung: ${NICHT_GELESEN}`]);
+    expect(zeilen.join(' ')).not.toMatch(/: 0\b/);
+  });
+
+  it('eine Antwort ohne die Felder zeigt nichts dazu', () => {
+    expect(sollAngaben(karte())).toEqual([]);
+    expect(kartenAngaben(karte())).toHaveLength(3);
   });
 });

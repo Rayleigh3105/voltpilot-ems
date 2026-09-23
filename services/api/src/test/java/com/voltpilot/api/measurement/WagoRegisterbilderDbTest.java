@@ -104,6 +104,20 @@ class WagoRegisterbilderDbTest {
                 + "\",\"basisadresse\":4096,\"funktionscode\":4,\"wortfolge\":\"little\",\"kartenzahl\":2,"
                 + "\"karten\":[{\"steckplatz\":2,\"kartentyp\":494},{\"steckplatz\":3,\"kartentyp\":495}]}]");
 
+        // Das aus der Steuerung GELESENE Soll (WagoSollLesung) geht mit; fehlend blieb es oben Byte für Byte weg.
+        root.update("UPDATE geraet SET controller_kennung=8212 WHERE id=?", controller);
+        root.update("UPDATE geraet_teil SET variante=25001 WHERE geraet_id=? AND steckplatz=3", controller);
+        TenantContext.set(tenant);
+        try {
+            bilder = registerbilder.fuer(site, plan);
+        } finally {
+            TenantContext.clear();
+        }
+        assertThat(new ObjectMapper().valueToTree(bilder).toString()).isEqualTo("[{\"entity_id\":\"" + gemessen
+                + "\",\"basisadresse\":4096,\"funktionscode\":4,\"wortfolge\":\"little\",\"kartenzahl\":2,"
+                + "\"controller_kennung\":8212,\"karten\":[{\"steckplatz\":2,\"kartentyp\":494},"
+                + "{\"steckplatz\":3,\"kartentyp\":495,\"variante\":25001}]}]");
+
         UUID fremd = root.queryForObject("INSERT INTO tenant(name) VALUES ('Fremd') RETURNING id", UUID.class);
         TenantContext.set(fremd);
         try {

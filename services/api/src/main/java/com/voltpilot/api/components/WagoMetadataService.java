@@ -33,8 +33,12 @@ public class WagoMetadataService {
      * mit einer FEHLENDEN {@code anwenderskalierung} den Hebel „Wandler/Anwenderskalierung
      * prüfen“ im Portal; ohne Wechsel gibt es keinen Hebel (kein Dauerhinweis).
      */
+    /**
+     * {@code variante}/{@code controllerKennung}: das aus der Steuerung GELESENE Soll der Karte und
+     * ihres Controllers ({@link WagoSollLesung}) — {@code null} = noch nicht gelesen, nie 0.
+     */
     public record Karte(Integer slot, Boolean anwenderskalierung, Integer register35, int version,
-            Instant kartenwechsel) {}
+            Instant kartenwechsel, Integer variante, Long controllerKennung) {}
     public record KartenEintrag(@NotNull @Positive Integer expectedRevision,
             Boolean anwenderskalierung, @Min(0) @Max(65535) Integer register35) {}
 
@@ -46,32 +50,44 @@ public class WagoMetadataService {
     public record Kartenwechsel(@NotNull Instant zeitpunkt,
             @DecimalMin("0") BigDecimal endstand, @Size(max = 32) String einheit,
             boolean einstellungenPruefen) {}
-    public record Geraet(String seriennummer, String firmware, String anwendung) {}
+    /** {@code controllerKennung}/{@code karten}: das gelesene Soll ({@link WagoSollLesung}), nur lesend. */
+    public record Geraet(String seriennummer, String firmware, String anwendung, Long controllerKennung,
+            List<WagoSollLesung.SollKarte> karten) {}
     public record GeraetEintrag(@Size(max = 200) String seriennummer,
             @Size(max = 200) String firmware, @Size(max = 200) String anwendung) {}
     private final JdbcTemplate jdbc;
     private final ComponentDefinitionRepository definitions;
     private final ComponentActivationOutboxService activation;
     private final MessreiheEreignisRepository ereignisse;
+    private final WagoSollLesung soll;
 
     public WagoMetadataService(JdbcTemplate jdbc, ComponentDefinitionRepository definitions,
-            ComponentActivationOutboxService activation, MessreiheEreignisRepository ereignisse) {
+            ComponentActivationOutboxService activation, MessreiheEreignisRepository ereignisse,
+            WagoSollLesung soll) {
         this.jdbc = jdbc;
         this.definitions = definitions;
         this.activation = activation;
         this.ereignisse = ereignisse;
+        this.soll = soll;
     }
 
     public Karte karte(UUID site, UUID entity) {
         return jdbc.query("SELECT m.slot, m.wago_anwenderskalierung, m.wago_register_35, "
                 + "m.definition_version, (SELECT max(e.zeit) FROM messreihe_ereignis e "
                 + "WHERE e.tenant_id=m.tenant_id AND e.entity_id=m.id AND NOT e.aus_bestand "
-                + "AND e.art='device_boundary' AND e.nutzlast->>'anlass'='kartenwechsel') wechsel "
+                + "AND e.art='device_boundary' AND e.nutzlast->>'anlass'='kartenwechsel') wechsel, "
+                + "t.variante, g.controller_kennung "
                 + "FROM measurement_point m JOIN site s ON s.id=m.site_id "
+                // Die HEUTE zugeordnete Karte (höchstens eine je Komponente, E4) und ihr Controller.
+                + "LEFT JOIN geraet_komponente k ON k.entity_id=m.id AND k.tenant_id=m.tenant_id "
+                + "AND k.gueltig_ab<=now() AND (k.gueltig_bis IS NULL OR k.gueltig_bis>now()) "
+                + "LEFT JOIN geraet_teil t ON t.id=k.teil_id AND t.tenant_id=k.tenant_id "
+                + "LEFT JOIN geraet g ON g.id=k.geraet_id AND g.tenant_id=k.tenant_id "
                 + "WHERE m.site_id=? AND m.id=? AND lower(m.brand)='wago'",
                 (rs, n) -> new Karte((Integer) rs.getObject(1), (Boolean) rs.getObject(2),
                         (Integer) rs.getObject(3), rs.getInt(4),
-                        rs.getTimestamp(5) == null ? null : rs.getTimestamp(5).toInstant()),
+                        rs.getTimestamp(5) == null ? null : rs.getTimestamp(5).toInstant(),
+                        (Integer) rs.getObject(6), (Long) rs.getObject(7)),
                 site, entity).stream()
                 .findFirst().orElseThrow(WagoMetadataService::nichtGefunden);
     }
@@ -191,8 +207,14 @@ public class WagoMetadataService {
     public Geraet geraet(UUID id) {
         return jdbc.query("SELECT g.seriennummer, g.firmware, g.anwendung FROM geraet g "
                 + "JOIN site s ON s.id=g.site_id WHERE g.id=? AND lower(g.hersteller)='wago'",
-                (rs, n) -> new Geraet(rs.getString(1), rs.getString(2), rs.getString(3)), id)
-                .stream().findFirst().orElseThrow(WagoMetadataService::nichtGefunden);
+                (rs, n) -> new Geraet(rs.getString(1), rs.getString(2), rs.getString(3), null, null), id)
+                .stream().findFirst()
+                .map(g -> {
+                    WagoSollLesung.Soll s = soll.soll(id);
+                    return new Geraet(g.seriennummer(), g.firmware(), g.anwendung(), s.controllerKennung(),
+                            s.karten());
+                })
+                .orElseThrow(WagoMetadataService::nichtGefunden);
     }
 
     @Transactional

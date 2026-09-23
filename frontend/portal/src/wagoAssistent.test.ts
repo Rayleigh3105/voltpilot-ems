@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis } from './api';
+import type { Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis, WagoSollLesung } from './api';
 import {
   WAGO_BOX_FAehIGKEIT,
   wagoAssistentSichtbar,
   wagoKarteAusLesung,
   wagoKopfAnzeige,
+  wagoSollAnzeige,
   wagoUrteilAusLesung,
 } from './wagoAssistent';
 
@@ -87,5 +88,37 @@ describe('WAGO-Kopf-Anzeige', () => {
   it('zeigt einen stehenden Herzschlag nach der zweiten Prüfung', () => {
     const anzeige = wagoKopfAnzeige(pruefung({ signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 4, herzschlag: 1731 }), 1731);
     expect(anzeige?.details).toContain('Herzschlag steht bei 1.731');
+  });
+});
+
+describe('gelesenes Soll im Assistenten — nur Anzeige', () => {
+  const lesung = (over: Partial<WagoSollLesung> = {}): WagoSollLesung => ({
+    ergebnis: 'gespeichert',
+    satz: 'Das Soll wurde aus der Steuerung gelesen und gespeichert.',
+    soll: { controllerKennung: 7, karten: [
+      { steckplatz: 2, typ: '750-494/000-001 (5 A)', variante: 0 },
+      { steckplatz: 3, typ: '750-495', variante: 25001 },
+    ] },
+    abweichungen: [],
+    ...over,
+  });
+
+  it('nennt Controller-Kennung und je Karte Typ und Variante', () => {
+    const a = wagoSollAnzeige(lesung());
+    expect(a.titel).toBe('Soll aus der Steuerung gespeichert');
+    expect(a.zeilen).toEqual([
+      'Controller-Kennung 7',
+      'Steckplatz 2 · 750-494/000-001 (5 A) · Variante 0',
+      'Steckplatz 3 · 750-495 · Variante 25001',
+    ]);
+    expect(a.abweichend).toBe(false);
+  });
+
+  it('nicht gelesen bleibt nicht gelesen, und eine Abweichung ist markiert', () => {
+    const offen = wagoSollAnzeige(lesung({ ergebnis: 'nicht_gelesen', soll: { controllerKennung: null,
+      karten: [{ steckplatz: 2, typ: null, variante: null }] } }));
+    expect(offen.zeilen).toEqual(['Controller-Kennung nicht gelesen',
+      'Steckplatz 2 · Kartentyp nicht gelesen · Variante nicht gelesen']);
+    expect(wagoSollAnzeige(lesung({ ergebnis: 'abweichung' })).abweichend).toBe(true);
   });
 });

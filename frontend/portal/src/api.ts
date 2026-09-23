@@ -7403,6 +7403,13 @@ export interface UemsDatenquellePruefergebnis {
 /** Dokumentierte WAGO-Kartenangaben; fehlend bleibt fehlend und wird nie zu einem Faktor. */
 export interface WagoKartenangaben {
   slot: number | null;
+  /**
+   * AP-05 „WAGO-Soll speichern“: die aus der Steuerung GELESENE Variante dieser Karte und die
+   * Kennung ihres Controllers — `null` = noch nicht gelesen (die Box prüft sie dann nicht), nie 0.
+   * Fehlt das Feld (ältere api), zeigt die Karte nichts dazu.
+   */
+  variante?: number | null;
+  controllerKennung?: number | null;
   anwenderskalierung: boolean | null;
   register35: number | null;
   version: number;
@@ -7428,6 +7435,25 @@ export interface WagoGeraeteangaben {
   seriennummer: string | null;
   firmware: string | null;
   anwendung: string | null;
+}
+
+/** AP-05 „WAGO-Soll speichern“: das gespeicherte Soll eines WAGO-Registerbilds. */
+export interface WagoSoll {
+  controllerKennung: number | null;
+  karten: { steckplatz: number | null; typ: string | null; variante: number | null }[];
+}
+
+/** Ausgang von `POST /api/v1/geraete/{id}/wago/soll-lesen` — gespeichert wird nur aus der Lesung. */
+export interface WagoSollLesung {
+  ergebnis: 'gespeichert' | 'unveraendert' | 'abweichung' | 'nicht_gelesen';
+  satz: string;
+  soll: WagoSoll;
+  abweichungen: {
+    feld: 'controller_kennung' | 'kartenzahl' | 'steckplatz' | 'kartentyp' | 'variante';
+    steckplatz: number | null;
+    soll: number | null;
+    gelesen: number | null;
+  }[];
 }
 
 export interface DatenquelleBudgetZahlen {
@@ -8721,6 +8747,15 @@ export const api = {
       `/api/v1/sites/${siteId}/components/${entityId}/wago/kartenwechsel`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+
+  /**
+   * AP-05 „WAGO-Soll speichern“: die Box liest Kopf und Kartenkennungen der Steuerung; die api
+   * speichert nur daraus und nur in leere Stellen — eine Abweichung überschreibt nichts.
+   */
+  wagoSollLesen: (geraetId: string, body: { deviceId: string }) =>
+    request<WagoSollLesung>(`/api/v1/geraete/${geraetId}/wago/soll-lesen`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
 
   /** AP-05 IP-9/IP-10: abgelesene Controller-Angaben, keine Geräteerkennung. */
   wagoGeraetEintragen: (id: string, body: WagoGeraeteangaben) =>

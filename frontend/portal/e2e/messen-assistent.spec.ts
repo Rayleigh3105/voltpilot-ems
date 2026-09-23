@@ -67,6 +67,8 @@ interface Cloud {
   wagoFaehig?: boolean;
   wagoProbeCount?: number;
   wagoKomponenten?: Array<{ id: string; definitionVersion: number; label: string }>;
+  /** AP-05 „WAGO-Soll speichern“: was der Assistent an die Soll-Lesung geschickt hat. */
+  wagoSollLesungen?: Array<{ geraet: string; body: unknown }>;
   /** Schritt 2: die Datenquellen-Vorschlagsliste je Anlage (sonst leer) und was bestätigt wurde. */
   dqVorschlag?: Record<string, UemsDatenquelleVorschlagsliste>;
   dqUebernahmen?: { anlage: string; vorschlaege: UemsDatenquelleBestaetigt[] }[];
@@ -246,6 +248,12 @@ async function verdrahte(page: Page, cloud: Cloud) {
       komponenten: (cloud.wagoKomponenten ?? []).map((k) => ({ entity_id: k.id, gueltig_ab: '2026-10-20T08:15:00Z', gueltig_bis: null })),
     }] });
     if (/^\/api\/v1\/geraete\/[^/]+\/wago$/.test(pfad) && methode === 'PUT' && cloud.wagoFaehig) return json(r.request().postDataJSON());
+    if (/^\/api\/v1\/geraete\/[^/]+\/wago\/soll-lesen$/.test(pfad) && methode === 'POST' && cloud.wagoFaehig) {
+      (cloud.wagoSollLesungen ??= []).push({ geraet: pfad.split('/')[4], body: r.request().postDataJSON() });
+      return json({ ergebnis: 'gespeichert', satz: 'Das Soll wurde aus der Steuerung gelesen und gespeichert.',
+        soll: { controllerKennung: 8212, karten: [1, 2, 3, 4].map((steckplatz) => ({ steckplatz, typ: '750-494', variante: 0 })) },
+        abweichungen: [] });
+    }
     if (/^\/api\/v1\/geraete\/[^/]+\/einstellungen$/.test(pfad) && methode === 'POST' && cloud.wagoFaehig) return json({ fassung: {}, beendet: null, folgen: [], messstellen: [] }, 201);
     if (pfad === '/api/v1/component-templates') return json([]);
     const dqv = /^\/api\/v1\/sites\/([^/]+)\/data-sources\/vorschlag(\/uebernehmen)?$/.exec(pfad);
@@ -590,6 +598,12 @@ for (const breite of BREITEN) {
       await messeUndFotografiere(page, breite, 'wago-werte');
       await page.getByRole('button', { name: 'Komponenten anlegen', exact: true }).click();
       await expect(page.getByText('Komponenten angelegt', { exact: true })).toBeVisible();
+      // Das Soll liest die Box selbst — der Assistent fragt nichts, er zeigt nur, was gelesen wurde.
+      const soll = page.getByTestId('wago-soll');
+      await expect(soll.getByText('Soll aus der Steuerung gespeichert', { exact: true })).toBeVisible();
+      await expect(soll.getByText('Controller-Kennung 8212', { exact: true })).toBeVisible();
+      await expect(soll.getByRole('listitem')).toHaveCount(5);
+      expect(cloud.wagoSollLesungen).toEqual([{ geraet: 'geraet-c-1', body: { deviceId: expect.any(String) } }]);
       await messeUndFotografiere(page, breite, 'wago-komponenten');
       await page.getByRole('button', { name: breite < 720 ? 'Zu den Messstellen' : 'Zur Messstellen-Vorschlagsliste', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Was bedeutet jeder Messkanal?' })).toBeVisible();

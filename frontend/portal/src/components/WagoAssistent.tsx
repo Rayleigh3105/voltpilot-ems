@@ -8,6 +8,7 @@ import {
   type ProbeAntwort,
   type UemsDatenquelle,
   type UemsDatenquellePruefergebnis,
+  type WagoSollLesung,
 } from '../api';
 import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';
@@ -16,6 +17,7 @@ import {
   WAGO_VORLAGE,
   wagoKarteAusLesung,
   wagoKopfAnzeige,
+  wagoSollAnzeige,
   wagoUrteilAusLesung,
   type WagoKarteEntwurf,
 } from '../wagoAssistent';
@@ -86,6 +88,7 @@ export function WagoAssistent({
   const [karten, setKarten] = useState<WagoKarteEntwurf[]>([]);
   const [werte, setWerte] = useState<Record<string, ProbeAntwort | null>>({});
   const [angelegt, setAngelegt] = useState(false);
+  const [sollLesung, setSollLesung] = useState<WagoSollLesung | null>(null);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
 
@@ -95,6 +98,7 @@ export function WagoAssistent({
   }, [geraete, versionen, site.id]);
   const boxId = verbindung.boxId || boxen[0]?.id || '';
   const kopf = wagoKopfAnzeige(pruefung, vorherigerHerzschlag);
+  const soll = sollLesung ? wagoSollAnzeige(sollLesung) : null;
   const kopfErkannt = kopf?.art === 'ok' && kopf.kopf?.erkannt === true;
   const urteil = wagoUrteilAusLesung(kopf?.kopf ?? null, karten);
   const darfFertig = rollen.darf('geraet.einrichten', standortId) && rollen.darf('messstelle.quelle', standortId);
@@ -238,6 +242,13 @@ export function WagoAssistent({
         });
       }
       setAngelegt(true);
+      // Das Soll des Registerbilds liest die Box selbst — ohne Eingabe. Scheitert es, bleiben die
+      // Komponenten angelegt; das Soll ist dann „nicht gelesen“ und die Box prüft es nicht.
+      try {
+        setSollLesung(await api.wagoSollLesen(controller.id, { deviceId: boxId }));
+      } catch {
+        setSollLesung(null);
+      }
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Die Komponenten konnten nicht angelegt werden.');
     } finally { setBusy(false); }
@@ -302,6 +313,11 @@ export function WagoAssistent({
         <Button variant="outline" onClick={() => void liesEchteWerte()} disabled={busy}>{busy ? 'Werte werden gelesen …' : 'Echte Werte lesen'}</Button>
         <Button onClick={() => void komponentenAnlegen()} disabled={busy || Object.keys(werte).length !== karten.length}>{busy ? 'Wird angelegt …' : 'Komponenten anlegen'}</Button>
       </div> : <div className="vp-wago-fertig" role="status"><strong>Komponenten angelegt</strong><span>Die Messstellen-Vorschlagsliste kann jetzt aus den neuen Messwerten Vorschläge bilden.</span></div>}
+      {angelegt && soll && <div className={`vp-wago-soll${soll.abweichend ? ' vp-wago-soll-abweichend' : ''}`} data-testid="wago-soll">
+        <strong>{soll.titel}</strong>
+        <span>{soll.satz}</span>
+        <ul>{soll.zeilen.map((z) => <li key={z}>{z}</li>)}</ul>
+      </div>}
     </section>;
   }
 

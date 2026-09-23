@@ -16,7 +16,8 @@
 
 .vp-wago-urteil,
 .vp-wago-kopf,
-.vp-wago-fertig {
+.vp-wago-fertig,
+.vp-wago-soll {
   display: grid;
   gap: var(--vp-space-1, 4px);
   min-width: 0;
@@ -30,12 +31,14 @@
 }
 
 .vp-wago-urteil.ist-nicht_unterstuetzt,
-.vp-wago-kopf.ist-fehler { border-left-color: #b45309; }
+.vp-wago-kopf.ist-fehler,
+.vp-wago-soll-abweichend { border-left-color: #b45309; }
 
 .vp-wago-kopf.ist-ok,
 .vp-wago-fertig { border-left-color: #15803d; }
 
-.vp-wago-kopf ul { margin: 0; padding-left: 1.25rem; }
+.vp-wago-kopf ul,
+.vp-wago-soll ul { margin: 0; padding-left: 1.25rem; }
 
 .vp-wago-felder {
   display: grid;

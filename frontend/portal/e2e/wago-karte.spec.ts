@@ -42,7 +42,8 @@ function werteMitMarkern(raster: string): MessstelleWerte {
 }
 
 function karte(over: Partial<WagoKartenangaben> = {}): WagoKartenangaben {
-  return { slot: 5, anwenderskalierung: false, register35: 0, version: 3, kartenwechsel: null, ...over };
+  return { slot: 5, anwenderskalierung: false, register35: 0, version: 3, kartenwechsel: null,
+    variante: 25001, controllerKennung: 8212, ...over };
 }
 
 async function buehne(page: import('@playwright/test').Page, stand: WagoKartenangaben,
@@ -94,6 +95,9 @@ test('A8/A10: Marker im Verlauf, Hebel nur aus Belegen, Dialog „Karte getausch
   // (2) Ohne Beleg steht kein Hebel da — ein Dauerhinweis wäre eine Vermutung.
   const abschnitt = page.getByTestId('wago-karte');
   await expect(abschnitt).toContainText('Steckplatz: 5');
+  // Das aus der Steuerung gelesene Soll: nur Anzeige, kein Bedienelement.
+  await expect(abschnitt).toContainText('Kartenvariante: 25001');
+  await expect(abschnitt).toContainText('Controller-Kennung: 8212');
   await expect(page.getByTestId('wago-hebel')).toHaveCount(0);
   if (bilder) await abschnitt.screenshot({ path: join(bilder, `karte-ohne-beleg-${breite}.png`) });
 

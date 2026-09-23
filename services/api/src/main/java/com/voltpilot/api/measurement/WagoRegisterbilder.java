@@ -22,9 +22,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>Gebildet wird nur aus dem Bestand (Entscheid firstmate B, 23.09.2026): Basisadresse,
  * Funktionscode und Wortfolge aus der Verbindung der Karten-Komponenten, Steckplatz und Kartentyp
- * aus der Karte am Controller. <b>Variante und Controller-Kennung speichert die api nicht</b> — sie
- * fehlen im Dokument und die Box prüft sie dann nicht; eine erfundene 0 würde jede 750-495
- * (Variante 25001) stumm schalten. Was nicht eindeutig ist, wird nicht gesendet: dann bleiben die
+ * aus der Karte am Controller. Variante und Controller-Kennung stehen nur im Dokument, wenn die
+ * Soll-Lesung ({@code WagoSollLesung}) sie aus der Steuerung gespeichert hat — sonst fehlen sie und
+ * die Box prüft sie nicht; eine erfundene 0 würde jede 750-495 (Variante 25001) stumm schalten.
+ * Was nicht eindeutig ist, wird nicht gesendet: dann bleiben die
  * Punkte dieses Controllers abgelehnt, nie an einer geratenen Adresse gelesen.
  */
 @Component
@@ -38,7 +39,13 @@ public class WagoRegisterbilder {
 
     /** Eine heute eingebaute Energiekarte eines Controllers, mit der Komponente, die sie speist. */
     public record Karte(UUID geraetId, UUID teilId, Integer steckplatz, String typ, UUID entityId,
-            String verbindung) {}
+            String verbindung, Integer variante, Long controllerKennung) {
+        /** Ohne gelesenes Soll — Variante und Controller-Kennung fehlen im Dokument. */
+        public Karte(UUID geraetId, UUID teilId, Integer steckplatz, String typ, UUID entityId,
+                String verbindung) {
+            this(geraetId, teilId, steckplatz, typ, entityId, verbindung, null, null);
+        }
+    }
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -56,7 +63,8 @@ public class WagoRegisterbilder {
         // ALLE heute eingebauten Karten der Controller, die eine Karten-Komponente des Plans speisen:
         // die Kartenzahl im Kopf zählt jede Karte des Registerbilds, nicht nur die gemessenen.
         List<Karte> karten = jdbc.query("""
-                SELECT t.geraet_id, t.id, t.steckplatz, t.typ, k.entity_id, m.connection_json::text
+                SELECT t.geraet_id, t.id, t.steckplatz, t.typ, k.entity_id, m.connection_json::text,
+                       t.variante, g.controller_kennung
                   FROM geraet_teil t
                   JOIN geraet g ON g.id = t.geraet_id AND g.tenant_id = t.tenant_id
                   JOIN site s ON s.id = g.site_id
@@ -70,7 +78,8 @@ public class WagoRegisterbilder {
                            AND k2.gueltig_ab <= now() AND (k2.gueltig_bis IS NULL OR k2.gueltig_bis > now()))
                  ORDER BY t.geraet_id, t.steckplatz, t.id, k.entity_id
                 """, (rs, n) -> new Karte((UUID) rs.getObject(1), (UUID) rs.getObject(2),
-                        (Integer) rs.getObject(3), rs.getString(4), (UUID) rs.getObject(5), rs.getString(6)),
+                        (Integer) rs.getObject(3), rs.getString(4), (UUID) rs.getObject(5), rs.getString(6),
+                        (Integer) rs.getObject(7), (Long) rs.getObject(8)),
                 siteId, komponenten);
         return bilde(karten, familie, mapper);
     }
@@ -136,6 +145,8 @@ public class WagoRegisterbilder {
             Map<String, Object> karte = new LinkedHashMap<>();
             karte.put("steckplatz", steckplatz);
             karte.put("kartentyp", typen.iterator().next());
+            // Nur ein aus der Steuerung GELESENES Soll; fehlend = nicht geprüft (x-registerbilder-rule).
+            if (teil.getFirst().variante() != null) karte.put("variante", teil.getFirst().variante());
             karten.add(karte);
         }
         if (anker == null || verbindungen.size() != 1) return null;
@@ -148,6 +159,8 @@ public class WagoRegisterbilder {
         bild.put("funktionscode", v.get(1));
         bild.put("wortfolge", v.get(2));
         bild.put("kartenzahl", karten.size());
+        Long kennung = zeilen.getFirst().controllerKennung();
+        if (kennung != null) bild.put("controller_kennung", kennung);
         bild.put("karten", karten);
         return bild;
     }

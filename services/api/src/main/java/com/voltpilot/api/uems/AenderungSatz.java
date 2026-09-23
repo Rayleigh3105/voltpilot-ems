@@ -136,6 +136,9 @@ public final class AenderungSatz {
             case "zugriff_entzogen" -> "Zugriff entzogen" + zugriff(neu);
             // AP-16 IP-15 (G1–G3): die Angabe am Einbau; „nicht erhoben“ bleibt so stehen, nie geschätzt.
             case "messmittel_angabe" -> "Messmittel-Angaben eingetragen" + zusatz(text(neu, "einbau"));
+            case "wago_soll_gelesen" -> "WAGO-Soll aus der Steuerung gelesen" + zusatz(text(neu, "einbau"));
+            case "wago_soll_abweichung" -> "WAGO-Steuerung weicht vom gespeicherten Soll ab, nichts überschrieben"
+                    + zusatz(text(neu, "einbau"));
             default -> art;
         };
     }

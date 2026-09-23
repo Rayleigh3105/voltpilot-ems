@@ -38,7 +38,13 @@ gehen nicht in die Registry und benötigen keine neue Box-Laufzeit.
 die Angabe. Die Seriennummer verwendet die vorhandene Spalte. Firmware und Anwendung
 sind nullable Textfelder, keine Behauptung über den tatsächlich ausgelesenen Stand.
 
-Beide Schreibwege benötigen `geraet.einrichten`; fremde Anlagen/Geräte bleiben 404.
+`POST /api/v1/geraete/{id}/wago/soll-lesen` liest das Soll des Registerbilds über die Box
+(`wago_kopf` + Kennwörter je Karte) und speichert `geraet.controller_kennung` und
+`geraet_teil.variante` nur aus dieser Lesung und nur in leere Stellen; eine Abweichung wird gemeldet
+und protokolliert, nie überschrieben. Beide GETs nennen das gelesene Soll; NULL = nicht gelesen.
+Einzelheiten: [Wegweiser](../../docs/agents/root/uems-wago-registerbild.md).
+
+Alle Schreibwege benötigen `geraet.einrichten`; fremde Anlagen/Geräte bleiben 404.
 Die neuen Spalten erben die vorhandene Mandanten-RLS. Komponentenfassungen und Geräte bekommen
 zusätzlich den Standortzaun; neue Gerät-Spalten haben eigene UPDATE-Grants.
 
