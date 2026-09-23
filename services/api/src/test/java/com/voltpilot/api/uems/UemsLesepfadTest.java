@@ -94,8 +94,7 @@ class UemsLesepfadTest {
     /**
      * Die je Wert GESPEICHERTE Katalogfassung — bewusst eine ALTE, nie die heutige. Sie muss
      * sich vom Laufzeitstand des Katalogs unterscheiden, sonst bewiese der Export-Test nichts
-     * (der Laufzeitstand ist heute {@code 2026.09.23.2}, siehe
-     * {@code catalog/measurement-points/RUNTIME_VERSION}).
+     * (den Laufzeitstand nennt {@code catalog/measurement-points/RUNTIME_VERSION}).
      */
     private static final String KATALOG_DAMALS = "2026.06.02.1";
 
@@ -418,7 +417,7 @@ class UemsLesepfadTest {
         assertThat(h.data().get(1).value()).isEqualByComparingTo("1.0");
         // Der Fingerabdruck stammt vom Laufzeitstand 2026.08.26.3; `meta.catalogVersion` nennt den
         // HEUTIGEN Stand — mit dem damaligen eingesetzt ist die Fläche Zeichen für Zeichen die von vorher.
-        assertThat(h.meta().catalogVersion()).isEqualTo("2026.09.23.2");
+        assertThat(h.meta().catalogVersion()).isEqualTo(katalog.version());
         assertThat(fingerabdruck(h, "2026.08.26.3")).isEqualTo(FINGERABDRUCK_INNERHALB);
     }
 

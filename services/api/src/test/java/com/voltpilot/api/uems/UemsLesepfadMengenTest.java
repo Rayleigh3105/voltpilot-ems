@@ -72,6 +72,8 @@ class UemsLesepfadMengenTest {
 
     /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
     private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+    /** Der Laufzeitstand des Katalogs, unter dem {@link #FLAECHE_VORHER} aufgenommen wurde. */
+    private static final String LAUFZEITSTAND_DER_AUFNAHME = "2026.08.26.3";
 
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -668,9 +670,12 @@ class UemsLesepfadMengenTest {
     /**
      * Der md5 einer Antwort — mit durchnummerierten Kennungen statt der UUIDs, die jeder Testlauf neu
      * vergibt (Anlage, Komponente, Box). Die Struktur bleibt: dieselbe Kennung bekommt dieselbe Nummer.
+     * Der heutige Laufzeitstand des Katalogs ({@code meta.catalogVersion}) wird durch den Stand ersetzt,
+     * unter dem die Karte aufgenommen wurde — eine Hebung des Katalogs verschiebt so keinen Fingerabdruck.
      */
     private static String md5(byte[] bytes) {
-        Matcher m = KENNUNG.matcher(new String(bytes, StandardCharsets.UTF_8));
+        Matcher m = KENNUNG.matcher(new String(bytes, StandardCharsets.UTF_8)
+                .replace(KATALOG.version(), LAUFZEITSTAND_DER_AUFNAHME));
         Map<String, String> nummern = new LinkedHashMap<>();
         StringBuilder s = new StringBuilder();
         while (m.find()) {
