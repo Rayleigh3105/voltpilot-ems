@@ -1,0 +1,107 @@
+{
+  "_comment": [
+    "UEMS AP-17 IP-11a — der Variablen-Vorschlag aus dem Energieeinsatz (V4, W1) und die Abhängigkeits-Regel G4 als Vertrag.",
+    "Die Regel steht in DIESER Datei; kennzahl-variablen-vorschlag.md erklärt sie. Java uems/VariablenAbhaengigkeit und TS frontend/portal/src/variablenAbhaengigkeit.ts fahren sie per Pfad.",
+    "abhaengigkeit: Pearson-r über die Monatspaare der Referenzperiode (nur Monate, in denen BEIDE Variablen einen Wert haben); |r| >= schwelle → variablen_abhaengig (auch genau auf der Schwelle); unter mindest_paare oder bei einer konstanten Reihe → nicht_pruefbar mit grund, ohne r. Die Schwelle ist ein Startwert (G6), keine Norm-Herleitung.",
+    "saetze: die Kundensätze des Vorschlags, wörtlich. {kandidat}, {variable_1} und {r} werden ersetzt; r mit drei Stellen, Komma, echtem Minus.",
+    "faelle: x ist Variable 1 (der Nenner der Kennzahl), y der Kandidat. R9: BZ-1 Produktionsmenge Spritzguss gegen BZ-3 Betriebsstunden Spritzguss, November 2026 bis Oktober 2027 (uems-referenzunternehmen.json 1.8, bezugsbasen[BB-0001].fassungen[2])."
+  ],
+  "version": "1.0",
+  "schwelle": 0.9,
+  "mindest_paare": 3,
+  "ergebnisse": ["unabhaengig", "variablen_abhaengig", "nicht_pruefbar"],
+  "gruende": ["zu_wenig_paare", "keine_streuung", "keine_variable_1"],
+  "vorschlaege": ["variable_1", "variable", "statischer_faktor"],
+  "bezuege": ["prozess", "zaehler_messstellen", "keiner"],
+  "saetze": {
+    "ohne_zahl": "ohne Zahl — erst als Bezugsgröße erfassen",
+    "kein_einsatz": "Zu dieser Kennzahl gehört kein Energieeinsatz: weder ihr Prozess noch die Messstellen ihres Zählers sind einem Energieeinsatz zugeordnet. Es gibt keine Einflussgrößen vorzuschlagen.",
+    "statischer_faktor": "Stammdatum — ein statischer Faktor, keine Variable.",
+    "abhaengig": "{kandidat} hängt an {variable_1} (r = {r}). Ein Modell mit zwei Einflussgrößen braucht unabhängige Größen."
+  },
+  "faelle": [
+    {
+      "name": "R9: Betriebsstunden hängen an der Produktionsmenge",
+      "x": [318000, 262000, 298000, 305000, 331000, 309000, 322000, 327000, 296000, 254000, 336000, 341000],
+      "y": [5112, 4149, 4778, 4819, 5314, 4908, 5151, 5165, 4751, 4026, 5404, 5419],
+      "ergebnis": "variablen_abhaengig",
+      "r": 0.9972651171849957,
+      "r_text": "0,997",
+      "paare": 12,
+      "grund": null,
+      "kandidat": "Betriebsstunden Spritzguss",
+      "variable_1": "Produktionsmenge Spritzguss",
+      "satz": "Betriebsstunden Spritzguss hängt an Produktionsmenge Spritzguss (r = 0,997). Ein Modell mit zwei Einflussgrößen braucht unabhängige Größen."
+    },
+    {
+      "name": "unabhängiges Paar: Produktionsmenge gegen eine Größe ohne Zusammenhang",
+      "x": [318000, 262000, 298000, 305000, 331000, 309000, 322000, 327000, 296000, 254000, 336000, 341000],
+      "y": [8, 3, 5, 9, 2, 7, 4, 6, 1, 10, 3, 5],
+      "ergebnis": "unabhaengig",
+      "r": -0.2688999360671902,
+      "r_text": "−0,269",
+      "paare": 12,
+      "grund": null
+    },
+    {
+      "name": "genau auf der Schwelle zählt als abhängig",
+      "x": [1, 2, 3, 4, 5],
+      "y": [1, 2, 4, 3, 5],
+      "ergebnis": "variablen_abhaengig",
+      "r": 0.9,
+      "r_text": "0,900",
+      "paare": 5,
+      "grund": null
+    },
+    {
+      "name": "knapp unter der Schwelle",
+      "x": [1, 2, 3, 4, 5],
+      "y": [1, 3, 2, 5, 4],
+      "ergebnis": "unabhaengig",
+      "r": 0.8,
+      "r_text": "0,800",
+      "paare": 5,
+      "grund": null
+    },
+    {
+      "name": "gegenläufig abhängig: der Betrag zählt (Gradtage gegen Außentemperatur)",
+      "x": [480, 420, 300, 150, 40, 0],
+      "y": [-1, 2, 6, 11, 15, 17],
+      "ergebnis": "variablen_abhaengig",
+      "r": -0.9988324563976362,
+      "r_text": "−0,999",
+      "paare": 6,
+      "grund": null,
+      "kandidat": "Außentemperatur",
+      "variable_1": "Gradtagzahl",
+      "satz": "Außentemperatur hängt an Gradtagzahl (r = −0,999). Ein Modell mit zwei Einflussgrößen braucht unabhängige Größen."
+    },
+    {
+      "name": "zu wenig Paare (2 < 3)",
+      "x": [318000, 262000],
+      "y": [5112, 4149],
+      "ergebnis": "nicht_pruefbar",
+      "r": null,
+      "paare": 2,
+      "grund": "zu_wenig_paare"
+    },
+    {
+      "name": "kein Paar",
+      "x": [],
+      "y": [],
+      "ergebnis": "nicht_pruefbar",
+      "r": null,
+      "paare": 0,
+      "grund": "zu_wenig_paare"
+    },
+    {
+      "name": "konstante Reihe: r ist nicht definiert",
+      "x": [318000, 262000, 298000, 305000],
+      "y": [720, 720, 720, 720],
+      "ergebnis": "nicht_pruefbar",
+      "r": null,
+      "paare": 4,
+      "grund": "keine_streuung"
+    }
+  ]
+}

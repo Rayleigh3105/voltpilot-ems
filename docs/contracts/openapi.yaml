@@ -11894,6 +11894,34 @@ paths:
         "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}/variablen-vorschlag:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: referenzperiode, in: query, required: false, schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}/[0-9]{4}-[0-9]{2}$", example: "2026-11/2027-10" }, description: "Die Monate der Abhängigkeits-Prüfung (G4), beide eingeschlossen, höchstens 120. Ohne Angabe die zwölf abgeschlossenen Monate vor dem laufenden (Zeitzone der Geltung)." }
+    get:
+      tags: [kennzahlen]
+      summary: Die Einflussgrößen des Energieeinsatzes als Variablen-Vorschlag - Verweise als Kandidaten, Wortlaute ohne Zahl; übernimmt nichts.
+      description: >
+        Recht `messwerte.ansehen` wie die Kennzahl selbst (Zaun über die Kennzahl; fremd oder verborgen ist 404,
+        nie 403). UEMS AP-17 IP-11a (V4, E3 = A, W1); Vertrag docs/contracts/v2/kennzahl-variablen-vorschlag.md.
+        Gelesen werden die Einflussgrößen der laufenden Energieeinsätze, deren Prozess die Geltung der Kennzahl ist
+        (`bezug` prozess) - sonst derer, deren Prozess eine Zähler-Messstelle der heute geltenden Fassung
+        zugeordnet ist (`bezug` zaehler_messstellen); ohne beides `bezug` keiner mit `satz` und leeren Listen.
+        Verweise (BZ-…) werden `kandidaten` mit ihrer Bezugsgröße: der Nenner ist `variable_1`, ein Stammdatum
+        ein `statischer_faktor`, jede andere eine `variable` mit dem Hinweis `abhaengigkeit` gegen Variable 1
+        (Pearson-r über die Monatspaare der Referenzperiode, |r| ≥ 0,9 → `variablen_abhaengig`, unter drei
+        Paaren `nicht_pruefbar`; docs/contracts/v2/variablen-vorschlag-vectors.json). Wortlaute werden
+        `ohne_zahl`-Zeilen „ohne Zahl — erst als Bezugsgröße erfassen“. Nichts wird übernommen, nichts am
+        Einsatz, an der Kennzahl oder an einer Bezugsgröße verändert (AP-16 B5). Ein unbekannter Parameter ist 400.
+      responses:
+        "200":
+          description: Der Vorschlag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlVariablenVorschlag" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
   /api/v1/bezugsdaten/vorlagen:
     get:
       tags: [bezugsgroessen]
@@ -26294,6 +26322,76 @@ components:
         rechenform: { type: string, enum: [quotient, anteil, zusammenfassung] }
         einheit: { type: string, nullable: true, description: "kWh/Stück · %." }
         einheit_anzeige: { type: string, nullable: true, description: "„kWh je Stück“." }
+    KennzahlVariablenVorschlag:
+      type: object
+      description: Der Variablen-Vorschlag einer Kennzahl aus dem Energieeinsatz (AP-17 IP-11a, V4). Nur Lesen.
+      required: [kennzahl, geltung_art, bezug, referenzperiode, einsaetze, variable_1, kandidaten, ohne_zahl, satz]
+      properties:
+        kennzahl: { $ref: "#/components/schemas/KennzahlWerteKennzahl" }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle] }
+        bezug: { type: string, enum: [prozess, zaehler_messstellen, keiner], description: "Woher die Einsätze kommen: Prozess der Geltung, sonst Prozesse der Zähler-Messstellen." }
+        referenzperiode: { type: string, example: "2026-11/2027-10", description: "JJJJ-MM/JJJJ-MM, beide Monate eingeschlossen." }
+        einsaetze: { type: array, items: { $ref: "#/components/schemas/KennzahlVariablenEinsatz" } }
+        variable_1:
+          nullable: true
+          description: Der Nenner der heute geltenden Fassung, wenn er eine Bezugsgröße ist - sonst null.
+          allOf: [{ $ref: "#/components/schemas/KennzahlVariable" }]
+        kandidaten: { type: array, items: { $ref: "#/components/schemas/KennzahlVariablenKandidat" } }
+        ohne_zahl: { type: array, items: { $ref: "#/components/schemas/KennzahlVariablenOhneZahl" } }
+        satz: { type: string, nullable: true, description: "Nur bei `bezug` keiner: warum es nichts vorzuschlagen gibt." }
+    KennzahlVariablenEinsatz:
+      type: object
+      required: [id, kennzeichen, name, traeger]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: "EE-1" }
+        name: { type: string }
+        traeger: { type: string }
+    KennzahlVariable:
+      type: object
+      description: Eine Bezugsgröße im Vorschlag - Art, Einheit und ob Periodenwerte oder ein Kanal vorhanden sind.
+      required: [id, kennzeichen, name, art, wertart, einheit, periode_art, hat_werte, hat_kanal]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: "BZ-1" }
+        name: { type: string }
+        art: { type: string, nullable: true, description: "Art der Bezugsgröße (produktionsmenge · betriebszeit · gradtagzahl · …)." }
+        wertart: { type: string, enum: [periodenwert, stammdatum] }
+        einheit: { type: string }
+        periode_art: { type: string, nullable: true }
+        hat_werte: { type: boolean }
+        hat_kanal: { type: boolean }
+    KennzahlVariablenKandidat:
+      type: object
+      required: [bezugsgroesse, einfluss_art, vorschlag, einsaetze, abhaengigkeit, satz]
+      properties:
+        bezugsgroesse: { $ref: "#/components/schemas/KennzahlVariable" }
+        einfluss_art: { type: string, enum: [produktion, betriebszeit, wetter, sonstige], description: "Die Art der Einflussgröße am Einsatz." }
+        vorschlag: { type: string, enum: [variable_1, variable, statischer_faktor] }
+        einsaetze: { type: array, items: { type: string }, description: "Kennzeichen der Einsätze, die diese Bezugsgröße nennen." }
+        abhaengigkeit:
+          nullable: true
+          description: Nur bei `variable` - G4 gegen Variable 1, ein Hinweis, keine Ablehnung.
+          allOf: [{ $ref: "#/components/schemas/KennzahlVariablenAbhaengigkeit" }]
+        satz: { type: string, nullable: true, description: "Kundensatz bei `variablen_abhaengig` oder `statischer_faktor`." }
+    KennzahlVariablenAbhaengigkeit:
+      type: object
+      required: [ergebnis, r, paare, grund, gegen, schwelle]
+      properties:
+        ergebnis: { type: string, enum: [unabhaengig, variablen_abhaengig, nicht_pruefbar] }
+        r: { type: number, nullable: true, description: "Pearson-r, ungerundet; null bei nicht_pruefbar." }
+        paare: { type: integer, minimum: 0, description: "Monate, in denen beide einen Wert haben." }
+        grund: { type: string, nullable: true, enum: [zu_wenig_paare, keine_streuung, keine_variable_1, null] }
+        gegen: { type: string, nullable: true, description: "Kennzeichen von Variable 1." }
+        schwelle: { type: number, example: 0.9, description: "Startwert (G6)." }
+    KennzahlVariablenOhneZahl:
+      type: object
+      required: [wortlaut, einfluss_art, einsatz, satz]
+      properties:
+        wortlaut: { type: string, example: "Leckagerate" }
+        einfluss_art: { type: string, enum: [produktion, betriebszeit, wetter, sonstige] }
+        einsatz: { type: string, example: "EE-3" }
+        satz: { type: string, enum: ["ohne Zahl — erst als Bezugsgröße erfassen"] }
     KennzahlWerte:
       type: object
       required: [kennzahl, periode, von, bis, zeitzone, version, werte]

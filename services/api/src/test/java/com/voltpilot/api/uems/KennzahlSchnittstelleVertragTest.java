@@ -188,7 +188,8 @@ class KennzahlSchnittstelleVertragTest {
                 "/api/v1/kennzahlen/{id}/fassungen", List.of("parameters", "get", "post"),
                 "/api/v1/kennzahlen/{id}/berechnung", List.of("parameters", "get"),
                 "/api/v1/kennzahlen/{id}/werte", List.of("parameters", "get"),
-                "/api/v1/kennzahlen/{id}/werte/versionen", List.of("parameters", "get"));
+                "/api/v1/kennzahlen/{id}/werte/versionen", List.of("parameters", "get"),
+                "/api/v1/kennzahlen/{id}/variablen-vorschlag", List.of("parameters", "get"));
         erwartet.forEach((pfad, methoden) -> assertThat(((Map<String, Object>) pfade.get(pfad)).keySet()).as(pfad)
                 .containsExactlyInAnyOrderElementsOf(methoden));
         assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/kennzahlen")).toList())

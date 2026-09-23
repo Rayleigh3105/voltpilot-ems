@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/kennzahl-variablen-vorschlag.schema.json",
+  "title": "Variablen-Vorschlag einer Kennzahl aus dem Energieeinsatz (UEMS AP-17 IP-11a)",
+  "description": "Antwort von GET /api/v1/kennzahlen/{id}/variablen-vorschlag. Nur Lesen: nichts wird übernommen, nichts am Einsatz verändert (AP-16 B5). Erklärung: kennzahl-variablen-vorschlag.md; Regel und Sätze: variablen-vorschlag-vectors.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kennzahl", "geltung_art", "bezug", "referenzperiode", "einsaetze", "variable_1", "kandidaten", "ohne_zahl", "satz"],
+  "properties": {
+    "kennzahl": {
+      "type": "object",
+      "required": ["id", "kennzeichen", "name", "rechenform", "einheit", "einheit_anzeige"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "kennzeichen": { "type": "string", "pattern": "^KZ-[0-9]{4,}$" },
+        "name": { "type": "string" },
+        "rechenform": { "enum": ["quotient", "anteil", "zusammenfassung"] },
+        "einheit": { "type": ["string", "null"] },
+        "einheit_anzeige": { "type": ["string", "null"] }
+      }
+    },
+    "geltung_art": { "enum": ["unternehmen", "standort", "gebaeude", "bereich", "prozess", "kostenstelle", "messstelle"] },
+    "bezug": { "enum": ["prozess", "zaehler_messstellen", "keiner"] },
+    "referenzperiode": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}/[0-9]{4}-[0-9]{2}$" },
+    "einsaetze": { "type": "array", "items": { "$ref": "#/$defs/einsatz" } },
+    "variable_1": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/variable" }] },
+    "kandidaten": { "type": "array", "items": { "$ref": "#/$defs/kandidat" } },
+    "ohne_zahl": { "type": "array", "items": { "$ref": "#/$defs/ohne_zahl" } },
+    "satz": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "einsatz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kennzeichen", "name", "traeger"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "kennzeichen": { "type": "string", "pattern": "^EE-[1-9][0-9]*$" },
+        "name": { "type": "string" },
+        "traeger": { "type": "string" }
+      }
+    },
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kennzeichen", "name", "art", "wertart", "einheit", "periode_art", "hat_werte", "hat_kanal"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "kennzeichen": { "type": "string" },
+        "name": { "type": "string" },
+        "art": { "type": ["string", "null"] },
+        "wertart": { "enum": ["periodenwert", "stammdatum"] },
+        "einheit": { "type": "string" },
+        "periode_art": { "type": ["string", "null"] },
+        "hat_werte": { "type": "boolean" },
+        "hat_kanal": { "type": "boolean" }
+      }
+    },
+    "kandidat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bezugsgroesse", "einfluss_art", "vorschlag", "einsaetze", "abhaengigkeit", "satz"],
+      "properties": {
+        "bezugsgroesse": { "$ref": "#/$defs/variable" },
+        "einfluss_art": { "enum": ["produktion", "betriebszeit", "wetter", "sonstige"] },
+        "vorschlag": { "enum": ["variable_1", "variable", "statischer_faktor"] },
+        "einsaetze": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "abhaengigkeit": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/abhaengigkeit" }] },
+        "satz": { "type": ["string", "null"] }
+      }
+    },
+    "abhaengigkeit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ergebnis", "r", "paare", "grund", "gegen", "schwelle"],
+      "properties": {
+        "ergebnis": { "enum": ["unabhaengig", "variablen_abhaengig", "nicht_pruefbar"] },
+        "r": { "type": ["number", "null"], "minimum": -1, "maximum": 1 },
+        "paare": { "type": "integer", "minimum": 0 },
+        "grund": { "enum": ["zu_wenig_paare", "keine_streuung", "keine_variable_1", null] },
+        "gegen": { "type": ["string", "null"] },
+        "schwelle": { "type": "number" }
+      }
+    },
+    "ohne_zahl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wortlaut", "einfluss_art", "einsatz", "satz"],
+      "properties": {
+        "wortlaut": { "type": "string", "minLength": 1 },
+        "einfluss_art": { "enum": ["produktion", "betriebszeit", "wetter", "sonstige"] },
+        "einsatz": { "type": "string", "pattern": "^EE-[1-9][0-9]*$" },
+        "satz": { "const": "ohne Zahl — erst als Bezugsgröße erfassen" }
+      }
+    }
+  }
+}
