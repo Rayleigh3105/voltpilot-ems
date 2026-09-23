@@ -102,7 +102,7 @@ final class Richtungspaar {
 
     /**
      * Die beiden ZAHLEN der gelesenen VERSION einer Periode: Version 1 aus {@code messreihe_periode}, eine
-     * korrigierte Version (≥ 2) aus {@code messreihe_periode_version} — dort seit {@code V20260923101500} nach
+     * korrigierte Version (≥ 2) aus {@code messreihe_periode_version} — dort seit {@code V20260923231500} nach
      * derselben Regel gebildet. Nie das Paar von Version 1 neben der Menge einer späteren: das wäre ein Aufbau,
      * der nicht zur Zahl passt. Eine Version, die ihr Paar nicht trägt (Ersatzwert, berichtigter Wert, vor der
      * Migration gebildet), ist {@link Optional#empty()} — unbekannt ist keine Null.

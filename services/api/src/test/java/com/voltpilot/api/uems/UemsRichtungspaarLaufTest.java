@@ -205,7 +205,7 @@ class UemsRichtungspaarLaufTest {
     // ======================================================================= Die korrigierte Version
 
     /**
-     * Folgepaket vp-uems-bilanz-richtungspaar-korrektur ({@code V20260923101500}): eine KORREKTUR an einer
+     * Folgepaket vp-uems-bilanz-richtungspaar-korrektur ({@code V20260923231500}): eine KORREKTUR an einer
      * Viertelstunde des Speichers trägt ihr Paar bis in Tag, Monat und Jahr — nach derselben Regel wie Version 1,
      * aus den Anteilen der Viertelstunden in ihrer neuesten Fassung, nie aus der Nettomenge geschätzt. Eine
      * Nettomengen-Berichtigung (ohne Richtung) lässt es unbekannt. Alles in einer zurückgerollten Transaktion:

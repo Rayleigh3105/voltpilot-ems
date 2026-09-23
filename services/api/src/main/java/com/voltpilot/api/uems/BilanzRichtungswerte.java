@@ -10,7 +10,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * Liest die bereits verdichteten Anteile von Laden/Entladen; eine Nettomenge ist kein Flusspaar. Das Paar gehört zur
  * GELESENEN Version: Version 1 aus {@code messreihe_tag}/{@code messreihe_periode}, eine korrigierte aus
- * {@code messreihe_periode_version} (V20260923101500). Trägt sie keins — ein Ersatzwert, ein berichtigter Wert, vor
+ * {@code messreihe_periode_version} (V20260923231500). Trägt sie keins — ein Ersatzwert, ein berichtigter Wert, vor
  * der Migration gebildet —, bleibt der Term „keine Werte“. Keine Zahl erfinden.
  */
 final class BilanzRichtungswerte {

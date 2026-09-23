@@ -66,7 +66,7 @@ Wirkung (`messreihe_kaskade_woerter()` = `KorrekturKaskade.WOERTER`).
    Version 1, die die Verdichtung noch nicht neu gebildet hat, ist nicht Sache der Kaskade. Danach vergleicht jede Stufe
    Aussage UND was wirkt: eine Version mit denselben Zahlen, die eine zurückgenommene Korrektur noch nennt, bekommt
    eine neue.
-4a. **Das Richtungspaar reist mit** (`V20260923101500`): `messreihe_viertelstunde_version.energie_positiv/_negativ`
+4a. **Das Richtungspaar reist mit** (`V20260923231500`): `messreihe_viertelstunde_version.energie_positiv/_negativ`
    stammen aus DERSELBEN `waereZeile` wie die Rohwert-Fakten und nur, wenn deren `energie` die freigegebene ist
    (Nachlieferung, Ablesestände, Umklassifizierung); `wert_berichtigt` und Ersatzwert (`mitErsatzwerten`) setzen
    eine Nettomenge ohne Richtung → NULL. Tag/Monat summieren die Anteile der Viertelstunden in ihrer neuesten

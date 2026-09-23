@@ -142,7 +142,7 @@ final class KaskadeStufen {
 
         /**
          * Ein Richtungspaar unterscheidet zwei Aussagen nur, wenn BEIDE es kennen: eine Version von vor
-         * {@code V20260923101500} trägt NULL, und das ist keine andere Zahl, sondern keine — sonst bekäme jede
+         * {@code V20260923231500} trägt NULL, und das ist keine andere Zahl, sondern keine — sonst bekäme jede
          * ältere Version beim nächsten Vergleich eine neue Nummer.
          */
         private static boolean richtungGleich(Inhalt a, Inhalt b) {
@@ -348,7 +348,7 @@ final class KaskadeStufen {
         g.teile().forEach(t -> tp.put(t.von(), t));
         g.werteteile().forEach(w -> wt.put(w.teil().von(), w));
         // Das Richtungspaar je Viertelstunde (V20260918104000) — eine Korrektur-Version bringt ihres mit
-        // (V20260923101500), dieselbe Überlagerung wie die Fakten.
+        // (V20260923231500), dieselbe Überlagerung wie die Fakten.
         TreeMap<Instant, ViertelstundenTeile.Anteil> an = new TreeMap<>();
         g.anteile().forEach(a -> an.put(a.von(), a));
         Set<String> korrekturen = new LinkedHashSet<>();

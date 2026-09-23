@@ -795,7 +795,7 @@ public class KorrekturKaskade {
      * Umklassifizierung rechnet mit einer bestätigten Deklaration, die nicht gespeichert ist — dort müssen nur die
      * gezählten Werte dieselben sein; ein berichtigter Wert (mit Beleg) hat die Fakten von Version 1.
      *
-     * <p>Das Richtungspaar ({@code energie_positiv}/{@code _negativ}, V20260923101500) reist mit den Rohwert-Fakten:
+     * <p>Das Richtungspaar ({@code energie_positiv}/{@code _negativ}, V20260923231500) reist mit den Rohwert-Fakten:
      * aus derselben Zeile wie {@code energie}, und nur, wenn deren Energie die freigegebene ist — sonst beschriebe es
      * andere Rohwerte. Ein berichtigter Wert setzt eine Nettomenge ohne Richtung: kein Paar (unbekannt, nie 0).
      */

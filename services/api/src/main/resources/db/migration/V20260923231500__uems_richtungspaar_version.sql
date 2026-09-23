@@ -40,7 +40,7 @@ ALTER TABLE messreihe_periode_version ADD CONSTRAINT messreihe_periode_version_r
 COMMENT ON COLUMN messreihe_viertelstunde_version.energie_positiv IS
     'Wie messreihe_viertelstunde.energie_positiv, fuer diese Version: aus denselben Rohwert-Fakten '
     'wie energie. NULL = keine zwei Richtungen, eine Nettomengen-Berichtigung oder ein Ersatzwert '
-    '(keine Richtung bestimmbar), oder die Version entstand vor V20260923101500.';
+    '(keine Richtung bestimmbar), oder die Version entstand vor V20260923231500.';
 COMMENT ON COLUMN messreihe_viertelstunde_version.energie_negativ IS
     'Der Betrag des negativen Anteils derselben Version; unbekannt ist keine Null.';
 COMMENT ON COLUMN messreihe_periode_version.menge_positiv IS
