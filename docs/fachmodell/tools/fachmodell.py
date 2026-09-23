@@ -568,6 +568,7 @@ VERFEINERUNGEN = {
     "messstelle": [
         ("AP-04 E1", "⚠ Eine Messstelle hat genau EINE Hauptgröße (identitätsstiftend, nie änderbar) und 0..n Nebengrößen desselben Messortes, jede mit eigener führender Quelle — das ERSETZT AP-00 §4.2 „Messstelle 1 : 1 Messgröße“ (AP-04 W1). Nebengrößen tragen nie Bilanz oder Bericht."),
         ("AP-04 E3", "Vergleichsquellen werden mit Zweck gekennzeichnet (Plausibilität · Ersatz bei Ausfall · Abrechnungszähler) und beide Werte nebeneinander gezeigt — ohne Bewertung, ohne Ersatz."),
+        ('AP-16 E10 (IP-17/IP-18)', 'Eine Vergleichsquelle trägt eine **Toleranz** als Fassung (Startwert 2 % je Monat, änderbar mit Begründung ab dem laufenden Monat). Liegt die Monatsabweichung darüber, steht unter der Quelle-Karte ein Befund „Abweichung x % (Toleranz y %) — bitte prüfen“ — ohne Ursache; die Werte stehen weiter nebeneinander, keiner ersetzt den anderen. Messmittel-Angaben ohne Erhebung heißen „nicht erhoben“; ein wesentlicher Einsatz mit solchen Messmitteln wird zur **Prüfaufgabe**.'),
         ("AP-04 E7", "Das Kennzeichen ist vierstellig fortlaufend („MS-0001“) je Kundenbereich, änderbar auf 2–16 Zeichen (Großbuchstaben, Ziffern, „-“, „.“, „/“); archivierte Kennzeichen bleiben belegt."),
         ("AP-04 E8", "Eine Messstelle OHNE Quelle ist erlaubt und eingerichtet (Kennzeichen + Name + Hauptgröße + Ort); ihre Beobachtung ist „keine Datenquelle“, und in Bilanz und Bericht steht sie als „ohne Werte“ — nie als 0."),
         ("AP-04 E12", "Die elektrische Stellung „Unterzähler von …“ bezieht sich auf die übergeordnete MESSSTELLE derselben Anlage (zeitgültig, Tag), nicht auf eine Komponente."),
@@ -607,6 +608,43 @@ VERFEINERUNGEN = {
         ("AP-01 E11", "„Marktoptimierung“ bleibt das Kundenwort und eine Option der Radiogruppe Betriebsmodell — nicht „Arbitrage“."),
         ("AP-03 E15", "Wird ein Bedienrecht entzogen, bleiben gesetzte Handeingriffe bis zum Ablauf oder bis ein Berechtigter sie beendet; die Zone „Jetzt“ nennt Urheber und „Bedienrecht beendet am …“."),
     ],
+}
+
+
+# ---------------------------------------------------------------------------------------------
+# ABSCHNITTE_NACH — freie Abschnitte, die hinter einem Begriff (nach seinen Verfeinerungen)
+# wörtlich ins Glossar kommen: Summenwert (PR 855), Ersatzwert/Korrektur/Widerruf (PR 909).
+# ---------------------------------------------------------------------------------------------
+ABSCHNITTE_NACH = {
+    "messstelle": ["""## Summenwert
+
+Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
+aus Registern und anderen berechneten Messstellen derselben Anlage, mit
+Vorzeichen und Faktor. Kein eigenes drittes Objekt. Die Messstellen-Welt
+nennt sie weiterhin „berechnet (Summe)“ mit Kennzeichen; „Gesamt-PV“ bleibt
+Cockpit-Wort. „Gesamtwert“, „PV gesamt“ und „Helfer“ sind keine neuen
+Produkttexte (freie Kundennamen bleiben erhalten). Konstante `SUMMENWERT`
+in `frontend/portal/src/glossar.ts`; Umstellung der Bestandsflächen H-5/H-7.
+
+Die Rolle ist eine gesonderte Zuordnung am Gerät: PV-Produktion, Verbrauch,
+Netz oder keine Rolle (Vorgabe). Sie wirkt ab jetzt auf die Anlagen-Anzeige,
+mit Änderungsprotokoll. Ein Wert zählt je Anlage und Rolle einmal, Netz hat
+höchstens einen maßgeblichen Wert. Vertrag und Zwillinge:
+[`rollen-zuordnung.md`](../contracts/v2/rollen-zuordnung.md)."""],
+    "grund": ["""### Ersatzwert, Korrektur und Widerruf
+
+Ein **Ersatzwert** füllt oder verteilt fehlende Messwerte mit einer benannten Methode
+und einer Begründung. Bei gemessenem Zuwachs wird dessen Menge verteilt; ohne
+Zuwachs kann eine belegte Menge, eine Vorperiode oder eine Vergleichsquelle helfen.
+Ein nachgetragener Ablesestand bleibt als solcher erkennbar.
+
+Eine **Korrektur** bewahrt den bisherigen Wert und erzeugt nach der Freigabe eine neue
+Version. Ein Vorschlag verändert noch keinen Wert. Bei eingeschalteter Prüfung durch
+eine zweite Person kann der Ersteller nicht selbst freigeben.
+
+Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
+eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
+Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md)."""],
 }
 
 # ---------------------------------------------------------------------------------------------
