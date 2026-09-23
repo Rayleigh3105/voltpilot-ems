@@ -58,6 +58,9 @@ class RechtRoutenArchitekturTest {
         for (String r : List.of("anlegen", "aendern", "fassungEintragen", "archivieren", "loeschen", "vorschau")) {
             m.put("KennzahlController#" + r, kennzahl);
         }
+        String bezugsbasis = "KennzahlService.fuerBezugsbasis — bezugsbasis.verwalten an der Geltung der Kennzahl";
+        m.put("BezugsbasisController#anlegen", bezugsbasis);
+        m.put("BezugsbasisController#entwerfen", bezugsbasis);
         String bericht = "BerichtService — Geltung des Berichts (G1), Aufrufer KennzahlAufrufer";
         for (String r : List.of("anlegen", "freigeben", "archivieren", "verwerfen", "wiedervorlage")) {
             m.put("BerichtController#" + r, bericht);

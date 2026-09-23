@@ -489,6 +489,10 @@ public class BezugsgroesseService {
             if (!einsaetze.isEmpty()) throw new EnergieeinsatzAbgelehnt(409, "bezugsgroesse_in_verwendung",
                     "Diese Bezugsgröße wird von Energieeinsätzen verwendet. Sie können sie archivieren.",
                     Map.of("energieeinsaetze", einsaetze));
+            List<String> bezugsbasen = repo.bezugsbasisVerweise(id);
+            if (!bezugsbasen.isEmpty()) throw new EnergieeinsatzAbgelehnt(409, "bezugsgroesse_in_verwendung",
+                    "Diese Bezugsgröße ist Einflussgröße einer Bezugsbasis. Sie können sie archivieren.",
+                    Map.of("bezugsbasen", bezugsbasen));
             pruefe(BezugsgroesseRegeln.loeschen(repo.werteZahl(id)));
             repo.loeschen(id);
             repo.protokoll(tenant, id, "geloescht", alsJson(felder(entwurf(b))), null, wer);

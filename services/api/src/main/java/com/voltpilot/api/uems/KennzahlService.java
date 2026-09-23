@@ -214,6 +214,29 @@ public class KennzahlService {
         return new KennzahlDto.Berechnung(k.id(), k.kennzeichen(), tag, fassungDarstellung(f, kat, zone));
     }
 
+    /**
+     * Die Kennzahl einer Bezugsbasis (AP-17 IP-7): lesbar wie jeder Kennzahl-Leseweg (sonst 404), mit {@code recht}
+     * dazu dieses Recht an ihrer Geltung (sonst 403, Standort-Zaun über die Kennzahl). Die Fassung und ihre Eingänge
+     * sind die am Tag {@code tag} ({@code null} = heute in der Zeitzone der Kennzahl).
+     */
+    BasisKennzahl fuerBezugsbasis(UUID id, String recht, ProtokollAkteur wer, LocalDate tag) {
+        Katalog kat = katalog();
+        Zeile k = lesbar(kat, id);
+        Instant jetzt = jetzt();
+        Geltung g = geltungVon(k, jetzt);
+        if (recht != null) {
+            darf(wer, new Geltung(g.art(), g.id(), g.name(), g.rechteGeltung(), g.standort(), g.standortName(), recht,
+                    g.zone()), jetzt);
+        }
+        LocalDate am = tag != null ? tag : LocalDate.ofInstant(jetzt, g.zone());
+        Optional<FassungZeile> f = kat.fassungAm(id, am);
+        return new BasisKennzahl(k, g.zone(), jetzt, f.orElse(null),
+                f.map(x -> kat.eingaenge(x.id())).orElse(List.of()));
+    }
+
+    /** Was eine Bezugsbasis von ihrer Kennzahl liest; {@code fassung} ist {@code null}, wenn am Tag keine galt. */
+    record BasisKennzahl(Zeile zeile, ZoneId zone, Instant jetzt, FassungZeile fassung, List<EingangZeile> eingaenge) {}
+
     // ================================================================================ schreiben
 
     /** Legt die Kennzahl mit Fassung 1 „gilt seit Beginn“ an (V1, K1). */

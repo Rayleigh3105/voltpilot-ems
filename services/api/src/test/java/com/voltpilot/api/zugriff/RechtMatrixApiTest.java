@@ -286,6 +286,9 @@ class RechtMatrixApiTest {
         // Gruppe 3 — Kennzahlen, Berichte, Exporte
         z.add(new Zeile("kennzahl.standort_definieren|kennzahl.unternehmen_definieren", HttpMethod.POST,
                 "/api/v1/kennzahlen", "eee33333"));
+        z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST, "/api/v1/kennzahlen/{FREMD}/bezugsbasen", "eee33333"));
+        z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST,
+                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/fassungen", "eee33333"));
         z.add(new Zeile("bericht.standort_freigeben|bericht.unternehmen|bewertung.abrufen", HttpMethod.POST, "/api/v1/berichte",
                 "eee33333"));
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/sites/{A1}/cockpit-layout", "ee44333e"));
@@ -315,7 +318,6 @@ class RechtMatrixApiTest {
             Map.entry("export.unternehmen", "lesend — IP-11"),
             Map.entry("auswertung.anlegen", "keine Schreibroute (Eigene Auswertung liest nur)"),
             Map.entry("energieeinsatz.ansehen", "lesend — EnergieeinsatzApiTest, Prozess-Messstellen-Zaun R14"),
-            Map.entry("bezugsbasis.verwalten", "reserviert für AP-17 IP-7/IP-8 (Routen)"),
             Map.entry("bezugsbasis.freigeben", "reserviert für AP-17 IP-8 (Routen)"),
             Map.entry("bezugsbasis.ansehen", "reserviert für AP-17 IP-8 (Routen), Zaun über die Kennzahl"));
 

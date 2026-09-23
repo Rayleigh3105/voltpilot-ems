@@ -15,6 +15,6 @@ Leser. Leser und Grundlage bilden IP-7, Routen und `@Recht` IP-8, Anstoß-Schrei
 
 ⚠ **Eingefroren:** `bezugsbasis_fassung_eingefroren` lässt außerhalb des Entwurfs nur Freigabe-Entscheid und das Ende
 (einmal) zu; ein Schreibweg, der eine freigegebene Fassung „korrigiert“, scheitert mit 23514 — richtig ist Fassung n + 1.
-⚠ **Löschwege:** eine Bezugsgröße als Variable 2 hält `BezugsgroesseService.loeschen` per FK auf; die lesbare 409 ist
-Folgepunkt des ersten Schreibwegs (IP-7/IP-11). Offboarding räumt die Tabellen vor Kennzahl/Benutzer ab.
+⚠ **Löschwege:** eine Bezugsgröße als Variable hält `BezugsgroesseService.loeschen` per FK auf; seit IP-7 lesbar als
+409 `bezugsgroesse_in_verwendung` mit `bezugsbasen` ([Grundlage und Routen](uems-bezugsbasis-grundlage.md)). Offboarding räumt die Tabellen vor Kennzahl/Benutzer ab.
 Nachweis: `UemsBezugsbasisMigrationTest`.

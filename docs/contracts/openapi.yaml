@@ -10824,7 +10824,8 @@ paths:
         `bezugsgroesse_nur_ohne_wert_loeschen`, V20260913120000); das Kennzeichen
         bleibt als Grabstein im Kennzeichen-Verlauf belegt. Protokolleintrag
         `geloescht` mit dem letzten Stand in `alt`. Verweise aus Energieeinsätzen (auch aufgehobene)
-        ergeben 409 `bezugsgroesse_in_verwendung` mit `energieeinsaetze` als Liste der Kennzeichen;
+        ergeben 409 `bezugsgroesse_in_verwendung` mit `energieeinsaetze` als Liste der Kennzeichen,
+        Variablen einer Bezugsbasis-Fassung (AP-17 IP-7) dasselbe mit `bezugsbasen`;
         die Bezugsgröße kann archiviert werden.
       responses:
         "204": { description: Gelöscht. }
@@ -11569,6 +11570,94 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BezugsbasisMethoden" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/kennzahlen/{id}/bezugsbasen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Legt die Bezugsbasis BB-… einer Kennzahl an (AP-17 IP-7, B1, B2, B4).
+      description: >
+        Recht `bezugsbasis.verwalten` an der Geltung der Kennzahl (Standort-Zaun über die Kennzahl). Höchstens eine
+        laufende Bezugsbasis je Kennzahl; der Verantwortliche ist der der Kennzahl. Vertrag bezugsbasis.md §13.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsbasisAnlegen" }
+      responses:
+        "201":
+          description: Die angelegte Bezugsbasis (noch ohne Fassung).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsbasis" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Die Bezugsbasis mit ihren Fassungen.
+      description: Recht `bezugsbasis.ansehen`; Sichtbarkeit über die Kennzahl (außerhalb 404).
+      responses:
+        "200":
+          description: Die Bezugsbasis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsbasis" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/fassungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Bildet eine Fassung als Entwurf mit Vorschau - Grundlage als Kopie mit Prüfsumme, Basiswert Σ ÷ Σ.
+      description: >
+        Recht `bezugsbasis.verwalten` an der Geltung der Kennzahl. Referenzperiode JJJJ-MM/JJJJ-MM aus abgeschlossenen
+        Monaten (P1/P3), Methode `verhaeltnis` (andere 422 `methode_noch_nicht_gebaut` bis IP-10). Ein offener
+        Entwurf wird neu gebildet. Die Antwort ist die gespeicherte Fassung (freigabe_status `entwurf`), byte-gleich
+        zu GET …/fassungen/{n}. Vertrag bezugsbasis.md §13.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsbasisEntwurf" }
+      responses:
+        "200":
+          description: Die Fassung als Vorschau.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisFassung" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/fassungen/{n}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: n, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    get:
+      tags: [kennzahlen]
+      summary: Die gespeicherte Fassung - byte-gleich zur Vorschau ihres Entwurfs.
+      description: Recht `bezugsbasis.ansehen`; Sichtbarkeit über die Kennzahl (außerhalb 404).
+      responses:
+        "200":
+          description: Die Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisFassung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
   /api/v1/kennzahl-vorlagen:
     get:
       tags: [kennzahlen]
@@ -14440,6 +14529,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/MessstelleWerteFehler" }
+    BezugsbasisAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben. `{code, message, …Fakten}`; die Codes stehen in bezugsbasis.md §13
+        (403/404 der Kennzahl in deren Form).
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true, required: [code, message],
+                    properties: { code: { type: string }, message: { type: string } } }
     BezugsgroesseAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code, Status und der
@@ -26144,6 +26241,83 @@ components:
         hat_werte: { type: boolean, description: "Trägt sie einen Wert? Dann ist sie nicht löschbar (V5)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
+    BezugsbasisAnlegen:
+      type: object
+      additionalProperties: false
+      properties:
+        zweck: { type: string, nullable: true }
+    BezugsbasisEntwurf:
+      type: object
+      additionalProperties: false
+      required: [referenzperiode, methode]
+      properties:
+        referenzperiode: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])/[0-9]{4}-(0[1-9]|1[0-2])$" }
+        methode: { type: string, enum: [verhaeltnis, regression_eine_variable, regression_zwei_variablen, gradtage] }
+        variablen: { type: array, maxItems: 2, items: { type: string, format: uuid }, nullable: true, description: "Beim Verhältnis nur der Nenner (V2)." }
+        toleranz_prozent: { type: string, nullable: true, description: "Dezimaltext, Startwert 2." }
+        wiedervorlage_monate: { type: integer, nullable: true, description: "Startwert 12." }
+    Bezugsbasis:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, description: "BB-0001 …" }
+        kennzahl_id: { type: string, format: uuid }
+        kennzahl: { type: string }
+        zweck: { type: string, nullable: true }
+        verantwortlich_name: { type: string }
+        beendet_zum: { type: string, format: date, nullable: true }
+        beendet_grund: { type: string, nullable: true }
+        angelegt_am: { type: string, format: date-time }
+        fassungen: { type: array, items: { $ref: "#/components/schemas/BezugsbasisFassungKurz" } }
+    BezugsbasisFassungKurz:
+      type: object
+      properties:
+        fassung: { type: integer }
+        referenzperiode: { type: string }
+        methode: { type: string }
+        datenlage: { type: string, enum: [vollstaendig, vorlaeufig] }
+        freigabe_status: { type: string, enum: [entwurf, beantragt, freigegeben, abgelehnt] }
+        basiswert: { type: string, nullable: true }
+        gilt_ab: { type: string, format: date }
+        gilt_bis: { type: string, format: date, nullable: true }
+        pruefsumme: { type: string, nullable: true }
+    BezugsbasisVariable:
+      type: object
+      properties:
+        position: { type: integer }
+        rolle: { type: string, enum: [nenner, variable] }
+        bezugsgroesse_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        fassung: { type: integer, nullable: true }
+        spannweite_von: { type: string, nullable: true }
+        spannweite_bis: { type: string, nullable: true }
+    BezugsbasisFassung:
+      type: object
+      description: Vorschau und gespeicherte Kopie in einem (bezugsbasis.md §13).
+      properties:
+        bezugsbasis_id: { type: string, format: uuid }
+        bezugsbasis: { type: string }
+        kennzahl_id: { type: string, format: uuid }
+        kennzahl: { type: string }
+        fassung: { type: integer }
+        referenzperiode: { type: string }
+        methode: { type: string }
+        gilt_ab: { type: string, format: date }
+        monate: { type: integer }
+        mindest_monate: { type: integer }
+        datenlage: { type: string, enum: [vollstaendig, vorlaeufig] }
+        datenlage_gruende: { type: array, items: { type: object, additionalProperties: true } }
+        vorbehalte: { type: array, items: { type: string } }
+        basiswert: { type: string, description: "Σ Zähler ÷ Σ Nenner, 4 Stellen (M1, M5)." }
+        toleranz_prozent: { type: string }
+        wiedervorlage_monate: { type: integer }
+        variablen: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVariable" } }
+        faktoren: { type: array, items: { type: object, additionalProperties: true } }
+        freigabe_status: { type: string, enum: [entwurf, beantragt, freigegeben, abgelehnt] }
+        gebildet_am: { type: string, format: date-time }
+        gebildet_von: { type: string }
+        grundlage: { type: object, additionalProperties: true, description: "Der gespeicherte kanonische Text, roh eingebettet (F3)." }
+        pruefsumme: { type: string, description: "sha256: über die Grundlage." }
     BezugsbasisMethoden:
       type: object
       description: Der Methoden-Katalog (bezugsbasis-methoden.schema.json), Byte für Byte die Vertragsdatei.

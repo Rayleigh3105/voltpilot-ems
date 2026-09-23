@@ -280,6 +280,20 @@ public class BezugsgroesseRepository {
     }
 
     /** Auch aufgehobene Verweise sind Belege und bleiben durch den RESTRICT-FK erhalten. */
+    /**
+     * Die Bezugsbasen (BB-…), deren Fassung die Bezugsgröße als Variable führt — auch eine aufgehobene Zeile hält sie
+     * per Fremdschlüssel (AP-17 IP-7, Folgepunkt aus IP-6).
+     */
+    public List<String> bezugsbasisVerweise(UUID id) {
+        // Repository-Leser in Migrationstests laufen auch vor AP-17 IP-6.
+        if (jdbc.queryForObject("SELECT to_regclass('bezugsbasis_variable')::text", String.class) == null)
+            return List.of();
+        return jdbc.queryForList("SELECT DISTINCT b.kennzeichen FROM bezugsbasis_variable v "
+                + "JOIN bezugsbasis_fassung f ON f.id = v.fassung_id AND f.tenant_id = v.tenant_id "
+                + "JOIN bezugsbasis b ON b.id = f.bezugsbasis_id AND b.tenant_id = f.tenant_id "
+                + "WHERE v.bezugsgroesse_id = ? ORDER BY b.kennzeichen", String.class, id);
+    }
+
     public List<String> energieeinsatzVerweise(UUID id) {
         // Repository-Leser in Migrationstests laufen auch vor AP-16 IP-3.
         if (jdbc.queryForObject("SELECT to_regclass('energieeinsatz_einflussgroesse')::text", String.class) == null)

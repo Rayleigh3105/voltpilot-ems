@@ -192,7 +192,9 @@ class KennzahlSchnittstelleVertragTest {
                 "/api/v1/kennzahlen/{id}/variablen-vorschlag", List.of("parameters", "get"));
         erwartet.forEach((pfad, methoden) -> assertThat(((Map<String, Object>) pfade.get(pfad)).keySet()).as(pfad)
                 .containsExactlyInAnyOrderElementsOf(methoden));
-        assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/kennzahlen")).toList())
+        // Die Bezugsbasis an der Kennzahl (AP-17 IP-7) hält BezugsbasisGrundlageTest fest.
+        assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/kennzahlen"))
+                .filter(p -> !p.contains("/bezugsbasen")).toList())
                 .containsExactlyInAnyOrderElementsOf(erwartet.keySet());
     }
 

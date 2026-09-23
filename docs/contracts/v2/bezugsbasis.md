@@ -17,8 +17,8 @@ Bezugsbasis BB-0001 Fassung 2 (10 523 kWh + 0,2343 kWh je kg) werden bei 250 000
 | `frontend/portal/src/bezugsbasis.ts` | der TS-Zwilling (rein) |
 | `services/optimization/voltpilot_optimization/bezugsbasis.py` | die Python-Referenz — die bereinigte Rechnung aus `k_faelle.py` |
 
-> **Wer anruft:** noch niemand. Tabellen, Freigabe und Routen (IP-5 ff.), Lesemodell `BezugsbasisVergleich` und die Fläche
-> (IP-9 ff.), der Leistungsvergleich als Bericht (IP-19 ff.) rufen diese Regeln an. Keine Migration, keine Route, keine Fläche.
+> **Wer anruft:** der Leser `BezugsbasisGrundlage` (IP-7, §13: Basiswert und Datenlage beim Entwurf). Freigabe (IP-8), Lesemodell
+> `BezugsbasisVergleich` und die Fläche (IP-9 ff.), der Leistungsvergleich als Bericht (IP-19 ff.) folgen.
 
 ## 1. Das Objekt (B1–B4)
 
@@ -186,10 +186,47 @@ konstruierte Rundungsprobe, ebenso der Fall „zwei unabhängige Einflussgröße
 - Nicht in diesem Vertrag: P3 (vorläufige Werte in der Grundlage), Anstoß (A1–A5), Frist-Ableitung, Faktor-Änderung und
   Prüfsummen-Bildung als Operation — sie gehören zu den Paketen mit Tabelle und Lauf (IP-5 ff.).
 
+## 13. Routen (IP-7: Anlegen und Entwurf)
+
+Recht `bezugsbasis.verwalten` an der Geltung der Kennzahl (`@Recht` DIENST, genaue Prüfung `KennzahlService.fuerBezugsbasis`);
+die Lese-Routen nennen `bezugsbasis.ansehen` im Kommentar, die Sichtbarkeit kommt über die Kennzahl (außerhalb der Sicht 404,
+anderer Kundenbereich 404 über RLS). Ablehnungen `{code, message, …Fakten}`.
+
+| Route | Was | Ablehnungen |
+|---|---|---|
+| `POST /api/v1/kennzahlen/{id}/bezugsbasen` | legt BB-… an; Körper `{zweck?}`; Verantwortlicher = der der Kennzahl (B4, ohne ihn die anlegende Person); Protokoll `bezugsbasis_angelegt`; 201 | 409 `bezugsbasis_laeuft` (B1) · 409 `kennzahl_archiviert` · 422 `kennzahl_ohne_bezugsbasis` (B2: Anteil, Quotient ohne Messstelle im Zähler) |
+| `GET …/bezugsbasen/{bid}` | die Basis mit ihren Fassungen (Nummer, Referenzperiode, Methode, Datenlage, `freigabe_status`, Basiswert, `gilt_ab`, Prüfsumme) | 404 |
+| `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?}`; ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung | 422 `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `methode_noch_nicht_gebaut` (alles außer `verhaeltnis` bis IP-10) · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · `toleranz_ungueltig` · `wiedervorlage_ungueltig`; 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
+| `GET …/bezugsbasen/{bid}/fassungen/{n}` | die gespeicherte Fassung — **byte-gleich** zur Antwort ihres Entwurfs | 404 |
+
+**Fassung** (Antwort): `fassung`, `referenzperiode`, `methode`, `gilt_ab` (Tag nach der Referenzperiode, P4), `monate`,
+`mindest_monate`, `datenlage`, `datenlage_gruende`, `vorbehalte`, `basiswert` (Dezimaltext, 4 Stellen, M5), `toleranz_prozent`,
+`wiedervorlage_monate`, `variablen` (Position 1 = Nenner mit Bezugsgrößen-Fassung und Spannweite min–max der Nenner),
+`faktoren` (leer bis IP-16), `freigabe_status` (`entwurf`; Beantragen und Freigeben IP-8), `grundlage` (der gespeicherte
+kanonische Text, roh eingebettet) und `pruefsumme` (`sha256:` über ihn, gleich `bericht_pruefsumme`).
+
+**Grundlage** (F3, kanonisch wie §6): `referenzperiode`, `methode`, `kennzahl` (Kennzeichen, Rechenform, Definitions-Fassung am
+letzten Tag), `perioden[]` — je Monat die AKTUELLE Zeile der Kennzahl (`kennzahl`: ungerundeter `wert`, `version`,
+`definition_fassung`, `zustand`, `menge_zustand`, `kennzeichen`), `zaehler`, `nenner` und jeder Eingang (`objekt`, `wert`,
+`version` bzw. `fassung`, `einheit`, Kennzeichen); ein Monat ohne Zahl steht nur mit `grund` (`noch_nicht_gebildet` oder
+dem Grund der Kennzahl) und zählt nicht —, `monate`, `mindest_monate`, `datenlage`, `datenlage_gruende`, `vorbehalte`,
+`variablen`, `faktoren`, `basiswert`. Nichts wird nachgerechnet: der Basiswert ist `basiswert` (§4) über die gespeicherten
+Zähler und Nenner der Monate mit Zahl.
+
+**Datenlage** (P2/P3): `vorlaeufig` mit je einem Grund `monate` (n von 12, dazu `ohne_wert[]`), `angeschnitten` (Monat mit
+„ab TT.MM.JJJJ“ im Kennzeichen der Kennzahl) und `vorlaeufige_werte` (`zustand` ≠ `endgueltig`); sonst `vollstaendig`.
+Die Monats-Zeilen der Referenzdatei 1.8 (`bezugsbasen[].fassungen[].grundlage`) sind eine verkürzte Form dieser Grundlage
+(dort `annahme` statt Eingängen, der Kennzahl-Wert gerundet); ihre Prüfsummen entstehen mit derselben Kanonisierung
+(`BezugsbasisGrundlageTest`), die der API aus dem ungerundeten gespeicherten Wert — es sind darum nicht dieselben Zahlen.
+
+Löschweg: eine Bezugsgröße, die Variable einer Fassung ist (auch eines aufgehobenen Entwurfs), lehnt `DELETE
+/api/v1/bezugsgroessen/{id}` mit 409 `bezugsgroesse_in_verwendung` und `bezugsbasen: ["BB-…"]` ab.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest=BezugsbasisVectorsTest)
+(cd services/api && ./mvnw test -Dtest='BezugsbasisGrundlageTest,BezugsbasisApiTest')   # Routen, Docker
 (cd frontend/portal && npx vitest run src/uemsBezugsbasis.test.ts)
 (cd services/optimization && PYTHONPATH=. uv run --no-project --with pytest --with jsonschema python -m pytest tests/test_bezugsbasis.py)
 ```
