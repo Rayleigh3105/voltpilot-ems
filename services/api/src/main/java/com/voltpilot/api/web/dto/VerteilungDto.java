@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.time.LocalDate;
@@ -42,8 +43,32 @@ public final class VerteilungDto {
      * Die Verteilung einer Messstelle: ohne {@code am} alle wirksamen Anteile (jede Fassung); mit {@code am} die an
      * dem Tag geltenden und der {@code zustand} des Tages — {@code verteilt} oder ausdrücklich {@code nicht verteilt}
      * (nie „zu 0 % verteilt“); ohne {@code am} ist er {@code null}.
+     *
+     * @param doppelzaehlung nur in der Antwort auf {@code PUT} (beim Lesen fehlt das Feld ganz): je Kostenstelle, an
+     *     die die Messstelle ab {@code gueltig_ab} geht, welcher Posten dort bereits in welchem enthalten ist — ein
+     *     Hinweis, keine Ablehnung (Captain-Entscheid „Warnen“); leer, wenn nichts doppelt zählt
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Verteilung(UUID messstelleId, String kennzeichen, LocalDate am,
-            String zustand, List<Anteil> anteile) {}
+            String zustand, List<Anteil> anteile,
+            @JsonInclude(JsonInclude.Include.NON_NULL) List<Doppelzaehlung> doppelzaehlung) {
+
+        public Verteilung(UUID messstelleId, String kennzeichen, LocalDate am, String zustand, List<Anteil> anteile) {
+            this(messstelleId, kennzeichen, am, zustand, anteile, null);
+        }
+
+        /** Dieselbe Verteilung mit dem Hinweis des Setzens. */
+        public Verteilung mitDoppelzaehlung(List<Doppelzaehlung> hinweis) {
+            return new Verteilung(messstelleId, kennzeichen, am, zustand, anteile, List.copyOf(hinweis));
+        }
+    }
+
+    /**
+     * Die Warnung vor doppelter Zählung an EINER Kostenstelle am Tag {@code am} (= {@code gueltig_ab} des Satzes):
+     * dieselben Einträge wie {@code doppelzaehlung} der Kostenstellen-Sicht, beschränkt auf die Paare, in denen die
+     * gesetzte Messstelle Teil oder Summe ist.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Doppelzaehlung(Kostenstelle kostenstelle, LocalDate am,
+            List<KostenstelleEnergieDto.Enthalten> enthalten, List<KostenstelleEnergieDto.NichtPruefbar> nichtPruefbar) {}
 }

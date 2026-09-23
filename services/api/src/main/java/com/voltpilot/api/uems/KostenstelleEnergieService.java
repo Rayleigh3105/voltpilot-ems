@@ -7,6 +7,7 @@ import com.voltpilot.api.uems.KostenstelleProzessRepository.Art;
 import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.web.dto.KostenstelleEnergieDto;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
+import com.voltpilot.api.web.dto.VerteilungDto;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -20,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.springframework.http.HttpStatus;
@@ -42,7 +44,8 @@ import org.springframework.web.server.ResponseStatusException;
  *       unberührt.</li>
  *   <li>Welcher Posten in welchem bereits enthalten ist, sagt {@link KostenstelleDoppelzaehlung} (Captain-Entscheid
  *       14.09.2026: warnen, keine Zahl ändern) — aus den Formeln je Tag, wie {@link BerechnetePeriodenLauf} sie rechnet,
- *       und über dieselben Quellen wie die Zahlen. Die Warnung steht neben den Blöcken und berührt keinen.</li>
+ *       und über dieselben Quellen wie die Zahlen. Die Warnung steht neben den Blöcken und berührt keinen. Beim
+ *       Setzen einer Verteilung antwortet dieselbe Regel als Hinweis ({@link #doppelzaehlungBeimSetzen}).</li>
  * </ul>
  *
  * <p><b>Nichts wird gespeichert.</b> Ein verteilter Wert entsteht beim Lesen und trägt die Version seiner Quelle;
@@ -236,6 +239,57 @@ public class KostenstelleEnergieService {
                 raus.add(new KostenstelleDoppelzaehlung.Formel(kz, ab, letzter, terme));
             }
         });
+        return raus;
+    }
+
+    /**
+     * Die Warnung beim Setzen einer Verteilung (Captain-Entscheid: warnen, nicht ablehnen): an jeder Kostenstelle, an die
+     * {@code messstelle} am Tag {@code tag} eine Zeile hat, die Paare, in denen sie Teil oder Summe ist — dieselbe Regel
+     * und dieselben Posten wie die Sicht, nur ohne Tageswerte (die Einrichtung zählt, nicht der Wert). Kostenstellen ohne
+     * Befund fehlen; nichts wird geschrieben.
+     */
+    public List<VerteilungDto.Doppelzaehlung> doppelzaehlungBeimSetzen(UUID messstelle, LocalDate tag) {
+        Map<UUID, List<KostenstelleEnergieRepository.Anteil>> anteile = new HashMap<>();
+        lesen.anteile(tag, tag).forEach(a -> anteile.computeIfAbsent(a.messstelleId(), x -> new ArrayList<>()).add(a));
+        List<KostenstelleEnergieRepository.Anteil> eigene = anteile.getOrDefault(messstelle, List.of());
+        if (eigene.isEmpty()) {
+            return List.of();
+        }
+        List<VerteilungRegeln.Ziel> ziele = lesen.ziele().stream()
+                .map(z -> new VerteilungRegeln.Ziel(z.kennzeichen(), z.gueltigAb(), z.gueltigBis())).toList();
+        String selbst = null;
+        List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
+        for (Messstelle m : messstellen.alle()) {
+            if (m.id().equals(messstelle)) {
+                selbst = m.kennzeichen();
+            }
+            List<KostenstelleEnergieRepository.Anteil> zeilen = anteile.get(m.id());
+            if (zeilen != null) {
+                quellen.add(new KostenstelleEnergieRegeln.Quelle(m.kennzeichen(), m.art(), m.hauptgroesse().groesse(),
+                        m.hauptgroesse().richtung(), m.hauptgroesse().einheit(),
+                        zeilen.stream().map(a -> new KostenstelleEnergieRegeln.Anteil(a.kostenstelle(), a.anteilProzent(),
+                                a.gueltigAb(), a.gueltigBis(), a.fassung())).toList(),
+                        List.of()));
+            }
+        }
+        if (selbst == null) {
+            return List.of();
+        }
+        Map<String, UUID> kostenstellen = new HashMap<>();
+        lesen.kennzeichenDerZiele().forEach((id, kz) -> kostenstellen.put(kz, id));
+        List<KostenstelleDoppelzaehlung.Formel> formeln = formeln(tag, tag, uhr.instant());
+        List<VerteilungDto.Doppelzaehlung> raus = new ArrayList<>();
+        for (String k : new TreeSet<>(eigene.stream().map(KostenstelleEnergieRepository.Anteil::kostenstelle).toList())) {
+            String kz = selbst;
+            KostenstelleDoppelzaehlung.Urteil u = KostenstelleDoppelzaehlung.pruefe(k, tag, tag, ziele, quellen, formeln);
+            KostenstelleEnergieDto.Doppelzaehlung d = doppelzaehlung(new KostenstelleDoppelzaehlung.Urteil(
+                    u.enthalten().stream().filter(e -> kz.equals(e.teil()) || kz.equals(e.summe())).toList(),
+                    u.nichtPruefbar().stream().filter(n -> kz.equals(n.messstelle())).toList()));
+            if (!d.enthalten().isEmpty() || !d.nichtPruefbar().isEmpty()) {
+                raus.add(new VerteilungDto.Doppelzaehlung(new VerteilungDto.Kostenstelle(kostenstellen.get(k), k), tag,
+                        d.enthalten(), d.nichtPruefbar()));
+            }
+        }
         return raus;
     }
 

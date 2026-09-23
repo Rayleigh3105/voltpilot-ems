@@ -3487,6 +3487,16 @@ export interface MessstelleVerteilung {
   am: string | null;
   zustand: 'verteilt' | 'nicht verteilt' | null;
   anteile: MessstelleVerteilungAnteil[];
+  /**
+   * Nur in der Antwort auf PUT: je Ziel-Kostenstelle, welcher Posten dort ab `gueltig_ab` bereits in welchem enthalten
+   * ist — ein Hinweis, keine Ablehnung (Captain „Warnen“); leer = nichts zählt doppelt.
+   */
+  doppelzaehlung?: {
+    kostenstelle: { id: string; kennzeichen: string };
+    am: string;
+    enthalten: KostenstelleDoppeltEnthalten[];
+    nicht_pruefbar: KostenstelleNichtPruefbar[];
+  }[];
 }
 
 /**

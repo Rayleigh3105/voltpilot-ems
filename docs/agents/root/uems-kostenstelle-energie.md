@@ -22,12 +22,12 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
 | Route | `GET /api/v1/unternehmen/kostenstellen/{id}/energie?periode=tag\|monat\|jahr&am=&version=` (`web/KostenstelleEnergieController`, `web/dto/KostenstelleEnergieDto`) |
 | Regel (rein) | `uems/KostenstelleEnergieRegeln.energie` — RUFT `VerteilungRegeln.amTag`/`.erbe` und `BilanzAbleitung.summeOhneAnzeige`; Vertrag Regel `kostenstelle` in `verteilung-vectors.json` 1.2 (F6, F12, F13, F14), nur Java (`zwillinge_grund`) |
 | Dienst | `uems/KostenstelleEnergieService` (Tageswerte über `MessstelleWerteService`, Versionen ≥ 2 über `KostenstelleEnergieRepository.versionen`, Herkunft über `BilanzwertHerkunft`) |
-| Warnung vor doppelter Zählung | `uems/KostenstelleDoppelzaehlung.pruefe` (rein, Regel `doppelzaehlung` in `verteilung-vectors.json` 1.4) über dieselben Quellen + `BerechnetePeriodenLauf.formelnJeTag` → Feld `doppelzaehlung` (letztes Feld, `enthalten[]`/`nicht_pruefbar[]`) — ändert keine Zahl |
+| Warnung vor doppelter Zählung | `uems/KostenstelleDoppelzaehlung.pruefe` (rein, Regel `doppelzaehlung` in `verteilung-vectors.json` 1.4) über dieselben Quellen + `BerechnetePeriodenLauf.formelnJeTag` → Feld `doppelzaehlung` (letztes Feld, `enthalten[]`/`nicht_pruefbar[]`) — ändert keine Zahl. Beim Setzen: `PUT …/messstellen/{id}/verteilung` antwortet mit `doppelzaehlung[]` je Ziel-Kostenstelle am Tag `gueltig_ab` (`KostenstelleEnergieService.doppelzaehlungBeimSetzen`, nur Paare mit dieser Messstelle, Zaun wie die Sicht: `RechtPruefung.lesbar(UNTERNEHMEN, k)`), GET trägt das Feld nicht; Portal: Satz am Kopf UND am Posten (`PostenBild.doppelt`, bei Anteil unter 100 % „(Anteil 70 %)“) |
 | Kaskaden-Anschluss | `uems/BilanzNeuBerechnet.melden`, gerufen in `KorrekturKaskade.verarbeiten` — KEINE zweite Kaskade |
 | Migration | `V20260914140000__uems_bilanz_neu_berechnet.sql`: nur das Vokabular (Funktion + Art-CHECK), keine Tabelle |
 | Ereignis | `bilanz_neu_berechnet` (28. Art, nur `cloud`, [von, bis) = die Tage, Bezug NUR die Messstelle, Pflicht `ausloeser` K-…/EW-…) — api + writer `EreignisVokabular`, ingest `BoxEventsValidator.ARTEN`, `uemsEreignis.ts`, `events-raw.event.schema.json` |
 | Rechte | `messstelle.ansehen` (Anmerkung in `rechte-matrix.json`), eingetragen, nicht durchgesetzt |
-| Tests | `VerteilungVectorsTest` · `KostenstelleEnergieSchnittstelleVertragTest` (rein) · `KostenstelleEnergieApiTest` (10, davon `dieZahlenSindZeichengleich` gegen `src/test/resources/uems/doppelzaehlung-vorher/`) · `UemsBilanzNeuBerechnetMigrationTest` (5) · `UemsKorrekturKaskadeTest` (+2) |
+| Tests | `VerteilungVectorsTest` · `KostenstelleEnergieSchnittstelleVertragTest` (rein) · `KostenstelleEnergieApiTest` (12, davon `dieZahlenSindZeichengleich` gegen `src/test/resources/uems/doppelzaehlung-vorher/` und `dasSetzenWarntUndLehntNichtAb`) · `UemsBilanzNeuBerechnetMigrationTest` (5) · `UemsKorrekturKaskadeTest` (+2) |
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest,KostenstelleEnergieSchnittstelleVertragTest,EreignisVokabularVectorsTest')
@@ -65,8 +65,10 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
   von MS-07) geht zu 100 % an 4100, MS-06, MS-11 und MS-07 (70 %) ebenfalls — die Sicht zeigt jeden Posten weiter
   ehrlich und ihre `summe` zählt weiter doppelt, aber `doppelzaehlung.enthalten` sagt „MS-06 ist bereits in MS-20
   enthalten“ (auch MS-07: der Term „Anteil 4100“ ist genau dieser Posten, obwohl MS-20 ihn heute ohne Menge führt).
+  Seit 23.09.2026 warnt auch das Setzen (Rückgabe-Hinweis, nie Ablehnung) und das Portal nennt den Satz am Posten.
   ⚠ Wer die Warnung anfasst, fährt `dieZahlenSindZeichengleich`: jede Antwort bis `doppelzaehlung` byte-gleich zum
-  Stand vor der Warnung. Anteile, Kreis, Abzug: Falle 13 in `docs/contracts/v2/verteilung.md`.
+  Stand vor der Warnung. Das Portal hängt nur den Anteil des Postens an („(Anteil 70 %)“), nie eine Menge
+  (`uemsKeineRechnung` wacht: auch ein `a - b`-Sortierer zählt als Rechnung). Anteile, Kreis, Abzug: Falle 13 in `docs/contracts/v2/verteilung.md`.
 - **Hauptzähler stehen unter „nicht verteilt“:** die Verteilung kennt keine Stellung; MS-01/MS-10/MS-16 („verteilt
   über Unterzähler“) haben keine Zeile und stehen darum dort. Die Fläche (AP-13 IP-9) nimmt sie NICHT aus: sie zeigt den
   Block, wie die Route ihn liefert (O9 Schritt 1) — eine Ausnahme wäre eine Regel und gehört in ein Konzept.

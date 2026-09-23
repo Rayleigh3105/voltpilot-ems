@@ -292,6 +292,22 @@ a.vp-ks-posten-link:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* Die Warnung am Posten, der schon in einer Summe derselben Kostenstelle steckt: dieselbe Farbe wie die am Kopf. */
+.vp-ks-posten-doppelt {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-bottom: 6px;
+  font-size: 0.8125rem;
+  color: var(--vp-warn-ink, #b45309);
+  overflow-wrap: anywhere;
+}
+
+.vp-ks-posten-doppelt .vp-ks-punkt {
+  margin-top: 5px;
+}
+
 .vp-ks-satz {
   margin: 0;
   font-size: 0.875rem;

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.uems.KostenstelleEnergieService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.VerteilungAbgelehnt;
 import com.voltpilot.api.uems.VerteilungAbgelehnt.Ablehnung;
@@ -51,6 +52,11 @@ import org.springframework.web.server.ResponseStatusException;
  * <p><b>Die Anfrage wird streng gelesen:</b> ein unbekanntes Feld (auch camelCase), ein Tag oder eine ID in
  * falscher Form, ein Anteil, der kein Dezimaltext (oder keine Zahl) ist, sind 400 {@code anfrage_ungueltig} mit
  * {@code feld}.
+ *
+ * <p><b>Doppelte Zählung wird gemeldet, nicht abgelehnt</b> (Captain-Entscheid „Warnen“): die Antwort auf {@code PUT}
+ * nennt in {@code doppelzaehlung}, welcher Posten an einer Ziel-Kostenstelle ab {@code gueltig_ab} bereits in welchem
+ * enthalten ist ({@link KostenstelleEnergieService#doppelzaehlungBeimSetzen}) — nur an Kostenstellen, deren Sicht der
+ * Aufrufer lesen darf (derselbe Zaun wie {@code GET …/kostenstellen/{id}/energie}).
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -60,11 +66,14 @@ public class VerteilungController {
     private static final Set<String> ZEILE_FELDER = Set.of("kostenstelle_id", "anteil_prozent");
 
     private final VerteilungService dienst;
+    private final KostenstelleEnergieService kostenstellen;
     private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
-    public VerteilungController(VerteilungService dienst, RechtPruefung rechte, ObjectMapper json) {
+    public VerteilungController(VerteilungService dienst, KostenstelleEnergieService kostenstellen,
+            RechtPruefung rechte, ObjectMapper json) {
         this.dienst = dienst;
+        this.kostenstellen = kostenstellen;
         this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
@@ -83,13 +92,18 @@ public class VerteilungController {
 
     /**
      * Recht: {@code messstelle.verteilung}; mit „gültig ab“ vor heute zusätzlich {@code aenderung.rueckwirkend}.
-     * Ab dem Tag gilt GENAU dieser Satz — alle Ziele eines Tages in EINER Anfrage.
+     * Ab dem Tag gilt GENAU dieser Satz — alle Ziele eines Tages in EINER Anfrage. Die Antwort trägt den Hinweis
+     * {@code doppelzaehlung} für den Tag {@code gueltig_ab}; er lehnt nie ab.
      */
     @PutMapping("/messstellen/{id}/verteilung")
     @Recht(value = "messstelle.verteilung", ziel = RechtZiel.MESSSTELLE)
     public VerteilungDto.Verteilung setzen(@PathVariable UUID id, @RequestBody(required = false) JsonNode body,
             Authentication auth) {
-        return dienst.setzen(id, lies(body), akteur(auth));
+        VerteilungDto.Setzen satz = lies(body);
+        VerteilungDto.Verteilung gesetzt = dienst.setzen(id, satz, akteur(auth));
+        // Erst nach dem Schreiben: gueltig_ab ist dann geprüft, und die Warnung liest den neuen Satz.
+        return gesetzt.mitDoppelzaehlung(kostenstellen.doppelzaehlungBeimSetzen(id, tag("gueltig_ab", satz.gueltigAb()))
+                .stream().filter(d -> rechte.lesbar(RechtZiel.UNTERNEHMEN, d.kostenstelle().id())).toList());
     }
 
     // ----------------------------------------------------------------------------- Gerüst

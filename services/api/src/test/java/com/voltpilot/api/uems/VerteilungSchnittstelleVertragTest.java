@@ -68,6 +68,7 @@ class VerteilungSchnittstelleVertragTest {
         formen.put("VerteilungKostenstelle", VerteilungDto.Kostenstelle.class);
         formen.put("MessstelleVerteilungAnteil", VerteilungDto.Anteil.class);
         formen.put("MessstelleVerteilung", VerteilungDto.Verteilung.class);
+        formen.put("MessstelleVerteilungDoppelzaehlung", VerteilungDto.Doppelzaehlung.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(

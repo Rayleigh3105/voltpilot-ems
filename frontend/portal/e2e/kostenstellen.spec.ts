@@ -97,6 +97,12 @@ for (const breite of BREITEN) {
       await expect(warnung).toContainText('Doppelt gezählt: MS-06 ist bereits in MS-20 enthalten');
       await expect(warnung).toContainText('MS-11 ist bereits in MS-20 enthalten');
       await expect(page.getByTestId('doppelzaehlung')).toHaveCount(1);
+      // Dieselbe Warnung am Posten, der schon in MS-20 steckt — MS-07 mit seinem Anteil; 4200 (30 % von MS-07) ohne.
+      await expect(karte(page, '4100').getByTestId('posten-doppelt')).toHaveCount(3);
+      await expect(karte(page, '4100').locator('.vp-ks-posten-zeile').filter({ hasText: 'MS-07' }).getByTestId('posten-doppelt')).toHaveText(
+        'MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)',
+      );
+      await expect(karte(page, '4200').getByTestId('posten-doppelt')).toHaveCount(0);
 
       // „nicht verteilt“ steht einmal, über den Karten — keine Karte trägt ihn.
       await expect(page.getByTestId('nicht-verteilt')).toHaveCount(1);

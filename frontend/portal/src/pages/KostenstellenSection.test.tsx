@@ -34,6 +34,20 @@ describe('Kostenstellen-Reiter nach Recht', () => {
     expect(screen.getAllByTestId('block-summe').length).toBeGreaterThan(0);
   });
 
+  it('Doppelt gezählt: der Satz steht am Kopf der Karte UND an jedem Posten, der schon in der Summe steckt', async () => {
+    vi.spyOn(api, 'kostenstelleEnergie').mockImplementation(async (id, p, am) => ahrenbergKostenstelleEnergie(id, p, am));
+    await zeige();
+    const karte = screen.getAllByTestId('kostenstelle-karte').find((k) => k.getAttribute('data-kennzeichen') === '4100');
+    expect(karte?.querySelector('[data-testid="doppelzaehlung"]')?.textContent).toContain('MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)');
+    const amPosten = [...(karte?.querySelectorAll('[data-testid="posten-doppelt"]') ?? [])].map((n) => n.textContent);
+    expect(amPosten).toEqual([
+      'MS-06 ist bereits in MS-20 enthalten',
+      'MS-11 ist bereits in MS-20 enthalten',
+      'MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)',
+    ]);
+    expect(screen.getAllByTestId('posten-doppelt')).toHaveLength(3);
+  });
+
   it('Bearbeiter an einem Standort: Kennzeichen und Namen, EIN Satz mit Rollen und Kundenadministrator, kein Aufruf von …/energie', async () => {
     setSelbstauskunft(rechteSeed('PH').me);
     const energie = vi.spyOn(api, 'kostenstelleEnergie');

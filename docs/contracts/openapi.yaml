@@ -13424,7 +13424,10 @@ paths:
         archivierte Messstelle 409 `messstelle_archiviert`. Alles in EINER Transaktion; die
         Datenbank prüft die 100 % zur Commit-Zeit. GENAU EIN Protokolleintrag
         `verteilung_geaendert` und GENAU EIN Ereignis `verteilung_geaendert`, wenn sich etwas
-        ändert; eine Ablehnung schreibt nichts.
+        ändert; eine Ablehnung schreibt nichts. Doppelte Zählung wird gemeldet, nie abgelehnt: die
+        Antwort trägt `doppelzaehlung` - je Ziel-Kostenstelle, deren Sicht der Aufrufer lesen darf,
+        welcher Posten dort am Tag `gueltig_ab` bereits in welchem enthalten ist (dieselbe Regel wie
+        `GET /api/v1/unternehmen/kostenstellen/{id}/energie`, nur die Paare mit dieser Messstelle).
       requestBody:
         required: true
         content:
@@ -13438,7 +13441,7 @@ paths:
               korrektur: false
       responses:
         "200":
-          description: Alle wirksamen Anteile danach.
+          description: Alle wirksamen Anteile danach, mit dem Hinweis `doppelzaehlung`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MessstelleVerteilung" }
@@ -25778,6 +25781,24 @@ components:
         am: { type: string, format: date, nullable: true }
         zustand: { type: string, enum: [verteilt, nicht verteilt], nullable: true, description: "Nur mit `am` - nie „zu 0 % verteilt“." }
         anteile: { type: array, items: { $ref: "#/components/schemas/MessstelleVerteilungAnteil" } }
+        doppelzaehlung:
+          type: array
+          description: >
+            Nur in der Antwort auf PUT (beim Lesen fehlt das Feld): je Kostenstelle mit Befund ein
+            Eintrag, leer = nichts zählt doppelt. Ein Hinweis, keine Ablehnung - keine Zahl ändert sich.
+          items: { $ref: "#/components/schemas/MessstelleVerteilungDoppelzaehlung" }
+    MessstelleVerteilungDoppelzaehlung:
+      type: object
+      description: >
+        Die Warnung vor doppelter Zählung an einer Ziel-Kostenstelle am Tag `am` (= `gueltig_ab`):
+        die Einträge von `KostenstelleEnergieDoppelzaehlung`, in denen die gesetzte Messstelle Teil
+        oder Summe ist.
+      required: [kostenstelle, am, enthalten, nicht_pruefbar]
+      properties:
+        kostenstelle: { $ref: "#/components/schemas/VerteilungKostenstelle" }
+        am: { type: string, format: date }
+        enthalten: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergieEnthalten" } }
+        nicht_pruefbar: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergieNichtPruefbar" } }
     BezugsgroesseFehler:
       type: object
       description: >

@@ -24,6 +24,7 @@
 
 import type {
   Kostenstelle,
+  KostenstelleDoppeltEnthalten,
   KostenstelleEnergie,
   KostenstelleEnergieBlock,
   KostenstelleEnergiePeriode,
@@ -72,6 +73,8 @@ export const GRUND_SATZ: Readonly<Record<NonNullable<KostenstelleEnergieBlock['g
 export const DOPPELT_TITEL = 'Doppelt gezählt';
 export const DOPPELT_HINWEIS =
   'Die Summe dieser Kostenstelle enthält diese Mengen doppelt. Die Zahlen bleiben, wie sie gemessen und verteilt sind.';
+/** Der Anteil eines Postens unter 100 % hinter dem Satz der Route: „MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)“. */
+export const DOPPELT_ANTEIL = '(Anteil {anteil} %)';
 
 export const GUELTIG_AB = 'gültig ab {tag}';
 export const GUELTIG_BIS = 'gültig bis {tag}';
@@ -229,6 +232,8 @@ export interface PostenBild {
   spanne: string | null;
   /** Zur Messstelle › Werte mit der Periode (B6: jeder Posten ist ein Sprung). */
   sprung: Sprung | null;
+  /** Die Warnung an DIESEM Posten, wenn er schon in einem anderen Posten der Kostenstelle steckt (je Summe ein Satz). */
+  doppelt: string[];
 }
 
 export interface BlockBild {
@@ -314,6 +319,7 @@ export function postenBild(
     woerter: p.kennzeichen.filter((w) => w !== ohneWort),
     spanne: spanne(p, am, ende(periode, am)),
     sprung: sprungziel({ art: 'messstelle', id: p.messstelle.id, periode: werteperiode(periode, am) }),
+    doppelt: [],
   };
 }
 
@@ -331,17 +337,60 @@ function blockBild(art: BlockArt, b: KostenstelleEnergieBlock, periode: Kostenst
   };
 }
 
+/**
+ * Die Anteile eines Postens unter 100 % („70“, „60 und 70“) — aus seinen Tagen, wie die Route sie verteilt hat; `null`
+ * bei 100 % oder ohne Anteil. Der Anteil ist eine Angabe der Verteilung, keine Menge: die Warnung rechnet nichts.
+ */
+function anteilUnterVoll(p: KostenstelleEnergiePosten | undefined): string | null {
+  if (!p) return null;
+  const anteile = [...new Set(p.tage.map((t) => t.anteil_prozent).filter((a): a is number => a !== null && a < 100))];
+  if (anteile.length === 0) return null;
+  return anteile
+    .map((a) => String(a).replace('.', ','))
+    .sort((a, b) => a.localeCompare(b, 'de', { numeric: true }))
+    .join(' und ');
+}
+
+/**
+ * Der Satz der Route zu EINEM enthaltenen Posten — wörtlich, dahinter die Tage (wenn nicht der ganze Zeitraum) und der
+ * Anteil des Postens (wenn unter 100 %: die Summe trägt dann genau diesen Anteil).
+ */
+function enthaltenSatz(e: KostenstelleEnergie, x: KostenstelleDoppeltEnthalten, teil: KostenstelleEnergiePosten | undefined): string {
+  const ganz = x.zeitraeume.length === 1 && x.zeitraeume[0].von <= e.von && x.zeitraeume[0].bis >= e.bis;
+  const anteil = anteilUnterVoll(teil);
+  return [
+    x.satz,
+    ganz ? null : `(${x.zeitraeume.map((z) => spanneTage(z.von, z.bis)).join(', ')})`,
+    anteil ? fuelle(DOPPELT_ANTEIL, { anteil }) : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Der Posten mit dem Kennzeichen in den drei Herkünften (ein Teil steht in genau einer). */
+function postenVon(e: KostenstelleEnergie, kennzeichen: string): KostenstelleEnergiePosten | undefined {
+  return [e.gemessen, e.verteilt, e.berechnet].flatMap((b) => b.posten).find((p) => p.messstelle.kennzeichen === kennzeichen);
+}
+
 function doppeltBild(e: KostenstelleEnergie): DoppeltBild | null {
   const { enthalten, nicht_pruefbar } = e.doppelzaehlung;
   if (enthalten.length === 0 && nicht_pruefbar.length === 0) return null;
-  const ganz = (zs: { von: string; bis: string }[]) => zs.length === 1 && zs[0].von <= e.von && zs[0].bis >= e.bis;
-  const saetze = [
-    ...enthalten.map((x) =>
-      ganz(x.zeitraeume) ? x.satz : `${x.satz} (${x.zeitraeume.map((z) => spanneTage(z.von, z.bis)).join(', ')})`,
-    ),
-    ...nicht_pruefbar.map((n) => n.satz),
-  ];
+  const saetze = [...enthalten.map((x) => enthaltenSatz(e, x, postenVon(e, x.teil))), ...nicht_pruefbar.map((n) => n.satz)];
   return { titel: DOPPELT_TITEL, saetze: einmal(saetze), hinweis: enthalten.length > 0 ? DOPPELT_HINWEIS : null };
+}
+
+/** Die Warnung an jedem Posten, der Teil ist: dieselben Sätze wie am Kopf, nur seine. */
+function mitDoppelt(b: BlockBild, e: KostenstelleEnergie): BlockBild {
+  if (b.posten.length === 0 || e.doppelzaehlung.enthalten.length === 0) return b;
+  return {
+    ...b,
+    posten: b.posten.map((p) => {
+      const saetze = e.doppelzaehlung.enthalten
+        .filter((x) => x.teil === p.kennzeichen)
+        .map((x) => enthaltenSatz(e, x, postenVon(e, x.teil)));
+      return saetze.length === 0 ? p : { ...p, doppelt: einmal(saetze) };
+    }),
+  };
 }
 
 export function karteBild(k: Kostenstelle, antwort: EnergieAntwort, periode: KostenstelleEnergiePeriode, am: string): KarteBild {
@@ -349,7 +398,7 @@ export function karteBild(k: Kostenstelle, antwort: EnergieAntwort, periode: Kos
   if (antwort === null || antwort === 'fehler') {
     return { ...kopf, laedt: antwort === null, fehler: antwort === 'fehler' ? NICHT_ABRUFBAR : null, bloecke: [], saetze: [], doppelt: null };
   }
-  const bloecke = BLOCK_ARTEN.map((art) => blockBild(art, antwort[art], periode, am));
+  const bloecke = BLOCK_ARTEN.map((art) => mitDoppelt(blockBild(art, antwort[art], periode, am), antwort));
   // `keine_zuordnung` an einem Block heißt nur „dieser Block hat keinen Posten“ (sein Strich sagt es, 4200 berechnet) —
   // der Satz gilt der Kostenstelle erst, wenn auch die Summe keinen hat (9010 im Januar 2027). „Verschiedene Größen“
   // gilt, wo immer er steht.

@@ -115,6 +115,12 @@ function Posten({ p }: { p: PostenBild }) {
       )}
       <span className="vp-ks-posten-zahl">{p.zahl}</span>
       {zusatz && <span className="vp-ks-posten-woerter">{zusatz}</span>}
+      {p.doppelt.length > 0 && (
+        <span className="vp-ks-posten-doppelt" data-testid="posten-doppelt">
+          <span className="vp-ks-punkt" aria-hidden="true" />
+          <span>{p.doppelt.join(' · ')}</span>
+        </span>
+      )}
     </li>
   );
 }

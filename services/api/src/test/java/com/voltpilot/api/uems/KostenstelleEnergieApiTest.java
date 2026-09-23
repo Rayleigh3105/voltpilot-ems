@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -38,6 +40,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -612,6 +615,98 @@ class KostenstelleEnergieApiTest {
         JsonNode sicht = energie(y, y.kostenstellen().get("4100"), "periode=tag&am=2026-10-16");
         assertThat(kennzeichenDerPosten(sicht.path("gemessen"))).containsExactly("MS-06", "MS-11", "MS-20");
         assertThat(sicht.path("doppelzaehlung").toString()).isEqualTo("{\"enthalten\":[],\"nicht_pruefbar\":[]}");
+    }
+
+    /**
+     * Beim Setzen warnt dieselbe Regel, statt abzulehnen (Captain-Entscheid „Warnen“): {@code PUT …/verteilung} antwortet
+     * 200 und nennt je Ziel-Kostenstelle, welcher Posten ab {@code gueltig_ab} bereits in welchem enthalten ist — nur die
+     * Paare mit DIESER Messstelle. MS-06 ist Teil von MS-20; MS-07 geht zu 70 % an 4100 und ist mit genau diesem Anteil
+     * Term von MS-20 (4200 bleibt ohne Befund); MS-20 als Summe nennt alle drei; MS-08 steht in keiner Formel. Das Lesen
+     * trägt das Feld nicht, und keine Zahl der Sicht ändert sich. Ein Bearbeiter am Standort darf verteilen, sieht die
+     * Kostenstellen-Sicht aber nicht — er bekommt den Hinweis darum nicht (derselbe Zaun wie die Sicht).
+     */
+    @Test
+    void dasSetzenWarntUndLehntNichtAb() throws Exception {
+        Welt w = spritzguss("Werk Ahrenberg – Spritzguss (Setzen)", true);
+        UUID k4100 = w.kostenstellen().get("4100");
+        String vorher = roh(w, k4100, "periode=tag&am=2026-10-16");
+
+        JsonNode ms06 = setzen(w, null, "MS-06", Map.of("4100", "100"));
+        assertThat(ms06.path("anteile")).hasSize(1);
+        assertThat(ms06.path("doppelzaehlung")).hasSize(1);
+        JsonNode an4100 = ms06.path("doppelzaehlung").get(0);
+        assertThat(an4100.path("kostenstelle").path("id").asText()).isEqualTo(k4100.toString());
+        assertThat(an4100.path("kostenstelle").path("kennzeichen").asText()).isEqualTo("4100");
+        assertThat(an4100.path("am").asText()).isEqualTo("2026-10-01");
+        assertThat(an4100.path("enthalten").toString()).isEqualTo("[{\"teil\":\"MS-06\",\"summe\":\"MS-20\","
+                + "\"umfang\":\"ganz\",\"kette\":[\"MS-20\",\"MS-06\"],\"zeitraeume\":[{\"von\":\"2026-10-01\","
+                + "\"bis\":\"2026-10-01\"}],\"satz\":\"MS-06 ist bereits in MS-20 enthalten\"}]");
+        assertThat(an4100.path("nicht_pruefbar")).isEmpty();
+
+        JsonNode ms07 = setzen(w, null, "MS-07", Map.of("4100", "70", "4200", "30"));
+        assertThat(hinweise(ms07)).as("anteilig: nur an 4100, dort ganz").containsExactly("4100: MS-07 ist bereits in MS-20 enthalten");
+        assertThat(hinweise(setzen(w, null, "MS-20", Map.of("4100", "100")))).as("die Summe nennt jeden Teil")
+                .containsExactly("4100: MS-06 ist bereits in MS-20 enthalten", "4100: MS-07 ist bereits in MS-20 enthalten",
+                        "4100: MS-11 ist bereits in MS-20 enthalten");
+        assertThat(setzen(w, null, "MS-08", Map.of("4100", "100")).path("doppelzaehlung").toString())
+                .as("ohne Summe: leer, nicht weggelassen").isEqualTo("[]");
+
+        MvcResult lesen = mvc.perform(get("/api/v1/messstellen/" + w.messstellen().get("MS-06") + "/verteilung")
+                .with(jwt().jwt(j -> {
+                    j.subject("sub-" + w.mandant());
+                    j.claim("tenant_id", w.mandant().toString());
+                }))).andReturn();
+        assertThat(MAPPER.readTree(lesen.getResponse().getContentAsString(StandardCharsets.UTF_8)).has("doppelzaehlung"))
+                .as("GET bleibt, wie es war").isFalse();
+        assertThat(roh(w, k4100, "periode=tag&am=2026-10-16")).as("die Warnung ändert keine Zahl").isEqualTo(vorher);
+
+        UUID standort = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), w.unternehmen());
+        for (UUID ms : w.messstellen().values()) {
+            root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                    + "'2024-01-01')", w.mandant(), ms, standort);
+        }
+        String ka = zuweisung(w, "sub-ka-", "kundenadministrator", null);
+        String hier = zuweisung(w, "sub-hier-", "bearbeiter", standort);
+        assertThat(hinweise(setzen(w, ka, "MS-06", Map.of("4100", "100"))))
+                .containsExactly("4100: MS-06 ist bereits in MS-20 enthalten");
+        assertThat(setzen(w, hier, "MS-06", Map.of("4100", "100")).path("doppelzaehlung").toString())
+                .as("Bearbeiter am Standort: verteilen ja, die Sicht der Kostenstelle nein").isEqualTo("[]");
+    }
+
+    /** {@code PUT …/verteilung} ab dem 01.10.2026 ({@code sub} {@code null} = ohne Zugriff-Kontext); erwartet 200. */
+    private JsonNode setzen(Welt w, String sub, String messstelle, Map<String, String> anteile) throws Exception {
+        List<Map<String, String>> zeilen = new ArrayList<>();
+        new java.util.TreeMap<>(anteile).forEach((k, a) -> zeilen.add(Map.of("kostenstelle_id",
+                w.kostenstellen().get(k).toString(), "anteil_prozent", a)));
+        MockHttpServletRequestBuilder anfrage = put("/api/v1/messstellen/" + w.messstellen().get(messstelle) + "/verteilung")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(MAPPER.writeValueAsString(Map.of("gueltig_ab", "2026-10-01", "zeilen", zeilen)));
+        if (sub == null) {
+            anfrage.with(jwt().jwt(j -> {
+                j.subject("sub-" + w.mandant());
+                j.claim("preferred_username", "Ines Test");
+                j.claim("tenant_id", w.mandant().toString());
+            }));
+        } else {
+            Map<String, Object> claims = Map.of("sub", sub, "preferred_username", sub, "tenant_id",
+                    w.mandant().toString(), "realm_access", Map.of("roles", List.of()));
+            Jwt token = new Jwt("token", Instant.now(), Instant.now().plusSeconds(3600), Map.of("alg", "none"), claims);
+            anfrage.with(authentication(new KeycloakRealmRoleConverter().convert(token)));
+        }
+        MvcResult r = mvc.perform(anfrage).andReturn();
+        String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(r.getResponse().getStatus()).as(messstelle + " " + text).isEqualTo(200);
+        return MAPPER.readTree(text);
+    }
+
+    /** Je Kostenstelle und Paar „4100: satz“ in der Reihenfolge der Antwort. */
+    private static List<String> hinweise(JsonNode antwort) {
+        List<String> raus = new ArrayList<>();
+        antwort.path("doppelzaehlung").forEach(d -> d.path("enthalten").forEach(e ->
+                raus.add(d.path("kostenstelle").path("kennzeichen").asText() + ": " + e.path("satz").asText())));
+        return raus;
     }
 
     /**

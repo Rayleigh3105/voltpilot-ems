@@ -91,13 +91,16 @@ describe('UEMS AP-13 IP-9 · Kostenstellen nebeneinander (O9, E8 = A, B6)', () =
     expect(k.doppelt?.titel).toBe(String(O9.erwartet.karte_4100_warnung).split(':')[0]);
     expect(k.doppelt?.saetze).toEqual([
       'MS-06 ist bereits in MS-20 enthalten',
-      'MS-07 ist bereits in MS-20 enthalten',
+      'MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)',
       'MS-11 ist bereits in MS-20 enthalten',
     ]);
     const mit = ahrenbergKostenstelleEnergie(k.id, 'monat', '2026-10-01');
     const ohne: KostenstelleEnergie = { ...mit, doppelzaehlung: { enthalten: [], nicht_pruefbar: [] } };
     const ohneBild = kostenstellenBild(KATALOG, new Map([[k.id, ohne]]), 'monat', '2026-10-01');
-    expect(karte(ohneBild, '4100').bloecke).toEqual(k.bloecke);
+    // Keine Zahl ändert sich: ohne die Warnung am Posten sind die Blöcke dieselben.
+    const ohneWarnung = (k2: KarteBild) => k2.bloecke.map((b) => ({ ...b, posten: b.posten.map((p) => ({ ...p, doppelt: [] })) }));
+    expect(ohneWarnung(karte(ohneBild, '4100'))).toEqual(ohneWarnung(k));
+    expect(karte(ohneBild, '4100').bloecke.flatMap((b) => b.posten).every((p) => p.doppelt.length === 0)).toBe(true);
     expect(karte(ohneBild, '4100').doppelt).toBeNull();
     // Nur eine Warnung mit enthaltenen Posten sagt, dass die Summe doppelt zählt; ein Kreis ist nur „nicht prüfbar“.
     const kreis: KostenstelleEnergie = {
@@ -109,6 +112,22 @@ describe('UEMS AP-13 IP-9 · Kostenstellen nebeneinander (O9, E8 = A, B6)', () =
       saetze: ['Ob MS-20 … nicht prüfbar'],
       hinweis: null,
     });
+  });
+
+  it('die Warnung steht auch am Posten, der schon in der Summe steckt — mit seinem Anteil, wenn er unter 100 % liegt', () => {
+    const k = karte(oktober(), '4100');
+    const doppelt = Object.fromEntries(k.bloecke.flatMap((b) => b.posten).map((p) => [p.kennzeichen, p.doppelt]));
+    expect(doppelt).toEqual({
+      'MS-06': ['MS-06 ist bereits in MS-20 enthalten'],
+      'MS-08': [],
+      'MS-11': ['MS-11 ist bereits in MS-20 enthalten'],
+      'MS-07': ['MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)'],
+      'MS-20': [],
+    });
+    // 4200 bekommt die anderen 30 % von MS-07 — kein Term von MS-20 trägt sie, also keine Warnung.
+    const k4200 = karte(oktober(), '4200');
+    expect(k4200.doppelt).toBeNull();
+    expect(k4200.bloecke.flatMap((b) => b.posten).every((p) => p.doppelt.length === 0)).toBe(true);
   });
 
   it('eine Warnung für einen Teil des Zeitraums nennt ihre Tage', () => {
