@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bewertung_umfang", "energieeinsaetze", "bewertung_kriterien", "einstufungen", "messbedarfe", "messmittel_angaben", "bezugsgroessen", "kennzahl_beispiel", "kennzahlen", "korrekturen", "berichte", "netzanschluss_grenzen", "gemeinsame_steuerungen", "geraete_rueckfaelle", "zuordnungen", "zeitachse", "abnahmefaelle_ap16", "abnahmefaelle_ap15"],
   "properties": {
-    "version": { "type": "string", "const": "1.6", "description": "Fassung dieser Beispieldaten. 1.6 ergänzt additiv die energetische Bewertung und Messplanung aus AP-16 E11: Umfang, Energieeinsätze, Kriterien- und Einstufungs-Fassungen, Messbedarf, Messmittel-Angaben, Bewertungs-Berichte sowie P-7/MS-23/K-15/GR-19. Die Fassungen 1.1 bis 1.5 bleiben durch Fingerabdrucktests geschützt." },
+    "version": { "type": "string", "const": "1.7", "description": "Fassung dieser Beispieldaten. 1.7 legt die Vergleichsquelle K-1 an MS-01 an die Hauptgröße (Herleitung `integration`, Monatsmenge für G5) und ergänzt R9 in `abnahmefaelle_ap16`. 1.6 ergänzt additiv die energetische Bewertung und Messplanung aus AP-16 E11: Umfang, Energieeinsätze, Kriterien- und Einstufungs-Fassungen, Messbedarf, Messmittel-Angaben, Bewertungs-Berichte sowie P-7/MS-23/K-15/GR-19. Die Fassungen 1.1 bis 1.6 bleiben durch Fingerabdrucktests geschützt." },
     "beschreibung": { "type": "string", "description": "Wofür diese Datei da ist, in einem Satz." },
     "stand": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Tag, an dem die Daten zuletzt bestätigt wurden." },
     "_comment": { "type": "array", "items": { "type": "string" }, "description": "Erklärender Fließtext für Menschen; ohne Wirkung." },
@@ -858,6 +858,7 @@
         "geraet": { "$ref": "#/$defs/kennzeichen", "description": "Das Gerät hinter der Komponente." },
         "einbau": { "$ref": "#/$defs/kennzeichen", "description": "Das konkret eingebaute Gerät in diesem Zeitraum." },
         "kanal_wertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Wie der Kanal am Draht zu lesen ist." },
+        "herleitung": { "type": "string", "enum": ["zaehlerstand", "differenzen", "integration", "momentanwert"], "description": "Ab Fassung 1.7: wie aus dem Kanal die Größe der Messstelle entsteht (messstelle.md §5, Regel 7) — `integration` heißt: aus der Leistung integriert, damit die Vergleichsquelle eine Monatsmenge hat (Monatsvergleich G5). Fehlt das Feld, sagt die Datei nichts darüber." },
         "zweck": { "type": "string", "enum": ["Plausibilität", "Ersatz bei Ausfall", "Abrechnungszähler"], "description": "Wozu der Vergleich dient (AP-04 E3) — nie ohne Zweck." },
         "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieser Vergleich gilt, auf die Minute." },
         "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },

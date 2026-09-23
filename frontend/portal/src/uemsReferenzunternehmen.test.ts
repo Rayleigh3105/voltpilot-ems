@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
 import { lokalerTag, mitternacht, plusTage, rueckwirkung } from './uemsOrtsbaum';
 import { bisZeitpunkt } from './rechte';
+import { monatsvergleich } from './uemsBewertung';
 
 /**
  * Der Vertrag des UEMS-Referenzunternehmens „Kunststoffwerk Ahrenberg GmbH“
@@ -1079,6 +1080,39 @@ const ohneFassung16 = (d: Record<string, any>): void => {
   delete ms01.nebengroessen[0].vergleichsquellen[0].toleranz_fassungen;
 };
 
+/** So viele Zeilen hatte `_comment` in Fassung 1.6 — Fassung 1.7 hängt nur an. */
+const KOMMENTAR_ZEILEN_1_6 = 118;
+const ZEITACHSE_K1_1_6 = 'als Vergleichsquelle der Wirkleistung, Zweck';
+const ZEITACHSE_K1_1_7 = 'als Vergleichsquelle der Wirkleistung und — aus der Leistung integriert — der Wirkenergie Bezug, Zweck';
+
+/** Nimmt GENAU die Zusätze der Fassung 1.7 heraus (K-1 auch an der Hauptgröße, Toleranz dort, R9; Befund aus PR 1104). */
+const ohneFassung17 = (d: Record<string, any>): void => {
+  expect(d.version).toBe('1.7');
+  d.version = '1.6';
+  d.stand = '2026-09-22';
+  expect(d._comment.length).toBeGreaterThan(KOMMENTAR_ZEILEN_1_6);
+  d._comment = d._comment.slice(0, KOMMENTAR_ZEILEN_1_6);
+  expect(d._herkunft.fassung_1_7).toBeDefined();
+  delete d._herkunft.fassung_1_7;
+  const ms01 = d.messstellen.find((m: any) => m.kennzeichen === 'MS-01');
+  expect(ms01.vergleichsquellen.map((q: any) => q.komponente)).toEqual(['K-1']);
+  const [k1] = ms01.vergleichsquellen;
+  expect(k1.herleitung).toBe('integration');
+  ms01.vergleichsquellen = [];
+  const [neben] = ms01.nebengroessen[0].vergleichsquellen;
+  const { herleitung: _h, toleranz_fassungen: toleranz, ...ohne } = k1;
+  expect(neben).toEqual(ohne);
+  neben.toleranz_fassungen = toleranz;
+  const zeile = d.zeitachse.filter((z: any) => z.ereignis.includes(ZEITACHSE_K1_1_7));
+  expect(zeile).toHaveLength(1);
+  zeile[0].ereignis = zeile[0].ereignis.replace(ZEITACHSE_K1_1_7, ZEITACHSE_K1_1_6);
+  const ap16 = d.abnahmefaelle_ap16;
+  ap16.quelle = ap16.quelle.replace('R7, R8, R9, R12', 'R7, R8, R12');
+  const vorher = ap16.faelle.length;
+  ap16.faelle = ap16.faelle.filter((f: any) => f.fall !== 'R9');
+  expect(vorher - ap16.faelle.length).toBe(1);
+};
+
 describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
   /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
   const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
@@ -1101,6 +1135,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
    */
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung17(d);
     ohneFassung16(d);
     ohneFassung15(d);
     ohneFassung14(d);
@@ -1177,6 +1212,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.3', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung17(d);
     ohneFassung16(d);
     ohneFassung15(d);
     ohneFassung14(d);
@@ -1288,6 +1324,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.5 (AP-15 E8)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.4', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung17(d);
     ohneFassung16(d);
     ohneFassung15(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_4_SHA256);
@@ -1514,6 +1551,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.5', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung17(d);
     ohneFassung16(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_5_SHA256);
   });
@@ -1596,7 +1634,8 @@ describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
     expect(verantwortlich).toMatchObject({ 'EE-1': 'MD', 'EE-2': 'PH', 'EE-5': 'PH', 'EE-3': 'IK', 'EE-6': 'JW', 'EE-7': 'JW' });
 
     const fallListe = daten.abnahmefaelle_ap16.faelle as any[];
-    expect(fallListe.map((f) => f.fall)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R7', 'R8', 'R12', 'R14']);
+    // R9 kam mit Fassung 1.7 (K-1 an der Hauptgröße); geprüft im Block „Fassung 1.7“.
+    expect(fallListe.map((f) => f.fall)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R7', 'R8', 'R9', 'R12', 'R14']);
     const gegeben: Record<string, any> = Object.fromEntries(fallListe.map((f) => [f.fall, f.gegeben]));
     expect(gegeben.R1.nenner_kwh).toBe(185380);
     expect(gegeben.R1.zugeordnet_kwh).toBe(125740);
@@ -1628,5 +1667,65 @@ describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
     for (const kz of ['EE-2', 'EE-5', 'EE-3', 'EE-4', 'EE-6', 'EE-7']) {
       expect(gegeben.R14.verantwortlich[kz].startsWith(verantwortlich[kz])).toBe(true);
     }
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.7 (K-1 an der Hauptgröße, Befund PR 1104)', () => {
+  const FASSUNG_1_6_SHA256 = '5b3c87b06a7b8b48d4b00a95f505cad6b7c75b54cdfdf33e1463a72977cf1c14';
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+  /** Herleitungen mit Monatsmenge (messstelle.md §5) — wie `VergleichToleranzService.MENGE`. */
+  const MIT_MENGE = new Set(['zaehlerstand', 'differenzen', 'integration']);
+  /** Je Vergleichsquelle von MS-01 („Größe · Komponente“): `ja` nur an der Hauptgröße mit Monatsmenge, sonst `ohne_monatsmenge` (bewertung.md §13). */
+  const monatsvergleichArt = (ms01: any): Record<string, string> => Object.fromEntries([
+    ...ms01.vergleichsquellen.map((q: any) => [`${ms01.hauptgroesse.groesse} · ${q.komponente}`,
+      MIT_MENGE.has(q.herleitung) ? 'ja' : 'ohne_monatsmenge']),
+    ...ms01.nebengroessen.flatMap((n: any) => n.vergleichsquellen.map((q: any) => [`${n.groesse} · ${q.komponente}`, 'ohne_monatsmenge'])),
+  ]);
+  const ms01Von = (d: any) => (d.messstellen as any[]).find((m) => m.kennzeichen === 'MS-01');
+
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.6', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung17(d);
+    expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_6_SHA256);
+  });
+
+  it('K-1 vergleicht auch an der Hauptgröße über integration — in Fassung 1.6 nur ohne_monatsmenge', () => {
+    const alt = structuredClone(daten) as Record<string, any>;
+    ohneFassung17(alt);
+    expect(monatsvergleichArt(ms01Von(alt))).toEqual({ 'Wirkleistung · K-1': 'ohne_monatsmenge' });
+
+    const ms01 = ms01Von(daten);
+    expect(monatsvergleichArt(ms01)).toEqual({ 'Wirkenergie · K-1': 'ja', 'Wirkleistung · K-1': 'ohne_monatsmenge' });
+    const [k1] = ms01.vergleichsquellen;
+    expect([ms01.hauptgroesse.groesse, ms01.hauptgroesse.einheit, k1.kanal_wertart, k1.herleitung])
+      .toEqual(['Wirkenergie', 'kWh', 'gauge', 'integration']);
+    // Die Nebengröße Wirkleistung bleibt mit ihrer führenden Quelle K-3 und K-1 als Vergleich — ohne Toleranz.
+    expect(ms01.nebengroessen.map((n: any) => [n.groesse, n.fuehrende_quelle.map((q: any) => q.komponente),
+      n.vergleichsquellen.map((q: any) => [q.komponente, q.toleranz_fassungen ?? null])]))
+      .toEqual([['Wirkleistung', ['K-3'], [['K-1', null]]]]);
+  });
+
+  it('R9 ergibt sich aus der Datei: 1,1 % passt, Gegenprobe 3,4 % ist ein Befund', () => {
+    const r9 = (daten.abnahmefaelle_ap16.faelle as any[]).find((f) => f.fall === 'R9').gegeben;
+    const [k1] = ms01Von(daten).vergleichsquellen;
+    const fassung = k1.toleranz_fassungen.find((t: any) => t.fassung === r9.toleranz.fassung);
+    expect(fassung.prozent_je_monat).toBe(r9.toleranz.prozent_je_monat);
+    expect(r9.toleranz.vergleichsquelle).toBe(`MS-01 ← ${k1.komponente} Netzleistung`);
+    const vergleiche = (m: any) => monatsvergleich(
+      { menge: String(m.fuehrend_kwh), zustand: 'vollständig' },
+      { menge: String(m.vergleich_kwh), zustand: 'vollständig' }, true, String(fassung.prozent_je_monat));
+    const dez = vergleiche(r9.dezember_2026);
+    const gegen = vergleiche(r9.gegenprobe);
+    expect([dez.zustand, dez.abweichung_prozent, dez.toleranz_prozent]).toEqual(['passt', '1.1', '2']);
+    expect([gegen.zustand, gegen.abweichung_prozent, gegen.befund]).toEqual(['abweichung', '3.4', true]);
+    expect(Number(dez.abweichung_prozent)).toBe(r9.dezember_2026.abweichung_prozent);
+    expect(Number(gegen.abweichung_prozent)).toBe(r9.gegenprobe.abweichung_prozent);
   });
 });

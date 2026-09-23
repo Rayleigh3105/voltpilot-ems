@@ -1,7 +1,7 @@
 {
-  "version": "1.6",
+  "version": "1.7",
   "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS), erweitert um energetische Bewertung und Messplanung. Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
-  "stand": "2026-09-22",
+  "stand": "2026-09-23",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
     "erweitert um die Verfeinerungen aus AP-01…AP-07. Sie wird von ZWEI Zwillingen",
@@ -120,7 +120,15 @@
     "  Neu sind P-7, EE-1 … EE-8, MB-1, MS-23 mit K-15/GR-19, Messmittel-Angaben, die 2-%-Toleranz an der",
     "  Vergleichsquelle von MS-01 sowie BW-2026-0001 und BW-2027-0001. Die Werte für 2027 sind Annahmen, keine Messwerte.",
     "  AN-1 … AN-3, NA-1 … NA-3, P-1 … P-6, Kostenstellen, Kennzahlen und der bestehende Bericht BR-2026-0001",
-    "  behalten ihre Bedeutung; insbesondere MS-20 und KZ-0004 bleiben unverändert."
+    "  behalten ihre Bedeutung; insbesondere MS-20 und KZ-0004 bleiben unverändert.",
+    "FASSUNG 1.7 (AP-16 IP-17 Befund aus PR 1104, Entscheid firstmate 23.09.2026) — additiv: K-1 AUCH AN DER HAUPTGRÖSSE.",
+    "  Die Vergleichsquelle K-1 (Einspeise-/Bezugsleistung am Wechselrichter) hing nur an MS-01s Nebengröße Wirkleistung",
+    "  (Momentanwert) und lieferte keine Monatsmenge — der Monatsvergleich G5 stand dort `ohne_monatsmenge`. Ab 1.7 ist",
+    "  derselbe Kanal zusätzlich Vergleichsquelle der HAUPTGRÖSSE Wirkenergie Bezug mit `herleitung: integration` (aus der",
+    "  Leistung integriert, messstelle.md Regel 7), gleicher Zweck und Beginn. Die Toleranz-Fassung 1 (2 %) gehört zum",
+    "  Monatsvergleich und steht darum an dieser Bindung; die Bindung an der Nebengröße bleibt ohne Toleranz (Momentanwert,",
+    "  kein Monatsvergleich). `abnahmefaelle_ap16` trägt dazu R9 (Dezember 2026: 131 200 gegen 129 700 kWh = 1,1 %,",
+    "  Gegenprobe 126 700 kWh = 3,4 %) — Annahmen des Konzepts, keine Messwerte."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -143,7 +151,8 @@
     "zeitachse": "AP-00 §4.4 · Box-Ausfall Halle 2 am 03.11.2026 mit Rückkehr um 17:30 und Nachlieferung (AP-00 §7.6, AP-06 A2, AP-07 A3), danach Box-Tausch am 04.11.2026 (AP-06 A5), Zählerwechsel-Zeitpunkt (AP-04 E2), Unterstützungszeiträume (AP-03 §4.1), Hardwareblatt-Fassungen und Wandlertausch (AP-05 §4.1)",
     "bewusst_ausgelassen": "Standort ST-3 „Werk Ahrenberg Nord“ (ab 20.02.2027) und die daran hängende Person Sabine Rauch aus AP-03 §4.1 — AP-00 §4.4 führt das Referenzunternehmen mit ZWEI Standorten, und die Abnahme dieses Pakets zählt zwei.",
     "fassung_1_5": "AP-15 IP-1 (E8 = A, 21.09.2026): Box E-4/E-4′, DQ-8…DQ-10, GR-11…GR-18, K-12…K-14, `netzanschluss_grenzen[]`, `gemeinsame_steuerungen[]` V-1, `geraete_rueckfaelle[]`, `abnahmefaelle_ap15` R1–R22 und sechs Zeilen der Zeitachse — Zahlen, Adressen und Zeitpunkte aus dem Konzept AP-15 §7 (Abschnitt „Referenzdatei: die Erweiterung 1.5“ und referenzfaelle.json `erweiterung_1_5`). Frei gewählt, weil das Konzept sie nicht nennt: die Seriennummer von E-4′ und die Kennzeichen der Geräte GR-11…GR-18; nicht erhoben (null): Port und Geräte-ID der Modbus-Quellen, Kanalzahlen",
-    "fassung_1_6": "AP-16 IP-1 (E11 = A, 22.09.2026): `bewertung_umfang`, P-7, `energieeinsaetze[]` EE-1…EE-8, `bewertung_kriterien[]`, `einstufungen[]`, `messbedarfe[]` MB-1, MS-23 mit GR-19/K-15, `messmittel_angaben[]`, Toleranz an der Vergleichsquelle von MS-01, die Bewertungs-Berichte BW-2026-0001/BW-2027-0001, `abnahmefaelle_ap16` und elf Zeilen der Zeitachse. Grundlage: AP-16 §7 und die gegeben-Werte R1–R5, R7, R8, R12, R14; Zahlen 2027 sind ausdrücklich Annahmen."
+    "fassung_1_6": "AP-16 IP-1 (E11 = A, 22.09.2026): `bewertung_umfang`, P-7, `energieeinsaetze[]` EE-1…EE-8, `bewertung_kriterien[]`, `einstufungen[]`, `messbedarfe[]` MB-1, MS-23 mit GR-19/K-15, `messmittel_angaben[]`, Toleranz an der Vergleichsquelle von MS-01, die Bewertungs-Berichte BW-2026-0001/BW-2027-0001, `abnahmefaelle_ap16` und elf Zeilen der Zeitachse. Grundlage: AP-16 §7 und die gegeben-Werte R1–R5, R7, R8, R12, R14; Zahlen 2027 sind ausdrücklich Annahmen.",
+    "fassung_1_7": "AP-16 IP-17 Befund (PR 1104, Entscheid firstmate 23.09.2026): die Vergleichsquelle K-1 an MS-01 steht zusätzlich an der Hauptgröße Wirkenergie Bezug mit `herleitung: integration` und trägt dort die Toleranz-Fassung (bis 1.6 an der Nebengröße Wirkleistung), die Zeile der Zeitachse vom 20.11.2026 nennt beide Größen, `abnahmefaelle_ap16` ergänzt R9 (gegeben wörtlich aus referenzfaelle.json AP-16 §7). Zahlen Dezember 2026 sind Annahmen des Konzepts"
   },
 
   "unternehmen": {
@@ -820,14 +829,14 @@
       "nebengroessen": [
         { "groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert",
           "fuehrende_quelle": [ { "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null } ],
-          "vergleichsquellen": [ { "komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "kanal_wertart": "gauge", "zweck": "Plausibilität", "gueltig_ab": "2026-11-20T08:30:00+01:00", "gueltig_bis": null, "toleranz_fassungen": [ { "fassung": 1, "prozent_je_monat": 2.0, "gueltig_ab": "2026-11-20", "begruendung": "Startwert der energetischen Bewertung", "person": "IK" } ] } ] }
+          "vergleichsquellen": [ { "komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "kanal_wertart": "gauge", "zweck": "Plausibilität", "gueltig_ab": "2026-11-20T08:30:00+01:00", "gueltig_bis": null } ] }
       ],
       "ort": { "art": "standort", "kennzeichen": "ST-1", "hinweis": "Zählerplatz" },
       "elektrische_stellung": [ { "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "gueltig_ab": "2024-03-12", "gueltig_bis": null } ],
       "prozesse": [],
       "kostenstellen_anteile": [], "kostenstellen_beschreibung": "— (verteilt über Unterzähler)",
       "fuehrende_quelle": [ { "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null } ],
-      "vergleichsquellen": [],
+      "vergleichsquellen": [ { "komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "kanal_wertart": "gauge", "herleitung": "integration", "zweck": "Plausibilität", "gueltig_ab": "2026-11-20T08:30:00+01:00", "gueltig_bis": null, "toleranz_fassungen": [ { "fassung": 1, "prozent_je_monat": 2.0, "gueltig_ab": "2026-11-20", "begruendung": "Startwert der energetischen Bewertung", "person": "IK" } ] } ],
       "kadenz_s": 10, "kadenz_beschreibung": null, "formel": null, "quelle_hinweis": null,
       "beispielwerte": { "jahr_2025_kwh": 1482300, "oktober_2026_kwh": 128400, "momentanleistung_kw": 312.4 },
       "zustand": "liefert Daten"
@@ -1574,7 +1583,7 @@
     { "zeitpunkt": "2026-11-17T09:30:00+01:00", "genauigkeit": "minute", "ereignis": "Energetische Bewertung BW-2026-0001, Stand Nr. 2, wegen K-2026-0007 freigegeben; Stand Nr. 1 bleibt lesbar", "herkunft": "AP-16 §7 R7, E11" },
     { "zeitpunkt": "2026-11-18T10:40:00+01:00", "genauigkeit": "minute", "ereignis": "Zählerwechsel an MS-06: Z-5a → Z-5b; Endstand Z-5a 1 083 415,2 kWh, Anfangsstand Z-5b 0,0 kWh; Messstelle bleibt, alte Werte bleiben Z-5a zugeordnet; Lücke 10:40–10:47 bleibt sichtbar", "herkunft": "AP-00 §4.4, AP-04 E2" },
     { "zeitpunkt": "2026-11-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kriterien-Fassung 2 gilt: Ines Kaltenbach senkt K1 begründet von 10 % auf 5 %; keine Einstufung ändert sich dadurch", "herkunft": "AP-16 §7 R15, E11" },
-    { "zeitpunkt": "2026-11-20T08:30:00+01:00", "genauigkeit": "minute", "ereignis": "Ines Kaltenbach kennzeichnet an MS-01 die Netzleistung am Wechselrichter (K-1 · Einspeise-/Bezugsleistung am Wechselrichter) als Vergleichsquelle der Wirkleistung, Zweck „Plausibilität“ — beide Werte stehen nebeneinander, bewertet und ersetzt wird nichts; die führende Quelle K-3 bleibt", "herkunft": "AP-04 §4.1 (Feld „Vergleichsquellen“), E3; Zeitpunkt aus dem AP-04-Änderungsprotokoll" },
+    { "zeitpunkt": "2026-11-20T08:30:00+01:00", "genauigkeit": "minute", "ereignis": "Ines Kaltenbach kennzeichnet an MS-01 die Netzleistung am Wechselrichter (K-1 · Einspeise-/Bezugsleistung am Wechselrichter) als Vergleichsquelle der Wirkleistung und — aus der Leistung integriert — der Wirkenergie Bezug, Zweck „Plausibilität“ — beide Werte stehen nebeneinander, bewertet und ersetzt wird nichts; die führende Quelle K-3 bleibt", "herkunft": "AP-04 §4.1 (Feld „Vergleichsquellen“), E3; Zeitpunkt aus dem AP-04-Änderungsprotokoll" },
     { "zeitpunkt": "2026-11-24T09:40:00+01:00", "genauigkeit": "minute", "ereignis": "Jonas Wendlinger gewährt Elektro Brunner Unterstützung für ST-1, Umfang „Einrichten und Bedienen“, befristet bis 15.12.2026", "herkunft": "AP-03 §4.1" },
     { "zeitpunkt": "2026-11-27T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Prozess P-7 und Energieeinsatz EE-8 angelegt; Messbedarf MB-1 durch die eingerichtete Messstelle MS-23 eingelöst — noch ohne Datenquelle", "herkunft": "AP-16 §7 R5, E11" },
     { "zeitpunkt": "2026-11-28T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Messmittel-Angaben für GR-2, Einbau Z-5b, GR-5 und Wandler K-8.2 erfasst; nicht erhobene Angaben bleiben unbekannt", "herkunft": "AP-16 §7 R8, E11" },
@@ -1601,7 +1610,7 @@
   ],
 
   "abnahmefaelle_ap16": {
-    "quelle": "Konzept AP-16 §7 (referenzfaelle.json vom 22.09.2026) — die Blöcke „gegeben“ von R1–R5, R7, R8, R12 und R14 wörtlich; die Zwillinge rechnen ihre Tatsachen aus den fachlichen Blöcken dieser Datei nach",
+    "quelle": "Konzept AP-16 §7 (referenzfaelle.json vom 22.09.2026) — die Blöcke „gegeben“ von R1–R5, R7, R8, R9, R12 und R14 wörtlich; die Zwillinge rechnen ihre Tatsachen aus den fachlichen Blöcken dieser Datei nach",
     "faelle": [
       { "fall": "R1", "gegeben": { "nenner_je_anlage_kwh": { "AN-1": 139380, "AN-2": 36900, "AN-3": 9100 }, "nenner_kwh": 185380, "anlagen": "3 von 3", "rest_je_anlage_kwh": { "AN-1": 54580, "AN-2": 3860, "AN-3": 1200 }, "rest_anteil_an_anlage_prozent": { "AN-1": 39.2, "AN-2": 10.5, "AN-3": 13.2 }, "zugeordnet_kwh": 125740, "rest_kwh": 59640, "abdeckung_prozent": 67.8 } },
       { "fall": "R2", "gegeben": { "rangliste": { "EE-1": { "rang": 1, "menge_kwh": 77500, "anteil_prozent": 41.8, "K1": "ueber_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-3": { "rang": 2, "menge_kwh": 15900, "anteil_prozent": 8.6, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-2": { "rang": 3, "menge_kwh": 9640, "anteil_prozent": 5.2, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-6": { "rang": 4, "menge_kwh": 8700, "anteil_prozent": 4.7, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-5": { "rang": 5, "menge_kwh": 7800, "anteil_prozent": 4.2, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "EE-4": { "rang": 6, "menge_kwh": 6200, "anteil_prozent": 3.3, "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" } }, "K7": "vorlaeufig", "monate": 1, "kriterien_fassung": 1 } },
@@ -1610,6 +1619,7 @@
       { "fall": "R5", "gegeben": { "rest_AN-1_oktober_kwh": 54580, "rest_AN-1_anteil_prozent": 39.2, "messbedarf": { "kennzeichen": "MB-1", "einsatz": "EE-8", "was": "Lüftung, Beleuchtung und Allgemeinstrom Halle 1 (Rest 39 % der Anlage)", "ort": "G-1", "groesse": "Wirkenergie Bezug (kWh)", "frist": "2027-03-31", "zustand": "eingeloest", "messstelle": "MS-23", "erfasst_am": "2026-11-27", "person": "IK" }, "MS-23": { "name": "Halle 1 Allgemein", "ort": "G-1", "stellung": "AN-1 · Unterzähler von MS-01", "lebenszyklus": "eingerichtet · keine Datenquelle seit 27.11.2026", "quelle_ab": "2027-03-01T10:00:00+01:00 (neuer Unterzähler K-15, Modbus, Geräte-ID 5 am Gateway DQ-3)" } } },
       { "fall": "R7", "gegeben": { "stand_1": { "nr": 1, "freigegeben_am": "2026-11-09T10:12:00+01:00", "datenstand": "2026-11-09T10:05:00+01:00", "freigeber": "IK", "MS-12": { "version": 1, "wert": 6100 }, "EE-2_menge": 9700, "EE-2_anteil": 5.2, "rest_kwh": 59580 }, "korrektur": { "kennung": "K-2026-0007", "freigegeben_am": "2026-11-12T10:05:33+01:00", "MS-12_neu": 6040 }, "stand_2": { "nr": 2, "freigegeben_am": "2026-11-17T09:30:00+01:00", "anlass": "K-2026-0007", "MS-12": { "version": 2, "wert": 6040 }, "EE-2_menge": 9640, "EE-2_anteil": 5.2, "rest_kwh": 59640, "ersetzt": 1 } } },
       { "fall": "R8", "gegeben": { "GR-2": { "genauigkeitsklasse": "B (MID, Wirkenergie)", "pruefungsart": "eichung", "pruefung_am": "2023-06-14", "gueltig_bis": "2031-12-31", "beleg": { "bezeichnung": "Zählerstandsmitteilung 10/2026, Netzgesellschaft Ahrental, Zählernr. 47110000001-Z1", "sha256": "3b1f…9a2e (32 Byte, vom Kunden beim Eintragen aus der Datei gebildet)", "abgelegt": "beim Kunden (Netzrechnung)" }, "eingetragen": "IK 2026-11-28" }, "Z-5b": { "genauigkeitsklasse": "1", "pruefungsart": "werksbescheinigung", "pruefung_am": "2026-10-02", "gueltig_bis": null, "beleg": { "bezeichnung": "Werksprüfprotokoll Seriennr. 88231", "sha256": "c07d…41f0" }, "eingetragen": "TB (Elektro Brunner, Unterstützer) 2026-11-28" }, "GR-5": { "genauigkeitsklasse": null, "pruefungsart": "nicht_erhoben", "hinweis": "Hersteller, Typ und Seriennummer sind in der Referenzdatei `null` — nicht erhoben" }, "K-8.2": { "karte": "750-494/000-001 (5 A) — laut Hersteller ± 0,5 % v. ME Wirkleistung (Katalog, Quelle mit sha256)", "wandler": "400/5 A ab 01.02.2027 (Fassung 2), Klasse nicht erhoben" } } },
+      { "fall": "R9", "gegeben": { "toleranz": { "vergleichsquelle": "MS-01 ← K-1 Netzleistung", "prozent_je_monat": 2.0, "fassung": 1, "startwert": true }, "dezember_2026": { "fuehrend_kwh": 131200, "vergleich_kwh": 129700, "abweichung_prozent": 1.1 }, "gegenprobe": { "fuehrend_kwh": 131200, "vergleich_kwh": 126700, "abweichung_prozent": 3.4 } } },
       { "fall": "R12", "gegeben": { "MS-21": { "medium": "Gas", "hauptgroesse": "Volumen · Bezug · m³ · Zählerstand", "oktober_2026_m3": 1240, "ablesungen": "01.10.2026 07:15 Stand 48 211 m³ … (Referenzdatei)", "quelle": "keine (kein Kanal, AP-04 E8 / AP-00 E11)" }, "EE-7": { "traeger": "Gas", "anteil": null, "kriterien": { "K1": "nicht_anwendbar", "K2": "nicht_anwendbar", "K3": "nicht_anwendbar", "K4": "möglich", "K5": "aus den Ablesungen (Lücken-Lauf der Ablesungen)" } } } },
       { "fall": "R14", "gegeben": { "verantwortlich": { "EE-2": "PH", "EE-5": "PH", "EE-1": "MD (Bedienberechtigt, ST-1)", "EE-3": "IK", "EE-4": "IK", "EE-6": "JW", "EE-7": "JW" }, "rechte": { "energieeinsatz.verwalten": "KA U · EM U", "energieeinsatz.einstufen": "KA U · EM U", "energieeinsatz.ansehen": "KA U · EM U · BE S · BD S · LE S · US A", "bewertung.abrufen": "KA U · EM U", "bewertung.kriterien": "KA U · EM U", "messmittel.angaben": "KA U · EM U · BE S · US Ei" } } }
     ]

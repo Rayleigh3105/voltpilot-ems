@@ -520,10 +520,14 @@ die Messstelle): 201 neue Fassung, 200 unverändert; 422 `toleranz_ungueltig` (�
 höchstens 100, höchstens zwei Nachkommastellen), `begruendung_fehlt`, `text_zu_lang`,
 `keine_vergleichsquelle`; 400 `anfrage_ungueltig`.
 
-**Referenzdatei:** MS-01 führt die Netzleistung K-1 als Vergleichsquelle der
-**Nebengröße** Wirkleistung (Momentanwert). Sie liefert keine Monatsmenge; der
-kWh-Vergleich aus R9 braucht eine Vergleichsquelle der Hauptgröße (etwa K-1 mit
-Herleitung `integration`). `VergleichToleranzApiTest` spielt R9 genau so.
+**Referenzdatei:** ab Fassung 1.7 führt MS-01 die Netzleistung K-1 zusätzlich als
+Vergleichsquelle der **Hauptgröße** Wirkenergie Bezug mit Herleitung `integration` und
+der Toleranz-Fassung — sie hat damit eine Monatsmenge, und R9 (`abnahmefaelle_ap16`:
+Dezember 2026 1,1 % passt, Gegenprobe 3,4 % Befund) ergibt sich aus der Datei. Die Bindung
+an der Nebengröße Wirkleistung (Momentanwert) bleibt, ohne Toleranz, und steht weiter
+`ohne_monatsmenge` (bis Fassung 1.6 die einzige); die Referenz-Zwillinge
+(`UemsReferenzunternehmenVectorsTest`, `uemsReferenzunternehmen.test.ts`, `test_bewertung.py`)
+prüfen beides. `VergleichToleranzApiTest` spielt R9 genau so.
 
 Nachweis: `VergleichToleranzApiTest` (R9 1,1 % passt / 3,4 % Befund, byte-gleiche Werte vor
 und nach Lesen und Eintragen, Fassung 2 mit Begründung beurteilt den Dezember nicht neu,

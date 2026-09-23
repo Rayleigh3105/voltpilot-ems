@@ -11,9 +11,10 @@ Regel `monatsvergleich` (Vektoren G5 in `bewertung-vectors.json`, drei Zwillinge
 - Lesemodell, kein Schreibweg auf Werte: führend über `MessstelleWerteService.werte(…, "monat", …)`,
   Vergleich aus `messreihe_periode` des Vergleichskanals (`energie` bei Integration, sonst `menge`).
   Beide Zahlen werden gelesen, nie gebildet oder ersetzt.
-- Nur Vergleichsquellen der HAUPTGRÖSSE mit Monatsmenge vergleichen. ⚠ Die Referenzdatei führt
-  K-1 an MS-01 an der Nebengröße Wirkleistung (Momentanwert) — dort `ohne_monatsmenge`. Eine
-  Integration entsteht nur, wenn eine Bindung des Kanals `integration` sagt (`ViertelstundeVerdichter`).
+- Nur Vergleichsquellen der HAUPTGRÖSSE mit Monatsmenge vergleichen. Die Referenzdatei führt K-1
+  an MS-01 ab Fassung 1.7 zusätzlich an der Hauptgröße mit `herleitung: integration` und Toleranz;
+  die Bindung an der Nebengröße Wirkleistung bleibt `ohne_monatsmenge`. R9 steht in `abnahmefaelle_ap16`. Eine Integration entsteht
+  nur, wenn eine Bindung des Kanals `integration` sagt (`ViertelstundeVerdichter`).
 - Lücke, Ersatzwert, angebrochener Monat oder führend ≤ 0 = `nicht_vergleichbar` mit Grund, nie
   „passt“ und nie ein Befund. Befund nur bei streng größerer, ungerundeter Abweichung.
 - Recht `messmittel.angaben` am POST (Zaun über `RechtZiel.MESSSTELLE`); das GET trägt nur den

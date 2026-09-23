@@ -1220,6 +1220,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung17(d);
         ohneFassung16(d);
         ohneFassung15(d);
         ohneFassung14(d);
@@ -1351,6 +1352,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung14IstEsDieFassung13() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung17(d);
         ohneFassung16(d);
         ohneFassung15(d);
         ohneFassung14(d);
@@ -1544,6 +1546,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung15IstEsDieFassung14() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung17(d);
         ohneFassung16(d);
         ohneFassung15(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.4").isEqualTo(FASSUNG_1_4_SHA256);
@@ -1947,6 +1950,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung16IstEsDieFassung15() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung17(d);
         ohneFassung16(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.5")
                 .isEqualTo(FASSUNG_1_5_SHA256);
@@ -2070,7 +2074,7 @@ class UemsReferenzunternehmenVectorsTest {
 
         List<JsonNode> fallListe = kinder(d.at("/abnahmefaelle_ap16/faelle"));
         assertThat(fallListe.stream().map(f -> text(f, "fall")).toList())
-                .containsExactly("R1", "R2", "R3", "R4", "R5", "R7", "R8", "R12", "R14");
+                .containsExactly("R1", "R2", "R3", "R4", "R5", "R7", "R8", "R9", "R12", "R14"); // R9 ab Fassung 1.7
         Map<String, JsonNode> gegeben = new LinkedHashMap<>();
         fallListe.forEach(f -> gegeben.put(text(f, "fall"), f.get("gegeben")));
         assertThat(gegeben.get("R1").get("nenner_kwh").decimalValue()).isEqualByComparingTo("185380");
@@ -2113,6 +2117,116 @@ class UemsReferenzunternehmenVectorsTest {
         for (String kz : List.of("EE-2", "EE-5", "EE-3", "EE-4", "EE-6", "EE-7")) {
             assertThat(text(gegeben.get("R14").get("verantwortlich"), kz)).startsWith(verantwortlich.get(kz));
         }
+    }
+
+    // ------------------------------------ Fassung 1.7 (K-1 an der Hauptgröße, Befund aus PR 1104)
+
+    static final String FASSUNG_1_6_SHA256 = "5b3c87b06a7b8b48d4b00a95f505cad6b7c75b54cdfdf33e1463a72977cf1c14";
+    static final int KOMMENTAR_ZEILEN_1_6 = 118;
+    static final String ZEITACHSE_K1_1_6 = "als Vergleichsquelle der Wirkleistung, Zweck";
+    static final String ZEITACHSE_K1_1_7 =
+            "als Vergleichsquelle der Wirkleistung und — aus der Leistung integriert — der Wirkenergie Bezug, Zweck";
+    /** Herleitungen mit Monatsmenge (messstelle.md §5) — wie im {@link VergleichToleranzService}. */
+    static final Set<String> MIT_MENGE = Set.of("zaehlerstand", "differenzen", "integration");
+
+    /** Nimmt GENAU die Zusätze der Fassung 1.7 heraus: K-1 nur an der Nebengröße (mit der Toleranz), ohne R9. */
+    static void ohneFassung17(ObjectNode d) {
+        assertThat(d.path("version").asText()).isEqualTo("1.7");
+        d.put("version", "1.6");
+        d.put("stand", "2026-09-22");
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).isGreaterThan(KOMMENTAR_ZEILEN_1_6);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_6) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_7")).isNotNull();
+        ObjectNode ms01 = (ObjectNode) nachKennzeichen(d.get("messstellen")).get("MS-01");
+        ArrayNode haupt = (ArrayNode) ms01.get("vergleichsquellen");
+        assertThat(kinder(haupt).stream().map(q -> text(q, "komponente")).toList()).containsExactly("K-1");
+        ObjectNode k1 = (ObjectNode) haupt.remove(0);
+        assertThat(k1.remove("herleitung").asText()).isEqualTo("integration");
+        JsonNode toleranz = k1.remove("toleranz_fassungen");
+        assertThat(toleranz).isNotNull();
+        ObjectNode neben = (ObjectNode) ms01.at("/nebengroessen/0/vergleichsquellen/0");
+        assertThat(neben).as("an der Nebengröße dieselbe Bindung ohne Herleitung und Toleranz").isEqualTo(k1);
+        neben.set("toleranz_fassungen", toleranz);
+        List<JsonNode> zeile = kinder(d.get("zeitachse")).stream()
+                .filter(z -> text(z, "ereignis").contains(ZEITACHSE_K1_1_7)).toList();
+        assertThat(zeile).hasSize(1);
+        ((ObjectNode) zeile.get(0)).put("ereignis", text(zeile.get(0), "ereignis")
+                .replace(ZEITACHSE_K1_1_7, ZEITACHSE_K1_1_6));
+        ObjectNode ap16 = (ObjectNode) d.get("abnahmefaelle_ap16");
+        ap16.put("quelle", text(ap16, "quelle").replace("R7, R8, R9, R12", "R7, R8, R12"));
+        entferne((ArrayNode) ap16.get("faelle"), f -> "R9".equals(text(f, "fall")), 1);
+    }
+
+    /** Je Vergleichsquelle von MS-01 („Größe · Komponente“): Monatsvergleich nur an der Hauptgröße mit Monatsmenge (bewertung.md §13). */
+    private static Map<String, String> monatsvergleichArt(JsonNode ms01) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (JsonNode q : kinder(ms01.get("vergleichsquellen"))) {
+            out.put(text(ms01.get("hauptgroesse"), "groesse") + " · " + text(q, "komponente"),
+                    MIT_MENGE.contains(q.path("herleitung").asText())
+                            ? VergleichToleranzService.MIT_MONATSVERGLEICH : VergleichToleranzService.OHNE_MONATSMENGE);
+        }
+        for (JsonNode n : kinder(ms01.get("nebengroessen"))) {
+            kinder(n.get("vergleichsquellen")).forEach(q -> out.put(text(n, "groesse") + " · " + text(q, "komponente"),
+                    VergleichToleranzService.OHNE_MONATSMENGE));
+        }
+        return out;
+    }
+
+    @Test
+    void ohneDieZusaetzeDerFassung17IstEsDieFassung16() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ohneFassung17(d);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.6").isEqualTo(FASSUNG_1_6_SHA256);
+    }
+
+    @Test
+    void k1VergleichtAnDerHauptgroesseUndR9ErgibtSichAusDerDatei() throws Exception {
+        ObjectNode alt = daten().deepCopy();
+        ohneFassung17(alt);
+        assertThat(monatsvergleichArt(nachKennzeichen(alt.get("messstellen")).get("MS-01")))
+                .as("Fassung 1.6: K-1 nur an der Nebengröße")
+                .containsExactly(Map.entry("Wirkleistung · K-1", "ohne_monatsmenge"));
+
+        JsonNode d = daten();
+        JsonNode ms01 = nachKennzeichen(d.get("messstellen")).get("MS-01");
+        assertThat(monatsvergleichArt(ms01)).containsExactly(Map.entry("Wirkenergie · K-1", "ja"),
+                Map.entry("Wirkleistung · K-1", "ohne_monatsmenge"));
+        JsonNode k1 = ms01.at("/vergleichsquellen/0");
+        assertThat(List.of(text(ms01.get("hauptgroesse"), "groesse"), text(ms01.get("hauptgroesse"), "einheit"),
+                text(k1, "kanal_wertart"), text(k1, "herleitung")))
+                .containsExactly("Wirkenergie", "kWh", "gauge", "integration");
+        assertThat(kinder(ms01.get("nebengroessen")).stream()
+                .map(n -> text(n, "groesse") + " ← " + text(n.at("/fuehrende_quelle/0"), "komponente")
+                        + " · Vergleich " + text(n.at("/vergleichsquellen/0"), "komponente")
+                        + (n.at("/vergleichsquellen/0").has("toleranz_fassungen") ? " mit Toleranz" : "")).toList())
+                .as("die Nebengröße bleibt wie sie war, nur ohne Toleranz")
+                .containsExactly("Wirkleistung ← K-3 · Vergleich K-1");
+
+        JsonNode r9 = kinder(d.at("/abnahmefaelle_ap16/faelle")).stream()
+                .filter(f -> "R9".equals(text(f, "fall"))).findFirst().orElseThrow().get("gegeben");
+        JsonNode fassung = kinder(k1.get("toleranz_fassungen")).stream()
+                .filter(t -> t.get("fassung").asInt() == r9.at("/toleranz/fassung").asInt()).findFirst().orElseThrow();
+        assertThat(fassung.get("prozent_je_monat").decimalValue())
+                .isEqualByComparingTo(r9.at("/toleranz/prozent_je_monat").decimalValue());
+        assertThat(r9.at("/toleranz/vergleichsquelle").asText()).isEqualTo("MS-01 ← " + text(k1, "komponente") + " Netzleistung");
+        String grenze = fassung.get("prozent_je_monat").decimalValue().stripTrailingZeros().toPlainString();
+        Map<String, Object> dez = BewertungRegeln.monatsvergleich(
+                new BewertungRegeln.MonatsSeite(r9.at("/dezember_2026/fuehrend_kwh").asText(), "vollständig"),
+                new BewertungRegeln.MonatsSeite(r9.at("/dezember_2026/vergleich_kwh").asText(), "vollständig"), true, grenze);
+        Map<String, Object> gegen = BewertungRegeln.monatsvergleich(
+                new BewertungRegeln.MonatsSeite(r9.at("/gegenprobe/fuehrend_kwh").asText(), "vollständig"),
+                new BewertungRegeln.MonatsSeite(r9.at("/gegenprobe/vergleich_kwh").asText(), "vollständig"), true, grenze);
+        assertThat(List.of(dez.get("zustand"), dez.get("abweichung_prozent"), dez.get("toleranz_prozent")))
+                .containsExactly("passt", "1.1", "2");
+        assertThat(List.of(gegen.get("zustand"), gegen.get("abweichung_prozent"), gegen.get("befund")))
+                .containsExactly("abweichung", "3.4", true);
+        assertThat(new BigDecimal((String) dez.get("abweichung_prozent")))
+                .isEqualByComparingTo(r9.at("/dezember_2026/abweichung_prozent").decimalValue());
+        assertThat(new BigDecimal((String) gegen.get("abweichung_prozent")))
+                .isEqualByComparingTo(r9.at("/gegenprobe/abweichung_prozent").decimalValue());
     }
 
     /** Die Objekte einer Liste nach ihrem Kennzeichen. */

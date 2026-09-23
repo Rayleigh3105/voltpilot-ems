@@ -572,11 +572,16 @@ class MesswertHerkunftVectorsTest {
         }
     }
 
-    /** Sammelt [Messstelle, Einbau, Wertart, Einheit] jeder zur Messzeit gültigen Bindung. */
+    /**
+     * Sammelt [Messstelle, Einbau, Wertart, Einheit] jeder zur Messzeit gültigen Bindung. Eine Bindung mit
+     * {@code herleitung: integration} (Referenzdatei ab 1.7: K-1 an MS-01s Hauptgröße) bildet aus denselben
+     * Rohwerten eine Menge — der Rohwert selbst gehört zur Bindung seiner eigenen Einheit und zählt hier nicht doppelt.
+     */
     private static void sammleFuehrend(JsonNode ms, JsonNode quellen, JsonNode groesse,
             String komponente, String kanal, Instant messzeit, List<String[]> out) {
         for (JsonNode q : quellen) {
-            if (komponente.equals(q.path("komponente").asText())
+            if (!"integration".equals(q.path("herleitung").asText())
+                    && komponente.equals(q.path("komponente").asText())
                     && kanal.equals(q.path("kanal").asText())
                     && laeuft(q, messzeit, "gueltig_ab", "gueltig_bis")) {
                 out.add(new String[] {

@@ -65,6 +65,32 @@ def test_ahrenberg_werte_sind_die_der_referenzdatei():
             assert str(DATA['startwerte'][k['kennung']]) == str(k['schwelle'])
 
 
+
+def test_r9_ergibt_sich_aus_der_referenzdatei_mit_k1_an_der_hauptgroesse():
+    """Fassung 1.7: K-1 vergleicht auch an MS-01s Hauptgröße über ``integration`` (bis 1.6 nur Nebengröße, ohne Monatsmenge)."""
+    ref = json.loads((V2 / 'uems-referenzunternehmen.json').read_text())
+    ms01 = next(m for m in ref['messstellen'] if m['kennzeichen'] == 'MS-01')
+    assert [(q['komponente'], 'toleranz_fassungen' in q) for n in ms01['nebengroessen'] for q in n['vergleichsquellen']] == [
+        ('K-1', False)]
+    [k1] = ms01['vergleichsquellen']
+    assert (k1['komponente'], k1['kanal_wertart'], k1['herleitung']) == ('K-1', 'gauge', 'integration')
+    assert ms01['hauptgroesse']['einheit'] == 'kWh'
+    r9 = next(x['gegeben'] for x in ref['abnahmefaelle_ap16']['faelle'] if x['fall'] == 'R9')
+    [fassung] = [t for t in k1['toleranz_fassungen'] if t['fassung'] == r9['toleranz']['fassung']]
+    assert fassung['prozent_je_monat'] == r9['toleranz']['prozent_je_monat']
+    grenze = f"{fassung['prozent_je_monat']:g}"
+    cases = {x['name']: x for x in DATA['cases']}
+    for block, name, zustand in (('dezember_2026', 'R9-Dezember-passt-1.1', 'passt'),
+                                 ('gegenprobe', 'R9-Gegenprobe-Befund-3.4', 'abweichung')):
+        seite = r9[block]
+        e = cases[name]['eingang']
+        assert (e['fuehrend']['menge'], e['vergleich']['menge'], e['toleranz']) == (
+            str(seite['fuehrend_kwh']), str(seite['vergleich_kwh']), grenze)
+        aus = b.monatsvergleich({'menge': str(seite['fuehrend_kwh']), 'zustand': 'vollständig'},
+                                {'menge': str(seite['vergleich_kwh']), 'zustand': 'vollständig'}, True, grenze)
+        assert (aus['zustand'], aus['abweichung_prozent']) == (zustand, str(seite['abweichung_prozent']))
+
+
 def test_messabdeckung_ahrenberg_laeuft_durch_denselben_p3_zwilling():
     messstellen = []
     for einsatz in MESSABDECKUNG['je_einsatz']:
