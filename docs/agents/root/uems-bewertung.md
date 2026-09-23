@@ -45,8 +45,8 @@ Zahlen schlagen vor, eine Person stuft ein, nichts verschwindet. Kundenwörter n
 **Benannte Grenzen (§8.5):** andere Träger nur „im Umfang, ohne Anteil“; Messmittel „nicht erhoben“, bis eine Person
 einträgt; Zahlen ab November 2026 sind Annahmen; Schwellen und Fristen sind Startwerte; K2 bleibt `nicht_belastbar`,
 bis Halle 1 gemessen ist. Die fünf Glossar-Begriffe aus §6.5 (Energieeinsatz, Einstufung, Messbedarf, Messmittel-Angabe,
-Betrachtungsumfang) sind noch nicht im generierten Glossar; `build_fachmodell.py --check` meldet `glossar.md` schon auf
-der Basis als VERALTET (Handänderungen aus #855, #909, #1106).
+Betrachtungsumfang) stehen als Nachträge AP-16 im generierten Glossar; die Handänderungen aus #855, #909, #1106 sind
+in `fachmodell.py` übernommen, `build_fachmodell.py --check` ist grün.
 
 ## Mengen, Nenner und Rangliste (IP-9)
 

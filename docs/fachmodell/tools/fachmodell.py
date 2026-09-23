@@ -319,6 +319,36 @@ GLOSSAR += [
      "beispiel": "MS-21 Gas Heizung Verwaltung, Oktober 2026: „— · keine Werte“ und „Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.“",
      "heute": "Acht Sätze als Vertrag: `docs/contracts/v2/ergebnis-zustand.md` §9 (Block `grund`, 1.11), gesprochen von `frontend/portal/src/uemsErgebnis.ts` und `services/api/src/main/java/com/voltpilot/api/uems/ErgebnisZustand.java` (`grundSatz`). An der Karte sprechen sie mit AP-13 IP-6.",
      "abgrenzung": "Nicht ein Fehler oder eine Störung, nicht der Zustand „keine Werte“ (der sagt, DASS keine Zahl da ist), nicht die Gründe einer Kennzahl (eigener Vertrag)."},
+    {"id": "betrachtungsumfang", "sicht": "org", "begriff": "Betrachtungsumfang", "nachtrag": "AP-16 §3.2, §4.1",
+     "kurz": "Fassung am Unternehmen: Standorte, Träger, Ausschlüsse mit Begründung; die Anlagen folgen aus den Standorten am Stichtag.",
+     "lang": "Der Betrachtungsumfang ist eine Fassung am Unternehmen: welche Standorte, welche Energieträger — und was ausdrücklich außerhalb bleibt, mit Begründung. Die Anlagen im Umfang sind die Anlagen dieser Standorte am Stichtag (zeitgültig, AP-02/AP-10); die Bilanzgrenze bleibt die Anlage (AP-10 E9) — der Umfang ist die Menge der Bilanzgrenzen, kein neues Grenzobjekt.",
+     "beispiel": "Ines Kaltenbach (Energiemanager) legt am 04.11.2026 den Betrachtungsumfang fest — beide Werke, Träger Strom: ST-1 Werk Ahrenberg mit AN-1, AN-2; ST-2 Werk Lindach mit AN-3; Träger Strom mit Anteil, Gas ohne Anteil.",
+     "heute": "Tabellen `bewertung_umfang`, `bewertung_umfang_standort`, `bewertung_umfang_ausschluss`; `services/api/src/main/java/com/voltpilot/api/uems/BewertungUmfangService.java` (AP-16 IP-5). Wegweiser: `docs/agents/root/uems-bewertung-umfang.md`.",
+     "abgrenzung": "Nicht ein neues Grenzobjekt; nicht ein Geltungsbereich-Wort."},
+    {"id": "energieeinsatz", "sicht": "org", "begriff": "Energieeinsatz", "nachtrag": "AP-16 §3.3, §4.1 (E1)",
+     "kurz": "Genau ein Prozess × genau ein Träger, mit Verantwortlichem, Einflussgrößen, Messbedarf, Einstufungs-Fassungen (Kennzeichen EE-…).",
+     "lang": "Ein Energieeinsatz ist genau ein Prozess und genau ein Träger (E1). Er trägt: Kennzeichen (EE-1 …), Name, Verbraucher als Wortlaut (welche Maschinen, Anlagenteile), optional Verweise auf Komponenten (die Technik), einen Verantwortlichen, Einflussgrößen, Messbedarf und Einstufungs-Fassungen.",
+     "beispiel": "Sieben Energieeinsätze, je Prozess einen (Spritzguss, Montage, Druckluft, Kühlung, Logistik, Verwaltung; dazu die Gasheizung der Verwaltung als Einsatz ohne Anteil), mit Verantwortlichen aus dem Personen-Satz.",
+     "heute": "Tabellen `energieeinsatz`, `energieeinsatz_einflussgroesse`, `energieeinsatz_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/EnergieeinsatzService.java`, `services/api/src/main/java/com/voltpilot/api/web/EnergieeinsatzController.java` (AP-16 IP-3/IP-4). Regeln als Vertrag: `docs/contracts/v2/bewertung.md` mit `bewertung-vectors.json`. Wegweiser: `docs/agents/root/uems-energieeinsatz.md`.",
+     "abgrenzung": "Nicht der Prozess selbst; nicht eine Messstelle; nicht eine Komponente."},
+    {"id": "einstufung", "sicht": "org", "begriff": "Einstufung", "nachtrag": "AP-16 §3.1, §4.1",
+     "kurz": "Fassung am Einsatz: `wesentlich` · `nicht_wesentlich` · `offen`; Person, Tag, Begründung, Herkunfts-Satz.",
+     "lang": "Eine Bewertung ist eine Behauptung gegenüber Dritten. Deshalb hat jede Einstufung vier Dinge, oder sie ist keine: eine Person (Konto, Name, Rolle), einen Tag (gilt ab, als Fassung), eine Begründung (Pflichtfeld, im Wortlaut) und einen Herkunfts-Satz (welche Zahl in welcher Version, welcher Nenner aus welchen Bilanzwerten, welche Kriterien-Fassung, welches Urteil). Das System liefert die ersten drei nicht und den vierten immer.",
+     "beispiel": "Ines Kaltenbach stuft ein — Spritzguss wesentlich nach Zahl, Druckluft wesentlich nach ihrer begründeten Einschätzung (Querschnitt, Leckagen vermutet).",
+     "heute": "Tabelle `energieeinsatz_einstufung`; `services/api/src/main/java/com/voltpilot/api/uems/EnergieeinsatzEinstufungService.java` (AP-16 IP-11); Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-bewertung-einstufung.md`.",
+     "abgrenzung": "Nicht ein Vorschlag; nicht etwas, das ein Läufer setzt."},
+    {"id": "messbedarf", "sicht": "org", "begriff": "Messbedarf", "nachtrag": "AP-16 §3.6, §4.1 (E6)",
+     "kurz": "Eintrag am Einsatz (was, wo, Größe optional, Frist), Zustand offen · eingelöst · verworfen; eingelöst durch eine eingerichtete Messstelle.",
+     "lang": "Messbedarf ist ein Eintrag am Einsatz (was, wo, welche Größe — optional —, Frist), Zustand offen · eingelöst · verworfen; eingelöst wird er durch eine eingerichtete Messstelle (AP-04 E8), die bis zum Zähler „keine Datenquelle seit …“ sagt und nie 0 ist (R5).",
+     "beispiel": "Aus der Rest-Zeile wird Messbedarf: „Halle 1 Lüftung, Beleuchtung, Allgemein“ → eine geplante Messstelle ohne Datenquelle → am 01.03.2027 hängt der Zähler (R5).",
+     "heute": "Tabellen `messbedarf`, `messbedarf_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/MessbedarfService.java` (AP-16 IP-19). Wegweiser: `docs/agents/root/uems-messbedarf.md`.",
+     "abgrenzung": "Nicht eine Messstelle; nicht eine Maßnahme (AP-18)."},
+    {"id": "messmittel_angabe", "sicht": "erf", "begriff": "Messmittel-Angabe", "nachtrag": "AP-16 §3.7, §4.1 (E7)",
+     "kurz": "Am Einbau: Klasse, Prüfungsart, Datum, gültig bis, Beleg; Vorgabe `nicht_erhoben`.",
+     "lang": "Messmittel-Angaben stehen am Einbau: Genauigkeitsklasse, Prüfungsart (Eichung · MID-Konformität · Kalibrierung · Werksbescheinigung · keine · nicht erhoben), Prüfdatum, gültig bis, Beleg. Ein Beleg ist ein Verweis mit Prüfsumme: Bezeichnung, Ablageort beim Kunden, SHA-256 der Datei (beim Eintragen im Portal gebildet), Person, Zeitpunkt — die Datei selbst wird nicht gespeichert (E7). Die Vorgabe ist `nicht_erhoben`, nie ein erfundener Wert; ein wesentlicher Einsatz mit Messmitteln ohne Angabe wird zur Prüfaufgabe (R8).",
+     "beispiel": "Am Netzzähler trägt Ines Kaltenbach Eichung und Beleg ein; am Druckluft-Zähler steht „Klasse und Prüfung nicht erhoben“ — als Prüfaufgabe, nicht als Schätzung (R8).",
+     "heute": "`services/api/src/main/java/com/voltpilot/api/uems/MessmittelService.java` (AP-16 IP-15), Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-messmittel.md`.",
+     "abgrenzung": "Nicht eine Katalog-Eigenschaft (die steht daneben: „laut Hersteller“)."},
 ]
 
 # ---------------------------------------------------------------------------------------------
@@ -568,6 +598,7 @@ VERFEINERUNGEN = {
     "messstelle": [
         ("AP-04 E1", "⚠ Eine Messstelle hat genau EINE Hauptgröße (identitätsstiftend, nie änderbar) und 0..n Nebengrößen desselben Messortes, jede mit eigener führender Quelle — das ERSETZT AP-00 §4.2 „Messstelle 1 : 1 Messgröße“ (AP-04 W1). Nebengrößen tragen nie Bilanz oder Bericht."),
         ("AP-04 E3", "Vergleichsquellen werden mit Zweck gekennzeichnet (Plausibilität · Ersatz bei Ausfall · Abrechnungszähler) und beide Werte nebeneinander gezeigt — ohne Bewertung, ohne Ersatz."),
+        ('AP-16 E10 (IP-17/IP-18)', 'Eine Vergleichsquelle trägt eine **Toleranz** als Fassung (Startwert 2 % je Monat, änderbar mit Begründung ab dem laufenden Monat). Liegt die Monatsabweichung darüber, steht unter der Quelle-Karte ein Befund „Abweichung x % (Toleranz y %) — bitte prüfen“ — ohne Ursache; die Werte stehen weiter nebeneinander, keiner ersetzt den anderen. Messmittel-Angaben ohne Erhebung heißen „nicht erhoben“; ein wesentlicher Einsatz mit solchen Messmitteln wird zur **Prüfaufgabe**.'),
         ("AP-04 E7", "Das Kennzeichen ist vierstellig fortlaufend („MS-0001“) je Kundenbereich, änderbar auf 2–16 Zeichen (Großbuchstaben, Ziffern, „-“, „.“, „/“); archivierte Kennzeichen bleiben belegt."),
         ("AP-04 E8", "Eine Messstelle OHNE Quelle ist erlaubt und eingerichtet (Kennzeichen + Name + Hauptgröße + Ort); ihre Beobachtung ist „keine Datenquelle“, und in Bilanz und Bericht steht sie als „ohne Werte“ — nie als 0."),
         ("AP-04 E12", "Die elektrische Stellung „Unterzähler von …“ bezieht sich auf die übergeordnete MESSSTELLE derselben Anlage (zeitgültig, Tag), nicht auf eine Komponente."),
@@ -607,6 +638,43 @@ VERFEINERUNGEN = {
         ("AP-01 E11", "„Marktoptimierung“ bleibt das Kundenwort und eine Option der Radiogruppe Betriebsmodell — nicht „Arbitrage“."),
         ("AP-03 E15", "Wird ein Bedienrecht entzogen, bleiben gesetzte Handeingriffe bis zum Ablauf oder bis ein Berechtigter sie beendet; die Zone „Jetzt“ nennt Urheber und „Bedienrecht beendet am …“."),
     ],
+}
+
+
+# ---------------------------------------------------------------------------------------------
+# ABSCHNITTE_NACH — freie Abschnitte, die hinter einem Begriff (nach seinen Verfeinerungen)
+# wörtlich ins Glossar kommen: Summenwert (PR 855), Ersatzwert/Korrektur/Widerruf (PR 909).
+# ---------------------------------------------------------------------------------------------
+ABSCHNITTE_NACH = {
+    "messstelle": ["""## Summenwert
+
+Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
+aus Registern und anderen berechneten Messstellen derselben Anlage, mit
+Vorzeichen und Faktor. Kein eigenes drittes Objekt. Die Messstellen-Welt
+nennt sie weiterhin „berechnet (Summe)“ mit Kennzeichen; „Gesamt-PV“ bleibt
+Cockpit-Wort. „Gesamtwert“, „PV gesamt“ und „Helfer“ sind keine neuen
+Produkttexte (freie Kundennamen bleiben erhalten). Konstante `SUMMENWERT`
+in `frontend/portal/src/glossar.ts`; Umstellung der Bestandsflächen H-5/H-7.
+
+Die Rolle ist eine gesonderte Zuordnung am Gerät: PV-Produktion, Verbrauch,
+Netz oder keine Rolle (Vorgabe). Sie wirkt ab jetzt auf die Anlagen-Anzeige,
+mit Änderungsprotokoll. Ein Wert zählt je Anlage und Rolle einmal, Netz hat
+höchstens einen maßgeblichen Wert. Vertrag und Zwillinge:
+[`rollen-zuordnung.md`](../contracts/v2/rollen-zuordnung.md)."""],
+    "grund": ["""### Ersatzwert, Korrektur und Widerruf
+
+Ein **Ersatzwert** füllt oder verteilt fehlende Messwerte mit einer benannten Methode
+und einer Begründung. Bei gemessenem Zuwachs wird dessen Menge verteilt; ohne
+Zuwachs kann eine belegte Menge, eine Vorperiode oder eine Vergleichsquelle helfen.
+Ein nachgetragener Ablesestand bleibt als solcher erkennbar.
+
+Eine **Korrektur** bewahrt den bisherigen Wert und erzeugt nach der Freigabe eine neue
+Version. Ein Vorschlag verändert noch keinen Wert. Bei eingeschalteter Prüfung durch
+eine zweite Person kann der Ersteller nicht selbst freigeben.
+
+Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
+eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
+Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md)."""],
 }
 
 # ---------------------------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 24 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 29 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -57,6 +57,11 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Vergleich](#vergleich) — Sicht Zustand · Nachtrag AP-13 §4.1 (E6, E15)
 - [Datenlage](#datenlage) — Sicht Zustand · Nachtrag AP-13 §4.1 (E13, E15)
 - [Grund (einer fehlenden Zahl)](#grund-einer-fehlenden-zahl) — Sicht Zustand · Nachtrag AP-13 §4.10 (E11)
+- [Betrachtungsumfang](#betrachtungsumfang) — Sicht Organisation · Nachtrag AP-16 §3.2, §4.1
+- [Energieeinsatz](#energieeinsatz) — Sicht Organisation · Nachtrag AP-16 §3.3, §4.1 (E1)
+- [Einstufung](#einstufung) — Sicht Organisation · Nachtrag AP-16 §3.1, §4.1
+- [Messbedarf](#messbedarf) — Sicht Organisation · Nachtrag AP-16 §3.6, §4.1 (E6)
+- [Messmittel-Angabe](#messmittel-angabe) — Sicht Erfassung · Nachtrag AP-16 §3.7, §4.1 (E7)
 
 ## Kundenbereich
 
@@ -890,3 +895,73 @@ eine zweite Person kann der Ersteller nicht selbst freigeben.
 Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
 eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
 Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md).
+
+## Betrachtungsumfang
+
+*Sicht: Organisation · Nachtrag AP-16 §3.2, §4.1*
+
+**Fassung am Unternehmen: Standorte, Träger, Ausschlüsse mit Begründung; die Anlagen folgen aus den Standorten am Stichtag.**
+
+Der Betrachtungsumfang ist eine Fassung am Unternehmen: welche Standorte, welche Energieträger — und was ausdrücklich außerhalb bleibt, mit Begründung. Die Anlagen im Umfang sind die Anlagen dieser Standorte am Stichtag (zeitgültig, AP-02/AP-10); die Bilanzgrenze bleibt die Anlage (AP-10 E9) — der Umfang ist die Menge der Bilanzgrenzen, kein neues Grenzobjekt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ines Kaltenbach (Energiemanager) legt am 04.11.2026 den Betrachtungsumfang fest — beide Werke, Träger Strom: ST-1 Werk Ahrenberg mit AN-1, AN-2; ST-2 Werk Lindach mit AN-3; Träger Strom mit Anteil, Gas ohne Anteil.
+
+**Heute im Code.** Tabellen `bewertung_umfang`, `bewertung_umfang_standort`, `bewertung_umfang_ausschluss`; `services/api/src/main/java/com/voltpilot/api/uems/BewertungUmfangService.java` (AP-16 IP-5). Wegweiser: `docs/agents/root/uems-bewertung-umfang.md`.
+
+**Abgrenzung.** Nicht ein neues Grenzobjekt; nicht ein Geltungsbereich-Wort.
+
+## Energieeinsatz
+
+*Sicht: Organisation · Nachtrag AP-16 §3.3, §4.1 (E1)*
+
+**Genau ein Prozess × genau ein Träger, mit Verantwortlichem, Einflussgrößen, Messbedarf, Einstufungs-Fassungen (Kennzeichen EE-…).**
+
+Ein Energieeinsatz ist genau ein Prozess und genau ein Träger (E1). Er trägt: Kennzeichen (EE-1 …), Name, Verbraucher als Wortlaut (welche Maschinen, Anlagenteile), optional Verweise auf Komponenten (die Technik), einen Verantwortlichen, Einflussgrößen, Messbedarf und Einstufungs-Fassungen.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Sieben Energieeinsätze, je Prozess einen (Spritzguss, Montage, Druckluft, Kühlung, Logistik, Verwaltung; dazu die Gasheizung der Verwaltung als Einsatz ohne Anteil), mit Verantwortlichen aus dem Personen-Satz.
+
+**Heute im Code.** Tabellen `energieeinsatz`, `energieeinsatz_einflussgroesse`, `energieeinsatz_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/EnergieeinsatzService.java`, `services/api/src/main/java/com/voltpilot/api/web/EnergieeinsatzController.java` (AP-16 IP-3/IP-4). Regeln als Vertrag: `docs/contracts/v2/bewertung.md` mit `bewertung-vectors.json`. Wegweiser: `docs/agents/root/uems-energieeinsatz.md`.
+
+**Abgrenzung.** Nicht der Prozess selbst; nicht eine Messstelle; nicht eine Komponente.
+
+## Einstufung
+
+*Sicht: Organisation · Nachtrag AP-16 §3.1, §4.1*
+
+**Fassung am Einsatz: `wesentlich` · `nicht_wesentlich` · `offen`; Person, Tag, Begründung, Herkunfts-Satz.**
+
+Eine Bewertung ist eine Behauptung gegenüber Dritten. Deshalb hat jede Einstufung vier Dinge, oder sie ist keine: eine Person (Konto, Name, Rolle), einen Tag (gilt ab, als Fassung), eine Begründung (Pflichtfeld, im Wortlaut) und einen Herkunfts-Satz (welche Zahl in welcher Version, welcher Nenner aus welchen Bilanzwerten, welche Kriterien-Fassung, welches Urteil). Das System liefert die ersten drei nicht und den vierten immer.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ines Kaltenbach stuft ein — Spritzguss wesentlich nach Zahl, Druckluft wesentlich nach ihrer begründeten Einschätzung (Querschnitt, Leckagen vermutet).
+
+**Heute im Code.** Tabelle `energieeinsatz_einstufung`; `services/api/src/main/java/com/voltpilot/api/uems/EnergieeinsatzEinstufungService.java` (AP-16 IP-11); Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-bewertung-einstufung.md`.
+
+**Abgrenzung.** Nicht ein Vorschlag; nicht etwas, das ein Läufer setzt.
+
+## Messbedarf
+
+*Sicht: Organisation · Nachtrag AP-16 §3.6, §4.1 (E6)*
+
+**Eintrag am Einsatz (was, wo, Größe optional, Frist), Zustand offen · eingelöst · verworfen; eingelöst durch eine eingerichtete Messstelle.**
+
+Messbedarf ist ein Eintrag am Einsatz (was, wo, welche Größe — optional —, Frist), Zustand offen · eingelöst · verworfen; eingelöst wird er durch eine eingerichtete Messstelle (AP-04 E8), die bis zum Zähler „keine Datenquelle seit …“ sagt und nie 0 ist (R5).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Aus der Rest-Zeile wird Messbedarf: „Halle 1 Lüftung, Beleuchtung, Allgemein“ → eine geplante Messstelle ohne Datenquelle → am 01.03.2027 hängt der Zähler (R5).
+
+**Heute im Code.** Tabellen `messbedarf`, `messbedarf_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/MessbedarfService.java` (AP-16 IP-19). Wegweiser: `docs/agents/root/uems-messbedarf.md`.
+
+**Abgrenzung.** Nicht eine Messstelle; nicht eine Maßnahme (AP-18).
+
+## Messmittel-Angabe
+
+*Sicht: Erfassung · Nachtrag AP-16 §3.7, §4.1 (E7)*
+
+**Am Einbau: Klasse, Prüfungsart, Datum, gültig bis, Beleg; Vorgabe `nicht_erhoben`.**
+
+Messmittel-Angaben stehen am Einbau: Genauigkeitsklasse, Prüfungsart (Eichung · MID-Konformität · Kalibrierung · Werksbescheinigung · keine · nicht erhoben), Prüfdatum, gültig bis, Beleg. Ein Beleg ist ein Verweis mit Prüfsumme: Bezeichnung, Ablageort beim Kunden, SHA-256 der Datei (beim Eintragen im Portal gebildet), Person, Zeitpunkt — die Datei selbst wird nicht gespeichert (E7). Die Vorgabe ist `nicht_erhoben`, nie ein erfundener Wert; ein wesentlicher Einsatz mit Messmitteln ohne Angabe wird zur Prüfaufgabe (R8).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Am Netzzähler trägt Ines Kaltenbach Eichung und Beleg ein; am Druckluft-Zähler steht „Klasse und Prüfung nicht erhoben“ — als Prüfaufgabe, nicht als Schätzung (R8).
+
+**Heute im Code.** `services/api/src/main/java/com/voltpilot/api/uems/MessmittelService.java` (AP-16 IP-15), Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-messmittel.md`.
+
+**Abgrenzung.** Nicht eine Katalog-Eigenschaft (die steht daneben: „laut Hersteller“).

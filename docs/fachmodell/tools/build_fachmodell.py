@@ -78,6 +78,8 @@ def glossar_md():
         p.append(f"**Abgrenzung.** {g['abgrenzung']}\n")
         for ref, text in F.VERFEINERUNGEN.get(g["id"], []):
             p.append(f"> **Verfeinert durch {ref}:** {text}\n")
+        for abschnitt in F.ABSCHNITTE_NACH.get(g["id"], []):
+            p.append(abschnitt + "\n")
     return "\n".join(p).rstrip() + "\n"
 
 
