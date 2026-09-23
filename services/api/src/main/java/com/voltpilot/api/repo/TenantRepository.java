@@ -271,8 +271,12 @@ public class TenantRepository {
                 // AP-16 IP-3/IP-5/IP-8/IP-11: before Benutzer, Bezugsgröße, Prozess, Standort and Unternehmen (RESTRICT).
                 // AP-16 IP-15: the Einbau journal geraet_aenderung holds only the tenant (RESTRICT, no FK to geraet).
                 // AP-16 IP-17: the Toleranz-Fassungen name the tenant (RESTRICT) and their Vergleichsquelle.
+                // AP-17 IP-6: the Bezugsbasen name their Kennzahl, Benutzer and Bezugsgroessen (RESTRICT):
+                // parts before their Fassung, Fassungen and protocol before the Basis.
                 // Current repository code also runs against older migration fixtures.
-                for (String table : new String[] {"geraet_aenderung", "vergleich_toleranz",
+                for (String table : new String[] {"bezugsbasis_anstoss", "bezugsbasis_faktor", "bezugsbasis_variable",
+                        "bezugsbasis_fassung", "bezugsbasis_aenderung", "bezugsbasis", "bezugsbasis_kennzeichen_seq",
+                        "geraet_aenderung", "vergleich_toleranz",
                         "bewertung_aenderung", "bewertung_kriterien_fassung", "bewertung_umfang_ausschluss",
                         "bewertung_umfang_standort", "bewertung_umfang",
                         "messbedarf_aenderung", "messbedarf", "messbedarf_kennzeichen_seq",

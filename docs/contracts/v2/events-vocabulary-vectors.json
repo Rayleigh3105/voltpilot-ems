@@ -2453,6 +2453,40 @@
       "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
       "regel": "Eine Person löst einen Messbedarf durch eine eingerichtete Messstelle ein; die Historie bleibt erhalten.",
       "bis_dahin": "Eingelöst mit AP-16 IP-19: `vokabular.arten` enthält `messbedarf_eingeloest`; der API-Schreibweg meldet es atomar mit der Messstellen-Verknüpfung."
+    },
+    {
+      "art": "bezugsbasis_freigegeben",
+      "bezug": "bezugsbasis",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-17 IP-8; Reservierung mit IP-6",
+      "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
+      "regel": "Eine Person gibt eine Fassung der Bezugsbasis (BB-…) mit Begründung frei; bei Vier-Augen bestätigt eine zweite Person. Kein Läufer gibt frei.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+    },
+    {
+      "art": "bezugsbasis_beendet",
+      "bezug": "bezugsbasis",
+      "urheber": [
+        "kunde",
+        "cloud"
+      ],
+      "angelegt_von": "AP-17 IP-8/IP-17; Reservierung mit IP-6",
+      "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
+      "regel": "Eine Person beendet eine Bezugsbasis oder Fassung mit Grund, oder die Archivierung der Kennzahl beendet die Basis am selben Tag; beendet, nie gelöscht.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+    },
+    {
+      "art": "bezugsbasis_anstoss",
+      "bezug": "bezugsbasis",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "AP-17 IP-15; Reservierung mit IP-6",
+      "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
+      "regel": "Kaskade (Pfad 1) oder Struktur-Läufer (Pfad 2) setzt „Anstoß liegt vor“ an einer freigegebenen Fassung; die Fassung bleibt byte-gleich, eine Person antwortet.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
     }
   ],
   "cases": [

@@ -89,12 +89,15 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 
 ## Nachträge der später konzipierten Pakete
 
-AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026) · AP-09 §4.11 (UEMS AP-09 Bezugsgrößen — report.md §4.11 und W8, abgenommen mit E1–E17 = A am 12.09.2026) · AP-08 §4.8 (UEMS AP-08 Verbrauch — report.md §4.8, abgenommen mit E1–E15 = A am 11.09.2026) · AP-08 §5 (UEMS AP-08 Verbrauch — report.md §5, Bedienablauf „Eine Korrektur oder einen Ersatzwert widerrufen“, abgenommen mit E1–E15 = A am 11.09.2026) · AP-16 §6.1 (AP-16 §4.4, §6.1, R14; entschieden am 22.09.2026). Die 22 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
+AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026) · AP-09 §4.11 (UEMS AP-09 Bezugsgrößen — report.md §4.11 und W8, abgenommen mit E1–E17 = A am 12.09.2026) · AP-08 §4.8 (UEMS AP-08 Verbrauch — report.md §4.8, abgenommen mit E1–E15 = A am 11.09.2026) · AP-08 §5 (UEMS AP-08 Verbrauch — report.md §5, Bedienablauf „Eine Korrektur oder einen Ersatzwert widerrufen“, abgenommen mit E1–E15 = A am 11.09.2026) · AP-16 §6.1 (AP-16 §4.4, §6.1, R14; entschieden am 22.09.2026) · AP-17 §6.1 (AP-17 §4.2, §4.6, §6.1; entschieden am 23.09.2026). Die 25 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
 
 | Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
 |---|---|---|---|---|---|---|---|---|---|
 | **Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13)** |  |  |  |  |  |  |  |  |  |
 | Energetische Bewertung anlegen · freigeben · abrufen | AP-16 §6.1 (S1–S5, R7/R10) | U | U | - | - | - | - | - | Nur die Vorlage energetische_bewertung; derselbe Unternehmenszaun wie bei bericht.unternehmen, ohne andere Berichtsvorlagen zu öffnen. |
+| Bezugsbasis anlegen · Fassung bilden · beenden | AP-17 §6.1 (B1/B4, F4) | U | U | S | - | - | - | - | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| Bezugsbasis freigeben · ablehnen | AP-17 §6.1 (F1/F2) | U | U | - | - | - | - | - | Reserviert für AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| Bezugsbasen und Vergleich ansehen | AP-17 §6.1 (B1, U1–U6) | U | U | S | S | S | A | - | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
 | **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |
 | Messstellen-Register lesen (Messstelle, Ort, Quelle, Zustand, letzter Wert) | AP-04 §6.7 | U | U | S | S | S | A | - | AP-04: „Register lesbar für Leser und Bedienberechtigte“; wer Messstellen pflegt, liest sie; Unterstützer „Ansehen“ liest wie ein Leser (AP-03 §4.2). |
 | Ereignisse einsehen | AP-07 §4.10 | U | U | S | S | S | A | - | AP-07: „wie Verlauf“ — Zellen der Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“. |
@@ -164,6 +167,9 @@ Welche Kennung jede Handlung trägt: eine **neue Zeile** (oben) oder eine **best
 | AP-16 §6.1 | Energieeinsatz einstufen | KA U · EM U | `energieeinsatz.einstufen` | `energieeinsatz.einstufen` | neue Zeile | Seit AP-16 IP-11 setzen PUT …/einstufung und POST …/einstufung/bestaetigen die Kennung durch; gelesen wird über energieeinsatz.ansehen. |
 | AP-16 §6.1 | Energieeinsätze ansehen | KA U · EM U · BE S · BD S · LE S · US A | `energieeinsatz.ansehen` | `energieeinsatz.ansehen` | neue Zeile | Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12. |
 | AP-16 §6.1 | Messmittel-Angaben und Belege eintragen | KA U · EM U · BE S · US Ei | `messmittel.angaben` | `messmittel.angaben` | neue Zeile | Angaben am Einbau (Klasse, Prüfung, Beleg als Verweis mit SHA-256) und die Wandler-Klasse; Standort-Zaun über die Anlage des Geräts. Lesen über messwerte.ansehen; ohne Angabe nicht erhoben. |
+| AP-17 §6.1 | Bezugsbasis anlegen · Fassung bilden · beenden | KA U · EM U · BE S | `bezugsbasis.verwalten` | `bezugsbasis.verwalten` | neue Zeile | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| AP-17 §6.1 | Bezugsbasis freigeben · ablehnen | KA U · EM U | `bezugsbasis.freigeben` | `bezugsbasis.freigeben` | neue Zeile | Reserviert für AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| AP-17 §6.1 | Bezugsbasen und Vergleich ansehen | KA U · EM U · BE S · BD S · LE S · US A | `bezugsbasis.ansehen` | `bezugsbasis.ansehen` | neue Zeile | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
 
 ### Regeln ohne eigene Zeile
 
@@ -185,6 +191,7 @@ Sätze der Abschnitte, die keine Handlung sind — und wo sie gelten.
 | AP-08 §4.8 | Rohwerte, Ereignisse, Korrekturen löschen — niemand (AP-07 E8/E11; Offboarding ausgenommen) | keine Zeile — die Tabellen lassen es nicht zu (`messreihe_ereignis` append-only; der Purge lehnt Messstellen-gebundene Reihen ab, AP-07 IP-11) |
 | AP-08 §5 | Bei Vier-Augen an ist der Knopf für den Ersteller gesperrt: „Freigabe durch eine zweite Person (Jonas Wendlinger, …)“ (§5, Bedienablauf „Einen Korrektur-Vorschlag prüfen und freigeben“) | rechte-vectors.json, Familie `vieraugen`: 403 `zweite_person_noetig` mit dem Satz „Freigabe durch eine zweite Person.“ und dem Weg zu den übrigen Kundenadministratoren; der Knopf ist AP-08 IP-16 |
 | AP-16 §6.1 | Verantwortlichkeit ist Zuständigkeit, kein Recht (B4/R14). | bewertung.md §Datenhaltung; Rechte-Zellen dieser drei Kennungen |
+| AP-17 §6.1 | Wer eine Fassung bildet, gibt sie nicht ohne das Recht `bezugsbasis.freigeben` frei; bei Vier-Augen bestätigt nie der Urheber (F1/F2). | V20260924071500 (bezugsbasis_fassung_entscheidung_chk); Rechte-Zellen dieser drei Kennungen |
 
 ## Kennungen
 
@@ -215,6 +222,9 @@ Jede Zeile hat eine stabile Kennung; eine Route, eine Fläche und ein Vektor ver
 | `bericht.standort_freigeben` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Standort-Bericht freigeben (Berichtsstand) | AP-03 §4.3 |
 | `bericht.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Bericht abrufen / freigeben | AP-03 §4.3 |
 | `bewertung.abrufen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Energetische Bewertung anlegen · freigeben · abrufen | AP-16 §6.1 |
+| `bezugsbasis.verwalten` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Bezugsbasis anlegen · Fassung bilden · beenden | AP-17 §6.1 |
+| `bezugsbasis.freigeben` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Bezugsbasis freigeben · ablehnen | AP-17 §6.1 |
+| `bezugsbasis.ansehen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Bezugsbasen und Vergleich ansehen | AP-17 §6.1 |
 | `export.standort` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Export je Standort (CSV: Messwerte, Kennzahlen) | AP-03 §4.3 |
 | `export.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Export (alle Standorte) | AP-03 §4.3 |
 | `cockpit.anpassen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Cockpit anpassen — Eigen-Schicht der Organisation (Anlage / Unternehmen) | AP-03 §4.3 |

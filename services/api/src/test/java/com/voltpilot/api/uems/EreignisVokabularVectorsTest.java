@@ -874,4 +874,26 @@ class EreignisVokabularVectorsTest {
                 .isEqualTo(EreignisVokabular.Art.MESSBEDARF_EINGELOEST);
     }
 
+    /** AP-17 IP-6: die drei Wörter der Bezugsbasis sind nur reserviert — bis IP-8/IP-15/IP-17 lehnt der Prüfer sie ab. */
+    @Test
+    void bezugsbasisEreignisseBleibenBisZumSchreibpaketNurReserviert() throws Exception {
+        JsonNode datei = MAPPER.readTree(VECTORS.toFile());
+        Map<String, String> urheber = Map.of("bezugsbasis_freigegeben", "[\"kunde\"]",
+                "bezugsbasis_beendet", "[\"kunde\",\"cloud\"]", "bezugsbasis_anstoss", "[\"cloud\"]");
+        for (Map.Entry<String, String> e : urheber.entrySet()) {
+            List<JsonNode> reservierungen = new ArrayList<>();
+            datei.path("reserviert").forEach(r -> {
+                if (r.path("art").asText().equals(e.getKey())) reservierungen.add(r);
+            });
+            assertThat(reservierungen).hasSize(1);
+            assertThat(reservierungen.getFirst().path("bezug").asText()).isEqualTo("bezugsbasis");
+            assertThat(reservierungen.getFirst().path("urheber")).isEqualTo(MAPPER.readTree(e.getValue()));
+            assertThat(EreignisVokabular.Art.vonCode(e.getKey())).isNull();
+            for (Urheber u : List.of(Urheber.KUNDE, Urheber.CLOUD)) {
+                assertThat(EreignisVokabular.pruefe(MAPPER.createObjectNode().put("art", e.getKey()), u).grund())
+                        .isEqualTo(Grund.WORT_UNBEKANNT);
+            }
+        }
+    }
+
 }

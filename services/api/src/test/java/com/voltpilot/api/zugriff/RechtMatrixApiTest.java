@@ -314,7 +314,10 @@ class RechtMatrixApiTest {
             Map.entry("export.standort", "lesend — IP-11"),
             Map.entry("export.unternehmen", "lesend — IP-11"),
             Map.entry("auswertung.anlegen", "keine Schreibroute (Eigene Auswertung liest nur)"),
-            Map.entry("energieeinsatz.ansehen", "lesend — EnergieeinsatzApiTest, Prozess-Messstellen-Zaun R14"));
+            Map.entry("energieeinsatz.ansehen", "lesend — EnergieeinsatzApiTest, Prozess-Messstellen-Zaun R14"),
+            Map.entry("bezugsbasis.verwalten", "reserviert für AP-17 IP-7/IP-8 (Routen)"),
+            Map.entry("bezugsbasis.freigeben", "reserviert für AP-17 IP-8 (Routen)"),
+            Map.entry("bezugsbasis.ansehen", "reserviert für AP-17 IP-8 (Routen), Zaun über die Kennzahl"));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {

@@ -285,6 +285,10 @@ class KennzahlVectorsTest {
                     "messbedarf_eingeloest/messbedarf").contains(art + "/" + bezug)) {
                 continue; // AP-16 IP-3: EreignisVokabularVectorsTest prüft diese Reservierungen.
             }
+            if (List.of("bezugsbasis_freigegeben/bezugsbasis", "bezugsbasis_beendet/bezugsbasis",
+                    "bezugsbasis_anstoss/bezugsbasis").contains(art + "/" + bezug)) {
+                continue; // AP-17 IP-6: EreignisVokabularVectorsTest prüft diese Reservierungen.
+            }
             reserviert.add(art + "/" + bezug);
             JsonNode angelegt = arten.get(art);
             if (angelegt == null) {

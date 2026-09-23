@@ -310,6 +310,13 @@ stehen an der Fassung; Zahlen allein erzeugen nie die Meldung. `messbedarf_erfas
 `kunde`. Eine Person erfasst/löst einen Messbedarf ein. Diese beiden stehen weiter nur
 im Block `reserviert`; bis zu ihrer Anlage lehnen die bestehenden Prüfer sie ab.
 
+**Reserviert für die Bezugsbasis (AP-17 IP-6).** `bezugsbasis_freigegeben` (Urheber `kunde`,
+Anlage IP-8), `bezugsbasis_beendet` (`kunde` oder `cloud` — die Archivierung der Kennzahl
+beendet die Basis; Anlage IP-8/IP-17) und `bezugsbasis_anstoss` (`cloud`, Kaskade oder
+Struktur-Läufer; Anlage IP-15), alle mit Bezug `bezugsbasis` (BB-…). Sie stehen nur im Block
+`reserviert`; noch kein Schreiber und kein Eintrag in `vokabular.arten` oder der
+Ereignis-Tabelle. Bis zur Anlage lehnen die bestehenden Prüfer diese Wörter ab.
+
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
 deutsch und Namen aus dem, was die Fläche kennt — etwa „Zählerwechsel am 18.11.2026 10:40:
