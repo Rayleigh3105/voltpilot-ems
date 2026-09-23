@@ -525,6 +525,38 @@ class BewertungRanglisteApiTest {
             assertThat(mengen.ersatz(w)).isEqualByComparingTo("5");
         } finally { com.voltpilot.api.tenant.TenantContext.clear(); }
     }
+    /**
+     * vp-uems-bilanz-richtungspaar-korrektur (V20260923231500): nach einer Korrektur am Speicher liest die Bilanz das
+     * Richtungspaar der GELESENEN Version 2 — Bilanz und Nenner haben wieder eine Zahl. Trägt Version 2 kein Paar
+     * (Nettomengen-Berichtigung), bleibt der Term ehrlich „keine Werte“ und der Nenner unvollständig.
+     */
+    @Test void korrekturAmSpeicherTraegtIhrRichtungspaarNettoBerichtigungNicht() throws Exception {
+        UUID entity=root.queryForObject("SELECT entity_id FROM messstelle_quelle WHERE messstelle_id=?",UUID.class,ids.get("MS-04"));
+        JsonNode m=null;
+        for (var x:ref.path("messstellen")) if (x.path("kennzeichen").asText().equals("MS-04")) m=x;
+        String kennzeichen="[\""+VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT+"\",\""+ErgebnisZustand.korrigiert(2)+"\"]";
+        String version="INSERT INTO messreihe_periode_version(tenant_id,ebene,entity_id,messkanal,periode_beginn,periode_ende,tag,zeitzone,version,wertart,menge,energie,menge_zustand,kennzeichen,erhalten,erwartet,abdeckung_prozent,zustand,korrekturen,ersatzwerte,anlass_kennung,anlass_fassung,menge_positiv,menge_negativ,created_at) "
+                +"VALUES (?,'monat',?,'storage.power','2026-09-30T22:00:00Z','2026-10-31T23:00:00Z','2026-10-01','Europe/Berlin',2,'gauge',800,800,'vollständig',?::jsonb,44700,44700,100,'endgueltig',ARRAY['K-2026-0001'],ARRAY[]::text[],'K-2026-0001',1,?,?,'2026-11-05T00:00:00Z')";
+        root.update(version,tenant,entity,kennzeichen,m.at("/beispielwerte/oktober_2026_laden_kwh").decimalValue(),
+                m.at("/beispielwerte/oktober_2026_entladen_kwh").decimalValue());
+        var a=ruf("GET",BASE+OKTOBER,"IK",null,200);
+        assertThat(a.at("/nenner/wert").asText()).isEqualTo("185380");
+        assertThat(a.at("/nenner/anlagen").asText()).isEqualTo("3 von 3");
+        assertThat(einsatz(a,"EE-1").at("/herkunft/nenner/bilanzwerte").findValuesAsText("version")).contains("2");
+        var b=ruf("GET","/api/v1/sites/"+ids.get("AN-1")+"/bilanz?periode=monat&am=2026-10-01","IK",null,200);
+        assertThat(b.at("/hauptzaehler/0/abschnitte/0/werte/0/rest/menge").decimalValue()).isEqualByComparingTo("54580");
+        assertThat(b.findValuesAsText("version")).contains("2");
+
+        // Dieselbe Version ohne Paar: eine berichtigte Nettomenge sagt nichts über Laden und Entladen.
+        root.update("DELETE FROM messreihe_periode_version WHERE tenant_id=? AND entity_id=?",tenant,entity);
+        root.update(version,tenant,entity,kennzeichen,null,null);
+        var ohne=ruf("GET",BASE+OKTOBER,"IK",null,200);
+        assertThat(ohne.at("/nenner/wert").isNull()).isTrue();
+        assertThat(ohne.at("/nenner/anlagen").asText()).isEqualTo("2 von 3");
+        assertThat(ohne.at("/nenner/zustand").asText()).isEqualTo("unvollständig");
+        var bo=ruf("GET","/api/v1/sites/"+ids.get("AN-1")+"/bilanz?periode=monat&am=2026-10-01","IK",null,200);
+        assertThat(bo.at("/hauptzaehler/0/abschnitte/0/werte/0/rest/menge").isNull()).isTrue();
+    }
     private static JsonNode einsatz(JsonNode a,String k) {
         for (var e:a.path("einsaetze")) if (e.path("kennzeichen").asText().equals(k)) return e;
         throw new AssertionError("Einsatz fehlt: "+k);

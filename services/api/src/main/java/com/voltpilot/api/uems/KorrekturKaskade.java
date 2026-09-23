@@ -773,7 +773,7 @@ public class KorrekturKaskade {
             Inhalt inhalt = new Inhalt(fakten.wertart(), soll.menge(), soll.mengeZustand(), soll.kennzeichen(),
                     soll.erhalten(), soll.erwartet(), soll.abdeckungProzent(), fakten.standAnfang(), fakten.standEnde(),
                     fakten.erster(), fakten.letzter(), fakten.summe(), soll.mittel(), fakten.min(), fakten.max(),
-                    soll.energie(), fakten.gemessenS(), fakten.lueckeInnen(), null);
+                    soll.energie(), fakten.gemessenS(), fakten.lueckeInnen(), null, fakten.positiv(), fakten.negativ());
             Inhalt ist = neueste != null ? neueste.inhalt() : bestand.get(q);
             if (ist != null ? viertelGleich(inhalt, ist) : inhalt.leer()) {
                 continue;
@@ -794,12 +794,16 @@ public class KorrekturKaskade {
      * schriebe. Nachlieferung und Ablesestände rechnet sie selbst nach (dieselbe Zeile wie die Vorschau „neu“); eine
      * Umklassifizierung rechnet mit einer bestätigten Deklaration, die nicht gespeichert ist — dort müssen nur die
      * gezählten Werte dieselben sein; ein berichtigter Wert (mit Beleg) hat die Fakten von Version 1.
+     *
+     * <p>Das Richtungspaar ({@code energie_positiv}/{@code _negativ}, V20260923231500) reist mit den Rohwert-Fakten:
+     * aus derselben Zeile wie {@code energie}, und nur, wenn deren Energie die freigegebene ist — sonst beschriebe es
+     * andere Rohwerte. Ein berichtigter Wert setzt eine Nettomenge ohne Richtung: kein Paar (unbekannt, nie 0).
      */
     private Inhalt fakten(Connection con, Anlass a, Korrektur k, KaskadeStufen.Reihe r, Instant q,
             KorrekturVorschlagRegeln.Stand soll, Inhalt bestand, Instant jetzt) throws SQLException {
         if (!ART_NACHLIEFERUNG.equals(k.art()) && !ART_ABLESESTAENDE.equals(k.art())
                 && !ART_UMKLASSIFIZIERUNG.equals(k.art())) {
-            return bestand != null ? bestand : leererInhalt();
+            return bestand != null ? bestand.mitRichtung(null) : leererInhalt();
         }
         Map<String, Object> z = verdichter.waereZeile(con, r.tenant(), r.entity(), r.kanal(), q, jetzt, null);
         if (z == null) {
@@ -819,11 +823,14 @@ public class KorrekturKaskade {
         if (!stimmt) {
             throw new Abgelehnt(VORSCHAU_VERALTET, "Viertelstunde " + q + " von " + a.kennung());
         }
+        BigDecimal energie = (BigDecimal) z.get("energie");
+        boolean paarGilt = energie != null && soll.energie() != null && energie.compareTo(soll.energie()) == 0;
         return new Inhalt((String) z.get("wertart"), null, null, List.of(), null, null, null,
                 rohwert(z, "stand_anfang"), rohwert(z, "stand_ende"), rohwert(z, "erster_wert", "erster_zeit"),
                 rohwert(z, "letzter_wert", "letzter_zeit"), (BigDecimal) z.get("summe"), null,
                 (BigDecimal) z.get("min_wert"), (BigDecimal) z.get("max_wert"), null, (Integer) z.get("gemessen_s"),
-                (Boolean) z.get("luecke_innen"), null);
+                (Boolean) z.get("luecke_innen"), null, paarGilt ? (BigDecimal) z.get("energie_positiv") : null,
+                paarGilt ? (BigDecimal) z.get("energie_negativ") : null);
     }
 
     /**
@@ -855,7 +862,8 @@ public class KorrekturKaskade {
             Inhalt inhalt = new Inhalt(fakten.wertart(), ziel.menge(), ziel.mengeZustand(), ziel.aussage(),
                     fakten.erhalten(), fakten.erwartet(), fakten.abdeckung(), fakten.standAnfang(), fakten.standEnde(),
                     fakten.erster(), fakten.letzter(), fakten.summe(), fakten.mittel(), fakten.min(), fakten.max(),
-                    fakten.energie(), fakten.gemessenS(), fakten.lueckeInnen(), null);
+                    fakten.energie(), fakten.gemessenS(), fakten.lueckeInnen(), null, fakten.positiv(),
+                    fakten.negativ());
             List<String> korrekturen = davor == null || davor.korrekturen() == null ? List.of() : davor.korrekturen();
             KaskadeStufen.viertelSchreiben(con, r, e.getKey(), neueste.version() + 1, inhalt,
                     davor == null ? null : davor.anteil(), davor == null ? List.of() : davor.ersatzwerte(), korrekturen,

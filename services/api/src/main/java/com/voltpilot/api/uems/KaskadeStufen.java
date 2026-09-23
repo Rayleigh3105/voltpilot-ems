@@ -73,14 +73,39 @@ final class KaskadeStufen {
     /**
      * Was eine Periode sagt: Zahl, Zustand, Kennzeichen, Abdeckung, Stände und die Momentanwert-Teile — und
      * vorläufig/endgültig. Verglichen OHNE „korrigiert (Version n)“.
+     *
+     * <p>{@code positiv}/{@code negativ} sind das Richtungspaar ({@link Richtungspaar}): an der Viertelstunde der
+     * je Rohwert gebildete Anteil (aus denselben Rohwert-Fakten wie {@code energie}), an Tag, Monat und Jahr die
+     * Summe der Teile. {@code null} = keine Aussage — nie 0.
      */
     record Inhalt(String wertart, BigDecimal menge, String mengeZustand, List<String> kennzeichen, Integer erhalten,
             Integer erwartet, Integer abdeckung, Rohwert standAnfang, Rohwert standEnde, Rohwert erster, Rohwert letzter,
             BigDecimal summe, BigDecimal mittel, BigDecimal min, BigDecimal max, BigDecimal energie, Integer gemessenS,
-            Boolean lueckeInnen, String zustand) {
+            Boolean lueckeInnen, String zustand, BigDecimal positiv, BigDecimal negativ) {
 
         Inhalt {
             kennzeichen = kennzeichen == null ? List.of() : List.copyOf(kennzeichen);
+        }
+
+        /** Ohne Richtungspaar — was keine zwei Richtungen kennt oder keine bestimmen kann. */
+        Inhalt(String wertart, BigDecimal menge, String mengeZustand, List<String> kennzeichen, Integer erhalten,
+                Integer erwartet, Integer abdeckung, Rohwert standAnfang, Rohwert standEnde, Rohwert erster,
+                Rohwert letzter, BigDecimal summe, BigDecimal mittel, BigDecimal min, BigDecimal max, BigDecimal energie,
+                Integer gemessenS, Boolean lueckeInnen, String zustand) {
+            this(wertart, menge, mengeZustand, kennzeichen, erhalten, erwartet, abdeckung, standAnfang, standEnde,
+                    erster, letzter, summe, mittel, min, max, energie, gemessenS, lueckeInnen, zustand, null, null);
+        }
+
+        /** Dieselbe Aussage mit dem Richtungspaar {@code paar} ({@code {positiv, negativ}} oder {@code null}). */
+        Inhalt mitRichtung(BigDecimal[] paar) {
+            return new Inhalt(wertart, menge, mengeZustand, kennzeichen, erhalten, erwartet, abdeckung, standAnfang,
+                    standEnde, erster, letzter, summe, mittel, min, max, energie, gemessenS, lueckeInnen, zustand,
+                    paar == null ? null : paar[0], paar == null ? null : paar[1]);
+        }
+
+        /** Das Richtungspaar als {@code {positiv, negativ}}, oder {@code null} ohne Aussage. */
+        BigDecimal[] richtung() {
+            return positiv == null || negativ == null ? null : new BigDecimal[] {positiv, negativ};
         }
 
         List<String> aussage() {
@@ -89,12 +114,13 @@ final class KaskadeStufen {
 
         Inhalt mitKennzeichen(List<String> k) {
             return new Inhalt(wertart, menge, mengeZustand, k, erhalten, erwartet, abdeckung, standAnfang, standEnde,
-                    erster, letzter, summe, mittel, min, max, energie, gemessenS, lueckeInnen, zustand);
+                    erster, letzter, summe, mittel, min, max, energie, gemessenS, lueckeInnen, zustand, positiv, negativ);
         }
 
         Inhalt mitZustand(String z) {
             return new Inhalt(wertart, menge, mengeZustand, kennzeichen, erhalten, erwartet, abdeckung, standAnfang,
-                    standEnde, erster, letzter, summe, mittel, min, max, energie, gemessenS, lueckeInnen, z);
+                    standEnde, erster, letzter, summe, mittel, min, max, energie, gemessenS, lueckeInnen, z, positiv,
+                    negativ);
         }
 
         /** Die Kennzeichen dieser Aussage mit der Version {@code version} ganz zuletzt (Rang 80). */
@@ -111,7 +137,18 @@ final class KaskadeStufen {
                     && stand(standAnfang, o.standAnfang) && stand(standEnde, o.standEnde) && zahl(summe, o.summe)
                     && zahl(mittel, o.mittel) && zahl(min, o.min) && zahl(max, o.max) && zahl(energie, o.energie)
                     && Objects.equals(gemessenS, o.gemessenS) && Objects.equals(lueckeInnen, o.lueckeInnen)
-                    && Objects.equals(zustand, o.zustand);
+                    && Objects.equals(zustand, o.zustand) && richtungGleich(this, o);
+        }
+
+        /**
+         * Ein Richtungspaar unterscheidet zwei Aussagen nur, wenn BEIDE es kennen: eine Version von vor
+         * {@code V20260923231500} trägt NULL, und das ist keine andere Zahl, sondern keine — sonst bekäme jede
+         * ältere Version beim nächsten Vergleich eine neue Nummer.
+         */
+        private static boolean richtungGleich(Inhalt a, Inhalt b) {
+            BigDecimal[] x = a.richtung();
+            BigDecimal[] y = b.richtung();
+            return x == null || y == null || zahl(x[0], y[0]) && zahl(x[1], y[1]);
         }
 
         /** Eine Periode ohne Zahl und ohne Fakten — „keine Werte“, nie 0. */
@@ -165,7 +202,8 @@ final class KaskadeStufen {
     private static final String VIERTEL_SPALTEN = "intervall_beginn, version, menge, menge_zustand, kennzeichen::text, "
             + "anteil, ersatzwerte, korrekturen, anlass_kennung, anlass_fassung, wertart, erhalten, erwartet, "
             + "abdeckung_prozent, stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, erster_wert, erster_zeit, "
-            + "letzter_wert, letzter_zeit, summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen";
+            + "letzter_wert, letzter_zeit, summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen, "
+            + "energie_positiv, energie_negativ";
 
     /** Alle Versionen je Viertelstunde in {@code [von, bis)}, älteste zuerst. */
     static Map<Instant, List<ViertelVersion>> viertelVersionen(Connection con, Reihe r, Instant von, Instant bis)
@@ -188,7 +226,8 @@ final class KaskadeStufen {
                             ViertelstundenTeile.wert(rs, 15, 16), ViertelstundenTeile.wert(rs, 17, 18),
                             ViertelstundenTeile.wert(rs, 19, 20), ViertelstundenTeile.wert(rs, 21, 22),
                             rs.getBigDecimal(23), rs.getBigDecimal(24), rs.getBigDecimal(25), rs.getBigDecimal(26),
-                            rs.getBigDecimal(27), ganz(rs, 28), (Boolean) rs.getObject(29), null);
+                            rs.getBigDecimal(27), ganz(rs, 28), (Boolean) rs.getObject(29), null,
+                            rs.getBigDecimal(30), rs.getBigDecimal(31));
                     aus.computeIfAbsent(q, x -> new ArrayList<>()).add(new ViertelVersion(q, rs.getInt(2), i,
                             rs.getBigDecimal(6), texte(rs.getArray(7)), korrekturen, rs.getString(9), rs.getInt(10)));
                 }
@@ -203,7 +242,8 @@ final class KaskadeStufen {
         try (PreparedStatement ps = con.prepareStatement("SELECT intervall_beginn, wertart, menge, menge_zustand, "
                 + "kennzeichen::text, erhalten, erwartet, abdeckung_prozent, stand_anfang, stand_anfang_zeit, stand_ende, "
                 + "stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit, summe, mittel, min_wert, "
-                + "max_wert, energie, gemessen_s, luecke_innen, zustand FROM messreihe_viertelstunde "
+                + "max_wert, energie, gemessen_s, luecke_innen, zustand, energie_positiv, energie_negativ "
+                + "FROM messreihe_viertelstunde "
                 + "WHERE tenant_id = ? AND entity_id = ? AND messkanal = ? AND intervall_beginn >= ? AND intervall_beginn < ?")) {
             ps.setObject(1, r.tenant());
             ps.setObject(2, r.entity());
@@ -218,7 +258,8 @@ final class KaskadeStufen {
                             ViertelstundenTeile.wert(rs, 9, 10), ViertelstundenTeile.wert(rs, 11, 12),
                             ViertelstundenTeile.wert(rs, 13, 14), ViertelstundenTeile.wert(rs, 15, 16),
                             rs.getBigDecimal(17), rs.getBigDecimal(18), rs.getBigDecimal(19), rs.getBigDecimal(20),
-                            rs.getBigDecimal(21), ganz(rs, 22), (Boolean) rs.getObject(23), rs.getString(24)));
+                            rs.getBigDecimal(21), ganz(rs, 22), (Boolean) rs.getObject(23), rs.getString(24),
+                            rs.getBigDecimal(25), rs.getBigDecimal(26)));
                 }
             }
         }
@@ -232,11 +273,12 @@ final class KaskadeStufen {
         try (PreparedStatement ps = con.prepareStatement("""
                 INSERT INTO messreihe_viertelstunde_version (tenant_id, entity_id, messkanal, intervall_beginn, version,
                     menge, menge_zustand, kennzeichen, anteil, ersatzwerte, anlass_kennung, anlass_fassung,
-                    basis_berechnet_am, korrekturen, wertart, stand_anfang, stand_anfang_zeit, stand_ende,
-                    stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit, erhalten, erwartet,
-                    abdeckung_prozent, summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen)
+                    basis_berechnet_am, korrekturen, wertart, energie_positiv, energie_negativ, stand_anfang,
+                    stand_anfang_zeit, stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit,
+                    erhalten, erwartet, abdeckung_prozent, summe, mittel, min_wert, max_wert, energie, gemessen_s,
+                    luecke_innen)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?)
+                    ?, ?, ?, ?)
                 """)) {
             int p = 1;
             ps.setObject(p++, r.tenant());
@@ -254,6 +296,8 @@ final class KaskadeStufen {
             ps.setTimestamp(p++, basisBerechnetAm == null ? null : Timestamp.from(basisBerechnetAm));
             ps.setArray(p++, con.createArrayOf("text", korrekturen.toArray()));
             ps.setString(p++, inhalt.wertart());
+            ps.setBigDecimal(p++, inhalt.positiv());
+            ps.setBigDecimal(p++, inhalt.negativ());
             p = fakten(ps, p, inhalt);
         }
     }
@@ -286,7 +330,7 @@ final class KaskadeStufen {
 
     /** Die Teile einer Periode — Version 1 mit den Viertelstunden-Versionen der Kaskade darüber. */
     record Teile(ViertelstundenTeile.Geladen geladen, List<Teilperiode> teile, List<Werteteil> werteteile,
-            Set<String> korrekturen, boolean mitVersion) {
+            Set<String> korrekturen, boolean mitVersion, List<ViertelstundenTeile.Anteil> anteile) {
 
         List<Teilperiode> innen(Instant von, Instant bis) {
             return teile.stream().filter(t -> !t.von().isBefore(von) && !t.bis().isAfter(bis)).toList();
@@ -303,6 +347,10 @@ final class KaskadeStufen {
         TreeMap<Instant, Werteteil> wt = new TreeMap<>();
         g.teile().forEach(t -> tp.put(t.von(), t));
         g.werteteile().forEach(w -> wt.put(w.teil().von(), w));
+        // Das Richtungspaar je Viertelstunde (V20260918104000) — eine Korrektur-Version bringt ihres mit
+        // (V20260923231500), dieselbe Überlagerung wie die Fakten.
+        TreeMap<Instant, ViertelstundenTeile.Anteil> an = new TreeMap<>();
+        g.anteile().forEach(a -> an.put(a.von(), a));
         Set<String> korrekturen = new LinkedHashSet<>();
         boolean mitVersion = false;
         for (List<ViertelVersion> vs : viertelVersionen(con, r, von.minus(RUECKBLICK), bis.plus(RUECKBLICK)).values()) {
@@ -330,8 +378,10 @@ final class KaskadeStufen {
                             nullAlsNull(i.erhalten()), nullAlsNull(i.erwartet()), null, i.aussage())),
                     i.summe(), i.energie(), i.gemessenS() == null ? 0 : i.gemessenS(),
                     i.lueckeInnen() != null && i.lueckeInnen()));
+            an.put(v.beginn(), new ViertelstundenTeile.Anteil(v.beginn(), i.positiv(), i.negativ()));
         }
-        return new Teile(g, List.copyOf(tp.values()), List.copyOf(wt.values()), korrekturen, mitVersion);
+        return new Teile(g, List.copyOf(tp.values()), List.copyOf(wt.values()), korrekturen, mitVersion,
+                List.copyOf(an.values()));
     }
 
     // ============================================================================ Die Grundlage einer Periode
@@ -432,6 +482,7 @@ final class KaskadeStufen {
             }
         }
         e = ErsatzwertPerioden.anwenden(e, beginn, ende, beitraege);
+        // Ohne Richtungspaar: ein Ersatzwert setzt eine Nettomenge, keine Richtung — sie ist nicht bestimmbar.
         Inhalt i = new Inhalt(wertart, e.menge(), e.zustand(), e.kennzeichen(), basis.erhalten(),
                 basis.erwartet(), basis.abdeckung(), basis.standAnfang(), basis.standEnde(), basis.erster(),
                 basis.letzter(), basis.summe(), basis.mittel(), basis.min(), basis.max(), basis.energie(),
@@ -474,7 +525,7 @@ final class KaskadeStufen {
                 : TagRegeln.zustand(g.vorhanden(), g.endgueltig(), TagRegeln.endgueltigAb(ende), jetzt);
         String wertart = g.wertart();
         Inhalt basis = grundlage(r, zone, t.teile(), innen, t.werteteile(), g.ereignisse(), g.deklaration(), wertart,
-                g.kadenzS(), beginn, ende, zustand);
+                g.kadenzS(), beginn, ende, zustand).mitRichtung(Richtungspaar.ausTeilen(t.anteile(), beginn, ende));
         return mitErsatzwerten(con, r, zone, basis, beginn, ende, t.korrekturen());
     }
 
@@ -489,7 +540,8 @@ final class KaskadeStufen {
         List<Teilperiode> innen = t.innen(beginn, ende);
         ViertelstundenTeile.Geladen g = t.geladen();
         return new Monatsgrundlage(grundlage(r, zone, t.teile(), innen, t.werteteile(), g.ereignisse(),
-                g.deklaration(), g.wertart(), g.kadenzS(), beginn, ende, zustand), t);
+                g.deklaration(), g.wertart(), g.kadenzS(), beginn, ende, zustand)
+                .mitRichtung(Richtungspaar.ausTeilen(t.anteile(), beginn, ende)), t);
     }
 
     /** Der MONAT ab {@code erster} — aus seinen Viertelstunden wie {@link PeriodeVerdichter}. */
@@ -518,6 +570,7 @@ final class KaskadeStufen {
                 .forEach(mitVersion::add);
         Map<LocalDate, Teilperiode> teile = new TreeMap<>();
         Map<LocalDate, Werteteil> werteteile = new TreeMap<>();
+        Map<LocalDate, BigDecimal[]> paare = new TreeMap<>();
         Set<String> korrekturen = new LinkedHashSet<>();
         String wertart = null;
         Integer kadenzS = null;
@@ -526,6 +579,7 @@ final class KaskadeStufen {
             MonatsZeile z = e.getValue();
             teile.put(e.getKey(), z.teil());
             werteteile.put(e.getKey(), z.werteteil());
+            paare.put(e.getKey(), new BigDecimal[] {z.positiv(), z.negativ()});
             if (!e.getKey().isBefore(erster) && e.getKey().isBefore(erster.plusYears(1))) {
                 wertart = z.wertart() != null ? z.wertart() : wertart;
                 kadenzS = z.kadenzS();
@@ -536,6 +590,7 @@ final class KaskadeStufen {
             if (m == null) {
                 teile.remove(monat);
                 werteteile.remove(monat);
+                paare.remove(monat);
                 continue;
             }
             Inhalt i = m.inhalt();
@@ -550,6 +605,7 @@ final class KaskadeStufen {
                             nullAlsNull(i.erhalten()), nullAlsNull(i.erwartet()), null, i.kennzeichen())),
                     i.summe(), i.energie(), i.gemessenS() == null ? 0 : i.gemessenS(),
                     i.lueckeInnen() != null && i.lueckeInnen()));
+            paare.put(monat, new BigDecimal[] {i.positiv(), i.negativ()});
             if (!monat.isBefore(erster) && monat.isBefore(erster.plusYears(1))) {
                 korrekturen.addAll(m.teile().korrekturen());
                 wertart = i.wertart() != null ? i.wertart() : wertart;
@@ -562,12 +618,21 @@ final class KaskadeStufen {
         ZaehlerDeklaration deklaration = ZaehlerDeklaration.lesen(con, r.tenant(), r.entity(), r.kanal(), beginn);
         List<VerbrauchRegeln.Ereignis> ereignisse = ViertelstundenTeile.ereignisse(con, r.tenant(), r.entity(),
                 r.kanal(), beginn, ende, deklaration);
+        // Das Paar des Jahres wie in PeriodeVerdichter: die Summe seiner Monate — fehlt es EINEM, fehlt es ganz.
+        Richtungspaar.Summe paar = new Richtungspaar.Summe();
+        paare.forEach((monat, p) -> {
+            if (!monat.isBefore(erster) && monat.isBefore(erster.plusYears(1))) {
+                paar.nimm(p[0], p[1]);
+            }
+        });
         Inhalt basis = grundlage(r, zone, alle, innen, List.copyOf(werteteile.values()), ereignisse, deklaration,
-                wertart, kadenzS, beginn, ende, v1 != null ? v1.inhalt().zustand() : ViertelstundeRegeln.VORLAEUFIG);
+                wertart, kadenzS, beginn, ende, v1 != null ? v1.inhalt().zustand() : ViertelstundeRegeln.VORLAEUFIG)
+                .mitRichtung(paar.fertig());
         return mitErsatzwerten(con, r, zone, basis, beginn, ende, korrekturen);
     }
 
-    private record MonatsZeile(Teilperiode teil, Werteteil werteteil, String wertart, Integer kadenzS) {}
+    private record MonatsZeile(Teilperiode teil, Werteteil werteteil, String wertart, Integer kadenzS,
+            BigDecimal positiv, BigDecimal negativ) {}
 
     /** Die Monatszeilen von Version 1 in {@code [von, bis]} — wie {@link PeriodeVerdichter} sie ins Jahr gibt. */
     private static Map<LocalDate, MonatsZeile> monatsZeilen(Connection con, Reihe r, LocalDate von, LocalDate bis)
@@ -577,7 +642,8 @@ final class KaskadeStufen {
                 "SELECT tag, beginn, ende, stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, "
                         + "erster_wert, erster_zeit, letzter_wert, letzter_zeit, menge, menge_zustand, "
                         + "erhalten, erwartet, kennzeichen::text, kadenz_s, wertart, "
-                        + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen "
+                        + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen, "
+                        + "menge_positiv, menge_negativ "
                         + "FROM messreihe_periode WHERE tenant_id = ? AND entity_id = ? AND messkanal = ? "
                         + "AND art = 'monat' AND tag >= ? AND tag <= ? ORDER BY tag")) {
             ps.setObject(1, r.tenant());
@@ -601,7 +667,8 @@ final class KaskadeStufen {
                                     t.ergebnis().erwartet(), null, t.ergebnis().kennzeichen())),
                             rs.getBigDecimal(19), rs.getBigDecimal(23), gemessen == null ? 0 : gemessen,
                             luecke != null && luecke);
-                    aus.put(rs.getDate(1).toLocalDate(), new MonatsZeile(t, w, rs.getString(18), ganz(rs, 17)));
+                    aus.put(rs.getDate(1).toLocalDate(), new MonatsZeile(t, w, rs.getString(18), ganz(rs, 17),
+                            rs.getBigDecimal(26), rs.getBigDecimal(27)));
                 }
             }
         }
@@ -636,7 +703,7 @@ final class KaskadeStufen {
         String sql = "SELECT wertart, menge, menge_zustand, kennzeichen::text, erhalten, erwartet, abdeckung_prozent, "
                 + "stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, "
                 + "letzter_zeit, summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen, zustand, "
-                + "berechnet_am, zeitzone FROM "
+                + "berechnet_am, zeitzone, menge_positiv, menge_negativ FROM "
                 + (TAG.equals(ebene) ? "messreihe_tag WHERE " : "messreihe_periode WHERE art = '" + ebene + "' AND ")
                 + "tenant_id = ? AND entity_id = ? AND messkanal = ? AND tag = ?";
         try (PreparedStatement ps = con.prepareStatement(sql)) {
@@ -654,7 +721,8 @@ final class KaskadeStufen {
                         ViertelstundenTeile.wert(rs, 8, 9), ViertelstundenTeile.wert(rs, 10, 11),
                         ViertelstundenTeile.wert(rs, 12, 13), ViertelstundenTeile.wert(rs, 14, 15),
                         rs.getBigDecimal(16), rs.getBigDecimal(17), rs.getBigDecimal(18), rs.getBigDecimal(19),
-                        rs.getBigDecimal(20), ganz(rs, 21), (Boolean) rs.getObject(22), rs.getString(23));
+                        rs.getBigDecimal(20), ganz(rs, 21), (Boolean) rs.getObject(22), rs.getString(23),
+                        rs.getBigDecimal(26), rs.getBigDecimal(27));
                 return new Gespeichert(1, i, List.of(), List.of(), null, ViertelstundenTeile.zeit(rs, 24));
             }
         }
@@ -679,7 +747,8 @@ final class KaskadeStufen {
     private static final String PERIODE_SPALTEN = "version, wertart, menge, menge_zustand, kennzeichen::text, erhalten, "
             + "erwartet, abdeckung_prozent, stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, erster_wert, "
             + "erster_zeit, letzter_wert, letzter_zeit, summe, mittel, min_wert, max_wert, energie, gemessen_s, "
-            + "luecke_innen, zustand, korrekturen, ersatzwerte, anlass_kennung, basis_berechnet_am";
+            + "luecke_innen, zustand, korrekturen, ersatzwerte, anlass_kennung, basis_berechnet_am, menge_positiv, "
+            + "menge_negativ";
 
     /**
      * Die neueste Version einer Periode — der Reihe ({@code messstelle} {@code null}) oder einer berechneten Messstelle;
@@ -711,7 +780,8 @@ final class KaskadeStufen {
                         ViertelstundenTeile.wert(rs, 9, 10), ViertelstundenTeile.wert(rs, 11, 12),
                         ViertelstundenTeile.wert(rs, 13, 14), ViertelstundenTeile.wert(rs, 15, 16),
                         rs.getBigDecimal(17), rs.getBigDecimal(18), rs.getBigDecimal(19), rs.getBigDecimal(20),
-                        rs.getBigDecimal(21), ganz(rs, 22), (Boolean) rs.getObject(23), rs.getString(24));
+                        rs.getBigDecimal(21), ganz(rs, 22), (Boolean) rs.getObject(23), rs.getString(24),
+                        rs.getBigDecimal(29), rs.getBigDecimal(30));
                 return new Gespeichert(rs.getInt(1), i, texte(rs.getArray(25)), texte(rs.getArray(26)),
                         rs.getString(27), ViertelstundenTeile.zeit(rs, 28));
             }
@@ -730,11 +800,11 @@ final class KaskadeStufen {
                 INSERT INTO messreihe_periode_version (tenant_id, ebene, entity_id, messkanal, messstelle_id,
                     periode_beginn, periode_ende, tag, zeitzone, version, wertart, menge, menge_zustand, kennzeichen,
                     zustand, korrekturen, ersatzwerte, anlass_kennung, anlass_fassung, basis_berechnet_am,
-                    stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert,
-                    letzter_zeit, erhalten, erwartet, abdeckung_prozent, summe, mittel, min_wert, max_wert, energie,
-                    gemessen_s, luecke_innen)
+                    menge_positiv, menge_negativ, stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit,
+                    erster_wert, erster_zeit, letzter_wert, letzter_zeit, erhalten, erwartet, abdeckung_prozent, summe,
+                    mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?)
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             int i = 1;
             ps.setObject(i++, p.tenant());
@@ -757,6 +827,8 @@ final class KaskadeStufen {
             ps.setString(i++, anlassKennung);
             ps.setInt(i++, anlassFassung);
             ps.setTimestamp(i++, basisBerechnetAm == null ? null : Timestamp.from(basisBerechnetAm));
+            ps.setBigDecimal(i++, inhalt.positiv());
+            ps.setBigDecimal(i++, inhalt.negativ());
             fakten(ps, i, inhalt);
         }
     }
@@ -776,7 +848,8 @@ final class KaskadeStufen {
                 + "basis_berechnet_am = ?, stand_anfang = ?, stand_anfang_zeit = ?, stand_ende = ?, stand_ende_zeit = ?, "
                 + "erster_wert = ?, erster_zeit = ?, letzter_wert = ?, letzter_zeit = ?, erhalten = ?, erwartet = ?, "
                 + "abdeckung_prozent = ?, summe = ?, mittel = ?, min_wert = ?, max_wert = ?, energie = ?, gemessen_s = ?, "
-                + "luecke_innen = ?, nachgezogen_am = now() WHERE tenant_id = ? AND " + spur
+                + "luecke_innen = ?, menge_positiv = ?, menge_negativ = ?, nachgezogen_am = now() "
+                + "WHERE tenant_id = ? AND " + spur
                 + " AND ebene = ? AND periode_beginn = ? AND version = ?")) {
             int i = 1;
             ps.setString(i++, inhalt.wertart());
@@ -805,6 +878,8 @@ final class KaskadeStufen {
             ps.setBigDecimal(i++, inhalt.energie());
             ganz(ps, i++, inhalt.gemessenS());
             ps.setObject(i++, inhalt.lueckeInnen(), Types.BOOLEAN);
+            ps.setBigDecimal(i++, inhalt.positiv());
+            ps.setBigDecimal(i++, inhalt.negativ());
             ps.setObject(i++, p.tenant());
             if (p.messstelle() == null) {
                 ps.setObject(i++, p.entity());

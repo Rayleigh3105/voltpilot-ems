@@ -66,6 +66,18 @@ Wirkung (`messreihe_kaskade_woerter()` = `KorrekturKaskade.WOERTER`).
    Version 1, die die Verdichtung noch nicht neu gebildet hat, ist nicht Sache der Kaskade. Danach vergleicht jede Stufe
    Aussage UND was wirkt: eine Version mit denselben Zahlen, die eine zurückgenommene Korrektur noch nennt, bekommt
    eine neue.
+4a. **Das Richtungspaar reist mit** (`V20260923231500`): `messreihe_viertelstunde_version.energie_positiv/_negativ`
+   stammen aus DERSELBEN `waereZeile` wie die Rohwert-Fakten und nur, wenn deren `energie` die freigegebene ist
+   (Nachlieferung, Ablesestände, Umklassifizierung); `wert_berichtigt` und Ersatzwert (`mitErsatzwerten`) setzen
+   eine Nettomenge ohne Richtung → NULL. Tag/Monat summieren die Anteile der Viertelstunden in ihrer neuesten
+   Fassung (`Richtungspaar.ausTeilen`), das Jahr seine Monate (`Richtungspaar.Summe`) — dieselbe Regel wie
+   Version 1. `Inhalt.gleich` vergleicht das Paar nur, wenn BEIDE Seiten es kennen (eine Version von vor der
+   Migration bekommt keine neue Nummer); Nachzug schreibt es mit. ⚠ UPDATE auf `messreihe_periode_version` ist
+   SPALTENWEISE an die Admin-Rolle vergeben (nur Inhalt, nie Schlüssel/Nummer/Anlass): jede neue Inhaltsspalte, die
+   `periodeNachziehen` schreibt, braucht `GRANT UPDATE (<spalte>)` in ihrer Migration — sonst scheitert jeder Nachzug
+   mit `permission denied` (sichtbar nur in `UemsKorrekturKaskadeTest`). Leser: `BilanzRichtungswerte`,
+   `Richtungspaar.mengenDerVersion` (Berichts-Abzug). Test: `UemsRichtungspaarLaufTest`,
+   `BewertungRanglisteApiTest.korrekturAmSpeicherTraegtIhrRichtungspaarNettoBerichtigungNicht`.
 5. **Rücknahme = Stand VOR der Korrektur** (§4.6) als nächste Version — nur, wo die neueste Viertelstunden-Version von
    ihr stammt (eine spätere Entscheidung gilt). Danach nennt keine neueste Version die Korrektur mehr (Test).
 6. **Vorläufige Perioden ziehen nach.** Ein laufender Monat/ein laufendes Jahr bekommt seine Version und wächst danach wie
