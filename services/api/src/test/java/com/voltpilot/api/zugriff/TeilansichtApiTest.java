@@ -423,7 +423,7 @@ class TeilansichtApiTest {
         UUID c2 = root.queryForObject("SELECT id FROM device WHERE site_id = ?", UUID.class, AN_3);
         UUID verwaltung = root.queryForObject("SELECT id FROM device WHERE site_id = ?", UUID.class, AN_1);
         String kanal = "wago.pm494.karte[0].energy_import_total";
-        // Der WAGO-Kanal ist noch nicht runtime-freigegeben; vorhandene Beobachtungen bleiben lesbar.
+        // Beobachtungen eines älteren Inhaltsstands bleiben lesbar (WAGO an der Box seit 2026.09.23.3, IP-6b).
         root.update("INSERT INTO device_measurement_point_state (tenant_id, site_id, device_id, point_key, "
                 + "first_read_at, last_read_at, edge_sequence, raw_numeric, decoded_numeric, quality, catalog_version) "
                 + "VALUES (?, ?, ?, ?, now(), now(), 1, 4300, 4300, 'good', '2026.09.16.1')",

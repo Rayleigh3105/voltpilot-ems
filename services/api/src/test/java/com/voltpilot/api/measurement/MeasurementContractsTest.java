@@ -41,10 +41,10 @@ class MeasurementContractsTest {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
                 "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
         SelectionPoint point = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
-                7, null, null, "2026.09.23.2", "test", null, null, "pending_edge",
+                7, null, null, "2026.09.23.3", "test", null, null, "pending_edge",
                 null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
                 null, null, null, null);
-        State state = new State(DEVICE, SITE, null, 7, "2026.09.23.2", "pending_edge", null,
+        State state = new State(DEVICE, SITE, null, 7, "2026.09.23.3", "pending_edge", null,
                 null, null, List.of(point), List.of(), null);
         var actual = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
         var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
@@ -131,10 +131,10 @@ class MeasurementContractsTest {
                 + "\"cadenceS\":10,\"retentionClass\":\"unclassified\",\"readOnly\":true,"
                 + "\"requestCostMs\":400}");
         SelectionPoint point = new SelectionPoint(null, "custom.sim.soc", true, 10, 8, null, null,
-                "2026.08.26.3", "test", null, null, "pending_edge", null, null, definition,
+                "2026.09.23.3", "test", null, null, "pending_edge", null, null, definition,
                 "unclassified", 90, 900, "fifteen_minute", "Ladezustand (Simulator)", "custom",
                 "custom", "known");
-        State state = new State(DEVICE, SITE, null, 8, "2026.08.26.3", "pending_edge", null,
+        State state = new State(DEVICE, SITE, null, 8, "2026.09.23.3", "pending_edge", null,
                 null, null, List.of(point), List.of(), null);
         var payload = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
         var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
@@ -146,7 +146,7 @@ class MeasurementContractsTest {
                         "examples", "mqtt-measurement-config.valid.json"))).path("revision").asInt());
         // Der Katalogstand ist der des Tags - eine Abweichung weist die Box als
         // `unsupported_catalog` KOMPLETT ab (measurement-planner.js buildPlan).
-        assertThat(fixture.path("catalog_version").asText()).isEqualTo("2026.08.26.3");
+        assertThat(fixture.path("catalog_version").asText()).isEqualTo("2026.09.23.3");
     }
 
     @Test
@@ -272,7 +272,7 @@ class MeasurementContractsTest {
         UUID right = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
         String shared = "deye.hybrid_1p.battery.battery";
 
-        State bound = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null,
+        State bound = new State(DEVICE, SITE, null, 9, "2026.09.23.3", "pending_edge", null,
                 null, null,
                 List.of(selection(left, shared, 10),
                         selection(null, "deye.hybrid_1p.battery.battery-voltage", 30)),
@@ -286,7 +286,7 @@ class MeasurementContractsTest {
         // The edge keys its poll plan on the point key alone and refuses a
         // duplicate, so two components watching ONE register arrive once - with
         // the faster wish and WITHOUT a binding nobody could honour.
-        State ambiguous = new State(DEVICE, SITE, null, 10, "2026.08.26.3", "pending_edge",
+        State ambiguous = new State(DEVICE, SITE, null, 10, "2026.09.23.3", "pending_edge",
                 null, null, null,
                 List.of(selection(left, shared, 30), selection(right, shared, 10)),
                 List.of(), null);
@@ -297,7 +297,7 @@ class MeasurementContractsTest {
         assertThat(collapsed.at("/selections/0/entity_id").isMissingNode()).isTrue();
 
         // A component row next to the box row for the same key is ambiguous too.
-        State mixed = new State(DEVICE, SITE, null, 11, "2026.08.26.3", "pending_edge",
+        State mixed = new State(DEVICE, SITE, null, 11, "2026.09.23.3", "pending_edge",
                 null, null, null,
                 List.of(selection(null, shared, 30), selection(left, shared, 60)),
                 List.of(), null);
@@ -327,7 +327,7 @@ class MeasurementContractsTest {
     void dieKadenzKommtAusDerFassungUndDerDrahtBleibtDerselbe() throws Exception {
         UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
         String shared = "deye.hybrid_1p.battery.battery";
-        State state = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null, null, null,
+        State state = new State(DEVICE, SITE, null, 9, "2026.09.23.3", "pending_edge", null, null, null,
                 List.of(selection(left, shared, 10),
                         selection(null, "deye.hybrid_1p.battery.battery-voltage", 30)),
                 List.of(), null);
@@ -360,7 +360,7 @@ class MeasurementContractsTest {
         }
 
         // Eine Zeile ohne Komponente fragt nie nach einer Fassung.
-        State ohneKomponente = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null, null,
+        State ohneKomponente = new State(DEVICE, SITE, null, 9, "2026.09.23.3", "pending_edge", null, null,
                 null, List.of(selection(null, shared, 10)), List.of(), null);
         MeasurementConfigPublisher zaehlend = new MeasurementConfigPublisher("tcp://unused:1883", "", "",
                 mapper, (kanaele, zeitpunkt) -> {
@@ -384,7 +384,7 @@ class MeasurementContractsTest {
 
     private static SelectionPoint selection(UUID entityId, String pointKey, Integer cadenceS) {
         return new SelectionPoint(entityId, pointKey, true, cadenceS, 9, null, null,
-                "2026.08.26.3", "test", null, null, "pending_edge", null, null, null,
+                "2026.09.23.3", "test", null, null, "pending_edge", null, null, null,
                 "thermal_bms", 90, 900, "fifteen_minute", null, null, null, null);
     }
 

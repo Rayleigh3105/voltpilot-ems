@@ -170,3 +170,17 @@ Weiter **RUHEND**: `RUNTIME_VERSION` bleibt 2026.08.26.3, `wago.pm494`/`wago.pm4
 - ⚠ **Mischbetrieb:** keine Laufzeit ruft diese Stufe, `flows.json` bettet sie nicht ein — eine Box
   ohne WAGO-Quelle sendet keines dieser Ereignisse. Wer sie verdrahtet, braucht ein Edge-Release
   und einen neuen Mischbetriebs-Nachweis.
+
+## Aktivierung an der Box (AP-05 IP-6b, 23.09.2026)
+
+Nicht mehr RUHEND auf Katalog-Ebene: Inhalts- und Laufzeitstand **2026.09.23.3**, die Palette führt
+die 54 Kartenpunkte, `NOCH_NICHT_AN_DER_BOX` ist leer — **wirksam erst mit dem Box-Release**, das
+diese Palette trägt. Einzelheiten und Mitgezogenes: [`uems-wago-katalog.md`](uems-wago-katalog.md).
+
+- ⚠ **Aktiviert heißt noch nicht gelesen.** Die drei Stufen dieser Datei laufen weiter nur in Tests:
+  `registerbilder` kommen weder aus der api noch aus der Laufzeit beim Planer an, `readModbus`
+  (`vp-measurements.js`) fährt für `wago_registerbild` FC 3 ohne Wortfolge, und `pruefeLesung`/
+  `lesung()` ruft keine Laufzeit. Ein 495-Punkt wird darum als `driver_unavailable` abgelehnt, nie an
+  Adresse 0 gelesen. Die Verdrahtung ist ein eigenes Paket und braucht dasselbe Box-Release.
+- Nachweis: `wago-registerbild.test.js` „die Box-Sicht des Katalogs führt die WAGO-Karten“ und „eine
+  Konfiguration ohne Registerbild-Parameter liest keine Karte, der Rest läuft weiter“.

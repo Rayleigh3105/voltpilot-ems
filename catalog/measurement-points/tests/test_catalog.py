@@ -798,25 +798,39 @@ class WagoQuelleTest(unittest.TestCase):
                 self.assertEqual(katalog, erwartet)
                 self.assertEqual({point["unit"]}, einheiten)
 
-    def test_no_card_reaches_a_box_and_the_runtime_version_stays(self) -> None:
+    def test_cards_reach_the_box_with_their_own_runtime_version(self) -> None:
+        # UEMS AP-05 IP-6b: der Eintrag in NOCH_NICHT_AN_DER_BOX ist gefallen, der Laufzeitstand stieg
+        # von 2026.09.23.2 auf 2026.09.23.3 — wirksam mit dem Box-Release, das diese Palette trägt.
         families = {f["family"]: f["an_der_box"] for f in self.catalog["families"]}
-        self.assertEqual({name: families[name] for name in self.KARTEN}, {"wago.pm494": False, "wago.pm495": False})
-        self.assertEqual(sum(families.values()), len(families) - 2)
-        self.assertEqual(self.catalog["runtime_catalog_version"], "2026.09.23.2")
-        self.assertFalse([p for p in runtime_projection(self.catalog, "2026.09.23.2") if p["family"].startswith("wago.")])
-        palette = (REPO / "edge-app" / "nodered" / "measurements" / "catalog.json").read_bytes()
-        self.assertNotIn(b"wago", palette)
-        self.assertNotIn(b"registerbild", palette)
+        self.assertEqual({name: families[name] for name in self.KARTEN}, {"wago.pm494": True, "wago.pm495": True})
+        self.assertTrue(all(families.values()))
+        self.assertEqual(cataloglib.NOCH_NICHT_AN_DER_BOX, {})
+        self.assertEqual(self.catalog["runtime_catalog_version"], "2026.09.23.3")
+        karten = [p for p in runtime_projection(self.catalog, "2026.09.23.3") if p["family"].startswith("wago.")]
+        self.assertEqual(len(karten), 54)
+        palette = json.loads((REPO / "edge-app" / "nodered" / "measurements" / "catalog.json").read_bytes())
+        self.assertEqual(palette["catalog_version"], "2026.09.23.3")
+        im_katalog = {p["point_key"]: p for p in palette["points"] if p["family"] in self.KARTEN}
+        self.assertEqual(set(im_katalog), {p["point_key"] for p in karten})
+        # `range` reist als Box-Feld mit: der Leser aus IP-6 macht aus dem UNGÜLTIG-Wert keinen Messwert.
+        self.assertEqual(im_katalog["wago.pm495.karte[*].energy_import_total"]["range"]["invalid"], 4294967295)
 
-        def an_der_box(points, document):
-            next(f for f in document["families"] if f["family"] == "wago.pm495")["an_der_box"] = True
-        self.assertIn("wago.pm495: an_der_box mismatch", self.validation_error(an_der_box))
-        # Nie eine Familie zurückhalten, die schon an einer Box ist: ihre Punkte verschwänden still.
-        with unittest.mock.patch.dict(cataloglib.NOCH_NICHT_AN_DER_BOX, {"sunspec.model_203": "test"}):
-            with self.assertRaises(ValueError) as raised:
-                validate_catalog(ARTIFACT)
-        self.assertIn("families already at the box cannot be withheld from it: ['sunspec.model_203']",
-                      str(raised.exception))
+        # Die Box-Sicht OHNE die Karten ist die des vorigen Laufzeitstands 2026.09.23.2 — nur der Stand ist neu.
+        vorher = json.loads((ROOT / "dist" / "measurement-point-catalog-2026.09.23.2.json").read_text(encoding="utf-8"))
+        ohne_karten = [p for p in runtime_projection(self.catalog, "2026.09.23.2") if p["family"] not in self.KARTEN]
+        self.assertEqual(ohne_karten, [p for p in runtime_projection(vorher, "2026.09.23.2")
+                                       if p["family"] not in self.KARTEN])
+
+        def nicht_an_der_box(points, document):
+            next(f for f in document["families"] if f["family"] == "wago.pm495")["an_der_box"] = False
+        self.assertIn("wago.pm495: an_der_box mismatch", self.validation_error(nicht_an_der_box))
+        # Einmal an der Box, nie still zurück: ihre Punkte verschwänden aus Palette und Metadaten.
+        for zurueck in ("wago.pm495", "sunspec.model_203"):
+            with unittest.mock.patch.dict(cataloglib.NOCH_NICHT_AN_DER_BOX, {zurueck: "test"}):
+                with self.assertRaises(ValueError) as raised:
+                    validate_catalog(ARTIFACT)
+            self.assertIn(f"families already at the box cannot be withheld from it: ['{zurueck}']",
+                          str(raised.exception))
 
     def test_validator_rejects_a_card_that_inherits_or_guesses(self) -> None:
         def erbt(points, document):

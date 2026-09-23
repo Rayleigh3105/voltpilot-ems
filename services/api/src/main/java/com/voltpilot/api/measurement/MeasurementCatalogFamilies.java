@@ -7,9 +7,9 @@ import java.util.Set;
  * Maps binding-family names from builtin.json to canonical catalog families.
  *
  * <p>{@code catalogFamilies} is {@link MeasurementCatalog#families()}: a family the content version carries
- * but no box reads yet ({@code an_der_box: false}, e.g. the WAGO cards {@code wago.pm494}/{@code wago.pm495}
- * until UEMS AP-05 IP-6) is not in it, so the final {@code retainAll} drops it — a card component then
- * spans no catalog family instead of an empty register list.
+ * but no box reads yet ({@code an_der_box: false}; the WAGO cards {@code wago.pm494}/{@code wago.pm495} were
+ * such families until runtime version 2026.09.23.3, UEMS AP-05 IP-6b) is not in it, so the final
+ * {@code retainAll} drops it — a component then spans no catalog family instead of an empty register list.
  */
 public final class MeasurementCatalogFamilies {
 

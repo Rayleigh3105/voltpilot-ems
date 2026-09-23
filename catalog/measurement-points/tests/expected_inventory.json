@@ -1,6 +1,6 @@
 {
-  "catalog_version": "2026.09.23.2",
-  "runtime_catalog_version": "2026.09.23.2",
+  "catalog_version": "2026.09.23.3",
+  "runtime_catalog_version": "2026.09.23.3",
   "deye_lock_sha256": "30d4ff814fbb0e17a2322370b6763666ce5181b6468700ab1dab3b879d737b02",
   "deye_direct_register_points": {
     "hybrid_1p": 193,

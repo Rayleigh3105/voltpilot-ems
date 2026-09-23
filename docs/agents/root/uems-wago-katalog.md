@@ -1,8 +1,8 @@
 # UEMS-WAGO: Katalog-Quelle `wago` und Schema `modbus_input` / `range` (AP-05 IP-4 + IP-5)
 
 Neu am 16.09.2026, drittes Bau-Paket von AP-05 (Konzept `vp-uems-ap05-wago/report.md` §8 IP-4/IP-5,
-Fundament PR 831). Katalog-Inhaltsstand seit AP-06 IP-21 **2026.09.17.1**, der Laufzeitstand bleibt
-**2026.08.26.3**.
+Fundament PR 831). **Seit IP-6b (23.09.2026) an der Box:** Inhalts- und Laufzeitstand **2026.09.23.3** —
+wirksam erst mit dem Box-Release, das diese Palette trägt (Abschnitt „Aktivierung“ unten).
 
 - `catalog/measurement-points/sources/wago/registerbild-v1.json` — Normalform des Vertrags
   [`wago-registerbild.md`](../../contracts/v2/wago-registerbild.md): Familien `wago.pm494` und `wago.pm495`
@@ -14,8 +14,8 @@ Fundament PR 831). Katalog-Inhaltsstand seit AP-06 IP-21 **2026.09.17.1**, der L
   cloud-seitige `families[].single_reader: true`. `validate.py` prüft
   jedes davon; `tests/test_catalog.py` `WagoQuelleTest` hält es gegen `wago-registerbild-vectors.json`.
 - Katalog-README: „Wertebereich eines Rohwerts“, „WAGO-Energiekarten“, „Familien noch nicht an der Box“.
-- api: `MeasurementCatalog.familienNochNichtAnDerBox` lässt die Punkte beim Laden aus (keine Suche, keine
-  Auswahl). Portal: `registerFamilie.ts` führt die Familien nicht, der Test liest `an_der_box`.
+- api: `MeasurementCatalog.familienNochNichtAnDerBox` ist seit 2026.09.23.3 leer — Suche und Auswahl bieten
+  die Karten an. Portal: `registerFamilie.ts` führt `wago.pm494`/`wago.pm495`, der Test liest `an_der_box`.
 
 ## Fallen
 
@@ -24,14 +24,27 @@ Fundament PR 831). Katalog-Inhaltsstand seit AP-06 IP-21 **2026.09.17.1**, der L
   ohne `range`, `readable: false`. Heute sind ALLE zwölf Messwerte der 494 so, belegt sind nur Adressen,
   Statuswörter (Koppler 750-362) und die Rohwort-Felder. Bei der 495 fehlt der Datentyp von
   `energy_export_total` (zu erheben) — auch sie ist nicht lesbar.
-- ⚠ **Laufzeitstand nicht heben (firstmate 001 = B):** neue Punkte gehören zur Box-Sicht. Die Familien
-  stehen deshalb in `cataloglib.NOCH_NICHT_AN_DER_BOX`; Box-Sicht, Palette-`catalog.json` und
-  Metadaten-Migration bleiben byte-gleich. **IP-6 streicht den Eintrag, hebt `RUNTIME_VERSION`, packt die
-  Palette neu und legt eine neue Metadaten-Migration an — nur mit einem Edge-Release.** Nie eine
-  ausgelieferte Familie eintragen: `validate.py` lehnt das ab.
-- ⚠ **`range` ist ein Box-Feld ohne Leser (firstmate 001, IP-5 = B2):** kein Edge-Code in diesem Paket.
-  IP-6 MUSS den Leser mit dem Edge-Test „INVALID-Wert führt zu keinem Messwert“ bringen — Bedingung in
-  `data/vp-uems-ap05-wago/befunde.md` Befund 7. Die api dekodiert keine Register.
+- ⚠ **Aktivierung (IP-6b, 23.09.2026): wirksam mit dem Box-Release.** Der Eintrag in
+  `cataloglib.NOCH_NICHT_AN_DER_BOX` ist gefallen (die Liste ist leer, der Mechanismus bleibt),
+  `RUNTIME_VERSION` stieg von 2026.09.23.2 (Einheiten, PR 1136) auf 2026.09.23.3, `package_edge_runtime.py` packte Palette-`catalog.json`
+  (+54 Punkte, sonst byte-gleich bis auf den Stand) und die Metadaten-Migration
+  `V20260924030000__measurement_catalog_metadata_runtime_2026_09_23_3.sql`. Ab dem api-Deploy veröffentlicht die
+  api diesen Stand; eine Box mit älterer Palette lehnt jede Mess-Konfiguration als `unsupported_catalog`
+  ab und misst mit ihrem letzten angewandten Plan weiter — api-Deploy und Box-Release gehören zusammen.
+  Mitgezogen: die festgenagelten Konfig-Beispiele `mqtt-measurement-config.valid*.json` (drei),
+  `MeasurementContractsTest`, `tools/nw3-box-image/strecke-seed.sql`, beide Kernspiegel-Dateien (Stand an
+  `runtime_catalog_versions` ANGEHÄNGT). Nie eine
+  ausgelieferte Familie wieder eintragen: `validate.py` lehnt das ab (Test für `wago.pm495`).
+- ⚠ **Aktiviert heißt noch nicht gelesen (Befund IP-6b).** Die Box-Sicht führt die Karten, aber die Laufzeit
+  reicht die Parameter je Anlage nicht an den Planer: die api veröffentlicht kein `registerbilder`,
+  `mqtt-measurement-config` kennt das Feld nicht, `measurement-runtime.js`/`vp-measurements.js` setzen
+  `options.registerbilder` nicht, `readModbus` fährt für `wago_registerbild` immer FC 3, und Kopfprüfung
+  (IP-7) wie Ereignisse (IP-8) laufen in keiner Laufzeit. Folge heute: ein 495-Punkt wird je Punkt als
+  `driver_unavailable` abgelehnt, ein 494-Messwert (`readable: false`) als `unknown_point`, der Rest der
+  Konfiguration läuft weiter — nie ein Lesen an Adresse 0 (Test in `wago-registerbild.test.js`).
+- ⚠ **`range` ist ein Box-Feld (firstmate 001, IP-5 = B2):** den Leser brachte IP-6 (PR 942, Test „INVALID-Wert
+  führt zu keinem Messwert“); seit 2026.09.23.3 reist `range` in der Palette mit. Die api dekodiert keine
+  Register.
 - ⚠ **Funktionscode und Wortfolge sind Parameter der Anlage**, nicht Katalog: darum `wago_registerbild`
   statt `modbus_holding`, `address.base: parameter`, `endian: null`.
 - ⚠ **Neue Zähler-Art `faktor_zu_erheben`** (die zwei Zählerstände der 494 in `semantics.py`). Die

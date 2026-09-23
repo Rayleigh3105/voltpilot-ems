@@ -45,11 +45,12 @@
  * Testlauf rot, statt hier still zu fehlen. Mit Stufe 3b (der Server nimmt die
  * Komponente entgegen und expandiert selbst) entfällt die Kopie ersatzlos.
  *
- * ⚠ **Nur Familien, die an eine Box gehen.** Der Katalog führt `wago.pm494` und
- * `wago.pm495` mit `an_der_box: false` (UEMS AP-05 IP-4): der Server bietet ihre
- * Punkte nicht an, bis das Edge-Release von IP-6 sie lesen kann - hier stünde
- * sonst eine Familie ohne Registerliste, also genau der leere Kasten, den der
- * Schnitt verhindern soll. Der Test liest `an_der_box` aus derselben Datei.
+ * ⚠ **Nur Familien, die an eine Box gehen.** Eine Familie mit `an_der_box: false`
+ * bietet der Server nicht an - hier stünde sonst eine Familie ohne Registerliste,
+ * also genau der leere Kasten, den der Schnitt verhindern soll. Der Test liest
+ * `an_der_box` aus derselben Datei. `wago.pm494`/`wago.pm495` waren solche
+ * Familien, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box gingen (UEMS
+ * AP-05 IP-6b).
  */
 export const KATALOG_FAMILIEN: readonly string[] = [
   'fronius_solar_api',
@@ -83,6 +84,8 @@ export const KATALOG_FAMILIEN: readonly string[] = [
   'sunspec.model_211',
   'sunspec.model_212',
   'sunspec.model_213',
+  'wago.pm494',
+  'wago.pm495',
 ];
 
 /**

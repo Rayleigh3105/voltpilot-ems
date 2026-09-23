@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.09.23.2.json`](dist/measurement-point-catalog-2026.09.23.2.json).
+[`dist/measurement-point-catalog-2026.09.23.3.json`](dist/measurement-point-catalog-2026.09.23.3.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
@@ -251,12 +251,18 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   Zuletzt 2026.08.26.3 → 2026.09.23.2 (nur `unit`: KACO ohne Faktor im Namen, go-e Wh; mit dem
   Box-Release 23.09.2026). Der Laufzeitstand darf dabei ein Inhaltsstand mit zurückgehaltenen Familien
   sein: `validate.py` liest deren `families[].an_der_box: false` als „nie an der Box“.
+  Danach 2026.09.23.2 → **2026.09.23.3**: die WAGO-Karten gehen an die Box (UEMS AP-05 IP-6b, Metadaten
+  `V20260924030000__measurement_catalog_metadata_runtime_2026_09_23_3.sql`, dasselbe Box-Release). Mit dem
+  Laufzeitstand ziehen die festgenagelten Konfig-Beispiele
+  `docs/contracts/v2/examples/mqtt-measurement-config.valid*.json` mit, die die Palette als „heutige
+  Cloud-Konfiguration“ annehmen muss.
 
 ### Familien noch nicht an der Box
 
 Eine neue Quelle, deren Punkte keine ausgelieferte Box lesen kann, gehört in den Inhaltsstand, nicht in
 den Laufzeitstand. `NOCH_NICHT_AN_DER_BOX` in `tools/cataloglib.py` nennt solche Familien mit Grund
-(heute `wago.pm494`/`wago.pm495`, bis der Treiber aus UEMS AP-05 IP-6 mit einem Edge-Release kommt):
+(heute keine; `wago.pm494`/`wago.pm495` standen dort, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box
+gingen — UEMS AP-05 IP-6b, wirksam mit dem Box-Release):
 
 - Ihre Punkte stehen im Artefakt (`families[].an_der_box: false`), fehlen aber in der Box-Sicht
   (`runtime_projection`), in der Palette-`catalog.json` und in der Metadaten-Migration — `validate.py` und

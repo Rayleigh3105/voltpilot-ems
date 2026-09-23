@@ -21,7 +21,7 @@ test('API-produced current catalog plan is accepted and executed by the Edge run
     __dirname, '../../../docs/contracts/v2/examples/mqtt-measurement-config.valid.json',
   );
   const payload = JSON.parse(fs.readFileSync(fixture, 'utf8'));
-  assert.equal(payload.catalog_version, '2026.09.23.2');
+  assert.equal(payload.catalog_version, '2026.09.23.3');
   const runtime = new MeasurementRuntime(
     {readModbus: async () => [50]}, () => {}, () => new Date('2026-08-25T12:00:00Z'),
   );

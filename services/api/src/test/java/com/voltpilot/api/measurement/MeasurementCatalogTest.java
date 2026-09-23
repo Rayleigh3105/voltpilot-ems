@@ -19,7 +19,7 @@ class MeasurementCatalogTest {
         var result = catalog.search("Batteriestrom", Set.of("hybrid_1p"), null, null,
                 null, false, false, Set.of(), Map.of(), Set.of(), Map.of(), 0, 20);
 
-        assertThat(result.catalogVersion()).isEqualTo("2026.09.23.2");
+        assertThat(result.catalogVersion()).isEqualTo("2026.09.23.3");
         assertThat(result.customPointActionLabel()).isEqualTo("Eigenen Messwert hinzufügen");
         assertThat(result.points()).isNotEmpty();
         assertThat(result.points()).allSatisfy(p -> {
@@ -118,8 +118,8 @@ class MeasurementCatalogTest {
      */
     @Test
     void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
-        assertThat(catalog.version()).isEqualTo("2026.09.23.2");
-        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.23.2");
+        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
+        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.23.3");
 
         assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
                 .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "import"));
@@ -150,7 +150,7 @@ class MeasurementCatalogTest {
         assertThat(zaehler.klasse()).isEqualTo("MID");
         assertThat(catalog.herstellerGenauigkeit("WAGO", "879-3100")).isNull();
         assertThat(catalog.herstellerGenauigkeit("anderer Hersteller", "750-494")).isNull();
-        assertThat(catalog.version()).isEqualTo("2026.09.23.2");
+        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
     }
 
     /**
@@ -181,12 +181,12 @@ class MeasurementCatalogTest {
     }
 
     /**
-     * UEMS AP-05 IP-4: die WAGO-Karten stehen im paketierten Inhaltsstand, gehen aber an keine Box, bis der
-     * Treiber aus IP-6 ausgeliefert ist — die api bietet sie weder in der Suche noch zur Auswahl an, und
-     * sie veröffentlicht weiter den Laufzeitstand, den jede Feld-Box spricht.
+     * UEMS AP-05 IP-6b: die WAGO-Karten gehen mit dem Laufzeitstand 2026.09.23.3 an die Box — die api bietet
+     * sie in Suche und Auswahl an und veröffentlicht diesen Stand. Wirksam mit dem Box-Release: eine Box mit
+     * älterer Palette lehnt jede Mess-Konfiguration dieses Standes ab (unsupported_catalog).
      */
     @Test
-    void wagoCardsAreContentButNeverOfferedWhileNoBoxReadsThem() throws Exception {
+    void wagoCardsAreOfferedWithTheRuntimeVersionThatReachesTheBox() throws Exception {
         JsonNode paket;
         try (InputStream in = getClass().getResourceAsStream(
                 "/measurementcatalog/measurement-point-catalog-" + catalog.inhaltsstand() + ".json")) {
@@ -200,13 +200,12 @@ class MeasurementCatalogTest {
         }
         assertThat(wago).as("27 Punkte je Karte im Inhaltsstand").isEqualTo(54);
 
-        assertThat(catalog.familienNochNichtAnDerBox()).containsExactlyInAnyOrder("wago.pm494", "wago.pm495");
-        assertThat(catalog.families()).noneMatch(f -> f.startsWith("wago."));
-        assertThat(catalog.resolve("wago.pm495.karte[*].energy_import_total")).isNull();
-        assertThat(catalog.resolve("wago.pm495.karte[0].energy_import_total")).isNull();
+        assertThat(catalog.familienNochNichtAnDerBox()).isEmpty();
+        assertThat(catalog.families()).contains("wago.pm494", "wago.pm495");
+        assertThat(catalog.resolve("wago.pm495.karte[*].energy_import_total")).isNotNull();
         assertThat(catalog.search("", Set.of("wago.pm494", "wago.pm495"), null, null, null, false, false,
-                Set.of("wago.pm494", "wago.pm495"), Map.of(), Set.of(), Map.of(), 0, 250).total()).isZero();
-        assertThat(catalog.version()).isEqualTo("2026.09.23.2");
+                Set.of("wago.pm494", "wago.pm495"), Map.of(), Set.of(), Map.of(), 0, 250).total()).isPositive();
+        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
     }
 
     @Test void missingOrUnknownFamilyIsNamedInsteadOfAnUnexplainedEmptyCatalog() {

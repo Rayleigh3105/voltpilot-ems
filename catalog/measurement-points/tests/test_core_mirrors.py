@@ -25,7 +25,8 @@ class CoreMirrorsTest(unittest.TestCase):
 
     def test_a_mirror_holds_across_every_runtime_version_with_the_same_box_view(self):
         # Bestandsauswahlen tragen den Stand, unter dem sie gespeichert wurden (Writer: = ANY).
-        self.assertEqual(["2026.08.26.3", RUNTIME_CATALOG_VERSION], validated()["runtime_catalog_versions"])
+        self.assertEqual(["2026.08.26.3", "2026.09.23.2", RUNTIME_CATALOG_VERSION],
+                         validated()["runtime_catalog_versions"])
 
         def verschoben(catalog, version):
             points = copy.deepcopy(runtime_projection(catalog, version))

@@ -174,6 +174,25 @@ final class Bestandsschutz {
             assertThat(abweichungen(vorher, fingerabdruck(db, ausnahmen))).as("neue Tabelle mit Inhalt")
                     .containsExactly("bestandsschutz_probe: neue Tabelle mit Inhalt");
         });
+        // Die Katalog-Metadaten je Laufzeitstand, auf der echten Tabelle (UEMS AP-05 IP-6b): ein neuer Stand
+        // ist keine Abweichung, eine Zeile mehr an einem bestehenden Stand schon.
+        tx.executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            Map<String, String> vorher = fingerabdruck(db, ausnahmen);
+            String bestehend = vorher.keySet().stream().filter(k -> k.startsWith(KATALOG_METADATEN + "@"))
+                    .findFirst().orElse(null);
+            if (bestehend == null) {
+                return; // die Metadaten sind ausgenommen oder leer — dann gibt es nichts zu proben
+            }
+            db.update("INSERT INTO " + KATALOG_METADATEN + " (catalog_version, point_key, aggregation_kind, "
+                    + "long_term_cadence_s) VALUES ('9999.12.31.9', 'bestandsschutz.probe', 'gauge', NULL)");
+            assertThat(abweichungen(vorher, fingerabdruck(db, ausnahmen))).as("neuer Laufzeitstand").isEmpty();
+            db.update("INSERT INTO " + KATALOG_METADATEN + " (catalog_version, point_key, aggregation_kind, "
+                    + "long_term_cadence_s) VALUES (?, 'bestandsschutz.probe', 'gauge', NULL)",
+                    bestehend.substring(KATALOG_METADATEN.length() + 1));
+            assertThat(abweichungen(vorher, fingerabdruck(db, ausnahmen))).as("Zeile an einem bestehenden Stand")
+                    .containsExactly(bestehend + ": bestehender Inhalt geändert");
+        });
     }
 
     /**

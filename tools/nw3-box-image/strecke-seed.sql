@@ -28,6 +28,6 @@ VALUES (
     '00000000-0000-0000-0000-000000000002',
     '00000000-0000-0000-0000-000000000003',
     'custom.sim.soc', TRUE, 10, 8,
-    now() - INTERVAL '1 hour', '2026.08.26.3', 'nw3', 'applied', now() - INTERVAL '1 hour',
+    now() - INTERVAL '1 hour', '2026.09.23.3', 'nw3', 'applied', now() - INTERVAL '1 hour',
     'unclassified', 90, 900, 'fifteen_minute')
     ON CONFLICT DO NOTHING;

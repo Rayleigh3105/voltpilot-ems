@@ -65,7 +65,11 @@ test('unbenched registers use 2000 ms each, closing the proven cloud/box diverge
 
 test('all runtime catalog source kinds retain their previous costs', () => {
   for (const p of catalogDocument.points) {
-    const oldCost = p.source_kind === 'ocpp_sampled_value' ? 0
+    // The WAGO cards reached the box with runtime 2026.09.23.3 (UEMS AP-05 IP-6b): no previous
+    // cost exists, the shared contract names it.
+    const oldCost = p.source_kind === 'wago_registerbild'
+      ? contract.families.wago_registerbild.request_cost_ms
+      : p.source_kind === 'ocpp_sampled_value' ? 0
       : ['modbus_holding','modbus_input','sunspec_model'].includes(p.source_kind) ? 400 : 250;
     assert.equal(requestCostMs(p.family, p.source_kind), oldCost, p.point_key);
   }

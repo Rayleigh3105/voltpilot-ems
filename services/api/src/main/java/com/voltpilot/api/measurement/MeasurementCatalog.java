@@ -185,7 +185,7 @@ public class MeasurementCatalog {
         }
         this.herstellerGenauigkeiten = List.copyOf(genauigkeiten);
         // Familien, die der Inhaltsstand führt, die aber noch an KEINE Box gehen (an_der_box: false,
-        // Katalog-README „Familien noch nicht an der Box“, z. B. die WAGO-Karten bis UEMS AP-05 IP-6): ihre
+        // Katalog-README „Familien noch nicht an der Box“; die WAGO-Karten bis 2026.09.23.3, UEMS AP-05 IP-6b): ihre
         // Punkte gibt es für die api nicht — keine Suche, keine Auswahl, keine Mess-Konfiguration, die die
         // Box mit unknown_point ablehnen würde. Sie erscheinen mit dem Edge-Release, das sie lesen kann.
         Set<String> zurueckgehalten = new java.util.TreeSet<>();

@@ -20,8 +20,8 @@ EDGE_MIN_VERSION = "unreleased"
 POINT_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._*\[\]@-]*$")
 
 # Was die Box je Punkt liest (der Palette-Katalog) ... `range` (UEMS AP-05 IP-5: `invalid` = kein
-# Messwert) trägt heute nur eine Familie, die noch an keiner Box ist; lesen wird es erst der Treiber
-# aus AP-05 IP-6 — wer es an einen ausgelieferten Punkt schreibt, hebt den Laufzeitstand.
+# Messwert) tragen die WAGO-Karten; gelesen wird es vom Treiber aus AP-05 IP-6 und kam mit dem
+# Laufzeitstand 2026.09.23.3 an die Box (IP-6b) — wer es an einen weiteren Punkt schreibt, hebt ihn.
 EDGE_FIELDS = (
     "address", "aggregation_kind", "catalog_version", "decoder",
     "default_cadence_s", "derived_from", "edge_min_version", "endian",
@@ -36,10 +36,9 @@ RUNTIME_FIELDS = EDGE_FIELDS + ("long_term_cadence_s",)
 # und die api bietet sie nicht zur Auswahl an. So hebt eine neue Quelle den Laufzeitstand NICHT — der
 # Eintrag fällt erst mit dem Edge-Release, das ihre Punkte lesen kann, und dann steigt RUNTIME_VERSION.
 # ⚠ Nie eine Familie eintragen, die schon an einer Box ist (`validate.py` lehnt das ab).
-NOCH_NICHT_AN_DER_BOX = {
-    "wago.pm494": "UEMS AP-05 IP-6 (Edge-Treiber wago.registerbild) ist nicht ausgeliefert",
-    "wago.pm495": "UEMS AP-05 IP-6 (Edge-Treiber wago.registerbild) ist nicht ausgeliefert",
-}
+# Heute leer: `wago.pm494`/`wago.pm495` gingen mit dem Laufzeitstand 2026.09.23.3 an die Box (UEMS AP-05
+# IP-6b, wirksam mit dem Box-Release, das diese Palette trägt).
+NOCH_NICHT_AN_DER_BOX: dict[str, str] = {}
 
 # Cloud-only fact for UEMS AP-06 IP-21.  Family metadata is deliberately not part of
 # EDGE_FIELDS/runtime_projection: deciding whether two boxes may read the same physical device is

@@ -37,13 +37,13 @@ class MeasurementCatalogFamiliesTest {
                 .hasSize(19).allMatch(f -> f.startsWith("sunspec.model_"));
     }
 
-    /** UEMS AP-05 IP-4: eine WAGO-Karte heißt wörtlich wie ihre Familie — und fällt heraus, solange sie an keiner Box ist. */
+    /** UEMS AP-05 IP-4/IP-6b: eine WAGO-Karte heißt wörtlich wie ihre Familie — seit 2026.09.23.3 an der Box. */
     @Test
-    void aWagoCardFamilyPassesLiterallyButIsDroppedWhileNoBoxReadsIt() {
+    void aWagoCardFamilyPassesLiterallyNowThatTheBoxReadsIt() {
         MeasurementCatalog catalog = new MeasurementCatalog(new ObjectMapper());
-        assertThat(catalog.familienNochNichtAnDerBox()).containsExactlyInAnyOrder("wago.pm494", "wago.pm495");
+        assertThat(catalog.familienNochNichtAnDerBox()).isEmpty();
         assertThat(MeasurementCatalogFamilies.expand(Set.of("wago.pm494", "wago.pm495"), catalog.families()))
-                .isEmpty();
+                .containsExactlyInAnyOrder("wago.pm494", "wago.pm495");
         assertThat(MeasurementCatalogFamilies.expand(Set.of("wago.pm495"), Set.of("wago.pm495")))
                 .containsExactly("wago.pm495");
     }

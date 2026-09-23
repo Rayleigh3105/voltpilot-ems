@@ -395,23 +395,34 @@ test('der Instanz-Offset gilt fuer SunSpec-Module UND fuer Karten', () => {
   assert.throws(() => _helpers.evalDynamicOffset('irgendwas', 0), /dynamic instance offset/);
 });
 
-test('der Treiber ist RUHEND: die Box-Sicht des Katalogs kennt keinen WAGO-Punkt', () => {
-  // Solange `wago.pm494`/`wago.pm495` in NOCH_NICHT_AN_DER_BOX stehen, loest kein Punkt auf -
-  // der Treiber laeuft nur in diesen Tests. Das Heben ist ein eigenes Paket (Befund 8).
-  assert.strictEqual(resolvePoint('wago.pm495.karte[0].power_l1'), null);
-  assert.strictEqual(resolvePoint('wago.pm494.karte[0].energy_import_total'), null);
+test('die Box-Sicht des Katalogs fuehrt die WAGO-Karten (Laufzeitstand 2026.09.23.3, IP-6b)', () => {
+  // Der Eintrag in NOCH_NICHT_AN_DER_BOX ist gefallen: die Palette loest die Karten auf, `range`
+  // reist als Box-Feld mit. Die 750-494 bleibt ohne belegten Datentyp nicht lesbar (Befund 4).
+  const { catalogDocument } = require('./measurement-driver');
+  assert.strictEqual(catalogDocument.catalog_version, '2026.09.23.3');
+  const karte = resolvePoint('wago.pm495.karte[0].energy_import_total');
+  assert.strictEqual(karte.source_kind, 'wago_registerbild');
+  assert.strictEqual(karte.readable, true);
+  assert.strictEqual(karte.range.invalid, 4294967295);
+  assert.strictEqual(resolvePoint('wago.pm494.karte[0].power_l1').readable, false);
+  assert.strictEqual(catalogDocument.points.filter((p) => p.family.startsWith('wago.')).length, 54);
 });
 
-test('eine Konfiguration ohne WAGO-Quelle plant wie bisher', () => {
+test('eine Konfiguration ohne Registerbild-Parameter liest keine Karte, der Rest laeuft weiter', () => {
+  // Nach dem Heben loest der Punkt auf, aber ohne Hardwareblatt fehlt die Basisadresse: der Punkt
+  // wird abgelehnt, nicht an Adresse 0 gelesen; ein Bestandspunkt derselben Konfiguration bleibt.
   const { catalogDocument } = require('./measurement-driver');
   const config = { catalog_version: catalogDocument.catalog_version, revision: 1,
-    selections: [{ point_key: 'wago.pm495.karte[0].power_l1', cadence_s: 60 }] };
+    selections: [{ point_key: 'wago.pm495.karte[0].power_l1', cadence_s: 60 },
+      { point_key: 'wago.pm494.karte[0].power_l1', cadence_s: 60 },
+      { point_key: 'deye.hybrid_1p.battery.battery', cadence_s: 60 }] };
   const plan = buildPlan(config, {});
-  // Kein WAGO-Punkt existiert an der Box - er wird abgelehnt, nicht an Adresse 0 gelesen.
   assert.strictEqual(plan.applied, true);
+  assert.deepStrictEqual(plan.accepted, ['deye.hybrid_1p.battery.battery']);
   assert.deepStrictEqual(plan.rejected,
-    [{ point_key: 'wago.pm495.karte[0].power_l1', reason: 'unknown_point' }]);
-  assert.deepStrictEqual(plan.blocks, []);
+    [{ point_key: 'wago.pm495.karte[0].power_l1', reason: 'driver_unavailable' },
+      { point_key: 'wago.pm494.karte[0].power_l1', reason: 'unknown_point' }]);
+  assert.ok(plan.blocks.every((b) => b.source_kind !== 'wago_registerbild'));
   assert.deepStrictEqual(plan.httpGroups, []);
 });
 
