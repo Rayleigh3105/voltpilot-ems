@@ -94,6 +94,77 @@ class VerbundAnteileVectorsTest {
         }
     }
 
+    /**
+     * AP-15 Folge „Anlage ohne Einspeisegrenze“ (Abschnitt {@code ohne_einspeiseseite}): der Box-Zwilling liest ein
+     * Dokument ohne Einspeiseseite als „Einspeisung unbegrenzt“ und prüft Kennung und Summe nur im Bezug; eine halbe
+     * Seite bleibt abgelehnt bzw. unlesbar. Die Cloud baut aus einer Tabelle ohne Einspeisung genau diesen Draht.
+     */
+    @Test
+    void ohneEinspeiseseiteNurDerBezug() throws Exception {
+        JsonNode v = vektoren();
+        UUID t = UUID.fromString(v.path("kennungen").path("tenant").asText());
+        UUID s = UUID.fromString(v.path("kennungen").path("site").asText());
+        int n = 0;
+        for (JsonNode f : v.path("ohne_einspeiseseite").path("dokumente")) {
+            String name = f.path("name").asText();
+            UUID box = UUID.fromString(f.path("box").asText());
+            ObjectNode draht = MAPPER.createObjectNode();
+            draht.put("schema_version", "1.0").put("tenant_id", t.toString()).put("site_id", s.toString())
+                    .put("device_id", box.toString()).put("epoche", f.path("epoche").asLong())
+                    .put("revision", f.path("revision").asLong()).put("schritt", f.path("schritt").asText());
+            draht.set("verteilbar", f.path("verteilbar"));
+            draht.set("anteile", f.path("anteile"));
+            draht.put("published_at", JETZT.toString());
+            VerbundAnteileDokument.Gelesen g = VerbundAnteileDokument.lesen(MAPPER,
+                    VerbundAnteileDokument.topic(t, s, box), MAPPER.writeValueAsBytes(draht));
+            JsonNode e = f.path("erwartet");
+            n++;
+            if (!e.path("gelesen").asBoolean()) {
+                assertThat(g).as(name).isNull();
+                continue;
+            }
+            assertThat(g).as(name).isNotNull();
+            SteuerungsverbundAnteile.Pruefung p = SteuerungsverbundAnteile.dokumentPruefen(g.identitaet(), null,
+                    g.dokument());
+            assertThat(p.urteil().code()).as(name).isEqualTo(e.path("urteil").asText());
+            assertThat(p.grund() == null ? null : p.grund().code()).as(name)
+                    .isEqualTo(e.path("grund").isNull() ? null : e.path("grund").asText());
+            assertThat(SteuerungsverbundAnteile.einspeisungUnbegrenzt(g.dokument(), Grenzart.EINSPEISUNG)).as(name)
+                    .isEqualTo(e.path("einspeisung_unbegrenzt").asBoolean());
+            if (e.path("einspeisung_unbegrenzt").asBoolean()) {
+                // die Cloud: eine Tabelle ohne Einspeisung ergibt genau diesen Draht — keine Seite, nie 0
+                JsonNode gebaut = MAPPER.readTree(VerbundAnteileDokument.nutzlast(MAPPER, t, s, box,
+                        f.path("epoche").asLong(), f.path("revision").asLong(), Schritt.aus(f.path("schritt").asText()),
+                        tabelle(f), JETZT));
+                assertThat(gebaut.path("verteilbar")).as(name).isEqualTo(f.path("verteilbar"));
+                assertThat(gebaut.path("anteile")).as(name).isEqualTo(f.path("anteile"));
+            }
+        }
+        assertThat(n).isEqualTo(7);
+    }
+
+    /**
+     * Bestandsschutz: das Dokument einer Anlage mit BEIDEN Grenzen (Ahrenberg, R12 Übergang 10/60 und 0/77, führende
+     * Box, Reserve 0,0) ist Zeichen für Zeichen das von vor dieser Folge.
+     */
+    @Test
+    void mitBeidenGrenzenByteGleich() throws Exception {
+        JsonNode v = vektoren();
+        UUID t = UUID.fromString(v.path("kennungen").path("tenant").asText());
+        UUID s = UUID.fromString(v.path("kennungen").path("site").asText());
+        JsonNode f = v.path("dokumente").get(0);
+        UUID e1 = UUID.fromString(v.path("kennungen").path("E-1").asText());
+        UUID e4 = UUID.fromString(v.path("kennungen").path("E-4").asText());
+        String draht = new String(VerbundAnteileDokument.nutzlast(MAPPER, t, s, e1,
+                SteuerungsverbundVokabular.Rolle.FUEHRT, 1, 8, Schritt.UEBERGANG, tabelle(f), new BigDecimal("0.0"),
+                null, JETZT), StandardCharsets.UTF_8);
+        assertThat(draht).isEqualTo("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + t + "\",\"site_id\":\"" + s
+                + "\",\"device_id\":\"" + e1 + "\",\"epoche\":1,\"revision\":8,\"schritt\":\"uebergang\","
+                + "\"rolle\":\"fuehrt\",\"verteilbar\":{\"einspeisung\":100.0,\"bezug\":77.0},\"anteile\":{"
+                + "\"einspeisung\":{\"" + e1 + "\":10.0,\"" + e4 + "\":60.0},\"bezug\":{\"" + e1 + "\":0.0,\"" + e4
+                + "\":77.0}},\"reserve_verbraucher\":{\"bezug\":0.0},\"published_at\":\"2027-10-20T09:00:00Z\"}");
+    }
+
     @Test
     void quittungenMitGeschlossenemGrundUndIdentitaet() throws Exception {
         JsonNode v = vektoren();
@@ -128,6 +199,9 @@ class VerbundAnteileVectorsTest {
         Map<Grenzart, Map<String, BigDecimal>> a = new EnumMap<>(Grenzart.class);
         Map<Grenzart, BigDecimal> verteilbar = new EnumMap<>(Grenzart.class);
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            if (!f.path("anteile").has(r.code()) && !f.path("verteilbar").has(r.code())) {
+                continue; // keine Seite = Einspeisung unbegrenzt
+            }
             Map<String, BigDecimal> je = new TreeMap<>();
             f.path("anteile").path(r.code()).fields().forEachRemaining(e -> je.put(e.getKey(), e.getValue()
                     .decimalValue()));

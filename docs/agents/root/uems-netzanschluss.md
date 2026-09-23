@@ -61,9 +61,11 @@ KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsp
 - **I1, ausdrücklich keine Einspeisegrenze:** `einspeisegrenze_keine` je Fassung
   (`V20260922200000`), nur ohne Zahl; weggelassen/`false` bleibt unbekannt. Ein Anlagenwert ist enger
   als „keine“. `Wirksam.grenzenGesetzt()` verlangt weiterhin Bezug. API/Protokoll und Java/Python
-  lesen das Kennzeichen, kein Portal-Schreibformular vorhanden. Der Anteilsweg verlangt noch beide
-  numerischen Richtungen (`auslegung_passt_nicht`), der Planer wertet fehlende Anteile als stumm:
-  vollständiger Betrieb ohne Einspeisegrenze ist ein Folgepaket, siehe Vertrag §5.
+  lesen das Kennzeichen, kein Portal-Schreibformular vorhanden. Anteilsweg: „keine“ = Einspeisung
+  unbegrenzt (`SteuerungsverbundAbleitung.unbegrenzt`, nur Bezug im Anteils-Dokument, Planer
+  `einspeisung_unbegrenzt`); ⚠ „nur fehlend“ bleibt `auslegung_passt_nicht`; ⚠ gespeichert als
+  `verteilbar_einspeisung_kw` NULL + kein Schlüssel `einspeisung` (V20260924061500, CHECK), nie 0; wirksam
+  auf der Box erst mit dem Box-Release (heutige Boxen verwerfen das Dokument als unlesbar).
 - **Engerer Wert, ohne Eintrag dasselbe Objekt:** Byte-Gleichheit hängt an `isSameAs`, nicht an `equals` —
   `AnlageGrenzen.bezugKw` gibt das `Double` des Rahmens zurück, der Python-Zwilling den `float` der Anlage.
 - **Wer liest:** Einspeisung = Optimierer-Eingang (`load_grenzblaetter` + Zwilling, eigener Verbindungsaufbau;

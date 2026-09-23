@@ -576,3 +576,87 @@ def test_der_ganze_v1_lauf_mit_verbund_liefert_einen_erklaerten_plan():
     assert all(s.slot_role is not None for s in plan.slots)
     for s in plan.slots:
         assert -s.grid_kw <= 100.0 - 10.0 + 1e-4  # die stumme Box belegt 10 kW
+
+
+# ---------------------------------------------------------------------------
+# AP-15 Folge "Anlage ohne Einspeisegrenze" (Captain 23.09.2026: Einspeisung
+# unbegrenzt - nur der Bezug wird aufgeteilt): das Dokument hat keine
+# Einspeiseseite - die Box ist nicht unbekannt/stumm, ihre Einspeisung bindet
+# nichts, der Bezug bindet wie bisher.
+# ---------------------------------------------------------------------------
+
+NUR_BEZUG = {"bezug": {str(E_1): 0.0, str(E_4): 77.0}}
+
+
+def test_ohne_einspeiseseite_plant_die_box_unbegrenzt_statt_stumm():
+    stand = VerbundStand(
+        mitsteuernde=(
+            MitsteuerndeBox(
+                E_4, None, 77.0, stumm=False, pv_kwp=60.0, einspeisung_unbegrenzt=True
+            ),
+        ),
+        pv_kwp_gesamt=160.0,
+    )
+    (box,) = fuer_lauf(stand, [80.0, 0.0])
+    assert not box.stumm and box.einspeisung_unbegrenzt
+    assert box.bezug_kw == 77.0
+    assert box.pv_kw == pytest.approx((30.0, 0.0))
+
+
+def test_einspeisung_unbegrenzt_nur_wenn_jedes_bekannte_dokument_keine_seite_hat():
+    from voltpilot_optimization.verbund import einspeisung_unbegrenzt
+
+    mit = {"einspeisung": {str(E_4): 60.0}, "bezug": {str(E_4): 77.0}}
+    assert einspeisung_unbegrenzt(NUR_BEZUG, None)
+    assert einspeisung_unbegrenzt(NUR_BEZUG, NUR_BEZUG)
+    assert not einspeisung_unbegrenzt(None, None)  # kein Dokument = unbekannt
+    assert not einspeisung_unbegrenzt(NUR_BEZUG, mit)  # die Seite bindet (das Kleinere)
+    assert not einspeisung_unbegrenzt(mit, None)
+
+
+def test_ohne_einspeiseseite_v1_und_co_keine_einspeise_schranke_bezug_bindet():
+    pv_e4 = [55.0, 57.0, 65.0, 70.0]
+    verbund = (BoxAnteil(E_4, 0.0, 77.0, pv_kw=tuple(pv_e4), einspeisung_unbegrenzt=True),)
+    inp = _eingang(pv_e1=R1_E1, pv_e4=pv_e4, last=40.0, verbund=verbund)
+    m = _v1_modell(inp)
+    assert not hasattr(m, "verbund_einspeisung")
+    for t in range(4):
+        # kein Anteil: die Box Verwaltung regelt nie ab (auch 70 kW, R1 haette 60)
+        assert _wert(m.curtail_box[0, t]) == pytest.approx(0.0, abs=TOL)
+    verwaltung = _erzeuger(_co(inp), erzeuger_id(E_4))
+    for t, slot in enumerate(verwaltung.slots):
+        assert slot.generation_kw == pytest.approx(pv_e4[t])
+        assert slot.curtail_kw == pytest.approx(0.0, abs=TOL)
+
+
+def test_ohne_einspeiseseite_stumme_box_ohne_einspeise_reserve():
+    pv_e4 = [70.0] * 4
+    verbund = (
+        BoxAnteil(E_4, 0.0, 77.0, pv_kw=tuple(pv_e4), stumm=True, einspeisung_unbegrenzt=True),
+    )
+    inp = _eingang(
+        pv_e1=R1_E1, pv_e4=pv_e4, last=40.0, grid_limit_kw=550.0, verbund=verbund
+    )
+    m = _v1_modell(inp)
+    for t in range(4):
+        # ihre PV laeuft frei (kein Anteil), und nichts wird fuer sie reserviert
+        assert m.curtail_box[0, t].lb == pytest.approx(0.0, abs=TOL)
+        assert m.curtail_box[0, t].ub == pytest.approx(0.0, abs=TOL)
+
+
+def test_load_verbund_liest_ein_dokument_ohne_einspeiseseite_als_unbegrenzt(monkeypatch):
+    jetzt = T0
+    cursor = _Cursor(
+        mitglieder=[
+            (SITE, E_4, NUR_BEZUG, NUR_BEZUG, jetzt - timedelta(seconds=10), jetzt, True),
+        ],
+        pv=[(SITE, E_1, 100.0), (SITE, E_4, 60.0)],
+        verbraucher=[],
+        fuehrende=[(SITE, E_1, jetzt)],
+    )
+    _psycopg(monkeypatch, cursor)
+    (e4,) = load_verbund("dsn", jetzt)[SITE].mitsteuernde
+    assert (e4.einspeisung_kw, e4.bezug_kw, e4.stumm) == (None, 77.0, False)
+    assert e4.einspeisung_unbegrenzt and e4.bekommt_plan
+    (box,) = fuer_lauf(load_verbund("dsn", jetzt)[SITE], [0.0])
+    assert not box.stumm

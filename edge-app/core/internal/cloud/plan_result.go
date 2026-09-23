@@ -109,7 +109,9 @@ type ReserveVerbraucherKw struct {
 
 // AnteileKw is the own share per direction in kW.
 type AnteileKw struct {
-	Einspeisung json.Number `json:"einspeisung"`
+	// Einspeisung is absent when the held document has no feed-in side
+	// (feed-in unbounded, AP-15 Folge) - never mirrored as 0.
+	Einspeisung json.Number `json:"einspeisung,omitempty"`
 	Bezug       json.Number `json:"bezug"`
 }
 

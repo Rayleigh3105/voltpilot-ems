@@ -21,7 +21,8 @@
     "verteilbar": { "$ref": "#/$defs/je_richtung_kw" },
     "anteile": {
       "type": "object",
-      "required": ["einspeisung", "bezug"],
+      "description": "einspeisung fehlt genau dann, wenn auch verteilbar.einspeisung fehlt: Einspeisung unbegrenzt (AP-15 Folge) - kein Anteil, kein Wächter",
+      "required": ["bezug"],
       "additionalProperties": false,
       "properties": {
         "einspeisung": { "$ref": "#/$defs/je_box_kw" },
@@ -42,11 +43,15 @@
     },
     "published_at": { "type": "string", "format": "date-time" }
   },
+  "anyOf": [
+    { "properties": { "verteilbar": { "required": ["einspeisung"] }, "anteile": { "required": ["einspeisung"] } } },
+    { "properties": { "verteilbar": { "not": { "required": ["einspeisung"] } }, "anteile": { "not": { "required": ["einspeisung"] } } } }
+  ],
   "$defs": {
     "kw": { "type": "number", "minimum": 0 },
     "je_richtung_kw": {
       "type": "object",
-      "required": ["einspeisung", "bezug"],
+      "required": ["bezug"],
       "additionalProperties": false,
       "properties": { "einspeisung": { "$ref": "#/$defs/kw" }, "bezug": { "$ref": "#/$defs/kw" } }
     },

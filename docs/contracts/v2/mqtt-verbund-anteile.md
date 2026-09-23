@@ -59,6 +59,17 @@ Geräte-Rückfällen), **nicht die ganze Grenze**. Keine leere retained-Nachrich
   Ableitung ohne Rückfall in ihren Anteil zählt —, aufgerundet auf 0,1 kW
   (`SteuerungsverbundAbleitung.ungeregeltHinterAbgang`). Es reist nur über 0; ohne es bleibt das Dokument Byte für
   Byte wie vorher. Die Box braucht es nur blind (siehe Bezugswächter). Vektoren: Abschnitt `ungeregelt_hinter_abgang`.
+- **Einspeisung unbegrenzt — keine Einspeiseseite** (AP-15 Folge, Captain 23.09.2026: „Einspeisung unbegrenzt - nur
+  der Bezug wird aufgeteilt“; additiv, `schema_version` bleibt 1.0): trägt das Grenzblatt der Anlage ausdrücklich
+  „keine Einspeisegrenze“ (und die Anlage keinen engeren Wert), fehlen `verteilbar.einspeisung` UND
+  `anteile.einspeisung` — beide oder keines. Dann gibt es für die Einspeisung **keinen Anteil und keinen Wächter**; die
+  Box prüft die eigene Kennung und die Summe nur im Bezug, quittiert wie jedes gültige Dokument und spiegelt im
+  Herzschlag kein `anteile_kw.einspeisung` (nie 0). Eine nur FEHLENDE (nicht erklärte) Einspeisegrenze erzeugt nie ein
+  solches Dokument (Auslegung passt nicht). Nur die Einspeisung darf fehlen; eine halbe Seite bleibt, was sie war:
+  `verteilbar.einspeisung` ohne Tabelle → `box_fehlt_im_dokument`, Tabelle ohne `verteilbar.einspeisung` → unlesbar
+  (verworfen ohne Quittung). Ein Dokument mit beiden Seiten bleibt Byte für Byte. ⚠ **Wirksam erst mit dem Box-Release,
+  das diese Regel trägt**: heutige Boxen verwerfen ein Dokument ohne Einspeiseseite als unlesbar (ohne Quittung) —
+  heute betrifft das keine Anlage. Vektoren: Abschnitt `ohne_einspeiseseite`.
 - **Epoche und Revision steigen nur.** Die Revision steigt je Dokument eines Verbunds; eine neue Epoche setzt nur das
   Scharfschalten. Das Dokument reist **nie im Plan**.
 

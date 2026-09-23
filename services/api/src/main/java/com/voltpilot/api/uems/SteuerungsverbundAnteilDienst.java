@@ -85,13 +85,29 @@ public class SteuerungsverbundAnteilDienst {
         }
     }
 
-    /** Die Ableitung einer Anlage: Mitglieder, Eingänge und Urteil je Richtung. */
+    /**
+     * Die Ableitung einer Anlage: Mitglieder, Eingänge und Urteil je Richtung. {@code unbegrenzt} = die Richtungen, die
+     * ausdrücklich keine Grenze haben ({@link SteuerungsverbundAbleitung#unbegrenzt}, nur Einspeisung): sie fehlen in
+     * Eingängen, Auslegung und Zielstand — kein Anteil, kein Wächter.
+     */
     public record Ableitung(List<SteuerungsverbundAbleitung.Mitglied> mitglieder,
             Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge,
-            Map<Grenzart, SteuerungsverbundAnteile.Auslegung> auslegung) {
+            Map<Grenzart, SteuerungsverbundAnteile.Auslegung> auslegung, java.util.Set<Grenzart> unbegrenzt) {
 
         public boolean passt() {
-            return SteuerungsverbundAbleitung.passt(auslegung);
+            return SteuerungsverbundAbleitung.passt(auslegung, unbegrenzt);
+        }
+
+        /** Jede Richtung gerechnet oder ausdrücklich unbegrenzt (die Naht von IP-5). */
+        public boolean vollstaendig() {
+            return SteuerungsverbundAbleitung.vollstaendig(eingaenge, unbegrenzt);
+        }
+
+        /** Die Richtungen, die ein Herzschlag melden muss, damit „alt“ aus ihm gilt. */
+        java.util.Set<Grenzart> richtungen() {
+            java.util.Set<Grenzart> r = java.util.EnumSet.copyOf(SteuerungsverbundAnteile.RICHTUNGEN);
+            r.removeAll(unbegrenzt);
+            return r;
         }
 
         /** Der Zielstand, wenn die Auslegung passt. */
@@ -153,7 +169,10 @@ public class SteuerungsverbundAnteilDienst {
         return ableiten(siteId).map(Ableitung::eingaenge).orElse(Map.of());
     }
 
-    /** Scharf nur mit {@code passt} in BEIDEN Richtungen (E2 = A, I1). Ohne Verbund: false. */
+    /**
+     * Scharf nur mit {@code passt} in BEIDEN Richtungen (E2 = A, I1); eine ausdrücklich unbegrenzte Einspeisung fehlt
+     * dabei ohne Urteil. Ohne Verbund: false.
+     */
     @Transactional(readOnly = true)
     public boolean auslegungPasst(UUID siteId) {
         return ableiten(siteId).map(Ableitung::passt).orElse(false);
@@ -162,6 +181,8 @@ public class SteuerungsverbundAnteilDienst {
     /**
      * Die Naht von IP-5 ({@link SteuerungsverbundNachweise#auslegung}): der Eingang je Richtung für genau diese Boxen
      * am Tag — leer ohne Verbund, ohne Boxen oder wenn eine Richtung nicht rechenbar ist (unbekannt ist nicht „passt“).
+     * Eine ausdrücklich unbegrenzte Einspeisung ({@link SteuerungsverbundAbleitung#unbegrenzt}) fehlt im Ergebnis, ohne
+     * es leer zu machen; eine nur fehlende Einspeisegrenze macht es weiter leer.
      */
     @Transactional(readOnly = true)
     public Optional<Map<Grenzart, SteuerungsverbundRegeln.Richtung>> auslegungFuer(UUID siteId, List<UUID> boxen,
@@ -169,8 +190,8 @@ public class SteuerungsverbundAnteilDienst {
         if (boxen.isEmpty()) {
             return Optional.empty();
         }
-        return verbuende.derAnlage(siteId).map(v -> ableitung(v, tag, java.util.Set.copyOf(boxen)).eingaenge())
-                .filter(e -> e.keySet().containsAll(SteuerungsverbundAnteile.RICHTUNGEN));
+        return verbuende.derAnlage(siteId).map(v -> ableitung(v, tag, java.util.Set.copyOf(boxen)))
+                .filter(Ableitung::vollstaendig).map(Ableitung::eingaenge);
     }
 
     private Ableitung ableitung(VerbundZeile v) {
@@ -218,7 +239,8 @@ public class SteuerungsverbundAnteilDienst {
         reserviert.forEach((r, kw) -> vorbehalt.computeIfPresent(r, (x, alt) -> alt.add(kw)));
         Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge = SteuerungsverbundAbleitung.eingaenge(mitglieder,
                 geraete, grenze, vorbehalt, uebergangszuschlag(v.siteId(), mitglieder, geraete));
-        return new Ableitung(mitglieder, eingaenge, SteuerungsverbundAbleitung.auslegung(mitglieder, eingaenge));
+        return new Ableitung(mitglieder, eingaenge, SteuerungsverbundAbleitung.auslegung(mitglieder, eingaenge),
+                SteuerungsverbundAbleitung.unbegrenzt(wirksam));
     }
 
     /**
@@ -308,7 +330,7 @@ public class SteuerungsverbundAnteilDienst {
         Map<Grenzart, Map<String, BigDecimal>> alt;
         boolean rueckgespielt = anteile.rueckgespieltErkannt(v.id()).isPresent();
         if (rueckgespielt) {
-            Optional<Map<Grenzart, Map<String, BigDecimal>>> gemeldet = wirksamAusHerzschlag(v, a.mitglieder());
+            Optional<Map<Grenzart, Map<String, BigDecimal>>> gemeldet = wirksamAusHerzschlag(v, a.mitglieder(), a.richtungen());
             if (gemeldet.isEmpty()) {
                 return Ergebnis.nicht(Grund.WIRKSAME_ANTEILE_UNBEKANNT);
             }
@@ -316,7 +338,7 @@ public class SteuerungsverbundAnteilDienst {
         } else if (bisher.isEmpty()) {
             alt = SteuerungsverbundZweischritt.altOhneDokument(a.mitglieder(), a.eingaenge());
         } else {
-            alt = wirksamAusHerzschlag(v, a.mitglieder()).orElseGet(() -> altAusDokumenten(v));
+            alt = wirksamAusHerzschlag(v, a.mitglieder(), a.richtungen()).orElseGet(() -> altAusDokumenten(v));
         }
         long epoche = v.epoche();
         if (neueEpoche) {
@@ -364,7 +386,7 @@ public class SteuerungsverbundAnteilDienst {
         if (gleich(dokumente.get(0).tabelle(), ziel)) {
             return Ergebnis.nicht(Grund.UNVERAENDERT);
         }
-        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, a.mitglieder())
+        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, a.mitglieder(), a.richtungen())
                 .orElseGet(() -> altAusDokumenten(v));
         return veroeffentlichen(v, v.epoche(), SteuerungsverbundZweischritt.beginnen(alt, ziel), "aendern", wer);
     }
@@ -539,6 +561,9 @@ public class SteuerungsverbundAnteilDienst {
         Map<Grenzart, Map<String, BigDecimal>> mitGehenden = new EnumMap<>(Grenzart.class);
         Map<Grenzart, BigDecimal> verteilbar = new EnumMap<>(Grenzart.class);
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            if (!ziel.anteile().containsKey(r)) {
+                continue; // ausdrücklich unbegrenzt: keine Seite im Dokument, auch nicht für die gehende Box
+            }
             Map<String, BigDecimal> je = new java.util.TreeMap<>(ziel.anteile().getOrDefault(r, Map.of()));
             for (SteuerungsverbundRepository.Ausscheiden a : gehen.values()) {
                 je.put(a.deviceId().toString(), a.vomNetzAm() != null ? BigDecimal.ZERO.setScale(1)
@@ -547,7 +572,7 @@ public class SteuerungsverbundAnteilDienst {
             mitGehenden.put(r, je);
             verteilbar.put(r, ziel.verteilbar().get(r).add(reserviert.getOrDefault(r, BigDecimal.ZERO)));
         }
-        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, alle.mitglieder())
+        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, alle.mitglieder(), alle.richtungen())
                 .orElseGet(() -> altAusDokumenten(v));
         SteuerungsverbundZweischritt.Dokument d = SteuerungsverbundZweischritt.beginnen(alt,
                 new Tabelle(mitGehenden, verteilbar));
@@ -619,7 +644,7 @@ public class SteuerungsverbundAnteilDienst {
         if (rest.mitglieder().isEmpty() || !rest.passt()) {
             return true; // nichts wird erweitert: die verbleibenden Boxen halten das letzte Dokument (V5)
         }
-        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, rest.mitglieder())
+        Map<Grenzart, Map<String, BigDecimal>> alt = wirksamAusHerzschlag(v, rest.mitglieder(), rest.richtungen())
                 .orElseGet(() -> altAusDokumenten(v));
         Tabelle ziel = aufloesen ? aufloeseZiel(rest) : rest.ziel();
         SteuerungsverbundZweischritt.Dokument d = SteuerungsverbundZweischritt.beginnen(alt, ziel);
@@ -650,7 +675,9 @@ public class SteuerungsverbundAnteilDienst {
         String fuehrt = rest.mitglieder().stream().filter(m -> m.rolle() == SteuerungsverbundVokabular.Rolle.FUEHRT)
                 .findFirst().orElseThrow().box();
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
-            je.put(r, Map.of(fuehrt, rest.ziel().verteilbar().get(r)));
+            if (rest.ziel().verteilbar().get(r) != null) { // ausdrücklich unbegrenzt: keine Seite
+                je.put(r, Map.of(fuehrt, rest.ziel().verteilbar().get(r)));
+            }
         }
         return new Tabelle(je, rest.ziel().verteilbar());
     }
@@ -846,7 +873,7 @@ public class SteuerungsverbundAnteilDienst {
     }
 
     private Optional<Map<Grenzart, Map<String, BigDecimal>>> wirksamAusHerzschlag(VerbundZeile v,
-            List<SteuerungsverbundAbleitung.Mitglied> mitglieder) {
+            List<SteuerungsverbundAbleitung.Mitglied> mitglieder, java.util.Set<Grenzart> richtungen) {
         WirksameAnteileQuelle quelle = herzschlag.getIfAvailable();
         if (quelle == null) {
             return Optional.empty();
@@ -854,7 +881,7 @@ public class SteuerungsverbundAnteilDienst {
         Map<Grenzart, Map<String, BigDecimal>> alt = new EnumMap<>(Grenzart.class);
         for (SteuerungsverbundAbleitung.Mitglied m : mitglieder) {
             Optional<Map<Grenzart, BigDecimal>> je = quelle.wirksam(v.siteId(), UUID.fromString(m.box()));
-            if (je.isEmpty() || !je.get().keySet().containsAll(SteuerungsverbundAnteile.RICHTUNGEN)) {
+            if (je.isEmpty() || !je.get().keySet().containsAll(richtungen)) {
                 return Optional.empty(); // unbekannt ist keine Null — dann nicht aus dem Herzschlag
             }
             je.get().forEach((r, kw) -> alt.computeIfAbsent(r, x -> new java.util.TreeMap<>()).put(m.box(), kw));
@@ -889,8 +916,10 @@ public class SteuerungsverbundAnteilDienst {
 
     private static boolean gleich(Tabelle a, Tabelle b) {
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
-            if (a.verteilbar().get(r).compareTo(b.verteilbar().get(r)) != 0) {
-                return false;
+            BigDecimal va = a.verteilbar().get(r);
+            BigDecimal vb = b.verteilbar().get(r);
+            if (va == null || vb == null ? va != vb : va.compareTo(vb) != 0) {
+                return false; // eine Seite unbegrenzt, die andere nicht, ist eine Änderung
             }
             Map<String, BigDecimal> x = a.anteile().getOrDefault(r, Map.of());
             Map<String, BigDecimal> y = b.anteile().getOrDefault(r, Map.of());

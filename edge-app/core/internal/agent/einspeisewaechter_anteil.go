@@ -15,9 +15,12 @@ import (
 // share document. The role decides the loop: only fuehrt regulates the whole
 // limit at the connection point - steuert_mit AND a document without a role
 // (the field is optional) hold the share at the box's own point, always.
+// A document WITHOUT a feed-in side (the plant has explicitly no feed-in
+// limit, AP-15 Folge) holds no feed-in share either: nil, the feed-in side
+// runs exactly as without a document - only the import share binds.
 func (a *Agent) exportAnteil() *guards.ExportAnteil {
 	h := a.heldAnteile()
-	if h == nil {
+	if h == nil || h.EinspeisungUnbegrenzt {
 		return nil
 	}
 	an := &guards.ExportAnteil{Fuehrt: h.Rolle == "fuehrt"}

@@ -85,7 +85,7 @@ einer Box mit Plan und ohne Dokument ist Byte für Byte der aus IP-10:
 | `rolle` | wenn ein Anteils-Dokument gilt und die Cloud sie nennt (IP-17) | `fuehrt` · `steuert_mit` (`liest` hat kein Dokument) |
 | `anteile_epoche` | wenn ein Anteils-Dokument gilt (IP-17) | Epoche der wirksamen Anteile |
 | `anteile_revision` | wenn ein Anteils-Dokument gilt (IP-17) | Revision der wirksamen Anteile |
-| `anteile_kw` | wenn ein Anteils-Dokument gilt (IP-17) | die WIRKSAMEN eigenen Anteile `{einspeisung, bezug}` in kW, wie im Dokument — „alt“ jedes Zweischritts (Y3, A18) |
+| `anteile_kw` | wenn ein Anteils-Dokument gilt (IP-17) | die WIRKSAMEN eigenen Anteile `{einspeisung, bezug}` in kW, wie im Dokument — „alt“ jedes Zweischritts (Y3, A18); `einspeisung` fehlt, wenn das Dokument keine Einspeiseseite hat (Einspeisung unbegrenzt, AP-15 Folge), nie 0 |
 | `reserve_verbraucher_kw` | wenn das angenommene Anteils-Dokument `reserve_verbraucher` trägt (AP-15 Folge von IP-19) | `{bezug}` in kW, wie im Dokument: um so viel senkt die Box das Ladebudget ihres Bezugs-Anteils für ihre anderen steuerbaren Verbraucher; fehlt ohne das Feld (dann gilt keine) |
 | `anteil_verlust` | wenn ein Anteils-Dokument gilt (IP-22) | was der Einspeise-Anteil zurückhielt, je Tag der Anlage (Europe/Berlin): `{tag, kwh, gebunden_s, vortag?: {tag, kwh, gebunden_s}}` — `kwh` eine UNTERGRENZE (verfügbare Erzeugung nur aus gemessener PV), `gebunden_s` exakt; der Zähler eines Tages wächst nur |
 

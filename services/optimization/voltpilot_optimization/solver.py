@@ -678,7 +678,8 @@ def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: b
         box = boxen[b]
         pv = max(box.pv_kw[t], 0.0)
         if box.stumm:
-            fest = max(pv - box.einspeisung_kw, 0.0)
+            # ohne Einspeise-Anteil (ausdruecklich unbegrenzt) laeuft ihre PV frei
+            fest = 0.0 if box.einspeisung_unbegrenzt else max(pv - box.einspeisung_kw, 0.0)
             return (fest, fest)
         return (0.0, pv)
 
@@ -700,14 +701,17 @@ def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: b
         return inp.device_id is not None and boxen[b].device_id == inp.device_id
 
     if aktiv:
-        m.verbund_einspeisung = Constraint(
-            aktiv,
-            m.T,
-            rule=lambda model, b, t: max(boxen[b].pv_kw[t], 0.0)
-            - model.curtail_box[b, t]
-            + (model.discharge[t] if _speicher_an(b) else 0.0)
-            <= boxen[b].einspeisung_kw,
-        )
+        # nur Boxen MIT Einspeise-Anteil; ausdruecklich unbegrenzt = keine Schranke
+        aktiv_e = [b for b in aktiv if not boxen[b].einspeisung_unbegrenzt]
+        if aktiv_e:
+            m.verbund_einspeisung = Constraint(
+                aktiv_e,
+                m.T,
+                rule=lambda model, b, t: max(boxen[b].pv_kw[t], 0.0)
+                - model.curtail_box[b, t]
+                + (model.discharge[t] if _speicher_an(b) else 0.0)
+                <= boxen[b].einspeisung_kw,
+            )
         mit_speicher = [b for b in aktiv if _speicher_an(b)]
         if mit_speicher:
             m.verbund_bezug = Constraint(
@@ -725,6 +729,7 @@ def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: b
                 boxen[b].einspeisung_kw
                 - min(max(boxen[b].pv_kw[t], 0.0), boxen[b].einspeisung_kw)
                 for b in stumm
+                if not boxen[b].einspeisung_unbegrenzt
             )
             for t in range(inp.slots)
         ]

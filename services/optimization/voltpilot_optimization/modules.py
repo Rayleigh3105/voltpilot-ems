@@ -215,17 +215,25 @@ class VerbundAnteileModule(SolverModule):
             # Schranke, kein Kommando), ihre Verbraucher bekommen nichts.
             for p in erzeuger[b]:
                 for t in m.T:
-                    fest = max(gen[p][t] - boxen[b].einspeisung_kw, 0.0)
+                    # ohne Einspeise-Anteil (ausdruecklich unbegrenzt) laeuft die PV frei
+                    fest = (
+                        0.0
+                        if boxen[b].einspeisung_unbegrenzt
+                        else max(gen[p][t] - boxen[b].einspeisung_kw, 0.0)
+                    )
                     m.curtail[p, t].setlb(fest)
                     m.curtail[p, t].setub(fest)
         if aktiv:
-            m.verbund_einspeisung = Constraint(
-                aktiv,
-                m.T,
-                rule=lambda model, b, t: pv_out(model, b, t)
-                + (sum(model.discharge[e, t] for e in E) if speicher[b] else 0.0)
-                <= boxen[b].einspeisung_kw,
-            )
+            # nur Boxen MIT Einspeise-Anteil; ausdruecklich unbegrenzt = keine Schranke
+            aktiv_e = [b for b in aktiv if not boxen[b].einspeisung_unbegrenzt]
+            if aktiv_e:
+                m.verbund_einspeisung = Constraint(
+                    aktiv_e,
+                    m.T,
+                    rule=lambda model, b, t: pv_out(model, b, t)
+                    + (sum(model.discharge[e, t] for e in E) if speicher[b] else 0.0)
+                    <= boxen[b].einspeisung_kw,
+                )
             mit_speicher = [b for b in aktiv if speicher[b]]
             if mit_speicher:
                 m.verbund_bezug = Constraint(
@@ -252,6 +260,7 @@ class VerbundAnteileModule(SolverModule):
                         sum(gen[p][t] for p in erzeuger[b]), boxen[b].einspeisung_kw
                     )
                     for b in stumm
+                    if not boxen[b].einspeisung_unbegrenzt
                 )
                 for t in m.T
             ]

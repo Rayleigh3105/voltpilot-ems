@@ -80,13 +80,17 @@ public final class SteuerungsverbundZweischritt {
      * Der erste Schritt: je Richtung der Übergangsstand aus dem, was die Boxen wirksam halten ({@code alt}), und dem
      * Zielstand. Verengt ist eine Box, wenn sie in IRGENDEINER Richtung enger wird. Ist der Übergang schon der Ziel-
      * stand (reines Verengen), ist das Dokument der Zielstand und nichts wartet. {@code verteilbar} des Übergangs ist
-     * das des Zielstands — die Summe des Übergangs liegt je Box unter dem Ziel, also darunter (Vertrag §1, G5).
+     * das des Zielstands — die Summe des Übergangs liegt je Box unter dem Ziel, also darunter (Vertrag §1, G5). Eine
+     * Richtung, die der Zielstand nicht trägt (ausdrücklich unbegrenzte Einspeisung), fehlt auch im Übergang.
      */
     public static Dokument beginnen(Map<Grenzart, Map<String, BigDecimal>> alt, Tabelle ziel) {
         Map<Grenzart, Map<String, BigDecimal>> uebergang = new EnumMap<>(Grenzart.class);
         Set<String> verengt = new LinkedHashSet<>();
         boolean zweiterSchritt = false;
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            if (!ziel.anteile().containsKey(r)) {
+                continue;
+            }
             SteuerungsverbundAnteile.Uebergang u = SteuerungsverbundAnteile.uebergangsstand(
                     alt.getOrDefault(r, Map.of()), ziel.anteile().get(r));
             uebergang.put(r, new TreeMap<>(u.uebergang()));

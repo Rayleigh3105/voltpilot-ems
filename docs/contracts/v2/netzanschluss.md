@@ -109,11 +109,13 @@ Anlage ist enger als ausdrücklich „keine“ am Blatt. Ohne Anlagenwert liefer
 `einspeisung_keine: false`. I1 akzeptiert Bezug gesetzt UND (Einspeisewert ODER ausdrücklich keine).
 Unbekannt bleibt `grenze_fehlt`; andere Scharfschaltbedingungen bleiben bestehen.
 
-**Folgelücke im Anteils-/Planweg:** Ohne numerischen Einspeisewert bildet die Anteils-Ableitung keine
-Einspeiserichtung. Die Scharfschalt-Auslegung verlangt derzeit beide Richtungen (`auslegung_passt_nicht`); der Planer
-behandelt eine fehlende Richtung als unbekannt/stumm, niemals als unbegrenzt. I1 ist damit auf der
-Grenzblatt-Seite darstellbar; der vollständige Betrieb ohne Einspeisegrenze braucht ein eigenes Paket.
-Steht ein engerer Wert an der Anlage, bleibt die bisherige Verteilung mit diesem Wert erhalten.
+**Anteils-/Planweg ohne Einspeisegrenze** (AP-15 Folge, Captain 23.09.2026: „Einspeisung unbegrenzt - nur der Bezug
+wird aufgeteilt“): ohne numerischen Einspeisewert, aber mit `einspeisung_keine: true` ist die Einspeiserichtung
+**unbegrenzt** (`SteuerungsverbundAbleitung.unbegrenzt`): die Auslegung passt ohne sie, das Anteils-Dokument hat keine
+Einspeiseseite (kein Anteil, kein Wächter), der Planer plant sie unbegrenzt statt stumm
+([Anteils-Dokument](mqtt-verbund-anteile.md) §2). Eine nur FEHLENDE (nicht erklärte) Einspeisegrenze bleibt
+`auslegung_passt_nicht` und unbekannt. Wirksam auf der Box erst mit dem Box-Release dieser Regel. Steht ein engerer
+Wert an der Anlage, bleibt die bisherige Verteilung mit diesem Wert erhalten.
 
 | Richtung | Wert der Anlage | wer liest über die Regel |
 |---|---|---|

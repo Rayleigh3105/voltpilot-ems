@@ -46,9 +46,9 @@
         "anteile_revision": { "type": "integer", "minimum": 0 },
         "anteile_epoche": { "type": "integer", "minimum": 1 },
         "anteile_kw": {
-          "description": "die WIRKSAMEN eigenen Anteile je Richtung in kW, wie im angenommenen Dokument (Y3, A18)",
+          "description": "die WIRKSAMEN eigenen Anteile je Richtung in kW, wie im angenommenen Dokument (Y3, A18); einspeisung fehlt genau dann, wenn das Dokument keine Einspeiseseite hat (Einspeisung unbegrenzt, AP-15 Folge) - nie als 0",
           "type": "object",
-          "required": ["einspeisung", "bezug"],
+          "required": ["bezug"],
           "additionalProperties": false,
           "properties": {
             "einspeisung": { "type": "number", "minimum": 0 },

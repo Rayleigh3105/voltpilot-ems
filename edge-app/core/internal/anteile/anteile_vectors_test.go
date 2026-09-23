@@ -374,3 +374,74 @@ func TestNW1TopicUndNutzlastNennenDieselbeBox(t *testing.T) {
 		t.Fatalf("identitaet: %d Faelle - Vektor-Datei gewachsen, Zwilling pruefen", len(v.Identitaet))
 	}
 }
+
+// AP-15 Folge "Anlage ohne Einspeisegrenze": a document without a feed-in
+// side is read as feed-in unbounded - the own id and the sum only in the
+// import; half a feed-in side stays refused or unreadable as before.
+func TestOhneEinspeiseseite(t *testing.T) {
+	var v struct {
+		Kennungen          map[string]string `json:"kennungen"`
+		OhneEinspeiseseite struct {
+			Dokumente []struct {
+				Name       string                            `json:"name"`
+				Box        string                            `json:"box"`
+				Stand      *Stand                            `json:"stand"`
+				Epoche     int64                             `json:"epoche"`
+				Revision   int64                             `json:"revision"`
+				Schritt    string                            `json:"schritt"`
+				Verteilbar map[string]json.Number            `json:"verteilbar"`
+				Anteile    map[string]map[string]json.Number `json:"anteile"`
+				Erwartet   struct {
+					Gelesen    bool    `json:"gelesen"`
+					Urteil     string  `json:"urteil"`
+					Grund      *string `json:"grund"`
+					Unbegrenzt bool    `json:"einspeisung_unbegrenzt"`
+				} `json:"erwartet"`
+			} `json:"dokumente"`
+		} `json:"ohne_einspeiseseite"`
+	}
+	lies(t, "verbund-anteile-mqtt-vectors.json", &v)
+	tenant, site := v.Kennungen["tenant"], v.Kennungen["site"]
+	for _, c := range v.OhneEinspeiseseite.Dokumente {
+		raw, _ := json.Marshal(drahtNutzlast(t, tenant, site, c.Box, c.Epoche, c.Revision, c.Schritt, c.Verteilbar, c.Anteile))
+		own := Identitaet{tenant, site, c.Box}
+		g, err := Lesen(own, raw)
+		if !c.Erwartet.Gelesen {
+			if !errors.Is(err, ErrUnlesbar) {
+				t.Fatalf("%s: unlesbar erwartet, bekam %v", c.Name, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", c.Name, err)
+		}
+		if g.Dokument.EinspeisungUnbegrenzt != c.Erwartet.Unbegrenzt {
+			t.Fatalf("%s: unbegrenzt gelesen %v", c.Name, g.Dokument.EinspeisungUnbegrenzt)
+		}
+		p := DokumentPruefen(own, c.Stand, g.Dokument)
+		grund := ""
+		if c.Erwartet.Grund != nil {
+			grund = *c.Erwartet.Grund
+		}
+		if p.Urteil != c.Erwartet.Urteil || p.Grund != grund {
+			t.Fatalf("%s: %+v, erwartet %s/%s", c.Name, p, c.Erwartet.Urteil, grund)
+		}
+		if !p.Angenommen() {
+			continue
+		}
+		h := Halten(g)
+		if h.EinspeisungUnbegrenzt != c.Erwartet.Unbegrenzt {
+			t.Fatalf("%s: unbegrenzt %v", c.Name, h.EinspeisungUnbegrenzt)
+		}
+		for _, r := range Richtungen {
+			want, ok := c.Anteile[r][c.Box]
+			got, hat := h.AnteilKw[r]
+			if ok != hat || got != want {
+				t.Fatalf("%s: eigener Anteil %s = %q (%v), im Dokument %q (%v)", c.Name, r, got, hat, want, ok)
+			}
+		}
+	}
+	if len(v.OhneEinspeiseseite.Dokumente) != 7 {
+		t.Fatalf("ohne_einspeiseseite: %d Faelle - Vektor-Datei gewachsen, Zwilling pruefen", len(v.OhneEinspeiseseite.Dokumente))
+	}
+}

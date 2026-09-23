@@ -69,6 +69,9 @@ class MitsteuerndeBox:
 
     ``einspeisung_kw``/``bezug_kw``: der Planwert je Richtung
     (:func:`planer_anteil`), ``None`` = kein Dokument nennt die Box.
+    ``einspeisung_unbegrenzt``: jedes bekannte Dokument hat keine Einspeiseseite
+    (die Anlage hat ausdruecklich keine Einspeisegrenze, AP-15 Folge) - dann
+    ist ``einspeisung_kw`` ``None``, aber nicht unbekannt.
     ``pv_kwp``: Nennleistung der PV-Anlagen an dieser Box. ``verbraucher``:
     Entitaeten (Messpunkt-IDs) der Box auf der Bezugsseite
     (``steuerungsverbund_geraet``).
@@ -80,6 +83,7 @@ class MitsteuerndeBox:
     stumm: bool
     pv_kwp: float = 0.0
     verbraucher: tuple[str, ...] = ()
+    einspeisung_unbegrenzt: bool = False
 
     @property
     def bekommt_plan(self) -> bool:
@@ -114,6 +118,9 @@ class BoxAnteil:
 
     ``pv_kw`` ist ihr Teil der PV-Prognose der Anlage (Teil von
     ``OptimizationInput.pv_kw``); ``stumm`` = Y4/B5: mit vollem Anteil belegt.
+    ``einspeisung_unbegrenzt``: kein Einspeise-Anteil (die Anlage hat
+    ausdruecklich keine Einspeisegrenze) - ``einspeisung_kw`` bindet dann nicht,
+    weder als Schranke noch als Reserve einer stummen Box.
     """
 
     device_id: UUID
@@ -122,6 +129,7 @@ class BoxAnteil:
     pv_kw: tuple[float, ...] = ()
     stumm: bool = False
     verbraucher: tuple[str, ...] = field(default=())
+    einspeisung_unbegrenzt: bool = False
 
 
 def planer_anteil(quittiert: float | None, gesendet: float | None) -> float | None:
@@ -144,13 +152,23 @@ def anteile_je_box(dokument, richtung: str, box: UUID) -> float | None:
     return float(wert) if wert is not None else None
 
 
+def einspeisung_unbegrenzt(*dokumente) -> bool:
+    """AP-15 Folge (Captain 23.09.2026, "Einspeisung unbegrenzt - nur der Bezug
+    wird aufgeteilt"): hat JEDES bekannte Dokument (``anteile``-JSON) keine
+    Einspeiseseite? Kein Dokument = unbekannt, nicht unbegrenzt; ein Dokument
+    MIT Einspeiseseite bindet (das Kleinere, :func:`planer_anteil`)."""
+    bekannt = [d for d in dokumente if d]
+    return bool(bekannt) and all("einspeisung" not in d for d in bekannt)
+
+
 def fuer_lauf(stand: VerbundStand | None, pv_kw: list[float]) -> tuple[BoxAnteil, ...]:
     """Den gelesenen Stand auf die Slots EINES Laufs auflösen.
 
     Die PV-Prognose der Anlage wird nach der Nennleistung geteilt; die Summe der
     Box-Teile bleibt so nie ueber der Prognose. Eine Box ohne bekannten Anteil ist
     B5: sie wird stumm mit Anteil 0 geplant - kein Kommando, und nichts wird fuer
-    sie reserviert, was niemand kennt.
+    sie reserviert, was niemand kennt. Eine Einspeiseseite, die ausdruecklich
+    unbegrenzt ist, ist nicht unbekannt: die Box plant nur gegen den Bezug.
     """
     if stand is None or not stand.mitsteuernde:
         return ()
@@ -161,7 +179,9 @@ def fuer_lauf(stand: VerbundStand | None, pv_kw: list[float]) -> tuple[BoxAnteil
             pv_box = tuple(max(p, 0.0) * teil for p in pv_kw)
         else:
             pv_box = tuple(0.0 for _ in pv_kw)
-        unbekannt = box.einspeisung_kw is None or box.bezug_kw is None
+        unbekannt = (
+            box.einspeisung_kw is None and not box.einspeisung_unbegrenzt
+        ) or box.bezug_kw is None
         if unbekannt:
             logger.warning(
                 "verbund.anteil_unbekannt",
@@ -175,6 +195,7 @@ def fuer_lauf(stand: VerbundStand | None, pv_kw: list[float]) -> tuple[BoxAnteil
                 pv_kw=pv_box,
                 stumm=box.stumm or unbekannt,
                 verbraucher=box.verbraucher,
+                einspeisung_unbegrenzt=box.einspeisung_unbegrenzt,
             )
         )
     return tuple(boxen)
@@ -338,6 +359,7 @@ def load_verbund(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict
                 or not faehig,
                 pv_kwp=pv_je_box.get((sid, box), 0.0),
                 verbraucher=tuple(verbraucher.get((sid, box), ())),
+                einspeisung_unbegrenzt=einspeisung_unbegrenzt(quittiert, gesendet),
             )
         )
     return {

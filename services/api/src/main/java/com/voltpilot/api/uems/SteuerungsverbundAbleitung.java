@@ -39,7 +39,8 @@ public final class SteuerungsverbundAbleitung {
 
     /**
      * Je Richtung der Eingang von {@link SteuerungsverbundRegeln#pruefen}. Fehlt die Grenze oder der Vorbehalt einer
-     * Richtung, fehlt die Richtung — unbekannt ist keine Null.
+     * Richtung, fehlt die Richtung — unbekannt ist keine Null. Ob eine fehlende Einspeiserichtung ausdrücklich
+     * unbegrenzt ist, sagt {@link #unbegrenzt}, nicht diese Rechnung.
      */
     public static Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge(List<Mitglied> mitglieder,
             List<Geraet> geraete, Map<Grenzart, BigDecimal> grenze, Map<Grenzart, BigDecimal> vorbehalt) {
@@ -172,7 +173,38 @@ public final class SteuerungsverbundAbleitung {
 
     /** Scharf nur mit {@code passt} in BEIDEN Richtungen (E2 = A); eine fehlende Richtung passt nicht. */
     public static boolean passt(Map<Grenzart, SteuerungsverbundAnteile.Auslegung> auslegung) {
-        return SteuerungsverbundAnteile.RICHTUNGEN.stream().allMatch(r -> auslegung.get(r) != null
-                && auslegung.get(r).ablehnung() == null);
+        return passt(auslegung, Set.of());
+    }
+
+    /**
+     * Wie {@link #passt(Map)}, nur darf eine Richtung aus {@code unbegrenzt} fehlen (AP-15 Folge, Captain 23.09.2026:
+     * „Einspeisung unbegrenzt — nur der Bezug wird aufgeteilt“). {@code unbegrenzt} kommt allein aus der ausdrücklichen
+     * Angabe „keine Einspeisegrenze“ ({@link GrenzeAufloesung.Wirksam#einspeisungKeine}); eine nur fehlende Grenze steht
+     * nicht darin und passt weiter nicht. Eine gerechnete Richtung muss passen, auch wenn sie in {@code unbegrenzt} steht.
+     */
+    public static boolean passt(Map<Grenzart, SteuerungsverbundAnteile.Auslegung> auslegung,
+            Set<Grenzart> unbegrenzt) {
+        return SteuerungsverbundAnteile.RICHTUNGEN.stream().allMatch(r -> auslegung.get(r) == null
+                ? unbegrenzt.contains(r) : auslegung.get(r).ablehnung() == null);
+    }
+
+    /**
+     * Sind die Eingänge vollständig — jede Richtung gerechnet oder ausdrücklich {@code unbegrenzt}? Die Naht von IP-5
+     * ({@code auslegungFuer}): unvollständig = {@code auslegung_passt_nicht}.
+     */
+    public static boolean vollstaendig(Map<Grenzart, SteuerungsverbundRegeln.Richtung> eingaenge,
+            Set<Grenzart> unbegrenzt) {
+        return SteuerungsverbundAnteile.RICHTUNGEN.stream().allMatch(r -> eingaenge.containsKey(r)
+                || unbegrenzt.contains(r));
+    }
+
+    /**
+     * Die ausdrücklich unbegrenzten Richtungen am Tag: nur die Einspeisung, und nur, wenn die wirksame Grenze keine Zahl
+     * hat UND das Grenzblatt ausdrücklich „keine Einspeisegrenze“ trägt (I1). Für diese Richtung gibt es keinen Anteil,
+     * keinen Wächter und im Anteils-Dokument keine Einspeiseseite.
+     */
+    public static Set<Grenzart> unbegrenzt(GrenzeAufloesung.Wirksam wirksam) {
+        return wirksam != null && wirksam.einspeisungKw() == null && wirksam.einspeisungKeine()
+                ? Set.of(Grenzart.EINSPEISUNG) : Set.of();
     }
 }

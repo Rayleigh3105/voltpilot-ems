@@ -42,6 +42,9 @@ public class WirksameAnteileAusHerzschlag implements WirksameAnteileQuelle {
         Map<Grenzart, BigDecimal> anteile = new EnumMap<>(Grenzart.class);
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
             JsonNode wert = kw.get(r.code());
+            if (wert == null && r == Grenzart.EINSPEISUNG) {
+                continue; // die Box hält ein Dokument ohne Einspeiseseite (Einspeisung unbegrenzt)
+            }
             if (wert == null || !wert.isNumber() || wert.decimalValue().signum() < 0) {
                 jeBox.remove(deviceId);
                 return;

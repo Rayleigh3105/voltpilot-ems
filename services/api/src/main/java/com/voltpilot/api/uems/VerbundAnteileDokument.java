@@ -87,6 +87,9 @@ public final class VerbundAnteileDokument {
         ObjectNode v = n.putObject("verteilbar");
         ObjectNode a = n.putObject("anteile");
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            if (unbegrenzt(tabelle, r)) {
+                continue; // ausdrücklich keine Grenze: keine Seite, kein Anteil, kein Wächter (Vertrag §1)
+            }
             v.put(r.code(), tabelle.verteilbar().get(r));
             ObjectNode je = a.putObject(r.code());
             new TreeMap<>(tabelle.anteile().getOrDefault(r, Map.of())).forEach(je::put);
@@ -103,6 +106,14 @@ public final class VerbundAnteileDokument {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * Trägt die Tabelle die Richtung nicht — weder Anteile noch {@code verteilbar}? Das ist die ausdrücklich unbegrenzte
+     * Einspeisung (AP-15 Folge, Captain 23.09.2026); eine Tabelle mit beiden Richtungen bleibt Byte für Byte.
+     */
+    static boolean unbegrenzt(Tabelle tabelle, Grenzart r) {
+        return !tabelle.anteile().containsKey(r) && tabelle.verteilbar().get(r) == null;
     }
 
     /** Was die Box aus Topic und Nutzlast liest: ihre Identität aus dem TOPIC und das Dokument aus der Nutzlast. */
@@ -130,6 +141,9 @@ public final class VerbundAnteileDokument {
             Map<Grenzart, Map<String, BigDecimal>> anteile = new EnumMap<>(Grenzart.class);
             for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
                 JsonNode v = root.path("verteilbar").path(r.code());
+                if (r == Grenzart.EINSPEISUNG && v.isMissingNode() && root.path("anteile").path(r.code()).isMissingNode()) {
+                    continue; // keine Einspeiseseite = Einspeisung unbegrenzt (Vertrag §1); nur die Einspeisung darf fehlen
+                }
                 if (!v.isNumber()) {
                     return null;
                 }

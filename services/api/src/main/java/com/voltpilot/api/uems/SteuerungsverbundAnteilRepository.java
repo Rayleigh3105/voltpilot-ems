@@ -225,6 +225,9 @@ public class SteuerungsverbundAnteilRepository {
     private ObjectNode anteileKnoten(Tabelle t) {
         ObjectNode n = mapper.createObjectNode();
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            if (VerbundAnteileDokument.unbegrenzt(t, r)) {
+                continue; // ausdrücklich unbegrenzt: der Schlüssel fehlt (Leser: Planer, anteileLesen)
+            }
             ObjectNode je = n.putObject(r.code());
             new TreeMap<>(t.anteile().getOrDefault(r, Map.of())).forEach(je::put);
         }
@@ -234,6 +237,9 @@ public class SteuerungsverbundAnteilRepository {
     private Map<Grenzart, Map<String, BigDecimal>> anteileLesen(JsonNode n) {
         Map<Grenzart, Map<String, BigDecimal>> a = new EnumMap<>(Grenzart.class);
         for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
+            if (!n.has(r.code())) {
+                continue; // ausdrücklich unbegrenzt — nicht „keine Box“
+            }
             Map<String, BigDecimal> je = new TreeMap<>();
             n.path(r.code()).fields().forEachRemaining(e -> je.put(e.getKey(), e.getValue().decimalValue()));
             a.put(r, je);
@@ -244,7 +250,9 @@ public class SteuerungsverbundAnteilRepository {
     private DokumentZeile dokument(ResultSet rs, int n) throws SQLException {
         try {
             Map<Grenzart, BigDecimal> verteilbar = new EnumMap<>(Grenzart.class);
-            verteilbar.put(Grenzart.EINSPEISUNG, rs.getBigDecimal("verteilbar_einspeisung_kw"));
+            if (rs.getBigDecimal("verteilbar_einspeisung_kw") != null) { // NULL = ausdrücklich unbegrenzt
+                verteilbar.put(Grenzart.EINSPEISUNG, rs.getBigDecimal("verteilbar_einspeisung_kw"));
+            }
             verteilbar.put(Grenzart.BEZUG, rs.getBigDecimal("verteilbar_bezug_kw"));
             Tabelle tabelle = new Tabelle(anteileLesen(mapper.readTree(rs.getString("anteile"))), verteilbar);
             Tabelle ziel = null;
@@ -252,7 +260,9 @@ public class SteuerungsverbundAnteilRepository {
                 JsonNode z = mapper.readTree(rs.getString("ziel"));
                 Map<Grenzart, BigDecimal> zv = new EnumMap<>(Grenzart.class);
                 for (Grenzart r : SteuerungsverbundAnteile.RICHTUNGEN) {
-                    zv.put(r, z.path("verteilbar").path(r.code()).decimalValue());
+                    if (z.path("verteilbar").has(r.code())) { // fehlt = ausdrücklich unbegrenzt, nie 0
+                        zv.put(r, z.path("verteilbar").path(r.code()).decimalValue());
+                    }
                 }
                 ziel = new Tabelle(anteileLesen(z.path("anteile")), zv);
             }

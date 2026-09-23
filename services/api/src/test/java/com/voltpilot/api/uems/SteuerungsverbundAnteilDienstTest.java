@@ -525,6 +525,87 @@ class SteuerungsverbundAnteilDienstTest {
         assertThat(letztes(w).dokument().epoche()).isEqualTo(2);
     }
 
+    /**
+     * AP-15 Folge „Anlage ohne Einspeisegrenze“ (Captain 23.09.2026: Einspeisung unbegrenzt — nur der Bezug wird
+     * aufgeteilt). Ahrenberg ohne Einspeisewert an der Anlage: eine nur FEHLENDE Grenze bleibt „passt nicht“ und
+     * veröffentlicht nichts (Bestandsschutz). Trägt das Grenzblatt ausdrücklich „keine Einspeisegrenze“ (Bezug 550),
+     * passt die Auslegung ohne Einspeiserichtung, die Naht von IP-5 liefert nur den Bezug, und jedes Dokument — Übergang
+     * und Zielstand — hat keine Einspeiseseite (gespeichert als NULL und ohne Schlüssel, nie 0); der Box-Zwilling nimmt
+     * es an. Bezug wie R1: 0 / 77 kW.
+     */
+    @Test
+    void ausdruecklichKeineEinspeisegrenzeTeiltNurDenBezug() throws Exception {
+        Welt w = ahrenberg(Stufe.ANTEILE_AKTIV);
+        root.update("UPDATE site SET max_feed_in_kw = NULL WHERE id = ?", w.anlage());
+        java.time.LocalDate heute = java.time.LocalDate.now(java.time.ZoneId.of("Europe/Berlin"));
+        TenantContext.set(w.mandant());
+        assertThat(dienst.auslegungPasst(w.anlage())).as("nur fehlend, nicht erklärt").isFalse();
+        assertThat(dienst.auslegungFuer(w.anlage(), List.of(w.e1(), w.e4()), heute)).isEmpty();
+        assertThat(dienst.anteileScharfschalten(w.anlage(), BETREIBER).grund()).isEqualTo(Grund.AUSLEGUNG_PASST_NICHT);
+        assertThat(Draht.GESENDET).isEmpty();
+
+        keineEinspeisegrenze(w, "550");
+        TenantContext.set(w.mandant());
+        assertThat(dienst.auslegungPasst(w.anlage())).isTrue();
+        assertThat(dienst.ableiten(w.anlage()).orElseThrow().unbegrenzt()).containsExactly(Grenzart.EINSPEISUNG);
+        var eingang = dienst.auslegungFuer(w.anlage(), List.of(w.e1(), w.e4()), heute);
+        assertThat(eingang).isPresent();
+        assertThat(eingang.get()).containsOnlyKeys(Grenzart.BEZUG);
+        SteuerungsverbundRepository.RegelStand rs = verbuende.regelStand(w.anlage(), Instant.now(), heute).orElseThrow();
+        assertThat(SteuerungsverbundRegeln.pruefen(rs.verbund(), rs.quellen(), eingang.get()).befunde())
+                .noneMatch(b -> b.richtung() != null);
+
+        Ergebnis e = dienst.anteileScharfschalten(w.anlage(), BETREIBER);
+        assertThat(e.veroeffentlicht()).isTrue();
+        assertThat(e.dokument().tabelle().anteile()).containsOnlyKeys(Grenzart.BEZUG);
+        assertThat(e.dokument().tabelle().verteilbar()).containsOnlyKeys(Grenzart.BEZUG);
+        quittung(w, w.e1(), 1, 1, "angenommen", null, null);
+        quittung(w, w.e4(), 1, 1, "angenommen", null, null);
+        Ergebnis ziel = letztes(w);
+        assertThat(ziel.dokument().schritt()).isEqualTo(Schritt.ZIEL);
+        assertThat(ziel.dokument().tabelle().verteilbar().get(Grenzart.BEZUG)).isEqualByComparingTo("77");
+        assertThat(kw(ziel, Grenzart.BEZUG, w.e4())).isEqualByComparingTo("77");
+        assertThat(kw(ziel, Grenzart.BEZUG, w.e1())).isEqualByComparingTo("0");
+        assertThat(root.queryForObject("SELECT count(*) FROM steuerungsverbund_anteile WHERE steuerungsverbund_id = ? "
+                + "AND verteilbar_einspeisung_kw IS NULL AND (anteile -> 'einspeisung') IS NULL", Integer.class,
+                w.verbund())).isEqualTo(2);
+
+        List<Map.Entry<String, byte[]>> gesendet;
+        synchronized (Draht.GESENDET) {
+            gesendet = List.copyOf(Draht.GESENDET);
+        }
+        assertThat(gesendet).hasSize(4);
+        for (Map.Entry<String, byte[]> d : gesendet) {
+            JsonNode n = mapper.readTree(d.getValue());
+            assertThat(n.path("verteilbar").has("einspeisung")).isFalse();
+            assertThat(n.path("anteile").has("einspeisung")).isFalse();
+            assertThat(n.path("anteile").path("bezug").has(w.e1().toString())).isTrue();
+            VerbundAnteileDokument.Gelesen g = VerbundAnteileDokument.lesen(mapper, d.getKey(), d.getValue());
+            assertThat(g).as("der Box-Zwilling liest es").isNotNull();
+            assertThat(SteuerungsverbundAnteile.dokumentPruefen(g.identitaet(), null, g.dokument()))
+                    .isEqualTo(new SteuerungsverbundAnteile.Pruefung(SteuerungsverbundVokabular.DokumentUrteil.ANGENOMMEN,
+                            null));
+        }
+    }
+
+    /** Das Grenzblatt am Netzanschluss der Anlage: ausdrücklich keine Einspeisegrenze, Bezug {@code bezugKw}. */
+    private void keineEinspeisegrenze(Welt w, String bezugKw) {
+        UUID u = root.queryForObject("INSERT INTO unternehmen (tenant_id, name, zeitzone) VALUES (?, "
+                + "'Kunststoffwerk Ahrenberg GmbH', 'Europe/Berlin') RETURNING id", UUID.class, w.mandant());
+        UUID st = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), u);
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "DATE '2024-01-01')", w.mandant(), w.anlage(), st);
+        UUID na = root.queryForObject("INSERT INTO netzanschluss (tenant_id, standort_id, kennzeichen, name, "
+                + "anschluss_kva, vereinbart_kw, messung) VALUES (?, ?, 'NA-1', 'Übergabestation NA-1', 630, 550, 'RLM') "
+                + "RETURNING id", UUID.class, w.mandant(), st);
+        root.update("INSERT INTO anlage_netzanschluss (tenant_id, site_id, netzanschluss_id, gueltig_ab) "
+                + "VALUES (?, ?, ?, DATE '2024-01-01')", w.mandant(), w.anlage(), na);
+        root.update("INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, einspeisegrenze_keine, "
+                + "bezugsgrenze_kw) VALUES (?, ?, DATE '2024-01-01', true, ?)", w.mandant(), na, new BigDecimal(bezugKw));
+    }
+
     /** Ahrenberg in S3 mit Zielstand (Revision 2), beide quittiert. */
     private Welt zielstandQuittiert() {
         Welt w = ahrenberg(Stufe.ANTEILE_AKTIV);

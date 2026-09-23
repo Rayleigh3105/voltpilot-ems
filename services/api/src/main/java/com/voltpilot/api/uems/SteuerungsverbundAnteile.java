@@ -223,6 +223,9 @@ public final class SteuerungsverbundAnteile {
             return Pruefung.abgelehnt(DokumentAblehnung.FREMDE_ANLAGE);
         }
         for (Grenzart r : RICHTUNGEN) {
+            if (einspeisungUnbegrenzt(dokument, r)) {
+                continue; // ausdrücklich keine Einspeisegrenze: keine Seite, kein Anteil, kein Wächter
+            }
             Map<String, BigDecimal> tabelle = dokument.anteile().get(r);
             if (tabelle == null || !tabelle.containsKey(identitaet.box())) {
                 return Pruefung.abgelehnt(DokumentAblehnung.BOX_FEHLT_IM_DOKUMENT);
@@ -233,12 +236,24 @@ public final class SteuerungsverbundAnteile {
             return Pruefung.abgelehnt(DokumentAblehnung.REVISION_AELTER);
         }
         for (Grenzart r : RICHTUNGEN) {
+            if (einspeisungUnbegrenzt(dokument, r)) {
+                continue;
+            }
             BigDecimal summe = dokument.anteile().get(r).values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
             if (summe.compareTo(dokument.verteilbar().get(r)) > 0) {
                 return Pruefung.abgelehnt(DokumentAblehnung.SUMME_UEBER_VERTEILBAR);
             }
         }
         return Pruefung.ANGENOMMEN;
+    }
+
+    /**
+     * Hat das Dokument keine Einspeiseseite — weder {@code verteilbar.einspeisung} noch eine Einspeise-Tabelle? Das ist
+     * „Einspeisung unbegrenzt“ (AP-15 Folge, Captain 23.09.2026): die Box prüft und hält nur den Bezug. Nur die
+     * Einspeisung darf so fehlen; ein Dokument mit beiden Seiten prüft sich wie vorher.
+     */
+    public static boolean einspeisungUnbegrenzt(Dokument dokument, Grenzart r) {
+        return r == Grenzart.EINSPEISUNG && dokument.verteilbar().get(r) == null && !dokument.anteile().containsKey(r);
     }
 
     private static void nichtNegativ(BigDecimal kw) {

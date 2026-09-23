@@ -102,6 +102,12 @@ func parse(payload []byte) (*Gelesen, error) {
 	dok := Dokument{Mandant: d.TenantID, Anlage: d.SiteID, Epoche: epoche, Revision: revision,
 		Verteilbar: map[string]*big.Rat{}, Anteile: map[string]map[string]*big.Rat{}}
 	for _, r := range Richtungen {
+		if einspeisungOhneSeite(d, r) {
+			// no feed-in side at all = feed-in unbounded (AP-15 Folge,
+			// captain 23.09.2026): no share, no watchdog on that side
+			dok.EinspeisungUnbegrenzt = true
+			continue
+		}
 		v, err := kw(d.Verteilbar[r])
 		if err != nil {
 			return nil, fmt.Errorf("%w: verteilbar.%s", ErrUnlesbar, r)
@@ -142,6 +148,18 @@ func parse(payload []byte) (*Gelesen, error) {
 		UngeregeltBezug: ungeregelt, roh: d.Anteile}, nil
 }
 
+// einspeisungOhneSeite: the document carries neither verteilbar.einspeisung
+// nor a feed-in table. Only the feed-in may be absent like this; half a side
+// stays what it was (unreadable, or box_fehlt_im_dokument).
+func einspeisungOhneSeite(d draht, r string) bool {
+	if r != "einspeisung" {
+		return false
+	}
+	_, verteilbar := d.Verteilbar[r]
+	_, tabelle := d.Anteile[r]
+	return !verteilbar && !tabelle
+}
+
 func kw(n json.Number) (*big.Rat, error) {
 	if n == "" {
 		return nil, ErrUnlesbar
@@ -170,21 +188,29 @@ type Gehalten struct {
 	// UngeregeltBezugKw is the declared maximum of the uncontrolled load
 	// behind the box's own feeder meter (decimal text); "" = none declared.
 	UngeregeltBezugKw json.Number
+	// EinspeisungUnbegrenzt: the document had no feed-in side - the feed-in
+	// is unbounded, there is no feed-in share and no feed-in watchdog;
+	// AnteilKw then has no "einspeisung" entry.
+	EinspeisungUnbegrenzt bool
 }
 
 // Halten turns an accepted document into the held share of its box.
 func Halten(g *Gelesen) *Gehalten {
 	own := map[string]json.Number{}
 	for _, r := range Richtungen {
+		if r == "einspeisung" && g.Dokument.EinspeisungUnbegrenzt {
+			continue
+		}
 		own[r] = g.roh[r][g.Box]
 	}
 	return &Gehalten{
-		Identitaet:        Identitaet{Mandant: g.Dokument.Mandant, Anlage: g.Dokument.Anlage, Box: g.Box},
-		Stand:             Stand{Epoche: g.Dokument.Epoche, Revision: g.Dokument.Revision},
-		Rolle:             g.Rolle,
-		AnteilKw:          own,
-		ReserveBezugKw:    g.ReserveBezug,
-		UngeregeltBezugKw: g.UngeregeltBezug,
+		Identitaet:            Identitaet{Mandant: g.Dokument.Mandant, Anlage: g.Dokument.Anlage, Box: g.Box},
+		Stand:                 Stand{Epoche: g.Dokument.Epoche, Revision: g.Dokument.Revision},
+		Rolle:                 g.Rolle,
+		AnteilKw:              own,
+		ReserveBezugKw:        g.ReserveBezug,
+		UngeregeltBezugKw:     g.UngeregeltBezug,
+		EinspeisungUnbegrenzt: g.Dokument.EinspeisungUnbegrenzt,
 	}
 }
 

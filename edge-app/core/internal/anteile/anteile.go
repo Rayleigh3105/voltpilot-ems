@@ -217,6 +217,9 @@ type Dokument struct {
 	Revision   int64
 	Verteilbar map[string]*big.Rat
 	Anteile    map[string]map[string]*big.Rat
+	// EinspeisungUnbegrenzt: the document has no feed-in side at all (AP-15
+	// Folge) - Verteilbar and Anteile then have no "einspeisung" entry.
+	EinspeisungUnbegrenzt bool
 }
 
 // Pruefung is the box's verdict; Grund only on abgelehnt.
@@ -238,6 +241,9 @@ func DokumentPruefen(id Identitaet, stand *Stand, d Dokument) Pruefung {
 		return Pruefung{Abgelehnt, GrundFremdeAnlage}
 	}
 	for _, r := range Richtungen {
+		if d.unbegrenzt(r) {
+			continue // no feed-in side: only the present direction names the box
+		}
 		if _, ok := d.Anteile[r][id.Box]; !ok {
 			return Pruefung{Abgelehnt, GrundBoxFehlt}
 		}
@@ -246,6 +252,9 @@ func DokumentPruefen(id Identitaet, stand *Stand, d Dokument) Pruefung {
 		return Pruefung{Abgelehnt, GrundRevisionAelter}
 	}
 	for _, r := range Richtungen {
+		if d.unbegrenzt(r) {
+			continue
+		}
 		summe := new(big.Rat)
 		for _, kw := range d.Anteile[r] {
 			summe.Add(summe, kw)
@@ -255,6 +264,16 @@ func DokumentPruefen(id Identitaet, stand *Stand, d Dokument) Pruefung {
 		}
 	}
 	return Pruefung{Urteil: Angenommen}
+}
+
+// unbegrenzt: the feed-in side is absent from the document (feed-in
+// unbounded, Lesen sets EinspeisungUnbegrenzt) - no distributable value and
+// no table. A document with both sides is checked exactly as before.
+func (d Dokument) unbegrenzt(r string) bool {
+	if r != "einspeisung" {
+		return false
+	}
+	return d.EinspeisungUnbegrenzt
 }
 
 func negativ(kw *big.Rat) bool { return kw == nil || kw.Sign() < 0 }

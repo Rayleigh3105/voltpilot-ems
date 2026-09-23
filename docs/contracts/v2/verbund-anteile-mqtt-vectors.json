@@ -1075,5 +1075,174 @@
     }
    }
   ]
+ },
+ "ohne_einspeiseseite": {
+  "_comment": "UEMS AP-15 Folge „Anlage ohne Einspeisegrenze“ (Captain 23.09.2026: Einspeisung unbegrenzt - nur der Bezug wird aufgeteilt). Trägt das Grenzblatt ausdrücklich „keine Einspeisegrenze“, fehlen verteilbar.einspeisung UND anteile.einspeisung: kein Anteil, kein Wächter, die Box prüft Kennung und Summe nur im Bezug und quittiert wie jedes gültige Dokument. Nur die Einspeisung darf fehlen; eine halbe Seite bleibt, was sie war (verteilbar ohne Tabelle → box_fehlt_im_dokument, Tabelle ohne verteilbar → unlesbar, ohne Quittung). gelesen = die Nutzlast ist lesbar; einspeisung_unbegrenzt = das gelesene Dokument hat keine Einspeiseseite (angenommen: die Box hält keinen Einspeise-Anteil). Zahlen aus R1/R3 (Bezug 0/77 kW). Wirksam auf der Box erst mit dem Box-Release dieser Regel. Leser: VerbundAnteileVectorsTest (Java-Zwilling und Erzeuger) und edge-app/core/internal/anteile/anteile_vectors_test.go (Go).",
+  "dokumente": [
+   {
+    "name": "Nur Bezug (ausdrücklich keine Einspeisegrenze): angenommen, Einspeisung unbegrenzt",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 77.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "angenommen",
+     "grund": null,
+     "einspeisung_unbegrenzt": true
+    }
+   },
+   {
+    "name": "Nur Bezug, die eigene Kennung fehlt in der Bezugs-Tabelle → box_fehlt_im_dokument",
+    "box": "7a000000-0000-4000-8000-0000000000e1",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 77.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "abgelehnt",
+     "grund": "box_fehlt_im_dokument",
+     "einspeisung_unbegrenzt": true
+    }
+   },
+   {
+    "name": "Nur Bezug, Summe 77 über verteilbar 70 → summe_ueber_verteilbar",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 70.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "abgelehnt",
+     "grund": "summe_ueber_verteilbar",
+     "einspeisung_unbegrenzt": true
+    }
+   },
+   {
+    "name": "verteilbar.einspeisung ohne Einspeise-Tabelle → box_fehlt_im_dokument wie bisher",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "einspeisung": 100.0,
+     "bezug": 77.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "abgelehnt",
+     "grund": "box_fehlt_im_dokument",
+     "einspeisung_unbegrenzt": false
+    }
+   },
+   {
+    "name": "Einspeise-Tabelle ohne verteilbar.einspeisung → unlesbar, ohne Quittung",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 77.0
+    },
+    "anteile": {
+     "einspeisung": {
+      "7a000000-0000-4000-8000-0000000000e1": 40.0,
+      "7a000000-0000-4000-8000-0000000000e4": 60.0
+     },
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": false
+    }
+   },
+   {
+    "name": "Ohne Bezugsseite (nur die Einspeisung darf unbegrenzt sein) → unlesbar, ohne Quittung",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "einspeisung": 100.0
+    },
+    "anteile": {
+     "einspeisung": {
+      "7a000000-0000-4000-8000-0000000000e1": 40.0,
+      "7a000000-0000-4000-8000-0000000000e4": 60.0
+     }
+    },
+    "erwartet": {
+     "gelesen": false
+    }
+   },
+   {
+    "name": "Bestand: beide Seiten, Zielstand 40/60 und 0/77 → angenommen mit Einspeise-Anteil",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "einspeisung": 100.0,
+     "bezug": 77.0
+    },
+    "anteile": {
+     "einspeisung": {
+      "7a000000-0000-4000-8000-0000000000e1": 40.0,
+      "7a000000-0000-4000-8000-0000000000e4": 60.0
+     },
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "angenommen",
+     "grund": null,
+     "einspeisung_unbegrenzt": false
+    }
+   }
+  ]
  }
 }
