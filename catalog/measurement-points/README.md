@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.09.23.1.json`](dist/measurement-point-catalog-2026.09.23.1.json).
+[`dist/measurement-point-catalog-2026.09.23.2.json`](dist/measurement-point-catalog-2026.09.23.2.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
@@ -63,7 +63,9 @@ Jeder Eintrag besitzt mindestens:
 Unbekanntes bleibt `null` und wird mit `semantic_status: unknown` oder
 `vendor_label_only` sichtbar gemacht. Namen und Einheiten werden nicht aus
 Registeradressen, API-Key-Kürzeln oder Beschreibungstext geraten. So bleibt etwa
-die Einheit der 316 go-e-Keys bewusst leer. Für SunSpec ist `address.base` immer
+die Einheit von 308 der 316 go-e-Keys bewusst leer; nur die acht go-e-Zähler, deren gepinnter
+Quelltext sie wörtlich nennt („measured in Wh“, „energy … in Wh since car connected“), tragen Wh
+(`generate.GOE_EINHEIT_IM_TEXT` — fehlt die Wendung, bricht die Erzeugung ab). Für SunSpec ist `address.base` immer
 `discovered`; insbesondere modelliert Model 160 jedes live entdeckte `module[i]`
 über einen eigenen dynamischen Point-Key und relativen Offset.
 
@@ -85,14 +87,14 @@ vergibt sie deterministisch: zuerst eine Regel mit Beleg — ein genormter Name
 (OCPP-Measurand, SunSpec-Punktname), ein wörtliches Herstellerlabel oder das Shelly-Feld samt
 Rohbeleg —, sonst die belegte Einheit (ein Wert in V ist eine Spannung). Prozent ist keine
 Größe: ein Ladestand steht nur über eine Regel im Katalog. Die go-e-Keys bleiben wie ihre
-Einheit ohne Größe.
+Einheit ohne Größe — bis auf die acht Wh-Zähler (Wirkenergie ohne Richtung, go-e nennt keine).
 
 - Ohne Größe keine Richtung (`null`/`null`). Größen ohne Flussrichtung (Spannung, Frequenz,
   Temperatur, Leistungsfaktor, Scheinleistung, Ladestand, Kapazität) tragen `none`.
 - **Jede Energie-Größe (`*energy*`) trägt eine Richtung**, und jede Energie-Einheit
-  (Wh, kWh, MWh, mWh, „0,1 kWh“, Wmin, varh, VAh) trägt eine Energie-Größe. Ausgenommen sind
+  (Wh, kWh, MWh, mWh, Wmin, varh, VAh) trägt eine Energie-Größe. Ausgenommen sind
   nur die einzeln benannten Punkte in `ENERGY_WITHOUT_DIRECTION`, deren Quelle keine Richtung
-  nennt (heute sechs: Deye „Today/Total Energy“, SunSpec 122 „Quadrant 1–4“) — `validate.py`
+  nennt (heute 14: Deye „Today/Total Energy“, SunSpec 122 „Quadrant 1–4“, die acht go-e-Zähler) — `validate.py`
   lehnt jeden anderen Energiepunkt ohne Richtung ab.
 - Ein Vorzeichen-Wert, dessen Quelle nur „Leistung am Netzpunkt“ oder „Speicherleistung“ nennt,
   trägt die zusammengefasste Richtung `import_export` bzw. `charge_discharge` — nie eine
@@ -195,17 +197,19 @@ und darum weder `address.base` noch `source_kind` noch `endian`.
 ## Zähler ohne Anzeige-Einheit
 
 `unit` nennt die Einheit des **dekodierten** Werts (nach `scale`); gerechnet und gespeichert wird
-`decoded`. Die Cloud spricht eine Zählermenge nur in einer Anzeige-Einheit des Vertrags
+`decoded`. Eine Einheit mit eingebackenem Faktor („0,1 kWh“, „cHz“) gibt es nicht: der Faktor steht an
+`scale`, `validate.py` lehnt eine Einheit ab, die mit einer Zahl beginnt (bis Laufzeitstand 2026.08.26.3
+trugen die KACO-Punkte die Register-Einheit, Beleg der dekodierten Einheit ist die `SCALE`-Tabelle in
+`edge-app/nodered/kaco/kaco-http.js`). Die Cloud spricht eine Zählermenge nur in einer Anzeige-Einheit des Vertrags
 [`ergebnis-zustand`](../../docs/contracts/v2/ergebnis-zustand.md) §3 (Wh/kWh/MWh/Wmin → kWh,
 varh/kvarh → kvarh, VAh/kVAh → kVAh, m³). Jeder Zähler, dessen Einheit dort fehlt, steht mit Art und
 Grund in `ZAEHLER_OHNE_ANZEIGE_EINHEIT` (`tools/semantics.py`); `validate.py` lehnt einen
-unbenannten Zähler ohne Einheit ab, `test_semantics.py` hält die Liste gegen den Vertrag. Heute 47:
+unbenannten Zähler ohne Einheit ab, `test_semantics.py` hält die Liste gegen den Vertrag. Heute 35:
 29 ohne Energie (Zyklen, Ereignisse, Revisionen), 4 OCPP-Register mit der Einheit im konkreten
-Schlüssel, 8 go-e-Keys mit der Einheit nur im Text, 4 KACO-Punkte in „0,1 kWh“ (der Faktor steht
-schon an `scale`, der Name ist die Register-Einheit), 2 Zählerstände der WAGO 750-494, deren Faktor
-zu erheben ist (`faktor_zu_erheben`, noch an keiner Box). ⚠ Ein Nachtrag an `unit` ändert ein Box-Feld
-und hebt den Laufzeitstand (nächster Abschnitt) — die Box liest `unit` zwar nicht, aber die
-Palette trägt es.
+Schlüssel, 2 Zählerstände der WAGO 750-494, deren Faktor zu erheben ist (`faktor_zu_erheben`, noch an
+keiner Box). Die 8 go-e-Zähler (Wh) und die 4 KACO-Zähler (kWh) sprechen seit dem Laufzeitstand
+2026.09.23.2 eine Anzeige-Einheit. ⚠ Ein Nachtrag an `unit` ändert ein Box-Feld und hebt den
+Laufzeitstand (nächster Abschnitt) — die Box liest `unit` zwar nicht, aber die Palette trägt es.
 
 ## Genauigkeit laut Hersteller
 
@@ -244,6 +248,9 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   `SQL_BY_RUNTIME_VERSION` eine NEUE, datums-versionierte Metadaten-Migration eintragen — die
   angewandte bleibt unverändert. Ab dem api-Deploy lehnen Boxen mit älterer Palette jede
   Messwert-Änderung ab, bis sie das Edge-Release haben; der Rollout gehört deshalb geplant.
+  Zuletzt 2026.08.26.3 → 2026.09.23.2 (nur `unit`: KACO ohne Faktor im Namen, go-e Wh; mit dem
+  Box-Release 23.09.2026). Der Laufzeitstand darf dabei ein Inhaltsstand mit zurückgehaltenen Familien
+  sein: `validate.py` liest deren `families[].an_der_box: false` als „nie an der Box“.
 
 ### Familien noch nicht an der Box
 

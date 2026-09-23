@@ -1,6 +1,6 @@
 {
-  "catalog_version": "2026.09.23.1",
-  "runtime_catalog_version": "2026.08.26.3",
+  "catalog_version": "2026.09.23.2",
+  "runtime_catalog_version": "2026.09.23.2",
   "deye_lock_sha256": "30d4ff814fbb0e17a2322370b6763666ce5181b6468700ab1dab3b879d737b02",
   "deye_direct_register_points": {
     "hybrid_1p": 193,
@@ -45,10 +45,10 @@
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "7b1f1410e24c1b32c458dc580ca0f04fec15b1056585eeadf80c94320e3fd7a2",
+  "manifest_sha256": "76c4e0577f3197a5733a756ee49a5efaef626841f6deb1bbb06221fee9bd87af",
   "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
-    "builtin.inverter.runtime": "voltpilot-runtime-2026-08-26-r2",
+    "builtin.inverter.runtime": "voltpilot-runtime-2026-09-23-r3",
     "cloud.manufacturer_accuracy": "wago-public-sources-retrieved-2026-09-23",
     "deye.hybrid_1p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
     "deye.hybrid_3p": "ac1d88b83268beeb0511b8a1b7fc8e17deddc044",
@@ -71,14 +71,14 @@
   },
   "total_points": 2395,
   "quantity_counts": {
-    "active_energy": 148,
+    "active_energy": 156,
     "active_power": 190,
     "apparent_energy": 49,
     "apparent_power": 39,
     "current": 158,
     "energy_capacity": 4,
     "frequency": 36,
-    "null": 1137,
+    "null": 1129,
     "power_factor": 40,
     "reactive_energy": 104,
     "reactive_power": 42,
@@ -97,6 +97,6 @@
     "none": 573,
     "null": 1444
   },
-  "energy_points": 305,
-  "energy_points_without_direction": 6
+  "energy_points": 313,
+  "energy_points_without_direction": 14
 }

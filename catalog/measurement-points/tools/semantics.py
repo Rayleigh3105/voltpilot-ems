@@ -39,19 +39,21 @@ DIRECTIONLESS = frozenset({
 })
 # Einheiten einer Energiemenge. Ein Punkt mit einer davon MUSS eine Energie-Größe tragen,
 # sonst entkäme er der Richtungspflicht.
-ENERGY_UNITS = frozenset({"0,1 kWh", "MWh", "VAh", "Wh", "Wmin", "kWh", "mWh", "varh"})
+ENERGY_UNITS = frozenset({"MWh", "VAh", "Wh", "Wmin", "kWh", "mWh", "varh"})
 
 # Belegte Einheit → Größe (Dimension). Nur eindeutige Einheiten; „Pct“ und „%“ fehlen bewusst.
+# Eine Einheit mit eingebackenem Faktor („0,1 kWh“, „cHz“) gibt es nicht mehr: `unit` ist die Einheit
+# des DEKODIERTEN Werts, der Faktor steht an `scale` (`validate.py` lehnt eine Zahl vorn ab).
 UNIT_QUANTITY = {
     "W": "active_power", "kW": "active_power",
     "Wh": "active_energy", "kWh": "active_energy", "MWh": "active_energy",
-    "mWh": "active_energy", "0,1 kWh": "active_energy", "Wmin": "active_energy",
+    "mWh": "active_energy", "Wmin": "active_energy",
     "var": "reactive_power", "varh": "reactive_energy",
     "VA": "apparent_power", "VAh": "apparent_energy",
-    "V": "voltage", "0,1 V": "voltage", "0,01 V": "voltage",
-    "A": "current", "0,1 A": "current", "0,01 A": "current",
-    "Hz": "frequency", "cHz": "frequency",
-    "°C": "temperature", "0,1 °C": "temperature", "°F": "temperature", "C": "temperature",
+    "V": "voltage",
+    "A": "current",
+    "Hz": "frequency",
+    "°C": "temperature", "°F": "temperature", "C": "temperature",
     "PF": "power_factor", "cos()": "power_factor",
 }
 # ⚠ „K“ fehlt bewusst: der einzige Punkt in Kelvin (Shelly lights[].temp) ist eine
@@ -72,6 +74,20 @@ ENERGY_WITHOUT_DIRECTION = {
         "SunSpec 122 nennt nur „Quadrant 3“ ohne Bezugsrichtung (Erzeuger- oder Verbraucher-Zählpfeil)",
     "sunspec.model_122.actvarhq4":
         "SunSpec 122 nennt nur „Quadrant 4“ ohne Bezugsrichtung (Erzeuger- oder Verbraucher-Zählpfeil)",
+    # go-e nennt für seine Zähler nur „in Wh“ (generate.GOE_EINHEIT_IM_TEXT), nie eine Richtung.
+    **{
+        f"goe.api_v2.{key}": f"go-e API v2 `{key}`: „{text}“ — ohne Richtung"
+        for key, text in (
+            ("eto", "energy_total, measured in Wh"),
+            ("eto_mid", "MID energy_total, measured in Wh"),
+            ("wh", "energy in Wh since car connected"),
+            ("wh_mid", "MID energy in Wh since car connected"),
+            ("whb", "energy BATTERY in Wh since car connected"),
+            ("whg", "energy GRID in Wh since car connected"),
+            ("who", "energy OTHER in Wh since car connected"),
+            ("whs", "energy SOLAR in Wh since car connected"),
+        )
+    },
 }
 
 # Zähler (`aggregation_kind: counter`), deren Einheit KEINE Anzeige-Einheit des Vertrags
@@ -83,11 +99,6 @@ ZAEHLER_OHNE_ANZEIGE_EINHEIT_ARTEN = {
     "keine_energie": "zählt Zyklen, Ereignisse oder Revisionen — es gibt keine Einheit nachzutragen",
     "einheit_im_schluessel": "die Station nennt die Einheit je Wert; sie steht im konkreten Schlüssel "
                              "der Reihe (`MeasurementCatalog.einheit`), nie im Katalog",
-    "einheit_nur_im_text": "die Quelle nennt die Einheit nur im Beschreibungstext; der Katalog "
-                           "übernimmt keine Einheit aus Prosa (README „Modell“)",
-    "faktor_im_einheitennamen": "die Einheit trägt einen eingebackenen Faktor, der schon an `scale` "
-                                "steht — gerechnet wird mit dem dekodierten Wert, dessen Einheit der "
-                                "Katalog noch nicht nennt",
     "faktor_zu_erheben": "der Faktor dieser Karte ist nicht belegt und wird am Gerät erhoben (UEMS AP-05 "
                          "Befund 4) — ohne Faktor hat der dekodierte Wert keine Einheit",
 }
@@ -114,16 +125,6 @@ ZAEHLER_OHNE_ANZEIGE_EINHEIT: dict[str, tuple[str, str]] = {
              f"OCPP-1.6-SampledValue `unit` je Wert → `…unit[wh]`; `unit[none]` bleibt unbekannt, der "
              f"OCPP-Vorgabewert wird nicht geraten ({art} {richtung})")
         for art in ("active", "reactive") for richtung in ("export", "import")
-    },
-    **{
-        f"goe.api_v2.{key}": ("einheit_nur_im_text", f"go-e API v2 `{key}`: „measured in Wh“ steht nur im Text")
-        for key in ("eto", "eto_mid", "wh", "wh_mid", "whb", "whg", "who", "whs")
-    },
-    **{
-        f"{familie}.{key}": ("faktor_im_einheitennamen",
-                             f"KACO `{quelle}` in „0,1 kWh“, `scale` 0.1 — dekodiert kWh")
-        for familie in ("kaco_http", "kaco_http_hybrid")
-        for key, quelle in (("energy-today", "etd"), ("energy-total", "eto"))
     },
     **{
         f"wago.pm494.karte[*].{key}": ("faktor_zu_erheben",

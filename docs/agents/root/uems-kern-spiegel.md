@@ -19,6 +19,15 @@ Treffer lassen die Kennzeichnung leer.
 Eigene und zertifizierte Vorlagen können andere Kanäle definieren; für sie wird aus einem
 bekannten Familiennamen allein kein Kernspiegel abgeleitet.
 
+⚠ **Laufzeitstand der Auswahl:** eine Auswahl trägt den Stand, unter dem sie gespeichert wurde, und
+behält ihn nach einer Hebung (`MeasurementSelectionService`). Die Spiegeldatei (Fassung 1.1) nennt
+darum ALLE Laufzeitstände in `runtime_catalog_versions`, deren Box-Sicht jedes Registerpaars gleich
+der heutigen ist (`check_core_mirrors.py` prüft es je dist-Artefakt, der jüngste ist der heutige), und
+der Writer fragt `catalog_version = ANY(…)`. Bis 1.0 stand dort EIN Stand — eine Hebung hätte
+jeder Bestandsauswahl die Kennzeichnung still genommen (gefunden bei 2026.08.26.3 → 2026.09.23.2,
+`KernSpiegelTest#everyListedRuntimeVersionMirrorsAndAnUnlistedOneDoesNot`). Wer `RUNTIME_VERSION`
+hebt, hängt den neuen Stand an, statt den alten zu ersetzen.
+
 `TelemetryV2WriteRepository` annotiert den Kernwert mit `role='spiegel'` und
 `spiegel_point_key`. Beide Schreibaufrufer (v2-Umschlag und v1-`ComposedEntityFanout`) gehen durch
 dasselbe `insertRow`. Der Wert, seine Idempotenz, RLS und die Ausgebaut-/Purge-Sperre bleiben.

@@ -53,6 +53,19 @@ class BestandsschutzTest {
                 .containsExactly("messstelle_formel_term: bestehender Inhalt geändert");
     }
 
+    /** Ein neuer Laufzeitstand hängt seine Katalog-Metadaten an; ein bestehender Stand bleibt gemessen. */
+    @Test
+    void einAngehaengterLaufzeitstandIstKeineAbweichungEinGeaenderterSchon() {
+        Map<String, String> vorher = new LinkedHashMap<>(VORHER);
+        vorher.put("measurement_catalog_point_metadata@2026.08.26.3", "e5");
+        Map<String, String> angehaengt = new LinkedHashMap<>(vorher);
+        angehaengt.put("measurement_catalog_point_metadata@2026.09.23.2", "f6");
+        assertThat(Bestandsschutz.abweichungen(vorher, angehaengt)).isEmpty();
+        angehaengt.put("measurement_catalog_point_metadata@2026.08.26.3", "e9");
+        assertThat(Bestandsschutz.abweichungen(vorher, angehaengt))
+                .containsExactly("measurement_catalog_point_metadata@2026.08.26.3: bestehender Inhalt geändert");
+    }
+
     @Test
     void eineVerschwundeneBestandstabelleIstEine() {
         assertThat(Bestandsschutz.abweichungen(VORHER, nachher("schedule", null)))

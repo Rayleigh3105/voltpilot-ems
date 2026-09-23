@@ -3,6 +3,7 @@
 Angelegt am 14.09.2026, Befund aus PR 726. Die Cloud nennt eine Zählermenge nur in einer Anzeige-Einheit
 des Vertrags [`ergebnis-zustand`](../../contracts/v2/ergebnis-zustand.md) §3. Im Messpunkt-Katalog hatten
 **41** Zähler keine Einheit, **25** VAh, **4** „0,1 kWh“ und **1** Wmin — ihr Zuwachs-Satz stand ohne Zahl.
+Seit Laufzeitstand 2026.09.23.2 sprechen KACO (kWh) und go-e (Wh) ihre Menge (Abschnitt unten).
 
 ## ⚠ `unit` ist ein Box-Laufzeitfeld
 
@@ -41,15 +42,29 @@ des Vertrags [`ergebnis-zustand`](../../contracts/v2/ergebnis-zustand.md) §3. I
   gegen die Entwicklungs-DB (Migrationen + `db/dev`: überall 0) und beweist Vorlage UND konkreten
   Schlüssel. In Benutzung ist nur, was ein Kunde AUSGEWÄHLT hat — es gibt keine automatische Auswahl.
 
+## Laufzeitstand 2026.09.23.2 (mit dem Box-Release vom 23.09.2026)
+
+- **KACO ohne Faktor im Namen** — alle zwölf Punkte mit Register-Einheit nennen die dekodierte:
+  „0,1 kWh“ → kWh (4 Zähler), cHz → Hz, „0,1 °C“ → °C, „0,1 V“/„0,01 V“ → V, „0,1 A“/„0,01 A“ → A.
+  `scale` und `decoded` unverändert (Beleg: `SCALE` in `edge-app/nodered/kaco/kaco-http.js`), also
+  wertgleich. `validate.py` lehnt seither jede Einheit ab, die mit einer Zahl beginnt. Folge der
+  Generator-Regel: Frequenz und Batteriestrom/-spannung bekommen wie jede V/A/Hz-Größe die
+  Langzeit-Kadenz 300 s statt 900 s (die einzige Zeilen-Änderung der Metadaten-Migration).
+- **go-e Wh** — nur die acht Zähler, deren gepinnter Quelltext „in Wh“ wörtlich nennt
+  (`generate.GOE_EINHEIT_IM_TEXT`; fehlt die Wendung, bricht die Erzeugung ab). Größe Wirkenergie aus
+  der Einheit, Richtung keine (`ENERGY_WITHOUT_DIRECTION` — go-e nennt keine). Die übrigen 308 Keys
+  bleiben ohne Einheit.
+- `ZAEHLER_OHNE_ANZEIGE_EINHEIT` hat noch 35 Einträge (29 `keine_energie`, 4 `einheit_im_schluessel`,
+  2 `faktor_zu_erheben`); die Arten `einheit_nur_im_text` und `faktor_im_einheitennamen` sind weg.
+- ⚠ Wirksam erst mit dem Box-Release: Boxen mit älterer Palette lehnen ab dem api-Deploy jede
+  Messwert-Änderung ab (`unsupported_catalog`). Der Writer-Kernspiegel erkennt Bestandsauswahlen
+  weiter an ihrem alten Stand ([Kern-Spiegel](uems-kern-spiegel.md)).
+- Die Beispiele „0,1 kWh“ in `messstelle.md` §11/`messstelle-vectors.json` und den Zustands-Vektoren
+  bleiben: sie sind Eingaben der Regeln (eine Einheit mit Faktor rechnet Regel 7 nicht um), kein
+  Katalogpunkt trägt sie mehr. `MessstelleQuelleApiTest` belegt `einheit` jetzt mit einem Wmin-Zähler.
+
 ## Offen
 
-- **KACO „0,1 kWh“ bleibt ohne Zahl**, bewusst: besser als eine um Faktor 10 falsche. Richtig wird es
-  mit `unit` = „kWh“ in `inverter-runtime.json` (wertgleich: `decoded` ist schon kWh) — erst mit dem
-  Laufzeitstand. Dann ändern sich auch `MessstelleQuelleApiTest` (erwartet `passt_nicht`/`einheit`) und
-  das Beispiel „eine Gesamterzeugung in „0,1 kWh““ in `messstelle.md` §11 und `messstelle-vectors.json`; dieselbe Register-Einheit
-  tragen die KACO-Messwerte cHz, „0,1 °C“, „0,1 V“, „0,01 A“.
-- **go-e** nennt „measured in Wh“ nur im Text; die Katalog-Regel „keine Einheit aus Prosa“ und der
-  Laufzeitstand stehen einem Nachtrag entgegen.
 - **Zuwachs über eine Lücke** gibt es für VAh und Wmin trotz Anzeige-Einheit nicht: `data_gap` trägt
   `zuwachs` nur in `EreignisVokabular.EINHEITEN_ZUWACHS` (aus Regel 7: Wh/kWh/MWh, varh/kvarh, m³).
   Wmin dort aufzunehmen heißt Regel 7 (`KANAL_EINHEITEN`, `JE_KWH` ÷ 60000), DB-Funktion, Writer-Zwilling

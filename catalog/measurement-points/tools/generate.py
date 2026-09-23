@@ -119,6 +119,13 @@ OCPP_16_STANDARD_UNITS = [
 ]
 
 GOE_COUNTER_KEYS = {"eto", "eto_mid", "wh", "wh_mid", "whb", "whg", "who", "whs"}
+# Die acht go-e-Zähler nennen ihre Einheit nur im Beschreibungstext der gepinnten Quelle —
+# wörtlich „measured in Wh“ bzw. „energy … in Wh since car connected“. Übernommen wird sie NUR für
+# diese Keys und NUR, solange genau diese Wendung dort steht (sonst bricht die Erzeugung ab); jeder
+# andere go-e-Key bleibt ohne Einheit (README „Modell“). Der Wert kommt unskaliert, `decoded` ist Wh.
+# ⚠ `unit` ist ein Box-Feld: dieser Nachtrag hob den Laufzeitstand (README „Inhaltsstand und
+# Laufzeitstand“).
+GOE_EINHEIT_IM_TEXT = {key: ("Wh", re.compile(r"\bin Wh\b")) for key in GOE_COUNTER_KEYS}
 
 
 def scale_metadata(item: dict[str, Any]) -> dict[str, Any]:
@@ -539,6 +546,11 @@ def generate_goe(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
             else "gauge"
         )
         default_cadence = None if not readable else (30 if category == "Status" else 3600)
+        unit = None
+        if key in GOE_EINHEIT_IM_TEXT:
+            unit, wendung = GOE_EINHEIT_IM_TEXT[key]
+            if not wendung.search(description):
+                raise SystemExit(f"go-e {key}: the source no longer states its unit ({wendung.pattern!r})")
         yield base_point(
             family=source["family"],
             point_key=f"goe.api_v2.{key.lower()}",
@@ -550,7 +562,7 @@ def generate_goe(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
             signed=signed_from_type(value_type),
             endian=None,
             scale={"kind": "none"},
-            unit=None,
+            unit=unit,
             group=category,
             label_de=german.get(key),
             label_source=description or key,

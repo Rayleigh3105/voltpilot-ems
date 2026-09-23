@@ -28,7 +28,7 @@ class MeasurementBudgetVectorsTest {
     @Test
     void releasedRuntimeCatalogKeepsEveryCloudCostAndVersion() throws Exception {
         var catalog = new ObjectMapper().readTree(Path.of("../../edge-app/nodered/measurements/catalog.json").toFile());
-        assertThat(catalog.required("catalog_version").asText()).isEqualTo("2026.08.26.3");
+        assertThat(catalog.required("catalog_version").asText()).isEqualTo("2026.09.23.2");
         for (var p : catalog.required("points")) {
             String kind = p.required("source_kind").asText();
             int before = "ocpp_sampled_value".equals(kind) ? 1

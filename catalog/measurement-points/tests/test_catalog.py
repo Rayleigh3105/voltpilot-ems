@@ -411,7 +411,13 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(len(points), 316)
         self.assertEqual(len(german_rows), EXPECTED["goe_german_source_rows"])
         self.assertEqual(sum(point["label_de"] is not None for point in points), EXPECTED["goe_keys_with_german_label"])
-        self.assertTrue(all(point["unit"] is None for point in points), "units must not be inferred from prose")
+        # Eine Einheit trägt nur ein Zähler, dessen Quelltext sie wörtlich nennt („in Wh“); der Rest bleibt leer.
+        with_unit = {point["point_key"]: point["unit"] for point in points if point["unit"] is not None}
+        self.assertEqual(with_unit, {f"goe.api_v2.{key}": "Wh" for key in
+                                     ("eto", "eto_mid", "wh", "wh_mid", "whb", "whg", "who", "whs")},
+                         "units must not be inferred from prose")
+        self.assertTrue(all(re.search(r"\bin Wh\b", point["label_source"]) for point in points
+                            if point["point_key"] in with_unit))
         repaired = {point["source_key_raw"]: point["selector"] for point in points if "source_key_raw" in point}
         self.assertEqual(len(repaired), 3)
         self.assertTrue(all("\t" in raw and "\t" not in selector for raw, selector in repaired.items()))
@@ -575,7 +581,8 @@ class CounterRangeTest(unittest.TestCase):
         listed = {row[1] for row in rows}
         self.assertNotIn(self.COUNTER, listed)
         self.assertNotIn(self.OTHER_COUNTER, listed)
-        self.assertIn(["goe.api_v2", "goe.api_v2.eto", "http_api_key", "-"], rows)
+        self.assertIn(["goe.api_v2", "goe.api_v2.eto", "http_api_key", "Wh"], rows)
+        self.assertIn(["hybrid_3p", "deye.hybrid_3p.battery-1.battery-1-cycles", "modbus_holding", "-"], rows)
 
     def test_listing_of_the_committed_catalog_names_every_undeclared_counter(self) -> None:
         result = subprocess.run(
@@ -795,8 +802,8 @@ class WagoQuelleTest(unittest.TestCase):
         families = {f["family"]: f["an_der_box"] for f in self.catalog["families"]}
         self.assertEqual({name: families[name] for name in self.KARTEN}, {"wago.pm494": False, "wago.pm495": False})
         self.assertEqual(sum(families.values()), len(families) - 2)
-        self.assertEqual(self.catalog["runtime_catalog_version"], "2026.08.26.3")
-        self.assertFalse([p for p in runtime_projection(self.catalog, "2026.08.26.3") if p["family"].startswith("wago.")])
+        self.assertEqual(self.catalog["runtime_catalog_version"], "2026.09.23.2")
+        self.assertFalse([p for p in runtime_projection(self.catalog, "2026.09.23.2") if p["family"].startswith("wago.")])
         palette = (REPO / "edge-app" / "nodered" / "measurements" / "catalog.json").read_bytes()
         self.assertNotIn(b"wago", palette)
         self.assertNotIn(b"registerbild", palette)

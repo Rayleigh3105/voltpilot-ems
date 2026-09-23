@@ -94,7 +94,11 @@ class MessstelleQuelleApiTest {
     /** Die Wirkleistung am Zählpunkt: ein Vorzeichen-Wert (Katalog import_export). */
     private static final String LEISTUNG_VORZEICHEN = "sunspec.model_203.w";
     private static final String SPANNUNG = "sunspec.model_203.phv";
-    private static final String ERZEUGUNG_ZEHNTEL = "kaco_http.energy-total";
+    /**
+     * Ein Zählerstand in Wattminuten: Regel 7 rechnet ihn nicht um (bis Laufzeitstand 2026.08.26.3 stand
+     * hier KACO „0,1 kWh“ — seit 2026.09.23.2 nennt der Katalog dort die dekodierte Einheit kWh).
+     */
+    private static final String ENERGIE_WMIN = "shelly.gen1.meter[0].meters[0].total";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -462,9 +466,9 @@ class MessstelleQuelleApiTest {
         Map<String, Object> spannung = binden(w.k("K-5"), SPANNUNG, "fuehrend", null, null);
         spannung.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
         passtNicht(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms06 + "/quellen", w.admin(), spannung), "groesse");
-        // einheit: „0,1 kWh“ ist keine umrechenbare Einheit.
+        // einheit: Wmin rechnet Regel 7 nicht in Wh/kWh/MWh um.
         passtNicht(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms03 + "/quellen", w.admin(),
-                binden(w.k("K-1"), ERZEUGUNG_ZEHNTEL, "fuehrend", null, null)), "einheit");
+                binden(w.k("K-1"), ENERGIE_WMIN, "fuehrend", null, null)), "einheit");
         // richtung: Bezug ist nicht Abgabe (Vektor ms-01-bezug-nie-aus-abgabe).
         passtNicht(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(),
                 binden(w.k("K-3"), ENERGIE_ABGABE, "fuehrend", null, null)), "richtung");
@@ -846,7 +850,7 @@ class MessstelleQuelleApiTest {
         root.update("UPDATE geraet SET einbau_kennzeichen = ?, seriennummer = ? WHERE tenant_id = ? AND kennzeichen = 'GR-4'",
                 z5a.get("kennzeichen").asText(), z5a.get("seriennummer").asText(), t);
         Werk w = new Werk(t, new Anrufer("admin", t), an1, box, komponenten);
-        messkanalAuswahl(w, "K-1", ERZEUGUNG_ZEHNTEL);
+        messkanalAuswahl(w, "K-1", ENERGIE_WMIN);
         messkanalAuswahl(w, "K-3", ENERGIE_BEZUG, ENERGIE_ABGABE, LEISTUNG_VORZEICHEN);
         messkanalAuswahl(w, "K-4", ENERGIE_BEZUG);
         messkanalAuswahl(w, "K-5", ENERGIE_BEZUG, LEISTUNG_VORZEICHEN, SPANNUNG);

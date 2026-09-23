@@ -25,7 +25,12 @@ public class KernSpiegelNachschlag {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate savepoint;
     private final MeterRegistry meters;
-    private final String catalogVersion;
+    /**
+     * Jeder Laufzeitstand, unter dem eine Auswahl gespeichert sein kann und dessen Box-Sicht der
+     * Registerpaare gleich ist ({@code check_core_mirrors.py} prüft es je Katalog-Artefakt): eine
+     * Bestandsauswahl behält nach einer Hebung ihre Kennzeichnung, ohne neu gespeichert zu werden.
+     */
+    private final String catalogVersions;
     private final List<Zuordnung> mappings;
 
     private record Zuordnung(String family, String type, String channel, String point) {}
@@ -39,7 +44,12 @@ public class KernSpiegelNachschlag {
         savepoint.setPropagationBehavior(TransactionDefinition.PROPAGATION_NESTED);
         try (var input = new ClassPathResource("core-channel-mirrors.json").getInputStream()) {
             JsonNode data = json.readTree(input);
-            catalogVersion = data.path("runtime_catalog_version").asText();
+            List<String> versions = new ArrayList<>();
+            data.path("runtime_catalog_versions").forEach(v -> versions.add(v.asText()));
+            if (versions.isEmpty()) {
+                throw new IllegalStateException("core-channel-mirrors.json names no runtime catalog version");
+            }
+            catalogVersions = String.join(",", versions);
             List<Zuordnung> loaded = new ArrayList<>();
             for (JsonNode m : data.path("mappings")) {
                 loaded.add(new Zuordnung(m.path("family").asText(), m.path("entity_type").asText(),
@@ -63,7 +73,7 @@ public class KernSpiegelNachschlag {
                            AND s.tenant_id = p.tenant_id AND s.site_id = p.site_id
                          WHERE p.tenant_id = ? AND p.site_id = ? AND p.id::text = ?
                            AND (p.source_kind IS NULL OR p.source_kind IN ('builtin', 'composed'))
-                           AND s.device_id = ? AND s.catalog_version = ?
+                           AND s.device_id = ? AND s.catalog_version = ANY(string_to_array(?, ','))
                            AND s.custom_definition IS NULL
                            AND s.enabled_at <= ? AND (s.disabled_at IS NULL OR s.disabled_at > ?)
                            AND (s.applied_at <= ? OR EXISTS (
@@ -81,7 +91,7 @@ public class KernSpiegelNachschlag {
                                 WHERE other.device_id = s.device_id AND other.point_key = s.point_key
                                   AND other.entity_id IS DISTINCT FROM s.entity_id)
                         """, (rs, n) -> new Auswahl(rs.getString(1), rs.getString(2), rs.getString(3)),
-                        tenant, site, entity, box, catalogVersion, Timestamp.from(time), Timestamp.from(time),
+                        tenant, site, entity, box, catalogVersions, Timestamp.from(time), Timestamp.from(time),
                         Timestamp.from(time), Timestamp.from(time), Timestamp.from(time), Timestamp.from(time));
                 List<String> matches = selected.stream().filter(s -> mappings.stream().anyMatch(m ->
                         m.channel().equals(channel) && m.family().equals(s.family())

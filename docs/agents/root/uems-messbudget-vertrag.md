@@ -23,7 +23,7 @@ AP-06 IP-10 (Kanäle, Box-Zuordnung, Auswege) bleiben erhalten.
 Keine Änderung an `RUNTIME_VERSION`, Katalog, MQTT-Payloads oder Freigaben. Mischbetrieb:
 `MeasurementContractsTest.publisherPayloadIsTheCommittedValidFixture` hält die Cloud-Ausgabe
 am bestehenden 2.0-Payload; `measurement-budget.test.js` prüft heutige Cloud → neue Box samt
-unverändertem Status. Beide prüfen weiterhin Laufzeitkatalog `2026.08.26.3`.
+unverändertem Status. Beide prüfen den heutigen Laufzeitkatalog (seit 23.09.2026 `2026.09.23.2`).
 
 Pflichtleser: `MeasurementBudgetVectorsTest`, `measurement-budget.test.js` und
 `package_edge_runtime.py --check`. Nachbarn: `MeasurementBudgetTest`, `DatenquelleBudgetTest`,

@@ -17,7 +17,7 @@ Neu am 11.09.2026 (AP-04 IP-9). Zwei Teile, ein Zweck: jeder Messkanal trägt di
 ## ⚠ Die Fallen
 
 - **Zwei Katalog-Stände.** `VERSION` (Inhaltsstand, 2026.09.11.1) ≠ `RUNTIME_VERSION`
-  (Laufzeitstand der Box, 2026.08.26.3). Die Palette lehnt jede Mess-Konfiguration mit fremder
+  (Laufzeitstand der Box, bis 23.09.2026 2026.08.26.3, seither 2026.09.23.2). Die Palette lehnt jede Mess-Konfiguration mit fremder
   `catalog_version` ab (`measurement-planner.js`, `unsupported_catalog`), deshalb liefert
   `MeasurementCatalog.version()` den LAUFZEITSTAND (Konfiguration, Selektion, Historie
   unverändert) und `inhaltsstand()` den Stand des paketierten Artefakts. Die Regel, wann

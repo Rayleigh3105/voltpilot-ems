@@ -100,6 +100,22 @@ class KernSpiegelTest {
                 Long.class, f.entity().toString())).isEqualTo(3L);
     }
 
+    /**
+     * Eine Laufzeithebung (2026.08.26.3 → 2026.09.23.2) lässt Bestandsauswahlen auf ihrem Stand: sie
+     * behalten die Kennzeichnung, neue Auswahlen tragen den neuen Stand — ein nicht genannter Stand
+     * (die Spiegeldatei nennt nur Stände mit gleicher Box-Sicht der Registerpaare) beweist nichts.
+     */
+    @Test
+    void everyListedRuntimeVersionMirrorsAndAnUnlistedOneDoesNot() {
+        for (var fall : java.util.Map.of("2026.08.26.3", "spiegel", "2026.09.23.2", "spiegel",
+                "2026.08.26.2", "").entrySet()) {
+            Fixture f = fixture(fall.getKey());
+            write(f, TIME, "power_kw");
+            assertThat(root.queryForObject("SELECT coalesce(role, '') FROM telemetry_v2 WHERE entity_id=?",
+                    String.class, f.entity().toString())).as(fall.getKey()).isEqualTo(fall.getValue());
+        }
+    }
+
     @Test
     void requestedButUnappliedCatalogPathIsNotAMirror() {
         Fixture f = fixture();
@@ -157,19 +173,28 @@ class KernSpiegelTest {
     }
 
     static Fixture fixture() {
+        return fixture("2026.08.26.3");
+    }
+
+    static Fixture fixture(String catalogVersion) {
         Fixture f = new Fixture(UUID.randomUUID(), UUID.randomUUID());
         root.update("INSERT INTO device(id,tenant_id,site_id) VALUES (?,?,?)", f.box(), TENANT, SITE);
         root.update("INSERT INTO measurement_point(id,tenant_id,site_id,role,device_id,entity_type,family) "
                 + "VALUES (?,?,?,'grid-meter',?,'grid-meter','kostal_plenticore')", f.entity(), TENANT, SITE, f.box());
-        selection(f, POINT);
+        selection(f, POINT, catalogVersion);
         return f;
     }
 
     static void selection(Fixture f, String point) {
+        selection(f, point, "2026.08.26.3");
+    }
+
+    static void selection(Fixture f, String point, String catalogVersion) {
         root.update("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,entity_id,point_key,"
                 + "enabled,cadence_s,desired_revision,enabled_at,catalog_version,changed_by,apply_status,"
                 + "retention_class,raw_retention_days,long_term_strategy,applied_at) "
-                + "VALUES (?,?,?,?,?,true,60,1,?,'2026.08.26.3','test','applied','live_power',90,'fifteen_minute',?)",
-                TENANT, SITE, f.box(), f.entity(), point, java.sql.Timestamp.from(TIME), java.sql.Timestamp.from(TIME));
+                + "VALUES (?,?,?,?,?,true,60,1,?,?,'test','applied','live_power',90,'fifteen_minute',?)",
+                TENANT, SITE, f.box(), f.entity(), point, java.sql.Timestamp.from(TIME), catalogVersion,
+                java.sql.Timestamp.from(TIME));
     }
 }

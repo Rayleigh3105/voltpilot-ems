@@ -30,7 +30,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>eine Tabelle, die erst nachher da ist und Zeilen hat → Abweichung;</li>
  *   <li>eine Tabelle, die erst nachher da ist und leer ist → KEINE Abweichung;</li>
  *   <li>eine Spalte, die erst nachher da ist und in jeder Zeile NULL ist → KEINE Abweichung —
- *       dieselbe Unterscheidung eine Ebene tiefer.</li>
+ *       dieselbe Unterscheidung eine Ebene tiefer;</li>
+ *   <li>die Katalog-Metadaten ({@link #KATALOG_METADATEN}) werden JE Laufzeitstand gemessen: ein
+ *       bestehender Stand muss zeichengleich bleiben, ein angehängter Stand ist KEINE Abweichung.</li>
  * </ul>
  *
  * <p>Darum ist der Wert einer Zeile ihr JSON-Objekt OHNE die Spalten, die SQL-NULL sind
@@ -42,6 +44,15 @@ final class Bestandsschutz {
 
     /** Der Wert einer Tabelle ohne Zeilen — ein md5 besteht nur aus Hex-Ziffern, kann es also nie sein. */
     static final String LEER = "leer";
+
+    /**
+     * Die Metadaten des Messpunkt-Katalogs wachsen mit jedem Laufzeitstand um genau dessen Zeilen — jeder
+     * Stand bringt seine EIGENE Metadaten-Migration mit (Katalog-README „Inhaltsstand und Laufzeitstand“,
+     * {@code package_edge_runtime.py}). Gemessen wird darum je Stand ein Wert unter
+     * {@code measurement_catalog_point_metadata@<stand>}: eine geänderte Zeile eines bestehenden Stands
+     * bleibt eine Abweichung, ein neuer Stand nicht — sonst bräche jede Laufzeithebung jeden Vergleich.
+     */
+    static final String KATALOG_METADATEN = "measurement_catalog_point_metadata";
 
     /**
      * Eine Zeile {@code t} als Text: die Spalten mit Wert als jsonb-Objekt (Schlüssel sortiert,
@@ -69,6 +80,16 @@ final class Bestandsschutz {
         sql.append(" ORDER BY table_name");
         Map<String, String> aus = new LinkedHashMap<>();
         for (String tabelle : db.queryForList(sql.toString(), String.class, ausnahmen.toArray())) {
+            if (KATALOG_METADATEN.equals(tabelle)) {
+                List<String> staende = db.queryForList("SELECT DISTINCT catalog_version FROM " + tabelle
+                        + " ORDER BY 1", String.class);
+                if (staende.isEmpty()) {
+                    aus.put(tabelle, LEER);
+                }
+                staende.forEach(stand -> aus.put(tabelle + "@" + stand,
+                        inhalt(db, tabelle, "t.catalog_version = ?", stand)));
+                continue;
+            }
             aus.put(tabelle, inhalt(db, tabelle, null));
         }
         return aus;
@@ -109,7 +130,8 @@ final class Bestandsschutz {
             }
         });
         nachher.forEach((tabelle, wert) -> {
-            if (!vorher.containsKey(tabelle) && !LEER.equals(wert)) {
+            if (!vorher.containsKey(tabelle) && !LEER.equals(wert)
+                    && !tabelle.startsWith(KATALOG_METADATEN + "@")) {
                 aus.add(tabelle + ": neue Tabelle mit Inhalt");
             }
         });

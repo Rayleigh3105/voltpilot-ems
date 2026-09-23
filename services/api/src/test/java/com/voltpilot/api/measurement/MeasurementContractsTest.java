@@ -41,10 +41,10 @@ class MeasurementContractsTest {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
                 "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
         SelectionPoint point = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
-                7, null, null, "2026.08.26.3", "test", null, null, "pending_edge",
+                7, null, null, "2026.09.23.2", "test", null, null, "pending_edge",
                 null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
                 null, null, null, null);
-        State state = new State(DEVICE, SITE, null, 7, "2026.08.26.3", "pending_edge", null,
+        State state = new State(DEVICE, SITE, null, 7, "2026.09.23.2", "pending_edge", null,
                 null, null, List.of(point), List.of(), null);
         var actual = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
         var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",

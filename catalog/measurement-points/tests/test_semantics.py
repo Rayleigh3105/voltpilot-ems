@@ -96,14 +96,14 @@ class SemanticsTest(unittest.TestCase):
         ohne = sorted(point["point_key"] for point in counters if point.get("unit") not in anzeige)
         self.assertEqual(ohne, sorted(ZAEHLER_OHNE_ANZEIGE_EINHEIT))
         arten = collections.Counter(art for art, _ in ZAEHLER_OHNE_ANZEIGE_EINHEIT.values())
-        self.assertEqual(dict(arten), {"keine_energie": 29, "einheit_im_schluessel": 4,
-                                       "einheit_nur_im_text": 8, "faktor_im_einheitennamen": 4,
-                                       "faktor_zu_erheben": 2})
+        self.assertEqual(dict(arten), {"keine_energie": 29, "einheit_im_schluessel": 4, "faktor_zu_erheben": 2})
         einheiten = collections.Counter(point.get("unit") for point in counters)
         # Befund PR 726: 41 ohne Einheit, 25 in VAh, 4 in „0,1 kWh“, 1 in Wmin — dazu seit UEMS AP-05 IP-4
-        # die zwei Zählerstände der 750-494, deren Faktor zu erheben ist (noch an keiner Box).
-        self.assertEqual((einheiten[None], einheiten["VAh"], einheiten["0,1 kWh"], einheiten["Wmin"]),
-                         (43, 25, 4, 1))
+        # die zwei Zählerstände der 750-494, deren Faktor zu erheben ist (noch an keiner Box). Seit dem
+        # Laufzeitstand 2026.09.23.2 sprechen die 4 KACO-Zähler kWh und die 8 go-e-Zähler Wh.
+        self.assertEqual((einheiten[None], einheiten["VAh"], einheiten["kWh"], einheiten["Wh"], einheiten["Wmin"]),
+                         (35, 25, 60, 55, 1))
+        self.assertFalse([unit for unit in einheiten if unit and unit[0].isdigit()], "a factor belongs to scale")
         # Scheinarbeit ist nie als Wirkarbeit getarnt; Wmin ist Wirkarbeit.
         self.assertEqual(anzeige["VAh"], "kVAh")
         self.assertEqual(anzeige["Wmin"], "kWh")
@@ -117,10 +117,12 @@ class SemanticsTest(unittest.TestCase):
         self.assertIn("sunspec.model_203.totwhimp: counter without unit is not named", self.validation_error(drop))
 
         def wrong(points):
-            points["goe.api_v2.eto"]["unit"] = "Wh"
-            points["goe.api_v2.eto"]["quantity"] = "active_energy"
-            points["goe.api_v2.eto"]["direction"] = "import"
-        self.assertIn("goe.api_v2.eto: named without unit, has one", self.validation_error(wrong))
+            points["shelly.gen2plus.sys.cfg_rev"]["unit"] = "Wh"
+        self.assertIn("shelly.gen2plus.sys.cfg_rev: named without unit, has one", self.validation_error(wrong))
+
+        def factor(points):
+            points["kaco_http.energy-total"]["unit"] = "0,1 kWh"
+        self.assertIn("kaco_http.energy-total: unit carries a factor; put it into scale", self.validation_error(factor))
 
     def test_validator_rejects_an_energy_point_without_direction(self) -> None:
         def drop(points):
@@ -148,8 +150,13 @@ class SemanticsTest(unittest.TestCase):
         self.assertIn("voltage has no flow direction", self.validation_error(directionless))
 
         def orphan(points):
-            points["goe.api_v2.eto"]["direction"] = "import"
-        self.assertIn("goe.api_v2.eto: a direction needs a quantity", self.validation_error(orphan))
+            points["goe.api_v2.amp"]["direction"] = "import"
+        self.assertIn("goe.api_v2.amp: a direction needs a quantity", self.validation_error(orphan))
+
+        def goe_prose(points):
+            points["goe.api_v2.amp"]["unit"] = "A"
+        self.assertIn("goe.api_v2.amp: go-e unit must stay unknown unless the source text states it",
+                      self.validation_error(goe_prose))
 
     def test_vocabulary_is_closed_and_matches_the_schema(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
@@ -184,7 +191,8 @@ class SemanticsTest(unittest.TestCase):
             "deye.hybrid_3p.battery.battery": ("soc", "none"),
             "deye.hybrid_3p.meter.total-battery-charge": ("active_energy", "charge"),
             "deye.hybrid_3p.meter.total-production": ("active_energy", "generation"),
-            "goe.api_v2.eto": (None, None),
+            "goe.api_v2.eto": ("active_energy", None),
+            "goe.api_v2.amp": (None, None),
         }
         for key, (quantity, direction) in expected.items():
             point = self.by_key[key]

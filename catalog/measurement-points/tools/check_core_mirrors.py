@@ -7,6 +7,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from cataloglib import runtime_projection
+
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
 SOURCE = ROOT / "core-channel-mirrors.json"
@@ -22,8 +24,23 @@ def validated() -> dict:
     families = {t["family"] for t in templates["templates"]}
     types = json.loads((REPO / "services/api/src/main/resources/entitytypes/catalog.json").read_text())
     channels = {t["type"]: {c["channel"] for c in t.get("default_measure", [])} for t in types["types"]}
-    assert data["schema_version"] == "1.0"
-    assert data["runtime_catalog_version"] == catalog["runtime_catalog_version"]
+    assert data["schema_version"] == "1.1"
+    # Eine Auswahl trägt den Laufzeitstand, unter dem sie gespeichert wurde; der Writer erkennt den
+    # Spiegel an JEDEM hier genannten Stand. Genannt wird nur, wessen Box-Sicht aller Registerpaare
+    # gleich der heutigen ist — sonst verlöre eine Bestandsauswahl nach einer Hebung still `spiegel`.
+    versions = data["runtime_catalog_versions"]
+    runtime = catalog["runtime_catalog_version"]
+    assert versions == sorted(set(versions), key=lambda v: tuple(int(x) for x in v.split("."))), versions
+    assert versions[-1] == runtime, f"newest mirror version {versions[-1]} is not the runtime {runtime}"
+    mapped = {m["point_key"] for m in data["mappings"]}
+    heute = {p["point_key"]: p for p in runtime_projection(catalog, runtime) if p["point_key"] in mapped}
+    for version in versions:
+        frueher = json.loads((ROOT / "dist" / f"measurement-point-catalog-{version}.json").read_text())
+        damals = {p["point_key"]: p for p in runtime_projection(frueher, version) if p["point_key"] in mapped}
+        for key in sorted(mapped):
+            ohne_stand = lambda p: {k: v for k, v in p.items() if k != "catalog_version"}  # noqa: E731
+            assert key in damals and ohne_stand(damals[key]) == ohne_stand(heute[key]), (
+                f"box view of {key} differs in runtime {version}; it cannot mirror there")
     seen = set()
     for m in data["mappings"]:
         identity = (m["family"], m["entity_type"], m["channel"], m["point_key"])

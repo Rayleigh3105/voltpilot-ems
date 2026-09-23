@@ -33,6 +33,7 @@ MIGRATIONS = REPO / "services" / "api" / "src" / "main" / "resources" / "db" / "
 # Datei ein — nie die alte umschreiben.
 SQL_BY_RUNTIME_VERSION = {
     "2026.08.26.3": "V20260853010000__measurement_catalog_metadata_slice9_r2.sql",
+    "2026.09.23.2": "V20260924021500__measurement_catalog_metadata_runtime_2026_09_23_2.sql",
 }
 
 

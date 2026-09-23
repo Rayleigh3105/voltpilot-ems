@@ -236,7 +236,12 @@ def validate_point(errors: ValidationErrors, point: Any, index: int) -> None:
     if point.get("semantic_status") == "unknown":
         errors.check(point.get("label_de") is None, f"{prefix}: unknown semantic may not invent a German label")
     if point.get("source_kind") == "http_api_key":
-        errors.check(point.get("unit") is None, f"{prefix}: go-e unit must stay unknown instead of inferred")
+        # Nur ein go-e-Zähler, dessen Quelltext die Einheit wörtlich nennt („in Wh“,
+        # generate.GOE_EINHEIT_IM_TEXT), trägt eine; jeder andere Key bleibt ohne.
+        belegt = (point.get("aggregation_kind") == "counter" and point.get("unit") == "Wh"
+                  and re.search(r"\bin Wh\b", point.get("label_source") or "") is not None)
+        errors.check(point.get("unit") is None or belegt,
+                     f"{prefix}: go-e unit must stay unknown unless the source text states it")
     validate_address(errors, point, prefix)
     validate_semantics(errors, point, prefix)
     validate_counter_range(errors, point, prefix)
@@ -389,6 +394,9 @@ def validate_semantics(errors: ValidationErrors, point: dict[str, Any], prefix: 
             errors.check(direction is not None, f"{prefix}: energy point without direction")
     if point.get("unit") in ENERGY_UNITS:
         errors.check(quantity in ENERGY_QUANTITIES, f"{prefix}: energy unit without energy quantity")
+    # `unit` ist die Einheit des DEKODIERTEN Werts; ein Faktor („0,1 kWh“) gehört an `scale`.
+    errors.check(not re.match(r"[0-9]", str(point.get("unit") or "")),
+                 f"{prefix}: unit carries a factor; put it into scale")
     # Ein Zähler ohne Einheit ist BENANNT, nie still (semantics.ZAEHLER_OHNE_ANZEIGE_EINHEIT).
     named = ZAEHLER_OHNE_ANZEIGE_EINHEIT.get(point.get("point_key"))
     if point.get("aggregation_kind") == "counter" and point.get("unit") is None:
@@ -398,11 +406,7 @@ def validate_semantics(errors: ValidationErrors, point: dict[str, Any], prefix: 
         errors.check(point.get("aggregation_kind") == "counter", f"{prefix}: named as counter, is none")
         errors.check(art in ZAEHLER_OHNE_ANZEIGE_EINHEIT_ARTEN and bool(grund.strip()),
                      f"{prefix}: counter without display unit needs a kind and a reason")
-        if art == "faktor_im_einheitennamen":
-            errors.check(point.get("unit") is not None and (point.get("scale") or {}).get("kind") == "factor",
-                         f"{prefix}: a unit with a baked-in factor needs the factor at scale")
-        else:
-            errors.check(point.get("unit") is None, f"{prefix}: named without unit, has one")
+        errors.check(point.get("unit") is None, f"{prefix}: named without unit, has one")
         if art == "einheit_im_schluessel":
             errors.check((point.get("scale") or {}).get("kind") == "protocol_value",
                          f"{prefix}: a unit from the key needs scale protocol_value")
@@ -428,7 +432,12 @@ def validate_runtime_version(errors: ValidationErrors, document: dict[str, Any])
     )
     # Die Liste hält eine NEUE Familie von der Box fern — nie eine, die dort schon ist: sonst verschwänden
     # ihre Punkte still aus Palette und Metadaten, und beide Seiten der Gleichung oben mit ihnen.
-    ausgeliefert = {point.get("family") for point in read_json(shipped).get("points", [])}
+    # Ausgeliefert ist, was das Artefakt selbst an die Box gab: ist der Laufzeitstand zugleich ein
+    # Inhaltsstand, führt es zurückgehaltene Familien mit `an_der_box: false` — die waren nie dort.
+    shipped_document = read_json(shipped)
+    nie_dort = {family.get("family") for family in shipped_document.get("families", [])
+                if isinstance(family, dict) and family.get("an_der_box") is False}
+    ausgeliefert = {point.get("family") for point in shipped_document.get("points", [])} - nie_dort
     zurueckgehalten = sorted(ausgeliefert & set(NOCH_NICHT_AN_DER_BOX))
     errors.check(not zurueckgehalten, f"families already at the box cannot be withheld from it: {zurueckgehalten}")
 

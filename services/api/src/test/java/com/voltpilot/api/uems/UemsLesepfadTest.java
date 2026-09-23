@@ -94,7 +94,7 @@ class UemsLesepfadTest {
     /**
      * Die je Wert GESPEICHERTE Katalogfassung — bewusst eine ALTE, nie die heutige. Sie muss
      * sich vom Laufzeitstand des Katalogs unterscheiden, sonst bewiese der Export-Test nichts
-     * (der Laufzeitstand ist heute {@code 2026.08.26.3}, siehe
+     * (der Laufzeitstand ist heute {@code 2026.09.23.2}, siehe
      * {@code catalog/measurement-points/RUNTIME_VERSION}).
      */
     private static final String KATALOG_DAMALS = "2026.06.02.1";
@@ -416,7 +416,10 @@ class UemsLesepfadTest {
         assertThat(h.data().get(0).sampleCount()).isEqualTo(5);
         assertThat(h.data().get(1).time()).isEqualTo(Instant.parse("2027-01-18T00:05:00Z"));
         assertThat(h.data().get(1).value()).isEqualByComparingTo("1.0");
-        assertThat(fingerabdruck(h)).isEqualTo(FINGERABDRUCK_INNERHALB);
+        // Der Fingerabdruck stammt vom Laufzeitstand 2026.08.26.3; `meta.catalogVersion` nennt den
+        // HEUTIGEN Stand — mit dem damaligen eingesetzt ist die Fläche Zeichen für Zeichen die von vorher.
+        assertThat(h.meta().catalogVersion()).isEqualTo("2026.09.23.2");
+        assertThat(fingerabdruck(h, "2026.08.26.3")).isEqualTo(FINGERABDRUCK_INNERHALB);
     }
 
     /**
@@ -542,11 +545,11 @@ class UemsLesepfadTest {
      * Die Projektion der BESTEHENDEN Felder — die neuen Felder sind bewusst NICHT darin, sonst
      * bewiese der Fingerabdruck nichts über den Bestand.
      */
-    private static String fingerabdruck(History h) {
+    private static String fingerabdruck(History h, String laufzeitstandDesPins) {
         StringBuilder s = new StringBuilder();
         s.append(h.meta().pointKey()).append('|').append(h.meta().label()).append('|')
                 .append(h.meta().unit()).append('|').append(h.meta().aggregationKind()).append('|')
-                .append(h.meta().semanticStatus()).append('|').append(h.meta().catalogVersion())
+                .append(h.meta().semanticStatus()).append('|').append(laufzeitstandDesPins)
                 .append('|').append(h.meta().representation()).append('|')
                 .append(h.meta().rawAvailable()).append('|').append(h.meta().from()).append('|')
                 .append(h.meta().to()).append('|').append(h.meta().bucketSeconds()).append('|')
