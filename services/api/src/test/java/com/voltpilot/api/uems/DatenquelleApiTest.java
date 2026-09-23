@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeResult.OpResult;
@@ -755,6 +756,189 @@ class DatenquelleApiTest {
                 Map.of("device_id", e2neu, "unit_id", 1, "register", 0));
         assertThat(ocpp.status()).isEqualTo(422);
         assertThat(ocpp.body().get("code").asText()).isEqualTo("pruefung_nicht_moeglich");
+    }
+
+    /**
+     * Befund aus PR 1140 (Rot-Beweis): eine Lese-Prüfung mit der Katalog-Schreibweise
+     * {@code uint16} — so schickte sie der WAGO-Assistent — war eine 400. Jetzt geht sie als
+     * gewöhnlicher {@code read} mit dem Vertragswort {@code u16} zur Box, und eine Prüfung mit dem
+     * Vertragswort bleibt Byte für Byte, was sie war: derselbe Schritt, dieselben Felder der Antwort,
+     * kein {@code wago}-Block, nie ein Kopf-Schritt.
+     */
+    @Test
+    void eineLesePruefungSendetDasVertragswortUndBleibtByteGleich() throws Exception {
+        Welt w = new Welt("Ahrenberg Vertragswort");
+        UUID dq3 = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID halle1 = w.anlage("AN-1");
+        UUID e2neu = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(halle1) + "/" + dq3 + "/reachability-check";
+        UHR.stelle("2027-04-09T09:00:00+02:00");
+        OpResult zeile = new OpResult("erreichbarkeit", true, 1.0, List.of(1), 1.0, null, null);
+        when(probes.probeBox(eq(e2neu), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("a1b2c3d4e5f60718", null, null, List.of(zeile))));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProbeRequest.Op>> schritte = ArgumentCaptor.forClass(List.class);
+
+        Antwort katalog = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "uint16"));
+        assertThat(katalog.status()).isEqualTo(200);
+        assertThat(katalog.body().get("ergebnis").asText()).isEqualTo("ok");
+        Antwort vertrag = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "u16"));
+        assertThat(vertrag.status()).isEqualTo(200);
+        Antwort vorgabe = ruf(jonas, HttpMethod.POST, pfad, Map.of("device_id", e2neu, "unit_id", 3, "register", 30775));
+        Antwort int32 = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "int32"));
+        verify(probes, org.mockito.Mockito.times(4)).probeBox(eq(e2neu), schritte.capture(), eq("sub-jonas-wendlinger"));
+        ProbeRequest.Op u16 = new ProbeRequest.Op("erreichbarkeit", "192.168.10.31", 502, 3, "holding", 30775, "u16",
+                null, null, null);
+        assertThat(schritte.getAllValues()).containsExactly(List.of(u16), List.of(u16), List.of(u16),
+                List.of(new ProbeRequest.Op("erreichbarkeit", "192.168.10.31", 502, 3, "holding", 30775, "s32",
+                        null, null, null)));
+        verify(probes, never()).probeBox(any(), any(ProbePublisher.WagoKopfOp.class), anyList(), any());
+        for (Antwort a : List.of(katalog, vertrag, vorgabe, int32)) {
+            List<String> felder = new ArrayList<>();
+            a.body().fieldNames().forEachRemaining(felder::add);
+            assertThat(felder).containsExactly("box", "adresse", "ergebnis", "gewertet", "text", "zeitpunkt",
+                    "dauer_ms", "antwort");
+        }
+        assertThat(vertrag.body().get("text").asText()).isEqualTo(katalog.body().get("text").asText());
+        JsonNode eintrag = ruf(jonas, HttpMethod.GET, basis(halle1) + "/" + dq3 + "/history", null).body()
+                .get("eintraege").get(0);
+        List<String> neu = new ArrayList<>();
+        eintrag.get("neu").fieldNames().forEachRemaining(neu::add);
+        assertThat(neu).containsExactlyInAnyOrder("protokoll", "adresse", "dauer_ms"); // jsonb ordnet selbst
+
+        clearInvocations(probes);
+        Antwort fremd = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "float64"));
+        assertThat(fremd.status()).isEqualTo(400);
+        assertThat(fremd.body().get("feld").asText()).isEqualTo("data_type");
+        verify(probes, never()).probeBox(any(), anyList(), any());
+    }
+
+    /**
+     * AP-05, Befund aus PR 1140: die Datenquellen-Prüfung einer WAGO-Steuerung ({@code op: wago_kopf})
+     * schickt den Kopf über den Probe-Weg der Soll-Lesung und liest NUR hinter einem erkannten
+     * v1-Kopf je Karte Steckplatz, Kartentyp und Variante — die Antwort sagt es in Kundensprache.
+     * Kein v1-Kopf und eine stumme Box sind ehrliche Ausgänge ohne eine einzige Karte.
+     */
+    @Test
+    void dieWagoPruefungLiestDenKopfUndJeKarteDieKennwoerter() throws Exception {
+        Welt w = new Welt("Ahrenberg WAGO-Prüfung");
+        UUID dq4 = w.quelleAusReferenz("DQ-4", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID halle2 = w.anlage("AN-2");
+        UUID e2neu = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(halle2) + "/" + dq4;
+        UHR.stelle("2027-04-09T09:00:00+02:00");
+        Map<String, Object> wago = Map.of("device_id", e2neu, "op", "wago_kopf", "unit_id", 1, "register", 4096,
+                "register_kind", "input", "word_order", "little");
+
+        // 1. Kopf erkannt: zwei Karten, ihre Kennwörter in EINER Probe (zwei Karten je Anfrage).
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.WagoKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("c41f0a9b3e77d215", null, null, List.of(OpResult.ausKopf(
+                        "erreichbarkeit", true, null, null, new ProbeResult.WagoKopf(true, true, null, 1, 0, 12, 42, 2,
+                                1731, 8212L, null))))));
+        List<OpResult> woerter = new ArrayList<>();
+        int[][] gelesen = {{1, 494, 0}, {2, 495, 25_001}};
+        for (int n = 0; n < 2; n++) {
+            for (int o = 0; o < 3; o++) {
+                woerter.add(new OpResult("k" + (n + 1) + "-" + o, true, (double) gelesen[n][o], List.of(gelesen[n][o]),
+                        (double) gelesen[n][o], null, null));
+            }
+        }
+        when(probes.probeBox(eq(e2neu), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("d52a1b0c4f88e326", null, null, woerter)));
+        Antwort erkannt = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", wago);
+        assertThat(erkannt.status()).isEqualTo(200);
+        assertThat(erkannt.body().get("ergebnis").asText()).isEqualTo("ok");
+        assertThat(erkannt.body().get("gewertet").asBoolean()).isTrue();
+        JsonNode block = erkannt.body().get("wago");
+        assertThat(block.get("erkannt").asBoolean()).isTrue();
+        assertThat(block.get("satz").asText())
+                .isEqualTo("Registerbild v1 erkannt — Controller-Kennung 8212, 2 Energiekarten.");
+        assertThat(block.get("controller_kennung").asLong()).isEqualTo(8212L);
+        assertThat(block.get("kartenzahl").asInt()).isEqualTo(2);
+        assertThat(MAPPER.writeValueAsString(block.get("karten"))).isEqualTo(
+                "[{\"karte\":1,\"steckplatz\":1,\"kartentyp\":494,\"variante\":0},"
+                        + "{\"karte\":2,\"steckplatz\":2,\"kartentyp\":495,\"variante\":25001}]");
+        // Der rohe Kopf reist mit, unter dem Vertragsnamen, den der Assistent liest.
+        assertThat(erkannt.body().get("antwort").get("results").get(0).get("wago_kopf").get("controller_kennung")
+                .asLong()).isEqualTo(8212L);
+
+        ArgumentCaptor<ProbePublisher.WagoKopfOp> kopf = ArgumentCaptor.forClass(ProbePublisher.WagoKopfOp.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProbeRequest.Op>> nebenbei = ArgumentCaptor.forClass(List.class);
+        verify(probes).probeBox(eq(e2neu), kopf.capture(), nebenbei.capture(), eq("sub-jonas-wendlinger"));
+        assertThat(kopf.getValue()).isEqualTo(new ProbePublisher.WagoKopfOp("erreichbarkeit", "192.168.20.10", 502, 1,
+                "input", 4096, "little"));
+        assertThat(nebenbei.getValue()).isEmpty();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProbeRequest.Op>> karten = ArgumentCaptor.forClass(List.class);
+        verify(probes).probeBox(eq(e2neu), karten.capture(), eq("sub-jonas-wendlinger"));
+        assertThat(karten.getValue()).extracting(ProbeRequest.Op::address)
+                .containsExactly(4108, 4109, 4110, 4150, 4151, 4152);
+        assertThat(karten.getValue()).allSatisfy(op -> {
+            assertThat(op.dataType()).isEqualTo("u16");
+            assertThat(op.registerKind()).isEqualTo("input");
+            assertThat(op.wordOrder()).isEqualTo("little");
+        });
+        JsonNode eintrag = ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").get(0);
+        assertThat(eintrag.get("art").asText()).isEqualTo("erreichbarkeit_geprueft");
+        assertThat(eintrag.get("ergebnis").asText()).isEqualTo("ok");
+        assertThat(eintrag.get("neu").get("op").asText()).isEqualTo("wago_kopf");
+
+        // 2. Kein v1-Kopf: ehrlicher Ausgang, keine einzige Karte gelesen.
+        reset(probes);
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.WagoKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("c41f0a9b3e77d216", null, null, List.of(OpResult.ausKopf(
+                        "erreichbarkeit", false, "invalid_response", "Unter dieser Adresse steht nicht das "
+                                + "VoltPilot-Registerbild v1", new ProbeResult.WagoKopf(true, false,
+                                        "hauptversion_fremd", 2, null, null, null, null, null, null, null))))));
+        Antwort fremd = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", wago);
+        assertThat(fremd.status()).isEqualTo(200);
+        assertThat(fremd.body().get("ergebnis").asText()).isEqualTo("invalid_response");
+        assertThat(fremd.body().get("wago").get("erkannt").asBoolean()).isFalse();
+        assertThat(fremd.body().get("wago").get("satz").asText()).isEqualTo(
+                "Unter der Basisadresse steht kein VoltPilot-Registerbild v1 — es wurde keine Karte gelesen.");
+        assertThat(fremd.body().get("wago").has("karten")).isFalse();
+        assertThat(fremd.body().get("wago").has("controller_kennung")).isFalse();
+        verify(probes, never()).probeBox(any(), anyList(), any());
+
+        // 3. Box stumm: nichts zählt, nichts steht im Protokoll, keine Karte.
+        reset(probes);
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.WagoKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.empty());
+        int vorher = ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").size();
+        Antwort still = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", wago);
+        assertThat(still.status()).isEqualTo(200);
+        assertThat(still.body().get("ergebnis").asText()).isEqualTo("box_meldet_sich_nicht");
+        assertThat(still.body().get("gewertet").asBoolean()).isFalse();
+        assertThat(still.body().get("antwort").isNull()).isTrue();
+        assertThat(still.body().get("wago").get("erkannt").asBoolean()).isFalse();
+        assertThat(still.body().get("wago").get("satz").asText())
+                .isEqualTo("Die Box hat nicht geantwortet — der Kopf des Registerbilds wurde nicht gelesen.");
+        assertThat(ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").size()).isEqualTo(vorher);
+        verify(probes, never()).probeBox(any(), anyList(), any());
+
+        // 4. Benannt statt geraten: kein Datentyp am Kopf, kein fremder Schritt, keine OCPP-Station.
+        reset(probes);
+        Map<String, Object> mitTyp = new LinkedHashMap<>(wago);
+        mitTyp.put("data_type", "u16");
+        Antwort typ = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", mitTyp);
+        assertThat(typ.status()).isEqualTo(400);
+        assertThat(typ.body().get("feld").asText()).isEqualTo("data_type");
+        Map<String, Object> fremderSchritt = new LinkedHashMap<>(wago);
+        fremderSchritt.put("op", "test_connection");
+        assertThat(ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", fremderSchritt).body().get("feld").asText())
+                .isEqualTo("op");
+        UUID dq5 = w.quelleAusReferenz("DQ-5", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        Antwort ocpp = ruf(jonas, HttpMethod.POST, basis(halle2) + "/" + dq5 + "/reachability-check", wago);
+        assertThat(ocpp.status()).isEqualTo(422);
+        assertThat(ocpp.body().get("code").asText()).isEqualTo("pruefung_nicht_moeglich");
+        verify(probes, never()).probeBox(any(), any(ProbePublisher.WagoKopfOp.class), anyList(), any());
     }
 
     // ============================================================ Bearbeiten · Urheber

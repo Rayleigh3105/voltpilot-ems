@@ -9596,6 +9596,12 @@ paths:
         Protokoll und zählt für eine Zuständigkeit. Schweigt die Box
         (`box_meldet_sich_nicht`) oder lehnt ihr Prüf-Kanal ab (`rate_limited`,
         `not_supported`, `invalid_request`), zählt nichts.
+        `op: wago_kopf` (AP-05, nur Modbus TCP): statt `read` liest die Box den Kopf
+        eines VoltPilot-Registerbilds WAGO v1 an der Basisadresse `register` (op
+        `wago_kopf`, ohne `data_type`); nur hinter einem erkannten v1-Kopf danach je
+        gemeldeter Karte Steckplatz, Kartentyp und Variante (u16-Lesungen, zwei Karten
+        je Probe, höchstens 32 Karten). Gewertet wird allein der Kopf; die Antwort trägt
+        dann zusätzlich `wago`. Eine Lese-Prüfung antwortet unverändert.
       requestBody:
         required: true
         content:
@@ -27195,8 +27201,16 @@ components:
         unit_id: { type: integer, minimum: 0, maximum: 255 }
         register: { type: integer, minimum: 0, maximum: 65535, description: "Bei Modbus TCP Pflicht, bei SunSpec-Modbus 40000." }
         register_kind: { type: string, enum: [holding, input], default: holding }
-        data_type: { type: string, enum: [u16, s16, u32, s32, float32] }
-        word_order: { type: string, enum: [big, little] }
+        data_type:
+          type: string
+          enum: [u16, s16, u32, s32, float32, uint16, int16, uint32, int32]
+          description: "Das Wort des Probe-Vertrags oder die Katalog-Schreibweise (uint16 → u16, int16 → s16, uint32 → u32, int32 → s32); zur Box geht immer das Vertragswort. Bei op wago_kopf nicht erlaubt (400)."
+        word_order: { type: string, enum: [big, little], description: "Bei op wago_kopf mit Vorgabe big." }
+        op:
+          type: string
+          enum: [read, wago_kopf]
+          default: read
+          description: "read = EIN Lese-Schritt; wago_kopf = der Kopf eines VoltPilot-Registerbilds WAGO v1 an der Basisadresse register (AP-05)."
     DatenquellePruefergebnis:
       type: object
       required: [box, adresse, ergebnis, gewertet, text, zeitpunkt, dauer_ms, antwort]
@@ -27215,6 +27229,30 @@ components:
           allOf: [{ $ref: "#/components/schemas/ProbeResult" }]
           nullable: true
           description: Die rohe Antwort der Box; null, wenn sie nicht geantwortet hat.
+        wago: { $ref: "#/components/schemas/DatenquelleWagoPruefung" }
+    DatenquelleWagoPruefung:
+      type: object
+      description: >
+        Nur bei op wago_kopf (fehlt sonst): was die Steuerung über ihr Registerbild gemeldet
+        hat — nur Gelesenes, Lücke statt Null. Kennung, Kartenzahl und Karten stehen nur bei
+        einem erkannten v1-Kopf da; kein v1-Kopf und eine stumme Box sind ehrliche Ausgänge
+        (erkannt false, ohne Karte).
+      required: [erkannt, satz]
+      properties:
+        erkannt: { type: boolean }
+        satz: { type: string, example: "Registerbild v1 erkannt — Controller-Kennung 8212, 4 Energiekarten." }
+        controller_kennung: { type: integer, format: int64, minimum: 0, maximum: 4294967295 }
+        kartenzahl: { type: integer, minimum: 0, maximum: 65535, description: "Wie viele Karten der Kopf meldet." }
+        karten:
+          type: array
+          items:
+            type: object
+            required: [karte, steckplatz, kartentyp, variante]
+            properties:
+              karte: { type: integer, minimum: 1, description: "n = der n-te Kartenblock." }
+              steckplatz: { type: integer, nullable: true, minimum: 0, maximum: 65535 }
+              kartentyp: { type: integer, nullable: true, minimum: 0, maximum: 65535, description: "Artikelnummer ohne „750-“." }
+              variante: { type: integer, nullable: true, minimum: 0, maximum: 65535 }
     DatenquelleProtokollEintrag:
       type: object
       required: [id, art, box, ergebnis, alt, neu, gilt_ab, urheber, zeitpunkt]

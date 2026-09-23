@@ -61,10 +61,11 @@ public class WagoSollLesung {
     public record Ergebnis(String ergebnis, String satz, Soll soll, List<Abweichung> abweichungen) {}
 
     record Teil(UUID id, Integer steckplatz, String typ, Integer variante) {}
-    record Verbindung(String host, int port, int unit, int basis, String registerart, String wortfolge) {}
+    /** Die gemeinsame Verbindung des Registerbilds (Vertrag §2: Parameter je Anlage). */
+    public record Verbindung(String host, int port, int unit, int basis, String registerart, String wortfolge) {}
     /** Die drei Kennwörter von Karte n — {@code null}, wo die Box nicht geantwortet hat. */
-    record Kennung(Integer steckplatz, Integer kartentyp, Integer variante) {
-        boolean vollstaendig() {
+    public record Kennung(Integer steckplatz, Integer kartentyp, Integer variante) {
+        public boolean vollstaendig() {
             return steckplatz != null && kartentyp != null && variante != null;
         }
     }
@@ -131,20 +132,32 @@ public class WagoSollLesung {
         }
 
         // 2. Je Karte die drei Kennwörter — nur, wenn die Kartenzahl zum Bestand passt.
-        List<Kennung> gelesen = new ArrayList<>();
-        if (kopf.kartenzahl() != null && kopf.kartenzahl() == teile.size()) {
-            int kopflaenge = kopf.kopflaenge() == null ? KOPF : kopf.kopflaenge();
-            int block = kopf.kartenblocklaenge() == null ? BLOCK : kopf.kartenblocklaenge();
-            for (int von = 0; von < teile.size(); von += KARTEN_JE_ANFRAGE) {
-                gelesen.addAll(karten(in.deviceId(), v, kopflaenge, block, von,
-                        Math.min(teile.size(), von + KARTEN_JE_ANFRAGE), akteur.sub()));
-            }
-        }
+        List<Kennung> gelesen = kopf.kartenzahl() != null && kopf.kartenzahl() == teile.size()
+                ? kennwoerter(probes, in.deviceId(), v, kopf, teile.size(), akteur.sub())
+                : new ArrayList<>();
         return tx.execute(s -> speichern(geraetId, einbau, kopf, teile, gelesen, akteur));
     }
 
-    private List<Kennung> karten(UUID box, Verbindung v, int kopflaenge, int block, int von, int bis,
-            String wer) {
+    /**
+     * Die drei Kennwörter (Steckplatz, Kartentyp, Variante — Vertrag §4 Offset 0–2) der Karten
+     * 1…{@code anzahl} hinter einem erkannten Kopf, höchstens zwei Karten je Probe. Nur Gelesenes:
+     * wo die Box nicht geantwortet hat, steht {@code null}. Geteilt mit der Datenquellen-Prüfung
+     * des Assistenten ({@code DatenquelleService.pruefen}, {@code op: wago_kopf}).
+     */
+    public static List<Kennung> kennwoerter(ProbeService probes, UUID box, Verbindung v,
+            ProbeResult.WagoKopf kopf, int anzahl, String wer) {
+        int kopflaenge = kopf.kopflaenge() == null ? KOPF : kopf.kopflaenge();
+        int block = kopf.kartenblocklaenge() == null ? BLOCK : kopf.kartenblocklaenge();
+        List<Kennung> gelesen = new ArrayList<>();
+        for (int von = 0; von < anzahl; von += KARTEN_JE_ANFRAGE) {
+            gelesen.addAll(karten(probes, box, v, kopflaenge, block, von,
+                    Math.min(anzahl, von + KARTEN_JE_ANFRAGE), wer));
+        }
+        return gelesen;
+    }
+
+    private static List<Kennung> karten(ProbeService probes, UUID box, Verbindung v, int kopflaenge, int block,
+            int von, int bis, String wer) {
         List<ProbeRequest.Op> ops = new ArrayList<>();
         for (int n = von; n < bis; n++) {
             long start = (long) v.basis() + kopflaenge + (long) n * block;

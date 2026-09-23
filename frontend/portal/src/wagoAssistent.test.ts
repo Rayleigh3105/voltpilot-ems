@@ -89,6 +89,33 @@ describe('WAGO-Kopf-Anzeige', () => {
     const anzeige = wagoKopfAnzeige(pruefung({ signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 4, herzschlag: 1731 }), 1731);
     expect(anzeige?.details).toContain('Herzschlag steht bei 1.731');
   });
+
+  it('nennt die Controller-Kennung und je gelesener Karte Steckplatz, Typ und Variante aus der Prüfung', () => {
+    const anzeige = wagoKopfAnzeige({
+      ...pruefung({ signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 2, controller_kennung: 8212 }),
+      wago: {
+        erkannt: true, satz: 'Registerbild v1 erkannt — Controller-Kennung 8212, 2 Energiekarten.', controller_kennung: 8212, kartenzahl: 2,
+        karten: [
+          { karte: 1, steckplatz: 1, kartentyp: 494, variante: 0 },
+          { karte: 2, steckplatz: null, kartentyp: null, variante: null },
+        ],
+      },
+    });
+    expect(anzeige?.details).toContain('Controller-Kennung 8212');
+    expect(anzeige?.karten).toEqual([
+      'Karte 1: Steckplatz 1 · 750-494 · Variante 0',
+      'Karte 2: Steckplatz nicht gelesen · Kartentyp nicht gelesen · Variante nicht gelesen',
+    ]);
+  });
+
+  it('erfindet ohne erkannten Kopf keine Karte, auch wenn die Antwort Karten nennt', () => {
+    const fremd = wagoKopfAnzeige({
+      ...pruefung({ signatur_ok: true, erkannt: false, grund: 'hauptversion_fremd', hauptversion: 2 }),
+      wago: { erkannt: false, satz: 'Unter der Basisadresse steht kein VoltPilot-Registerbild v1 — es wurde keine Karte gelesen.' },
+    });
+    expect(fremd?.karten).toEqual([]);
+    expect(wagoKopfAnzeige(pruefung({ signatur_ok: true, erkannt: true, hauptversion: 1, kartenzahl: 4 }))?.karten).toEqual([]);
+  });
 });
 
 describe('gelesenes Soll im Assistenten — nur Anzeige', () => {

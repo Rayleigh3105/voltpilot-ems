@@ -238,11 +238,38 @@ fehlend = nicht geprüft). Die Cloud kennt das Soll jetzt, sobald die Steuerung 
 
 ### Fallen
 
-- ⚠ **Die Datenquellen-Prüfung des Assistenten ist KEIN `wago_kopf`.** `DatenquelleService.pruefen` schickt
-  einen gewöhnlichen `read`; der Assistent sendet dazu `data_type: 'uint16'`, das die api mit 400 ablehnt
-  (`u16`). Der Kopf im Schritt 1 ist darum heute nur auf der E2E-Bühne sichtbar; die Soll-Lesung am Gerät
-  ist der erste echte `wago_kopf`-Weg der Cloud.
+- Die Datenquellen-Prüfung des Assistenten liest den Kopf seit dem Folgepaket selbst — siehe
+  „Datenquellen-Prüfung über `wago_kopf`“ unten.
 - ⚠ **Ohne `geraet_teil`-Zeilen gibt es kein Soll.** Die Anlege-Trigger legen je Komponente ein Gerät,
   aber keine Energiekarte an — Lesung und Publisher brauchen die Karte mit Steckplatz am Controller.
 - ⚠ **Ein Kartenwechsel beginnt ohne Variante** (`karteWechseln` nennt seine Spalten) — die neue Karte ist
   eine andere Karte; erst die nächste Lesung füllt ihr Soll.
+
+## Datenquellen-Prüfung über `wago_kopf` (23.09.2026)
+
+Befund aus der Soll-Lesung: Schritt 1 des Assistenten schickte einen gewöhnlichen `read` mit
+`data_type: 'uint16'` — die api antwortete 400, der Kopf war nur auf der E2E-Bühne zu sehen.
+
+- `POST …/data-sources/{id}/reachability-check` mit `op: wago_kopf` (nur Modbus TCP, ohne `data_type`,
+  `word_order` Vorgabe `big`): `DatenquelleService.pruefen` schickt `ProbePublisher.WagoKopfOp` mit der
+  Schritt-Kennung `erreichbarkeit` an die Basisadresse `register` — `bewerte` und das Protokoll gelten
+  unverändert, gewertet wird allein der Kopf (Protokoll-`neu` trägt `op: wago_kopf`).
+- Nur hinter einem erkannten v1-Kopf liest die Box danach je Karte die drei Kennwörter über
+  `WagoSollLesung.kennwoerter` (derselbe Weg wie die Soll-Lesung, zwei Karten je Probe, höchstens 32).
+  Die Antwort trägt dann `wago` (`erkannt`, `satz`, `controller_kennung`, `kartenzahl`,
+  `karten[karte, steckplatz, kartentyp, variante]`, `null` = nicht gelesen); kein v1-Kopf und eine stumme
+  Box sind ehrliche Ausgänge mit `erkannt: false` und ohne Karte.
+- Eine Lese-Prüfung bleibt Byte für Byte, was sie war (kein `wago`-Feld, derselbe Schritt); neu ist nur,
+  dass die Katalog-Schreibweise (`uint16`/`int16`/`uint32`/`int32`) als Vertragswort (`u16` …) zur Box geht.
+- Portal: `wagoKopfAnzeige` nennt die Controller-Kennung und je gelesener Karte eine Zeile
+  („Gelesene Energiekarten“); `e2e/messen-assistent.spec.ts` antwortet wie die api (ohne `op: wago_kopf`
+  oder mit Datentyp → 400) und prüft den Körper der Anfrage.
+- Nachweis: `DatenquelleApiTest#dieWagoPruefungLiestDenKopfUndJeKarteDieKennwoerter`,
+  `#eineLesePruefungSendetDasVertragswortUndBleibtByteGleich`, `wagoAssistent.test.ts`.
+
+### Fallen
+
+- ⚠ **Schritt 2 liest die Karten noch einmal** (`component-test` je Steckplatz mit der zertifizierten
+  Vorlage) — die Kennwörter aus Schritt 1 ersetzen diese Lesung nicht; beide kommen aus der Steuerung.
+- ⚠ **`WagoSollLesung.Kennung`/`Verbindung` sind jetzt öffentlich**, weil die Prüfung im Paket `uems`
+  sie teilt — eine Signaturänderung trifft beide Wege (`GeraetApiTest` und `DatenquelleApiTest` fahren).

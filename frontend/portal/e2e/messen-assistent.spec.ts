@@ -66,6 +66,8 @@ interface Cloud {
   /** Nur die Bühne darf den künftigen Edge-Release vorwegnehmen. */
   wagoFaehig?: boolean;
   wagoProbeCount?: number;
+  /** Was der Assistent an die Datenquellen-Prüfung geschickt hat (AP-05: `op: wago_kopf`, kein Datentyp). */
+  wagoPruefAnfragen?: unknown[];
   wagoKomponenten?: Array<{ id: string; definitionVersion: number; label: string }>;
   /** AP-05 „WAGO-Soll speichern“: was der Assistent an die Soll-Lesung geschickt hat. */
   wagoSollLesungen?: Array<{ geraet: string; body: unknown }>;
@@ -292,13 +294,25 @@ async function verdrahte(page: Page, cloud: Cloud) {
       if (!quelle[2] && methode === 'POST') return json(datenquelle, 201);
       if (quelle[2] && !quelle[3] && methode === 'PUT') return json(datenquelle);
       if (quelle[3] === 'reachability-check' && cloud.wagoFaehig) {
+        // Die Bühne antwortet wie die api (DatenquelleService.pruefen): nur `op: wago_kopf` liest den
+        // Kopf; ein Datentyp daneben ist eine 400, und ohne `op` wäre es ein gewöhnlicher read.
+        (cloud.wagoPruefAnfragen ??= []).push(body);
+        if (body.op !== 'wago_kopf' || body.data_type != null) {
+          return json({ code: 'anfrage_ungueltig', feld: body.op !== 'wago_kopf' ? 'op' : 'data_type',
+            message: 'Den Kopf liest die Box ohne Datentyp — sein Aufbau ist fest.' }, 400);
+        }
         cloud.wagoProbeCount = (cloud.wagoProbeCount ?? 0) + 1;
         return json({
           box: { id: boxId, name: boxName, heimat_anlage: FIXTURE_IDS.an2 },
           adresse: datenquelle.adresse, ergebnis: 'ok', gewertet: true,
           text: `${boxName} erreicht ${datenquelle.adresse}.`, zeitpunkt: new Date().toISOString(), dauer_ms: 184,
-          antwort: { requestId: `wago-kopf-${cloud.wagoProbeCount}`, errorCode: null, results: [{ id: 'wago-kopf', ok: true,
-            wago_kopf: { signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kartenzahl: 4, herzschlag: 1731, controller_kennung: 8212 } }] },
+          antwort: { requestId: `wago-kopf-${cloud.wagoProbeCount}`, results: [{ id: 'erreichbarkeit', ok: true,
+            wago_kopf: { signatur_ok: true, erkannt: true, hauptversion: 1, nebenversion: 0, kopflaenge: 12, kartenblocklaenge: 42, kartenzahl: 4, herzschlag: 1731, controller_kennung: 8212 } }] },
+          wago: {
+            erkannt: true, satz: 'Registerbild v1 erkannt — Controller-Kennung 8212, 4 Energiekarten.',
+            controller_kennung: 8212, kartenzahl: 4,
+            karten: [1, 2, 3, 4].map((karte) => ({ karte, steckplatz: karte, kartentyp: 494, variante: 0 })),
+          },
         });
       }
       if (quelle[3] === 'reachability-check') return json({
@@ -572,6 +586,13 @@ for (const breite of BREITEN) {
       await expect(page.getByText('Registerbild v1.0')).toBeVisible();
       await expect(page.getByText('4 Energiekarten')).toBeVisible();
       await expect(page.getByText(/Herzschlag 1\.731/)).toBeVisible();
+      // Die echte Kopf-Antwort: Kennung und je Karte Steckplatz/Typ/Variante — gelesen, nicht angenommen.
+      await expect(page.getByText('Controller-Kennung 8212', { exact: true })).toBeVisible();
+      const gelesen = page.getByRole('list', { name: 'Gelesene Energiekarten' });
+      await expect(gelesen.getByRole('listitem')).toHaveCount(4);
+      await expect(gelesen.getByText('Karte 1: Steckplatz 1 · 750-494 · Variante 0', { exact: true })).toBeVisible();
+      expect(cloud.wagoPruefAnfragen).toEqual([{ device_id: expect.any(String), op: 'wago_kopf', unit_id: 1,
+        register: expect.any(Number), register_kind: expect.stringMatching(/^(holding|input)$/), word_order: expect.stringMatching(/^(big|little)$/) }]);
       await page.getByRole('button', { name: 'Kopf erneut prüfen', exact: true }).click();
       await expect(page.getByText('Herzschlag steht bei 1.731')).toBeVisible();
       await messeUndFotografiere(page, breite, 'wago-kopf');

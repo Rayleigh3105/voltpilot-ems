@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -128,7 +129,13 @@ public final class DatenquelleDto {
      * {@code POST …/{id}/reachability-check}: EIN Lese-Schritt von GENAU {@code device_id} an die
      * Adresse der Quelle (Host und Port kommen von der Quelle, nie aus der Anfrage).
      * {@code unit_id} ist die Modbus-Geräte-ID; {@code register} ist bei SunSpec-Modbus mit
-     * 40000 (Kennung „SunS“) vorbelegt und bei Modbus TCP Pflicht.
+     * 40000 (Kennung „SunS“) vorbelegt und bei Modbus TCP Pflicht. {@code data_type} nimmt das
+     * Wort des Probe-Vertrags ({@code u16} …) oder die Katalog-Schreibweise ({@code uint16} …) —
+     * zur Box geht immer das Vertragswort.
+     *
+     * <p>{@code op} (AP-05): {@code read} (Vorgabe, EIN Lese-Schritt) oder {@code wago_kopf} — der
+     * Kopf eines VoltPilot-Registerbilds WAGO v1 an der Basisadresse {@code register} (nur Modbus
+     * TCP, ohne {@code data_type}), danach je gemeldeter Karte Steckplatz, Kartentyp und Variante.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Pruefen(
@@ -137,7 +144,8 @@ public final class DatenquelleDto {
             Integer register,
             String registerKind,
             String dataType,
-            String wordOrder) {}
+            String wordOrder,
+            String op) {}
 
     /**
      * Das Ergebnis einer Prüfung. {@code ergebnis} ist „ok“, eine Fehlerklasse des Vertrags
@@ -145,6 +153,8 @@ public final class DatenquelleDto {
      * {@code not_supported}, {@code invalid_request}) bzw. {@code box_meldet_sich_nicht}.
      * {@code gewertet}: zählt sie für eine Zuständigkeit (und steht sie im Protokoll)?
      * {@code antwort} ist die rohe Antwort der Box, fehlt, wenn sie nicht geantwortet hat.
+     * {@code wago} steht NUR bei {@code op: wago_kopf} — eine Lese-Prüfung antwortet Byte für Byte
+     * wie zuvor.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Pruefergebnis(
@@ -155,7 +165,34 @@ public final class DatenquelleDto {
             String text,
             Instant zeitpunkt,
             long dauerMs,
-            ProbeResult antwort) {}
+            ProbeResult antwort,
+            @JsonInclude(JsonInclude.Include.NON_NULL) WagoPruefung wago) {}
+
+    /**
+     * Was die Steuerung bei {@code op: wago_kopf} über ihr Registerbild gemeldet hat — nur Gelesenes,
+     * Lücke statt Null. {@code erkannt}: an der Basisadresse steht ein VoltPilot-Registerbild WAGO v1;
+     * nur dann stehen Kennung, Kartenzahl und Karten da. {@code satz} ist der Satz für den Kunden.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record WagoPruefung(
+            boolean erkannt,
+            String satz,
+            Long controllerKennung,
+            Integer kartenzahl,
+            List<WagoKarteGelesen> karten) {}
+
+    /**
+     * Die drei Kennwörter von Karte {@code karte} (1 = erster Kartenblock, Vertrag §4 Offset 0–2),
+     * so wie die Steuerung sie meldet; {@code null} = nicht gelesen. {@code kartentyp} ist die
+     * Artikelnummer ohne „750-“.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record WagoKarteGelesen(
+            int karte,
+            Integer steckplatz,
+            Integer kartentyp,
+            Integer variante) {}
 
     /** Wer einen Eintrag geschrieben hat — im Akteur-Vokabular von AP-03. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

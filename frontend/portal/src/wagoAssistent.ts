@@ -1,4 +1,6 @@
-import type { Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis, WagoSollLesung } from './api';
+import type {
+  Device, EdgeVersion, ProbeAntwort, UemsDatenquellePruefergebnis, UemsWagoKarteGelesen, WagoSollLesung,
+} from './api';
 
 /**
  * AP-05 IP-10: reine Regeln des Assistenten „WAGO-Steuerung anbinden“.
@@ -53,7 +55,18 @@ export interface WagoKopfAnzeige {
   art: 'ok' | 'fehler' | 'offen';
   titel: string;
   details: string[];
+  /** Je gelesener Karte eine Zeile — nur hinter einem erkannten Kopf, nur aus der Lesung. */
+  karten: string[];
   kopf: WagoKopf | null;
+}
+
+const NICHT_GELESEN = 'nicht gelesen';
+
+/** Eine Karte, wie die Datenquellen-Prüfung sie gelesen hat (`wago.karten`); fehlend bleibt „nicht gelesen“. */
+function kartenZeile(k: UemsWagoKarteGelesen): string {
+  return `Karte ${k.karte}: Steckplatz ${k.steckplatz ?? NICHT_GELESEN} · `
+    + `${k.kartentyp == null ? `Kartentyp ${NICHT_GELESEN}` : `750-${k.kartentyp}`} · `
+    + `Variante ${k.variante ?? NICHT_GELESEN}`;
 }
 
 export function wagoKopfAnzeige(
@@ -69,7 +82,7 @@ export function wagoKopfAnzeige(
       not_supported: 'Diese Box kann den WAGO-Kopf noch nicht prüfen',
       box_meldet_sich_nicht: 'Die VoltPilot-Box meldet sich nicht',
     };
-    return { art: 'fehler', titel: texte[pruefung.ergebnis] ?? pruefung.text, details: [], kopf: null };
+    return { art: 'fehler', titel: texte[pruefung.ergebnis] ?? pruefung.text, details: [], karten: [], kopf: null };
   }
   if (!kopf.erkannt) {
     const grund: Record<WagoKopfGrund, string> = {
@@ -82,12 +95,14 @@ export function wagoKopfAnzeige(
       art: 'fehler',
       titel: 'Registerbild unbekannt',
       details: [kopf.grund ? grund[kopf.grund] : 'Der Kopf konnte nicht erkannt werden.'],
+      karten: [],
       kopf,
     };
   }
   const details: string[] = [];
   if (kopf.hauptversion != null) details.push(`Registerbild v${kopf.hauptversion}.${kopf.nebenversion ?? 0}`);
   if (kopf.kartenzahl != null) details.push(`${kopf.kartenzahl.toLocaleString('de-DE')} ${kopf.kartenzahl === 1 ? 'Energiekarte' : 'Energiekarten'}`);
+  if (kopf.controller_kennung != null) details.push(`Controller-Kennung ${kopf.controller_kennung}`);
   if (kopf.herzschlag != null) {
     details.push(vorherigerHerzschlag == null
       ? `Herzschlag ${kopf.herzschlag.toLocaleString('de-DE')} — für den Vergleich erneut prüfen`
@@ -95,7 +110,7 @@ export function wagoKopfAnzeige(
         ? `Herzschlag steht bei ${kopf.herzschlag.toLocaleString('de-DE')}`
         : `Herzschlag läuft: ${vorherigerHerzschlag.toLocaleString('de-DE')} → ${kopf.herzschlag.toLocaleString('de-DE')}`);
   }
-  return { art: 'ok', titel: 'Kopf erkannt', details, kopf };
+  return { art: 'ok', titel: 'Kopf erkannt', details, karten: (pruefung.wago?.karten ?? []).map(kartenZeile), kopf };
 }
 
 export interface WagoKarteEntwurf {

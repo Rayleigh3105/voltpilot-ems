@@ -3,6 +3,8 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.WagoSollLesung;
+import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
@@ -90,6 +92,22 @@ public class DatenquelleService {
 
     /** Die Kennung des einen Lese-Schritts der Prüfung (Muster {@code op.id} des Probe-Vertrags). */
     static final String PRUEF_SCHRITT = "erreichbarkeit";
+
+    /** Der Prüf-Schritt einer WAGO-Steuerung ({@code op: wago_kopf} des Probe-Vertrags, AP-05 IP-7). */
+    static final String WAGO_KOPF = "wago_kopf";
+
+    /**
+     * Höchstens so viele Karten liest die WAGO-Prüfung nach dem Kopf (zwei je Probe) — eine
+     * Steuerung, die eine unsinnige Kartenzahl meldet, hält den Assistenten nicht minutenlang auf.
+     */
+    static final int WAGO_KARTEN_HOECHSTENS = 32;
+
+    /**
+     * Die Katalog-Schreibweise eines Datentyps (Portal, Messpunkt-Katalog) → das Wort des
+     * Probe-Vertrags. Zur Box geht nur das Vertragswort.
+     */
+    private static final Map<String, String> VERTRAGSWORT = Map.of(
+            "uint16", "u16", "int16", "s16", "uint32", "u32", "int32", "s32");
 
     /** SunSpec: Register 40000 trägt die Kennung „SunS“ — der Einstieg jeder SunSpec-Karte. */
     static final int SUNSPEC_KENNUNG = 40000;
@@ -271,6 +289,10 @@ public class DatenquelleService {
      * („ok“ oder eine Fehlerklasse der Box, §7), steht danach im Protokoll und zählt für eine
      * Zuständigkeit; schweigt die Box oder lehnt ihr Prüf-Kanal ab, zählt nichts und nichts wird
      * geschrieben. Die Antwort ist ein ehrlicher AUSGANG (200), auch wenn die Prüfung scheitert.
+     *
+     * <p>Bei {@code op: wago_kopf} (AP-05) ist der Schritt der Kopf des WAGO-Registerbilds — über
+     * denselben Probe-Weg wie die Soll-Lesung ({@link WagoSollLesung}); nur hinter einem erkannten
+     * v1-Kopf liest die Box danach je Karte die drei Kennwörter. Gewertet wird allein der Kopf.
      */
     public DatenquelleDto.Pruefergebnis pruefen(UUID siteId, UUID id, DatenquelleDto.Pruefen p,
             ProtokollAkteur wer) {
@@ -279,11 +301,18 @@ public class DatenquelleService {
         if (p.deviceId() == null) {
             throw DatenquelleAbgelehnt.anfrage("device_id", "Welche Box soll die Quelle prüfen?");
         }
+        if (p.op() != null && !p.op().equals("read") && !p.op().equals(WAGO_KOPF)) {
+            throw DatenquelleAbgelehnt.anfrage("op", "Der Prüf-Schritt ist „read“ oder „wago_kopf“.");
+        }
+        boolean wago = WAGO_KOPF.equals(p.op());
         UUID mandant = mandant();
         Box box = boxImZaun(p.deviceId(), boxen());
-        ProbeRequest.Op schritt = leseSchritt(q, p);
+        ProbeRequest.Op schritt = wago ? null : leseSchritt(q, p);
+        ProbePublisher.WagoKopfOp kopf = wago ? kopfSchritt(q, p) : null;
         long start = System.nanoTime();
-        Optional<ProbeResult> antwort = probes.probeBox(box.id(), List.of(schritt), wer.sub());
+        Optional<ProbeResult> antwort = wago
+                ? probes.probeBox(box.id(), kopf, List.of(), wer.sub())
+                : probes.probeBox(box.id(), List.of(schritt), wer.sub());
         long dauerMs = (System.nanoTime() - start) / 1_000_000;
         Instant jetzt = uhr.instant();
         Bewertung b = bewerte(antwort, anzeigename(box), q.adresse());
@@ -292,11 +321,60 @@ public class DatenquelleService {
             neu.put("protokoll", q.protokoll());
             neu.put("adresse", q.adresse());
             neu.put("dauer_ms", dauerMs);
+            if (wago) {
+                neu.put("op", WAGO_KOPF);
+            }
             eintragen(mandant, q.id(), "erreichbarkeit_geprueft", box.id(), b.ergebnis(), null, neu,
                     minute(jetzt), wer);
         }
+        DatenquelleDto.WagoPruefung wagoErgebnis = wago ? wagoKopfUndKarten(box.id(), kopf, antwort, wer) : null;
         return new DatenquelleDto.Pruefergebnis(dto(box.id(), Map.of(box.id(), box)), q.adresse(),
-                b.ergebnis(), b.gewertet(), b.text(), jetzt, dauerMs, antwort.orElse(null));
+                b.ergebnis(), b.gewertet(), b.text(), jetzt, dauerMs, antwort.orElse(null), wagoErgebnis);
+    }
+
+    /**
+     * Was die WAGO-Prüfung dem Kunden sagt — nur aus dem Gelesenen. Ein erkannter v1-Kopf nennt
+     * Controller-Kennung und Kartenzahl, danach liest die Box je Karte Steckplatz, Kartentyp und
+     * Variante; alles andere ist ein ehrlicher Ausgang ohne eine einzige Karte.
+     */
+    private DatenquelleDto.WagoPruefung wagoKopfUndKarten(UUID box, ProbePublisher.WagoKopfOp schritt,
+            Optional<ProbeResult> antwort, ProtokollAkteur wer) {
+        if (antwort.isEmpty()) {
+            return new DatenquelleDto.WagoPruefung(false,
+                    "Die Box hat nicht geantwortet — der Kopf des Registerbilds wurde nicht gelesen.", null, null, null);
+        }
+        ProbeResult.WagoKopf kopf = antwort.flatMap(r -> Optional.ofNullable(r.results()))
+                .flatMap(l -> l.stream().filter(z -> PRUEF_SCHRITT.equals(z.id())).findFirst())
+                .map(ProbeResult.OpResult::wagoKopf).orElse(null);
+        if (kopf == null) {
+            return new DatenquelleDto.WagoPruefung(false,
+                    "Der Kopf des Registerbilds wurde nicht gelesen — es wurde keine Karte gelesen.", null, null, null);
+        }
+        if (!Boolean.TRUE.equals(kopf.erkannt())) {
+            return new DatenquelleDto.WagoPruefung(false,
+                    "Unter der Basisadresse steht kein VoltPilot-Registerbild v1 — es wurde keine Karte gelesen.",
+                    null, null, null);
+        }
+        int gemeldet = kopf.kartenzahl() == null ? 0 : kopf.kartenzahl();
+        int anzahl = Math.min(gemeldet, WAGO_KARTEN_HOECHSTENS);
+        WagoSollLesung.Verbindung v = new WagoSollLesung.Verbindung(schritt.host(), schritt.port(), schritt.unitId(),
+                schritt.address(), schritt.registerKind(), schritt.wordOrder());
+        List<WagoSollLesung.Kennung> woerter = anzahl == 0 ? List.of()
+                : WagoSollLesung.kennwoerter(probes, box, v, kopf, anzahl, wer.sub());
+        List<DatenquelleDto.WagoKarteGelesen> karten = new ArrayList<>();
+        for (int n = 0; n < woerter.size(); n++) {
+            WagoSollLesung.Kennung k = woerter.get(n);
+            karten.add(new DatenquelleDto.WagoKarteGelesen(n + 1, k.steckplatz(), k.kartentyp(), k.variante()));
+        }
+        String kennung = kopf.controllerKennung() == null ? "Controller-Kennung nicht gelesen"
+                : "Controller-Kennung " + kopf.controllerKennung();
+        String zahl = gemeldet == 1 ? "1 Energiekarte" : gemeldet + " Energiekarten";
+        String satz = "Registerbild v1 erkannt — " + kennung + ", " + zahl
+                + (gemeldet > anzahl ? "; gelesen sind die ersten " + anzahl + "." : ".");
+        if (woerter.stream().anyMatch(k -> !k.vollstaendig())) {
+            satz += " Nicht jede Karte hat geantwortet — Fehlendes bleibt „nicht gelesen“.";
+        }
+        return new DatenquelleDto.WagoPruefung(true, satz, kopf.controllerKennung(), gemeldet, karten);
     }
 
     /** Wie eine Antwort der Box zählt — rein, damit die Regel ohne Box prüfbar ist. */
@@ -701,7 +779,8 @@ public class DatenquelleService {
         if (!art.equals("holding") && !art.equals("input")) {
             throw DatenquelleAbgelehnt.anfrage("register_kind", "Die Registerart ist „holding“ oder „input“.");
         }
-        String typ = p.dataType() != null ? p.dataType() : p.register() == null ? "u32" : "u16";
+        String typ = p.dataType() != null ? VERTRAGSWORT.getOrDefault(p.dataType(), p.dataType())
+                : p.register() == null ? "u32" : "u16";
         if (!Set.of("u16", "s16", "u32", "s32", "float32").contains(typ)) {
             throw DatenquelleAbgelehnt.anfrage("data_type", "Der Datentyp ist u16, s16, u32, s32 oder float32.");
         }
@@ -711,6 +790,42 @@ public class DatenquelleService {
         DatenquelleAdresse.HostPort hp = DatenquelleAdresse.hostPort(q.adresse());
         return new ProbeRequest.Op(PRUEF_SCHRITT, hp.host(), hp.port(), p.unitId(), art, register, typ,
                 p.wordOrder(), null, null);
+    }
+
+    /**
+     * Der Kopf-Schritt der WAGO-Prüfung ({@code op: wago_kopf}): Host und Port von der Quelle,
+     * Basisadresse ({@code register}), Registerart und Wortfolge sind Parameter je Anlage
+     * (Registerbild-Vertrag §2). Das Registerbild ist ein Modbus-TCP-Wortbereich mit festem
+     * Aufbau — darum weder SunSpec noch ein Datentyp.
+     */
+    private static ProbePublisher.WagoKopfOp kopfSchritt(Datenquelle q, DatenquelleDto.Pruefen p) {
+        Protokoll proto = Protokoll.vonCode(q.protokoll()).orElseThrow();
+        if (proto == Protokoll.SUNSPEC_MODBUS) {
+            throw DatenquelleAbgelehnt.anfrage("op", "Den Kopf eines WAGO-Registerbilds liest die Box nur über Modbus TCP.");
+        }
+        if (proto != Protokoll.MODBUS_TCP) {
+            leseSchritt(q, p); // derselbe benannte Ausgang (422) wie bei jeder Quelle ohne Prüf-Schritt
+        }
+        if (p.unitId() == null || p.unitId() < 0 || p.unitId() > 255) {
+            throw DatenquelleAbgelehnt.anfrage("unit_id", "Welche Geräte-ID (0 bis 255) soll die Box lesen?");
+        }
+        if (p.register() == null || p.register() < 0 || p.register() > 65_535) {
+            throw DatenquelleAbgelehnt.anfrage("register", "Unter welcher Basisadresse (0 bis 65535) beginnt das Registerbild?");
+        }
+        String art = p.registerKind() == null ? "holding" : p.registerKind();
+        if (!art.equals("holding") && !art.equals("input")) {
+            throw DatenquelleAbgelehnt.anfrage("register_kind", "Die Registerart ist „holding“ oder „input“.");
+        }
+        if (p.dataType() != null) {
+            throw DatenquelleAbgelehnt.anfrage("data_type", "Den Kopf liest die Box ohne Datentyp — sein Aufbau ist fest.");
+        }
+        String wortfolge = p.wordOrder() == null ? "big" : p.wordOrder();
+        if (!wortfolge.equals("big") && !wortfolge.equals("little")) {
+            throw DatenquelleAbgelehnt.anfrage("word_order", "Die Wortfolge ist „big“ oder „little“.");
+        }
+        DatenquelleAdresse.HostPort hp = DatenquelleAdresse.hostPort(q.adresse());
+        return new ProbePublisher.WagoKopfOp(PRUEF_SCHRITT, hp.host(), hp.port(), p.unitId(), art, p.register(),
+                wortfolge);
     }
 
     // ------------------------------------------------------------------ Gerüst

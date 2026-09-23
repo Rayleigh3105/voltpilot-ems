@@ -141,12 +141,14 @@ export function WagoAssistent({
       });
       setQuelle(q);
       const alt = kopfHerzschlag(pruefung);
+      // Der Kopf des Registerbilds (op wago_kopf) — ein Datentyp gehört nicht dazu, sein Aufbau ist fest.
       const neu = await api.datenquellePruefen(site.id, q.id, {
         device_id: boxId,
+        op: 'wago_kopf',
         unit_id: Number(verbindung.unitId),
         register: Number(verbindung.basisadresse),
         register_kind: verbindung.funktionscode === '4' ? 'input' : 'holding',
-        data_type: 'uint16', word_order: verbindung.wortfolge,
+        word_order: verbindung.wortfolge,
       });
       setVorherigerHerzschlag(alt);
       setPruefung(neu);
@@ -258,7 +260,7 @@ export function WagoAssistent({
   if (schritt === 1) {
     rumpf = <section className="vp-wago-schritt" data-schritt="datenquelle">
       <h3>Verbindung zur WAGO-Steuerung prüfen</h3>
-      <p className="vp-wago-hinweis">Der Test liest nur den Kopf des Registerbilds, keine Energiekarte und keinen Messwert.</p>
+      <p className="vp-wago-hinweis">Der Test liest den Kopf des Registerbilds und je Energiekarte Steckplatz, Kartentyp und Variante — keinen Messwert.</p>
       <div className="vp-wago-felder">
         <Input label="Name" value={verbindung.name} onChange={(e) => setVerbindung((v) => ({ ...v, name: e.target.value }))} />
         <Input label="Adresse" value={verbindung.host} placeholder="192.168.20.10" onChange={(e) => setVerbindung((v) => ({ ...v, host: e.target.value }))} />
@@ -277,6 +279,8 @@ export function WagoAssistent({
       {quelle && <p className="vp-wago-zwischenstand">{`${quelle.kennzeichen} ist als Entwurf angelegt.`}</p>}
       {kopf && <div className={`vp-wago-kopf ist-${kopf.art}`} role="status"><strong>{kopf.titel}</strong>
         {kopf.details.length > 0 && <ul>{kopf.details.map((d) => <li key={d}>{d}</li>)}</ul>}
+        {kopf.karten.length > 0 && <ul className="vp-wago-kopf-karten" aria-label="Gelesene Energiekarten">
+          {kopf.karten.map((z) => <li key={z}>{z}</li>)}</ul>}
       </div>}
     </section>;
   } else if (schritt === 2) {

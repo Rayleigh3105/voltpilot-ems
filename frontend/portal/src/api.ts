@@ -7398,6 +7398,26 @@ export interface UemsDatenquellePruefergebnis {
   zeitpunkt: string;
   dauer_ms: number;
   antwort: unknown | null;
+  /** Nur bei `op: 'wago_kopf'`: was die Steuerung über ihr Registerbild gemeldet hat. */
+  wago?: UemsWagoPruefung;
+}
+
+/** Eine Karte hinter einem erkannten WAGO-Kopf, so wie gelesen; `null` = nicht gelesen. */
+export interface UemsWagoKarteGelesen {
+  karte: number;
+  steckplatz: number | null;
+  /** Artikelnummer ohne „750-“. */
+  kartentyp: number | null;
+  variante: number | null;
+}
+
+/** Die WAGO-Prüfung in Kundensprache — nur Gelesenes, Kennung und Karten nur bei erkanntem v1-Kopf. */
+export interface UemsWagoPruefung {
+  erkannt: boolean;
+  satz: string;
+  controller_kennung?: number;
+  kartenzahl?: number;
+  karten?: UemsWagoKarteGelesen[];
 }
 
 /** Dokumentierte WAGO-Kartenangaben; fehlend bleibt fehlend und wird nie zu einem Faktor. */
@@ -8853,6 +8873,8 @@ export const api = {
   datenquellePruefen: (siteId: string, id: string, body: {
     device_id: string; unit_id: number; register: number;
     register_kind?: string; data_type?: string; word_order?: string;
+    /** `wago_kopf`: der Kopf eines WAGO-Registerbilds an der Basisadresse `register` (ohne `data_type`). */
+    op?: 'read' | 'wago_kopf';
   }) => request<UemsDatenquellePruefergebnis>(
     `/api/v1/sites/${siteId}/data-sources/${id}/reachability-check`,
     { method: 'POST', body: JSON.stringify(body) },
