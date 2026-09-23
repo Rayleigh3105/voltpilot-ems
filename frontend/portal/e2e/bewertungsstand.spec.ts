@@ -58,7 +58,14 @@ async function ablegen(page: Page, name: string, ziel: 'stand' | 'dialog' | 'kop
   const pfad = join(BILDER, `${name}.png`);
   if (ziel === 'dialog') await page.locator('.vp-modal').first().screenshot({ path: pfad });
   else if (ziel === 'kopf') await page.locator('.vp-bw-kopf').screenshot({ path: pfad });
-  else await page.getByTestId('bewertung-stand').screenshot({ path: pfad });
+  else {
+    // Die Karte direkt unter die klebende Kopfleiste rollen und den Bildschirm aufnehmen — so verdeckt der Kopf nichts.
+    await page.getByTestId('bewertung-stand').evaluate((e) => {
+      const kopf = document.querySelector('.vp-topbar')?.getBoundingClientRect().bottom ?? 0;
+      window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - kopf - 8);
+    });
+    await page.screenshot({ path: pfad });
+  }
 }
 
 for (const breite of [375, 1440]) {
