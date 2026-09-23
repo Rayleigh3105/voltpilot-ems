@@ -2,7 +2,8 @@
 
 Neu am 23.09.2026: Routen `POST /api/v1/kennzahlen/{id}/bezugsbasen`, `GET …/{bid}`, `POST …/{bid}/fassungen`,
 `GET …/{bid}/fassungen/{n}`. Vertrag: `docs/contracts/v2/bezugsbasis.md` §13. Freigabe/Ablehnung/Beenden folgen mit IP-8,
-Modelle mit IP-10, Faktoren mit IP-16, die Fläche mit IP-9.
+Faktoren mit IP-16, die Fläche mit IP-9. Modelle (IP-10) bildet dieselbe Route: `regression_eine_variable`,
+`regression_zwei_variablen`, `gradtage` — gerechnet nur in `BezugsbasisRegeln.modell`.
 
 | Stelle | Was |
 |---|---|
@@ -15,4 +16,7 @@ Modelle mit IP-10, Faktoren mit IP-16, die Fläche mit IP-9.
 liest Zahlen mit `USE_BIG_DECIMAL_FOR_FLOATS`, sonst verliert der ungerundete Kennzahl-Wert Stellen.
 ⚠ **`freigabe_status` des Entwurfs ist `entwurf`** (Tabelle IP-6); `beantragt` gibt es nur bei Vier-Augen mit Freigabe-Person (IP-8).
 ⚠ **Uhr:** die Tests stellen `KennzahlService.uhrStellen` — derselbe Takt gilt für „laufender Monat“ der Referenzperiode.
+⚠ **Modell-Monat mit Nenner 0** (`nenner_null`, null Gradtage) hat keine Kennzahl-Version, zählt fürs Modell aber als Paar;
+G4 ist beim Bilden **keine 422** — die zweite Variable fällt weg, `variable_abgelehnt` ins Protokoll (Vertrag §3, Vektor R9/G4).
+⚠ **NW-1:** `BezugsbasisQuelltextTest` verbietet `.divide(`/Mittel in Dienst, Grundlage, Route und Mittel außer über `xs`/`ys` in den Zwillingen.
 Nachweis: `BezugsbasisApiTest` (Docker), `BezugsbasisGrundlageTest` (Referenzdatei-Prüfsummen, OpenAPI).

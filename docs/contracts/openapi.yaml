@@ -11618,10 +11618,14 @@ paths:
       - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
     post:
       tags: [kennzahlen]
-      summary: Bildet eine Fassung als Entwurf mit Vorschau - Grundlage als Kopie mit Prüfsumme, Basiswert Σ ÷ Σ.
+      summary: Bildet eine Fassung als Entwurf mit Vorschau - Grundlage als Kopie mit Prüfsumme, Basiswert Σ ÷ Σ oder Modell.
       description: >
         Recht `bezugsbasis.verwalten` an der Geltung der Kennzahl. Referenzperiode JJJJ-MM/JJJJ-MM aus abgeschlossenen
-        Monaten (P1/P3), Methode `verhaeltnis` (andere 422 `methode_noch_nicht_gebaut` bis IP-10). Ein offener
+        Monaten (P1/P3). Methoden `verhaeltnis`, `regression_eine_variable`, `regression_zwei_variablen`, `gradtage`
+        (IP-10): ein Modell friert Koeffizienten, R², Streuung und Spannweite je Variable ein; 422 `zu_wenig_perioden`
+        (unter 12 Monaten, G1), `variable_fehlt` (G2), `variable_keine_gradtagzahl`, `zweite_variable_fehlt`,
+        `variable_unbekannt`, `modell_ohne_nenner`; eine abhängige zweite Variable (G4) wird nicht aufgenommen und steht
+        in `abgelehnte_variablen` und im Protokoll `variable_abgelehnt`. Ein offener
         Entwurf wird neu gebildet. Die Antwort ist die gespeicherte Fassung (freigabe_status `entwurf`), byte-gleich
         zu GET …/fassungen/{n}. Vertrag bezugsbasis.md §13.
       requestBody:
@@ -26374,7 +26378,7 @@ components:
       properties:
         referenzperiode: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])/[0-9]{4}-(0[1-9]|1[0-2])$" }
         methode: { type: string, enum: [verhaeltnis, regression_eine_variable, regression_zwei_variablen, gradtage] }
-        variablen: { type: array, maxItems: 2, items: { type: string, format: uuid }, nullable: true, description: "Beim Verhältnis nur der Nenner (V2)." }
+        variablen: { type: array, maxItems: 2, items: { type: string, format: uuid }, nullable: true, description: "Variable 1 ist der Nenner (V2, darf fehlen); nur `regression_zwei_variablen` nimmt genau eine weitere Bezugsgröße mit Periodenwerten." }
         toleranz_prozent: { type: string, nullable: true, description: "Dezimaltext, Startwert 2." }
         wiedervorlage_monate: { type: integer, nullable: true, description: "Startwert 12." }
     Bezugsbasis:
@@ -26430,6 +26434,18 @@ components:
         datenlage_gruende: { type: array, items: { type: object, additionalProperties: true } }
         vorbehalte: { type: array, items: { type: string } }
         basiswert: { type: string, description: "Σ Zähler ÷ Σ Nenner, 4 Stellen (M1, M5)." }
+        koeffizienten:
+          type: object
+          nullable: true
+          description: "Modell (M2/M4): a, b und beim Modell mit zwei Einflussgrößen c — Dezimaltext, 4 Stellen; beim Verhältnis null."
+          additionalProperties: { type: string }
+        r2: { type: string, nullable: true, description: "Bestimmtheitsmaß, 3 Stellen (M2)." }
+        streuung_prozent: { type: string, nullable: true, description: "Streuung der Residuen in % des Mittels, 1 Stelle (M2)." }
+        abgelehnte_variablen:
+          type: array
+          description: "G4: eine zweite Variable mit |r| ≥ 0,9 — objekt, position, grund `variablen_abhaengig`, r, startwert_r."
+          items: { type: object, additionalProperties: true }
+        kennzeichen: { type: array, items: { type: string }, description: "Was jede Zahl aus der Fassung trägt, etwa „ohne Grundlast“ (M3)." }
         toleranz_prozent: { type: string }
         wiedervorlage_monate: { type: integer }
         variablen: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVariable" } }

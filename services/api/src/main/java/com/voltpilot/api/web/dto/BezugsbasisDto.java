@@ -40,11 +40,18 @@ public final class BezugsbasisDto {
     public record Variable(int position, String rolle, UUID bezugsgroesseId, String kennzeichen, Integer fassung,
             String spannweiteVon, String spannweiteBis) {}
 
+    /**
+     * Die Fassung. Beim Modell (M2/M4) eingefroren: {@code koeffizienten} ({@code a}, {@code b}, beim Modell mit zwei
+     * Einflussgrößen {@code c}; vier Stellen), {@code r2} (drei), {@code streuung_prozent} (eine) — beim Verhältnis
+     * {@code null}. {@code abgelehnte_variablen}: eine abhängige zweite Variable (G4) mit r. {@code kennzeichen}: was jede
+     * Zahl aus dieser Fassung trägt, etwa „ohne Grundlast“ beim Verhältnis über eine Gradtagzahl (M3).
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Fassung(UUID bezugsbasisId, String bezugsbasis, UUID kennzahlId, String kennzahl, int fassung,
             String referenzperiode, String methode, LocalDate giltAb, int monate, int mindestMonate, String datenlage,
             List<Map<String, Object>> datenlageGruende, List<String> vorbehalte, String basiswert,
-            String toleranzProzent, int wiedervorlageMonate, List<Variable> variablen, List<Object> faktoren,
+            Map<String, String> koeffizienten, String r2, String streuungProzent,
+            List<Map<String, Object>> abgelehnteVariablen, List<String> kennzeichen, String toleranzProzent, int wiedervorlageMonate, List<Variable> variablen, List<Object> faktoren,
             String freigabeStatus, OffsetDateTime gebildetAm, String gebildetVon,
             @JsonRawValue String grundlage, String pruefsumme) {}
 }

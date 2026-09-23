@@ -187,7 +187,7 @@ konstruierte Rundungsprobe, ebenso der Fall „zwei unabhängige Einflussgröße
 - Nicht in diesem Vertrag: P3 (vorläufige Werte in der Grundlage), Anstoß (A1–A5), Frist-Ableitung, Faktor-Änderung und
   Prüfsummen-Bildung als Operation — sie gehören zu den Paketen mit Tabelle und Lauf (IP-5 ff.).
 
-## 13. Routen (IP-7: Anlegen und Entwurf)
+## 13. Routen (IP-7: Anlegen und Entwurf; IP-10: Modelle)
 
 Recht `bezugsbasis.verwalten` an der Geltung der Kennzahl (`@Recht` DIENST, genaue Prüfung `KennzahlService.fuerBezugsbasis`);
 die Lese-Routen nennen `bezugsbasis.ansehen` im Kommentar, die Sichtbarkeit kommt über die Kennzahl (außerhalb der Sicht 404,
@@ -197,11 +197,13 @@ anderer Kundenbereich 404 über RLS). Ablehnungen `{code, message, …Fakten}`.
 |---|---|---|
 | `POST /api/v1/kennzahlen/{id}/bezugsbasen` | legt BB-… an; Körper `{zweck?}`; Verantwortlicher = der der Kennzahl (B4, ohne ihn die anlegende Person); Protokoll `bezugsbasis_angelegt`; 201 | 409 `bezugsbasis_laeuft` (B1) · 409 `kennzahl_archiviert` · 422 `kennzahl_ohne_bezugsbasis` (B2: Anteil, Quotient ohne Messstelle im Zähler) |
 | `GET …/bezugsbasen/{bid}` | die Basis mit ihren Fassungen (Nummer, Referenzperiode, Methode, Datenlage, `freigabe_status`, Basiswert, `gilt_ab`, Prüfsumme) | 404 |
-| `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?}`; ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung | 422 `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `methode_noch_nicht_gebaut` (alles außer `verhaeltnis` bis IP-10) · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · `toleranz_ungueltig` · `wiedervorlage_ungueltig`; 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
+| `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?}`; ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung | 422 `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · Modelle: `zu_wenig_perioden` (G1, mit `monate`/`mindest_monate`) · `variable_fehlt` (G2, mit `variable` und `perioden`) · `variable_keine_gradtagzahl` (M3) · `zweite_variable_fehlt` · `variable_unbekannt` · `modell_ohne_nenner` · `variable_ohne_periodenwerte` · `toleranz_ungueltig` · `wiedervorlage_ungueltig`; 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
 | `GET …/bezugsbasen/{bid}/fassungen/{n}` | die gespeicherte Fassung — **byte-gleich** zur Antwort ihres Entwurfs | 404 |
 
 **Fassung** (Antwort): `fassung`, `referenzperiode`, `methode`, `gilt_ab` (Tag nach der Referenzperiode, P4), `monate`,
-`mindest_monate`, `datenlage`, `datenlage_gruende`, `vorbehalte`, `basiswert` (Dezimaltext, 4 Stellen, M5), `toleranz_prozent`,
+`mindest_monate`, `datenlage`, `datenlage_gruende`, `vorbehalte`, `basiswert` (Dezimaltext, 4 Stellen, M5), `koeffizienten`
+(`a`, `b`, beim Modell mit zwei Einflussgrößen `c`; 4 Stellen), `r2` (3), `streuung_prozent` (1) — beim Verhältnis `null` —,
+`abgelehnte_variablen` (G4), `kennzeichen` (etwa „ohne Grundlast“, M3), `toleranz_prozent`,
 `wiedervorlage_monate`, `variablen` (Position 1 = Nenner mit Bezugsgrößen-Fassung und Spannweite min–max der Nenner),
 `faktoren` (leer bis IP-16), `freigabe_status` (`entwurf`; Beantragen und Freigeben IP-8), `grundlage` (der gespeicherte
 kanonische Text, roh eingebettet) und `pruefsumme` (`sha256:` über ihn, gleich `bericht_pruefsumme`).
@@ -213,6 +215,21 @@ letzten Tag), `perioden[]` — je Monat die AKTUELLE Zeile der Kennzahl (`kennza
 dem Grund der Kennzahl) und zählt nicht —, `monate`, `mindest_monate`, `datenlage`, `datenlage_gruende`, `vorbehalte`,
 `variablen`, `faktoren`, `basiswert`. Nichts wird nachgerechnet: der Basiswert ist `basiswert` (§4) über die gespeicherten
 Zähler und Nenner der Monate mit Zahl.
+
+**Modelle beim Bilden (IP-10, M2–M4).** Variable 1 ist der Nenner der Kennzahl mit seinen gespeicherten Monatswerten (V2);
+`variablen` im Körper darf ihn vorn nennen. `regression_eine_variable` und `gradtage` rechnen nur mit ihm — `gradtage`
+verlangt eine Bezugsgröße der Art `gradtagzahl` (Messkanal oder `bezogen`). `regression_zwei_variablen` nimmt genau eine
+weitere, lesbare Bezugsgröße mit Periodenwerten; ihr Monatswert ist die Summe ihrer wirksamen Werte im Monat (fehlt ein
+Teil, fehlt der Monat), mit Fassung. Gerechnet wird ausschließlich `modell` (§4) über die Monatspaare; ein Monat mit Nenner 0
+(`nenner_null`, etwa null Gradtage im Sommer) ist für ein Modell ein Paar, für das Verhältnis kein Monat. Grenzen beim
+Bilden: G1 unter 12 Monaten oder ohne Streuung der Variablen → 422 `zu_wenig_perioden`; G2 Variable 2 fehlt in einem Monat
+mit Zahl → 422 `variable_fehlt`; **G4** |r| ≥ 0,9 → die zweite Variable wird nicht aufgenommen, die Fassung rechnet als
+Modell mit einer Einflussgröße, `abgelehnte_variablen` nennt `objekt`, `position`, `grund`, `r`, `startwert_r`, und das
+Protokoll bekommt `variable_abgelehnt` (200, keine 422 — §3, R9). Koeffizienten, R², Streuung stehen in den Spalten der
+Fassung und in der Grundlage (`koeffizienten`, `r2`, `streuung_prozent`, `abgelehnte_variablen`, je Variable `spannweite`
+mit `toleriert_von`/`toleriert_bis`, je Monat `variablen[]` mit dem Wert der zweiten Variablen); G3 prüft die Spannweite erst
+im Vergleich (IP-13). Ahrenberg: R12 → a = 10 522,6206 (Datei 10 523), b = 0,2343, R² 0,991, Streuung 0,8 %, 254 000–341 000 kg;
+R3 → a = 118,9104 (119), b = 3,8041 (3,80) — `BezugsbasisApiTest`.
 
 **Datenlage** (P2/P3): `vorlaeufig` mit je einem Grund `monate` (n von 12, dazu `ohne_wert[]`), `angeschnitten` (Monat mit
 „ab TT.MM.JJJJ“ im Kennzeichen der Kennzahl) und `vorlaeufige_werte` (`zustand` ≠ `endgueltig`); sonst `vollstaendig`.

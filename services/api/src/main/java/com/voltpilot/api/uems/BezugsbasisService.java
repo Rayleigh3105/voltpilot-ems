@@ -7,6 +7,9 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.KennzahlRepository.EingangZeile;
 import com.voltpilot.api.uems.KennzahlRepository.FassungZeile;
 import com.voltpilot.api.web.dto.BezugsbasisDto;
+import com.voltpilot.api.web.dto.BezugsgroesseDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.ResultSet;
@@ -33,30 +36,41 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p>Ein Entwurf ist die Vorschau: die Route schreibt ihn und antwortet mit genau dem, was der Leser der gespeicherten
  * Fassung liefert — Vorschau und Kopie sind dieselben Bytes. Ein zweiter Entwurf derselben Basis bildet den offenen
- * Entwurf neu (gleiche Nummer); freigegeben, beantragt oder abgelehnt wird hier nichts (IP-8). Gebaut ist nur die
- * Methode Verhältnis; die Modelle kommen mit IP-10.
+ * Entwurf neu (gleiche Nummer); freigegeben, beantragt oder abgelehnt wird hier nichts (IP-8).
+ *
+ * <p>Methoden (E4 = A): Verhältnis (M1) und die Modelle mit einer oder zwei Einflussgrößen und über Gradtage (M2–M4,
+ * IP-10). Variable 1 ist der Nenner der Kennzahl (V2); ein Modell mit zwei Einflussgrößen nimmt eine zweite Bezugsgröße
+ * mit ihren Monatswerten. Gerechnet wird in {@link BezugsbasisRegeln#modell} — hier nur gelesen, geprüft, eingefroren.
  */
 @Service
 public class BezugsbasisService {
 
     static final String VERWALTEN = "bezugsbasis.verwalten";
     static final String VERHAELTNIS = "verhaeltnis";
+    static final String GRADTAGE = "gradtage";
+    static final String ZWEI_VARIABLEN = "regression_zwei_variablen";
+    static final String GRADTAGZAHL = "gradtagzahl";
 
     private static final String BASIS_SPALTEN = "b.id, b.kennzeichen, b.kennzahl_id, b.zweck, b.verantwortlich_name, "
             + "b.beendet_zum, b.beendet_am, b.beendet_grund, b.created_at";
     private static final String FASSUNG_SPALTEN = "f.id, f.fassung, f.referenzperiode, f.methode, f.datenlage, f.gilt_ab, "
             + "f.gilt_bis, f.toleranz_prozent, f.wiedervorlage_monate, f.grundlage, f.pruefsumme, f.basiswert, "
-            + "f.freigabe_status, f.actor_name, f.created_at";
+            + "f.freigabe_status, f.actor_name, f.created_at, f.koeffizienten::text AS koeffizienten, f.r2, "
+            + "f.streuung_prozent";
 
     private final KennzahlService kennzahlen;
     private final JdbcTemplate jdbc;
     private final BezugsbasisGrundlage grundlage;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
+    private final BezugsgroesseService bezugsgroessen;
+    private final RechtPruefung rechte;
 
     public BezugsbasisService(KennzahlService kennzahlen, JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
-            ObjectMapper json) {
+            ObjectMapper json, BezugsgroesseService bezugsgroessen, RechtPruefung rechte) {
         this.kennzahlen = kennzahlen;
+        this.bezugsgroessen = bezugsgroessen;
+        this.rechte = rechte;
         this.jdbc = jdbc;
         this.grundlage = new BezugsbasisGrundlage(jdbc);
         this.transaktion = new TransactionTemplate(transactionManager);
@@ -68,7 +82,8 @@ public class BezugsbasisService {
 
     private record FassungZeileDb(UUID id, int fassung, String referenzperiode, String methode, String datenlage,
             LocalDate giltAb, LocalDate giltBis, BigDecimal toleranz, int wiedervorlage, String grundlage,
-            String pruefsumme, BigDecimal basiswert, String freigabeStatus, String actorName, OffsetDateTime angelegtAm) {}
+            String pruefsumme, BigDecimal basiswert, String freigabeStatus, String actorName, OffsetDateTime angelegtAm,
+            String koeffizienten, BigDecimal r2, BigDecimal streuung) {}
 
     // ================================================================================ anlegen (B1, B2, B4)
 
@@ -133,11 +148,6 @@ public class BezugsbasisService {
             throw BezugsbasisAbgelehnt.fachlich("methode_unbekannt", "Diese Methode gibt es nicht.",
                     Map.of("methoden", BezugsbasisRegeln.METHODEN));
         }
-        if (!VERHAELTNIS.equals(e.methode())) {
-            throw BezugsbasisAbgelehnt.fachlich("methode_noch_nicht_gebaut",
-                    "Diese Methode ist noch nicht verfügbar; bis dahin rechnet die Bezugsbasis als Verhältnis.",
-                    Map.of("methode", e.methode(), "gebaut", List.of(VERHAELTNIS)));
-        }
         String laufend = YearMonth.from(heute.jetzt().atZone(heute.zone())).toString();
         Map<String, Object> periode = BezugsbasisRegeln.referenzperiode(e.referenzperiode(), laufend);
         if (!Boolean.TRUE.equals(periode.get("gueltig"))) {
@@ -165,13 +175,32 @@ public class BezugsbasisService {
             throw keineWerte(e.referenzperiode());
         }
         EingangZeile nenner = traeger(k, e.methode());
-        variablen(e.variablen(), nenner);
+        UUID zweiteId = variablen(e.methode(), e.variablen(), nenner);
+        String nennerArt = nenner == null ? null : art(nenner.objektId());
+        if (GRADTAGE.equals(e.methode()) && !GRADTAGZAHL.equals(nennerArt)) {
+            throw BezugsbasisAbgelehnt.fachlich("variable_keine_gradtagzahl", "Die Wetterbereinigung über Gradtage "
+                    + "rechnet mit genau einer Größe der Art Gradtagzahl: dem Nenner der Kennzahl.",
+                    Map.of("nenner", nenner.kennzeichen(), "art", String.valueOf(nennerArt)));
+        }
+        BezugsbasisGrundlage.ZweiteVariable zweite = zweiteId == null ? null : zweite(zweiteId, von, bis);
         BezugsbasisGrundlage.Ergebnis g = grundlage.bilden(kennzahlId, k.zeile().kennzeichen(), k.fassung().rechenform(),
                 k.fassung().nummer(), e.referenzperiode(), von, bis, e.methode(),
-                nenner == null ? null : nenner.objektId(), nenner == null ? null : nenner.kennzeichen());
+                nenner == null ? null : nenner.objektId(), nenner == null ? null : nenner.kennzeichen(), nennerArt, zweite);
         if (g.basiswert() == null) {
-            throw keineWerte(e.referenzperiode());
+            throw switch (g.grund()) {
+                case "zu_wenig_perioden" -> BezugsbasisAbgelehnt.fachlich("zu_wenig_perioden", g.monate()
+                        < BezugsbasisRegeln.STARTWERTE.mindest_monate()
+                        ? "Modell nicht möglich: " + g.monate() + " von " + BezugsbasisRegeln.STARTWERTE.mindest_monate()
+                                + " Monaten in der Referenzperiode. Das Verhältnis ist vorläufig."
+                        : "Modell nicht möglich: die Einflussgröße ändert sich in der Referenzperiode nicht.",
+                        Map.of("monate", g.monate(), "mindest_monate", BezugsbasisRegeln.STARTWERTE.mindest_monate()));
+                case "variable_fehlt" -> BezugsbasisAbgelehnt.fachlich("variable_fehlt",
+                        "Modell nicht möglich: " + zweite.kennzeichen() + " hat nicht in jedem Monat einen Wert.",
+                        Map.of("variable", zweite.kennzeichen(), "perioden", g.fehlend()));
+                default -> keineWerte(e.referenzperiode());
+            };
         }
+        BezugsbasisGrundlage.Modell modell = g.modell();
 
         UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
         LocalDate giltAb = bis.plusMonths(1).atDay(1);
@@ -192,7 +221,7 @@ public class BezugsbasisService {
                 n = (Integer) offen.get(0).get("fassung");
                 jdbc.update("UPDATE bezugsbasis_fassung SET referenzperiode = ?, methode = ?, datenlage = ?, gilt_ab = ?, "
                         + "toleranz_prozent = ?, wiedervorlage_monate = ?, grundlage = ?, pruefsumme = ?, basiswert = ? "
-                        + "WHERE id = ?", e.referenzperiode(), e.methode(), g.datenlage(), Date.valueOf(giltAb), toleranz,
+                        + "WHERE id = ?", e.referenzperiode(), g.methode(), g.datenlage(), Date.valueOf(giltAb), toleranz,
                         wiedervorlage, g.text(), g.pruefsumme(), new BigDecimal(g.basiswert()), fassungId);
                 jdbc.update("UPDATE bezugsbasis_variable SET aufgehoben_am = now() WHERE fassung_id = ? "
                         + "AND aufgehoben_am IS NULL", fassungId);
@@ -203,23 +232,43 @@ public class BezugsbasisService {
                         + "referenzperiode, methode, datenlage, gilt_ab, toleranz_prozent, wiedervorlage_monate, grundlage, "
                         + "pruefsumme, basiswert, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, ?, ?, ?, ?, "
                         + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id", UUID.class, tenant, basisId, n,
-                        e.referenzperiode(), e.methode(), g.datenlage(), Date.valueOf(giltAb), toleranz, wiedervorlage,
+                        e.referenzperiode(), g.methode(), g.datenlage(), Date.valueOf(giltAb), toleranz, wiedervorlage,
                         g.text(), g.pruefsumme(), new BigDecimal(g.basiswert()), wer.sub(), wer.name(), wer.rolle(),
                         wer.art());
             }
-            BezugsbasisGrundlage.Variable v = g.variable();
-            if (v != null) {
+            // M4: Koeffizienten und Güte eingefroren an der Fassung (beim Verhältnis leer — ein neu gebildeter Entwurf
+            // mit anderer Methode trägt keine alten Koeffizienten weiter).
+            jdbc.update("UPDATE bezugsbasis_fassung SET koeffizienten = ?::jsonb, r2 = ?, streuung_prozent = ? WHERE id = ?",
+                    modell == null ? null : alsJson(modell.koeffizienten()),
+                    modell == null ? null : new BigDecimal(modell.r2()),
+                    modell == null ? null : new BigDecimal(modell.streuungProzent()), fassungId);
+            List<BezugsbasisGrundlage.Variable> vs = g.variablen();
+            for (int i = 0; i < vs.size(); i++) {
+                BezugsbasisGrundlage.Variable v = vs.get(i);
                 jdbc.update("INSERT INTO bezugsbasis_variable (tenant_id, fassung_id, position, bezugsgroesse_id, "
-                        + "bezugsgroesse_fassung, spannweite_von, spannweite_bis) VALUES (?, ?, 1, ?, ?, ?, ?)", tenant,
-                        fassungId, v.bezugsgroesseId(), v.fassung(), v.von(), v.bis());
+                        + "bezugsgroesse_fassung, spannweite_von, spannweite_bis) VALUES (?, ?, ?, ?, ?, ?, ?)", tenant,
+                        fassungId, i + 1, v.bezugsgroesseId(), v.fassung(), v.von(), v.bis());
             }
             Map<String, Object> inhalt = new LinkedHashMap<>();
             inhalt.put("referenzperiode", e.referenzperiode());
-            inhalt.put("methode", e.methode());
+            inhalt.put("methode", g.methode());
             inhalt.put("datenlage", g.datenlage());
             inhalt.put("basiswert", g.basiswert());
+            if (modell != null) {
+                inhalt.put("koeffizienten", modell.koeffizienten());
+                inhalt.put("r2", modell.r2());
+                inhalt.put("streuung_prozent", modell.streuungProzent());
+            }
             inhalt.put("pruefsumme", g.pruefsumme());
             protokoll(tenant, basisId, n, "fassung_entworfen", inhalt, wer);
+            // G4: die abhängige zweite Variable ist nicht aufgenommen — der Versuch steht im Protokoll.
+            for (Map<String, Object> a : modell == null ? List.<Map<String, Object>>of() : modell.abgelehnt()) {
+                Map<String, Object> versuch = new LinkedHashMap<>(a);
+                versuch.put("r", a.get("r").toString());
+                versuch.put("startwert_r", a.get("startwert_r").toString());
+                versuch.put("methode_gewuenscht", e.methode());
+                protokoll(tenant, basisId, n, "variable_abgelehnt", versuch, wer);
+            }
             return n;
         });
         return fassung(kennzahlId, basisId, nummer);
@@ -259,6 +308,13 @@ public class BezugsbasisService {
                 g.path("mindest_monate").asInt(BezugsbasisRegeln.STARTWERTE.mindest_monate()), f.datenlage(),
                 json.convertValue(g.path("datenlage_gruende"), new TypeReference<List<Map<String, Object>>>() {}),
                 json.convertValue(g.path("vorbehalte"), new TypeReference<List<String>>() {}), dezimal(f.basiswert()),
+                f.koeffizienten() == null ? null : json.convertValue(lies(f.koeffizienten()),
+                        new TypeReference<Map<String, String>>() {}), f.r2() == null ? null : f.r2().toPlainString(),
+                f.streuung() == null ? null : f.streuung().toPlainString(),
+                json.convertValue(g.path("abgelehnte_variablen").isMissingNode() ? json.createArrayNode()
+                        : g.path("abgelehnte_variablen"), new TypeReference<List<Map<String, Object>>>() {}),
+                json.convertValue(g.path("kennzeichen").isMissingNode() ? json.createArrayNode() : g.path("kennzeichen"),
+                        new TypeReference<List<String>>() {}),
                 dezimal(f.toleranz()), f.wiedervorlage(), variablen, List.of(), f.freigabeStatus(), f.angelegtAm(),
                 f.actorName(), f.grundlage(), f.pruefsumme());
     }
@@ -287,22 +343,109 @@ public class BezugsbasisService {
                 .findFirst().orElse(null);
     }
 
-    /** V2/V5: höchstens zwei; beim Verhältnis genau der Nenner der Kennzahl (Variable 1). */
-    private static void variablen(List<String> gewuenscht, EingangZeile nenner) {
-        if (gewuenscht == null) {
-            return;
-        }
-        if (gewuenscht.size() > 2) {
+    /**
+     * V2/V5: höchstens zwei; Variable 1 ist immer der Nenner der Kennzahl (darf fehlen oder vorn stehen). Verhältnis,
+     * Modell mit einer Einflussgröße und Gradtage rechnen nur mit ihm; das Modell mit zwei Einflussgrößen verlangt genau
+     * eine weitere Bezugsgröße. Liefert deren Kennung oder {@code null}.
+     */
+    private static UUID variablen(String methode, List<String> gewuenscht, EingangZeile nenner) {
+        List<String> liste = gewuenscht == null ? List.of() : gewuenscht;
+        if (liste.size() > 2) {
             throw BezugsbasisAbgelehnt.fachlich("zu_viele_variablen", "Höchstens zwei Einflussgrößen je Fassung.",
                     Map.of("hoechstens", 2));
         }
-        boolean nurNenner = gewuenscht.isEmpty()
-                || (gewuenscht.size() == 1 && nenner != null && nenner.objektId().toString().equals(gewuenscht.get(0)));
-        if (!nurNenner) {
-            throw BezugsbasisAbgelehnt.fachlich("variable_nicht_nenner",
-                    "Das Verhältnis rechnet mit genau einer Größe: dem Nenner der Kennzahl.",
-                    nenner == null ? Map.of() : Map.of("nenner", nenner.kennzeichen()));
+        if (!VERHAELTNIS.equals(methode) && nenner == null) {
+            throw BezugsbasisAbgelehnt.fachlich("modell_ohne_nenner", "Ein Modell rechnet mit dem Nenner der Kennzahl "
+                    + "als Einflussgröße; eine Zusammenfassung hat keinen und rechnet als Verhältnis.",
+                    Map.of("methode", methode));
         }
+        String erste = nenner == null ? null : nenner.objektId().toString();
+        List<String> weitere = new java.util.ArrayList<>(liste);
+        if (!weitere.isEmpty() && weitere.get(0).equals(erste)) {
+            weitere.remove(0);
+        }
+        if (!ZWEI_VARIABLEN.equals(methode)) {
+            if (!weitere.isEmpty()) {
+                throw BezugsbasisAbgelehnt.fachlich("variable_nicht_nenner", VERHAELTNIS.equals(methode)
+                        ? "Das Verhältnis rechnet mit genau einer Größe: dem Nenner der Kennzahl."
+                        : "Diese Methode rechnet mit genau einer Einflussgröße: dem Nenner der Kennzahl.",
+                        nenner == null ? Map.of() : Map.of("nenner", nenner.kennzeichen()));
+            }
+            return null;
+        }
+        if (weitere.size() != 1) {
+            throw BezugsbasisAbgelehnt.fachlich("zweite_variable_fehlt", "Ein Modell mit zwei Einflussgrößen braucht "
+                    + "neben dem Nenner genau eine weitere Bezugsgröße.", Map.of("nenner", nenner.kennzeichen()));
+        }
+        try {
+            UUID id = UUID.fromString(weitere.get(0));
+            if (!id.toString().equals(erste)) {
+                return id;
+            }
+        } catch (IllegalArgumentException x) {
+            // fällt durch zur Ablehnung
+        }
+        throw BezugsbasisAbgelehnt.fachlich("variable_unbekannt", "Diese Bezugsgröße gibt es hier nicht.",
+                Map.of("variable", weitere.get(0)));
+    }
+
+    /** Die Art einer Bezugsgröße (M3: {@code gradtagzahl}) — {@code null}, wenn sie keine trägt. */
+    private String art(UUID bezugsgroesse) {
+        return jdbc.query("SELECT to_jsonb(b)->>'art' AS art FROM bezugsgroesse b WHERE b.id = ?",
+                (rs, i) -> rs.getString("art"), bezugsgroesse).stream().filter(Objects::nonNull).findFirst().orElse(null);
+    }
+
+    /**
+     * Variable 2 (V1, V5): eine sichtbare Bezugsgröße mit Periodenwerten; je Monat die Summe ihrer wirksamen Werte im
+     * Monat mit der Fassung (bei einem Wert je Monat). Ein Monat, in dem ein Teilwert fehlt, fehlt ganz — keine Null.
+     */
+    private BezugsbasisGrundlage.ZweiteVariable zweite(UUID id, YearMonth von, YearMonth bis) {
+        if (jdbc.queryForObject("SELECT count(*) FROM bezugsgroesse WHERE id = ?", Integer.class, id) == 0) {
+            throw BezugsbasisAbgelehnt.fachlich("variable_unbekannt", "Diese Bezugsgröße gibt es hier nicht.",
+                    Map.of("variable", id.toString()));
+        }
+        rechte.pruefenLesen(RechtZiel.BEZUGSGROESSE, id, () -> BezugsbasisAbgelehnt.fachlich("variable_unbekannt",
+                "Diese Bezugsgröße gibt es hier nicht.", Map.of("variable", id.toString())));
+        BezugsgroesseDto.Werte werte = bezugsgroessen.werte(id, von.atDay(1), bis.atEndOfMonth(),
+                BezugsgroesseRegeln.LESARTEN.get(0));
+        if (!KennzahlRegeln.PERIODENWERT.equals(werte.wertart())) {
+            throw BezugsbasisAbgelehnt.fachlich("variable_ohne_periodenwerte", "Eine Einflussgröße braucht Werte je "
+                    + "Periode; ein Stammdatum ist ein statischer Faktor.", Map.of("variable", werte.kennzeichen()));
+        }
+        Map<YearMonth, BezugsbasisGrundlage.Monatswert> jeMonat = new LinkedHashMap<>();
+        for (YearMonth m = von; !m.isAfter(bis); m = m.plusMonths(1)) {
+            java.util.Set<String> erwartet = new java.util.LinkedHashSet<>();
+            for (LocalDate t = m.atDay(1); !t.isAfter(m.atEndOfMonth()); t = t.plusDays(1)) {
+                erwartet.add(BezugsPeriode.schluesselVon(t, werte.periodeArt()));
+            }
+            Map<String, BezugsgroesseDto.Wert> jeSchluessel = new LinkedHashMap<>();
+            for (BezugsgroesseDto.Wert w : werte.werte()) {
+                if (w.periodeVon() != null && !w.periodeVon().isBefore(m.atDay(1))
+                        && (w.periodeBis() == null || !w.periodeBis().isAfter(m.atEndOfMonth()))) {
+                    jeSchluessel.put(BezugsPeriode.schluesselVon(w.periodeVon(), werte.periodeArt()), w);
+                }
+            }
+            BigDecimal summe = BigDecimal.ZERO;
+            boolean da = true;
+            for (String schluessel : erwartet) {
+                BezugsgroesseDto.Wert w = jeSchluessel.get(schluessel);
+                if (w == null || w.wirksamerBetrag() == null) {
+                    da = false;
+                    break;
+                }
+                summe = summe.add(new BigDecimal(w.wirksamerBetrag()));
+            }
+            if (da) {
+                BezugsgroesseDto.Wert einer = erwartet.size() == 1 ? jeSchluessel.get(erwartet.iterator().next()) : null;
+                List<String> kennzeichen = einer == null || einer.fassungen() == null ? List.of() : einer.fassungen()
+                        .stream().filter(f -> Objects.equals(f.fassung(), einer.wirksameFassung()))
+                        .map(BezugsgroesseDto.Fassung::kennzeichen).filter(Objects::nonNull).findFirst()
+                        .orElse(List.of());
+                jeMonat.put(m, new BezugsbasisGrundlage.Monatswert(summe, einer == null ? null
+                        : einer.wirksameFassung(), kennzeichen));
+            }
+        }
+        return new BezugsbasisGrundlage.ZweiteVariable(id, werte.kennzeichen(), werte.einheit(), jeMonat);
     }
 
     private static BigDecimal toleranz(String text) {
@@ -357,6 +500,14 @@ public class BezugsbasisService {
         }
     }
 
+    private String alsJson(Object o) {
+        try {
+            return json.writeValueAsString(o);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException x) {
+            throw new IllegalStateException(x);
+        }
+    }
+
     private JsonNode lies(String text) {
         try {
             return text == null ? json.createObjectNode() : json.readTree(text);
@@ -384,7 +535,8 @@ public class BezugsbasisService {
                 bis == null ? null : bis.toLocalDate(), rs.getBigDecimal("toleranz_prozent"),
                 rs.getInt("wiedervorlage_monate"), rs.getString("grundlage"), rs.getString("pruefsumme"),
                 rs.getBigDecimal("basiswert"), rs.getString("freigabe_status"), rs.getString("actor_name"),
-                zeit(rs, "created_at"));
+                zeit(rs, "created_at"), rs.getString("koeffizienten"), rs.getBigDecimal("r2"),
+                rs.getBigDecimal("streuung_prozent"));
     }
 
     private static OffsetDateTime zeit(ResultSet rs, String spalte) throws SQLException {

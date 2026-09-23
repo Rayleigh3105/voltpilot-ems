@@ -54,6 +54,10 @@ import org.testcontainers.utility.DockerImageName;
  * <p>R1 der Ahrenberg-Welt: KZ-0004 Spritzguss je kg (MS-20 ÷ BZ-1), Oktober 2026 mit 88 630 kWh (Version 1) und
  * 312 400 kg (Fassung 1). Die Kennzahl-Zeile schreibt der Test so, wie der Rechenlauf sie schreibt (Verwaltungsrolle,
  * ungerundeter Wert); die Uhr steht auf dem 12.11.2026, dem Freigabetag von BB-0001 Fassung 1.
+ *
+ * <p>IP-10 (Modelle, M2–M5): R12/R9 — zwölf Monate Spritzguss (11/2026–10/2027) mit BZ-3 Betriebsstunden und BZ-8
+ * Gradtagzahl als zweiter Einflussgröße; R3 — KZ-0006 Gas je Gradtag über BZ-8. Die Reihen sind die der Vektoren
+ * (Referenzdatei 1.8, BB-0001 Fassung 2 und BB-0004); die Uhr steht dafür auf dem 12.11.2027.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -105,7 +109,12 @@ class BezugsbasisApiTest {
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
 
-    private record Welt(UUID mandant, UUID g2, UUID kz4, UUID kz9) {}
+    private record Welt(UUID mandant, UUID g2, UUID kz4, UUID kz9) {
+        UUID bz1() {
+            return root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                    UUID.class, mandant);
+        }
+    }
 
     private record Antwort(int status, JsonNode body, String text) {}
 
@@ -258,7 +267,7 @@ class BezugsbasisApiTest {
         abgelehnt(w, basis, entwurf("2026-10/2026-11", "verhaeltnis"), 422, "periode_nicht_zu_ende");
         abgelehnt(w, basis, entwurf("2026-10", "verhaeltnis"), 422, "referenzperiode_format");
         abgelehnt(w, basis, entwurf("2026-10/2026-09", "verhaeltnis"), 422, "referenzperiode_reihenfolge");
-        abgelehnt(w, basis, entwurf("2026-10/2026-10", "regression_eine_variable"), 422, "methode_noch_nicht_gebaut");
+        abgelehnt(w, basis, entwurf("2026-10/2026-10", "regression_eine_variable"), 422, "zu_wenig_perioden");
         abgelehnt(w, basis, entwurf("2026-10/2026-10", "mittelwert"), 422, "methode_unbekannt");
         abgelehnt(w, basis, entwurf("2026-08/2026-09", "verhaeltnis"), 422, "keine_werte");
         Map<String, Object> fremd = entwurf("2026-10/2026-10", "verhaeltnis");
@@ -296,6 +305,216 @@ class BezugsbasisApiTest {
                 b.mandant())).isZero();
     }
 
+    // ------------------------------------------------------------------------------------------------ IP-10 Modelle
+
+    private static final Instant NACH_DER_REFERENZPERIODE = Instant.parse("2027-11-12T09:00:00Z");
+    private static final String ZWOELF = "2026-11/2027-10";
+    /** R12: kWh MS-20 und kg BZ-1, November 2026 bis Oktober 2027 (Referenzdatei 1.8 BB-0001 Fassung 2). */
+    private static final String[][] SPRITZGUSS = {{"85581", "318000"}, {"71729", "262000"}, {"81291", "298000"},
+        {"81298", "305000"}, {"88265", "331000"}, {"82016", "309000"}, {"86399", "322000"}, {"86846", "327000"},
+        {"80732", "296000"}, {"69693", "254000"}, {"89512", "336000"}, {"89638", "341000"}};
+    /** R9: BZ-3 Betriebsstunden, hängen an der Produktionsmenge (r = 0,997). */
+    private static final String[] BETRIEBSSTUNDEN = {"5112", "4149", "4778", "4819", "5314", "4908", "5151", "5165",
+        "4751", "4026", "5404", "5419"};
+    /** R3: BZ-8 Gradtagzahl Werk Ahrenberg (Kd) und der Gasbezug (m³) der Verwaltung (BB-0004). */
+    private static final String[] GRADTAGE = {"415", "555", "605", "515", "395", "245", "95", "15", "0", "0", "85", "300"};
+    private static final String[] GAS = {"1742", "2169", "2489", "2037", "1676", "986", "511", "152", "155", "90", "483",
+        "1205"};
+
+    /**
+     * R12 + R9/G4 + M2: das Modell mit einer Einflussgröße rechnet a = 10 523, b = 0,2343, R² 0,991, Streuung 0,8 %,
+     * Spannweite 254 000–341 000 kg — eingefroren an der Fassung; BZ-3 als zweite Variable wird abgelehnt (r = 0,997)
+     * und steht im Protokoll; eine unabhängige zweite Variable (Gradtagzahl) rechnet mit c.
+     */
+    @Test
+    void r12ModellMitEinerEinflussgroesseUndAbgelehnteBetriebsstunden() throws Exception {
+        kennzahlen.uhrStellen(Clock.fixed(NACH_DER_REFERENZPERIODE, ZoneOffset.UTC));
+        Welt w = welt();
+        for (int i = 0; i < 12; i++) {
+            monat(w, monat(i), SPRITZGUSS[i][0], SPRITZGUSS[i][1], "endgueltig", List.of());
+        }
+        UUID bz3 = bezugsgroesse(w, "BZ-3", "Betriebsstunden Spritzguss", "h", null, BETRIEBSSTUNDEN);
+        UUID bz8 = bezugsgroesse(w, "BZ-8", "Gradtagzahl Werk Ahrenberg", "Kd", "gradtagzahl", GRADTAGE);
+        String basis = basis(w, w.kz4());
+
+        Antwort eine = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf(ZWOELF, "regression_eine_variable"));
+        assertThat(eine.status()).as(eine.text()).isEqualTo(200);
+        JsonNode f = eine.body();
+        assertThat(f.get("methode").asText()).isEqualTo("regression_eine_variable");
+        assertThat(f.get("monate").asInt()).isEqualTo(12);
+        assertThat(f.get("datenlage").asText()).isEqualTo("vollstaendig");
+        // M5: vier Stellen; die Referenzdatei 1.8 trägt a auf ganze kWh (10 523) — auf ihre Stellen gerundet gleich.
+        assertThat(f.at("/koeffizienten/a").asText()).isEqualTo("10522.6206");
+        assertThat(new BigDecimal(f.at("/koeffizienten/a").asText()).setScale(0, RoundingMode.HALF_UP))
+                .isEqualByComparingTo("10523");
+        assertThat(f.at("/koeffizienten/b").asText()).isEqualTo("0.2343");
+        assertThat(f.at("/koeffizienten/c").isMissingNode()).isTrue();
+        assertThat(f.get("r2").asText()).isEqualTo("0.991");
+        assertThat(f.get("streuung_prozent").asText()).isEqualTo("0.8");
+        assertThat(f.get("basiswert").asText()).isEqualTo("0.2685");
+        assertThat(f.get("variablen")).hasSize(1);
+        assertThat(f.at("/variablen/0/spannweite_von").asText()).isEqualTo("254000");
+        assertThat(f.at("/variablen/0/spannweite_bis").asText()).isEqualTo("341000");
+        assertThat(f.get("abgelehnte_variablen")).isEmpty();
+        assertThat(f.get("kennzeichen")).isEmpty();
+        // M4: eingefroren in der Grundlage (mit Toleranzband) und in den Spalten der Fassung.
+        JsonNode g = f.get("grundlage");
+        assertThat(g.at("/koeffizienten/a").decimalValue()).isEqualByComparingTo("10522.6206");
+        assertThat(g.at("/variablen/0/spannweite/toleriert_von").decimalValue()).isEqualByComparingTo("228600");
+        assertThat(g.at("/variablen/0/spannweite/toleriert_bis").decimalValue()).isEqualByComparingTo("375100");
+        assertThat(root.queryForObject("SELECT r2::text || ' ' || streuung_prozent::text || ' ' || (koeffizienten->>'b') "
+                + "FROM bezugsbasis_fassung WHERE tenant_id = ?", String.class, w.mandant())).isEqualTo("0.991 0.8 0.2343");
+        Antwort gelesen = ruf(w, HttpMethod.GET, basis + "/fassungen/1", null);
+        assertThat(gelesen.text()).isEqualTo(eine.text());
+
+        // R9/G4: BZ-3 hängt an der Produktionsmenge — nicht aufgenommen, die Fassung rechnet mit einer Variablen.
+        Map<String, Object> zwei = entwurf(ZWOELF, "regression_zwei_variablen");
+        zwei.put("variablen", List.of(bz3.toString()));
+        Antwort abhaengig = ruf(w, HttpMethod.POST, basis + "/fassungen", zwei);
+        assertThat(abhaengig.status()).as(abhaengig.text()).isEqualTo(200);
+        assertThat(abhaengig.body().get("methode").asText()).isEqualTo("regression_eine_variable");
+        assertThat(abhaengig.body().at("/koeffizienten/b").asText()).isEqualTo("0.2343");
+        assertThat(abhaengig.body().at("/abgelehnte_variablen/0/objekt").asText()).isEqualTo("BZ-3");
+        assertThat(abhaengig.body().at("/abgelehnte_variablen/0/grund").asText()).isEqualTo("variablen_abhaengig");
+        assertThat(abhaengig.body().at("/abgelehnte_variablen/0/r").decimalValue()).isEqualByComparingTo("0.997");
+        assertThat(abhaengig.body().get("variablen")).hasSize(1);
+        assertThat(root.queryForList("SELECT art FROM bezugsbasis_aenderung WHERE tenant_id = ? ORDER BY id",
+                String.class, w.mandant())).containsExactly("bezugsbasis_angelegt", "fassung_entworfen",
+                        "fassung_entworfen", "variable_abgelehnt");
+        assertThat(root.queryForObject("SELECT neu->>'r' FROM bezugsbasis_aenderung WHERE tenant_id = ? "
+                + "AND art = 'variable_abgelehnt'", String.class, w.mandant())).isEqualTo("0.997");
+
+        // M2 (konstruiert): die Gradtagzahl ist von der Produktionsmenge unabhängig (r = −0,095) — zwei Einflussgrößen.
+        zwei.put("variablen", List.of(w.bz1().toString(), bz8.toString()));
+        Antwort unabhaengig = ruf(w, HttpMethod.POST, basis + "/fassungen", zwei);
+        assertThat(unabhaengig.status()).as(unabhaengig.text()).isEqualTo(200);
+        JsonNode u = unabhaengig.body();
+        assertThat(u.get("methode").asText()).isEqualTo("regression_zwei_variablen");
+        assertThat(u.at("/koeffizienten/a").asText()).isEqualTo("10511.8791");
+        assertThat(u.at("/koeffizienten/c").asText()).isEqualTo("0.021");
+        assertThat(u.get("variablen")).hasSize(2);
+        assertThat(u.at("/variablen/1/kennzeichen").asText()).isEqualTo("BZ-8");
+        assertThat(u.at("/variablen/1/fassung").asInt()).isEqualTo(1);
+        assertThat(u.at("/variablen/1/spannweite_bis").asText()).isEqualTo("605");
+        assertThat(u.at("/grundlage/perioden/0/variablen/0/wert").decimalValue()).isEqualByComparingTo("415");
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_variable WHERE tenant_id = ? "
+                + "AND aufgehoben_am IS NULL", Integer.class, w.mandant())).isEqualTo(2);
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).text()).isEqualTo(unabhaengig.text());
+
+        // Zurück zum Verhältnis: der neu gebildete Entwurf trägt keine alten Koeffizienten weiter.
+        Antwort verhaeltnis = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf(ZWOELF, "verhaeltnis"));
+        assertThat(verhaeltnis.body().get("koeffizienten").isNull()).isTrue();
+        assertThat(verhaeltnis.body().get("r2").isNull()).isTrue();
+    }
+
+    /** G1, G2 und die Prüfung der Variablen beim Bilden — jeweils ein Grund statt einer Zahl, nichts gespeichert. */
+    @Test
+    void grenzenBeimBildenEinesModells() throws Exception {
+        kennzahlen.uhrStellen(Clock.fixed(NACH_DER_REFERENZPERIODE, ZoneOffset.UTC));
+        Welt w = welt();
+        for (int i = 0; i < 12; i++) {
+            monat(w, monat(i), SPRITZGUSS[i][0], SPRITZGUSS[i][1], "endgueltig", List.of());
+        }
+        String basis = basis(w, w.kz4());
+        // G1 (Lindach-Muster): ein Monat trägt kein Modell — „1 von 12“; das Verhältnis rechnet daraus vorläufig.
+        Antwort einer = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2027-10/2027-10", "regression_eine_variable"));
+        assertThat(einer.status()).as(einer.text()).isEqualTo(422);
+        assertThat(einer.body().get("code").asText()).isEqualTo("zu_wenig_perioden");
+        assertThat(einer.body().get("monate").asInt()).isEqualTo(1);
+        assertThat(einer.body().get("mindest_monate").asInt()).isEqualTo(12);
+        assertThat(einer.body().get("message").asText()).contains("1 von 12 Monaten");
+        // G2: der Variablen fehlt der Oktober 2027 — kein Modell, der Monat wird genannt.
+        UUID luecke = bezugsgroesse(w, "BZ-3", "Betriebsstunden Spritzguss", "h", null,
+                java.util.Arrays.copyOf(GRADTAGE, 11));
+        Map<String, Object> zwei = entwurf(ZWOELF, "regression_zwei_variablen");
+        zwei.put("variablen", List.of(luecke.toString()));
+        Antwort fehlt = ruf(w, HttpMethod.POST, basis + "/fassungen", zwei);
+        assertThat(fehlt.status()).as(fehlt.text()).isEqualTo(422);
+        assertThat(fehlt.body().get("code").asText()).isEqualTo("variable_fehlt");
+        assertThat(fehlt.body().get("variable").asText()).isEqualTo("BZ-3");
+        assertThat(fehlt.body().get("perioden").get(0).asText()).isEqualTo("2027-10");
+        // V2/V5 und M3: die Variablen passen zur Methode.
+        zwei.put("variablen", List.of());
+        abgelehnt(w, basis, zwei, 422, "zweite_variable_fehlt");
+        zwei.put("variablen", List.of(UUID.randomUUID().toString()));
+        abgelehnt(w, basis, zwei, 422, "variable_unbekannt");
+        Map<String, Object> eine = entwurf(ZWOELF, "regression_eine_variable");
+        eine.put("variablen", List.of(luecke.toString()));
+        abgelehnt(w, basis, eine, 422, "variable_nicht_nenner");
+        abgelehnt(w, basis, entwurf(ZWOELF, "gradtage"), 422, "variable_keine_gradtagzahl");
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_fassung WHERE tenant_id = ?", Integer.class,
+                w.mandant())).isZero();
+    }
+
+    /**
+     * R3/M3: Gas je Gradtag über zwölf Monate → a = 119 m³ (witterungsunabhängig), b = 3,80 m³ je Kd; die zwei Monate
+     * ohne Gradtage (Kennzahl ohne Zahl, {@code nenner_null}) sind Paare des Modells. Das Verhältnis über dieselbe
+     * Gradtagzahl trägt „ohne Grundlast“ und zählt diese Monate nicht.
+     */
+    @Test
+    void r3GasUeberGradtageMitKonstante() throws Exception {
+        kennzahlen.uhrStellen(Clock.fixed(NACH_DER_REFERENZPERIODE, ZoneOffset.UTC));
+        Welt w = welt();
+        bezugsgroesse(w, "BZ-8", "Gradtagzahl Werk Ahrenberg", "Kd", "gradtagzahl", GRADTAGE);
+        UUID kz6 = kennzahl(w, "KZ-0006", "quotient", e("zaehler", "messstelle", "MS-19"),
+                e("nenner", "bezugsgroesse", "BZ-8"));
+        for (int i = 0; i < 12; i++) {
+            monat(w, kz6, "MS-19", "BZ-8", "Kd", monat(i), GAS[i], GRADTAGE[i]);
+        }
+        String basis = basis(w, kz6);
+        Antwort gradtage = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf(ZWOELF, "gradtage"));
+        assertThat(gradtage.status()).as(gradtage.text()).isEqualTo(200);
+        JsonNode f = gradtage.body();
+        assertThat(f.get("methode").asText()).isEqualTo("gradtage");
+        assertThat(f.get("monate").asInt()).isEqualTo(12);
+        assertThat(f.at("/koeffizienten/a").asText()).isEqualTo("118.9104");
+        assertThat(f.at("/koeffizienten/b").asText()).isEqualTo("3.8041");
+        // Referenzdatei 1.8 BB-0004: a = 119, b = 3,8 — auf ihre Stellen gerundet dieselben Zahlen.
+        assertThat(new BigDecimal(f.at("/koeffizienten/a").asText()).setScale(0, RoundingMode.HALF_UP))
+                .isEqualByComparingTo("119");
+        assertThat(new BigDecimal(f.at("/koeffizienten/b").asText()).setScale(2, RoundingMode.HALF_UP))
+                .isEqualByComparingTo("3.80");
+        assertThat(f.get("r2").asText()).isEqualTo("0.997");
+        assertThat(f.get("streuung_prozent").asText()).isEqualTo("4.6");
+        assertThat(f.at("/variablen/0/spannweite_von").asText()).isEqualTo("0");
+        assertThat(f.at("/variablen/0/spannweite_bis").asText()).isEqualTo("605");
+        assertThat(f.at("/grundlage/perioden/8/kennzahl/grund").asText()).isEqualTo("nenner_null");
+
+        Antwort verhaeltnis = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf(ZWOELF, "verhaeltnis"));
+        assertThat(verhaeltnis.status()).as(verhaeltnis.text()).isEqualTo(200);
+        assertThat(verhaeltnis.body().get("kennzeichen").get(0).asText()).isEqualTo("ohne Grundlast");
+        assertThat(verhaeltnis.body().get("monate").asInt()).isEqualTo(10);
+        assertThat(verhaeltnis.body().get("koeffizienten").isNull()).isTrue();
+    }
+
+    private static String monat(int i) {
+        return LocalDate.parse("2026-11-01").plusMonths(i).toString();
+    }
+
+    /** Eine Bezugsgröße der Geltung G-2 (bzw. ST-1 für eine Gradtagzahl) mit wirksamen Monatswerten ab 11/2026. */
+    private static UUID bezugsgroesse(Welt w, String kennzeichen, String name, String einheit, String art,
+            String[] werte) {
+        boolean standort = "gradtagzahl".equals(art);
+        UUID st1 = root.queryForObject("SELECT id FROM standort WHERE tenant_id = ? AND kurzzeichen = 'ST-1'", UUID.class,
+                w.mandant());
+        UUID id = root.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
+                + "periode_art, geltung_art, ort_id, standort_id, art) VALUES (?, ?, ?, 'periodenwert', ?, 'monat', ?, ?, "
+                + "?, ?) RETURNING id", UUID.class, w.mandant(), kennzeichen, name, einheit,
+                standort ? "standort" : "gebaeude", standort ? null : w.g2(), standort ? st1 : null, art);
+        for (int i = 0; i < werte.length; i++) {
+            LocalDate von = LocalDate.parse(monat(i));
+            // Erfasst nach dem Monatsende (abgeschlossen_chk) — die Monate liegen hinter der echten Uhr der Datenbank.
+            Timestamp erfasst = Timestamp.from(von.plusMonths(1).atStartOfDay().toInstant(ZoneOffset.UTC).plusSeconds(86400));
+            root.update("INSERT INTO bezugsgroesse_wert (tenant_id, bezugsgroesse_id, wertart, einheit, periode_art, "
+                    + "periode_von, periode_bis, zeitzone, fassung, vorgang, status, betrag, herkunft_art, actor_sub, "
+                    + "actor_name, actor_rolle, actor_art, created_at) VALUES (?, ?, 'periodenwert', ?, 'monat', ?, ?, "
+                    + "'Europe/Berlin', 1, 'erstwert', 'wirksam', ?, 'eingabe', 'IK', 'Ines Kaltenbach', 'energiemanager', "
+                    + "'kunde', ?)", w.mandant(), id, einheit, Date.valueOf(von), Date.valueOf(von.plusMonths(1).minusDays(1)),
+                    new BigDecimal(werte[i]), erfasst);
+        }
+        return id;
+    }
+
     // ------------------------------------------------------------------------------------------------ Welt
 
     private Welt welt() throws Exception {
@@ -330,28 +549,41 @@ class BezugsbasisApiTest {
     /** Eine Monatszeile von KZ-0004, wie der Rechenlauf sie schreibt: Version 1, ungerundet, mit beiden Eingängen. */
     private static void monat(Welt w, String erster, String kwh, String kg, String zustand, List<String> kennzeichen)
             throws Exception {
+        monat(w, w.kz4(), "MS-20", "BZ-1", "kg", erster, kwh, kg, zustand, kennzeichen);
+    }
+
+    /** Dieselbe Zeile für eine andere Kennzahl; ein Nenner 0 schreibt, was der Lauf schreibt: {@code nenner_null}. */
+    private static void monat(Welt w, UUID kennzahl, String messstelle, String bezug, String einheit, String erster,
+            String zaehlerText, String nennerText) throws Exception {
+        monat(w, kennzahl, messstelle, bezug, einheit, erster, zaehlerText, nennerText, "endgueltig", List.of());
+    }
+
+    private static void monat(Welt w, UUID kennzahl, String messstelle, String bezug, String einheit, String erster,
+            String zaehlerText, String nennerText, String zustand, List<String> kennzeichen) throws Exception {
         LocalDate von = LocalDate.parse(erster);
-        BigDecimal zaehler = new BigDecimal(kwh);
-        BigDecimal nenner = new BigDecimal(kg);
+        BigDecimal zaehler = new BigDecimal(zaehlerText);
+        BigDecimal nenner = new BigDecimal(nennerText);
+        boolean null0 = nenner.signum() == 0;
         Timestamp am = Timestamp.from(von.plusMonths(1).atStartOfDay().toInstant(ZoneOffset.UTC).plusSeconds(7200));
         UUID fassung = root.queryForObject("SELECT id FROM kennzahl_fassung WHERE kennzahl_id = ? AND nummer = 1",
-                UUID.class, w.kz4());
+                UUID.class, kennzahl);
         UUID wert = UUID.randomUUID();
         root.update("INSERT INTO kennzahl_wert (id, tenant_id, kennzahl_id, periode_art, periode_von, periode_bis, zeitzone, "
-                + "version, wert, zaehler, nenner, menge_zustand, kennzeichen, zustand, endgueltig_ab, "
-                + "definition_fassung_id, berechnet_am) VALUES (?, ?, ?, 'monat', ?, ?, 'Europe/Berlin', 1, ?, ?, ?, "
-                + "'vollständig', ?::jsonb, ?, ?, ?, ?)", wert, w.mandant(), w.kz4(), Date.valueOf(von),
-                Date.valueOf(von.plusMonths(1).minusDays(1)), zaehler.divide(nenner, 20, RoundingMode.HALF_UP), zaehler,
-                nenner, MAPPER.writeValueAsString(kennzeichen), zustand, "endgueltig".equals(zustand) ? am : null,
-                fassung, am);
+                + "version, wert, zaehler, nenner, menge_zustand, kennzeichen, zustand, endgueltig_ab, grund, "
+                + "definition_fassung_id, berechnet_am) VALUES (?, ?, ?, 'monat', ?, ?, 'Europe/Berlin', ?, ?, ?, ?, "
+                + "?, ?::jsonb, ?, ?, ?, ?, ?)", wert, w.mandant(), kennzahl, Date.valueOf(von),
+                Date.valueOf(von.plusMonths(1).minusDays(1)), null0 ? null : 1,
+                null0 ? null : zaehler.divide(nenner, 20, RoundingMode.HALF_UP), zaehler, nenner,
+                null0 ? "keine Werte" : "vollständig", MAPPER.writeValueAsString(kennzeichen), null0 ? null : zustand,
+                !null0 && "endgueltig".equals(zustand) ? am : null, null0 ? "nenner_null" : null, fassung, am);
         root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
                 + "messstelle_id, wert, einheit, menge_zustand, version) VALUES (?, ?, ?, 0, 'zaehler', 'messstelle', "
-                + "'MS-20', (SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = 'MS-20'), ?, 'kWh', "
-                + "'vollständig', 1)", w.mandant(), wert, w.kz4(), w.mandant(), zaehler);
+                + "?, (SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = ?), ?, 'kWh', "
+                + "'vollständig', 1)", w.mandant(), wert, kennzahl, messstelle, w.mandant(), messstelle, zaehler);
         root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
                 + "bezugsgroesse_id, wert, einheit, menge_zustand, fassung) VALUES (?, ?, ?, 1, 'nenner', 'bezugsgroesse', "
-                + "'BZ-1', (SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'), ?, 'kg', "
-                + "'vollständig', 1)", w.mandant(), wert, w.kz4(), w.mandant(), nenner);
+                + "?, (SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = ?), ?, ?, "
+                + "'vollständig', 1)", w.mandant(), wert, kennzahl, bezug, w.mandant(), bezug, nenner, einheit);
     }
 
     private String basis(Welt w, UUID kennzahl) throws Exception {
