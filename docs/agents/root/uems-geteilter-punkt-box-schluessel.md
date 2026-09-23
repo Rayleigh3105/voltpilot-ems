@@ -43,5 +43,16 @@ nur ihre Reihe (`entity_id`), also Messstelle, Viertelstunde und Kennzahl.
 - `appendTransitions` (Wechsel-Ereignisse) eines einfachen Punkts vergleicht weiter mit der
   letzten Zeile seines `point_key`, auch mit einer, die eine Komponente genannt hat. Das betrifft
   nur einen Punkt, der von geteilt zu einfach wechselt.
-- Teil 2 (Plan und Box nach `supports[]`) liefert den geteilten Punkt erst wirklich. Bis dahin
-  meldet keine Box einen.
+- Teil 2, Cloud-Schnitt: `MeasurementConfigPublisher` fragt `BoxFaehigkeiten.kann(…,
+  "measurement_config_per_component")`; nur dann steht ein Punkt mehrerer Komponenten einmal je
+  Komponente im Plan (`MeasurementPlan#composeJeKomponente`, Vertrag `x-point-key-rule`, bleibt
+  2.0). Jede andere Box bekommt den zusammengelegten Plan byte-gleich
+  (`MessplanJeKomponenteBestandTest`, wörtliche Kopie von vorher). Das Wort meldet noch keine
+  Box: Core (`ParseConfig`, `parseBatch`, `WrapStatus` prüfen `point_key` eindeutig) und
+  Node-RED (`buildPlan`, ein Lesen je Ziel, Samples je Komponente) folgen im Box-Schritt.
+- ⚠ Mit dem Box-Release bleiben an einer Box mit bisher zusammengelegtem Punkt der letzte Wert
+  der Geräteseite (`latestObservations` aus `device_measurement_point_state`) und der Box-Verlauf
+  dieses Punkts stehen; die Werte stehen dann in den Reihen der Komponenten. Das Folgepaket, das
+  den Punktzustand weiterführt, ist Pflicht VOR dem Box-Release (Entscheid firstmate 23.09.2026).
+- ⚠ Meldet eine Box das Wort erst nach ihrem Update, erreicht sie der neue Plan erst mit der
+  nächsten Plan-Revision (die Box übergeht gleiche Revisionen).

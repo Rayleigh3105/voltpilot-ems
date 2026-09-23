@@ -51,6 +51,55 @@ public final class MeasurementPlan {
                 .toList();
     }
 
+    /**
+     * Der Plan für eine Box, die {@code measurement_config_per_component} meldet (AP-07 IP-18b
+     * Teil 2): ein {@code point_key}, den ZWEI oder mehr Komponenten beobachten, steht einmal JE
+     * KOMPONENTE da, jede mit ihrer {@code entity_id} und ihrer eigenen Kadenz - ein
+     * <b>geteilter Punkt</b> wie in {@code mqtt-measurement-samples-2.1.md} §2. Die Box liest ihn
+     * je Ziel einmal (schnellste Kadenz) und sendet je Komponente.
+     *
+     * <p>⚠ Nur wenn JEDE aktive Zeile dieses {@code point_key} eine Komponente nennt. Steht eine
+     * Zeile ohne Komponente daneben, bleibt es beim Zusammenlegen von {@link #compose} (die Regel
+     * des Vertrags: fehlt einem Vorkommen die Komponente, bleibt der {@code point_key} eindeutig).
+     * Ohne geteilten Punkt ist das Ergebnis Eintrag für Eintrag das von {@link #compose}.
+     */
+    public static List<Entry> composeJeKomponente(List<SelectionPoint> selections,
+            Map<Messkanal, Integer> cadenceVersions) {
+        Map<String, Boolean> alleMitKomponente = new LinkedHashMap<>();
+        for (SelectionPoint point : selections) {
+            if (!point.enabled()) continue;
+            alleMitKomponente.merge(point.pointKey(), point.entityId() != null, Boolean::logicalAnd);
+        }
+        Map<String, Map<UUID, Entry>> geteilt = new LinkedHashMap<>();
+        List<SelectionPoint> zusammenzulegen = new java.util.ArrayList<>();
+        for (SelectionPoint point : selections) {
+            if (!point.enabled()) continue;
+            if (!Boolean.TRUE.equals(alleMitKomponente.get(point.pointKey()))) {
+                zusammenzulegen.add(point);
+                continue;
+            }
+            Integer cadence = cadence(point, cadenceVersions);
+            geteilt.computeIfAbsent(point.pointKey(), k -> new LinkedHashMap<>())
+                    .merge(point.entityId(), entry(point.entityId(), point, cadence), (alt, neu) ->
+                            neu.cadenceS() != null && (alt.cadenceS() == null
+                                    || neu.cadenceS() < alt.cadenceS())
+                                    ? new Entry(alt.entityId(), alt.pointKey(), neu.cadenceS(),
+                                            alt.customDefinition(), alt.retentionClass(),
+                                            alt.rawRetentionDays(), alt.longTermCadenceS(),
+                                            alt.longTermStrategy())
+                                    : alt);
+        }
+        Map<String, Entry> zusammengelegt = new LinkedHashMap<>();
+        for (Entry e : compose(zusammenzulegen, cadenceVersions)) zusammengelegt.put(e.pointKey(), e);
+        List<Entry> out = new java.util.ArrayList<>();
+        for (String pointKey : alleMitKomponente.keySet()) {
+            Map<UUID, Entry> je = geteilt.get(pointKey);
+            if (je != null) out.addAll(je.values());
+            else out.add(zusammengelegt.get(pointKey));
+        }
+        return List.copyOf(out);
+    }
+
     private static Entry entry(UUID entityId, SelectionPoint point, Integer cadence) {
         return new Entry(entityId, point.pointKey(), cadence, point.customDefinition(),
                 point.retentionClass(), point.rawRetentionDays(), point.longTermCadenceS(),
