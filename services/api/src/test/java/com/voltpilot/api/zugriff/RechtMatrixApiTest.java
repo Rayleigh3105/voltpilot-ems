@@ -286,7 +286,7 @@ class RechtMatrixApiTest {
         // Gruppe 3 — Kennzahlen, Berichte, Exporte
         z.add(new Zeile("kennzahl.standort_definieren|kennzahl.unternehmen_definieren", HttpMethod.POST,
                 "/api/v1/kennzahlen", "eee33333"));
-        z.add(new Zeile("bericht.standort_freigeben|bericht.unternehmen", HttpMethod.POST, "/api/v1/berichte",
+        z.add(new Zeile("bericht.standort_freigeben|bericht.unternehmen|bewertung.abrufen", HttpMethod.POST, "/api/v1/berichte",
                 "eee33333"));
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/sites/{A1}/cockpit-layout", "ee44333e"));
         z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/tenant/cockpit-layout", "ee33333e"));

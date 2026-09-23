@@ -40,4 +40,8 @@ Einstufungs-Fassung bleibt der vorgesehene Fortschreibungsweg; alte Fassungen we
 - Vertrag: `docs/contracts/v2/bericht.md`, `bericht-vorlagen.json`, `bericht-vectors.json`, `bericht.schema.json`.
 - Migration: `V20260922251800__uems_energetische_bewertung.sql`.
 - API-Nachweis: `BewertungRanglisteApiTest.ip21BewertungWirdBytegleichFreigegebenUndIhreBelegeBleibenGeschuetzt`.
-- PDF/CSV der neuen Darstellung, automatischer Anstoß und die Bewertungs-Seite des Berichts gehören nicht zu IP-21/IP-24.
+- Seit IP-22 setzt `BerichtPdf` alle acht Abschnitte als Tabellen, mit dem Grenz-Satz im Kopf und deterministischer
+  Dokument-Kennung aus der Prüfsumme. `BerichtCsv` setzt dieselbe Abschnittsfolge mit einer eigenen Kopfzeile je Abschnitt;
+  `einstufung` und `fassung` sind getrennte Zellen. Die vier bisherigen Vorlagen gehen weiter durch ihren unveränderten
+  Ausgabeweg. Spaltenvertrag und Nachweise: [`bericht.md` §10](../../contracts/v2/bericht.md#10-regelwerk-darstellung-und-ausgabe-rw1rw3-da1da5-e10-e11).
+- Automatischer Anstoß und die Bewertungs-Seite des Berichts gehören weiterhin nicht zu IP-21/IP-22/IP-24.

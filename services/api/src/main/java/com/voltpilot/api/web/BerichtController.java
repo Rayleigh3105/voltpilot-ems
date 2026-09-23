@@ -109,11 +109,12 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — Anlegen folgt dem Freigabe-Recht (G1).
+     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} — Anlegen folgt
+     * dem Freigabe-Recht (G1), die Bewertung ihrer eigenen Unternehmens-Kennung.
      * {@code kennzahlen_abgewaehlt} (V3, AP-12 IP-14) ist freiwillig: jede eine Kennung, doppelte fallen zusammen.
      */
     @PostMapping("/berichte")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<BerichtDto.Bericht> anlegen(@RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
         BerichtDto.Anlegen b = lies(body, BerichtDto.Anlegen.class);
@@ -128,7 +129,7 @@ public class BerichtController {
                 wer)));
     }
 
-    /** Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} — Kopf, Stände, Anstöße. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
     @GetMapping("/berichte/{kennung}")
     public BerichtDto.Detail detail(@PathVariable String kennung, Authentication auth) {
         BerichtService.Detail d = dienst.detail(kennung(kennung), OrtAnfrage.akteur(auth));
@@ -136,9 +137,9 @@ public class BerichtController {
                 d.anstoesse().stream().map(BerichtController::anstoss).toList());
     }
 
-    /** Recht: {@code bericht.unternehmen}; nur die energetische Bewertung, mit Begründung. */
+    /** Recht: {@code bewertung.abrufen}; nur die energetische Bewertung, mit Begründung. */
     @PutMapping("/berichte/{kennung}/wiedervorlage")
-    @Recht(value = {"bericht.unternehmen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bewertung.abrufen"}, ziel = RechtZiel.DIENST)
     public BerichtDto.Bericht wiedervorlage(@PathVariable String kennung,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         if (body == null || !body.isObject()) {
@@ -162,7 +163,7 @@ public class BerichtController {
                 OrtAnfrage.akteur(auth)));
     }
 
-    /** Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} — mit D4-Prüfung, nötigenfalls neu gebildet. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
     @GetMapping("/berichte/{kennung}/entwurf")
     public BerichtDto.Entwurf entwurf(@PathVariable String kennung, Authentication auth) {
         BerichtService.Entwurf e = dienst.entwurf(kennung(kennung), OrtAnfrage.akteur(auth));
@@ -172,7 +173,7 @@ public class BerichtController {
                 e.teilansicht(), e.entwurf().abzug());
     }
 
-    /** Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} — R1, der Entwurf gegen Stand Nr. {@code gegen}. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
     @GetMapping("/berichte/{kennung}/entwurf/vergleich")
     public BerichtDto.Vergleich vergleich(@PathVariable String kennung, @RequestParam(required = false) String gegen,
             Authentication auth) {
@@ -188,11 +189,10 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — F1–F5: 201 mit dem neuen Stand, 200 für
-     * dieselbe Freigabe noch einmal.
+     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} — F1–F5.
      */
     @PostMapping("/berichte/{kennung}/freigeben")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<BerichtDto.Stand> freigeben(@PathVariable String kennung,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -209,7 +209,7 @@ public class BerichtController {
         return ResponseEntity.status(f.neu() ? 201 : 200).body(stand(f.stand()));
     }
 
-    /** Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} — die Prüfsumme wird geprüft. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
     @GetMapping("/berichte/{kennung}/staende/{nr}")
     public BerichtDto.Stand stand(@PathVariable String kennung, @PathVariable String nr, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -221,7 +221,7 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code export.standort} bzw. {@code export.unternehmen} (G1) — der Berichts-CSV eines Stands in Kundenform
+     * Recht: {@code export.standort}, {@code export.unternehmen} bzw. {@code bewertung.abrufen} (G1) — der CSV eines Stands
      * (DA3), jeder Abruf protokolliert (DA5); ein Entwurf hat keinen (EW4). Ablehnungen wie am Stand, als JSON.
      */
     @GetMapping("/berichte/{kennung}/staende/{nr}/csv")
@@ -238,7 +238,7 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} (G1: das PDF folgt dem Abrufen) — das PDF eines
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} (G1) — das PDF eines
      * Stands (DA2), server-seitig aus dem Abzug, byte-gleich bei jedem Abruf; jeder Abruf protokolliert (DA5); ein Entwurf hat
      * keins (EW4). Ablehnungen wie am Stand, als JSON — darum kein {@code produces}.
      */
@@ -255,9 +255,9 @@ public class BerichtController {
                 .body(datei.inhalt());
     }
 
-    /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — R4, mit Begründung. */
+    /** Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} — R4. */
     @PostMapping("/berichte/{kennung}/anstoesse/{id}/verwerfen")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
     public BerichtDto.Anstoss verwerfen(@PathVariable String kennung, @PathVariable String id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -266,9 +266,9 @@ public class BerichtController {
         return anstoss(dienst.verwerfen(k, id, b.begruendung(), wer).anstoss());
     }
 
-    /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — Archivieren folgt dem Freigabe-Recht (G1). */
+    /** Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
     @PostMapping("/berichte/{kennung}/archivieren")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
     public BerichtDto.Bericht archivieren(@PathVariable String kennung, @RequestBody(required = false) JsonNode body,
             Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);

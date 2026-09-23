@@ -283,6 +283,25 @@ gepinnten Fingerabdruck `konzept_tabelle.sha256`.
   solange der Abzug sie je Kennzahl nicht trägt). Die Datei entsteht NUR aus dem Abzug und der Freigabe des Stands (A1); zwei
   Abrufe unterscheiden sich nur in `erzeugt_am`, `erzeugt_von` und `teilansicht`. Route `GET …/staende/{nr}/csv`, Datei
   `bericht-<Kennung>-nr<Nr.>.csv`; ein Entwurf hat keine (EW4).
+
+  **Energetische Bewertung (AP-16 IP-22):** Auf die 16 Kopfzeilen folgt zusätzlich
+  `# grenz_satz=<Grenz-Satz>`; PDF und CSV lesen den Wortlaut aus `BerichtRegeln.BEWERTUNG_GRENZ_SATZ`, dessen Test ihn
+  an `glossar.ts::UEMS_NORMGRENZE` bindet. Danach trägt jeder der acht Abschnitte erst
+  `# abschnitt=<schluessel>`, dann GENAU seine Spaltenzeile:
+
+  | Abschnitt | CSV-Spalten |
+  |---|---|
+  | `umfang` | `id;fassung;von;bis;teilansicht` |
+  | `rangliste` | `energieeinsatz;name;traeger;menge;einheit;zustand;anteil_prozent;rang;vorschlag;kriterien_fassung` |
+  | `einstufungen` | `energieeinsatz;name;einstufung;fassung;gueltig_ab;person;begruendung` |
+  | `messabdeckung` | `energieeinsatz;name;traeger;menge;einheit;gemessen;geplant;ersatz;ungemessen` |
+  | `messplanung` | `messbedarf;energieeinsatz;wortlaut;ort;groesse;frist;zustand;messstelle;begruendung;datenstand` |
+  | `messmittel` | `geraet;einbau;genauigkeitsklasse;pruefungsart;pruefung_am;pruefung_gueltig_bis;beleg;ablage;beleg_sha256` |
+  | `qualitaet` | `merkmal;wert` |
+  | `quellenverzeichnis` | `kennzeichen` |
+
+  Der bestehende 13-Spalten-Träger und seine vier Vorlagen bleiben byte-gleich. Die Bewertungsdateien entstehen ebenfalls
+  nur aus Abzug und Stand; gleiche Abrufangaben ergeben byte-gleiche CSV-Bytes, das PDF ist unabhängig vom Abruf byte-gleich.
 - **DA4** Der Bestand-Geräte-CSV bleibt Maschinenform und bekommt neun Kopfzeilen direkt hinter
   `# catalog_version_gespeichert=`: `zeitraum_von`, `zeitraum_bis`, `erzeugt_am`, `erzeugt_von`, `zeitzone="UTC"`,
   `dezimal="."`, `trenner=","`, `standort`, `unternehmen` — Text in Anführungszeichen wie jede Kopfzeile davor, leer ohne

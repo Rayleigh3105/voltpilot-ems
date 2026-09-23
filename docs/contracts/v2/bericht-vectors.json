@@ -82,6 +82,7 @@
       "bericht.standort_abrufen",
       "bericht.standort_freigeben",
       "bericht.unternehmen",
+      "bewertung.abrufen",
       "export.standort",
       "export.unternehmen"
     ]
@@ -4747,9 +4748,9 @@
       "familie": "rechte",
       "abnahme": null,
       "titel": "Rechte aus der Matrix, jetzt durchgesetzt: Thomas (Unterstützer) nie · Claudia (Leser) abrufen, nicht freigeben · Peter (Bearbeiter Lindach) gibt Lindach frei, ST-1 ist 404, Unternehmen 403 · Murat abrufen, nicht freigeben",
-      "why": "E12: die fünf Kennungen `bericht.standort_abrufen`, `bericht.standort_freigeben`, `bericht.unternehmen`, `export.standort`, `export.unternehmen` werden mit `RechteAbleitung.darf` durchgesetzt (Muster KorrekturRechte) — der Export ist Datenabfluss (W-R4), der Unterstützer bekommt nie eine Datei; fremder Standort ist 404 (wie AP-11 K18), fehlendes Recht 403; Teilansicht-Kopfzeile nach R-A4.",
+      "why": "E12: die sechs Kennungen `bericht.standort_abrufen`, `bericht.standort_freigeben`, `bericht.unternehmen`, `bewertung.abrufen`, `export.standort`, `export.unternehmen` werden mit `RechteAbleitung.darf` durchgesetzt (Muster KorrekturRechte) — der Export ist Datenabfluss (W-R4), der Unterstützer bekommt nie eine Datei; fremder Standort ist 404 (wie AP-11 K18), fehlendes Recht 403; Teilansicht-Kopfzeile nach R-A4.",
       "schritte": [
-        "Die Kennung folgt aus Handlung × Geltung: abrufen/pdf → bericht.standort_abrufen, anlegen/freigeben/verwerfen/archivieren → bericht.standort_freigeben, csv → export.standort; am Unternehmen bericht.unternehmen bzw. export.unternehmen (G1).",
+        "Die Kennung folgt aus Handlung × Geltung: abrufen/pdf → bericht.standort_abrufen, anlegen/freigeben/verwerfen/archivieren → bericht.standort_freigeben, csv → export.standort; am Unternehmen bericht.unternehmen bzw. export.unternehmen (G1). Die Vorlage energetische_bewertung verwendet für alle Handlungen bewertung.abrufen.",
         "Das Urteil spricht RechteAbleitung.darf gegen rechte-matrix.json: ja, 403 (Recht fehlt, Unterstützer nie) oder 404 (fremder Standort) (G2).",
         "Teilansicht (G3): wer das Unternehmen nicht exportieren darf, bekommt die Namen der Standorte, deren Messwerte er ansehen darf.",
         "Stichtag 25.11.2026 10:00, damit die Unterstützung von Elektro Brunner (ab 24.11.2026 09:40) wirksam ist."

@@ -131,6 +131,33 @@ class BerichtCsvTest {
         assertThat(anders).hasSize(2);
     }
 
+    /** AP-16 IP-22: acht Abschnitte mit eigener Kopfzeile; Einstufung und Fassung sind getrennte CSV-Zellen. */
+    @Test
+    void bewertungHatGrenzSatzAbschnittskoepfeUndEinstufungsfassung() {
+        ObjectNode abzug = BerichtBewertungTestdaten.aus(nummerEins);
+        String kanonisch = BerichtRegeln.kanonisch(abzug);
+        BerichtCsv.Stand stand = new BerichtCsv.Stand(2, t("2026-11-17T15:42:00+01:00"), "Ines Kaltenbach",
+                BerichtRegeln.pruefsumme(kanonisch), null, null);
+        List<String> zeilen = BerichtCsv.zeilen(abzug, stand, t("2026-11-20T17:45:00+01:00"),
+                "Jonas Wendlinger", null);
+
+        assertThat(zeilen.get(16)).isEqualTo("# grenz_satz=" + BerichtRegeln.BEWERTUNG_GRENZ_SATZ);
+        assertThat(zeilen.stream().filter(z -> z.startsWith("# abschnitt=")).toList())
+                .containsExactlyElementsOf(BerichtCsv.ABSCHNITTE_BEWERTUNG.stream()
+                        .map(a -> "# abschnitt=" + a).toList());
+        int einstufungen = zeilen.indexOf("# abschnitt=einstufungen");
+        assertThat(zeilen.get(einstufungen + 1))
+                .isEqualTo("energieeinsatz;name;einstufung;fassung;gueltig_ab;person;begruendung");
+        assertThat(zeilen.get(einstufungen + 2).split(";", -1))
+                .containsExactly("EE-1", "Spritzguss", "wesentlich", "4", "2026-11-06", "Ines Kaltenbach",
+                        "Größter Einsatz an beiden Hallen.");
+
+        byte[] eins = BerichtCsv.datei(abzug, stand, t("2026-11-20T17:45:00+01:00"), "Jonas Wendlinger", null);
+        byte[] zwei = BerichtCsv.datei(abzug.deepCopy(), stand, t("2026-11-20T17:45:00+01:00"),
+                "Jonas Wendlinger", null);
+        assertThat(zwei).isEqualTo(eins);
+    }
+
     /** B14 Randfall: Claudias Teilansicht (G3) steht im Kopf, Zeiten in UTC übergeben erscheinen in der Zone. */
     @Test
     void dieTeilansichtStehtImKopf() {
@@ -207,7 +234,9 @@ class BerichtCsvTest {
                 }
             });
             if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.path("schluessel").asText())) {
-                assertThat(folge).isEmpty();
+                List<String> alle = new ArrayList<>();
+                v.path("abschnitte").forEach(a -> alle.add(a.path("schluessel").asText()));
+                assertThat(alle).containsExactlyElementsOf(BerichtCsv.ABSCHNITTE_BEWERTUNG);
                 continue;
             }
             assertThat(folge).as(v.path("schluessel").asText()).containsExactlyElementsOf(

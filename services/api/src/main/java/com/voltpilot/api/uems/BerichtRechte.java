@@ -28,7 +28,7 @@ import java.util.Map;
  * dahin Kundenbenutzer = Kundenadministrator unternehmensweit, Plattform-Admin = VoltPilot-Unterstützung. Die Standorte des
  * Kundenbereichs sind seine Standort-IDs.
  *
- * <p>{@link #MATRIX} trägt die fünf Berichts-Zeilen und {@code messwerte.ansehen} (für G3) als Daten, Zelle für Zelle gleich
+ * <p>{@link #MATRIX} trägt die sechs Berichts-Zeilen und {@code messwerte.ansehen} (für G3) als Daten, Zelle für Zelle gleich
  * {@code docs/contracts/v2/rechte-matrix.json} ({@code BerichtRechteTest}); die Matrix-Datei liegt nicht im Jar.
  */
 public final class BerichtRechte {
@@ -36,6 +36,7 @@ public final class BerichtRechte {
     public static final String STANDORT_ABRUFEN = "bericht.standort_abrufen";
     public static final String STANDORT_FREIGEBEN = "bericht.standort_freigeben";
     public static final String UNTERNEHMEN = "bericht.unternehmen";
+    public static final String BEWERTUNG = "bewertung.abrufen";
     public static final String EXPORT_STANDORT = "export.standort";
     public static final String EXPORT_UNTERNEHMEN = "export.unternehmen";
     public static final String ANSEHEN = BerichtRegeln.TEILANSICHT_RECHT;
@@ -67,6 +68,12 @@ public final class BerichtRechte {
         return RechteAbleitung.darf(MATRIX, wer, k, BerichtRegeln.kennung(handlung, geltungArt), ziel, jetzt);
     }
 
+    /** AP-16: Nur die neue Vorlage hat ihre eigene Unternehmens-Kennung; alle Bestandsvorlagen bleiben unverändert. */
+    public static String kennung(String handlung, String geltungArt, String vorlage) {
+        return BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(vorlage) ? BEWERTUNG
+                : BerichtRegeln.kennung(handlung, geltungArt);
+    }
+
     /** G3 — die Standortnamen einer Teilansicht in der Folge des Kundenbereichs; {@code null} = unternehmensweit. */
     public static List<String> teilansicht(Benutzer wer, Kundenbereich k, Instant jetzt) {
         return BerichtRegeln.teilansicht(MATRIX, wer, k, jetzt);
@@ -77,6 +84,7 @@ public final class BerichtRechte {
         zeile(m, STANDORT_ABRUFEN, "Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf)", "U", "U", "S", "S", "S", "-", "-");
         zeile(m, STANDORT_FREIGEBEN, "Standort-Bericht freigeben (Berichtsstand)", "U", "U", "S", "-", "-", "-", "-");
         zeile(m, UNTERNEHMEN, "Unternehmens-Bericht abrufen / freigeben", "U", "U", "-", "-", "-", "-", "-");
+        zeile(m, BEWERTUNG, "Energetische Bewertung anlegen · freigeben · abrufen", "U", "U", "-", "-", "-", "-", "-");
         zeile(m, EXPORT_STANDORT, "Export je Standort (CSV: Messwerte, Kennzahlen)", "U", "U", "S", "S", "S", "-", "-");
         zeile(m, EXPORT_UNTERNEHMEN, "Unternehmens-Export (alle Standorte)", "U", "U", "-", "-", "-", "-", "-");
         zeile(m, ANSEHEN, "Messwerte, Zeitreihen, Datenqualität ansehen", "U", "U", "S", "S", "S", "A", "-");
