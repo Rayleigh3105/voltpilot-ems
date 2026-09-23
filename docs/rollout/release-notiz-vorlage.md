@@ -18,6 +18,9 @@ ab [TT.MM.JJJJ, HH:MM Uhr] finden Sie im Portal neue Möglichkeiten:
 - Die Benutzerverwaltung finden Sie unter Ihrem Namen oben rechts unter Unternehmen und
   Einstellungen. Ihre bisherigen Berechtigungen bleiben erhalten.
 - Bei einer nicht mehr angemeldeten Box endet der Befehlsverlauf am Zeitpunkt der Abmeldung.
+- Unter „Bewertung“ legen Sie fest, welche Prozesse Energie einsetzen. Die Messwerte schlagen
+  eine Rangliste vor; einstufen, mit Begründung, tun Sie selbst. Solange Sie keinen
+  Energieeinsatz anlegen, ändert sich nichts.
 
 Beim ersten Aufruf lädt das Portal einmal neu. Von allein wird nichts zugeordnet oder
 eingerichtet. An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich dadurch nichts.

@@ -95,6 +95,12 @@ const bz = (kz: string, art: EnergieeinsatzEinfluss['art']): EnergieeinsatzEinfl
   wortlaut: null,
 });
 const text = (wortlaut: string, art: EnergieeinsatzEinfluss['art']): EnergieeinsatzEinfluss => ({ art, bezugsgroesse_id: null, wortlaut });
+/** Wie `EnergieeinsatzService.bezugsgroesse`: die Antwort löst den Verweis aus der ID auf — der Anfragekörper trägt nur die ID. */
+const mitVerweis = (einfluesse: readonly EnergieeinsatzEinfluss[]): EnergieeinsatzEinfluss[] =>
+  einfluesse.map((e) => {
+    const b = e.bezugsgroesse_id ? Object.values(BZ).find((x) => x.id === e.bezugsgroesse_id) : undefined;
+    return { ...e, bezugsgroesse: b ? { id: b.id, kennzeichen: b.kennzeichen, name: b.name } : null };
+  });
 
 const DEFS: Def[] = [
   { n: 1, name: 'Spritzguss', prozess: 'P-1', traeger: 'Strom', verantwortlich: 'MD', verbraucher: 'Spritzgussmaschinen SG01–SG06 (Halle 1 Nord) und SG07–SG10 (Halle 2 Spritzguss)', einfluesse: [bz('BZ-1', 'produktion'), bz('BZ-3', 'betriebszeit')] },
@@ -119,7 +125,7 @@ function einsatzAus(n: number, a: EnergieeinsatzAnlegen, gueltigAb: string): Ene
     wortlaut: a.wortlaut ?? null,
     verbraucher_wortlaut: a.verbraucher_wortlaut ?? null,
     verantwortlich: wer ? { sub: wer.sub, name: wer.name, konto: wer.sub, zustand: 'aktiv', ohne_konto_seit: null } : { sub: null, name: null },
-    einflussgroessen: a.einflussgroessen ?? [],
+    einflussgroessen: mitVerweis(a.einflussgroessen ?? []),
     messstellen,
     // Die Fixture rechnet nichts: nur die Gas-Messstelle hat keinen Kanal, also keine Menge im letzten Monat (R12).
     keine_werte: messstellen.every((m) => m.traeger === 'Gas'),
@@ -379,7 +385,7 @@ export function bewertungBuehne(stand: 'leer' | 'voll', ich = 'IK', heute = stan
     },
     energieeinsatzEinflussgroessen: async (id: string, einflussgroessen: EnergieeinsatzEinfluss[]) => {
       protokolliere(id, 'einflussgroessen');
-      return ersetze({ ...finde(id), einflussgroessen });
+      return ersetze({ ...finde(id), einflussgroessen: mitVerweis(einflussgroessen) });
     },
     energieeinsatzBeenden: async (id: string, b: { grund: string; gueltig_bis?: string }) => {
       protokolliere(id, 'beendet');

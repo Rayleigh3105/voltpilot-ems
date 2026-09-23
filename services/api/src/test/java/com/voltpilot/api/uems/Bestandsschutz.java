@@ -87,6 +87,17 @@ final class Bestandsschutz {
                 + ") s", String.class, args);
     }
 
+    /**
+     * Wie {@link #inhalt} über alle Zeilen, aber ohne die genannten Spalten — für eine neue Spalte, die eine Migration
+     * mit einer Vorgabe in JEDE bestehende Zeile schreibt ({@code NOT NULL DEFAULT}). Der Test nennt sie mit Namen und
+     * prüft ihren Wert eigens; alles andere an der Zeile bleibt gemessen.
+     */
+    static String inhaltOhne(JdbcTemplate db, String tabelle, String... spalten) {
+        return db.queryForObject("SELECT coalesce(md5(string_agg(z, '|' ORDER BY z)), '" + LEER + "') FROM (SELECT "
+                + ZEILE.replace("to_jsonb(t)", "(to_jsonb(t) - ?::text[])") + " AS z FROM " + tabelle + " t) s",
+                String.class, (Object) spalten);
+    }
+
     /** Was sich am Bestand geändert hat, je Tabelle ein Satz — leer heißt: der Bestand ist unberührt. */
     static List<String> abweichungen(Map<String, String> vorher, Map<String, String> nachher) {
         List<String> aus = new ArrayList<>();

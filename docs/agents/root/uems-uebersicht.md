@@ -6,6 +6,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 
 ## Verträge
 
+- **Energetische Bewertung: Wegweiser und Abschluss (AP-16 IP-27, NW-5, M4)** — Einstieg in alle 28 Pakete; Bestandsschutz byte-gleich ab der Fassung vor AP-16 (einzige Ausnahme `bericht.wiedervorlage_monate`), kein Läufer schreibt ohne Bewertung, Flag nur an Naht und Läufer · [Wegweiser, Bestandsschutz, Flag](uems-bewertung.md)
 - **Energetische Bewertung (AP-16 IP-2, NW-1)** — Nenner aus Anlagenbilanzen, direkte Messstellenmengen, Kriterien und Rangliste, Abdeckung, Prozess-Summen-Hinweise und Vergleichstoleranz; drei reine Zwillinge gegen dieselben Vektoren, Prozentvergleich ungerundet, keine Einstufung · [Vertrag und Prüfläufe](uems-bewertung-vertrag.md)
 - **Betrachtungsumfang (AP-16 IP-5, U1/U2/N4)** — Fassungen am Unternehmen, Anlagen aus zeitgültigen Standortbindungen, Ausschlüsse mit Grund; nur Anlagenzahl, Bilanzanteil erst IP-9 · [Vertrag und Grenzen](uems-bewertung-umfang.md)
 - **Mengen und Nenner (AP-16 IP-9, N1/N2/B3)** — Ranglisten-Leser aus Monatswerten und Anlagenbilanzen, sichtbarer Teilumfang mit x von y, Rest je Anlage und weitere Träger ohne Anteil; keine Einstufung · [Leser und Nachweise](uems-bewertung.md)
