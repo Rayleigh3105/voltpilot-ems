@@ -15,6 +15,7 @@ eigentlich noch nicht die Rede sein. Ebenso eine Frage, darf ich ohne Anlage auc
 | Bestandsschutz: ein Kunde mit Steuern, Schnappschüsse VOR dem Paket aufgenommen (eigener Commit) | `components/AnlageFlow.bestand.test.tsx`, `components/__snapshots__/anlage-bestand-*.html` |
 | Das Ziel: `onDone(ziel)` → Drawer `onChanged(id, ziel)` und danach die Adresse; `App` navigiert selbst, der Einrichtungs-Assistent über `finishOnboarding(ziel)` | `components/AnlageAnlegenDrawer.tsx`, `AnlageAnlegenDrawerLazy.tsx`, `App.tsx` |
 | Erreichbarkeit: eine frisch angelegte Anlage ohne Komponente behält den Bereich „Steuerung" | `ebenenNav.test.ts` |
+| Knopf „Messanlage anlegen“ im Assistenten „Messen & Auswerten“ (Schritt 2 ohne Anlage, 23.09.2026): `standortId` belegt Schritt 1 vor (nur, wenn er zur Wahl steht), `rueckkehr` ersetzt „Zu den Messstellen“ + „Zur Anlage“ durch EINEN Knopf ohne Ziel | `AnlageFlow.tsx`, `AnlageAnlegenDrawer(Lazy).tsx`, `MessenAssistent.tsx`, `messenAssistent.ts` · `MessenAssistent.messanlage.test.tsx`, `AnlageFlow.nurMessen.test.tsx`; Bestand ohne Vorbelegung: `AnlageFlow.bestandNurMessen.test.tsx` (`__snapshots__/anlage-nur-messen-bestand-*.html`, vor dem Knopf aufgenommen); Bilder `e2e/messen-assistent.spec.ts` |
 | 375/1440 px und Bilder beider Modi | `e2e/anlage-anlegen.spec.ts` auf `anlage-anlegen.html` (`?wirt=assistent`); `ANLAGE_ANLEGEN_BILDER=<Ordner>` |
 
 ## Die Fallen
@@ -40,12 +41,16 @@ eigentlich noch nicht die Rede sein. Ebenso eine Frage, darf ich ohne Anlage auc
 9. **Still heißt nicht Sackgasse.** Übersicht, Karte „Funktionen“ und Anlege-Fluss bieten Steuern nicht an. Erst wer
    selbst den bestehenden Anlagenbereich „Steuerung“ öffnet, sieht Zustand plus Einstieg; dieser öffnet den
    vorhandenen Standort-Assistenten und braucht `funktion.steuern_einrichten`.
+10. **Die Vorbelegung ist kein Schalter.** Der Knopf im Messen-Assistenten gibt nur den Standort mit; still wird der
+    Fluss, weil ein Standort ohne Anlage nicht von Steuern spricht. Derselbe Einstieg an einem steuernden Standort
+    liefe wie heute (Test „vom Wirt vorbelegt … kein Schalter“). Wechselt der Kunde in Schritt 1 den Standort, gilt
+    Falle 4 — die Rückkehr bleibt trotzdem der eine Knopf zurück.
 
 ## Prüfen
 
 ```bash
 (cd frontend/portal && npx vitest run src/anlegeNurMessen.test.ts src/anlageFlow.test.ts src/components/AnlageFlow.nurMessen.test.tsx \
-  src/components/AnlageFlow.bestand.test.tsx src/components/AnlageFlow.test.tsx src/components/AnlageFlow.standort.test.tsx \
-  src/ebenenNav.test.ts src/copy.test.ts)
+  src/components/AnlageFlow.bestand.test.tsx src/components/AnlageFlow.bestandNurMessen.test.tsx src/components/AnlageFlow.test.tsx src/components/AnlageFlow.standort.test.tsx \
+  src/components/MessenAssistent.messanlage.test.tsx src/ebenenNav.test.ts src/copy.test.ts)
 (cd frontend/portal && npx playwright test e2e/anlage-anlegen.spec.ts --project=desktop-chromium --project=mobile-chromium)
 ```

@@ -1,6 +1,7 @@
 import { lazy, useEffect, useRef, useState } from 'react';
 import { LazyBoundary } from './Lazy';
 import type { Site } from '../api';
+import type { AnlegeRueckkehr } from '../anlegeNurMessen';
 import type { Route } from '../nav';
 
 const AnlageAnlegenDrawer = lazy(() =>
@@ -26,6 +27,8 @@ export function AnlageAnlegenDrawerLazy(props: {
   onClose: () => void;
   onChanged: (createdSiteId: string, ziel?: Route) => void;
   existingSites?: Site[];
+  standortId?: string | null;
+  rueckkehr?: AnlegeRueckkehr | null;
 }) {
   const [everOpened, setEverOpened] = useState(props.open);
   const openRef = useRef(props.open);

@@ -72,6 +72,9 @@ interface Cloud {
   dqUebernahmen?: { anlage: string; vorschlaege: UemsDatenquelleBestaetigt[] }[];
   /** Die erste Bestätigung trifft auf eine inzwischen geänderte Liste (409 `vorschlag_geaendert`). */
   dqGeaendertEinmal?: boolean;
+  /** Knopf „Messanlage anlegen": was `POST /sites` bekam und ob `POST /devices/claim` kam. */
+  angelegt?: { name: string; standortId?: string; netzladenErlaubt?: boolean; maxFeedInKw?: number | null }[];
+  geclaimt?: number;
 }
 
 const DQ_LEER: UemsDatenquelleVorschlagsliste = { fuehrende_box: null, fuehrung: 'keine_box', vorschlaege: [], ausgelassen: [] };
@@ -186,6 +189,32 @@ async function verdrahte(page: Page, cloud: Cloud) {
       { deviceId: C1_IDS.boxHalle2, siteId: FIXTURE_IDS.an2, coreVersion: '2.8.0', paletteVersion: '1.14.0', reportedAt: new Date().toISOString(),
         capabilities: cloud.wagoFaehig ? ['data_sources', 'events', 'wago_registerbild'] : ['data_sources', 'events'] },
     ]));
+    if (pfad === '/api/v1/sites' && methode === 'POST') {
+      // Der Anlege-Fluss (Knopf „Messanlage anlegen"): die neue Anlage hängt ab heute am gewählten Standort.
+      const body = r.request().postDataJSON() as NonNullable<Cloud['angelegt']>[number];
+      (cloud.angelegt ??= []).push(body);
+      const neu = { id: 'a0000000-0000-4000-8000-00000000a0f3', name: body.name };
+      cloud.standorte = {
+        ...cloud.standorte,
+        standorte: cloud.standorte.standorte.map((s) => (s.id !== body.standortId ? s : {
+          ...s,
+          anlagen: [...s.anlagen, { ...neu, gueltigAb: cloud.standorte.stichtag, gueltigBis: null }],
+          anlagenZahl: s.anlagenZahl + 1,
+        })),
+      };
+      return json({
+        ...neu, biddingZone: 'DE-LU', latitude: null, longitude: null, plantKind: 'eigenverbrauch',
+        anzulegenderWertCtKwh: null, tarifArt: 'ohne', tarifParamCtKwh: null, netzladenErlaubt: false, maxFeedInKw: null,
+      }, 201);
+    }
+    if (pfad === '/api/v1/devices/claim' && methode === 'POST') {
+      cloud.geclaimt = (cloud.geclaimt ?? 0) + 1;
+      return json({
+        id: 'box-neu', siteId: 'a0000000-0000-4000-8000-00000000a0f3', externalRef: 'VP-DEMO-0001', kind: 'inverter',
+        name: null, status: 'active', lastSeenAt: null, createdAt: new Date().toISOString(),
+      }, 201);
+    }
+    if (/^\/api\/v1\/sites\/[^/]+\/assets$/.test(pfad)) return json([]);
     if (pfad === '/api/v1/sites') {
       return json(sichtbareListe(cloud.standorte.standorte.flatMap((s) => s.anlagen).map((a) => ({ id: a.id, name: a.name }))));
     }
@@ -321,6 +350,8 @@ async function ueberlauf(page: Page, breite: number) {
       // Die unsichtbare Ansage der Schale (`.vp-anlegen-sr`, 1 px, `clip: rect(0 0 0 0)`) ist kein Querlauf.
       .filter((el) => getComputedStyle(el).clip !== 'rect(0px, 0px, 0px, 0px)')
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      // Kacheln der Karte im Anlege-Fluss liegen über den Rand, die Karte schneidet sie ab (wie `anlage-umziehen.spec.ts`).
+      .filter(({ el }) => !el.closest('.leaflet-container'))
       .filter(({ r }) => r.width > 0 && (r.right > b + 0.5 || r.left < -0.5))
       .map(({ el }) => `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className)}`);
     const rumpf = [...document.querySelectorAll('.vp-anlegen-rumpf, .vp-modal .dbody')] as HTMLElement[];
@@ -404,20 +435,55 @@ for (const breite of BREITEN) {
       expect(einrichten).toEqual([LINDACH]);
     });
 
-    test('Standort ohne Anlage: Zustand und Ort als Hinweis ohne Knopf', async ({ page }) => {
-      await verdrahte(
-        page,
-        lindachImEntwurf({ ...ahrenbergHeute(), standorte: [werkAhrenberg(), werkLindach({ anlagen: [], anlagenZahl: 0 })] }),
-      );
+    test('Standort ohne Anlage: „Messanlage anlegen" öffnet den Anlege-Fluss still und kehrt zu Schritt 2 zurück', async ({ page }) => {
+      const cloud = lindachImEntwurf({ ...ahrenbergHeute(), standorte: [werkAhrenberg(), werkLindach({ anlagen: [], anlagenZahl: 0 })] });
+      await verdrahte(page, cloud);
       await oeffne(page, breite, `?standort=${LINDACH}`);
       await schritt2(page);
       const leer = page.getByTestId('messen-keine-anlage');
       await expect(leer).toContainText('An Werk Lindach hängt noch keine Anlage.');
-      await expect(leer).toContainText('auf der Übersicht über „Anlage anlegen“');
-      await expect(leer.getByRole('button')).toHaveCount(0);
+      await expect(leer).toContainText('Legen Sie hier eine Messanlage an. Sie gehört dann zu Werk Lindach');
+      await expect(leer.getByRole('button')).toHaveCount(1);
       await expect(page.getByRole('button', { name: 'Anderen Standort wählen', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Später fortsetzen', exact: true })).toBeVisible();
       await messeUndFotografiere(page, breite, 'ohne-anlage');
+
+      // Derselbe Anlege-Fluss, Werk Lindach vorbelegt; die Schale des Assistenten macht Platz.
+      await leer.getByRole('button', { name: 'Messanlage anlegen', exact: true }).click();
+      const fluss = page.getByRole('dialog', { name: 'Anlage anlegen' });
+      await expect(fluss).toBeVisible();
+      await expect(page.locator('.vp-anlegen-dialog')).toHaveCount(0);
+      await expect(fluss.getByRole('combobox', { name: 'Standort *' })).toContainText('Werk Lindach (ST-2)');
+      await expect(fluss.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät']);
+      const woerter = () => page.evaluate(() => (window as unknown as { steuerGeldWoerterDerSeite: () => string[] }).steuerGeldWoerterDerSeite());
+      expect(await woerter(), 'Schritt 1').toEqual([]);
+      await messeUndFotografiere(page, breite, 'messanlage-schritt1');
+      await fluss.getByLabel('Name der Anlage').fill('Halle 3');
+      await fluss.getByRole('button', { name: 'Weiter', exact: true }).click();
+      await expect(fluss.getByText('PV & Speicher aus dem Register')).toBeVisible();
+      expect(await woerter(), 'Register').toEqual([]);
+      await fluss.getByRole('button', { name: 'Überspringen - später nachtragen', exact: true }).click();
+      await expect(fluss.getByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeVisible();
+      expect(await woerter(), 'Gerät').toEqual([]);
+      await fluss.getByLabel('Geräte-ID').fill('vp-demo-0001');
+      await fluss.getByRole('button', { name: 'Anlage anlegen', exact: true }).click();
+      const zurueck = fluss.getByRole('button', { name: 'Weiter mit „Messen & Auswerten“', exact: true });
+      await expect(zurueck).toBeVisible();
+      await expect(fluss.getByRole('button', { name: 'Zu den Messstellen' })).toHaveCount(0);
+      expect(await woerter(), 'Fertig').toEqual([]);
+      await messeUndFotografiere(page, breite, 'messanlage-fertig');
+      expect(cloud.angelegt).toEqual([expect.objectContaining({ name: 'Halle 3', standortId: LINDACH, netzladenErlaubt: false, maxFeedInKw: null })]);
+      expect(cloud.geclaimt).toBe(1);
+
+      // Zurück im Assistenten: Schritt 2 mit der neuen Anlage, die Adresse bleibt.
+      const vorher = page.url();
+      await zurueck.click();
+      await schritt2(page);
+      await zaehlerIst(page, breite, 2, 'Datenquelle');
+      await expect(page.getByRole('button', { name: 'Datenquelle anlegen für Halle 3', exact: true })).toBeVisible();
+      await expect(page.getByTestId('messen-keine-anlage')).toHaveCount(0);
+      expect(page.url()).toBe(vorher);
+      await messeUndFotografiere(page, breite, 'messanlage-zurueck');
     });
 
     test('die bestehenden Dialoge liegen über dem Assistenten — ohne Querlauf', async ({ page }) => {

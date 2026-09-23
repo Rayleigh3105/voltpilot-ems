@@ -39,12 +39,13 @@ Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`
    NICHT stapeln: das Haus-`Modal` liegt mit seinem Schleier auf Ebene 60, der Anlege-Dialog auf 61, „Gerät
    hinzufügen" stand darum unsichtbar UNTER dem Assistenten (Playwright 1440 px). Zustand, Wahl und Schritt leben
    in `MessenAssistent`, nicht in der Schale; nach dem Schließen steht sie wieder da und liest nach.
-5. **Steuern-Regel: der Anlage-Assistent (`AnlageFlow`) gehört NICHT hinein** — er fragt nach Netzladen,
-   Einspeiseleistung, „PV & Speicher" und Betriebsmodell. Ohne Anlage am Standort nennt Schritt 2 den Zustand
-   und WO die Anlage entsteht (`keineAnlageWeg`: genau eine Anlage → „Anlage hinzufügen" oben, sonst
-   „Anlage anlegen" auf der Übersicht), ohne Knopf, dazu „Anderen Standort wählen" und „Später fortsetzen".
-   Seit dem Modus „nur messen“ (`uems-messanlage.md`) spricht der Anlage-Assistent an einem Standort, der nur
-   misst, weder von Steuern noch von Geld; der Hinweis bleibt trotzdem ein Satz ohne Knopf (eigene Entscheidung).
+5. **Steuern-Regel: ohne Anlage öffnet „Messanlage anlegen“ den BESTEHENDEN Anlage-Assistenten** (seit 23.09.2026,
+   Captain 15.09.2026 Empfehlung A; löst firstmate 002 „Hinweis ohne Knopf“ ab). Schritt 2 nennt den Zustand und
+   den Weg (`keineAnlageWeg`), der Knopf (Recht `anlage.verwalten`) öffnet als Unterablauf `art: 'anlage'` den
+   `AnlageAnlegenDrawerLazy` mit `standortId` (vorbelegt) und `rueckkehr` (`MESSANLAGE_RUECKKEHR`). Der Modus folgt
+   weiter dem Fakt des Standorts — ein Standort ohne Anlage spricht nicht von Steuern, also „nur messen“; die
+   Vorbelegung ist KEIN Schalter (`uems-messanlage.md` Falle 10). Das Ende hat EINEN Knopf „Weiter mit „Messen &
+   Auswerten““ ohne Ziel: keine Adresse wechselt, `onChanged` liest die Standorte neu, Schritt 2 zeigt die Anlage.
 6. **Schritte 3–5 sind eingehängt** (`GEBAUTE_SCHRITTE` = 1…5; eine Bühne kann mit `gebaut` weniger tragen, `vor`
    betritt nie einen ungebauten Schritt). Ohne Anlage am Standort bleibt Schritt 2 trotzdem bei „Später fortsetzen"
    (Entscheid 002) — kein „Weiter" in eine leere Liste. „Fertig" (5) löscht den Entwurf und hat kein Zurück.

@@ -82,6 +82,7 @@ import {
   nurMessenWeiterSatz,
   ZU_DEN_MESSSTELLEN,
   type AnlegeArt,
+  type AnlegeRueckkehr,
 } from '../anlegeNurMessen';
 import {
   buildSupplyPricePatch,
@@ -249,6 +250,8 @@ export function AnlageFlow({
   onDone,
   onSkipAll,
   kopf,
+  standortId: vorwahl = null,
+  rueckkehr = null,
 }: {
   /** The customer's existing Anlagen (wizard resume + Gerät target picker). */
   sites: Site[];
@@ -278,6 +281,15 @@ export function AnlageFlow({
    * (Einrichtungs-Assistent: „In vier Schritten …“). `null`, solange die Art offen ist.
    */
   kopf?: (schritte: readonly string[] | null) => ReactNode;
+  /**
+   * Der Standort, an dem die Anlage entstehen soll — vorbelegt vom Assistenten
+   * „Messen & Auswerten“ (Knopf „Messanlage anlegen“). Kein Schalter: der Modus folgt
+   * weiter dem Fakt dieses Standorts (`anlegeArt`), und der Kunde kann ihn in Schritt 1
+   * ändern. Ohne Angabe wie heute.
+   */
+  standortId?: string | null;
+  /** Das Ende im Modus „nur messen“, wenn ein Wirt den Kunden danach wieder aufnimmt. */
+  rueckkehr?: AnlegeRueckkehr | null;
 }) {
   // Resume: a customer who already has an Anlage but no device continues at
   // the Register step (skippable) on the way to the Gerät step.
@@ -298,7 +310,7 @@ export function AnlageFlow({
   // Der Standort kommt aus Schritt 1, nach dem Anlegen steht die Art fest.
   const [funktionen, setFunktionen] = useState<Funktionen | null | undefined>(undefined);
   const [funktionenRunde, setFunktionenRunde] = useState(0);
-  const [standortId, setStandortId] = useState<string | null>(null);
+  const [standortId, setStandortId] = useState<string | null>(vorwahl);
   const [artBeimAnlegen, setArtBeimAnlegen] = useState<AnlegeArt | null>(null);
   useEffect(() => {
     let aktiv = true;
@@ -323,7 +335,9 @@ export function AnlageFlow({
   const schritte = anlegeSchritte(art);
   const messStandort = nurMessen ? anlegeStandort(funktionen ?? null, ort) : null;
   const messenEnde: NurMessenEnde | null = nurMessen
-    ? { satz: nurMessenWeiterSatz(messStandort), ziel: messstellenZiel(messStandort) }
+    ? rueckkehr
+      ? { satz: rueckkehr.satz, zurueck: rueckkehr.knopf }
+      : { satz: nurMessenWeiterSatz(messStandort), ziel: messstellenZiel(messStandort) }
     : null;
 
   const locationSites = existingSites ?? sites;
@@ -349,6 +363,7 @@ export function AnlageFlow({
           <AnlageStep
             locationSites={locationSites}
             mitGeld={art === 'wie_heute'}
+            vorwahl={vorwahl}
             onStandort={setStandortId}
             onCreated={(s) => {
               setSite(s);
@@ -440,6 +455,7 @@ export function AnlageFlow({
 function AnlageStep({
   locationSites,
   mitGeld,
+  vorwahl,
   onStandort,
   onCreated,
 }: {
@@ -450,6 +466,8 @@ function AnlageStep({
    * das noch nicht feststeht. Was nicht zu sehen war, wird nicht gesendet.
    */
   mitGeld: boolean;
+  /** Vom Wirt vorbelegter Standort; gilt nur, wenn er zur Wahl steht (sonst die heutige Vorbelegung). */
+  vorwahl: string | null;
   /** Der gewählte oder vorbelegte Standort — an ihm entscheidet der Fluss. */
   onStandort: (standortId: string | null) => void;
   onCreated: (site: Site) => void;
@@ -498,9 +516,11 @@ function AnlageStep({
       .then((antwort) => {
         if (!aktiv) return;
         const wahl = standortWahl(antwort);
+        const vorbelegt =
+          vorwahl && wahl?.optionen.some((o) => o.value === vorwahl) ? vorwahl : (wahl?.vorbelegt ?? null);
         setStandortAuswahl(wahl);
-        setStandortId(wahl?.vorbelegt ?? null);
-        onStandort(wahl?.vorbelegt ?? null);
+        setStandortId(vorbelegt);
+        onStandort(vorbelegt);
       })
       .catch(() => {
         // Unlesbar: kein Picker. Bei genau einem Standort ordnet der Server selbst zu,
@@ -2062,11 +2082,11 @@ function SummaryStep({
   );
 }
 
-/** Das Ende des Modus „nur messen“: der Übergabe-Satz und das Ziel „Zu den Messstellen“. */
-interface NurMessenEnde {
-  satz: string;
-  ziel: Route;
-}
+/**
+ * Das Ende des Modus „nur messen“: der Übergabe-Satz und das Ziel „Zu den Messstellen“ —
+ * oder, mit `zurueck`, EIN Knopf zurück zum Wirt (ohne Ziel).
+ */
+type NurMessenEnde = { satz: string; ziel: Route } | { satz: string; zurueck: string };
 
 /**
  * Die Knöpfe am Ende des Modus „nur messen“: ohne Umweg zu den Messstellen — und
@@ -2082,6 +2102,13 @@ function NurMessenKnoepfe({
   onDone: (ziel?: Route) => void;
   marginTop: number;
 }) {
+  if ('zurueck' in messen) {
+    return (
+      <Button variant="primary" size="lg" fullWidth onClick={() => onDone()} style={{ marginTop }}>
+        {messen.zurueck}
+      </Button>
+    );
+  }
   return (
     <>
       <Button variant="primary" size="lg" fullWidth onClick={() => onDone(messen.ziel)} style={{ marginTop }}>

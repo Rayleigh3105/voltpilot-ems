@@ -278,6 +278,34 @@ describe('der Standort entscheidet — derselbe Fakt wie auf der Übersicht (Ste
     });
   });
 
+  it('vom Wirt vorbelegt (Knopf „Messanlage anlegen“): Werk Lindach still ab dem ersten Bild, Werk Ahrenberg wie heute — kein Schalter', async () => {
+    vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    const lindach = render(
+      <AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} standortId={FIXTURE_IDS.st2} />,
+    );
+    await ruhe();
+    expect(screen.getByRole('combobox', { name: 'Standort *' })).toHaveTextContent('Werk Lindach (ST-2)');
+    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
+    expect(screen.queryByText(/Feineinstellungen/)).toBeNull();
+    lindach.unmount();
+
+    // Dieselbe Vorbelegung an einem Standort, der steuert: der Fakt entscheidet, nicht der Einstieg.
+    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} standortId={FIXTURE_IDS.st1} />);
+    await ruhe();
+    expect(screen.getByRole('combobox', { name: 'Standort *' })).toHaveTextContent('Werk Ahrenberg (ST-1)');
+    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+    expect(screen.getByRole('combobox', { name: 'Veräußerungsform' })).toBeInTheDocument();
+  });
+
+  it('eine Vorbelegung, die nicht zur Wahl steht, gilt nicht — der Kunde wählt wie heute', async () => {
+    vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} standortId="st-archiviert" />);
+    await ruhe();
+    expect(screen.getByRole('combobox', { name: 'Standort *' })).toHaveTextContent('Standort wählen');
+  });
+
   it('solange die Funktionen unterwegs sind: kein Geld-Block, kein „Betrieb" — danach wie heute', async () => {
     let antworten: (f: Funktionen) => void = () => {};
     vi.spyOn(api, 'standorte').mockResolvedValue(bestandEineAnlage());
@@ -380,6 +408,22 @@ describe('„Anlage anlegen" als Drawer: nach „Zu den Messstellen" dorthin, so
     render(<AnlageAnlegenDrawer open onClose={() => {}} onChanged={onChanged} />);
     await bisFertig();
     fireEvent.click(screen.getByRole('button', { name: 'Zur Anlage' }));
+    expect(onChanged).toHaveBeenCalledWith(neueAnlage.id, undefined);
+    expect(window.location.hash).toBe('#/portfolio');
+  });
+
+  it('mit Rückkehr (Assistent „Messen & Auswerten“): EIN Knopf zurück, ohne Ziel und ohne Adresswechsel', async () => {
+    messkunde();
+    window.location.hash = '#/portfolio';
+    const onChanged = vi.fn();
+    const rueckkehr = { satz: 'So geht es weiter: zurück zum Wirt.', knopf: 'Zurück zum Wirt' };
+    render(<AnlageAnlegenDrawer open onClose={() => {}} onChanged={onChanged} standortId={FIXTURE_IDS.st2} rueckkehr={rueckkehr} />);
+    await bisFertig();
+    expect(screen.getByText(rueckkehr.satz)).toBeInTheDocument();
+    expect(screen.queryByText(nurMessenWeiterSatz(funktionWerkLindach()))).toBeNull();
+    expect(screen.queryByRole('button', { name: ZU_DEN_MESSSTELLEN })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Zur Anlage' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: rueckkehr.knopf }));
     expect(onChanged).toHaveBeenCalledWith(neueAnlage.id, undefined);
     expect(window.location.hash).toBe('#/portfolio');
   });

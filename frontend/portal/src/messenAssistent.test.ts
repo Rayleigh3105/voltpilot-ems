@@ -9,6 +9,8 @@ import {
   istBereitsAngelegt,
   keineAnlageSatz,
   keineAnlageWeg,
+  MESSANLAGE_ANLEGEN,
+  MESSANLAGE_RUECKKEHR,
   komponentenSatz,
   MESSEN_SCHRITTE,
   messenEinstieg,
@@ -30,6 +32,7 @@ import {
   funktionWerkLindach,
 } from './test/funktionenFixtures';
 import { FIXTURE_IDS, werkAhrenberg, werkLindach } from './test/standorteFixtures';
+import { steuerGeldWoerter } from './anlegeNurMessen';
 
 /**
  * Der Rahmen des Assistenten „Messen & Auswerten" (UEMS AP-01 IP-9a) als reine
@@ -268,15 +271,19 @@ describe('messenAssistent — Schritt 1 und Schritt 2', () => {
     expect(komponentenSatz(4)).toBe('4 Komponenten angebunden');
   });
 
-  it('ohne Anlage nennt Schritt 2 den Zustand UND den Ort, an dem der Kunde sie anlegt — nie nur, was fehlt', () => {
+  it('ohne Anlage nennt Schritt 2 den Zustand UND den Knopf, der die Messanlage hier anlegt — nie nur, was fehlt', () => {
     expect(keineAnlageSatz('Werk Lindach')).toBe('An Werk Lindach hängt noch keine Anlage.');
-    expect(keineAnlageWeg('Werk Lindach', 3)).toBe(
-      'Legen Sie auf der Übersicht über „Anlage anlegen“ eine Anlage an und wählen Sie dort Werk Lindach als Standort. Danach setzen Sie die Einrichtung hier fort.',
+    expect(keineAnlageWeg('Werk Lindach')).toBe(
+      'Legen Sie hier eine Messanlage an. Sie gehört dann zu Werk Lindach, und die Einrichtung geht hier weiter.',
     );
-    expect(keineAnlageWeg('Werk Lindach', null)).toContain('auf der Übersicht über „Anlage anlegen“');
-    // Mit genau einer Anlage gibt es die Übersicht nicht — der Knopf steht oben in der Kopfzeile.
-    expect(keineAnlageWeg('Werk Lindach', 1)).toBe(
-      'Legen Sie oben über „Anlage hinzufügen“ eine Anlage an und wählen Sie dort Werk Lindach als Standort. Danach setzen Sie die Einrichtung hier fort.',
-    );
+    expect(MESSANLAGE_ANLEGEN).toBe('Messanlage anlegen');
+    // Das Ende des Anlage-Assistenten führt hierher zurück — Satz und Knopf schweigen über Steuern und Geld.
+    expect(MESSANLAGE_RUECKKEHR).toEqual({
+      satz: 'So geht es weiter: In „Messen & Auswerten“ wählen Sie, womit an dieser Anlage gemessen wird.',
+      knopf: 'Weiter mit „Messen & Auswerten“',
+    });
+    for (const text of [keineAnlageWeg('Werk Lindach'), MESSANLAGE_ANLEGEN, MESSANLAGE_RUECKKEHR.satz, MESSANLAGE_RUECKKEHR.knopf]) {
+      expect(steuerGeldWoerter(text), text).toEqual([]);
+    }
   });
 });

@@ -335,8 +335,8 @@ describe('MessenAssistent — die bestehenden Dialoge', () => {
   });
 });
 
-describe('MessenAssistent — Standort ohne Anlage (Entscheid A)', () => {
-  it('nennt den Zustand und WO die Anlage entsteht, ohne Knopf — mit „Anderen Standort wählen" und „Später fortsetzen"', async () => {
+describe('MessenAssistent — Standort ohne Anlage (Captain 15.09.2026, Empfehlung A)', () => {
+  it('nennt den Zustand und den Knopf „Messanlage anlegen" — mit „Anderen Standort wählen" und „Später fortsetzen"', async () => {
     vi.mocked(api.standorte).mockResolvedValue({
       ...ahrenbergHeute(),
       standorte: [werkAhrenberg(), werkLindach({ anlagen: [], anlagenZahl: 0 })],
@@ -347,10 +347,9 @@ describe('MessenAssistent — Standort ohne Anlage (Entscheid A)', () => {
     const leer = within(assistent()).getByTestId('messen-keine-anlage');
     expect(leer).toHaveTextContent('An Werk Lindach hängt noch keine Anlage.');
     expect(leer).toHaveTextContent(
-      'Nächster Schritt: Legen Sie auf der Übersicht über „Anlage anlegen“ eine Anlage an und wählen Sie dort Werk Lindach als Standort. Danach setzen Sie die Einrichtung hier fort.',
+      'Nächster Schritt: Legen Sie hier eine Messanlage an. Sie gehört dann zu Werk Lindach, und die Einrichtung geht hier weiter.',
     );
-    expect(within(leer).queryByRole('button')).toBeNull();
-    expect(within(assistent()).queryByRole('button', { name: /Anlage anlegen/ })).toBeNull();
+    expect(within(leer).getAllByRole('button').map((b) => b.textContent)).toEqual(['Messanlage anlegen']);
     expect(within(assistent()).getByRole('button', { name: 'Zurück' })).toBeInTheDocument();
 
     klick('Später fortsetzen');

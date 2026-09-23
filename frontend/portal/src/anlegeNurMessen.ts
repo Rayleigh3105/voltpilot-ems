@@ -101,6 +101,16 @@ export function anlageLeertext(
   return art === 'nur_messen' ? nurMessen : wieHeute;
 }
 
+/**
+ * Kommt der Fluss aus einem Assistenten, der danach weitergeht („Messen & Auswerten“,
+ * Knopf „Messanlage anlegen“), endet der Modus „nur messen“ mit EINEM Knopf zurück
+ * dorthin — ohne Ziel, der Wirt nimmt den Kunden wieder auf. Der Wirt nennt Satz und Knopf.
+ */
+export interface AnlegeRueckkehr {
+  satz: string;
+  knopf: string;
+}
+
 /** Der Knopf am Ende des Modus „nur messen". */
 export const ZU_DEN_MESSSTELLEN = 'Zu den Messstellen';
 

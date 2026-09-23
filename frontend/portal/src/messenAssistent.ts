@@ -14,6 +14,7 @@ import {
   type StandortAmStichtag,
   type StandorteAmStichtag,
 } from './api';
+import type { AnlegeRueckkehr } from './anlegeNurMessen';
 import { fortschritt } from './anlegenFlow';
 import { UEMS_HAUPTZAEHLER, UEMS_UNTERZAEHLER_VON } from './glossar';
 import { ortWahlen, type OrtWahl } from './messstelleDialog';
@@ -281,19 +282,29 @@ export function keineAnlageSatz(standortName: string): string {
 }
 
 /**
- * WO der Kunde die Anlage anlegt — ein benannter Weg ohne Knopf (firstmate 002,
- * Entscheid A): der Anlage-Assistent ist ein eigener Fluss und gehört nicht in
- * „Messen & Auswerten". An einem Standort, der nur misst, spricht er seit dem Modus
- * „nur messen“ (`anlegeNurMessen.ts`) nicht mehr von Steuern oder Geld. Still heißt
- * aber nicht Sackgasse: der Satz nennt den Knopf, den der Kunde heute sieht —
- * mit genau einer Anlage „Anlage hinzufügen" oben in der Kopfzeile
- * (`addAnlage.showAddAnlageButton`), sonst „Anlage anlegen" auf der Übersicht
- * (`PortfolioCockpit`). Der Standort wird dort im Schritt „Anlage" gewählt.
+ * WIE der Kunde die Anlage anlegt — mit dem Knopf „Messanlage anlegen“ direkt hier
+ * (Captain 15.09.2026, Empfehlung A: ein Modus „nur messen“ im BESTEHENDEN Weg; löst
+ * firstmate 002 „Hinweis ohne Knopf“ ab). Der Knopf öffnet denselben Anlage-Assistenten
+ * (`AnlageFlow`) mit diesem Standort vorbelegt; an einem Standort ohne Anlage spricht er
+ * nach der Steuern-Regel (`anlegeNurMessen.ts`) kein Wort von Steuern oder Geld. Danach
+ * geht es hier weiter — der Satz sagt beides.
  */
-export function keineAnlageWeg(standortName: string, anlagenZahl: number | null): string {
-  const wo = anlagenZahl === 1 ? 'oben über „Anlage hinzufügen“' : 'auf der Übersicht über „Anlage anlegen“';
-  return `Legen Sie ${wo} eine Anlage an und wählen Sie dort ${standortName} als Standort. Danach setzen Sie die Einrichtung hier fort.`;
+export function keineAnlageWeg(standortName: string): string {
+  return `Legen Sie hier eine Messanlage an. Sie gehört dann zu ${standortName}, und die Einrichtung geht hier weiter.`;
 }
+
+/** Der Knopf unter dem Satz. */
+export const MESSANLAGE_ANLEGEN = 'Messanlage anlegen';
+
+/**
+ * Das Ende des Anlage-Assistenten, wenn er aus „Messen & Auswerten“ kommt: EIN Knopf
+ * zurück in diesen Assistenten statt „Zu den Messstellen“ und „Zur Anlage“ — der
+ * Kunde ist mitten in der Einrichtung und soll nicht woanders landen.
+ */
+export const MESSANLAGE_RUECKKEHR: AnlegeRueckkehr = {
+  satz: `So geht es weiter: In „${FUNKTIONEN.messen}“ wählen Sie, womit an dieser Anlage gemessen wird.`,
+  knopf: `Weiter mit „${FUNKTIONEN.messen}“`,
+};
 
 /** Die Anlagen, die heute am Standort hängen — an ihnen bindet Schritt 2 an. */
 export function anlagenAmStandort(st: StandortAmStichtag | null): { id: string; name: string }[] {

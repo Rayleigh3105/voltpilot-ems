@@ -3,6 +3,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { Site } from '../api';
+import type { AnlegeRueckkehr } from '../anlegeNurMessen';
 import { hashForRoute, type Route } from '../nav';
 import { AnlageFlow } from './AnlageFlow';
 
@@ -19,6 +20,8 @@ export function AnlageAnlegenDrawer({
   onClose,
   onChanged,
   existingSites,
+  standortId,
+  rueckkehr,
 }: {
   open: boolean;
   onClose: () => void;
@@ -34,6 +37,10 @@ export function AnlageAnlegenDrawer({
    * step 1; these are location suggestions only).
    */
   existingSites?: Site[];
+  /** Vorbelegter Standort (Knopf „Messanlage anlegen“ im Assistenten „Messen & Auswerten“). */
+  standortId?: string | null;
+  /** Das Ende im Modus „nur messen“: ein Knopf zurück zum Wirt statt „Zu den Messstellen“. */
+  rueckkehr?: AnlegeRueckkehr | null;
 }) {
   // The reload is DEFERRED to close: reloading the host's site list mid-flow
   // would re-render an empty-state host into the full page and unmount this
@@ -67,6 +74,8 @@ export function AnlageAnlegenDrawer({
           // existing customers add their next Anlage with this drawer.
           sites={[]}
           existingSites={existingSites}
+          standortId={standortId}
+          rueckkehr={rueckkehr}
           waitForFirstData={false}
           onSiteCreated={(s: Site) => {
             createdSiteId.current = s.id;

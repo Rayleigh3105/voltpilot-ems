@@ -43,6 +43,8 @@ import {
   KENNZEICHEN_AUTOMATISCH,
   keineAnlageSatz,
   keineAnlageWeg,
+  MESSANLAGE_ANLEGEN,
+  MESSANLAGE_RUECKKEHR,
   komponentenSatz,
   MESSEN_SCHRITTE,
   MESSEN_TITEL,
@@ -90,6 +92,7 @@ import { ortOptionen } from '../messstelleDialog';
 import { hashForRoute, standortMessstellenRoute } from '../nav';
 import { useIsPhone } from '../useIsPhone';
 import { wagoAssistentSichtbar } from '../wagoAssistent';
+import { AnlageAnlegenDrawerLazy } from './AnlageAnlegenDrawerLazy';
 import { AnlegenDialog } from './AnlegenDialog';
 import { AnlegenFlow } from './AnlegenFlow';
 import { AddDeviceDrawer } from './DeviceDrawers';
@@ -123,10 +126,13 @@ import './MessenAssistent.css';
  * hier, nicht in der Schale; nach dem Schließen steht sie wieder da und liest nach.
  *
  * <b>⚠ Steuern-Regel (Captain 14./15.09.2026).</b> Kein Schritt spricht von
- * Steuern oder Geld. Darum bindet Schritt 2 den Anlage-Assistenten NICHT ein
- * (er fragt nach Netzladen, Einspeiseleistung und Betriebsmodell): hängt am
- * Standort keine Anlage, nennt der Schritt den Zustand und den Weg dorthin —
- * als Hinweis ohne Knopf (firstmate 002, Entscheid A).
+ * Steuern oder Geld. Hängt am Standort keine Anlage, nennt Schritt 2 den Zustand
+ * und öffnet mit „Messanlage anlegen“ den BESTEHENDEN Anlage-Assistenten
+ * (`AnlageAnlegenDrawer` → `AnlageFlow`) mit diesem Standort vorbelegt — an einem
+ * Standort ohne Anlage spricht er im Modus „nur messen“ (`anlegeNurMessen.ts`) weder
+ * von Netzladen noch Einspeiseleistung noch Betriebsmodell (Captain 15.09.2026,
+ * Empfehlung A; löst firstmate 002 „Hinweis ohne Knopf“ ab). Sein Ende führt mit
+ * einem Knopf hierher zurück, Schritt 2 liest die Anlagen neu.
  *
  * <b>⚠ Schritte 3 bis 5 (IP-9b).</b> Die Leiste zeigt alle fünf; betreten wird
  * nur, was `gebaut` nennt. Ein neuer Schritt rendert hier seinen Rumpf und
@@ -142,7 +148,8 @@ type Unterfluss =
   | { art: 'geraet'; site: Site }
   | { art: 'komponente'; siteId: string }
   | { art: 'datenquelle'; anlage: { id: string; name: string } }
-  | { art: 'wago'; anlage: { id: string; name: string } };
+  | { art: 'wago'; anlage: { id: string; name: string } }
+  | { art: 'anlage'; standortId: string };
 
 const LADEFEHLER = 'Die Standorte konnten nicht geladen werden.';
 const EINRICHTEN_FEHLER = 'Messen & Auswerten konnte nicht angelegt werden. Bitte versuchen Sie es erneut.';
@@ -539,8 +546,22 @@ export function MessenAssistent({
               <p>{keineAnlageSatz(name)}</p>
               <p>
                 <span className="vp-ma-weg-wort">Nächster Schritt:</span>{' '}
-                {keineAnlageWeg(name, unternehmen?.anlagenZahl ?? null)}
+                {keineAnlageWeg(name)}
               </p>
+              {st && (
+                <div>
+                  <Recht aktion="anlage.verwalten"><Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      setFehler(null);
+                      setUnterfluss({ art: 'anlage', standortId: st.id });
+                    }}
+                  >
+                    {MESSANLAGE_ANLEGEN}
+                  </Button></Recht>
+                </div>
+              )}
             </div>
             {/* Im Rumpf, nicht im Fuß: dort war der Knopf bei 375 px breiter als sein halber Platz. */}
             <div>
@@ -1008,6 +1029,17 @@ export function MessenAssistent({
           standortId={standortId}
           anlagenAmStandort={anlagen.map((a) => a.id)}
           onClose={zurueckAusUnterfluss}
+        />
+      )}
+      {unterfluss?.art === 'anlage' && (
+        <AnlageAnlegenDrawerLazy
+          open
+          standortId={unterfluss.standortId}
+          rueckkehr={MESSANLAGE_RUECKKEHR}
+          existingSites={sites ?? undefined}
+          onClose={() => setUnterfluss(null)}
+          // Die neue Anlage steht erst nach dem Nachlesen an diesem Standort; Schritt 2 bleibt.
+          onChanged={() => setRunde((n) => n + 1)}
         />
       )}
       {unterfluss?.art === 'wago' && standortId && geraete && (
