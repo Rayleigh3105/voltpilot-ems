@@ -104,6 +104,26 @@ class BezugsbasisVergleichSatzTest {
                 null, null, null, null, null))).isEqualTo(BezugsbasisVergleichSatz.LEER);
     }
 
+    /** G2 (IP-13): die fehlende Variable steht im Satz, ohne Koordinaten mit dem Satz des Wetter-Archivs (§5.8). */
+    @Test
+    void g2VariableFehltMitKoordinatenSatz() {
+        BezugsbasisRegeln.Fassung gradtage = new BezugsbasisRegeln.Fassung("BB-0003", 1, "gradtage", 12, "4.2465",
+                new BezugsbasisRegeln.Koeffizienten("119", "3.8", null), "4.6", "2.0", null,
+                List.of(new BezugsbasisRegeln.Variable("Gradtagzahl Lindach", "Kd", "gradtagzahl")));
+        Map<String, Object> e = BezugsbasisRegeln.vergleich(new BezugsbasisRegeln.VergleichEingang(gradtage, false, true,
+                wert("1200"), List.of(new BezugsbasisRegeln.Wert(null, null, List.of()))));
+        assertThat(e).containsEntry("urteil", "nicht_anwendbar").containsEntry("grund", "variable_fehlt")
+                .containsEntry("erwartet", null);
+        String satz = BezugsbasisVergleichSatz.monat(e, new BezugsbasisVergleichSatz.Monat("Januar 2026", "kWh",
+                new BezugsbasisVergleichSatz.Variable("Gradtagzahl Lindach", null, "Kd", null, null), "BB-0003", null,
+                null, null, null, WetterArchivRegeln.koordinatenFehlen("Lindach")));
+        saetze.add(satz);
+        assertThat(satz).isEqualTo("Januar 2026: nicht bewertbar — Gradtagzahl Lindach hat keinen Wert. Für den Standort "
+                + "Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. Eine Wetterbereinigung über Gradtage "
+                + "ist hier erst möglich, wenn der Standort Koordinaten hat.");
+        keineUrsacheKeinNormwort();
+    }
+
     /** U6 und SP2: kein Satz nennt eine Ursache oder ein Norm-Wort. */
     private void keineUrsacheKeinNormwort() {
         for (String s : saetze) {

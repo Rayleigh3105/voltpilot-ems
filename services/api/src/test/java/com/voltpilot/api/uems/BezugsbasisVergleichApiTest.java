@@ -75,6 +75,9 @@ class BezugsbasisVergleichApiTest {
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String PFAD = "/api/v1/kennzahlen";
     private static final Instant HEUTE = Instant.parse("2026-04-15T09:00:00Z");
+    /** R3/IP-12b: das Kennzeichen der bezogenen Temperatur an BZ-8 (Abruf 01.02.2026, 03:00 Ortszeit). */
+    private static final String BEZOGEN = WetterArchivRegeln.kennzeichen("Open-Meteo-Archiv",
+            java.time.OffsetDateTime.parse("2026-02-01T02:00:00Z"));
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -233,6 +236,152 @@ class BezugsbasisVergleichApiTest {
                 + "Fassung 1)").contains("Streuung ± 4,6 %");
     }
 
+    // ================================================================================ IP-13: Grenzen und Kennzeichen
+
+    /**
+     * G3 (R4): das Modell sagt im März 2026 (390 000 kg, toleriert bis 375 100 kg) nichts — gemessen bleibt, erwartet,
+     * Δ, Band und Urteil fehlen. Das Verhältnis extrapoliert nicht: es liefert die Zahl mit dem Kennzeichen „außerhalb
+     * der Basis-Spannweite“. KZ-0007 (MS-21 ÷ BZ-1, dieselben Zahlen) trägt dafür ein Verhältnis mit Spannweite.
+     */
+    @Test
+    void g3ModellOhneZahlVerhaeltnisMitKennzeichen() throws Exception {
+        Welt w = welt();
+        JsonNode modell = ruf(w, PFAD + "/" + w.kz4() + "/vergleich?von=2026-03&bis=2026-03").body()
+                .at("/monate/0/bereinigt");
+        assertThat(zahl(modell.at("/gemessen/wert"))).isEqualByComparingTo("100000");
+        assertThat(zahl(modell.at("/bedingung/0/wert"))).isEqualByComparingTo("390000");
+        for (String feld : List.of("erwartet", "delta_prozent", "band_prozent", "richtung")) {
+            assertThat(modell.get(feld).isNull()).as(feld).isTrue();
+        }
+        assertThat(modell.get("urteil").asText()).isEqualTo("nicht_anwendbar");
+
+        TenantContext.set(w.mandant());
+        UUID bb = basis(w, w.ohneBasis());
+        TenantContext.clear();
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        fassung(w.mandant(), bb, 1, bz1, "verhaeltnis", "2024-11/2025-10", "2025-11-01", null, "0.2685", null, null,
+                "254000", "341000");
+        Antwort a = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2026-03&bis=2026-03");
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        String kennzeichen = a.body().at("/bezugsbasis/kennzeichen").asText();
+        JsonNode v = a.body().at("/monate/0/bereinigt");
+        assertThat(zahl(v.get("erwartet"))).isEqualByComparingTo("104715");
+        assertThat(v.get("delta_prozent").asText()).isEqualTo("-4.5");
+        assertThat(v.get("urteil").asText()).isEqualTo("besser");
+        assertThat(texte(v.get("kennzeichen"))).containsExactly(
+                "bereinigt um Produktionsmenge Spritzguss (Bezugsbasis " + kennzeichen + ", Fassung 1)",
+                "Produktionsmenge Spritzguss außerhalb der Basis-Spannweite (254 000–341 000 kg)");
+        assertThat(a.body().at("/zeitraum/kennzeichen").toString())
+                .contains("Produktionsmenge Spritzguss außerhalb der Basis-Spannweite (254 000–341 000 kg)");
+    }
+
+    /** G5 (R3): „Temperatur von VoltPilot bezogen“ erbt aus der Bedingung in die Vergleichszeile — einmal, neben der Güte. */
+    @Test
+    void g5BezogeneTemperaturErbtInDieVergleichszeile() throws Exception {
+        Welt w = welt();
+        Antwort a = ruf(w, PFAD + "/" + w.kz6() + "/vergleich?von=2026-01&bis=2026-01");
+        JsonNode b = a.body().at("/monate/0/bereinigt");
+        assertThat(b.get("urteil").asText()).isEqualTo("im_rahmen");
+        assertThat(b.at("/bedingung/0/kennzeichen").asText()).isEqualTo("BZ-8");
+        assertThat(texte(b.get("kennzeichen"))).containsExactly(
+                "bereinigt um Gradtage (G20/15, Bezugsbasis BB-0002, Fassung 1)", "Streuung ± 4,6 %", BEZOGEN);
+        assertThat(BEZOGEN).isEqualTo("Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.02.2026 03:00)");
+        assertThat(texte(a.body().at("/zeitraum/kennzeichen"))).contains(BEZOGEN, "Streuung ± 4,6 %");
+    }
+
+    /**
+     * G2 (R4, RU:201): eine bezogene Gradtagzahl an einem Standort ohne Koordinaten hat keinen Wert — {@code variable_fehlt},
+     * kein erwartet, und der Satz sagt mit dem Satz des Wetter-Archivs (§5.8), warum. KZ-0007 trägt dafür ein
+     * Gradtage-Modell über die Gradtagzahl Lindach.
+     */
+    @Test
+    void g2LindachOhneKoordinatenVariableFehlt() throws Exception {
+        Welt w = welt();
+        UUID u = root.queryForObject("SELECT unternehmen_id FROM standort WHERE tenant_id = ? LIMIT 1", UUID.class,
+                w.mandant());
+        UUID st2 = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Lindach', 'ST-2', 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), u);
+        UUID bz9 = root.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
+                + "periode_art, geltung_art, standort_id, art) VALUES (?, 'BZ-9', 'Gradtagzahl Lindach', 'periodenwert', "
+                + "'Kd', 'monat', 'standort', ?, 'gradtagzahl') RETURNING id", UUID.class, w.mandant(), st2);
+        root.update("INSERT INTO bezugsgroesse_wetterbezug (tenant_id, bezugsgroesse_id, von, actor_name, actor_art) "
+                + "VALUES (?, ?, '2024-11-01', 'Jonas Wendlinger', 'kunde')", w.mandant(), bz9);
+        TenantContext.set(w.mandant());
+        UUID bb = basis(w, w.ohneBasis());
+        TenantContext.clear();
+        fassung(w.mandant(), bb, 1, bz9, "gradtage", "2024-11/2025-10", "2025-11-01", null, "4.2465",
+                "{\"a\": 119, \"b\": 3.8}", "4.6", null, null);
+
+        JsonNode m = ruf(w, PFAD + "/" + w.ohneBasis() + "/vergleich?von=2026-01&bis=2026-01").body().at("/monate/0");
+        JsonNode b = m.get("bereinigt");
+        assertThat(b.get("urteil").asText()).isEqualTo("nicht_anwendbar");
+        assertThat(b.get("grund").asText()).isEqualTo("variable_fehlt");
+        assertThat(b.get("erwartet").isNull()).isTrue();
+        assertThat(b.at("/bedingung/0/kennzeichen").asText()).isEqualTo("BZ-9");
+        assertThat(b.at("/bedingung/0/wert").isNull()).isTrue();
+        assertThat(m.get("satz").asText()).isEqualTo("Januar 2026: nicht bewertbar — Gradtagzahl Lindach hat keinen Wert. "
+                + WetterArchivRegeln.koordinatenFehlen("Lindach"));
+        assertThat(m.get("satz").asText()).contains("die Koordinaten fehlen");
+    }
+
+    /**
+     * G2 (Q3-Muster) und G1: ein unvollständiger September 2025 gegen das vorläufige Verhältnis (Fassung 1, 1 von 12) —
+     * Zahl mit Richtung, ohne Urteil; die Kennzeichen des Werts („x von y Tagen“, Untergrenze) erben, „vorläufig“ steht an
+     * Monat und Zeitraum; der laufende April ist nicht zu Ende.
+     */
+    @Test
+    void g2UnvollstaendigOhneUrteilUndG1VorlaeufigAnMonatUndZeitraum() throws Exception {
+        Welt w = welt();
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        monat(w, w.kz4(), "MS-20", bz1, "BZ-1", "kg", "2025-09-01", "80000", "300000", "unvollständig", "untergrenze",
+                MAPPER.writeValueAsString(List.of("Untergrenze — Menge unvollständig (MS-20)", "28 von 30 Tagen")));
+        Antwort a = ruf(w, PFAD + "/" + w.kz4() + "/vergleich?von=2025-09&bis=2025-10");
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        String vorlaeufig = "Bezugsbasis vorläufig (1 von 12 Monaten)";
+
+        JsonNode sep = a.body().at("/monate/0");
+        JsonNode b = sep.get("bereinigt");
+        assertThat(b.at("/gemessen/zustand").asText()).isEqualTo("unvollständig");
+        assertThat(zahl(b.get("erwartet"))).isEqualByComparingTo("85110");
+        assertThat(b.get("delta_prozent").asText()).isEqualTo("-6.0");
+        assertThat(b.get("richtung").asText()).isEqualTo("weniger");
+        assertThat(b.get("urteil").asText()).isEqualTo("ohne_urteil");
+        assertThat(b.get("grund").isNull()).isTrue();
+        assertThat(texte(b.get("kennzeichen"))).containsExactly(
+                "bereinigt um Produktionsmenge Spritzguss (Bezugsbasis BB-0001, Fassung 1)", vorlaeufig,
+                "Untergrenze — Menge unvollständig (MS-20)", "28 von 30 Tagen", "unvollständig");
+        assertThat(sep.get("satz").asText()).isEqualTo("September 2025: 80 000 kWh gemessen, 85 110 kWh erwartet bei "
+                + "300 000 kg — 6,0 % weniger; ohne Urteil, die Werte sind unvollständig. Die Bezugsbasis ist vorläufig "
+                + "(1 von 12 Monaten).");
+
+        JsonNode okt = a.body().at("/monate/1/bereinigt");
+        assertThat(okt.get("urteil").asText()).isEqualTo("im_rahmen");
+        assertThat(texte(okt.get("kennzeichen"))).contains(vorlaeufig);
+
+        JsonNode z = a.body().get("zeitraum");
+        assertThat(z.get("urteil").asText()).isEqualTo("ohne_urteil");
+        assertThat(z.get("richtung").asText()).isEqualTo("weniger");
+        assertThat(z.get("monate").asText()).isEqualTo("2 von 2");
+        assertThat(texte(z.get("kennzeichen"))).contains(vorlaeufig, "28 von 30 Tagen", "unvollständig");
+        assertThat(z.get("satz").asText()).isEqualTo("September 2025 bis Oktober 2025: 168 000 kWh gemessen, 173 057 kWh "
+                + "erwartet — 2,9 % weniger; ohne Urteil, die Werte sind unvollständig. Die Bezugsbasis ist vorläufig "
+                + "(1 von 12 Monaten).");
+
+        JsonNode april = ruf(w, PFAD + "/" + w.kz4() + "/vergleich?von=2026-04&bis=2026-04").body().at("/monate/0");
+        assertThat(april.at("/bereinigt/grund").asText()).isEqualTo("periode_nicht_zu_ende");
+        assertThat(april.at("/bereinigt/erwartet").isNull()).isTrue();
+        assertThat(april.get("satz").asText()).isEqualTo("April 2026: nicht bewertbar — der Monat ist noch nicht zu Ende.");
+    }
+
+    private static List<String> texte(JsonNode liste) {
+        List<String> aus = new java.util.ArrayList<>();
+        liste.forEach(n -> aus.add(n.asText()));
+        return aus;
+    }
+
     /** R10: ohne Bezugsbasis trägt jeder Monat {@code basis_fehlt}, der Leer-Satz steht am Kopf. */
     @Test
     void ohneBasisBasisFehlt() throws Exception {
@@ -283,9 +432,12 @@ class BezugsbasisVergleichApiTest {
         UUID bz1 = root.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
                 + "periode_art, geltung_art, ort_id) VALUES (?, 'BZ-1', 'Produktionsmenge Spritzguss', 'periodenwert', "
                 + "'kg', 'monat', 'gebaeude', ?) RETURNING id", UUID.class, t, g2);
+        // BZ-8 wie das Wetter-Archiv sie führt (IP-12b): Gradtagzahl am Standort, an die bezogene Temperatur gebunden.
         UUID bz8 = root.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
-                + "periode_art, geltung_art, ort_id) VALUES (?, 'BZ-8', 'Gradtagzahl Werk', 'periodenwert', 'Kd', 'monat', "
-                + "'gebaeude', ?) RETURNING id", UUID.class, t, g2);
+                + "periode_art, geltung_art, standort_id, art) VALUES (?, 'BZ-8', 'Gradtagzahl Werk', 'periodenwert', 'Kd', "
+                + "'monat', 'standort', ?, 'gradtagzahl') RETURNING id", UUID.class, t, st1);
+        root.update("INSERT INTO bezugsgroesse_wetterbezug (tenant_id, bezugsgroesse_id, von, actor_name, actor_art) "
+                + "VALUES (?, ?, '2024-11-01', 'Jonas Wendlinger', 'kunde')", t, bz8);
         Welt ohne = new Welt(t, g2, null, null, null);
         UUID kz4 = kennzahl(ohne, "KZ-0004", e("zaehler", "messstelle", "MS-20"), e("nenner", "bezugsgroesse", "BZ-1"));
         UUID kz6 = kennzahl(ohne, "KZ-0006", e("zaehler", "messstelle", "MS-21"), e("nenner", "bezugsgroesse", "BZ-8"));
@@ -318,6 +470,16 @@ class BezugsbasisVergleichApiTest {
     /** Eine Monatszeile der Kennzahl, wie der Rechenlauf sie schreibt (Version 1), und der Bezugsgrößen-Wert (Fassung 1). */
     private static void monat(Welt w, UUID kennzahl, String ms, UUID bz, String bzKennzeichen, String bzEinheit,
             String erster, String zaehlerText, String nennerText) throws Exception {
+        // BZ-8 ist bezogen: der Rechenlauf erbt ihr Kennzeichen in die Kennzahl (IP-12b, Rang 54).
+        String kennzeichen = "BZ-8".equals(bzKennzeichen) ? MAPPER.writeValueAsString(List.of(BEZOGEN)) : "[]";
+        monat(w, kennzahl, ms, bz, bzKennzeichen, bzEinheit, erster, zaehlerText, nennerText, "vollständig", null,
+                kennzeichen);
+    }
+
+    /** Wie oben, mit Mengen-Zustand, Richtung (Q3: nur bei unvollständig) und den Kennzeichen des Kennzahl-Werts. */
+    private static void monat(Welt w, UUID kennzahl, String ms, UUID bz, String bzKennzeichen, String bzEinheit,
+            String erster, String zaehlerText, String nennerText, String mengeZustand, String richtung,
+            String kennzeichen) throws Exception {
         LocalDate von = LocalDate.parse(erster);
         LocalDate bis = von.plusMonths(1).minusDays(1);
         BigDecimal zaehler = new BigDecimal(zaehlerText);
@@ -327,19 +489,30 @@ class BezugsbasisVergleichApiTest {
                 UUID.class, kennzahl);
         UUID wert = UUID.randomUUID();
         root.update("INSERT INTO kennzahl_wert (id, tenant_id, kennzahl_id, periode_art, periode_von, periode_bis, zeitzone, "
-                + "version, wert, zaehler, nenner, menge_zustand, kennzeichen, zustand, endgueltig_ab, "
+                + "version, wert, zaehler, nenner, menge_zustand, richtung, kennzeichen, zustand, endgueltig_ab, "
                 + "definition_fassung_id, berechnet_am) VALUES (?, ?, ?, 'monat', ?, ?, 'Europe/Berlin', 1, ?, ?, ?, "
-                + "'vollständig', '[]'::jsonb, 'endgueltig', ?, ?, ?)", wert, w.mandant(), kennzahl, Date.valueOf(von),
-                Date.valueOf(bis), zaehler.divide(nenner, 20, RoundingMode.HALF_UP), zaehler, nenner, am, fassung, am);
+                + "?, ?, ?::jsonb, 'endgueltig', ?, ?, ?)", wert, w.mandant(), kennzahl, Date.valueOf(von),
+                Date.valueOf(bis), zaehler.divide(nenner, 20, RoundingMode.HALF_UP), zaehler, nenner, mengeZustand,
+                richtung, kennzeichen, am, fassung, am);
         root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
                 + "messstelle_id, wert, einheit, menge_zustand, version) VALUES (?, ?, ?, 0, 'zaehler', 'messstelle', "
-                + "?, (SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = ?), ?, 'kWh', 'vollständig', 1)",
-                w.mandant(), wert, kennzahl, ms, w.mandant(), ms, zaehler);
+                + "?, (SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = ?), ?, 'kWh', ?, 1)",
+                w.mandant(), wert, kennzahl, ms, w.mandant(), ms, zaehler, mengeZustand);
         root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
                 + "bezugsgroesse_id, wert, einheit, menge_zustand, fassung) VALUES (?, ?, ?, 1, 'nenner', 'bezugsgroesse', "
                 + "?, (SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = ?), ?, ?, 'vollständig', 1)",
                 w.mandant(), wert, kennzahl, bzKennzeichen, w.mandant(), bzKennzeichen, nenner, bzEinheit);
-        if (bz != null) {
+        if (bz != null && "BZ-8".equals(bzKennzeichen)) {
+            // Bezogen wie der Abruf des Wetter-Archivs schreibt (Herkunft, Quelle, Abrufzeit, Kennzeichen).
+            root.update("INSERT INTO bezugsgroesse_wert (tenant_id, bezugsgroesse_id, wertart, einheit, periode_art, "
+                    + "periode_von, periode_bis, zeitzone, fassung, vorgang, status, betrag, herkunft_art, kennzeichen, "
+                    + "actor_name, actor_art, bezug_quelle, abgerufen_am, bezug_herkunft) VALUES (?, ?, 'periodenwert', ?, "
+                    + "'monat', ?, ?, 'Europe/Berlin', 1, 'erstwert', 'wirksam', ?, 'bezogen', ?::jsonb, 'Wetter-Archiv', "
+                    + "'voltpilot', 'Open-Meteo-Archiv', ?, ?::jsonb)", w.mandant(), bz, bzEinheit, Date.valueOf(von),
+                    Date.valueOf(bis), nenner, MAPPER.writeValueAsString(List.of(BEZOGEN)),
+                    Timestamp.from(Instant.parse("2026-02-01T02:00:00Z")),
+                    "{\"zustand\": \"vollständig\", \"tage\": 31, \"tage_erwartet\": 31}");
+        } else if (bz != null) {
             root.update("INSERT INTO bezugsgroesse_wert (tenant_id, bezugsgroesse_id, wertart, einheit, periode_art, "
                     + "periode_von, periode_bis, zeitzone, fassung, vorgang, status, betrag, herkunft_art, actor_sub, "
                     + "actor_name, actor_rolle, actor_art) VALUES (?, ?, 'periodenwert', ?, 'monat', ?, ?, 'Europe/Berlin', "

@@ -382,9 +382,24 @@ Gründe: „{Monat}: nicht bewertbar — der Monat ist noch nicht zu Ende.“ ·
 keinen Wert.“ · „… — für diesen Monat gilt noch keine Fassung der Bezugsbasis BB-….“ · `ohne_urteil`: „… — x % mehr/weniger;
 ohne Urteil, die Werte sind unvollständig.“ Kein Satz nennt eine Ursache (U6).
 
+**Grenzen und Kennzeichen (IP-13, G1–G5).** Wo die Daten es nicht tragen, steht ein Grund statt einer Zahl mit Urteil; was
+eine Zahl trägt, sagt die Kennzeichen-Liste. Entschieden wird allein in der Operation `vergleich`/`zeitraum` (§5, §7, §8);
+der Leser wählt nur, welche Variable der Satz nennt, und liest den Standort einer bezogenen Gradtagzahl.
+
+| Regel | Antwort je Monat | Satz / Kennzeichen |
+|---|---|---|
+| G1 | ein Modell unter zwölf Monaten gibt es nicht (beim Bilden 422 `zu_wenig_perioden`, §8), also auch keinen Vergleich dagegen; das Verhältnis ab einem Monat trägt `vorlaeufig` | „Bezugsbasis vorläufig (n von 12 Monaten)“ an JEDEM Monat und am Zeitraum; der Satz endet mit „Die Bezugsbasis ist vorläufig (n von 12 Monaten).“ |
+| G2 fehlt | keine wirksame Fassung / kein Wert der Variable → `nicht_anwendbar` `variable_fehlt`, gemessen bleibt, kein erwartet | „{Monat}: nicht bewertbar — {Variable} hat keinen Wert.“ — die ERSTE Variable ohne Wert, nicht immer Variable 1. Ist sie eine bezogene Gradtagzahl (`bezugsgroesse_wetterbezug`) an einem Standort ohne Koordinaten, folgt der Satz des Wetter-Archivs (`WetterArchivRegeln.koordinatenFehlen`, §5.8, Portal `UEMS_KOORDINATEN_FEHLEN_SATZ`): „Für den Standort Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. …“ |
+| G2 unvollständig | Zähler oder Variable `unvollständig` → Zahl mit erwartet, Δ und Richtung, `ohne_urteil` (Q3) | Kennzeichen des Werts erben („Untergrenze — Menge unvollständig (…)“, „x von y Tagen“) und „unvollständig“; im Zeitraum mit allen Monaten „ohne Urteil, die Werte sind unvollständig.“, mit fehlenden Monaten „ohne Urteil: x von y Monaten mit Vergleich.“ |
+| G2 leer / laufend | kein gemessener Wert → `keine_werte`; Monat nicht zu Ende → `periode_nicht_zu_ende` (vor `keine_werte` geprüft) | „… — kein gemessener Wert.“ · „… — der Monat ist noch nicht zu Ende.“ |
+| G3 | Modell außerhalb [min × 0,9, max × 1,1] einer Variable → `variable_ausserhalb`: kein erwartet, kein Δ, kein Band, keine Richtung, kein Urteil | Satz nennt die ERSTE Variable außerhalb mit ihrer Spannweite; das Verhältnis rechnet weiter und trägt „{Variable} außerhalb der Basis-Spannweite (min–max Einheit)“ — auch im Zeitraum |
+| G5 | eine Liste je Zahl, ohne Doppel, in dieser Folge: Basis („bereinigt um … (Bezugsbasis BB-…, Fassung n …)“, „Streuung ± x %“, „ohne Grundlast“, „Bezugsbasis vorläufig (n von 12 Monaten)“; beim Verhältnis danach G3 „… außerhalb der Basis-Spannweite …“), gemessener Wert (seine gespeicherten Kennzeichen, alle Ränge), Variablen (Kennzeichen der wirksamen Fassung und des Eingangs — Annahme „aus Leistung über x kW“, „Temperatur von VoltPilot bezogen (…)“, Rang 54), dann „unvollständig“ | die Modellgüte (Streuung) steht immer neben der Zahl; ein `nicht_anwendbar` hat keine Zahl und darum keine Liste |
+
 Nachweis: `BezugsbasisVergleichApiTest` (Testcontainers: R2 Dezember 2027 roh −8,8 % ohne Urteil, bereinigt 69 098 kWh,
 +12,9 % schlechter; R11 1,8 % statt 2,2 %; R3 Gas ± 4,6 % im Rahmen; März 2028 `variable_ausserhalb`; P4 Fassung 1/2;
-ohne Basis `basis_fehlt`; Zaun 404), `BezugsbasisVergleichSatzTest`, `BezugsbasisVergleichSchnittstelleVertragTest`.
+ohne Basis `basis_fehlt`; Zaun 404; IP-13: G3 Modell ohne Zahl, Verhältnis mit Kennzeichen; G5 bezogene Temperatur in der
+Vergleichszeile; G2 Lindach ohne Koordinaten; G2 unvollständig ohne Urteil mit „x von y Tagen“, G1 vorläufig an Monat und
+Zeitraum, `periode_nicht_zu_ende`), `BezugsbasisVergleichSatzTest`, `BezugsbasisVergleichSchnittstelleVertragTest`.
 
 ## 17. Statische Faktoren an der Fassung (V3, E6 = A; IP-16b)
 

@@ -29,9 +29,19 @@ public final class BezugsbasisVergleichSatz {
     /** Die erste Variable der Bedingung, wie der Satz sie nennt; {@code von}/{@code bis} die Spannweite der Fassung. */
     public record Variable(String name, String wert, String einheit, String von, String bis) {}
 
-    /** Was ein Monatssatz braucht, das nicht im Ergebnis steht. */
+    /**
+     * Was ein Monatssatz braucht, das nicht im Ergebnis steht. {@code variable} ist die Variable, die der Satz nennt (bei
+     * {@code variable_fehlt}/{@code variable_ausserhalb} die betroffene, IP-13); {@code hinweis} ein zweiter Satz zum
+     * Grund (§5.8 „Koordinaten fehlen“).
+     */
     public record Monat(String beschriftung, String einheit, Variable variable, String basis, LocalDate beendetZum,
-            String beendetGrund, Integer folgeFassung, LocalDate folgeAb) {}
+            String beendetGrund, Integer folgeFassung, LocalDate folgeAb, String hinweis) {
+
+        public Monat(String beschriftung, String einheit, Variable variable, String basis, LocalDate beendetZum,
+                String beendetGrund, Integer folgeFassung, LocalDate folgeAb) {
+            this(beschriftung, einheit, variable, basis, beendetZum, beendetGrund, folgeFassung, folgeAb, null);
+        }
+    }
 
     /** Ganze Einheiten, kaufmännisch (M5), Tausender mit Leerzeichen, Dezimalkomma. */
     static String menge(String wert) {
@@ -71,7 +81,8 @@ public final class BezugsbasisVergleichSatz {
                         + m.beschriftung() + " (" + zahl(m.variable().wert()) + " " + m.variable().einheit()
                         + ") liegt außerhalb der Bezugsbasis (" + zahl(m.variable().von()) + "–"
                         + zahl(m.variable().bis()) + " " + m.variable().einheit() + ").";
-                case "variable_fehlt" -> kopf + "nicht bewertbar — " + m.variable().name() + " hat keinen Wert.";
+                case "variable_fehlt" -> kopf + "nicht bewertbar — " + m.variable().name() + " hat keinen Wert."
+                        + (m.hinweis() == null ? "" : " " + m.hinweis());
                 case "periode_nicht_zu_ende" -> kopf + "nicht bewertbar — der Monat ist noch nicht zu Ende.";
                 default -> kopf + "nicht bewertbar — kein gemessener Wert.";
             };
@@ -106,7 +117,10 @@ public final class BezugsbasisVergleichSatz {
         String satz = switch (urteil) {
             case "im_rahmen" -> zahlen + d + " %: im Rahmen der Bezugsbasis " + summe + ".";
             case "besser", "schlechter" -> zahlen + d + " % " + richtung + ": " + urteil + " " + summe + ".";
-            default -> zahlen + d + " % " + richtung + "; ohne Urteil: " + e.get("monate") + " Monaten mit Vergleich.";
+            // G2 (IP-13): hat jeder Monat einen Vergleich, fehlt das Urteil, weil ein Wert unvollständig ist.
+            default -> (soll + " von " + soll).equals(e.get("monate"))
+                    ? zahlen + d + " % " + richtung + "; ohne Urteil, die Werte sind unvollständig."
+                    : zahlen + d + " % " + richtung + "; ohne Urteil: " + e.get("monate") + " Monaten mit Vergleich.";
         };
         return satz + vorlaeufig(e);
     }

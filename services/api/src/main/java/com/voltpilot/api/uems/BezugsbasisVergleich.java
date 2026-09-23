@@ -85,8 +85,9 @@ public class BezugsbasisVergleich {
         }
     }
 
-    /** Die Monatswerte einer Variablen der Bedingung. */
-    private record Variablenwert(BezugsbasisRegeln.Wert wert, BezugsbasisVergleichDto.Bedingung bedingung) {}
+    /** Die Monatswerte einer Variablen der Bedingung; {@code bezugsgroesse} leer für den gespeicherten Nenner. */
+    private record Variablenwert(BezugsbasisRegeln.Wert wert, BezugsbasisVergleichDto.Bedingung bedingung,
+            UUID bezugsgroesse) {}
 
     public BezugsbasisVergleichDto.Vergleich vergleich(UUID id, Collection<String> parameter, String basisText,
             String vonText, String bisText) {
@@ -158,11 +159,13 @@ public class BezugsbasisVergleich {
 
         FassungZeile folge = beendet ? fassungen.stream().filter(x -> x.giltAb().isAfter(letzter)).findFirst()
                 .orElse(null) : null;
-        BezugsbasisVergleichSatz.Variable v1 = bedingung.isEmpty() ? null : satzVariable(f, bedingung.get(0));
+        int i = satzIndex(f, bedingung, (String) e.get("grund"));
+        BezugsbasisVergleichSatz.Variable v = bedingung.isEmpty() ? null : satzVariable(f, bedingung.get(i), i);
+        String hinweis = "variable_fehlt".equals(e.get("grund")) ? koordinatenFehlen(bedingung.get(i)) : null;
         String satz = BezugsbasisVergleichSatz.monat(e, new BezugsbasisVergleichSatz.Monat(beschriftung, einheiten.zaehler(),
-                v1, basis == null ? null : basis.kennzeichen(), beendetZum(basis, fassungen, letzter),
+                v, basis == null ? null : basis.kennzeichen(), beendetZum(basis, fassungen, letzter),
                 basis == null ? null : basis.beendetGrund(), folge == null ? null : folge.fassung(),
-                folge == null ? null : folge.giltAb()));
+                folge == null ? null : folge.giltAb(), hinweis));
         return new BezugsbasisVergleichDto.Monat(m.toString(), beschriftung, roh, bereinigt, satz);
     }
 
@@ -207,7 +210,7 @@ public class BezugsbasisVergleich {
             aus.add(new Variablenwert(new BezugsbasisRegeln.Wert(nenner(w), zustand(w == null ? null : w.zustand()),
                     List.of()), new BezugsbasisVergleichDto.Bedingung(1, KennzahlRegeln.KENNZAHL, null, v.name(),
                             nenner(w), v.einheit(), null, w == null ? null : w.version(),
-                            w == null ? null : w.zustand())));
+                            w == null ? null : w.zustand()), null));
         }
         for (VariableZeile vz : f.variablen()) {
             BezugsgroesseRepository.Zeile b = bezugsgroessen.finde(vz.bezugsgroesse()).orElseThrow();
@@ -227,7 +230,8 @@ public class BezugsbasisVergleich {
             }
             aus.add(new Variablenwert(new BezugsbasisRegeln.Wert(wert, zustand(zustand), kz),
                     new BezugsbasisVergleichDto.Bedingung(vz.position(), KennzahlRegeln.BEZUGSGROESSE, b.kennzeichen(),
-                            b.name(), wert, b.einheit(), g == null ? null : g.fassung(), null, zustand)));
+                            b.name(), wert, b.einheit(), g == null ? null : g.fassung(), null, zustand),
+                    vz.bezugsgroesse()));
         }
         return aus;
     }
@@ -365,9 +369,47 @@ public class BezugsbasisVergleich {
                 f.datenlage(), f.giltAb(), f.giltBis());
     }
 
-    private static BezugsbasisVergleichSatz.Variable satzVariable(FassungZeile f, Variablenwert v) {
-        BezugsbasisRegeln.Spannweite s = f.regel().spannweite() == null || f.regel().spannweite().isEmpty() ? null
-                : f.regel().spannweite().get(0);
+    /**
+     * G2/G3 (IP-13): welche Variable der Satz nennt — bei {@code variable_fehlt} die erste ohne Wert, bei
+     * {@code variable_ausserhalb} die erste außerhalb ihrer tolerierten Spannweite, sonst Variable 1. Nur die Wahl des
+     * Namens; ob die Periode einen Grund trägt, entscheidet allein die Operation {@code vergleich}.
+     */
+    private static int satzIndex(FassungZeile f, List<Variablenwert> bedingung, String grund) {
+        List<BezugsbasisRegeln.Spannweite> sw = f == null ? null : f.regel().spannweite();
+        for (int i = 0; i < bedingung.size(); i++) {
+            String wert = bedingung.get(i).wert().wert();
+            if ("variable_fehlt".equals(grund) && wert == null) {
+                return i;
+            }
+            if ("variable_ausserhalb".equals(grund) && wert != null && sw != null && i < sw.size()) {
+                BigDecimal x = new BigDecimal(wert);
+                if (x.compareTo(new BigDecimal(sw.get(i).toleriert_von())) < 0
+                        || x.compareTo(new BigDecimal(sw.get(i).toleriert_bis())) > 0) {
+                    return i;
+                }
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * G2 (IP-13, §5.8): fehlt einer bezogenen Gradtagzahl der Wert, weil ihr Standort keine Koordinaten hat, sagt der Satz
+     * es mit dem Satz des Wetter-Archivs ({@link WetterArchivRegeln#koordinatenFehlen}) — Lindach (RU:201).
+     */
+    private String koordinatenFehlen(Variablenwert v) {
+        if (v.bezugsgroesse() == null || v.wert().wert() != null) {
+            return null;
+        }
+        return jdbc.query("SELECT s.name FROM bezugsgroesse b JOIN bezugsgroesse_wetterbezug w "
+                + "ON w.bezugsgroesse_id = b.id AND w.tenant_id = b.tenant_id JOIN standort s ON s.id = b.standort_id "
+                + "AND s.tenant_id = b.tenant_id WHERE b.id = ? AND b.art = 'gradtagzahl' "
+                + "AND (s.lage_breitengrad IS NULL OR s.lage_laengengrad IS NULL)", (rs, n) -> rs.getString(1),
+                v.bezugsgroesse()).stream().findFirst().map(WetterArchivRegeln::koordinatenFehlen).orElse(null);
+    }
+
+    private static BezugsbasisVergleichSatz.Variable satzVariable(FassungZeile f, Variablenwert v, int i) {
+        BezugsbasisRegeln.Spannweite s = f.regel().spannweite() == null || f.regel().spannweite().size() <= i ? null
+                : f.regel().spannweite().get(i);
         return new BezugsbasisVergleichSatz.Variable(v.bedingung().name(), v.bedingung().wert(), v.bedingung().einheit(),
                 s == null ? null : s.von(), s == null ? null : s.bis());
     }
