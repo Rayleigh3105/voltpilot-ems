@@ -72,7 +72,10 @@ Wirkung (`messreihe_kaskade_woerter()` = `KorrekturKaskade.WOERTER`).
    eine Nettomenge ohne Richtung → NULL. Tag/Monat summieren die Anteile der Viertelstunden in ihrer neuesten
    Fassung (`Richtungspaar.ausTeilen`), das Jahr seine Monate (`Richtungspaar.Summe`) — dieselbe Regel wie
    Version 1. `Inhalt.gleich` vergleicht das Paar nur, wenn BEIDE Seiten es kennen (eine Version von vor der
-   Migration bekommt keine neue Nummer); Nachzug schreibt es mit. Leser: `BilanzRichtungswerte`,
+   Migration bekommt keine neue Nummer); Nachzug schreibt es mit. ⚠ UPDATE auf `messreihe_periode_version` ist
+   SPALTENWEISE an die Admin-Rolle vergeben (nur Inhalt, nie Schlüssel/Nummer/Anlass): jede neue Inhaltsspalte, die
+   `periodeNachziehen` schreibt, braucht `GRANT UPDATE (<spalte>)` in ihrer Migration — sonst scheitert jeder Nachzug
+   mit `permission denied` (sichtbar nur in `UemsKorrekturKaskadeTest`). Leser: `BilanzRichtungswerte`,
    `Richtungspaar.mengenDerVersion` (Berichts-Abzug). Test: `UemsRichtungspaarLaufTest`,
    `BewertungRanglisteApiTest.korrekturAmSpeicherTraegtIhrRichtungspaarNettoBerichtigungNicht`.
 5. **Rücknahme = Stand VOR der Korrektur** (§4.6) als nächste Version — nur, wo die neueste Viertelstunden-Version von
