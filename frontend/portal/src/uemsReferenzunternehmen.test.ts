@@ -1113,6 +1113,38 @@ const ohneFassung17 = (d: Record<string, any>): void => {
   expect(vorher - ap16.faelle.length).toBe(1);
 };
 
+const KOMMENTAR_ZEILEN_1_7 = 126;
+const BLOECKE_1_8 = ['bezugsgroessen_1_8', 'kennzahlen_1_8', 'bezugsbasen', 'leistungsvergleiche', 'abnahmefaelle_ap17'];
+/** W12: bis 1.7 nannten die Eingänge von EE-5/EE-6 andere Einzelwerte als die Messstellen (Summen gleich). */
+const EINGAENGE_1_7: Record<string, Record<string, number>> = {
+  'EE-5': { 'MS-13': 4200, 'MS-17': 3600 }, 'EE-6': { 'MS-05': 4900, 'MS-14': 3800 },
+};
+/** Nimmt GENAU die Zusätze der Fassung 1.8 heraus — und setzt die zwei W12-Nachträge zurück. */
+const ohneFassung18 = (d: Record<string, any>): void => {
+  expect(d.version).toBe('1.8');
+  d.version = '1.7';
+  d.beschreibung = d.beschreibung.replace('energetische Bewertung, Messplanung und Bezugsbasen', 'energetische Bewertung und Messplanung');
+  expect(d._comment.length).toBeGreaterThan(KOMMENTAR_ZEILEN_1_7);
+  d._comment = d._comment.slice(0, KOMMENTAR_ZEILEN_1_7);
+  expect(d._herkunft.fassung_1_8).toBeDefined();
+  delete d._herkunft.fassung_1_8;
+  for (const block of BLOECKE_1_8) {
+    expect(d[block], block).toBeDefined();
+    delete d[block];
+  }
+  const vorher = d.zeitachse.length;
+  d.zeitachse = d.zeitachse.filter((z: any) => z.bezugsbasis == null);
+  expect(vorher - d.zeitachse.length).toBe(13);
+  for (const k of d.kennzahlen) {
+    expect(k.fassungen, k.kennzeichen).toBeDefined();
+    delete k.fassungen;
+  }
+  for (const e of d.einstufungen) {
+    const alt = EINGAENGE_1_7[e.einsatz];
+    if (alt) for (const g of e.fassungen[0].herkunft.eingaenge) g.wert = alt[g.objekt];
+  }
+};
+
 describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
   /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
   const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
@@ -1135,6 +1167,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
    */
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
     ohneFassung15(d);
@@ -1212,6 +1245,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.3', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
     ohneFassung15(d);
@@ -1324,6 +1358,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.5 (AP-15 E8)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.4', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
     ohneFassung15(d);
@@ -1551,6 +1586,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.5', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_5_SHA256);
@@ -1692,12 +1728,14 @@ describe('UEMS-Referenzunternehmen — Fassung 1.7 (K-1 an der Hauptgröße, Bef
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.6', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung18(d);
     ohneFassung17(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_6_SHA256);
   });
 
   it('K-1 vergleicht auch an der Hauptgröße über integration — in Fassung 1.6 nur ohne_monatsmenge', () => {
     const alt = structuredClone(daten) as Record<string, any>;
+    ohneFassung18(alt);
     ohneFassung17(alt);
     expect(monatsvergleichArt(ms01Von(alt))).toEqual({ 'Wirkleistung · K-1': 'ohne_monatsmenge' });
 
@@ -1727,5 +1765,213 @@ describe('UEMS-Referenzunternehmen — Fassung 1.7 (K-1 an der Hauptgröße, Bef
     expect([gegen.zustand, gegen.abweichung_prozent, gegen.befund]).toEqual(['abweichung', '3.4', true]);
     expect(Number(dez.abweichung_prozent)).toBe(r9.dezember_2026.abweichung_prozent);
     expect(Number(gegen.abweichung_prozent)).toBe(r9.gegenprobe.abweichung_prozent);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.8 (AP-17 E12, Bezugsbasen)', () => {
+  const FASSUNG_1_7_SHA256 = '397ae8c75e56ea7a6bc9cab9a942e5a7cfd88b02b9f53e75d8a4cb8ba86f747d';
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+  const sha256 = (x: unknown) => createHash('sha256').update(kanonisch(x), 'utf8').digest('hex');
+  const nach = (liste: any[]): Record<string, any> => Object.fromEntries(liste.map((o) => [o.kennzeichen, o]));
+  /** Auf die Stellen der Zahl in der Datei gerundet (halb auf) — wie `setScale(…, HALF_UP)` im Java-Zwilling. */
+  const gerundet = (x: number, wie: number): number => {
+    const stellen = (String(wie).split('.')[1] ?? '').length;
+    return Number((Math.round(Number(`${x}e${stellen}`)) / 10 ** stellen).toFixed(stellen));
+  };
+  const auf = (x: number, stellen: number) => Number((Math.round(Number(`${x}e${stellen}`)) / 10 ** stellen).toFixed(stellen));
+  /** Kleinste Quadrate y = a + b·x (x = Nenner, y = Zähler): a, b, R², Streuung in % des Mittels. */
+  const modell = (x: number[], y: number[]) => {
+    const n = x.length, mx = x.reduce((s, v) => s + v, 0) / n, my = y.reduce((s, v) => s + v, 0) / n;
+    const sxx = x.reduce((s, v) => s + (v - mx) ** 2, 0), sxy = x.reduce((s, v, i) => s + (v - mx) * (y[i] - my), 0);
+    const b = sxy / sxx, a = my - b * mx;
+    const ssRes = x.reduce((s, v, i) => s + (y[i] - (a + b * v)) ** 2, 0), ssTot = y.reduce((s, v) => s + (v - my) ** 2, 0);
+    return { a, b, r2: 1 - ssRes / ssTot, streuung: Math.sqrt(ssRes / (n - 2)) / my * 100 };
+  };
+  const pearson = (x: number[], y: number[]) => {
+    const n = x.length, mx = x.reduce((s, v) => s + v, 0) / n, my = y.reduce((s, v) => s + v, 0) / n;
+    const sxy = x.reduce((s, v, i) => s + (v - mx) * (y[i] - my), 0);
+    return sxy / Math.sqrt(x.reduce((s, v) => s + (v - mx) ** 2, 0) * y.reduce((s, v) => s + (v - my) ** 2, 0));
+  };
+  const kennzahlen = (): Record<string, any> => nach([...daten.kennzahlen, ...daten.kennzahlen_1_8]);
+  const basen = (): Record<string, any> => nach(daten.bezugsbasen);
+
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.7', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung18(d);
+    expect(sha256(d)).toBe(FASSUNG_1_7_SHA256);
+  });
+
+  it('hat den Umfang der Erweiterung — und die Bestandsblöcke sehen nichts davon (R10, W13)', () => {
+    expect(Object.keys(basen())).toEqual(['BB-0001', 'BB-0002', 'BB-0003', 'BB-0004', 'BB-0005']);
+    expect(daten.bezugsbasen.reduce((s: number, b: any) => s + b.fassungen.length, 0)).toBe(8);
+    expect(daten.bezugsgroessen_1_8.map((b: any) => b.kennzeichen)).toEqual(['BZ-8']);
+    expect(daten.kennzahlen_1_8.map((k: any) => k.kennzeichen)).toEqual(['KZ-0006']);
+    expect(daten.leistungsvergleiche.map((v: any) => v.kennung)).toEqual(['VB-2028-0001']);
+    expect(daten.abnahmefaelle_ap17.faelle.map((f: any) => f.fall)).toEqual(['R1', 'R3', 'R5', 'R7', 'R8', 'R9']);
+    expect(daten.zeitachse.filter((z: any) => z.bezugsbasis != null)).toHaveLength(13);
+    expect(daten.kennzahlen.map((k: any) => k.kennzeichen)).toEqual(['KZ-0001', 'KZ-0002', 'KZ-0003', 'KZ-0004', 'KZ-0005']);
+    expect(daten.bezugsgroessen.map((b: any) => b.kennzeichen)).not.toContain('BZ-8');
+    expect(daten.berichte.map((b: any) => b.kennung)).not.toContain('VB-2028-0001');
+  });
+
+  it('rechnet jede Bezugsbasis aus ihrer Grundlage: Σ ÷ Σ, Prüfsumme, Modell — und je Kennzahl genau eine laufende Basis', () => {
+    const kz = kennzahlen();
+    const jeKennzahl: Record<string, number> = {};
+    const laufend: Record<string, number> = {};
+    for (const b of daten.bezugsbasen) {
+      expect(kz[b.kennzahl], `${b.kennzeichen} → Kennzahl`).toBeDefined();
+      jeKennzahl[b.kennzahl] = (jeKennzahl[b.kennzahl] ?? 0) + 1;
+      if (b.beendet_am == null && b.fassungen.some((f: any) => f.freigabe.status === 'freigegeben' && f.beendet == null)) {
+        laufend[b.kennzahl] = (laufend[b.kennzahl] ?? 0) + 1;
+      }
+      b.fassungen.forEach((f: any, i: number) => {
+        const wo = `${b.kennzeichen} Fassung ${i + 1}`;
+        expect(f.fassung, wo).toBe(i + 1);
+        expect(f.anpassungsgruende.length === 0, `${wo}: Anpassungsgrund genau ab Fassung 2`).toBe(i === 0);
+        if (f.abgeloest_durch != null) expect(f.abgeloest_durch, wo).toBe(i + 2);
+        const g: any[] = f.grundlage;
+        expect(f.monate.startsWith(`${g.length} von 12`), wo).toBe(true);
+        expect(f.datenlage, wo).toBe(g.length >= 12 ? 'vollstaendig' : 'vorlaeufig');
+        if (!g.every((x) => typeof x.zaehler.wert === 'number')) {
+          expect([f.basiswert, f.pruefsumme], `${wo}: ohne Zahlen kein Basiswert, nie 0`).toEqual([null, null]);
+          return;
+        }
+        expect(f.pruefsumme, `${wo}: Prüfsumme der Grundlage`).toBe(`sha256:${sha256(f.grundlage)}`);
+        const zaehler = g.reduce((s, x) => s + x.zaehler.wert, 0), nenner = g.reduce((s, x) => s + x.nenner.wert, 0);
+        const basiswert = auf(zaehler / nenner, 4);
+        expect(f.basiswert, `${wo}: Σ ÷ Σ`).toBe(basiswert);
+        if (g.length > 1 && g.every((x) => x.nenner.wert > 0)) {
+          const mittel = auf(g.reduce((s, x) => s + x.zaehler.wert / x.nenner.wert, 0) / g.length, 4);
+          expect(mittel, `${wo}: das Mittel ist eine andere Zahl`).not.toBe(basiswert);
+        } else if (g.length === 1) {
+          expect(g[0].kennzahl.objekt).toBe(b.kennzahl);
+          expect(g[0].kennzahl.wert, `${wo}: Kennzahl der Grundlage`).toBe(basiswert);
+        }
+        const xs = g.map((x) => x.nenner.wert), ys = g.map((x) => x.zaehler.wert);
+        if (f.koeffizienten != null) {
+          const m = modell(xs, ys);
+          expect([gerundet(m.a, f.koeffizienten.a), gerundet(m.b, f.koeffizienten.b), auf(m.r2, 3), auf(m.streuung, 1)], wo)
+            .toEqual([f.koeffizienten.a, f.koeffizienten.b, f.r2, f.streuung_prozent]);
+        }
+        if (f.spannweite != null) {
+          const x = [...xs].sort((p, q) => p - q);
+          expect([f.spannweite.von, f.spannweite.bis, f.spannweite.toleriert_von, f.spannweite.toleriert_bis], wo)
+            .toEqual([x[0], x[x.length - 1], Math.round(x[0] * 0.9), Math.round(x[x.length - 1] * 1.1)]);
+        }
+        for (const v of f.abgelehnte_variablen) {
+          const r = pearson(xs, v.werte.map((w: any) => w.wert));
+          expect(auf(r, 3), `${wo}: r`).toBe(v.r);
+          expect(Math.abs(r), `${wo}: abhängig`).toBeGreaterThan(v.startwert_r);
+        }
+        if (f.wiedervorlage_faellig_am != null) {
+          const [j, mo, t] = f.freigabe.am.split('-').map(Number);
+          const faellig = new Date(Date.UTC(j, mo - 1 + f.wiedervorlage_monate, t)).toISOString().slice(0, 10);
+          expect(f.wiedervorlage_faellig_am, `${wo}: Frist abgeleitet`).toBe(faellig);
+        }
+      });
+    }
+    expect(Object.values(jeKennzahl).every((n) => n === 1), 'je Kennzahl genau eine Bezugsbasis').toBe(true);
+    expect(laufend, 'je Kennzahl genau eine laufende Basis').toEqual(Object.fromEntries(Object.keys(jeKennzahl).map((k) => [k, 1])));
+  });
+
+  it('die Grundlagen zitieren die Datei; Faktoren sind Kopien; BZ-8 hängt am Standort mit Koordinaten; W12', () => {
+    const kz = kennzahlen();
+    const gebaeude = nach(daten.gebaeude);
+    for (const b of daten.bezugsbasen) {
+      const k = kz[b.kennzahl];
+      for (const f of b.fassungen) {
+        for (const g of f.grundlage) {
+          expect([g.zaehler.objekt, g.nenner.objekt]).toEqual([k.zaehler, k.nenner]);
+          if (g.nenner.ort != null) expect(g.nenner.ort).toBe(k.nenner_ort);
+          if (g.periode === '2026-10' && g.zaehler.version === 1) {
+            expect([g.zaehler.wert, g.nenner.wert, g.kennzahl.wert]).toEqual([k.oktober_2026_zaehler, k.oktober_2026_nenner, k.oktober_2026_wert]);
+          }
+          expect(g.annahme, 'ab November 2026 Annahme').toBe(g.periode > '2026-10');
+        }
+        for (const fa of f.faktoren) {
+          const flaeche = gebaeude[fa.objekt].bezugsflaechen.find((x: any) => x.gueltig_ab <= fa.gueltig_ab && (x.gueltig_bis == null || fa.gueltig_ab <= x.gueltig_bis));
+          expect([fa.wert, fa.gueltig_ab], `${b.kennzeichen} Faktor`).toEqual([flaeche.flaeche_m2, flaeche.gueltig_ab]);
+        }
+      }
+    }
+    const k7 = daten.korrekturen.find((x: any) => x.kennung === 'K-2026-0007');
+    const f2 = basen()['BB-0002'].fassungen[1].grundlage[0];
+    expect(f2.zaehler.wert).toBe(k7.neu_kwh);
+    expect(k7.folgen.map((x: any) => `${x.objekt} v${x.version} = ${x.wert}`)).toEqual(expect.arrayContaining([
+      `MS-12 v${f2.zaehler.version} = ${f2.zaehler.wert}`, `KZ-0001 v${f2.kennzahl.version} = ${f2.kennzahl.wert}`]));
+    expect(basen()['BB-0002'].anstoesse[0].am).toBe(k7.freigegeben_am);
+
+    const [bz8] = daten.bezugsgroessen_1_8;
+    const st = nach(daten.standorte)[bz8.geltung];
+    expect([bz8.herkunft_code, bz8.art]).toEqual(['bezogen', 'gradtagzahl']);
+    expect([bz8.bezug.breitengrad, bz8.bezug.laengengrad]).toEqual([st.lage.breitengrad, st.lage.laengengrad]);
+    expect(daten.standorte.filter((s: any) => s.lage == null).map((s: any) => s.kennzeichen)).not.toContain(bz8.geltung);
+    const kz6 = kz['KZ-0006'];
+    expect(nach(daten.messstellen)[kz6.zaehler].beispielwerte.oktober_2026_m3).toBe(kz6.oktober_2026_zaehler);
+    expect(bz8.oktober_2026_wert).toBe(kz6.oktober_2026_nenner);
+    expect(auf(kz6.oktober_2026_zaehler / kz6.oktober_2026_nenner, 4)).toBe(kz6.oktober_2026_wert);
+
+    for (const k of Object.values(kz)) {
+      expect(k.fassungen[0].fassung, k.kennzeichen).toBe(1);
+      expect(k.fassungen[0].begruendung.trim(), k.kennzeichen).not.toBe('');
+    }
+    const ms = nach(daten.messstellen);
+    for (const e of daten.einstufungen) {
+      for (const f of e.fassungen.filter((x: any) => x.herkunft.zeitraum === '2026-10')) {
+        for (const g of f.herkunft.eingaenge) {
+          const bw = ms[g.objekt].beispielwerte;
+          expect(g.wert, `${e.einsatz} ← ${g.objekt}`).toBe(bw.oktober_2026_kwh ?? bw.oktober_2026_m3);
+        }
+      }
+    }
+  });
+
+  it('NW-3: die gegeben-Werte von R1, R3, R5, R7, R8, R9 stehen wörtlich in der Datei und decken sich mit den Blöcken', () => {
+    const g: Record<string, any> = Object.fromEntries(daten.abnahmefaelle_ap17.faelle.map((f: any) => [f.fall, f.gegeben]));
+    const bb = basen();
+    const bb1 = bb['BB-0001'].fassungen[0];
+    expect([g.R1.basiswert_kwh_je_kg, g.R1.referenzperiode, g.R1.datenlage, g.R1.monate, g.R1.freigabe.am, g.R1.freigabe.gilt_ab,
+      g.R1.grundlage['MS-20'].wert_kwh, g.R1.grundlage['BZ-1'].wert_kg])
+      .toEqual([bb1.basiswert, bb1.referenzperiode, bb1.datenlage, bb1.monate, bb1.freigabe.am, bb1.gilt_ab,
+        bb1.grundlage[0].zaehler.wert, bb1.grundlage[0].nenner.wert]);
+
+    const bb4 = bb['BB-0004'].fassungen[0];
+    expect(bb4.grundlage.map((x: any) => [x.periode, { kd: x.nenner.wert, m3: x.zaehler.wert }])).toEqual(Object.entries(g.R3.referenzperiode));
+    expect([g.R3.modell.a_m3, g.R3.modell.b_m3_je_kd, g.R3.modell.r2, g.R3.modell.streuung_prozent, g.R3.verhaeltnis_zur_probe.basiswert_m3_je_kd])
+      .toEqual([bb4.koeffizienten.a, bb4.koeffizienten.b, bb4.r2, bb4.streuung_prozent, bb4.basiswert]);
+    expect(g.R3.bezugsgroesse.art).toBe(daten.bezugsgroessen_1_8[0].art);
+
+    const bb3 = bb['BB-0003'];
+    expect([g.R5.fassung_1.basiswert_kwh_je_m2, g.R5.entscheidung.begruendung, g.R5.entscheidung.fassung_1_beendet_am,
+      g.R5.fassung_2.referenzperiode, g.R5.fassung_2.gilt_ab, g.R5.fassung_2.anpassungsgruende, g.R5.anstoss.am])
+      .toEqual([bb3.fassungen[0].basiswert, bb3.fassungen[0].beendet.begruendung, bb3.fassungen[0].beendet.zum,
+        bb3.fassungen[1].referenzperiode, bb3.fassungen[1].gilt_ab, bb3.fassungen[1].anpassungsgruende, bb3.anstoesse[0].am]);
+
+    const bb2 = bb['BB-0002'];
+    expect([g.R7.fassung_1.basiswert, g.R7.fassung_2.basiswert, g.R7.anstoss.art])
+      .toEqual([bb2.fassungen[0].basiswert, bb2.fassungen[1].basiswert, bb2.anstoesse[0].art]);
+
+    const [vb] = daten.leistungsvergleiche;
+    expect(vb.staende[0].quellen).toEqual(g.R8.stand_1.quellen);
+    expect(g.R8.bericht.bezugsbasis).toBe(`${vb.bezugsbasis} Fassung ${vb.bezugsbasis_fassung}`);
+    const fassung = bb[vb.bezugsbasis].fassungen[vb.bezugsbasis_fassung - 1];
+    expect(vb.staende[0].quellen.find((q: any) => q.art === 'bezugsbasis').koeffizienten).toEqual(fassung.koeffizienten);
+    const erwartet = Math.round(fassung.koeffizienten.a + fassung.koeffizienten.b * vb.vergleich.variable);
+    const delta = auf((vb.vergleich.gemessen - erwartet) / erwartet * 100, 1);
+    expect([vb.vergleich.erwartet, vb.vergleich.delta_prozent]).toEqual([erwartet, delta]);
+    expect(vb.vergleich.urteil).toBe(Math.abs(delta) <= vb.vergleich.band_prozent ? 'im_rahmen' : delta > 0 ? 'schlechter' : 'besser');
+
+    const [abgelehnt] = bb['BB-0001'].fassungen[1].abgelehnte_variablen;
+    expect(g.R9.einflussgroessen_ee1[1].bezugsgroesse).toBe(abgelehnt.objekt);
+    expect(g.R9.einflussgroessen_ee1[1].vorschlag).toContain(`r = ${String(abgelehnt.r).replace('.', ',')}`);
+    const ee1 = daten.energieeinsaetze.find((e: any) => e.kennzeichen === 'EE-1');
+    expect(ee1.einflussgroessen.map((e: any) => e.bezugsgroesse)).toEqual([g.R9.einflussgroessen_ee1[0].bezugsgroesse, abgelehnt.objekt]);
   });
 });

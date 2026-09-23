@@ -135,7 +135,7 @@ class SteuerungsverbundRegelnVectorsTest {
         JsonNode ref = lies(REFERENZ);
         // 1.6 (AP-16 IP-1, PR 1082) ergänzt nur die energetische Bewertung, 1.7 legt K-1 an MS-01s Hauptgröße;
         // V-1 und seine Kennungen stehen wie in 1.5
-        assertThat(ref.get("version").asText()).isIn("1.5", "1.6", "1.7");
+        assertThat(ref.get("version").asText()).isIn("1.5", "1.6", "1.7", "1.8");
         Map<String, String> heimat = new HashMap<>();
         ref.get("boxen").forEach(b -> heimat.put(b.get("kennzeichen").asText(), b.get("heimat_anlage").asText()));
         Map<String, String> anlageDerQuelle = new HashMap<>();

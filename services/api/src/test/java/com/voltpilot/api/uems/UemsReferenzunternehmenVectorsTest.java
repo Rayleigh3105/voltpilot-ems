@@ -20,6 +20,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -1220,6 +1221,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
         ohneFassung15(d);
@@ -1352,6 +1354,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung14IstEsDieFassung13() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
         ohneFassung15(d);
@@ -1546,6 +1549,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung15IstEsDieFassung14() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
         ohneFassung15(d);
@@ -1950,6 +1954,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung16IstEsDieFassung15() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.5")
@@ -2178,6 +2183,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung17IstEsDieFassung16() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung18(d);
         ohneFassung17(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.6").isEqualTo(FASSUNG_1_6_SHA256);
     }
@@ -2185,6 +2191,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void k1VergleichtAnDerHauptgroesseUndR9ErgibtSichAusDerDatei() throws Exception {
         ObjectNode alt = daten().deepCopy();
+        ohneFassung18(alt);
         ohneFassung17(alt);
         assertThat(monatsvergleichArt(nachKennzeichen(alt.get("messstellen")).get("MS-01")))
                 .as("Fassung 1.6: K-1 nur an der Nebengröße")
@@ -2227,6 +2234,345 @@ class UemsReferenzunternehmenVectorsTest {
                 .isEqualByComparingTo(r9.at("/dezember_2026/abweichung_prozent").decimalValue());
         assertThat(new BigDecimal((String) gegen.get("abweichung_prozent")))
                 .isEqualByComparingTo(r9.at("/gegenprobe/abweichung_prozent").decimalValue());
+    }
+
+    // ------------------------------------------ Fassung 1.8 (AP-17 IP-1, E12 = A, E9 = C, W12)
+
+    static final String FASSUNG_1_7_SHA256 = "397ae8c75e56ea7a6bc9cab9a942e5a7cfd88b02b9f53e75d8a4cb8ba86f747d";
+    static final int KOMMENTAR_ZEILEN_1_7 = 126;
+    static final List<String> BLOECKE_1_8 =
+            List.of("bezugsgroessen_1_8", "kennzahlen_1_8", "bezugsbasen", "leistungsvergleiche", "abnahmefaelle_ap17");
+    /** W12: bis 1.7 nannten die Eingänge von EE-5/EE-6 andere Einzelwerte als die Messstellen (Summen gleich). */
+    static final Map<String, Map<String, Integer>> EINGAENGE_1_7 = Map.of(
+            "EE-5", Map.of("MS-13", 4200, "MS-17", 3600), "EE-6", Map.of("MS-05", 4900, "MS-14", 3800));
+
+    /** Nimmt GENAU die Zusätze der Fassung 1.8 heraus — und setzt die zwei W12-Nachträge zurück. */
+    static void ohneFassung18(ObjectNode d) {
+        assertThat(d.path("version").asText()).isEqualTo("1.8");
+        d.put("version", "1.7");
+        d.put("beschreibung", d.get("beschreibung").asText()
+                .replace("energetische Bewertung, Messplanung und Bezugsbasen", "energetische Bewertung und Messplanung"));
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).isGreaterThan(KOMMENTAR_ZEILEN_1_7);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_7) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_8")).isNotNull();
+        for (String block : BLOECKE_1_8) {
+            assertThat(d.remove(block)).as(block).isNotNull();
+        }
+        entferne((ArrayNode) d.get("zeitachse"), z -> z.hasNonNull("bezugsbasis"), 13);
+        for (JsonNode k : kinder(d.get("kennzahlen"))) {
+            assertThat(((ObjectNode) k).remove("fassungen")).as(text(k, "kennzeichen")).isNotNull();
+        }
+        for (JsonNode e : kinder(d.get("einstufungen"))) {
+            Map<String, Integer> alt = EINGAENGE_1_7.get(text(e, "einsatz"));
+            if (alt != null) {
+                kinder(e.at("/fassungen/0/herkunft/eingaenge"))
+                        .forEach(g -> ((ObjectNode) g).put("wert", alt.get(text(g, "objekt"))));
+            }
+        }
+    }
+
+    @Test
+    void ohneDieZusaetzeDerFassung18IstEsDieFassung17() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ohneFassung18(d);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.7").isEqualTo(FASSUNG_1_7_SHA256);
+    }
+
+    @Test
+    void derUmfangDerFassung18Stimmt() throws Exception {
+        JsonNode d = daten();
+        assertThat(nachKennzeichen(d.get("bezugsbasen")).keySet())
+                .containsExactly("BB-0001", "BB-0002", "BB-0003", "BB-0004", "BB-0005");
+        assertThat(kinder(d.get("bezugsbasen")).stream().mapToInt(b -> b.get("fassungen").size()).sum())
+                .as("Fassungen").isEqualTo(8);
+        assertThat(nachKennzeichen(d.get("bezugsgroessen_1_8")).keySet()).containsExactly("BZ-8");
+        assertThat(nachKennzeichen(d.get("kennzahlen_1_8")).keySet()).containsExactly("KZ-0006");
+        assertThat(kinder(d.get("leistungsvergleiche")).stream().map(v -> text(v, "kennung"))).containsExactly("VB-2028-0001");
+        assertThat(kinder(d.at("/abnahmefaelle_ap17/faelle")).stream().map(f -> text(f, "fall")))
+                .containsExactly("R1", "R3", "R5", "R7", "R8", "R9");
+        assertThat(kinder(d.get("zeitachse")).stream().filter(z -> z.hasNonNull("bezugsbasis")).count()).isEqualTo(13);
+        // die Bestandsblöcke sehen nichts davon (R10, W13)
+        assertThat(nachKennzeichen(d.get("kennzahlen")).keySet())
+                .containsExactly("KZ-0001", "KZ-0002", "KZ-0003", "KZ-0004", "KZ-0005");
+        assertThat(nachKennzeichen(d.get("bezugsgroessen"))).doesNotContainKey("BZ-8");
+        assertThat(kinder(d.get("berichte")).stream().map(b -> text(b, "kennung"))).doesNotContain("VB-2028-0001");
+    }
+
+    /**
+     * NW-3 und die Invarianten der Bezugsbasis: Basiswert = Σ Zähler ÷ Σ Nenner der Grundlage (nie ein Mittel), die
+     * Prüfsumme deckt die Grundlage, ein Modell rechnet sich aus seiner Grundlage nach, je Kennzahl genau eine laufende Basis.
+     */
+    @Test
+    void jedeBezugsbasisRechnetAusIhrerGrundlage() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> kz = new LinkedHashMap<>(nachKennzeichen(d.get("kennzahlen")));
+        kz.putAll(nachKennzeichen(d.get("kennzahlen_1_8")));
+        Map<String, Integer> laufend = new LinkedHashMap<>();
+        for (JsonNode b : kinder(d.get("bezugsbasen"))) {
+            String bb = text(b, "kennzeichen");
+            JsonNode k = kz.get(text(b, "kennzahl"));
+            assertThat(k).as(bb + " → Kennzahl").isNotNull();
+            List<JsonNode> fassungen = kinder(b.get("fassungen"));
+            if (!b.hasNonNull("beendet_am") && fassungen.stream()
+                    .anyMatch(f -> "freigegeben".equals(f.at("/freigabe/status").asText()) && f.get("beendet").isNull())) {
+                laufend.merge(text(b, "kennzahl"), 1, Integer::sum);
+            }
+            for (int i = 0; i < fassungen.size(); i++) {
+                JsonNode f = fassungen.get(i);
+                String wo = bb + " Fassung " + (i + 1);
+                assertThat(f.get("fassung").asInt()).as(wo).isEqualTo(i + 1);
+                assertThat(f.get("anpassungsgruende").isEmpty()).as(wo + ": Anpassungsgrund genau ab Fassung 2").isEqualTo(i == 0);
+                if (f.hasNonNull("abgeloest_durch")) {
+                    assertThat(f.get("abgeloest_durch").asInt()).as(wo).isEqualTo(i + 2);
+                }
+                List<JsonNode> grundlage = kinder(f.get("grundlage"));
+                assertThat(f.get("monate").asText()).as(wo).startsWith(grundlage.size() + " von 12");
+                assertThat(f.get("datenlage").asText()).as(wo).isEqualTo(grundlage.size() >= 12 ? "vollstaendig" : "vorlaeufig");
+                boolean vollstaendig = grundlage.stream().allMatch(g -> g.at("/zaehler/wert").isNumber());
+                if (!vollstaendig) {
+                    assertThat(f.get("basiswert").isNull()).as(wo + ": ohne Zahlen kein Basiswert, nie 0").isTrue();
+                    assertThat(f.get("pruefsumme").isNull()).as(wo).isTrue();
+                    continue;
+                }
+                assertThat(f.get("pruefsumme").asText()).as(wo + ": Prüfsumme der Grundlage")
+                        .isEqualTo("sha256:" + sha256(kanonisch(f.get("grundlage"))));
+                BigDecimal zaehler = grundlage.stream().map(g -> g.at("/zaehler/wert").decimalValue()).reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal nenner = grundlage.stream().map(g -> g.at("/nenner/wert").decimalValue()).reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal basiswert = zaehler.divide(nenner, 4, RoundingMode.HALF_UP);
+                assertThat(f.get("basiswert").decimalValue()).as(wo + ": Σ ÷ Σ").isEqualByComparingTo(basiswert);
+                if (grundlage.size() > 1 && grundlage.stream().allMatch(g -> g.at("/nenner/wert").decimalValue().signum() > 0)) {
+                    BigDecimal mittel = grundlage.stream()
+                            .map(g -> g.at("/zaehler/wert").decimalValue().divide(g.at("/nenner/wert").decimalValue(), 12, RoundingMode.HALF_UP))
+                            .reduce(BigDecimal.ZERO, BigDecimal::add)
+                            .divide(BigDecimal.valueOf(grundlage.size()), 4, RoundingMode.HALF_UP);
+                    assertThat(mittel).as(wo + ": das Mittel ist eine andere Zahl").isNotEqualByComparingTo(basiswert);
+                } else if (grundlage.size() == 1) {
+                    JsonNode g = grundlage.get(0);
+                    assertThat(g.at("/kennzahl/objekt").asText()).isEqualTo(text(b, "kennzahl"));
+                    assertThat(g.at("/kennzahl/wert").decimalValue()).as(wo + ": Kennzahl der Grundlage").isEqualByComparingTo(basiswert);
+                }
+                if (f.hasNonNull("koeffizienten")) {
+                    double[] m = modell(grundlage);
+                    JsonNode ko = f.get("koeffizienten");
+                    assertThat(BigDecimal.valueOf(m[0]).setScale(ko.get("a").decimalValue().scale(), RoundingMode.HALF_UP))
+                            .as(wo + ": a").isEqualByComparingTo(ko.get("a").decimalValue());
+                    assertThat(BigDecimal.valueOf(m[1]).setScale(ko.get("b").decimalValue().scale(), RoundingMode.HALF_UP))
+                            .as(wo + ": b").isEqualByComparingTo(ko.get("b").decimalValue());
+                    assertThat(BigDecimal.valueOf(m[2]).setScale(3, RoundingMode.HALF_UP)).as(wo + ": R²")
+                            .isEqualByComparingTo(f.get("r2").decimalValue());
+                    assertThat(BigDecimal.valueOf(m[3]).setScale(1, RoundingMode.HALF_UP)).as(wo + ": Streuung")
+                            .isEqualByComparingTo(f.get("streuung_prozent").decimalValue());
+                }
+                if (f.hasNonNull("spannweite")) {
+                    List<BigDecimal> x = grundlage.stream().map(g -> g.at("/nenner/wert").decimalValue()).sorted().toList();
+                    JsonNode s = f.get("spannweite");
+                    assertThat(List.of(s.get("von").decimalValue(), s.get("bis").decimalValue())).as(wo)
+                            .containsExactly(x.get(0), x.get(x.size() - 1));
+                    assertThat(s.get("toleriert_von").decimalValue()).isEqualByComparingTo(
+                            x.get(0).multiply(new BigDecimal("0.9")).setScale(0, RoundingMode.HALF_UP));
+                    assertThat(s.get("toleriert_bis").decimalValue()).isEqualByComparingTo(
+                            x.get(x.size() - 1).multiply(new BigDecimal("1.1")).setScale(0, RoundingMode.HALF_UP));
+                }
+                for (JsonNode v : kinder(f.get("abgelehnte_variablen"))) {
+                    double[] xs = grundlage.stream().mapToDouble(g -> g.at("/nenner/wert").asDouble()).toArray();
+                    double[] ys = kinder(v.get("werte")).stream().mapToDouble(w -> w.get("wert").asDouble()).toArray();
+                    double r = pearson(xs, ys);
+                    assertThat(BigDecimal.valueOf(r).setScale(3, RoundingMode.HALF_UP)).as(wo + ": r")
+                            .isEqualByComparingTo(v.get("r").decimalValue());
+                    assertThat(Math.abs(r)).as(wo + ": abhängig").isGreaterThan(v.get("startwert_r").asDouble());
+                }
+                if (f.hasNonNull("wiedervorlage_faellig_am")) {
+                    assertThat(LocalDate.parse(f.at("/freigabe/am").asText()).plusMonths(f.get("wiedervorlage_monate").asInt()))
+                            .as(wo + ": Frist abgeleitet").isEqualTo(LocalDate.parse(f.get("wiedervorlage_faellig_am").asText()));
+                }
+            }
+        }
+        Map<String, Integer> jeKennzahl = new LinkedHashMap<>();
+        kinder(d.get("bezugsbasen")).forEach(b -> jeKennzahl.merge(text(b, "kennzahl"), 1, Integer::sum));
+        assertThat(jeKennzahl).as("je Kennzahl genau eine Bezugsbasis").allSatisfy((k, n) -> assertThat(n).isOne());
+        assertThat(laufend).as("je Kennzahl genau eine laufende Basis").hasSameSizeAs(jeKennzahl)
+                .allSatisfy((k, n) -> assertThat(n).isOne());
+    }
+
+    /** Die Grundlage zitiert die Zahlen der Datei; Faktoren sind Kopien der Stammdaten; BZ-8 hängt am Standort mit Koordinaten. */
+    @Test
+    void dieGrundlagenZitierenDieDatei() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> kz = new LinkedHashMap<>(nachKennzeichen(d.get("kennzahlen")));
+        kz.putAll(nachKennzeichen(d.get("kennzahlen_1_8")));
+        Map<String, JsonNode> bb = nachKennzeichen(d.get("bezugsbasen"));
+        for (JsonNode b : bb.values()) {
+            JsonNode k = kz.get(text(b, "kennzahl"));
+            for (JsonNode f : kinder(b.get("fassungen"))) {
+                for (JsonNode g : kinder(f.get("grundlage"))) {
+                    assertThat(g.at("/zaehler/objekt").asText()).isEqualTo(text(k, "zaehler"));
+                    assertThat(g.at("/nenner/objekt").asText()).isEqualTo(text(k, "nenner"));
+                    if (g.at("/nenner/ort").isTextual()) {
+                        assertThat(g.at("/nenner/ort").asText()).isEqualTo(text(k, "nenner_ort"));
+                    }
+                    if ("2026-10".equals(text(g, "periode")) && g.at("/zaehler/version").asInt() == 1) {
+                        assertThat(g.at("/zaehler/wert").decimalValue()).isEqualByComparingTo(k.get("oktober_2026_zaehler").decimalValue());
+                        assertThat(g.at("/nenner/wert").decimalValue()).isEqualByComparingTo(k.get("oktober_2026_nenner").decimalValue());
+                        assertThat(g.at("/kennzahl/wert").decimalValue()).isEqualByComparingTo(k.get("oktober_2026_wert").decimalValue());
+                    }
+                    assertThat(g.get("annahme").asBoolean()).as("ab November 2026 Annahme")
+                            .isEqualTo(text(g, "periode").compareTo("2026-10") > 0);
+                }
+                for (JsonNode fa : kinder(f.get("faktoren"))) {
+                    JsonNode flaeche = kinder(nachKennzeichen(d.get("gebaeude")).get(text(fa, "objekt")).get("bezugsflaechen")).stream()
+                            .filter(x -> giltAm(x, LocalDate.parse(text(fa, "gueltig_ab")))).findFirst().orElseThrow();
+                    assertThat(fa.get("wert").decimalValue()).as(text(b, "kennzeichen") + " Faktor")
+                            .isEqualByComparingTo(flaeche.get("flaeche_m2").decimalValue());
+                    assertThat(text(fa, "gueltig_ab")).isEqualTo(text(flaeche, "gueltig_ab"));
+                }
+            }
+        }
+        // BB-0002 Fassung 2 zitiert die Korrektur K-2026-0007 (R7)
+        JsonNode k7 = kinder(d.get("korrekturen")).stream().filter(x -> "K-2026-0007".equals(text(x, "kennung"))).findFirst().orElseThrow();
+        JsonNode f2 = bb.get("BB-0002").at("/fassungen/1/grundlage/0");
+        assertThat(f2.at("/zaehler/wert").decimalValue()).isEqualByComparingTo(k7.get("neu_kwh").decimalValue());
+        assertThat(kinder(k7.get("folgen")).stream().map(x -> text(x, "objekt") + " v" + x.get("version").asInt() + " = " + x.get("wert").asText()))
+                .contains("MS-12 v" + f2.at("/zaehler/version").asInt() + " = " + f2.at("/zaehler/wert").asText(),
+                        "KZ-0001 v" + f2.at("/kennzahl/version").asInt() + " = " + f2.at("/kennzahl/wert").asText());
+        assertThat(bb.get("BB-0002").at("/anstoesse/0/am").asText()).isEqualTo(text(k7, "freigegeben_am"));
+        // BZ-8: bezogen, am Standort mit Koordinaten; KZ-0006 rechnet ihren Oktober
+        JsonNode bz8 = nachKennzeichen(d.get("bezugsgroessen_1_8")).get("BZ-8");
+        JsonNode st = nachKennzeichen(d.get("standorte")).get(text(bz8, "geltung"));
+        assertThat(List.of(text(bz8, "herkunft_code"), text(bz8, "art"))).containsExactly("bezogen", "gradtagzahl");
+        assertThat(List.of(bz8.at("/bezug/breitengrad").decimalValue(), bz8.at("/bezug/laengengrad").decimalValue()))
+                .containsExactly(st.at("/lage/breitengrad").decimalValue(), st.at("/lage/laengengrad").decimalValue());
+        assertThat(kinder(d.get("standorte")).stream().filter(s -> s.get("lage").isNull()).map(s -> text(s, "kennzeichen")))
+                .as("ein Standort ohne Koordinaten bekommt keine Gradtagzahl").doesNotContain(text(bz8, "geltung"));
+        JsonNode kz6 = kz.get("KZ-0006");
+        assertThat(nachKennzeichen(d.get("messstellen")).get(text(kz6, "zaehler")).at("/beispielwerte/oktober_2026_m3").decimalValue())
+                .isEqualByComparingTo(kz6.get("oktober_2026_zaehler").decimalValue());
+        assertThat(bz8.get("oktober_2026_wert").decimalValue()).isEqualByComparingTo(kz6.get("oktober_2026_nenner").decimalValue());
+        assertThat(kz6.get("oktober_2026_zaehler").decimalValue().divide(kz6.get("oktober_2026_nenner").decimalValue(), 4, RoundingMode.HALF_UP))
+                .isEqualByComparingTo(kz6.get("oktober_2026_wert").decimalValue());
+        // W12: je Kennzahl-Fassung 1 eine Begründung; die Oktober-Eingänge der Einstufungen sind die Werte der Messstellen
+        kz.values().forEach(k -> assertThat(k.at("/fassungen/0/fassung").asInt()).as(text(k, "kennzeichen")).isOne());
+        kz.values().forEach(k -> assertThat(k.at("/fassungen/0/begruendung").asText()).as(text(k, "kennzeichen")).isNotBlank());
+        Map<String, JsonNode> ms = nachKennzeichen(d.get("messstellen"));
+        for (JsonNode e : kinder(d.get("einstufungen"))) {
+            for (JsonNode f : kinder(e.get("fassungen"))) {
+                if (!"2026-10".equals(f.at("/herkunft/zeitraum").asText())) {
+                    continue;
+                }
+                for (JsonNode g : kinder(f.at("/herkunft/eingaenge"))) {
+                    JsonNode bw = ms.get(text(g, "objekt")).get("beispielwerte");
+                    JsonNode soll = bw.hasNonNull("oktober_2026_kwh") ? bw.get("oktober_2026_kwh") : bw.get("oktober_2026_m3");
+                    assertThat(g.get("wert").decimalValue()).as(text(e, "einsatz") + " ← " + text(g, "objekt"))
+                            .isEqualByComparingTo(soll.decimalValue());
+                }
+            }
+        }
+    }
+
+    /** NW-3: die gegeben-Werte von R1, R3, R5, R7, R8, R9 stehen wörtlich in der Datei und decken sich mit den fachlichen Blöcken. */
+    @Test
+    void dieAbnahmefaelleAp17NennenDieTatsachenDerDatei() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> g = new LinkedHashMap<>();
+        kinder(d.at("/abnahmefaelle_ap17/faelle")).forEach(f -> g.put(text(f, "fall"), f.get("gegeben")));
+        Map<String, JsonNode> bb = nachKennzeichen(d.get("bezugsbasen"));
+        JsonNode bb1 = bb.get("BB-0001").at("/fassungen/0");
+        assertThat(g.get("R1").get("basiswert_kwh_je_kg").decimalValue()).isEqualByComparingTo(bb1.get("basiswert").decimalValue());
+        assertThat(List.of(text(g.get("R1"), "referenzperiode"), text(g.get("R1"), "datenlage"), text(g.get("R1"), "monate"),
+                g.get("R1").at("/freigabe/am").asText(), g.get("R1").at("/freigabe/gilt_ab").asText()))
+                .containsExactly(text(bb1, "referenzperiode"), text(bb1, "datenlage"), text(bb1, "monate"),
+                        bb1.at("/freigabe/am").asText(), text(bb1, "gilt_ab"));
+        assertThat(g.get("R1").at("/grundlage/MS-20/wert_kwh").decimalValue()).isEqualByComparingTo(bb1.at("/grundlage/0/zaehler/wert").decimalValue());
+        assertThat(g.get("R1").at("/grundlage/BZ-1/wert_kg").decimalValue()).isEqualByComparingTo(bb1.at("/grundlage/0/nenner/wert").decimalValue());
+
+        JsonNode bb4 = bb.get("BB-0004").at("/fassungen/0");
+        List<String> r3 = new ArrayList<>();
+        g.get("R3").get("referenzperiode").fields().forEachRemaining(e ->
+                r3.add(e.getKey() + " " + e.getValue().get("kd").asText() + " Kd " + e.getValue().get("m3").asText() + " m³"));
+        assertThat(kinder(bb4.get("grundlage")).stream().map(x -> text(x, "periode") + " " + x.at("/nenner/wert").asText()
+                + " Kd " + x.at("/zaehler/wert").asText() + " m³")).containsExactlyElementsOf(r3);
+        assertThat(List.of(g.get("R3").at("/modell/a_m3").decimalValue(), g.get("R3").at("/modell/b_m3_je_kd").decimalValue(),
+                g.get("R3").at("/modell/r2").decimalValue(), g.get("R3").at("/modell/streuung_prozent").decimalValue(),
+                g.get("R3").at("/verhaeltnis_zur_probe/basiswert_m3_je_kd").decimalValue()))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(bb4.at("/koeffizienten/a").decimalValue(), bb4.at("/koeffizienten/b").decimalValue(),
+                        bb4.get("r2").decimalValue(), bb4.get("streuung_prozent").decimalValue(), bb4.get("basiswert").decimalValue());
+        assertThat(g.get("R3").at("/bezugsgroesse/art").asText()).isEqualTo(d.at("/bezugsgroessen_1_8/0/art").asText());
+
+        JsonNode bb3 = bb.get("BB-0003");
+        assertThat(g.get("R5").at("/fassung_1/basiswert_kwh_je_m2").decimalValue()).isEqualByComparingTo(bb3.at("/fassungen/0/basiswert").decimalValue());
+        assertThat(g.get("R5").at("/entscheidung/begruendung").asText()).isEqualTo(bb3.at("/fassungen/0/beendet/begruendung").asText());
+        assertThat(g.get("R5").at("/entscheidung/fassung_1_beendet_am").asText()).isEqualTo(bb3.at("/fassungen/0/beendet/zum").asText());
+        assertThat(List.of(g.get("R5").at("/fassung_2/referenzperiode").asText(), g.get("R5").at("/fassung_2/gilt_ab").asText(),
+                g.get("R5").at("/fassung_2/anpassungsgruende/0").asText(), g.get("R5").at("/anstoss/am").asText()))
+                .containsExactly(bb3.at("/fassungen/1/referenzperiode").asText(), bb3.at("/fassungen/1/gilt_ab").asText(),
+                        bb3.at("/fassungen/1/anpassungsgruende/0").asText(), bb3.at("/anstoesse/0/am").asText());
+
+        JsonNode bb2 = bb.get("BB-0002");
+        assertThat(g.get("R7").at("/fassung_1/basiswert").decimalValue()).isEqualByComparingTo(bb2.at("/fassungen/0/basiswert").decimalValue());
+        assertThat(g.get("R7").at("/fassung_2/basiswert").decimalValue()).isEqualByComparingTo(bb2.at("/fassungen/1/basiswert").decimalValue());
+        assertThat(g.get("R7").at("/anstoss/art").asText()).isEqualTo(bb2.at("/anstoesse/0/art").asText());
+
+        JsonNode vb = d.at("/leistungsvergleiche/0");
+        assertThat(vb.at("/staende/0/quellen")).isEqualTo(g.get("R8").at("/stand_1/quellen"));
+        assertThat(g.get("R8").at("/bericht/bezugsbasis").asText())
+                .isEqualTo(text(vb, "bezugsbasis") + " Fassung " + vb.get("bezugsbasis_fassung").asInt());
+        JsonNode fassung = bb.get(text(vb, "bezugsbasis")).get("fassungen").get(vb.get("bezugsbasis_fassung").asInt() - 1);
+        JsonNode q = kinder(vb.at("/staende/0/quellen")).stream().filter(x -> "bezugsbasis".equals(text(x, "art"))).findFirst().orElseThrow();
+        assertThat(q.get("koeffizienten")).isEqualTo(fassung.get("koeffizienten"));
+        JsonNode v = vb.get("vergleich");
+        BigDecimal erwartet = fassung.at("/koeffizienten/a").decimalValue()
+                .add(fassung.at("/koeffizienten/b").decimalValue().multiply(v.get("variable").decimalValue())).setScale(0, RoundingMode.HALF_UP);
+        assertThat(v.get("erwartet").decimalValue()).isEqualByComparingTo(erwartet);
+        BigDecimal delta = v.get("gemessen").decimalValue().subtract(erwartet).multiply(BigDecimal.valueOf(100)).divide(erwartet, 1, RoundingMode.HALF_UP);
+        assertThat(v.get("delta_prozent").decimalValue()).isEqualByComparingTo(delta);
+        assertThat(text(v, "urteil")).isEqualTo(delta.abs().compareTo(v.get("band_prozent").decimalValue()) <= 0 ? "im_rahmen"
+                : delta.signum() > 0 ? "schlechter" : "besser");
+
+        JsonNode abgelehnt = bb.get("BB-0001").at("/fassungen/1/abgelehnte_variablen/0");
+        assertThat(g.get("R9").at("/einflussgroessen_ee1/1/bezugsgroesse").asText()).isEqualTo(text(abgelehnt, "objekt"));
+        assertThat(g.get("R9").at("/einflussgroessen_ee1/1/vorschlag").asText())
+                .contains("r = " + abgelehnt.get("r").decimalValue().toPlainString().replace('.', ','));
+        JsonNode ee1 = nachKennzeichen(d.get("energieeinsaetze")).get("EE-1");
+        assertThat(kinder(ee1.get("einflussgroessen")).stream().map(e -> text(e, "bezugsgroesse")))
+                .containsExactly(g.get("R9").at("/einflussgroessen_ee1/0/bezugsgroesse").asText(), text(abgelehnt, "objekt"));
+    }
+
+    /** Kleinste Quadrate y = a + b·x über die Grundlage (x = Nenner, y = Zähler): a, b, R², Streuung in % des Mittels. */
+    private static double[] modell(List<JsonNode> grundlage) {
+        double[] x = grundlage.stream().mapToDouble(g -> g.at("/nenner/wert").asDouble()).toArray();
+        double[] y = grundlage.stream().mapToDouble(g -> g.at("/zaehler/wert").asDouble()).toArray();
+        int n = x.length;
+        double mx = Arrays.stream(x).average().orElseThrow();
+        double my = Arrays.stream(y).average().orElseThrow();
+        double sxx = 0, sxy = 0, ssTot = 0;
+        for (int i = 0; i < n; i++) {
+            sxx += (x[i] - mx) * (x[i] - mx);
+            sxy += (x[i] - mx) * (y[i] - my);
+            ssTot += (y[i] - my) * (y[i] - my);
+        }
+        double b = sxy / sxx;
+        double a = my - b * mx;
+        double ssRes = 0;
+        for (int i = 0; i < n; i++) {
+            double r = y[i] - (a + b * x[i]);
+            ssRes += r * r;
+        }
+        return new double[] {a, b, 1 - ssRes / ssTot, Math.sqrt(ssRes / (n - 2)) / my * 100};
+    }
+
+    private static double pearson(double[] x, double[] y) {
+        double mx = Arrays.stream(x).average().orElseThrow();
+        double my = Arrays.stream(y).average().orElseThrow();
+        double sxy = 0, sxx = 0, syy = 0;
+        for (int i = 0; i < x.length; i++) {
+            sxy += (x[i] - mx) * (y[i] - my);
+            sxx += (x[i] - mx) * (x[i] - mx);
+            syy += (y[i] - my) * (y[i] - my);
+        }
+        return sxy / Math.sqrt(sxx * syy);
     }
 
     /** Die Objekte einer Liste nach ihrem Kennzeichen. */

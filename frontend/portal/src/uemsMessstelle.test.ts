@@ -604,11 +604,11 @@ const mittag = (tag: string): number => Date.parse(`${tag}T12:00:00Z`);
 
 /**
  * Der Horizont einer Fortschreibung: das letzte Ereignis der Zeitachse OHNE fachfremde Zeilen. Seit Fassung
- * 1.5 sind das Zeilen der `gemeinsame_steuerung`, seit 1.6 auch Zeilen der `energetische_bewertung`; beide
- * sagen über Messstellen-Quellen nichts (Fall unten). Dieselbe Regel steht in MessstelleRegelnVectorsTest.
+ * 1.5 sind das Zeilen der `gemeinsame_steuerung`, seit 1.6 auch Zeilen der `energetische_bewertung`, seit 1.8
+ * Zeilen der `bezugsbasis`; alle drei sagen über Messstellen-Quellen nichts (Fall unten). Dieselbe Regel steht in MessstelleRegelnVectorsTest.
  */
 const horizontZeilen: Json[] = referenz.zeitachse.filter(
-  (z: Json) => z.gemeinsame_steuerung == null && z.energetische_bewertung == null,
+  (z: Json) => z.gemeinsame_steuerung == null && z.energetische_bewertung == null && z.bezugsbasis == null,
 );
 const letztesEreignis = Math.max(...horizontZeilen.map((z: Json) => Date.parse(z.zeitpunkt)));
 
@@ -671,7 +671,7 @@ describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
     const benutzt = new Set(JSON.stringify(vectors).match(kz) ?? []);
     expect(benutzt.size).toBeGreaterThan(0);
     const ausgenommen = (referenz.zeitachse as Json[]).filter(
-      (z) => z.gemeinsame_steuerung != null || z.energetische_bewertung != null,
+      (z) => z.gemeinsame_steuerung != null || z.energetische_bewertung != null || z.bezugsbasis != null,
     );
     expect(ausgenommen.length).toBeGreaterThan(0);
     const fehler = ausgenommen.flatMap((z) =>

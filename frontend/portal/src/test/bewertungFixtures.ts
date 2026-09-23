@@ -227,8 +227,8 @@ const MENGEN: Record<number, { menge: string; anteil: string; rang: number; ms: 
   1: { menge: '77500', anteil: '41.8', rang: 1, ms: [['MS-06', '55100'], ['MS-11', '22400']] },
   3: { menge: '15900', anteil: '8.6', rang: 2, ms: [['MS-07', '15900']] },
   2: { menge: '9640', anteil: '5.2', rang: 3, ms: [['MS-12', '6040'], ['MS-18', '3600']] },
-  6: { menge: '8700', anteil: '4.7', rang: 4, ms: [['MS-05', '4900'], ['MS-14', '3800']] },
-  5: { menge: '7800', anteil: '4.2', rang: 5, ms: [['MS-13', '4200'], ['MS-17', '3600']] },
+  6: { menge: '8700', anteil: '4.7', rang: 4, ms: [['MS-05', '7600'], ['MS-14', '1100']] },
+  5: { menge: '7800', anteil: '4.2', rang: 5, ms: [['MS-13', '3500'], ['MS-17', '4300']] },
   4: { menge: '6200', anteil: '3.3', rang: 6, ms: [['MS-08', '6200']] },
 };
 const BILANZEN = [
