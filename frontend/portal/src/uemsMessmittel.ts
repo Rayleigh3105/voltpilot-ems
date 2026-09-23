@@ -12,6 +12,15 @@ import { zahlText } from './zahl';
  * ⚠ G3: was fehlt, heißt wörtlich „nicht erhoben“; nie ein Vorgabewert, nie eine gerechnete Genauigkeit der Messkette.
  */
 
+/**
+ * Ist die Antwort der Route eine lesbare Angabe? Ohne `wandler`-Liste (etwa `{}` aus einer fremden Bühne oder einem
+ * Proxy) gilt sie wie „keine Antwort“: das Blatt zeigt dann GAR NICHTS, statt beim Aufzählen der Wandler zu werfen
+ * und die ganze Geräteseite mitzureißen.
+ */
+export function messmittelLesbar(a: unknown): a is MessmittelAngaben {
+  return typeof a === 'object' && a !== null && Array.isArray((a as { wandler?: unknown }).wandler);
+}
+
 /** SHA-256 der gewählten Datei, im Browser gebildet (Web Crypto). Die Datei selbst verlässt das Gerät nie. */
 export async function pruefsummeLokal(datei: Blob): Promise<string> {
   const puffer = typeof datei.arrayBuffer === 'function' ? await datei.arrayBuffer() : await lesen(datei);

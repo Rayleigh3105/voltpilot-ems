@@ -448,7 +448,8 @@ class MessstelleMigrationTest {
                 alsTue(t, () -> assertThat(messstellen.nebengroesseHinzufuegen(id, groesse(ng))).isPresent());
             }
         }
-        assertThat(ids).hasSize(22);
+        // Jede Messstelle der Referenz genau einmal (Fassung 1.6: 23 mit MS-23).
+        assertThat(ids).hasSize(referenz.get("messstellen").size());
 
         alsTue(t, () -> {
             Map<String, Messstelle> gespeichert = messstellen.alle().stream()
@@ -466,7 +467,7 @@ class MessstelleMigrationTest {
                                 ms.get("nebengroessen").spliterator(), false)
                                 .map(MessstelleMigrationTest::groesse).toList());
             }
-            assertThat(messstellen.vergeben()).hasSize(22)
+            assertThat(messstellen.vergeben()).hasSize(ids.size())
                     .allSatisfy(v -> assertThat(v.frueher() || v.archiviert()).isFalse());
         });
 

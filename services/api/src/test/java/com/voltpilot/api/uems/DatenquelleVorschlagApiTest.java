@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -174,7 +176,7 @@ class DatenquelleVorschlagApiTest {
             assertThat(v.get("protokoll").asText()).as(dq).isEqualTo(rq.get("protokoll").asText());
             assertThat(v.get("adresse").asText()).as(dq)
                     .isEqualTo(rq.get("adresse").asText() + ":" + rq.get("port").asInt());
-            assertThat(v.get("geraete_ids")).as(dq).isEqualTo(rq.get("geraete_ids"));
+            assertThat(v.get("geraete_ids")).as(dq).isEqualTo(geraeteIdsZumStand(dq));
             assertThat(v.get("kadenz_s").asInt()).as(dq).isEqualTo(rq.get("kadenz_s").asInt());
             assertThat(v.get("steuerquelle").asBoolean()).as(dq).isEqualTo(rq.get("steuerquelle").asBoolean());
             assertThat(Instant.parse(v.get("ab").asText())).as(dq).isEqualTo(reihenbeginn(dq));
@@ -848,6 +850,30 @@ class DatenquelleVorschlagApiTest {
         List<UUID> out = new ArrayList<>();
         arr.forEach(n -> out.add(UUID.fromString(n.at("/" + feld + "/id").asText())));
         return out;
+    }
+
+    /**
+     * Die Geräte-IDs der Quelle, deren Gerät am {@code stand} der Referenz schon eingebaut ist. Die
+     * Welt baut den Grundbestand; ein später eingebautes Gerät (Referenz 1.6: GR-19 mit Geräte-ID 5
+     * an DQ-3 erst ab 01.03.2027) gehört heute nicht in den Vorschlag.
+     */
+    private static JsonNode geraeteIdsZumStand(String dq) {
+        LocalDate stand = LocalDate.parse(referenz.get("stand").asText());
+        ArrayNode ids = MAPPER.createArrayNode();
+        for (JsonNode id : referenzQuelle(dq).get("geraete_ids")) {
+            JsonNode geraet = null;
+            for (JsonNode g : referenz.get("geraete")) {
+                if (dq.equals(g.get("datenquelle").asText()) && g.get("modbus_geraete_id").asInt() == id.asInt()) {
+                    geraet = g;
+                }
+            }
+            assertThat(geraet).as(dq + " Geräte-ID " + id).isNotNull();
+            LocalDate eingebaut = OffsetDateTime.parse(geraet.at("/einbauten/0/gueltig_ab").asText()).toLocalDate();
+            if (!eingebaut.isAfter(stand)) {
+                ids.add(id);
+            }
+        }
+        return ids;
     }
 
     /** Der Beginn der ersten Zuständigkeit der Quelle in der Referenz — ihr Reihenbeginn. */

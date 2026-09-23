@@ -12,6 +12,7 @@ import {
   eintragAus,
   entwurfAus,
   messmittelAblehnung,
+  messmittelLesbar,
   PRUEFUNGSART_OPTIONEN,
   pruefsummeKurz,
   pruefsummeLokal,
@@ -32,7 +33,8 @@ import './MessmittelBlatt.css';
  * steht der Abschnitt nicht da.
  * ⚠ Lesen über `messwerte.ansehen` (die Route); eintragen nur mit `messmittel.angaben` am Standort der Seite
  * (`RechteStandort`, wie die übrigen Hebel der Geräteseite; die Route prüft den Zaun über die Anlage). Ohne
- * Antwort (Fehler, 404) steht GAR NICHTS — dieselbe Regel wie Einstellungen und Protokoll der Geräteseite.
+ * Antwort (Fehler, 404) oder ohne lesbare Angabe (keine `wandler`-Liste) steht GAR NICHTS — dieselbe Regel wie
+ * Einstellungen und Protokoll der Geräteseite.
  */
 export function MessmittelBlatt({ geraetId, heute }: { geraetId: string; heute?: string }) {
   const [angaben, setAngaben] = useState<MessmittelAngaben | null>(null);
@@ -43,7 +45,7 @@ export function MessmittelBlatt({ geraetId, heute }: { geraetId: string; heute?:
     let aktiv = true;
     setAngaben(null);
     api.geraetMessmittel(geraetId).then(
-      (a) => aktiv && setAngaben(a),
+      (a) => aktiv && setAngaben(messmittelLesbar(a) ? a : null),
       () => aktiv && setAngaben(null),
     );
     return () => {

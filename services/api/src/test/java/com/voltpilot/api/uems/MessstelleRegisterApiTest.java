@@ -482,8 +482,9 @@ class MessstelleRegisterApiTest {
 
     /**
      * Jeder Filter des Berichts (§5.16): Standort (Kurzzeichen ODER ID), Ort mit seinem Teilbaum,
-     * Anlage, Zustand, „ohne Quelle“ — und ihre Kombination. „Ohne Quelle“ findet MS-21 (E8), nie
-     * eine berechnete: die hat keine Quelle, weil sie gerechnet wird.
+     * Anlage, Zustand, „ohne Quelle“ — und ihre Kombination. „Ohne Quelle“ findet MS-21 (E8) und MS-23
+     * (Referenz 1.6: eingerichtet, Quelle erst ab 01.03.2027), nie eine berechnete: die hat keine Quelle,
+     * weil sie gerechnet wird.
      */
     @Test
     void dieFilterSchneidenStandortOrtAnlageZustandUndOhneQuelle() {
@@ -515,12 +516,13 @@ class MessstelleRegisterApiTest {
         // Zustand: die berechneten sind bis AP-10 Entwürfe (ihre Formel fehlt), die anderen aktiv.
         assertThat(kennzeichen(register(ah.wer(), am + "&zustand=entwurf")))
                 .containsExactly("MS-09", "MS-15", "MS-19", "MS-20", "MS-22");
-        assertThat(kennzeichen(register(ah.wer(), am + "&zustand=aktiv"))).hasSize(17).contains("MS-21");
+        assertThat(kennzeichen(register(ah.wer(), am + "&zustand=aktiv"))).hasSize(18).contains("MS-21", "MS-23");
         assertThat(kennzeichen(register(ah.wer(), am + "&zustand=archiviert"))).isEmpty();
 
-        // Ohne Quelle: MS-21 (Gas, manuelle Ablesung) — keine berechnete.
-        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=true"))).containsExactly("MS-21");
-        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=false"))).hasSize(22);
+        // Ohne Quelle: MS-21 (Gas, manuelle Ablesung) und MS-23 (GR-19 erst 2027) — keine berechnete.
+        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=true"))).containsExactly("MS-21", "MS-23");
+        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=false")))
+                .hasSize(referenz.get("messstellen").size());
         // Vor dem 01.10.2026 hatte MS-10 seine Quelle noch nicht — dann sagt das Register das.
         assertThat(kennzeichen(register(ah.wer(), "?stichtag=2026-09-30&ohneQuelle=true")))
                 .contains("MS-10", "MS-21");
@@ -1044,8 +1046,10 @@ class MessstelleRegisterApiTest {
         Set<String> gemeinsam = komponentenDerMitsteuerndenBoxen();
         for (JsonNode k : referenz.get("komponenten")) {
             String kz = k.get("kennzeichen").asText();
-            if ("K-2".equals(kz) || "K-8.7".equals(kz) || gemeinsam.contains(kz)) {
-                continue; // K-2 meldet der Wechselrichter mit; K-8.7 kommt erst 2027 (A18).
+            if ("K-2".equals(kz) || "K-8.7".equals(kz) || "K-15".equals(kz) || gemeinsam.contains(kz)) {
+                // K-2 meldet der Wechselrichter mit; K-8.7 kommt erst 2027 (A18), K-15 (GR-19 an DQ-3,
+                // Referenz 1.6) ebenso erst am 01.03.2027 - bis dahin trägt MS-23 keine Datenquelle.
+                continue;
             }
             komponenten.put(kz, komponente(t, anlagen.get(k.get("anlage").asText()), k));
         }

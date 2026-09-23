@@ -8,6 +8,7 @@ import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures
 import { vorherGeraet, vorherEinstellungen, wechselKanaele, wechselQuellen, wechselAntwort, WECHSEL_JETZT, WECHSEL_AM } from '../src/test/zaehlerwechselFixtures';
 import { grundlastTag, grundlastViertelstunden } from '../src/test/werteKarteFixtures';
 import { gr4Z5b } from '../src/test/geraetHerkunftFixtures';
+import { leerMessmittel } from '../src/test/messmittelFixtures';
 const expect = baseExpect.configure({ timeout: 30_000 });
 const json = (body: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(body) });
 async function cloud(page: Page, jetzt = WECHSEL_JETZT) {
@@ -26,6 +27,8 @@ async function cloud(page: Page, jetzt = WECHSEL_JETZT) {
     if (p.endsWith('/geraete')) return route.fulfill(json({ geraete: [nachher ? gr4Z5b() : vorherGeraet()] }));
     if (p.endsWith('/einstellungen')) return route.fulfill(json(vorherEinstellungen()));
     if (p.endsWith('/messkanaele')) return route.fulfill(json(wechselKanaele()));
+    // Das Messmittel-Blatt der Geräteseite (AP-16 IP-18): je Einbau noch nichts erhoben.
+    if (p.endsWith('/messmittel')) return route.fulfill(json(leerMessmittel(p.split('/').at(-2)!, 'GR-4', nachher ? 'Z-5b' : 'Z-5a')));
     if (p.endsWith('/events')) return route.fulfill(json(nachher ? [{ revision: 1, eventType: 'device_replaced', effectiveAt: WECHSEL_AM,
       fromValue: 'Z-5a', toValue: 'Z-5b', createdAt: WECHSEL_JETZT, createdBy: 'IK' }] : []));
     if (p.endsWith('/quellen')) return route.fulfill(json(wechselQuellen(nachher)));
