@@ -167,6 +167,7 @@ SP1, nie „EnPI“, „EnB“, „Baseline“, „Normalisierung“, „KPI“ 
 | Wetter | „Januar 2028: 1 930 m³ Gas bei 480 Gradtagen — 1 943 m³ erwartet: im Rahmen der Bezugsbasis (± 4,6 %). Temperatur von VoltPilot bezogen (Wetter-Archiv), nicht am Standort gemessen.“ | Verhältnis über Gradtage … |
 | Beendet | „Nicht bewertbar: Bezugsbasis beendet am 31.12.2026 (Anbau Halle 2). Fassung 2 gilt seit 01.03.2027.“ | R5 Januar 2027 |
 | Leer | „Noch keine Bezugsbasis. Legen Sie fest, gegen welchen Zeitraum diese Kennzahl verglichen werden soll — der Vergleich entsteht aus den gespeicherten Werten.“ | R10 |
+| Frist | „Bezugsbasis BB-0001, Fassung 2 vom 24.11.2027 · Überprüfung fällig seit 1 Tag — bestätigen oder neu fassen.“ | R13 fällig seit 1 Tag |
 
 ## 11. Die Vektoren
 
@@ -276,6 +277,42 @@ dazu ST-1 und die Prozesse und Kostenstellen der Messstellen in Halle 2. **Keine
 die tagesgenaue Regel der Ortsstruktur (`OrtsbaumAbleitung`, `ortsbaum-vectors.json`) und der Zuordnungen (daterange
 `[]`), keine neue reine Regel; geprüft wird die Route in `FaktorenVorschlagApiTest` und die Form in
 `FaktorenVorschlagSchnittstelleVertragTest`.
+
+## 15. Pflege: bleibt, beenden, Übersicht (F4, F5, A4, R13 — IP-17)
+
+**Frist (F5), Operation `frist`.** Die Frist der laufenden Fassung wird beim Abruf abgeleitet — kein Läufer, kein
+Ereignis, keine Nachricht: Beginn = Freigabetag (`freigegeben_am`, in der Zeitzone der Kennzahl) oder das jüngste
+„geprüft, bleibt“ dieser Fassung, wenn es später liegt; `faellig_am` = Beginn + `wiedervorlage_monate` Kalendermonate
+(Monatsende geklemmt: 31.01. + 1 → 28.02.; 29.02. + 24 → 28.02.). Ab `faellig_am` ist der Zustand
+`ueberpruefung_faellig` mit `faellig_seit_tagen` = Stichtag − `faellig_am` (0 am Fälligkeitstag), davor `freigegeben`;
+eine beendete Basis hat keine Frist (`beendet`). Der Stichtag wird übergeben, nie aus einer Uhr gelesen. Zwillinge:
+`BezugsbasisRegeln.frist`, `bezugsbasis.ts` `frist`, `bezugsbasis.py` `frist`; acht Vektoren (`regel` F4/F5) ergänzen
+die Datei, darunter R13 „fällig seit 1 Tag“, „bleibt → neue Frist“ und „beendet“ — die Datei trägt damit 53 Fälle.
+
+**„Geprüft, bleibt“ (F5, A4)** `POST /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/bleibt` `{begruendung}` (10–500):
+ein Protokolleintrag `gueltig_bleibt` an der laufenden Fassung (`neu`: `bestaetigt_am`, `faellig_am`); die Fassung
+bleibt byte-gleich, `freigegeben_am` ist eingefroren — die neue Frist steht im Protokoll. Offene Anstöße der Fassung
+gelten als beantwortet (`bleibt`, mit derselben Begründung). Der andere Weg ist Fassung n + 1 (IP-8).
+
+**Beenden (F4)** `POST …/bezugsbasen/{bid}/beenden` `{tag, grund, begruendung, rueckwirkend?}`: `tag` ist der letzte
+eingeschlossene Tag; vor heute nur mit `rueckwirkend: true`, nie vor dem `gilt_ab` der laufenden Fassung. `grund` aus
+`anpassungsgrund` (A1). Die Basis bekommt `beendet_zum/_am/_grund` genau einmal, die laufende Fassung `gilt_bis`;
+offene Anstöße gelten als beantwortet (`beendet`); Protokoll `bezugsbasis_beendet`. Nie gelöscht; danach darf die
+Kennzahl eine neue Basis bekommen (B1). **Archivierung der Kennzahl** beendet die laufende Basis am Archivierungstag
+mit Grund `nicht_mehr_anwendbar` (Begründung „Kennzahl archiviert“) in derselben Transaktion; ohne Basis geschieht
+nichts (R10). Ein Vergleich danach sagt `nicht_anwendbar`/`basis_beendet` (IP-19) mit dem Satz „Nicht bewertbar:
+Bezugsbasis beendet am …“ (§10).
+
+**Übersicht** `GET /api/v1/bezugsbasen/uebersicht` (Recht `bezugsbasis.ansehen` über die Sichtbarkeit der Kennzahl):
+`laufend` · `freigegeben` · `vorlaeufig` · `mit_anstoss` · `ueberpruefung_faellig` und `faellig[]` (am längsten fällig
+zuerst). Die Portal-Kachel `BezugsbasisUebersichtKarte` am Unternehmen zeigt die Zähler und je fälliger Basis den Satz
+„Frist“ (§10); ohne laufende Basis zeigt sie nichts (R10). Kundensätze der Kachel:
+„Überprüfung fällig seit n Tagen — bestätigen oder neu fassen.“ (1 Tag · n Tagen · am Fälligkeitstag „seit heute“).
+
+Rechte: Schreiben `bezugsbasis.verwalten` am Geltungsbereich der Kennzahl (`@Recht` mit Ziel DIENST, genaue Prüfung
+`KennzahlService.darfAnKennzahl`), Lesen `bezugsbasis.ansehen`. Prüfreihenfolge: Anfrage 400 → Kennzahl 404 → Recht
+403/404 → Inhalt 422 (`begruendung_fehlt`, `grund_unbekannt`, `rueckwirkend_fehlt`, `tag_vor_fassung`) → Zustand 409
+(`bezugsbasis_beendet`, `keine_freigegebene_fassung`).
 
 ## Prüfen
 

@@ -1,6 +1,8 @@
 package com.voltpilot.api.uems;
 
 import java.math.BigInteger;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -405,4 +407,33 @@ public final class BezugsbasisRegeln {
 
     /** M5: Anzeige-Rundung kaufmännisch; ,5 vom Nullpunkt weg. */
     public static String runden(String wert, int stellen) { return fest(Q.of(wert), stellen); }
+
+    /**
+     * F4/F5 (AP-17 IP-17): die Frist der laufenden Fassung, beim Abruf abgeleitet — kein Läufer, keine Uhr. Beginn ist
+     * der Freigabetag oder das jüngste „geprüft, bleibt“ ({@code bestaetigt_am}); fällig am Beginn + Wiedervorlage in
+     * Kalendermonaten (Monatsende geklemmt: 31.01. + 1 → 28.02.). Ab dem Fälligkeitstag ist die Überprüfung fällig,
+     * {@code faellig_seit_tagen} zählt ganze Tage bis zum Stichtag. Eine beendete Basis hat keine Frist mehr.
+     * Alle Tage als JJJJ-MM-TT in der Zeitzone der Kennzahl.
+     */
+    public record FristEingang(String freigegeben_am, int wiedervorlage_monate, String bestaetigt_am, String beendet_zum, String stichtag) {}
+
+    public static Map<String, Object> frist(FristEingang e) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        if (e.beendet_zum() != null) {
+            r.put("faellig_am", null);
+            r.put("zustand", "beendet");
+            r.put("faellig_seit_tagen", null);
+            return r;
+        }
+        if (e.wiedervorlage_monate() <= 0) throw new IllegalArgumentException("wiedervorlage_monate > 0");
+        LocalDate beginn = LocalDate.parse(e.freigegeben_am());
+        if (e.bestaetigt_am() != null && LocalDate.parse(e.bestaetigt_am()).isAfter(beginn)) beginn = LocalDate.parse(e.bestaetigt_am());
+        LocalDate faellig = beginn.plusMonths(e.wiedervorlage_monate());
+        LocalDate stichtag = LocalDate.parse(e.stichtag());
+        boolean ist = !stichtag.isBefore(faellig);
+        r.put("faellig_am", faellig.toString());
+        r.put("zustand", ist ? "ueberpruefung_faellig" : "freigegeben");
+        r.put("faellig_seit_tagen", ist ? (int) ChronoUnit.DAYS.between(faellig, stichtag) : null);
+        return r;
+    }
 }

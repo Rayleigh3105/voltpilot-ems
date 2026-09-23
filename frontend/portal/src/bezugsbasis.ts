@@ -317,3 +317,52 @@ export const methodenPaar = (e: { modell: VergleichEingang; verhaeltnis: Verglei
 
 /** M5: Anzeige-Rundung kaufmännisch; ,5 vom Nullpunkt weg — anders als `Math.round`. */
 export const runden = (wert: string, stellen: number) => fest(q(wert), stellen);
+
+/**
+ * F4/F5 (AP-17 IP-17): die Frist der laufenden Fassung, beim Abruf abgeleitet — kein Läufer, keine Uhr. Beginn ist der
+ * Freigabetag oder das jüngste „geprüft, bleibt“; fällig am Beginn + Wiedervorlage in Kalendermonaten (Monatsende
+ * geklemmt wie `LocalDate.plusMonths`: 31.01. + 1 → 28.02.). Ab dem Fälligkeitstag fällig; eine beendete Basis hat keine
+ * Frist mehr. Tage als JJJJ-MM-TT in der Zeitzone der Kennzahl.
+ */
+export type FristEingang = {
+  freigegeben_am: string;
+  wiedervorlage_monate: number;
+  bestaetigt_am: string | null;
+  beendet_zum: string | null;
+  stichtag: string;
+};
+export type Frist = {
+  faellig_am: string | null;
+  zustand: 'freigegeben' | 'ueberpruefung_faellig' | 'beendet';
+  faellig_seit_tagen: number | null;
+};
+
+const TAG = /^(\d{4})-(\d{2})-(\d{2})$/;
+const tagZahl = (tag: string): number => {
+  const m = TAG.exec(tag);
+  if (!m) throw new Error(`Kein Tag: ${tag}`);
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86_400_000;
+};
+const tagText = (zahl: number) => new Date(zahl * 86_400_000).toISOString().slice(0, 10);
+
+function plusMonate(tag: string, monate: number): string {
+  const m = TAG.exec(tag);
+  if (!m) throw new Error(`Kein Tag: ${tag}`);
+  const gesamt = Number(m[1]) * 12 + (Number(m[2]) - 1) + monate;
+  const jahr = Math.floor(gesamt / 12);
+  const monat = gesamt % 12;
+  const letzter = new Date(Date.UTC(jahr, monat + 1, 0)).getUTCDate();
+  return tagText(Date.UTC(jahr, monat, Math.min(Number(m[3]), letzter)) / 86_400_000);
+}
+
+export function frist(e: FristEingang): Frist {
+  if (e.beendet_zum !== null) return { faellig_am: null, zustand: 'beendet', faellig_seit_tagen: null };
+  if (!(e.wiedervorlage_monate > 0)) throw new Error('wiedervorlage_monate > 0');
+  const beginn = e.bestaetigt_am !== null && tagZahl(e.bestaetigt_am) > tagZahl(e.freigegeben_am)
+    ? e.bestaetigt_am : e.freigegeben_am;
+  const faellig = plusMonate(beginn, e.wiedervorlage_monate);
+  const seit = tagZahl(e.stichtag) - tagZahl(faellig);
+  return seit >= 0
+    ? { faellig_am: faellig, zustand: 'ueberpruefung_faellig', faellig_seit_tagen: seit }
+    : { faellig_am: faellig, zustand: 'freigegeben', faellig_seit_tagen: null };
+}

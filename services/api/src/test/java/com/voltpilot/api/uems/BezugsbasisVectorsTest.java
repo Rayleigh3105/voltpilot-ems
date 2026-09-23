@@ -36,6 +36,7 @@ class BezugsbasisVectorsTest {
             case "zeitraum" -> BezugsbasisRegeln.zeitraum(M.treeToValue(e, BezugsbasisRegeln.ZeitraumEingang.class));
             case "roh" -> BezugsbasisRegeln.roh(e.get("aktuell").asText(), e.get("vorher").asText());
             case "runden" -> BezugsbasisRegeln.runden(e.get("wert").asText(), e.get("stellen").asInt());
+            case "frist" -> BezugsbasisRegeln.frist(M.treeToValue(e, BezugsbasisRegeln.FristEingang.class));
             default -> throw new AssertionError("Ungeprüfte Operation: " + fall.get("operation"));
         };
     }

@@ -1114,6 +1114,111 @@
                 "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
               }
             }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^F[45]$"
+              },
+              "operation": {
+                "const": "frist"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "freigegeben_am",
+                  "wiedervorlage_monate",
+                  "bestaetigt_am",
+                  "beendet_zum",
+                  "stichtag"
+                ],
+                "properties": {
+                  "freigegeben_am": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  },
+                  "wiedervorlage_monate": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "bestaetigt_am": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  },
+                  "beendet_zum": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  },
+                  "stichtag": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "faellig_am",
+                  "zustand",
+                  "faellig_seit_tagen"
+                ],
+                "properties": {
+                  "faellig_am": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  },
+                  "zustand": {
+                    "enum": [
+                      "freigegeben",
+                      "ueberpruefung_faellig",
+                      "beendet"
+                    ]
+                  },
+                  "faellig_seit_tagen": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            }
           }
         ]
       },

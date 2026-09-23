@@ -2516,6 +2516,158 @@
         "stellen": 1
       },
       "erwartet": "0.0"
+    },
+    {
+      "name": "R13 Überprüfung fällig seit 1 Tag",
+      "regel": "F5",
+      "operation": "frist",
+      "quelle": "R13",
+      "rechnung": "24.11.2027 + 12 Monate = 24.11.2028; Stichtag 25.11.2028 − 24.11.2028 = 1 Tag",
+      "eingang": {
+        "freigegeben_am": "2027-11-24",
+        "wiedervorlage_monate": 12,
+        "bestaetigt_am": null,
+        "beendet_zum": null,
+        "stichtag": "2028-11-25"
+      },
+      "erwartet": {
+        "faellig_am": "2028-11-24",
+        "zustand": "ueberpruefung_faellig",
+        "faellig_seit_tagen": 1
+      }
+    },
+    {
+      "name": "R13 am Fälligkeitstag fällig seit 0 Tagen",
+      "regel": "F5",
+      "operation": "frist",
+      "quelle": "R13",
+      "rechnung": "24.11.2027 + 12 Monate = 24.11.2028 = Stichtag: ab dem Fälligkeitstag fällig, 0 Tage",
+      "eingang": {
+        "freigegeben_am": "2027-11-24",
+        "wiedervorlage_monate": 12,
+        "bestaetigt_am": null,
+        "beendet_zum": null,
+        "stichtag": "2028-11-24"
+      },
+      "erwartet": {
+        "faellig_am": "2028-11-24",
+        "zustand": "ueberpruefung_faellig",
+        "faellig_seit_tagen": 0
+      }
+    },
+    {
+      "name": "R13 am Vortag noch nicht fällig",
+      "regel": "F5",
+      "operation": "frist",
+      "quelle": "R13",
+      "rechnung": "Stichtag 23.11.2028 liegt vor 24.11.2028: freigegeben, keine Zahl",
+      "eingang": {
+        "freigegeben_am": "2027-11-24",
+        "wiedervorlage_monate": 12,
+        "bestaetigt_am": null,
+        "beendet_zum": null,
+        "stichtag": "2028-11-23"
+      },
+      "erwartet": {
+        "faellig_am": "2028-11-24",
+        "zustand": "freigegeben",
+        "faellig_seit_tagen": null
+      }
+    },
+    {
+      "name": "R13 geprüft, bleibt → neue Frist",
+      "regel": "F5",
+      "operation": "frist",
+      "quelle": "R13",
+      "rechnung": "„bleibt“ am 25.11.2028: Beginn 25.11.2028 + 12 Monate = 25.11.2029; Stichtag 25.11.2028 davor",
+      "eingang": {
+        "freigegeben_am": "2027-11-24",
+        "wiedervorlage_monate": 12,
+        "bestaetigt_am": "2028-11-25",
+        "beendet_zum": null,
+        "stichtag": "2028-11-25"
+      },
+      "erwartet": {
+        "faellig_am": "2029-11-25",
+        "zustand": "freigegeben",
+        "faellig_seit_tagen": null
+      }
+    },
+    {
+      "name": "R13 bleibt vor der Freigabe zählt nicht",
+      "regel": "F5",
+      "operation": "frist",
+      "quelle": "R13",
+      "rechnung": "„bleibt“ 01.10.2027 liegt vor der Freigabe 24.11.2027: Beginn bleibt der Freigabetag",
+      "eingang": {
+        "freigegeben_am": "2027-11-24",
+        "wiedervorlage_monate": 12,
+        "bestaetigt_am": "2027-10-01",
+        "beendet_zum": null,
+        "stichtag": "2028-11-25"
+      },
+      "erwartet": {
+        "faellig_am": "2028-11-24",
+        "zustand": "ueberpruefung_faellig",
+        "faellig_seit_tagen": 1
+      }
+    },
+    {
+      "name": "R13 beendet hat keine Frist",
+      "regel": "F4",
+      "operation": "frist",
+      "quelle": "R13",
+      "rechnung": "Kennzahl archiviert am 31.12.2028: Basis beendet, nichts wird fällig",
+      "eingang": {
+        "freigegeben_am": "2027-11-24",
+        "wiedervorlage_monate": 12,
+        "bestaetigt_am": null,
+        "beendet_zum": "2028-12-31",
+        "stichtag": "2029-01-05"
+      },
+      "erwartet": {
+        "faellig_am": null,
+        "zustand": "beendet",
+        "faellig_seit_tagen": null
+      }
+    },
+    {
+      "name": "F5 Monatsende geklemmt",
+      "regel": "F5",
+      "operation": "frist",
+      "quelle": "F5",
+      "rechnung": "31.01.2027 + 1 Monat = 28.02.2027 (Februar hat 28 Tage); Stichtag 01.03.2027 − 28.02.2027 = 1 Tag",
+      "eingang": {
+        "freigegeben_am": "2027-01-31",
+        "wiedervorlage_monate": 1,
+        "bestaetigt_am": null,
+        "beendet_zum": null,
+        "stichtag": "2027-03-01"
+      },
+      "erwartet": {
+        "faellig_am": "2027-02-28",
+        "zustand": "ueberpruefung_faellig",
+        "faellig_seit_tagen": 1
+      }
+    },
+    {
+      "name": "F5 Wiedervorlage 24 Monate über den Schalttag",
+      "regel": "F5",
+      "operation": "frist",
+      "quelle": "F5",
+      "rechnung": "29.02.2028 + 24 Monate = 28.02.2030; Stichtag 30.03.2030 − 28.02.2030 = 30 Tage",
+      "eingang": {
+        "freigegeben_am": "2028-02-29",
+        "wiedervorlage_monate": 24,
+        "bestaetigt_am": null,
+        "beendet_zum": null,
+        "stichtag": "2030-03-30"
+      },
+      "erwartet": {
+        "faellig_am": "2030-02-28",
+        "zustand": "ueberpruefung_faellig",
+        "faellig_seit_tagen": 30
+      }
     }
   ]
 }

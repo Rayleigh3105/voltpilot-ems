@@ -62,7 +62,9 @@ class BezugsbasisGrundlageTest {
         String basis = "/api/v1/kennzahlen/{id}/bezugsbasen";
         assertThat(pfade.keySet().stream().filter(p -> p.contains("/bezugsbasen")).toList())
                 .containsExactlyInAnyOrder(basis, basis + "/{bid}", basis + "/{bid}/fassungen",
-                        basis + "/{bid}/fassungen/{n}");
+                        basis + "/{bid}/fassungen/{n}",
+                        // IP-17 (§15): Pflege und Übersicht.
+                        basis + "/{bid}/bleibt", basis + "/{bid}/beenden", "/api/v1/bezugsbasen/uebersicht");
         assertThat(((Map<String, Object>) pfade.get(basis)).keySet()).containsExactlyInAnyOrder("parameters", "post");
         assertThat(((Map<String, Object>) pfade.get(basis + "/{bid}")).keySet()).containsExactlyInAnyOrder("parameters", "get");
         assertThat(((Map<String, Object>) pfade.get(basis + "/{bid}/fassungen")).keySet())
@@ -73,7 +75,9 @@ class BezugsbasisGrundlageTest {
         Map<String, Class<?>> formen = Map.of("BezugsbasisFassung", BezugsbasisDto.Fassung.class, "Bezugsbasis",
                 BezugsbasisDto.Bezugsbasis.class, "BezugsbasisFassungKurz", BezugsbasisDto.FassungKurz.class,
                 "BezugsbasisVariable", BezugsbasisDto.Variable.class, "BezugsbasisEntwurf", BezugsbasisDto.Entwurf.class,
-                "BezugsbasisAnlegen", BezugsbasisDto.Anlegen.class);
+                "BezugsbasisAnlegen", BezugsbasisDto.Anlegen.class,
+                "BezugsbasisZustand", BezugsbasisPflegeService.Zustand.class,
+                "BezugsbasisUebersicht", BezugsbasisPflegeService.Uebersicht.class);
         formen.forEach((name, form) -> assertThat(((Map<String, Object>) ((Map<String, Object>) schemas.get(name))
                 .get("properties")).keySet()).as(name).containsExactlyElementsOf(felder(form)));
     }

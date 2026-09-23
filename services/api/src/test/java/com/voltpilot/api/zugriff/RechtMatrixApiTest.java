@@ -298,6 +298,10 @@ class RechtMatrixApiTest {
                 "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung", "ee333333"));
         z.add(new Zeile("energieeinsatz.einstufen", HttpMethod.POST,
                 "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung/bestaetigen", "ee333333"));
+        z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST,
+                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/bleibt", "eee33333"));
+        z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST,
+                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/beenden", "eee33333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee333333"));

@@ -3,6 +3,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Bericht, type Funktionen, type MessstellenRegister } from '../api';
 import { darfAnsehen } from '../bewertung';
 import { bewertungFristBaustein, type BewertungFristBild } from '../bewertungFrist';
+import { bezugsbasisUebersichtBild, type BezugsbasisUebersicht, type BezugsbasisUebersichtBild } from '../bezugsbasisUebersicht';
 import { misst } from '../ebenenNav';
 import { UEMS_ENERGIEBILANZ, UEMS_GEBAEUDE, UEMS_KENNZAHLEN } from '../glossar';
 import { heuteIn, listenKarte, ZUR_LISTE } from '../kennzahlKarte';
@@ -30,6 +31,7 @@ import {
 import { useRollen } from '../rollen';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { BewertungBaustein } from './BewertungBaustein';
+import { BezugsbasisUebersichtKarte } from './BezugsbasisUebersichtKarte';
 import { ZeitSegment } from './HistorieWelt';
 import { KennzahlKarte, useKennzahlenListe } from './KennzahlListe';
 import './UebersichtBausteine.css';
@@ -56,6 +58,8 @@ export interface UebersichtDaten {
   kennzahlen: ReturnType<typeof useKennzahlenListe>;
   /** AP-16 IP-24: die gültige Bewertung am Unternehmen — nur mit `energieeinsatz.ansehen` und einem Stand. */
   bewertung: BewertungFristBild | null;
+  /** AP-17 IP-17: laufende Bezugsbasen am Unternehmen — `null` ohne laufende Basis (R10: keine neue Kachel). */
+  bezugsbasen?: BezugsbasisUebersichtBild | null;
   /** Die Bausteine MIT Inhalt — nur sie bietet die Fläche an. */
   inhalt: UebersichtBausteinId[];
 }
@@ -192,6 +196,26 @@ export function useUebersichtBausteine(
   }, [bewertungAn]);
   const bewertung = bewertungAn ? bewertungFristBaustein(berichte) : null;
 
+  // AP-17 IP-17: „Bezugsbasen“ nur am Unternehmen; die Frist leitet der Server beim Abruf ab, die Sichtbarkeit folgt der
+  // Kennzahl. Ohne laufende Basis bleibt die Kachel weg.
+  const bezugsbasenAn = an && ebene?.art === 'unternehmen';
+  const [bezugsbasisDaten, setBezugsbasisDaten] = useState<BezugsbasisUebersicht | null>(null);
+  useEffect(() => {
+    if (!bezugsbasenAn) {
+      setBezugsbasisDaten(null);
+      return;
+    }
+    let aktiv = true;
+    api
+      .bezugsbasisUebersicht()
+      .then((r) => aktiv && setBezugsbasisDaten(r))
+      .catch(() => aktiv && setBezugsbasisDaten(null));
+    return () => {
+      aktiv = false;
+    };
+  }, [bezugsbasenAn]);
+  const bezugsbasen = bezugsbasenAn ? bezugsbasisUebersichtBild(bezugsbasisDaten) : null;
+
   if (!ebene || !an) return null;
   const gebaeude: GebaeudeEingang[] = gebaeudeListe.map((g) => ({
     ...g,
@@ -221,6 +245,7 @@ export function useUebersichtBausteine(
     gebaeude,
     kennzahlen,
     bewertung,
+    bezugsbasen,
     inhalt,
   };
 }
@@ -246,7 +271,9 @@ export function UebersichtBausteine({
       : [];
   const kennzahlen = zeigen.includes('kennzahlen') ? kennzahlenDerEbene(ebene, daten.kennzahlen.liste) : null;
   const bewertung = zeigen.includes('bewertung') ? daten.bewertung : null;
-  if (!messstellen && !energie && gebaeude.length === 0 && !kennzahlen && !bewertung) return null;
+  // Die Bezugsbasen gehören zur Welt der Kennzahlen: wer „Kennzahlen“ ausblendet, blendet sie mit aus.
+  const bezugsbasen = zeigen.includes('kennzahlen') ? (daten.bezugsbasen ?? null) : null;
+  if (!messstellen && !energie && gebaeude.length === 0 && !kennzahlen && !bewertung && !bezugsbasen) return null;
 
   return (
     <div className="vp-ub" data-testid="uebersicht-bausteine">
@@ -393,6 +420,14 @@ export function UebersichtBausteine({
       )}
 
       {bewertung && <BewertungBaustein bild={bewertung} onOeffnen={() => onNavigate(pageRoute('portfolio-bewertung'))} />}
+
+      {bezugsbasen && (
+        <BezugsbasisUebersichtKarte
+          bild={bezugsbasen}
+          onOeffnen={() => onNavigate(pageRoute('portfolio-kennzahlen'))}
+          onKennzahl={(id) => onNavigate(kennzahlRoute(id, null))}
+        />
+      )}
     </div>
   );
 }

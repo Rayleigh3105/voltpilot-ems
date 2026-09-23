@@ -27,6 +27,7 @@ def rechnen(fall):
         case 'zeitraum': return b.zeitraum(e)
         case 'roh': return b.roh(e['aktuell'], e['vorher'])
         case 'runden': return b.runden(e['wert'], e['stellen'])
+        case 'frist': return b.frist(e)
         case _: raise AssertionError(f"Ungeprüfte Operation: {fall['operation']}")
 
 

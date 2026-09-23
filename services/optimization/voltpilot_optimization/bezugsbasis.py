@@ -340,3 +340,29 @@ def roh_und_bereinigt(e):
 def methoden_paar(e):
     """M3: dieselbe Periode gegen das Modell mit Konstante und gegen das Verhältnis ohne Grundlast."""
     return dict(modell=vergleich(e["modell"]), verhaeltnis=vergleich(e["verhaeltnis"]))
+
+
+def _plus_monate(tag, monate):
+    import calendar
+    from datetime import date
+    t = date.fromisoformat(tag)
+    gesamt = t.year * 12 + t.month - 1 + monate
+    jahr, monat = divmod(gesamt, 12)
+    return date(jahr, monat + 1, min(t.day, calendar.monthrange(jahr, monat + 1)[1]))
+
+
+def frist(e):
+    """F4/F5 (IP-17): Frist beim Abruf abgeleitet; Monatsende geklemmt wie ``LocalDate.plusMonths``."""
+    from datetime import date
+    if e['beendet_zum'] is not None:
+        return {'faellig_am': None, 'zustand': 'beendet', 'faellig_seit_tagen': None}
+    if e['wiedervorlage_monate'] <= 0:
+        raise ValueError('wiedervorlage_monate > 0')
+    beginn = e['freigegeben_am']
+    if e['bestaetigt_am'] is not None and date.fromisoformat(e['bestaetigt_am']) > date.fromisoformat(beginn):
+        beginn = e['bestaetigt_am']
+    faellig = _plus_monate(beginn, e['wiedervorlage_monate'])
+    seit = (date.fromisoformat(e['stichtag']) - faellig).days
+    if seit >= 0:
+        return {'faellig_am': faellig.isoformat(), 'zustand': 'ueberpruefung_faellig', 'faellig_seit_tagen': seit}
+    return {'faellig_am': faellig.isoformat(), 'zustand': 'freigegeben', 'faellig_seit_tagen': None}

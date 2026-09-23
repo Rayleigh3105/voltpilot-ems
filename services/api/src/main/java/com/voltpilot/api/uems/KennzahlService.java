@@ -78,11 +78,13 @@ public class KennzahlService {
     private final BezugsgroesseService bezugsgroessen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
+    /** AP-17 IP-17 (F4): die Archivierung beendet die laufende Bezugsbasis am selben Tag. */
+    private final BezugsbasisPflegeRepository bezugsbasen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public KennzahlService(KennzahlRepository repo, KennzahlAufrufer aufrufer, BezugsflaecheLesemodell bezugsflaechen,
             BezugsgroesseService bezugsgroessen, PlatformTransactionManager transactionManager, ObjectMapper json,
-            KennzahlUmfang umfang) {
+            KennzahlUmfang umfang, BezugsbasisPflegeRepository bezugsbasen) {
         this.repo = repo;
         this.aufrufer = aufrufer;
         this.umfang = umfang;
@@ -90,6 +92,7 @@ public class KennzahlService {
         this.bezugsgroessen = bezugsgroessen;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
+        this.bezugsbasen = bezugsbasen;
     }
 
     /** Für Tests: die Uhr, an der „heute“, „rückwirkend“ und die Rechte hängen. */
@@ -324,6 +327,8 @@ public class KennzahlService {
             }
             repo.archivieren(id);
             repo.protokoll(tenant, id, ARCHIVIERT, null, null, jetzt, false, null, wer);
+            // F4 (AP-17 IP-17): die laufende Bezugsbasis endet am selben Tag; ohne Basis geschieht nichts (R10).
+            bezugsbasen.beiArchivierung(tenant, id, LocalDate.ofInstant(jetzt, geltungVon(k, jetzt).zone()), jetzt, wer);
         });
         return eine(id);
     }
@@ -516,6 +521,13 @@ public class KennzahlService {
                 List.of());
         Geltungsbereich.requireScope(aufrufer.benutzer(wer), k, g.kennung(),
                 g.standort() == null ? null : g.standort().toString(), jetzt, KennzahlAbgelehnt::rechte);
+    }
+
+    // ================================================================================ Bezugsbasis (AP-17 IP-17)
+
+    /** Die Kennzahl, wenn der Aufrufer sie sieht, sonst {@code null} (Übersicht: eine unsichtbare Basis zählt nicht). */
+    Zeile lesbareKennzahlOderNichts(UUID id) {
+        return repo.finde(id).filter(k -> sicht(k, jetzt()).sichtbar()).orElse(null);
     }
 
     private Zeile lesbar(Katalog kat, UUID id) {

@@ -1,4 +1,5 @@
 import { AuthRedirectError, freshToken } from './auth';
+import type { BezugsbasisUebersicht } from './bezugsbasisUebersicht';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -9518,6 +9519,8 @@ export const api = {
   selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
   /** Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. */
   berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
+  /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
+  bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
   /** Legt den Bericht an und bildet seinen Entwurf. */
   berichtAnlegen: (body: BerichtAnlegen) =>
     request<Bericht>(`/api/v1/berichte`, { method: 'POST', body: JSON.stringify(body) }),

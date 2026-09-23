@@ -21,6 +21,7 @@ function rechnen(fall: any) {
     case 'zeitraum': return b.zeitraum(e);
     case 'roh': return b.roh(e.aktuell, e.vorher);
     case 'runden': return b.runden(e.wert, e.stellen);
+    case 'frist': return b.frist(e);
     default: throw new Error(`Ungeprüfte Operation: ${fall.operation}`);
   }
 }

@@ -11658,6 +11658,103 @@ paths:
               schema: { $ref: "#/components/schemas/BezugsbasisFassung" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/bleibt:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Geprüft, bleibt - bestätigt die laufende Fassung einer Bezugsbasis mit Begründung und setzt die Wiedervorlage neu.
+      description: >
+        Recht `bezugsbasis.verwalten` am Geltungsbereich der Kennzahl (UEMS AP-17 IP-17, F5, R13; Vertrag
+        docs/contracts/v2/bezugsbasis.md §15). Ein Protokolleintrag
+        `gueltig_bleibt` mit `begruendung` (10–500 Zeichen, sonst 422 `begruendung_fehlt`); die Fassung bleibt
+        byte-gleich, die Frist beginnt heute neu (heute + `wiedervorlage_monate`). Offene Anstöße der laufenden
+        Fassung gelten als beantwortet (`bleibt`). Kennzahl nicht sichtbar 404; Recht fehlt 403 `recht_fehlt`;
+        Basis beendet 409 `bezugsbasis_beendet`; ohne freigegebene Fassung 409 `keine_freigegebene_fassung`;
+        unbekanntes Feld 400 `anfrage_ungueltig`. Kein Läufer, keine Nachricht.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Bestätigt - der Zustand mit der neuen Frist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisZustand" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/beenden:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Beendet eine Bezugsbasis mit Tag, Grund und Begründung - nie gelöscht.
+      description: >
+        Recht `bezugsbasis.verwalten` am Geltungsbereich der Kennzahl (UEMS AP-17 IP-17, F4). `tag` ist der
+        letzte eingeschlossene Tag (JJJJ-MM-TT, sonst 400); ein Tag vor heute nur mit `rueckwirkend: true`
+        (sonst 422 `rueckwirkend_fehlt`), nie vor dem ersten Tag der laufenden Fassung (422 `tag_vor_fassung`).
+        `grund` aus dem Vokabular `anpassungsgrund` (A1; sonst 422 `grund_unbekannt`), `begruendung` 10–500
+        Zeichen (422 `begruendung_fehlt`). Die laufende Fassung endet mit (`gilt_bis`), offene Anstöße gelten
+        als beantwortet (`beendet`), ein Protokolleintrag `bezugsbasis_beendet`. Schon beendet 409
+        `bezugsbasis_beendet`. Danach darf die Kennzahl eine neue Bezugsbasis bekommen (B1). Die Archivierung
+        der Kennzahl beendet die laufende Basis am selben Tag mit Grund `nicht_mehr_anwendbar`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tag, grund, begruendung]
+              properties:
+                tag: { type: string, format: date }
+                grund:
+                  type: string
+                  enum: [referenzperiode_vervollstaendigt, grundlage_korrigiert, struktur_geaendert, variable_geaendert, methode_geaendert, nicht_mehr_anwendbar, sonstiger]
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+                rueckwirkend: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Beendet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisZustand" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/bezugsbasen/uebersicht:
+    get:
+      tags: [kennzahlen]
+      summary: Übersicht am Unternehmen - laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen.
+      description: >
+        Recht `bezugsbasis.ansehen`, durchgesetzt über die Sichtbarkeit der Kennzahl (eine Basis an einer
+        Kennzahl, die der Aufrufer nicht sieht, zählt nicht). UEMS AP-17 IP-17 (R13, §5.5): Zähler
+        freigegeben · vorläufig · Anstoß liegt vor · Überprüfung fällig, dazu die fälligen Basen (am längsten
+        fällig zuerst). Die Frist wird beim Abruf abgeleitet (Freigabetag bzw. jüngstes „bleibt“ +
+        Wiedervorlage) - kein Läufer, kein Ereignis, keine Nachricht.
+      responses:
+        "200":
+          description: Die Übersicht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisUebersicht" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/kennzahl-vorlagen:
     get:
       tags: [kennzahlen]
@@ -26382,6 +26479,41 @@ components:
         gueltig_ab: { type: string, format: date, nullable: true, description: "Der Schnitt der Teil-Gültigkeiten." }
         gueltig_bis: { type: string, format: date, nullable: true }
         satz: { type: string }
+    BezugsbasisZustand:
+      type: object
+      description: >
+        Zustand einer Bezugsbasis (UEMS AP-17 IP-17): `zustand` aus `basis_zustand` - entwurf (keine
+        freigegebene Fassung), freigegeben, ueberpruefung_faellig (Frist abgeleitet), beendet. Der Anstoß
+        steht getrennt in `anstoss_liegt_vor`.
+      required: [bezugsbasis_id, kennzeichen, kennzahl_id, zustand, anstoss_liegt_vor]
+      properties:
+        bezugsbasis_id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: BB-0001 }
+        kennzahl_id: { type: string, format: uuid }
+        kennzahl_kennzeichen: { type: string, example: KZ-0004 }
+        kennzahl_name: { type: string }
+        fassung: { type: integer, nullable: true, description: Nummer der laufenden freigegebenen Fassung. }
+        freigegeben_am: { type: string, format: date, nullable: true }
+        datenlage: { type: string, enum: [vollstaendig, vorlaeufig], nullable: true }
+        zustand: { type: string, enum: [entwurf, freigegeben, ueberpruefung_faellig, beendet] }
+        faellig_am: { type: string, format: date, nullable: true }
+        faellig_seit_tagen: { type: integer, minimum: 0, nullable: true }
+        anstoss_liegt_vor: { type: boolean }
+        beendet_zum: { type: string, format: date, nullable: true }
+        beendet_grund: { type: string, nullable: true }
+    BezugsbasisUebersicht:
+      type: object
+      required: [stichtag, laufend, freigegeben, vorlaeufig, mit_anstoss, ueberpruefung_faellig, faellig]
+      properties:
+        stichtag: { type: string, format: date }
+        laufend: { type: integer, minimum: 0, description: Laufende (nicht beendete) Bezugsbasen, auch ohne freigegebene Fassung. }
+        freigegeben: { type: integer, minimum: 0 }
+        vorlaeufig: { type: integer, minimum: 0 }
+        mit_anstoss: { type: integer, minimum: 0 }
+        ueberpruefung_faellig: { type: integer, minimum: 0 }
+        faellig:
+          type: array
+          items: { $ref: "#/components/schemas/BezugsbasisZustand" }
     BezugsbasisMethoden:
       type: object
       description: Der Methoden-Katalog (bezugsbasis-methoden.schema.json), Byte für Byte die Vertragsdatei.
