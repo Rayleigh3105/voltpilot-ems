@@ -18,8 +18,11 @@ Protokoll erreichbar und zählen nicht nochmals neben einem Nachfolger.
 - Ersatzmengen kommen aus den gebildeten Viertelstundenanteilen zum Stand der gelesenen
   Monatsversion. Fehlt dieser Beleg, bleibt die Quote null; kein Anteil wird geraten.
 - `BilanzRichtungswerte` liest Laden/Entladen aus den gespeicherten Richtungsanteilen
-  statt zweimal die Nettomenge einzusetzen. Fehlende Paare und korrigierte Versionen
-  ohne eigenes Richtungspaar bleiben unbekannt. Der bestehende Bilanzweg nutzt denselben Leser.
+  statt zweimal die Nettomenge einzusetzen — das Paar der GELESENEN Version: Version 1 aus
+  `messreihe_tag`/`messreihe_periode`, eine korrigierte aus `messreihe_periode_version`
+  (`V20260923101500`, gebildet von der Kaskade, [Korrektur-Kaskade](uems-korrektur-kaskade.md)).
+  Fehlende Paare bleiben unbekannt: Nettomengen-Berichtigung (`wert_berichtigt`), Ersatzwert,
+  Versionen von vor der Migration. Der bestehende Bilanzweg nutzt denselben Leser.
 - Der Rest der Bewertung ist je Anlage Nenner minus den dort gezählten Einsätzen;
   ein ausgeschlossener Prozess verschwindet nicht aus dem Anlagenverbrauch.
   Eine direkte Messung ohne Anlagenstellung bleibt eine Menge; ihre Verteilung auf
