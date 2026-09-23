@@ -285,6 +285,15 @@ func TestAutomationPauseFallsEveryComponentToItsFailsafeAndLiftsItself(t *testin
 		return v, src, has
 	}
 
+	// On a red end name the last battery command: "source: desired" points
+	// at the plan having no active slot, not at a slow box.
+	defer func() {
+		if t.Failed() {
+			m, _ := last(entBattery)
+			t.Logf("last battery command: %v", m)
+		}
+	}()
+
 	// pv 5, load 1 -> the self-consumption failsafe wants +4, the registry band
 	// caps it at 2. That is the value the pause must land on.
 	l1 := startLayer1(t, cfg.LocalMQTTAddr)
