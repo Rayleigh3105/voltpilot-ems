@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,7 +32,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Bezugsbasis anlegen und eine Fassung als Entwurf mit Vorschau bilden, die gespeicherte Kopie lesen (UEMS AP-17
- * IP-7, Vertrag {@code bezugsbasis.md} „Routen“). Freigeben, Ablehnen, Beenden und der Verantwortliche folgen mit IP-8.
+ * IP-7, Vertrag {@code bezugsbasis.md} „Routen“); beantragen, freigeben, ablehnen, Fassung n + 1 und der
+ * Verantwortliche (IP-8, F1, F2, F4, B4). Beenden und „bleibt“ stehen im eigenen Controller (IP-17).
  */
 @RestController
 @RequestMapping("/api/v1/kennzahlen/{id}/bezugsbasen")
@@ -58,6 +60,15 @@ public class BezugsbasisController {
         return ResponseEntity.created(URI.create("/api/v1/kennzahlen/" + id + "/bezugsbasen/" + neu.id())).body(neu);
     }
 
+    /**
+     * Recht: {@code bezugsbasis.ansehen}. Die Basis-Zeile der Kennzahl (B3): jede Bezugsbasis mit laufender
+     * freigegebener Fassung, Zustand und {@code vorlaeufig}; Sichtbarkeit über die Kennzahl (404).
+     */
+    @GetMapping
+    public BezugsbasisDto.Liste liste(@PathVariable UUID id) {
+        return bezugsbasen.liste(id);
+    }
+
     /** Recht: {@code bezugsbasis.ansehen}. Die Bezugsbasis mit ihren Fassungen; Sichtbarkeit über die Kennzahl (404). */
     @GetMapping("/{bid}")
     public BezugsbasisDto.Bezugsbasis eine(@PathVariable UUID id, @PathVariable UUID bid) {
@@ -80,6 +91,46 @@ public class BezugsbasisController {
     @GetMapping("/{bid}/fassungen/{n}")
     public BezugsbasisDto.Fassung fassung(@PathVariable UUID id, @PathVariable UUID bid, @PathVariable int n) {
         return bezugsbasen.fassung(id, bid, n);
+    }
+
+    /**
+     * Recht: {@code bezugsbasis.freigeben} an der Geltung der Kennzahl — wer beantragt, ist die Freigabe-Person
+     * ({@code bezugsbasis_fassung_freigabe_chk}: Rolle KA/EM). Mit Vier-Augen wird der Entwurf beantragt (F2),
+     * Begründung 10–500 Zeichen (422 {@code begruendung_fehlt}); ohne Vier-Augen 409 {@code vieraugen_aus}.
+     */
+    @PostMapping("/{bid}/fassungen/{n}/beantragen")
+    @Recht(value = "bezugsbasis.freigeben", ziel = RechtZiel.DIENST)
+    public BezugsbasisDto.Fassung beantragen(@PathVariable UUID id, @PathVariable UUID bid, @PathVariable int n,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return bezugsbasen.beantragen(id, bid, n, lies(body, BezugsbasisDto.Entscheid.class), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code bezugsbasis.freigeben} an der Geltung der Kennzahl. Gibt den Entwurf frei (ohne Vier-Augen) bzw.
+     * bestätigt den Antrag als zweite Person (mit Vier-Augen; der Urheber 422 {@code vieraugen_urheber}); die laufende
+     * Vorgängerin endet am Vortag des {@code gilt_ab} (F4).
+     */
+    @PostMapping("/{bid}/fassungen/{n}/freigeben")
+    @Recht(value = "bezugsbasis.freigeben", ziel = RechtZiel.DIENST)
+    public BezugsbasisDto.Fassung freigeben(@PathVariable UUID id, @PathVariable UUID bid, @PathVariable int n,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return bezugsbasen.freigeben(id, bid, n, lies(body, BezugsbasisDto.Entscheid.class), akteur(auth));
+    }
+
+    /** Recht: {@code bezugsbasis.freigeben} an der Geltung der Kennzahl. Lehnt einen Antrag mit Begründung ab (F2). */
+    @PostMapping("/{bid}/fassungen/{n}/ablehnen")
+    @Recht(value = "bezugsbasis.freigeben", ziel = RechtZiel.DIENST)
+    public BezugsbasisDto.Fassung ablehnen(@PathVariable UUID id, @PathVariable UUID bid, @PathVariable int n,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return bezugsbasen.ablehnen(id, bid, n, lies(body, BezugsbasisDto.Entscheid.class), akteur(auth));
+    }
+
+    /** Recht: {@code bezugsbasis.verwalten} an der Geltung der Kennzahl. Setzt den Verantwortlichen (B4). */
+    @PutMapping("/{bid}/verantwortlicher")
+    @Recht(value = "bezugsbasis.verwalten", ziel = RechtZiel.DIENST)
+    public BezugsbasisDto.Bezugsbasis verantwortlicher(@PathVariable UUID id, @PathVariable UUID bid,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return bezugsbasen.verantwortlicher(id, bid, lies(body, BezugsbasisDto.Verantwortlicher.class), akteur(auth));
     }
 
     private <T> T lies(JsonNode body, Class<T> form) {

@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.web.dto.KennzahlDto;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.ResultSet;
@@ -230,6 +231,17 @@ public class KennzahlRepository {
     public List<String> belegtVonAnderen(UUID id) {
         return jdbc.queryForList("SELECT kennzeichen FROM kennzahl_kennzeichen_verlauf WHERE kennzahl_id IS DISTINCT FROM ?",
                 String.class, id);
+    }
+
+    /** AP-17 IP-8 (B3): die laufende Bezugsbasis mit ihrer laufenden freigegebenen, sonst jüngsten Fassung. */
+    public KennzahlDto.Bezugsbasis bezugsbasis(UUID kennzahl) {
+        return jdbc.query("SELECT b.kennzeichen, f.fassung, f.freigabe_status, f.datenlage FROM bezugsbasis b "
+                + "LEFT JOIN LATERAL (SELECT x.fassung, x.freigabe_status, x.datenlage FROM bezugsbasis_fassung x "
+                + "WHERE x.bezugsbasis_id = b.id ORDER BY (x.freigabe_status = 'freigegeben' AND x.gilt_bis IS NULL) DESC, "
+                + "x.fassung DESC LIMIT 1) f ON true WHERE b.kennzahl_id = ? AND b.beendet_am IS NULL",
+                (rs, i) -> new KennzahlDto.Bezugsbasis(rs.getString("kennzeichen"), rs.getObject("fassung", Integer.class),
+                        rs.getString("freigabe_status"), "vorlaeufig".equals(rs.getString("datenlage"))), kennzahl)
+                .stream().findFirst().orElse(null);
     }
 
     public long werteZahl(UUID kennzahl) {

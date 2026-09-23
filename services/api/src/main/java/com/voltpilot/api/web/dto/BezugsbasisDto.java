@@ -22,10 +22,34 @@ public final class BezugsbasisDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Anlegen(String zweck) {}
 
-    /** {@code POST …/bezugsbasen/{bid}/fassungen}: ein Entwurf mit Vorschau (F1). */
+    /**
+     * {@code POST …/bezugsbasen/{bid}/fassungen}: ein Entwurf mit Vorschau (F1). Ab Fassung 2 mit Anpassungsgründen
+     * (A1, {@code sonstiger} nur mit Wortlaut) und Begründung (F4, IP-8); {@code gilt_ab} Vorgabe: Tag nach der
+     * Referenzperiode (P4).
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Entwurf(String referenzperiode, String methode, List<String> variablen, String toleranzProzent,
-            Integer wiedervorlageMonate) {}
+            Integer wiedervorlageMonate, List<String> anpassungsgruende, String anpassungWortlaut, String begruendung,
+            LocalDate giltAb) {}
+
+    /** {@code POST …/fassungen/{n}/beantragen · freigeben · ablehnen}: die Begründung (10–500 Zeichen, F1). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Entscheid(String begruendung) {}
+
+    /** {@code PUT …/bezugsbasen/{bid}/verantwortlicher}: ein Benutzer des Kundenbereichs (B4, Schnappschuss des Namens). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Verantwortlicher(String benutzer) {}
+
+    /**
+     * {@code GET /api/v1/kennzahlen/{id}/bezugsbasen}: alle Bezugsbasen der Kennzahl in der Form der Einzel-Route, die
+     * laufende zuerst (IP-8). Die Register-Zeile trägt {@code KennzahlDto.Kennzahl#bezugsbasis} (B3).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Liste(List<Bezugsbasis> bezugsbasen) {}
+
+    /** Wer beantragt bzw. freigegeben hat, und die zweite Person bei Vier-Augen (F1, F2). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Person(String name, String rolle, OffsetDateTime am) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bezugsbasis(UUID id, String kennzeichen, UUID kennzahlId, String kennzahl, String zweck,
@@ -52,6 +76,8 @@ public final class BezugsbasisDto {
             List<Map<String, Object>> datenlageGruende, List<String> vorbehalte, String basiswert,
             Map<String, String> koeffizienten, String r2, String streuungProzent,
             List<Map<String, Object>> abgelehnteVariablen, List<String> kennzeichen, String toleranzProzent, int wiedervorlageMonate, List<Variable> variablen, List<Object> faktoren,
-            String freigabeStatus, OffsetDateTime gebildetAm, String gebildetVon,
+            String freigabeStatus, OffsetDateTime gebildetAm, String gebildetVon, LocalDate giltBis,
+            List<String> anpassungsgruende, String anpassungWortlaut, String begruendung, boolean vieraugen,
+            Person freigabe, Person entscheidung, String entscheidungsBegruendung, OffsetDateTime freigegebenAm,
             @JsonRawValue String grundlage, String pruefsumme) {}
 }

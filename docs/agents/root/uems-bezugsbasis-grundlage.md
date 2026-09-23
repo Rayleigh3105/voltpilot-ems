@@ -1,9 +1,9 @@
 # UEMS-Bezugsbasis: Grundlage einfrieren und Verhältnis (AP-17 IP-7, F3/M1/P1–P3)
 
 Neu am 23.09.2026: Routen `POST /api/v1/kennzahlen/{id}/bezugsbasen`, `GET …/{bid}`, `POST …/{bid}/fassungen`,
-`GET …/{bid}/fassungen/{n}`. Vertrag: `docs/contracts/v2/bezugsbasis.md` §13. Freigabe/Ablehnung/Beenden folgen mit IP-8,
-Faktoren mit IP-16, die Fläche mit IP-9. Modelle (IP-10) bildet dieselbe Route: `regression_eine_variable`,
-`regression_zwei_variablen`, `gradtage` — gerechnet nur in `BezugsbasisRegeln.modell`.
+`GET …/{bid}/fassungen/{n}`. Vertrag: `docs/contracts/v2/bezugsbasis.md` §13. Freigabe/Ablehnung stehen seit IP-8 in
+`uems-bezugsbasis-freigabe.md`, Beenden bei IP-17; Faktoren mit IP-16, die Fläche mit IP-9. Modelle (IP-10) bildet
+dieselbe Route: `regression_eine_variable`, `regression_zwei_variablen`, `gradtage` — gerechnet nur in `BezugsbasisRegeln.modell`.
 
 | Stelle | Was |
 |---|---|

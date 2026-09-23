@@ -187,25 +187,40 @@ konstruierte Rundungsprobe, ebenso der Fall „zwei unabhängige Einflussgröße
 - Nicht in diesem Vertrag: P3 (vorläufige Werte in der Grundlage), Anstoß (A1–A5), Frist-Ableitung, Faktor-Änderung und
   Prüfsummen-Bildung als Operation — sie gehören zu den Paketen mit Tabelle und Lauf (IP-5 ff.).
 
-## 13. Routen (IP-7: Anlegen und Entwurf; IP-10: Modelle)
+## 13. Routen (IP-7: Anlegen und Entwurf · IP-8: Freigabe, Fassung n + 1, Verantwortlicher · IP-10: Modelle)
 
-Recht `bezugsbasis.verwalten` an der Geltung der Kennzahl (`@Recht` DIENST, genaue Prüfung `KennzahlService.fuerBezugsbasis`);
+Recht `bezugsbasis.verwalten` bzw. `bezugsbasis.freigeben` an der Geltung der Kennzahl (`@Recht` DIENST, genaue Prüfung
+`KennzahlService.fuerBezugsbasis`);
 die Lese-Routen nennen `bezugsbasis.ansehen` im Kommentar, die Sichtbarkeit kommt über die Kennzahl (außerhalb der Sicht 404,
 anderer Kundenbereich 404 über RLS). Ablehnungen `{code, message, …Fakten}`.
 
 | Route | Was | Ablehnungen |
 |---|---|---|
+| `GET /api/v1/kennzahlen/{id}/bezugsbasen` | alle Bezugsbasen der Kennzahl `{bezugsbasen: [ … ]}`, je Eintrag in der Form von `GET …/bezugsbasen/{bid}`, die laufende zuerst, danach die beendeten (jüngste zuerst) | 404 |
 | `POST /api/v1/kennzahlen/{id}/bezugsbasen` | legt BB-… an; Körper `{zweck?}`; Verantwortlicher = der der Kennzahl (B4, ohne ihn die anlegende Person); Protokoll `bezugsbasis_angelegt`; 201 | 409 `bezugsbasis_laeuft` (B1) · 409 `kennzahl_archiviert` · 422 `kennzahl_ohne_bezugsbasis` (B2: Anteil, Quotient ohne Messstelle im Zähler) |
 | `GET …/bezugsbasen/{bid}` | die Basis mit ihren Fassungen (Nummer, Referenzperiode, Methode, Datenlage, `freigabe_status`, Basiswert, `gilt_ab`, Prüfsumme) | 404 |
-| `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?}`; ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung | 422 `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · Modelle: `zu_wenig_perioden` (G1, mit `monate`/`mindest_monate`) · `variable_fehlt` (G2, mit `variable` und `perioden`) · `variable_keine_gradtagzahl` (M3) · `zweite_variable_fehlt` · `variable_unbekannt` · `modell_ohne_nenner` · `variable_ohne_periodenwerte` · `toleranz_ungueltig` · `wiedervorlage_ungueltig`; 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
+| `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?}`; ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung. **Ab Fassung 2** (nach einer freigegebenen oder abgelehnten Fassung, `bezugsbasis_fassung_anpassungsgruende_chk`) zusätzlich `anpassungsgruende` (A1, einer oder mehrere, je höchstens einmal), `anpassung_wortlaut` (nur und immer mit `sonstiger`) und `begruendung` (10–500) Pflicht; `gilt_ab?` Vorgabe der Tag nach der Referenzperiode (P4) | 422 `anpassungsgrund_fehlt` · `anpassungsgrund_unbekannt` · `anpassung_wortlaut` · `anpassung_ohne_vorgaengerin` (Fassung 1 mit Grund) · `begruendung_fehlt` · `gilt_ab_vor_periodenende` · `gilt_ab_vor_vorgaengerin` (vor dem `gilt_ab` der laufenden freigegebenen Fassung) · `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · Modelle: `zu_wenig_perioden` (G1, mit `monate`/`mindest_monate`) · `variable_fehlt` (G2, mit `variable` und `perioden`) · `variable_keine_gradtagzahl` (M3) · `zweite_variable_fehlt` · `variable_unbekannt` · `modell_ohne_nenner` · `variable_ohne_periodenwerte` · `toleranz_ungueltig` · `wiedervorlage_ungueltig`; 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
 | `GET …/bezugsbasen/{bid}/fassungen/{n}` | die gespeicherte Fassung — **byte-gleich** zur Antwort ihres Entwurfs | 404 |
+| `POST …/fassungen/{n}/beantragen` | F2, nur mit `unternehmen.vieraugen_freigabe`: Entwurf → `beantragt`; Körper `{begruendung?}` (sonst die des Entwurfs; 10–500); Recht `bezugsbasis.freigeben` — wer beantragt, ist die Freigabe-Person (`freigabe_*`, Rolle KA/EM per `bezugsbasis_fassung_freigabe_chk`); Protokoll `fassung_beantragt` mit Begründung | 409 `vieraugen_aus` · `fassung_beantragt` · `fassung_freigegeben` · `fassung_abgelehnt` · `bezugsbasis_beendet`; 422 `begruendung_fehlt`; 403 `recht_fehlt` |
+| `POST …/fassungen/{n}/freigeben` | F1: ohne Vier-Augen gibt die Person den **Entwurf** mit Begründung frei (`freigabe_*`); F2: mit Vier-Augen bestätigt eine **zweite Person** den Antrag (`entscheidung_*`; nicht, wer die Fassung gebildet oder beantragt hat; Rolle KA/EM). `freigegeben_am` = jetzt (Beginn der Wiedervorlage, F5). F4: die laufende freigegebene Vorgängerin endet am Vortag des `gilt_ab` (`gilt_bis`, `beendet_grund` „abgelöst durch Fassung n“, Protokoll `fassung_beendet`), sonst bleibt sie byte-gleich. Protokoll `fassung_freigegeben`; freigegeben und abgelehnt kehren nie zurück (Trigger) | 409 `vieraugen_beantragen` (Entwurf bei Vier-Augen) · `fassung_freigegeben` · `fassung_abgelehnt` · `gilt_ab_vor_vorgaengerin` · `bezugsbasis_beendet`; 422 `begruendung_fehlt` · `vieraugen_urheber`; 403 `recht_fehlt` · `vieraugen_rolle` |
+| `POST …/fassungen/{n}/ablehnen` | F2: die zweite Person lehnt einen Antrag mit Begründung ab (`entscheidungs_begruendung`); danach ist ein neuer Entwurf möglich (Fassung n + 1 mit Anpassungsgrund); Protokoll `fassung_abgelehnt` | 409 `fassung_entwurf` · `fassung_freigegeben` · `fassung_abgelehnt`; 422 `begruendung_fehlt` · `vieraugen_urheber`; 403 `recht_fehlt` · `vieraugen_rolle` |
+| `PUT …/bezugsbasen/{bid}/verantwortlicher` | B4: Körper `{benutzer}` (Kennung eines aktiven Benutzers des Kundenbereichs), Name als Schnappschuss; Recht `bezugsbasis.verwalten`; Protokoll `verantwortlicher_geaendert` (alt/neu) | 422 `benutzer_unbekannt` · 409 `bezugsbasis_beendet` · 400 `anfrage_ungueltig` |
+
+**Register-Eintrag (B3):** `GET /api/v1/kennzahlen` und `GET /api/v1/kennzahlen/{id}` tragen je Kennzahl `bezugsbasis`:
+`null` ohne laufende Basis, sonst `{kennzeichen, fassung, freigabe_status, vorlaeufig}` — `fassung` ist die laufende
+freigegebene Fassung, sonst die jüngste (`null` ohne Fassung). Das Wort „Energieleistungskennzahl“ leitet der Leser aus
+`freigabe_status = freigegeben` ab; es steht an der Kennzahl, nicht in ihr (keine Spalte an `kennzahl`).
+
+Beenden, „geprüft, bleibt“ und die Übersicht stehen bei IP-17, der Vergleich bei IP-19.
 
 **Fassung** (Antwort): `fassung`, `referenzperiode`, `methode`, `gilt_ab` (Tag nach der Referenzperiode, P4), `monate`,
 `mindest_monate`, `datenlage`, `datenlage_gruende`, `vorbehalte`, `basiswert` (Dezimaltext, 4 Stellen, M5), `koeffizienten`
 (`a`, `b`, beim Modell mit zwei Einflussgrößen `c`; 4 Stellen), `r2` (3), `streuung_prozent` (1) — beim Verhältnis `null` —,
 `abgelehnte_variablen` (G4), `kennzeichen` (etwa „ohne Grundlast“, M3), `toleranz_prozent`,
 `wiedervorlage_monate`, `variablen` (Position 1 = Nenner mit Bezugsgrößen-Fassung und Spannweite min–max der Nenner),
-`faktoren` (leer bis IP-16), `freigabe_status` (`entwurf`; Beantragen und Freigeben IP-8), `grundlage` (der gespeicherte
+`faktoren` (leer bis IP-16), `freigabe_status` (`entwurf · beantragt · freigegeben · abgelehnt`), `gebildet_am`, `gebildet_von`,
+`gilt_bis` (F4), `anpassungsgruende`, `anpassung_wortlaut`, `begruendung`, `vieraugen`, `freigabe` und `entscheidung`
+(`{name, rolle, am}` bzw. `null`), `entscheidungs_begruendung`, `freigegeben_am`, `grundlage` (der gespeicherte
 kanonische Text, roh eingebettet) und `pruefsumme` (`sha256:` über ihn, gleich `bericht_pruefsumme`).
 
 **Grundlage** (F3, kanonisch wie §6): `referenzperiode`, `methode`, `kennzahl` (Kennzeichen, Rechenform, Definitions-Fassung am

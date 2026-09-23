@@ -126,7 +126,16 @@ class BezugsbasisApiTest {
 
     @BeforeEach
     void aufruferWieHeute() {
-        doAnswer(inv -> KorrekturRechte.benutzer(inv.getArgument(0))).when(aufrufer).benutzer(any());
+        // Peter Hollerbach ist Bearbeiter an jedem Standort: er sieht die Kennzahl und darf verwalten, nie freigeben.
+        doAnswer(inv -> {
+            ProtokollAkteur wer = inv.getArgument(0);
+            return wer.sub() != null && wer.sub().startsWith("sub-peter-")
+                    ? new RechteAbleitung.Benutzer(wer.sub(), wer.name(), RechteAbleitung.Konto.BENUTZER,
+                            RechteAbleitung.KontoZustand.AKTIV, List.of(new RechteAbleitung.Zuweisung(
+                                    RechteAbleitung.Rolle.BEARBEITER,
+                                    root.queryForList("SELECT id::text FROM standort", String.class), null, null, Instant.EPOCH, null, null)))
+                    : KorrekturRechte.benutzer(wer);
+        }).when(aufrufer).benutzer(any());
         kennzahlen.uhrStellen(Clock.fixed(FREIGABETAG, ZoneOffset.UTC));
     }
 
@@ -515,6 +524,239 @@ class BezugsbasisApiTest {
         return id;
     }
 
+    /**
+     * R1 (F1): Ines Kaltenbach gibt Fassung 1 von BB-0001 am 12.11.2026 frei — ohne Vier-Augen direkt, mit
+     * Begründung; danach ist sie eingefroren, die Wiedervorlage beginnt, und die Kennzahl trägt die Basis-Zeile (B3).
+     */
+    @Test
+    void r1FreigabeOhneVierAugenMitBegruendung() throws Exception {
+        Welt w = welt();
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+        assertThat(ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis")).status())
+                .isEqualTo(200);
+        JsonNode register = registerEintrag(w, w.kz4());
+        assertThat(register.at("/bezugsbasis/kennzeichen").asText()).isEqualTo("BB-0001");
+        assertThat(register.at("/bezugsbasis/fassung").asInt()).isEqualTo(1);
+        assertThat(register.at("/bezugsbasis/freigabe_status").asText()).isEqualTo("entwurf");
+        assertThat(register.at("/bezugsbasis/vorlaeufig").asBoolean()).isTrue();
+        assertThat(registerEintrag(w, w.kz9()).get("bezugsbasis").isNull()).isTrue();
+
+        entscheid(w, "ines", basis, 1, "beantragen", "Oktober 2026 als erster Maßstab", 409, "vieraugen_aus");
+        entscheid(w, "ines", basis, 1, "freigeben", null, 422, "begruendung_fehlt");
+        entscheid(w, "ines", basis, 1, "freigeben", "zu kurz", 422, "begruendung_fehlt");
+        entscheid(w, "ines", basis, 1, "freigeben", "x".repeat(501), 422, "begruendung_fehlt");
+        entscheid(w, "peter", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 403, "recht_fehlt");
+        Antwort frei = entscheid(w, "ines", basis, 1, "freigeben", "  Oktober 2026 als erster Maßstab  ", 200, null);
+        JsonNode f = frei.body();
+        assertThat(f.get("freigabe_status").asText()).isEqualTo("freigegeben");
+        assertThat(f.get("begruendung").asText()).isEqualTo("Oktober 2026 als erster Maßstab");
+        assertThat(f.get("vieraugen").asBoolean()).isFalse();
+        assertThat(f.at("/freigabe/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(f.at("/freigabe/rolle").asText()).isEqualTo("kundenadministrator");
+        assertThat(f.get("entscheidung").isNull()).isTrue();
+        assertThat(f.get("freigegeben_am").isNull()).isFalse();
+        assertThat(f.get("gilt_bis").isNull()).isTrue();
+        assertThat(f.get("anpassungsgruende")).isEmpty();
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).text()).isEqualTo(frei.text());
+
+        // Entschieden ist entschieden: kein zweites Freigeben, kein Antrag, keine Ablehnung.
+        entscheid(w, "ines", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 409, "fassung_freigegeben");
+        entscheid(w, "ines", basis, 1, "ablehnen", "Oktober 2026 passt doch nicht", 409, "fassung_freigegeben");
+        entscheid(w, "ines", basis, 9, "freigeben", "Oktober 2026 als erster Maßstab", 404, "nicht_gefunden");
+
+        // B3: die Register-Zeile und die Einzel-Kennzahl tragen die freigegebene Basis; die Liste hat die Form der Einzel-Basis.
+        register = registerEintrag(w, w.kz4());
+        assertThat(register.at("/bezugsbasis/freigabe_status").asText()).isEqualTo("freigegeben");
+        assertThat(register.at("/bezugsbasis/fassung").asInt()).isEqualTo(1);
+        assertThat(register.at("/bezugsbasis/vorlaeufig").asBoolean()).isTrue();
+        assertThat(ruf(w, HttpMethod.GET, PFAD + "/" + w.kz4(), null).body().get("bezugsbasis"))
+                .isEqualTo(register.get("bezugsbasis"));
+        JsonNode liste = ruf(w, HttpMethod.GET, PFAD + "/" + w.kz4() + "/bezugsbasen", null).body();
+        assertThat(liste.get("bezugsbasen")).hasSize(1);
+        assertThat(liste.at("/bezugsbasen/0")).isEqualTo(ruf(w, HttpMethod.GET, basis, null).body());
+        assertThat(liste.at("/bezugsbasen/0/fassungen/0/freigabe_status").asText()).isEqualTo("freigegeben");
+        assertThat(root.queryForList("SELECT art FROM bezugsbasis_aenderung WHERE tenant_id = ? ORDER BY id",
+                String.class, w.mandant())).containsExactly("bezugsbasis_angelegt", "fassung_entworfen",
+                        "fassung_freigegeben");
+        assertThat(root.queryForObject("SELECT begruendung FROM bezugsbasis_aenderung WHERE tenant_id = ? "
+                + "AND art = 'fassung_freigegeben'", String.class, w.mandant())).isEqualTo("Oktober 2026 als erster Maßstab");
+    }
+
+    /**
+     * F2: mit Vier-Augen beantragt Ines, der Urheber darf nicht bestätigen (422), ein Bearbeiter nicht (403); Jonas
+     * lehnt mit Begründung ab — danach ist ein neuer Entwurf möglich, der als Fassung 2 einen Anpassungsgrund nennt,
+     * und Jonas gibt ihn als zweite Person frei.
+     */
+    @Test
+    void vierAugenZweitePersonUndAblehnung() throws Exception {
+        Welt w = welt();
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = true WHERE tenant_id = ?", w.mandant());
+        String basis = basis(w, w.kz4());
+        assertThat(ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis")).status())
+                .isEqualTo(200);
+        entscheid(w, "ines", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 409, "vieraugen_beantragen");
+        entscheid(w, "ines", basis, 1, "ablehnen", "Oktober 2026 als erster Maßstab", 409, "fassung_entwurf");
+        entscheid(w, "ines", basis, 1, "beantragen", "kurz", 422, "begruendung_fehlt");
+        // Wer beantragt, ist die Freigabe-Person (bezugsbasis_fassung_freigabe_chk): der Bearbeiter nicht.
+        entscheid(w, "peter", basis, 1, "beantragen", "Oktober 2026 als erster Maßstab", 403, "recht_fehlt");
+        JsonNode antrag = entscheid(w, "ines", basis, 1, "beantragen", "Oktober 2026 als erster Maßstab", 200, null)
+                .body();
+        assertThat(antrag.get("freigabe_status").asText()).isEqualTo("beantragt");
+        assertThat(antrag.get("vieraugen").asBoolean()).isTrue();
+        assertThat(antrag.at("/freigabe/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(antrag.get("freigegeben_am").isNull()).isTrue();
+        abgelehnt(w, basis, entwurf("2026-10/2026-10", "verhaeltnis"), 409, "fassung_beantragt");
+
+        entscheid(w, "ines", basis, 1, "freigeben", null, 422, "vieraugen_urheber");
+        entscheid(w, "peter", basis, 1, "freigeben", null, 403, "recht_fehlt");
+        entscheid(w, "jonas", basis, 1, "ablehnen", null, 422, "begruendung_fehlt");
+        JsonNode ab = entscheid(w, "jonas", basis, 1, "ablehnen", "Ein einzelner Monat ist kein Maßstab", 200, null)
+                .body();
+        assertThat(ab.get("freigabe_status").asText()).isEqualTo("abgelehnt");
+        assertThat(ab.at("/entscheidung/name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(ab.get("entscheidungs_begruendung").asText()).isEqualTo("Ein einzelner Monat ist kein Maßstab");
+        entscheid(w, "jonas", basis, 1, "freigeben", null, 409, "fassung_abgelehnt");
+
+        // Nach der Ablehnung: neuer Entwurf = Fassung 2, mit Anpassungsgrund (A1) und Begründung.
+        Map<String, Object> zwei = entwurf("2026-10/2026-10", "verhaeltnis");
+        abgelehnt(w, basis, zwei, 422, "anpassungsgrund_fehlt");
+        zwei.put("anpassungsgruende", List.of("sonstiger"));
+        abgelehnt(w, basis, zwei, 422, "anpassung_wortlaut");
+        zwei.put("anpassungsgruende", List.of("grundlage_korrigiert", "unbekannt"));
+        abgelehnt(w, basis, zwei, 422, "anpassungsgrund_unbekannt");
+        zwei.put("anpassungsgruende", List.of("sonstiger"));
+        zwei.put("anpassung_wortlaut", "Rückfrage der Geschäftsführung");
+        abgelehnt(w, basis, zwei, 422, "begruendung_fehlt");
+        zwei.put("begruendung", "Nach Rückfrage bleibt der Oktober der Maßstab");
+        Antwort entwurf2 = ruf(w, HttpMethod.POST, basis + "/fassungen", zwei);
+        assertThat(entwurf2.status()).as(entwurf2.text()).isEqualTo(200);
+        assertThat(entwurf2.body().get("fassung").asInt()).isEqualTo(2);
+        assertThat(entwurf2.body().get("anpassungsgruende").get(0).asText()).isEqualTo("sonstiger");
+        assertThat(entwurf2.body().get("anpassung_wortlaut").asText()).isEqualTo("Rückfrage der Geschäftsführung");
+
+        // Die Begründung des Entwurfs trägt den Antrag; Jonas bestätigt als zweite Person.
+        entscheid(w, "ines", basis, 2, "beantragen", null, 200, null);
+        JsonNode frei = entscheid(w, "jonas", basis, 2, "freigeben", null, 200, null).body();
+        assertThat(frei.get("freigabe_status").asText()).isEqualTo("freigegeben");
+        assertThat(frei.get("begruendung").asText()).isEqualTo("Nach Rückfrage bleibt der Oktober der Maßstab");
+        assertThat(frei.at("/freigabe/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(frei.at("/entscheidung/name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(frei.at("/entscheidung/rolle").asText()).isEqualTo("kundenadministrator");
+        assertThat(frei.get("freigegeben_am").isNull()).isFalse();
+        assertThat(root.queryForList("SELECT art FROM bezugsbasis_aenderung WHERE tenant_id = ? ORDER BY id",
+                String.class, w.mandant())).containsExactly("bezugsbasis_angelegt", "fassung_entworfen",
+                        "fassung_beantragt", "fassung_abgelehnt", "fassung_entworfen", "fassung_beantragt",
+                        "fassung_freigegeben");
+    }
+
+    /**
+     * F4/R12: Fassung 2 mit {@code grundlage_korrigiert} und eigenem {@code gilt_ab} beendet Fassung 1 am Vortag;
+     * Fassung 1 bleibt lesbar und byte-gleich (Grundlage und Prüfsumme).
+     */
+    @Test
+    void fassungZweiBeendetFassungEinsAmVortag() throws Exception {
+        Welt w = welt();
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+        Map<String, Object> eins = entwurf("2026-10/2026-10", "verhaeltnis");
+        eins.put("anpassungsgruende", List.of("grundlage_korrigiert"));
+        abgelehnt(w, basis, eins, 422, "anpassung_ohne_vorgaengerin");
+        assertThat(ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis")).status())
+                .isEqualTo(200);
+        entscheid(w, "ines", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 200, null);
+        Antwort vorher = ruf(w, HttpMethod.GET, basis + "/fassungen/1", null);
+        String grundlage1 = root.queryForObject("SELECT grundlage FROM bezugsbasis_fassung WHERE tenant_id = ? "
+                + "AND fassung = 1", String.class, w.mandant());
+
+        Map<String, Object> zwei = entwurf("2026-10/2026-10", "verhaeltnis");
+        zwei.put("anpassungsgruende", List.of("grundlage_korrigiert"));
+        zwei.put("begruendung", "Korrektur K-2026-0007 an der Oktober-Menge");
+        zwei.put("gilt_ab", "2026-10-15");
+        abgelehnt(w, basis, zwei, 422, "gilt_ab_vor_periodenende");
+        zwei.put("gilt_ab", "2026-12-01");
+        Antwort entwurf2 = ruf(w, HttpMethod.POST, basis + "/fassungen", zwei);
+        assertThat(entwurf2.status()).as(entwurf2.text()).isEqualTo(200);
+        assertThat(entwurf2.body().get("gilt_ab").asText()).isEqualTo("2026-12-01");
+        // Solange Fassung 2 Entwurf ist, läuft Fassung 1 unverändert.
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).text()).isEqualTo(vorher.text());
+        entscheid(w, "ines", basis, 2, "freigeben", null, 200, null);
+
+        JsonNode f1 = ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).body();
+        assertThat(f1.get("gilt_bis").asText()).isEqualTo("2026-11-30");
+        assertThat(f1.get("freigabe_status").asText()).isEqualTo("freigegeben");
+        assertThat(f1.get("pruefsumme").asText()).isEqualTo(vorher.body().get("pruefsumme").asText())
+                .isEqualTo(BezugsbasisGrundlage.pruefsumme(grundlage1));
+        assertThat(root.queryForObject("SELECT grundlage FROM bezugsbasis_fassung WHERE tenant_id = ? AND fassung = 1",
+                String.class, w.mandant())).isEqualTo(grundlage1);
+        JsonNode eine = ruf(w, HttpMethod.GET, basis, null).body();
+        assertThat(eine.get("fassungen")).hasSize(2);
+        assertThat(eine.at("/fassungen/0/gilt_bis").asText()).isEqualTo("2026-11-30");
+        assertThat(eine.at("/fassungen/1/gilt_bis").isNull()).isTrue();
+        // Die Register-Zeile nennt die laufende freigegebene Fassung — nicht einen offenen Entwurf.
+        assertThat(registerEintrag(w, w.kz4()).at("/bezugsbasis/fassung").asInt()).isEqualTo(2);
+        Map<String, Object> drei0 = new LinkedHashMap<>(zwei);
+        drei0.put("gilt_ab", "2027-01-01");
+        assertThat(ruf(w, HttpMethod.POST, basis + "/fassungen", drei0).status()).isEqualTo(200);
+        JsonNode r = registerEintrag(w, w.kz4()).get("bezugsbasis");
+        assertThat(r.get("fassung").asInt()).isEqualTo(2);
+        assertThat(r.get("freigabe_status").asText()).isEqualTo("freigegeben");
+        assertThat(root.queryForList("SELECT art || ':' || fassung FROM bezugsbasis_aenderung WHERE tenant_id = ? "
+                + "AND fassung IS NOT NULL ORDER BY id", String.class, w.mandant())).containsExactly(
+                        "fassung_entworfen:1", "fassung_freigegeben:1", "fassung_entworfen:2", "fassung_beendet:1",
+                        "fassung_freigegeben:2", "fassung_entworfen:3");
+
+        // Fassung 3 darf nicht vor ihrer Vorgängerin gelten.
+        Map<String, Object> drei = new LinkedHashMap<>(zwei);
+        drei.put("gilt_ab", "2026-11-01");
+        abgelehnt(w, basis, drei, 422, "gilt_ab_vor_vorgaengerin");
+    }
+
+    /** B4: der Verantwortliche ist ein Benutzer des Kundenbereichs — Name als Schnappschuss, Protokoll mit alt/neu. */
+    @Test
+    void verantwortlicherWirdEinBenutzerMitSchnappschuss() throws Exception {
+        Welt w = welt();
+        String basis = basis(w, w.kz4());
+        root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', "
+                + "'Jonas Wendlinger', 'aktiv')", w.mandant(), "sub-jonas-kz-" + w.mandant());
+        Antwort unbekannt = ruf(w, "ines", HttpMethod.PUT, basis + "/verantwortlicher", Map.of("benutzer", "niemand"));
+        assertThat(unbekannt.status()).isEqualTo(422);
+        assertThat(unbekannt.body().get("code").asText()).isEqualTo("benutzer_unbekannt");
+        assertThat(ruf(w, "ines", HttpMethod.PUT, basis + "/verantwortlicher", Map.of()).status()).isEqualTo(400);
+        Antwort gesetzt = ruf(w, "ines", HttpMethod.PUT, basis + "/verantwortlicher",
+                Map.of("benutzer", "sub-jonas-kz-" + w.mandant()));
+        assertThat(gesetzt.status()).as(gesetzt.text()).isEqualTo(200);
+        assertThat(gesetzt.body().get("verantwortlich_name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(root.queryForObject("SELECT verantwortlich_sub FROM bezugsbasis WHERE tenant_id = ?", String.class,
+                w.mandant())).isEqualTo("sub-jonas-kz-" + w.mandant());
+        Map<String, Object> p = root.queryForMap("SELECT alt::text AS alt, neu::text AS neu FROM bezugsbasis_aenderung "
+                + "WHERE tenant_id = ? AND art = 'verantwortlicher_geaendert'", w.mandant());
+        assertThat(p.get("alt").toString()).contains("Ines Kaltenbach");
+        assertThat(p.get("neu").toString()).contains("Jonas Wendlinger");
+    }
+
+    /** Zaun: ein anderer Kundenbereich kann nichts beantragen, freigeben, ablehnen oder umbesetzen — 404. */
+    @Test
+    void mandantBKannNichtsEntscheiden() throws Exception {
+        Welt a = welt();
+        monat(a, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(a, a.kz4());
+        assertThat(ruf(a, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis")).status())
+                .isEqualTo(200);
+        Welt b = welt();
+        for (String schritt : List.of("beantragen", "freigeben", "ablehnen")) {
+            entscheid(b, "ines", basis, 1, schritt, "Oktober 2026 als erster Maßstab", 404, null);
+        }
+        assertThat(ruf(b, "ines", HttpMethod.PUT, basis + "/verantwortlicher", Map.of("benutzer", "x")).status())
+                .isEqualTo(404);
+        assertThat(ruf(b, HttpMethod.GET, PFAD + "/" + a.kz4() + "/bezugsbasen", null).status()).isEqualTo(404);
+        assertThat(ruf(b, HttpMethod.GET, PFAD + "/" + b.kz4() + "/bezugsbasen", null).body().get("bezugsbasen"))
+                .isEmpty();
+        assertThat(root.queryForObject("SELECT freigabe_status FROM bezugsbasis_fassung WHERE tenant_id = ?",
+                String.class, a.mandant())).isEqualTo("entwurf");
+    }
+
     // ------------------------------------------------------------------------------------------------ Welt
 
     private Welt welt() throws Exception {
@@ -632,11 +874,44 @@ class BezugsbasisApiTest {
         return root.queryForObject("SELECT count(*) FROM " + tabelle + " WHERE kennzahl_id = ?", Integer.class, kennzahl);
     }
 
+    private JsonNode registerEintrag(Welt w, UUID kennzahl) throws Exception {
+        for (JsonNode k : ruf(w, HttpMethod.GET, PFAD, null).body().get("kennzahlen")) {
+            if (k.get("id").asText().equals(kennzahl.toString())) {
+                return k;
+            }
+        }
+        throw new AssertionError("nicht im Register: " + kennzahl);
+    }
+
+    private Antwort entscheid(Welt w, String person, String basis, int fassung, String schritt, String begruendung,
+            int status, String code) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (begruendung != null) {
+            body.put("begruendung", begruendung);
+        }
+        Antwort a = ruf(w, person, HttpMethod.POST, basis + "/fassungen/" + fassung + "/" + schritt, body);
+        assertThat(a.status()).as(schritt + " " + person + " " + a.text()).isEqualTo(status);
+        if (code != null) {
+            assertThat(a.body().get("code").asText()).isEqualTo(code);
+        }
+        return a;
+    }
+
     private Antwort ruf(Welt w, HttpMethod methode, String pfad, Object body) throws Exception {
+        return ruf(w, "ines", methode, pfad, body);
+    }
+
+    /** ines = Ines Kaltenbach, jonas = Jonas Wendlinger (beide nie zugewiesen → Kundenadministrator, E12), peter = Bearbeiter. */
+    private Antwort ruf(Welt w, String person, HttpMethod methode, String pfad, Object body) throws Exception {
+        String name = switch (person) {
+            case "jonas" -> "Jonas Wendlinger";
+            case "peter" -> "Peter Hollerbach";
+            default -> "Ines Kaltenbach";
+        };
         MockHttpServletRequestBuilder anfrage = request(methode, pfad)
                 .with(jwt().jwt(j -> {
-                    j.subject("sub-ines-" + w.mandant());
-                    j.claim("preferred_username", "Ines Kaltenbach");
+                    j.subject("sub-" + person + "-" + w.mandant());
+                    j.claim("preferred_username", name);
                     j.claim("tenant_id", w.mandant().toString());
                 }))
                 .contentType(MediaType.APPLICATION_JSON);

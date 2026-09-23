@@ -143,8 +143,11 @@ class KennzahlApiTest {
         assertThat(a.status()).as(a.body().toString()).isEqualTo(201);
         assertThat(felder(a.body())).containsExactly("id", "kennzeichen", "name", "rechenform", "geltung_art", "geltung_id",
                 "geltung_name", "rechte_geltung", "standort_id", "kennung", "verantwortlich_name", "zweck", "fassung",
-                "einheit", "einheit_anzeige", "grundperiode", "perioden", "hat_werte", "archiviert_am", "angelegt_am");
+                "einheit", "einheit_anzeige", "grundperiode", "perioden", "hat_werte", "archiviert_am", "angelegt_am",
+                "bezugsbasis");
         JsonNode k = a.body();
+        // AP-17 IP-8 (B3): ohne laufende Bezugsbasis steht das Feld als null da.
+        assertThat(k.get("bezugsbasis").isNull()).isTrue();
         assertThat(k.get("kennzeichen").asText()).isEqualTo("KZ-0001");
         assertThat(k.get("geltung_name").asText()).isEqualTo("Halle 2");
         assertThat(k.get("rechte_geltung").asText()).isEqualTo("standort");

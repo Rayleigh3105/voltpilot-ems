@@ -11573,6 +11573,21 @@ paths:
   /api/v1/kennzahlen/{id}/bezugsbasen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Alle Bezugsbasen der Kennzahl in der Form der Einzel-Route, die laufende zuerst (AP-17 IP-8).
+      description: >
+        Recht `bezugsbasis.ansehen`; Sichtbarkeit über die Kennzahl (außerhalb 404). Das Kennzeichen der laufenden Basis
+        mit Fassung und Freigabe-Zustand steht zusätzlich am Register-Eintrag (`Kennzahl.bezugsbasis`, B3). Vertrag
+        bezugsbasis.md §13.
+      responses:
+        "200":
+          description: Die Bezugsbasen der Kennzahl.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
     post:
       tags: [kennzahlen]
       summary: Legt die Bezugsbasis BB-… einer Kennzahl an (AP-17 IP-7, B1, B2, B4).
@@ -11759,6 +11774,120 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BezugsbasisUebersicht" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/fassungen/{n}/beantragen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: n, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      tags: [kennzahlen]
+      summary: Beantragt die Freigabe eines Entwurfs bei Vier-Augen (AP-17 IP-8, F2).
+      description: >
+        Recht `bezugsbasis.freigeben` an der Geltung der Kennzahl (wer beantragt, ist die Freigabe-Person). Nur mit
+        `unternehmen.vieraugen_freigabe`, sonst 409 `vieraugen_aus`; Begründung 10–500 Zeichen (Körper oder die des
+        Entwurfs, sonst 422 `begruendung_fehlt`). Vertrag bezugsbasis.md §13.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsbasisEntscheid" }
+      responses:
+        "200":
+          description: Die beantragte Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisFassung" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/fassungen/{n}/freigeben:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: n, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      tags: [kennzahlen]
+      summary: Gibt eine Fassung frei - direkt oder als zweite Person (AP-17 IP-8, F1, F2, F4).
+      description: >
+        Recht `bezugsbasis.freigeben`. Ohne Vier-Augen gibt die Person den Entwurf mit Begründung frei (mit Vier-Augen
+        409 `vieraugen_beantragen`); mit Vier-Augen bestätigt eine zweite Person mit Rolle Kundenadministrator oder
+        Energiemanager den Antrag (Urheber 422 `vieraugen_urheber`). `freigegeben_am` beginnt die Wiedervorlage; die
+        laufende Vorgängerin endet am Vortag des `gilt_ab` (F4). Vertrag bezugsbasis.md §13.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsbasisEntscheid" }
+      responses:
+        "200":
+          description: Die freigegebene Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisFassung" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/fassungen/{n}/ablehnen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: n, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      tags: [kennzahlen]
+      summary: Lehnt einen Antrag mit Begründung ab (AP-17 IP-8, F2).
+      description: >
+        Recht `bezugsbasis.freigeben`; nur ein Antrag, nur eine zweite Person (Urheber 422 `vieraugen_urheber`),
+        Begründung Pflicht (422 `begruendung_fehlt`). Danach ist ein neuer Entwurf möglich. Vertrag bezugsbasis.md §13.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsbasisEntscheid" }
+      responses:
+        "200":
+          description: Die abgelehnte Fassung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisFassung" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/verantwortlicher:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: bid, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kennzahlen]
+      summary: Setzt den Verantwortlichen der Bezugsbasis (AP-17 IP-8, B4).
+      description: >
+        Recht `bezugsbasis.verwalten` an der Geltung der Kennzahl. Ein aktiver Benutzer des Kundenbereichs (sonst 422
+        `benutzer_unbekannt`); sein Name wird als Schnappschuss gespeichert, Protokoll `verantwortlicher_geaendert`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsbasisVerantwortlicher" }
+      responses:
+        "200":
+          description: Die Bezugsbasis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsbasis" }
+        "400": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
   /api/v1/kennzahl-vorlagen:
     get:
       tags: [kennzahlen]
@@ -26344,7 +26473,7 @@ components:
         eingaenge: { type: array, items: { $ref: "#/components/schemas/KennzahlEingangAntwort" } }
     Kennzahl:
       type: object
-      required: [id, kennzeichen, name, rechenform, geltung_art, geltung_id, geltung_name, rechte_geltung, standort_id, kennung, verantwortlich_name, zweck, fassung, einheit, einheit_anzeige, grundperiode, perioden, hat_werte, archiviert_am, angelegt_am]
+      required: [id, kennzeichen, name, rechenform, geltung_art, geltung_id, geltung_name, rechte_geltung, standort_id, kennung, verantwortlich_name, zweck, fassung, einheit, einheit_anzeige, grundperiode, perioden, hat_werte, archiviert_am, angelegt_am, bezugsbasis]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -26366,6 +26495,19 @@ components:
         hat_werte: { type: boolean, description: "Trägt sie einen Wert? Dann ist sie nicht löschbar (V5)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
+        bezugsbasis: { allOf: [{ $ref: "#/components/schemas/KennzahlBezugsbasis" }], nullable: true, description: "Die laufende Bezugsbasis (AP-17 IP-8, B3) oder null." }
+    KennzahlBezugsbasis:
+      type: object
+      description: >
+        Die laufende Bezugsbasis am Register-Eintrag: `fassung` ist die laufende freigegebene Fassung, sonst die jüngste
+        (`null` ohne Fassung). Aus `freigabe_status = freigegeben` leitet der Leser das Wort „Energieleistungskennzahl“ ab
+        (B3) — es steht an der Kennzahl, nicht in ihr.
+      required: [kennzeichen, fassung, freigabe_status, vorlaeufig]
+      properties:
+        kennzeichen: { type: string, description: "BB-0001 …" }
+        fassung: { type: integer, nullable: true }
+        freigabe_status: { type: string, enum: [entwurf, beantragt, freigegeben, abgelehnt], nullable: true }
+        vorlaeufig: { type: boolean, description: "Datenlage der Fassung vorläufig (P2/P3)." }
     BezugsbasisAnlegen:
       type: object
       additionalProperties: false
@@ -26381,6 +26523,31 @@ components:
         variablen: { type: array, maxItems: 2, items: { type: string, format: uuid }, nullable: true, description: "Variable 1 ist der Nenner (V2, darf fehlen); nur `regression_zwei_variablen` nimmt genau eine weitere Bezugsgröße mit Periodenwerten." }
         toleranz_prozent: { type: string, nullable: true, description: "Dezimaltext, Startwert 2." }
         wiedervorlage_monate: { type: integer, nullable: true, description: "Startwert 12." }
+        anpassungsgruende: { type: array, nullable: true, items: { type: string, enum: [referenzperiode_vervollstaendigt, grundlage_korrigiert, struktur_geaendert, variable_geaendert, methode_geaendert, nicht_mehr_anwendbar, sonstiger] }, description: "Ab Fassung 2 Pflicht (A1, F4); Fassung 1 nennt keinen." }
+        anpassung_wortlaut: { type: string, nullable: true, description: "Nur und immer mit `sonstiger`." }
+        begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500, description: "Ab Fassung 2 Pflicht; sonst beim Beantragen oder Freigeben." }
+        gilt_ab: { type: string, format: date, nullable: true, description: "Vorgabe der Tag nach der Referenzperiode (P4); nie früher, nie vor der Vorgängerin." }
+    BezugsbasisEntscheid:
+      type: object
+      additionalProperties: false
+      properties:
+        begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500 }
+    BezugsbasisVerantwortlicher:
+      type: object
+      additionalProperties: false
+      required: [benutzer]
+      properties:
+        benutzer: { type: string, description: "Die Kennung (sub) eines aktiven Benutzers des Kundenbereichs." }
+    BezugsbasisListe:
+      type: object
+      properties:
+        bezugsbasen: { type: array, items: { $ref: "#/components/schemas/Bezugsbasis" } }
+    BezugsbasisPerson:
+      type: object
+      properties:
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+        am: { type: string, format: date-time }
     Bezugsbasis:
       type: object
       properties:
@@ -26453,6 +26620,15 @@ components:
         freigabe_status: { type: string, enum: [entwurf, beantragt, freigegeben, abgelehnt] }
         gebildet_am: { type: string, format: date-time }
         gebildet_von: { type: string }
+        gilt_bis: { type: string, format: date, nullable: true, description: "Letzter Tag; Fassung n + 1 beendet Fassung n am Vortag ihres gilt_ab (F4)." }
+        anpassungsgruende: { type: array, items: { type: string } }
+        anpassung_wortlaut: { type: string, nullable: true }
+        begruendung: { type: string, nullable: true }
+        vieraugen: { type: boolean }
+        freigabe: { allOf: [{ $ref: "#/components/schemas/BezugsbasisPerson" }], nullable: true, description: "Wer freigegeben bzw. beantragt hat." }
+        entscheidung: { allOf: [{ $ref: "#/components/schemas/BezugsbasisPerson" }], nullable: true, description: "Die zweite Person bei Vier-Augen." }
+        entscheidungs_begruendung: { type: string, nullable: true }
+        freigegeben_am: { type: string, format: date-time, nullable: true, description: "Beginn der Wiedervorlage (F5)." }
         grundlage: { type: object, additionalProperties: true, description: "Der gespeicherte kanonische Text, roh eingebettet (F3)." }
         pruefsumme: { type: string, description: "sha256: über die Grundlage." }
     FaktorenVorschlag:

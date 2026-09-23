@@ -62,22 +62,37 @@ class BezugsbasisGrundlageTest {
         String basis = "/api/v1/kennzahlen/{id}/bezugsbasen";
         assertThat(pfade.keySet().stream().filter(p -> p.contains("/bezugsbasen")).toList())
                 .containsExactlyInAnyOrder(basis, basis + "/{bid}", basis + "/{bid}/fassungen",
-                        basis + "/{bid}/fassungen/{n}",
+                        basis + "/{bid}/fassungen/{n}", basis + "/{bid}/fassungen/{n}/beantragen",
+                        basis + "/{bid}/fassungen/{n}/freigeben", basis + "/{bid}/fassungen/{n}/ablehnen",
+                        basis + "/{bid}/verantwortlicher",
                         // IP-17 (§15): Pflege und Übersicht.
                         basis + "/{bid}/bleibt", basis + "/{bid}/beenden", "/api/v1/bezugsbasen/uebersicht");
-        assertThat(((Map<String, Object>) pfade.get(basis)).keySet()).containsExactlyInAnyOrder("parameters", "post");
+        assertThat(((Map<String, Object>) pfade.get(basis)).keySet())
+                .containsExactlyInAnyOrder("parameters", "get", "post");
+        for (String schritt : List.of("beantragen", "freigeben", "ablehnen")) {
+            assertThat(((Map<String, Object>) pfade.get(basis + "/{bid}/fassungen/{n}/" + schritt)).keySet())
+                    .as(schritt).containsExactlyInAnyOrder("parameters", "post");
+        }
+        assertThat(((Map<String, Object>) pfade.get(basis + "/{bid}/verantwortlicher")).keySet())
+                .containsExactlyInAnyOrder("parameters", "put");
         assertThat(((Map<String, Object>) pfade.get(basis + "/{bid}")).keySet()).containsExactlyInAnyOrder("parameters", "get");
         assertThat(((Map<String, Object>) pfade.get(basis + "/{bid}/fassungen")).keySet())
                 .containsExactlyInAnyOrder("parameters", "post");
         assertThat(((Map<String, Object>) pfade.get(basis + "/{bid}/fassungen/{n}")).keySet())
                 .containsExactlyInAnyOrder("parameters", "get");
         Map<String, Object> schemas = (Map<String, Object>) ((Map<String, Object>) openapi.get("components")).get("schemas");
-        Map<String, Class<?>> formen = Map.of("BezugsbasisFassung", BezugsbasisDto.Fassung.class, "Bezugsbasis",
-                BezugsbasisDto.Bezugsbasis.class, "BezugsbasisFassungKurz", BezugsbasisDto.FassungKurz.class,
-                "BezugsbasisVariable", BezugsbasisDto.Variable.class, "BezugsbasisEntwurf", BezugsbasisDto.Entwurf.class,
-                "BezugsbasisAnlegen", BezugsbasisDto.Anlegen.class,
-                "BezugsbasisZustand", BezugsbasisPflegeService.Zustand.class,
-                "BezugsbasisUebersicht", BezugsbasisPflegeService.Uebersicht.class);
+        Map<String, Class<?>> formen = Map.ofEntries(Map.entry("BezugsbasisFassung", BezugsbasisDto.Fassung.class),
+                Map.entry("Bezugsbasis", BezugsbasisDto.Bezugsbasis.class),
+                Map.entry("BezugsbasisFassungKurz", BezugsbasisDto.FassungKurz.class),
+                Map.entry("BezugsbasisVariable", BezugsbasisDto.Variable.class),
+                Map.entry("BezugsbasisEntwurf", BezugsbasisDto.Entwurf.class),
+                Map.entry("BezugsbasisAnlegen", BezugsbasisDto.Anlegen.class),
+                Map.entry("BezugsbasisEntscheid", BezugsbasisDto.Entscheid.class),
+                Map.entry("BezugsbasisVerantwortlicher", BezugsbasisDto.Verantwortlicher.class),
+                Map.entry("BezugsbasisListe", BezugsbasisDto.Liste.class),
+                Map.entry("BezugsbasisPerson", BezugsbasisDto.Person.class),
+                Map.entry("BezugsbasisZustand", BezugsbasisPflegeService.Zustand.class),
+                Map.entry("BezugsbasisUebersicht", BezugsbasisPflegeService.Uebersicht.class));
         formen.forEach((name, form) -> assertThat(((Map<String, Object>) ((Map<String, Object>) schemas.get(name))
                 .get("properties")).keySet()).as(name).containsExactlyElementsOf(felder(form)));
     }

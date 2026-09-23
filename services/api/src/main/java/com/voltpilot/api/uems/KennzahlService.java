@@ -877,7 +877,8 @@ public class KennzahlService {
         return new KennzahlDto.Kennzahl(k.id(), k.kennzeichen(), k.name(), k.rechenform(), k.geltungArt(), k.geltungId(),
                 g.name(), g.rechteGeltung(), g.standort(), g.kennung(), k.verantwortlichName(), k.zweck(),
                 f.map(FassungZeile::nummer).orElse(null), einheit, einheitAnzeige(einheit), p.grundperiode(), p.perioden(),
-                repo.werteZahl(k.id()) > 0, zeit(k.archiviertAm(), g.zone()), zeit(k.angelegtAm(), g.zone()));
+                repo.werteZahl(k.id()) > 0, zeit(k.archiviertAm(), g.zone()), zeit(k.angelegtAm(), g.zone()),
+                repo.bezugsbasis(k.id()));
     }
 
     private KennzahlDto.Fassung fassungDarstellung(FassungZeile f, Katalog kat, ZoneId zone) {

@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,11 +42,26 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>Methoden (E4 = A): Verhältnis (M1) und die Modelle mit einer oder zwei Einflussgrößen und über Gradtage (M2–M4,
  * IP-10). Variable 1 ist der Nenner der Kennzahl (V2); ein Modell mit zwei Einflussgrößen nimmt eine zweite Bezugsgröße
  * mit ihren Monatswerten. Gerechnet wird in {@link BezugsbasisRegeln#modell} — hier nur gelesen, geprüft, eingefroren.
+ *
+ * <p>IP-8 (F1, F2, F4, A1, B4): Freigabe mit Begründung — ohne Vier-Augen gibt eine Person mit
+ * {@code bezugsbasis.freigeben} den Entwurf direkt frei, mit Vier-Augen beantragt sie ihn und eine ZWEITE Person
+ * (Kundenadministrator oder Energiemanager, nie der Urheber) gibt frei oder lehnt ab. Die Freigabe von Fassung n + 1
+ * beendet Fassung n am Vortag ihres {@code gilt_ab}; eingefroren hält die Datenbank (Trigger
+ * {@code bezugsbasis_fassung_eingefroren}).
  */
 @Service
 public class BezugsbasisService {
 
     static final String VERWALTEN = "bezugsbasis.verwalten";
+    static final String FREIGEBEN = "bezugsbasis.freigeben";
+    /** F2 und {@code bezugsbasis_fassung_entscheidung_chk}: die zweite Person hat eine dieser Rollen. */
+    private static final Set<String> ZWEITE_ROLLEN = Set.of("kundenadministrator", "energiemanager");
+    /** {@code bezugsbasis_fassung_freigabe_chk}: die Freigabe-Person (auch wer beantragt) hat eine dieser Rollen. */
+    private static final Set<String> FREIGABE_ROLLEN = Set.of("kundenadministrator", "energiemanager",
+            "voltpilot_betrieb");
+    private static final int BEGRUENDUNG_MIN = 10;
+    private static final int BEGRUENDUNG_MAX = 500;
+    private static final String SONSTIGER = "sonstiger";
     static final String VERHAELTNIS = "verhaeltnis";
     static final String GRADTAGE = "gradtage";
     static final String ZWEI_VARIABLEN = "regression_zwei_variablen";
@@ -56,7 +72,10 @@ public class BezugsbasisService {
     private static final String FASSUNG_SPALTEN = "f.id, f.fassung, f.referenzperiode, f.methode, f.datenlage, f.gilt_ab, "
             + "f.gilt_bis, f.toleranz_prozent, f.wiedervorlage_monate, f.grundlage, f.pruefsumme, f.basiswert, "
             + "f.freigabe_status, f.actor_name, f.created_at, f.koeffizienten::text AS koeffizienten, f.r2, "
-            + "f.streuung_prozent";
+            + "f.streuung_prozent, f.actor_sub, f.anpassungsgruende, f.anpassung_wortlaut, "
+            + "f.begruendung, f.vieraugen, f.freigabe_sub, f.freigabe_name, f.freigabe_rolle, f.freigabe_am, "
+            + "f.entscheidung_name, f.entscheidung_rolle, f.entschieden_am, f.entscheidungs_begruendung, "
+            + "f.freigegeben_am";
 
     private final KennzahlService kennzahlen;
     private final JdbcTemplate jdbc;
@@ -83,7 +102,13 @@ public class BezugsbasisService {
     private record FassungZeileDb(UUID id, int fassung, String referenzperiode, String methode, String datenlage,
             LocalDate giltAb, LocalDate giltBis, BigDecimal toleranz, int wiedervorlage, String grundlage,
             String pruefsumme, BigDecimal basiswert, String freigabeStatus, String actorName, OffsetDateTime angelegtAm,
-            String koeffizienten, BigDecimal r2, BigDecimal streuung) {}
+            String koeffizienten, BigDecimal r2, BigDecimal streuung,
+            String actorSub, List<String> anpassungsgruende, String anpassungWortlaut, String begruendung,
+            boolean vieraugen, String freigabeSub, BezugsbasisDto.Person freigabe, BezugsbasisDto.Person entscheidung,
+            String entscheidungsBegruendung, OffsetDateTime freigegebenAm) {}
+
+    /** A1/F4: was eine Fassung n + 1 über ihre Vorgängerin sagt. */
+    private record Anpassung(String gruende, String wortlaut, String begruendung) {}
 
     // ================================================================================ anlegen (B1, B2, B4)
 
@@ -203,7 +228,13 @@ public class BezugsbasisService {
         BezugsbasisGrundlage.Modell modell = g.modell();
 
         UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
-        LocalDate giltAb = bis.plusMonths(1).atDay(1);
+        LocalDate vorgabe = bis.plusMonths(1).atDay(1);
+        LocalDate giltAb = e.giltAb() == null ? vorgabe : e.giltAb();
+        if (giltAb.isBefore(vorgabe)) {
+            throw BezugsbasisAbgelehnt.fachlich("gilt_ab_vor_periodenende",
+                    "Eine Fassung gilt frühestens ab dem Tag nach ihrer Referenzperiode.",
+                    Map.of("gilt_ab", giltAb.toString(), "fruehestens", vorgabe.toString()));
+        }
         int nummer = transaktion.execute(s -> {
             jdbc.queryForList("SELECT id FROM bezugsbasis WHERE id = ? FOR UPDATE", UUID.class, basisId);
             List<Map<String, Object>> offen = jdbc.queryForList("SELECT id, fassung, freigabe_status FROM "
@@ -216,25 +247,39 @@ public class BezugsbasisService {
                         "Eine Fassung dieser Bezugsbasis wartet auf die zweite Person.",
                         Map.of("fassung", offen.get(0).get("fassung")));
             }
+            int kuenftig = !offen.isEmpty() ? (Integer) offen.get(0).get("fassung") : jdbc.queryForObject(
+                    "SELECT coalesce(max(fassung), 0) + 1 FROM bezugsbasis_fassung WHERE bezugsbasis_id = ?",
+                    Integer.class, basisId);
+            Anpassung anp = anpassung(e, kuenftig);
+            vorgaengerin(basisId).ifPresent(vg -> {
+                if (giltAb.isBefore(vg.giltAb())) {
+                    throw BezugsbasisAbgelehnt.fachlich("gilt_ab_vor_vorgaengerin",
+                            "Die neue Fassung gilt frühestens ab dem Tag, ab dem ihre Vorgängerin gilt.",
+                            Map.of("gilt_ab", giltAb.toString(), "vorgaengerin", vg.fassung(),
+                                    "vorgaengerin_gilt_ab", vg.giltAb().toString()));
+                }
+            });
             if (!offen.isEmpty()) {
                 fassungId = (UUID) offen.get(0).get("id");
-                n = (Integer) offen.get(0).get("fassung");
+                n = kuenftig;
                 jdbc.update("UPDATE bezugsbasis_fassung SET referenzperiode = ?, methode = ?, datenlage = ?, gilt_ab = ?, "
-                        + "toleranz_prozent = ?, wiedervorlage_monate = ?, grundlage = ?, pruefsumme = ?, basiswert = ? "
+                        + "toleranz_prozent = ?, wiedervorlage_monate = ?, grundlage = ?, pruefsumme = ?, basiswert = ?, "
+                        + "anpassungsgruende = string_to_array(?, ','), anpassung_wortlaut = ?, begruendung = ? "
                         + "WHERE id = ?", e.referenzperiode(), g.methode(), g.datenlage(), Date.valueOf(giltAb), toleranz,
-                        wiedervorlage, g.text(), g.pruefsumme(), new BigDecimal(g.basiswert()), fassungId);
+                        wiedervorlage, g.text(), g.pruefsumme(), new BigDecimal(g.basiswert()), anp.gruende(),
+                        anp.wortlaut(), anp.begruendung(), fassungId);
                 jdbc.update("UPDATE bezugsbasis_variable SET aufgehoben_am = now() WHERE fassung_id = ? "
                         + "AND aufgehoben_am IS NULL", fassungId);
             } else {
-                n = jdbc.queryForObject("SELECT coalesce(max(fassung), 0) + 1 FROM bezugsbasis_fassung "
-                        + "WHERE bezugsbasis_id = ?", Integer.class, basisId);
+                n = kuenftig;
                 fassungId = jdbc.queryForObject("INSERT INTO bezugsbasis_fassung (tenant_id, bezugsbasis_id, fassung, "
                         + "referenzperiode, methode, datenlage, gilt_ab, toleranz_prozent, wiedervorlage_monate, grundlage, "
-                        + "pruefsumme, basiswert, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id", UUID.class, tenant, basisId, n,
+                        + "pruefsumme, basiswert, actor_sub, actor_name, actor_rolle, actor_art, anpassungsgruende, "
+                        + "anpassung_wortlaut, begruendung) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                        + "string_to_array(?, ','), ?, ?) RETURNING id", UUID.class, tenant, basisId, n,
                         e.referenzperiode(), g.methode(), g.datenlage(), Date.valueOf(giltAb), toleranz, wiedervorlage,
                         g.text(), g.pruefsumme(), new BigDecimal(g.basiswert()), wer.sub(), wer.name(), wer.rolle(),
-                        wer.art());
+                        wer.art(), anp.gruende(), anp.wortlaut(), anp.begruendung());
             }
             // M4: Koeffizienten und Güte eingefroren an der Fassung (beim Verhältnis leer — ein neu gebildeter Entwurf
             // mit anderer Methode trägt keine alten Koeffizienten weiter).
@@ -260,6 +305,10 @@ public class BezugsbasisService {
                 inhalt.put("streuung_prozent", modell.streuungProzent());
             }
             inhalt.put("pruefsumme", g.pruefsumme());
+            inhalt.put("gilt_ab", giltAb.toString());
+            if (!anp.gruende().isEmpty()) {
+                inhalt.put("anpassungsgruende", List.of(anp.gruende().split(",")));
+            }
             protokoll(tenant, basisId, n, "fassung_entworfen", inhalt, wer);
             // G4: die abhängige zweite Variable ist nicht aufgenommen — der Versuch steht im Protokoll.
             for (Map<String, Object> a : modell == null ? List.<Map<String, Object>>of() : modell.abgelehnt()) {
@@ -278,7 +327,11 @@ public class BezugsbasisService {
 
     public BezugsbasisDto.Bezugsbasis eine(UUID kennzahlId, UUID basisId) {
         KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(kennzahlId, null, null, null);
-        Basis b = basis(kennzahlId, basisId);
+        return darstellung(k, basis(kennzahlId, basisId));
+    }
+
+    private BezugsbasisDto.Bezugsbasis darstellung(KennzahlService.BasisKennzahl k, Basis b) {
+        UUID basisId = b.id();
         List<BezugsbasisDto.FassungKurz> fassungen = jdbc.query("SELECT " + FASSUNG_SPALTEN
                 + " FROM bezugsbasis_fassung f WHERE f.bezugsbasis_id = ? ORDER BY f.fassung", (rs, i) -> fassungZeile(rs),
                 basisId).stream().map(f -> new BezugsbasisDto.FassungKurz(f.fassung(), f.referenzperiode(), f.methode(),
@@ -316,10 +369,236 @@ public class BezugsbasisService {
                 json.convertValue(g.path("kennzeichen").isMissingNode() ? json.createArrayNode() : g.path("kennzeichen"),
                         new TypeReference<List<String>>() {}),
                 dezimal(f.toleranz()), f.wiedervorlage(), variablen, List.of(), f.freigabeStatus(), f.angelegtAm(),
-                f.actorName(), f.grundlage(), f.pruefsumme());
+                f.actorName(), f.giltBis(), f.anpassungsgruende(), f.anpassungWortlaut(), f.begruendung(), f.vieraugen(),
+                f.freigabe(), f.entscheidung(), f.entscheidungsBegruendung(), f.freigegebenAm(), f.grundlage(),
+                f.pruefsumme());
+    }
+
+    /**
+     * Alle Bezugsbasen der Kennzahl in der Form von {@link #eine}, die laufende zuerst (B1: höchstens eine), danach die
+     * beendeten, jüngste zuerst. Die Register-Zeile mit dem Kennzeichen der laufenden Basis trägt {@code KennzahlDto}
+     * (B3).
+     */
+    public BezugsbasisDto.Liste liste(UUID kennzahlId) {
+        KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(kennzahlId, null, null, null);
+        return new BezugsbasisDto.Liste(jdbc.query("SELECT " + BASIS_SPALTEN + " FROM bezugsbasis b "
+                + "WHERE b.kennzahl_id = ? ORDER BY b.beendet_am IS NOT NULL, b.beendet_am DESC, b.created_at DESC",
+                (rs, i) -> basisZeile(rs), kennzahlId).stream().map(b -> darstellung(k, b)).toList());
+    }
+
+    // ================================================================================ Freigabe (F1, F2, F4)
+
+    /**
+     * F2: mit Vier-Augen beantragt die Freigabe-Person den Entwurf (Begründung 10–500 Zeichen); ohne Vier-Augen gibt
+     * sie ihn direkt frei (409 {@code vieraugen_aus}).
+     */
+    public BezugsbasisDto.Fassung beantragen(UUID kennzahlId, UUID basisId, int nummer, BezugsbasisDto.Entscheid body,
+            ProtokollAkteur wer) {
+        kennzahlen.fuerBezugsbasis(kennzahlId, FREIGEBEN, wer, null);
+        Basis basis = laufendeBasis(kennzahlId, basisId);
+        UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        transaktion.executeWithoutResult(s -> {
+            FassungZeileDb f = gesperrt(basisId, nummer);
+            if (!"entwurf".equals(f.freigabeStatus())) {
+                throw entschieden(f, "Beantragt wird nur ein Entwurf.");
+            }
+            if (!vierAugen(tenant)) {
+                throw new BezugsbasisAbgelehnt(409, "vieraugen_aus",
+                        "Ohne Vier-Augen-Freigabe geben Sie die Fassung direkt frei.", Map.of("fassung", nummer));
+            }
+            String begruendung = begruendung(body, f.begruendung());
+            jdbc.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'beantragt', vieraugen = true, begruendung = ?, "
+                    + "freigabe_sub = ?, freigabe_name = ?, freigabe_rolle = ?, freigabe_art = ?, freigabe_am = now() "
+                    + "WHERE id = ?", begruendung, wer.sub(), wer.name(), freigabeRolle(wer), wer.art(), f.id());
+            protokoll(tenant, basisId, nummer, "fassung_beantragt", null, Map.of("freigabe_status", "beantragt",
+                    "pruefsumme", f.pruefsumme()), begruendung, wer);
+        });
+        return fassung(kennzahlId, basis.id(), nummer);
+    }
+
+    /**
+     * F1/F2/F4: ohne Vier-Augen gibt die Person mit {@code bezugsbasis.freigeben} den Entwurf mit Begründung frei; mit
+     * Vier-Augen bestätigt eine zweite Person (Rolle KA/EM, nie der Urheber: 422 {@code vieraugen_urheber}) den Antrag.
+     * {@code freigegeben_am} beginnt die Wiedervorlage; die laufende Vorgängerin endet am Vortag des {@code gilt_ab}.
+     */
+    public BezugsbasisDto.Fassung freigeben(UUID kennzahlId, UUID basisId, int nummer, BezugsbasisDto.Entscheid body,
+            ProtokollAkteur wer) {
+        kennzahlen.fuerBezugsbasis(kennzahlId, FREIGEBEN, wer, null);
+        Basis basis = laufendeBasis(kennzahlId, basisId);
+        UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        transaktion.executeWithoutResult(s -> {
+            FassungZeileDb f = gesperrt(basisId, nummer);
+            String begruendung;
+            if ("entwurf".equals(f.freigabeStatus())) {
+                if (vierAugen(tenant)) {
+                    throw new BezugsbasisAbgelehnt(409, "vieraugen_beantragen",
+                            "Mit Vier-Augen-Freigabe beantragen Sie die Fassung; eine zweite Person gibt sie frei.",
+                            Map.of("fassung", nummer));
+                }
+                begruendung = begruendung(body, f.begruendung());
+                vorgaengerinBeenden(tenant, basisId, f, wer);
+                jdbc.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'freigegeben', begruendung = ?, "
+                        + "freigabe_sub = ?, freigabe_name = ?, freigabe_rolle = ?, freigabe_art = ?, freigabe_am = now(), "
+                        + "freigegeben_am = now() WHERE id = ?", begruendung, wer.sub(), wer.name(), freigabeRolle(wer),
+                        wer.art(), f.id());
+            } else if ("beantragt".equals(f.freigabeStatus())) {
+                zweitePerson(f, wer);
+                begruendung = body == null || body.begruendung() == null || body.begruendung().isBlank() ? null
+                        : pruefe(body.begruendung());
+                vorgaengerinBeenden(tenant, basisId, f, wer);
+                jdbc.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'freigegeben', entscheidung_sub = ?, "
+                        + "entscheidung_name = ?, entscheidung_rolle = ?, entscheidung_art = ?, entschieden_am = now(), "
+                        + "freigegeben_am = now() WHERE id = ?", wer.sub(), wer.name(), wer.rolle(), wer.art(), f.id());
+            } else {
+                throw entschieden(f, "Diese Fassung ist bereits entschieden.");
+            }
+            Map<String, Object> neu = new LinkedHashMap<>();
+            neu.put("freigabe_status", "freigegeben");
+            neu.put("vieraugen", f.vieraugen());
+            neu.put("gilt_ab", f.giltAb().toString());
+            neu.put("pruefsumme", f.pruefsumme());
+            protokoll(tenant, basisId, nummer, "fassung_freigegeben", null, neu, begruendung, wer);
+        });
+        return fassung(kennzahlId, basis.id(), nummer);
+    }
+
+    /** F2: die zweite Person lehnt einen Antrag mit Begründung ab; danach ist ein neuer Entwurf möglich. */
+    public BezugsbasisDto.Fassung ablehnen(UUID kennzahlId, UUID basisId, int nummer, BezugsbasisDto.Entscheid body,
+            ProtokollAkteur wer) {
+        kennzahlen.fuerBezugsbasis(kennzahlId, FREIGEBEN, wer, null);
+        Basis basis = laufendeBasis(kennzahlId, basisId);
+        UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        transaktion.executeWithoutResult(s -> {
+            FassungZeileDb f = gesperrt(basisId, nummer);
+            if (!"beantragt".equals(f.freigabeStatus())) {
+                throw entschieden(f, "Abgelehnt wird nur eine beantragte Fassung.");
+            }
+            zweitePerson(f, wer);
+            String begruendung = begruendung(body, null);
+            jdbc.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'abgelehnt', entscheidung_sub = ?, "
+                    + "entscheidung_name = ?, entscheidung_rolle = ?, entscheidung_art = ?, entschieden_am = now(), "
+                    + "entscheidungs_begruendung = ? WHERE id = ?", wer.sub(), wer.name(), wer.rolle(), wer.art(),
+                    begruendung, f.id());
+            protokoll(tenant, basisId, nummer, "fassung_abgelehnt", null, Map.of("freigabe_status", "abgelehnt",
+                    "pruefsumme", f.pruefsumme()), begruendung, wer);
+        });
+        return fassung(kennzahlId, basis.id(), nummer);
+    }
+
+    /** B4: der Verantwortliche ist ein Benutzer des Kundenbereichs; sein Name wird als Schnappschuss gespeichert. */
+    public BezugsbasisDto.Bezugsbasis verantwortlicher(UUID kennzahlId, UUID basisId,
+            BezugsbasisDto.Verantwortlicher body, ProtokollAkteur wer) {
+        kennzahlen.fuerBezugsbasis(kennzahlId, VERWALTEN, wer, null);
+        if (body == null || body.benutzer() == null || body.benutzer().isBlank()) {
+            throw BezugsbasisAbgelehnt.anfrage("benutzer");
+        }
+        Basis basis = laufendeBasis(kennzahlId, basisId);
+        UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        transaktion.executeWithoutResult(s -> {
+            Map<String, Object> b = jdbc.queryForList("SELECT sub, konto, anzeigename FROM benutzer WHERE sub = ? "
+                    + "AND zustand = 'aktiv'", body.benutzer().strip()).stream().findFirst()
+                    .orElseThrow(() -> BezugsbasisAbgelehnt.fachlich("benutzer_unbekannt",
+                            "Diese Person gibt es in Ihrem Kundenbereich nicht.", Map.of("benutzer", body.benutzer())));
+            String name = b.get("anzeigename") == null || ((String) b.get("anzeigename")).isBlank()
+                    ? (String) b.get("sub") : (String) b.get("anzeigename");
+            jdbc.update("UPDATE bezugsbasis SET verantwortlich_sub = ?, verantwortlich_name = ?, verantwortlich_konto = ? "
+                    + "WHERE id = ?", b.get("sub"), name, b.get("konto"), basisId);
+            protokoll(tenant, basisId, null, "verantwortlicher_geaendert",
+                    Map.of("verantwortlich_name", basis.verantwortlichName()), Map.of("verantwortlich_name", name), null,
+                    wer);
+        });
+        return eine(kennzahlId, basisId);
     }
 
     // ================================================================================ Prüfungen
+
+    /**
+     * A1/F4: Fassung 1 nennt keinen Anpassungsgrund; jede weitere einen oder mehrere aus dem geschlossenen Vokabular
+     * ({@code sonstiger} nur mit Wortlaut) und eine Begründung — sie folgt auf eine freigegebene oder abgelehnte Fassung
+     * ({@code bezugsbasis_fassung_anpassungsgruende_chk}).
+     */
+    private static Anpassung anpassung(BezugsbasisDto.Entwurf e, int nummer) {
+        List<String> gruende = e.anpassungsgruende() == null ? List.of() : e.anpassungsgruende();
+        String wortlaut = e.anpassungWortlaut() == null || e.anpassungWortlaut().isBlank() ? null
+                : e.anpassungWortlaut().strip();
+        if (nummer == 1) {
+            if (!gruende.isEmpty() || wortlaut != null) {
+                throw BezugsbasisAbgelehnt.fachlich("anpassung_ohne_vorgaengerin",
+                        "Die erste Fassung einer Bezugsbasis passt nichts an und nennt keinen Anpassungsgrund.",
+                        Map.of("fassung", 1));
+            }
+            String b = e.begruendung() == null || e.begruendung().isBlank() ? null : pruefe(e.begruendung());
+            return new Anpassung("", null, b);
+        }
+        if (gruende.isEmpty()) {
+            throw BezugsbasisAbgelehnt.fachlich("anpassungsgrund_fehlt",
+                    "Eine neue Fassung nennt mindestens einen Anpassungsgrund.",
+                    Map.of("fassung", nummer, "anpassungsgruende", BezugsbasisRegeln.ANPASSUNGSGRUENDE));
+        }
+        for (String g : gruende) {
+            if (g == null || !BezugsbasisRegeln.ANPASSUNGSGRUENDE.contains(g) || gruende.indexOf(g) != gruende.lastIndexOf(g)) {
+                throw BezugsbasisAbgelehnt.fachlich("anpassungsgrund_unbekannt",
+                        "Die Anpassungsgründe stammen aus der festen Liste, jeder höchstens einmal.",
+                        Map.of("anpassungsgrund", String.valueOf(g), "anpassungsgruende",
+                                BezugsbasisRegeln.ANPASSUNGSGRUENDE));
+            }
+        }
+        if (gruende.contains(SONSTIGER) != (wortlaut != null)) {
+            throw BezugsbasisAbgelehnt.fachlich("anpassung_wortlaut", gruende.contains(SONSTIGER)
+                    ? "Der Anpassungsgrund „sonstiger“ braucht einen Wortlaut."
+                    : "Einen Wortlaut hat nur der Anpassungsgrund „sonstiger“.", Map.of("anpassungsgruende", gruende));
+        }
+        if (e.begruendung() == null || e.begruendung().isBlank()) {
+            throw begruendungFehlt(0);
+        }
+        return new Anpassung(String.join(",", gruende), wortlaut, pruefe(e.begruendung()));
+    }
+
+    /** F1: die Begründung aus dem Körper oder — wenn er keine nennt — die des Entwurfs; 10–500 Zeichen. */
+    private static String begruendung(BezugsbasisDto.Entscheid body, String gespeichert) {
+        String text = body == null || body.begruendung() == null || body.begruendung().isBlank() ? gespeichert
+                : body.begruendung();
+        if (text == null || text.isBlank()) {
+            throw begruendungFehlt(0);
+        }
+        return pruefe(text);
+    }
+
+    private static String pruefe(String text) {
+        String t = text.strip();
+        if (t.length() < BEGRUENDUNG_MIN || t.length() > BEGRUENDUNG_MAX) {
+            throw begruendungFehlt(t.length());
+        }
+        return t;
+    }
+
+    private static BezugsbasisAbgelehnt begruendungFehlt(int zeichen) {
+        return BezugsbasisAbgelehnt.fachlich("begruendung_fehlt",
+                "Bitte begründen Sie die Fassung in 10 bis 500 Zeichen.",
+                Map.of("zeichen", zeichen, "mindestens", BEGRUENDUNG_MIN, "hoechstens", BEGRUENDUNG_MAX));
+    }
+
+    /** F2: die zweite Person ist weder, wer die Fassung gebildet, noch wer sie beantragt hat, und hat Rolle KA/EM. */
+    private static void zweitePerson(FassungZeileDb f, ProtokollAkteur wer) {
+        if (Objects.equals(wer.sub(), f.freigabeSub()) || Objects.equals(wer.sub(), f.actorSub())) {
+            throw BezugsbasisAbgelehnt.fachlich("vieraugen_urheber",
+                    "Bei Vier-Augen-Freigabe entscheidet eine zweite Person — nicht, wer die Fassung gebildet oder "
+                            + "beantragt hat.", Map.of("fassung", f.fassung()));
+        }
+        if (wer.sub() == null || !ZWEITE_ROLLEN.contains(wer.rolle())) {
+            throw new BezugsbasisAbgelehnt(403, "vieraugen_rolle",
+                    "Die zweite Person ist Kundenadministrator oder Energiemanager.", Map.of("fassung", f.fassung()));
+        }
+    }
+
+    private static String freigabeRolle(ProtokollAkteur wer) {
+        return FREIGABE_ROLLEN.contains(wer.rolle()) ? wer.rolle() : null;
+    }
+
+    private static BezugsbasisAbgelehnt entschieden(FassungZeileDb f, String satz) {
+        return new BezugsbasisAbgelehnt(409, "fassung_" + f.freigabeStatus(), satz,
+                Map.of("fassung", f.fassung(), "freigabe_status", f.freigabeStatus()));
+    }
 
     /**
      * B2: nur ein Quotient mit einer Energie-Menge (Messstelle) im Zähler oder eine Zusammenfassung (nur Verhältnis);
@@ -483,6 +762,62 @@ public class BezugsbasisService {
                 + "AND b.beendet_am IS NULL", (rs, i) -> basisZeile(rs), kennzahlId).stream().findFirst();
     }
 
+    /** Die laufende freigegebene Fassung der Basis — die, die eine neue Freigabe beendet (F4). */
+    private java.util.Optional<FassungZeileDb> vorgaengerin(UUID basisId) {
+        return jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM bezugsbasis_fassung f WHERE f.bezugsbasis_id = ? "
+                + "AND f.freigabe_status = 'freigegeben' AND f.gilt_bis IS NULL ORDER BY f.fassung DESC",
+                (rs, i) -> fassungZeile(rs), basisId).stream().findFirst();
+    }
+
+    /**
+     * F4: Fassung n + 1 beendet die laufende Vorgängerin am Vortag ihres {@code gilt_ab}; mit demselben {@code gilt_ab}
+     * ersetzt sie sie ganz. Die Vorgängerin bleibt sonst byte-gleich (Trigger).
+     */
+    private void vorgaengerinBeenden(UUID tenant, UUID basisId, FassungZeileDb neu, ProtokollAkteur wer) {
+        FassungZeileDb v = vorgaengerin(basisId).orElse(null);
+        if (v == null) {
+            return;
+        }
+        if (neu.giltAb().isBefore(v.giltAb())) {
+            throw new BezugsbasisAbgelehnt(409, "gilt_ab_vor_vorgaengerin",
+                    "Die neue Fassung gilt frühestens ab dem Tag, ab dem ihre Vorgängerin gilt.",
+                    Map.of("gilt_ab", neu.giltAb().toString(), "vorgaengerin", v.fassung(),
+                            "vorgaengerin_gilt_ab", v.giltAb().toString()));
+        }
+        LocalDate bis = neu.giltAb().minusDays(1);
+        String grund = "abgelöst durch Fassung " + neu.fassung();
+        jdbc.update("UPDATE bezugsbasis_fassung SET gilt_bis = ?, beendet_am = now(), beendet_grund = ? WHERE id = ?",
+                Date.valueOf(bis), grund, v.id());
+        Map<String, Object> inhalt = new LinkedHashMap<>();
+        inhalt.put("gilt_bis", bis.toString());
+        inhalt.put("abgeloest_durch", neu.fassung());
+        inhalt.put("pruefsumme", v.pruefsumme());
+        protokoll(tenant, basisId, v.fassung(), "fassung_beendet", null, inhalt, null, wer);
+    }
+
+    private FassungZeileDb gesperrt(UUID basisId, int nummer) {
+        jdbc.queryForList("SELECT id FROM bezugsbasis WHERE id = ? FOR UPDATE", UUID.class, basisId);
+        return jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM bezugsbasis_fassung f WHERE f.bezugsbasis_id = ? "
+                + "AND f.fassung = ? FOR UPDATE", (rs, i) -> fassungZeile(rs), basisId, nummer).stream().findFirst()
+                .orElseThrow(BezugsbasisAbgelehnt::nichtGefunden);
+    }
+
+    private Basis laufendeBasis(UUID kennzahlId, UUID basisId) {
+        Basis basis = basis(kennzahlId, basisId);
+        if (basis.beendetAm() != null) {
+            throw new BezugsbasisAbgelehnt(409, "bezugsbasis_beendet", "Diese Bezugsbasis ist beendet.",
+                    Map.of("bezugsbasis", basis.kennzeichen(), "beendet_zum", basis.beendetZum().toString()));
+        }
+        return basis;
+    }
+
+    /** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens; ohne Einstellung gilt die Vorgabe aus. */
+    private boolean vierAugen(UUID tenant) {
+        List<Boolean> werte = jdbc.queryForList("SELECT vieraugen_freigabe FROM unternehmen WHERE tenant_id = ? "
+                + "FOR SHARE", Boolean.class, tenant);
+        return !werte.isEmpty() && Boolean.TRUE.equals(werte.get(0));
+    }
+
     private Basis basis(UUID kennzahlId, UUID basisId) {
         return jdbc.query("SELECT " + BASIS_SPALTEN + " FROM bezugsbasis b WHERE b.id = ? AND b.kennzahl_id = ?",
                 (rs, i) -> basisZeile(rs), basisId, kennzahlId).stream().findFirst()
@@ -491,10 +826,16 @@ public class BezugsbasisService {
 
     private void protokoll(UUID tenant, UUID basis, Integer fassung, String art, Map<String, Object> neu,
             ProtokollAkteur wer) {
+        protokoll(tenant, basis, fassung, art, null, neu, null, wer);
+    }
+
+    private void protokoll(UUID tenant, UUID basis, Integer fassung, String art, Map<String, Object> alt,
+            Map<String, Object> neu, String begruendung, ProtokollAkteur wer) {
         try {
-            jdbc.update("INSERT INTO bezugsbasis_aenderung (tenant_id, bezugsbasis_id, fassung, art, neu, actor_sub, "
-                    + "actor_name, actor_rolle, actor_art) VALUES (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)", tenant, basis,
-                    fassung, art, json.writeValueAsString(neu), wer.sub(), wer.name(), wer.rolle(), wer.art());
+            jdbc.update("INSERT INTO bezugsbasis_aenderung (tenant_id, bezugsbasis_id, fassung, art, alt, neu, "
+                    + "begruendung, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, "
+                    + "?, ?, ?, ?, ?)", tenant, basis, fassung, art, alt == null ? null : json.writeValueAsString(alt),
+                    json.writeValueAsString(neu), begruendung, wer.sub(), wer.name(), wer.rolle(), wer.art());
         } catch (com.fasterxml.jackson.core.JsonProcessingException x) {
             throw new IllegalStateException(x);
         }
@@ -536,7 +877,17 @@ public class BezugsbasisService {
                 rs.getInt("wiedervorlage_monate"), rs.getString("grundlage"), rs.getString("pruefsumme"),
                 rs.getBigDecimal("basiswert"), rs.getString("freigabe_status"), rs.getString("actor_name"),
                 zeit(rs, "created_at"), rs.getString("koeffizienten"), rs.getBigDecimal("r2"),
-                rs.getBigDecimal("streuung_prozent"));
+                rs.getBigDecimal("streuung_prozent"), rs.getString("actor_sub"),
+                List.of((String[]) rs.getArray("anpassungsgruende").getArray()), rs.getString("anpassung_wortlaut"),
+                rs.getString("begruendung"), rs.getBoolean("vieraugen"), rs.getString("freigabe_sub"),
+                person(rs, "freigabe_name", "freigabe_rolle", "freigabe_am"),
+                person(rs, "entscheidung_name", "entscheidung_rolle", "entschieden_am"),
+                rs.getString("entscheidungs_begruendung"), zeit(rs, "freigegeben_am"));
+    }
+
+    private static BezugsbasisDto.Person person(ResultSet rs, String name, String rolle, String am) throws SQLException {
+        return rs.getString(name) == null ? null
+                : new BezugsbasisDto.Person(rs.getString(name), rs.getString(rolle), zeit(rs, am));
     }
 
     private static OffsetDateTime zeit(ResultSet rs, String spalte) throws SQLException {
