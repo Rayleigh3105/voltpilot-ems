@@ -31,8 +31,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * Bezeichnung werden zum Stichtag als Kopie eingefroren: in {@code bezugsbasis_faktor} und als Block {@code faktoren}
  * in der Grundlage, den die Prüfsumme abdeckt. Ohne Faktoren bleibt die Grundlage byte-gleich (leerer Block).
  *
- * <p>Stichtag ist im Entwurf der Bildungstag. Die Neukopie am Freigabetag, falls sich der Wert bis dahin geändert
- * hat, ist ein eigenes Folgepaket. Den Anstoß {@code struktur_geaendert} liest der Struktur-Läufer aus der Tabelle (IP-15,
+ * <p>Stichtag ist im Entwurf der Bildungstag. Am Freigabetag (bzw. beim Antrag) bewertet {@link #amFreigabetag} die
+ * gespeicherten Faktoren neu: hat sich Kennung, Bezeichnung, Wert, Einheit oder Gültigkeit geändert, wird jede Kopie mit
+ * dem Freigabetag neu gezogen ({@link #gleich}); ein Objekt, das der Vorschlag dann nicht mehr nennt, lehnt die Freigabe
+ * ab (422 {@code faktor_ungueltig}, AP-17 Nachlese 2). Den Anstoß {@code struktur_geaendert} liest der Struktur-Läufer aus der Tabelle (IP-15,
  * {@link BezugsbasisAnstoss}); ein Wortlaut stößt nie an.
  */
 final class BezugsbasisFaktoren {
@@ -53,6 +55,10 @@ final class BezugsbasisFaktoren {
 
         Kopie an(int neu) {
             return new Kopie(neu, art, objektId, kennung, bezeichnung, wortlaut, wert, einheit, gueltigAb, stichtag);
+        }
+
+        Kopie mitStichtag(LocalDate tag) {
+            return new Kopie(position, art, objektId, kennung, bezeichnung, wortlaut, wert, einheit, gueltigAb, tag);
         }
     }
 
@@ -117,6 +123,79 @@ final class BezugsbasisFaktoren {
             nummeriert.add(aus.get(i).an(i + 1));
         }
         return List.copyOf(nummeriert);
+    }
+
+    /**
+     * Die gespeicherten Kopien der Fassung (Zeilen aus der Tabelle, Kennung und Bezeichnung aus dem eingefrorenen
+     * Block) — die Eingabe der Neubewertung am Freigabetag.
+     */
+    static List<Kopie> gespeichert(JdbcTemplate jdbc, UUID fassungId, JsonNode grundlage) {
+        Map<Integer, JsonNode> block = new LinkedHashMap<>();
+        for (JsonNode f : grundlage.path("faktoren")) {
+            block.put(f.path("position").asInt(), f);
+        }
+        return List.copyOf(jdbc.query("SELECT position, art, verweis, wortlaut, wert, einheit, wert_gueltig_ab, kopie_am "
+                + "FROM bezugsbasis_faktor WHERE fassung_id = ? AND aufgehoben_am IS NULL ORDER BY position", (rs, i) -> {
+                    JsonNode g = block.getOrDefault(rs.getInt("position"), EXAKT.createObjectNode());
+                    BigDecimal wert = rs.getBigDecimal("wert");
+                    Date ab = rs.getDate("wert_gueltig_ab");
+                    return new Kopie(rs.getInt("position"), rs.getString("art"), rs.getObject("verweis", UUID.class),
+                            g.hasNonNull("objekt") ? g.get("objekt").asText() : null,
+                            g.hasNonNull("bezeichnung") ? g.get("bezeichnung").asText() : null, rs.getString("wortlaut"),
+                            wert == null ? null : wert.intValueExact(), rs.getString("einheit"),
+                            ab == null ? null : ab.toLocalDate(), rs.getDate("kopie_am").toLocalDate());
+                }, fassungId));
+    }
+
+    /**
+     * V3/E6 am Freigabetag: dieselben Faktoren gegen den Vorschlag am {@code tag} geprüft und neu kopiert (Stichtag =
+     * {@code tag}). Nennt der Vorschlag ein verwiesenes Objekt nicht mehr, ist die Freigabe nicht möglich
+     * (422 {@code faktor_ungueltig}); der Entwurf bleibt.
+     */
+    static List<Kopie> amFreigabetag(List<Kopie> gespeichert, LocalDate tag,
+            Supplier<FaktorenVorschlagDto.Vorschlag> vorschlag) {
+        if (gespeichert.isEmpty()) {
+            return List.of();
+        }
+        List<BezugsbasisDto.FaktorWahl> wahl = new ArrayList<>();
+        Set<String> genannt = null;
+        for (Kopie c : gespeichert) {
+            if (c.objektId() == null) {
+                wahl.add(new BezugsbasisDto.FaktorWahl(WORTLAUT, null, c.wortlaut()));
+                continue;
+            }
+            if (genannt == null) {
+                genannt = new HashSet<>();
+                for (FaktorenVorschlagDto.Faktor k : vorschlag.get().faktoren()) {
+                    genannt.add(k.art() + ":" + k.objektId());
+                }
+            }
+            if (!genannt.contains(c.art() + ":" + c.objektId())) {
+                String wort = satz(c.art(), c.kennung(), c.bezeichnung(), null, null, null, null);
+                wort = wort.substring("Statischer Faktor: ".length(), wort.lastIndexOf(" (Stand"));
+                throw BezugsbasisAbgelehnt.fachlich("faktor_ungueltig", "Den statischen Faktor " + wort + " nennt die "
+                        + "Struktur der Geltung am " + OrtsbaumAbleitung.datumText(tag) + " nicht mehr – bilden Sie den "
+                        + "Entwurf ohne ihn neu.", Map.of("art", c.art(), "objekt_id", c.objektId().toString(),
+                                "stichtag", tag.toString()));
+            }
+            wahl.add(new BezugsbasisDto.FaktorWahl(c.art(), c.objektId(), null));
+        }
+        return pruefen(wahl, tag, vorschlag);
+    }
+
+    /** Dieselben Faktoren mit demselben Inhalt — der Stichtag der Kopie zählt nicht. */
+    static boolean gleich(List<Kopie> a, List<Kopie> b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.size(); i++) {
+            Kopie x = a.get(i);
+            Kopie y = b.get(i);
+            if (!x.an(0).equals(y.an(0).mitStichtag(x.stichtag()))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Die Grundlage mit dem Faktoren-Block; ohne Faktoren genau dieselbe (dieselben Bytes, dieselbe Prüfsumme). */

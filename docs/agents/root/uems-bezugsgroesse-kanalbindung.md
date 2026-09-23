@@ -88,7 +88,8 @@ Abnahme: `KanalbindungApiTest` (B7 4,9667 h / unvollständig / 95,8 %, 422, Vor/
   (`PUT/DELETE/GET …/wetterbezug`, `GET /standorte/{id}/wetter`), Portal `BezugsWetter`
   (Abschnitt „Wetter“ an der Gradtagzahl) und `StandortWetterZeile`; Sätze in `wetterBezug.ts`.
   ⚠ Eine Quelle je Bezugsgröße gilt in BEIDE Richtungen: Wetter-Bindung ⟂ Kanalbindung (409
-  je Seite). Import/Eingabe an einer gebundenen Gradtagzahl sperrt noch nichts (Folgepunkt);
+  je Seite). Eingabe, Berichtigung, Import-Übernahme und Vorschlags-Freigabe an einer gebundenen
+  Gradtagzahl sperrt `WetterbezugSperre` mit 409 `wetterbezug_vorhanden` (Nachlese 1);
   der Abruf überschreibt fremde Tage nie. „Jetzt nachholen“ fehlt bewusst: `WetterArchivAbruf`
   läuft je Kundenbereich, nicht je Bezugsgröße.
 - `GET …/kanalbindung/kanaele` liefert passende Katalogkanäle mit erstem Messwert,

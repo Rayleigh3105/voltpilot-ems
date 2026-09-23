@@ -11891,7 +11891,9 @@ paths:
       description: >
         Recht `bezugsbasis.freigeben` an der Geltung der Kennzahl (wer beantragt, ist die Freigabe-Person). Nur mit
         `unternehmen.vieraugen_freigabe`, sonst 409 `vieraugen_aus`; Begründung 10–500 Zeichen (Körper oder die des
-        Entwurfs, sonst 422 `begruendung_fehlt`). Vertrag bezugsbasis.md §13.
+        Entwurfs, sonst 422 `begruendung_fehlt`). Nachlese 2: die Grundlage wird neu gebildet und ihre Prüfsumme
+        verglichen (abweichend 409 `entwurf_veraltet`); die statischen Faktoren werden am Antragstag neu bewertet und bei
+        Änderung neu kopiert (Objekt nicht mehr gültig 422 `faktor_ungueltig`). Vertrag bezugsbasis.md §13, §17.
       requestBody:
         required: false
         content:
@@ -11921,7 +11923,11 @@ paths:
         Recht `bezugsbasis.freigeben`. Ohne Vier-Augen gibt die Person den Entwurf mit Begründung frei (mit Vier-Augen
         409 `vieraugen_beantragen`); mit Vier-Augen bestätigt eine zweite Person mit Rolle Kundenadministrator oder
         Energiemanager den Antrag (Urheber 422 `vieraugen_urheber`). `freigegeben_am` beginnt die Wiedervorlage; die
-        laufende Vorgängerin endet am Vortag des `gilt_ab` (F4). Vertrag bezugsbasis.md §13.
+        laufende Vorgängerin endet am Vortag des `gilt_ab` (F4). Nachlese 2 (F3, E5/E6 = A): vor der Freigabe wird die
+        Grundlage neu gebildet; weicht die Prüfsumme ab, ist der Entwurf bzw. Antrag veraltet (409 `entwurf_veraltet`
+        mit `grund`, nichts wird freigegeben). Die statischen Faktoren werden am Freigabetag neu bewertet: geändert im
+        Entwurf → neu kopiert (Grundlage und Prüfsumme neu), geändert nach dem Antrag → 409 `entwurf_veraltet`; ein
+        verwiesenes Objekt, das am Freigabetag nicht mehr gilt → 422 `faktor_ungueltig`. Vertrag bezugsbasis.md §13, §17.
       requestBody:
         required: false
         content:

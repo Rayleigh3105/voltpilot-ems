@@ -48,6 +48,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * (Kundenadministrator oder Energiemanager, nie der Urheber) gibt frei oder lehnt ab. Die Freigabe von Fassung n + 1
  * beendet Fassung n am Vortag ihres {@code gilt_ab}; eingefroren hält die Datenbank (Trigger
  * {@code bezugsbasis_fassung_eingefroren}).
+ *
+ * <p>Nachlese 2 (E5/E6 = A, F3, V3): Antrag und Freigabe bilden die Grundlage neu und vergleichen die Prüfsumme — weicht
+ * sie ab, ist der Entwurf veraltet (409 {@code entwurf_veraltet}, Muster Berichtsstand) und nichts wird entschieden.
+ * Die statischen Faktoren werden am Freigabetag neu bewertet: geändert → neu kopiert, Grundlage und Prüfsumme neu, noch
+ * im Entwurf und in derselben Transaktion (der Trigger friert ab dem Antrag ein); ein nicht mehr gültiges Objekt → 422
+ * {@code faktor_ungueltig}.
  */
 @Service
 public class BezugsbasisService {
@@ -211,8 +217,8 @@ public class BezugsbasisService {
                     Map.of("nenner", nenner.kennzeichen(), "art", String.valueOf(nennerArt)));
         }
         BezugsbasisGrundlage.ZweiteVariable zweite = zweiteId == null ? null : zweite(zweiteId, von, bis);
-        // V3 (IP-16b): statische Faktoren nur aus dem Vorschlag am Bildungstag; die Kopie zum Freigabetag ist ein
-        // eigenes Folgepaket.
+        // V3 (IP-16b): statische Faktoren nur aus dem Vorschlag am Bildungstag; Antrag und Freigabe kopieren sie am
+        // Freigabetag neu, wenn sie sich geändert haben (amFreigabetag).
         LocalDate stichtag = heute.jetzt().atZone(heute.zone()).toLocalDate();
         List<BezugsbasisFaktoren.Kopie> faktoren = BezugsbasisFaktoren.pruefen(e.faktoren(), stichtag,
                 () -> faktorenVorschlag.vorschlag(kennzahlId, List.of(), stichtag.toString()));
@@ -405,9 +411,10 @@ public class BezugsbasisService {
      */
     public BezugsbasisDto.Fassung beantragen(UUID kennzahlId, UUID basisId, int nummer, BezugsbasisDto.Entscheid body,
             ProtokollAkteur wer) {
-        kennzahlen.fuerBezugsbasis(kennzahlId, FREIGEBEN, wer, null);
+        KennzahlService.BasisKennzahl heute = kennzahlen.fuerBezugsbasis(kennzahlId, FREIGEBEN, wer, null);
         Basis basis = laufendeBasis(kennzahlId, basisId);
         UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        AmFreigabetag stand = amFreigabetag(kennzahlId, basisId, nummer, heute, wer);
         transaktion.executeWithoutResult(s -> {
             FassungZeileDb f = gesperrt(basisId, nummer);
             if (!"entwurf".equals(f.freigabeStatus())) {
@@ -418,11 +425,15 @@ public class BezugsbasisService {
                         "Ohne Vier-Augen-Freigabe geben Sie die Fassung direkt frei.", Map.of("fassung", nummer));
             }
             String begruendung = begruendung(body, f.begruendung());
+            Map<String, Object> alt = anwenden(stand, f, tenant);
             jdbc.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'beantragt', vieraugen = true, begruendung = ?, "
                     + "freigabe_sub = ?, freigabe_name = ?, freigabe_rolle = ?, freigabe_art = ?, freigabe_am = now() "
                     + "WHERE id = ?", begruendung, wer.sub(), wer.name(), freigabeRolle(wer), wer.art(), f.id());
-            protokoll(tenant, basisId, nummer, "fassung_beantragt", null, Map.of("freigabe_status", "beantragt",
-                    "pruefsumme", f.pruefsumme()), begruendung, wer);
+            Map<String, Object> neu = new LinkedHashMap<>();
+            neu.put("freigabe_status", "beantragt");
+            neu.put("pruefsumme", stand.gueltig());
+            neuKopiert(neu, alt, stand);
+            protokoll(tenant, basisId, nummer, "fassung_beantragt", alt, neu, begruendung, wer);
         });
         return fassung(kennzahlId, basis.id(), nummer);
     }
@@ -434,12 +445,14 @@ public class BezugsbasisService {
      */
     public BezugsbasisDto.Fassung freigeben(UUID kennzahlId, UUID basisId, int nummer, BezugsbasisDto.Entscheid body,
             ProtokollAkteur wer) {
-        kennzahlen.fuerBezugsbasis(kennzahlId, FREIGEBEN, wer, null);
+        KennzahlService.BasisKennzahl heute = kennzahlen.fuerBezugsbasis(kennzahlId, FREIGEBEN, wer, null);
         Basis basis = laufendeBasis(kennzahlId, basisId);
         UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        AmFreigabetag stand = amFreigabetag(kennzahlId, basisId, nummer, heute, wer);
         transaktion.executeWithoutResult(s -> {
             FassungZeileDb f = gesperrt(basisId, nummer);
             String begruendung;
+            Map<String, Object> alt;
             if ("entwurf".equals(f.freigabeStatus())) {
                 if (vierAugen(tenant)) {
                     throw new BezugsbasisAbgelehnt(409, "vieraugen_beantragen",
@@ -447,6 +460,7 @@ public class BezugsbasisService {
                             Map.of("fassung", nummer));
                 }
                 begruendung = begruendung(body, f.begruendung());
+                alt = anwenden(stand, f, tenant);
                 vorgaengerinBeenden(tenant, basisId, f, wer);
                 jdbc.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'freigegeben', begruendung = ?, "
                         + "freigabe_sub = ?, freigabe_name = ?, freigabe_rolle = ?, freigabe_art = ?, freigabe_am = now(), "
@@ -456,6 +470,7 @@ public class BezugsbasisService {
                 zweitePerson(f, wer);
                 begruendung = body == null || body.begruendung() == null || body.begruendung().isBlank() ? null
                         : pruefe(body.begruendung());
+                alt = anwenden(stand, f, tenant);
                 vorgaengerinBeenden(tenant, basisId, f, wer);
                 jdbc.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'freigegeben', entscheidung_sub = ?, "
                         + "entscheidung_name = ?, entscheidung_rolle = ?, entscheidung_art = ?, entschieden_am = now(), "
@@ -467,8 +482,9 @@ public class BezugsbasisService {
             neu.put("freigabe_status", "freigegeben");
             neu.put("vieraugen", f.vieraugen());
             neu.put("gilt_ab", f.giltAb().toString());
-            neu.put("pruefsumme", f.pruefsumme());
-            protokoll(tenant, basisId, nummer, "fassung_freigegeben", null, neu, begruendung, wer);
+            neu.put("pruefsumme", stand.gueltig());
+            neuKopiert(neu, alt, stand);
+            protokoll(tenant, basisId, nummer, "fassung_freigegeben", alt, neu, begruendung, wer);
         });
         return fassung(kennzahlId, basis.id(), nummer);
     }
@@ -494,6 +510,151 @@ public class BezugsbasisService {
                     "pruefsumme", f.pruefsumme()), begruendung, wer);
         });
         return fassung(kennzahlId, basis.id(), nummer);
+    }
+
+    // ================================================================================ am Freigabetag (Nachlese 2)
+
+    /**
+     * Was Antrag oder Freigabe am Freigabetag vorfinden — VOR der Sperre gebildet wie im Entwurf, damit eine Ablehnung
+     * beim Neubilden die Entscheid-Transaktion nicht vergiftet. {@code pruefsumme} ist die gelesene des Entwurfs;
+     * {@code einwand} lehnt ab (409 {@code entwurf_veraltet}, 422 {@code faktor_ungueltig}); {@code neu} ist die
+     * Grundlage mit den am Freigabetag neu kopierten Faktoren {@code kopien} (nur im Entwurf), sonst {@code null}.
+     */
+    private record AmFreigabetag(String pruefsumme, BezugsbasisAbgelehnt einwand, BezugsbasisGrundlage.Ergebnis neu,
+            List<BezugsbasisFaktoren.Kopie> alt, List<BezugsbasisFaktoren.Kopie> kopien, LocalDate tag) {
+
+        /** Die Prüfsumme, die der Entscheid trägt: die neue nach einer Neukopie, sonst die des Entwurfs. */
+        String gueltig() {
+            return neu == null ? pruefsumme : neu.pruefsumme();
+        }
+    }
+
+    /**
+     * F3/E5: die Grundlage des offenen Entwurfs bzw. Antrags neu bilden und mit der gespeicherten Prüfsumme vergleichen;
+     * V3/E6: die statischen Faktoren am Freigabetag (heute in der Zone der Kennzahl) neu bewerten. Eine entschiedene
+     * Fassung ({@code null}) prüft der Entscheid selbst ab.
+     */
+    private AmFreigabetag amFreigabetag(UUID kennzahlId, UUID basisId, int nummer, KennzahlService.BasisKennzahl heute,
+            ProtokollAkteur wer) {
+        FassungZeileDb f = jdbc.query("SELECT " + FASSUNG_SPALTEN + " FROM bezugsbasis_fassung f WHERE f.bezugsbasis_id = ? "
+                + "AND f.fassung = ?", (rs, i) -> fassungZeile(rs), basisId, nummer).stream().findFirst().orElse(null);
+        if (f == null || !"entwurf".equals(f.freigabeStatus()) && !"beantragt".equals(f.freigabeStatus())) {
+            return null;
+        }
+        LocalDate tag = heute.jetzt().atZone(heute.zone()).toLocalDate();
+        boolean antrag = "beantragt".equals(f.freigabeStatus());
+        JsonNode gespeichert = lies(f.grundlage());
+        List<BezugsbasisFaktoren.Kopie> alt = BezugsbasisFaktoren.gespeichert(jdbc, f.id(), gespeichert);
+        BezugsbasisGrundlage.Ergebnis ohne = neuGebildet(kennzahlId, f, gespeichert, wer);
+        if (ohne == null || !f.pruefsumme().equals(BezugsbasisFaktoren.inGrundlage(ohne, alt).pruefsumme())) {
+            return new AmFreigabetag(f.pruefsumme(), veraltet(f.fassung(), antrag, "grundlage"), null, alt, alt, tag);
+        }
+        List<BezugsbasisFaktoren.Kopie> kopien;
+        try {
+            kopien = BezugsbasisFaktoren.amFreigabetag(alt, tag,
+                    () -> faktorenVorschlag.vorschlag(kennzahlId, List.of(), tag.toString()));
+        } catch (BezugsbasisAbgelehnt x) {
+            return new AmFreigabetag(f.pruefsumme(), x, null, alt, alt, tag);
+        }
+        if (BezugsbasisFaktoren.gleich(alt, kopien)) {
+            return new AmFreigabetag(f.pruefsumme(), null, null, alt, alt, tag);
+        }
+        if (antrag) {
+            // Ab dem Antrag ist die Fassung eingefroren: eine Neukopie ginge nur über Ablehnen und neu Bilden.
+            return new AmFreigabetag(f.pruefsumme(), veraltet(f.fassung(), true, "faktoren"), null, alt, alt, tag);
+        }
+        return new AmFreigabetag(f.pruefsumme(), null, BezugsbasisFaktoren.inGrundlage(ohne, kopien), alt, kopien, tag);
+    }
+
+    /**
+     * Die Grundlage ohne Faktoren-Block aus denselben Eingaben wie im Entwurf: Referenzperiode, Methode, Kennzahl-Fassung
+     * am letzten Tag der Periode (P4), Nenner und zweite Variable. Nach einer G4-Ablehnung war das Modell mit zwei
+     * Einflussgrößen gewünscht — die abgelehnte Variable steht nur mit Kennzeichen in der Grundlage. {@code null}, wenn
+     * sie so nicht mehr zu bilden ist; das ist veraltet, nicht falsch.
+     */
+    private BezugsbasisGrundlage.Ergebnis neuGebildet(UUID kennzahlId, FassungZeileDb f, JsonNode gespeichert,
+            ProtokollAkteur wer) {
+        YearMonth von = YearMonth.parse(f.referenzperiode().substring(0, 7));
+        YearMonth bis = YearMonth.parse(f.referenzperiode().substring(8));
+        try {
+            KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(kennzahlId, null, wer, bis.atEndOfMonth());
+            if (k.fassung() == null) {
+                return null;
+            }
+            String methode = f.methode();
+            UUID zweiteId = null;
+            if (ZWEI_VARIABLEN.equals(methode)) {
+                zweiteId = jdbc.queryForList("SELECT bezugsgroesse_id FROM bezugsbasis_variable WHERE fassung_id = ? "
+                        + "AND position = 2 AND aufgehoben_am IS NULL", UUID.class, f.id()).stream().findFirst()
+                        .orElse(null);
+            } else if (!gespeichert.path("abgelehnte_variablen").isEmpty()) {
+                methode = ZWEI_VARIABLEN;
+                zweiteId = jdbc.queryForList("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = ?",
+                        UUID.class, TenantContext.get(), gespeichert.at("/abgelehnte_variablen/0/objekt").asText())
+                        .stream().findFirst().orElse(null);
+            }
+            if (ZWEI_VARIABLEN.equals(methode) && zweiteId == null) {
+                return null;
+            }
+            EingangZeile nenner = traeger(k, methode);
+            String nennerArt = nenner == null ? null : art(nenner.objektId());
+            BezugsbasisGrundlage.ZweiteVariable zweite = zweiteId == null ? null : zweite(zweiteId, von, bis);
+            BezugsbasisGrundlage.Ergebnis g = grundlage.bilden(kennzahlId, k.zeile().kennzeichen(),
+                    k.fassung().rechenform(), k.fassung().nummer(), f.referenzperiode(), von, bis, methode,
+                    nenner == null ? null : nenner.objektId(), nenner == null ? null : nenner.kennzeichen(), nennerArt,
+                    zweite);
+            return g.basiswert() == null ? null : g;
+        } catch (BezugsbasisAbgelehnt x) {
+            return null;
+        }
+    }
+
+    /**
+     * In der Entscheid-Transaktion, nach der Sperre und den Zustandsprüfungen: ein Einwand lehnt ab; hat sich die
+     * Fassung seit dem Lesen bewegt, ist sie veraltet. Eine Neukopie schreibt Grundlage, Prüfsumme und Faktoren noch im
+     * Entwurf (Trigger {@code bezugsbasis_fassung_eingefroren}) und liefert das {@code alt} fürs Protokoll.
+     */
+    private Map<String, Object> anwenden(AmFreigabetag a, FassungZeileDb f, UUID tenant) {
+        boolean antrag = "beantragt".equals(f.freigabeStatus());
+        if (a == null || !a.pruefsumme().equals(f.pruefsumme()) || a.neu() != null && antrag) {
+            throw veraltet(f.fassung(), antrag, "grundlage");
+        }
+        if (a.einwand() != null) {
+            throw a.einwand();
+        }
+        if (a.neu() == null) {
+            return null;
+        }
+        jdbc.update("UPDATE bezugsbasis_fassung SET grundlage = ?, pruefsumme = ? WHERE id = ?", a.neu().text(),
+                a.neu().pruefsumme(), f.id());
+        BezugsbasisFaktoren.speichern(jdbc, tenant, f.id(), a.kopien());
+        Map<String, Object> alt = new LinkedHashMap<>();
+        alt.put("pruefsumme", f.pruefsumme());
+        alt.put("faktoren", saetze(a.alt()));
+        return alt;
+    }
+
+    /** Protokoll einer Neukopie: bestehendes Wort des Entscheids mit Anlass {@code faktoren_neu_kopiert}. */
+    private static void neuKopiert(Map<String, Object> neu, Map<String, Object> alt, AmFreigabetag stand) {
+        if (alt == null) {
+            return;
+        }
+        neu.put("anlass", "faktoren_neu_kopiert");
+        neu.put("kopie_am", stand.tag().toString());
+        neu.put("faktoren", saetze(stand.kopien()));
+    }
+
+    private static List<String> saetze(List<BezugsbasisFaktoren.Kopie> kopien) {
+        return kopien.stream().map(c -> BezugsbasisFaktoren.satz(c.art(), c.kennung(), c.bezeichnung(), c.wortlaut(),
+                c.wert() == null ? null : BigDecimal.valueOf(c.wert()), c.einheit(), c.stichtag())).toList();
+    }
+
+    /** F3 (Muster Bericht {@code entwurf_veraltet}): nichts wird entschieden; der Kunde bildet den Entwurf neu (IP-7). */
+    private static BezugsbasisAbgelehnt veraltet(int fassung, boolean antrag, String grund) {
+        return new BezugsbasisAbgelehnt(409, "entwurf_veraltet", antrag
+                ? "Die Grundlage hat sich seit dem Antrag geändert – lehnen Sie den Antrag ab und bilden Sie den Entwurf neu."
+                : "Die Grundlage hat sich seit dem Entwurf geändert – bilden Sie den Entwurf neu.",
+                Map.of("fassung", fassung, "grund", grund));
     }
 
     /** B4: der Verantwortliche ist ein Benutzer des Kundenbereichs; sein Name wird als Schnappschuss gespeichert. */

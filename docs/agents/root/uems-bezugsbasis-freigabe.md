@@ -18,4 +18,9 @@ liegen bei IP-17 (`BezugsbasisPflegeController`), der Vergleich bei IP-19.
 eine Begründung beim Bestätigen steht nur im Protokoll (`entscheidungs_begruendung` ist per CHECK nur für `abgelehnt`).
 ⚠ **Eingefroren:** nach dem Entwurf ändert der Trigger nur Entscheid und Ende — Anpassungsgründe, Begründung und
 `vieraugen` müssen im selben UPDATE wie der Statuswechsel gesetzt werden.
+⚠ **Am Freigabetag (Nachlese 2, §13/§17):** `beantragen`/`freigeben` bilden die Grundlage VOR der Sperre neu
+(`BezugsbasisService#amFreigabetag` — eine Ablehnung beim Neubilden in der Transaktion würde sie vergiften) und wenden
+das Ergebnis danach an (`#anwenden`): andere Prüfsumme → 409 `entwurf_veraltet`; geänderte Faktoren → Neukopie nur im
+Entwurf (ab `beantragt` friert der Trigger ein → 409), Protokoll-Anlass `faktoren_neu_kopiert` am Wort des Entscheids.
+Wer die Grundlage um eine Eingabe erweitert, muss sie in `#neuGebildet` genauso lesen, sonst ist jeder Entwurf veraltet.
 Nachweis: `BezugsbasisApiTest` (Docker), `BezugsbasisGrundlageTest` (OpenAPI), `RechtMatrixApiTest`, `RechtRoutenArchitekturTest`.

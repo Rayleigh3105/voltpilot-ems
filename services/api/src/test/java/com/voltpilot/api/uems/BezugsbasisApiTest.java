@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -910,6 +911,187 @@ class BezugsbasisApiTest {
                 .containsEntry("anlass_kennung", "ort_aenderung:" + anbau);
     }
 
+    /**
+     * Nachlese 2 (V3, E6 = A): im Entwurf am 12.11.2026 trägt Fläche G-2 3 100 m²; am Freigabetag 05.01.2027 gelten
+     * 3 400 m² — die Freigabe kopiert 3 400 neu (Grundlage-Block, Prüfsumme, Tabelle, Protokoll-Anlass), der Basiswert
+     * bleibt. Ohne Änderung bis zur Freigabe bleibt alles byte-gleich.
+     */
+    @Test
+    void nachlese2FaktorWirdAmFreigabetagNeuKopiert() throws Exception {
+        Welt w = welt();
+        flaechenG2(w);
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+        Antwort entwurf = ruf(w, HttpMethod.POST, basis + "/fassungen",
+                mitFaktor(Map.of("art", "flaeche", "objekt_id", w.g2().toString())));
+        assertThat(entwurf.status()).as(entwurf.text()).isEqualTo(200);
+        assertThat(entwurf.body().at("/faktoren/0/wert").asText()).isEqualTo("3100");
+        String vorher = entwurf.body().get("pruefsumme").asText();
+
+        kennzahlen.uhrStellen(Clock.fixed(Instant.parse("2027-01-05T09:00:00Z"), ZoneOffset.UTC));
+        JsonNode frei = entscheid(w, "ines", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 200, null).body();
+        assertThat(frei.get("freigabe_status").asText()).isEqualTo("freigegeben");
+        JsonNode flaeche = frei.at("/faktoren/0");
+        assertThat(flaeche.get("wert").asText()).isEqualTo("3400");
+        assertThat(flaeche.get("gueltig_ab").asText()).isEqualTo("2027-01-01");
+        assertThat(flaeche.get("stichtag").asText()).isEqualTo("2027-01-05");
+        String nb = String.valueOf((char) 160);
+        assertThat(flaeche.get("satz").asText())
+                .isEqualTo("Statischer Faktor: Fläche G-2 3" + nb + "400" + nb + "m² (Stand 05.01.2027)");
+        assertThat(frei.at("/grundlage/faktoren/0/wert").decimalValue()).isEqualByComparingTo("3400");
+        assertThat(frei.at("/grundlage/faktoren/0/kopie_am").asText()).isEqualTo("2027-01-05");
+        assertThat(frei.get("basiswert").asText()).isEqualTo(entwurf.body().get("basiswert").asText());
+        String text = root.queryForObject("SELECT grundlage FROM bezugsbasis_fassung WHERE bezugsbasis_id = ?",
+                String.class, UUID.fromString(basis.substring(basis.lastIndexOf('/') + 1)));
+        assertThat(frei.get("pruefsumme").asText()).isNotEqualTo(vorher).isEqualTo(BezugsbasisGrundlage.pruefsumme(text));
+        // Nur der Faktoren-Block ist neu; alles andere der Grundlage bleibt, wie der Entwurf es eingefroren hat.
+        JsonNode ohneBlock = ((ObjectNode) frei.get("grundlage").deepCopy()).without("faktoren");
+        JsonNode entwurfOhneBlock = ((ObjectNode) entwurf.body().get("grundlage").deepCopy()).without("faktoren");
+        assertThat(ohneBlock).isEqualTo(entwurfOhneBlock);
+        assertThat(root.queryForList("SELECT wert::int || ':' || kopie_am || ':' || (aufgehoben_am IS NULL) "
+                + "FROM bezugsbasis_faktor WHERE tenant_id = ? ORDER BY id", String.class, w.mandant()))
+                .containsExactlyInAnyOrder("3100:2026-11-12:false", "3400:2027-01-05:true");
+        Map<String, Object> p = root.queryForMap("SELECT alt::text AS alt, neu::text AS neu FROM bezugsbasis_aenderung "
+                + "WHERE tenant_id = ? AND art = 'fassung_freigegeben'", w.mandant());
+        JsonNode alt = MAPPER.readTree((String) p.get("alt"));
+        JsonNode neu = MAPPER.readTree((String) p.get("neu"));
+        assertThat(alt.get("pruefsumme").asText()).isEqualTo(vorher);
+        assertThat(alt.at("/faktoren/0").asText()).contains("3" + nb + "100");
+        assertThat(neu.get("anlass").asText()).isEqualTo("faktoren_neu_kopiert");
+        assertThat(neu.get("kopie_am").asText()).isEqualTo("2027-01-05");
+        assertThat(neu.get("pruefsumme").asText()).isEqualTo(frei.get("pruefsumme").asText());
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).body()).isEqualTo(frei);
+
+        // Ohne Änderung bis zur Freigabe: Grundlage, Prüfsumme und Faktor-Zeilen byte-gleich, kein Anlass.
+        Welt w2 = welt();
+        flaechenG2(w2);
+        kennzahlen.uhrStellen(Clock.fixed(FREIGABETAG, ZoneOffset.UTC));
+        monat(w2, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis2 = basis(w2, w2.kz4());
+        Antwort e2 = ruf(w2, HttpMethod.POST, basis2 + "/fassungen",
+                mitFaktor(Map.of("art", "flaeche", "objekt_id", w2.g2().toString())));
+        assertThat(e2.status()).as(e2.text()).isEqualTo(200);
+        JsonNode f2 = entscheid(w2, "ines", basis2, 1, "freigeben", "Oktober 2026 als erster Maßstab", 200, null).body();
+        assertThat(f2.get("pruefsumme").asText()).isEqualTo(e2.body().get("pruefsumme").asText());
+        assertThat(f2.get("grundlage")).isEqualTo(e2.body().get("grundlage"));
+        assertThat(f2.get("faktoren")).isEqualTo(e2.body().get("faktoren"));
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_faktor WHERE tenant_id = ?", Integer.class,
+                w2.mandant())).isEqualTo(1);
+        Map<String, Object> p2 = root.queryForMap("SELECT alt::text AS alt, neu::text AS neu FROM bezugsbasis_aenderung "
+                + "WHERE tenant_id = ? AND art = 'fassung_freigegeben'", w2.mandant());
+        assertThat(p2.get("alt")).isNull();
+        assertThat((String) p2.get("neu")).doesNotContain("anlass");
+    }
+
+    /**
+     * Nachlese 2: gilt die verwiesene Fläche am Freigabetag nicht mehr, ist die Freigabe 422 {@code faktor_ungueltig}
+     * mit Satz; der Entwurf bleibt unverändert.
+     */
+    @Test
+    void nachlese2FaktorAmFreigabetagUngueltigIst422() throws Exception {
+        Welt w = welt();
+        root.update("INSERT INTO flaeche_gueltigkeit (tenant_id, ort_id, m2, gueltig_ab, gueltig_bis) VALUES "
+                + "(?, ?, 3100, DATE '2026-10-01', DATE '2026-12-31')", w.mandant(), w.g2());
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+        Antwort entwurf = ruf(w, HttpMethod.POST, basis + "/fassungen",
+                mitFaktor(Map.of("art", "flaeche", "objekt_id", w.g2().toString())));
+        assertThat(entwurf.status()).as(entwurf.text()).isEqualTo(200);
+
+        kennzahlen.uhrStellen(Clock.fixed(Instant.parse("2027-01-05T09:00:00Z"), ZoneOffset.UTC));
+        Antwort a = entscheid(w, "ines", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 422,
+                "faktor_ungueltig");
+        assertThat(a.body().get("message").asText()).isEqualTo("Den statischen Faktor Fläche G-2 nennt die Struktur der "
+                + "Geltung am 05.01.2027 nicht mehr – bilden Sie den Entwurf ohne ihn neu.");
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).text()).isEqualTo(entwurf.text());
+        assertThat(root.queryForList("SELECT art FROM bezugsbasis_aenderung WHERE tenant_id = ? ORDER BY id",
+                String.class, w.mandant())).containsExactly("bezugsbasis_angelegt", "fassung_entworfen");
+    }
+
+    /**
+     * Nachlese 2 (F3, E5 = A): bekommt ein zitierter Kennzahl-Wert Version 2 vor der Freigabe, ist der Entwurf veraltet
+     * (409 {@code entwurf_veraltet}); nichts wird freigegeben. Neu gebildet, geht die Freigabe durch.
+     */
+    @Test
+    void nachlese2NeueVersionMachtDenEntwurfVeraltet() throws Exception {
+        Welt w = welt();
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+        Antwort entwurf = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis"));
+        assertThat(entwurf.status()).as(entwurf.text()).isEqualTo(200);
+        monat(w, w.kz4(), "MS-20", "BZ-1", "kg", "2026-10-01", "90000", "312400", "endgueltig", List.of(), 2);
+
+        Antwort a = entscheid(w, "ines", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 409,
+                "entwurf_veraltet");
+        assertThat(a.body().get("message").asText())
+                .isEqualTo("Die Grundlage hat sich seit dem Entwurf geändert – bilden Sie den Entwurf neu.");
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).text()).isEqualTo(entwurf.text());
+
+        Antwort neu = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis"));
+        assertThat(neu.status()).as(neu.text()).isEqualTo(200);
+        assertThat(neu.body().get("fassung").asInt()).isEqualTo(1);
+        assertThat(neu.body().get("pruefsumme").asText()).isNotEqualTo(entwurf.body().get("pruefsumme").asText());
+        JsonNode frei = entscheid(w, "ines", basis, 1, "freigeben", "Oktober 2026 als erster Maßstab", 200, null).body();
+        assertThat(frei.get("pruefsumme").asText()).isEqualTo(neu.body().get("pruefsumme").asText());
+        assertThat(root.queryForList("SELECT art FROM bezugsbasis_aenderung WHERE tenant_id = ? ORDER BY id",
+                String.class, w.mandant())).containsExactly("bezugsbasis_angelegt", "fassung_entworfen",
+                        "fassung_entworfen", "fassung_freigegeben");
+    }
+
+    /**
+     * Nachlese 2 mit Vier-Augen: der Antrag prüft, die Freigabe der zweiten Person prüft erneut. Ab dem Antrag ist die
+     * Fassung eingefroren — ein am Freigabetag geänderter Faktor ist dann veraltet (Ablehnen und neu bilden).
+     */
+    @Test
+    void nachlese2VierAugenPrueftBeimAntragUndBeimFreigeben() throws Exception {
+        Welt w = welt();
+        flaechenG2(w);
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = true WHERE tenant_id = ?", w.mandant());
+        String basis = basis(w, w.kz4());
+        Antwort entwurf = ruf(w, HttpMethod.POST, basis + "/fassungen",
+                mitFaktor(Map.of("art", "flaeche", "objekt_id", w.g2().toString())));
+        assertThat(entwurf.status()).as(entwurf.text()).isEqualTo(200);
+        JsonNode antrag = entscheid(w, "ines", basis, 1, "beantragen", "Oktober 2026 als erster Maßstab", 200, null)
+                .body();
+        assertThat(antrag.get("pruefsumme").asText()).isEqualTo(entwurf.body().get("pruefsumme").asText());
+
+        // Am 05.01.2027 gilt eine andere Fläche: der Antrag ist eingefroren, also veraltet.
+        kennzahlen.uhrStellen(Clock.fixed(Instant.parse("2027-01-05T09:00:00Z"), ZoneOffset.UTC));
+        Antwort veraltet = entscheid(w, "jonas", basis, 1, "freigeben", null, 409, "entwurf_veraltet");
+        assertThat(veraltet.body().get("message").asText()).isEqualTo("Die Grundlage hat sich seit dem Antrag geändert – "
+                + "lehnen Sie den Antrag ab und bilden Sie den Entwurf neu.");
+        assertThat(veraltet.body().get("grund").asText()).isEqualTo("faktoren");
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/1", null).body().get("freigabe_status").asText())
+                .isEqualTo("beantragt");
+        entscheid(w, "jonas", basis, 1, "ablehnen", "Die Fläche der Halle 2 hat sich geändert", 200, null);
+
+        Map<String, Object> zwei = mitFaktor(Map.of("art", "flaeche", "objekt_id", w.g2().toString()));
+        zwei.put("anpassungsgruende", List.of("sonstiger"));
+        zwei.put("anpassung_wortlaut", "Anbau der Halle 2");
+        zwei.put("begruendung", "Oktober 2026 mit der Fläche nach dem Anbau");
+        Antwort entwurf2 = ruf(w, HttpMethod.POST, basis + "/fassungen", zwei);
+        assertThat(entwurf2.status()).as(entwurf2.text()).isEqualTo(200);
+        assertThat(entwurf2.body().at("/faktoren/0/wert").asText()).isEqualTo("3400");
+
+        // Eine neue Version vor dem Antrag: der Antrag prüft (409, Entwurf bleibt Entwurf).
+        monat(w, w.kz4(), "MS-20", "BZ-1", "kg", "2026-10-01", "90000", "312400", "endgueltig", List.of(), 2);
+        Antwort a = entscheid(w, "ines", basis, 2, "beantragen", null, 409, "entwurf_veraltet");
+        assertThat(a.body().get("grund").asText()).isEqualTo("grundlage");
+        assertThat(ruf(w, HttpMethod.GET, basis + "/fassungen/2", null).body().get("freigabe_status").asText())
+                .isEqualTo("entwurf");
+        Antwort neu = ruf(w, HttpMethod.POST, basis + "/fassungen", zwei);
+        assertThat(neu.status()).as(neu.text()).isEqualTo(200);
+        entscheid(w, "ines", basis, 2, "beantragen", null, 200, null);
+        JsonNode frei = entscheid(w, "jonas", basis, 2, "freigeben", null, 200, null).body();
+        assertThat(frei.get("freigabe_status").asText()).isEqualTo("freigegeben");
+        assertThat(frei.get("pruefsumme").asText()).isEqualTo(neu.body().get("pruefsumme").asText());
+        assertThat(root.queryForList("SELECT art FROM bezugsbasis_aenderung WHERE tenant_id = ? ORDER BY id",
+                String.class, w.mandant())).containsExactly("bezugsbasis_angelegt", "fassung_entworfen",
+                        "fassung_beantragt", "fassung_abgelehnt", "fassung_entworfen", "fassung_entworfen",
+                        "fassung_beantragt", "fassung_freigegeben");
+    }
+
     /** Die Flächen von G-2 (R5: 3 100 m² bis 31.12.2026, 3 400 m² ab 01.01.2027); liefert ST-1. */
     private static UUID flaechenG2(Welt w) {
         root.update("INSERT INTO flaeche_gueltigkeit (tenant_id, ort_id, m2, gueltig_ab, gueltig_bis) VALUES "
@@ -971,26 +1153,36 @@ class BezugsbasisApiTest {
 
     private static void monat(Welt w, UUID kennzahl, String messstelle, String bezug, String einheit, String erster,
             String zaehlerText, String nennerText, String zustand, List<String> kennzeichen) throws Exception {
+        monat(w, kennzahl, messstelle, bezug, einheit, erster, zaehlerText, nennerText, zustand, kennzeichen, 1);
+    }
+
+    /** Mit {@code version} > 1 eine neue Version derselben Periode (Nachlese 2: {@code entwurf_veraltet}). */
+    private static void monat(Welt w, UUID kennzahl, String messstelle, String bezug, String einheit, String erster,
+            String zaehlerText, String nennerText, String zustand, List<String> kennzeichen, int version)
+            throws Exception {
         LocalDate von = LocalDate.parse(erster);
         BigDecimal zaehler = new BigDecimal(zaehlerText);
         BigDecimal nenner = new BigDecimal(nennerText);
         boolean null0 = nenner.signum() == 0;
-        Timestamp am = Timestamp.from(von.plusMonths(1).atStartOfDay().toInstant(ZoneOffset.UTC).plusSeconds(7200));
+        Timestamp am = Timestamp.from(von.plusMonths(1).atStartOfDay().toInstant(ZoneOffset.UTC)
+                .plusSeconds(7200L * version));
         UUID fassung = root.queryForObject("SELECT id FROM kennzahl_fassung WHERE kennzahl_id = ? AND nummer = 1",
                 UUID.class, kennzahl);
         UUID wert = UUID.randomUUID();
         root.update("INSERT INTO kennzahl_wert (id, tenant_id, kennzahl_id, periode_art, periode_von, periode_bis, zeitzone, "
                 + "version, wert, zaehler, nenner, menge_zustand, kennzeichen, zustand, endgueltig_ab, grund, "
-                + "definition_fassung_id, berechnet_am) VALUES (?, ?, ?, 'monat', ?, ?, 'Europe/Berlin', ?, ?, ?, ?, "
-                + "?, ?::jsonb, ?, ?, ?, ?, ?)", wert, w.mandant(), kennzahl, Date.valueOf(von),
-                Date.valueOf(von.plusMonths(1).minusDays(1)), null0 ? null : 1,
+                + "definition_fassung_id, berechnet_am, anlass_art, anlass_kennung) VALUES (?, ?, ?, 'monat', ?, ?, "
+                + "'Europe/Berlin', ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)", wert, w.mandant(), kennzahl, Date.valueOf(von),
+                Date.valueOf(von.plusMonths(1).minusDays(1)), null0 ? null : version,
                 null0 ? null : zaehler.divide(nenner, 20, RoundingMode.HALF_UP), zaehler, nenner,
                 null0 ? "keine Werte" : "vollständig", MAPPER.writeValueAsString(kennzeichen), null0 ? null : zustand,
-                !null0 && "endgueltig".equals(zustand) ? am : null, null0 ? "nenner_null" : null, fassung, am);
+                !null0 && "endgueltig".equals(zustand) ? am : null, null0 ? "nenner_null" : null, fassung, am,
+                // kennzahl_wert_anlass_chk: eine Version ab 2 nennt ihren Anlass (hier eine Korrektur des Zählers).
+                version >= 2 ? "eingang" : null, version >= 2 ? "K-2026-0001" : null);
         root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
                 + "messstelle_id, wert, einheit, menge_zustand, version) VALUES (?, ?, ?, 0, 'zaehler', 'messstelle', "
                 + "?, (SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = ?), ?, 'kWh', "
-                + "'vollständig', 1)", w.mandant(), wert, kennzahl, messstelle, w.mandant(), messstelle, zaehler);
+                + "'vollständig', ?)", w.mandant(), wert, kennzahl, messstelle, w.mandant(), messstelle, zaehler, version);
         root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
                 + "bezugsgroesse_id, wert, einheit, menge_zustand, fassung) VALUES (?, ?, ?, 1, 'nenner', 'bezugsgroesse', "
                 + "?, (SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = ?), ?, ?, "
