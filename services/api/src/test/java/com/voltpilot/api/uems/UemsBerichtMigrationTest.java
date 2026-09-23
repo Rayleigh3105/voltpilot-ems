@@ -76,7 +76,8 @@ class UemsBerichtMigrationTest {
     private static final Path VORLAGEN = Path.of("..", "..", "docs", "contracts", "v2", "bericht-vorlagen.json");
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
     /** Migrationen, die auf den Berichts-Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser. */
-    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260915113000", "20260922251800");
+    private static final List<String> BAUEN_DARAUF_AUF =
+            List.of("20260915113000", "20260922251800", "20260923230000");
     private static final List<String> TABELLEN = List.of("bericht", "bericht_entwurf", "bericht_stand", "bericht_quelle",
             "bericht_revision_anstoss", "bericht_abruf", "bericht_aenderung", "bericht_kennung_seq");
 

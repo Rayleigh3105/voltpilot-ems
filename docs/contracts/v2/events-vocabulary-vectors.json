@@ -380,6 +380,30 @@
       {
         "code": "verteilung_rueckwirkend",
         "name": "Verteilung rückwirkend geändert"
+      },
+      {
+        "code": "einstufung_fassung",
+        "name": "Einstufungs-Fassung geändert"
+      },
+      {
+        "code": "kriterien_fassung",
+        "name": "Kriterien-Fassung geändert"
+      },
+      {
+        "code": "umfang_fassung",
+        "name": "Betrachtungsumfang geändert"
+      },
+      {
+        "code": "messbedarf_zustand",
+        "name": "Messbedarf geändert"
+      },
+      {
+        "code": "prozess_zuordnung_rueckwirkend",
+        "name": "Prozess-Zuordnung rückwirkend geändert"
+      },
+      {
+        "code": "messmittel_angabe",
+        "name": "Messmittel-Angaben geändert"
       }
     ],
     "bericht_format": [

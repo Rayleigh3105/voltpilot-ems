@@ -430,6 +430,11 @@ voltpilot:
     # UEMS AP-12 IP-5 (RW1): die Build-Kennung (Git-SHA) des Deployments für das
     # Regelwerk-Verzeichnis im Kopf jedes Berichts-Abzugs (BerichtRegelwerk). Ohne
     # sie nennt der Abzug Version und Build-Zeit aus build-info (pom.xml). Kein Flag.
+    # UEMS AP-16 IP-23: nur die Kaskaden- und Struktur-Naht der energetischen
+    # Bewertung. Aus lässt Routen und übrige Berichte unverändert; Bewertungs-
+    # Protokolle bekommen dann auch noch kein Wasserzeichen. Vorgabe AN.
+    bewertung:
+      enabled: ${VOLTPILOT_UEMS_BEWERTUNG_ENABLED:true}
     berichte:
       build: ${VOLTPILOT_BUILD:}
       # UEMS AP-12 IP-8: die Kaskaden-Naht der Berichte (BerichtKaskade). Eine
