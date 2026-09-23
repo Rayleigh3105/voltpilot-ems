@@ -1,12 +1,13 @@
 # Bericht: Abzug, Datenstand, Freigabe und Revision (UEMS AP-12)
 
-Stand 23.09.2026 · Vertrag 1.3 · Konzept `data/vp-uems-ap12-berichte` §4, §5.8, §7, §8 IP-1/IP-3/IP-6, Entscheide
+Stand 23.09.2026 · Vertrag 1.4 · Konzept `data/vp-uems-ap12-berichte` §4, §5.8, §7, §8 IP-1/IP-3/IP-6, Entscheide
 E1–E15 und W1–W11 vom 14.09.2026. **1.1 (AP-12 IP-6, additiv):** der Abzug des Unternehmens trägt `standorte`
 (`$defs/standort_abschnitt`) und `kostenstellen` (`$defs/kostenstelle`); Fälle, Prüfungen und Abzüge der Vektoren sind
 unverändert. **1.2 (additiv, A9):** Tagesverlauf, Richtungspaar und Kennzahl-Angaben. **1.3 (AP-16 IP-21, additiv, §3
 S2):** Energetische Bewertung. **Ein Stand für alle Dateien (AP-17 W10, 23.09.2026):** dieser Text, `bericht-vectors.json`,
 `bericht.schema.json`, `bericht-vorlagen.json` (mit ihren Kopien in API und Portal) und `BerichtRegelwerk.VERTRAEGE`
-nennen 1.3; vereinheitlicht wurde nur die Angabe, kein Inhalt. Ein Abzug nennt weiter die Fassung, nach der er gebildet
+nennen denselben Stand; W10 hat nur die Angabe auf 1.3 vereinheitlicht, keinen Inhalt. **1.4 (AP-17 IP-21a, additiv,
+S1/S2/W8):** die Vorlage `leistungsvergleich` (Fassung 1) und die Quellenart `bezugsbasis` (§3, §4). Ein Abzug nennt weiter die Fassung, nach der er gebildet
 wurde (A9, RW1).
 
 Die Abnahme des Captains: **„Ein freigegebener Bericht lässt sich trotz späterer Korrekturen und abgelaufener Rohdaten
@@ -18,8 +19,8 @@ die Revision an; Nr. 2 (16.11.2026) nennt 6 040. Nr. 1 ändert sich nie — auch
 | Datei | Rolle |
 |---|---|
 | [`bericht.schema.json`](./bericht.schema.json) | die Form der Vektor-Datei; unter `$defs` Abzug, Berichtsstand, Quelle, Anstoß, Vorlage |
-| [`bericht-vectors.json`](./bericht-vectors.json) | 16 Fälle B1–B16, 106 Prüfungen, Vokabulare, Kundensätze, `zwillinge`, `_abweichungen`, `_nicht_geprueft`, `abzuege` |
-| [`bericht-vorlagen.json`](./bericht-vorlagen.json) | vier Vorlagen, Fassung 1, feste Abschnitte (V2) |
+| [`bericht-vectors.json`](./bericht-vectors.json) | Fälle B1–B18 (B17 energetische Bewertung, B18 Leistungsvergleich), Vokabulare, Kundensätze, `zwillinge`, `_abweichungen`, `_nicht_geprueft`, `abzuege` |
+| [`bericht-vorlagen.json`](./bericht-vorlagen.json) | sechs Vorlagen, Fassung 1, feste Abschnitte (V2) |
 | [`ergebnis-zustand-vectors.json`](./ergebnis-zustand-vectors.json) Block `bericht_kennzeichen` (1.10) | Wortlaut und Stelle der Kennzeichen ([`ergebnis-zustand.md`](./ergebnis-zustand.md) §8) |
 | [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) Block `reserviert` | vier Berichts-Ereignisse — reserviert, nicht angelegt |
 | [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json) 1.4 | `korrekturen[]` K-2026-0007, `berichte[]` BR-2026-0001 mit Nr. 1 und Nr. 2 |
@@ -93,6 +94,10 @@ nie ein Verweis auf lebende Zeilen (E1). Ein zweites Anlegen derselben Vorlage �
   sowie `messmittel` (Angaben am Einbau der Messstellen des Einsatzes). Messstellen- und Bilanz-Eingänge der Rangliste
   behalten ihre vorhandenen Versionen. Ein freigegebener Stand schützt diese zitierten Objekte mit
   `409 berichts_belege`; eine neue Einstufungs-Fassung bleibt möglich.
+- **AP-17 S2 Leistungsvergleich (1.4).** Additiv kennt das Quellenverzeichnis `bezugsbasis`: die Bezugsbasis mit ihrer
+  Fassung, `bezug = vergleich` (sie ist der Vergleich des Berichts, wie ein Vergleichszeitraum in Q5). Kennzahl,
+  Messstelle und Bezugsgröße stehen wie bisher mit Version oder Fassung, jede Einflussgröße mit ihrer Fassung. Ein
+  Leistungsvergleich zitiert genau eine Kennzahl und genau eine Basis-Fassung (R8: KZ-0004, BB-0001 Fassung 2).
 
 Eine **Zeile des Quellenverzeichnisses** (`$defs/quelle`): Bericht, `nr` (leer = Entwurf), `ersetzt`, Objekt (Kennzeichen),
 Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen gleicher Gruppe zusammengefasst
@@ -100,12 +105,12 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
 
 ## 4. Zeitraum, Vergleich und Vorlagen (V1–V5, E9)
 
-- **V1** Zeiträume sind Kalendermonat, Kalenderjahr oder — für die energetische Bewertung — eine Datengrundlage aus
+- **V1** Zeiträume sind Kalendermonat, Kalenderjahr oder — für die energetische Bewertung und den Leistungsvergleich — eine Datengrundlage aus
   ganzen Kalendermonaten in der Zone der Geltung, halboffen (`von` = Mitternacht des ersten
   Tags, `bis` = Mitternacht nach dem letzten), Tage einschließlich. Monat: Vergleich `vormonat` und `vorjahresmonat`; Jahr:
   `vorjahr`. Regel `zeitraum`: `BezugsPeriode.spanneVon` + `TagRegeln.beginn` (TS: `spanneVon` + `mitternacht`), Name
   `KennzahlRegeln.periodeText`.
-- **V2** Fünf Vorlagen mit Fassungsnummer und festen Abschnitten ([`bericht-vorlagen.json`](./bericht-vorlagen.json)):
+- **V2** Sechs Vorlagen mit Fassungsnummer und festen Abschnitten ([`bericht-vorlagen.json`](./bericht-vorlagen.json)):
 
   | Vorlage | Geltung | Zeitraum | Vergleich | Abschnitte |
   |---|---|---|---|---|
@@ -114,8 +119,12 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
   | `monatsbericht_unternehmen` | Unternehmen | Monat | Vormonat, Vorjahresmonat | Kopf · Zusammenfassung · Standorte · Prozesse und Kostenstellen · Kennzahlen · Qualität · Quellenverzeichnis |
   | `jahresbericht_unternehmen` | Unternehmen | Jahr | Vorjahr | … dazu Monatswerte |
   | `energetische_bewertung` | Unternehmen | Datengrundlage | — | Umfang · Rangliste · Einstufungen · Messabdeckung · Messplanung · Messmittel · Qualität · Quellenverzeichnis |
+  | `leistungsvergleich` (1.4) | Unternehmen oder Standort | Monat, Jahr oder Datengrundlage | Bezugsbasis (Quelle) | Kopf · Kennzahl · Bezugsbasis · Vergleich je Periode · Urteil · Grenzen und Vorbehalte · Statische Faktoren · Quellenverzeichnis |
 
-  Regel `vorlage`; eine unbekannte ist `422 vorlage_unbekannt`.
+  Regel `vorlage`; eine unbekannte ist `422 vorlage_unbekannt`. Regel `vorlage_passt`: gilt die Vorlage für
+  Geltung × Zeitraum — dieselbe Frage stellt `bericht_vorlage_passt()` der Datenbank. Eine Vorlage nennt ihre Vorgabe in
+  `geltung_art`/`zeitraum_art`; gilt sie für mehr als ein Paar, stehen alle in `geltung_arten`/`zeitraum_arten` (1.4,
+  wahlfrei, die Vorgabe vorn) und `bericht_vorlage()` trägt je Paar eine Zeile.
 - **V3** Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts. Eine neue Vorlagen-Fassung
   ändert keinen Stand. Die Abwahl reist beim Anlegen als `kennzahlen_abgewaehlt` (Kennungen der Kennzahlen) und steht in
   `bericht_kennzahl_abwahl`, bevor der erste Entwurf entsteht.
@@ -124,6 +133,21 @@ Bezug, erster und letzter Tag **einschließlich**. In den Vektoren stehen Zeilen
 - **Vergleich (Q5, DA1).** Differenz = aktuell − Vergleich; Prozent = Differenz ÷ Vergleich × 100, gespeichert auf
   `regeln.prozent_rechen_nachkommastellen` (10) Stellen, angezeigt mit einer Nachkommastelle und Vorzeichen
   („+260 kWh“, „+4,3 %“, „−3,0 %“); Vergleich 0 hat keinen Prozentwert; ohne Vergleichswert „keine Werte“ und der Grund.
+
+**Leistungsvergleich (AP-17 S1–S3, E7 = A, W8).** Ein Bericht der Vorlage `leistungsvergleich` zeigt eine Kennzahl
+mit ihrer Bezugsbasis-Fassung: gemessen, Einflussgröße mit Wert, erwartet, Abweichung, Band und Urteil je Periode, die
+Grenzen und Vorbehalte, die statischen Faktoren und das Quellenverzeichnis; der Kopf trägt den Grenz-Satz. Es gibt
+**keinen neuen Zeitraum-Typ**: das Zeitraum-Paar ist die **Berichtsperiode** (der Zeitraum des Berichts) und die
+**Referenzperiode der zitierten Fassung** (ganze Monate, Regel `zeitraum` mit `datengrundlage`, B18: „November 2026 bis
+Oktober 2027“). Ein Urteil gibt es nur bereinigt gegen eine freigegebene Basis; die rohe Zahl trägt keins (U1, VG3). Der
+Stand ist Kopie mit Prüfsumme, Datenstand, Freigeber und Vorlagen-Fassung; Freigabe, Abweichung und Revision folgen
+§6–§8 unverändert. Kundensätze: `leistungsvergleich_stand` („Leistungsvergleich Spritzguss, Dezember 2027 · Stand Nr. 1
+vom 12.01.2028 · Bezugsbasis BB-0001, Fassung 2 · Prüfsumme 4e2d…“) und, solange kein Stand freigegeben ist,
+`leistungsvergleich_ohne_stand` („ungesichert — noch kein Stand“, S5). **Anlegbar erst mit dem Leser:** bis IP-21b den
+Abzug aus Kennzahl, Basis und Vergleich bildet, steht die Vorlage in `BerichtRegeln.OHNE_LESER` (TS `OHNE_LESER`) —
+`POST /berichte` antwortet `422 vorlage_unbekannt`, das Portal zeigt keine Karte. Offen für IP-21b: V4 (ein Bericht je
+Vorlage × Geltung × Zeitraum) zählt beim Leistungsvergleich je Kennzahl; die Abzug-Form (`$defs/abzug`) und PDF/CSV
+(IP-22) kommen mit dem Leser.
 
 Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld
 `wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern (`PUT …/wiedervorlage`).

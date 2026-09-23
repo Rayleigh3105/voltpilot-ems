@@ -225,7 +225,7 @@ class BerichtCsvTest {
         JsonNode vorlagen = EXAKT.readTree(Files.readString(V2.resolve("bericht-vorlagen.json")));
         List<String> mitZeilen = List.of(BerichtCsv.MESSSTELLEN, BerichtCsv.STANDORTE, BerichtCsv.KOSTENSTELLEN,
                 BerichtCsv.KENNZAHLEN);
-        assertThat(vorlagen.path("vorlagen")).hasSize(5);
+        assertThat(vorlagen.path("vorlagen")).hasSize(6);
         for (JsonNode v : vorlagen.path("vorlagen")) {
             List<String> folge = new ArrayList<>();
             v.path("abschnitte").forEach(a -> {
@@ -233,6 +233,9 @@ class BerichtCsvTest {
                     folge.add(a.path("schluessel").asText());
                 }
             });
+            if (BerichtRegeln.OHNE_LESER.contains(v.path("schluessel").asText())) {
+                continue; // AP-17: die Zeilen des Leistungsvergleichs kommen mit seinem Abzug (IP-21b/IP-22)
+            }
             if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.path("schluessel").asText())) {
                 List<String> alle = new ArrayList<>();
                 v.path("abschnitte").forEach(a -> alle.add(a.path("schluessel").asText()));

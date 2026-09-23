@@ -27,7 +27,7 @@ Bestand-Exports: `uems-lesepfad-verlauf-herkunft-rueckfall.md`.
 - **Die Richtung einer Kennzahl ist ein Kennzeichen** („Untergrenze …“, „Obergrenze …“, „Richtung unbestimmt …“) in der Zelle
   `kennzeichen` — keine 14. Spalte (Vertrag und Vektoren: 13).
 - **Abschnitte** entscheidet die Geltung im Abzug, nicht die heutige Vorlagen-Datei; `dieAbschnitteMitZeilenFolgenDenVorlagen`
-  pinnt die Folge gegen alle vier Vorlagen.
+  pinnt die Folge gegen die Vorlagen (der Leistungsvergleich folgt mit IP-22).
 - **Zwei Abrufe sind byte-gleich** bei derselben Person in derselben Sekunde: `erzeugt_am`, `erzeugt_von` und `teilansicht`
   beschreiben den Abruf selbst (DA3). `jetzt` ist sekundengenau.
 - **Kein Abruf ohne Spur:** erst die Datei bauen, dann `bericht_abruf` und die Meldung in EINER Transaktion — scheitert das,

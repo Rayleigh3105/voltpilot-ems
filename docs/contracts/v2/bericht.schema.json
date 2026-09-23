@@ -8,7 +8,7 @@
   "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "vorlagen_datei", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "fehler_status", "regeln", "saetze", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "abzuege", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-    "schema_version": { "type": "string", "const": "1.3", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Unternehmensabschnitte; 1.2: Tagesverlauf, Richtungspaar und Kennzahl-Angaben; 1.3: Energetische Bewertung). Alte Abzüge bleiben gültig: alles Neue ist wahlfrei, ihre Prüfsummen rühren sich nicht." },
+    "schema_version": { "type": "string", "const": "1.4", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Unternehmensabschnitte; 1.2: Tagesverlauf, Richtungspaar und Kennzahl-Angaben; 1.3: Energetische Bewertung; 1.4: Vorlage Leistungsvergleich und Quellenart bezugsbasis). Alte Abzüge bleiben gültig: alles Neue ist wahlfrei, ihre Prüfsummen rühren sich nicht." },
     "$schema_datei": { "type": "string", "const": "./bericht.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt; die Regeln nehmen die Zone der Geltung." },
@@ -107,7 +107,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "name", "familie", "abnahme", "titel", "why", "schritte", "annahmen", "pruefungen"],
       "properties": {
-        "id": { "type": "string", "pattern": "^B([1-9]|1[0-7])$" },
+        "id": { "type": "string", "pattern": "^B([1-9]|1[0-8])$" },
         "name": { "type": "string", "pattern": "^b[0-9]+-[a-z0-9-]+$" },
         "familie": { "type": "string", "enum": ["plan_abnahme", "revision", "betroffenheit", "freigabe", "datenstand", "vergleich", "struktur", "belegschutz", "rechte", "ausgabe", "jahr", "ablauf"] },
         "abnahme": { "type": ["string", "null"] },
@@ -122,7 +122,7 @@
     "pruefung": {
       "type": "object", "additionalProperties": false, "required": ["regel", "name", "eingang", "ergebnis"],
       "properties": {
-        "regel": { "type": "string", "enum": ["vorlage", "zeitraum", "vergleich_grund", "vergleich", "freigabe", "datenstand", "betroffenheit", "struktur", "abweichungen", "rechte", "kanonisch", "csv_kopf", "csv_zeile", "kopf", "kennzeichen", "anlass", "satz", "anzeige"] },
+        "regel": { "type": "string", "enum": ["vorlage", "vorlage_passt", "zeitraum", "vergleich_grund", "vergleich", "freigabe", "datenstand", "betroffenheit", "struktur", "abweichungen", "rechte", "kanonisch", "csv_kopf", "csv_zeile", "kopf", "kennzeichen", "anlass", "satz", "anzeige"] },
         "name": { "type": "string", "minLength": 1 },
         "eingang": { "type": "object", "description": "Die Eingabe der Regel; ihre Form sagt bericht.md je Regel. Quellen stehen als Gruppen je Bericht, Stand, Bezug und Tagen mit `objekte` — die Zwillinge entfalten sie zu einer Zeile je Objekt ($defs/quelle)." },
         "ergebnis": { "type": "object" }
@@ -442,11 +442,13 @@
       "description": "Eine Berichtsvorlage (V2): VoltPilot-Katalog, Fassungsnummer, feste Abschnitte.",
       "required": ["schluessel", "fassung", "name", "geltung_art", "zeitraum_art", "vergleiche", "abschnitte"],
       "properties": {
-        "schluessel": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung"] },
+        "schluessel": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich"] },
         "fassung": { "type": "integer", "minimum": 1 },
         "name": { "type": "string", "minLength": 1 },
-        "geltung_art": { "type": "string", "enum": ["standort", "unternehmen"] },
-        "zeitraum_art": { "type": "string", "enum": ["monat", "jahr", "datengrundlage"] },
+        "geltung_art": { "type": "string", "enum": ["standort", "unternehmen"], "description": "Die Geltung der Vorlage; mit `geltung_arten` ihre Vorgabe (das erste Wort dort)." },
+        "zeitraum_art": { "type": "string", "enum": ["monat", "jahr", "datengrundlage"], "description": "Der Zeitraum der Vorlage; mit `zeitraum_arten` seine Vorgabe (das erste Wort dort)." },
+        "geltung_arten": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "type": "string", "enum": ["standort", "unternehmen"] }, "description": "1.4, wahlfrei: alle Geltungen, für die die Vorlage gilt (AP-17 S1, Leistungsvergleich). Fehlt es, gilt nur `geltung_art`." },
+        "zeitraum_arten": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "type": "string", "enum": ["monat", "jahr", "datengrundlage"] }, "description": "1.4, wahlfrei: alle Zeiträume der Vorlage (AP-17 S1/W8) — keine neue `zeitraum_art`. Fehlt es, gilt nur `zeitraum_art`." },
         "vergleiche": { "type": "array", "items": { "type": "string", "enum": ["vormonat", "vorjahresmonat", "vorjahr"] } },
         "abschnitte": {
           "type": "array", "minItems": 1,
@@ -467,10 +469,10 @@
       "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "vorlagen"],
       "properties": {
         "_comment": { "type": "array", "items": { "type": "string" } },
-        "schema_version": { "type": "string", "const": "1.3", "description": "Der Vertragsstand des Berichts, derselbe wie oben (AP-17 W10: vorher 1.0)." },
+        "schema_version": { "type": "string", "const": "1.4", "description": "Der Vertragsstand des Berichts, derselbe wie oben (AP-17 W10: vorher 1.0; 1.4 mit AP-17 IP-21a)." },
         "$schema_datei": { "type": "string", "const": "./bericht.schema.json#/$defs/vorlagen_datei" },
         "herkunft": { "type": "string", "minLength": 1 },
-        "vorlagen": { "type": "array", "minItems": 5, "items": { "$ref": "#/$defs/vorlage" } }
+        "vorlagen": { "type": "array", "minItems": 6, "items": { "$ref": "#/$defs/vorlage" } }
       }
     }
   }

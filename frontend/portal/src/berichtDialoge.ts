@@ -159,7 +159,8 @@ export interface VorlageKarte {
  */
 export const vorlageKarten = (rechte: BerichtRechte | null, standortIds: readonly string[]): VorlageKarte[] =>
   // AP-16 IP-25: die energetische Bewertung erscheint nur mit `bewertung.abrufen` (ihre eigene Kennung, §6.1).
-  VORLAGEN.filter((v) =>
+  // AP-17 IP-21a: eine Vorlage ohne Leser (Leistungsvergleich bis IP-21b) bekommt keine Karte.
+  VORLAGEN.filter((v) => !B.OHNE_LESER.includes(v.schluessel)).filter((v) =>
     v.geltung_art === 'unternehmen'
       ? darf(rechte, 'anlegen', 'unternehmen', null, v.schluessel)
       : standortIds.some((id) => darf(rechte, 'anlegen', 'standort', id)),

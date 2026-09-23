@@ -192,7 +192,7 @@ class BerichtPdfTest {
     @Test
     void dieAbschnitteFolgenDenVorlagen() throws Exception {
         JsonNode vorlagen = EXAKT.readTree(Files.readString(V2.resolve("bericht-vorlagen.json"))).path("vorlagen");
-        assertThat(vorlagen).hasSize(5);
+        assertThat(vorlagen).hasSize(6);
         for (JsonNode v : vorlagen) {
             String schluessel = v.path("schluessel").asText();
             assertThat(v.path("fassung").asInt()).isEqualTo(1);
@@ -200,6 +200,9 @@ class BerichtPdfTest {
                 assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
             }
             assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
+            if (BerichtRegeln.OHNE_LESER.contains(schluessel)) {
+                continue; // AP-17: das Layout des Leistungsvergleichs kommt mit seinem Abzug (IP-21b/IP-22)
+            }
             Map<String, String> soll = new LinkedHashMap<>();
             v.path("abschnitte").forEach(a -> soll.put(a.path("schluessel").asText(), a.path("titel").asText()));
             Map<String, String> ist = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(schluessel)

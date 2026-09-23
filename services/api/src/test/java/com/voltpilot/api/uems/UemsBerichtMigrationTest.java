@@ -77,7 +77,7 @@ class UemsBerichtMigrationTest {
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
     /** Migrationen, die auf den Berichts-Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser. */
     private static final List<String> BAUEN_DARAUF_AUF =
-            List.of("20260915113000", "20260922251800", "20260923230000");
+            List.of("20260915113000", "20260922251800", "20260923230000", "20260924071945");
     private static final List<String> TABELLEN = List.of("bericht", "bericht_entwurf", "bericht_stand", "bericht_quelle",
             "bericht_revision_anstoss", "bericht_abruf", "bericht_aenderung", "bericht_kennung_seq");
 
@@ -368,10 +368,18 @@ class UemsBerichtMigrationTest {
         List<String> schluessel = new ArrayList<>();
         for (JsonNode v : new ObjectMapper().readTree(VORLAGEN.toFile()).path("vorlagen")) {
             schluessel.add(v.path("schluessel").asText());
-            ausDerDatei.add("('" + v.path("schluessel").asText() + "', '" + v.path("geltung_art").asText() + "', '"
-                    + v.path("zeitraum_art").asText() + "')");
+            // 1.4 (AP-17 IP-21a): `geltung_arten` × `zeitraum_arten`, sonst das eine Paar der Vorlage.
+            JsonNode geltungen = v.has("geltung_arten") ? v.path("geltung_arten")
+                    : new ObjectMapper().createArrayNode().add(v.path("geltung_art").asText());
+            JsonNode zeitraeume = v.has("zeitraum_arten") ? v.path("zeitraum_arten")
+                    : new ObjectMapper().createArrayNode().add(v.path("zeitraum_art").asText());
+            for (JsonNode g : geltungen) {
+                for (JsonNode z : zeitraeume) {
+                    ausDerDatei.add("('" + v.path("schluessel").asText() + "', '" + g.asText() + "', '" + z.asText() + "')");
+                }
+            }
         }
-        assertThat(ausDerDatei).hasSize(5);
+        assertThat(ausDerDatei).hasSize(11);
         assertThat(root.queryForList("SELECT format('(%L, %L, %L)', v.vorlage, v.geltung_art, v.zeitraum_art) "
                 + "FROM bericht_vorlage() WITH ORDINALITY AS v(vorlage, geltung_art, zeitraum_art, stelle) ORDER BY v.stelle",
                 String.class)).as("bericht_vorlage() weicht von %s ab", VORLAGEN).containsExactlyElementsOf(ausDerDatei);

@@ -1,11 +1,12 @@
 {
   "_comment": [
-    "Der Katalog der Berichtsvorlagen (UEMS AP-12 IP-1, AP-16 IP-21): fünf Vorlagen mit Fassungsnummer und festen Abschnitten.",
+    "Der Katalog der Berichtsvorlagen (UEMS AP-12 IP-1, AP-16 IP-21, AP-17 IP-21a): sechs Vorlagen mit Fassungsnummer und festen Abschnitten.",
     "Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts (V3). Eine neue Fassung ändert keinen Berichtsstand.",
     "IP-5 legt eine byte-gleiche Kopie in die API-Ressourcen und ins Portal; BerichtVectorsTest und uemsBericht.test.ts prüfen diese Datei gegen BerichtRegeln.VORLAGEN.",
-    "`schema_version` ist der Vertragsstand des Berichts (bericht.md): AP-17 W10 hat ihn am 23.09.2026 von 1.0 auf 1.3 vereinheitlicht — nur die Angabe, keine Vorlage und keine Fassung hat sich geändert."
+    "`schema_version` ist der Vertragsstand des Berichts (bericht.md): AP-17 W10 hat ihn am 23.09.2026 von 1.0 auf 1.3 vereinheitlicht — nur die Angabe, keine Vorlage und keine Fassung hat sich geändert.",
+    "1.4 (AP-17 IP-21a, S1/S2/W8): die Vorlage `leistungsvergleich` (Fassung 1). Sie gilt für Unternehmen oder Standort und für Monat, Jahr oder Datengrundlage (`geltung_arten`, `zeitraum_arten`; `geltung_art`/`zeitraum_art` nennen die Vorgabe). Ihr Vergleich ist die Bezugsbasis als Quelle, nicht Vormonat oder Vorjahr — darum `vergleiche` leer. Anlegbar erst mit ihrem Leser (IP-21b)."
   ],
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "$schema_datei": "./bericht.schema.json#/$defs/vorlagen_datei",
   "herkunft": "UEMS AP-12 §4.5 (V1–V5), E9 vom 14.09.2026",
   "vorlagen": [
@@ -283,6 +284,41 @@
         {"schluessel": "messplanung", "titel": "Messplanung", "inhalt": ["Messbedarf", "Zustand", "Frist", "Messstelle"]},
         {"schluessel": "messmittel", "titel": "Messmittel", "inhalt": ["Einbau", "Genauigkeitsklasse", "Prüfungsart", "Prüfung", "Beleg", "Wandler-Fassung"]},
         {"schluessel": "qualitaet", "titel": "Qualität", "inhalt": ["Datenlage", "Ersatzwerte", "Messabdeckung", "Vorläufigkeit"]},
+        {"schluessel": "quellenverzeichnis", "titel": "Quellenverzeichnis", "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]}
+      ]
+    },
+    {
+      "schluessel": "leistungsvergleich",
+      "fassung": 1,
+      "name": "Leistungsvergleich",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "monat",
+      "geltung_arten": ["unternehmen", "standort"],
+      "zeitraum_arten": ["monat", "jahr", "datengrundlage"],
+      "vergleiche": [],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Geltung mit Name zum Datenstand",
+            "Zeitraum mit Zeitzone",
+            "Referenzperiode der Bezugsbasis",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis",
+            "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden."
+          ]
+        },
+        {"schluessel": "kennzahl", "titel": "Kennzahl", "inhalt": ["Kennzeichen", "Name zum Datenstand", "Wert mit Version", "Zustand", "Fassung der Berechnung"]},
+        {"schluessel": "bezugsbasis", "titel": "Bezugsbasis", "inhalt": ["Kennzeichen", "Fassung", "Methode", "Referenzperiode", "Einflussgrößen mit Fassung", "Streuung", "Toleranz", "gilt seit"]},
+        {"schluessel": "vergleich_je_periode", "titel": "Vergleich je Periode", "inhalt": ["Periode", "gemessen mit Version", "Einflussgröße mit Wert", "erwartet", "Abweichung", "Band", "Kennzeichen"]},
+        {"schluessel": "urteil", "titel": "Urteil", "inhalt": ["besser", "schlechter", "im Rahmen", "nicht bewertbar mit Grund", "Bedingung", "Bezugsbasis mit Fassung"]},
+        {"schluessel": "grenzen_und_vorbehalte", "titel": "Grenzen und Vorbehalte", "inhalt": ["vorläufige Bezugsbasis", "außerhalb der Spannweite", "Temperatur bezogen", "vorläufige Werte", "keine Aussage zur Ursache"]},
+        {"schluessel": "statische_faktoren", "titel": "Statische Faktoren", "inhalt": ["statischer Faktor", "Wert zur Fassung", "Änderung seit der Fassung"]},
         {"schluessel": "quellenverzeichnis", "titel": "Quellenverzeichnis", "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]}
       ]
     }

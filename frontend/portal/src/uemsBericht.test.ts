@@ -98,6 +98,7 @@ const pruefe = (regel: string, e: Json): Json => {
         ? { geltung_art: null, zeitraum_art: null, vergleiche: null, abschnitte: null, fehler: 'vorlage_unbekannt', status: B.FEHLER_STATUS.vorlage_unbekannt, kundensatz: B.SAETZE.vorlage_unbekannt }
         : { geltung_art: v.geltung_art, zeitraum_art: v.zeitraum_art, vergleiche: v.vergleiche, abschnitte: v.abschnitte, fehler: null, status: null, kundensatz: null };
     }
+    case 'vorlage_passt': return { passt: B.vorlagePasst(e.vorlage, e.geltung_art, e.zeitraum_art) };
     case 'zeitraum': return B.zeitraum(e.art, e.schluessel, e.zone);
     case 'vergleich_grund': return { grund: B.vergleichGrund(e) };
     case 'vergleich': return B.vergleich(e);
@@ -178,8 +179,8 @@ describe('Bericht-Vertrag: Form der Vektor-Datei', () => {
     expect(existsSync(resolve(process.cwd(), '../../services/api/src/main/java/com/voltpilot/api/uems/BerichtRegeln.java'))).toBe(true);
   });
 
-  it('B1 … B17 in ihrer Reihenfolge; die Plan-Abnahme hat B1 und B16 mit derselben Prüfsumme', () => {
-    expect((vektoren.cases as Json[]).map((c) => c.id)).toEqual(Array.from({ length: 17 }, (_, i) => `B${i + 1}`));
+  it('B1 … B18 in ihrer Reihenfolge; die Plan-Abnahme hat B1 und B16 mit derselben Prüfsumme', () => {
+    expect((vektoren.cases as Json[]).map((c) => c.id)).toEqual(Array.from({ length: 18 }, (_, i) => `B${i + 1}`));
     expect((vektoren.cases as Json[]).filter((c) => c.abnahme !== null).map((c) => [c.id, c.abnahme])).toEqual([['B1', 'captain'], ['B16', 'captain']]);
     const summe = (i: number): string => (vektoren.cases[i].pruefungen as Json[]).find((p) => p.regel === 'kanonisch').ergebnis.pruefsumme;
     expect(summe(15)).toBe(summe(0));
@@ -209,8 +210,11 @@ describe('Bericht-Vertrag: Vokabulare, Sätze, Vorlagen und Kennzeichen sind die
     const datei = lies('bericht-vorlagen.json');
     expect((datei.vorlagen as Json[]).map((v) => ({
       schluessel: v.schluessel, fassung: v.fassung, geltung_art: v.geltung_art, zeitraum_art: v.zeitraum_art,
-      vergleiche: v.vergleiche, abschnitte: (v.abschnitte as Json[]).map((a) => a.schluessel),
+      geltung_arten: v.geltung_arten ?? [v.geltung_art], zeitraum_arten: v.zeitraum_arten ?? [v.zeitraum_art], vergleiche: v.vergleiche, abschnitte: (v.abschnitte as Json[]).map((a) => a.schluessel),
     }))).toEqual(B.VORLAGEN);
+    // AP-17 IP-21a: der Leistungsvergleich steht im Katalog, anlegbar erst mit seinem Leser (IP-21b).
+    expect(B.OHNE_LESER).toEqual([B.LEISTUNGSVERGLEICH]);
+    expect(datei.schema_version).toBe(vektoren.schema_version);
   });
 
   it('die Kennzeichen stehen im Ergebnis-Zustand 1.10 — Wortlaut und Stelle; jedes Beispiel ist sein eigenes Muster', () => {

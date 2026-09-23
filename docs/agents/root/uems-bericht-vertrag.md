@@ -19,6 +19,22 @@ IP-4, Abzug IP-5/IP-6, Routen IP-7, Naht IP-8, Läufer IP-9, CSV/PDF IP-10/IP-11
 (cd frontend/portal && npx vitest run src/uemsBericht.test.ts src/uemsReferenzunternehmen.test.ts src/copy.test.ts)
 ```
 
+## Vertrag 1.4: Vorlage Leistungsvergleich (AP-17 IP-21a)
+
+Vorlage `leistungsvergleich` (Fassung 1, B18) und Quellenart `bezugsbasis` (`bezug = vergleich`) in drei byte-gleichen
+Vorlagen-Kopien, Vektoren, Schema, `BerichtRegeln`/`uemsBericht.ts`, `BerichtRegelwerk.VERTRAEGE` und
+`V20260924071945` (`bericht_vokabular()` + `bericht_vorlage()` als Vereinigung). Den Leser baut IP-21b.
+
+- **Eine Vorlage, sechs Paare.** `geltung_art`/`zeitraum_art` bleiben die Vorgabe; `geltung_arten` × `zeitraum_arten`
+  (wahlfrei, Vorgabe vorn) sind alle Paare. `bericht_vorlage()` trägt je Paar eine Zeile; `UemsBerichtMigrationTest`
+  entfaltet die Datei genauso (11 Zeilen). Wer `vorlage.geltungArt()` liest, bekommt beim Leistungsvergleich nur die
+  Vorgabe. IP-21b muss die Geltung aus der Anfrage nehmen und mit `vorlagePasst` prüfen.
+- **Im Katalog, aber nicht anlegbar:** `BerichtRegeln.OHNE_LESER` (TS `OHNE_LESER`) lässt `POST /berichte` mit
+  `422 vorlage_unbekannt` antworten und blendet die Karte in `vorlageKarten` aus. IP-21b nimmt den Eintrag heraus.
+  `BerichtPdfTest`/`BerichtCsvTest` überspringen die Vorlage bis IP-22.
+- **Vertragsstand an einer Stelle prüfen:** `BerichtVectorsTest` hält `schema_version` der Vorlagen-Datei =
+  Vektoren = `VERTRAEGE.get("bericht")`. Wer 1.5 anlegt, ändert alle drei zusammen.
+
 ## Die Fallen
 
 - **Die kanonische Form ist Vertrag, Byte für Byte.** Schlüssel nach UTF-16-Codeeinheiten, Zeichenketten wie

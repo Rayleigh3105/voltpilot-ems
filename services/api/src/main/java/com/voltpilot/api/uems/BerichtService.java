@@ -348,7 +348,8 @@ public class BerichtService {
         UUID tenant = kundenbereich();
         Instant jetzt = jetzt();
         BerichtRegeln.Vorlage v = BerichtRegeln.vorlage(vorlageSchluessel);
-        if (v == null) {
+        // AP-17 IP-21a: eine Vorlage ohne Leser (Leistungsvergleich bis IP-21b) ist im Katalog, aber nicht anlegbar.
+        if (v == null || BerichtRegeln.OHNE_LESER.contains(v.schluessel())) {
             throw BerichtAbgelehnt.regel(Ablehnung.VORLAGE_UNBEKANNT, BerichtRegeln.SAETZE.get(BerichtRegeln.VORLAGE_UNBEKANNT),
                     Map.of("feld", "vorlage"));
         }

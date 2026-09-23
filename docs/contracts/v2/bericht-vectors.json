@@ -3,7 +3,7 @@
     "Geteilte Vektoren des BERICHT-VERTRAGS (UEMS AP-12 IP-1, Entscheide E1–E15 und W1–W11 vom 14.09.2026) — Prosa in bericht.md.",
     "Ein Bericht ist ein EIGENES Objekt (Vorlage × Geltung × Zeitraum) mit genau einem gespeicherten Entwurf und null bis n freigegebenen",
     "Berichtsständen. Ein Berichtsstand ist ein ABZUG: der Inhalt als kanonischer Text mit SHA-256 — nie ein Verweis auf lebende Zeilen.",
-    "Die Fälle B1–B16 kommen aus dem Referenzfallkatalog des Konzepts (referenzfaelle.json); B17 ergänzt AP-16 IP-21.",
+    "Die Fälle B1–B16 kommen aus dem Referenzfallkatalog des Konzepts (referenzfaelle.json); B17 ergänzt AP-16 IP-21, B18 AP-17 IP-21a (Vorlage Leistungsvergleich, Vertrag 1.4).",
     "Jede Zahl ist dort und beim Erzeugen dieser Datei nachgerechnet. Zwei Zwillinge prüfen JEDE Prüfung: Java services/api .../uems/BerichtVectorsTest (BerichtRegeln) und",
     "TypeScript frontend/portal/src/uemsBericht.test.ts (uemsBericht.ts).",
     "Was es schon gibt, wird AUFGERUFEN: Perioden BezugsPeriode.spanneVon, Frist TagRegeln.endgueltigAb, Uhrzeit ErgebnisZustand.uhr,",
@@ -11,7 +11,7 @@
     "Recht RechteAbleitung.darf, die Sprache der Naht BerichteNaht.Bericht und KorrekturKaskade.Betroffen.",
     "Beträge sind Dezimaltext; Zeitpunkte ISO-8601 mit Offset; Tage einschließlich. null heißt „keine Werte“, nie 0."
   ],
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "$schema_datei": "./bericht.schema.json",
   "herkunft": "UEMS AP-12 §4 (A, Q, V, D, F, B, R, EW, RW, DA, G, S), §5.8 (Kundensätze), §7 (B1–B16) — Entscheide E1–E15 und W1–W11 vom 14.09.2026; Bau-Paket IP-1/IP-3",
   "zeitzone": "Europe/Berlin",
@@ -24,23 +24,23 @@
   },
   "regeln_kurz": [
     "Ein Bericht ist ein EIGENES Objekt (Vorlage × Geltung × Zeitraum, Kennung BR-<Jahr>-<Nr.>) mit genau einem gespeicherten Entwurf und null bis n freigegebenen Berichtsständen (E1, E8); ein Berichtsstand ist ein ABZUG: der vollständige Inhalt des Berichts als Text mit Prüfsumme, je Zahl mit Zustand, Abdeckung, Kennzeichen, Fassung (vorläufig/endgültig), Endgültigkeit, Version, Berechnungszeit, Formel-/Definitions-Fassung, Herkunft, Namen und Orten zum Datenstand — nichts wird nach der Freigabe aus lebenden Zeilen gelesen (E1, E2).",
-    "Quellen sind Objekte der UEMS-Messstellen- und Bewertungswelt: Messstellen, Kostenstellen-Energie, Bezugsgrößen, Kennzahlen sowie Umfang, Energieeinsatz, Messbedarf und Messmittel; Erlöse und Übersicht aus `telemetry_rollup_15m` sind keine Berichtsquelle.",
+    "Quellen sind Objekte der UEMS-Messstellen- und Bewertungswelt: Messstellen, Kostenstellen-Energie, Bezugsgrößen, Kennzahlen sowie Umfang, Energieeinsatz, Messbedarf und Messmittel, ab 1.4 die Bezugsbasis mit Fassung (`bezug = vergleich`); Erlöse und Übersicht aus `telemetry_rollup_15m` sind keine Berichtsquelle.",
     "Datenstand = Zeitpunkt der Bildung des Abzugs (D1); alle einbezogenen Versionen/Fassungen sind älter (D2); die Freigabe liegt danach und setzt einen aktuellen Entwurf voraus (D3, D4); Freigabe nur, wenn der Zeitraum zu Ende und jeder Wert endgültig ist (E5); eine Person mit Recht, Zeitpunkt, eingefrorene Darstellung — kein Vier-Augen im ersten Ausbau.",
     "Betroffen = Zeitraum × Quellenverzeichnis: `betroffene` matcht `Betroffen.reihen`/`messstellen`/`bezugsgroessen` und die Tage `ersterTag … letzterTag` gegen `bericht_quelle` (unmittelbare und mittelbare Quellen, Vergleichszeiträume als eigene Einträge) (E6).",
     "Zwei Auslöser-Pfade in dieselbe Naht: (1) die Korrektur-Kaskade (Korrektur/Ersatzwert freigegeben oder zurückgenommen, Bezugsgrößen-Fassung ≥ 2, Kennzahl-Fassung rückwirkend — AP-08/AP-11), (2) der Strukturänderungs-Läufer für rückwirkende Zuordnungen (Ort, Anlage-Umzug, Fläche, Verteilung) aus den Änderungsprotokollen; Umbenennungen und Zuordnungen ab einem künftigen Tag sind kein Anstoß (E6).",
     "Ein freigegebener Berichtsstand wird NIE geändert (PR 741); er bekommt einen Anstoß (Anlass, Zeit, Ereignis); ein neuer Berichtsstand (Revision) entsteht nur durch die Freigabe einer Person; der alte Stand bleibt lesbar mit „ersetzt durch Nr. n“ (E7).",
-    "Vorlagen sind ein VoltPilot-Katalog mit Fassungsnummer: Monatsbericht/Jahresbericht × Standort/Unternehmen mit festen Abschnitten (Kopf, Zusammenfassung, Verbrauch je Messstelle mit Vergleich, Kennzahlen, Qualität, Quellenverzeichnis); der Kunde wählt Geltung und Zeitraum (E9); kein freier Berichtsdesigner, kein Versand.",
+    "Vorlagen sind ein VoltPilot-Katalog mit Fassungsnummer: Monatsbericht/Jahresbericht × Standort/Unternehmen mit festen Abschnitten (Kopf, Zusammenfassung, Verbrauch je Messstelle mit Vergleich, Kennzahlen, Qualität, Quellenverzeichnis); der Kunde wählt Geltung und Zeitraum (E9); kein freier Berichtsdesigner, kein Versand. Der Leistungsvergleich (1.4) gilt für Unternehmen oder Standort und für Monat, Jahr oder Datengrundlage (Regel `vorlage_passt`).",
     "Darstellung eingefroren je Stand: Standort-Zone, de-DE, Rundung nach AP-08 E11, Sommerzeit nach AP-08 E10; PDF und Berichts-CSV in Kundenform mit Kopfblock; der Bestand-Geräte-CSV bleibt Maschinenform und bekommt Kopfzeilen (E11).",
     "Rechte: die fünf Matrix-Kennungen werden durchgesetzt (`RechteAbleitung.darf`, Muster KorrekturRechte); Unterstützer nie; fremder Standort 404; Teilansicht-Kopfzeile nach R-A4 (E12).",
     "Belegschutz: `bericht_stand` append-only ohne Frist; harte Löschwege (Komponente, Anlage, Purge) lehnen mit `berichts_belege` ab, wenn ein Stand die Quelle zitiert; Beenden/Archivieren bleiben erlaubt; jeder Abruf einer Ausgabe wird protokolliert (E13)."
   ],
   "vokabulare": {
     "bericht_stand": ["entwurf", "freigegeben"],
-    "vorlage": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung"],
+    "vorlage": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich"],
     "geltung_art": ["standort", "unternehmen"],
     "zeitraum_art": ["monat", "jahr", "datengrundlage"],
     "vergleich_art": ["vormonat", "vorjahresmonat", "vorjahr"],
-    "quelle_art": ["messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang", "energieeinsatz", "messbedarf", "messmittel"],
+    "quelle_art": ["messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang", "energieeinsatz", "messbedarf", "messmittel", "bezugsbasis"],
     "quelle_bezug": ["unmittelbar", "mittelbar", "vergleich"],
     "anstoss_art": [
       "korrektur_freigegeben",
@@ -224,11 +224,14 @@
     "ueber_kennzahl": "{anlass} (über die Kennzahl)",
     "csv_geltung_standort": "Standort {kennzeichen} {name}",
     "csv_geltung_unternehmen": "Unternehmen {kennzeichen} {name}",
-    "csv_zeitraum": "{schluessel} ({erster}–{letzter})"
+    "csv_zeitraum": "{schluessel} ({erster}–{letzter})",
+    "leistungsvergleich_stand": "Leistungsvergleich {name}, {zeitraum} · Stand Nr. {nr} vom {datum} · Bezugsbasis {bezugsbasis}, Fassung {fassung} · Prüfsumme {pruefsumme}…",
+    "leistungsvergleich_ohne_stand": "ungesichert — noch kein Stand"
   },
   "verbotene_woerter": ["Version des Berichts", "Ausgabe", "Snapshot", "Report", "Freigabe zurücknehmen"],
   "zwillinge": {
     "vorlage": ["java", "ts"],
+    "vorlage_passt": ["java", "ts"],
     "zeitraum": ["java", "ts"],
     "vergleich_grund": ["java", "ts"],
     "freigabe": ["java", "ts"],
@@ -5470,6 +5473,106 @@
             "bis": "2026-11-01T00:00:00+01:00",
             "freigabe_ab": "2026-11-08T00:00:00+01:00",
             "bezeichnung": "November 2025 bis Oktober 2026",
+            "vergleiche": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "B18",
+      "name": "b18-leistungsvergleich",
+      "familie": "plan_abnahme",
+      "abnahme": null,
+      "titel": "Der Leistungsvergleich ist eine Berichtsvorlage: Unternehmen oder Standort, Monat, Jahr oder Datengrundlage, Vergleich gegen die Bezugsbasis",
+      "why": "AP-17 S1/S2/W8 (E7 = A): der Stand ist der Nachweis des Vergleichs; kein neuer Zeitraum-Typ — das Zeitraum-Paar ist Berichtsperiode und Referenzperiode der zitierten Fassung, die Bezugsbasis steht als Quelle mit `bezug = vergleich`.",
+      "schritte": [
+        "Eine Vorlage `leistungsvergleich` (Fassung 1) mit acht festen Abschnitten; Vorgabe Unternehmen und Monat wie in R8 (VB-2028-0001, Dezember 2027).",
+        "Sie gilt für zwei Geltungen × drei Zeiträume = sechs Paare; jede andere Vorlage behält genau ihr eines Paar.",
+        "Die Referenzperiode der Basis-Fassung 2 ist November 2026 bis Oktober 2027: zwölf volle Monate, dieselbe Regel wie die Datengrundlage."
+      ],
+      "annahmen": ["Die Zahlen von R8 (78 000 kWh, 69 098 kWh erwartet) bildet erst der Leser (IP-21b); dieser Fall prüft Vorlage, Geltung und Zeitraum."],
+      "pruefungen": [
+        {
+          "regel": "vorlage",
+          "name": "Vorlage Fassung 1 mit acht Abschnitten, Vorgabe Unternehmen und Monat, ohne Vormonat und Vorjahr",
+          "eingang": {"vorlage": "leistungsvergleich"},
+          "ergebnis": {
+            "geltung_art": "unternehmen",
+            "zeitraum_art": "monat",
+            "vergleiche": [],
+            "abschnitte": ["kopf", "kennzahl", "bezugsbasis", "vergleich_je_periode", "urteil", "grenzen_und_vorbehalte", "statische_faktoren", "quellenverzeichnis"],
+            "fehler": null,
+            "status": null,
+            "kundensatz": null
+          }
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Leistungsvergleich · Unternehmen · Monat",
+          "eingang": {"vorlage": "leistungsvergleich", "geltung_art": "unternehmen", "zeitraum_art": "monat"},
+          "ergebnis": {"passt": true}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Leistungsvergleich · Unternehmen · Jahr",
+          "eingang": {"vorlage": "leistungsvergleich", "geltung_art": "unternehmen", "zeitraum_art": "jahr"},
+          "ergebnis": {"passt": true}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Leistungsvergleich · Unternehmen · Datengrundlage",
+          "eingang": {"vorlage": "leistungsvergleich", "geltung_art": "unternehmen", "zeitraum_art": "datengrundlage"},
+          "ergebnis": {"passt": true}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Leistungsvergleich · Standort · Monat",
+          "eingang": {"vorlage": "leistungsvergleich", "geltung_art": "standort", "zeitraum_art": "monat"},
+          "ergebnis": {"passt": true}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Leistungsvergleich · Standort · Jahr",
+          "eingang": {"vorlage": "leistungsvergleich", "geltung_art": "standort", "zeitraum_art": "jahr"},
+          "ergebnis": {"passt": true}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Leistungsvergleich · Standort · Datengrundlage",
+          "eingang": {"vorlage": "leistungsvergleich", "geltung_art": "standort", "zeitraum_art": "datengrundlage"},
+          "ergebnis": {"passt": true}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Die energetische Bewertung bleibt beim Unternehmen",
+          "eingang": {"vorlage": "energetische_bewertung", "geltung_art": "standort", "zeitraum_art": "datengrundlage"},
+          "ergebnis": {"passt": false}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Der Monatsbericht Standort gilt nicht für das Unternehmen",
+          "eingang": {"vorlage": "monatsbericht_standort", "geltung_art": "unternehmen", "zeitraum_art": "monat"},
+          "ergebnis": {"passt": false}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Der Monatsbericht hat keinen Jahres-Zeitraum",
+          "eingang": {"vorlage": "monatsbericht_unternehmen", "geltung_art": "unternehmen", "zeitraum_art": "jahr"},
+          "ergebnis": {"passt": false}
+        },
+        {
+          "regel": "zeitraum",
+          "name": "Referenzperiode der zitierten Fassung 2: November 2026 bis Oktober 2027 (R8)",
+          "eingang": {"art": "datengrundlage", "schluessel": "2026-11/2027-10", "zone": "Europe/Berlin"},
+          "ergebnis": {
+            "art": "datengrundlage",
+            "schluessel": "2026-11/2027-10",
+            "erster_tag": "2026-11-01",
+            "letzter_tag": "2027-10-31",
+            "von": "2026-11-01T00:00:00+01:00",
+            "bis": "2027-11-01T00:00:00+01:00",
+            "freigabe_ab": "2027-11-08T00:00:00+01:00",
+            "bezeichnung": "November 2026 bis Oktober 2027",
             "vergleiche": []
           }
         }

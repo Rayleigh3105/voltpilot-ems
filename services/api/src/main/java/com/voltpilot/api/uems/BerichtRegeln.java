@@ -56,6 +56,13 @@ public final class BerichtRegeln {
     public static final String MONATSBERICHT_UNTERNEHMEN = "monatsbericht_unternehmen";
     public static final String JAHRESBERICHT_UNTERNEHMEN = "jahresbericht_unternehmen";
     public static final String ENERGETISCHE_BEWERTUNG = "energetische_bewertung";
+    /** AP-17 IP-21a (S1, W8): Vertrag 1.4 — die Kennzahl im Vergleich mit ihrer Bezugsbasis. */
+    public static final String LEISTUNGSVERGLEICH = "leistungsvergleich";
+    /**
+     * AP-17 IP-21a: Vorlagen im Katalog, deren Leser noch fehlt (IP-21b bildet den Abzug aus Kennzahl, Basis und
+     * Vergleich). Anlegen antwortet bis dahin {@link #VORLAGE_UNBEKANNT}; das Portal zeigt keine Karte.
+     */
+    public static final Set<String> OHNE_LESER = Set.of(LEISTUNGSVERGLEICH);
     /** AP-14/AP-16: derselbe Grenz-Satz im Bewertungs-PDF und -CSV; das Portal hält ihn als {@code UEMS_NORMGRENZE}. */
     public static final String BEWERTUNG_GRENZ_SATZ = "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen "
             + "und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.";
@@ -76,7 +83,7 @@ public final class BerichtRegeln {
 
     public static final List<String> QUELLE_ARTEN =
             List.of("messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang",
-                    "energieeinsatz", "messbedarf", "messmittel");
+                    "energieeinsatz", "messbedarf", "messmittel", "bezugsbasis");
 
     public static final String UNMITTELBAR = "unmittelbar";
     public static final String MITTELBAR = "mittelbar";
@@ -244,7 +251,10 @@ public final class BerichtRegeln {
             "ueber_kennzahl", "{anlass} (über die Kennzahl)",
             "csv_geltung_standort", "Standort {kennzeichen} {name}",
             "csv_geltung_unternehmen", "Unternehmen {kennzeichen} {name}",
-            "csv_zeitraum", "{schluessel} ({erster}–{letzter})");
+            "csv_zeitraum", "{schluessel} ({erster}–{letzter})",
+            "leistungsvergleich_stand", "Leistungsvergleich {name}, {zeitraum} · Stand Nr. {nr} vom {datum} · Bezugsbasis "
+                    + "{bezugsbasis}, Fassung {fassung} · Prüfsumme {pruefsumme}…",
+            "leistungsvergleich_ohne_stand", "ungesichert — noch kein Stand");
 
     // ============================================================== Kennzeichen (ergebnis-zustand 1.10)
 
@@ -274,9 +284,31 @@ public final class BerichtRegeln {
 
     // ============================================================== Vorlagen (V2)
 
-    /** Eine Berichtsvorlage: Geltung, Zeitraum, Vergleiche und die Schlüssel ihrer Abschnitte. */
+    /**
+     * Eine Berichtsvorlage: Geltung, Zeitraum, Vergleiche und die Schlüssel ihrer Abschnitte. {@code geltungArt} und
+     * {@code zeitraumArt} sind die Vorgabe; {@code geltungArten} × {@code zeitraumArten} die Paare, für die sie gilt
+     * (1.4: der Leistungsvergleich kennt sechs, jede andere Vorlage genau eines).
+     */
     public record Vorlage(String schluessel, int fassung, String geltungArt, String zeitraumArt, List<String> vergleiche,
-            List<String> abschnitte) {}
+            List<String> abschnitte, List<String> geltungArten, List<String> zeitraumArten) {
+
+        public Vorlage {
+            if (!geltungArten.get(0).equals(geltungArt) || !zeitraumArten.get(0).equals(zeitraumArt)) {
+                throw new IllegalArgumentException("Vorlage " + schluessel + ": die Vorgabe steht vorn");
+            }
+        }
+
+        /** Eine Vorlage mit genau einem Paar aus Geltung und Zeitraum. */
+        public Vorlage(String schluessel, int fassung, String geltungArt, String zeitraumArt, List<String> vergleiche,
+                List<String> abschnitte) {
+            this(schluessel, fassung, geltungArt, zeitraumArt, vergleiche, abschnitte, List.of(geltungArt),
+                    List.of(zeitraumArt));
+        }
+
+        public boolean passt(String geltung, String zeitraum) {
+            return geltungArten.contains(geltung) && zeitraumArten.contains(zeitraum);
+        }
+    }
 
     public static final Map<String, Vorlage> VORLAGEN = vorlagen(
             new Vorlage(MONATSBERICHT_STANDORT, 1, STANDORT, MONAT, List.of(VORMONAT, VORJAHRESMONAT),
@@ -293,11 +325,21 @@ public final class BerichtRegeln {
                             "quellenverzeichnis")),
             new Vorlage(ENERGETISCHE_BEWERTUNG, 1, UNTERNEHMEN, DATENGRUNDLAGE, List.of(),
                     List.of("umfang", "rangliste", "einstufungen", "messabdeckung", "messplanung", "messmittel",
-                            "qualitaet", "quellenverzeichnis")));
+                            "qualitaet", "quellenverzeichnis")),
+            new Vorlage(LEISTUNGSVERGLEICH, 1, UNTERNEHMEN, MONAT, List.of(),
+                    List.of("kopf", "kennzahl", "bezugsbasis", "vergleich_je_periode", "urteil", "grenzen_und_vorbehalte",
+                            "statische_faktoren", "quellenverzeichnis"),
+                    List.of(UNTERNEHMEN, STANDORT), List.of(MONAT, JAHR, DATENGRUNDLAGE)));
 
     /** V2 — die Vorlage zu ihrem Schlüssel; {@code null} = {@link #VORLAGE_UNBEKANNT}. */
     public static Vorlage vorlage(String schluessel) {
         return VORLAGEN.get(schluessel);
+    }
+
+    /** V2 — gilt die Vorlage für Geltung × Zeitraum? Dieselbe Frage stellt {@code bericht_vorlage_passt()} der Datenbank. */
+    public static boolean vorlagePasst(String schluessel, String geltungArt, String zeitraumArt) {
+        Vorlage v = VORLAGEN.get(schluessel);
+        return v != null && v.passt(geltungArt, zeitraumArt);
     }
 
     // ============================================================== Zeitraum (V1, Q5)

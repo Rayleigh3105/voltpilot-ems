@@ -170,12 +170,19 @@ class BerichtVectorsTest {
         for (JsonNode v : datei.path("vorlagen")) {
             List<String> abschnitte = new ArrayList<>();
             v.path("abschnitte").forEach(a -> abschnitte.add(a.path("schluessel").asText()));
+            String geltung = v.path("geltung_art").asText();
+            String zeitraum = v.path("zeitraum_art").asText();
             ausDatei.put(v.path("schluessel").asText(), new BerichtRegeln.Vorlage(v.path("schluessel").asText(),
-                    v.path("fassung").asInt(), v.path("geltung_art").asText(), v.path("zeitraum_art").asText(),
-                    texte(v.path("vergleiche")), abschnitte));
+                    v.path("fassung").asInt(), geltung, zeitraum, texte(v.path("vergleiche")), abschnitte,
+                    v.has("geltung_arten") ? texte(v.path("geltung_arten")) : List.of(geltung),
+                    v.has("zeitraum_arten") ? texte(v.path("zeitraum_arten")) : List.of(zeitraum)));
         }
         assertThat(ausDatei).isEqualTo(BerichtRegeln.VORLAGEN);
         assertThat(new ArrayList<>(ausDatei.keySet())).isEqualTo(texte(vektoren().at("/vokabulare/vorlage")));
+        // AP-17 IP-21a: der Leistungsvergleich steht im Katalog, anlegbar erst mit seinem Leser (IP-21b).
+        assertThat(BerichtRegeln.OHNE_LESER).containsExactly(BerichtRegeln.LEISTUNGSVERGLEICH);
+        assertThat(datei.path("schema_version").asText()).isEqualTo(BerichtRegelwerk.VERTRAEGE.get("bericht"))
+                .isEqualTo(vektoren().path("schema_version").asText());
     }
 
     /** Die Beispielwelt ist das Referenzunternehmen in der Fassung, deren Korrektur und Bericht die Fälle erzählen — oder später. */
@@ -201,7 +208,7 @@ class BerichtVectorsTest {
         assertThat(Files.exists(TS_ZWILLING)).as("TS-Zwilling").isTrue();
     }
 
-    /** B1 … B17 in ihrer Reihenfolge, jeder mit Zweck, Handrechnung und mindestens einer Prüfung. */
+    /** B1 … B18 in ihrer Reihenfolge, jeder mit Zweck, Handrechnung und mindestens einer Prüfung. */
     @Test
     void jederFallHatZweckHandrechnungUndPruefungen() throws Exception {
         List<String> ids = new ArrayList<>();
@@ -214,7 +221,7 @@ class BerichtVectorsTest {
             assertThat(c.path("pruefungen")).as(c.path("id").asText() + " · Prüfungen").isNotEmpty();
         });
         List<String> erwartet = new ArrayList<>();
-        for (int i = 1; i <= 17; i++) {
+        for (int i = 1; i <= 18; i++) {
             erwartet.add("B" + i);
         }
         assertThat(ids).isEqualTo(erwartet);
@@ -383,6 +390,10 @@ class BerichtVectorsTest {
                 }
                 return baum("geltung_art", v.geltungArt(), "zeitraum_art", v.zeitraumArt(), "vergleiche", v.vergleiche(),
                         "abschnitte", v.abschnitte(), "fehler", null, "status", null, "kundensatz", null);
+            }
+            case "vorlage_passt" -> {
+                return baum("passt", BerichtRegeln.vorlagePasst(e.path("vorlage").asText(), e.path("geltung_art").asText(),
+                        e.path("zeitraum_art").asText()));
             }
             case "zeitraum" -> {
                 BerichtRegeln.Zeitraum z = BerichtRegeln.zeitraum(e.path("art").asText(), e.path("schluessel").asText(),

@@ -89,7 +89,7 @@ public final class BerichtPdf {
     public static final Map<String, String> VORLAGEN = geordnet("monatsbericht_standort", "Monatsbericht Standort",
             "jahresbericht_standort", "Jahresbericht Standort", "monatsbericht_unternehmen", "Monatsbericht Unternehmen",
             "jahresbericht_unternehmen", "Jahresbericht Unternehmen", BerichtRegeln.ENERGETISCHE_BEWERTUNG,
-            "Energetische Bewertung");
+            "Energetische Bewertung", BerichtRegeln.LEISTUNGSVERGLEICH, "Leistungsvergleich");
 
     private static final Map<String, String> SUMMEN = geordnet("netzbezug_kwh", "Netzbezug", "einspeisung_kwh",
             "Einspeisung", "pv_erzeugung_kwh", "PV-Erzeugung", "speicher_laden_kwh", "Speicher laden",

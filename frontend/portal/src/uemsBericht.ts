@@ -53,7 +53,7 @@ export const VORJAHRESMONAT = 'vorjahresmonat';
 export const VORJAHR = 'vorjahr';
 export const VERGLEICH_ARTEN = [VORMONAT, VORJAHRESMONAT, VORJAHR];
 
-export const QUELLE_ARTEN = ['messstelle', 'kostenstelle', 'bezugsgroesse', 'stammdatum', 'kennzahl', 'umfang', 'energieeinsatz', 'messbedarf', 'messmittel'];
+export const QUELLE_ARTEN = ['messstelle', 'kostenstelle', 'bezugsgroesse', 'stammdatum', 'kennzahl', 'umfang', 'energieeinsatz', 'messbedarf', 'messmittel', 'bezugsbasis'];
 export const QUELLE_BEZUEGE = ['unmittelbar', 'mittelbar', 'vergleich'];
 
 export const KORREKTUR_FREIGEGEBEN = 'korrektur_freigegeben';
@@ -216,6 +216,8 @@ export const SAETZE: Record<string, string> = {
   csv_geltung_standort: 'Standort {kennzeichen} {name}',
   csv_geltung_unternehmen: 'Unternehmen {kennzeichen} {name}',
   csv_zeitraum: '{schluessel} ({erster}–{letzter})',
+  leistungsvergleich_stand: 'Leistungsvergleich {name}, {zeitraum} · Stand Nr. {nr} vom {datum} · Bezugsbasis {bezugsbasis}, Fassung {fassung} · Prüfsumme {pruefsumme}…',
+  leistungsvergleich_ohne_stand: 'ungesichert — noch kein Stand',
 };
 
 const fuelle = (vorlage: string, werte: Record<string, string | number>): string =>
@@ -256,18 +258,34 @@ export const ZEITRAUM_LAEUFT = muster('zeitraum_laeuft');
 
 // ============================================================== Vorlagen (V2)
 
-export type Vorlage = { schluessel: string; fassung: number; geltung_art: string; zeitraum_art: string; vergleiche: string[]; abschnitte: string[] };
+/**
+ * `geltung_art`/`zeitraum_art` sind die Vorgabe; `geltung_arten` × `zeitraum_arten` die Paare, für die die Vorlage gilt
+ * (1.4: der Leistungsvergleich kennt sechs, jede andere Vorlage genau eines).
+ */
+export type Vorlage = { schluessel: string; fassung: number; geltung_art: string; zeitraum_art: string; geltung_arten: string[]; zeitraum_arten: string[]; vergleiche: string[]; abschnitte: string[] };
+
+/** AP-17 IP-21a (S1, W8): Vertrag 1.4 — die Kennzahl im Vergleich mit ihrer Bezugsbasis. */
+export const LEISTUNGSVERGLEICH = 'leistungsvergleich';
+/** Vorlagen im Katalog, deren Leser noch fehlt (IP-21b): der Server lehnt das Anlegen ab, das Portal zeigt keine Karte. */
+export const OHNE_LESER: readonly string[] = [LEISTUNGSVERGLEICH];
 
 export const VORLAGEN: Vorlage[] = [
-  { schluessel: 'monatsbericht_standort', fassung: 1, geltung_art: STANDORT, zeitraum_art: MONAT, vergleiche: [VORMONAT, VORJAHRESMONAT], abschnitte: ['kopf', 'zusammenfassung', 'verbrauch_je_messstelle', 'tagesverlauf', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
-  { schluessel: 'jahresbericht_standort', fassung: 1, geltung_art: STANDORT, zeitraum_art: JAHR, vergleiche: [VORJAHR], abschnitte: ['kopf', 'zusammenfassung', 'verbrauch_je_messstelle', 'monatswerte', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
-  { schluessel: 'monatsbericht_unternehmen', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: MONAT, vergleiche: [VORMONAT, VORJAHRESMONAT], abschnitte: ['kopf', 'zusammenfassung', 'standorte', 'kostenstellen', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
-  { schluessel: 'jahresbericht_unternehmen', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: JAHR, vergleiche: [VORJAHR], abschnitte: ['kopf', 'zusammenfassung', 'standorte', 'kostenstellen', 'monatswerte', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
-  { schluessel: 'energetische_bewertung', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: DATENGRUNDLAGE, vergleiche: [], abschnitte: ['umfang', 'rangliste', 'einstufungen', 'messabdeckung', 'messplanung', 'messmittel', 'qualitaet', 'quellenverzeichnis'] },
+  { schluessel: 'monatsbericht_standort', fassung: 1, geltung_art: STANDORT, zeitraum_art: MONAT, geltung_arten: [STANDORT], zeitraum_arten: [MONAT], vergleiche: [VORMONAT, VORJAHRESMONAT], abschnitte: ['kopf', 'zusammenfassung', 'verbrauch_je_messstelle', 'tagesverlauf', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
+  { schluessel: 'jahresbericht_standort', fassung: 1, geltung_art: STANDORT, zeitraum_art: JAHR, geltung_arten: [STANDORT], zeitraum_arten: [JAHR], vergleiche: [VORJAHR], abschnitte: ['kopf', 'zusammenfassung', 'verbrauch_je_messstelle', 'monatswerte', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
+  { schluessel: 'monatsbericht_unternehmen', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: MONAT, geltung_arten: [UNTERNEHMEN], zeitraum_arten: [MONAT], vergleiche: [VORMONAT, VORJAHRESMONAT], abschnitte: ['kopf', 'zusammenfassung', 'standorte', 'kostenstellen', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
+  { schluessel: 'jahresbericht_unternehmen', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: JAHR, geltung_arten: [UNTERNEHMEN], zeitraum_arten: [JAHR], vergleiche: [VORJAHR], abschnitte: ['kopf', 'zusammenfassung', 'standorte', 'kostenstellen', 'monatswerte', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
+  { schluessel: 'energetische_bewertung', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: DATENGRUNDLAGE, geltung_arten: [UNTERNEHMEN], zeitraum_arten: [DATENGRUNDLAGE], vergleiche: [], abschnitte: ['umfang', 'rangliste', 'einstufungen', 'messabdeckung', 'messplanung', 'messmittel', 'qualitaet', 'quellenverzeichnis'] },
+  { schluessel: LEISTUNGSVERGLEICH, fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: MONAT, geltung_arten: [UNTERNEHMEN, STANDORT], zeitraum_arten: [MONAT, JAHR, DATENGRUNDLAGE], vergleiche: [], abschnitte: ['kopf', 'kennzahl', 'bezugsbasis', 'vergleich_je_periode', 'urteil', 'grenzen_und_vorbehalte', 'statische_faktoren', 'quellenverzeichnis'] },
 ];
 
 /** V2 — die Vorlage zu ihrem Schlüssel; `null` = `vorlage_unbekannt`. */
 export const vorlage = (schluessel: string): Vorlage | null => VORLAGEN.find((v) => v.schluessel === schluessel) ?? null;
+
+/** V2 — gilt die Vorlage für Geltung × Zeitraum? Dieselbe Frage stellt `bericht_vorlage_passt()` der Datenbank. */
+export const vorlagePasst = (schluessel: string, geltungArt: string, zeitraumArt: string): boolean => {
+  const v = vorlage(schluessel);
+  return v !== null && v.geltung_arten.includes(geltungArt) && v.zeitraum_arten.includes(zeitraumArt);
+};
 
 // ============================================================== Zeit
 
