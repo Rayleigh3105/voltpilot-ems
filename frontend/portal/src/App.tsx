@@ -1462,6 +1462,7 @@ function UnifiedPortal() {
               kennung={route.berichtKennung ?? null}
               onOeffnen={(kennung) => navigate(berichtRoute(kennung))}
               onListe={() => navigate(pageRoute('portfolio-berichte'))}
+              onBewertung={() => navigate(pageRoute('portfolio-bewertung'))}
             />
           )}
           {/* UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (Umfang, Energieeinsätze) und die Seite eines Einsatzes. */}

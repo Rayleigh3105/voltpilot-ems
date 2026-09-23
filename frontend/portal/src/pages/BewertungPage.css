@@ -404,3 +404,79 @@
 /* AP-16 IP-18: die Prüfaufgaben-Zeile — ein Hinweis zum Erheben, kein Fehler (G3). */
 .vp-bw-pruefaufgaben { display: grid; gap: var(--vp-c-space-2); margin: 0; padding: 0; list-style: none; }
 .vp-bw-pruefaufgabe { margin: 0; padding: var(--vp-c-space-2) var(--vp-c-space-3); border-radius: var(--vp-c-radius); background: var(--vp-c-warn-bg); color: var(--vp-c-warn-fg); font-size: var(--vp-c-fs-14); overflow-wrap: break-word; }
+
+/* AP-16 IP-25: Frist-Kopfzeile und Bewertungsstand. */
+.vp-bw-kopf .vp-bw-frist {
+  color: var(--vp-c-fg);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-kopf .vp-bw-frist.is-warn {
+  color: var(--vp-c-warn-fg, var(--vp-c-fg));
+}
+
+.vp-bw-stand-satz {
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-revision {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-entwurf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2);
+  padding: var(--vp-c-space-3);
+  border: 1px dashed var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  min-width: 0;
+}
+
+.vp-bw-entwurf p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-bw-stand-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-bw-staende {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.vp-bw-staende li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  min-width: 0;
+}
+
+.vp-bw-stand-kopf,
+.vp-bw-stand-dateien {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-bw-stand-dateien {
+  margin-top: 6px;
+}
