@@ -1,0 +1,2521 @@
+{
+  "schema_version": "1.0",
+  "herkunft": "AP-17 entschieden 23.09.2026 (E1–E8, E10–E12 = A, E9 = C), §4.3–4.9, §5.8, §7 R1–R12; Python-Referenz aus k_faelle.py; Referenzunternehmen 1.8 (bezugsbasen[], leistungsvergleiche[], abnahmefaelle_ap17). Ab November 2026 sind alle Zahlen Annahmen der Erweiterung 1.8; „konstruiert“ markiert reine Rechenproben.",
+  "startwerte": {
+    "mindest_monate": 12,
+    "toleranz_prozent": "2",
+    "spannweite_prozent": "10",
+    "abhaengig_r": "0.9",
+    "wiedervorlage_monate": 12
+  },
+  "vokabulare": {
+    "methode": [
+      "verhaeltnis",
+      "regression_eine_variable",
+      "regression_zwei_variablen",
+      "gradtage"
+    ],
+    "urteil": [
+      "besser",
+      "schlechter",
+      "im_rahmen",
+      "ohne_urteil",
+      "nicht_anwendbar"
+    ],
+    "grund": [
+      "basis_fehlt",
+      "basis_beendet",
+      "zu_wenig_perioden",
+      "variable_fehlt",
+      "variable_ausserhalb",
+      "variablen_abhaengig",
+      "keine_werte",
+      "periode_nicht_zu_ende"
+    ],
+    "datenlage": [
+      "vollstaendig",
+      "vorlaeufig"
+    ],
+    "richtung": [
+      "mehr",
+      "weniger",
+      "gleich"
+    ],
+    "anpassungsgrund": [
+      "referenzperiode_vervollstaendigt",
+      "grundlage_korrigiert",
+      "struktur_geaendert",
+      "variable_geaendert",
+      "methode_geaendert",
+      "nicht_mehr_anwendbar",
+      "sonstiger"
+    ],
+    "faktor_art": [
+      "flaeche",
+      "standort",
+      "anlage",
+      "prozess",
+      "kostenstelle",
+      "wortlaut"
+    ],
+    "basis_zustand": [
+      "entwurf",
+      "freigegeben",
+      "anstoss_liegt_vor",
+      "ueberpruefung_faellig",
+      "beendet"
+    ],
+    "freigabe_status": [
+      "beantragt",
+      "freigegeben",
+      "abgelehnt"
+    ]
+  },
+  "cases": [
+    {
+      "name": "P1 Referenzperiode 11/2026–10/2027 vollständig",
+      "regel": "P1",
+      "operation": "referenzperiode",
+      "quelle": "BB-0001 Fassung 2",
+      "rechnung": "12 ganze, abgeschlossene Monate (laufend 2027-11) ≥ Mindestlänge 12 → vollstaendig",
+      "eingang": {
+        "text": "2026-11/2027-10",
+        "laufender_monat": "2027-11"
+      },
+      "erwartet": {
+        "gueltig": true,
+        "monate": 12,
+        "datenlage": "vollstaendig",
+        "fehler": null
+      }
+    },
+    {
+      "name": "P2 Referenzperiode Oktober 2026: vorläufig (1 von 12)",
+      "regel": "P2",
+      "operation": "referenzperiode",
+      "quelle": "BB-0001 Fassung 1",
+      "rechnung": "1 Monat < 12 → vorlaeufig, freigebbar",
+      "eingang": {
+        "text": "2026-10/2026-10",
+        "laufender_monat": "2026-11"
+      },
+      "erwartet": {
+        "gueltig": true,
+        "monate": 1,
+        "datenlage": "vorlaeufig",
+        "fehler": null
+      }
+    },
+    {
+      "name": "P1 laufender Monat ist nie Teil der Referenzperiode",
+      "regel": "P1",
+      "operation": "referenzperiode",
+      "quelle": "P3",
+      "rechnung": "Ende 2027-11 = laufender Monat → periode_nicht_zu_ende",
+      "eingang": {
+        "text": "2027-01/2027-11",
+        "laufender_monat": "2027-11"
+      },
+      "erwartet": {
+        "gueltig": false,
+        "monate": null,
+        "datenlage": null,
+        "fehler": "periode_nicht_zu_ende"
+      }
+    },
+    {
+      "name": "P1 Format JJJJ-MM/JJJJ-MM",
+      "regel": "P1",
+      "operation": "referenzperiode",
+      "quelle": "CHECK wie datengrundlage",
+      "rechnung": "Monat 13 → referenzperiode_format",
+      "eingang": {
+        "text": "2027-13/2028-01",
+        "laufender_monat": "2028-03"
+      },
+      "erwartet": {
+        "gueltig": false,
+        "monate": null,
+        "datenlage": null,
+        "fehler": "referenzperiode_format"
+      }
+    },
+    {
+      "name": "P1 Ende vor Anfang",
+      "regel": "P1",
+      "operation": "referenzperiode",
+      "quelle": "P1",
+      "rechnung": "2027-10 vor 2026-11 → referenzperiode_reihenfolge",
+      "eingang": {
+        "text": "2027-10/2026-11",
+        "laufender_monat": "2028-01"
+      },
+      "erwartet": {
+        "gueltig": false,
+        "monate": null,
+        "datenlage": null,
+        "fehler": "referenzperiode_reihenfolge"
+      }
+    },
+    {
+      "name": "R1 Basiswert Oktober 2026: 0,2837 kWh je kg, vorläufig (1 von 12)",
+      "regel": "M1",
+      "operation": "basiswert",
+      "quelle": "Referenzdatei 1.8 BB-0001 Fassung 1",
+      "rechnung": "88 630 ÷ 312 400 = 0,28370… → 0,2837; 1 von 12 Monaten → vorlaeufig",
+      "eingang": {
+        "grundlage": [
+          {
+            "zaehler": "88630",
+            "nenner": "312400"
+          }
+        ]
+      },
+      "erwartet": {
+        "basiswert": "0.2837",
+        "monate": 1,
+        "datenlage": "vorlaeufig",
+        "grund": null,
+        "kennzeichen": [
+          "Bezugsbasis vorläufig (1 von 12 Monaten)"
+        ]
+      }
+    },
+    {
+      "name": "R12 Basiswert Fassung 2: Σ ÷ Σ 0,2685, nicht das Mittel",
+      "regel": "M1",
+      "operation": "basiswert",
+      "quelle": "Referenzdatei 1.8 BB-0001 Fassung 2 (basiswert)",
+      "rechnung": "993 000 ÷ 3 699 000 = 0,26845… → 0,2685; das Mittel der zwölf Monatsquotienten wäre 0.2687 — eine andere Zahl",
+      "eingang": {
+        "grundlage": [
+          {
+            "zaehler": "85581",
+            "nenner": "318000"
+          },
+          {
+            "zaehler": "71729",
+            "nenner": "262000"
+          },
+          {
+            "zaehler": "81291",
+            "nenner": "298000"
+          },
+          {
+            "zaehler": "81298",
+            "nenner": "305000"
+          },
+          {
+            "zaehler": "88265",
+            "nenner": "331000"
+          },
+          {
+            "zaehler": "82016",
+            "nenner": "309000"
+          },
+          {
+            "zaehler": "86399",
+            "nenner": "322000"
+          },
+          {
+            "zaehler": "86846",
+            "nenner": "327000"
+          },
+          {
+            "zaehler": "80732",
+            "nenner": "296000"
+          },
+          {
+            "zaehler": "69693",
+            "nenner": "254000"
+          },
+          {
+            "zaehler": "89512",
+            "nenner": "336000"
+          },
+          {
+            "zaehler": "89638",
+            "nenner": "341000"
+          }
+        ]
+      },
+      "erwartet": {
+        "basiswert": "0.2685",
+        "monate": 12,
+        "datenlage": "vollstaendig",
+        "grund": null,
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "M1 ohne Zahlen kein Basiswert, nie 0",
+      "regel": "M1",
+      "operation": "basiswert",
+      "quelle": "Referenzdatei 1.8 BB-0003 Fassung 2 (Zähler MS-10 fehlt)",
+      "rechnung": "Zähler 2027-01 und 2027-02 ohne Wert → keine_werte, basiswert null",
+      "eingang": {
+        "grundlage": [
+          {
+            "zaehler": null,
+            "nenner": "3400"
+          },
+          {
+            "zaehler": null,
+            "nenner": "3400"
+          }
+        ]
+      },
+      "erwartet": {
+        "basiswert": null,
+        "monate": 2,
+        "datenlage": null,
+        "grund": "keine_werte",
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "M1 leere Referenzperiode",
+      "regel": "M1",
+      "operation": "basiswert",
+      "quelle": "G2",
+      "rechnung": "keine Monate → keine_werte",
+      "eingang": {
+        "grundlage": []
+      },
+      "erwartet": {
+        "basiswert": null,
+        "monate": 0,
+        "datenlage": null,
+        "grund": "keine_werte",
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "R12 Modell mit einer Einflussgröße über zwölf Monate",
+      "regel": "M2",
+      "operation": "modell",
+      "quelle": "Referenzdatei 1.8 BB-0001 Fassung 2",
+      "rechnung": "kleinste Quadrate: b = Sxy ÷ Sxx = 0,23431… → 0,2343; a = ȳ − b·x̄ = 10 522,62… → 10 522,6206 (die Referenzdatei trägt 10 523 = dieselbe Zahl auf ganze kWh); R² = 1 − SSres ÷ SStot = 0,99057… → 0,991; Streuung = √(SSres ÷ 10) ÷ ȳ = 0,798… % → 0,8; Spannweite 254 000–341 000, toleriert ± 10 % 228 600–375 100",
+      "eingang": {
+        "methode": "regression_eine_variable",
+        "reihe": [
+          {
+            "zaehler": "85581",
+            "variablen": [
+              "318000"
+            ]
+          },
+          {
+            "zaehler": "71729",
+            "variablen": [
+              "262000"
+            ]
+          },
+          {
+            "zaehler": "81291",
+            "variablen": [
+              "298000"
+            ]
+          },
+          {
+            "zaehler": "81298",
+            "variablen": [
+              "305000"
+            ]
+          },
+          {
+            "zaehler": "88265",
+            "variablen": [
+              "331000"
+            ]
+          },
+          {
+            "zaehler": "82016",
+            "variablen": [
+              "309000"
+            ]
+          },
+          {
+            "zaehler": "86399",
+            "variablen": [
+              "322000"
+            ]
+          },
+          {
+            "zaehler": "86846",
+            "variablen": [
+              "327000"
+            ]
+          },
+          {
+            "zaehler": "80732",
+            "variablen": [
+              "296000"
+            ]
+          },
+          {
+            "zaehler": "69693",
+            "variablen": [
+              "254000"
+            ]
+          },
+          {
+            "zaehler": "89512",
+            "variablen": [
+              "336000"
+            ]
+          },
+          {
+            "zaehler": "89638",
+            "variablen": [
+              "341000"
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "methode": "regression_eine_variable",
+        "monate": 12,
+        "basiswert": "0.2685",
+        "koeffizienten": {
+          "a": "10522.6206",
+          "b": "0.2343"
+        },
+        "r2": "0.991",
+        "streuung_prozent": "0.8",
+        "spannweite": [
+          {
+            "von": "254000",
+            "bis": "341000",
+            "toleriert_von": "228600",
+            "toleriert_bis": "375100"
+          }
+        ],
+        "abgelehnt": [],
+        "grund": null
+      }
+    },
+    {
+      "name": "R3 Gradtage: Modell mit Konstante",
+      "regel": "M3",
+      "operation": "modell",
+      "quelle": "Referenzdatei 1.8 BB-0004 Fassung 1",
+      "rechnung": "a = 118,91… → 118,9104, b = 3,80405… → 3,8041 (Referenzdatei: 119 und 3,8 = dieselben Zahlen auf ihre Stellen); R² 0,99664… → 0,997; Streuung 4,607 % → 4,6; Basiswert 13 695 ÷ 3 225 = 4,2465",
+      "eingang": {
+        "methode": "gradtage",
+        "reihe": [
+          {
+            "zaehler": "1742",
+            "variablen": [
+              "415"
+            ]
+          },
+          {
+            "zaehler": "2169",
+            "variablen": [
+              "555"
+            ]
+          },
+          {
+            "zaehler": "2489",
+            "variablen": [
+              "605"
+            ]
+          },
+          {
+            "zaehler": "2037",
+            "variablen": [
+              "515"
+            ]
+          },
+          {
+            "zaehler": "1676",
+            "variablen": [
+              "395"
+            ]
+          },
+          {
+            "zaehler": "986",
+            "variablen": [
+              "245"
+            ]
+          },
+          {
+            "zaehler": "511",
+            "variablen": [
+              "95"
+            ]
+          },
+          {
+            "zaehler": "152",
+            "variablen": [
+              "15"
+            ]
+          },
+          {
+            "zaehler": "155",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "90",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "483",
+            "variablen": [
+              "85"
+            ]
+          },
+          {
+            "zaehler": "1205",
+            "variablen": [
+              "300"
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "methode": "gradtage",
+        "monate": 12,
+        "basiswert": "4.2465",
+        "koeffizienten": {
+          "a": "118.9104",
+          "b": "3.8041"
+        },
+        "r2": "0.997",
+        "streuung_prozent": "4.6",
+        "spannweite": [
+          {
+            "von": "0",
+            "bis": "605",
+            "toleriert_von": "0",
+            "toleriert_bis": "665.5"
+          }
+        ],
+        "abgelehnt": [],
+        "grund": null
+      }
+    },
+    {
+      "name": "R9/G4 Betriebsstunden abhängig (r = 0,997): zweite Variable abgelehnt",
+      "regel": "G4",
+      "operation": "modell",
+      "quelle": "Referenzdatei 1.8 BB-0001 Fassung 2 abgelehnte_variablen",
+      "rechnung": "r(BZ-1, BZ-3) = 0,99727… ≥ 0,9 → BZ-3 variablen_abhaengig; es bleibt das Modell mit einer Einflussgröße (gleiche Zahlen wie R12)",
+      "eingang": {
+        "methode": "regression_zwei_variablen",
+        "reihe": [
+          {
+            "zaehler": "85581",
+            "variablen": [
+              "318000",
+              "5112"
+            ]
+          },
+          {
+            "zaehler": "71729",
+            "variablen": [
+              "262000",
+              "4149"
+            ]
+          },
+          {
+            "zaehler": "81291",
+            "variablen": [
+              "298000",
+              "4778"
+            ]
+          },
+          {
+            "zaehler": "81298",
+            "variablen": [
+              "305000",
+              "4819"
+            ]
+          },
+          {
+            "zaehler": "88265",
+            "variablen": [
+              "331000",
+              "5314"
+            ]
+          },
+          {
+            "zaehler": "82016",
+            "variablen": [
+              "309000",
+              "4908"
+            ]
+          },
+          {
+            "zaehler": "86399",
+            "variablen": [
+              "322000",
+              "5151"
+            ]
+          },
+          {
+            "zaehler": "86846",
+            "variablen": [
+              "327000",
+              "5165"
+            ]
+          },
+          {
+            "zaehler": "80732",
+            "variablen": [
+              "296000",
+              "4751"
+            ]
+          },
+          {
+            "zaehler": "69693",
+            "variablen": [
+              "254000",
+              "4026"
+            ]
+          },
+          {
+            "zaehler": "89512",
+            "variablen": [
+              "336000",
+              "5404"
+            ]
+          },
+          {
+            "zaehler": "89638",
+            "variablen": [
+              "341000",
+              "5419"
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "methode": "regression_eine_variable",
+        "monate": 12,
+        "basiswert": "0.2685",
+        "koeffizienten": {
+          "a": "10522.6206",
+          "b": "0.2343"
+        },
+        "r2": "0.991",
+        "streuung_prozent": "0.8",
+        "spannweite": [
+          {
+            "von": "254000",
+            "bis": "341000",
+            "toleriert_von": "228600",
+            "toleriert_bis": "375100"
+          }
+        ],
+        "abgelehnt": [
+          {
+            "variable": 2,
+            "grund": "variablen_abhaengig",
+            "r": "0.997"
+          }
+        ],
+        "grund": null
+      }
+    },
+    {
+      "name": "M2 zwei unabhängige Einflussgrößen (konstruiert)",
+      "regel": "M2",
+      "operation": "modell",
+      "quelle": "Annahme: Spritzguss-Reihe mit Gradtagzahl als zweiter Größe",
+      "rechnung": "r(kg, Kd) = −0,095 → unabhängig; Normalgleichungen mit zentrierten Summen: b = (S1y·S22 − S2y·S12) ÷ det, c = (S2y·S11 − S1y·S12) ÷ det; Streuung mit n − 3 Freiheitsgraden",
+      "eingang": {
+        "methode": "regression_zwei_variablen",
+        "reihe": [
+          {
+            "zaehler": "85581",
+            "variablen": [
+              "318000",
+              "415"
+            ]
+          },
+          {
+            "zaehler": "71729",
+            "variablen": [
+              "262000",
+              "555"
+            ]
+          },
+          {
+            "zaehler": "81291",
+            "variablen": [
+              "298000",
+              "605"
+            ]
+          },
+          {
+            "zaehler": "81298",
+            "variablen": [
+              "305000",
+              "515"
+            ]
+          },
+          {
+            "zaehler": "88265",
+            "variablen": [
+              "331000",
+              "395"
+            ]
+          },
+          {
+            "zaehler": "82016",
+            "variablen": [
+              "309000",
+              "245"
+            ]
+          },
+          {
+            "zaehler": "86399",
+            "variablen": [
+              "322000",
+              "95"
+            ]
+          },
+          {
+            "zaehler": "86846",
+            "variablen": [
+              "327000",
+              "15"
+            ]
+          },
+          {
+            "zaehler": "80732",
+            "variablen": [
+              "296000",
+              "0"
+            ]
+          },
+          {
+            "zaehler": "69693",
+            "variablen": [
+              "254000",
+              "0"
+            ]
+          },
+          {
+            "zaehler": "89512",
+            "variablen": [
+              "336000",
+              "85"
+            ]
+          },
+          {
+            "zaehler": "89638",
+            "variablen": [
+              "341000",
+              "300"
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "methode": "regression_zwei_variablen",
+        "monate": 12,
+        "basiswert": "0.2685",
+        "koeffizienten": {
+          "a": "10511.8791",
+          "b": "0.2343",
+          "c": "0.021"
+        },
+        "r2": "0.991",
+        "streuung_prozent": "0.8",
+        "spannweite": [
+          {
+            "von": "254000",
+            "bis": "341000",
+            "toleriert_von": "228600",
+            "toleriert_bis": "375100"
+          },
+          {
+            "von": "0",
+            "bis": "605",
+            "toleriert_von": "0",
+            "toleriert_bis": "665.5"
+          }
+        ],
+        "abgelehnt": [],
+        "grund": null
+      }
+    },
+    {
+      "name": "R4/G1 Lindach: 1 von 12 Monaten, kein Modell",
+      "regel": "G1",
+      "operation": "modell",
+      "quelle": "Referenzdatei 1.8 BB-0005 Fassung 1",
+      "rechnung": "1 Monat < 12 → zu_wenig_perioden; das Verhältnis (0,5) bleibt vorläufig",
+      "eingang": {
+        "methode": "regression_eine_variable",
+        "reihe": [
+          {
+            "zaehler": "3600",
+            "variablen": [
+              "7200"
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "methode": "regression_eine_variable",
+        "monate": 1,
+        "basiswert": null,
+        "koeffizienten": null,
+        "r2": null,
+        "streuung_prozent": null,
+        "spannweite": [],
+        "abgelehnt": [],
+        "grund": "zu_wenig_perioden"
+      }
+    },
+    {
+      "name": "M3 nur Sommer: keine Spannweite, kein Modell",
+      "regel": "M3",
+      "operation": "modell",
+      "quelle": "Annahme: zwölf Monate ohne Heizgradtage",
+      "rechnung": "Sxx = 0 (alle Kd = 0) → zu_wenig_perioden: ohne Heizperiode keine Steigung",
+      "eingang": {
+        "methode": "gradtage",
+        "reihe": [
+          {
+            "zaehler": "90",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "91",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "92",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "93",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "94",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "95",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "96",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "97",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "98",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "99",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "100",
+            "variablen": [
+              "0"
+            ]
+          },
+          {
+            "zaehler": "101",
+            "variablen": [
+              "0"
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "methode": "gradtage",
+        "monate": 12,
+        "basiswert": null,
+        "koeffizienten": null,
+        "r2": null,
+        "streuung_prozent": null,
+        "spannweite": [],
+        "abgelehnt": [],
+        "grund": "zu_wenig_perioden"
+      }
+    },
+    {
+      "name": "G4 Pearson r Produktionsmenge ↔ Betriebsstunden",
+      "regel": "G4",
+      "operation": "abhaengigkeit",
+      "quelle": "Referenzdatei 1.8 BB-0001 Fassung 2 (r = 0,997)",
+      "rechnung": "r = Sxy ÷ √(Sxx·Syy) = 0,99727… → 0,997; abhängig, weil Sxy² ≥ 0,81·Sxx·Syy",
+      "eingang": {
+        "x1": [
+          "318000",
+          "262000",
+          "298000",
+          "305000",
+          "331000",
+          "309000",
+          "322000",
+          "327000",
+          "296000",
+          "254000",
+          "336000",
+          "341000"
+        ],
+        "x2": [
+          "5112",
+          "4149",
+          "4778",
+          "4819",
+          "5314",
+          "4908",
+          "5151",
+          "5165",
+          "4751",
+          "4026",
+          "5404",
+          "5419"
+        ]
+      },
+      "erwartet": {
+        "r": "0.997",
+        "abhaengig": true
+      }
+    },
+    {
+      "name": "G4 Produktionsmenge ↔ Gradtagzahl unabhängig",
+      "regel": "G4",
+      "operation": "abhaengigkeit",
+      "quelle": "Annahme-Reihen 1.8",
+      "rechnung": "r = −0,0948… → −0,095; |r| < 0,9 → unabhängig",
+      "eingang": {
+        "x1": [
+          "318000",
+          "262000",
+          "298000",
+          "305000",
+          "331000",
+          "309000",
+          "322000",
+          "327000",
+          "296000",
+          "254000",
+          "336000",
+          "341000"
+        ],
+        "x2": [
+          "415",
+          "555",
+          "605",
+          "515",
+          "395",
+          "245",
+          "95",
+          "15",
+          "0",
+          "0",
+          "85",
+          "300"
+        ]
+      },
+      "erwartet": {
+        "r": "-0.095",
+        "abhaengig": false
+      }
+    },
+    {
+      "name": "R2 Dezember 2027 bereinigt: 12,9 % über dem Modell, schlechter",
+      "regel": "U2",
+      "operation": "vergleich",
+      "quelle": "Referenzdatei 1.8 leistungsvergleiche VB-2028-0001",
+      "rechnung": "erwartet = 10 523 + 0,2343 × 250 000 = 69 098; Δ = (78 000 − 69 098) ÷ 69 098 = 12,88… % → 12,9; Band max(2,0; 0,8) = 2,0 → schlechter",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "78000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "250000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "78000",
+        "erwartet": "69098",
+        "delta_prozent": "12.9",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Modell mit einer Einflussgröße, Bezugsbasis BB-0001, Fassung 2; Streuung ± 0,8 %)"
+        ]
+      }
+    },
+    {
+      "name": "R2 Dezember 2027 gegen das Verhältnis: 16,2 % darüber",
+      "regel": "M1",
+      "operation": "vergleich",
+      "quelle": "R2 (Verhältnis derselben Referenzperiode, Gegenprobe)",
+      "rechnung": "erwartet = 0,2685 × 250 000 = 67 125; Δ = 10 875 ÷ 67 125 = 16,20… % → 16,2 → schlechter",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "verhaeltnis",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "78000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "250000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "78000",
+        "erwartet": "67125",
+        "delta_prozent": "16.2",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)"
+        ]
+      }
+    },
+    {
+      "name": "Dezember 2027: roh ohne Urteil, bereinigt schlechter",
+      "regel": "U1",
+      "operation": "roh_und_bereinigt",
+      "quelle": "R2 Plan-Abnahme (NW-6)",
+      "rechnung": "roh: (78 000 − 85 500) ÷ 85 500 = −8,77… % → −8,8, Produktion (250 000 − 320 000) ÷ 320 000 = −21,875 % → −21,9 — ohne Urteil; bereinigt 12,9 % → schlechter",
+      "eingang": {
+        "roh": {
+          "gemessen": "78000",
+          "vorher": "85500",
+          "variable": "250000",
+          "variable_vorher": "320000"
+        },
+        "bereinigt": {
+          "fassung": {
+            "kennzeichen": "BB-0001",
+            "fassung": 2,
+            "methode": "regression_eine_variable",
+            "monate": 12,
+            "basiswert": "0.2685",
+            "koeffizienten": {
+              "a": "10523",
+              "b": "0.2343"
+            },
+            "streuung_prozent": "0.8",
+            "toleranz_prozent": "2.0",
+            "spannweite": [
+              {
+                "von": "254000",
+                "bis": "341000",
+                "toleriert_von": "228600",
+                "toleriert_bis": "375100"
+              }
+            ],
+            "variablen": [
+              {
+                "name": "Produktionsmenge",
+                "einheit": "kg",
+                "art": "produktionsmenge"
+              }
+            ]
+          },
+          "basis_beendet": false,
+          "abgeschlossen": true,
+          "gemessen": {
+            "wert": "78000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          },
+          "variablen": [
+            {
+              "wert": "250000",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            }
+          ]
+        }
+      },
+      "erwartet": {
+        "roh": {
+          "delta_prozent": "-8.8",
+          "richtung": "weniger",
+          "urteil": "ohne_urteil",
+          "variable_delta_prozent": "-21.9"
+        },
+        "bereinigt": {
+          "urteil": "schlechter",
+          "grund": null,
+          "gemessen": "78000",
+          "erwartet": "69098",
+          "delta_prozent": "12.9",
+          "band_prozent": "2.0",
+          "richtung": "mehr",
+          "kennzeichen": [
+            "bereinigt um Produktionsmenge (Modell mit einer Einflussgröße, Bezugsbasis BB-0001, Fassung 2; Streuung ± 0,8 %)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "R2 Januar 2028: 3,5 % weniger, besser",
+      "regel": "U2",
+      "operation": "vergleich",
+      "quelle": "R2/§5.8 Vergleich besser",
+      "rechnung": "erwartet = 10 523 + 0,2343 × 300 000 = 80 813; Δ = −2 813 ÷ 80 813 = −3,48… % → −3,5 → besser",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "78000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "300000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "besser",
+        "grund": null,
+        "gemessen": "78000",
+        "erwartet": "80813",
+        "delta_prozent": "-3.5",
+        "band_prozent": "2.0",
+        "richtung": "weniger",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Modell mit einer Einflussgröße, Bezugsbasis BB-0001, Fassung 2; Streuung ± 0,8 %)"
+        ]
+      }
+    },
+    {
+      "name": "R2 Februar 2028: 0,6 % weniger, im Rahmen",
+      "regel": "U3",
+      "operation": "vergleich",
+      "quelle": "R2/§5.8 Vergleich im Rahmen",
+      "rechnung": "erwartet = 10 523 + 0,2343 × 305 000 = 81 984,5 (exakt, angezeigt 81 985); Δ = −484,5 ÷ 81 984,5 = −0,59… % → −0,6; |Δ| ≤ 2,0 → im_rahmen",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "81500",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "305000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "im_rahmen",
+        "grund": null,
+        "gemessen": "81500",
+        "erwartet": "81984.5",
+        "delta_prozent": "-0.6",
+        "band_prozent": "2.0",
+        "richtung": "weniger",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Modell mit einer Einflussgröße, Bezugsbasis BB-0001, Fassung 2; Streuung ± 0,8 %)"
+        ]
+      }
+    },
+    {
+      "name": "R4/G3 März 2028: 390 000 kg außerhalb der Spannweite, Modell nicht anwendbar",
+      "regel": "G3",
+      "operation": "vergleich",
+      "quelle": "R4/§5.8 Nicht anwendbar, Spannweite",
+      "rechnung": "390 000 > 375 100 (341 000 + 10 %) → variable_ausserhalb: kein erwarteter Wert, kein Urteil",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "100000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "390000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "variable_ausserhalb",
+        "gemessen": "100000",
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "R4/G3 März 2028: das Verhältnis rechnet mit Kennzeichen",
+      "regel": "G3",
+      "operation": "vergleich",
+      "quelle": "R4 (Verhältnis extrapoliert nicht, sagt es aber)",
+      "rechnung": "erwartet = 0,2685 × 390 000 = 104 715; Δ = −4 715 ÷ 104 715 = −4,50… % → −4,5 → besser, mit „außerhalb der Basis-Spannweite“",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "verhaeltnis",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "100000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "390000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "besser",
+        "grund": null,
+        "gemessen": "100000",
+        "erwartet": "104715",
+        "delta_prozent": "-4.5",
+        "band_prozent": "2.0",
+        "richtung": "weniger",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)",
+          "Produktionsmenge außerhalb der Basis-Spannweite (254 000–341 000 kg)"
+        ]
+      }
+    },
+    {
+      "name": "Verhältnis über Gradtage sagt besser, Modell im Rahmen",
+      "regel": "M3",
+      "operation": "methoden_paar",
+      "quelle": "R3 Ahrenberg Januar 2028 (Referenzdatei 1.8 abnahmefaelle_ap17 R3)",
+      "rechnung": "Modell: 119 + 3,8 × 480 = 1 943; Δ = −13 ÷ 1 943 = −0,67 % → −0,7; Band max(2,0; 4,6) = 4,6 → im_rahmen. Verhältnis: 4,2465 × 480 = 2 038,32; Δ = −108,32 ÷ 2 038,32 = −5,31 % → −5,3 → besser, „ohne Grundlast“",
+      "eingang": {
+        "modell": {
+          "fassung": {
+            "kennzeichen": "BB-0004",
+            "fassung": 1,
+            "methode": "gradtage",
+            "monate": 12,
+            "basiswert": "4.2465",
+            "koeffizienten": {
+              "a": "119",
+              "b": "3.8"
+            },
+            "streuung_prozent": "4.6",
+            "toleranz_prozent": "2.0",
+            "spannweite": null,
+            "variablen": [
+              {
+                "name": "Gradtagzahl",
+                "einheit": "Kd",
+                "art": "gradtagzahl"
+              }
+            ]
+          },
+          "basis_beendet": false,
+          "abgeschlossen": true,
+          "gemessen": {
+            "wert": "1930",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          },
+          "variablen": [
+            {
+              "wert": "480",
+              "zustand": "vollstaendig",
+              "kennzeichen": [
+                "Temperatur von VoltPilot bezogen (Wetter-Archiv, abgerufen am 01.02.2028)"
+              ]
+            }
+          ]
+        },
+        "verhaeltnis": {
+          "fassung": {
+            "kennzeichen": "BB-0004",
+            "fassung": 1,
+            "methode": "verhaeltnis",
+            "monate": 12,
+            "basiswert": "4.2465",
+            "koeffizienten": null,
+            "streuung_prozent": null,
+            "toleranz_prozent": "2.0",
+            "spannweite": null,
+            "variablen": [
+              {
+                "name": "Gradtagzahl",
+                "einheit": "Kd",
+                "art": "gradtagzahl"
+              }
+            ]
+          },
+          "basis_beendet": false,
+          "abgeschlossen": true,
+          "gemessen": {
+            "wert": "1930",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          },
+          "variablen": [
+            {
+              "wert": "480",
+              "zustand": "vollstaendig",
+              "kennzeichen": [
+                "Temperatur von VoltPilot bezogen (Wetter-Archiv, abgerufen am 01.02.2028)"
+              ]
+            }
+          ]
+        }
+      },
+      "erwartet": {
+        "modell": {
+          "urteil": "im_rahmen",
+          "grund": null,
+          "gemessen": "1930",
+          "erwartet": "1943",
+          "delta_prozent": "-0.7",
+          "band_prozent": "4.6",
+          "richtung": "weniger",
+          "kennzeichen": [
+            "bereinigt um Gradtage (G20/15, Bezugsbasis BB-0004, Fassung 1)",
+            "Streuung ± 4,6 %",
+            "Temperatur von VoltPilot bezogen (Wetter-Archiv, abgerufen am 01.02.2028)"
+          ]
+        },
+        "verhaeltnis": {
+          "urteil": "besser",
+          "grund": null,
+          "gemessen": "1930",
+          "erwartet": "2038.32",
+          "delta_prozent": "-5.3",
+          "band_prozent": "2.0",
+          "richtung": "weniger",
+          "kennzeichen": [
+            "bereinigt um Gradtagzahl (Bezugsbasis BB-0004, Fassung 1)",
+            "ohne Grundlast",
+            "Temperatur von VoltPilot bezogen (Wetter-Archiv, abgerufen am 01.02.2028)"
+          ]
+        }
+      }
+    },
+    {
+      "name": "R6 März 2027 gegen die vorläufige Basis: 6,0 % weniger, besser",
+      "regel": "G5",
+      "operation": "vergleich",
+      "quelle": "R6/§5.8 Vorläufig",
+      "rechnung": "erwartet = 0,2837 × 331 000 = 93 904,7; Δ = −5 639,7 ÷ 93 904,7 = −6,005… % → −6,0 → besser; „Bezugsbasis vorläufig (1 von 12 Monaten)“",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "0.2837",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "88265",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "331000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "besser",
+        "grund": null,
+        "gemessen": "88265",
+        "erwartet": "93904.7",
+        "delta_prozent": "-6.0",
+        "band_prozent": "2.0",
+        "richtung": "weniger",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 1)",
+          "Bezugsbasis vorläufig (1 von 12 Monaten)"
+        ]
+      }
+    },
+    {
+      "name": "R7 November 2026 gegen Fassung 2 nach der Korrektur: im Rahmen",
+      "regel": "U3",
+      "operation": "vergleich",
+      "quelle": "Referenzdatei 1.8 abnahmefaelle_ap17 R7",
+      "rechnung": "erwartet = 0,1473 × 42 500 = 6 260,25; Δ = 39,75 ÷ 6 260,25 = 0,63… % → 0,6 → im_rahmen",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0002",
+          "fassung": 2,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "0.1473",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Gutteile Montage Halle 2",
+              "einheit": "Stück",
+              "art": "gutteile"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "6300",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "42500",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "im_rahmen",
+        "grund": null,
+        "gemessen": "6300",
+        "erwartet": "6260.25",
+        "delta_prozent": "0.6",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Gutteile Montage Halle 2 (Bezugsbasis BB-0002, Fassung 2)",
+          "Bezugsbasis vorläufig (1 von 12 Monaten)"
+        ]
+      }
+    },
+    {
+      "name": "R5 November 2026 Netzbezug je m²: 4,1 % mehr, schlechter",
+      "regel": "U2",
+      "operation": "vergleich",
+      "quelle": "Referenzdatei 1.8 abnahmefaelle_ap17 R5",
+      "rechnung": "erwartet = 11,9032 × 3 100 = 36 899,92; Δ = 1 500,08 ÷ 36 899,92 = 4,065… % → 4,1 → schlechter",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0003",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "11.9032",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Bezugsfläche",
+              "einheit": "m²",
+              "art": "flaeche"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "38400",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "3100",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "38400",
+        "erwartet": "36899.92",
+        "delta_prozent": "4.1",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)",
+          "Bezugsbasis vorläufig (1 von 12 Monaten)"
+        ]
+      }
+    },
+    {
+      "name": "R5 Januar 2027: Basis beendet, nicht bewertbar",
+      "regel": "P4",
+      "operation": "vergleich",
+      "quelle": "Referenzdatei 1.8 abnahmefaelle_ap17 R5 (januar_februar_2027)",
+      "rechnung": "Fassung 1 beendet 31.12.2026, Fassung 2 gilt erst ab 01.03.2027 → basis_beendet",
+      "eingang": {
+        "fassung": null,
+        "basis_beendet": true,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "40100",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "3400",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "basis_beendet",
+        "gemessen": null,
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "R10 Kennzahl ohne Bezugsbasis: kein Urteil",
+      "regel": "U1",
+      "operation": "vergleich",
+      "quelle": "R10 KZ-0003",
+      "rechnung": "keine Fassung → basis_fehlt",
+      "eingang": {
+        "fassung": null,
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "9700",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "48200",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "basis_fehlt",
+        "gemessen": null,
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "G2 laufender Monat: kein Vergleich",
+      "regel": "G2",
+      "operation": "vergleich",
+      "quelle": "G2",
+      "rechnung": "Periode nicht abgeschlossen → periode_nicht_zu_ende",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": false,
+        "gemessen": {
+          "wert": "40000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "150000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "periode_nicht_zu_ende",
+        "gemessen": null,
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "G2 keine Werte",
+      "regel": "G2",
+      "operation": "vergleich",
+      "quelle": "G2",
+      "rechnung": "gemessen ohne Wert → keine_werte",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": null,
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "300000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "keine_werte",
+        "gemessen": null,
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "G2 Variable fehlt",
+      "regel": "G2",
+      "operation": "vergleich",
+      "quelle": "G2",
+      "rechnung": "Produktionsmenge ohne wirksame Fassung → variable_fehlt",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "78000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": null,
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "variable_fehlt",
+        "gemessen": "78000",
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": []
+      }
+    },
+    {
+      "name": "G2 unvollständig: Zahl mit Richtung, ohne Urteil",
+      "regel": "G2",
+      "operation": "vergleich",
+      "quelle": "G2 (Q3-Muster)",
+      "rechnung": "erwartet = 10 523 + 0,2343 × 280 000 = 76 127; Δ = 5 873 ÷ 76 127 = 7,71… % → 7,7, Richtung mehr — Zähler unvollständig → ohne_urteil",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "82000",
+          "zustand": "unvollstaendig",
+          "kennzeichen": [
+            "mit Ersatzwert (MS-06, 2 Tage)"
+          ]
+        },
+        "variablen": [
+          {
+            "wert": "280000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "ohne_urteil",
+        "grund": null,
+        "gemessen": "82000",
+        "erwartet": "76127",
+        "delta_prozent": "7.7",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Modell mit einer Einflussgröße, Bezugsbasis BB-0001, Fassung 2; Streuung ± 0,8 %)",
+          "mit Ersatzwert (MS-06, 2 Tage)",
+          "unvollständig"
+        ]
+      }
+    },
+    {
+      "name": "M5 ,5 aufwärts: Δ 2,05 % → 2,1, schlechter",
+      "regel": "M5",
+      "operation": "vergleich",
+      "quelle": "Rundungsprobe (konstruiert)",
+      "rechnung": "erwartet = 0,5 × 200 000 = 100 000; Δ = 2 050 ÷ 100 000 = 2,05 % exakt → kaufmännisch 2,1 (Python round: 2,0)",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-9001",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 12,
+          "basiswert": "0.5",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "102050",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "200000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "102050",
+        "erwartet": "100000",
+        "delta_prozent": "2.1",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Bezugsbasis BB-9001, Fassung 1)"
+        ]
+      }
+    },
+    {
+      "name": "M5 ,5 vom Nullpunkt weg: Δ −2,05 % → −2,1, besser",
+      "regel": "M5",
+      "operation": "vergleich",
+      "quelle": "Rundungsprobe (konstruiert)",
+      "rechnung": "Δ = −2 050 ÷ 100 000 = −2,05 % exakt → −2,1 (Java Math.round und JS Math.round lieferten −2,0)",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-9001",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 12,
+          "basiswert": "0.5",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "97950",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "200000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "besser",
+        "grund": null,
+        "gemessen": "97950",
+        "erwartet": "100000",
+        "delta_prozent": "-2.1",
+        "band_prozent": "2.0",
+        "richtung": "weniger",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Bezugsbasis BB-9001, Fassung 1)"
+        ]
+      }
+    },
+    {
+      "name": "M5 nie auf das Band gerundet: Δ 2,04 % zeigt 2,0 und ist schlechter",
+      "regel": "U3",
+      "operation": "vergleich",
+      "quelle": "Rundungsprobe (konstruiert)",
+      "rechnung": "Δ = 2,04 % > Band 2,0 → schlechter, obwohl die Anzeige 2,0 lautet",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-9001",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 12,
+          "basiswert": "0.5",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "102040",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "200000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "102040",
+        "erwartet": "100000",
+        "delta_prozent": "2.0",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Bezugsbasis BB-9001, Fassung 1)"
+        ]
+      }
+    },
+    {
+      "name": "U3 genau auf dem Band: im Rahmen",
+      "regel": "U3",
+      "operation": "vergleich",
+      "quelle": "Rundungsprobe (konstruiert)",
+      "rechnung": "Δ = 2 000 ÷ 100 000 = 2,00 % = Band → im_rahmen (≤)",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-9001",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 12,
+          "basiswert": "0.5",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "abgeschlossen": true,
+        "gemessen": {
+          "wert": "102000",
+          "zustand": "vollstaendig",
+          "kennzeichen": []
+        },
+        "variablen": [
+          {
+            "wert": "200000",
+            "zustand": "vollstaendig",
+            "kennzeichen": []
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "im_rahmen",
+        "grund": null,
+        "gemessen": "102000",
+        "erwartet": "100000",
+        "delta_prozent": "2.0",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Bezugsbasis BB-9001, Fassung 1)"
+        ]
+      }
+    },
+    {
+      "name": "R11 November 2027 bis Februar 2028: Σ ÷ Σ 1,8 %, nicht das Mittel 2,2 %",
+      "regel": "U5",
+      "operation": "zeitraum",
+      "quelle": "R11/§5.8 Zeitraum",
+      "rechnung": "Σ gemessen 323 000; Σ erwartet 85 499 + 69 098 + 80 813 + 81 984,5 = 317 394,5; Δ = 5 605,5 ÷ 317 394,5 = 1,766… % → 1,8 → im_rahmen; das Mittel der Monats-Δ (−0,0; 12,9; −3,5; −0,6) wäre 2,2",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "soll_monate": 4,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "85500",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "320000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "78000",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "250000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "78000",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "300000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "81500",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "305000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "im_rahmen",
+        "grund": null,
+        "gemessen": "323000",
+        "erwartet": "317394.5",
+        "delta_prozent": "1.8",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Modell mit einer Einflussgröße, Bezugsbasis BB-0001, Fassung 2; Streuung ± 0,8 %)"
+        ],
+        "monate": "4 von 4"
+      }
+    },
+    {
+      "name": "U5 unvollständiger Zeitraum: 4 von 5 Monaten",
+      "regel": "U5",
+      "operation": "zeitraum",
+      "quelle": "R11 + R4 (März 2028 außerhalb der Spannweite)",
+      "rechnung": "März 2028 nicht anwendbar → fehlt; Σ über vier Monate wie R11 = 1,8 %, Richtung mehr, ohne_urteil mit „4 von 5 Monaten“",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0001",
+          "fassung": 2,
+          "methode": "regression_eine_variable",
+          "monate": 12,
+          "basiswert": "0.2685",
+          "koeffizienten": {
+            "a": "10523",
+            "b": "0.2343"
+          },
+          "streuung_prozent": "0.8",
+          "toleranz_prozent": "2.0",
+          "spannweite": [
+            {
+              "von": "254000",
+              "bis": "341000",
+              "toleriert_von": "228600",
+              "toleriert_bis": "375100"
+            }
+          ],
+          "variablen": [
+            {
+              "name": "Produktionsmenge",
+              "einheit": "kg",
+              "art": "produktionsmenge"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "soll_monate": 5,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "85500",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "320000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "78000",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "250000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "78000",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "300000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "81500",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "305000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "100000",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "390000",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "ohne_urteil",
+        "grund": null,
+        "gemessen": "323000",
+        "erwartet": "317394.5",
+        "delta_prozent": "1.8",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Produktionsmenge (Modell mit einer Einflussgröße, Bezugsbasis BB-0001, Fassung 2; Streuung ± 0,8 %)",
+          "4 von 5 Monaten"
+        ],
+        "monate": "4 von 5"
+      }
+    },
+    {
+      "name": "U1 Vormonat roh: nie ein Urteil",
+      "regel": "U1",
+      "operation": "roh",
+      "quelle": "VG3 bleibt",
+      "rechnung": "(78 000 − 85 500) ÷ 85 500 = −8,77… % → −8,8, ohne_urteil",
+      "eingang": {
+        "aktuell": "78000",
+        "vorher": "85500"
+      },
+      "erwartet": {
+        "delta_prozent": "-8.8",
+        "richtung": "weniger",
+        "urteil": "ohne_urteil"
+      }
+    },
+    {
+      "name": "M5 Rundung 81984.5 auf 0",
+      "regel": "M5",
+      "operation": "runden",
+      "quelle": "M5",
+      "rechnung": "R2 Februar 2028 erwartet: 81 984,5 → 81 985 (Python round: 81 984)",
+      "eingang": {
+        "wert": "81984.5",
+        "stellen": 0
+      },
+      "erwartet": "81985"
+    },
+    {
+      "name": "M5 Rundung -81984.5 auf 0",
+      "regel": "M5",
+      "operation": "runden",
+      "quelle": "M5",
+      "rechnung": "negativ: −81 984,5 → −81 985 (Math.round: −81 984)",
+      "eingang": {
+        "wert": "-81984.5",
+        "stellen": 0
+      },
+      "erwartet": "-81985"
+    },
+    {
+      "name": "M5 Rundung 0.28375 auf 4",
+      "regel": "M5",
+      "operation": "runden",
+      "quelle": "M5",
+      "rechnung": "vier Stellen: 0,28375 → 0,2838",
+      "eingang": {
+        "wert": "0.28375",
+        "stellen": 4
+      },
+      "erwartet": "0.2838"
+    },
+    {
+      "name": "M5 Rundung -0.04 auf 1",
+      "regel": "M5",
+      "operation": "runden",
+      "quelle": "M5",
+      "rechnung": "kein negatives Null: −0,04 → 0,0",
+      "eingang": {
+        "wert": "-0.04",
+        "stellen": 1
+      },
+      "erwartet": "0.0"
+    }
+  ]
+}

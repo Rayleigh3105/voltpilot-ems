@@ -1,0 +1,1659 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/bezugsbasis.schema.json",
+  "title": "Bezugsbasis – gemeinsame Vertragsvektoren (AP-17 NW-1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "startwerte",
+    "vokabulare",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "herkunft": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startwerte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mindest_monate",
+        "toleranz_prozent",
+        "spannweite_prozent",
+        "abhaengig_r",
+        "wiedervorlage_monate"
+      ],
+      "properties": {
+        "mindest_monate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "toleranz_prozent": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "spannweite_prozent": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "abhaengig_r": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "wiedervorlage_monate": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "vokabulare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "methode",
+        "urteil",
+        "grund",
+        "datenlage",
+        "richtung",
+        "anpassungsgrund",
+        "faktor_art",
+        "basis_zustand",
+        "freigabe_status"
+      ],
+      "properties": {
+        "methode": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "urteil": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "grund": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "datenlage": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "richtung": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "anpassungsgrund": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "faktor_art": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "basis_zustand": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "freigabe_status": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "referenzperiode"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "text",
+                  "laufender_monat"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "laufender_monat": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "gueltig",
+                  "monate",
+                  "datenlage",
+                  "fehler"
+                ],
+                "properties": {
+                  "gueltig": {
+                    "type": "boolean"
+                  },
+                  "monate": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    ]
+                  },
+                  "datenlage": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "enum": [
+                          "vollstaendig",
+                          "vorlaeufig"
+                        ]
+                      }
+                    ]
+                  },
+                  "fehler": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "enum": [
+                          "referenzperiode_format",
+                          "referenzperiode_reihenfolge",
+                          "periode_nicht_zu_ende"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "basiswert"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "grundlage"
+                ],
+                "properties": {
+                  "grundlage": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "zaehler",
+                        "nenner"
+                      ],
+                      "properties": {
+                        "zaehler": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            }
+                          ]
+                        },
+                        "nenner": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "basiswert",
+                  "monate",
+                  "datenlage",
+                  "grund",
+                  "kennzeichen"
+                ],
+                "properties": {
+                  "basiswert": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      }
+                    ]
+                  },
+                  "monate": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "datenlage": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "enum": [
+                          "vollstaendig",
+                          "vorlaeufig"
+                        ]
+                      }
+                    ]
+                  },
+                  "grund": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "enum": [
+                          "basis_fehlt",
+                          "basis_beendet",
+                          "zu_wenig_perioden",
+                          "variable_fehlt",
+                          "variable_ausserhalb",
+                          "variablen_abhaengig",
+                          "keine_werte",
+                          "periode_nicht_zu_ende"
+                        ]
+                      }
+                    ]
+                  },
+                  "kennzeichen": {
+                    "$ref": "#/$defs/kennzeichen"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "modell"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "methode",
+                  "reihe"
+                ],
+                "properties": {
+                  "methode": {
+                    "enum": [
+                      "regression_eine_variable",
+                      "regression_zwei_variablen",
+                      "gradtage"
+                    ]
+                  },
+                  "reihe": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "zaehler",
+                        "variablen"
+                      ],
+                      "properties": {
+                        "zaehler": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                            }
+                          ]
+                        },
+                        "variablen": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                              }
+                            ]
+                          },
+                          "minItems": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "methode",
+                  "monate",
+                  "basiswert",
+                  "koeffizienten",
+                  "r2",
+                  "streuung_prozent",
+                  "spannweite",
+                  "abgelehnt",
+                  "grund"
+                ],
+                "properties": {
+                  "methode": {
+                    "enum": [
+                      "verhaeltnis",
+                      "regression_eine_variable",
+                      "regression_zwei_variablen",
+                      "gradtage"
+                    ]
+                  },
+                  "monate": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "basiswert": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      }
+                    ]
+                  },
+                  "koeffizienten": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/$defs/koeffizienten"
+                      }
+                    ]
+                  },
+                  "r2": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      }
+                    ]
+                  },
+                  "streuung_prozent": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      }
+                    ]
+                  },
+                  "spannweite": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/spannweite"
+                    }
+                  },
+                  "abgelehnt": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "variable",
+                        "grund",
+                        "r"
+                      ],
+                      "properties": {
+                        "variable": {
+                          "const": 2
+                        },
+                        "grund": {
+                          "const": "variablen_abhaengig"
+                        },
+                        "r": {
+                          "type": "string",
+                          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                        }
+                      }
+                    }
+                  },
+                  "grund": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "enum": [
+                          "basis_fehlt",
+                          "basis_beendet",
+                          "zu_wenig_perioden",
+                          "variable_fehlt",
+                          "variable_ausserhalb",
+                          "variablen_abhaengig",
+                          "keine_werte",
+                          "periode_nicht_zu_ende"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "abhaengigkeit"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "x1",
+                  "x2"
+                ],
+                "properties": {
+                  "x1": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                    },
+                    "minItems": 2
+                  },
+                  "x2": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                    },
+                    "minItems": 2
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "r",
+                  "abhaengig"
+                ],
+                "properties": {
+                  "r": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      }
+                    ]
+                  },
+                  "abhaengig": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "vergleich"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "$ref": "#/$defs/vergleich_eingang"
+              },
+              "erwartet": {
+                "$ref": "#/$defs/vergleich_ergebnis"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "roh_und_bereinigt"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "roh",
+                  "bereinigt"
+                ],
+                "properties": {
+                  "roh": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "gemessen",
+                      "vorher",
+                      "variable",
+                      "variable_vorher"
+                    ],
+                    "properties": {
+                      "gemessen": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "vorher": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "variable": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      },
+                      "variable_vorher": {
+                        "type": "string",
+                        "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                      }
+                    }
+                  },
+                  "bereinigt": {
+                    "$ref": "#/$defs/vergleich_eingang"
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "roh",
+                  "bereinigt"
+                ],
+                "properties": {
+                  "roh": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "delta_prozent",
+                      "richtung",
+                      "urteil",
+                      "variable_delta_prozent"
+                    ],
+                    "properties": {
+                      "delta_prozent": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                          }
+                        ]
+                      },
+                      "richtung": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "enum": [
+                              "mehr",
+                              "weniger",
+                              "gleich"
+                            ]
+                          }
+                        ]
+                      },
+                      "urteil": {
+                        "const": "ohne_urteil"
+                      },
+                      "variable_delta_prozent": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "bereinigt": {
+                    "$ref": "#/$defs/vergleich_ergebnis"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "methoden_paar"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "modell",
+                  "verhaeltnis"
+                ],
+                "properties": {
+                  "modell": {
+                    "$ref": "#/$defs/vergleich_eingang"
+                  },
+                  "verhaeltnis": {
+                    "$ref": "#/$defs/vergleich_eingang"
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "modell",
+                  "verhaeltnis"
+                ],
+                "properties": {
+                  "modell": {
+                    "$ref": "#/$defs/vergleich_ergebnis"
+                  },
+                  "verhaeltnis": {
+                    "$ref": "#/$defs/vergleich_ergebnis"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "zeitraum"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "fassung",
+                  "basis_beendet",
+                  "soll_monate",
+                  "monate"
+                ],
+                "properties": {
+                  "fassung": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/$defs/fassung"
+                      }
+                    ]
+                  },
+                  "basis_beendet": {
+                    "type": "boolean"
+                  },
+                  "soll_monate": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "monate": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/monat"
+                    },
+                    "minItems": 1
+                  }
+                }
+              },
+              "erwartet": {
+                "$ref": "#/$defs/zeitraum_ergebnis"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "roh"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "aktuell",
+                  "vorher"
+                ],
+                "properties": {
+                  "aktuell": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  },
+                  "vorher": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  }
+                }
+              },
+              "erwartet": {
+                "$ref": "#/$defs/roh_ergebnis"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(P|M|G|U|V)[0-9]$"
+              },
+              "operation": {
+                "const": "runden"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "wert",
+                  "stellen"
+                ],
+                "properties": {
+                  "wert": {
+                    "type": "string",
+                    "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+                  },
+                  "stellen": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8
+                  }
+                }
+              },
+              "erwartet": {
+                "type": "string",
+                "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "dezimal": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "kennzeichen": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "variable_def": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "einheit",
+        "art"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "einheit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "art": {
+          "enum": [
+            "produktionsmenge",
+            "gutteile",
+            "betriebszeit",
+            "betriebszeit_aus_leistung",
+            "schichten",
+            "mitarbeitende",
+            "gradtagzahl",
+            "zaehlerstand",
+            "sonstige_menge",
+            "flaeche"
+          ]
+        }
+      }
+    },
+    "spannweite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "von",
+        "bis",
+        "toleriert_von",
+        "toleriert_bis"
+      ],
+      "properties": {
+        "von": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "bis": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "toleriert_von": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "toleriert_bis": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        }
+      }
+    },
+    "koeffizienten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "a",
+        "b"
+      ],
+      "properties": {
+        "a": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "b": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "c": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        }
+      }
+    },
+    "fassung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kennzeichen",
+        "fassung",
+        "methode",
+        "monate",
+        "basiswert",
+        "koeffizienten",
+        "streuung_prozent",
+        "toleranz_prozent",
+        "spannweite",
+        "variablen"
+      ],
+      "properties": {
+        "kennzeichen": {
+          "type": "string",
+          "pattern": "^BB-[0-9]{4}$"
+        },
+        "fassung": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "methode": {
+          "enum": [
+            "verhaeltnis",
+            "regression_eine_variable",
+            "regression_zwei_variablen",
+            "gradtage"
+          ]
+        },
+        "monate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "basiswert": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "koeffizienten": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/koeffizienten"
+            }
+          ]
+        },
+        "streuung_prozent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "toleranz_prozent": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "spannweite": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/spannweite"
+              }
+            }
+          ]
+        },
+        "variablen": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/variable_def"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "wert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wert",
+        "zustand",
+        "kennzeichen"
+      ],
+      "properties": {
+        "wert": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "zustand": {
+          "enum": [
+            "vollstaendig",
+            "unvollstaendig"
+          ]
+        },
+        "kennzeichen": {
+          "$ref": "#/$defs/kennzeichen"
+        }
+      }
+    },
+    "monat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "abgeschlossen",
+        "gemessen",
+        "variablen"
+      ],
+      "properties": {
+        "abgeschlossen": {
+          "type": "boolean"
+        },
+        "gemessen": {
+          "$ref": "#/$defs/wert"
+        },
+        "variablen": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wert"
+          }
+        }
+      }
+    },
+    "vergleich_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fassung",
+        "basis_beendet",
+        "abgeschlossen",
+        "gemessen",
+        "variablen"
+      ],
+      "properties": {
+        "fassung": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/fassung"
+            }
+          ]
+        },
+        "basis_beendet": {
+          "type": "boolean"
+        },
+        "abgeschlossen": {
+          "type": "boolean"
+        },
+        "gemessen": {
+          "$ref": "#/$defs/wert"
+        },
+        "variablen": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wert"
+          }
+        }
+      }
+    },
+    "vergleich_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "urteil",
+        "grund",
+        "gemessen",
+        "erwartet",
+        "delta_prozent",
+        "band_prozent",
+        "richtung",
+        "kennzeichen"
+      ],
+      "properties": {
+        "urteil": {
+          "enum": [
+            "besser",
+            "schlechter",
+            "im_rahmen",
+            "ohne_urteil",
+            "nicht_anwendbar"
+          ]
+        },
+        "grund": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "basis_fehlt",
+                "basis_beendet",
+                "zu_wenig_perioden",
+                "variable_fehlt",
+                "variable_ausserhalb",
+                "variablen_abhaengig",
+                "keine_werte",
+                "periode_nicht_zu_ende"
+              ]
+            }
+          ]
+        },
+        "gemessen": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "erwartet": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "delta_prozent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "band_prozent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "richtung": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "mehr",
+                "weniger",
+                "gleich"
+              ]
+            }
+          ]
+        },
+        "kennzeichen": {
+          "$ref": "#/$defs/kennzeichen"
+        }
+      }
+    },
+    "roh_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delta_prozent",
+        "richtung",
+        "urteil"
+      ],
+      "properties": {
+        "delta_prozent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "richtung": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "mehr",
+                "weniger",
+                "gleich"
+              ]
+            }
+          ]
+        },
+        "urteil": {
+          "const": "ohne_urteil"
+        }
+      }
+    },
+    "zeitraum_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "urteil",
+        "grund",
+        "gemessen",
+        "erwartet",
+        "delta_prozent",
+        "band_prozent",
+        "richtung",
+        "kennzeichen",
+        "monate"
+      ],
+      "properties": {
+        "urteil": {
+          "enum": [
+            "besser",
+            "schlechter",
+            "im_rahmen",
+            "ohne_urteil",
+            "nicht_anwendbar"
+          ]
+        },
+        "grund": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "basis_fehlt",
+                "basis_beendet",
+                "zu_wenig_perioden",
+                "variable_fehlt",
+                "variable_ausserhalb",
+                "variablen_abhaengig",
+                "keine_werte",
+                "periode_nicht_zu_ende"
+              ]
+            }
+          ]
+        },
+        "gemessen": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "erwartet": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "delta_prozent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "band_prozent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "richtung": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "mehr",
+                "weniger",
+                "gleich"
+              ]
+            }
+          ]
+        },
+        "kennzeichen": {
+          "$ref": "#/$defs/kennzeichen"
+        },
+        "monate": {
+          "type": "string",
+          "pattern": "^[0-9]+ von [0-9]+$"
+        }
+      }
+    }
+  }
+}
