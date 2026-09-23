@@ -283,6 +283,10 @@ class BewertungRanglisteApiTest {
         assertThat(ruf("PUT", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-8") + "/messbedarf/" + bedarfId,
                 "IK", Map.of("wortlaut", "Geänderte Planung"), 409).path("code").asText())
                 .isEqualTo("berichts_belege");
+        // Auch das Bearbeiten mit Struktur (Größe aus dem Katalog) trifft denselben Belegschutz.
+        assertThat(ruf("PUT", "/api/v1/unternehmen/energieeinsaetze/" + ids.get("EE-8") + "/messbedarf/" + bedarfId,
+                "IK", Map.of("wortlaut", "Geänderte Planung", "messgroesse", "Wirkenergie", "richtung", "Bezug"), 409)
+                .path("code").asText()).isEqualTo("berichts_belege");
         Map<String,Object> geaendertesMessmittel = Map.of("genauigkeitsklasse", "0,5",
                 "pruefungsart", "kalibrierung", "pruefung_am", "2026-09-01",
                 "pruefung_gueltig_bis", "2028-08-31", "beleg", Map.of("bezeichnung", "Kalibrierschein",

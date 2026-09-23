@@ -68,3 +68,26 @@
 .vp-ma-rest-knopf {
   margin-top: 4px;
 }
+
+/* AP-16 P1: das Protokoll eines Bedarfs — Einträge untereinander, je Änderung eine leise Zeile. */
+.vp-mp-protokoll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin: var(--vp-c-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-mp-protokoll > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: var(--vp-c-space-3);
+  border-left: 2px solid var(--vp-c-border);
+  overflow-wrap: anywhere;
+}
+
+.vp-mp-protokoll-feld {
+  display: block;
+}

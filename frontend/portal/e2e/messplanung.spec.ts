@@ -19,6 +19,9 @@ import { verschiebe } from '../src/picker/datum';
  *   Rest-Zeile erfassen; die Liste je Standort.
  * - Bühne `e2e/messstelle-seite.html?id=<MS-23>` (die ECHTE `MessstelleSeite`, Cloud per `page.route`): „geplant für
  *   EE-8 Gebäudetechnik Halle 1“ unter „Keine Datenquelle“.
+ * - AP-16 P1 (Befund IP-20): einen offenen Bedarf bearbeiten (Struktur: Ort als ID, Größe aus dem Katalog), sein
+ *   Protokoll lesen, und im ECHTEN Register (`messstelle-seite.html?wirt=1`) der Filter „Nur geplant für einen
+ *   Energieeinsatz“ (`geplantFuerEinsatz=true`).
  *
  * GEMESSEN: Querlauf des Dokuments und überstehende Elemente. `IP20_BILDER=<Ordner>` legt je Fall ein Bild ab.
  */
@@ -56,8 +59,9 @@ async function ablegen(page: Page, name: string, ganz = false) {
   if (!BILDER) return;
   mkdirSync(BILDER, { recursive: true });
   const path = join(BILDER, `${name}.png`);
-  // Das Modal blendet ein: erst nach dem Ende aller Animationen fotografieren.
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
+  // Das Modal blendet ein: erst nach dem Ende aller Animationen fotografieren. Eine abgebrochene Animation (die
+  // Auswahlliste schließt) verwirft ihr `finished` mit AbortError — sie ist dann ebenso vorbei.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
   const vp = page.viewportSize();
   if (ganz && vp && vp.width < 720) {
     const hoehe = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -89,7 +93,11 @@ async function cloudMs23(page: Page) {
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (pfad === '/api/v1/messstellen') {
       const r = ahrenbergRegister();
-      return json({ ...r, stichtag: '2026-11-27', zeitpunkt: '2026-11-27T09:00:00Z', register: [...r.register, ms23Zeile()] });
+      const register = [...r.register, ms23Zeile()];
+      const geplant = url.searchParams.get('geplantFuerEinsatz') === 'true';
+      const zeilen = geplant ? register.filter((z) => (z.geplant_fuer_einsaetze ?? []).length > 0) : register;
+      return json({ ...r, stichtag: '2026-11-27', zeitpunkt: '2026-11-27T09:00:00Z', register: zeilen,
+        messstellen: [...r.messstellen, m].filter((x) => zeilen.some((z) => z.id === x.id)) });
     }
     if (pfad === '/api/v1/unternehmen/prozesse') return json({ stichtag: null, prozesse: prozesseAhrenberg() });
     if (pfad === '/api/v1/unternehmen/kostenstellen') return json({ stichtag: null, kostenstellen: kostenstellenAhrenberg() });
@@ -206,6 +214,50 @@ for (const breite of [375, 1440]) {
       await expect(liste.getByTestId('messbedarf-MB-2')).toContainText('Rest Halle 1');
       await expect(liste.getByTestId('messplanung-standort-Werk Ahrenberg').getByTestId('messbedarf-zum-einsatz')).toHaveCount(2);
       await ohneQuerlauf(page, `liste-standort-${breite}`);
+    });
+
+    test('AP-16 P1: MB-1 bearbeiten — vorbelegt aus dem Wortlaut, gespeichert mit Struktur; das Protokoll nennt vorher → nachher', async ({ page }) => {
+      await oeffne(page, '/e2e/bewertung.html?stand=voll&messplanung=mb1&ee=EE-8', breite);
+      const karte = page.getByTestId('messplanung-einsatz');
+      const mb1 = karte.getByTestId('messbedarf-MB-1');
+      await mb1.getByRole('button', { name: 'Bearbeiten' }).click();
+      await expect(modal(page).getByTestId('messbedarf-bearbeiten')).toBeVisible();
+      await expect(modal(page).getByLabel('Was soll gemessen werden?')).toHaveValue(MB1_WORTLAUT);
+      await expect(picker(page, 'Ort (optional)')).toContainText('Halle 1');
+      await expect(picker(page, 'Größe (optional)')).toContainText('Wirkenergie');
+      await waehle(page, 'Ort (optional)', /^Halle 1 Nord\s*Bereich/);
+      await ablegen(page, `ap16-bearbeiten-${breite}`);
+      await ohneQuerlauf(page, `bearbeiten-${breite}`);
+      await modal(page).getByRole('button', { name: 'Speichern' }).click();
+      await expect(modal(page)).toHaveCount(0);
+      await expect(mb1).toContainText('Halle 1 Nord');
+      await expect(mb1.getByTestId('messbedarf-zustand')).toHaveText('offen');
+
+      await mb1.getByRole('button', { name: 'Protokoll' }).click();
+      const protokoll = modal(page).getByTestId('messbedarf-protokoll');
+      await expect(protokoll.getByTestId('messbedarf-protokoll-eintrag')).toHaveCount(2);
+      await expect(protokoll.getByTestId('messbedarf-protokoll-eintrag').nth(1)).toContainText('bearbeitet');
+      await expect(protokoll.getByTestId('messbedarf-protokoll-eintrag').nth(1)).toContainText(/Ort: „G-1“ → „B-\d+“/);
+      await ablegen(page, `ap16-protokoll-${breite}`);
+      await ohneQuerlauf(page, `protokoll-${breite}`);
+    });
+
+    test('AP-16 P1: im Register „Nur geplant für einen Energieeinsatz“ — nur MS-23, die Adresse fragt geplantFuerEinsatz=true', async ({ page }) => {
+      await cloudMs23(page);
+      const anfragen: string[] = [];
+      page.on('request', (r) => {
+        if (new URL(r.url()).pathname === '/api/v1/messstellen') anfragen.push(new URL(r.url()).search);
+      });
+      await oeffne(page, '/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen', breite);
+      const schalter = page.getByTestId('register-filter-geplant');
+      await expect(schalter).toHaveText('Nur geplant für einen Energieeinsatz (1)');
+      await schalter.click();
+      await expect(schalter).toHaveAttribute('aria-pressed', 'true');
+      await expect.poll(() => anfragen.some((q) => q.includes('geplantFuerEinsatz=true'))).toBe(true);
+      await expect(page.getByText('MS-23').first()).toBeVisible();
+      await expect(page.getByText('MS-21')).toHaveCount(0);
+      await ablegen(page, `ap16-register-geplant-${breite}`);
+      await ohneQuerlauf(page, `register-geplant-${breite}`);
     });
 
     test('Messstellen-Seite: „geplant für EE-8 …“ unter „Keine Datenquelle“ — ohne Wert, nie 0', async ({ page }) => {

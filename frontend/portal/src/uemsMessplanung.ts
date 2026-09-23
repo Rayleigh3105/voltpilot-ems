@@ -3,6 +3,7 @@ import {
   type BewertungMessabdeckungOrt,
   type Energieeinsatz,
   type Messbedarf,
+  type MessbedarfAenderung,
   type MessbedarfAnlegen,
   type Messstelle,
   type MessstelleRegisterZeile,
@@ -17,9 +18,12 @@ import { eintragVon, groesseWaehlen, leereGroesse, type GroesseEingabe, type Ort
  * Rest-Zeile einer Anlage), einlösen (Sprung in den Messstellen-Dialog mit Ort und Größe vorbelegt, das Kennzeichen
  * kommt zurück), verwerfen mit Pflicht-Begründung. Reine Ableitungen; die Flächen stehen in `components/Messplanung.tsx`.
  *
- * ⚠ Ort und Größe sind am Bedarf WORTLAUT (`openapi.yaml` `MessbedarfAnlegen`). Das Portal schreibt den Ort als
- * Kurzzeichen („G-1“, wie R5) und die Größe als „Wirkenergie · Bezug“ — beides liest der Dialog zurück; was er nicht
- * erkennt, belegt er nicht vor. ⚠ Eine eingelöste Messstelle ohne Quelle hat „keine Datenquelle“, nie eine 0.
+ * AP-16 P1 (Befund IP-20): Ort und Größe schreibt das Portal als STRUKTUR (`ort_id`, `messgroesse`, `richtung`) und
+ * zusätzlich den gewohnten Wortlaut (Kurzzeichen „G-1“, „Wirkenergie · Bezug“), den Bericht und Messabdeckung lesen. Die
+ * Liste je Standort liest die Standort-Route `GET /api/v1/unternehmen/messbedarf` (der Standort kommt aus `ort_ziel`).
+ * ⚠ Ein Bedarf aus der Fassung davor hat nur Wortlaut: dann bleibt der Wortlaut führend — das Kurzzeichen wird wie bisher
+ * über die Ortsbäume aufgelöst, sonst steht er unter „ohne Ort“; Bearbeiten behält einen unerkannten Wortlaut.
+ * ⚠ Eine eingelöste Messstelle ohne Quelle hat „keine Datenquelle“, nie eine 0.
  */
 
 export const MESSPLANUNG = {
@@ -36,6 +40,14 @@ export const MESSPLANUNG = {
   erfassenSatz: 'Der Bedarf steht danach in der Messabdeckung unter „geplant“ — ohne Menge, bis eine Messstelle Werte liefert.',
   einloesenHinweis: 'Ort und Größe sind aus dem Messbedarf vorbelegt. Sobald die Messstelle eingerichtet ist, ist der Bedarf eingelöst.',
   ohneOrt: 'ohne Ort',
+  bearbeiten: 'Bearbeiten',
+  bearbeitenTitel: `${UEMS_MESSBEDARF} bearbeiten`,
+  speichern: 'Speichern',
+  bearbeitenSatz: 'Bearbeiten geht, solange der Bedarf offen ist. Jede Änderung steht mit Ihrem Namen im Protokoll.',
+  protokoll: 'Protokoll',
+  protokollTitel: (kennzeichen: string) => `Protokoll ${kennzeichen}`,
+  protokollLeer: 'Noch kein Eintrag im Protokoll.',
+  bisher: (wort: string) => `bisher „${wort}“ — bleibt, solange Sie nichts anderes wählen`,
 } as const;
 
 export const MESSBEDARF_ZUSTAND: Record<Messbedarf['zustand'], string> = {
@@ -49,10 +61,14 @@ export const MESSBEDARF_ZUSTAND: Record<Messbedarf['zustand'], string> = {
 export interface BedarfEingabe {
   einsatzId: string;
   wortlaut: string;
+  /** Das Kurzzeichen des gewählten Orts (die Wahl des Pickers); die ID kommt beim Senden aus den Ortsbäumen. */
   ort: string;
   groesse: string;
   richtung: string;
   frist: string;
+  /** Bearbeiten eines Bedarfs aus der Fassung vor der Struktur: der Wortlaut, den kein Picker abbildet — er bleibt. */
+  ortWortlaut?: string;
+  groesseWortlaut?: string;
 }
 
 export const leererBedarf = (einsatzId = '', vorbelegung: Partial<BedarfEingabe> = {}): BedarfEingabe => ({
@@ -75,13 +91,39 @@ export function groesseWort(groesse: string, richtung: string): string | null {
   return richtung ? `${groesse} · ${richtung}` : groesse;
 }
 
-export function bedarfAnfrage(e: BedarfEingabe): MessbedarfAnlegen {
+/**
+ * Die Anfrage mit Struktur und Wortlaut: `ort_id` aus dem gewählten Kurzzeichen, `messgroesse`/`richtung` aus dem
+ * Katalog; der Wortlaut wie bisher (Kurzzeichen, „Wirkenergie · Bezug“). Ohne Wahl bleibt ein alter Wortlaut stehen.
+ */
+export function bedarfAnfrage(e: BedarfEingabe, orte: readonly OrtWahl[] = []): MessbedarfAnlegen {
+  const o = e.ort ? orte.find((x) => x.kurzzeichen === e.ort) : undefined;
   return {
     wortlaut: e.wortlaut.trim(),
-    ort: e.ort || null,
-    groesse: groesseWort(e.groesse, e.richtung),
+    ort: e.ort || e.ortWortlaut || null,
+    groesse: groesseWort(e.groesse, e.richtung) ?? (e.groesseWortlaut || null),
     frist: e.frist || null,
+    ort_id: o?.id ?? null,
+    messgroesse: e.groesse || null,
+    richtung: e.groesse ? e.richtung || null : null,
   };
+}
+
+/**
+ * Die Vorbelegung zum Bearbeiten: die Struktur, wenn es sie gibt; sonst der Wortlaut, soweit ihn die Ortsbäume bzw. der
+ * Katalog erkennen. Was keiner erkennt, bleibt als Wortlaut (`ortWortlaut`, `groesseWortlaut`) und geht unverändert zurück.
+ */
+export function bearbeitenVorbelegung(b: Messbedarf, orte: readonly OrtWahl[]): BedarfEingabe {
+  const ort = b.ort_ziel?.kurzzeichen ?? (b.ort && orte.some((o) => o.kurzzeichen === b.ort) ? b.ort : '');
+  const g = b.messgroesse ? { groesse: b.messgroesse, richtung: b.richtung ?? '' } : groesseVorbelegung(b.groesse);
+  return leererBedarf(b.energieeinsatz_id, {
+    wortlaut: b.wortlaut,
+    ort,
+    groesse: g?.groesse ?? '',
+    richtung: g?.richtung ?? '',
+    frist: b.frist ?? '',
+    ...(!ort && b.ort ? { ortWortlaut: b.ort } : {}),
+    ...(!g && b.groesse ? { groesseWortlaut: b.groesse } : {}),
+  });
 }
 
 /**
@@ -106,16 +148,24 @@ export function groesseVorbelegung(text: string | null | undefined): GroesseEing
 
 // ------------------------------------------------------------------ Lesen
 
-/** „G-1 Halle 1“ — das Kurzzeichen mit dem Namen, wenn der Ort bekannt ist; sonst der Wortlaut, wie er kam. */
-export function ortText(ort: string | null, orte: readonly OrtWahl[]): string | null {
-  if (!ort) return null;
-  const o = orte.find((x) => x.kurzzeichen === ort);
-  return o ? `${o.kurzzeichen} ${o.name}` : ort;
+/**
+ * „G-1 Halle 1“ — mit Struktur aus `ort_ziel`; ohne Struktur das Kurzzeichen mit dem Namen, wenn die Ortsbäume es
+ * kennen, sonst der Wortlaut, wie er kam.
+ */
+export function ortText(b: Pick<Messbedarf, 'ort' | 'ort_ziel'>, orte: readonly OrtWahl[]): string | null {
+  if (b.ort_ziel) return b.ort_ziel.name ? `${b.ort_ziel.kurzzeichen} ${b.ort_ziel.name}` : b.ort_ziel.kurzzeichen;
+  if (!b.ort) return null;
+  const o = orte.find((x) => x.kurzzeichen === b.ort);
+  return o ? `${o.kurzzeichen} ${o.name}` : b.ort;
 }
+
+/** Die Größe: mit Struktur „Wirkenergie · Bezug“ aus dem Katalog, sonst der Wortlaut. */
+export const groesseText = (b: Pick<Messbedarf, 'groesse' | 'messgroesse' | 'richtung'>): string | null =>
+  b.messgroesse ? groesseWort(b.messgroesse, b.richtung ?? '') : b.groesse;
 
 /** Die leise Zeile unter dem Wortlaut: Ort · Größe · Frist — nur, was angegeben ist. */
 export function bedarfUnter(b: Messbedarf, orte: readonly OrtWahl[]): string {
-  return [ortText(b.ort, orte), b.groesse, b.frist ? `Frist ${tag(b.frist)}` : null, `erfasst ${tag(b.angelegt_am)} · ${b.akteur.name}`]
+  return [ortText(b, orte), groesseText(b), b.frist ? `Frist ${tag(b.frist)}` : null, `erfasst ${tag(b.angelegt_am)} · ${b.akteur.name}`]
     .filter(Boolean)
     .join(' · ');
 }
@@ -157,8 +207,9 @@ export interface StandortGruppe {
 }
 
 /**
- * Die Liste je Standort: der Ort des Bedarfs (Kurzzeichen) über die Ortsbäume zu seinem Standort; ein Bedarf ohne Ort
- * oder mit unbekanntem Ort steht unter „ohne Ort“ — er verschwindet nie.
+ * Die Liste je Standort: der Standort aus `ort_ziel` (die Standort-Route löst ihn auf); ohne Struktur wie bisher das
+ * Kurzzeichen des Wortlauts über die Ortsbäume. Ein Bedarf ohne Ort oder mit unbekanntem Ort steht unter „ohne Ort“ —
+ * er verschwindet nie.
  */
 export function nachStandort(
   bedarfe: readonly Messbedarf[],
@@ -167,7 +218,13 @@ export function nachStandort(
 ): StandortGruppe[] {
   const gruppen = new Map<string, StandortGruppe>();
   for (const b of bedarfeSortiert(bedarfe)) {
-    const o = b.ort ? orte.find((x) => x.kurzzeichen === b.ort) : undefined;
+    const o = b.ort_ziel
+      ? b.ort_ziel.standort_id
+        ? { standortId: b.ort_ziel.standort_id, standortName: b.ort_ziel.standort_name ?? b.ort_ziel.kurzzeichen }
+        : undefined
+      : b.ort
+        ? orte.find((x) => x.kurzzeichen === b.ort)
+        : undefined;
     const schluessel = o?.standortId ?? '';
     const g = gruppen.get(schluessel) ?? { schluessel, name: o?.standortName ?? MESSPLANUNG.ohneOrt, bedarfe: [] };
     g.bedarfe.push({ bedarf: b, einsatz: einsaetze.find((e) => e.id === b.energieeinsatz_id) ?? null });
@@ -178,9 +235,67 @@ export function nachStandort(
 
 // ------------------------------------------------------------------ Einlösen · Rest-Zeile · Messstelle
 
+// ------------------------------------------------------------------ Protokoll
+
+const PROTOKOLL_ART: Record<MessbedarfAenderung['art'], string> = {
+  erfasst: 'erfasst',
+  bearbeitet: 'bearbeitet',
+  eingeloest: 'eingelöst',
+  verworfen: 'verworfen',
+};
+
+/** Die Felder, deren Änderung eine Protokollzeile nennt — in dieser Reihenfolge. */
+const PROTOKOLL_FELDER = [
+  ['wortlaut', 'Wortlaut'],
+  ['ort', 'Ort'],
+  ['groesse', 'Größe'],
+  ['frist', 'Frist'],
+  ['begruendung', 'Begründung'],
+] as const;
+
+export interface ProtokollZeile {
+  id: number;
+  art: string;
+  wann: string;
+  wer: string;
+  aenderungen: string[];
+}
+
+const feldWort = (feld: string, v: unknown): string => {
+  if (v === null || v === undefined || v === '') return '—';
+  const t = String(v);
+  return feld === 'frist' ? tag(t) : `„${t}“`;
+};
+
+/**
+ * Das Protokoll als Zeilen: Art, Zeitpunkt, Person und — beim Bearbeiten — je geändertem Feld „Ort: „G-1“ → „G-2““.
+ * Die Schnappschüsse bleiben, wie sie kamen; das Portal vergleicht nur Wortlaut, Ort, Größe, Frist und Begründung.
+ */
+export function protokollZeilen(aenderungen: readonly MessbedarfAenderung[]): ProtokollZeile[] {
+  return aenderungen.map((a) => ({
+    id: a.id,
+    art: PROTOKOLL_ART[a.art] ?? a.art,
+    wann: `${tag(a.zeit)}, ${new Date(a.zeit).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}`,
+    wer: a.akteur.name,
+    aenderungen:
+      a.art === 'bearbeitet' && a.alt && a.neu
+        ? PROTOKOLL_FELDER.filter(([f]) => (a.alt![f] ?? null) !== (a.neu![f] ?? null)).map(
+            ([f, name]) => `${name}: ${feldWort(f, a.alt![f])} → ${feldWort(f, a.neu![f])}`,
+          )
+        : [],
+  }));
+}
+
+// ------------------------------------------------------------------ Einlösen · Rest-Zeile · Messstelle (Prüfung)
+
 /** Die Schnittstelle nimmt nur eine eingerichtete Messstelle (nichts fehlt, nicht archiviert) — vorher nicht einlösen. */
 export function kannEinloesen(m: Messstelle): boolean {
   return m.fehlt.length === 0 && m.lebenszyklus !== 'archiviert';
+}
+
+/** Die Vorbelegung des Messstellen-Dialogs beim Einlösen: Ort und Größe aus der Struktur, sonst aus dem Wortlaut. */
+export function einloesenVorbelegung(b: Messbedarf): { ort: string | null; hauptgroesse: GroesseEingabe | null } {
+  return { ort: b.ort_ziel?.kurzzeichen ?? b.ort, hauptgroesse: groesseVorbelegung(groesseText(b)) };
 }
 
 /** Aus der Rest-Zeile einer Anlage: der Wortlaut nennt den Rest, der Ort ist der Standort der Anlage (wenn bekannt). */
@@ -219,6 +334,12 @@ export function messbedarfAblehnung(e: unknown): string {
   if (c === 'messstelle_nicht_eingerichtet')
     return 'Die Messstelle ist noch nicht eingerichtet — wählen Sie im Dialog den Ort, dann ist der Bedarf eingelöst.';
   if (c === 'messbedarf_abgeschlossen') return 'Dieser Messbedarf ist schon eingelöst oder verworfen.';
+  if (c === 'ort_unbekannt') return 'Diesen Ort gibt es nicht mehr — bitte wählen Sie einen anderen oder keinen Ort.';
+  if (c === 'groesse_ungueltig') return 'Diese Größe oder Richtung kennt der Katalog nicht — bitte wählen Sie sie aus der Liste.';
+  if (c === 'berichts_belege')
+    return e instanceof ApiError && e.message
+      ? e.message
+      : 'Ein freigegebener Berichtsstand zitiert diesen Messbedarf — er bleibt, wie er ist.';
   if (c === 'einsatz_beendet') return MESSPLANUNG.beendet;
   if (c === 'recht_fehlt' || (e instanceof ApiError && e.status === 403)) return 'Das dürfen Kundenadministratoren und Energiemanager.';
   if (e instanceof ApiError && e.status === 404) return 'Diesen Messbedarf gibt es hier nicht.';

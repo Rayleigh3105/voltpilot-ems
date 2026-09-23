@@ -5230,6 +5230,8 @@ export interface MessstellenRegisterAnfrage {
   anlage?: string;
   zustand?: string;
   ohneQuelle?: boolean;
+  /** UEMS AP-16 IP-19: nur Messstellen, die einen Messbedarf eines Energieeinsatzes einlösen. */
+  geplantFuerEinsatz?: boolean;
   /** Ein Tag (`2026-11-20`); fehlt = jetzt. */
   stichtag?: string;
 }
@@ -9513,6 +9515,20 @@ export const api = {
   /** UEMS AP-16 IP-19: alle Messbedarfe des Einsatzes — eingelöste und verworfene bleiben lesbar. */
   messbedarfe: (einsatzId: string) =>
     request<{ messbedarfe: Messbedarf[] }>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf`),
+  /**
+   * UEMS AP-16 P1: die Messbedarfe aller Einsätze, die die Anfrage sieht — mit `standort` nur die, deren strukturierter Ort
+   * heute dort hängt (ein Bedarf nur mit Ort-Wortlaut steht an keinem Standort).
+   */
+  messbedarfeAlle: (standort?: string) =>
+    request<{ messbedarfe: Messbedarf[] }>(`/api/v1/unternehmen/messbedarf${standort ? `?standort=${encodeURIComponent(standort)}` : ''}`),
+  /** Bearbeitet einen offenen Bedarf (ersetzt alle Felder); 409 `messbedarf_abgeschlossen` bzw. `berichts_belege`. */
+  messbedarfBearbeiten: (einsatzId: string, messbedarfId: string, body: MessbedarfAnlegen) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+  /** Das unveränderliche Protokoll des Bedarfs: Akteur, Zeitpunkt, Vorher-/Nachher-Stand. */
+  messbedarfProtokoll: (einsatzId: string, messbedarfId: string) =>
+    request<{ aenderungen: MessbedarfAenderung[] }>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}/protokoll`),
   /** Erfasst einen offenen Messbedarf; Recht `energieeinsatz.verwalten`. */
   messbedarfErfassen: (einsatzId: string, body: MessbedarfAnlegen) =>
     request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf`, { method: 'POST', body: JSON.stringify(body) }),
@@ -9567,13 +9583,32 @@ export interface BewertungUmfangStandort {
   anzahl_anlagen_im_umfang: number;
 }
 
-/** UEMS AP-16 IP-19 (`Messbedarf`): Ort und Größe sind Wortlaut; `messstelle` erst nach dem Einlösen. */
-export interface MessbedarfAnlegen { wortlaut: string; ort: string | null; groesse: string | null; frist: string | null }
+/**
+ * UEMS AP-16 IP-19 (`Messbedarf`): Ort und Größe als Wortlaut und (AP-16 P1) optional als Struktur — `ort_id` ist ein
+ * Standort, Gebäude oder Bereich, `messgroesse`/`richtung` stammen aus dem Größen-Katalog. `messstelle` erst nach dem
+ * Einlösen. Ohne Struktur bleibt der Wortlaut führend für die Anzeige.
+ */
+export interface MessbedarfAnlegen {
+  wortlaut: string; ort: string | null; groesse: string | null; frist: string | null;
+  ort_id?: string | null; messgroesse?: string | null; richtung?: string | null;
+}
+/** Der strukturierte Ort; `standort_*` ist der Standort, an dem er heute hängt (`null`: keiner). */
+export interface MessbedarfOrtZiel {
+  id: string; art: 'standort' | 'gebaeude' | 'bereich'; kurzzeichen: string; name: string | null;
+  standort_id: string | null; standort_name: string | null;
+}
 export interface Messbedarf {
   id: string; kennzeichen: string; energieeinsatz_id: string; wortlaut: string; ort: string | null; groesse: string | null;
   frist: string | null; zustand: 'offen' | 'eingeloest' | 'verworfen';
   messstelle: { id: string; kennzeichen: string; name: string | null } | null;
   begruendung: string | null; akteur: BewertungAkteur; angelegt_am: string; geaendert_am: string;
+  /** Ältere Antworten ohne die Felder = keine Struktur. */
+  ort_ziel?: MessbedarfOrtZiel | null; messgroesse?: string | null; richtung?: string | null;
+}
+/** Ein Protokolleintrag: `alt`/`neu` sind die Schnappschüsse der Zeile (snake_case-Spalten). */
+export interface MessbedarfAenderung {
+  id: number; art: 'erfasst' | 'bearbeitet' | 'eingeloest' | 'verworfen';
+  alt: Record<string, unknown> | null; neu: Record<string, unknown> | null; akteur: BewertungAkteur; zeit: string;
 }
 
 export interface BewertungAkteur {

@@ -155,6 +155,35 @@ describe('MessstellenPage · Filter und Leerzustände', () => {
     await waitFor(() => expect(zeilen()).toHaveLength(22), WARTEN);
   });
 
+  it('UEMS AP-16 IP-19: „Nur geplant für einen Energieeinsatz“ fragt `geplantFuerEinsatz=true` — der Schalter nur, wenn es solche gibt', async () => {
+    telefon(false);
+    const mitPlan = (a: MessstellenRegisterAnfrage) => {
+      const r = ahrenbergRegister(a);
+      const register = r.register.map((z) =>
+        z.kennzeichen === 'MS-21' ? { ...z, geplant_fuer_einsaetze: [{ id: 'ee-8', kennzeichen: 'EE-8', name: 'Gebäudetechnik Halle 1' }] } : z,
+      );
+      const gefiltert = a.geplantFuerEinsatz ? register.filter((z) => (z.geplant_fuer_einsaetze ?? []).length > 0) : register;
+      return { ...r, register: gefiltert, messstellen: r.messstellen.filter((m) => gefiltert.some((z) => z.id === m.id)) };
+    };
+    const register = verdrahte(mitPlan);
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Nur geplant für einen Energieeinsatz (1)' }));
+    await waitFor(() => expect(zeilen()).toHaveLength(1), WARTEN);
+    expect(register).toHaveBeenLastCalledWith({ geplantFuerEinsatz: true });
+    expect(zeilen()[0]).toHaveTextContent('MS-21');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
+    await waitFor(() => expect(zeilen()).toHaveLength(22), WARTEN);
+  });
+
+  it('ohne eingelösten Messbedarf kein Schalter „geplant für …“', async () => {
+    telefon(false);
+    verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findByRole('table');
+    expect(screen.queryByRole('button', { name: /Nur geplant für einen Energieeinsatz/ })).toBeNull();
+  });
+
   it('„ohne Quelle“ ohne Treffer nennt, wie viele eine Quelle haben', async () => {
     telefon(false);
     verdrahte((a) => {

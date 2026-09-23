@@ -35,7 +35,12 @@ class MessbedarfSchnittstelleVertragTest {
                         + (methode.equals("get") ? "ansehen" : "verwalten"));
             }
         }
+        var uebersicht = (Map<String, Object>) ((Map<String, Object>) paths.get("/api/v1/unternehmen/messbedarf")).get("get");
+        assertThat(uebersicht.get("description").toString()).contains("energieeinsatz.ansehen");
+        assertThat(uebersicht.get("parameters").toString()).contains("standort");
         assertFelder(schemas, "MessbedarfAnlegen", MessbedarfDto.Anlegen.class);
+        assertFelder(schemas, "MessbedarfAnlegen", MessbedarfDto.Bearbeiten.class);
+        assertFelder(schemas, "MessbedarfOrtZiel", MessbedarfDto.OrtZiel.class);
         assertFelder(schemas, "Messbedarf", MessbedarfDto.Bedarf.class);
         assertFelder(schemas, "MessbedarfListe", MessbedarfDto.Liste.class);
         var bedarf = (Map<String, Object>) schemas.get("Messbedarf");

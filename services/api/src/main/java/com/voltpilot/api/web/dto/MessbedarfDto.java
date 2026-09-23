@@ -9,14 +9,20 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-/** AP-16 IP-19, P1/P2: Messbedarf, Auflösung und unveränderliches Protokoll. */
+/**
+ * AP-16 IP-19, P1/P2: Messbedarf, Auflösung und unveränderliches Protokoll. Ort und Größe gibt es als Wortlaut
+ * ({@code ort}, {@code groesse}) und optional als Struktur ({@code ort_id} = Standort, Gebäude oder Bereich;
+ * {@code messgroesse}/{@code richtung} aus dem Größen-Katalog der Messstelle).
+ */
 public final class MessbedarfDto {
     private MessbedarfDto() {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Anlegen(String wortlaut, String ort, String groesse, LocalDate frist) {}
+    public record Anlegen(String wortlaut, String ort, String groesse, LocalDate frist,
+            UUID ortId, String messgroesse, String richtung) {}
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Bearbeiten(String wortlaut, String ort, String groesse, LocalDate frist) {}
+    public record Bearbeiten(String wortlaut, String ort, String groesse, LocalDate frist,
+            UUID ortId, String messgroesse, String richtung) {}
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Einloesen(UUID messstelleId) {}
     public record Verwerfen(String begruendung) {}
@@ -24,7 +30,11 @@ public final class MessbedarfDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bedarf(UUID id, String kennzeichen, UUID energieeinsatzId, String wortlaut, String ort,
             String groesse, LocalDate frist, String zustand, Messstelle messstelle, String begruendung,
-            ProtokollAkteur akteur, Instant angelegtAm, Instant geaendertAm) {}
+            ProtokollAkteur akteur, Instant angelegtAm, Instant geaendertAm,
+            OrtZiel ortZiel, String messgroesse, String richtung) {}
+    /** Der strukturierte Ort; {@code standort_*} ist der Standort, an dem er heute hängt ({@code null}: keiner). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record OrtZiel(UUID id, String art, String kurzzeichen, String name, UUID standortId, String standortName) {}
     public record Messstelle(UUID id, String kennzeichen, String name) {}
     public record Liste(List<Bedarf> messbedarfe) {}
 

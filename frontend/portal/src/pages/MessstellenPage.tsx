@@ -275,7 +275,7 @@ function RegisterFlaeche({
 
   const ebeneId = ebene.art === 'standort' ? ebene.id : null;
   const tagSchluessel = `${ebeneId ?? 'unternehmen'}|${stichtag ?? 'heute'}`;
-  const schluessel = [tagSchluessel, filter.standort, filter.ort, filter.anlage, filter.zustand, filter.ohneQuelle].join('|');
+  const schluessel = [tagSchluessel, filter.standort, filter.ort, filter.anlage, filter.zustand, filter.ohneQuelle, filter.geplant].join('|');
 
   useEffect(() => {
     const hier: MessstellenEbene = ebeneId
@@ -444,6 +444,17 @@ function Filterleiste({
           onClick={() => onFilter({ ...filter, ohneQuelle: !filter.ohneQuelle })}
         >
           {FILTER.ohneQuelle} ({optionen.ohneQuelle})
+        </button>
+      )}
+      {(optionen.geplant > 0 || filter.geplant) && (
+        <button
+          type="button"
+          className="vp-ms-schalter"
+          aria-pressed={filter.geplant}
+          onClick={() => onFilter({ ...filter, geplant: !filter.geplant })}
+          data-testid="register-filter-geplant"
+        >
+          {FILTER.geplant} ({optionen.geplant})
         </button>
       )}
       {filterAktiv(filter) && (

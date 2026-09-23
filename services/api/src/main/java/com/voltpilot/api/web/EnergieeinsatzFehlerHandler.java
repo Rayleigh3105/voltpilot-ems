@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = {EnergieeinsatzController.class, MessbedarfController.class,
-        BezugsgroesseController.class})
+        MessbedarfUebersichtController.class, BezugsgroesseController.class})
 public class EnergieeinsatzFehlerHandler {
     @ExceptionHandler(EnergieeinsatzAbgelehnt.class)
     public ResponseEntity<Map<String, Object>> abgelehnt(EnergieeinsatzAbgelehnt e) {

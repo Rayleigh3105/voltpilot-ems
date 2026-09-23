@@ -164,6 +164,133 @@ class MessbedarfApiTest {
         }
     }
 
+    /**
+     * Befund IP-20: Ort und Größe als Struktur — optional, im Katalog geprüft, Wortlaut daraus abgeleitet —, die
+     * Standort-Route mit Zaun und das Bearbeiten eines offenen Bedarfs mit Protokoll.
+     */
+    @Test void strukturOptionalStandortRouteUndBearbeiten() throws Exception {
+        String basis = ENERGIE + "/" + einsatz + "/messbedarf";
+        UUID halle1 = gebaeude("G-1", "Halle 1", standort);
+        UUID nord = bereich("B-1", "Halle 1 Nord", halle1);
+
+        JsonNode g = ruf("POST", basis, "IK", Map.of("wortlaut", "Druckluft der Blasmaschinen",
+                "ort_id", nord, "messgroesse", "Wirkenergie", "richtung", "Bezug"), 201);
+        assertThat(g.path("ort").asText()).isEqualTo("B-1");
+        assertThat(g.path("groesse").asText()).isEqualTo("Wirkenergie · Bezug");
+        assertThat(g.path("messgroesse").asText()).isEqualTo("Wirkenergie");
+        assertThat(g.path("richtung").asText()).isEqualTo("Bezug");
+        assertThat(g.at("/ort_ziel/art").asText()).isEqualTo("bereich");
+        assertThat(g.at("/ort_ziel/name").asText()).isEqualTo("Halle 1 Nord");
+        assertThat(g.at("/ort_ziel/standort_id").asText()).isEqualTo(standort.toString());
+        assertThat(g.at("/ort_ziel/standort_name").asText()).isEqualTo("ST-1");
+        JsonNode s = ruf("POST", basis, "IK", Map.of("wortlaut", "Hauptzuleitung", "ort_id", standort,
+                "ort", "Werk (Einspeisung)", "messgroesse", "Wirkleistung"), 201);
+        assertThat(s.path("ort").asText()).as("ein mitgegebener Wortlaut bleibt").isEqualTo("Werk (Einspeisung)");
+        assertThat(s.path("groesse").asText()).isEqualTo("Wirkleistung");
+        assertThat(s.path("richtung").isNull()).isTrue();
+        assertThat(s.at("/ort_ziel/art").asText()).isEqualTo("standort");
+        assertThat(s.at("/ort_ziel/standort_id").asText()).isEqualTo(standort.toString());
+        JsonNode anderswo = ruf("POST", basis, "IK", Map.of("wortlaut", "Kältemaschine", "ort_id", fremderStandort), 201);
+        assertThat(anderswo.path("groesse").isNull()).isTrue();
+        JsonNode wort = ruf("POST", basis, "IK", Map.of("wortlaut", "Abwärme", "ort", "Halle 2",
+                "groesse", "Wärme"), 201);
+        assertThat(wort.path("ort_ziel").isNull()).isTrue();
+        assertThat(wort.path("messgroesse").isNull()).isTrue();
+
+        ablehnung("POST", basis, Map.of("wortlaut", "x", "richtung", "Bezug"), 422, "groesse_ungueltig");
+        ablehnung("POST", basis, Map.of("wortlaut", "x", "messgroesse", "Temperatur"), 422, "groesse_ungueltig");
+        ablehnung("POST", basis, Map.of("wortlaut", "x", "messgroesse", "Volumen", "richtung", "Abgabe"),
+                422, "groesse_ungueltig");
+        ablehnung("POST", basis, Map.of("wortlaut", "x", "ort_id", UUID.randomUUID()), 422, "ort_unbekannt");
+        UUID fremd = root.queryForObject("INSERT INTO tenant(name) VALUES ('Fremd Ort') RETURNING id", UUID.class);
+        UUID fremdU = root.queryForObject("INSERT INTO unternehmen(tenant_id,name) VALUES (?,'Fremd') RETURNING id",
+                UUID.class, fremd);
+        UUID fremderOrt = root.queryForObject("INSERT INTO standort(tenant_id,unternehmen_id,name,kurzzeichen,zeitzone,zustand) "
+                + "VALUES (?,?,'Fremd','ST-1','Europe/Berlin','aktiv') RETURNING id", UUID.class, fremd, fremdU);
+        ablehnung("POST", basis, Map.of("wortlaut", "x", "ort_id", fremderOrt), 422, "ort_unbekannt");
+        ruf("POST", basis, "IK", Map.of("wortlaut", "x", "ort_id", "kein-ort"), 400);
+
+        String uebersicht = "/api/v1/unternehmen/messbedarf";
+        assertThat(kennzeichen(ruf("GET", uebersicht + "?standort=" + standort, "IK", null, 200)))
+                .containsExactly(g.path("kennzeichen").asText(), s.path("kennzeichen").asText());
+        assertThat(kennzeichen(ruf("GET", uebersicht + "?standort=" + fremderStandort, "IK", null, 200)))
+                .containsExactly(anderswo.path("kennzeichen").asText());
+        assertThat(kennzeichen(ruf("GET", uebersicht, "IK", null, 200))).containsExactly(g.path("kennzeichen").asText(),
+                s.path("kennzeichen").asText(), anderswo.path("kennzeichen").asText(), wort.path("kennzeichen").asText());
+        assertThat(ruf("GET", uebersicht + "?standort=" + UUID.randomUUID(), "IK", null, 404).path("code").asText())
+                .isEqualTo("nicht_gefunden");
+        ruf("GET", uebersicht + "?standort=" + fremderOrt, "IK", null, 404);
+        ruf("GET", uebersicht + "?standort=kaputt", "IK", null, 400);
+        // PH hat nur ST-2: ST-1 ist außerhalb seines Zauns (404), und den Einsatz (MS-23 an ST-1) sieht er nicht.
+        ruf("GET", uebersicht + "?standort=" + standort, "PH", null, 404);
+        assertThat(ruf("GET", uebersicht + "?standort=" + fremderStandort, "PH", null, 200).path("messbedarfe")).isEmpty();
+        assertThat(ruf("GET", uebersicht, "PH", null, 200).path("messbedarfe")).isEmpty();
+        // Die Messabdeckung liest weiter den Wortlaut — beim strukturierten Bedarf das abgeleitete Kurzzeichen.
+        assertThat(offene()).extracting(BewertungMessbedarfNaht.Bedarf::ort).contains("B-1", "Halle 2");
+
+        String pfad = basis + "/" + g.path("id").asText();
+        JsonNode b = ruf("PUT", pfad, "IK", Map.of("wortlaut", "Druckluft aller Blasmaschinen", "ort_id", halle1,
+                "messgroesse", "Wirkenergie", "richtung", "Bezug", "frist", "2026-12-31"), 200);
+        assertThat(b.path("ort").asText()).isEqualTo("G-1");
+        assertThat(b.at("/ort_ziel/art").asText()).isEqualTo("gebaeude");
+        assertThat(b.path("frist").asText()).isEqualTo("2026-12-31");
+        ablehnung("PUT", pfad, Map.of("wortlaut", "x", "messgroesse", "Ladestand", "richtung", "Bezug"),
+                422, "groesse_ungueltig");
+        JsonNode protokoll = ruf("GET", pfad + "/protokoll", "IK", null, 200).path("aenderungen");
+        assertThat(protokoll).extracting(a -> a.path("art").asText()).containsExactly("erfasst", "bearbeitet");
+        assertThat(protokoll.get(1).at("/alt/ort_id").asText()).isEqualTo(nord.toString());
+        assertThat(protokoll.get(1).at("/neu/ort_id").asText()).isEqualTo(halle1.toString());
+        assertThat(protokoll.get(1).at("/neu/wortlaut").asText()).isEqualTo("Druckluft aller Blasmaschinen");
+
+        String verworfen = basis + "/" + anderswo.path("id").asText();
+        ruf("POST", verworfen + "/verwerfen", "IK", Map.of("begruendung", "Doppelt erfasst"), 200);
+        ablehnung("PUT", verworfen, Map.of("wortlaut", "doch noch"), 409, "messbedarf_abgeschlossen");
+        assertThat(root.queryForObject("SELECT count(*) FROM messbedarf WHERE tenant_id=? AND num_nonnulls(standort_id, ort_id) > 1",
+                Integer.class, tenant)).isZero();
+    }
+
+    /** Ein Bedarf aus der Fassung vor der Struktur (nur Wortlaut) bleibt unverändert lesbar und steht an keinem Standort. */
+    @Test void bestandOhneStrukturBleibtLesbar() throws Exception {
+        root.update("INSERT INTO messbedarf(tenant_id,einsatz_id,wortlaut,ort,groesse,frist,actor_sub,actor_name,actor_rolle,actor_art) "
+                + "VALUES (?,?,'Wärmemenge Halle 1','G-1','Wirkenergie · Bezug','2026-11-30','IK','Ines Kaltenbach',"
+                + "'energiemanager','kunde')", tenant, einsatz);
+        JsonNode liste = ruf("GET", ENERGIE + "/" + einsatz + "/messbedarf", "IK", null, 200).path("messbedarfe");
+        assertThat(liste).hasSize(1);
+        JsonNode b = liste.get(0);
+        assertThat(b.path("kennzeichen").asText()).isEqualTo("MB-1");
+        assertThat(b.path("ort").asText()).isEqualTo("G-1");
+        assertThat(b.path("groesse").asText()).isEqualTo("Wirkenergie · Bezug");
+        assertThat(b.path("frist").asText()).isEqualTo("2026-11-30");
+        assertThat(b.path("ort_ziel").isNull()).isTrue();
+        assertThat(b.path("messgroesse").isNull()).isTrue();
+        assertThat(b.path("richtung").isNull()).isTrue();
+        assertThat(kennzeichen(ruf("GET", "/api/v1/unternehmen/messbedarf", "IK", null, 200))).containsExactly("MB-1");
+        assertThat(ruf("GET", "/api/v1/unternehmen/messbedarf?standort=" + standort, "IK", null, 200)
+                .path("messbedarfe")).isEmpty();
+    }
+
+    private static List<String> kennzeichen(JsonNode liste) {
+        List<String> aus = new java.util.ArrayList<>();
+        liste.path("messbedarfe").forEach(b -> aus.add(b.path("kennzeichen").asText()));
+        return aus;
+    }
+
+    private UUID gebaeude(String kurzzeichen, String name, UUID st) {
+        UUID id = root.queryForObject("INSERT INTO ort(tenant_id,art,name,kurzzeichen,zustand) VALUES (?,'gebaeude',?,?,'aktiv') "
+                + "RETURNING id", UUID.class, tenant, name, kurzzeichen);
+        root.update("INSERT INTO ort_zuordnung(tenant_id,ort_id,eltern_standort_id,gueltig_ab) VALUES (?,?,?,'2024-01-01')",
+                tenant, id, st);
+        return id;
+    }
+
+    private UUID bereich(String kurzzeichen, String name, UUID eltern) {
+        UUID id = root.queryForObject("INSERT INTO ort(tenant_id,art,name,kurzzeichen,zustand) VALUES (?,'bereich',?,?,'aktiv') "
+                + "RETURNING id", UUID.class, tenant, name, kurzzeichen);
+        root.update("INSERT INTO ort_zuordnung(tenant_id,ort_id,eltern_ort_id,gueltig_ab) VALUES (?,?,?,'2024-01-01')",
+                tenant, id, eltern);
+        return id;
+    }
+
     private void ablehnung(String method, String path, Object body, int status, String code) throws Exception {
         assertThat(ruf(method, path, "IK", body, status).path("code").asText()).isEqualTo(code);
     }

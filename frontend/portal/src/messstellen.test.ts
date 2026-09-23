@@ -9,6 +9,7 @@ import {
   SPALTEN,
   TITEL,
   VERGLEICHSQUELLE,
+  filterAktiv,
   filterOptionen,
   kopfZeile,
   leerzustand,
@@ -367,6 +368,15 @@ describe('Filter: EINE Abfrage mit Parametern, Optionen aus der ungefilterten An
     expect(
       registerAnfrage(WERK, { ...OHNE_FILTER, standort: FIXTURE_IDS.st2, zustand: 'aktiv', ohneQuelle: true }, '2026-11-20'),
     ).toEqual({ standort: FIXTURE_IDS.st1, zustand: 'aktiv', ohneQuelle: true, stichtag: '2026-11-20' });
+  });
+
+  it('UEMS AP-16 IP-19: „geplant für einen Energieeinsatz“ ist `geplantFuerEinsatz=true` und zählt die eingelösten Messstellen', () => {
+    expect(registerAnfrage(UNTERNEHMEN, { ...OHNE_FILTER, geplant: true }, null)).toEqual({ geplantFuerEinsatz: true });
+    expect(filterAktiv({ ...OHNE_FILTER, geplant: true })).toBe(true);
+    const basis = ahrenbergRegister();
+    expect(filterOptionen(basis, UNTERNEHMEN).geplant).toBe(0);
+    const mitPlan = { ...basis, register: basis.register.map((z, i) => (i < 2 ? { ...z, geplant_fuer_einsaetze: [{ id: 'e', kennzeichen: 'EE-8', name: 'x' }] } : z)) };
+    expect(filterOptionen(mitPlan, UNTERNEHMEN).geplant).toBe(2);
   });
 
   it('Standorte nur im Unternehmen, Gebäude vor ihren Bereichen, nur vorkommende Zustände, die Zahl „ohne Quelle“', () => {
