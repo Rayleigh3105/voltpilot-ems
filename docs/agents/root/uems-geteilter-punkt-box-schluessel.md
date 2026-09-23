@@ -47,12 +47,29 @@ nur ihre Reihe (`entity_id`), also Messstelle, Viertelstunde und Kennzahl.
   "measurement_config_per_component")`; nur dann steht ein Punkt mehrerer Komponenten einmal je
   Komponente im Plan (`MeasurementPlan#composeJeKomponente`, Vertrag `x-point-key-rule`, bleibt
   2.0). Jede andere Box bekommt den zusammengelegten Plan byte-gleich
-  (`MessplanJeKomponenteBestandTest`, wörtliche Kopie von vorher). Das Wort meldet noch keine
-  Box: Core (`ParseConfig`, `parseBatch`, `WrapStatus` prüfen `point_key` eindeutig) und
-  Node-RED (`buildPlan`, ein Lesen je Ziel, Samples je Komponente) folgen im Box-Schritt.
+  (`MessplanJeKomponenteBestandTest`, wörtliche Kopie von vorher).
+- Box-Schritt, gebaut aber RUHEND: Core `measurements.geteiltePunkte` ist die eine
+  Duplikat-Regel für `ParseConfig`, `parseBatch` und `WrapStatus` (Paar zulässig, dieselbe
+  Komponente zweimal oder ein Vorkommen ohne Komponente = Duplikat). `BuiltSupports` meldet das
+  Wort NICHT (Entscheid firstmate 23.09.2026, `cloud/geteilter_punkt_ruhend_test.go`): erst nach
+  Punktzustand, Cloud-Status je Komponente, Revisions-Anstoß und einem Summen-Wächter gegen zwei
+  an A und B gebundene Messstellen desselben Registers (sonst doppelt gezählt); Einschalten ist
+  ein eigenes Paket. Node-RED `buildPlan` plant Anfragen aus `lesungenJeZiel` (ein Lesen je Ziel und Punkt,
+  schnellste Kadenz), Samples je Komponente; die Laufzeit taktet Lesen (`due`) und Sample
+  (`probenDue`) getrennt und dekodiert je Lesen einmal (Decoder halten Vorwerte). Beweise:
+  `geteilter_punkt_test.go`, `measurement-geteilter-punkt.test.js` (Budget über jeden
+  Katalogpunkt).
+- ⚠ Status je Komponente (`x-rejection-entity-rule`): die Box nennt `entity_id` an der Ablehnung
+  einer Komponente eines geteilten Punkts. `MeasurementConfigStatusListener` (nur
+  `point_key`/`reason`, Punkt nie zugleich angenommen und abgelehnt) und
+  `applyAcknowledgement` (je `point_key`) verwerfen so eine Quittung heute ganz — Pflicht vor dem
+  Box-Release, eigenes Cloud-Paket.
 - ⚠ Mit dem Box-Release bleiben an einer Box mit bisher zusammengelegtem Punkt der letzte Wert
   der Geräteseite (`latestObservations` aus `device_measurement_point_state`) und der Box-Verlauf
   dieses Punkts stehen; die Werte stehen dann in den Reihen der Komponenten. Das Folgepaket, das
   den Punktzustand weiterführt, ist Pflicht VOR dem Box-Release (Entscheid firstmate 23.09.2026).
 - ⚠ Meldet eine Box das Wort erst nach ihrem Update, erreicht sie der neue Plan erst mit der
-  nächsten Plan-Revision (die Box übergeht gleiche Revisionen).
+  nächsten Plan-Revision: der Core weist dieselbe Revision mit anderem Inhalt als `stale
+  revision` ab (`agent/measurements.go`), und das bleibt so — die Box kann keine Revision
+  erzeugen. Den Anstoß (Revision +1, wenn das Wort neu gemeldet wird) muss die Cloud geben;
+  bis dahin läuft der zusammengelegte Plan wie heute weiter.

@@ -27,6 +27,13 @@ type StatusExtension struct {
 // sprungprobe (AP-15 IP-21): the agent runs a Sprungprobe order bounded and
 // lowering-only under its own watchdogs and reports it once
 // (agent/sprungprobe.go, internal/sprungprobe).
+// measurement_config_per_component (AP-07 IP-18b) is deliberately ABSENT
+// although its way is built: the core accepts a shared point once per
+// component (measurements.geteiltePunkte) and the palette reads it once per
+// target. Until the point state, the per-component status in the cloud, the
+// revision push and a guard against summing both components of one register
+// exist, the box stays dormant and keeps receiving the merged plan (decision
+// firstmate 23.09.2026). Switching it on is its own package.
 func BuiltSupports() []string {
 	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
 		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe"}

@@ -95,6 +95,39 @@ type Config struct {
 	Registerbilder []Registerbild `json:"registerbilder,omitempty"`
 }
 
+// geteiltePunkte applies the x-point-key-rule of mqtt-measurement-config 2.0
+// (AP-07 IP-18b): a point_key is unique, with ONE exception - a SHARED POINT,
+// the same point_key once per component, where EVERY occurrence names an
+// entity_id and no component appears twice. One occurrence without entity_id
+// makes the key unique again for all of them. The same rule keys a local
+// batch (one sample per component) and the per-component status.
+type geteiltePunkte map[string]*geteilterPunkt
+
+type geteilterPunkt struct {
+	ohneKomponente bool
+	komponenten    map[string]bool
+}
+
+// add reports whether (pointKey, entityID) may join what was seen so far.
+// UUIDs compare case-insensitively: the same component in another spelling is
+// still the same component twice.
+func (g geteiltePunkte) add(pointKey, entityID string) bool {
+	komponente := strings.ToLower(entityID)
+	p, ok := g[pointKey]
+	if !ok {
+		p = &geteilterPunkt{komponenten: map[string]bool{}}
+		g[pointKey] = p
+	} else if p.ohneKomponente || komponente == "" || p.komponenten[komponente] {
+		return false
+	}
+	if komponente == "" {
+		p.ohneKomponente = true
+	} else {
+		p.komponenten[komponente] = true
+	}
+	return true
+}
+
 // ParseConfig validates identity, strict shape, duplicates and monotonicity.
 func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error) {
 	var c Config
@@ -121,7 +154,7 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 	if len(c.Selections) > MaxConfigPoints {
 		return c, errors.New("too many selections")
 	}
-	seen := map[string]bool{}
+	seen := geteiltePunkte{}
 	for _, s := range c.Selections {
 		if !pointKeyPattern.MatchString(s.PointKey) || s.CadenceS < 1 || s.CadenceS > 86400 {
 			return c, errors.New("invalid selection")
@@ -129,10 +162,9 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 		if s.EntityID != "" && !entityIDPattern.MatchString(s.EntityID) {
 			return c, errors.New("invalid selection entity_id")
 		}
-		if seen[s.PointKey] {
+		if !seen.add(s.PointKey, s.EntityID) {
 			return c, fmt.Errorf("duplicate point %s", s.PointKey)
 		}
-		seen[s.PointKey] = true
 		if strings.HasPrefix(s.PointKey, "custom.") {
 			if len(s.Definition) == 0 || len(s.Definition) > 4096 || !validCustomDefinition(s.Definition) {
 				return c, errors.New("custom selection definition missing/invalid")
@@ -232,6 +264,12 @@ type LocalStatus struct {
 type Rejection struct {
 	PointKey string `json:"point_key"`
 	Reason   string `json:"reason"`
+	// EntityID names the refused component of a SHARED POINT (AP-07 IP-18b,
+	// mqtt-measurement-config-status x-rejection-entity-rule): the plan named the
+	// point once per component, so one of them can be refused while another is
+	// read. Absent everywhere else - a status without a shared point is byte for
+	// byte the one sent before.
+	EntityID string `json:"entity_id,omitempty"`
 }
 
 var reasons = map[string]bool{"unknown_point": true, "unsupported_catalog": true, "edge_too_old": true,
@@ -258,18 +296,25 @@ func WrapStatus(raw []byte, id Identity, edgeVersion string) ([]byte, error) {
 	if len(s.Accepted)+len(s.Rejected) > MaxConfigPoints {
 		return nil, errors.New("too many status points")
 	}
-	seen := map[string]bool{}
+	accepted := map[string]bool{}
 	for _, key := range s.Accepted {
-		if !pointKeyPattern.MatchString(key) || seen[key] {
+		if !pointKeyPattern.MatchString(key) || accepted[key] {
 			return nil, errors.New("duplicate/empty accepted")
 		}
-		seen[key] = true
+		accepted[key] = true
 	}
+	// A rejection without entity_id refuses the whole point (as before). One
+	// WITH entity_id refuses one component of a shared point; the point may
+	// then also be accepted for its other components, but the same component
+	// is refused at most once and never beside a whole-point refusal.
+	rejected := geteiltePunkte{}
 	for _, r := range s.Rejected {
-		if !pointKeyPattern.MatchString(r.PointKey) || !reasons[r.Reason] || seen[r.PointKey] {
+		if !pointKeyPattern.MatchString(r.PointKey) || !reasons[r.Reason] ||
+			(r.EntityID == "" && accepted[r.PointKey]) ||
+			(r.EntityID != "" && !entityIDPattern.MatchString(r.EntityID)) ||
+			!rejected.add(r.PointKey, r.EntityID) {
 			return nil, errors.New("invalid rejection")
 		}
-		seen[r.PointKey] = true
 	}
 	return json.Marshal(struct {
 		SchemaVersion string `json:"schema_version"`
@@ -326,19 +371,20 @@ func parseBatch(raw []byte) (LocalBatch, error) {
 			return b, errors.New("invalid applied_revision")
 		}
 	}
-	seen := map[string]bool{}
+	// One sample per point, or per component at a shared point: the same
+	// (point_key, entity_id) rule as the plan (geteiltePunkte).
+	seen := geteiltePunkte{}
 	for _, s := range b.Samples {
+		var entityID string
 		if len(s.EntityID) > 0 {
-			var entityID string
 			if err := json.Unmarshal(s.EntityID, &entityID); err != nil || !entityIDPattern.MatchString(entityID) {
 				return b, errors.New("invalid sample entity_id")
 			}
 		}
-		if !pointKeyPattern.MatchString(s.PointKey) || seen[s.PointKey] ||
+		if !pointKeyPattern.MatchString(s.PointKey) || !seen.add(s.PointKey, entityID) ||
 			s.Raw == nil || !qualities[s.Quality] {
 			return b, errors.New("invalid sample")
 		}
-		seen[s.PointKey] = true
 		if len(s.SignedData) > 32768 || len(s.SignedDataFormat) > 128 {
 			return b, errors.New("signed data too large")
 		}

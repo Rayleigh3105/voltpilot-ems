@@ -40,8 +40,15 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   ihn je Ziel einmal und sendet je Komponente ein Sample mit ihrer `entity_id`
   ([`measurement-samples` 2.1 §2](mqtt-measurement-samples-2.1.md)). `MeasurementConfigPublisher`
   fragt dieses Wort; ohne es bekommt die Box den zusammengelegten Plan Byte für Byte wie bisher.
-  **Bekannt, aber noch nicht gesendet**: Core und Node-RED folgen in einem eigenen Box-Schritt;
-  erst der meldet das Wort. Keine Zeile in `edge-capabilities.json` (Begründung wie `plan_quittung`).
+  **Bekannt, Box-Seite gebaut, aber noch NICHT gesendet** (Entscheid firstmate 23.09.2026): Core
+  (`measurements.geteiltePunkte` in Plan, lokalem Stapel und Status) und Node-RED
+  (`measurement-planner.js` `lesungenJeZiel`) lesen den Punkt je Ziel einmal in der schnellsten
+  Kadenz; eine Ablehnung nur einer Komponente nennt deren `entity_id`
+  ([`mqtt-measurement-config-status`](mqtt-measurement-config-status.schema.json)
+  `x-rejection-entity-rule`). Gemeldet wird das Wort erst, wenn Punktzustand, Cloud-Status je
+  Komponente, Revisions-Anstoß und ein Summen-Wächter gegen doppelt gebundene Komponenten
+  desselben Registers gebaut sind; bis dahin ist der Box-Schritt auch nach dem Release ruhend.
+  Keine Zeile in `edge-capabilities.json` (Begründung wie `plan_quittung`).
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

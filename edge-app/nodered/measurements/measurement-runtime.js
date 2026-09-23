@@ -3,7 +3,8 @@
 const { buildPlan, Scheduler } = require('./measurement-planner');
 const { resolvePoint, decodeRegisters, decodeDerived, derivedAddresses,
   decodeJSONSamples, decodeOcppSampledValue, templateKey } = require('./measurement-driver');
-const { LIMITS, COST_MS, discoveryFor, byteOrderFor } = require('./measurement-planner');
+const { LIMITS, COST_MS, discoveryFor, byteOrderFor, geteiltePunkte, ablehnungenVon,
+  leseSchluessel } = require('./measurement-planner');
 const { TARGET_PRIMARY } = require('./measurement-binding');
 const sourceStatus = require('./data-source-status');
 const RESERVATION_MS = Object.freeze({ modbus_holding:4000, modbus_input:4000,
@@ -22,9 +23,24 @@ function wordsOf(wireWords, targetKey) {
   return bucket;
 }
 
-/** The HTTP poll-group key; must stay identical to the planner's. */
-function httpGroupKey(selected) {
-  return `${targetKeyOf(selected)}:${selected.point.poll_group}:${selected.cadence_s}`;
+/**
+ * The HTTP poll-group key; must stay identical to the planner's. The planner
+ * groups the READ, whose cadence at a shared point is the fastest of its
+ * components (`lesetakt`, AP-07 IP-18b); without one it is the selection's own.
+ */
+function httpGroupKey(selected, lesetakt) {
+  const takt = (lesetakt && lesetakt.get(leseSchluesselVon(selected))) || selected.cadence_s;
+  return `${targetKeyOf(selected)}:${selected.point.poll_group}:${takt}`;
+}
+
+/** The one physical read a planned selection belongs to (target + point). */
+function leseSchluesselVon(selected) {
+  return leseSchluessel(targetKeyOf(selected), selected.point.point_key);
+}
+
+/** One component's sample timer; equals the read timer at a simple point. */
+function probenSchluesselVon(selected) {
+  return `${leseSchluesselVon(selected)}\u0000${selected.entity_id || ''}`;
 }
 
 function withEntity(sample, selected) {
@@ -40,6 +56,7 @@ class MeasurementRuntime {
     this.io = io || {}; this.publish = publish || (() => {}); this.now = now || (() => new Date());
     this.monotonicNow = this.io.monotonicNow || (() => Number(process.hrtime.bigint() / 1000000n));
     this.active = null; this.scheduler = new Scheduler(); this.due = new Map();
+    this.probenDue = new Map(); this.lesetakt = new Map();
     this.tickPromise = null; this.requestWindow = []; this.sampleWindow = [];
     this.ocppDue = new Map(); this.applyGeneration = 0;
     this.decoderState = { previous:new Map(), values:new Map() };
@@ -71,15 +88,15 @@ class MeasurementRuntime {
           this.publishStatus(config, candidate);
         }).catch(() => {
           if (generation !== this.applyGeneration) return;
-          const ocppKeys = new Set(candidate.selections.filter((selection) =>
-            selection.point.source_kind === 'ocpp_sampled_value').map((selection) => selection.requested_key));
+          const ocppSelections = candidate.selections.filter((selection) =>
+            selection.point.source_kind === 'ocpp_sampled_value');
+          const ocppKeys = new Set(ocppSelections.map((selection) => selection.requested_key));
           const fallback = buildPlan(Object.assign({}, config, { selections:(config.selections || [])
             .filter((selection) => !ocppKeys.has(selection.point_key)) }), planning);
           if (fallback.applied) this.activate(fallback, config);
           this.publishStatus(config, { accepted:fallback.accepted || [],
-            rejected:(fallback.rejected || []).concat([...ocppKeys].map((point_key) => ({
-              point_key, reason:'ocpp_configuration_incompatible',
-            }))) });
+            rejected:(fallback.rejected || []).concat(ablehnungenVon(ocppSelections,
+              'ocpp_configuration_incompatible', geteiltePunkte(config.selections))) });
         });
         return candidate;
       }
@@ -91,19 +108,29 @@ class MeasurementRuntime {
   }
 
   activate(candidate, config) {
-    // The cloud still merges ambiguous point keys. Only carry an explicit
-    // selection binding; never infer a component from its transport or target.
+    // Only carry an explicit selection binding; never infer a component from
+    // its transport or target. The planner carries each selection's own
+    // entity_id (a shared point names a different one per occurrence); a
+    // candidate without it takes the one of its point_key as before.
     const entities = new Map();
     for (const s of config.selections || []) {
       if (!entities.has(s.point_key)) entities.set(s.point_key, s.entity_id);
     }
-    candidate.selections = candidate.selections.map((s) => ({ ...s,
+    candidate.selections = candidate.selections.map((s) => (s.entity_id ? s : { ...s,
       ...(entities.get(s.requested_key) ? { entity_id:entities.get(s.requested_key) } : {}),
     }));
     // One pointer swap is the atomic cutover. No timer from the previous plan
-    // survives because due is replaced together with active.
-    const due = new Map(candidate.selections.map((s) => [s.point.point_key, 0]));
-    this.active = candidate; this.due = due;
+    // survives because due is replaced together with active. `due` times the
+    // READ of (target, point) at its fastest cadence, `probenDue` the sample
+    // of each component at its own; at a simple point both are the same.
+    const lesetakt = new Map();
+    for (const s of candidate.selections) {
+      const key = leseSchluesselVon(s);
+      if (!lesetakt.has(key) || s.cadence_s < lesetakt.get(key)) lesetakt.set(key, s.cadence_s);
+    }
+    const due = new Map([...lesetakt.keys()].map((key) => [key, 0]));
+    this.active = candidate; this.due = due; this.lesetakt = lesetakt;
+    this.probenDue = new Map(candidate.selections.map((s) => [probenSchluesselVon(s), 0]));
     this.decoderState = { previous:new Map(), values:new Map() };
   }
 
@@ -127,15 +154,23 @@ class MeasurementRuntime {
     // Applying another plan while I/O awaits must not relabel the old read
     // with the new component, decoder state, catalog or applied revision.
     const plan = this.active; const decoderState = this.decoderState;
+    const lesetakt = this.lesetakt;
     const now = this.now(); const ms = now.getTime(); const dueKeys = new Set();
-    for (const s of plan.selections) if ((this.due.get(s.point.point_key) || 0) <= ms) dueKeys.add(s.point.point_key);
+    for (const s of plan.selections) {
+      const key = leseSchluesselVon(s);
+      if ((this.due.get(key) || 0) <= ms) dueKeys.add(key);
+    }
     if (!dueKeys.size) return [];
+    // A component's sample is due only together with a read of its point, so
+    // a shared point never adds a read beyond its fastest cadence.
+    const dueProben = new Set(plan.selections.filter((s) => dueKeys.has(leseSchluesselVon(s))
+      && (this.probenDue.get(probenSchluesselVon(s)) || 0) <= ms));
     // Claim due work before the first await. Concurrent/re-entrant ticks can
     // now only join this run and can never issue a second physical read.
-    for (const s of plan.selections) if (dueKeys.has(s.point.point_key)) {
-      this.due.set(s.point.point_key, ms + s.cadence_s * 1000);
-    }
-    const blocks = plan.blocks.filter((b) => b.points.some((p) => dueKeys.has(p)));
+    for (const key of dueKeys) this.due.set(key, ms + (lesetakt.get(key) || 1) * 1000);
+    for (const s of dueProben) this.probenDue.set(probenSchluesselVon(s), ms + s.cadence_s * 1000);
+    const blocks = plan.blocks.filter((b) => b.points.some((p) =>
+      dueKeys.has(leseSchluessel(targetKeyOf(b), p))));
     for (const block of blocks) this.scheduler.enqueuePoll({ kind: 'modbus', block });
     for (const group of plan.httpGroups) this.scheduler.enqueuePoll({ kind: 'json', group });
     // ⚠ Wire words are kept PER TARGET. Register 616 of a bound Fronius and
@@ -145,10 +180,10 @@ class MeasurementRuntime {
     for (let task; (task = this.scheduler.next());) {
       if (task.kind === 'control') { await task.run(); continue; }
       if (task.kind === 'modbus') await this.readBlock(task.block, dueKeys, wireWords);
-      else if (task.kind === 'json') samples.push(...await this.readJSON(task.group, dueKeys, plan));
+      else if (task.kind === 'json') samples.push(...await this.readJSON(task.group, dueKeys, plan, dueProben, lesetakt));
     }
     for (const prerequisite of plan.decoderPrerequisites || []) {
-      if (!dueKeys.has(prerequisite.trigger_key)) continue;
+      if (!dueKeys.has(leseSchluessel(targetKeyOf(prerequisite), prerequisite.trigger_key))) continue;
       const words = wordsOf(wireWords, targetKeyOf(prerequisite));
       const addresses = this.addresses(prerequisite.point, targetKeyOf(prerequisite));
       if (addresses.length && addresses.every((address) => words.has(address))) {
@@ -157,8 +192,17 @@ class MeasurementRuntime {
             targetKeyOf(prerequisite), plan, decoderState));
       }
     }
+    // Decode each read ONCE (decoders keep previous values) and hand the
+    // result to every due component of that point.
+    const dekodiert = new Map();
     for (const selected of plan.selections) {
-      if (!dueKeys.has(selected.point.point_key)) continue;
+      if (!dueProben.has(selected)) continue;
+      const leseKey = leseSchluesselVon(selected);
+      if (dekodiert.has(leseKey)) {
+        const sample = dekodiert.get(leseKey);
+        if (sample) samples.push(withEntity(sample, selected));
+        continue;
+      }
       const words = wordsOf(wireWords, targetKeyOf(selected));
       let sample = null;
       if (selected.point.address) {
@@ -169,6 +213,7 @@ class MeasurementRuntime {
               targetKeyOf(selected), plan, decoderState));
         }
       } else if (derivedAddresses(selected.point).length) sample = decodeDerived(selected.point, words);
+      dekodiert.set(leseKey, sample);
       if (sample) samples.push(withEntity(sample, selected));
     }
     if (samples.some((sample) => sample.invalidate_all)) {
@@ -221,12 +266,14 @@ class MeasurementRuntime {
     return [];
   }
 
-  async readJSON(group, dueKeys, plan = this.active) {
+  async readJSON(group, dueKeys, plan = this.active, dueProben = null, lesetakt = this.lesetakt) {
     if (typeof this.io.readJSON !== 'function') return [];
     // A planned http group is {key, target}: one request per (target, group).
     const { key, target } = group;
-    const selected = plan.selections.filter((x) => dueKeys.has(x.point.point_key)
-      && httpGroupKey(x) === key);
+    const inGroup = plan.selections.filter((x) => dueKeys.has(leseSchluesselVon(x))
+      && httpGroupKey(x, lesetakt) === key);
+    // The request names each point once, also a point shared by components.
+    const selected = [...new Map(inGroup.map((x) => [x.point.point_key, x])).values()];
     if (!selected.length) return [];
     // go-e filter combines every selected API key into one request. Shelly RPC
     // groups by component/method through poll_group and one status response.
@@ -242,8 +289,13 @@ class MeasurementRuntime {
     this.reportSource(target, { requests:1 });
     const payloads = payload && Array.isArray(payload.__vpResponses)
       ? payload.__vpResponses : [payload];
-    return selected.flatMap((x) => payloads.flatMap((value) => decodeJSONSamples(x.point, value)
-      .map((sample) => withEntity(sample, x))));
+    const dekodiert = new Map();
+    return inGroup.filter((x) => !dueProben || dueProben.has(x)).flatMap((x) => {
+      if (!dekodiert.has(x.point.point_key)) {
+        dekodiert.set(x.point.point_key, payloads.flatMap((value) => decodeJSONSamples(x.point, value)));
+      }
+      return dekodiert.get(x.point.point_key).map((sample) => withEntity(sample, x));
+    });
   }
 
   /** OCPP MeterValues is event-driven; it never enters the polling queue. */
@@ -252,11 +304,14 @@ class MeasurementRuntime {
     const accepted = new Set(this.active.accepted); const at = observedAt || this.now();
     const samples = values.map(decodeOcppSampledValue).flatMap((s) => {
       if (!s || !accepted.has(templateKey(s.point_key))) return [];
-      const selection = this.active.selections.find((x) => x.requested_key === templateKey(s.point_key));
-      const due = this.ocppDue.get(s.point_key) || 0;
-      if (!selection || at.getTime() < due) return [];
-      this.ocppDue.set(s.point_key, at.getTime() + selection.cadence_s * 1000);
-      return [withEntity(s, selection)];
+      // One sample per component of the point, each at its own cadence.
+      return this.active.selections.filter((x) => x.requested_key === templateKey(s.point_key))
+        .flatMap((selection) => {
+          const dueKey = `${s.point_key}\u0000${selection.entity_id || ''}`;
+          if (at.getTime() < (this.ocppDue.get(dueKey) || 0)) return [];
+          this.ocppDue.set(dueKey, at.getTime() + selection.cadence_s * 1000);
+          return [withEntity(s, selection)];
+        });
     });
     return this.publishSamples(samples, at);
   }
