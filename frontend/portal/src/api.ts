@@ -1,5 +1,6 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { BezugsbasisUebersicht } from './bezugsbasisUebersicht';
+import type { BezugsbasisDerKennzahl, BezugsbasisVergleich, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -9527,6 +9528,19 @@ export const api = {
   berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
+  /**
+   * AP-17 IP-20: der Vergleich mit der Bezugsbasis (Leser IP-19, §16) — je Monat roh ohne Urteil und bereinigt mit
+   * Band; ohne `basis` die laufende, ohne `von`/`bis` die zwölf abgeschlossenen Monate vor dem laufenden.
+   */
+  bezugsbasisVergleich: (kennzahlId: string, wahl: BezugsbasisVergleichWahl = {}) => {
+    const q = new URLSearchParams(
+      (['basis', 'von', 'bis'] as const).flatMap((k) => (wahl[k] ? [[k, wahl[k]] as [string, string]] : [])),
+    ).toString();
+    return request<BezugsbasisVergleich>(`/api/v1/kennzahlen/${kennzahlId}/vergleich${q ? `?${q}` : ''}`);
+  },
+  /** AP-17 IP-8: die Bezugsbasen der Kennzahl, die laufende zuerst — der Vergleich bietet die Wahl erst ab zwei. */
+  kennzahlBezugsbasen: (kennzahlId: string) =>
+    request<{ bezugsbasen: BezugsbasisDerKennzahl[] }>(`/api/v1/kennzahlen/${kennzahlId}/bezugsbasen`),
   /** Legt den Bericht an und bildet seinen Entwurf. */
   berichtAnlegen: (body: BerichtAnlegen) =>
     request<Bericht>(`/api/v1/berichte`, { method: 'POST', body: JSON.stringify(body) }),

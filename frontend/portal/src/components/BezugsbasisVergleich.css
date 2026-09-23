@@ -1,0 +1,231 @@
+/* UEMS AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ — 375 px Monate als Karten, ab 960 px eine Tafel. */
+
+.vp-bbv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-bbv p {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-bbv-basis {
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-bbv-wahl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-2);
+}
+
+@media (min-width: 720px) {
+  .vp-bbv-wahl {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 240px));
+  }
+}
+
+.vp-bbv-zahlen {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+  margin: 0 0 var(--vp-c-space-2);
+}
+
+@media (min-width: 720px) {
+  .vp-bbv-zahlen {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.vp-bbv-zahlen dt {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-bbv-zahlen dd {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: break-word;
+}
+
+.vp-bbv-urteil {
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-bbv-urteil.is-schlechter {
+  color: var(--vp-c-warn-fg);
+}
+
+.vp-bbv-urteil.is-ohne_urteil,
+.vp-bbv-urteil.is-nicht_anwendbar,
+.vp-bbv-band {
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-bbv-kennzeichen {
+  margin: var(--vp-c-space-2) 0 0;
+  padding-left: 1.1em;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-bbv-neben {
+  display: block;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-bbv-ohne {
+  color: var(--vp-c-muted-fg);
+  font-style: italic;
+}
+
+.vp-bbv-stand,
+.vp-bbv-grenze {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-bbv .vp-bbv-grenze {
+  font-size: var(--vp-c-fs-12);
+}
+
+/* ---------------------------------------------------------------- 375 px: jede Monat-Gruppe ist eine Karte */
+
+.vp-bbv-tafel,
+.vp-bbv-tafel tbody,
+.vp-bbv-tafel tr,
+.vp-bbv-tafel th,
+.vp-bbv-tafel td {
+  display: block;
+  min-width: 0;
+}
+
+.vp-bbv-tafel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-bbv-tafel thead {
+  display: none;
+}
+
+.vp-bbv-monat {
+  margin-bottom: var(--vp-c-space-3);
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  background: var(--vp-c-card);
+}
+
+.vp-bbv-monat-name {
+  margin-bottom: var(--vp-c-space-2);
+  font-weight: var(--vp-c-fw-700);
+  text-align: left;
+}
+
+.vp-bbv-tafel td {
+  padding: 2px 0;
+  overflow-wrap: break-word;
+}
+
+.vp-bbv-tafel td[data-label]::before {
+  content: attr(data-label);
+  display: block;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-bbv-tafel td.vp-bbv-ber:first-of-type,
+.vp-bbv-tafel td.vp-bbv-grund {
+  margin-top: var(--vp-c-space-2);
+  padding-top: var(--vp-c-space-2);
+  border-top: 1px dashed var(--vp-c-border);
+}
+
+.vp-bbv-satz-zeile td {
+  margin-top: var(--vp-c-space-2);
+  color: var(--vp-c-muted-fg);
+}
+
+/* ---------------------------------------------------------------- ab 960 px: die Tafel */
+
+@media (min-width: 960px) {
+  .vp-bbv-tafel {
+    display: table;
+    table-layout: auto;
+  }
+
+  .vp-bbv-tafel thead {
+    display: table-header-group;
+  }
+
+  .vp-bbv-tafel tbody {
+    display: table-row-group;
+  }
+
+  .vp-bbv-tafel tr {
+    display: table-row;
+  }
+
+  .vp-bbv-tafel th,
+  .vp-bbv-tafel td {
+    display: table-cell;
+    padding: var(--vp-c-space-2);
+    vertical-align: top;
+    text-align: left;
+  }
+
+  .vp-bbv-tafel thead th {
+    font-size: var(--vp-c-fs-12);
+    font-weight: var(--vp-c-fw-700);
+    color: var(--vp-c-muted-fg);
+    border-bottom: 1px solid var(--vp-c-border);
+  }
+
+  .vp-bbv-roh-kopf,
+  .vp-bbv-ber-kopf {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .vp-bbv-monat {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .vp-bbv-monat + .vp-bbv-monat > tr:first-child > * {
+    border-top: 1px solid var(--vp-c-border);
+  }
+
+  .vp-bbv-tafel td[data-label]::before {
+    content: none;
+  }
+
+  .vp-bbv-tafel td.vp-bbv-ber:first-of-type,
+  .vp-bbv-tafel td.vp-bbv-grund {
+    margin: 0;
+    border-top: 0;
+  }
+
+  .vp-bbv-roh {
+    background: var(--vp-c-muted);
+  }
+
+  .vp-bbv-satz-zeile td {
+    padding-top: 0;
+    font-size: var(--vp-c-fs-12);
+  }
+}

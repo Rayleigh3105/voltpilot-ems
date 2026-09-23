@@ -4,7 +4,9 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
+import { BezugsbasisVergleich } from '../components/BezugsbasisVergleich';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import '../components/BereichTabs.css';
 import { DangerZone } from '../components/DangerZone';
 import { GeteiltesRegisterHinweis } from '../components/GeteiltesRegisterHinweis';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
@@ -13,6 +15,7 @@ import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
 import { ErrorState, Skeleton } from '../components/States';
+import { kannVergleich, REITER_KENNZAHL, VERGLEICH_REITER } from '../bezugsbasisVergleich';
 import * as E from '../kennzahlAendern';
 import { ablehnungSatz, KNOPF_KOPIEREN } from '../kennzahlAnlegen';
 import { VersionenEinstieg, VersionenModal } from '../components/WertVersionen';
@@ -165,6 +168,10 @@ export function KennzahlSeite({
     };
   }, [id, art, zone, schluessel]);
 
+  // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ (nur Quotient und Zusammenfassung, B2); er lädt erst, wenn er offen ist.
+  const [reiter, setReiter] = useState<'kennzahl' | 'vergleich'>('kennzahl');
+  const vgAn = stamm !== null && kannVergleich(stamm.kennzahl);
+
   const zurueck = (
     <button type="button" className="vp-kz-zurueck" onClick={onListe}>
       <Icon name="chevron-left" size={18} />
@@ -234,6 +241,27 @@ export function KennzahlSeite({
           </div>
         )}
       </header>
+      {vgAn && (
+        <div className="vp-bereich-tabs vp-kz-reiter" role="tablist" aria-label={`Reiter der Kennzahl ${k.kennzeichen}`}>
+          {([['kennzahl', REITER_KENNZAHL], ['vergleich', VERGLEICH_REITER]] as const).map(([r, wort]) => (
+            <button
+              key={r}
+              type="button"
+              role="tab"
+              aria-selected={reiter === r}
+              className={`vp-bereich-tab${reiter === r ? ' active' : ''}`}
+              data-testid={`kennzahl-reiter-${r}`}
+              onClick={() => setReiter(r)}
+            >
+              {wort}
+            </button>
+          ))}
+        </div>
+      )}
+      {vgAn && reiter === 'vergleich' ? (
+        <BezugsbasisVergleich kennzahlId={k.id} />
+      ) : (
+      <>
       {wahl.optionen.length > 0 && art && (
         <div className="vp-kz-perioden">
           <ZeitSegment
@@ -416,6 +444,8 @@ export function KennzahlSeite({
           </section>
         </div>
       </div>
+      </>
+      )}
       {/* Neben der Seite, nicht in der Karte: der Dialog ist ein eigenes Portal (wie an der Tageskarte). */}
       {art && schritt && einstieg && (
         <VersionenModal

@@ -67,10 +67,10 @@ async function messe(page: Page) {
       leiste: leisteSichtbar ? [...bar!.querySelectorAll('.vp-bottombar-item .lbl')].map((l) => l.textContent ?? '') : null,
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
       reiter: [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')]
-        .filter((t) => sichtbar(t) && !t.closest('.vp-kz-perioden'))
+        .filter((t) => sichtbar(t) && !t.closest('.vp-kz-perioden, .vp-kz-reiter'))
         .map((t) => text(t)),
       reiterAktiv: [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"][aria-selected="true"]')]
-        .filter((t) => sichtbar(t) && !t.closest('.vp-kz-perioden'))
+        .filter((t) => sichtbar(t) && !t.closest('.vp-kz-perioden, .vp-kz-reiter'))
         .map((t) => text(t)),
       karten: [...document.querySelectorAll('[data-testid="kennzahl-karte"]')].map((k) => text(k)),
       titel: text(document.querySelector('.vp-kz-kopf h1')),

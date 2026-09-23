@@ -126,6 +126,7 @@ import {
 import { versorgungAhrenberg, versorgungLindach } from '../src/test/versorgungFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
+import { vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../src/test/bezugsbasisVergleichFixtures';
 import {
   ahrenbergBezugsgroessen,
   ahrenbergKostenstellen,
@@ -837,6 +838,10 @@ Object.assign(api, {
   kennzahlen: async () => ({ kennzahlen: (messenArt === 'bestand' ? [] : kennzahlenDerBuehne()).filter(k => !rechteAnsicht || rollenMoment.unternehmensweit
     || (k.standort_id !== null && rollenMoment.standorte.some(st => st.id === k.standort_id))) }),
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
+  // AP-17 IP-20: der Vergleich-Leser (IP-19) — `&vergleich=r2|maerz|stand`; ohne Angabe die Kennzahl ohne Bezugsbasis (R10).
+  bezugsbasisVergleich: async () =>
+    ({ r2: vergleichR2, maerz: vergleichMitMaerz, stand: vergleichMitStand })[params.get('vergleich') ?? '']?.() ?? vergleichLeer(),
+  kennzahlBezugsbasen: async () => ({ bezugsbasen: [] }),
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,
     kennzeichen: kennzahlenDerBuehne().find((x) => x.id === id)?.kennzeichen ?? '',
