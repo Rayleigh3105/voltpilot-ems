@@ -3052,7 +3052,10 @@ export type BerichtFehlerCode =
   | 'abzug_beschaedigt'
   | 'begruendung_fehlt'
   | 'anstoss_nicht_offen'
-  | 'gleichzeitig';
+  | 'gleichzeitig'
+  /** AP-17 IP-21b: Leistungsvergleich ohne freigegebene Bezugsbasis; PDF/CSV des Leistungsvergleichs (bis IP-22). */
+  | 'basis_fehlt'
+  | 'ausgabe_fehlt';
 
 /** Wer etwas tat: der Name und — wo gespeichert — die Rolle, die das Recht gab. */
 export interface BerichtPerson {
@@ -3110,6 +3113,8 @@ export interface BerichtAnlegen {
   zeitraum: string;
   /** AP-12 IP-14 (V3, Q4): die abgewählten Kennzahlen (IDs) — fehlt das Feld, sind alle gewählt. */
   kennzahlen_abgewaehlt?: string[];
+  /** AP-17 IP-21b: genau beim Leistungsvergleich Pflicht — die Kennzahl (ID); ein Bericht je Kennzahl (V4). */
+  kennzahl?: string;
 }
 
 /** Ein Berichtsstand im Verlauf — ohne Abzug. */

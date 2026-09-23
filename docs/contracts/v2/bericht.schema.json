@@ -172,10 +172,11 @@
     "abzug": {
       "type": "object", "additionalProperties": false,
       "description": "Der Inhalt eines Berichtsstands (A1–A5): was der Bericht zeigt, je Zahl mit ihrem Nachweis. Gespeichert als kanonischer Text (regeln.kanonisch), nie als jsonb (A7).",
-      "required": ["kopf", "qualitaet"],
+      "required": ["kopf"],
       "anyOf": [
-        {"required": ["zusammenfassung", "werte", "kennzahlen"]},
-        {"required": ["umfang", "rangliste", "einstufungen", "messabdeckung", "messplanung", "messmittel"]}
+        {"required": ["qualitaet", "zusammenfassung", "werte", "kennzahlen"]},
+        {"required": ["qualitaet", "umfang", "rangliste", "einstufungen", "messabdeckung", "messplanung", "messmittel"]},
+        {"required": ["kennzahl", "bezugsbasis", "vergleich_je_periode", "urteil", "grenzen_und_vorbehalte", "statische_faktoren", "quellenverzeichnis"]}
       ],
       "properties": {
         "kopf": { "$ref": "#/$defs/kopf" },
@@ -191,6 +192,25 @@
         "messabdeckung": { "type": "object", "description": "1.3, gemessen, geplant, Ersatz und ungemessen." },
         "messplanung": { "type": "array", "items": { "type": "object" }, "description": "1.3, Messbedarfe der Einsätze." },
         "messmittel": { "type": "array", "items": { "type": "object" }, "description": "1.3, Messmittel-Angaben der Einbauten." },
+        "kennzahl": { "type": "object", "required": ["id", "kennzeichen", "name_zum_datenstand", "rechenform", "einheit"], "description": "1.4, Leistungsvergleich (AP-17 IP-21b): die EINE Kennzahl des Berichts." },
+        "bezugsbasis": { "type": "object", "required": ["id", "kennzeichen", "fassung", "methode", "referenzperiode", "datenlage", "gilt_ab", "toleranz_prozent"], "description": "1.4, Leistungsvergleich: die zitierte Fassung als eingefrorene Kopie (Methode, Basiswert/Koeffizienten, r2, Streuung, Toleranz, Prüfsumme, Freigabe) — die am letzten Tag der Berichtsperiode gilt (P4); `beendet_zum`/`beendet_grund` als Vermerk (S4)." },
+        "vergleich_je_periode": { "type": "array", "items": { "type": "object", "required": ["periode", "roh", "bereinigt"] }, "description": "1.4, Leistungsvergleich: je Monat die Form `BezugsbasisVergleichMonat` des Vergleich-Lesers (bezugsbasis.md §16) — gemessen mit Version, Bedingung mit Fassung, erwartet, Δ, Band, Urteil, Grund, Kennzeichen; roh ohne Urteil (U1)." },
+        "urteil": { "type": "object", "description": "1.4, Leistungsvergleich: der Zeitraum (Σ ÷ Σ, U5) in der Form `BezugsbasisVergleichZeitraum`." },
+        "grenzen_und_vorbehalte": { "type": "object", "required": ["datenlage", "kennzeichen", "nicht_anwendbar"], "description": "1.4, Leistungsvergleich: Datenlage (vorläufig), Toleranz, Streuung, die Kennzeichen des Vergleichs (G5) und je Periode der Grund ohne Urteil." },
+        "statische_faktoren": { "type": "array", "items": { "type": "object", "required": ["position", "art"] }, "description": "1.4, Leistungsvergleich: die Faktoren der Fassung als Kopie (V3)." },
+        "quellenverzeichnis": {
+          "type": "array",
+          "description": "1.4, Leistungsvergleich: jede Quelle mit Bezug, Version (Kennzahl, Messstelle) bzw. Fassung (Bezugsgröße, Bezugsbasis) und ihren Tagen einschließlich; die Bezugsbasis mit `bezug = vergleich` (S2).",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["art", "kennzeichen", "name_zum_datenstand", "bezug", "version", "fassung", "erster_tag", "letzter_tag"],
+            "properties": {
+              "art": { "type": "string" }, "kennzeichen": { "type": "string" }, "name_zum_datenstand": { "type": "string" },
+              "bezug": { "type": "string", "enum": ["unmittelbar", "mittelbar", "vergleich"] },
+              "version": { "type": ["integer", "null"] }, "fassung": { "type": ["integer", "null"] },
+              "erster_tag": { "type": "string", "format": "date" }, "letzter_tag": { "type": "string", "format": "date" }
+            }
+          }
+        },
         "qualitaet": {
           "type": "object", "additionalProperties": false,
           "required": ["abdeckung_min_prozent", "luecken", "ersatzwerte", "korrekturen_im_zeitraum", "vorlaeufig"],
@@ -219,7 +239,7 @@
       "required": ["bericht", "vorlage", "vorlage_fassung", "geltung", "unternehmen", "sitz", "zeitraum", "vergleichszeitraeume", "datenstand", "regelwerk", "darstellung", "quellenverzeichnis"],
       "properties": {
         "bericht": { "type": "string", "pattern": "^BR-[0-9]{4}-[0-9]{4}$" },
-        "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung"] },
+        "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich"] },
         "vorlage_fassung": { "type": "integer", "minimum": 1 },
         "geltung": {
           "type": "object", "additionalProperties": false, "required": ["art", "kennzeichen", "name_zum_datenstand"],
@@ -241,6 +261,10 @@
             "properties": { "art": { "type": "string", "enum": ["vormonat", "vorjahresmonat", "vorjahr"] }, "schluessel": { "type": "string" }, "ergebnis": { "type": "string" } }
           }
         },
+        "referenzperiode": { "type": "object", "additionalProperties": false, "required": ["schluessel", "bezeichnung"], "properties": { "schluessel": { "type": "string" }, "bezeichnung": { "type": "string" } }, "description": "1.4, nur Leistungsvergleich (W8): die Referenzperiode der zitierten Fassung — mit dem Zeitraum das Zeitraum-Paar (Regel `zeitraum`, B18)." },
+        "bezugsbasis": { "type": "object", "additionalProperties": false, "required": ["kennzeichen", "fassung"], "properties": { "kennzeichen": { "type": "string" }, "fassung": { "type": "integer", "minimum": 1 } }, "description": "1.4, nur Leistungsvergleich: die zitierte Basis mit Fassung." },
+        "grenz_satz": { "type": "string", "description": "1.4, nur Leistungsvergleich: der Grenz-Satz (AP-14 `UEMS_NORMGRENZE`, SP3)." },
+        "kennzeichen": { "type": "array", "items": { "type": "string" }, "description": "1.4, nur Leistungsvergleich: die Kennzeichen des Vergleichs (G5), wie der Leser sie nennt." },
         "datenstand": { "$ref": "#/$defs/zeitpunkt" },
         "regelwerk": {
           "type": "object", "additionalProperties": false, "required": ["software", "vertraege"],

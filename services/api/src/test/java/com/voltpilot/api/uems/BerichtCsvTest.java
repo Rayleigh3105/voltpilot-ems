@@ -233,8 +233,8 @@ class BerichtCsvTest {
                     folge.add(a.path("schluessel").asText());
                 }
             });
-            if (BerichtRegeln.OHNE_LESER.contains(v.path("schluessel").asText())) {
-                continue; // AP-17: die Zeilen des Leistungsvergleichs kommen mit seinem Abzug (IP-21b/IP-22)
+            if (BerichtRegeln.OHNE_AUSGABE.contains(v.path("schluessel").asText())) {
+                continue; // AP-17: die Zeilen des Leistungsvergleichs kommen mit IP-22 (der Abzug steht seit IP-21b)
             }
             if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.path("schluessel").asText())) {
                 List<String> alle = new ArrayList<>();

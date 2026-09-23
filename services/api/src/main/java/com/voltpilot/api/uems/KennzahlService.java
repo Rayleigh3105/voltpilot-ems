@@ -80,6 +80,9 @@ public class KennzahlService {
     private final ObjectMapper json;
     /** AP-17 IP-17 (F4): die Archivierung beendet die laufende Bezugsbasis am selben Tag. */
     private final BezugsbasisPflegeRepository bezugsbasen;
+    /** AP-17 IP-21b (S4): ein freigegebener Leistungsvergleich sperrt die Archivierung seiner Kennzahl. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private BerichtsBelege berichtsBelege;
     private volatile Clock uhr = Clock.systemUTC();
 
     public KennzahlService(KennzahlRepository repo, KennzahlAufrufer aufrufer, BezugsflaecheLesemodell bezugsflaechen,
@@ -237,6 +240,11 @@ public class KennzahlService {
                 f.map(x -> kat.eingaenge(x.id())).orElse(List.of()));
     }
 
+    /** AP-17 IP-21b (S1, Zaun über die Kennzahl): die Geltung einer für den Aufrufer lesbaren Kennzahl, sonst 404. */
+    Geltung geltungFuerBericht(UUID id) {
+        return geltungVon(lesbar(katalog(), id), jetzt());
+    }
+
     /** Was eine Bezugsbasis von ihrer Kennzahl liest; {@code fassung} ist {@code null}, wenn am Tag keine galt. */
     record BasisKennzahl(Zeile zeile, ZoneId zone, Instant jetzt, FassungZeile fassung, List<EingangZeile> eingaenge) {}
 
@@ -324,6 +332,9 @@ public class KennzahlService {
             requireLesbar(k, jetzt);
             if (k.archiviertAm() != null) {
                 throw KennzahlAbgelehnt.von(Ablehnung.ARCHIVIERT);
+            }
+            if (berichtsBelege != null) {
+                berichtsBelege.pruefeKennzahl(id);
             }
             repo.archivieren(id);
             repo.protokoll(tenant, id, ARCHIVIERT, null, null, jetzt, false, null, wer);

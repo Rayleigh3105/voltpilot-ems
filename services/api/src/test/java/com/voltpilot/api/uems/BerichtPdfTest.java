@@ -200,8 +200,8 @@ class BerichtPdfTest {
                 assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
             }
             assertThat(BerichtPdf.VORLAGEN).containsEntry(schluessel, v.path("name").asText());
-            if (BerichtRegeln.OHNE_LESER.contains(schluessel)) {
-                continue; // AP-17: das Layout des Leistungsvergleichs kommt mit seinem Abzug (IP-21b/IP-22)
+            if (BerichtRegeln.OHNE_AUSGABE.contains(schluessel)) {
+                continue; // AP-17: das Layout des Leistungsvergleichs kommt mit IP-22 (der Abzug steht seit IP-21b)
             }
             Map<String, String> soll = new LinkedHashMap<>();
             v.path("abschnitte").forEach(a -> soll.put(a.path("schluessel").asText(), a.path("titel").asText()));

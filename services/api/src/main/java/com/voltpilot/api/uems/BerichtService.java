@@ -107,6 +107,9 @@ public class BerichtService {
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private final TeilansichtDienst umfang;
+    /** AP-17 IP-21b: der Zaun über die Kennzahl eines Leistungsvergleichs. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private KennzahlService kennzahlen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public BerichtService(BerichtRepository repo, KennzahlAufrufer aufrufer, BerichtAbzugBildung bildung,
@@ -314,6 +317,9 @@ public class BerichtService {
     private Datei ausgabe(String kennung, int nr, ProtokollAkteur wer, String handlung, String format, Ausgabe ausgabe) {
         Zugriff z = zugriff(kennung, wer, handlung);
         Kopf kopf = z.kopf();
+        if (BerichtRegeln.OHNE_AUSGABE.contains(kopf.vorlage())) {
+            throw BerichtAbgelehnt.von(Ablehnung.AUSGABE_FEHLT); // AP-17 IP-22 bringt PDF und CSV
+        }
         StandZeile s = geprueft(kopf, nr);
         Instant ersetztAm = s.ersetztDurchNr() == null ? null : repo.staende(kopf.tenant(), kopf.id()).stream()
                 .filter(x -> x.nr() == s.ersetztDurchNr()).map(StandZeile::freigegebenAm).findFirst().orElseThrow();
@@ -345,6 +351,21 @@ public class BerichtService {
      */
     public Uebersicht anlegen(String vorlageSchluessel, String geltungId, String zeitraum, List<UUID> abgewaehlt,
             ProtokollAkteur wer) {
+        return anlegen(vorlageSchluessel, geltungId, zeitraum, abgewaehlt, null, wer);
+    }
+
+    /**
+     * Wie oben; {@code kennzahl} trägt genau der Leistungsvergleich (Pflicht dort, sonst 400). Er nimmt Geltung und
+     * Zeitraum-Art aus der Anfrage (ein Paar der Vorlage, V2) und zählt V4 je Kennzahl (AP-17 IP-21b).
+     */
+    public Uebersicht anlegen(String vorlageSchluessel, String geltungId, String zeitraum, List<UUID> abgewaehlt,
+            String kennzahlId, ProtokollAkteur wer) {
+        if (BerichtRegeln.LEISTUNGSVERGLEICH.equals(vorlageSchluessel)) {
+            return leistungsvergleichAnlegen(geltungId, zeitraum, kennzahlId, wer);
+        }
+        if (kennzahlId != null) {
+            throw BerichtAbgelehnt.anfrage("kennzahl");
+        }
         UUID tenant = kundenbereich();
         Instant jetzt = jetzt();
         BerichtRegeln.Vorlage v = BerichtRegeln.vorlage(vorlageSchluessel);
@@ -414,6 +435,75 @@ public class BerichtService {
             });
         } catch (DuplicateKeyException e) {
             throw repo.berichtZu(v.schluessel(), v.geltungArt(), g.id(), zeitraumSchluessel).map(BerichtService::gibtEsSchon)
+                    .orElseGet(() -> BerichtAbgelehnt.von(Ablehnung.GLEICHZEITIG));
+        }
+        return uebersicht(tenant, repo.bericht(kennung).orElseThrow());
+    }
+
+    /**
+     * AP-17 IP-21b (S1, V4): Kennzahl (400, außerhalb der Sicht 404) → Geltung (404) → Paar der Vorlage aus Geltung und
+     * Zeitraum (400) → Recht → gibt es schon je Kennzahl (409) → Kennzahl in der Geltung (400) → Bericht und Entwurf in
+     * einer Transaktion; ohne freigegebene Basis-Fassung am letzten Tag {@code 422 basis_fehlt}, nichts angelegt.
+     */
+    private Uebersicht leistungsvergleichAnlegen(String geltungId, String zeitraum, String kennzahlId,
+            ProtokollAkteur wer) {
+        UUID tenant = kundenbereich();
+        Instant jetzt = jetzt();
+        BerichtRegeln.Vorlage v = BerichtRegeln.vorlage(BerichtRegeln.LEISTUNGSVERGLEICH);
+        UUID kennzahl = uuid(kennzahlId).orElseThrow(() -> BerichtAbgelehnt.anfrage("kennzahl"));
+        if (kennzahlen == null) {
+            throw new IllegalStateException("Kennzahl-Dienst ist nicht verdrahtet");
+        }
+        KennzahlService.Geltung kg;
+        try {
+            kg = kennzahlen.geltungFuerBericht(kennzahl);
+        } catch (KennzahlAbgelehnt e) {
+            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN, Map.of("feld", "kennzahl"));
+        }
+        Optional<UUID> gid = uuid(geltungId);
+        boolean standort = gid.isPresent() && repo.standorte().stream().anyMatch(x -> x.id().equals(gid.get()));
+        String geltungArt = standort ? BerichtRegeln.STANDORT : BerichtRegeln.UNTERNEHMEN;
+        Geltung g = geltung(standort, geltungId);
+        String zeitraumArt = zeitraum == null ? null : MONAT.matcher(zeitraum).matches() ? BerichtRegeln.MONAT
+                : JAHR.matcher(zeitraum).matches() ? BerichtRegeln.JAHR
+                : DATENGRUNDLAGE.matcher(zeitraum).matches() ? BerichtRegeln.DATENGRUNDLAGE : null;
+        if (zeitraumArt == null || !BerichtRegeln.vorlagePasst(v.schluessel(), geltungArt, zeitraumArt)) {
+            throw BerichtAbgelehnt.anfrage("zeitraum");
+        }
+        Benutzer b = aufrufer.benutzer(wer);
+        DarfErgebnis d = Geltungsbereich.requireScope(b, rechteKundenbereich(),
+                BerichtRechte.kennung(BerichtRechte.ANLEGEN, geltungArt, v.schluessel()),
+                standort ? g.id().toString() : null, jetzt, BerichtAbgelehnt::rechte);
+        // Q4: am Standort nur eine Kennzahl dieses Standorts; am Unternehmen jede des Kundenbereichs.
+        if (standort && !g.id().equals(kg.standort())) {
+            throw BerichtAbgelehnt.anfrage("kennzahl");
+        }
+        ZoneId zone = repo.zeitzone(standort ? g.id() : null);
+        BerichtRegeln.zeitraum(zeitraumArt, zeitraum, zone);
+        Optional<Kopf> schon = repo.leistungsvergleichZu(geltungArt, g.id(), zeitraum, kennzahl);
+        if (schon.isPresent()) {
+            throw gibtEsSchon(schon.get());
+        }
+        String rolle = rolle(d, wer);
+        String kennung;
+        try {
+            kennung = transaktion.execute(tx -> {
+                String neueKennung = repo.kennungNeu(tenant, LocalDate.ofInstant(jetzt, zone).getYear());
+                UUID id = repo.anlegenLeistungsvergleich(tenant, neueKennung, v, geltungArt, g.id(), zeitraumArt,
+                        zeitraum, zone, kennzahl, wer, jetzt);
+                bilden(id, jetzt, GEBILDET_BEIM_ANLEGEN);
+                Map<String, Object> neu = new LinkedHashMap<>();
+                neu.put("kennung", neueKennung);
+                neu.put("vorlage", v.schluessel());
+                neu.put("geltung_art", geltungArt);
+                neu.put("geltung_id", g.id().toString());
+                neu.put("zeitraum", zeitraum);
+                neu.put("kennzahl", kennzahl.toString());
+                repo.protokoll(tenant, id, null, BerichtRechte.ANLEGEN, null, text(neu), null, wer, rolle, jetzt);
+                return neueKennung;
+            });
+        } catch (DuplicateKeyException e) {
+            throw repo.leistungsvergleichZu(geltungArt, g.id(), zeitraum, kennzahl).map(BerichtService::gibtEsSchon)
                     .orElseGet(() -> BerichtAbgelehnt.von(Ablehnung.GLEICHZEITIG));
         }
         return uebersicht(tenant, repo.bericht(kennung).orElseThrow());
@@ -795,6 +885,7 @@ public class BerichtService {
             abzug.path(abschnitt).forEach(w -> raus.add(new BerichtRegeln.FreigabeWert(w.path("quelle").asText(),
                     w.path("name_zum_datenstand").asText(null), w.path("fassung").asText(null), zeit(w.path("endgueltig_ab")))));
         }
+        raus.addAll(BerichtLeistungsvergleich.freigabeWerte(abzug)); // AP-17 IP-21b: leer bei jeder anderen Vorlage
         return raus;
     }
 

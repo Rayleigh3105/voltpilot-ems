@@ -16,6 +16,16 @@ public final class BezugsbasisVergleichSatz {
     private BezugsbasisVergleichSatz() {}
 
     static final String UNGESICHERT = "ungesichert — noch kein Stand";
+
+    /** S5: „Stand Nr. n vom TT.MM.JJJJ“ für den jüngsten Stand, sonst {@link #UNGESICHERT}. */
+    static String stand(java.util.List<com.voltpilot.api.web.dto.BezugsbasisVergleichDto.Stand> staende) {
+        if (staende.isEmpty()) {
+            return UNGESICHERT;
+        }
+        var s = staende.get(0);
+        return "Stand Nr. " + s.nummer() + " vom "
+                + s.am().format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"));
+    }
     static final String LEER = "Noch keine Bezugsbasis. Legen Sie fest, gegen welchen Zeitraum diese Kennzahl verglichen "
             + "werden soll — der Vergleich entsteht aus den gespeicherten Werten.";
     /** Die Urteil-Wörter (glossar.ts {@code UEMS_BEZUGSBASIS_URTEILE}); {@code ohne_urteil} hat kein Wort. */

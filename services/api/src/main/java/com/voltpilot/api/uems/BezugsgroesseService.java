@@ -62,6 +62,9 @@ public class BezugsgroesseService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private KanalbindungService kanalbindungen;
+    /** AP-17 IP-21b (S4): ein freigegebener Stand, der die Bezugsgröße zitiert, sperrt den harten Löschweg. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private BerichtsBelege berichtsBelege;
     private final BezugsgroesseRepository repo;
     private final BezugsflaecheLesemodell bezugsflaechen;
     private final BezugswertRepository berichtigungen;
@@ -494,6 +497,9 @@ public class BezugsgroesseService {
                     "Diese Bezugsgröße ist Einflussgröße einer Bezugsbasis. Sie können sie archivieren.",
                     Map.of("bezugsbasen", bezugsbasen));
             pruefe(BezugsgroesseRegeln.loeschen(repo.werteZahl(id)));
+            if (berichtsBelege != null) {
+                berichtsBelege.pruefeObjekt(id, BelegeImWeg.Gegenstand.BEZUGSGROESSE);
+            }
             repo.loeschen(id);
             repo.protokoll(tenant, id, "geloescht", alsJson(felder(entwurf(b))), null, wer);
             return id;

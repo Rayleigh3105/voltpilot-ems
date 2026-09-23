@@ -141,6 +141,9 @@ public class BerichtAbzugBildung {
     private final BerichtRegelwerk regelwerk;
     private final BewertungRanglisteService bewertungRangliste;
     private final BewertungMessabdeckungService bewertungMessabdeckung;
+    /** AP-17 IP-21b: der EINE Vergleich-Leser (IP-19) für die Vorlage {@code leistungsvergleich}. */
+    @Autowired(required = false)
+    private BezugsbasisVergleich vergleichLeser;
 
     @Autowired
     public BerichtAbzugBildung(MeasurementCatalog katalog, ObjectMapper json, ObjectProvider<BuildProperties> build,
@@ -225,6 +228,43 @@ public class BerichtAbzugBildung {
                 + "VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)", zeilen);
     }
 
+    // ============================================================================ Leistungsvergleich (AP-17 IP-21b)
+
+    /**
+     * S1–S3: Kennzahl + die freigegebene Basis-Fassung am letzten Tag der Berichtsperiode (P4) + der Vergleich aus dem
+     * Leser {@link BezugsbasisVergleich} (nur gerufen) → {@link BerichtLeistungsvergleich#abzug}. Ohne Fassung
+     * {@code 422 basis_fehlt}; eine Kennzahl außerhalb der Sicht des Aufrufers ist {@code 404} (Zaun über die Kennzahl).
+     */
+    private Ergebnis leistungsvergleich(JdbcTemplate j, Kopf b, UUID berichtId, BerichtRegeln.Zeitraum z, Instant jetzt) {
+        if (vergleichLeser == null) {
+            throw new IllegalStateException("Vergleich-Leser ist nicht verdrahtet");
+        }
+        UUID tenant = b.tenant();
+        UUID kennzahl = j.queryForObject("SELECT kennzahl_id FROM bericht WHERE id = ? AND tenant_id = ?", UUID.class,
+                berichtId, tenant);
+        BerichtLeistungsvergleich.Fassung f = BerichtLeistungsvergleich.fassungAm(j, tenant, kennzahl, z.letzterTag())
+                .orElseThrow(() -> BerichtAbgelehnt.von(BerichtAbgelehnt.Ablehnung.BASIS_FEHLT));
+        java.time.YearMonth von = java.time.YearMonth.from(z.ersterTag());
+        java.time.YearMonth bis = java.time.YearMonth.from(z.letzterTag());
+        com.voltpilot.api.web.dto.BezugsbasisVergleichDto.Vergleich v;
+        try {
+            v = vergleichLeser.vergleich(kennzahl, List.of("basis", "von", "bis"), f.basis(), von.toString(),
+                    bis.toString());
+        } catch (KennzahlAbgelehnt | BezugsbasisAbgelehnt e) {
+            throw BerichtAbgelehnt.von(BerichtAbgelehnt.Ablehnung.NICHT_GEFUNDEN);
+        }
+        Geltung g = BerichtRegeln.STANDORT.equals(b.geltungArt()) ? geltung(j, tenant, b.standort())
+                : BerichtUnternehmen.geltung(j, tenant, b.unternehmen());
+        BerichtLeistungsvergleich.Ergebnis x = BerichtLeistungsvergleich.abzug(json,
+                new BerichtLeistungsvergleich.Kopf(b.kennung(), g, z, b.zone(), jetzt, regelwerk), v, f,
+                BerichtLeistungsvergleich.faktoren(j, tenant, f.fassungId()),
+                BerichtLeistungsvergleich.eingaenge(j, tenant, kennzahl, von, bis),
+                BerichtLeistungsvergleich.bezugsgroessen(j, tenant));
+        String text = BerichtRegeln.kanonisch(x.abzug());
+        return new Ergebnis(tenant, berichtId, b.kennung(), x.abzug(), text, BerichtRegeln.pruefsumme(text), jetzt,
+                x.quellen(), x.zeiten());
+    }
+
     // ============================================================================ Zusammentragen
 
     private Ergebnis zusammentragen(JdbcTemplate j, UUID berichtId, Instant jetzt) {
@@ -251,6 +291,9 @@ public class BerichtAbzugBildung {
             String text = BerichtRegeln.kanonisch(x.abzug());
             return new Ergebnis(tenant, berichtId, b.kennung(), x.abzug(), text, BerichtRegeln.pruefsumme(text), jetzt,
                     x.quellen(), x.zeiten());
+        }
+        if (BerichtRegeln.LEISTUNGSVERGLEICH.equals(b.vorlage())) {
+            return leistungsvergleich(j, b, berichtId, z, jetzt);
         }
         MessstelleWerteService lesemodell = lesemodell(j, jetzt);
         MessstelleRepository messstellen = new MessstelleRepository(j);

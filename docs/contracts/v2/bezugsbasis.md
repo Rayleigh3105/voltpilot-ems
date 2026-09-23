@@ -368,7 +368,7 @@ Controller `BezugsbasisVergleichController`, DTO `BezugsbasisVergleichDto`, Open
 | `…bedingung[]` | je `bezugsbasis_variable` der Periodenwert der Bezugsgröße über den Kennzahl-Eingangsleser (wirksame Fassung, nie verteilt; `quelle` `bezugsgroesse`, `fassung`); ohne Bezugsgröße an Position 1 — Stammdatum-Nenner (V3) oder Zusammenfassung (Σ ÷ Σ der Paare, B2/U5) — der gespeicherte `nenner` der Kennzahl mit `version` (`quelle` `kennzahl`) | U4; Kennzeichen der Bezugsgrößen-Fassung (etwa „Temperatur von VoltPilot bezogen …“) erben nach G5 |
 | `…erwartet · delta_prozent · band_prozent · richtung · urteil · grund · kennzeichen` | Operation `vergleich` | U2, U3 (Band = max(Toleranz, Streuung)), G2, G3, G5 |
 | `zeitraum` | Operation `zeitraum` über alle Monate gegen die Fassung am letzten Tag von `bis` (der Zeitraum ist eine Periode, P4) | U5: Σ ÷ Σ, nie ein Mittel; fehlt ein Monat, `ohne_urteil` mit „x von y Monaten“ |
-| `staende` · `stand_satz` | Leistungsvergleichs-Stände (S5) | bis zum Leser IP-21b immer leer und „ungesichert — noch kein Stand“ |
+| `staende` · `stand_satz` | Leistungsvergleichs-Stände (S5) | die freigegebenen Leistungsvergleichs-Stände, die die Basis zitieren (Quellenart `bezugsbasis`, AP-17 IP-21b), der jüngste vorn — „Stand Nr. 1 vom 12.01.2028“; ohne Stand leer und „ungesichert — noch kein Stand“ |
 
 Die G3-Spannweite wird aus `spannweite_von/_bis` wie in `modell` toleriert: [min × 0,9, max × 1,1] (Startwert ± 10 %), exakt.
 Eine Fassung ohne Spannweite (Verhältnis, BB-0004 der Referenzdatei) prüft G3 nicht.

@@ -257,10 +257,10 @@ describe('Bericht anlegen (§5.1, V1–V5, Q4)', () => {
   ];
   const UNTERNEHMEN = { id: FIXTURE_IDS.u, name: 'Kunststoffwerk Ahrenberg GmbH', zeitzone: ZONE };
 
-  it('Vorlage-Karten: vier für Ines; Peter nur die zwei des Standorts — die des Unternehmens sind gar nicht da (§5.5)', () => {
+  it('Vorlage-Karten: fünf für Ines (seit AP-17 IP-21b mit dem Leistungsvergleich); Peter nur die zwei des Standorts — die des Unternehmens sind gar nicht da (§5.5)', () => {
     const ids = STANDORTE.map((s) => s.id);
     const ines = vorlageKarten(INES, ids);
-    expect(ines.map((k) => k.schluessel)).toEqual(['monatsbericht_standort', 'jahresbericht_standort', 'monatsbericht_unternehmen', 'jahresbericht_unternehmen']);
+    expect(ines.map((k) => k.schluessel)).toEqual(['monatsbericht_standort', 'jahresbericht_standort', 'monatsbericht_unternehmen', 'jahresbericht_unternehmen', 'leistungsvergleich']);
     expect(ines[0]).toMatchObject({ name: 'Monatsbericht Standort', fassung: 'Fassung 1', geltungArt: 'standort', zeitraumArt: 'monat' });
     expect(ines[0].abschnitte).not.toContain('Kopf');
     expect(ines[0].abschnitte).toContain('Quellenverzeichnis');

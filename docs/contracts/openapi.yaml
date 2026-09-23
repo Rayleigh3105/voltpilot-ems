@@ -10825,7 +10825,8 @@ paths:
         bleibt als Grabstein im Kennzeichen-Verlauf belegt. Protokolleintrag
         `geloescht` mit dem letzten Stand in `alt`. Verweise aus Energieeinsätzen (auch aufgehobene)
         ergeben 409 `bezugsgroesse_in_verwendung` mit `energieeinsaetze` als Liste der Kennzeichen,
-        Variablen einer Bezugsbasis-Fassung (AP-17 IP-7) dasselbe mit `bezugsbasen`;
+        Variablen einer Bezugsbasis-Fassung (AP-17 IP-7) dasselbe mit `bezugsbasen`; zitiert ein freigegebener
+        Berichtsstand die Bezugsgröße, 409 `berichts_belege` in der Form `BelegeImWeg` (AP-17 IP-21b, S4);
         die Bezugsgröße kann archiviert werden.
       responses:
         "204": { description: Gelöscht. }
@@ -12182,7 +12183,7 @@ paths:
       tags: [kennzahlen]
       summary: Archiviert eine Kennzahl - die Werte bleiben lesbar, kein Rechenlauf mehr.
       description: >
-        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). V5; schon archiviert ist 409 `archiviert`. Genau ein Protokolleintrag `kennzahl_archiviert`.
+        Recht `kennzahl.standort_definieren` (Geltungsbereich Standort, Gebäude, Bereich, Messstelle - am Standort des Objekts) bzw. `kennzahl.unternehmen_definieren` (Unternehmen, Prozess, Kostenstelle) nach G1, durchgesetzt über die Rechte-Ableitung: 403 `recht_fehlt` mit `rolle_noetig` und dem Satz der Rechte-Ableitung; ein Standort außerhalb des Zugriffs ist 404 `nicht_gefunden` (fremd ist nicht da). V5; schon archiviert ist 409 `archiviert`. Zitiert ein freigegebener Leistungsvergleichs-Stand die Kennzahl (AP-17 IP-21b, S4), ist es 409 `berichts_belege` in der Form `BelegeImWeg` (`berichtsstaende` nennt jeden Stand) - nichts ist geschrieben. Genau ein Protokolleintrag `kennzahl_archiviert`.
       responses:
         "200":
           description: Archiviert.
@@ -27135,8 +27136,8 @@ components:
         zeitzone: { type: string, example: Europe/Berlin }
         monate: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVergleichMonat" } }
         zeitraum: { $ref: "#/components/schemas/BezugsbasisVergleichZeitraum" }
-        staende: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVergleichStand" }, description: "Leistungsvergleichs-Stände (S5) - bis IP-21b immer leer." }
-        stand_satz: { type: string, example: "ungesichert — noch kein Stand" }
+        staende: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVergleichStand" }, description: "Leistungsvergleichs-Stände (S5, AP-17 IP-21b): die freigegebenen Stände, die diese Bezugsbasis zitieren (Quellenart `bezugsbasis`), der jüngste vorn; leer ohne Stand." }
+        stand_satz: { type: string, example: "ungesichert — noch kein Stand", description: "„Stand Nr. n vom TT.MM.JJJJ“ (jüngster Stand) oder „ungesichert — noch kein Stand“." }
         satz: { type: string, nullable: true, description: "Nur ohne Bezugsbasis: der Leer-Satz (§10)." }
     BezugsbasisVergleichBasis:
       type: object
@@ -29282,13 +29283,14 @@ components:
         gegen den gültigen Stand, `aenderungen` seit dem Datenstand), `anstoss_nicht_offen` (`zustand`),
         `gleichzeitig`; 422 `vorlage_unbekannt` (`feld`), `keine_quellen` (`feld`),
         `zeitraum_nicht_zu_ende` (`moeglich_ab`), `werte_vorlaeufig` (`vorlaeufig`, `vorlaeufige`,
-        `moeglich_ab`), `begruendung_fehlt` (`feld`, `zeichen`); 500 `abzug_beschaedigt` (`nr`). Zeitpunkte
+        `moeglich_ab`), `begruendung_fehlt` (`feld`, `zeichen`), `basis_fehlt` (Leistungsvergleich ohne freigegebene
+        Bezugsbasis, AP-17 IP-21b), `ausgabe_fehlt` (PDF/CSV des Leistungsvergleichs bis IP-22); 500 `abzug_beschaedigt` (`nr`). Zeitpunkte
         der Fakten mit dem Versatz der Zone der Geltung.
       required: [code, message]
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, vorlage_unbekannt, geltung_unbekannt, bericht_gibt_es_schon, keine_quellen, zeitraum_nicht_zu_ende, werte_vorlaeufig, entwurf_veraltet, stand_gibt_es_nicht, abzug_beschaedigt, begruendung_fehlt, anstoss_nicht_offen, gleichzeitig]
+          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, vorlage_unbekannt, geltung_unbekannt, bericht_gibt_es_schon, keine_quellen, zeitraum_nicht_zu_ende, werte_vorlaeufig, entwurf_veraltet, stand_gibt_es_nicht, abzug_beschaedigt, begruendung_fehlt, anstoss_nicht_offen, gleichzeitig, basis_fehlt, ausgabe_fehlt]
         message: { type: string }
         feld: { type: string }
         rolle_noetig: { type: string, nullable: true }
@@ -29331,6 +29333,16 @@ components:
             leer, sind alle Kennzahlen der Geltung gewählt. Kein Array, ein Eintrag ohne UUID-Text, mehr als 200 Einträge
             oder eine Kennzahl, die es im Kundenbereich nicht gibt → 400 `anfrage_ungueltig` mit `feld` =
             `kennzahlen_abgewaehlt`; doppelte fallen zusammen. Die Abwahl steht vor der ersten Bildung des Entwurfs.
+        kennzahl:
+          type: string
+          format: uuid
+          description: >
+            AP-17 IP-21b (S1, V4): genau beim Leistungsvergleich Pflicht, bei jeder anderen Vorlage 400 `anfrage_ungueltig`
+            (`feld` = `kennzahl`). Die Kennzahl, deren Vergleich mit ihrer Bezugsbasis der Bericht zeigt — ein Bericht je
+            Geltung × Zeitraum × Kennzahl (409 `bericht_gibt_es_schon`). Geltung (Standort oder Unternehmen) und
+            Zeitraum-Art (Monat, Jahr, Datengrundlage) folgen aus `geltung_id` und `zeitraum`; am Standort nur eine Kennzahl
+            dieses Standorts (sonst 400). Außerhalb der Sicht 404 `nicht_gefunden` (`feld` = `kennzahl`); ohne
+            freigegebene Bezugsbasis-Fassung am letzten Tag des Zeitraums 422 `basis_fehlt`, nichts angelegt.
     BerichtFreigeben:
       type: object
       description: >

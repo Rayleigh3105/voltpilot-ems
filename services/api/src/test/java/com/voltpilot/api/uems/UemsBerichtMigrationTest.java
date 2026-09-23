@@ -75,9 +75,14 @@ class UemsBerichtMigrationTest {
     private static final Path VEKTOREN = Path.of("..", "..", "docs", "contracts", "v2", "bericht-vectors.json");
     private static final Path VORLAGEN = Path.of("..", "..", "docs", "contracts", "v2", "bericht-vorlagen.json");
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
-    /** Migrationen, die auf den Berichts-Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser. */
-    private static final List<String> BAUEN_DARAUF_AUF =
-            List.of("20260915113000", "20260922251800", "20260923230000", "20260924071945");
+    /**
+     * Migrationen, die auf den Berichts-Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser, in
+     * Versionsfolge. AP-17: IP-6 ({@code 071500}) prüft die Fassung per CHECK mit {@code bericht_pruefsumme}; IP-15
+     * ({@code 200500}) ersetzt das Vokabular von IP-6 und muss darum nach ihr laufen; IP-21b ({@code 211800}) erweitert
+     * {@code bericht} um die Kennzahl.
+     */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260915113000", "20260922251800", "20260923230000",
+            "20260924071500", "20260924071945", "20260924200500", "20260924211800");
     private static final List<String> TABELLEN = List.of("bericht", "bericht_entwurf", "bericht_stand", "bericht_quelle",
             "bericht_revision_anstoss", "bericht_abruf", "bericht_aenderung", "bericht_kennung_seq");
 
@@ -312,7 +317,11 @@ class UemsBerichtMigrationTest {
     @Test
     void keinBestehenderWegWirdEnger() {
         String tabellen = pgArray(TABELLEN);
-        List<String> ziele = Stream.concat(TABELLEN.stream(), Stream.of("tenant", "standort", "unternehmen")).toList();
+        // AP-17 IP-21b (V4 je Kennzahl): bericht.kennzahl_id → kennzahl RESTRICT — bewusst; eine zitierte Kennzahl wird
+        // nie hart gelöscht (Archivieren antwortet 409 berichts_belege), und das Offboarding löscht die Berichte vor
+        // den Kennzahlen (TenantRepository.offboard).
+        List<String> ziele = Stream.concat(TABELLEN.stream(), Stream.of("tenant", "standort", "unternehmen", "kennzahl"))
+                .toList();
         assertThat(root.queryForList("SELECT DISTINCT confrelid::regclass::text FROM pg_constraint WHERE contype = 'f' "
                 + "AND conrelid::regclass::text = ANY (?::text[])", String.class, tabellen))
                 .isNotEmpty().allSatisfy(ziel -> assertThat(ziel).isIn(ziele));

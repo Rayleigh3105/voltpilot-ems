@@ -20,7 +20,8 @@ public final class BerichtDto {
      * (V3, AP-12 IP-14) — die Kennungen der abgewählten Kennzahlen; fehlt die Liste oder ist sie leer, sind alle gewählt.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Anlegen(String vorlage, String geltungId, String zeitraum, List<String> kennzahlenAbgewaehlt) {}
+    public record Anlegen(String vorlage, String geltungId, String zeitraum, List<String> kennzahlenAbgewaehlt,
+            String kennzahl) {}
 
     /** AP-16 S5: Wiedervorlage der energetischen Bewertung ändern. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

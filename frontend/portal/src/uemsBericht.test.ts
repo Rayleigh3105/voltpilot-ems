@@ -212,8 +212,8 @@ describe('Bericht-Vertrag: Vokabulare, Sätze, Vorlagen und Kennzeichen sind die
       schluessel: v.schluessel, fassung: v.fassung, geltung_art: v.geltung_art, zeitraum_art: v.zeitraum_art,
       geltung_arten: v.geltung_arten ?? [v.geltung_art], zeitraum_arten: v.zeitraum_arten ?? [v.zeitraum_art], vergleiche: v.vergleiche, abschnitte: (v.abschnitte as Json[]).map((a) => a.schluessel),
     }))).toEqual(B.VORLAGEN);
-    // AP-17 IP-21a: der Leistungsvergleich steht im Katalog, anlegbar erst mit seinem Leser (IP-21b).
-    expect(B.OHNE_LESER).toEqual([B.LEISTUNGSVERGLEICH]);
+    // AP-17 IP-21b: der Leistungsvergleich hat seinen Leser — anlegbar, mit Karte.
+    expect(B.OHNE_LESER).toEqual([]);
     expect(datei.schema_version).toBe(vektoren.schema_version);
   });
 

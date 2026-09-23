@@ -112,6 +112,7 @@ public class BerichtController {
      * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} — Anlegen folgt
      * dem Freigabe-Recht (G1), die Bewertung ihrer eigenen Unternehmens-Kennung.
      * {@code kennzahlen_abgewaehlt} (V3, AP-12 IP-14) ist freiwillig: jede eine Kennung, doppelte fallen zusammen.
+     * {@code kennzahl} trägt genau der Leistungsvergleich (AP-17 IP-21b, V4 je Kennzahl).
      */
     @PostMapping("/berichte")
     @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
@@ -126,7 +127,7 @@ public class BerichtController {
         List<UUID> abgewaehlt = b.kennzahlenAbgewaehlt() == null ? List.of()
                 : b.kennzahlenAbgewaehlt().stream().map(k -> uuid(k, ABGEWAEHLT)).distinct().toList();
         return ResponseEntity.status(201).body(form(dienst.anlegen(b.vorlage(), b.geltungId(), b.zeitraum(), abgewaehlt,
-                wer)));
+                b.kennzahl(), wer)));
     }
 
     /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */

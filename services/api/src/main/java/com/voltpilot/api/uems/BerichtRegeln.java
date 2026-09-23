@@ -59,10 +59,12 @@ public final class BerichtRegeln {
     /** AP-17 IP-21a (S1, W8): Vertrag 1.4 — die Kennzahl im Vergleich mit ihrer Bezugsbasis. */
     public static final String LEISTUNGSVERGLEICH = "leistungsvergleich";
     /**
-     * AP-17 IP-21a: Vorlagen im Katalog, deren Leser noch fehlt (IP-21b bildet den Abzug aus Kennzahl, Basis und
-     * Vergleich). Anlegen antwortet bis dahin {@link #VORLAGE_UNBEKANNT}; das Portal zeigt keine Karte.
+     * AP-17 IP-21a: Vorlagen im Katalog, deren Leser noch fehlt. Anlegen antwortet für sie {@link #VORLAGE_UNBEKANNT};
+     * das Portal zeigt keine Karte. Seit IP-21b (der Abzug aus Kennzahl, Basis und Vergleich) leer.
      */
-    public static final Set<String> OHNE_LESER = Set.of(LEISTUNGSVERGLEICH);
+    public static final Set<String> OHNE_LESER = Set.of();
+    /** AP-17 IP-21b: Vorlagen ohne PDF/CSV — der Leistungsvergleich bis IP-22 ({@code 422 ausgabe_fehlt}). */
+    public static final Set<String> OHNE_AUSGABE = Set.of(LEISTUNGSVERGLEICH);
     /** AP-14/AP-16: derselbe Grenz-Satz im Bewertungs-PDF und -CSV; das Portal hält ihn als {@code UEMS_NORMGRENZE}. */
     public static final String BEWERTUNG_GRENZ_SATZ = "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen "
             + "und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.";

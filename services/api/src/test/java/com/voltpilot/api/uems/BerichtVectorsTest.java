@@ -179,8 +179,9 @@ class BerichtVectorsTest {
         }
         assertThat(ausDatei).isEqualTo(BerichtRegeln.VORLAGEN);
         assertThat(new ArrayList<>(ausDatei.keySet())).isEqualTo(texte(vektoren().at("/vokabulare/vorlage")));
-        // AP-17 IP-21a: der Leistungsvergleich steht im Katalog, anlegbar erst mit seinem Leser (IP-21b).
-        assertThat(BerichtRegeln.OHNE_LESER).containsExactly(BerichtRegeln.LEISTUNGSVERGLEICH);
+        // AP-17 IP-21b: der Leistungsvergleich hat seinen Leser (anlegbar); PDF und CSV folgen mit IP-22.
+        assertThat(BerichtRegeln.OHNE_LESER).isEmpty();
+        assertThat(BerichtRegeln.OHNE_AUSGABE).containsExactly(BerichtRegeln.LEISTUNGSVERGLEICH);
         assertThat(datei.path("schema_version").asText()).isEqualTo(BerichtRegelwerk.VERTRAEGE.get("bericht"))
                 .isEqualTo(vektoren().path("schema_version").asText());
     }

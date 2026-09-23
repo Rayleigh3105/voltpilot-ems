@@ -143,11 +143,35 @@ Oktober 2027“). Ein Urteil gibt es nur bereinigt gegen eine freigegebene Basis
 Stand ist Kopie mit Prüfsumme, Datenstand, Freigeber und Vorlagen-Fassung; Freigabe, Abweichung und Revision folgen
 §6–§8 unverändert. Kundensätze: `leistungsvergleich_stand` („Leistungsvergleich Spritzguss, Dezember 2027 · Stand Nr. 1
 vom 12.01.2028 · Bezugsbasis BB-0001, Fassung 2 · Prüfsumme 4e2d…“) und, solange kein Stand freigegeben ist,
-`leistungsvergleich_ohne_stand` („ungesichert — noch kein Stand“, S5). **Anlegbar erst mit dem Leser:** bis IP-21b den
-Abzug aus Kennzahl, Basis und Vergleich bildet, steht die Vorlage in `BerichtRegeln.OHNE_LESER` (TS `OHNE_LESER`) —
-`POST /berichte` antwortet `422 vorlage_unbekannt`, das Portal zeigt keine Karte. Offen für IP-21b: V4 (ein Bericht je
-Vorlage × Geltung × Zeitraum) zählt beim Leistungsvergleich je Kennzahl; die Abzug-Form (`$defs/abzug`) und PDF/CSV
-(IP-22) kommen mit dem Leser.
+`leistungsvergleich_ohne_stand` („ungesichert — noch kein Stand“, S5).
+
+**Der Leser (AP-17 IP-21b).** `POST /berichte` trägt beim Leistungsvergleich `kennzahl` (Pflicht; bei jeder anderen
+Vorlage 400); Geltung und Zeitraum-Art folgen aus `geltung_id` und `zeitraum` (ein Paar der Vorlage, sonst 400), am
+Standort nur eine Kennzahl dieses Standorts. **V4 zählt je Kennzahl:** ein Bericht je Vorlage × Geltung × Zeitraum ×
+Kennzahl (`bericht.kennzahl_id`, V20260924211800; jede andere Vorlage trägt keine). Der Abzug (`BerichtLeistungsvergleich`,
+Form `$defs/abzug`, dritter Zweig) entsteht aus der Kennzahl, der freigegebenen Basis-Fassung, die am **letzten Tag der
+Berichtsperiode** gilt (P4), und dem Vergleich-Leser (`GET /kennzahlen/{id}/vergleich`, [`bezugsbasis.md`](./bezugsbasis.md)
+§16 — nur gerufen, nichts neu gerechnet):
+
+| Abschnitt | Inhalt |
+|---|---|
+| `kopf` | wie jede Vorlage, dazu `referenzperiode` (Schlüssel und Bezeichnung der Fassung, W8), `bezugsbasis` (Kennzeichen, Fassung), `grenz_satz` (`BEWERTUNG_GRENZ_SATZ`, SP3) und `kennzeichen` des Vergleichs (G5); `quellenverzeichnis` nennt die Kennzeichen |
+| `kennzahl` | Kennung, Kennzeichen, Name zum Datenstand, Rechenform, Einheit |
+| `bezugsbasis` | die Fassung als Kopie: Methode, Referenzperiode, Datenlage, gilt ab/bis, Basiswert bzw. Koeffizienten, r², Streuung, Toleranz, Prüfsumme, Freigeber und -tag; eine beendete Basis als Vermerk `beendet_zum`/`beendet_grund` (S4) |
+| `vergleich_je_periode` | je Monat die Form des Lesers: roh (ohne Urteil, U1) und bereinigt — gemessen mit Version, Bedingung je Variable mit Fassung, erwartet, Δ, Band, Urteil, Grund, Kennzeichen |
+| `urteil` | der Zeitraum des Lesers (Σ gemessen ÷ Σ erwartet, U5) |
+| `grenzen_und_vorbehalte` | Datenlage (vorläufig), Toleranz, Streuung, die Kennzeichen und je Periode der Grund ohne Urteil (`nicht_anwendbar`) |
+| `statische_faktoren` | die Faktoren der Fassung als Kopie (V3) |
+| `quellenverzeichnis` | jede Quelle mit Bezug, Version bzw. Fassung und Tagen: Kennzahl und Messstellen (Version, je Monat), Bezugsgrößen der Bedingung (Fassung), die Bezugsbasis (Fassung, `bezug = vergleich`) |
+
+Ohne freigegebene Fassung am letzten Tag ist kein Entwurf bildbar: `422 basis_fehlt` (Satz beginnt mit „ungesichert —
+noch kein Stand“), nichts wird angelegt; eine Kennzahl außerhalb der Sicht ist 404 (Zaun über die Kennzahl). Die
+Freigabe prüft gemessen und jede Bedingung auf „vorläufig“ (F2, `werte_vorlaeufig`) — sonst §6 unverändert. Die
+Vergleich-Fläche nennt die Stände, die die Basis zitieren (`staende`, „Stand Nr. 1 vom 12.01.2028“, S5). **Belegschutz
+(S4):** zitiert ein freigegebener Leistungsvergleichs-Stand die Kennzahl, antwortet `POST /kennzahlen/{id}/archivieren`
+mit `409 berichts_belege`; das harte Löschen einer zitierten Bezugsgröße ebenso; Basis-Fassungen werden nie gelöscht.
+**Noch nicht:** PDF und CSV (IP-22; bis dahin `422 ausgabe_fehlt`, `BerichtRegeln.OHNE_AUSGABE`) und Kaskade/Anstoß
+(IP-23; bis dahin übergeht `BerichtKaskade` den Leistungsvergleich). `OHNE_LESER` ist leer: anlegbar, die Karte erscheint.
 
 Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld
 `wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern (`PUT …/wiedervorlage`).

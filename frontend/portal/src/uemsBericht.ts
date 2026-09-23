@@ -266,8 +266,11 @@ export type Vorlage = { schluessel: string; fassung: number; geltung_art: string
 
 /** AP-17 IP-21a (S1, W8): Vertrag 1.4 — die Kennzahl im Vergleich mit ihrer Bezugsbasis. */
 export const LEISTUNGSVERGLEICH = 'leistungsvergleich';
-/** Vorlagen im Katalog, deren Leser noch fehlt (IP-21b): der Server lehnt das Anlegen ab, das Portal zeigt keine Karte. */
-export const OHNE_LESER: readonly string[] = [LEISTUNGSVERGLEICH];
+/**
+ * Vorlagen im Katalog, deren Leser noch fehlt: der Server lehnt das Anlegen ab, das Portal zeigt keine Karte. Seit
+ * AP-17 IP-21b (der Abzug des Leistungsvergleichs) leer — wie `BerichtRegeln.OHNE_LESER`.
+ */
+export const OHNE_LESER: readonly string[] = [];
 
 export const VORLAGEN: Vorlage[] = [
   { schluessel: 'monatsbericht_standort', fassung: 1, geltung_art: STANDORT, zeitraum_art: MONAT, geltung_arten: [STANDORT], zeitraum_arten: [MONAT], vergleiche: [VORMONAT, VORJAHRESMONAT], abschnitte: ['kopf', 'zusammenfassung', 'verbrauch_je_messstelle', 'tagesverlauf', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },

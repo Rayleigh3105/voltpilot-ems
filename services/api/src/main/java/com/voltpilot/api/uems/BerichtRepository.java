@@ -122,6 +122,26 @@ public class BerichtRepository {
                 Timestamp.from(jetzt));
     }
 
+    /** AP-17 IP-21b (V4 je Kennzahl): der Leistungsvergleich zu Geltung × Zeitraum × Kennzahl, auch archiviert. */
+    public Optional<Kopf> leistungsvergleichZu(String geltungArt, UUID geltung, String schluessel, UUID kennzahl) {
+        return jdbc.query(KOPF + "WHERE b.vorlage = ? AND b.geltung_art = ? AND b.geltung_id = ? "
+                + "AND b.zeitraum_schluessel = ? AND b.kennzahl_id = ?", BerichtRepository::kopf,
+                BerichtRegeln.LEISTUNGSVERGLEICH, geltungArt, geltung, schluessel, kennzahl).stream().findFirst();
+    }
+
+    /** AP-17 IP-21b: ein Leistungsvergleich — Geltung und Zeitraum aus der Anfrage (ein Paar der Vorlage), die Kennzahl. */
+    public UUID anlegenLeistungsvergleich(UUID tenant, String kennung, BerichtRegeln.Vorlage vorlage, String geltungArt,
+            UUID geltung, String zeitraumArt, String schluessel, ZoneId zone, UUID kennzahl, ProtokollAkteur wer,
+            Instant jetzt) {
+        boolean standort = BerichtRegeln.STANDORT.equals(geltungArt);
+        return jdbc.queryForObject("INSERT INTO bericht (tenant_id, kennung, vorlage, vorlage_fassung, geltung_art, "
+                + "standort_id, unternehmen_id, zeitraum_art, zeitraum_schluessel, zeitzone, angelegt_von_sub, "
+                + "angelegt_von_name, angelegt_am, kennzahl_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "RETURNING id", UUID.class, tenant, kennung, vorlage.schluessel(), vorlage.fassung(), geltungArt,
+                standort ? geltung : null, standort ? null : geltung, zeitraumArt, schluessel, zone.getId(), wer.sub(),
+                wer.name(), Timestamp.from(jetzt), kennzahl);
+    }
+
     /** V3 — die Kennzeichen der genannten Kennzahlen des Kundenbereichs; eine unbekannte oder fremde fehlt in der Antwort. */
     public Map<UUID, String> kennzahlenDesKundenbereichs(UUID tenant, Collection<UUID> kennzahlen) {
         Map<UUID, String> aus = new LinkedHashMap<>();

@@ -124,9 +124,24 @@ public class BezugsbasisVergleich {
         BezugsbasisVergleichDto.Basis kopfBasis = basis == null ? null
                 : new BezugsbasisVergleichDto.Basis(basis.id(), basis.kennzeichen(), basis.beendetZum(),
                         basis.beendetGrund());
+        List<BezugsbasisVergleichDto.Stand> staende = basis == null ? List.of() : staende(basis.id(), k.zone());
         return new BezugsbasisVergleichDto.Vergleich(gelesen.kennzahl(), kopfBasis, von.toString(), bis.toString(),
-                gelesen.zeitzone(), List.copyOf(monate), zeitraum, List.of(), BezugsbasisVergleichSatz.UNGESICHERT,
+                gelesen.zeitzone(), List.copyOf(monate), zeitraum, staende, BezugsbasisVergleichSatz.stand(staende),
                 basis == null ? BezugsbasisVergleichSatz.LEER : null);
+    }
+
+    /**
+     * S5 (AP-17 IP-21b): die freigegebenen Leistungsvergleichs-Stände, die diese Bezugsbasis zitieren (Quellenart
+     * {@code bezugsbasis}, auch ein ersetzter) — der jüngste vorn, der Tag der Freigabe in der Zone der Kennzahl.
+     */
+    private List<BezugsbasisVergleichDto.Stand> staende(UUID basis, java.time.ZoneId zone) {
+        return jdbc.query("""
+                SELECT DISTINCT s.nr, s.freigegeben_am FROM bericht_stand s
+                  JOIN bericht_quelle q ON q.tenant_id = s.tenant_id AND q.bericht_id = s.bericht_id AND q.stand_nr = s.nr
+                 WHERE q.art = 'bezugsbasis' AND q.objekt_id = ?
+                 ORDER BY s.freigegeben_am DESC, s.nr DESC
+                """, (rs, i) -> new BezugsbasisVergleichDto.Stand(rs.getInt("nr"),
+                        LocalDate.ofInstant(rs.getTimestamp("freigegeben_am").toInstant(), zone)), basis);
     }
 
     // ================================================================================ je Monat

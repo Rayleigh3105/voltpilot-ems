@@ -112,6 +112,7 @@ public class BerichtKaskade implements BerichteNaht {
                   LEFT JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id
                        AND s.nr = q.stand_nr
                  WHERE q.tenant_id = ? AND (? OR b.vorlage <> 'energetische_bewertung')
+                   AND b.vorlage <> 'leistungsvergleich'
                    AND q.erster_tag <= ? AND q.letzter_tag >= ?
                    AND ((m.id IS NOT NULL AND q.objekt_id = ANY (?))
                         OR (q.art IN ('bezugsgroesse', 'stammdatum') AND q.objekt_id = ANY (?))
@@ -174,6 +175,7 @@ public class BerichtKaskade implements BerichteNaht {
                        AND s.nr = q.stand_nr
                   LEFT JOIN bericht_entwurf e ON e.tenant_id = q.tenant_id AND e.bericht_id = q.bericht_id
                  WHERE q.tenant_id = ? AND (? OR b.vorlage <> 'energetische_bewertung')
+                   AND b.vorlage <> 'leistungsvergleich'
                    AND q.objekt_id = ANY (?::uuid[]) AND q.letzter_tag >= ?
                 """ + (kenntNichtVor == null ? "" : """
                    AND (CASE WHEN q.stand_nr IS NULL THEN e.datenstand ELSE s.datenstand END) < ?

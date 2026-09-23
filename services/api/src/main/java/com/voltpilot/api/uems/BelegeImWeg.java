@@ -37,7 +37,11 @@ public final class BelegeImWeg extends RuntimeException {
         KOMPONENTE("Diese Komponente"),
         ENERGIEEINSATZ("Dieser Energieeinsatz"),
         MESSBEDARF("Dieser Messbedarf"),
-        MESSMITTEL("Diese Messmittel-Angabe");
+        MESSMITTEL("Diese Messmittel-Angabe"),
+        /** AP-17 IP-21b (S4): die Kennzahl eines Leistungsvergleichs mit freigegebenem Stand. */
+        KENNZAHL("Diese Kennzahl"),
+        /** AP-17 IP-21b (S4): eine Bezugsgröße, die ein freigegebener Stand zitiert. */
+        BEZUGSGROESSE("Diese Bezugsgröße");
 
         private final String subjekt;
 

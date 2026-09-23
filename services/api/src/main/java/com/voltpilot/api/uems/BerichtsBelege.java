@@ -119,4 +119,21 @@ public class BerichtsBelege {
             throw new BelegeImWeg(gegenstand, List.of(), staende);
         }
     }
+
+    /**
+     * AP-17 IP-21b (S4) — die Kennzahl eines Leistungsvergleichs: ein freigegebener Stand der Vorlage
+     * {@code leistungsvergleich}, der sie zitiert, sperrt ihre Archivierung. Stände anderer Vorlagen sperren sie nicht
+     * (ihr Verhalten bleibt, wie es war); die Regel „welcher Stand zitiert“ bleibt {@code uems_berichts_belege}.
+     */
+    public void pruefeKennzahl(UUID kennzahl) {
+        List<BerichtRegeln.StandBezeichnung> staende = jdbc.query("""
+                SELECT b.kennung, b.nr FROM uems_berichts_belege(?) b
+                  JOIN bericht x ON x.id = b.bericht_id
+                 WHERE x.vorlage = 'leistungsvergleich'
+                 ORDER BY b.kennung, b.nr
+                """, (rs, n) -> new BerichtRegeln.StandBezeichnung(rs.getString(1), rs.getInt(2)), kennzahl);
+        if (!staende.isEmpty()) {
+            throw new BelegeImWeg(BelegeImWeg.Gegenstand.KENNZAHL, List.of(), staende);
+        }
+    }
 }

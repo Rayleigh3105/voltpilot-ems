@@ -256,6 +256,12 @@ public class KennzahlController {
         return ResponseEntity.status(e.status()).body(body);
     }
 
+    /** AP-17 IP-21b (S4): {@code 409 berichts_belege} mit der Liste der Stände, die die Kennzahl zitieren. */
+    @ExceptionHandler(com.voltpilot.api.uems.BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belege(com.voltpilot.api.uems.BelegeImWeg e) {
+        return ResponseEntity.status(409).body(e.koerper());
+    }
+
     /** Eine ID im Pfad, die keine ist: dieselbe Antwort wie eine, die es nicht gibt. */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, Object>> keineId(MethodArgumentTypeMismatchException e) {
