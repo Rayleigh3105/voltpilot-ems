@@ -553,6 +553,62 @@ class MeasurementSelectionApiTest {
         assertThat(row).containsEntry("recorded", true).containsEntry("decodedValue", "25");
     }
 
+    /**
+     * AP-07 IP-18b Punktzustand: ein geteilter Punkt (die letzte Beobachtung nannte eine
+     * Komponente, {@code component_read_at = last_read_at}) steht an der Geräteseite als gelesen
+     * mit aktuellem „zuletzt gelesen“ - aber ohne Wert und Qualität, denn die gehören einer
+     * Komponente und stehen in deren Reihe. Ein späterer Wert ohne Komponente ist wieder der Wert
+     * der Box.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void catalogZeigtEinenGeteiltenPunktGelesenJeKomponenteOhneWertDerBox() throws Exception {
+        String point = "deye.hybrid_1p.battery.battery-capacity";
+        String catalog = path(DEVICE_A) + "/catalog?q=battery-capacity&recorded=true&limit=10";
+        String demo = token("demo", "demo");
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_point_state(tenant_id,site_id,device_id,"
+                    + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,decoded_numeric,"
+                    + "quality,gap,dropped_samples,catalog_version,component_read_at) VALUES ("
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + point
+                    + "',now()-interval '2 minutes',now()-interval '1 minute',93401,270,27,"
+                    + "'good',false,0,'2026.08.26.2',now()-interval '1 minute')");
+        }
+        try {
+            Map<String, Object> geteilt = (Map<String, Object>)
+                    ((List<?>) get(demo, catalog).getBody().get("points")).get(0);
+            assertThat(geteilt).containsEntry("pointKey", point).containsEntry("recorded", true)
+                    .containsEntry("availabilityStatus", "read")
+                    .containsEntry("rawValue", null).containsEntry("decodedValue", null)
+                    .containsEntry("quality", null)
+                    .containsEntry("availabilityReason", "Von diesem Gerät gelesen, je Komponente: "
+                            + "der Wert steht in der Reihe der Komponente.");
+            assertThat(java.time.Instant.parse((String) geteilt.get("lastReadAt")))
+                    .as("zuletzt gelesen bleibt aktuell")
+                    .isAfter(java.time.Instant.now().minusSeconds(600));
+
+            try (Connection connection = POSTGRES.createConnection("");
+                    Statement statement = connection.createStatement()) {
+                statement.execute("UPDATE device_measurement_point_state SET last_read_at=now(),"
+                        + "edge_sequence=93402,raw_numeric=280,decoded_numeric=28 WHERE device_id='"
+                        + DEVICE_A + "' AND point_key='" + point + "'");
+            }
+            Map<String, Object> box = (Map<String, Object>)
+                    ((List<?>) get(demo, catalog).getBody().get("points")).get(0);
+            assertThat(box).containsEntry("decodedValue", "28").containsEntry("rawValue", "280")
+                    .containsEntry("quality", "good")
+                    .containsEntry("availabilityReason", "Von diesem Gerät gelesen.");
+        } finally {
+            try (Connection connection = POSTGRES.createConnection("");
+                    Statement statement = connection.createStatement()) {
+                statement.execute("DELETE FROM device_measurement_point_state WHERE device_id='"
+                        + DEVICE_A + "' AND point_key='" + point + "'");
+            }
+        }
+    }
+
     @Test
     void ocppTemplateShowsConcreteMeterValuesInCatalogHistoryAndCsvWithoutWeakeningRls()
             throws Exception {

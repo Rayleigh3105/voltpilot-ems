@@ -42,8 +42,14 @@ public class MeasurementSelectionRepository {
             String customDefinitionJson, String retentionClass, int rawRetentionDays,
             Integer longTermCadenceS, String longTermStrategy) {}
 
+    /**
+     * Die letzte Beobachtung eines Punkts an der Geräteseite. {@code jeKomponente}: der Punkt ist
+     * geteilt (AP-07 IP-18b), die letzte Beobachtung nannte eine Komponente - er wird gelesen, aber
+     * sein Wert gehört einer Komponente und steht in deren Reihe, nicht hier (Wert und Qualität
+     * bleiben leer).
+     */
     public record Observation(Instant lastReadAt, String rawValue, String decodedValue,
-            String quality, boolean gap, long droppedSamples) {}
+            String quality, boolean gap, long droppedSamples, boolean jeKomponente) {}
 
     private static final String ROW_COLUMNS =
             "tenant_id, site_id, device_id, entity_id, point_key, enabled, cadence_s, "
@@ -216,18 +222,26 @@ public class MeasurementSelectionRepository {
         DeviceScope scope = deviceScope(deviceId);
         if (scope == null) return Map.of();
         Map<String, Observation> out = new LinkedHashMap<>();
+        // Geteilter Punkt (AP-07 IP-18b): component_read_at = last_read_at heißt, die letzte
+        // Beobachtung nannte eine Komponente. „Zuletzt gelesen" bleibt aktuell, der Wert aber
+        // gehört einer der Komponenten - als Wert der Box wäre er an jeder anderen falsch. Er steht
+        // in der Reihe seiner Komponente, wie der Box-Verlauf (Entscheid firstmate 22.09.2026).
         jdbc.query("SELECT point_key, last_read_at, "
                         + "COALESCE(raw_text, raw_numeric::text) raw_value, "
                         + "COALESCE(decoded_text, decoded_numeric::text) decoded_value, "
-                        + "quality, gap, dropped_samples FROM device_measurement_point_state "
+                        + "quality, gap, dropped_samples, "
+                        + "COALESCE(component_read_at >= last_read_at, false) je_komponente "
+                        + "FROM device_measurement_point_state "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? ORDER BY point_key",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                     String pointKey = rs.getString("point_key");
+                    boolean jeKomponente = rs.getBoolean("je_komponente");
                     Observation observation = new Observation(
                             rs.getTimestamp("last_read_at").toInstant(),
-                            rs.getString("raw_value"), rs.getString("decoded_value"),
-                            rs.getString("quality"), rs.getBoolean("gap"),
-                            rs.getLong("dropped_samples"));
+                            jeKomponente ? null : rs.getString("raw_value"),
+                            jeKomponente ? null : rs.getString("decoded_value"),
+                            jeKomponente ? null : rs.getString("quality"), rs.getBoolean("gap"),
+                            rs.getLong("dropped_samples"), jeKomponente);
                     out.merge(pointKey, observation, MeasurementSelectionRepository::latest);
                     out.merge(templateKey(pointKey), observation,
                             MeasurementSelectionRepository::latest);

@@ -91,7 +91,9 @@ public class MeasurementCatalog {
                 MeasurementSelectionRepository.Observation observation) {
             boolean seen = observation != null;
             String availability = seen ? "read" : familyAvailable ? "family_configured" : "not_configured";
-            String reason = seen ? "Von diesem Gerät gelesen."
+            String reason = seen && observation.jeKomponente()
+                    ? "Von diesem Gerät gelesen, je Komponente: der Wert steht in der Reihe der Komponente."
+                    : seen ? "Von diesem Gerät gelesen."
                     : familyAvailable ? "Für die konfigurierte Anbindungsfamilie vorgesehen; noch nicht gelesen."
                     : "Für die aktuelle Geräteanbindung nicht als verfügbar bestätigt.";
             int effectiveCadence = cadence == null

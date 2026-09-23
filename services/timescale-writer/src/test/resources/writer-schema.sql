@@ -253,6 +253,7 @@ CREATE TABLE device_measurement_point_state (
     raw_numeric NUMERIC, raw_text TEXT, decoded_numeric NUMERIC, decoded_text TEXT,
     quality TEXT NOT NULL, gap BOOLEAN NOT NULL, dropped_samples BIGINT NOT NULL,
     catalog_version TEXT NOT NULL,
+    component_read_at TIMESTAMPTZ,
     PRIMARY KEY(tenant_id,site_id,device_id,point_key),
     CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1)
 );

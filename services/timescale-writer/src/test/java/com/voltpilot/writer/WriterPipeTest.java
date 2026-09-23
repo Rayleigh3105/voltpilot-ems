@@ -9,6 +9,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -588,6 +589,9 @@ class WriterPipeTest {
             assertThat(rs.getDouble("decoded_numeric")).isEqualTo(30.0);
             assertThat(rs.getString("quality")).isEqualTo("device_error");
         }
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_point_state WHERE device_id='"
+                + device + "' AND component_read_at IS NOT NULL"))
+                .as("ein heutiger Punkt nennt keine Komponente (IP-18b Punktzustand)").isZero();
         // The second selected sample is newer than enabled_at, but remains
         // absent because replay may never resurrect pre-purge history.
         try (Connection c = admin(); Statement st = c.createStatement();
@@ -1280,8 +1284,9 @@ class WriterPipeTest {
      * Mehrdeutigkeit. Zwei Messzeiten: beide gespeichert, je in ihrer Reihe. Derselbe Tick
      * (Teil 1b): der Box-Schlüssel gilt je genannter Komponente ({@code edge_entity_id}), beide
      * werden gespeichert - auch zwei unaufgelöste. Dieselbe Zustellung noch einmal legt nichts
-     * dazu. Ein Wechsel-Ereignis vergleicht nur Werte derselben Komponente, nie zwei Zähler, und
-     * der Punktzustand der Box wird von einem geteilten Punkt nicht fortgeschrieben.
+     * dazu. Ein Wechsel-Ereignis vergleicht nur Werte derselben Komponente, nie zwei Zähler. Der
+     * Punktzustand folgt der jüngsten Beobachtung, gekennzeichnet als Wert einer Komponente
+     * ({@code component_read_at}) - „zuletzt gelesen" der Geräteseite steht nicht still.
      */
     @Test
     void einGeteilterPunktFindetJeKomponenteSeineReihe() throws Exception {
@@ -1313,6 +1318,8 @@ class WriterPipeTest {
                 + "' AND ((entity_id='" + a + "' AND raw_numeric=100) OR (entity_id='" + b
                 + "' AND raw_numeric=500)) AND role='fuehrend'"))
                 .as("beide Werte je in der Reihe ihrer Komponente").isEqualTo(2);
+        assertThat(punktzustand(device)).as("der Punktzustand folgt der jüngsten Komponente")
+                .isEqualTo("2026-11-22T10:00:01Z 500 2026-11-22T10:00:01Z");
 
         // Derselbe Tick: zwei Komponenten, beide gespeichert, je in ihrer Reihe. Zwei
         // Komponenten, die die Auswahl nicht kennen, bekommen keine Reihe - und liegen trotzdem
@@ -1352,9 +1359,10 @@ class WriterPipeTest {
         assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
                 + "' AND time='2026-11-22T10:01:00Z'"))
                 .as("die Wiederholung legt nichts dazu").isEqualTo(2);
-        assertThat(zaehle("SELECT count(*) FROM device_measurement_point_state WHERE device_id='"
-                + device + "' AND point_key='" + PUNKT + "'"))
-                .as("der Punktzustand der Box bleibt vom geteilten Punkt unberührt").isZero();
+        assertThat(punktzustand(device))
+                .as("der Punktzustand bewegt sich mit dem geteilten Punkt: jüngste Messzeit, "
+                        + "gekennzeichnet als Wert einer Komponente")
+                .isEqualTo("2026-11-22T10:03:00Z 103 2026-11-22T10:03:00Z");
         assertThat(zaehle("SELECT count(*) FROM device_measurement_event WHERE device_id='" + device
                 + "' AND event_kind='counter_reset'"))
                 .as("101 nach 500 ist kein Rücksetzen: der Vorgänger ist der derselben Komponente")
@@ -1577,6 +1585,19 @@ class WriterPipeTest {
                         "SELECT count(*) FROM telemetry_v2 WHERE device_id = '" + device + "'")) {
             rs.next();
             return rs.getLong(1);
+        }
+    }
+
+    /** last_read_at, Rohwert und component_read_at des Punktzustands von {@link #PUNKT}. */
+    private String punktzustand(String device) throws Exception {
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT last_read_at, raw_numeric, component_read_at "
+                        + "FROM device_measurement_point_state WHERE device_id='" + device
+                        + "' AND point_key='" + PUNKT + "'")) {
+            if (!rs.next()) return null;
+            Timestamp komponente = rs.getTimestamp(3);
+            return rs.getTimestamp(1).toInstant() + " " + rs.getBigDecimal(2).stripTrailingZeros()
+                    .toPlainString() + " " + (komponente == null ? null : komponente.toInstant());
         }
     }
 

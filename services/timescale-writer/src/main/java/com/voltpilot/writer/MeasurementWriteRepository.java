@@ -53,9 +53,10 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>Geteilter Punkt (AP-07 IP-18b).</b> Nennt die Box an einem point_key je Wert die
  * Komponente, schreibt die Zeile diese Nennung zusätzlich nach {@code edge_entity_id}. Ihr
  * Box-Schlüssel ist dann {@code (device_id, point_key, edge_entity_id, time, edge_sequence)} -
- * beide Komponenten desselben Ticks werden gespeichert. Sie gehören nur in ihre Reihe, nie in den
- * Box-Verlauf: der Punktzustand wird von ihnen nicht fortgeschrieben. Ohne Nennung ist die Zeile
- * Zeichen für Zeichen die bisherige.
+ * beide Komponenten desselben Ticks werden gespeichert. Ihre Werte gehören nur in ihre Reihe, nie
+ * in den Box-Verlauf. Den Punktzustand führen sie fort (die Geräteseite sieht, dass der Punkt
+ * gelesen wird), gekennzeichnet mit {@code component_read_at}: sein Wert ist dann der einer
+ * Komponente, nicht der Box. Ohne Nennung ist die Zeile Zeichen für Zeichen die bisherige.
  *
  * <p><b>⚠ Ein Wert geht NIE verloren.</b> Scheitert ein Nachschlag, gibt er {@code null} zurück
  * (eigener Savepoint, geloggt, gezählt) und der Wert wird als Bestandswert gespeichert. Weist der
@@ -215,11 +216,11 @@ public class MeasurementWriteRepository {
                 urteilGezaehlt(endgueltig, gespeicherteHerkunft(endgueltig));
             }
             if (inserted > 0) {
-                // Der Punktzustand ist Box-Verlauf: ein geteilter Punkt (IP-18b) schreibt ihn nicht
-                // fort, sonst wechselte er je Tick zwischen zwei Komponenten.
-                if (komponente == null) {
-                    updatePointState(event, pointKey, observedAt, raw, decoded, quality);
-                }
+                // Der Punktzustand trägt die letzte Beobachtung des Punkts - auch eines geteilten
+                // (IP-18b), sonst stünde „zuletzt gelesen" an der Geräteseite still. Nennt die
+                // Beobachtung eine Komponente, kennzeichnet sie das (component_read_at), denn ihr
+                // Wert gehört dann dieser einen Komponente und nicht der Box.
+                updatePointState(event, pointKey, observedAt, raw, decoded, quality, komponente != null);
                 // Geteilter Punkt (IP-18b): ein Wechsel ist nur gegen den Vorgänger DERSELBEN
                 // Komponente einer - nie zwischen zwei Zählern an einem point_key. Ohne eindeutige
                 // Reihe lässt sich das nicht sagen, dann entsteht kein Wechsel-Ereignis.
@@ -348,26 +349,46 @@ public class MeasurementWriteRepository {
                 .increment();
     }
 
+    /**
+     * Der Punktzustand der Box: eine Zeile je {@code point_key}, die jüngste Beobachtung gewinnt.
+     * Eine Beobachtung, die eine Komponente nennt (geteilter Punkt, IP-18b), setzt zusätzlich
+     * {@code component_read_at} auf ihre Messzeit; ein späterer Wert ohne Komponente rückt
+     * {@code last_read_at} darüber hinaus und hebt das Kennzeichen damit auf. Ohne Komponente ist
+     * die Anweisung Zeichen für Zeichen die bisherige - sie läuft auch gegen ein Schema ohne die
+     * Spalte.
+     */
     private void updatePointState(MeasurementRawEvent event, String pointKey, Instant observedAt,
-            Value raw, Value decoded, String quality) {
-        jdbc.update("INSERT INTO device_measurement_point_state (tenant_id,site_id,device_id,"
-                        + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,raw_text,"
-                        + "decoded_numeric,decoded_text,quality,gap,dropped_samples,catalog_version) "
-                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT "
-                        + "(tenant_id,site_id,device_id,point_key) DO UPDATE SET "
-                        + "first_read_at=LEAST(device_measurement_point_state.first_read_at,"
-                        + "EXCLUDED.first_read_at),last_read_at=EXCLUDED.last_read_at,"
-                        + "edge_sequence=EXCLUDED.edge_sequence,raw_numeric=EXCLUDED.raw_numeric,"
-                        + "raw_text=EXCLUDED.raw_text,decoded_numeric=EXCLUDED.decoded_numeric,"
-                        + "decoded_text=EXCLUDED.decoded_text,quality=EXCLUDED.quality,gap=EXCLUDED.gap,"
-                        + "dropped_samples=EXCLUDED.dropped_samples,catalog_version=EXCLUDED.catalog_version "
-                        + "WHERE (EXCLUDED.last_read_at,EXCLUDED.edge_sequence) > "
-                        + "(device_measurement_point_state.last_read_at,"
-                        + "device_measurement_point_state.edge_sequence)",
-                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
-                Timestamp.from(observedAt), Timestamp.from(observedAt), event.sequence(),
-                raw.numeric(), raw.text(), decoded.numeric(), decoded.text(), quality,
-                event.gap(), event.dropped_samples(), event.catalog_version());
+            Value raw, Value decoded, String quality, boolean jeKomponente) {
+        List<Object> werte = new ArrayList<>(List.of(event.tenant_id(), event.site_id(),
+                event.device_id(), pointKey, Timestamp.from(observedAt), Timestamp.from(observedAt),
+                event.sequence()));
+        werte.addAll(Arrays.asList(raw.numeric(), raw.text(), decoded.numeric(), decoded.text(),
+                quality, event.gap(), event.dropped_samples(), event.catalog_version()));
+        if (jeKomponente) {
+            werte.add(Timestamp.from(observedAt));
+        }
+        jdbc.update(punktzustandSql(jeKomponente), werte.toArray());
+    }
+
+    /** Die Anweisung des Punktzustands; ohne Komponente die bisherige, Zeichen für Zeichen. */
+    static String punktzustandSql(boolean jeKomponente) {
+        return "INSERT INTO device_measurement_point_state (tenant_id,site_id,device_id,"
+                + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,raw_text,"
+                + "decoded_numeric,decoded_text,quality,gap,dropped_samples,catalog_version"
+                + (jeKomponente ? ",component_read_at" : "") + ") "
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?" + (jeKomponente ? ",?" : "")
+                + ") ON CONFLICT "
+                + "(tenant_id,site_id,device_id,point_key) DO UPDATE SET "
+                + "first_read_at=LEAST(device_measurement_point_state.first_read_at,"
+                + "EXCLUDED.first_read_at),last_read_at=EXCLUDED.last_read_at,"
+                + "edge_sequence=EXCLUDED.edge_sequence,raw_numeric=EXCLUDED.raw_numeric,"
+                + "raw_text=EXCLUDED.raw_text,decoded_numeric=EXCLUDED.decoded_numeric,"
+                + "decoded_text=EXCLUDED.decoded_text,quality=EXCLUDED.quality,gap=EXCLUDED.gap,"
+                + "dropped_samples=EXCLUDED.dropped_samples,catalog_version=EXCLUDED.catalog_version"
+                + (jeKomponente ? ",component_read_at=EXCLUDED.component_read_at" : "") + " "
+                + "WHERE (EXCLUDED.last_read_at,EXCLUDED.edge_sequence) > "
+                + "(device_measurement_point_state.last_read_at,"
+                + "device_measurement_point_state.edge_sequence)";
     }
 
     /**

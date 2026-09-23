@@ -653,6 +653,8 @@ public class MeasurementHistoryService {
         List<Seen> seen = jdbc.query("SELECT d.id device_id, COALESCE(d.name,d.external_ref) device_label,"
                         + "s.point_key,s.last_read_at last_read FROM device_measurement_point_state s "
                         + "JOIN device d ON d.id=s.device_id WHERE s.site_id=? "
+                        // Ein geteilter Punkt (IP-18b) hat keinen Box-Verlauf zum Vergleichen.
+                        + "AND (s.component_read_at IS NULL OR s.component_read_at < s.last_read_at) "
                         + "ORDER BY s.last_read_at DESC LIMIT 200",
                 (rs, n) -> new Seen(rs.getObject("device_id", UUID.class),
                         rs.getString("device_label"), rs.getString("point_key"),

@@ -31,9 +31,38 @@ nur ihre Reihe (`entity_id`), also Messstelle, Viertelstunde und Kennzahl.
   überflüssig. Die Bestands-CSV bleibt Byte für Byte gleich (`UemsKennzahlenBestandsschutzTest`,
   `UemsBerichteBestandsschutzTest`).
 - Box-Verdichtung `refresh_device_measurement_rollup`: dieselbe Prozedur mit demselben Filter.
-- Punktzustand `device_measurement_point_state`: Ein Wert mit Komponente schreibt ihn nicht fort.
+- Punktzustand `device_measurement_point_state`: siehe den nächsten Abschnitt — er wird
+  fortgeschrieben, aber als Wert einer Komponente gekennzeichnet.
 - Beweis: `UemsGeteilterPunktBoxSchluesselMigrationTest` (Migration, Bestand und Box-Verlauf) und
   `WriterPipeTest#einGeteilterPunktFindetJeKomponenteSeineReihe` (Writer).
+
+## Punktzustand am geteilten Punkt (`V20260923241500`, Pflicht vor dem Einschalten)
+
+Der Punktzustand trägt die letzte Beobachtung über ALLE Komponenten, damit „zuletzt gelesen" der
+Geräteseite nicht stillsteht; ein stehender Wert sähe aus wie ein aktueller.
+
+- Spalte `component_read_at`: Messzeit der letzten Beobachtung mit Komponente. Die Zeile gilt als
+  „je Komponente", solange `component_read_at >= last_read_at`. Ein späterer Wert ohne Komponente
+  rückt `last_read_at` weiter und hebt das Kennzeichen damit auf, OHNE die Spalte zu nennen: die
+  Writer-Anweisung eines heutigen Punkts bleibt Zeichen für Zeichen die bisherige
+  (`MeasurementWriteRepository#punktzustandSql`, `PunktzustandBestandTest` mit wörtlicher Kopie).
+- Warum keine Zeile je Komponente: die Löschwege `uems_messwerte_der_anlage_entfernen` und
+  `uems_messwerte_des_kundenbereichs_entfernen` nehmen die Punktzustands-Zeile schon mit; eine
+  eigene Tabelle hätte beide Funktionen umschreiben müssen. Die Werte je Komponente stehen in ihrer
+  Reihe — dieselbe Lesart wie der Box-Verlauf.
+- Geräteseite (`MeasurementSelectionRepository#latestObservations`, `Observation#jeKomponente`):
+  gelesen, `lastReadAt` aktuell, aber `rawValue`/`decodedValue`/`quality` leer und der Grund
+  „Von diesem Gerät gelesen, je Komponente: der Wert steht in der Reihe der Komponente." — der
+  gespeicherte Wert gehört EINER Komponente und wäre für jede andere falsch (Summenwert-Assistent
+  liest `decodedValue` je Komponente). Kein neues Feld, keine Portal-Änderung.
+- Vergleichs-Auswahl der Anlage (`MeasurementHistoryService#comparisonOptions`) bietet einen
+  Punkt „je Komponente" nicht an: er hat keinen Box-Verlauf.
+- ⚠ Randfall: ein Wert ohne Komponente auf GENAU derselben Messzeit wie der letzte mit Komponente
+  (höhere Sequenz) gilt bis zum nächsten Box-Wert noch als „je Komponente". Tritt nur beim
+  Planwechsel geteilt → zusammengelegt auf und heilt mit der nächsten Kadenz.
+- Beweise: `WriterPipeTest#einGeteilterPunktFindetJeKomponenteSeineReihe` (Zustand bewegt sich),
+  `UemsPunktzustandJeKomponenteMigrationTest` (Bestand zeilengleich, Geräteseite, Vergleich),
+  `MeasurementSelectionApiTest#catalogZeigtEinenGeteiltenPunktGelesenJeKomponenteOhneWertDerBox`.
 
 ## Offen / Fallen
 
@@ -52,7 +81,7 @@ nur ihre Reihe (`entity_id`), also Messstelle, Viertelstunde und Kennzahl.
   Duplikat-Regel für `ParseConfig`, `parseBatch` und `WrapStatus` (Paar zulässig, dieselbe
   Komponente zweimal oder ein Vorkommen ohne Komponente = Duplikat). `BuiltSupports` meldet das
   Wort NICHT (Entscheid firstmate 23.09.2026, `cloud/geteilter_punkt_ruhend_test.go`): erst nach
-  Punktzustand, Cloud-Status je Komponente, Revisions-Anstoß und einem Summen-Wächter gegen zwei
+  Punktzustand (erledigt, Abschnitt oben), Cloud-Status je Komponente, Revisions-Anstoß und einem Summen-Wächter gegen zwei
   an A und B gebundene Messstellen desselben Registers (sonst doppelt gezählt); Einschalten ist
   ein eigenes Paket. Node-RED `buildPlan` plant Anfragen aus `lesungenJeZiel` (ein Lesen je Ziel und Punkt,
   schnellste Kadenz), Samples je Komponente; die Laufzeit taktet Lesen (`due`) und Sample
@@ -64,10 +93,9 @@ nur ihre Reihe (`entity_id`), also Messstelle, Viertelstunde und Kennzahl.
   `point_key`/`reason`, Punkt nie zugleich angenommen und abgelehnt) und
   `applyAcknowledgement` (je `point_key`) verwerfen so eine Quittung heute ganz — Pflicht vor dem
   Box-Release, eigenes Cloud-Paket.
-- ⚠ Mit dem Box-Release bleiben an einer Box mit bisher zusammengelegtem Punkt der letzte Wert
-  der Geräteseite (`latestObservations` aus `device_measurement_point_state`) und der Box-Verlauf
-  dieses Punkts stehen; die Werte stehen dann in den Reihen der Komponenten. Das Folgepaket, das
-  den Punktzustand weiterführt, ist Pflicht VOR dem Box-Release (Entscheid firstmate 23.09.2026).
+- Mit dem Box-Release endet an einer Box mit bisher zusammengelegtem Punkt dessen Box-Verlauf
+  (gewollt, Werte in den Reihen der Komponenten); „zuletzt gelesen" der Geräteseite läuft weiter
+  (Punktzustand, Abschnitt oben).
 - ⚠ Meldet eine Box das Wort erst nach ihrem Update, erreicht sie der neue Plan erst mit der
   nächsten Plan-Revision: der Core weist dieselbe Revision mit anderem Inhalt als `stale
   revision` ab (`agent/measurements.go`), und das bleibt so — die Box kann keine Revision
