@@ -73,6 +73,23 @@ def test_handeingriff_bekommt_die_sendezeit_erst_beim_senden(tmp_path: Path):
     assert h["source"] == {"kind": "local-ui"} and h["override"] is True
 
 
+def test_a2n_traegt_den_uebergangszuschlag_der_vektoren():
+    """A2n zeigt den Stand nach PR 1092: Bezug-Anteile wie „Ahrenberg A2 Bezug“, verteilbar unverändert."""
+    v = json.loads((nutzlast.V2 / "verbund-anteil-vectors.json").read_text(encoding="utf-8"))
+    fall = next(f for f in v["uebergangszuschlag"] if f["name"].startswith("Ahrenberg A2 Bezug"))
+    erwartet = fall["erwartet"]
+    a2n = sz.laeufe()["A2n"]
+    assert float(a2n.umgebung()["VB_ZUSCHLAG_KW"]) == erwartet["zuschlag_kw"]
+    k = nutzlast.kennungen()
+    for box in nutzlast.BOXEN:
+        d = nutzlast.alle(1, JETZT, profil="nacht", nullpunkt=400,
+                          zuschlag=erwartet["zuschlag_kw"])[box]["v2/verbund-anteile"]
+        assert d["anteile"]["bezug"] == {k[b]: erwartet["anteile"][b] for b in nutzlast.BOXEN}
+        assert d["verteilbar"]["bezug"] == erwartet["verteilbar_kw"]
+        assert d["anteile"]["einspeisung"] == {k["E-1"]: 40.0, k["E-4"]: 60.0}
+    assert "VB_ZUSCHLAG_KW" not in sz.laeufe()["A2"].umgebung()
+
+
 def test_varianten_der_nutzlasten():
     a12 = nutzlast.alle(1, JETZT, ohne_anteile=True)
     assert set(a12["E-1"]) == {"v2/entities", "schedule"}
@@ -154,7 +171,10 @@ def test_blatt_hat_jede_zeile_und_die_bandbreite(tmp_path: Path):
     text = sz.blatt(prot, nw2, "2026-09-22")
     zeilen = [z for z in text.splitlines() if z.startswith("| ") and not z.startswith("| Zeile")]
     namen = [z.split("|")[1].strip() for z in zeilen]
-    assert [n for n in namen if n != "A7x"][:18] == ["R1", *sz.ZEILEN]
+    assert [n for n in namen if n not in ("A7x", "R1n", "A2n", "A7n")][:18] == ["R1", *sz.ZEILEN]
+    assert namen[1] == "R1n" and namen[namen.index("A2") + 1] == "A2n"
+    assert namen[namen.index("A7x") + 1] == "A7n"
+    assert "**3 Läufe, 3 halten**" in text
     r1 = zeilen[0]
     assert "2 Läufe: 97.74–98" in r1 and "+24.7–26.8 kW" in r1 and r1.endswith("| hält |")
     a7 = next(z for z in zeilen if z.startswith("| A7 "))

@@ -217,10 +217,14 @@ def laeufe() -> dict[str, Lauf]:
                    "Verengung 0/55 kommt bei T0 + 30:05 (die Cloud nach dem ersten vollen Viertel) - 60 min wie NW-2"),
         Lauf("R1n", "R1", "nacht", 600, dauer=2700,
              warum="Bezugs-Punkt: Last 473 kW am Vorbehalt, sechs Wagen je 22 kW, Plan lädt den Speicher 100 kW"),
-        Lauf("A2n", "A2", "nacht", 0, 60, [(0, "stoerung A2")],
-             warum="Bezugs-Punkt: ohne Box Halle 1 hält nur noch der Anteil von Box Verwaltung (473 + 0 + 77)"),
+        Lauf("A2n", "A2", "nacht", 0, 60, [(0, "stoerung A2")], env={"VB_ZUSCHLAG_KW": "4"},
+             warum="Bezugs-Punkt, nach dem Übergangszuschlag (PR 1092, Lesart B): Anteile 0/73 statt 0/77 "
+                   "(Puffer 60 s / 900 s × 60 kW = 4 kW, verteilbar 77); ohne Box Halle 1 hält nur noch der "
+                   "Anteil von Box Verwaltung (473 + 0 + 73)"),
         Lauf("A7n", "A7", "nacht", 600, 90, [(0, "stoerung A7")], dauer=1800,
-             warum="Bezugs-Punkt: die führende Box darf blind nicht aus dem Netz laden"),
+             warum="Bezugs-Punkt, nach der Wächter-Heilung (PR 1068: ein stehender Wert belegt keinen Spielraum): "
+                   "die führende Box darf blind nicht aus dem Netz laden. Der A7-Befund selbst lag am "
+                   "Einspeise-Punkt (Mittag); diese Zeile prüft die Bezugs-Seite derselben Störung"),
     ]
     return {x.name: x for x in ls}
 
@@ -440,7 +444,7 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
         "## Aufbau",
         "",
         f"- **Bilder:** Core und Node-RED aus `origin/uems`, Stempel {', '.join(f'`uems-{s}`' for s in stempel_alle) or '—'} "
-        "(letzter Commit an `edge-app/`, `edge/sim`; einmal gebaut, jede Zeile auf denselben Bildern).",
+        "(letzter Commit an `edge-app/`, `edge/sim`; je Reihe einmal gebaut, jede Zeile nennt ihren Stand).",
         "- **Takt 1:1:** eine Simulator-Sekunde ist eine echte Sekunde - die Box rechnet nur in echten Sekunden "
         "(Frische 30 s, Rückfall 60 s, Einfrierprobe 30 + 20 s, Node-RED-Lesetakt 2 s).",
         "- **Messung:** M-1 = höchstes Viertelstunden-Mittel am Netzpunkt (Viertel ab Messbeginn), M-2 = größte "
@@ -466,7 +470,11 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
         "|---|---|---|---|---|---|---|---|---|",
     ]
     notizen = []
-    namen = ["R1"] + [n for z in ZEILEN for n in ([z, "A7x"] if z == "A7" else [z])] + [n for n in alle if n.endswith("n")]
+    # Die Bezugs-Varianten stehen neben ihrer Mittag-Zeile (R1n bei R1, A2n bei A2, A7n bei A7/A7x).
+    namen = ["R1", "R1n"] + [n for z in ZEILEN for n in (
+        [z, "A7x", "A7n"] if z == "A7" else [z, "A2n"] if z == "A2" else [z])]
+    namen += [n for n in alle if n not in namen]
+    gesamt = haelt_gesamt = 0
     for name in namen:
         lauf = alle[name]
         text, grenze_text, nach, haelt = MATRIX[lauf.zeile]
@@ -489,6 +497,9 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
             p = gruppe[-1]
             e = kennzahlen(p, lauf.bezug())
             u = urteil(e["m1"], e["grenze"], haelt)
+            gesamt += len(gruppe)
+            haelt_gesamt += sum(urteil(kennzahlen(x, lauf.bezug())["m1"], e["grenze"], haelt).startswith("hält")
+                                for x in gruppe)
             viertel = " / ".join(f"{v:g}" for v in e["viertel"])
             m1 = f"**{e['m1']:g} kW** ({viertel})" if e["m1"] is not None else "—"
             bandbreite = ""
@@ -506,6 +517,8 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
             notizen.append(f"- **{name}** auf `{st}` ({lauf.profil}, T0 = Messsekunde {lauf.t0}, "
                            f"{lauf.messdauer() // 60} min, {len(gruppe)} Lauf/Läufe): {lauf.warum}. "
                            f"Quittungen: {quittungen_text(p)}." + (f" {beob}" if beob else ""))
+    z.insert(z.index("## Ergebnis je Zeile") + 1, f"\n**{gesamt} Läufe, {haelt_gesamt} halten** (M-1 höchstes "
+             "Viertel unter der Grenze).")
     offen = [name for name in ("A20", "R1n", "A2n", "A7n") if not gefahren.get(name)]
     if offen:
         z += [

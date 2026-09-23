@@ -30,11 +30,12 @@ ihren Abgang unverschoben und bekommt alles wie immer.
 Varianten des Drehbuchs (szenarien.py): `--ohne-anteile` (A12: ein alter
 Edge-Stand - weder Anteils-Dokument noch Plan v2 noch Ladepark je Box, nur der
 Fahrplan wie heute) und `--ungueltig` (A9: der Lauf kommt an, die Box lehnt ihn
-ab - Plan v2 mit unbekannter schema_version, kein v1-Fahrplan).
+ab - Plan v2 mit unbekannter schema_version, kein v1-Fahrplan) und `--zuschlag`
+(A2n: Übergangszuschlag Lesart B, PR 1092 - Bezug 0/73 statt 0/77, verteilbar 77).
 
 Aufruf: nutzlast.py --aus <verzeichnis> [--revision 1] [--runde 1] [--nur-plan]
                     [--profil mittag|nacht|nacht_a20] [--nullpunkt 0]
-                    [--ohne-anteile] [--ungueltig] [--jetzt 2026-09-22T01:00:00Z]
+                    [--ohne-anteile] [--ungueltig] [--zuschlag 0] [--jetzt 2026-09-22T01:00:00Z]
 """
 
 from __future__ import annotations
@@ -63,6 +64,17 @@ BOXEN = ("E-1", "E-4")
 ANTEILE = {"einspeisung": {"E-1": 40.0, "E-4": 60.0}, "bezug": {"E-1": 0.0, "E-4": 77.0}}
 EINSPEISEGRENZE_KW = 100.0
 BEZUGSGRENZE_KW = 550.0
+# Übergangszuschlag (PR 1092, Lesart B, verbund-anteil-vectors.json „Ahrenberg A2 Bezug“):
+# die Cloud rechnet den Puffer vom Rest über den Rückfällen ab - Bezug 0/73 statt 0/77,
+# `verteilbar` bleibt 77. Die Einspeiseseite bleibt 40/60 (der Rest fehlt dort, Handgriff am Gerät).
+def anteile_mit_zuschlag(zuschlag_kw: float) -> tuple[dict, dict | None]:
+    if not zuschlag_kw:
+        return ANTEILE, None
+    werte = {r: dict(v) for r, v in ANTEILE.items()}
+    werte["bezug"]["E-4"] = round(werte["bezug"]["E-4"] - zuschlag_kw, 1)
+    return werte, {r: sum(v.values()) for r, v in ANTEILE.items()}
+
+
 E1_SPEICHER_KW = -60.0     # zaMittag.e1BattKw: der Speicher entlädt 60 kW für den Markt (V6)
 E1_SPEICHER_NACHT_KW = 100.0  # zaNacht.e1BattKw: der Plan lädt den Speicher 100 kW aus dem Netz
 
@@ -207,7 +219,7 @@ def ladepark(k: dict, box: str, jetzt: dt.datetime, nullpunkt: float = 0.0) -> d
 
 def alle(revision: int, jetzt: dt.datetime, runde: int = 1, nur_plan: bool = False,
          profil: str = "mittag", nullpunkt: float = 0.0, ohne_anteile: bool = False,
-         ungueltig: bool = False) -> dict[str, dict[str, dict]]:
+         ungueltig: bool = False, zuschlag: float = 0.0) -> dict[str, dict[str, dict]]:
     """{box: {leaf: nutzlast}} - leaf ist das Topic unter ems/{tenant}/{site}/{device}/."""
     k = kennungen()
     out: dict[str, dict[str, dict]] = {}
@@ -215,7 +227,8 @@ def alle(revision: int, jetzt: dt.datetime, runde: int = 1, nur_plan: bool = Fal
         v2 = plan_v2(k, box, jetzt, runde, profil, nullpunkt)
         out[box] = {} if nur_plan else {"v2/entities": registry(k, box, revision, jetzt)}
         if not nur_plan and not ohne_anteile:
-            out[box]["v2/verbund-anteile"] = anteile(k, box, revision, jetzt)
+            out[box]["v2/verbund-anteile"] = anteile(k, box, revision, jetzt, "ziel",
+                                                     *anteile_mit_zuschlag(zuschlag))
             out[box]["v2/charging-config"] = ladepark(k, box, jetzt, nullpunkt)
         if ohne_anteile:
             # A12 wie zwei_agenten_test.go e1PlanHeute: ohne Anteil gibt es keinen
@@ -244,13 +257,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ohne-anteile", action="store_true",
                    default=os.environ.get("VB_ZUSTELLUNG") == "ohne_anteile")
     p.add_argument("--ungueltig", action="store_true")
+    p.add_argument("--zuschlag", type=float, default=float(os.environ.get("VB_ZUSCHLAG_KW", "0")),
+                   help="Übergangszuschlag in kW: Bezug-Anteil von E-4 um so viel kleiner (A2n)")
     a = p.parse_args(argv)
     jetzt = (dt.datetime.strptime(a.jetzt, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
              if a.jetzt else dt.datetime.now(dt.timezone.utc))
     a.aus.mkdir(parents=True, exist_ok=True)
     k = kennungen()
     for box, leafs in alle(a.revision, jetzt, a.runde, a.nur_plan, a.profil, a.nullpunkt,
-                           a.ohne_anteile, a.ungueltig).items():
+                           a.ohne_anteile, a.ungueltig, a.zuschlag).items():
         for leaf, d in leafs.items():
             name = f"{box}__{leaf.replace('/', '_')}.json"
             (a.aus / name).write_text(json.dumps(d, ensure_ascii=False, separators=(",", ":")),
