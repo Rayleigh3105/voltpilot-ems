@@ -213,17 +213,23 @@ export function WagoAssistent({
     }
     setBusy(true); setFehler(null);
     try {
-      const vorher = await api.siteComponents(site.id);
-      const bekannt = new Set(vorher.components.map((c) => c.id));
+      // EIN Aufruf: die Karten-Komponenten und ihr Controller mit je einer Karte am Steckplatz
+      // entstehen in einer Transaktion — ohne Karte gäbe es weder Registerbild noch Soll-Lesung.
+      const steckplatzVon = (karte: WagoKarteEntwurf, index: number) => karte.steckplatz ?? index + 1;
+      const anlage = await api.wagoKartenAnlegen(site.id, { karten: karten.map((karte, index) => ({
+        steckplatz: steckplatzVon(karte, index),
+        kartentyp: karte.typ ? Number(karte.typ.slice(4)) : null,
+        komponente: {
+          templateRef: WAGO_VORLAGE, templateVersion: 1, label: karte.messaufgabe.trim(), role: 'consumer',
+          connection: connection(steckplatzVon(karte, index)), note: `Energiekarte an Steckplatz ${karte.steckplatz ?? 'unbekannt'}`,
+        },
+      })) });
+      const komponenten = await api.siteComponents(site.id);
       const neu: Array<{ karte: WagoKarteEntwurf; entityId: string }> = [];
       for (const [index, karte] of karten.entries()) {
-        const nachher = await api.createComponent(site.id, {
-          templateRef: WAGO_VORLAGE, templateVersion: 1, label: karte.messaufgabe.trim(), role: 'consumer',
-          connection: connection(karte.steckplatz ?? index + 1), note: `Energiekarte an Steckplatz ${karte.steckplatz ?? 'unbekannt'}`,
-        });
-        const zeile = nachher.components.find((c) => !bekannt.has(c.id));
+        const entityId = anlage.karten.find((k) => k.steckplatz === steckplatzVon(karte, index))?.entityId;
+        const zeile = komponenten.components.find((c) => c.id === entityId);
         if (!zeile) throw new Error('Die neu angelegte Energiekarte wurde nicht zurückgegeben.');
-        bekannt.add(zeile.id);
         await api.wagoKarteEintragen(site.id, zeile.id, {
           expectedRevision: zeile.definitionVersion,
           anwenderskalierung: null,
@@ -231,12 +237,9 @@ export function WagoAssistent({
         });
         neu.push({ karte, entityId: zeile.id });
       }
-      const einbauten = await api.uemsGeraete(site.id);
-      const controller = einbauten.geraete.find((g) => g.komponenten.some((k) => k.entity_id === neu[0]?.entityId));
-      if (!controller) throw new Error('Die Energiekarten sind noch keinem Gerät zugeordnet.');
       const gueltigAb = minuteJetzt();
       for (const { karte, entityId } of neu) {
-        await api.geraetEinstellungEintragen(controller.id, {
+        await api.geraetEinstellungEintragen(anlage.geraetId, {
           entity_id: entityId, kanal: null, art: 'wandler_strom',
           wert: { primaer_a: Number(karte.wandlerPrimaer), sekundaer_a: Number(karte.wandlerSekundaer) },
           anwendung: karte.wandlerAnwendung, gueltig_ab: gueltigAb,
@@ -247,7 +250,7 @@ export function WagoAssistent({
       // Das Soll des Registerbilds liest die Box selbst — ohne Eingabe. Scheitert es, bleiben die
       // Komponenten angelegt; das Soll ist dann „nicht gelesen“ und die Box prüft es nicht.
       try {
-        setSollLesung(await api.wagoSollLesen(controller.id, { deviceId: boxId }));
+        setSollLesung(await api.wagoSollLesen(anlage.geraetId, { deviceId: boxId }));
       } catch {
         setSollLesung(null);
       }

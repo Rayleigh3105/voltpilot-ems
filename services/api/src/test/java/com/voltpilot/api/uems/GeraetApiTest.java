@@ -7,10 +7,17 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.voltpilot.api.components.ComponentConnectionReceipts;
+import com.voltpilot.api.measurement.MeasurementPlan;
+import com.voltpilot.api.measurement.MeasurementSelectionService;
+import com.voltpilot.api.measurement.WagoRegisterbilder;
 import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
+import com.voltpilot.api.templates.WagoComponentTemplateSeeder;
+import com.voltpilot.api.tenant.TenantContext;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.HashMap;
 import java.util.Optional;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -129,6 +136,15 @@ class GeraetApiTest {
     /** Die Box der WAGO-Soll-Lesung: ein Stellvertreter wie in {@code DatenquelleApiTest}. */
     @MockBean
     ProbeService probes;
+
+    @Autowired
+    ComponentConnectionReceipts receipts;
+
+    @Autowired
+    WagoRegisterbilder registerbilder;
+
+    @Autowired
+    MeasurementSelectionService selections;
 
     /** Wer ruft: ein Benutzer des Test-Realms, der Plattform-Admin mit gewähltem Kundenbereich. */
     private record Anrufer(String benutzer, UUID kundenbereich) {}
@@ -733,6 +749,184 @@ class GeraetApiTest {
                 auftrag, ahrenbergAdmin, HttpMethod.POST).getStatusCode().value()).isEqualTo(404);
         assertThat(schreibeWago(wechsel, auftrag, new Anrufer("demo", null), HttpMethod.POST)
                 .getStatusCode().value()).isEqualTo(404);
+    }
+
+    /**
+     * B05 (Befund PR 1139/1140): der Assistent legt die Karten-Komponenten EINER Steuerung und ihren
+     * Controller in einer Transaktion an — je Karte ein {@code geraet_teil} mit Steckplatz, kein
+     * Wegwerf-Gerät je Komponente. Danach gehen die Kartenangaben durch, die Soll-Lesung liest, der
+     * Publisher bildet das Registerbild, und eine Kartenpunkt-Auswahl trägt den Index IHRER Karte.
+     */
+    @Test
+    void wagoAssistentLegtControllerMitKartenAnUndDieAuswahlTraegtIhrenIndex() {
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id,name,component_authority) "
+                + "VALUES (?, 'WAGO-Anlegen', 'portal') RETURNING id", UUID.class, ahrenberg);
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) "
+                + "RETURNING id", UUID.class, ahrenberg, site, "wago-anlegen-box-" + UUID.randomUUID());
+        List<Map<String, Object>> karten = new ArrayList<>();
+        for (int[] k : new int[][] {{5, 495}, {2, 0}}) { // Reihenfolge der Eingabe ≠ Steckplatz
+            Map<String, Object> verbindung = new LinkedHashMap<>(Map.of("ip", "192.168.20.11", "port", 502,
+                    "mb_slave_id", 1, "base_address", 4096, "function_code", "4", "word_order", "little"));
+            verbindung.put("slot", k[0]);
+            receipts.record(site, WagoComponentTemplateSeeder.REF, 1, verbindung);
+            Map<String, Object> karte = new LinkedHashMap<>();
+            karte.put("steckplatz", k[0]);
+            karte.put("kartentyp", k[1] == 0 ? null : k[1]); // Karte 2 ungelesen: kein Typ geraten
+            karte.put("komponente", Map.of("templateRef", WagoComponentTemplateSeeder.REF, "templateVersion", 1,
+                    "label", "Karte " + k[0], "role", "consumer", "connection", verbindung));
+            karten.add(karte);
+        }
+        String anlegen = "/api/v1/sites/" + site + "/wago/karten";
+        JsonNode angelegt = ok(schreibeWago(anlegen, Map.of("karten", karten), ahrenbergAdmin, HttpMethod.POST));
+        UUID controller = UUID.fromString(angelegt.path("geraetId").asText());
+        assertThat(angelegt.path("karten").findValuesAsText("steckplatz")).containsExactly("2", "5");
+        assertThat(angelegt.path("karten").findValuesAsText("index")).containsExactly("1", "2");
+        UUID ek2 = UUID.fromString(angelegt.path("karten").get(0).path("entityId").asText());
+        UUID ek5 = UUID.fromString(angelegt.path("karten").get(1).path("entityId").asText());
+
+        // EIN Gerät an der Anlage: der Controller. Der Anlege-Trigger sah die Speisung und legte nichts an.
+        assertThat(root.queryForList("SELECT geraeteart || '/' || hersteller FROM geraet WHERE site_id=?",
+                String.class, site)).containsExactly("controller/WAGO");
+        assertThat(root.queryForList("SELECT t.steckplatz || ':' || coalesce(t.typ, '-') || ':' || k.entity_id "
+                + "FROM geraet_teil t JOIN geraet_komponente k ON k.teil_id=t.id AND k.gueltig_bis IS NULL "
+                + "WHERE t.geraet_id=? ORDER BY t.steckplatz", String.class, controller))
+                .containsExactly("2:-:" + ek2, "5:750-495:" + ek5);
+
+        // Die Kartenangaben gehen jetzt durch (ohne Karte: 409 „Zuerst die Energiekarte …“).
+        String angaben = "/api/v1/sites/" + site + "/components/" + ek5 + "/wago";
+        int version = ok(rufe(angaben, ahrenbergAdmin)).path("version").asInt();
+        assertThat(ok(schreibeWago(angaben, Map.of("expectedRevision", version), ahrenbergAdmin))
+                .path("slot").asInt()).isEqualTo(5);
+
+        // Karte 1 ist ungelesen und ungemessen: ohne Typ gibt es noch kein Registerbild (nie raten).
+        List<MeasurementPlan.Entry> plan = List.of(new MeasurementPlan.Entry(ek5,
+                "wago.pm495.karte[2].frequency", 60, null, "x", 90, null, null));
+        assertThat(registerbilder(site, plan)).isEmpty();
+
+        // Die Soll-Lesung am neuen Controller: Kopf mit zwei Karten, Kennwörter an 4096 + 12 + (n-1)·42.
+        Map<Integer, Integer> register = Map.of(4108, 2, 4109, 494, 4110, 0, 4150, 5, 4151, 495, 4152, 25001);
+        when(probes.probeBox(eq(box), any(ProbePublisher.WagoKopfOp.class), anyList(), any())).thenAnswer(a -> {
+            ProbePublisher.WagoKopfOp op = a.getArgument(1);
+            return Optional.of(new ProbeResult("r1", null, null, List.of(ProbeResult.OpResult.ausKopf(op.id(), true,
+                    null, null, new ProbeResult.WagoKopf(true, true, null, 1, 0, 12, 42, 2, 900, 7L, null)))));
+        });
+        when(probes.probeBox(eq(box), anyList(), any())).thenAnswer(a -> {
+            List<ProbeRequest.Op> ops = a.getArgument(1);
+            List<ProbeResult.OpResult> zeilen = new ArrayList<>();
+            for (ProbeRequest.Op op : ops) {
+                Integer wert = register.get(op.address());
+                zeilen.add(new ProbeResult.OpResult(op.id(), true, wert.doubleValue(), List.of(wert),
+                        wert.doubleValue(), null, null));
+            }
+            return Optional.of(new ProbeResult("r2", null, null, zeilen));
+        });
+        JsonNode soll = ok(schreibeWago("/api/v1/geraete/" + controller + "/wago/soll-lesen",
+                Map.of("deviceId", box), ahrenbergAdmin, HttpMethod.POST));
+        assertThat(soll.path("ergebnis").asText()).isEqualTo("gespeichert");
+
+        // Jetzt steht das Soll: das Registerbild zählt beide Karten nach Steckplatz.
+        assertThat(registerbilder(site, plan)).singleElement().satisfies(b -> {
+            assertThat(b.get("entity_id")).isEqualTo(ek5);
+            assertThat(b.get("basisadresse")).isEqualTo(4096);
+            assertThat(b.get("funktionscode")).isEqualTo(4);
+            assertThat(b.get("kartenzahl")).isEqualTo(2);
+            assertThat(b.get("controller_kennung")).isEqualTo(7L);
+            assertThat(String.valueOf(b.get("karten"))).isEqualTo("[{steckplatz=2, kartentyp=494, variante=0}, "
+                    + "{steckplatz=5, kartentyp=495, variante=25001}]");
+        });
+
+        // Die Auswahl der Karten-Komponente trägt den Index IHRER Karte, nie `karte[*]` (Befund PR 1139).
+        TenantContext.set(ahrenberg);
+        try {
+            long rev = selections.state(box).desiredRevision();
+            selections.change(box, ek5, "wago.pm495.karte[*].frequency",
+                    new MeasurementSelectionService.Change(rev, UUID.randomUUID(), true, null),
+                    new MeasurementSelectionService.Actor("test", "Test"));
+            long danach = selections.state(box).desiredRevision();
+            assertThat(org.assertj.core.api.Assertions.catchThrowableOfType(() -> selections.change(box, ek5,
+                    "wago.pm495.karte[1].current_l1", new MeasurementSelectionService.Change(danach,
+                            UUID.randomUUID(), true, null), new MeasurementSelectionService.Actor("test", "Test")),
+                    ResponseStatusException.class).getReason()).contains("Karte 2");
+            assertThat(org.assertj.core.api.Assertions.catchThrowableOfType(() -> selections.change(box, ek5,
+                    "wago.pm494.karte[*].frequency", new MeasurementSelectionService.Change(danach,
+                            UUID.randomUUID(), true, null), new MeasurementSelectionService.Actor("test", "Test")),
+                    ResponseStatusException.class).getReason()).contains("750-495");
+        } finally {
+            TenantContext.clear();
+        }
+        assertThat(root.queryForList("SELECT point_key FROM device_measurement_selection WHERE entity_id=?",
+                String.class, ek5)).containsExactly("wago.pm495.karte[2].frequency");
+
+        // Fremder Kundenbereich: die Anlage ist unsichtbar (404, nie 403), auch mit gültigem Auftrag.
+        assertThat(schreibeWago(anlegen, Map.of("karten", karten), new Anrufer("demo", null), HttpMethod.POST)
+                .getStatusCode().value()).isEqualTo(404);
+        // Zweimal derselbe Steckplatz oder eine zweite Verbindung sind nicht EINE Steuerung.
+        karten.get(1).put("steckplatz", 5);
+        assertThat(schreibeWago(anlegen, Map.of("karten", karten), ahrenbergAdmin, HttpMethod.POST)
+                .getStatusCode().value()).isEqualTo(400);
+        karten.get(1).put("steckplatz", 2);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> zweite = new LinkedHashMap<>((Map<String, Object>) ((Map<String, Object>) karten.get(1)
+                .get("komponente")).get("connection"));
+        zweite.put("ip", "192.168.20.99");
+        karten.get(1).put("komponente", Map.of("templateRef", WagoComponentTemplateSeeder.REF, "templateVersion", 1,
+                "label", "Karte 2", "role", "consumer", "connection", zweite));
+        assertThat(schreibeWago(anlegen, Map.of("karten", karten), ahrenbergAdmin, HttpMethod.POST)
+                .getStatusCode().value()).isEqualTo(400);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet WHERE site_id=?", Integer.class, site))
+                .as("abgelehnte Aufträge legen nichts an").isEqualTo(1);
+    }
+
+    /**
+     * Bestand: eine WAGO-Komponente, der der Anlege-Trigger ein eigenes Gerät OHNE Karte gab, bekommt
+     * ihren Controller mit Karte ab der nächsten vollen Minute. Die abgeleitete Speisung endet dort,
+     * ihr Gerät ist ausgebaut; nichts wird gelöscht. Ein zweites Nachtragen ist 409.
+     */
+    @Test
+    void wagoKarteWirdFuerDenBestandNachgetragen() {
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id,name) VALUES (?, 'WAGO-Bestand') RETURNING id",
+                UUID.class, ahrenberg);
+        UUID ek = root.queryForObject("INSERT INTO measurement_point (tenant_id,site_id,role,entity_type,brand,model,"
+                + "connection_json) VALUES (?,?,'consumer','consumer','wago','pm494_pm495_registerbild_v1',"
+                + "'{\"ip\":\"192.168.20.12\",\"port\":502,\"mb_slave_id\":1,\"base_address\":4096,"
+                + "\"function_code\":\"4\",\"word_order\":\"little\",\"slot\":3}'::jsonb) RETURNING id",
+                UUID.class, ahrenberg, site);
+        UUID abgeleitet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id=?",
+                UUID.class, ek);
+        String pfad = "/api/v1/sites/" + site + "/wago/karten/nachtragen";
+        Map<String, Object> auftrag = Map.of("karten", List.of(Map.of("entityId", ek, "steckplatz", 3,
+                "kartentyp", 495)));
+
+        // Ein Steckplatz, der der Verbindung widerspricht, wird nicht geraten.
+        assertThat(schreibeWago(pfad, Map.of("karten", List.of(Map.of("entityId", ek, "steckplatz", 4))),
+                ahrenbergAdmin, HttpMethod.POST).getStatusCode().value()).isEqualTo(400);
+
+        JsonNode r = ok(schreibeWago(pfad, auftrag, ahrenbergAdmin, HttpMethod.POST));
+        UUID controller = UUID.fromString(r.path("geraetId").asText());
+        Timestamp ab = root.queryForObject("SELECT date_trunc('minute', now()) + interval '1 minute'",
+                Timestamp.class);
+        assertThat(OffsetDateTime.parse(r.path("eingebautAm").asText()).toInstant()).isEqualTo(ab.toInstant());
+        assertThat(root.queryForList("SELECT geraet_id::text || ':' || (teil_id IS NOT NULL) || ':' "
+                + "|| coalesce((gueltig_bis = ?)::text, 'offen') FROM geraet_komponente WHERE entity_id=? "
+                + "ORDER BY gueltig_ab", String.class, ab, ek))
+                .containsExactly(abgeleitet + ":false:true", controller + ":true:offen");
+        assertThat(root.queryForObject("SELECT ausgebaut_am = ? FROM geraet WHERE id=?", Boolean.class, ab,
+                abgeleitet)).isTrue();
+        assertThat(root.queryForList("SELECT steckplatz || ':' || typ FROM geraet_teil WHERE geraet_id=?",
+                String.class, controller)).containsExactly("3:750-495");
+
+        // Die Komponente steckt jetzt in einer Karte: ein zweites Nachtragen ist ein Kartenwechsel.
+        assertThat(schreibeWago(pfad, auftrag, ahrenbergAdmin, HttpMethod.POST).getStatusCode().value())
+                .isEqualTo(409);
+    }
+
+    private List<Map<String, Object>> registerbilder(UUID site, List<MeasurementPlan.Entry> plan) {
+        TenantContext.set(ahrenberg);
+        try {
+            return registerbilder.fuer(site, plan);
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     private ResponseEntity<JsonNode> schreibeWago(String path, Map<String,Object> body, Anrufer wer) {

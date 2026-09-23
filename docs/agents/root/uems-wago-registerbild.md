@@ -208,7 +208,8 @@ demselben Box-Release** wie die Aktivierung, kein eigener Laufzeitstand.
   Abschnitt); fehlend bleibt das Dokument Byte für Byte wie in der Verdrahtung.
 - ⚠ **Karte n = n-te Karte nach Steckplatz.** Ein Kartenpunkt nennt den Index im Registerbild;
   `karte[*]` mit `entity_id` dehnt der Planer auf ALLE Karten des Controllers aus — eine
-  Karten-Komponente muss ihren konkreten Index wählen.
+  Karten-Komponente muss ihren konkreten Index wählen. Seit „Energiekarten beim Anlegen“ (unten)
+  macht die Auswahl das selbst.
 - ⚠ Der 750-494-Messwert bleibt `unknown_point`, auch MIT Registerbild (Befund 4, `readable: false`).
   Der Zählerstand der 750-495 kommt roh (`conditional_factor` nach Messbereich) — kein Faktor geraten.
 
@@ -240,8 +241,9 @@ fehlend = nicht geprüft). Die Cloud kennt das Soll jetzt, sobald die Steuerung 
 
 - Die Datenquellen-Prüfung des Assistenten liest den Kopf seit dem Folgepaket selbst — siehe
   „Datenquellen-Prüfung über `wago_kopf`“ unten.
-- ⚠ **Ohne `geraet_teil`-Zeilen gibt es kein Soll.** Die Anlege-Trigger legen je Komponente ein Gerät,
+- ⚠ **Ohne `geraet_teil`-Zeilen gibt es kein Soll.** Der Anlege-Trigger legt je Komponente ein Gerät,
   aber keine Energiekarte an — Lesung und Publisher brauchen die Karte mit Steckplatz am Controller.
+  Die Karte legt der Assistent seit „Energiekarten beim Anlegen“ (unten) selbst an; Bestand: `…/nachtragen`.
 - ⚠ **Ein Kartenwechsel beginnt ohne Variante** (`karteWechseln` nennt seine Spalten) — die neue Karte ist
   eine andere Karte; erst die nächste Lesung füllt ihr Soll.
 
@@ -273,3 +275,35 @@ Befund aus der Soll-Lesung: Schritt 1 des Assistenten schickte einen gewöhnlich
   Vorlage) — die Kennwörter aus Schritt 1 ersetzen diese Lesung nicht; beide kommen aus der Steuerung.
 - ⚠ **`WagoSollLesung.Kennung`/`Verbindung` sind jetzt öffentlich**, weil die Prüfung im Paket `uems`
   sie teilt — eine Signaturänderung trifft beide Wege (`GeraetApiTest` und `DatenquelleApiTest` fahren).
+
+## Energiekarten beim Anlegen (B05, 23.09.2026)
+
+Befund aus PR 1139/1140: ohne `geraet_teil` mit Steckplatz blieb eine über den Assistenten angelegte
+WAGO-Messung stumm (kein Registerbild, keine Soll-Lesung, Kartenangaben 409).
+
+- `POST /api/v1/sites/{siteId}/wago/karten` (`WagoKartenAnlage#anlegen`, Recht `geraet.einrichten` an
+  der Anlage): je Karte die Komponente über `ComponentService.create` (WAGO-Vorlage, Verbindungstest
+  Pflicht) und in DERSELBEN Transaktion EIN Controller (`geraeteart = controller`, Hersteller `WAGO`,
+  `geraete_id` = Unit-ID) mit je Karte einem `geraet_teil` (Steckplatz; Kartentyp `750-<n>` nur aus der
+  Kartenlesung, sonst leer) und der Speisung über diese Karte. Der Trigger `uems_geraet_anlegen` läuft zur
+  Commit-Zeit und lässt Komponenten mit Speisung aus — kein Wegwerf-Gerät. Antwort: `geraetId` und je
+  Karte `index` = Karte n. Der Assistent (`WagoAssistent.tsx`) ruft nur noch diese Route statt je Karte
+  `createComponent`; `wagoKarteEintragen`, Wandler und `soll-lesen` gehen an `anlage.geraetId`.
+- `POST …/wago/karten/nachtragen` (`WagoKartenAnlage#nachtragen`, Bestand): Controller und Karten ab der
+  NÄCHSTEN vollen Minute; die abgeleitete Speisung endet dort, ihr Gerät wird ausgebaut, wenn es danach
+  nichts speist und keine Karte trägt. Nichts wird gelöscht. Eine Komponente mit Karte → 409 (Kartenwechsel).
+- Auswahl: `MeasurementSelectionService` macht beim Anwählen aus `wago.pm49x.karte[*].…` den Index der
+  eigenen Karte (`MeasurementSelectionRepository#wagoKarte`, dieselbe Zählung wie `WagoRegisterbilder`).
+  Anderer Index, anderer Kartentyp oder keine Karte → 409. Abwählen bleibt immer möglich.
+- Nachweis: `GeraetApiTest#wagoAssistentLegtControllerMitKartenAnUndDieAuswahlTraegtIhrenIndex`,
+  `#wagoKarteWirdFuerDenBestandNachgetragen`, `e2e/messen-assistent.spec.ts` (ein Anlege-Aufruf).
+
+### Fallen
+
+- ⚠ **Dieselbe Verbindung ist nur die Gegenprobe, nie der Beweis.** Welche Karten in EINER Steuerung
+  stecken, sagt der Aufrufer (der Assistent hat genau einen Kopf gelesen). Verschiedene Verbindungen oder
+  ein `slot` ≠ Steckplatz → 400.
+- ⚠ **Eine ungelesene, ungemessene Karte hat keinen Typ** — dann bildet `WagoRegisterbilder` für den
+  Controller noch nichts (nie raten). Die Soll-Lesung füllt den leeren Typ; danach steht das Registerbild.
+- ⚠ **Nachgetragen gilt ab der nächsten Minute.** Bis dahin sehen Registerbild, Auswahl und Kartenangaben
+  die neue Karte noch nicht (`eingebaut_am <= now()`); sofort erneut nachtragen ist 409.

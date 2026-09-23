@@ -10414,6 +10414,69 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/EinstellungAbgelehnt" }
         "422": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+  /api/v1/sites/{siteId}/wago/karten:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Die Energiekarten einer WAGO-Steuerung samt Controller anlegen (WAGO-Assistent, B05).
+      description: >
+        Recht `geraet.einrichten` an der Anlage. Legt je Karte die Komponente an (wie `POST
+        /api/v1/sites/{siteId}/components`, mit der WAGO-Vorlage und bestandenem Verbindungstest) und
+        in DERSELBEN Transaktion EINEN Controller (`geraet`, Geräteart `controller`) mit je Karte einem
+        `geraet_teil` (Steckplatz, Kartentyp aus der Kartenlesung - ungelesen leer) und der Speisung
+        der Komponente über diese Karte. Der Anlege-Trigger legt dann kein eigenes Gerät je Komponente
+        an. Alle Karten brauchen dieselbe vollständige Verbindung (Adresse, Port, Geräte-ID,
+        Basisadresse, Funktionscode, Wortfolge); ein `slot` der Verbindung muss dem Steckplatz
+        gleichen. `index` der Antwort ist Karte n im Registerbild (n-te nach Steckplatz) - der Index,
+        den eine Kartenpunkt-Auswahl `wago.pm49x.karte[n]` trägt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WagoKartenAnlegen" }
+      responses:
+        "200":
+          description: Der Controller und seine Karten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WagoKartenAnlage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Die Anlage wird noch auf der Box verwaltet, oder eine Karte wurde nicht als eigene Komponente angelegt.
+        "422":
+          description: Die Verbindung einer Karte ist nicht geprüft.
+  /api/v1/sites/{siteId}/wago/karten/nachtragen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Bestand - bestehenden WAGO-Komponenten ohne Karte ihren Controller und ihre Karten nachtragen (B05).
+      description: >
+        Recht `geraet.einrichten` an der Anlage. Die genannten WAGO-Komponenten stecken in EINER
+        Steuerung: es entsteht ein Controller mit je Komponente einer Karte, gültig ab der NÄCHSTEN
+        vollen Minute. Die bisherige, abgeleitete Speisung endet dort (nichts wird gelöscht oder
+        umgeschrieben); ihr Gerät wird ausgebaut, wenn es danach nichts mehr speist und keine Karte
+        trägt. Eine Komponente, die schon in einer Karte steckt, bleibt unberührt (409 - ein Tausch
+        ist ein Kartenwechsel).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WagoKartenNachtragen" }
+      responses:
+        "200":
+          description: Der Controller und seine Karten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WagoKartenAnlage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Eine Komponente steckt schon in einer Energiekarte.
   /api/v1/geraete/{id}/wago/soll-lesen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -27481,6 +27544,52 @@ components:
         takt: { type: string, nullable: true, example: "Takt 60 s wählen" }
         boxen: { type: array, items: { $ref: "#/components/schemas/DatenquelleBudgetBox" } }
         andere_box: { type: string, nullable: true, example: "Box Halle 2 wählen (29 Anfragen/min frei)" }
+    WagoKartenAnlegen:
+      type: object
+      required: [karten]
+      properties:
+        karten:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: object
+            required: [steckplatz, komponente]
+            properties:
+              steckplatz: { type: integer, minimum: 1, maximum: 65535 }
+              kartentyp: { type: integer, nullable: true, enum: [493, 494, 495], description: "Aus der Kartenlesung; null = nicht gelesen." }
+              komponente: { $ref: "#/components/schemas/SaveComponentRequest" }
+    WagoKartenNachtragen:
+      type: object
+      required: [karten]
+      properties:
+        karten:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: object
+            required: [entityId, steckplatz]
+            properties:
+              entityId: { type: string, format: uuid }
+              steckplatz: { type: integer, minimum: 1, maximum: 65535 }
+              kartentyp: { type: integer, nullable: true, enum: [493, 494, 495], description: "Aus der Kartenlesung; null = nicht gelesen." }
+    WagoKartenAnlage:
+      type: object
+      properties:
+        geraetId: { type: string, format: uuid, description: Der Controller. }
+        kennzeichen: { type: string, description: "GR-n des Controllers." }
+        eingebautAm: { type: string, format: date-time, description: "Beginn von Einbau, Karten und Speisung (volle Minute)." }
+        karten:
+          type: array
+          items:
+            type: object
+            properties:
+              entityId: { type: string, format: uuid }
+              teilId: { type: string, format: uuid }
+              steckplatz: { type: integer }
+              typ: { type: string, nullable: true, description: "750-<kartentyp>; null = nicht gelesen." }
+              index: { type: integer, description: "Karte n im Registerbild (n-te nach Steckplatz)." }
     WagoSollLesenEingabe:
       type: object
       required: [deviceId]

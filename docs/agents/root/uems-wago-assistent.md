@@ -6,7 +6,7 @@ Der Assistent liegt im bestehenden Fluss „Messen & Auswerten“: Verbindung/Ko
 
 Der Einstieg erscheint nur, wenn am Standort eine Box die Fähigkeit `wago_registerbild` meldet. Dieses Wort ist bereits die Quellenart der Cloud-Vorlage, gehört aber noch nicht zum geschlossenen Box-Fähigkeitsvertrag. Deshalb ist die Bedingung heute für jede Box falsch. Erst die Edge-Aktivierung darf das Wort in den Fähigkeitsvertrag aufnehmen und melden; bis dahin sendet das Portal nichts an eine Box.
 
-Der Verbindungstest liest nur den WAGO-Kopf. Er zeigt Signatururteil, Registerbild-Version, Kartenzahl, Herzschlag und den Klartextgrund aus der Probe-Antwort. Anschließend liest die Box Steckplatz, Kartentyp und Werte der Karten. Kunden ergänzen je Karte nur Messaufgabe, Wandlerpaar und den Ort der Umrechnung. Echte Messwerte beim Anlegen sind ohne aktivierte Box nur als gesäte Antworten der E2E-Bühne belegt.
+Der Verbindungstest liest nur den WAGO-Kopf. Er zeigt Signatururteil, Registerbild-Version, Kartenzahl, Herzschlag und den Klartextgrund aus der Probe-Antwort. Anschließend liest die Box Steckplatz, Kartentyp und Werte der Karten. Kunden ergänzen je Karte nur Messaufgabe, Wandlerpaar und den Ort der Umrechnung. „Komponenten anlegen“ ist EIN Aufruf `POST /api/v1/sites/{siteId}/wago/karten`: Komponenten, Controller und je Karte ein `geraet_teil` mit Steckplatz entstehen zusammen ([Registerbild-Wegweiser](uems-wago-registerbild.md#energiekarten-beim-anlegen-b05-23092026)). Echte Messwerte beim Anlegen sind ohne aktivierte Box nur als gesäte Antworten der E2E-Bühne belegt.
 
 ## Beleggrenzen
 

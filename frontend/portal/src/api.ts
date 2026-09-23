@@ -7463,6 +7463,17 @@ export interface WagoSoll {
   karten: { steckplatz: number | null; typ: string | null; variante: number | null }[];
 }
 
+/**
+ * B05: Ausgang von `POST /api/v1/sites/{siteId}/wago/karten` — EIN Controller, je Karte ein Teil mit
+ * Steckplatz. `index` ist Karte n im Registerbild (n-te nach Steckplatz).
+ */
+export interface WagoKartenAnlage {
+  geraetId: string;
+  kennzeichen: string;
+  eingebautAm: string;
+  karten: { entityId: string; teilId: string; steckplatz: number; typ: string | null; index: number }[];
+}
+
 /** Ausgang von `POST /api/v1/geraete/{id}/wago/soll-lesen` — gespeichert wird nur aus der Lesung. */
 export interface WagoSollLesung {
   ergebnis: 'gespeichert' | 'unveraendert' | 'abweichung' | 'nicht_gelesen';
@@ -8767,6 +8778,16 @@ export const api = {
       `/api/v1/sites/${siteId}/components/${entityId}/wago/kartenwechsel`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+
+  /**
+   * B05: die Karten-Komponenten EINER WAGO-Steuerung und ihren Controller in einer Transaktion
+   * anlegen — je Karte Steckplatz und gelesener Kartentyp (ungelesen `null`, nie geraten).
+   */
+  wagoKartenAnlegen: (siteId: string, body: {
+    karten: { steckplatz: number; kartentyp: number | null; komponente: SaveComponentBody }[];
+  }) => request<WagoKartenAnlage>(`/api/v1/sites/${siteId}/wago/karten`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
 
   /**
    * AP-05 „WAGO-Soll speichern“: die Box liest Kopf und Kartenkennungen der Steuerung; die api

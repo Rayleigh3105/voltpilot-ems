@@ -202,6 +202,29 @@ public class MeasurementSelectionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** Die Karte einer WAGO-Komponente im Registerbild ihres Controllers ({@code index} = Karte n). */
+    public record WagoKarte(int index, String typ) {}
+
+    /**
+     * Karte n = n-te HEUTE eingebaute Karte des Controllers nach Steckplatz — dieselbe Zählung wie
+     * {@code WagoRegisterbilder}. {@code null}, wenn die Komponente heute keine Karte mit Steckplatz hat.
+     */
+    public WagoKarte wagoKarte(UUID entityId) {
+        List<WagoKarte> rows = jdbc.query("""
+                SELECT (SELECT count(*) FROM geraet_teil a
+                         WHERE a.geraet_id = t.geraet_id AND a.tenant_id = t.tenant_id
+                           AND a.teilart = 'energiekarte' AND a.steckplatz <= t.steckplatz
+                           AND a.eingebaut_am <= now() AND (a.ausgebaut_am IS NULL OR a.ausgebaut_am > now())),
+                       t.typ
+                  FROM geraet_komponente k
+                  JOIN geraet_teil t ON t.id = k.teil_id AND t.tenant_id = k.tenant_id
+                 WHERE k.entity_id = ? AND t.steckplatz IS NOT NULL
+                   AND k.gueltig_ab <= now() AND (k.gueltig_bis IS NULL OR k.gueltig_bis > now())
+                   AND t.eingebaut_am <= now() AND (t.ausgebaut_am IS NULL OR t.ausgebaut_am > now())
+                """, (rs, n) -> new WagoKarte(rs.getInt(1), rs.getString(2)), entityId);
+        return rows.size() == 1 ? rows.getFirst() : null;
+    }
+
     public Set<String> recordedPointKeys(UUID deviceId) {
         DeviceScope scope = deviceScope(deviceId);
         if (scope == null) return Set.of();

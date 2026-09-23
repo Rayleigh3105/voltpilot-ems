@@ -71,6 +71,7 @@ interface Cloud {
   wagoKomponenten?: Array<{ id: string; definitionVersion: number; label: string }>;
   /** AP-05 „WAGO-Soll speichern“: was der Assistent an die Soll-Lesung geschickt hat. */
   wagoSollLesungen?: Array<{ geraet: string; body: unknown }>;
+  wagoKartenAnlagen?: Array<{ karten: Array<{ steckplatz: number; kartentyp: number | null; komponente: { templateRef: string; label?: string } }> }>;
   /** Schritt 2: die Datenquellen-Vorschlagsliste je Anlage (sonst leer) und was bestätigt wurde. */
   dqVorschlag?: Record<string, UemsDatenquelleVorschlagsliste>;
   dqUebernahmen?: { anlage: string; vorschlaege: UemsDatenquelleBestaetigt[] }[];
@@ -240,6 +241,17 @@ async function verdrahte(page: Page, cloud: Cloud) {
         id: 'verbindung', ok: true, errorCode: null, message: 'Werte gelesen',
         reading: { steckplatz: slot, kartentyp: 494, 'Spannung L1': 230.4, 'Wirkleistung gesamt': 18.7 + slot, 'Zählerstand Bezug': 36912.4 + slot },
       }] });
+    }
+    if (/^\/api\/v1\/sites\/[^/]+\/wago\/karten$/.test(pfad) && methode === 'POST' && cloud.wagoFaehig) {
+      // B05: Karten-Komponenten und Controller in EINEM Aufruf, je Karte ein Teil am Steckplatz.
+      const body = r.request().postDataJSON() as NonNullable<Cloud['wagoKartenAnlagen']>[number];
+      (cloud.wagoKartenAnlagen ??= []).push(body);
+      const karten = [...body.karten].sort((a, b) => a.steckplatz - b.steckplatz).map((k, i) => {
+        const zeile = { id: `wago-k-${(cloud.wagoKomponenten?.length ?? 0) + 1}`, definitionVersion: 1, label: k.komponente.label ?? 'Energiekarte' };
+        (cloud.wagoKomponenten ??= []).push(zeile);
+        return { entityId: zeile.id, teilId: `teil-${k.steckplatz}`, steckplatz: k.steckplatz, typ: k.kartentyp ? `750-${k.kartentyp}` : null, index: i + 1 };
+      });
+      return json({ geraetId: 'geraet-c-1', kennzeichen: 'GR-7', eingebautAm: '2026-10-20T08:15:00Z', karten });
     }
     if (/^\/api\/v1\/sites\/[^/]+\/components\/[^/]+\/wago$/.test(pfad) && methode === 'PUT' && cloud.wagoFaehig) {
       const body = r.request().postDataJSON() as { expected_revision: number; anwenderskalierung: boolean | null; register35: number | null };
@@ -625,6 +637,9 @@ for (const breite of BREITEN) {
       await expect(soll.getByText('Controller-Kennung 8212', { exact: true })).toBeVisible();
       await expect(soll.getByRole('listitem')).toHaveCount(5);
       expect(cloud.wagoSollLesungen).toEqual([{ geraet: 'geraet-c-1', body: { deviceId: expect.any(String) } }]);
+      // EIN Anlege-Aufruf mit je Karte Steckplatz und gelesenem Kartentyp — keine Komponente einzeln.
+      expect(cloud.wagoKartenAnlagen?.map((a) => a.karten.map((k) => [k.steckplatz, k.kartentyp, k.komponente.templateRef])))
+        .toEqual([[1, 2, 3, 4].map((steckplatz) => [steckplatz, 494, 'certified:wago:pm494_pm495_registerbild_v1'])]);
       await messeUndFotografiere(page, breite, 'wago-komponenten');
       await page.getByRole('button', { name: breite < 720 ? 'Zu den Messstellen' : 'Zur Messstellen-Vorschlagsliste', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Was bedeutet jeder Messkanal?' })).toBeVisible();

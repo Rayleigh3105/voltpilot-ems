@@ -44,6 +44,13 @@ sind nullable Textfelder, keine Behauptung über den tatsächlich ausgelesenen S
 und protokolliert, nie überschrieben. Beide GETs nennen das gelesene Soll; NULL = nicht gelesen.
 Einzelheiten: [Wegweiser](../../docs/agents/root/uems-wago-registerbild.md).
 
+`POST /api/v1/sites/{siteId}/wago/karten` (Assistent) legt die Karten-Komponenten EINER Steuerung und
+ihren Controller in einer Transaktion an: ein `geraet` mit Geräteart `controller`, je Karte ein
+`geraet_teil` (Steckplatz, Kartentyp aus der Kartenlesung - ungelesen leer) und die Speisung über diese
+Karte. Der Anlege-Trigger legt für eine Komponente mit Speisung nichts an. `POST …/wago/karten/nachtragen`
+gibt bestehenden WAGO-Komponenten ohne Karte ihren Controller ab der nächsten vollen Minute; die
+abgeleitete Speisung endet dort. Eine Kartenpunkt-Auswahl `karte[*]` wird zum Index der eigenen Karte.
+
 Alle Schreibwege benötigen `geraet.einrichten`; fremde Anlagen/Geräte bleiben 404.
 Die neuen Spalten erben die vorhandene Mandanten-RLS. Komponentenfassungen und Geräte bekommen
 zusätzlich den Standortzaun; neue Gerät-Spalten haben eigene UPDATE-Grants.

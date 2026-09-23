@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MeasurementSelectionService {
 
+    /** Ein WAGO-Kartenpunkt mit Kartentyp und Index ({@code wago.pm495.karte[2].…} oder die Vorlage {@code [*]}). */
+    private static final Pattern WAGO_KARTENPUNKT =
+            Pattern.compile("^wago\\.pm(494|495)\\.karte\\[(\\d{1,3}|\\*)]\\.");
     public static final String PENDING_REASON =
             "Angefordert; wartet auf die Bestätigung der VoltPilot-Box.";
 
@@ -295,6 +300,7 @@ public class MeasurementSelectionService {
         deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         UUID entity = requireEntity(scope, entityId);
+        if (enabled) pointKey = wagoKartenIndex(entity, pointKey);
         List<Row> current = repository.current(deviceId);
         Row old = find(current, entity, pointKey);
         Resolved resolved = resolveForChange(pointKey, enabled, cadenceS, old);
@@ -336,6 +342,8 @@ public class MeasurementSelectionService {
         deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = lock(deviceId);
         UUID entity = requireEntity(scope, entityId);
+        // Abwählen bleibt immer möglich, auch für eine ältere Auswahl mit `karte[*]`.
+        if (request.enabled()) pointKey = wagoKartenIndex(entity, pointKey);
         List<Row> current = repository.current(deviceId);
         Row old = find(current, entity, pointKey);
         Event previous = repository.eventByRequest(deviceId, request.idempotencyKey());
@@ -534,6 +542,33 @@ public class MeasurementSelectionService {
         return new Resolved(cadence, point.pollGroup(),
                 MeasurementBudget.requestCostMs(point.sourceKind(), point.family()), retention, null,
                 point.family());
+    }
+
+    /**
+     * Ein WAGO-Kartenpunkt wählt die Karte SEINER Komponente: Karte n im Registerbild = n-te heute
+     * eingebaute Karte des Controllers nach Steckplatz. Die Vorlage {@code karte[*]} dehnte der Planer
+     * mit {@code entity_id} auf ALLE Karten des Controllers aus (Befund PR 1139); sie wird hier zum
+     * konkreten Index. Ein anderer Index, ein anderer Kartentyp oder eine Komponente ohne Karte mit
+     * Steckplatz werden abgelehnt — nie geraten.
+     */
+    private String wagoKartenIndex(UUID entity, String pointKey) {
+        Matcher m = WAGO_KARTENPUNKT.matcher(pointKey == null ? "" : pointKey);
+        if (!m.find()) return pointKey;
+        MeasurementSelectionRepository.WagoKarte karte = repository.wagoKarte(entity);
+        if (karte == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Zuerst die Energiekarte mit ihrem Steckplatz zuordnen.");
+        }
+        Matcher typ = WagoRegisterbilder.TYP.matcher(karte.typ() == null ? "" : karte.typ());
+        if (typ.find() && !typ.group(1).equals(m.group(1))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Diese Komponente steckt in einer 750-"
+                    + typ.group(1) + ", der Messpunkt gehört zur 750-" + m.group(1) + ".");
+        }
+        if (!m.group(2).equals("*") && Integer.parseInt(m.group(2)) != karte.index()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Diese Komponente ist Karte "
+                    + karte.index() + " im Registerbild ihres Controllers.");
+        }
+        return pointKey.substring(0, m.start(2)) + karte.index() + pointKey.substring(m.end(2));
     }
 
     private Resolved resolveForChange(String pointKey, boolean enabled, Integer cadence,

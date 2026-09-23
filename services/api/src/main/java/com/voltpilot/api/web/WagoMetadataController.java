@@ -6,6 +6,7 @@ import com.voltpilot.api.components.WagoMetadataService.GeraetEintrag;
 import com.voltpilot.api.components.WagoMetadataService.Karte;
 import com.voltpilot.api.components.WagoMetadataService.KartenEintrag;
 import com.voltpilot.api.components.WagoMetadataService.Kartenwechsel;
+import com.voltpilot.api.components.WagoKartenAnlage;
 import com.voltpilot.api.components.WagoSollLesung;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -25,9 +26,36 @@ import org.springframework.web.bind.annotation.RestController;
 public class WagoMetadataController {
     private final WagoMetadataService service;
     private final WagoSollLesung soll;
-    public WagoMetadataController(WagoMetadataService service, WagoSollLesung soll) {
+    private final WagoKartenAnlage karten;
+    public WagoMetadataController(WagoMetadataService service, WagoSollLesung soll,
+            WagoKartenAnlage karten) {
         this.service = service;
         this.soll = soll;
+        this.karten = karten;
+    }
+
+    /**
+     * Recht: {@code geraet.einrichten}. Der Assistent legt die Karten-Komponenten EINER Steuerung und
+     * ihren Controller in einer Transaktion an: je Karte ein {@code geraet_teil} mit Steckplatz und
+     * gelesenem Kartentyp. Ohne diese Karten gäbe es weder Registerbild noch Soll-Lesung.
+     */
+    @PostMapping("/api/v1/sites/{siteId}/wago/karten")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public WagoKartenAnlage.Ergebnis kartenAnlegen(@PathVariable UUID siteId,
+            @Valid @RequestBody WagoKartenAnlage.Anlegen in, Principal actor) {
+        return karten.anlegen(siteId, in, actor.getName());
+    }
+
+    /**
+     * Recht: {@code geraet.einrichten}. Bestand: WAGO-Komponenten ohne Karte bekommen EINEN Controller
+     * mit ihren Karten, ab der nächsten vollen Minute; die abgeleitete Speisung endet dort. Eine
+     * Komponente mit Karte bleibt unberührt (409).
+     */
+    @PostMapping("/api/v1/sites/{siteId}/wago/karten/nachtragen")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public WagoKartenAnlage.Ergebnis kartenNachtragen(@PathVariable UUID siteId,
+            @Valid @RequestBody WagoKartenAnlage.Nachtragen in, Principal actor) {
+        return karten.nachtragen(siteId, in, actor.getName());
     }
 
     /** Recht: {@code messwerte.ansehen}. */
