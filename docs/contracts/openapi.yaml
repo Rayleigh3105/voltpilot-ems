@@ -12266,6 +12266,33 @@ paths:
         "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}/vergleich:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: basis, in: query, required: false, schema: { type: string, pattern: "^BB-[0-9]{4,}$", example: "BB-0001" }, description: "Die Bezugsbasis dieser Kennzahl; ohne Angabe die laufende, sonst die zuletzt beendete. Eine Basis einer anderen Kennzahl ist 404." }
+      - { name: von, in: query, required: false, schema: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$", example: "2027-11" }, description: "Erster Monat (JJJJ-MM). Ohne von/bis die zwölf abgeschlossenen Monate vor dem laufenden (Zeitzone der Geltung); höchstens 120 Monate." }
+      - { name: bis, in: query, required: false, schema: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$", example: "2028-02" }, description: "Letzter Monat (JJJJ-MM), eingeschlossen." }
+    get:
+      tags: [kennzahlen]
+      summary: Der Vergleich mit der Bezugsbasis - je Monat gemessen, Bedingung, erwartet, Δ, Urteil mit Band; roh daneben ohne Urteil; Zeitraum Σ ÷ Σ.
+      description: >
+        Recht `bezugsbasis.ansehen` (Zaun über die Kennzahl; fremd oder verborgen ist 404, nie 403). UEMS AP-17
+        IP-19 (U1–U6, E7 = A, E8 = A); Vertrag docs/contracts/v2/bezugsbasis.md §16. Je Monat `roh` (Veränderung
+        zum Vormonat, Operation `roh`, immer `ohne_urteil`) und `bereinigt` (Operation `vergleich` gegen die
+        freigegebene Fassung, die am letzten Tag des Monats gilt, P4): gemessen = gespeicherter Zähler der Kennzahl
+        mit Version, `bedingung` = jede Variable mit Wert und Fassung, erwartet, Δ, Band = max(Toleranz, Streuung),
+        Urteil oder Grund, Kennzeichen nach G5. `zeitraum` = Operation `zeitraum` gegen die Fassung am letzten Tag
+        von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel (U5). Gerechnet wird in BezugsbasisRegeln; nichts wird
+        gespeichert. Ein unbekannter oder falsch geformter Parameter ist 400 `anfrage_ungueltig` mit `feld`.
+      responses:
+        "200":
+          description: Der Vergleich.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsbasisVergleich" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
   /api/v1/bezugsdaten/vorlagen:
     get:
       tags: [bezugsgroessen]
@@ -26980,6 +27007,125 @@ components:
         einfluss_art: { type: string, enum: [produktion, betriebszeit, wetter, sonstige] }
         einsatz: { type: string, example: "EE-3" }
         satz: { type: string, enum: ["ohne Zahl — erst als Bezugsgröße erfassen"] }
+    BezugsbasisVergleich:
+      type: object
+      description: Der Vergleich einer Kennzahl mit ihrer Bezugsbasis (AP-17 IP-19, U1–U6). Nur Lesen; Zahlen als Dezimaltext, Prozent eine Stelle (M5).
+      required: [kennzahl, bezugsbasis, von, bis, zeitzone, monate, zeitraum, staende, stand_satz, satz]
+      properties:
+        kennzahl: { $ref: "#/components/schemas/KennzahlWerteKennzahl" }
+        bezugsbasis:
+          nullable: true
+          description: Die gelesene Bezugsbasis - null, wenn die Kennzahl keine hat (jeder Monat `basis_fehlt`).
+          allOf: [{ $ref: "#/components/schemas/BezugsbasisVergleichBasis" }]
+        von: { type: string, example: "2027-11" }
+        bis: { type: string, example: "2028-02" }
+        zeitzone: { type: string, example: Europe/Berlin }
+        monate: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVergleichMonat" } }
+        zeitraum: { $ref: "#/components/schemas/BezugsbasisVergleichZeitraum" }
+        staende: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVergleichStand" }, description: "Leistungsvergleichs-Stände (S5) - bis IP-21b immer leer." }
+        stand_satz: { type: string, example: "ungesichert — noch kein Stand" }
+        satz: { type: string, nullable: true, description: "Nur ohne Bezugsbasis: der Leer-Satz (§10)." }
+    BezugsbasisVergleichBasis:
+      type: object
+      required: [id, kennzeichen, beendet_zum, beendet_grund]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: BB-0001 }
+        beendet_zum: { type: string, format: date, nullable: true }
+        beendet_grund: { type: string, nullable: true }
+    BezugsbasisVergleichMonat:
+      type: object
+      description: Ein Monat - roh und bereinigt getrennt (U1); nur `bereinigt` trägt ein Urteil.
+      required: [periode, beschriftung, roh, bereinigt, satz]
+      properties:
+        periode: { type: string, example: "2027-12" }
+        beschriftung: { type: string, example: Dezember 2027 }
+        roh: { $ref: "#/components/schemas/BezugsbasisVergleichRoh" }
+        bereinigt: { $ref: "#/components/schemas/BezugsbasisVergleichBereinigt" }
+        satz: { type: string, description: "Der Kundensatz des Monats (§10/§16, U6: keine Ursache)." }
+    BezugsbasisVergleichRoh:
+      type: object
+      description: Die rohe Veränderung zum Vormonat (Operation `roh`) - nie ein Urteil (U1, VG3).
+      required: [gemessen, vorher, delta_prozent, richtung, variable_delta_prozent, urteil]
+      properties:
+        gemessen: { type: string, nullable: true }
+        vorher: { type: string, nullable: true }
+        delta_prozent: { type: string, nullable: true, example: "-8.8" }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
+        variable_delta_prozent: { type: string, nullable: true, example: "-21.9", description: "Die Veränderung des Nenners (Variable 1) zum Vormonat." }
+        urteil: { type: string, enum: [ohne_urteil] }
+    BezugsbasisVergleichBereinigt:
+      type: object
+      description: Das Ergebnis der Operation `vergleich` gegen die Fassung am letzten Tag des Monats (P4), mit gemessen und Bedingung (U4).
+      required: [fassung, gemessen, bedingung, erwartet, delta_prozent, band_prozent, richtung, urteil, grund, kennzeichen]
+      properties:
+        fassung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/BezugsbasisVergleichFassung" }]
+        gemessen: { $ref: "#/components/schemas/BezugsbasisVergleichGemessen" }
+        bedingung: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVergleichBedingung" } }
+        erwartet: { type: string, nullable: true, example: "69098" }
+        delta_prozent: { type: string, nullable: true, example: "12.9" }
+        band_prozent: { type: string, nullable: true, example: "2.0" }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende, null] }
+        kennzeichen: { type: array, items: { type: string }, description: "G5, in dieser Reihenfolge, ohne Doppel." }
+    BezugsbasisVergleichFassung:
+      type: object
+      required: [fassung, methode, referenzperiode, datenlage, gilt_ab, gilt_bis]
+      properties:
+        fassung: { type: integer }
+        methode: { type: string, enum: [verhaeltnis, regression_eine_variable, regression_zwei_variablen, gradtage] }
+        referenzperiode: { type: string, example: "2026-11/2027-10" }
+        datenlage: { type: string, enum: [vollstaendig, vorlaeufig] }
+        gilt_ab: { type: string, format: date }
+        gilt_bis: { type: string, format: date, nullable: true }
+    BezugsbasisVergleichGemessen:
+      type: object
+      description: Der gespeicherte Zähler der Kennzahl (die Energie) mit Version.
+      required: [wert, einheit, version, zustand]
+      properties:
+        wert: { type: string, nullable: true }
+        einheit: { type: string, example: kWh }
+        version: { type: integer, nullable: true }
+        zustand: { type: string, nullable: true }
+    BezugsbasisVergleichBedingung:
+      type: object
+      description: Eine Variable mit Wert - Bezugsgröße mit wirksamer Fassung, oder ohne Bezugsgröße der gespeicherte Nenner der Kennzahl mit Version.
+      required: [position, quelle, kennzeichen, name, wert, einheit, fassung, version, zustand]
+      properties:
+        position: { type: integer, enum: [1, 2] }
+        quelle: { type: string, enum: [bezugsgroesse, kennzahl] }
+        kennzeichen: { type: string, nullable: true, example: BZ-1 }
+        name: { type: string }
+        wert: { type: string, nullable: true }
+        einheit: { type: string }
+        fassung: { type: integer, nullable: true }
+        version: { type: integer, nullable: true }
+        zustand: { type: string, nullable: true }
+    BezugsbasisVergleichZeitraum:
+      type: object
+      description: Operation `zeitraum` (U5) gegen die Fassung am letzten Tag von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel.
+      required: [fassung, gemessen, erwartet, delta_prozent, band_prozent, richtung, urteil, grund, monate, kennzeichen, satz]
+      properties:
+        fassung: { type: integer, nullable: true }
+        gemessen: { type: string, nullable: true }
+        erwartet: { type: string, nullable: true }
+        delta_prozent: { type: string, nullable: true, example: "1.8" }
+        band_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende, null] }
+        monate: { type: string, nullable: true, example: "4 von 4" }
+        kennzeichen: { type: array, items: { type: string } }
+        satz: { type: string }
+    BezugsbasisVergleichStand:
+      type: object
+      required: [nummer, am]
+      properties:
+        nummer: { type: integer }
+        am: { type: string, format: date }
     KennzahlWerte:
       type: object
       required: [kennzahl, periode, von, bis, zeitzone, version, werte]

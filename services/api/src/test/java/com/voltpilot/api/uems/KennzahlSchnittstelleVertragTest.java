@@ -196,7 +196,9 @@ class KennzahlSchnittstelleVertragTest {
                 .containsExactlyInAnyOrderElementsOf(methoden));
         // Die Bezugsbasis an der Kennzahl (AP-17 IP-7) hält BezugsbasisGrundlageTest fest.
         assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/kennzahlen"))
-                .filter(p -> !p.contains("/bezugsbasen")).toList())
+                .filter(p -> !p.contains("/bezugsbasen"))
+                // Der Vergleich (AP-17 IP-19) steht in BezugsbasisVergleichSchnittstelleVertragTest.
+                .filter(p -> !p.equals("/api/v1/kennzahlen/{id}/vergleich")).toList())
                 .containsExactlyInAnyOrderElementsOf(erwartet.keySet());
     }
 

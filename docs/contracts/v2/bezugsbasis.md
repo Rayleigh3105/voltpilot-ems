@@ -346,6 +346,44 @@ Rechte: Schreiben `bezugsbasis.verwalten` am Geltungsbereich der Kennzahl (`@Rec
 403/404 → Inhalt 422 (`begruendung_fehlt`, `grund_unbekannt`, `rueckwirkend_fehlt`, `tag_vor_fassung`) → Zustand 409
 (`bezugsbasis_beendet`, `keine_freigegebene_fassung`).
 
+## 16. Vergleich (IP-19: der Leser `BezugsbasisVergleich`, U1–U6, E7 = A)
+
+`GET /api/v1/kennzahlen/{id}/vergleich?basis=&von=&bis=` — nur Lesen, Recht `bezugsbasis.ansehen` im Kommentar, Sichtbarkeit
+über die Kennzahl (außerhalb der Sicht, fremder Kundenbereich, Basis einer anderen Kennzahl: 404). `basis` = `BB-…` (ohne: die
+laufende, sonst die zuletzt beendete); `von`/`bis` = `JJJJ-MM` (ohne: die zwölf abgeschlossenen Monate vor dem laufenden,
+Zeitzone der Geltung; höchstens 120). Unbekannter oder falsch geformter Parameter: 400 `anfrage_ungueltig` mit `feld`.
+Controller `BezugsbasisVergleichController`, DTO `BezugsbasisVergleichDto`, OpenAPI `BezugsbasisVergleich*`.
+
+**Gerechnet wird nicht im Leser:** erwartet, Δ, Band, Urteil, Spannweite und die Kennzeichen-Liste sind die Operationen
+`vergleich`, `zeitraum` und `roh` der Zwillinge (§5, §7, §8) über die **eingefrorene** Fassung (M4). Gelesen werden nur
+`freigegeben`e Fassungen; ein Entwurf vergleicht nie.
+
+| Teil | Woher | Regel |
+|---|---|---|
+| `monate[].roh` | gespeicherter Zähler der Kennzahl gegen den Vormonat; `variable_delta_prozent` = der Nenner | Operation `roh`: immer `ohne_urteil` (U1, VG3) |
+| `monate[].bereinigt.fassung` | die freigegebene Fassung, die am **letzten Tag** des Monats gilt | P4; ohne sie `basis_beendet` (Basis beendet vor dem Tag oder letzte Fassung endete davor), sonst `basis_fehlt` |
+| `…gemessen` | `kennzahl_wert` der neuesten Version: `zaehler` (die Energie), `version`, `zustand` = `menge_zustand`, Kennzeichen des Werts (G5 Nr. 6) | „unvollständig“ → Regel-Zustand `unvollstaendig` (G2: Zahl mit Richtung, `ohne_urteil`) |
+| `…bedingung[]` | je `bezugsbasis_variable` der Periodenwert der Bezugsgröße über den Kennzahl-Eingangsleser (wirksame Fassung, nie verteilt; `quelle` `bezugsgroesse`, `fassung`); ohne Bezugsgröße an Position 1 — Stammdatum-Nenner (V3) oder Zusammenfassung (Σ ÷ Σ der Paare, B2/U5) — der gespeicherte `nenner` der Kennzahl mit `version` (`quelle` `kennzahl`) | U4; Kennzeichen der Bezugsgrößen-Fassung (etwa „Temperatur von VoltPilot bezogen …“) erben nach G5 |
+| `…erwartet · delta_prozent · band_prozent · richtung · urteil · grund · kennzeichen` | Operation `vergleich` | U2, U3 (Band = max(Toleranz, Streuung)), G2, G3, G5 |
+| `zeitraum` | Operation `zeitraum` über alle Monate gegen die Fassung am letzten Tag von `bis` (der Zeitraum ist eine Periode, P4) | U5: Σ ÷ Σ, nie ein Mittel; fehlt ein Monat, `ohne_urteil` mit „x von y Monaten“ |
+| `staende` · `stand_satz` | Leistungsvergleichs-Stände (S5) | bis zum Leser IP-21b immer leer und „ungesichert — noch kein Stand“ |
+
+Die G3-Spannweite wird aus `spannweite_von/_bis` wie in `modell` toleriert: [min × 0,9, max × 1,1] (Startwert ± 10 %), exakt.
+Eine Fassung ohne Spannweite (Verhältnis, BB-0004 der Referenzdatei) prüft G3 nicht.
+
+**Kundensätze** (`monate[].satz`, `zeitraum.satz`; `BezugsbasisVergleichSatz`, geprüft in `BezugsbasisVergleichSatzTest`):
+wörtlich §10 für schlechter, besser, im Rahmen, Zeitraum, Vorläufig, Beendet und Leer; Anzeige-Rundung M5 (ganze Einheiten,
+Prozent eine Stelle, das Band ohne Null am Ende: „± 2 %“). Abweichend von §10 nennt der Satz die Einflussgröße mit ihrem
+Namen und ihrer Einheit, ohne Artikel und ohne Wortform („Modell nicht anwendbar: Produktionsmenge im März 2028 (390 000 kg)
+…“, „… bei 480 Kd“ statt „bei 480 Gradtagen“) — die Fläche (IP-20) darf feiner formulieren, die Zahlen bleiben. Weitere
+Gründe: „{Monat}: nicht bewertbar — der Monat ist noch nicht zu Ende.“ · „… — kein gemessener Wert.“ · „… — {Variable} hat
+keinen Wert.“ · „… — für diesen Monat gilt noch keine Fassung der Bezugsbasis BB-….“ · `ohne_urteil`: „… — x % mehr/weniger;
+ohne Urteil, die Werte sind unvollständig.“ Kein Satz nennt eine Ursache (U6).
+
+Nachweis: `BezugsbasisVergleichApiTest` (Testcontainers: R2 Dezember 2027 roh −8,8 % ohne Urteil, bereinigt 69 098 kWh,
++12,9 % schlechter; R11 1,8 % statt 2,2 %; R3 Gas ± 4,6 % im Rahmen; März 2028 `variable_ausserhalb`; P4 Fassung 1/2;
+ohne Basis `basis_fehlt`; Zaun 404), `BezugsbasisVergleichSatzTest`, `BezugsbasisVergleichSchnittstelleVertragTest`.
+
 ## 17. Statische Faktoren an der Fassung (V3, E6 = A; IP-16b)
 
 `POST …/bezugsbasen/{bid}/fassungen` nimmt `faktoren: [{art, objekt_id?, wortlaut?}]`. `art` aus `faktor_art`
