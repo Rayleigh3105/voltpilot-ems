@@ -164,6 +164,65 @@ class BilanzApiTest {
     }
 
     /**
+     * AP-07 IP-18b Summen-Wächter: MS-12 und MS-13 sind beide zugeordnet und lesen danach denselben Kanal DERSELBEN
+     * Box über zwei Komponenten - ein geteilter Punkt. Meldet die Box den Plan je Komponente, trägt jede Reihe
+     * denselben Wert, und die Summe „zugeordnet“ zählt ihn zweimal. Die Bilanz benennt das neben den Zahlen und
+     * ändert keine; ohne Fund fehlt das Feld (Bestand Byte für Byte gleich).
+     */
+    @Test
+    void zweiZugeordneteAmSelbenRegisterEinerBoxWerdenBenanntOhneDassSichEineZahlAendert() throws Exception {
+        Welt w = halle2();
+        JsonNode vorher = hauptzaehler(ok(ruf(w, HttpMethod.GET, bilanzPfad(w), null), 200), "MS-10")
+                .get("abschnitte").get(0);
+        assertThat(vorher.has("geteilte_register")).as("ohne geteilten Punkt fehlt das Feld").isFalse();
+
+        root.update("UPDATE device_measurement_selection SET device_id = ? WHERE entity_id = ?",
+                w.boxen().get("MS-12"), w.komponenten().get("MS-13"));
+        Map<String, String> stand = Bestandsschutz.fingerabdruck(root, List.of());
+        JsonNode nachher = hauptzaehler(ok(ruf(w, HttpMethod.GET, bilanzPfad(w), null), 200), "MS-10")
+                .get("abschnitte").get(0);
+        assertThat(Bestandsschutz.abweichungen(stand, Bestandsschutz.fingerabdruck(root, List.of())))
+                .as("die Bilanz liest nur").isEmpty();
+        assertThat(nachher.get("geteilte_register")).hasSize(1);
+        JsonNode fund = nachher.get("geteilte_register").get(0);
+        assertThat(fund.get("rolle").asText()).isEqualTo("zugeordnet");
+        assertThat(fund.get("register").asText()).as("nur die Hauptgröße, nicht die Leistung").isEqualTo(ENERGIE);
+        assertThat(fund.get("messstellen")).extracting(JsonNode::asText).containsExactly("MS-12", "MS-13");
+        assertThat(nachher.get("werte")).as("benennen, nicht rechnen").isEqualTo(vorher.get("werte"));
+        assertThat(nachher.get("terme")).isEqualTo(vorher.get("terme"));
+    }
+
+    /**
+     * AP-07 IP-18b, {@code MessstelleFormelWerteRepository#frischester}: MS-12 und MS-13 lesen die Leistung als
+     * geteilten Punkt an EINER Box, und die Box sendet je Komponente ({@code edge_entity_id}). Jeder Term des
+     * Live-Rests liest den Wert SEINER Komponente - vorher nahm jeder die jüngste Zeile des Punkts, beide also 7,9 kW,
+     * und der Rest stand bei 8,5 statt 1,6 kW.
+     */
+    @Test
+    void amGeteiltenPunktLiestJederTermDenWertSeinerKomponente() throws Exception {
+        Welt w = halle2();
+        leistungen(w, Instant.now());
+        UUID box = w.boxen().get("MS-12");
+        root.update("UPDATE device_measurement_selection SET device_id = ? WHERE entity_id = ?", box,
+                w.komponenten().get("MS-13"));
+        root.update("DELETE FROM device_measurement_sample WHERE device_id IN (?, ?) AND point_key = ?", box,
+                w.boxen().get("MS-13"), LEISTUNG);
+        Instant jetzt = Instant.now();
+        for (String kz : List.of("MS-12", "MS-13")) {
+            root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, "
+                    + "point_key, raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, "
+                    + "entity_id, edge_entity_id, role) VALUES (?, ?, ?, (SELECT site_id FROM device WHERE id = ?), ?, ?, "
+                    + "?, ?, 'good', ?, ?, 'gauge', ?, ?, 'fuehrend')",
+                    Timestamp.from(jetzt.plusMillis("MS-13".equals(kz) ? 1 : 0)), Timestamp.from(jetzt), w.mandant(),
+                    box, box, LEISTUNG, MOMENTAUFNAHME_W.get(kz), MOMENTAUFNAHME_W.get(kz), KATALOG,
+                    SEQ.incrementAndGet(), w.komponenten().get(kz), w.komponenten().get(kz));
+        }
+        JsonNode live = hauptzaehler(ok(ruf(w, HttpMethod.GET, bilanzPfad(w), null), 200), "MS-10").get("live");
+        assertThat(live.get("wert").asDouble()).as("jeder Term liest seine Komponente, nie 8,5").isEqualTo(1.6);
+        assertThat(live.get("fehlende")).isEmpty();
+    }
+
+    /**
      * Die Rest-Messstelle antwortet über die PR-688-Routen mit derselben Rechnung aus der Stellung (kW). Das
      * befristete Kennzeichen „vorläufig (Geräte-Verdichtung)“ (AP-10 IP-9) ist mit IP-10 entfallen: die
      * Periodenwerte liegen jetzt in der Speicherklasse, der Live-Wert bleibt live. Ohne Terme ist ein Rest nie „0“.

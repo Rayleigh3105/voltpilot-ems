@@ -72,15 +72,24 @@ public class MessstelleFormelWerteRepository {
                 .stream().findFirst();
     }
 
-    /** Der jeweils frischeste GUTE numerische Wert des Kanals (für den Live-Wert). */
-    public Optional<Messwert> frischester(Quelle q, String pointKey) {
+    /**
+     * Der jeweils frischeste GUTE numerische Wert des Kanals DIESER Komponente (für den Live-Wert).
+     *
+     * <p>⚠ Geteilter Punkt (AP-07 IP-18b): meldet die Box den Plan je Komponente, liegen am selben
+     * {@code (device_id, point_key)} Zeilen JE KOMPONENTE ({@code edge_entity_id}). Gelesen werden
+     * nur die Zeilen der Box ({@code edge_entity_id IS NULL}, alles Heutige) und die der eigenen
+     * Komponente - nie der Wert der anderen. Ohne geteilten Punkt ist jede Zeile eine der Box und
+     * das Ergebnis dasselbe wie vorher.
+     */
+    public Optional<Messwert> frischester(Quelle q, String pointKey, UUID entityId) {
         return jdbc.query("SELECT COALESCE(decoded_numeric, raw_numeric) AS wert, time "
                 + "FROM device_measurement_sample "
                 + "WHERE tenant_id = ? AND site_id = ? AND device_id = ? AND point_key = ? "
+                + "AND (edge_entity_id IS NULL OR edge_entity_id = ?) "
                 + "AND quality = 'good' AND COALESCE(decoded_numeric, raw_numeric) IS NOT NULL "
                 + "ORDER BY time DESC, edge_sequence DESC LIMIT 1",
                 (rs, n) -> new Messwert(rs.getDouble("wert"), rs.getTimestamp("time").toInstant()),
-                TenantContext.get(), q.siteId(), q.deviceId(), pointKey)
+                TenantContext.get(), q.siteId(), q.deviceId(), pointKey, entityId)
                 .stream().findFirst();
     }
 

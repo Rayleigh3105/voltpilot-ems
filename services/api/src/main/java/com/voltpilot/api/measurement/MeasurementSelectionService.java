@@ -135,6 +135,56 @@ public class MeasurementSelectionService {
                 state.disableNotice(), points, state.events(), state.volumeEstimate());
     }
 
+    /** Wer die Anstoß-Revision im Verlauf der Auswahl anfordert (AP-07 IP-18b Einschalten). */
+    public static final String ANSTOSS_AKTEUR = "system:plan-je-komponente";
+    public static final String ANSTOSS_NAME = "VoltPilot";
+    public static final String ANSTOSS_GRUND =
+            "Die Box hat ihre Fähigkeit für den Plan je Komponente geändert; der Plan wird neu ausgeliefert.";
+
+    /**
+     * Revisions-Anstoß (AP-07 IP-18b Einschalten): die Box hat
+     * {@link MeasurementConfigPublisher#FAEHIGKEIT_JE_KOMPONENTE} neu gemeldet oder verloren. Ihr
+     * Core weist dieselbe Revision mit anderem Inhalt als {@code stale revision} ab und kann selbst
+     * keine erzeugen - darum legt die Cloud Revision + 1 an, und der
+     * {@link MeasurementConfigReconciler} liefert den Plan in der Form aus, die die Box jetzt kann.
+     *
+     * <p>Nur wenn beide Formen verschieden sind, also ein geteilter Punkt besteht: sonst sind die
+     * Bytes beider Formen gleich, und die Box behält ihre Revision. Die Revision trägt EIN Ereignis
+     * {@code selection_requested} (der Schlüssel {@code (device_id, desired_revision, event_kind)}
+     * erlaubt genau eines) an der ersten aktiven Zeile des geteilten Punkts mit ihren eigenen
+     * Werten; keine Auswahlzeile wird geändert, und die Quittung dieser Revision schreibt ihr
+     * {@code edge_ack} wie jede andere. Eigene Transaktion: der Aufruf kommt nach dem Commit der
+     * Fähigkeitsmeldung ({@link MessplanRevisionsAnstoss}).
+     *
+     * @return die neue Revision, {@code 0} ohne Anstoß
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public long planNeuAusliefern(UUID deviceId) {
+        DeviceScope scope = repository.lockDevice(deviceId);
+        if (scope == null) return 0;
+        List<SelectionPoint> punkte = forPublishing(deviceId).selections();
+        List<MeasurementPlan.Entry> jeKomponente = MeasurementPlan.composeJeKomponente(punkte, Map.of());
+        if (jeKomponente.equals(MeasurementPlan.compose(punkte, Map.of()))) return 0;
+        Map<String, Long> vorkommen = new java.util.HashMap<>();
+        for (MeasurementPlan.Entry e : jeKomponente) vorkommen.merge(e.pointKey(), 1L, Long::sum);
+        Row anker = repository.current(deviceId).stream()
+                .filter(r -> r.enabled() && r.entityId() != null && vorkommen.getOrDefault(r.pointKey(), 0L) > 1
+                        && punkte.stream().anyMatch(p -> p.enabled() && r.entityId().equals(p.entityId())
+                                && r.pointKey().equals(p.pointKey())))
+                .min(java.util.Comparator.comparing((Row r) -> r.pointKey())
+                        .thenComparing(r -> r.entityId().toString()))
+                .orElse(null);
+        if (anker == null) return 0;
+        long next = repository.revision(deviceId) + 1;
+        repository.appendEvent(scope, anker.entityId(), anker.pointKey(), next,
+                UUID.nameUUIDFromBytes(("plan-je-komponente:" + deviceId + ":" + next)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                true, anker.cadenceS(), anker.enabledAt(), null, anker.catalogVersion(),
+                ANSTOSS_AKTEUR, ANSTOSS_NAME, ANSTOSS_GRUND, anker.customDefinitionJson(),
+                anker.retention());
+        return next;
+    }
+
     public static State notDelivered(State state, String reason) {
         return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
                 state.catalogVersion(), state.status(), reason, state.activationNotice(),

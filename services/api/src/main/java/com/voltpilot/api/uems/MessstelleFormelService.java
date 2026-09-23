@@ -694,7 +694,7 @@ public class MessstelleFormelService {
                 if (q.isEmpty()) {
                     fehlende.add(fehlt(t, "kein_geraet"));
                 } else {
-                    Optional<Messwert> mw = werte.frischester(q.get(), t.pointKey());
+                    Optional<Messwert> mw = werte.frischester(q.get(), t.pointKey(), t.entityId());
                     if (mw.isEmpty()) {
                         fehlende.add(fehlt(t, "kein_wert"));
                     } else if (mw.get().zeit().isBefore(cutoff)) {
@@ -748,7 +748,7 @@ public class MessstelleFormelService {
             if (ref == null) {
                 return new RohWert(null, null, q.hauptgroesse().einheit(), List.of());
             }
-            Optional<Messwert> mw = werte.frischester(ref.quelle(), ref.pointKey());
+            Optional<Messwert> mw = werte.frischester(ref.quelle(), ref.pointKey(), ref.entityId());
             if (mw.isEmpty() || mw.get().zeit().isBefore(cutoff)) {
                 return new RohWert(null, null, q.hauptgroesse().einheit(), List.of());
             }
@@ -810,7 +810,7 @@ public class MessstelleFormelService {
             if (l == null) {
                 grund = "kein_geraet";
             } else {
-                Optional<Messwert> mw = werte.frischester(l.quelle(), l.pointKey());
+                Optional<Messwert> mw = werte.frischester(l.quelle(), l.pointKey(), l.entityId());
                 if (mw.isEmpty()) {
                     grund = "kein_wert";
                 } else if (mw.get().zeit().isBefore(cutoff)) {
@@ -900,7 +900,7 @@ public class MessstelleFormelService {
     }
 
     /** Die führende Wirkleistung einer Messstelle in der Richtung ihrer Hauptgröße, jetzt, samt Box. */
-    private record Leistung(Quelle quelle, String pointKey, String einheit, String anteil) {}
+    private record Leistung(Quelle quelle, String pointKey, String einheit, String anteil, UUID entityId) {}
 
     private static final String WIRKLEISTUNG = "Wirkleistung";
 
@@ -916,7 +916,8 @@ public class MessstelleFormelService {
             }
             Optional<Quelle> scope = werte.quelle(b.entityId(), b.kanal());
             if (scope.isPresent()) {
-                return new Leistung(scope.get(), b.kanal(), kanalEinheit(b.kanal(), RestLive.EINHEIT), b.anteil());
+                return new Leistung(scope.get(), b.kanal(), kanalEinheit(b.kanal(), RestLive.EINHEIT), b.anteil(),
+                        b.entityId());
             }
         }
         return null;
@@ -1224,7 +1225,7 @@ public class MessstelleFormelService {
     // ----------------------------------------------------------------- Helfer
 
     /** Ein aufgelöster Messkanal einer gemessenen Messstelle. */
-    private record KanalRef(Quelle quelle, String pointKey, String einheit) {}
+    private record KanalRef(Quelle quelle, String pointKey, String einheit, UUID entityId) {}
 
     /** Die führende Quelle der Hauptgröße, die jetzt gilt, auf ihre lesende Box aufgelöst. */
     private KanalRef fuehrenderKanal(Messstelle q) {
@@ -1240,7 +1241,7 @@ public class MessstelleFormelService {
             }
             Optional<Quelle> scope = werte.quelle(b.entityId(), b.kanal());
             if (scope.isPresent()) {
-                return new KanalRef(scope.get(), b.kanal(), kanalEinheit(b.kanal(), h.einheit()));
+                return new KanalRef(scope.get(), b.kanal(), kanalEinheit(b.kanal(), h.einheit()), b.entityId());
             }
         }
         return null;

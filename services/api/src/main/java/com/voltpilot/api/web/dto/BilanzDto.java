@@ -81,7 +81,23 @@ public final class BilanzDto {
             String raster,
             List<Term> terme,
             List<String> ausserhalb,
-            List<Werte> werte) {}
+            List<Werte> werte,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY) List<GeteiltesRegister> geteilteRegister) {
+
+        public Abschnitt(LocalDate von, LocalDate bis, String raster, List<Term> terme, List<String> ausserhalb,
+                List<Werte> werte) {
+            this(von, bis, raster, terme, ausserhalb, werte, List.of());
+        }
+    }
+
+    /**
+     * Summen-Wächter des geteilten Punkts (AP-07 IP-18b): in der Summe {@code rolle} lesen die
+     * {@code messstellen} denselben Messpunkt {@code register} derselben Box über zwei Komponenten.
+     * Liest jede Komponente dasselbe Gerät, zählt die Summe den Wert zweimal. Eine Warnung NEBEN den
+     * Zahlen - sie ändert keine; ohne Fund fehlt das Feld (Bestand Byte für Byte gleich).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GeteiltesRegister(String rolle, String register, List<String> messstellen) {}
 
     /** Ein Term des Rests an diesen Tagen: Messstelle, Bilanz-Rolle ({@code zufluss} · {@code abfluss} · {@code zugeordnet}), Anteil. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

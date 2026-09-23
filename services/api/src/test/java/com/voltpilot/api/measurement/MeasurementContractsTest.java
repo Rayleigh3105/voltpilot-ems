@@ -174,6 +174,62 @@ class MeasurementContractsTest {
         assertThat(listener.handle(STATUS_TOPIC.replace(TENANT.toString(),
                 "10000000-0000-0000-0000-000000000001"), valid)).isFalse();
         verify(repository, never()).applyAcknowledgement(eq(DEVICE), eq(8L), any(), any(), any(), any());
+        // Eine Quittung ohne entity_id nimmt nie den Weg je Komponente (AP-07 IP-18b).
+        verify(repository, never()).applyAcknowledgementJeKomponente(any(), anyLong(), any(), any(), any(),
+                any(), any());
+    }
+
+    /**
+     * AP-07 IP-18b Einschalten, Status je Komponente ({@code x-rejection-entity-rule}): die Box lehnt
+     * EINE Komponente eines geteilten Punkts ab und liest ihn für die andere - vorher verwarf der
+     * Listener eine solche Quittung ganz ({@code entity_id} war kein erlaubtes Feld). Die Fälle,
+     * die der Core ablehnt ({@code geteilter_punkt_test.go}), lehnt auch die Cloud ab.
+     */
+    @Test
+    void statusJeKomponenteNimmtDieAblehnungEinerKomponenteAn() throws Exception {
+        MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
+        when(repository.aktiverDeviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
+        when(repository.revision(DEVICE)).thenReturn(10L);
+        when(repository.acknowledgedRevision(DEVICE)).thenReturn(9L);
+        MeasurementConfigStatusListener listener = new MeasurementConfigStatusListener(
+                "tcp://unused:1883", "", "", repository, mapper);
+        UUID b = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
+        String geteilt = "deye.hybrid_1p.battery.battery";
+        java.util.function.Function<String, byte[]> status = rejected -> ("{\"schema_version\":\"2.0\","
+                + "\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\"" + DEVICE
+                + "\",\"revision\":10,\"applied_at\":\"2026-09-23T10:00:00Z\",\"accepted\":[\"" + geteilt
+                + "\"],\"rejected\":[" + rejected + "],\"edge_version\":\"edge-test\"}").getBytes();
+
+        assertThat(listener.handle(STATUS_TOPIC, status.apply("{\"point_key\":\"" + geteilt
+                + "\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + b + "\"}"))).isTrue();
+        verify(repository).applyAcknowledgementJeKomponente(eq(DEVICE), eq(10L),
+                eq(Instant.parse("2026-09-23T10:00:00Z")), eq(Set.of(geteilt)), eq(Map.of()),
+                eq(Map.of(new MeasurementSelectionRepository.KomponentenAblehnung(geteilt, b),
+                        "binding_unavailable")), eq("edge-test"));
+        verify(repository, never()).applyAcknowledgement(any(), anyLong(), any(), any(), any(), any());
+
+        String a = "00000000-0000-0000-0000-0000000000a1";
+        for (String kaputt : List.of(
+                // ganzer Punkt angenommen UND abgelehnt
+                "{\"point_key\":\"" + geteilt + "\",\"reason\":\"binding_unavailable\"}",
+                // dieselbe Komponente zweimal, auch in anderer Schreibweise
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + a + "\"},"
+                        + "{\"point_key\":\"p.other\",\"reason\":\"unknown_point\",\"entity_id\":\""
+                        + a.toUpperCase() + "\"}",
+                // Komponente neben ganzem Punkt, in beiden Reihenfolgen
+                "{\"point_key\":\"p.other\",\"reason\":\"unknown_point\"},"
+                        + "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + a + "\"}",
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + a + "\"},"
+                        + "{\"point_key\":\"p.other\",\"reason\":\"unknown_point\"}",
+                // kaputte Komponente
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"nope\"}",
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"1-1-1-1-1\"}",
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":7}",
+                // unbekanntes Wort bleibt unbekannt, auch je Komponente
+                "{\"point_key\":\"p.other\",\"reason\":\"erfunden\",\"entity_id\":\"" + a + "\"}")) {
+            assertThat(listener.handle(STATUS_TOPIC, status.apply(kaputt))).as(kaputt).isFalse();
+        }
+        verify(repository).applyAcknowledgementJeKomponente(any(), anyLong(), any(), any(), any(), any(), any());
     }
 
     @Test

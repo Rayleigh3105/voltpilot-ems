@@ -322,7 +322,22 @@ public class BilanzService {
                     List.copyOf(eingangDtos)));
         }
         return new BilanzDto.Abschnitt(abschnittVon, abschnittBis, raster, List.copyOf(terme),
-                fassung.ausserhalb(), List.copyOf(zeilen));
+                fassung.ausserhalb(), List.copyOf(zeilen),
+                geteilteRegister(terme, abschnittVon, abschnittBis, herkunft.zone()));
+    }
+
+    /** Summen-Wächter des geteilten Punkts ({@link GeteiltesRegister}): benennt, ändert keine Zahl. */
+    private List<BilanzDto.GeteiltesRegister> geteilteRegister(List<BilanzDto.Term> terme, LocalDate von,
+            LocalDate bis, ZoneId zone) {
+        List<GeteiltesRegister.Summand> summanden = terme.stream()
+                .map(t -> new GeteiltesRegister.Summand(t.messstelleId(), t.messstelle(), t.rolle())).toList();
+        Set<UUID> ids = new LinkedHashSet<>();
+        summanden.forEach(s -> { if (s.messstelleId() != null) ids.add(s.messstelleId()); });
+        if (ids.size() < 2) return List.of();
+        List<GeteiltesRegister.Bindung> bindungen = GeteiltesRegister.lade(jdbc, ids,
+                von.atStartOfDay(zone).toInstant(), bis.plusDays(1).atStartOfDay(zone).toInstant());
+        return GeteiltesRegister.finde(summanden, bindungen).stream()
+                .map(f -> new BilanzDto.GeteiltesRegister(f.rolle(), f.register(), f.messstellen())).toList();
     }
 
     private static BilanzDto.Summe summe(List<BilanzAbleitung.Summand> summanden, String ebene) {

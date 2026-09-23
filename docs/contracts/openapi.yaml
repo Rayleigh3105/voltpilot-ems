@@ -25495,6 +25495,20 @@ components:
         terme: { type: array, items: { $ref: "#/components/schemas/BilanzTerm" } }
         ausserhalb: { type: array, items: { type: string }, description: "Abzweige desselben Systems ohne Vorgänger - gemessen, aber in keiner Bilanz." }
         werte: { type: array, items: { $ref: "#/components/schemas/BilanzWerte" } }
+        geteilte_register:
+          type: array
+          items: { $ref: "#/components/schemas/BilanzGeteiltesRegister" }
+          description: >
+            Summen-Wächter des geteilten Punkts (AP-07 IP-18b): in einer Summe lesen zwei Messstellen denselben
+            Messpunkt derselben Box über zwei Komponenten. Liest jede Komponente dasselbe Gerät, zählt die Summe den
+            Wert zweimal. Eine Warnung neben den Zahlen - sie ändert keine. Fehlt ohne Fund.
+    BilanzGeteiltesRegister:
+      type: object
+      required: [rolle, register, messstellen]
+      properties:
+        rolle: { type: string, enum: [zufluss, abfluss, zugeordnet] }
+        register: { type: string, description: "Der Messpunkt (point_key) an der Box.", example: sunspec.model_203.totwhimp }
+        messstellen: { type: array, items: { type: string }, minItems: 2, example: [MS-12, MS-13] }
     BilanzTerm:
       type: object
       required: [messstelle, messstelle_id, name, rolle, anteil]

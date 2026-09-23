@@ -442,6 +442,85 @@ public class MeasurementSelectionRepository {
         return updated;
     }
 
+    /** Die Ablehnung EINER Komponente eines geteilten Punkts (Status {@code rejected[].entity_id}). */
+    public record KomponentenAblehnung(String pointKey, UUID entityId) {}
+
+    /**
+     * Dieselbe monotone Quittung wie {@link #applyAcknowledgement}, aber mit Ablehnungen
+     * EINZELNER Komponenten eines geteilten Punkts (AP-07 IP-18b, {@code x-rejection-entity-rule}
+     * in {@code mqtt-measurement-config-status}).
+     *
+     * <p>Der Plan einer Box mit {@code measurement_config_per_component} nennt einen geteilten
+     * Punkt einmal je Komponente; die Box liest ihn für die übrigen und nennt ihn darum zugleich
+     * in {@code accepted}. Eine Zeile {@code (point_key, entity_id)} mit Ablehnung ist
+     * {@code rejected}, jede andere Komponente desselben Punkts folgt {@code accepted}. Eine
+     * Quittung OHNE {@code entity_id} nimmt nie diesen Weg: der Listener ruft dafür unverändert
+     * {@link #applyAcknowledgement} - Zeichen für Zeichen die Anweisung von vorher.
+     */
+    @Transactional
+    public int applyAcknowledgementJeKomponente(UUID deviceId, long revision, Instant appliedAt,
+            Collection<String> accepted, Map<String, String> rejected,
+            Map<KomponentenAblehnung, String> jeKomponente, String edgeVersion) {
+        Map<String, String> paare = new java.util.LinkedHashMap<>();
+        jeKomponente.forEach((k, reason) -> paare.put(paarSchluessel(k.pointKey(), k.entityId()), reason));
+        String paar = "(entity_id IS NOT NULL AND jsonb_exists(?::jsonb, point_key || '/' || entity_id::text))";
+        String angewendet = "Vom Edge " + edgeVersion + " angewendet.";
+        int updated = jdbc.update("UPDATE device_measurement_selection SET "
+                        + "apply_status = CASE "
+                        + " WHEN NOT enabled THEN 'applied' "
+                        + " WHEN " + paar + " THEN 'rejected' "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN 'rejected' "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN 'applied' "
+                        + " ELSE apply_status END, "
+                        + "apply_reason = CASE "
+                        + " WHEN NOT enabled THEN ? "
+                        + " WHEN " + paar + " THEN ?::jsonb ->> (point_key || '/' || entity_id::text) "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN ?::jsonb ->> point_key "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN ? "
+                        + " ELSE apply_reason END, "
+                        + "applied_at = CASE WHEN NOT enabled OR (point_key = ANY (string_to_array(?, E'\\x1f')) "
+                        + " AND NOT " + paar + ") THEN CAST(? AS timestamptz) ELSE NULL END "
+                        + "WHERE device_id = ? AND desired_revision <= ?",
+                jsonObject(paare), joined(rejected.keySet()), joined(accepted),
+                angewendet, jsonObject(paare), jsonObject(paare), joined(rejected.keySet()),
+                jsonObject(rejected), joined(accepted), angewendet,
+                joined(accepted), jsonObject(paare), Timestamp.from(appliedAt), deviceId, revision);
+
+        String eventPaar = "(e.entity_id IS NOT NULL AND jsonb_exists(?::jsonb, "
+                + "e.point_key || '/' || e.entity_id::text))";
+        String abgelehnt = "(" + eventPaar + " OR jsonb_exists(?::jsonb, e.point_key))";
+        jdbc.update("INSERT INTO device_measurement_selection_event "
+                        + "(tenant_id,site_id,device_id,entity_id,point_key,desired_revision,event_kind,"
+                        + "requested_at,requested_enabled,requested_cadence_s,enabled_at,disabled_at,"
+                        + "catalog_version,actor,actor_name,apply_status,apply_reason,applied_at,"
+                        + "custom_definition,retention_class,raw_retention_days,long_term_cadence_s,"
+                        + "long_term_strategy) "
+                        + "SELECT e.tenant_id,e.site_id,e.device_id,e.entity_id,e.point_key,"
+                        + "e.desired_revision,"
+                        + "'edge_ack',CAST(? AS timestamptz),e.requested_enabled,"
+                        + "e.requested_cadence_s,e.enabled_at,"
+                        + "e.disabled_at,e.catalog_version,'edge',?,"
+                        + "CASE WHEN " + abgelehnt + " THEN 'rejected' ELSE 'applied' END,"
+                        + "COALESCE(CASE WHEN e.entity_id IS NOT NULL THEN "
+                        + "?::jsonb ->> (e.point_key || '/' || e.entity_id::text) END, "
+                        + "?::jsonb ->> e.point_key, ?),"
+                        + "CASE WHEN " + abgelehnt + " THEN NULL "
+                        + "ELSE CAST(? AS timestamptz) END,"
+                        + "e.custom_definition,"
+                        + "e.retention_class,e.raw_retention_days,e.long_term_cadence_s,"
+                        + "e.long_term_strategy FROM device_measurement_selection_event e "
+                        + "WHERE e.device_id=? AND e.desired_revision=? "
+                        + "AND e.event_kind='selection_requested' ON CONFLICT DO NOTHING",
+                Timestamp.from(appliedAt), edgeVersion, jsonObject(paare), jsonObject(rejected),
+                jsonObject(paare), jsonObject(rejected), angewendet,
+                jsonObject(paare), jsonObject(rejected), Timestamp.from(appliedAt), deviceId, revision);
+        return updated;
+    }
+
+    private static String paarSchluessel(String pointKey, UUID entityId) {
+        return pointKey + "/" + entityId;
+    }
+
     private static String joined(Collection<String> values) {
         return String.join("\u001f", values);
     }

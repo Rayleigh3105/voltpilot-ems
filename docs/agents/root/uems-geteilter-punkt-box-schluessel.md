@@ -77,9 +77,11 @@ Geräteseite nicht stillsteht; ein stehender Wert sähe aus wie ein aktueller.
 
 ## Offen / Fallen
 
-- `MessstelleFormelWerteRepository#frischester` liest den Live-Wert eines Formel-Terms über
-  `(device_id, point_key)` ohne Komponente. Am geteilten Punkt nimmt er irgendeine der beiden
-  Komponenten. Der Term kennt seine Komponente; die Korrektur ist ein eigenes Paket.
+- `MessstelleFormelWerteRepository#frischester` (Live-Wert eines Formel-/Rest-Terms) liest nur Zeilen der
+  Box (`edge_entity_id IS NULL`) und der EIGENEN Komponente des Terms, nie den Wert der anderen
+  (`BilanzApiTest#amGeteiltenPunktLiestJederTermDenWertSeinerKomponente`). ⚠ Offen: `verlauf15m` liest die
+  Box-Verdichtung, die den geteilten Punkt nicht enthält — der 15-min-Verlauf eines Messkanal-Terms an einem
+  geteilten Punkt bleibt nach dem Einschalten leer.
 - `appendTransitions` (Wechsel-Ereignisse) eines einfachen Punkts vergleicht weiter mit der
   letzten Zeile seines `point_key`, auch mit einer, die eine Komponente genannt hat. Das betrifft
   nur einen Punkt, der von geteilt zu einfach wechselt.
@@ -91,24 +93,33 @@ Geräteseite nicht stillsteht; ein stehender Wert sähe aus wie ein aktueller.
 - Box-Schritt, gebaut aber RUHEND: Core `measurements.geteiltePunkte` ist die eine
   Duplikat-Regel für `ParseConfig`, `parseBatch` und `WrapStatus` (Paar zulässig, dieselbe
   Komponente zweimal oder ein Vorkommen ohne Komponente = Duplikat). `BuiltSupports` meldet das
-  Wort NICHT (Entscheid firstmate 23.09.2026, `cloud/geteilter_punkt_ruhend_test.go`): erst nach
-  Punktzustand (erledigt, Abschnitt oben), Cloud-Status je Komponente, Revisions-Anstoß und einem Summen-Wächter gegen zwei
-  an A und B gebundene Messstellen desselben Registers (sonst doppelt gezählt); Einschalten ist
-  ein eigenes Paket. Node-RED `buildPlan` plant Anfragen aus `lesungenJeZiel` (ein Lesen je Ziel und Punkt,
+  Wort NICHT (Entscheid firstmate 23.09.2026, `cloud/geteilter_punkt_ruhend_test.go`). Gebaut sind
+  Punktzustand, Cloud-Status je Komponente, Revisions-Anstoß (Abschnitt unten) und der Summen-Wächter
+  an der Bilanz, `frischester` liest je Komponente (oben); offen vor dem Einschalten: Wächter an
+  Kennzahl-`zusammenfassung` und Formel-Messstelle, seine Anzeige im Portal und `verlauf15m` (unten)
+  — Entscheid firstmate 23.09.2026: erst das Folgepaket „Summen-Wächter komplett“, dann der
+  Einschalt-Commit (`BuiltSupports`, Vektor `advertised: true`, Ruhend-Test umdrehen). Node-RED `buildPlan` plant Anfragen aus `lesungenJeZiel` (ein Lesen je Ziel und Punkt,
   schnellste Kadenz), Samples je Komponente; die Laufzeit taktet Lesen (`due`) und Sample
   (`probenDue`) getrennt und dekodiert je Lesen einmal (Decoder halten Vorwerte). Beweise:
   `geteilter_punkt_test.go`, `measurement-geteilter-punkt.test.js` (Budget über jeden
   Katalogpunkt).
-- ⚠ Status je Komponente (`x-rejection-entity-rule`): die Box nennt `entity_id` an der Ablehnung
-  einer Komponente eines geteilten Punkts. `MeasurementConfigStatusListener` (nur
-  `point_key`/`reason`, Punkt nie zugleich angenommen und abgelehnt) und
-  `applyAcknowledgement` (je `point_key`) verwerfen so eine Quittung heute ganz — Pflicht vor dem
-  Box-Release, eigenes Cloud-Paket.
+- Status je Komponente (`x-rejection-entity-rule`): `MeasurementConfigStatusListener` nimmt
+  `rejected[].entity_id` an (Punkt darf dann zugleich in `accepted` stehen; dasselbe Paar zweimal,
+  Komponente neben ganzem Punkt oder keine UUID = ganze Quittung verworfen, wie `WrapStatus`).
+  Mit Komponente schreibt `applyAcknowledgementJeKomponente` je `(point_key, entity_id)`; ohne
+  bleibt es beim unveränderten `applyAcknowledgement` (`MeasurementContractsTest`).
 - Mit dem Box-Release endet an einer Box mit bisher zusammengelegtem Punkt dessen Box-Verlauf
   (gewollt, Werte in den Reihen der Komponenten); „zuletzt gelesen" der Geräteseite läuft weiter
   (Punktzustand, Abschnitt oben).
-- ⚠ Meldet eine Box das Wort erst nach ihrem Update, erreicht sie der neue Plan erst mit der
-  nächsten Plan-Revision: der Core weist dieselbe Revision mit anderem Inhalt als `stale
-  revision` ab (`agent/measurements.go`), und das bleibt so — die Box kann keine Revision
-  erzeugen. Den Anstoß (Revision +1, wenn das Wort neu gemeldet wird) muss die Cloud geben;
-  bis dahin läuft der zusammengelegte Plan wie heute weiter.
+- Revisions-Anstoß: der Core weist dieselbe Revision mit anderem Inhalt als `stale revision` ab
+  (`agent/measurements.go`) und kann keine erzeugen. `BoxFaehigkeiten#record` liest die alte Liste
+  `FOR UPDATE` und veröffentlicht `Gemeldet(vorher, nachher)`; `MessplanRevisionsAnstoss` (nach dem
+  Commit) ruft bei gewonnenem ODER verlorenem Wort `MeasurementSelectionService#planNeuAusliefern`:
+  nur mit geteiltem Punkt EIN `selection_requested` (Akteur `system:plan-je-komponente`) an der
+  ersten aktiven Zeile, Revision + 1, keine Auswahlzeile geändert; der Reconciler liefert aus.
+  Ein Fehler dort nimmt der Box nie ihre Fähigkeiten, der Anstoß ist dann verloren (kein Schaden).
+- Summen-Wächter (`GeteiltesRegister`): benennt, nie blockieren (Muster `KostenstelleDoppelzaehlung`) —
+  die Cloud kann „dasselbe Gerät“ nicht von „zwei Geräte hinter demselben Katalogpunkt“ trennen.
+  Bilanz: `abschnitte[].geteilte_register` (fehlt ohne Fund), je Rolle zwei Messstellen, deren
+  führende Quelle der Hauptgröße zeitgleich denselben `point_key` derselben Box über zwei
+  Komponenten liest (`BilanzApiTest`, `GeteiltesRegisterTest`).

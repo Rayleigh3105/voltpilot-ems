@@ -47,6 +47,7 @@ class BilanzSchnittstelleVertragTest {
         formen.put("BilanzHauptzaehler", BilanzDto.Hauptzaehler.class);
         formen.put("BilanzVorschlag", BilanzDto.Vorschlag.class);
         formen.put("BilanzAbschnitt", BilanzDto.Abschnitt.class);
+        formen.put("BilanzGeteiltesRegister", BilanzDto.GeteiltesRegister.class);
         formen.put("BilanzTerm", BilanzDto.Term.class);
         formen.put("BilanzWerte", BilanzDto.Werte.class);
         formen.put("BilanzSumme", BilanzDto.Summe.class);
