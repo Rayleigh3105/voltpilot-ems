@@ -224,9 +224,10 @@ CREATE TABLE device_measurement_sample (
         CHECK (applied_revision IS NULL OR applied_revision >= 0)
 );
 SELECT create_hypertable('device_measurement_sample','time',if_not_exists=>TRUE);
--- Der Box-Schlüssel (V20260922236000 löst uq_device_measurement_sample_idempotency
--- ab): ohne genannte Komponente dieselbe Spaltenfolge wie vorher, am geteilten
--- Punkt je genannter Komponente.
+-- Der Box-Schlüssel (V20260922236500 baut ihn Chunk für Chunk und löst danach
+-- uq_device_measurement_sample_idempotency ab): ohne genannte Komponente dieselbe
+-- Spaltenfolge wie vorher, am geteilten Punkt je genannter Komponente. Hier der
+-- Endstand; den Übergang mit beiden Schlüsseln belegt UemsBoxSchluesselBauenMigrationTest.
 CREATE UNIQUE INDEX uq_device_measurement_sample_box
     ON device_measurement_sample(device_id,point_key,time,edge_sequence)
     WHERE edge_entity_id IS NULL;

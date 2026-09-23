@@ -37,7 +37,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * UEMS AP-07 IP-18b, Teil 1b ({@code V20260922236000}): der Box-Schlüssel des GETEILTEN Punkts.
+ * UEMS AP-07 IP-18b, Teil 1b ({@code V20260922236000} Spalte und Verdichtung, {@code
+ * V20260922236500} die Schlüssel, Chunk für Chunk): der Box-Schlüssel des GETEILTEN Punkts.
  *
  * <p>Bestand auf der Fassung davor, dann die Migration: keine Zeile ändert sich, jede trägt
  * {@code edge_entity_id} NULL, der alte Schlüssel ist durch zwei partielle ersetzt, und die
@@ -49,7 +50,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsGeteilterPunktBoxSchluesselMigrationTest {
 
-    private static final String DIESE = "20260922236000";
+    /** Die erste der beiden Migrationen; der Bestand liegt auf der Fassung davor. */
+    private static final String ERSTE = "20260922236000";
+    private static final String DIESE = "20260922236500";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";
@@ -292,7 +295,7 @@ class UemsGeteilterPunktBoxSchluesselMigrationTest {
     }
 
     private static String letzteFassungVorDieser() {
-        MigrationVersion diese = MigrationVersion.fromVersion(DIESE);
+        MigrationVersion diese = MigrationVersion.fromVersion(ERSTE);
         return Arrays.stream(flyway().load().info().all())
                 .map(MigrationInfo::getVersion)
                 .filter(v -> v != null && v.compareTo(diese) < 0)

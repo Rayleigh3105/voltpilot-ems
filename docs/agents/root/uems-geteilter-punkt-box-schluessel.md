@@ -5,7 +5,7 @@ Ein **geteilter Punkt** ist derselbe `point_key` einer Box für zwei Komponenten
 Teil 1a (Datenannahme, Writer-Nachschlag) steht in
 [uems-measurement-samples-2-1-herkunftsfelder.md](uems-measurement-samples-2-1-herkunftsfelder.md).
 
-## Speicherschlüssel (`V20260922236000`)
+## Speicherschlüssel (`V20260922236000` Spalte, `V20260922236500` Schlüssel)
 
 - `device_measurement_sample.edge_entity_id`: die Komponente, die die **Box genannt** hat —
   Wortlaut vom Draht. Das Ergebnis des Nachschlags steht getrennt davon in `entity_id`. Jede
@@ -17,6 +17,17 @@ Teil 1a (Datenannahme, Writer-Nachschlag) steht in
   edge_sequence) WHERE edge_entity_id IS NOT NULL`: beide Komponenten desselben Ticks liegen.
 - ⚠ Kein Schlüssel über `entity_id`: er kollidiert, wenn beide Komponenten unaufgelöst sind, und
   kann zwischen zwei Zustellungen desselben Umschlags wechseln.
+- Gebaut werden die Schlüssel sperrarm in `V20260922236500` (ohne Flyway-Transaktion,
+  `….sql.conf`): `device_measurement_sample` ist eine Hypertable, `CREATE INDEX CONCURRENTLY`
+  lehnt TimescaleDB ab, `timescaledb.transaction_per_chunk` gibt es nicht für UNIQUE (2.17.2).
+  Darum Wurzel mit `ON ONLY`, dann je Chunk eine Transaktion mit Eintrag in
+  `_timescaledb_catalog.chunk_index` (wie Timescale selbst), der alte Schlüssel fällt je Chunk
+  erst danach; jede Sperre mit 5 s Frist und Wiederholung. Nach jedem Abbruch wiederholbar, auch
+  mit INVALID-Rest (`UemsBoxSchluesselBauenMigrationTest`). Drehbuch:
+  [uems-erste-freigabe.md §2.7](../../rollout/uems-erste-freigabe.md).
+- ⚠ Ein Chunk-Index ohne Katalog-Eintrag bricht `ON CONFLICT (…)` mit Ziel („could not find
+  arbiter index") und bleibt bei `DROP INDEX` an der Wurzel liegen. Wer einen Schlüssel auf
+  einer Hypertable von Hand je Chunk baut, trägt ihn ein.
 - Der Writer (`MeasurementWriteRepository#schreiben`) nennt `edge_entity_id` nur an einem
   geteilten Punkt. Ohne Komponente bleibt die Anweisung Zeichen für Zeichen die bisherige.
   Ein älterer Writer schreibt NULL und trifft damit den alten Schlüssel.

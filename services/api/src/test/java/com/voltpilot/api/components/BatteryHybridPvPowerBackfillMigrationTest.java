@@ -71,7 +71,9 @@ class BatteryHybridPvPowerBackfillMigrationTest {
             // main-Backfill fehlt; er muss danach mit unveränderter Nummer heilen.
             Path quelle = Path.of(getClass().getResource("/db/migration").toURI());
             try (var dateien = Files.list(quelle)) {
-                for (Path datei : dateien.filter(p -> p.getFileName().toString().endsWith(".sql"))
+                // Mit ihren .sql.conf: ohne sie liefe eine Migration ohne Transaktion in einer.
+                for (Path datei : dateien.filter(p -> p.getFileName().toString().endsWith(".sql")
+                                || p.getFileName().toString().endsWith(".sql.conf"))
                         .filter(p -> !p.getFileName().toString().startsWith("V" + BACKFILL + "__"))
                         .toList()) {
                     Files.copy(datei, migrationen.resolve(datei.getFileName()));

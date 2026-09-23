@@ -142,6 +142,61 @@ export PUNKT=…                    # Name des Wiederherstellungspunkts, in Schr
 ⧉ `ALT_SHA` ist der Wert, der am Tag **tatsächlich** im `images:`-Block steht — vor dem
 Fenster ablesen, nicht aus diesem Dokument übernehmen.
 
+### 2.7 Der Index-Umbau auf `device_measurement_sample` (`V20260922236500`)
+
+Die Migration baut zwei neue UNIQUE-Indexe auf der größten Tabelle und entfernt danach den alten.
+`device_measurement_sample` ist eine Hypertable, deshalb gibt es kein `CONCURRENTLY`. Die
+Migration läuft ohne Flyway-Transaktion und arbeitet **je Chunk in einer eigenen Transaktion**.
+Während des Baus ist nur der Chunk gesperrt, der gerade gebaut wird. Im Fenster steht der Writer
+ohnehin (Schritt 3); der Umbau zählt trotzdem voll gegen die Fensterlänge (§2.4) und das
+Startbudget (§2.5). Beendet das Kubelet die api mitten im Bau, macht der nächste Start beim
+nächsten offenen Chunk weiter. Bricht die Migration mit einer Meldung ab (zwölfmal 5 s auf eine
+Sperre gewartet), repariert die Selbstheilung beim nächsten Start die Historie, und der Umbau
+setzt fort. Vorher mit `pg_blocking_pids` (unten) den Sperrenden suchen.
+
+**Vorher messen, an der Kopie und lesend an Produktion.** `pg_total_relation_size` zeigt bei
+einer Hypertable nur die leere Wurzel:
+
+```sql
+SELECT pg_size_pretty(hypertable_size('device_measurement_sample')) AS gesamt;
+SELECT count(*) AS chunks, pg_size_pretty(max(total_bytes)) AS groesster_chunk
+  FROM chunks_detailed_size('device_measurement_sample');
+```
+
+Die Dauer ist `je_migration_ms` von `20260922236500` in `probe.json` (Rubrik A). Der größte Chunk
+bestimmt die längste Einzelsperre, und ein Chunk muss in einen Start passen (180 s).
+
+⚠ Fünf ältere uems-Migrationen arbeiten auf derselben Tabelle weiter in **einer** Transaktion und
+lesen dabei jeden Chunk: `V20260912140000` (fünf CHECKs, `uq_device_measurement_sample_reihe`),
+`V20260912170000` (`idx_device_measurement_sample_eingang`), `V20260913150000` (zwei
+Fremdschlüssel), `V20260916180000` (CHECK, Fremdschlüssel, `uq_device_measurement_sample_ablesung`).
+Im Fenster sperren sie niemanden, weil der Writer steht. Ein Abbruch durch das Kubelet rollt sie
+aber ganz zurück, und der nächste Start beginnt von vorn. Ihre `je_migration_ms` stehen
+ebenfalls in `probe.json`. Ist eine davon allein länger als das Startbudget, wird das Budget vor
+dem Fenster gehoben (§2.5).
+
+**Während des Laufs beobachten** (zweite Sitzung):
+
+```sql
+-- Fortschritt: Chunks mit beiden neuen Schlüsseln / alle Chunks
+SELECT count(*) FILTER (WHERE n = 2) AS fertig, count(*) AS chunks FROM (
+  SELECT c.id, count(ci.index_name) AS n FROM _timescaledb_catalog.chunk c
+    JOIN _timescaledb_catalog.hypertable h ON h.id = c.hypertable_id
+     AND h.table_name = 'device_measurement_sample'
+    LEFT JOIN _timescaledb_catalog.chunk_index ci ON ci.chunk_id = c.id
+     AND ci.hypertable_index_name IN ('uq_device_measurement_sample_box',
+                                      'uq_device_measurement_sample_box_komponente')
+   WHERE NOT c.dropped GROUP BY c.id) x;
+-- der Chunk im Bau
+SELECT relid::regclass, phase, blocks_done, blocks_total FROM pg_stat_progress_create_index;
+-- wer auf wen wartet
+SELECT pid, pg_blocking_pids(pid), wait_event_type, left(query, 80) FROM pg_stat_activity
+ WHERE cardinality(pg_blocking_pids(pid)) > 0;
+```
+
+**Fertig**, wenn `fertig = chunks` und dieser Zähler `0` zeigt:
+`SELECT count(*) FROM pg_class WHERE relname LIKE '%uq_device_measurement_sample_idempotency%';`
+
 ---
 
 ## 3. Die Sync-Klammer: Auto-Sync für die Dauer des Fensters anhalten

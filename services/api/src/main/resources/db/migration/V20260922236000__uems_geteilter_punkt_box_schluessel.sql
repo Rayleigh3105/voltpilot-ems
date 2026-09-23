@@ -16,8 +16,10 @@
 --     dieselbe Folge plus die genannte Komponente. Ein Schlüssel über entity_id
 --     reicht nicht: er kollidiert, wenn beide Komponenten unaufgelöst sind, und
 --     er kann zwischen zwei Zustellungen desselben Umschlags wechseln.
---   * Der alte Index fällt erst, nachdem beide neuen stehen (alles in dieser
---     einen Transaktion).
+--     Gebaut werden sie NICHT hier, sondern direkt danach in
+--     V20260922236500 - Chunk für Chunk, ohne Flyway-Transaktion, damit der Bau
+--     die Hypertable nicht für den Writer sperrt. Der alte Index fällt dort erst,
+--     nachdem beide neuen auf jedem Chunk stehen.
 --   * Die Box-Verdichtung (refresh_device_measurement_rollup) liest nur Zeilen
 --     ohne edge_entity_id: ein geteilter Punkt erscheint im Box-Verlauf nicht
 --     doppelt; seine Komponentenwerte zeigt nur ihre Reihe (entity_id). Für den
@@ -29,14 +31,6 @@
 -- Messreihen gehören AP-07 IP-11.
 
 ALTER TABLE device_measurement_sample ADD COLUMN IF NOT EXISTS edge_entity_id UUID;
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_device_measurement_sample_box
-    ON device_measurement_sample (device_id, point_key, time, edge_sequence)
-    WHERE edge_entity_id IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_device_measurement_sample_box_komponente
-    ON device_measurement_sample (device_id, point_key, edge_entity_id, time, edge_sequence)
-    WHERE edge_entity_id IS NOT NULL;
-DROP INDEX IF EXISTS uq_device_measurement_sample_idempotency;
 
 -- Die Verdichtung aus V20260853000000, wörtlich, mit EINER zusätzlichen
 -- Bedingung im Zeilenfilter: AND edge_entity_id IS NULL.
@@ -100,9 +94,3 @@ COMMENT ON COLUMN device_measurement_sample.edge_entity_id IS
     '(measurement-samples 2.1, UEMS AP-07 IP-18b) - Wortlaut vom Draht, nicht '
     'das Ergebnis des Nachschlags (entity_id). NULL = kein geteilter Punkt; so '
     'jede Bestandszeile. Zeilen mit Wert gehören nicht in den Box-Verlauf.';
-COMMENT ON INDEX uq_device_measurement_sample_box IS
-    'Box-Schlüssel ohne genannte Komponente: dieselbe Spaltenfolge wie der '
-    'abgelöste uq_device_measurement_sample_idempotency (UEMS AP-07 IP-18b).';
-COMMENT ON INDEX uq_device_measurement_sample_box_komponente IS
-    'Box-Schlüssel des geteilten Punkts: je von der Box genannter Komponente '
-    '(UEMS AP-07 IP-18b).';
