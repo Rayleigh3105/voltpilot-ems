@@ -12,7 +12,8 @@ nie zwei Aufbauten zugleich, nach jedem `down -v` (verbund.sh).
   szenarien.py fahre <lauf> … --protokolle <verzeichnis> [--status <datei>]
   szenarien.py blatt --protokolle <verzeichnis> --nw2 <ip27-protokoll.md> --aus <blatt.md>
 
-Ein Lauf heißt wie seine Zeile, der Bezugs-Punkt trägt ein „n“ (R1n, A2n, A7n).
+Ein Lauf heißt wie seine Zeile, der Bezugs-Punkt trägt ein „n“ (R1n, A2n, A7n), die
+Mittag-Nachfahrt nach einer Heilung ein „m“ (A2m, A7m).
 Die Zahlen der Vergleichsspalte stammen aus NW-2 (`zwei_agenten_test.go`,
 `go test -run TestZweiAgentenAusfallmatrix`), dessen Protokoll `--nw2` liest.
 """
@@ -96,8 +97,15 @@ ANTEILE_LEAF = "v2/verbund-anteile"
 # Was ein Lauf gezeigt hat, das die Zahlen allein nicht sagen - je (Lauf, Bilder-Stempel).
 BEOBACHTUNGEN = {
     ("A7", "17abebe1c993"): "**Befund** (IP-28 Befund 1, vor PR 1068): der Zähler friert in der Prüf-Delle ein, "
-                            "Box Halle 1 gibt den Spielraum zweimal frei; M-1 über der Grenze. Wiederholung auf "
-                            "Bildern aus `f68d5e606` (PR 1068, 1075, 1078) steht aus.",
+                            "Box Halle 1 gibt den Spielraum zweimal frei; M-1 über der Grenze. Nachgefahren als A7m "
+                            "auf Bildern nach PR 1068.",
+    ("A7m", "a7fde9d1a318"): "Heilung sichtbar: nach dem Einfrieren (Messsekunde 601, stehender Wert −95,9 kW) "
+                             "gibt Box Halle 1 keinen Spielraum mehr frei - K-1 bleibt bei 8 kW und fällt auf "
+                             "5,9 kW, statt wie in A7 auf 12,2 kW zu steigen; Spitze 126,8 statt 131,0 kW. Die "
+                             "Überschreitung ab Messsekunde 605 ist die Wolkenlücke an K-12 (30 → 58,8 kW), die "
+                             "bis zur Einfrier-Erkennung läuft; danach fährt die Box K-2 auf 40 kW und K-1 auf 0 "
+                             "(98,8 kW ab Messsekunde ~690) - 84 s, innerhalb der Matrix-Frist ≤ 90 s. M-1 hält "
+                             "mit 0,098 kW Marge.",
     ("A2", "17abebe1c993"): "**Befund** (Auslegung, beim Captain als G3 Übergangszuschlag): Box Halle 1 fällt in "
                             "einer Prüf-Delle aus; bis zum Geräte-Rückfall (60 s) speisen K-1 5,9 + K-2 60 + "
                             "K-12 58,8 = 124,7 kW ein, danach 40 + 58,8 = 98,8 kW - 1,2 kW Marge reichen für "
@@ -105,7 +113,14 @@ BEOBACHTUNGEN = {
                             "Option a entschieden: Übergangszuschlag in der Auslegungsprüfung G3 "
                             "(Rückfallzeit/900 s × größte Entladeleistung der führenden Box), nur Cloud, kein "
                             "Box-Release; Folgepaket `vp-uems-v15-folge-auslegung-uebergangszuschlag`. Der "
-                            "Speicher-Watchdog bleibt im Pilot-Drehbuch.",
+                            "Speicher-Watchdog bleibt im Pilot-Drehbuch. Nachgefahren als A2m mit dem "
+                            "Handgriff, den die Auslegung nach PR 1092 an der Einspeiseseite nennt.",
+    ("A2m", "a7fde9d1a318"): "Die Heilung am Einspeise-Punkt ist der Handgriff: bis zum Geräte-Rückfall bleibt "
+                             "der Übergang wie in A2 (K-1 5,9 + K-2 60 + K-12 58,8 = 124,7 kW ab Messsekunde 5), "
+                             "danach 36 + 58,8 = 94,8 kW statt 98,8 kW - die 4 kW Marge tragen den Übergang im "
+                             "selben Viertel. Ohne den Handgriff ändert PR 1092 an der Einspeiseseite nichts "
+                             "(Anteile bleiben 40/60, `zuschlag_fehlt_kw` 4), ein blanker Lauf wäre A2. Der "
+                             "Übergang dauert 56 statt 49 s (K-2 fällt über ~10 s von −60 auf 0 kW).",
     ("A9", "17abebe1c993"): "Box Halle 1 lehnt jeden ungültigen Lauf ab (`schema_version_unbekannt`); nach 20 min "
                             "Rückfall des Plans, der Speicher lädt aus der PV (Viertel 2–4 bei 58–60 kW).",
     ("A10", "17abebe1c993"): "Quittungen wie zaA10: Box Halle 1 nimmt Übergang und Ziel an, Box Verwaltung "
@@ -224,7 +239,18 @@ def laeufe() -> dict[str, Lauf]:
         Lauf("A7n", "A7", "nacht", 600, 90, [(0, "stoerung A7")], dauer=1800,
              warum="Bezugs-Punkt, nach der Wächter-Heilung (PR 1068: ein stehender Wert belegt keinen Spielraum): "
                    "die führende Box darf blind nicht aus dem Netz laden. Der A7-Befund selbst lag am "
-                   "Einspeise-Punkt (Mittag); diese Zeile prüft die Bezugs-Seite derselben Störung"),
+                   "Einspeise-Punkt (Mittag, nachgefahren als A7m); diese Zeile prüft die Bezugs-Seite derselben "
+                   "Störung"),
+        # Die Mittag-Nachfahrt (m) der Befunde A2/A7 auf Bildern nach PR 1068/1092 - Störung wie A2/A7.
+        Lauf("A2m", "A2", m, 0, 60, [(-60, 'anlage {"cmd":"rueckfall","komponente":"K-1","kw":36}'),
+                                     (0, "stoerung A2")], env={"VB_ZUSCHLAG_KW": "4"},
+             warum="Einspeise-Punkt, nach dem Übergangszuschlag (PR 1092, Lesart B): die Einspeise-Anteile "
+                   "bleiben 40/60 (die Rückfälle füllen die Grenze), vom Puffer 60 s / 900 s × 60 kW = 4 kW "
+                   "fehlen 4 kW - die Auslegung nennt dafür den Handgriff am Gerät, K-1-Rückfall 40 → 36 kW; "
+                   "dieser Lauf fährt ihn ab T0 − 60 s, die Störung wie A2"),
+        Lauf("A7m", "A7", m, 600, 90, [(0, "stoerung A7")], dauer=1800,
+             warum="Einspeise-Punkt, nach der Wächter-Heilung (PR 1068: ein stehender Wert belegt keinen "
+                   "Spielraum) - Störung, T0 und Fenster wie A7, die Nachfahrt des A7-Befunds"),
     ]
     return {x.name: x for x in ls}
 
@@ -343,7 +369,7 @@ def fahre(namen: list[str], protokolle: Path, status: Path | None) -> int:
             # (Anlauf + Messung + ~4 min Auf-/Abbau + 5 min Luft).
             bis = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=300 + lauf.messdauer() + 540)
             with status.open("a", encoding="utf-8") as f:
-                f.write(f"paused: IP-29 Lauf {name} läuft im Simulator, Wecker gestellt until "
+                f.write(f"paused [at={int(time.time())}]: IP-29 Lauf {name} läuft im Simulator, Wecker gestellt until "
                         f"{bis.strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
         r = subprocess.run([str(werk / "verbund.sh"), "lauf", "--drehbuch", str(buch),
                             "--protokoll", str(ziel)], env=env, check=False)
@@ -361,7 +387,7 @@ def fahre(namen: list[str], protokolle: Path, status: Path | None) -> int:
         print(zeile, flush=True)
         if status:
             with status.open("a", encoding="utf-8") as f:
-                f.write(zeile + "\n")
+                f.write(zeile.replace("working:", f"working [at={int(time.time())}]:", 1) + "\n")
     return 1 if fehler else 0
 
 
@@ -424,6 +450,20 @@ def stempel(p: dict) -> str:
     return (p.get("core_bild") or "").split(":")[-1].split("-")[-1] or (p.get("bilder_aus_commit") or "")[:12]
 
 
+def mittag_satz(gefahren: dict, alle: dict) -> str:
+    """Kopf: welche Mittag-Befunde nach ihrer Heilung am Einspeise-Punkt nachgefahren sind."""
+    nach = [(n, z) for n, z in (("A2m", "A2"), ("A7m", "A7")) if gefahren.get(n)]
+    if not nach:
+        return " Die Mittag-Befunde A2 und A7 sind am Einspeise-Punkt nicht nachgefahren."
+    teile = []
+    for n, z in nach:
+        e = kennzahlen(gefahren[n][-1], alle[n].bezug())
+        teile.append(f"{n} {e['m1']:g} kW, {urteil(e['m1'], e['grenze'], True)}")
+    return (f" Die Mittag-Befunde {' und '.join(z for _, z in nach)} sind nach ihren Heilungen am "
+            f"Einspeise-Punkt nachgefahren ({'; '.join(teile)}); die Zeilen A2, A7 und A15 bleiben als "
+            "Messung vor den Heilungen stehen, A15 ist nicht nachgefahren.")
+
+
 def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) -> str:
     alle = laeufe()
     nw2 = lies_nw2(nw2_datei.read_text(encoding="utf-8")) if nw2_datei and nw2_datei.exists() else {}
@@ -470,9 +510,9 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
         "|---|---|---|---|---|---|---|---|---|",
     ]
     notizen = []
-    # Die Bezugs-Varianten stehen neben ihrer Mittag-Zeile (R1n bei R1, A2n bei A2, A7n bei A7/A7x).
+    # Die Varianten stehen neben ihrer Zeile: Mittag-Nachfahrt A2m/A7m, Bezug R1n/A2n/A7n.
     namen = ["R1", "R1n"] + [n for z in ZEILEN for n in (
-        [z, "A7x", "A7n"] if z == "A7" else [z, "A2n"] if z == "A2" else [z])]
+        [z, "A7m", "A7x", "A7n"] if z == "A7" else [z, "A2m", "A2n"] if z == "A2" else [z])]
     namen += [n for n in alle if n not in namen]
     gesamt = haelt_gesamt = 0
     for name in namen:
@@ -518,7 +558,7 @@ def blatt(protokolle: Path, nw2_datei: Path | None, erzeugt: str | None = None) 
                            f"{lauf.messdauer() // 60} min, {len(gruppe)} Lauf/Läufe): {lauf.warum}. "
                            f"Quittungen: {quittungen_text(p)}." + (f" {beob}" if beob else ""))
     z.insert(z.index("## Ergebnis je Zeile") + 1, f"\n**{gesamt} Läufe, {haelt_gesamt} halten** (M-1 höchstes "
-             "Viertel unter der Grenze).")
+             "Viertel unter der Grenze)." + mittag_satz(gefahren, alle))
     offen = [name for name in ("A20", "R1n", "A2n", "A7n") if not gefahren.get(name)]
     if offen:
         z += [

@@ -90,6 +90,24 @@ def test_a2n_traegt_den_uebergangszuschlag_der_vektoren():
     assert "VB_ZUSCHLAG_KW" not in sz.laeufe()["A2"].umgebung()
 
 
+def test_a2m_faehrt_den_handgriff_der_einspeise_vektoren(tmp_path: Path):
+    """A2m: Einspeisung bleibt 40/60, der fehlende Puffer ist der Handgriff K-1-Rückfall 40 - Z vor T0."""
+    v = json.loads((nutzlast.V2 / "verbund-anteil-vectors.json").read_text(encoding="utf-8"))
+    fall = next(f for f in v["uebergangszuschlag"] if f["name"].startswith("Ahrenberg A2 Einspeisung"))
+    k1 = next(m["rueckfall_kw"] for m in fall["mitglieder"] if m["box"] == "E-1")
+    a2m = sz.laeufe()["A2m"]
+    assert (a2m.zeile, a2m.profil, a2m.t0, a2m.messdauer()) == ("A2", "mittag", 0, 2700)
+    assert float(a2m.umgebung()["VB_ZUSCHLAG_KW"]) == fall["rueckfallzeit_s"] / 900 * fall["leistung_kw"]
+    zeilen = sz.schreibe_drehbuch(a2m, tmp_path).read_text(encoding="utf-8").splitlines()[1:]
+    handgriff = json.loads(zeilen[0].split(" ", 2)[2])
+    assert int(zeilen[0].split()[0]) < 0 and zeilen[1] == "0 stoerung A2"
+    assert handgriff == {"cmd": "rueckfall", "komponente": "K-1",
+                         "kw": k1 - float(a2m.umgebung()["VB_ZUSCHLAG_KW"])}
+    a7m = sz.laeufe()["A7m"]
+    assert (a7m.zeile, a7m.profil, a7m.t0, a7m.messdauer(), a7m.buch) == ("A7", "mittag", 600, 1800,
+                                                                        sz.laeufe()["A7"].buch)
+
+
 def test_varianten_der_nutzlasten():
     a12 = nutzlast.alle(1, JETZT, ohne_anteile=True)
     assert set(a12["E-1"]) == {"v2/entities", "schedule"}
@@ -171,9 +189,9 @@ def test_blatt_hat_jede_zeile_und_die_bandbreite(tmp_path: Path):
     text = sz.blatt(prot, nw2, "2026-09-22")
     zeilen = [z for z in text.splitlines() if z.startswith("| ") and not z.startswith("| Zeile")]
     namen = [z.split("|")[1].strip() for z in zeilen]
-    assert [n for n in namen if n not in ("A7x", "R1n", "A2n", "A7n")][:18] == ["R1", *sz.ZEILEN]
-    assert namen[1] == "R1n" and namen[namen.index("A2") + 1] == "A2n"
-    assert namen[namen.index("A7x") + 1] == "A7n"
+    assert [n for n in namen if n not in ("A7x", "R1n", "A2m", "A2n", "A7m", "A7n")][:18] == ["R1", *sz.ZEILEN]
+    assert namen[1] == "R1n" and namen[namen.index("A2") + 1:namen.index("A2") + 3] == ["A2m", "A2n"]
+    assert namen[namen.index("A7") + 1:namen.index("A7") + 4] == ["A7m", "A7x", "A7n"]
     assert "**3 Läufe, 3 halten**" in text
     r1 = zeilen[0]
     assert "2 Läufe: 97.74–98" in r1 and "+24.7–26.8 kW" in r1 and r1.endswith("| hält |")
