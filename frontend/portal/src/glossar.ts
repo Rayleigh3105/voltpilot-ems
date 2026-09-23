@@ -534,6 +534,40 @@ export const UEMS_BEWERTUNG_SAETZE = {
   grenze: () => UEMS_NORMGRENZE,
 } as const;
 
+/**
+ * UEMS AP-17 IP-4 (SP1–SP3) — Kundenwörter der Bezugsbasis. Die Norm-Wörter des Konzepts stehen nur dort und in
+ * Verträgen; `copy.test.ts` (Block „Bezugsbasis“) hält sie von den Kundenflächen fern. Ein Urteil gibt es nur
+ * bereinigt gegen eine freigegebene Bezugsbasis, mit Band und Bedingung (E8 = A) — nie an einer rohen Zahl (VG3).
+ */
+export const UEMS_ENERGIELEISTUNGSKENNZAHL = 'Energieleistungskennzahl';
+export const UEMS_BEZUGSBASIS = 'Bezugsbasis';
+export const UEMS_REFERENZPERIODE = 'Referenzperiode';
+export const UEMS_EINFLUSSGROESSE = 'Einflussgröße';
+export const UEMS_STATISCHER_FAKTOR = 'statischer Faktor';
+export const UEMS_BEREINIGT = 'bereinigt';
+export const UEMS_BEREINIGT_UM = (einflussgroesse: string) => `${UEMS_BEREINIGT} um ${einflussgroesse}`;
+export const UEMS_ERWARTET = 'erwartet';
+export const UEMS_GRUNDLAST = 'Grundlast';
+export const UEMS_LEISTUNGSVERGLEICH = 'Leistungsvergleich';
+
+/**
+ * Die Urteil-Wörter (U2, U3, SP1). Der Vertragswert `nicht_anwendbar` heißt auf der Kundenfläche „nicht bewertbar“;
+ * seinen Grund nennt der Satz daneben (§5.8). Eine rohe Zahl hat kein Urteil und darum kein Wort.
+ */
+export const UEMS_BEZUGSBASIS_URTEILE = {
+  besser: 'besser',
+  schlechter: 'schlechter',
+  im_rahmen: 'im Rahmen',
+  nicht_anwendbar: 'nicht bewertbar',
+} as const;
+
+/** AP-17 E9 = C (Z4): die dritte Herkunft einer Einflussgröße — von VoltPilot aus dem Wetter-Archiv bezogen. */
+export const UEMS_BEZOGEN = 'bezogen';
+export const UEMS_TEMPERATUR_BEZOGEN = 'Temperatur von VoltPilot bezogen (Wetter-Archiv), nicht am Standort gemessen.';
+export const UEMS_KOORDINATEN_FEHLEN = 'Koordinaten fehlen';
+export const UEMS_KOORDINATEN_FEHLEN_SATZ = (standort: string) =>
+  `Für den Standort ${standort} kann VoltPilot kein Wetter beziehen: die ${UEMS_KOORDINATEN_FEHLEN}. Eine Wetterbereinigung über Gradtage ist hier erst möglich, wenn der Standort Koordinaten hat.`;
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------

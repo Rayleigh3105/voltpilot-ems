@@ -12,8 +12,23 @@ import {
   UEMS_BEWERTUNG_ABDECKUNG,
   UEMS_BEWERTUNG_SAETZE,
   UEMS_BEWERTUNG_URTEILE,
+  UEMS_BEREINIGT,
+  UEMS_BEREINIGT_UM,
+  UEMS_BEZOGEN,
+  UEMS_BEZUGSBASIS,
+  UEMS_BEZUGSBASIS_URTEILE,
+  UEMS_EINFLUSSGROESSE,
   UEMS_EINSTUFUNGEN,
+  UEMS_ENERGIELEISTUNGSKENNZAHL,
+  UEMS_ERWARTET,
+  UEMS_GRUNDLAST,
+  UEMS_KOORDINATEN_FEHLEN,
+  UEMS_KOORDINATEN_FEHLEN_SATZ,
+  UEMS_LEISTUNGSVERGLEICH,
   UEMS_NORMGRENZE,
+  UEMS_REFERENZPERIODE,
+  UEMS_STATISCHER_FAKTOR,
+  UEMS_TEMPERATUR_BEZOGEN,
 } from './glossar';
 import { budgetFreiText, folgenSaetze } from './datenquelle';
 import { rechteSeed } from './test/rollenFixtures';
@@ -2425,6 +2440,181 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
       'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
       UEMS_NORMGRENZE,
     ]);
+  });
+});
+
+describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1–SP3)', () => {
+  /**
+   * IP-9/IP-14/IP-18/IP-20/IP-24 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren
+   * Dateiname „Bezugsbasis“ oder „Leistungsvergleich“ trägt, als Fläche — heute gibt es keine, der Block greift ab
+   * der ersten, ohne dass jemand an ihn denken muss.
+   */
+  const BEZUGSBASIS_FLAECHEN: string[] = [];
+  const BEZUGSBASIS_NAMENSMUSTER = /(?:Bezugsbasis|Leistungsvergleich)[^/]*\.tsx$/;
+  const bezugsbasisFlaechen = () => [
+    ...new Set([
+      ...BEZUGSBASIS_FLAECHEN,
+      ...customerFiles()
+        .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+        .filter((datei) => BEZUGSBASIS_NAMENSMUSTER.test(datei)),
+    ]),
+  ];
+
+  /** SP2: die Norm-Wörter des Konzepts; „ISO“ nur im Grenz-Satz. */
+  const VERBOTEN = [
+    /(^|[^\p{L}\p{N}])EnPIs?([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])EnBs?([^\p{L}\p{N}]|$)/iu,
+    /Baseline/iu,
+    /Normalisierung/iu,
+    /(^|[^\p{L}\p{N}])KPIs?([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])automatisch\s+bewertet([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])ISO([^\p{L}\p{N}]|$)/iu,
+  ];
+  const verstoesse = (text: string) => {
+    const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
+    return VERBOTEN.filter((re) => re.test(ohneGrenze));
+  };
+  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+
+  /**
+   * VG3 (E8 = A): ein Pfeil-Wort steht nur an einem bereinigten Urteil — der Satz nennt, was erwartet wurde. An einer
+   * rohen Zahl (gemessen, Vorperiode, Vorjahr) steht kein „besser“, „schlechter“ und kein Pfeil.
+   */
+  const PFEIL = /(?:^|[^\p{L}])(?:besser|schlechter|verbesser|verschlechter)|[↑↓▲▼⬆⬇]/iu;
+  const BEREINIGT = /erwart|bereinigt/iu;
+  /** Eine Zahl ist auch ein Platzhalter vor Einheit oder Prozent (`${delta} % besser` → „ % besser“). */
+  const ZAHL = /[\p{N}%]|kWh|m³/u;
+  const pfeilAnRoherZahl = (text: string) => ZAHL.test(text) && PFEIL.test(text) && !BEREINIGT.test(text);
+  /**
+   * `visibleTexts` lässt JSX-Text mit Doppelpunkt aus (Schutz vor Code-Fragmenten) — ein §5.8-Satz hat fast immer
+   * einen. Für die Pfeil-Probe zählt darum zusätzlich jeder `>Text<`-Lauf ohne geschweifte Klammer.
+   */
+  const pfeilTexte = (code: string) =>
+    [...visibleTexts(code), ...[...code.matchAll(/>([^<>{}]*\p{L}[^<>{}]*)</gu)].map((m) => m[1])]
+      .filter(isKundentext)
+      .filter(pfeilAnRoherZahl);
+
+  /** Die 21 Sätze aus AP-17 §5.8, wörtlich. */
+  const SAETZE = [
+    'Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig (1 von 12 Monaten) · freigegeben von Ines Kaltenbach am 12.11.2026.',
+    'Energieleistungskennzahl — Bezugsbasis seit 12.11.2026.',
+    'Bezugsbasis BB-0001 · Fassung 2 (November 2026 bis Oktober 2027, 12 Monate): Modell mit einer Einflussgröße — 10 523 kWh Grundlast + 0,2343 kWh je kg, Streuung ± 0,8 % · gilt seit 01.11.2027.',
+    'Dezember 2027: 78 000 kWh gemessen, 69 098 kWh erwartet bei 250 000 kg — 12,9 % mehr als die Bezugsbasis erwarten lässt: schlechter.',
+    'Dezember 2027: 78 000 kWh — 8,8 % weniger als im November (Produktion: 21,9 % weniger).',
+    'Januar 2028: 78 000 kWh gemessen, 80 813 kWh erwartet bei 300 000 kg — 3,5 % weniger: besser.',
+    'Februar 2028: 81 500 kWh gemessen, 81 985 kWh erwartet bei 305 000 kg — 0,6 % weniger: im Rahmen (± 2 %).',
+    'November 2027 bis Februar 2028: 323 000 kWh gemessen, 317 395 kWh erwartet — 1,8 %: im Rahmen der Bezugsbasis (Summe über vier Monate).',
+    'März 2027: 88 265 kWh bei 331 000 kg — 6,0 % weniger als die Bezugsbasis Oktober 2026 erwarten lässt: besser. Die Bezugsbasis ist vorläufig (1 von 12 Monaten).',
+    'Modell nicht anwendbar: die Produktionsmenge im März 2028 (390 000 kg) liegt außerhalb der Bezugsbasis (254 000–341 000 kg).',
+    'Modell nicht möglich: 1 von 12 Monaten in der Referenzperiode. Das Verhältnis ist vorläufig.',
+    'Betriebsstunden nicht aufgenommen: sie hängen an der Produktionsmenge (r = 0,997). Ein Modell mit zwei Einflussgrößen braucht unabhängige Größen.',
+    `Januar 2028: 1 930 m³ Gas bei 480 Gradtagen — 1 943 m³ erwartet: im Rahmen der Bezugsbasis (± 4,6 %). ${UEMS_TEMPERATUR_BEZOGEN}`,
+    UEMS_KOORDINATEN_FEHLEN_SATZ('Lindach'),
+    'Bezugsbasis BB-0002: Grundlage korrigiert (K-2026-0007, 12.11.2026) — Fassung 1 zitiert Version 1 (0,1488), gültig ist jetzt Version 2 (0,1473). Neue Fassung bilden oder Fassung 1 begründet behalten.',
+    'Bezugsbasis BB-0003: die Fläche der Halle 2 hat sich geändert (3 100 → 3 400 m² ab 01.01.2027) — Fassung 1 prüfen.',
+    'Nicht bewertbar: Bezugsbasis beendet am 31.12.2026 (Anbau Halle 2). Fassung 2 gilt seit 01.03.2027.',
+    'Bezugsbasis BB-0001, Fassung 2 vom 24.11.2027 · Überprüfung fällig seit 1 Tag — bestätigen oder neu fassen.',
+    'Leistungsvergleich Spritzguss, Dezember 2027 · Stand Nr. 1 vom 12.01.2028 · Bezugsbasis BB-0001, Fassung 2 · Prüfsumme 4e2d…',
+    'Noch keine Bezugsbasis. Legen Sie fest, gegen welchen Zeitraum diese Kennzahl verglichen werden soll — der Vergleich entsteht aus den gespeicherten Werten.',
+    UEMS_NORMGRENZE,
+  ];
+
+  it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
+    for (const probe of [
+      'EnPI', 'enpi', 'EnPIs', 'EnB', 'ENB', 'Baseline', 'Baseline-Modell', 'Energie-Baselines', 'Normalisierung',
+      'Normalisierungsmethode', 'KPI', 'KPI-Karte', 'KPIs', 'automatisch bewertet', 'ISO',
+    ]) {
+      expect(verstoesse(`Bezugsbasis: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse('Museum, Isolierung, Genbank und Kapital bleiben normale Wörter; bereinigt um die Produktionsmenge.')).toEqual([]);
+    expect(verstoesse(UEMS_NORMGRENZE)).toEqual([]);
+  });
+
+  it('VG3-Probe: kein Pfeil-Wort an einer rohen Zahl, das Urteil nur mit „erwartet“', () => {
+    for (const probe of [
+      'Dezember 2027: 78 000 kWh — 8,8 % weniger als im November: besser.',
+      'Dezember 2027: 78 000 kWh — 8,8 % mehr als im November: schlechter.',
+      '0,2837 kWh je kg ↓ 8,8 %',
+      '0,2837 kWh je kg ↑ 3 %',
+      'Verbesserung um 8,8 % gegenüber dem Vorjahr.',
+      '8,8 % verschlechtert gegenüber dem Vorjahr.',
+    ]) {
+      expect(pfeilAnRoherZahl(probe), probe).toBe(true);
+    }
+    expect(pfeilAnRoherZahl('Januar 2028: 78 000 kWh gemessen, 80 813 kWh erwartet bei 300 000 kg — 3,5 % weniger: besser.')).toBe(false);
+    expect(pfeilAnRoherZahl('Dezember 2027: 78 000 kWh — 8,8 % weniger als im November.')).toBe(false);
+  });
+
+  it('verlangt den Grenz-Satz auf jeder Bezugsbasis-Fläche und hält Wörter und Pfeile fern', () => {
+    for (const datei of bezugsbasisFlaechen()) {
+      const code = readFileSync(join(SRC, datei), 'utf8');
+      expect(verstoesse(code), datei).toEqual([]);
+      expect(traegtGrenze(code), datei).toBe(true);
+      expect(pfeilTexte(code), `${datei}: Pfeil-Wort an roher Zahl`).toEqual([]);
+    }
+  });
+
+  it('findet Flächen über den Dateinamen und prüft die Mechanik am Prüfling', () => {
+    for (const datei of ['pages/BezugsbasisSeite.tsx', 'components/VergleichMitBezugsbasis.tsx', 'components/LeistungsvergleichStand.tsx']) {
+      expect(BEZUGSBASIS_NAMENSMUSTER.test(datei), datei).toBe(true);
+    }
+    for (const datei of ['glossar.ts', 'uemsBezugsbasis.ts', 'components/KennzahlenRegister.tsx', 'components/BezugsgroessenListe.tsx']) {
+      expect(BEZUGSBASIS_NAMENSMUSTER.test(datei), datei).toBe(false);
+    }
+    expect(traegtGrenze('<p>Bezugsbasis ohne Abgrenzung</p>')).toBe(false);
+    expect(traegtGrenze('<p className="x">{UEMS_NORMGRENZE}</p>')).toBe(true);
+    expect(traegtGrenze("import { UEMS_NORMGRENZE } from '../glossar';")).toBe(false);
+    for (const probe of [
+      '<section><p>Dezember 2027: 78 000 kWh — 8,8 % weniger als im November: besser.</p><p>{UEMS_NORMGRENZE}</p></section>',
+      'const zeile = `Dezember 2027: ${menge} kWh — ${delta} % besser als im November`;',
+      '<p>Vorperiode ↓ 8,8 %</p>',
+    ]) {
+      expect(pfeilTexte(probe), probe).not.toEqual([]);
+    }
+    expect(pfeilTexte('<p>Januar 2028: 78 000 kWh gemessen, 80 813 kWh erwartet — 3,5 % weniger: besser.</p>')).toEqual([]);
+    expect(pfeilTexte('const f = (x: number) => x < 3 ? a : b; <p>{UEMS_NORMGRENZE}</p>')).toEqual([]);
+    for (const datei of BEZUGSBASIS_FLAECHEN) {
+      expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
+    }
+  });
+
+  it('findet die verbotenen Wörter auf keiner Kundenfläche', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+  });
+
+  it('die 21 Sätze aus §5.8 bestehen den Wächter', () => {
+    expect(SAETZE).toHaveLength(21);
+    for (const satz of SAETZE) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(pfeilAnRoherZahl(satz), satz).toBe(false);
+    }
+    expect(SAETZE.some(traegtGrenze)).toBe(true);
+    expect(SAETZE[13]).toBe(
+      'Für den Standort Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. Eine Wetterbereinigung über Gradtage ist hier erst möglich, wenn der Standort Koordinaten hat.',
+    );
+    expect(SAETZE[12]).toContain('Temperatur von VoltPilot bezogen (Wetter-Archiv), nicht am Standort gemessen.');
+  });
+
+  it('bildet die Kundenwörter und Urteile als Konstanten ab (SP1, Z4)', () => {
+    expect([
+      UEMS_ENERGIELEISTUNGSKENNZAHL, UEMS_BEZUGSBASIS, UEMS_REFERENZPERIODE, UEMS_EINFLUSSGROESSE, UEMS_STATISCHER_FAKTOR,
+      UEMS_BEREINIGT, UEMS_BEREINIGT_UM('die Produktionsmenge'), UEMS_ERWARTET, UEMS_GRUNDLAST, UEMS_LEISTUNGSVERGLEICH,
+      UEMS_BEZOGEN, UEMS_KOORDINATEN_FEHLEN,
+    ]).toEqual([
+      'Energieleistungskennzahl', 'Bezugsbasis', 'Referenzperiode', 'Einflussgröße', 'statischer Faktor',
+      'bereinigt', 'bereinigt um die Produktionsmenge', 'erwartet', 'Grundlast', 'Leistungsvergleich',
+      'bezogen', 'Koordinaten fehlen',
+    ]);
+    expect(UEMS_BEZUGSBASIS_URTEILE).toEqual({
+      besser: 'besser', schlechter: 'schlechter', im_rahmen: 'im Rahmen', nicht_anwendbar: 'nicht bewertbar',
+    });
+    for (const wort of Object.values(UEMS_BEZUGSBASIS_URTEILE)) expect(verstoesse(wort), wort).toEqual([]);
   });
 });
 
