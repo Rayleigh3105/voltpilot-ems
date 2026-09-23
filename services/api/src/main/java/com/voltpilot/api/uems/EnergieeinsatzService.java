@@ -22,6 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class EnergieeinsatzService {
     private final EnergieeinsatzRepository repo;
+    private final BezugsgroesseRepository bezugsgroessen;
     private final KostenstelleProzessRepository prozesse;
     private final UnternehmenRepository unternehmen;
     private final MessstelleService messstellen;
@@ -31,10 +32,12 @@ public class EnergieeinsatzService {
     private final TransactionTemplate tx;
     private final BerichtsBelege berichtsBelege;
 
-    public EnergieeinsatzService(EnergieeinsatzRepository repo, KostenstelleProzessRepository prozesse,
+    public EnergieeinsatzService(EnergieeinsatzRepository repo, BezugsgroesseRepository bezugsgroessen,
+            KostenstelleProzessRepository prozesse,
             UnternehmenRepository unternehmen, MessstelleService messstellen, MessstelleWerteService werte,
             RechtPruefung rechte, ObjectMapper json, PlatformTransactionManager tm, BerichtsBelege berichtsBelege) {
         this.repo = repo;
+        this.bezugsgroessen = bezugsgroessen;
         this.prozesse = prozesse;
         this.unternehmen = unternehmen;
         this.messstellen = messstellen;
@@ -141,8 +144,15 @@ public class EnergieeinsatzService {
         return new Einsatz(e.id(), e.kennzeichen(), new Verweis(p.id(), p.kennzeichen(), p.name()), e.traeger(),
                 e.name(), e.wortlaut(), e.verbraucherWortlaut(), new Verantwortlicher(v.sub(), v.name(), v.konto(),
                 e.verantwortlichZustand(), e.ohneKontoSeit()), repo.einflussgroessen(e.id(), false).stream()
-                .map(x -> new Einfluss(x.bezugsgroesseId(), x.wortlaut(), x.art())).toList(), ms, keineWerte,
+                .map(x -> new Einfluss(x.bezugsgroesseId(), bezugsgroesse(x.bezugsgroesseId()),
+                        x.wortlaut(), x.art())).toList(), ms, keineWerte,
                 e.gueltigAb(), e.gueltigBis(), e.beendetAm(), e.beendetGrund());
+    }
+    private Verweis bezugsgroesse(UUID id) {
+        if (id == null || !rechte.lesbar(RechtZiel.BEZUGSGROESSE, id)) return null;
+        return bezugsgroessen.finde(id)
+                .map(b -> new Verweis(b.id(), b.kennzeichen(), b.name()))
+                .orElse(null);
     }
     private Messstelle messstelle(UUID id) {
         rechte.pruefenLesen(RechtZiel.MESSSTELLE, id, EnergieeinsatzAbgelehnt::fehlt);

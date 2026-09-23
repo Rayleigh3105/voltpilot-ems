@@ -295,10 +295,10 @@ export function messstelleOrt(m: EnergieeinsatzMessstelle): string {
 export const messstelleZustand = (m: EnergieeinsatzMessstelle) => ZUSTAND_MESSSTELLE[m.zustand] ?? m.zustand;
 
 /** Eine Einflussgröße als Zeile: „Produktion: Stückzahl Spritzguss (BZ-1)“ oder „Wetter: Außentemperatur“. */
-export function einflussText(e: EnergieeinsatzEinfluss, bezugsgroessen: readonly Pick<Bezugsgroesse, 'id' | 'kennzeichen' | 'name'>[]): string {
+export function einflussText(e: EnergieeinsatzEinfluss): string {
   const art = EINFLUSS_ARTEN.find((a) => a.wert === e.art)?.label ?? e.art;
   if (e.bezugsgroesse_id) {
-    const b = bezugsgroessen.find((x) => x.id === e.bezugsgroesse_id);
+    const b = e.bezugsgroesse;
     return `${art}: ${b ? `${b.name} (${b.kennzeichen})` : 'Bezugsgröße'}`;
   }
   return `${art}: ${e.wortlaut ?? ''}`;

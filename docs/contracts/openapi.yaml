@@ -14863,6 +14863,10 @@ components:
       description: Genau ein Bezugsgrößen-Verweis oder ein nicht leerer Wortlaut.
       properties:
         bezugsgroesse_id: { type: string, format: uuid, nullable: true }
+        bezugsgroesse:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergieeinsatzVerweis" }]
+          description: Kennzeichen und Name, wenn der Aufrufer die Bezugsgröße sehen darf; sonst nicht enthalten.
         wortlaut: { type: string, nullable: true }
         art: { type: string, enum: [produktion, betriebszeit, wetter, sonstige] }
     EnergieeinsatzEinfluesseSetzen:
@@ -14943,6 +14947,7 @@ components:
           type: array
           items:
             type: object
+            required: [id, art, alt, neu, akteur, zeit]
             properties:
               id: { type: integer, format: int64 }
               art: { type: string, enum: [angelegt, bearbeitet, verantwortlicher, einflussgroessen, beendet] }

@@ -9731,6 +9731,7 @@ export interface EnergieeinsatzVerweis {
 /** Genau ein Bezugsgrößen-Verweis ODER ein nicht leerer Wortlaut. */
 export interface EnergieeinsatzEinfluss {
   bezugsgroesse_id?: string | null;
+  bezugsgroesse?: EnergieeinsatzVerweis | null;
   wortlaut?: string | null;
   art: 'produktion' | 'betriebszeit' | 'wetter' | 'sonstige';
 }
@@ -9801,6 +9802,5 @@ export interface EnergieeinsatzAenderung {
   alt: unknown;
   neu: unknown;
   akteur: BewertungAkteur;
-  /** Die Route liefert den Zeitpunkt (`EnergieeinsatzService.Aenderung.zeit`); `openapi.yaml` nennt ihn noch nicht. */
-  zeit?: string | null;
+  zeit: string;
 }

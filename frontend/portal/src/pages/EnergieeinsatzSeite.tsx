@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type Bezugsgroesse, type BewertungRanglisteEinsatz, type Energieeinsatz, type EnergieeinsatzAenderung, type EnergieeinsatzEinstufungFassung } from '../api';
+import { api, type BewertungRanglisteEinsatz, type Energieeinsatz, type EnergieeinsatzAenderung, type EnergieeinsatzEinstufungFassung } from '../api';
 import {
   ablehnung,
   bewertungZeitraum,
@@ -54,7 +54,6 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
   const zeitraum = bewertungZeitraum();
   const [einsatz, setEinsatz] = useState<Energieeinsatz | null>(null);
   const [protokoll, setProtokoll] = useState<EnergieeinsatzAenderung[] | null>(null);
-  const [bezugsgroessen, setBezugsgroessen] = useState<Bezugsgroesse[]>([]);
   const [rang, setRang] = useState<BewertungRanglisteEinsatz | null>(null);
   const [einstufungen, setEinstufungen] = useState<EnergieeinsatzEinstufungFassung[]>([]);
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
@@ -71,8 +70,6 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
         setProtokoll(p.aenderungen);
         setRang([...r.einsaetze, ...r.weitere_traeger].find((x) => x.id === id) ?? null);
         setEinstufungen(h.fassungen);
-        if (e.einflussgroessen.some((x) => x.bezugsgroesse_id))
-          api.bezugsgroessen().then((b) => aktiv && setBezugsgroessen(b.bezugsgroessen), () => undefined);
       },
       (e) => aktiv && setFehler({ satz: ablehnung(e), erneut: !(e && typeof e === 'object' && 'status' in e && (e.status === 404 || e.status === 403)) }),
     );
@@ -162,7 +159,7 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
             ) : (
               <ul className="vp-bw-zeilen" data-testid="einsatz-einfluesse-liste">
                 {einsatz.einflussgroessen.map((e, i) => (
-                  <li key={i}>{einflussText(e, bezugsgroessen)}</li>
+                  <li key={i}>{einflussText(e)}</li>
                 ))}
               </ul>
             )}

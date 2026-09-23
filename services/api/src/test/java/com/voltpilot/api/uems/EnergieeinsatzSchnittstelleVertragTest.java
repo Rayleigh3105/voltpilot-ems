@@ -64,6 +64,12 @@ class EnergieeinsatzSchnittstelleVertragTest {
                     .findProperties().stream().map(p -> p.getName()).toList();
             assertThat(props.keySet()).as(dto.getKey()).containsExactlyInAnyOrderElementsOf(namen);
         }
+        var protokoll = (Map<String,Object>) schemas.get("EnergieeinsatzProtokoll");
+        var aenderung = (Map<String,Object>) ((Map<String,Object>) ((Map<String,Object>) protokoll
+                .get("properties")).get("aenderungen")).get("items");
+        var zeit = (Map<String,Object>) ((Map<String,Object>) aenderung.get("properties")).get("zeit");
+        assertThat(aenderung.get("required")).asList().contains("zeit");
+        assertThat(zeit).containsEntry("type", "string").containsEntry("format", "date-time");
         var loeschen = (Map<String,Object>) ((Map<String,Object>) paths.get("/api/v1/bezugsgroessen/{id}")).get("delete");
         assertThat(loeschen.get("description").toString()).contains("bezugsgroesse_in_verwendung", "energieeinsaetze");
         // Die Lese-Zellen sind dieselben wie im bestehenden Messstellen-Zaun, einschließlich Auftrag für Unterstützung.

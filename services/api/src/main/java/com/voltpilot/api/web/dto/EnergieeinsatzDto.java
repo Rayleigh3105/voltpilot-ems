@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -23,7 +24,9 @@ public final class EnergieeinsatzDto {
     public record VerantwortlicherSetzen(String verantwortlichSub) {}
     public record EinfluesseSetzen(List<Einfluss> einflussgroessen) {}
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Einfluss(UUID bezugsgroesseId, String wortlaut, String art) {}
+    public record Einfluss(UUID bezugsgroesseId,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Verweis bezugsgroesse,
+            String wortlaut, String art) {}
     public record Verweis(UUID id, String kennzeichen, String name) {}
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Verantwortlicher(String sub, String name, String konto, String zustand, Instant ohneKontoSeit) {}
