@@ -5,6 +5,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
 import { BezugsbasisVergleich } from '../components/BezugsbasisVergleich';
+import { BezugsbasisReiter, BezugsbasisZeile, useBezugsbasis } from '../components/BezugsbasisReiter';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import '../components/BereichTabs.css';
 import { DangerZone } from '../components/DangerZone';
@@ -15,7 +16,8 @@ import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
 import { ErrorState, Skeleton } from '../components/States';
-import { kannVergleich, REITER_KENNZAHL, VERGLEICH_REITER } from '../bezugsbasisVergleich';
+import { kannBezugsbasis, REITER_BEZUGSBASIS, REITER_KENNZAHL } from '../bezugsbasisAnlegen';
+import { VERGLEICH_REITER } from '../bezugsbasisVergleich';
 import * as E from '../kennzahlAendern';
 import { ablehnungSatz, KNOPF_KOPIEREN } from '../kennzahlAnlegen';
 import { VersionenEinstieg, VersionenModal } from '../components/WertVersionen';
@@ -168,9 +170,12 @@ export function KennzahlSeite({
     };
   }, [id, art, zone, schluessel]);
 
-  // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ (nur Quotient und Zusammenfassung, B2); er lädt erst, wenn er offen ist.
-  const [reiter, setReiter] = useState<'kennzahl' | 'vergleich'>('kennzahl');
-  const vgAn = stamm !== null && kannVergleich(stamm.kennzahl);
+  // AP-17 IP-9/IP-20: die Reiter „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ (nur Quotient und Zusammenfassung, B2) und
+  // die Basis-Zeile im Kopf; der Vergleich lädt erst, wenn er offen ist.
+  const [reiter, setReiter] = useState<'kennzahl' | 'bezugsbasis' | 'vergleich'>('kennzahl');
+  const [bbVersuch, setBbVersuch] = useState(0);
+  const bbAn = stamm !== null && kannBezugsbasis(stamm.kennzahl);
+  const bbLage = useBezugsbasis(id, bbAn, versuch + bbVersuch);
 
   const zurueck = (
     <button type="button" className="vp-kz-zurueck" onClick={onListe}>
@@ -228,6 +233,7 @@ export function KennzahlSeite({
           <span>{kp.unter}</span>
           {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
         </p>
+        {bbAn && <BezugsbasisZeile lage={bbLage} einheit={k.einheit_anzeige} />}
         {archiviertSatz && (
           <p className="vp-kz-leise" data-testid="kennzahl-archiviert">
             {archiviertSatz}
@@ -241,9 +247,9 @@ export function KennzahlSeite({
           </div>
         )}
       </header>
-      {vgAn && (
+      {bbAn && (
         <div className="vp-bereich-tabs vp-kz-reiter" role="tablist" aria-label={`Reiter der Kennzahl ${k.kennzeichen}`}>
-          {([['kennzahl', REITER_KENNZAHL], ['vergleich', VERGLEICH_REITER]] as const).map(([r, wort]) => (
+          {([['kennzahl', REITER_KENNZAHL], ['bezugsbasis', REITER_BEZUGSBASIS], ['vergleich', VERGLEICH_REITER]] as const).map(([r, wort]) => (
             <button
               key={r}
               type="button"
@@ -258,7 +264,9 @@ export function KennzahlSeite({
           ))}
         </div>
       )}
-      {vgAn && reiter === 'vergleich' ? (
+      {bbAn && reiter === 'bezugsbasis' ? (
+        <BezugsbasisReiter kennzahl={k} lage={bbLage} zone={zone} onNeu={() => setBbVersuch((v) => v + 1)} />
+      ) : bbAn && reiter === 'vergleich' ? (
         <BezugsbasisVergleich kennzahlId={k.id} />
       ) : (
       <>

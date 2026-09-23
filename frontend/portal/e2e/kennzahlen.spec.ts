@@ -66,12 +66,16 @@ async function messe(page: Page) {
       ueberstehend: [...new Set(ueberstehend)],
       leiste: leisteSichtbar ? [...bar!.querySelectorAll('.vp-bottombar-item .lbl')].map((l) => l.textContent ?? '') : null,
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
+      // Die Reiter an der Kennzahl (AP-17 IP-9/IP-20) misst `kennzahlReiter` für sich.
       reiter: [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')]
         .filter((t) => sichtbar(t) && !t.closest('.vp-kz-perioden, .vp-kz-reiter'))
         .map((t) => text(t)),
       reiterAktiv: [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"][aria-selected="true"]')]
         .filter((t) => sichtbar(t) && !t.closest('.vp-kz-perioden, .vp-kz-reiter'))
         .map((t) => text(t)),
+      kennzahlReiter: [...document.querySelectorAll<HTMLElement>('.vp-kz-reiter [role="tab"]')].map(
+        (t) => `${text(t)}${t.getAttribute('aria-selected') === 'true' ? ' (gewählt)' : ''}`,
+      ),
       karten: [...document.querySelectorAll('[data-testid="kennzahl-karte"]')].map((k) => text(k)),
       titel: text(document.querySelector('.vp-kz-kopf h1')),
       unter: text(document.querySelector('.vp-kz-kopf p')),
@@ -187,6 +191,9 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     const m = await messe(page);
     ohneQuerlauf(m, 'k1-1440');
     expect(m.reiterAktiv).toEqual(['Kennzahlen']);
+    // AP-17 IP-9/IP-20 (§5.1, §6.3): an einer Quotient-Kennzahl stehen „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ —
+    // vorgewählt bleibt „Kennzahl“ mit dem Inhalt von vorher.
+    expect(m.kennzahlReiter).toEqual(['Kennzahl (gewählt)', 'Bezugsbasis', 'Vergleich mit Bezugsbasis']);
     expect(m.zahl).toBe(`0,15${NB}kWh je Stück`);
     await ablegen(page, 'k1-1440', m);
   });

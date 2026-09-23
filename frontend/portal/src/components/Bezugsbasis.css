@@ -1,0 +1,156 @@
+/*
+ * Reiter „Bezugsbasis“ an der Kennzahl und sein Assistent (UEMS AP-17 IP-9). Rahmen, Stepper und Fuß kommen aus
+ * `Modal`, `.vp-steps` und `Gesamtwert.css`; hier steht nur, was diese Fläche eigen hat. 375 px: alles bricht um,
+ * nichts steht über.
+ */
+.vp-bb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-bb h2 {
+  font-size: var(--vp-c-fs-16);
+  margin: 0;
+}
+.vp-bb p,
+.vp-bb-assistent p {
+  overflow-wrap: anywhere;
+}
+.vp-bb-zeile {
+  margin: 6px 0 0;
+  color: var(--vp-c-fg);
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+.vp-bb-leer,
+.vp-bb-basis {
+  background: var(--vp-c-card);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  padding: var(--vp-c-space-4);
+  min-width: 0;
+}
+.vp-bb-fassungen {
+  list-style: none;
+  margin: var(--vp-c-space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+}
+.vp-bb-fassung {
+  border-top: 1px solid var(--vp-c-border);
+  padding-top: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-bb-fassung p {
+  margin: 0 0 4px;
+}
+.vp-bb-freigabe {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--vp-c-space-2);
+}
+.vp-bb-freigabe textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 8px;
+  resize: vertical;
+}
+.vp-bb-label {
+  font-weight: var(--vp-c-fw-700);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-bb-grenze {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  margin: 0;
+}
+.vp-bb-periode {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--vp-c-space-3);
+  margin: var(--vp-c-space-3) 0;
+}
+.vp-bb-monate {
+  list-style: none;
+  padding: 0;
+  margin: var(--vp-c-space-3) 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  gap: 6px;
+}
+.vp-bb-monat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--vp-c-fs-14);
+  min-width: 0;
+}
+.vp-bb-vorlaeufig {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-warn-fg);
+}
+.vp-bb-wahl {
+  list-style: none;
+  padding: 0;
+  margin: var(--vp-c-space-3) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+}
+.vp-bb-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 10px;
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-bb-option > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-bb-option input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.vp-bb-option.is-aus {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.vp-bb-klein {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+.vp-bb-erfolg {
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-kz-reiter {
+  margin: var(--vp-c-space-3) 0;
+}
+.vp-kz-elk {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+.vp-kz-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--vp-c-fs-14);
+  margin: 0 0 var(--vp-c-space-3);
+}

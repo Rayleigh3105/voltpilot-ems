@@ -7,8 +7,8 @@
  * (U1, VG3) — nur „mehr“/„weniger“ und „ohne Urteil“.
  */
 import { runden } from './bezugsbasis';
-import type { Kennzahl } from './api';
-import { QUOTIENT, ZUSAMMENFASSUNG } from './uemsKennzahl';
+import type { Bezugsbasis } from './api';
+import { kannBezugsbasis } from './bezugsbasisAnlegen';
 import { tagDeutsch } from './bezugsbasisUebersicht';
 import methodenKatalog from './bezugsbasis/bezugsbasis-methoden.json';
 import { UEMS_BEREINIGT, UEMS_BEZUGSBASIS, UEMS_BEZUGSBASIS_URTEILE, UEMS_ERWARTET, UEMS_REFERENZPERIODE } from './glossar';
@@ -102,20 +102,16 @@ export interface BezugsbasisVergleichWahl {
   bis?: string;
 }
 
-/** Die Bezugsbasen der Kennzahl (`GET …/bezugsbasen`, IP-8) — der Reiter braucht nur Kennzeichen und Ende. */
-export interface BezugsbasisDerKennzahl {
-  id: string;
-  kennzeichen: string;
-  beendet_zum: string | null;
-}
+/** Was der Vergleich von einer Basis der Kennzahl braucht — aus derselben Liste wie der Reiter „Bezugsbasis“ (IP-9). */
+export type BezugsbasisDerKennzahl = Pick<Bezugsbasis, 'id' | 'kennzeichen' | 'beendet_zum'>;
 
 // ------------------------------------------------------------------ Wörter der Fläche
 
 export const VERGLEICH_REITER = `Vergleich mit ${UEMS_BEZUGSBASIS}`;
-/** Der erste Reiter der Kennzahl-Seite — dasselbe Wort wie IP-9 (`bezugsbasisAnlegen.ts`). */
-export const REITER_KENNZAHL = 'Kennzahl';
+/** Der erste Reiter der Kennzahl-Seite und die Regel B2 — eine Quelle mit IP-9 (`bezugsbasisAnlegen.ts`). */
+export { REITER_KENNZAHL } from './bezugsbasisAnlegen';
 /** B2: eine Bezugsbasis — und damit ein Vergleich — gibt es nur an Quotient und Zusammenfassung, nie an einem Anteil. */
-export const kannVergleich = (k: Pick<Kennzahl, 'rechenform'>): boolean => k.rechenform === QUOTIENT || k.rechenform === ZUSAMMENFASSUNG;
+export const kannVergleich = kannBezugsbasis;
 export const VERGLEICH_ROH = 'Roh';
 export const VERGLEICH_BEREINIGT = UEMS_BEREINIGT;
 export const VERGLEICH_OHNE_URTEIL = 'ohne Urteil';

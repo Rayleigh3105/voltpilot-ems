@@ -1498,6 +1498,10 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ an der Kennzahl (eine Welt) und seine Leser-Antworten der Bühne.
     'bezugsbasisVergleich.ts',
     'test/bezugsbasisVergleichFixtures.ts',
+    // AP-17 IP-9: der Reiter „Bezugsbasis“ an der Kennzahl und sein Assistent sind Kennzahl-Flächen (eine Welt).
+    'bezugsbasisAnlegen.ts',
+    'components/BezugsbasisReiter.tsx',
+    'components/BezugsbasisAssistent.tsx',
   ];
   const verboten = (woerter: string[]) => new RegExp(`(^|[^\\p{L}])(${woerter.join('|')})([^\\p{L}]|$)`, 'u');
   const KUNDENSICHT_VERBOTEN = verboten(['KPI', 'Metrik', 'Kenngröße', 'Kenngrößen', 'Dashboard', 'Widget', 'Template']);

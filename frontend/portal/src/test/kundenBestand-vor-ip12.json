@@ -1350,6 +1350,13 @@
       "nachher": "b7a2e7fec2eab58d979ab375e0ceed75651aaaeaea7376981664370edd8d4bbf",
       "commit": "d257291e828c35da3269b1688c1c4d1f3db8994d",
       "grund": "Paket vp-uems-baukasten-messwert-groesse (Schnitt 2): „Jetzt aufzeichnen“ im Formular „Eigenen Messwert hinzufügen“ wartet zusätzlich auf die Antwort auf „Was misst dieser Wert?“ und auf eine dazu passende Einheit. Beschriftung, Handler und die bisherigen Sperren (Prüfung, harte Grenze, busy) bleiben erhalten; die neue Frage ist ein VpPicker, kein geschütztes Element."
+    },
+    {
+      "datei": "components/KennzahlListe.tsx",
+      "vorher": "d30f45c1bca2d02e988be705600f77d23480d7d73cba72483ef2ed03921b42fd",
+      "nachher": "206c81b91252c7ccc0c9b325406ad004f3a34a8f831029fa9247459de492da51",
+      "commit": "35303a45ab431af96607b22dc0efb738d7709203",
+      "grund": "UEMS AP-17 IP-9 (Basis origin/uems 35303a45): die Register-Karte trägt additiv das Kennzeichen „Energieleistungskennzahl — Bezugsbasis seit …“ (optionaler `zusatz`, nur im Register und nur bei freigegebener Bezugsbasis). Typ, Klasse, Test-Kennung, Handler und alle bisherigen Inhalte der Karte bleiben erhalten."
     }
   ],
   "assistentZusammenfuehrung": {

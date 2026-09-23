@@ -4,6 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl } from '../api';
 import { ANZAHL_VERLAUF, amStandort, anfrage, heuteIn, type ListenKarte, type ListenWerte } from '../kennzahlKarte';
 import '../pages/KennzahlenPage.css';
+import './Bezugsbasis.css';
 
 /**
  * Die Listen-Karten der Kennzahlen (AP-11 IP-13) — geteilt von „Unternehmen › Kennzahlen“, „Kennzahlen dieses
@@ -56,7 +57,8 @@ export function useKennzahlenListe(zone: string, standortId: string | null, vers
   return { liste, werte, fehler, ausserhalb };
 }
 
-export function KennzahlKarte({ karte, onOeffnen }: { karte: ListenKarte; onOeffnen: () => void }) {
+/** `zusatz`: AP-17 IP-9 — das Kennzeichen „Energieleistungskennzahl — Bezugsbasis seit …“ (nur im Register). */
+export function KennzahlKarte({ karte, onOeffnen, zusatz = null }: { karte: ListenKarte; onOeffnen: () => void; zusatz?: string | null }) {
   return (
     <button type="button" className="vp-kz-karte" data-testid="kennzahl-karte" onClick={onOeffnen}>
       <span className="vp-kz-karte-kopf">
@@ -67,6 +69,11 @@ export function KennzahlKarte({ karte, onOeffnen }: { karte: ListenKarte; onOeff
         </span>
       </span>
       <span className="vp-kz-name">{karte.name}</span>
+      {zusatz && (
+        <span className="vp-kz-elk" data-testid="kennzahl-energieleistung">
+          {zusatz}
+        </span>
+      )}
       {karte.hinweis ? (
         <span className="vp-kz-hinweis" data-testid="kennzahl-hinweis">
           {karte.hinweis}

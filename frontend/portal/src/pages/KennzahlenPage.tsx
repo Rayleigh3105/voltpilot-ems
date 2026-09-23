@@ -14,6 +14,7 @@ import {
   listenKarte,
   TITEL,
 } from '../kennzahlKarte';
+import { energieleistung, FILTER_NUR } from '../bezugsbasisAnlegen';
 import { STANDORT_KENNZAHLEN } from '../ebenenNav';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { KennzahlSeite } from './KennzahlSeite';
@@ -111,9 +112,16 @@ function KennzahlenListe({
   const [versuch, setVersuch] = useState(0);
   const standortId = standort?.id ?? null;
   const { liste, werte, fehler, ausserhalb } = useKennzahlenListe(zone, standortId, versuch);
+  // AP-17 IP-9 (B3): das Kennzeichen kommt aus der Register-Zeile; den Filter gibt es erst, wenn eine es trägt (R10).
+  const [nurElk, setNurElk] = useState(false);
+  const mitElk = (liste ?? []).some((k) => energieleistung(k) !== null);
 
   // Archivierte stehen hinten — sonst die Reihenfolge der Route.
-  const sortiert = liste ? [...liste].sort((a, b) => Number(a.archiviert_am !== null) - Number(b.archiviert_am !== null)) : [];
+  const sortiert = liste
+    ? [...liste]
+        .filter((k) => !(mitElk && nurElk) || energieleistung(k) !== null)
+        .sort((a, b) => Number(a.archiviert_am !== null) - Number(b.archiviert_am !== null))
+    : [];
 
   return (
     <div className="vp-kz" data-testid="kennzahlen">
@@ -131,6 +139,12 @@ function KennzahlenListe({
         </Button></Recht>
       </header>
       {ausserhalb && <p className="vp-kz-hinweis" role="note">{ausserhalb}</p>}
+      {mitElk && (
+        <label className="vp-kz-filter">
+          <input type="checkbox" checked={nurElk} onChange={(e) => setNurElk(e.target.checked)} data-testid="kennzahl-filter-elk" />
+          {FILTER_NUR}
+        </label>
+      )}
       {fehler ? (
         <ErrorState message={LADEFEHLER} onRetry={() => setVersuch((v) => v + 1)} />
       ) : !liste ? (
@@ -145,7 +159,7 @@ function KennzahlenListe({
         <ul className="vp-kz-liste">
           {sortiert.map((k) => (
             <li key={k.id}>
-              <KennzahlKarte karte={listenKarte(k, werte[k.id] ?? { art: 'laedt' })} onOeffnen={() => onOeffnen(k.id)} />
+              <KennzahlKarte karte={listenKarte(k, werte[k.id] ?? { art: 'laedt' })} onOeffnen={() => onOeffnen(k.id)} zusatz={energieleistung(k)} />
             </li>
           ))}
         </ul>

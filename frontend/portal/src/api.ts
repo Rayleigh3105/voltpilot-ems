@@ -1,6 +1,6 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { BezugsbasisUebersicht } from './bezugsbasisUebersicht';
-import type { BezugsbasisDerKennzahl, BezugsbasisVergleich, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
+import type { BezugsbasisVergleich, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -2733,6 +2733,171 @@ export interface Kennzahl {
   hat_werte: boolean;
   archiviert_am: string | null;
   angelegt_am: string;
+  /**
+   * UEMS AP-17 IP-8 (B3, bezugsbasis.md §13 „Register-Eintrag“): die laufende Bezugsbasis als abgeleitetes Feld —
+   * `null` ohne laufende Basis; kein Zustand an der Kennzahl. Gelesen wird es nur in `bezugsbasisAnlegen.energieleistung`.
+   */
+  bezugsbasis?: {
+    kennzeichen: string;
+    fassung: number | null;
+    freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
+    vorlaeufig: boolean;
+  } | null;
+}
+
+// ---------------------------------------------------------------------------------------- Bezugsbasis (UEMS AP-17)
+
+/** Eine Fassung in Kurzform (`GET …/bezugsbasen/{bid}`, bezugsbasis.md §13). */
+export interface BezugsbasisFassungKurz {
+  fassung: number;
+  referenzperiode: string;
+  methode: string;
+  datenlage: 'vollstaendig' | 'vorlaeufig';
+  freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
+  basiswert: string | null;
+  gilt_ab: string;
+  gilt_bis?: string | null;
+  pruefsumme: string | null;
+}
+
+/** Die Bezugsbasis BB-… mit ihren Fassungen (IP-7). */
+export interface Bezugsbasis {
+  id: string;
+  kennzeichen: string;
+  kennzahl_id: string;
+  kennzahl: string;
+  zweck: string | null;
+  verantwortlich_name: string;
+  beendet_zum: string | null;
+  beendet_grund: string | null;
+  angelegt_am: string;
+  fassungen: BezugsbasisFassungKurz[];
+}
+
+/** Ein Monat der eingefrorenen Grundlage (F3): mit Zahl, oder nur mit `grund` (zählt nicht). */
+export interface BezugsbasisGrundlagePeriode {
+  periode: string;
+  grund?: string;
+  kennzahl?: { objekt: string; wert: string; version: number; definition_fassung: number; zustand: string; menge_zustand: string | null; kennzeichen: string[] };
+  zaehler?: string;
+  nenner?: string;
+}
+
+export interface BezugsbasisVariable {
+  position: number;
+  rolle: 'nenner' | 'variable';
+  bezugsgroesse_id: string;
+  kennzeichen: string;
+  fassung: number | null;
+  spannweite_von: string | null;
+  spannweite_bis: string | null;
+}
+
+/** Vorschau und gespeicherte Fassung in einem (`POST …/fassungen`, `GET …/fassungen/{n}`). */
+export interface BezugsbasisFassung {
+  bezugsbasis_id: string;
+  bezugsbasis: string;
+  kennzahl_id: string;
+  kennzahl: string;
+  fassung: number;
+  referenzperiode: string;
+  methode: string;
+  gilt_ab: string;
+  monate: number;
+  mindest_monate: number;
+  datenlage: 'vollstaendig' | 'vorlaeufig';
+  datenlage_gruende: Array<Record<string, unknown> & { grund: string }>;
+  vorbehalte: string[];
+  basiswert: string;
+  /** IP-10 (M2/M4): a, b und beim Modell mit zwei Einflussgrößen c — beim Verhältnis null. */
+  koeffizienten?: Record<string, string> | null;
+  r2?: string | null;
+  streuung_prozent?: string | null;
+  /** G4: eine abhängige zweite Variable — `objekt`, `position`, `grund`, `r`, `startwert_r`. */
+  abgelehnte_variablen?: Array<Record<string, unknown>>;
+  kennzeichen?: string[];
+  toleranz_prozent: string;
+  wiedervorlage_monate: number;
+  variablen: BezugsbasisVariable[];
+  faktoren: Array<Record<string, unknown>>;
+  freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
+  gebildet_am: string;
+  gebildet_von: string;
+  grundlage: { perioden?: BezugsbasisGrundlagePeriode[] } & Record<string, unknown>;
+  pruefsumme: string;
+  /** IP-8 (F1/F2/F4): Freigabe und Vier-Augen — `freigabe` hat freigegeben bzw. beantragt, `entscheidung` ist die zweite Person. */
+  gilt_bis?: string | null;
+  anpassungsgruende?: string[];
+  anpassung_wortlaut?: string | null;
+  begruendung?: string | null;
+  vieraugen?: boolean;
+  freigabe?: BezugsbasisPerson | null;
+  entscheidung?: BezugsbasisPerson | null;
+  entscheidungs_begruendung?: string | null;
+  freigegeben_am?: string | null;
+}
+
+export interface BezugsbasisPerson { name: string; rolle: string | null; am: string }
+
+export interface BezugsbasisEntwurf {
+  referenzperiode: string;
+  methode: string;
+  variablen?: string[] | null;
+  toleranz_prozent?: string | null;
+  wiedervorlage_monate?: number | null;
+  /** IP-16b (§17): Verweise aus dem Faktoren-Vorschlag oder ein Wortlaut. */
+  faktoren?: Array<{ art: string; objekt_id?: string; wortlaut?: string }> | null;
+}
+
+/** `GET /api/v1/kennzahlen/{id}/faktoren-vorschlag` (IP-16a, bezugsbasis.md „Faktoren-Vorschlag“). */
+export interface FaktorVorschlag {
+  art: 'flaeche' | 'standort' | 'anlage' | 'prozess' | 'kostenstelle';
+  objekt_id: string;
+  kennung: string | null;
+  bezeichnung: string;
+  wert: number | null;
+  einheit: string | null;
+  gueltig_ab: string | null;
+  gueltig_bis: string | null;
+  satz: string;
+}
+export interface FaktorenVorschlag {
+  kennzahl_id: string;
+  kennzeichen: string;
+  geltung_art: string;
+  geltung_id: string;
+  geltung_name: string | null;
+  stichtag: string;
+  faktoren: FaktorVorschlag[];
+  flaeche: { wert: number | null; einheit: string | null; objekte: string[]; ohne_flaeche: string[]; gueltig_ab: string | null; gueltig_bis: string | null; satz: string } | null;
+  hinweis: string;
+}
+
+/** `GET /api/v1/kennzahlen/{id}/variablen-vorschlag` (IP-11a, kennzahl-variablen-vorschlag.md). */
+export interface VariablenVorschlagGroesse {
+  id: string; kennzeichen: string; name: string; art: string | null; wertart: 'periodenwert' | 'stammdatum';
+  einheit: string; periode_art: string | null; hat_werte: boolean; hat_kanal: boolean;
+}
+export interface VariablenVorschlagKandidat {
+  bezugsgroesse: VariablenVorschlagGroesse;
+  einfluss_art: string;
+  vorschlag: 'variable_1' | 'variable' | 'statischer_faktor';
+  einsaetze: string[];
+  abhaengigkeit: {
+    ergebnis: 'unabhaengig' | 'variablen_abhaengig' | 'nicht_pruefbar'; r: number | null; paare: number;
+    grund: string | null; gegen: string | null; schwelle: number;
+  } | null;
+  satz: string | null;
+}
+export interface VariablenVorschlag {
+  geltung_art: string;
+  bezug: 'prozess' | 'zaehler_messstellen' | 'keiner';
+  referenzperiode: string;
+  einsaetze: Array<{ id: string; kennzeichen: string; name: string; traeger: string }>;
+  variable_1: VariablenVorschlagGroesse | null;
+  kandidaten: VariablenVorschlagKandidat[];
+  ohne_zahl: Array<{ wortlaut: string; einfluss_art: string; einsatz: string; satz: string }>;
+  satz: string | null;
 }
 
 /** Der Körper von `POST /api/v1/kennzahlen` und `…/vorschau` (streng gelesen; `periode_art` ist ein Wunsch). */
@@ -9491,6 +9656,32 @@ export const api = {
   /** Die Versionen EINER Periode (`von` = ihr erster Tag) — wer, wann, warum, und was vorher dastand. */
   kennzahlWertVersionen: (id: string, periode: KennzahlPeriodeArt, von: string) =>
     request<KennzahlWerteHistorie>(`/api/v1/kennzahlen/${id}/werte/versionen?periode=${periode}&von=${von}`),
+  /**
+   * UEMS AP-17 IP-8 — die Bezugsbasen einer Kennzahl (je Eintrag die Form von `GET …/bezugsbasen/{bid}`, laufende
+   * zuerst): die EINE Naht, über die Reiter, Basis-Zeile (IP-9) und der Vergleich (IP-20, Wahl erst ab zwei) ihre Basen finden.
+   */
+  kennzahlBezugsbasen: (id: string) => request<{ bezugsbasen: Bezugsbasis[] }>(`/api/v1/kennzahlen/${id}/bezugsbasen`),
+  /** Legt BB-… an (IP-7, B1/B4) — noch ohne Fassung. */
+  bezugsbasisAnlegen: (id: string) =>
+    request<Bezugsbasis>(`/api/v1/kennzahlen/${id}/bezugsbasen`, { method: 'POST', body: JSON.stringify({}) }),
+  /** Entwurf mit Vorschau (F1): der offene Entwurf wird neu gebildet; die Antwort ist die gespeicherte Fassung. */
+  bezugsbasisEntwurf: (id: string, bid: string, body: BezugsbasisEntwurf) =>
+    request<BezugsbasisFassung>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/fassungen`, { method: 'POST', body: JSON.stringify(body) }),
+  bezugsbasisFassung: (id: string, bid: string, n: number) =>
+    request<BezugsbasisFassung>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/fassungen/${n}`),
+  /**
+   * IP-8 (F1/F2): `beantragen` nur bei Vier-Augen (sonst 409 `vieraugen_aus`), `freigeben` gibt ohne Vier-Augen den
+   * Entwurf frei bzw. bestätigt mit Vier-Augen den Antrag (Entwurf dann 409 `vieraugen_beantragen`), `ablehnen` einen
+   * Antrag — je mit Begründung 10–500, Recht `bezugsbasis.freigeben`.
+   */
+  bezugsbasisFreigabe: (id: string, bid: string, n: number, schritt: 'beantragen' | 'freigeben' | 'ablehnen', begruendung: string) =>
+    request<BezugsbasisFassung>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/fassungen/${n}/${schritt}`, {
+      method: 'POST', body: JSON.stringify({ begruendung }),
+    }),
+  kennzahlVariablenVorschlag: (id: string, referenzperiode?: string) =>
+    request<VariablenVorschlag>(`/api/v1/kennzahlen/${id}/variablen-vorschlag` + (referenzperiode ? `?referenzperiode=${encodeURIComponent(referenzperiode)}` : '')),
+  kennzahlFaktorenVorschlag: (id: string, stichtag?: string) =>
+    request<FaktorenVorschlag>(`/api/v1/kennzahlen/${id}/faktoren-vorschlag` + (stichtag ? `?stichtag=${stichtag}` : '')),
 
   /**
    * Die Werte mit ihren Fassungen und der Herkunft je Fassung. `von`/`bis` sind Tage
@@ -9543,9 +9734,6 @@ export const api = {
     ).toString();
     return request<BezugsbasisVergleich>(`/api/v1/kennzahlen/${kennzahlId}/vergleich${q ? `?${q}` : ''}`);
   },
-  /** AP-17 IP-8: die Bezugsbasen der Kennzahl, die laufende zuerst — der Vergleich bietet die Wahl erst ab zwei. */
-  kennzahlBezugsbasen: (kennzahlId: string) =>
-    request<{ bezugsbasen: BezugsbasisDerKennzahl[] }>(`/api/v1/kennzahlen/${kennzahlId}/bezugsbasen`),
   /** Legt den Bericht an und bildet seinen Entwurf. */
   berichtAnlegen: (body: BerichtAnlegen) =>
     request<Bericht>(`/api/v1/berichte`, { method: 'POST', body: JSON.stringify(body) }),
