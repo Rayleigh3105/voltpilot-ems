@@ -390,9 +390,9 @@ Das Medium ist ein geschlossenes Vokabular an der Messstelle; im ersten Umfang i
 
 **Eine betriebliche Tätigkeit, die Energie einsetzt (Spritzguss, Druckluft, Logistik) — organisatorisch, gebäude- und standortübergreifend.**
 
-Prozesse bilden die zweite Sicht auf dieselben Messstellen. Ein Prozess kann Messstellen in mehreren Gebäuden, Anlagen und Standorten haben. Prozesse dürfen einen übergeordneten Prozess haben (Prozessbaum, eine Ebene). Sie sind der Anker für „wesentliche Energieeinsätze“ (AP-16) und Prozesskennzahlen (AP-11).
+Prozesse bilden die zweite Sicht auf dieselben Messstellen. Ein Prozess kann Messstellen in mehreren Gebäuden, Anlagen und Standorten haben. Prozesse dürfen einen übergeordneten Prozess haben (Prozessbaum, eine Ebene). Sie sind der Anker für „wesentliche Energieeinsätze“ (AP-16) und Prozesskennzahlen (AP-11) — über den Energieeinsatz (AP-16 E1 = A: genau ein Prozess × ein Träger, mit Verantwortlichem, Einflussgrößen, Messbedarf und Einstufungs-Fassungen; der Prozess selbst bleibt unverändert).
 
-**Beispiel (Referenzunternehmen Ahrenberg).** P-1 Spritzguss läuft in Halle 1 (MS-06, AN-1) und Halle 2 (MS-11, AN-2); P-2 Montage in Halle 2 und Werk Lindach; P-3 Druckluft ist Querschnitt (70 % Spritzguss, 30 % Montage).
+**Beispiel (Referenzunternehmen Ahrenberg).** P-1 Spritzguss läuft in Halle 1 (MS-06, AN-1) und Halle 2 (MS-11, AN-2); P-2 Montage in Halle 2 und Werk Lindach; P-3 Druckluft ist Querschnitt (70 % Spritzguss, 30 % Montage — über die Kostenstellen-Verteilung, AP-16 W2: die Zuordnung Messstelle → Prozess bleibt ohne Anteil, die Bewertung zählt MS-07 einmal in P-3).
 
 **Heute im Code.** Heute nicht vorhanden (`grep -rniE '\bprocess\b|prozess' MIG` → nur MIG/V20260842000000__flow_claim.sql:8 Prosa).
 
