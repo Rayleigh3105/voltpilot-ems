@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.uems.ErwarteteKadenz;
 import com.voltpilot.api.uems.ErwarteteKadenz.Messkanal;
 import jakarta.annotation.PreDestroy;
@@ -21,6 +22,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -30,11 +32,17 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
 public class MeasurementConfigPublisher {
     private static final Logger log = LoggerFactory.getLogger(MeasurementConfigPublisher.class);
+    /**
+     * Die Box versteht den geteilten Punkt im Plan (AP-07 IP-18b Teil 2,
+     * {@code docs/contracts/v2/edge-supports.md}).
+     */
+    public static final String FAEHIGKEIT_JE_KOMPONENTE = "measurement_config_per_component";
     private final String brokerUrl;
     private final String username;
     private final String password;
     private final ObjectMapper mapper;
     private final ErwarteteKadenz kadenzen;
+    private BoxFaehigkeiten faehigkeiten;
     private MqttClient client;
 
     public MeasurementConfigPublisher(
@@ -47,6 +55,15 @@ public class MeasurementConfigPublisher {
         this.password = password;
         this.mapper = mapper;
         this.kadenzen = kadenzen;
+    }
+
+    /**
+     * Ohne Fähigkeiten-Abfrage (Testaufbau, ältere Verdrahtung) bekommt jede Box den
+     * zusammengelegten Plan - Zeichen für Zeichen den von vor IP-18b.
+     */
+    @Autowired(required = false)
+    void setFaehigkeiten(BoxFaehigkeiten faehigkeiten) {
+        this.faehigkeiten = faehigkeiten;
     }
 
     public static String topic(UUID tenantId, UUID siteId, UUID deviceId) {
@@ -99,11 +116,21 @@ public class MeasurementConfigPublisher {
      * Dokument hat dieselben Felder in derselben Reihenfolge, {@code schema_version} bleibt 2.0,
      * und die Fassung trägt dieselben Schranken wie das Feld (1 … 86 400 s), weil sie gar nicht
      * anders entstehen kann. Nur die QUELLE der Zahl wechselt.
+     *
+     * <p><b>⚠ Seit AP-07 IP-18b Teil 2 entscheidet die Box-Fähigkeit über die Form:</b> meldet die
+     * Box {@link #FAEHIGKEIT_JE_KOMPONENTE}, steht ein Punkt mehrerer Komponenten einmal je
+     * Komponente da ({@link MeasurementPlan#composeJeKomponente}); jede andere Box bekommt den
+     * zusammengelegten Plan Byte für Byte wie vorher (sie wiese einen doppelten
+     * {@code point_key} als ganzes Dokument ab). {@code schema_version} bleibt 2.0 - der Vertrag
+     * ist additiv (x-point-key-rule).
      */
     byte[] payload(DeviceScope scope, State state) throws Exception {
         Map<Messkanal, Integer> fassungen = kadenzen.fassungenJeKanal(messkanaele(state), Instant.now());
-        List<Map<String, Object>> selections = MeasurementPlan.compose(state.selections(), fassungen)
-                .stream().map(MeasurementConfigPublisher::wireEntry).toList();
+        List<MeasurementPlan.Entry> plan = jeKomponente(scope)
+                ? MeasurementPlan.composeJeKomponente(state.selections(), fassungen)
+                : MeasurementPlan.compose(state.selections(), fassungen);
+        List<Map<String, Object>> selections = plan.stream()
+                .map(MeasurementConfigPublisher::wireEntry).toList();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema_version", "2.0");
         payload.put("tenant_id", scope.tenantId());
@@ -113,6 +140,18 @@ public class MeasurementConfigPublisher {
         payload.put("catalog_version", state.catalogVersion());
         payload.put("selections", selections);
         return mapper.writeValueAsBytes(payload);
+    }
+
+    /** Eine fehlgeschlagene Abfrage ist ein Nein: der Bestandsplan, nie ein verlorener Versand. */
+    private boolean jeKomponente(DeviceScope scope) {
+        if (faehigkeiten == null) return false;
+        try {
+            return faehigkeiten.kann(scope.deviceId(), FAEHIGKEIT_JE_KOMPONENTE);
+        } catch (RuntimeException e) {
+            log.warn("capability lookup for device {} failed, publishing the merged plan: {}",
+                    scope.deviceId(), e.getMessage());
+            return false;
+        }
     }
 
     private static Map<String, Object> wireEntry(MeasurementPlan.Entry entry) {

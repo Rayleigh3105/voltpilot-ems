@@ -34,6 +34,14 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   `POST …/admin/sites/{id}/gemeinsame-steuerung/sprungprobe` fragt dieses Wort (`sprungprobe_nicht_gemeldet`). **Nur
   gemeldet, keine Zeile in `edge-capabilities.json`** (Begründung wie `plan_quittung`). Die Box meldet es, weil ihr
   Ausführer gebaut ist (`internal/sprungprobe`, `agent/sprungprobe.go`; Beleg `agent/sprungprobe_test.go`).
+- `measurement_config_per_component` (AP-07 IP-18b Teil 2): die Box nimmt den Mess-Plan mit
+  **geteiltem Punkt** an — derselbe `point_key` einmal je Komponente, jede mit `entity_id`
+  ([`mqtt-measurement-config`](mqtt-measurement-config.schema.json) `x-point-key-rule`) —, liest
+  ihn je Ziel einmal und sendet je Komponente ein Sample mit ihrer `entity_id`
+  ([`measurement-samples` 2.1 §2](mqtt-measurement-samples-2.1.md)). `MeasurementConfigPublisher`
+  fragt dieses Wort; ohne es bekommt die Box den zusammengelegten Plan Byte für Byte wie bisher.
+  **Bekannt, aber noch nicht gesendet**: Core und Node-RED folgen in einem eigenen Box-Schritt;
+  erst der meldet das Wort. Keine Zeile in `edge-capabilities.json` (Begründung wie `plan_quittung`).
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

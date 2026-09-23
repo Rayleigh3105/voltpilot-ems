@@ -48,6 +48,12 @@
       "meaning": "Die Box führt einen Sprungprobe-Auftrag auf .../v2/sprungprobe aus (PV-Kappe oder Batterie-Laden senken, begrenzt in kW und Sekunden, zweimal, danach zurückstellen; Abbruch, sobald ein eigener Wächter eingreift) und berichtet genau einmal auf .../v2/sprungprobe-result (mqtt-sprungprobe 1.0, AP-15 IP-21).",
       "advertised": true,
       "evidence": "edge-app/core/internal/agent/sprungprobe_test.go"
+    },
+    {
+      "name": "measurement_config_per_component",
+      "meaning": "Die Box nimmt den Mess-Plan mit geteiltem Punkt an (derselbe point_key einmal je Komponente, jede mit entity_id, mqtt-measurement-config 2.0 x-point-key-rule), liest ihn je Ziel einmal und sendet je Komponente ein Sample mit ihrer entity_id (measurement-samples 2.1). Ohne dieses Wort bekommt die Box den zusammengelegten Plan wie bisher (AP-07 IP-18b Teil 2).",
+      "advertised": false,
+      "evidence": "services/api/src/test/java/com/voltpilot/api/measurement/MessplanJeKomponenteBestandTest.java (Cloud-Weiche; die Box meldet das Wort erst mit ihrem Teil)"
     }
   ],
   "cases": [
@@ -138,6 +144,16 @@
       "table": [],
       "expected": [
         "steuerungsverbund_anteil"
+      ]
+    },
+    {
+      "name": "reported_measurement_config_per_component_is_recognized",
+      "supports": [
+        "measurement_config_per_component"
+      ],
+      "table": [],
+      "expected": [
+        "measurement_config_per_component"
       ]
     },
     {

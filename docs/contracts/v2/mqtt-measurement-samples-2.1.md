@@ -83,7 +83,9 @@ ein älterer Writer verwirft ein Ereignis mit `entity_id` ganz. Seit Teil 1b spe
 die genannte Komponente zusätzlich in `edge_entity_id`; der Box-Schlüssel gilt dort je Komponente,
 beide Werte DERSELBEN Messzeit liegen. Im Box-Verlauf, in der Box-Verdichtung und im Punktzustand
 erscheint ein geteilter Punkt nicht; seine Werte zeigt nur die Reihe. Heute liefert keine Box einen geteilten Punkt (der
-Mess-Plan führt ihn zusammen); das ändert erst Teil 2 (Plan + Box, nach `supports[]`).
+Mess-Plan führt ihn zusammen). Seit Teil 2 (Cloud-Schnitt) bekommt eine Box, die
+`measurement_config_per_component` meldet, den Plan je Komponente; das Wort meldet erst die Box
+mit ihrem Teil ([`edge-supports.md`](./edge-supports.md)).
 
 Die Box sendet 2.1 erst mit einem Edge-Release (AP-07 IP-18).
 
