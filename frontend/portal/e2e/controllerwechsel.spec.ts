@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { c1, c1Einstellungen, k82Kanaele } from '../src/test/geraetHerkunftFixtures';
 import { controllerVorschau, CONTROLLER_AM } from '../src/test/controllerwechselFixtures';
+import { leerMessmittel } from '../src/test/messmittelFixtures';
 import { ahrenbergHeute } from '../src/test/standorteFixtures';
 import { wechselAntwort } from '../src/test/zaehlerwechselFixtures';
 test('C1: vier Messstellen bestätigen, Kartenwahl, ein POST, Fokus und kein Überlauf', async ({ page }, info) => {
@@ -24,6 +25,8 @@ test('C1: vier Messstellen bestätigen, Kartenwahl, ein POST, Fokus und kein Üb
     } else if (p.endsWith('/geraete')) body = { geraete: [c1()] };
     else if (p.endsWith('/einstellungen')) body = c1Einstellungen();
     else if (p.endsWith('/messkanaele')) body = k82Kanaele();
+    // Das Messmittel-Blatt der Geräteseite (AP-16 IP-18): C-1 ohne Angabe - nie die Auffang-Antwort `{}`.
+    else if (p.endsWith('/messmittel')) body = leerMessmittel(c1().id, c1().kennzeichen, c1().einbau_kennzeichen);
     else if (p.endsWith('/standorte')) body = ahrenbergHeute();
     else if (p.endsWith('/events')) body = [];
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });

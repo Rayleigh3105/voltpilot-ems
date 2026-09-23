@@ -2,9 +2,9 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './api';
-import { MessmittelDialog } from './components/MessmittelBlatt';
+import { MessmittelBlatt, MessmittelDialog } from './components/MessmittelBlatt';
 import { abdeckungSumme, einsatzZeilen, ortZeilen } from './uemsMessabdeckung';
-import { blattZeilen, eintragAus, entwurfAus, herstellerZeilen, messmittelSatz, pruefsummeKurz, pruefsummeLokal, toleranzWert } from './uemsMessmittel';
+import { blattZeilen, eintragAus, entwurfAus, herstellerZeilen, messmittelLesbar, messmittelSatz, pruefsummeKurz, pruefsummeLokal, toleranzWert } from './uemsMessmittel';
 import { ahrenbergMessabdeckung, gr2Messmittel, gr5Messmittel, leerMessmittel, messmittelNachEintrag } from './test/messmittelFixtures';
 
 /**
@@ -108,6 +108,27 @@ describe('AP-16 IP-18 · Messmittel-Blatt (G1, G3)', () => {
     expect(toleranzWert('100,01')).toBeNull();
     expect(toleranzWert('1,234')).toBeNull();
     expect(toleranzWert('abc')).toBeNull();
+  });
+});
+
+describe('AP-16 IP-18 · Messmittel-Blatt ohne lesbare Antwort', () => {
+  it('eine Antwort ohne Wandler-Liste gilt wie keine Antwort — das Blatt steht nicht da und reißt die Seite nicht mit', async () => {
+    expect(messmittelLesbar(gr5Messmittel())).toBe(true);
+    for (const kaputt of [{}, null, 'x', { ...gr5Messmittel(), wandler: undefined }]) expect(messmittelLesbar(kaputt)).toBe(false);
+    const abruf = vi.spyOn(api, 'geraetMessmittel').mockResolvedValue({} as never);
+    // Wie auf der Geräteseite: ein Nachbar im selben Baum (dort der Knopf „Controller austauschen“).
+    render(createElement('div', null, createElement('button', null, 'Nachbar'),
+      createElement(MessmittelBlatt, { geraetId: 'g-z5a', heute: '2026-11-28' })));
+    await waitFor(() => expect(abruf).toHaveBeenCalledWith('g-z5a'));
+    await act(async () => undefined);
+    expect(screen.getByRole('button', { name: 'Nachbar' })).toBeTruthy();
+    expect(screen.queryByTestId('messmittel-blatt')).toBeNull();
+  });
+
+  it('mit lesbarer Antwort steht das Blatt wie bisher', async () => {
+    vi.spyOn(api, 'geraetMessmittel').mockResolvedValue(gr5Messmittel());
+    render(createElement(MessmittelBlatt, { geraetId: 'gr-5', heute: '2026-11-28' }));
+    expect(await screen.findByTestId('messmittel-blatt')).toBeTruthy();
   });
 });
 

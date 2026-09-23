@@ -67,8 +67,12 @@ class UemsVerbrauchBestandsschutzTest {
     private static final Instant ZWEITER = Instant.parse("2026-10-02T00:00:00Z");
 
     private static final Map<String, String> ROLLUP_FINGERABDRUECKE = Map.of(
+            // V20260922236000 (vorher 6290471ab9cd23b33415e31b97731c1d14a81aa7c4966083561b83e2ac4b492a):
+            // die Verdichtung aus V20260853000000 woertlich plus EINE Filterbedingung
+            // AND edge_entity_id IS NULL; jede Bestandszeile traegt NULL, die Buckets sind
+            // Zeile fuer Zeile gleich (UemsGeteilterPunktBoxSchluesselMigrationTest).
             "refresh_device_measurement_rollup",
-            "6290471ab9cd23b33415e31b97731c1d14a81aa7c4966083561b83e2ac4b492a",
+            "174759bad2eea4bbb2d83f124b6cce6fb4b0898323e7683deed7febf4356db20",
             // V20260922020000 (vorher 89c6795528f28718173c57613646e8251b70e32dd7d21cc486f316a44bad9cd4),
             // V20260922170000 (vorher e3c35a4157b245227daaa65a4dd92b94dc9b9d34e0ea9f96574f60dd4bec3945):
             // die 15m-Stufe liest telemetry_anlage_15m, Werte Zeile fuer Zeile gleich
