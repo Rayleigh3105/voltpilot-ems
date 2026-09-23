@@ -1,7 +1,7 @@
 # UEMS-Bezugsbasis: Datenhaltung (AP-17 IP-6, B1/B4/V3/F1)
 
 Neu am 23.09.2026: Migration `V20260924071500__uems_bezugsbasis.sql`, sieben leere Tabellen, keine Route, kein
-Leser. Leser und Grundlage bilden IP-7, Routen und `@Recht` IP-8, Anstoß-Schreiber IP-15, Faktor-Vorschlag IP-16.
+Leser. Leser und Grundlage bilden IP-7, Routen und `@Recht` IP-8, Anstoß-Schreiber IP-15 (unten), Faktor-Vorschlag IP-16.
 
 | Stelle | Was |
 |---|---|
@@ -18,3 +18,18 @@ Leser. Leser und Grundlage bilden IP-7, Routen und `@Recht` IP-8, Anstoß-Schrei
 ⚠ **Löschwege:** eine Bezugsgröße als Variable hält `BezugsgroesseService.loeschen` per FK auf; seit IP-7 lesbar als
 409 `bezugsgroesse_in_verwendung` mit `bezugsbasen` ([Grundlage und Routen](uems-bezugsbasis-grundlage.md)). Offboarding räumt die Tabellen vor Kennzahl/Benutzer ab.
 Nachweis: `UemsBezugsbasisMigrationTest`.
+
+## Anstoß-Schreiber (AP-17 IP-15, A2–A4)
+
+`BezugsbasisAnstoss` setzt `bezugsbasis_anstoss` + Protokoll `anstoss_gesetzt` (Migration
+`V20260924200500__uems_bezugsbasis_anstoss.sql`: Wort, Admin-INSERT, Wasserzeichen `bezugsbasis_struktur_gelesen`).
+Pfad 1 hängt als Setter an `KennzahlKaskade` (nach der Neubildung, dieselbe Transaktion): Grundlage-Einträge (Monat)
+mit Kennzahl-Version < neu, Messstelle im Korrekturzeitraum, Bezugsgröße mit älterer Fassung/Rücknahme, Ort bei
+`flaeche_geaendert` → `grundlage_korrigiert`, Kennung = `KennzahlKaskade.ausloeser` (+ `/Fassung-n`, `/zurueckgenommen`).
+Pfad 2 hängt als Setter an `StrukturAenderungLaeufer` (läuft also nur mit den Berichte-Schaltern): Faktoren
+Fläche/Standort/Anlage (`ort_aenderung`), Prozess/Kostenstelle (`messstelle_aenderung`, Text-Treffer der ID),
+`kennzahl_archiviert`, Bezugsgröße bearbeitet (nicht nur Name) / archiviert; nie Wortlaut; nur Zeilen NACH der Freigabe.
+Schalter `voltpilot.uems.bezugsbasis.enabled`: aus → Pfad 2 schreibt nur Wasserzeichen `abgeschaltet`.
+⚠ `bezugsbasis_vokabular()` steht jetzt in ZWEI Migrationen — wer sie weitet, nimmt `('protokoll', 13, 'anstoss_gesetzt')` mit.
+⚠ A5 (Weitergabe an Leistungsvergleichs-Stände) fehlt: Quellenart `bezugsbasis` kommt mit IP-21a, die Weitergabe mit
+IP-23 (`Gesetzt`-Rückgabe beider Pfade). Nachweis: `UemsBezugsbasisAnstossTest`.

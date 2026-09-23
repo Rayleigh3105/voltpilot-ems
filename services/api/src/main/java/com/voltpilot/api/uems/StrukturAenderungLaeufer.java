@@ -78,6 +78,17 @@ public class StrukturAenderungLaeufer {
         this.melder = melder;
     }
 
+    /**
+     * AP-17 IP-15 (A3): der Anstoß an der Bezugsbasis, Pfad 2 — im selben Takt, mit eigenem Wasserzeichen
+     * ({@code bezugsbasis_struktur_gelesen}); nachgereicht wie der Melder, ohne ihn liest der Läufer nur für Berichte.
+     */
+    private BezugsbasisAnstoss bezugsbasis;
+
+    @Autowired(required = false)
+    void bezugsbasis(BezugsbasisAnstoss bezugsbasis) {
+        this.bezugsbasis = bezugsbasis;
+    }
+
     private static final String KANDIDATEN = """
             SELECT 'ort_aenderung' AS protokoll, a.id, a.tenant_id, a.objekt_art, a.objekt_id, a.art, a.alt::text AS alt,
                    a.neu::text AS neu, a.gilt_ab AS gilt_ab_tag, CAST(NULL AS timestamptz) AS gilt_ab_zeit, a.rueckwirkend,
@@ -203,6 +214,14 @@ public class StrukturAenderungLaeufer {
                 gescheitert.put(z.protokoll() + "-" + z.id(), e.toString());
                 log.warn("UEMS Strukturänderungs-Läufer: {}-{} nicht gelesen, nächster Takt: {}", z.protokoll(), z.id(),
                         e.toString());
+            }
+        }
+        if (bezugsbasis != null) {
+            BezugsbasisAnstoss.StrukturLauf b = bezugsbasis.strukturLauf(adminJdbc, jetzt, zeilenJeLauf);
+            gescheitert.putAll(b.gescheitert());
+            if (!b.gesetzt().isEmpty()) {
+                log.info("UEMS Strukturänderungs-Läufer: {} Zeilen für Bezugsbasen gelesen, {} Anstöße gesetzt",
+                        b.gelesen(), b.gesetzt().size());
             }
         }
         return new Lauf(gelesen, berichte, gescheitert);

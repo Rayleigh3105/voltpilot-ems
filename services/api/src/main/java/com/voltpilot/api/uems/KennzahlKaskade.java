@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -51,8 +52,19 @@ public class KennzahlKaskade implements KennzahlenNaht {
 
     private final KennzahlLauf lauf;
 
+    /**
+     * AP-17 IP-15 (A2): der Anstoß an der Bezugsbasis, Pfad 1 — nachgereicht statt in den Konstruktor gelegt, damit kein
+     * bestehender Aufbau sich ändert; ohne ihn (Minimal-Kontexte) stößt die Kaskade keine Basis an.
+     */
+    private BezugsbasisAnstoss bezugsbasis;
+
     public KennzahlKaskade(KennzahlLauf lauf) {
         this.lauf = lauf;
+    }
+
+    @Autowired(required = false)
+    void bezugsbasis(BezugsbasisAnstoss bezugsbasis) {
+        this.bezugsbasis = bezugsbasis;
     }
 
     @Override
@@ -68,6 +80,9 @@ public class KennzahlKaskade implements KennzahlenNaht {
                 berechnung ? betroffen.anlass() : null, berechnung ? betroffen.fassung() : 0);
         KennzahlLauf.Neubildung n = lauf.nachKorrektur(con, betroffen, ausloeser, beleg(con, betroffen));
         KennzahlNeuGebildet.melden(con, betroffen.tenant(), ausloeser(betroffen), n.neu(), betroffen.jetzt());
+        if (bezugsbasis != null) {
+            bezugsbasis.nachKorrektur(con, betroffen, n.neu());
+        }
         if (n.geschrieben() > 0 || !n.abgelehnt().isEmpty()) {
             log.info("UEMS Kennzahl-Kaskade {} (Fassung {}): {} Kennzahlen, {} Werte geschrieben, davon {} neue Versionen, "
                     + "{} unverändert, {} abgelehnt", betroffen.anlass(), betroffen.fassung(), n.kennzahlen(),

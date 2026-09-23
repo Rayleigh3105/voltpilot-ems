@@ -1001,7 +1001,7 @@ gelöscht. Ein Image-Rückweg steht nach Schritt 10 nicht mehr zur Verfügung (W
 **Die Namen sind die ausdrücklichen Umgebungsplatzhalter der Anwendung** — insbesondere
 keine selbst hergeleiteten Spring-Namen einsetzen.
 
-Die Tabelle nennt alle **25** `VOLTPILOT_UEMS_*_ENABLED`-Schalter aus
+Die Tabelle nennt alle **26** `VOLTPILOT_UEMS_*_ENABLED`-Schalter aus
 `services/api/src/main/resources/application.yml`, in derselben Reihenfolge; gitops PR 37 setzt
 sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vom 23.09.2026).
 
@@ -1016,6 +1016,7 @@ sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vo
 | `VOLTPILOT_UEMS_UEBERGABE_ENABLED` | `true` | Quellenübergaben und die Zustellung beim Box-Tausch |
 | `VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED` | **`false`** | (bleibt aus bis zum Quoten-Termin, E12 — sichtbare 0–100-%-Klemme) |
 | `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` | `true` | die Kaskaden- und Struktur-Naht der energetischen Bewertung; Routen und übrige Berichte bleiben, Bewertungs-Protokolle bekommen dann noch kein Wasserzeichen |
+| `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED` | `true` | den Anstoß an freigegebenen Bezugsbasis-Fassungen (Kaskade und Struktur-Läufer); aus setzt der Läufer nur das Wasserzeichen, nichts wird nachgeholt — noch nicht in gitops PR 37 |
 | `VOLTPILOT_UEMS_BERICHTE_ENABLED` | `true` | Berichte in der Korrekturkaskade; entfernt keine Route und keine Tabelle |
 | `VOLTPILOT_UEMS_BERICHTE_STRUKTUR_ENABLED` | `true` | Strukturänderungen alle fünf Minuten (nur wirksam, wenn auch BERICHTE an ist) |
 | `VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED` | `true` | Standorte/Vorschläge für Bestandsanlagen beim Start |

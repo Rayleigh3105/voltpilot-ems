@@ -435,6 +435,13 @@ voltpilot:
     # Protokolle bekommen dann auch noch kein Wasserzeichen. Vorgabe AN.
     bewertung:
       enabled: ${VOLTPILOT_UEMS_BEWERTUNG_ENABLED:true}
+    # UEMS AP-17 IP-15: nur die Anstoß-Nähte der Bezugsbasis (BezugsbasisAnstoss) -
+    # Pfad 1 in der Korrekturkaskade (grundlage_korrigiert), Pfad 2 im
+    # Strukturänderungs-Läufer (Wasserzeichen bezugsbasis_struktur_gelesen). Aus:
+    # Pfad 1 schweigt, Pfad 2 setzt nur das Wasserzeichen - nichts wird nachgeholt.
+    # Routen und Portal haben keinen Schalter. Vorgabe AN.
+    bezugsbasis:
+      enabled: ${VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED:true}
     berichte:
       build: ${VOLTPILOT_BUILD:}
       # UEMS AP-12 IP-8: die Kaskaden-Naht der Berichte (BerichtKaskade). Eine
