@@ -233,14 +233,6 @@ class UemsStreckeAbnahmeTest {
         assertThat(umschlaege).as(schluessel + ": es wird wirklich gespielt").isNotEmpty();
         senden(keys, umschlaege);
 
-        // Erst überhaupt etwas, dann die Zahlen: ein verworfener Umschlag ist im Writer nur
-        // eine WARN-Zeile. Ohne diesen Vorlauf liefe jede Reihe in ihre volle Wartezeit und
-        // meldete „0 statt N", statt zu sagen, dass gar nichts angekommen ist.
-        warteBis(schluessel + ": kein einziger Wert ist angekommen — verwirft der Writer den "
-                        + "Umschlag? (WARN „Skipping invalid measurements.raw event\")",
-                () -> zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id IN ("
-                        + boxen(szenario) + ")") > 0);
-
         // Erwartet wird JE MESSSTELLE UND ROLLE. Die gespielten Zustellungen werden unabhängig
         // nach den beiden Datenbankregeln nachgerechnet: Idempotenz über (Reihe, Messkanal,
         // Messzeit) und Rolle aus der Zuständigkeit ZUR MESSZEIT. Das berichtigte Drehbuch muss
@@ -254,6 +246,11 @@ class UemsStreckeAbnahmeTest {
         assertThat(lautDrehbuch)
                 .as(schluessel + ": Drehbuch und Vertragsregeln nennen genau dieselben Reihen")
                 .isEqualTo(erwartet);
+        long erwarteteProben = erwartet.values().stream().mapToLong(Long::longValue).sum();
+        warte(schluessel + ": alle gespielten Werte sind angekommen",
+                () -> zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id IN ("
+                        + boxen(szenario) + ")"),
+                erwarteteProben);
         Map<String, String> entity = new LinkedHashMap<>();
         for (JsonNode r : szenario.path("stammdaten").path("reihen")) {
             entity.put(r.path("messstelle").asText(), je(schluessel, r.path("entity_id").asText()));
@@ -689,21 +686,6 @@ class UemsStreckeAbnahmeTest {
         }
     }
 
-    private void warteBis(String was, Bedingung bedingung) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (bedingung.erfuellt()) {
-                return;
-            }
-            Thread.sleep(250);
-        }
-        throw new AssertionError(was);
-    }
-
-    private interface Bedingung {
-        boolean erfuellt() throws Exception;
-    }
-
     private void warte(String was, Zaehlung zaehlung, long erwartet) throws Exception {
         warte(was, zaehlung, erwartet, () -> "");
     }
@@ -714,7 +696,7 @@ class UemsStreckeAbnahmeTest {
      */
     private void warte(String was, Zaehlung zaehlung, long erwartet, Beleg beleg)
             throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        long deadline = System.nanoTime() + wartezeit(erwartet).toNanos();
         long ist = -1;
         while (System.nanoTime() < deadline) {
             ist = zaehlung.zaehle();
@@ -724,6 +706,11 @@ class UemsStreckeAbnahmeTest {
             Thread.sleep(250);
         }
         throw new AssertionError(was + ": " + ist + " statt " + erwartet + "\n" + beleg.text());
+    }
+
+    private static Duration wartezeit(long erwarteteProben) {
+        long millis = Duration.ofSeconds(30).toMillis() + erwarteteProben * 100L;
+        return Duration.ofMillis(Math.min(millis, Duration.ofMinutes(5).toMillis()));
     }
 
     private interface Beleg {

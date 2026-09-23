@@ -89,6 +89,8 @@ class UemsLastprofilWerkzeugTest {
             zustellungen.add(MAPPER.readTree(zeile));
         }
         assertThat(zustellungen).hasSize(16); // 2 min × 4 Boxen × (256 + 69)
+        String tenant = zustellungen.get(0).path("nutzlast").path("tenant_id").asText();
+        EreignisTabelleImTest.anlegen(POSTGRES, tenant);
         saeen();
     }
 
@@ -123,7 +125,7 @@ class UemsLastprofilWerkzeugTest {
         long beginn = System.nanoTime();
         senden(keys, pakete);
         warteBis(() -> zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id IN ("
-                + sqlListe(boxen) + ")") == 2_600);
+                + sqlListe(boxen) + ")"), 2_600);
         double dauerS = (System.nanoTime() - beginn) / 1_000_000_000.0;
 
         assertThat(boxen).hasSize(4);
@@ -249,15 +251,20 @@ class UemsLastprofilWerkzeugTest {
         }
     }
 
-    private static void warteBis(Bedingung bedingung) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+    private static void warteBis(Zaehlung zaehlung, long erwartet) throws Exception {
+        long millis = Duration.ofSeconds(30).toMillis() + erwartet * 100L;
+        long deadline = System.nanoTime()
+                + Duration.ofMillis(Math.min(millis, Duration.ofMinutes(5).toMillis())).toNanos();
+        long ist = -1;
         while (System.nanoTime() < deadline) {
-            if (bedingung.erfuellt()) {
+            ist = zaehlung.zaehle();
+            if (ist == erwartet) {
                 return;
             }
             Thread.sleep(250);
         }
-        throw new AssertionError("Lastprofil kam nicht vollstaendig im Writer an");
+        throw new AssertionError("Lastprofil kam nicht vollstaendig im Writer an: "
+                + ist + " statt " + erwartet + " Proben");
     }
 
     private static Connection admin() throws Exception {
@@ -280,7 +287,7 @@ class UemsLastprofilWerkzeugTest {
         return werte.stream().map(w -> "'" + w + "'").reduce((a, b) -> a + "," + b).orElse("NULL");
     }
 
-    private interface Bedingung {
-        boolean erfuellt() throws Exception;
+    private interface Zaehlung {
+        long zaehle() throws Exception;
     }
 }
