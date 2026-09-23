@@ -601,10 +601,11 @@ public class BerichtAbzugBildung {
         // Abgeschrieben, nicht gerechnet (EW3): die Verdichtung hat sie je Rohwert gebildet
         // (V20260918104000) und in der Periodenzeile abgelegt (V20260918101000).
         // Dass diese Messstelle zwei Flüsse führt, sagt ihre HAUPTGRÖSSE (AP-04) — nicht der Katalogpunkt
-        // ihrer heutigen Bindung, der wechseln kann. Die beiden Zahlen liefert die Verdichtung.
+        // ihrer heutigen Bindung, der wechseln kann. Die beiden Zahlen liefert die Verdichtung — für DIESELBE
+        // Version wie die Menge (eine Korrektur trägt ihr Paar seit V20260923101500 mit).
         BigDecimal[] paar = null;
         if (SPEICHER_RICHTUNG.equals(m.hauptgroesse().richtung()) && spur != null && !berechnet) {
-            paar = Richtungspaar.mengenDerPeriode(j, tenant, art, beginn, spur, spurArgs).orElse(null);
+            paar = Richtungspaar.mengenDerVersion(j, tenant, art, beginn, version, spur, spurArgs).orElse(null);
         }
         List<Tag> tageDerReihe = tagesverlauf == null || spur == null ? List.of()
                 : tagesverlauf.apply(spur, spurArgs);

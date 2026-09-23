@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -199,6 +200,89 @@ class UemsRichtungspaarLaufTest {
         assertThat(paar.get().negativWort()).isEqualTo("Entladen");
         assertThat(paar.get().positiv()).isPositive();
         assertThat(paar.get().negativ()).isPositive();
+    }
+
+    // ======================================================================= Die korrigierte Version
+
+    /**
+     * Folgepaket vp-uems-bilanz-richtungspaar-korrektur ({@code V20260923101500}): eine KORREKTUR an einer
+     * Viertelstunde des Speichers trägt ihr Paar bis in Tag, Monat und Jahr — nach derselben Regel wie Version 1,
+     * aus den Anteilen der Viertelstunden in ihrer neuesten Fassung, nie aus der Nettomenge geschätzt. Eine
+     * Nettomengen-Berichtigung (ohne Richtung) lässt es unbekannt. Alles in einer zurückgerollten Transaktion:
+     * Version 1 bleibt, wie die Verdichtung sie schrieb.
+     */
+    @Test
+    void eineKorrigierteViertelstundeTraegtIhrPaarBisInsJahrEineNettoBerichtigungNicht() throws Exception {
+        JdbcTemplate admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
+        ViertelstundeVerdichter viertel =
+                new ViertelstundeVerdichter(admin, KATALOG, new SpaetankunftMelder(), 500, 40, 200_000);
+        KaskadeStufen stufen = new KaskadeStufen(KATALOG, new ErsatzwertLauf(admin, KATALOG, viertel, 200));
+        KaskadeStufen.Reihe r = new KaskadeStufen.Reihe(KB, IDS.get("SPEICHER"), SPEICHER);
+        LocalDate tag = LocalDate.of(2026, 10, 20);
+        LocalDate monat = LocalDate.of(2026, 10, 1);
+        LocalDate jahr = LocalDate.of(2026, 1, 1);
+        BigDecimal eins = BigDecimal.ONE;
+        try (Connection con = ds(ADMIN_USER, ADMIN_PW).getConnection()) {
+            con.setAutoCommit(false);
+            try {
+                var zone = KaskadeStufen.zoneDerZeile(con, r, KaskadeStufen.TAG, tag);
+                var tag1 = KaskadeStufen.bestand(con, r, KaskadeStufen.TAG, tag);
+                var monat1 = KaskadeStufen.bestand(con, r, KaskadeStufen.MONAT, monat);
+                var jahr1 = KaskadeStufen.bestand(con, r, KaskadeStufen.JAHR, jahr);
+                assertThat(tag1.inhalt().richtung()).as("Version 1 liest ihr Paar mit").isNotNull();
+
+                // Ohne Version bildet die Stufe genau das Paar von Version 1 — dieselbe Regel.
+                var ohne = stufen.tag(con, r, tag, zone, tag1, JETZT).inhalt();
+                assertThat(ohne.positiv()).isEqualByComparingTo(tag1.inhalt().positiv());
+                assertThat(ohne.negativ()).isEqualByComparingTo(tag1.inhalt().negativ());
+
+                // Version 2 der Viertelstunde mit dem Vorzeichenwechsel: eine Korrektur aus Rohwerten, 1 kWh mehr geladen.
+                var q1 = KaskadeStufen.viertelBestand(con, r, WECHSEL, WECHSEL.plus(KaskadeStufen.VIERTELSTUNDE))
+                        .get(WECHSEL);
+                var q2 = new KaskadeStufen.Inhalt(q1.wertart(), q1.menge(), q1.mengeZustand(), q1.aussage(),
+                        q1.erhalten(), q1.erwartet(), q1.abdeckung(), q1.standAnfang(), q1.standEnde(), q1.erster(),
+                        q1.letzter(), q1.summe(), q1.mittel(), q1.min(), q1.max(), q1.energie(), q1.gemessenS(),
+                        q1.lueckeInnen(), null, q1.positiv().add(eins), q1.negativ());
+                KaskadeStufen.viertelSchreiben(con, r, WECHSEL, 2, q2, null, List.of(), List.of("K-2026-0001"),
+                        "K-2026-0001", 1, null);
+
+                var t2 = stufen.tag(con, r, tag, zone, tag1, JETZT);
+                assertThat(t2.korrekturen()).containsExactly("K-2026-0001");
+                assertThat(t2.inhalt().positiv()).isEqualByComparingTo(tag1.inhalt().positiv().add(eins));
+                assertThat(t2.inhalt().negativ()).isEqualByComparingTo(tag1.inhalt().negativ());
+                var m2 = stufen.monat(con, r, monat, zone, monat1).inhalt();
+                assertThat(m2.positiv()).isEqualByComparingTo(monat1.inhalt().positiv().add(eins));
+                assertThat(m2.negativ()).isEqualByComparingTo(monat1.inhalt().negativ());
+                var j2 = stufen.jahr(con, r, jahr, zone, jahr1).inhalt();
+                assertThat(j2.positiv()).as("das Jahr aus seinen Monaten").isEqualByComparingTo(m2.positiv());
+                assertThat(j2.negativ()).isEqualByComparingTo(m2.negativ());
+
+                // Die Version trägt es in ihrer Zeile; gelesen wird das Paar DIESER Version, nicht das von Version 1.
+                var p = new KaskadeStufen.Periode(KB, KaskadeStufen.TAG, r.entity(), SPEICHER, null,
+                        TagRegeln.beginn(tag, zone), TagRegeln.ende(tag, zone), tag, zone);
+                KaskadeStufen.periodeSchreiben(con, p, 2, t2.inhalt(), t2.korrekturen(), List.of(), "K-2026-0001", 1,
+                        null);
+                var gespeichert = KaskadeStufen.neuesteVersion(con, KB, r.entity(), SPEICHER, null, KaskadeStufen.TAG,
+                        p.beginn());
+                assertThat(gespeichert.version()).isEqualTo(2);
+                assertThat(gespeichert.inhalt().positiv()).isEqualByComparingTo(t2.inhalt().positiv());
+                assertThat(gespeichert.inhalt().negativ()).isEqualByComparingTo(t2.inhalt().negativ());
+
+                // Version 3: ein berichtigter Wert — die Nettomenge ändert sich, die Richtung ist nicht bestimmbar.
+                KaskadeStufen.viertelSchreiben(con, r, WECHSEL, 3, q2.mitRichtung(null), null, List.of(),
+                        List.of("K-2026-0002"), "K-2026-0002", 1, null);
+                var t3 = stufen.tag(con, r, tag, zone, tag1, JETZT);
+                assertThat(t3.korrekturen()).contains("K-2026-0002");
+                assertThat(t3.inhalt().energie()).as("die Energie bleibt eine Zahl").isNotNull();
+                assertThat(t3.inhalt().positiv()).as("unbekannt ist keine Null").isNull();
+                assertThat(t3.inhalt().negativ()).isNull();
+                assertThat(stufen.monat(con, r, monat, zone, monat1).inhalt().richtung()).isNull();
+                assertThat(stufen.jahr(con, r, jahr, zone, jahr1).inhalt().richtung()).isNull();
+            } finally {
+                con.rollback();
+            }
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_viertelstunde_version", Integer.class)).isZero();
     }
 
     // ======================================================================= Aufbau

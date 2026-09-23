@@ -100,6 +100,33 @@ final class Richtungspaar {
         return Optional.of(zeilen.get(0));
     }
 
+    /**
+     * Die beiden ZAHLEN der gelesenen VERSION einer Periode: Version 1 aus {@code messreihe_periode}, eine
+     * korrigierte Version (≥ 2) aus {@code messreihe_periode_version} — dort seit {@code V20260923101500} nach
+     * derselben Regel gebildet. Nie das Paar von Version 1 neben der Menge einer späteren: das wäre ein Aufbau,
+     * der nicht zur Zahl passt. Eine Version, die ihr Paar nicht trägt (Ersatzwert, berichtigter Wert, vor der
+     * Migration gebildet), ist {@link Optional#empty()} — unbekannt ist keine Null.
+     *
+     * @param version die gelesene Version; {@code null} oder 1 = Version 1
+     */
+    static Optional<BigDecimal[]> mengenDerVersion(JdbcTemplate j, UUID tenant, String art, Instant beginn,
+            Integer version, String spur, List<Object> spurArgs) {
+        if (version == null || version <= 1) {
+            return mengenDerPeriode(j, tenant, art, beginn, spur, spurArgs);
+        }
+        List<Object> args = new java.util.ArrayList<>(
+                List.of(tenant, art, java.sql.Timestamp.from(beginn), version));
+        args.addAll(spurArgs);
+        List<BigDecimal[]> zeilen = j.query(
+                "SELECT menge_positiv, menge_negativ FROM messreihe_periode_version "
+                        + "WHERE tenant_id = ? AND ebene = ? AND periode_beginn = ? AND version = ? AND " + spur,
+                (rs, i) -> new BigDecimal[] {rs.getBigDecimal(1), rs.getBigDecimal(2)}, args.toArray());
+        if (zeilen.isEmpty() || zeilen.get(0)[0] == null || zeilen.get(0)[1] == null) {
+            return Optional.empty();
+        }
+        return Optional.of(zeilen.get(0));
+    }
+
     /** Die beiden Wörter des Kanals, {@code null} ohne zwei Richtungen. */
     static Map<String, String> woerter(MeasurementCatalog katalog, String kanal) {
         MeasurementCatalog.Semantik s = kanal == null ? null : katalog.semantik(kanal);
