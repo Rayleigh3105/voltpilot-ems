@@ -88,7 +88,12 @@ interface Def {
   einfluesse: EnergieeinsatzEinfluss[];
 }
 
-const bz = (kz: string, art: EnergieeinsatzEinfluss['art']): EnergieeinsatzEinfluss => ({ art, bezugsgroesse_id: BZ[kz].id, wortlaut: null });
+const bz = (kz: string, art: EnergieeinsatzEinfluss['art']): EnergieeinsatzEinfluss => ({
+  art,
+  bezugsgroesse_id: BZ[kz].id,
+  bezugsgroesse: { id: BZ[kz].id, kennzeichen: BZ[kz].kennzeichen, name: BZ[kz].name },
+  wortlaut: null,
+});
 const text = (wortlaut: string, art: EnergieeinsatzEinfluss['art']): EnergieeinsatzEinfluss => ({ art, bezugsgroesse_id: null, wortlaut });
 
 const DEFS: Def[] = [

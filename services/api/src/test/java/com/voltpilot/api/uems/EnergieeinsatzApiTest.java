@@ -122,7 +122,10 @@ class EnergieeinsatzApiTest {
         var protokoll = ruf("GET", pfad + "/protokoll", "IK", null, 200).path("aenderungen");
         assertThat(protokoll).hasSize(6);
         assertThat(protokoll.findValuesAsText("art")).contains("angelegt", "bearbeitet", "verantwortlicher", "einflussgroessen", "beendet");
-        protokoll.forEach(a -> assertThat(a.at("/akteur/name").asText()).isEqualTo("Ines Kaltenbach"));
+        protokoll.forEach(a -> {
+            assertThat(a.at("/akteur/name").asText()).isEqualTo("Ines Kaltenbach");
+            assertThat(a.path("zeit").isTextual()).isTrue();
+        });
     }
 
     @Test void jedeAblehnungUndAtomareAnlage() throws Exception {
@@ -147,8 +150,15 @@ class EnergieeinsatzApiTest {
     @Test void bezugsgroesseBleibtMitLesbarer409AuchInDerGeschichte() throws Exception {
         UUID bz = root.queryForObject("INSERT INTO bezugsgroesse(tenant_id,kennzeichen,name,wertart,einheit,periode_art,geltung_art,unternehmen_id) "
                 + "VALUES (?,'BZ-1','Produktion','periodenwert','Stück','monat','unternehmen',?) RETURNING id", UUID.class, tenant, unternehmen);
-        var a = neu(ohne); a.put("einflussgroessen", List.of(Map.of("bezugsgroesse_id", bz.toString(), "art", "produktion")));
+        var a = neu(p2); a.put("einflussgroessen", List.of(Map.of("bezugsgroesse_id", bz.toString(), "art", "produktion")));
         var e = ruf("POST", BASE, "IK", a, 201);
+        assertThat(e.at("/einflussgroessen/0/bezugsgroesse/id").asText()).isEqualTo(bz.toString());
+        assertThat(e.at("/einflussgroessen/0/bezugsgroesse/kennzeichen").asText()).isEqualTo("BZ-1");
+        assertThat(e.at("/einflussgroessen/0/bezugsgroesse/name").asText()).isEqualTo("Produktion");
+        var gezaeunt = ruf("GET", BASE + "/" + e.path("id").asText(), "PH", null, 200)
+                .path("einflussgroessen").get(0);
+        assertThat(gezaeunt.path("bezugsgroesse_id").asText()).isEqualTo(bz.toString());
+        assertThat(gezaeunt.has("bezugsgroesse")).isFalse();
         var fehler = ruf("DELETE", "/api/v1/bezugsgroessen/" + bz, "IK", null, 409);
         assertThat(fehler.path("code").asText()).isEqualTo("bezugsgroesse_in_verwendung");
         assertThat(fehler.path("energieeinsaetze").get(0).asText()).isEqualTo(e.path("kennzeichen").asText());

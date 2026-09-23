@@ -37,7 +37,7 @@ import { energieeinsatzRoute, hashForRoute, pageRoute, parseRoute } from './nav'
 import { benutzerFixture } from './test/benutzerFixtures';
 import { ahrenbergEinsaetze, ahrenbergRangliste, ahrenbergUmfang, ahrenbergUmfangVorgabe, bewertungBuehne } from './test/bewertungFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
-import { ahrenbergBezugsgroessen, ahrenbergProzesse } from './test/kennzahlAnlegenFixtures';
+import { ahrenbergProzesse } from './test/kennzahlAnlegenFixtures';
 import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
 import { rechteSeed } from './test/rollenFixtures';
 import { werkAhrenberg, werkLindach } from './test/standorteFixtures';
@@ -204,12 +204,11 @@ describe('Liste und Seite der Einsätze', () => {
   it('Messstellen tragen ihren Ort; Einflussgrößen ihre Bezugsgröße oder den Wortlaut', () => {
     const ms06 = ee1.messstellen.find((m) => m.kennzeichen === 'MS-06')!;
     expect(messstelleOrt(ms06)).toBe('B-1');
-    const bz = ahrenbergBezugsgroessen().bezugsgroessen;
-    expect(ee1.einflussgroessen.map((e) => einflussText(e, bz))).toEqual([
+    expect(ee1.einflussgroessen.map((e) => einflussText(e))).toEqual([
       'Produktion: Produktionsmenge Spritzguss (BZ-1)',
       'Betriebszeit: Betriebsstunden Spritzguss (BZ-3)',
     ]);
-    expect(ee4.einflussgroessen.map((e) => einflussText(e, bz))).toEqual(['Wetter: Außentemperatur']);
+    expect(ee4.einflussgroessen.map((e) => einflussText(e))).toEqual(['Wetter: Außentemperatur']);
   });
 
   it('ein Verantwortlicher ohne Konto bleibt mit Vermerk (R14); beendet nennt den letzten Tag', () => {
