@@ -1,6 +1,6 @@
 import { ApiError, request } from './api';
 import { grundUndWeg } from './rollen';
-import matrixDatei from '../../../docs/contracts/v2/rechte-matrix.json';
+import matrixDatei from './rechte-matrix.json';
 import { darf, matrixAus, type Aktion, type Rolle } from './rechte';
 
 export interface BenutzerAnlage {

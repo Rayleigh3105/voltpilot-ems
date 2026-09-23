@@ -15,7 +15,11 @@ Matrix und Ableitung Vertrag:
   `@Recht("…")`), Zellen `U`/`S`/`E`/`-`/`P` und für den Unterstützer `A`/`Ei`/`B` (E9).
   **[`rechte-matrix.md`](../../contracts/v2/rechte-matrix.md) wird daraus ERZEUGT**
   (`python3 docs/contracts/v2/tools/rechte_matrix.py`, `--check`); ihre Tabelle „Matrix“ ist
-  zeichengleich zur Konzept-Tabelle §4.3 (SHA-256 gepinnt) — nie von Hand ändern.
+  zeichengleich zur Konzept-Tabelle §4.3 (SHA-256 gepinnt) — nie von Hand ändern. Derselbe Lauf
+  schreibt die byte-gleiche Portal-Kopie `frontend/portal/src/rechte-matrix.json`: das Portal-Image
+  baut mit Kontext `frontend/portal`, Produktionscode darf `docs/` nicht importieren (TS2307 im
+  `docker build`); `rechteMatrix.sync.test.ts` hält Kopie und Kontextgrenze fest. Tests dürfen den
+  Vertrag direkt lesen.
 - **[`docs/contracts/v2/rechte-vectors.json`](../../contracts/v2/rechte-vectors.json)** — 164
   Fälle in sieben Familien (`darf`, `sichtbare_standorte`, `teilansicht`, `ocpp_stufe`,
   `unterstuetzung`, `entzug`, `aenderung`), A1–A16 je Fall mit `abnahme` markiert, elf benannte
@@ -71,7 +75,8 @@ und ruft `rechte.ts`). `TenantFilter`, `SecurityConfig`, `OcppActionPolicy` und 
 ```bash
 (cd services/api && ./mvnw test -Dtest='RechteAbleitungVectorsTest')   # 343 Tests, rein
 (cd frontend/portal && npx vitest run src/rechte.test.ts)               # 175 Tests
-python3 docs/contracts/v2/tools/rechte_matrix.py --check                # Tabelle aktuell
+python3 docs/contracts/v2/tools/rechte_matrix.py --check                # Tabelle + Portal-Kopie aktuell
+(cd frontend/portal && npx vitest run src/rechteMatrix.sync.test.ts)    # Kopie byte-gleich, Kontextgrenze
 python3 docs/fachmodell/tools/build_fachmodell.py --check               # Glossar aktuell
 ```
 

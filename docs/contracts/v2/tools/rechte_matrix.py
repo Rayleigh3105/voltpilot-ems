@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Erzeugt `docs/contracts/v2/rechte-matrix.md` aus `rechte-matrix.json` (UEMS AP-03 IP-1).
+"""Erzeugt `docs/contracts/v2/rechte-matrix.md` aus `rechte-matrix.json` (UEMS AP-03 IP-1) und
+spiegelt die JSON-Datei byte-gleich nach `frontend/portal/src/rechte-matrix.json`.
 
-    python3 docs/contracts/v2/tools/rechte_matrix.py            # schreibt rechte-matrix.md
-    python3 docs/contracts/v2/tools/rechte_matrix.py --check    # nur prüfen, ob sie aktuell ist
+    python3 docs/contracts/v2/tools/rechte_matrix.py            # schreibt .md und Portal-Kopie
+    python3 docs/contracts/v2/tools/rechte_matrix.py --check    # nur prüfen, ob beide aktuell sind
 
 `--check` schreibt nichts und endet mit 1, wenn die Markdown-Datei vom Generator abweicht — so
-fällt auf, wenn jemand die Tabelle von Hand geändert hat statt `rechte-matrix.json`. Die Tabelle
+fällt auf, wenn jemand die Tabelle von Hand geändert hat statt `rechte-matrix.json` — oder wenn die
+Portal-Kopie nicht mehr byte-gleich ist. Die Kopie gibt es, weil das Portal-Image mit dem
+Build-Kontext `frontend/portal` gebaut wird (`.forgejo/workflows/deploy*.yaml`) und `docs/` dort
+fehlt; `rechteMatrix.sync.test.ts` hält sie im Portal-Test fest. Die Tabelle
 unter „Matrix“ entsteht aus den Zeilen OHNE `nachtrag` und ist zeichengleich zur Konzept-Tabelle
 AP-03 §4.3 (dieselben Spalten, dieselben Gruppenzeilen) — ihr SHA-256 steht in
 `konzept_tabelle.sha256`, und beide Aufrufe enden mit 1, wenn er nicht mehr stimmt. Die Zeilen MIT
@@ -22,6 +26,7 @@ from pathlib import Path
 V2 = Path(__file__).resolve().parent.parent
 QUELLE = V2 / "rechte-matrix.json"
 ZIEL = V2 / "rechte-matrix.md"
+PORTAL_KOPIE = V2.parents[2] / "frontend" / "portal" / "src" / "rechte-matrix.json"
 KOPF = (
     "<!-- ERZEUGT von docs/contracts/v2/tools/rechte_matrix.py aus rechte-matrix.json — "
     "nicht von Hand ändern. -->\n"
@@ -151,22 +156,34 @@ def markdown(m):
 
 
 def main(argv):
-    soll = markdown(json.loads(QUELLE.read_text(encoding="utf-8")))
+    quelle = QUELLE.read_text(encoding="utf-8")
+    soll = markdown(json.loads(quelle))
     ist = ZIEL.read_text(encoding="utf-8") if ZIEL.exists() else None
+    kopie = PORTAL_KOPIE.read_text(encoding="utf-8") if PORTAL_KOPIE.exists() else None
     if "--check" in argv:
+        rc = 0
         if ist != soll:
             print("VERALTET: rechte-matrix.md")
+            rc = 1
+        if kopie != quelle:
+            print("VERALTET: frontend/portal/src/rechte-matrix.json")
+            rc = 1
+        if rc:
             print("→ python3 docs/contracts/v2/tools/rechte_matrix.py")
-            return 1
-        print("aktuell: rechte-matrix.md")
+            return rc
+        print("aktuell: rechte-matrix.md, frontend/portal/src/rechte-matrix.json")
         return 0
     if ist != soll:
         ZIEL.write_text(soll, encoding="utf-8")
         print("geschrieben  docs/contracts/v2/rechte-matrix.md")
     else:
         print("unverändert  docs/contracts/v2/rechte-matrix.md")
+    if kopie != quelle:
+        PORTAL_KOPIE.write_text(quelle, encoding="utf-8")
+        print("geschrieben  frontend/portal/src/rechte-matrix.json")
+    else:
+        print("unverändert  frontend/portal/src/rechte-matrix.json")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
