@@ -199,7 +199,7 @@ anderer Kundenbereich 404 über RLS). Ablehnungen `{code, message, …Fakten}`.
 | `GET /api/v1/kennzahlen/{id}/bezugsbasen` | alle Bezugsbasen der Kennzahl `{bezugsbasen: [ … ]}`, je Eintrag in der Form von `GET …/bezugsbasen/{bid}`, die laufende zuerst, danach die beendeten (jüngste zuerst) | 404 |
 | `POST /api/v1/kennzahlen/{id}/bezugsbasen` | legt BB-… an; Körper `{zweck?}`; Verantwortlicher = der der Kennzahl (B4, ohne ihn die anlegende Person); Protokoll `bezugsbasis_angelegt`; 201 | 409 `bezugsbasis_laeuft` (B1) · 409 `kennzahl_archiviert` · 422 `kennzahl_ohne_bezugsbasis` (B2: Anteil, Quotient ohne Messstelle im Zähler) |
 | `GET …/bezugsbasen/{bid}` | die Basis mit ihren Fassungen (Nummer, Referenzperiode, Methode, Datenlage, `freigabe_status`, Basiswert, `gilt_ab`, Prüfsumme) | 404 |
-| `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?}`; ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung. **Ab Fassung 2** (nach einer freigegebenen oder abgelehnten Fassung, `bezugsbasis_fassung_anpassungsgruende_chk`) zusätzlich `anpassungsgruende` (A1, einer oder mehrere, je höchstens einmal), `anpassung_wortlaut` (nur und immer mit `sonstiger`) und `begruendung` (10–500) Pflicht; `gilt_ab?` Vorgabe der Tag nach der Referenzperiode (P4) | 422 `anpassungsgrund_fehlt` · `anpassungsgrund_unbekannt` · `anpassung_wortlaut` · `anpassung_ohne_vorgaengerin` (Fassung 1 mit Grund) · `begruendung_fehlt` · `gilt_ab_vor_periodenende` · `gilt_ab_vor_vorgaengerin` (vor dem `gilt_ab` der laufenden freigegebenen Fassung) · `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · Modelle: `zu_wenig_perioden` (G1, mit `monate`/`mindest_monate`) · `variable_fehlt` (G2, mit `variable` und `perioden`) · `variable_keine_gradtagzahl` (M3) · `zweite_variable_fehlt` · `variable_unbekannt` · `modell_ohne_nenner` · `variable_ohne_periodenwerte` · `toleranz_ungueltig` · `wiedervorlage_ungueltig`; 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
+| `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?, faktoren?}` (`faktoren` §17); ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen und Faktoren aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung. **Ab Fassung 2** (nach einer freigegebenen oder abgelehnten Fassung, `bezugsbasis_fassung_anpassungsgruende_chk`) zusätzlich `anpassungsgruende` (A1, einer oder mehrere, je höchstens einmal), `anpassung_wortlaut` (nur und immer mit `sonstiger`) und `begruendung` (10–500) Pflicht; `gilt_ab?` Vorgabe der Tag nach der Referenzperiode (P4) | 422 `anpassungsgrund_fehlt` · `anpassungsgrund_unbekannt` · `anpassung_wortlaut` · `anpassung_ohne_vorgaengerin` (Fassung 1 mit Grund) · `begruendung_fehlt` · `gilt_ab_vor_periodenende` · `gilt_ab_vor_vorgaengerin` (vor dem `gilt_ab` der laufenden freigegebenen Fassung) · `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · Modelle: `zu_wenig_perioden` (G1, mit `monate`/`mindest_monate`) · `variable_fehlt` (G2, mit `variable` und `perioden`) · `variable_keine_gradtagzahl` (M3) · `zweite_variable_fehlt` · `variable_unbekannt` · `modell_ohne_nenner` · `variable_ohne_periodenwerte` · `toleranz_ungueltig` · `wiedervorlage_ungueltig` · `faktor_unbekannt` · `faktor_doppelt` (§17); 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
 | `GET …/bezugsbasen/{bid}/fassungen/{n}` | die gespeicherte Fassung — **byte-gleich** zur Antwort ihres Entwurfs | 404 |
 | `POST …/fassungen/{n}/beantragen` | F2, nur mit `unternehmen.vieraugen_freigabe`: Entwurf → `beantragt`; Körper `{begruendung?}` (sonst die des Entwurfs; 10–500); Recht `bezugsbasis.freigeben` — wer beantragt, ist die Freigabe-Person (`freigabe_*`, Rolle KA/EM per `bezugsbasis_fassung_freigabe_chk`); Protokoll `fassung_beantragt` mit Begründung | 409 `vieraugen_aus` · `fassung_beantragt` · `fassung_freigegeben` · `fassung_abgelehnt` · `bezugsbasis_beendet`; 422 `begruendung_fehlt`; 403 `recht_fehlt` |
 | `POST …/fassungen/{n}/freigeben` | F1: ohne Vier-Augen gibt die Person den **Entwurf** mit Begründung frei (`freigabe_*`); F2: mit Vier-Augen bestätigt eine **zweite Person** den Antrag (`entscheidung_*`; nicht, wer die Fassung gebildet oder beantragt hat; Rolle KA/EM). `freigegeben_am` = jetzt (Beginn der Wiedervorlage, F5). F4: die laufende freigegebene Vorgängerin endet am Vortag des `gilt_ab` (`gilt_bis`, `beendet_grund` „abgelöst durch Fassung n“, Protokoll `fassung_beendet`), sonst bleibt sie byte-gleich. Protokoll `fassung_freigegeben`; freigegeben und abgelehnt kehren nie zurück (Trigger) | 409 `vieraugen_beantragen` (Entwurf bei Vier-Augen) · `fassung_freigegeben` · `fassung_abgelehnt` · `gilt_ab_vor_vorgaengerin` · `bezugsbasis_beendet`; 422 `begruendung_fehlt` · `vieraugen_urheber`; 403 `recht_fehlt` · `vieraugen_rolle` |
@@ -218,7 +218,7 @@ Beenden, „geprüft, bleibt“ und die Übersicht stehen bei IP-17, der Verglei
 (`a`, `b`, beim Modell mit zwei Einflussgrößen `c`; 4 Stellen), `r2` (3), `streuung_prozent` (1) — beim Verhältnis `null` —,
 `abgelehnte_variablen` (G4), `kennzeichen` (etwa „ohne Grundlast“, M3), `toleranz_prozent`,
 `wiedervorlage_monate`, `variablen` (Position 1 = Nenner mit Bezugsgrößen-Fassung und Spannweite min–max der Nenner),
-`faktoren` (leer bis IP-16), `freigabe_status` (`entwurf · beantragt · freigegeben · abgelehnt`), `gebildet_am`, `gebildet_von`,
+`faktoren` (§17, leer ohne gewählte Faktoren), `freigabe_status` (`entwurf · beantragt · freigegeben · abgelehnt`), `gebildet_am`, `gebildet_von`,
 `gilt_bis` (F4), `anpassungsgruende`, `anpassung_wortlaut`, `begruendung`, `vieraugen`, `freigabe` und `entscheidung`
 (`{name, rolle, am}` bzw. `null`), `entscheidungs_begruendung`, `freigegeben_am`, `grundlage` (der gespeicherte
 kanonische Text, roh eingebettet) und `pruefsumme` (`sha256:` über ihn, gleich `bericht_pruefsumme`).
@@ -228,7 +228,7 @@ letzten Tag), `perioden[]` — je Monat die AKTUELLE Zeile der Kennzahl (`kennza
 `definition_fassung`, `zustand`, `menge_zustand`, `kennzeichen`), `zaehler`, `nenner` und jeder Eingang (`objekt`, `wert`,
 `version` bzw. `fassung`, `einheit`, Kennzeichen); ein Monat ohne Zahl steht nur mit `grund` (`noch_nicht_gebildet` oder
 dem Grund der Kennzahl) und zählt nicht —, `monate`, `mindest_monate`, `datenlage`, `datenlage_gruende`, `vorbehalte`,
-`variablen`, `faktoren`, `basiswert`. Nichts wird nachgerechnet: der Basiswert ist `basiswert` (§4) über die gespeicherten
+`variablen`, `faktoren` (§17; ohne Faktoren `[]` — die Grundlage ist dann byte-gleich wie ohne IP-16b), `basiswert`. Nichts wird nachgerechnet: der Basiswert ist `basiswert` (§4) über die gespeicherten
 Zähler und Nenner der Monate mit Zahl.
 
 **Modelle beim Bilden (IP-10, M2–M4).** Variable 1 ist der Nenner der Kennzahl mit seinen gespeicherten Monatswerten (V2);
@@ -345,6 +345,38 @@ Rechte: Schreiben `bezugsbasis.verwalten` am Geltungsbereich der Kennzahl (`@Rec
 `KennzahlService.darfAnKennzahl`), Lesen `bezugsbasis.ansehen`. Prüfreihenfolge: Anfrage 400 → Kennzahl 404 → Recht
 403/404 → Inhalt 422 (`begruendung_fehlt`, `grund_unbekannt`, `rueckwirkend_fehlt`, `tag_vor_fassung`) → Zustand 409
 (`bezugsbasis_beendet`, `keine_freigegebene_fassung`).
+
+## 17. Statische Faktoren an der Fassung (V3, E6 = A; IP-16b)
+
+`POST …/bezugsbasen/{bid}/fassungen` nimmt `faktoren: [{art, objekt_id?, wortlaut?}]`. `art` aus `faktor_art`
+(`flaeche · standort · anlage · prozess · kostenstelle · wortlaut`). Ein **Verweis** (`objekt_id`, kein `wortlaut`) ist nur
+zulässig, wenn der Faktoren-Vorschlag (§14) ihn für die Geltung der Kennzahl am **Stichtag** mit derselben `art` nennt —
+sonst 422 `faktor_unbekannt` mit `art`, `objekt_id`, `stichtag` (ebenso eine unbekannte `art`). Ein **Wortlaut** (`wortlaut`
+1–500 Zeichen, keine `objekt_id`) hat keinen Wert und stößt nie an. Falsche Form (Verweis ohne `objekt_id`, Wortlaut mit
+`objekt_id`, leerer Wortlaut, fehlende `art`) → 400 `anfrage_ungueltig` (`feld: faktoren`); derselbe Faktor zweimal → 422
+`faktor_doppelt`. Ohne das Feld oder mit `[]` hat die Fassung keine Faktoren.
+
+**Stichtag** ist im Entwurf der **Bildungstag** (heute in der Zeitzone der Kennzahl) — V3 verlangt den Wert zum
+Freigabetag; die Neukopie am Freigabetag, falls er sich bis dahin geändert hat, ist ein eigenes Folgepaket (die
+Freigabe aus IP-8 übernimmt die Kopie des Entwurfs unverändert). Die **Kopie** steht in
+`bezugsbasis_faktor` (Position, Art, `verweis` bzw. `wortlaut`, `wert`/`einheit` nur bei der Fläche, `wert_gueltig_ab`,
+`kopie_am` = Stichtag); ein erneut gebildeter Entwurf hebt die bisherigen Faktoren auf (`aufgehoben_am`) und schreibt sie neu.
+Der Struktur-Läufer (Pfad 2, A3) liest genau diese Zeilen: `art` und `verweis` sind die `art`/`objekt_id` des Vorschlags.
+
+**Reihenfolge** stabil: Art in Vokabular-Reihenfolge, dann Kennung (ohne Kennung die Bezeichnung, beim Wortlaut sein
+Text); Position ab 1. **Grundlage** (F3): der Block `faktoren` trägt je Faktor `position`, `art`, `kopie_am` und
+beim Verweis `objekt` (Kennung, fehlt bei einer Anlage), `bezeichnung`, `wert` + `einheit` (Fläche), `gueltig_ab`; beim
+Wortlaut `wortlaut`. Die Prüfsumme deckt den Block ab — die Form der Referenzdatei 1.8 (`faktoren[]`: `art`, `objekt`,
+`wert`, `einheit`, `gueltig_ab`, `kopie_am`) ist darin enthalten.
+
+**Antwort** (Vorschau und `GET …/fassungen/{n}`, byte-gleich): `faktoren[]` mit `position`, `art`, `objekt_id`, `kennung`,
+`bezeichnung`, `wortlaut`, `wert` (Dezimaltext), `einheit`, `gueltig_ab`, `stichtag`, `ohne_anstoss` (`true` genau beim
+Wortlaut) und `satz` — „Statischer Faktor: Fläche G-2 3 100 m² (Stand 12.11.2026)“, „Statischer Faktor: Standort ST-1
+Werk Ahrenberg (Stand 12.11.2026)“, „Statischer Faktor: Zweischichtbetrieb, Halle 2 (Wortlaut, ohne Anstoß)“.
+
+R1/R5: BB-0001 mit dem Faktor Fläche G-2 am 12.11.2026 → Kopie 3 100 m² gültig ab 01.10.2026; nach der Freigabe stößt der
+Anbau der Halle 2 (3 100 → 3 400 m² ab 01.01.2027) die Fassung im Struktur-Läufer an (`struktur_geaendert`). Geprüft in
+`BezugsbasisApiTest`; keine Vektoren (keine neue reine Regel: Auswahl = §14, Kanonisierung = §6).
 
 ## Prüfen
 

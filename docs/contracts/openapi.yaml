@@ -11642,7 +11642,8 @@ paths:
         `variable_unbekannt`, `modell_ohne_nenner`; eine abhängige zweite Variable (G4) wird nicht aufgenommen und steht
         in `abgelehnte_variablen` und im Protokoll `variable_abgelehnt`. Ein offener
         Entwurf wird neu gebildet. Die Antwort ist die gespeicherte Fassung (freigabe_status `entwurf`), byte-gleich
-        zu GET …/fassungen/{n}. Vertrag bezugsbasis.md §13.
+        zu GET …/fassungen/{n}. Statische Faktoren `faktoren` nur aus dem Faktoren-Vorschlag am
+        Bildungstag (sonst 422 `faktor_unbekannt`), Wert als Kopie (§17). Vertrag bezugsbasis.md §13, §17.
       requestBody:
         required: true
         content:
@@ -26527,6 +26528,31 @@ components:
         anpassung_wortlaut: { type: string, nullable: true, description: "Nur und immer mit `sonstiger`." }
         begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500, description: "Ab Fassung 2 Pflicht; sonst beim Beantragen oder Freigeben." }
         gilt_ab: { type: string, format: date, nullable: true, description: "Vorgabe der Tag nach der Referenzperiode (P4); nie früher, nie vor der Vorgängerin." }
+        faktoren: { type: array, nullable: true, items: { $ref: "#/components/schemas/BezugsbasisFaktorWahl" }, description: "Statische Faktoren (V3, IP-16b, bezugsbasis.md §17); Verweise nur aus dem Faktoren-Vorschlag am Bildungstag." }
+    BezugsbasisFaktorWahl:
+      type: object
+      additionalProperties: false
+      required: [art]
+      properties:
+        art: { type: string, enum: [flaeche, standort, anlage, prozess, kostenstelle, wortlaut] }
+        objekt_id: { type: string, format: uuid, nullable: true, description: "Beim Verweis Pflicht: die objekt_id des Vorschlags (§14)." }
+        wortlaut: { type: string, nullable: true, maxLength: 500, description: "Nur bei art wortlaut: ohne Wert, ohne Anstoß." }
+    BezugsbasisFaktor:
+      type: object
+      description: Ein statischer Faktor der Fassung - Kopie zum Stichtag (bezugsbasis.md §17).
+      properties:
+        position: { type: integer }
+        art: { type: string, enum: [flaeche, standort, anlage, prozess, kostenstelle, wortlaut] }
+        objekt_id: { type: string, format: uuid, nullable: true }
+        kennung: { type: string, nullable: true }
+        bezeichnung: { type: string, nullable: true }
+        wortlaut: { type: string, nullable: true }
+        wert: { type: string, nullable: true, description: "Dezimaltext; nur bei der Fläche." }
+        einheit: { type: string, nullable: true }
+        gueltig_ab: { type: string, format: date, nullable: true }
+        stichtag: { type: string, format: date, description: "Tag der Kopie (im Entwurf der Bildungstag)." }
+        ohne_anstoss: { type: boolean, description: "true genau beim Wortlaut." }
+        satz: { type: string }
     BezugsbasisEntscheid:
       type: object
       additionalProperties: false
@@ -26616,7 +26642,7 @@ components:
         toleranz_prozent: { type: string }
         wiedervorlage_monate: { type: integer }
         variablen: { type: array, items: { $ref: "#/components/schemas/BezugsbasisVariable" } }
-        faktoren: { type: array, items: { type: object, additionalProperties: true } }
+        faktoren: { type: array, items: { $ref: "#/components/schemas/BezugsbasisFaktor" } }
         freigabe_status: { type: string, enum: [entwurf, beantragt, freigegeben, abgelehnt] }
         gebildet_am: { type: string, format: date-time }
         gebildet_von: { type: string }

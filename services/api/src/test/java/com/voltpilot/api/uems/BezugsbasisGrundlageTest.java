@@ -92,7 +92,10 @@ class BezugsbasisGrundlageTest {
                 Map.entry("BezugsbasisListe", BezugsbasisDto.Liste.class),
                 Map.entry("BezugsbasisPerson", BezugsbasisDto.Person.class),
                 Map.entry("BezugsbasisZustand", BezugsbasisPflegeService.Zustand.class),
-                Map.entry("BezugsbasisUebersicht", BezugsbasisPflegeService.Uebersicht.class));
+                Map.entry("BezugsbasisUebersicht", BezugsbasisPflegeService.Uebersicht.class),
+                // IP-16b (§17): statische Faktoren an der Fassung.
+                Map.entry("BezugsbasisFaktorWahl", BezugsbasisDto.FaktorWahl.class),
+                Map.entry("BezugsbasisFaktor", BezugsbasisDto.Faktor.class));
         formen.forEach((name, form) -> assertThat(((Map<String, Object>) ((Map<String, Object>) schemas.get(name))
                 .get("properties")).keySet()).as(name).containsExactlyElementsOf(felder(form)));
     }

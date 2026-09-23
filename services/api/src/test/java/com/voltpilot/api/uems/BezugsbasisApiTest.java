@@ -757,6 +757,175 @@ class BezugsbasisApiTest {
                 String.class, a.mandant())).isEqualTo("entwurf");
     }
 
+    // ------------------------------------------------------------------------------------ statische Faktoren (IP-16b)
+
+    /**
+     * V3/E6 (IP-16b): Fläche G-2 als statischer Faktor der BB-0001 (R1) → Kopie 3 100 m² zum Bildungstag, in Grundlage
+     * und Prüfsumme; Wortlaut ohne Wert und ohne Anstoß; GET zeigt dieselben Bytes. Ohne Faktoren ist die Grundlage
+     * byte-gleich wie vor IP-16b — auch nach einer Bildung mit Faktoren.
+     */
+    @Test
+    void faktorFlaecheG2WirdZumStichtagKopiertUndDiePruefsummeDecktIhn() throws Exception {
+        Welt w = welt();
+        UUID st1 = flaechenG2(w);
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+
+        Antwort ohne = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis"));
+        assertThat(ohne.status()).as(ohne.text()).isEqualTo(200);
+        assertThat(ohne.body().get("faktoren")).isEmpty();
+        assertThat(ohne.text()).contains("\"faktoren\":[],");
+        String pruefsummeOhne = ohne.body().get("pruefsumme").asText();
+
+        Map<String, Object> mit = entwurf("2026-10/2026-10", "verhaeltnis");
+        mit.put("faktoren", List.of(Map.of("art", "wortlaut", "wortlaut", "Zweischichtbetrieb, Halle 2"),
+                Map.of("art", "standort", "objekt_id", st1.toString()),
+                Map.of("art", "flaeche", "objekt_id", w.g2().toString())));
+        Antwort gebildet = ruf(w, HttpMethod.POST, basis + "/fassungen", mit);
+        assertThat(gebildet.status()).as(gebildet.text()).isEqualTo(200);
+        JsonNode faktoren = gebildet.body().get("faktoren");
+        assertThat(faktoren).hasSize(3);
+        JsonNode flaeche = faktoren.get(0);
+        assertThat(flaeche.get("position").asInt()).isEqualTo(1);
+        assertThat(flaeche.get("art").asText()).isEqualTo("flaeche");
+        assertThat(flaeche.get("objekt_id").asText()).isEqualTo(w.g2().toString());
+        assertThat(flaeche.get("kennung").asText()).isEqualTo("G-2");
+        assertThat(flaeche.get("bezeichnung").asText()).isEqualTo("Halle 2");
+        assertThat(flaeche.get("wert").asText()).isEqualTo("3100");
+        assertThat(flaeche.get("einheit").asText()).isEqualTo("m²");
+        assertThat(flaeche.get("gueltig_ab").asText()).isEqualTo("2026-10-01");
+        assertThat(flaeche.get("stichtag").asText()).isEqualTo("2026-11-12");
+        assertThat(flaeche.get("ohne_anstoss").asBoolean()).isFalse();
+        String nb = String.valueOf((char) 160);
+        assertThat(flaeche.get("satz").asText())
+                .isEqualTo("Statischer Faktor: Fläche G-2 3" + nb + "100" + nb + "m² (Stand 12.11.2026)");
+        assertThat(faktoren.get(1).get("art").asText()).isEqualTo("standort");
+        assertThat(faktoren.get(1).get("kennung").asText()).isEqualTo("ST-1");
+        assertThat(faktoren.get(1).get("wert").isNull()).isTrue();
+        assertThat(faktoren.get(1).get("satz").asText())
+                .isEqualTo("Statischer Faktor: Standort ST-1 Werk Ahrenberg (Stand 12.11.2026)");
+        JsonNode wortlaut = faktoren.get(2);
+        assertThat(wortlaut.get("art").asText()).isEqualTo("wortlaut");
+        assertThat(wortlaut.get("objekt_id").isNull()).isTrue();
+        assertThat(wortlaut.get("wert").isNull()).isTrue();
+        assertThat(wortlaut.get("ohne_anstoss").asBoolean()).isTrue();
+        assertThat(wortlaut.get("satz").asText())
+                .isEqualTo("Statischer Faktor: Zweischichtbetrieb, Halle 2 (Wortlaut, ohne Anstoß)");
+
+        // Grundlage (F3): der Block trägt die Kopie in der Form der Referenzdatei 1.8; die Prüfsumme deckt ihn ab.
+        JsonNode block = gebildet.body().at("/grundlage/faktoren");
+        assertThat(block).hasSize(3);
+        assertThat(block.get(0).get("objekt").asText()).isEqualTo("G-2");
+        assertThat(block.get(0).get("wert").decimalValue()).isEqualByComparingTo("3100");
+        assertThat(block.get(0).get("einheit").asText()).isEqualTo("m²");
+        assertThat(block.get(0).get("gueltig_ab").asText()).isEqualTo("2026-10-01");
+        assertThat(block.get(0).get("kopie_am").asText()).isEqualTo("2026-11-12");
+        assertThat(block.get(2).get("wortlaut").asText()).isEqualTo("Zweischichtbetrieb, Halle 2");
+        assertThat(block.get(2).has("wert")).isFalse();
+        String text = root.queryForObject("SELECT grundlage FROM bezugsbasis_fassung WHERE bezugsbasis_id = ?",
+                String.class, UUID.fromString(basis.substring(basis.lastIndexOf('/') + 1)));
+        assertThat(gebildet.body().get("pruefsumme").asText()).isNotEqualTo(pruefsummeOhne)
+                .isEqualTo(BezugsbasisGrundlage.pruefsumme(text))
+                .isEqualTo(root.queryForObject("SELECT bericht_pruefsumme(?)", String.class, text));
+        assertThat(BezugsbasisGrundlage.kanonisch(MAPPER.copy()
+                .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(text))).isEqualTo(text);
+        // Die Kopie in der Tabelle — das, was der Struktur-Läufer (IP-15) liest.
+        assertThat(root.queryForList("SELECT art || ':' || coalesce(verweis::text, wortlaut) || ':' "
+                + "|| coalesce(wert::text, '-') || ':' || coalesce(einheit, '-') || ':' || kopie_am FROM bezugsbasis_faktor "
+                + "WHERE tenant_id = ? AND aufgehoben_am IS NULL ORDER BY position", String.class, w.mandant()))
+                .containsExactly("flaeche:" + w.g2() + ":3100:m²:2026-11-12", "standort:" + st1 + ":-:-:2026-11-12",
+                        "wortlaut:Zweischichtbetrieb, Halle 2:-:-:2026-11-12");
+        Antwort gelesen = ruf(w, HttpMethod.GET, basis + "/fassungen/1", null);
+        assertThat(gelesen.text()).isEqualTo(gebildet.text());
+
+        // Erneut ohne Faktoren gebildet: Faktoren aufgehoben, Grundlage und Prüfsumme wieder wie ganz ohne.
+        Antwort wieder = ruf(w, HttpMethod.POST, basis + "/fassungen", entwurf("2026-10/2026-10", "verhaeltnis"));
+        assertThat(wieder.body().get("faktoren")).isEmpty();
+        assertThat(wieder.body().get("pruefsumme").asText()).isEqualTo(pruefsummeOhne);
+        assertThat(wieder.text()).isEqualTo(ohne.text());
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_faktor WHERE tenant_id = ? "
+                + "AND aufgehoben_am IS NULL", Integer.class, w.mandant())).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_faktor WHERE tenant_id = ?", Integer.class,
+                w.mandant())).isEqualTo(3);
+    }
+
+    /** Nur was der Faktoren-Vorschlag am Stichtag nennt, ist zulässig (422 {@code faktor_unbekannt}); Form 400. */
+    @Test
+    void faktorenAusserhalbDesVorschlagsWerdenAbgelehnt() throws Exception {
+        Welt w = welt();
+        UUID st1 = flaechenG2(w);
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+        UUID fremd = UUID.randomUUID();
+        abgelehnt(w, basis, mitFaktor(Map.of("art", "flaeche", "objekt_id", fremd.toString())), 422, "faktor_unbekannt");
+        // Richtiges Objekt, falsche Art: der Standort ist keine Fläche.
+        abgelehnt(w, basis, mitFaktor(Map.of("art", "flaeche", "objekt_id", st1.toString())), 422, "faktor_unbekannt");
+        abgelehnt(w, basis, mitFaktor(Map.of("art", "gebaeude", "objekt_id", w.g2().toString())), 422,
+                "faktor_unbekannt");
+        abgelehnt(w, basis, mitFaktor(Map.of("art", "wortlaut", "wortlaut", "x", "objekt_id", w.g2().toString())), 400,
+                "anfrage_ungueltig");
+        abgelehnt(w, basis, mitFaktor(Map.of("art", "flaeche")), 400, "anfrage_ungueltig");
+        abgelehnt(w, basis, mitFaktor(Map.of("art", "flaeche", "objekt_id", w.g2().toString()),
+                Map.of("art", "flaeche", "objekt_id", w.g2().toString())), 422, "faktor_doppelt");
+        Antwort a = ruf(w, HttpMethod.POST, basis + "/fassungen",
+                mitFaktor(Map.of("art", "flaeche", "objekt_id", fremd.toString())));
+        assertThat(a.body().get("stichtag").asText()).isEqualTo("2026-11-12");
+        assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis_fassung f JOIN bezugsbasis b "
+                + "ON b.id = f.bezugsbasis_id WHERE b.tenant_id = ?", Integer.class, w.mandant())).isZero();
+    }
+
+    /**
+     * R5-Brücke: ein über die Route gespeicherter Faktor Fläche G-2 wird nach der Freigabe vom Struktur-Läufer (IP-15,
+     * Pfad 2) gefunden — der Anbau (3 100 → 3 400 m² ab 01.01.2027) stößt die Fassung mit {@code struktur_geaendert} an.
+     */
+    @Test
+    void r5DerGespeicherteFaktorWirdVomStrukturLaeuferAngestossen() throws Exception {
+        Welt w = welt();
+        flaechenG2(w);
+        monat(w, "2026-10-01", "88630", "312400", "endgueltig", List.of());
+        String basis = basis(w, w.kz4());
+        Antwort f = ruf(w, HttpMethod.POST, basis + "/fassungen",
+                mitFaktor(Map.of("art", "flaeche", "objekt_id", w.g2().toString())));
+        assertThat(f.status()).as(f.text()).isEqualTo(200);
+        UUID fassung = root.queryForObject("SELECT f.id FROM bezugsbasis_fassung f JOIN bezugsbasis b "
+                + "ON b.id = f.bezugsbasis_id WHERE b.tenant_id = ?", UUID.class, w.mandant());
+        // Die Freigabe baut IP-8; hier setzt sie der Test wie UemsBezugsbasisAnstossTest direkt.
+        root.update("UPDATE bezugsbasis_fassung SET freigabe_status = 'freigegeben', freigabe_sub = 'IK', "
+                + "freigabe_name = 'Ines Kaltenbach', freigabe_rolle = 'energiemanager', freigabe_art = 'kunde', "
+                + "freigabe_am = ?, freigegeben_am = ?, begruendung = ? WHERE id = ?", Timestamp.from(FREIGABETAG),
+                Timestamp.from(FREIGABETAG), "Netzbezug der Halle 2 gegen den Oktober 2026 — vorläufig.", fassung);
+        long anbau = root.queryForObject("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt, neu, "
+                + "gilt_ab, rueckwirkend, actor_sub, actor_name, actor_art, created_at) VALUES (?, 'gebaeude', ?, "
+                + "'flaeche_geaendert', '{\"flaeche_m2\": 3100}'::jsonb, '{\"flaeche_m2\": 3400}'::jsonb, "
+                + "DATE '2027-01-01', true, 'JW', 'Jonas Wendlinger', 'kunde', ?) RETURNING id", Long.class, w.mandant(),
+                w.g2(), Timestamp.from(Instant.parse("2027-01-15T10:00:00Z")));
+
+        StrukturAenderungLaeufer laeufer = new StrukturAenderungLaeufer(root, new BerichteNaht.Keine(), 200);
+        laeufer.bezugsbasis(BezugsbasisAnstoss.mitSchalter(true));
+        assertThat(laeufer.lauf(Instant.parse("2027-01-15T10:05:00Z")).gescheitert()).isEmpty();
+
+        Map<String, Object> a = root.queryForMap("SELECT pfad, art, anlass_kennung FROM bezugsbasis_anstoss "
+                + "WHERE fassung_id = ?", fassung);
+        assertThat(a).containsEntry("pfad", 2).containsEntry("art", "struktur_geaendert")
+                .containsEntry("anlass_kennung", "ort_aenderung:" + anbau);
+    }
+
+    /** Die Flächen von G-2 (R5: 3 100 m² bis 31.12.2026, 3 400 m² ab 01.01.2027); liefert ST-1. */
+    private static UUID flaechenG2(Welt w) {
+        root.update("INSERT INTO flaeche_gueltigkeit (tenant_id, ort_id, m2, gueltig_ab, gueltig_bis) VALUES "
+                + "(?, ?, 3100, DATE '2026-10-01', DATE '2026-12-31'), (?, ?, 3400, DATE '2027-01-01', NULL)",
+                w.mandant(), w.g2(), w.mandant(), w.g2());
+        return root.queryForObject("SELECT id FROM standort WHERE tenant_id = ? AND kurzzeichen = 'ST-1'", UUID.class,
+                w.mandant());
+    }
+
+    @SafeVarargs
+    private static Map<String, Object> mitFaktor(Map<String, ?>... faktoren) {
+        Map<String, Object> m = entwurf("2026-10/2026-10", "verhaeltnis");
+        m.put("faktoren", List.of(faktoren));
+        return m;
+    }
+
     // ------------------------------------------------------------------------------------------------ Welt
 
     private Welt welt() throws Exception {

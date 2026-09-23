@@ -79,6 +79,8 @@ public class BezugsbasisController {
      * Recht: {@code bezugsbasis.verwalten} an der Geltung der Kennzahl. Bildet eine Fassung als Entwurf mit Vorschau
      * (F1): Referenzperiode P1, Methode {@code verhaeltnis} (andere 422 {@code methode_noch_nicht_gebaut}), Grundlage
      * als Kopie mit Prüfsumme (F3), Basiswert Σ ÷ Σ (M1), Datenlage P2/P3. Ein offener Entwurf wird neu gebildet.
+     * Statische Faktoren ({@code faktoren}, V3, IP-16b) nur aus dem Faktoren-Vorschlag am Bildungstag, sonst 422
+     * {@code faktor_unbekannt}; ihr Wert wird kopiert und von der Prüfsumme abgedeckt.
      */
     @PostMapping("/{bid}/fassungen")
     @Recht(value = "bezugsbasis.verwalten", ziel = RechtZiel.DIENST)

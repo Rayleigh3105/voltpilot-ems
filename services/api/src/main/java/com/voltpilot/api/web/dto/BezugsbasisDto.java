@@ -25,12 +25,29 @@ public final class BezugsbasisDto {
     /**
      * {@code POST …/bezugsbasen/{bid}/fassungen}: ein Entwurf mit Vorschau (F1). Ab Fassung 2 mit Anpassungsgründen
      * (A1, {@code sonstiger} nur mit Wortlaut) und Begründung (F4, IP-8); {@code gilt_ab} Vorgabe: Tag nach der
-     * Referenzperiode (P4).
+     * Referenzperiode (P4). {@code faktoren} sind die statischen Faktoren (V3, IP-16b): ohne das Feld oder leer hat die
+     * Fassung keine.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Entwurf(String referenzperiode, String methode, List<String> variablen, String toleranzProzent,
             Integer wiedervorlageMonate, List<String> anpassungsgruende, String anpassungWortlaut, String begruendung,
-            LocalDate giltAb) {}
+            LocalDate giltAb, List<FaktorWahl> faktoren) {}
+
+    /**
+     * Ein gewählter statischer Faktor (V3, IP-16b): ein Verweis ({@code art} {@code flaeche · standort · anlage ·
+     * prozess · kostenstelle} mit {@code objekt_id} aus dem Faktoren-Vorschlag am Bildungstag) oder ein Wortlaut
+     * ({@code art} {@code wortlaut} mit {@code wortlaut}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record FaktorWahl(String art, UUID objektId, String wortlaut) {}
+
+    /**
+     * Ein statischer Faktor der Fassung — die Kopie zum Stichtag (V3, E6): {@code wert}/{@code einheit} nur bei der
+     * Fläche; ein Wortlaut hat keinen Wert und stößt nie an ({@code ohne_anstoss}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Faktor(int position, String art, UUID objektId, String kennung, String bezeichnung, String wortlaut,
+            String wert, String einheit, LocalDate gueltigAb, LocalDate stichtag, boolean ohneAnstoss, String satz) {}
 
     /** {@code POST …/fassungen/{n}/beantragen · freigeben · ablehnen}: die Begründung (10–500 Zeichen, F1). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -75,7 +92,7 @@ public final class BezugsbasisDto {
             String referenzperiode, String methode, LocalDate giltAb, int monate, int mindestMonate, String datenlage,
             List<Map<String, Object>> datenlageGruende, List<String> vorbehalte, String basiswert,
             Map<String, String> koeffizienten, String r2, String streuungProzent,
-            List<Map<String, Object>> abgelehnteVariablen, List<String> kennzeichen, String toleranzProzent, int wiedervorlageMonate, List<Variable> variablen, List<Object> faktoren,
+            List<Map<String, Object>> abgelehnteVariablen, List<String> kennzeichen, String toleranzProzent, int wiedervorlageMonate, List<Variable> variablen, List<Faktor> faktoren,
             String freigabeStatus, OffsetDateTime gebildetAm, String gebildetVon, LocalDate giltBis,
             List<String> anpassungsgruende, String anpassungWortlaut, String begruendung, boolean vieraugen,
             Person freigabe, Person entscheidung, String entscheidungsBegruendung, OffsetDateTime freigegebenAm,

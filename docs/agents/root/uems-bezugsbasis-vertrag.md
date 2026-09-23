@@ -15,6 +15,7 @@ niemand an: keine Tabelle, keine Route, keine Fläche.
 | Rechnen | Basiswert Σ ÷ Σ (M1), kleinste Quadrate mit einer/zwei Variablen und Gradtage (M2/M3), R², Streuung, Spannweite, Pearson r (G4) |
 | Urteil | `vergleich` (Δ, Band = max(Toleranz, Streuung), Grund statt Zahl, Kennzeichen-Liste G5), `zeitraum` (Σ ÷ Σ, „x von y Monaten“), `roh` (nie ein Urteil) |
 | Faktoren-Vorschlag (IP-16a) | `GET /api/v1/kennzahlen/{id}/faktoren-vorschlag?stichtag=` (`uems/FaktorenVorschlag`, Vertrag §14): Fläche je Ort und als Summe, Standorte, Anlagen, Prozesse, Kostenstellen aus der Struktur der Geltung am Stichtag — nur lesen, Zaun über die Kennzahl; Summe `null` statt Teilsumme; Tests `FaktorenVorschlagSchnittstelleVertragTest`, `FaktorenVorschlagApiTest` (Docker) |
+| Faktoren an der Fassung (IP-16b) | `POST …/fassungen` nimmt `faktoren[]` (`uems/BezugsbasisFaktoren`, Vertrag §17): Verweis nur, was der Vorschlag am Bildungstag nennt (sonst 422 `faktor_unbekannt`), Kopie in `bezugsbasis_faktor` + Block `faktoren` der Grundlage (Prüfsumme); ohne Faktoren byte-gleich wie IP-7. Falle: Stichtag ist im Entwurf der Bildungstag, die Neukopie zum Freigabetag ist ein Folgepaket |
 | Tests | `BezugsbasisVectorsTest` · `uemsBezugsbasis.test.ts` · `services/optimization/tests/test_bezugsbasis.py` |
 
 ## Die Fallen

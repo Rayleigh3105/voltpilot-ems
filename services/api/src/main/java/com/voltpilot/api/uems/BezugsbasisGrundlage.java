@@ -81,6 +81,12 @@ public class BezugsbasisGrundlage {
             return variablen.isEmpty() ? null : variablen.get(0);
         }
 
+        /** Dasselbe Ergebnis mit einem anderen kanonischen Text und dessen Prüfsumme (statische Faktoren, IP-16b). */
+        Ergebnis mitText(String neu) {
+            return new Ergebnis(monate, datenlage, gruende, vorbehalte, basiswert, grund, methode, variablen, modell,
+                    kennzeichen, fehlend, neu, BezugsbasisGrundlage.pruefsumme(neu));
+        }
+
         static Ergebnis ohne(String grund, int monate, List<String> fehlend) {
             return new Ergebnis(monate, null, List.of(), List.of(), null, grund, null, List.of(), null, List.of(),
                     List.copyOf(fehlend), null, null);

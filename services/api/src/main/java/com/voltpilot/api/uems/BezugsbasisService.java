@@ -84,10 +84,13 @@ public class BezugsbasisService {
     private final ObjectMapper json;
     private final BezugsgroesseService bezugsgroessen;
     private final RechtPruefung rechte;
+    private final FaktorenVorschlag faktorenVorschlag;
 
     public BezugsbasisService(KennzahlService kennzahlen, JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
-            ObjectMapper json, BezugsgroesseService bezugsgroessen, RechtPruefung rechte) {
+            ObjectMapper json, BezugsgroesseService bezugsgroessen, RechtPruefung rechte,
+            FaktorenVorschlag faktorenVorschlag) {
         this.kennzahlen = kennzahlen;
+        this.faktorenVorschlag = faktorenVorschlag;
         this.bezugsgroessen = bezugsgroessen;
         this.rechte = rechte;
         this.jdbc = jdbc;
@@ -208,9 +211,15 @@ public class BezugsbasisService {
                     Map.of("nenner", nenner.kennzeichen(), "art", String.valueOf(nennerArt)));
         }
         BezugsbasisGrundlage.ZweiteVariable zweite = zweiteId == null ? null : zweite(zweiteId, von, bis);
-        BezugsbasisGrundlage.Ergebnis g = grundlage.bilden(kennzahlId, k.zeile().kennzeichen(), k.fassung().rechenform(),
-                k.fassung().nummer(), e.referenzperiode(), von, bis, e.methode(),
-                nenner == null ? null : nenner.objektId(), nenner == null ? null : nenner.kennzeichen(), nennerArt, zweite);
+        // V3 (IP-16b): statische Faktoren nur aus dem Vorschlag am Bildungstag; die Kopie zum Freigabetag ist ein
+        // eigenes Folgepaket.
+        LocalDate stichtag = heute.jetzt().atZone(heute.zone()).toLocalDate();
+        List<BezugsbasisFaktoren.Kopie> faktoren = BezugsbasisFaktoren.pruefen(e.faktoren(), stichtag,
+                () -> faktorenVorschlag.vorschlag(kennzahlId, List.of(), stichtag.toString()));
+        BezugsbasisGrundlage.Ergebnis g = BezugsbasisFaktoren.inGrundlage(grundlage.bilden(kennzahlId,
+                k.zeile().kennzeichen(), k.fassung().rechenform(), k.fassung().nummer(), e.referenzperiode(), von, bis,
+                e.methode(), nenner == null ? null : nenner.objektId(), nenner == null ? null : nenner.kennzeichen(),
+                nennerArt, zweite), faktoren);
         if (g.basiswert() == null) {
             throw switch (g.grund()) {
                 case "zu_wenig_perioden" -> BezugsbasisAbgelehnt.fachlich("zu_wenig_perioden", g.monate()
@@ -294,6 +303,7 @@ public class BezugsbasisService {
                         + "bezugsgroesse_fassung, spannweite_von, spannweite_bis) VALUES (?, ?, ?, ?, ?, ?, ?)", tenant,
                         fassungId, i + 1, v.bezugsgroesseId(), v.fassung(), v.von(), v.bis());
             }
+            BezugsbasisFaktoren.speichern(jdbc, tenant, fassungId, faktoren);
             Map<String, Object> inhalt = new LinkedHashMap<>();
             inhalt.put("referenzperiode", e.referenzperiode());
             inhalt.put("methode", g.methode());
@@ -356,6 +366,7 @@ public class BezugsbasisService {
                         rs.getInt("position") == 1 ? "nenner" : "variable", rs.getObject("bezugsgroesse_id", UUID.class),
                         rs.getString("kennzeichen"), rs.getObject("bezugsgroesse_fassung", Integer.class),
                         dezimal(rs.getBigDecimal("spannweite_von")), dezimal(rs.getBigDecimal("spannweite_bis"))), f.id());
+        List<BezugsbasisDto.Faktor> faktoren = BezugsbasisFaktoren.lesen(jdbc, f.id(), g);
         return new BezugsbasisDto.Fassung(b.id(), b.kennzeichen(), b.kennzahlId(), k.zeile().kennzeichen(), f.fassung(),
                 f.referenzperiode(), f.methode(), f.giltAb(), g.path("monate").asInt(),
                 g.path("mindest_monate").asInt(BezugsbasisRegeln.STARTWERTE.mindest_monate()), f.datenlage(),
@@ -368,7 +379,7 @@ public class BezugsbasisService {
                         : g.path("abgelehnte_variablen"), new TypeReference<List<Map<String, Object>>>() {}),
                 json.convertValue(g.path("kennzeichen").isMissingNode() ? json.createArrayNode() : g.path("kennzeichen"),
                         new TypeReference<List<String>>() {}),
-                dezimal(f.toleranz()), f.wiedervorlage(), variablen, List.of(), f.freigabeStatus(), f.angelegtAm(),
+                dezimal(f.toleranz()), f.wiedervorlage(), variablen, faktoren, f.freigabeStatus(), f.angelegtAm(),
                 f.actorName(), f.giltBis(), f.anpassungsgruende(), f.anpassungWortlaut(), f.begruendung(), f.vieraugen(),
                 f.freigabe(), f.entscheidung(), f.entscheidungsBegruendung(), f.freigegebenAm(), f.grundlage(),
                 f.pruefsumme());
