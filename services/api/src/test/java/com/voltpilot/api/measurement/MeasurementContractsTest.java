@@ -55,6 +55,61 @@ class MeasurementContractsTest {
                         + "/v2/measurement-config");
     }
 
+    /**
+     * UEMS AP-05: {@code registerbilder} steht NUR an einem Plan mit Kartenpunkten; ein Plan ohne
+     * WAGO bleibt Byte für Byte der von vorher, auch wenn die Quelle verdrahtet ist.
+     */
+    @Test
+    void registerbilderNurAnEinemPlanMitKartenpunktenSonstByteGleich() throws Exception {
+        UUID karte = UUID.fromString("00000000-0000-0000-0000-00000000c495");
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        MeasurementConfigPublisher ohne = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        MeasurementConfigPublisher mit = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        mit.setRegisterbilder(new WagoRegisterbilder(jdbc, mapper) {
+            @Override
+            public List<Map<String, Object>> fuer(UUID siteId, List<MeasurementPlan.Entry> plan) {
+                if (plan.stream().noneMatch(e -> e.pointKey().startsWith("wago."))) return super.fuer(siteId, plan);
+                assertThat(siteId).isEqualTo(SITE);
+                return List.of(inVertragsReihenfolge(Map.of("entity_id", karte, "basisadresse", 4096,
+                        "funktionscode", 4, "wortfolge", "little", "kartenzahl", 2, "karten", List.of(
+                                Map.of("steckplatz", 2, "kartentyp", 494), Map.of("steckplatz", 3, "kartentyp", 495)))));
+            }
+        });
+        SelectionPoint battery = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
+                7, null, null, "2026.08.26.3", "test", null, null, "pending_edge",
+                null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
+                null, null, null, null);
+        State bestand = new State(DEVICE, SITE, null, 7, "2026.08.26.3", "pending_edge", null,
+                null, null, List.of(battery), List.of(), null);
+        DeviceScope scope = new DeviceScope(TENANT, SITE, DEVICE);
+        assertThat(mit.payload(scope, bestand)).isEqualTo(ohne.payload(scope, bestand));
+        verify(jdbc, never()).query(anyString(), any(RowMapper.class), any(Object[].class));
+        SelectionPoint wago = new SelectionPoint(karte, "wago.pm495.karte[1].frequency", true, 60,
+                11, null, null, "2026.09.23.3", "test", null, null, "pending_edge",
+                null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
+                null, null, null, null);
+        SelectionPoint battery11 = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
+                11, null, null, "2026.09.23.3", "test", null, null, "pending_edge",
+                null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
+                null, null, null, null);
+        State mitKarte = new State(DEVICE, SITE, null, 11, "2026.09.23.3", "pending_edge", null,
+                null, null, List.of(wago, battery11), List.of(), null);
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.registerbild.json")));
+        assertThat(mapper.readTree(mit.payload(scope, mitKarte))).isEqualTo(fixture);
+        assertThat(mapper.readTree(ohne.payload(scope, mitKarte)).has("registerbilder")).isFalse();
+    }
+
+    private static Map<String, Object> inVertragsReihenfolge(Map<String, Object> m) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        for (String k : List.of("entity_id", "basisadresse", "funktionscode", "wortfolge", "kartenzahl", "karten")) {
+            out.put(k, m.get(k));
+        }
+        return out;
+    }
+
     @Test
     void publisherCarriesConcreteCustomDefinitionToTheEdge() throws Exception {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(

@@ -205,8 +205,11 @@ function liesKarte(woerter, start, blocklaenge, wortfolge, soll) {
   if (!KARTENTYPEN.includes(kopfFelder.kartentyp)) {
     return ohneKartenwerte(kopfFelder, 'kartentyp_fremd');
   }
+  // Steckplatz und Kartentyp sind die Identitaet und werden immer geprueft. Die Variante nur,
+  // wenn das Soll sie nennt: ohne erhobene Variante ist „0" eine erfundene Zahl, die jede
+  // 750-495 (Variante 25001) stumm schalten wuerde (mqtt-measurement-config `registerbilder`).
   if (soll && (kopfFelder.steckplatz !== soll.steckplatz || kopfFelder.kartentyp !== soll.kartentyp
-      || kopfFelder.variante !== (soll.variante === undefined ? 0 : soll.variante))) {
+      || (Number.isInteger(soll.variante) && kopfFelder.variante !== soll.variante))) {
     return ohneKartenwerte(kopfFelder, 'aufbau_abweichend');
   }
   const gesetzt = (bit) => (kopfFelder.gueltigkeit & (1 << bit)) !== 0;

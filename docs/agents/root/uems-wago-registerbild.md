@@ -167,9 +167,9 @@ Weiter **RUHEND**: `RUNTIME_VERSION` bleibt 2026.08.26.3, `wago.pm494`/`wago.pm4
   (`STEHT_AB = 3`) und urteilt `stale` erst bei der **vierten**. IP-8 legt bewusst keine eigene
   Zahl daneben, sondern fährt auf `qualitaet === 'stale'` — wo die Schwelle liegt, entscheidet
   IP-7. Der Test `BEFUND: …` hält den heutigen Stand fest.
-- ⚠ **Mischbetrieb:** keine Laufzeit ruft diese Stufe, `flows.json` bettet sie nicht ein — eine Box
-  ohne WAGO-Quelle sendet keines dieser Ereignisse. Wer sie verdrahtet, braucht ein Edge-Release
-  und einen neuen Mischbetriebs-Nachweis.
+- ⚠ **Mischbetrieb:** seit B05 ruft die Mess-Laufzeit diese Stufe (`registerbildSample`, Abschnitt
+  „Verdrahtung im Laufzeitweg“) — nur für ein Ziel mit Registerbild; eine Box ohne WAGO-Quelle sendet
+  keines dieser Ereignisse. Wirksam mit dem Box-Release.
 
 ## Aktivierung an der Box (AP-05 IP-6b, 23.09.2026)
 
@@ -177,10 +177,37 @@ Nicht mehr RUHEND auf Katalog-Ebene: Inhalts- und Laufzeitstand **2026.09.23.3**
 die 54 Kartenpunkte, `NOCH_NICHT_AN_DER_BOX` ist leer — **wirksam erst mit dem Box-Release**, das
 diese Palette trägt. Einzelheiten und Mitgezogenes: [`uems-wago-katalog.md`](uems-wago-katalog.md).
 
-- ⚠ **Aktiviert heißt noch nicht gelesen.** Die drei Stufen dieser Datei laufen weiter nur in Tests:
-  `registerbilder` kommen weder aus der api noch aus der Laufzeit beim Planer an, `readModbus`
-  (`vp-measurements.js`) fährt für `wago_registerbild` FC 3 ohne Wortfolge, und `pruefeLesung`/
-  `lesung()` ruft keine Laufzeit. Ein 495-Punkt wird darum als `driver_unavailable` abgelehnt, nie an
-  Adresse 0 gelesen. Die Verdrahtung ist ein eigenes Paket und braucht dasselbe Box-Release.
+- ⚠ **Aktiviert hieß noch nicht gelesen** (Befund aus PR 1135): `registerbilder` kamen weder aus
+  der api noch aus der Laufzeit beim Planer an. Verdrahtet mit B05 — siehe den nächsten Abschnitt;
+  ohne Registerbild bleibt ein 495-Punkt `driver_unavailable`, nie an Adresse 0 gelesen.
 - Nachweis: `wago-registerbild.test.js` „die Box-Sicht des Katalogs führt die WAGO-Karten“ und „eine
   Konfiguration ohne Registerbild-Parameter liest keine Karte, der Rest läuft weiter“.
+
+## Verdrahtung im Laufzeitweg (B05, 23.09.2026)
+
+Was PR 1135 als „aktiviert heißt noch nicht gelesen" meldete, ist verdrahtet — **wirksam mit
+demselben Box-Release** wie die Aktivierung, kein eigener Laufzeitstand.
+
+- **api:** `WagoRegisterbilder` bildet je Controller ein Registerbild aus dem Bestand
+  (Basisadresse/FC/Wortfolge aus `connection_json` der Karten-Komponenten, Steckplatz und Kartentyp
+  aus `geraet_teil`, Kartenzahl = ALLE heute eingebauten Karten); `MeasurementConfigPublisher`
+  hängt `registerbilder` NUR an einen Plan mit Kartenpunkten. Nachweise `WagoRegisterbilderTest`,
+  `WagoRegisterbilderDbTest`, `MeasurementContractsTest` (ohne WAGO byte-gleich).
+- **Vertrag:** `registerbilder` additiv in `mqtt-measurement-config.schema.json`
+  (`x-registerbilder-rule`), Beispiel `…valid.registerbild.json`; der Go-Core kennt das Feld seit IP-6a.
+- **Box:** `registerbilderJeZiel` (Planer, Komponente → Ziel), `MeasurementRuntime.apply` reicht es,
+  `registerbildSample` fährt `pruefeLesung` (IP-7) und `WagoEreignisse.lesung` (IP-8) einmal je Ziel
+  und Takt, `readModbus` nimmt den FC aus dem Registerbild (`modbusFunktionscode`). Ende-zu-Ende:
+  `wago-laufzeit.test.js` über den echten Modbus-Weg der Bühne.
+
+### Fallen
+
+- ⚠ **Variante und Controller-Kennung speichert die api nicht** (Entscheid firstmate B): sie fehlen
+  im Dokument und werden dann NICHT geprüft (`liesKarte`), nie als 0 — eine 750-495 hat Variante
+  25001. Steckplatz und Kartentyp bleiben die geprüfte Identität. Speichern ist das Folgepaket
+  `vp-uems-b05-wago-soll-speichern`.
+- ⚠ **Karte n = n-te Karte nach Steckplatz.** Ein Kartenpunkt nennt den Index im Registerbild;
+  `karte[*]` mit `entity_id` dehnt der Planer auf ALLE Karten des Controllers aus — eine
+  Karten-Komponente muss ihren konkreten Index wählen.
+- ⚠ Der 750-494-Messwert bleibt `unknown_point`, auch MIT Registerbild (Befund 4, `readable: false`).
+  Der Zählerstand der 750-495 kommt roh (`conditional_factor` nach Messbereich) — kein Faktor geraten.

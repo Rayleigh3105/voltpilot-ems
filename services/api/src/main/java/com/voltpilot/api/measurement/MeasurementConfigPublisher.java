@@ -43,6 +43,7 @@ public class MeasurementConfigPublisher {
     private final ObjectMapper mapper;
     private final ErwarteteKadenz kadenzen;
     private BoxFaehigkeiten faehigkeiten;
+    private WagoRegisterbilder registerbilder;
     private MqttClient client;
 
     public MeasurementConfigPublisher(
@@ -64,6 +65,12 @@ public class MeasurementConfigPublisher {
     @Autowired(required = false)
     void setFaehigkeiten(BoxFaehigkeiten faehigkeiten) {
         this.faehigkeiten = faehigkeiten;
+    }
+
+    /** Ohne Quelle (Testaufbau) trägt kein Plan {@code registerbilder} — Zeichen für Zeichen wie bisher. */
+    @Autowired(required = false)
+    void setRegisterbilder(WagoRegisterbilder registerbilder) {
+        this.registerbilder = registerbilder;
     }
 
     public static String topic(UUID tenantId, UUID siteId, UUID deviceId) {
@@ -139,6 +146,11 @@ public class MeasurementConfigPublisher {
         payload.put("revision", state.desiredRevision());
         payload.put("catalog_version", state.catalogVersion());
         payload.put("selections", selections);
+        // UEMS AP-05: die Parameter je WAGO-Controller, NUR an einem Plan mit Kartenpunkten -
+        // jeder andere Plan bleibt Byte für Byte wie vorher (x-registerbilder-rule).
+        List<Map<String, Object>> bilder = registerbilder == null ? List.of()
+                : registerbilder.fuer(scope.siteId(), plan);
+        if (!bilder.isEmpty()) payload.put("registerbilder", bilder);
         return mapper.writeValueAsBytes(payload);
     }
 

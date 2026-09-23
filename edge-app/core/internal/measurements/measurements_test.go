@@ -356,3 +356,26 @@ func TestRegisterbildShapeIsChecked(t *testing.T) {
 		t.Fatal("duplicate entity accepted")
 	}
 }
+
+// The cloud publishes registerbilder from what it holds (decision firstmate B,
+// 23.09.2026): slot and card type, but neither variant nor controller id. The
+// core carries such a document and hands the RAW payload to Node-RED, so the
+// absent fields stay absent there and are not checked - never a zero.
+func TestRegisterbildFromTheCloudWithoutVariantAndControllerID(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "v2",
+		"examples", "mqtt-measurement-config.valid.registerbild.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := ParseConfig(raw, testID, 1)
+	if err != nil {
+		t.Fatalf("registerbild plan refused: %v", err)
+	}
+	if len(c.Registerbilder) != 1 || c.Registerbilder[0].Kartenzahl != 2 ||
+		c.Registerbilder[0].Funktionscode != 4 || c.Registerbilder[0].Wortfolge != "little" {
+		t.Fatalf("registerbild garbled: %#v", c.Registerbilder)
+	}
+	if bytes.Contains(raw, []byte("variante")) || bytes.Contains(raw, []byte("controller_kennung")) {
+		t.Fatal("the fixture must show the cloud's shape: no variant, no controller id")
+	}
+}

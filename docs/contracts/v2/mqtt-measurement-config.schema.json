@@ -16,6 +16,12 @@
       "type": "array",
       "maxItems": 2301,
       "items": {"$ref": "#/$defs/selection"}
+    },
+    "registerbilder": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/registerbild"}
     }
   },
   "$defs": {
@@ -38,6 +44,34 @@
           "else": {"not": {"required": ["definition"]}}
         }
       ]
+    },
+    "registerbild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_id", "basisadresse", "funktionscode", "wortfolge", "kartenzahl", "karten"],
+      "properties": {
+        "entity_id": {"$ref": "#/$defs/uuid"},
+        "basisadresse": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "funktionscode": {"enum": [3, 4]},
+        "wortfolge": {"enum": ["big", "little"]},
+        "kartenzahl": {"type": "integer", "minimum": 1, "maximum": 1560},
+        "controller_kennung": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "karten": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1560,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["steckplatz", "kartentyp"],
+            "properties": {
+              "steckplatz": {"type": "integer", "minimum": 1, "maximum": 65535},
+              "kartentyp": {"enum": [494, 495]},
+              "variante": {"type": "integer", "minimum": 0, "maximum": 65535}
+            }
+          }
+        }
+      }
     },
     "custom_definition": {
       "type": "object",
@@ -71,5 +105,6 @@
   "x-identity-rule": "The three topic identity segments MUST byte-equal the payload identity fields.",
   "x-revision-rule": "Revision is monotone per device. Edge applies the complete document atomically and ignores older/equal revisions.",
   "x-point-key-rule": "point_key is unique within selections. The edge keys its poll plan on it and rejects a duplicate outright, so two components observing the same register arrive as ONE entry carrying the fastest requested cadence. ONE exception, additive and sent ONLY to a box that reports the capability measurement_config_per_component (edge-supports.md, AP-07 IP-18b Teil 2): a SHARED POINT - the same point_key appears once per component, EVERY occurrence names an entity_id and no component appears twice; each occurrence carries its own component's cadence. Such a box reads the point once per target (at the fastest cadence of its occurrences) and sends one sample per component with that entity_id (mqtt-measurement-samples-2.1.md section 2). If any occurrence of a point_key lacks entity_id, the uniqueness above holds for all of them. Uniqueness across array items cannot be expressed in JSON Schema, so the document shape is unchanged and schema_version stays 2.0; every box without the capability keeps receiving the merged plan byte for byte.",
+  "x-registerbilder-rule": "OPTIONAL and additive (UEMS AP-05, wago-registerbild.md section 2). The per-plant parameters of a VoltPilot-Registerbild WAGO v1, one entry per WAGO controller, named by ONE of its card components (entity_id; unique within the array). The edge resolves that component to its connection target like any selection (x-entity-id-rule) and reads the card points of that target from base address + card offset with this function code and word order; karten lists the Soll in image order (card n = karten[n]) and karten.length equals kartenzahl, which is ALL cards in the image. steckplatz and kartentyp are the card identity and are always checked; variante and controller_kennung are checked ONLY when present - absent means not surveyed, never 0. The cloud sends the field only for a plan that carries WAGO card points; every other plan stays byte for byte as before, and schema_version stays 2.0. A box whose core predates the field refuses the whole document (unknown field) - it cannot read these points either, because its palette lacks the cards and refuses the catalog_version first.",
   "x-entity-id-rule": "OPTIONAL and additive (Geraeteseite Stufe 3b). It names the component the selection belongs to and is present only where that binding is unambiguous; absent means the plan belongs to the device as a whole and is read over the primary inverter's connection (the pre-3c behaviour, so an older cloud is unchanged). Since Stufe 3c the edge RESOLVES it: entity_id -> the per-entity registry pin edge_source_id -> a source in the retained edge/sources/config, whose connection the point is then read over; a pin naming the primary (the reserved source id 'inverter') and a platform-composed component without a pin (battery-hybrid / grid-meter / house-load, which ARE the primary's own channels) resolve to the primary. A binding the edge cannot resolve - unknown component, a pin naming a source this box does not publish, or any other component without a pin - is REFUSED with reason binding_unavailable and never read against the primary. An OCPP measurand carries no connection, so a binding neither selects nor refuses one there."
 }

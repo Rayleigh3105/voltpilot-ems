@@ -4,7 +4,10 @@ const { buildPlan, Scheduler } = require('./measurement-planner');
 const { resolvePoint, decodeRegisters, decodeDerived, derivedAddresses,
   decodeJSONSamples, decodeOcppSampledValue, templateKey } = require('./measurement-driver');
 const { LIMITS, COST_MS, discoveryFor, byteOrderFor, geteiltePunkte, ablehnungenVon,
-  leseSchluessel } = require('./measurement-planner');
+  leseSchluessel, registerbildFor, registerbilderJeZiel } = require('./measurement-planner');
+const wago = require('./wago-registerbild');
+const wagoKopf = require('./wago-kopf');
+const { WagoEreignisse } = require('./wago-ereignisse');
 const { TARGET_PRIMARY } = require('./measurement-binding');
 const sourceStatus = require('./data-source-status');
 const RESERVATION_MS = Object.freeze({ modbus_holding:4000, modbus_input:4000,
@@ -60,12 +63,23 @@ class MeasurementRuntime {
     this.tickPromise = null; this.requestWindow = []; this.sampleWindow = [];
     this.ocppDue = new Map(); this.applyGeneration = 0;
     this.decoderState = { previous:new Map(), values:new Map() };
+    // WAGO register images (AP-05): the heartbeat is counted per controller across ticks
+    // (IP-7), and an event is reported once per change of state (IP-8).
+    this.herzschlagWacht = new wagoKopf.HerzschlagWacht();
+    this.wagoEreignisse = new WagoEreignisse();
   }
 
   apply(config, options) {
     const planning = Object.assign({ discovery:this.io.discovery,
       discoveries:this.io.discoveries, binding:this.io.binding,
       ocppCapability:this.io.ocppCapability }, options || {});
+    // The per-plant parameters of a register image travel IN the desired config
+    // (`registerbilder`, keyed by the controller's component); the planner reads them per
+    // target only. Without them every card point is refused, never read at address 0.
+    if (!planning.registerbilder) {
+      planning.registerbilder = registerbilderJeZiel(config && config.registerbilder,
+        planning.binding);
+    }
     const candidate = buildPlan(config, planning);
     if (candidate.applied) {
       const changes = candidate.ocppConfiguration || {};
@@ -176,7 +190,7 @@ class MeasurementRuntime {
     // ⚠ Wire words are kept PER TARGET. Register 616 of a bound Fronius and
     // register 616 of the primary Deye are different facts; one flat map would
     // decode one device's words with the other's point.
-    const samples = []; const wireWords = new Map();
+    const samples = []; const wireWords = new Map(); const bilder = new Map();
     for (let task; (task = this.scheduler.next());) {
       if (task.kind === 'control') { await task.run(); continue; }
       if (task.kind === 'modbus') await this.readBlock(task.block, dueKeys, wireWords);
@@ -205,7 +219,9 @@ class MeasurementRuntime {
       }
       const words = wordsOf(wireWords, targetKeyOf(selected));
       let sample = null;
-      if (selected.point.address) {
+      if (wago.istRegisterbildPunkt(selected.point)) {
+        sample = this.registerbildSample(selected, words, plan, bilder, now);
+      } else if (selected.point.address) {
         const addresses = this.addresses(selected.point, targetKeyOf(selected));
         if (addresses.length && addresses.every((address) => words.has(address))) {
           sample = decodeRegisters(selected.point, addresses.map((address) => words.get(address)),
@@ -224,6 +240,69 @@ class MeasurementRuntime {
       return [];
     }
     return this.publishSamples(samples, now, plan);
+  }
+
+  /**
+   * One card value of a WAGO register image. The image is judged ONCE per controller and tick
+   * (IP-7 `pruefeLesung`: signature, version, length, word order, Soll, heartbeat), its events
+   * go out once (IP-8), and only a card the head check calls `gelesen` yields a value - read
+   * at base address + card offset with the plant's word order. `stale` from a standing
+   * heartbeat rides on the sample; a foreign image yields no sample at all.
+   */
+  registerbildSample(selected, words, plan, bilder, now) {
+    const gelesen = this.registerbildLesung(selected.target || { key:TARGET_PRIMARY, sourceId:null },
+      words, plan, bilder, now);
+    if (!gelesen || gelesen.ergebnis !== 'erkannt') return null;
+    const index = wago.karteIndexAus(selected.point.point_key);
+    const karte = Number.isInteger(index) ? gelesen.karten[index] : null;
+    const familie = selected.point.family === 'wago.pm494' ? 494 : 495;
+    if (!karte || karte.ergebnis !== 'gelesen' || karte.kartentyp !== familie) return null;
+    const parameter = registerbildFor(plan, targetKeyOf(selected));
+    const start = parameter.basisadresse + selected.point.address.offset_words;
+    const addresses = Array.from({ length:selected.point.address.width_words }, (_, i) => start + i);
+    if (!addresses.every((address) => words.has(address))) return null;
+    // Contract §2: `big` stays big, `little` is the catalog's word_little_byte_big.
+    const point = { ...selected.point,
+      endian:parameter.wortfolge === 'little' ? 'word_little_byte_big' : 'big' };
+    const sample = decodeRegisters(point, addresses.map((address) => words.get(address)),
+      null, addresses, {});
+    return sample && gelesen.qualitaet === 'stale' && sample.quality === 'good'
+      ? { ...sample, quality:'stale' } : sample;
+  }
+
+  registerbildLesung(target, words, plan, bilder, now) {
+    if (bilder.has(target.key)) return bilder.get(target.key);
+    const parameter = registerbildFor(plan, target.key);
+    let gelesen = null;
+    if (parameter) {
+      const laenge = (parameter.kopflaenge || wago.KOPFLAENGE_MIN)
+        + parameter.kartenzahl * (parameter.kartenblocklaenge || wago.KARTENBLOCKLAENGE_MIN);
+      const addresses = Array.from({ length:laenge }, (_, i) => parameter.basisadresse + i);
+      if (addresses.every((address) => words.has(address))) {
+        gelesen = wagoKopf.pruefeLesung(addresses.map((address) => words.get(address)),
+          { steuerung:target.key, parameter, soll:parameter.soll, wacht:this.herzschlagWacht });
+        // Findings path of the data source: a foreign image is `layout_changed` (IP-7), and so
+        // is every other reason the image does not match its Soll - nothing was re-attached.
+        // The read itself was already counted by readBlock.
+        if (gelesen.ergebnis !== 'erkannt') {
+          const befund = wagoKopf.befund(gelesen);
+          this.reportSource(target, { failed:true,
+            error_class:befund ? befund.error_class : wagoKopf.FINDING_ERROR_CLASS });
+        }
+        try {
+          const komponente = (_karte, index) => {
+            const s = plan.selections.find((x) => targetKeyOf(x) === target.key && x.entity_id
+              && wago.karteIndexAus(x.point.point_key) === index);
+            return s ? s.entity_id : null;
+          };
+          const { ereignisse } = this.wagoEreignisse.lesung(gelesen, { datenquelle:target.dataSourceId,
+            steuerung:target.key, komponente, zeitpunkt:now });
+          for (const nachricht of ereignisse) this.publish(nachricht.topic, nachricht.payload, false);
+        } catch (_) { /* an event is an observation; it never costs the samples */ }
+      }
+    }
+    bilder.set(target.key, gelesen);
+    return gelesen;
   }
 
   decoderOptions(point, wireWords, targetKey, plan = this.active, decoderState = this.decoderState) {
@@ -252,7 +331,8 @@ class MeasurementRuntime {
     // poll therefore produces a gap, never a read of the primary.
     try { words = await this.runMeasuredRequest(block.source_kind || 'modbus_holding',
       () => this.runBusTask(target, () => this.io.readModbus({ start:block.start,
-        count:block.count, source_kind:block.source_kind, target, priority:'measurement' }))); }
+        count:block.count, source_kind:block.source_kind, target, priority:'measurement',
+        ...(block.funktionscode ? { funktionscode:block.funktionscode } : {}) }))); }
     catch (error) { this.reportSource(target, { requests:1, failed:true, error_class:sourceStatus.errorClass(error) }); return []; }
     if (words === MeasurementRuntime.BUDGET_BLOCKED) {
       this.reportSource(target, { failed:true, error_class:'budget' }); return [];

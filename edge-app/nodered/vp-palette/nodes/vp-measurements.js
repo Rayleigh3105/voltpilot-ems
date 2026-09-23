@@ -115,6 +115,19 @@ async function discoverSunSpec(read) {
   return { models:{} };
 }
 
+/**
+ * The Modbus function code of one planned read. A WAGO register image names its own
+ * (`registerbilder[].funktionscode`, 3 or 4 - a parameter of the plant, AP-05 Befund 9); every
+ * other source keeps the rule it always had. Anything else is refused, never read as FC 3.
+ */
+function modbusFunktionscode(sourceKind, funktionscode) {
+  if (sourceKind === 'wago_registerbild') {
+    if (funktionscode === 3 || funktionscode === 4) return funktionscode;
+    throw new Error('Registerbild ohne Funktionscode');
+  }
+  return sourceKind === 'modbus_input' ? 4 : 3;
+}
+
 module.exports = function (RED) {
   function VpMeasurements(config) {
     RED.nodes.createNode(this, config);
@@ -168,7 +181,7 @@ module.exports = function (RED) {
         return busArbiter.runPoll(busArbiter.targetKey(conn,
           device&&device.communication==='solarman_v5'?8899:502),run);
       },
-      readModbus: async ({ start, count, source_kind, target }) => {
+      readModbus: async ({ start, count, source_kind, target, funktionscode }) => {
         const device = deviceFor(target);
         const conn = device.connection || {};
         if (!conn.ip) throw new Error('keine Geräteverbindung');
@@ -180,7 +193,7 @@ module.exports = function (RED) {
           return deye.readRegistersFromResponse(response, { expectLoggerSerial:conn.serial,
             expectSlaveId:Number(conn.mb_slave_id) || 1 });
         }
-        const fc = source_kind === 'modbus_input' ? 4 : 3;
+        const fc = modbusFunktionscode(source_kind, funktionscode);
         const requestId = txid++ & 0xffff;
         const frame = modbus.buildReadRequest({ txid:requestId, unitId:Number(conn.unit_id) || 1,
           addr:start, count, fc });
@@ -350,6 +363,7 @@ module.exports = function (RED) {
 };
 
 module.exports.request = request;
+module.exports.modbusFunktionscode = modbusFunktionscode;
 module.exports.getJSON = getJSON;
 module.exports.discoverSunSpec = discoverSunSpec;
 module.exports.shapeShellyStatus = shapeShellyStatus;

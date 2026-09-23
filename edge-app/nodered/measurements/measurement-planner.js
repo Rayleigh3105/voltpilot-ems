@@ -178,6 +178,37 @@ function registerbildFor(options, targetKey) {
 }
 
 /**
+ * The register images of a desired config (`registerbilder`, mqtt-measurement-config 2.0,
+ * additive), re-keyed from the controller's COMPONENT to the TARGET the planner reads over -
+ * the same resolution a selection of that component gets (entity -> pin -> source). An image
+ * whose component this box cannot resolve is dropped: its card points are then refused as
+ * `driver_unavailable`, never read at register 0 of the primary. Two images on ONE target are
+ * a contradiction the box cannot settle - both are dropped rather than one guessed.
+ */
+function registerbilderJeZiel(liste, binding) {
+  const out = {}; const doppelt = new Set();
+  for (const bild of Array.isArray(liste) ? liste : []) {
+    if (!bild || typeof bild !== 'object' || typeof bild.entity_id !== 'string') continue;
+    const target = resolveTarget({ entity_id:bild.entity_id }, null, binding);
+    if (target.reason) continue;
+    if (Object.prototype.hasOwnProperty.call(out, target.key)) { doppelt.add(target.key); continue; }
+    // `variante` and `controller_kennung` are optional in the contract: absent means "not
+    // surveyed" and is NOT checked - never a 0 that would silence every card.
+    const karten = (Array.isArray(bild.karten) ? bild.karten : []).map((k) => Object.freeze({
+      steckplatz:k.steckplatz, kartentyp:k.kartentyp,
+      ...(Number.isInteger(k.variante) ? { variante:k.variante } : {}) }));
+    out[target.key] = Object.freeze({ basisadresse:bild.basisadresse,
+      funktionscode:bild.funktionscode, wortfolge:bild.wortfolge, kartenzahl:bild.kartenzahl,
+      soll:Object.freeze({ kartenzahl:bild.kartenzahl,
+        ...(Number.isInteger(bild.controller_kennung)
+          ? { controller_kennung:bild.controller_kennung } : {}),
+        karten:Object.freeze(karten) }) });
+  }
+  for (const key of doppelt) delete out[key];
+  return out;
+}
+
+/**
  * ⚠ ONE poll group per CONTROLLER - the grouping key names target and cadence,
  * deliberately NOT the family. One controller can carry a 750-494 and a 750-495
  * side by side, and both live in the same register image; with the family in the
@@ -204,6 +235,8 @@ function groupRegisterbild(points, options) {
     for (const anfrage of wago.planeAnfragen(parameter)) {
       blocks.push({ key:gruppe.key, start:anfrage.start, count:anfrage.count,
         cadence_s:gruppe.cadence_s, source_kind:'wago_registerbild', target:gruppe.target,
+        // FC 3 or 4 is a parameter of the plant (Befund 9), never a fixed modbus_holding.
+        funktionscode:parameter.funktionscode,
         points:gruppe.points, requestCostMs:requestCostMs(null, 'wago_registerbild') });
     }
   }
@@ -409,6 +442,7 @@ function buildPlan(config, options) {
     accepted, rejected, selections:acceptedCandidates,
     decoderPrerequisites:uniquePrerequisites,
     byteOrder:options.byteOrder, byteOrders:options.byteOrders,
+    registerbilder:options.registerbilder || {},
     blocks, httpGroups:[...nonModbusGroups.entries()].map(([key, x]) => ({ key, target:x.target })),
     ocppConfiguration:choreography.changes,
     metrics };
@@ -423,6 +457,6 @@ class Scheduler {
 }
 
 module.exports = { LIMITS, COST_MS, buildPlan, geteiltePunkte, ablehnungenVon, leseSchluessel,
-  groupModbus, groupRegisterbild, registerbildFor,
+  groupModbus, groupRegisterbild, registerbildFor, registerbilderJeZiel,
   compatibleOcpp, Scheduler, decoderDependencies, discoveryFor, byteOrderFor, requestCostMs,
   requestsForUnits, estimateSources };
