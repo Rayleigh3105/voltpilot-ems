@@ -7,7 +7,7 @@ Regeln an (Tabellen IP-4, Routen IP-5, Lauf IP-6, Werte IP-7, Kaskade IP-8/IP-9,
 | Was | Wo |
 |---|---|
 | Prosa | `docs/contracts/v2/kennzahl.md` · `kennzahlwert-herkunft.md`; additiv `ergebnis-zustand.md` §7, `events-vocabulary.md` („Reserviert“), `bezugsdaten.md` §11 „Lesart als Nenner“ |
-| Vektoren + Schema | `kennzahl-vectors.json` (22 Fälle K1–K22, 120 Prüfungen) + `kennzahl.schema.json`, `kennzahlwert-herkunft.schema.json`; Block `kennzahl_kennzeichen` in `ergebnis-zustand-vectors.json` (1.9); Block `reserviert` in `events-vocabulary-vectors.json` |
+| Vektoren + Schema | `kennzahl-vectors.json` (23 Fälle K1–K23, 123 Prüfungen; K23 Gradtag-Nenner aus AP-17 W11) + `kennzahl.schema.json`, `kennzahlwert-herkunft.schema.json`; Block `kennzahl_kennzeichen` in `ergebnis-zustand-vectors.json` (1.9); Block `reserviert` in `events-vocabulary-vectors.json` |
 | Referenzdatei | `uems-referenzunternehmen.json` 1.3: BZ-6, BZ-7, `kennzahlen[]` KZ-0001 … KZ-0005, Zeitachse 03.11.2026 |
 | Java | `services/api/.../uems/KennzahlRegeln` (rein); additiv `ErgebnisZustand.zahlMitStellen` |
 | TS | `frontend/portal/src/uemsKennzahl.ts` (rein); additiv `uemsErgebnis.zahlMitStellen` |

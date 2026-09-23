@@ -1,9 +1,13 @@
 # Bericht: Abzug, Datenstand, Freigabe und Revision (UEMS AP-12)
 
-Stand 15.09.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap12-berichte` §4, §5.8, §7, §8 IP-1/IP-3/IP-6, Entscheide
+Stand 23.09.2026 · Vertrag 1.3 · Konzept `data/vp-uems-ap12-berichte` §4, §5.8, §7, §8 IP-1/IP-3/IP-6, Entscheide
 E1–E15 und W1–W11 vom 14.09.2026. **1.1 (AP-12 IP-6, additiv):** der Abzug des Unternehmens trägt `standorte`
 (`$defs/standort_abschnitt`) und `kostenstellen` (`$defs/kostenstelle`); Fälle, Prüfungen und Abzüge der Vektoren sind
-unverändert.
+unverändert. **1.2 (additiv, A9):** Tagesverlauf, Richtungspaar und Kennzahl-Angaben. **1.3 (AP-16 IP-21, additiv, §3
+S2):** Energetische Bewertung. **Ein Stand für alle Dateien (AP-17 W10, 23.09.2026):** dieser Text, `bericht-vectors.json`,
+`bericht.schema.json`, `bericht-vorlagen.json` (mit ihren Kopien in API und Portal) und `BerichtRegelwerk.VERTRAEGE`
+nennen 1.3; vereinheitlicht wurde nur die Angabe, kein Inhalt. Ein Abzug nennt weiter die Fassung, nach der er gebildet
+wurde (A9, RW1).
 
 Die Abnahme des Captains: **„Ein freigegebener Bericht lässt sich trotz späterer Korrekturen und abgelaufener Rohdaten
 erklären.“** — Monatsbericht Werk Ahrenberg Oktober 2026: Berichtsstand Nr. 1 (10.11.2026, Datenstand 08:55) nennt

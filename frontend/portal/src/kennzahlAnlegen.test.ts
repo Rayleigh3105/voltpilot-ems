@@ -126,7 +126,7 @@ describe('Kreis (K16): ein Befund der Vorschau mit Kette spricht der Zwilling', 
 });
 
 describe('Schritt 1: Vorlagen als Karten (E9, K20)', () => {
-  it('acht Vorlagen in Katalog-Reihenfolge, dazu „ohne Vorlage“ — mit Satz und Rechenform in Kundensprache', () => {
+  it('die Vorlagen in Katalog-Reihenfolge, dazu „ohne Vorlage“ — mit Satz und Rechenform in Kundensprache', () => {
     const karten = A.vorlagenKarten();
     expect(karten.map((k) => k.wert)).toEqual([...KENNZAHL_VORLAGEN.map((v) => v.kennung), A.OHNE_VORLAGE]);
     expect(karten[0]).toEqual({

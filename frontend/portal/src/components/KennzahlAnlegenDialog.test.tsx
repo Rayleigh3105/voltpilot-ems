@@ -91,7 +91,7 @@ describe('KennzahlAnlegenDialog', () => {
     render(<KennzahlAnlegenDialog open angemeldet="Ines Kaltenbach" onClose={() => undefined} onAngelegt={angelegt} />);
 
     expect(screen.getByText('Eine Vorlage wählen — oder ohne Vorlage')).toBeTruthy();
-    expect(screen.getAllByRole('radio')).toHaveLength(9);
+    expect(screen.getAllByRole('radio')).toHaveLength(11); // zehn Vorlagen (AP-17 W11) und „ohne Vorlage“
     expect(weiterKnopf().disabled).toBe(true);
     fireEvent.click(screen.getByRole('radio', { name: /^Stromeinsatz je Stück/ }));
     weiter();

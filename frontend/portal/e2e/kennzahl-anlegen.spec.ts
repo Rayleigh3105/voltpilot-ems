@@ -96,7 +96,7 @@ for (const breite of [375, 1440]) {
     await page.getByTestId('kennzahl-anlegen-knopf').click();
     const dialog = page.getByRole('dialog', { name: /^(Kennzahl anlegen|Fertig)$/ });
     await expect(dialog.getByText('Eine Vorlage wählen — oder ohne Vorlage')).toBeVisible();
-    await expect(dialog.getByRole('radio')).toHaveCount(9);
+    await expect(dialog.getByRole('radio')).toHaveCount(11); // zehn Vorlagen (AP-17 W11) und „ohne Vorlage“
     await expect(weiter(dialog)).toBeDisabled();
     await pruefeUndFotografiere(page, breite, 's1-vorlage');
     await dialog.getByRole('radio', { name: /^Stromeinsatz je Stück/ }).check();

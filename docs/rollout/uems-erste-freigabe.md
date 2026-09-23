@@ -1237,7 +1237,7 @@ Das Protokoll des Pods meldet je Box „Revision … angewendet, … angenommen,
 Die gebauten Berichte (AP-12) erzeugen für den Dauerläufer ohne neuen Code einen
 Monatsbericht, aber **nicht von selbst**. Es gibt keinen Lauf, der Berichte anlegt; ein
 Bericht entsteht über `POST /api/v1/berichte` (Portal › Berichte). Freigeben lässt er sich
-frühestens 7 Tage nach Monatsende (`docs/contracts/v2/bericht.md:134`).
+frühestens 7 Tage nach Monatsende (`docs/contracts/v2/bericht.md:156`).
 
 - **Einmalig:** 14.1 bis 14.3. Wenn Kennzahlen im Bericht stehen sollen, zusätzlich eine
   Kennzahl am Standort.

@@ -245,13 +245,13 @@ GLOSSAR += [
      "kurz": "Ein eigenes Objekt, das Mengen teilt: Menge je Bezugsgröße, Teil am Ganzen oder Summe durch Summe über Kennzahlen — mit Zustand, Richtung, Fassung und Version.",
      "lang": "Eine Kennzahl hat ein Kennzeichen (KZ-0001), genau einen Geltungsbereich, einen Verantwortlichen und einen Zweck. Ihre Berechnung lebt in tagesgültigen Fassungen, ihr Wert je Periode in Versionen. Sie summiert nie selbst (Summen sind Gesamtwerte) und mittelt nie Quotienten: eine Unternehmenszahl aus Gebäuden ist Summe durch Summe. Eine Zahl gibt es nur mit Menge UND Bezugsgröße und einer Bezugsgröße ungleich 0; ist ein Eingang unvollständig, steht die Richtung dabei (mindestens, höchstens).",
      "beispiel": "KZ-0001 Halle 2 im Oktober 2026: 6 100 kWh ÷ 41 000 Stück = 0,15 kWh je Stück; KZ-0003 Unternehmen: (6 100 + 3 600) ÷ (41 000 + 7 200) = 0,20 kWh je Stück.",
-     "heute": "Heute nicht vorhanden; das Wort benennt bisher den Aggregat-Schritt der Eigenen Auswertung (AP-11 W7). Die Regeln stehen als Vertrag in `docs/contracts/v2/kennzahl.md` samt Vektoren (`kennzahl-vectors.json`, Zwillinge `uems/KennzahlRegeln` ⟷ `uemsKennzahl.ts`, AP-11 IP-1/IP-3); Tabellen, Rechenlauf und Fläche kommen mit AP-11 IP-4 ff.",
+     "heute": "Gebaut mit AP-11 IP-1 bis IP-16 (Stand 23.09.2026, Nachtrag AP-17 W9). Vertrag `docs/contracts/v2/kennzahl.md` samt Vektoren (`kennzahl-vectors.json` K1–K23, Zwillinge `uems/KennzahlRegeln` ⟷ `uemsKennzahl.ts`); Tabellen `kennzahl`, `kennzahl_fassung` (Berechnung als tagesgültige Fassungen), `kennzahl_eingang` und `kennzahl_wert` (Werte als Versionen, nur anhängend) (MIG/V20260915003000__uems_kennzahl.sql:190, :307, :409, :478); Routen `/api/v1/kennzahlen` für Anlegen, Fassungen, Vorschau, Werte und Versionen (services/api/src/main/java/com/voltpilot/api/web/KennzahlController.java:57); Rechenlauf `uems/KennzahlLauf` im Stundentakt und Kaskade `uems/KennzahlKaskade` hinter `voltpilot.uems.kennzahlen.enabled`; Portal „Unternehmen › Kennzahlen“ (PORTAL/nav.ts:251) und am Standort. Einstieg: `docs/agents/root/uems-kennzahlen-abschluss.md`. Der Aggregat-Schritt der Eigenen Auswertung ist nicht dieses Objekt (AP-11 W7).",
      "abgrenzung": "Nicht die Messstelle (die misst oder summiert, sie teilt nicht), nicht der Gesamtwert (eine berechnete Messstelle), nicht die Bezugsgröße (der Nenner), nicht ein Mittelwert."},
     {"id": "kennzahlvorlage", "sicht": "org", "begriff": "Kennzahlvorlage", "nachtrag": "AP-11 §4.12 (E9)",
      "kurz": "Ein Katalog-Eintrag, der das Anlegen einer Kennzahl vorbelegt: Rechenform, Name, Zweck und die Erwartung an Menge und Bezugsgröße.",
      "lang": "Eine Vorlage ist nie selbst eine Kennzahl und hat keine Fassungen. Aus ihr entsteht eine Kennzahl mit neuem Kennzeichen und Fassung 1; Eingänge und Geltungsbereich werden immer neu gebunden. Wer eine bestehende Kennzahl kopiert, übernimmt Form, Name und Zweck ebenso — und bindet ebenso neu.",
      "beispiel": "Aus „Stromeinsatz je Stück — {Geltungsbereich}“ legt Peter Hollerbach KZ-0002 für die Montagehalle Lindach an.",
-     "heute": "Heute nicht vorhanden. Die Regel für Vorlage und Kopie steht in `docs/contracts/v2/kennzahl-vectors.json` (K20); der Katalog `kennzahl-vorlagen.json` kommt mit AP-11 IP-10.",
+     "heute": "Gebaut mit AP-11 IP-10 (Stand 23.09.2026, Nachtrag AP-17 W9/W11): zehn VoltPilot-Vorlagen in `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json` (byte-gleiche Kopie PORTAL/kennzahlen/kennzahl-vorlagen.json), Form `docs/contracts/v2/kennzahl-vorlagen.schema.json`, Route `GET /api/v1/kennzahl-vorlagen` (services/api/src/main/java/com/voltpilot/api/web/KennzahlVorlagenController.java:20); die acht aus AP-11 §4.12 und seit AP-17 W11 „Stromeinsatz je Gradtag“ und „Stromeinsatz je Betriebsstunde aus Leistung“. Die Regel für Vorlage und Kopie steht in `docs/contracts/v2/kennzahl-vectors.json` (K20).",
      "abgrenzung": "Nicht die Zuordnungs-Vorlage eines Imports (die deutet eine Datei), nicht eine Kundenvorlage mit eigenen Fassungen (E9, nicht gewählt)."},
     {"id": "bericht", "sicht": "org", "begriff": "Bericht", "nachtrag": "AP-12 §4.1 (E1, E8, E9)",
      "kurz": "Ein eigenes Objekt aus Berichtsvorlage, Geltung (Standort oder Unternehmen) und Zeitraum (Monat oder Jahr) — mit genau einem Entwurf und null bis n freigegebenen Berichtsständen.",
@@ -535,6 +535,21 @@ VERFEINERUNGEN = {
          'letzten Tag (E17): ein neuer Wert ab Tag X ändert keine Periode vor X. Die Regeln stehen '
          'als Vertrag in `docs/contracts/v2/bezugsdaten.md` samt Vektoren '
          '(`bezugsdaten-vectors.json`).'),
+        ('AP-17 W9',
+         'Heute im Code (Stand 23.09.2026, gebaut mit AP-09): Tabellen `bezugsgroesse` mit genau einem '
+         'Geltungsbereich, `bezugsgroesse_wert` (Werte als Fassungen, nur anhängend), '
+         '`bezugsgroesse_kennzeichen_verlauf` und `bezugsgroesse_aenderung` '
+         '(MIG/V20260913104500__uems_bezugsgroesse.sql:162, :291); Art als eigenes Datum '
+         '(MIG/V20260918110000__uems_bezugsgroesse_art.sql); Kanalbindung an Zähler-, Zustands- und '
+         'Temperaturkanäle mit Gradtagen G20/15 (`bezugsgroesse_kanalbindung`, '
+         'MIG/V20260917100000__uems_bezugsgroesse_kanalbindung.sql:2; '
+         'services/api/src/main/java/com/voltpilot/api/uems/GradtagRegeln.java:14). Routen `/api/v1/bezugsgroessen` '
+         '(services/api/src/main/java/com/voltpilot/api/web/BezugsgroesseController.java:64) und '
+         '`/api/v1/bezugsdaten/importe`; Regeln `uems/BezugsdatenRegeln` ⟷ `bezugsdaten.ts` gegen '
+         '`docs/contracts/v2/bezugsdaten-vectors.json`; Portal „Unternehmen › Bezugsgrößen“ (PORTAL/nav.ts:250). '
+         'Die Herkunft `bezogen` einer Gradtagzahl (von VoltPilot aus einem Wetter-Archiv, AP-17 E9 = C) ist '
+         'entschieden, aber noch nicht gebaut (AP-17 IP-12). Einstieg: '
+         '`docs/agents/root/uems-bezugsgroessen-abschluss.md`.'),
     ],
     "unternehmen": [
         ("AP-02 E2", "Neben dem Kundenbereich entsteht ein eigenes Objekt „Unternehmen“ (Name, Kurzname, Zeitzone-Vorgabe, Sitz, Rechtsform); 1 : n für Konzerne bleibt vorbereitet."),

@@ -144,7 +144,7 @@ class KennzahlVectorsTest {
         assertThat(Files.exists(TS_ZWILLING)).as("TS-Zwilling").isTrue();
     }
 
-    /** K1 … K22 in ihrer Reihenfolge, jeder mit Zweck, Titel und Handrechnung. */
+    /** K1 … K23 in ihrer Reihenfolge (K23 = AP-17 W11), jeder mit Zweck, Titel und Handrechnung. */
     @Test
     void jederFallHatZweckTitelUndHandrechnung() throws Exception {
         List<String> ids = new ArrayList<>();
@@ -156,7 +156,7 @@ class KennzahlVectorsTest {
             assertThat(c.path("schritte")).as(c.path("id").asText() + " · Handrechnung").isNotEmpty();
         });
         List<String> erwartet = new ArrayList<>();
-        for (int i = 1; i <= 22; i++) {
+        for (int i = 1; i <= 23; i++) {
             erwartet.add("K" + i);
         }
         assertThat(ids).isEqualTo(erwartet);

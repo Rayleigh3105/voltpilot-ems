@@ -40,6 +40,9 @@ class KennzahlVorlagenTest {
             "stromeinsatz_je_betriebsstunde", "stromeinsatz_je_m2", "stromeinsatz_je_mitarbeitenden",
             "anteil_am_netzbezug", "autarkiegrad", "eigenverbrauchsanteil");
 
+    /** AP-17 W11: zwei Vorlagen am Ende, die acht davor unverändert. */
+    private static final List<String> W11 = List.of("stromeinsatz_je_gradtag", "stromeinsatz_je_betriebsstunde_aus_leistung");
+
     private static final KennzahlVorlagen VORLAGEN = new KennzahlVorlagen(MAPPER);
 
     static JsonNode lies(Path p) throws Exception {
@@ -70,8 +73,10 @@ class KennzahlVorlagenTest {
     }
 
     @Test
-    void esSindDieAchtVorlagenAusParagraf412() {
-        assertThat(VORLAGEN.alle().stream().map(Vorlage::kennung).toList()).isEqualTo(ACHT);
+    void esSindDieAchtVorlagenAusParagraf412UndDieZweiAusW11() {
+        List<String> alle = new ArrayList<>(ACHT);
+        alle.addAll(W11);
+        assertThat(VORLAGEN.alle().stream().map(Vorlage::kennung).toList()).isEqualTo(alle);
     }
 
     /** Die Aufzählungen des Schemas sind die Wörter der Nachbarverträge — keine Kopie läuft still auseinander. */

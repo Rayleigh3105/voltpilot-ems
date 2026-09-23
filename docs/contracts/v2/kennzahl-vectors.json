@@ -12,7 +12,8 @@
     "Zahl und Einheit einer Anzeige schreibt der Ergebnis-Zustand (E11); die Kennzeichen eines Kennzahl-Werts stehen dort im Block",
     "`kennzahl_kennzeichen` (ergebnis-zustand 1.9) — Wortlaut, Rang und Erbregeln.",
     "Beträge sind Dezimaltext, gerechnet auf `regeln.wert_nachkommastellen` Stellen (kaufmännisch), verglichen auf `regeln.vergleich_nachkommastellen`.",
-    "null ist „keine Werte“, nie 0. Noch ruft niemand an: keine Tabelle, keine Route, kein Rechenlauf (AP-11 IP-4 ff.)."
+    "null ist „keine Werte“, nie 0. Noch ruft niemand an: keine Tabelle, keine Route, kein Rechenlauf (AP-11 IP-4 ff.).",
+    "K23 ergänzt AP-17 W11 (23.09.2026): eine Kennzahl mit Gradtag-Nenner (MS-21 ÷ BZ-8, Herkunft bezogen) — Zahlen aus dem Konzept AP-17, Form wie K5."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./kennzahl.schema.json",
@@ -6810,6 +6811,151 @@
               }
             },
             "fehlt": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "K23",
+      "name": "k23-gradtag-nenner",
+      "familie": "form",
+      "abnahme": null,
+      "titel": "Kennzahl mit Gradtag-Nenner: Gasbezug Verwaltung je Gradtag = 1 240 m³ ÷ 295 Kd = 4,2034 → „4,20 m³ je Kd“ (KZ-0006, Nenner BZ-8 Gradtagzahl, Herkunft bezogen)",
+      "why": "Eine Gradtagzahl ist ein Nenner wie jede Bezugsgröße mit Periodenwerten — abgelehnt wird nur ein Stand (U3). Bisher hatte das keinen Vektor (AP-17 W11); bevor die Bezugsbasis Gradtage liest, rechnen beide Zwillinge den Quotienten hier gleich. Die Herkunft der Gradtagzahl — Messkanal, Import oder von VoltPilot aus dem Wetter-Archiv bezogen (AP-17 E9 = C) — ändert an der Rechnung nichts.",
+      "schritte": [
+        "Kennzahl = 1 240 ÷ 295 = 4.2034 m³/Kd (4,20338… kaufmännisch auf vier Stellen); Anzeige 4,20 m³ je Kd — dieselbe Zahl wie KZ-0006 Oktober 2026 im Konzept AP-17 (Anhang, R3).",
+        "Die Form folgt K5 (Menge ÷ Bezugsgröße mit Periodenwert, beide vollständig und endgültig); nur Zähler und Nenner sind getauscht: MS-21 Gas Heizung Verwaltung (Volumen, Zählerstand, Ablesung → Monat) und BZ-8 Gradtagzahl Werk Ahrenberg (Art gradtagzahl, Kd, Tag → Monat).",
+        "BZ-8 ist Herkunft bezogen (Wetter-Archiv, E9 = C); die 295 Kd des Oktobers 2026 sind die Annahme der bezogenen Reihe. Die Kennzahl liest den wirksamen Periodenwert, gleich welcher Herkunft; das Kennzeichen „Temperatur von VoltPilot bezogen (…)“ und sein Erben bringt AP-17 IP-12 (`temperatur_bezogen`) — hier trägt der Nenner darum keines.",
+        "Einheit: m³ je Kd, ungekürzt (U1); Periode: Gradtage je Tag und die Ablesung je Monat → Grundperiode Monat, dazu Jahr (P1–P3)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "wert",
+          "name": "1 240 m³ ÷ 295 Kd = 4,20 m³ je Kd",
+          "eingang": {
+            "rechenform": "quotient",
+            "periode": {
+              "art": "monat",
+              "schluessel": "2026-10"
+            },
+            "einheit": "m³/Kd",
+            "zaehler": {
+              "art": "messstelle",
+              "objekt": "MS-21",
+              "name": "Gas Heizung Verwaltung",
+              "geltung": null,
+              "wertart": null,
+              "status": null,
+              "wert": "1240",
+              "einheit": "m³",
+              "zustand": "vollständig",
+              "abdeckung_prozent": "100",
+              "endgueltig": true,
+              "ursache": null,
+              "kennzeichen": []
+            },
+            "nenner": {
+              "art": "bezugsgroesse",
+              "objekt": "BZ-8",
+              "name": "Gradtagzahl Werk Ahrenberg",
+              "geltung": null,
+              "wertart": "periodenwert",
+              "status": "wirksam",
+              "wert": "295",
+              "einheit": "Kd",
+              "zustand": null,
+              "abdeckung_prozent": null,
+              "endgueltig": true,
+              "ursache": null,
+              "kennzeichen": []
+            },
+            "komplement": false,
+            "mengen_nicht_negativ": false,
+            "teile": null,
+            "teile_art": null,
+            "teile_wort": null,
+            "teile_periode_art": null,
+            "teile_rechenform": null,
+            "bestehen_ab": null,
+            "hinweise": [],
+            "bisher": null,
+            "anlass": null
+          },
+          "ergebnis": {
+            "wert": "4.2034",
+            "zaehler": "1240",
+            "nenner": "295",
+            "zustand": "vollständig",
+            "richtung": null,
+            "grund": null,
+            "abdeckung_prozent": "100",
+            "fassung": "endgültig",
+            "version": 1,
+            "kennzeichen": [
+              "berechnet (Kennzahl)"
+            ],
+            "anzeige": "4,20 m³ je Kd",
+            "kundensatz": null
+          }
+        },
+        {
+          "regel": "einheit",
+          "name": "MS-21 (Zählerstand m³) je BZ-8 (Gradtagzahl Kd) → m³/Kd",
+          "eingang": {
+            "rechenform": "quotient",
+            "zaehler": {
+              "art": "messstelle",
+              "objekt": "MS-21",
+              "einheit": "m³",
+              "groesse": "Volumen",
+              "wertart": "Zählerstand"
+            },
+            "nenner": {
+              "art": "bezugsgroesse",
+              "objekt": "BZ-8",
+              "einheit": "Kd",
+              "groesse": null,
+              "wertart": "periodenwert"
+            },
+            "paare": null
+          },
+          "ergebnis": {
+            "einheit": "m³/Kd",
+            "anzeige": "m³ je Kd",
+            "fehler": null,
+            "kundensatz": null
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "MS-21 (Monat) und BZ-8 (Tag) → Grundperiode Monat, dazu Jahr",
+          "eingang": {
+            "gewuenscht": "monat",
+            "eingaenge": [
+              {
+                "art": "messstelle",
+                "objekt": "MS-21",
+                "name": "Gas Heizung Verwaltung",
+                "wertart": null,
+                "periode_art": "monat"
+              },
+              {
+                "art": "bezugsgroesse",
+                "objekt": "BZ-8",
+                "name": "Gradtagzahl Werk Ahrenberg",
+                "wertart": "periodenwert",
+                "periode_art": "tag"
+              }
+            ]
+          },
+          "ergebnis": {
+            "grundperiode": "monat",
+            "perioden": [
+              "monat",
+              "jahr"
+            ],
+            "fehler": null,
+            "kundensatz": null
           }
         }
       ]

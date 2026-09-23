@@ -10,7 +10,7 @@ ungewichtet gemittelt.“** — Halle 2 6 100 kWh ÷ 41 000 Stück = **0,15 kWh 
 | Datei | Rolle |
 |---|---|
 | [`kennzahl.schema.json`](./kennzahl.schema.json) | die Form der Vektor-Datei |
-| [`kennzahl-vectors.json`](./kennzahl-vectors.json) | 22 Fälle K1–K22, 120 Prüfungen, Vokabulare, Kundensätze, `zwillinge`, `_abweichungen`, `_nicht_geprueft` |
+| [`kennzahl-vectors.json`](./kennzahl-vectors.json) | 23 Fälle K1–K23 (K23 Gradtag-Nenner, AP-17 W11), 123 Prüfungen, Vokabulare, Kundensätze, `zwillinge`, `_abweichungen`, `_nicht_geprueft` |
 | [`kennzahlwert-herkunft.md`](./kennzahlwert-herkunft.md) + Schema | die Herkunft eines Kennzahl-Werts (Hülle `{satz, fehlt}`) |
 | [`ergebnis-zustand-vectors.json`](./ergebnis-zustand-vectors.json) Block `kennzahl_kennzeichen` (1.9) | Wortlaut, Rang und Erbregeln der Kennzeichen ([`ergebnis-zustand.md`](./ergebnis-zustand.md) §7) |
 | [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) Block `reserviert` | `correction` mit Bezug `bezugsgroesse`, `kennzahl_neu_gebildet` — reserviert; angelegt seit V20260915010000 bzw. V20260915061500 |
@@ -174,7 +174,8 @@ AP-11 IP-8 an (seit V20260915061500 angelegt: Bezug `kennzahl`, Pflicht `ausloes
 
 Eine Vorlage belegt Rechenform, Name („Stromeinsatz je Stück — {Geltungsbereich}“) und Zweck vor. Eine Kopie übernimmt Form,
 Name (mit dem neuen Geltungsobjekt) und Zweck und verlangt Eingänge und Geltungsbereich neu; sie bekommt ein neues Kennzeichen
-und Fassung 1 „gilt seit Beginn“ (K20). Der Katalog (IP-10) ist `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json`: acht Vorlagen in der
+und Fassung 1 „gilt seit Beginn“ (K20). Der Katalog (IP-10) ist `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json`: zehn Vorlagen (acht aus §4.12, dazu seit AP-17 W11
+„Stromeinsatz je Gradtag“ und „Stromeinsatz je Betriebsstunde aus Leistung“ am Ende) in der
 Form von [`kennzahl-vorlagen.schema.json`](./kennzahl-vorlagen.schema.json), byte-gleich im Portal
 (`src/kennzahlen/`), gelesen über `GET /api/v1/kennzahl-vorlagen` (keine eigene Kennung, kein Mandant). Je Vorlage:
 `kennung`, `name_vorschlag`, `zweck_vorschlag`, `hilfesatz`, `rechenform` (quotient · anteil), `komplement` und die

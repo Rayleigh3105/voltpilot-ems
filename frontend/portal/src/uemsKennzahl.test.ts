@@ -215,8 +215,8 @@ describe('Kennzahl-Vertrag: Form der Vektor-Datei', () => {
     expect(existsSync(resolve(process.cwd(), '../../services/api/src/main/java/com/voltpilot/api/uems/KennzahlRegeln.java'))).toBe(true);
   });
 
-  it('K1 … K22 in ihrer Reihenfolge; die Plan-Abnahme hat ihre drei Fälle', () => {
-    expect((vektoren.cases as Json[]).map((c) => c.id)).toEqual(Array.from({ length: 22 }, (_, i) => `K${i + 1}`));
+  it('K1 … K23 in ihrer Reihenfolge (K23 = AP-17 W11); die Plan-Abnahme hat ihre drei Fälle', () => {
+    expect((vektoren.cases as Json[]).map((c) => c.id)).toEqual(Array.from({ length: 23 }, (_, i) => `K${i + 1}`));
     expect((vektoren.cases as Json[]).filter((c) => c.abnahme !== null).map((c) => `${c.id}=${c.abnahme}`))
       .toEqual(['K1=gebaeude', 'K2=gebaeude', 'K3=unternehmen']);
     expect(vektoren.plan_abnahmen.unternehmen).toContain('0,20');

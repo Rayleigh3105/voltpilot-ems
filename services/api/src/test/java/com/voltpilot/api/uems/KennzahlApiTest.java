@@ -610,7 +610,7 @@ class KennzahlApiTest {
         Antwort katalog = ruf(w, HttpMethod.GET, "/api/v1/kennzahl-vorlagen", null);
         assertThat(katalog.status()).as(katalog.body().toString()).isEqualTo(200);
         assertThat(felder(katalog.body())).containsExactly("schema_version", "vorlagen");
-        assertThat(katalog.body().get("vorlagen")).hasSize(8);
+        assertThat(katalog.body().get("vorlagen")).hasSize(10);
         assertThat(katalog.body().get("vorlagen").get(0).get("kennung").asText()).isEqualTo("stromeinsatz_je_stueck");
 
         KennzahlVorlagen.Vorlage vorlage = vorlagen.vorlage("stromeinsatz_je_stueck").orElseThrow();

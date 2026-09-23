@@ -1,13 +1,14 @@
 {
   "_comment": [
     "Der Vorlagen-Katalog der Kennzahlen (UEMS AP-11 IP-10, §4.12, E9 = A): acht VoltPilot-Vorlagen, keine Kundenobjekte, keine Fassungen, kein Recht.",
+    "AP-17 IP-3 (W11, 23.09.2026) ergänzt additiv zwei Vorlagen am Ende: `stromeinsatz_je_gradtag` (Nenner Gradtagzahl in Kd; die Erwartung schränkt die Herkunft nicht ein — Messkanal, Import und die von VoltPilot bezogene Reihe (E9 = C, IP-12) sind gleich willkommen) und `stromeinsatz_je_betriebsstunde_aus_leistung` (Nenner Betriebszeit aus Leistung in h, mit geerbter Annahme). Die acht bisherigen stehen unverändert und in ihrer Reihenfolge davor.",
     "Eine Vorlage belegt den Assistenten „Kennzahl anlegen“ vor — Rechenform, Name (mit „{Geltungsbereich}“), Zweck, Komplement — und sagt, was sie an Menge und Bezugsgröße erwartet. Sie ist nie eine Kennzahl; die Eingänge bindet der Kunde ausdrücklich (Invariante 5).",
     "Kanonisch ist DIESE Datei (services/api, GET /api/v1/kennzahl-vorlagen); frontend/portal/src/kennzahlen/kennzahl-vorlagen.json ist die BYTE-gleiche Kopie (kennzahlVorlagen.sync.test.ts) — beide Dateien zusammen ändern.",
     "Die Wörter der Erwartungen sind die ihrer Verträge: Größe, Richtung, Wertart aus messstelle.schema.json; Art, Einheit, Wertart der Bezugsgröße aus bezugsdaten-vectors.json → arten.je_art. `richtungen` null heißt: die Vorlage verlangt keine Richtung. KennzahlVorlagenTest und kennzahlVorlagen.test.ts prüfen jede Vorlage gegen KennzahlRegeln.einheit."
   ],
   "schema_version": "1.0",
   "$schema_datei": "docs/contracts/v2/kennzahl-vorlagen.schema.json",
-  "herkunft": "UEMS AP-11 §4.12 (acht Vorlagen), E9 = A vom 14.09.2026, Referenzfall K20",
+  "herkunft": "UEMS AP-11 §4.12 (acht Vorlagen), E9 = A vom 14.09.2026, Referenzfall K20; AP-17 W11 vom 23.09.2026 (zwei Vorlagen, Vektor K23)",
   "vorlagen": [
     {
       "kennung": "stromeinsatz_je_stueck",
@@ -194,6 +195,52 @@
         "richtungen": ["Erzeugung"],
         "wertarten": ["Zählerstand", "Intervallmenge"],
         "satz": "Erzeugung: Messstelle oder Gesamtwert, Wirkenergie · Erzeugung"
+      }
+    },
+    {
+      "kennung": "stromeinsatz_je_gradtag",
+      "name_vorschlag": "Stromeinsatz je Gradtag — {Geltungsbereich}",
+      "zweck_vorschlag": "Stromeinsatz je Gradtag am Standort",
+      "hilfesatz": "Setzt den Strombezug ins Verhältnis zu den Gradtagen des Standorts, etwa bei elektrischer Heizung.",
+      "rechenform": "quotient",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "bezugsgroesse",
+        "bezugsgroesse_arten": ["gradtagzahl"],
+        "einheiten": ["Kd"],
+        "wertarten": ["periodenwert"],
+        "satz": "Bezugsgröße Gradtagzahl in Kd"
+      }
+    },
+    {
+      "kennung": "stromeinsatz_je_betriebsstunde_aus_leistung",
+      "name_vorschlag": "Stromeinsatz je Betriebsstunde aus Leistung — {Geltungsbereich}",
+      "zweck_vorschlag": "Stromeinsatz je Stunde Betriebszeit, ermittelt aus der Leistung",
+      "hilfesatz": "Setzt den Strombezug ins Verhältnis zu den Stunden, in denen eine Anlage über einer Leistungsschwelle läuft. Die Schwelle ist eine Annahme und steht an jeder Zahl.",
+      "rechenform": "quotient",
+      "komplement": false,
+      "zaehler_erwartung": {
+        "art": "messstelle",
+        "messstelle_arten": ["gemessen", "berechnet"],
+        "groesse": "Wirkenergie",
+        "richtungen": ["Bezug"],
+        "wertarten": ["Zählerstand", "Intervallmenge"],
+        "satz": "Messstelle oder Gesamtwert, Wirkenergie · Bezug"
+      },
+      "nenner_erwartung": {
+        "art": "bezugsgroesse",
+        "bezugsgroesse_arten": ["betriebszeit_aus_leistung"],
+        "einheiten": ["h"],
+        "wertarten": ["periodenwert"],
+        "satz": "Bezugsgröße Betriebszeit aus Leistung in h"
       }
     }
   ]

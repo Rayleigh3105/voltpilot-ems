@@ -1610,7 +1610,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     const katalog = JSON.parse(readFileSync(join(SRC, 'kennzahlen/kennzahl-vorlagen.json'), 'utf8')) as {
       vorlagen: { kennung: string; name_vorschlag: string; zweck_vorschlag: string; hilfesatz: string; zaehler_erwartung: { satz: string }; nenner_erwartung: { satz: string } }[];
     };
-    expect(katalog.vorlagen.length).toBe(8);
+    expect(katalog.vorlagen.length).toBe(10);
     const texte = katalog.vorlagen.flatMap((v) =>
       [v.name_vorschlag, v.zweck_vorschlag, v.hilfesatz, v.zaehler_erwartung.satz, v.nenner_erwartung.satz].map((text) => ({
         wo: v.kennung,

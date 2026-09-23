@@ -25,6 +25,8 @@ const ACHT = [
   'stromeinsatz_je_stueck', 'stromeinsatz_je_kg', 'stromeinsatz_je_betriebsstunde', 'stromeinsatz_je_m2',
   'stromeinsatz_je_mitarbeitenden', 'anteil_am_netzbezug', 'autarkiegrad', 'eigenverbrauchsanteil',
 ];
+/** AP-17 W11: zwei Vorlagen am Ende, die acht davor unverändert. */
+const W11 = ['stromeinsatz_je_gradtag', 'stromeinsatz_je_betriebsstunde_aus_leistung'];
 
 const katalog = (groesse: string) => {
   const k = GROESSEN_KATALOG.find((e) => e.groesse === groesse);
@@ -47,8 +49,8 @@ describe('UEMS AP-11 IP-10 · der Vorlagen-Katalog der Kennzahlen', () => {
     expect(schemaVerstoesse(kaputt, schema).length).toBeGreaterThan(0);
   });
 
-  it('es sind die acht Vorlagen aus §4.12, in ihrer Reihenfolge', () => {
-    expect(KENNZAHL_VORLAGEN.map((v) => v.kennung)).toEqual(ACHT);
+  it('es sind die acht Vorlagen aus §4.12 und die zwei aus AP-17 W11, in ihrer Reihenfolge', () => {
+    expect(KENNZAHL_VORLAGEN.map((v) => v.kennung)).toEqual([...ACHT, ...W11]);
     expect(kennzahlVorlage('gibt_es_nicht')).toBeNull();
   });
 

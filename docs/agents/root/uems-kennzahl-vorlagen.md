@@ -6,6 +6,12 @@ Kanonisch `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json`; P
 `docs/contracts/v2/kennzahl-vorlagen.schema.json`; Vertrag `kennzahl.md` §11. Nach diesem Paket kommt der Assistent
 „Kennzahl anlegen“ (IP-14).
 
+**Nachtrag AP-17 IP-3 (W11, 23.09.2026):** zwei Vorlagen am ENDE des Katalogs — `stromeinsatz_je_gradtag` (Nenner
+`gradtagzahl` in Kd; die Erwartung schränkt die Herkunft nicht ein, die bezogene Reihe aus IP-12 passt ohne Änderung) und
+`stromeinsatz_je_betriebsstunde_aus_leistung` (Nenner `betriebszeit_aus_leistung` in h). Die acht davor sind byte-gleich
+und in ihrer Reihenfolge; Zählstellen, die die Länge festhalten: `KennzahlVorlagenTest`, `kennzahlVorlagen.test.ts`,
+`KennzahlApiTest` (Route, `hasSize`) und `copy.test.ts` (Kundensprache der Karten). Vektor dazu: K23 in `kennzahl-vectors.json`.
+
 | Stelle | Was |
 |---|---|
 | `uems/KennzahlVorlagen` | liest den Katalog beim Start (bricht ab bei doppelter Kennung oder einem Namen ohne „ — {Geltungsbereich}“); `katalog()` für die Route; `vorbelegung(...)` → `KennzahlDto.Anfrage` |
