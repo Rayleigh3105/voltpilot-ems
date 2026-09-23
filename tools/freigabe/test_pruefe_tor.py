@@ -36,6 +36,7 @@ NACHWEIS_KLASSEN = {
     'NW-4': 'com.voltpilot.api.uems.UemsMesskundenLaufAbnahmeTest',
     'R1': 'com.voltpilot.api.zugriff.RechtMatrixApiTest',
     'NW-6k': 'com.voltpilot.api.metrics.DauerlaeuferGanzerWegDbTest',
+    'NW-3u': 'com.voltpilot.api.measurement.MessplanNachBoxUpdateApiTest',
 }
 
 PROBE_GUT = {
@@ -290,6 +291,14 @@ class TorPrueferTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn('[offen] NW-3neu', text)
         self.assertIn('Edge-Release A ist nicht gebaut', text)
+
+    def test_ga_ohne_update_pfad_ist_offen(self):
+        # Generalprobe B2: NW-3/NW-3neu pruefen eine frische Box, den Update-Pfad nur dieser Punkt.
+        (self.b.laeufe / f'TEST-{NACHWEIS_KLASSEN["NW-3u"]}.xml').unlink()
+        code, text = self.b.fahre('GA')
+        self.assertEqual(1, code)
+        self.assertIn('[offen] NW-3u', text)
+        self.assertIn('MessplanNachBoxUpdateApiTest', text)
 
     def test_aus_dem_tag_gebautes_paar_wird_benannt(self):
         protokoll = json.loads(json.dumps(NW3_GRUEN))

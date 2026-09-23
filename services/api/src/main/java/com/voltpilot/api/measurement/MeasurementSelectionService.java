@@ -185,6 +185,60 @@ public class MeasurementSelectionService {
         return next;
     }
 
+    /** Wer die Katalogstand-Revision im Verlauf der Auswahl anfordert (Generalprobe B2). */
+    public static final String KATALOGSTAND_AKTEUR = "system:katalogstand";
+    public static final String KATALOGSTAND_GRUND = "Die VoltPilot-Box hat den Messplan wegen eines anderen "
+            + "Katalogstands abgelehnt (etwa nach ihrem Update); der Plan wird im aktuellen Katalogstand neu "
+            + "ausgeliefert.";
+    /** Das Wort des Status-Vertrags, mit dem die Box einen Plan fremden Katalogstands ablehnt. */
+    static final String UNSUPPORTED_CATALOG = "unsupported_catalog";
+
+    /** Der Katalogstand, den der Publisher heute in jeden Plan schreibt. */
+    public String katalogstand() {
+        return catalog.version();
+    }
+
+    /**
+     * Nachlieferung nach einem Box-Update (Generalprobe B2): die Box hat ihre letzte Revision mit
+     * {@code unsupported_catalog} abgelehnt, und diese Revision trug einen ANDEREN Katalogstand als den,
+     * den die Cloud heute ausliefert. So sieht es aus, wenn der Core nach dem Update den gespeicherten Plan
+     * alten Stands wieder einspielt und die neue Palette ihn ablehnt: die Ablehnung zählt als Quittung,
+     * nichts ist offen, und ohne neue Revision bliebe die Box ohne Messplan, bis jemand ihre Auswahl ändert.
+     * Die Box nennt ihren Laufzeitstand nicht; das Urteil „ihr Stand passt nicht zu dieser Revision“ ist
+     * die Ablehnung selbst.
+     *
+     * <p>Legt Revision + 1 an, deren EIN {@code selection_requested} den heutigen Katalogstand trägt; der
+     * {@link MeasurementConfigReconciler} liefert sie aus. Keine Auswahlzeile ändert sich. Ohne Schleife:
+     * lehnt die Box auch diese Revision ab (eine Box OHNE Update gegen die neue Cloud), trägt die letzte
+     * Revision schon den heutigen Stand, und es kommt keine weitere. Nichts, solange eine Revision offen
+     * ist - die liefert der Reconciler ohnehin im heutigen Stand aus.
+     *
+     * @return die neue Revision, {@code 0} ohne Nachlieferung
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public long planImKatalogstandNeuAusliefern(UUID deviceId) {
+        DeviceScope scope = repository.lockDevice(deviceId);
+        if (scope == null) return 0;
+        long revision = repository.revision(deviceId);
+        if (revision == 0 || repository.acknowledgedRevision(deviceId) < revision) return 0;
+        if (catalog.version().equals(repository.katalogstandDerRevision(deviceId, revision))) return 0;
+        Row anker = repository.current(deviceId).stream()
+                .filter(r -> r.enabled() && "rejected".equals(r.applyStatus())
+                        && UNSUPPORTED_CATALOG.equals(r.applyReason()))
+                .min(java.util.Comparator.comparing((Row r) -> r.pointKey())
+                        .thenComparing(r -> r.entityId() == null ? "" : r.entityId().toString()))
+                .orElse(null);
+        if (anker == null) return 0;
+        long next = revision + 1;
+        repository.appendEvent(scope, anker.entityId(), anker.pointKey(), next,
+                UUID.nameUUIDFromBytes(("katalogstand:" + deviceId + ":" + next)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                true, anker.cadenceS(), anker.enabledAt(), null, catalog.version(),
+                KATALOGSTAND_AKTEUR, ANSTOSS_NAME, KATALOGSTAND_GRUND, anker.customDefinitionJson(),
+                anker.retention());
+        return next;
+    }
+
     public static State notDelivered(State state, String reason) {
         return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
                 state.catalogVersion(), state.status(), reason, state.activationNotice(),

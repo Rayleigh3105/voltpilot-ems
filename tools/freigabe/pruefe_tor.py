@@ -441,6 +441,11 @@ def punkte(tor: str):
     if tor == 'GA':
         return [
             ('NW-3neu', 'NW-3 gegen das NEUE Image', '§3.4', nw3_neues_image),
+            ('NW-3u', 'Update-Pfad: nach dem Box-Update liefert die Cloud den Messplan im neuen Katalogstand nach',
+             'Generalprobe 23.09.2026 B2',
+             surefire('com.voltpilot.api.measurement.MessplanNachBoxUpdateApiTest',
+                      'dem B2-Paket; die Box-Haelfte ist edge-app/nodered/measurements/measurement-runtime.test.js '
+                      '"update path". NW-3/NW-3neu pruefen nur eine frische Box')),
             ('Q08', 'Keine Bestandsbox wuerde ihren heutigen Plan ablehnen', '§3.4 / IP-17',
              betreiber('budgetpruefung_produktion',
                        'tools/budgetpruefung/run.sh lesend gegen Produktion gefahren, Teil-D-Liste leer oder erklaert',

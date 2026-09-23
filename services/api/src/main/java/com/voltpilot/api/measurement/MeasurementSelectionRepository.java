@@ -278,6 +278,17 @@ public class MeasurementSelectionRepository {
         return value == null ? 0L : value;
     }
 
+    /**
+     * Der Katalogstand, den das {@code selection_requested} dieser Revision trägt ({@code null} ohne eines).
+     * Der Schlüssel {@code (device_id, desired_revision, event_kind)} erlaubt je Revision genau eines.
+     */
+    public String katalogstandDerRevision(UUID deviceId, long revision) {
+        List<String> rows = jdbc.queryForList("SELECT catalog_version FROM device_measurement_selection_event "
+                        + "WHERE device_id = ? AND desired_revision = ? AND event_kind = 'selection_requested'",
+                String.class, deviceId, revision);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** Highest full-plan acknowledgement already applied for this device. */
     public long acknowledgedRevision(UUID deviceId) {
         Long value = jdbc.queryForObject(

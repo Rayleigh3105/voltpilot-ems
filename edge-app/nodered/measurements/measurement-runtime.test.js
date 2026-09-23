@@ -119,6 +119,31 @@ test('failed candidate never replaces the previously active poll plan', async ()
   assert.equal(reads, 0);
 });
 
+test('update path: the stored plan of the former catalog is refused after a restart, the re-issued revision measures', async () => {
+  // Generalprobe 23.09.2026, B2. After the box release the Core replays its stored config
+  // (agent.setMeasurementIdentity) into a FRESH runtime whose palette carries a newer catalog.
+  // The cloud half - the re-issue as the next revision - is MessplanNachBoxUpdateApiTest.
+  const status = [];
+  const runtime = new MeasurementRuntime({ readModbus: async () => [50] },
+    (topic, payload) => { if (topic === 'edge/measurements/config-status') status.push(payload); },
+    () => new Date('2026-09-23T12:00:00Z'));
+  const selection = { point_key:'deye.hybrid_1p.battery.battery', cadence_s:30 };
+  assert.notEqual(catalogDocument.catalog_version, '2026.08.26.3');
+  const stored = runtime.apply({ revision:7, catalog_version:'2026.08.26.3', selections:[selection] });
+  assert.equal(stored.applied, false);
+  assert.deepEqual(stored.rejected, [{ point_key:selection.point_key, reason:'unsupported_catalog' }]);
+  // The previous plan lived in RAM only: after the restart nothing is read.
+  assert.deepEqual(await runtime.tick(), []);
+  const reissued = runtime.apply(config([selection], 8));
+  assert.equal(reissued.applied, true);
+  assert.deepEqual(reissued.accepted, [selection.point_key]);
+  const samples = await runtime.tick();
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].decoded, 50);
+  assert.deepEqual(status.map((s) => [s.revision, s.accepted, s.rejected.map((r) => r.reason)]),
+    [[7, [], ['unsupported_catalog']], [8, [selection.point_key], []]]);
+});
+
 test('SunSpec Model 160 bench uses discovery N and module-relative base', async () => {
   let request;
   const discovery = { models:{ 160:{ base:41000, moduleCount:2 } } };
