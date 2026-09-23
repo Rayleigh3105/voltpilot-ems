@@ -30,8 +30,8 @@ Rang, Menge, Anteil, Balken, K1–K3, K5/K6, Vorschlag, Anlagenrest und weitere 
 vollständigen Herkunftsentwurf der Rangliste unverändert. `energieeinsatz.einstufen` und `bewertung.kriterien` kommen
 ausschließlich aus `/me`; ohne sie bleiben alle Angaben lesbar, aber ohne Schreibknöpfe.
 
-- Kriterien ändern schreibt acht Vertragswerte plus Pflichtbegründung. Der ehrliche Sofort-Hinweis nennt nur die neue
-  Wirkung auf Rangliste und Vorschlag: Bewertungsstände entstehen erst mit IP-21, ihr Anstoß mit IP-23/IP-25.
+- Kriterien ändern schreibt acht Vertragswerte plus Pflichtbegründung. Der Sofort-Hinweis nennt die neue Wirkung auf
+  Rangliste und Vorschlag und seit IP-25, wenn ein Stand freigegeben ist, „Bewertungsstand Nr. n bekommt einen Anstoß“ (R15).
 - ⚠ `BewertungPage` lädt die Einstufungshistorien zusätzlich zur Rangliste, weil die Ranglistenroute keine aktuelle
   Einstufung trägt. Der Vorschlag heißt immer Vorschlag und ändert nie selbst eine Einstufung.
 - Nachweis: `src/bewertung.test.ts`; `e2e/bewertung.spec.ts` prüft Pflichtbegründung, Abweichung, Vier-Augen,
@@ -79,3 +79,24 @@ der Anlage) und unter der Abdeckung die Liste je Standort. Die Messstellen-Seite
 - Bühne: `e2e/bewertung.html?stand=voll&messplanung=1|mb1` (EE-8 und die Routen aus `src/test/messplanungBuehne.ts`;
   Daten ohne `../api`-Wert-Import in `messplanungFixtures.ts`, auch für Playwright). Nachweis `src/uemsMessplanung.test.ts`,
   `components/Messplanung.test.tsx`, `e2e/messplanung.spec.ts` (375/1440; `IP20_BILDER=<Ordner>` legt die Bilder ab).
+
+## Bewertungsstand (AP-16 IP-25, §5.5, R7/R10, Meilenstein M4)
+
+`#/portfolio/bewertung` trägt die Karte „Bewertungsstand“ (`components/BewertungStand.tsx`, reines Modul
+`src/bewertungStand.ts`) und im Kopf die Frist-Zeile (derselbe Satz wie `BewertungBaustein`). Sie liest NUR die
+Bericht-Routen (`GET /api/v1/berichte`, `…/{kennung}`, `…/entwurf`, `…/staende/{nr}/pdf|csv`) — keine zweite Maschine:
+Anlegen ist `BerichtAnlegenDialog` mit `nurVorlage`, Freigeben `BerichtFreigebenDialog`, der Vermerk `revisionBanner`.
+
+- Recht: jede Handlung an `energetische_bewertung` hängt an `bewertung.abrufen` (`berichtDialoge.darf(…, vorlage)`, wie
+  `BerichtRechte.kennung` mit Vorlage). Ohne das Recht fehlen Karte, Frist-Zeile und die Vorlage im Anlegen-Dialog; die
+  Karte erscheint erst mit einem Einsatz oder einer Bewertung (R11). Vier-Augen gibt es an der Bericht-Freigabe nicht.
+- ⚠ Der Bewertungs-Abzug hat keine `werte`/`kennzahlen`: `freigabeAntrag` liest sie optional, `freigabeVorschau` lässt den
+  Punkt „Alle n Werte endgültig“ bei null Werten weg. `zeitraumWahlen/zeitraumVorgabe('datengrundlage')` = zwölf volle
+  Monate (`2025-11/2026-10`), keiner „läuft“. Eine in „Berichte“ angelegte Bewertung öffnet die Seite „Bewertung“
+  (`BerichtePage.onBewertung`); die Berichtsseite kennt die acht Bewertungs-Abschnitte nicht.
+- PDF/CSV hängen nur hier ein (`api.berichtDatei` → Blob → Download); `AUSGABE_EINGEHAENGT` der Berichtsseite bleibt aus.
+- ⚠ Kein Feld „Name“ am Anlegen (§5.5 Schritt 1): `BerichtAnlegen` kennt nur Vorlage, Geltung, Zeitraum — Befund, nicht
+  nachgebaut; der Stand-Satz nennt „Bewertung <Jahr>“ aus dem letzten Monat der Datengrundlage.
+- Bühne: `e2e/bewertung.html?stand=voll&bewertungsstand=keine|entwurf|nr1|revision|nr2|faellig` (Routen in
+  `src/test/bewertungStandBuehne.ts`, R7/R10-Zeitachse; `window.__bewertungAbrufe` zählt Dateien). Nachweis
+  `src/bewertungStand.test.ts`, `e2e/bewertungsstand.spec.ts` (375/1440; `BEWERTUNGSSTAND_BILDER=<Ordner>` legt Bilder ab).
