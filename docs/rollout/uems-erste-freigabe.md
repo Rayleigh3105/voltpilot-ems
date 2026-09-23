@@ -65,12 +65,14 @@ Historie umschreiben" — nicht „die alte api muss beim Start brechen".
 | Die zwei Platzhalter aus PR 37 gesetzt | siehe 2.3 | |
 | Kundennachricht 48 h vorher raus | §10 | Schritt 1 |
 | Support-Weg einmal gegangen (F6) | §11 | Schritt 1 |
+| Box-Release zurückgehalten bis nach Schritt 10 | kein Box-Update mit dem neuen Laufzeitstand vor dem api-Deploy | §2.8, PR 1143 |
 
 ### 2.2 PR 37 gehört **vor** das Fenster, nicht hinein
 
 `apps/voltpilot/overlays/prod/uems-betrieb.md` sagt es selbst: die ConfigMap mit den
-17 ausdrücklichen Schaltern bekommt einen neuen Hash, **„api wird neu gestartet, auch bei
-unverändertem Image"**, und die nginx-ConfigMap löst zusätzlich einen Frontend-Rollout aus.
+ausdrücklichen Schaltern (seit Commit `5ad2f32` alle 24, §12) bekommt einen neuen Hash,
+**„api wird neu gestartet, auch bei unverändertem Image"**, und die nginx-ConfigMap löst
+zusätzlich einen Frontend-Rollout aus.
 
 Dieser Neustart ist harmlos, **solange er auf dem alten Schema stattfindet**: die alte api
 kennt die neuen `VOLTPILOT_UEMS_*`-Schlüssel nicht und ignoriert sie. Im Fenster wäre
@@ -110,6 +112,12 @@ maschinell: „D4: Fenster = Summe × 3, mindestens 1 800 000 ms".
 > und für die Fensterplanung **wertlos**. Nur die Kopie trägt die echte Datenmenge, an der
 > die Migrationen ihre Zeit verbringen.
 
+**Was die Generalprobe vom 23.09.2026 dazu gemessen hat** (Bericht Teil 1, synthetischer
+Bestand, siehe §2.7): Flyway 24,1 s bei 2,8 Mio. Samples, hochgerechnet ≈ 41 s bei 6 Mio.
+Summe × 3 = **72–123 s**. Es gilt also das **Minimum von 30 Minuten**; erst ab rund zehn
+Minuten Flyway-Summe an der Kopie wird das Fenster länger. Eine kleine Summe in `probe.json`
+verkürzt das Fenster nie unter 30 Minuten.
+
 Das Fenster liegt dort, wo **Q13** keinen Handeingriff auslaufen sieht und die wenigsten
 Kunden am Portal sind.
 
@@ -124,6 +132,14 @@ Dieser Beleg ist `probe.json`: **`startbudget_reicht`**. Steht dort `0`, bricht
 der Rollout-Tag **nicht** vorbereitet: entweder das Budget wird in gitops gehoben (eigener
 Commit, eigener Sync, vor dem Fenster) oder die lange Migration wird zerlegt. Das Fenster
 darf nicht mit einer api beginnen, die das Kubelet mitten in Flyway abschießt.
+
+**Gemessen in der Generalprobe vom 23.09.2026** (Bericht Teil 1, Hochrechnung): api bereit nach
+**54 s** bei 2,8 Mio. Samples, ≈ **71 s** bei 6 Mio. Der feste Anteil (JVM, Spring, übrige
+Migrationen) liegt bei ≈ 39 s, je Sample-Zeile kommen ≈ **5,3 µs** dazu. Ein Start reicht damit
+bis etwa **26,7 Mio. Zeilen ≈ 9,3 GB** `hypertable_size('device_measurement_sample')` (§2.7,
+Abfrage dort). Darüber setzt `V20260922236500` beim nächsten Start je Chunk fort;
+`V20260916180000` dagegen muss in einen Start passen (§2.7). Gemessen wurde auf einem
+Entwicklungsrechner, nicht auf der Produktionshardware.
 
 ⧉ **Vom Betreiber beim ersten Lauf zu bestätigen:** ob der gemessene `start_ms` der Kopie
 auf der Produktionshardware zutrifft. Die Kopie ist eine andere Maschine.
@@ -142,7 +158,30 @@ export PUNKT=…                    # Name des Wiederherstellungspunkts, in Schr
 ⧉ `ALT_SHA` ist der Wert, der am Tag **tatsächlich** im `images:`-Block steht — vor dem
 Fenster ablesen, nicht aus diesem Dokument übernehmen.
 
-### 2.7 Der Index-Umbau auf `device_measurement_sample` (`V20260922236500`)
+### 2.7 Die Fenster-Migrationen auf `device_measurement_sample`
+
+Drei Migrationen des Rollout-Satzes ändern die größte Tabelle selbst; zwei davon kosten Zeit je
+Zeile. Gemessen hat sie die Generalprobe vom 23.09.2026
+(Bericht `/Users/mvogt/…/vp-uems-rollout-generalprobe/report.md`, Teil 1): das gebaute uems-api-Image
+migriert beim Start wie am Rollout-Tag einen main-Stand mit **2 800 000 Samples** (14 Tages-Chunks à
+200 000 Zeilen, 979 MB, synthetisch), parallel dazu 10 INSERT/s in den heutigen Chunk. Alle 108
+neuen Migrationen zusammen: **24,1 s**; die übrigen 102 davon 9,4 s, keine länger als 793 ms.
+
+| Migration | gemessen (2,8 Mio.) | hochgerechnet (6 Mio.) | Transaktion | Sperrverhalten |
+|---|---|---|---|---|
+| `V20260913150000` Löschwege (zwei Fremdschlüssel `NOT VALID`) | 332 ms | – | eine | prüft den Bestand nicht (`NOT VALID`), darum kurz |
+| `V20260916180000` Ablesungen (CHECK, Fremdschlüssel, `uq_device_measurement_sample_ablesung`) | **7 470 ms** (2,67 µs je Zeile) | ≈ 16,0 s | **eine** | **sperrt den Schreiber für ihre ganze Dauer**: der parallele INSERT wartete 7 426 ms, bis zum `COMMIT` |
+| `V20260922236500` Box-Schlüssel bauen | **7 280 ms** (2,60 µs je Zeile) | ≈ 15,6 s | je Chunk eine | sperrarm: 0 wartende Sperren, längster INSERT 139 ms |
+
+`V20260912140000` und `V20260912170000` gehören **nicht** in diese Liste: beide sind seit #691 auf
+`main` und in Produktion längst gelaufen.
+
+**Die verbindliche Zahl kommt trotzdem aus der Kopie** (`tools/generalprobe/probe.sh`, §2.4):
+der synthetische Satz hat keine Auswahlzeilen mit `entity_id` und keine `measurement_point`-Daten
+(Bericht Teil 1, „Grenze der Messung“). Die Tabelle oben sagt, **welche** `je_migration_ms` in
+`probe.json` man zuerst ansieht und welche Größenordnung zu erwarten ist.
+
+#### `V20260922236500`: der Index-Umbau
 
 Die Migration baut zwei neue UNIQUE-Indexe auf der größten Tabelle und entfernt danach den alten.
 `device_measurement_sample` ist eine Hypertable, deshalb gibt es kein `CONCURRENTLY`. Die
@@ -166,14 +205,14 @@ SELECT count(*) AS chunks, pg_size_pretty(max(total_bytes)) AS groesster_chunk
 Die Dauer ist `je_migration_ms` von `20260922236500` in `probe.json` (Rubrik A). Der größte Chunk
 bestimmt die längste Einzelsperre, und ein Chunk muss in einen Start passen (180 s).
 
-⚠ Fünf ältere uems-Migrationen arbeiten auf derselben Tabelle weiter in **einer** Transaktion und
-lesen dabei jeden Chunk: `V20260912140000` (fünf CHECKs, `uq_device_measurement_sample_reihe`),
-`V20260912170000` (`idx_device_measurement_sample_eingang`), `V20260913150000` (zwei
-Fremdschlüssel), `V20260916180000` (CHECK, Fremdschlüssel, `uq_device_measurement_sample_ablesung`).
-Im Fenster sperren sie niemanden, weil der Writer steht. Ein Abbruch durch das Kubelet rollt sie
-aber ganz zurück, und der nächste Start beginnt von vorn. Ihre `je_migration_ms` stehen
-ebenfalls in `probe.json`. Ist eine davon allein länger als das Startbudget, wird das Budget vor
-dem Fenster gehoben (§2.5).
+#### `V20260916180000` und `V20260913150000`: eine Transaktion
+
+Beide arbeiten in **einer** Transaktion; `V20260916180000` liest dabei jeden Chunk. Im Fenster
+sperrt sie niemanden, weil der Writer steht (Schritt 3). Ein Abbruch durch das Kubelet rollt sie
+aber ganz zurück, und der nächste Start beginnt von vorn. Anders als der Index-Umbau muss sie
+deshalb **in einen Start passen**: nach der Hochrechnung des Berichts allein bis etwa 53 Mio.
+Zeilen. Ist ihr `je_migration_ms` in `probe.json` länger als das Startbudget, wird das Budget
+vor dem Fenster gehoben (§2.5).
 
 **Während des Laufs beobachten** (zweite Sitzung):
 
@@ -196,6 +235,32 @@ SELECT pid, pg_blocking_pids(pid), wait_event_type, left(query, 80) FROM pg_stat
 
 **Fertig**, wenn `fertig = chunks` und dieser Zähler `0` zeigt:
 `SELECT count(*) FROM pg_class WHERE relname LIKE '%uq_device_measurement_sample_idempotency%';`
+
+### 2.8 Box-Release erst nach dem api-Deploy
+
+Der Laufzeitstand der Box (Palette `catalog.json`) und der Katalogstand der api sind gekoppelt.
+Der Planer der Box verlangt exakte Gleichheit (`measurement-planner.js`, `buildPlan`); eine
+Mess-Konfiguration in einem anderen Stand lehnt die Box mit `unsupported_catalog` ab. Das gilt in
+beide Richtungen:
+
+- **Box mit alter Palette, neue api:** jede neue oder geänderte Mess-Konfiguration wird abgelehnt.
+  Der bisher angewandte Plan läuft an der Box weiter, aber die api setzt die Auswahl auf
+  `rejected`, und der Writer verwirft deren Samples (Bericht Teil 4). Unverändert bestätigte
+  Boxen bekommen durch den Deploy allein nichts Neues geschickt.
+- **Box mit neuer Palette:** nach dem Neustart spielt der Core die gespeicherte Konfiguration
+  alten Stands wieder ein, die neue Palette lehnt sie ab, und die Box misst nicht (Befund B2 der
+  Generalprobe).
+
+**Nachlieferung durch die api (PR 1143):** der Reconciler erkennt eine Box, deren letzte
+Revision mit `unsupported_catalog` abgelehnt wurde und einen anderen Stand trägt als die api, und
+liefert **einmal** Revision + 1 im heutigen Stand nach (Akteur `system:katalogstand`, keine
+Auswahlzeile ändert sich). Lehnt die Box auch den heutigen Stand ab, folgt nichts mehr. Regel und
+Grenzen: `docs/agents/root/uems-messplan-nach-box-update.md`.
+
+> **Regel:** Das Box-Release geht **nach** dem api-Deploy (nach Schritt 10) an die Boxen. Nur die
+> neue api kann nachliefern. Eine Box, die ihr Update vorher bekommt, misst bis zum api-Deploy
+> nicht; die neue api liefert beim Start nach. Tor GA, Punkt `NW-3u`, verlangt dafür den grünen
+> Bericht von `MessplanNachBoxUpdateApiTest`.
 
 ---
 
@@ -488,6 +553,12 @@ psql "$VP_DB_URL" -Atc "SELECT count(*) FILTER (WHERE success), count(*) FILTER 
 
 Die Dauer soll der Generalprobe entsprechen (Rubrik A). **Scheitert eine Migration → R.**
 
+Zum Vergleich die Generalprobe vom 23.09.2026 (Bericht Teil 1 und §7, synthetischer Bestand):
+108 Migrationen in 24,1 s, api bereit nach **54 s** bei 2,8 Mio. Samples, ≈ **71 s** bei 6 Mio.,
+je weitere Sample-Zeile ≈ **5,3 µs** mehr. Die zwei langen Migrationen sind `V20260916180000` und
+`V20260922236500` (§2.7); sie in `flyway_schema_history` (`execution_time`) zuerst ansehen, wenn
+der Start deutlich länger dauert.
+
 **Abbruch → R**, wenn: der Pod innerhalb des 180-s-Startbudgets nicht bereit wird · eine
 Migration scheitert · `fehlgeschlagen > 0`.
 
@@ -619,6 +690,7 @@ Danach: **Sync-Klammer auf (F2)**, siehe §3.
 | 9 | Rauchprobe (4 Proben) | alle vier grün | → R |
 | 9b | **Z08 erneut** | 0 Marker, Zeilenzahl unverändert | → R · bei Markern: §8 |
 | 10 | **Go:** Portal öffnen, Klammer auf (F2) | — | ab hier nur vorwärts |
+| danach | **Box-Release** an die Boxen, erst jetzt (§2.8) | Boxen quittieren den heutigen Katalogstand | Release anhalten |
 
 ---
 
@@ -929,15 +1001,27 @@ gelöscht. Ein Image-Rückweg steht nach Schritt 10 nicht mehr zur Verfügung (W
 **Die Namen sind die ausdrücklichen Umgebungsplatzhalter der Anwendung** — insbesondere
 keine selbst hergeleiteten Spring-Namen einsetzen.
 
+Die Tabelle nennt alle **24** `VOLTPILOT_UEMS_*_ENABLED`-Schalter aus
+`services/api/src/main/resources/application.yml`, in derselben Reihenfolge; gitops PR 37 setzt
+sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vom 23.09.2026).
+
+> ⚠ **`VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED` muss am Rollout-Tag `false` sein.**
+> Die Vorgabe in `application.yml` ist `true` (Historienquoten außerhalb 0–100 % reisen
+> ungeklemmt mit Unplausibel-Kennzeichen); ohne den ausdrücklichen Wert aus PR 37 gilt sie am
+> Rollout-Tag (Befund B4). `false` hält die sichtbare 0–100-%-Klemme bis zum Quoten-Termin (E12).
+> Vor Schritt 2 in der gerenderten ConfigMap nachsehen.
+
 | Name | Vorgabe am Rollout-Tag | Was das Abschalten anhält |
 |---|---|---|
 | `VOLTPILOT_UEMS_UEBERGABE_ENABLED` | `true` | Quellenübergaben und die Zustellung beim Box-Tausch |
 | `VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED` | **`false`** | (bleibt aus bis zum Quoten-Termin, E12 — sichtbare 0–100-%-Klemme) |
+| `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` | `true` | die Kaskaden- und Struktur-Naht der energetischen Bewertung; Routen und übrige Berichte bleiben, Bewertungs-Protokolle bekommen dann noch kein Wasserzeichen |
 | `VOLTPILOT_UEMS_BERICHTE_ENABLED` | `true` | Berichte in der Korrekturkaskade; entfernt keine Route und keine Tabelle |
 | `VOLTPILOT_UEMS_BERICHTE_STRUKTUR_ENABLED` | `true` | Strukturänderungen alle fünf Minuten (nur wirksam, wenn auch BERICHTE an ist) |
 | `VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED` | `true` | Standorte/Vorschläge für Bestandsanlagen beim Start |
 | `VOLTPILOT_UEMS_FUNKTION_BESTAND_ENABLED` | `true` | Ableitung von Funktionen und Teilnahmen beim Start |
 | `VOLTPILOT_UEMS_ZUGRIFF_BESTAND_ENABLED` | `true` | Übernahme der Bestandsrechte aus den Keycloak-Konten beim Start |
+| `VOLTPILOT_UEMS_TAGESMENGE_NACHTRAG_ENABLED` | `true` | den Start-Lauf, der für vor AP-08 endgültige Tage ohne Menge eine Korrektur `menge_nachgetragen` vorschlägt (Freigabe von Hand) |
 | `VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED` | `true` | Protokoll abgelaufener Unterstützung und Erinnerung vor Ablauf |
 | `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` | **`false`** | (alter `X-Tenant-Id`-Umschalter bleibt aus) |
 | `VOLTPILOT_UEMS_VIERTELSTUNDE_ENABLED` | `true` | Fünfminutentakt und die einmalige 90-Tage-Rückrechnung |
@@ -947,6 +1031,11 @@ keine selbst hergeleiteten Spring-Namen einsetzen.
 | `VOLTPILOT_UEMS_ERSATZWERT_ENABLED` | `true` | Verarbeitung der begründeten Ersatzwerte |
 | `VOLTPILOT_UEMS_KASKADE_ENABLED` | `true` | das Durchziehen freigegebener Korrekturen durch abhängige Werte und Berichte |
 | `VOLTPILOT_UEMS_ZEILENTEXTE_ENABLED` | `true` | das tägliche Entfernen abgelaufener CSV-Zeilentexte um 03:17 Europe/Berlin |
+| `VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_ENABLED` | `true` | das tägliche Löschen abgelaufener `plan_zustellung`-Zeilen um 03:47 (je Box bleiben die jüngste veröffentlichte und die jüngste angenommene) |
+| `VOLTPILOT_UEMS_VERBUND_BILANZ_ENABLED` | `true` | die tägliche Vortagsbilanz je Anlage mit Gemeinsamer Steuerung um 04:37 (Netzpunkt gegen Summe der Box-Beiträge) |
+| `VOLTPILOT_UEMS_VORBEHALT_ENABLED` | `true` | den täglichen Vorbehalt aus Messwerten um 04:52 (Erhöhen selbsttätig, Senken nur als Vorschlag); hält auch den Viertelstunden-Takt an |
+| `VOLTPILOT_UEMS_VORBEHALT_VIERTELSTUNDE_ENABLED` | `true` | nur das Erhöhen des Vorbehalts im Viertelstunden-Takt; der Tageslauf bleibt |
+| `VOLTPILOT_UEMS_LADEPARK_GRENZE_ENABLED` | `true` | den stündlichen Abgleich je Anlage mit Ladepark-Rahmen und die Neuzustellung des Ladepark-Dokuments bei Unterschied |
 | `VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED` | `true` | die Verarbeitung von Quellenstatus aus MQTT |
 
 Dazu `VOLTPILOT_METRICS_UEMS_ENABLED=true`: **nicht** abschalten, um etwas anzuhalten —
@@ -970,11 +1059,16 @@ mehr (`…_zustand` sagt `aus`), damit aus dem Not-Aus kein Daueralarm wird.
 - gitops PR 37, Zweig `fm/vp-uems-b14-ip10-gitops` — Dateipfade, `images:`-Block,
   `patches:`-Liste, Deployment-Namen, `replicas`-Felder, Sync-Wellen 0/1,
   `terminationGracePeriodSeconds: 45`, Namespace `voltpilot-prod`, Application
-  `voltpilot-prod`, Root-App mit `selfHeal: true`, die 17 Schalter und die zwei
+  `voltpilot-prod`, Root-App mit `selfHeal: true`, die Schalter (17, seit Commit `5ad2f32`
+  alle 24) und die zwei
   `CHANGE-ME`-Platzhalter.
 - `/Users/mvogt/…/vp-uems-w1-alte-api-repariert-historie/report.md` — §4 (jede Stelle, an
   der eine alte api starten kann) und §5 Option a samt neuem Prüfpunkt.
 - `docs/deploy.md`, `docs/k8s-readiness.md`, `tools/backup/*`.
+- Bericht der Rollout-Generalprobe vom 23.09.2026
+  (`/Users/mvogt/…/vp-uems-rollout-generalprobe/report.md`) — Kurzfazit B2–B5, Teil 1
+  (Migrationsdauern, Sperren, Hochrechnung), Teil 3 (Schalter-Inventar), Teil 4 (Box-Kopplung),
+  §7 (Reihenfolge des Rollout-Tags); dazu PR 1143 und die 24 Schalter in `application.yml`.
 
 **Nicht gegenlesbar auf einer Entwicklungsmaschine** (alles mit ⧉ markiert): jede Ausgabe
 eines echten Clusters, die echten Dauern an Produktionsdaten, der Name des produktiven
