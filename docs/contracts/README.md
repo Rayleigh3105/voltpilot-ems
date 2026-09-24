@@ -20,6 +20,7 @@ flowchart LR
 | v2: Entitäten, Flows, Verbraucher und Messpunkte | [v2-Übersicht](v2/README.md) |
 | Energetische Bewertung (UEMS AP-16) | [Regeln](v2/bewertung.md), [Regel-Vektoren](v2/bewertung-vectors.json), [Messabdeckung Ahrenberg](v2/messabdeckung.json), [Schema](v2/bewertung.schema.json) |
 | Bezugsbasis einer Kennzahl (UEMS AP-17) | [Regeln](v2/bezugsbasis.md), [Regel-Vektoren](v2/bezugsbasis-vectors.json), [Schema](v2/bezugsbasis.schema.json) |
+| Ziele, Maßnahmen, Abweichungen (UEMS AP-18) | [Regeln](v2/verbesserung.md), [Regel-Vektoren](v2/verbesserung-vectors.json), [Schema](v2/verbesserung.schema.json) |
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
 | OTA | [Manifest](ota-release-manifest.schema.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
 | Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |

@@ -1,0 +1,1343 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/verbesserung.schema.json",
+  "title": "Ziele, Maßnahmen, Abweichungen – gemeinsame Vertragsvektoren (AP-18 NW-1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "startwerte",
+    "vokabulare",
+    "saetze",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "herkunft": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startwerte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nachher_monate",
+        "nachher_monate_hoechstens",
+        "abweichung_frist_tage"
+      ],
+      "properties": {
+        "nachher_monate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nachher_monate_hoechstens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "abweichung_frist_tage": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "vokabulare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "energieziel_zustand",
+        "energieziel_ergebnis",
+        "zielstand_vorschlag",
+        "massnahme_zustand",
+        "massnahme_herkunft",
+        "abweichung_zustand",
+        "abweichung_ergebnis",
+        "abweichung_eintrag_art",
+        "auffaelligkeit_zustand",
+        "auffaelligkeit_antwort",
+        "ursache_beleg",
+        "wirkung_ergebnis",
+        "wirkung_grund",
+        "anstoss_art",
+        "anstoss_zustand",
+        "anstoss_antwort",
+        "frist_art",
+        "frist_faellig"
+      ],
+      "properties": {
+        "energieziel_zustand": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "energieziel_ergebnis": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "zielstand_vorschlag": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "massnahme_zustand": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "massnahme_herkunft": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "abweichung_zustand": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "abweichung_ergebnis": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "abweichung_eintrag_art": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "auffaelligkeit_zustand": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "auffaelligkeit_antwort": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "ursache_beleg": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "wirkung_ergebnis": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "wirkung_grund": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "anstoss_art": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "anstoss_zustand": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "anstoss_antwort": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "frist_art": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        },
+        "frist_faellig": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          }
+        }
+      }
+    },
+    "saetze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "auffaelligkeit",
+        "auffaelligkeit_zur_kenntnis",
+        "abweichung_kopf",
+        "ursache_aussage",
+        "ursache_aussage_mit_beleg",
+        "abschluss_massnahme",
+        "abschluss_erklaert",
+        "massnahme_kopf",
+        "messgrundlage",
+        "ohne_messgrundlage",
+        "wirkung_vorlaeufig",
+        "wirkung_umsetzungsmonat",
+        "wirkung_nicht_bewertbar",
+        "wirkung_basis_nach_umsetzung",
+        "bewertung_belegt",
+        "bewertung_offen",
+        "bewertung_nicht_messbar",
+        "energieziel_stand",
+        "energieziel_ende",
+        "energieziel_vorschlag",
+        "ueberfaellig",
+        "baustein",
+        "anstoss_ausgangslage_korrigiert",
+        "leer",
+        "grenz_satz"
+      ],
+      "properties": {
+        "auffaelligkeit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auffaelligkeit_zur_kenntnis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "abweichung_kopf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ursache_aussage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ursache_aussage_mit_beleg": {
+          "type": "string",
+          "minLength": 1
+        },
+        "abschluss_massnahme": {
+          "type": "string",
+          "minLength": 1
+        },
+        "abschluss_erklaert": {
+          "type": "string",
+          "minLength": 1
+        },
+        "massnahme_kopf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "messgrundlage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ohne_messgrundlage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirkung_vorlaeufig": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirkung_umsetzungsmonat": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirkung_nicht_bewertbar": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirkung_basis_nach_umsetzung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bewertung_belegt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bewertung_offen": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bewertung_nicht_messbar": {
+          "type": "string",
+          "minLength": 1
+        },
+        "energieziel_stand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "energieziel_ende": {
+          "type": "string",
+          "minLength": 1
+        },
+        "energieziel_vorschlag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ueberfaellig": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baustein": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anstoss_ausgangslage_korrigiert": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grenz_satz": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(WK|M)[0-9]$"
+              },
+              "operation": {
+                "const": "wirkung"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "umgesetzt_am",
+                  "nachher_monate",
+                  "monate"
+                ],
+                "properties": {
+                  "umgesetzt_am": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  },
+                  "nachher_monate": {
+                    "type": "integer"
+                  },
+                  "monate": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/monat_eingang"
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "$ref": "#/$defs/wirkung_ergebnis"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^Z[0-9]$"
+              },
+              "operation": {
+                "const": "zielstand"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "zielwert_prozent",
+                  "zielperiode",
+                  "monate"
+                ],
+                "properties": {
+                  "zielwert_prozent": {
+                    "$ref": "#/$defs/dezimal"
+                  },
+                  "zielperiode": {
+                    "type": "string"
+                  },
+                  "monate": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/monat_eingang"
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "$ref": "#/$defs/zielstand_ergebnis"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^F[0-9]$"
+              },
+              "operation": {
+                "const": "frist"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "art",
+                      "zustand",
+                      "termin",
+                      "abruf"
+                    ],
+                    "properties": {
+                      "art": {
+                        "enum": [
+                          "massnahme",
+                          "abweichung"
+                        ]
+                      },
+                      "zustand": {
+                        "type": "string"
+                      },
+                      "termin": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      },
+                      "abruf": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "art",
+                      "zustand",
+                      "zielperiode",
+                      "letzter_monat_endgueltig",
+                      "abruf"
+                    ],
+                    "properties": {
+                      "art": {
+                        "const": "energieziel"
+                      },
+                      "zustand": {
+                        "type": "string"
+                      },
+                      "zielperiode": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])/[0-9]{4}-(0[1-9]|1[0-2])$"
+                      },
+                      "letzter_monat_endgueltig": {
+                        "type": "boolean"
+                      },
+                      "abruf": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      }
+                    }
+                  }
+                ]
+              },
+              "erwartet": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "termin",
+                  "faellig",
+                  "seit_tagen"
+                ],
+                "properties": {
+                  "termin": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  },
+                  "faellig": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "enum": [
+                          "ueberfaellig",
+                          "bewertung_faellig"
+                        ]
+                      }
+                    ]
+                  },
+                  "seit_tagen": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^SP[0-9]$"
+              },
+              "operation": {
+                "const": "satz"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schluessel",
+                  "werte"
+                ],
+                "properties": {
+                  "schluessel": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "werte": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "satz"
+                    ],
+                    "properties": {
+                      "satz": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "fehler"
+                    ],
+                    "properties": {
+                      "fehler": {
+                        "type": "string",
+                        "pattern": "^(satz_unbekannt|wert_fehlt:[a-z_]+|wert_uebrig:[a-z_]+)$"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "dezimal": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "kennzeichen": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "variable_def": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "einheit",
+        "art"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "einheit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "art": {
+          "enum": [
+            "produktionsmenge",
+            "gutteile",
+            "betriebszeit",
+            "betriebszeit_aus_leistung",
+            "schichten",
+            "mitarbeitende",
+            "gradtagzahl",
+            "zaehlerstand",
+            "sonstige_menge",
+            "flaeche"
+          ]
+        }
+      }
+    },
+    "spannweite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "von",
+        "bis",
+        "toleriert_von",
+        "toleriert_bis"
+      ],
+      "properties": {
+        "von": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "bis": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "toleriert_von": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "toleriert_bis": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        }
+      }
+    },
+    "koeffizienten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "a",
+        "b"
+      ],
+      "properties": {
+        "a": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "b": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "c": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        }
+      }
+    },
+    "fassung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kennzeichen",
+        "fassung",
+        "methode",
+        "monate",
+        "basiswert",
+        "koeffizienten",
+        "streuung_prozent",
+        "toleranz_prozent",
+        "spannweite",
+        "variablen"
+      ],
+      "properties": {
+        "kennzeichen": {
+          "type": "string",
+          "pattern": "^BB-[0-9]{4}$"
+        },
+        "fassung": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "methode": {
+          "enum": [
+            "verhaeltnis",
+            "regression_eine_variable",
+            "regression_zwei_variablen",
+            "gradtage"
+          ]
+        },
+        "monate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "basiswert": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "koeffizienten": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/koeffizienten"
+            }
+          ]
+        },
+        "streuung_prozent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "toleranz_prozent": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+        },
+        "spannweite": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/spannweite"
+              }
+            }
+          ]
+        },
+        "variablen": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/variable_def"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "wert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wert",
+        "zustand",
+        "kennzeichen"
+      ],
+      "properties": {
+        "wert": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            }
+          ]
+        },
+        "zustand": {
+          "enum": [
+            "vollstaendig",
+            "unvollstaendig"
+          ]
+        },
+        "kennzeichen": {
+          "$ref": "#/$defs/kennzeichen"
+        }
+      }
+    },
+    "vergleich_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fassung",
+        "basis_beendet",
+        "abgeschlossen",
+        "gemessen",
+        "variablen"
+      ],
+      "properties": {
+        "fassung": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/fassung"
+            }
+          ]
+        },
+        "basis_beendet": {
+          "type": "boolean"
+        },
+        "abgeschlossen": {
+          "type": "boolean"
+        },
+        "gemessen": {
+          "$ref": "#/$defs/wert"
+        },
+        "variablen": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wert"
+          }
+        }
+      }
+    },
+    "monat_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "monat",
+        "referenzperiode",
+        "vergleich"
+      ],
+      "properties": {
+        "monat": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "referenzperiode": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])/[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          ]
+        },
+        "vergleich": {
+          "$ref": "#/$defs/vergleich_eingang"
+        }
+      }
+    },
+    "nicht_gezaehlt": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "monat",
+          "grund"
+        ],
+        "properties": {
+          "monat": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+          },
+          "grund": {
+            "enum": [
+              "umsetzungsmonat",
+              "basis_nach_umsetzung",
+              "unvollstaendig",
+              "basis_fehlt",
+              "basis_beendet",
+              "zu_wenig_perioden",
+              "variable_fehlt",
+              "variable_ausserhalb",
+              "periode_nicht_zu_ende",
+              "keine_werte"
+            ]
+          }
+        }
+      }
+    },
+    "wirkung_ergebnis": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "nachher_von",
+            "nachher_bis",
+            "umsetzungsmonat",
+            "zeitraum_von",
+            "zeitraum_bis",
+            "vorlaeufig",
+            "monate_bewertbar",
+            "monate_endgueltig",
+            "monate_soll",
+            "monate",
+            "nicht_gezaehlt",
+            "urteil",
+            "gemessen",
+            "erwartet",
+            "delta_prozent",
+            "band_prozent",
+            "richtung",
+            "kennzeichen"
+          ],
+          "properties": {
+            "nachher_von": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "nachher_bis": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "umsetzungsmonat": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "zeitraum_von": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                }
+              ]
+            },
+            "zeitraum_bis": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                }
+              ]
+            },
+            "vorlaeufig": {
+              "type": "boolean"
+            },
+            "monate_bewertbar": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "monate_endgueltig": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "monate_soll": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "monate": {
+              "type": "string",
+              "pattern": "^[0-9]+ von [0-9]+$"
+            },
+            "nicht_gezaehlt": {
+              "$ref": "#/$defs/nicht_gezaehlt"
+            },
+            "urteil": {
+              "enum": [
+                "besser",
+                "schlechter",
+                "im_rahmen",
+                "ohne_urteil",
+                "nicht_anwendbar"
+              ]
+            },
+            "gemessen": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "erwartet": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "delta_prozent": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "band_prozent": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "richtung": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "enum": [
+                    "mehr",
+                    "weniger",
+                    "gleich"
+                  ]
+                }
+              ]
+            },
+            "kennzeichen": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fehler"
+          ],
+          "properties": {
+            "fehler": {
+              "enum": [
+                "nachher_monate"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "zielstand_ergebnis": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "zielperiode",
+            "zielwert_prozent",
+            "vollstaendig",
+            "vorschlag",
+            "monate_bewertbar",
+            "monate_endgueltig",
+            "monate_soll",
+            "monate",
+            "nicht_gezaehlt",
+            "urteil",
+            "gemessen",
+            "erwartet",
+            "delta_prozent",
+            "band_prozent",
+            "richtung",
+            "kennzeichen"
+          ],
+          "properties": {
+            "zielperiode": {
+              "type": "string",
+              "minLength": 1
+            },
+            "zielwert_prozent": {
+              "$ref": "#/$defs/dezimal"
+            },
+            "vollstaendig": {
+              "type": "boolean"
+            },
+            "vorschlag": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "enum": [
+                    "erreicht",
+                    "nicht_erreicht"
+                  ]
+                }
+              ]
+            },
+            "monate_bewertbar": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "monate_endgueltig": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "monate_soll": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "monate": {
+              "type": "string",
+              "pattern": "^[0-9]+ von [0-9]+$"
+            },
+            "nicht_gezaehlt": {
+              "$ref": "#/$defs/nicht_gezaehlt"
+            },
+            "urteil": {
+              "enum": [
+                "besser",
+                "schlechter",
+                "im_rahmen",
+                "ohne_urteil",
+                "nicht_anwendbar"
+              ]
+            },
+            "gemessen": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "erwartet": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "delta_prozent": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "band_prozent": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/dezimal"
+                }
+              ]
+            },
+            "richtung": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "enum": [
+                    "mehr",
+                    "weniger",
+                    "gleich"
+                  ]
+                }
+              ]
+            },
+            "kennzeichen": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fehler"
+          ],
+          "properties": {
+            "fehler": {
+              "enum": [
+                "zielperiode_format",
+                "zielperiode_reihenfolge"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
