@@ -3200,7 +3200,10 @@ export type BerichtAnstossArt =
   | 'umfang_fassung'
   | 'messbedarf_zustand'
   | 'prozess_zuordnung_rueckwirkend'
-  | 'messmittel_angabe';
+  | 'messmittel_angabe'
+  | 'bezugsbasis_anstoss'
+  | 'bezugsbasis_fassung'
+  | 'bezugsbasis_beendet';
 /** Der geschlossene Satz der Ablehnungen (`uems/BerichtAbgelehnt`, OpenAPI `BerichtFehler`). */
 export type BerichtFehlerCode =
   | 'anfrage_ungueltig'

@@ -82,7 +82,7 @@ class UemsBerichtMigrationTest {
      * {@code bericht} um die Kennzahl.
      */
     private static final List<String> BAUEN_DARAUF_AUF = List.of("20260915113000", "20260922251800", "20260923230000",
-            "20260924071500", "20260924071945", "20260924200500", "20260924211800");
+            "20260924071500", "20260924071945", "20260924200500", "20260924211800", "20260924214500");
     private static final List<String> TABELLEN = List.of("bericht", "bericht_entwurf", "bericht_stand", "bericht_quelle",
             "bericht_revision_anstoss", "bericht_abruf", "bericht_aenderung", "bericht_kennung_seq");
 

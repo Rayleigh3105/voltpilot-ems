@@ -532,6 +532,9 @@ export const ANSTOSS_ART_TEXT: Record<string, string> = {
   messbedarf_zustand: 'Messbedarf geändert',
   prozess_zuordnung_rueckwirkend: 'Prozess-Zuordnung rückwirkend geändert',
   messmittel_angabe: 'Messmittel-Angaben geändert',
+  bezugsbasis_anstoss: 'Anstoß an der Bezugsbasis',
+  bezugsbasis_fassung: 'Neue Fassung der Bezugsbasis',
+  bezugsbasis_beendet: 'Bezugsbasis beendet',
 };
 
 export const BERICHT_FORMAT_TEXT: Record<string, string> = {

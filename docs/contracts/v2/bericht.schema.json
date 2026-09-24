@@ -147,7 +147,7 @@
       "description": "Ein Revisions-Anstoß an einem freigegebenen Berichtsstand (B4, B7, R1–R4).",
       "required": ["art", "kennung", "erkannt_am", "stand", "zustand", "erledigt_durch"],
       "properties": {
-        "art": { "type": "string", "enum": ["korrektur_freigegeben", "korrektur_zurueckgenommen", "ersatzwert_wirksam", "ersatzwert_zurueckgenommen", "bezugsgroesse_fassung", "kennzahl_fassung_rueckwirkend", "zuordnung_rueckwirkend", "anlage_umzug_rueckwirkend", "flaeche_rueckwirkend", "verteilung_rueckwirkend", "einstufung_fassung", "kriterien_fassung", "umfang_fassung", "messbedarf_zustand", "prozess_zuordnung_rueckwirkend", "messmittel_angabe"] },
+        "art": { "type": "string", "enum": ["korrektur_freigegeben", "korrektur_zurueckgenommen", "ersatzwert_wirksam", "ersatzwert_zurueckgenommen", "bezugsgroesse_fassung", "kennzahl_fassung_rueckwirkend", "zuordnung_rueckwirkend", "anlage_umzug_rueckwirkend", "flaeche_rueckwirkend", "verteilung_rueckwirkend", "einstufung_fassung", "kriterien_fassung", "umfang_fassung", "messbedarf_zustand", "prozess_zuordnung_rueckwirkend", "messmittel_angabe", "bezugsbasis_anstoss", "bezugsbasis_fassung", "bezugsbasis_beendet"] },
         "kennung": { "type": "string", "minLength": 1, "description": "Der Anlass: K-…, EW-… oder der Text einer Strukturänderung." },
         "erkannt_am": { "$ref": "#/$defs/zeitpunkt" },
         "stand": { "type": "integer", "minimum": 1 },

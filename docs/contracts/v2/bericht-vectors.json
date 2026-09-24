@@ -58,7 +58,10 @@
       "umfang_fassung",
       "messbedarf_zustand",
       "prozess_zuordnung_rueckwirkend",
-      "messmittel_angabe"
+      "messmittel_angabe",
+      "bezugsbasis_anstoss",
+      "bezugsbasis_fassung",
+      "bezugsbasis_beendet"
     ],
     "anstoss_zustand": ["offen", "erledigt", "verworfen"],
     "grund_ohne_vergleich": ["vor_bestehen", "quelle_beendet", "keine_werte"],
@@ -220,6 +223,9 @@
     "anlass_messbedarf_zustand": "Messbedarf {objekt} geändert",
     "anlass_prozess_zuordnung_rueckwirkend": "Prozess-Zuordnung {objekt} rückwirkend geändert",
     "anlass_messmittel_angabe": "Messmittel-Angaben {objekt} geändert",
+    "anlass_bezugsbasis_anstoss": "Bezugsbasis {basis}, Fassung {fassung}: Anstoß liegt vor",
+    "anlass_bezugsbasis_fassung": "Bezugsbasis {basis}: Fassung {fassung} freigegeben",
+    "anlass_bezugsbasis_beendet": "Bezugsbasis {basis} beendet",
     "ueber_formel": "{anlass} (über die Formel)",
     "ueber_kennzahl": "{anlass} (über die Kennzahl)",
     "csv_geltung_standort": "Standort {kennzeichen} {name}",
@@ -4353,6 +4359,24 @@
           "name": "AP-16: Anlass mit Energieeinsatz-Kennzeichen nennt die Einstufung",
           "eingang": {"kennung": "einstufung_fassung/EE-99/energieeinsatz_aenderung-18"},
           "ergebnis": {"text": "Einstufung EE-99 geändert"}
+        },
+        {
+          "regel": "anlass",
+          "name": "AP-17 IP-23 (A5): neue Fassung der zitierten Bezugsbasis",
+          "eingang": {"kennung": "BB-0002/Fassung-3"},
+          "ergebnis": {"text": "Bezugsbasis BB-0002: Fassung 3 freigegeben"}
+        },
+        {
+          "regel": "anlass",
+          "name": "AP-17 IP-23 (A5): Anstoß an der zitierten Fassung",
+          "eingang": {"kennung": "BB-0002/Fassung-1/anstoss:7c9e6679-7425-40de-944b-e07fc1f90ae7"},
+          "ergebnis": {"text": "Bezugsbasis BB-0002, Fassung 1: Anstoß liegt vor"}
+        },
+        {
+          "regel": "anlass",
+          "name": "AP-17 IP-23 (A5): die zitierte Bezugsbasis ist beendet",
+          "eingang": {"kennung": "BB-0002/beendet"},
+          "ergebnis": {"text": "Bezugsbasis BB-0002 beendet"}
         },
         {
           "regel": "anzeige",

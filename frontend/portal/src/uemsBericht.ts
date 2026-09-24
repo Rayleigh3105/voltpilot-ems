@@ -72,12 +72,16 @@ export const UMFANG_FASSUNG = 'umfang_fassung';
 export const MESSBEDARF_ZUSTAND = 'messbedarf_zustand';
 export const PROZESS_ZUORDNUNG_RUECKWIRKEND = 'prozess_zuordnung_rueckwirkend';
 export const MESSMITTEL_ANGABE = 'messmittel_angabe';
+export const BEZUGSBASIS_ANSTOSS = 'bezugsbasis_anstoss';
+export const BEZUGSBASIS_FASSUNG = 'bezugsbasis_fassung';
+export const BEZUGSBASIS_BEENDET = 'bezugsbasis_beendet';
 /** B4 — die Anstoß-Arten, geschlossen. */
 export const ANSTOSS_ARTEN = [
   KORREKTUR_FREIGEGEBEN, KORREKTUR_ZURUECKGENOMMEN, ERSATZWERT_WIRKSAM, ERSATZWERT_ZURUECKGENOMMEN,
   BEZUGSGROESSE_FASSUNG, KENNZAHL_FASSUNG_RUECKWIRKEND, ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND,
   FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND, EINSTUFUNG_FASSUNG, KRITERIEN_FASSUNG,
   UMFANG_FASSUNG, MESSBEDARF_ZUSTAND, PROZESS_ZUORDNUNG_RUECKWIRKEND, MESSMITTEL_ANGABE,
+  BEZUGSBASIS_ANSTOSS, BEZUGSBASIS_FASSUNG, BEZUGSBASIS_BEENDET,
 ];
 export const ANSTOSS_ZUSTAENDE = ['offen', 'erledigt', 'verworfen'];
 
@@ -211,6 +215,9 @@ export const SAETZE: Record<string, string> = {
   anlass_messbedarf_zustand: 'Messbedarf {objekt} geändert',
   anlass_prozess_zuordnung_rueckwirkend: 'Prozess-Zuordnung {objekt} rückwirkend geändert',
   anlass_messmittel_angabe: 'Messmittel-Angaben {objekt} geändert',
+  anlass_bezugsbasis_anstoss: 'Bezugsbasis {basis}, Fassung {fassung}: Anstoß liegt vor',
+  anlass_bezugsbasis_fassung: 'Bezugsbasis {basis}: Fassung {fassung} freigegeben',
+  anlass_bezugsbasis_beendet: 'Bezugsbasis {basis} beendet',
   ueber_formel: '{anlass} (über die Formel)',
   ueber_kennzahl: '{anlass} (über die Kennzahl)',
   csv_geltung_standort: 'Standort {kennzeichen} {name}',
@@ -756,6 +763,8 @@ const STRUKTUR_KENNUNG =
   /^(zuordnung_rueckwirkend|anlage_umzug_rueckwirkend|flaeche_rueckwirkend|verteilung_rueckwirkend)\/([A-Za-z0-9][A-Za-z0-9._-]*)?\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2})\/(ort_aenderung|messstelle_aenderung)-(\d+)$/;
 const BEWERTUNG_KENNUNG =
   /^(einstufung_fassung|kriterien_fassung|umfang_fassung|messbedarf_zustand|prozess_zuordnung_rueckwirkend|messmittel_angabe)\/([A-Za-z0-9][A-Za-z0-9._-]*)?\/((?:energieeinsatz|bewertung|messbedarf|messstelle|geraet)_aenderung)-(\d+)$/;
+/** A5 (AP-17 IP-23): `BB-…/Fassung-n`, `BB-…/Fassung-n/anstoss:<id>`, `BB-…/beendet` — Java `BezugsbasisAnstoss`. */
+const BASIS_KENNUNG = /^(BB-\d{4,})\/(Fassung-(\d+)(\/anstoss:[0-9a-f-]+)?|beendet)$/;
 
 /**
  * Der Anlass in Kundensprache: „Korrektur K-2026-0007“, „Ersatzwert EW-2026-0001“, die Kennung einer
@@ -770,6 +779,11 @@ export const anlass = (kennungText: string): string => {
     const satz = SAETZE[`anlass_${s[1]}`];
     const tage = { ab: datumText(s[3]), am: datumText(s[4]) };
     return s[2] === undefined ? fuelle(satz.replace(' {objekt}', ''), tage) : fuelle(satz, { objekt: s[2], ...tage });
+  }
+  const bb = BASIS_KENNUNG.exec(kennungText);
+  if (bb) {
+    if (bb[2] === 'beendet') return fuelle(SAETZE.anlass_bezugsbasis_beendet, { basis: bb[1] });
+    return fuelle(SAETZE[bb[4] === undefined ? 'anlass_bezugsbasis_fassung' : 'anlass_bezugsbasis_anstoss'], { basis: bb[1], fassung: bb[3] });
   }
   const b = BEWERTUNG_KENNUNG.exec(kennungText);
   if (b) {

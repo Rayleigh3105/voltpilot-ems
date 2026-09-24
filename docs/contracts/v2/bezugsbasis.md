@@ -337,6 +337,14 @@ Bezugsbasis beendet am …“ (§10). An einer beendeten Basis setzt kein Pfad m
 das spätere `kennzahl_archiviert` im Struktur-Läufer noch eine Korrektur eines zitierten Werts — es gibt nichts mehr zu
 beantworten; die Beendigung selbst steht im Protokoll `bezugsbasis_beendet`.
 
+**Weitergabe an Leistungsvergleichs-Stände (A5, IP-23):** jeder NEU gesetzte Anstoß (Pfad 1 und 2) läuft in derselben
+Transaktion als `bericht_revision_anstoss` Art `bezugsbasis_anstoss` (`BB-…/Fassung-n/anstoss:<id>`) zu jedem gültigen
+Stand, der Fassung n zitiert; eine freigegebene Fassung n (`fassung_freigegeben`) und das Beenden
+(`bezugsbasis_beendet`) liest Pfad 2 mit demselben Wasserzeichen (Protokoll `bezugsbasis_aenderung`, Urteil
+`an_berichte · ohne_stand · ohne_berichte · abgeschaltet`) und gibt sie als `bezugsbasis_fassung` (Stände mit Fassung < n)
+bzw. `bezugsbasis_beendet` weiter — ohne einen Anstoß an der Basis zu setzen. Der Stand bleibt byte-gleich; Einzelheiten
+`bericht.md` §4.
+
 **Übersicht** `GET /api/v1/bezugsbasen/uebersicht` (Recht `bezugsbasis.ansehen` über die Sichtbarkeit der Kennzahl):
 `laufend` · `freigegeben` · `vorlaeufig` · `mit_anstoss` · `ueberpruefung_faellig` und `faellig[]` (am längsten fällig
 zuerst). Die Portal-Kachel `BezugsbasisUebersichtKarte` am Unternehmen zeigt die Zähler und je fälliger Basis den Satz

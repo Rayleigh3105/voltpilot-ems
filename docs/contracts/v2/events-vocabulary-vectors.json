@@ -411,6 +411,18 @@
       {
         "code": "messmittel_angabe",
         "name": "Messmittel-Angaben geändert"
+      },
+      {
+        "code": "bezugsbasis_anstoss",
+        "name": "Anstoß an der Bezugsbasis"
+      },
+      {
+        "code": "bezugsbasis_fassung",
+        "name": "Neue Fassung der Bezugsbasis"
+      },
+      {
+        "code": "bezugsbasis_beendet",
+        "name": "Bezugsbasis beendet"
       }
     ],
     "bericht_format": [

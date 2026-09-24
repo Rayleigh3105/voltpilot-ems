@@ -111,12 +111,22 @@ public final class BerichtRegeln {
     public static final String MESSBEDARF_ZUSTAND = "messbedarf_zustand";
     public static final String PROZESS_ZUORDNUNG_RUECKWIRKEND = "prozess_zuordnung_rueckwirkend";
     public static final String MESSMITTEL_ANGABE = "messmittel_angabe";
+    /** AP-17 IP-23 (A5, S4): ein Anstoß an der zitierten Basis-Fassung ({@code bezugsbasis_anstoss}, IP-15). */
+    public static final String BEZUGSBASIS_ANSTOSS = "bezugsbasis_anstoss";
+    /** AP-17 IP-23 (A5, S4): eine neue Fassung der zitierten Bezugsbasis ist freigegeben. */
+    public static final String BEZUGSBASIS_FASSUNG = "bezugsbasis_fassung";
+    /** AP-17 IP-23 (A5, S4): die zitierte Bezugsbasis ist beendet. */
+    public static final String BEZUGSBASIS_BEENDET = "bezugsbasis_beendet";
+    /** Die Anstoß-Arten, die von einer Bezugsbasis kommen (A5). */
+    public static final List<String> BEZUGSBASIS_ARTEN = List.of(BEZUGSBASIS_ANSTOSS, BEZUGSBASIS_FASSUNG,
+            BEZUGSBASIS_BEENDET);
     /** B4 — die Anstoß-Arten, geschlossen. */
     public static final List<String> ANSTOSS_ARTEN = List.of(KORREKTUR_FREIGEGEBEN, KORREKTUR_ZURUECKGENOMMEN,
             ERSATZWERT_WIRKSAM, ERSATZWERT_ZURUECKGENOMMEN, BEZUGSGROESSE_FASSUNG, KENNZAHL_FASSUNG_RUECKWIRKEND,
             ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND, FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND,
             EINSTUFUNG_FASSUNG, KRITERIEN_FASSUNG, UMFANG_FASSUNG, MESSBEDARF_ZUSTAND,
-            PROZESS_ZUORDNUNG_RUECKWIRKEND, MESSMITTEL_ANGABE);
+            PROZESS_ZUORDNUNG_RUECKWIRKEND, MESSMITTEL_ANGABE, BEZUGSBASIS_ANSTOSS, BEZUGSBASIS_FASSUNG,
+            BEZUGSBASIS_BEENDET);
 
     public static final List<String> ANSTOSS_ZUSTAENDE = List.of("offen", "erledigt", "verworfen");
 
@@ -252,6 +262,9 @@ public final class BerichtRegeln {
             "anlass_messbedarf_zustand", "Messbedarf {objekt} geändert",
             "anlass_prozess_zuordnung_rueckwirkend", "Prozess-Zuordnung {objekt} rückwirkend geändert",
             "anlass_messmittel_angabe", "Messmittel-Angaben {objekt} geändert",
+            "anlass_bezugsbasis_anstoss", "Bezugsbasis {basis}, Fassung {fassung}: Anstoß liegt vor",
+            "anlass_bezugsbasis_fassung", "Bezugsbasis {basis}: Fassung {fassung} freigegeben",
+            "anlass_bezugsbasis_beendet", "Bezugsbasis {basis} beendet",
             "ueber_formel", "{anlass} (über die Formel)",
             "ueber_kennzahl", "{anlass} (über die Kennzahl)",
             "csv_geltung_standort", "Standort {kennzeichen} {name}",
@@ -1004,6 +1017,10 @@ public final class BerichtRegeln {
      * ({@link #strukturKennung}) als „Verteilung MS-07 berichtigt, gilt ab 01.10.2026, eingetragen 20.11.2026“ — ohne
      * Kennzeichen entfällt es —, sonst der Text selbst.
      */
+    /** A5 (AP-17 IP-23): {@code BB-…/Fassung-n}, {@code BB-…/Fassung-n/anstoss:<id>}, {@code BB-…/beendet}. */
+    private static final Pattern BASIS_KENNUNG =
+            Pattern.compile("^(BB-\\d{4,})/(Fassung-(\\d+)(/anstoss:[0-9a-f-]+)?|beendet)$");
+
     public static String anlass(String kennung) {
         if (kennung.startsWith("K-")) {
             return fuelle(SAETZE.get("anlass_korrektur"), Map.of("kennung", kennung));
@@ -1018,6 +1035,14 @@ public final class BerichtRegeln {
             String am = OrtsbaumAbleitung.datumText(LocalDate.parse(s.group(4)));
             return s.group(2) == null ? fuelle(satz.replace(" {objekt}", ""), Map.of("ab", ab, "am", am))
                     : fuelle(satz, Map.of("objekt", s.group(2), "ab", ab, "am", am));
+        }
+        Matcher bb = BASIS_KENNUNG.matcher(kennung);
+        if (bb.matches()) {
+            if ("beendet".equals(bb.group(2))) {
+                return fuelle(SAETZE.get("anlass_bezugsbasis_beendet"), Map.of("basis", bb.group(1)));
+            }
+            return fuelle(SAETZE.get(bb.group(4) == null ? "anlass_bezugsbasis_fassung" : "anlass_bezugsbasis_anstoss"),
+                    Map.of("basis", bb.group(1), "fassung", bb.group(3)));
         }
         Matcher b = BEWERTUNG_KENNUNG.matcher(kennung);
         if (b.matches()) {

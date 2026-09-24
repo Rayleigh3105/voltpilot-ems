@@ -343,7 +343,10 @@
         "umfang_fassung",
         "messbedarf_zustand",
         "prozess_zuordnung_rueckwirkend",
-        "messmittel_angabe"
+        "messmittel_angabe",
+        "bezugsbasis_anstoss",
+        "bezugsbasis_fassung",
+        "bezugsbasis_beendet"
       ]
     },
     "bericht_format": {

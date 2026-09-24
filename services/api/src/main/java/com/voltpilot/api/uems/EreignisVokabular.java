@@ -393,7 +393,8 @@ public final class EreignisVokabular {
             "ersatzwert_wirksam", "ersatzwert_zurueckgenommen", "bezugsgroesse_fassung", "kennzahl_fassung_rueckwirkend",
             "zuordnung_rueckwirkend", "anlage_umzug_rueckwirkend", "flaeche_rueckwirkend", "verteilung_rueckwirkend",
             "einstufung_fassung", "kriterien_fassung", "umfang_fassung", "messbedarf_zustand",
-            "prozess_zuordnung_rueckwirkend", "messmittel_angabe");
+            "prozess_zuordnung_rueckwirkend", "messmittel_angabe", "bezugsbasis_anstoss", "bezugsbasis_fassung",
+            "bezugsbasis_beendet");
     /** AP-12 IP-4 — die Ausgaben eines Berichtsstands, deren Abruf gemeldet wird (DA5). */
     public static final List<String> BERICHT_FORMAT = List.of("pdf", "csv");
     /** AP-09 IP-7 — der Vorgang einer Berichtigung eines Bezugsgrößen-Werts (bezugsgroesse_berichtigung). */

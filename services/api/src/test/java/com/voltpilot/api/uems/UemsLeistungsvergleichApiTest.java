@@ -14,6 +14,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -35,6 +36,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
@@ -119,6 +121,9 @@ class UemsLeistungsvergleichApiTest {
 
     @Autowired
     BerichtService berichte;
+
+    @Autowired
+    BerichtAbzugBildung bildung;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -276,6 +281,154 @@ class UemsLeistungsvergleichApiTest {
         assertThat(a.status()).as(a.text()).isEqualTo(404);
         assertThat(root.queryForObject("SELECT count(*) FROM bericht WHERE tenant_id = ? AND vorlage = 'leistungsvergleich'",
                 Long.class, w.mandant())).isZero();
+    }
+
+    // ============================================================================ IP-23 Kaskade (S4, A5)
+
+    /**
+     * S4 Pfad 1 + A5 Pfad 2 (AP-17 IP-23) am Stand Nr. 1 (R8): die Berichtigung des Dezember-Werts von BZ-1 stößt den
+     * Stand an; Fassung 3 der Basis, ein Anstoß an Fassung 2 und das Beenden laufen als {@code bezugsbasis_*} weiter —
+     * jedes genau einmal, der Stand bleibt byte-gleich, den Entwurf bildet die Kaskade nicht (der Abruf, D4).
+     */
+    @Test
+    void kaskadeStoesstDenStandAnUndDieBasisLaeuftWeiter() throws Exception {
+        Welt w = welt();
+        String kennung = standNrEins(w);
+        String summe = pruefsumme(w, kennung);
+        UUID bb1 = root.queryForObject("SELECT id FROM bezugsbasis WHERE tenant_id = ? AND kennzeichen = 'BB-0001'",
+                UUID.class, w.mandant());
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        Instant entwurfVorher = root.queryForObject("SELECT e.datenstand FROM bericht_entwurf e JOIN bericht b ON "
+                + "b.id = e.bericht_id WHERE b.kennung = ? AND b.tenant_id = ?", Timestamp.class, kennung, w.mandant())
+                .toInstant();
+        BerichtKaskade kaskade = new BerichtKaskade(bildung);
+
+        // Pfad 1: BZ-1 Dezember 2025 bekommt Fassung 2 (BK-…) — der Stand zitiert ihn.
+        KorrekturKaskade.Betroffen bk = new KorrekturKaskade.Betroffen(w.mandant(), "BK-2026-0001", 2,
+                KorrekturKaskade.FREIGEGEBEN, List.of(), Instant.parse("2025-11-30T23:00:00Z"),
+                Instant.parse("2025-12-31T23:00:00Z"), java.time.ZoneId.of("Europe/Berlin"), LocalDate.of(2025, 12, 1),
+                LocalDate.of(2025, 12, 31), List.of(), List.of(), 1, HEUTE, List.of(new KorrekturKaskade.Bezugsgroesse(
+                        bz1, "BZ-1", LocalDate.of(2025, 12, 1), LocalDate.of(2025, 12, 31), 2, "freigegeben")));
+        for (int lauf = 0; lauf < 2; lauf++) {
+            root.execute((ConnectionCallback<Void>) con -> {
+                KorrekturKaskade.berichteBenachrichtigen(con, kaskade, bk);
+                return null;
+            });
+        }
+        // Die Neubildung des Entwurfs übergeht die Kaskade beim Leistungsvergleich (Entscheid 001 = A).
+        root.execute((ConnectionCallback<Void>) con -> {
+            kaskade.entwurfNeuBilden(con, new BerichteNaht.Bericht(kennung, BerichteNaht.Stand.ENTWURF), bk);
+            return null;
+        });
+        assertThat(anstoesse(w)).containsExactly("1 bezugsgroesse_fassung BK-2026-0001 2 freigegeben");
+        assertThat(root.queryForObject("SELECT e.datenstand FROM bericht_entwurf e JOIN bericht b ON b.id = e.bericht_id "
+                + "WHERE b.kennung = ? AND b.tenant_id = ?", Timestamp.class, kennung, w.mandant()).toInstant())
+                .isEqualTo(entwurfVorher);
+
+        // A5 Pfad 2: Fassung 3 freigegeben, dann beendet — gelesen aus bezugsbasis_aenderung.
+        protokoll(w, bb1, 3, "fassung_freigegeben");
+        BezugsbasisAnstoss anstoss = BezugsbasisAnstoss.mitSchalter(true, kaskade);
+        assertThat(anstoss.strukturLauf(root, HEUTE, 50).gescheitert()).isEmpty();
+        protokoll(w, bb1, null, "bezugsbasis_beendet");
+        anstoss.strukturLauf(root, HEUTE, 50);
+        anstoss.strukturLauf(root, HEUTE, 50); // zweiter Lauf: kein Doppel
+        assertThat(anstoesse(w)).containsExactly("1 bezugsgroesse_fassung BK-2026-0001 2 freigegeben",
+                "1 bezugsbasis_fassung BB-0001/Fassung-3 3 null", "1 bezugsbasis_beendet BB-0001/beendet null null");
+        assertThat(root.queryForList("SELECT urteil || ' ' || anstoesse FROM bezugsbasis_struktur_gelesen g "
+                + "JOIN bezugsbasis_aenderung a ON a.id = g.eintrag_id WHERE g.protokoll = 'bezugsbasis_aenderung' "
+                + "AND a.tenant_id = ? ORDER BY g.eintrag_id", String.class, w.mandant()))
+                .containsExactly("an_berichte 1", "an_berichte 1");
+        assertThat(pruefsumme(w, kennung)).isEqualTo(summe);
+    }
+
+    /** A5 an der Naht von IP-15: ein NEU gesetzter Anstoß an Fassung 2 läuft als {@code bezugsbasis_anstoss} weiter. */
+    @Test
+    void einAnstossAnDerZitiertenFassungLaeuftWeiter() throws Exception {
+        Welt w = welt();
+        String kennung = standNrEins(w);
+        String summe = pruefsumme(w, kennung);
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        // Eine Bearbeitung der Variable BZ-1 (nicht nur Wortlaut) nach der Freigabe — Pfad 2 setzt variable_geaendert.
+        root.update("INSERT INTO bezugsgroesse_aenderung (tenant_id, bezugsgroesse_id, art, alt, neu, gilt_ab, "
+                + "rueckwirkend, actor_sub, actor_name, actor_art) VALUES (?, ?, 'bearbeitet', '{\"einheit\": \"kg\"}'::jsonb, "
+                + "'{\"einheit\": \"t\"}'::jsonb, now(), false, 'IK', 'Ines', 'kunde')", w.mandant(), bz1);
+        BezugsbasisAnstoss.mitSchalter(true, new BerichtKaskade(bildung)).strukturLauf(root, HEUTE, 50);
+        UUID anstossId = root.queryForObject("SELECT a.id FROM bezugsbasis_anstoss a JOIN bezugsbasis_fassung f "
+                + "ON f.id = a.fassung_id WHERE a.tenant_id = ? AND f.fassung = 2 AND a.art = 'variable_geaendert'",
+                UUID.class, w.mandant());
+        assertThat(anstoesse(w)).containsExactly("1 bezugsbasis_anstoss BB-0001/Fassung-2/anstoss:" + anstossId
+                + " 2 variable_geaendert");
+        assertThat(pruefsumme(w, kennung)).isEqualTo(summe);
+    }
+
+    /** Flag-Naht: Bezugsbasis aus oder Berichte aus → nichts weitergegeben, und nach dem Einschalten nichts nachgeholt. */
+    @Test
+    void schalterAusGibtNichtsWeiterUndHoltNichtsNach() throws Exception {
+        Welt w = welt();
+        standNrEins(w);
+        UUID bb1 = root.queryForObject("SELECT id FROM bezugsbasis WHERE tenant_id = ? AND kennzeichen = 'BB-0001'",
+                UUID.class, w.mandant());
+        BerichtKaskade kaskade = new BerichtKaskade(bildung);
+        protokoll(w, bb1, 3, "fassung_freigegeben");
+        BezugsbasisAnstoss.mitSchalter(false, kaskade).strukturLauf(root, HEUTE, 50);
+        protokoll(w, bb1, null, "bezugsbasis_beendet");
+        BezugsbasisAnstoss.mitSchalter(true, null).strukturLauf(root, HEUTE, 50);
+        BezugsbasisAnstoss.mitSchalter(true, kaskade).strukturLauf(root, HEUTE, 50);
+        assertThat(anstoesse(w)).isEmpty();
+        assertThat(root.queryForList("SELECT g.urteil FROM bezugsbasis_struktur_gelesen g JOIN bezugsbasis_aenderung a "
+                + "ON a.id = g.eintrag_id WHERE g.protokoll = 'bezugsbasis_aenderung' AND a.tenant_id = ? "
+                + "ORDER BY g.eintrag_id", String.class, w.mandant())).containsExactly("abgeschaltet", "ohne_berichte");
+    }
+
+    /** Zaun: die Weitergabe trifft nur Stände des Mandanten der Basis — derselbe Anlass am anderen Mandanten bleibt leer. */
+    @Test
+    void weitergabeBleibtImMandanten() throws Exception {
+        Welt a = welt();
+        standNrEins(a);
+        Welt b = welt();
+        standNrEins(b);
+        UUID bbA = root.queryForObject("SELECT id FROM bezugsbasis WHERE tenant_id = ? AND kennzeichen = 'BB-0001'",
+                UUID.class, a.mandant());
+        BerichtKaskade kaskade = new BerichtKaskade(bildung);
+        List<String> getroffen = root.execute((ConnectionCallback<List<String>>) con -> kaskade.basisWeitergeben(con,
+                new BerichtKaskade.BasisAnlass(b.mandant(), bbA, BerichtRegeln.BEZUGSBASIS_BEENDET, "BB-0001/beendet",
+                        null, null, null, null, HEUTE)));
+        assertThat(getroffen).isEmpty();
+        assertThat(anstoesse(b)).isEmpty();
+        assertThat(anstoesse(a)).isEmpty();
+    }
+
+    /** R8: Bericht anlegen, Entwurf lesen, Stand Nr. 1 freigeben — die Kennung. */
+    private String standNrEins(Welt w) throws Exception {
+        Antwort angelegt = schreib(w, HttpMethod.POST, "/api/v1/berichte", Map.of("vorlage", "leistungsvergleich",
+                "geltung_id", w.unternehmen().toString(), "zeitraum", "2025-12", "kennzahl", w.kz4().toString()));
+        assertThat(angelegt.status()).as(angelegt.text()).isEqualTo(201);
+        String kennung = angelegt.body().get("kennung").asText();
+        Antwort entwurf = ruf(w, "/api/v1/berichte/" + kennung + "/entwurf");
+        Antwort frei = schreib(w, HttpMethod.POST, "/api/v1/berichte/" + kennung + "/freigeben",
+                Map.of("entwurf_datenstand", entwurf.body().get("datenstand").asText()));
+        assertThat(frei.status()).as(frei.text()).isEqualTo(201);
+        return kennung;
+    }
+
+    private static String pruefsumme(Welt w, String kennung) {
+        return root.queryForObject("SELECT s.pruefsumme || ':' || md5(s.abzug) FROM bericht_stand s JOIN bericht b "
+                + "ON b.id = s.bericht_id WHERE b.kennung = ? AND b.tenant_id = ? AND s.nr = 1", String.class, kennung,
+                w.mandant());
+    }
+
+    private static List<String> anstoesse(Welt w) {
+        return root.queryForList("SELECT s.nr || ' ' || a.art || ' ' || a.anlass_kennung || ' ' "
+                + "|| coalesce(a.anlass_fassung::text, 'null') || ' ' || coalesce(a.anlass_status, 'null') "
+                + "FROM bericht_revision_anstoss a JOIN bericht_stand s ON s.id = a.stand_id WHERE a.tenant_id = ? "
+                + "ORDER BY a.art DESC, a.anlass_kennung", String.class, w.mandant());
+    }
+
+    private static void protokoll(Welt w, UUID basis, Integer fassung, String art) {
+        root.update("INSERT INTO bezugsbasis_aenderung (tenant_id, bezugsbasis_id, fassung, art, actor_sub, actor_name, "
+                + "actor_art) VALUES (?, ?, ?, ?, 'IK', 'Ines', 'kunde')", w.mandant(), basis, fassung, art);
     }
 
     private Antwort schreib(Welt w, HttpMethod methode, String pfad, Map<String, Object> koerper) throws Exception {

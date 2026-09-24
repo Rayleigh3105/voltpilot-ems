@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -58,9 +59,14 @@ import org.springframework.stereotype.Component;
  * Wasserzeichen mit dem Urteil {@code abgeschaltet} — nichts wird nachgeholt. Pfad 2 läuft nur, solange der
  * Struktur-Läufer läuft (Schalter der Berichte, {@code berichte.enabled} und {@code berichte.struktur.enabled}).
  *
- * <p>A5 (Weitergabe an Leistungsvergleichs-Stände über {@code bericht_revision_anstoss}) ist NICHT hier: die Quellenart
- * {@code bezugsbasis} gibt es erst mit AP-17 IP-21a; die Weitergabe baut IP-23 an {@link #nachKorrektur}/{@link
- * #strukturLauf}, die die neu gesetzten Anstöße zurückgeben.
+ * <p><b>A5 (AP-17 IP-23)</b>: jeder NEU gesetzte Anstoß läuft in derselben Transaktion weiter zu jedem gültigen
+ * Leistungsvergleichs-Stand, der die Fassung zitiert ({@link BerichtKaskade#basisWeitergeben}, Art
+ * {@code bezugsbasis_anstoss}, Anlass-Kennung {@code BB-…/Fassung-n/anstoss:<id>}). Eine freigegebene Fassung n + 1
+ * ({@code fassung_freigegeben}) und das Beenden ({@code bezugsbasis_beendet}) liest Pfad 2 aus
+ * {@code bezugsbasis_aenderung} mit demselben Wasserzeichen und gibt sie als {@code bezugsbasis_fassung}
+ * ({@code BB-…/Fassung-n}, an Stände mit Fassung &lt; n) bzw. {@code bezugsbasis_beendet} ({@code BB-…/beendet}) weiter —
+ * setzt dabei keinen Anstoß an der Basis. Ohne {@code berichte.enabled} fehlt die {@link BerichtKaskade}: nichts wird
+ * weitergegeben und nichts nachgeholt.
  */
 @Component
 public class BezugsbasisAnstoss {
@@ -77,6 +83,11 @@ public class BezugsbasisAnstoss {
     static final String OHNE_BEZUGSBASIS = "ohne_bezugsbasis";
     static final String NICHT_STRUKTURELL = "nicht_strukturell";
     static final String ABGESCHALTET = "abgeschaltet";
+    /** A5 (IP-23): Urteile einer Zeile aus {@code bezugsbasis_aenderung} — sie setzt nie einen Anstoß an der Basis. */
+    static final String AN_BERICHTE = "an_berichte";
+    static final String OHNE_STAND = "ohne_stand";
+    static final String OHNE_BERICHTE = "ohne_berichte";
+    static final String BEZUGSBASIS_AENDERUNG = "bezugsbasis_aenderung";
 
     /** Felder einer Bezugsgröße, deren Bearbeitung die Variable nicht ändert (Name, Beschreibung). */
     private static final Set<String> NUR_WORTLAUT = Set.of("name", "beschreibung", "notiz", "bemerkung", "kennzeichen");
@@ -88,7 +99,22 @@ public class BezugsbasisAnstoss {
     @Value("${" + SCHALTER + ":true}")
     private boolean eingeschaltet = true;
 
+    /** A5 (IP-23): die Bericht-Naht; {@code null}, solange {@code voltpilot.uems.berichte.enabled} aus ist. */
+    private BerichtKaskade berichte;
+
     public BezugsbasisAnstoss() {}
+
+    @Autowired(required = false)
+    void setBerichte(BerichtKaskade berichte) {
+        this.berichte = berichte;
+    }
+
+    /** Ohne Spring (Tests): mit ausdrücklichem Schalter und der Bericht-Naht der Weitergabe (A5). */
+    static BezugsbasisAnstoss mitSchalter(boolean an, BerichtKaskade berichte) {
+        BezugsbasisAnstoss b = mitSchalter(an);
+        b.berichte = berichte;
+        return b;
+    }
 
     /** Ohne Spring (Tests): mit ausdrücklichem Schalter. */
     static BezugsbasisAnstoss mitSchalter(boolean an) {
@@ -99,7 +125,7 @@ public class BezugsbasisAnstoss {
 
     /** Ein neu gesetzter Anstoß — was IP-23 (A5) an die Leistungsvergleichs-Stände weitergibt. */
     public record Gesetzt(UUID tenant, UUID bezugsbasis, UUID fassungId, int fassung, int pfad, String art,
-            String anlassKennung) {}
+            String anlassKennung, UUID anstossId) {}
 
     // ============================================================================ Pfad 1 (A2)
 
@@ -131,6 +157,7 @@ public class BezugsbasisAnstoss {
             Gesetzt g = setzen(con, f, 1, GRUNDLAGE_KORRIGIERT, kennung, anlass, "VoltPilot (Kaskade)");
             if (g != null) {
                 gesetzt.add(g);
+                weitergeben(con, g, b.jetzt());
             }
         }
         if (!gesetzt.isEmpty()) {
@@ -330,6 +357,11 @@ public class BezugsbasisAnstoss {
                    g.neu::text, CAST(g.gilt_ab AT TIME ZONE 'Europe/Berlin' AS date), g.rueckwirkend, g.created_at
               FROM bezugsgroesse_aenderung g
              WHERE g.art IN ('bearbeitet', 'archiviert')
+            UNION ALL
+            SELECT 'bezugsbasis_aenderung', a.id, a.tenant_id, 'bezugsbasis', a.bezugsbasis_id, a.art, NULL, NULL,
+                   CAST(a.created_at AT TIME ZONE 'Europe/Berlin' AS date), false, a.created_at
+              FROM bezugsbasis_aenderung a
+             WHERE a.art IN ('fassung_freigegeben', 'bezugsbasis_beendet')
             ) z
              WHERE NOT EXISTS (SELECT 1 FROM bezugsbasis_struktur_gelesen w
                                 WHERE w.protokoll = z.protokoll AND w.eintrag_id = z.id)
@@ -358,7 +390,7 @@ public class BezugsbasisAnstoss {
         Map<String, String> gescheitert = new LinkedHashMap<>();
         for (Zeile z : kandidaten) {
             try {
-                List<Gesetzt> g = inTransaktion(adminJdbc, con -> lesen(con, z));
+                List<Gesetzt> g = inTransaktion(adminJdbc, con -> lesen(con, z, jetzt));
                 if (g != null) {
                     gelesen++;
                     gesetzt.addAll(g);
@@ -373,7 +405,7 @@ public class BezugsbasisAnstoss {
     }
 
     /** EINE Protokollzeile; {@code null} = ein anderer Läufer hat sie (oder hatte sie schon). */
-    private List<Gesetzt> lesen(Connection con, Zeile z) throws SQLException {
+    private List<Gesetzt> lesen(Connection con, Zeile z, Instant jetzt) throws SQLException {
         JdbcTemplate j = new JdbcTemplate(new SingleConnectionDataSource(con, true));
         Boolean frei = j.queryForObject("SELECT pg_try_advisory_xact_lock(hashtext(?), ?)", Boolean.class,
                 "bezugsbasis_struktur_gelesen:" + z.protokoll(), (int) (z.id() % Integer.MAX_VALUE));
@@ -383,8 +415,12 @@ public class BezugsbasisAnstoss {
         }
         List<Gesetzt> gesetzt = new ArrayList<>();
         String urteil;
+        int weitergegeben = 0;
         if (!eingeschaltet) {
             urteil = ABGESCHALTET;
+        } else if (BEZUGSBASIS_AENDERUNG.equals(z.protokoll())) {
+            weitergegeben = basisWeitergeben(con, z, jetzt);
+            urteil = berichte == null ? OHNE_BERICHTE : weitergegeben == 0 ? OHNE_STAND : AN_BERICHTE;
         } else {
             String art = art(z);
             if (art == null) {
@@ -397,14 +433,72 @@ public class BezugsbasisAnstoss {
                             "VoltPilot (Struktur-Läufer)");
                     if (g != null) {
                         gesetzt.add(g);
+                        weitergeben(con, g, jetzt);
                     }
                 }
                 urteil = getroffen.isEmpty() ? OHNE_BEZUGSBASIS : art;
             }
         }
         j.update("INSERT INTO bezugsbasis_struktur_gelesen (protokoll, eintrag_id, urteil, anstoesse) VALUES (?, ?, ?, ?)",
-                z.protokoll(), z.id(), urteil, gesetzt.size());
+                z.protokoll(), z.id(), urteil, gesetzt.size() + weitergegeben);
         return gesetzt;
+    }
+
+    // ============================================================================ A5 (IP-23)
+
+    /** Ein neu gesetzter Anstoß an Fassung n → die gültigen Stände, die Fassung n zitieren. */
+    private void weitergeben(Connection con, Gesetzt g, Instant jetzt) throws SQLException {
+        if (berichte == null) {
+            return;
+        }
+        String kennung = kennzeichen(con, g.tenant(), g.bezugsbasis()) + "/Fassung-" + g.fassung() + "/anstoss:"
+                + g.anstossId();
+        berichte.basisWeitergeben(con, new BerichtKaskade.BasisAnlass(g.tenant(), g.bezugsbasis(),
+                BerichtRegeln.BEZUGSBASIS_ANSTOSS, kennung, g.fassung(), g.art(), g.fassung(), g.fassung(), jetzt));
+    }
+
+    /**
+     * Eine Zeile {@code fassung_freigegeben} (Fassung n → Stände mit Fassung &lt; n) oder {@code bezugsbasis_beendet}
+     * (jeder Stand der Basis); gibt die Zahl der getroffenen Berichte zurück.
+     */
+    private int basisWeitergeben(Connection con, Zeile z, Instant jetzt) throws SQLException {
+        if (berichte == null) {
+            return 0;
+        }
+        String bb = kennzeichen(con, z.tenant(), z.objekt());
+        BerichtKaskade.BasisAnlass a;
+        if ("bezugsbasis_beendet".equals(z.art())) {
+            a = new BerichtKaskade.BasisAnlass(z.tenant(), z.objekt(), BerichtRegeln.BEZUGSBASIS_BEENDET, bb + "/beendet",
+                    null, null, null, null, jetzt);
+        } else {
+            int n;
+            try (PreparedStatement ps = con.prepareStatement(
+                    "SELECT fassung FROM bezugsbasis_aenderung WHERE tenant_id = ? AND id = ?")) {
+                ps.setObject(1, z.tenant());
+                ps.setLong(2, z.id());
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    n = rs.getInt(1);
+                }
+            }
+            a = new BerichtKaskade.BasisAnlass(z.tenant(), z.objekt(), BerichtRegeln.BEZUGSBASIS_FASSUNG,
+                    bb + "/Fassung-" + n, n, null, null, n - 1, jetzt);
+        }
+        return berichte.basisWeitergeben(con, a).size();
+    }
+
+    private static String kennzeichen(Connection con, UUID tenant, UUID basis) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT kennzeichen FROM bezugsbasis WHERE tenant_id = ? AND id = ?")) {
+            ps.setObject(1, tenant);
+            ps.setObject(2, basis);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("UEMS Bezugsbasis " + basis + " gibt es nicht");
+                }
+                return rs.getString(1);
+            }
+        }
     }
 
     /** Die Anstoß-Art einer Zeile; {@code null} = sie ändert keine Variable und keinen Faktor. */
@@ -594,7 +688,7 @@ public class BezugsbasisAnstoss {
             ps.setString(6, akteur);
             ps.executeUpdate();
         }
-        return new Gesetzt(f.tenant(), f.bezugsbasis(), f.id(), f.fassung(), pfad, art, kennung);
+        return new Gesetzt(f.tenant(), f.bezugsbasis(), f.id(), f.fassung(), pfad, art, kennung, id);
     }
 
     private static JsonNode json(String text) {

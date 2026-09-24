@@ -170,9 +170,20 @@ Freigabe prüft gemessen und jede Bedingung auf „vorläufig“ (F2, `werte_vor
 Vergleich-Fläche nennt die Stände, die die Basis zitieren (`staende`, „Stand Nr. 1 vom 12.01.2028“, S5). **Belegschutz
 (S4):** zitiert ein freigegebener Leistungsvergleichs-Stand die Kennzahl, antwortet `POST /kennzahlen/{id}/archivieren`
 mit `409 berichts_belege`; das harte Löschen einer zitierten Bezugsgröße ebenso; Basis-Fassungen werden nie gelöscht.
+**Anstoß (S4, A5; IP-23):** Pfad 1 erkennt Leistungsvergleichs-Stände wie jeden Bericht über ihr Quellenverzeichnis
+(Kennzahl, Messstelle, Bezugsgröße) — ein freigegebener Stand bekommt den Anstoß und bleibt byte-gleich. **Den Entwurf
+eines Leistungsvergleichs bildet die Kaskade NICHT neu** (Entscheid 23.09.2026 = A): der Vergleich-Leser liest über die
+App-Verbindung mit RLS, die Kaskade läuft auf der Verwaltungsverbindung ohne RLS in eigener Transaktion — der nächste
+Abruf bildet ihn neu (D4). Ein Anlass an der zitierten **Bezugsbasis** läuft weiter zu jedem gültigen Stand, der sie mit
+Quellenart `bezugsbasis` zitiert (`BerichtKaskade.basisWeitergeben`): ein neu gesetzter Anstoß an Fassung n →
+`bezugsbasis_anstoss` (`BB-…/Fassung-n/anstoss:<id>`, `anlass_fassung` n, `anlass_status` = Anstoß-Art der Basis, nur
+Stände mit Fassung n); Fassung n freigegeben → `bezugsbasis_fassung` (`BB-…/Fassung-n`, Stände mit Fassung < n); Basis
+beendet → `bezugsbasis_beendet` (`BB-…/beendet`). Anstöße der Basis gibt IP-15 in seiner Transaktion weiter, Fassung und
+Beenden liest der Struktur-Läufer aus `bezugsbasis_aenderung` (Wasserzeichen `bezugsbasis_struktur_gelesen`).
+Schalter: `voltpilot.uems.bezugsbasis.enabled` aus → nichts gesetzt, nichts weitergegeben (Urteil `abgeschaltet`);
+`voltpilot.uems.berichte.enabled` aus → keine Bericht-Naht (Urteil `ohne_berichte`) — nachgeholt wird nie.
 PDF und CSV des Stands (IP-22) stehen in §10 DA2/DA3; `OHNE_AUSGABE` ist leer (`422 ausgabe_fehlt` bleibt als Code für
-eine künftige Vorlage ohne Ausgabe). **Noch nicht:** Kaskade/Anstoß (IP-23; bis dahin übergeht `BerichtKaskade` den
-Leistungsvergleich). `OHNE_LESER` ist leer: anlegbar, die Karte erscheint.
+eine künftige Vorlage ohne Ausgabe). `OHNE_LESER` ist leer: anlegbar, die Karte erscheint.
 
 Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld
 `wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern (`PUT …/wiedervorlage`).
@@ -274,6 +285,7 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   | `bewertung_aenderung` | `umfang_geaendert` | `umfang_fassung` | — |
   | `messbedarf_aenderung` | `erfasst`, `bearbeitet`, `eingeloest`, `verworfen` | `messbedarf_zustand` | — |
   | `geraet_aenderung` | `messmittel_angabe` | `messmittel_angabe` | — |
+  | `bezugsbasis_aenderung` | `fassung_freigegeben`, `bezugsbasis_beendet` (A5, §4) | `bezugsbasis_fassung`, `bezugsbasis_beendet` | — |
   | beide | `bearbeitet` | — | `umbenennung` |
   | beide | jede andere Art | — | `keine_strukturaenderung` |
 

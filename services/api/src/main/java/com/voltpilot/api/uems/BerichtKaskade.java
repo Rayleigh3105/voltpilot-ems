@@ -112,7 +112,6 @@ public class BerichtKaskade implements BerichteNaht {
                   LEFT JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id
                        AND s.nr = q.stand_nr
                  WHERE q.tenant_id = ? AND (? OR b.vorlage <> 'energetische_bewertung')
-                   AND b.vorlage <> 'leistungsvergleich'
                    AND q.erster_tag <= ? AND q.letzter_tag >= ?
                    AND ((m.id IS NOT NULL AND q.objekt_id = ANY (?))
                         OR (q.art IN ('bezugsgroesse', 'stammdatum') AND q.objekt_id = ANY (?))
@@ -175,7 +174,6 @@ public class BerichtKaskade implements BerichteNaht {
                        AND s.nr = q.stand_nr
                   LEFT JOIN bericht_entwurf e ON e.tenant_id = q.tenant_id AND e.bericht_id = q.bericht_id
                  WHERE q.tenant_id = ? AND (? OR b.vorlage <> 'energetische_bewertung')
-                   AND b.vorlage <> 'leistungsvergleich'
                    AND q.objekt_id = ANY (?::uuid[]) AND q.letzter_tag >= ?
                 """ + (kenntNichtVor == null ? "" : """
                    AND (CASE WHEN q.stand_nr IS NULL THEN e.datenstand ELSE s.datenstand END) < ?
@@ -205,9 +203,9 @@ public class BerichtKaskade implements BerichteNaht {
         UUID id;
         // Die Sperre der Neubildung beim Abruf (D4): erst der Entwurf, dann lesen und schreiben — wer gleichzeitig neu
         // bildet, wartet und findet danach den Datenstand der Kaskade.
-        try (PreparedStatement ps = con.prepareStatement("SELECT e.bericht_id FROM bericht_entwurf e JOIN bericht b "
-                + "ON b.id = e.bericht_id AND b.tenant_id = e.tenant_id WHERE e.tenant_id = ? AND b.kennung = ? "
-                + "FOR UPDATE OF e")) {
+        try (PreparedStatement ps = con.prepareStatement("SELECT e.bericht_id, b.vorlage FROM bericht_entwurf e "
+                + "JOIN bericht b ON b.id = e.bericht_id AND b.tenant_id = e.tenant_id WHERE e.tenant_id = ? "
+                + "AND b.kennung = ? FOR UPDATE OF e")) {
             ps.setObject(1, tenant);
             ps.setString(2, kennung);
             try (ResultSet rs = ps.executeQuery()) {
@@ -215,6 +213,14 @@ public class BerichtKaskade implements BerichteNaht {
                     throw new IllegalStateException("UEMS Bericht-Kaskade: " + kennung + " hat keinen Entwurf");
                 }
                 id = rs.getObject(1, UUID.class);
+                if (BerichtRegeln.LEISTUNGSVERGLEICH.equals(rs.getString(2))) {
+                    // AP-17 IP-23 (S4): der Vergleich-Leser liest über die App-Verbindung mit RLS — auf dieser
+                    // Verwaltungsverbindung ohne RLS läse er mandantenübergreifend, auf einer eigenen sähe er die
+                    // Versionen dieser Transaktion nicht. Den Entwurf bildet darum der nächste Abruf neu (D4).
+                    log.debug("UEMS Bericht-Kaskade {}: {} ist ein Leistungsvergleich, der Abruf bildet neu", anlass,
+                            kennung);
+                    return;
+                }
             }
         }
         UUID vorher = TenantContext.get();
@@ -246,6 +252,54 @@ public class BerichtKaskade implements BerichteNaht {
     @Override
     public void revisionAusloesen(Connection con, Bericht bericht, StrukturBetroffen s) throws SQLException {
         anstossen(con, s.tenant(), bericht.kennung(), s.anstossArt(), s.jetzt(), s.anlass(), null, null);
+    }
+
+    /**
+     * Ein Anlass an einer Bezugsbasis (AP-17 IP-23, A5): {@code art} ist {@value BerichtRegeln#BEZUGSBASIS_ANSTOSS},
+     * {@value BerichtRegeln#BEZUGSBASIS_FASSUNG} oder {@value BerichtRegeln#BEZUGSBASIS_BEENDET}; getroffen sind die
+     * gültigen Stände, deren Quelle der Art {@code bezugsbasis} eine Fassung {@code zitiertVon … zitiertBis} zitiert
+     * ({@code null} = offen).
+     */
+    public record BasisAnlass(UUID tenant, UUID basis, String art, String kennung, Integer fassung, String status,
+            Integer zitiertVon, Integer zitiertBis, Instant jetzt) {}
+
+    /**
+     * A5 (bezugsbasis.md, bericht.md S4): der Anlass an der Basis läuft weiter zu jedem gültigen Leistungsvergleichs-Stand,
+     * der die Basis zitiert — ein Anstoß in {@code bericht_revision_anstoss}, der Stand bleibt byte-gleich; den Entwurf
+     * bildet der nächste Abruf neu (D4). In der Transaktion des Aufrufers (Verwaltungsrolle, jede Abfrage nennt den
+     * Mandanten); idempotent wie jeder Anstoß (B7). Gibt die Kennungen der getroffenen Berichte zurück.
+     */
+    public List<String> basisWeitergeben(Connection con, BasisAnlass a) throws SQLException {
+        if (!BerichtRegeln.BEZUGSBASIS_ARTEN.contains(a.art())) {
+            throw new IllegalArgumentException(a.art() + " ist kein Anlass an einer Bezugsbasis");
+        }
+        List<String> kennungen = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT DISTINCT b.kennung
+                  FROM bericht_quelle q
+                  JOIN bericht b ON b.id = q.bericht_id AND b.tenant_id = q.tenant_id
+                  JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id AND s.nr = q.stand_nr
+                 WHERE q.tenant_id = ? AND q.art = 'bezugsbasis' AND q.objekt_id = ?
+                   AND b.vorlage = 'leistungsvergleich' AND s.ersetzt_durch_nr IS NULL
+                   AND (?::int IS NULL OR q.fassung >= ?::int) AND (?::int IS NULL OR q.fassung <= ?::int)
+                 ORDER BY b.kennung
+                """)) {
+            ps.setObject(1, a.tenant());
+            ps.setObject(2, a.basis());
+            ps.setObject(3, a.zitiertVon(), Types.INTEGER);
+            ps.setObject(4, a.zitiertVon(), Types.INTEGER);
+            ps.setObject(5, a.zitiertBis(), Types.INTEGER);
+            ps.setObject(6, a.zitiertBis(), Types.INTEGER);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    kennungen.add(rs.getString(1));
+                }
+            }
+        }
+        for (String kennung : kennungen) {
+            anstossen(con, a.tenant(), kennung, a.art(), a.jetzt(), a.kennung(), a.fassung(), a.status());
+        }
+        return kennungen;
     }
 
     private void anstossen(Connection con, UUID tenant, String kennung, String art, Instant jetzt, String anlass,
