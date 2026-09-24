@@ -13,7 +13,6 @@ import {
   hourAxisLabels,
   hourLabelStep,
   HOUR_LABEL_MIN_GAP_PX,
-  isDenseSlots,
   NARROW_PX,
   NOW,
   nowLabel,
@@ -98,19 +97,7 @@ describe('BAR (F9 · Säulenstäbe statt Farb-Block)', () => {
   });
 });
 
-describe('Dichte Slots · Blöcke statt Subpixel-Stäbe', () => {
-  it('bleibt bei Stäben, solange ein Slot Platz hat (Rechner, 24 h)', () => {
-    // 1440 px: ~990 px Plot für 96 Viertelstunden ≈ 10 px je Slot.
-    expect(isDenseSlots(990, 96)).toBe(false);
-  });
-
-  it('wird dicht am Telefon und beim 48-h-Horizont', () => {
-    // 375 px: ~240 px Plot für 96 Viertelstunden ≈ 2,5 px je Slot.
-    expect(isDenseSlots(240, 96)).toBe(true);
-    expect(isDenseSlots(990, 192)).toBe(true);
-    expect(isDenseSlots(990, 0)).toBe(false);
-  });
-
+describe('Nahtlose Blöcke (Fahrplan, Phasen-Band)', () => {
   it('überlappt Nachbarn um ein Pixel - keine Haarlinie zwischen zwei Slots', () => {
     expect(seamlessBarWidthPx(240, 96)).toBeCloseTo(3.5, 5);
     expect(seamlessBarWidthPx(0, 96)).toBe(1);

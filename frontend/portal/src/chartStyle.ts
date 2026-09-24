@@ -569,21 +569,8 @@ export function hourAxisLabels(
 }
 
 /**
- * Unterhalb dieser Breite je Slot werden aus Säulenstäben (F9, {@link BAR})
- * geschlossene Blöcke: bei 375 px teilen sich 96 Viertelstunden ~2,5 px, ein
- * 35-%-Spalt ist dann ein Subpixel — heraus kam eine flimmernde Schraffur statt
- * ablesbarer Stäbe, und beim 48-h-Horizont verschwanden die Stäbe fast ganz.
- */
-export const DENSE_SLOT_PX = 6;
-
-/** Stehen die Slots so dicht, dass Stäbe zur Schraffur würden? */
-export function isDenseSlots(plotWidthPx: number, slotCount: number): boolean {
-  return slotCount > 0 && plotWidthPx / slotCount < DENSE_SLOT_PX;
-}
-
-/**
  * Die Breite (px) eines Balkens, der NAHTLOS an seinen Nachbarn stößt (Phasen-
- * Band, dichte Speicher-Blöcke): ein Pixel breiter als sein Slot. Zwei
+ * Band, Speicher-Blöcke im Fahrplan): ein Pixel breiter als sein Slot. Zwei
  * Rechtecke mit gebrochener Pixelkante teilen sich sonst das Randpixel, die
  * Kantenglättung deckt es von keiner Seite ganz, und durch jeden Block läuft
  * je Slot eine helle Haarlinie (die „Schraffur" am Telefon). Ein Rand in der

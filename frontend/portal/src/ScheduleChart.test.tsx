@@ -12,7 +12,7 @@ import {
 } from './schedule';
 import { BEZUGSPREIS, BOERSENPREIS, EINSPEISEWERT, SPANNE } from './chartCopy';
 import type { SchedulePlan, ScheduleSlot } from './api';
-import { BAR, FILL, NOW, PANELS, STROKE } from './chartStyle';
+import { FILL, NOW, PANELS, STROKE } from './chartStyle';
 import { chartTheme } from './chartTheme';
 
 /**
@@ -654,11 +654,17 @@ describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
     expect(lastOption.yAxis[1].axisLine.show).toBe(false);
   });
 
-  it('deckelt die Balkenbreite und lässt eine Fuge (F9)', () => {
+  it('zeichnet den Speicher als nahtlose Blöcke - V-05 hebt F9 im Fahrplan auf', () => {
+    // Stäbe mit Fuge wurden am Telefon zur Subpixel-Schraffur und standen am
+    // Rechner als Kamm neben dem glatten Phasen-Band (UX-Review 24.09.2026).
     render(<ScheduleChart plan={plan(tag)} />);
     const bars = series('Batterie');
-    expect(bars.barMaxWidth).toBe(BAR.maxWidth);
-    expect(bars.barCategoryGap).toBe(BAR.categoryGap);
+    expect(bars.barCategoryGap).toBeUndefined();
+    expect(bars.barMaxWidth).toBeUndefined();
+    expect(typeof bars.barWidth).toBe('number');
+    const gefuellt = bars.data.filter((d: any) => d?.itemStyle);
+    expect(gefuellt.length).toBeGreaterThan(0);
+    for (const d of gefuellt) expect(d.itemStyle).toMatchObject({ borderWidth: 0, borderRadius: 0 });
   });
 
   it('zieht die Preislinie auf die LEIT-Stufe ihres Panels (F1-Hierarchie)', () => {

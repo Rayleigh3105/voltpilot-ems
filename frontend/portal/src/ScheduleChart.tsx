@@ -2,12 +2,10 @@ import { useMemo, useState } from 'react';
 import type { SchedulePlan } from './api';
 import {
   AXIS,
-  BAR,
   dayBoundaryStyle,
   FILL,
   FORECAST,
   hourAxisLabels,
-  isDenseSlots,
   NARROW_PX,
   nowLabel,
   nowLineStyle,
@@ -88,7 +86,7 @@ import './components/Fahrplan.css';
  * nackte Börsenpreis; fehlt auch der, entfällt das Panel ganz statt eine leere
  * Fläche zu behaupten.
  *
- * UNTEN das LEISTUNGS-Panel: der Speicher als gefüllte Säulenstäbe (K5 - grün
+ * UNTEN das LEISTUNGS-Panel: der Speicher als gefüllte, nahtlose Blöcke (K5 - grün
  * lädt, beere gibt ab, Wort in der Legende; türkis nur, wenn der Plan wirklich
  * aus dem Netz lädt, sodass „kein Türkis" der sichtbare
  * EEG-Beweis bleibt), die Sonne als Kontextkurve, der Verbraucher-Stapel, der
@@ -401,7 +399,6 @@ export function ScheduleChart({
     // Hat ein sehr kurzer Plan keine volle Stunde im Takt, bleibt es bei der
     // Ausdünnung durch ECharts und dem Datum am Tagesanfang.
     const plotWidthPx = width - bandLeftPx - bandRightPx;
-    const denseBars = isDenseSlots(plotWidthPx, slots.length);
     const hourLabels = hourAxisLabels(times, plotWidthPx, plan.slotMinutes || 15);
     const hourTakt = hourLabels.shown.size > 0;
     const datedIdx = hourTakt ? hourLabels.dated : dayStarts;
@@ -947,18 +944,19 @@ export function ScheduleChart({
                   : ('entladen' as const);
               const mark = slotBarMark(kind, t);
               const bar = storageBar(v, mark, t.surface);
-              // Dicht (Telefon, 48-h-Horizont): geschlossene Blöcke statt
-              // Subpixel-Stäben - nur für gefüllte Marken, ein Umriss bleibt.
-              return bar && denseBars && mark.form === 'filled'
+              // Geschlossene Blöcke - nur für gefüllte Marken, ein Umriss bleibt.
+              return bar && mark.form === 'filled'
                 ? { ...bar, itemStyle: seamlessBar(mark.color) }
                 : bar;
             }),
-            // F9: aus dem 96-Slot-Farbblock werden ablesbare Viertelstunden-Stäbe
-            // - solange ein Stab dafür Platz hat (`isDenseSlots`); sonst
-            // nahtlose Blöcke (`seamlessBarWidthPx`).
-            ...(denseBars
-              ? { barWidth: seamlessBarWidthPx(plotWidthPx, slots.length) }
-              : { barCategoryGap: BAR.categoryGap, barMaxWidth: BAR.maxWidth }),
+            // ⚠ Im Fahrplan ist F9 („Säulenstäbe statt Farb-Block", `BAR`)
+            // bewusst aufgehoben (UX-Review V-05, Entscheid 24.09.2026): der
+            // Speicher zeichnet NAHTLOSE Blöcke wie das Phasen-Band direkt
+            // darunter. Stäbe mit Fuge wurden am Telefon zur Subpixel-
+            // Schraffur und standen am Rechner als Kamm neben dem glatten
+            // Band. Die einzelne Viertelstunde liest man per Tipp/Tooltip.
+            // Andere Balkenflächen des Portals behalten `BAR`.
+            barWidth: seamlessBarWidthPx(plotWidthPx, slots.length),
             z: 3,
             markArea: pastArea,
             markLine: powerMarks.length
