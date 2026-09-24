@@ -512,6 +512,94 @@ export const PANELS = {
 } as const;
 
 /* ---------------------------------------------------------------------------
+ * Zeitachse in VOLLEN STUNDEN
+ *
+ * Eine Kategorie-Achse mit 96 (oder 192) Viertelstunden lässt ECharts selbst
+ * ausdünnen — heraus kamen Uhrzeiten wie 01:15 · 02:30 · 03:45 am Rechner und
+ * 04:30 · 09:00 · 13:30 am Telefon: korrekt, aber so liest niemand eine Uhr.
+ * Beschriftet wird deshalb nur eine volle Stunde, im gröbsten Takt, der bei
+ * DIESER Plotbreite noch Luft zwischen zwei Beschriftungen lässt
+ * (1 · 2 · 3 · 4 · 6 · 12 · 24 h). Das Datum steht an der ERSTEN gezeigten
+ * Beschriftung jedes Tages (Audit F2: ein Plan von gestern darf sich nicht wie
+ * heute lesen) — auch wenn der Plan nicht zur vollen Stunde beginnt.
+ * ------------------------------------------------------------------------- */
+
+/** Die erlaubten Takte der Stunden-Beschriftung, fein nach grob. */
+export const HOUR_LABEL_STEPS = [1, 2, 3, 4, 6, 12, 24] as const;
+
+/** Mindestabstand zweier Beschriftungen („00:00" bei 12 px + Luft). */
+export const HOUR_LABEL_MIN_GAP_PX = 56;
+
+/**
+ * Der feinste Stunden-Takt, bei dem zwei Beschriftungen mindestens
+ * {@link HOUR_LABEL_MIN_GAP_PX} auseinanderliegen.
+ */
+export function hourLabelStep(plotWidthPx: number, hours: number): number {
+  if (!(plotWidthPx > 0) || !(hours > 0)) return 24;
+  const pxPerHour = plotWidthPx / hours;
+  return HOUR_LABEL_STEPS.find((s) => s * pxPerHour >= HOUR_LABEL_MIN_GAP_PX) ?? 24;
+}
+
+/**
+ * Welche Kategorien einer Zeitachse beschriftet werden und welche davon das
+ * Datum tragen. `times` sind die Slot-Anfänge (ISO); die Uhrzeit wird in der
+ * Zeitzone des Browsers gelesen — derselben, in der die Beschriftung steht.
+ */
+export function hourAxisLabels(
+  times: readonly string[],
+  plotWidthPx: number,
+  slotMinutes = 15,
+): { shown: ReadonlySet<number>; dated: ReadonlySet<number>; stepHours: number } {
+  const stepHours = hourLabelStep(plotWidthPx, (times.length * slotMinutes) / 60);
+  const shown = new Set<number>();
+  const dated = new Set<number>();
+  let lastDay = '';
+  times.forEach((iso, i) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return;
+    if (d.getMinutes() !== 0 || d.getHours() % stepHours !== 0) return;
+    shown.add(i);
+    const day = d.toDateString();
+    if (day !== lastDay) {
+      dated.add(i);
+      lastDay = day;
+    }
+  });
+  return { shown, dated, stepHours };
+}
+
+/**
+ * Unterhalb dieser Breite je Slot werden aus Säulenstäben (F9, {@link BAR})
+ * geschlossene Blöcke: bei 375 px teilen sich 96 Viertelstunden ~2,5 px, ein
+ * 35-%-Spalt ist dann ein Subpixel — heraus kam eine flimmernde Schraffur statt
+ * ablesbarer Stäbe, und beim 48-h-Horizont verschwanden die Stäbe fast ganz.
+ */
+export const DENSE_SLOT_PX = 6;
+
+/** Stehen die Slots so dicht, dass Stäbe zur Schraffur würden? */
+export function isDenseSlots(plotWidthPx: number, slotCount: number): boolean {
+  return slotCount > 0 && plotWidthPx / slotCount < DENSE_SLOT_PX;
+}
+
+/**
+ * Die Breite (px) eines Balkens, der NAHTLOS an seinen Nachbarn stößt (Phasen-
+ * Band, dichte Speicher-Blöcke): ein Pixel breiter als sein Slot. Zwei
+ * Rechtecke mit gebrochener Pixelkante teilen sich sonst das Randpixel, die
+ * Kantenglättung deckt es von keiner Seite ganz, und durch jeden Block läuft
+ * je Slot eine helle Haarlinie (die „Schraffur" am Telefon). Ein Rand in der
+ * Füllfarbe hilft NICHT - ECharts zieht ihn nach innen ein.
+ */
+export function seamlessBarWidthPx(plotWidthPx: number, slotCount: number): number {
+  if (!(plotWidthPx > 0) || slotCount <= 0) return 1;
+  return plotWidthPx / slotCount + 1;
+}
+
+/** Der `itemStyle` eines nahtlosen Balkens: gefüllt, ohne Rand und Kappe. */
+export function seamlessBar(color: string) {
+  return { color, borderWidth: 0, borderRadius: 0 };
+}
+
+/* ---------------------------------------------------------------------------
  * DREI Panels — das Tagesbild (Stufe 3, r2 §6 A · Mockup `vn-tagesbild`)
  *
  * Dieselbe Bauart wie {@link PANELS}, nur eine Fläche mehr: Preis · Leistung ·

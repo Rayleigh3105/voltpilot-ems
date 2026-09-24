@@ -705,6 +705,16 @@ function idleParts(slots: IdleSlotLike[]): InsightPart[] {
  * (bank days, or a plan that does not cover today at all).
  *
  * Null = nothing honest to say (no priced slots at all).
+ *
+ * WHERE the charge comes from decides the verb: a plan that stores only solar
+ * surplus „speichert Solarstrom" - the old „lädt günstig (Ø 6,0 ct/kWh)" read
+ * as if that price had been PAID for sun energy, next to a legend that says
+ * „Laden aus Solarstrom". The average charge price is named only when the plan
+ * really buys from the grid.
+ *
+ * `opts.ersparnisImKopf`: the Fahrplan headline (`planKernaussage`) already
+ * carries today's saving as its number - the takeaway then explains the
+ * mechanism and does not repeat the amount a third time on the page.
  */
 export function planInsightParts(
   slots: {
@@ -722,6 +732,7 @@ export function planInsightParts(
     storedValueCtKwh?: number | null;
   }[],
   now: Date,
+  opts: { ersparnisImKopf?: boolean } = {},
 ): InsightPart[] | null {
   const chargeCt = weightedPriceCt(slots, (kw) => Math.max(kw, 0));
   const dischargeCt = weightedPriceCt(slots, (kw) => Math.max(-kw, 0));
@@ -731,12 +742,17 @@ export function planInsightParts(
 
   if (chargeCt != null && dischargeCt != null) {
     parts.push({ text: 'Der Speicher ' });
-    parts.push({ text: 'lädt günstig', strong: true });
-    if (gridCharging) parts.push({ text: ' - auch aus dem Netz (türkis)' });
-    parts.push({ text: ` (Ø ${ctLabel(chargeCt)}) und ` });
+    if (gridCharging) {
+      parts.push({ text: 'lädt günstig', strong: true });
+      parts.push({ text: ' - auch aus dem Netz (türkis)' });
+      parts.push({ text: ` (Ø ${ctLabel(chargeCt)}) und ` });
+    } else {
+      parts.push({ text: 'speichert Solarstrom', strong: true });
+      parts.push({ text: ' und ' });
+    }
     parts.push({ text: 'entlädt teuer', strong: true });
     parts.push({ text: ` (Ø ${ctLabel(dischargeCt)}), um den Verbrauch aus dem Speicher zu decken` });
-    if (saved != null && saved > 0.005) {
+    if (!opts.ersparnisImKopf && saved != null && saved > 0.005) {
       parts.push({ text: ' - das spart heute rund ' });
       parts.push({ text: eurAmount(saved), strong: true });
       parts.push({ text: ' gegenüber einem Betrieb ohne Speicher.' });
@@ -748,10 +764,15 @@ export function planInsightParts(
 
   if (chargeCt != null) {
     parts.push({ text: 'Der Speicher ' });
-    parts.push({ text: 'lädt', strong: true });
-    parts.push({
-      text: ` in diesem Zeitraum nur (Ø ${ctLabel(chargeCt)}) und hält die Energie für später zurück.`,
-    });
+    if (gridCharging) {
+      parts.push({ text: 'lädt', strong: true });
+      parts.push({
+        text: ` in diesem Zeitraum nur (Ø ${ctLabel(chargeCt)}) und hält die Energie für später zurück.`,
+      });
+    } else {
+      parts.push({ text: 'speichert', strong: true });
+      parts.push({ text: ' in diesem Zeitraum nur Solarstrom und hält die Energie für später zurück.' });
+    }
     return parts;
   }
 

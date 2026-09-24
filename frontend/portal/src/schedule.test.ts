@@ -787,13 +787,35 @@ describe('planInsightParts', () => {
     baselineCostEur: number | null = null,
   ) => ({ ...slot(hour, 0, batteryKw), priceEurMwh, costEur, baselineCostEur });
 
+  /** A slot that charges FROM THE GRID (it net-imports and has no PV). */
+  const gridPriced = (hour: number, batteryKw: number, priceEurMwh: number) => ({
+    ...priced(hour, batteryKw, priceEurMwh),
+    gridKw: batteryKw + 1,
+    pvKw: 0,
+  });
+
   it('never calls a cycling plan flat, even when today saves nothing', () => {
-    const parts = planInsightParts([priced(3, 5, 30), priced(19, -5, 170)], NOW);
+    const parts = planInsightParts([gridPriced(3, 5, 30), priced(19, -5, 170)], NOW);
     const s = text(parts);
     expect(s).toContain('lädt günstig');
     expect(s).toContain('entlädt teuer');
     expect(s).not.toContain('flach');
     expect(s).not.toContain('in Ruhe');
+  });
+
+  it('says a solar-only plan STORES SUN - never „lädt günstig" with a price it did not pay', () => {
+    const s = text(planInsightParts([priced(12, 5, 30), priced(19, -5, 170)], NOW));
+    expect(s).toContain('speichert Solarstrom');
+    expect(s).toContain('entlädt teuer (Ø 17,0');
+    expect(s).not.toContain('lädt günstig');
+    // The charge-time average (3,0 ct) is not a cost of sun energy.
+    expect(s).not.toContain('3,0');
+  });
+
+  it('names the average charge price only when the plan buys from the grid', () => {
+    const s = text(planInsightParts([gridPriced(3, 5, 30), priced(19, -5, 170)], NOW));
+    expect(s).toContain('auch aus dem Netz');
+    expect(s).toContain('3,0');
   });
 
   it('appends the savings clause only when today really saves', () => {
@@ -803,6 +825,18 @@ describe('planInsightParts', () => {
     );
     expect(text(parts)).toContain('das spart heute rund');
     expect((parts ?? []).some((p) => p.strong && p.text.includes('€'))).toBe(true);
+  });
+
+  it('leaves the amount to the headline when it already carries it', () => {
+    const parts = planInsightParts(
+      [priced(3, 5, 30, -0.2, 0.1), priced(19, -5, 170, -0.5, 0.2)],
+      NOW,
+      { ersparnisImKopf: true },
+    );
+    const s = text(parts);
+    expect(s).not.toContain('spart');
+    expect(s).not.toContain('€');
+    expect(s.endsWith('zu decken.')).toBe(true);
   });
 
   it('keeps the idle wording for a plan that really does nothing', () => {
@@ -913,7 +947,10 @@ describe('planInsightParts', () => {
   });
 
   it('describes a one-directional plan without inventing the other half', () => {
-    expect(text(planInsightParts([priced(12, 5, 20)], NOW))).toContain('lädt');
+    // A solar-only charge stores sun; a grid charge names its average price.
+    expect(text(planInsightParts([priced(12, 5, 20)], NOW))).toContain('speichert');
+    expect(text(planInsightParts([gridPriced(3, 5, 20)], NOW))).toContain('lädt');
+    expect(text(planInsightParts([gridPriced(3, 5, 20)], NOW))).toContain('2,0');
     expect(text(planInsightParts([priced(19, -5, 180)], NOW))).toContain('entlädt');
     // Nothing priced at all: no sentence rather than a made-up one.
     expect(planInsightParts([priced(12, 5, null)], NOW)).toBeNull();

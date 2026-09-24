@@ -6,10 +6,14 @@ import {
   dayBoundaryStyle,
   FILL,
   FORECAST,
+  hourAxisLabels,
+  isDenseSlots,
   NARROW_PX,
   nowLabel,
   nowLineStyle,
   PANELS,
+  seamlessBar,
+  seamlessBarWidthPx,
   SMOOTH_SERIES,
   storageBar,
   STROKE,
@@ -311,8 +315,11 @@ export function ScheduleChart({
      * im Band (`markPoint`), jede vorkommende Phase steht mit Wort + Farbe in
      * der Legende darunter. */
     const bandOn = showPhaseBand && slots.length > 0;
+    // Nahtlos (`seamlessBarWidthPx` an der Serie): sonst zeichnete jede
+    // Slot-Kante eine helle Haarlinie, und das Band las sich als Schraffur
+    // statt als Phasen-Blöcke.
     const bandData = bandOn
-      ? bandRoles(slots).map((role) => ({ value: 1, itemStyle: { color: bandRoleColor(role, t) } }))
+      ? bandRoles(slots).map((role) => ({ value: 1, itemStyle: seamlessBar(bandRoleColor(role, t)) }))
       : [];
     // Ein Lauf trägt sein Wort nur, wenn sein Segment bei DIESER Chartbreite
     // breit genug ist - sonst überschreiben sich die Marken (bei 375 px zu
@@ -388,13 +395,24 @@ export function ScheduleChart({
         seenDay = day;
       }
     });
+    // Beschriftet werden nur VOLLE Stunden im gröbsten Takt, der bei dieser
+    // Plotbreite Luft lässt (00:00 · 03:00 · 06:00 … statt 01:15 · 02:30); das
+    // Datum trägt die erste gezeigte Beschriftung je Tag (`hourAxisLabels`).
+    // Hat ein sehr kurzer Plan keine volle Stunde im Takt, bleibt es bei der
+    // Ausdünnung durch ECharts und dem Datum am Tagesanfang.
+    const plotWidthPx = width - bandLeftPx - bandRightPx;
+    const denseBars = isDenseSlots(plotWidthPx, slots.length);
+    const hourLabels = hourAxisLabels(times, plotWidthPx, plan.slotMinutes || 15);
+    const hourTakt = hourLabels.shown.size > 0;
+    const datedIdx = hourTakt ? hourLabels.dated : dayStarts;
     // Die Zeit-Beschriftung der Zeitachse - genau EINMAL im Bild, an der
     // untersten Spur (mit Band ist das die Band-Achse, sonst das Leistungs-Panel).
     const dateAxisLabel = {
+      interval: hourTakt ? (index: number) => hourLabels.shown.has(index) : ('auto' as const),
       formatter: (v: string, index: number) => {
         const d = new Date(v);
         const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-        if (!dayStarts.has(index)) return time;
+        if (!datedIdx.has(index)) return time;
         return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}\n${time}`;
       },
       lineHeight: 15,
@@ -812,7 +830,13 @@ export function ScheduleChart({
             // unterste Spur), das Leistungs-Panel zeigt sie dann nicht.
             axisLabel: bandOn ? { show: false } : dateAxisLabel,
             // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
-            axisTick: { show: false },
+            // ⚠ Die (unsichtbaren) Ticks bleiben trotzdem wirksam: ECharts
+            // setzt die markArea einer BALKEN-Reihe auf Tick-Koordinaten, und
+            // die folgten der ausgedünnten Beschriftung - die Vergangenheits-
+            // Tönung endete deshalb je nach Breite Viertelstunden VOR oder
+            // HINTER der Jetzt-Linie. Ein Tick je Slot, mittig wie die
+            // Beschriftung, legt sie exakt auf die Linie (wie im Preis-Panel).
+            axisTick: { show: false, interval: 0, alignWithLabel: true },
             axisLine: { show: false },
           },
           // Die Zeitachse des Bands (nur mit Band): sie trägt die Beschriftung
@@ -921,11 +945,20 @@ export function ScheduleChart({
                 : (v ?? 0) >= 0
                   ? ('solarladen' as const)
                   : ('entladen' as const);
-              return storageBar(v, slotBarMark(kind, t), t.surface);
+              const mark = slotBarMark(kind, t);
+              const bar = storageBar(v, mark, t.surface);
+              // Dicht (Telefon, 48-h-Horizont): geschlossene Blöcke statt
+              // Subpixel-Stäben - nur für gefüllte Marken, ein Umriss bleibt.
+              return bar && denseBars && mark.form === 'filled'
+                ? { ...bar, itemStyle: seamlessBar(mark.color) }
+                : bar;
             }),
-            // F9: aus dem 96-Slot-Farbblock werden ablesbare Viertelstunden-Stäbe.
-            barCategoryGap: BAR.categoryGap,
-            barMaxWidth: BAR.maxWidth,
+            // F9: aus dem 96-Slot-Farbblock werden ablesbare Viertelstunden-Stäbe
+            // - solange ein Stab dafür Platz hat (`isDenseSlots`); sonst
+            // nahtlose Blöcke (`seamlessBarWidthPx`).
+            ...(denseBars
+              ? { barWidth: seamlessBarWidthPx(plotWidthPx, slots.length) }
+              : { barCategoryGap: BAR.categoryGap, barMaxWidth: BAR.maxWidth }),
             z: 3,
             markArea: pastArea,
             markLine: powerMarks.length
@@ -1207,8 +1240,7 @@ export function ScheduleChart({
                   xAxisIndex: 2,
                   yAxisIndex: 3,
                   data: bandData,
-                  barWidth: '100%',
-                  barCategoryGap: '0%',
+                  barWidth: seamlessBarWidthPx(plotWidthPx, slots.length),
                   z: 1,
                   markLine: bandMarks.length
                     ? { silent: true, symbol: 'none', data: bandMarks }
@@ -1230,7 +1262,17 @@ export function ScheduleChart({
   // Insight: charge cheap, discharge expensive, and today's saving - composed
   // by the pure builder so the "flat curve" clause can never contradict a
   // visibly cycling plan (audit F3).
-  const insight = planInsightParts(plan.slots, new Date());
+  // K1/M11: die Kernaussage als SATZ über dem Bild. Sie ist ABGELEITET
+  // (planSentence + savingsTodayEur + die persistierte Baseline als
+  // Vergleichsanker) - ohne belegbare Aussage steht dort der ehrliche Grund.
+  const kern = plantKind
+    ? planKernaussage(plan.slots, plantKind, new Date(), plan.slotMinutes || 15)
+    : null;
+  const insight = planInsightParts(plan.slots, new Date(), {
+    // Steht die Ersparnis schon als Zahl in der Kopfzeile, erklärt der Satz
+    // unter dem Bild nur noch das WARUM (sonst: dreimal derselbe Betrag).
+    ersparnisImKopf: kern?.wert != null,
+  });
   // The planned SoC band in words - the readable fallback wherever the SoC
   // axis has no room (phones) and the touch-friendly answer to "how full?".
   const socLine = socRangeLine(plan.slots);
@@ -1427,12 +1469,6 @@ export function ScheduleChart({
       ? null
       : measuredNote(plan.slots, new Date(), plan.slotMinutes || 15);
 
-  // K1/M11: die Kernaussage als SATZ über dem Bild. Sie ist ABGELEITET
-  // (planSentence + savingsTodayEur + die persistierte Baseline als
-  // Vergleichsanker) - ohne belegbare Aussage steht dort der ehrliche Grund.
-  const kern = plantKind
-    ? planKernaussage(plan.slots, plantKind, new Date(), plan.slotMinutes || 15)
-    : null;
 
   // ⚠ Die vier Bausteine werden EINMAL gebaut und in ZWEI Reihenfolgen
   //   ausgegeben — so kann der Verlauf-Rahmen nie einen anderen Inhalt zeigen
