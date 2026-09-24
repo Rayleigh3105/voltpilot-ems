@@ -141,6 +141,30 @@ Rechte und die Migrationstests `UemsStandortMigrationTest`, `UemsOrteMigrationTe
 davon.** Sie laufen mit `./mvnw clean test -Dtest='com.voltpilot.api.uems.*Test'` und
 `npx vitest run src/uems*.test.ts src/rechte.test.ts`.
 
+## Was die Fassung 1.9 dazugelegt hat (24.09.2026, AP-18 IP-1, W8/W9)
+
+Rein ADDITIV: `ohneFassung19` nimmt die Zusätze heraus, dann ist die Datei Zeichen für Zeichen
+1.8 (Fingerabdruck in beiden Zwillingen). Neu sind Ziele, Maßnahmen und Abweichungen:
+
+- **Vier Wurzel-Blöcke:** `energieziele[]` (EZ-2028-0001), `massnahmen[]` (M-2028-0001 mit
+  Messgrundlage, M-2028-0002 ohne), `abweichungen[]` (AW-2026-0001, AW-2028-0001),
+  `auffaelligkeiten[]` (drei Vermerke) — dazu `kennzahlen_1_9_monate` (KZ-0004 04/2028–01/2029,
+  Annahme) und `abnahmefaelle_ap18` (R1, R3–R8, R12 „gegeben“ wörtlich).
+- **Nachträge in Bestandsblöcken:** K-2028-0001 in `korrekturen[]`, EE-3 Fassung 3 in
+  `einstufungen[]` (Fassung 2 endet am 19.11.2028), `pflege[]` nur an BB-0001.
+- **Ein Muster für jeden Vorgang:** Verantwortlicher aus `personen[]`, Termin bzw. Frist, `zustand`
+  = letzter Schritt eines append-only `verlauf[]`. Jeder Schritt ist einer der 18 Übergänge aus AP-18
+  `vorgaenge.json` (Tabelle `UEBERGAENGE` in beiden Zwillingen). `person: null` gibt es nur bei
+  Schritten der Naht (`auffaelligkeit_vermerkt`, `anstoss_gesetzt`).
+- **Kopien mit Prüfsumme** (Anlass, Ausgangslage, Stand der Wirkung, Ziel-Stand): sha256 über den
+  kanonischen Text wie bei den Grundlagen von 1.8. Wer eine Zahl in einer Kopie ändert, rechnet die
+  Prüfsumme neu. Die Rot-Proben der Zwillinge zeigen, was dann bricht.
+- ⚠ **Zeitachsen-Zeilen mit `verbesserung`** sind fachfremd für den Messstellen-Horizont
+  (`MessstelleRegelnVectorsTest`, `uemsMessstelle.test.ts` nehmen sie aus) — wie
+  `gemeinsame_steuerung`, `energetische_bewertung` und `bezugsbasis`.
+- **Σ erwartet** ist die Summe der UNgerundeten Monatswerte `a + b·kg`, erst die Summe wird auf
+  ganze kWh gerundet (663 139, nicht 663 140).
+
 ## Gesehen, bewusst nicht angefasst
 
 - **Claudia Berger und Werk Lindach.** Ihre Zuweisung „seit 01.10.2026“ gilt auch für Werk

@@ -1221,6 +1221,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
@@ -1354,6 +1355,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung14IstEsDieFassung13() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
@@ -1549,6 +1551,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung15IstEsDieFassung14() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
@@ -1954,6 +1957,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung16IstEsDieFassung15() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
         ohneFassung16(d);
@@ -2183,6 +2187,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung17IstEsDieFassung16() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.6").isEqualTo(FASSUNG_1_6_SHA256);
@@ -2191,6 +2196,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void k1VergleichtAnDerHauptgroesseUndR9ErgibtSichAusDerDatei() throws Exception {
         ObjectNode alt = daten().deepCopy();
+        ohneFassung19(alt);
         ohneFassung18(alt);
         ohneFassung17(alt);
         assertThat(monatsvergleichArt(nachKennzeichen(alt.get("messstellen")).get("MS-01")))
@@ -2277,6 +2283,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung18IstEsDieFassung17() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung19(d);
         ohneFassung18(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.7").isEqualTo(FASSUNG_1_7_SHA256);
     }
@@ -2597,6 +2604,723 @@ class UemsReferenzunternehmenVectorsTest {
         List<String> out = new ArrayList<>();
         o.fieldNames().forEachRemaining(out::add);
         return out;
+    }
+
+    // ------------------------------------------ Fassung 1.9 (AP-18 IP-1, Captain 24.09.2026: alle Empfehlungen; W8, W9)
+
+    static final String FASSUNG_1_8_SHA256 = "cef77db4313e618b70d8c455363e0843ee0e66a550ea153bf0a3ffd57f9a6803";
+    static final int KOMMENTAR_ZEILEN_1_8 = 141;
+    static final List<String> BLOECKE_1_9 = List.of("energieziele", "massnahmen", "abweichungen", "auffaelligkeiten",
+            "kennzahlen_1_9_monate", "abnahmefaelle_ap18");
+
+    /**
+     * Die 18 Übergänge der fünf Objekte aus AP-18 {@code vorgaenge.json} als {@code objekt|von|nach|art} ({@code -} = neu).
+     * Ein Verlauf der Datei besteht nur aus diesen Schritten; dieselbe Tabelle steht im TS-Zwilling.
+     */
+    static final Set<String> UEBERGAENGE = Set.of(
+            "energieziel|-|offen|energieziel_angelegt", "energieziel|offen|offen|energieziel_geaendert",
+            "energieziel|offen|bewertet|energieziel_bewertet", "energieziel|offen|beendet|energieziel_beendet",
+            "massnahme|-|geplant|massnahme_angelegt", "massnahme|geplant|geplant|massnahme_geaendert",
+            "massnahme|geplant|geplant|kommentar", "massnahme|umgesetzt|umgesetzt|kommentar",
+            "massnahme|geplant|umgesetzt|massnahme_umgesetzt", "massnahme|geplant|verworfen|massnahme_verworfen",
+            "massnahme|umgesetzt|bewertet|massnahme_bewertet", "massnahme|bewertet|bewertet|massnahme_bewertet",
+            "massnahme|geplant|geplant|anstoss_beantwortet", "massnahme|umgesetzt|umgesetzt|anstoss_beantwortet",
+            "massnahme|bewertet|bewertet|anstoss_beantwortet",
+            "auffaelligkeit|-|offen|auffaelligkeit_vermerkt", "auffaelligkeit|offen|beantwortet|auffaelligkeit_beantwortet",
+            "abweichung|-|offen|abweichung_eroeffnet", "abweichung|offen|offen|kommentar", "abweichung|offen|offen|ursache_aussage",
+            "abweichung|offen|offen|abweichung_geaendert", "abweichung|offen|abgeschlossen|abweichung_abgeschlossen",
+            "anstoss|-|offen|anstoss_gesetzt", "anstoss|offen|beantwortet|anstoss_beantwortet");
+    /** Schritte, die die Naht des Systems schreibt — ohne Person; alle anderen trägt eine Person der Datei. */
+    static final Set<String> SYSTEM_SCHRITTE = Set.of("auffaelligkeit_vermerkt", "anstoss_gesetzt");
+    /** Schritte mit Pflicht-Begründung (10–500 Zeichen, Schema) laut {@code vorgaenge.json}. */
+    static final Set<String> MIT_BEGRUENDUNG = Set.of("energieziel_angelegt", "energieziel_geaendert", "energieziel_bewertet",
+            "energieziel_beendet", "massnahme_umgesetzt", "massnahme_verworfen", "massnahme_bewertet", "abweichung_abgeschlossen");
+    private static final Map<String, String> EINZAHL = Map.of("energieziele", "energieziel", "massnahmen", "massnahme",
+            "abweichungen", "abweichung", "auffaelligkeiten", "auffaelligkeit");
+    private static final java.time.format.DateTimeFormatter TT_MM_JJJJ = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
+    /** Nimmt GENAU die Zusätze der Fassung 1.9 heraus — auch die Nachträge in `korrekturen`, `einstufungen` und BB-0001. */
+    static void ohneFassung19(ObjectNode d) {
+        assertThat(d.path("version").asText()).isEqualTo("1.9");
+        d.put("version", "1.8");
+        d.put("stand", "2026-09-23");
+        d.put("beschreibung", d.get("beschreibung").asText().replace(
+                "Messplanung, Bezugsbasen sowie Ziele, Maßnahmen und Abweichungen", "Messplanung und Bezugsbasen"));
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).isGreaterThan(KOMMENTAR_ZEILEN_1_8);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_8) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_9")).isNotNull();
+        for (String block : BLOECKE_1_9) {
+            assertThat(d.remove(block)).as(block).isNotNull();
+        }
+        entferne((ArrayNode) d.get("zeitachse"), z -> z.hasNonNull("verbesserung"), 18);
+        entferne((ArrayNode) d.get("korrekturen"), k -> "K-2028-0001".equals(text(k, "kennung")), 1);
+        for (JsonNode e : kinder(d.get("einstufungen"))) {
+            if ("EE-3".equals(text(e, "einsatz"))) {
+                entferne((ArrayNode) e.get("fassungen"), f -> f.get("fassung").asInt() == 3, 1);
+                ((ObjectNode) e.at("/fassungen/1")).putNull("gueltig_bis");
+            }
+        }
+        assertThat(((ObjectNode) nachKennzeichen(d.get("bezugsbasen")).get("BB-0001")).remove("pflege")).isNotNull();
+    }
+
+    @Test
+    void ohneDieZusaetzeDerFassung19IstEsDieFassung18() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ohneFassung19(d);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.8").isEqualTo(FASSUNG_1_8_SHA256);
+    }
+
+    @Test
+    void derUmfangDerFassung19Stimmt() throws Exception {
+        JsonNode d = daten();
+        assertThat(nachKennzeichen(d.get("energieziele")).keySet()).containsExactly("EZ-2028-0001");
+        assertThat(nachKennzeichen(d.get("massnahmen")).keySet()).containsExactly("M-2028-0001", "M-2028-0002");
+        assertThat(nachKennzeichen(d.get("abweichungen")).keySet()).containsExactly("AW-2026-0001", "AW-2028-0001");
+        assertThat(kinder(d.get("auffaelligkeiten"))).hasSize(3);
+        assertThat(kinder(d.at("/kennzahlen_1_9_monate/0/monate")).stream().map(m -> text(m, "periode")))
+                .containsExactly("2028-04", "2028-05", "2028-06", "2028-07", "2028-08", "2028-09", "2028-10", "2028-11",
+                        "2028-12", "2029-01");
+        assertThat(kinder(d.at("/abnahmefaelle_ap18/faelle")).stream().map(f -> text(f, "fall")))
+                .containsExactly("R1", "R3", "R4", "R5", "R6", "R7", "R8", "R12");
+        assertThat(kinder(d.get("zeitachse")).stream().filter(z -> z.hasNonNull("verbesserung")).count()).isEqualTo(18);
+        assertThat(kinder(d.get("korrekturen")).stream().map(k -> text(k, "kennung"))).containsExactly("K-2026-0007", "K-2028-0001");
+        // die Bestandsblöcke bleiben (R13): kein Vorgang ändert eine Kennzahl oder eine Basis
+        assertThat(nachKennzeichen(d.get("kennzahlen")).keySet())
+                .containsExactly("KZ-0001", "KZ-0002", "KZ-0003", "KZ-0004", "KZ-0005");
+        assertThat(kinder(d.get("bezugsbasen")).stream().mapToInt(b -> b.get("fassungen").size()).sum()).isEqualTo(8);
+    }
+
+    // --- die Invarianten (§8 IP-1, NW-3): je eine Prüfung, die ihre Fehler nennt, und je eine Rot-Probe
+
+    /** Jede Maßnahme mit Messgrundlage zitiert eine FREIGEGEBENE Fassung und friert die Ausgangslage mit Prüfsumme ein. */
+    static List<String> messgrundlagenFehler(JsonNode d) throws Exception {
+        List<String> fehler = new ArrayList<>();
+        Map<String, JsonNode> bb = nachKennzeichen(d.get("bezugsbasen"));
+        for (JsonNode m : kinder(d.get("massnahmen"))) {
+            String wo = text(m, "kennzeichen");
+            JsonNode mg = m.get("messgrundlage");
+            LocalDate angelegt = LocalDate.parse(m.at("/angelegt/am").asText());
+            if (mg.isNull()) {
+                if (!m.get("ausgangslage").isNull() || !m.at("/erwartete_wirkung/prozent").isNull()
+                        || !"ohne Messgrundlage — Wirkung nicht messbar".equals(text(m, "kennzeichen_flaeche"))) {
+                    fehler.add(wo + ": ohne Messgrundlage weder Ausgangslage noch Wirkungszahl, dafür das Kennzeichen");
+                }
+                kinder(m.get("bewertungen")).stream().filter(b -> !"nicht_messbar".equals(text(b, "ergebnis")) || !b.get("kopie").isNull())
+                        .forEach(b -> fehler.add(wo + ": ohne Messgrundlage nur „nicht messbar“ ohne Kopie"));
+                continue;
+            }
+            JsonNode basis = bb.get(text(mg, "bezugsbasis"));
+            JsonNode f = basis == null ? null : kinder(basis.get("fassungen")).stream()
+                    .filter(x -> x.get("fassung").asInt() == mg.get("fassung").asInt()).findFirst().orElse(null);
+            if (f == null || !text(basis, "kennzahl").equals(text(mg, "kennzahl"))) {
+                fehler.add(wo + ": die Messgrundlage zitiert keine Fassung ihrer Kennzahl");
+                continue;
+            }
+            if (!"freigegeben".equals(f.at("/freigabe/status").asText())
+                    || LocalDate.parse(f.at("/freigabe/am").asText()).isAfter(angelegt)
+                    || LocalDate.parse(text(f, "gilt_ab")).isAfter(angelegt)
+                    || (f.hasNonNull("gilt_bis") && LocalDate.parse(text(f, "gilt_bis")).isBefore(angelegt))) {
+                fehler.add(wo + ": " + text(mg, "bezugsbasis") + " Fassung " + mg.get("fassung") + " ist beim Anlegen nicht freigegeben und gültig");
+            }
+            if (!text(f, "methode").equals(text(mg, "methode"))) {
+                fehler.add(wo + ": die Bewertungsmethode ist nicht die der zitierten Fassung");
+            }
+            JsonNode a = m.get("ausgangslage");
+            if (a.isNull() || m.get("kennzeichen_flaeche").isTextual() || !m.at("/erwartete_wirkung/prozent").isNumber()) {
+                fehler.add(wo + ": mit Messgrundlage gehören Ausgangslage und Wirkungszahl dazu");
+                continue;
+            }
+            JsonNode k = a.get("kopie");
+            if (!text(k, "kennzahl").equals(text(mg, "kennzahl")) || !text(k, "bezugsbasis").equals(text(mg, "bezugsbasis"))
+                    || k.get("fassung").asInt() != mg.get("fassung").asInt()) {
+                fehler.add(wo + ": die Ausgangslage ist kein Vergleich der Messgrundlage");
+            }
+            if (!a.get("pruefsumme").asText().equals("sha256:" + sha256(kanonisch(k)))) {
+                fehler.add(wo + ": die Prüfsumme deckt die Ausgangslage nicht");
+            }
+            for (JsonNode b : kinder(m.get("bewertungen"))) {
+                if (b.get("kopie").isNull() || !b.get("pruefsumme").asText().equals("sha256:" + sha256(kanonisch(b.get("kopie"))))) {
+                    fehler.add(wo + " Stand Nr. " + b.get("nr") + ": ohne Kopie der Wirkung oder Prüfsumme");
+                } else if (b.at("/kopie/fassung").asInt() != mg.get("fassung").asInt()) {
+                    fehler.add(wo + " Stand Nr. " + b.get("nr") + ": die Wirkung rechnet nicht gegen die Fassung der Messgrundlage");
+                }
+            }
+        }
+        return fehler;
+    }
+
+    @Test
+    void jedeMassnahmeMitMessgrundlageZitiertEineFreigegebeneFassung() throws Exception {
+        assertThat(messgrundlagenFehler(daten())).isEmpty();
+        assertThat(kinder(daten().get("massnahmen")).stream().filter(m -> m.hasNonNull("messgrundlage")).count()).isOne();
+    }
+
+    @Test
+    void rotProbeMessgrundlage() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ((ObjectNode) d.at("/massnahmen/0/messgrundlage")).put("fassung", 1); // Fassung 1 ist abgelöst — gilt bis 31.10.2027
+        assertThat(messgrundlagenFehler(d)).anyMatch(f -> f.contains("nicht freigegeben und gültig"));
+        ObjectNode e = daten().deepCopy();
+        ((ObjectNode) e.at("/massnahmen/0/ausgangslage/kopie")).put("delta_prozent", 12.0);
+        assertThat(messgrundlagenFehler(e)).anyMatch(f -> f.contains("Prüfsumme"));
+        ObjectNode g = daten().deepCopy();
+        ((ObjectNode) g.at("/massnahmen/1/bewertungen/0")).put("ergebnis", "belegt");
+        assertThat(messgrundlagenFehler(g)).anyMatch(f -> f.contains("nur „nicht messbar“"));
+    }
+
+    /** Die Einträge {@code ursache_aussage} aller Verläufe — mit dem Objekt, zu dem sie gehören. */
+    private static List<JsonNode> alleVerlaufsschritte(JsonNode d, Map<String, List<JsonNode>> jeObjekt) {
+        List<JsonNode> out = new ArrayList<>();
+        for (String block : List.of("energieziele", "massnahmen", "abweichungen", "auffaelligkeiten")) {
+            for (JsonNode o : kinder(d.get(block))) {
+                String wer = o.hasNonNull("kennzeichen") ? text(o, "kennzeichen") : text(o, "kennzahl") + "×" + o.get("fassung") + "×" + text(o, "periode");
+                jeObjekt.put(EINZAHL.get(block) + "|" + wer, kinder(o.get("verlauf")));
+                out.addAll(kinder(o.get("verlauf")));
+                for (JsonNode a : kinder(o.get("anstoesse"))) {
+                    jeObjekt.put("anstoss|" + wer + "|" + text(a, "anlass_kennung"), kinder(a.get("verlauf")));
+                    out.addAll(kinder(a.get("verlauf")));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Jede Ursache ist die Aussage EINER Person der Datei — mit Namen und Tag, „keine Messung“; nie ein Satz des Systems. */
+    static List<String> ursachenFehler(JsonNode d) {
+        Map<String, String> namen = new LinkedHashMap<>();
+        kinder(d.get("personen")).forEach(p -> namen.put(text(p, "kuerzel"), text(p, "name")));
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode s : alleVerlaufsschritte(d, new LinkedHashMap<>())) {
+            if (!"ursache_aussage".equals(text(s, "art"))) {
+                if (s.has("wortlaut") || s.has("kennzeichen")) {
+                    fehler.add(text(s, "art") + " am " + text(s, "am") + ": ein Wortlaut ohne Ursache-Aussage");
+                }
+                continue;
+            }
+            String name = namen.get(text(s, "person"));
+            String soll = "Aussage von " + name + ", " + LocalDate.parse(text(s, "am")).format(TT_MM_JJJJ) + " — keine Messung";
+            if (name == null || !soll.equals(text(s, "kennzeichen")) || text(s, "wortlaut") == null || text(s, "wortlaut").isBlank()) {
+                fehler.add("Ursache-Aussage am " + text(s, "am") + ": nicht „" + soll + "“ einer Person der Datei");
+            }
+        }
+        return fehler;
+    }
+
+    @Test
+    void jedeUrsacheIstDieAussageEinerPerson() throws Exception {
+        assertThat(ursachenFehler(daten())).isEmpty();
+        assertThat(alleVerlaufsschritte(daten(), new LinkedHashMap<>()).stream()
+                .filter(s -> "ursache_aussage".equals(text(s, "art"))).map(s -> text(s, "person"))).containsExactly("JW", "MD");
+    }
+
+    @Test
+    void rotProbeUrsache() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ((ObjectNode) d.at("/abweichungen/1/verlauf/2")).putNull("person"); // die Aussage von Murat Demirci ohne Person
+        assertThat(ursachenFehler(d)).hasSize(1);
+        ObjectNode e = daten().deepCopy();
+        ((ObjectNode) e.at("/abweichungen/0/verlauf/1")).put("kennzeichen", "Ursache: Baustellenstrom");
+        assertThat(ursachenFehler(e)).hasSize(1);
+    }
+
+    /** Kennzeichen EZ-/M-/AW-JJJJ-NNNN: je Art und Jahr lückenlos ab 1; das Jahr ist das des Anlegens (EZ: der Zielperiode). */
+    static List<String> zaehlerFehler(JsonNode d) {
+        List<String> fehler = new ArrayList<>();
+        Map<String, TreeSet<Integer>> nummern = new LinkedHashMap<>();
+        Map<String, String> bloecke = Map.of("energieziele", "EZ", "massnahmen", "M", "abweichungen", "AW");
+        for (Map.Entry<String, String> b : bloecke.entrySet()) {
+            for (JsonNode o : kinder(d.get(b.getKey()))) {
+                Matcher m = Pattern.compile("^" + b.getValue() + "-([0-9]{4})-([0-9]{4})$").matcher(text(o, "kennzeichen"));
+                if (!m.matches()) {
+                    fehler.add(text(o, "kennzeichen") + ": nicht das Muster " + b.getValue() + "-JJJJ-NNNN");
+                    continue;
+                }
+                String jahr = switch (b.getValue()) {
+                    case "EZ" -> text(o, "zielperiode").substring(0, 4);
+                    case "M" -> o.at("/angelegt/am").asText().substring(0, 4);
+                    default -> o.at("/eroeffnet/am").asText().substring(0, 4);
+                };
+                if (!jahr.equals(m.group(1))) {
+                    fehler.add(text(o, "kennzeichen") + ": das Jahr ist nicht " + jahr);
+                }
+                if (!nummern.computeIfAbsent(b.getValue() + "-" + m.group(1), x -> new TreeSet<>()).add(Integer.parseInt(m.group(2)))) {
+                    fehler.add(text(o, "kennzeichen") + ": doppelt");
+                }
+            }
+        }
+        nummern.forEach((art, n) -> {
+            if (n.first() != 1 || n.last() != n.size()) {
+                fehler.add(art + ": Zähler nicht lückenlos ab 1 — " + n);
+            }
+        });
+        return fehler;
+    }
+
+    @Test
+    void dieKennzeichenZaehlerSindJeJahrUndArtLueckenlos() throws Exception {
+        assertThat(zaehlerFehler(daten())).isEmpty();
+    }
+
+    @Test
+    void rotProbeZaehler() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ((ObjectNode) d.at("/massnahmen/1")).put("kennzeichen", "M-2028-0003");
+        assertThat(zaehlerFehler(d)).anyMatch(f -> f.contains("M-2028: Zähler nicht lückenlos"));
+        ObjectNode e = daten().deepCopy();
+        ((ObjectNode) e.at("/abweichungen/0/eroeffnet")).put("am", "2027-01-09");
+        assertThat(zaehlerFehler(e)).anyMatch(f -> f.contains("das Jahr ist nicht 2027"));
+    }
+
+    /** Eine Auffälligkeit je Kennzahl × Fassung × Monat, nur für „schlechter“; ihre Antwort trägt, was sie verlangt. */
+    static List<String> auffaelligkeitenFehler(JsonNode d) throws Exception {
+        List<String> fehler = new ArrayList<>();
+        Set<String> gesehen = new LinkedHashSet<>();
+        Map<String, JsonNode> aw = nachKennzeichen(d.get("abweichungen"));
+        for (JsonNode a : kinder(d.get("auffaelligkeiten"))) {
+            String schluessel = text(a, "kennzahl") + " × Fassung " + a.get("fassung") + " × " + text(a, "periode");
+            if (!gesehen.add(schluessel)) {
+                fehler.add(schluessel + ": zweimal vermerkt");
+            }
+            JsonNode k = a.get("anlass");
+            if (!text(k, "kennzahl").equals(text(a, "kennzahl")) || k.get("fassung").asInt() != a.get("fassung").asInt()
+                    || !text(k, "monat").equals(text(a, "periode")) || !text(k, "bezugsbasis").equals(text(a, "bezugsbasis"))) {
+                fehler.add(schluessel + ": der Anlass ist ein anderer Vergleich");
+            }
+            if (!"schlechter".equals(text(k, "urteil"))) {
+                fehler.add(schluessel + ": vermerkt wird nur „schlechter“ (A1)");
+            }
+            if (!a.get("pruefsumme").asText().equals("sha256:" + sha256(kanonisch(k)))) {
+                fehler.add(schluessel + ": die Prüfsumme deckt den Anlass nicht");
+            }
+            JsonNode antwort = a.get("antwort");
+            if ("abweichung".equals(text(antwort, "antwort"))) {
+                JsonNode w = aw.get(text(antwort, "abweichung"));
+                if (w == null || !w.at("/monate").toString().contains("\"" + text(a, "periode") + "\"")
+                        || !kanonisch(w.get("anlass")).equals(kanonisch(k))) {
+                    fehler.add(schluessel + ": die eröffnete Abweichung trägt diesen Anlass nicht");
+                }
+            } else if ("zur_kenntnis".equals(text(antwort, "antwort")) && !antwort.hasNonNull("begruendung")) {
+                fehler.add(schluessel + ": „zur Kenntnis“ ohne Begründung");
+            }
+        }
+        return fehler;
+    }
+
+    @Test
+    void jedeAuffaelligkeitIstEindeutigJeKennzahlFassungUndPeriode() throws Exception {
+        assertThat(auffaelligkeitenFehler(daten())).isEmpty();
+    }
+
+    @Test
+    void rotProbeAuffaelligkeit() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ((ArrayNode) d.get("auffaelligkeiten")).add(d.at("/auffaelligkeiten/1").deepCopy());
+        assertThat(auffaelligkeitenFehler(d)).anyMatch(f -> f.contains("zweimal vermerkt"));
+        ObjectNode e = daten().deepCopy();
+        ((ObjectNode) e.at("/auffaelligkeiten/2/antwort")).putNull("begruendung");
+        assertThat(auffaelligkeitenFehler(e)).anyMatch(f -> f.contains("ohne Begründung"));
+    }
+
+    /** Die Zustände kommen nur aus den 18 Übergängen von {@code vorgaenge.json}; der Zustand ist der letzte Schritt. */
+    static List<String> uebergangsFehler(JsonNode d) {
+        Set<String> personen = new LinkedHashSet<>();
+        kinder(d.get("personen")).forEach(p -> personen.add(text(p, "kuerzel")));
+        Map<String, List<JsonNode>> jeObjekt = new LinkedHashMap<>();
+        alleVerlaufsschritte(d, jeObjekt);
+        Map<String, String> zustand = new LinkedHashMap<>();
+        for (String block : List.of("energieziele", "massnahmen", "abweichungen", "auffaelligkeiten")) {
+            for (JsonNode o : kinder(d.get(block))) {
+                String wer = o.hasNonNull("kennzeichen") ? text(o, "kennzeichen") : text(o, "kennzahl") + "×" + o.get("fassung") + "×" + text(o, "periode");
+                zustand.put(EINZAHL.get(block) + "|" + wer, text(o, "zustand"));
+                kinder(o.get("anstoesse")).forEach(a -> zustand.put("anstoss|" + wer + "|" + text(a, "anlass_kennung"), text(a, "zustand")));
+            }
+        }
+        List<String> fehler = new ArrayList<>();
+        jeObjekt.forEach((schluessel, schritte) -> {
+            String art = schluessel.substring(0, schluessel.indexOf('|'));
+            String vorher = "-";
+            OffsetDateTime zuletzt = null;
+            for (JsonNode s : schritte) {
+                String von = s.get("von").isNull() ? "-" : text(s, "von");
+                if (!von.equals(vorher) || !UEBERGAENGE.contains(art + "|" + von + "|" + text(s, "nach") + "|" + text(s, "art"))) {
+                    fehler.add(schluessel + ": " + von + " → " + text(s, "nach") + " (" + text(s, "art") + ") ist kein Übergang");
+                }
+                boolean system = SYSTEM_SCHRITTE.contains(text(s, "art"));
+                if (system != s.get("person").isNull() || (!system && !personen.contains(text(s, "person")))) {
+                    fehler.add(schluessel + ": " + text(s, "art") + " trägt die falsche Person");
+                }
+                if (MIT_BEGRUENDUNG.contains(text(s, "art")) && !s.hasNonNull("begruendung")) {
+                    fehler.add(schluessel + ": " + text(s, "art") + " ohne Begründung");
+                }
+                OffsetDateTime am = text(s, "am").length() == 10
+                        ? LocalDate.parse(text(s, "am")).atStartOfDay(ZoneId.of("Europe/Berlin")).toOffsetDateTime() : zeit(text(s, "am"));
+                if (zuletzt != null && am.isBefore(zuletzt.truncatedTo(java.time.temporal.ChronoUnit.DAYS))) {
+                    fehler.add(schluessel + ": der Verlauf springt zurück (" + text(s, "am") + ")");
+                }
+                zuletzt = am;
+                vorher = text(s, "nach");
+            }
+            if (!vorher.equals(zustand.get(schluessel))) {
+                fehler.add(schluessel + ": der Zustand „" + zustand.get(schluessel) + "“ ist nicht der letzte Schritt „" + vorher + "“");
+            }
+        });
+        return fehler;
+    }
+
+    @Test
+    void dieZustaendeKommenNurAusDenUebergaengen() throws Exception {
+        assertThat(uebergangsFehler(daten())).isEmpty();
+        // die 18 Zeilen von vorgaenge.json, aufgefächert nach Ausgangszustand und Protokoll-Wort
+        assertThat(UEBERGAENGE).hasSize(24);
+    }
+
+    @Test
+    void rotProbeUebergang() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ((ObjectNode) d.at("/massnahmen/1/verlauf/1")).put("von", "verworfen"); // verworfen → umgesetzt gibt es nicht
+        assertThat(uebergangsFehler(d)).anyMatch(f -> f.contains("ist kein Übergang"));
+        ObjectNode e = daten().deepCopy();
+        ((ObjectNode) e.at("/energieziele/0")).put("zustand", "erreicht");
+        assertThat(uebergangsFehler(e)).anyMatch(f -> f.contains("nicht der letzte Schritt"));
+    }
+
+    /** Die Vorgänge verweisen nur in die Datei: Verantwortliche, Einsätze mit Fassung, Ziel, Herkunft, Anstoß-Anlass. */
+    @Test
+    void dieVorgaengeVerweisenInDieDatei() throws Exception {
+        JsonNode d = daten();
+        Set<String> personen = new LinkedHashSet<>();
+        kinder(d.get("personen")).forEach(p -> personen.add(text(p, "kuerzel")));
+        Map<String, JsonNode> ez = nachKennzeichen(d.get("energieziele"));
+        Map<String, JsonNode> aw = nachKennzeichen(d.get("abweichungen"));
+        Map<String, JsonNode> m = nachKennzeichen(d.get("massnahmen"));
+        Map<String, JsonNode> einstufungen = new LinkedHashMap<>();
+        kinder(d.get("einstufungen")).forEach(e -> einstufungen.put(text(e, "einsatz"), e));
+        Set<String> korrekturen = new LinkedHashSet<>();
+        kinder(d.get("korrekturen")).forEach(k -> korrekturen.add(text(k, "kennung")));
+        for (String block : List.of("energieziele", "massnahmen", "abweichungen")) {
+            for (JsonNode o : kinder(d.get(block))) {
+                assertThat(personen).as(text(o, "kennzeichen")).contains(text(o, "verantwortlich"));
+                assertThat(o.hasNonNull("termin") || o.hasNonNull("frist")).as(text(o, "kennzeichen") + ": Termin").isTrue();
+                assertThat(nachKennzeichen(d.get("standorte"))).containsKey(text(o, "standort"));
+            }
+        }
+        JsonNode ziel = ez.get("EZ-2028-0001");
+        assertThat(text(ziel, "termin")).isEqualTo(YearMonthEnde.von(text(ziel, "zielperiode").substring(8)));
+        for (JsonNode x : m.values()) {
+            if (x.hasNonNull("energieziel")) {
+                JsonNode z = ez.get(text(x, "energieziel"));
+                assertThat(z).as(text(x, "kennzeichen") + " → Energieziel").isNotNull();
+                assertThat(List.of(text(z, "kennzahl"), text(z, "bezugsbasis"), z.get("fassung").asText())).as("Ziel und Maßnahme messen gleich")
+                        .isEqualTo(List.of(x.at("/messgrundlage/kennzahl").asText(), x.at("/messgrundlage/bezugsbasis").asText(), x.at("/messgrundlage/fassung").asText()));
+            }
+            JsonNode e = einstufungen.get(x.at("/einsatz/kennzeichen").asText());
+            JsonNode f = kinder(e.get("fassungen")).stream().filter(g -> g.get("fassung").asInt() == x.at("/einsatz/einstufung_fassung").asInt()).findFirst().orElseThrow();
+            LocalDate angelegt = LocalDate.parse(x.at("/angelegt/am").asText());
+            assertThat(!LocalDate.parse(text(f, "gueltig_ab")).isAfter(angelegt)
+                    && (!f.hasNonNull("gueltig_bis") || !LocalDate.parse(text(f, "gueltig_bis")).isBefore(angelegt)))
+                    .as(text(x, "kennzeichen") + ": die Einstufungs-Fassung gilt beim Anlegen").isTrue();
+            if ("abweichung".equals(x.at("/herkunft/art").asText())) {
+                assertThat(aw.get(x.at("/herkunft/kennung").asText()).at("/abschluss/massnahme").asText()).isEqualTo(text(x, "kennzeichen"));
+            }
+            if ("einsatz".equals(x.at("/herkunft/art").asText())) {
+                assertThat(x.at("/herkunft/kennung").asText()).isEqualTo(x.at("/einsatz/kennzeichen").asText());
+            }
+            kinder(x.get("anstoesse")).forEach(a -> assertThat(korrekturen).contains(text(a, "anlass_kennung")));
+            if (x.hasNonNull("umgesetzt_am")) {
+                assertThat(LocalDate.parse(text(x, "umgesetzt_am"))).isAfterOrEqualTo(angelegt);
+            }
+        }
+        for (JsonNode w : aw.values()) {
+            JsonNode ab = w.get("abschluss");
+            assertThat("massnahme".equals(text(ab, "ergebnis"))).isEqualTo(ab.hasNonNull("massnahme"));
+            if (ab.hasNonNull("massnahme")) {
+                assertThat(m).containsKey(text(ab, "massnahme"));
+            }
+        }
+        // W9: die Rückstufung von EE-3 nennt eine Maßnahme der Datei und ist die Aussage einer Person (AP-16 R13)
+        JsonNode f3 = einstufungen.get("EE-3").at("/fassungen/2");
+        assertThat(f3.get("fassung").asInt()).isEqualTo(3);
+        assertThat(text(f3, "begruendung")).contains("M-2028-0002");
+        assertThat(m).containsKey("M-2028-0002");
+        assertThat(einstufungen.get("EE-3").at("/fassungen/1/gueltig_bis").asText()).isEqualTo(LocalDate.parse(text(f3, "gueltig_ab")).minusDays(1).toString());
+        BigDecimal anteil = f3.at("/herkunft/eingaenge/0/wert").decimalValue().multiply(BigDecimal.valueOf(100))
+                .divide(f3.at("/herkunft/nenner/wert").decimalValue(), 1, RoundingMode.HALF_UP);
+        assertThat(text(f3, "begruendung")).contains(anteil.toPlainString().replace('.', ',') + " %");
+        // „geprüft, bleibt“: Pflege an einer freigegebenen Fassung, neue Wiedervorlage nach ihren Monaten
+        JsonNode bb1 = nachKennzeichen(d.get("bezugsbasen")).get("BB-0001");
+        for (JsonNode p : kinder(bb1.get("pflege"))) {
+            JsonNode f = bb1.at("/fassungen/" + (p.get("fassung").asInt() - 1));
+            assertThat(f.at("/freigabe/status").asText()).isEqualTo("freigegeben");
+            assertThat(LocalDate.parse(text(p, "am"))).isAfterOrEqualTo(LocalDate.parse(text(f, "wiedervorlage_faellig_am")));
+            assertThat(text(p, "wiedervorlage_faellig_am")).isEqualTo(LocalDate.parse(text(p, "am")).plusMonths(f.get("wiedervorlage_monate").asInt()).toString());
+            assertThat(personen).contains(text(p, "person"));
+        }
+        // jede Zeile der Zeitachse mit `verbesserung` gehört zu einem Objekt der Datei
+        Set<String> ziele = new LinkedHashSet<>(ez.keySet());
+        ziele.addAll(m.keySet());
+        ziele.addAll(aw.keySet());
+        kinder(d.get("auffaelligkeiten")).forEach(a -> ziele.add(text(a, "kennzahl")));
+        ziele.add("BB-0001");
+        kinder(d.get("zeitachse")).stream().filter(z -> z.hasNonNull("verbesserung"))
+                .forEach(z -> assertThat(ziele).as(text(z, "ereignis")).contains(text(z, "verbesserung")));
+    }
+
+    /** Der letzte Tag eines Monats {@code JJJJ-MM}. */
+    private static final class YearMonthEnde {
+        static String von(String jjjjMm) {
+            return java.time.YearMonth.parse(jjjjMm).atEndOfMonth().toString();
+        }
+    }
+
+    /** Ein Monat gegen BB-0001 Fassung 2: erwartet = a + b·kg (ganze kWh), Δ auf eine Stelle, Urteil im Band; außerhalb der Spannweite nicht anwendbar. */
+    private static Map<String, Object> vergleiche(JsonNode fassung, BigDecimal kg, BigDecimal kwh) {
+        JsonNode sw = fassung.get("spannweite");
+        BigDecimal band = fassung.get("toleranz_prozent").decimalValue();
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (kg.compareTo(sw.get("toleriert_von").decimalValue()) < 0 || kg.compareTo(sw.get("toleriert_bis").decimalValue()) > 0) {
+            out.put("erwartet", null);
+            out.put("urteil", "nicht_anwendbar");
+            out.put("grund", "variable_ausserhalb");
+            return out;
+        }
+        BigDecimal roh = fassung.at("/koeffizienten/a").decimalValue().add(fassung.at("/koeffizienten/b").decimalValue().multiply(kg));
+        BigDecimal erwartet = roh.setScale(0, RoundingMode.HALF_UP);
+        BigDecimal delta = kwh.subtract(erwartet).multiply(BigDecimal.valueOf(100)).divide(erwartet, 1, RoundingMode.HALF_UP);
+        out.put("erwartet", erwartet);
+        out.put("roh", roh);
+        out.put("delta", delta);
+        out.put("urteil", delta.abs().compareTo(band) <= 0 ? "im_rahmen" : delta.signum() < 0 ? "besser" : "schlechter");
+        out.put("grund", null);
+        return out;
+    }
+
+    /** Σ gemessen ÷ Σ erwartet über die bewertbaren Monate — nie ein Mittel der Monate; Σ erwartet ungerundet, erst die Summe auf ganze kWh. */
+    private static Map<String, Object> summe(JsonNode fassung, List<JsonNode> monate) {
+        BigDecimal gemessen = BigDecimal.ZERO;
+        BigDecimal erwartet = BigDecimal.ZERO;
+        int bewertbar = 0;
+        Map<String, String> aus = new LinkedHashMap<>();
+        for (JsonNode mo : monate) {
+            Map<String, Object> v = vergleiche(fassung, mo.get("kg").decimalValue(), mo.get("kwh").decimalValue());
+            if (v.get("erwartet") == null) {
+                aus.put(text(mo, "periode"), (String) v.get("grund"));
+                continue;
+            }
+            gemessen = gemessen.add(mo.get("kwh").decimalValue());
+            erwartet = erwartet.add((BigDecimal) v.get("roh"));
+            bewertbar++;
+        }
+        erwartet = erwartet.setScale(0, RoundingMode.HALF_UP);
+        BigDecimal delta = gemessen.subtract(erwartet).multiply(BigDecimal.valueOf(100)).divide(erwartet, 1, RoundingMode.HALF_UP);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("gemessen_kwh", gemessen);
+        out.put("erwartet_kwh", erwartet);
+        out.put("delta_prozent", delta);
+        out.put("monate_bewertbar", bewertbar);
+        out.put("monate_gesamt", monate.size());
+        out.put("ausgeschlossen", aus);
+        return out;
+    }
+
+    private static void gleicheSumme(JsonNode ist, Map<String, Object> soll, String wo) {
+        assertThat(ist.get("gemessen_kwh").decimalValue()).as(wo + " gemessen").isEqualByComparingTo((BigDecimal) soll.get("gemessen_kwh"));
+        assertThat(ist.get("erwartet_kwh").decimalValue()).as(wo + " erwartet").isEqualByComparingTo((BigDecimal) soll.get("erwartet_kwh"));
+        assertThat(ist.get("delta_prozent").decimalValue()).as(wo + " Δ").isEqualByComparingTo((BigDecimal) soll.get("delta_prozent"));
+        assertThat(ist.get("monate_bewertbar").asInt()).as(wo).isEqualTo(soll.get("monate_bewertbar"));
+        assertThat(ist.get("monate_gesamt").asInt()).as(wo).isEqualTo(soll.get("monate_gesamt"));
+        Map<String, String> aus = new LinkedHashMap<>();
+        ist.get("ausgeschlossen").fields().forEachRemaining(e -> aus.put(e.getKey(), e.getValue().asText()));
+        assertThat(aus).as(wo + " Ausschlüsse").isEqualTo(soll.get("ausgeschlossen"));
+    }
+
+    /**
+     * NW-3: die Reihe, die Kopien und die gegeben-Blöcke rechnen gegen BB-0001 Fassung 2 nach — je Monat erwartet, Δ und
+     * Urteil; die Wirkung von M-2028-0001 (15.11.2028, 10.02.2029) und der Ziel-Stand (10.07.2028, Ende) als Σ ÷ Σ.
+     */
+    @Test
+    void dieWirkungUndDerZielStandRechnenAusDerReihe() throws Exception {
+        JsonNode d = daten();
+        JsonNode f2 = nachKennzeichen(d.get("bezugsbasen")).get("BB-0001").at("/fassungen/1");
+        Map<String, JsonNode> g = new LinkedHashMap<>();
+        kinder(d.at("/abnahmefaelle_ap18/faelle")).forEach(f -> g.put(text(f, "fall"), f.get("gegeben")));
+        // alle Monate 01/2028–01/2029: Reihe 1.9 (ab 04/2028) und R4/R5 (davor), wo beide etwas sagen, dasselbe
+        Map<String, JsonNode> monate = new java.util.TreeMap<>();
+        g.get("R4").at("/stand_10_07_2028/monate").fields().forEachRemaining(e -> monate.put(e.getKey(), mitPeriode(e.getKey(), e.getValue())));
+        g.get("R5").get("je_monat").fields().forEachRemaining(e -> {
+            JsonNode alt = monate.put(e.getKey(), mitPeriode(e.getKey(), e.getValue()));
+            if (alt != null) {
+                assertThat(List.of(alt.get("kg").asLong(), alt.get("kwh").asLong())).as("R4 = R5 " + e.getKey())
+                        .isEqualTo(List.of(e.getValue().get("kg").asLong(), e.getValue().get("kwh").asLong()));
+            }
+        });
+        for (JsonNode mo : kinder(d.at("/kennzahlen_1_9_monate/0/monate"))) {
+            JsonNode r5 = g.get("R5").at("/je_monat/" + text(mo, "periode"));
+            assertThat(kanonisch(mitPeriode(text(mo, "periode"), r5))).as("Reihe = R5 " + text(mo, "periode"))
+                    .isEqualTo(kanonisch(((ObjectNode) mo.deepCopy()).without("version")));
+        }
+        for (JsonNode mo : monate.values()) {
+            Map<String, Object> v = vergleiche(f2, mo.get("kg").decimalValue(), mo.get("kwh").decimalValue());
+            assertThat(text(mo, "urteil")).as(text(mo, "periode")).isEqualTo(v.get("urteil"));
+            assertThat(text(mo, "grund")).as(text(mo, "periode")).isEqualTo(v.get("grund"));
+            if (v.get("delta") != null) {
+                assertThat(mo.get("delta_prozent").decimalValue()).as(text(mo, "periode")).isEqualByComparingTo((BigDecimal) v.get("delta"));
+                if (mo.has("erwartet_kwh")) {
+                    assertThat(mo.get("erwartet_kwh").decimalValue()).as(text(mo, "periode")).isEqualByComparingTo((BigDecimal) v.get("erwartet"));
+                }
+            }
+        }
+        List<JsonNode> alle = new ArrayList<>(monate.values());
+        java.util.function.BiFunction<String, String, List<JsonNode>> von = (a, b) -> alle.stream()
+                .filter(mo -> text(mo, "periode").compareTo(a) >= 0 && text(mo, "periode").compareTo(b) <= 0).toList();
+        // die Wirkung: Nachher ab dem Monat NACH der Umsetzung (22.01.2028) — Januar zählt nicht (R6)
+        JsonNode m1 = nachKennzeichen(d.get("massnahmen")).get("M-2028-0001");
+        assertThat(java.time.YearMonth.from(LocalDate.parse(text(m1, "umgesetzt_am"))).plusMonths(1).toString()).isEqualTo("2028-02");
+        JsonNode stand1 = m1.at("/bewertungen/0/kopie");
+        gleicheSumme(stand1.get("wirkung"), summe(f2, von.apply("2028-02", "2028-10")), "M-2028-0001 Stand Nr. 1");
+        gleicheSumme(g.get("R5").get("abruf_15_11_2028"), summe(f2, von.apply("2028-02", "2028-10")), "R5 15.11.2028");
+        gleicheSumme(g.get("R5").get("abruf_10_02_2029"), summe(f2, von.apply("2028-02", "2029-01")), "R5 10.02.2029");
+        assertThat(kanonisch(g.get("R6").at("/bewertung_stand_1/kopie/wirkung"))).isEqualTo(kanonisch(stand1.get("wirkung")));
+        assertThat(kinder(stand1.get("monate")).stream().map(mo -> text(mo, "periode")).toList())
+                .isEqualTo(von.apply("2028-02", "2028-10").stream().map(mo -> text(mo, "periode")).toList());
+        // Januar 2028 besser VOR der Umsetzung: keine Wirkung (R6)
+        assertThat(g.get("R6").at("/januar_2028/zaehlt_zur_wirkung").asBoolean()).isFalse();
+        // der Ziel-Stand: Σ ÷ Σ über die Zielperiode
+        JsonNode ziel = nachKennzeichen(d.get("energieziele")).get("EZ-2028-0001");
+        gleicheSumme(g.get("R4").at("/stand_10_07_2028/summe"), summe(f2, von.apply("2028-01", "2028-06")), "R4 10.07.2028");
+        gleicheSumme(ziel.at("/bewertung/kopie/stand"), summe(f2, von.apply("2028-01", "2028-12")), "EZ-2028-0001 Ende");
+        assertThat(ziel.at("/bewertung/kopie/vorschlag").isNull()).as("11 von 12: kein Vorschlag „erreicht“ (Z4)").isTrue();
+        assertThat(ziel.at("/bewertung/pruefsumme").asText()).isEqualTo("sha256:" + sha256(kanonisch(ziel.at("/bewertung/kopie"))));
+        // die Korrektur: Version 2 des Dezembers 2027 (R12) — die Ausgangslage bleibt Version 1
+        JsonNode k = kinder(d.get("korrekturen")).stream().filter(x -> "K-2028-0001".equals(text(x, "kennung"))).findFirst().orElseThrow();
+        BigDecimal kg = m1.at("/ausgangslage/kopie/bedingung/BZ-1_kg").decimalValue();
+        assertThat(k.at("/folgen/1/wert").decimalValue()).isEqualByComparingTo(k.get("neu_kwh").decimalValue().divide(kg, 4, RoundingMode.HALF_UP));
+        Map<String, Object> v2 = vergleiche(f2, kg, k.get("neu_kwh").decimalValue());
+        assertThat(g.get("R12").at("/vergleich_version_2/delta_prozent").decimalValue()).isEqualByComparingTo((BigDecimal) v2.get("delta"));
+        Map<String, Object> v1 = vergleiche(f2, kg, k.get("alt_kwh").decimalValue());
+        assertThat(m1.at("/ausgangslage/kopie/delta_prozent").decimalValue()).isEqualByComparingTo((BigDecimal) v1.get("delta"));
+        assertThat(m1.at("/ausgangslage/kopie/gemessen_version").asInt()).isOne();
+        assertThat(zeit(text(k, "vorgeschlagen_am"))).isBefore(zeit(text(k, "freigegeben_am")));
+        // KZ-0005 November 2026 (R8): 38 400 ÷ 3 100 gegen den Basiswert 11,9032 von BB-0003 Fassung 1
+        JsonNode aw1 = nachKennzeichen(d.get("abweichungen")).get("AW-2026-0001").get("anlass");
+        BigDecimal kz5 = aw1.get("gemessen_kwh").decimalValue().divide(aw1.get("flaeche_m2").decimalValue(), 4, RoundingMode.HALF_UP);
+        assertThat(aw1.get("kennzahl_kwh_je_m2").decimalValue()).isEqualByComparingTo(kz5);
+        assertThat(aw1.get("basiswert").decimalValue()).isEqualByComparingTo(
+                nachKennzeichen(d.get("bezugsbasen")).get("BB-0003").at("/fassungen/0/basiswert").decimalValue());
+        assertThat(kz5.subtract(aw1.get("basiswert").decimalValue()).multiply(BigDecimal.valueOf(100))
+                .divide(aw1.get("basiswert").decimalValue(), 1, RoundingMode.HALF_UP)).isEqualByComparingTo(aw1.get("delta_prozent").decimalValue());
+        // R9: M-2028-0002 am 15.03.2028 überfällig seit 15 Tagen — abgeleitet aus dem Termin
+        JsonNode m2 = nachKennzeichen(d.get("massnahmen")).get("M-2028-0002");
+        assertThat(java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(text(m2, "termin")), LocalDate.parse("2028-03-15"))).isEqualTo(15);
+        assertThat(LocalDate.parse(text(m2, "umgesetzt_am"))).isAfter(LocalDate.parse("2028-03-15"));
+    }
+
+    private static JsonNode mitPeriode(String periode, JsonNode monat) {
+        ObjectNode o = MAPPER.createObjectNode().put("periode", periode);
+        o.setAll((ObjectNode) monat.deepCopy());
+        return o;
+    }
+
+    /** NW-3: die gegeben-Werte von R1, R3, R4, R5, R6, R7, R8, R12 stehen wörtlich in der Datei und decken sich mit den fachlichen Blöcken. */
+    @Test
+    void dieAbnahmefaelleAp18NennenDieTatsachenDerDatei() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> g = new LinkedHashMap<>();
+        kinder(d.at("/abnahmefaelle_ap18/faelle")).forEach(f -> g.put(text(f, "fall"), f.get("gegeben")));
+        Map<String, JsonNode> m = nachKennzeichen(d.get("massnahmen"));
+        Map<String, JsonNode> aw = nachKennzeichen(d.get("abweichungen"));
+        JsonNode ez = nachKennzeichen(d.get("energieziele")).get("EZ-2028-0001");
+        JsonNode m1 = m.get("M-2028-0001");
+        JsonNode m2 = m.get("M-2028-0002");
+        // R1: der Vergleich ist der Anlass der Auffälligkeit, die Antwort eröffnet AW-2028-0001
+        ObjectNode r1 = ((ObjectNode) g.get("R1").get("vergleich_dezember_2027").deepCopy());
+        r1.remove("pruefsumme");
+        JsonNode dez = kinder(d.get("auffaelligkeiten")).stream().filter(a -> "2027-12".equals(text(a, "periode"))).findFirst().orElseThrow();
+        assertThat(kanonisch(dez.get("anlass"))).isEqualTo(kanonisch(r1));
+        assertThat(text(dez, "vermerkt_am")).isEqualTo(g.get("R1").at("/vermerk/am").asText());
+        assertThat(List.of(dez.at("/antwort/abweichung").asText(), aw.get("AW-2028-0001").get("frist").asText(), text(aw.get("AW-2028-0001"), "verantwortlich")))
+                .isEqualTo(List.of(g.get("R1").at("/antwort/abweichung").asText(), g.get("R1").at("/antwort/frist").asText(), g.get("R1").at("/antwort/verantwortlich").asText()));
+        // R3: die Maßnahme mit Messgrundlage — die Ausgangslage ist dieselbe Kopie
+        JsonNode r3 = g.get("R3").get("massnahme");
+        assertThat(List.of(text(m1, "titel"), text(m1, "termin"), text(m1, "verantwortlich"), text(m1, "energieziel"), text(m1, "umgesetzt_am")))
+                .isEqualTo(List.of(text(r3, "titel"), text(r3, "termin"), r3.at("/verantwortlich/benutzer").asText(), text(r3, "energieziel"),
+                        g.get("R3").at("/umsetzung/am").asText()));
+        assertThat(kanonisch(m1.get("herkunft"))).isEqualTo(kanonisch(r3.get("herkunft")));
+        assertThat(kanonisch(m1.get("erwartete_wirkung"))).isEqualTo(kanonisch(r3.get("erwartete_wirkung")));
+        ObjectNode r3a = ((ObjectNode) r3.get("ausgangslage").deepCopy());
+        r3a.remove(List.of("pruefsumme", "kopiert_am"));
+        assertThat(kanonisch(m1.at("/ausgangslage/kopie"))).isEqualTo(kanonisch(r3a));
+        assertThat(m1.at("/ausgangslage/kopiert_am").asText()).isEqualTo(r3.at("/ausgangslage/kopiert_am").asText());
+        for (String feld : List.of("kennzahl", "bezugsbasis", "fassung", "methode", "bewertungsmethode_satz")) {
+            assertThat(m1.at("/messgrundlage/" + feld).asText()).as("R3 " + feld).isEqualTo(r3.at("/messgrundlage/" + feld).asText());
+        }
+        // Befund (PR-Text): R3 nennt für EE-1 die Einstufungs-Fassung 2 — EE-1 hat in der Datei nur Fassung 1 (seit 06.11.2026)
+        assertThat(m1.at("/einsatz/kennzeichen").asText()).isEqualTo(r3.at("/einsatz/kennzeichen").asText());
+        assertThat(r3.at("/einsatz/einstufung_fassung").asInt()).isEqualTo(2);
+        assertThat(m1.at("/einsatz/einstufung_fassung").asInt()).isOne();
+        // R4: das Energieziel
+        JsonNode r4 = g.get("R4").get("energieziel");
+        for (String feld : List.of("kennzeichen", "kennzahl", "bezugsbasis", "fassung", "zielwert_prozent", "zielperiode", "verantwortlich", "wortlaut", "begruendung")) {
+            assertThat(ez.get(feld).asText()).as("R4 " + feld).isEqualTo(r4.get(feld).asText());
+        }
+        assertThat(kanonisch(ez.get("angelegt"))).isEqualTo(kanonisch(r4.get("angelegt")));
+        // R6: „belegt“ ist Stand Nr. 1 einer Person, mit Kopie der Wirkung
+        JsonNode r6 = g.get("R6").get("bewertung_stand_1");
+        JsonNode b1 = m1.at("/bewertungen/0");
+        for (String feld : List.of("am", "person", "vieraugen", "ergebnis", "begruendung")) {
+            assertThat(b1.get(feld).asText()).as("R6 " + feld).isEqualTo(r6.get(feld).asText());
+        }
+        assertThat(b1.at("/kopie/erwartete_wirkung_prozent").decimalValue()).isEqualByComparingTo(r6.at("/kopie/erwartete_wirkung_prozent").decimalValue());
+        // R7: ohne Messgrundlage, nicht messbar; die Rückstufung ist EE-3 Fassung 3
+        JsonNode r7 = g.get("R7");
+        for (String feld : List.of("kennzeichen", "titel", "verantwortlich", "termin", "kennzeichen_flaeche")) {
+            assertThat(m2.get(feld).asText()).as("R7 " + feld).isEqualTo(r7.at("/massnahme/" + feld).asText());
+        }
+        assertThat(m2.get("messgrundlage").isNull() && r7.at("/massnahme/messgrundlage").isNull()).isTrue();
+        assertThat(kanonisch(m2.get("erwartete_wirkung"))).isEqualTo(kanonisch(r7.at("/massnahme/erwartete_wirkung")));
+        assertThat(List.of(m2.at("/herkunft/kennung").asText(), m2.at("/einsatz/einstufung_fassung").asText()))
+                .isEqualTo(List.of(r7.at("/massnahme/herkunft/kennung").asText(), r7.at("/massnahme/herkunft/einstufung_fassung").asText()));
+        assertThat(text(m2, "umgesetzt_am")).isEqualTo(r7.at("/umsetzung/am").asText());
+        for (String feld : List.of("am", "person", "ergebnis", "begruendung")) {
+            assertThat(m2.at("/bewertungen/0/" + feld).asText()).as("R7 " + feld).isEqualTo(r7.at("/bewertung/" + feld).asText());
+        }
+        JsonNode f3 = kinder(d.get("einstufungen")).stream().filter(e -> "EE-3".equals(text(e, "einsatz"))).findFirst().orElseThrow().at("/fassungen/2");
+        JsonNode rs = r7.get("ap16_rueckstufung");
+        assertThat(List.of(f3.get("fassung").asText(), text(f3, "gueltig_ab"), text(f3, "einstufung"), text(f3, "person"), text(f3, "begruendung")))
+                .isEqualTo(List.of(rs.get("fassung").asText(), text(rs, "ab"), text(rs, "einstufung"), text(rs, "person"), text(rs, "begruendung") + "."));
+        // R8: Abschluss ohne Maßnahme — Anlass, Aussage, Abschluss
+        JsonNode r8 = g.get("R8");
+        JsonNode w1 = aw.get("AW-2026-0001");
+        for (String feld : List.of("kennzahl", "bezugsbasis", "fassung", "gemessen_kwh", "flaeche_m2", "kennzahl_kwh_je_m2", "basiswert", "delta_prozent", "urteil")) {
+            assertThat(w1.at("/anlass/" + feld).asText()).as("R8 " + feld).isEqualTo(r8.at("/vergleich_november_2026/" + feld).asText());
+        }
+        assertThat(kanonisch(w1.at("/anlass/kennzeichen"))).isEqualTo(kanonisch(r8.at("/vergleich_november_2026/kennzeichen")));
+        assertThat(List.of(text(w1, "kennzeichen"), w1.at("/eroeffnet/am").asText(), w1.at("/eroeffnet/person").asText(), text(w1, "verantwortlich"), text(w1, "frist")))
+                .isEqualTo(List.of(r8.at("/abweichung/kennzeichen").asText(), r8.at("/abweichung/eroeffnet").asText(), r8.at("/abweichung/person").asText(),
+                        r8.at("/abweichung/verantwortlich").asText(), r8.at("/abweichung/frist").asText()));
+        JsonNode aussage = kinder(w1.get("verlauf")).stream().filter(s -> "ursache_aussage".equals(text(s, "art"))).findFirst().orElseThrow();
+        for (String feld : List.of("am", "person", "wortlaut", "kennzeichen")) {
+            assertThat(aussage.get(feld).asText()).as("R8 " + feld).isEqualTo(r8.at("/eintraege/0/" + feld).asText());
+        }
+        for (String feld : List.of("am", "person", "ergebnis", "begruendung")) {
+            assertThat(w1.at("/abschluss/" + feld).asText()).as("R8 " + feld).isEqualTo(r8.at("/abschluss/" + feld).asText());
+        }
+        // R12: die Korrektur und der Anstoß an M-2028-0001
+        JsonNode r12 = g.get("R12");
+        JsonNode k = kinder(d.get("korrekturen")).stream().filter(x -> "K-2028-0001".equals(text(x, "kennung"))).findFirst().orElseThrow();
+        assertThat(List.of(text(k, "reihe"), text(k, "periode"), k.get("alt_kwh").asText(), k.get("neu_kwh").asText(), text(k, "freigegeben_am"), text(k, "freigegeben_von")))
+                .isEqualTo(List.of(r12.at("/korrektur/messstelle").asText(), r12.at("/korrektur/periode").asText(), r12.at("/korrektur/alt_kwh").asText(),
+                        r12.at("/korrektur/neu_kwh").asText(), r12.at("/korrektur/freigegeben_am").asText(), r12.at("/korrektur/person").asText()));
+        assertThat(k.at("/folgen/1/wert").decimalValue()).isEqualByComparingTo(r12.at("/korrektur/kennzahl_version_2").decimalValue());
+        JsonNode a = m1.at("/anstoesse/0");
+        assertThat(List.of(text(a, "art"), text(a, "anlass_kennung"), text(a, "am"))).isEqualTo(List.of(r12.at("/anstoss/art").asText(),
+                r12.at("/anstoss/anlass_kennung").asText(), r12.at("/anstoss/am").asText()));
+        for (String feld : List.of("am", "person", "antwort", "begruendung")) {
+            assertThat(a.at("/antwort/" + feld).asText()).as("R12 " + feld).isEqualTo(r12.at("/antwort/" + feld).asText());
+        }
+        assertThat(m1.at("/ausgangslage/kopie/delta_prozent").decimalValue()).isEqualByComparingTo(r12.at("/anstoss/ausgangslage_bleibt/delta_prozent").decimalValue());
     }
 
     /** Die Formel einer berechneten Messstelle („MS-10 − MS-11 − …“) mit den Oktoberzahlen der Datei, eine davon ersetzt. */

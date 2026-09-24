@@ -1,7 +1,7 @@
 {
-  "version": "1.8",
-  "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS), erweitert um energetische Bewertung, Messplanung und Bezugsbasen. Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
-  "stand": "2026-09-23",
+  "version": "1.9",
+  "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS), erweitert um energetische Bewertung, Messplanung, Bezugsbasen sowie Ziele, Maßnahmen und Abweichungen. Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
+  "stand": "2026-09-24",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
     "erweitert um die Verfeinerungen aus AP-01…AP-07. Sie wird von ZWEI Zwillingen",
@@ -143,7 +143,24 @@
     "  Paket). Die Zeilen der Zeitachse tragen das Horizont-Merkmal `bezugsbasis`. Alle Zahlen ab November 2026 sind",
     "  Annahmen des Konzepts (`annahme: true`), keine Messwerte. W12-Nachträge: die Herkunfts-Eingänge der Einstufungen",
     "  EE-5/EE-6 nennen jetzt die Werte der Messstellen (Summen unverändert), und `kennzahlen[]` tragen je Fassung 1 eine",
-    "  Begründung (`fassungen[]`, wie `kennzahl_fassung`)."
+    "  Begründung (`fassungen[]`, wie `kennzahl_fassung`).",
+    "FASSUNG 1.9 (AP-18 IP-1, Captain 24.09.2026: alle Empfehlungen, W8/W9) — additiv: ZIELE, MASSNAHMEN, ABWEICHUNGEN.",
+    "  Drei Vorgänge mit einem Muster (Kennzeichen EZ-/M-/AW-JJJJ-NNNN, Zähler je Jahr und Art lückenlos, Verantwortlicher",
+    "  aus `personen[]`, Termin bzw. Frist, Zustand aus dem geschlossenen Vokabular von AP-18 `vorgaenge.json`, append-only",
+    "  `verlauf[]` mit Begründung) und zwei Vermerke ohne Kennzeichen, die eine Person beantwortet: `auffaelligkeiten[]`",
+    "  (eindeutig je Kennzahl × Fassung × Monat, Anlass als Kopie mit Prüfsumme) und die Anstöße einer Maßnahme. Eine",
+    "  Maßnahme mit Messgrundlage zitiert eine FREIGEGEBENE Bezugsbasis-Fassung und friert die Ausgangslage als Kopie ein",
+    "  (sha256 über den kanonischen Text, wie die Grundlagen von 1.8); ohne Messgrundlage trägt sie „ohne Messgrundlage —",
+    "  Wirkung nicht messbar“ und kann nur `nicht_messbar` bewertet werden. Eine Ursache ist IMMER die Aussage einer Person",
+    "  („Aussage von <Name>, <Tag> — keine Messung“), nie ein Satz des Systems. „Belegt“ sagt nur eine Person, als Stand",
+    "  mit Kopie der Wirkung und Prüfsumme; die Wirkung selbst ist ein Leser (Σ ÷ Σ der bewertbaren Nachher-Monate).",
+    "  Neu sind `energieziele[]` EZ-2028-0001, `massnahmen[]` M-2028-0001/M-2028-0002, `abweichungen[]` AW-2026-0001/",
+    "  AW-2028-0001, drei Auffälligkeiten, die Annahme-Reihe `kennzahlen_1_9_monate` (KZ-0004 04/2028–01/2029), die",
+    "  Korrektur K-2028-0001, die Einstufung EE-3 Fassung 3 aus AP-16 R13 (W9: das Kennzeichen M-2028-0002 der Begründung",
+    "  gibt es jetzt), `bezugsbasen[].pflege[]` an BB-0001 („geprüft, bleibt“ 25.11.2028) und `abnahmefaelle_ap18`.",
+    "  Zeilen der Zeitachse tragen das Horizont-Merkmal `verbesserung`. Kennzahlen und Bezugsbasen (außer `pflege[]`)",
+    "  bleiben, wie sie sind — ein Vorgang ändert nie eine Kennzahl oder eine Basis. Alle Zahlen ab April 2028 sind",
+    "  Annahmen des Konzepts, keine Messwerte."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -168,7 +185,8 @@
     "fassung_1_5": "AP-15 IP-1 (E8 = A, 21.09.2026): Box E-4/E-4′, DQ-8…DQ-10, GR-11…GR-18, K-12…K-14, `netzanschluss_grenzen[]`, `gemeinsame_steuerungen[]` V-1, `geraete_rueckfaelle[]`, `abnahmefaelle_ap15` R1–R22 und sechs Zeilen der Zeitachse — Zahlen, Adressen und Zeitpunkte aus dem Konzept AP-15 §7 (Abschnitt „Referenzdatei: die Erweiterung 1.5“ und referenzfaelle.json `erweiterung_1_5`). Frei gewählt, weil das Konzept sie nicht nennt: die Seriennummer von E-4′ und die Kennzeichen der Geräte GR-11…GR-18; nicht erhoben (null): Port und Geräte-ID der Modbus-Quellen, Kanalzahlen",
     "fassung_1_6": "AP-16 IP-1 (E11 = A, 22.09.2026): `bewertung_umfang`, P-7, `energieeinsaetze[]` EE-1…EE-8, `bewertung_kriterien[]`, `einstufungen[]`, `messbedarfe[]` MB-1, MS-23 mit GR-19/K-15, `messmittel_angaben[]`, Toleranz an der Vergleichsquelle von MS-01, die Bewertungs-Berichte BW-2026-0001/BW-2027-0001, `abnahmefaelle_ap16` und elf Zeilen der Zeitachse. Grundlage: AP-16 §7 und die gegeben-Werte R1–R5, R7, R8, R12, R14; Zahlen 2027 sind ausdrücklich Annahmen.",
     "fassung_1_7": "AP-16 IP-17 Befund (PR 1104, Entscheid firstmate 23.09.2026): die Vergleichsquelle K-1 an MS-01 steht zusätzlich an der Hauptgröße Wirkenergie Bezug mit `herleitung: integration` und trägt dort die Toleranz-Fassung (bis 1.6 an der Nebengröße Wirkleistung), die Zeile der Zeitachse vom 20.11.2026 nennt beide Größen, `abnahmefaelle_ap16` ergänzt R9 (gegeben wörtlich aus referenzfaelle.json AP-16 §7). Zahlen Dezember 2026 sind Annahmen des Konzepts",
-    "fassung_1_8": "AP-17 IP-1 (E12 = A, E9 = C, W12, W13; 23.09.2026): `bezugsgroessen_1_8` BZ-8, `kennzahlen_1_8` KZ-0006, `bezugsbasen[]` BB-0001…BB-0005, `leistungsvergleiche[]` VB-2028-0001, `abnahmefaelle_ap17` (R1, R3, R5, R7, R8, R9 wörtlich) und dreizehn Zeilen der Zeitachse — Zahlen, Zeitpunkte und Koeffizienten aus AP-17 §7 (referenzfaelle.json vom 23.09.2026, gerechnet von k_faelle.py). Frei formuliert, weil das Konzept sie nicht nennt: die Begründungen der Fassungen (außer BB-0003 Fassung 1 → Ende, wörtlich R5) und der Kennzahl-Fassungen 1, die Freigabe von BB-0005 Fassung 1 durch IK am Tag des Modell-Versuchs. Nicht erhoben (null): die Monatswerte von MS-10 im Januar/Februar 2027 und damit Basiswert und Prüfsumme von BB-0003 Fassung 2, die Prüfsumme des Standes VB-2028-0001/1 (sie entsteht aus dem Abzug). Die Prüfsummen „sha256:…a91f“/„…c07b“/„…4e2d“ in den gegeben-Blöcken sind Platzhalter des Konzepts; `bezugsbasen[]` trägt die nachrechenbare Prüfsumme"
+    "fassung_1_8": "AP-17 IP-1 (E12 = A, E9 = C, W12, W13; 23.09.2026): `bezugsgroessen_1_8` BZ-8, `kennzahlen_1_8` KZ-0006, `bezugsbasen[]` BB-0001…BB-0005, `leistungsvergleiche[]` VB-2028-0001, `abnahmefaelle_ap17` (R1, R3, R5, R7, R8, R9 wörtlich) und dreizehn Zeilen der Zeitachse — Zahlen, Zeitpunkte und Koeffizienten aus AP-17 §7 (referenzfaelle.json vom 23.09.2026, gerechnet von k_faelle.py). Frei formuliert, weil das Konzept sie nicht nennt: die Begründungen der Fassungen (außer BB-0003 Fassung 1 → Ende, wörtlich R5) und der Kennzahl-Fassungen 1, die Freigabe von BB-0005 Fassung 1 durch IK am Tag des Modell-Versuchs. Nicht erhoben (null): die Monatswerte von MS-10 im Januar/Februar 2027 und damit Basiswert und Prüfsumme von BB-0003 Fassung 2, die Prüfsumme des Standes VB-2028-0001/1 (sie entsteht aus dem Abzug). Die Prüfsummen „sha256:…a91f“/„…c07b“/„…4e2d“ in den gegeben-Blöcken sind Platzhalter des Konzepts; `bezugsbasen[]` trägt die nachrechenbare Prüfsumme",
+    "fassung_1_9": "AP-18 IP-1 (Captain 24.09.2026: E1–E7 = A, W1–W15 übernommen; W8, W9): `energieziele[]`, `massnahmen[]`, `abweichungen[]`, `auffaelligkeiten[]`, `kennzahlen_1_9_monate`, K-2028-0001 in `korrekturen[]`, EE-3 Fassung 3 in `einstufungen[]` (AP-16 R13), `pflege[]` an BB-0001, `abnahmefaelle_ap18` (R1, R3, R4, R5, R6, R7, R8, R12 wörtlich) und achtzehn Zeilen der Zeitachse — Zahlen, Zeitpunkte und Wortlaute aus dem Konzept AP-18 §7 (referenzfaelle.json vom 24.09.2026); die Monatsreihe ab April 2028 ist Annahme"
   },
 
   "unternehmen": {
@@ -1360,7 +1378,7 @@
   "einstufungen": [
     { "einsatz": "EE-1", "fassungen": [ { "fassung": 1, "einstufung": "wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": null, "grund": ["K1"], "begruendung": "41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-06", "wert": 55100, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-11", "wert": 22400, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "ueber_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "ueber_schwelle", "annahme": false } } ] },
     { "einsatz": "EE-2", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": "2027-11-23", "grund": [], "begruendung": "5,2 %; Montage läuft an zwei Standorten, Kennzahl KZ-0003 beobachtet sie.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-12", "wert": 6100, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-18", "wert": 3600, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } }, { "fassung": 2, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": null, "grund": ["K2", "K3"], "begruendung": "Im belastbaren 80-%-Block und Jahresmenge 118 000 kWh.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "ueber_schwelle", "K2": "ueber_schwelle", "K3": "ueber_schwelle" }, "vorschlag": "ueber_schwelle", "annahme": true } } ] },
-    { "einsatz": "EE-3", "fassungen": [ { "fassung": 1, "einstufung": "wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": "2027-11-23", "grund": ["K4"], "begruendung": "8,6 % — unter der Schwelle; Querschnitt für Spritzguss und Montage, Leckageverluste vermutet, Prüfung 2027 geplant.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-07", "wert": 15900, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } }, { "fassung": 2, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": null, "grund": ["K2", "K3"], "begruendung": "Der belastbare 80-%-Block und die Jahresmenge tragen die Einstufung; die frühere Einschätzung bleibt lesbar.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "ueber_schwelle", "K2": "ueber_schwelle", "K3": "ueber_schwelle" }, "vorschlag": "ueber_schwelle", "annahme": true } } ] },
+    { "einsatz": "EE-3", "fassungen": [ { "fassung": 1, "einstufung": "wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": "2027-11-23", "grund": ["K4"], "begruendung": "8,6 % — unter der Schwelle; Querschnitt für Spritzguss und Montage, Leckageverluste vermutet, Prüfung 2027 geplant.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-07", "wert": 15900, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } }, { "fassung": 2, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": "2028-11-19", "grund": ["K2", "K3"], "begruendung": "Der belastbare 80-%-Block und die Jahresmenge tragen die Einstufung; die frühere Einschätzung bleibt lesbar.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "ueber_schwelle", "K2": "ueber_schwelle", "K3": "ueber_schwelle" }, "vorschlag": "ueber_schwelle", "annahme": true } }, { "fassung": 3, "einstufung": "nicht_wesentlich", "gueltig_ab": "2028-11-20", "gueltig_bis": null, "grund": [], "begruendung": "Leckagen 03/2028 beseitigt (Maßnahme M-2028-0002); 6,2 %, hinter dem 80-%-Block; Wiedervorlage 2029.", "person": "IK", "herkunft": {"zeitraum": "2027-11/2028-10", "kriterien_fassung": 2, "eingaenge": [{"objekt": "MS-07", "wert": 138000, "version": 1, "zustand": "vollständig"}], "nenner": {"wert": 2210000, "anlagen": "3 von 3", "bilanzwerte": []}, "urteil": {"K1": "unter_schwelle", "K2": "unter_schwelle"}, "vorschlag": "unter_schwelle", "annahme": true} } ] },
     { "einsatz": "EE-4", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": null, "grund": [], "begruendung": "3,3 % im Oktober; Umzug des Kaltwassersatzes 03/2027 — Neubewertung nach dem Sommer 2027.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-08", "wert": 6200, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } } ] },
     { "einsatz": "EE-5", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": null, "grund": [], "begruendung": "4,2 %.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-13", "wert": 3500, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-17", "wert": 4300, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } } ] },
     { "einsatz": "EE-6", "fassungen": [ { "fassung": 1, "einstufung": "nicht_wesentlich", "gueltig_ab": "2026-11-06", "gueltig_bis": "2027-11-23", "grund": [], "begruendung": "4,7 %; Ladepark 2027 erhöht ihn — Wiedervorlage.", "person": "IK", "herkunft": { "zeitraum": "2026-10", "kriterien_fassung": 1, "eingaenge": [ { "objekt": "MS-05", "wert": 7600, "version": 1, "zustand": "vollständig" }, { "objekt": "MS-14", "wert": 1100, "version": 1, "zustand": "vollständig" } ], "nenner": { "wert": 185380, "anlagen": "3 von 3", "bilanzwerte": ["AN-1 2026-10 Version 1", "AN-2 2026-10 Version 1", "AN-3 2026-10 Version 1"] }, "urteil": { "K1": "unter_schwelle", "K2": "nicht_belastbar", "K3": "nicht_anwendbar" }, "vorschlag": "unter_schwelle", "annahme": false } }, { "fassung": 2, "einstufung": "wesentlich", "gueltig_ab": "2027-11-24", "gueltig_bis": null, "grund": ["K3"], "begruendung": "Die Jahresmenge liegt mit 104 000 kWh über der Schwelle.", "person": "IK", "herkunft": { "zeitraum": "2026-11/2027-10", "kriterien_fassung": 2, "eingaenge": [], "nenner": { "wert": 2200000, "anlagen": "3 von 3", "bilanzwerte": [] }, "urteil": { "K1": "unter_schwelle", "K2": "unter_schwelle", "K3": "ueber_schwelle" }, "vorschlag": "ueber_schwelle", "annahme": true } } ] },
@@ -1453,6 +1471,28 @@
         { "objekt": "KZ-0003", "version": 2, "wert": 0.2 }
       ],
       "hinweis": "Die Kaskade schreibt in derselben Transaktion wie die Freigabe: MS-12 und MS-15 bis zum Jahr, KZ-0001 = 6 040 ÷ 41 000 und KZ-0003 = (6 040 + 3 600) ÷ (41 000 + 7 200) als Version 2; KZ-0002 bleibt Version 1. Die Fassung der Berechnung bleibt 1."
+    },
+    {
+      "kennung": "K-2028-0001",
+      "reihe": "MS-20",
+      "art": "wert_berichtigt",
+      "periode_art": "monat",
+      "periode": "2027-12",
+      "zeitraum_von": "2027-12-01",
+      "zeitraum_bis": "2027-12-31",
+      "alt_kwh": 78000,
+      "neu_kwh": 77400,
+      "vorgeschlagen_am": "2028-04-03T09:05:00+02:00",
+      "vorgeschlagen_von": "IK",
+      "freigegeben_am": "2028-04-03T09:20:00+02:00",
+      "freigegeben_von": "IK",
+      "vieraugen": false,
+      "begruendung": "Zählerstand-Nachtrag zum 31.12.2027 (AP-08-Weg); Annahme des Konzepts AP-18 R12",
+      "folgen": [
+        {"objekt": "MS-20", "version": 2, "wert": 77400},
+        {"objekt": "KZ-0004", "version": 2, "wert": 0.3096}
+      ],
+      "hinweis": "Fassung 1.9 (AP-18 R12): die Kaskade bildet KZ-0004 Dezember 2027 neu (77 400 ÷ 250 000 = 0,3096, Version 2); BB-0001 bekommt KEINEN Anstoß (Dezember 2027 liegt nach der Referenzperiode 11/2026–10/2027), VB-2028-0001 Stand Nr. 1 einen Revisions-Anstoß, M-2028-0001 den Anstoß `ausgangslage_korrigiert` — die Ausgangslage bleibt byte-gleich (Version 1). Die Vorschlagszeit ist eine Annahme; das Konzept nennt nur die Freigabe."
     }
   ],
 
@@ -1527,7 +1567,7 @@
   ],
 
   "bezugsbasen": [
-    { "kennzeichen": "BB-0001", "kennzahl": "KZ-0004", "angelegt_am": "2026-11-12", "beendet_am": null, "anstoesse": [],
+    { "kennzeichen": "BB-0001", "kennzahl": "KZ-0004", "angelegt_am": "2026-11-12", "beendet_am": null, "anstoesse": [], "pflege": [{"am": "2028-11-25", "art": "gueltig_bleibt", "fassung": 2, "person": "IK", "begruendung": "Referenzperiode vor der Maßnahme M-2028-0001 behalten", "wiedervorlage_faellig_am": "2029-11-25"}],
       "fassungen": [
         { "fassung": 1, "methode": "verhaeltnis", "referenzperiode": "2026-10/2026-10", "monate": "1 von 12", "datenlage": "vorlaeufig", "grundlage": [{ "periode": "2026-10", "zaehler": { "objekt": "MS-20", "wert": 88630, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 312400, "fassung": 1 }, "kennzahl": { "objekt": "KZ-0004", "wert": 0.2837, "version": 1, "definition_fassung": 1 }, "annahme": false }], "basiswert": 0.2837, "variablen": [{ "objekt": "BZ-1", "rolle": "nenner" }], "abgelehnte_variablen": [], "faktoren": [], "koeffizienten": null, "r2": null, "streuung_prozent": null, "spannweite": null, "toleranz_prozent": 2.0, "wiedervorlage_monate": 12, "anpassungsgruende": [], "freigabe": { "status": "freigegeben", "person": "IK", "am": "2026-11-12", "vieraugen": false, "begruendung": "Erste Energieleistungskennzahl: ein abgeschlossener Monat, bis zwölf Monate vorliegen — vorläufig." }, "gilt_ab": "2026-11-01", "gilt_bis": "2027-10-31", "abgeloest_durch": 2, "beendet": null, "pruefsumme": "sha256:5b34e1d3cb178ccf59d855fe06286e7c555a94f7b7c72762cd1c1952c39bfb76" },
         { "fassung": 2, "methode": "regression_eine_variable", "referenzperiode": "2026-11/2027-10", "monate": "12 von 12", "datenlage": "vollstaendig", "grundlage": [{ "periode": "2026-11", "zaehler": { "objekt": "MS-20", "wert": 85581, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 318000, "fassung": 1 }, "annahme": true }, { "periode": "2026-12", "zaehler": { "objekt": "MS-20", "wert": 71729, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 262000, "fassung": 1 }, "annahme": true }, { "periode": "2027-01", "zaehler": { "objekt": "MS-20", "wert": 81291, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 298000, "fassung": 1 }, "annahme": true }, { "periode": "2027-02", "zaehler": { "objekt": "MS-20", "wert": 81298, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 305000, "fassung": 1 }, "annahme": true }, { "periode": "2027-03", "zaehler": { "objekt": "MS-20", "wert": 88265, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 331000, "fassung": 1 }, "annahme": true }, { "periode": "2027-04", "zaehler": { "objekt": "MS-20", "wert": 82016, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 309000, "fassung": 1 }, "annahme": true }, { "periode": "2027-05", "zaehler": { "objekt": "MS-20", "wert": 86399, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 322000, "fassung": 1 }, "annahme": true }, { "periode": "2027-06", "zaehler": { "objekt": "MS-20", "wert": 86846, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 327000, "fassung": 1 }, "annahme": true }, { "periode": "2027-07", "zaehler": { "objekt": "MS-20", "wert": 80732, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 296000, "fassung": 1 }, "annahme": true }, { "periode": "2027-08", "zaehler": { "objekt": "MS-20", "wert": 69693, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 254000, "fassung": 1 }, "annahme": true }, { "periode": "2027-09", "zaehler": { "objekt": "MS-20", "wert": 89512, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 336000, "fassung": 1 }, "annahme": true }, { "periode": "2027-10", "zaehler": { "objekt": "MS-20", "wert": 89638, "version": 1 }, "nenner": { "objekt": "BZ-1", "wert": 341000, "fassung": 1 }, "annahme": true }], "basiswert": 0.2685, "variablen": [{ "objekt": "BZ-1", "rolle": "nenner" }], "abgelehnte_variablen": [{ "objekt": "BZ-3", "grund": "variablen_abhaengig", "r": 0.997, "startwert_r": 0.9, "werte": [{ "periode": "2026-11", "wert": 5112, "annahme": true }, { "periode": "2026-12", "wert": 4149, "annahme": true }, { "periode": "2027-01", "wert": 4778, "annahme": true }, { "periode": "2027-02", "wert": 4819, "annahme": true }, { "periode": "2027-03", "wert": 5314, "annahme": true }, { "periode": "2027-04", "wert": 4908, "annahme": true }, { "periode": "2027-05", "wert": 5151, "annahme": true }, { "periode": "2027-06", "wert": 5165, "annahme": true }, { "periode": "2027-07", "wert": 4751, "annahme": true }, { "periode": "2027-08", "wert": 4026, "annahme": true }, { "periode": "2027-09", "wert": 5404, "annahme": true }, { "periode": "2027-10", "wert": 5419, "annahme": true }] }], "faktoren": [], "koeffizienten": { "a": 10523, "b": 0.2343 }, "r2": 0.991, "streuung_prozent": 0.8, "spannweite": { "objekt": "BZ-1", "von": 254000, "bis": 341000, "toleriert_von": 228600, "toleriert_bis": 375100 }, "toleranz_prozent": 2.0, "wiedervorlage_monate": 12, "anpassungsgruende": ["referenzperiode_vervollstaendigt", "methode_geaendert"], "freigabe": { "status": "freigegeben", "person": "IK", "am": "2027-11-24", "vieraugen": false, "begruendung": "Zwölf endgültige Monate: der Oktober 2026 allein lag 5,7 % über dem Jahr; das Modell trägt die Grundlast." }, "gilt_ab": "2027-11-01", "gilt_bis": null, "abgeloest_durch": null, "beendet": null, "wiedervorlage_faellig_am": "2028-11-24", "pruefsumme": "sha256:631ad82b172485032428a9233d26ba2f8a1351ce425fba81133416349ba1344e" }
@@ -1658,7 +1698,10 @@
     { "zeitpunkt": "2026-11-27T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Prozess P-7 und Energieeinsatz EE-8 angelegt; Messbedarf MB-1 durch die eingerichtete Messstelle MS-23 eingelöst — noch ohne Datenquelle", "herkunft": "AP-16 §7 R5, E11" },
     { "zeitpunkt": "2026-11-28T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Messmittel-Angaben für GR-2, Einbau Z-5b, GR-5 und Wandler K-8.2 erfasst; nicht erhobene Angaben bleiben unbekannt", "herkunft": "AP-16 §7 R8, E11" },
     { "zeitpunkt": "2026-12-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Referenzfall 5: Ladepunkt K-9 „Steuern freigeben“, Ladepark-Rahmen an NA-2 (200 kW, Hausreserve 30 kW) — keine neuen Geräte, keine neuen Messstellen", "herkunft": "AP-00 §4.4" },
+    { "zeitpunkt": "2026-12-07T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Auffälligkeit an KZ-0005 (Netzbezug je m² Halle 2), November 2026: 4,1 % über dem Erwarteten — vermerkt, Bezugsbasis BB-0003 vorläufig", "herkunft": "AP-18 §7 R8", "verbesserung": "KZ-0005" },
+    { "zeitpunkt": "2026-12-09T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Abweichung AW-2026-0001 eröffnet (Antwort auf die Auffälligkeit): verantwortlich Jonas Wendlinger, Frist 08.01.2027", "herkunft": "AP-18 §7 R8", "verbesserung": "AW-2026-0001" },
     { "zeitpunkt": "2026-12-16T00:00:00+01:00", "genauigkeit": "minute", "ereignis": "Unterstützung von Elektro Brunner endet planmäßig: ihr Enddatum 15.12.2026 gilt einschließlich, um 00:00 beendet der Runner sie — Banner weg, Protokoll „Endete am 15.12.2026 durch Zeitablauf“", "herkunft": "AP-03 §4.1, A4; Entscheid firstmate 11.09.2026 (Enddatum einschließlich)" },
+    { "zeitpunkt": "2026-12-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "AW-2026-0001 abgeschlossen: erklärt — Baustellenstrom des Anbaus der Halle 2 (Aussage von Jonas Wendlinger)", "herkunft": "AP-18 §7 R8", "verbesserung": "AW-2026-0001" },
     { "zeitpunkt": "2027-01-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kostenstelle 9000 aufgeteilt in 9010 Druckluft und 9020 Kühlung; Berichte 2026 bleiben unverändert (zeitliche Gültigkeit)", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2027-01-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsfläche Halle 2 (G-2) 3 100 → 3 400 m² (Anbau); eingetragen am 15.01.2027 und deshalb als „rückwirkend (14 Tage)“ protokolliert (Eintragstag − gilt ab, wie A2 zählt)", "herkunft": "AP-02 §4.4, E2" },
     { "zeitpunkt": "2027-01-14T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Hardwareblatt Ahrenberg C-1, Fassung 1 (Pilot der Kombination PFC200 × 750-494/-495 × Registerbild v1)", "herkunft": "AP-05 §4.1" },
@@ -1682,8 +1725,23 @@
     { "zeitpunkt": "2027-11-24T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0001, Fassung 2 freigegeben: 11/2026–10/2027, Modell 10 523 kWh + 0,2343 kWh je kg, R² 0,991, gilt ab 01.11.2027", "herkunft": "AP-17 §7 R12, E12", "bezugsbasis": "BB-0001" },
     { "zeitpunkt": "2027-11-24T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0004 an KZ-0006, Fassung 1 freigegeben: Gradtage 11/2026–10/2027, 119 m³ + 3,8 m³ je Kd, Temperatur von VoltPilot bezogen", "herkunft": "AP-17 §7 R3, E12, E9", "bezugsbasis": "BB-0004" },
     { "zeitpunkt": "2027-11-24T09:30:00+01:00", "genauigkeit": "minute", "ereignis": "Energetische Bewertung BW-2027-0001, Stand Nr. 1, freigegeben; die Zahlen des Konzeptfalls 2027 bleiben Annahmen", "herkunft": "AP-16 §7 R6, E11", "energetische_bewertung": "BW-2027-0001" },
+    { "zeitpunkt": "2027-12-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energieziel EZ-2028-0001 angelegt: Spritzguss 5 % weniger Strom als die Bezugsbasis erwarten lässt, Zielperiode 2028", "herkunft": "AP-18 §7 R4", "verbesserung": "EZ-2028-0001" },
+    { "zeitpunkt": "2028-01-07T05:12:00+01:00", "genauigkeit": "minute", "ereignis": "Auffälligkeit an KZ-0004 (Spritzguss), Dezember 2027: 12,9 % über dem Erwarteten — vermerkt mit dem endgültigen Monatswert", "herkunft": "AP-18 §7 R1", "verbesserung": "KZ-0004" },
+    { "zeitpunkt": "2028-01-12T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Abweichung AW-2028-0001 eröffnet (Antwort auf die Auffälligkeit): verantwortlich Ines Kaltenbach, Frist 31.01.2028", "herkunft": "AP-18 §7 R1, R2", "verbesserung": "AW-2028-0001" },
     { "zeitpunkt": "2028-01-12T09:52:00+01:00", "genauigkeit": "minute", "ereignis": "Leistungsvergleich VB-2028-0001 (Spritzguss, Dezember 2027), Stand Nr. 1 freigegeben: zitiert Bezugsbasis BB-0001 Fassung 2 — die Zahlen bleiben Annahmen", "herkunft": "AP-17 §7 R8, E12", "bezugsbasis": "BB-0001" },
-    { "zeitpunkt": "2028-11-24T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0001, Fassung 2: Überprüfung fällig (zwölf Monate nach der Freigabe) — ohne Läufer, die Frist ist abgeleitet", "herkunft": "AP-17 §7 R13, E12", "bezugsbasis": "BB-0001" }
+    { "zeitpunkt": "2028-01-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Maßnahme M-2028-0001 angelegt (Werkzeugheizungen in Betriebspausen abschalten) mit Ausgangslage Dezember 2027 als Kopie; AW-2028-0001 abgeschlossen mit Ergebnis Maßnahme", "herkunft": "AP-18 §7 R2, R3", "verbesserung": "M-2028-0001" },
+    { "zeitpunkt": "2028-01-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Maßnahme M-2028-0002 angelegt (Druckluft-Leckagen) — ohne Messgrundlage, Wirkung nicht messbar", "herkunft": "AP-18 §7 R7", "verbesserung": "M-2028-0002" },
+    { "zeitpunkt": "2028-01-22T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "M-2028-0001 umgesetzt: Zeitschaltung der Werkzeugheizungen an den Maschinen 3–6", "herkunft": "AP-18 §7 R3", "verbesserung": "M-2028-0001" },
+    { "zeitpunkt": "2028-03-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "M-2028-0002 überfällig seit 15 Tagen (Termin 29.02.2028) — beim Abruf abgeleitet, kein Läufer, keine Nachricht", "herkunft": "AP-18 §7 R9", "verbesserung": "M-2028-0002" },
+    { "zeitpunkt": "2028-03-28T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "M-2028-0002 umgesetzt: zwölf Leckagen abgedichtet", "herkunft": "AP-18 §7 R7", "verbesserung": "M-2028-0002" },
+    { "zeitpunkt": "2028-04-03T09:20:00+02:00", "genauigkeit": "minute", "ereignis": "Korrektur K-2028-0001 freigegeben (Spritzguss Dezember 2027, Version 2): Anstoß „Ausgangslage korrigiert“ an M-2028-0001 — die Ausgangslage bleibt byte-gleich", "herkunft": "AP-18 §7 R12", "verbesserung": "M-2028-0001" },
+    { "zeitpunkt": "2028-08-07T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Auffälligkeit an KZ-0004, Juli 2028: 2,5 % über dem Erwarteten — vermerkt", "herkunft": "AP-18 §7 R11", "verbesserung": "KZ-0004" },
+    { "zeitpunkt": "2028-08-10T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Auffälligkeit Juli 2028 zur Kenntnis genommen (Kleinserien-Sonderauftrag) — keine Abweichung", "herkunft": "AP-18 §7 R11", "verbesserung": "KZ-0004" },
+    { "zeitpunkt": "2028-11-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "M-2028-0001 bewertet, Stand Nr. 1: „belegt“ von Ines Kaltenbach neben der Zahl — 2,4 % weniger als erwartet (8 von 12 Monaten), Kopie mit Prüfsumme", "herkunft": "AP-18 §7 R5, R6", "verbesserung": "M-2028-0001" },
+    { "zeitpunkt": "2028-11-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "M-2028-0002 bewertet: nicht messbar; Einstufung EE-3 Fassung 3 „nicht wesentlich“ durch Ines Kaltenbach (AP-16 R13)", "herkunft": "AP-18 §7 R7", "verbesserung": "M-2028-0002" },
+    { "zeitpunkt": "2028-11-24T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0001, Fassung 2: Überprüfung fällig (zwölf Monate nach der Freigabe) — ohne Läufer, die Frist ist abgeleitet", "herkunft": "AP-17 §7 R13, E12", "bezugsbasis": "BB-0001" },
+    { "zeitpunkt": "2028-11-25T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0001 geprüft, bleibt: Fassung 2 gilt weiter (Referenzperiode vor M-2028-0001), nächste Überprüfung 25.11.2029", "herkunft": "AP-18 §7 R5, AP-17 R13", "verbesserung": "BB-0001" },
+    { "zeitpunkt": "2029-01-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energieziel EZ-2028-0001 bewertet: verfehlt — 2,7 % statt 5 % weniger über 11 von 12 Monaten, Kopie mit Prüfsumme", "herkunft": "AP-18 §7 R10", "verbesserung": "EZ-2028-0001" }
   ],
 
   "abnahmefaelle_ap17": {
@@ -1739,6 +1797,220 @@
     { "fall": "R20", "stand": "entschieden", "periode": "jederzeit", "gegeben": {"na": {"NA-1": {"standort": "ST-1", "anschluss_kva": 630, "vereinbart_kw": 550, "anlage": "AN-1"}, "NA-2": {"standort": "ST-1", "anschluss_kva": 250, "vereinbart_kw": 200, "anlage": "AN-2"}}} },
     { "fall": "R21", "stand": "entschieden", "periode": "10.04.2027 07:30 bis 12.04.2027 16:00", "gegeben": {"zeitachse": "Referenzdatei 1.4: DQ-3 E-1 → E-2′ → E-1"} },
     { "fall": "R22", "stand": "entschieden", "periode": "jederzeit", "gegeben": {"muster": "Paarbeweis AP-14 IP-20"} }
+    ]
+  },
+
+  "energieziele": [
+    {
+      "kennzeichen": "EZ-2028-0001",
+      "wortlaut": "Spritzguss: 5 % weniger Strom als die Bezugsbasis erwarten lässt — Jahresziel 2028.",
+      "kennzahl": "KZ-0004",
+      "bezugsbasis": "BB-0001",
+      "fassung": 2,
+      "zielwert_prozent": -5.0,
+      "zielperiode": "2028-01/2028-12",
+      "termin": "2028-12-31",
+      "verantwortlich": "IK",
+      "standort": "ST-1",
+      "angelegt": {"person": "IK", "am": "2027-12-20"},
+      "begruendung": "Jahresplanung 2028 nach der Freigabe der Fassung 2 (24.11.2027); Maßnahmen folgen aus den Auffälligkeiten.",
+      "zustand": "bewertet",
+      "bewertung": {"am": "2029-01-15", "person": "IK", "vieraugen": false, "ergebnis": "verfehlt", "begruendung": "2,7 % statt 5 % weniger über elf bewertbare Monate; M-2028-0001 hat weniger gebracht als erwartet, weitere Maßnahmen 2028 gab es nicht. Ziel 2029 wird neu gesetzt.", "kopie": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "zielperiode": "2028-01/2028-12", "zielwert_prozent": -5.0, "abruf": "2029-01-15", "stand": {"gemessen_kwh": 876600, "erwartet_kwh": 900892, "delta_prozent": -2.7, "urteil": "besser", "band_prozent": 2.0, "monate_bewertbar": 11, "monate_gesamt": 12, "ausgeschlossen": {"2028-03": "variable_ausserhalb"}}, "vorschlag": null, "grund_kein_vorschlag": "Zielperiode nicht vollständig bewertbar (11 von 12 Monaten: März 2028 variable_ausserhalb)"}, "pruefsumme": "sha256:3d55664a697dd1059f2f9e75065cd6df60cf5b47f7bb4b102890a48fb665f86e"},
+      "verlauf": [
+        {"am": "2027-12-20", "art": "energieziel_angelegt", "von": null, "nach": "offen", "person": "IK", "begruendung": "Jahresplanung 2028 nach der Freigabe der Fassung 2 (24.11.2027); Maßnahmen folgen aus den Auffälligkeiten."},
+        {"am": "2029-01-15", "art": "energieziel_bewertet", "von": "offen", "nach": "bewertet", "person": "IK", "begruendung": "2,7 % statt 5 % weniger über elf bewertbare Monate; M-2028-0001 hat weniger gebracht als erwartet, weitere Maßnahmen 2028 gab es nicht. Ziel 2029 wird neu gesetzt."}
+      ],
+      "annahme": true
+    }
+  ],
+
+  "massnahmen": [
+    {
+      "kennzeichen": "M-2028-0001",
+      "titel": "Werkzeugheizungen in Betriebspausen abschalten (Zeitschaltung Maschinen 3–6)",
+      "verantwortlich": "MD",
+      "termin": "2028-01-31",
+      "standort": "ST-1",
+      "herkunft": {"art": "abweichung", "kennung": "AW-2028-0001"},
+      "energieziel": "EZ-2028-0001",
+      "einsatz": {"kennzeichen": "EE-1", "einstufung_fassung": 1},
+      "messgrundlage": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "methode": "regression_eine_variable", "bewertungsmethode_satz": "bereinigt um Produktionsmenge — Modell mit einer Einflussgröße (Bezugsbasis BB-0001, Fassung 2)"},
+      "ausgangslage": {"kopie": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "monat": "2027-12", "gemessen_kwh": 78000, "gemessen_version": 1, "bedingung": {"BZ-1_kg": 250000, "fassung": 1}, "erwartet_kwh": 69098, "delta_prozent": 12.9, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)", "Streuung ± 0,8 %"]}, "kopiert_am": "2028-01-15", "pruefsumme": "sha256:c06d6724544317514e20bd0c63b82429711d6f32939a938cee0dbcfd45612c53"},
+      "erwartete_wirkung": {"prozent": -3.0, "wortlaut": "Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion; Abschaltung spart geschätzt 3 % des Prozessstroms."},
+      "kennzeichen_flaeche": null,
+      "angelegt": {"person": "IK", "am": "2028-01-15"},
+      "umgesetzt_am": "2028-01-22",
+      "zustand": "bewertet",
+      "anstoesse": [
+        {"art": "ausgangslage_korrigiert", "anlass_kennung": "K-2028-0001", "am": "2028-04-03T09:20:00+02:00", "zustand": "beantwortet", "antwort": {"am": "2028-04-05", "person": "IK", "antwort": "bleibt", "begruendung": "Version 2 ändert die Ausgangslage um 0,9 Punkte; die Maßnahme und ihre erwartete Wirkung bleiben, wie sie angelegt wurden — der Stand des Leistungsvergleichs wird revidiert."}, "verlauf": [{"am": "2028-04-03T09:20:00+02:00", "art": "anstoss_gesetzt", "von": null, "nach": "offen", "person": null}, {"am": "2028-04-05", "art": "anstoss_beantwortet", "von": "offen", "nach": "beantwortet", "person": "IK", "begruendung": "Version 2 ändert die Ausgangslage um 0,9 Punkte; die Maßnahme und ihre erwartete Wirkung bleiben, wie sie angelegt wurden — der Stand des Leistungsvergleichs wird revidiert."}]}
+      ],
+      "bewertungen": [
+        {"nr": 1, "am": "2028-11-15", "person": "IK", "vieraugen": false, "ergebnis": "belegt", "begruendung": "Zeitschaltung seit 22.01.2028 aktiv, Laufzeit der Werkzeugheizungen laut Steuerung 18 % niedriger; keine andere Änderung am Prozess Spritzguss im Zeitraum.", "kopie": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "umgesetzt_am": "2028-01-22", "nachher": "2028-02/2029-01", "abruf": "2028-11-15", "monate": [{"periode": "2028-02", "version": 1, "kg": 305000, "kwh": 81500, "erwartet_kwh": 81985, "delta_prozent": -0.6, "urteil": "im_rahmen", "grund": null}, {"periode": "2028-03", "version": 1, "kg": 390000, "kwh": 100000, "erwartet_kwh": null, "delta_prozent": null, "urteil": "nicht_anwendbar", "grund": "variable_ausserhalb"}, {"periode": "2028-04", "version": 1, "kg": 318000, "kwh": 81900, "erwartet_kwh": 85030, "delta_prozent": -3.7, "urteil": "besser", "grund": null}, {"periode": "2028-05", "version": 1, "kg": 326000, "kwh": 83900, "erwartet_kwh": 86905, "delta_prozent": -3.5, "urteil": "besser", "grund": null}, {"periode": "2028-06", "version": 1, "kg": 331000, "kwh": 85100, "erwartet_kwh": 88076, "delta_prozent": -3.4, "urteil": "besser", "grund": null}, {"periode": "2028-07", "version": 1, "kg": 262000, "kwh": 73700, "erwartet_kwh": 71910, "delta_prozent": 2.5, "urteil": "schlechter", "grund": null}, {"periode": "2028-08", "version": 1, "kg": 254000, "kwh": 67800, "erwartet_kwh": 70035, "delta_prozent": -3.2, "urteil": "besser", "grund": null}, {"periode": "2028-09", "version": 1, "kg": 335000, "kwh": 86000, "erwartet_kwh": 89014, "delta_prozent": -3.4, "urteil": "besser", "grund": null}, {"periode": "2028-10", "version": 1, "kg": 340000, "kwh": 87100, "erwartet_kwh": 90185, "delta_prozent": -3.4, "urteil": "besser", "grund": null}], "wirkung": {"gemessen_kwh": 647000, "erwartet_kwh": 663139, "delta_prozent": -2.4, "urteil": "besser", "band_prozent": 2.0, "monate_bewertbar": 8, "monate_gesamt": 9, "ausgeschlossen": {"2028-03": "variable_ausserhalb"}}, "erwartete_wirkung_prozent": -3.0}, "pruefsumme": "sha256:4635f20ac0ef79c28d33bc0ce5314cc3402ef71cd0a5cc1ef98e76d2f3ed76a3"}
+      ],
+      "verlauf": [
+        {"am": "2028-01-15", "art": "massnahme_angelegt", "von": null, "nach": "geplant", "person": "IK"},
+        {"am": "2028-01-22", "art": "massnahme_umgesetzt", "von": "geplant", "nach": "umgesetzt", "person": "IK", "begruendung": "Zeitschaltuhren an Maschinen 3–6 programmiert, Betriebspausen Mo–Fr 22–5 Uhr und Wochenende."},
+        {"am": "2028-04-05", "art": "anstoss_beantwortet", "von": "umgesetzt", "nach": "umgesetzt", "person": "IK", "begruendung": "Version 2 ändert die Ausgangslage um 0,9 Punkte; die Maßnahme und ihre erwartete Wirkung bleiben, wie sie angelegt wurden — der Stand des Leistungsvergleichs wird revidiert."},
+        {"am": "2028-11-15", "art": "massnahme_bewertet", "von": "umgesetzt", "nach": "bewertet", "person": "IK", "begruendung": "Zeitschaltung seit 22.01.2028 aktiv, Laufzeit der Werkzeugheizungen laut Steuerung 18 % niedriger; keine andere Änderung am Prozess Spritzguss im Zeitraum."}
+      ]
+    },
+    {
+      "kennzeichen": "M-2028-0002",
+      "titel": "Druckluft-Leckagen orten und beseitigen (Halle 1, Ringleitung)",
+      "verantwortlich": "IK",
+      "termin": "2028-02-29",
+      "standort": "ST-1",
+      "herkunft": {"art": "einsatz", "kennung": "EE-3"},
+      "energieziel": null,
+      "einsatz": {"kennzeichen": "EE-3", "einstufung_fassung": 2},
+      "messgrundlage": null,
+      "ausgangslage": null,
+      "erwartete_wirkung": {"prozent": null, "wortlaut": "Leckageverluste geschätzt ein Zehntel des Druckluftstroms; ohne Energieleistungskennzahl für Druckluft nicht messbar."},
+      "kennzeichen_flaeche": "ohne Messgrundlage — Wirkung nicht messbar",
+      "angelegt": {"person": "IK", "am": "2028-01-20"},
+      "umgesetzt_am": "2028-03-28",
+      "zustand": "bewertet",
+      "anstoesse": [],
+      "bewertungen": [
+        {"nr": 1, "am": "2028-11-20", "person": "IK", "vieraugen": false, "ergebnis": "nicht_messbar", "begruendung": "Keine Messgrundlage: Druckluft hat keine Energieleistungskennzahl. Der Anteil von EE-3 am Strom ist von 8,6 % (2026) auf 6,2 % (11/2027–10/2028) gesunken — eine rohe Beobachtung, kein Urteil.", "kopie": null, "pruefsumme": null}
+      ],
+      "verlauf": [
+        {"am": "2028-01-20", "art": "massnahme_angelegt", "von": null, "nach": "geplant", "person": "IK"},
+        {"am": "2028-03-28", "art": "massnahme_umgesetzt", "von": "geplant", "nach": "umgesetzt", "person": "IK", "begruendung": "Ultraschall-Ortung durch Elektro Brunner am 26./27.03., zwölf Leckagen abgedichtet."},
+        {"am": "2028-11-20", "art": "massnahme_bewertet", "von": "umgesetzt", "nach": "bewertet", "person": "IK", "begruendung": "Keine Messgrundlage: Druckluft hat keine Energieleistungskennzahl. Der Anteil von EE-3 am Strom ist von 8,6 % (2026) auf 6,2 % (11/2027–10/2028) gesunken — eine rohe Beobachtung, kein Urteil."}
+      ]
+    }
+  ],
+
+  "abweichungen": [
+    {
+      "kennzeichen": "AW-2026-0001",
+      "kennzahl": "KZ-0005",
+      "bezugsbasis": "BB-0003",
+      "fassung": 1,
+      "monate": ["2026-11"],
+      "standort": "ST-1",
+      "herkunft": "auffaelligkeit",
+      "verantwortlich": "JW",
+      "frist": "2027-01-08",
+      "eroeffnet": {"am": "2026-12-09", "person": "IK"},
+      "anlass": {"kennzahl": "KZ-0005", "bezugsbasis": "BB-0003", "fassung": 1, "monat": "2026-11", "gemessen_kwh": 38400, "gemessen_version": 1, "flaeche_m2": 3100, "kennzahl_kwh_je_m2": 12.3871, "basiswert": 11.9032, "delta_prozent": 4.1, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["Bezugsbasis vorläufig (1 von 12 Monaten)", "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)"]},
+      "pruefsumme": "sha256:172e63d268cd443cf397fbfef5df45d00fd63670a4e0a80fbc721b98866f9a57",
+      "zustand": "abgeschlossen",
+      "abschluss": {"am": "2026-12-20", "person": "IK", "ergebnis": "erklaert", "massnahme": null, "begruendung": "Baustellenstrom des Anbaus über MS-10 (Aussage JW); keine Maßnahme am Gebäude; die Basis wird nach dem Anbau neu gefasst (Anstoß Fläche G-2, AP-17 R5)."},
+      "verlauf": [
+        {"am": "2026-12-09", "art": "abweichung_eroeffnet", "von": null, "nach": "offen", "person": "IK"},
+        {"am": "2026-12-10", "art": "ursache_aussage", "von": "offen", "nach": "offen", "person": "JW", "wortlaut": "Der Anbau der Halle 2 läuft seit Mitte November; Baustellenstrom (Kran, Trocknung) hängt am Unterverteiler von MS-10 und ist nicht getrennt gemessen.", "beleg_kennung": null, "kennzeichen": "Aussage von Jonas Wendlinger, 10.12.2026 — keine Messung"},
+        {"am": "2026-12-20", "art": "abweichung_abgeschlossen", "von": "offen", "nach": "abgeschlossen", "person": "IK", "begruendung": "Baustellenstrom des Anbaus über MS-10 (Aussage JW); keine Maßnahme am Gebäude; die Basis wird nach dem Anbau neu gefasst (Anstoß Fläche G-2, AP-17 R5)."}
+      ]
+    },
+    {
+      "kennzeichen": "AW-2028-0001",
+      "kennzahl": "KZ-0004",
+      "bezugsbasis": "BB-0001",
+      "fassung": 2,
+      "monate": ["2027-12"],
+      "standort": "ST-1",
+      "herkunft": "auffaelligkeit",
+      "verantwortlich": "IK",
+      "frist": "2028-01-31",
+      "eroeffnet": {"am": "2028-01-12", "person": "IK"},
+      "anlass": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "monat": "2027-12", "gemessen_kwh": 78000, "gemessen_version": 1, "bedingung": {"BZ-1_kg": 250000, "fassung": 1}, "erwartet_kwh": 69098, "delta_prozent": 12.9, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)", "Streuung ± 0,8 %"]},
+      "pruefsumme": "sha256:c06d6724544317514e20bd0c63b82429711d6f32939a938cee0dbcfd45612c53",
+      "zustand": "abgeschlossen",
+      "abschluss": {"am": "2028-01-15", "person": "IK", "ergebnis": "massnahme", "massnahme": "M-2028-0001", "begruendung": "Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme M-2028-0001 mit Messgrundlage angelegt; Dezember-Werte bleiben, keine Korrektur."},
+      "verlauf": [
+        {"am": "2028-01-12", "art": "abweichung_eroeffnet", "von": null, "nach": "offen", "person": "IK"},
+        {"am": "2028-01-12", "art": "kommentar", "von": "offen", "nach": "offen", "person": "IK", "text": "Produktion 21,9 % unter November, Strom nur 8,8 % — der Grundlast-Anteil ist gestiegen. Bitte Halle 1 prüfen: liefen Werkzeugheizungen über die Feiertage?"},
+        {"am": "2028-01-14", "art": "ursache_aussage", "von": "offen", "nach": "offen", "person": "MD", "wortlaut": "Die Werkzeugheizungen der Maschinen 3 bis 6 liefen vom 23.12. bis 02.01. durch — keine Abschaltung in der Betriebspause programmiert.", "beleg_kennung": null, "kennzeichen": "Aussage von Murat Demirci, 14.01.2028 — keine Messung"},
+        {"am": "2028-01-15", "art": "kommentar", "von": "offen", "nach": "offen", "person": "IK", "text": "Zeitschaltung für alle Werkzeugheizungen in Betriebspausen — als Maßnahme."},
+        {"am": "2028-01-15", "art": "abweichung_abgeschlossen", "von": "offen", "nach": "abgeschlossen", "person": "IK", "begruendung": "Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme M-2028-0001 mit Messgrundlage angelegt; Dezember-Werte bleiben, keine Korrektur."}
+      ]
+    }
+  ],
+
+  "auffaelligkeiten": [
+    {
+      "kennzahl": "KZ-0005",
+      "bezugsbasis": "BB-0003",
+      "fassung": 1,
+      "periode": "2026-11",
+      "vermerkt_am": "2026-12-07",
+      "zustand": "beantwortet",
+      "anlass": {"kennzahl": "KZ-0005", "bezugsbasis": "BB-0003", "fassung": 1, "monat": "2026-11", "gemessen_kwh": 38400, "gemessen_version": 1, "flaeche_m2": 3100, "kennzahl_kwh_je_m2": 12.3871, "basiswert": 11.9032, "delta_prozent": 4.1, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["Bezugsbasis vorläufig (1 von 12 Monaten)", "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)"]},
+      "pruefsumme": "sha256:172e63d268cd443cf397fbfef5df45d00fd63670a4e0a80fbc721b98866f9a57",
+      "antwort": {"am": "2026-12-09", "person": "IK", "antwort": "abweichung", "abweichung": "AW-2026-0001", "begruendung": null},
+      "verlauf": [
+        {"am": "2026-12-07", "art": "auffaelligkeit_vermerkt", "von": null, "nach": "offen", "person": null},
+        {"am": "2026-12-09", "art": "auffaelligkeit_beantwortet", "von": "offen", "nach": "beantwortet", "person": "IK"}
+      ]
+    },
+    {
+      "kennzahl": "KZ-0004",
+      "bezugsbasis": "BB-0001",
+      "fassung": 2,
+      "periode": "2027-12",
+      "vermerkt_am": "2028-01-07T05:12:00+01:00",
+      "zustand": "beantwortet",
+      "anlass": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "monat": "2027-12", "gemessen_kwh": 78000, "gemessen_version": 1, "bedingung": {"BZ-1_kg": 250000, "fassung": 1}, "erwartet_kwh": 69098, "delta_prozent": 12.9, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)", "Streuung ± 0,8 %"]},
+      "pruefsumme": "sha256:c06d6724544317514e20bd0c63b82429711d6f32939a938cee0dbcfd45612c53",
+      "antwort": {"am": "2028-01-12", "person": "IK", "antwort": "abweichung", "abweichung": "AW-2028-0001", "begruendung": null},
+      "verlauf": [
+        {"am": "2028-01-07T05:12:00+01:00", "art": "auffaelligkeit_vermerkt", "von": null, "nach": "offen", "person": null},
+        {"am": "2028-01-12", "art": "auffaelligkeit_beantwortet", "von": "offen", "nach": "beantwortet", "person": "IK"}
+      ]
+    },
+    {
+      "kennzahl": "KZ-0004",
+      "bezugsbasis": "BB-0001",
+      "fassung": 2,
+      "periode": "2028-07",
+      "vermerkt_am": "2028-08-07",
+      "zustand": "beantwortet",
+      "anlass": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "monat": "2028-07", "gemessen_kwh": 73700, "gemessen_version": 1, "bedingung": {"BZ-1_kg": 262000, "fassung": 1}, "erwartet_kwh": 71910, "delta_prozent": 2.5, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)", "Streuung ± 0,8 %"]},
+      "pruefsumme": "sha256:9be1c6d514ce8c6a52da4d91dbf2f2b3c8a4469e8294067656764d407f8a4780",
+      "antwort": {"am": "2028-08-10", "person": "IK", "antwort": "zur_kenntnis", "abweichung": null, "begruendung": "Kleinserien-Sonderauftrag KW 27–29 (viele Werkzeugwechsel, kurze Zyklen), im Produktionsplan dokumentiert; keine Abweichung des Prozesses."},
+      "verlauf": [
+        {"am": "2028-08-07", "art": "auffaelligkeit_vermerkt", "von": null, "nach": "offen", "person": null},
+        {"am": "2028-08-10", "art": "auffaelligkeit_beantwortet", "von": "offen", "nach": "beantwortet", "person": "IK", "begruendung": "Kleinserien-Sonderauftrag KW 27–29 (viele Werkzeugwechsel, kurze Zyklen), im Produktionsplan dokumentiert; keine Abweichung des Prozesses."}
+      ]
+    }
+  ],
+
+  "kennzahlen_1_9_monate": [
+    {
+      "kennzahl": "KZ-0004",
+      "bezugsbasis": "BB-0001",
+      "fassung": 2,
+      "zeitraum": "2028-04/2029-01",
+      "annahme": true,
+      "hinweis": "Annahme-Reihe des Konzepts AP-18 (R5, R10, R11) — keine Messwerte; kg = BZ-1 Fassung 1, kWh = MS-20 Version 1; erwartet = 10 523 kWh + 0,2343 kWh je kg (BB-0001 Fassung 2), Urteil im Band ± 2 %. Die Monate 11/2027–03/2028 stehen in den Fällen von AP-17 (R4, R5 in `abnahmefaelle_ap18`).",
+      "monate": [
+        {"periode": "2028-04", "version": 1, "kg": 318000, "kwh": 81900, "erwartet_kwh": 85030, "delta_prozent": -3.7, "urteil": "besser", "grund": null},
+        {"periode": "2028-05", "version": 1, "kg": 326000, "kwh": 83900, "erwartet_kwh": 86905, "delta_prozent": -3.5, "urteil": "besser", "grund": null},
+        {"periode": "2028-06", "version": 1, "kg": 331000, "kwh": 85100, "erwartet_kwh": 88076, "delta_prozent": -3.4, "urteil": "besser", "grund": null},
+        {"periode": "2028-07", "version": 1, "kg": 262000, "kwh": 73700, "erwartet_kwh": 71910, "delta_prozent": 2.5, "urteil": "schlechter", "grund": null},
+        {"periode": "2028-08", "version": 1, "kg": 254000, "kwh": 67800, "erwartet_kwh": 70035, "delta_prozent": -3.2, "urteil": "besser", "grund": null},
+        {"periode": "2028-09", "version": 1, "kg": 335000, "kwh": 86000, "erwartet_kwh": 89014, "delta_prozent": -3.4, "urteil": "besser", "grund": null},
+        {"periode": "2028-10", "version": 1, "kg": 340000, "kwh": 87100, "erwartet_kwh": 90185, "delta_prozent": -3.4, "urteil": "besser", "grund": null},
+        {"periode": "2028-11", "version": 1, "kg": 322000, "kwh": 83000, "erwartet_kwh": 85968, "delta_prozent": -3.5, "urteil": "besser", "grund": null},
+        {"periode": "2028-12", "version": 1, "kg": 258000, "kwh": 68600, "erwartet_kwh": 70972, "delta_prozent": -3.3, "urteil": "besser", "grund": null},
+        {"periode": "2029-01", "version": 1, "kg": 300000, "kwh": 78100, "erwartet_kwh": 80813, "delta_prozent": -3.4, "urteil": "besser", "grund": null}
+      ]
+    }
+  ],
+
+  "abnahmefaelle_ap18": {
+    "quelle": "Konzept AP-18 §7 (referenzfaelle.json vom 24.09.2026) — die Blöcke „gegeben“ von R1, R3, R4, R5, R6, R7, R8 und R12 wörtlich (NW-3); die Zwillinge rechnen Wirkung, Ziel-Stand und Vergleiche aus `kennzahlen_1_9_monate` und BB-0001 Fassung 2 nach und vergleichen die Werte mit den fachlichen Blöcken",
+    "faelle": [
+      { "fall": "R1", "gegeben": {"vergleich_dezember_2027": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "monat": "2027-12", "gemessen_kwh": 78000, "gemessen_version": 1, "bedingung": {"BZ-1_kg": 250000, "fassung": 1}, "erwartet_kwh": 69098, "delta_prozent": 12.9, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)", "Streuung ± 0,8 %"], "pruefsumme": "sha256 über die kanonische Kopie (Muster Berichtsstand)"}, "roh_daneben": {"strom_zum_vormonat_prozent": -8.8, "produktion_zum_vormonat_prozent": -21.9, "urteil": "ohne_urteil"}, "vermerk": {"am": "2028-01-07T05:12:00+01:00", "wer": "Endgültigkeits-Takt → Kennzahl-Lauf → Naht (dieselbe Transaktion wie der endgültige Monatswert)", "eindeutig": "KZ-0004 × Fassung 2 × 2027-12", "pruefsumme": "sha256 über den Anlass"}, "antwort": {"person": "IK", "am": "2028-01-12", "antwort": "abweichung", "abweichung": "AW-2028-0001", "frist": "2028-01-31", "verantwortlich": "IK"}, "alternative": {"antwort": "zur_kenntnis", "begruendung_pflicht": true, "beispiel": "R11 (Juli 2028)"}} },
+      { "fall": "R3", "gegeben": {"massnahme": {"kennzeichen": "M-2028-0001", "titel": "Werkzeugheizungen in Betriebspausen abschalten (Zeitschaltung Maschinen 3–6)", "verantwortlich": {"benutzer": "MD", "name": "Murat Demirci", "schnappschuss": true, "fk_benutzer": true}, "termin": "2028-01-31", "zustand": "geplant → umgesetzt", "herkunft": {"art": "abweichung", "kennung": "AW-2028-0001"}, "energieziel": "EZ-2028-0001", "einsatz": {"kennzeichen": "EE-1", "name": "Spritzguss", "einstufung_fassung": 2}, "messgrundlage": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "methode": "regression_eine_variable", "bewertungsmethode_satz": "bereinigt um Produktionsmenge — Modell mit einer Einflussgröße (Bezugsbasis BB-0001, Fassung 2)"}, "ausgangslage": {"kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "monat": "2027-12", "gemessen_kwh": 78000, "gemessen_version": 1, "bedingung": {"BZ-1_kg": 250000, "fassung": 1}, "erwartet_kwh": 69098, "delta_prozent": 12.9, "band_prozent": 2.0, "urteil": "schlechter", "kennzeichen": ["bereinigt um Produktionsmenge (Bezugsbasis BB-0001, Fassung 2)", "Streuung ± 0,8 %"], "pruefsumme": "sha256 über die kanonische Kopie (Muster Berichtsstand)", "kopiert_am": "2028-01-15"}, "erwartete_wirkung": {"prozent": -3.0, "wortlaut": "Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion; Abschaltung spart geschätzt 3 % des Prozessstroms."}, "standort": "ST-1 (aus der Geltung P-1)", "angelegt": {"person": "IK", "am": "2028-01-15"}}, "umsetzung": {"am": "2028-01-22", "gemeldet_von": "IK auf Rückmeldung von Murat Demirci (Bedienberechtigt, ohne Schreibrecht)", "begruendung": "Zeitschaltuhren an Maschinen 3–6 programmiert, Betriebspausen Mo–Fr 22–5 Uhr und Wochenende."}} },
+      { "fall": "R4", "gegeben": {"energieziel": {"kennzeichen": "EZ-2028-0001", "kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "zielwert_prozent": -5.0, "zielperiode": "2028-01/2028-12", "verantwortlich": "IK", "wortlaut": "Spritzguss: 5 % weniger Strom als die Bezugsbasis erwarten lässt — Jahresziel 2028.", "angelegt": {"person": "IK", "am": "2027-12-20"}, "begruendung": "Jahresplanung 2028 nach der Freigabe der Fassung 2 (24.11.2027); Maßnahmen folgen aus den Auffälligkeiten."}, "stand_10_07_2028": {"monate": {"2028-01": {"kg": 300000, "kwh": 78000, "delta_prozent": -3.5, "urteil": "besser", "grund": null}, "2028-02": {"kg": 305000, "kwh": 81500, "delta_prozent": -0.6, "urteil": "im_rahmen", "grund": null}, "2028-03": {"kg": 390000, "kwh": 100000, "delta_prozent": null, "urteil": "nicht_anwendbar", "grund": "variable_ausserhalb"}, "2028-04": {"kg": 318000, "kwh": 81900, "delta_prozent": -3.7, "urteil": "besser", "grund": null}, "2028-05": {"kg": 326000, "kwh": 83900, "delta_prozent": -3.5, "urteil": "besser", "grund": null}, "2028-06": {"kg": 331000, "kwh": 85100, "delta_prozent": -3.4, "urteil": "besser", "grund": null}}, "summe": {"gemessen_kwh": 410400, "erwartet_kwh": 422809, "delta_prozent": -2.9, "urteil": "besser", "band_prozent": 2.0, "monate_bewertbar": 5, "monate_gesamt": 6, "ausgeschlossen": {"2028-03": "variable_ausserhalb"}}, "satz_vorschlag": "kein Vorschlag „erreicht“ — die Zielperiode ist nicht zu Ende (Z4)"}, "nicht_erlaubt": ["Ziel an KZ-0003 (keine Bezugsbasis): 422 kennzahl_ohne_bezugsbasis", "Zielperiode rollierend", "Zielwert in kWh", "Zielwert > 0 (mehr Energie) ohne Begründung — erlaubt, aber mit Wortlaut"]} },
+      { "fall": "R5", "gegeben": {"umgesetzt_am": "2028-01-22", "nachher_zeitraum": {"von": "2028-02", "bis": "2029-01", "monate": 12, "umsetzungsmonat_nicht_gezaehlt": "2028-01"}, "je_monat": {"2028-02": {"kg": 305000, "kwh": 81500, "erwartet_kwh": 81985, "delta_prozent": -0.6, "urteil": "im_rahmen", "grund": null}, "2028-03": {"kg": 390000, "kwh": 100000, "erwartet_kwh": null, "delta_prozent": null, "urteil": "nicht_anwendbar", "grund": "variable_ausserhalb"}, "2028-04": {"kg": 318000, "kwh": 81900, "erwartet_kwh": 85030, "delta_prozent": -3.7, "urteil": "besser", "grund": null}, "2028-05": {"kg": 326000, "kwh": 83900, "erwartet_kwh": 86905, "delta_prozent": -3.5, "urteil": "besser", "grund": null}, "2028-06": {"kg": 331000, "kwh": 85100, "erwartet_kwh": 88076, "delta_prozent": -3.4, "urteil": "besser", "grund": null}, "2028-07": {"kg": 262000, "kwh": 73700, "erwartet_kwh": 71910, "delta_prozent": 2.5, "urteil": "schlechter", "grund": null}, "2028-08": {"kg": 254000, "kwh": 67800, "erwartet_kwh": 70035, "delta_prozent": -3.2, "urteil": "besser", "grund": null}, "2028-09": {"kg": 335000, "kwh": 86000, "erwartet_kwh": 89014, "delta_prozent": -3.4, "urteil": "besser", "grund": null}, "2028-10": {"kg": 340000, "kwh": 87100, "erwartet_kwh": 90185, "delta_prozent": -3.4, "urteil": "besser", "grund": null}, "2028-11": {"kg": 322000, "kwh": 83000, "erwartet_kwh": 85968, "delta_prozent": -3.5, "urteil": "besser", "grund": null}, "2028-12": {"kg": 258000, "kwh": 68600, "erwartet_kwh": 70972, "delta_prozent": -3.3, "urteil": "besser", "grund": null}, "2029-01": {"kg": 300000, "kwh": 78100, "erwartet_kwh": 80813, "delta_prozent": -3.4, "urteil": "besser", "grund": null}}, "abruf_15_11_2028": {"gemessen_kwh": 647000, "erwartet_kwh": 663139, "delta_prozent": -2.4, "urteil": "besser", "band_prozent": 2.0, "monate_bewertbar": 8, "monate_gesamt": 9, "ausgeschlossen": {"2028-03": "variable_ausserhalb"}, "vorlaeufig": "8 von 12", "erwartete_wirkung_prozent": -3.0, "mittel_der_monate_nicht_gebildet": -2.3}, "abruf_10_02_2029": {"gemessen_kwh": 876700, "erwartet_kwh": 900892, "delta_prozent": -2.7, "urteil": "besser", "band_prozent": 2.0, "monate_bewertbar": 11, "monate_gesamt": 12, "ausgeschlossen": {"2028-03": "variable_ausserhalb"}, "vollstaendig": "11 von 12 (März 2028 nicht bewertbar)"}, "roh_daneben": {"hinweis": "die rohe Kennzahl (kWh je kg) je Monat ohne Wort (VG3, AP-17 U1)", "2028-02_kwh_je_kg": 0.2672}, "wenn_fassung_3_nach_der_umsetzung": {"regel": "WK4", "beispiel": "Fassung 3 mit Referenzperiode 11/2027–10/2028 (gebildet 25.11.2028) enthielte die Umsetzung; Nachher-Monate ab November 2028 wären `nicht_bewertbar` mit Grund basis_nach_umsetzung", "bei_ahrenberg": "Ines wählt am 25.11.2028 „geprüft, bleibt“ (AP-17 R13) mit der Begründung, die Referenzperiode vor der Maßnahme zu behalten — Fassung 2 gilt weiter"}} },
+      { "fall": "R6", "gegeben": {"januar_2028": {"kg": 300000, "kwh": 78000, "erwartet_kwh": 80813, "delta_prozent": -3.5, "urteil": "besser", "umgesetzt_am": "2028-01-22", "zaehlt_zur_wirkung": false, "grund": "umsetzungsmonat — die Verbesserung lag vor der Zeitschaltung (Ferienbetrieb bis 08.01.)"}, "bewertung_stand_1": {"am": "2028-11-15", "person": "IK", "vieraugen": false, "ergebnis": "belegt", "begruendung": "Zeitschaltung seit 22.01.2028 aktiv, Laufzeit der Werkzeugheizungen laut Steuerung 18 % niedriger; keine andere Änderung am Prozess Spritzguss im Zeitraum.", "kopie": {"wirkung": {"gemessen_kwh": 647000, "erwartet_kwh": 663139, "delta_prozent": -2.4, "urteil": "besser", "band_prozent": 2.0, "monate_bewertbar": 8, "monate_gesamt": 9, "ausgeschlossen": {"2028-03": "variable_ausserhalb"}}, "erwartete_wirkung_prozent": -3.0, "fassung": 2, "versionen": "je Monat die Version des gemessenen Werts", "pruefsumme": "sha256 über die kanonische Kopie"}, "nie_zurueckgenommen": true}, "ohne_person": {"satz": "beobachtet — nicht belegt", "ergebnis": null}, "zweiter_stand_moeglich": {"am": "nach dem 10.02.2029 (zwölf Monate)", "nr": 2, "anlass": "Person entscheidet; ein Anstoß (R12) kann ihn vorschlagen"}, "was_das_system_nie_sagt": ["„Die Maßnahme hat gewirkt“", "„Einsparung durch M-2028-0001: 2,4 %“", "„Ursache: Zeitschaltung“"]} },
+      { "fall": "R7", "gegeben": {"massnahme": {"kennzeichen": "M-2028-0002", "titel": "Druckluft-Leckagen orten und beseitigen (Halle 1, Ringleitung)", "verantwortlich": "IK", "termin": "2028-02-29", "herkunft": {"art": "einsatz", "kennung": "EE-3", "einstufung_fassung": 2, "einflussgroesse": "Leckagerate (Freitext, ohne Zahl)", "begruendung_der_einstufung_f1": "Leckageverluste vermutet, Prüfung 2027 geplant (RU:1363)"}, "messgrundlage": null, "kennzeichen_flaeche": "ohne Messgrundlage — Wirkung nicht messbar", "erwartete_wirkung": {"prozent": null, "wortlaut": "Leckageverluste geschätzt ein Zehntel des Druckluftstroms; ohne Energieleistungskennzahl für Druckluft nicht messbar."}, "energieziel": null, "standort": "ST-1"}, "hinweis_der_flaeche": "Um die Wirkung zu messen, braucht Druckluft eine Energieleistungskennzahl — etwa MS-07 je Betriebsstunde (BZ-3) mit einer Bezugsbasis; die Kennzahl-Seite hilft beim Anlegen.", "umsetzung": {"am": "2028-03-28", "begruendung": "Ultraschall-Ortung durch Elektro Brunner am 26./27.03., zwölf Leckagen abgedichtet."}, "bewertung": {"am": "2028-11-20", "person": "IK", "ergebnis": "nicht_messbar", "begruendung": "Keine Messgrundlage: Druckluft hat keine Energieleistungskennzahl. Der Anteil von EE-3 am Strom ist von 8,6 % (2026) auf 6,2 % (11/2027–10/2028) gesunken — eine rohe Beobachtung, kein Urteil."}, "ap16_rueckstufung": {"einsatz": "EE-3", "fassung": 3, "ab": "2028-11-20", "einstufung": "nicht_wesentlich", "begruendung": "Leckagen 03/2028 beseitigt (Maßnahme M-2028-0002); 6,2 %, hinter dem 80-%-Block; Wiedervorlage 2029", "person": "IK", "lesart": "die Rückstufung ist die Einstufung einer Person (AP-16 E8); sie zitiert die Maßnahme, sie belegt keine Wirkung"}} },
+      { "fall": "R8", "gegeben": {"vergleich_november_2026": {"kennzahl": "KZ-0005", "bezugsbasis": "BB-0003", "fassung": 1, "gemessen_kwh": 38400, "flaeche_m2": 3100, "kennzahl_kwh_je_m2": 12.3871, "basiswert": 11.9032, "delta_prozent": 4.1, "urteil": "schlechter", "kennzeichen": ["Bezugsbasis vorläufig (1 von 12 Monaten)", "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)"]}, "vermerk": {"am": "2026-12-07", "eindeutig": "KZ-0005 × Fassung 1 × 2026-11"}, "abweichung": {"kennzeichen": "AW-2026-0001", "eroeffnet": "2026-12-09", "person": "IK", "verantwortlich": "JW", "frist": "2027-01-08", "anlass": "Kopie des Vermerks"}, "eintraege": [{"am": "2026-12-10", "art": "ursache_aussage", "person": "JW", "wortlaut": "Der Anbau der Halle 2 läuft seit Mitte November; Baustellenstrom (Kran, Trocknung) hängt am Unterverteiler von MS-10 und ist nicht getrennt gemessen.", "beleg_kennung": null, "kennzeichen": "Aussage von Jonas Wendlinger, 10.12.2026 — keine Messung"}], "abschluss": {"am": "2026-12-20", "person": "IK", "ergebnis": "erklaert", "begruendung": "Baustellenstrom des Anbaus über MS-10 (Aussage JW); keine Maßnahme am Gebäude; die Basis wird nach dem Anbau neu gefasst (Anstoß Fläche G-2, AP-17 R5)."}, "folge_ap17": "der Anbau (3 100 → 3 400 m² ab 01.01.2027) stößt BB-0003 am 15.01.2027 an; Fassung 1 endet zum 31.12.2026 — ein anderer Weg (Basis), nicht die Abweichung"} },
+      { "fall": "R12", "gegeben": {"korrektur": {"kennung": "K-2028-0001", "messstelle": "MS-20", "periode": "2027-12", "alt_kwh": 78000, "neu_kwh": 77400, "freigegeben_am": "2028-04-03T09:20:00+02:00", "person": "IK", "kennzahl_version_2": 0.3096}, "vergleich_version_2": {"erwartet_kwh": 69098, "delta_prozent": 12.0, "band_prozent": 2.0, "urteil": "schlechter", "grund": null, "gemessen_version": 2}, "kaskade": ["KZ-0004 Dezember 2027 → Version 2 (AP-11 Kaskade)", "BB-0001: KEIN Anstoß — der Dezember 2027 liegt nicht in der Referenzperiode 11/2026–10/2027 (AP-17 A2)", "VB-2028-0001 Stand Nr. 1 → bericht_revision_anstoss (AP-12/AP-17 S4)", "M-2028-0001 → vorgang_anstoss `ausgangslage_korrigiert` (Pfad 1, AP-18)"], "anstoss": {"art": "ausgangslage_korrigiert", "anlass_kennung": "K-2028-0001", "am": "2028-04-03T09:20:00+02:00", "ausgangslage_bleibt": {"delta_prozent": 12.9, "version": 1, "byte_gleich": true}}, "antwort": {"am": "2028-04-05", "person": "IK", "antwort": "bleibt", "begruendung": "Version 2 ändert die Ausgangslage um 0,9 Punkte; die Maßnahme und ihre erwartete Wirkung bleiben, wie sie angelegt wurden — der Stand des Leistungsvergleichs wird revidiert."}, "andere_antwort": {"antwort": "neu_kopiert", "folge": "Ausgangslage neu aus dem Leser (Version 2, +12,0 %) mit neuer Prüfsumme; die alte bleibt im Protokoll"}} }
     ]
   }
 }

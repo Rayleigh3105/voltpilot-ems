@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
-import { lokalerTag, mitternacht, plusTage, rueckwirkung } from './uemsOrtsbaum';
+import { lokalerTag, mitternacht, plusTage, rueckwirkung, tageZwischen } from './uemsOrtsbaum';
 import { bisZeitpunkt } from './rechte';
 import { monatsvergleich } from './uemsBewertung';
 
@@ -1145,6 +1145,35 @@ const ohneFassung18 = (d: Record<string, any>): void => {
   }
 };
 
+const KOMMENTAR_ZEILEN_1_8 = 141;
+const BLOECKE_1_9 = ['energieziele', 'massnahmen', 'abweichungen', 'auffaelligkeiten', 'kennzahlen_1_9_monate', 'abnahmefaelle_ap18'];
+/** Nimmt GENAU die Zusätze der Fassung 1.9 heraus — auch die Nachträge in `korrekturen`, `einstufungen` und BB-0001. */
+const ohneFassung19 = (d: Record<string, any>): void => {
+  expect(d.version).toBe('1.9');
+  d.version = '1.8';
+  d.stand = '2026-09-23';
+  d.beschreibung = d.beschreibung.replace('Messplanung, Bezugsbasen sowie Ziele, Maßnahmen und Abweichungen', 'Messplanung und Bezugsbasen');
+  expect(d._comment.length).toBeGreaterThan(KOMMENTAR_ZEILEN_1_8);
+  d._comment = d._comment.slice(0, KOMMENTAR_ZEILEN_1_8);
+  expect(d._herkunft.fassung_1_9).toBeDefined();
+  delete d._herkunft.fassung_1_9;
+  for (const block of BLOECKE_1_9) {
+    expect(d[block], block).toBeDefined();
+    delete d[block];
+  }
+  const vorher = d.zeitachse.length;
+  d.zeitachse = d.zeitachse.filter((z: any) => z.verbesserung == null);
+  expect(vorher - d.zeitachse.length).toBe(18);
+  d.korrekturen = d.korrekturen.filter((k: any) => k.kennung !== 'K-2028-0001');
+  expect(d.korrekturen).toHaveLength(1);
+  const ee3 = d.einstufungen.find((e: any) => e.einsatz === 'EE-3');
+  expect(ee3.fassungen.pop().fassung).toBe(3);
+  ee3.fassungen[1].gueltig_bis = null;
+  const bb1 = d.bezugsbasen.find((b: any) => b.kennzeichen === 'BB-0001');
+  expect(bb1.pflege).toBeDefined();
+  delete bb1.pflege;
+};
+
 describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
   /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
   const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
@@ -1167,6 +1196,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
    */
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
@@ -1245,6 +1275,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.3', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
@@ -1358,6 +1389,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.5 (AP-15 E8)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.4', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
@@ -1586,6 +1618,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.5', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
     ohneFassung16(d);
@@ -1728,6 +1761,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.7 (K-1 an der Hauptgröße, Bef
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.6', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
     expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_6_SHA256);
@@ -1735,6 +1769,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.7 (K-1 an der Hauptgröße, Bef
 
   it('K-1 vergleicht auch an der Hauptgröße über integration — in Fassung 1.6 nur ohne_monatsmenge', () => {
     const alt = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(alt);
     ohneFassung18(alt);
     ohneFassung17(alt);
     expect(monatsvergleichArt(ms01Von(alt))).toEqual({ 'Wirkleistung · K-1': 'ohne_monatsmenge' });
@@ -1804,6 +1839,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.8 (AP-17 E12, Bezugsbasen)', ()
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.7', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(d);
     ohneFassung18(d);
     expect(sha256(d)).toBe(FASSUNG_1_7_SHA256);
   });
@@ -1973,5 +2009,434 @@ describe('UEMS-Referenzunternehmen — Fassung 1.8 (AP-17 E12, Bezugsbasen)', ()
     expect(g.R9.einflussgroessen_ee1[1].vorschlag).toContain(`r = ${String(abgelehnt.r).replace('.', ',')}`);
     const ee1 = daten.energieeinsaetze.find((e: any) => e.kennzeichen === 'EE-1');
     expect(ee1.einflussgroessen.map((e: any) => e.bezugsgroesse)).toEqual([g.R9.einflussgroessen_ee1[0].bezugsgroesse, abgelehnt.objekt]);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Abweichungen)', () => {
+  const FASSUNG_1_8_SHA256 = 'cef77db4313e618b70d8c455363e0843ee0e66a550ea153bf0a3ffd57f9a6803';
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+  const hex = (x: unknown) => createHash('sha256').update(kanonisch(x), 'utf8').digest('hex');
+  const pruef = (x: unknown) => `sha256:${hex(x)}`;
+  const nach = (liste: any[]): Record<string, any> => Object.fromEntries((liste ?? []).map((o) => [o.kennzeichen, o]));
+  /** Halb weg von null auf `stellen` Nachkommastellen — wie `HALF_UP` im Java-Zwilling. */
+  const halbAuf = (x: number, stellen: number) => Math.sign(x) * Number((Math.round(Number(`${Math.abs(x)}e${stellen}`)) / 10 ** stellen).toFixed(stellen));
+  const personen = (d: any): Record<string, string> => Object.fromEntries(d.personen.map((p: any) => [p.kuerzel, p.name]));
+  const EINZAHL: Record<string, string> = { energieziele: 'energieziel', massnahmen: 'massnahme', abweichungen: 'abweichung', auffaelligkeiten: 'auffaelligkeit' };
+  /** Die 18 Zeilen von AP-18 `vorgaenge.json`, aufgefächert nach Ausgangszustand und Protokoll-Wort — dieselbe Tabelle im Java-Zwilling. */
+  const UEBERGAENGE = new Set([
+    'energieziel|-|offen|energieziel_angelegt', 'energieziel|offen|offen|energieziel_geaendert',
+    'energieziel|offen|bewertet|energieziel_bewertet', 'energieziel|offen|beendet|energieziel_beendet',
+    'massnahme|-|geplant|massnahme_angelegt', 'massnahme|geplant|geplant|massnahme_geaendert',
+    'massnahme|geplant|geplant|kommentar', 'massnahme|umgesetzt|umgesetzt|kommentar',
+    'massnahme|geplant|umgesetzt|massnahme_umgesetzt', 'massnahme|geplant|verworfen|massnahme_verworfen',
+    'massnahme|umgesetzt|bewertet|massnahme_bewertet', 'massnahme|bewertet|bewertet|massnahme_bewertet',
+    'massnahme|geplant|geplant|anstoss_beantwortet', 'massnahme|umgesetzt|umgesetzt|anstoss_beantwortet',
+    'massnahme|bewertet|bewertet|anstoss_beantwortet',
+    'auffaelligkeit|-|offen|auffaelligkeit_vermerkt', 'auffaelligkeit|offen|beantwortet|auffaelligkeit_beantwortet',
+    'abweichung|-|offen|abweichung_eroeffnet', 'abweichung|offen|offen|kommentar', 'abweichung|offen|offen|ursache_aussage',
+    'abweichung|offen|offen|abweichung_geaendert', 'abweichung|offen|abgeschlossen|abweichung_abgeschlossen',
+    'anstoss|-|offen|anstoss_gesetzt', 'anstoss|offen|beantwortet|anstoss_beantwortet',
+  ]);
+  const SYSTEM_SCHRITTE = new Set(['auffaelligkeit_vermerkt', 'anstoss_gesetzt']);
+  const MIT_BEGRUENDUNG = new Set(['energieziel_angelegt', 'energieziel_geaendert', 'energieziel_bewertet', 'energieziel_beendet',
+    'massnahme_umgesetzt', 'massnahme_verworfen', 'massnahme_bewertet', 'abweichung_abgeschlossen']);
+
+  /** Die Verläufe aller Vorgänge, Vermerke und Anstöße — mit ihrem Zustand. */
+  const verlaeufe = (d: any): Array<{ schluessel: string; schritte: any[]; zustand: string }> => {
+    const out: Array<{ schluessel: string; schritte: any[]; zustand: string }> = [];
+    for (const block of Object.keys(EINZAHL)) {
+      for (const o of d[block] ?? []) {
+        const wer = o.kennzeichen ?? `${o.kennzahl}×${o.fassung}×${o.periode}`;
+        out.push({ schluessel: `${EINZAHL[block]}|${wer}`, schritte: o.verlauf, zustand: o.zustand });
+        for (const a of o.anstoesse ?? []) out.push({ schluessel: `anstoss|${wer}|${a.anlass_kennung}`, schritte: a.verlauf, zustand: a.zustand });
+      }
+    }
+    return out;
+  };
+  const alleSchritte = (d: any): any[] => verlaeufe(d).flatMap((v) => v.schritte);
+  const ttmmjjjj = (tag: string) => `${tag.slice(8, 10)}.${tag.slice(5, 7)}.${tag.slice(0, 4)}`;
+
+  const messgrundlagenFehler = (d: any): string[] => {
+    const fehler: string[] = [];
+    const bb = nach(d.bezugsbasen);
+    for (const m of d.massnahmen) {
+      const wo = m.kennzeichen, mg = m.messgrundlage, angelegt = m.angelegt.am;
+      if (mg === null) {
+        if (m.ausgangslage !== null || m.erwartete_wirkung.prozent !== null || m.kennzeichen_flaeche !== 'ohne Messgrundlage — Wirkung nicht messbar') {
+          fehler.push(`${wo}: ohne Messgrundlage weder Ausgangslage noch Wirkungszahl, dafür das Kennzeichen`);
+        }
+        for (const b of m.bewertungen) if (b.ergebnis !== 'nicht_messbar' || b.kopie !== null) fehler.push(`${wo}: ohne Messgrundlage nur „nicht messbar“ ohne Kopie`);
+        continue;
+      }
+      const basis = bb[mg.bezugsbasis];
+      const f = basis?.fassungen.find((x: any) => x.fassung === mg.fassung);
+      if (!f || basis.kennzahl !== mg.kennzahl) {
+        fehler.push(`${wo}: die Messgrundlage zitiert keine Fassung ihrer Kennzahl`);
+        continue;
+      }
+      if (f.freigabe.status !== 'freigegeben' || f.freigabe.am > angelegt || f.gilt_ab > angelegt || (f.gilt_bis !== null && f.gilt_bis < angelegt)) {
+        fehler.push(`${wo}: ${mg.bezugsbasis} Fassung ${mg.fassung} ist beim Anlegen nicht freigegeben und gültig`);
+      }
+      if (f.methode !== mg.methode) fehler.push(`${wo}: die Bewertungsmethode ist nicht die der zitierten Fassung`);
+      const a = m.ausgangslage;
+      if (a === null || m.kennzeichen_flaeche !== null || typeof m.erwartete_wirkung.prozent !== 'number') {
+        fehler.push(`${wo}: mit Messgrundlage gehören Ausgangslage und Wirkungszahl dazu`);
+        continue;
+      }
+      if (a.kopie.kennzahl !== mg.kennzahl || a.kopie.bezugsbasis !== mg.bezugsbasis || a.kopie.fassung !== mg.fassung) {
+        fehler.push(`${wo}: die Ausgangslage ist kein Vergleich der Messgrundlage`);
+      }
+      if (a.pruefsumme !== pruef(a.kopie)) fehler.push(`${wo}: die Prüfsumme deckt die Ausgangslage nicht`);
+      for (const b of m.bewertungen) {
+        if (b.kopie === null || b.pruefsumme !== pruef(b.kopie)) fehler.push(`${wo} Stand Nr. ${b.nr}: ohne Kopie der Wirkung oder Prüfsumme`);
+        else if (b.kopie.fassung !== mg.fassung) fehler.push(`${wo} Stand Nr. ${b.nr}: die Wirkung rechnet nicht gegen die Fassung der Messgrundlage`);
+      }
+    }
+    return fehler;
+  };
+
+  const ursachenFehler = (d: any): string[] => {
+    const namen = personen(d);
+    const fehler: string[] = [];
+    for (const s of alleSchritte(d)) {
+      if (s.art !== 'ursache_aussage') {
+        if ('wortlaut' in s || 'kennzeichen' in s) fehler.push(`${s.art} am ${s.am}: ein Wortlaut ohne Ursache-Aussage`);
+        continue;
+      }
+      const name = namen[s.person];
+      const soll = `Aussage von ${name}, ${ttmmjjjj(s.am)} — keine Messung`;
+      if (!name || s.kennzeichen !== soll || !s.wortlaut?.trim()) fehler.push(`Ursache-Aussage am ${s.am}: nicht „${soll}“ einer Person der Datei`);
+    }
+    return fehler;
+  };
+
+  const zaehlerFehler = (d: any): string[] => {
+    const fehler: string[] = [];
+    const nummern: Record<string, number[]> = {};
+    for (const [block, art] of [['energieziele', 'EZ'], ['massnahmen', 'M'], ['abweichungen', 'AW']] as const) {
+      for (const o of d[block]) {
+        const m = new RegExp(`^${art}-([0-9]{4})-([0-9]{4})$`).exec(o.kennzeichen);
+        if (!m) {
+          fehler.push(`${o.kennzeichen}: nicht das Muster ${art}-JJJJ-NNNN`);
+          continue;
+        }
+        const jahr = (art === 'EZ' ? o.zielperiode : art === 'M' ? o.angelegt.am : o.eroeffnet.am).slice(0, 4);
+        if (jahr !== m[1]) fehler.push(`${o.kennzeichen}: das Jahr ist nicht ${jahr}`);
+        const liste = (nummern[`${art}-${m[1]}`] ??= []);
+        if (liste.includes(Number(m[2]))) fehler.push(`${o.kennzeichen}: doppelt`);
+        liste.push(Number(m[2]));
+      }
+    }
+    for (const [art, n] of Object.entries(nummern)) {
+      const sortiert = [...new Set(n)].sort((x, y) => x - y);
+      if (sortiert[0] !== 1 || sortiert[sortiert.length - 1] !== sortiert.length) fehler.push(`${art}: Zähler nicht lückenlos ab 1 — ${sortiert}`);
+    }
+    return fehler;
+  };
+
+  const auffaelligkeitenFehler = (d: any): string[] => {
+    const fehler: string[] = [];
+    const gesehen = new Set<string>();
+    const aw = nach(d.abweichungen);
+    for (const a of d.auffaelligkeiten) {
+      const schluessel = `${a.kennzahl} × Fassung ${a.fassung} × ${a.periode}`;
+      if (gesehen.has(schluessel)) fehler.push(`${schluessel}: zweimal vermerkt`);
+      gesehen.add(schluessel);
+      const k = a.anlass;
+      if (k.kennzahl !== a.kennzahl || k.fassung !== a.fassung || k.monat !== a.periode || k.bezugsbasis !== a.bezugsbasis) {
+        fehler.push(`${schluessel}: der Anlass ist ein anderer Vergleich`);
+      }
+      if (k.urteil !== 'schlechter') fehler.push(`${schluessel}: vermerkt wird nur „schlechter“ (A1)`);
+      if (a.pruefsumme !== pruef(k)) fehler.push(`${schluessel}: die Prüfsumme deckt den Anlass nicht`);
+      if (a.antwort?.antwort === 'abweichung') {
+        const w = aw[a.antwort.abweichung];
+        if (!w || !w.monate.includes(a.periode) || kanonisch(w.anlass) !== kanonisch(k)) fehler.push(`${schluessel}: die eröffnete Abweichung trägt diesen Anlass nicht`);
+      } else if (a.antwort?.antwort === 'zur_kenntnis' && a.antwort.begruendung == null) {
+        fehler.push(`${schluessel}: „zur Kenntnis“ ohne Begründung`);
+      }
+    }
+    return fehler;
+  };
+
+  const tagOderZeit = (am: string) => (am.length === 10 ? mitternacht(am, 'Europe/Berlin').ms : Date.parse(am));
+  const uebergangsFehler = (d: any): string[] => {
+    const kuerzel = new Set(d.personen.map((p: any) => p.kuerzel));
+    const fehler: string[] = [];
+    for (const { schluessel, schritte, zustand } of verlaeufe(d)) {
+      const art = schluessel.split('|')[0];
+      let vorher = '-';
+      let zuletzt: number | null = null;
+      for (const s of schritte) {
+        const von = s.von ?? '-';
+        if (von !== vorher || !UEBERGAENGE.has(`${art}|${von}|${s.nach}|${s.art}`)) fehler.push(`${schluessel}: ${von} → ${s.nach} (${s.art}) ist kein Übergang`);
+        const system = SYSTEM_SCHRITTE.has(s.art);
+        if (system !== (s.person === null) || (!system && !kuerzel.has(s.person))) fehler.push(`${schluessel}: ${s.art} trägt die falsche Person`);
+        if (MIT_BEGRUENDUNG.has(s.art) && s.begruendung == null) fehler.push(`${schluessel}: ${s.art} ohne Begründung`);
+        const am = tagOderZeit(s.am);
+        if (zuletzt !== null && am < zuletzt - 86_400_000) fehler.push(`${schluessel}: der Verlauf springt zurück (${s.am})`);
+        zuletzt = am;
+        vorher = s.nach;
+      }
+      if (vorher !== zustand) fehler.push(`${schluessel}: der Zustand „${zustand}“ ist nicht der letzte Schritt „${vorher}“`);
+    }
+    return fehler;
+  };
+
+  const f2 = () => nach(daten.bezugsbasen)['BB-0001'].fassungen[1];
+  /** Ein Monat gegen BB-0001 Fassung 2: erwartet = a + b·kg (ganze kWh), Δ auf eine Stelle, Urteil im Band; außerhalb der Spannweite nicht anwendbar. */
+  const vergleiche = (f: any, kg: number, kwh: number) => {
+    if (kg < f.spannweite.toleriert_von || kg > f.spannweite.toleriert_bis) return { erwartet: null, roh: null, delta: null, urteil: 'nicht_anwendbar', grund: 'variable_ausserhalb' };
+    const roh = f.koeffizienten.a + f.koeffizienten.b * kg;
+    const erwartet = Math.round(roh);
+    const delta = halbAuf((kwh - erwartet) / erwartet * 100, 1);
+    return { erwartet, roh, delta, urteil: Math.abs(delta) <= f.toleranz_prozent ? 'im_rahmen' : delta < 0 ? 'besser' : 'schlechter', grund: null };
+  };
+  /** Σ gemessen ÷ Σ erwartet über die bewertbaren Monate (Σ erwartet ungerundet, erst die Summe auf ganze kWh) — nie ein Mittel. */
+  const summe = (f: any, monate: any[]) => {
+    let gemessen = 0, roh = 0, bewertbar = 0;
+    const ausgeschlossen: Record<string, string> = {};
+    for (const mo of monate) {
+      const v = vergleiche(f, mo.kg, mo.kwh);
+      if (v.roh === null) { ausgeschlossen[mo.periode] = v.grund!; continue; }
+      gemessen += mo.kwh; roh += v.roh; bewertbar++;
+    }
+    const erwartet = Math.round(roh);
+    return { gemessen_kwh: gemessen, erwartet_kwh: erwartet, delta_prozent: halbAuf((gemessen - erwartet) / erwartet * 100, 1),
+      monate_bewertbar: bewertbar, monate_gesamt: monate.length, ausgeschlossen };
+  };
+  const nurSumme = (s: any) => ({ gemessen_kwh: s.gemessen_kwh, erwartet_kwh: s.erwartet_kwh, delta_prozent: s.delta_prozent,
+    monate_bewertbar: s.monate_bewertbar, monate_gesamt: s.monate_gesamt, ausgeschlossen: s.ausgeschlossen });
+  const gegeben = (): Record<string, any> => Object.fromEntries(daten.abnahmefaelle_ap18.faelle.map((f: any) => [f.fall, f.gegeben]));
+
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.8', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung19(d);
+    expect(hex(d)).toBe(FASSUNG_1_8_SHA256);
+  });
+
+  it('hat den Umfang der Erweiterung — und Kennzahlen und Basen bleiben (R13)', () => {
+    expect(Object.keys(nach(daten.energieziele))).toEqual(['EZ-2028-0001']);
+    expect(Object.keys(nach(daten.massnahmen))).toEqual(['M-2028-0001', 'M-2028-0002']);
+    expect(Object.keys(nach(daten.abweichungen))).toEqual(['AW-2026-0001', 'AW-2028-0001']);
+    expect(daten.auffaelligkeiten).toHaveLength(3);
+    expect(daten.kennzahlen_1_9_monate[0].monate.map((m: any) => m.periode)).toEqual(
+      ['2028-04', '2028-05', '2028-06', '2028-07', '2028-08', '2028-09', '2028-10', '2028-11', '2028-12', '2029-01']);
+    expect(daten.abnahmefaelle_ap18.faelle.map((f: any) => f.fall)).toEqual(['R1', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R12']);
+    expect(daten.zeitachse.filter((z: any) => z.verbesserung != null)).toHaveLength(18);
+    expect(daten.korrekturen.map((k: any) => k.kennung)).toEqual(['K-2026-0007', 'K-2028-0001']);
+    expect(daten.kennzahlen.map((k: any) => k.kennzeichen)).toEqual(['KZ-0001', 'KZ-0002', 'KZ-0003', 'KZ-0004', 'KZ-0005']);
+    expect(daten.bezugsbasen.reduce((s: number, b: any) => s + b.fassungen.length, 0)).toBe(8);
+  });
+
+  it('jede Maßnahme mit Messgrundlage zitiert eine freigegebene Fassung — Rot-Probe: abgelöste Fassung, geänderte Kopie, „belegt“ ohne Grundlage', () => {
+    expect(messgrundlagenFehler(daten)).toEqual([]);
+    expect(daten.massnahmen.filter((m: any) => m.messgrundlage !== null)).toHaveLength(1);
+    const d = structuredClone(daten); d.massnahmen[0].messgrundlage.fassung = 1;
+    expect(messgrundlagenFehler(d).some((f) => f.includes('nicht freigegeben und gültig'))).toBe(true);
+    const e = structuredClone(daten); e.massnahmen[0].ausgangslage.kopie.delta_prozent = 12.0;
+    expect(messgrundlagenFehler(e).some((f) => f.includes('Prüfsumme'))).toBe(true);
+    const g = structuredClone(daten); g.massnahmen[1].bewertungen[0].ergebnis = 'belegt';
+    expect(messgrundlagenFehler(g).some((f) => f.includes('nur „nicht messbar“'))).toBe(true);
+  });
+
+  it('jede Ursache ist die Aussage einer Person — Rot-Probe: ohne Person, als Satz des Systems', () => {
+    expect(ursachenFehler(daten)).toEqual([]);
+    expect(alleSchritte(daten).filter((s) => s.art === 'ursache_aussage').map((s) => s.person)).toEqual(['JW', 'MD']);
+    const d = structuredClone(daten); d.abweichungen[1].verlauf[2].person = null;
+    expect(ursachenFehler(d)).toHaveLength(1);
+    const e = structuredClone(daten); e.abweichungen[0].verlauf[1].kennzeichen = 'Ursache: Baustellenstrom';
+    expect(ursachenFehler(e)).toHaveLength(1);
+  });
+
+  it('die Kennzeichen-Zähler sind je Jahr und Art lückenlos — Rot-Probe: Lücke, falsches Jahr', () => {
+    expect(zaehlerFehler(daten)).toEqual([]);
+    const d = structuredClone(daten); d.massnahmen[1].kennzeichen = 'M-2028-0003';
+    expect(zaehlerFehler(d).some((f) => f.includes('M-2028: Zähler nicht lückenlos'))).toBe(true);
+    const e = structuredClone(daten); e.abweichungen[0].eroeffnet.am = '2027-01-09';
+    expect(zaehlerFehler(e).some((f) => f.includes('das Jahr ist nicht 2027'))).toBe(true);
+  });
+
+  it('jede Auffälligkeit ist eindeutig je Kennzahl × Fassung × Periode — Rot-Probe: doppelt, „zur Kenntnis“ ohne Begründung', () => {
+    expect(auffaelligkeitenFehler(daten)).toEqual([]);
+    const d = structuredClone(daten); d.auffaelligkeiten.push(structuredClone(d.auffaelligkeiten[1]));
+    expect(auffaelligkeitenFehler(d).some((f) => f.includes('zweimal vermerkt'))).toBe(true);
+    const e = structuredClone(daten); e.auffaelligkeiten[2].antwort.begruendung = null;
+    expect(auffaelligkeitenFehler(e).some((f) => f.includes('ohne Begründung'))).toBe(true);
+  });
+
+  it('die Zustände kommen nur aus den Übergängen von vorgaenge.json — Rot-Probe: fremder Übergang, falscher Zustand', () => {
+    expect(uebergangsFehler(daten)).toEqual([]);
+    expect(UEBERGAENGE.size).toBe(24);
+    const d = structuredClone(daten); d.massnahmen[1].verlauf[1].von = 'verworfen';
+    expect(uebergangsFehler(d).some((f) => f.includes('ist kein Übergang'))).toBe(true);
+    const e = structuredClone(daten); e.energieziele[0].zustand = 'erreicht';
+    expect(uebergangsFehler(e).some((f) => f.includes('nicht der letzte Schritt'))).toBe(true);
+  });
+
+  it('die Vorgänge verweisen nur in die Datei — Verantwortliche, Einsätze, Ziel, Herkunft, W9, Pflege, Zeitachse', () => {
+    const kuerzel = new Set(daten.personen.map((p: any) => p.kuerzel));
+    const ez = nach(daten.energieziele), aw = nach(daten.abweichungen), m = nach(daten.massnahmen);
+    const einstufungen = Object.fromEntries(daten.einstufungen.map((e: any) => [e.einsatz, e]));
+    const standorte = nach(daten.standorte);
+    for (const o of [...daten.energieziele, ...daten.massnahmen, ...daten.abweichungen]) {
+      expect(kuerzel.has(o.verantwortlich), o.kennzeichen).toBe(true);
+      expect(o.termin ?? o.frist, o.kennzeichen).toBeTruthy();
+      expect(standorte[o.standort], o.kennzeichen).toBeDefined();
+    }
+    const ziel = ez['EZ-2028-0001'];
+    const [jahr, monat] = ziel.zielperiode.slice(8).split('-').map(Number);
+    expect(ziel.termin).toBe(new Date(Date.UTC(jahr, monat, 0)).toISOString().slice(0, 10));
+    for (const x of Object.values(m) as any[]) {
+      if (x.energieziel) {
+        const z = ez[x.energieziel];
+        expect([z.kennzahl, z.bezugsbasis, z.fassung]).toEqual([x.messgrundlage.kennzahl, x.messgrundlage.bezugsbasis, x.messgrundlage.fassung]);
+      }
+      const f = einstufungen[x.einsatz.kennzeichen].fassungen.find((g: any) => g.fassung === x.einsatz.einstufung_fassung);
+      expect(f.gueltig_ab <= x.angelegt.am && (f.gueltig_bis === null || f.gueltig_bis >= x.angelegt.am), `${x.kennzeichen}: Einstufungs-Fassung`).toBe(true);
+      if (x.herkunft.art === 'abweichung') expect(aw[x.herkunft.kennung].abschluss.massnahme).toBe(x.kennzeichen);
+      if (x.herkunft.art === 'einsatz') expect(x.herkunft.kennung).toBe(x.einsatz.kennzeichen);
+      for (const a of x.anstoesse) expect(daten.korrekturen.map((k: any) => k.kennung)).toContain(a.anlass_kennung);
+      if (x.umgesetzt_am) expect(x.umgesetzt_am >= x.angelegt.am).toBe(true);
+    }
+    for (const w of Object.values(aw) as any[]) {
+      expect(w.abschluss.ergebnis === 'massnahme').toBe(w.abschluss.massnahme != null);
+      if (w.abschluss.massnahme) expect(m[w.abschluss.massnahme]).toBeDefined();
+    }
+    const [, f2ee3, f3] = einstufungen['EE-3'].fassungen;
+    expect(f3.fassung).toBe(3);
+    expect(f3.begruendung).toContain('M-2028-0002');
+    expect(m['M-2028-0002']).toBeDefined();
+    expect(f2ee3.gueltig_bis).toBe(plusTage(f3.gueltig_ab, -1));
+    const anteil = halbAuf(f3.herkunft.eingaenge[0].wert * 100 / f3.herkunft.nenner.wert, 1);
+    expect(f3.begruendung).toContain(`${String(anteil).replace('.', ',')} %`);
+    const bb1 = nach(daten.bezugsbasen)['BB-0001'];
+    for (const p of bb1.pflege) {
+      const f = bb1.fassungen[p.fassung - 1];
+      expect(f.freigabe.status).toBe('freigegeben');
+      expect(p.am >= f.wiedervorlage_faellig_am).toBe(true);
+      const [j, mo, t] = p.am.split('-').map(Number);
+      expect(p.wiedervorlage_faellig_am).toBe(new Date(Date.UTC(j, mo - 1 + f.wiedervorlage_monate, t)).toISOString().slice(0, 10));
+      expect(kuerzel.has(p.person)).toBe(true);
+    }
+    const ziele = new Set([...Object.keys(ez), ...Object.keys(m), ...Object.keys(aw), ...daten.auffaelligkeiten.map((a: any) => a.kennzahl), 'BB-0001']);
+    for (const z of daten.zeitachse.filter((z: any) => z.verbesserung != null)) expect(ziele.has(z.verbesserung), z.ereignis).toBe(true);
+  });
+
+  it('die Wirkung und der Ziel-Stand rechnen aus der Reihe (NW-3: Σ ÷ Σ, Ausschlüsse, Korrektur, R8, R9)', () => {
+    const f = f2();
+    const g = gegeben();
+    const monate: Record<string, any> = {};
+    for (const [p, mo] of Object.entries(g.R4.stand_10_07_2028.monate) as Array<[string, any]>) monate[p] = { periode: p, ...mo };
+    for (const [p, mo] of Object.entries(g.R5.je_monat) as Array<[string, any]>) {
+      if (monate[p]) expect([monate[p].kg, monate[p].kwh], `R4 = R5 ${p}`).toEqual([mo.kg, mo.kwh]);
+      monate[p] = { periode: p, ...mo };
+    }
+    for (const mo of daten.kennzahlen_1_9_monate[0].monate) {
+      const { version, ...ohne } = mo;
+      expect(version).toBe(1);
+      expect(ohne, `Reihe = R5 ${mo.periode}`).toEqual({ periode: mo.periode, ...g.R5.je_monat[mo.periode] });
+    }
+    for (const mo of Object.values(monate)) {
+      const v = vergleiche(f, mo.kg, mo.kwh);
+      expect([mo.urteil, mo.grund], mo.periode).toEqual([v.urteil, v.grund]);
+      if (v.delta !== null) expect(mo.delta_prozent, mo.periode).toBe(v.delta);
+      if ('erwartet_kwh' in mo) expect(mo.erwartet_kwh, mo.periode).toBe(v.erwartet);
+    }
+    const alle = Object.values(monate).sort((a, b) => a.periode.localeCompare(b.periode));
+    const von = (a: string, b: string) => alle.filter((mo) => mo.periode >= a && mo.periode <= b);
+    const m1 = nach(daten.massnahmen)['M-2028-0001'];
+    expect(m1.umgesetzt_am.slice(0, 7)).toBe('2028-01');
+    const stand1 = m1.bewertungen[0].kopie;
+    expect(nurSumme(stand1.wirkung)).toEqual(summe(f, von('2028-02', '2028-10')));
+    expect(nurSumme(g.R5.abruf_15_11_2028)).toEqual(summe(f, von('2028-02', '2028-10')));
+    expect(nurSumme(g.R5.abruf_10_02_2029)).toEqual(summe(f, von('2028-02', '2029-01')));
+    expect(g.R6.bewertung_stand_1.kopie.wirkung).toEqual(stand1.wirkung);
+    expect(stand1.monate.map((mo: any) => mo.periode)).toEqual(von('2028-02', '2028-10').map((mo) => mo.periode));
+    expect(g.R6.januar_2028.zaehlt_zur_wirkung).toBe(false);
+    const ziel = nach(daten.energieziele)['EZ-2028-0001'];
+    expect(nurSumme(g.R4.stand_10_07_2028.summe)).toEqual(summe(f, von('2028-01', '2028-06')));
+    expect(nurSumme(ziel.bewertung.kopie.stand)).toEqual(summe(f, von('2028-01', '2028-12')));
+    expect(ziel.bewertung.kopie.vorschlag).toBeNull();
+    expect(ziel.bewertung.pruefsumme).toBe(pruef(ziel.bewertung.kopie));
+    const k = daten.korrekturen.find((x: any) => x.kennung === 'K-2028-0001');
+    const kg = m1.ausgangslage.kopie.bedingung['BZ-1_kg'];
+    expect(k.folgen[1].wert).toBe(halbAuf(k.neu_kwh / kg, 4));
+    expect(g.R12.vergleich_version_2.delta_prozent).toBe(vergleiche(f, kg, k.neu_kwh).delta);
+    expect(m1.ausgangslage.kopie.delta_prozent).toBe(vergleiche(f, kg, k.alt_kwh).delta);
+    expect(m1.ausgangslage.kopie.gemessen_version).toBe(1);
+    expect(Date.parse(k.vorgeschlagen_am)).toBeLessThan(Date.parse(k.freigegeben_am));
+    const aw1 = nach(daten.abweichungen)['AW-2026-0001'].anlass;
+    const kz5 = halbAuf(aw1.gemessen_kwh / aw1.flaeche_m2, 4);
+    expect(aw1.kennzahl_kwh_je_m2).toBe(kz5);
+    expect(aw1.basiswert).toBe(nach(daten.bezugsbasen)['BB-0003'].fassungen[0].basiswert);
+    expect(halbAuf((kz5 - aw1.basiswert) / aw1.basiswert * 100, 1)).toBe(aw1.delta_prozent);
+    const m2 = nach(daten.massnahmen)['M-2028-0002'];
+    expect(tageZwischen(m2.termin, '2028-03-15')).toBe(15);
+    expect(m2.umgesetzt_am > '2028-03-15').toBe(true);
+  });
+
+  it('die gegeben-Blöcke von R1, R3, R4, R5, R6, R7, R8, R12 stehen wörtlich in der Datei und decken sich mit den fachlichen Blöcken (NW-3)', () => {
+    const g = gegeben();
+    const m = nach(daten.massnahmen), aw = nach(daten.abweichungen);
+    const ez = nach(daten.energieziele)['EZ-2028-0001'];
+    const m1 = m['M-2028-0001'], m2 = m['M-2028-0002'];
+    const { pruefsumme: _p1, ...r1 } = g.R1.vergleich_dezember_2027;
+    const dez = daten.auffaelligkeiten.find((a: any) => a.periode === '2027-12');
+    expect(dez.anlass).toEqual(r1);
+    expect(dez.vermerkt_am).toBe(g.R1.vermerk.am);
+    expect([dez.antwort.abweichung, aw['AW-2028-0001'].frist, aw['AW-2028-0001'].verantwortlich])
+      .toEqual([g.R1.antwort.abweichung, g.R1.antwort.frist, g.R1.antwort.verantwortlich]);
+    const r3 = g.R3.massnahme;
+    expect([m1.titel, m1.termin, m1.verantwortlich, m1.energieziel, m1.umgesetzt_am])
+      .toEqual([r3.titel, r3.termin, r3.verantwortlich.benutzer, r3.energieziel, g.R3.umsetzung.am]);
+    expect(m1.herkunft).toEqual(r3.herkunft);
+    expect(m1.erwartete_wirkung).toEqual(r3.erwartete_wirkung);
+    const { pruefsumme: _p3, kopiert_am, ...r3a } = r3.ausgangslage;
+    expect(m1.ausgangslage.kopie).toEqual(r3a);
+    expect(m1.ausgangslage.kopiert_am).toBe(kopiert_am);
+    for (const feld of ['kennzahl', 'bezugsbasis', 'fassung', 'methode', 'bewertungsmethode_satz']) expect(m1.messgrundlage[feld], feld).toBe(r3.messgrundlage[feld]);
+    // Befund (PR-Text): R3 nennt für EE-1 die Einstufungs-Fassung 2 — EE-1 hat in der Datei nur Fassung 1
+    expect([m1.einsatz.kennzeichen, r3.einsatz.einstufung_fassung, m1.einsatz.einstufung_fassung]).toEqual([r3.einsatz.kennzeichen, 2, 1]);
+    const r4 = g.R4.energieziel;
+    for (const feld of ['kennzeichen', 'kennzahl', 'bezugsbasis', 'fassung', 'zielwert_prozent', 'zielperiode', 'verantwortlich', 'wortlaut', 'begruendung', 'angelegt']) {
+      expect(ez[feld], feld).toEqual(r4[feld]);
+    }
+    const r6 = g.R6.bewertung_stand_1, b1 = m1.bewertungen[0];
+    for (const feld of ['am', 'person', 'vieraugen', 'ergebnis', 'begruendung']) expect(b1[feld], feld).toBe(r6[feld]);
+    expect(b1.kopie.erwartete_wirkung_prozent).toBe(r6.kopie.erwartete_wirkung_prozent);
+    const r7 = g.R7;
+    for (const feld of ['kennzeichen', 'titel', 'verantwortlich', 'termin', 'kennzeichen_flaeche', 'messgrundlage', 'erwartete_wirkung']) {
+      expect(m2[feld], feld).toEqual(r7.massnahme[feld]);
+    }
+    expect([m2.herkunft.kennung, m2.einsatz.einstufung_fassung]).toEqual([r7.massnahme.herkunft.kennung, r7.massnahme.herkunft.einstufung_fassung]);
+    expect(m2.umgesetzt_am).toBe(r7.umsetzung.am);
+    for (const feld of ['am', 'person', 'ergebnis', 'begruendung']) expect(m2.bewertungen[0][feld], feld).toBe(r7.bewertung[feld]);
+    const f3 = daten.einstufungen.find((e: any) => e.einsatz === 'EE-3').fassungen[2];
+    const rs = r7.ap16_rueckstufung;
+    expect([f3.fassung, f3.gueltig_ab, f3.einstufung, f3.person, f3.begruendung]).toEqual([rs.fassung, rs.ab, rs.einstufung, rs.person, `${rs.begruendung}.`]);
+    const r8 = g.R8, w1 = aw['AW-2026-0001'];
+    for (const feld of ['kennzahl', 'bezugsbasis', 'fassung', 'gemessen_kwh', 'flaeche_m2', 'kennzahl_kwh_je_m2', 'basiswert', 'delta_prozent', 'urteil', 'kennzeichen']) {
+      expect(w1.anlass[feld], feld).toEqual(r8.vergleich_november_2026[feld]);
+    }
+    expect([w1.kennzeichen, w1.eroeffnet.am, w1.eroeffnet.person, w1.verantwortlich, w1.frist])
+      .toEqual([r8.abweichung.kennzeichen, r8.abweichung.eroeffnet, r8.abweichung.person, r8.abweichung.verantwortlich, r8.abweichung.frist]);
+    const aussage = w1.verlauf.find((s: any) => s.art === 'ursache_aussage');
+    for (const feld of ['am', 'person', 'wortlaut', 'kennzeichen', 'beleg_kennung']) expect(aussage[feld], feld).toBe(r8.eintraege[0][feld]);
+    for (const feld of ['am', 'person', 'ergebnis', 'begruendung']) expect(w1.abschluss[feld], feld).toBe(r8.abschluss[feld]);
+    const r12 = g.R12;
+    const k = daten.korrekturen.find((x: any) => x.kennung === 'K-2028-0001');
+    expect([k.reihe, k.periode, k.alt_kwh, k.neu_kwh, k.freigegeben_am, k.freigegeben_von, k.folgen[1].wert])
+      .toEqual([r12.korrektur.messstelle, r12.korrektur.periode, r12.korrektur.alt_kwh, r12.korrektur.neu_kwh, r12.korrektur.freigegeben_am, r12.korrektur.person, r12.korrektur.kennzahl_version_2]);
+    const a = m1.anstoesse[0];
+    expect([a.art, a.anlass_kennung, a.am]).toEqual([r12.anstoss.art, r12.anstoss.anlass_kennung, r12.anstoss.am]);
+    for (const feld of ['am', 'person', 'antwort', 'begruendung']) expect(a.antwort[feld], feld).toBe(r12.antwort[feld]);
+    expect(m1.ausgangslage.kopie.delta_prozent).toBe(r12.anstoss.ausgangslage_bleibt.delta_prozent);
   });
 });
