@@ -27,6 +27,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlcert"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
@@ -124,7 +125,7 @@ type Agent struct {
 	damp *guards.FollowDamper
 	// dampProfileFor overrides guards.DampProfileFor (nil = that); a field only
 	// so a replay test can run the same box with and without the damper.
-	dampProfileFor func(family, controlPath string) guards.DampProfile
+	dampProfileFor func(dev controlprofile.Device) guards.DampProfile
 	// native carries the per-slot supervision of the NATIVE SELF-REGULATION: in
 	// a covering slot the setpoint itself is handed back to the inverter, which
 	// then decides its own watts - and this type is what takes it back at the
@@ -2734,21 +2735,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// store and absorption - acts on the CONTROL READING rc, whose pv/load only
 	// advance on a device measurement pair taken after the last write had
 	// settled. The live reading r keeps every compliance and watchdog stage.
-	a.invMu.Lock()
-	dampFamily := ""
-	if a.inv != nil {
-		dampFamily = a.inv.Family
-	}
-	a.invMu.Unlock()
-	dampPath := ""
-	if c := a.State.Get().Control; c != nil {
-		dampPath = c.ControlPath
-	}
 	profileFor := guards.DampProfileFor
 	if a.dampProfileFor != nil {
 		profileFor = a.dampProfileFor
 	}
-	dampProfile := profileFor(dampFamily, dampPath)
+	dampProfile := profileFor(a.controlProfileDevice())
 	rc, dampPair := a.damp.Gate(now, dampProfile, r, readingAt)
 	preCorrectionKw := kw
 	trimmed := a.trim.Apply(now, kw,

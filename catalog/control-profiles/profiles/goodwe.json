@@ -1,0 +1,151 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "goodwe_lib"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "47511 = 12 + 47512 = W."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "goodwe_lib"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "47511 = 1 AUTO."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Eigener „nur PV laden“-Modus in der Bibliothek genannt, Bedeutung unbelegt."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Export-Limit als Einstellung."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "goodwe_lib"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "47511 = 8 Battery Standby."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "goodwe_lib"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "47511 = 11 + 47512 = W (nur bei Änderung)."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": false,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "goodwe_lib"
+    ],
+    "sicherheit": "C",
+    "text": "Nicht flüchtige Register: keine Box-Regelung (Konzept §6.5)."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: Arbeitsmodus General/Self-use, ems_mode 47511 = 1 AUTO (C)."
+  },
+  "empfehlung": "Nur Eigenverbrauch + wenige Planwechsel; keine Box-Regelung (Verschleiß).",
+  "fallen": [
+    "Kein Watchdog: jede Box-Störung lässt den letzten Befehl stehen.",
+    "Wechsel des work_mode löscht ToU-Einstellungen.",
+    "ET- und ES-Karten unterscheiden sich; WLAN-Dongle nur Modbus über UDP 8899."
+  ],
+  "familie": "ET / EH / BH / BT",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "GoodWe",
+  "id": "goodwe",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "ET",
+    "EH",
+    "BH",
+    "BT"
+  ],
+  "quellen": [
+    "goodwe_lib",
+    "dd"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "C",
+    "speicher": "dauerspeicher",
+    "text": "Nicht flüchtig: nur bei Änderung schreiben, nie im Takt (C)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "C",
+    "text": "Keiner – Werte überdauern sogar einen Stromausfall (C).",
+    "vorhanden": false,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "dauerspeicher",
+    "text": "47511 ems_mode (8 Standby/Halten · 11 Laden · 12 Entladen …) + 47512 Leistung W (C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "GoodWe-Zähler (GM3000/GMK110) am Netzpunkt."
+  }
+}

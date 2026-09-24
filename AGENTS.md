@@ -13,6 +13,7 @@ Mandantenfähiges EMS für PV, Speicher und Verbraucher. Einstieg: [Dokumentatio
 | `edge-app` | Kunden-Box; [lokale Regeln](edge-app/AGENTS.md) |
 | `frontend/portal` | React-Portal; [lokale Regeln](frontend/portal/AGENTS.md) |
 | `catalog/measurement-points` | Geprüfte Herstellerquellen und generierte Messpunkte |
+| `catalog/control-profiles` | Steuerprofile je Wechselrichter-Familie: Wissen mit Quellen, keine Freigabe; Adapter-Folgen per Test an den Code gebunden; [README](catalog/control-profiles/README.md) |
 | `edge/` | Lokaler Node-RED-/SunSpec-Testpfad |
 
 ## Arbeiten und prüfen

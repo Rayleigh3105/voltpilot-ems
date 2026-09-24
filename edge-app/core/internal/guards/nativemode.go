@@ -152,8 +152,19 @@ const (
 )
 
 // NativeWriteBudgetPerDay bounds the mode changes of a lever that writes
-// PERSISTENT memory (§6.6, F12). A RAM lever is counted, never bounded.
+// PERSISTENT memory (§6.6, F12). A RAM lever is counted, never bounded. It is
+// the Vorgabe: the device's control profile may state a tighter day budget
+// (NativeInput.PersistentWriteBudget), never a looser one.
 const NativeWriteBudgetPerDay = 20
+
+// persistentWriteBudget is the day budget in force: the profile's statement
+// when it has one inside (0, NativeWriteBudgetPerDay], else the Vorgabe.
+func persistentWriteBudget(stated int) int {
+	if stated <= 0 || stated > NativeWriteBudgetPerDay {
+		return NativeWriteBudgetPerDay
+	}
+	return stated
+}
 
 var nativeReasonText = map[string]string{
 	NativeEngaged:            "Der Wechselrichter regelt den Verbrauch gerade selbst.",
@@ -302,6 +313,12 @@ type NativeInput struct {
 	// Without a report only the pre-existing E↓ path exists (Duty), exactly as
 	// before K4b - a window intent needs a lever Layer 1 NAMED.
 	Levers *NativeLevers
+	// PersistentWriteBudget is the day budget of a persistent lever the
+	// device's control profile states (catalog/control-profiles
+	// schreibbudget.dauerspeicher_je_tag); 0 = no statement, the Vorgabe
+	// NativeWriteBudgetPerDay applies. Whether the lever IS persistent stays
+	// Layer 1's report (Levers.Persistent) - the profile never releases a lever.
+	PersistentWriteBudget int
 	// ProvenIntent is the intent the proving readback says the primitive
 	// realises (native.intent). A window intent is only proven by its own word;
 	// E↓ also by silence (a pre-K4b Layer 1 never says it).
@@ -602,7 +619,7 @@ func (n *NativeMode) decide(now time.Time, in NativeInput) NativeDecision {
 	// 12. The write budget of a persistent lever (§6.6, F12): a hand-over costs
 	//     the entry AND its exit, so it needs room for both.
 	if in.Levers != nil && in.Levers.Persistent && !n.engaged &&
-		n.writes+2 > NativeWriteBudgetPerDay {
+		n.writes+2 > persistentWriteBudget(in.PersistentWriteBudget) {
 		n.since = time.Time{}
 		return refuse(NativeWriteBudget)
 	}

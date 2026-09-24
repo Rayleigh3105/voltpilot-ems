@@ -4,34 +4,66 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 )
 
 var dampT0 = time.Date(2026, 9, 24, 15, 15, 0, 0, time.UTC)
 
 func dampAt(s float64) time.Time { return dampT0.Add(time.Duration(s * float64(time.Second))) }
 
-func deyeProfile() DampProfile { return DampProfileFor("hybrid_3p", "remote") }
+func deyeProfile() DampProfile { return DampProfileFor(deyeRemote) }
+
+var deyeRemote = controlprofile.Device{Brand: "deye", Model: "sun-30k-sg01hp3", Family: "hybrid_3p", ControlPath: "remote"}
 
 func surplusReading(pv, load float64) Reading {
 	return Reading{SocPct: 40, PvKw: pv, LoadKw: load, GridLimitKw: Unknown()}
 }
 
 func TestDampProfileFor(t *testing.T) {
-	if !DampProfileFor("", "remote").Off {
+	if !DampProfileFor(controlprofile.Device{ControlPath: "remote"}).Off {
 		t.Error("no inverter selected: nothing is written, the damper must be off")
 	}
-	if !DampProfileFor("hybrid_3p", DampControlPathPersistent).Off {
+	tou := controlprofile.Device{Brand: "deye", Family: "hybrid_3p", ControlPath: DampControlPathPersistent}
+	if !DampProfileFor(tou).Off {
 		t.Error("the Deye ToU surface is a persistent lever: no box regulation to damp")
 	}
-	p := DampProfileFor("hybrid_3p", "remote")
+	p := DampProfileFor(deyeRemote)
 	if p.Off || p.Settle != 15*time.Second || p.MaxCadence != 25*time.Second {
 		t.Errorf("Deye remote profile: %+v, want the Herzogau measurement (15 s settle, 25 s cadence)", p)
 	}
-	if d := DampProfileFor("kostal_plenticore", ""); d != DefaultDampProfile() {
-		t.Errorf("a family without a measured profile gets the Vorgabe: %+v", d)
+	if prof, ok := controlprofile.For(deyeRemote); !ok || prof.ID != "deye_hp3_remote" || p != dampProfileFrom(prof, ok) {
+		t.Errorf("the Deye remote timing must come from its control profile: %+v %v", prof, ok)
+	}
+	if d := DampProfileFor(controlprofile.Device{Brand: "kostal", Family: "kostal_plenticore"}); d != DefaultDampProfile() {
+		t.Errorf("a profile without measured timing gets the Vorgabe: %+v", d)
+	}
+	if d := DampProfileFor(controlprofile.Device{Brand: "deye", Family: "hybrid_3p"}); d != DefaultDampProfile() {
+		t.Errorf("no profile (older Layer 1 without a control path) gets the Vorgabe: %+v", d)
 	}
 	if p.RampKw != 3 || p.ReserveKw != 0.5 || p.DeadbandKw != 0.2 {
 		t.Errorf("shaping: %+v, want ramp 3 kW, reserve 0.5 kW, deadband 0.2 kW (concept §6.5)", p)
+	}
+}
+
+// TestDampProfileFromReadsTheProfile pins the mapping with values no Vorgabe
+// has: the timing is the profile's, per value; the shaping stays the box's.
+func TestDampProfileFromReadsTheProfile(t *testing.T) {
+	yes, no := true, false
+	settle, cadence := 7.5, 4.0
+	p := dampProfileFrom(controlprofile.Profile{Damping: controlprofile.Damping{BoxRegulates: &yes, SettleS: &settle, CadenceS: &cadence}}, true)
+	if p.Off || p.Settle != 7500*time.Millisecond || p.MaxCadence != 4*time.Second || p.RampKw != 3 {
+		t.Errorf("profile timing: %+v", p)
+	}
+	p = dampProfileFrom(controlprofile.Profile{Damping: controlprofile.Damping{SettleS: &settle}}, true)
+	if p.Settle != 7500*time.Millisecond || p.MaxCadence != DefaultDampProfile().MaxCadence {
+		t.Errorf("a missing value keeps the Vorgabe: %+v", p)
+	}
+	if !dampProfileFrom(controlprofile.Profile{Damping: controlprofile.Damping{BoxRegulates: &no}}, true).Off {
+		t.Error("a profile that forbids box regulation turns the damper off")
+	}
+	if dampProfileFrom(controlprofile.Profile{}, false) != DefaultDampProfile() {
+		t.Error("no profile: the Vorgabe")
 	}
 }
 

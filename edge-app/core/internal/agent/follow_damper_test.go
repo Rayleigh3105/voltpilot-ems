@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
@@ -108,8 +109,8 @@ func runDeyeReplay(t *testing.T, s replayScenario, damped bool) replayResult {
 	cfg.DataDir = t.TempDir()
 	a, _ := startBusOnlyAgent(t, cfg)
 	if damped {
-		a.dampProfileFor = func(string, string) guards.DampProfile {
-			return guards.DampProfileFor(inverter.FamHybrid3p, "remote")
+		a.dampProfileFor = func(controlprofile.Device) guards.DampProfile {
+			return guards.DampProfileFor(controlprofile.Device{Brand: inverter.BrandDeye, Family: inverter.FamHybrid3p, ControlPath: "remote"})
 		}
 	}
 	setPlan := func(kw float64) {

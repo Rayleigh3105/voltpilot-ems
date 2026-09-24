@@ -245,13 +245,14 @@ func TestExportWithHeadroomIsAHintNotATakeBack(t *testing.T) {
 // lever stops at the day's budget (with room for the exit), a RAM lever is only
 // counted.
 func TestWriteBudget(t *testing.T) {
-	run := func(persistent bool) (engagedSlots, writes int) {
+	run := func(persistent bool, budget int) (engagedSlots, writes int) {
 		n := NewNativeMode(time.Minute)
 		day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
 		for i := 0; i < 96; i++ {
 			slot := day.Add(time.Duration(i) * 15 * time.Minute)
 			in := surplusInput()
 			in.Levers = &NativeLevers{Intents: allLevers.Intents, Window: true, Persistent: persistent}
+			in.PersistentWriteBudget = budget
 			in.SlotStart = slot
 			if i%2 == 1 { // alternate E↑ and a sell slot: the worst realistic day
 				in.Intent = ""
@@ -264,14 +265,27 @@ func TestWriteBudget(t *testing.T) {
 		}
 		return
 	}
-	pSlots, pWrites := run(true)
+	pSlots, pWrites := run(true, 0)
 	if pWrites > NativeWriteBudgetPerDay || pSlots != NativeWriteBudgetPerDay/2 {
 		t.Fatalf("persistent lever: %d engaged slots, %d writes - budget %d", pSlots, pWrites, NativeWriteBudgetPerDay)
 	}
-	slots, writes := run(false)
+	slots, writes := run(false, 0)
 	if slots != 48 || writes != 96 {
 		t.Fatalf("RAM lever is counted, not bounded: %d slots, %d writes", slots, writes)
 	}
 	t.Logf("F12: persistent lever %d engaged slots / %d writes (budget %d), RAM lever %d slots / %d writes counted",
 		pSlots, pWrites, NativeWriteBudgetPerDay, slots, writes)
+
+	// K7: the device's control profile states the day budget. A tighter one
+	// binds; a looser one than the concept's 20 (F12) never does; a RAM lever
+	// stays unbounded whatever the profile says.
+	if s, w := run(true, 6); w > 6 || s != 3 {
+		t.Fatalf("profile budget 6: %d engaged slots, %d writes", s, w)
+	}
+	if s, w := run(true, 40); s != pSlots || w != pWrites {
+		t.Fatalf("a profile never loosens the Vorgabe: %d slots, %d writes", s, w)
+	}
+	if s, w := run(false, 6); s != 48 || w != 96 {
+		t.Fatalf("RAM lever with a profile budget: %d slots, %d writes", s, w)
+	}
 }

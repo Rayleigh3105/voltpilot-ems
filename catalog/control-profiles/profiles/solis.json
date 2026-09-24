@@ -1,0 +1,141 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "solis_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "43110 Self-Use."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "solis_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "43135 = 1 + 43136 = Leistung."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": "D",
+    "text": "Unbelegt - Vorgabe der Box, bis am Gerät gemessen."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: „Self-Use“ (Bitfeld 43110) (C)."
+  },
+  "empfehlung": "Stufe 3: Partner-Zugang zu den Tabellen beantragen, bevor gebaut wird.",
+  "fallen": [
+    "Schreib-Registertabellen gibt Solis nur über Ticket an EMS-Partner heraus (A)."
+  ],
+  "familie": "RHI / S6-EH Hybride",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Solis",
+  "id": "solis",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "RHI",
+    "S6-EH"
+  ],
+  "quellen": [
+    "solis_ha",
+    "solis_sc"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "D",
+    "text": "unbelegt (D).",
+    "vorhanden": null,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "unbelegt",
+    "text": "43110 Bitfeld (Self-Use, Time of Use, Netzladen Bit 5 …); Fernsteuerung 43135 = 1 + 43136 Leistung (C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Zähler am Netzpunkt."
+  }
+}

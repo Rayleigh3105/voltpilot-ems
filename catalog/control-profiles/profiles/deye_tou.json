@@ -1,0 +1,886 @@
+{
+  "absichten": {
+    "A": {
+      "adapter_folge": "entladen",
+      "beleg": [
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 141
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 142
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 145
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 148
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 172
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 166
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 143
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 154
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 146
+          }
+        }
+      ],
+      "hebel": "zeitplan",
+      "quellen": [
+        "repo_deye"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Energy Pattern",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 141
+          }
+        },
+        {
+          "hinweis": "Work Mode",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 142
+          }
+        },
+        {
+          "hinweis": "Solar Sell",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 145
+          }
+        },
+        {
+          "hinweis": "Programmzeit",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 148
+          }
+        },
+        {
+          "hinweis": "Netzladen",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 172
+          }
+        },
+        {
+          "hinweis": "Programm-SoC",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 166
+          }
+        },
+        {
+          "hinweis": "max. Verkaufsleistung",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 143
+          }
+        },
+        {
+          "hinweis": "Programm-Leistung",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 154
+          }
+        },
+        {
+          "hinweis": "ToU an - zuletzt",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 146
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "Selling-First-Slot mit Leistung (EEPROM)."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sr",
+        "openems2541"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [],
+      "sicherheit": "C",
+      "wie": "Nicht schreiben; Installateur-Konfiguration muss Eigenverbrauch sein (lesend prüfen)."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "sr"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "ToU-Programm mit Ziel-SoC = Reserve (EEPROM)."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "sr"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Programm-Leistung (EEPROM)."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "sr"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Nur über ToU-Programm (SoC-Ziel/Leistung) – EEPROM, höchstens wenige Wechsel je Tag."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "abregeln",
+      "quellen": [
+        "repo_deye"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Einspeisegrenze (Installateur-Register)",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 231
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "0x00E7 bzw. 1p „Max Sell Power“ (EEPROM, Installateur)."
+    },
+    "H": {
+      "adapter_folge": "halten",
+      "beleg": [
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 141
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 142
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 148
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 172
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 166
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 154
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 146
+          }
+        }
+      ],
+      "hebel": "zeitplan",
+      "quellen": [
+        "repo_deye"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Energy Pattern",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 141
+          }
+        },
+        {
+          "hinweis": "Work Mode",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 142
+          }
+        },
+        {
+          "hinweis": "Programmzeit",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 148
+          }
+        },
+        {
+          "hinweis": "Netzladen",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 172
+          }
+        },
+        {
+          "hinweis": "Programm-SoC",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 166
+          }
+        },
+        {
+          "hinweis": "Programm-Leistung",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 154
+          }
+        },
+        {
+          "hinweis": "ToU an - zuletzt",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 146
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "Programm-Leistung 0 (EEPROM)."
+    },
+    "N": {
+      "adapter_folge": "laden",
+      "beleg": [
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 141
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 142
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 148
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 172
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 166
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 154
+          }
+        },
+        {
+          "erwartet": "wie geschrieben",
+          "ziel": {
+            "register": 146
+          }
+        }
+      ],
+      "hebel": "zeitplan",
+      "quellen": [
+        "repo_deye"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Energy Pattern",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 141
+          }
+        },
+        {
+          "hinweis": "Work Mode",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 142
+          }
+        },
+        {
+          "hinweis": "Programmzeit",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 148
+          }
+        },
+        {
+          "hinweis": "Netzladen",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 172
+          }
+        },
+        {
+          "hinweis": "Programm-SoC",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 166
+          }
+        },
+        {
+          "hinweis": "Programm-Leistung",
+          "speicher": "dauerspeicher",
+          "wert": "planwert",
+          "ziel": {
+            "register": 154
+          }
+        },
+        {
+          "hinweis": "ToU an - zuletzt",
+          "speicher": "dauerspeicher",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 146
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "ToU-Slot mit Laden aus dem Netz (EEPROM, 900-s-Verweilzeit)."
+    }
+  },
+  "adapter": {
+    "abweichungen": [
+      "Der Schreibabstand je Register (dwell_s = 900) begrenzt einen ToU-Registerwechsel auf höchstens 96 je Tag, nicht auf 20. Das Tages-Budget (Konzept §6.6) zählt heute nur die Übergaben der Wechselrichter-Automatik (guards/nativemode.go)."
+    ],
+    "ausfuehrbar": true,
+    "datei": "edge-app/nodered/inverter-control-routing.js",
+    "folgen": {
+      "entladen": {
+        "beleg": [
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 141
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 142
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 145
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 148
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 172
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 166
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 143
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 154
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 146
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Energy Pattern",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 141
+            }
+          },
+          {
+            "hinweis": "Work Mode",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 142
+            }
+          },
+          {
+            "hinweis": "Solar Sell",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 145
+            }
+          },
+          {
+            "hinweis": "Programmzeit",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 148
+            }
+          },
+          {
+            "hinweis": "Netzladen",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 172
+            }
+          },
+          {
+            "hinweis": "Programm-SoC",
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 166
+            }
+          },
+          {
+            "hinweis": "max. Verkaufsleistung",
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 143
+            }
+          },
+          {
+            "hinweis": "Programm-Leistung",
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 154
+            }
+          },
+          {
+            "hinweis": "ToU an - zuletzt",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 146
+            }
+          }
+        ]
+      },
+      "halten": {
+        "beleg": [
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 141
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 142
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 148
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 172
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 166
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 154
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 146
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Energy Pattern",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 141
+            }
+          },
+          {
+            "hinweis": "Work Mode",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 142
+            }
+          },
+          {
+            "hinweis": "Programmzeit",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 148
+            }
+          },
+          {
+            "hinweis": "Netzladen",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 172
+            }
+          },
+          {
+            "hinweis": "Programm-SoC",
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 166
+            }
+          },
+          {
+            "hinweis": "Programm-Leistung",
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 154
+            }
+          },
+          {
+            "hinweis": "ToU an - zuletzt",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 146
+            }
+          }
+        ]
+      },
+      "laden": {
+        "beleg": [
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 141
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 142
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 148
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 172
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 166
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 154
+            }
+          },
+          {
+            "erwartet": "wie geschrieben",
+            "ziel": {
+              "register": 146
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Energy Pattern",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 141
+            }
+          },
+          {
+            "hinweis": "Work Mode",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 142
+            }
+          },
+          {
+            "hinweis": "Programmzeit",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 148
+            }
+          },
+          {
+            "hinweis": "Netzladen",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 172
+            }
+          },
+          {
+            "hinweis": "Programm-SoC",
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 166
+            }
+          },
+          {
+            "hinweis": "Programm-Leistung",
+            "speicher": "dauerspeicher",
+            "wert": "planwert",
+            "ziel": {
+              "register": 154
+            }
+          },
+          {
+            "hinweis": "ToU an - zuletzt",
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 146
+            }
+          }
+        ]
+      },
+      "rueckgabe": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "ToU aus (ohne Sicherung)",
+            "speicher": "dauerspeicher",
+            "wert": 0,
+            "ziel": {
+              "register": 146
+            }
+          }
+        ]
+      }
+    },
+    "planer": "controlRoute → deyeControl",
+    "schreibabstand_s": 900
+  },
+  "bindung": [
+    {
+      "marke": "deye",
+      "modelle": null,
+      "registerfamilie": "hybrid_3p",
+      "steuerpfad": "tou"
+    },
+    {
+      "marke": "deye",
+      "modelle": null,
+      "registerfamilie": "hybrid_1p",
+      "steuerpfad": "tou"
+    }
+  ],
+  "daempfung": {
+    "box_regelt": false,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "dd"
+    ],
+    "sicherheit": "C",
+    "text": "Dauerspeicher-Hebel: keine Box-Regelung (Konzept §6.5), nur Eigenmodus und wenige Planwechsel je Tag."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: die Installateur-Konfiguration (Work Mode + ToU) ist der Eigenverbrauch; Wechsel nur über EEPROM-Register (C)."
+  },
+  "empfehlung": "Eigenverbrauch = Gerät (Grundeinstellung lesend prüfen); Plan nur mit wenigen, groben Wechseln.",
+  "fallen": [
+    "Keine Box-Regelung möglich (EEPROM) – hier ist der Eigenmodus des Geräts ohnehin der einzige schnelle Regler.",
+    "Fremd-ToU-Programme des Installateurs verdrängen unseren Slot (N2)."
+  ],
+  "familie": "Hybride ohne Fernsteuer-Block (ToU-Pfad), SG03LP1 (hybrid_1p) bis die Sonde den Block findet",
+  "firmware_bedingung": {
+    "gelesen": true,
+    "quellen": [
+      "repo_deye",
+      "sr"
+    ],
+    "sicherheit": "C",
+    "wert": null,
+    "wie": "Gilt, solange die Sonde des Fernsteuer-Blocks 1100–1121 endgültig „kein Block“ meldet oder remote_mode = off gesetzt ist (Steuerpfad tou)."
+  },
+  "freigabe": "keine",
+  "hersteller": "Deye",
+  "id": "deye_tou",
+  "im_repo": "Schreibplan gebaut (deyeControl, 9 ToU-Register), unzertifiziert; Selbstregel-Modus bewusst nicht unterstützt",
+  "modelle": [
+    "SUN-*-SG01HP3",
+    "SUN-*-SG04LP3",
+    "SUN-*-SG02HP3",
+    "SUN-*-SG03LP1"
+  ],
+  "quellen": [
+    "sr",
+    "repo_deye",
+    "openems2541",
+    "dd"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "C",
+    "speicher": "dauerspeicher",
+    "text": "EEPROM: Takt-Schreiben zerstört den Speicher in Wochen (C, dd §0); nur wenige Wechsel je Tag."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "C",
+    "text": "keiner – die Box muss selbst zurückstellen (C).",
+    "vorhanden": false,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": [],
+    "sicherheit": "C",
+    "speicher": "dauerspeicher",
+    "text": "Nichts schreiben = Eigenkonfiguration; jeder Moduswechsel sind mehrere EEPROM-Schreibvorgänge mit ~20 s Richtungslatenz (C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "CT am Netzpunkt, je Anlage prüfen."
+  }
+}

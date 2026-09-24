@@ -1,0 +1,149 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Discharge + Wert – ob ins Netz: unbelegt."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "e3dc_rscp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "SET_POWER Normal."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "e3dc_rscp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Normal + MAX_CHARGE_POWER = 0."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "e3dc_rscp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Normal + MAX_CHARGE_POWER = x."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "e3dc_rscp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Normal + MAX_DISCHARGE_POWER = 0."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Einspeisereduzierung als Einstellung."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "e3dc_rscp"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Idle."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "e3dc_rscp"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Grid_Charge + Wert."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": "D",
+    "text": "Unbelegt - Vorgabe der Box, bis am Gerät gemessen."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: internes EMS (C)."
+  },
+  "empfehlung": "Stufe 2–3: Grenzen-Hebel vorhanden, aber proprietäres Protokoll.",
+  "fallen": [
+    "RSCP braucht Benutzer, Passwort und RSCP-Schlüssel; eigene Bibliothek nötig."
+  ],
+  "familie": "S10 E / S10 X (Hauskraftwerk)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "E3/DC",
+  "id": "e3dc",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "S10 E",
+    "S10 X"
+  ],
+  "quellen": [
+    "e3dc_rscp",
+    "evcc"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "Leistungsgrenzen evtl. dauerhaft gespeichert (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "C",
+    "text": "Befehle müssen erneuert werden (C).",
+    "vorhanden": true,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "unbelegt",
+    "text": "RSCP (proprietär, verschlüsselt): EMS_REQ_SET_POWER Normal/Idle/Discharge/Charge/Grid_Charge + Wert; Leistungsgrenzen EMS_MAX_CHARGE_POWER / EMS_MAX_DISCHARGE_POWER (C). Modbus überwiegend lesend."
+  },
+  "zaehler": {
+    "ort": "system",
+    "sicherheit": "D",
+    "text": "Eigener Zähler am Netzpunkt (Systembestandteil)."
+  }
+}

@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -168,7 +169,7 @@ func (a *Agent) nativeDecide(
 	a.mu.Unlock()
 
 	_, slotStart, _ := p.ActiveSetpoint(now)
-	dec := a.native.Decide(now, guards.NativeInput{
+	in := guards.NativeInput{
 		Enabled:           a.Cfg.NativeSelfRegulationEnabled,
 		Duty:              nativeDutyFor(p, now),
 		SlotStart:         slotStart,
@@ -191,7 +192,9 @@ func (a *Agent) nativeDecide(
 		GridKw:            gridKw,
 		BatteryKw:         battKw,
 		SocMaxPct:         limits.SocMaxPct,
-	})
+	}
+	in.PersistentWriteBudget = a.persistentWriteBudget()
+	dec := a.native.Decide(now, in)
 	a.noteNativeReason(intent.Word, dec)
 	if !dec.Native {
 		return dec, nil, nativeWithheld(dec, intent.Word)
@@ -253,4 +256,29 @@ func (a *Agent) noteNativeReason(planIntent string, dec guards.NativeDecision) {
 	}
 	slog.Info("wechselrichter-automatik", "reason", dec.Reason, "intent", dec.Intent,
 		"plan_intent", planIntent, "text", dec.Text)
+}
+
+// controlProfileDevice is the selected inverter as the control profiles bind
+// it (catalog/control-profiles, K7): catalog brand, model and register-map
+// family plus the control surface Layer 1 reports driving.
+func (a *Agent) controlProfileDevice() controlprofile.Device {
+	var d controlprofile.Device
+	a.invMu.Lock()
+	if a.inv != nil {
+		d.Brand, d.Model, d.Family = a.inv.Brand, a.inv.Model, a.inv.Family
+	}
+	a.invMu.Unlock()
+	if c := a.State.Get().Control; c != nil {
+		d.ControlPath = c.ControlPath
+	}
+	return d
+}
+
+// persistentWriteBudget is the day budget of a persistent lever the selected
+// device's control profile states (0 = none; guards.NativeMode then keeps its
+// Vorgabe of 20, concept §6.6 F12). The profile only sizes the budget: whether
+// the lever writes persistent memory at all is Layer 1's certified report.
+func (a *Agent) persistentWriteBudget() int {
+	n, _ := controlprofile.PersistentWritesPerDay(a.controlProfileDevice())
+	return n
 }

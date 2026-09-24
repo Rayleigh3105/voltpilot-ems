@@ -1,0 +1,144 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "fox_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "44002 = Leistung."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "fox_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "44000 = 0."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "44002 = 0."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "fox_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "44000 = 1, 44001 = Timeout, 44002 = Leistung (Vorzeichen am Gerät prüfen)."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": "D",
+    "text": "Unbelegt - Vorgabe der Box, bis am Gerät gemessen."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: „Self Use“ (Arbeitsmodus 41000, auf H3 undokumentiert) (C)."
+  },
+  "empfehlung": "Stufe 3.",
+  "fallen": [
+    "Vorzeichen von 44002 in den Quellen widersprüchlich beschrieben."
+  ],
+  "familie": "H3 / KH",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Fox ESS",
+  "id": "foxess",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "H3",
+    "KH"
+  ],
+  "quellen": [
+    "fox_ha"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "C",
+    "text": "44001 → zurück in den Normalbetrieb (C).",
+    "vorhanden": true,
+    "ziel": {
+      "register": 44001
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "unbelegt",
+    "text": "44000 Fernsteuerung an, 44001 Timeout (s), 44002 Wirkleistung W (C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Zähler am Netzpunkt."
+  }
+}

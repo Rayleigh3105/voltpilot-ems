@@ -1,0 +1,144 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sonnen_api"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Modus 1 + setpoint/discharge/W."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sonnen_api"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "EM_OperatingMode = 2."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Kein Grenzen-Endpunkt bekannt."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sonnen_api"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Modus 1 + Sollwert 0."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sonnen_api"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Modus 1 + setpoint/charge/W."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": "D",
+    "text": "Unbelegt - Vorgabe der Box, bis am Gerät gemessen."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: EM_OperatingMode 2 = Eigenverbrauch (C)."
+  },
+  "empfehlung": "Stufe 3.",
+  "fallen": [
+    "Im manuellen Modus regelt das Gerät nicht mehr selbst – jeder Sollwert ist fest."
+  ],
+  "familie": "sonnenBatterie 10 / eco (API v2)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "sonnen",
+  "id": "sonnen",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "sonnenBatterie 10",
+    "sonnenBatterie eco"
+  ],
+  "quellen": [
+    "sonnen_api"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "Moduswechsel über Konfiguration – Speicherort unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "D",
+    "text": "unbelegt (D).",
+    "vorhanden": null,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "unbelegt",
+    "text": "Modus 1 manuell mit /api/v2/setpoint/charge|discharge/{W}; Modus 10 ToU mit Zeitplan (C)."
+  },
+  "zaehler": {
+    "ort": "system",
+    "sicherheit": "D",
+    "text": "Eigene Messung am Netzpunkt (Systembestandteil)."
+  }
+}

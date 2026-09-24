@@ -1,0 +1,135 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "über den angeschlossenen Wechselrichter"
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": null,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": null,
+    "text": "Batterie ohne eigenen Hebel: die Zeile des Wechselrichters gilt."
+  },
+  "eigenmodus": {
+    "sicherheit": "D",
+    "text": "Kein eigener Hebel – gesteuert wird immer über den Wechselrichter."
+  },
+  "empfehlung": "In der Matrix nur als Batterie: die Zeile des Wechselrichters gilt.",
+  "fallen": [
+    "BMS-Grenzen (Lade-/Entladestrom) setzen die physikalische Obergrenze jeder Absicht."
+  ],
+  "familie": "Battery-Box HVS / HVM / LVS",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "BYD",
+  "id": "byd",
+  "im_repo": "als Batterie hinter Fronius/KOSTAL/SMA u. a.",
+  "modelle": [
+    "Battery-Box HVS",
+    "Battery-Box HVM",
+    "Battery-Box LVS"
+  ],
+  "quellen": [],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": null,
+    "sicherheit": null,
+    "speicher": "keiner",
+    "text": "–"
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": null,
+    "text": "–",
+    "vorhanden": null,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "D",
+    "speicher": "keiner",
+    "text": "siehe Wechselrichter-Zeile"
+  },
+  "zaehler": {
+    "ort": "keiner",
+    "sicherheit": null,
+    "text": "–"
+  }
+}

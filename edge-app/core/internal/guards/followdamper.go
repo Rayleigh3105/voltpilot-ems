@@ -26,7 +26,7 @@
 //  1. MEASURE, THEN SET. The measured corrections act on a CONTROL READING that
 //     only advances when a device measurement pair exists whose BOTH halves
 //     (grid and battery) were refreshed no earlier than the last write plus the
-//     family's settle time. Between two such pairs the corrections see the same
+//     device's settle time. Between two such pairs the corrections see the same
 //     values and therefore compute the same target - no write chases a reading
 //     that still shows the previous command.
 //     ONE narrow exception, and it only ever RETREATS: after a write that took
@@ -81,9 +81,11 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 )
 
-// DampProfile is the per-family timing and shaping of the damped follower.
+// DampProfile is the per-device timing and shaping of the damped follower.
 type DampProfile struct {
 	// Off disables the damper (no device, or a persistent-lever surface): the
 	// corrections pass through unchanged.
@@ -105,11 +107,12 @@ type DampProfile struct {
 	DeadbandKw float64
 }
 
-// DefaultDampProfile is the Vorgabe for every family without a measured
-// profile of its own: the values measured on the Deye at Herzogau
+// DefaultDampProfile is the Vorgabe for every device whose control profile
+// states no timing of its own: the values measured on the Deye at Herzogau
 // (2026-09-24: follows a write after 15-20 s, refreshes every 5-25 s) - the
 // slowest device measured so far, so a faster one only waits a little longer
-// than it would need to.
+// than it would need to. Ramp, reserve and deadband are the box's own shaping
+// (concept §6.5) and stay here for every device.
 func DefaultDampProfile() DampProfile {
 	return DampProfile{
 		Settle:     15 * time.Second,
@@ -120,33 +123,44 @@ func DefaultDampProfile() DampProfile {
 	}
 }
 
-// dampProfiles holds the MEASURED profiles per register-map family (ids as in
-// internal/inverter). Families missing here get DefaultDampProfile until their
-// own timing is measured (K7 moves these values into the control-profile data).
-var dampProfiles = map[string]DampProfile{
-	// Deye SG01HP3/SG04LP3 over the Solarman logger, Herzogau 2026-09-24
-	// (scout report vp-herzogau-laden-bei-bezug-h4 §1.4).
-	"hybrid_3p": DefaultDampProfile(),
-	// Same firmware generation and logger path; single-phase map.
-	"hybrid_1p": DefaultDampProfile(),
-}
-
 // DampControlPathPersistent is the control-path readback naming a
 // persistent-lever surface (the Deye Time-of-Use synthesis, state.ControlPath).
 const DampControlPathPersistent = "tou"
 
-// DampProfileFor returns the damping profile for the configured inverter
-// family and the control surface Layer 1 reports it is driving. No family (no
-// inverter selected - nothing is ever written then) and a persistent-lever
-// surface are Off.
-func DampProfileFor(family, controlPath string) DampProfile {
-	if family == "" || controlPath == DampControlPathPersistent {
+// DampProfileFor returns the damping profile for the selected device and the
+// control surface Layer 1 reports it is driving (dev.ControlPath). The timing
+// comes from the device's CONTROL PROFILE (catalog/control-profiles, K7):
+// Einschwingzeit and Messtakt where the profile states them, the Vorgabe per
+// value where it does not; a profile that says the box must not regulate this
+// device (a persistent lever) turns the damper Off. No family (no inverter
+// selected - nothing is ever written then) is Off, and so is a persistent-lever
+// surface even without a profile: that rule is the EEPROM's safety net and
+// does not hang on a data file.
+func DampProfileFor(dev controlprofile.Device) DampProfile {
+	if dev.Family == "" || dev.ControlPath == DampControlPathPersistent {
 		return DampProfile{Off: true}
 	}
-	if p, ok := dampProfiles[family]; ok {
+	return dampProfileFrom(controlprofile.For(dev))
+}
+
+// dampProfileFrom maps a control profile's damping statement onto the
+// follower: each missing value keeps the Vorgabe.
+func dampProfileFrom(prof controlprofile.Profile, ok bool) DampProfile {
+	p := DefaultDampProfile()
+	if !ok {
 		return p
 	}
-	return DefaultDampProfile()
+	d := prof.Damping
+	if d.BoxRegulates != nil && !*d.BoxRegulates {
+		return DampProfile{Off: true}
+	}
+	if d.SettleS != nil {
+		p.Settle = time.Duration(*d.SettleS * float64(time.Second))
+	}
+	if d.CadenceS != nil {
+		p.MaxCadence = time.Duration(*d.CadenceS * float64(time.Second))
+	}
+	return p
 }
 
 // dampWriteResolutionKw is the 1 W resolution below which two setpoints are

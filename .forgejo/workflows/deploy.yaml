@@ -134,6 +134,13 @@ jobs:
           python3 catalog/measurement-points/tools/validate.py
           python3 -m unittest discover -s catalog/measurement-points/tests -p 'test_*.py'
 
+      - name: Control-profile catalog checks
+        if: matrix.type == 'catalog'
+        run: |
+          python3 catalog/control-profiles/tools/validate.py
+          python3 -m unittest discover -s catalog/control-profiles/tests -p 'test_*.py'
+          python3 catalog/control-profiles/tools/package_edge_runtime.py --check
+
       # ---- Frontend (tsc type-check + Vite build) --------------------------
       - name: Set up Node
         if: matrix.type == 'frontend'

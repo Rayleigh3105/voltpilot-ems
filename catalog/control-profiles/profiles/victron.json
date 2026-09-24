@@ -1,0 +1,156 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "netzziel",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "Netz-Sollwert = −x kW: exakt „x kW einspeisen, Rest aus dem Speicher“."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "netzziel",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "Netz-Sollwert 2716/2717 = 0 (ESS regelt selbst, Rampe 400 W/s)."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "netzziel",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "Netz-Sollwert 0 + 2705 DVCC-Ladestrom = 0 („0 = kein Laden“)."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "netzziel",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "2705 = Ladestrom in A (nicht kW – über Batteriespannung umrechnen)."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "netzziel",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Netz-Sollwert 0 + 2704 max. Wechselrichterleistung = 0 (keine Entladung)."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "abregeln",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "2706 max. Einspeisung + Nulleinspeisung der PV-Wechselrichter über den GX."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "netzziel",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "2704 = 0 und 2705 = 0."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "victron_ess"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "Modus 3 (AC-Sollwert je Phase, 60-s-Watchdog) oder Netz-Sollwert-Nachführung."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "victron_ess"
+    ],
+    "sicherheit": "D",
+    "text": "Netz-Sollwert-Modell; am Gerät messen."
+  },
+  "eigenmodus": {
+    "sicherheit": "A",
+    "text": "Ja: ESS „Optimized“ regelt auf einen Netz-Sollwert (A)."
+  },
+  "empfehlung": "Stufe 2; das Netz-Sollwert-Modell ist die sauberste Form von „Absicht + Grenzen“.",
+  "fallen": [
+    "Modus 2 ohne Timeout: die Box besitzt den Rückfall.",
+    "Modus 3 fällt bei Stille in Passthru (kein Eigenverbrauch).",
+    "Ladegrenze in Ampere."
+  ],
+  "familie": "MultiPlus/Quattro mit GX (ESS)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Victron",
+  "id": "victron",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "MultiPlus mit GX (ESS)",
+    "Quattro mit GX (ESS)"
+  ],
+  "quellen": [
+    "victron_ess"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "A",
+    "speicher": "gemischt",
+    "text": "2700/2703 verschleißen den Flash des GX – 2716/2717 nutzen (A)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "A",
+    "text": "Modus 2: kein Timeout dokumentiert – letzter Netz-Sollwert bleibt. Modus 3: alle 60 s schreiben, sonst Passthru (A).",
+    "vorhanden": false,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "A",
+    "speicher": "ram",
+    "text": "ESS-Modus 2: Netz-Sollwert 2716/2717 (32 Bit, Venus ≥ 3.50), max. Wechselrichterleistung 2704, DVCC-Ladestrom 2705 (0 = kein Laden), max. Einspeisung 2706, Einspeise-Schalter 2707/2708 (A)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Victron-Zähler (ET340/EM24/VM-3P75CT) am Netzpunkt."
+  }
+}

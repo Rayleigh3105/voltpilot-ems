@@ -1,0 +1,143 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "solax_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Remote Control Leistung."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "solax_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Self Use, keine Fernsteuerung."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Remote Control 0 W."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "solax_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Remote Control Leistung, Dauer."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": "D",
+    "text": "Unbelegt - Vorgabe der Box, bis am Gerät gemessen."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: „Self Use“ (C)."
+  },
+  "empfehlung": "Stufe 3.",
+  "fallen": [
+    "Fernsteuerung verlangt Self-Use als Grundmodus (C)."
+  ],
+  "familie": "X1/X3 Hybrid G4",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "SolaX",
+  "id": "solax",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "X1 Hybrid G4",
+    "X3 Hybrid G4"
+  ],
+  "quellen": [
+    "solax_ha",
+    "solax_pr"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "C",
+    "text": "Dauer-Parameter je Befehl (C).",
+    "vorhanden": true,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "unbelegt",
+    "text": "Modbus Power Control / Remote Control (Mehrfach-Schreibregister 0x7C, Modi u. a. Leistungs- und SoC-Ziel, Dauer) (C); Herstellerprotokoll V3.21 vorhanden, nicht ausgewertet."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Zähler am Netzpunkt."
+  }
+}
