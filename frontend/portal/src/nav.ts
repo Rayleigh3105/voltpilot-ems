@@ -179,7 +179,9 @@ export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', ic
  * unverändert eine Seite je Id kennt.
  */
 export const PORTFOLIO_WELT_PAGES: PageDef[] = [
-  { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
+  // „Energie" wie der Reiter der Anlage (Verlauf-Rework P4); die Adresse
+  // bleibt `#/portfolio/messwerte`, damit Lesezeichen weiter tragen.
+  { id: 'portfolio-messwerte', label: 'Energie', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
 

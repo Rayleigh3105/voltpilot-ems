@@ -65,6 +65,7 @@ const BLAETTER: ReadonlyArray<{
   },
   { reiter: 'Erlöse', datei: 'components/SteuerungFormel.css', offen: 0, bekannt: [] },
   { reiter: 'Erlöse', datei: 'components/PortfolioWelt.css', offen: 0, bekannt: [] },
+  { reiter: 'Portfolio', datei: 'components/portfolio/PortfolioSeite.css', offen: 0, bekannt: [] },
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', offen: 0, bekannt: [] },
   // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an auf 0.
   { reiter: 'Bausteine', datei: 'components/Aufklapper.css', offen: 0, bekannt: [] },

@@ -424,7 +424,11 @@ export function AppShell({
                 </span>
               </div>
             ) : (
-              <span className="here">{pageLabel(page, counts.sites)}</span>
+              // Die Flotten-Landung heißt wie im Menü („Meine Anlagen" beim
+              // Endkunden, „Portfolio" beim Betreiber) — nie zwei Namen.
+              <span className="here">
+                {page === PORTFOLIO_PAGE.id ? fleetLabel : pageLabel(page, counts.sites)}
+              </span>
             )}
             {anlage?.health && (
               // ONE aggregated plant state, always in sight (concept tab 2) —

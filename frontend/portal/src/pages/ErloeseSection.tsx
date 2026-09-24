@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ladeCsv } from '../ladeCsv';
 import type { HistoryRange, Site } from '../api';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
@@ -111,19 +112,6 @@ function kennzahlFarbe(id: GeldId): string | null {
   return null;
 }
 
-/** Eine CSV als Datei — ohne Server, ohne neue Abhängigkeit. */
-function ladeCsv(inhalt: string, datei: string) {
-  // Das BOM lässt Excel die Umlaute als UTF-8 lesen.
-  const blob = new Blob(['﻿', inhalt], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = datei;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
 
 export function ErloeseSection({
   site,

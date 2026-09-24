@@ -383,6 +383,12 @@ export interface ErloeseZeile {
    */
   steuerungEur: number | null;
   eingespeistKwh: number | null;
+  /** Die drei Posten der Anlage — dieselben, aus denen das Ergebnis entsteht. */
+  einspeiseEur: number | null;
+  eigenverbrauchEur: number | null;
+  /** Stromkosten über `actual + einspeise` (die serverseitige Identität). */
+  stromkostenEur: number | null;
+  selbstverbrauchKwh: number | null;
   /**
    * Der ERTRAG je Abschnitt — die Mini-Trend-Spalte. Sie bleibt bewusst der
    * Ertrag: der mandantenweite Endpunkt liefert seine Reihe nur so, und die
@@ -410,6 +416,11 @@ export interface ErloeseAggregat {
    * Steuerung (nie ein weiterer Summand, nie `savedEur`).
    */
   steuerungEur: number | null;
+  /** Wie viele Anlagen zur Steuerungs-Summe beitragen (Speicherdaten gepflegt). */
+  steuerungAnlagen: number;
+  /** Σ der Mengen hinter Eigenverbrauch und Einspeisung — `null` ohne Wert. */
+  selbstverbrauchKwh: number | null;
+  eingespeistKwh: number | null;
   /** Σ der bewerteten Viertelstunden — die Datenbasis in einer Zahl. */
   coveredSlots: number;
   zeilen: ErloeseZeile[];
@@ -480,6 +491,9 @@ export function erloeseAggregat(
     const money = byId.get(s.id) ?? null;
     const zeilenNetto = nettoEur(money);
     const zustand: ZeilenZustand = zeilenNetto == null ? 'leer' : 'daten';
+    const zahl = (v: number | null | undefined) =>
+      typeof v === 'number' && Number.isFinite(v) ? v : null;
+    const actual = zahl(money?.actualEur);
     return {
       siteId: s.id,
       name: s.name,
@@ -487,6 +501,10 @@ export function erloeseAggregat(
       nettoEur: zeilenNetto,
       steuerungEur: money?.savedSteuerungEur ?? null,
       eingespeistKwh: money?.eingespeistKwh ?? null,
+      einspeiseEur: zahl(money?.einspeiseErloesEur),
+      eigenverbrauchEur: zahl(money?.eigenverbrauchsWertEur),
+      stromkostenEur: actual == null ? null : actual + (zahl(money?.einspeiseErloesEur) ?? 0),
+      selbstverbrauchKwh: zahl(money?.selbstverbrauchKwh),
       spark: money ? money.series.map((p) => p.gesamtertragEur) : [],
       hinweis: zustand === 'daten' ? null : zeilenHinweis(money?.reason ?? null),
     };
@@ -524,6 +542,11 @@ export function erloeseAggregat(
     stromkostenEur,
     ohneErgebnis: zeilen.filter((z) => z.zustand !== 'daten' && byId.has(z.siteId)).length,
     steuerungEur: summe(beitragende.map((m) => m.savedSteuerungEur ?? null)),
+    steuerungAnlagen: beitragende.filter(
+      (m) => typeof m.savedSteuerungEur === 'number' && Number.isFinite(m.savedSteuerungEur),
+    ).length,
+    selbstverbrauchKwh: summe(beitragende.map((m) => m.selbstverbrauchKwh)),
+    eingespeistKwh: summe(beitragende.map((m) => m.eingespeistKwh)),
     coveredSlots: beitragende.reduce((n, m) => n + (m.coveredSlots ?? 0), 0),
     zeilen,
     abdeckung: abdeckung(zeilen.map((z) => z.zustand)),

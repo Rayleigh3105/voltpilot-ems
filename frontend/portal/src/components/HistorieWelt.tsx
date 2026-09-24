@@ -644,6 +644,7 @@ export function ZeitLeiste({
   vergleichHinweis,
   abdeckungInStatus = false,
   now = new Date(),
+  ranges = PERIOD_RANGES,
 }: {
   range: HistoryRange;
   anchor: Date;
@@ -665,6 +666,11 @@ export function ZeitLeiste({
   /** Die ehrliche Zeile, wenn die Vergleichsperiode nichts trägt. */
   vergleichHinweis?: string | null;
   now?: Date;
+  /**
+   * Die angebotenen Zeiträume — Standard alle vier. Die Portfolio-Erlöse
+   * bieten keine Woche an, weil ihr Endpunkt keine kennt.
+   */
+  ranges?: readonly { id: HistoryRange; label: string }[];
 }) {
   const nextDisabled = shiftAnchor(anchor, range, 1) > now;
   const streifen = zeigtStreifen(range);
@@ -697,7 +703,7 @@ export function ZeitLeiste({
   );
 
   const perioden = (
-    <ZeitSegment label="Zeitraum" optionen={PERIOD_RANGES} wert={range} onWert={onRange} />
+    <ZeitSegment label="Zeitraum" optionen={ranges} wert={range} onWert={onRange} />
   );
 
   const schalter = onVergleich ? (

@@ -131,7 +131,7 @@ export const everydayArticles: HelpArticle[] = [
         "Portfolio beziehungsweise Meine Anlagen zeigt Ihre zugänglichen Standorte. Öffnen Sie eine Anlage für Details; der Name im Kopf zeigt den aktuellen Standort. Über den Anlagenwechsler gelangen Sie zu einem anderen.",
       ], figure: 'portfolio' },
       { id: 'auswertung', title: 'Anlagenübergreifende Zahlen und einzelne Anlagen', paragraphs: [
-        "Anlagenübergreifende Zahlen und einzelne Anlagen haben unterschiedliche Geltungsbereiche. Prüfen Sie Auswahl und Zeitraum. Andere Geräte oder Betriebsmodelle erklären, warum Ansichten zwischen Anlagen abweichen.",
+        "Die Reiter Energie und Erlöse zeigen oben die Summen über alle Anlagen und darunter jede Anlage als Balken; die Tabelle nennt alle Werte je Anlage. Ein Tipp auf eine Anlage öffnet dieselbe Seite dieser Anlage im gleichen Zeitraum. Eine Anlage ohne Werte zählt nicht als Null, sondern steht mit ihrem Grund in der Liste.",
       ] },
       { id: 'kontrolle', title: 'Vor Änderungen den Namen prüfen', paragraphs: [
         "Vor Änderungen Anlagenname und Geltungsbereich im Dialog prüfen. Ein Endkundenkonto mit nur einer Anlage kann direkt im Cockpit starten.",

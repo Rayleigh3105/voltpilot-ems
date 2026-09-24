@@ -115,7 +115,7 @@ describe('Die Flotten-Ebene in der Schale: EIN Eintrag, keine Gruppe', () => {
 });
 
 /**
- * Die zwei Welten, jetzt als REITER: Übersicht · Messwerte · Erlöse. Sie
+ * Die zwei Welten, jetzt als REITER: Übersicht · Energie · Erlöse. Sie
  * navigieren zwischen drei Seiten DERSELBEN Ebene.
  */
 describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
@@ -131,11 +131,11 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     );
     expect([...reiter().querySelectorAll('[role=tab]')].map((n) => n.textContent)).toEqual([
       'Übersicht',
-      'Messwerte',
+      'Energie',
       'Erlöse',
     ]);
     expect(reiter().getAttribute('aria-label')).toBe('Reiter der Ebene Portfolio');
-    fireEvent.click(screen.getByRole('tab', { name: 'Messwerte' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Energie' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio-messwerte');
     fireEvent.click(screen.getByRole('tab', { name: 'Erlöse' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio-erloese');
@@ -150,7 +150,7 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
         onNavigate={vi.fn()}
       />,
     );
-    expect(screen.getByRole('tab', { name: 'Messwerte' }).getAttribute('aria-selected')).toBe(
+    expect(screen.getByRole('tab', { name: 'Energie' }).getAttribute('aria-selected')).toBe(
       'true',
     );
     expect(screen.getByRole('tab', { name: 'Übersicht' }).getAttribute('aria-selected')).toBe(
@@ -178,7 +178,7 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
         onNavigate={vi.fn()}
       />,
     );
-    expect(screen.getByRole('tab', { name: 'Messwerte' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Energie' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Erlöse' })).toBeNull();
   });
 
