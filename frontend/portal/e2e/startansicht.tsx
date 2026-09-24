@@ -847,6 +847,24 @@ Object.assign(api, {
   bezugsbasisUebersicht: async () => ({ stichtag: '2026-10-20', laufend: 0, freigegeben: 0, vorlaeufig: 0, mit_anstoss: 0,
     ueberpruefung_faellig: 0, faellig: [] }),
   standortWetter: async () => null,
+  // AP-18 IP-19: kein Energieziel, keine Maßnahme, Abweichung oder Auffälligkeit — der Baustein „Ziele und Maßnahmen“
+  // bleibt weg (R13), und kein Abruf geht an den (nicht laufenden) Server.
+  verbesserungUebersicht: async () => ({
+    abruf: '2026-10-20',
+    zaehler: {
+      auffaelligkeiten_offen: 0,
+      abweichungen_offen: 0,
+      abweichungen_ueberfaellig: 0,
+      massnahmen_geplant: 0,
+      massnahmen_ueberfaellig: 0,
+      massnahmen_umgesetzt_ohne_bewertung: 0,
+      energieziele_laufend: 0,
+      energieziele_bewertung_faellig: 0,
+      anstoesse_offen: 0,
+      messbedarfe_ueberfaellig: 0,
+    },
+    faellig: [],
+  }),
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,
     kennzeichen: kennzahlenDerBuehne().find((x) => x.id === id)?.kennzeichen ?? '',

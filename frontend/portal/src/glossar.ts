@@ -602,6 +602,8 @@ export const UEMS_OHNE_MESSGRUNDLAGE = 'ohne Messgrundlage';
 export const UEMS_OHNE_MESSGRUNDLAGE_SATZ = `${UEMS_OHNE_MESSGRUNDLAGE} — ${UEMS_WIRKUNG} nicht messbar`;
 /** E5 = A: beim Abruf abgeleitet — kein Läufer, keine Nachricht. */
 export const UEMS_UEBERFAELLIG_SEIT = (tage: number) => `überfällig seit ${tage} Tag${tage === 1 ? '' : 'en'}`;
+/** F1: am Energieziel nach dem Ende der Zielperiode — ebenso beim Abruf abgeleitet. */
+export const UEMS_BEWERTUNG_FAELLIG_SEIT = (tage: number) => `Bewertung fällig seit ${tage} Tag${tage === 1 ? '' : 'en'}`;
 
 /** Die geschlossenen Vokabulare (`verbesserung-vectors.json`) in der Kundensicht; `nicht_bewertbar` wie bei AP-17. */
 export const UEMS_ENERGIEZIEL_ZUSTAENDE = { offen: 'offen', bewertet: 'bewertet', beendet: 'beendet' } as const;

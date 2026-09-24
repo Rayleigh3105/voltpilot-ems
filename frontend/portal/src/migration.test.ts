@@ -1010,6 +1010,8 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
       'kennzahlen',
       // UEMS AP-16 IP-24: nur am Unternehmen, nur mit freigegebenem Bewertungsstand und `energieeinsatz.ansehen`.
       'bewertung',
+      // UEMS AP-18 IP-19: nur am Unternehmen, nur mit einem Energieziel, einer Maßnahme, Abweichung oder Auffälligkeit.
+      'ziele-massnahmen',
       'anlagen',
     ]);
     expect([...CANONICAL_PORTFOLIO].sort()).toEqual(PORTFOLIO_BAUSTEINE.map((b) => b.id).sort());

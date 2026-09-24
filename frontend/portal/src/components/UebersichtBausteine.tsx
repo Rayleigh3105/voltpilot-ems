@@ -7,8 +7,18 @@ import { bezugsbasisUebersichtBild, type BezugsbasisUebersicht, type Bezugsbasis
 import { misst } from '../ebenenNav';
 import { UEMS_ENERGIEBILANZ, UEMS_GEBAEUDE, UEMS_KENNZAHLEN } from '../glossar';
 import { heuteIn, listenKarte, ZUR_LISTE } from '../kennzahlKarte';
-import { kennzahlRoute, pageRoute, standortBereichRoute, type Route } from '../nav';
+import {
+  abweichungRoute,
+  energiezielRoute,
+  kennzahlRoute,
+  massnahmeRoute,
+  pageRoute,
+  standortBereichRoute,
+  verbesserungRoute,
+  type Route,
+} from '../nav';
 import type { UebersichtEbene } from '../uebersicht';
+import { verbesserungUebersichtBild, type VerbesserungUebersicht, type VerbesserungUebersichtBild } from '../verbesserungUebersicht';
 import {
   BILANZ_PERIODEN,
   MESSSTELLEN_TITEL,
@@ -34,6 +44,7 @@ import { BewertungBaustein } from './BewertungBaustein';
 import { BezugsbasisUebersichtKarte } from './BezugsbasisUebersichtKarte';
 import { ZeitSegment } from './HistorieWelt';
 import { KennzahlKarte, useKennzahlenListe } from './KennzahlListe';
+import { VerbesserungUebersichtKarte } from './VerbesserungUebersichtKarte';
 import './UebersichtBausteine.css';
 
 /**
@@ -60,6 +71,8 @@ export interface UebersichtDaten {
   bewertung: BewertungFristBild | null;
   /** AP-17 IP-17: laufende Bezugsbasen am Unternehmen — `null` ohne laufende Basis (R10: keine neue Kachel). */
   bezugsbasen?: BezugsbasisUebersichtBild | null;
+  /** AP-18 IP-19: „Ziele und Maßnahmen“ am Unternehmen — `null` ohne Vorgang im Zaun (R13: keine neue Kachel). */
+  zieleMassnahmen?: VerbesserungUebersichtBild | null;
   /** Die Bausteine MIT Inhalt — nur sie bietet die Fläche an. */
   inhalt: UebersichtBausteinId[];
 }
@@ -216,6 +229,26 @@ export function useUebersichtBausteine(
   }, [bezugsbasenAn]);
   const bezugsbasen = bezugsbasenAn ? bezugsbasisUebersichtBild(bezugsbasisDaten) : null;
 
+  // AP-18 IP-19: „Ziele und Maßnahmen“ nur am Unternehmen; Zähler und Fristen leitet der Server beim Abruf ab, der Zaun
+  // folgt Standort und Kennzahl. Ohne Vorgang bleibt die Kachel weg (R13).
+  const zieleAn = an && ebene?.art === 'unternehmen';
+  const [zieleDaten, setZieleDaten] = useState<VerbesserungUebersicht | null>(null);
+  useEffect(() => {
+    if (!zieleAn) {
+      setZieleDaten(null);
+      return;
+    }
+    let aktiv = true;
+    api
+      .verbesserungUebersicht()
+      .then((r) => aktiv && setZieleDaten(r))
+      .catch(() => aktiv && setZieleDaten(null));
+    return () => {
+      aktiv = false;
+    };
+  }, [zieleAn]);
+  const zieleMassnahmen = zieleAn ? verbesserungUebersichtBild(zieleDaten) : null;
+
   if (!ebene || !an) return null;
   const gebaeude: GebaeudeEingang[] = gebaeudeListe.map((g) => ({
     ...g,
@@ -232,6 +265,7 @@ export function useUebersichtBausteine(
       : [],
     kennzahlen: kennzahlenDerEbene(ebene, kennzahlen.liste),
     bewertung,
+    zieleMassnahmen,
   });
   return {
     ebene,
@@ -246,6 +280,7 @@ export function useUebersichtBausteine(
     kennzahlen,
     bewertung,
     bezugsbasen,
+    zieleMassnahmen,
     inhalt,
   };
 }
@@ -273,7 +308,10 @@ export function UebersichtBausteine({
   const bewertung = zeigen.includes('bewertung') ? daten.bewertung : null;
   // Die Bezugsbasen gehören zur Welt der Kennzahlen: wer „Kennzahlen“ ausblendet, blendet sie mit aus.
   const bezugsbasen = zeigen.includes('kennzahlen') ? (daten.bezugsbasen ?? null) : null;
-  if (!messstellen && !energie && gebaeude.length === 0 && !kennzahlen && !bewertung && !bezugsbasen) return null;
+  const zieleMassnahmen = zeigen.includes('ziele-massnahmen') ? (daten.zieleMassnahmen ?? null) : null;
+  if (!messstellen && !energie && gebaeude.length === 0 && !kennzahlen && !bewertung && !bezugsbasen && !zieleMassnahmen) {
+    return null;
+  }
 
   return (
     <div className="vp-ub" data-testid="uebersicht-bausteine">
@@ -426,6 +464,22 @@ export function UebersichtBausteine({
           bild={bezugsbasen}
           onOeffnen={() => onNavigate(pageRoute('portfolio-kennzahlen'))}
           onKennzahl={(id) => onNavigate(kennzahlRoute(id, null))}
+        />
+      )}
+
+      {zieleMassnahmen && (
+        <VerbesserungUebersichtKarte
+          bild={zieleMassnahmen}
+          onOeffnen={() => onNavigate(verbesserungRoute())}
+          onSprung={(s) =>
+            onNavigate(
+              s.art === 'energieziel'
+                ? energiezielRoute(s.id)
+                : s.art === 'massnahme'
+                  ? massnahmeRoute(s.id)
+                  : abweichungRoute(s.id),
+            )
+          }
         />
       )}
     </div>

@@ -1,6 +1,7 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
 import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
+import type { VerbesserungUebersicht } from './verbesserungUebersicht';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -10204,6 +10205,8 @@ export const api = {
   berichte: () => request<{ berichte: Bericht[] }>(`/api/v1/berichte`),
   /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
   bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
+  /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
+  verbesserungUebersicht: () => request<VerbesserungUebersicht>(`/api/v1/verbesserung/uebersicht`),
   /**
    * AP-17 IP-20: der Vergleich mit der Bezugsbasis (Leser IP-19, §16) — je Monat roh ohne Urteil und bereinigt mit
    * Band; ohne `basis` die laufende, ohne `von`/`bis` die zwölf abgeschlossenen Monate vor dem laufenden.

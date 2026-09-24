@@ -515,6 +515,17 @@
       "aggregation_regel": "Zeigt den jüngsten gültigen Stand der energetischen Bewertung, ob die Überprüfung fällig ist, die Zahl der wesentlichen Energieeinsätze und der offenen Messbedarfe — alles aus der Bericht-Route, nichts wird hier gerechnet. Nur auf der Unternehmens-Übersicht, nur mit einem freigegebenen Stand und nur, wer Energieeinsätze sehen darf (UEMS AP-16 IP-24)."
     },
     {
+      "id": "ziele-massnahmen",
+      "label": "Ziele und Maßnahmen",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Zählt offene Auffälligkeiten, offene und überfällige Abweichungen, geplante, überfällige und umgesetzte, noch nicht bewertete Maßnahmen, laufende Energieziele mit fälliger Bewertung, offene Anstöße und überfällige Messbedarfe und nennt je fälligem Vorgang eine Zeile mit Sprung — alles aus der Übersichts-Route, beim Abruf abgeleitet, nichts wird hier gerechnet. Nur auf der Unternehmens-Übersicht und nur mit einem Energieziel, einer Maßnahme, einer Abweichung oder einer Auffälligkeit im Zaun (UEMS AP-18 IP-19)."
+    },
+    {
       "id": "anlagen",
       "label": "Anlagen",
       "flaeche": "portfolio",
@@ -606,6 +617,7 @@
           "energiebilanz",
           "kennzahlen",
           "bewertung",
+          "ziele-massnahmen",
           "anlagen"
         ],
         "geldstrom": null,

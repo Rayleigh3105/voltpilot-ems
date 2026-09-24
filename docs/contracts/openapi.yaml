@@ -12992,6 +12992,23 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BezugsbasisUebersicht" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/verbesserung/uebersicht:
+    get:
+      tags: [kennzahlen]
+      summary: Übersicht „Ziele und Maßnahmen“ am Unternehmen - Zähler je Art und je fälligem Vorgang eine Zeile.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-19, F1–F3, W7); gezählt wird nur, was der Aufrufer sieht (RLS
+        über `standort_id` und die Kennzahl; ein Anstoß nur mit sichtbarem Vorgang, ein Messbedarf im Zaun seines
+        Energieeinsatzes). Abruf-Tag ist die Uhr der Kennzahlen in der Zeitzone des Unternehmens; „überfällig seit n
+        Tagen“ bzw. „Bewertung fällig seit n Tagen“ leitet die Operation `frist` beim Abruf ab - kein Läufer, kein
+        Ereignis, keine Nachricht (E5 = A). Die Messbedarf-Frist (AP-16) wird nur gelesen.
+      responses:
+        "200":
+          description: Die Übersicht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerbesserungUebersicht" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/kennzahlen/{id}/bezugsbasen/{bid}/fassungen/{n}/beantragen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -28030,6 +28047,53 @@ components:
         faellig:
           type: array
           items: { $ref: "#/components/schemas/BezugsbasisZustand" }
+    VerbesserungUebersicht:
+      type: object
+      description: >
+        UEMS AP-18 IP-19: die Zähler aus R9 und die fälligen Vorgänge - am längsten fällig zuerst, dann nach
+        Kennzeichen. Nichts davon ist gespeichert.
+      required: [abruf, zaehler, faellig]
+      properties:
+        abruf: { type: string, format: date }
+        zaehler: { $ref: "#/components/schemas/VerbesserungUebersichtZaehler" }
+        faellig: { type: array, items: { $ref: "#/components/schemas/VerbesserungUebersichtZeile" } }
+    VerbesserungUebersichtZaehler:
+      type: object
+      description: >
+        `massnahmen_umgesetzt_ohne_bewertung` = Zustand `umgesetzt`; `energieziele_laufend` = Zustand `offen`;
+        `messbedarfe_ueberfaellig` = offene Messbedarfe, deren Frist erreicht ist (W7).
+      required: [auffaelligkeiten_offen, abweichungen_offen, abweichungen_ueberfaellig, massnahmen_geplant, massnahmen_ueberfaellig, massnahmen_umgesetzt_ohne_bewertung, energieziele_laufend, energieziele_bewertung_faellig, anstoesse_offen, messbedarfe_ueberfaellig]
+      properties:
+        auffaelligkeiten_offen: { type: integer, minimum: 0 }
+        abweichungen_offen: { type: integer, minimum: 0 }
+        abweichungen_ueberfaellig: { type: integer, minimum: 0 }
+        massnahmen_geplant: { type: integer, minimum: 0 }
+        massnahmen_ueberfaellig: { type: integer, minimum: 0 }
+        massnahmen_umgesetzt_ohne_bewertung: { type: integer, minimum: 0 }
+        energieziele_laufend: { type: integer, minimum: 0 }
+        energieziele_bewertung_faellig: { type: integer, minimum: 0 }
+        anstoesse_offen: { type: integer, minimum: 0 }
+        messbedarfe_ueberfaellig: { type: integer, minimum: 0 }
+    VerbesserungUebersichtZeile:
+      type: object
+      description: >
+        Ein fälliger Vorgang. `satz` ist der Kundensatz „Überfällig“ (§5.9) bei Maßnahme und Abweichung, beim
+        Energieziel null. Sprungziele: `id` (die Seite des Vorgangs), `kennzahl_id` (Messgrundlage bzw. Anker),
+        `einsatz_id` (Maßnahme mit Energieeinsatz).
+      required: [art, id, kennzeichen, titel, zustand, termin, faellig, seit_tagen, verantwortlich, satz, kennzahl_id, einsatz_id]
+      properties:
+        art: { type: string, enum: [massnahme, abweichung, energieziel] }
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        titel: { type: string }
+        zustand: { type: string }
+        termin: { type: string, format: date }
+        faellig: { type: string, enum: [ueberfaellig, bewertung_faellig] }
+        seit_tagen: { type: integer, minimum: 0 }
+        verantwortlich: { type: string }
+        satz: { type: string, nullable: true }
+        kennzahl_id: { type: string, format: uuid, nullable: true }
+        einsatz_id: { type: string, format: uuid, nullable: true }
     BezugsbasisMethoden:
       type: object
       description: Der Methoden-Katalog (bezugsbasis-methoden.schema.json), Byte für Byte die Vertragsdatei.
