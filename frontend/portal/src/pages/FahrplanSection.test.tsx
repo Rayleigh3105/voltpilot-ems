@@ -4,14 +4,16 @@ import { FahrplanSection } from './DataPages';
 import type { ControlStatus, SchedulePlan, ScheduleSlot, Site, TelemetryPoint } from '../api';
 
 /**
- * Das SEITENGERÜST der Fahrplan-Seite (Variante A+C): sechs Blöcke in der
- * Reihenfolge der Kundenfragen - Status-Zeile (`JetztKompakt`) → Warnungen →
- * Lage-Zeile (kompakt) → das Diagramm als HELD → Euro-Zeile → „Mehr erklären".
- * Die Zustands-Vollständigkeit liegt in den reinen Modul-Tests; hier wird
- * geprüft, dass die Blöcke wirklich in dieser Ordnung stehen, dass die Vertiefung
- * (Warum-Satz, Film, kWh-Summen, volle Lage) hinter ihren Aufklappern wohnt und
- * dass ein Plan OHNE die persistierten Warum-Fakten sauber degradiert (kein Film,
- * kein erfundener Grund).
+ * Das SEITENGERÜST der Fahrplan-Seite (Konzept „Tagesuhr und Bildfahrplan",
+ * E1–E11): Status-Zeile (`JetztKompakt`) → Warnungen → das TAGESBILD mit
+ * Lage-Zeile, Uhr (in jsdom ohne Breite immer die Uhr), Moment-Zeile,
+ * Antworten und Waage → Stationen → „Alle Werte" (das bisherige Diagramm) →
+ * „Mehr erklären". Die Zustands-Vollständigkeit liegt in den reinen
+ * Modul-Tests; hier wird geprüft, dass die Blöcke wirklich in dieser Ordnung
+ * stehen, dass die Vertiefung hinter ihren Aufklappern wohnt, dass die Seite
+ * keine zweite Geldzahl gegen „ohne Speicher" mehr nennt (E6) und dass ein
+ * Plan OHNE die persistierten Warum-Fakten sauber zur bisherigen Seite
+ * degradiert (kein Tagesbild, kein Film, kein erfundener Grund).
  */
 
 vi.mock('../ScheduleChart', () => ({
@@ -23,6 +25,9 @@ const weather = vi.fn();
 const curtailmentStatus = vi.fn();
 const schedule = vi.fn();
 const telemetry = vi.fn();
+const siteEarnings = vi.fn();
+const tenantCockpitLayout = vi.fn();
+const saveTenantCockpitLayout = vi.fn();
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>();
@@ -39,6 +44,11 @@ vi.mock('../api', async (importOriginal) => {
         Promise.resolve({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
       // Erklärbarkeit Stufe 2: die „Lage"-Zeile liest das Wetter FAIL-SOFT.
       weather: (...a: unknown[]) => weather(...a),
+      // Tagesbild E6: „Was bringt es heute?" liest die Tages-Erlöse FAIL-SOFT.
+      siteEarnings: (...a: unknown[]) => siteEarnings(...a),
+      // Tagesbild E11: die „gesehen"-Marke der Einführung.
+      tenantCockpitLayout: (...a: unknown[]) => tenantCockpitLayout(...a),
+      saveTenantCockpitLayout: (...a: unknown[]) => saveTenantCockpitLayout(...a),
     },
   };
 });
@@ -69,7 +79,10 @@ function slot(over: Partial<ScheduleSlot> & { start: string }): ScheduleSlot {
 }
 
 function plan(over: Partial<SchedulePlan> = {}): SchedulePlan {
-  const t0 = Date.now() - 5 * 60_000;
+  // Auf dem 15-Minuten-Raster wie jeder echte Lauf: „jetzt" liegt im ersten
+  // Slot, und kurz nach Mitternacht beginnt er HEUTE (ein Slot „vor fünf
+  // Minuten" läge dann auf gestern, und das Tagesbild kennte kein Jetzt).
+  const t0 = Math.floor(Date.now() / (15 * 60_000)) * 15 * 60_000;
   return {
     planId: 'p1',
     deviceId: 'dev-1',
@@ -146,44 +159,55 @@ beforeEach(() => {
   // Ohne Vorhersage (der Normalfall der übrigen Fälle) fehlt nur das
   // Himmels-Wort - die Seite bleibt sonst zeichengleich.
   weather.mockResolvedValue({ runAt: null, points: [] });
+  // Ohne Tages-Erlöse (älteres Backend) entfällt nur „Was bringt es heute?".
+  siteEarnings.mockRejectedValue(new Error('404'));
+  tenantCockpitLayout.mockResolvedValue({ vorgabe: null, eigen: null });
+  saveTenantCockpitLayout.mockResolvedValue(undefined);
 });
 
 describe('FahrplanSection · das Seitengerüst', () => {
   it('beantwortet „was macht meine Batterie gerade" ganz oben, der Warum-Satz erst im Aufklapper', async () => {
     const { container } = render(<FahrplanSection site={SITE} />);
-    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
-    // Die Status-Zeile steht VOR der Euro-Zeile.
-    const blocks = [...container.querySelectorAll('.vp-kompakt, .vp-fp-euro')];
-    expect(blocks[0]?.classList.contains('vp-kompakt')).toBe(true);
+    await waitFor(() => expect(container.querySelector('.vp-tb .vp-kompakt')).toBeTruthy());
+    // E1/E9: die Uhr ganz oben, direkt darunter die Antworten - die
+    // Jetzt-Aussage (Ausführung und Messung) folgt im Tagesbild darunter.
+    expect(container.querySelector('.vp-tb')?.previousElementSibling?.classList.contains('vp-kompakt')).not.toBe(true);
+    const reihe = [...container.querySelectorAll('.vp-uhr, .vp-antw, .vp-kompakt')].map((b) =>
+      b.classList.contains('vp-uhr') ? 'uhr' : b.classList.contains('vp-antw') ? 'antworten' : 'jetzt',
+    );
+    expect(reihe).toEqual(['uhr', 'antworten', 'jetzt']);
     // Die zwei Wahrheiten im Standard-Scroll: Ausführung (Rücklesen) statt
     // Plan-Watt, und der Plan bleibt sichtbar daneben.
     await waitFor(() => expect(screen.getByText(/6,1/)).toBeInTheDocument());
     expect(screen.getByText(/Fahrplan sah/)).toBeInTheDocument();
     // Der Warum-Satz des laufenden Slots wohnt im „Warum & Messwerte"-Fold des
-    // Helden, nicht im Standard-Scroll.
-    expect(screen.queryByText(/32,5 ct\/kWh/)).toBeNull();
-    // Keine KPI-Reihe - und seit V-02 (UX-Review 24.09.2026) auch keine eigene
-    // Euro-Karte mehr im Standard-Scroll: der Betrag steht als Kopfsatz über
-    // dem Diagramm (ScheduleChart), seine Lesart in „Mehr erklären".
+    // Helden - die Zahlen stehen dafür als Werte am Zeiger und auf der Waage.
+    const kompakt = container.querySelector('.vp-kompakt')!;
+    expect(kompakt.textContent).not.toContain('32,5 ct/kWh');
+    expect(container.querySelector('.vp-tb-werte')?.textContent).toContain('32,5');
+    // Keine KPI-Reihe und KEINE Geldzahl gegen „ohne Speicher" (E6) - auch
+    // nicht in „Mehr erklären".
     expect(container.querySelector('.vp-kpis')).toBeNull();
-    expect(screen.queryByText(/Heute geplant:/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
-    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+    expect(screen.queryByText(/Heute geplant:/)).toBeNull();
+    expect(container.textContent).not.toContain('ohne Speicher');
   });
 
-  it('zeigt das Diagramm als HELD dauerhaft und die kWh-Summen erst in „Mehr erklären"', async () => {
-    render(<FahrplanSection site={SITE} />);
-    // Das Diagramm ist der HELD - immer sichtbar, ohne Umschalter.
-    expect(await screen.findByTestId('chart')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Diagramm im Detail/ })).toBeNull();
+  it('zeigt das Tagesbild als HELD, das Diagramm erst unter „Alle Werte" und die kWh-Summen in „Mehr erklären"', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-uhr')).toBeTruthy());
+    // Das Diagramm entsteht erst beim Aufklappen (ECharts misst sonst 0 × 0).
+    expect(screen.queryByTestId('chart')).toBeNull();
+    const alle = screen.getByRole('button', { name: /Alle Werte im Diagramm/ });
+    expect(alle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(alle);
+    expect(screen.getByTestId('chart')).toBeInTheDocument();
     // Die kWh-Summen wohnen in „Mehr erklären" (Standard ZU).
     const mehr = screen.getByRole('button', { name: /Mehr erklären/ });
     expect(mehr).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText(/geplantes Laden/)).toBeNull();
     fireEvent.click(mehr);
     expect(screen.getByText(/geplantes Laden/)).toBeInTheDocument();
-    // Das Diagramm bleibt dabei sichtbar.
-    expect(screen.getByTestId('chart')).toBeInTheDocument();
   });
 
   it('degradiert ohne persistierte Warum-Fakten: kein Film, kein erfundener Grund', async () => {
@@ -217,8 +241,9 @@ describe('FahrplanSection · das Seitengerüst', () => {
     telemetry.mockRejectedValue(new Error('down'));
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    expect(container.querySelector('.vp-tb')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
-    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+    expect(screen.getByText(/geplantes Laden/)).toBeInTheDocument();
   });
 });
 
@@ -254,6 +279,13 @@ describe('FahrplanSection · die Abregel-Wahrheit erreicht die Fläche (PR 3)', 
     expect(container.querySelector('.vp-jetzt-conflict')!.textContent).toContain(
       'noch nicht freigegeben oder nicht bestätigt',
     );
+    // K10: die Warnung steht GENAU EINMAL und ÜBER der Uhr - die
+    // Jetzt-Aussage folgt am Telefon erst unter den Antworten.
+    expect(container.querySelectorAll('.vp-jetzt-conflict')).toHaveLength(1);
+    const reihe = [...container.querySelectorAll('.vp-jetzt-conflict, .vp-uhr')].map((e) =>
+      e.classList.contains('vp-uhr') ? 'uhr' : 'warnung',
+    );
+    expect(reihe).toEqual(['warnung', 'uhr']);
   });
 
   it('nennt mit Block die ECHTE Ursache (Stufe 2 - die Pilsting-Lage)', async () => {
@@ -372,7 +404,7 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
     expect(screen.getByText('Heute noch')).toBeInTheDocument();
     // Der Rest der Seite ist davon unberührt.
     expect(container.querySelector('.vp-film-now')?.textContent).toBe('Jetzt');
-    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+    expect(container.querySelector('.vp-tb')).toBeTruthy();
   });
 
   it('nutzt den Splice nur, wenn er die Warum-Ebene vollständig trägt', async () => {
@@ -455,22 +487,24 @@ describe('FahrplanSection · die „Lage"-Zeile', () => {
     return { ...base, slots: [...base.slots, ...morgen] };
   }
 
-  it('steht ZWISCHEN dem Status und dem Diagramm und erzählt den Tages-Bogen', async () => {
+  it('steht im Tagesbild unter den Antworten und erzählt den Tages-Bogen', async () => {
     schedule.mockResolvedValue(talPlan());
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-lage')).toBeTruthy());
     expect(container.querySelector('.vp-lage')!.textContent).toContain('mittags am günstigsten');
-    // Die Reihenfolge im Standard-Scroll: Status → Lage → Diagramm.
-    const blocks = [...container.querySelectorAll('.vp-kompakt, .vp-lage, [data-testid="chart"]')];
+    // Am Telefon (jsdom misst keine Breite): Uhr → Antworten → Jetzt → Lage.
+    const blocks = [...container.querySelectorAll('.vp-uhr, .vp-antw, .vp-kompakt, .vp-lage')];
     expect(
       blocks.map((b) =>
-        b.classList.contains('vp-kompakt')
-          ? 'kompakt'
-          : b.classList.contains('vp-lage')
-            ? 'lage'
-            : 'chart',
+        b.classList.contains('vp-uhr')
+          ? 'uhr'
+          : b.classList.contains('vp-antw')
+            ? 'antworten'
+            : b.classList.contains('vp-kompakt')
+              ? 'jetzt'
+              : 'lage',
       ),
-    ).toEqual(['kompakt', 'lage', 'chart']);
+    ).toEqual(['uhr', 'antworten', 'jetzt', 'lage']);
   });
 
   it('nennt den Morgen-Ausblick + das Wetter-Wort kompakt, der Bedingungs-Satz erst im Aufklapper', async () => {
@@ -572,10 +606,10 @@ describe('P7 · eine Anlage ohne Ladestand', () => {
   it('lässt eine Anlage MIT Ladestand unverändert', async () => {
     schedule.mockResolvedValue(plan());
     const { container } = render(<FahrplanSection site={SITE} />);
-    await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-uhr')).toBeTruthy());
     expect(container.textContent).not.toContain('meldet derzeit keinen Ladestand');
-    fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
-    expect(container.querySelector('.vp-fp-euro')).toBeTruthy();
+    // Die Mitte der Uhr trägt den geplanten Ladestand am Zeiger.
+    expect(container.querySelector('.vp-uhr-m2')?.textContent).toBe('78\u00a0%');
   });
 
   it('liest einen Lauf VOR der Spalte wie gemessen, nie wie "kein Ladestand"', async () => {
@@ -594,19 +628,98 @@ describe('P7 · eine Anlage ohne Ladestand', () => {
  * ist eine ruhige Zeile IN der Diagramm-Karte, „Ihr Vorteil" ein Abschnitt in
  * „Mehr erklären" - keine Karte wiederholt mehr den Betrag des Kopfsatzes.
  */
-describe('FahrplanSection · drei Karten statt fünf (V-02)', () => {
-  it('trägt die Lage in der Diagramm-Karte und keine eigene Vorteil-Karte', async () => {
+describe('FahrplanSection · keine Karte wiederholt eine andere (V-02, E6)', () => {
+  it('trägt die Lage in der Tagesbild-Karte und keine Vorteil-Karte gegen „ohne Speicher"', async () => {
     const { container } = render(<FahrplanSection site={SITE} />);
-    await screen.findByTestId('chart');
+    await waitFor(() => expect(container.querySelector('.vp-tb')).toBeTruthy());
     // Keine Karte „Ihr Vorteil" im Standard-Scroll.
     expect(screen.queryByText('Ihr Vorteil')).toBeNull();
-    // Die Lage (falls belegt) sitzt in derselben Karte wie das Diagramm.
+    // Die Lage (falls belegt) sitzt in derselben Karte wie das Tagesbild.
     const lage = container.querySelector('.vp-lage-zeile');
-    if (lage) expect(lage.closest('.vp-card, [class*="card"]')?.contains(screen.getByTestId('chart'))).toBe(true);
-    // „Ihr Vorteil" steht aufgeklappt als Abschnitt, nicht als eigene Karte.
+    if (lage) expect(lage.closest('.vp-card, [class*="card"]')?.contains(container.querySelector('.vp-tb'))).toBe(true);
+    // Auch aufgeklappt: die Geldzahl der Seite ist die Antwort „Was bringt es
+    // heute?" (E6), keine zweite gegen einen Betrieb ohne Speicher.
     fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
-    const vorteil = container.querySelector('section.vp-fp-vorteil');
-    expect(vorteil?.textContent).toContain('Ihr Vorteil');
-    expect(vorteil?.textContent).toContain('Heute geplant:');
+    expect(container.querySelector('section.vp-fp-vorteil')).toBeNull();
+  });
+});
+
+/**
+ * Das TAGESBILD auf der Seite (Konzept „Tagesuhr und Bildfahrplan"): es liest
+ * dieselben Listen wie der Film, die Geld-Antwort kommt aus der Erlöse-Welt
+ * (E6), und das Warum einer Viertelstunde öffnet dasselbe Erklär-Panel wie
+ * bisher - aus dem JÜNGSTEN Lauf, wenn er die Viertelstunde trägt.
+ */
+describe('FahrplanSection · das Tagesbild', () => {
+  it('beantwortet „Was bringt es heute?" mit der Steuerungs-Aussage des Tages (E6)', async () => {
+    const heute = new Date();
+    const morgen = new Date(heute.getFullYear(), heute.getMonth(), heute.getDate() + 1);
+    siteEarnings.mockResolvedValue({
+      range: 'day',
+      from: new Date(heute.getFullYear(), heute.getMonth(), heute.getDate()).toISOString(),
+      to: morgen.toISOString(),
+      savedEur: 1.25,
+      savedSpeicherEur: 0.85,
+      savedSteuerungEur: 0.4,
+      steuerungSplitReason: null,
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(screen.getByText('Was bringt es heute?')).toBeInTheDocument());
+    const karte = screen.getByText('Was bringt es heute?').closest('li')!;
+    expect(karte.textContent).toContain('0,40');
+    expect(karte.textContent).toContain('Gemessen');
+    // Der volle Satz steht nach dem Tipp im Banner - mit dem Weg zu den Erlösen.
+    fireEvent.click(screen.getByRole('button', { name: /Was bringt es heute\?/ }));
+    const banner = container.querySelector('.vp-tb-antwort')!;
+    expect(banner.textContent).toContain('demselben Speicher ohne smarte Steuerung');
+    expect(screen.getByRole('link', { name: /Zu den Erlösen/ })).toHaveAttribute('href', '#/anlage/s1/erloese');
+    expect(siteEarnings).toHaveBeenCalledWith('s1', 'day', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+    expect(container.textContent).not.toContain('ohne Speicher gegenüber');
+  });
+
+  it('lässt nur diese Antwort weg, wenn die Erlöse fehlen - auch bei einer api ohne die Methode', async () => {
+    siteEarnings.mockImplementation(() => {
+      throw new TypeError('api.siteEarnings is not a function');
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-tb')).toBeTruthy());
+    expect(screen.getByText('Wie geht es weiter?')).toBeInTheDocument();
+    expect(screen.queryByText('Was bringt es heute?')).toBeNull();
+  });
+
+  it('öffnet das Warum der laufenden Viertelstunde aus dem jüngsten Lauf', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-tb')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Alle Gründe/ }));
+    const panel = screen.getByRole('dialog', { name: 'Erklärung der Viertelstunde' });
+    // Der Lauf-Satz der laufenden Viertelstunde: 32,5 ct Bezug gegen 21,5 ct
+    // gespeicherten Wert - dieselbe Aussage wie das bisherige Slot-Panel.
+    expect(panel.textContent).toContain('32,5');
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+    expect(screen.queryByRole('dialog', { name: 'Erklärung der Viertelstunde' })).toBeNull();
+  });
+
+  it('nennt in den Stationen keine Phasen-Beträge gegen „ohne Speicher" (E6)', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-film')).toBeTruthy());
+    expect(container.querySelector('.vp-film-eur')).toBeNull();
+    fireEvent.click(container.querySelector('.vp-film-row') as HTMLElement);
+    const panel = container.querySelector('.vp-film .vp-fw-panel');
+    expect(panel).toBeTruthy();
+    expect(panel?.textContent).not.toContain('Beitrag dieser Phase');
+  });
+
+  it('zeigt die Stationen des Tages offen unter dem Bild, nicht erst in „Mehr erklären"', async () => {
+    schedule.mockImplementation((_id: unknown, mode?: unknown) =>
+      Promise.resolve(mode === 'day' ? dayPlan() : plan()),
+    );
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(1));
+    expect(screen.getByRole('button', { name: /Mehr erklären/ })).toHaveAttribute('aria-expanded', 'false');
+    // Die Stationen stehen nach dem Tagesbild.
+    const reihe = [...container.querySelectorAll('.vp-tb, .vp-film')].map((e) =>
+      e.classList.contains('vp-tb') ? 'tagesbild' : 'stationen',
+    );
+    expect(reihe).toEqual(['tagesbild', 'stationen']);
   });
 });

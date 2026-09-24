@@ -192,7 +192,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 ## `portal/` — aus `frontend/portal/AGENTS.md` (47 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
-- [Build & test](portal/build-test/README.md) *(Sammlung, 94 Punkte)*
+- [Build & test](portal/build-test/README.md) *(Sammlung, 95 Punkte)*
 - [Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)](portal/die-speicher-kachel-nennt-ihre-quelle-p6.md)
 - [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
 - [Cockpit anpassen: die Fläche des Layout-Speichers (Anwendungs-Programm Stufe 3)](portal/cockpit-anpassen-die-flaeche-des-layout.md)

@@ -1734,7 +1734,8 @@ describe('das Band trägt Wort UND Farbe (K10, nie Farbe allein)', () => {
       netzladen: 'Netz laden',
       entladen: 'Entladen',
       abregeln: 'Abregeln',
-      ruhe: 'Ruhe',
+      // E8: die ruhende Phase heißt überall „Warten" (Uhr, Stationen, Band).
+      ruhe: 'Warten',
     });
   });
 
@@ -1765,7 +1766,7 @@ describe('bandLegende bewirbt nur vorkommende Phasen', () => {
     expect(bandLegende(slots)).toEqual([
       { role: 'solarladen', label: 'Solar laden' },
       { role: 'entladen', label: 'Entladen' },
-      { role: 'ruhe', label: 'Ruhe' },
+      { role: 'ruhe', label: 'Warten' },
     ]);
   });
 
@@ -1791,11 +1792,11 @@ describe('bandWordRuns · das WORT nur, wo das Segment es fasst (Pixel-Gate, K10
     expect(bandWordRuns(slots, 325).some((r) => r.role === 'solarladen')).toBe(false);
   });
 
-  it('misst je Wort einzeln - kurze „Ruhe" überlebt, wo längeres „Entladen" wegfällt', () => {
-    // entladen(5) · solar(1, Trenner) · ruhe(5) · solar(85, füllt auf) = 96 Slots.
-    const slots = bau([entladen, 5], [solar, 1], [ruhe, 5], [solar, 85]);
+  it('misst je Wort einzeln - kurzes „Warten" überlebt, wo längeres „Entladen" wegfällt', () => {
+    // entladen(6) · solar(1, Trenner) · ruhe(6) · solar(83, füllt auf) = 96 Slots.
+    const slots = bau([entladen, 6], [solar, 1], [ruhe, 6], [solar, 83]);
     const runs = bandWordRuns(slots, 768); // 96 Slots → 8 px/Slot
-    // 5 Slots = 40 px: ≥ „Ruhe" (32 px), aber < „Entladen" (60 px).
+    // 6 Slots = 48 px: ≥ „Warten" (46 px), aber < „Entladen" (60 px).
     expect(runs.some((r) => r.role === 'ruhe')).toBe(true);
     expect(runs.some((r) => r.role === 'entladen')).toBe(false);
   });

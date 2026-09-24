@@ -32,10 +32,15 @@ export const captures = [
     point('[role="combobox"]', 'Die gewählte Anlage bestimmt den Standort der Zuordnung.'),
     point('.dfoot button:has-text("Gerät hinzufügen")', 'Die Abschlussaktion bleibt am unteren Rand erreichbar.'),
   ] },
-  { id: 'fahrplan', title: 'Fahrplan: jetzt und im Tagesverlauf', hash: plant('fahrplan'), root: 'main', maxHeight: 2100, points: [
-    point('main h1', 'Die Ansicht gehört zur oben genannten Anlage.'),
+  { id: 'fahrplan', title: 'Fahrplan: der Tag im Bild', hash: plant('fahrplan'), root: 'main', maxHeight: 1500, points: [
     point('.vp-lage-zeile', 'Diese Zeile nennt den Verlauf des Tages und den Ausblick auf morgen. Die Grundlage des Plans steht unter „Mehr erklären“.'),
-    point('.vp-chart.panels', 'Preis und Speicherleistung liegen auf getrennten Skalen über derselben Zeitachse.'),
+    point('.vp-bf', 'Von oben nach unten: Strompreis, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde.'),
+    point('.vp-antw', 'Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild.'),
+  ] },
+  { id: 'fahrplan-uhr', title: 'Fahrplan am Telefon: die Tagesuhr', hash: plant('fahrplan'), mobile: true, viewportOnly: true, klick: 'Beenden', points: [
+    point('.vp-uhr', 'Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand.'),
+    point('.vp-tb-werte', 'Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn.'),
+    point('.vp-antw', 'Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle.'),
   ] },
   { id: 'messwerte', title: 'Energie: Zeitraum, Mengen und Verlauf', hash: plant('messwerte'), root: 'main', maxHeight: 1750, points: [
     point('button:has-text("Woche")', 'Wählen Sie den Zeitrahmen passend zu Ihrer Frage.'),

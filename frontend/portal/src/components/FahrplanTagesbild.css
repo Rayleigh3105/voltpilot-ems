@@ -1,0 +1,924 @@
+/*
+ * Das Fahrplan-Tagesbild: Tagesuhr (Telefon), Bildfahrplan (ab 900 px
+ * Inhaltsbreite), Moment-Zeile, Antworten, Waage und Einführung (Konzept
+ * „Tagesuhr und Bildfahrplan", E1–E11). Komponenten-lokal wie `Fahrplan.css`.
+ *
+ * MOBILE-FIRST. Jeder Flex-/Grid-Kasten trägt `min-width: 0`, lange Sätze
+ * brechen um. Bewegung nur über die Familie (`--vp-motion-*`), damit der eine
+ * Schalter `--vp-motion-scale` sie unter `prefers-reduced-motion` nullt.
+ */
+
+/* Die Karte des Tagesbilds: am Telefon ein schmaler Rand, damit die Uhr so
+   groß wie möglich wird (ihre Schrift skaliert mit). */
+.vp-tb-karte {
+  --vp-tb-pad: var(--vp-card-pad-lg);
+}
+
+@media (max-width: 480px) {
+  .vp-tb-karte {
+    --vp-tb-pad: var(--vp-space-3);
+  }
+}
+
+.vp-tb {
+  display: grid;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+/* Am Telefon zählt im ersten Bildschirm jede Zeile (E9). */
+.vp-tb.is-uhr:not(.is-zweispaltig) {
+  gap: var(--vp-space-2);
+}
+
+.vp-tb-bildspalte,
+.vp-tb-textspalte,
+.vp-tb-unter-links,
+.vp-tb-unter-rechts {
+  display: grid;
+  gap: var(--vp-space-3);
+  align-content: start;
+  min-width: 0;
+}
+
+/* Uhr und Antworten nebeneinander zwischen 640 und 900 px (E10: darüber der Bildfahrplan). */
+.vp-tb.is-zweispaltig {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-5);
+  align-items: start;
+}
+
+.vp-tb.is-bild .vp-tb-unter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: var(--vp-space-5);
+  align-items: start;
+}
+
+/* ---- Die Uhr ------------------------------------------------------------------ */
+
+.vp-uhr {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  min-width: 0;
+}
+
+.vp-uhr-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Senkrechtes Rollen bleibt möglich; auf den Ringen hält `touchstart` es an. */
+  touch-action: pan-y;
+  font-family: inherit;
+}
+
+.vp-uhr-svg:focus {
+  outline: none;
+}
+
+.vp-uhr-svg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 4px;
+  border-radius: 50%;
+}
+
+.vp-uhr-ebene,
+.vp-bf-spur {
+  transition: opacity var(--vp-motion-base) var(--vp-ease-inout);
+}
+
+.vp-uhr-ebene.is-leise,
+.vp-bf-spur.is-leise {
+  opacity: 0.16;
+}
+
+.vp-uhr-grund {
+  fill: var(--vp-bg-light);
+}
+
+.vp-uhr-hilfslinie {
+  stroke: var(--vp-border);
+  stroke-width: 1;
+}
+
+.vp-uhr-hilfslinie.is-mitte {
+  stroke-dasharray: 3 4;
+}
+
+.vp-uhr-halo,
+.vp-uhr-preismarke {
+  font-size: 11.5px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--vp-surface);
+  stroke-width: 3.2px;
+  stroke-linejoin: round;
+}
+
+.vp-uhr-halo {
+  fill: var(--vp-text-muted);
+  font-weight: 600;
+}
+
+.vp-uhr-stunden path {
+  stroke: var(--vp-text-muted);
+  stroke-width: 1;
+}
+
+.vp-uhr-stunden path.is-gross {
+  stroke: var(--vp-text);
+  stroke-width: 1.6;
+}
+
+.vp-uhr-stunden text {
+  font-size: 12.5px;
+  font-weight: 600;
+  fill: var(--vp-text-muted);
+}
+
+.vp-uhr-stunden text.is-gross {
+  font-size: 14.5px;
+  font-weight: 700;
+  fill: var(--vp-text);
+}
+
+.vp-uhr-markierung {
+  fill: var(--vp-tint);
+  stroke-width: 2.4;
+  stroke-dasharray: 5 3;
+}
+
+.vp-uhr-markpunkt {
+  fill: var(--vp-surface);
+  stroke-width: 2.8;
+}
+
+.vp-uhr-m1 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  fill: var(--vp-text-muted);
+}
+
+.vp-uhr-m2 {
+  font-size: 33px;
+  font-weight: 700;
+  fill: var(--vp-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-uhr-m3 {
+  font-size: 10.5px;
+  fill: var(--vp-text-muted);
+}
+
+/* Die zwei Ecken: abspielen und erklären — je 44 px Tippfläche. */
+.vp-uhr-ecke {
+  position: absolute;
+  top: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-full);
+  background: var(--vp-surface);
+  color: var(--vp-text);
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout),
+    border-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+.vp-uhr-ecke.is-links {
+  left: 0;
+}
+
+.vp-uhr-ecke.is-rechts {
+  right: 0;
+}
+
+.vp-uhr-ecke:hover {
+  border-color: var(--vp-gray);
+}
+
+.vp-uhr-ecke:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* ---- Werte am Zeiger ------------------------------------------------------------ */
+
+.vp-tb-werte {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--vp-space-1);
+  min-width: 0;
+}
+
+.vp-tb-wert {
+  display: grid;
+  align-content: start;
+  gap: 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px 5px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  color: var(--vp-text);
+  font: inherit;
+  text-align: left;
+}
+
+button.vp-tb-wert {
+  cursor: pointer;
+  transition: border-color var(--vp-motion-fast) var(--vp-ease-inout),
+    background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+button.vp-tb-wert[aria-pressed='true'] {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+
+.vp-tb-werte-k,
+.vp-tb-werte-v,
+.vp-tb-werte-h {
+  /* Je Zelle drei kurze Angaben, bei 375 px je EINE Zeile (E9: vier
+     nebeneinander, flach genug, damit die Antworten im ersten Bildschirm
+     beginnen). Auf noch schmaleren Geräten bricht ein Wort lieber um, als
+     abgeschnitten zu werden — „war geplant" ist eine Aussage. Der volle Satz
+     steht im Screenreader-Namen der Zelle. */
+  overflow-wrap: break-word;
+  line-height: 1.25;
+}
+
+.vp-tb-werte-k {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-werte-v {
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-tb-werte-h {
+  font-size: 0.64rem;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-notiz {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted);
+}
+
+/* ---- Die Zeile am Zeiger ----------------------------------------------------------- */
+
+.vp-tb-zeiger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 12px;
+  min-width: 0;
+  min-height: 28px;
+}
+
+.vp-tb-zeiger-was {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.vp-tb-zeiger-was i {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-top: 5px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.vp-tb-zeiger-zeit {
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+/* Am Rechner: Zeile und Werte nebeneinander unter dem Bild. */
+.vp-tb-leiste {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+
+/* Die Jetzt-Aussage im Tagesbild: dieselben Bausteine wie die Jetzt-Karte,
+   ohne zweite Karte. */
+.vp-tb-jetzt {
+  margin: 0;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+}
+
+.vp-tb-antwort-zeit {
+  font-weight: 600;
+}
+
+.vp-tb-antwort-notiz {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted);
+}
+
+a.vp-tb-antwort-zusatz {
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--vp-link);
+}
+
+/* ---- Moment-Zeile, Antwort-Banner, Einführung ------------------------------------ */
+
+.vp-tb-moment,
+.vp-tb-antwort,
+.vp-tb-tour {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+}
+
+.vp-tb-moment p,
+.vp-tb-antwort p,
+.vp-tb-tour p {
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-tb-moment-zeit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-moment-plan {
+  font-size: 0.85rem;
+  color: var(--vp-text-muted);
+  line-height: 1.4;
+}
+
+.vp-tb-reihe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.vp-tb-warum,
+.vp-tb-zurueck,
+.vp-tb-link,
+.vp-tb-knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--vp-link);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vp-tb-warum[aria-expanded='true'] {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.vp-tb-zurueck {
+  color: var(--vp-text);
+}
+
+.vp-tb-knopf {
+  padding: 0 14px;
+  border: 1px solid var(--vp-gray);
+  border-radius: var(--vp-radius-btn);
+  color: var(--vp-text);
+}
+
+.vp-tb-knopf.is-primaer {
+  border-color: var(--vp-action);
+  background: var(--vp-action);
+  color: #fff;
+}
+
+.vp-tb-warum:focus-visible,
+.vp-tb-zurueck:focus-visible,
+.vp-tb-link:focus-visible,
+.vp-tb-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-tb-antwort {
+  border-color: var(--vp-action);
+  box-shadow: inset 3px 0 0 var(--vp-action);
+}
+
+.vp-tb-antwort-frage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--vp-action);
+}
+
+.vp-tb-antwort-text {
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.vp-tb-antwort-zusatz {
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.vp-tb-tour {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+
+/* Am Telefon: ein Blatt am unteren Rand wie das Erklär-Panel — die Uhr, die
+   es erklärt, bleibt ganz sichtbar, und die Antworten verrutschen nicht. */
+.vp-tb-tour.is-blatt {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  margin: 0;
+  border-radius: 16px 16px 0 0;
+  border-bottom: none;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+  background: var(--vp-surface);
+  padding: var(--vp-space-4) var(--vp-space-4) calc(var(--vp-space-4) + env(safe-area-inset-bottom, 0px));
+}
+
+.vp-tb-tour-k {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-tour p {
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.vp-tb-tour-reihe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 4px;
+}
+
+.vp-tb-tour-punkte {
+  display: inline-flex;
+  gap: 5px;
+  margin-right: auto;
+}
+
+.vp-tb-tour-punkte i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vp-gray);
+}
+
+.vp-tb-tour-punkte i.is-an {
+  background: var(--vp-action);
+}
+
+/* ---- Antworten ------------------------------------------------------------------- */
+
+/* Eine Kachel je Antwort, die ganze Kachel ist der Knopf. In der Reihe
+   stehen alle nebeneinander (E9: alle beginnen im ersten Bildschirm). */
+.vp-antw {
+  display: grid;
+  gap: var(--vp-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-antw.is-reihe,
+.vp-antw.is-reihe-schmal {
+  grid-template-columns: repeat(var(--vp-antw-n, 3), minmax(0, 1fr));
+}
+
+.vp-antw.is-reihe-schmal {
+  gap: 6px;
+}
+
+.vp-antw-kachel {
+  display: flex;
+  min-width: 0;
+}
+
+.vp-antw-knopf {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  color: var(--vp-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--vp-motion-fast) var(--vp-ease-inout),
+    background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+.vp-antw.is-reihe-schmal .vp-antw-knopf {
+  padding: 8px 8px 10px;
+  border-radius: var(--vp-radius-sm);
+}
+
+.vp-antw-knopf:hover {
+  border-color: var(--vp-gray);
+}
+
+.vp-antw-knopf[aria-pressed='true'] {
+  border-color: var(--vp-action);
+  box-shadow: inset 0 3px 0 var(--vp-action);
+}
+
+.vp-antw-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-antw-frage {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--vp-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.vp-antw.is-reihe-schmal .vp-antw-frage {
+  font-size: 0.72rem;
+}
+
+.vp-antw-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.vp-antw-zeit {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-antw-text {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.vp-antw.is-reihe-schmal .vp-antw-text {
+  font-size: 0.84rem;
+}
+
+.vp-antw-zusatz {
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--vp-text);
+}
+
+.vp-antw-ort {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  color: var(--vp-action);
+}
+
+.vp-antw.is-reihe-schmal .vp-antw-ort {
+  display: none;
+}
+
+/* ---- Die Waage (E5) -------------------------------------------------------------- */
+
+.vp-waage {
+  display: grid;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-bg-light);
+}
+
+.vp-waage p {
+  margin: 0;
+}
+
+.vp-waage-frage {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.vp-waage-zeit {
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-waage-seiten {
+  display: grid;
+  gap: 6px;
+}
+
+.vp-waage-seite {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted);
+}
+
+.vp-waage-seite.is-gewaehlt {
+  color: var(--vp-text);
+  font-weight: 700;
+}
+
+.vp-waage-label {
+  overflow-wrap: anywhere;
+}
+
+.vp-waage-balken {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--vp-surface);
+  box-shadow: inset 0 0 0 1px var(--vp-border);
+  overflow: hidden;
+}
+
+.vp-waage-balken i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--vp-chart-soc);
+  opacity: 0.55;
+}
+
+.vp-waage-seite.is-gewaehlt .vp-waage-balken i {
+  opacity: 1;
+}
+
+/* Ein Preis, den man zahlt, ist gestreift — die Form sagt es, nicht nur die Farbe. */
+.vp-waage-balken i.is-kosten {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--vp-chart-price) 0 4px,
+    color-mix(in srgb, var(--vp-chart-price) 55%, var(--vp-surface)) 4px 7px
+  );
+}
+
+.vp-waage-wert {
+  display: grid;
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-waage-wert small {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--vp-text-muted);
+}
+
+.vp-waage-urteil {
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+/* ---- Der Bildfahrplan (E10) -------------------------------------------------------- */
+
+.vp-bf {
+  position: relative;
+  min-width: 0;
+}
+
+.vp-bf-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: inherit;
+}
+
+.vp-bf-svg:focus {
+  outline: none;
+}
+
+.vp-bf-svg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 4px;
+}
+
+.vp-bf-namen text {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--vp-text);
+}
+
+.vp-bf-namen text.is-klein {
+  font-size: 11.5px;
+  font-weight: 400;
+  fill: var(--vp-text-muted);
+}
+
+.vp-bf-grund {
+  fill: var(--vp-bg-light);
+}
+
+.vp-bf-marke {
+  font-size: 11.5px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--vp-surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.vp-bf-grenze {
+  stroke: var(--vp-gray);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 4;
+}
+
+.vp-bf-band {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.vp-bf-achse line {
+  stroke: var(--vp-text-muted);
+  stroke-width: 1;
+}
+
+.vp-bf-achse text {
+  font-size: 11px;
+  fill: var(--vp-text-muted);
+}
+
+.vp-bf-markierung {
+  fill: var(--vp-tint);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+
+.vp-bf-wahl {
+  fill: rgba(26, 26, 26, 0.04);
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+
+.vp-bf-schwebt {
+  fill: rgba(26, 26, 26, 0.06);
+  pointer-events: none;
+}
+
+.vp-bf-jetzt text {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vp-bf-lupe {
+  position: absolute;
+  z-index: 5;
+  width: 300px;
+  max-width: calc(100% - 8px);
+  display: grid;
+  gap: 6px;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  pointer-events: none;
+  font-size: 0.82rem;
+}
+
+.vp-bf-lupe p {
+  margin: 0;
+}
+
+.vp-bf-lupe-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vp-bf-lupe-was {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.vp-bf-lupe-was i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.vp-bf-lupe-fluss {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-bg-light);
+}
+
+.vp-bf-lupe-fluss b {
+  float: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-bf-lupe-zeilen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  margin: 0;
+}
+
+.vp-bf-lupe-zeilen dt {
+  color: var(--vp-text-muted);
+}
+
+.vp-bf-lupe-zeilen dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

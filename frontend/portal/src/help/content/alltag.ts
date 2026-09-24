@@ -38,14 +38,18 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'fahrplan', category: 'alltag', title: 'Den Fahrplan verstehen',
     summary: 'Wann Ihr Speicher laden oder entladen soll und wie Sie Plan und Ausführung auseinanderhalten.',
-    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum'],
+    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum', 'Tagesuhr', 'Bildfahrplan'],
     prerequisite: 'Ein Speicher beziehungsweise eine Anlage, für die ein Fahrplan angeboten wird.',
     sections: [
-      { id: 'lesen', title: 'Ein Plan über mehrere Zeitabschnitte', paragraphs: [
-        "Der Fahrplan zeigt geplante Speicheraktionen. Prüfen Sie Zeitraum und Erstellungszeitpunkt. Preis, Leistung und Ladestand haben eigene Skalen entlang derselben Zeitachse; neue Daten können den Plan ändern.",
+      { id: 'lesen', title: 'Der Tag in einem Bild', paragraphs: [
+        "Der Fahrplan zeigt den ganzen Tag: oben der Strompreis, darunter Sonne und Verbrauch, in der Mitte der Ladestand als Linie zwischen leer und voll, unten die Tätigkeit des Speichers. Wer eine Spalte von oben nach unten liest, sieht Ursache und Wirkung zur selben Uhrzeit. Was schon vorbei ist, zeigt den Plan, der damals galt; gemessen sind Sonne und Verbrauch.",
+        "Die Tätigkeiten heißen überall gleich: Sonne speichern, Günstig aus dem Netz laden, Verbrauch decken, Warten und Einspeisung pausieren. Unter dem Bild stehen die Antworten auf die häufigsten Fragen zum Tag; ein Klick markiert ihre Stelle im Bild.",
       ], figure: 'fahrplan' },
+      { id: 'uhr', title: 'Die Tagesuhr am Telefon', paragraphs: [
+        "Am Telefon ist der Tag ein Kreis: oben Mittag, unten Mitternacht. Außen stehen Sonne und Strompreis, der breite Ring zeigt die Tätigkeit, innen der Ladestand. Ziehen Sie den Zeiger oder tippen Sie auf eine Uhrzeit; Werte und Antworten gelten dann für diesen Moment. Ein Tipp in die Mitte holt die Gegenwart zurück, das Fragezeichen erklärt die Uhr Schritt für Schritt.",
+      ], figure: 'fahrplan-uhr' },
       { id: 'gruende', title: 'Warum die Batterie gerade so geplant ist', paragraphs: [
-        "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Nutzen Sie die Erklärungen im Fahrplan.",
+        "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Die Waage unter den Antworten stellt die zwei Werte je Kilowattstunde nebeneinander, zwischen denen entschieden wurde; „Alle Gründe“ öffnet die ausführliche Erklärung.",
       ] },
       { id: 'kontrolle', title: 'Plan ist nicht gleich Ausführung', paragraphs: [
         "Ein Plan belegt eine Absicht. Geräteantworten und Messwerte zeigen, was daraus wurde. Fehlt der Plan, prüfen Sie Verbindung, Speicherzuordnung und die Hinweise unter Steuerung.",

@@ -165,13 +165,13 @@ describe('JetztKompakt', () => {
 describe('TagesFilm', () => {
   const heute = [
     row({ phaseIndex: 0, now: true, sub: 'läuft · noch bis 21:30 Uhr', eur: '+2,80 €' }),
-    row({ phaseIndex: 1, role: 'warten', kind: 'idle', label: 'Ruhe', time: '21:30–02:00 Uhr' }),
+    row({ phaseIndex: 1, role: 'warten', kind: 'idle', label: 'Warten', time: '21:30–02:00 Uhr' }),
   ];
 
   it('zeigt jede Phase mit ihrem WORT und markiert die laufende', () => {
     render(<TagesFilm view={view({ today: heute })} selected={null} onSelect={() => {}} />);
     expect(screen.getByText('Verbrauch decken')).toBeInTheDocument();
-    expect(screen.getByText('Ruhe')).toBeInTheDocument();
+    expect(screen.getByText('Warten')).toBeInTheDocument();
     expect(screen.getByText('Jetzt')).toBeInTheDocument();
     expect(screen.getByText('+2,80 €')).toBeInTheDocument();
   });
@@ -221,7 +221,7 @@ describe('TagesFilm', () => {
                 partial: false,
               },
             }),
-            row({ phaseIndex: 1, label: 'Ruhe', role: 'warten', kind: 'idle' }),
+            row({ phaseIndex: 1, label: 'Warten', role: 'warten', kind: 'idle' }),
           ],
         })}
         selected={null}

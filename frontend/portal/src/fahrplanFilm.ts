@@ -52,6 +52,7 @@ import {
   type PlanWordingKind,
   type SlotDuty,
 } from './schedule';
+import { FAHRPLAN_TAETIGKEIT } from './glossar';
 
 /**
  * Die Pflicht-Vorschau einer Phase (PR 4): „folgt dem gemessenen Verbrauch" /
@@ -121,18 +122,24 @@ export function filmLabel(
   kind: PlanWordingKind,
   flags?: string[] | null,
 ): string {
+  // Die Wörter stehen im Glossar (E8, `FAHRPLAN_TAETIGKEIT`) - hier wird nur
+  // zugeordnet, welche Rolle welches Wort trägt.
   switch (role) {
     case 'warten':
-      return 'Ruhe';
+      // E8 (Konzept „Tagesuhr und Bildfahrplan", 24.09.2026): „Warten" ist
+      // das eine Wort für diese Phase auf Uhr, Stationen, Band und in den
+      // Antworten. „Ruhe" meint im Glossar den Ruhe-ZUSTAND einer Anlage
+      // (AP-01 E7/E8) — ein zweites Ding mit demselben Wort.
+      return FAHRPLAN_TAETIGKEIT.warten;
     case 'pv_speichern':
-      return 'Sonne speichern';
+      return FAHRPLAN_TAETIGKEIT.sonneSpeichern;
     case 'eigenverbrauch':
-      return 'Verbrauch decken';
+      return FAHRPLAN_TAETIGKEIT.verbrauchDecken;
     case 'abregeln':
       // Infinitiv wie die anderen Listenformen: der Film ist eine PLAN-Liste
       // (die Karte trägt das Abzeichen „Geplant" für alle Zeilen), also darf
       // die Zeile die Drosselung nicht im Indikativ behaupten.
-      return 'Einspeisung pausieren';
+      return FAHRPLAN_TAETIGKEIT.einspeisungPausieren;
     default:
       return roleLabel(role, kind, flags);
   }
@@ -365,7 +372,7 @@ export function filmKurzfassung(view: FilmView): string | null {
  * Die Erzählzeile der Speicher-Fahrplan-Karte des Cockpits
  * (vp-cockpit-unten-ux-n3 PR 4): wörtlich die {@link filmKurzfassung} — außer
  * die LAUFENDE Phase ist Ruhe, dann nennt die Zeile den Blick nach vorn
- * („Ruhe — als Nächstes: {Label} ab HH:MM Uhr.", via {@link naechsterEinsatz})
+ * („Warten — als Nächstes: {Label} ab HH:MM Uhr.", via {@link naechsterEinsatz})
  * statt eines Leerlauf-Rätsels. Eine Ruhe ohne späteren Einsatz und jede
  * Nicht-Ruhe bleiben zeichengleich die Kurzfassung; null ohne Zeilen (der
  * Aufrufer fällt auf `planSentence` zurück — die Band-Disziplin).
@@ -374,7 +381,7 @@ export function speicherKurzzeile(view: FilmView): string | null {
   const head = view.today[0];
   if (head?.now && head.kind === 'idle') {
     const next = naechsterEinsatz(view);
-    if (next) return `Ruhe — als Nächstes: ${next.label} ab ${hm(next.at)} Uhr.`;
+    if (next) return `Warten — als Nächstes: ${next.label} ab ${hm(next.at)} Uhr.`;
   }
   return filmKurzfassung(view);
 }

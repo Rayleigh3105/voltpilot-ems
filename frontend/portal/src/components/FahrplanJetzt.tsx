@@ -32,16 +32,36 @@ import './Fahrplan.css';
  * Erklärung sind die einzigen Dinge, die einklappen.
  */
 export function JetztKompakt({ view }: { view: JetztHeldView }) {
+  return (
+    <Card padding="md" radius="lg" className="vp-kompakt">
+      <JetztInhalt view={view} />
+    </Card>
+  );
+}
+
+/**
+ * Der INHALT der Jetzt-Karte ohne ihren Rahmen: Zustand, Plan-/Ist-Wert,
+ * Warnungen und der Aufklapper „Warum & Messwerte". Das Tagesbild setzt ihn
+ * unter die Antworten, wenn der Zeiger auf „jetzt" steht — dieselbe Ableitung,
+ * dieselben Wörter, nur ohne zweite Karte.
+ */
+export function JetztInhalt({
+  view,
+  ohneWarnungen = false,
+}: {
+  view: JetztHeldView;
+  /** true = die Warnungen stehen schon anderswo sichtbar ({@link JetztWarnungen}). */
+  ohneWarnungen?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
-  const warnFlow = view.flowConflict && view.flowConflictSeverity === 'warn';
   const infoFlow = view.flowConflict && view.flowConflictSeverity === 'info';
   const hatDetail = Boolean(
     view.why || view.next || view.chips.length > 0 || view.confirm || view.curtailment || infoFlow,
   );
 
   return (
-    <Card padding="md" radius="lg" className="vp-kompakt">
+    <>
       <div className="vp-kompakt-head">
         <div className="vp-kompakt-kick">
           <span className="vp-card-label">Jetzt</span>
@@ -76,18 +96,7 @@ export function JetztKompakt({ view }: { view: JetztHeldView }) {
       </div>
 
       {/* Warnungen bleiben sichtbar (K10). */}
-      {warnFlow && (
-        <p className="vp-jetzt-conflict">
-          <Icon name="alert-triangle" size={14} />
-          {view.flowConflict}
-        </p>
-      )}
-      {view.conflict && (
-        <p className="vp-jetzt-conflict">
-          <Icon name="alert-triangle" size={14} />
-          {view.conflict}
-        </p>
-      )}
+      {!ohneWarnungen && <JetztWarnungen view={view} />}
 
       {hatDetail && (
         <>
@@ -143,7 +152,34 @@ export function JetztKompakt({ view }: { view: JetztHeldView }) {
           )}
         </>
       )}
-    </Card>
+    </>
+  );
+}
+
+/**
+ * Die WARNUNGEN der Jetzt-Aussage allein (K10: sie stehen immer sichtbar, nie
+ * im Aufklapper): der bernsteinfarbene Flussabgleich und der Widerspruch der
+ * Abregelung. Das Tagesbild setzt sie über die Uhr, weil seine Jetzt-Aussage
+ * am Telefon erst unter den Antworten steht. Ohne Warnung: nichts.
+ */
+export function JetztWarnungen({ view }: { view: JetztHeldView }) {
+  const warnFlow = view.flowConflict && view.flowConflictSeverity === 'warn';
+  if (!warnFlow && !view.conflict) return null;
+  return (
+    <>
+      {warnFlow && (
+        <p className="vp-jetzt-conflict">
+          <Icon name="alert-triangle" size={14} />
+          {view.flowConflict}
+        </p>
+      )}
+      {view.conflict && (
+        <p className="vp-jetzt-conflict">
+          <Icon name="alert-triangle" size={14} />
+          {view.conflict}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -162,6 +198,7 @@ export function TagesFilm({
   selected,
   onSelect,
   panel,
+  ohneGeld = false,
 }: {
   view: FilmView;
   /** Der ausgewählte Phasen-Index; null = keiner. */
@@ -169,6 +206,12 @@ export function TagesFilm({
   onSelect: (phaseIndex: number) => void;
   /** Das Erklär-Panel der ausgewählten Phase (wird an ihrer Zeile gerendert). */
   panel?: React.ReactNode;
+  /**
+   * Ohne den Phasen-Betrag: er rechnet gegen einen Betrieb OHNE Speicher. Wo
+   * die Seite ihre Geldzahl gegen denselben Speicher ohne smarte Steuerung
+   * nennt (Tagesbild, E6), stünde er als zweite Messlatte daneben.
+   */
+  ohneGeld?: boolean;
 }) {
   const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const t = chartTheme();
@@ -206,7 +249,7 @@ export function TagesFilm({
             </span>
           )}
         </span>
-        {row.eur && (
+        {row.eur && !ohneGeld && (
           <span className={`vp-film-eur${row.einkauf ? ' buy' : ''}`}>
             {row.eur}
             {row.einkauf && <i>Einkauf</i>}

@@ -19,6 +19,7 @@ import { storageMark, type StorageMark } from './chartStyle';
 import type { ChartTheme } from './chartTheme';
 import { proofAnchor } from './fleet';
 import { eurAmount, fmtNum, NBSP } from './format';
+import { FAHRPLAN_TAETIGKEIT } from './glossar';
 
 /** Matches the chart's "hält" deadband (0.05 kW) so tiny solver noise stays idle. */
 export const SLOT_DEADBAND_KW = 0.05;
@@ -1353,7 +1354,9 @@ export const BAND_WORT: Record<BandRole, string> = {
   netzladen: 'Netz laden',
   entladen: 'Entladen',
   abregeln: 'Abregeln',
-  ruhe: 'Ruhe',
+  // Die Ruhe heißt überall „Warten" (E8, Glossar). Die übrigen Wörter sind
+  // die KURZFORMEN des schmalen Bands im Diagramm „Alle Werte".
+  ruhe: FAHRPLAN_TAETIGKEIT.warten,
 };
 
 /**

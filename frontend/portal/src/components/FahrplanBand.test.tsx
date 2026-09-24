@@ -89,7 +89,7 @@ describe('FahrplanBand — die kurze Speicher-Fahrplan-Karte', () => {
     expect(container.textContent).toContain('Speicher-Fahrplan');
     // Die Erzählzeile ist die Film-Kurzfassung wörtlich (12:20 läuft laden).
     expect(container.textContent).toMatch(
-      /Jetzt Sonne speichern bis \d{2}:\d{2} Uhr · danach Ruhe · dann Zum Spitzenpreis verkaufen\./,
+      /Jetzt Sonne speichern bis \d{2}:\d{2} Uhr · danach Warten · dann Zum Spitzenpreis verkaufen\./,
     );
     const pill = getByText(PROVENIENZ.geplant.label);
     expect(pill).toHaveAttribute('title', PROVENIENZ.geplant.satz);

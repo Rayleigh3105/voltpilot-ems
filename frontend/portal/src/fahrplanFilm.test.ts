@@ -72,7 +72,7 @@ describe('filmRows · Jetzt führt, heute voll, morgen eingeklappt', () => {
     expect(view.today[0].sub).toMatch(/^läuft · noch bis \d{2}:\d{2} Uhr$/);
     expect(view.today.map((r) => r.label)).toEqual([
       'Verbrauch decken',
-      'Ruhe',
+      'Warten',
       'Günstig aus dem Netz laden',
     ]);
     // Nichts ist abgeschlossen, solange der Plan bei „jetzt" beginnt.
@@ -369,7 +369,7 @@ describe('naechsterEinsatz + filmKurzfassung', () => {
   it('fasst den Film in EINER Zeile zusammen - ohne →-Kette', () => {
     const { slots, phases: ph } = scenario();
     const text = filmKurzfassung(filmRows(ph, slots, 'eigenverbrauch', NOW))!;
-    expect(text).toMatch(/^Jetzt Verbrauch decken bis \d{2}:\d{2} Uhr · danach Ruhe/);
+    expect(text).toMatch(/^Jetzt Verbrauch decken bis \d{2}:\d{2} Uhr · danach Warten/);
     expect(text).not.toContain('→');
     expect(text.endsWith('.')).toBe(true);
   });
@@ -383,7 +383,7 @@ describe('naechsterEinsatz + filmKurzfassung', () => {
 
 describe('filmLabel · das listen-taugliche Vokabular', () => {
   it('kürzt genau die vier Rollen, die als volle Sätze zu lang wären', () => {
-    expect(filmLabel('warten', 'eigenverbrauch')).toBe('Ruhe');
+    expect(filmLabel('warten', 'eigenverbrauch')).toBe('Warten');
     expect(filmLabel('pv_speichern', 'eigenverbrauch')).toBe('Sonne speichern');
     expect(filmLabel('eigenverbrauch', 'eigenverbrauch')).toBe('Verbrauch decken');
     expect(filmLabel('abregeln', 'eigenverbrauch')).toBe('Einspeisung pausieren');
@@ -401,7 +401,7 @@ describe('filmLabel · das listen-taugliche Vokabular', () => {
 // speicherKurzzeile — die Erzählzeile der Cockpit-Karte (PR 4, Konzept §4b)
 // ---------------------------------------------------------------------------
 
-describe('speicherKurzzeile (Ruhe nennt den Blick nach vorn)', () => {
+describe('speicherKurzzeile (Warten nennt den Blick nach vorn)', () => {
   const row = (over: Partial<FilmRow>): FilmRow => ({
     phaseIndex: 0,
     role: 'verkaufen',
@@ -426,13 +426,13 @@ describe('speicherKurzzeile (Ruhe nennt den Blick nach vorn)', () => {
     empty: today.length === 0 ? 'leer' : null,
   });
 
-  it('eine laufende Ruhe wird zum Blick nach vorn — nie ein Leerlauf-Rätsel', () => {
+  it('ein laufendes Warten wird zum Blick nach vorn — nie ein Leerlauf-Rätsel', () => {
     const v = view([
-      row({ role: 'warten', kind: 'idle', now: true, label: 'Ruhe' }),
+      row({ role: 'warten', kind: 'idle', now: true, label: 'Warten' }),
       row({}),
     ]);
     expect(speicherKurzzeile(v)).toMatch(
-      /^Ruhe — als Nächstes: Zum Spitzenpreis verkaufen ab \d{2}:\d{2} Uhr\.$/,
+      /^Warten — als Nächstes: Zum Spitzenpreis verkaufen ab \d{2}:\d{2} Uhr\.$/,
     );
   });
 
@@ -445,14 +445,14 @@ describe('speicherKurzzeile (Ruhe nennt den Blick nach vorn)', () => {
     expect(speicherKurzzeile(v)).toMatch(/^Jetzt Sonne speichern bis \d{2}:\d{2} Uhr · danach Verbrauch decken\.$/);
   });
 
-  it('Ruhe ohne späteren Einsatz bleibt die ehrliche Kurzfassung', () => {
-    const v = view([row({ role: 'warten', kind: 'idle', now: true, label: 'Ruhe' })]);
+  it('Warten ohne späteren Einsatz bleibt die ehrliche Kurzfassung', () => {
+    const v = view([row({ role: 'warten', kind: 'idle', now: true, label: 'Warten' })]);
     expect(speicherKurzzeile(v)).toBe(filmKurzfassung(v));
   });
 
-  it('eine NICHT laufende Ruhe (Plan beginnt später) bleibt die Kurzfassung', () => {
+  it('ein NICHT laufendes Warten (Plan beginnt später) bleibt die Kurzfassung', () => {
     const v = view([
-      row({ role: 'warten', kind: 'idle', now: false, label: 'Ruhe' }),
+      row({ role: 'warten', kind: 'idle', now: false, label: 'Warten' }),
       row({}),
     ]);
     expect(speicherKurzzeile(v)).toBe(filmKurzfassung(v));

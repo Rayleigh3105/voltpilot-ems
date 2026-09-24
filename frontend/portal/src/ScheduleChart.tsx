@@ -49,6 +49,7 @@ import {
   needsPointMarkers,
   planInsightParts,
   planKernaussage,
+  planSentence,
   powerAxisMax,
   priceSpread,
   PV_FORECAST_LABEL,
@@ -148,6 +149,7 @@ export function ScheduleChart({
   plantKind,
   verlauf = false,
   showPhaseBand = false,
+  ohneGeld = false,
 }: {
   plan: SchedulePlan;
   /**
@@ -205,6 +207,15 @@ export function ScheduleChart({
    * Zwei-Panel-Fassung (jede andere Nutzung von `ScheduleChart` ist unberührt).
    */
   showPhaseBand?: boolean;
+  /**
+   * Die Geldzahl der Seite steht ANDERSWO (Fahrplan-Tagesbild, Entscheid E6:
+   * Messlatte „derselbe Speicher ohne smarte Steuerung"). Dann nennt dieses
+   * Bild keinen eigenen Betrag gegen „ohne Speicher" — weder im Kopfsatz noch
+   * im Satz unter dem Bild; der Kopfsatz sagt nur, was der Speicher tut. Zwei
+   * Beträge gegen zwei Messlatten auf einer Seite wären zwei Wahrheiten.
+   * Absent/false = unverändert.
+   */
+  ohneGeld?: boolean;
 }) {
   const t = chartTheme();
   // D4: DREI Gruppen-Schalter statt neun Einzel-Pills, und der Default ist
@@ -1263,13 +1274,24 @@ export function ScheduleChart({
   // K1/M11: die Kernaussage als SATZ über dem Bild. Sie ist ABGELEITET
   // (planSentence + savingsTodayEur + die persistierte Baseline als
   // Vergleichsanker) - ohne belegbare Aussage steht dort der ehrliche Grund.
-  const kern = plantKind
+  const kernRoh = plantKind
     ? planKernaussage(plan.slots, plantKind, new Date(), plan.slotMinutes || 15)
     : null;
+  const kern =
+    ohneGeld && kernRoh?.wert != null && plantKind
+      ? {
+          wert: null,
+          satz: planSentence(plan.slots, plantKind, new Date(), plan.slotMinutes || 15),
+          grund: null,
+          ton: 'calm' as const,
+          anker: null,
+        }
+      : kernRoh;
   const insight = planInsightParts(plan.slots, new Date(), {
     // Steht die Ersparnis schon als Zahl in der Kopfzeile, erklärt der Satz
     // unter dem Bild nur noch das WARUM (sonst: dreimal derselbe Betrag).
-    ersparnisImKopf: kern?.wert != null,
+    // `ohneGeld`: die Zahl steht auf der Seite, nur nicht hier.
+    ersparnisImKopf: ohneGeld || kern?.wert != null,
   });
   // The planned SoC band in words - the readable fallback wherever the SoC
   // axis has no room (phones) and the touch-friendly answer to "how full?".

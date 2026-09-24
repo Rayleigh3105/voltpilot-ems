@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 11 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 12 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -44,6 +44,7 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Bilanzdifferenz](#bilanzdifferenz) — Sicht Elektrisch · Nachtrag AP-10 §4.3 (E1, E3)
 - [Feste Verteilung](#feste-verteilung) — Sicht Organisation · Nachtrag AP-10 §4.6 (E11, E12)
 - [Berechnete Messstelle](#berechnete-messstelle) — Sicht Zustand · Nachtrag AP-10 §4.1 (E1, E5)
+- [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
 
 ## Kundenbereich
 
@@ -674,3 +675,17 @@ Drei Typen: die gewichtete Summe (Terme mit Vorzeichen und Faktor), der Rest (di
 **Heute im Code.** Gebaut ist die gewichtete Summe (`messstelle_formel_term`, `docs/contracts/v2/messstelle-formel.md`). Die Typen `rest` und `saldo` und die Fassungen stehen als Vertrag in `bilanz.md` und in `messstelle-formel.md` §0/§6; den Code ziehen AP-10 IP-3/IP-4 nach.
 
 **Abgrenzung.** Nicht die Kennzahl (die teilt durch eine Bezugsgröße, AP-11), nicht der Messkanal (der wird gelesen, nicht gerechnet), nicht der Ersatzwert (der steht für einen fehlenden Messwert).
+
+## Tätigkeit des Speichers
+
+*Sicht: Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)*
+
+**Was der Speicher in einer Phase des Fahrplans tun soll — in fünf Wörtern: Sonne speichern · Günstig aus dem Netz laden · Verbrauch decken · Warten · Einspeisung pausieren.**
+
+Die Tätigkeit ist eine Aussage des PLANS über eine Phase, nie eine Messung: was der Speicher wirklich getan hat, sagen Geräteantwort und Messwerte. Dieselben Wörter stehen auf der Tagesuhr, im Bildfahrplan, in den Stationen, in den Antworten, im Erklär-Panel und in der Hilfe; eine Phase trägt nie zwei Namen. Seltene Tätigkeiten behalten ihren Namen aus dem Erklär-Panel (Verkaufen bzw. Einspeisen, Lastspitze kappen, Reserve halten). „Warten“ meint eine Phase ohne Laden und Abgeben — nicht den Ruhe-Zustand einer Anlage (AP-01 E7/E8).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** AN-1 am 24.09.2026: 00:00 Warten · 05:45 Verbrauch decken · 13:30 Günstig aus dem Netz laden · 14:30 Sonne speichern · 17:30 Verbrauch decken.
+
+**Heute im Code.** Die Wörter stehen als Konstanten `FAHRPLAN_TAETIGKEIT` in PORTAL/glossar.ts:160; die Zuordnung Rolle → Wort macht `filmLabel` (PORTAL/fahrplanFilm.ts:120), für die übrigen Rollen `roleLabel` (PORTAL/fahrplanWhy.ts:718). Die Rolle je Viertelstunde (`slot_role`) schreibt der Optimierer; das Tagesbild legt die Phasen auf die Uhrzeit (PORTAL/fahrplanTag.ts:165).
+
+**Abgrenzung.** Nicht das Betriebsmodell (die Betriebsweise der Anlage), nicht die Regel (eine Ausnahme obendrauf), nicht der Zustand „steuert“ (eine Beobachtung).

@@ -876,7 +876,7 @@ describe('jetztHeld · Ruhe bei Einspeisung (der Lade-Spiegel)', () => {
 
   it('OHNE Direktvermarktung bleibt der heutige Text unverändert', () => {
     const v = jetztHeld(herzogau({ plantKind: 'eigenverbrauch' }));
-    expect(v.status).toBe('Ruhe — so geplant, nichts zu tun');
+    expect(v.status).toBe('Warten — so geplant, nichts zu tun');
     expect(v.chips.map((c) => c.label)).not.toContain('Einspeisewert');
   });
 
@@ -885,37 +885,37 @@ describe('jetztHeld · Ruhe bei Einspeisung (der Lade-Spiegel)', () => {
     // „wird gerade noch vergütet" schlicht unwahr wäre.
     for (const exportValueCtKwh of [null, 0, -0.4]) {
       const v = jetztHeld(herzogau({ slots: herzogauSlots({ exportValueCtKwh }) }));
-      expect(v.status, String(exportValueCtKwh)).toBe('Ruhe — so geplant, nichts zu tun');
+      expect(v.status, String(exportValueCtKwh)).toBe('Warten — so geplant, nichts zu tun');
     }
   });
 
   it('OHNE späteren Lade-Slot wird nichts behauptet', () => {
     const v = jetztHeld(herzogau({ slots: herzogauSlots().slice(0, 4) }));
-    expect(v.status).toBe('Ruhe — so geplant, nichts zu tun');
+    expect(v.status).toBe('Warten — so geplant, nichts zu tun');
   });
 
   it('ein Ladefenster, das kaum weniger bringt, ist KEINE Auskunft', () => {
     const slots = herzogauSlots();
     slots[4] = slot({ start: LADEN_AB, batteryKw: 21, slotRole: 'pv_speichern', exportValueCtKwh: 2.9 });
-    expect(jetztHeld(herzogau({ slots })).status).toBe('Ruhe — so geplant, nichts zu tun');
+    expect(jetztHeld(herzogau({ slots })).status).toBe('Warten — so geplant, nichts zu tun');
   });
 
   it('eine BELEGTE andere Ursache gewinnt: Reserve-Boden und voller Speicher', () => {
     for (const flag of ['soc_floor', 'reserve_backup', 'reserve_peak', 'soc_max', 'charge_cap']) {
       const v = jetztHeld(herzogau({ slots: herzogauSlots({ slotFlags: [flag] }) }));
-      expect(v.status, flag).toBe('Ruhe — so geplant, nichts zu tun');
+      expect(v.status, flag).toBe('Warten — so geplant, nichts zu tun');
     }
   });
 
   it('eine geplante Abregelung erklärt sich selbst - kein zweiter Satz', () => {
     const v = jetztHeld(herzogau({ slots: herzogauSlots({ slotRole: 'abregeln', curtailKw: 12 }) }));
-    expect(v.status).toBe('Ruhe — so geplant, nichts zu tun');
+    expect(v.status).toBe('Warten — so geplant, nichts zu tun');
   });
 
   it('ohne messbare Einspeisung (oder ohne frische Messung) wird nichts behauptet', () => {
     expect(jetztHeld(herzogau({ snapshot: snap({ pvKw: 12, loadKw: 12, gridKw: 0, battKw: 0, socPct: 6 }) })).status)
-      .toBe('Ruhe — so geplant, nichts zu tun');
-    expect(jetztHeld(herzogau({ snapshotFresh: false })).status).toBe('Ruhe — so geplant, nichts zu tun');
+      .toBe('Warten — so geplant, nichts zu tun');
+    expect(jetztHeld(herzogau({ snapshotFresh: false })).status).toBe('Warten — so geplant, nichts zu tun');
   });
 
   it('ein Speicher, der laut Plan gar nicht ruht, bekommt den Satz nie', () => {

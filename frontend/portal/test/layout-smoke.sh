@@ -5,8 +5,9 @@
 # ganze Diagrammfläche aufgeblasen - in Chromium 141 ja, in 151 nein. Vitest
 # rendert kein CSS-Layout, und das Gate baute nur. Dieser Schritt vermisst
 # Cockpit und Fahrplan in einem echten Browser (`e2e/layout-waechter.spec.ts`):
-# Symbolgröße, Überlauf, Leerraum unter dem Fluss, eine Legende unter dem
-# Fahrplan-Bild, Seitenhöhe. Geometrie statt Pixelvergleich, damit eine
+# Symbolgröße, Überlauf, Leerraum unter dem Fluss, das Tagesbild des
+# Fahrplans und das Budget seines ersten Bildschirms (E9: alle Antworten
+# beginnen sichtbar). Geometrie statt Pixelvergleich, damit eine
 # Browser-Aktualisierung den Wächter nicht rot färbt.
 #
 # Ablauf:

@@ -13,8 +13,8 @@ import { expect, test, type Page } from '@playwright/test';
  *   verschöbe Kantenglättung und Schrift um Pixel. Der Wächter fragt deshalb
  *   nach den Eigenschaften, die ein Kunde als Fehler sieht - und die in jedem
  *   Browser gleich gelten: Symbole bleiben Symbole, nichts ragt über den Rand,
- *   unter dem Fluss steht kein leerer Streifen, der Fahrplan hat EINE Legende
- *   unter dem Bild und bleibt kurz genug zum Lesen.
+ *   unter dem Fluss steht kein leerer Streifen, und im Fahrplan beginnen alle
+ *   Antworten im ersten Bildschirm (E9).
  *
  * Er läuft in jedem Projekt der Konfiguration, also auch in `mobile-webkit`
  * (Safari). Breiten nach Portal-Regel: 1440 am Rechner, 375 am Telefon.
@@ -81,42 +81,74 @@ test('Cockpit: Energiefluss-Symbole bleiben Symbole, nichts ragt über den Rand'
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
 });
 
-test('Fahrplan: ein Bild, eine Legende darunter, nichts ragt über den Rand', async ({ page }) => {
-  await oeffnen(page, FAHRPLAN);
-  const karte = page.locator('.vp-card:has(.vp-chart.panels)').first();
-  const leinwand = karte.locator('.vp-chart.panels canvas').first();
-  await expect(leinwand).toBeVisible();
+/**
+ * Die Einführung der Tagesuhr startet beim ersten Besuch von selbst (E11) -
+ * die Hilfe-Fixtures sind ein erster Besuch. Die Messungen gelten dem
+ * Alltag danach; der Wächter beendet sie deshalb wie ein Kunde.
+ */
+async function einfuehrungBeenden(page: Page) {
+  const beenden = page.getByRole('button', { name: 'Beenden' });
+  if (await beenden.count()) await beenden.first().click();
+}
 
-  const mass = await karte.evaluate((card) => {
+test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über den Rand', async ({ page }) => {
+  await oeffnen(page, FAHRPLAN);
+  await page.locator('.vp-tb').first().waitFor();
+  // Das Blatt der Einführung (Telefon) liegt innerhalb des Bildschirms.
+  const blatt = page.locator('.vp-tb-tour.is-blatt');
+  if (await blatt.count()) {
+    const b = await blatt.first().boundingBox();
+    expect(b!.x).toBeGreaterThanOrEqual(-1);
+    expect(b!.x + b!.width).toBeLessThanOrEqual((page.viewportSize()?.width ?? 0) + 1);
+  }
+  await einfuehrungBeenden(page);
+
+  const mass = await page.locator('.vp-tb-karte').first().evaluate((card) => {
     const k = card.getBoundingClientRect();
-    const bild = card.querySelector('.vp-chart.panels')!.getBoundingClientRect();
-    const legenden = [...card.querySelectorAll('.vp-chart-legend, .vp-sched-bandlegend')].filter(
-      (el) => (el as HTMLElement).offsetParent !== null,
-    );
+    // Am Telefon und Tablet die Uhr, ab 900 px Inhaltsbreite der Bildfahrplan (E10).
+    const bild = card.querySelector('.vp-uhr-svg, .vp-bf-svg')!;
+    const b = bild.getBoundingClientRect();
+    // Die Symbole der Tätigkeiten sind verschachtelte <svg> (`Icon`) - der
+    // Fehler des Energieflusses (V-07) darf sich hier nicht wiederholen.
+    const symbole = [...bild.querySelectorAll('svg')].map((s) => {
+      const r = s.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
+    });
     return {
+      art: bild.classList.contains('vp-uhr-svg') ? 'uhr' : 'bildfahrplan',
       karteLinks: k.left,
       karteRechts: k.right,
-      bildLinks: bild.left,
-      bildRechts: bild.right,
-      bildHoehe: bild.height,
-      bildUnten: bild.bottom,
-      legenden: legenden.length,
-      legendeOben: legenden[0]?.getBoundingClientRect().top ?? null,
+      bildLinks: b.left,
+      bildRechts: b.right,
+      bildHoehe: b.height,
+      symbole,
     };
   });
 
-  expect(mass.bildHoehe, 'das Diagramm hat eine Fläche').toBeGreaterThan(150);
+  const breite = page.viewportSize()?.width ?? 0;
+  expect(mass.art, 'Uhr bis 900 px Inhaltsbreite, darüber der Bildfahrplan').toBe(breite >= 1200 ? 'bildfahrplan' : 'uhr');
+  expect(mass.bildHoehe, 'das Tagesbild hat eine Fläche').toBeGreaterThan(150);
   expect(mass.bildLinks).toBeGreaterThanOrEqual(mass.karteLinks - 1);
   expect(mass.bildRechts).toBeLessThanOrEqual(mass.karteRechts + 1);
-  // V-06: genau EINE Legende, und zwar unter dem Bild.
-  expect(mass.legenden, 'Anzahl sichtbarer Legenden in der Diagramm-Karte').toBe(1);
-  expect(mass.legendeOben!).toBeGreaterThanOrEqual(mass.bildUnten - 1);
+  expect(mass.symbole.length, 'die Tätigkeiten tragen Symbole').toBeGreaterThan(0);
+  for (const s of mass.symbole) {
+    expect(s.w, `Symbol ${s.w}×${s.h} px ist aufgeblasen`).toBeLessThanOrEqual(24);
+    expect(s.h, `Symbol ${s.w}×${s.h} px ist aufgeblasen`).toBeLessThanOrEqual(24);
+  }
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
 });
 
-test('Fahrplan: die Seite bleibt kurz genug zum Lesen', async ({ page }) => {
+/**
+ * E1/E9 (Konzept „Tagesuhr und Bildfahrplan", 24.09.2026): am Telefon steht
+ * die Uhr ganz oben, direkt darunter die Antworten - und ALLE Antworten
+ * beginnen im ersten Bildschirm (375 × 812, über der unteren Leiste). Darunter
+ * darf die Seite länger werden; die frühere Grenze der Gesamthöhe (1 750 px,
+ * V-02/V-06) ersetzt E9 A durch dieses Budget des ersten Bildschirms.
+ */
+test('Fahrplan: die Uhr ganz oben, alle Antworten im ersten Bildschirm (E1, E9)', async ({ page }) => {
   await oeffnen(page, FAHRPLAN);
-  await expect(page.locator('.vp-chart.panels canvas').first()).toBeVisible();
+  await page.locator('.vp-antw').first().waitFor();
+  await einfuehrungBeenden(page);
   // V-03: der Untertitel ist EINE Zeile, auch bei 375 px.
   const zeilen = await page
     .locator('main h1')
@@ -126,9 +158,26 @@ test('Fahrplan: die Seite bleibt kurz genug zum Lesen', async ({ page }) => {
       return p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight);
     });
   expect(Math.round(zeilen), 'Zeilen des Untertitels').toBe(1);
-  const hoehe = await page.locator('main').first().evaluate((m) => m.getBoundingClientRect().height);
-  // Gemessen (Chromium, Hilfe-Fixtures) vor/nach V-02 und V-06: Rechner
-  // 1888 → 1539 px, Tablet 1915 → 1565 px, Telefon 2106 → 1586 px. Die Grenze
-  // lässt Luft für Schrift und Browser und fängt den alten Aufbau überall.
-  expect(hoehe, 'Höhe der Fahrplan-Seite in px').toBeLessThanOrEqual(1750);
+
+  const mass = await page.evaluate(() => {
+    const leiste = document.querySelector('.vp-bottombar');
+    const leisteOben = leiste && leiste.getBoundingClientRect().height > 0 ? leiste.getBoundingClientRect().top : innerHeight;
+    const bild = document.querySelector('.vp-uhr, .vp-bf')!.getBoundingClientRect();
+    const jetzt = document.querySelector('.vp-tb .vp-kompakt');
+    return {
+      sichtbarBis: Math.min(innerHeight, leisteOben),
+      bildOben: bild.top,
+      antworten: [...document.querySelectorAll('.vp-antw-kachel')].map((el) => el.getBoundingClientRect().top),
+      jetztOben: jetzt ? jetzt.getBoundingClientRect().top : null,
+    };
+  });
+  expect(mass.antworten.length, 'Antworten unter dem Tagesbild').toBeGreaterThanOrEqual(2);
+  for (const oben of mass.antworten) {
+    // Mindestens die Frage und der Beginn der Antwort stehen über dem Rand.
+    expect(oben, 'eine Antwort beginnt unter dem ersten Bildschirm').toBeLessThanOrEqual(mass.sichtbarBis - 40);
+    // Unter dem Bild (Telefon, Rechner) oder daneben (Tablet) - nie davor.
+    expect(oben, 'die Antworten stehen nicht vor dem Bild').toBeGreaterThanOrEqual(mass.bildOben - 1);
+  }
+  // Die Jetzt-Aussage steht im Tagesbild nach den Antworten, nicht über der Uhr.
+  if (mass.jetztOben != null) expect(mass.jetztOben).toBeGreaterThan(Math.max(...mass.antworten));
 });

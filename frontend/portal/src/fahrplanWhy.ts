@@ -32,6 +32,7 @@ import {
   type GrenzenSlot,
 } from './grenzenWarum';
 import type { PlanWordingKind } from './schedule';
+import { FAHRPLAN_TAETIGKEIT } from './glossar';
 
 // ---- The slot-role vocabulary (report §6) ---------------------------------
 
@@ -738,11 +739,11 @@ export function roleLabel(
       return 'Reserve halten';
     }
     case 'warten':
-      return 'Warten';
+      return FAHRPLAN_TAETIGKEIT.warten;
     case 'pv_speichern':
       return 'PV-Überschuss speichern';
     case 'guenstig_laden':
-      return 'Günstig aus dem Netz laden';
+      return FAHRPLAN_TAETIGKEIT.guenstigLaden;
     case 'spitze_kappen':
       return 'Lastspitze kappen';
     case 'verkaufen':

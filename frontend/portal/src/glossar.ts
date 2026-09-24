@@ -150,6 +150,22 @@ export const UEMS_BOX = 'VoltPilot-Box';
 export const UEMS_FUEHRENDE_BOX = 'führende Box';
 
 /**
+ * Die TÄTIGKEITEN des Speichers im Fahrplan — der EINE Wortschatz auf Uhr,
+ * Bildfahrplan, Stationen, Antworten, Erklär-Panel und in der Hilfe
+ * (Konzept „Tagesuhr und Bildfahrplan", Entscheid E8 vom 24.09.2026;
+ * Glossar-Nachtrag „Tätigkeit des Speichers"). Vorher hieß dieselbe Phase in
+ * Band, Film und Panel je anders. Die Rollen ohne eigenes Listenwort
+ * (Verkaufen, Lastspitze kappen, Reserve halten) sagt `fahrplanWhy.roleLabel`.
+ */
+export const FAHRPLAN_TAETIGKEIT = {
+  sonneSpeichern: 'Sonne speichern',
+  guenstigLaden: 'Günstig aus dem Netz laden',
+  verbrauchDecken: 'Verbrauch decken',
+  warten: 'Warten',
+  einspeisungPausieren: 'Einspeisung pausieren',
+} as const;
+
+/**
  * Die zwei Zustandsfamilien (AP-01 E8, `docs/fachmodell/zustaende.md`): der
  * LEBENSZYKLUS, den der Kunde setzt, und die BEOBACHTUNG, die nie jemand von
  * Hand setzt. Die Wörter bedeuten bei JEDEM Objekt dasselbe.

@@ -241,6 +241,12 @@ GLOSSAR += [
      "beispiel": "MS-19 „Netzbezug gesamt Unternehmen“ = MS-01 + MS-10 + MS-16 = 174 400 kWh im Oktober 2026 (3 von 3 Systemen).",
      "heute": "Gebaut ist die gewichtete Summe (`messstelle_formel_term`, `docs/contracts/v2/messstelle-formel.md`). Die Typen `rest` und `saldo` und die Fassungen stehen als Vertrag in `bilanz.md` und in `messstelle-formel.md` §0/§6; den Code ziehen AP-10 IP-3/IP-4 nach.",
      "abgrenzung": "Nicht die Kennzahl (die teilt durch eine Bezugsgröße, AP-11), nicht der Messkanal (der wird gelesen, nicht gerechnet), nicht der Ersatzwert (der steht für einen fehlenden Messwert)."},
+    {"id": "taetigkeit", "sicht": "betrieb", "begriff": "Tätigkeit des Speichers", "nachtrag": "Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)",
+     "kurz": "Was der Speicher in einer Phase des Fahrplans tun soll — in fünf Wörtern: Sonne speichern · Günstig aus dem Netz laden · Verbrauch decken · Warten · Einspeisung pausieren.",
+     "lang": "Die Tätigkeit ist eine Aussage des PLANS über eine Phase, nie eine Messung: was der Speicher wirklich getan hat, sagen Geräteantwort und Messwerte. Dieselben Wörter stehen auf der Tagesuhr, im Bildfahrplan, in den Stationen, in den Antworten, im Erklär-Panel und in der Hilfe; eine Phase trägt nie zwei Namen. Seltene Tätigkeiten behalten ihren Namen aus dem Erklär-Panel (Verkaufen bzw. Einspeisen, Lastspitze kappen, Reserve halten). „Warten“ meint eine Phase ohne Laden und Abgeben — nicht den Ruhe-Zustand einer Anlage (AP-01 E7/E8).",
+     "beispiel": "AN-1 am 24.09.2026: 00:00 Warten · 05:45 Verbrauch decken · 13:30 Günstig aus dem Netz laden · 14:30 Sonne speichern · 17:30 Verbrauch decken.",
+     "heute": "Die Wörter stehen als Konstanten `FAHRPLAN_TAETIGKEIT` in PORTAL/glossar.ts:160; die Zuordnung Rolle → Wort macht `filmLabel` (PORTAL/fahrplanFilm.ts:120), für die übrigen Rollen `roleLabel` (PORTAL/fahrplanWhy.ts:718). Die Rolle je Viertelstunde (`slot_role`) schreibt der Optimierer; das Tagesbild legt die Phasen auf die Uhrzeit (PORTAL/fahrplanTag.ts:165).",
+     "abgrenzung": "Nicht das Betriebsmodell (die Betriebsweise der Anlage), nicht die Regel (eine Ausnahme obendrauf), nicht der Zustand „steuert“ (eine Beobachtung)."},
 ]
 
 # ---------------------------------------------------------------------------------------------

@@ -144,26 +144,26 @@
     ]
   },
   "fahrplan": {
-    "title": "Fahrplan: jetzt und im Tagesverlauf",
+    "title": "Fahrplan: der Tag im Bild",
     "file": "fahrplan.png",
     "width": 1192,
-    "height": 1539,
-    "alt": "Fahrplan: jetzt und im Tagesverlauf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 1500,
+    "alt": "Fahrplan: der Tag im Bild. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 4.36,
-        "y": 9.42,
-        "text": "Die Ansicht gehört zur oben genannten Anlage."
-      },
-      {
         "x": 7.8,
-        "y": 39.28,
+        "y": 23.92,
         "text": "Diese Zeile nennt den Verlauf des Tages und den Ausblick auf morgen. Die Grundlage des Plans steht unter „Mehr erklären“."
       },
       {
         "x": 7.8,
-        "y": 48.74,
-        "text": "Preis und Speicherleistung liegen auf getrennten Skalen über derselben Zeitachse."
+        "y": 27.42,
+        "text": "Von oben nach unten: Strompreis, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde."
+      },
+      {
+        "x": 7.8,
+        "y": 53.49,
+        "text": "Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild."
       }
     ]
   },
@@ -548,6 +548,30 @@
         "x": 4.36,
         "y": 38.95,
         "text": "Die Speicherangaben beschreiben Kapazität, Leistung und den Umgang mit dem Speicher."
+      }
+    ]
+  },
+  "fahrplan-uhr": {
+    "title": "Fahrplan am Telefon: die Tagesuhr",
+    "file": "fahrplan-uhr.png",
+    "width": 390,
+    "height": 844,
+    "alt": "Fahrplan am Telefon: die Tagesuhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 12.56,
+        "y": 34.52,
+        "text": "Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand."
+      },
+      {
+        "x": 12.56,
+        "y": 79.07,
+        "text": "Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn."
+      },
+      {
+        "x": 12.56,
+        "y": 86.53,
+        "text": "Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle."
       }
     ]
   }

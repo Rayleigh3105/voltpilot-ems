@@ -781,7 +781,7 @@ function statusLine(
     case 'angepasst':
       return 'Läuft wie vorgesehen — nichts zu tun';
     case 'ruhe':
-      return 'Ruhe — so geplant, nichts zu tun';
+      return 'Warten — so geplant, nichts zu tun';
     case 'sicherung':
       return 'Ihr Gerät regelt gerade ohne Fahrplan — bitte im Blick behalten';
     case 'abweichung':

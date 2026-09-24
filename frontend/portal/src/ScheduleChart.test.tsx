@@ -952,7 +952,7 @@ describe('ScheduleChart · eine Legende mit Phasen-Band (V-06)', () => {
     const text = legenden[0].textContent ?? '';
     expect(text).toContain('Solar laden');
     expect(text).toContain('Entladen');
-    expect(text).toContain('Ruhe');
+    expect(text).toContain('Warten');
     expect(text).not.toContain('Laden aus Solarstrom');
     // Unter dem Bild: das Diagramm steht im Dokument VOR der Legende.
     const bild = container.querySelector('.vp-chart')!;

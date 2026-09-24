@@ -43,6 +43,13 @@ try {
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(1000);
       if (spec.menu) await page.getByRole('button', { name: /Konto-Menü/ }).click();
+      // Ein einmaliger Hinweis beim ersten Besuch (etwa die Einführung der
+      // Tagesuhr) würde die Aufnahme verdecken: er wird wie vom Kunden beendet.
+      if (spec.klick) {
+        const knopf = page.getByRole('button', { name: spec.klick });
+        if (await knopf.count()) await knopf.first().click();
+        await page.waitForTimeout(300);
+      }
       if (errors.length) throw new Error(errors.join('\n'));
       const rootNode = spec.viewportOnly ? null : await firstVisible(page, spec.root ?? 'main');
       const origin = rootNode ? await rootNode.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height }; }) : { x: 0, y: 0, ...viewport };
