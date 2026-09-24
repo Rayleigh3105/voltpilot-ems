@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type Bezugsbasis, type BezugsbasisFassung, type BezugsbasisFassungKurz, type Kennzahl } from '../api';
+import { api, type Bezugsbasis, type BezugsbasisFassung, type Kennzahl } from '../api';
 import * as B from '../bezugsbasisAnlegen';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
-import { datumText } from '../uemsOrtsbaum';
-import { BezugsbasisAssistent, FreigabeFormular } from './BezugsbasisAssistent';
+import { BezugsbasisAssistent } from './BezugsbasisAssistent';
+import { BezugsbasisFassungen, type NeueFassung } from './BezugsbasisFassungen';
 import { BezugsbasisModellAnFassung } from './BezugsbasisModell';
 import { ErrorState, Skeleton } from './States';
 import './Bezugsbasis.css';
@@ -78,7 +77,7 @@ export function BezugsbasisReiter({
   const rollen = useRollen();
   const verwalten = rollen.darf('bezugsbasis.verwalten', kennzahl.standort_id);
   const freigeben = rollen.darf('bezugsbasis.freigeben', kennzahl.standort_id);
-  const [assistent, setAssistent] = useState<{ basis: Bezugsbasis | null } | null>(null);
+  const [assistent, setAssistent] = useState<{ basis: Bezugsbasis | null; neu?: NeueFassung } | null>(null);
   const aenderbar = kennzahl.archiviert_am === null;
 
   return (
@@ -122,23 +121,16 @@ export function BezugsbasisReiter({
               )}
             </>
           ) : (
-            <ol className="vp-bb-fassungen">
-              {[...lage.basis.fassungen]
-                .sort((a, b) => b.fassung - a.fassung)
-                .map((f) => (
-                  <FassungEintrag
-                    key={f.fassung}
-                    kennzahl={kennzahl}
-                    basis={lage.basis}
-                    f={f}
-                    verwalten={verwalten && aenderbar}
-                    freigeben={freigeben}
-                    onBearbeiten={() => setAssistent({ basis: lage.basis })}
-                    onNeu={onNeu}
-                    vieraugen={lage.fassung?.fassung === f.fassung ? (lage.fassung.vieraugen ?? null) : null}
-                  />
-                ))}
-            </ol>
+            // IP-18: Zeitleiste, Anstoß, Frist, Faktoren und die Antworten — eigene Datei, hier nur der Einhängepunkt.
+            <BezugsbasisFassungen
+              kennzahl={kennzahl}
+              basis={lage.basis}
+              zone={zone}
+              verwalten={verwalten && aenderbar}
+              freigeben={freigeben}
+              onNeu={onNeu}
+              onAssistent={(neu) => setAssistent({ basis: lage.basis, neu: neu ?? undefined })}
+            />
           )}
           {/* IP-14: die Fassung der Basis-Zeile im Einzelnen — Modell mit Punkten und Gerade, oder Basiswert und Monate. */}
           {lage.fassung && <BezugsbasisModellAnFassung kennzahl={kennzahl} fassung={lage.fassung} />}
@@ -150,6 +142,7 @@ export function BezugsbasisReiter({
           kennzahl={kennzahl}
           basis={assistent.basis}
           zone={zone}
+          neu={assistent.neu}
           onClose={() => {
             setAssistent(null);
             onNeu();
@@ -157,56 +150,5 @@ export function BezugsbasisReiter({
         />
       )}
     </section>
-  );
-}
-
-function FassungEintrag({
-  kennzahl,
-  basis,
-  f,
-  verwalten,
-  freigeben,
-  onBearbeiten,
-  onNeu,
-  vieraugen,
-}: {
-  kennzahl: Kennzahl;
-  basis: Bezugsbasis;
-  f: BezugsbasisFassungKurz;
-  verwalten: boolean;
-  freigeben: boolean;
-  onBearbeiten: () => void;
-  onNeu: () => void;
-  /** Aus der geladenen Fassung, wenn es dieselbe ist — sonst unbekannt (die Route entscheidet). */
-  vieraugen: boolean | null;
-}) {
-  const ton = f.freigabe_status === 'freigegeben' ? 'ok' : f.freigabe_status === 'abgelehnt' ? 'tint' : 'warn';
-  return (
-    <li className="vp-bb-fassung" data-testid={`bezugsbasis-fassung-${f.fassung}`}>
-      <p>
-        <strong>Fassung {f.fassung}</strong> · {B.referenzperiodeText(f.referenzperiode)} <Badge variant={ton}>{B.FREIGABE_WORT[f.freigabe_status]}</Badge>
-      </p>
-      <p>
-        {B.methodeWort(f.methode)}
-        {f.basiswert ? ` ${B.dezimal(f.basiswert)} ${B.einheitJe(kennzahl.einheit_anzeige)}` : ''}
-        {f.datenlage === 'vorlaeufig' ? ' · vorläufig' : ''} · gilt ab {datumText(f.gilt_ab)}
-      </p>
-      <p className="vp-kz-leise">Prüfsumme {B.pruefsummeKurz(f.pruefsumme)}</p>
-      {f.freigabe_status === 'entwurf' && verwalten && (
-        <>
-          <div className="vp-kz-aktionen">
-            <Button variant="outline" size="sm" data-testid="bezugsbasis-bearbeiten-knopf" onClick={onBearbeiten}>
-              {B.KNOPF_WEITER_BEARBEITEN}
-            </Button>
-          </div>
-        </>
-      )}
-      {f.freigabe_status === 'entwurf' && freigeben && (
-        <FreigabeFormular kennzahl={kennzahl} basis={basis} fassung={f.fassung} art="entwurf" vieraugen={vieraugen} onFertig={onNeu} />
-      )}
-      {f.freigabe_status === 'beantragt' && freigeben && (
-        <FreigabeFormular kennzahl={kennzahl} basis={basis} fassung={f.fassung} art="antrag" vieraugen={vieraugen} onFertig={onNeu} />
-      )}
-    </li>
   );
 }

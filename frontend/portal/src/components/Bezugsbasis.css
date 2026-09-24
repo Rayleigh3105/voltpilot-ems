@@ -154,3 +154,97 @@
   font-size: var(--vp-c-fs-14);
   margin: 0 0 var(--vp-c-space-3);
 }
+
+/* IP-18: Fassungen, Anstoß, Frist, Faktoren und die Vorschau alt/neu. 375 px: Karten untereinander; die Tafel alt/neu
+ * stapelt je Zeile (Beschriftung aus `data-label`); 1440 px: drei Spalten. */
+.vp-bb-pflege {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin-top: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-bb-titel {
+  font-size: var(--vp-c-fs-14);
+  margin: var(--vp-c-space-2) 0 0;
+}
+.vp-bb-frist {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--vp-c-border);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+.vp-bb-anstoss {
+  border: 1px solid var(--vp-c-border);
+  border-left-width: 4px;
+  border-radius: 10px;
+  padding: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-bb-anstoss ul,
+.vp-bb-faktoren ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.vp-bb-anstoss li,
+.vp-bb-faktoren li {
+  overflow-wrap: anywhere;
+}
+.vp-bb-fassung.is-beendet,
+.vp-bb-fassung.is-abgelehnt {
+  color: var(--vp-c-muted-fg);
+}
+.vp-bb-gruende {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.vp-bb-altneu {
+  margin: var(--vp-c-space-3) 0;
+  min-width: 0;
+}
+.vp-bb-altneu table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14);
+  table-layout: fixed;
+}
+.vp-bb-altneu th,
+.vp-bb-altneu td {
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 8px;
+  border-top: 1px solid var(--vp-c-border);
+  overflow-wrap: anywhere;
+}
+.vp-bb-altneu tr.is-anders td:last-child {
+  font-weight: var(--vp-c-fw-700);
+}
+@media (max-width: 640px) {
+  .vp-bb-altneu thead {
+    display: none;
+  }
+  .vp-bb-altneu tr,
+  .vp-bb-altneu th,
+  .vp-bb-altneu td {
+    display: block;
+    width: auto;
+  }
+  .vp-bb-altneu td::before {
+    content: attr(data-label) ': ';
+    color: var(--vp-c-muted-fg);
+  }
+}
+/* Die Füße der IP-18-Dialoge tragen längere Wörter als „Weiter“ — bei 375 px bricht der Hauptknopf in eine eigene Zeile
+ * (gemessen: „Weiter zur Referenzperiode“, „Bezugsbasis beenden“ standen sonst über den Rand). */
+.vp-bb-fuss {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.vp-bb-fuss > .vp-btn {
+  max-width: 100%;
+  white-space: normal;
+}

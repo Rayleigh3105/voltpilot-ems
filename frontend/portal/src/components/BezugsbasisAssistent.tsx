@@ -14,6 +14,7 @@ import {
   type VariablenVorschlag,
 } from '../api';
 import * as B from '../bezugsbasisAnlegen';
+import { anpassungKoerper, TITEL_NEUE_FASSUNG, type Anpassung, type Vorbelegung } from '../bezugsbasisFassungen';
 import * as M from '../bezugsbasisModell';
 import { UEMS_EINFLUSSGROESSE, UEMS_NORMGRENZE, UEMS_REFERENZPERIODE, UEMS_STATISCHER_FAKTOR } from '../glossar';
 import { ablehnungSatz } from '../kennzahlAnlegen';
@@ -21,6 +22,7 @@ import { heuteIn } from '../kennzahlKarte';
 import { useRollen } from '../rollen';
 import { datumText } from '../uemsOrtsbaum';
 import { zahlText } from '../zahl';
+import { VorschauAltNeu } from './BezugsbasisFassungen';
 import { BezugsbasisModell } from './BezugsbasisModell';
 import { VpPicker } from './VpPicker';
 import './Gesamtwert.css';
@@ -47,14 +49,18 @@ export function BezugsbasisAssistent({
   basis: basisStart,
   zone,
   onClose,
+  neu,
 }: {
   kennzahl: Kennzahl;
   basis: Bezugsbasis | null;
   zone: string;
   onClose: () => void;
+  /** IP-18: Fassung n + 1 — die Anpassung geht mit JEDER Bildung mit, vorbelegt aus Fassung n (Vorschau alt/neu). */
+  neu?: { anpassung: Anpassung; vorgaengerin: BezugsbasisFassung | null; vorbelegung: Vorbelegung | null };
 }) {
   const heute = heuteIn(zone, Date.now());
-  const start = B.vorschlagPeriode(heute);
+  const vb = neu?.vorbelegung ?? null;
+  const start = vb ?? B.vorschlagPeriode(heute);
   const monate = B.waehlbareMonate(heute);
   const rollen = useRollen();
   const verwalten = rollen.darf('bezugsbasis.verwalten', kennzahl.standort_id);
@@ -67,17 +73,17 @@ export function BezugsbasisAssistent({
   const [vorschau, setVorschau] = useState<BezugsbasisFassung | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
-  const [methode, setMethode] = useState('verhaeltnis');
+  const [methode, setMethode] = useState(vb?.methode ?? 'verhaeltnis');
   const [nichtGebaut, setNichtGebaut] = useState<Set<string>>(new Set());
   const [variablen, setVariablen] = useState<VariablenVorschlag | null>(null);
   const [variablenFehler, setVariablenFehler] = useState(false);
-  const [zweite, setZweite] = useState<string[]>([]);
+  const [zweite, setZweite] = useState<string[]>(vb?.zweite ?? []);
   const [faktoren, setFaktoren] = useState<FaktorenVorschlag | null>(null);
   const [faktorenFehler, setFaktorenFehler] = useState(false);
-  const [angekreuzt, setAngekreuzt] = useState<string[]>([]);
-  const [wortlaut, setWortlaut] = useState('');
-  const [toleranz, setToleranz] = useState('2');
-  const [wiedervorlage, setWiedervorlage] = useState('12');
+  const [angekreuzt, setAngekreuzt] = useState<string[]>(vb?.faktoren ?? []);
+  const [wortlaut, setWortlaut] = useState(vb?.wortlaut ?? '');
+  const [toleranz, setToleranz] = useState(vb?.toleranz ?? '2');
+  const [wiedervorlage, setWiedervorlage] = useState(vb?.wiedervorlage ?? '12');
   const [gespeichert, setGespeichert] = useState<BezugsbasisFassung | null>(null);
   const [nachAntrag, setNachAntrag] = useState<string | null>(null);
 
@@ -123,6 +129,7 @@ export function BezugsbasisAssistent({
       const antwort = await api.bezugsbasisEntwurf(kennzahl.id, b.id, {
         referenzperiode,
         methode,
+        ...(neu ? anpassungKoerper(neu.anpassung) : {}),
         ...(mitAllem
           ? {
               variablen: v1 ? [v1, ...(zweiGroessen ? zweite : [])] : null,
@@ -156,7 +163,7 @@ export function BezugsbasisAssistent({
   const weiterMoeglich = schritt === 1 ? vorschauPasst : schritt === 2 ? B.methodenWahl(vorschau?.monate ?? null, nichtGebaut).some((w) => w.methode.kennung === methode && w.grund === null) : true;
 
   return (
-    <Modal open onClose={onClose} title={B.TITEL_ASSISTENT} footer={Fuss()}>
+    <Modal open onClose={onClose} title={neu ? TITEL_NEUE_FASSUNG : B.TITEL_ASSISTENT} footer={Fuss()}>
       <div className="vp-gw vp-bb-assistent" data-testid="bezugsbasis-assistent">
         <ol className="vp-steps" aria-label="Schritte">
           {B.SCHRITTE.map((wort, i) => {
@@ -431,6 +438,8 @@ export function BezugsbasisAssistent({
         )}
         {/* IP-14: Punkte, Gerade, Güte, Spannweite und die abgelehnte zweite Variable (G4) in Kundenwörtern. */}
         {!anderesModell && <BezugsbasisModell fassung={f} einheit={kennzahl.einheit_anzeige} groessen={M.groessenAusVorschlag(variablen)} imAssistenten />}
+        {/* IP-18: Fassung n + 1 — Fassung n neben dem gespeicherten Entwurf. */}
+        {neu?.vorgaengerin && gespeichert && <VorschauAltNeu alt={neu.vorgaengerin} neu={gespeichert} einheit={kennzahl.einheit_anzeige} />}
         <p className="vp-kz-leise">{B.ENTWURF_HINWEIS}</p>
         {gespeichert && !nachAntrag && freigeben && (
           <FreigabeFormular

@@ -1,5 +1,5 @@
 import { AuthRedirectError, freshToken } from './auth';
-import type { BezugsbasisUebersicht } from './bezugsbasisUebersicht';
+import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
 import type { BezugsbasisVergleich, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
@@ -2772,6 +2772,52 @@ export interface Bezugsbasis {
   beendet_grund: string | null;
   angelegt_am: string;
   fassungen: BezugsbasisFassungKurz[];
+  /**
+   * AP-17 IP-18 (A2–A4, F5) — additive Felder von Nachlese 3 (`bezugsbasis.md` §15 „Anstöße und Frist lesen“) an
+   * `GET …/bezugsbasen/{bid}` und jedem Eintrag von `GET …/bezugsbasen`: die Anstöße der Basis (jüngste zuerst) und die
+   * Frist der laufenden Fassung (`null` ohne freigegebene Fassung oder an einer beendeten Basis). Optional für ältere
+   * Antworten: fehlen sie, liest der Reiter Frist und „Anstoß liegt vor“ als Rückfall aus der Übersicht (IP-17).
+   */
+  anstoesse?: BezugsbasisAnstoss[];
+  frist?: BezugsbasisFrist | null;
+}
+
+/** Ein Anstoß an einer freigegebenen Fassung (A2–A4, `bezugsbasis_anstoss`); `anlass_satz` ist der §5.8-Satz des Servers. */
+export interface BezugsbasisAnstoss {
+  art: 'grundlage_korrigiert' | 'struktur_geaendert' | 'variable_geaendert' | 'nicht_mehr_anwendbar';
+  pfad: 1 | 2;
+  anlass_kennung: string;
+  anlass_satz: string;
+  zeitpunkt: string;
+  fassung: number;
+  offen: boolean;
+  antwort: { art: 'neue_fassung' | 'beendet' | 'bleibt'; person: string | null; am: string; begruendung: string | null } | null;
+}
+
+/** Die Frist der laufenden Fassung (F5), beim Abruf vom Server abgeleitet — nie im Portal gerechnet. */
+export interface BezugsbasisFrist {
+  ueberpruefung_faellig: boolean;
+  faellig_am: string | null;
+  faellig_seit_tagen: number | null;
+  wiedervorlage_monate: number;
+  /** Das jüngste „geprüft, bleibt“ dieser Fassung (Beginn der Frist), sonst null. */
+  bestaetigt_am?: string | null;
+}
+
+/** Ein statischer Faktor der Fassung — die Kopie zum Stichtag (§17, IP-16b); `satz` ist der Kundensatz des Servers. */
+export interface BezugsbasisFaktor {
+  position: number;
+  art: 'flaeche' | 'standort' | 'anlage' | 'prozess' | 'kostenstelle' | 'wortlaut';
+  objekt_id: string | null;
+  kennung: string | null;
+  bezeichnung: string | null;
+  wortlaut: string | null;
+  wert: string | null;
+  einheit: string | null;
+  gueltig_ab: string | null;
+  stichtag: string;
+  ohne_anstoss: boolean;
+  satz: string;
 }
 
 /** Ein Monat der eingefrorenen Grundlage (F3): mit Zahl, oder nur mit `grund` (zählt nicht). */
@@ -2819,7 +2865,7 @@ export interface BezugsbasisFassung {
   toleranz_prozent: string;
   wiedervorlage_monate: number;
   variablen: BezugsbasisVariable[];
-  faktoren: Array<Record<string, unknown>>;
+  faktoren: BezugsbasisFaktor[];
   freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
   gebildet_am: string;
   gebildet_von: string;
@@ -2847,6 +2893,11 @@ export interface BezugsbasisEntwurf {
   wiedervorlage_monate?: number | null;
   /** IP-16b (§17): Verweise aus dem Faktoren-Vorschlag oder ein Wortlaut. */
   faktoren?: Array<{ art: string; objekt_id?: string; wortlaut?: string }> | null;
+  /** IP-8 (A1, F4): ab Fassung 2 Pflicht — Anpassungsgründe, bei `sonstiger` der Wortlaut, Begründung 10–500; `gilt_ab` wahlfrei. */
+  anpassungsgruende?: string[];
+  anpassung_wortlaut?: string | null;
+  begruendung?: string;
+  gilt_ab?: string | null;
 }
 
 /** `GET /api/v1/kennzahlen/{id}/faktoren-vorschlag` (IP-16a, bezugsbasis.md „Faktoren-Vorschlag“). */
@@ -9681,6 +9732,12 @@ export const api = {
     request<BezugsbasisFassung>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/fassungen/${n}/${schritt}`, {
       method: 'POST', body: JSON.stringify({ begruendung }),
     }),
+  /** AP-17 IP-17 (F5, A4): „geprüft, bleibt“ mit Begründung 10–500 — die Fassung bleibt, die Frist beginnt neu. */
+  bezugsbasisBleibt: (id: string, bid: string, begruendung: string) =>
+    request<BezugsbasisZustand>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/bleibt`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** AP-17 IP-17 (F4): beenden — `tag` ist der letzte eingeschlossene Tag, vor heute nur mit `rueckwirkend`. */
+  bezugsbasisBeenden: (id: string, bid: string, body: { tag: string; grund: string; begruendung: string; rueckwirkend?: boolean }) =>
+    request<BezugsbasisZustand>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
   kennzahlVariablenVorschlag: (id: string, referenzperiode?: string) =>
     request<VariablenVorschlag>(`/api/v1/kennzahlen/${id}/variablen-vorschlag` + (referenzperiode ? `?referenzperiode=${encodeURIComponent(referenzperiode)}` : '')),
   kennzahlFaktorenVorschlag: (id: string, stichtag?: string) =>

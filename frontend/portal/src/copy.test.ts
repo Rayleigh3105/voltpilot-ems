@@ -1506,6 +1506,9 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
     'bezugsbasisModell.ts',
     'components/BezugsbasisModell.tsx',
     'components/BezugsbasisModellGrafik.tsx',
+    // AP-17 IP-18: Fassungen, Anstoß, neue Fassung, Faktoren im selben Reiter (eine Welt).
+    'bezugsbasisFassungen.ts',
+    'components/BezugsbasisFassungen.tsx',
   ];
   const verboten = (woerter: string[]) => new RegExp(`(^|[^\\p{L}])(${woerter.join('|')})([^\\p{L}]|$)`, 'u');
   const KUNDENSICHT_VERBOTEN = verboten(['KPI', 'Metrik', 'Kenngröße', 'Kenngrößen', 'Dashboard', 'Widget', 'Template']);

@@ -3,6 +3,7 @@ import { api } from '../src/api';
 import { keycloak } from '../src/auth';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { setSelbstauskunft } from '../src/rollen';
+import { fassungenBuehne } from '../src/test/bezugsbasisFassungenFixtures';
 import { BB_IDS, bezugsbasisBuehne } from '../src/test/bezugsbasisFixtures';
 import { rechteSeed } from '../src/test/rollenFixtures';
 import '../designsystem/tokens/fonts.css';
@@ -20,7 +21,8 @@ import '../src/index.css';
  * `bezugsbasisBuehne` (`src/test/bezugsbasisFixtures.ts`) — Ahrenberg hat kein Vier-Augen, „Freigeben“ wirkt sofort.
  * Jeder Locator der Spec ist gegen dieselbe Fläche in `src/bezugsbasisSpecLocatoren.test.tsx` gezählt.
  *
- * Adresse: `?person=IK|CB` (Vorgabe IK, Ines Kaltenbach) · `&lage=keine|freigegeben|modell` (Vorgabe keine; `modell` ist
+ * Adresse: `?person=IK|CB` (Vorgabe IK, Ines Kaltenbach) · `&lage=keine|freigegeben|modell|anstoss|frist` (Vorgabe keine; IP-18:
+ * `anstoss` R5, `frist` R13 über `fassungenBuehne`; `modell` ist
  * BB-0001 Fassung 2 nach R12/R4/R9, IP-14) · `&seite=register` zeigt das Register statt der Kennzahl. Eigene Bühne, keine
  * geteilte Datei wird angefasst. Ein Entwurf mit einer Methode ≠ Verhältnis antwortet mit dem Modell von R12 (IP-10);
  * die zweite Variable lehnt die Bühne wie der Server ab, wenn BZ-3 gewählt ist (G4).
@@ -32,6 +34,8 @@ keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenb
 
 const lage = params.get('lage');
 Object.assign(api, bezugsbasisBuehne(lage === 'freigegeben' || lage === 'modell' ? lage : 'keine'));
+// IP-18: `lage=anstoss` (R5, Fassung 1 angestoßen) · `lage=frist` (R13, Überprüfung fällig seit 1 Tag).
+if (lage === 'anstoss' || lage === 'frist') Object.assign(api, fassungenBuehne(lage));
 
 function Ansicht() {
   const register = params.get('seite') === 'register';
