@@ -8,6 +8,7 @@ import com.voltpilot.api.uems.EnergiezielService;
 import com.voltpilot.api.uems.KennzahlAbgelehnt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.VerbesserungAbgelehnt;
+import com.voltpilot.api.uems.VorgangAntwort;
 import com.voltpilot.api.web.dto.EnergiezielDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -47,10 +48,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class EnergiezielController {
 
     private final EnergiezielService ziele;
+    private final VorgangAntwort antwort;
     private final ObjectMapper streng;
 
-    public EnergiezielController(EnergiezielService ziele, ObjectMapper json) {
+    public EnergiezielController(EnergiezielService ziele, VorgangAntwort antwort, ObjectMapper json) {
         this.ziele = ziele;
+        this.antwort = antwort;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -163,6 +166,20 @@ public class EnergiezielController {
     public EnergiezielDto.Energieziel bewertungAblehnen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return ziele.ablehnen(id, lies(body, EnergiezielDto.Entscheid.class), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code verbesserung.verwalten} bzw. {@code verbesserung.abschliessen} (für {@code neu_bewertet}) an der
+     * Geltung der Kennzahl. Die Antwort auf einen Anstoß am Ziel (Z5, IP-17) — einmalig (409
+     * {@code anstoss_beantwortet}): {@code bleibt} mit Begründung · {@code neu_bewertet} mit {@code ergebnis} (die
+     * Bewertung des offenen Ziels, bei Vier-Augen als Antrag); an {@code bewertung_korrigiert} nur {@code bleibt} — eine
+     * gestellte Bewertung wird nie zurückgenommen (422 {@code antwort_passt_nicht}). Ein Anstoß eines anderen Ziels 404.
+     */
+    @PostMapping("/{id}/anstoesse/{aid}/antwort")
+    @Recht(value = {"verbesserung.verwalten", "verbesserung.abschliessen"}, ziel = RechtZiel.DIENST)
+    public EnergiezielDto.Energieziel anstossAntwort(@PathVariable UUID id, @PathVariable UUID aid,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return antwort.energieziel(id, aid, lies(body, EnergiezielDto.AnstossAntwort.class), akteur(auth));
     }
 
     private <T> T lies(JsonNode body, Class<T> form) {

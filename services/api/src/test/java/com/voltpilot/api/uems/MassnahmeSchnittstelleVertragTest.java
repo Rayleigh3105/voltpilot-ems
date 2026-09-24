@@ -61,7 +61,8 @@ class MassnahmeSchnittstelleVertragTest {
                 Map.entry("MassnahmeWirkungAusschluss", MassnahmeDto.WirkungAusschluss.class),
                 Map.entry("MassnahmeWirkungSumme", MassnahmeDto.WirkungSumme.class),
                 Map.entry("MassnahmeBewertung", MassnahmeDto.Bewertung.class),
-                Map.entry("MassnahmeBewertungen", MassnahmeDto.Bewertungen.class));
+                Map.entry("MassnahmeBewertungen", MassnahmeDto.Bewertungen.class),
+                Map.entry("MassnahmeAnstoss", MassnahmeDto.Anstoss.class));
         for (var f : formen.entrySet()) {
             Map<String, Object> s = schema(f.getKey());
             assertThat(s).as(f.getKey()).isNotNull();
@@ -78,7 +79,7 @@ class MassnahmeSchnittstelleVertragTest {
     @SuppressWarnings("unchecked")
     void dieKoerperSindDieDesDto() throws Exception {
         Map<String, Object> pfade = (Map<String, Object>) api().get("paths");
-        Map<String, Class<? extends Record>> koerper = Map.of(
+        Map<String, Class<? extends Record>> koerper = new java.util.HashMap<>(Map.of(
                 "/api/v1/massnahmen post", MassnahmeDto.Anlegen.class,
                 "/api/v1/massnahmen/{id} put", MassnahmeDto.Aendern.class,
                 "/api/v1/massnahmen/{id}/verantwortlicher put", MassnahmeDto.Verantwortlicher.class,
@@ -88,7 +89,8 @@ class MassnahmeSchnittstelleVertragTest {
                 "/api/v1/massnahmen/{id}/bewertungen post", MassnahmeDto.Bewerten.class,
                 "/api/v1/massnahmen/{id}/bewertungen/beantragen post", MassnahmeDto.Bewerten.class,
                 "/api/v1/massnahmen/{id}/bewertungen/freigeben post", MassnahmeDto.Entscheid.class,
-                "/api/v1/massnahmen/{id}/bewertungen/ablehnen post", MassnahmeDto.Entscheid.class);
+                "/api/v1/massnahmen/{id}/bewertungen/ablehnen post", MassnahmeDto.Entscheid.class));
+        koerper.put("/api/v1/massnahmen/{id}/anstoesse/{aid}/antwort post", MassnahmeDto.AnstossAntwort.class);
         for (var k : koerper.entrySet()) {
             String[] pm = k.getKey().split(" ");
             Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) pfade.get(pm[0])).get(pm[1]);
@@ -113,6 +115,10 @@ class MassnahmeSchnittstelleVertragTest {
         assertThat(VerbesserungRegeln.VOKABULARE.get("frist_faellig")).containsAll(aufzaehlung(frist, "faellig")
                 .stream().map(String::valueOf).toList());
         assertThat(MassnahmeService.OHNE_KENNZEICHEN).isEqualTo("ohne Messgrundlage — Wirkung nicht messbar");
+        Map<String, Object> anstoss = schema("MassnahmeAnstoss");
+        assertThat(aufzaehlung(anstoss, "art")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_art"));
+        assertThat(aufzaehlung(anstoss, "zustand")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_zustand"));
+        assertThat(aufzaehlung(anstoss, "antwort")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_antwort"));
     }
 
     /** IP-11: die Gründe eines nicht gezählten Monats sind genau {@code wirkung_grund}; {@code monate} 12 … 36. */

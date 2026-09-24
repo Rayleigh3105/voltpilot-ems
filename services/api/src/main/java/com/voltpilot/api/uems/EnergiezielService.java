@@ -609,7 +609,7 @@ public class EnergiezielService {
     }
 
     /** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens; ohne Einstellung gilt die Vorgabe aus. */
-    private boolean vierAugen(UUID tenant) {
+    boolean vierAugen(UUID tenant) {
         List<Boolean> werte = jdbc.queryForList("SELECT vieraugen_freigabe FROM unternehmen WHERE tenant_id = ? "
                 + "FOR SHARE", Boolean.class, tenant);
         return !werte.isEmpty() && Boolean.TRUE.equals(werte.get(0));
@@ -746,7 +746,7 @@ public class EnergiezielService {
 
     // ================================================================================ Protokoll und Darstellung
 
-    private void protokoll(UUID tenant, UUID id, String art, Map<String, Object> alt, Map<String, Object> neu,
+    void protokoll(UUID tenant, UUID id, String art, Map<String, Object> alt, Map<String, Object> neu,
             String begruendung, ProtokollAkteur wer) {
         jdbc.update("INSERT INTO energieziel_aenderung (tenant_id, energieziel_id, art, alt, neu, begruendung, actor_sub, "
                 + "actor_name, actor_rolle, actor_art) VALUES (?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?)", tenant, id, art,
@@ -821,12 +821,25 @@ public class EnergiezielService {
     }
 
     private List<EnergiezielDto.Anstoss> anstoesse(UUID id) {
-        return jdbc.query("SELECT id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung "
-                + "FROM vorgang_anstoss WHERE energieziel_id = ? ORDER BY angestossen_am, anlass_kennung", (rs, i) ->
-                        new EnergiezielDto.Anstoss(rs.getObject("id", UUID.class), rs.getString("art"),
-                                rs.getString("anlass_kennung"), rs.getTimestamp("angestossen_am").toInstant(),
-                                rs.getString("zustand"), rs.getString("antwort"), rs.getString("antwort_begruendung")),
-                id);
+        return jdbc.query("SELECT id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung, "
+                + "beantwortet_am, beantwortet_name FROM vorgang_anstoss WHERE energieziel_id = ? "
+                + "ORDER BY angestossen_am, anlass_kennung", (rs, i) -> {
+                    Timestamp am = rs.getTimestamp("beantwortet_am");
+                    return new EnergiezielDto.Anstoss(rs.getObject("id", UUID.class), rs.getString("art"),
+                            rs.getString("anlass_kennung"), rs.getTimestamp("angestossen_am").toInstant(),
+                            rs.getString("zustand"), rs.getString("antwort"), rs.getString("antwort_begruendung"),
+                            am == null ? null : am.toInstant(), rs.getString("beantwortet_name"));
+                }, id);
+    }
+
+    /**
+     * AP-18 IP-17: das Ziel für die Antwort auf einen Anstoß — sichtbar (404) und {@code recht} an der Geltung der
+     * Kennzahl (403); gibt Kennzeichen und Zustand.
+     */
+    String[] fuerAnstoss(UUID id, String recht, ProtokollAkteur wer) {
+        Zeile z = sichtbar(id);
+        kennzahlen.fuerBezugsbasis(z.kennzahlId(), recht, wer, null);
+        return new String[] {z.kennzeichen(), z.zustand()};
     }
 
     /** „Januar bis Dezember 2028“ bzw. „November 2027 bis Oktober 2028“ (§5.9). */

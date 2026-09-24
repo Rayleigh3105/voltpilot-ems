@@ -42,6 +42,14 @@ public final class EnergiezielDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bewerten(String ergebnis, String begruendung) {}
 
+    /**
+     * {@code POST …/{id}/anstoesse/{aid}/antwort} (IP-17, Z5): {@code bleibt} mit Begründung (10–500 Zeichen) ·
+     * {@code neu_bewertet} mit {@code ergebnis} und Begründung (die Bewertung wie {@code …/bewerten}; nur am offenen Ziel —
+     * eine gestellte Bewertung wird nie zurückgenommen).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnstossAntwort(String antwort, String begruendung, String ergebnis) {}
+
     /** {@code …/bewertung/freigeben} (Begründung wahlfrei) und {@code …/bewertung/ablehnen} (Begründung Pflicht). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Entscheid(String begruendung) {}
@@ -90,11 +98,14 @@ public final class EnergiezielDto {
             Person person, Instant am, Person entscheidung, Instant entschiedenAm, String entscheidungsBegruendung,
             String kopie, String pruefsumme) {}
 
-    /** Ein Anstoß am Ziel ({@code vorgang_anstoss}, Z5): Basis beendet oder neu gefasst — eine Person antwortet. */
+    /**
+     * Ein Anstoß am Ziel ({@code vorgang_anstoss}, Z5): Basis beendet oder neu gefasst (Pfad 2), die Bewertung zitiert
+     * einen Monat, der eine neue Version bekam (Pfad 1, IP-17) — eine Person antwortet.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Anstoss(UUID id, String art, String anlassKennung, Instant angestossenAm, String zustand,
-            String antwort, String antwortBegruendung) {}
+            String antwort, String antwortBegruendung, Instant beantwortetAm, String beantwortetVon) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)

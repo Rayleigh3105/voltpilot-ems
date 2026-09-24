@@ -58,7 +58,7 @@ ENDGÜLTIGEM Nachher-Monat (ohne Umsetzungsmonat) `version`, die Einflussgröße
 `erwartet_kwh` (ganz), `delta_prozent`, `urteil`, `grund`, dazu `wirkung` (Σ ÷ Σ, `monate_gesamt` = endgültige
 Nachher-Monate, Ausschlüsse ohne Umsetzungsmonat) und `erwartete_wirkung_prozent`. R6 trifft deren Prüfsumme
 `sha256:4635…` byte-gleich; wer die Form ändert, bricht R6. ⚠ `massnahme.zustand = 'bewertet'` erst NACH dem bewerteten
-Stand (Trigger `massnahme_bewertet_mit_stand`). ⚠ Nicht gebaut: neuer Stand nach einem Anstoß (`neu_bewertet`, IP-17),
-die Fläche (IP-20). Nachweis: `MassnahmeApiTest` (`r6StandNr1BelegtMitPruefsummeUndNr2`,
+Stand (Trigger `massnahme_bewertet_mit_stand`). Neuer Stand nach einem Anstoß (`neu_bewertet`, IP-17): [Anstoß am
+Vorgang](uems-vorgang-anstoss.md). ⚠ Nicht gebaut: die Fläche (IP-20). Nachweis: `MassnahmeApiTest` (`r6StandNr1BelegtMitPruefsummeUndNr2`,
 `r7OhneMessgrundlageNurNichtMessbarRechtUndZaun`, `vierAugenNichtDerUrheberNichtDerVerantwortliche`),
 `MassnahmeSchnittstelleVertragTest`, Zeilen in `RechtMatrixApiTest`, `RechtRoutenArchitekturTest.DIENST`.

@@ -98,6 +98,11 @@ class RechtRoutenArchitekturTest {
             m.put("MassnahmeController#" + r, "MassnahmeBewertung über MassnahmeService.zeile — "
                     + "verbesserung.abschliessen an der Geltung der Kennzahl oder am Standort der Maßnahme");
         }
+        // AP-18 IP-17: die Antwort auf einen Anstoß — verwalten (bleibt, neu_kopiert) bzw. abschliessen (neu_bewertet).
+        m.put("MassnahmeController#anstossAntwort", "VorgangAntwort über MassnahmeService.zeile — "
+                + "verbesserung.verwalten bzw. verbesserung.abschliessen an der Geltung der Kennzahl oder am Standort");
+        m.put("EnergiezielController#anstossAntwort", "VorgangAntwort über EnergiezielService.fuerAnstoss — "
+                + "verbesserung.verwalten bzw. verbesserung.abschliessen an der Geltung der Kennzahl des Ziels");
         m.put("BezugsbasisPflegeController#bleibt", bezugsbasis);
         m.put("BezugsbasisPflegeController#beenden", bezugsbasis);
         m.put("KorrekturPortalController#vorschau", "KorrekturPortalService — lesende Vorschau ohne Schreibvorgang");

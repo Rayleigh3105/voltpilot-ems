@@ -10,6 +10,7 @@ import com.voltpilot.api.uems.MassnahmeService;
 import com.voltpilot.api.uems.MassnahmeWirkung;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.VerbesserungAbgelehnt;
+import com.voltpilot.api.uems.VorgangAntwort;
 import com.voltpilot.api.web.dto.MassnahmeDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -51,13 +52,15 @@ public class MassnahmeController {
     private final MassnahmeService massnahmen;
     private final MassnahmeWirkung wirkung;
     private final MassnahmeBewertung bewertung;
+    private final VorgangAntwort antwort;
     private final ObjectMapper streng;
 
     public MassnahmeController(MassnahmeService massnahmen, MassnahmeWirkung wirkung, MassnahmeBewertung bewertung,
-            ObjectMapper json) {
+            VorgangAntwort antwort, ObjectMapper json) {
         this.massnahmen = massnahmen;
         this.wirkung = wirkung;
         this.bewertung = bewertung;
+        this.antwort = antwort;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -201,6 +204,21 @@ public class MassnahmeController {
     public MassnahmeDto.Massnahme bewertungAblehnen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return bewertung.ablehnen(id, lies(body, MassnahmeDto.Entscheid.class), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code verbesserung.verwalten} bzw. {@code verbesserung.abschliessen} (für {@code neu_bewertet}) an der
+     * Geltung der Kennzahl oder am Standort. Die Antwort auf einen Anstoß am Vorgang (IP-17, M5) — einmalig (409
+     * {@code anstoss_beantwortet}): {@code bleibt} mit Begründung · {@code neu_kopiert} (nur
+     * {@code ausgangslage_korrigiert}: Ausgangslage neu aus dem Leser, die alte im Protokoll) · {@code neu_bewertet}
+     * mit {@code ergebnis} (Stand Nr. n + 1, bei Vier-Augen als Antrag); was nicht zur Art passt, 422
+     * {@code antwort_passt_nicht}. Ein Anstoß eines anderen Vorgangs 404.
+     */
+    @PostMapping("/{id}/anstoesse/{aid}/antwort")
+    @Recht(value = {"verbesserung.verwalten", "verbesserung.abschliessen"}, ziel = RechtZiel.DIENST)
+    public MassnahmeDto.Massnahme anstossAntwort(@PathVariable UUID id, @PathVariable UUID aid,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return antwort.massnahme(id, aid, lies(body, MassnahmeDto.AnstossAntwort.class), akteur(auth));
     }
 
     private <T> T lies(JsonNode body, Class<T> form) {

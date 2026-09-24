@@ -112,6 +112,9 @@ class EnergiezielApiTest {
     KennzahlService kennzahlen;
 
     @Autowired
+    VerbesserungNaht naht;
+
+    @Autowired
     @Qualifier("adminJdbcTemplate")
     JdbcTemplate admin;
 
@@ -493,7 +496,10 @@ class EnergiezielApiTest {
         assertThat(ende.status()).as(ende.text()).isEqualTo(200);
 
         StrukturAenderungLaeufer laeufer = new StrukturAenderungLaeufer(admin, new BerichteNaht.Keine(), 200);
-        laeufer.bezugsbasis(BezugsbasisAnstoss.mitSchalter(true));
+        // Seit IP-17 läuft der Ziel-Zweig über die Naht der Verbesserung (ihr Schalter, §5.8).
+        BezugsbasisAnstoss anstoss = BezugsbasisAnstoss.mitSchalter(true);
+        anstoss.verbesserung(naht);
+        laeufer.bezugsbasis(anstoss);
         assertThat(laeufer.lauf(ABRUF).gescheitert()).isEmpty();
         assertThat(laeufer.lauf(ABRUF).gescheitert()).isEmpty();
 

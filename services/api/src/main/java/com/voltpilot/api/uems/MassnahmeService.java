@@ -449,6 +449,28 @@ public class MassnahmeService {
         return o;
     }
 
+    /**
+     * AP-18 IP-17 (M5, Antwort {@code neu_kopiert}): die Ausgangslage NEU aus dem Leser — dieselbe Kennzahl, Basis,
+     * Fassung und dieselben Monate wie die alte Kopie, dieselbe Bildung wie beim Anlegen; nur die gültigen Versionen
+     * unterscheiden sie. Gibt den kanonischen Text und seine Prüfsumme.
+     */
+    String[] ausgangslageNeu(Map<String, Object> z) {
+        JsonNode alt;
+        try {
+            alt = json.readTree((String) z.get("ausgangslage"));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException x) {
+            throw new IllegalStateException(x);
+        }
+        String[] teile = alt.path("monate").asText().split("/", -1);
+        YearMonth[] spanne = {YearMonth.parse(teile[0]), YearMonth.parse(teile[teile.length - 1])};
+        String basis = (String) z.get("bb");
+        BezugsbasisVergleich.ZielVergleich zv = vergleich.fuerZiel((UUID) z.get("kennzahl_id"), basis, spanne[0],
+                spanne[1]);
+        String text = BerichtRegeln.kanonisch(ausgangslage((String) z.get("kz"), basis,
+                ((Number) z.get("fassung")).intValue(), spanne, zv.vergleich()));
+        return new String[] {text, BerichtRegeln.pruefsumme(text)};
+    }
+
     /** {@code JJJJ-MM} oder {@code JJJJ-MM/JJJJ-MM}, abgeschlossen, höchstens 12 Monate; ohne: der letzte Monat. */
     private static YearMonth[] monate(String text, YearMonth dieser) {
         if (text == null) {
@@ -769,7 +791,21 @@ public class MassnahmeService {
                 einsatz, (Integer) z.get("einstufung_fassung"), ziel, prozent == null ? null : prozent.toPlainString(),
                 wortlaut, angelegt, umgesetzt, (String) z.get("umgesetzt_begruendung"),
                 verworfen == null ? null : verworfen.toInstant(), (String) z.get("verworfen_grund"),
-                new MassnahmeDto.Frist(abruf, termin, faellig, seit, fristSatz), kopf, staende[0], staende[1], verlauf);
+                new MassnahmeDto.Frist(abruf, termin, faellig, seit, fristSatz), kopf, staende[0], staende[1],
+                verlauf == null ? null : anstoesse((UUID) z.get("id")), verlauf);
+    }
+
+    /** Die Anstöße an der Maßnahme (M5, IP-17), älteste zuerst — offene und beantwortete. */
+    private List<MassnahmeDto.Anstoss> anstoesse(UUID id) {
+        return jdbc.query("SELECT id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung, "
+                + "beantwortet_am, beantwortet_name FROM vorgang_anstoss WHERE massnahme_id = ? "
+                + "ORDER BY angestossen_am, anlass_kennung", (rs, i) -> {
+                    Timestamp am = rs.getTimestamp("beantwortet_am");
+                    return new MassnahmeDto.Anstoss(rs.getObject("id", UUID.class), rs.getString("art"),
+                            rs.getString("anlass_kennung"), rs.getTimestamp("angestossen_am").toInstant(),
+                            rs.getString("zustand"), rs.getString("antwort"), rs.getString("antwort_begruendung"),
+                            am == null ? null : am.toInstant(), rs.getString("beantwortet_name"));
+                }, id);
     }
 
     // ================================================================================ Stände (WK6, IP-12)

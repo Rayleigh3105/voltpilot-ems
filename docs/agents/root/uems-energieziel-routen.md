@@ -16,10 +16,11 @@ Neu am 24.09.2026: `EnergiezielController` → `uems/EnergiezielService`, DTO `w
 
 ⚠ **Frist (F1)** steht in jedem Ziel (`frist`): Operation `frist` mit der Uhr der Kennzahlen; „letzter Monat
 endgültig“ liest die Zeile selbst (jüngster `kennzahl_wert` des Monats, `endgueltig_ab` ≤ Abruf) — gespeichert wird nichts.
-⚠ **Anstoß Pfad 2 (Z5):** `VorgangAnstoss.anZielen` hängt im Bezugsbasis-Zweig des Struktur-Läufers
+⚠ **Anstoß Pfad 2 (Z5):** `VorgangAnstoss.anVorgaengen` hängt im Bezugsbasis-Zweig des Struktur-Läufers
 (`BezugsbasisAnstoss.lesen`, Zeilen `bezugsbasis_beendet` / `fassung_freigegeben`), gleiche Transaktion und gleiches
-Wasserzeichen, Schalter `voltpilot.uems.bezugsbasis.enabled`; nur offene Ziele, bei Fassung n nur Ziele mit Fassung < n,
-deren Zielperiode die Referenzperiode schneidet. Admin-INSERT seit `V20260925001000` (auch `massnahme_aenderung` für IP-17).
+Wasserzeichen, seit IP-17 über `VerbesserungNaht` (Schalter `voltpilot.uems.verbesserung.enabled` UND
+`…bezugsbasis.enabled`); nur offene Ziele, bei Fassung n nur Ziele mit Fassung < n, deren Zielperiode die
+Referenzperiode schneidet. Pfad 1 (`bewertung_korrigiert`) und die Antwort-Route: [Anstoß am Vorgang](uems-vorgang-anstoss.md).
 ⚠ **Rechnet nichts:** Σ ÷ Σ, x von y, Ausschlüsse und Vorschlag kommen aus `zielstand`; wer hier etwas nachrechnet,
 bricht NW-1. ⚠ **Endgültig** heißt `kennzahl_wert.endgueltig_ab` ≤ Abruf — ein Monat ohne Wert oder vor seiner
 Endgültigkeit wird nicht übergeben (weder gezählt noch „ausgeschlossen“). ⚠ Die Satzteile der Ausschluss-Gründe außer

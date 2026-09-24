@@ -57,6 +57,14 @@ public final class MassnahmeDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bewerten(String ergebnis, String begruendung) {}
 
+    /**
+     * {@code POST …/{id}/anstoesse/{aid}/antwort} (IP-17, M5): {@code bleibt} mit Begründung (10–500 Zeichen) ·
+     * {@code neu_kopiert} (Ausgangslage neu aus dem Leser) · {@code neu_bewertet} mit {@code ergebnis} und Begründung
+     * (Stand Nr. n + 1, wie {@code …/bewertungen}); bei {@code neu_kopiert} ist die Begründung wahlfrei.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnstossAntwort(String antwort, String begruendung, String ergebnis) {}
+
     /** {@code …/bewertungen/freigeben} (Begründung wahlfrei) und {@code …/bewertungen/ablehnen} (Begründung Pflicht). */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Entscheid(String begruendung) {}
@@ -105,7 +113,17 @@ public final class MassnahmeDto {
             OhneMessgrundlage ohneMessgrundlage, Verweis einsatz, Integer einstufungFassung, Verweis energieziel,
             String erwarteteWirkungProzent, String erwarteteWirkungWortlaut, LocalDate angelegtAm,
             LocalDate umgesetztAm, String umgesetztBegruendung, Instant verworfenAm, String verworfenGrund,
-            Frist frist, String kopfSatz, Bewertung bewertung, Bewertung bewertungAntrag, List<Eintrag> verlauf) {}
+            Frist frist, String kopfSatz, Bewertung bewertung, Bewertung bewertungAntrag, List<Anstoss> anstoesse,
+            List<Eintrag> verlauf) {}
+
+    /**
+     * Ein Anstoß an der Maßnahme ({@code vorgang_anstoss}, M5, IP-17): Ausgangslage oder Bewertungs-Stand zitiert eine
+     * alte Version, die Basis endete oder wurde neu gefasst — die Kopie bleibt byte-gleich, eine Person antwortet.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Anstoss(UUID id, String art, String anlassKennung, Instant angestossenAm, String zustand,
+            String antwort, String antwortBegruendung, Instant beantwortetAm, String beantwortetVon) {}
 
     /**
      * Ein Stand Nr. n der Bewertung (IP-12, WK6): das Wort einer Person mit Begründung, nie zurückgenommen.

@@ -12004,6 +12004,43 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/anstoesse/{aid}/antwort:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: aid, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Antwortet auf einen Anstoß am Vorgang (IP-17) - einmalig; die Kopie bleibt, bis eine Person anders antwortet.
+      description: >
+        Recht `verbesserung.verwalten` (`bleibt`) bzw. `verbesserung.abschliessen` (`neu_bewertet`) an der Geltung der
+        Kennzahl (Z5, §5.7). `bleibt` mit Begründung (Pflicht); `neu_bewertet` nur an `messgrundlage_beendet`,
+        `messgrundlage_neu_gefasst` - die Bewertung des offenen Ziels wie `POST …/bewerten` (mit Vier-Augen als Antrag);
+        an `bewertung_korrigiert` nur `bleibt` - eine gestellte Bewertung wird nie zurückgenommen (422
+        `antwort_passt_nicht`). Schon beantwortet 409 `anstoss_beantwortet`; ein Anstoß eines anderen Ziels 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [antwort]
+              properties:
+                antwort: { type: string, enum: [bleibt, neu_bewertet] }
+                begruendung: { type: string, minLength: 10, maxLength: 500, description: "Pflicht bei bleibt" }
+                ergebnis: { type: string, description: "nur bei neu_bewertet: das Ergebnis der Bewertung" }
+      responses:
+        "200":
+          description: Beantwortet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/energieziele/{id}/beenden:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -12339,6 +12376,45 @@ paths:
         "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/anstoesse/{aid}/antwort:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: aid, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Antwortet auf einen Anstoß am Vorgang (IP-17) - einmalig; die Kopie bleibt, bis eine Person anders antwortet.
+      description: >
+        Recht `verbesserung.verwalten` (`bleibt`, `neu_kopiert`) bzw. `verbesserung.abschliessen` (`neu_bewertet`) an
+        der Geltung der Kennzahl oder am Standort (M5, §5.7). `bleibt` mit Begründung (Pflicht); `neu_kopiert` nur an
+        `ausgangslage_korrigiert` - die Ausgangslage neu aus dem Leser (dieselbe Kennzahl, Fassung und Monate), neue
+        Prüfsumme, die alte Kopie steht in der Protokollzeile `anstoss_beantwortet` (`alt`); `neu_bewertet` nur an
+        `bewertung_korrigiert`, `messgrundlage_beendet`, `messgrundlage_neu_gefasst` - der Stand Nr. n + 1 wie
+        `POST …/bewertungen` (mit Vier-Augen als Antrag), `ergebnis` und `begruendung` wie dort. Was nicht zur Art passt,
+        422 `antwort_passt_nicht`; schon beantwortet 409 `anstoss_beantwortet`; ein Anstoß eines anderen Vorgangs 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [antwort]
+              properties:
+                antwort: { type: string, enum: [bleibt, neu_kopiert, neu_bewertet] }
+                begruendung: { type: string, minLength: 10, maxLength: 500, description: "Pflicht bei bleibt, sonst wahlfrei" }
+                ergebnis: { type: string, description: "nur bei neu_bewertet: das Ergebnis der Bewertung" }
+      responses:
+        "200":
+          description: Beantwortet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/massnahmen/{id}/bewertungen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -28309,8 +28385,10 @@ components:
         pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
     EnergiezielAnstoss:
       type: object
-      description: Ein Anstoß am Ziel (`vorgang_anstoss`, Z5) - Basis beendet oder neu gefasst; eine Person antwortet.
-      required: [id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung]
+      description: >
+        Ein Anstoß am Ziel (`vorgang_anstoss`, Z5) - Basis beendet oder neu gefasst (Pfad 2), die Bewertung zitiert
+        einen Monat, der eine neue Version bekam (Pfad 1, IP-17); eine Person antwortet.
+      required: [id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung, beantwortet_am, beantwortet_von]
       properties:
         id: { type: string, format: uuid }
         art: { type: string, enum: [ausgangslage_korrigiert, bewertung_korrigiert, messgrundlage_beendet, messgrundlage_neu_gefasst] }
@@ -28319,6 +28397,8 @@ components:
         zustand: { type: string, enum: [offen, beantwortet] }
         antwort: { type: string, nullable: true, enum: [bleibt, neu_kopiert, neu_bewertet, null] }
         antwort_begruendung: { type: string, nullable: true }
+        beantwortet_am: { type: string, format: date-time, nullable: true }
+        beantwortet_von: { type: string, nullable: true }
     EnergiezielEintrag:
       type: object
       description: Eine Zeile des Protokolls `energieziel_aenderung`.
@@ -28385,7 +28465,7 @@ components:
       description: >
         Eine Maßnahme (UEMS AP-18 IP-10, M1–M4, M6); `messgrundlage` oder `ohne_messgrundlage` ist gesetzt, nie beide;
         `frist` über die Operation `frist` beim Abruf; `kopf_satz` erst ab umgesetzt; `verlauf` nur an der einzelnen.
-      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, verlauf]
+      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, anstoesse, verlauf]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^M-[0-9]{4}-[0-9]{4,9}$" }
@@ -28434,10 +28514,32 @@ components:
         kopf_satz: { type: string, nullable: true, description: "Kundensatz `massnahme_kopf` (§5.9)" }
         bewertung: { $ref: "#/components/schemas/MassnahmeBewertung", description: "der jüngste bewertete Stand; null ohne Stand (die Fläche sagt „beobachtet — nicht belegt“)" }
         bewertung_antrag: { $ref: "#/components/schemas/MassnahmeBewertung", description: "der offene Antrag (Vier-Augen) oder null" }
+        anstoesse:
+          type: array
+          nullable: true
+          description: die Anstöße am Vorgang (M5, IP-17), älteste zuerst - wie `verlauf` nur an der einzelnen
+          items: { $ref: "#/components/schemas/MassnahmeAnstoss" }
         verlauf:
           type: array
           nullable: true
           items: { $ref: "#/components/schemas/MassnahmeEintrag" }
+    MassnahmeAnstoss:
+      type: object
+      description: >
+        Ein Anstoß an der Maßnahme (`vorgang_anstoss`, M5, IP-17): die Ausgangslage oder ein Bewertungs-Stand zitiert
+        einen Monat in einer älteren Version (Pfad 1, Kaskade), die Basis endete oder bekam eine Fassung mit
+        Referenzperiode nach der Umsetzung (Pfad 2, Struktur-Läufer). Die Kopie bleibt byte-gleich; eine Person antwortet.
+      required: [id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung, beantwortet_am, beantwortet_von]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [ausgangslage_korrigiert, bewertung_korrigiert, messgrundlage_beendet, messgrundlage_neu_gefasst] }
+        anlass_kennung: { type: string, description: "K-… (Pfad 1, wie der Bezugsbasis-Anstoß), BB-…/beendet, BB-…/Fassung-n" }
+        angestossen_am: { type: string, format: date-time }
+        zustand: { type: string, enum: [offen, beantwortet] }
+        antwort: { type: string, nullable: true, enum: [bleibt, neu_kopiert, neu_bewertet, null] }
+        antwort_begruendung: { type: string, nullable: true }
+        beantwortet_am: { type: string, format: date-time, nullable: true }
+        beantwortet_von: { type: string, nullable: true }
     MassnahmeBewertung:
       type: object
       nullable: true

@@ -335,7 +335,7 @@ public class MassnahmeBewertung {
     }
 
     /** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens; ohne Einstellung gilt die Vorgabe aus. */
-    private boolean vierAugen(UUID tenant) {
+    boolean vierAugen(UUID tenant) {
         List<Boolean> werte = jdbc.queryForList("SELECT vieraugen_freigabe FROM unternehmen WHERE tenant_id = ? "
                 + "FOR SHARE", Boolean.class, tenant);
         return !werte.isEmpty() && Boolean.TRUE.equals(werte.get(0));

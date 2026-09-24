@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.YearMonth;
@@ -37,6 +38,9 @@ import org.springframework.stereotype.Component;
  *       zurück ({@code Lauf.endgueltig}).</li>
  *   <li><b>Kaskade</b>: {@link KennzahlKaskade} ruft sie nach {@code KennzahlNeuGebildet.melden} in der Transaktion der
  *       Kaskade mit den Monatswerten, die dort endgültig geschrieben wurden (Version n + 1 oder erstmals).</li>
+ *   <li><b>Anstoß am Vorgang</b> (IP-17, M5, Z5): {@link #anstossen} (Pfad 1, Kaskade, nach dem Bezugsbasis-Anstoß) und
+ *       {@link #messgrundlage} (Pfad 2, Struktur-Läufer im Zweig der Bezugsbasis) setzen über {@link VorgangAnstoss}
+ *       Anstöße an Maßnahmen und Energiezielen — derselbe Schalter.</li>
  * </ul>
  *
  * <p>Beide Wege schreiben mit der Verwaltungsrolle ({@code adminJdbcTemplate}, ohne RLS — jede Abfrage nennt den
@@ -122,6 +126,57 @@ public class VerbesserungNaht {
             } else {
                 TenantContext.set(vorher);
             }
+        }
+    }
+
+    /**
+     * Anstoß am Vorgang, Pfad 1 (IP-17, M5): die Kaskade machte diese Kennzahl-Monate zu Version n + 1 — in ihrer
+     * Transaktion {@code con}, direkt nach dem Bezugsbasis-Anstoß Pfad 1, mit dessen Anlass-Kennung
+     * ({@link BezugsbasisAnstoss#kennung}). Schalter aus → nichts.
+     *
+     * @return die NEU gesetzten Anstöße (ein zweiter Lauf derselben Korrektur setzt keinen)
+     */
+    public List<VorgangAnstoss.Gesetzt> anstossen(Connection con, UUID tenant, String anlass,
+            List<KennzahlLauf.Neu> neu, Instant jetzt) {
+        if (!eingeschaltet || neu.isEmpty()) {
+            return List.of();
+        }
+        return anstoesse("Pfad 1 " + anlass, () -> VorgangAnstoss.nachKorrektur(con, tenant, anlass, neu, jetzt));
+    }
+
+    /**
+     * Anstoß am Vorgang, Pfad 2 (IP-7 Ziele, IP-17 Maßnahmen, Z5, M5): eine Zeile {@code bezugsbasis_aenderung}
+     * (beendet, Fassung n freigegeben) — im Struktur-Läufer, in der Transaktion des Bezugsbasis-Zweigs. Schalter aus →
+     * nichts; das Wasserzeichen setzt der Läufer trotzdem (nichts wird nachgeholt, §5.8).
+     */
+    public List<VorgangAnstoss.Gesetzt> messgrundlage(Connection con, UUID tenant, UUID basis, String protokollArt,
+            long eintrag, Instant jetzt) {
+        if (!eingeschaltet) {
+            return List.of();
+        }
+        return anstoesse("Pfad 2 " + protokollArt + "-" + eintrag,
+                () -> VorgangAnstoss.anVorgaengen(con, tenant, basis, protokollArt, eintrag, jetzt));
+    }
+
+    @FunctionalInterface
+    private interface Setzen {
+        List<VorgangAnstoss.Gesetzt> setzen() throws SQLException;
+    }
+
+    private List<VorgangAnstoss.Gesetzt> anstoesse(String was, Setzen setzen) {
+        try {
+            List<VorgangAnstoss.Gesetzt> aus = setzen.setzen();
+            if (!aus.isEmpty()) {
+                log.info("UEMS Verbesserung {}: {} Anstöße am Vorgang ({})", was, aus.size(),
+                        aus.stream().map(g -> g.art() + " " + g.anlassKennung()).toList());
+            }
+            return aus;
+        } catch (SQLException e) {
+            melder.fehler(UemsLaeuferMelder.VERBESSERUNG_NAHT);
+            throw new IllegalStateException("UEMS Verbesserung " + was + ": " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            melder.fehler(UemsLaeuferMelder.VERBESSERUNG_NAHT);
+            throw e;
         }
     }
 

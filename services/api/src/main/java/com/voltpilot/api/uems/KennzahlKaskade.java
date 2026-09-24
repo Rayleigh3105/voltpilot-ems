@@ -60,7 +60,7 @@ public class KennzahlKaskade implements KennzahlenNaht {
 
     /**
      * AP-18 IP-15 (A1): die Auffälligkeits-Naht — ebenso nachgereicht; ohne sie (Minimal-Kontexte) vermerkt die Kaskade
-     * nichts.
+     * nichts. Seit IP-17 (M5) setzt sie über dieselbe Naht auch den Anstoß am Vorgang (Pfad 1).
      */
     private VerbesserungNaht verbesserung;
 
@@ -96,6 +96,9 @@ public class KennzahlKaskade implements KennzahlenNaht {
         }
         if (verbesserung != null) {
             verbesserung.vermerken(con, betroffen.tenant(), n.endgueltig(), betroffen.jetzt());
+            // AP-18 IP-17 (M5): Anstoß am Vorgang, Pfad 1 — dieselbe Transaktion und Anlass-Kennung wie die Basis.
+            verbesserung.anstossen(con, betroffen.tenant(), BezugsbasisAnstoss.kennung(betroffen), n.neu(),
+                    betroffen.jetzt());
         }
         if (n.geschrieben() > 0 || !n.abgelehnt().isEmpty()) {
             log.info("UEMS Kennzahl-Kaskade {} (Fassung {}): {} Kennzahlen, {} Werte geschrieben, davon {} neue Versionen, "

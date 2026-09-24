@@ -102,11 +102,22 @@ public class BezugsbasisAnstoss {
     /** A5 (IP-23): die Bericht-Naht; {@code null}, solange {@code voltpilot.uems.berichte.enabled} aus ist. */
     private BerichtKaskade berichte;
 
+    /**
+     * AP-18 IP-7/IP-17 (Z5, M5): die Naht der Verbesserung — der Anstoß an Zielen und Maßnahmen im Zweig der Bezugsbasis
+     * (Pfad 2) läuft über ihren Schalter; ohne sie (Minimal-Kontexte) stößt der Läufer keinen Vorgang an.
+     */
+    private VerbesserungNaht verbesserung;
+
     public BezugsbasisAnstoss() {}
 
     @Autowired(required = false)
     void setBerichte(BerichtKaskade berichte) {
         this.berichte = berichte;
+    }
+
+    @Autowired(required = false)
+    void verbesserung(VerbesserungNaht verbesserung) {
+        this.verbesserung = verbesserung;
     }
 
     /** Ohne Spring (Tests): mit ausdrücklichem Schalter und der Bericht-Naht der Weitergabe (A5). */
@@ -416,13 +427,14 @@ public class BezugsbasisAnstoss {
         List<Gesetzt> gesetzt = new ArrayList<>();
         String urteil;
         int weitergegeben = 0;
-        int ziele = 0;
+        int vorgaenge = 0;
         if (!eingeschaltet) {
             urteil = ABGESCHALTET;
         } else if (BEZUGSBASIS_AENDERUNG.equals(z.protokoll())) {
-            // AP-18 IP-7 (Z5): Basis beendet oder neu gefasst → Anstoß an den offenen Zielen, dieselbe Transaktion.
-            // Das Urteil bleibt das der Berichte; die Zahl der Anstöße zählt die Ziele mit.
-            ziele = VorgangAnstoss.anZielen(con, z.tenant(), z.objekt(), z.art(), z.id(), jetzt).size();
+            // AP-18 IP-7/IP-17 (Z5, M5): Basis beendet oder neu gefasst → Anstoß an Zielen und Maßnahmen, dieselbe
+            // Transaktion, über die Naht (Schalter). Das Urteil bleibt das der Berichte; die Zahl zählt die Vorgänge mit.
+            vorgaenge = verbesserung == null ? 0
+                    : verbesserung.messgrundlage(con, z.tenant(), z.objekt(), z.art(), z.id(), jetzt).size();
             weitergegeben = basisWeitergeben(con, z, jetzt);
             urteil = berichte == null ? OHNE_BERICHTE : weitergegeben == 0 ? OHNE_STAND : AN_BERICHTE;
         } else {
@@ -444,7 +456,7 @@ public class BezugsbasisAnstoss {
             }
         }
         j.update("INSERT INTO bezugsbasis_struktur_gelesen (protokoll, eintrag_id, urteil, anstoesse) VALUES (?, ?, ?, ?)",
-                z.protokoll(), z.id(), urteil, gesetzt.size() + weitergegeben + ziele);
+                z.protokoll(), z.id(), urteil, gesetzt.size() + weitergegeben + vorgaenge);
         return gesetzt;
     }
 
