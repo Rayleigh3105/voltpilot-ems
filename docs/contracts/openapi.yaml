@@ -12376,6 +12376,12 @@ components:
             Null when savedEur itself is null OR the plant has no maintained
             battery master data (steuerungSplitReason says so) - never a
             guessed reference battery.
+            Definition A (Captain 24.09.2026): EIN durchlaufender sturer
+            Vergleichsspeicher je Anlage - er behaelt seinen eigenen Ladestand
+            ueber Mitternacht, verankert am gemessenen Ladestand zum
+            Berliner Monatsbeginn und an jeder Monatsgrenze neu. Damit ist
+            range=day&at=D dieselbe Zahl wie dailySaved[D], die Tage eines
+            Monats ergeben range=month und die Monate range=year.
         savedSteuerungEur:
           type: number
           nullable: true
@@ -12559,6 +12565,59 @@ components:
             site's peak-shaving module is active (non-null
             site.leistungspreis_eur_kw); null otherwise. Range-independent:
             always describes the RUNNING Europe/Berlin billing period.
+        vergleichSocStartKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day, sonst null: Ladestand des durchlaufenden
+            Vergleichsspeichers ("Speicher ohne Steuerung", Definition A) um
+            00:00 - sein eigener Stand, nicht der der gesteuerten Anlage.
+        vergleichSocEndKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: sein Stand nach dem letzten gemessenen Eimer des Tages.
+        speicherVorsprungKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: gemessener Ladestand am Ende desselben Eimers minus
+            vergleichSocEndKwh - was der gesteuerte Speicher gerade mehr (+)
+            oder weniger (-) hat als der sture. Null ohne gemessenen Ladestand
+            (nie eine 0). Geht in keine gemessene Zahl ein.
+        steuerungVortagEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: savedSteuerungEur des Vortags nach derselben
+            Definition (auch ueber eine Monatsgrenze).
+        steuerungMonatBisherEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: Summe savedSteuerungEur vom Monatsersten bis
+            einschliesslich dieses Tages - dieselbe Zahl wie range=month zum
+            selben Stand.
+        steuerungPlannedEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: der Fahrplan-Planwert desselben Tages
+            (history.totals.steuerungPlannedEur) - EX-ANTE geplant, eine Flaeche
+            nennt ihn "geplant". Null ohne vollstaendige Messlatte.
+        steuerungGruende:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant]
+          description: >
+            Nur range=day mit Dreiteilung: warum der Tag unter Null liegt -
+            hoechstens zwei Kennungen der geschlossenen Liste in Rangfolge
+            (Regeln und Schwellen: docs/contracts/steuerung-tag-vectors.json,
+            Block grund). [] bei einem Tag ab Null oder wenn keine Regel
+            greift (nie geraten); null, wenn nicht berechnet (anderes range,
+            keine Dreiteilung).
     SiteEarnings:
       type: object
       description: >
@@ -12648,6 +12707,12 @@ components:
             speicherlosen Anlage erwirtschaftet hätte - same semantics as the
             fleet endpoint's field. Null when savedEur is null or the battery
             master data is missing (steuerungSplitReason).
+            Definition A (Captain 24.09.2026): EIN durchlaufender sturer
+            Vergleichsspeicher je Anlage - er behaelt seinen eigenen Ladestand
+            ueber Mitternacht, verankert am gemessenen Ladestand zum
+            Berliner Monatsbeginn und an jeder Monatsgrenze neu. Damit ist
+            range=day&at=D dieselbe Zahl wie dailySaved[D], die Tage eines
+            Monats ergeben range=month und die Monate range=year.
         savedSteuerungEur:
           type: number
           nullable: true
@@ -12739,6 +12804,66 @@ components:
           description: >
             Womit bewertet wurde: "plan" = Lambda des massgeblichen Slots,
             "terminal" = der Terminalwert des Laufs (der FK2-Rueckfall).
+        vergleichSocStartKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day, sonst null: Ladestand des durchlaufenden
+            Vergleichsspeichers ("Speicher ohne Steuerung", Definition A) um
+            00:00 - sein eigener Stand, nicht der der gesteuerten Anlage.
+        vergleichSocEndKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: sein Stand nach dem letzten gemessenen Eimer des Tages.
+        speicherVorsprungKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: gemessener Ladestand am Ende desselben Eimers minus
+            vergleichSocEndKwh - was der gesteuerte Speicher gerade mehr (+)
+            oder weniger (-) hat als der sture. Null ohne gemessenen Ladestand
+            (nie eine 0). Geht in keine gemessene Zahl ein.
+        speicherVorsprungEur:
+          type: number
+          nullable: true
+          description: >
+            speicherVorsprungKwh x speicherWertCtKwh / 100 - derselbe Planpreis
+            wie das Bestandskonto; ausdruecklich KEIN Summand einer gemessenen
+            Zahl.
+        steuerungVortagEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: savedSteuerungEur des Vortags nach derselben
+            Definition (auch ueber eine Monatsgrenze).
+        steuerungMonatBisherEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: Summe savedSteuerungEur vom Monatsersten bis
+            einschliesslich dieses Tages - dieselbe Zahl wie range=month zum
+            selben Stand.
+        steuerungPlannedEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: der Fahrplan-Planwert desselben Tages
+            (history.totals.steuerungPlannedEur) - EX-ANTE geplant, eine Flaeche
+            nennt ihn "geplant". Null ohne vollstaendige Messlatte.
+        steuerungGruende:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant]
+          description: >
+            Nur range=day mit Dreiteilung: warum der Tag unter Null liegt -
+            hoechstens zwei Kennungen der geschlossenen Liste in Rangfolge
+            (Regeln und Schwellen: docs/contracts/steuerung-tag-vectors.json,
+            Block grund). [] bei einem Tag ab Null oder wenn keine Regel
+            greift (nie geraten); null, wenn nicht berechnet (anderes range,
+            keine Dreiteilung).
         series:
           type: array
           description: >

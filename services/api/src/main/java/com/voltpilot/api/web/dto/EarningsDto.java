@@ -141,6 +141,17 @@ public record EarningsDto(
      * RANGE-INDEPENDENT: it always describes the RUNNING Europe/Berlin billing
      * period (per {@code abrechnung}), never the selected earnings window. See
      * {@link PeakShavingDto}.
+     *
+     * <p><b>Tages-Einordnung (nur {@code range=day}, Konzept
+     * vp-erloese-minus-winter-k1 §10 P0).</b> Dieselben Felder wie auf
+     * {@code SiteEarningsDto} - gleiche Rechenstelle, gleiche Bedeutung -, damit
+     * die Portfolio-Kachel ein Minus einordnen kann, ohne je Anlage nachzufragen:
+     * {@code vergleichSocStartKwh}/{@code vergleichSocEndKwh},
+     * {@code speicherVorsprungKwh}, {@code steuerungVortagEur},
+     * {@code steuerungMonatBisherEur}, {@code steuerungPlannedEur} und
+     * {@code steuerungGruende}. Ohne λ je Anlage trägt die Flottenzeile
+     * bewusst keinen {@code speicherVorsprungEur}. Für jedes andere
+     * {@code range} und ohne Dreiteilung sind alle null.
      */
     public record EarningsSiteDto(
             UUID id,
@@ -178,7 +189,14 @@ public record EarningsDto(
             Long expectedMarketValueSlots,
             List<EarningsSeriesPointDto> series,
             List<EarningsMonthDto> monthlyStrip,
-            PeakShavingDto peakShaving) {
+            PeakShavingDto peakShaving,
+            BigDecimal vergleichSocStartKwh,
+            BigDecimal vergleichSocEndKwh,
+            BigDecimal speicherVorsprungKwh,
+            BigDecimal steuerungVortagEur,
+            BigDecimal steuerungMonatBisherEur,
+            BigDecimal steuerungPlannedEur,
+            List<String> steuerungGruende) {
     }
 
     /**

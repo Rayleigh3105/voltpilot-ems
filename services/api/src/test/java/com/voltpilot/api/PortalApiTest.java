@@ -7406,8 +7406,10 @@ class PortalApiTest {
      * Dreiteilung bleibt ehrlich null mit {@code steuerungSplitReason
      * no_battery_data} - nie eine geratene Referenz-Batterie.
      *
-     * <p><b>Site V</b> = ein Eimer VOR dem Fenster mit soc_last_pct 65 (=
-     * 1,95 kWh): der Walk startet am GEMESSENEN Stand, nicht am Boden -
+     * <p><b>Site V</b> = ein Eimer VOR dem MONATSBEGINN (31.03. 23:45 Berlin)
+     * mit soc_last_pct 65 (= 1,95 kWh): der Walk startet am GEMESSENEN
+     * Monatsanker, nicht am Boden (Definition A, Captain 24.09.2026: der
+     * Vergleichsspeicher läuft ab dem 1. durch, ein Tag ist sein Zuwachs) -
      * charge = min(2,5, 2,0, (2,85−1,95)/0,9) = 1,0 statt 2,0, also
      * savedSpeicher = −0,10 (Boden-Start ergäbe −0,20). Die Batterie war
      * gemessen untätig (Export 2,5) → saved = 0, savedSteuerung = +0,10: die
@@ -7475,10 +7477,12 @@ class PortalApiTest {
                         + "('2026-04-07T10:45:00Z', '" + tenantA + "', '" + siteId
                         + "', 0.0, 4.0, 0.0, 0.0, 0.0, 4.0, 90) ON CONFLICT DO NOTHING");
             }
-            // The anchor site: one measured soc_last_pct bucket BEFORE the window
-            // (inside the 7-day lookback) + one idle-battery slot inside it.
+            // The anchor site: one measured soc_last_pct bucket BEFORE the Berlin
+            // month start (inside the 7-day lookback) + one idle-battery slot in
+            // the window; nothing covered in between, so the reference arrives at
+            // 07.04. with the measured month anchor.
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct, n_samples) "
-                    + "VALUES ('2026-04-06T10:00:00Z', '" + tenantA + "', '" + anchorSite
+                    + "VALUES ('2026-03-31T21:45:00Z', '" + tenantA + "', '" + anchorSite
                     + "', 65.0, 90) ON CONFLICT DO NOTHING");
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                     + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
@@ -7511,7 +7515,7 @@ class PortalApiTest {
                     .containsEntry("savedSteuerungEur", null)
                     .containsEntry("steuerungSplitReason", "no_battery_data");
 
-            // Site V: the walk anchors at the MEASURED window-begin SoC (65% =
+            // Site V: the walk anchors at the MEASURED month-begin SoC (65% =
             // 1,95 kWh), not the floor - headroom-clamped charge 1,0 instead of
             // 2,0, so speicher = -0,10 (a floor start would read -0,20).
             Map<String, Object> anchor = siteEarningsDay(demo, anchorSite, "2026-04-07");
@@ -7656,6 +7660,40 @@ class PortalApiTest {
             // stillschweigend wieder „ohne Speicher".
             assertThat(num(entry, "savedSteuerungEur"))
                     .isNotCloseTo(num(entry, "savedEur"), eps);
+
+            // EINE Tageszahl (Definition A, Captain 24.09.2026): die Anlage
+            // selbst sagt fuer denselben Tag dieselbe Zahl wie die Reihe, und
+            // ihre Dreiteilung geht weiter exakt auf.
+            Map<String, Object> anlage = siteEarningsDay(demo, site, today);
+            assertThat(num(anlage, "savedSteuerungEur"))
+                    .isCloseTo(num(entry, "savedSteuerungEur"), eps);
+            assertThat(num(anlage, "savedSpeicherEur") + num(anlage, "savedSteuerungEur"))
+                    .isCloseTo(num(anlage, "savedEur"), eps);
+            // Die Einordnung des Tages (Konzept vp-erloese-minus-winter-k1 P0):
+            // der Vergleichsspeicher startet am Boden (0,5 kWh, kein Anker),
+            // laedt 1,25 und entlaedt 1,25; ohne gemessenen Ladestand kein
+            // Vorsprung, ohne Vortag keine Vortageszahl; ein Plus-Tag hat
+            // keinen Grund, aber eine berechnete (leere) Liste.
+            for (Map<String, Object> zeile : List.of(anlage, row)) {
+                assertThat(num(zeile, "vergleichSocStartKwh")).isCloseTo(0.5, eps);
+                assertThat(num(zeile, "vergleichSocEndKwh")).isCloseTo(0.5, eps);
+                assertThat(zeile).containsEntry("speicherVorsprungKwh", null)
+                        .containsEntry("steuerungVortagEur", null)
+                        .containsEntry("steuerungPlannedEur", null)
+                        .containsEntry("steuerungGruende", List.of());
+                assertThat(num(zeile, "steuerungMonatBisherEur")).isCloseTo(0.075, eps);
+            }
+            assertThat(anlage).containsEntry("speicherVorsprungEur", null);
+            // Monat und Jahr tragen keine Einordnung (Konzept §6, §7.1).
+            Map<String, Object> monat = rest.exchange(
+                    url("/api/v1/sites/" + site + "/earnings?range=month"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            assertThat(monat).containsEntry("steuerungGruende", null)
+                    .containsEntry("vergleichSocStartKwh", null)
+                    .containsEntry("steuerungMonatBisherEur", null);
+            assertThat(num(monat, "savedSteuerungEur"))
+                    .isCloseTo(num(anlage, "steuerungMonatBisherEur"), eps);
         } finally {
             exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + site + "'");
             exec("DELETE FROM asset WHERE site_id = '" + site + "'");

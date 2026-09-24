@@ -1,0 +1,617 @@
+{
+  "$comment": "Die EINE Tageszahl der Steuerung und ihre Einordnung (Captain 24.09.2026: Definition A aus vp-erloes-zahlen-widerspruch-z1 §6, Darstellung E1-E7 = A aus vp-erloese-minus-winter-k1). Java services/api liest diese Datei PER PFAD: SteuerungGrundTest (Block grund, rein) und SteuerungTageszahlTest (Block abends_geleert, Testcontainers). Das Portal liest die Grund-Kennungen als geschlossenes Vokabular; die Worte dazu wählt es selbst. Wer eine Schwelle, die Rangfolge oder die Definition ändert, ändert Datei, SteuerungGrund.java bzw. EarningsRepository.speicherWalk und die Leser im Portal zusammen.",
+  "$regel_tageszahl": "Der Steuerungsbeitrag eines Zeitraums ist die Summe der Tageszuwächse EINES durchlaufenden sturen Vergleichsspeichers je Anlage (Physik: stur-speicher-vectors.json). Er behält seinen EIGENEN Ladestand über Mitternacht, wird am gemessenen Ladestand zum Monatsbeginn (1., 00:00 Europe/Berlin; letzter soc_last_pct-Eimer davor, 7 Tage Rückschau, sonst Boden) verankert und an jeder Berliner Monatsgrenze neu. Damit gilt je Anlage: Tagesfenster(D) = dailySaved[D], Summe der Tage = Monat, Summe der Monate = Jahr. Ein Tagesfenster, das am gemessenen Stand der gesteuerten Anlage um Mitternacht neu beginnt, ist ausdrücklich FALSCH: es schenkt der Steuerung jeden Übertrag über Mitternacht (Live-Anlage September 2026: Summe dieser Tagesfenster 184,19 EUR gegen Monat 116,94 EUR).",
+  "grund": {
+    "$regel": "Nur für einen Tag mit steuerungEur < 0, sonst leer. Jede Regel braucht ihre Eingaben; fehlt eine, greift genau diese Regel nicht (nie geraten). In der Rangfolge geprüft, höchstens 'hoechstens' Kennungen, die ersten. gestern_verkauft: vergleichSocStartKwh - echtSocStartKwh >= gestern_verkauft_ab_kwh. haelt_energie_fuer_morgen: speicherVorsprungKwh >= haelt_energie_ab_kwh. so_geplant: steuerungGeplantEur < so_geplant_unter_eur. wenig_sonne: loadKwh > 0 und pvKwh < wenig_sonne_unter_anteil * loadKwh. anders_als_geplant: steuerungGeplantEur >= anders_als_geplant_plan_ab_eur und steuerungEur < anders_als_geplant_unter_eur.",
+    "$einheiten": "kWh je Tag bzw. Ladestand in kWh; EUR; Anteil als Faktor (0.6 = 60 %). steuerungGeplantEur = history.totals.steuerungPlannedEur desselben Tages (Fahrplan, ex ante).",
+    "rangfolge": [
+      "gestern_verkauft",
+      "haelt_energie_fuer_morgen",
+      "so_geplant",
+      "wenig_sonne",
+      "anders_als_geplant"
+    ],
+    "hoechstens": 2,
+    "schwellen": {
+      "gestern_verkauft_ab_kwh": 10,
+      "haelt_energie_ab_kwh": 5,
+      "so_geplant_unter_eur": -0.5,
+      "wenig_sonne_unter_anteil": 0.6,
+      "anders_als_geplant_plan_ab_eur": 0,
+      "anders_als_geplant_unter_eur": -1
+    },
+    "faelle": [
+      {
+        "name": "abends geleert, Stand 19:45",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 24.09.2026 bis 19:45 (dieselben Eimer wie abends_geleert)",
+        "eingaben": {
+          "steuerungEur": -9.778003,
+          "vergleichSocStartKwh": 38.629,
+          "echtSocStartKwh": 3.25,
+          "speicherVorsprungKwh": 4.822,
+          "steuerungGeplantEur": -9.8972,
+          "pvKwh": 116.248,
+          "loadKwh": 137.216
+        },
+        "gruende": [
+          "gestern_verkauft",
+          "so_geplant"
+        ]
+      },
+      {
+        "name": "abends geleert, Stand 19:58 (Konzept §3.1)",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 24.09.2026, Abruf 19:58: Vorsprung 5,0 kWh",
+        "eingaben": {
+          "steuerungEur": -9.804,
+          "vergleichSocStartKwh": 38.6,
+          "echtSocStartKwh": 3.2,
+          "speicherVorsprungKwh": 5.0,
+          "steuerungGeplantEur": -9.8972,
+          "pvKwh": 116.248,
+          "loadKwh": 138.058
+        },
+        "gruende": [
+          "gestern_verkauft",
+          "haelt_energie_fuer_morgen"
+        ]
+      },
+      {
+        "name": "der Verkaufstag davor ist im Plus",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 23.09.2026",
+        "eingaben": {
+          "steuerungEur": 12.7755,
+          "vergleichSocStartKwh": 10.2,
+          "echtSocStartKwh": 3.2,
+          "speicherVorsprungKwh": -35.4,
+          "steuerungGeplantEur": 23.7872,
+          "pvKwh": 377.328,
+          "loadKwh": 234.387
+        },
+        "gruende": []
+      },
+      {
+        "name": "Vortag verkauft, geplant, wenig Sonne - nur zwei",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 09.09.2026 (PV 53 % des Verbrauchs)",
+        "eingaben": {
+          "steuerungEur": -8.5814,
+          "vergleichSocStartKwh": 37.0,
+          "echtSocStartKwh": 3.2,
+          "speicherVorsprungKwh": 0.0,
+          "steuerungGeplantEur": -19.6757,
+          "pvKwh": 96.327,
+          "loadKwh": 182.075
+        },
+        "gruende": [
+          "gestern_verkauft",
+          "so_geplant"
+        ]
+      },
+      {
+        "name": "Verkaufstag im Plus trotz leerem Speicher",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 08.09.2026",
+        "eingaben": {
+          "steuerungEur": 10.1875,
+          "vergleichSocStartKwh": 40.6,
+          "echtSocStartKwh": 5.2,
+          "speicherVorsprungKwh": -33.8,
+          "steuerungGeplantEur": 18.9087,
+          "pvKwh": 366.662,
+          "loadKwh": 172.462
+        },
+        "gruende": []
+      },
+      {
+        "name": "hält Energie für morgen, ohne Fahrplan",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 16.08.2026 (vor dem 04.09. kein Planwert)",
+        "eingaben": {
+          "steuerungEur": -5.8927,
+          "vergleichSocStartKwh": 41.5,
+          "echtSocStartKwh": 37.7,
+          "speicherVorsprungKwh": 34.4,
+          "steuerungGeplantEur": null,
+          "pvKwh": 262.026,
+          "loadKwh": 183.989
+        },
+        "gruende": [
+          "haelt_energie_fuer_morgen"
+        ]
+      },
+      {
+        "name": "unter Null ohne ableitbaren Grund",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 18.08.2026 (PV 76 % des Verbrauchs)",
+        "eingaben": {
+          "steuerungEur": -0.5806,
+          "vergleichSocStartKwh": 44.3,
+          "echtSocStartKwh": 49.4,
+          "speicherVorsprungKwh": 3.0,
+          "steuerungGeplantEur": null,
+          "pvKwh": 131.274,
+          "loadKwh": 172.758
+        },
+        "gruende": []
+      },
+      {
+        "name": "Vortag verkauft und anders als geplant",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 17.09.2026",
+        "eingaben": {
+          "steuerungEur": -2.9842,
+          "vergleichSocStartKwh": 25.5,
+          "echtSocStartKwh": 3.2,
+          "speicherVorsprungKwh": -4.3,
+          "steuerungGeplantEur": 5.0257,
+          "pvKwh": 328.924,
+          "loadKwh": 223.715
+        },
+        "gruende": [
+          "gestern_verkauft",
+          "anders_als_geplant"
+        ]
+      },
+      {
+        "name": "nur so geplant",
+        "herkunft": "Referenzanlage (65 kWh, 30/30 kW, Bezug fest 25 ct), Live-Werte 13.09.2026",
+        "eingaben": {
+          "steuerungEur": -0.623,
+          "vergleichSocStartKwh": 41.4,
+          "echtSocStartKwh": 41.6,
+          "speicherVorsprungKwh": 1.6,
+          "steuerungGeplantEur": -3.375,
+          "pvKwh": 145.819,
+          "loadKwh": 97.023
+        },
+        "gruende": [
+          "so_geplant"
+        ]
+      },
+      {
+        "name": "Kante: genau 10 kWh voller zählt",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": 13.25,
+          "echtSocStartKwh": 3.25,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": null,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": [
+          "gestern_verkauft"
+        ]
+      },
+      {
+        "name": "Kante: knapp unter 10 kWh zählt nicht",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": 13.249,
+          "echtSocStartKwh": 3.25,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": null,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": []
+      },
+      {
+        "name": "Kante: genau 5 kWh Vorsprung zählt",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": 5.0,
+          "steuerungGeplantEur": null,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": [
+          "haelt_energie_fuer_morgen"
+        ]
+      },
+      {
+        "name": "Kante: Plan genau -0,50 ist nicht 'so geplant'",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": -0.5,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": []
+      },
+      {
+        "name": "Kante: Plan -0,51 ist 'so geplant'",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": -0.51,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": [
+          "so_geplant"
+        ]
+      },
+      {
+        "name": "Kante: PV genau 60 % ist nicht 'wenig Sonne'",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": null,
+          "pvKwh": 60.0,
+          "loadKwh": 100.0
+        },
+        "gruende": []
+      },
+      {
+        "name": "Kante: PV 59,9 % ist 'wenig Sonne'",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": null,
+          "pvKwh": 59.9,
+          "loadKwh": 100.0
+        },
+        "gruende": [
+          "wenig_sonne"
+        ]
+      },
+      {
+        "name": "Kante: ohne Verbrauch kein 'wenig Sonne'",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": null,
+          "pvKwh": 0.0,
+          "loadKwh": 0.0
+        },
+        "gruende": []
+      },
+      {
+        "name": "Kante: Plan 0 und gemessen genau -1 ist nicht 'anders als geplant'",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": 0.0,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": []
+      },
+      {
+        "name": "Kante: Plan 0 und gemessen -1,01 ist 'anders als geplant'",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -1.01,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": 0.0,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": [
+          "anders_als_geplant"
+        ]
+      },
+      {
+        "name": "Kante: vier greifen - nur die ersten zwei",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -3.0,
+          "vergleichSocStartKwh": 20.0,
+          "echtSocStartKwh": 3.0,
+          "speicherVorsprungKwh": 8.0,
+          "steuerungGeplantEur": -2.0,
+          "pvKwh": 10.0,
+          "loadKwh": 100.0
+        },
+        "gruende": [
+          "gestern_verkauft",
+          "haelt_energie_fuer_morgen"
+        ]
+      },
+      {
+        "name": "Kante: ohne jede Eingabe nichts geraten",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": -4.0,
+          "vergleichSocStartKwh": null,
+          "echtSocStartKwh": null,
+          "speicherVorsprungKwh": null,
+          "steuerungGeplantEur": null,
+          "pvKwh": null,
+          "loadKwh": null
+        },
+        "gruende": []
+      },
+      {
+        "name": "Kante: ein Tag bei genau null hat keinen Grund",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": 0.0,
+          "vergleichSocStartKwh": 40.0,
+          "echtSocStartKwh": 3.0,
+          "speicherVorsprungKwh": 9.0,
+          "steuerungGeplantEur": -5.0,
+          "pvKwh": 10.0,
+          "loadKwh": 100.0
+        },
+        "gruende": []
+      },
+      {
+        "name": "Kante: ohne Tageszahl kein Grund",
+        "herkunft": "synthetisch",
+        "eingaben": {
+          "steuerungEur": null,
+          "vergleichSocStartKwh": 40.0,
+          "echtSocStartKwh": 3.0,
+          "speicherVorsprungKwh": 9.0,
+          "steuerungGeplantEur": -5.0,
+          "pvKwh": 10.0,
+          "loadKwh": 100.0
+        },
+        "gruende": []
+      }
+    ]
+  },
+  "abends_geleert": {
+    "$herkunft": "Live-Werte einer Referenzanlage vom 23./24.09.2026 (15-Minuten-Rollups, 24.09. bis zum Eimer 19:30-19:45 Europe/Berlin, also dem Stand des Abrufs 19:54); Energien auf 6 Nachkommastellen wie telemetry_rollup_15m, Ladestand in Prozent, Spot in EUR/MWh (PT15M). Am 23.09. entlud die Steuerung den Speicher abends bei rund 22 ct/kWh ins Netz; der sture Vergleichsspeicher behielt seine Ladung für die Nacht. Der durchlaufende Vergleichsspeicher schreibt der Steuerung den Verkauf am 23.09. gut und den Nachtbezug am 24.09. an; das alte Tagesfenster (Neustart am echten Ladestand 5 %) zeigte am 24.09. -3,76 EUR und schrieb den Nachtbezug nirgends an.",
+    "anlage": {
+      "kapazitaet_kwh": 65,
+      "laden_kw": 30,
+      "entladen_kw": 30,
+      "wirkungsgrad_pct": null,
+      "soc_band": "Vorgabe 5-95 %",
+      "anlagenart": "eigenverbrauch ohne PV-Asset (Einspeisung = Spot)",
+      "tarif": "fest",
+      "bezug_ct_kwh": 25,
+      "zone": "DE-LU"
+    },
+    "monatsanker": {
+      "bucket": "2026-08-31T21:45:00Z",
+      "soc_last_pct": 15.72,
+      "$warum": "Der Vektor trägt nur zwei Tage. Der Monatsanker (letzter Ladestand vor dem 01.09. 00:00) steht deshalb auf dem Stand, den der Monatslauf der Live-Anlage am 23.09. 00:00 hatte (10,22 kWh = 15,72 % von 65 kWh); zwischen dem 01.09. und dem 23.09. liegt im Vektor kein covered Eimer."
+    },
+    "plan_steuerung_eur": {
+      "2026-09-24": -9.8972
+    },
+    "$eimer": [
+      "bucket (UTC)",
+      "pv_kwh",
+      "load_kwh",
+      "grid_import_kwh",
+      "grid_export_kwh",
+      "soc_last_pct",
+      "price_eur_mwh"
+    ],
+    "eimer": [
+    ["2026-09-22T22:00:00Z", 0.0, 0.453188, 0.453318, 0.0, 5.0, 194.51],
+    ["2026-09-22T22:15:00Z", 0.0, 0.476251, 0.476251, 0.0, 5.0, 188.57],
+    ["2026-09-22T22:30:00Z", 0.0, 0.53701, 0.536911, 0.0, 5.0, 190.3],
+    ["2026-09-22T22:45:00Z", 0.0, 0.473175, 0.473175, 0.0, 5.0, 182.46],
+    ["2026-09-22T23:00:00Z", 0.0, 0.46368, 0.463666, 0.0, 5.0, 181.76],
+    ["2026-09-22T23:15:00Z", 0.0, 0.621256, 0.621256, 0.0, 5.0, 174.93],
+    ["2026-09-22T23:30:00Z", 0.0, 0.742671, 0.742657, 0.0, 5.0, 173.68],
+    ["2026-09-22T23:45:00Z", 0.0, 0.723324, 0.72331, 0.0, 5.0, 179.0],
+    ["2026-09-23T00:00:00Z", 0.0, 0.671822, 0.67185, 0.0, 5.0, 174.52],
+    ["2026-09-23T00:15:00Z", 0.0, 0.71281, 0.71281, 0.0, 5.0, 171.11],
+    ["2026-09-23T00:30:00Z", 0.0, 0.801364, 0.801364, 0.0, 5.0, 177.24],
+    ["2026-09-23T00:45:00Z", 0.0, 0.684216, 0.684259, 0.0, 5.0, 183.06],
+    ["2026-09-23T01:00:00Z", 0.0, 0.684341, 0.684312, 0.0, 5.0, 176.72],
+    ["2026-09-23T01:15:00Z", 0.0, 0.677243, 0.677243, 0.0, 5.0, 178.53],
+    ["2026-09-23T01:30:00Z", 0.0, 0.574591, 0.574591, 0.0, 5.0, 178.72],
+    ["2026-09-23T01:45:00Z", 0.0, 0.553182, 0.55321, 0.0, 5.0, 173.43],
+    ["2026-09-23T02:00:00Z", 0.0, 0.509504, 0.50949, 0.0, 5.0, 173.39],
+    ["2026-09-23T02:15:00Z", 0.0, 0.454877, 0.454877, 0.0, 5.0, 178.13],
+    ["2026-09-23T02:30:00Z", 0.0, 0.553768, 0.553825, 0.0, 5.0, 178.35],
+    ["2026-09-23T02:45:00Z", 0.0, 0.533277, 0.533277, 0.0, 5.0, 173.94],
+    ["2026-09-23T03:00:00Z", 0.0, 0.544064, 0.544035, 0.0, 5.0, 171.61],
+    ["2026-09-23T03:15:00Z", 0.0, 0.520899, 0.520928, 0.0, 5.0, 188.0],
+    ["2026-09-23T03:30:00Z", 0.0, 0.474129, 0.474114, 0.0, 5.0, 202.0],
+    ["2026-09-23T03:45:00Z", 0.0, 0.524406, 0.524391, 0.0, 5.0, 232.86],
+    ["2026-09-23T04:00:00Z", 0.0, 0.75477, 0.754784, 0.0, 5.0, 236.07],
+    ["2026-09-23T04:15:00Z", 0.000414, 0.713593, 0.713179, 0.0, 5.0, 260.63],
+    ["2026-09-23T04:30:00Z", 0.015678, 0.652251, 0.636602, 0.0, 5.0, 355.5],
+    ["2026-09-23T04:45:00Z", 0.053142, 0.947065, 0.89408, 0.0, 5.0, 347.79],
+    ["2026-09-23T05:00:00Z", 0.22768, 1.018013, 0.790712, 0.0, 5.0, 370.63],
+    ["2026-09-23T05:15:00Z", 0.803764, 1.050001, 0.693808, 0.0, 6.0, 385.35],
+    ["2026-09-23T05:30:00Z", 1.489129, 0.910055, 0.003754, 0.956294, 5.0, 348.25],
+    ["2026-09-23T05:45:00Z", 2.117816, 0.969566, 0.0, 1.148121, 5.0, 280.09],
+    ["2026-09-23T06:00:00Z", 2.646562, 1.007951, 0.0, 1.638723, 5.0, 274.32],
+    ["2026-09-23T06:15:00Z", 3.120492, 0.960607, 0.0, 2.159927, 5.0, 240.5],
+    ["2026-09-23T06:30:00Z", 3.533922, 1.184651, 0.0, 2.349384, 5.0, 224.31],
+    ["2026-09-23T06:45:00Z", 4.064215, 1.53627, 0.100677, 0.092887, 10.0, 189.12],
+    ["2026-09-23T07:00:00Z", 3.972515, 1.514285, 0.0, 5.022202, 5.0, 217.94],
+    ["2026-09-23T07:15:00Z", 5.393446, 1.077801, 0.0, 4.315363, 5.0, 193.88],
+    ["2026-09-23T07:30:00Z", 5.893678, 0.83851, 0.0, 5.055534, 5.0, 170.82],
+    ["2026-09-23T07:45:00Z", 6.463298, 0.847066, 0.0, 5.616892, 5.0, 146.46],
+    ["2026-09-23T08:00:00Z", 7.04341, 0.933254, 0.0, 6.111653, 5.0, 166.24],
+    ["2026-09-23T08:15:00Z", 7.662192, 1.010516, 0.0, 6.651009, 5.0, 148.1],
+    ["2026-09-23T08:30:00Z", 8.171668, 1.014439, 0.0, 7.157596, 5.0, 134.95],
+    ["2026-09-23T08:45:00Z", 8.753806, 1.331818, 0.0, 7.363076, 5.0, 116.12],
+    ["2026-09-23T09:00:00Z", 10.938528, 4.85199, 0.187419, 0.507614, 15.0, 119.82],
+    ["2026-09-23T09:15:00Z", 11.138258, 7.324928, 0.00332, 6.448097, 11.0, 107.13],
+    ["2026-09-23T09:30:00Z", 11.724857, 8.603473, 0.103698, 3.97552, 10.0, 86.82],
+    ["2026-09-23T09:45:00Z", 12.51596, 11.806703, 0.037137, 0.823866, 9.0, 75.87],
+    ["2026-09-23T10:00:00Z", 13.008916, 12.238606, 0.344771, 0.450679, 11.0, 85.87],
+    ["2026-09-23T10:15:00Z", 13.273504, 12.193747, 0.192372, 0.129473, 13.0, 73.37],
+    ["2026-09-23T10:30:00Z", 13.550813, 13.995983, 0.246426, 0.234906, 12.0, 69.72],
+    ["2026-09-23T10:45:00Z", 13.749881, 13.297053, 0.275487, 0.152364, 13.0, 63.26],
+    ["2026-09-23T11:00:00Z", 13.833883, 13.29374, 0.234049, 0.202172, 14.0, 64.74],
+    ["2026-09-23T11:15:00Z", 13.914261, 12.819975, 0.184753, 0.134868, 16.0, 60.02],
+    ["2026-09-23T11:30:00Z", 13.855968, 8.706888, 0.145134, 0.556883, 24.0, 55.07],
+    ["2026-09-23T11:45:00Z", 13.744978, 4.151908, 0.0, 2.152958, 36.0, 49.47],
+    ["2026-09-23T12:00:00Z", 13.604091, 4.539194, 0.0, 1.62674, 48.0, 41.99],
+    ["2026-09-23T12:15:00Z", 13.359782, 4.151338, 0.0, 1.768022, 60.0, 64.85],
+    ["2026-09-23T12:30:00Z", 13.044304, 4.073933, 0.0, 1.530058, 72.0, 85.33],
+    ["2026-09-23T12:45:00Z", 12.53885, 4.258692, 0.009643, 0.864518, 84.0, 108.18],
+    ["2026-09-23T13:00:00Z", 12.26888, 3.73366, 0.0, 2.500291, 94.0, 72.09],
+    ["2026-09-23T13:15:00Z", 10.146912, 3.699751, 0.0, 6.232076, 95.0, 101.31],
+    ["2026-09-23T13:30:00Z", 10.08061, 4.681124, 0.0, 5.398582, 95.0, 126.3],
+    ["2026-09-23T13:45:00Z", 10.561147, 6.958156, 0.0, 3.607463, 95.0, 141.93],
+    ["2026-09-23T14:00:00Z", 9.494683, 5.678948, 0.0, 3.816042, 95.0, 124.17],
+    ["2026-09-23T14:15:00Z", 7.312058, 1.284951, 0.0, 6.028463, 95.0, 148.07],
+    ["2026-09-23T14:30:00Z", 6.858528, 1.038915, 0.0, 5.823003, 95.0, 165.54],
+    ["2026-09-23T14:45:00Z", 6.009736, 1.847369, 0.0, 5.934163, 92.0, 189.45],
+    ["2026-09-23T15:00:00Z", 6.650391, 1.66801, 0.025333, 3.26575, 95.0, 158.94],
+    ["2026-09-23T15:15:00Z", 5.696101, 1.313163, 0.0, 4.38361, 95.0, 186.1],
+    ["2026-09-23T15:30:00Z", 4.146799, 1.007256, 0.0, 3.139043, 95.0, 211.46],
+    ["2026-09-23T15:45:00Z", 3.481869, 1.118239, 0.0, 4.441581, 91.0, 239.54],
+    ["2026-09-23T16:00:00Z", 2.159982, 1.209483, 0.127517, 0.129125, 93.0, 206.0],
+    ["2026-09-23T16:15:00Z", 1.762004, 0.951145, 0.138426, 0.089664, 94.0, 225.83],
+    ["2026-09-23T16:30:00Z", 0.942075, 1.178107, 0.000427, 6.490072, 83.0, 267.94],
+    ["2026-09-23T16:45:00Z", 0.451992, 1.260795, 0.0, 6.566493, 71.0, 275.11],
+    ["2026-09-23T17:00:00Z", 0.06323, 1.230171, 0.0, 6.210828, 58.0, 271.83],
+    ["2026-09-23T17:15:00Z", 0.014115, 1.226787, 0.0, 5.691809, 47.0, 257.33],
+    ["2026-09-23T17:30:00Z", 0.002795, 1.791121, 0.0, 5.571983, 34.0, 272.89],
+    ["2026-09-23T17:45:00Z", 0.0, 1.577429, 0.0, 5.78678, 21.0, 284.31],
+    ["2026-09-23T18:00:00Z", 0.0, 1.192286, 0.0, 5.832085, 9.0, 262.21],
+    ["2026-09-23T18:15:00Z", 0.0, 0.886828, 0.155879, 0.207274, 8.0, 249.7],
+    ["2026-09-23T18:30:00Z", 0.0, 0.865206, 0.12986, 0.060917, 6.0, 223.83],
+    ["2026-09-23T18:45:00Z", 0.0, 0.707992, 0.342787, 0.044747, 5.0, 210.76],
+    ["2026-09-23T19:00:00Z", 0.0, 0.714432, 0.714475, 0.0, 5.0, 213.26],
+    ["2026-09-23T19:15:00Z", 0.0, 1.290757, 1.290743, 0.0, 5.0, 205.96],
+    ["2026-09-23T19:30:00Z", 0.0, 1.080555, 1.080484, 0.0, 5.0, 190.73],
+    ["2026-09-23T19:45:00Z", 0.0, 0.820266, 0.820237, 0.0, 5.0, 170.84],
+    ["2026-09-23T20:00:00Z", 0.0, 0.694802, 0.694522, 0.0, 5.0, 182.87],
+    ["2026-09-23T20:15:00Z", 0.0, 0.785729, 0.785701, 0.0, 5.0, 170.36],
+    ["2026-09-23T20:30:00Z", 0.0, 0.993408, 0.993408, 0.0, 5.0, 165.74],
+    ["2026-09-23T20:45:00Z", 0.0, 1.171296, 1.171367, 0.0, 5.0, 161.5],
+    ["2026-09-23T21:00:00Z", 0.0, 1.433494, 1.433494, 0.0, 5.0, 166.95],
+    ["2026-09-23T21:15:00Z", 0.0, 1.009614, 1.0096, 0.0, 5.0, 154.16],
+    ["2026-09-23T21:30:00Z", 0.0, 0.935777, 0.93572, 0.0, 5.0, 150.68],
+    ["2026-09-23T21:45:00Z", 0.0, 0.803957, 0.803915, 0.0, 5.0, 144.2],
+    ["2026-09-23T22:00:00Z", 0.0, 1.047315, 1.047329, 0.0, 5.0, 124.78],
+    ["2026-09-23T22:15:00Z", 0.0, 1.055423, 1.055338, 0.0, 5.0, 136.68],
+    ["2026-09-23T22:30:00Z", 0.0, 1.408978, 1.408949, 0.0, 5.0, 130.6],
+    ["2026-09-23T22:45:00Z", 0.0, 0.931854, 0.931798, 0.0, 5.0, 129.4],
+    ["2026-09-23T23:00:00Z", 0.0, 1.152302, 1.15233, 0.0, 5.0, 121.01],
+    ["2026-09-23T23:15:00Z", 0.0, 0.963358, 0.963344, 0.0, 5.0, 118.29],
+    ["2026-09-23T23:30:00Z", 0.0, 0.708751, 0.708737, 0.0, 5.0, 119.7],
+    ["2026-09-23T23:45:00Z", 0.0, 0.759145, 0.759103, 0.0, 5.0, 116.49],
+    ["2026-09-24T00:00:00Z", 0.0, 0.688636, 0.688622, 0.0, 5.0, 117.38],
+    ["2026-09-24T00:15:00Z", 0.0, 0.652615, 0.652629, 0.0, 5.0, 114.96],
+    ["2026-09-24T00:30:00Z", 0.0, 0.504027, 0.504027, 0.0, 5.0, 114.36],
+    ["2026-09-24T00:45:00Z", 0.0, 0.474965, 0.474965, 0.0, 5.0, 111.35],
+    ["2026-09-24T01:00:00Z", 0.0, 0.504951, 0.504923, 0.0, 5.0, 109.27],
+    ["2026-09-24T01:15:00Z", 0.0, 0.568974, 0.568988, 0.0, 5.0, 107.97],
+    ["2026-09-24T01:30:00Z", 0.0, 0.576149, 0.57601, 0.0, 5.0, 106.5],
+    ["2026-09-24T01:45:00Z", 0.0, 0.518911, 0.518883, 0.0, 5.0, 104.39],
+    ["2026-09-24T02:00:00Z", 0.0, 0.524804, 0.524791, 0.0, 5.0, 106.36],
+    ["2026-09-24T02:15:00Z", 0.0, 0.530513, 0.530542, 0.0, 5.0, 106.43],
+    ["2026-09-24T02:30:00Z", 0.0, 0.490726, 0.49074, 0.0, 5.0, 105.65],
+    ["2026-09-24T02:45:00Z", 0.0, 0.583344, 0.583344, 0.0, 5.0, 110.85],
+    ["2026-09-24T03:00:00Z", 0.0, 0.583958, 0.583972, 0.0, 5.0, 118.13],
+    ["2026-09-24T03:15:00Z", 0.0, 0.530027, 0.530068, 0.0, 5.0, 118.67],
+    ["2026-09-24T03:30:00Z", 0.0, 0.59079, 0.59079, 0.0, 5.0, 121.55],
+    ["2026-09-24T03:45:00Z", 0.0, 0.715323, 0.715337, 0.0, 5.0, 128.45],
+    ["2026-09-24T04:00:00Z", 0.0, 0.731032, 0.730976, 0.0, 5.0, 123.98],
+    ["2026-09-24T04:15:00Z", 0.000112, 0.755427, 0.755274, 0.0, 5.0, 142.78],
+    ["2026-09-24T04:30:00Z", 0.008911, 0.83894, 0.829987, 0.0, 5.0, 156.71],
+    ["2026-09-24T04:45:00Z", 0.033611, 0.861431, 0.827875, 0.0, 5.0, 167.77],
+    ["2026-09-24T05:00:00Z", 0.060411, 1.056318, 0.995796, 0.0, 5.0, 161.37],
+    ["2026-09-24T05:15:00Z", 0.062532, 0.97811, 0.989215, 0.0, 5.0, 167.17],
+    ["2026-09-24T05:30:00Z", 0.178217, 0.784629, 0.733538, 0.0, 6.0, 172.69],
+    ["2026-09-24T05:45:00Z", 0.237272, 0.749468, 0.404895, 0.008873, 5.0, 170.83],
+    ["2026-09-24T06:00:00Z", 0.28695, 0.841547, 0.736302, 0.0, 6.0, 185.99],
+    ["2026-09-24T06:15:00Z", 0.937751, 1.097169, 0.2088, 0.192441, 6.0, 175.9],
+    ["2026-09-24T06:30:00Z", 0.826438, 0.784519, 0.054003, 0.213747, 6.0, 172.6],
+    ["2026-09-24T06:45:00Z", 0.701451, 0.872972, 0.190766, 0.052069, 5.0, 160.57],
+    ["2026-09-24T07:00:00Z", 1.338507, 0.786374, 0.000561, 0.552694, 5.0, 172.79],
+    ["2026-09-24T07:15:00Z", 1.685635, 0.833392, 0.044661, 0.019082, 7.0, 162.39],
+    ["2026-09-24T07:30:00Z", 2.155354, 1.077199, 0.011063, 1.04244, 7.0, 144.42],
+    ["2026-09-24T07:45:00Z", 1.994888, 0.719506, 0.060526, 0.016742, 9.0, 130.04],
+    ["2026-09-24T08:00:00Z", 2.073008, 0.869649, 0.055594, 0.027246, 11.0, 136.4],
+    ["2026-09-24T08:15:00Z", 2.585075, 1.2985, 0.07543, 0.027844, 14.0, 122.77],
+    ["2026-09-24T08:30:00Z", 2.113278, 2.856033, 0.205692, 0.253463, 12.0, 106.24],
+    ["2026-09-24T08:45:00Z", 1.62845, 2.206571, 0.18001, 0.118556, 12.0, 81.51],
+    ["2026-09-24T09:00:00Z", 1.850715, 2.164156, 0.097179, 0.084506, 11.0, 98.66],
+    ["2026-09-24T09:15:00Z", 1.444786, 2.055816, 0.078933, 0.065418, 10.0, 78.86],
+    ["2026-09-24T09:30:00Z", 2.236142, 3.571698, 0.15126, 0.140397, 8.0, 60.02],
+    ["2026-09-24T09:45:00Z", 3.935815, 3.839162, 0.145809, 0.087109, 8.0, 36.1],
+    ["2026-09-24T10:00:00Z", 3.933069, 3.766913, 0.064296, 0.08586, 8.0, 25.01],
+    ["2026-09-24T10:15:00Z", 7.025286, 4.349817, 0.264724, 0.186068, 13.0, 15.11],
+    ["2026-09-24T10:30:00Z", 4.418917, 4.155706, 0.381754, 0.241096, 13.0, 13.88],
+    ["2026-09-24T10:45:00Z", 2.997294, 2.668632, 0.222328, 0.178364, 14.0, 10.0],
+    ["2026-09-24T11:00:00Z", 3.258185, 2.968803, 0.092857, 0.0796, 15.0, 14.0],
+    ["2026-09-24T11:15:00Z", 2.759223, 3.225263, 0.229641, 0.296493, 14.0, 10.03],
+    ["2026-09-24T11:30:00Z", 0.686459, 1.875941, 0.066862, 0.040159, 12.0, 12.32],
+    ["2026-09-24T11:45:00Z", 1.664254, 2.197661, 0.037367, 0.050791, 11.0, 10.05],
+    ["2026-09-24T12:00:00Z", 3.762059, 3.638239, 0.228466, 0.16399, 12.0, 8.86],
+    ["2026-09-24T12:15:00Z", 2.240568, 2.572806, 0.176485, 0.228094, 11.0, 10.9],
+    ["2026-09-24T12:30:00Z", 1.375957, 1.476546, 0.050377, 0.063251, 11.0, 24.0],
+    ["2026-09-24T12:45:00Z", 1.444292, 1.625536, 0.078746, 0.051237, 10.0, 34.99],
+    ["2026-09-24T13:00:00Z", 3.071729, 2.991136, 0.127883, 0.155949, 10.0, 38.66],
+    ["2026-09-24T13:15:00Z", 8.918723, 5.584333, 0.669186, 0.326604, 17.0, 61.86],
+    ["2026-09-24T13:30:00Z", 12.409228, 8.375607, 0.267043, 0.065733, 24.0, 95.0],
+    ["2026-09-24T13:45:00Z", 4.01224, 4.64921, 0.720946, 0.652378, 23.0, 108.0],
+    ["2026-09-24T14:00:00Z", 1.652546, 3.70184, 3.472586, 0.0, 25.0, 76.9],
+    ["2026-09-24T14:15:00Z", 1.409711, 3.740133, 3.611908, 0.0, 27.0, 108.86],
+    ["2026-09-24T14:30:00Z", 1.875533, 3.493071, 2.666413, 0.0, 29.0, 132.15],
+    ["2026-09-24T14:45:00Z", 3.694649, 3.712421, 0.379481, 0.204403, 29.0, 152.8],
+    ["2026-09-24T15:00:00Z", 6.60347, 2.911641, 1.153517, 0.324827, 37.0, 141.6],
+    ["2026-09-24T15:15:00Z", 5.250366, 1.898416, 0.475451, 0.452169, 43.0, 170.89],
+    ["2026-09-24T15:30:00Z", 1.573549, 1.238601, 0.096959, 0.060036, 43.0, 193.19],
+    ["2026-09-24T15:45:00Z", 0.639082, 1.336462, 0.155026, 0.055004, 42.0, 214.43],
+    ["2026-09-24T16:00:00Z", 0.505866, 1.446067, 0.106905, 0.064525, 41.0, 186.47],
+    ["2026-09-24T16:15:00Z", 0.242017, 1.285332, 0.150516, 0.069601, 40.0, 218.93],
+    ["2026-09-24T16:30:00Z", 0.206138, 1.259039, 0.091681, 0.043557, 38.0, 236.02],
+    ["2026-09-24T16:45:00Z", 0.201044, 1.839635, 0.208185, 0.050525, 35.0, 262.74],
+    ["2026-09-24T17:00:00Z", 0.031625, 1.206138, 0.138617, 0.069326, 34.0, 249.33],
+    ["2026-09-24T17:15:00Z", 0.008944, 1.301408, 0.170957, 0.053049, 32.0, 263.79],
+    ["2026-09-24T17:30:00Z", 0.000582, 1.028196, 0.09806, 0.026604, 30.0, 267.94]
+   ],
+    "erwartet": {
+      "$toleranz_eur": 0.0005,
+      "$quelle": "Python-Zwilling des Walks (StandardSpeicher-Physik, Wirkungsgrad-Vorgabe 92 %) auf genau diesen Eimern; Kontrolle: die Live-API meldete für den 24.09. um 19:54 in der 14-Tage-Reihe -9,7793 EUR (ein Teileimer Unterschied).",
+      "tage": {
+        "2026-09-23": {
+          "saved_eur": 9.991622,
+          "speicher_eur": -2.783832,
+          "steuerung_eur": 12.775454,
+          "vergleich_soc_start_kwh": 10.218,
+          "vergleich_soc_ende_kwh": 38.629,
+          "echt_soc_ende_kwh": 3.25
+        },
+        "2026-09-24": {
+          "saved_eur": -0.968571,
+          "speicher_eur": 8.809432,
+          "steuerung_eur": -9.778003,
+          "vergleich_soc_start_kwh": 38.629,
+          "vergleich_soc_ende_kwh": 14.678,
+          "echt_soc_start_kwh": 3.25,
+          "echt_soc_ende_kwh": 19.5,
+          "speicher_vorsprung_kwh": 4.822,
+          "pv_kwh": 116.248,
+          "load_kwh": 137.216,
+          "steuerung_vortag_eur": 12.775454,
+          "steuerung_monat_bisher_eur": 2.997451,
+          "gruende": [
+            "gestern_verkauft",
+            "so_geplant"
+          ]
+        }
+      }
+    }
+  }
+}
