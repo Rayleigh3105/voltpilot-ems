@@ -82,3 +82,33 @@ describe('LivePuls · die aufklappbare Zeile', () => {
     expect(container.querySelectorAll('.vp-puls-rowwrap')).toHaveLength(1);
   });
 });
+
+describe('LivePuls · die Heute-Spalte der Netz-Zeile', () => {
+  const netz: LivePulsRow = {
+    key: 'netz', role: 'grid', icon: 'zap', title: 'Netz', value: '0,0 kW',
+    stateLabel: 'ausgeglichen', stateTone: 'muted', health: 'ok',
+    target: { entityId: 'e-netz', channel: 'power_kw' },
+    today: [
+      { text: '5,2 kWh', arrow: 'down', word: 'Einspeisung' },
+      { text: '8,7 kWh', arrow: 'up', word: 'Bezug' },
+    ],
+  };
+
+  it('nennt Bezug und Einspeisung SICHTBAR - ein Pfeil allein ist keine Richtung', () => {
+    const { container } = render(<LivePuls rows={[netz]} onOpenVerlauf={() => {}} />);
+    const zeilen = [...container.querySelectorAll('.vp-puls-today-line')];
+    expect(zeilen.map((z) => z.textContent)).toEqual(['Einspeisung5,2 kWh', 'Bezug8,7 kWh']);
+    expect(zeilen.map((z) => z.getAttribute('aria-label'))).toEqual([
+      'Einspeisung 5,2 kWh',
+      'Bezug 8,7 kWh',
+    ]);
+    // Das Wort ERSETZT den Pfeil - zwei Träger derselben Richtung wären Rauschen.
+    expect(container.querySelector('.vp-puls-today-line svg')).toBeNull();
+  });
+
+  it('eine Zeile ohne Wort behält ihren Pfeil', () => {
+    const row = { ...netz, today: [{ text: '1,0 kWh', arrow: 'up' as const }] };
+    const { container } = render(<LivePuls rows={[row]} onOpenVerlauf={() => {}} />);
+    expect(container.querySelector('.vp-puls-today-line svg')).not.toBeNull();
+  });
+});
