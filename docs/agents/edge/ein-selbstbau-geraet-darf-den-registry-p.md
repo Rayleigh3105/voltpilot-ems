@@ -19,7 +19,8 @@ beim Vor-Stufe-1-Treiber ohne Verbindung.
   `vp-modbus-read`, das seine Telemetrie selbst je Entität publiziert. Der
   `driver`-Block trägt hier nur Anzeige/Kontext.
 - Eine Anlage mit AUSSCHLIESSLICH Selbstbau-Geräten ergibt `ErrNoConfiguration` —
-  der dokumentierte „leeres Soll löscht nichts"-Fall, kein Fehler des Kunden.
+  der dokumentierte Fall des leeren Solls, kein Fehler des Kunden (vor der
+  Übernahme ein Halt, danach bleibt keine Katalog-Quelle in `sources.json`).
 - **Der Palette-Knoten prüft die LAN-Regel unabhängig noch einmal**
   (`vp-palette/lib/private-host.js`, verdrahtet in `vp-modbus-read.js`): ein
   ausgerollter Flow ist eine Anweisung von aussen, und wer eine Verbindung

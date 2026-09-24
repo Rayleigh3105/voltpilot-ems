@@ -120,11 +120,22 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 	a.srcMu.Unlock()
 
 	plan, err := componentapply.Derive(reg, a.invCat, running, time.Now())
+	if errors.Is(err, componentapply.ErrNoConfiguration) && a.PortalManagedComponents() {
+		// NACH der Übernahme ist das leere Soll eine Aussage des Portals: der
+		// Kunde hat das letzte angebundene Gerät gelöscht. Jede Quelle, die hier
+		// läuft, stammt seit der Übernahme aus einem Portal-Plan (lokale
+		// Bearbeitung ist gesperrt) - hielte die Box sie fest, läse sie ein
+		// gelöschtes Gerät weiter, meldete es weiter an die Box-Seite und wäre
+		// nirgends mehr zu entfernen. Der Wechselrichter bleibt wie bei jedem
+		// Plan ohne Wechselrichter unberührt.
+		plan, err = componentapply.EmptiedPlan(reg.Revision), nil
+	}
 	if err != nil {
 		if errors.Is(err, componentapply.ErrNoConfiguration) {
 			// The plant is portal-managed but the portal describes no connected
-			// device (any more). That is a normal state during onboarding - and
-			// it is emphatically NOT an instruction to clear anything.
+			// device YET and has never had its plan applied here. That is the
+			// normal state during onboarding - and it is emphatically NOT an
+			// instruction to clear the box's working local setup.
 			//
 			// ⚠ Es wird trotzdem QUITTIERT (Befund L1): vorher wurde der Halt
 			// nur geloggt, die Revision blieb unbestätigt und ein ÄLTERER
@@ -149,7 +160,8 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 	currentSources := append([]sources.Source(nil), a.srcs...)
 	a.srcMu.Unlock()
 
-	if plan.SameAs(current, currentSources) {
+	if plan.SameAs(current, currentSources) ||
+		(plan.Inverter == nil && len(plan.Sources) == 0 && len(currentSources) == 0) {
 		// The Übernahme-is-a-no-op property, made observable: an unchanged plan
 		// writes no file and republishes no retained topic.
 		a.markComponentsApplied(plan.Revision)
@@ -237,6 +249,8 @@ func (a *Agent) markComponentsApplied(revision string) {
 // what the box DID (it kept what runs) and why (the portal names no connected
 // device), because "nothing happened" without a reason is exactly what left the
 // portal saying "unterwegs" forever.
+// It is only ever given BEFORE the portal's first applied plan (see
+// applyComponentsFromRegistry): afterwards an empty Soll removes the sources.
 const noConfigurationHint = "Im Portal ist für diese Anlage kein verbundenes Gerät hinterlegt; " +
 	"die Box behält deshalb den zuletzt angewandten Stand."
 

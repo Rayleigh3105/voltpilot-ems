@@ -19,9 +19,13 @@ Was HIER gelten muss:
   Rolle; erst danach schreibt `writeComponentPlan` BEIDE Speicher, und erst danach wird retained
   veroeffentlicht. Ein halb angewandtes Soll waere ein Geraet, das gegen eine Konfiguration liest, die
   nirgends steht.
-- **Ein leeres Soll ist KEIN Soll** (`ErrNoConfiguration`): ein Push ohne eine einzige
-  `driver.connection` loescht nichts — er wird als „hier steht nichts zu tun" abgelehnt. Sonst nähme
-  ein unvollstaendiger Push einer laufenden Anlage ihren Lesepfad.
+- **Ein leeres Soll ist KEIN Soll — bis zur Uebernahme** (`ErrNoConfiguration`): ein Push ohne eine
+  einzige `driver.connection` loescht VOR dem ersten angewandten Portal-Plan nichts (Halt, `held_*`) —
+  sonst naehme ein noch leeres Portal einer laufenden Anlage ihren Lesepfad. NACH der Uebernahme stammt
+  jede Quelle aus dem Portal (lokale Bearbeitung ist gesperrt): dann heisst das leere Soll „letztes Geraet
+  geloescht", und die Box wendet `componentapply.EmptiedPlan` an (keine Quelle mehr, Wechselrichter
+  unberuehrt). Vorher las sie ein im Portal geloeschtes Geraet weiter und meldete es dauerhaft auf der
+  Box-Seite, ohne dass es irgendwo zu entfernen war.
 - **Die angewandte Revision wird PROTOKOLLIERT** (`componentapply.Store` → `<data>/components-applied.json`,
   atomar tmp+rename, Schema-versioniert wie `calibration-certified.json`; ein Satz aus einer ZUKUENFTIGEN
   `StateVersion` wird ganz ignoriert). Sie ueberlebt Neustart und Cloud-Ausfall und reist im Herzschlag

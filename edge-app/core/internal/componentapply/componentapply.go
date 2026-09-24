@@ -24,10 +24,16 @@
 //     live plant's measurements down, and it is structurally impossible here
 //     because nothing is written until everything validated.
 //
-//   - AN EMPTY SOLL IS NOT A SOLL. A push that names no device at all yields
-//     ErrNoConfiguration, never an empty plan. Wiping a working box because the
-//     portal has not been filled in yet would be exactly the "ein falsches Soll
-//     legt den Lesepfad einer Live-Anlage lahm" risk the concept names.
+//   - AN EMPTY SOLL IS NOT A SOLL - UNTIL THE PORTAL OWNS THE BOX. A push that
+//     names no device at all yields ErrNoConfiguration, never an empty plan.
+//     Wiping a working box because the portal has not been filled in yet would
+//     be exactly the "ein falsches Soll legt den Lesepfad einer Live-Anlage
+//     lahm" risk the concept names. ONCE a portal plan has been applied,
+//     though, every source on the box came from the portal (local edits are
+//     refused from then on), and an empty Soll means the customer deleted the
+//     last device: the caller then applies EmptiedPlan. Holding there left a
+//     deleted device read, reported and listed forever, with no way to remove
+//     it anywhere.
 //
 //   - A DEVICE THAT ALREADY RUNS HERE KEEPS ITS IDENTITY. A source id is
 //     sources.DeterministicID over its transport identity - the SAME function
@@ -82,9 +88,16 @@ const StateVersion = 1
 
 // ErrNoConfiguration is the sentinel for "this push names no device at all".
 // It is NOT an error in the operational sense - it is the honest statement that
-// the portal has nothing to say yet - and the caller must treat it as "leave
-// everything alone", never as "clear everything".
+// the portal has nothing to say (yet). Before the portal's first applied plan
+// the caller must treat it as "leave everything alone"; after it, as
+// EmptiedPlan (see the third rule at the top of this file).
 var ErrNoConfiguration = errors.New("der Push enthält keine Geräte-Konfiguration")
+
+// EmptiedPlan is the plan of an empty Soll on a box the portal already owns:
+// no additional source any more, the inverter selection untouched (exactly as
+// in every plan that names no inverter). Only the caller knows whether the
+// portal owns the box, so Derive itself never returns it.
+func EmptiedPlan(revision string) Plan { return Plan{Revision: revision} }
 
 // Driver is the typed read of a descriptor's opaque `driver` block. The block
 // itself stays json.RawMessage on the entity (verbatim pass-through for the
@@ -514,9 +527,9 @@ type Record struct {
 	RefusedReason   string `json:"refused_reason,omitempty"`
 	RefusedSourceID string `json:"-"`
 	// Held/HeldReason carry the last revision the box saw and DELIBERATELY did
-	// not apply, keeping its local files. Today that is the empty Soll: the
-	// portal describes no connected device (any more), which is expressly NOT
-	// an instruction to clear a running plant.
+	// not apply, keeping its local files. Today that is the empty Soll BEFORE
+	// the portal's first applied plan: the portal describes no connected device
+	// yet, which is expressly NOT an instruction to clear a running plant.
 	//
 	// ⚠ Ein DRITTES Feldpaar, kein umgedeutetes: `revision` bleibt „was diese
 	// Box wirklich fährt" (ein Halt hat nichts angewandt) und `refused_*`

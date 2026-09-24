@@ -400,8 +400,8 @@ func TestASelfBuiltDeviceIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
 }
 
 // Eine Anlage, die AUSSCHLIESSLICH Selbstbau-Geräte hat, nennt kein einziges
-// Katalog-Gerät - das ist der dokumentierte „leeres Soll löscht nichts"-Fall,
-// nicht ein Fehler des Kunden.
+// Katalog-Gerät - das ist der dokumentierte Fall des leeren Solls (vor der
+// Übernahme ein Halt, danach EmptiedPlan), nicht ein Fehler des Kunden.
 func TestAPlantWithOnlySelfBuiltDevicesDerivesNoConfigurationAtAll(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-00000000000f", "modbus-generic", selfBuiltDriver))
 	_, err := Derive(reg, cat(), nil, now)
