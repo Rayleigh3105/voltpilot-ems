@@ -57,7 +57,8 @@ class UemsVerbesserungMigrationTest {
     private static final String AM_20_12_2027 = "2027-12-20 10:00:00";
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
-            "20260924233000"); // AP-18 IP-9: die Maßnahme zitiert Energieziel, Zähler und Vokabular.
+            "20260924233000", // AP-18 IP-9: die Maßnahme zitiert Energieziel, Zähler und Vokabular.
+            "20260924235130"); // AP-18 IP-14: die Abweichung zitiert Zähler und Vokabular.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -417,9 +418,10 @@ class UemsVerbesserungMigrationTest {
         List<String> nurTabellen = new ArrayList<>(root.queryForList("SELECT DISTINCT vokabular FROM verbesserung_vokabular() "
                 + "ORDER BY vokabular", String.class));
         nurTabellen.removeAll(bloecke);
-        // IP-9 weitet die Funktion um die Wörter seiner Tabellen (massnahme_*).
-        assertThat(nurTabellen).containsExactly("energieziel_bewertung_status", "energieziel_protokoll", "kennung_art",
-                "massnahme_bewertung_status", "massnahme_protokoll");
+        // IP-9 und IP-14 weiten die Funktion um die Wörter ihrer Tabellen (massnahme_*, abweichung_*).
+        assertThat(nurTabellen).containsExactly("abweichung_herkunft", "abweichung_protokoll",
+                "energieziel_bewertung_status", "energieziel_protokoll", "kennung_art", "massnahme_bewertung_status",
+                "massnahme_protokoll");
         assertThat(root.queryForList("SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'kennung_art' ORDER BY nr",
                 String.class)).containsExactly("EZ", "M", "AW");
         // Die Reihenfolge der Blöcke in der Funktion ist die des Vertrags; `nr` ist lückenlos ab 1.

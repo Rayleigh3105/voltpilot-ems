@@ -1,4 +1,4 @@
-# UEMS-Vorgänge: Datenhaltung, Energieziel und Maßnahme (AP-18 IP-5/IP-9)
+# UEMS-Vorgänge: Datenhaltung, Energieziel, Maßnahme und Abweichung (AP-18 IP-5/IP-9/IP-14)
 
 Neu am 24.09.2026: Migration `V20260924223000__uems_verbesserung.sql`, drei leere Tabellen, keine Route, kein Leser,
 keine Fläche. Routen und Ziel-Stand IP-6, Bewertung IP-7, Portal IP-8; Maßnahme (IP-9) und Abweichung (IP-14) bauen
@@ -49,3 +49,27 @@ fort; `UemsVerbesserungMigrationTest` nennt die Tabellen-Listen, `UemsMassnahmeM
 `UemsVerbesserungMigrationTest`. Offboarding: Anstoß, Stände, Protokoll, Maßnahme vor Energieziel & Co.
 ⚠ **PL/pgSQL:** `IF x IS DISTINCT FROM CASE … THEN … END THEN` bricht (`IF` liest bis zum ersten `THEN`) — `CASE` klammern.
 Nachweis: `UemsMassnahmeMigrationTest`.
+
+## Abweichung und Auffälligkeit (AP-18 IP-14, A1–A4, A6, U1/U2)
+
+Neu am 24.09.2026: Migration `V20260924235130__uems_abweichung.sql`, drei leere Tabellen, keine Route, kein Leser,
+keine Fläche (Naht IP-15, Routen IP-16, Portal IP-18). Keine neue Rechte-Kennung.
+
+| Stelle | Was |
+|---|---|
+| `auffaelligkeit` | Vermerk der Naht, kein Vorgang: **`auffaelligkeit_eindeutig_uq`** je Kennzahl × `bezugsbasis_id`/`fassung` × `periode` (`JJJJ-MM`) — die Naht schreibt idempotent mit `ON CONFLICT ON CONSTRAINT auffaelligkeit_eindeutig_uq DO NOTHING`; `anlass` TEXT + `anlass_pruefsumme = bericht_pruefsumme(…)`, `vermerkt_am`, `standort_id` (Zaun wie die Abweichung, von der Naht aus der Geltung der Kennzahl abzuleiten); Antwort `abweichung` (mit `abweichung_id` derselben Kennzahl × Fassung, deren `monate` den Monat enthalten — `auffaelligkeit_abweichung_passt_chk`) · `zur_kenntnis` (Begründung 10–500), **einmalig per Trigger** (`auffaelligkeit_antwort_einmalig`) |
+| `abweichung` | AW-JJJJ-nnnn, **JJJJ = Jahr des Eröffnens** (`eroeffnet_am`, Zeitzone des Unternehmens); Kennzahl × Fassung × `monate TEXT[]` (aufsteigend, ohne Doppel, ≥ 1); `herkunft_art` `auffaelligkeit · von_hand` (von Hand mit `herkunft_wortlaut` 10–500); Anlass-Kopie + Prüfsumme; Verantwortlicher `benutzer`-FK + Schnappschuss; `frist` (fehlt sie: Eröffnungstag + 30, Vertrag §1); `standort_id`; Zustand `offen · abgeschlossen`; Abschluss `ergebnis`/`abschluss_begruendung` (10–500)/`abgeschlossen_*` (`abgeschlossen_am` fehlt → DB-Uhr); **`abweichung_massnahme_verweis_chk`**: `massnahme` genau mit `massnahme_id` (FK auf `massnahme`) |
+| Anker (Trigger `uems_abweichung_anker_pruefen`) | Fassung freigegeben (auch eine beendete), Basis der Kennzahl, jeder Monat in `gilt_ab … gilt_bis` der Fassung (monatsgenau), Standort = der der Kennzahl (Geltung Standort) bzw. NULL (Unternehmen) — beim Anlegen; übrige Geltungen leitet der Schreibweg ab |
+| `abweichung_eingefroren` | Anker, Monate, Anlass, Herkunft, Standort, Eröffnung nie; offen ändern sich nur Frist und Verantwortlicher; offen → abgeschlossen genau einmal, danach endgültig (`abweichung_abschluss_einmalig`) |
+| `abweichung_aenderung` | Protokoll ohne FK, Wörter `abweichung_protokoll` (`abweichung_eroeffnet · kommentar · ursache_aussage · abweichung_geaendert · verantwortlicher_geaendert · abweichung_abgeschlossen`); `kommentar` 1–2 000; Ursache-Aussage = `aussage_wortlaut` (10–500) + `aussage_name` (wahlfrei `aussage_sub`) + `aussage_am` + wahlfrei `beleg_kennung` — eingetragen von `actor_*`, das nicht die aussagende Person sein muss (R2); Frist/Verantwortlicher-Änderung mit `begruendung` 10–500 |
+| Zaun · Rechte | RLS + FORCE; RESTRICTIVE `site_scope` über `standort_id` (Vermerk, Abweichung) bzw. die Abweichung (Protokoll); Grants ohne App-DELETE, Update nur Frist/Verantwortlicher/Abschluss bzw. Antwort-Spalten |
+
+⚠ **Vokabular = Vereinigung:** `V20260924235130` schreibt `verbesserung_vokabular()` mit allen Zeilen von IP-5 und IP-9
+fort, dazu nur `abweichung_herkunft`/`abweichung_protokoll`; `UemsMassnahmeMigrationTest` und
+`UemsVerbesserungMigrationTest` nennen sie mit.
+⚠ **Späte Ankunft:** `20260924235130` steht in `BAUEN_DARAUF_AUF` von `UemsKennzahlMigrationTest`,
+`UemsZugriffMigrationTest`, `UemsBerichtMigrationTest`, `UemsBezugsbasisMigrationTest`, `UemsVerbesserungMigrationTest`
+und (neu) `UemsMassnahmeMigrationTest`. Offboarding: Vermerk, Protokoll, Abweichung vor der Maßnahme.
+⚠ **Kein Zeitbezug in der Datenbank:** weder „Monat vor dem Vermerk“ noch „Frist nach dem Eröffnen“ prüft ein CHECK
+(`now()` im Test läge vor den Ahrenberg-Daten) — das prüfen Naht und Routen mit ihrer `Clock`.
+Nachweis: `UemsAbweichungMigrationTest`.

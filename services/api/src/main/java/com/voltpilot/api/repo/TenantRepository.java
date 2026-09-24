@@ -277,9 +277,12 @@ public class TenantRepository {
                 // protocol and Ziel before all of them, their Kennzeichen counter with them.
                 // AP-18 IP-9: an Anstoss names a Massnahme or an Energieziel, a Stand its Massnahme, and the
                 // Massnahme cites Ziel, Fassung, Einstufung, Kennzahl, Standort and Benutzer (RESTRICT): first.
+                // AP-18 IP-14: an Auffaelligkeit names its Abweichung, and the Abweichung cites its Massnahme,
+                // Fassung, Kennzahl, Standort and Benutzer (RESTRICT): before the Massnahme.
                 // Current repository code also runs against older migration fixtures.
-                for (String table : new String[] {"vorgang_anstoss", "massnahme_bewertung", "massnahme_aenderung",
-                        "massnahme", "energieziel_aenderung", "energieziel", "verbesserung_kennung_seq",
+                for (String table : new String[] {"auffaelligkeit", "abweichung_aenderung", "abweichung",
+                        "vorgang_anstoss", "massnahme_bewertung", "massnahme_aenderung", "massnahme",
+                        "energieziel_aenderung", "energieziel", "verbesserung_kennung_seq",
                         "bezugsbasis_anstoss", "bezugsbasis_faktor", "bezugsbasis_variable",
                         "bezugsbasis_fassung", "bezugsbasis_aenderung", "bezugsbasis", "bezugsbasis_kennzeichen_seq",
                         "geraet_aenderung", "vergleich_toleranz",

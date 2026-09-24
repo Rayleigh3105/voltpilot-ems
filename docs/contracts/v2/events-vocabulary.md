@@ -332,7 +332,7 @@ Naht vermerkt einen endgültigen Monat mit Urteil „schlechter“) und `abweich
 beide mit Bezug `kennzahl`; `massnahme_umgesetzt` und `massnahme_bewertet` (`kunde`) mit Bezug
 `massnahme` (M-…). **Anlage offen:** AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4), die
 Übergänge stehen im Protokoll des Vorgangs (`energieziel_aenderung` seit V20260924223000,
-`massnahme_aenderung` seit V20260924233000, die Abweichung mit IP-14). Die Wörter stehen nur im Block `reserviert`; kein Schreiber und kein Eintrag in
+`massnahme_aenderung` seit V20260924233000, `abweichung_aenderung` seit V20260924235130). Die Wörter stehen nur im Block `reserviert`; kein Schreiber und kein Eintrag in
 `vokabular.arten` oder der Ereignis-Tabelle. Bis zur Anlage lehnen die bestehenden Prüfer sie ab
 (`EreignisVokabularVectorsTest.vorgangsEreignisseBleibenNurReserviert`).
 

@@ -54,6 +54,9 @@ import org.testcontainers.utility.DockerImageName;
 class UemsMassnahmeMigrationTest {
 
     private static final String DIESE = "20260924233000";
+    /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20260924235130"); // AP-18 IP-14: die Abweichung verweist auf ihre Maßnahme und weitet das Vokabular.
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap18_ip9_test_pw";
     private static final List<String> TABELLEN = List.of("massnahme", "massnahme_aenderung", "massnahme_bewertung",
             "vorgang_anstoss");
@@ -513,7 +516,7 @@ class UemsMassnahmeMigrationTest {
                 "verbesserung.ansehen");
     }
 
-    /** Die Funktion wird nur geweitet: jede Zeile von IP-5 bleibt, dazu genau die zwei Listen der Tabellen. */
+    /** Die Funktion wird nur geweitet: jede Zeile von IP-5 bleibt, dazu genau die zwei Listen der Tabellen (IP-14 dahinter). */
     @Test
     void dasVokabularWirdNurGeweitet() {
         List<String> nachher = vokabular();
@@ -527,7 +530,12 @@ class UemsMassnahmeMigrationTest {
                 "massnahme_protokoll:4:kommentar", "massnahme_protokoll:5:massnahme_umgesetzt",
                 "massnahme_protokoll:6:massnahme_verworfen", "massnahme_protokoll:7:bewertung_beantragt",
                 "massnahme_protokoll:8:bewertung_abgelehnt", "massnahme_protokoll:9:massnahme_bewertet",
-                "massnahme_protokoll:10:anstoss_gesetzt", "massnahme_protokoll:11:anstoss_beantwortet");
+                "massnahme_protokoll:10:anstoss_gesetzt", "massnahme_protokoll:11:anstoss_beantwortet",
+                // IP-14 weitet hinter IP-9 um die Wörter seiner Tabellen.
+                "abweichung_herkunft:1:auffaelligkeit", "abweichung_herkunft:2:von_hand",
+                "abweichung_protokoll:1:abweichung_eroeffnet", "abweichung_protokoll:2:kommentar",
+                "abweichung_protokoll:3:ursache_aussage", "abweichung_protokoll:4:abweichung_geaendert",
+                "abweichung_protokoll:5:verantwortlicher_geaendert", "abweichung_protokoll:6:abweichung_abgeschlossen");
     }
 
     @Test
@@ -572,14 +580,18 @@ class UemsMassnahmeMigrationTest {
         Path ohneDiese = Files.createTempDirectory("ohne-massnahme");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
         }
         flyway(url).locations("filesystem:" + ohneDiese).load().migrate();
         var spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
         JdbcTemplate spaetDb = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         String liste = "'" + String.join("', '", TABELLEN) + "'";
         String schema = "SELECT string_agg(conrelid::regclass || ':' || conname || ':' || pg_get_constraintdef(oid), '|' "
