@@ -7228,8 +7228,23 @@ paths:
         "400": { description: Unknown type / invalid master data. Body carries a German `message`. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
-        "409": { description: The chosen reported source is already assigned to a consumer. }
-        "422": { description: The device type cannot execute the requested control kind. }
+        "409": { description: The chosen reported source (or I/O output) is already assigned to a consumer. }
+        "422": { description: The device type cannot execute the requested control kind, or ioEntityId is not an I/O module of this site. }
+  /api/v1/sites/{siteId}/io-modules/{entityId}/zustand:
+    get:
+      tags: [consumer]
+      summary: The last reported inputs/outputs of one I/O module (Ebyte M31) with their consumers.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The module state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IoModuleState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant, or the entity is not an I/O module. }
   /api/v1/sites/{siteId}/consumers/{id}:
     get:
       tags: [consumer]
@@ -10524,6 +10539,45 @@ components:
             "relay_state" = relay readback only (Stufe 3, energy
             "angenommen"), null = unbound draft or created before this field
             existed.
+        ioEntityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            The I/O module (entity type io-module, e.g. Ebyte M31) whose relay
+            output switches this consumer. Null = not bound to an output.
+        ioChannel:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 256
+          description: The 1-based relay output across the whole module stack (DO1 = 1).
+    IoChannelState:
+      type: object
+      properties:
+        channel: { type: integer, minimum: 1 }
+        on:
+          type: boolean
+          nullable: true
+          description: The last REPORTED state; null = not reported in the last ten minutes.
+        consumerId: { type: string, format: uuid, nullable: true }
+        consumerName: { type: string, nullable: true }
+    IoModuleState:
+      type: object
+      description: >
+        The last reported digital inputs and relay outputs of one I/O module
+        (the box publishes di_k/do_k on change and at least every minute), each
+        output with the consumer that switches it.
+      properties:
+        entityId: { type: string, format: uuid }
+        label: { type: string, nullable: true }
+        inputs: { type: array, items: { $ref: "#/components/schemas/IoChannelState" } }
+        outputs: { type: array, items: { $ref: "#/components/schemas/IoChannelState" } }
+        receivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The newest report; null = nothing reported in the last ten minutes.
     ProbeRequest:
       type: object
       required: [ops]
@@ -10948,6 +11002,17 @@ components:
         edgeSourceId:
           type: string
           description: An edge-reported source id to bind ("verbunden"); omit for a draft.
+        ioEntityId:
+          type: string
+          format: uuid
+          description: >
+            Bind to a relay output of an I/O module of this site instead of a
+            reported source (together with ioChannel; excludes edgeSourceId).
+        ioChannel:
+          type: integer
+          minimum: 1
+          maximum: 256
+          description: The 1-based relay output; 409 when another consumer already owns it.
     PatchConsumerRequest:
       type: object
       description: All fields optional; send `expectedVersion` for optimistic concurrency.
@@ -11024,6 +11089,27 @@ components:
                   relay, or not reported yet) - the wizard then names the
                   honest Stufe-3 consequence (energy "angenommen").
               health: { type: string, enum: [ok, stale, never] }
+        ioModules:
+          type: array
+          description: >
+            The site's I/O modules as switching paths. outputs = the relay
+            output count the module last REPORTED (null until it reported -
+            never a guessed count); used = the outputs already owned by a
+            consumer.
+          items:
+            type: object
+            properties:
+              entityId: { type: string, format: uuid }
+              label: { type: string, nullable: true }
+              outputs: { type: integer, nullable: true }
+              used:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    channel: { type: integer }
+                    consumerId: { type: string, format: uuid }
+                    consumerName: { type: string, nullable: true }
         defaultStorageRelation: { type: string }
         defaultGridEnergyPolicy: { type: string }
     ConsumerPolicyVersion:

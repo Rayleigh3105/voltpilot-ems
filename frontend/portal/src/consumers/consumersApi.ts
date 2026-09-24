@@ -11,6 +11,7 @@ import type {
   ConsumerPolicyDocument,
   ConsumerPolicyVersion,
 } from './types';
+import type { IoModulZustandDto } from './ioZustand';
 
 export interface CreateConsumerBody {
   type: string;
@@ -27,6 +28,9 @@ export interface CreateConsumerBody {
   allowStorageDischarge?: boolean;
   failsafe?: string;
   edgeSourceId?: string;
+  /** Relais-Ausgang eines I/O-Moduls - schließt `edgeSourceId` aus. */
+  ioEntityId?: string;
+  ioChannel?: number;
 }
 
 export interface PatchConsumerBody {
@@ -70,6 +74,9 @@ export const consumersApi = {
   options: (siteId: string) =>
     request<ConsumerOptions>(`/api/v1/sites/${siteId}/consumer-options`),
   list: (siteId: string) => request<Consumer[]>(base(siteId)),
+  /** Die zuletzt gemeldeten Ein-/Ausgänge eines I/O-Moduls samt Zuordnung. */
+  ioModulZustand: (siteId: string, entityId: string) =>
+    request<IoModulZustandDto>(`/api/v1/sites/${siteId}/io-modules/${entityId}/zustand`),
   /**
    * Edge-reported live states (Inkrement 3, D9). An empty list is the honest
    * no-evidence state - the surface then renders exactly like before.

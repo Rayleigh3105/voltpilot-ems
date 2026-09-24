@@ -30,6 +30,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ebyte"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
@@ -410,6 +411,14 @@ type Agent struct {
 	shellyDoer    shelly.Doer
 	shellyStoreMu sync.Mutex
 	shellyStore   *shelly.Store
+	// ebyteDial opens the Ebyte I/O module's Modbus TCP connection (nil = the
+	// default dialer; injectable for tests). ebyteStore pins MAC + module
+	// layout per address (data_dir/ebyte-devices.json); ebyteRun is the
+	// executor's per-channel memory. Both lazily opened under ebyteStoreMu.
+	ebyteDial    ebyte.Dialer
+	ebyteStoreMu sync.Mutex
+	ebyteStore   *ebyte.Store
+	ebyteRun     *ebyteState
 
 	// flowDep consumes the retained flow deployment set (agent/flows.go).
 	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
@@ -854,6 +863,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	// (Node-RED has no shelly reader). Independent of the control flags, like
 	// every other source read path; idles cheaply without shelly sources.
 	a.startShellySourcePoll(ctx)
+	a.startEbyteSourcePoll(ctx)
 	// OCPP charge points: the CSMS the stations dial + the load-management
 	// executor. A no-op while VP_OCPP_ENABLED is off (the default), so a box
 	// without charge points pays nothing for it.
@@ -3419,6 +3429,10 @@ type sourceReading struct {
 	// non-metering class it is the ONLY per-reading fact, so it carries the
 	// freshness/liveness of that source (a fabricated load would not).
 	relayOn *bool
+	// inputs/outputs are the states of an I/O module source (ebyte): real
+	// facts that carry its liveness, never energy.
+	inputs  []bool
+	outputs []bool
 	recv    time.Time
 	// period is the ACHIEVED read cadence: the wall-clock spacing between this
 	// reading and the previous one (0 until a second reading arrived). The
@@ -3463,6 +3477,8 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		PowerKw   *float64 `json:"power_kw"`
 		LoadKw    *float64 `json:"load_kw"`
 		RelayOn   *bool    `json:"relay_on"`
+		Inputs    []bool   `json:"inputs"`
+		Outputs   []bool   `json:"outputs"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("source telemetry malformed; skipped", "id", id, "err", err)
@@ -3475,7 +3491,8 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		return v
 	}
 	pv, grid, load := usable(m.PvPowerKw), usable(m.PowerKw), usable(m.LoadKw)
-	if pv == nil && grid == nil && load == nil && m.RelayOn == nil {
+	if pv == nil && grid == nil && load == nil && m.RelayOn == nil &&
+		m.Inputs == nil && m.Outputs == nil {
 		return // nothing usable in this reading
 	}
 	now := time.Now().UTC()
@@ -3485,7 +3502,7 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		period = now.Sub(prev.recv) // the ACHIEVED cadence, feeds the freshness window
 	}
 	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, load: load, relayOn: m.RelayOn,
-		recv: now, period: period}
+		inputs: m.Inputs, outputs: m.Outputs, recv: now, period: period}
 	a.srcMu.Unlock()
 	// Feed a running curtailment First-Light test with the unit's measured
 	// output (the enforcement half of the evidence) - a no-op without a test.
@@ -3851,6 +3868,8 @@ func (a *Agent) SourceLastReadings() map[string]sources.LastReading {
 			PowerKw:  r.grid,
 			LoadKw:   r.load,
 			RelayOn:  r.relayOn,
+			Inputs:   r.inputs,
+			Outputs:  r.outputs,
 			ReadAtMs: r.recv.UnixMilli(),
 		}
 	}
@@ -3896,6 +3915,11 @@ func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 		// persisted identity store) and read the relay state. Node-RED has no
 		// shelly reader, so the flow round-trip would only time out.
 		return a.shellyTest(req)
+	}
+	if sel.Communication == inverter.CommEbyteModbusTCP {
+		// The Ebyte I/O module is CORE-owned like Shelly: identify + read
+		// in-process (Node-RED has no reader for it) and pin the device.
+		return a.ebyteTest(req)
 	}
 	res := a.testReadExchange(sel, req.Role, false, testReadTimeout)
 	if res.OK && req.ControlTest && sel.Communication == inverter.CommGoeHTTP {

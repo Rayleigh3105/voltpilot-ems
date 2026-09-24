@@ -257,7 +257,7 @@ IP-6 sie ihr zustellt): gelesen wird `measurement_point.communication` + `connec
 
 | Transport | Protokoll | Adresse | Geräte-ID |
 |---|---|---|---|
-| `modbus_tcp`, `kostal_modbus`, `kaco_modbus`, Selbstbau `modbus_baukasten` | `modbus_tcp` | `ip:port` (Selbstbau: `transport.host:port`) | `unit_id` |
+| `modbus_tcp`, `kostal_modbus`, `kaco_modbus`, I/O-Modul `ebyte_modbus_tcp`, Selbstbau `modbus_baukasten` | `modbus_tcp` | `ip:port` (Selbstbau: `transport.host:port`) | `unit_id` |
 | `sunspec_tcp`, `fronius_sunspec` | `sunspec_modbus` | `ip:port` | `unit_id` |
 | `solarman_v5` (Deye über den Datenlogger) | `solarman_v5` | `ip:port/serial` — die Seriennummer des Datenloggers trägt jeder Solarman-V5-Rahmen; ohne sie keine Adresse | `mb_slave_id` |
 | `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http`, Batterie-Anschluss `http_local` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`, `endpoint.tls`) | — |

@@ -1097,9 +1097,21 @@ public class EntityRegistryService {
         // gespeicherte Zuordnung ist die Nutzlast byte-gleich zu vorher.
         java.util.Map<UUID, java.util.List<EntityRegistryRepository.RoleAssignment>> roles =
                 repo.roleAssignments(siteId);
+        // I/O-Modul-Kanaele: ein Verbraucher an Ausgang k eines Moduls hat
+        // keinen eigenen Transport - sein Treiber wird hier aus der Bindung
+        // zusammengesetzt ({communication, io_entity_id, channel}), bewusst
+        // OHNE connection: die Box liest die Adresse aus der Modul-Entitaet,
+        // und eine aeltere Box (die connection-lose Treiber ueberspringt)
+        // ignoriert ihn folgenlos. Ohne Bindung ist die Nutzlast byte-gleich.
+        java.util.Map<UUID, EntityRegistryRepository.ConsumerIoBinding> ioBindings =
+                repo.consumerIoBindings(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
+            EntityRegistryRepository.ConsumerIoBinding io = ioBindings.get(row.id());
+            if (io != null && !d.has("driver")) {
+                d.set("driver", ioChannelDriver(io));
+            }
             EntityRegistryRepository.ConsumerCycleLimits cl = cycle.get(row.id());
             if (cl != null) {
                 mergeCycleLimits(d, cl);
@@ -1257,6 +1269,21 @@ public class EntityRegistryService {
         }
         return out.isEmpty() ? null : out;
     }
+
+    /** Der Treiber eines Verbrauchers an einem Ausgang eines I/O-Moduls. */
+    ObjectNode ioChannelDriver(EntityRegistryRepository.ConsumerIoBinding io) {
+        ObjectNode driver = mapper.createObjectNode();
+        driver.put("communication", IO_MODULE_COMMUNICATION);
+        driver.put("io_entity_id", io.ioEntityId().toString());
+        driver.put("channel", io.channel());
+        if (io.ratedPowerKw() != null) {
+            driver.put("rated_power_kw", io.ratedPowerKw().doubleValue());
+        }
+        return driver;
+    }
+
+    /** Der Verbindungsweg des Ebyte-I/O-Moduls (Box-Katalog, internal/ebyte). */
+    static final String IO_MODULE_COMMUNICATION = "ebyte_modbus_tcp";
 
     private static void mergeCycleLimits(ObjectNode descriptor,
             EntityRegistryRepository.ConsumerCycleLimits cl) {

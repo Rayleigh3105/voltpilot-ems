@@ -33,7 +33,8 @@ public class ConsumerMetricsRepository {
                 "SELECT cp.enabled, "
                         + "EXISTS (SELECT 1 FROM consumer_policy pol WHERE pol.entity_id = "
                         + "cp.entity_id AND pol.lifecycle = 'active') AS active_policy, "
-                        + "(mp.device_id IS NOT NULL OR mp.edge_source_id IS NOT NULL) AS connected, "
+                        + "(mp.device_id IS NOT NULL OR mp.edge_source_id IS NOT NULL "
+                        + "OR cp.io_entity_id IS NOT NULL) AS connected, "
                         + "crs.state, crs.confirmed, crs.reason_code "
                         + "FROM consumer_profile cp "
                         + "JOIN measurement_point mp ON mp.id = cp.entity_id "
@@ -61,6 +62,7 @@ public class ConsumerMetricsRepository {
                 "SELECT mp.entity_type, count(*) AS n FROM consumer_profile cp "
                         + "JOIN measurement_point mp ON mp.id = cp.entity_id "
                         + "WHERE mp.device_id IS NOT NULL OR mp.edge_source_id IS NOT NULL "
+                        + "OR cp.io_entity_id IS NOT NULL "
                         + "GROUP BY mp.entity_type",
                 (rs, i) -> new Object[] {rs.getString("entity_type"), rs.getInt("n")});
         for (Object[] r : rows) {

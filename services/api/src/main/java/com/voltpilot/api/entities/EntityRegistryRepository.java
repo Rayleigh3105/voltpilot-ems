@@ -73,6 +73,27 @@ public class EntityRegistryRepository {
      * edge's temporal guard learns them (Verbrauchssteuerung §13.1). Only
      * rows with at least one bound set.
      */
+    /**
+     * Die Bindung eines Verbrauchers an einen Relais-Ausgang eines I/O-Moduls
+     * ({@code consumer_profile.io_entity_id/io_channel}), samt Nennleistung für
+     * die Restrict-only-Regel des Treibers.
+     */
+    public record ConsumerIoBinding(UUID ioEntityId, int channel, java.math.BigDecimal ratedPowerKw) {}
+
+    /** Alle Kanal-Bindungen der Anlage, je Verbraucher-Entität. */
+    public java.util.Map<UUID, ConsumerIoBinding> consumerIoBindings(UUID siteId) {
+        java.util.Map<UUID, ConsumerIoBinding> out = new java.util.HashMap<>();
+        jdbc.query(
+                "SELECT entity_id, io_entity_id, io_channel, rated_power_kw FROM consumer_profile "
+                        + "WHERE site_id = ? AND io_entity_id IS NOT NULL",
+                rs -> {
+                    out.put(rs.getObject("entity_id", UUID.class), new ConsumerIoBinding(
+                            rs.getObject("io_entity_id", UUID.class), rs.getInt("io_channel"),
+                            rs.getBigDecimal("rated_power_kw")));
+                }, siteId);
+        return out;
+    }
+
     public java.util.Map<UUID, ConsumerCycleLimits> consumerCycleLimits(UUID siteId) {
         java.util.Map<UUID, ConsumerCycleLimits> out = new java.util.HashMap<>();
         jdbc.query(

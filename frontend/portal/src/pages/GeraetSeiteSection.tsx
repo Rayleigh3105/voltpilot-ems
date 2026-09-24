@@ -116,6 +116,7 @@ import {
 import { HandeingriffDialog } from '../components/HandeingriffDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
+import { ioZustandView, type IoModulZustandDto } from '../consumers/ioZustand';
 import type { Consumer } from '../consumers/types';
 import {
   sofortAktionen,
@@ -1314,6 +1315,9 @@ export function GeraetSeiteSection({
                 aktion={heldAktion}
               />
             )}
+            {editRow?.entityType === 'io-module' && (
+              <IoModulBlock siteId={site.id} entityId={editRow.id} now={now} />
+            )}
           </RahmenSektion>
 
           {/* Alle Summenwerte, deren aktuelle Formel dieses physische Gerät liest. */}
@@ -1554,6 +1558,47 @@ export function GeraetSeiteSection({
  * <p>„Steuerung &amp; Grenzen" fasst vier frühere Sektionen zusammen - die
  * Zwischen-Überschrift hält die vier Auskünfte trotzdem auseinander.
  */
+/** Wie oft die Seite den Zustand eines I/O-Moduls nachliest. */
+const IO_MODUL_TAKT_MS = 15_000;
+
+/**
+ * Die Ein- und Ausgänge eines I/O-Moduls (Ebyte M31) - zuletzt GEMELDET, je
+ * Ausgang mit dem Verbraucher, der ihn schaltet. Die Ableitung ist
+ * `consumers/ioZustand`; hier wird nur gerendert und nachgelesen.
+ */
+function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: string; now: number }) {
+  const [dto, setDto] = useState<IoModulZustandDto | null>(null);
+  const [fehler, setFehler] = useState(false);
+  useEffect(() => {
+    let aktiv = true;
+    const lesen = () => {
+      consumersApi.ioModulZustand(siteId, entityId).then(
+        (d) => { if (aktiv) { setDto(d); setFehler(false); } },
+        () => { if (aktiv) setFehler(true); },
+      );
+    };
+    lesen();
+    const t = window.setInterval(lesen, IO_MODUL_TAKT_MS);
+    return () => { aktiv = false; window.clearInterval(t); };
+  }, [siteId, entityId]);
+  const v = ioZustandView(dto, now);
+  return (
+    <Block titel="Eingänge & Ausgänge" icon="sliders">
+      {fehler && !dto && (
+        <p className="vp-note">Der Zustand des I/O-Moduls ließ sich gerade nicht laden.</p>
+      )}
+      {v.leer && <p className="vp-note">{v.leer}</p>}
+      {v.stand && (
+        <p className={v.veraltet ? 'vp-note is-warn' : 'vp-geraet-sec-sub'}>
+          {v.stand}{v.veraltet ? ' — der gezeigte Zustand ist nicht aktuell.' : ''}
+        </p>
+      )}
+      <ZeilenListe zeilen={v.ausgaenge} />
+      <ZeilenListe zeilen={v.eingaenge} />
+    </Block>
+  );
+}
+
 function Block({
   titel,
   icon,

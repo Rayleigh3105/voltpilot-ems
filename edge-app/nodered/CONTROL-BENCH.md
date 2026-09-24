@@ -595,6 +595,24 @@ ggf. `generic-load`) in
 `simulator_only` auf den zertifizierten Stand, plattformweit. Bis dahin bleiben
 die Typen unzertifiziert — der Treiber-Code ändert sich dafür nicht.
 
+## Ebyte M31 (I/O-Modul, Relais je Verbraucher) — Treibernachweis und Geräteprüfung
+
+Betreiber-Voraussetzungen, Datenmodell und Totmann: [`EBYTE.md`](EBYTE.md).
+Der Treiber schreibt nur dokumentierte Register (FC5 auf Spulen, Holding-Register
+laut Handbuch) und prüft vor jedem Schreiben Identität (MAC), Modul-Stapel,
+Pegelmodus des Ausgangs und den Geräte-Watchdog.
+
+1. `vp-ebyte-bench … read`: Modell, Firmware, MAC, `proven: true`, Watchdog.
+2. `vp-ebyte-bench … cycle`: jeder Ausgang einzeln EIN/AUS mit Rücklesen —
+   **ohne angeschlossene Last**.
+3. Watchdog: `arm-watchdog`, Neustart abwarten, einen Ausgang EIN schalten,
+   jeden Modbus-Verkehr (auch die Box) für > 2× Offline-Zeit stoppen → der
+   Ausgang fällt ab, `0x0C37` zählt hoch.
+4. Eingänge: 10–28 V an DIx (PNP: COMA/COMB an V−) → `di_x = 1` in `read` und
+   im Portal. **Stand 24.09.2026: nicht geprüft** (nur „lesbar, alle 0").
+5. Erweiterungsmodul stecken → Reload doppelt → `read` zeigt den Stapel;
+   ohne *Verbindung testen* schaltet die Box nichts (Layout-Pin).
+
 ## Checkliste Kostal PLENTICORE (externe Batteriesteuerung, Tier 2)
 
 Der PLENTICORE ist der **einfachste** Steuerfall der Flotte: ein offiziell

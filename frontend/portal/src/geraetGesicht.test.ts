@@ -3,6 +3,8 @@ import {
   abregelungDiesesGeraets,
   gattungVon,
   gesicht,
+  IO_MODUL_HELD_SATZ,
+  IO_MODUL_REGISTER_SATZ,
   KEINE_MESSWERTE,
   type GesichtInput,
 } from './geraetGesicht';
@@ -604,5 +606,28 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
       input({ art: 'ladepunkt', komponenten: [] }),
     ];
     for (const i of gattungen) expect(istKanonisch(gesicht(i).sektionen)).toBe(true);
+  });
+});
+
+describe('das I/O-Modul (Ebyte M31)', () => {
+  const io = input({
+    art: 'quelle',
+    geraetId: 'src-io',
+    rolle: 'consumer',
+    communication: 'ebyte_modbus_tcp',
+  });
+
+  it('zeigt keine leeren Leistungs-Kacheln, sondern den Weg zu seinen Zustaenden', () => {
+    const g = gesicht(io);
+    expect(g.gattung).toBe('geraet');
+    expect(g.held.kacheln).toEqual([]);
+    expect(g.held.hinweis).toBe(IO_MODUL_HELD_SATZ);
+    expect(g.held.hinweis).not.toBe(KEINE_MESSWERTE);
+  });
+
+  it('sperrt den freien Registerzugriff mit dem eigenen Grund', () => {
+    const g = gesicht(io);
+    expect(g.sektionen).not.toContain('register');
+    expect(g.entfallen.find((e) => e.id === 'register')?.grund).toBe(IO_MODUL_REGISTER_SATZ);
   });
 });

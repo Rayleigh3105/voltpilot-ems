@@ -244,7 +244,16 @@ export interface GesichtInput {
  * gelesen wird, bekommt keine Register-Sektion, die nur erklärt, dass es hier
  * keine gibt - der Satz steht stattdessen im Technik-Aufklapper.
  */
-const OHNE_REGISTER = new Set(['fronius_solar_api', 'goe_http_api', 'shelly_http', 'ocpp']);
+const OHNE_REGISTER = new Set([
+  'fronius_solar_api', 'goe_http_api', 'shelly_http', 'ocpp', 'ebyte_modbus_tcp',
+]);
+
+/**
+ * Transporte, deren Geräte-Socket der Box-Kern allein besitzt: Register GIBT
+ * es dort, aber ein freier Zugriff liefe an Verbrauchersteuerung, Schutzgrenzen
+ * und Geräte-Watchdog vorbei - der Grund ist deshalb ein anderer Satz.
+ */
+const KERN_EIGEN = new Set(['ebyte_modbus_tcp']);
 
 /** Ab welcher Leistung ein Verbraucher als „läuft" gilt (die Rausch-Schwelle). */
 const LAEUFT_AB_KW = 0.05;
@@ -933,6 +942,23 @@ function eigenbauKacheln(input: GesichtInput): HeldKachel[] {
 }
 
 /** Der Held der Rückfall-Gattung: zeigen, was gemeldet wird - nichts deuten. */
+/** Der Held eines I/O-Moduls: keine Leistung, nur der Weg zu seinen Zuständen. */
+function heldIoModul(): Held {
+  return {
+    titel: 'I/O-Modul',
+    kacheln: [],
+    satz: null,
+    satzTon: 'off',
+    hinweis: IO_MODUL_HELD_SATZ,
+    zeilen: [],
+    balken: null,
+  };
+}
+
+export const IO_MODUL_HELD_SATZ =
+  'Ein I/O-Modul misst keine Leistung. Seine Eingänge und Ausgänge stehen darunter; '
+  + 'geschaltet wird jeder Ausgang über den Verbraucher, dem er zugeordnet ist.';
+
 function heldGeraet(input: GesichtInput, eigenbau: boolean): Held {
   const src = input.src ?? null;
   const kacheln: HeldKachel[] = eigenbau ? eigenbauKacheln(input) : [];
@@ -987,7 +1013,11 @@ function heldGeraet(input: GesichtInput, eigenbau: boolean): Held {
  * bleiben die geteilten Bauteile.
  */
 export function gesicht(input: GesichtInput): Gesicht {
-  const gattung = gattungVon(input);
+  // Ein I/O-Modul misst keine Energie: es trägt die Rückfall-Gattung, und sein
+  // Held erklärt, wo seine Zustände stehen, statt eine Reihe leerer
+  // Leistungs-Kacheln zu zeigen.
+  const ioModul = KERN_EIGEN.has((input.communication ?? '').trim());
+  const gattung = ioModul ? 'geraet' : gattungVon(input);
   const registerMoeglich = gattung !== 'ladepunkt'
     && !OHNE_REGISTER.has((input.communication ?? '').trim());
   // ⚠ BELEGT, nicht geraten: `freigabeFaehig` trägt genau die zwei Selbstbau-
@@ -995,7 +1025,9 @@ export function gesicht(input: GesichtInput): Gesicht {
   // Menge, mit der auch der Freigabe-Assistent gattert.
   const eigenbau = input.komponenten.some((c) => c.freigabeFaehig);
   const sektionen = sektionenVon({ gattung, registerMoeglich, eigenbau });
-  const held = gattung === 'wechselrichter-speicher'
+  const held = ioModul
+    ? heldIoModul()
+    : gattung === 'wechselrichter-speicher'
     ? heldWechselrichter(input, true)
     : gattung === 'wechselrichter'
       ? heldWechselrichter(input, false)
@@ -1035,7 +1067,9 @@ export function gesicht(input: GesichtInput): Gesicht {
   if (!registerMoeglich) {
     entfallen.push({
       id: 'register',
-      grund: gattung === 'ladepunkt' ? KEINE_REGISTER.ladepunkt : OHNE_REGISTER_SATZ,
+      grund: gattung === 'ladepunkt' ? KEINE_REGISTER.ladepunkt
+        : KERN_EIGEN.has((input.communication ?? '').trim()) ? IO_MODUL_REGISTER_SATZ
+          : OHNE_REGISTER_SATZ,
     });
   }
   if (!sektionen.includes('software')) {
@@ -1067,5 +1101,9 @@ export function blattHinweis(
  * Der Satz, der die entfallene Register-Sektion ERSETZT - er verschwindet
  * nicht, er wandert in den Technik-Aufklapper (Regel 1).
  */
+export const IO_MODUL_REGISTER_SATZ =
+  'Dieses I/O-Modul liest und schaltet VoltPilot selbst — ein freier Registerzugriff ist hier '
+  + 'gesperrt, damit kein Ausgang an der Verbrauchersteuerung vorbei geschaltet wird.';
+
 export const OHNE_REGISTER_SATZ =
   'Dieses Gerät wird über seine Web-Schnittstelle gelesen — Modbus-Register gibt es dort nicht.';

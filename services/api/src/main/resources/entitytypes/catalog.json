@@ -349,6 +349,17 @@
       "default_actuate": []
     },
     {
+      "type": "io-module",
+      "label": "I/O-Modul",
+      "category": "consumer",
+      "controllable": false,
+      "composed": false,
+      "default_failsafe": "measure-only",
+      "_comment": "Ein I/O-Modul (Ebyte M31) ist EIN Geraet mit N Kanaelen: es liest digitale Eingaenge und Ausgangszustaende (di_k/do_k, 0/1) und wird selbst nie gesteuert. Seine Relais-Ausgaenge schaltet je ein eigener Verbraucher, der ueber consumer_profile.io_entity_id/io_channel an genau einen Kanal gebunden ist. Keine Standard-Messkanaele: die Kanalzahl haengt von den gesteckten Erweiterungsmodulen ab und wird am Geraet erkannt.",
+      "default_measure": [],
+      "default_actuate": []
+    },
+    {
       "type": "modbus-generic",
       "label": "Modbus-Gerät (generisch)",
       "category": "meter",
