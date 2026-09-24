@@ -108,14 +108,16 @@ const aufrufe = (page: Page) =>
   page.evaluate(() => (window as unknown as { __berichtAufrufe: { anlegen: unknown[]; freigeben: string[]; verwerfen: string[] } }).__berichtAufrufe);
 
 test.describe('Bericht anlegen (§5.1)', () => {
-  // AP-16 IP-25: Ines trägt `bewertung.abrufen` — die fünfte Karte ist die energetische Bewertung (zuletzt, Datengrundlage).
-  test('Ines, 10.11.2026 08:55: fünf Vorlagen, Werk Ahrenberg, Oktober vorbelegt, eine Kennzahl abgewählt → BR-2026-0001 mit Entwurf', async ({ page }) => {
+  // AP-16 IP-25: Ines trägt `bewertung.abrufen` — die fünfte Karte ist die energetische Bewertung (Datengrundlage).
+  // AP-17 IP-24: die sechste und letzte ist der Leistungsvergleich (Unternehmen oder Standort, Reihenfolge von `VORLAGEN`).
+  test('Ines, 10.11.2026 08:55: sechs Vorlagen, Werk Ahrenberg, Oktober vorbelegt, eine Kennzahl abgewählt → BR-2026-0001 mit Entwurf', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte&berichte=leer&person=IK', 375, AM_10_11_0850);
     await expect(page.getByText('Es gibt noch keinen Bericht.')).toBeVisible();
     await page.getByTestId('bericht-anlegen-knopf').click();
     const d = page.getByTestId('bericht-anlegen');
-    await expect(d.locator('.vp-bd-karte')).toHaveCount(5);
-    await expect(d.locator('.vp-bd-karte').last()).toContainText('Energetische Bewertung');
+    await expect(d.locator('.vp-bd-karte')).toHaveCount(6);
+    await expect(d.locator('.vp-bd-karte').nth(4)).toContainText('Energetische Bewertung');
+    await expect(d.locator('.vp-bd-karte').last()).toContainText('Leistungsvergleich');
     await expect(d.locator('.vp-bd-karte').first()).toHaveClass(/is-gewaehlt/);
     await expect(d.locator('.vp-bd-karte').first()).toContainText('Monatsbericht Standort');
     await expect(d.locator('.vp-bd-karte').first()).toContainText('Fassung 1');
@@ -145,11 +147,13 @@ test.describe('Bericht anlegen (§5.1)', () => {
     await expect(page.getByRole('button', { name: 'Als Berichtsstand freigeben' })).toBeEnabled();
   });
 
-  test('Peter (Bearbeiter Lindach): nur die zwei Standort-Vorlagen, nur Werk Lindach — September sagt den Satz der Route', async ({ page }) => {
+  // AP-17 IP-24 (S1): der Leistungsvergleich gilt für Unternehmen ODER Standort — Peter bekommt ihn über Werk Lindach.
+  test('Peter (Bearbeiter Lindach): die zwei Standort-Vorlagen und der Leistungsvergleich, nur Werk Lindach — September sagt den Satz der Route', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte&berichte=leer&person=PH', 375, AM_10_11_0855);
     await page.getByTestId('bericht-anlegen-knopf').click();
     const d = page.getByTestId('bericht-anlegen');
-    await expect(d.locator('.vp-bd-karte')).toHaveCount(2);
+    await expect(d.locator('.vp-bd-karte')).toHaveCount(3);
+    await expect(d.locator('.vp-bd-karte').last()).toContainText('Leistungsvergleich');
     await expect(d).not.toContainText('Unternehmen');
     await expect(page.getByRole('combobox', { name: 'Geltung' })).toContainText('Werk Lindach');
     await waehle(page, 'Zeitraum', 'September 2026');

@@ -17,6 +17,9 @@ import '../designsystem/tokens/effects.css';
 import '../designsystem/components/core/core.css';
 import '../designsystem/components/shell/shell.css';
 import '../src/index.css';
+// Im Portal kommt `BerichtSeite` nur über `BerichtePage`, das diese Datei lädt (`.vp-br-dl`: einspaltig ≤ 640 px, Umbruch
+// der Prüfsumme). Die Bühne hängt die Seite direkt ein und lädt sie darum selbst — sonst misst die Spec eine Seite ohne ihr CSS.
+import '../src/pages/BerichtePage.css';
 
 /**
  * Bühne des Leistungsvergleichs (UEMS AP-17 IP-24, R8): der ECHTE Dialog „Bericht anlegen“ und die ECHTE Berichtsseite

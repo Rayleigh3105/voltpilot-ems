@@ -15,6 +15,16 @@ async function querlauf(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 }
 
+async function waehle(page: Page, feld: string, option: string) {
+  // Muster aus `bericht-freigeben.spec.ts`: `aria-controls` trägt der Auslöser erst bei offener Liste.
+  const ausloeser = page.getByRole('combobox', { name: feld, exact: true });
+  await ausloeser.click();
+  await expect(ausloeser).toHaveAttribute('aria-controls', /-liste$/);
+  const liste = page.locator(`[id="${await ausloeser.getAttribute('aria-controls')}"]`);
+  await liste.getByRole('option', { name: option, exact: true }).click();
+  await expect(ausloeser).toContainText(option);
+}
+
 for (const breite of [375, 1440]) {
   test(`Leistungsvergleich anlegen, freigeben und PDF abrufen (${breite} px)`, async ({ page }) => {
     await page.clock.setFixedTime(AM_12_01);
@@ -24,7 +34,10 @@ for (const breite of [375, 1440]) {
 
     const dialog = page.getByTestId('bericht-anlegen');
     await dialog.getByRole('radio', { name: /^Leistungsvergleich/ }).check();
+    // Ines darf Unternehmen UND Werk: zwei Geltungen, keine vorbelegt — die Kennzahl-Wahl folgt erst der Geltung (R8: Unternehmen).
     const kennzahl = page.getByTestId('bericht-anlegen-kennzahl');
+    await expect(kennzahl).toHaveCount(0);
+    await waehle(page, 'Geltung', 'Kunststoffwerk Ahrenberg GmbH');
     await expect(kennzahl.getByRole('radio')).toHaveCount(1);
     // Ohne Kennzahl sendet der Dialog nicht (sonst 400).
     await page.getByRole('button', { name: 'Anlegen', exact: true }).click();
