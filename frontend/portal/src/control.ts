@@ -148,12 +148,38 @@ export function batteryDirection(kw: number | null | undefined): BatteryDir {
  * Wechselrichter bestätigt" bzw. „Der Speicher pausiert gerade – vom
  * Wechselrichter bestätigt". Nie ein Vorzeichen, nie „regelt auf X".
  */
+/** Der Bestätigungs-Halbsatz des gesunden Zustands (auch für kompakte Flächen). */
+export const VOM_WR_BESTAETIGT = 'vom Wechselrichter bestätigt';
+
 function directionSentence(cmd: number | null): string {
   const n = num(cmd);
   const dir = batteryDirection(n);
-  if (dir === 'pausieren') return 'Der Speicher pausiert gerade – vom Wechselrichter bestätigt';
+  if (dir === 'pausieren') return `Der Speicher pausiert gerade – ${VOM_WR_BESTAETIGT}`;
   const verb = dir === 'laden' ? 'lädt' : 'entlädt';
-  return `Der Speicher ${verb} gerade mit ${absKw(n as number)} – vom Wechselrichter bestätigt`;
+  return `Der Speicher ${verb} gerade mit ${absKw(n as number)} – ${VOM_WR_BESTAETIGT}`;
+}
+
+/**
+ * UX-Review V-04 (24.09.2026): die Steuerungs-KARTE darf am Telefon entfallen,
+ * wenn sie nur wiederholt, was Fluss (Haken am Speicher) und Fahrplan-Zeile
+ * („Jetzt Sonne speichern …") schon sagen. Dann trägt die Fahrplan-Zeile
+ * diesen Halbsatz. Das gilt NUR im reinen Normalfall: der Speicher lädt oder
+ * entlädt, der Wechselrichter bestätigt, und die Karte hat nichts Eigenes zu
+ * sagen - keine Geräte-Abweichung, keine Abregelung, kein Ruhe-Ausblick, kein
+ * Flussabgleich (sein Satz ersetzt den Richtungssatz), keine Einspeise-Grenze.
+ * Jeder Befund und jede Ruhe mit Begründung behalten die Karte.
+ */
+export function steuerungKurz(
+  view: ControlStripView | null,
+  guardVorhanden: boolean,
+): string | null {
+  if (!view || guardVorhanden) return null;
+  if (view.state !== 'healthy' || view.tone !== 'ok') return null;
+  if (view.execution || view.curtailment || view.outlook) return null;
+  if (!view.sentence.endsWith(`– ${VOM_WR_BESTAETIGT}`)) return null;
+  if (view.sentence.startsWith('Der Speicher pausiert')) return null;
+  const satz = VOM_WR_BESTAETIGT.charAt(0).toUpperCase() + VOM_WR_BESTAETIGT.slice(1);
+  return view.agoNote ? `${satz} · ${view.agoNote}` : satz;
 }
 
 /**

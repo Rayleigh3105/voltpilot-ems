@@ -567,6 +567,11 @@ export interface MobileRow {
   head: string;
   /** Die ruhige zweite Zeile; null = keine. */
   sub: string | null;
+  /**
+   * Die bestätigte Ausführung als eigene Zeile mit Haken (V-04:
+   * `control.steuerungKurz`); absent = keine.
+   */
+  status?: string | null;
 }
 
 /**
@@ -668,12 +673,16 @@ export function stickyHead(input: {
 }): StickyHead | null {
   const money = input.money;
   const status = input.status;
-  if (!money && !status) return null;
+  // V-04: ein GUTER Zustand steht am Telefon schon in der Kopfleiste
+  // („● Alles in Ordnung"); hier gekürzt („Alles läuft. Ihre Anlage …") war er
+  // nur Rauschen. Die Leiste nennt ihn deshalb nur, wenn er etwas meldet.
+  const meldet = status != null && status.tone !== 'ok' ? status : null;
+  if (!money && !meldet) return null;
   return {
     value: money?.value ?? null,
     label: money?.label ?? null,
-    status: status?.text ?? null,
-    tone: status?.tone ?? 'off',
+    status: meldet?.text ?? null,
+    tone: meldet?.tone ?? 'off',
   };
 }
 

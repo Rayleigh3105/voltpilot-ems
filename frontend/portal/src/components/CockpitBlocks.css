@@ -732,6 +732,22 @@
   color: var(--vp-text-muted, #64748b);
   overflow-wrap: anywhere;
 }
+/* V-04: die bestätigte Ausführung in der Fahrplan-Zeile (statt eigener
+   Steuerungs-Karte im Normalfall) - Haken + Wort, Farbe nie allein. */
+.vp-mob-row-status {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--vp-flow-batt-ink, #166534);
+  overflow-wrap: anywhere;
+}
+.vp-mob-row-status svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
 .vp-mob-row-badge {
   margin-left: 6px;
   padding: 1px 6px;

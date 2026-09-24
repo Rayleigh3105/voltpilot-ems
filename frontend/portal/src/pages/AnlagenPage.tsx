@@ -46,7 +46,7 @@ import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
 import { nextHourIndex, weatherWhy } from '../weather';
-import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook } from '../control';
+import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook, steuerungKurz } from '../control';
 import { curtailTruth, curtailTruthForSlot, exportGuardView } from '../curtailment';
 import { flowConflict, flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import { todaySlots } from '../schedule';
@@ -1407,6 +1407,10 @@ export function AnlageSeite({
   // selbst; der volle Chart lebt nur auf der Fahrplan-Seite (D7). Am Telefon
   // trägt die Zeile zusätzlich den Wetter-Satz — die Wetter-Kachel entfällt
   // dafür, und ohne erklärenden Satz erscheint gar nichts.
+  // V-04 (UX-Review 24.09.2026): im reinen Normalfall trägt am Telefon die
+  // Fahrplan-Zeile die Bestätigung, und die Steuerungs-Karte entfällt; jeder
+  // Befund behält die Karte (`steuerungKurz`).
+  const steuerungKurzSatz = isPhone ? steuerungKurz(controlView, guardView != null) : null;
   const fahrplanRow = (surface?.deepViews ?? []).includes('fahrplan') ? (
     <FahrplanBand
       plan={plan}
@@ -1417,6 +1421,7 @@ export function AnlageSeite({
       onOpen={() => onOpenSub('fahrplan')}
       compact={isPhone}
       weatherWhy={weatherWhyText}
+      bestaetigung={steuerungKurzSatz}
     />
   ) : null;
   // Die geschrumpfte Kopfzahl beim Scrollen: die zwei Anker (Geld + Zustand).
@@ -1709,7 +1714,7 @@ export function AnlageSeite({
     ) : null,
     fahrplan: fahrplanRow,
     steuerung:
-      isPhone && (controlView || guardView) ? (
+      isPhone && (controlView || guardView) && !(steuerungKurzSatz && fahrplanRow) ? (
         <ControlStrip view={controlView} variant="card" guard={guardView} />
       ) : null,
     strompreis: strompreisRow,

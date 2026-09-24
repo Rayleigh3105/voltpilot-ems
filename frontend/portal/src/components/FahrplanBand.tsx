@@ -57,6 +57,7 @@ export function FahrplanBand({
   onOpen,
   compact = false,
   weatherWhy = null,
+  bestaetigung = null,
 }: {
   plan: SchedulePlan | null;
   plantKind: PlantKind;
@@ -77,6 +78,12 @@ export function FahrplanBand({
    * Telefon zugunsten dieser einen Notiz).
    */
   weatherWhy?: string | null;
+  /**
+   * V-04: der Bestätigungs-Halbsatz der Steuerung (`control.steuerungKurz`) -
+   * nur in der kompakten Zeile, und nur wenn die Steuerungs-Karte dafür
+   * entfällt. null = keiner.
+   */
+  bestaetigung?: string | null;
 }) {
   const slots = plan?.slots ?? [];
   const hasPlan = slots.length > 0;
@@ -102,6 +109,7 @@ export function FahrplanBand({
         ? { head: KEIN_PLAN_TEXT, sub: null }
         : fahrplanZeile({ sentence, savedEur: saved, weatherWhy, eur: eurAmount });
     if (!row) return null;
+    if (bestaetigung && hasPlan && !failed) row.status = bestaetigung;
     return (
       <MobileRowCard
         icon="zap"

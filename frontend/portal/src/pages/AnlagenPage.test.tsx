@@ -1055,8 +1055,10 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     // gemessene Befund des Konzepts war „dreimal untereinander". Der
     // Sticky-Kopf trägt sie ebenfalls, ist aber `aria-hidden`, solange er
     // nicht ausgelöst wurde.
+    // Seit V-04 (UX-Review) entfällt der Sticky-Kopf ganz, wenn er nur einen
+    // guten Zustand wiederholen würde - dann gibt es erst recht keine Dopplung.
     const sticky = container.querySelector('.vp-mob-sticky');
-    expect(sticky?.getAttribute('aria-hidden')).toBe('true');
+    expect(sticky == null || sticky.getAttribute('aria-hidden') === 'true').toBe(true);
     // Die Karte trägt das Zeitraum-Segment UND die Ringe - beide Blöcke der
     // abgelösten Leiste, in EINER Karte direkt unterm Fluss. Seit P5 sind die
     // Ringe echte Ringe (kein zweites Chip-Vokabular über derselben Zahl).

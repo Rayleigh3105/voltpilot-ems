@@ -12,6 +12,7 @@ import {
   nextChargeStart,
   nextEngagement,
   planOutlook,
+  steuerungKurz,
 } from './control';
 import { CURTAIL_PLAN, curtailTruth } from './curtailment';
 import { slotWhy } from './fahrplanWhy';
@@ -801,5 +802,39 @@ describe('controlStrip: der Flussabgleich versöhnt „pausiert" mit dem Flussbi
     )!;
     expect(v.state).toBe('off');
     expect(v.sentence).not.toBe('WARN-TEXT');
+  });
+});
+
+
+/**
+ * UX-Review V-04 (24.09.2026): die Steuerungs-Karte darf am Telefon nur im
+ * reinen Normalfall der Fahrplan-Zeile weichen - jeder Befund behält sie.
+ */
+describe('steuerungKurz', () => {
+  it('fasst den bestätigten Lade-/Entladefall in einen Halbsatz', () => {
+    const v = controlStrip(status({}), NOW)!;
+    expect(steuerungKurz(v, false)).toBe(`Vom Wechselrichter bestätigt · ${v.agoNote}`);
+  });
+
+  it('behält die Karte bei Abweichung, Aus, Geräte- oder Einspeise-Befund', () => {
+    const abweichung = controlStrip(status({ allMatch: false, confirmedKw: -1.2 }), NOW)!;
+    expect(steuerungKurz(abweichung, false)).toBeNull();
+    const gesund = controlStrip(status({}), NOW)!;
+    expect(steuerungKurz(gesund, true)).toBeNull(); // Einspeise-Grenze (Guard) aktiv
+    expect(steuerungKurz({ ...gesund, execution: 'Das Gerät folgt dem Verbrauch.' }, false)).toBeNull();
+    expect(steuerungKurz({ ...gesund, curtailment: 'Die Einspeisung ist begrenzt.' }, false)).toBeNull();
+    expect(steuerungKurz({ ...gesund, tone: 'warn' }, false)).toBeNull();
+    expect(steuerungKurz(null, false)).toBeNull();
+  });
+
+  it('behält die Karte in der Ruhe - dort erklärt sie Ausblick und Grund', () => {
+    const ruhe = controlStrip(status({ commandedKw: 0, confirmedKw: 0 }), NOW)!;
+    expect(ruhe.sentence).toContain('pausiert');
+    expect(steuerungKurz(ruhe, false)).toBeNull();
+  });
+
+  it('behält die Karte, wenn der Flussabgleich den Satz ersetzt hat', () => {
+    const gesund = controlStrip(status({}), NOW)!;
+    expect(steuerungKurz({ ...gesund, sentence: 'Der Speicher lädt mehr als geplant.' }, false)).toBeNull();
   });
 });
