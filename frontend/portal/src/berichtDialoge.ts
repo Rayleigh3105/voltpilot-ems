@@ -31,6 +31,7 @@ import type {
 import { abzugAus, GELTUNG_WORT, gueltigerStand, MENGE_ART_WORT, type Abzug } from './berichtSeite';
 import katalog from './berichte/bericht-vorlagen.json';
 import { iso } from './bezugsPeriode';
+import { FEHLT_KENNZAHL, LEISTUNGSVERGLEICH } from './leistungsvergleichBericht';
 import { UEMS_BERICHTSSTAND, UEMS_BERICHTSVORLAGE, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_FASSUNG, UEMS_REVISION } from './glossar';
 import * as B from './uemsBericht';
 import { OHNE_ZAHL, TRENNER, uhr, zahlMitStellen } from './uemsErgebnis';
@@ -138,6 +139,9 @@ interface KatalogVorlage {
   name: string;
   geltung_art: Bericht['geltung_art'];
   zeitraum_art: Bericht['zeitraum_art'];
+  /** 1.4 (AP-17 IP-21a): gilt eine Vorlage für mehr als ein Paar, stehen alle hier — die Vorgabe vorn. */
+  geltung_arten?: Array<Bericht['geltung_art']>;
+  zeitraum_arten?: Array<Bericht['zeitraum_art']>;
   abschnitte: Array<{ schluessel: string; titel: string }>;
 }
 
@@ -151,6 +155,9 @@ export interface VorlageKarte {
   abschnitte: string;
   geltungArt: Bericht['geltung_art'];
   zeitraumArt: Bericht['zeitraum_art'];
+  /** Alle Geltungen und Zeiträume der Vorlage (`vorlage_passt`), die Vorgabe vorn. */
+  geltungArten: Array<Bericht['geltung_art']>;
+  zeitraumArten: Array<Bericht['zeitraum_art']>;
 }
 
 /**
@@ -160,10 +167,13 @@ export interface VorlageKarte {
 export const vorlageKarten = (rechte: BerichtRechte | null, standortIds: readonly string[]): VorlageKarte[] =>
   // AP-16 IP-25: die energetische Bewertung erscheint nur mit `bewertung.abrufen` (ihre eigene Kennung, §6.1).
   // AP-17 IP-21a: eine Vorlage ohne Leser bekommt keine Karte (seit IP-21b hat der Leistungsvergleich seinen Leser).
+  // AP-17 IP-24: eine Vorlage mit mehreren Geltungen (Leistungsvergleich) erscheint, wenn eine davon erlaubt ist.
   VORLAGEN.filter((v) => !B.OHNE_LESER.includes(v.schluessel)).filter((v) =>
-    v.geltung_art === 'unternehmen'
-      ? darf(rechte, 'anlegen', 'unternehmen', null, v.schluessel)
-      : standortIds.some((id) => darf(rechte, 'anlegen', 'standort', id)),
+    (v.geltung_arten ?? [v.geltung_art]).some((art) =>
+      art === 'unternehmen'
+        ? darf(rechte, 'anlegen', 'unternehmen', null, v.schluessel)
+        : standortIds.some((id) => darf(rechte, 'anlegen', 'standort', id)),
+    ),
   ).map((v) => ({
     schluessel: v.schluessel,
     name: v.name,
@@ -171,6 +181,8 @@ export const vorlageKarten = (rechte: BerichtRechte | null, standortIds: readonl
     abschnitte: v.abschnitte.filter((a) => a.schluessel !== 'kopf').map((a) => a.titel).join(TRENNER),
     geltungArt: v.geltung_art,
     zeitraumArt: v.zeitraum_art,
+    geltungArten: v.geltung_arten ?? [v.geltung_art],
+    zeitraumArten: v.zeitraum_arten ?? [v.zeitraum_art],
   }));
 
 export interface GeltungWahl {
@@ -272,18 +284,25 @@ export interface AnlegenWahl {
   zeitraum: string | null;
   /** Die abgewählten Kennzahlen (IDs); leer = alle gewählt. */
   abgewaehlt: readonly string[];
+  /** AP-17 IP-24: beim Leistungsvergleich Pflicht — die EINE Kennzahl (ID), sonst ohne Bedeutung. */
+  kennzahl?: string | null;
 }
 
-export type AnlegenFeld = 'vorlage' | 'geltung' | 'zeitraum';
+export type AnlegenFeld = 'vorlage' | 'geltung' | 'zeitraum' | 'kennzahl';
 
 export const anlegenPruefen = (w: AnlegenWahl): Partial<Record<AnlegenFeld, string>> => ({
   ...(w.vorlage ? {} : { vorlage: FEHLT_VORLAGE }),
   ...(w.geltungId ? {} : { geltung: FEHLT_GELTUNG }),
   ...(w.zeitraum ? {} : { zeitraum: FEHLT_ZEITRAUM }),
+  ...(w.vorlage === LEISTUNGSVERGLEICH && !w.kennzahl ? { kennzahl: FEHLT_KENNZAHL } : {}),
 });
 
 /** Der Körper von `POST /api/v1/berichte`; ohne Abwahl ohne das Feld — so bleibt das Anlegen, wie es war. */
 export const anlegenAnfrage = (w: AnlegenWahl, gueltigeKennzahlen: readonly string[]): BerichtAnlegen => {
+  // AP-17 IP-24: der Leistungsvergleich trägt genau eine Kennzahl und keine Abwahl (sonst 400).
+  if (w.vorlage === LEISTUNGSVERGLEICH) {
+    return { vorlage: w.vorlage, geltung_id: w.geltungId ?? '', zeitraum: w.zeitraum ?? '', kennzahl: w.kennzahl ?? '' };
+  }
   const abgewaehlt = w.abgewaehlt.filter((id) => gueltigeKennzahlen.includes(id));
   return {
     vorlage: w.vorlage ?? '',

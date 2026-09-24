@@ -31,6 +31,7 @@ import katalog from './berichte/bericht-vorlagen.json';
 import {
   UEMS_BERECHNUNG,
   UEMS_BERICHTE,
+  UEMS_LEISTUNGSVERGLEICH,
   UEMS_BERICHTSSTAND,
   UEMS_DATENSTAND,
   UEMS_ENTWURF,
@@ -256,8 +257,11 @@ const STAND_TON: Record<BerichtStandZeichen, BadgeTon> = {
   anstoss_verworfen: 'ok',
 };
 
-export const berichtTitel = (b: Pick<Bericht, 'zeitraum_art' | 'geltung_name' | 'zeitraum_text'>): string =>
-  [B.SAETZE[`vorlage_${b.zeitraum_art}`], b.geltung_name, b.zeitraum_text].filter((t): t is string => !!t).join(' ');
+export const berichtTitel = (b: Pick<Bericht, 'zeitraum_art' | 'geltung_name' | 'zeitraum_text'> & Partial<Pick<Bericht, 'vorlage'>>): string =>
+  // AP-17 IP-24: der Leistungsvergleich heißt nach seiner Vorlage, nicht nach der Art des Zeitraums („Monatsbericht“).
+  [b.vorlage === B.LEISTUNGSVERGLEICH ? UEMS_LEISTUNGSVERGLEICH : B.SAETZE[`vorlage_${b.zeitraum_art}`], b.geltung_name, b.zeitraum_text]
+    .filter((t): t is string => !!t)
+    .join(' ');
 
 export const listenKarte = (b: Bericht): ListenKarte => ({
   kennung: b.kennung,

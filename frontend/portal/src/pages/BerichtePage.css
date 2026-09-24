@@ -697,3 +697,18 @@ a.vp-br-kz-sprung:focus-visible {
     padding-bottom: 12px;
   }
 }
+
+/* AP-17 IP-24: der Stand-Satz des Leistungsvergleichs (§5.8) — ein Satz, bricht um, kein Querlauf bei 375 px. */
+.vp-lv {
+  display: grid;
+  gap: var(--space-4, 16px);
+  min-width: 0;
+}
+.vp-lv-stand {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.vp-lv .vp-bbv {
+  min-width: 0;
+}

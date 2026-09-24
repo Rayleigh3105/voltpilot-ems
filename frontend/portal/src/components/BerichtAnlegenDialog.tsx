@@ -35,6 +35,16 @@ import {
   type AnlegenFeld,
   type BerichtRechte,
 } from '../berichtDialoge';
+import {
+  KEINE_ENERGIELEISTUNG,
+  KENNZAHL_WAHL_HINWEIS,
+  KENNZAHL_WAHL_LADEFEHLER,
+  KENNZAHL_WAHL_TITEL,
+  kennzahlWahlen,
+  LEISTUNGSVERGLEICH,
+  ZEITRAUM_ART_TITEL,
+  ZEITRAUM_ART_WORT,
+} from '../leistungsvergleichBericht';
 import { VpPicker } from './VpPicker';
 import './BerichtDialoge.css';
 
@@ -80,6 +90,9 @@ export function BerichtAnlegenDialog({
   const [geltungId, setGeltungId] = useState<string | null>(null);
   const [zeitraum, setZeitraum] = useState<string | null>(null);
   const [abgewaehlt, setAbgewaehlt] = useState<string[]>([]);
+  // AP-17 IP-24: der Leistungsvergleich wählt die Art des Zeitraums und genau eine Kennzahl.
+  const [zeitraumArt, setZeitraumArt] = useState<Bericht['zeitraum_art'] | null>(null);
+  const [kennzahl, setKennzahl] = useState<string | null>(null);
   const [versucht, setVersucht] = useState(false);
   const [fehler, setFehler] = useState<{ satz: string; kennung: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -110,23 +123,32 @@ export function BerichtAnlegenDialog({
   // solange die Person nichts anderes gewählt hat.
   const karten = daten
     ? vorlageKarten(rechte, daten.standorte.map((s) => s.id))
-        .filter((k) => standortId === null || k.geltungArt === 'standort')
+        .filter((k) => standortId === null || k.geltungArten.includes('standort'))
         .filter((k) => nurVorlage === null || k.schluessel === nurVorlage)
     : [];
   const karte = karten.find((k) => k.schluessel === vorlage) ?? karten[0] ?? null;
+  const lv = karte?.schluessel === LEISTUNGSVERGLEICH;
+  // Eine Vorlage mit mehreren Geltungen (Leistungsvergleich) bietet Unternehmen und Standorte in einer Wahl an.
   const wahlen =
     karte && daten
-      ? geltungen(karte.geltungArt, daten.standorte, daten.unternehmen, rechte, karte.schluessel).filter((g) => standortId === null || g.id === standortId)
+      ? (lv ? karte.geltungArten : [karte.geltungArt])
+          .flatMap((art) => geltungen(art, daten.standorte, daten.unternehmen, rechte, karte.schluessel).map((g) => ({ ...g, art })))
+          .filter((g) => standortId === null || g.id === standortId)
       : [];
   const geltung = wahlen.find((g) => g.id === geltungId) ?? (wahlen.length === 1 ? wahlen[0] : null);
+  const geltungArt = geltung?.art ?? karte?.geltungArt ?? null;
   const zone = geltung?.zone ?? ZONE_VORGABE;
   const jetztMs = jetzt();
-  const zeitraeume = karte ? zeitraumWahlen(karte.zeitraumArt, jetztMs, zone) : [];
-  const zeitraumWert = karte ? (zeitraeume.some((z) => z.id === zeitraum) ? zeitraum : zeitraumVorgabe(karte.zeitraumArt, jetztMs, zone)) : null;
-  const kennzahlen = karte && geltung && karte.schluessel !== BEWERTUNG_VORLAGE && daten?.kennzahlen ? kennzahlenDerGeltung(daten.kennzahlen, karte.geltungArt, geltung.id) : [];
-  const vorschau = karte && zeitraumWert ? zeitraumVorschau(karte.zeitraumArt, zeitraumWert, zone, jetztMs) : null;
+  const zArt = karte ? (lv && zeitraumArt && karte.zeitraumArten.includes(zeitraumArt) ? zeitraumArt : karte.zeitraumArt) : null;
+  const zeitraeume = zArt ? zeitraumWahlen(zArt, jetztMs, zone) : [];
+  const zeitraumWert = zArt ? (zeitraeume.some((z) => z.id === zeitraum) ? zeitraum : zeitraumVorgabe(zArt, jetztMs, zone)) : null;
+  const kennzahlen =
+    karte && geltung && !lv && karte.schluessel !== BEWERTUNG_VORLAGE && daten?.kennzahlen ? kennzahlenDerGeltung(daten.kennzahlen, karte.geltungArt, geltung.id) : [];
+  const lvKennzahlen = lv && geltung && daten?.kennzahlen ? kennzahlWahlen(daten.kennzahlen, geltungArt, geltung.id) : [];
+  const kennzahlWert = lvKennzahlen.some((k) => k.id === kennzahl) ? kennzahl : null;
+  const vorschau = zArt && zeitraumWert ? zeitraumVorschau(zArt, zeitraumWert, zone, jetztMs) : null;
 
-  const wahl = { vorlage: karte?.schluessel ?? null, geltungId: geltung?.id ?? null, zeitraum: zeitraumWert, abgewaehlt };
+  const wahl = { vorlage: karte?.schluessel ?? null, geltungId: geltung?.id ?? null, zeitraum: zeitraumWert, abgewaehlt, kennzahl: kennzahlWert };
   const pruefung = anlegenPruefen(wahl);
   const zeigen = versucht ? pruefung : {};
 
@@ -140,7 +162,7 @@ export function BerichtAnlegenDialog({
     if (busy || !daten) return;
     setVersucht(true);
     setFehler(null);
-    const erstes = (['vorlage', 'geltung', 'zeitraum'] as AnlegenFeld[]).find((f) => pruefung[f]);
+    const erstes = (['vorlage', 'geltung', 'zeitraum', 'kennzahl'] as AnlegenFeld[]).find((f) => pruefung[f]);
     if (erstes) {
       fokus(erstes);
       return;
@@ -225,6 +247,17 @@ export function BerichtAnlegenDialog({
               )
             )}
 
+            {karte && lv && karte.zeitraumArten.length > 1 && (
+              <VpPicker
+                id={`${basis}-zeitraum-art`}
+                label={ZEITRAUM_ART_TITEL}
+                options={karte.zeitraumArten.map((a) => ({ value: a, label: ZEITRAUM_ART_WORT[a] }))}
+                value={zArt}
+                onChange={(a) => setZeitraumArt(a as Bericht['zeitraum_art'])}
+                search="nie"
+              />
+            )}
+
             {karte && (
               <VpPicker
                 id={`${basis}-zeitraum`}
@@ -236,8 +269,52 @@ export function BerichtAnlegenDialog({
               />
             )}
 
+            {/* AP-17 IP-24: der Leistungsvergleich wählt genau eine Energieleistungskennzahl (Pflicht, sonst 400). */}
+            {karte && geltung && lv && (
+              <fieldset className="vp-bd-gruppe" data-testid="bericht-anlegen-kennzahl">
+                <legend>{KENNZAHL_WAHL_TITEL}</legend>
+                {daten.kennzahlen === null ? (
+                  <p className="vp-bd-hinweis">{KENNZAHL_WAHL_LADEFEHLER}</p>
+                ) : lvKennzahlen.length === 0 ? (
+                  <p className="vp-bd-hinweis" data-testid="bericht-anlegen-kennzahl-leer">
+                    {KEINE_ENERGIELEISTUNG}
+                  </p>
+                ) : (
+                  <>
+                    <p className="vp-bd-hinweis">{KENNZAHL_WAHL_HINWEIS}</p>
+                    <ul className="vp-bd-kennzahlen" role="radiogroup" aria-label={KENNZAHL_WAHL_TITEL}>
+                      {lvKennzahlen.map((k, i) => (
+                        <li key={k.id}>
+                          <label className="vp-bd-check">
+                            <input
+                              id={i === 0 ? `${basis}-kennzahl` : undefined}
+                              type="radio"
+                              name={`${basis}-kennzahl`}
+                              value={k.id}
+                              checked={kennzahlWert === k.id}
+                              onChange={() => setKennzahl(k.id)}
+                            />
+                            <span>
+                              <span className="vp-bd-kz">{k.kennzeichen}</span>
+                              {k.name}
+                              <small> · {k.basis}</small>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {zeigen.kennzahl && (
+                  <p className="vp-bd-feldfehler" role="alert">
+                    {zeigen.kennzahl}
+                  </p>
+                )}
+              </fieldset>
+            )}
+
             {/* Die energetische Bewertung (AP-16) zeigt keine Kennzahlen — es gibt nichts abzuwählen. */}
-            {karte && geltung && karte.schluessel !== BEWERTUNG_VORLAGE && (
+            {karte && geltung && !lv && karte.schluessel !== BEWERTUNG_VORLAGE && (
               <fieldset className="vp-bd-gruppe" data-testid="bericht-anlegen-kennzahlen">
                 <legend>{KENNZAHLEN_TITEL}</legend>
                 {daten.kennzahlen === null ? (

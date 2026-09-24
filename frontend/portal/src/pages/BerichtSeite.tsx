@@ -39,12 +39,14 @@ import { AnstossVerwerfenDialog } from '../components/AnstossVerwerfenDialog';
 import { BerichtFreigebenDialog } from '../components/BerichtFreigebenDialog';
 import { BerichtVergleichDialog } from '../components/BerichtVergleichDialog';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
+import { LeistungsvergleichBericht } from '../components/LeistungsvergleichBericht';
 import { ZeitSegment } from '../components/HistorieWelt';
 import { MiniBarSpark } from '../components/MiniChart';
 import { ErrorState, Skeleton } from '../components/States';
 import { WerteKarte } from '../components/WerteKarte';
 import { TRENNER } from '../uemsErgebnis';
 import { useBerichtRechte } from '../useBerichtRechte';
+import { istLeistungsvergleich, lvAbzugAus } from '../leistungsvergleichBericht';
 
 /**
  * Die Berichtsseite (UEMS AP-12 IP-13, §5.1–§5.6): Reiter „Nr. 1 · Nr. 2 · Entwurf“ (vorgewählt der gültige Stand),
@@ -183,7 +185,9 @@ export function BerichtSeite({
   const wahlen = standWahl(detail);
   const aktuell = ansicht !== null && ansicht.id === wahl ? ansicht.ansicht : null;
   const kopf = aktuell ? seitenKopf(detail, aktuell, jetzt()) : null;
-  const inhalt = aktuell
+  // AP-17 IP-24: der Leistungsvergleich trägt seine eigenen acht Abschnitte (`LeistungsvergleichBericht`).
+  const lv = istLeistungsvergleich(b);
+  const inhalt = aktuell && !lv
     ? abschnitte(abzugAus(aktuell.art === 'stand' ? aktuell.stand.abzug : aktuell.entwurf.abzug), (k) => namen.get(k) ?? null)
     : null;
   const knoepfe = onAbruf ? ausgabeKnoepfe(b, aktuell, darfNachLesen(b)) : [];
@@ -261,7 +265,7 @@ export function BerichtSeite({
       )}
       {ansichtFehler?.id === wahl ? (
         <ErrorState message={ansichtFehler.satz} onRetry={() => setVersuch((v) => v + 1)} />
-      ) : !kopf || !inhalt ? (
+      ) : !kopf || !aktuell || (!lv && !inhalt) ? (
         <div aria-busy="true">
           <Skeleton height={320} />
         </div>
@@ -319,9 +323,19 @@ export function BerichtSeite({
               </div>
             )}
           </section>
-          {inhalt.abschnitte.map((a) => (
-            <AbschnittBlock key={`${wahl}-${a.schluessel}`} abschnitt={a} heuteLaden={a.art === 'messstellen' ? heuteLaden : null} />
-          ))}
+          {lv ? (
+            <LeistungsvergleichBericht
+              key={wahl}
+              abzug={lvAbzugAus(aktuell.art === 'stand' ? aktuell.stand.abzug : aktuell.entwurf.abzug)}
+              detail={detail}
+              stand={aktuell.art === 'stand' ? aktuell.stand : null}
+              rechte={rechteJetzt}
+            />
+          ) : (
+            inhalt?.abschnitte.map((a) => (
+              <AbschnittBlock key={`${wahl}-${a.schluessel}`} abschnitt={a} heuteLaden={a.art === 'messstellen' ? heuteLaden : null} />
+            ))
+          )}
         </>
       )}
       {verlauf.length > 0 && (

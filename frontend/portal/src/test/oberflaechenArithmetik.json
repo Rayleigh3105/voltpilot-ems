@@ -453,6 +453,7 @@
         "./glossar:UEMS_ENTWURF",
         "./glossar:UEMS_FASSUNG",
         "./glossar:UEMS_KENNZAHL",
+        "./glossar:UEMS_LEISTUNGSVERGLEICH",
         "./glossar:UEMS_MESSSTELLE",
         "./glossar:UEMS_PRUEFSUMME",
         "./glossar:UEMS_VERSION",
@@ -484,7 +485,7 @@
         "standWahl: a.nr - b.nr",
         "verlaufDerStaende: b.nr - a.nr"
       ],
-      "grund": "Anzeige, Versionsnummern und Sortierung (Ausnahme 5). PR 954 (Tagesverlauf im Bericht) ergänzt RICHTUNGSPAAR aus uemsMessstelle: eine Wort-Tabelle für die Beschriftung laden/entladen, keine Rechnung; i++ ist der Listenindex der Gruppierung (Ausnahme 2)."
+      "grund": "Anzeige, Versionsnummern und Sortierung (Ausnahme 5). PR 954 (Tagesverlauf im Bericht) ergänzt RICHTUNGSPAAR aus uemsMessstelle: eine Wort-Tabelle für die Beschriftung laden/entladen, keine Rechnung; i++ ist der Listenindex der Gruppierung (Ausnahme 2). AP-17 IP-24 ergänzt UEMS_LEISTUNGSVERGLEICH aus glossar: ein Wort für den Titel, keine Rechnung."
     },
     "zaehlerwechsel.ts": {
       "importe": [

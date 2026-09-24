@@ -138,7 +138,7 @@ export function BezugsbasisVergleich({ kennzahlId }: { kennzahlId: string }) {
 }
 
 /** Der Zeitraum (U5): Σ gemessen, Σ erwartet, Δ, Urteil mit Band und der Satz des Lesers. */
-function ZeitraumKopf({ z }: { z: ZeitraumBild }) {
+export function ZeitraumKopf({ z }: { z: ZeitraumBild }) {
   return (
     <div className="vp-kz-block vp-bbv-zeitraum" data-testid="vergleich-zeitraum">
       <h2>
@@ -199,7 +199,7 @@ function Kennzeichen({ liste }: { liste: string[] }) {
  * Je Monat eine Zeile: gemessen (mit Version), die rohe Hälfte ohne Urteil (U1) und die bereinigte Hälfte; darunter der
  * Satz des Lesers. Ein Monat ohne Vergleich trägt statt der bereinigten Zahlen den Satz des Lesers (Grund statt Zahl).
  */
-function MonateTafel({ monate }: { monate: MonatBild[] }) {
+export function MonateTafel({ monate }: { monate: MonatBild[] }) {
   return (
     <table className="vp-bbv-tafel" data-testid="vergleich-monate">
       <thead>

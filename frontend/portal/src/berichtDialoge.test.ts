@@ -257,14 +257,16 @@ describe('Bericht anlegen (§5.1, V1–V5, Q4)', () => {
   ];
   const UNTERNEHMEN = { id: FIXTURE_IDS.u, name: 'Kunststoffwerk Ahrenberg GmbH', zeitzone: ZONE };
 
-  it('Vorlage-Karten: fünf für Ines (seit AP-17 IP-21b mit dem Leistungsvergleich); Peter nur die zwei des Standorts — die des Unternehmens sind gar nicht da (§5.5)', () => {
+  it('Vorlage-Karten: fünf für Ines (seit AP-17 IP-21b mit dem Leistungsvergleich); Peter die zwei des Standorts und den Leistungsvergleich (am Standort) — die des Unternehmens sind gar nicht da (§5.5)', () => {
     const ids = STANDORTE.map((s) => s.id);
     const ines = vorlageKarten(INES, ids);
     expect(ines.map((k) => k.schluessel)).toEqual(['monatsbericht_standort', 'jahresbericht_standort', 'monatsbericht_unternehmen', 'jahresbericht_unternehmen', 'leistungsvergleich']);
     expect(ines[0]).toMatchObject({ name: 'Monatsbericht Standort', fassung: 'Fassung 1', geltungArt: 'standort', zeitraumArt: 'monat' });
     expect(ines[0].abschnitte).not.toContain('Kopf');
     expect(ines[0].abschnitte).toContain('Quellenverzeichnis');
-    expect(vorlageKarten(PETER, ids).map((k) => k.geltungArt)).toEqual(['standort', 'standort']);
+    // AP-17 IP-24: der Leistungsvergleich gilt auch am Standort — Peter legt ihn für Werk Lindach an (V2, `vorlage_passt`).
+    expect(vorlageKarten(PETER, ids).map((k) => k.schluessel)).toEqual(['monatsbericht_standort', 'jahresbericht_standort', 'leistungsvergleich']);
+    expect(vorlageKarten(PETER, ids).map((k) => k.geltungArten.includes('standort'))).toEqual([true, true, true]);
     expect(vorlageKarten(CLAUDIA, ids)).toEqual([]);
     expect(vorlageKarten(null, ids)).toEqual([]);
   });

@@ -1819,11 +1819,13 @@ const KENNZAHL_BESTAND: string[] = [
   'components/WidgetGrid.tsx', // alt
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
+  'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
   'portfolioCockpit.ts', // alt
   'test/kennzahlAnlegenFixtures.ts', // neu: die Fixture spiegelt genau diese Ablehnung
+  'test/leistungsvergleichFixtures.ts', // neu: die Ablehnung `basis_fehlt` und die Namen der Kennzahlen (AP-17 IP-24)
   'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
   'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
 ];
