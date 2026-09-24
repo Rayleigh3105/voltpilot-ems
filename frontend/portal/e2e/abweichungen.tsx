@@ -2,20 +2,32 @@ import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { api } from '../src/api';
 import { keycloak } from '../src/auth';
+import { benutzerApi } from '../src/benutzer';
+import { heute } from '../src/bewertung';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
 import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell } from '../src/ebenenNav';
 import { darfAnsehen } from '../src/energieziele';
-import { energiezielRoute, hashForRoute, kennzahlRoute, pageRoute, parseRoute, verbesserungRoute, type Route } from '../src/nav';
+import {
+  abweichungRoute,
+  energiezielRoute,
+  hashForRoute,
+  kennzahlRoute,
+  massnahmeRoute,
+  pageRoute,
+  parseRoute,
+  verbesserungRoute,
+  type Route,
+} from '../src/nav';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { VerbesserungBereich } from '../src/pages/VerbesserungBereich';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
-import { heute } from '../src/bewertung';
-import { abweichungBuehne } from '../src/test/abweichungFixtures';
+import { abweichungBuehne, AW_IDS, type AbweichungLage } from '../src/test/abweichungFixtures';
 import { BB_IDS, bezugsbasisBuehne } from '../src/test/bezugsbasisFixtures';
-import { EZ_IDS, energiezielBuehne, type EnergiezielLage } from '../src/test/energiezielFixtures';
+import { energiezielBuehne } from '../src/test/energiezielFixtures';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
+import { kontenAhrenberg, massnahmeBuehne, vergleichKz4 } from '../src/test/massnahmeFixtures';
 import { rechteSeed } from '../src/test/rollenFixtures';
 import { werkAhrenberg, werkLindach } from '../src/test/standorteFixtures';
 import { unterstuetzungApi } from '../src/unterstuetzung';
@@ -29,26 +41,38 @@ import '../designsystem/components/shell/shell.css';
 import '../src/index.css';
 
 /**
- * Bühne des Bereichs „Ziele und Maßnahmen“ (UEMS AP-18 IP-8): die ECHTE `AppShell` mit der ECHTEN Leiste und den
- * ECHTEN Reitern (`PortfolioTabs`) — dieselben reinen Funktionen wie `App.tsx` — und darin der ECHTE
- * `VerbesserungBereich` bzw. die ECHTE Kennzahl-Seite von KZ-0004 (BB-0001 Fassung 2 freigegeben, `bezugsbasisBuehne`
- * Lage `modell`) mit „Energieziel setzen“. Die Routen spielt `energiezielBuehne` (`src/test/energiezielFixtures.ts`).
+ * Bühne der Auffälligkeiten und Abweichungen (UEMS AP-18 IP-18): die ECHTE `AppShell` mit den ECHTEN Reitern und darin
+ * die ECHTE Kennzahl-Seite von KZ-0004 (Reiter „Vergleich mit Bezugsbasis“ mit der Vermerk-Zeile) bzw. der ECHTE
+ * `VerbesserungBereich` (Register „Abweichungen“, Abweichungs-Seite, von dort „Maßnahme anlegen“ und die
+ * Maßnahmen-Seite). Die Routen spielen `abweichungBuehne` (`src/test/abweichungFixtures.ts`, R1/R2/R8/R11),
+ * `massnahmeBuehne('leer')` (die neue Maßnahme), `energiezielBuehne` und `bezugsbasisBuehne('modell')`; der Vergleich
+ * zeigt November 2027 bis Februar 2028 (R2). Der Tag der Routen ist der Tag der Uhr (Playwright `page.clock`).
  *
- * Adresse: `?person=IK|JW|CB` (Vorgabe IK) · `&lage=leer|juli|faellig|beantragt|bewertet` (Vorgabe leer) ·
- * `&vieraugen=1` (bewerten wird ein Antrag) · `&seite=kennzahl` öffnet KZ-0004 · `&ez=1` öffnet EZ-2028-0001.
- * Eigene Bühne, keine geteilte Datei wird angefasst.
+ * Adresse: `?lage=vermerk|offen|register|leer` (Vorgabe vermerk) · `&seite=kennzahl` öffnet KZ-0004 · `&aw=1|2026`
+ * öffnet AW-2028-0001 bzw. AW-2026-0001 · sonst das Register. Eigene Bühne, keine geteilte Datei wird angefasst.
  */
 const params = new URLSearchParams(location.search);
-const person = params.get('person') ?? 'IK';
-const LAGEN: EnergiezielLage[] = ['leer', 'juli', 'faellig', 'beantragt', 'bewertet'];
-const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'leer';
-const me = rechteSeed(person).me;
+const LAGEN: AbweichungLage[] = ['leer', 'vermerk', 'offen', 'register'];
+const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'vermerk';
+const tag = heute();
+const me = rechteSeed('IK').me;
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
-Object.assign(api, bezugsbasisBuehne('modell'), energiezielBuehne(lage, params.get('vieraugen') === '1', me.kennung!, me.name!));
-// IP-18: der Reiter „Abweichungen“ und die Vermerk-Zeile lesen die Routen von IP-16 — hier ohne Vermerk, ohne Abweichung.
-Object.assign(api, abweichungBuehne('leer', heute()));
+Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
+Object.assign(
+  api,
+  bezugsbasisBuehne('modell'),
+  energiezielBuehne('juli', false, me.kennung!, me.name!),
+  massnahmeBuehne('leer', tag, me.name!),
+  abweichungBuehne(lage, tag, me.name!),
+  {
+    standorte: async () => ({ stichtag: tag, standorte: [] }),
+    // R2: der Reiter liest ohne Wahl November 2027 bis Februar 2028; die Vorschau „Ausgangslage“ die gewählten Monate.
+    bezugsbasisVergleich: async (_id: string, wahl: { von?: string; bis?: string } = {}) =>
+      vergleichKz4(wahl.von ?? '2027-11', wahl.bis ?? (wahl.von ? wahl.von : '2028-02')),
+  },
+);
 
 const lesemodell: EbenenLesemodell = {
   standorte: [werkAhrenberg(), werkLindach()],
@@ -59,12 +83,13 @@ const lesemodell: EbenenLesemodell = {
 const UNTERNEHMEN = { art: 'unternehmen' } as const;
 
 if (!location.hash.startsWith('#/portfolio/')) {
+  const aw = params.get('aw');
   const ziel =
     params.get('seite') === 'kennzahl'
       ? kennzahlRoute(BB_IDS.kz4)
-      : params.get('ez') === '1'
-        ? energiezielRoute(EZ_IDS.ez1)
-        : verbesserungRoute();
+      : aw
+        ? abweichungRoute(aw === '2026' ? AW_IDS.aw2026 : AW_IDS.aw1)
+        : verbesserungRoute('abweichungen');
   history.replaceState(null, '', hashForRoute(ziel));
 }
 
@@ -121,10 +146,14 @@ function Ansicht() {
         <VerbesserungBereich
           reiter={route.verbesserungReiter ?? 'energieziele'}
           energiezielId={route.energiezielId ?? null}
+          massnahmeId={route.massnahmeId ?? null}
+          abweichungId={route.abweichungId ?? null}
           onReiter={(r) => navigate(verbesserungRoute(r))}
           onOeffnen={(id) => navigate(energiezielRoute(id))}
           onListe={() => navigate(verbesserungRoute())}
           onKennzahl={(id) => navigate(kennzahlRoute(id))}
+          onMassnahme={(id) => navigate(massnahmeRoute(id))}
+          onAbweichung={(id) => navigate(abweichungRoute(id))}
         />
       ) : route.page === 'portfolio-kennzahlen' ? (
         <KennzahlenPage
@@ -134,7 +163,7 @@ function Ansicht() {
           zone="Europe/Berlin"
         />
       ) : (
-        <p>Diese Bühne zeigt nur Ziele und Maßnahmen.</p>
+        <p>Diese Bühne zeigt nur Kennzahlen, Ziele und Maßnahmen.</p>
       )}
     </AppShell>
   );

@@ -1846,6 +1846,7 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
 // Sortiert wie der Vergleich. „alt“ = das ALTE Wort (AP-11 W7, Kachel oder Aggregat — umzubenennen, die Eigene
 // Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
 const KENNZAHL_BESTAND: string[] = [
+  'abweichungen.ts', // neu: eine Abweichung zitiert genau eine Kennzahl (AP-18 IP-18, A3; Spalte, Filter, Ablehnungen)
   'berichtDialoge.ts', // neu: „Bericht anlegen“ wählt Kennzahlen ab (AP-12 IP-14, V3)
   'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
   'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
@@ -2746,6 +2747,12 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     'components/MassnahmenRegister.tsx',
     'components/MassnahmeDialoge.tsx',
     'pages/MassnahmeSeite.tsx',
+    // IP-18: Vermerk-Zeile und Antwort-Dialog in der Vergleichs-Fläche, Register „Abweichungen“, Abweichungs-Seite und
+    // ihre Dialoge (Ursache-Aussage, Frist, Verantwortlich, Abschluss mit Sprung in „Maßnahme anlegen“).
+    'components/AuffaelligkeitZeile.tsx',
+    'components/AbweichungenRegister.tsx',
+    'components/AbweichungDialoge.tsx',
+    'pages/AbweichungSeite.tsx',
   ];
   const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
   const verbesserungFlaechen = () => [

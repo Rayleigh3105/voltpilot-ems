@@ -10,6 +10,7 @@ import { EnergiezielSeite } from './pages/EnergiezielSeite';
 import { VerbesserungBereich } from './pages/VerbesserungBereich';
 import { setSelbstauskunft } from './rollen';
 import { bb1, bb1Fassung, kz4 } from './test/bezugsbasisFixtures';
+import { abweichungBuehne } from './test/abweichungFixtures';
 import { energiezielBuehne, EZ_IDS, ez2028, STAND_SATZ_JULI, standEnde, standJuli, standLeer } from './test/energiezielFixtures';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
@@ -144,12 +145,14 @@ describe('die Flächen gegen R4/R10', () => {
     expect(await screen.findByText(UEMS_VERBESSERUNG_SAETZE.leer())).toBeTruthy();
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
-  it('Abweichungen: ehrlicher Leer-Satz ohne Knopf, mit Grenz-Satz (Maßnahmen: IP-13)', () => {
+  it('Abweichungen (IP-18): das Register — leer mit Satz und Grenz-Satz, ohne Knopf', async () => {
     setSelbstauskunft(rechteSeed('IK').me);
+    Object.assign(api, abweichungBuehne('leer', '2028-01-15'));
     bereich('abweichungen');
-    const leer = screen.getByTestId('verbesserung-leer-abweichungen');
-    expect(within(leer).queryByRole('button')).toBeNull();
-    expect(within(leer).getByText(UEMS_NORMGRENZE)).toBeTruthy();
+    const register = await screen.findByTestId('abweichungen-register');
+    expect(within(register).getByTestId('abweichungen-leer')).toBeTruthy();
+    expect(within(register).queryByRole('button')).toBeNull();
+    expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
   it('Register R4: Kennzahl, Zielwert, Zielperiode, Stand, Verantwortlich, Zustand', async () => {
     setSelbstauskunft(rechteSeed('IK').me);

@@ -270,7 +270,7 @@ export function KennzahlSeite({
       {bbAn && reiter === 'bezugsbasis' ? (
         <BezugsbasisReiter kennzahl={k} lage={bbLage} zone={zone} onNeu={() => setBbVersuch((v) => v + 1)} />
       ) : bbAn && reiter === 'vergleich' ? (
-        <BezugsbasisVergleich kennzahlId={k.id} />
+        <BezugsbasisVergleich kennzahlId={k.id} standort={k.standort_id} />
       ) : (
       <>
       {wahl.optionen.length > 0 && art && (

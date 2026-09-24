@@ -83,7 +83,7 @@ const begruendung = (page: Page) => page.locator('.vp-modal').getByLabel('Begrü
 
 for (const breite of [375, 1440]) {
   test.describe(`Energieziele bei ${breite} px`, () => {
-    test('leerer Zustand (R13): Satz und Grenz-Satz; der Reiter Abweichungen ehrlich leer', async ({ page }) => {
+    test('leerer Zustand (R13): Satz und Grenz-Satz; das Register Abweichungen leer', async ({ page }) => {
       await oeffne(page, 'lage=leer', breite, AM_20_12_2027);
       await expect(page.getByTestId('energieziele-leer')).toHaveText(LEER);
       await expect(page.getByTestId('verbesserung-bereich').getByText(GRENZE)).toBeVisible();
@@ -93,8 +93,9 @@ for (const breite of [375, 1440]) {
       ohneQuerlauf(m, 'leer');
       await ablegen(page, `leer-${breite}`, true);
       await page.getByTestId('verbesserung-reiter-abweichungen').click();
-      await expect(page.getByTestId('verbesserung-leer-abweichungen')).toBeVisible();
-      await expect(page.getByTestId('verbesserung-leer-abweichungen').getByRole('button')).toHaveCount(0);
+      // IP-18: das Register „Abweichungen“ — ohne Abweichung der Leer-Satz, ohne Knopf (eröffnet wird an der Kennzahl).
+      await expect(page.getByTestId('abweichungen-leer')).toBeVisible();
+      await expect(page.getByTestId('abweichungen-register').getByRole('button')).toHaveCount(0);
       expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/verbesserung/abweichungen');
     });
 

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { useEffect, useState, type ReactNode } from 'react';
+import { vermerkeJeMonat } from '../abweichungen';
+import { api, type Auffaelligkeit } from '../api';
 import {
   monatsOptionen,
   VERGLEICH_BASIS_WAHL,
@@ -21,6 +22,8 @@ import {
   type ZeitraumBild,
 } from '../bezugsbasisVergleich';
 import { UEMS_NORMGRENZE } from '../glossar';
+import { useRollen } from '../rollen';
+import { AbweichungVonHand, VermerkZeile } from './AuffaelligkeitZeile';
 import { ErrorState, Skeleton } from './States';
 import { VpPicker } from './VpPicker';
 import './BezugsbasisVergleich.css';
@@ -33,14 +36,37 @@ import './BezugsbasisVergleich.css';
  * Lesers) nebeneinander; ein Monat, den die Bezugsbasis nicht trägt, zeigt den Satz des Lesers statt der Zahlen. Darüber
  * die Basis-Zeile und der Zeitraum (Σ ÷ Σ, U5), darunter die Stände (S5) und der Grenz-Satz. 375 px: Monate als Karten;
  * ab 960 px eine Tafel.
+ *
+ * AP-18 IP-18 (§5.2, A1–A3): wer `verbesserung.ansehen` hat, sieht am Monat die Vermerk-Zeile der Auffälligkeiten
+ * (`api.auffaelligkeiten`) mit Antwort-Dialog und an jeder Zeile mit Vergleich „Abweichung eröffnen“ von Hand. Ohne
+ * Recht oder ohne Antwort der Route bleibt die Fläche, wie sie war.
  */
-export function BezugsbasisVergleich({ kennzahlId }: { kennzahlId: string }) {
+export function BezugsbasisVergleich({ kennzahlId, standort }: { kennzahlId: string; standort?: string | null }) {
   const [wahl, setWahl] = useState<BezugsbasisVergleichWahl>({});
   const [antwort, setAntwort] = useState<Vergleich | null>(null);
   const [fehler, setFehler] = useState(false);
   const [versuch, setVersuch] = useState(0);
   const [basen, setBasen] = useState<BezugsbasisDerKennzahl[]>([]);
   const [entwurf, setEntwurf] = useState<{ von: string; bis: string } | null>(null);
+  const [vermerke, setVermerke] = useState<Auffaelligkeit[] | null>(null);
+  const [vermerkStand, setVermerkStand] = useState(0);
+  const rollen = useRollen();
+  const verbesserung = rollen.darf('verbesserung.ansehen', standort === undefined ? rollen.standort : standort);
+
+  useEffect(() => {
+    if (!verbesserung) return;
+    let aktiv = true;
+    // Ohne Antwort der Route (kein Recht, kein Vermerk-Weg): keine Vermerk-Zeile, der Vergleich bleibt, wie er ist.
+    Promise.resolve()
+      .then(() => api.auffaelligkeiten(kennzahlId))
+      .then(
+        (l) => aktiv && setVermerke(l.vermerke),
+        () => aktiv && setVermerke(null),
+      );
+    return () => {
+      aktiv = false;
+    };
+  }, [kennzahlId, verbesserung, vermerkStand]);
 
   useEffect(() => {
     let aktiv = true;
@@ -124,7 +150,25 @@ export function BezugsbasisVergleich({ kennzahlId }: { kennzahlId: string }) {
             />
           </div>
           <ZeitraumKopf z={bild.zeitraum} />
-          <MonateTafel monate={bild.monate} />
+          <MonateTafel
+            monate={bild.monate}
+            zusatz={
+              verbesserung
+                ? (m) => {
+                    const hier = vermerke ? vermerkeJeMonat(vermerke).get(m.periode) : undefined;
+                    if (!hier && m.bereinigt.art !== 'zahl') return null;
+                    return (
+                      <>
+                        {hier && <VermerkZeile vermerke={hier} alle={vermerke ?? []} onNeu={() => setVermerkStand((x) => x + 1)} />}
+                        {m.bereinigt.art === 'zahl' && (
+                          <AbweichungVonHand kennzahlId={kennzahlId} periode={m.periode} basis={antwort.bezugsbasis?.kennzeichen ?? null} standort={standort} />
+                        )}
+                      </>
+                    );
+                  }
+                : undefined
+            }
+          />
         </>
       )}
       {bild.art === 'vergleich' && (
@@ -199,7 +243,7 @@ function Kennzeichen({ liste }: { liste: string[] }) {
  * Je Monat eine Zeile: gemessen (mit Version), die rohe Hälfte ohne Urteil (U1) und die bereinigte Hälfte; darunter der
  * Satz des Lesers. Ein Monat ohne Vergleich trägt statt der bereinigten Zahlen den Satz des Lesers (Grund statt Zahl).
  */
-export function MonateTafel({ monate }: { monate: MonatBild[] }) {
+export function MonateTafel({ monate, zusatz }: { monate: MonatBild[]; zusatz?: (m: MonatBild) => ReactNode }) {
   return (
     <table className="vp-bbv-tafel" data-testid="vergleich-monate">
       <thead>
@@ -276,8 +320,21 @@ export function MonateTafel({ monate }: { monate: MonatBild[] }) {
               </td>
             </tr>
           )}
+          {zusatz && <ZusatzZeile inhalt={zusatz(m)} />}
         </tbody>
       ))}
     </table>
+  );
+}
+
+/** AP-18 IP-18: die Zeile unter dem Monat für Vermerk und „Abweichung eröffnen“ — nur, wenn es etwas zu zeigen gibt. */
+function ZusatzZeile({ inhalt }: { inhalt: ReactNode }) {
+  if (inhalt === null || inhalt === undefined || inhalt === false) return null;
+  return (
+    <tr className="vp-bbv-vermerk-zeile">
+      <td colSpan={9} data-testid="vermerk-spalte">
+        {inhalt}
+      </td>
+    </tr>
   );
 }

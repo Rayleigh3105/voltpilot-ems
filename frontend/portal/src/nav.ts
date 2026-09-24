@@ -164,6 +164,8 @@ export interface Route {
   energiezielId?: string;
   /** UEMS AP-18 IP-13: WELCHE Maßnahme die Seite zeigt (`#/portfolio/verbesserung/massnahmen/{id}`). */
   massnahmeId?: string;
+  /** UEMS AP-18 IP-18: WELCHE Abweichung die Seite zeigt (`#/portfolio/verbesserung/abweichungen/{id}`). */
+  abweichungId?: string;
   /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
@@ -654,6 +656,7 @@ export function parseRoute(hash: string): Route {
     if (segments[1] === 'verbesserung') {
       if (segments[2] === 'energieziele' && segments[3]) return energiezielRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'massnahmen' && segments[3]) return massnahmeRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'abweichungen' && segments[3]) return abweichungRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'massnahmen' || segments[2] === 'abweichungen') return verbesserungRoute(segments[2]);
       return verbesserungRoute();
     }
@@ -782,9 +785,11 @@ export function hashForRoute(route: Route): string {
           ? `/energieziele/${encodeURIComponent(route.energiezielId)}`
           : route.massnahmeId
             ? `/massnahmen/${encodeURIComponent(route.massnahmeId)}`
-            : route.verbesserungReiter && route.verbesserungReiter !== 'energieziele'
-              ? `/${route.verbesserungReiter}`
-              : '';
+            : route.abweichungId
+              ? `/abweichungen/${encodeURIComponent(route.abweichungId)}`
+              : route.verbesserungReiter && route.verbesserungReiter !== 'energieziele'
+                ? `/${route.verbesserungReiter}`
+                : '';
     return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
@@ -849,6 +854,11 @@ export function energiezielRoute(energiezielId: string): Route {
 /** Route der Seite einer Maßnahme (UEMS AP-18 IP-13): `#/portfolio/verbesserung/massnahmen/{id}` — nur am Unternehmen. */
 export function massnahmeRoute(massnahmeId: string): Route {
   return { page: 'portfolio-verbesserung', siteId: null, sub: null, verbesserungReiter: 'massnahmen', massnahmeId };
+}
+
+/** Route der Seite einer Abweichung (UEMS AP-18 IP-18): `#/portfolio/verbesserung/abweichungen/{id}` — nur am Unternehmen. */
+export function abweichungRoute(abweichungId: string): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, verbesserungReiter: 'abweichungen', abweichungId };
 }
 
 /** Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6): `#/portfolio/bewertung/{id}` — nur am Unternehmen. */

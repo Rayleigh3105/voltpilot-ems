@@ -391,3 +391,75 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ------------------------------------------------------------------ AP-18 IP-18: Auffälligkeiten und Abweichungen */
+
+.vp-aw-vermerke {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+}
+
+.vp-aw-vermerk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-3);
+  border-left: 3px solid var(--vp-c-warn-fg);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-muted);
+}
+
+.vp-aw-vermerk.is-beantwortet {
+  border-left-color: var(--vp-c-border);
+}
+
+.vp-aw-vermerk p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-aw-vermerk-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  align-items: baseline;
+}
+
+.vp-aw-vorbehalt {
+  display: inline-block;
+  padding: 1px var(--vp-c-space-2);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 999px;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-aw-vermerk .vp-ez-aktionen {
+  flex-wrap: wrap;
+}
+
+/* Anlass über den Vergleichszeilen: die Monatstafel braucht die volle Breite (neun Spalten ab 960 px). */
+.vp-aw-spalten {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+
+.vp-aw-aussage {
+  padding-left: var(--vp-c-space-3);
+  border-left: 3px solid var(--vp-c-primary);
+}
+
+.vp-aw-liste {
+  margin: 0;
+  padding-left: var(--vp-c-space-4);
+  font-size: var(--vp-c-fs-14);
+}

@@ -2849,6 +2849,137 @@ export interface MassnahmeAendern {
   begruendung: string;
 }
 
+// ---------------------------------------------------------------------------------------- Abweichungen (UEMS AP-18)
+
+/** Ein Verweis der Abweichung (OpenAPI `AbweichungVerweis`) — Kennzahl, Bezugsbasis, Maßnahme, Abweichung. */
+export interface AbweichungVerweis {
+  id: string;
+  kennzeichen: string | null;
+  name: string | null;
+}
+
+/**
+ * Ein Vermerk an der Kennzahl (OpenAPI `Auffaelligkeit`, AP-18 IP-15/IP-16, A1, A2): `anlass` die gespeicherte Kopie des
+ * Vergleichsergebnisses (byte-gleich) mit Prüfsumme, `vorbehalte` geerbt; `satz` nur bei `zur_kenntnis`.
+ */
+export interface Auffaelligkeit {
+  id: string;
+  kennzahl: AbweichungVerweis;
+  bezugsbasis: AbweichungVerweis;
+  fassung: number;
+  /** `JJJJ-MM`. */
+  periode: string;
+  standort_id: string | null;
+  anlass: string;
+  anlass_pruefsumme: string;
+  anlass_inhalt: Record<string, unknown>;
+  vorbehalte: string[];
+  vermerkt_am: string;
+  zustand: 'offen' | 'beantwortet';
+  antwort: 'abweichung' | 'zur_kenntnis' | null;
+  antwort_begruendung: string | null;
+  abweichung: AbweichungVerweis | null;
+  beantwortet_am: string | null;
+  beantwortet_von: string | null;
+  satz: string | null;
+}
+
+export interface AuffaelligkeitListe {
+  kennzahl: AbweichungVerweis;
+  abruf: string;
+  offen: number;
+  vermerke: Auffaelligkeit[];
+}
+
+/** `POST /api/v1/kennzahlen/{id}/auffaelligkeiten/{aid}/antwort` — einmalig. */
+export type AuffaelligkeitAntwort =
+  | { antwort: 'abweichung'; verantwortlich: string; frist?: string }
+  | { antwort: 'zur_kenntnis'; begruendung: string };
+
+export type AbweichungErgebnis = 'massnahme' | 'erklaert' | 'keine_abweichung' | 'nicht_bewertbar';
+
+/** U1/U2 (OpenAPI `AbweichungAussage`): die Aussage einer Person, nie ein Fakt des Systems. */
+export interface AbweichungAussage {
+  wortlaut: string;
+  sub: string | null;
+  name: string;
+  am: string;
+  beleg_kennung: string | null;
+  /** „Aussage von …, TT.MM.JJJJ — keine Messung“ bzw. „— mit Beleg …“ von der Route. */
+  kennzeichen: string;
+  satz: string | null;
+}
+
+/** Eine Zeile des Protokolls `abweichung_aenderung` (OpenAPI `AbweichungEintrag`); `person` hat eingetragen. */
+export interface AbweichungEintrag {
+  nr: number;
+  art:
+    | 'abweichung_eroeffnet' | 'kommentar' | 'ursache_aussage' | 'abweichung_geaendert' | 'verantwortlicher_geaendert'
+    | 'abweichung_abgeschlossen';
+  alt: Record<string, unknown> | null;
+  neu: Record<string, unknown> | null;
+  begruendung: string | null;
+  kommentar: string | null;
+  aussage: AbweichungAussage | null;
+  person: string;
+  am: string;
+}
+
+/** Eine Abweichung (OpenAPI `Abweichung`, AP-18 IP-16, A3–A6); `vermerke` und `verlauf` nur an der einzelnen. */
+export interface Abweichung {
+  id: string;
+  kennzeichen: string;
+  kennzahl: AbweichungVerweis;
+  bezugsbasis: AbweichungVerweis;
+  fassung: number;
+  monate: string[];
+  herkunft: { art: 'auffaelligkeit' | 'von_hand'; wortlaut: string | null };
+  anlass: string;
+  anlass_pruefsumme: string;
+  anlass_inhalt: Record<string, unknown>;
+  vorbehalte: string[];
+  verantwortlich: { sub: string; name: string };
+  /** E5 = A: beim Abruf abgeleitet — Zahl von der Route. */
+  frist: { abruf: string; termin: string; faellig: 'ueberfaellig' | null; seit_tagen: number | null };
+  standort_id: string | null;
+  zustand: 'offen' | 'abgeschlossen';
+  eroeffnet_am: string;
+  eroeffnet_von: string;
+  abschluss: {
+    ergebnis: AbweichungErgebnis;
+    massnahme: AbweichungVerweis | null;
+    begruendung: string;
+    am: string;
+    person: string;
+    satz: string | null;
+  } | null;
+  /** Kundensatz `abweichung_kopf` (§5.9) — nur für einen Monat mit Δ. */
+  kopf_satz: string | null;
+  vermerke: Auffaelligkeit[] | null;
+  verlauf: AbweichungEintrag[] | null;
+}
+
+export interface AbweichungListe {
+  abruf: string;
+  abweichungen: Abweichung[];
+}
+
+/** `POST /api/v1/abweichungen` — von Hand an Vergleichszeilen, mit Wortlaut, warum (A3). */
+export interface AbweichungNeu {
+  kennzahl: string;
+  bezugsbasis?: string;
+  /** `JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`. */
+  monate: string;
+  wortlaut: string;
+  verantwortlich: string;
+  frist?: string;
+}
+
+/** `POST /api/v1/abweichungen/{id}/eintraege` — Kommentar oder Ursache-Aussage (A4, U1–U3). */
+export type AbweichungEintragNeu =
+  | { art: 'kommentar'; text: string }
+  | { art: 'ursache_aussage'; wortlaut: string; aussage_sub?: string; aussage_name?: string; aussage_am: string; beleg_kennung?: string };
+
 // ---------------------------------------------------------------------------------------- Energieziele (UEMS AP-18)
 
 export type EnergiezielZustand = 'offen' | 'bewertet' | 'beendet';
@@ -10008,6 +10139,25 @@ export const api = {
     request<Massnahme>(`/api/v1/massnahmen/${id}/verwerfen`, { method: 'POST', body: JSON.stringify(body) }),
   massnahmeKommentar: (id: string, body: { text: string }) =>
     request<Massnahme>(`/api/v1/massnahmen/${id}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
+  // ------------------------------------------------------------------ Auffälligkeiten und Abweichungen (UEMS AP-18 IP-16)
+  /** Die Vermerke einer Kennzahl — offen und beantwortet; `offen` zählt immer alle offenen. */
+  auffaelligkeiten: (kennzahlId: string) => request<AuffaelligkeitListe>(`/api/v1/kennzahlen/${kennzahlId}/auffaelligkeiten`),
+  auffaelligkeitAntworten: (kennzahlId: string, vermerkId: string, body: AuffaelligkeitAntwort) =>
+    request<{ vermerk: Auffaelligkeit; abweichung: Abweichung | null }>(
+      `/api/v1/kennzahlen/${kennzahlId}/auffaelligkeiten/${vermerkId}/antwort`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
+  abweichungen: () => request<AbweichungListe>('/api/v1/abweichungen'),
+  abweichung: (id: string) => request<Abweichung>(`/api/v1/abweichungen/${id}`),
+  abweichungEroeffnen: (body: AbweichungNeu) =>
+    request<Abweichung>('/api/v1/abweichungen', { method: 'POST', body: JSON.stringify(body) }),
+  abweichungEintrag: (id: string, body: AbweichungEintragNeu) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
+  abweichungFrist: (id: string, body: { frist: string; begruendung: string }) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/frist`, { method: 'PUT', body: JSON.stringify(body) }),
+  abweichungVerantwortlicher: (id: string, body: { benutzer: string; begruendung: string }) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/verantwortlicher`, { method: 'PUT', body: JSON.stringify(body) }),
+  abweichungAbschliessen: (id: string, body: { ergebnis: AbweichungErgebnis; begruendung: string; massnahme?: string }) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/abschliessen`, { method: 'POST', body: JSON.stringify(body) }),
   kennzahlVariablenVorschlag: (id: string, referenzperiode?: string) =>
     request<VariablenVorschlag>(`/api/v1/kennzahlen/${id}/variablen-vorschlag` + (referenzperiode ? `?referenzperiode=${encodeURIComponent(referenzperiode)}` : '')),
   kennzahlFaktorenVorschlag: (id: string, stichtag?: string) =>

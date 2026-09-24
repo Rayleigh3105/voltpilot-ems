@@ -3,7 +3,15 @@
 Neu am 24.09.2026: `AuffaelligkeitController` (`/api/v1/kennzahlen/{id}/auffaelligkeiten…`) und `AbweichungController`
 (`/api/v1/abweichungen…`) → `uems/AbweichungService`, DTO `web/dto/AbweichungDto`, Ablehnungen `VerbesserungAbgelehnt`.
 Keine Migration (Tabellen, Trigger, Grants: [Datenhaltung](uems-verbesserung-datenhaltung.md) IP-14), keine Naht
-(die Vermerke schreibt IP-15), keine Fläche (IP-18).
+(die Vermerke schreibt IP-15).
+
+**Portal (IP-18):** Vermerk-Zeile und „Abweichung eröffnen“ hängen als Zusatzzeile unter jedem Monat der Vergleichs-Fläche
+(`BezugsbasisVergleich` → `MonateTafel zusatz`, nur mit `verbesserung.ansehen`; Komponenten `AuffaelligkeitZeile.tsx`),
+Register `AbweichungenRegister.tsx`, Seite `pages/AbweichungSeite.tsx` (`#/portfolio/verbesserung/abweichungen/{id}`),
+Dialoge `AbweichungDialoge.tsx`, reines Modul `abweichungen.ts`, Bühne `e2e/abweichungen.*` mit
+`src/test/abweichungFixtures.ts`. ⚠ Der Anlass wird aus der Kopie gesprochen (`anlassSaetze`: `satz`, `vermerke[]`,
+`vergleich[]`), nie neu gebildet; ⚠ „Maßnahme“ im Abschluss öffnet den IP-13-Dialog vorbelegt
+(`massnahmeVorbelegung`) im selben Dialog-Zug, die neue Maßnahme steht danach gewählt.
 
 | Route | Recht | Was |
 |---|---|---|

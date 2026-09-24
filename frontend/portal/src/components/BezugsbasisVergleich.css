@@ -229,3 +229,22 @@
     font-size: var(--vp-c-fs-12);
   }
 }
+
+/* ---------------------------------------------------------------- AP-18 IP-18: Vermerk-Zeile und „Abweichung eröffnen“ */
+
+.vp-bbv-vermerk-zeile td {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-2);
+  padding-top: var(--vp-c-space-2);
+  border-top: 1px dashed var(--vp-c-border);
+}
+
+@media (min-width: 960px) {
+  .vp-bbv-vermerk-zeile td {
+    display: table-cell;
+    padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  }
+}
