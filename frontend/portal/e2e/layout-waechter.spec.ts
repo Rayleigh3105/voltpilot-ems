@@ -117,9 +117,18 @@ test('Fahrplan: ein Bild, eine Legende darunter, nichts ragt über den Rand', as
 test('Fahrplan: die Seite bleibt kurz genug zum Lesen', async ({ page }) => {
   await oeffnen(page, FAHRPLAN);
   await expect(page.locator('.vp-chart.panels canvas').first()).toBeVisible();
+  // V-03: der Untertitel ist EINE Zeile, auch bei 375 px.
+  const zeilen = await page
+    .locator('main h1')
+    .first()
+    .evaluate((h) => {
+      const p = h.parentElement!.querySelector('p')!;
+      return p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight);
+    });
+  expect(Math.round(zeilen), 'Zeilen des Untertitels').toBe(1);
   const hoehe = await page.locator('main').first().evaluate((m) => m.getBoundingClientRect().height);
   // Gemessen (Chromium, Hilfe-Fixtures) vor/nach V-02 und V-06: Rechner
-  // 1888 → 1539 px, Tablet 1915 → 1565 px, Telefon 2106 → 1614 px. Die Grenze
+  // 1888 → 1539 px, Tablet 1915 → 1565 px, Telefon 2106 → 1586 px. Die Grenze
   // lässt Luft für Schrift und Browser und fängt den alten Aufbau überall.
   expect(hoehe, 'Höhe der Fahrplan-Seite in px').toBeLessThanOrEqual(1750);
 });

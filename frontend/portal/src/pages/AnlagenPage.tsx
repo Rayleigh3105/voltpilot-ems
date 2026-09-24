@@ -442,7 +442,12 @@ function AnlagenListe({
 const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>> = {
   fahrplan: {
     title: 'Fahrplan',
-    subtitle: 'Kostenoptimaler Batterie-Fahrplan aus Börsenpreisen und Prognosen.',
+    // V-03 (UX-Review 24.09.2026): EIN kurzer Satz in Kundenwörtern, wie bei
+    // der Steuerung. „Kostenoptimaler Batterie-Fahrplan aus Börsenpreisen und
+    // Prognosen." brauchte am Telefon zwei Zeilen vor der ersten Karte; das
+    // Warum erzählt die Seite selbst. Der Layout-Wächter prüft die eine Zeile
+    // bei 375 px (`e2e/layout-waechter.spec.ts`).
+    subtitle: 'Wann Ihr Speicher lädt und entlädt.',
   },
   technik: {
     // D2 (Captain, 31.07.2026): die Seite heisst „Einstellungen". Der Untertitel
