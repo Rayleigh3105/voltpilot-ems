@@ -61,7 +61,8 @@ class UemsEnergiemanagementMigrationTest {
     private static final String POLITIK = "Die Kunststoffwerk Ahrenberg GmbH verpflichtet sich, ihre energiebezogene "
             + "Leistung fortlaufend zu verbessern.";
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
-    private static final List<String> BAUEN_DARAUF_AUF = List.of();
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20260925031500"); // AP-19 IP-16: Audit und Feststellung nennen Person, Fassung und Zähler; weitet das Protokoll.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
