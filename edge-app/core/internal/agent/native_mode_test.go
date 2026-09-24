@@ -175,6 +175,12 @@ func TestAConfirmedCoveringSlotHandsTheSetpointToTheInverter(t *testing.T) {
 	if m["battery_native_duty"] != guards.NativeDutyCoverLoad {
 		t.Fatalf("the duty must reach Layer 1 too: %v", m["battery_native_duty"])
 	}
+	// vp-wr-deye-tou-schreibbudget: the reference for "narrower" rides with the
+	// window - the battery's rated band Box ① used (MaxDischargeKw/MaxChargeKw).
+	if m["battery_window_natural_min_kw"] != -30.0 || m["battery_window_natural_max_kw"] != 30.0 {
+		t.Fatalf("the window's reference must be the box limits: %v / %v",
+			m["battery_window_natural_min_kw"], m["battery_window_natural_max_kw"])
+	}
 	// The reference value is STILL published: the take-back must be instant, and
 	// the surfaces need a number. It is simply not written by the executor.
 	if got := m["battery_setpoint_kw"].(float64); got > -6.586 || got < -6.588 {
@@ -323,3 +329,33 @@ func TestOnAnEegPlantTheDeviceMustProveItCannotGridCharge(t *testing.T) {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// vp-wr-deye-tou-schreibbudget: the control profile's day budget of a persistent
+// lever reaches Layer 1 on edge/setpoint, where the Deye ToU path counts its own
+// plan changes against it. A device without a stated budget carries no field.
+func TestTheProfileWriteBudgetRidesOnTheSetpoint(t *testing.T) {
+	a, addr := nativeAgent(t)
+	sub := subscribeSetpoint(t, addr)
+	now := nativeSlotStart.Add(time.Minute)
+
+	nativeTick(a, now, false, nil)
+	waitFor(t, 5*time.Second, "a first setpoint", func() bool { _, ok := sub.latest(); return ok })
+	if m, _ := sub.latest(); m["persistent_write_budget"] != nil {
+		t.Fatalf("a sunspec device has no persistent lever budget: %v", m["persistent_write_budget"])
+	}
+
+	a.invMu.Lock()
+	a.inv = &inverter.Selection{Brand: "deye", Family: "hybrid_3p"}
+	a.invMu.Unlock()
+	tou := func(a *Agent, at time.Time) {
+		a.State.Update(func(s *state.Snapshot) { s.Control.ControlPath = "tou" })
+	}
+	nativeTick(a, now.Add(10*time.Second), false, nil, tou)
+	waitFor(t, 5*time.Second, "the ToU budget on the wire", func() bool {
+		m, ok := sub.latest()
+		return ok && m["persistent_write_budget"] != nil
+	})
+	if m, _ := sub.latest(); m["persistent_write_budget"] != 20.0 {
+		t.Fatalf("deye_tou states 20 plan changes a day: %v", m["persistent_write_budget"])
+	}
+}

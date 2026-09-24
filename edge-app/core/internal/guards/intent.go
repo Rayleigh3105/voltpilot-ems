@@ -163,6 +163,22 @@ func classify(in *Intent, maxCh, maxDis float64) {
 	}
 }
 
+// NaturalWindow is the Bezugsgröße of "narrower than the device's own mode"
+// (vp-wr-deye-tou-schreibbudget): the battery's rated band - the configured
+// MaxDischargeKw / MaxChargeKw, the real battery values - exactly as IntentFor
+// classifies against it (classify: full). The core publishes it beside the
+// window (battery_window_natural_min_kw / _max_kw), so Layer 1 judges the SAME
+// quantity instead of the inverter's nameplate, which refused every full window
+// of a battery rated below it. ok=false when a bound is not a finite number: the
+// fields are then omitted and Layer 1 keeps its older reading.
+func NaturalWindow(maxChargeKw, maxDischargeKw float64) (Window, bool) {
+	if math.IsNaN(maxChargeKw) || math.IsInf(maxChargeKw, 0) ||
+		math.IsNaN(maxDischargeKw) || math.IsInf(maxDischargeKw, 0) {
+		return Window{}, false
+	}
+	return Window{MinKw: -round3(math.Max(maxDischargeKw, 0)), MaxKw: round3(math.Max(maxChargeKw, 0))}, true
+}
+
 // Window is a power window after the guards.
 type Window struct {
 	MinKw, MaxKw float64

@@ -342,8 +342,19 @@ func TestTheSelfTestObservesTheWholeSwapAndThenRecordsTheRunningRelease(t *testi
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	if cur := otaapply.ReadCurrent(a.Cfg.DataDir); cur == nil || cur.ReleaseSeq != 12 {
-		t.Fatalf("der bewiesene Stand muss aufgezeichnet sein: %+v", cur)
+	// Die Schleife legt das Urteil AB, bevor sie den Stand aufzeichnet - also
+	// auf die Aufzeichnung warten, statt sie im selben Augenblick zu erwarten
+	// (unter Last lief die Pruefung sonst davor, und das Zuruecksetzen von
+	// Version kollidierte mit der noch laufenden Schleife: DATA RACE).
+	for {
+		cur := otaapply.ReadCurrent(a.Cfg.DataDir)
+		if cur != nil && cur.ReleaseSeq == 12 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("der bewiesene Stand muss aufgezeichnet sein: %+v", cur)
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
 
 	cancel()

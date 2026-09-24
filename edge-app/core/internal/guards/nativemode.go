@@ -142,6 +142,15 @@ const (
 	// while exporting for longer than NativeChargeSideHold, the battery goes back
 	// to the setpoint path (battery side), where the PV feeds in freely.
 	NativeOwnPvCurtailed = "pv_abgeregelt"
+	// NativeStorageExport (vp-wr-deye-tou-schreibbudget): while the device
+	// regulates an intent that may discharge (E↓, E, E~), the storage fed into
+	// the grid - battery discharging AND the grid point exporting, the smaller of
+	// the two above NativeChargeSideLimitKw - for longer than
+	// NativeChargeSideHold. None of these intents may sell storage energy (E↓:
+	// "kein Verkauf"); a device configuration that does (Deye "Selling First"
+	// with ToU) is refused by Layer 1 before the hand-over, this is the watch on
+	// the effect.
+	NativeStorageExport = "speicher_einspeisung"
 
 	// NativeHintExportWithHeadroom is a HINT, never a take-back: the grid point
 	// exports while the battery could still take more. The device's own meter
@@ -220,6 +229,7 @@ var nativeReasonText = map[string]string{
 	NativeStorageFull:            "Der Speicher ist voll - VoltPilot übernimmt für den Rest des Zeitabschnitts.",
 	NativeWriteBudget:            "Die Umschaltungen dieses Wechselrichters für heute sind aufgebraucht - VoltPilot regelt selbst nach.",
 	NativeOwnPvCurtailed:         "Der Speicher nimmt nichts mehr auf und der Wechselrichter würde seine eigene PV abregeln, obwohl Einspeisen sich lohnt - VoltPilot übernimmt wieder.",
+	NativeStorageExport:          "Der Speicher hat über eine Minute ins Netz eingespeist, obwohl er nur den Verbrauch decken sollte - VoltPilot übernimmt wieder.",
 	NativeHintExportWithHeadroom: "Die Anlage speist ein, obwohl der Speicher noch laden könnte - der Zähler des Wechselrichters sieht vermutlich die zweite PV-Anlage nicht.",
 
 	NativeMeterLocationMissing: "Der Zählerort des Wechselrichters ist nicht angegeben - selbst regeln darf er nur mit einem Zähler am Netzpunkt. VoltPilot regelt nach.",
@@ -456,6 +466,8 @@ type NativeMode struct {
 	// K5: first-seen time of "charging at the limit while exporting" on a
 	// primitive that throttles its own PV.
 	atLimitSince time.Time
+	// First-seen time of "the storage feeds into the grid" (NativeStorageExport).
+	storageExportSince time.Time
 	// The day's write counter (§6.6): published = the battery_mode/intent the
 	// last tick published ("" = setpoint), day = the counter's day.
 	published string
@@ -699,6 +711,26 @@ func (n *NativeMode) decide(now time.Time, in NativeInput) NativeDecision {
 	// 13. The charge side (only while the device regulates, and only for an
 	//     intent that may charge): what the device does with the surplus is now
 	//     ITS decision, so the supervision watches the effect.
+	// 13a. The discharge side (vp-wr-deye-tou-schreibbudget): no intent the
+	//      device regulates may sell storage energy. Storage export is the part
+	//      of the export the battery supplies - min(discharge, export) - so PV
+	//      feeding in beside a covering battery never counts.
+	if proven && opensDischarge(intent) {
+		grid, batt := in.GridKw, in.BatteryKw
+		exporting := !math.IsNaN(grid) && !math.IsNaN(batt) && math.Max(batt, grid) < -NativeChargeSideLimitKw
+		if !exporting {
+			n.storageExportSince = time.Time{}
+		} else {
+			if n.storageExportSince.IsZero() {
+				n.storageExportSince = now
+			}
+			if now.Sub(n.storageExportSince) > NativeChargeSideHold {
+				return takeBack(NativeStorageExport)
+			}
+		}
+	} else {
+		n.storageExportSince = time.Time{}
+	}
 	var hint string
 	if proven && opensCharge(intent) {
 		held := func(cond bool, since *time.Time) bool {
@@ -802,6 +834,7 @@ func (n *NativeMode) clearSlotState() {
 	n.win, n.winSet = Window{}, false
 	n.gridChargeSince, n.dischSince, n.exportSince = time.Time{}, time.Time{}, time.Time{}
 	n.atLimitSince = time.Time{}
+	n.storageExportSince = time.Time{}
 }
 
 // NativePeakThreat answers "is the running quarter hour's billing peak threatened

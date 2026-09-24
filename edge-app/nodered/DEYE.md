@@ -567,6 +567,27 @@ ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EI
 
 Der Solarman-V5-Executor schreibt über die konfigurierte FC16-/FC6-Folge und liest per FC3 zurück. `deye-control.e2e.test.js` prüft Reihenfolge, Rücklesen, Write-on-Change und Release am Stub. Reguläre Schreibaufträge benötigen `control_enabled` und entweder die passende Familien- oder Gerätefreigabe (`device_certified`). Die Familien-Allowlist enthält weiterhin nur `sunspec`; einzelne Deye-Geräte können über First-Light freigegeben sein. [Prüfstand](CONTROL-BENCH.md).
 
+### Tagesbudget der Planwechsel (vp-wr-deye-tou-schreibbudget)
+
+Jeder Registerwechsel des ToU-Pfads ist ein EEPROM-Schreibvorgang. Der Schreibabstand
+(`dwell_s = 900`) allein erlaubt 96 Wechsel je Register und Tag; das Budget eines
+Dauerspeicher-Hebels ist **20 Planwechsel je Tag** (Konzept §6.6, F12; Profil `deye_tou`,
+vom Core als `persistent_write_budget` auf `edge/setpoint` mitgegeben, nie über 20).
+
+- **Einheit:** ein Executor-Takt, der mindestens ein Register des ToU-Plans schreibt. Die
+  Rückgabe (Release) zählt mit, eine Kalibrierung ebenfalls. Gezählt wird je Logger und
+  lokalem Kalendertag im dauerhaften Flow-Kontext `deye_tou_budget:<host:port>`.
+- **Regel:** ein Planwechsel braucht Platz für sich **und** für den Rückweg. Der letzte
+  Platz des Tages gehört also der Rückgabe: 19 Planwechsel, der 20. gewünschte wird
+  **zurückgehalten** (nichts geschrieben, Readback `blocked` mit Grund und `tou_budget`),
+  im nächsten Takt gibt der Plan-Knoten das Gerät **einmal** zurück – der Snapshot der
+  Installateurs-Werte bzw. ToU aus: der Eigenmodus des Geräts ist der Rückfall. Danach
+  bis Mitternacht keine weiteren Planwechsel; der Grund steht am Knoten, im Log und im
+  Readback („Tagesbudget der Zeitfenster-Steuerung erreicht …“).
+- Not-Aus/verstummter Core und eine Kalibrierung behalten ihre eigenen Wege.
+- Eine Quelle, zwei Laufzeiten: [`deye-tou-budget.js`](deye-tou-budget.js) ist in Executor
+  und Plan-Knoten wörtlich eingebettet; `deye-control.e2e.test.js` fährt einen ganzen Tag.
+
 ### Korrigierter ENTLADE-Schreibplan (report `vp-deye-tou-dir-q5` §8, `bench_pending`)
 
 **Strategie A (Ziel-SoC-Boden + Leistungskappe + Netzladen aus) ist RICHTIG fürs LADEN, aber grundlegend UNVOLLSTÄNDIG fürs ENTLADEN.** Der ToU-Ziel-SoC ist ein Entlade-**Boden** (eine Erlaubnis), **kein Entladebefehl**, und in *Export/Selling First* lädt der Deye einen PV-Überschuss **erst in die Batterie**, bevor er einspeist - ein „Entlade auf den Boden"-Programm *erlaubt* eine Entladung, *erzwingt* sie aber nie, während der Wechselrichter stattdessen lädt (das Live-Symptom: befohlen −0,3 kW, Batterie lud +12 kW). `invert_control_sign` ist dabei ein **Ablenkungsmanöver** (§5): die Richtung wird über den Ziel-SoC kodiert, nicht über einen Vorzeichenwert; umgedreht schreibt „Entladen" ein „Laden auf 100 %", was bei voller Batterie ein stiller No-Op ist und einen Fix *vortäuschen* kann.
@@ -755,14 +776,26 @@ der Familie und nicht an einem getippten Firmware-String. Jedes andere Deye-Mode
 und dieselbe Baureihe ohne Fernsteuer-Firmware behalten die 10-Sekunden-Nachführung.
 
 **⚠ Auch mit der Freigabe verweigert die Box, wenn die eigene Konfiguration des
-Wechselrichters die Deckung nicht hergibt** (`deyeNativePrecondition`, vor der
-Übergabe gelesen): Zeitfenster-Programm nicht aktiv (`0x0092` Bit 0 – ohne ToU
-entlädt der Wechselrichter laut Handbuch nicht in die Hausanschlüsse),
-Ziel-Ladeniveau (`0x00A6`) über der Reserve-Untergrenze der Anlage, oder auf einer
-EEG-Anlage eine Program-1-Charging-Enum (`0x00AC`) ungleich `Disabled`. Unbekannt
-zählt als Verweigerung.
+Wechselrichters die Deckung nicht hergibt – oder Speicherenergie verkaufen darf**
+(`deyeNativePrecondition`, vor der Übergabe gelesen). Seit
+vp-wr-deye-tou-schreibbudget urteilt E↓ mit **Zeile E der Eigenkonfigurations-Tabelle**
+aus `deye-charge-side.js` (`deyeCoverLoadPrecondition`) über das Blocklesen
+`0x008D..0x00B1` und das **gerade gültige** Programm, nicht mehr über Programm 1 allein:
+Arbeitsmodus „Selling First“ (0) mit aktivem ToU – laut Handbuch darf das Gerät dann
+Speicherenergie ins Netz verkaufen, das bricht „nur Verbrauch decken“ (Herzogau heute:
+Work Mode 0, Load First, Solar Sell an, ToU aktiv → **E↓ verweigert, die Box deckt gedämpft**),
+„Zero Export To Load“ oder ein unbekannter Arbeitsmodus, Energiemuster „Battery First“,
+Nulleinspeisung ohne Solar Sell, Zeitfenster-Programm nicht aktiv (`0x0092` Bit 0 – ohne
+ToU entlädt der Wechselrichter laut Handbuch nicht in die Hausanschlüsse), das gültige
+Programm ohne Entladeleistung, sein Ziel-Ladeniveau über der Reserve-Untergrenze der
+Anlage, oder auf einer EEG-Anlage seine Charging-Enum ungleich `Disabled`. Unbekannt zählt
+als Verweigerung. Die Box liest nur (E5 A); der Schreibvorgang `1100 ← 0` ist byte-gleich.
+Passt die Einstellung und speist der Speicher im belegten E↓ trotzdem länger als 60 s mehr
+als 0,5 kW ins Netz (Entladung über dem Hausverbrauch), nimmt der Core zurück
+(`speicher_einspeisung`, gerastet bis Slotende).
 
-**Wer die drei Register liest, und wann** (der Ausführungspfad, seit 26.08.2026):
+**Wer die Register liest, und wann** (der Ausführungspfad, seit 26.08.2026; seit
+vp-wr-deye-tou-schreibbudget die drei Programm-1-Register plus der Block):
 der Plan-Knoten kann nicht lesen, also liest sie der **Deye-Executor** auf jedem
 Takt, an dem eine Absicht auf Selbstregelung steht — **vor jedem Schreibvorgang
 dieses Zyklus** — und legt sie je Logger im flüchtigen Flow-Kontext

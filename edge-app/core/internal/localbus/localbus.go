@@ -72,6 +72,14 @@
 //	                (internal/agent/nativepilot.go); the readback adds
 //	                native.curtails_own_pv, native.candidate, native_refusal
 //	                and wrote.
+//	                vp-wr-deye-tou-schreibbudget (ADDITIVE): with a native mode
+//	                ride `battery_window_natural_min_kw` / `_max_kw` - the
+//	                battery's rated band Box ① classifies against, Layer 1's
+//	                reference for "narrower than the device's own mode" (absent:
+//	                it keeps the nameplate); `persistent_write_budget` is the
+//	                control profile's day budget of a persistent lever (the Deye
+//	                ToU path counts its plan changes against it; absent = 20).
+//	                The readback adds `tou_budget` {day, changes, limit, held}.
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
 //	edge/control/readback  Layer 1 -> core   NOT retained. Per-register

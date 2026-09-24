@@ -2279,6 +2279,49 @@ test('nativ K4b: ohne windowLimits nur das natürliche Fenster, ohne Nennleistun
   assert.deepStrictEqual(unrated.writes, [], 'no rated power = a free window cannot be told from a capped one');
 });
 
+// vp-wr-deye-tou-schreibbudget: Layer 1 judges "narrower" against the core's
+// reference - the battery's rated band Box ① (guards.IntentFor) uses - not the
+// inverter's nameplate. A 25-kW box limit on a 30-kW inverter is a FULL window.
+test('Fenster-Bezugsgröße: die Box-Grenze des Cores, nicht das Typenschild', () => {
+  const W = (i, lo, hi, nat) => C.nativeWindowCheck('native_window', i, lo, hi, { rated_kw: 30 }, nat);
+  const band = { minKw: -25, maxKw: 25 };
+  assert.strictEqual(W('surplus_charge', 0, 25, band).narrower, false, 'E-up at the box limit is natural');
+  assert.strictEqual(W('surplus_charge', 0, 25).narrower, true, 'the old nameplate reading refused it');
+  assert.strictEqual(W('self_consumption', -25, 25, band).narrower, false);
+  assert.strictEqual(W('cover_load', -25, 0, band).narrower, false);
+  // The core's own tolerance (classify full(): WindowPointToleranceKw / 2).
+  assert.strictEqual(W('surplus_charge', 0, 24.96, band).narrower, false);
+  assert.strictEqual(W('surplus_charge', 0, 24.9, band).narrower, true);
+  // A policy cap (E~) or a limited discharge stays narrower.
+  assert.strictEqual(W('self_consumption', -25, 10, band).narrower, true);
+  assert.strictEqual(W('self_consumption', -12, 25, band).narrower, true);
+  // A side the core did not state falls back to the nameplate (older core).
+  assert.strictEqual(W('self_consumption', -25, 25, { maxKw: 25 }).narrower, true, '-25 does not reach 30');
+  assert.strictEqual(W('self_consumption', -30, 25, { maxKw: 25 }).narrower, false);
+  // Nonsense is no reference.
+  assert.strictEqual(W('surplus_charge', 0, 25, { minKw: 5, maxKw: -3 }).narrower, true);
+});
+
+test('Deye-Ladeseite: Box-Grenze 25 kW - der Kandidat wird nicht fälschlich verweigert', () => {
+  // The pilot runs a candidate without a certificate but with every other gate -
+  // including "narrower". The own_config candidate, E-up, its configuration fine.
+  const sel = { ...PILOT_SEL, rated_kw: 30 };
+  const base = { ...pilotOpts(), nativeMode: 'native_window', intent: 'surplus_charge',
+    windowMinKw: 0, windowMaxKw: 25, pilot: { candidate: 'own_config', intent: 'surplus_charge' },
+    deyeOwnConfig: deyeOwnCfg({ power: 0 }) };
+  const withRef = C.nativeSelfConsumption(sel, { ...base, windowNaturalMinKw: -25, windowNaturalMaxKw: 25 });
+  assert.strictEqual(withRef.candidate, 'own_config', withRef.reason);
+  assert.deepStrictEqual(withRef.writes.map((w) => [w.addr, w.value]), [[0x044c, 0]]);
+  // Without the core's reference (an older core) the nameplate reading refuses it.
+  const old = C.nativeSelfConsumption(sel, base);
+  assert.deepStrictEqual(old.writes, []);
+  assert.match(old.reason, /enger als der Eigenmodus/);
+  // A real cap below the box limit is still narrower.
+  const capped = C.nativeSelfConsumption(sel, { ...base, windowMaxKw: 10, windowNaturalMinKw: -25, windowNaturalMaxKw: 25 });
+  assert.deepStrictEqual(capped.writes, []);
+  assert.match(capped.reason, /enger als der Eigenmodus/);
+});
+
 test('nativ K4b: die Produktion kennt keinen Ladeseiten-Hebel - Deye bleibt bei cover_load', () => {
   const prod = C.nativeSelfConsumption(K4B_SIM, {
     controlEnabled: true, nativeMode: 'native_window', intent: 'surplus_charge', windowMinKw: 0, windowMaxKw: 50,
@@ -2339,10 +2382,27 @@ const PILOT_SEL = {
   communication: 'solarman_v5',
   connection: { ip: '192.168.254.210', port: 8899, serial: '1127365518', mb_slave_id: 1 },
 };
-// The device's own Time-of-Use configuration, read via the adapter's
-// `preconditions` before the hand-over: armed, target SoC at/below the reserve
-// floor, grid charging disabled.
-const PILOT_OWN_CFG = { tou_enable: 0x00ff, program_target_soc: 15, grid_charge_enable: 0 };
+// The device's own configuration, read via the adapter's `preconditions` before
+// the hand-over (vp-wr-deye-tou-schreibbudget: the Program-1 reads PLUS the
+// own-config block 0x008D..0x00B1): Zero Export To CT with Solar Sell, Load First,
+// ToU armed, every program may discharge down to a target at/below the reserve
+// floor, grid charging disabled. All six programs alike, so the time of day of
+// the read cannot matter.
+const DCS = require('./deye-charge-side');
+function deyeOwnCfg({ workMode = 2, pattern = 1, solarSell = 1, tou = 0x00ff, soc = 15, charge = 0,
+  power = 3000, nowMin = 600 } = {}) {
+  const R = C.DEYE_CONTROL_REG.hybrid_3p;
+  const spec = DCS.deyeOwnConfigBlockSpec(R);
+  const b = new Array(spec.count).fill(0);
+  const set = (a, v) => { b[a - spec.addr] = v; };
+  set(R.energyPattern, pattern); set(R.workMode, workMode); set(R.solarSell, solarSell); set(R.touEnable, tou);
+  for (let i = 0; i < 6; i++) {
+    set(R.progTimeBase + i, [0, 500, 900, 1300, 1700, 2100][i]);
+    set(R.progPowerBase + i, power); set(R.progSocBase + i, soc); set(R.progChargeBase + i, charge);
+  }
+  return { tou_enable: tou, program_target_soc: soc, grid_charge_enable: charge, own_config: b, now_min: nowMin };
+}
+const PILOT_OWN_CFG = deyeOwnCfg();
 const pilotOpts = (over = {}) => ({
   controlEnabled: true, deviceCertified: true, deye: OWNER_CAP,
   effectiveFloorSocPct: 20, deyeOwnConfig: PILOT_OWN_CFG, ...over,
@@ -2363,9 +2423,26 @@ test('Pilot-Freigabe: der Deye des Piloten gibt die Fernsteuerung wirklich ab', 
   // The EEG proof register and the 1121 observation are unchanged.
   assert.strictEqual(r.gridChargeProof.addr, 0x00ac);
   assert.deepStrictEqual(r.observations.map((o) => o.addr), [0x0461]);
-  // And it NAMES what an executor has to read before letting go.
+  // And it NAMES what an executor has to read before letting go: the Program-1
+  // reads plus the own-config block (vp-wr-deye-tou-schreibbudget).
   assert.deepStrictEqual(r.preconditions.map((p) => [p.role, p.addr]),
-    [['tou_enable', 0x0092], ['program_target_soc', 0x00a6], ['grid_charge_enable', 0x00ac]]);
+    [['tou_enable', 0x0092], ['program_target_soc', 0x00a6], ['grid_charge_enable', 0x00ac], ['own_config', 0x008d]]);
+});
+
+test('E-down: die Herzogau-Einstellung (Selling First, ToU aktiv) wird verweigert - kein Schreiben', () => {
+  // Work Mode 0, Load First, Solar Sell an, ToU aktiv (m6/d4): laut Handbuch darf
+  // der Deye dann auch Speicherenergie verkaufen - "nur Verbrauch decken" nicht.
+  const herzogau = deyeOwnCfg({ workMode: 0, pattern: 1, solarSell: 1, tou: 0x00ff });
+  const r = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({ solarOnlyCharge: true, deyeOwnConfig: herzogau }));
+  assert.deepStrictEqual(r.writes, [], 'no 1100 <- 0');
+  assert.deepStrictEqual(r.readbacks, []);
+  assert.match(r.reason, /Selling First.*Speicherenergie ins Netz verkaufen.*nur Verbrauch decken/);
+  // The reads stay what they were - the box never writes an installer register.
+  assert.ok(r.preconditions.every((p) => p.fc === 3));
+  // A matching setting hands over with exactly the bytes of before.
+  const ok = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({ solarOnlyCharge: true }));
+  assert.deepStrictEqual(ok.writes.map((w) => [w.fc, w.addr, w.value]), [[16, 0x044c, 0]]);
+  assert.deepStrictEqual(ok.writes, r.planned, 'refused or not, the planned bytes are the same single write');
 });
 
 test('Pilot-Freigabe: sie gilt NUR diesem Modell und NUR mit der gesondeten Firmware', () => {
@@ -2450,20 +2527,20 @@ test('Pilot-Freigabe: die eigene Konfiguration des Geraets kann sie zur Laufzeit
   // so letting go would NOT produce a covering mode, and nothing downstream
   // could tell (the device would still report the native mode correctly).
   const noTou = C.nativeSelfConsumption(PILOT_SEL,
-    pilotOpts({ deyeOwnConfig: { ...PILOT_OWN_CFG, tou_enable: 0x0000 } }));
+    pilotOpts({ deyeOwnConfig: deyeOwnCfg({ tou: 0x0000 }) }));
   assert.deepStrictEqual(noTou.writes, []);
   assert.match(noTou.reason, /Zeitfenster-Programm .*nicht aktiv/);
 
   // A target SoC ABOVE our reserve floor ends the covering early.
   const highTarget = C.nativeSelfConsumption(PILOT_SEL,
-    pilotOpts({ deyeOwnConfig: { ...PILOT_OWN_CFG, program_target_soc: 40 } }));
+    pilotOpts({ deyeOwnConfig: deyeOwnCfg({ soc: 40 }) }));
   assert.deepStrictEqual(highTarget.writes, []);
   assert.match(highTarget.reason, /Ziel-Ladeniveau/);
 
   // On an EEG site the device's own charging enum must already say "not from
   // grid" BEFORE we let go - the after-proof (gridChargeProof) is not enough.
   const eeg = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({
-    solarOnlyCharge: true, deyeOwnConfig: { ...PILOT_OWN_CFG, grid_charge_enable: 1 },
+    solarOnlyCharge: true, deyeOwnConfig: deyeOwnCfg({ charge: 1 }),
   }));
   assert.deepStrictEqual(eeg.writes, []);
   assert.match(eeg.reason, /EEG/);
@@ -2474,8 +2551,9 @@ test('Pilot-Freigabe: die eigene Konfiguration des Geraets kann sie zur Laufzeit
   // UNKNOWN is a refusal, never an assumption - each of these on its own.
   for (const over of [
     { deyeOwnConfig: undefined },
-    { deyeOwnConfig: { ...PILOT_OWN_CFG, tou_enable: undefined } },
-    { deyeOwnConfig: { ...PILOT_OWN_CFG, program_target_soc: undefined } },
+    { deyeOwnConfig: { ...PILOT_OWN_CFG, own_config: undefined } },
+    { deyeOwnConfig: { ...PILOT_OWN_CFG, own_config: PILOT_OWN_CFG.own_config.slice(0, 20) } },
+    { deyeOwnConfig: { ...PILOT_OWN_CFG, now_min: undefined } },
     { effectiveFloorSocPct: undefined },
   ]) {
     const r = C.nativeSelfConsumption(PILOT_SEL, pilotOpts(over));
@@ -2494,34 +2572,37 @@ test('Pilot-Freigabe: Not-Aus und fehlende Geraete-Freigabe halten unveraendert'
 });
 
 test('deyeNativePrecondition ist rein und urteilt nur ueber Belegtes', () => {
-  const ok = { tou_enable: 0x00ff, program_target_soc: 10, grid_charge_enable: 0 };
-  assert.strictEqual(C.deyeNativePrecondition(ok, { floorPct: 20 }), null);
+  const R = C.DEYE_CONTROL_REG.hybrid_3p;
+  const f = (cfg, o) => C.deyeNativePrecondition(cfg, { reg: R, ...o });
+  const ok = deyeOwnCfg({ soc: 10 });
+  assert.strictEqual(f(ok, { floorPct: 20 }), null);
   // A target EQUAL to the floor is fine - the device stops exactly where we would.
-  assert.strictEqual(C.deyeNativePrecondition({ ...ok, program_target_soc: 20 }, { floorPct: 20 }), null);
+  assert.strictEqual(f(deyeOwnCfg({ soc: 20 }), { floorPct: 20 }), null);
   // Only bit0 is the enable; the weekday bits above it must not be required.
-  assert.strictEqual(C.deyeNativePrecondition({ ...ok, tou_enable: 0x0003 }, { floorPct: 20 }), null);
-  assert.ok(C.deyeNativePrecondition({ ...ok, tou_enable: 0x00fe }, { floorPct: 20 }));
+  assert.strictEqual(f(deyeOwnCfg({ soc: 10, tou: 0x0003 }), { floorPct: 20 }), null);
+  assert.ok(f(deyeOwnCfg({ soc: 10, tou: 0x00fe }), { floorPct: 20 }));
   // An out-of-range SoC is not a reading.
-  assert.ok(C.deyeNativePrecondition({ ...ok, program_target_soc: 255 }, { floorPct: 20 }));
+  assert.ok(f(deyeOwnCfg({ soc: 255 }), { floorPct: 20 }));
   // Without the EEG posture the charging enum is not judged (it is an economic
   // matter there, not a compliance one - and the plan already priced the slot).
-  assert.strictEqual(
-    C.deyeNativePrecondition({ ...ok, grid_charge_enable: 1 }, { floorPct: 20 }), null);
+  assert.strictEqual(f(deyeOwnCfg({ soc: 10, charge: 1 }), { floorPct: 20 }), null);
 
   // ⚠ An ABSENT register must not read as a real 0 (Number(null) === 0). Both
   // outcomes refuse, but only one of them tells the operator the truth.
-  assert.match(C.deyeNativePrecondition({ ...ok, tou_enable: null }, { floorPct: 20 }),
-    /nicht gelesen werden/);
-  assert.match(C.deyeNativePrecondition({ ...ok, program_target_soc: null }, { floorPct: 20 }),
-    /nicht gelesen werden/);
-  assert.match(C.deyeNativePrecondition(ok, { floorPct: null }),
-    /Reserve-Untergrenze der Anlage ist nicht bekannt/);
+  const holed = (addr) => { const c = deyeOwnCfg({ soc: 10 }); c.own_config = c.own_config.slice();
+    c.own_config[addr - 0x008d] = null; return c; };
+  assert.match(f(holed(R.touEnable), { floorPct: 20 }), /nicht gelesen werden/);
+  assert.match(f(holed(R.progSocBase + 2), { floorPct: 20 }), /nicht gelesen werden/);
+  assert.match(f(ok, { floorPct: null }), /Reserve-Untergrenze der Anlage ist nicht bekannt/);
   // A floor of 0 is a real floor, not a missing one.
-  assert.ok(C.deyeNativePrecondition(ok, { floorPct: 0 }).includes('0 %'));
+  assert.ok(f(ok, { floorPct: 0 }).includes('0 %'));
   // On an EEG site an absent charging enum is refused, never read as Disabled.
-  assert.match(
-    C.deyeNativePrecondition({ ...ok, grid_charge_enable: null }, { floorPct: 20, solarOnly: true }),
-    /EEG/);
+  assert.match(f(holed(R.progChargeBase + 2), { floorPct: 20, solarOnly: true }), /EEG/);
+  // Without the family map the block cannot be located - refused, not guessed.
+  assert.match(C.deyeNativePrecondition(ok, { floorPct: 20 }), /nicht gelesen werden/);
+  // vp-wr-deye-tou-schreibbudget: the Work Mode is judged - "Selling First" with
+  // ToU active may sell storage energy.
+  assert.match(f(deyeOwnCfg({ soc: 10, workMode: 0 }), { floorPct: 20 }), /Selling First/);
 });
 
 // --- Netz-Sollwert-Test (Konzept `vp-deye-netzseitig-drossel-k2` P1) ----------

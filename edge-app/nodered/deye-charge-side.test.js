@@ -108,7 +108,60 @@ test('decision table: nothing read is a refusal, never an assumption', () => {
   assert.match(f(undefined), /nicht bekannt/);
   assert.match(f({ now_min: 600 }), /konnte nicht gelesen werden/);
   assert.match(f({ own_config: block().slice(0, 20), now_min: 600 }), /konnte nicht gelesen werden/);
-  assert.match(dcs.deyeOwnConfigPrecondition(FACTS, 'cover_load', { own_config: block() }, { reg: REG }), /Unbekannte Absicht/);
+  assert.match(dcs.deyeOwnConfigPrecondition(FACTS, 'grid_charge', { own_config: block() }, { reg: REG }), /Unbekannte Absicht/);
+});
+
+// vp-wr-deye-tou-schreibbudget: E-down judges the SAME table (its E row) on the
+// block read - not Program 1 alone, and not without the Work Mode.
+const down = (b, opts) => own('cover_load', b, opts);
+const HERZOGAU = { workMode: 0, pattern: 1, solarSell: 1, tou: 0x00ff };
+
+test('E-down: the Herzogau setting (Selling First, ToU active) is refused - it may sell storage energy', () => {
+  const r = down(block(HERZOGAU));
+  assert.match(r, /Selling First/);
+  assert.match(r, /Speicherenergie ins Netz verkaufen/);
+  assert.match(r, /nur Verbrauch decken/, 'the sentence names what E-down promises');
+  assert.strictEqual(dcs.deyeCoverLoadPrecondition(FACTS, { own_config: block(HERZOGAU), now_min: 600 },
+    { floorPct: 10, solarOnly: true, reg: REG }), r, 'the exported E-down gate is exactly this row');
+  // K5's own sentence for E is unchanged.
+  assert.match(own('self_consumption', block(HERZOGAU)), /das ist kein Eigenverbrauch/);
+});
+
+test('E-down: a setting that cannot sell storage energy passes exactly as before', () => {
+  // Zero Export To CT + Solar Sell (sells only PV), Load First, ToU on, discharge
+  // allowed down to the floor, grid charging off.
+  assert.strictEqual(down(block()), null);
+  assert.strictEqual(down(block({ solarSell: 1, workMode: 2 }), { solarOnly: false }), null);
+});
+
+test('E-down: the program that governs NOW decides, not Program 1', () => {
+  const times = [0, 500, 900, 1300, 1700, 2100];
+  // 10:00 -> Program 3 (09:00). Program 1 would pass; Program 3 has no discharge power.
+  const r = down(block({ times, power: [3000, 3000, 0, 3000, 3000, 3000] }), { nowMin: 600 });
+  assert.match(r, /Programm 3 hat keine Entladeleistung/);
+  // Program 1's target SoC above the floor no longer refuses while Program 3 governs.
+  assert.strictEqual(down(block({ times, soc: [40, 5, 5, 5, 5, 5] }), { nowMin: 600 }), null);
+  assert.match(down(block({ times, soc: [5, 5, 40, 5, 5, 5] }), { nowMin: 600 }), /Programm 3 \(40 %\) liegt über/);
+  // EEG: the governing program's Charging flag.
+  assert.match(down(block({ times, charge: [0, 0, 1, 0, 0, 0] }), { nowMin: 600 }), /EEG-Anlage: das gerade gültige Zeitfenster-Programm 3/);
+});
+
+test('E-down: every other row of the table refuses as for E', () => {
+  assert.match(down(block({ tou: 0x0000 })), /nicht aktiv/);
+  assert.match(down(block({ workMode: 1 })), /Zero Export To Load/);
+  assert.match(down(block({ workMode: 7 })), /Arbeitsmodus des Wechselrichters \(7\) ist unbekannt/);
+  assert.match(down(block({ pattern: 0 })), /Battery First/);
+  assert.match(down(block({ solarSell: 0 })), /ohne „Solar Sell“/);
+  assert.match(down(block(), { floor: null }), /Reserve-Untergrenze der Anlage ist nicht bekannt/);
+  assert.match(dcs.deyeCoverLoadPrecondition(FACTS, { tou_enable: 0x00ff, program_target_soc: 5, grid_charge_enable: 0 },
+    { floorPct: 10, reg: REG }), /konnte nicht gelesen werden/, 'the three Program-1 reads alone are no longer enough');
+});
+
+test('E-down reads the three Program-1 registers plus the block', () => {
+  assert.deepStrictEqual(dcs.deyeCoverLoadPreconditions(FACTS, REG).map((p) => [p.role, p.addr, p.count || 1]),
+    [['tou_enable', 0x0092, 1], ['program_target_soc', 0x00a6, 1], ['grid_charge_enable', 0x00ac, 1], ['own_config', 0x008d, 37]]);
+  assert.deepStrictEqual(dcs.deyeCoverLoadPreconditions(FACTS, REG), cands().own_config.preconditions,
+    'the same reads as the own_config candidate - one cache serves both');
 });
 
 test('grid_zero precondition: known config, known floor, EEG proof', () => {

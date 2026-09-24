@@ -859,7 +859,7 @@
     "dauerspeicher_je_tag": 20,
     "sicherheit": "C",
     "speicher": "dauerspeicher",
-    "text": "EEPROM: Takt-Schreiben zerstört den Speicher in Wochen (C, dd §0); nur wenige Wechsel je Tag."
+    "text": "EEPROM: Takt-Schreiben zerstört den Speicher in Wochen (C, dd §0); nur wenige Wechsel je Tag. Seit vp-wr-deye-tou-schreibbudget zählt der Deye-Executor die Planwechsel des ToU-Pfads gegen dieses Budget (edge-app/nodered/deye-tou-budget.js): 19 Planwechsel, der letzte Platz gehört der Rückgabe in die eigene Einstellung, danach bis Mitternacht keiner mehr."
   },
   "stand": "2026-09-24",
   "stufe": 3,

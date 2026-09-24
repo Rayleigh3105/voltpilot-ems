@@ -4,7 +4,9 @@
  * K5 "Deye Überschuss-Übergabe" (concept vp-wechselrichter-eigenregelung-k1 §5
  * Deye row, §6.3, §6.4, §9): the CHARGE side of the Deye remote tier (registers
  * 1100-1121, PR-978 layout) - the intents surplus_charge (E-up) and
- * self_consumption (E). E-down (cover_load) is NOT here; its path is unchanged.
+ * self_consumption (E). E-down's (cover_load) hand-over is NOT here and its bytes
+ * are unchanged; its PRECONDITION is (deyeCoverLoadPrecondition): the same
+ * decision table, since a "Selling First" device sells storage energy.
  *
  * ⚠ ONE SOURCE, TWO RUNTIMES. inverter-control-routing.js requires this file and
  * build-flows.js embeds it VERBATIM into the control plan node (embedModule), so
@@ -40,6 +42,10 @@
  */
 
 const CHARGE_INTENTS = Object.freeze({ surplus_charge: true, self_consumption: true });
+// E-down ("nur Verbrauch decken"): its hand-over (1100 <- 0) is the routing
+// module's and byte-identical since K3 - only its PRECONDITION is judged here, by
+// the same table as own_config (vp-wr-deye-tou-schreibbudget).
+const COVER_LOAD = 'cover_load';
 const CANDIDATES = Object.freeze({ grid_zero: true, own_config: true });
 
 // The value 1115 is written with in grid mode: never 1000 or above (that throttles
@@ -57,6 +63,43 @@ function deyeOwnConfigBlockSpec(reg) {
 }
 
 /**
+ * deyeProgramOneReads - the three single reads the E-down hand-over has made
+ * since K3 (ToU enable, Program 1 target SoC, Program 1 Charging). Their roles
+ * are the executor's cache keys, and `grid_charge_enable` is the EEG answer the
+ * core reads BEFORE a hand-over (native_precondition) - so they stay, beside the
+ * block.
+ */
+function deyeProgramOneReads(facts, reg) {
+  return [
+    { role: 'tou_enable', fc: 3, addr: reg.touEnable },
+    { role: 'program_target_soc', fc: 3, addr: reg.progSocBase + facts.slot },
+    { role: 'grid_charge_enable', fc: 3, addr: reg.progChargeBase + facts.slot },
+  ];
+}
+
+/**
+ * deyeCoverLoadPreconditions - what the executor reads before the E-down
+ * hand-over: the three Program-1 reads plus the own-config block (Work Mode,
+ * Energy Pattern, Solar Sell and the program that governs NOW). The hand-over
+ * itself (1100 <- 0) is unchanged; only WHEN it is refused changes.
+ */
+function deyeCoverLoadPreconditions(facts, reg) {
+  return deyeProgramOneReads(facts, reg).concat([deyeOwnConfigBlockSpec(reg)]);
+}
+
+/**
+ * deyeCoverLoadPrecondition - E-down's runtime refusal: the E row of the
+ * own_config table (deyeOwnConfigPrecondition). "Nur Verbrauch decken" promises
+ * the house from the storage, no grid charging and NO SALE - so a configuration
+ * that lets the device sell storage energy (Work Mode 0 "Selling First" with an
+ * active Time-of-Use program, per the manual) is refused exactly like one that
+ * would not cover at all. The box then covers, damped (E2 A).
+ */
+function deyeCoverLoadPrecondition(facts, cfg, o) {
+  return deyeOwnConfigPrecondition(facts, COVER_LOAD, cfg, o);
+}
+
+/**
  * deyeChargeSideCandidates - the two candidates' plans for one selection.
  *   facts: { remote, modeOn, modeOff, gridSide, reassertS, slot, chargeDisabled,
  *            touEnableBit, workMode, energyPattern, solarSellOn }
@@ -71,11 +114,7 @@ function deyeChargeSideCandidates(facts, ctx) {
   const R = facts.remote;
   // The three single reads the E-down pilot already performs (same roles, same
   // cache keys) - grid_zero needs no more than they say.
-  const legacyPre = [
-    { role: 'tou_enable', fc: 3, addr: reg.touEnable },
-    { role: 'program_target_soc', fc: 3, addr: reg.progSocBase + facts.slot },
-    { role: 'grid_charge_enable', fc: 3, addr: reg.progChargeBase + facts.slot },
-  ];
+  const legacyPre = deyeProgramOneReads(facts, reg);
   const ram = { dwell_s: 0, min_change: 0, always: true, bench_pending: true };
   const ramCfg = { dwell_s: 0, min_change: 0, reassert_s: facts.reassertS, bench_pending: true };
   const gridPlanned = [
@@ -193,11 +232,13 @@ function deyeActiveProgram(times, nowMin) {
  *   E           must cover: ToU on, active program power > 0, its target SoC <=
  *               the platform floor - and NOT Work Mode 0 "Selling First": with ToU
  *               active the manual lets it sell battery energy into the grid
+ *   E-down      (cover_load, deyeCoverLoadPrecondition) exactly the E row: it must
+ *               cover the same way, and "Selling First" breaks its "no sale"
  *
  * Returns null when the device may be let go for `intent`, else the reason.
  */
 function deyeOwnConfigPrecondition(facts, intent, cfg, o) {
-  if (!CHARGE_INTENTS[intent]) return 'Unbekannte Absicht für die Wechselrichter-Automatik';
+  if (!CHARGE_INTENTS[intent] && intent !== COVER_LOAD) return 'Unbekannte Absicht für die Wechselrichter-Automatik';
   if (!cfg || typeof cfg !== 'object') {
     return 'Die eigene Konfiguration des Wechselrichters ist nicht bekannt - es wird nicht umgeschaltet';
   }
@@ -265,14 +306,15 @@ function deyeOwnConfigPrecondition(facts, intent, cfg, o) {
     }
     return null;
   }
-  // self_consumption
+  // self_consumption and cover_load: the device must cover the house
   if (!touOn) {
     return 'Das Zeitfenster-Programm (Time of Use) des Wechselrichters ist nicht aktiv - '
       + 'ohne es deckt er laut Handbuch nicht den Hausverbrauch aus der Batterie';
   }
   if (workMode === WM.EXPORT_FIRST) {
     return 'Arbeitsmodus „Selling First“ mit aktivem Zeitfenster-Programm: der Wechselrichter darf laut '
-      + 'Handbuch auch Speicherenergie ins Netz verkaufen - das ist kein Eigenverbrauch';
+      + 'Handbuch auch Speicherenergie ins Netz verkaufen - '
+      + (intent === COVER_LOAD ? '„nur Verbrauch decken“ wäre so nicht gewahrt' : 'das ist kein Eigenverbrauch');
   }
   if (!isFinite(power) || !(power > 0)) {
     return 'Das gerade gültige Zeitfenster-' + progName + ' hat keine Entladeleistung - '
@@ -374,6 +416,9 @@ function deyeChargeSidePreconditions(candidates, names) {
 module.exports = {
   GRID_ZERO_PV_MAX_PERMILLE,
   deyeOwnConfigBlockSpec,
+  deyeProgramOneReads,
+  deyeCoverLoadPreconditions,
+  deyeCoverLoadPrecondition,
   deyeChargeSideCandidates,
   deyeGridZeroPrecondition,
   deyeOwnConfigPrecondition,

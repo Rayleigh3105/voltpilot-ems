@@ -46,9 +46,21 @@ const DEYE_REMOTE_SEL = {
   schema_version: '1.0', brand: 'deye', model: 'sun-30k-sg01hp3', family: 'hybrid_3p', communication: 'solarman_v5',
   connection: { ip: '192.168.254.210', port: 8899, serial: '1127365518', mb_slave_id: 1 },
 };
+// The device's own configuration as the executor caches it - since
+// vp-wr-deye-tou-schreibbudget E-down judges the own-config block too: Zero
+// Export To CT, Load First, Solar Sell, ToU on, every program discharging to 15 %.
+function pilotOwnConfig() {
+  const R = C.DEYE_CONTROL_REG.hybrid_3p;
+  const spec = require('./deye-charge-side.js').deyeOwnConfigBlockSpec(R);
+  const b = new Array(spec.count).fill(0);
+  const set = (a, v) => { b[a - spec.addr] = v; };
+  set(R.energyPattern, 1); set(R.workMode, 2); set(R.solarSell, 1); set(R.touEnable, 0x00ff);
+  for (let i = 0; i < 6; i++) { set(R.progPowerBase + i, 3000); set(R.progSocBase + i, 15); }
+  return { tou_enable: 0x00ff, program_target_soc: 15, grid_charge_enable: 0, own_config: b, now_min: 600 };
+}
 const PILOT_OPTS = {
   controlEnabled: true, deviceCertified: true, deye: REMOTE_CAP, effectiveFloorSocPct: 20,
-  deyeOwnConfig: { tou_enable: 0x00ff, program_target_soc: 15, grid_charge_enable: 0 },
+  deyeOwnConfig: pilotOwnConfig(),
 };
 const KOSTAL_SEL = {
   schema_version: '1.0', brand: 'kostal', family: 'kostal_plenticore', communication: 'kostal_modbus',
@@ -202,6 +214,10 @@ test('Deye ToU: Profil deye_tou = heutiger Plan von deyeControl, jeder Schritt D
   }
   assertWrites('rueckgabe', f.rueckgabe, C.controlRelease(DEYE_TOU_SEL, { deye: TOU_CAP }).planned);
   assert.equal(p.schreibbudget.speicher, 'dauerspeicher');
+  // vp-wr-deye-tou-schreibbudget: the executor counts the ToU plan changes against
+  // the profile's day budget; its Vorgabe is exactly the profile's number.
+  assert.equal(p.schreibbudget.dauerspeicher_je_tag,
+    require('./deye-tou-budget.js').DEYE_TOU_PLAN_CHANGES_PER_DAY, 'Profil-Budget = Vorgabe des Executors');
   assert.equal(p.daempfung.box_regelt, false, 'Dauerspeicher-Hebel: keine Box-Regelung (§6.5)');
   for (const b of p.bindung) assert.equal(b.steuerpfad, C.DEYE_PATH_TOU);
 });

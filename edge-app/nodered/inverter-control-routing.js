@@ -880,7 +880,9 @@ function nativeSelfConsumption(selection, opts = {}) {
   const solarOnly = opts.solarOnlyCharge === true;
   // K4b: "native" is the unchanged E-down hand-over (intent cover_load, whatever
   // else the setpoint carries); "native_window" carries the charge-side intents
-  // plus the guard-clipped window [windowMinKw ; windowMaxKw].
+  // plus the guard-clipped window [windowMinKw ; windowMaxKw] and - since
+  // vp-wr-deye-tou-schreibbudget - the core's reference for "narrower"
+  // [windowNaturalMinKw ; windowNaturalMaxKw] (nativeWindowCheck).
   const nativeMode = opts.nativeMode === 'native_window' ? 'native_window' : 'native';
   const intent = nativeMode === 'native_window' ? String(opts.intent || '') : 'cover_load';
   const catalog = Array.isArray(opts.catalog) ? opts.catalog : unplannedNative.CERTIFIED_NATIVE_CAPABILITIES;
@@ -947,7 +949,8 @@ function nativeSelfConsumption(selection, opts = {}) {
     out.reason = 'Unbekannte Absicht für die Wechselrichter-Automatik';
     return out;
   }
-  const windowCheck = nativeWindowCheck(nativeMode, intent, opts.windowMinKw, opts.windowMaxKw, selection);
+  const windowCheck = nativeWindowCheck(nativeMode, intent, opts.windowMinKw, opts.windowMaxKw, selection,
+    { minKw: opts.windowNaturalMinKw, maxKw: opts.windowNaturalMaxKw });
   if (windowCheck.refusal) {
     out.reason = windowCheck.refusal;
     return out;
@@ -1047,24 +1050,44 @@ function deyeChargeSideHandOver(out, built, { catalog, intent, windowCheck, sele
  * (a window that forces a flow is a setpoint, not a self-regulation), so a window
  * that does not - or a missing/non-finite bound - is refused, never repaired.
  *
- * Natural windows: cover_load [-rated ; 0], surplus_charge [0 ; +rated],
- * self_consumption [-rated ; +rated]. An open side counts as natural only when its
- * bound reaches the selection's rated power; with no rated power known every
- * bound counts as narrower (fail-closed: without it we cannot tell a throttled
- * charge from a free one).
+ * Natural windows: cover_load [-ref ; 0], surplus_charge [0 ; +ref],
+ * self_consumption [-ref ; +ref]. An open side counts as natural only when its
+ * bound reaches the reference.
+ *
+ * ⚠ THE REFERENCE IS THE CORE'S (vp-wr-deye-tou-schreibbudget): the battery's
+ * rated band the core's Box ① (guards.IntentFor) classifies the plan window
+ * against - `battery_window_natural_min_kw` / `_max_kw` on edge/setpoint (the
+ * per-customer MaxDischargeKw / MaxChargeKw), with the core's own tolerance
+ * (guards.WindowPointToleranceKw / 2). Comparing with the inverter's nameplate
+ * instead refused every full window of a battery rated below it (30-kW Deye,
+ * 25-kW box limit: "enger als der Eigenmodus"). Only a core that predates the
+ * fields leaves the nameplate (`selection.rated_kw`, exact); with neither known
+ * every bound counts as narrower (fail-closed: without a reference we cannot
+ * tell a throttled charge from a free one).
  */
-function nativeWindowCheck(nativeMode, intent, minKw, maxKw, selection) {
+function nativeWindowCheck(nativeMode, intent, minKw, maxKw, selection, natural) {
   if (nativeMode !== 'native_window') return { refusal: null, narrower: false };
   if (!isFiniteNum(minKw) || !isFiniteNum(maxKw) || minKw > 0 || maxKw < 0) {
     return { refusal: 'Das Fenster der Absicht ist ungültig oder erzwingt einen Fluss - es bleibt bei der 10-Sekunden-Nachführung', narrower: false };
   }
   const rated = selection && isFiniteNum(selection.rated_kw) && selection.rated_kw > 0 ? selection.rated_kw : null;
-  const reaches = (kw) => rated !== null && kw >= rated - 1e-9;
+  const nat = natural && typeof natural === 'object' ? natural : {};
+  // One reference per side: the core's band where it published one, else the nameplate.
+  const ref = (v) => (isFiniteNum(v) && v > 0
+    ? { kw: v, tol: NATIVE_WINDOW_FULL_TOLERANCE_KW } : (rated !== null ? { kw: rated, tol: 1e-9 } : null));
+  const refCharge = ref(nat.maxKw);
+  const refDischarge = ref(isFiniteNum(nat.minKw) ? -nat.minKw : NaN);
+  const reaches = (kw, r) => r !== null && kw >= r.kw - r.tol;
   const chargeOpen = intent !== 'cover_load';
   const dischargeOpen = intent !== 'surplus_charge';
-  const narrower = (chargeOpen && !reaches(maxKw)) || (dischargeOpen && !reaches(-minKw));
+  const narrower = (chargeOpen && !reaches(maxKw, refCharge)) || (dischargeOpen && !reaches(-minKw, refDischarge));
   return { refusal: null, narrower };
 }
+
+// NATIVE_WINDOW_FULL_TOLERANCE_KW - when a window bound "reaches" the core's
+// reference: exactly the core's `full()` in guards/intent.go classify
+// (WindowPointToleranceKw / 2), so Layer 1 and Box ① never disagree by a rounding.
+const NATIVE_WINDOW_FULL_TOLERANCE_KW = 0.05;
 
 /**
  * sunspecNativeWindow - the window as the compact sim profile writes it: the
@@ -1168,63 +1191,32 @@ function nativeSelectionKey(selection, built) {
  * reports `native` on its state register, so the core would see a PROVEN mode
  * while the house quietly imports.
  *
+ * ⚠ AND WHETHER IT SELLS (vp-wr-deye-tou-schreibbudget): Program 1 alone was not
+ * enough. With Work Mode 0 "Selling First" and an active Time-of-Use program the
+ * manual lets the device sell STORAGE energy into the grid (Herzogau: Work Mode
+ * 0, Load First, Solar Sell on, ToU active) - that breaks E-down's "no sale". So
+ * E-down now judges the own_config decision table (deye-charge-side.js
+ * deyeCoverLoadPrecondition, its E row) on the block read 0x008D..0x00B1 and
+ * the program that governs NOW, not only Program 1. E5 A: the box reads, it
+ * never writes Work Mode, ToU or any other installer register. The hand-over
+ * bytes (1100 <- 0) are unchanged; only WHEN it refuses changes.
+ *
  * Fail-closed by construction: `cfg` absent or incomplete is a REFUSAL, never an
  * assumption ("lieber verweigern als blind umschalten"). Every reason is German
  * and names what the operator has to look at.
  *
- *   cfg: { tou_enable, program_target_soc, grid_charge_enable } - raw register
- *        values, as read from the device, keyed by the ROLE of each read spec
- *        in `preconditions` (that is how the executor caches them - the
- *        shipped inline copy reads exactly these keys)
+ *   cfg: raw register values keyed by the ROLE of each read spec in
+ *        `preconditions` (`own_config` = the block) plus `now_min`, the minutes
+ *        since local midnight at the read - that is how the executor caches them
  *   floorPct: the platform's effective reserve floor (null = unknown)
  *   solarOnly: the site's EEG posture
+ *   reg: the family's control map (the block's offsets)
  *
  * Returns null when the device may be let go, else the German reason.
  */
-function deyeNativePrecondition(cfg, { floorPct, solarOnly } = {}) {
-  // ⚠ Number(null) and Number('') are BOTH 0, so a MISSING register would read as
-  // a real zero and produce the wrong sentence ("Programm nicht aktiv" instead of
-  // "nicht gelesen"). Both refuse, but only one of them tells the operator the
-  // truth - so an absent value is never coerced.
-  const reg = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
-  if (!cfg || typeof cfg !== 'object') {
-    return 'Die eigene Konfiguration des Wechselrichters ist nicht bekannt - es wird nicht umgeschaltet';
-  }
-  const tou = reg(cfg.tou_enable);
-  if (!Number.isFinite(tou)) {
-    return 'Das Zeitfenster-Programm des Wechselrichters konnte nicht gelesen werden - es wird nicht umgeschaltet';
-  }
-  // Bit 0 is "Enabled"; the weekday bits above it say WHEN. Without the enable
-  // bit the manual is unambiguous: the inverter will not discharge to the loads.
-  if ((tou & DEYE_TOU_ENABLE_BIT) === 0) {
-    return 'Das Zeitfenster-Programm (Time of Use) des Wechselrichters ist nicht aktiv - '
-      + 'ohne es deckt er laut Handbuch nicht den Hausverbrauch aus der Batterie';
-  }
-  const targetSoc = reg(cfg.program_target_soc);
-  if (!Number.isFinite(targetSoc) || targetSoc < 0 || targetSoc > 100) {
-    return 'Das Ziel-Ladeniveau des Zeitfenster-Programms konnte nicht gelesen werden - es wird nicht umgeschaltet';
-  }
-  // The device stops discharging at ITS target SoC. If that sits above our
-  // reserve floor the inverter would end the covering earlier than the
-  // supervision expects - and nothing would report it, because the mode itself
-  // stays correct. An unknown floor cannot be judged, so it refuses too.
-  const floor = reg(floorPct);
-  if (!Number.isFinite(floor)) {
-    return 'Die Reserve-Untergrenze der Anlage ist nicht bekannt - es wird nicht umgeschaltet';
-  }
-  if (targetSoc > floor) {
-    return 'Das Ziel-Ladeniveau des Zeitfenster-Programms (' + targetSoc + ' %) liegt über der '
-      + 'Reserve-Untergrenze der Anlage (' + floor + ' %) - der Wechselrichter würde '
-      + 'die Deckung zu früh beenden';
-  }
-  if (solarOnly === true) {
-    const charge = reg(cfg.grid_charge_enable);
-    if (!Number.isFinite(charge) || charge !== DEYE_PROG_CHARGE.DISABLED) {
-      return 'EEG-Anlage: das Zeitfenster-Programm des Wechselrichters erlaubt das Laden aus dem Netz '
-        + '- es wird nicht umgeschaltet';
-    }
-  }
-  return null;
+function deyeNativePrecondition(cfg, { floorPct, solarOnly, reg } = {}) {
+  return deyeChargeSide.deyeCoverLoadPrecondition(DEYE_CHARGE_SIDE_FACTS, cfg,
+    { floorPct, solarOnly: solarOnly === true, reg: reg || null });
 }
 
 // nativeForTier builds the per-tier primitive: the release write list PLUS the
@@ -1293,14 +1285,14 @@ function nativeForTier({ selection, conn, ip, family, tier, comm, opts }) {
       // armed and permits discharging down past the platform's reserve floor.
       // The adapter is pure, so these are READ SPECS - an executor performs them
       // BEFORE the hand-over and passes the values back as opts.deyeOwnConfig.
-      preconditions: [
-        { role: 'tou_enable', fc: 3, addr: reg.touEnable },
-        { role: 'program_target_soc', fc: 3, addr: reg.progSocBase + DEYE_CONTROL_SLOT },
-        { role: 'grid_charge_enable', fc: 3, addr: reg.progChargeBase + DEYE_CONTROL_SLOT },
-      ],
+      // Since vp-wr-deye-tou-schreibbudget the own-config block rides along: the
+      // governing program and the Work Mode decide whether the device would
+      // also SELL storage energy (deyeNativePrecondition).
+      preconditions: deyeChargeSide.deyeCoverLoadPreconditions(DEYE_CHARGE_SIDE_FACTS, reg),
       precondition: (o) => deyeNativePrecondition(o && o.deyeOwnConfig, {
         floorPct: o && o.effectiveFloorSocPct,
         solarOnly: o && o.solarOnlyCharge === true,
+        reg,
       }),
       // K5: the CHARGE side (surplus_charge / self_consumption) - two candidates,
       // each released by its own certificate entry (or run by the armed pilot).
@@ -3186,6 +3178,7 @@ module.exports = {
   nativeSelfConsumption,
   nativeCapabilityReport,
   nativeWindowCheck,
+  NATIVE_WINDOW_FULL_TOLERANCE_KW,
   deyeNativePrecondition,
   DEYE_CHARGE_SIDE_FACTS,
   setpointStale,

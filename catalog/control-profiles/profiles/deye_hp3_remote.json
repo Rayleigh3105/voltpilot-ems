@@ -198,7 +198,7 @@
         }
       ],
       "sicherheit": "B",
-      "wie": "1100 ← 0 mit Vorbedingung ToU aktiv, Programm-SoC ≤ Reserve, Programm-Laden = Disabled (zertifiziert 26.08.2026). An EEG-Anlagen nach Code-Lesart blockiert (Befund §2.3)."
+      "wie": "1100 ← 0 (zertifiziert 26.08.2026, Bytes unverändert) mit Vorbedingung aus dem Blocklesen 0x008D..0x00B1 (vp-wr-deye-tou-schreibbudget, Zeile E der Eigenkonfigurations-Tabelle): Arbeitsmodus nicht „Selling First“ (darf mit aktivem ToU laut Handbuch Speicherenergie verkaufen, Herzogau heute), Energiemuster Load First, das gerade gültige ToU-Programm mit Entladeleistung, Ziel-SoC ≤ Reserve, Laden = Disabled. Sonst Verweigerung mit Grund, die Box deckt gedämpft; Aufsicht speicher_einspeisung. An EEG-Anlagen nach Code-Lesart blockiert (Befund §2.3)."
     },
     "E_gedrosselt": {
       "adapter_folge": "sollwert",

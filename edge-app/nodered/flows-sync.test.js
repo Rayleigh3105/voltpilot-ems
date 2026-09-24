@@ -1839,6 +1839,20 @@ test('K4b: the inline planner agrees with the module for every window intent and
     assert.deepStrictEqual(JSON.parse(JSON.stringify(box.__out(m, i, lo, hi, sel))),
       nativeWindowCheck(m, i, lo, hi, sel), `${m}/${i} [${lo};${hi}]`);
   }
+  // vp-wr-deye-tou-schreibbudget: with the core's reference both judge the same
+  // band - a 25-kW battery on a 30-kW inverter, full, just below, capped, one side.
+  for (const [i, lo, hi, nat] of [
+    ['surplus_charge', 0, 25, { minKw: -25, maxKw: 25 }],
+    ['surplus_charge', 0, 24.96, { minKw: -25, maxKw: 25 }],
+    ['surplus_charge', 0, 24.9, { minKw: -25, maxKw: 25 }],
+    ['self_consumption', -20, 25, { minKw: -25, maxKw: 25 }],
+    ['self_consumption', -25, 25, { maxKw: 25 }],
+    ['cover_load', -25, 0, { minKw: -25, maxKw: 25 }],
+  ]) {
+    const sel = { ...K4B_SEL, rated_kw: 30 };
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(box.__out('native_window', i, lo, hi, sel, nat))),
+      nativeWindowCheck('native_window', i, lo, hi, sel, nat), `${i} [${lo};${hi}] ref ${JSON.stringify(nat)}`);
+  }
 });
 
 test('K4b: the inline lever report equals the module report and rides beside msg.control', () => {
@@ -1878,11 +1892,20 @@ const DEYE_NATIVE_SEL = {
   communication: 'solarman_v5', control_tier: 3, rated_kw: 30,
   connection: { ip: '10.0.0.8', port: 8899, serial: 2985159064, mb_slave_id: 1, power_scale: 10 },
 };
-// The device's own Time-of-Use configuration, as the executor caches it: armed,
-// discharging down to 5 % - i.e. past a 10 % reserve floor - and not grid-charging.
-// `at` is the executor's read timestamp: the plan node treats an OLD cache as
-// "not read" (see the freshness note there), so every fixture carries a live one.
-const DEYE_NATIVE_CFG = { at: Date.now(), tou_enable: 0x00ff, program_target_soc: 5, grid_charge_enable: 0 };
+// The device's own configuration, as the executor caches it: armed, discharging
+// down to 5 % - i.e. past a 10 % reserve floor - and not grid-charging; since
+// vp-wr-deye-tou-schreibbudget with the own-config block (Zero Export To CT, Load
+// First, Solar Sell) E-down judges. `at` is the executor's read timestamp: the
+// plan node treats an OLD cache as "not read" (see the freshness note there), so
+// every fixture carries a live one.
+function deyeNativeCfg({ workMode = 2, tou = 0x00ff, charge = 0 } = {}) {
+  const b = k5OwnBlock(workMode);
+  b[5] = tou;
+  for (let i = 0; i < 6; i++) b[31 + i] = charge; // Program 1..6 Charging
+  return { at: Date.now(), tou_enable: tou, program_target_soc: 5, grid_charge_enable: charge,
+    own_config: b, now_min: 600 };
+}
+const DEYE_NATIVE_CFG = deyeNativeCfg();
 // The remote-mode capability the executor's probe classifies (PR-978 layout).
 function deyeNativeSticky() {
   return { path: 'remote', since: Date.now(), contrary: 0, everRemote: true, seededFromGrant: true };
@@ -1959,7 +1982,7 @@ test('the inline native planner refuses like the module, with the same German re
 
   // 1. The inverter's own Time-of-Use program is not armed: without it the manual
   //    is unambiguous - it will not discharge to the loads.
-  let r = both({}, {}, { cfg: { ...DEYE_NATIVE_CFG, tou_enable: 0x00fe } });
+  let r = both({}, {}, { cfg: deyeNativeCfg({ tou: 0x00fe }) });
   assert.match(r.module_.reason, /Time of Use/);
   assert.strictEqual(r.module_.writes.length, 0);
   // The plan node falls back to the follower, so the reason travels as the WARN;
@@ -1972,7 +1995,7 @@ test('the inline native planner refuses like the module, with the same German re
   assert.notStrictEqual(r.inline.mode, 'native');
 
   // 3. An EEG site whose program still permits grid charging.
-  r = both({ grid_charge_allowed: false }, {}, { cfg: { ...DEYE_NATIVE_CFG, grid_charge_enable: 1 } });
+  r = both({ grid_charge_allowed: false }, {}, { cfg: deyeNativeCfg({ charge: 1 }) });
   assert.match(r.module_.reason, /EEG-Anlage/);
   assert.notStrictEqual(r.inline.mode, 'native');
 
@@ -1980,9 +2003,17 @@ test('the inline native planner refuses like the module, with the same German re
   //     both - the key the executor caches (the precondition ROLE) is the key
   //     both gates judge. (K3: the module once read a different key and refused
   //     here while the shipped copy handed over.)
-  r = both({ grid_charge_allowed: false }, {}, { cfg: { ...DEYE_NATIVE_CFG, grid_charge_enable: 0 } });
+  r = both({ grid_charge_allowed: false }, {}, { cfg: deyeNativeCfg({ charge: 0 }) });
   assert.strictEqual(r.module_.writes.length, 1, 'module: ' + r.module_.reason);
   assert.strictEqual(r.inline.mode, 'native', 'inline: the EEG site with grid charging disabled goes native');
+
+  // 3c. vp-wr-deye-tou-schreibbudget: the Herzogau setting (Work Mode 0 "Selling
+  //     First", ToU active) may sell storage energy - both refuse E-down with the
+  //     same German reason, and nothing is written.
+  r = both({ grid_charge_allowed: false }, {}, { cfg: deyeNativeCfg({ workMode: 0 }) });
+  assert.match(r.module_.reason, /Selling First/);
+  assert.strictEqual(r.module_.writes.length, 0);
+  assert.notStrictEqual(r.inline.mode, 'native', 'inline: Selling First hands nothing over');
 
   // 4. Nothing read at all - the honest "not known", never an assumed zero.
   r = both({}, {}, { cfg: undefined });
@@ -2018,6 +2049,16 @@ test('K5: the control plan node embeds the current deye-charge-side.js verbatim'
   const facts = JSON.stringify(require('./inverter-control-routing').DEYE_CHARGE_SIDE_FACTS);
   assert.ok(byId['auto-control-plan'].func.includes('var __DCSF = ' + facts + ';'),
     'the register facts come straight from the routing module');
+});
+
+// vp-wr-deye-tou-schreibbudget: the ToU day budget is ONE module the executor
+// (counts, holds) and the plan node (hands back once, then plans nothing) embed.
+test('ToU-Schreibbudget: executor and plan node embed the current deye-tou-budget.js verbatim', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'deye-tou-budget.js'), 'utf8');
+  assert.ok(byId['auto-control-exec-deye'].func.includes(src),
+    'the Deye executor is out of sync with deye-tou-budget.js - re-run build-flows.js');
+  assert.ok(byId['auto-control-plan'].func.includes(src),
+    'the control plan node is out of sync with deye-tou-budget.js - re-run build-flows.js');
 });
 
 function k5OwnBlock(workMode) {

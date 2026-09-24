@@ -3217,9 +3217,24 @@ func (a *Agent) applySetpoint(now time.Time) {
 		msg["battery_native_intent"] = nativeDec.Intent
 		msg["battery_window_min_kw"] = nativeDec.Window.MinKw
 		msg["battery_window_max_kw"] = nativeDec.Window.MaxKw
+		// The reference for "narrower than the device's own mode": the battery's
+		// rated band Box ① classified the plan against (guards.NaturalWindow).
+		// Layer 1 compares the window with it, not with the inverter's nameplate.
+		if nat, ok := guards.NaturalWindow(limits.MaxChargeKw, limits.MaxDischargeKw); ok {
+			msg["battery_window_natural_min_kw"] = nat.MinKw
+			msg["battery_window_natural_max_kw"] = nat.MaxKw
+		}
 	}
 	if effectiveFloor != nil {
 		msg["effective_floor_soc_pct"] = *effectiveFloor
+	}
+	// persistent_write_budget is the day budget of plan changes the selected
+	// device's control profile states for a persistent (EEPROM) lever (K7,
+	// concept §6.6 F12). Layer 1's Deye ToU path counts its own plan changes
+	// against it (vp-wr-deye-tou-schreibbudget) and keeps the Vorgabe of 20 when
+	// it is absent; a larger value never loosens it there either.
+	if n := a.persistentWriteBudget(); n > 0 {
+		msg["persistent_write_budget"] = n
 	}
 	// device_certified_path names the control surface the grant's First-Light
 	// evidence was produced on ("remote"/"tou") - Layer 1's plan node seeds its

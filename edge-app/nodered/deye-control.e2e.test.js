@@ -2486,23 +2486,36 @@ function nativeSel(port) {
 // 1101=0xFFFF, 1104=0, 1105=2, 1121=0 -> the PR-978 layout. Everything else in
 // the block reads 0, which is what a real answer looks like.
 const REG_REMOTE = { mode: 0x044c, watchdog: 0x044d, powerControlMode: 0x0450, batteryStrategy: 0x0451, constantPower: 0x0455, status: 0x0461 };
-const REG_TOU = { touEnable: 0x0092, progSoc1: 0x00a6, progCharge1: 0x00ac };
+const REG_TOU = { touEnable: 0x0092, progSoc1: 0x00a6, progCharge1: 0x00ac,
+  energyPattern: 0x008d, workMode: 0x008e, solarSell: 0x0091, progTime1: 0x0094, progPower1: 0x009a };
 
-function nativeStore(overrides = {}) {
-  return {
+function nativeStore(overrides = {}, { workMode = 2, pattern = 1, solarSell = 1, prog = {} } = {}) {
+  const p = { power: 3000, soc: 5, charge: 0, ...prog };
+  const out = {
     0x0000: 0x0008, // HV identity -> power scale 10 (the N1 auto-detect)
     [REG_REMOTE.mode]: 0,
     [REG_REMOTE.watchdog]: 0xffff,
     [REG_REMOTE.powerControlMode]: 0,
     [REG_REMOTE.batteryStrategy]: 2,
     [REG_REMOTE.status]: 0,
-    // The inverter's OWN Time-of-Use program: armed all week, discharging down
-    // to 5 % (past a 10 % reserve floor), never charging from the grid.
+    // The inverter's OWN configuration (vp-wr-deye-tou-schreibbudget: E-down reads
+    // the whole block): Zero Export To CT with Solar Sell, Load First, Time-of-Use
+    // armed all week, EVERY program discharging down to 5 % (past a 10 % reserve
+    // floor) and never charging from the grid - so the wall-clock time of the
+    // test cannot pick a different program.
+    [REG_TOU.energyPattern]: pattern,
+    [REG_TOU.workMode]: workMode,
+    [REG_TOU.solarSell]: solarSell,
     [REG_TOU.touEnable]: 0x00ff,
-    [REG_TOU.progSoc1]: 5,
-    [REG_TOU.progCharge1]: 0,
-    ...overrides,
   };
+  const times = [0, 500, 900, 1300, 1700, 2100];
+  for (let i = 0; i < 6; i++) {
+    out[REG_TOU.progTime1 + i] = times[i];
+    out[REG_TOU.progPower1 + i] = p.power;
+    out[REG_TOU.progSoc1 + i] = p.soc;
+    out[REG_TOU.progCharge1 + i] = p.charge;
+  }
+  return { ...out, ...overrides };
 }
 
 // The core's published command. `battery_mode` is the additive native field;
@@ -2679,9 +2692,32 @@ test('the pilot refuses when its own Time-of-Use program cannot cover the house'
   }
 });
 
+test('E-down: the Herzogau setting (Selling First, ToU active) is refused - no write, the box keeps covering', async () => {
+  // vp-wr-deye-tou-schreibbudget: Work Mode 0 "Selling First" with Time of Use
+  // active may sell STORAGE energy (manual) - that breaks E-down's "no sale". The
+  // block read decides; no installer register is ever written.
+  const { server, port, writes, store } = await startSolarmanServer(nativeStore({}, { workMode: 0 }));
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint', { grid_charge_allowed: false }));
+    await rig.tick(nativeSetpoint('native', { grid_charge_allowed: false })); // fills the cache
+    const t = await rig.tick(nativeSetpoint('native', { grid_charge_allowed: false }));
+    assert.notStrictEqual(t.plan.mode, 'native', 'nothing is handed over');
+    assert.ok(rig.warns.some((w) => /Selling First/.test(w) && /nur Verbrauch decken/.test(w)),
+      'the refusal names the setting: ' + JSON.stringify(rig.warns));
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'remote mode stays armed - no 1100 <- 0');
+    assert.ok(!writes.some((w) => w.reg === REG_REMOTE.mode && w.value === 0), 'never a hand-over write');
+    assert.ok(!writes.some((w) => w.reg >= 0x008d && w.reg <= 0x00b1), 'no installer register touched');
+    assert.ok(writes.some((w) => w.reg === REG_REMOTE.constantPower), 'the follower keeps covering');
+    assert.match(String(t.out.payload.native_refusal || ''), /Selling First/, 'and the core hears why');
+  } finally {
+    server.close();
+  }
+});
+
 test('an EEG plant is refused unless the inverter own program already blocks grid charging', async () => {
   const { server, port, store } = await startSolarmanServer(
-    nativeStore({ [REG_TOU.progCharge1]: 1 })); // Program 1 Charging = Grid
+    nativeStore({}, { prog: { charge: 1 } })); // every program's Charging = Grid
   try {
     const rig = makeNativeRig(port);
     const eeg = () => nativeSetpoint('native', { grid_charge_allowed: false });
@@ -3160,6 +3196,134 @@ test('K5: mit Zertifikat-Eintrag (nur Test-Katalog) wählt die Box den Kandidate
     // E-up has no entry: it stays with the box.
     const up = await tick(k5Setpoint('surplus_charge'));
     assert.notStrictEqual(up.plan.mode, 'native');
+  } finally {
+    server.close();
+  }
+});
+
+// --- vp-wr-deye-tou-schreibbudget: the ToU path's day budget, over a WHOLE day ---
+//
+// The plan node and the executor from flows.json, the in-process logger and a
+// fake clock: 96 quarter hours, every one of them a plan change (discharge <->
+// charge - the worst case the 900-s dwell still allows). The budget is 20 plan
+// changes per day (concept §6.6, F12; profile deye_tou): 19 plan changes, the
+// 20th wanted change is HELD because the day's last room belongs to the release,
+// the release restores the device's own configuration, and every later change is
+// refused with the reason - until the day turns.
+function makeTouRig(port, clock) {
+  const sel = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, port } };
+  const target = '127.0.0.1:' + port;
+  const flowStore = { inverter_config: sel };
+  const planCtx = {};
+  const execCtx = {};
+  const warns = [];
+  class FakeDate extends Date {
+    constructor(...a) { if (a.length === 0) super(clock.now); else super(...a); }
+    static now() { return clock.now; }
+  }
+  const sandbox = (msg, ctxStore) => ({
+    msg,
+    node: { status() {}, error() {}, warn(l) { warns.push(String(l)); }, log() {}, send() {} },
+    context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
+    flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
+    global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
+    Buffer, Date: FakeDate, Math, isFinite, Number, Array, Object, JSON, Promise, setTimeout, clearTimeout,
+  });
+  const tick = async (kw, extra = {}) => {
+    // The definitive "no remote block" verdict the ToU path needs, kept fresh so
+    // no capability re-probe falls into the day (proven elsewhere).
+    flowStore['deye_cap:' + target] = { ...TOU_E2E_CAP, at: clock.now };
+    const msg = { setpoint: { battery_setpoint_kw: kw, source: 'schedule', control_enabled: true,
+      device_certified: true, soc_min_pct: 10, ts: new Date(clock.now).toISOString(), ...extra } };
+    const planBox = sandbox(msg, planCtx);
+    vm.createContext(planBox);
+    const planned = vm.runInContext('(function () {\n' + DEYE_NATIVE_PLAN + '\n})()', planBox);
+    if (!planned) return { plan: null, out: null };
+    const execBox = sandbox(msg, execCtx);
+    vm.createContext(execBox);
+    const ret = vm.runInContext('(function () {\n' + DEYE_EXEC + '\n})()', execBox);
+    const out = ret && typeof ret.then === 'function' ? await ret : ret;
+    return { plan: msg.control, out };
+  };
+  return { tick, flowStore, warns, budgetKey: 'deye_tou_budget:' + target };
+}
+
+test('ToU-Schreibbudget: ein ganzer Tag - 19 Planwechsel, die Rückgabe, der 21. Planwechsel ist gesperrt', async () => {
+  const REG = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+  // The installer's own configuration: Load First, Zero Export To CT, ToU OFF.
+  const { server, port, store, writes } = await startSolarmanServer({
+    [REG.energyPattern]: 1, [REG.workMode]: 2, [REG.maxSellPower]: 7182, [REG.touEnable]: 0,
+  });
+  try {
+    const day0 = new Date(2026, 8, 24, 0, 0).getTime();
+    const clock = { now: day0 };
+    const rig = makeTouRig(port, clock);
+    // Two ticks per quarter hour: at its start (the plan changes) and 10 s later
+    // (the republish - readback only, unless the budget hands the device back).
+    const ticks = [];
+    for (let q = 0; q < 96; q++) {
+      for (const offS of [0, 10]) {
+        clock.now = day0 + q * 15 * 60 * 1000 + offS * 1000;
+        const before = writes.length;
+        const t = await rig.tick(q % 2 === 0 ? -5 : 5);
+        ticks.push({ q, offS, wrote: writes.length > before, mode: t.plan && t.plan.mode, out: t.out && t.out.payload });
+      }
+    }
+    const wrote = ticks.filter((x) => x.wrote).map((x) => x.q + (x.offS ? '+10s' : ''));
+    assert.deepStrictEqual(wrote, [...[...Array(19).keys()].map(String), '19+10s'],
+      '19 plan changes, the 20th wanted one held, the release 10 s later - nothing after it');
+    // q=19: the wanted change is HELD - nothing written, the reason on the readback.
+    const held = ticks.find((x) => x.q === 19 && x.offS === 0).out;
+    assert.strictEqual(held.blocked, true);
+    assert.match(held.reason, /Tagesbudget der Zeitfenster-Steuerung erreicht \(19 von 20/);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(held.tou_budget)), { day: '2026-09-24', changes: 19, limit: 20, held: true });
+    // The next tick hands the device back to ITS OWN configuration.
+    const rel = ticks.find((x) => x.q === 19 && x.offS === 10);
+    assert.strictEqual(rel.mode, 'release');
+    assert.strictEqual(store[REG.touEnable], 0, 'Time of Use back to the installer value (off)');
+    assert.strictEqual(store[REG.energyPattern], 1);
+    assert.strictEqual(store[REG.maxSellPower], 7182, 'the installer export limit restored');
+    assert.strictEqual(rel.out.tou_budget.changes, 20, 'the release is the 20th EEPROM plan write');
+    // The 21st plan change (q=20) and every later one: refused, the reason visible.
+    for (const x of ticks.filter((t) => t.q >= 20)) {
+      assert.strictEqual(x.wrote, false, `q=${x.q}`);
+      assert.strictEqual(x.out.blocked, true, `q=${x.q}: blocked readback`);
+      assert.match(x.out.reason, /bis Mitternacht keine weiteren Planwechsel/, `q=${x.q}`);
+    }
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(rig.flowStore[rig.budgetKey])), { day: '2026-09-24', changes: 20, held: true });
+    assert.ok(rig.warns.some((w) => /Tagesbudget/.test(w)), 'said in the log too');
+
+    // The next day starts over: the first plan change is written again.
+    clock.now = day0 + 24 * 3600 * 1000;
+    const before = writes.length;
+    const next = await rig.tick(-5);
+    assert.ok(writes.length > before, 'a new day, a new budget');
+    assert.notStrictEqual(next.out.payload.blocked, true);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(next.out.payload.tou_budget)), { day: '2026-09-25', changes: 1, limit: 20, held: false });
+  } finally {
+    server.close();
+  }
+});
+
+test('ToU-Schreibbudget: ein engeres Profil-Budget (persistent_write_budget) gilt, ein weiteres nicht', async () => {
+  const REG = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+  const { server, port, writes } = await startSolarmanServer({ [REG.touEnable]: 0 });
+  try {
+    const day0 = new Date(2026, 8, 24, 0, 0).getTime();
+    const clock = { now: day0 };
+    const rig = makeTouRig(port, clock);
+    const wrote = [];
+    for (let q = 0; q < 8; q++) {
+      clock.now = day0 + q * 15 * 60 * 1000;
+      const before = writes.length;
+      await rig.tick(q % 2 === 0 ? -5 : 5, { persistent_write_budget: 4 });
+      wrote.push(writes.length > before);
+    }
+    assert.deepStrictEqual(wrote, [true, true, true, false, true, false, false, false],
+      'budget 4: three plan changes, held, the release on the next tick - then nothing');
+    // A looser statement is ignored: 40 is still 20.
+    const B = require('./deye-tou-budget');
+    assert.strictEqual(B.touBudgetLimit(40), 20);
   } finally {
     server.close();
   }

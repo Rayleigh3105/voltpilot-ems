@@ -157,3 +157,29 @@ func TestNativeLeversHas(t *testing.T) {
 		t.Fatalf("Has: %+v", l)
 	}
 }
+
+// vp-wr-deye-tou-schreibbudget: the reference Layer 1 compares a window with is
+// the band IntentFor classifies against - a plan window that reaches it is not
+// NeedsWindow, and the published reference says exactly that bound.
+func TestNaturalWindowIsTheBandIntentForClassifiesAgainst(t *testing.T) {
+	nat, ok := NaturalWindow(25, 20)
+	if !ok || nat.MinKw != -20 || nat.MaxKw != 25 {
+		t.Fatalf("want [-20 ; 25], got %+v %v", nat, ok)
+	}
+	in := IntentFor(0, IntentFlags{ChargeFromSurplusOnly: true, ChargeSurplusToBattery: true}, 25, 20)
+	if in.NeedsWindow || in.MaxKw != nat.MaxKw {
+		t.Fatalf("a full E-up reaches the reference: %+v vs %+v", in, nat)
+	}
+	e := IntentFor(0, IntentFlags{ChargeFromSurplusOnly: true, ChargeSurplusToBattery: true, CoverLoadFromBattery: true}, 25, 20)
+	if e.NeedsWindow || e.MinKw != nat.MinKw || e.MaxKw != nat.MaxKw {
+		t.Fatalf("a full E spans the reference: %+v vs %+v", e, nat)
+	}
+	if n, _ := NaturalWindow(-3, -1); n.MinKw != 0 || n.MaxKw != 0 {
+		t.Fatalf("a negative limit is no band: %+v", n)
+	}
+	for _, bad := range [][2]float64{{math.Inf(1), 20}, {25, math.NaN()}} {
+		if _, ok := NaturalWindow(bad[0], bad[1]); ok {
+			t.Fatalf("%v is no reference - the fields are omitted", bad)
+		}
+	}
+}
