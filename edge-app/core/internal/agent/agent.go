@@ -150,6 +150,22 @@ type Agent struct {
 	lastDriftLog   time.Time // rate-limits the battery cross-check drift log
 	lastCertDivLog time.Time // rate-limits the control-gate-divergence warning
 
+	// meterCheck compares the selection's own grid reading with the box's Netz
+	// meter (K6, guards/leader.go): a measured veto on a declared "am
+	// Netzpunkt". Fed at onLocalTelemetry, judged at applySetpoint.
+	meterCheck guards.MeterCheck
+	// exportZero is the second feed-in watchdog of a negative-price slot in
+	// which the leader stores the surplus itself (K6, composeCurtailment): the
+	// slot's "Einspeisegrenze 0 kW", kept apart from the site's compliance
+	// limiter so that one keeps meaning the registered limit.
+	exportZero guards.ExportLimiter
+	// lastBackstop is the last logged backstop sentence (log on change).
+	lastBackstop string
+	// leaderSuspectAt is when the K4b hint einspeisung_trotz_ladeleistung last
+	// fired - the measured symptom of a leader meter that does not see a second
+	// PV system (zero = never). Guarded by mu.
+	leaderSuspectAt time.Time
+
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
 
@@ -1456,6 +1472,14 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	if g != nil {
 		measurements["power_kw"] = *g
 	}
+	// K6: the selection's OWN grid reading against the box's Netz meter - the
+	// plausibility half of "Zähler am Netzpunkt" (guards.MeterCheck). Only a
+	// real pair counts: both readings present, close enough in time.
+	if dev, ok := primary["power_kw"]; ok {
+		if mk, mat, ok := a.netzMeterReading(); ok {
+			a.meterCheck.Observe(ts, dev, mk, time.Now().UTC().Sub(mat))
+		}
+	}
 	siteGrid := g
 	if siteGrid == nil && !a.primaryGridNotSiteTotal() {
 		if grid, ok := measurements["power_kw"]; ok {
@@ -1624,7 +1648,11 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// cadence for no gain.
 	if g, ok := measurements["power_kw"]; ok {
 		if pv, okPv := measurements["pv_power_kw"]; okPv {
-			if a.export.Observe(ts, g, pv) {
+			urgent := a.export.Observe(ts, g, pv)
+			if a.exportZero.Observe(ts, g, pv) {
+				urgent = true
+			}
+			if urgent {
 				a.nudgeSetpoint()
 			}
 		}
@@ -3085,25 +3113,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// with `now` would keep re-stamping a stale reading and the staged fallback
 	// below could never fire. Without a reading at all nothing is observed - a
 	// zero-valued Reading is not a measured house.
-	if !readingAt.IsZero() {
-		a.curtailTrack.Observe(readingAt, r.LoadKw, kw)
-	}
-	curtailCap := a.curtailTrack.Cap(now, pvLimit)
-	if curtailCap.Active {
-		v := curtailCap.CapKw
-		pvLimit = &v
-	}
-	curtailTrack := a.curtailTrackInfo(curtailCap)
-
-	exportCap := a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, kw))
-	if exportCap.Active {
-		if pvLimit == nil || exportCap.CapKw < *pvLimit {
-			v := exportCap.CapKw
-			pvLimit = &v
-		}
-	}
-	exportGuard := a.exportGuardInfo(exportCap)
-	a.logExportGuard(exportGuard)
+	//
+	// K6: the composition itself runs BEHIND the Wegwahl below
+	// (composeCurtailment), because the cascade needs to know whether the
+	// leader regulates itself.
 
 	// Control gate (report §6.6/§6.7): the setpoint carries the core's kill-switch
 	// AND per-model certification verdict as control_enabled. Layer 1 writes only
@@ -3140,9 +3153,20 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// grace and the proven follower carries the slot. `kw` is published either
 	// way - unchanged for the executor to write in setpoint mode, and as the
 	// display/take-back reference in native mode.
+	//
+	// K6: only the connection point's Führungsgerät may regulate itself
+	// (guards/leader.go) - a standing condition of the Wegwahl.
+	leader, leaderInfo := a.leaderVerdict(now)
 	nativeDec, nativeInfo, nativeWithheldInfo := a.nativeDecide(now, p, r, kw,
 		marketCorrectionsAllowed && !surplusStored, controlEnabled, measurementFresh, freshWindow,
-		effectiveFloor, peakTarget, solarOnly, limits)
+		effectiveFloor, peakTarget, solarOnly, limits, leader.Reason)
+	a.noteLeaderSymptom(now, nativeDec)
+
+	// PV curtailment and the feed-in watchdog, with the leader as the inner
+	// loop of the cascade (K6, agent/leader.go). `kw` is final here.
+	_, nativeSlot, _ := p.ActiveSetpoint(now)
+	pvLimit, curtailTrack, exportGuard := a.composeCurtailment(now, readingAt, r, kw, pvLimit, exportLimit,
+		a.innerLoop(nativeDec, r, limits, nativeSlot))
 
 	msg := map[string]any{
 		"battery_setpoint_kw": kw,
@@ -3256,6 +3280,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.CarsFirstCapKw = carsFirstCap
 		s.ExportGuard = exportGuard
 		s.CurtailTrack = curtailTrack
+		s.Leader = leaderInfo
 		s.Native = nativeInfo
 		s.NativeWithheld = nativeWithheldInfo
 	})
@@ -3771,6 +3796,32 @@ func (a *Agent) authoritativeGrid() (*float64, string) {
 	return best.grid, bestID
 }
 
+// netzMeterReading is authoritativeGrid with the reading's receive time, for
+// the K6 meter comparison (a pair is only a pair when both halves are recent).
+func (a *Agent) netzMeterReading() (float64, time.Time, bool) {
+	now := time.Now().UTC()
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	var best *sourceReading
+	for _, s := range a.srcs {
+		if s.Role != sources.RoleNetz {
+			continue
+		}
+		r, ok := a.sourceFresh(s, now)
+		if !ok || r.grid == nil {
+			continue
+		}
+		if best == nil || r.recv.After(best.recv) {
+			rr := r
+			best = &rr
+		}
+	}
+	if best == nil {
+		return 0, time.Time{}, false
+	}
+	return *best.grid, best.recv, true
+}
+
 // noteSourceMix compares the fold's source-composition signatures with the last
 // fold's and, on a CHANGE, resets the despiker + envelope baselines of the
 // channels the changed composition rewrites (PV mix -> pv_power_kw + load_kw;
@@ -3964,13 +4015,25 @@ func (a *Agent) GetBalance() sources.BalanceSettings {
 // SetBalance persists the site power-balance settings and applies them live
 // (the next telemetry sample already uses them; no restart needed).
 func (a *Agent) SetBalance(cfg sources.BalanceSettings) (sources.BalanceSettings, error) {
+	cfg, err := cfg.Normalize()
+	if err != nil {
+		return sources.BalanceSettings{}, err
+	}
 	if err := a.balStore.Save(cfg); err != nil {
 		return sources.BalanceSettings{}, err
 	}
 	a.srcMu.Lock()
+	moved := a.bal.MeterLocation() != cfg.MeterLocation()
 	a.bal = cfg
 	a.srcMu.Unlock()
-	slog.Info("balance settings updated", "primary_grid_not_site_total", cfg.PrimaryGridNotSiteTotal)
+	if moved {
+		// A changed meter statement starts the comparison over: pairs measured
+		// under the old topology prove nothing about the new one.
+		a.meterCheck.Reset()
+	}
+	slog.Info("balance settings updated", "primary_grid_not_site_total", cfg.PrimaryGridNotSiteTotal,
+		"primary_meter_location", cfg.MeterLocation(), "further_storage", cfg.FurtherStorage,
+		"export_backstop", cfg.ExportBackstop)
 	return cfg, nil
 }
 

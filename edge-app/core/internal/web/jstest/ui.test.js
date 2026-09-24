@@ -1157,6 +1157,20 @@ test("Einspeise-Waechter: der Grund des Kerns wird VERBATIM durchgereicht", () =
   assert.match(d.text, /Einspeisegrenze 30,0 kW/);
 });
 
+test("Einspeise-Waechter (K6): ohne geraeteseitigen Rueckhalt ist die Grenze eine WARNUNG", () => {
+  const backstop = "Die Einspeisegrenze von 30,0 kW hält nur die Box: fällt sie aus, geben die " +
+    "abgeregelten Wechselrichter nach ihrer Rückfallzeit (Fronius: 60 s) die volle Leistung frei.";
+  const d = exportGuardFor({ export_guard: { ...GUARD_LIMITING, backstop, backstop_covered: false,
+    cascade: "aussen", cascade_text: "Der Speicher nimmt nichts mehr auf." } });
+  assert.strictEqual(d.tone, "warn");
+  assert.strictEqual(d.backstopMissing, true);
+  assert.ok(d.text.includes(backstop), "der Rueckhalt-Satz des Kerns muss unveraendert erscheinen");
+  assert.ok(d.text.includes("Der Speicher nimmt nichts mehr auf."));
+  const covered = exportGuardFor({ export_guard: { ...GUARD_LIMITING, backstop: "gemeldet.", backstop_covered: true } });
+  assert.strictEqual(covered.tone, "ok");
+  assert.ok(!covered.text.includes("gemeldet."), "ein gedeckter Rueckhalt ist keine Zeile wert");
+});
+
 test("Einspeise-Waechter: blind ist eine WARNUNG, nie ein ruhiger Zustand", () => {
   const d = exportGuardFor({
     export_guard: {

@@ -148,6 +148,24 @@ const (
 	// most likely does not see a second PV system (Herzogau: the Fronius) - which
 	// the device cannot fix by itself and a take-back would not fix either.
 	NativeHintExportWithHeadroom = "einspeisung_trotz_ladeleistung"
+
+	// --- K6 (Führungsgerät je Netzpunkt, guards/leader.go) - refusals, never
+	// take-backs of their own: a standing configuration fact. A verdict that
+	// turns bad while the device regulates takes the lever back (latched for
+	// the slot like every other take-back).
+
+	// NativeMeterLocationMissing: the operator has not declared where the
+	// device's meter sits - "Gerät regelt" needs "am Netzpunkt".
+	NativeMeterLocationMissing = "zaehlerort_fehlt"
+	// NativeMeterElsewhere: the device's meter sits somewhere else and does not
+	// see the whole connection point.
+	NativeMeterElsewhere = "zaehler_nicht_am_netzpunkt"
+	// NativeMeterImplausible: the box's own Netz meter disagrees with the
+	// device's meter (guards.MeterCheck).
+	NativeMeterImplausible = "zaehler_unplausibel"
+	// NativeSecondRegulator: a further storage at the same connection point
+	// regulates itself on the same meter - two regulators swing up.
+	NativeSecondRegulator = "zweiter_regler"
 )
 
 // The charge-side supervision thresholds of §6.1 step 5: a sustained 0.5 kW for
@@ -203,6 +221,11 @@ var nativeReasonText = map[string]string{
 	NativeWriteBudget:            "Die Umschaltungen dieses Wechselrichters für heute sind aufgebraucht - VoltPilot regelt selbst nach.",
 	NativeOwnPvCurtailed:         "Der Speicher nimmt nichts mehr auf und der Wechselrichter würde seine eigene PV abregeln, obwohl Einspeisen sich lohnt - VoltPilot übernimmt wieder.",
 	NativeHintExportWithHeadroom: "Die Anlage speist ein, obwohl der Speicher noch laden könnte - der Zähler des Wechselrichters sieht vermutlich die zweite PV-Anlage nicht.",
+
+	NativeMeterLocationMissing: "Der Zählerort des Wechselrichters ist nicht angegeben - selbst regeln darf er nur mit einem Zähler am Netzpunkt. VoltPilot regelt nach.",
+	NativeMeterElsewhere:       "Der Zähler des Wechselrichters sitzt nicht am Netzpunkt - er sieht nicht die ganze Anlage. VoltPilot regelt nach.",
+	NativeMeterImplausible:     "Der Zähler des Wechselrichters passt nicht zum Netz-Zähler der Box - VoltPilot regelt nach, bis der Zählerort geklärt ist.",
+	NativeSecondRegulator:      "Am selben Netzpunkt regelt ein weiterer Speicher selbst - zwei Regler auf einem Zähler schaukeln sich auf. VoltPilot regelt nach.",
 }
 
 // NativeReasonText is the German sentence for a reason code ("" for an unknown
@@ -221,6 +244,10 @@ func nativeEngagedText(intent string) string {
 		return NativeReasonText(NativeEngaged)
 	}
 }
+
+// IntentOpensCharge reports whether an intent lets the device CHARGE by itself
+// (E↑, E, E~) - the leader is then the inner loop of the feed-in cascade (K6).
+func IntentOpensCharge(intent string) bool { return opensCharge(intent) }
 
 // NativeModeFor is the battery_mode word on edge/setpoint for an intent:
 // "native" for the pre-existing E↓ primitive (byte-identical for every Layer 1
@@ -350,6 +377,15 @@ type NativeInput struct {
 	// CurtailmentWanted: the plan caps the PV in this slot (negative price,
 	// §51) - then that side effect is exactly what the slot asks for.
 	CurtailmentWanted bool
+
+	// --- K6: Führungsgerät ---
+
+	// LeaderRefusal is guards.LeaderFor's refusal code ("" = the selection is
+	// the connection point's leader and may regulate itself). It gates EVERY
+	// device-regulated intent, the pre-existing E↓ path included: a device that
+	// cannot see the whole connection point regulates the wrong quantity no
+	// matter which side of the window it covers.
+	LeaderRefusal string
 }
 
 // NativeDecision is one evaluation.
@@ -541,6 +577,17 @@ func (n *NativeMode) decide(now time.Time, in NativeInput) NativeDecision {
 		n.latched = ""
 		n.since = time.Time{}
 		n.clearSlotState()
+	}
+	// 3b. K6: only the connection point's leader may regulate itself. A
+	//     refusal while nothing is handed over; a take-back (latched for the
+	//     slot) when the verdict turns while the device regulates - e.g. the
+	//     meter comparison flips to "passt nicht" mid-slot.
+	if in.LeaderRefusal != "" {
+		if n.engaged {
+			return takeBack(in.LeaderRefusal)
+		}
+		n.since = time.Time{}
+		return refuse(in.LeaderRefusal)
 	}
 	// 4. Somebody else owns the battery (plant rest, a rule, a handhold, an
 	//    owner claim). Not a take-back - there is nothing of ours to take back.

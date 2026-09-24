@@ -52,6 +52,9 @@ func nativeAgent(t *testing.T) (*Agent, string) {
 	a.invMu.Lock()
 	a.inv = &inverter.Selection{Family: "sunspec"}
 	a.invMu.Unlock()
+	// K6: the selection is the connection point's leader (meter declared
+	// "am Netzpunkt") - every case here is about the device's own regulation.
+	declareMeterAtGridPoint(a)
 	// A FRESH covering slot: the plan discharges and the cloud marked its grid
 	// exchange ~ 0 (cover_load_from_battery), plus the reserve stack this mode
 	// is required to supervise.

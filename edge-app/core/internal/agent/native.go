@@ -150,6 +150,7 @@ func (a *Agent) nativeDecide(
 	peakTarget *float64,
 	solarOnly bool,
 	limits guards.Limits,
+	leaderRefusal string,
 ) (guards.NativeDecision, *state.NativeInfo, *state.NativeWithheldInfo) {
 	control := a.State.Get().Control
 	proven, provenIntent, gridChargeBlocked := nativeEvidence(control, now, freshWindow)
@@ -200,6 +201,7 @@ func (a *Agent) nativeDecide(
 		// K5 (§6.3): the PV side effect of the proven primitive.
 		ProvenCurtailsOwnPv: curtailsOwnPv,
 		CurtailmentWanted:   curtailWanted,
+		LeaderRefusal:       leaderRefusal,
 	}
 	in.PersistentWriteBudget = a.persistentWriteBudget()
 	dec := a.native.Decide(now, in)

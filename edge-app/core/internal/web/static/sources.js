@@ -398,9 +398,67 @@
     // visually flip the checkbox back; the save response re-renders.
     if ($("primGridToggle").disabled) return;
     $("primGridToggle").checked = !!balance.primary_grid_not_site_total;
+    renderLeader();
     $("primGridHelp").textContent = hasNetz
       ? "Ihr Netz-Zähler hat Vorrang – diese Einstellung wirkt nur, solange kein aktueller Zähler-Messwert vorliegt. " + BALANCE_HELP
       : BALANCE_HELP;
+  }
+
+  /* ---- K6: Führungsgerät am Netzpunkt (Zählerort, weitere Speicher,
+     Rückhalt der Einspeisegrenze). Each radio group posts only its own key;
+     the core applies it ONTO the stored settings, so the groups and the
+     expert checkbox never erase each other. The Zählerort and the checkbox
+     are the same fact - the core keeps them in step. */
+
+  var LEAD_GROUPS = [
+    { name: "leadMeter", key: "primary_meter_location", unset: "unbekannt" },
+    { name: "leadFurther", key: "further_storage", unset: "keine" },
+    { name: "leadBackstop", key: "export_backstop", unset: "" },
+  ];
+  var leadSaving = false;
+
+  function leadValue(g) {
+    var v = balance[g.key];
+    if (g.key === "primary_meter_location" && !v && balance.primary_grid_not_site_total) return "woanders";
+    return v || g.unset;
+  }
+
+  function renderLeader() {
+    if (leadSaving) return;
+    LEAD_GROUPS.forEach(function (g) {
+      var want = leadValue(g);
+      document.querySelectorAll('input[name="' + g.name + '"]').forEach(function (el) {
+        el.checked = el.value === want;
+      });
+    });
+    var meter = leadValue(LEAD_GROUPS[0]);
+    $("leadNote").textContent = meter === "netzpunkt" ? "· Zähler am Netzpunkt" : "· Pflichtangabe – Zählerort fehlt";
+  }
+
+  function saveLeader(key, value) {
+    var next = {};
+    next[key] = value;
+    leadSaving = true;
+    $("leadError").hidden = true;
+    fetch("/api/balance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next),
+    }).then(function (r) {
+      return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+    }).then(function (res) {
+      leadSaving = false;
+      if (!res.ok) {
+        $("leadError").textContent = (res.body && res.body.error) || "Angabe konnte nicht gespeichert werden.";
+        $("leadError").hidden = false;
+      } else if (res.body && res.body.balance) {
+        balance = res.body.balance;
+      }
+      renderBalance();
+    }).catch(function () {
+      leadSaving = false;
+      renderBalance(); // network error: revert, a reload re-syncs
+    });
   }
 
   function saveBalance() {
@@ -896,6 +954,11 @@
     $("roleVerbraucher").addEventListener("click", function () { setRole(ROLE_CONSUMER); });
     $("srcForm").addEventListener("submit", addSource);
     $("primGridToggle").addEventListener("change", saveBalance);
+    LEAD_GROUPS.forEach(function (g) {
+      document.querySelectorAll('input[name="' + g.name + '"]').forEach(function (el) {
+        el.addEventListener("change", function () { if (el.checked) saveLeader(g.key, el.value); });
+      });
+    });
     $("srcTestBtn").addEventListener("click", function () {
       var payload = collect();
       // D11: a go-e wallbox test ALSO asks for the non-disruptive control

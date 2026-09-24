@@ -96,6 +96,9 @@ type Snapshot struct {
 	// NativeWithheld (K4b, additive) names why a slot that opens a window is
 	// NOT regulated by the device right now - see NativeWithheldInfo.
 	NativeWithheld *NativeWithheldInfo `json:"native_withheld,omitempty"`
+	// Leader (K6, additive, box-local) says whether the selection is the
+	// connection point's Führungsgerät and may regulate itself - see LeaderInfo.
+	Leader *LeaderInfo `json:"leader,omitempty"`
 
 	// ExportGuard is the live feed-in watchdog at the grid connection point
 	// (dynamische Einspeisebegrenzung), non-nil whenever the site HAS a feed-in
@@ -412,6 +415,44 @@ type ExportGuardInfo struct {
 	// PARTIAL case, where the watchdog works but cannot pull back every inverter.
 	Effective bool   `json:"effective"`
 	Reach     string `json:"reach,omitempty"`
+
+	// --- K6, box-local (never on the heartbeat: its State vocabulary is closed
+	// at cloud ingest) ---
+
+	// Cascade is the watchdog's role next to the leader's own regulation
+	// (guards.Cascade*: innen | aussen | innen_versagt; absent without an
+	// inner loop), CascadeText its German sentence.
+	Cascade     string `json:"cascade,omitempty"`
+	CascadeText string `json:"cascade_text,omitempty"`
+	// BackstopCovered says whether the limit is held DEVICE-SIDE when the box
+	// fails (guards.ExportBackstopFor); BackstopSource names why (gemeldet |
+	// geraet), Backstop the German sentence - a warning when not covered.
+	BackstopCovered bool   `json:"backstop_covered"`
+	BackstopSource  string `json:"backstop_source,omitempty"`
+	Backstop        string `json:"backstop,omitempty"`
+}
+
+// LeaderInfo is the K6 verdict "Genau ein Führungsgerät je Netzpunkt"
+// (guards.LeaderFor) with the facts it was formed from.
+type LeaderInfo struct {
+	// Leads: the selection may regulate itself ("Gerät regelt"). Reason /
+	// Text: the refusal code and sentence otherwise.
+	Leads  bool   `json:"leads"`
+	Reason string `json:"reason,omitempty"`
+	Text   string `json:"text,omitempty"`
+	// MeterLocation / FurtherStorage: what the operator declared
+	// (netzpunkt | woanders | unbekannt; keine | folger | halten | regelt_selbst).
+	MeterLocation  string `json:"meter_location"`
+	FurtherStorage string `json:"further_storage"`
+	// Plausibility is the measured comparison with the box's Netz meter
+	// (passt | passt_nicht | ungeprueft), DeviationKw its median difference and
+	// Pairs how many reading pairs it rests on.
+	Plausibility string   `json:"plausibility"`
+	DeviationKw  *float64 `json:"deviation_kw,omitempty"`
+	Pairs        int      `json:"pairs"`
+	// Hint / HintText: an observation without a refusal (guards.LeaderHint*).
+	Hint     string `json:"hint,omitempty"`
+	HintText string `json:"hint_text,omitempty"`
 }
 
 // CurtailTrackInfo is the UI-facing state of the LIVE curtailment: the plan

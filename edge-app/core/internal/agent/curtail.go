@@ -201,7 +201,13 @@ func (a *Agent) exportGuardInfo(c guards.ExportCap) *state.ExportGuardInfo {
 		PvKw:           c.PvKw,
 		Units:          units,
 		CertifiedUnits: certified,
+		Cascade:        c.Cascade,
+		CascadeText:    c.CascadeText,
 	}
+	// K6: does the limit survive the box? A warning when nothing device-side
+	// holds it (guards/backstop.go).
+	b := a.exportBackstop(c.LimitKw)
+	info.BackstopCovered, info.BackstopSource, info.Backstop = b.Covered, b.Source, b.Text
 	if c.MeasurementAge > 0 || !c.Blind {
 		secs := int(c.MeasurementAge / time.Second)
 		info.MeasurementAgeSeconds = &secs

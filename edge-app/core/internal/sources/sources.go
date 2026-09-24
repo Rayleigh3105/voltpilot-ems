@@ -508,6 +508,70 @@ type BalanceSettings struct {
 	// grid and the raw-load fallback path applies instead. A dedicated Netz
 	// meter always takes precedence over both.
 	PrimaryGridNotSiteTotal bool `json:"primary_grid_not_site_total"`
+
+	// --- K6 (Führungsgerät je Netzpunkt, guards/leader.go) ---
+
+	// PrimaryMeterLocation is WHERE the selection's own meter sits - the
+	// Pflichtangabe for "Gerät regelt": "netzpunkt" | "woanders" | "unbekannt"
+	// ("" = not stated = unbekannt). It is the same fact as the expert opt-out
+	// above, stated positively: "woanders" and PrimaryGridNotSiteTotal are
+	// kept in step by Normalize, so the house balance and the control path can
+	// never disagree about the topology.
+	PrimaryMeterLocation string `json:"primary_meter_location,omitempty"`
+	// FurtherStorage is what a further storage at the same connection point
+	// does: "keine" | "folger" (the manufacturer's master/slave) | "halten"
+	// (holds / fixed setpoint / own self-consumption off) | "regelt_selbst"
+	// (a second regulator on the same meter). "" = none declared.
+	FurtherStorage string `json:"further_storage,omitempty"`
+	// ExportBackstop is the installer's statement whether the site's feed-in
+	// limit is held DEVICE-SIDE when the box fails: "vorhanden" | "keiner" |
+	// "" (not stated). The box never writes that setting (E5 A).
+	ExportBackstop string `json:"export_backstop,omitempty"`
+}
+
+// The closed vocabularies of the K6 fields (twins of the guards constants,
+// which this package cannot import).
+var (
+	meterLocations  = map[string]bool{"": true, "netzpunkt": true, "woanders": true, "unbekannt": true}
+	furtherStorages = map[string]bool{"": true, "keine": true, "folger": true, "halten": true, "regelt_selbst": true}
+	exportBackstops = map[string]bool{"": true, "keiner": true, "vorhanden": true}
+)
+
+// Normalize validates the K6 words and keeps the meter location and the expert
+// opt-out in step: "woanders" IS the opt-out, and a set opt-out makes an
+// unstated or contradicting location "woanders". The opt-out is the older and
+// the stronger statement (it already changes the house balance), so it wins a
+// contradiction instead of being silently cleared.
+func (b BalanceSettings) Normalize() (BalanceSettings, error) {
+	if !meterLocations[b.PrimaryMeterLocation] {
+		return b, fmt.Errorf("unbekannter Zählerort %q", b.PrimaryMeterLocation)
+	}
+	if !furtherStorages[b.FurtherStorage] {
+		return b, fmt.Errorf("unbekannte Angabe zu weiteren Speichern %q", b.FurtherStorage)
+	}
+	if !exportBackstops[b.ExportBackstop] {
+		return b, fmt.Errorf("unbekannte Angabe zum Rückhalt der Einspeisegrenze %q", b.ExportBackstop)
+	}
+	switch {
+	case b.PrimaryMeterLocation == "woanders":
+		b.PrimaryGridNotSiteTotal = true
+	case b.PrimaryGridNotSiteTotal:
+		b.PrimaryMeterLocation = "woanders"
+	}
+	return b, nil
+}
+
+// MeterLocation is the effective meter location: the stated one, "woanders"
+// for a legacy opt-out, "unbekannt" when nothing is stated.
+func (b BalanceSettings) MeterLocation() string {
+	switch {
+	case b.PrimaryMeterLocation != "":
+		return b.PrimaryMeterLocation
+	case b.PrimaryGridNotSiteTotal:
+		return "woanders"
+	default:
+		return "unbekannt"
+	}
 }
 
 // BalanceStore persists the balance settings, mirroring Store's atomic write.
@@ -556,14 +620,29 @@ func (s *BalanceStore) Load() (BalanceSettings, bool, error) {
 	// mapped (unknown keys are ignored): its value is deliberately NOT honored
 	// as an opt-out - see the migration rule above.
 	var stored struct {
-		NotSiteTotal *bool `json:"primary_grid_not_site_total"`
+		NotSiteTotal   *bool  `json:"primary_grid_not_site_total"`
+		MeterLocation  string `json:"primary_meter_location"`
+		FurtherStorage string `json:"further_storage"`
+		ExportBackstop string `json:"export_backstop"`
 	}
 	if err := json.Unmarshal(raw, &stored); err != nil {
 		return BalanceSettings{}, false, fmt.Errorf("gespeicherte Bilanz-Einstellungen beschädigt: %w", err)
 	}
-	var cfg BalanceSettings
+	cfg := BalanceSettings{PrimaryMeterLocation: stored.MeterLocation,
+		FurtherStorage: stored.FurtherStorage, ExportBackstop: stored.ExportBackstop}
 	if stored.NotSiteTotal != nil {
 		cfg.PrimaryGridNotSiteTotal = *stored.NotSiteTotal
+	}
+	// A word this build does not know (a newer image wrote it, then a rollback)
+	// must not become permission: the K6 fields fall back to "not stated",
+	// which refuses "Gerät regelt" - the opt-out keeps its value.
+	if norm, err := cfg.Normalize(); err == nil {
+		cfg = norm
+	} else {
+		cfg = BalanceSettings{PrimaryGridNotSiteTotal: cfg.PrimaryGridNotSiteTotal}
+		if cfg.PrimaryGridNotSiteTotal {
+			cfg.PrimaryMeterLocation = "woanders"
+		}
 	}
 	return cfg, true, nil
 }

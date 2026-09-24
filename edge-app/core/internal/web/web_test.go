@@ -2451,6 +2451,75 @@ func TestBalanceToggleRoundTrip(t *testing.T) {
 	}
 }
 
+// K6 (Führungsgerät am Netzpunkt): each radio group posts only its own key and
+// the handler applies it ONTO the stored settings - a page that knows only the
+// expert opt-out must not erase the Zählerort. The Zählerort and the opt-out are
+// one fact; a word outside the closed vocabulary is a 400, never stored.
+func TestBalanceLeaderStatementsMergeAndStayInStep(t *testing.T) {
+	fs := &fakeSources{}
+	srv := sourcesServer(t, fs)
+	post := func(body string) (int, sources.BalanceSettings) {
+		t.Helper()
+		resp, err := http.Post(srv.URL+"/api/balance", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out struct {
+			Balance sources.BalanceSettings `json:"balance"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out.Balance
+	}
+
+	if code, b := post(`{"primary_meter_location":"netzpunkt"}`); code != 200 || b.MeterLocation() != "netzpunkt" {
+		t.Fatalf("meter location: %d %+v", code, b)
+	}
+	if code, b := post(`{"further_storage":"folger"}`); code != 200 || b.FurtherStorage != "folger" ||
+		b.PrimaryMeterLocation != "netzpunkt" {
+		t.Fatalf("a second key must not erase the first: %d %+v", code, b)
+	}
+	if code, b := post(`{"export_backstop":"vorhanden"}`); code != 200 || b.ExportBackstop != "vorhanden" ||
+		b.FurtherStorage != "folger" {
+		t.Fatalf("backstop: %d %+v", code, b)
+	}
+	// The expert checkbox is the same fact as "woanders" - both directions.
+	if code, b := post(`{"primary_grid_not_site_total": true}`); code != 200 || b.MeterLocation() != "woanders" ||
+		b.ExportBackstop != "vorhanden" {
+		t.Fatalf("the opt-out must move the Zählerort: %d %+v", code, b)
+	}
+	if code, b := post(`{"primary_grid_not_site_total": false}`); code != 200 || b.MeterLocation() != "unbekannt" {
+		t.Fatalf("clearing the opt-out clears the location it implied: %d %+v", code, b)
+	}
+	if code, b := post(`{"primary_meter_location":"woanders"}`); code != 200 || !b.PrimaryGridNotSiteTotal {
+		t.Fatalf("\"woanders\" is the opt-out: %d %+v", code, b)
+	}
+	if code, b := post(`{"primary_meter_location":"netzpunkt"}`); code != 200 || b.PrimaryGridNotSiteTotal {
+		t.Fatalf("\"netzpunkt\" withdraws the opt-out: %d %+v", code, b)
+	}
+	for _, bad := range []string{`{"primary_meter_location":"dach"}`, `{"further_storage":"zwei"}`,
+		`{"export_backstop":"ja"}`} {
+		if code, _ := post(bad); code != 400 {
+			t.Fatalf("%s: status %d, want 400", bad, code)
+		}
+	}
+	if fs.bal.PrimaryMeterLocation != "netzpunkt" || fs.bal.FurtherStorage != "folger" {
+		t.Fatalf("a refused word must not be stored: %+v", fs.bal)
+	}
+	page, _ := staticFS.ReadFile("static/einrichten.html")
+	js, _ := staticFS.ReadFile("static/sources.js")
+	for _, name := range []string{`name="leadMeter"`, `name="leadFurther"`, `name="leadBackstop"`} {
+		if !strings.Contains(string(page), name) {
+			t.Fatalf("the Einrichten page must offer %s", name)
+		}
+	}
+	for _, key := range []string{"primary_meter_location", "further_storage", "export_backstop"} {
+		if !strings.Contains(string(js), key) {
+			t.Fatalf("sources.js must post %s", key)
+		}
+	}
+}
+
 func TestSourcesAddAndDelete(t *testing.T) {
 	fs := &fakeSources{}
 	srv := sourcesServer(t, fs)

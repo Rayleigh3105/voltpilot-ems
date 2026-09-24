@@ -20,8 +20,9 @@ package agent
 //     else writes the published setpoint. Its readback for the next tick carries
 //     mode/native.intent/native_capabilities exactly as the flows do.
 //
-// ⚠ Simulator and model evidence is not a hardware bench (CLAUDE.md). F7-F9 and
-// F11 need the real device and stay open for K5/K6.
+// ⚠ Simulator and model evidence is not a hardware bench (CLAUDE.md). F7, F8 and
+// F11 run with the Fronius in multi_inverter_scenario_test.go (K6); F9 and the
+// real devices stay with the pilot (E7).
 
 import (
 	"encoding/json"
@@ -108,6 +109,9 @@ func runNativeWindow(t *testing.T, s nwScenario) nwResult {
 	a.invMu.Lock()
 	a.inv = &inverter.Selection{Family: "sunspec"}
 	a.invMu.Unlock()
+	// K6: the selection is the connection point's leader (meter declared
+	// "am Netzpunkt") - every case here is about the device's own regulation.
+	declareMeterAtGridPoint(a)
 	allowed, floor := !s.eeg, nwFloorPct
 	p := &plan.Plan{SlotMinutes: 15, ReceivedAt: nwStart, GeneratedAt: nwStart,
 		GridChargeAllowed: &allowed, EffectiveFloorSocPct: &floor}

@@ -613,13 +613,35 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	// and applied live; a dedicated Netz meter always takes precedence, so
 	// flipping it can never override a working meter.
 	mux.HandleFunc("POST /api/balance", func(w http.ResponseWriter, r *http.Request) {
-		var req sources.BalanceSettings
+		// The body is applied ONTO the stored settings: a page that knows only
+		// the expert opt-out (an older cached sources.js) posts just that key and
+		// must not erase the K6 statements (Zählerort, weitere Speicher, Rückhalt).
+		req := src.GetBalance()
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
 		if err := json.Unmarshal(body, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
 			return
 		}
-		cfg, err := src.SetBalance(req)
+		// A stated meter location replaces a legacy opt-out-derived one: a page
+		// that sends only the location means the location.
+		var sent struct {
+			Location *string `json:"primary_meter_location"`
+			NotSite  *bool   `json:"primary_grid_not_site_total"`
+		}
+		_ = json.Unmarshal(body, &sent)
+		if sent.Location != nil && sent.NotSite == nil {
+			req.PrimaryGridNotSiteTotal = *sent.Location == "woanders"
+		}
+		if sent.NotSite != nil && !*sent.NotSite && sent.Location == nil && req.PrimaryMeterLocation == "woanders" {
+			// Clearing the opt-out clears the location it implied.
+			req.PrimaryMeterLocation = ""
+		}
+		norm, err := req.Normalize()
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Angabe: " + err.Error()})
+			return
+		}
+		cfg, err := src.SetBalance(norm)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Einstellung konnte nicht gespeichert werden."})
 			return
