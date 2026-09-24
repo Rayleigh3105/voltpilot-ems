@@ -126,8 +126,13 @@ type LastReading struct {
 	// RelayOn is the switch state of a relay consumer source (shelly). For a
 	// NON-metering relay it is the only per-reading fact (a load value would
 	// be fabricated); the metering class carries it next to LoadKw.
-	RelayOn  *bool `json:"relay_on,omitempty"`
-	ReadAtMs int64 `json:"read_at_ms"`
+	RelayOn *bool `json:"relay_on,omitempty"`
+	// Inputs/Outputs are the digital input and relay output states of an I/O
+	// module source (ebyte), in channel order (index 0 = DI1/DO1). States, not
+	// energy: they never enter an aggregation.
+	Inputs   []bool `json:"inputs,omitempty"`
+	Outputs  []bool `json:"outputs,omitempty"`
+	ReadAtMs int64  `json:"read_at_ms"`
 }
 
 // Request is what POST /api/sources accepts (the local web form). Role defaults
@@ -275,7 +280,7 @@ func TransportIdentity(s Source) string {
 		parts = append(parts, strings.TrimSpace(s.Connection.Serial),
 			strconv.Itoa(s.Connection.MbSlaveID))
 	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP,
-		inverter.CommKacoModbus:
+		inverter.CommKacoModbus, inverter.CommEbyteModbusTCP:
 		parts = append(parts, strconv.Itoa(s.Connection.UnitID))
 	case inverter.CommKacoHTTP:
 		// Die Seriennummer adressiert EINEN Wechselrichter hinter der
@@ -397,15 +402,16 @@ func (s Source) busEntry() map[string]any {
 // fields). An empty list yields an empty array, which CLEARS the retained
 // config for Node-RED.
 //
-// Shelly sources are EXCLUDED: the CORE owns the whole Shelly socket (source
-// poll, connection test AND the consumer executor, internal/shelly -
-// single-writer), so Node-RED must never see them - a forwarded shelly entry
-// would only produce the sources store's permanent NICHT-VERDRAHTET warning
-// for a transport the flow deliberately has no reader for.
+// Core-owned sources (Shelly, Ebyte I/O module) are EXCLUDED: the CORE owns
+// the whole device socket (source poll, connection test AND the consumer
+// executor, internal/shelly + internal/ebyte - single-writer), so Node-RED
+// must never see them - a forwarded entry would only produce the sources
+// store's permanent NICHT-VERDRAHTET warning for a transport the flow
+// deliberately has no reader for.
 func BusConfig(list []Source) []byte {
 	entries := make([]map[string]any, 0, len(list))
 	for _, s := range list {
-		if s.Communication == inverter.CommShellyHTTP {
+		if inverter.IsCoreOwned(s.Communication) {
 			continue // core-owned transport, not flow-read
 		}
 		entries = append(entries, s.busEntry())

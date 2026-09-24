@@ -315,6 +315,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [PV-Abregelung (Fronius Increment 3): Quellen-Schreibpfad, Freigabe JE EINHEIT, Wirkung > Register](edge/pv-abregelung-fronius-increment-3-quelle.md)
 - [Quellen-Identität ist DETERMINISTISCH; Umbenennen ist label-only (vp-vier-erzeuger-p9)](edge/quellen-identitaet-ist-deterministisch-u.md)
 - [Shelly relay CONTROL driver (consumer, core-owned socket, dead-man timer)](edge/shelly-relay-control-driver-consumer-cor.md)
+- [Ebyte-I/O-Modul: EIN Gerät, N Kanäle, der Core besitzt den Socket](edge/ebyte-io-modul-ein-geraet-n-kanaele.md)
 - [Stufe 2: das Ladebudget FOLGT dem gemessenen Netzanschluss (`lastmgmt/budget.go`)](edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)
 - [Stufe 2 „Freie Register": die Allowlist wird durch LANE-Regeln abgeloest](edge/stufe-2-freie-register-die-allowlist-wir.md)
 - [Stufe 3: der Herzschlag trägt die Ladepunkte, und das Tor kennt sie](edge/stufe-3-der-herzschlag-traegt-die-ladepu.md)

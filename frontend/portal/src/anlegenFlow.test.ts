@@ -10,6 +10,7 @@ import {
   neueKomponente,
   rollenWahl,
   schritte,
+  typFuerTemplate,
   typKarten,
   vorschlagRolle,
 } from './anlegenFlow';
@@ -113,6 +114,19 @@ describe('geraeteFuerTyp', () => {
       'certified:acme:x',
     ]);
     expect(geraeteFuerTyp(alle, 'wechselrichter').erweitert).toBe(false);
+  });
+
+  it('fuehrt das I/O-Modul unter den schaltbaren Verbrauchern', () => {
+    const io = tpl({
+      templateRef: 'builtin:ebyte:m31_axax8080g_u',
+      brand: 'ebyte',
+      brandLabel: 'Ebyte',
+      deviceType: 'io_module',
+      communication: 'ebyte_modbus_tcp',
+    });
+    expect(geraeteFuerTyp([...alle, io], 'verbraucher').templates).toContain(io);
+    expect(geraeteFuerTyp([...alle, io], 'wechselrichter').templates).not.toContain(io);
+    expect(typFuerTemplate(io)).toBe('verbraucher');
   });
 
   it('versteckt eine Vorlage OHNE Typ nirgends - unbekannt ist kein Ausschluss', () => {

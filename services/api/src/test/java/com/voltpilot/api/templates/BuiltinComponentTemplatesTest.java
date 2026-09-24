@@ -36,12 +36,12 @@ class BuiltinComponentTemplatesTest {
         List<BuiltinTemplate> all = builtin.all();
         assertThat(all).as("die Ressource ist nicht leer").isNotEmpty();
 
-        // Die acht Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
+        // Die neun Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
         // Fällt eine weg, hat jemand den Katalog beschnitten, ohne es zu merken -
         // der Kunde bekäme im Assistenten weniger Geräte, als seine Box lesen kann.
         Set<String> brands = all.stream().map(BuiltinTemplate::brand).collect(Collectors.toSet());
         assertThat(brands).containsExactlyInAnyOrder("deye", "generic_modbus", "fronius",
-                "fronius_sunspec", "kostal", "kaco", "go-e", "shelly");
+                "fronius_sunspec", "kostal", "kaco", "go-e", "shelly", "ebyte");
 
         // Die Deye-Modellreihe ist die grösste und der Grund, warum die Vorlage
         // je MODELL geschlüsselt ist (ein Registerprofil deckt mehrere Baureihen ab).
@@ -137,12 +137,13 @@ class BuiltinComponentTemplatesTest {
     @Test
     void everyTemplateDeclaresItsDeviceTypeAndTheLegacyFroniusIsSuperseded() {
         Set<String> known = Set.of("inverter", "wallbox", "switch", "meter",
-                "charge_point", "custom");
+                "charge_point", "custom", "io_module");
         for (BuiltinTemplate t : builtin.all()) {
             assertThat(t.deviceType()).as("%s: Gerätetyp", t.templateRef()).isIn(known);
         }
         assertThat(find("builtin:go-e:goe_http_api").deviceType()).isEqualTo("wallbox");
         assertThat(find("builtin:shelly:shelly_http").deviceType()).isEqualTo("switch");
+        assertThat(find("builtin:ebyte:m31_axax8080g_u").deviceType()).isEqualTo("io_module");
         assertThat(find("builtin:deye:sun-30k-sg01hp3").deviceType()).isEqualTo("inverter");
 
         // Die aktive Fronius-Zeile gilt; die abgelöste nennt ihre Nachfolgerin -

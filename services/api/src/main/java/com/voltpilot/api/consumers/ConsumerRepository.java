@@ -28,7 +28,29 @@ public class ConsumerRepository {
             String storageRelation, String defaultGridEnergyPolicy, boolean allowStorageDischarge,
             Integer defaultServiceRank, String availabilityChannel, String confirmationChannel,
             Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay, String failsafe,
-            boolean enabled, long version) {}
+            boolean enabled, long version, UUID ioEntityId, Integer ioChannel) {
+
+        /** A consumer WITHOUT an I/O-module channel binding (the pre-binding shape). */
+        public ConsumerRow(UUID entityId, String entityType, String label, UUID deviceId,
+                String edgeSourceId, String controlKind, BigDecimal ratedPowerKw,
+                BigDecimal minPowerKw, String levelsKwJson, BigDecimal resolutionKw,
+                String powerRangesKwJson, String storageRelation, String defaultGridEnergyPolicy,
+                boolean allowStorageDischarge, Integer defaultServiceRank,
+                String availabilityChannel, String confirmationChannel, Integer minOnSeconds,
+                Integer minOffSeconds, Integer maxStartsPerDay, String failsafe, boolean enabled,
+                long version) {
+            this(entityId, entityType, label, deviceId, edgeSourceId, controlKind, ratedPowerKw,
+                    minPowerKw, levelsKwJson, resolutionKw, powerRangesKwJson, storageRelation,
+                    defaultGridEnergyPolicy, allowStorageDischarge, defaultServiceRank,
+                    availabilityChannel, confirmationChannel, minOnSeconds, minOffSeconds,
+                    maxStartsPerDay, failsafe, enabled, version, null, null);
+        }
+
+        /** Is this consumer one output of an I/O module? */
+        public boolean ioBound() {
+            return ioEntityId != null && ioChannel != null;
+        }
+    }
 
     public record PolicyRow(UUID policyId, UUID entityId, int version, String lifecycle,
             String documentJson, String contentHash, String createdBy, Instant createdAt) {}
@@ -41,7 +63,7 @@ public class ConsumerRepository {
                     + "cp.default_grid_energy_policy, cp.allow_storage_discharge, "
                     + "cp.default_service_rank, cp.availability_channel, cp.confirmation_channel, "
                     + "cp.min_on_seconds, cp.min_off_seconds, cp.max_starts_per_day, cp.failsafe, "
-                    + "cp.enabled, cp.version";
+                    + "cp.enabled, cp.version, cp.io_entity_id, cp.io_channel";
 
     private static final RowMapper<ConsumerRow> CONSUMER_MAPPER = (rs, n) -> new ConsumerRow(
             rs.getObject("entity_id", UUID.class),
@@ -66,7 +88,9 @@ public class ConsumerRepository {
             (Integer) rs.getObject("max_starts_per_day"),
             rs.getString("failsafe"),
             rs.getBoolean("enabled"),
-            rs.getLong("version"));
+            rs.getLong("version"),
+            rs.getObject("io_entity_id", UUID.class),
+            (Integer) rs.getObject("io_channel"));
 
     private static final RowMapper<PolicyRow> POLICY_MAPPER = (rs, n) -> new PolicyRow(
             rs.getObject("policy_id", UUID.class),
@@ -153,6 +177,101 @@ public class ConsumerRepository {
                 "SELECT count(*) FROM measurement_point WHERE site_id = ? AND edge_source_id = ?",
                 Integer.class, siteId, edgeSourceId);
         return n != null && n > 0;
+    }
+
+    /**
+     * Der Verbraucher, dem dieser Ausgang des I/O-Moduls gehört - oder
+     * {@code null}. Ein Ausgang schaltet höchstens EINE Last (der partielle
+     * UNIQUE-Index ist der Zaun, diese Frage die ehrliche 409 davor).
+     */
+    public UUID ioChannelOwner(UUID siteId, UUID ioEntityId, int channel) {
+        List<UUID> rows = jdbc.queryForList(
+                "SELECT entity_id FROM consumer_profile WHERE site_id = ? AND io_entity_id = ? "
+                        + "AND io_channel = ?", UUID.class, siteId, ioEntityId, channel);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Ein I/O-Modul der Anlage mit der zuletzt gemeldeten Zahl seiner Ausgänge. */
+    public record IoModule(UUID entityId, String label, Integer reportedOutputs) {}
+
+    /** Ein vergebener Ausgang eines I/O-Moduls. */
+    public record IoChannelUse(int channel, UUID consumerId, String consumerName) {}
+
+    /**
+     * Die I/O-Module der Anlage. Die Ausgangszahl kommt aus der Telemetrie
+     * des letzten Tages ({@code do_k}-Kanäle, die die Box aus dem erkannten
+     * Modul-Stapel meldet) - ein Modul, das noch nie gemeldet hat, trägt
+     * {@code null}. Der Zeit-Boden liegt auf der Partitionsspalte, damit die
+     * Abfrage nur die jüngsten Chunks liest.
+     */
+    public List<IoModule> ioModules(UUID siteId) {
+        return jdbc.query(
+                "SELECT mp.id, mp.label, (SELECT count(DISTINCT t.channel) FROM telemetry_v2 t "
+                        + "WHERE t.site_id = mp.site_id AND t.entity_id = mp.id::text "
+                        + "AND t.time >= now() - interval '1 day' AND t.channel LIKE 'do\\_%') AS outs "
+                        + "FROM measurement_point mp WHERE mp.site_id = ? AND mp.entity_type = 'io-module' "
+                        + "ORDER BY mp.label NULLS LAST, mp.id",
+                (rs, n) -> {
+                    int outs = rs.getInt("outs");
+                    return new IoModule(rs.getObject("id", UUID.class), rs.getString("label"),
+                            outs > 0 ? outs : null);
+                }, siteId);
+    }
+
+    /** Die vergebenen Ausgänge eines I/O-Moduls, nach Ausgang geordnet. */
+    public List<IoChannelUse> ioChannelUses(UUID siteId, UUID ioEntityId) {
+        return jdbc.query(
+                "SELECT cp.io_channel, cp.entity_id, mp.label FROM consumer_profile cp "
+                        + "JOIN measurement_point mp ON mp.id = cp.entity_id "
+                        + "WHERE cp.site_id = ? AND cp.io_entity_id = ? ORDER BY cp.io_channel",
+                (rs, n) -> new IoChannelUse(rs.getInt("io_channel"),
+                        rs.getObject("entity_id", UUID.class), rs.getString("label")),
+                siteId, ioEntityId);
+    }
+
+    /** Ein zuletzt gemeldeter Kanal-Zustand eines I/O-Moduls ({@code di_k}/{@code do_k}). */
+    public record IoChannelSample(String channel, double value, Instant receivedAt) {}
+
+    /**
+     * Die jüngsten gemeldeten Ein-/Ausgangszustände EINES I/O-Moduls aus den
+     * letzten zehn Minuten. Die Box meldet sie bei Änderung und mindestens
+     * minütlich; ein Kanal ohne Meldung im Fenster fehlt (nie eine erfundene 0).
+     * Der Zeit-Boden liegt auf der Partitionsspalte, die Gleichheit auf
+     * (entity_id, channel) - der vorhandene Index trägt die Abfrage.
+     */
+    public List<IoChannelSample> ioModuleSamples(UUID siteId, UUID ioEntityId) {
+        return jdbc.query(
+                "SELECT DISTINCT ON (channel) channel, value, received_at FROM telemetry_v2 "
+                        + "WHERE site_id = ? AND entity_id = ? AND time >= now() - interval '10 minutes' "
+                        + "AND (channel LIKE 'di\\_%' OR channel LIKE 'do\\_%') "
+                        + "ORDER BY channel, time DESC",
+                (rs, n) -> new IoChannelSample(rs.getString("channel"), rs.getDouble("value"),
+                        rs.getTimestamp("received_at").toInstant()),
+                siteId, ioEntityId.toString());
+    }
+
+    /** Das Label eines I/O-Moduls dieser Anlage - {@code null}, wenn es keines ist. */
+    public String ioModuleLabel(UUID siteId, UUID ioEntityId) {
+        List<String> rows = jdbc.query(
+                "SELECT coalesce(label, '') AS label FROM measurement_point "
+                        + "WHERE site_id = ? AND id = ? AND entity_type = 'io-module'",
+                (rs, n) -> rs.getString("label"), siteId, ioEntityId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Wie viele Verbraucher an Ausgängen dieses I/O-Moduls hängen. */
+    public int ioBindingCount(UUID siteId, UUID ioEntityId) {
+        Integer n = jdbc.queryForObject(
+                "SELECT count(*) FROM consumer_profile WHERE site_id = ? AND io_entity_id = ?",
+                Integer.class, siteId, ioEntityId);
+        return n == null ? 0 : n;
+    }
+
+    /** Bindet einen Verbraucher an Ausgang {@code channel} eines I/O-Moduls. */
+    public void bindIoChannel(UUID siteId, UUID entityId, UUID ioEntityId, int channel) {
+        jdbc.update("UPDATE consumer_profile SET io_entity_id = ?, io_channel = ?, "
+                        + "updated_at = now() WHERE site_id = ? AND entity_id = ?",
+                ioEntityId, channel, siteId, entityId);
     }
 
     public void bindEdgeSource(UUID siteId, UUID entityId, String edgeSourceId) {

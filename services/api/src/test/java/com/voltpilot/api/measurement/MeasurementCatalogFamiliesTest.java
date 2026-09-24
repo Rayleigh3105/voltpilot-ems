@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 
 class MeasurementCatalogFamiliesTest {
 
+    /** Families whose device socket the box core owns alone (no measurement runtime). */
+    private static final Set<String> CORE_OWNED_WITHOUT_POINTS = Set.of("ebyte_m31");
+
     @Test
     void everyBuiltinBindingFamilyResolvesToCanonicalCatalogPoints() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
@@ -27,8 +30,18 @@ class MeasurementCatalogFamiliesTest {
                 "string", "hybrid_1p", "hybrid_3p", "micro",
                 "sunspec", "sunspec_live", "fronius_solar_api",
                 "kaco_http", "kaco_http_hybrid", "kostal_plenticore",
-                "goe_http_api", "shelly_http");
+                "goe_http_api", "shelly_http", "ebyte_m31");
         for (String family : configured) {
+            if (CORE_OWNED_WITHOUT_POINTS.contains(family)) {
+                // The Ebyte I/O module is read ONLY by the box core (one socket
+                // owner): a measurement point would make the Node-RED runtime
+                // open a second connection to the same device. Its states
+                // travel as the device entity's di_k/do_k telemetry instead.
+                assertThat(MeasurementCatalogFamilies.expand(Set.of(family), catalog.families()))
+                        .as("core-owned family %s offers no measurement points", family)
+                        .isEmpty();
+                continue;
+            }
             assertThat(MeasurementCatalogFamilies.expand(Set.of(family), catalog.families()))
                     .as("builtin family %s must not fall through", family)
                     .isNotEmpty();

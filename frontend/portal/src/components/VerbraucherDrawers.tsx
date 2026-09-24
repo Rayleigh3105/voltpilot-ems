@@ -41,6 +41,7 @@ import {
 import { buildPolicyDocument, policySentence, reviewFacts } from '../consumers/policy';
 import { validatePolicy, isValid, type ConsumerFinding } from '../consumers/validate';
 import { conflictNote, saveButtonLabel } from '../consumers/activation';
+import { ioAusgangAus, ioAusgangOptionen, ioOhneMeldungHinweis } from '../consumers/ioAusgaenge';
 import './Verbraucher.css';
 
 // --- Part A: create wizard --------------------------------------------------
@@ -102,7 +103,15 @@ export function VerbraucherAnlegenDrawer({
       controlKind,
     };
     if (hatLeistung) body.ratedPowerKw = power;
-    if (edgeSourceId) body.edgeSourceId = edgeSourceId;
+    // Der Picker trägt Quellen UND Relais-Ausgänge; ein Ausgang reist als
+    // Modul + Ausgang, nie als Quellen-Kennung.
+    const ausgang = ioAusgangAus(edgeSourceId);
+    if (ausgang) {
+      body.ioEntityId = ausgang.ioEntityId;
+      body.ioChannel = ausgang.ioChannel;
+    } else if (edgeSourceId) {
+      body.edgeSourceId = edgeSourceId;
+    }
     consumersApi
       .create(site.id, body)
       .then((c) => setCreated(c))
@@ -149,10 +158,15 @@ export function VerbraucherAnlegenDrawer({
                     ? 'ohne Leistungsmessung (Energie wird angenommen)' : null,
                 ].filter(Boolean).join(' · ') || undefined,
               })),
+              ...ioAusgangOptionen(options.ioModules),
             ]}
             value={edgeSourceId}
             onChange={setEdgeSourceId}
-            hint="Ein gefundenes Gerät auswählen oder ohne Verbindung als Entwurf anlegen."
+            hint={[
+              'Ein gefundenes Gerät oder einen freien Ausgang eines I/O-Moduls auswählen '
+                + '- oder ohne Verbindung als Entwurf anlegen.',
+              ioOhneMeldungHinweis(options.ioModules),
+            ].filter(Boolean).join(' ')}
           />
 
           <VpPicker

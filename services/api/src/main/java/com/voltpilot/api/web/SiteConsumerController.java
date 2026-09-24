@@ -102,6 +102,14 @@ public class SiteConsumerController {
         return consumers.options(siteId);
     }
 
+    /** Die zuletzt gemeldeten Ein-/Ausgänge eines I/O-Moduls (Ebyte M31) samt Zuordnung. */
+    @GetMapping("/io-modules/{entityId}/zustand")
+    public com.voltpilot.api.consumers.ConsumerService.IoModuleStateDto ioModuleState(
+            @PathVariable UUID siteId, @PathVariable UUID entityId) {
+        requireSite(siteId);
+        return consumers.ioModuleState(siteId, entityId);
+    }
+
     @GetMapping("/consumers")
     public List<ConsumerDto> list(@PathVariable UUID siteId) {
         requireSite(siteId);

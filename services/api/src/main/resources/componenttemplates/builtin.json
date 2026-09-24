@@ -12052,6 +12052,49 @@
       "control_tier": 0,
       "certification_status": "builtin",
       "note": "Shelly 1/1PM, Plus 1/1PM, Plug S u. a., alle Generationen · Generation und Leistungsmessung werden automatisch erkannt Shelly-Relais vor einem Verbraucher (z. B. Heizstab). Generation und Leistungsmessung werden automatisch erkannt."
+    },
+    {
+      "template_ref": "builtin:ebyte:m31_axax8080g_u",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "ebyte",
+      "brand_label": "Ebyte",
+      "model": "m31_axax8080g_u",
+      "model_label": "M31-AXAX8080G-U (8 Eingänge, 8 Relais)",
+      "device_type": "io_module",
+      "family": "ebyte_m31",
+      "family_label": "Ebyte M31 Modbus TCP",
+      "communication": "ebyte_modbus_tcp",
+      "communication_label": "Modbus TCP (lokal)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des I/O-Moduls",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des M31 im lokalen Netz (z. B. 192.168.0.70). Werkseinstellung ohne DHCP: 192.168.3.7. Bei DHCP eine Reservierung im Router empfohlen; die Box erkennt das Gerät zusätzlich an seiner MAC-Adresse."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, werkseitig 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Adresse",
+          "type": "number",
+          "default": 1,
+          "help": "Geräteadresse (DIP-Schalter + Software-Adresse), werkseitig 1."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 0,
+      "certification_status": "builtin",
+      "note": "Erweiterbar mit U-Serien-Modulen · Eingänge und Ausgänge der Module werden automatisch erkannt Ebyte-M31-I/O-Modul: digitale Eingänge lesen, Relais-Ausgänge einzeln Verbrauchern zuordnen. Erweiterungsmodule werden automatisch erkannt."
     }
   ]
 }

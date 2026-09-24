@@ -23,9 +23,11 @@
   // ihre Anbindung: der Verbindungsweg ist eine Eigenschaft des MODELLS (ein
   // Fronius spricht je nach Modell Solar API ODER SunSpec), an der Marke
   // gemessen fiele ein Fronius Eco hier heraus.
-  var CONSUMER_TYPES = ["wallbox", "switch"];
+  // Das I/O-Modul (Ebyte M31) steht bei den Verbrauchern: seine Ausgänge
+  // schalten Verbraucher, es selbst liest nur Zustände (nie Energie).
+  var CONSUMER_TYPES = ["wallbox", "switch", "io_module"];
   // Rückfall für einen älteren Katalog ohne Typ-Dimension.
-  var CONSUMER_COMMS = ["goe_http_api", "shelly_http"];
+  var CONSUMER_COMMS = ["goe_http_api", "shelly_http", "ebyte_modbus_tcp"];
   function isConsumerComm(c) { return CONSUMER_COMMS.indexOf(c) !== -1; }
   function isConsumerBrandObj(b) {
     return !!(b && (b.device_type ? CONSUMER_TYPES.indexOf(b.device_type) !== -1
@@ -91,6 +93,7 @@
     if (c === "solarman_v5") return "Solarman-V5 (WiFi-Datenlogger)";
     if (c === "goe_http_api") return "go-e HTTP-API";
     if (c === "shelly_http") return "Shelly HTTP-API";
+    if (c === "ebyte_modbus_tcp") return "Ebyte I/O-Modul (Modbus TCP)";
     if (c === "fronius_solar_api") return "Fronius Solar-API";
     // Beide Kennungen desselben Wegs (fronius_sunspec = persistiert,
     // sunspec_tcp = marken-neutral) - siehe inverter.IsSunSpecTCP.
@@ -126,7 +129,18 @@
       // the non-metering class, which never claims a load value.
       parts.push("Relais " + (lr.relay_on ? "Ein" : "Aus"));
     }
+    // An I/O module (ebyte): which inputs are active and which outputs are
+    // switched on - states, never a load value.
+    if (Array.isArray(lr.inputs)) parts.push("Eingänge " + channelList(lr.inputs, "DI"));
+    if (Array.isArray(lr.outputs)) parts.push("Ausgänge " + channelList(lr.outputs, "DO"));
     return parts;
+  }
+
+  // channelList names the active channels ("DI1, DI4") or says none is.
+  function channelList(states, prefix) {
+    var on = [];
+    for (var i = 0; i < states.length; i++) if (states[i] === true) on.push(prefix + (i + 1));
+    return on.length ? on.join(", ") + " ein (von " + states.length + ")" : "alle " + states.length + " aus";
   }
 
   function readAtMs(lr) { return lr && lr.read_at_ms ? lr.read_at_ms : 0; }

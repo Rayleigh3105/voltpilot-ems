@@ -91,6 +91,27 @@ public class ComponentService {
             ROLE_NETZ, "grid-meter",
             ROLE_CONSUMER, "generic-load");
 
+    /** Der Gerätetyp der Vorlage für ein I/O-Modul (Katalog-Dimension der Box). */
+    static final String DEVICE_TYPE_IO_MODULE = "io_module";
+    /** Der Entitätstyp eines I/O-Moduls (entitytypes/catalog.json). */
+    public static final String ENTITY_TYPE_IO_MODULE = "io-module";
+
+    /**
+     * Der Entitätstyp, den eine Komponente dieser Rolle aus DIESER Vorlage
+     * bekommt. Ein I/O-Modul ist ein Gerät der Verbraucher-Seite, aber selbst
+     * kein Verbraucher: es liest Zustände und wird nie gesteuert - seine
+     * Ausgänge schalten eigene, an je einen Kanal gebundene Verbraucher. Als
+     * {@code generic-load} angelegt, böte es die Steuerart an und bekäme
+     * Befehle, die kein Treiber ausführen kann.
+     */
+    static String entityTypeFor(String role, ComponentTemplateDto template) {
+        if (ROLE_CONSUMER.equals(role) && template != null
+                && DEVICE_TYPE_IO_MODULE.equals(template.deviceType())) {
+            return ENTITY_TYPE_IO_MODULE;
+        }
+        return ROLE_ENTITY_TYPE.get(role);
+    }
+
     private static final String SOURCE_KIND_BUILTIN = "builtin";
     private static final String SOURCE_KIND_CERTIFIED = "certified";
 
@@ -340,13 +361,13 @@ public class ComponentService {
                     connJson, e);
         }
         ComponentDefinitionRepository.Applied applied = definitions.applyEditDefinition(siteId,
-                entityId, req.expectedRevision(), dbRole, ROLE_ENTITY_TYPE.get(role),
+                entityId, req.expectedRevision(), dbRole, entityTypeFor(role, template),
                 normalizeLabel(req.label()), capacity, template.brand(), template.model(),
                 template.family(), template.communication(), connJson,
                 SOURCE_KIND_CERTIFIED.equals(template.kind()) ? SOURCE_KIND_CERTIFIED
                         : SOURCE_KIND_BUILTIN,
                 template.templateRef(), template.version(),
-                capabilitiesForEdit(role, existing),
+                capabilitiesForEdit(role, template, existing),
                 ComponentDefaults.guards(mapper, role, req.capacityKwp()));
         if (applied == null) {
             EntityRow current = entityRepo.entityForSite(siteId, entityId);
@@ -591,7 +612,7 @@ public class ComponentService {
      */
     private UUID resolveOrCreatePoint(UUID siteId, UUID tenantId, String role,
             SaveComponentRequest req, ComponentTemplateDto template) {
-        String entityType = ROLE_ENTITY_TYPE.get(role);
+        String entityType = entityTypeFor(role, template);
 
         // Wechselrichter und Netz-Zähler sind PLATTFORM-KOMPONIERT: die
         // Auto-Komposition legt sie beim Geräte-Claim an, dieser Weg füllt ihre
@@ -867,8 +888,9 @@ public class ComponentService {
      * trägt) setzt sie neu - dann sind die alten Kanäle Aussagen über ein
      * anderes Gerät.
      */
-    private String capabilitiesForEdit(String role, EntityRow existing) {
-        String targetType = ROLE_ENTITY_TYPE.get(role);
+    private String capabilitiesForEdit(String role, ComponentTemplateDto template,
+            EntityRow existing) {
+        String targetType = entityTypeFor(role, template);
         String storedType = existing.entityType();
         if (targetType != null && storedType != null && targetType.equals(storedType.trim())) {
             return null;

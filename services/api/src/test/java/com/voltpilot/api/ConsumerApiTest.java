@@ -516,6 +516,158 @@ class ConsumerApiTest {
         }
     }
 
+    /**
+     * Ein I/O-Modul (Ebyte M31) ist EIN Gerät, seine Relais-Ausgänge schalten je
+     * einen eigenen Verbraucher: die Bindung an Modul + Ausgang wird geprüft
+     * (fremdes Gerät 422, doppelt vergebener Ausgang 409, beides zugleich 400),
+     * der Verbraucher gilt als verbunden mit der Relais-Bestätigungsstufe, das
+     * Angebot nennt das Modul samt belegtem Ausgang, und der Registry-Push
+     * trägt den zusammengesetzten Kanal-Treiber OHNE eigene Verbindung.
+     * Das Modul selbst ist nie ein Verbraucher-Typ.
+     */
+    @Test
+    void aConsumerIsBoundToOneOutputOfAnIoModuleAndRidesThePushAsAChannelDriver() {
+        String tok = token("demo", "demo");
+        UUID module = UUID.randomUUID();
+        jdbcAsSuperuser("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, "
+                + "entity_type, communication, connection_json, capabilities, guard_config) VALUES ('"
+                + module + "', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE
+                + "', 'consumer', 'I/O-Modul Technikraum', 'io-module', 'ebyte_modbus_tcp', "
+                + "'{\"ip\":\"192.168.3.50\",\"port\":502,\"unit_id\":1}', "
+                + "'{\"measure\":[]}', '{\"failsafe\":{\"behavior\":\"measure-only\"}}')");
+        String rodId = null;
+        try {
+            Map<String, Object> rod = create(tok, Map.of(
+                    "type", "heating-rod", "name", "Heizstab an DO3", "ratedPowerKw", 3.0,
+                    "controlKind", "on_off", "ioEntityId", module.toString(), "ioChannel", 3));
+            rodId = (String) rod.get("id");
+            assertThat(rod.get("connection")).isEqualTo("connected");
+            assertThat(rod.get("confirmationChannel")).isEqualTo("relay_state");
+            assertThat(rod.get("ioEntityId")).isEqualTo(module.toString());
+            assertThat(rod.get("ioChannel")).isEqualTo(3);
+
+            // The push composes the channel driver - and the consumer carries no
+            // transport of its own.
+            String push = lastPush();
+            assertThat(push).contains("\"io_entity_id\":\"" + module + "\"")
+                    .contains("\"communication\":\"ebyte_modbus_tcp\"")
+                    .contains("\"channel\":3");
+
+            // One output switches at most ONE load.
+            ResponseEntity<Map<String, Object>> twice = post(tok,
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers", Map.of(
+                            "type", "pump", "ratedPowerKw", 1.0, "controlKind", "on_off",
+                            "ioEntityId", module.toString(), "ioChannel", 3));
+            assertThat(twice.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat((String) twice.getBody().get("message")).contains("Ausgang 3");
+
+            // Only an I/O module of THIS site is a valid target.
+            ResponseEntity<Map<String, Object>> foreign = post(tok,
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers", Map.of(
+                            "type", "pump", "ratedPowerKw", 1.0, "controlKind", "on_off",
+                            "ioEntityId", rodId, "ioChannel", 4));
+            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+            // One switching path per consumer, never two.
+            ResponseEntity<Map<String, Object>> both = post(tok,
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers", Map.of(
+                            "type", "pump", "ratedPowerKw", 1.0, "controlKind", "on_off",
+                            "ioEntityId", module.toString(), "ioChannel", 4,
+                            "edgeSourceId", "edge-src-io-both"));
+            assertThat(both.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+            // The options name the module and its taken output; the module is
+            // never offered as a consumer type itself.
+            Map<String, Object> options = getMap(
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumer-options", tok);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> modules = (List<Map<String, Object>>) options.get("ioModules");
+            Map<String, Object> m = modules.stream()
+                    .filter(x -> module.toString().equals(x.get("entityId"))).findFirst().orElseThrow();
+            assertThat(m.get("label")).isEqualTo("I/O-Modul Technikraum");
+            assertThat(m.get("outputs")).as("never a guessed output count").isNull();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> used = (List<Map<String, Object>>) m.get("used");
+            assertThat(used).singleElement().satisfies(u -> {
+                assertThat(u.get("channel")).isEqualTo(3);
+                assertThat(u.get("consumerName")).isEqualTo("Heizstab an DO3");
+            });
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> types = (List<Map<String, Object>>) options.get("types");
+            assertThat(types).extracting(t -> t.get("type")).doesNotContain("io-module");
+
+            // Once the box reports the stack (di_k/do_k telemetry), the options
+            // know the output count and the state route shows every channel with
+            // the consumer that switches it.
+            StringBuilder rows = new StringBuilder();
+            for (int k = 1; k <= 8; k++) {
+                if (rows.length() > 0) {
+                    rows.append(", ");
+                }
+                rows.append("(now(), now(), '00000000-0000-0000-0000-000000000001', '")
+                        .append(BERLIN_SITE).append("', '00000000-0000-0000-0000-000000000003', '")
+                        .append(module).append("', 'do_").append(k).append("', ")
+                        .append(k == 3 ? 1 : 0).append("), (now(), now(), ")
+                        .append("'00000000-0000-0000-0000-000000000001', '").append(BERLIN_SITE)
+                        .append("', '00000000-0000-0000-0000-000000000003', '").append(module)
+                        .append("', 'di_").append(k).append("', ").append(k == 1 ? 1 : 0).append(")");
+            }
+            jdbcAsSuperuser("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, "
+                    + "device_id, entity_id, channel, value) VALUES " + rows);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> reported = (List<Map<String, Object>>) getMap(
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumer-options", tok).get("ioModules");
+            assertThat(reported.stream().filter(x -> module.toString().equals(x.get("entityId")))
+                    .findFirst().orElseThrow().get("outputs")).isEqualTo(8);
+            Map<String, Object> zustand = getMap("/api/v1/sites/" + BERLIN_SITE + "/io-modules/"
+                    + module + "/zustand", tok);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> ins = (List<Map<String, Object>>) zustand.get("inputs");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> outs = (List<Map<String, Object>>) zustand.get("outputs");
+            assertThat(ins).hasSize(8);
+            assertThat(ins.get(0).get("on")).isEqualTo(Boolean.TRUE);
+            assertThat(ins.get(1).get("on")).isEqualTo(Boolean.FALSE);
+            assertThat(outs).hasSize(8);
+            assertThat(outs.get(2).get("on")).isEqualTo(Boolean.TRUE);
+            assertThat(outs.get(2).get("consumerName")).isEqualTo("Heizstab an DO3");
+            assertThat(outs.get(0).get("consumerId")).isNull();
+            assertThat(zustand.get("receivedAt")).isNotNull();
+            // An output binding IS a connection: the manual override is accepted
+            // (not 409 "noch nicht verbunden") and recorded.
+            ResponseEntity<Map<String, Object>> manual = post(tok, "/api/v1/sites/" + BERLIN_SITE
+                    + "/consumers/" + rodId + "/override",
+                    Map.of("action", "start", "durationMinutes", 30));
+            assertThat(manual.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(manual.getBody().get("applied")).isEqualTo(Boolean.TRUE);
+            assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/consumers/" + rodId
+                    + "/override"), HttpMethod.DELETE, new HttpEntity<>(bearer(tok)), String.class)
+                    .getStatusCode().is2xxSuccessful()).isTrue();
+
+            // A foreign entity is not an I/O module: 404, never an empty module.
+            assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/io-modules/" + rodId
+                    + "/zustand"), HttpMethod.GET, new HttpEntity<>(bearer(tok)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+            // A channel consumer has no device of its own - deleting it frees
+            // the output (the box switches it off when it leaves the registry).
+            assertThat(delete(tok, rodId).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+            rodId = null;
+            Map<String, Object> free = create(tok, Map.of(
+                    "type", "pump", "name", "Pumpe an DO3", "ratedPowerKw", 1.0,
+                    "controlKind", "on_off", "ioEntityId", module.toString(), "ioChannel", 3));
+            assertThat(delete(tok, (String) free.get("id")).getStatusCode())
+                    .isEqualTo(HttpStatus.NO_CONTENT);
+        } finally {
+            if (rodId != null) {
+                delete(tok, rodId);
+            }
+            jdbcAsSuperuser("DELETE FROM telemetry_v2 WHERE entity_id = '" + module + "'");
+            jdbcAsSuperuser("DELETE FROM consumer_profile WHERE io_entity_id = '" + module + "'");
+            jdbcAsSuperuser("DELETE FROM measurement_point WHERE id = '" + module + "'");
+        }
+    }
+
     private String lastPush() {
         assertThat(RecordingPublisherConfig.PUSHES).isNotEmpty();
         return new String(RecordingPublisherConfig.PUSHES

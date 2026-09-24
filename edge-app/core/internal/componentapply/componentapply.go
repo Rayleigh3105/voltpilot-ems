@@ -275,6 +275,14 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 	if e.Category() == entities.CategoryConsumer {
 		return sources.RoleConsumer, nil
 	}
+	// An I/O module (Ebyte M31) is a measure-only DEVICE entity: its outputs
+	// are switched through the consumer entities bound to its channels, and
+	// its own source only reads states. It is read on the consumer side (it
+	// never enters the energy balance - it publishes no power at all);
+	// refusing it here would sink the whole push.
+	if d.Communication == inverter.CommEbyteModbusTCP {
+		return sources.RoleConsumer, nil
+	}
 	return "", fmt.Errorf("für %q (%s) ist nicht bestimmbar, welche Rolle das Gerät hat",
 		e.ID, e.Type)
 }

@@ -238,7 +238,23 @@ type OpResult struct {
 	// Finding names WHICH channel violated WHICH plausibility rule. Machine
 	// readable next to the German sentence, so no surface parses prose.
 	Finding *Finding `json:"finding,omitempty"`
+	// Samples are the NAMED channels a test_connection read (contract
+	// op_result.samples): one row per channel for a device whose readings are
+	// not the closed four-channel Reading - an I/O module's di_k/do_k states.
+	Samples []Sample `json:"samples,omitempty"`
 }
+
+// Sample is one named channel of a test_connection read. Count 0 carries no
+// value (never a fabricated 0).
+type Sample struct {
+	Channel string   `json:"channel"`
+	Raw     *float64 `json:"raw,omitempty"`
+	Value   *float64 `json:"value,omitempty"`
+	Count   int      `json:"count"`
+}
+
+// MaxSamples is the contract bound of op_result.samples.
+const MaxSamples = 16
 
 // Finding is the plausibility verdict about one channel of a test_connection
 // read (contract op_result.finding). Raw is the register word, Value the
@@ -627,6 +643,15 @@ func SucceededSwitch(id string, written int, offAfter *int, readback *int) OpRes
 // SucceededReading builds an answered test_connection line.
 func SucceededReading(id string, reading *Reading) OpResult {
 	return OpResult{ID: id, OK: true, Reading: reading}
+}
+
+// SucceededSamples builds an answered test_connection line whose readings are
+// named channels (an I/O module's states) instead of the four-channel Reading.
+func SucceededSamples(id string, samples []Sample) OpResult {
+	if len(samples) > MaxSamples {
+		samples = samples[:MaxSamples]
+	}
+	return OpResult{ID: id, OK: true, Samples: samples}
 }
 
 // FailedReading builds a REFUSED test_connection line that still shows what the

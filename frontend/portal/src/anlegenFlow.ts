@@ -50,7 +50,10 @@ export type TypId =
 const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   wechselrichter: ['inverter'],
   wallbox: ['wallbox'],
-  verbraucher: ['switch'],
+  // Ein I/O-Modul (Ebyte M31) ist EIN Gerät mit N Ausgängen; seine Ausgänge
+  // werden danach einzeln Verbrauchern zugeordnet - der Weg beginnt deshalb
+  // bei derselben Karte wie ein Schaltaktor.
+  verbraucher: ['switch', 'io_module'],
   zaehler: ['meter'],
   ladesaeule: [],
   batterie: [],
@@ -63,6 +66,7 @@ export function typFuerTemplate(template: ComponentTemplate | null): TypId {
     case 'wallbox':
       return 'wallbox';
     case 'switch':
+    case 'io_module':
       return 'verbraucher';
     case 'meter':
       return 'zaehler';
@@ -121,7 +125,7 @@ const KARTEN: Omit<TypKarte, 'treffer' | 'hinweis'>[] = [
   {
     id: 'verbraucher',
     label: 'Schaltbarer Verbraucher',
-    hint: 'Heizstab, Pumpe, Wärmepumpe - alles, was sich ein- und ausschalten lässt.',
+    hint: 'Heizstab, Pumpe, Wärmepumpe - alles, was sich ein- und ausschalten lässt, auch über ein I/O-Modul.',
     icon: 'sliders',
   },
   {
