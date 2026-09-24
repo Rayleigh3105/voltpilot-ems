@@ -21,6 +21,11 @@ ab [TT.MM.JJJJ, HH:MM Uhr] finden Sie im Portal neue Möglichkeiten:
 - Unter „Bewertung“ legen Sie fest, welche Prozesse Energie einsetzen. Die Messwerte schlagen
   eine Rangliste vor; einstufen, mit Begründung, tun Sie selbst. Solange Sie keinen
   Energieeinsatz anlegen, ändert sich nichts.
+- Mit einer Bezugsbasis legen Sie an einer Kennzahl fest, gegen welchen Zeitraum spätere Monate
+  verglichen werden. Nach der Freigabe heißt die Kennzahl Energieleistungskennzahl; der Vergleich
+  mit der Bezugsbasis und der Bericht „Leistungsvergleich“ zeigen je Monat, was gemessen und was
+  erwartet war, ein Urteil nur bereinigt und mit seinem Rahmen. Solange Sie keine Bezugsbasis
+  anlegen, ändert sich an Ihren Kennzahlen nichts.
 
 Beim ersten Aufruf lädt das Portal einmal neu. Von allein wird nichts zugeordnet oder
 eingerichtet. An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich dadurch nichts.

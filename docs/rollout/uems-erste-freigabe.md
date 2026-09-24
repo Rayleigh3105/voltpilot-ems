@@ -920,6 +920,10 @@ sicher").
   Zustellung noch tatsächlichen Not-Aus.
 - **Der echte Upload-Weg** einschließlich äußerem Proxy gehört vor G1 geprüft; die
   nginx-Ergänzung aus PR 37 ist nur lokal geprüft.
+- **Wetter-Archiv (AP-17):** Quelle, Nutzungsbedingungen und gegebenenfalls Schlüssel
+  (`VOLTPILOT_UEMS_WETTER_ARCHIV_*`) sowie jeder vom Vorgabewert `true` abweichende Wert für
+  `BEZUGSBASIS`/`BEWERTUNG`/`WETTER_ARCHIV` — §15.2. Standorte ohne Koordinaten bekommen keine
+  Gradtagzahl aus dem Archiv.
 
 ---
 
@@ -983,6 +987,8 @@ und er darf dabei nicht auf einen Zugriff angewiesen sein, den es nicht gibt.
 | F6.4 | **Notfall-Zugriff** einmal gegangen | er gewährt sich selbst, geht **nicht** durch den Rechte-Prüfpunkt (E8) und hinterlässt eine Protokollzeile | ☐ |
 | F6.5 | Der Weg ist **ohne Vollzugriff** gangbar | zu keinem Zeitpunkt war ein Plattform-Administrator nötig | ☐ |
 | F6.6 | Der Support kennt §12 | „anhalten" heißt: Läufer aus — die Flächen bleiben | ☐ |
+
+Die Probe für die erste Bezugsbasis eines Kunden steht als F7 in §15.3.
 
 ⧉ **Vom Betreiber beim ersten Lauf zu bestätigen:** Namen, Zeitpunkt und Kanal der Probe.
 Das Beispiel oben stammt aus dem Referenzunternehmen, nicht aus dem Betrieb.
@@ -1272,3 +1278,73 @@ ersten Wert steht `zustand="nie"` auf 1. Danach steigt das Alter von 148 s auf 1
 Schalter nimmt die zwei Anlagen aus der Flotte. Am echten Writer trägt jeder Wert seine
 Zuordnung, auch der erste (`DauerlaeuferWriterNahtTest`). Ob der Alarm in Produktion wirklich
 zugestellt wird, zeigt nur diese Übung. Sie ist Betreiber-Punkt `nw6_alarmuebung` in Tor G1.
+
+---
+
+## 15. Bewertung (AP-16) und Bezugsbasis (AP-17) am Rollout-Tag
+
+Beide Bereiche kommen mit dem Rollout-Tag, ohne Freigabe-Tor und ohne eigenen Schritt im
+Fenster (E1 = B). Sie sind **leer ausgeliefert**: kein Bestandskunde sieht eine geänderte Zahl,
+bis jemand einen Energieeinsatz bzw. eine Bezugsbasis anlegt (AP-16 R11, AP-17 R10). Der
+Rollout-Tag prüft darum nur, dass sie wirklich leer und still sind. Wegweiser:
+`docs/agents/root/uems-bewertung.md` und `docs/agents/root/uems-bezugsbasis.md`.
+
+### 15.1 Was am Rollout-Tag geprüft wird
+
+| Bereich | Vor dem Fenster (Beleg aus dem Repo) | Nach Schritt 7 in Produktion | Schalter (§12) | Abbruch |
+|---|---|---|---|---|
+| `bewertung` (AP-16) | `UemsBewertungBestandsschutzTest` grün: Bestand byte-gleich, einzige benannte Ausnahme `bericht.wiedervorlage_monate`; die 15 neuen Tabellen leer; Vorlage `energetische_bewertung` ist eine Funktion, keine Zeile | die neuen Tabellen ohne Zeile; kein Läufer schreibt für die Bewertung (der Struktur-Läufer liest nur die AP-12-Ortskorrektur, die Frist hat keinen Läufer) | `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` — nur Kaskaden- und Struktur-Naht | Zeile in einer neuen Tabelle → R |
+| `bezugsbasis` (AP-17) | `UemsBezugsbasisBestandsschutzTest` grün: Bestand byte-gleich **ohne** benannte Ausnahme (`bericht.kennzahl_id` und `bezugsgroesse_wert.bezug_*` in jeder Bestandszeile NULL); die neun neuen Tabellen leer; Vorlage `leistungsvergleich` und die neuen Wörter nur als Funktionen, jedes alte Wort mit seiner Nummer; `UemsBezugsbasisFlagArchitekturTest` hält §12 gleich `application.yml` | die neun neuen Tabellen ohne Zeile; `bericht.kennzahl_id` überall NULL; im Vorlagen-Katalog steht `leistungsvergleich` (Fassung 1); das Kennzahl-Register trägt `bezugsbasis: null` an jeder Kennzahl | `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED` — nur der Anstoß (Kaskade Pfad 1, Struktur-Läufer Pfad 2) | Zeile in einer neuen Tabelle, `bezugsbasis` ≠ null → R |
+| Wetter-Archiv (AP-17 IP-12b) | Läufer `wetter_archiv` im Katalog von `UemsLaeuferMelder` | Läufer-Zustand an, erster Lauf am nächsten Morgen **06:10** Europe/Berlin; ohne gebundenen Wetterbezug fragt er kein Archiv und schreibt nichts | `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` — Not-Aus des Abrufs | kein Abbruchgrund; bei Auffälligkeit Läufer aus (§12) |
+
+**Die Struktur-Läufer und die Kaskade schreiben für die Bezugsbasis nur mit Basis.** Pfad 2
+liest nur Protokollzeilen eines Kundenbereichs mit einer VOR ihnen freigegebenen Fassung; der
+Bestand hat keine, also setzt er am Rollout-Tag nicht einmal ein Wasserzeichen — mit Schalter
+an wie aus. Einen neuen Läufer der Bezugsbasis gibt es nicht; der einzige neue Takt ist der
+Wetter-Abruf.
+
+**Beide Schalter fehlen noch in gitops PR 37** (`BEZUGSBASIS`, `WETTER_ARCHIV`). Ohne Eintrag gilt
+die Vorgabe `true`; das ist gewollt. Nur wer abweichen will, braucht einen Eintrag (§15.2).
+
+### 15.2 Hand des Betreibers
+
+- **Wetter-Quelle mit Lizenz und Schlüssel.** Der Abruf fragt je Standort über dessen Koordinaten
+  ein Wetter-Archiv. Vorgabe: `VOLTPILOT_UEMS_WETTER_ARCHIV_QUELLE=open-meteo`,
+  `VOLTPILOT_UEMS_WETTER_ARCHIV_BASIS_URL=https://archive-api.open-meteo.com`,
+  `VOLTPILOT_UEMS_WETTER_ARCHIV_SCHLUESSEL` leer. Ob diese Adresse unter den Nutzungsbedingungen
+  der Quelle für den Betrieb genutzt werden darf, oder ob ein Zugang mit Schlüssel (eigene
+  Adresse plus Schlüssel) nötig ist, entscheidet der Betreiber; der Schlüssel gehört als
+  Geheimnis nach gitops, nie ins Repo. Eine andere Quelle (etwa die DWD-Schnittstelle) ist nicht
+  gebaut: mit einem anderen Wert für `…_QUELLE` meldet jeder Abruf einen Ausfall
+  („Quelle … ist nicht gebaut“) und schreibt nichts.
+- **Die Verfügbarkeit der Quelle ist keine Bedingung einer Zahl.** Fehlt ein Tag, fehlt er (nie
+  eine Null), der Monat trägt „x von y Tagen“, der nächste Lauf holt bis 60 Tage nach.
+- **Ein Standort ohne Koordinaten bekommt keine Gradtagzahl aus dem Archiv.** Das Portal sagt es
+  dem Kunden am Standort („Für den Standort Lindach kann VoltPilot kein Wetter beziehen: die
+  Koordinaten fehlen. …“ — Beispiel aus dem Referenzunternehmen). Das ist kein Fehler des Abrufs
+  und kein Support-Fall für den Betrieb; die Koordinaten trägt der Kunde nach.
+- **Ein vom Vorgabewert abweichender gitops-Wert** für `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED`,
+  `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` oder `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` ist seine
+  Entscheidung (W14); das Drehbuch verlangt keinen.
+- **Die Release-Notiz** (Zeilen „Unter „Bewertung“ …“ und „Mit einer Bezugsbasis …“ in der
+  [Vorlage](release-notiz-vorlage.md)) gibt ausschließlich der Betreiber frei.
+
+### 15.3 Support-Probe F7 — „Kunde legt seine erste Bezugsbasis an“
+
+**Wann:** vor G1, einmal an einem Kundenbereich mit einer Kennzahl, die mindestens einen
+abgeschlossenen Monat hat. **Warum:** das ist die erste Frage, die nach der Release-Notiz kommt.
+Die Probe geht nur, was gebaut ist (IP-7, IP-8, IP-9, IP-19/IP-20, IP-21b).
+
+| # | Probe | Erwartung | abgehakt |
+|---|---|---|---|
+| F7.1 | Eine Kennzahl ohne Basis öffnen, Reiter „Bezugsbasis“ | Satz „Noch keine Bezugsbasis. Legen Sie fest, gegen welchen Zeitraum diese Kennzahl verglichen werden soll — …“; der Knopf „Bezugsbasis anlegen“ nur mit dem Recht `bezugsbasis.verwalten`, sonst nur der Satz | ☐ |
+| F7.2 | Assistent: Referenzperiode, „Monate prüfen“ | die Basis bekommt ihr Kennzeichen BB-…; je Monat vorhanden · vorläufig · fehlt; unter zwölf Monaten ist nur das Verhältnis wählbar und trägt „vorläufig (n von 12 Monaten)“ | ☐ |
+| F7.3 | „Als Entwurf speichern“, dann „Freigeben“ bzw. „Zur Freigabe beantragen“ | Freigeben/Beantragen nur mit `bezugsbasis.freigeben`; mit Vier-Augen gibt eine **zweite** Person frei, nie wer die Fassung gebildet oder beantragt hat | ☐ |
+| F7.4 | Nach der Freigabe das Kennzahl-Register | die Kennzahl heißt jetzt Energieleistungskennzahl, mit Basis-Zeile; alle anderen Kennzahlen unverändert | ☐ |
+| F7.5 | Reiter „Vergleich mit Bezugsbasis“ | der rohe Vergleich ohne Urteil; ein Urteil (besser · im Rahmen · schlechter) nur bereinigt, mit Band; fehlt eine Voraussetzung, steht ein Grund statt einer Zahl | ☐ |
+| F7.6 | Die Kennzahl selbst | ihre Werte und Versionen sind dieselben wie vor der Basis — die Basis ändert keine Kennzahl | ☐ |
+| F7.7 | Der Support kennt §12 und §15.1 | „anhalten“ heißt `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED=false`: der Anstoß schweigt, nichts wird nachgeholt; Routen, Reiter und angelegte Basen bleiben | ☐ |
+
+⧉ **Vom Betreiber beim ersten Lauf zu bestätigen:** Kundenbereich, Personen und Zeitpunkt der
+Probe. Einen Leistungsvergleich als Bericht (Vorlage `leistungsvergleich`) verlangt die Probe
+nicht; er braucht eine freigegebene Fassung (sonst 422 `basis_fehlt`).

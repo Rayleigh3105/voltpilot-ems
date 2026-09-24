@@ -28,8 +28,12 @@ Bezugsbasis, Referenzperiode, Einflussgröße, statischer Faktor, Leistungsvergl
 | IP-19 | Vergleich-Leser `GET /api/v1/kennzahlen/{id}/vergleich` | Zeile in `uems-uebersicht.md` |
 | IP-20 | Portal: Reiter „Vergleich mit Bezugsbasis“ an der Kennzahl | `frontend/portal/src/components/BezugsbasisVergleich.tsx`, `bezugsbasisVergleich.ts` |
 | IP-21a/b, IP-22 | Vorlage `leistungsvergleich`, Quellenart `bezugsbasis`, Abzug, Belegschutz · PDF/CSV | Zeile in `uems-uebersicht.md`, `uems/BerichtLeistungsvergleich.java` |
+| IP-23 | Kaskade und A5 für den Leistungsvergleich (S4): Stand angestoßen, Basis-Anlässe weitergegeben | Zeile in `uems-uebersicht.md` |
+| IP-24 | Portal: Leistungsvergleich in der Berichte-Welt (Anlegen mit Kennzahl, Abschnitte, Stand, PDF/CSV) | `frontend/portal/src/components/LeistungsvergleichBericht.tsx`, `leistungsvergleichBericht.ts` |
 | IP-25a | Bestandsschutz, Flag-Nachweis, dieser Wegweiser, Glossar, W2 | unten |
-| offen am 24.09.2026 | IP-18, IP-24 (Portal), IP-23 (Kaskade Leistungsvergleich, A5), IP-26 (Abnahme NW-6), IP-25b (Drehbuch-Abschnitt, Release-Notiz) | beim Merge hier nachtragen |
+| IP-25b | Drehbuch §15 (Prüfung am Rollout-Tag für `bewertung` und `bezugsbasis`, Hand des Betreibers, Support-Probe F7), Release-Notiz-Zeile (Freigabe beim Betreiber) | `docs/rollout/uems-erste-freigabe.md` §15, `docs/rollout/release-notiz-vorlage.md` |
+| IP-18 | Portal: Zeitleiste der Fassungen, Anstoß-Kasten, Fassung n + 1 mit Vorschau alt/neu, Beenden, Bleibt, Frist | Commit `9101fd342` (PR 1182) |
+| offen am 24.09.2026 | IP-26 (Abnahme NW-6) | beim Merge hier nachtragen |
 
 ## Bestandsschutz und Schalter (IP-25a, NW-5, R10)
 
@@ -64,6 +68,7 @@ Bezugsbasis, Referenzperiode, Einflussgröße, statischer Faktor, Leistungsvergl
   keinen Kalender und kein Arbeitszeitmodell als Stammdatum: die Betriebszeit ist eine Bezugsgröße und als
   Einflussgröße eine Variable wie jede, ein Schichtmodell höchstens ein Wortlaut-Faktor; die Wetterbereinigung ist mit
   Gradtagen eingelöst, die Temperatur bezieht VoltPilot aus dem Wetter-Archiv (E9 = C). AP-09 E2 bleibt.
-- **W14:** beide Schalter stehen in der Not-Aus-Tabelle des Drehbuchs (§12), Vorgabe AN. `BEZUGSBASIS` und
+- **W14:** beide Schalter stehen in der Not-Aus-Tabelle des Drehbuchs (§12), Vorgabe AN; was am Rollout-Tag zu
+  prüfen ist und die Hand des Betreibers (Wetter-Quelle, Schlüssel, abweichende Werte) steht in §15. `BEZUGSBASIS` und
   `WETTER_ARCHIV` fehlen noch in gitops PR 37 — ohne Eintrag gilt die Vorgabe; ein abweichender Wert ist die Hand des
   Betreibers.
