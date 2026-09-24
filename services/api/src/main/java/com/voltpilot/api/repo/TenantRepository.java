@@ -279,8 +279,15 @@ public class TenantRepository {
                 // Massnahme cites Ziel, Fassung, Einstufung, Kennzahl, Standort and Benutzer (RESTRICT): first.
                 // AP-18 IP-14: an Auffaelligkeit names its Abweichung, and the Abweichung cites its Massnahme,
                 // Fassung, Kennzahl, Standort and Benutzer (RESTRICT): before the Massnahme.
+                // AP-19 IP-5: the Energiemanagement protocol, entries, scope, Fassungen and Dokumente name their
+                // Person, Aufgabe, Energieeinsatz and Standort (RESTRICT), Aufgaben name their Person: all of them
+                // first, Personen before Benutzer, the setting and the Kennzeichen counter with them.
                 // Current repository code also runs against older migration fixtures.
-                for (String table : new String[] {"auffaelligkeit", "abweichung_aenderung", "abweichung",
+                for (String table : new String[] {"energiemanagement_aenderung", "energiemanagement_dokument_eintrag",
+                        "energiemanagement_anwendungsbereich", "energiemanagement_dokument_fassung",
+                        "energiemanagement_dokument", "energiemanagement_aufgabe", "energiemanagement_person",
+                        "energiemanagement_einstellung", "energiemanagement_kennung_seq",
+                        "auffaelligkeit", "abweichung_aenderung", "abweichung",
                         "vorgang_anstoss", "massnahme_bewertung", "massnahme_aenderung", "massnahme",
                         "energieziel_aenderung", "energieziel", "verbesserung_kennung_seq",
                         "bezugsbasis_anstoss", "bezugsbasis_faktor", "bezugsbasis_variable",

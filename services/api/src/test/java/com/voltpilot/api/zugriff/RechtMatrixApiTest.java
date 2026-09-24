@@ -370,7 +370,10 @@ class RechtMatrixApiTest {
             Map.entry("energieeinsatz.ansehen", "lesend — EnergieeinsatzApiTest, Prozess-Messstellen-Zaun R14"),
             Map.entry("bezugsbasis.ansehen", "reserviert für AP-17 IP-8 (Routen), Zaun über die Kennzahl"),
             Map.entry("verbesserung.ansehen", "lesend — EnergiezielApiTest (IP-6), MassnahmeApiTest (IP-10), AbweichungApiTest (IP-16), Zaun über Anker "
-                    + "und standort_id"));
+                    + "und standort_id"),
+            Map.entry("energiemanagement.verwalten", "reserviert für AP-19 IP-6 ff. (Routen); Datenhaltung IP-5"),
+            Map.entry("energiemanagement.freigeben", "reserviert für AP-19 IP-7 ff. (Routen); Datenhaltung IP-5"),
+            Map.entry("energiemanagement.ansehen", "reserviert für AP-19 IP-6 ff. (Routen), Zaun über den Standort des Bezugs"));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {

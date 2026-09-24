@@ -36,6 +36,10 @@ keine Bestandsrolle darf mehr oder weniger; `BerichtRechteTest` vergleicht vorhe
 Konzept-Zusatz „(getrennt von …, W10)“ nicht, denn `benutzer.ts#rechteVorschau` zeigt `kundenwort` in der
 Benutzerverwaltung; der Zusatz steht in `nachtraege[].handlung`. ⚠ Die Spalte „Einsicht“ (IP-12) gibt den neuen Zeilen
 andere Zellen als den alten — dann fällt `wie` weg, sonst bricht `jedeNachtragsZeileStehtGegenIhreHerkunft`.
+Seit AP-19 IP-5 (derselbe Nachtrag `AP-19 §4.2`, RE1): `energiemanagement.verwalten · .freigeben · .ansehen` mit `wie`
+auf `verbesserung.verwalten`, `bezugsbasis.freigeben`, `verbesserung.ansehen` (Zellen gleich, solange die Spalte Einsicht
+fehlt; mit IP-12 bleibt `wie` nur, wo auch die Einsicht-Zelle gleich ist), je ein `darf`-Fall `ap19-energiemanagement-*`,
+reserviert in `RechtMatrixApiTest.OHNE_SCHREIBROUTE` bis zu den Routen (IP-6 ff.).
 
 ## Die benannten Widersprüche (rechte-vectors.json)
 

@@ -746,6 +746,60 @@
       "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
     },
     {
+      "kennung": "energiemanagement.verwalten",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Dokumente, Aufgaben, Personen, Audits, Feststellungen und Managementbewertungen anlegen und bearbeiten",
+      "herkunft": "AP-19 §4.2 (RE1, DK1, PA1, PA2)",
+      "nachtrag": "AP-19 §4.2",
+      "wie": "verbesserung.verwalten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-19 IP-6 ff. (Routen); Datenhaltung von Person, Aufgabe und Dokument seit IP-5. Standort-Zaun über den Standort des Bezugs, ohne Standort = Unternehmen (RE1, RE2): ein Dokument am Unternehmen, an einer Person oder einer Aufgabe nur unternehmensweit. Zuständigkeit verleiht kein Recht."
+    },
+    {
+      "kennung": "energiemanagement.freigeben",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Fassung freigeben · „geprüft, bleibt“ · Wirksamkeit festhalten · Audit abschließen · Managementbewertung freigeben",
+      "herkunft": "AP-19 §4.2 (RE1, DK3, DK5, DK8)",
+      "nachtrag": "AP-19 §4.2",
+      "wie": "bezugsbasis.freigeben",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-19 IP-7 ff. (Routen); Freigabe mit „entschieden von“ (Person) und Begründung (10–500 Zeichen), bei Energiepolitik, Anwendungsbereich und Bestellung die Leitung des Unternehmens; bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
+    },
+    {
+      "kennung": "energiemanagement.ansehen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Energiemanagement ansehen (Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertungen)",
+      "herkunft": "AP-19 §4.2 (RE1, RE5)",
+      "nachtrag": "AP-19 §4.2",
+      "wie": "verbesserung.ansehen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-19 IP-6 ff. (Routen); der Unterstützer liest nur an Standort-Bezügen (RE5). Standort-Zaun über den Standort des Bezugs, ohne Standort = Unternehmen (RE1, RE2): ein Dokument am Unternehmen, an einer Person oder einer Aufgabe nur unternehmensweit. Zuständigkeit verleiht kein Recht."
+    },
+    {
       "kennung": "export.standort",
       "gruppe": "kennzahlen",
       "kundenwort": "Export je Standort (CSV: Messwerte, Kennzahlen)",
@@ -2118,8 +2172,8 @@
     },
     {
       "abschnitt": "AP-19 §4.2",
-      "titel": "Lesen und Freigeben trennen (IP-11)",
-      "konzept": "AP-19 §4.2 (Rechte), §4.11 (RE4), W10; entschieden am 24.09.2026",
+      "titel": "Lesen und Freigeben trennen (IP-11) · Energiemanagement (IP-5)",
+      "konzept": "AP-19 §4.2 (Rechte), §4.11 (RE1, RE2, RE4, RE5), W10; entschieden am 24.09.2026",
       "handlungen": [
         {
           "handlung": "Unternehmens-Bericht und Stände ansehen, PDF abrufen (getrennt von „freigeben“, W10)",
@@ -2140,12 +2194,46 @@
           ],
           "zuordnung": "neu",
           "anmerkung": "Muster bericht.standort_abrufen; Zellen wie bewertung.abrufen. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+        },
+        {
+          "handlung": "Dokumente, Aufgaben, Personen, Audits, Feststellungen und Managementbewertungen anlegen und bearbeiten",
+          "wer": "KA U · EM U · BE S · BD − · LE − · US − · EI − · VB −",
+          "recht": "`energiemanagement.verwalten`",
+          "kennungen": [
+            "energiemanagement.verwalten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Muster verbesserung.verwalten; Zellen wie verbesserung.verwalten. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+        },
+        {
+          "handlung": "Fassung freigeben · „geprüft, bleibt“ · Wirksamkeit festhalten · Audit abschließen · Managementbewertung freigeben",
+          "wer": "KA U · EM U · sonst −",
+          "recht": "`energiemanagement.freigeben`",
+          "kennungen": [
+            "energiemanagement.freigeben"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Muster bezugsbasis.freigeben; Zellen wie bezugsbasis.freigeben. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+        },
+        {
+          "handlung": "Energiemanagement ansehen (Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertungen)",
+          "wer": "KA U · EM U · BE S · BD S · LE S · US A · EI U · VB −",
+          "recht": "`energiemanagement.ansehen`",
+          "kennungen": [
+            "energiemanagement.ansehen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Muster verbesserung.ansehen; Zellen wie verbesserung.ansehen. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
         }
       ],
       "regeln": [
         {
           "wortlaut": "Lesen und Freigeben werden getrennt, wo eine Kennung beides trägt: `bericht.unternehmen_abrufen` neben `bericht.unternehmen`, `bewertung.ansehen` neben `bewertung.abrufen`; KA und EM behalten dieselben Zellen — kein bestehender Weg wird enger (RE4).",
           "wo": "BerichtRegeln.kennung und BerichtRechte.kennung (Abrufen und PDF); BerichtRechteTest vergleicht je Bestandsrolle vorher und nachher"
+        },
+        {
+          "wortlaut": "Keine Entscheidung ohne Person: wer freigibt, „geprüft, bleibt“ festhält oder aufhebt, braucht `energiemanagement.freigeben` und nennt „entschieden von“ (eine Person im Energiemanagement, auch ohne Konto); bei Vier-Augen bestätigt nie der Urheber (G2, DK3).",
+          "wo": "V20260925013500 (energiemanagement_fassung_freigabe_chk, energiemanagement_fassung_entscheidung_chk, energiemanagement_fassung_leitung); Rechte-Zellen dieser drei Kennungen"
         }
       ]
     }
