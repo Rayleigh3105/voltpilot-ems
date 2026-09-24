@@ -1221,6 +1221,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
         ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
@@ -1355,6 +1356,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung14IstEsDieFassung13() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
         ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
@@ -1551,6 +1553,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung15IstEsDieFassung14() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
         ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
@@ -1957,6 +1960,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung16IstEsDieFassung15() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
         ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
@@ -2190,6 +2194,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung17IstEsDieFassung16() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
         ohneFassung19(d);
         ohneFassung18(d);
         ohneFassung17(d);
@@ -2199,6 +2204,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void k1VergleichtAnDerHauptgroesseUndR9ErgibtSichAusDerDatei() throws Exception {
         ObjectNode alt = daten().deepCopy();
+        ohneFassung110(alt);
         ohneFassung19(alt);
         ohneFassung18(alt);
         ohneFassung17(alt);
@@ -2286,6 +2292,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung18IstEsDieFassung17() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
         ohneFassung19(d);
         ohneFassung18(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.7").isEqualTo(FASSUNG_1_7_SHA256);
@@ -2672,6 +2679,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung19IstEsDieFassung18() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
         ohneFassung19(d);
         assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.8").isEqualTo(FASSUNG_1_8_SHA256);
     }
@@ -3378,6 +3386,742 @@ class UemsReferenzunternehmenVectorsTest {
             assertThat(a.at("/antwort/" + feld).asText()).as("R12 " + feld).isEqualTo(r12.at("/antwort/" + feld).asText());
         }
         assertThat(m1.at("/ausgangslage/kopie/delta_prozent").decimalValue()).isEqualByComparingTo(r12.at("/anstoss/ausgangslage_bleibt/delta_prozent").decimalValue());
+    }
+
+    // ------------------------------------------ Fassung 1.10 (AP-19 IP-1, Captain 24.09.2026: alle Empfehlungen; W11)
+
+    static final String FASSUNG_1_9_SHA256 = "d3b1bea86eb7a252def63651c6a1cdb0622beac24ce52ae8faecd9f57325d947";
+    static final int KOMMENTAR_ZEILEN_1_9 = 164;
+    static final List<String> BLOECKE_1_10 = List.of("energiemanagement", "zugriffe_1_10", "dokumente", "audits", "feststellungen",
+            "managementbewertungen", "massnahmen_1_10", "energieziele_1_10", "abnahmefaelle_ap19");
+    /** DK3: bei diesen Arten entscheidet die Leitung. */
+    static final List<String> LEITUNGS_PFLICHT = List.of("energiepolitik", "anwendungsbereich", "bestellung");
+    /** DK5: Nachweise haben keine Überprüfung. */
+    static final List<String> NACHWEIS_ARTEN = List.of("auslegung", "kompetenz");
+    static final List<String> AUFGABEN_OHNE_WEITERE = List.of("unternehmensleitung", "energiemanagement_leiten", "energieteam", "bezugsbasen",
+            "energieziele_massnahmen", "bewertung_messplanung", "interne_audits", "managementbewertung", "dokumente");
+    static final Map<String, Pattern> HERKUNFT_MUSTER = Map.of("nichtkonformitaet", Pattern.compile("^F-[0-9]{4}-[0-9]{4}$"),
+            "audit", Pattern.compile("^AU-[0-9]{4}-[0-9]{4}$"), "managementbewertung", Pattern.compile("^BR-[0-9]{4}-[0-9]{4}/B[0-9]{1,3}$"));
+    /** Felder, die eine Person im Energiemanagement nennen. */
+    private static final Set<String> PERSONEN_FELDER = Set.of("person", "entschieden_von", "eingetragen_von", "festgestellt_von", "verantwortlich",
+            "leitung", "zustaendig", "zugewiesen_von", "freigegeben_von", "vertretung");
+    private static final Pattern KUERZEL = Pattern.compile("^[A-Z]{2,3}$");
+    private static final Pattern DATEI_FELD = Pattern.compile("(?i).*(datei|inhalt|base64|anhang).*");
+    private static final Pattern TAG_IM_TEXT = Pattern.compile("([0-9]{2})\\.([0-9]{2})\\.([0-9]{4})");
+
+    /** Nimmt GENAU die Zusätze der Fassung 1.10 heraus — neun Blöcke, zwanzig Zeilen der Zeitachse, Kommentar und Herkunft. */
+    static void ohneFassung110(ObjectNode d) {
+        assertThat(d.path("version").asText()).isEqualTo("1.10");
+        d.put("version", "1.9");
+        d.put("beschreibung", d.get("beschreibung").asText().replace(
+                "Messplanung, Bezugsbasen, Ziele, Maßnahmen und Abweichungen sowie die Abläufe des Energiemanagements",
+                "Messplanung, Bezugsbasen sowie Ziele, Maßnahmen und Abweichungen"));
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).isGreaterThan(KOMMENTAR_ZEILEN_1_9);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_9) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_10")).isNotNull();
+        for (String block : BLOECKE_1_10) {
+            assertThat(d.remove(block)).as(block).isNotNull();
+        }
+        entferne((ArrayNode) d.get("zeitachse"), z -> z.hasNonNull("energiemanagement"), 20);
+    }
+
+    private static String pruef(JsonNode x) throws Exception {
+        return "sha256:" + sha256(kanonisch(x));
+    }
+
+    private static Map<String, JsonNode> nach(JsonNode array, String feld) {
+        Map<String, JsonNode> out = new LinkedHashMap<>();
+        kinder(array).forEach(o -> out.put(o.get(feld).asText(), o));
+        return out;
+    }
+
+    private static boolean laeuftAm(JsonNode a, String tag) {
+        return a.get("gilt_ab").asText().compareTo(tag) <= 0 && (!a.hasNonNull("gilt_bis") || a.get("gilt_bis").asText().compareTo(tag) >= 0);
+    }
+
+    /** PA3: die Person mit der laufenden Aufgabe „Leitung des Unternehmens“ am Tag. */
+    private static List<String> leitungAm(JsonNode d, String tag) {
+        return kinder(d.at("/energiemanagement/aufgaben")).stream()
+                .filter(a -> "unternehmensleitung".equals(text(a, "aufgabe")) && laeuftAm(a, tag)).map(a -> text(a, "person")).toList();
+    }
+
+    /** PA2: die laufenden Zuordnungen am Tag (eingetragen bis dahin). */
+    private static List<JsonNode> aufgabenLaufend(JsonNode d, String tag) {
+        return kinder(d.at("/energiemanagement/aufgaben")).stream()
+                .filter(a -> laeuftAm(a, tag) && text(a, "eingetragen_am").compareTo(tag) <= 0).toList();
+    }
+
+    /** PA2: die Aufgaben ohne laufende Zuordnung — ein Satz, kein Urteil. */
+    private static List<String> aufgabenOhnePerson(JsonNode d, String tag) {
+        List<JsonNode> lauf = aufgabenLaufend(d, tag);
+        return AUFGABEN_OHNE_WEITERE.stream().filter(x -> lauf.stream().noneMatch(a -> x.equals(text(a, "aufgabe")))).toList();
+    }
+
+    private static JsonNode aufgabe(JsonNode d, String art) {
+        return kinder(d.at("/energiemanagement/aufgaben")).stream().filter(a -> art.equals(text(a, "aufgabe"))).findFirst().orElseThrow();
+    }
+
+    /** DK5: jüngere von Freigabe der gültigen Fassung und letztem „geprüft, bleibt“ + Monate; ein Nachweis hat keine. */
+    private static String ueberpruefung(JsonNode dok, String tag) {
+        if (!dok.hasNonNull("ueberpruefung_monate")) {
+            return null;
+        }
+        JsonNode gilt = null;
+        for (JsonNode f : kinder(dok.get("fassungen"))) {
+            if ("freigegeben".equals(text(f, "status")) && text(f, "freigegeben_am").compareTo(tag) <= 0) {
+                gilt = f;
+            }
+        }
+        String anker = text(gilt, "freigegeben_am");
+        for (JsonNode e : kinder(dok.get("eintraege"))) {
+            if ("geprueft_bleibt".equals(text(e, "art")) && text(e, "am").compareTo(tag) <= 0 && e.get("fassung").asInt() == gilt.get("nr").asInt()
+                    && text(e, "am").compareTo(anker) > 0) {
+                anker = text(e, "am");
+            }
+        }
+        return tag(anker).plusMonths(dok.get("ueberpruefung_monate").asInt()).toString();
+    }
+
+    private static ObjectNode kopieDerFassung(JsonNode f) {
+        ObjectNode k = MAPPER.createObjectNode();
+        for (String feld : List.of("nr", "form", "wortlaut", "verweis", "anwendungsbereich")) {
+            k.set(feld, f.get(feld));
+        }
+        return k;
+    }
+
+    /** Jedes Feld von {@code teil} steht wörtlich so im Objekt — die Namen der Felder, die abweichen. */
+    private static List<String> abweichend(JsonNode teil, JsonNode ganz) throws Exception {
+        List<String> out = new ArrayList<>();
+        for (String k : feldnamen(teil)) {
+            if (ganz == null || !ganz.has(k) || !kanonisch(teil.get(k)).equals(kanonisch(ganz.get(k)))) {
+                out.add(k);
+            }
+        }
+        return out;
+    }
+
+    private static String anfang(JsonNode liste, int n) throws Exception {
+        ArrayNode a = MAPPER.createArrayNode();
+        for (int i = 0; i < Math.min(n, liste.size()); i++) {
+            a.add(liste.get(i));
+        }
+        return kanonisch(a);
+    }
+
+    /** Ein Dokument, wie es an einem früheren Tag stand: Fassungen und Einträge sind ein Anfang der heutigen (append-only). */
+    private static List<String> dokumentAnfang(JsonNode teil, JsonNode ganz) throws Exception {
+        ObjectNode rest = ((ObjectNode) teil.deepCopy()).without(List.of("fassungen", "eintraege"));
+        List<String> out = new ArrayList<>(abweichend(rest, ganz));
+        for (String liste : List.of("fassungen", "eintraege")) {
+            if (!kanonisch(teil.get(liste)).equals(anfang(ganz.get(liste), teil.get(liste).size()))) {
+                out.add(liste);
+            }
+        }
+        return out;
+    }
+
+    /** NW-3 Leitungs-Pflicht (DK3, PA3, MG4): Politik, Anwendungsbereich, Bestellung, jeder Beschluss und jeder Stand nennen die Leitung am Tag. */
+    static List<String> leitungsFehler(JsonNode d) {
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode dok : kinder(d.get("dokumente"))) {
+            if (!LEITUNGS_PFLICHT.contains(text(dok, "art"))) {
+                continue;
+            }
+            for (JsonNode f : kinder(dok.get("fassungen"))) {
+                if ("freigegeben".equals(text(f, "status")) && !leitungAm(d, text(f, "freigegeben_am")).contains(text(f, "entschieden_von"))) {
+                    fehler.add(text(dok, "kennzeichen") + "/" + f.get("nr").asInt() + ": entschieden von " + text(f, "entschieden_von") + ", nicht von der Leitung");
+                }
+            }
+            for (JsonNode e : kinder(dok.get("eintraege"))) {
+                if ("geprueft_bleibt".equals(text(e, "art")) && !leitungAm(d, text(e, "am")).contains(text(e, "entschieden_von"))) {
+                    fehler.add(text(dok, "kennzeichen") + " " + text(e, "am") + ": geprüft, bleibt ohne die Leitung");
+                }
+            }
+        }
+        for (JsonNode mb : kinder(d.get("managementbewertungen"))) {
+            String leitung = mb.at("/sitzung/leitung").asText();
+            if (!leitungAm(d, mb.at("/sitzung/tag").asText()).contains(leitung)) {
+                fehler.add(text(mb, "kennung") + ": die Sitzung leitet nicht die Leitung");
+            }
+            for (JsonNode b : kinder(mb.get("beschluesse"))) {
+                if (!leitung.equals(text(b, "entschieden_von"))) {
+                    fehler.add(text(mb, "kennung") + "/B" + b.get("nr").asInt() + ": nicht von der Leitung entschieden");
+                }
+            }
+            for (JsonNode s : kinder(mb.get("staende"))) {
+                if (!leitung.equals(text(s, "entschieden_von"))) {
+                    fehler.add(text(mb, "kennung") + " Stand " + s.get("nr").asInt() + ": nicht von der Leitung entschieden");
+                }
+            }
+        }
+        return fehler;
+    }
+
+    /** NW-3 Herkunft (W1, FS3): jede Maßnahme mit neuer Herkunft zitiert ein bestehendes F-, AU- oder BR-…/Bn, das sie nennt, und entsteht nicht vor ihm. */
+    static List<String> herkunftFehler(JsonNode d) {
+        List<String> fehler = new ArrayList<>();
+        Map<String, JsonNode> fs = nachKennzeichen(d.get("feststellungen")), au = nachKennzeichen(d.get("audits"));
+        Map<String, JsonNode> mb = nach(d.get("managementbewertungen"), "kennung");
+        for (JsonNode m : kinder(d.get("massnahmen_1_10"))) {
+            String kz = text(m, "kennzeichen"), art = m.at("/herkunft/art").asText(), kennung = text(m.get("herkunft"), "kennung");
+            if (!HERKUNFT_MUSTER.containsKey(art) || kennung == null || !HERKUNFT_MUSTER.get(art).matcher(kennung).matches()) {
+                fehler.add(kz + ": Herkunft " + art + " " + kennung + " hat nicht die Form");
+                continue;
+            }
+            String seit = null, bis = null;
+            if (art.equals("nichtkonformitaet")) {
+                JsonNode f = fs.get(kennung);
+                if (f == null || kinder(f.get("massnahmen")).stream().noneMatch(x -> x.asText().equals(kz))) {
+                    fehler.add(kz + ": " + kennung + " gibt es nicht oder nennt die Maßnahme nicht");
+                }
+                if (f != null) {
+                    seit = text(f, "festgestellt_am");
+                    bis = kinder(f.get("wirksamkeit")).stream().filter(w -> !"nicht_wirksam".equals(text(w, "ergebnis"))).map(w -> text(w, "am")).findFirst().orElse(null);
+                }
+            } else if (art.equals("audit")) {
+                JsonNode a = au.get(kennung);
+                if (a == null || kinder(a.get("hinweise")).stream().noneMatch(h -> kz.equals(text(h, "massnahme")))) {
+                    fehler.add(kz + ": " + kennung + " gibt es nicht oder kein Hinweis nennt die Maßnahme");
+                }
+                seit = a == null ? null : text(a, "durchgefuehrt_am");
+            } else {
+                String[] teile = kennung.split("/");
+                int nr = Integer.parseInt(teile[1].substring(1));
+                JsonNode b = mb.get(teile[0]);
+                if (b == null || kinder(b.get("beschluesse")).stream().noneMatch(x -> x.get("nr").asInt() == nr)
+                        || kinder(b.get("folgen")).stream().noneMatch(x -> x.get("beschluss").asInt() == nr && kz.equals(text(x, "objekt")))) {
+                    fehler.add(kz + ": " + kennung + " gibt es nicht oder seine Folgen nennen die Maßnahme nicht");
+                }
+                seit = b == null ? null : b.at("/sitzung/tag").asText();
+            }
+            String angelegt = m.at("/angelegt/am").asText();
+            if (seit != null && seit.compareTo(angelegt) > 0) {
+                fehler.add(kz + ": angelegt vor ihrer Herkunft");
+            }
+            if (bis != null && bis.compareTo(angelegt) < 0) {
+                fehler.add(kz + ": angelegt, als " + kennung + " schon abgeschlossen war");
+            }
+            // AP-18 E2: ohne Messgrundlage keine Wirkungszahl, nur „nicht messbar“ ohne Kopie
+            if (m.hasNonNull("messgrundlage") || m.at("/erwartete_wirkung/prozent").isNumber()
+                    || kinder(m.get("bewertungen")).stream().anyMatch(b -> !"nicht_messbar".equals(text(b, "ergebnis")) || b.hasNonNull("pruefsumme"))) {
+                fehler.add(kz + ": ohne Messgrundlage nur „nicht messbar“");
+            }
+        }
+        return fehler;
+    }
+
+    /** NW-3 Feststellung (FS1, FS4, IA2): „festgestellt von“ ist eine Person, die Quelle nennt sie, die Vorgabe gibt es, die Wirksamkeit ist ein Stand mit Kopie. */
+    static List<String> feststellungsFehler(JsonNode d) throws Exception {
+        List<String> fehler = new ArrayList<>();
+        Set<String> personen = nach(d.at("/energiemanagement/personen"), "kuerzel").keySet();
+        Map<String, JsonNode> au = nachKennzeichen(d.get("audits")), dok = nachKennzeichen(d.get("dokumente")), m = nachKennzeichen(d.get("massnahmen_1_10"));
+        for (JsonNode f : kinder(d.get("feststellungen"))) {
+            String kz = text(f, "kennzeichen");
+            if (!personen.contains(text(f, "festgestellt_von"))) {
+                fehler.add(kz + ": ohne „festgestellt von“");
+            }
+            if ("internes_audit".equals(f.at("/quelle/art").asText())) {
+                JsonNode a = au.get(f.at("/quelle/kennung").asText());
+                if (a == null || kinder(a.get("feststellungen")).stream().noneMatch(x -> x.asText().equals(kz))) {
+                    fehler.add(kz + ": die Quelle " + f.at("/quelle/kennung").asText() + " nennt sie nicht");
+                }
+            }
+            if (f.at("/vorgabe/dokument").isTextual()) {
+                JsonNode v = dok.get(f.at("/vorgabe/dokument").asText());
+                if (v == null || kinder(v.get("fassungen")).stream().noneMatch(x -> x.get("nr").asInt() == f.at("/vorgabe/fassung").asInt())) {
+                    fehler.add(kz + ": Vorgabe " + f.at("/vorgabe/dokument").asText() + "/" + f.at("/vorgabe/fassung").asInt() + " gibt es nicht");
+                }
+            }
+            List<String> verknuepft = kinder(f.get("massnahmen")).stream().map(JsonNode::asText).toList();
+            for (JsonNode w : kinder(f.get("wirksamkeit"))) {
+                String wo = kz + " Stand " + w.get("nr").asInt();
+                JsonNode k = w.get("kopie");
+                String am = text(w, "am");
+                if (!text(w, "pruefsumme").equals(pruef(k))) {
+                    fehler.add(wo + ": Prüfsumme passt nicht zur Kopie");
+                }
+                long eintraege = kinder(f.get("eintraege")).stream().filter(e -> text(e, "am").compareTo(am) <= 0).count();
+                if (!kz.equals(text(k, "feststellung")) || !text(f, "wortlaut").equals(text(k, "wortlaut")) || k.get("eintraege").asLong() != eintraege) {
+                    fehler.add(wo + ": Kopie ≠ Feststellung");
+                }
+                for (JsonNode km : kinder(k.get("massnahmen"))) {
+                    JsonNode mm = m.get(text(km, "kennzeichen"));
+                    if (mm == null || !java.util.Objects.equals(text(mm, "umgesetzt_am"), text(km, "umgesetzt_am")) || !verknuepft.contains(text(km, "kennzeichen"))) {
+                        fehler.add(wo + ": Kopie nennt " + text(km, "kennzeichen") + " anders");
+                    }
+                }
+                // FS4: jede verknüpfte Maßnahme umgesetzt, bewertet oder verworfen, mindestens eine umgesetzt oder bewertet
+                long umgesetzt = verknuepft.stream().filter(x -> m.containsKey(x) && m.get(x).hasNonNull("umgesetzt_am")
+                        && text(m.get(x), "umgesetzt_am").compareTo(am) <= 0).count();
+                if ("wirksam".equals(text(w, "ergebnis")) && (umgesetzt == 0 || umgesetzt != verknuepft.size())) {
+                    fehler.add(wo + ": „wirksam“ vor der Umsetzung");
+                }
+            }
+            List<JsonNode> staende = kinder(f.get("wirksamkeit"));
+            boolean zu = !staende.isEmpty() && !"nicht_wirksam".equals(text(staende.get(staende.size() - 1), "ergebnis"));
+            if ("abgeschlossen".equals(text(f, "zustand")) != zu) {
+                fehler.add(kz + ": Zustand " + text(f, "zustand") + " passt nicht zur Wirksamkeit");
+            }
+        }
+        return fehler;
+    }
+
+    /** NW-3 keine Datei (Invariante 3, KS1): ein Verweis trägt Ablage und wahlfrei eine Browser-Prüfsumme — nirgends ein Inhalt. */
+    static List<String> dateiFehler(JsonNode d) {
+        List<String> fehler = new ArrayList<>();
+        for (String block : List.of("energiemanagement", "dokumente", "audits", "feststellungen", "managementbewertungen")) {
+            dateiLauf(d.get(block), block, fehler);
+        }
+        return fehler;
+    }
+
+    private static void dateiLauf(JsonNode x, String pfad, List<String> fehler) {
+        if (x.isArray()) {
+            for (int i = 0; i < x.size(); i++) {
+                dateiLauf(x.get(i), pfad + "[" + i + "]", fehler);
+            }
+            return;
+        }
+        if (!x.isObject()) {
+            return;
+        }
+        for (String k : feldnamen(x)) {
+            if (DATEI_FELD.matcher(k).matches()) {
+                fehler.add(pfad + "." + k + ": eine Datei in der Datei");
+            }
+            dateiLauf(x.get(k), pfad + "." + k, fehler);
+        }
+        if (x.has("ablage") && x.has("sha256") && (!x.get("ablage").isTextual() || x.get("ablage").asText().isEmpty())) {
+            fehler.add(pfad + ": Verweis ohne Ablage");
+        }
+    }
+
+    private static void genannt(JsonNode x, List<String> out) {
+        if (x.isArray()) {
+            x.forEach(e -> genannt(e, out));
+        } else if (x.isObject()) {
+            for (String k : feldnamen(x)) {
+                JsonNode v = x.get(k);
+                if (PERSONEN_FELDER.contains(k) && v.isTextual() && KUERZEL.matcher(v.asText()).matches()) {
+                    out.add(k + "=" + v.asText());
+                }
+                genannt(v, out);
+            }
+        }
+    }
+
+    private static Map<String, JsonNode> gegeben110(JsonNode d) {
+        Map<String, JsonNode> out = new LinkedHashMap<>();
+        kinder(d.at("/abnahmefaelle_ap19/faelle")).forEach(f -> out.put(text(f, "fall"), f.get("gegeben")));
+        return out;
+    }
+
+    @Test
+    void ohneDieZusaetzeDerFassung110IstEsDieFassung19() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ohneFassung110(d);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.9").isEqualTo(FASSUNG_1_9_SHA256);
+    }
+
+    @Test
+    void derUmfangDerFassung110StimmtUndDieLeistungsBloeckeBleiben() throws Exception {
+        JsonNode d = daten();
+        assertThat(nach(d.at("/energiemanagement/personen"), "kuerzel").keySet()).containsExactly("RF", "IK", "JW", "PH", "MD", "CB");
+        assertThat(d.at("/energiemanagement/aufgaben").size()).isEqualTo(11);
+        assertThat(kinder(d.get("zugriffe_1_10")).stream().map(z -> text(z, "person"))).containsExactly("CB", "RF");
+        assertThat(nachKennzeichen(d.get("dokumente")).keySet()).containsExactly("D-0001", "D-0002", "D-0003", "D-0004", "D-0005");
+        assertThat(nachKennzeichen(d.get("audits")).keySet()).containsExactly("AU-2029-0001");
+        assertThat(nachKennzeichen(d.get("feststellungen")).keySet()).containsExactly("F-2029-0001");
+        assertThat(nach(d.get("managementbewertungen"), "kennung").keySet()).containsExactly("BR-2029-0001");
+        assertThat(nachKennzeichen(d.get("massnahmen_1_10")).keySet()).containsExactly("M-2029-0001", "M-2029-0002", "M-2029-0003");
+        assertThat(nachKennzeichen(d.get("energieziele_1_10")).keySet()).containsExactly("EZ-2029-0001");
+        assertThat(gegeben110(d).keySet()).containsExactly("R1", "R2", "R5", "R6", "R9", "R10", "R11", "R13", "R14");
+        // `personen[]`, `massnahmen[]` und `energieziele[]` bleiben die von 1.9 — Robert Falk hat bis 01.02.2029 kein Konto
+        assertThat(nach(d.get("personen"), "kuerzel")).doesNotContainKey("RF");
+        assertThat(nachKennzeichen(d.get("massnahmen")).keySet()).containsExactly("M-2028-0001", "M-2028-0002");
+        assertThat(nachKennzeichen(d.get("energieziele")).keySet()).containsExactly("EZ-2028-0001");
+    }
+
+    @Test
+    void jedePersonMitKontoZeigtAufPersonenUndEingetragenHatImmerEinKonto() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> konten = nach(d.get("personen"), "kuerzel"), em = nach(d.at("/energiemanagement/personen"), "kuerzel");
+        for (JsonNode p : em.values()) {
+            String k = text(p, "kuerzel");
+            if (p.hasNonNull("konto")) {
+                JsonNode konto = konten.get(text(p, "konto"));
+                assertThat(List.of(text(konto, "name"), text(konto, "funktion"))).as(k).isEqualTo(List.of(text(p, "name"), text(p, "funktion")));
+                assertThat(p.hasNonNull("konto_ab")).as(k).isFalse();
+            } else {
+                assertThat(konten).as(k + " ohne Konto").doesNotContainKey(k);
+            }
+        }
+        java.util.function.BiPredicate<String, String> kontoAm = (k, tag) -> em.containsKey(k)
+                && (em.get(k).hasNonNull("konto") || (em.get(k).hasNonNull("konto_ab") && text(em.get(k), "konto_ab").compareTo(tag) <= 0));
+        List<String[]> eingetragen = new ArrayList<>();
+        for (JsonNode a : kinder(d.at("/energiemanagement/aufgaben"))) {
+            eingetragen.add(new String[] {"Aufgabe " + text(a, "aufgabe"), text(a, "eingetragen_von"), text(a, "eingetragen_am")});
+        }
+        for (JsonNode dok : kinder(d.get("dokumente"))) {
+            for (JsonNode f : kinder(dok.get("fassungen"))) {
+                eingetragen.add(new String[] {text(dok, "kennzeichen") + "/" + f.get("nr").asInt(), text(f, "eingetragen_von"), text(f, "freigegeben_am")});
+            }
+        }
+        for (JsonNode f : kinder(d.get("feststellungen"))) {
+            eingetragen.add(new String[] {text(f, "kennzeichen"), text(f, "eingetragen_von"), text(f, "eingetragen_am")});
+        }
+        for (JsonNode a : kinder(d.get("audits"))) {
+            for (JsonNode h : kinder(a.get("hinweise"))) {
+                eingetragen.add(new String[] {text(a, "kennzeichen") + " Hinweis " + h.get("nr").asInt(), text(h, "eingetragen_von"), text(h, "am")});
+            }
+        }
+        for (JsonNode mb : kinder(d.get("managementbewertungen"))) {
+            for (JsonNode b : kinder(mb.get("beschluesse"))) {
+                eingetragen.add(new String[] {text(mb, "kennung") + "/B" + b.get("nr").asInt(), text(b, "eingetragen_von"), text(b, "eingetragen_am")});
+            }
+        }
+        for (String[] e : eingetragen) {
+            assertThat(kontoAm.test(e[1], e[2])).as(e[0] + ": eingetragen von " + e[1] + " ohne Konto").isTrue();
+        }
+        // Einsicht nur mit Konto: Robert Falk erst ab dem Tag seines Kontos
+        for (JsonNode z : kinder(d.get("zugriffe_1_10"))) {
+            assertThat(kontoAm.test(text(z, "person"), text(z, "seit"))).as("Einsicht " + text(z, "person")).isTrue();
+            assertThat(text(konten.get(text(z, "zugewiesen_von")), "rolle")).isEqualTo("Kundenadministrator");
+        }
+        // jede genannte Person gibt es
+        List<String> genannt = new ArrayList<>();
+        for (String block : BLOECKE_1_10) {
+            if (!block.equals("abnahmefaelle_ap19")) {
+                genannt(d.get(block), genannt);
+            }
+        }
+        for (String g : genannt) {
+            assertThat(em).as(g).containsKey(g.substring(g.indexOf('=') + 1));
+        }
+        assertThat(genannt.size()).isGreaterThan(60);
+    }
+
+    @Test
+    void aufgabenAmTagUndDieVerantwortlichenDerBezugsbasen() throws Exception {
+        JsonNode d = daten();
+        assertThat(aufgabenLaufend(d, "2029-01-22")).hasSize(10);
+        assertThat(aufgabenOhnePerson(d, "2029-01-22")).containsExactly("bezugsbasen");
+        assertThat(aufgabenOhnePerson(d, "2029-02-12")).containsExactly("bezugsbasen");
+        assertThat(aufgabenOhnePerson(d, "2029-03-01")).isEmpty();
+        for (JsonNode a : kinder(d.at("/energiemanagement/aufgaben"))) {
+            assertThat(a.hasNonNull("entschieden_von")).as(text(a, "aufgabe")).isEqualTo(!"unternehmensleitung".equals(text(a, "aufgabe")));   // PA2
+        }
+        // R5: die Vorgabe der Verantwortlichen an den Bezugsbasen (die der Kennzahl, AP-17 B4) ist nicht, wer freigibt
+        Map<String, JsonNode> kz = new LinkedHashMap<>(nachKennzeichen(d.get("kennzahlen")));
+        kz.putAll(nachKennzeichen(d.get("kennzahlen_1_8")));
+        JsonNode r5 = gegeben110(d).get("R5");
+        ObjectNode vorgabe = MAPPER.createObjectNode();
+        ArrayNode freigaben = MAPPER.createArrayNode();
+        for (JsonNode b : kinder(d.get("bezugsbasen"))) {
+            vorgabe.put(text(b, "kennzeichen"), text(kz.get(text(b, "kennzahl")), "verantwortlich"));
+            for (JsonNode f : kinder(b.get("fassungen"))) {
+                freigaben.addObject().put("basis", text(b, "kennzeichen")).put("fassung", f.get("fassung").asInt())
+                        .put("person", f.at("/freigabe/person").asText()).put("vieraugen", f.at("/freigabe/vieraugen").asBoolean());
+            }
+        }
+        assertThat(kanonisch(vorgabe)).isEqualTo(kanonisch(r5.get("bezugsbasen_verantwortlich_vorgabe")));
+        assertThat(kanonisch(freigaben)).isEqualTo(kanonisch(r5.get("bezugsbasen_freigaben")));
+    }
+
+    @Test
+    void fristenBeimAbruf() throws Exception {
+        JsonNode d = daten(), e = d.at("/energiemanagement/einstellung");
+        Map<String, JsonNode> dok = nachKennzeichen(d.get("dokumente"));
+        Map<String, String> soll = new LinkedHashMap<>();
+        soll.put("D-0001", "2028-12-10");
+        soll.put("D-0002", "2028-12-10");
+        soll.put("D-0003", "2029-12-05");
+        soll.put("D-0004", "2029-11-10");
+        soll.put("D-0005", null);
+        for (Map.Entry<String, String> s : soll.entrySet()) {
+            assertThat(ueberpruefung(dok.get(s.getKey()), "2029-02-12")).as(s.getKey()).isEqualTo(s.getValue());
+        }
+        assertThat(java.time.temporal.ChronoUnit.DAYS.between(tag("2028-12-10"), tag("2029-02-12"))).isEqualTo(64);   // R1, R12
+        assertThat(ueberpruefung(dok.get("D-0002"), "2029-02-13")).isEqualTo("2030-02-13");                            // B6
+        assertThat(ueberpruefung(dok.get("D-0001"), "2029-04-30")).isEqualTo("2030-03-20");                            // Fassung 2
+        for (JsonNode x : dok.values()) {
+            assertThat(x.hasNonNull("ueberpruefung_monate")).as(text(x, "kennzeichen")).isEqualTo(!NACHWEIS_ARTEN.contains(text(x, "art")));
+            if (x.hasNonNull("ueberpruefung_monate")) {
+                assertThat(x.get("ueberpruefung_monate").asInt()).isEqualTo(e.get("ueberpruefung_monate").asInt());
+            }
+        }
+        JsonNode au = d.at("/audits/0"), f = d.at("/feststellungen/0"), mb = d.at("/managementbewertungen/0");
+        assertThat(tag(text(au, "durchgefuehrt_am")).plusMonths(e.get("audit_rhythmus_monate").asInt())).isEqualTo(tag("2030-01-22"));
+        assertThat(tag(text(f, "frist"))).isEqualTo(tag(text(f, "festgestellt_am")).plusDays(e.get("feststellung_frist_tage").asInt()));
+        assertThat(java.time.temporal.ChronoUnit.DAYS.between(tag("2029-02-12"), tag(text(f, "frist")))).isEqualTo(69);
+        assertThat(tag(mb.at("/sitzung/tag").asText()).plusMonths(e.get("managementbewertung_rhythmus_monate").asInt())).isEqualTo(tag("2030-02-12"));
+    }
+
+    @Test
+    void anwendungsbereichUndBetrachtungsumfangSindDeckungsgleich() throws Exception {
+        JsonNode d = daten();
+        JsonNode ab = nachKennzeichen(d.get("dokumente")).get("D-0002").at("/fassungen/0/anwendungsbereich");
+        JsonNode umfang = kinder(d.at("/bewertung_umfang/fassungen")).stream().filter(f -> !f.hasNonNull("gueltig_bis")).findFirst().orElseThrow();
+        assertThat(new TreeSet<>(kinder(ab.get("standorte")).stream().map(JsonNode::asText).toList()))
+                .isEqualTo(new TreeSet<>(kinder(umfang.get("standorte")).stream().map(JsonNode::asText).toList()));
+        assertThat(new TreeSet<>(kinder(ab.get("traeger")).stream().map(JsonNode::asText).toList()))
+                .isEqualTo(new TreeSet<>(kinder(umfang.get("traeger")).stream().map(t -> text(t, "name")).toList()));
+        assertThat(List.of(ab.get("ausschluesse").size(), umfang.get("ausschluesse").size())).containsExactly(0, 0);
+    }
+
+    @Test
+    void dokumenteTragenWortlautOderVerweisUndJeFassungIhrePruefsumme() throws Exception {
+        JsonNode d = daten();
+        Set<String> beschluesse = new TreeSet<>();
+        for (JsonNode mb : kinder(d.get("managementbewertungen"))) {
+            kinder(mb.get("beschluesse")).forEach(b -> beschluesse.add(text(mb, "kennung") + "/B" + b.get("nr").asInt()));
+        }
+        for (JsonNode dok : kinder(d.get("dokumente"))) {
+            int nr = 0;
+            for (JsonNode f : kinder(dok.get("fassungen"))) {
+                String wo = text(dok, "kennzeichen") + "/" + f.get("nr").asInt();
+                boolean wortlaut = "wortlaut".equals(text(f, "form"));
+                assertThat(List.of(f.hasNonNull("wortlaut"), !f.hasNonNull("verweis"))).as(wo).containsExactly(wortlaut, wortlaut);
+                assertThat(f.hasNonNull("anwendungsbereich")).as(wo).isEqualTo("anwendungsbereich".equals(text(dok, "art")));
+                assertThat(text(f, "pruefsumme")).as(wo).isEqualTo(pruef(kopieDerFassung(f)));
+                if (f.hasNonNull("beschluss")) {
+                    assertThat(beschluesse).as(wo).contains(text(f, "beschluss"));
+                }
+                assertThat(f.get("nr").asInt()).as(wo).isEqualTo(++nr);
+            }
+            for (JsonNode e : kinder(dok.get("eintraege"))) {
+                String wo = text(dok, "kennzeichen") + " " + text(e, "am");
+                assertThat(kinder(dok.get("fassungen")).stream().anyMatch(f -> f.get("nr").asInt() == e.get("fassung").asInt()
+                        && text(f, "freigegeben_am").compareTo(text(e, "am")) <= 0)).as(wo).isTrue();
+                if ("geprueft_bleibt".equals(text(e, "art"))) {
+                    assertThat(e.hasNonNull("entschieden_von")).as(wo).isTrue();
+                }
+            }
+        }
+        assertThat(leitungsFehler(d)).isEmpty();
+        assertThat(dateiFehler(d)).isEmpty();
+        // der Verweis mit Adresse nennt nur https:, das Original bleibt beim Kunden (R7, KS1)
+        JsonNode d4 = nachKennzeichen(d.get("dokumente")).get("D-0004").at("/fassungen/0/verweis");
+        assertThat(text(d4, "adresse")).startsWith("https:");
+        assertThat(text(d4, "sha256")).matches("^[0-9a-f]{64}$");
+        assertThat(nachKennzeichen(d.get("energieeinsaetze"))).containsKey("EE-1");
+    }
+
+    @Test
+    void auditFeststellungMassnahmeUndWirksamkeitDurchEinePerson() throws Exception {
+        JsonNode d = daten(), au = d.at("/audits/0");
+        ObjectNode kopie = MAPPER.createObjectNode();
+        for (String feld : List.of("kennzeichen", "hinweise", "feststellungen", "bericht")) {
+            kopie.set(feld, au.get(feld));
+        }
+        assertThat(au.at("/abgeschlossen/pruefsumme").asText()).isEqualTo(pruef(kopie));
+        // Unabhängigkeit als Wortlaut: die Auditorin hat am Tag des Audits keine Aufgabe im Energieteam, aber „Interne Audits“
+        String am = text(au, "durchgefuehrt_am"), ende = au.at("/abgeschlossen/am").asText();
+        for (JsonNode a : kinder(au.get("auditor"))) {
+            assertThat(aufgabenLaufend(d, am).stream().filter(x -> a.asText().equals(text(x, "person"))).map(x -> text(x, "aufgabe"))).containsExactly("interne_audits");
+            assertThat(kinder(d.get("zugriffe_1_10")).stream().anyMatch(z -> a.asText().equals(text(z, "person")) && text(z, "seit").compareTo(am) <= 0
+                    && (!z.hasNonNull("bis") || text(z, "bis").compareTo(ende) >= 0))).isTrue();
+        }
+        assertThat(herkunftFehler(d)).isEmpty();
+        assertThat(feststellungsFehler(d)).isEmpty();
+        JsonNode f = d.at("/feststellungen/0");
+        assertThat(List.of(text(f, "zustand_am_stichtag"), text(f, "zustand"), f.at("/wirksamkeit/0/ergebnis").asText()))
+                .containsExactly("offen", "abgeschlossen", "wirksam");
+        // „wirksam“ und „nicht messbar“: zwei Wörter, zwei Fragen (R11)
+        assertThat(nachKennzeichen(d.get("massnahmen_1_10")).get("M-2029-0001").at("/bewertungen/0/ergebnis").asText()).isEqualTo("nicht_messbar");
+        assertThat(abweichend(f.at("/wirksamkeit/0/kopie/aufgabe"), aufgabe(d, "bezugsbasen"))).isEmpty();
+    }
+
+    @Test
+    void dieManagementbewertungIstEinStandSeinesTages() throws Exception {
+        JsonNode d = daten(), mb = d.at("/managementbewertungen/0"), s = mb.at("/staende/0"), abzug = s.get("abzug");
+        assertThat(text(s, "pruefsumme")).isEqualTo(pruef(abzug));
+        for (String feld : List.of("kennung", "vorlage", "vorlage_fassung", "geltung", "zeitraum")) {
+            assertThat(kanonisch(abzug.get(feld))).as(feld).isEqualTo(kanonisch(mb.get(feld)));
+        }
+        assertThat(text(abzug, "datenstand")).isEqualTo(text(s, "datenstand"));
+        assertThat(kanonisch(abzug.get("sitzung"))).isEqualTo(kanonisch(mb.get("sitzung")));
+        ArrayNode beschluesse = MAPPER.createArrayNode();
+        for (JsonNode b : kinder(mb.get("beschluesse"))) {
+            ObjectNode x = beschluesse.addObject();
+            for (String feld : List.of("nr", "art", "wortlaut", "entschieden_von", "zustaendig", "termin")) {
+                x.set(feld, b.get(feld));
+            }
+        }
+        assertThat(kanonisch(abzug.get("beschluesse"))).isEqualTo(kanonisch(beschluesse));
+        assertThat(zeit(text(s, "datenstand"))).isBefore(zeit(text(s, "freigegeben_am")));
+        assertThat(text(s, "freigegeben_am")).startsWith(mb.at("/sitzung/tag").asText());
+        // R14: der Stand vom 12.02.2029 sagt „offen“ — die Feststellung ist seit 15.04.2029 abgeschlossen, der Stand bleibt
+        JsonNode f = d.at("/feststellungen/0");
+        JsonNode imStand = kinder(abzug.at("/eingaben/audits_feststellungen/feststellungen")).stream()
+                .filter(x -> text(f, "kennzeichen").equals(text(x, "kennzeichen"))).findFirst().orElseThrow();
+        assertThat(text(imStand, "zustand")).isEqualTo(text(f, "zustand_am_stichtag"));
+        assertThat(f.at("/wirksamkeit/0/am").asText().compareTo(mb.at("/sitzung/tag").asText()) > 0 && "abgeschlossen".equals(text(f, "zustand"))).isTrue();
+        // Folgen: B1 → EZ-2029-0001, B2 → M-2029-0003, B3 → D-0001 Fassung 2, B4 → Aufgabe, B6 → geprüft, bleibt; B5 hat keine
+        assertThat(kinder(mb.get("folgen")).stream().map(x -> x.get("beschluss").asInt())).containsExactly(1, 2, 3, 4, 6);
+        JsonNode ez = d.at("/energieziele_1_10/0");
+        JsonNode bb = kinder(nachKennzeichen(d.get("bezugsbasen")).get(text(ez, "bezugsbasis")).get("fassungen")).stream()
+                .filter(x -> x.get("fassung").asInt() == ez.get("fassung").asInt()).findFirst().orElseThrow();
+        assertThat(bb.at("/freigabe/status").asText()).isEqualTo("freigegeben");
+        assertThat((text(ez, "zielperiode").substring(0, 7) + "-01").compareTo(ez.at("/angelegt/am").asText())).isGreaterThanOrEqualTo(0);   // nicht rückwirkend
+        assertThat(text(ez, "begruendung")).contains(text(mb, "kennung"));
+        String kennung = text(mb, "kennung");
+        Map<String, JsonNode> dok = nachKennzeichen(d.get("dokumente"));
+        assertThat(dok.get("D-0001").at("/fassungen/1/beschluss").asText()).isEqualTo(kennung + "/B3");
+        assertThat(text(aufgabe(d, "bezugsbasen"), "beschluss")).isEqualTo(kennung + "/B4");
+        assertThat(kinder(dok.get("D-0002").get("eintraege")).stream().filter(e -> e.hasNonNull("beschluss")).map(e -> text(e, "beschluss")))
+                .containsExactly(kennung + "/B6");
+    }
+
+    @Test
+    void dieZeitachsenZeilenDesEnergiemanagementsNennenEinObjektAnEinemSeinerTage() throws Exception {
+        JsonNode d = daten();
+        List<JsonNode> zeilen = kinder(d.get("zeitachse")).stream().filter(z -> z.hasNonNull("energiemanagement")).toList();
+        assertThat(zeilen).hasSize(20);
+        Map<String, JsonNode> dok = nachKennzeichen(d.get("dokumente")), au = nachKennzeichen(d.get("audits")), fs = nachKennzeichen(d.get("feststellungen"));
+        Map<String, JsonNode> mb = nach(d.get("managementbewertungen"), "kennung"), m = nachKennzeichen(d.get("massnahmen_1_10"));
+        Map<String, JsonNode> ez = nachKennzeichen(d.get("energieziele_1_10"));
+        for (JsonNode z : zeilen) {
+            String merkmal = text(z, "energiemanagement");
+            List<String> tage = new ArrayList<>();
+            if (merkmal.startsWith("aufgabe:")) {
+                for (JsonNode a : kinder(d.at("/energiemanagement/aufgaben"))) {
+                    if (merkmal.substring(8).equals(text(a, "aufgabe"))) {
+                        tage.add(text(a, "gilt_ab"));
+                        tage.add(text(a, "eingetragen_am"));
+                        if (a.hasNonNull("beleg")) {
+                            Matcher t = TAG_IM_TEXT.matcher(a.at("/beleg/bezeichnung").asText());
+                            while (t.find()) {
+                                tage.add(t.group(3) + "-" + t.group(2) + "-" + t.group(1));
+                            }
+                        }
+                    }
+                }
+            } else if (merkmal.startsWith("einsicht:")) {
+                kinder(d.get("zugriffe_1_10")).stream().filter(x -> merkmal.substring(9).equals(text(x, "person"))).forEach(x -> tage.add(text(x, "seit")));
+            } else if (dok.containsKey(merkmal)) {
+                kinder(dok.get(merkmal).get("fassungen")).forEach(x -> tage.add(text(x, "freigegeben_am")));
+                kinder(dok.get(merkmal).get("eintraege")).forEach(x -> tage.add(text(x, "am")));
+            } else if (au.containsKey(merkmal)) {
+                JsonNode a = au.get(merkmal);
+                tage.addAll(List.of(a.at("/angelegt/am").asText(), text(a, "durchgefuehrt_am"), a.at("/abgeschlossen/am").asText()));
+            } else if (fs.containsKey(merkmal)) {
+                JsonNode f = fs.get(merkmal);
+                tage.addAll(List.of(text(f, "festgestellt_am"), text(f, "eingetragen_am")));
+                kinder(f.get("eintraege")).forEach(x -> tage.add(text(x, "am")));
+                kinder(f.get("wirksamkeit")).forEach(x -> tage.add(text(x, "am")));
+            } else if (mb.containsKey(merkmal)) {
+                tage.add(mb.get(merkmal).at("/sitzung/tag").asText());
+            } else if (m.containsKey(merkmal)) {
+                JsonNode x = m.get(merkmal);
+                tage.add(x.at("/angelegt/am").asText());
+                tage.add(text(x, "umgesetzt_am"));
+                kinder(x.get("bewertungen")).forEach(b -> tage.add(text(b, "am")));
+            } else if (ez.containsKey(merkmal)) {
+                tage.add(ez.get(merkmal).at("/angelegt/am").asText());
+            }
+            assertThat(tage).as(text(z, "zeitpunkt") + " " + merkmal).contains(tagVon(zeit(text(z, "zeitpunkt")), zone(d)).toString());
+        }
+    }
+
+    @Test
+    void dieGegebenBloeckeDerFassung110StehenWoertlichInDerDatei() throws Exception {
+        JsonNode d = daten(), em = d.get("energiemanagement"), mb = d.at("/managementbewertungen/0"), f = d.at("/feststellungen/0");
+        Map<String, JsonNode> g = gegeben110(d), dok = nachKennzeichen(d.get("dokumente")), m = nachKennzeichen(d.get("massnahmen_1_10"));
+        Map<String, JsonNode> einsicht = nach(d.get("zugriffe_1_10"), "person");
+        List<String> fehler = new ArrayList<>();
+        java.util.function.BiConsumer<String, List<String>> pruefe = (wo, liste) -> liste.forEach(x -> fehler.add(wo + "." + x));
+        pruefe.accept("R1.person", abweichend(g.get("R1").get("person"), nach(em.get("personen"), "kuerzel").get("RF")));
+        pruefe.accept("R1.aufgabe", abweichend(g.get("R1").get("aufgabe"), aufgabe(d, "unternehmensleitung")));
+        pruefe.accept("R1.dokument", dokumentAnfang(g.get("R1").get("dokument"), dok.get("D-0001")));
+        pruefe.accept("R1.unternehmen", abweichend(g.get("R1").get("unternehmen"), em.get("einstellung")));
+        pruefe.accept("R2.dokument", dokumentAnfang(g.get("R2").get("dokument"), dok.get("D-0002")));
+        pruefe.accept("R2.betrachtungsumfang", abweichend(g.get("R2").get("betrachtungsumfang"), d.at("/bewertung_umfang/fassungen/0")));
+        if (!kanonisch(g.get("R5").get("personen")).equals(kanonisch(em.get("personen")))) {
+            fehler.add("R5.personen");
+        }
+        if (!kanonisch(g.get("R5").get("aufgaben")).equals(anfang(em.get("aufgaben"), g.get("R5").get("aufgaben").size()))) {
+            fehler.add("R5.aufgaben");
+        }
+        if (!kanonisch(g.get("R6").get("zuweisungen")).equals(kanonisch(d.get("zugriffe_1_10")))) {
+            fehler.add("R6.zuweisungen");
+        }
+        if (kinder(g.get("R6").get("zuweisungen")).stream().anyMatch(z -> !text(z, "rolle").equals(g.get("R6").at("/rolle/kennung").asText()))) {
+            fehler.add("R6.rolle");
+        }
+        pruefe.accept("R9.audit", abweichend(g.get("R9").get("audit"), d.at("/audits/0")));
+        pruefe.accept("R9.aufgabe", abweichend(g.get("R9").get("aufgabe"), aufgabe(d, "interne_audits")));
+        pruefe.accept("R9.einsicht", abweichend(g.get("R9").get("einsicht"), einsicht.get("CB")));
+        pruefe.accept("R10.feststellung", abweichend(g.get("R10").get("feststellung"), f));
+        pruefe.accept("R10.massnahme", abweichend(g.get("R10").get("massnahme"), m.get("M-2029-0001")));
+        if (!g.get("R11").get("feststellung").asText().equals(text(f, "kennzeichen"))) {
+            fehler.add("R11.feststellung");
+        }
+        pruefe.accept("R11.massnahme", abweichend(g.get("R11").get("massnahme"), m.get("M-2029-0001")));
+        pruefe.accept("R11.aufgabe", abweichend(g.get("R11").get("aufgabe"), aufgabe(d, "bezugsbasen")));
+        pruefe.accept("R11.unternehmen", abweichend(g.get("R11").get("unternehmen"), em.get("einstellung")));
+        pruefe.accept("R13.bericht", abweichend(g.get("R13").get("bericht"), mb));
+        pruefe.accept("R13.sitzung", abweichend(g.get("R13").get("sitzung"), mb.get("sitzung")));
+        pruefe.accept("R13.aufgabe_leitung", abweichend(g.get("R13").get("aufgabe_leitung"), aufgabe(d, "unternehmensleitung")));
+        for (String fall : List.of("R13", "R14")) {
+            List<JsonNode> bs = kinder(g.get(fall).get("beschluesse"));
+            for (int i = 0; i < bs.size(); i++) {
+                pruefe.accept(fall + ".beschluesse[" + i + "]", abweichend(bs.get(i), mb.at("/beschluesse/" + i)));
+            }
+        }
+        if (!kanonisch(g.get("R14").get("folgen")).equals(kanonisch(mb.get("folgen")))) {
+            fehler.add("R14.folgen");
+        }
+        pruefe.accept("R14.energieziel_2029", abweichend(g.get("R14").get("energieziel_2029"), d.at("/energieziele_1_10/0")));
+        pruefe.accept("R14.massnahme", abweichend(g.get("R14").get("massnahme"), m.get("M-2029-0003")));
+        assertThat(fehler).isEmpty();
+        // die gegeben-Blöcke beschreiben die Fälle vollständig: jeder Schlüssel wurde oben gelesen
+        Map<String, List<String>> schluessel = new LinkedHashMap<>();
+        g.forEach((k, v) -> schluessel.put(k, feldnamen(v)));
+        assertThat(schluessel).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "R1", List.of("person", "aufgabe", "dokument", "unternehmen"), "R2", List.of("dokument", "betrachtungsumfang"),
+                "R5", List.of("personen", "aufgaben", "bezugsbasen_verantwortlich_vorgabe", "bezugsbasen_freigaben"), "R6", List.of("zuweisungen", "rolle"),
+                "R9", List.of("audit", "aufgabe", "einsicht"), "R10", List.of("feststellung", "massnahme"),
+                "R11", List.of("feststellung", "massnahme", "aufgabe", "unternehmen"), "R13", List.of("bericht", "sitzung", "aufgabe_leitung", "beschluesse"),
+                "R14", List.of("beschluesse", "folgen", "energieziel_2029", "massnahme")));
+    }
+
+    @Test
+    void rotProbenDerFassung110() throws Exception {
+        ObjectNode d1 = daten().deepCopy();
+        ((ObjectNode) d1.at("/dokumente/0/fassungen/0")).put("entschieden_von", "IK");
+        assertThat(leitungsFehler(d1)).containsExactly("D-0001/1: entschieden von IK, nicht von der Leitung");
+        ObjectNode d2 = daten().deepCopy();
+        ((ObjectNode) d2.at("/massnahmen_1_10/0/herkunft")).put("kennung", "F-2029-0002");
+        ((ObjectNode) d2.at("/massnahmen_1_10/1/herkunft")).put("kennung", "AU-2029");
+        assertThat(herkunftFehler(d2)).containsExactly("M-2029-0001: F-2029-0002 gibt es nicht oder nennt die Maßnahme nicht",
+                "M-2029-0002: Herkunft audit AU-2029 hat nicht die Form");
+        ObjectNode d3 = daten().deepCopy();
+        ((ObjectNode) d3.at("/feststellungen/0")).putNull("festgestellt_von");
+        ((ObjectNode) d3.at("/feststellungen/0/wirksamkeit/0/kopie")).put("eintraege", 2);
+        assertThat(feststellungsFehler(d3)).containsExactly("F-2029-0001: ohne „festgestellt von“", "F-2029-0001 Stand 1: Prüfsumme passt nicht zur Kopie",
+                "F-2029-0001 Stand 1: Kopie ≠ Feststellung");
+        assertThat(UemsSchemaLaeufer.verstoesse(d3, schema())).isNotEmpty();
+        ObjectNode d4 = daten().deepCopy();
+        ((ObjectNode) d4.at("/dokumente/3/fassungen/0/verweis")).put("datei", "JVBERi0xLjQK");
+        assertThat(dateiFehler(d4)).containsExactly("dokumente[3].fassungen[0].verweis.datei: eine Datei in der Datei");
+        assertThat(UemsSchemaLaeufer.verstoesse(d4, schema())).isNotEmpty();
+        ObjectNode d5 = daten().deepCopy();
+        ObjectNode f5 = (ObjectNode) d5.at("/dokumente/0/fassungen/0");
+        f5.put("wortlaut", f5.get("wortlaut").asText() + " ");
+        assertThat(text(f5, "pruefsumme")).isNotEqualTo(pruef(kopieDerFassung(f5)));
+        ObjectNode d6 = daten().deepCopy();
+        ((ObjectNode) d6.at("/managementbewertungen/0/staende/0/abzug/eingaben/audits_feststellungen/feststellungen/0")).put("zustand", "abgeschlossen");
+        assertThat(d6.at("/managementbewertungen/0/staende/0/pruefsumme").asText()).isNotEqualTo(pruef(d6.at("/managementbewertungen/0/staende/0/abzug")));
+        ObjectNode d7 = daten().deepCopy();
+        ObjectNode m7 = (ObjectNode) d7.at("/massnahmen/0");
+        m7.put("titel", m7.get("titel").asText() + ".");
+        ohneFassung110(d7);
+        assertThat(sha256(kanonisch(d7))).isNotEqualTo(FASSUNG_1_9_SHA256);
     }
 
     /** Die Formel einer berechneten Messstelle („MS-10 − MS-11 − …“) mit den Oktoberzahlen der Datei, eine davon ersetzt. */

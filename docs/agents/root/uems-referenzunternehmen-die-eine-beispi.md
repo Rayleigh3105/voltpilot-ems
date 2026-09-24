@@ -127,7 +127,8 @@ bleibt (Nachtrag AP-18 IP-3, 24.09.2026).
 **Falle für die nächste Fassung:** `UemsReferenzunternehmenVectorsTest` hält je Fassung einen
 Fingerabdruck (`FASSUNG_1_x_SHA256`) und die Zahl der `_comment`-Zeilen (`KOMMENTAR_ZEILEN_1_x`)
 fest; `ohneFassung18` nimmt die Zusätze von 1.8 heraus und muss danach 1.7 treffen,
-`ohneFassung19` (AP-18 IP-1) ebenso bis 1.8. Wer die nächste Fassung anlegt, schreibt ihr
+`ohneFassung19` (AP-18 IP-1) ebenso bis 1.8, `ohneFassung110` (AP-19 IP-1) bis 1.9. Wer die
+nächste Fassung anlegt, schreibt ihr
 `ohneFassung…` samt Fingerabdruck der Vorgängerin, hängt Kommentarzeilen nur ANS ENDE
 von `_comment` und fährt beide Zwillinge sowie die Leser der Datei (siehe unten).
 
@@ -205,6 +206,41 @@ Rein ADDITIV: `ohneFassung19` nimmt die Zusätze heraus, dann ist die Datei Zeic
   `gemeinsame_steuerung`, `energetische_bewertung` und `bezugsbasis`.
 - **Σ erwartet** ist die Summe der UNgerundeten Monatswerte `a + b·kg`, erst die Summe wird auf
   ganze kWh gerundet (663 139, nicht 663 140).
+
+## Was die Fassung 1.10 dazugelegt hat (24.09.2026, AP-19 IP-1, W11)
+
+Rein ADDITIV: `ohneFassung110` nimmt die Zusätze heraus, dann ist die Datei Zeichen für Zeichen
+1.9 (Fingerabdruck in beiden Zwillingen). Neu sind Dokumentation und Managementabläufe — alles
+Organisatorische ist Annahme des Konzepts AP-19 §7:
+
+- **Neun neue Wurzel-Schlüssel** (die Tabelle „Erweiterung 1.10“ des Konzepts zählt sieben, die
+  §8-Zelle nennt neun): `energiemanagement` (Personen im Energiemanagement, elf Aufgaben,
+  Einstellung), `zugriffe_1_10[]` (Rolle „Einsicht“), `dokumente[]` D-0001…D-0005, `audits[]`,
+  `feststellungen[]`, `managementbewertungen[]`, `massnahmen_1_10[]`, `energieziele_1_10[]`,
+  `abnahmefaelle_ap19` (R1, R2, R5, R6, R9, R10, R11, R13, R14 „gegeben“ wörtlich).
+- ⚠ **Eigene Blöcke statt Nachträge:** `personen[]`, `massnahmen[]` und `energieziele[]` bleiben
+  byte-gleich. Robert Falk (RF) steht NUR in `energiemanagement.personen[]` — er hat bis
+  01.02.2029 kein Konto; wer ein Kürzel aus einem 1.10-Block auflöst, liest dort, nicht in
+  `personen[]`. „eingetragen von“ ist immer ein Konto (IK, JW), „entschieden von“ eine Person.
+- **Leitungs-Pflicht (DK3, PA3):** Freigabe und „geprüft, bleibt“ an Energiepolitik,
+  Anwendungsbereich und Bestellung, jeder Beschluss und jeder Stand der Managementbewertung
+  nennen die Person mit der laufenden Aufgabe `unternehmensleitung` am Tag.
+- **Keine Datei:** eine Fassung ist Wortlaut ODER Verweis (`em_verweis`: Ablage, Kennung,
+  Adresse nur `https:`, Fassungsangabe, Browser-Prüfsumme). Die Prüfsumme einer Fassung geht über
+  Nr., Form, Wortlaut, Verweis und Anwendungsbereich (kanonisch wie bei 1.8/1.9).
+- **Ein Stand seines Tages:** der Stand Nr. 1 von BR-2029-0001 trägt seinen Abzug; darin ist
+  F-2029-0001 `offen`, obwohl sie seit 15.04.2029 `abgeschlossen` ist (`zustand_am_stichtag` vs.
+  `zustand`). ⚠ Die Prüfsumme dieses Stands ist in der Form der Zwillinge gebildet (Zahlen ohne
+  nachgestellte Nullen); der Konzept-Katalog (`k_faelle.py`) schreibt `-5.0`/`-3.0` und kommt auf
+  einen anderen Wert — die Form des Baus legt AP-19 IP-2 fest.
+- ⚠ **W11 — Kennungen** (BR- im Produkt ⟷ BW-/VB- in der Datei, abgeleitete Verantwortliche der
+  Bezugsbasen): siehe „Gesehen, bewusst nicht angefasst“ unten; R5 rechnet die Verantwortlichen aus
+  der Kennzahl nach, die Managementbewertung heißt BR-2029-0001.
+- ⚠ **Zeitachsen-Zeilen mit `energiemanagement`** (20, Wert = Kennzeichen, `aufgabe:<wort>` oder
+  `einsicht:<kürzel>`) sind fachfremd für den Messstellen-Horizont — wie `verbesserung`
+  (`MessstelleRegelnVectorsTest`, `uemsMessstelle.test.ts` nehmen sie aus).
+- Versionsvergleiche der Leser rechnen `major*1000+minor` (1.10 > 1.9); wer eine Fassung als Zahl
+  liest (`parseFloat`), liest 1.10 als 1.1.
 
 ## Gesehen, bewusst nicht angefasst
 

@@ -712,7 +712,7 @@ class MessstelleRegelnVectorsTest {
      * Die Zeilen der Zeitachse, an denen der Horizont einer Fortschreibung gemessen wird: alle außer denen
      * mit einem fachfremden Horizont-Merkmal: {@code gemeinsame_steuerung} (Fassung 1.5) oder
      * {@code energetische_bewertung} (Fassung 1.6) oder {@code bezugsbasis} (Fassung 1.8) oder {@code verbesserung}
-     * (Fassung 1.9). Diese Zeilen sagen über
+     * (Fassung 1.9) oder {@code energiemanagement} (Fassung 1.10). Diese Zeilen sagen über
      * Messstellen-Quellen nichts — das hält
      * {@link #dieFachfremdenZeilenNennenKeineMessstelleDerVektoren} fest. Dieselbe Regel steht in
      * {@code frontend/portal/src/uemsMessstelle.test.ts}.
@@ -721,7 +721,8 @@ class MessstelleRegelnVectorsTest {
         List<JsonNode> out = new ArrayList<>();
         ref.path("zeitachse").forEach(z -> {
             if (!z.hasNonNull("gemeinsame_steuerung") && !z.hasNonNull("energetische_bewertung")
-                    && !z.hasNonNull("bezugsbasis") && !z.hasNonNull("verbesserung")) {
+                    && !z.hasNonNull("bezugsbasis") && !z.hasNonNull("verbesserung")
+                    && !z.hasNonNull("energiemanagement")) {
                 out.add(z);
             }
         });
@@ -746,7 +747,8 @@ class MessstelleRegelnVectorsTest {
         int ausgenommen = 0;
         for (JsonNode z : lies(REFERENZ).path("zeitachse")) {
             if (!z.hasNonNull("gemeinsame_steuerung") && !z.hasNonNull("energetische_bewertung")
-                    && !z.hasNonNull("bezugsbasis") && !z.hasNonNull("verbesserung")) {
+                    && !z.hasNonNull("bezugsbasis") && !z.hasNonNull("verbesserung")
+                    && !z.hasNonNull("energiemanagement")) {
                 continue;
             }
             ausgenommen++;

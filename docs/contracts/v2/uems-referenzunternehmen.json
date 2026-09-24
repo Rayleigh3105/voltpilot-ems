@@ -1,6 +1,6 @@
 {
-  "version": "1.9",
-  "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS), erweitert um energetische Bewertung, Messplanung, Bezugsbasen sowie Ziele, Maßnahmen und Abweichungen. Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
+  "version": "1.10",
+  "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS), erweitert um energetische Bewertung, Messplanung, Bezugsbasen, Ziele, Maßnahmen und Abweichungen sowie die Abläufe des Energiemanagements. Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
   "stand": "2026-09-24",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
@@ -166,7 +166,23 @@
     "  Kriterien-Fassung 2 K1 „über Schwelle“ bei 6,2 %, der Vorschlag der Kriterien steht sichtbar neben der",
     "  Rückstufung der Person (AP-16 E8 = A); K-2028-0001 berichtigt den gemessenen Eingang MS-06 (−600 kWh), die",
     "  berechnete MS-20 folgt ihrer Formel (78 000 → 77 400 kWh, Version 2) — eine berechnete Messstelle wird nie direkt",
-    "  berichtigt. Der absolute Dezember-Wert von MS-06 und die Vorschlagszeit sind Annahmen des Baus (`annahme`)."
+    "  berichtigt. Der absolute Dezember-Wert von MS-06 und die Vorschlagszeit sind Annahmen des Baus (`annahme`).",
+    "FASSUNG 1.10 (AP-19 IP-1, Captain 24.09.2026: E1–E10 = A, W1–W15 übernommen; W11) — additiv: DOKUMENTATION UND",
+    "  MANAGEMENTABLÄUFE. VoltPilot hält fest, der Kunde entscheidet, und jede Zeile sagt, wo das Original liegt. Alles",
+    "  Organisatorische ist Annahme des Konzepts AP-19 §7 (referenzfaelle.json vom 24.09.2026); kein Leistungs-Block ändert",
+    "  sich. `energiemanagement` nennt die Personen im Energiemanagement — Robert Falk (Geschäftsführer) OHNE Konto, die",
+    "  übrigen mit Verweis auf ihr Konto in `personen[]`, das unverändert bleibt —, elf Aufgaben-Zuordnungen (zeitgültig,",
+    "  append-only; „Bezugsbasen pflegen und freigeben“ erst ab 01.03.2029) und die Einstellung (Überprüfung, Audit- und",
+    "  Managementbewertungs-Rhythmus je 12 Monate, Frist einer Feststellung 90 Tage). `zugriffe_1_10[]` weist die Rolle",
+    "  „Einsicht“ zu (nur lesen). `dokumente[]` D-0001 … D-0005: jede Fassung als Wortlaut ODER als Verweis mit Ablage —",
+    "  nie eine Datei; jede Freigabe trägt „entschieden von“ (bei Energiepolitik, Anwendungsbereich und Bestellung die",
+    "  Leitung) und „eingetragen von“ (ein Konto), dazu die Prüfsumme über Nr., Form, Wortlaut, Verweis und",
+    "  Anwendungsbereich. `audits[]` AU-2029-0001 → `feststellungen[]` F-2029-0001 → `massnahmen_1_10[]` (AP-18-Maßnahmen",
+    "  mit den neuen Herkünften `nichtkonformitaet`, `audit`, `managementbewertung`) → Wirksamkeit als Stand einer Person.",
+    "  `managementbewertungen[]` BR-2029-0001: Sitzung mit der Leitung, sechs Beschlüsse, Folgen, Stand Nr. 1 mit Abzug",
+    "  und Prüfsumme — ein Stand seines Tages (F-2029-0001 steht darin „offen“, obwohl sie seit 15.04.2029 abgeschlossen",
+    "  ist). `energieziele_1_10[]` EZ-2029-0001. Eigene Blöcke statt Nachträgen, damit `personen[]`, `massnahmen[]` und",
+    "  `energieziele[]` byte-gleich bleiben. Zeilen der Zeitachse tragen das Horizont-Merkmal `energiemanagement`."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -192,7 +208,8 @@
     "fassung_1_6": "AP-16 IP-1 (E11 = A, 22.09.2026): `bewertung_umfang`, P-7, `energieeinsaetze[]` EE-1…EE-8, `bewertung_kriterien[]`, `einstufungen[]`, `messbedarfe[]` MB-1, MS-23 mit GR-19/K-15, `messmittel_angaben[]`, Toleranz an der Vergleichsquelle von MS-01, die Bewertungs-Berichte BW-2026-0001/BW-2027-0001, `abnahmefaelle_ap16` und elf Zeilen der Zeitachse. Grundlage: AP-16 §7 und die gegeben-Werte R1–R5, R7, R8, R12, R14; Zahlen 2027 sind ausdrücklich Annahmen.",
     "fassung_1_7": "AP-16 IP-17 Befund (PR 1104, Entscheid firstmate 23.09.2026): die Vergleichsquelle K-1 an MS-01 steht zusätzlich an der Hauptgröße Wirkenergie Bezug mit `herleitung: integration` und trägt dort die Toleranz-Fassung (bis 1.6 an der Nebengröße Wirkleistung), die Zeile der Zeitachse vom 20.11.2026 nennt beide Größen, `abnahmefaelle_ap16` ergänzt R9 (gegeben wörtlich aus referenzfaelle.json AP-16 §7). Zahlen Dezember 2026 sind Annahmen des Konzepts",
     "fassung_1_8": "AP-17 IP-1 (E12 = A, E9 = C, W12, W13; 23.09.2026): `bezugsgroessen_1_8` BZ-8, `kennzahlen_1_8` KZ-0006, `bezugsbasen[]` BB-0001…BB-0005, `leistungsvergleiche[]` VB-2028-0001, `abnahmefaelle_ap17` (R1, R3, R5, R7, R8, R9 wörtlich) und dreizehn Zeilen der Zeitachse — Zahlen, Zeitpunkte und Koeffizienten aus AP-17 §7 (referenzfaelle.json vom 23.09.2026, gerechnet von k_faelle.py). Frei formuliert, weil das Konzept sie nicht nennt: die Begründungen der Fassungen (außer BB-0003 Fassung 1 → Ende, wörtlich R5) und der Kennzahl-Fassungen 1, die Freigabe von BB-0005 Fassung 1 durch IK am Tag des Modell-Versuchs. Nicht erhoben (null): die Monatswerte von MS-10 im Januar/Februar 2027 und damit Basiswert und Prüfsumme von BB-0003 Fassung 2, die Prüfsumme des Standes VB-2028-0001/1 (sie entsteht aus dem Abzug). Die Prüfsummen „sha256:…a91f“/„…c07b“/„…4e2d“ in den gegeben-Blöcken sind Platzhalter des Konzepts; `bezugsbasen[]` trägt die nachrechenbare Prüfsumme",
-    "fassung_1_9": "AP-18 IP-1 (Captain 24.09.2026: E1–E7 = A, W1–W15 übernommen; W8, W9): `energieziele[]`, `massnahmen[]`, `abweichungen[]`, `auffaelligkeiten[]`, `kennzahlen_1_9_monate`, K-2028-0001 in `korrekturen[]`, EE-3 Fassung 3 in `einstufungen[]` (AP-16 R13), `pflege[]` an BB-0001, `abnahmefaelle_ap18` (R1, R3, R4, R5, R6, R7, R8, R12 wörtlich) und achtzehn Zeilen der Zeitachse — Zahlen, Zeitpunkte und Wortlaute aus dem Konzept AP-18 §7 (referenzfaelle.json vom 24.09.2026); die Monatsreihe ab April 2028 ist Annahme. Nachlese 24.09.2026: Z7–Z9 (Anhang B.6) — R3/R7/R12 „gegeben“ auf dem eingearbeiteten Konzept-Stand, EE-3 Fassung 3 mit K1 „über Schwelle“ und Vorschlag „über Schwelle“ (LA8), K-2028-0001 an MS-06 mit Folge an MS-20 (LA7)"
+    "fassung_1_9": "AP-18 IP-1 (Captain 24.09.2026: E1–E7 = A, W1–W15 übernommen; W8, W9): `energieziele[]`, `massnahmen[]`, `abweichungen[]`, `auffaelligkeiten[]`, `kennzahlen_1_9_monate`, K-2028-0001 in `korrekturen[]`, EE-3 Fassung 3 in `einstufungen[]` (AP-16 R13), `pflege[]` an BB-0001, `abnahmefaelle_ap18` (R1, R3, R4, R5, R6, R7, R8, R12 wörtlich) und achtzehn Zeilen der Zeitachse — Zahlen, Zeitpunkte und Wortlaute aus dem Konzept AP-18 §7 (referenzfaelle.json vom 24.09.2026); die Monatsreihe ab April 2028 ist Annahme. Nachlese 24.09.2026: Z7–Z9 (Anhang B.6) — R3/R7/R12 „gegeben“ auf dem eingearbeiteten Konzept-Stand, EE-3 Fassung 3 mit K1 „über Schwelle“ und Vorschlag „über Schwelle“ (LA8), K-2028-0001 an MS-06 mit Folge an MS-20 (LA7)",
+    "fassung_1_10": "AP-19 IP-1 (Captain 24.09.2026: E1–E10 = A, W1–W15 übernommen; W11): `energiemanagement` (Personen, elf Aufgaben, Einstellung), `zugriffe_1_10[]`, `dokumente[]` D-0001…D-0005, `audits[]` AU-2029-0001, `feststellungen[]` F-2029-0001, `managementbewertungen[]` BR-2029-0001, `massnahmen_1_10[]` M-2029-0001…M-2029-0003, `energieziele_1_10[]` EZ-2029-0001, `abnahmefaelle_ap19` (R1, R2, R5, R6, R9, R10, R11, R13, R14 wörtlich) und zwanzig Zeilen der Zeitachse — Werte, Tage und Wortlaute aus dem Konzept AP-19 §7 (referenzfaelle.json vom 24.09.2026, k_faelle.py); alles Organisatorische ist Annahme. Die Prüfsummen der Fassungen, des Audit-Abschlusses und der Wirksamkeit sind die des Katalogs; die des Managementbewertungs-Stands ist in der kanonischen Form der Zwillinge gebildet (Zahlen in kürzester Schreibweise), der Katalog schreibt −5.0 und −3.0 und kommt auf sha256:7db218a7… — die Form des Baus legt IP-2 fest. W11: BR- ist die Kennung des Produkts für jeden Bericht (bericht_kennung_chk), BW-/VB- sind Konzept-Kennungen dieser Datei; die Verantwortlichen der Bezugsbasen stehen nicht in der Datei, sie sind die der Kennzahl (AP-17 B4)."
   },
 
   "unternehmen": {
@@ -1674,6 +1691,7 @@
   "zeitachse": [
     { "zeitpunkt": "2024-03-12T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bestandsanlage AN-1 (PV + Speicher, Box E-1) als VoltPilot-Anlage angelegt", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2024-05-02T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Betriebsmodell Lastspitzenkappung auf AN-1 eingeschaltet", "herkunft": "AP-00 §4.4" },
+    { "zeitpunkt": "2026-09-28T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Robert Falk (Geschäftsführer) bestellt Ines Kaltenbach zur Leiterin des Energiemanagements ab 01.10.2026, Vertretung Jonas Wendlinger — die unterschriebene Bestellung liegt in der Personalakte (Verweis, keine Datei)", "herkunft": "AP-19 §7 R5", "energiemanagement": "aufgabe:energiemanagement_leiten" },
     { "zeitpunkt": "2026-10-01T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Unternehmens-Energiemanagement: Unternehmen, Standort ST-1, Gebäude G-1…G-3, Bereiche, Prozesse, Kostenstellen angelegt; AN-2 mit Box E-2, WAGO C-1 und Ladepunkt (nur messend) eingerichtet. Die Bestandsanlage AN-1 bringt ihren Verlauf mit: ST-1, G-1, G-3, B-1, B-2, die Zuordnung AN-1 → ST-1 und die Orte von MS-01…MS-08 gelten ab 12.03.2024 — heute eingetragen, deshalb „rückwirkend (933 Tage)“", "herkunft": "AP-00 §4.4, AP-02 E2/E5, AP-04 E6" },
     { "zeitpunkt": "2026-10-15T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Standort ST-2 Werk Lindach (Lagerhalle, Montagehalle) mit AN-3, Box E-3, WAGO C-2 und Netzzähler eingerichtet — Referenzfall 1", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2026-10-20T10:15:00+02:00", "genauigkeit": "minute", "ereignis": "Momentaufnahme aller Beispielwerte (Momentanleistung)", "herkunft": "AP-00 §4.4" },
@@ -1708,7 +1726,10 @@
     { "zeitpunkt": "2026-12-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Referenzfall 5: Ladepunkt K-9 „Steuern freigeben“, Ladepark-Rahmen an NA-2 (200 kW, Hausreserve 30 kW) — keine neuen Geräte, keine neuen Messstellen", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2026-12-07T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Auffälligkeit an KZ-0005 (Netzbezug je m² Halle 2), November 2026: 4,1 % über dem Erwarteten — vermerkt, Bezugsbasis BB-0003 vorläufig", "herkunft": "AP-18 §7 R8", "verbesserung": "KZ-0005" },
     { "zeitpunkt": "2026-12-09T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Abweichung AW-2026-0001 eröffnet (Antwort auf die Auffälligkeit): verantwortlich Jonas Wendlinger, Frist 08.01.2027", "herkunft": "AP-18 §7 R8", "verbesserung": "AW-2026-0001" },
+    { "zeitpunkt": "2026-12-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energiepolitik D-0001, Fassung 1 festgehalten: entschieden von Robert Falk, eingetragen von Ines Kaltenbach — Wortlaut in VoltPilot, das unterschriebene Original bleibt auf dem QM-Laufwerk (Verweis mit Prüfsumme)", "herkunft": "AP-19 §7 R1", "energiemanagement": "D-0001" },
+    { "zeitpunkt": "2026-12-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Anwendungsbereich D-0002, Fassung 1 festgehalten: beide Werke, Strom und Gas, keine Ausschlüsse — entschieden von Robert Falk; deckungsgleich mit dem Betrachtungsumfang der energetischen Bewertung", "herkunft": "AP-19 §7 R2", "energiemanagement": "D-0002" },
     { "zeitpunkt": "2026-12-16T00:00:00+01:00", "genauigkeit": "minute", "ereignis": "Unterstützung von Elektro Brunner endet planmäßig: ihr Enddatum 15.12.2026 gilt einschließlich, um 00:00 beendet der Runner sie — Banner weg, Protokoll „Endete am 15.12.2026 durch Zeitablauf“", "herkunft": "AP-03 §4.1, A4; Entscheid firstmate 11.09.2026 (Enddatum einschließlich)" },
+    { "zeitpunkt": "2026-12-18T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energiepolitik Fassung 1 bekannt gemacht: alle Mitarbeitenden beider Werke, Aushang und Intranet", "herkunft": "AP-19 §7 R8", "energiemanagement": "D-0001" },
     { "zeitpunkt": "2026-12-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "AW-2026-0001 abgeschlossen: erklärt — Baustellenstrom des Anbaus der Halle 2 (Aussage von Jonas Wendlinger)", "herkunft": "AP-18 §7 R8", "verbesserung": "AW-2026-0001" },
     { "zeitpunkt": "2027-01-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kostenstelle 9000 aufgeteilt in 9010 Druckluft und 9020 Kühlung; Berichte 2026 bleiben unverändert (zeitliche Gültigkeit)", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2027-01-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsfläche Halle 2 (G-2) 3 100 → 3 400 m² (Anbau); eingetragen am 15.01.2027 und deshalb als „rückwirkend (14 Tage)“ protokolliert (Eintragstag − gilt ab, wie A2 zählt)", "herkunft": "AP-02 §4.4, E2" },
@@ -1733,6 +1754,8 @@
     { "zeitpunkt": "2027-11-24T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0001, Fassung 2 freigegeben: 11/2026–10/2027, Modell 10 523 kWh + 0,2343 kWh je kg, R² 0,991, gilt ab 01.11.2027", "herkunft": "AP-17 §7 R12, E12", "bezugsbasis": "BB-0001" },
     { "zeitpunkt": "2027-11-24T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0004 an KZ-0006, Fassung 1 freigegeben: Gradtage 11/2026–10/2027, 119 m³ + 3,8 m³ je Kd, Temperatur von VoltPilot bezogen", "herkunft": "AP-17 §7 R3, E12, E9", "bezugsbasis": "BB-0004" },
     { "zeitpunkt": "2027-11-24T09:30:00+01:00", "genauigkeit": "minute", "ereignis": "Energetische Bewertung BW-2027-0001, Stand Nr. 1, freigegeben; die Zahlen des Konzeptfalls 2027 bleiben Annahmen", "herkunft": "AP-16 §7 R6, E11", "energetische_bewertung": "BW-2027-0001" },
+    { "zeitpunkt": "2027-12-10T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energiepolitik geprüft, bleibt (Fassung 1): entschieden von Robert Falk, eingetragen von Ines Kaltenbach", "herkunft": "AP-19 §7 R1", "energiemanagement": "D-0001" },
+    { "zeitpunkt": "2027-12-10T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Anwendungsbereich geprüft, bleibt (Fassung 1): keine neuen Standorte oder Energieträger", "herkunft": "AP-19 §7 R2", "energiemanagement": "D-0002" },
     { "zeitpunkt": "2027-12-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energieziel EZ-2028-0001 angelegt: Spritzguss 5 % weniger Strom als die Bezugsbasis erwarten lässt, Zielperiode 2028", "herkunft": "AP-18 §7 R4", "verbesserung": "EZ-2028-0001" },
     { "zeitpunkt": "2028-01-07T05:12:00+01:00", "genauigkeit": "minute", "ereignis": "Auffälligkeit an KZ-0004 (Spritzguss), Dezember 2027: 12,9 % über dem Erwarteten — vermerkt mit dem endgültigen Monatswert", "herkunft": "AP-18 §7 R1", "verbesserung": "KZ-0004" },
     { "zeitpunkt": "2028-01-12T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Abweichung AW-2028-0001 eröffnet (Antwort auf die Auffälligkeit): verantwortlich Ines Kaltenbach, Frist 31.01.2028", "herkunft": "AP-18 §7 R1, R2", "verbesserung": "AW-2028-0001" },
@@ -1745,11 +1768,25 @@
     { "zeitpunkt": "2028-04-03T09:20:00+02:00", "genauigkeit": "minute", "ereignis": "Korrektur K-2028-0001 freigegeben (Spritzguss Dezember 2027, Version 2): Anstoß „Ausgangslage korrigiert“ an M-2028-0001 — die Ausgangslage bleibt byte-gleich", "herkunft": "AP-18 §7 R12", "verbesserung": "M-2028-0001" },
     { "zeitpunkt": "2028-08-07T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Auffälligkeit an KZ-0004, Juli 2028: 2,5 % über dem Erwarteten — vermerkt", "herkunft": "AP-18 §7 R11", "verbesserung": "KZ-0004" },
     { "zeitpunkt": "2028-08-10T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Auffälligkeit Juli 2028 zur Kenntnis genommen (Kleinserien-Sonderauftrag) — keine Abweichung", "herkunft": "AP-18 §7 R11", "verbesserung": "KZ-0004" },
+    { "zeitpunkt": "2028-11-10T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Kriterien für Betrieb und Instandhaltung — Spritzguss (D-0004) am Energieeinsatz EE-1 als Verweis festgehalten: Arbeitsplan IH-SG-01 Rev. 4 im Instandhaltungssystem des Kunden", "herkunft": "AP-19 §7 R7", "energiemanagement": "D-0004" },
     { "zeitpunkt": "2028-11-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "M-2028-0001 bewertet, Stand Nr. 1: „belegt“ von Ines Kaltenbach neben der Zahl — 2,4 % weniger als erwartet (8 von 12 Monaten), Kopie mit Prüfsumme", "herkunft": "AP-18 §7 R5, R6", "verbesserung": "M-2028-0001" },
     { "zeitpunkt": "2028-11-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "M-2028-0002 bewertet: nicht messbar; Einstufung EE-3 Fassung 3 „nicht wesentlich“ durch Ines Kaltenbach (AP-16 R13)", "herkunft": "AP-18 §7 R7", "verbesserung": "M-2028-0002" },
     { "zeitpunkt": "2028-11-24T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0001, Fassung 2: Überprüfung fällig (zwölf Monate nach der Freigabe) — ohne Läufer, die Frist ist abgeleitet", "herkunft": "AP-17 §7 R13, E12", "bezugsbasis": "BB-0001" },
     { "zeitpunkt": "2028-11-25T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Bezugsbasis BB-0001 geprüft, bleibt: Fassung 2 gilt weiter (Referenzperiode vor M-2028-0001), nächste Überprüfung 25.11.2029", "herkunft": "AP-18 §7 R5, AP-17 R13", "verbesserung": "BB-0001" },
-    { "zeitpunkt": "2029-01-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energieziel EZ-2028-0001 bewertet: verfehlt — 2,7 % statt 5 % weniger über 11 von 12 Monaten, Kopie mit Prüfsumme", "herkunft": "AP-18 §7 R10", "verbesserung": "EZ-2028-0001" }
+    { "zeitpunkt": "2028-12-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Claudia Berger (Controlling) übernimmt die Aufgabe „Interne Audits planen und durchführen“ — entschieden von Robert Falk", "herkunft": "AP-19 §7 R9", "energiemanagement": "aufgabe:interne_audits" },
+    { "zeitpunkt": "2029-01-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energieziel EZ-2028-0001 bewertet: verfehlt — 2,7 % statt 5 % weniger über 11 von 12 Monaten, Kopie mit Prüfsumme", "herkunft": "AP-18 §7 R10", "verbesserung": "EZ-2028-0001" },
+    { "zeitpunkt": "2029-01-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Claudia Berger bekommt für das interne Audit die Rolle „Einsicht“ bis 31.01.2029 (zugewiesen von Jonas Wendlinger): unternehmensweit lesen, nichts ändern", "herkunft": "AP-19 §7 R6", "energiemanagement": "einsicht:CB" },
+    { "zeitpunkt": "2029-01-22T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Internes Audit AU-2029-0001 durchgeführt (Auditorin Claudia Berger, nicht im Energieteam): ein Hinweis, eine Feststellung", "herkunft": "AP-19 §7 R9", "energiemanagement": "AU-2029-0001" },
+    { "zeitpunkt": "2029-01-22T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Feststellung F-2029-0001: Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt — festgestellt von Claudia Berger, verantwortlich Jonas Wendlinger, Frist 22.04.2029", "herkunft": "AP-19 §7 R10", "energiemanagement": "F-2029-0001" },
+    { "zeitpunkt": "2029-01-26T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Maßnahme M-2029-0001 angelegt, Herkunft Feststellung F-2029-0001: die Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen", "herkunft": "AP-19 §7 R10", "energiemanagement": "M-2029-0001" },
+    { "zeitpunkt": "2029-01-31T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Internes Audit AU-2029-0001 abgeschlossen: der unterschriebene Bericht als Verweis mit Prüfsumme; nächstes internes Audit fällig am 22.01.2030", "herkunft": "AP-19 §7 R9", "energiemanagement": "AU-2029-0001" },
+    { "zeitpunkt": "2029-02-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Robert Falk bekommt ein Konto mit der Rolle „Einsicht“ (zugewiesen von Jonas Wendlinger)", "herkunft": "AP-19 §7 R6", "energiemanagement": "einsicht:RF" },
+    { "zeitpunkt": "2029-02-12T14:10:00+01:00", "genauigkeit": "minute", "ereignis": "Managementbewertung 2028 (BR-2029-0001): Sitzung mit Robert Falk als Leitung und sechs Beschlüssen; Stand Nr. 1 freigegeben von Ines Kaltenbach, entschieden von Robert Falk", "herkunft": "AP-19 §7 R13", "energiemanagement": "BR-2029-0001" },
+    { "zeitpunkt": "2029-02-13T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Anwendungsbereich geprüft, bleibt — Beschluss B6 der Managementbewertung vom 12.02.2029", "herkunft": "AP-19 §7 R14", "energiemanagement": "D-0002" },
+    { "zeitpunkt": "2029-02-15T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energieziel EZ-2029-0001 angelegt (Beschluss B1): 4 % weniger, Zielperiode 03/2029–12/2029 — ein Energieziel beginnt nicht rückwirkend", "herkunft": "AP-19 §7 R14", "energiemanagement": "EZ-2029-0001" },
+    { "zeitpunkt": "2029-03-01T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Aufgabe „Bezugsbasen pflegen und freigeben“: Ines Kaltenbach, Vertretung Jonas Wendlinger (Beschluss B4, entschieden von Robert Falk); M-2029-0001 umgesetzt", "herkunft": "AP-19 §7 R11", "energiemanagement": "aufgabe:bezugsbasen" },
+    { "zeitpunkt": "2029-03-20T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Energiepolitik Fassung 2 freigegeben (Beschluss B3): Einkauf und Planung ergänzt — entschieden von Robert Falk", "herkunft": "AP-19 §7 R14", "energiemanagement": "D-0001" },
+    { "zeitpunkt": "2029-04-15T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "Wirksamkeit an F-2029-0001, Stand Nr. 1 „wirksam“ — die Aussage von Ines Kaltenbach mit Kopie und Prüfsumme; die Feststellung ist abgeschlossen", "herkunft": "AP-19 §7 R11", "energiemanagement": "F-2029-0001" }
   ],
 
   "abnahmefaelle_ap17": {
@@ -2019,6 +2056,1240 @@
       { "fall": "R7", "gegeben": {"massnahme": {"kennzeichen": "M-2028-0002", "titel": "Druckluft-Leckagen orten und beseitigen (Halle 1, Ringleitung)", "verantwortlich": "IK", "termin": "2028-02-29", "herkunft": {"art": "einsatz", "kennung": "EE-3", "einstufung_fassung": 2, "einflussgroesse": "Leckagerate (Freitext, ohne Zahl)", "begruendung_der_einstufung_f1": "Leckageverluste vermutet, Prüfung 2027 geplant (RU:1363)"}, "messgrundlage": null, "kennzeichen_flaeche": "ohne Messgrundlage — Wirkung nicht messbar", "erwartete_wirkung": {"prozent": null, "wortlaut": "Leckageverluste geschätzt ein Zehntel des Druckluftstroms; ohne Energieleistungskennzahl für Druckluft nicht messbar."}, "energieziel": null, "standort": "ST-1"}, "hinweis_der_flaeche": "Um die Wirkung zu messen, braucht Druckluft eine Energieleistungskennzahl — etwa MS-07 je Betriebsstunde (BZ-3) mit einer Bezugsbasis; die Kennzahl-Seite hilft beim Anlegen.", "umsetzung": {"am": "2028-03-28", "begruendung": "Ultraschall-Ortung durch Elektro Brunner am 26./27.03., zwölf Leckagen abgedichtet."}, "bewertung": {"am": "2028-11-20", "person": "IK", "ergebnis": "nicht_messbar", "begruendung": "Keine Messgrundlage: Druckluft hat keine Energieleistungskennzahl. Der Anteil von EE-3 am Strom ist von 8,6 % (2026) auf 6,2 % (11/2027–10/2028) gesunken — eine rohe Beobachtung, kein Urteil."}, "ap16_rueckstufung": {"einsatz": "EE-3", "fassung": 3, "ab": "2028-11-20", "einstufung": "nicht_wesentlich", "begruendung": "Leckagen 03/2028 beseitigt (Maßnahme M-2028-0002); 6,2 %, hinter dem 80-%-Block; Wiedervorlage 2029", "person": "IK", "lesart": "die Rückstufung ist die Einstufung einer Person (AP-16 E8); sie zitiert die Maßnahme, sie belegt keine Wirkung", "vorschlag_nach_kriterien_fassung_2": "K1 = 5 % (AP-16 R15, 20.11.2026): 6,2 % liegt ÜBER der Schwelle K1 — der Vorschlag der Kriterien wäre „über Schwelle“; die Person stuft mit Begründung zurück (K2: hinter dem 80-%-Block), die Abweichung vom Vorschlag steht sichtbar daneben (AP-16 E8 = A); AP-16 R13 sagt noch K1 „unter_schwelle“ — Lesart LA8, nachzutragen N14"}} },
       { "fall": "R8", "gegeben": {"vergleich_november_2026": {"kennzahl": "KZ-0005", "bezugsbasis": "BB-0003", "fassung": 1, "gemessen_kwh": 38400, "flaeche_m2": 3100, "kennzahl_kwh_je_m2": 12.3871, "basiswert": 11.9032, "delta_prozent": 4.1, "urteil": "schlechter", "kennzeichen": ["Bezugsbasis vorläufig (1 von 12 Monaten)", "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)"]}, "vermerk": {"am": "2026-12-07", "eindeutig": "KZ-0005 × Fassung 1 × 2026-11"}, "abweichung": {"kennzeichen": "AW-2026-0001", "eroeffnet": "2026-12-09", "person": "IK", "verantwortlich": "JW", "frist": "2027-01-08", "anlass": "Kopie des Vermerks"}, "eintraege": [{"am": "2026-12-10", "art": "ursache_aussage", "person": "JW", "wortlaut": "Der Anbau der Halle 2 läuft seit Mitte November; Baustellenstrom (Kran, Trocknung) hängt am Unterverteiler von MS-10 und ist nicht getrennt gemessen.", "beleg_kennung": null, "kennzeichen": "Aussage von Jonas Wendlinger, 10.12.2026 — keine Messung"}], "abschluss": {"am": "2026-12-20", "person": "IK", "ergebnis": "erklaert", "begruendung": "Baustellenstrom des Anbaus über MS-10 (Aussage JW); keine Maßnahme am Gebäude; die Basis wird nach dem Anbau neu gefasst (Anstoß Fläche G-2, AP-17 R5)."}, "folge_ap17": "der Anbau (3 100 → 3 400 m² ab 01.01.2027) stößt BB-0003 am 15.01.2027 an; Fassung 1 endet zum 31.12.2026 — ein anderer Weg (Basis), nicht die Abweichung"} },
       { "fall": "R12", "gegeben": {"korrektur": {"kennung": "K-2028-0001", "reihe": "MS-06 (gemessener Eingang von MS-20 = MS-06 + MS-11 + 70 % × MS-07; eine berechnete Messstelle wird nie direkt berichtigt)", "art": "wert_berichtigt", "periode": "2027-12", "differenz_kwh": -600, "folge_ms_20": {"berechnete_messstelle": "MS-20", "alt_kwh": 78000, "neu_kwh": 77400, "version": 2}, "vorgeschlagen_am": "2028-04-03 (Uhrzeit nicht Teil des Konzepts — Annahme des Baus)", "freigegeben_am": "2028-04-03T09:20:00+02:00", "person": "IK", "kennzahl_version_2": 0.3096}, "vergleich_version_2": {"erwartet_kwh": 69098, "delta_prozent": 12.0, "band_prozent": 2.0, "urteil": "schlechter", "grund": null, "gemessen_version": 2}, "kaskade": ["KZ-0004 Dezember 2027 → Version 2 (AP-11 Kaskade)", "BB-0001: KEIN Anstoß — der Dezember 2027 liegt nicht in der Referenzperiode 11/2026–10/2027 (AP-17 A2)", "VB-2028-0001 Stand Nr. 1 → bericht_revision_anstoss (AP-12/AP-17 S4)", "M-2028-0001 → vorgang_anstoss `ausgangslage_korrigiert` (Pfad 1, AP-18)"], "anstoss": {"art": "ausgangslage_korrigiert", "anlass_kennung": "K-2028-0001", "am": "2028-04-03T09:20:00+02:00", "ausgangslage_bleibt": {"delta_prozent": 12.9, "version": 1, "byte_gleich": true}}, "antwort": {"am": "2028-04-05", "person": "IK", "antwort": "bleibt", "begruendung": "Version 2 ändert die Ausgangslage um 0,9 Punkte; die Maßnahme und ihre erwartete Wirkung bleiben, wie sie angelegt wurden — der Stand des Leistungsvergleichs wird revidiert."}, "andere_antwort": {"antwort": "neu_kopiert", "folge": "Ausgangslage neu aus dem Leser (Version 2, +12,0 %) mit neuer Prüfsumme; die alte bleibt im Protokoll"}} }
+    ]
+  },
+
+  "energiemanagement": {
+    "personen": [
+      {
+        "kuerzel": "RF",
+        "name": "Robert Falk",
+        "funktion": "Geschäftsführer",
+        "organisation": null,
+        "konto": null,
+        "konto_ab": "2029-02-01",
+        "seit": "2026-10-01",
+        "bis": null,
+        "annahme": true
+      },
+      {
+        "kuerzel": "IK",
+        "name": "Ines Kaltenbach",
+        "funktion": "Energiemanagement",
+        "organisation": null,
+        "konto": "IK",
+        "konto_ab": null,
+        "seit": "2026-10-01",
+        "bis": null,
+        "annahme": true
+      },
+      {
+        "kuerzel": "JW",
+        "name": "Jonas Wendlinger",
+        "funktion": "IT-Leitung",
+        "organisation": null,
+        "konto": "JW",
+        "konto_ab": null,
+        "seit": "2026-10-01",
+        "bis": null,
+        "annahme": true
+      },
+      {
+        "kuerzel": "PH",
+        "name": "Peter Hollerbach",
+        "funktion": "Standortleiter Werk Lindach",
+        "organisation": null,
+        "konto": "PH",
+        "konto_ab": null,
+        "seit": "2026-10-15",
+        "bis": null,
+        "annahme": true
+      },
+      {
+        "kuerzel": "MD",
+        "name": "Murat Demirci",
+        "funktion": "Schichtführer Halle 1",
+        "organisation": null,
+        "konto": "MD",
+        "konto_ab": null,
+        "seit": "2026-10-01",
+        "bis": null,
+        "annahme": true
+      },
+      {
+        "kuerzel": "CB",
+        "name": "Claudia Berger",
+        "funktion": "Controlling",
+        "organisation": null,
+        "konto": "CB",
+        "konto_ab": null,
+        "seit": "2028-12-01",
+        "bis": null,
+        "annahme": true
+      }
+    ],
+    "aufgaben": [
+      {
+        "aufgabe": "unternehmensleitung",
+        "person": "RF",
+        "vertretung": null,
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": null,
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": null,
+        "beschluss": null
+      },
+      {
+        "aufgabe": "energiemanagement_leiten",
+        "person": "IK",
+        "vertretung": "JW",
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "energieteam",
+        "person": "IK",
+        "vertretung": null,
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "energieteam",
+        "person": "PH",
+        "vertretung": null,
+        "gilt_ab": "2026-10-15",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "energieteam",
+        "person": "MD",
+        "vertretung": null,
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "energieziele_massnahmen",
+        "person": "IK",
+        "vertretung": null,
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "bewertung_messplanung",
+        "person": "IK",
+        "vertretung": null,
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "dokumente",
+        "person": "IK",
+        "vertretung": null,
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "managementbewertung",
+        "person": "IK",
+        "vertretung": null,
+        "gilt_ab": "2026-10-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2026-12-15",
+        "beleg": {
+          "bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben",
+          "ablage": "Personalakte (Personalabteilung)",
+          "kennung": null,
+          "adresse": null,
+          "sha256": null
+        },
+        "beschluss": null
+      },
+      {
+        "aufgabe": "interne_audits",
+        "person": "CB",
+        "vertretung": null,
+        "gilt_ab": "2028-12-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "eingetragen_am": "2028-11-20",
+        "beleg": null,
+        "beschluss": null
+      },
+      {
+        "aufgabe": "bezugsbasen",
+        "person": "IK",
+        "vertretung": "JW",
+        "gilt_ab": "2029-03-01",
+        "gilt_bis": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "JW",
+        "eingetragen_am": "2029-02-26",
+        "beleg": null,
+        "beschluss": "BR-2029-0001/B4"
+      }
+    ],
+    "einstellung": {
+      "ueberpruefung_monate": 12,
+      "audit_rhythmus_monate": 12,
+      "managementbewertung_rhythmus_monate": 12,
+      "feststellung_frist_tage": 90,
+      "vorschau_tage": 30,
+      "vieraugen_freigabe": false
+    }
+  },
+
+  "zugriffe_1_10": [
+    {
+      "person": "CB",
+      "rolle": "einsicht",
+      "seit": "2029-01-20",
+      "bis": "2029-01-31",
+      "zugewiesen_von": "JW",
+      "grund": "Internes Audit AU-2029-0001: unternehmensweite Nachweise lesen, nichts ändern"
+    },
+    {
+      "person": "RF",
+      "rolle": "einsicht",
+      "seit": "2029-02-01",
+      "bis": null,
+      "zugewiesen_von": "JW",
+      "grund": "Leitung: Nachweise und Managementbewertung lesen"
+    }
+  ],
+
+  "dokumente": [
+    {
+      "kennzeichen": "D-0001",
+      "art": "energiepolitik",
+      "titel": "Energiepolitik",
+      "bezug": {
+        "art": "unternehmen",
+        "kennung": "U"
+      },
+      "zustand": "gueltig",
+      "ueberpruefung_monate": 12,
+      "beleg": {
+        "bezeichnung": "Energiepolitik Fassung 1, unterschrieben",
+        "ablage": "QM-Laufwerk, Ordner Energiemanagement/Politik",
+        "kennung": "EP-2026",
+        "adresse": null,
+        "sha256": "3f1f253d0c40224028a65d3cd9409b689463ff4feab3282db32f83252bf73b9b"
+      },
+      "fassungen": [
+        {
+          "nr": 1,
+          "form": "wortlaut",
+          "wortlaut": "Die Kunststoffwerk Ahrenberg GmbH will ihren Energieeinsatz in beiden Werken kennen und ihre energiebezogene Leistung Jahr für Jahr verbessern. Wir messen den Energieeinsatz, setzen uns jährlich Energieziele und stellen die Informationen und Mittel bereit, die dafür nötig sind. Wir legen fest, wer im Energiemanagement wofür zuständig ist. Wir halten die für uns geltenden rechtlichen Anforderungen zum Energieeinsatz ein.",
+          "verweis": null,
+          "anwendungsbereich": null,
+          "status": "freigegeben",
+          "freigegeben_am": "2026-12-15",
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "vieraugen": false,
+          "begruendung": "Erste Fassung zum Start des Energiemanagements (01.10.2026).",
+          "beschluss": null,
+          "pruefsumme": "sha256:163ae8360abb4f614f4fb4b37a7e983dff1f42e548b7f10c64890fdde68b09bb"
+        },
+        {
+          "nr": 2,
+          "form": "wortlaut",
+          "wortlaut": "Die Kunststoffwerk Ahrenberg GmbH will ihren Energieeinsatz in beiden Werken kennen und ihre energiebezogene Leistung Jahr für Jahr verbessern. Wir messen den Energieeinsatz, setzen uns jährlich Energieziele und stellen die Informationen und Mittel bereit, die dafür nötig sind. Wir legen fest, wer im Energiemanagement wofür zuständig ist. Wir halten die für uns geltenden rechtlichen Anforderungen zum Energieeinsatz ein. Beim Kauf von Maschinen und bei der Planung von Anlagen berücksichtigen wir den Energieeinsatz über die Nutzungsdauer.",
+          "verweis": null,
+          "anwendungsbereich": null,
+          "status": "freigegeben",
+          "freigegeben_am": "2029-03-20",
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "vieraugen": false,
+          "begruendung": "Beschluss B3 der Managementbewertung vom 12.02.2029: Einkauf und Planung ergänzt.",
+          "beschluss": "BR-2029-0001/B3",
+          "pruefsumme": "sha256:e135c835ef0165362f2ea2a13010d1058828b42c8d07edb351d640982dd1699e"
+        }
+      ],
+      "eintraege": [
+        {
+          "am": "2026-12-18",
+          "art": "bekannt_gemacht",
+          "fassung": 1,
+          "kreis": "alle Mitarbeitenden beider Werke",
+          "weg": "aushang · intranet",
+          "person": "IK",
+          "entschieden_von": null,
+          "begruendung": null,
+          "beschluss": null
+        },
+        {
+          "am": "2027-12-10",
+          "art": "geprueft_bleibt",
+          "fassung": 1,
+          "kreis": null,
+          "weg": null,
+          "person": "IK",
+          "entschieden_von": "RF",
+          "begruendung": "Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.",
+          "beschluss": null
+        },
+        {
+          "am": "2029-03-25",
+          "art": "bekannt_gemacht",
+          "fassung": 2,
+          "kreis": "alle Mitarbeitenden beider Werke",
+          "weg": "aushang · intranet",
+          "person": "IK",
+          "entschieden_von": null,
+          "begruendung": null,
+          "beschluss": null
+        }
+      ]
+    },
+    {
+      "kennzeichen": "D-0002",
+      "art": "anwendungsbereich",
+      "titel": "Anwendungsbereich des Energiemanagements",
+      "bezug": {
+        "art": "unternehmen",
+        "kennung": "U"
+      },
+      "zustand": "gueltig",
+      "ueberpruefung_monate": 12,
+      "beleg": null,
+      "fassungen": [
+        {
+          "nr": 1,
+          "form": "wortlaut",
+          "wortlaut": "Das Energiemanagement umfasst beide Werke der Kunststoffwerk Ahrenberg GmbH — Werk Ahrenberg und Werk Lindach — mit allen Gebäuden, Anlagen und Prozessen und allen dort eingesetzten Energieträgern (Strom und Erdgas).",
+          "verweis": null,
+          "anwendungsbereich": {
+            "standorte": [
+              "ST-1",
+              "ST-2"
+            ],
+            "traeger": [
+              "Strom",
+              "Gas"
+            ],
+            "ausschluesse": []
+          },
+          "status": "freigegeben",
+          "freigegeben_am": "2026-12-15",
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "vieraugen": false,
+          "begruendung": "Erste Fassung zum Start des Energiemanagements.",
+          "beschluss": null,
+          "pruefsumme": "sha256:583a847c7af4b4a29d4517d2acf77468413a95fa38778ba1159ed280c363ecf4"
+        }
+      ],
+      "eintraege": [
+        {
+          "am": "2027-12-10",
+          "art": "geprueft_bleibt",
+          "fassung": 1,
+          "kreis": null,
+          "weg": null,
+          "person": "IK",
+          "entschieden_von": "RF",
+          "begruendung": "Mit der Jahresplanung 2028 durchgesehen; keine neuen Standorte oder Energieträger.",
+          "beschluss": null
+        },
+        {
+          "am": "2029-02-13",
+          "art": "geprueft_bleibt",
+          "fassung": 1,
+          "kreis": null,
+          "weg": null,
+          "person": "IK",
+          "entschieden_von": "RF",
+          "begruendung": "Beschluss B6 der Managementbewertung vom 12.02.2029: der Anwendungsbereich bleibt.",
+          "beschluss": "BR-2029-0001/B6"
+        }
+      ]
+    },
+    {
+      "kennzeichen": "D-0003",
+      "art": "rechtliche_anforderungen",
+      "titel": "Rechtliche Anforderungen zum Energieeinsatz",
+      "bezug": {
+        "art": "unternehmen",
+        "kennung": "U"
+      },
+      "zustand": "gueltig",
+      "ueberpruefung_monate": 12,
+      "beleg": null,
+      "fassungen": [
+        {
+          "nr": 1,
+          "form": "verweis",
+          "wortlaut": null,
+          "verweis": {
+            "bezeichnung": "Rechtskataster Energie, Mandant Ahrenberg",
+            "ablage": "Rechtskataster-Dienst (Abonnement)",
+            "kennung": "RK-AHR",
+            "adresse": null,
+            "fassungsangabe": "Stand 01.12.2028",
+            "datum": "2028-12-01",
+            "sha256": null
+          },
+          "anwendungsbereich": null,
+          "status": "freigegeben",
+          "freigegeben_am": "2028-12-05",
+          "entschieden_von": "IK",
+          "eingetragen_von": "IK",
+          "vieraugen": false,
+          "begruendung": "Das Rechtskataster führt der Dienst, den das Unternehmen abonniert hat; VoltPilot hält den Verweis.",
+          "beschluss": null,
+          "pruefsumme": "sha256:95ee2711c0c964b81ceba070c9f2cbcc3a07d852ab0dca82b26f91159659f000"
+        }
+      ],
+      "eintraege": []
+    },
+    {
+      "kennzeichen": "D-0004",
+      "art": "betrieb",
+      "titel": "Kriterien für Betrieb und Instandhaltung — Spritzguss",
+      "bezug": {
+        "art": "energieeinsatz",
+        "kennung": "EE-1"
+      },
+      "zustand": "gueltig",
+      "ueberpruefung_monate": 12,
+      "beleg": null,
+      "fassungen": [
+        {
+          "nr": 1,
+          "form": "verweis",
+          "wortlaut": null,
+          "verweis": {
+            "bezeichnung": "Arbeitsplan Spritzgussmaschinen, Rev. 4",
+            "ablage": "Instandhaltungssystem, Arbeitspläne",
+            "kennung": "IH-SG-01",
+            "adresse": "https://instandhaltung.ahrenberg.example/plan/IH-SG-01",
+            "fassungsangabe": "Rev. 4 vom 03.11.2028",
+            "datum": "2028-11-03",
+            "sha256": "f0570ce5f1d332e648fe404bfe958841213b08b91c17667c3b0cd28c6acd49f9"
+          },
+          "anwendungsbereich": null,
+          "status": "freigegeben",
+          "freigegeben_am": "2028-11-10",
+          "entschieden_von": "IK",
+          "eingetragen_von": "IK",
+          "vieraugen": false,
+          "begruendung": "Die Kriterien stehen im Arbeitsplan der Instandhaltung; abgestimmt mit der Instandhaltung (Aussage IK).",
+          "beschluss": null,
+          "pruefsumme": "sha256:bd330fe410c905c8bf7be395ade7d5e93e4bc9140fbd25c3d69c93186d403398"
+        }
+      ],
+      "eintraege": [
+        {
+          "am": "2028-11-12",
+          "art": "bekannt_gemacht",
+          "fassung": 1,
+          "kreis": "Schichtführer und Instandhaltung Halle 1",
+          "weg": "unterweisung",
+          "person": "IK",
+          "entschieden_von": null,
+          "begruendung": null,
+          "beschluss": null
+        }
+      ]
+    },
+    {
+      "kennzeichen": "D-0005",
+      "art": "kompetenz",
+      "titel": "Unterweisung Zeitschaltung der Werkzeugheizungen",
+      "bezug": {
+        "art": "person",
+        "kennung": "MD"
+      },
+      "zustand": "gueltig",
+      "ueberpruefung_monate": null,
+      "beleg": null,
+      "fassungen": [
+        {
+          "nr": 1,
+          "form": "verweis",
+          "wortlaut": null,
+          "verweis": {
+            "bezeichnung": "Unterweisungsnachweis UW-2028-014",
+            "ablage": "Personalsystem, Unterweisungen",
+            "kennung": "UW-2028-014",
+            "adresse": null,
+            "fassungsangabe": null,
+            "datum": "2028-01-24",
+            "sha256": null
+          },
+          "anwendungsbereich": null,
+          "status": "freigegeben",
+          "freigegeben_am": "2028-01-25",
+          "entschieden_von": "IK",
+          "eingetragen_von": "IK",
+          "vieraugen": false,
+          "begruendung": "Nachweis zur Maßnahme M-2028-0001: Murat Demirci ist in die Zeitschaltung der Maschinen 3–6 eingewiesen.",
+          "beschluss": null,
+          "pruefsumme": "sha256:cbe2ea06eb958c2f0051ad928a6a7df547171ddcbceaf37b4565f811d65e7c4a"
+        }
+      ],
+      "eintraege": []
+    }
+  ],
+
+  "audits": [
+    {
+      "kennzeichen": "AU-2029-0001",
+      "titel": "Internes Audit 2029: Bezugsbasen, Energieziele, Maßnahmen und Grundlagen",
+      "termin": "2029-01-22",
+      "auditor": [
+        "CB"
+      ],
+      "verantwortlich": "IK",
+      "angelegt": {
+        "am": "2029-01-10",
+        "person": "IK"
+      },
+      "unabhaengigkeit": "Claudia Berger (Controlling) gehört nicht zum Energieteam und prüft keine eigene Arbeit.",
+      "was": "Bezugsbasen BB-0001 bis BB-0005, Energieziel EZ-2028-0001, Maßnahmen M-2028-0001 und M-2028-0002, Energiepolitik D-0001, Anwendungsbereich D-0002, Aufgaben im Energiemanagement",
+      "woran": "Energiepolitik D-0001 Fassung 1, Anwendungsbereich D-0002 Fassung 1, Aufgaben im Energiemanagement (Stand 22.01.2029)",
+      "durchgefuehrt_am": "2029-01-22",
+      "hinweise": [
+        {
+          "nr": 1,
+          "am": "2029-01-22",
+          "festgestellt_von": "CB",
+          "eingetragen_von": "IK",
+          "wortlaut": "Die Energiepolitik wurde im Dezember 2026 bekannt gemacht; wer seitdem eingestellt wurde, lernt sie in der Einarbeitung nicht kennen.",
+          "massnahme": "M-2029-0002"
+        }
+      ],
+      "feststellungen": [
+        "F-2029-0001"
+      ],
+      "bericht": {
+        "bezeichnung": "Bericht internes Audit 2029, unterschrieben",
+        "ablage": "QM-Laufwerk, Ordner Energiemanagement/Audits",
+        "kennung": "IA-2029",
+        "adresse": null,
+        "sha256": "761d45606a2ed3511c91e2a61bf4ba3287dac583b70f43ead3f3d8716233fdeb"
+      },
+      "abgeschlossen": {
+        "am": "2029-01-31",
+        "person": "IK",
+        "zusammenfassung": "Ein Hinweis, eine Feststellung; Bericht unterschrieben von Claudia Berger am 30.01.2029.",
+        "pruefsumme": "sha256:27a580b9761668e43f8cdc5afb66a4124f1394cb030a8629c8dc4f82a4d56701"
+      }
+    }
+  ],
+
+  "feststellungen": [
+    {
+      "kennzeichen": "F-2029-0001",
+      "quelle": {
+        "art": "internes_audit",
+        "kennung": "AU-2029-0001"
+      },
+      "wortlaut": "Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt: an den Bezugsbasen stehen als Verantwortliche die der Kennzahlen (Vorgabe), freigegeben hat alle fünf dieselbe Person ohne zweite Prüfung.",
+      "vorgabe": {
+        "dokument": "D-0001",
+        "fassung": 1,
+        "wortlaut": "„Wir legen fest, wer im Energiemanagement wofür zuständig ist.“"
+      },
+      "bezug": {
+        "aufgabe": "bezugsbasen",
+        "objekte": [
+          "BB-0001",
+          "BB-0002",
+          "BB-0003",
+          "BB-0004",
+          "BB-0005"
+        ]
+      },
+      "festgestellt_von": "CB",
+      "festgestellt_am": "2029-01-22",
+      "eingetragen_von": "IK",
+      "eingetragen_am": "2029-01-23",
+      "verantwortlich": "JW",
+      "frist": "2029-04-22",
+      "zustand_am_stichtag": "offen",
+      "eintraege": [
+        {
+          "am": "2029-01-23",
+          "art": "behebung",
+          "person": "IK",
+          "text": "Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei."
+        },
+        {
+          "am": "2029-01-25",
+          "art": "ursache_aussage",
+          "person": "IK",
+          "text": "Die Aufgabenliste entstand zum Start am 01.10.2026, bevor es Bezugsbasen gab (ab November 2026); sie wurde nicht nachgeführt. Eine zweite Prüfung ist aus, weil nur zwei Personen freigeben dürfen."
+        },
+        {
+          "am": "2029-01-25",
+          "art": "aehnliche_faelle",
+          "person": "IK",
+          "text": "Geprüft: Energieziele, Maßnahmen, Bewertung und Messplanung haben eine Person in der Aufgabenliste; die Kennzahlen tragen ihre Verantwortlichen. Kein weiterer Fall."
+        }
+      ],
+      "massnahmen": [
+        "M-2029-0001"
+      ],
+      "zustand": "abgeschlossen",
+      "wirksamkeit": [
+        {
+          "nr": 1,
+          "am": "2029-04-15",
+          "ergebnis": "wirksam",
+          "person": "IK",
+          "vieraugen": false,
+          "begruendung": "Aufgabe seit 01.03.2029 festgelegt (Ines Kaltenbach, Vertretung Jonas Wendlinger, entschieden von Robert Falk); seither keine Freigabe ohne die zuständige Person; die zweite Prüfung hat die Leitung am 12.02.2029 entschieden (B4).",
+          "kopie": {
+            "feststellung": "F-2029-0001",
+            "wortlaut": "Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt: an den Bezugsbasen stehen als Verantwortliche die der Kennzahlen (Vorgabe), freigegeben hat alle fünf dieselbe Person ohne zweite Prüfung.",
+            "eintraege": 3,
+            "massnahmen": [
+              {
+                "kennzeichen": "M-2029-0001",
+                "zustand": "umgesetzt",
+                "umgesetzt_am": "2029-03-01"
+              }
+            ],
+            "aufgabe": {
+              "aufgabe": "bezugsbasen",
+              "person": "IK",
+              "vertretung": "JW",
+              "gilt_ab": "2029-03-01",
+              "entschieden_von": "RF"
+            },
+            "am": "2029-04-15"
+          },
+          "pruefsumme": "sha256:dbda6affa5cfa0796bbdcc1ef1f2eb0d1725e7534b404ac9db5b706525f15b04"
+        }
+      ]
+    }
+  ],
+
+  "managementbewertungen": [
+    {
+      "kennung": "BR-2029-0001",
+      "vorlage": "managementbewertung",
+      "vorlage_fassung": 1,
+      "geltung": "U",
+      "zeitraum": "2028",
+      "sitzung": {
+        "tag": "2029-02-12",
+        "leitung": "RF",
+        "teilnehmende": [
+          "IK",
+          "JW",
+          "PH",
+          "CB"
+        ],
+        "ort": "Werk Ahrenberg, Besprechungsraum"
+      },
+      "beschluesse": [
+        {
+          "nr": 1,
+          "art": "energieziel",
+          "wortlaut": "Energieziel 2029 für den Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt; die Arbeit an den Werkzeugheizungen geht weiter.",
+          "zustaendig": "IK",
+          "termin": "2029-02-28",
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "eingetragen_am": "2029-02-12"
+        },
+        {
+          "nr": 2,
+          "art": "massnahme",
+          "wortlaut": "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal.",
+          "zustaendig": "IK",
+          "termin": "2029-06-30",
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "eingetragen_am": "2029-02-12"
+        },
+        {
+          "nr": 3,
+          "art": "dokument",
+          "wortlaut": "Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.",
+          "zustaendig": "IK",
+          "termin": "2029-03-31",
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "eingetragen_am": "2029-02-12"
+        },
+        {
+          "nr": 4,
+          "art": "aufgabe",
+          "wortlaut": "Die Aufgabe „Bezugsbasen pflegen und freigeben“ übernimmt Ines Kaltenbach, Vertretung Jonas Wendlinger. Eine zweite Prüfung bei Freigaben bleibt aus, solange nur zwei Personen freigeben dürfen; die Leitung sieht die Freigaben in der Managementbewertung durch.",
+          "zustaendig": "JW",
+          "termin": "2029-02-28",
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "eingetragen_am": "2029-02-12"
+        },
+        {
+          "nr": 5,
+          "art": "ressourcen",
+          "wortlaut": "Für 2029 stehen 25 000 € für Maßnahmen an der Druckluft bereit.",
+          "zustaendig": "RF",
+          "termin": null,
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "eingetragen_am": "2029-02-12"
+        },
+        {
+          "nr": 6,
+          "art": "keine_aenderung",
+          "wortlaut": "Der Anwendungsbereich (D-0002, Fassung 1) bleibt unverändert.",
+          "zustaendig": "IK",
+          "termin": null,
+          "entschieden_von": "RF",
+          "eingetragen_von": "IK",
+          "eingetragen_am": "2029-02-12"
+        }
+      ],
+      "folgen": [
+        {
+          "beschluss": 1,
+          "objekt": "EZ-2029-0001",
+          "art": "energieziel",
+          "verknuepft_am": "2029-02-15",
+          "person": "IK",
+          "wie": "von Hand verknüpft (das Energieziel hat keine Herkunft)"
+        },
+        {
+          "beschluss": 2,
+          "objekt": "M-2029-0003",
+          "art": "massnahme",
+          "verknuepft_am": "2029-02-14",
+          "person": "IK",
+          "wie": "selbst verknüpft (Herkunft managementbewertung, Kennung BR-2029-0001/B2)"
+        },
+        {
+          "beschluss": 3,
+          "objekt": "D-0001/2",
+          "art": "dokument",
+          "verknuepft_am": "2029-03-10",
+          "person": "IK",
+          "wie": "beim Entwurf der Fassung 2 verknüpft; freigegeben am 20.03.2029"
+        },
+        {
+          "beschluss": 4,
+          "objekt": "Aufgabe bezugsbasen (IK ab 01.03.2029)",
+          "art": "aufgabe",
+          "verknuepft_am": "2029-02-26",
+          "person": "JW",
+          "wie": "bei der Zuordnung verknüpft"
+        },
+        {
+          "beschluss": 6,
+          "objekt": "D-0002 geprüft, bleibt (13.02.2029)",
+          "art": "dokument",
+          "verknuepft_am": "2029-02-13",
+          "person": "IK",
+          "wie": "„geprüft, bleibt“ nennt den Beschluss"
+        }
+      ],
+      "staende": [
+        {
+          "nr": 1,
+          "datenstand": "2029-02-12T14:00:00+01:00",
+          "freigegeben_am": "2029-02-12T14:10:00+01:00",
+          "freigegeben_von": "IK",
+          "entschieden_von": "RF",
+          "vieraugen": false,
+          "pruefsumme": "sha256:0a52c97d0296449feb4cf94cecdc4cd90e11dd1d258437a10e436b7a7f078ccd",
+          "abzug": {
+            "kennung": "BR-2029-0001",
+            "vorlage": "managementbewertung",
+            "vorlage_fassung": 1,
+            "geltung": "U",
+            "zeitraum": "2028",
+            "datenstand": "2029-02-12T14:00:00+01:00",
+            "eingaben": {
+              "vorige_beschluesse": "Keine frühere Managementbewertung festgehalten.",
+              "grundlagen": {
+                "energiepolitik": {
+                  "dokument": "D-0001",
+                  "fassung": 1,
+                  "freigegeben_am": "2026-12-15",
+                  "entschieden_von": "RF",
+                  "ueberpruefung": "seit 64 Tagen fällig"
+                },
+                "anwendungsbereich": {
+                  "dokument": "D-0002",
+                  "fassung": 1,
+                  "freigegeben_am": "2026-12-15",
+                  "entschieden_von": "RF",
+                  "ueberpruefung": "seit 64 Tagen fällig",
+                  "vergleich_betrachtungsumfang": "deckungsgleich"
+                },
+                "aufgaben": {
+                  "laufend": 10,
+                  "ohne_person": [
+                    "bezugsbasen"
+                  ]
+                },
+                "rechtliche_anforderungen": {
+                  "dokument": "D-0003",
+                  "ort": "Geführt in Ihrem System: Rechtskataster-Dienst (Abonnement)",
+                  "fassungsangabe": "Stand 01.12.2028"
+                },
+                "risiken_chancen": "Hier ist noch nichts festgehalten."
+              },
+              "energieziele": [
+                {
+                  "kennzeichen": "EZ-2028-0001",
+                  "zielwert_prozent": -5.0,
+                  "zielperiode": "2028-01/2028-12",
+                  "bewertet_am": "2029-01-15",
+                  "ergebnis": "verfehlt",
+                  "stand": {
+                    "delta_prozent": -2.7,
+                    "monate": "11 von 12"
+                  },
+                  "pruefsumme": "sha256:3d55664a697dd1059f2f9e75065cd6df60cf5b47f7bb4b102890a48fb665f86e",
+                  "person": "IK"
+                }
+              ],
+              "energieleistung": {
+                "leistungsvergleiche": [
+                  {
+                    "kennung": "VB-2028-0001",
+                    "stand": 1,
+                    "freigegeben_am": "2028-01-12",
+                    "delta_prozent": 12.9,
+                    "urteil": "schlechter",
+                    "anstoss": "Revision angestoßen durch K-2028-0001 am 03.04.2028 — offen (Annahme)"
+                  }
+                ],
+                "bezugsbasen": {
+                  "BB-0001": {
+                    "fassung": 2,
+                    "ueberpruefung": "fällig in 286 Tagen"
+                  },
+                  "BB-0002": {
+                    "fassung": 2,
+                    "ueberpruefung": "seit 457 Tagen fällig"
+                  },
+                  "BB-0003": {
+                    "fassung": 2,
+                    "ueberpruefung": "seit 344 Tagen fällig"
+                  },
+                  "BB-0004": {
+                    "fassung": 1,
+                    "ueberpruefung": "seit 80 Tagen fällig"
+                  },
+                  "BB-0005": {
+                    "fassung": 1,
+                    "ueberpruefung": "seit 450 Tagen fällig"
+                  }
+                }
+              },
+              "massnahmen": [
+                {
+                  "kennzeichen": "M-2028-0001",
+                  "zustand": "bewertet",
+                  "stand": 1,
+                  "ergebnis": "belegt",
+                  "am": "2028-11-15",
+                  "wirkung_prozent": -2.4,
+                  "monate_bewertbar": 8,
+                  "erwartet_prozent": -3.0,
+                  "pruefsumme": "sha256:4635f20ac0ef79c28d33bc0ce5314cc3402ef71cd0a5cc1ef98e76d2f3ed76a3"
+                },
+                {
+                  "kennzeichen": "M-2028-0002",
+                  "zustand": "bewertet",
+                  "stand": 1,
+                  "ergebnis": "nicht_messbar",
+                  "am": "2028-11-20"
+                },
+                {
+                  "kennzeichen": "M-2029-0001",
+                  "zustand": "geplant",
+                  "termin": "2029-02-28",
+                  "herkunft": "Feststellung F-2029-0001"
+                },
+                {
+                  "kennzeichen": "M-2029-0002",
+                  "zustand": "geplant",
+                  "termin": "2029-03-31",
+                  "herkunft": "internes Audit AU-2029-0001"
+                }
+              ],
+              "abweichungen": {
+                "im_jahr": [
+                  {
+                    "kennzeichen": "AW-2028-0001",
+                    "abgeschlossen_am": "2028-01-15",
+                    "ergebnis": "massnahme",
+                    "massnahme": "M-2028-0001"
+                  }
+                ],
+                "auffaelligkeiten": [
+                  {
+                    "kennzahl": "KZ-0004",
+                    "monat": "2028-07",
+                    "antwort": "zur_kenntnis",
+                    "am": "2028-08-10"
+                  }
+                ],
+                "offen": 0
+              },
+              "audits_feststellungen": {
+                "audits": [
+                  {
+                    "kennzeichen": "AU-2029-0001",
+                    "durchgefuehrt_am": "2029-01-22",
+                    "zustand": "abgeschlossen",
+                    "auditor": "CB",
+                    "hinweise": 1,
+                    "feststellungen": 1
+                  }
+                ],
+                "feststellungen": [
+                  {
+                    "kennzeichen": "F-2029-0001",
+                    "zustand": "offen",
+                    "frist": "2029-04-22",
+                    "massnahmen": [
+                      "M-2029-0001"
+                    ]
+                  }
+                ]
+              },
+              "bewertung_messplanung": {
+                "bewertung": {
+                  "kennung": "BW-2027-0001",
+                  "stand": 1,
+                  "freigegeben_am": "2027-11-24",
+                  "ueberpruefung": "seit 80 Tagen fällig"
+                },
+                "messbedarf": {
+                  "MB-1": "eingelöst (MS-23)",
+                  "offen": 0
+                }
+              },
+              "wiedervorlage": [
+                {
+                  "kennzeichen": "BB-0002",
+                  "titel": "Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)",
+                  "faellig_am": "2027-11-13",
+                  "satz": "seit 457 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "BB-0005",
+                  "titel": "Bezugsbasis BB-0005, Fassung 1 — Überprüfung (Freigabe 20.11.2026 + 12 Monate)",
+                  "faellig_am": "2027-11-20",
+                  "satz": "seit 450 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "BB-0003",
+                  "titel": "Bezugsbasis BB-0003, Fassung 2 — Überprüfung (Freigabe 05.03.2027 + 12 Monate)",
+                  "faellig_am": "2028-03-05",
+                  "satz": "seit 344 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "VB-2028-0001",
+                  "titel": "Leistungsvergleich Spritzguss Dezember 2027 — Revision angestoßen (K-2028-0001)",
+                  "faellig_am": "2028-04-03",
+                  "satz": "seit 315 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "BB-0004",
+                  "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+                  "faellig_am": "2028-11-24",
+                  "satz": "seit 80 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "BW-2027-0001",
+                  "titel": "Energetische Bewertung 2027 — Überprüfung",
+                  "faellig_am": "2028-11-24",
+                  "satz": "seit 80 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "D-0001",
+                  "titel": "Energiepolitik — Überprüfung",
+                  "faellig_am": "2028-12-10",
+                  "satz": "seit 64 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "D-0002",
+                  "titel": "Anwendungsbereich — Überprüfung",
+                  "faellig_am": "2028-12-10",
+                  "satz": "seit 64 Tagen fällig"
+                },
+                {
+                  "kennzeichen": "M-2029-0001",
+                  "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
+                  "faellig_am": "2029-02-28",
+                  "satz": "fällig in 16 Tagen"
+                }
+              ]
+            },
+            "sitzung": {
+              "tag": "2029-02-12",
+              "leitung": "RF",
+              "teilnehmende": [
+                "IK",
+                "JW",
+                "PH",
+                "CB"
+              ],
+              "ort": "Werk Ahrenberg, Besprechungsraum"
+            },
+            "beschluesse": [
+              {
+                "nr": 1,
+                "art": "energieziel",
+                "wortlaut": "Energieziel 2029 für den Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt; die Arbeit an den Werkzeugheizungen geht weiter.",
+                "entschieden_von": "RF",
+                "zustaendig": "IK",
+                "termin": "2029-02-28"
+              },
+              {
+                "nr": 2,
+                "art": "massnahme",
+                "wortlaut": "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal.",
+                "entschieden_von": "RF",
+                "zustaendig": "IK",
+                "termin": "2029-06-30"
+              },
+              {
+                "nr": 3,
+                "art": "dokument",
+                "wortlaut": "Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.",
+                "entschieden_von": "RF",
+                "zustaendig": "IK",
+                "termin": "2029-03-31"
+              },
+              {
+                "nr": 4,
+                "art": "aufgabe",
+                "wortlaut": "Die Aufgabe „Bezugsbasen pflegen und freigeben“ übernimmt Ines Kaltenbach, Vertretung Jonas Wendlinger. Eine zweite Prüfung bei Freigaben bleibt aus, solange nur zwei Personen freigeben dürfen; die Leitung sieht die Freigaben in der Managementbewertung durch.",
+                "entschieden_von": "RF",
+                "zustaendig": "JW",
+                "termin": "2029-02-28"
+              },
+              {
+                "nr": 5,
+                "art": "ressourcen",
+                "wortlaut": "Für 2029 stehen 25 000 € für Maßnahmen an der Druckluft bereit.",
+                "entschieden_von": "RF",
+                "zustaendig": "RF",
+                "termin": null
+              },
+              {
+                "nr": 6,
+                "art": "keine_aenderung",
+                "wortlaut": "Der Anwendungsbereich (D-0002, Fassung 1) bleibt unverändert.",
+                "entschieden_von": "RF",
+                "zustaendig": "IK",
+                "termin": null
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+
+  "massnahmen_1_10": [
+    {
+      "kennzeichen": "M-2029-0001",
+      "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
+      "herkunft": {
+        "art": "nichtkonformitaet",
+        "kennung": "F-2029-0001"
+      },
+      "verantwortlich": "JW",
+      "termin": "2029-02-28",
+      "messgrundlage": null,
+      "erwartete_wirkung": {
+        "prozent": null,
+        "wortlaut": "Zuständigkeit festgelegt; jede Freigabe einer Bezugsbasis nennt die zuständige Person und ihre Vertretung."
+      },
+      "angelegt": {
+        "am": "2029-01-26",
+        "person": "IK"
+      },
+      "umgesetzt_am": "2029-03-01",
+      "umgesetzt_begruendung": "Aufgabe seit 01.03.2029 Ines Kaltenbach, Vertretung Jonas Wendlinger (entschieden von Robert Falk, Beschluss B4).",
+      "bewertungen": [
+        {
+          "nr": 1,
+          "am": "2029-04-15",
+          "person": "IK",
+          "vieraugen": false,
+          "ergebnis": "nicht_messbar",
+          "begruendung": "Organisatorische Maßnahme ohne Messgrundlage; ob sie die Feststellung behebt, steht an F-2029-0001.",
+          "pruefsumme": null
+        }
+      ],
+      "zustand": "bewertet"
+    },
+    {
+      "kennzeichen": "M-2029-0002",
+      "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+      "herkunft": {
+        "art": "audit",
+        "kennung": "AU-2029-0001"
+      },
+      "verantwortlich": "IK",
+      "termin": "2029-03-31",
+      "messgrundlage": null,
+      "erwartete_wirkung": {
+        "prozent": null,
+        "wortlaut": "Neue Mitarbeitende lernen die Energiepolitik im ersten Monat kennen."
+      },
+      "angelegt": {
+        "am": "2029-01-29",
+        "person": "IK"
+      },
+      "umgesetzt_am": null,
+      "umgesetzt_begruendung": null,
+      "bewertungen": [],
+      "zustand": "geplant"
+    },
+    {
+      "kennzeichen": "M-2029-0003",
+      "titel": "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal",
+      "herkunft": {
+        "art": "managementbewertung",
+        "kennung": "BR-2029-0001/B2"
+      },
+      "verantwortlich": "IK",
+      "termin": "2029-06-30",
+      "messgrundlage": null,
+      "erwartete_wirkung": {
+        "prozent": null,
+        "wortlaut": "Leckagen bleiben klein; ohne Kennzahl für Druckluft nicht messbar."
+      },
+      "angelegt": {
+        "am": "2029-02-14",
+        "person": "IK"
+      },
+      "umgesetzt_am": null,
+      "umgesetzt_begruendung": null,
+      "bewertungen": [],
+      "zustand": "geplant"
+    }
+  ],
+
+  "energieziele_1_10": [
+    {
+      "kennzeichen": "EZ-2029-0001",
+      "kennzahl": "KZ-0004",
+      "bezugsbasis": "BB-0001",
+      "fassung": 2,
+      "zielwert_prozent": -4.0,
+      "zielperiode": "2029-03/2029-12",
+      "verantwortlich": "IK",
+      "angelegt": {
+        "am": "2029-02-15",
+        "person": "IK"
+      },
+      "begruendung": "Beschluss B1 der Managementbewertung vom 12.02.2029 (BR-2029-0001); Zielperiode ab März, weil ein Energieziel nicht rückwirkend beginnt (AP-18 Z1).",
+      "zustand": "offen",
+      "annahme": true
+    }
+  ],
+
+  "abnahmefaelle_ap19": {
+    "quelle": "Konzept AP-19 §7 (referenzfaelle.json vom 24.09.2026, k_faelle.py) — die Blöcke „gegeben“ von R1, R2, R5, R6, R9, R10, R11, R13 und R14 wörtlich (NW-3); die Zwillinge prüfen sie gegen `energiemanagement`, `zugriffe_1_10[]`, `dokumente[]`, `audits[]`, `feststellungen[]`, `managementbewertungen[]`, `massnahmen_1_10[]`, `energieziele_1_10[]` und die Bestandsblöcke und rechnen Überprüfungs-Fristen, Audit- und Managementbewertungs-Rhythmus, die Frist der Feststellung, die Aufgaben am Tag und den Vergleich Anwendungsbereich ⟷ Betrachtungsumfang nach",
+    "faelle": [
+      { "fall": "R1", "gegeben": {"person": {"kuerzel": "RF", "name": "Robert Falk", "funktion": "Geschäftsführer", "organisation": null, "konto": null, "konto_ab": "2029-02-01", "seit": "2026-10-01", "bis": null, "annahme": true}, "aufgabe": {"aufgabe": "unternehmensleitung", "person": "RF", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": null, "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": null, "beschluss": null}, "dokument": {"kennzeichen": "D-0001", "art": "energiepolitik", "titel": "Energiepolitik", "bezug": {"art": "unternehmen", "kennung": "U"}, "zustand": "gueltig", "ueberpruefung_monate": 12, "beleg": {"bezeichnung": "Energiepolitik Fassung 1, unterschrieben", "ablage": "QM-Laufwerk, Ordner Energiemanagement/Politik", "kennung": "EP-2026", "adresse": null, "sha256": "3f1f253d0c40224028a65d3cd9409b689463ff4feab3282db32f83252bf73b9b"}, "fassungen": [{"nr": 1, "form": "wortlaut", "wortlaut": "Die Kunststoffwerk Ahrenberg GmbH will ihren Energieeinsatz in beiden Werken kennen und ihre energiebezogene Leistung Jahr für Jahr verbessern. Wir messen den Energieeinsatz, setzen uns jährlich Energieziele und stellen die Informationen und Mittel bereit, die dafür nötig sind. Wir legen fest, wer im Energiemanagement wofür zuständig ist. Wir halten die für uns geltenden rechtlichen Anforderungen zum Energieeinsatz ein.", "verweis": null, "anwendungsbereich": null, "status": "freigegeben", "freigegeben_am": "2026-12-15", "entschieden_von": "RF", "eingetragen_von": "IK", "vieraugen": false, "begruendung": "Erste Fassung zum Start des Energiemanagements (01.10.2026).", "beschluss": null, "pruefsumme": "sha256:163ae8360abb4f614f4fb4b37a7e983dff1f42e548b7f10c64890fdde68b09bb"}], "eintraege": [{"am": "2026-12-18", "art": "bekannt_gemacht", "fassung": 1, "kreis": "alle Mitarbeitenden beider Werke", "weg": "aushang · intranet", "person": "IK", "entschieden_von": null, "begruendung": null, "beschluss": null}, {"am": "2027-12-10", "art": "geprueft_bleibt", "fassung": 1, "kreis": null, "weg": null, "person": "IK", "entschieden_von": "RF", "begruendung": "Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.", "beschluss": null}]}, "unternehmen": {"vieraugen_freigabe": false}} },
+      { "fall": "R2", "gegeben": {"dokument": {"kennzeichen": "D-0002", "art": "anwendungsbereich", "titel": "Anwendungsbereich des Energiemanagements", "bezug": {"art": "unternehmen", "kennung": "U"}, "zustand": "gueltig", "ueberpruefung_monate": 12, "beleg": null, "fassungen": [{"nr": 1, "form": "wortlaut", "wortlaut": "Das Energiemanagement umfasst beide Werke der Kunststoffwerk Ahrenberg GmbH — Werk Ahrenberg und Werk Lindach — mit allen Gebäuden, Anlagen und Prozessen und allen dort eingesetzten Energieträgern (Strom und Erdgas).", "verweis": null, "anwendungsbereich": {"standorte": ["ST-1", "ST-2"], "traeger": ["Strom", "Gas"], "ausschluesse": []}, "status": "freigegeben", "freigegeben_am": "2026-12-15", "entschieden_von": "RF", "eingetragen_von": "IK", "vieraugen": false, "begruendung": "Erste Fassung zum Start des Energiemanagements.", "beschluss": null, "pruefsumme": "sha256:583a847c7af4b4a29d4517d2acf77468413a95fa38778ba1159ed280c363ecf4"}], "eintraege": [{"am": "2027-12-10", "art": "geprueft_bleibt", "fassung": 1, "kreis": null, "weg": null, "person": "IK", "entschieden_von": "RF", "begruendung": "Mit der Jahresplanung 2028 durchgesehen; keine neuen Standorte oder Energieträger.", "beschluss": null}]}, "betrachtungsumfang": {"fassung": 1, "gueltig_ab": "2026-11-04", "gueltig_bis": null, "standorte": ["ST-1", "ST-2"], "traeger": [{"name": "Strom", "mit_anteil": true}, {"name": "Gas", "mit_anteil": false}], "ausschluesse": [], "person": "IK", "begruendung": "Erster Betrachtungsumfang der energetischen Bewertung: beide Werke, Strom mit Anteil und Gas ohne gemeinsamen Nenner."}} },
+      { "fall": "R5", "gegeben": {"personen": [{"kuerzel": "RF", "name": "Robert Falk", "funktion": "Geschäftsführer", "organisation": null, "konto": null, "konto_ab": "2029-02-01", "seit": "2026-10-01", "bis": null, "annahme": true}, {"kuerzel": "IK", "name": "Ines Kaltenbach", "funktion": "Energiemanagement", "organisation": null, "konto": "IK", "konto_ab": null, "seit": "2026-10-01", "bis": null, "annahme": true}, {"kuerzel": "JW", "name": "Jonas Wendlinger", "funktion": "IT-Leitung", "organisation": null, "konto": "JW", "konto_ab": null, "seit": "2026-10-01", "bis": null, "annahme": true}, {"kuerzel": "PH", "name": "Peter Hollerbach", "funktion": "Standortleiter Werk Lindach", "organisation": null, "konto": "PH", "konto_ab": null, "seit": "2026-10-15", "bis": null, "annahme": true}, {"kuerzel": "MD", "name": "Murat Demirci", "funktion": "Schichtführer Halle 1", "organisation": null, "konto": "MD", "konto_ab": null, "seit": "2026-10-01", "bis": null, "annahme": true}, {"kuerzel": "CB", "name": "Claudia Berger", "funktion": "Controlling", "organisation": null, "konto": "CB", "konto_ab": null, "seit": "2028-12-01", "bis": null, "annahme": true}], "aufgaben": [{"aufgabe": "unternehmensleitung", "person": "RF", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": null, "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": null, "beschluss": null}, {"aufgabe": "energiemanagement_leiten", "person": "IK", "vertretung": "JW", "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "energieteam", "person": "IK", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "energieteam", "person": "PH", "vertretung": null, "gilt_ab": "2026-10-15", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "energieteam", "person": "MD", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "energieziele_massnahmen", "person": "IK", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "bewertung_messplanung", "person": "IK", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "dokumente", "person": "IK", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "managementbewertung", "person": "IK", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": {"bezeichnung": "Bestellung Energiemanagement vom 28.09.2026, unterschrieben", "ablage": "Personalakte (Personalabteilung)", "kennung": null, "adresse": null, "sha256": null}, "beschluss": null}, {"aufgabe": "interne_audits", "person": "CB", "vertretung": null, "gilt_ab": "2028-12-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2028-11-20", "beleg": null, "beschluss": null}], "bezugsbasen_verantwortlich_vorgabe": {"BB-0001": "IK", "BB-0002": "IK", "BB-0003": "IK", "BB-0004": "JW", "BB-0005": "PH"}, "bezugsbasen_freigaben": [{"basis": "BB-0001", "fassung": 1, "person": "IK", "vieraugen": false}, {"basis": "BB-0001", "fassung": 2, "person": "IK", "vieraugen": false}, {"basis": "BB-0002", "fassung": 1, "person": "IK", "vieraugen": false}, {"basis": "BB-0002", "fassung": 2, "person": "IK", "vieraugen": false}, {"basis": "BB-0003", "fassung": 1, "person": "IK", "vieraugen": false}, {"basis": "BB-0003", "fassung": 2, "person": "IK", "vieraugen": false}, {"basis": "BB-0004", "fassung": 1, "person": "IK", "vieraugen": false}, {"basis": "BB-0005", "fassung": 1, "person": "IK", "vieraugen": false}]} },
+      { "fall": "R6", "gegeben": {"zuweisungen": [{"person": "CB", "rolle": "einsicht", "seit": "2029-01-20", "bis": "2029-01-31", "zugewiesen_von": "JW", "grund": "Internes Audit AU-2029-0001: unternehmensweite Nachweise lesen, nichts ändern"}, {"person": "RF", "rolle": "einsicht", "seit": "2029-02-01", "bis": null, "zugewiesen_von": "JW", "grund": "Leitung: Nachweise und Managementbewertung lesen"}], "rolle": {"kennung": "einsicht", "geltungsbereich": "unternehmen", "zuweisbar": true, "befristbar": true, "U": ["aenderungsprotokoll.lesen", "messwerte.ansehen", "messstelle.ansehen", "ereignisse.ansehen", "datenquelle.ansehen", "energieeinsatz.ansehen", "bezugsbasis.ansehen", "verbesserung.ansehen", "energiemanagement.ansehen", "bericht.standort_abrufen", "bericht.unternehmen_abrufen", "bewertung.ansehen"], "E": ["konto.eigenes"]}} },
+      { "fall": "R9", "gegeben": {"audit": {"kennzeichen": "AU-2029-0001", "titel": "Internes Audit 2029: Bezugsbasen, Energieziele, Maßnahmen und Grundlagen", "termin": "2029-01-22", "auditor": ["CB"], "verantwortlich": "IK", "angelegt": {"am": "2029-01-10", "person": "IK"}, "unabhaengigkeit": "Claudia Berger (Controlling) gehört nicht zum Energieteam und prüft keine eigene Arbeit.", "was": "Bezugsbasen BB-0001 bis BB-0005, Energieziel EZ-2028-0001, Maßnahmen M-2028-0001 und M-2028-0002, Energiepolitik D-0001, Anwendungsbereich D-0002, Aufgaben im Energiemanagement", "woran": "Energiepolitik D-0001 Fassung 1, Anwendungsbereich D-0002 Fassung 1, Aufgaben im Energiemanagement (Stand 22.01.2029)"}, "aufgabe": {"aufgabe": "interne_audits", "person": "CB", "vertretung": null, "gilt_ab": "2028-12-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "IK", "eingetragen_am": "2028-11-20", "beleg": null, "beschluss": null}, "einsicht": {"person": "CB", "rolle": "einsicht", "seit": "2029-01-20", "bis": "2029-01-31", "zugewiesen_von": "JW", "grund": "Internes Audit AU-2029-0001: unternehmensweite Nachweise lesen, nichts ändern"}} },
+      { "fall": "R10", "gegeben": {"feststellung": {"kennzeichen": "F-2029-0001", "quelle": {"art": "internes_audit", "kennung": "AU-2029-0001"}, "wortlaut": "Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt: an den Bezugsbasen stehen als Verantwortliche die der Kennzahlen (Vorgabe), freigegeben hat alle fünf dieselbe Person ohne zweite Prüfung.", "vorgabe": {"dokument": "D-0001", "fassung": 1, "wortlaut": "„Wir legen fest, wer im Energiemanagement wofür zuständig ist.“"}, "bezug": {"aufgabe": "bezugsbasen", "objekte": ["BB-0001", "BB-0002", "BB-0003", "BB-0004", "BB-0005"]}, "festgestellt_von": "CB", "festgestellt_am": "2029-01-22", "eingetragen_von": "IK", "eingetragen_am": "2029-01-23", "verantwortlich": "JW", "frist": "2029-04-22", "eintraege": [{"am": "2029-01-23", "art": "behebung", "person": "IK", "text": "Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei."}, {"am": "2029-01-25", "art": "ursache_aussage", "person": "IK", "text": "Die Aufgabenliste entstand zum Start am 01.10.2026, bevor es Bezugsbasen gab (ab November 2026); sie wurde nicht nachgeführt. Eine zweite Prüfung ist aus, weil nur zwei Personen freigeben dürfen."}, {"am": "2029-01-25", "art": "aehnliche_faelle", "person": "IK", "text": "Geprüft: Energieziele, Maßnahmen, Bewertung und Messplanung haben eine Person in der Aufgabenliste; die Kennzahlen tragen ihre Verantwortlichen. Kein weiterer Fall."}], "massnahmen": ["M-2029-0001"]}, "massnahme": {"kennzeichen": "M-2029-0001", "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden", "herkunft": {"art": "nichtkonformitaet", "kennung": "F-2029-0001"}, "verantwortlich": "JW", "termin": "2029-02-28", "messgrundlage": null, "erwartete_wirkung": {"prozent": null, "wortlaut": "Zuständigkeit festgelegt; jede Freigabe einer Bezugsbasis nennt die zuständige Person und ihre Vertretung."}, "angelegt": {"am": "2029-01-26", "person": "IK"}}} },
+      { "fall": "R11", "gegeben": {"feststellung": "F-2029-0001", "massnahme": {"kennzeichen": "M-2029-0001", "umgesetzt_am": "2029-03-01", "umgesetzt_begruendung": "Aufgabe seit 01.03.2029 Ines Kaltenbach, Vertretung Jonas Wendlinger (entschieden von Robert Falk, Beschluss B4).", "bewertungen": [{"nr": 1, "am": "2029-04-15", "person": "IK", "vieraugen": false, "ergebnis": "nicht_messbar", "begruendung": "Organisatorische Maßnahme ohne Messgrundlage; ob sie die Feststellung behebt, steht an F-2029-0001.", "pruefsumme": null}]}, "aufgabe": {"aufgabe": "bezugsbasen", "person": "IK", "vertretung": "JW", "gilt_ab": "2029-03-01", "gilt_bis": null, "entschieden_von": "RF", "eingetragen_von": "JW", "eingetragen_am": "2029-02-26", "beleg": null, "beschluss": "BR-2029-0001/B4"}, "unternehmen": {"vieraugen_freigabe": false}} },
+      { "fall": "R13", "gegeben": {"bericht": {"kennung": "BR-2029-0001", "vorlage": "managementbewertung", "vorlage_fassung": 1, "geltung": "U", "zeitraum": "2028"}, "sitzung": {"tag": "2029-02-12", "leitung": "RF", "teilnehmende": ["IK", "JW", "PH", "CB"], "ort": "Werk Ahrenberg, Besprechungsraum"}, "aufgabe_leitung": {"aufgabe": "unternehmensleitung", "person": "RF", "vertretung": null, "gilt_ab": "2026-10-01", "gilt_bis": null, "entschieden_von": null, "eingetragen_von": "IK", "eingetragen_am": "2026-12-15", "beleg": null, "beschluss": null}, "beschluesse": [{"nr": 1, "art": "energieziel", "wortlaut": "Energieziel 2029 für den Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt; die Arbeit an den Werkzeugheizungen geht weiter.", "entschieden_von": "RF", "zustaendig": "IK", "termin": "2029-02-28"}, {"nr": 2, "art": "massnahme", "wortlaut": "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal.", "entschieden_von": "RF", "zustaendig": "IK", "termin": "2029-06-30"}, {"nr": 3, "art": "dokument", "wortlaut": "Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.", "entschieden_von": "RF", "zustaendig": "IK", "termin": "2029-03-31"}, {"nr": 4, "art": "aufgabe", "wortlaut": "Die Aufgabe „Bezugsbasen pflegen und freigeben“ übernimmt Ines Kaltenbach, Vertretung Jonas Wendlinger. Eine zweite Prüfung bei Freigaben bleibt aus, solange nur zwei Personen freigeben dürfen; die Leitung sieht die Freigaben in der Managementbewertung durch.", "entschieden_von": "RF", "zustaendig": "JW", "termin": "2029-02-28"}, {"nr": 5, "art": "ressourcen", "wortlaut": "Für 2029 stehen 25 000 € für Maßnahmen an der Druckluft bereit.", "entschieden_von": "RF", "zustaendig": "RF", "termin": null}, {"nr": 6, "art": "keine_aenderung", "wortlaut": "Der Anwendungsbereich (D-0002, Fassung 1) bleibt unverändert.", "entschieden_von": "RF", "zustaendig": "IK", "termin": null}]} },
+      { "fall": "R14", "gegeben": {"beschluesse": [{"nr": 1, "art": "energieziel", "wortlaut": "Energieziel 2029 für den Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt; die Arbeit an den Werkzeugheizungen geht weiter.", "entschieden_von": "RF"}, {"nr": 2, "art": "massnahme", "wortlaut": "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal.", "entschieden_von": "RF"}, {"nr": 3, "art": "dokument", "wortlaut": "Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.", "entschieden_von": "RF"}, {"nr": 4, "art": "aufgabe", "wortlaut": "Die Aufgabe „Bezugsbasen pflegen und freigeben“ übernimmt Ines Kaltenbach, Vertretung Jonas Wendlinger. Eine zweite Prüfung bei Freigaben bleibt aus, solange nur zwei Personen freigeben dürfen; die Leitung sieht die Freigaben in der Managementbewertung durch.", "entschieden_von": "RF"}, {"nr": 5, "art": "ressourcen", "wortlaut": "Für 2029 stehen 25 000 € für Maßnahmen an der Druckluft bereit.", "entschieden_von": "RF"}, {"nr": 6, "art": "keine_aenderung", "wortlaut": "Der Anwendungsbereich (D-0002, Fassung 1) bleibt unverändert.", "entschieden_von": "RF"}], "folgen": [{"beschluss": 1, "objekt": "EZ-2029-0001", "art": "energieziel", "verknuepft_am": "2029-02-15", "person": "IK", "wie": "von Hand verknüpft (das Energieziel hat keine Herkunft)"}, {"beschluss": 2, "objekt": "M-2029-0003", "art": "massnahme", "verknuepft_am": "2029-02-14", "person": "IK", "wie": "selbst verknüpft (Herkunft managementbewertung, Kennung BR-2029-0001/B2)"}, {"beschluss": 3, "objekt": "D-0001/2", "art": "dokument", "verknuepft_am": "2029-03-10", "person": "IK", "wie": "beim Entwurf der Fassung 2 verknüpft; freigegeben am 20.03.2029"}, {"beschluss": 4, "objekt": "Aufgabe bezugsbasen (IK ab 01.03.2029)", "art": "aufgabe", "verknuepft_am": "2029-02-26", "person": "JW", "wie": "bei der Zuordnung verknüpft"}, {"beschluss": 6, "objekt": "D-0002 geprüft, bleibt (13.02.2029)", "art": "dokument", "verknuepft_am": "2029-02-13", "person": "IK", "wie": "„geprüft, bleibt“ nennt den Beschluss"}], "energieziel_2029": {"kennzeichen": "EZ-2029-0001", "kennzahl": "KZ-0004", "bezugsbasis": "BB-0001", "fassung": 2, "zielwert_prozent": -4.0, "zielperiode": "2029-03/2029-12", "verantwortlich": "IK", "angelegt": {"am": "2029-02-15", "person": "IK"}, "begruendung": "Beschluss B1 der Managementbewertung vom 12.02.2029 (BR-2029-0001); Zielperiode ab März, weil ein Energieziel nicht rückwirkend beginnt (AP-18 Z1).", "zustand": "offen", "annahme": true}, "massnahme": {"kennzeichen": "M-2029-0003", "titel": "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal", "herkunft": {"art": "managementbewertung", "kennung": "BR-2029-0001/B2"}, "termin": "2029-06-30"}} }
     ]
   }
 }

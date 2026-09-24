@@ -1174,6 +1174,28 @@ const ohneFassung19 = (d: Record<string, any>): void => {
   delete bb1.pflege;
 };
 
+const KOMMENTAR_ZEILEN_1_9 = 164;
+const BLOECKE_1_10 = ['energiemanagement', 'zugriffe_1_10', 'dokumente', 'audits', 'feststellungen', 'managementbewertungen',
+  'massnahmen_1_10', 'energieziele_1_10', 'abnahmefaelle_ap19'];
+/** Nimmt GENAU die Zusätze der Fassung 1.10 heraus — neun Blöcke, zwanzig Zeilen der Zeitachse, Kommentar und Herkunft. */
+const ohneFassung110 = (d: Record<string, any>): void => {
+  expect(d.version).toBe('1.10');
+  d.version = '1.9';
+  d.beschreibung = d.beschreibung.replace('Messplanung, Bezugsbasen, Ziele, Maßnahmen und Abweichungen sowie die Abläufe des Energiemanagements',
+    'Messplanung, Bezugsbasen sowie Ziele, Maßnahmen und Abweichungen');
+  expect(d._comment.length).toBeGreaterThan(KOMMENTAR_ZEILEN_1_9);
+  d._comment = d._comment.slice(0, KOMMENTAR_ZEILEN_1_9);
+  expect(d._herkunft.fassung_1_10).toBeDefined();
+  delete d._herkunft.fassung_1_10;
+  for (const block of BLOECKE_1_10) {
+    expect(d[block], block).toBeDefined();
+    delete d[block];
+  }
+  const vorher = d.zeitachse.length;
+  d.zeitachse = d.zeitachse.filter((z: any) => z.energiemanagement == null);
+  expect(vorher - d.zeitachse.length).toBe(20);
+};
+
 describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
   /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
   const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
@@ -1196,6 +1218,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
    */
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
     ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
@@ -1275,6 +1298,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.4 (AP-12 E15)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.3', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
     ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
@@ -1389,6 +1413,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.5 (AP-15 E8)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.4', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
     ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
@@ -1618,6 +1643,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.5', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
     ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
@@ -1761,6 +1787,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.7 (K-1 an der Hauptgröße, Bef
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.6', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
     ohneFassung19(d);
     ohneFassung18(d);
     ohneFassung17(d);
@@ -1769,6 +1796,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.7 (K-1 an der Hauptgröße, Bef
 
   it('K-1 vergleicht auch an der Hauptgröße über integration — in Fassung 1.6 nur ohne_monatsmenge', () => {
     const alt = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(alt);
     ohneFassung19(alt);
     ohneFassung18(alt);
     ohneFassung17(alt);
@@ -1839,6 +1867,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.8 (AP-17 E12, Bezugsbasen)', ()
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.7', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
     ohneFassung19(d);
     ohneFassung18(d);
     expect(sha256(d)).toBe(FASSUNG_1_7_SHA256);
@@ -2217,6 +2246,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
 
   it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.8', () => {
     const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
     ohneFassung19(d);
     expect(hex(d)).toBe(FASSUNG_1_8_SHA256);
   });
@@ -2469,5 +2499,421 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
     expect([a.art, a.anlass_kennung, a.am]).toEqual([r12.anstoss.art, r12.anstoss.anlass_kennung, r12.anstoss.am]);
     for (const feld of ['am', 'person', 'antwort', 'begruendung']) expect(a.antwort[feld], feld).toBe(r12.antwort[feld]);
     expect(m1.ausgangslage.kopie.delta_prozent).toBe(r12.anstoss.ausgangslage_bleibt.delta_prozent);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.10 (AP-19, Dokumentation und Managementabläufe)', () => {
+  const FASSUNG_1_9_SHA256 = 'd3b1bea86eb7a252def63651c6a1cdb0622beac24ce52ae8faecd9f57325d947';
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+  const hex = (x: unknown) => createHash('sha256').update(kanonisch(x), 'utf8').digest('hex');
+  const pruef = (x: unknown) => `sha256:${hex(x)}`;
+  const nach = (liste: any[], schluessel = 'kennzeichen'): Record<string, any> => Object.fromEntries((liste ?? []).map((o) => [o[schluessel], o]));
+  const gegeben = (): Record<string, any> => Object.fromEntries(daten.abnahmefaelle_ap19.faelle.map((f: any) => [f.fall, f.gegeben]));
+  /** Tag + n Monate, Monatsende geklemmt — wie `LocalDate.plusMonths` im Java-Zwilling. */
+  const plusMonate = (tag: string, n: number): string => {
+    const [j, m, t] = tag.split('-').map(Number);
+    const ziel = j * 12 + (m - 1) + n;
+    const jj = Math.floor(ziel / 12), mm = (ziel % 12) + 1;
+    const letzter = new Date(Date.UTC(jj, mm, 0)).getUTCDate();
+    return `${jj}-${String(mm).padStart(2, '0')}-${String(Math.min(t, letzter)).padStart(2, '0')}`;
+  };
+  const LEITUNGS_PFLICHT = ['energiepolitik', 'anwendungsbereich', 'bestellung'];
+  const NACHWEIS_ARTEN = ['auslegung', 'kompetenz'];
+  const AUFGABEN_OHNE_WEITERE = ['unternehmensleitung', 'energiemanagement_leiten', 'energieteam', 'bezugsbasen', 'energieziele_massnahmen',
+    'bewertung_messplanung', 'interne_audits', 'managementbewertung', 'dokumente'];
+  const HERKUNFT_MUSTER: Record<string, RegExp> = {
+    nichtkonformitaet: /^F-[0-9]{4}-[0-9]{4}$/, audit: /^AU-[0-9]{4}-[0-9]{4}$/, managementbewertung: /^BR-[0-9]{4}-[0-9]{4}\/B[0-9]{1,3}$/,
+  };
+  const laeuft = (a: any, tag: string) => a.gilt_ab <= tag && (a.gilt_bis === null || a.gilt_bis >= tag);
+  /** PA3: die Person mit der laufenden Aufgabe „Leitung des Unternehmens“ am Tag. */
+  const leitungAm = (d: any, tag: string): string[] =>
+    d.energiemanagement.aufgaben.filter((a: any) => a.aufgabe === 'unternehmensleitung' && laeuft(a, tag)).map((a: any) => a.person);
+  /** PA2: die laufenden Zuordnungen am Tag (eingetragen bis dahin) und die Aufgaben ohne Person — ein Satz, kein Urteil. */
+  const aufgabenAm = (d: any, tag: string) => {
+    const lauf = d.energiemanagement.aufgaben.filter((a: any) => laeuft(a, tag) && a.eingetragen_am <= tag);
+    return { lauf, ohne: AUFGABEN_OHNE_WEITERE.filter((x) => !lauf.some((a: any) => a.aufgabe === x)) };
+  };
+  /** DK5: jüngere von Freigabe der gültigen Fassung und letztem „geprüft, bleibt“ + Monate; ein Nachweis hat keine. */
+  const ueberpruefung = (dok: any, tag: string): string | null => {
+    if (dok.ueberpruefung_monate === null) return null;
+    const gilt = dok.fassungen.filter((f: any) => f.status === 'freigegeben' && f.freigegeben_am <= tag).at(-1);
+    const geprueft = dok.eintraege.filter((e: any) => e.art === 'geprueft_bleibt' && e.am <= tag && e.fassung === gilt.nr).map((e: any) => e.am);
+    const anker = [gilt.freigegeben_am, ...geprueft].sort().at(-1);
+    return plusMonate(anker, dok.ueberpruefung_monate);
+  };
+  const kopieDerFassung = (f: any) => ({ nr: f.nr, form: f.form, wortlaut: f.wortlaut, verweis: f.verweis, anwendungsbereich: f.anwendungsbereich });
+  /** Jedes Feld von `teil` steht wörtlich so im Objekt — die Namen der Felder, die abweichen. */
+  const abweichend = (teil: Record<string, any>, ganz: Record<string, any>): string[] =>
+    Object.keys(teil).filter((k) => kanonisch(teil[k]) !== kanonisch(ganz?.[k]));
+  /** Ein Dokument, wie es an einem früheren Tag stand: Fassungen und Einträge sind ein Anfang der heutigen (append-only). */
+  const dokumentAnfang = (teil: any, ganz: any): string[] => {
+    const { fassungen, eintraege, ...rest } = teil;
+    const fehler = abweichend(rest, ganz);
+    if (kanonisch(fassungen) !== kanonisch(ganz.fassungen.slice(0, fassungen.length))) fehler.push('fassungen');
+    if (kanonisch(eintraege) !== kanonisch(ganz.eintraege.slice(0, eintraege.length))) fehler.push('eintraege');
+    return fehler;
+  };
+
+  /** NW-3 Leitungs-Pflicht (DK3, PA3, MG4): Freigabe und „geprüft, bleibt“ an Politik, Anwendungsbereich, Bestellung, jeder Beschluss und jeder Stand nennen die Leitung am Tag. */
+  const leitungsFehler = (d: any): string[] => {
+    const fehler: string[] = [];
+    for (const dok of d.dokumente) {
+      if (!LEITUNGS_PFLICHT.includes(dok.art)) continue;
+      for (const f of dok.fassungen) {
+        if (f.status === 'freigegeben' && !leitungAm(d, f.freigegeben_am).includes(f.entschieden_von)) fehler.push(`${dok.kennzeichen}/${f.nr}: entschieden von ${f.entschieden_von}, nicht von der Leitung`);
+      }
+      for (const e of dok.eintraege) {
+        if (e.art === 'geprueft_bleibt' && !leitungAm(d, e.am).includes(e.entschieden_von)) fehler.push(`${dok.kennzeichen} ${e.am}: geprüft, bleibt ohne die Leitung`);
+      }
+    }
+    for (const mb of d.managementbewertungen) {
+      if (!leitungAm(d, mb.sitzung.tag).includes(mb.sitzung.leitung)) fehler.push(`${mb.kennung}: die Sitzung leitet nicht die Leitung`);
+      for (const b of mb.beschluesse) if (b.entschieden_von !== mb.sitzung.leitung) fehler.push(`${mb.kennung}/B${b.nr}: nicht von der Leitung entschieden`);
+      for (const s of mb.staende) if (s.entschieden_von !== mb.sitzung.leitung) fehler.push(`${mb.kennung} Stand ${s.nr}: nicht von der Leitung entschieden`);
+    }
+    return fehler;
+  };
+  /** NW-3 Herkunft (W1, FS3): jede Maßnahme mit neuer Herkunft zitiert ein bestehendes F-, AU- oder BR-…/Bn, das sie nennt, und entsteht nicht vor ihm. */
+  const herkunftFehler = (d: any): string[] => {
+    const fehler: string[] = [];
+    const fs = nach(d.feststellungen), au = nach(d.audits), mb = nach(d.managementbewertungen, 'kennung');
+    for (const m of d.massnahmen_1_10) {
+      const { art, kennung } = m.herkunft;
+      if (!HERKUNFT_MUSTER[art]?.test(kennung ?? '')) { fehler.push(`${m.kennzeichen}: Herkunft ${art} ${kennung} hat nicht die Form`); continue; }
+      let seit: string | undefined;
+      let bis: string | undefined;
+      if (art === 'nichtkonformitaet') {
+        const f = fs[kennung];
+        if (!f?.massnahmen.includes(m.kennzeichen)) fehler.push(`${m.kennzeichen}: ${kennung} gibt es nicht oder nennt die Maßnahme nicht`);
+        seit = f?.festgestellt_am;
+        bis = f?.wirksamkeit.find((w: any) => w.ergebnis !== 'nicht_wirksam')?.am;
+      } else if (art === 'audit') {
+        if (!au[kennung]?.hinweise.some((h: any) => h.massnahme === m.kennzeichen)) fehler.push(`${m.kennzeichen}: ${kennung} gibt es nicht oder kein Hinweis nennt die Maßnahme`);
+        seit = au[kennung]?.durchgefuehrt_am;
+      } else {
+        const [br, b] = kennung.split('/');
+        const nr = Number(b.slice(1));
+        if (!mb[br]?.beschluesse.some((x: any) => x.nr === nr) || !mb[br].folgen.some((x: any) => x.beschluss === nr && x.objekt === m.kennzeichen)) {
+          fehler.push(`${m.kennzeichen}: ${kennung} gibt es nicht oder seine Folgen nennen die Maßnahme nicht`);
+        }
+        seit = mb[br]?.sitzung.tag;
+      }
+      if (seit && seit > m.angelegt.am) fehler.push(`${m.kennzeichen}: angelegt vor ihrer Herkunft`);
+      if (bis && bis < m.angelegt.am) fehler.push(`${m.kennzeichen}: angelegt, als ${kennung} schon abgeschlossen war`);
+      // AP-18 E2: ohne Messgrundlage keine Wirkungszahl, nur „nicht messbar“ ohne Kopie
+      if (m.messgrundlage !== null || m.erwartete_wirkung.prozent !== null || m.bewertungen.some((b: any) => b.ergebnis !== 'nicht_messbar' || b.pruefsumme !== null)) {
+        fehler.push(`${m.kennzeichen}: ohne Messgrundlage nur „nicht messbar“`);
+      }
+    }
+    return fehler;
+  };
+  /** NW-3 Feststellung (FS1, FS4, IA2): „festgestellt von“ ist eine Person, die Quelle nennt sie, die Vorgabe gibt es, die Wirksamkeit ist ein Stand mit Kopie. */
+  const feststellungsFehler = (d: any): string[] => {
+    const fehler: string[] = [];
+    const personen = new Set(d.energiemanagement.personen.map((p: any) => p.kuerzel));
+    const au = nach(d.audits), dok = nach(d.dokumente), m = nach(d.massnahmen_1_10);
+    for (const f of d.feststellungen) {
+      if (!personen.has(f.festgestellt_von)) fehler.push(`${f.kennzeichen}: ohne „festgestellt von“`);
+      if (f.quelle.art === 'internes_audit' && !au[f.quelle.kennung]?.feststellungen.includes(f.kennzeichen)) fehler.push(`${f.kennzeichen}: die Quelle ${f.quelle.kennung} nennt sie nicht`);
+      if (f.vorgabe.dokument !== null && !dok[f.vorgabe.dokument]?.fassungen.some((x: any) => x.nr === f.vorgabe.fassung)) fehler.push(`${f.kennzeichen}: Vorgabe ${f.vorgabe.dokument}/${f.vorgabe.fassung} gibt es nicht`);
+      for (const w of f.wirksamkeit) {
+        const k = w.kopie;
+        if (w.pruefsumme !== pruef(k)) fehler.push(`${f.kennzeichen} Stand ${w.nr}: Prüfsumme passt nicht zur Kopie`);
+        if (k.feststellung !== f.kennzeichen || k.wortlaut !== f.wortlaut || k.eintraege !== f.eintraege.filter((e: any) => e.am <= w.am).length) fehler.push(`${f.kennzeichen} Stand ${w.nr}: Kopie ≠ Feststellung`);
+        for (const km of k.massnahmen) {
+          const mm = m[km.kennzeichen];
+          if (!mm || mm.umgesetzt_am !== km.umgesetzt_am || !f.massnahmen.includes(km.kennzeichen)) fehler.push(`${f.kennzeichen} Stand ${w.nr}: Kopie nennt ${km.kennzeichen} anders`);
+        }
+        // FS4: jede verknüpfte Maßnahme umgesetzt, bewertet oder verworfen, mindestens eine umgesetzt oder bewertet
+        const umgesetzt = f.massnahmen.filter((x: string) => m[x]?.umgesetzt_am !== null && m[x]?.umgesetzt_am <= w.am);
+        if (w.ergebnis === 'wirksam' && (umgesetzt.length === 0 || umgesetzt.length !== f.massnahmen.length)) fehler.push(`${f.kennzeichen} Stand ${w.nr}: „wirksam“ vor der Umsetzung`);
+      }
+      const letzte = f.wirksamkeit.at(-1);
+      const zu = letzte !== undefined && letzte.ergebnis !== 'nicht_wirksam';
+      if ((f.zustand === 'abgeschlossen') !== zu) fehler.push(`${f.kennzeichen}: Zustand ${f.zustand} passt nicht zur Wirksamkeit`);
+    }
+    return fehler;
+  };
+  /** NW-3 keine Datei (Invariante 3, KS1): ein Verweis trägt Ablage und wahlfrei eine Browser-Prüfsumme — nirgends ein Inhalt. */
+  const dateiFehler = (d: any): string[] => {
+    const fehler: string[] = [];
+    const lauf = (x: any, pfad: string) => {
+      if (Array.isArray(x)) { x.forEach((e, i) => lauf(e, `${pfad}[${i}]`)); return; }
+      if (x === null || typeof x !== 'object') return;
+      for (const [k, v] of Object.entries(x)) {
+        if (/datei|inhalt|base64|anhang/i.test(k)) fehler.push(`${pfad}.${k}: eine Datei in der Datei`);
+        lauf(v, `${pfad}.${k}`);
+      }
+      if ('ablage' in x && 'sha256' in x && (typeof x.ablage !== 'string' || x.ablage.length === 0)) fehler.push(`${pfad}: Verweis ohne Ablage`);
+    };
+    for (const block of ['energiemanagement', 'dokumente', 'audits', 'feststellungen', 'managementbewertungen']) lauf(d[block], block);
+    return fehler;
+  };
+
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.9 (NW-3 Rückweg)', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    ohneFassung110(d);
+    expect(hex(d)).toBe(FASSUNG_1_9_SHA256);
+  });
+
+  it('hat den Umfang der Erweiterung — und die Leistungs-Blöcke bleiben (R15)', () => {
+    expect(daten.energiemanagement.personen.map((p: any) => p.kuerzel)).toEqual(['RF', 'IK', 'JW', 'PH', 'MD', 'CB']);
+    expect(daten.energiemanagement.aufgaben).toHaveLength(11);
+    expect(daten.zugriffe_1_10.map((z: any) => z.person)).toEqual(['CB', 'RF']);
+    expect(Object.keys(nach(daten.dokumente))).toEqual(['D-0001', 'D-0002', 'D-0003', 'D-0004', 'D-0005']);
+    expect(Object.keys(nach(daten.audits))).toEqual(['AU-2029-0001']);
+    expect(Object.keys(nach(daten.feststellungen))).toEqual(['F-2029-0001']);
+    expect(Object.keys(nach(daten.managementbewertungen, 'kennung'))).toEqual(['BR-2029-0001']);
+    expect(Object.keys(nach(daten.massnahmen_1_10))).toEqual(['M-2029-0001', 'M-2029-0002', 'M-2029-0003']);
+    expect(Object.keys(nach(daten.energieziele_1_10))).toEqual(['EZ-2029-0001']);
+    expect(daten.abnahmefaelle_ap19.faelle.map((f: any) => f.fall)).toEqual(['R1', 'R2', 'R5', 'R6', 'R9', 'R10', 'R11', 'R13', 'R14']);
+    // `personen[]`, `massnahmen[]` und `energieziele[]` bleiben die von 1.9 — Robert Falk hat bis 01.02.2029 kein Konto
+    expect(daten.personen.map((p: any) => p.kuerzel)).not.toContain('RF');
+    expect(Object.keys(nach(daten.massnahmen))).toEqual(['M-2028-0001', 'M-2028-0002']);
+    expect(Object.keys(nach(daten.energieziele))).toEqual(['EZ-2028-0001']);
+  });
+
+  it('jede Person mit Konto zeigt auf `personen[]`, eingetragen hat immer ein Konto, jeder Name steht in `energiemanagement` (PA1, IA5)', () => {
+    const konten = nach(daten.personen, 'kuerzel');
+    const em = nach(daten.energiemanagement.personen, 'kuerzel');
+    for (const p of daten.energiemanagement.personen) {
+      if (p.konto !== null) {
+        expect([konten[p.konto]?.name, konten[p.konto]?.funktion], p.kuerzel).toEqual([p.name, p.funktion]);
+        expect(p.konto_ab, p.kuerzel).toBeNull();
+      } else {
+        expect(konten[p.kuerzel], `${p.kuerzel} ohne Konto`).toBeUndefined();
+      }
+    }
+    const kontoAm = (k: string, tag: string) => em[k] !== undefined && (em[k].konto !== null || (em[k].konto_ab !== null && em[k].konto_ab <= tag));
+    const eingetragen: Array<[string, string, string]> = [];
+    for (const a of daten.energiemanagement.aufgaben) eingetragen.push([`Aufgabe ${a.aufgabe}`, a.eingetragen_von, a.eingetragen_am]);
+    for (const dok of daten.dokumente) for (const f of dok.fassungen) eingetragen.push([`${dok.kennzeichen}/${f.nr}`, f.eingetragen_von, f.freigegeben_am]);
+    for (const f of daten.feststellungen) eingetragen.push([f.kennzeichen, f.eingetragen_von, f.eingetragen_am]);
+    for (const a of daten.audits) for (const h of a.hinweise) eingetragen.push([`${a.kennzeichen} Hinweis ${h.nr}`, h.eingetragen_von, h.am]);
+    for (const mb of daten.managementbewertungen) for (const b of mb.beschluesse) eingetragen.push([`${mb.kennung}/B${b.nr}`, b.eingetragen_von, b.eingetragen_am]);
+    for (const [wo, wer, am] of eingetragen) expect(kontoAm(wer, am), `${wo}: eingetragen von ${wer} ohne Konto`).toBe(true);
+    // Einsicht nur mit Konto: Robert Falk erst ab dem Tag seines Kontos
+    for (const z of daten.zugriffe_1_10) {
+      expect(kontoAm(z.person, z.seit), `Einsicht ${z.person}`).toBe(true);
+      expect(konten[z.zugewiesen_von]?.rolle).toBe('Kundenadministrator');
+    }
+    // jede genannte Person gibt es
+    const genannt = JSON.stringify(BLOECKE_1_10.filter((b) => b !== 'abnahmefaelle_ap19').map((b) => daten[b]))
+      .match(/"(person|entschieden_von|eingetragen_von|festgestellt_von|verantwortlich|leitung|zustaendig|zugewiesen_von|freigegeben_von|vertretung)":"[A-Z]{2,3}"/g) ?? [];
+    for (const x of genannt) expect(em[x.split(':')[1].replaceAll('"', '')], x).toBeDefined();
+    expect(genannt.length).toBeGreaterThan(60);
+  });
+
+  it('Aufgaben am Tag: am 22.01.2029 zehn laufende, „Bezugsbasen“ ohne Person — ab 01.03.2029 keine (R5, R9, R11)', () => {
+    const audit = aufgabenAm(daten, '2029-01-22');
+    expect([audit.lauf.length, audit.ohne]).toEqual([10, ['bezugsbasen']]);
+    expect(aufgabenAm(daten, '2029-02-12').ohne).toEqual(['bezugsbasen']);
+    expect(aufgabenAm(daten, '2029-03-01').ohne).toEqual([]);
+    for (const a of daten.energiemanagement.aufgaben) {
+      expect(a.entschieden_von === null, a.aufgabe).toBe(a.aufgabe === 'unternehmensleitung');   // PA2
+    }
+    // R5: die Vorgabe der Verantwortlichen an den Bezugsbasen (die der Kennzahl, AP-17 B4) ist nicht, wer freigibt
+    const kz = nach([...daten.kennzahlen, ...daten.kennzahlen_1_8]);
+    const g = gegeben().R5;
+    expect(Object.fromEntries(daten.bezugsbasen.map((b: any) => [b.kennzeichen, kz[b.kennzahl].verantwortlich]))).toEqual(g.bezugsbasen_verantwortlich_vorgabe);
+    expect(daten.bezugsbasen.flatMap((b: any) => b.fassungen.map((f: any) => ({ basis: b.kennzeichen, fassung: f.fassung, person: f.freigabe.person, vieraugen: f.freigabe.vieraugen }))))
+      .toEqual(g.bezugsbasen_freigaben);
+  });
+
+  it('Fristen beim Abruf: Überprüfung, Audit- und Managementbewertungs-Rhythmus, Frist der Feststellung (DK5, IA4, FS1, MG7)', () => {
+    const d = nach(daten.dokumente), e = daten.energiemanagement.einstellung;
+    expect(Object.fromEntries(Object.keys(d).map((k) => [k, ueberpruefung(d[k], '2029-02-12')]))).toEqual(
+      { 'D-0001': '2028-12-10', 'D-0002': '2028-12-10', 'D-0003': '2029-12-05', 'D-0004': '2029-11-10', 'D-0005': null });
+    expect(tageZwischen('2028-12-10', '2029-02-12')).toBe(64);                           // R1, R12: seit 64 Tagen fällig
+    expect(ueberpruefung(d['D-0002'], '2029-02-13')).toBe('2030-02-13');                // B6: geprüft, bleibt
+    expect(ueberpruefung(d['D-0001'], '2029-04-30')).toBe('2030-03-20');                // Fassung 2 vom 20.03.2029
+    for (const dok of daten.dokumente) {
+      expect(dok.ueberpruefung_monate === null, dok.kennzeichen).toBe(NACHWEIS_ARTEN.includes(dok.art));
+      if (dok.ueberpruefung_monate !== null) expect(dok.ueberpruefung_monate).toBe(e.ueberpruefung_monate);
+    }
+    const au = daten.audits[0], f = daten.feststellungen[0], mb = daten.managementbewertungen[0];
+    expect(plusMonate(au.durchgefuehrt_am, e.audit_rhythmus_monate)).toBe('2030-01-22');
+    expect(f.frist).toBe(plusTage(f.festgestellt_am, e.feststellung_frist_tage));
+    expect(tageZwischen('2029-02-12', f.frist)).toBe(69);
+    expect(plusMonate(mb.sitzung.tag, e.managementbewertung_rhythmus_monate)).toBe('2030-02-12');
+  });
+
+  it('Anwendungsbereich neben dem Betrachtungsumfang: deckungsgleich (DK7, R2)', () => {
+    const ab = nach(daten.dokumente)['D-0002'].fassungen[0].anwendungsbereich;
+    const umfang = daten.bewertung_umfang.fassungen.find((f: any) => f.gueltig_bis === null);
+    const menge = (x: string[]) => [...x].sort().join('|');
+    expect(menge(ab.standorte)).toBe(menge(umfang.standorte));
+    expect(menge(ab.traeger)).toBe(menge(umfang.traeger.map((t: any) => t.name)));
+    expect([ab.ausschluesse, umfang.ausschluesse]).toEqual([[], []]);
+  });
+
+  it('Dokumente: Wortlaut ODER Verweis, Prüfsumme je Fassung, gültig ist die jüngste freigegebene (DK2, DK4, G3)', () => {
+    for (const dok of daten.dokumente) {
+      for (const f of dok.fassungen) {
+        const wo = `${dok.kennzeichen}/${f.nr}`;
+        expect([f.form === 'wortlaut', f.wortlaut !== null, f.verweis === null], wo).toEqual([f.form === 'wortlaut', f.form === 'wortlaut', f.form === 'wortlaut']);
+        expect(f.anwendungsbereich !== null, wo).toBe(dok.art === 'anwendungsbereich');
+        expect(f.pruefsumme, wo).toBe(pruef(kopieDerFassung(f)));
+        if (f.beschluss !== null) expect(daten.managementbewertungen.some((mb: any) => mb.beschluesse.some((b: any) => `${mb.kennung}/B${b.nr}` === f.beschluss)), wo).toBe(true);
+      }
+      expect(dok.fassungen.map((f: any) => f.nr)).toEqual(dok.fassungen.map((_: any, i: number) => i + 1));
+      for (const e of dok.eintraege) {
+        expect(dok.fassungen.some((f: any) => f.nr === e.fassung && f.freigegeben_am <= e.am), `${dok.kennzeichen} ${e.am}`).toBe(true);
+        if (e.art === 'geprueft_bleibt') expect(e.entschieden_von, `${dok.kennzeichen} ${e.am}`).not.toBeNull();
+      }
+    }
+    expect(leitungsFehler(daten)).toEqual([]);
+    expect(dateiFehler(daten)).toEqual([]);
+    // der Verweis mit Adresse nennt nur https:, das Original bleibt beim Kunden (R7, KS1)
+    const d4 = nach(daten.dokumente)['D-0004'].fassungen[0].verweis;
+    expect([d4.adresse.startsWith('https:'), /^[0-9a-f]{64}$/.test(d4.sha256), nach(daten.energieeinsaetze)['EE-1'] !== undefined]).toEqual([true, true, true]);
+  });
+
+  it('Audit → Feststellung → Maßnahme → Wirksamkeit durch eine Person (IA1–IA4, FS1–FS4, R9–R11)', () => {
+    const au = daten.audits[0];
+    expect(au.abgeschlossen.pruefsumme).toBe(pruef({ kennzeichen: au.kennzeichen, hinweise: au.hinweise, feststellungen: au.feststellungen, bericht: au.bericht }));
+    // Unabhängigkeit als Wortlaut: die Auditorin hat am Tag des Audits keine Aufgabe im Energieteam, aber die Aufgabe „Interne Audits“
+    const lauf = aufgabenAm(daten, au.durchgefuehrt_am).lauf;
+    for (const a of au.auditor) {
+      expect(lauf.filter((x: any) => x.person === a).map((x: any) => x.aufgabe)).toEqual(['interne_audits']);
+      expect(daten.zugriffe_1_10.some((z: any) => z.person === a && z.seit <= au.durchgefuehrt_am && (z.bis === null || z.bis >= au.abgeschlossen.am))).toBe(true);
+    }
+    expect(herkunftFehler(daten)).toEqual([]);
+    expect(feststellungsFehler(daten)).toEqual([]);
+    const f = daten.feststellungen[0];
+    expect([f.zustand_am_stichtag, f.zustand, f.wirksamkeit[0].ergebnis]).toEqual(['offen', 'abgeschlossen', 'wirksam']);
+    // „wirksam“ und „nicht messbar“: zwei Wörter, zwei Fragen (R11)
+    expect(nach(daten.massnahmen_1_10)['M-2029-0001'].bewertungen[0].ergebnis).toBe('nicht_messbar');
+    const w = f.wirksamkeit[0];
+    const bez = daten.energiemanagement.aufgaben.find((a: any) => a.aufgabe === 'bezugsbasen');
+    expect(abweichend(w.kopie.aufgabe, bez)).toEqual([]);
+  });
+
+  it('Managementbewertung: Sitzung mit der Leitung, Beschlüsse, Folgen — ein Stand seines Tages (MG1–MG7, R13, R14)', () => {
+    const mb = daten.managementbewertungen[0], s = mb.staende[0];
+    expect(s.pruefsumme).toBe(pruef(s.abzug));
+    expect([s.abzug.kennung, s.abzug.vorlage, s.abzug.vorlage_fassung, s.abzug.geltung, s.abzug.zeitraum, s.abzug.datenstand])
+      .toEqual([mb.kennung, mb.vorlage, mb.vorlage_fassung, mb.geltung, mb.zeitraum, s.datenstand]);
+    expect(s.abzug.sitzung).toEqual(mb.sitzung);
+    expect(s.abzug.beschluesse).toEqual(mb.beschluesse.map((b: any) => ({ nr: b.nr, art: b.art, wortlaut: b.wortlaut, entschieden_von: b.entschieden_von, zustaendig: b.zustaendig, termin: b.termin })));
+    expect(Date.parse(s.datenstand)).toBeLessThan(Date.parse(s.freigegeben_am));
+    expect(s.freigegeben_am.slice(0, 10)).toBe(mb.sitzung.tag);
+    // R14: der Stand vom 12.02.2029 sagt „offen“ — die Feststellung ist seit 15.04.2029 abgeschlossen, der Stand bleibt
+    const f = daten.feststellungen[0];
+    expect(s.abzug.eingaben.audits_feststellungen.feststellungen.find((x: any) => x.kennzeichen === f.kennzeichen).zustand).toBe(f.zustand_am_stichtag);
+    expect(f.wirksamkeit[0].am > mb.sitzung.tag && f.zustand === 'abgeschlossen').toBe(true);
+    // Folgen: B1 → EZ-2029-0001, B2 → M-2029-0003, B3 → D-0001 Fassung 2, B4 → Aufgabe, B6 → geprüft, bleibt; B5 hat keine
+    expect(mb.folgen.map((x: any) => x.beschluss)).toEqual([1, 2, 3, 4, 6]);
+    const ez = daten.energieziele_1_10[0];
+    const bb = nach(daten.bezugsbasen)[ez.bezugsbasis].fassungen.find((x: any) => x.fassung === ez.fassung);
+    expect([bb.freigabe.status, `${ez.zielperiode.slice(0, 7)}-01` >= ez.angelegt.am]).toEqual(['freigegeben', true]);   // nicht rückwirkend (AP-18 Z1)
+    expect(ez.begruendung).toContain(mb.kennung);
+    expect(nach(daten.dokumente)['D-0001'].fassungen[1].beschluss).toBe(`${mb.kennung}/B3`);
+    expect(daten.energiemanagement.aufgaben.find((a: any) => a.aufgabe === 'bezugsbasen').beschluss).toBe(`${mb.kennung}/B4`);
+    expect(nach(daten.dokumente)['D-0002'].eintraege.find((e: any) => e.beschluss !== null).beschluss).toBe(`${mb.kennung}/B6`);
+  });
+
+  it('die Zeitachsen-Zeilen mit `energiemanagement` nennen ein bestehendes Objekt an einem seiner Tage', () => {
+    const zeilen = daten.zeitachse.filter((z: any) => z.energiemanagement != null);
+    expect(zeilen).toHaveLength(20);
+    const tage = (m: string): string[] => {
+      const [art, rest] = m.includes(':') ? m.split(':') : ['', m];
+      if (art === 'aufgabe') {
+        return daten.energiemanagement.aufgaben.filter((a: any) => a.aufgabe === rest)
+          .flatMap((a: any) => [a.gilt_ab, a.eingetragen_am, ...(a.beleg?.bezeichnung.match(/[0-9]{2}\.[0-9]{2}\.[0-9]{4}/g) ?? []).map((t: string) => t.split('.').reverse().join('-'))]);
+      }
+      if (art === 'einsicht') return daten.zugriffe_1_10.filter((z: any) => z.person === rest).map((z: any) => z.seit);
+      const dok = nach(daten.dokumente)[m], au = nach(daten.audits)[m], f = nach(daten.feststellungen)[m];
+      const mb = nach(daten.managementbewertungen, 'kennung')[m], mm = nach(daten.massnahmen_1_10)[m], ez = nach(daten.energieziele_1_10)[m];
+      if (dok) return [...dok.fassungen.map((x: any) => x.freigegeben_am), ...dok.eintraege.map((x: any) => x.am)];
+      if (au) return [au.angelegt.am, au.durchgefuehrt_am, au.abgeschlossen?.am];
+      if (f) return [f.festgestellt_am, f.eingetragen_am, ...f.eintraege.map((x: any) => x.am), ...f.wirksamkeit.map((x: any) => x.am)];
+      if (mb) return [mb.sitzung.tag];
+      if (mm) return [mm.angelegt.am, mm.umgesetzt_am, ...mm.bewertungen.map((x: any) => x.am)];
+      if (ez) return [ez.angelegt.am];
+      return [];
+    };
+    for (const z of zeilen) expect(tage(z.energiemanagement), `${z.zeitpunkt} ${z.energiemanagement}`).toContain(lokalerTag(z.zeitpunkt));
+  });
+
+  it('die gegeben-Blöcke von R1, R2, R5, R6, R9, R10, R11, R13, R14 stehen wörtlich in der Datei (NW-3)', () => {
+    const g = gegeben();
+    const em = daten.energiemanagement, dok = nach(daten.dokumente), m = nach(daten.massnahmen_1_10);
+    const mb = daten.managementbewertungen[0], f = daten.feststellungen[0], au = daten.audits[0];
+    const aufgabe = (x: string) => em.aufgaben.find((a: any) => a.aufgabe === x);
+    const einsicht = nach(daten.zugriffe_1_10, 'person');
+    const fehler: string[] = [];
+    const pruefe = (wo: string, liste: string[]) => fehler.push(...liste.map((x) => `${wo}.${x}`));
+    pruefe('R1.person', abweichend(g.R1.person, nach(em.personen, 'kuerzel').RF));
+    pruefe('R1.aufgabe', abweichend(g.R1.aufgabe, aufgabe('unternehmensleitung')));
+    pruefe('R1.dokument', dokumentAnfang(g.R1.dokument, dok['D-0001']));
+    pruefe('R1.unternehmen', abweichend(g.R1.unternehmen, em.einstellung));
+    pruefe('R2.dokument', dokumentAnfang(g.R2.dokument, dok['D-0002']));
+    pruefe('R2.betrachtungsumfang', abweichend(g.R2.betrachtungsumfang, daten.bewertung_umfang.fassungen[0]));
+    if (kanonisch(g.R5.personen) !== kanonisch(em.personen)) fehler.push('R5.personen');
+    if (kanonisch(g.R5.aufgaben) !== kanonisch(em.aufgaben.slice(0, g.R5.aufgaben.length))) fehler.push('R5.aufgaben');
+    if (kanonisch(g.R6.zuweisungen) !== kanonisch(daten.zugriffe_1_10)) fehler.push('R6.zuweisungen');
+    if (!g.R6.zuweisungen.every((z: any) => z.rolle === g.R6.rolle.kennung)) fehler.push('R6.rolle');
+    pruefe('R9.audit', abweichend(g.R9.audit, au));
+    pruefe('R9.aufgabe', abweichend(g.R9.aufgabe, aufgabe('interne_audits')));
+    pruefe('R9.einsicht', abweichend(g.R9.einsicht, einsicht.CB));
+    pruefe('R10.feststellung', abweichend(g.R10.feststellung, f));
+    pruefe('R10.massnahme', abweichend(g.R10.massnahme, m['M-2029-0001']));
+    if (g.R11.feststellung !== f.kennzeichen) fehler.push('R11.feststellung');
+    pruefe('R11.massnahme', abweichend(g.R11.massnahme, m['M-2029-0001']));
+    pruefe('R11.aufgabe', abweichend(g.R11.aufgabe, aufgabe('bezugsbasen')));
+    pruefe('R11.unternehmen', abweichend(g.R11.unternehmen, em.einstellung));
+    pruefe('R13.bericht', abweichend(g.R13.bericht, mb));
+    pruefe('R13.sitzung', abweichend(g.R13.sitzung, mb.sitzung));
+    pruefe('R13.aufgabe_leitung', abweichend(g.R13.aufgabe_leitung, aufgabe('unternehmensleitung')));
+    g.R13.beschluesse.forEach((b: any, i: number) => pruefe(`R13.beschluesse[${i}]`, abweichend(b, mb.beschluesse[i])));
+    g.R14.beschluesse.forEach((b: any, i: number) => pruefe(`R14.beschluesse[${i}]`, abweichend(b, mb.beschluesse[i])));
+    if (kanonisch(g.R14.folgen) !== kanonisch(mb.folgen)) fehler.push('R14.folgen');
+    pruefe('R14.energieziel_2029', abweichend(g.R14.energieziel_2029, daten.energieziele_1_10[0]));
+    pruefe('R14.massnahme', abweichend(g.R14.massnahme, m['M-2029-0003']));
+    expect(fehler).toEqual([]);
+    // die gegeben-Blöcke beschreiben die Fälle vollständig: jeder Schlüssel wurde oben gelesen
+    expect(Object.fromEntries(Object.entries(g).map(([k, v]) => [k, Object.keys(v as object)]))).toEqual({
+      R1: ['person', 'aufgabe', 'dokument', 'unternehmen'], R2: ['dokument', 'betrachtungsumfang'],
+      R5: ['personen', 'aufgaben', 'bezugsbasen_verantwortlich_vorgabe', 'bezugsbasen_freigaben'], R6: ['zuweisungen', 'rolle'],
+      R9: ['audit', 'aufgabe', 'einsicht'], R10: ['feststellung', 'massnahme'], R11: ['feststellung', 'massnahme', 'aufgabe', 'unternehmen'],
+      R13: ['bericht', 'sitzung', 'aufgabe_leitung', 'beschluesse'], R14: ['beschluesse', 'folgen', 'energieziel_2029', 'massnahme'],
+    });
+  });
+
+  it('Rot-Proben: Leitung, Herkunft, „festgestellt von“, Datei, Prüfsumme und Rückweg sagen es, wenn man sie bricht', () => {
+    const d1 = structuredClone(daten);
+    d1.dokumente[0].fassungen[0].entschieden_von = 'IK';
+    expect(leitungsFehler(d1)).toEqual(['D-0001/1: entschieden von IK, nicht von der Leitung']);
+    const d2 = structuredClone(daten);
+    d2.massnahmen_1_10[0].herkunft.kennung = 'F-2029-0002';
+    d2.massnahmen_1_10[1].herkunft.kennung = 'AU-2029';
+    expect(herkunftFehler(d2)).toEqual(['M-2029-0001: F-2029-0002 gibt es nicht oder nennt die Maßnahme nicht', 'M-2029-0002: Herkunft audit AU-2029 hat nicht die Form']);
+    const d3 = structuredClone(daten);
+    d3.feststellungen[0].festgestellt_von = null;
+    d3.feststellungen[0].wirksamkeit[0].kopie.eintraege = 2;
+    expect(feststellungsFehler(d3)).toEqual(['F-2029-0001: ohne „festgestellt von“', 'F-2029-0001 Stand 1: Prüfsumme passt nicht zur Kopie', 'F-2029-0001 Stand 1: Kopie ≠ Feststellung']);
+    expect(schemaVerstoesse(d3, schema).length).toBeGreaterThan(0);
+    const d4 = structuredClone(daten);
+    d4.dokumente[3].fassungen[0].verweis.datei = 'JVBERi0xLjQK';
+    expect(dateiFehler(d4)).toEqual(['dokumente[3].fassungen[0].verweis.datei: eine Datei in der Datei']);
+    expect(schemaVerstoesse(d4, schema).length).toBeGreaterThan(0);
+    const d5 = structuredClone(daten);
+    d5.dokumente[0].fassungen[0].wortlaut += ' ';
+    expect(d5.dokumente[0].fassungen[0].pruefsumme).not.toBe(pruef(kopieDerFassung(d5.dokumente[0].fassungen[0])));
+    const d6 = structuredClone(daten);
+    d6.managementbewertungen[0].staende[0].abzug.eingaben.audits_feststellungen.feststellungen[0].zustand = 'abgeschlossen';
+    expect(d6.managementbewertungen[0].staende[0].pruefsumme).not.toBe(pruef(d6.managementbewertungen[0].staende[0].abzug));
+    const d7 = structuredClone(daten);
+    d7.massnahmen[0].titel += '.';
+    ohneFassung110(d7);
+    expect(hex(d7)).not.toBe(FASSUNG_1_9_SHA256);
   });
 });
