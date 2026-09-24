@@ -83,6 +83,12 @@ export const everydayArticles: HelpArticle[] = [
       { id: 'speicherbestand', title: 'Warum die Tagesbilanz zwischendurch anders aussieht', paragraphs: [
         "Gespeicherte Energie kann ihren Nutzen erst später bringen. Lesen Sie deshalb Ergebnis und gegebenenfalls Bestandskonto zusammen. Der Zwischenstand am Mittag ist noch kein abgeschlossenes Tagesergebnis.",
       ] },
+      { id: 'minus-tag', title: 'Warum die Steuerung an einem Tag unter Null liegt', paragraphs: [
+        "Der Vergleichsspeicher rechnet über Mitternacht weiter; deshalb ergeben die Tage zusammen den Monat. Hat die Steuerung am Vorabend verkauft, was er für die Nacht behalten hätte, steht der Erlös am Vortag und der Nachtbezug am Folgetag. Unter einer Zahl unter Null steht deshalb der Grund, zum Beispiel „gestern verkauft“ mit beiden Tagen zusammen, und darunter der Monat bisher. Die Zeile zum Vorsprung nennt, wie viel Energie gerade mehr im Speicher liegt als beim Vergleichsspeicher; ihr Planwert wird nicht abgezogen. Steht nur „Zwischenstand“ oder „unter Null“ da, gibt es keinen belegten Grund, und es wird keiner geraten.",
+      ] },
+      { id: 'winter', title: 'Warum im Winter', paragraphs: [
+        "Bei wenig Sonne gibt es kaum Überschuss, den die Steuerung in teure Stunden verschieben könnte. Die Anlage bezieht dann den größten Teil ihres Stroms aus dem Netz, und das Ergebnis kann unter Null liegen: Das sind echte Stromkosten. Liegt die Erzeugung unter 60 % des Verbrauchs, sagt die Seite deshalb, was die Sonne trotzdem gedeckt hat, etwa „Wenig Sonne: 96 kWh erzeugt, 91 kWh selbst genutzt.“ Der Eigenverbrauch ist vermiedener Bezug. Für die Einordnung hilft der Monat oder das Jahr bisher.",
+      ] },
       { id: 'nachvollziehen', title: 'Eine auffällige Zahl prüfen', paragraphs: [
         "Grenzen Sie den Tag ein und vergleichen Sie Energieverlauf, Speicherbewegung und Preise. Prüfen Sie anschließend Tarif und Datenabdeckung. Für Rückfragen nennen Sie Zeitraum, Kennzahl und deren Erklärung.",
       ] },

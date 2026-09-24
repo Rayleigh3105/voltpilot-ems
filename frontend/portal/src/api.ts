@@ -3800,6 +3800,33 @@ export interface CockpitMoney {
   speicherWertEur?: number | null;
   speicherWertBasis?: string | null;
   /**
+   * Die EINORDNUNG eines Tages (z2, Definition A: EIN durchlaufender
+   * Vergleichsspeicher je Anlage, Tage ergeben den Monat). Nur `range=day`,
+   * sonst null; OPTIONAL, weil ein älteres Backend sie nicht sendet. Gelesen
+   * werden sie nur in `speicherAussage()`/`bestandZeile()`.
+   *
+   * - `vergleichSocStartKwh`/`vergleichSocEndKwh`: der Vergleichsspeicher um
+   *   00:00 bzw. nach dem letzten gemessenen Eimer — sein EIGENER Stand.
+   * - `speicherVorsprungKwh`: gemessener Ladestand minus
+   *   `vergleichSocEndKwh`; null ohne gemessenen Stand (nie eine 0).
+   * - `speicherVorsprungEur`: derselbe Planpreis wie das Bestandskonto —
+   *   ausdrücklich KEIN Summand; nur die Anlagen-Antwort trägt ihn.
+   * - `steuerungVortagEur`, `steuerungMonatBisherEur`: Vortag bzw. Σ vom
+   *   Monatsersten bis einschließlich dieses Tages (= `range=month`).
+   * - `steuerungPlannedEur`: der Fahrplan-Planwert des Tages (ex ante).
+   * - `steuerungGruende`: höchstens zwei Kennungen der geschlossenen Liste
+   *   (`STEUERUNG_GRUENDE`); `[]` = berechnet, kein Grund; `null` = nicht
+   *   berechnet.
+   */
+  vergleichSocStartKwh?: number | null;
+  vergleichSocEndKwh?: number | null;
+  speicherVorsprungKwh?: number | null;
+  speicherVorsprungEur?: number | null;
+  steuerungVortagEur?: number | null;
+  steuerungMonatBisherEur?: number | null;
+  steuerungPlannedEur?: number | null;
+  steuerungGruende?: string[] | null;
+  /**
    * Die EINE grosse Zahl aller Flaechen: das Ergebnis „unterm Strich"
    * (Erloese-Konzept E9, Paket P9). Beide Endpunkte tragen genau EINEN der
    * zwei Wege dorthin, und `erloesNetto.nettoEur()` ist die EINE Ableitung,

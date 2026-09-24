@@ -789,11 +789,30 @@ describe('bestandZeile', () => {
     );
   });
 
-  it('spricht über einen längeren Zeitraum ZEITRAUM-neutral', () => {
-    const monat = { ...laufenderTag, range: 'month', to: '2026-08-01T00:00:00Z' };
-    expect(bestandZeile(monat, new Date('2026-08-15T00:00:00Z'))?.text).toContain(
-      '44,2\u00a0kWh Speicherenergie im Zeitraum gespeichert',
-    );
+  it('entfällt auf einem längeren Zeitraum (Konzept k1 E2 = A: nur der Tag kennt den Vorsprung)', () => {
+    for (const range of ['week', 'month', 'year', 'all']) {
+      const z = { ...laufenderTag, range, to: '2026-08-01T00:00:00Z' };
+      expect(bestandZeile(z, new Date('2026-08-15T00:00:00Z'))).toBeNull();
+    }
+  });
+
+  it('nennt am Tag den VORSPRUNG vor dem Vergleichsspeicher, sobald der Server ihn liefert (E2 = A)', () => {
+    const tag = {
+      ...laufenderTag,
+      speicherVorsprungKwh: 5.0,
+      speicherVorsprungEur: 1.31,
+      vergleichSocEndKwh: 13.8,
+    };
+    const z = bestandZeile(tag, JETZT)!;
+    expect(z.text).toBe(`5,0${NBSP}kWh Vorsprung vor dem Vergleichsspeicher · Planwert 1,31${NBSP}€`);
+    expect(z.badge).toBe('Kein Abzug');
+    expect(z.titel).toContain(`dort 13,8${NBSP}kWh`);
+    // Rückstand: die Richtung im Wort, der Planwert ohne Vorzeichen.
+    const r = bestandZeile({ ...tag, speicherVorsprungKwh: -35.4, speicherVorsprungEur: -11.32 }, JETZT)!;
+    expect(r.text).toBe(`35,4${NBSP}kWh Rückstand auf den Vergleichsspeicher · Planwert 11,32${NBSP}€`);
+    // Im Rauschen keine Zeile — und null heißt NICHT Vorsprung 0: die alte Zeile bleibt.
+    expect(bestandZeile({ ...tag, speicherVorsprungKwh: 0.3 }, JETZT)).toBeNull();
+    expect(bestandZeile({ ...tag, speicherVorsprungKwh: null }, JETZT)?.text).toContain('seit Tagesbeginn');
   });
 
   it('nennt am laufenden Zeitraum die Nutzung seit Tagesbeginn, nie den Vortag', () => {

@@ -1,0 +1,566 @@
+{
+  "_hinweis": "Die Worte der Einordnung eines Steuerungs-Tages (Konzept vp-erloese-minus-winter-k1 §7, E1-E7 = A). Die Kennungen und Schwellen gehören dem Vertrag docs/contracts/steuerung-tag-vectors.json (Block grund): jeder Fall mit 'vertrag' übernimmt dessen Kennungen, der Test prüft das. Das Portal wählt nur die Worte. Beträge wie in der Oberfläche (U+2212, Leerzeichen statt NBSP verglichen).",
+  "_quelle": "Referenzanlage Pilsting / Herzogau (65 kWh, 30/30 kW, Bezug fest 25 ct), Definition A; Zahlen aus dem Konzept vp-erloese-minus-winter-k1 (derived.json) bzw. steuerung-tag-vectors.json",
+  "faelle": [
+    {
+      "name": "24.09. laufend, Stand 19:58 - Vorzeigetag (Konzept §2, §7.3)",
+      "vertrag": "abends geleert, Stand 19:58 (Konzept §3.1)",
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-23T22:00:00Z",
+        "to": "2026-09-24T22:00:00Z",
+        "savedEur": -0.784,
+        "savedSpeicherEur": 9.02,
+        "savedSteuerungEur": -9.804,
+        "speicherDeltaKwh": 15.6,
+        "speicherWertEur": 4.06,
+        "speicherWertCtKwh": 26.0,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 38.6,
+        "vergleichSocEndKwh": 13.8,
+        "speicherVorsprungKwh": 5.0,
+        "speicherVorsprungEur": 1.31,
+        "steuerungVortagEur": 12.7755,
+        "steuerungMonatBisherEur": 116.9402,
+        "steuerungPlannedEur": -9.8972,
+        "steuerungGruende": [
+          "gestern_verkauft",
+          "haelt_energie_fuer_morgen"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 9,80 €",
+        "chip": "Zwischenstand",
+        "grundZeile": "gestern verkauft + 12,78 € · beide Tage + 2,98 € · hält 5,0 kWh für morgen",
+        "grundErster": "gestern verkauft + 12,78 €",
+        "grundKurz": "gestern verkauft",
+        "anker": {
+          "label": "September bisher",
+          "wert": "+ 116,94 €"
+        },
+        "bestand": "5,0 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 1,31 €",
+        "bestandBadge": "Kein Abzug"
+      }
+    },
+    {
+      "name": "24.09. laufend, Stand 19:45 - derselbe Tag, der Grund kippt am Abend (z2)",
+      "vertrag": "abends geleert, Stand 19:45",
+      "now": "2026-09-24T19:45:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-23T22:00:00Z",
+        "to": "2026-09-24T22:00:00Z",
+        "savedEur": -0.7582,
+        "savedSpeicherEur": 9.0198,
+        "savedSteuerungEur": -9.778003,
+        "speicherDeltaKwh": 15.4,
+        "speicherWertEur": 4.0,
+        "speicherWertCtKwh": 26.0,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 38.629,
+        "vergleichSocEndKwh": 13.9,
+        "speicherVorsprungKwh": 4.822,
+        "speicherVorsprungEur": 1.2537,
+        "steuerungVortagEur": 12.7755,
+        "steuerungMonatBisherEur": 116.9666,
+        "steuerungPlannedEur": -9.8972,
+        "steuerungGruende": [
+          "gestern_verkauft",
+          "so_geplant"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 9,78 €",
+        "chip": "Zwischenstand",
+        "grundZeile": "gestern verkauft + 12,78 € · beide Tage + 3,00 € · so geplant (− 9,90 €)",
+        "grundErster": "gestern verkauft + 12,78 €",
+        "grundKurz": "gestern verkauft",
+        "anker": {
+          "label": "September bisher",
+          "wert": "+ 116,97 €"
+        },
+        "bestand": "4,8 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 1,25 €",
+        "bestandBadge": "Kein Abzug"
+      }
+    },
+    {
+      "name": "23.09. abgeschlossen - der Verkaufstag im Plus, Rückstand auf den Vergleichsspeicher",
+      "vertrag": "der Verkaufstag davor ist im Plus",
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-22T22:00:00Z",
+        "to": "2026-09-23T22:00:00Z",
+        "savedEur": 9.9916,
+        "savedSpeicherEur": -2.7839,
+        "savedSteuerungEur": 12.7755,
+        "speicherDeltaKwh": 0.0,
+        "speicherWertEur": 0.0,
+        "speicherWertCtKwh": 32.0,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 10.2,
+        "vergleichSocEndKwh": 38.6,
+        "speicherVorsprungKwh": -35.4,
+        "speicherVorsprungEur": -11.32,
+        "steuerungVortagEur": 12.0287,
+        "steuerungMonatBisherEur": 126.7442,
+        "steuerungPlannedEur": 23.7872,
+        "steuerungGruende": []
+      },
+      "erwartet": {
+        "wert": "+ 12,78 €",
+        "chip": null,
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": {
+          "label": "1.–23. September",
+          "wert": "+ 126,74 €"
+        },
+        "bestand": "35,4 kWh Rückstand auf den Vergleichsspeicher · Planwert 11,32 €",
+        "bestandBadge": "Kein Abzug"
+      }
+    },
+    {
+      "name": "09.09. abgeschlossen - dunkelster Tag der Reihe (Winter-Vorschau, Konzept §8)",
+      "vertrag": "Vortag verkauft, geplant, wenig Sonne - nur zwei",
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-08T22:00:00Z",
+        "to": "2026-09-09T22:00:00Z",
+        "savedEur": 0.0492,
+        "savedSpeicherEur": 8.6306,
+        "savedSteuerungEur": -8.5814,
+        "speicherDeltaKwh": 0.0,
+        "speicherWertEur": 0.0,
+        "speicherWertCtKwh": 33.2,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 37.0,
+        "vergleichSocEndKwh": 3.2,
+        "speicherVorsprungKwh": 0.0,
+        "speicherVorsprungEur": 0.0,
+        "steuerungVortagEur": 10.1875,
+        "steuerungMonatBisherEur": 37.9174,
+        "steuerungPlannedEur": -19.6757,
+        "steuerungGruende": [
+          "gestern_verkauft",
+          "so_geplant"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 8,58 €",
+        "chip": "unter Null",
+        "grundZeile": "am Vortag verkauft + 10,19 € · beide Tage + 1,61 € · so geplant (− 19,68 €)",
+        "grundErster": "am Vortag verkauft + 10,19 €",
+        "grundKurz": "am Vortag verkauft",
+        "anker": {
+          "label": "1.–9. September",
+          "wert": "+ 37,92 €"
+        },
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "16.08. abgeschlossen - hielt Energie für den Folgetag, ohne Fahrplan",
+      "vertrag": "hält Energie für morgen, ohne Fahrplan",
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-08-15T22:00:00Z",
+        "to": "2026-08-16T22:00:00Z",
+        "savedEur": 10.4816,
+        "savedSpeicherEur": 16.3742,
+        "savedSteuerungEur": -5.8927,
+        "speicherDeltaKwh": 0.0,
+        "speicherWertEur": 0.0,
+        "speicherWertCtKwh": 23.5,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 41.5,
+        "vergleichSocEndKwh": 3.2,
+        "speicherVorsprungKwh": 34.4,
+        "speicherVorsprungEur": 8.1,
+        "steuerungVortagEur": -0.1093,
+        "steuerungMonatBisherEur": 97.0483,
+        "steuerungPlannedEur": null,
+        "steuerungGruende": [
+          "haelt_energie_fuer_morgen"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 5,89 €",
+        "chip": "unter Null",
+        "grundZeile": "hielt 34,4 kWh für den Folgetag",
+        "grundErster": "hielt 34,4 kWh für den Folgetag",
+        "grundKurz": "hielt Energie für den Folgetag",
+        "anker": {
+          "label": "1.–16. August",
+          "wert": "+ 97,05 €"
+        },
+        "bestand": "34,4 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 8,10 €",
+        "bestandBadge": "Kein Abzug"
+      }
+    },
+    {
+      "name": "18.08. abgeschlossen - unter Null ohne ableitbaren Grund (nie geraten)",
+      "vertrag": "unter Null ohne ableitbaren Grund",
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-08-17T22:00:00Z",
+        "to": "2026-08-18T22:00:00Z",
+        "savedEur": 6.0564,
+        "savedSpeicherEur": 6.637,
+        "savedSteuerungEur": -0.5806,
+        "speicherDeltaKwh": -9.8,
+        "speicherWertEur": -2.3,
+        "speicherWertCtKwh": 23.5,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 44.3,
+        "vergleichSocEndKwh": 36.7,
+        "speicherVorsprungKwh": 3.0,
+        "speicherVorsprungEur": 0.7,
+        "steuerungVortagEur": 8.4045,
+        "steuerungMonatBisherEur": 104.8722,
+        "steuerungPlannedEur": null,
+        "steuerungGruende": []
+      },
+      "erwartet": {
+        "wert": "− 0,58 €",
+        "chip": "unter Null",
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": {
+          "label": "1.–18. August",
+          "wert": "+ 104,87 €"
+        },
+        "bestand": "3,0 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 0,70 €",
+        "bestandBadge": "Kein Abzug",
+        "satzOhne": "hält Energie"
+      }
+    },
+    {
+      "name": "17.09. abgeschlossen - am Vortag verkauft und anders als geplant",
+      "vertrag": "Vortag verkauft und anders als geplant",
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-16T22:00:00Z",
+        "to": "2026-09-17T22:00:00Z",
+        "savedEur": 4.905,
+        "savedSpeicherEur": 7.8891,
+        "savedSteuerungEur": -2.9842,
+        "speicherDeltaKwh": 31.3,
+        "speicherWertEur": 6.39,
+        "speicherWertCtKwh": 20.4,
+        "speicherWertBasis": "plan",
+        "vergleichSocStartKwh": 25.5,
+        "vergleichSocEndKwh": 38.8,
+        "speicherVorsprungKwh": -4.3,
+        "speicherVorsprungEur": -0.88,
+        "steuerungVortagEur": 1.6431,
+        "steuerungMonatBisherEur": 94.5292,
+        "steuerungPlannedEur": 5.0257,
+        "steuerungGruende": [
+          "gestern_verkauft",
+          "anders_als_geplant"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 2,98 €",
+        "chip": "unter Null",
+        "grundZeile": "am Vortag verkauft + 1,64 € · beide Tage − 1,34 € · anders als geplant (Plan + 5,03 €)",
+        "grundErster": "am Vortag verkauft + 1,64 €",
+        "grundKurz": "am Vortag verkauft",
+        "anker": {
+          "label": "1.–17. September",
+          "wert": "+ 94,53 €"
+        },
+        "bestand": "4,3 kWh Rückstand auf den Vergleichsspeicher · Planwert 0,88 €",
+        "bestandBadge": "Kein Abzug"
+      }
+    },
+    {
+      "name": "Kante: nur wenig Sonne (laufender Tag)",
+      "vertrag": "Kante: PV 59,9 % ist 'wenig Sonne'",
+      "now": "2027-01-13T17:00:00+01:00",
+      "money": {
+        "range": "day",
+        "from": "2027-01-12T23:00:00Z",
+        "to": "2027-01-13T23:00:00Z",
+        "savedEur": 0.1,
+        "savedSpeicherEur": 0.5,
+        "savedSteuerungEur": -0.4,
+        "vergleichSocStartKwh": 3.2,
+        "vergleichSocEndKwh": 3.2,
+        "speicherVorsprungKwh": 0.0,
+        "speicherVorsprungEur": 0.0,
+        "steuerungVortagEur": 0.2,
+        "steuerungMonatBisherEur": 2.1,
+        "steuerungPlannedEur": 0.0,
+        "steuerungGruende": [
+          "wenig_sonne"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 0,40 €",
+        "chip": "Zwischenstand",
+        "grundZeile": "wenig Sonne",
+        "grundErster": "wenig Sonne",
+        "grundKurz": "wenig Sonne",
+        "anker": {
+          "label": "Januar bisher",
+          "wert": "+ 2,10 €"
+        },
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Kante: nur so geplant, ohne Vortag",
+      "vertrag": "nur so geplant",
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-12T22:00:00Z",
+        "to": "2026-09-13T22:00:00Z",
+        "savedEur": 0.0,
+        "savedSpeicherEur": 0.623,
+        "savedSteuerungEur": -0.623,
+        "steuerungVortagEur": null,
+        "steuerungMonatBisherEur": 50.0,
+        "steuerungPlannedEur": -0.8,
+        "steuerungGruende": [
+          "so_geplant"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 0,62 €",
+        "chip": "unter Null",
+        "grundZeile": "so geplant (− 0,80 €)",
+        "grundErster": "so geplant (− 0,80 €)",
+        "grundKurz": "so geplant",
+        "anker": {
+          "label": "1.–13. September",
+          "wert": "+ 50,00 €"
+        },
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Kante: Vortag verkauft ohne Vortagszahl - das Wort ohne Zahl, kein Paar",
+      "vertrag": "Kante: genau 10 kWh voller zählt",
+      "now": "2026-09-24T12:00:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-23T22:00:00Z",
+        "to": "2026-09-24T22:00:00Z",
+        "savedEur": 0.0,
+        "savedSpeicherEur": 1.0,
+        "savedSteuerungEur": -1.0,
+        "steuerungVortagEur": null,
+        "steuerungMonatBisherEur": null,
+        "steuerungPlannedEur": null,
+        "steuerungGruende": [
+          "gestern_verkauft"
+        ]
+      },
+      "erwartet": {
+        "wert": "− 1,00 €",
+        "chip": "Zwischenstand",
+        "grundZeile": "gestern verkauft",
+        "grundErster": "gestern verkauft",
+        "grundKurz": "gestern verkauft",
+        "anker": null,
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Kante: unbekannte Kennung wird nie als Code gezeigt",
+      "vertrag": null,
+      "now": "2026-09-24T12:00:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-23T22:00:00Z",
+        "to": "2026-09-24T22:00:00Z",
+        "savedEur": 0.0,
+        "savedSpeicherEur": 2.0,
+        "savedSteuerungEur": -2.0,
+        "steuerungGruende": [
+          "mondphase",
+          "so_geplant"
+        ],
+        "steuerungPlannedEur": -2.5
+      },
+      "erwartet": {
+        "wert": "− 2,00 €",
+        "chip": "Zwischenstand",
+        "grundZeile": "so geplant (− 2,50 €)",
+        "grundErster": "so geplant (− 2,50 €)",
+        "grundKurz": "so geplant",
+        "anker": null,
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Kante: älteres Backend (Felder fehlen) - heutige Formulierung, alte Bestandszeile",
+      "vertrag": null,
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-23T22:00:00Z",
+        "to": "2026-09-24T22:00:00Z",
+        "savedEur": -0.784,
+        "savedSpeicherEur": 9.02,
+        "savedSteuerungEur": -9.804,
+        "speicherDeltaKwh": 16.3,
+        "speicherWertEur": 4.23,
+        "speicherWertCtKwh": 26.0,
+        "speicherWertBasis": "plan"
+      },
+      "erwartet": {
+        "wert": "− 9,80 €",
+        "chip": "Zwischenstand",
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": null,
+        "bestand": "16,3 kWh Speicherenergie seit Tagesbeginn gespeichert · Planwert 4,23 €",
+        "bestandBadge": "Kein Abzug",
+        "satzMit": "hält Energie für später"
+      }
+    },
+    {
+      "name": "Kante: Monatserster - der Anker wäre der Tag selbst und entfällt",
+      "vertrag": null,
+      "now": "2026-10-01T18:00:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-09-30T22:00:00Z",
+        "to": "2026-10-01T22:00:00Z",
+        "savedEur": 1.0,
+        "savedSpeicherEur": 0.5,
+        "savedSteuerungEur": 0.5,
+        "steuerungVortagEur": 3.0,
+        "steuerungMonatBisherEur": 0.5,
+        "steuerungPlannedEur": 1.0,
+        "steuerungGruende": []
+      },
+      "erwartet": {
+        "wert": "+ 0,50 €",
+        "chip": "Zwischenstand",
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": null,
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Monat September laufend - Anker Jahr bisher, Bestandszeile entfällt (E2, E4)",
+      "vertrag": null,
+      "now": "2026-09-24T19:58:00+02:00",
+      "kontext": {
+        "jahrAnker": {
+          "eur": 311.21,
+          "jahr": 2026,
+          "laeuft": true
+        }
+      },
+      "money": {
+        "range": "month",
+        "from": "2026-08-31T22:00:00Z",
+        "to": "2026-09-30T22:00:00Z",
+        "savedEur": 242.85,
+        "savedSpeicherEur": 125.91,
+        "savedSteuerungEur": 116.94,
+        "speicherDeltaKwh": -14.95,
+        "speicherWertEur": -3.89,
+        "speicherWertCtKwh": 26.0,
+        "speicherWertBasis": "plan",
+        "steuerungGruende": null
+      },
+      "erwartet": {
+        "wert": "+ 116,94 €",
+        "chip": "Zwischenstand",
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": {
+          "label": "Jahr bisher",
+          "wert": "+ 311,21 €"
+        },
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Monat August abgeschlossen, Jahr 2025 - der Anker nennt das Jahr",
+      "vertrag": null,
+      "now": "2026-09-24T19:58:00+02:00",
+      "kontext": {
+        "jahrAnker": {
+          "eur": 80.5,
+          "jahr": 2025,
+          "laeuft": false
+        }
+      },
+      "money": {
+        "range": "month",
+        "from": "2025-07-31T22:00:00Z",
+        "to": "2025-08-31T22:00:00Z",
+        "savedEur": 20.0,
+        "savedSpeicherEur": 10.0,
+        "savedSteuerungEur": 10.0
+      },
+      "erwartet": {
+        "wert": "+ 10,00 €",
+        "chip": null,
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": {
+          "label": "Jahr 2025",
+          "wert": "+ 80,50 €"
+        },
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Woche - kein Grund, kein Anker, keine Bestandszeile",
+      "vertrag": null,
+      "now": "2026-09-24T19:58:00+02:00",
+      "money": {
+        "range": "week",
+        "from": "2026-09-20T22:00:00Z",
+        "to": "2026-09-27T22:00:00Z",
+        "savedEur": 8.5,
+        "savedSpeicherEur": 10.0,
+        "savedSteuerungEur": -1.5,
+        "speicherDeltaKwh": 12.0,
+        "speicherWertEur": 3.0,
+        "speicherWertCtKwh": 25.0,
+        "speicherWertBasis": "plan",
+        "steuerungGruende": null
+      },
+      "erwartet": {
+        "wert": "− 1,50 €",
+        "chip": "Zwischenstand",
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": null,
+        "bestand": null,
+        "bestandBadge": null
+      }
+    }
+  ]
+}

@@ -126,6 +126,8 @@ import { ErrorState, Skeleton } from '../components/States';
 import { LazyBoundary } from '../components/Lazy';
 import { BereichTabs } from '../components/BereichTabs';
 import { anlageSidebar, bereichLabel, tabsFor } from '../anlageNav';
+import { useSiteEarnings } from '../useSiteEarnings';
+import { isoDate } from '../periodNav';
 // Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
 // zeichnet keine von ihnen, zog aber über den statischen Import ihre gesamte
 // Fracht ins Einstiegs-Bündel: ECharts (jede Diagramm-Fläche), Leaflet (die
@@ -1330,6 +1332,9 @@ export function AnlageSeite({
 
   // The selected period instance (`at` = a tapped past month; null = current).
   const atDate = at ? new Date(`${at}T12:00:00`) : now;
+  // Der Anker der Monatszahl (Konzept k1 E4 = A): das Jahr aus `range=year` —
+  // derselbe Endpunkt und Cache wie der Jahres-Reiter der Erlöse-Seite.
+  const jahrEarnings = useSiteEarnings(site.id, 'year', isoDate(atDate), range === 'month');
 
   // v3 M2 · das Live-Cockpit: Hero (bestehendes Energiefluss-Diagramm groß +
   // Ringe + Geld + Fahrplan-Zeile) und das Widget-Raster. Beide Ableitungen
@@ -1340,6 +1345,14 @@ export function AnlageSeite({
     range,
     at: atDate,
     now,
+    jahrAnker:
+      range === 'month' && jahrEarnings.money && !jahrEarnings.stale
+        ? {
+            eur: jahrEarnings.money.savedSteuerungEur ?? null,
+            jahr: atDate.getFullYear(),
+            laeuft: atDate.getFullYear() === now.getFullYear(),
+          }
+        : null,
     slots: planSlots,
     slotMinutes: plan?.slotMinutes ?? 15,
     plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',

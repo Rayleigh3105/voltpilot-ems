@@ -25,6 +25,7 @@ import { replaceCurrentNavigation } from '../navigationBlocker';
 import { einstellungenHash } from '../settingsNav';
 import { standTime } from '../datenAlter';
 import { speicherAussage } from '../speicherAussage';
+import { winterSatz } from '../winterSatz';
 import type { SekundaerZiel } from '../erloesZeilen';
 import {
   abrechnung,
@@ -63,7 +64,9 @@ import {
   MehrwertErklaerung,
 } from '../components/erloese/ErloeseKarten';
 import { SoVerdientInhalt } from '../components/SoVerdient';
-import { RechenZeilen, SteuerungFormel } from '../components/SteuerungFormel';
+import { SpeicherKarte } from '../components/erloese/SpeicherKarte';
+import '../components/erloese/ErgebnisKarte.css';
+import { RechenZeilen, SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
 
 /**
  * **Verlauf › Erlöse** (`#/anlage/{id}/erloese`) — Konzept „Verlauf-Rework",
@@ -142,6 +145,9 @@ export function ErloeseSection({
 
   const at = isoDate(anchor);
   const { money, loading, stale, err, retry } = useSiteEarnings(site.id, range, at);
+  // Der Anker der MONATSZAHL (Konzept k1 E4 = A): das Jahr aus `range=year` —
+  // derselbe Endpunkt und Cache wie der Jahres-Reiter, also dieselbe Zahl.
+  const jahr = useSiteEarnings(site.id, 'year', at, range === 'month');
   // Die Historie trägt hier die Datenlage, den geplanten Steuerungs-Wert und
   // am Tag den Börsenpreis je Viertelstunde.
   const { history, stale: historyStale } = useHistoryPeriod(site.id, range, at);
@@ -222,11 +228,28 @@ export function ErloeseSection({
     // Die Seite weiß, ob ihr Zeitraum läuft — auch wenn die Antwort kein `to` trägt.
     laeuft,
     steuerungGeplantEur: history && !historyStale ? history.totals.steuerungPlannedEur : null,
+    jahrAnker:
+      range === 'month' && jahr.money && !jahr.stale
+        ? {
+            eur: jahr.money.savedSteuerungEur ?? null,
+            jahr: anchor.getFullYear(),
+            laeuft: isCurrentPeriod(anchor, 'year', now),
+          }
+        : null,
   });
   const kennzahlen = erloesKennzahlen({
     money,
     vergleich,
     vergleichVoll: vollerVergleichsName(anchor, range, wirksamerModus(modus)),
+    winterSatz:
+      history && !historyStale
+        ? winterSatz({
+            pvKwh: history.totals.pvGenerationKwh,
+            verbrauchKwh: history.totals.consumptionKwh,
+            selbstGenutztKwh: money?.selbstverbrauchKwh,
+            laeuft,
+          })
+        : null,
   });
   const band = mehrwertBand(speicher, range);
 
@@ -307,6 +330,9 @@ export function ErloeseSection({
         steuerungEur: money.savedSteuerungEur ?? null,
         splitReason: money.steuerungSplitReason ?? null,
         steuerungGeplantEur: history && !historyStale ? history.totals.steuerungPlannedEur ?? null : null,
+        laeuft,
+        pvKwh: history && !historyStale ? history.totals.pvGenerationKwh : null,
+        verbrauchKwh: history && !historyStale ? history.totals.consumptionKwh : null,
       }
     : null;
   const hatSchritte = schritteInput != null && speicherSchritte(schritteInput).length > 0;
@@ -478,7 +504,25 @@ export function ErloeseSection({
                       />
                     )}
                   </VrKarte>
-                  <AbrechnungKarte a={abrechnung(money)} periode={label} hrefFor={hrefFor} />
+                  <div className="vp-vr-col">
+                    <AbrechnungKarte a={abrechnung(money)} periode={label} hrefFor={hrefFor} />
+                    {/* Die Steuerungs-Karte (Konzept k1 §7.3, E1–E4 = A): dieselbe
+                        Karte wie im Cockpit — Zahl, Grund, Anker, Vorsprung —
+                        in der rechten Spalte des Ledgers, unter der Abrechnung,
+                        weil sie kein Posten des Ergebnisses ist. */}
+                    {speicher?.hatAussage && (
+                      <SpeicherKarte
+                        aussage={speicher}
+                        nachtragHref={einstellungenHash(site.id, 'speicher')}
+                      >
+                        {hatSchritte && schritteInput ? (
+                          <SpeicherSchritte input={schritteInput} />
+                        ) : formel ? (
+                          <SteuerungFormel input={formel} />
+                        ) : null}
+                      </SpeicherKarte>
+                    )}
+                  </div>
                 </div>
 
                 <div className="vp-vr-row3">

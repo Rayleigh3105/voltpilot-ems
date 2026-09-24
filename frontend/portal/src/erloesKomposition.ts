@@ -667,16 +667,37 @@ export interface BestandEingabe {
   speicherWertCtKwh?: number | null;
   speicherWertEur?: number | null;
   speicherWertBasis?: string | null;
+  /**
+   * Nur `range=day` (Definition A, z2): gemessener Ladestand am Ende des
+   * letzten Eimers minus Ladestand des durchlaufenden Vergleichsspeichers;
+   * null ohne gemessenen Stand (nie eine 0). Fehlt das Feld (älteres Backend),
+   * bleibt die Zeile bei der Änderung seit Mitternacht.
+   */
+  speicherVorsprungKwh?: number | null;
+  /** `speicherVorsprungKwh × speicherWertCtKwh` — derselbe Planpreis; nur die Anlage. */
+  speicherVorsprungEur?: number | null;
+  /** Der Vergleichsspeicher nach dem letzten gemessenen Eimer (für den Titel). */
+  vergleichSocEndKwh?: number | null;
   /** Fensterende des Zeitraums (ISO) — entscheidet über „läuft noch". */
   to?: string | null;
   /** Die Perioden-Art — nur der TAG kennt „Folgetag"/„Vortag". */
   range?: string | null;
 }
 
+/** Das Wort des Vergleichsspeichers in der Bestandszeile (Konzept k1 §6, E2 = A). */
+export const VERGLEICHSSPEICHER = 'Vergleichsspeicher';
+
 /**
  * Die eine Ableitung der Bestandszeile — von der Tagesbild-Überschrift UND von
  * der Ergebnis-Karte gelesen, damit beide Flächen über denselben Bestand nie
  * Verschiedenes behaupten können.
+ *
+ * ⚠ **DEFINITION A (Captain 24.09.2026, Konzept k1 §6, E2 = A):** Auf dem TAG
+ * nennt die Zeile den VORSPRUNG vor dem Vergleichsspeicher
+ * („5,0 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 1,31 €"), nicht
+ * mehr die Änderung seit Mitternacht — die hätte zu drei Vierteln auch der
+ * sture Speicher gehabt. Auf Woche, Monat und Jahr ENTFÄLLT die Zeile. Nur ein
+ * älteres Backend ohne das Feld bekommt am Tag die alte Formulierung.
  *
  * `null` heißt: es gibt nichts zu sagen — kein Speicher, kein gemessener
  * Ladestand, ein älteres Backend, oder eine Bestandsänderung im Rauschen.
@@ -686,6 +707,11 @@ export function bestandZeile(
   now: Date,
 ): BestandZeile | null {
   if (!m) return null;
+  // Eine Anlagen-Antwort trägt IMMER ihr `range`; nur dort, wo keins mitkommt
+  // (Test-Attrappen, ältere Aufrufer), bleibt die Zeitraum-Formulierung.
+  if (m.range != null && m.range !== 'day') return null;
+  const vorsprung = num(m.speicherVorsprungKwh ?? null);
+  if (m.range === 'day' && vorsprung != null) return vorsprungZeile(m, vorsprung, now);
   const delta = num(m.speicherDeltaKwh ?? null);
   if (delta == null || Math.abs(delta) < BESTAND_KWH_TOTBAND) return null;
 
@@ -733,6 +759,42 @@ export function bestandZeile(
     badge: BESTAND_BADGE,
     titel: bestandTitel(m.speicherWertBasis ?? null, num(m.speicherWertCtKwh ?? null)),
     deltaKwh: delta,
+    wertEur: wert,
+  };
+}
+
+/**
+ * Die Tages-Bestandszeile nach Definition A: was der gesteuerte Speicher am
+ * Stichtag MEHR (Vorsprung) oder WENIGER (Rückstand) hat als der
+ * Vergleichsspeicher. Die Richtung steht im Wort, der Planwert bleibt ohne
+ * Vorzeichen und mit „Kein Abzug" — er geht in keine gemessene Zahl ein.
+ */
+function vorsprungZeile(m: BestandEingabe, kwh: number, now: Date): BestandZeile | null {
+  if (Math.abs(kwh) < BESTAND_KWH_TOTBAND) return null;
+  const menge = fmtNum(Math.abs(kwh), 'kWh');
+  const laeuft = zeitraumLaeuft(m.to, now);
+  const satz =
+    kwh > 0
+      ? `${menge} Vorsprung vor dem ${VERGLEICHSSPEICHER}`
+      : `${menge} Rückstand auf den ${VERGLEICHSSPEICHER}`;
+  const vergleich = num(m.vergleichSocEndKwh ?? null);
+  const erklaerung =
+    `${laeuft ? 'Gerade' : 'Am Tagesende'} ${menge} ${kwh > 0 ? 'mehr' : 'weniger'} im Speicher als beim ${VERGLEICHSSPEICHER}` +
+    (vergleich != null ? ` (dort ${fmtNum(vergleich, 'kWh')})` : '') +
+    ' — derselbe Speicher ohne smarte Steuerung, über Mitternacht weitergerechnet.';
+  const wert = num(m.speicherVorsprungEur ?? null);
+  if (wert == null) {
+    return { text: satz, badge: null, titel: erklaerung, deltaKwh: kwh, wertEur: null };
+  }
+  const absolut = Math.abs(wert);
+  const betrag =
+    absolut > 0 && absolut < BESTAND_EUR_TOTBAND ? `< 0,01${NBSP}€` : eurAmount(absolut);
+  const bewertung = bestandTitel(m.speicherWertBasis ?? null, num(m.speicherWertCtKwh ?? null));
+  return {
+    text: `${satz} · Planwert ${betrag}`,
+    badge: BESTAND_BADGE,
+    titel: [erklaerung, bewertung].filter(Boolean).join(' '),
+    deltaKwh: kwh,
     wertEur: wert,
   };
 }

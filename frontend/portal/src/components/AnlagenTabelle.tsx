@@ -72,6 +72,14 @@ function NetzZelle({ z }: { z: AnlagenZeile }) {
 
 function SpeicherZelle({ z }: { z: AnlagenZeile }) {
   if (z.ladestandPct == null) return <Strich />;
+  // Älter als ein Tag: datiert und ohne Balken — nie als aktuelle Zahl.
+  if (z.ladestandStand) {
+    return (
+      <span className="dim">
+        {fmtNum(z.ladestandPct, '', 0)} % {z.ladestandStand}
+      </span>
+    );
+  }
   return (
     <>
       <span className="vp-at-bar" aria-hidden="true">
@@ -83,11 +91,12 @@ function SpeicherZelle({ z }: { z: AnlagenZeile }) {
   );
 }
 
-function GeldZelle({ wert }: { wert: number | null }) {
+function GeldZelle({ wert, grund }: { wert: number | null; grund?: string | null }) {
   if (wert == null) return <Strich />;
   return (
     <>
       {signiertesGeld(wert)} <span className="u">€</span>
+      {grund && <span className="vp-at-grund">{grund}</span>}
     </>
   );
 }
@@ -105,7 +114,7 @@ function zelleFuer(s: SpaltenId, z: AnlagenZeile) {
     case 'netz-heute':
       return <NetzZelle z={z} />;
     case 'erloese':
-      return <GeldZelle wert={z.heuteEur} />;
+      return <GeldZelle wert={z.heuteEur} grund={z.heuteGrund} />;
     default:
       return <Strich />;
   }
@@ -280,7 +289,9 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau }: Anlag
         const auf = offen === z.id;
         const nums: { id: SpaltenId; label: string }[] = [];
         if (zeigt.has('pv-jetzt') && z.pvJetztKw != null) nums.push({ id: 'pv-jetzt', label: 'PV jetzt' });
-        if (zeigt.has('speicher') && z.ladestandPct != null) nums.push({ id: 'speicher', label: 'Speicher' });
+        // Die Kachel zeigt „jetzt" — ein Ladestand von vor Wochen gehört nicht hinein.
+        if (zeigt.has('speicher') && z.ladestandPct != null && !z.ladestandStand)
+          nums.push({ id: 'speicher', label: 'Speicher' });
         if (zeigt.has('netz-heute') && z.netz) nums.push({ id: 'netz-heute', label: 'Netz jetzt' });
         return (
           <article key={z.id} className="vp-at-karte" onClick={() => onOeffnen(z.id)}>
@@ -336,6 +347,7 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau }: Anlag
                 <span className="vp-at-karte-heute">
                   {SPALTEN_KOPF.erloese.titel} {signiertesGeld(z.heuteEur)}{' '}
                   <span className="u">€</span>
+                  {z.heuteGrund && <span className="vp-at-grund">{z.heuteGrund}</span>}
                 </span>
               ) : (
                 <span />

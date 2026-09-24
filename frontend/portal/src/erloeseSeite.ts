@@ -107,6 +107,12 @@ export interface ErloesKennzahlenInput {
   vergleich: ErloesVergleich | null;
   /** Der volle Name der Vergleichsperiode („ganzer August") für laufende Zeiträume. */
   vergleichVoll: string | null;
+  /**
+   * Der Winter-Satz (`winterSatz()`, Konzept k1 E6 = A): an einem Zeitraum mit
+   * wenig Sonne sagt er statt des Vergleichs, was die Sonne gedeckt hat. Der
+   * Vergleich bleibt im ⓘ.
+   */
+  winterSatz?: string | null;
 }
 
 /** Die Unterzeile des Ergebnisses aus dem Vergleich — nie ein Prozent über einen laufenden Zeitraum. */
@@ -158,8 +164,8 @@ export function erloesKennzahlen(input: ErloesKennzahlenInput): GeldKennzahl[] {
       label: 'Ergebnis',
       wert: betrag(netto),
       ton: geldTon(netto),
-      unter: netto == null ? leerGrund : (v?.text ?? null),
-      pfeil: v?.pfeil ?? null,
+      unter: netto == null ? leerGrund : (input.winterSatz ?? v?.text ?? null),
+      pfeil: input.winterSatz ? null : (v?.pfeil ?? null),
       // Wie verglichen wurde, steht auf Abruf im ⓘ — nie als Absatz im Weg.
       info: {
         titel: 'Ergebnis',
@@ -272,9 +278,14 @@ function posten(
     (t) => t !== fmtNum(kwh, 'kWh') && t !== 'selbst genutzt' && !/kWh$/.test(t),
   );
   const warn = sek?.ton === 'warn';
-  const teile = [menge, preis ? `Ø ${preis}` : null, ...(warn ? [] : extra)].filter(
-    (t): t is string => !!t,
-  );
+  const teile = [
+    menge,
+    preis ? `Ø ${preis}` : null,
+    // Was der Eigenverbrauch wert ist, IST der vermiedene Bezug (Konzept k1
+    // §8, E6 = A) — im Winter oft der einzige Posten, den die Sonne trägt.
+    id === 'eigenverbrauch' && eurWert != null ? 'vermiedener Bezug' : null,
+    ...(warn ? [] : extra),
+  ].filter((t): t is string => !!t);
   return {
     id,
     name,
@@ -385,7 +396,11 @@ export function mehrwertBand(speicher: SpeicherAussage | null, range: HistoryRan
     titel,
     wert: s.wort,
     ton: speicher.anzeigeTon,
-    unter: speicher.zwischenstand ? `bisher ${richtung}` : richtung,
+    // Kein nacktes Minus (Konzept k1 E1): das Kurzwort des Grundes steht
+    // schon in der Kachel; Zahl und Anker trägt die Steuerungs-Karte.
+    unter: [speicher.zwischenstand ? `bisher ${richtung}` : richtung, speicher.grundKurz]
+      .filter(Boolean)
+      .join(' · '),
     info: [
       // Der Satz zur Zahl nur, wo er mehr sagt als Betrag + Unterzeile
       // (unter Null: warum ein Zwischenstand sinken kann).
