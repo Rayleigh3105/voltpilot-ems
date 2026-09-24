@@ -86,7 +86,12 @@ CGO_ENABLED=0 go run ./cmd/vp-ebyte-bench -ip 192.168.3.50 arm-watchdog -offline
 
 Belegt am echten M31-AXAX8080G-U (24.09.2026): Identität, Stapel 8/8
 bewiesen, alle 8 Relais einzeln EIN/AUS mit Rücklesen (FC5), gemeinsam per
-FC15, Adressen ≥ 8 abgelehnt, Watchdog-Auslösung nach Neustart. **Offen:** der
+FC15, Adressen ≥ 8 abgelehnt, Watchdog-Auslösung nach Neustart. Ende-zu-Ende
+über einen lokalen Stack dieses Stands (API → Cloud-MQTT → Box → M31):
+Verbindungstest mit allen 16 Kanälen, Anlegen als I/O-Modul, je ein
+Verbraucher an DO1–DO8, jeder Ausgang per Handeingriff einzeln EIN/AUS mit
+Rücklesen am Gerät; DO1 per Cloud EIN, Box gestoppt → das Modul hat DO1
+selbst abgeschaltet (Watchdog 60 s). **Offen:** der
 physische Nachweis der Eingänge (bislang nur „lesbar, alle 0" — es lag keine
 Spannung an) und Erweiterungsmodule (nur im Simulator
 `internal/ebyte/ebytesim`). Analog-/PT100-Module werden erkannt und benannt,
