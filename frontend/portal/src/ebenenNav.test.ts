@@ -636,6 +636,8 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       berichte: pageRoute('portfolio-berichte'),
       // AP-16 IP-6: die Seite steht; die Kachel nur mit Recht (`EbenenLesemodell.bewertung`).
       bewertung: pageRoute('portfolio-bewertung'),
+      // AP-18 IP-8: „Ziele und Maßnahmen“ — die Kachel nur mit Recht (`EbenenLesemodell.verbesserung`).
+      verbesserung: pageRoute('portfolio-verbesserung'),
     });
     // AP-13 IP-2: der Standort hat jede Seite; Kennzahlen und Berichte stehen als Seiten da, sind aber kein Bereich.
     expect(EBENEN_SEITEN(WERK, MESSKUNDE)).toEqual({

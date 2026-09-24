@@ -62,6 +62,7 @@ export function PortfolioTabs({
   showKennzahlen = false,
   showBerichte = false,
   showBewertung = false,
+  showVerbesserung = false,
   leiste = [],
   fleetLabel,
   onNavigate,
@@ -81,6 +82,8 @@ export function PortfolioTabs({
   showBerichte?: boolean;
   /** Ein Standort misst UND die Person darf Energieeinsätze sehen — der Bereich „Bewertung“ (AP-16 IP-6). */
   showBewertung?: boolean;
+  /** Ein Standort misst UND die Person darf `verbesserung.ansehen` — der Bereich „Ziele und Maßnahmen“ (AP-18 IP-8). */
+  showVerbesserung?: boolean;
   /** Die Bereiche, die die Telefon-Leiste dieser Ebene gerade trägt (leer = keine Leiste). */
   leiste?: readonly EbenenBereichId[];
   /** „Portfolio" beim Betreiber, „Meine Anlagen" beim Endkunden. */
@@ -105,7 +108,8 @@ export function PortfolioTabs({
       (p.id !== 'portfolio-bezugsgroessen' || showBezugsgroessen) &&
       (p.id !== 'portfolio-kennzahlen' || showKennzahlen || page === p.id) &&
       (p.id !== 'portfolio-berichte' || showBerichte || page === p.id) &&
-      (p.id !== 'portfolio-bewertung' || showBewertung || page === p.id),
+      (p.id !== 'portfolio-bewertung' || showBewertung || page === p.id) &&
+      (p.id !== 'portfolio-verbesserung' || showVerbesserung || page === p.id),
   );
   const bereichOffen = standortBereiche.some((b) => b.key === standortAktiv);
   const uebersichtOffen = page === 'portfolio' && !bereichOffen;

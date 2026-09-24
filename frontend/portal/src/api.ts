@@ -1,6 +1,6 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
-import type { BezugsbasisVergleich, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
+import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -2743,6 +2743,132 @@ export interface Kennzahl {
     freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
     vorlaeufig: boolean;
   } | null;
+}
+
+// ---------------------------------------------------------------------------------------- Energieziele (UEMS AP-18)
+
+export type EnergiezielZustand = 'offen' | 'bewertet' | 'beendet';
+export type EnergiezielErgebnis = 'erreicht' | 'verfehlt' | 'nicht_bewertbar';
+export type EnergiezielBewertungSchritt = 'bewerten' | 'beantragen' | 'freigeben' | 'ablehnen';
+
+/** Ein Energieziel (OpenAPI `Energieziel`, AP-18 IP-6/IP-7, Z1/Z2/Z5); `anstoesse` und `verlauf` nur am einzelnen Ziel. */
+export interface Energieziel {
+  id: string;
+  kennzeichen: string;
+  kennzahl: { id: string; kennzeichen: string; name: string };
+  bezugsbasis: { id: string; kennzeichen: string; fassung: number };
+  /** Dezimaltext mit einer Stelle, weniger Energie negativ. */
+  zielwert_prozent: string;
+  /** `JJJJ-MM/JJJJ-MM`. */
+  zielperiode: string;
+  wortlaut: string;
+  begruendung: string;
+  verantwortlich: { sub: string; name: string };
+  standort_id: string | null;
+  zustand: EnergiezielZustand;
+  angelegt_am: string;
+  beendet_zum: string | null;
+  beendet_grund: string | null;
+  ergebnis: EnergiezielErgebnis | null;
+  /** F1 (IP-7): beim Abruf vom Server abgeleitet — nie im Portal gerechnet. */
+  frist: EnergiezielFrist;
+  /** Z5 (IP-7): die Bewertung bzw. bei Vier-Augen der Antrag; ohne Bewertung `null`. */
+  bewertung: EnergiezielBewertung | null;
+  anstoesse: EnergiezielAnstoss[] | null;
+  verlauf: EnergiezielEintrag[] | null;
+}
+
+/** Z5 (OpenAPI `EnergiezielBewertung`): Kopie des Ziel-Stands zum Bewertungstag mit Prüfsumme, nie zurückgenommen. */
+export interface EnergiezielBewertung {
+  status: 'beantragt' | 'bewertet' | 'abgelehnt';
+  ergebnis: EnergiezielErgebnis;
+  begruendung: string;
+  /** Der Vorschlag des Lesers zum Bewertungstag — `null` bei unvollständiger Periode (Z4). */
+  vorschlag: 'erreicht' | 'nicht_erreicht' | null;
+  vieraugen: boolean;
+  /** Wer bewertet bzw. beantragt hat. */
+  person: { sub: string | null; name: string };
+  am: string;
+  /** Bei Vier-Augen die zweite Person, die bestätigt oder abgelehnt hat. */
+  entscheidung: { sub: string | null; name: string } | null;
+  entschieden_am: string | null;
+  entscheidungs_begruendung: string | null;
+  kopie: string;
+  pruefsumme: string;
+}
+
+/** F1 (OpenAPI `EnergiezielFrist`): Termin = letzter Tag der Zielperiode; fällig erst, wenn der letzte Monat endgültig ist. */
+export interface EnergiezielFrist {
+  termin: string;
+  faellig: 'bewertung_faellig' | null;
+  seit_tagen: number | null;
+}
+
+/** Ein Anstoß am Energieziel (Z5, `vorgang_anstoss`) — eine Person antwortet. */
+export interface EnergiezielAnstoss {
+  id: string;
+  art: 'ausgangslage_korrigiert' | 'bewertung_korrigiert' | 'messgrundlage_beendet' | 'messgrundlage_neu_gefasst';
+  anlass_kennung: string;
+  angestossen_am: string;
+  zustand: 'offen' | 'beantwortet';
+  antwort: 'bleibt' | 'neu_kopiert' | 'neu_bewertet' | null;
+  antwort_begruendung: string | null;
+}
+
+export interface EnergiezielEintrag {
+  art:
+    | 'energieziel_angelegt' | 'energieziel_geaendert' | 'verantwortlicher_geaendert' | 'bewertung_beantragt'
+    | 'bewertung_abgelehnt' | 'energieziel_bewertet' | 'energieziel_beendet' | 'anstoss_gesetzt' | 'anstoss_beantwortet';
+  alt: Record<string, unknown> | null;
+  neu: Record<string, unknown> | null;
+  begruendung: string | null;
+  person: string;
+  am: string;
+}
+
+export interface EnergiezielListe {
+  energieziele: Energieziel[];
+}
+
+export interface EnergiezielNeu {
+  kennzahl: string;
+  zielwert_prozent: number;
+  zielperiode: string;
+  wortlaut: string;
+  begruendung: string;
+  verantwortlich?: string;
+}
+
+export type EnergiezielNichtGezaehltGrund =
+  | 'basis_fehlt' | 'basis_beendet' | 'zu_wenig_perioden' | 'variable_fehlt' | 'variable_ausserhalb'
+  | 'periode_nicht_zu_ende' | 'keine_werte' | 'unvollstaendig';
+
+/** Der Ziel-Stand (OpenAPI `EnergiezielStand`, Z3/Z4) — alles vom Leser, das Portal rechnet nichts. */
+export interface EnergiezielStand {
+  energieziel: Energieziel;
+  abruf: string;
+  zielperiode: string;
+  zielwert_prozent: string;
+  monate: { periode: string; endgueltig: boolean; vergleich: BezugsbasisVergleichMonat }[];
+  monate_bewertbar: number;
+  monate_endgueltig: number;
+  monate_soll: number;
+  /** „x von y“. */
+  monate_text: string;
+  vollstaendig: boolean;
+  nicht_gezaehlt: { monat: string; grund: EnergiezielNichtGezaehltGrund }[];
+  summe: {
+    gemessen: string | null;
+    erwartet: string | null;
+    delta_prozent: string | null;
+    band_prozent: string | null;
+    richtung: 'mehr' | 'weniger' | 'gleich' | null;
+    urteil: 'besser' | 'schlechter' | 'im_rahmen' | 'nicht_anwendbar' | 'ohne_urteil';
+    kennzeichen: string[];
+  };
+  vorschlag: 'erreicht' | 'nicht_erreicht' | null;
+  satz: string | null;
+  vorschlag_satz: string | null;
 }
 
 // ---------------------------------------------------------------------------------------- Bezugsbasis (UEMS AP-17)
@@ -9738,6 +9864,30 @@ export const api = {
   /** AP-17 IP-17 (F4): beenden — `tag` ist der letzte eingeschlossene Tag, vor heute nur mit `rueckwirkend`. */
   bezugsbasisBeenden: (id: string, bid: string, body: { tag: string; grund: string; begruendung: string; rueckwirkend?: boolean }) =>
     request<BezugsbasisZustand>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
+  // ------------------------------------------------------------------ Energieziele (UEMS AP-18 IP-6/IP-7)
+  /** IP-6 (Z1): das Register — wahlweise einer Kennzahl oder eines Zustands; Recht `verbesserung.ansehen`. */
+  energieziele: (filter: { kennzahl?: string; zustand?: EnergiezielZustand } = {}) => {
+    const q = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => !!e[1])).toString();
+    return request<EnergiezielListe>(`/api/v1/energieziele${q ? `?${q}` : ''}`);
+  },
+  /** IP-6 (Z1/Z2): anlegen an einer Kennzahl mit freigegebener Bezugsbasis; Recht `verbesserung.verwalten`. */
+  energiezielAnlegen: (body: EnergiezielNeu) =>
+    request<Energieziel>('/api/v1/energieziele', { method: 'POST', body: JSON.stringify(body) }),
+  energieziel: (id: string) => request<Energieziel>(`/api/v1/energieziele/${id}`),
+  /** IP-6 (Z3/Z4): der Ziel-Stand — je Monat der Vergleich, Σ ÷ Σ, „x von y“, Vorschlag nur bei vollständiger Periode. */
+  energiezielStand: (id: string) => request<EnergiezielStand>(`/api/v1/energieziele/${id}/stand`),
+  /** IP-6 (Z5): vorzeitig beenden (Tag, Begründung 10–500) — endgültig, nie gelöscht. */
+  energiezielBeenden: (id: string, body: { zum?: string; begruendung: string }) =>
+    request<Energieziel>(`/api/v1/energieziele/${id}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * IP-7 (Z4/Z5, Muster Basis-Fassung AP-17 IP-8): `bewerten` setzt Ergebnis und Begründung (mit Vier-Augen 409
+   * `vieraugen_beantragen`), `beantragen` stellt den Antrag (ohne Vier-Augen 409 `vieraugen_aus`), `freigeben` (Begründung
+   * wahlfrei) und `ablehnen` entscheidet eine ZWEITE Person mit Rolle KA/EM; Recht `verbesserung.abschliessen`.
+   */
+  energiezielBewertung: (id: string, schritt: EnergiezielBewertungSchritt, body: { ergebnis?: EnergiezielErgebnis; begruendung?: string }) =>
+    request<Energieziel>(`/api/v1/energieziele/${id}/${schritt === 'bewerten' ? 'bewerten' : `bewertung/${schritt}`}`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
   kennzahlVariablenVorschlag: (id: string, referenzperiode?: string) =>
     request<VariablenVorschlag>(`/api/v1/kennzahlen/${id}/variablen-vorschlag` + (referenzperiode ? `?referenzperiode=${encodeURIComponent(referenzperiode)}` : '')),
   kennzahlFaktorenVorschlag: (id: string, stichtag?: string) =>

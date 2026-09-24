@@ -1,0 +1,341 @@
+/*
+ * „Ziele und Maßnahmen“ (UEMS AP-18 IP-8): Bereich, Register „Energieziele“, Energieziel-Seite und ihre Dialoge.
+ * Nur dieser Bereich — Klassen mit `vp-ez-`, damit nichts in Portfolio-Tabellen oder andere Welten greift.
+ * ⚠ 375 px: Tabellen werden unter 720 px zu Karten (`data-label` vor jedem Wert), Sätze brechen um, nichts läuft quer.
+ */
+
+.vp-ez {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-ez h1 {
+  margin: 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+  overflow-wrap: anywhere;
+}
+
+.vp-ez h2 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-ez p {
+  margin: 0;
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-ez-zurueck {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-weight: var(--vp-c-fw-600);
+  cursor: pointer;
+}
+
+.vp-ez-kopf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-ez-kopf-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-ez-herkunft {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--vp-c-space-3);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ez-sprung {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.vp-ez-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-ez-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-ez-leise,
+.vp-ez .vp-ez-leise {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ez-satz {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-ez-vorschlag,
+.vp-ez-frist {
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  border-left: 3px solid var(--vp-c-primary);
+  background: var(--vp-c-muted);
+  overflow-wrap: anywhere;
+}
+
+.vp-ez-frist {
+  border-left-color: var(--vp-c-warn-fg);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-ez-abweichung {
+  margin: 0;
+  color: var(--vp-c-warn-fg);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-ez-grenze {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-ez-pruefsumme {
+  font-family: ui-monospace, monospace;
+  font-size: var(--vp-c-fs-12);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ Tabellen (Register, Monate) */
+
+.vp-ez-tafel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ez-tafel th,
+.vp-ez-tafel td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vp-c-border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.vp-ez-tafel thead th {
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+}
+
+.vp-ez-tafel .vp-ez-zahl {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-ez-tafel tr.vp-ez-summe th,
+.vp-ez-tafel tr.vp-ez-summe td {
+  border-top: 2px solid var(--vp-c-fg);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-ez-tafel tr.vp-ez-offen td,
+.vp-ez-tafel tr.vp-ez-aus td {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-ez-zeile-knopf {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-weight: var(--vp-c-fw-700);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-ez-unter {
+  display: block;
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-400);
+}
+
+@media (max-width: 719px) {
+  .vp-ez-tafel,
+  .vp-ez-tafel tbody,
+  .vp-ez-tafel tr,
+  .vp-ez-tafel th,
+  .vp-ez-tafel td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .vp-ez-tafel thead {
+    display: none;
+  }
+
+  .vp-ez-tafel tr {
+    padding: var(--vp-c-space-2) 0;
+    border-bottom: 1px solid var(--vp-c-border);
+  }
+
+  .vp-ez-tafel th,
+  .vp-ez-tafel td {
+    padding: 4px 0;
+    border: 0;
+  }
+
+  .vp-ez-tafel .vp-ez-zahl {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .vp-ez-tafel td[data-label]::before {
+    content: attr(data-label) ': ';
+    color: var(--vp-c-muted-fg);
+    font-weight: var(--vp-c-fw-600);
+  }
+
+  .vp-ez-tafel tr.vp-ez-summe th,
+  .vp-ez-tafel tr.vp-ez-summe td {
+    border-top: 0;
+  }
+
+  .vp-ez-tafel tr.vp-ez-summe {
+    border-top: 2px solid var(--vp-c-fg);
+  }
+}
+
+/* ------------------------------------------------------------------ Verlauf */
+
+.vp-ez-verlauf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding-left: 22px;
+}
+
+.vp-ez-verlauf li p {
+  margin: 0 0 2px;
+}
+
+/* ------------------------------------------------------------------ Dialoge */
+
+.vp-ez-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-ez-form p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ez-kennzahl {
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-ez-basis {
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ez-periode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-ez-periode legend {
+  margin-bottom: var(--vp-c-space-2);
+  padding: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-ez-feld {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vp-ez-label {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-ez-feld textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--vp-c-field-border, var(--vp-c-border));
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+.vp-ez-feld textarea:focus {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 2px;
+}
+
+.vp-ez-fehler {
+  margin: 0;
+  color: var(--vp-c-destructive);
+  font-size: var(--vp-c-fs-14);
+}

@@ -1855,6 +1855,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/PortfolioCockpit.tsx', // alt
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
+  'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
@@ -2733,7 +2734,13 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
    * es keine, der Block greift ab der ersten, ohne dass jemand an ihn denken muss. Die Wörter aus AP-14 S1 und AP-17
    * SP2 prüfen deren Blöcke auf jeder Kundenfläche; dieser Block ergänzt sie, er öffnet sie nicht.
    */
-  const VERBESSERUNG_FLAECHEN: string[] = [];
+  const VERBESSERUNG_FLAECHEN: string[] = [
+    // IP-8: Bereich, Register „Energieziele“, Energieziel-Seite und ihre Dialoge (samt „Energieziel setzen“).
+    'pages/VerbesserungBereich.tsx',
+    'pages/EnergiezielSeite.tsx',
+    'components/EnergiezieleRegister.tsx',
+    'components/EnergiezielDialoge.tsx',
+  ];
   const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
   const verbesserungFlaechen = () => [
     ...new Set([

@@ -50,7 +50,7 @@ import {
   type Route,
 } from './nav';
 import type { AnlageSurface, DeepViewId } from './surface';
-import { UEMS_ENERGIEBILANZ } from './glossar';
+import { UEMS_ENERGIEBILANZ, UEMS_ZIELE_UND_MASSNAHMEN } from './glossar';
 import type { FunktionZustand } from './uemsFunktion';
 
 /**
@@ -465,7 +465,8 @@ export type EbenenBereichId =
   | 'bezugsgroessen'
   | 'kennzahlen'
   | 'berichte'
-  | 'bewertung';
+  | 'bewertung'
+  | 'verbesserung';
 
 export interface EbenenBereich {
   key: EbenenBereichId;
@@ -498,6 +499,11 @@ export interface EbenenLesemodell {
    * oder an einem Standort)? Fehlt der Wert, gibt es den Bereich „Bewertung“ nicht — unbekannt ist nie „ja“.
    */
   bewertung?: boolean | null;
+  /**
+   * UEMS AP-18 IP-8: darf die Person Energieziele, Maßnahmen und Abweichungen ansehen (`verbesserung.ansehen` aus
+   * `/me`, am Unternehmen oder an einem Standort)? Fehlt der Wert, gibt es den Bereich „Ziele und Maßnahmen“ nicht.
+   */
+  verbesserung?: boolean | null;
 }
 
 const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
@@ -512,6 +518,7 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   kennzahlen: { key: 'kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
   berichte: { key: 'berichte', label: 'Berichte', icon: 'file-text' },
   bewertung: { key: 'bewertung', label: 'Bewertung', icon: 'list' },
+  verbesserung: { key: 'verbesserung', label: UEMS_ZIELE_UND_MASSNAHMEN, icon: 'list' },
 };
 
 /** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
@@ -543,7 +550,8 @@ const lebenderStandort = (lm: EbenenLesemodell, standortId: string) =>
  * - Unternehmen: Übersicht immer · Standorte ab 2 Standorten · Messstellen und
  *   Bezugsgrößen und Berichte, sobald ein Standort misst · Kennzahlen, sobald ein Standort misst
  *   UND es eine Kennzahl gibt · Bewertung, sobald ein Standort misst UND die Person
- *   Energieeinsätze sehen darf (AP-16 IP-6).
+ *   Energieeinsätze sehen darf (AP-16 IP-6) · Ziele und Maßnahmen nach derselben Regel mit
+ *   `verbesserung.ansehen` (AP-18 IP-8).
  * - Standort: Übersicht immer · Boxen und Messstellen, wenn DIESER Standort
  *   misst · Gebäude ab 1 Gebäude · Anlagen ab 2 Anlagen.
  *
@@ -563,6 +571,8 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
     if (irgendwoGemessen) out.push('berichte');
     // AP-16 IP-6 (§5.1/§6.3): „Bewertung“ nach der Berichte-Regel — und nur, wer Energieeinsätze sehen darf.
     if (irgendwoGemessen && lm.bewertung === true) out.push('bewertung');
+    // AP-18 IP-8 (§6.3): „Ziele und Maßnahmen“ neben Kennzahlen, Berichte, Bewertung — nur mit `verbesserung.ansehen`.
+    if (irgendwoGemessen && lm.verbesserung === true) out.push('verbesserung');
   } else {
     const standort = lebenderStandort(lm, ort.standortId);
     if (standort) {
@@ -608,6 +618,7 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
         kennzahlen: pageRoute('portfolio-kennzahlen'),
         berichte: pageRoute('portfolio-berichte'),
         bewertung: pageRoute('portfolio-bewertung'),
+        verbesserung: pageRoute('portfolio-verbesserung'),
       }
     : {
         uebersicht: standortRoute(ort.standortId),
@@ -751,6 +762,7 @@ export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBerei
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';
   if (page === 'portfolio-berichte') return 'berichte';
   if (page === 'portfolio-bewertung') return 'bewertung';
+  if (page === 'portfolio-verbesserung') return 'verbesserung';
   return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;
 }
 

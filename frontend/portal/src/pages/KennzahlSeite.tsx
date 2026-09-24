@@ -6,6 +6,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Kennzahl, type KennzahlFassung, type KennzahlPeriodeArt, type KennzahlWerte } from '../api';
 import { BezugsbasisVergleich } from '../components/BezugsbasisVergleich';
 import { BezugsbasisReiter, BezugsbasisZeile, useBezugsbasis } from '../components/BezugsbasisReiter';
+import { EnergiezielSetzen } from '../components/EnergiezielDialoge';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import '../components/BereichTabs.css';
 import { DangerZone } from '../components/DangerZone';
@@ -234,6 +235,8 @@ export function KennzahlSeite({
           {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
         </p>
         {bbAn && <BezugsbasisZeile lage={bbLage} einheit={k.einheit_anzeige} />}
+        {/* UEMS AP-18 IP-8 (§5.1): „Energieziel setzen“ nur an einer Energieleistungskennzahl (freigegebene Basis). */}
+        {bbAn && <EnergiezielSetzen kennzahl={k} lage={bbLage} />}
         {archiviertSatz && (
           <p className="vp-kz-leise" data-testid="kennzahl-archiviert">
             {archiviertSatz}

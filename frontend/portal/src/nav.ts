@@ -27,6 +27,7 @@ export type PageId =
   | 'portfolio-kennzahlen'
   | 'portfolio-berichte'
   | 'portfolio-bewertung'
+  | 'portfolio-verbesserung'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
   | 'standort'
@@ -155,6 +156,13 @@ export interface Route {
    */
   energieeinsatzId?: string;
   /**
+   * Nur bei `page === 'portfolio-verbesserung'` (UEMS AP-18 IP-8): der Reiter des Bereichs „Ziele und Maßnahmen“
+   * (`#/portfolio/verbesserung/massnahmen` · `…/abweichungen`; absent = Energieziele) und WELCHES Energieziel die Seite
+   * zeigt (`#/portfolio/verbesserung/energieziele/{id}`).
+   */
+  verbesserungReiter?: VerbesserungReiter;
+  energiezielId?: string;
+  /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
    * AP-04 IP-8, `#/portfolio/messstellen/{id}` bzw. `#/standort/{sid}/messstellen/{id}`).
@@ -256,6 +264,9 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (`#/portfolio/bewertung`, ein Energieeinsatz unter
   // `…/bewertung/{id}`). Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showBewertung`).
   { id: 'portfolio-bewertung', label: 'Bewertung', icon: 'list' },
+  // UEMS AP-18 IP-8: „Unternehmen › Ziele und Maßnahmen“ (`#/portfolio/verbesserung`, ein Energieziel unter
+  // `…/verbesserung/energieziele/{id}`). Der Reiter steht nur mit `verbesserung.ansehen` (`PortfolioTabs.showVerbesserung`).
+  { id: 'portfolio-verbesserung', label: 'Ziele und Maßnahmen', icon: 'list' },
   { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
@@ -638,6 +649,11 @@ export function parseRoute(hash: string): Route {
     if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'bewertung' && segments[2]) return energieeinsatzRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'verbesserung') {
+      if (segments[2] === 'energieziele' && segments[3]) return energiezielRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'massnahmen' || segments[2] === 'abweichungen') return verbesserungRoute(segments[2]);
+      return verbesserungRoute();
+    }
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
@@ -756,7 +772,15 @@ export function hashForRoute(route: Route): string {
     const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
     const einsatz =
       route.page === 'portfolio-bewertung' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}`;
+    const verbesserung =
+      route.page !== 'portfolio-verbesserung'
+        ? ''
+        : route.energiezielId
+          ? `/energieziele/${encodeURIComponent(route.energiezielId)}`
+          : route.verbesserungReiter && route.verbesserungReiter !== 'energieziele'
+            ? `/${route.verbesserungReiter}`
+            : '';
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
@@ -802,6 +826,19 @@ export function kennzahlRoute(kennzahlId: string, standortId?: string | null): R
   return standortId
     ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId }
     : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
+}
+
+/** Die drei Reiter des Bereichs „Ziele und Maßnahmen“ (UEMS AP-18 IP-8, §6.3). */
+export type VerbesserungReiter = 'energieziele' | 'massnahmen' | 'abweichungen';
+
+/** Route des Bereichs „Ziele und Maßnahmen“ (UEMS AP-18 IP-8): `#/portfolio/verbesserung[/massnahmen|/abweichungen]`. */
+export function verbesserungRoute(reiter: VerbesserungReiter = 'energieziele'): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, ...(reiter === 'energieziele' ? {} : { verbesserungReiter: reiter }) };
+}
+
+/** Route der Seite eines Energieziels (UEMS AP-18 IP-8): `#/portfolio/verbesserung/energieziele/{id}` — nur am Unternehmen. */
+export function energiezielRoute(energiezielId: string): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, energiezielId };
 }
 
 /** Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6): `#/portfolio/bewertung/{id}` — nur am Unternehmen. */
