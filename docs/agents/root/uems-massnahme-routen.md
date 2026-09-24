@@ -2,7 +2,7 @@
 
 Neu am 24.09.2026: `MassnahmeController` → `uems/MassnahmeService`, DTO `web/dto/MassnahmeDto`, Ablehnungen
 `VerbesserungAbgelehnt`. Keine Migration (Tabellen und Trigger: [Datenhaltung](uems-verbesserung-datenhaltung.md) IP-9),
-keine Fläche (IP-13), keine Bewertung (IP-12). Die Wirkung (IP-11) steht im Abschnitt unten. OpenAPI `/api/v1/massnahmen…`.
+keine Fläche (IP-13). Die Wirkung (IP-11) und die Bewertung (IP-12) stehen in den Abschnitten unten. OpenAPI `/api/v1/massnahmen…`.
 
 | Route | Recht | Was |
 |---|---|---|
@@ -36,3 +36,29 @@ aus dem Eingang, 228 600–375 100 kg); der Monatssatz des Vergleich-Lesers nenn
 Medium der Zähler-Messstellen, bei keinem oder mehreren „Energie“. ⚠ Der Summensatz nutzt `wirkung_vorlaeufig` auch
 nach zwölf Monaten (die Schablone trägt kein „vorläufig“; das sagt das Feld). Nachweis: `MassnahmeApiTest`
 (`r5r6WirkungNachDerUmsetzung`, `wk4BasisNachDerUmsetzung`, `wirkungOhneMessgrundlageVorDerUmsetzungUndZaun`).
+
+## Bewerten: Stand Nr. n (AP-18 IP-12, WK6)
+
+`uems/MassnahmeBewertung` (eigene Klasse: `MassnahmeWirkung` hängt an `MassnahmeService`), DTO `MassnahmeDto.Bewertung`,
+keine Migration (Tabelle `massnahme_bewertung` mit Triggern aus IP-9). Form und Fehlerwörter wie das Energieziel (IP-7).
+
+| Route | Recht | Was |
+|---|---|---|
+| `GET …/{id}/bewertungen` | ansehen (Kommentar) | alle Stände nach Nr., auch beantragte und abgelehnte |
+| `POST …/{id}/bewertungen` | `@Recht verbesserung.abschliessen`, DIENST | nur `umgesetzt`/`bewertet` (409 `massnahme_nicht_umgesetzt`); `belegt · nicht_belegt · nicht_messbar` + Begründung 10–500 (422 `begruendung_fehlt`); ohne Messgrundlage nur `nicht_messbar` (422 `ohne_messgrundlage`, Stand ohne Kopie); 201 mit der Maßnahme, Zustand `bewertet`, Protokoll `massnahme_bewertet`; ein weiterer Stand ist Nr. n + 1 |
+| `POST …/bewertungen/beantragen` · `…/freigeben` · `…/ablehnen` | ebenso | Vier-Augen nach `unternehmen.vieraugen_freigabe`: `vieraugen_beantragen`/`vieraugen_aus` (409), offener Antrag 409 `bewertung_beantragt`, ohne Antrag 409 `bewertung_nicht_beantragt`; die zweite Person nie der Urheber (422 `vieraugen_urheber`), nie der Verantwortliche der Maßnahme (422 `vieraugen_verantwortlich`), Rolle KA/EM (403 `vieraugen_rolle`); Ablehnung mit Begründung behält die Nr. |
+
+`GET …/{id}` und das Register tragen `bewertung` (jüngster BEWERTETER Stand, sonst `null` — die Fläche sagt dann
+„beobachtet — nicht belegt“, Satz `bewertung_offen`) und `bewertung_antrag` (offener Antrag oder `null`); `satz` des
+Stands ist `bewertung_belegt` bzw. `bewertung_nicht_messbar` (§5.9 hat keinen für `nicht_belegt`).
+
+⚠ **Die Kopie ist NICHT die Leser-Antwort** (die trägt `massnahme.frist` und ist nicht tagesstabil), sondern die Form der
+Referenzdatei 1.9 `massnahmen[].bewertungen[].kopie`: Anker, `umgesetzt_am`, `nachher`, `abruf` (= Bewertungstag), je
+ENDGÜLTIGEM Nachher-Monat (ohne Umsetzungsmonat) `version`, die Einflussgröße unter ihrer Einheit (`kg`), `kwh`,
+`erwartet_kwh` (ganz), `delta_prozent`, `urteil`, `grund`, dazu `wirkung` (Σ ÷ Σ, `monate_gesamt` = endgültige
+Nachher-Monate, Ausschlüsse ohne Umsetzungsmonat) und `erwartete_wirkung_prozent`. R6 trifft deren Prüfsumme
+`sha256:4635…` byte-gleich; wer die Form ändert, bricht R6. ⚠ `massnahme.zustand = 'bewertet'` erst NACH dem bewerteten
+Stand (Trigger `massnahme_bewertet_mit_stand`). ⚠ Nicht gebaut: neuer Stand nach einem Anstoß (`neu_bewertet`, IP-17),
+die Fläche (IP-20). Nachweis: `MassnahmeApiTest` (`r6StandNr1BelegtMitPruefsummeUndNr2`,
+`r7OhneMessgrundlageNurNichtMessbarRechtUndZaun`, `vierAugenNichtDerUrheberNichtDerVerantwortliche`),
+`MassnahmeSchnittstelleVertragTest`, Zeilen in `RechtMatrixApiTest`, `RechtRoutenArchitekturTest.DIENST`.

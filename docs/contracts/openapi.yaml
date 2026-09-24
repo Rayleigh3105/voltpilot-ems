@@ -12339,6 +12339,154 @@ paths:
         "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/bewertungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Alle Stände der Bewertung - Stand Nr. 1 … n, auch beantragte und abgelehnte.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-12, WK6). Jeder Stand mit Ergebnis, Begründung, Person, Tag,
+        Vier-Augen-Entscheid, Kopie der Wirkung (kanonischer Text) und Prüfsumme; nie zurückgenommen. Zaun wie die
+        Maßnahme - außerhalb 404.
+      responses:
+        "200":
+          description: Die Stände nach Nr.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MassnahmeBewertungen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+    post:
+      tags: [kennzahlen]
+      summary: Bewertet die umgesetzte Maßnahme - Stand Nr. n mit Kopie der Wirkung und Prüfsumme.
+      description: >
+        Recht `verbesserung.abschliessen` (WK6, E6 = A). Nur umgesetzt oder bewertet (sonst 409
+        `massnahme_nicht_umgesetzt`); `begruendung` 10–500 Zeichen (422 `begruendung_fehlt`). Die Kopie ist die Wirkung
+        (`GET …/wirkung`, 12 Monate) zum Bewertungstag in der Form der Referenzdatei 1.9 (`bewertungen[].kopie`),
+        kanonisch mit `sha256:`-Prüfsumme; ohne Messgrundlage keine Kopie und nur `nicht_messbar` (422
+        `ohne_messgrundlage`). Mit Vier-Augen-Freigabe des Unternehmens 409 `vieraugen_beantragen`; ein offener Antrag
+        409 `bewertung_beantragt`. Ein weiterer Stand ist Nr. n + 1, der alte bleibt. Zustand `bewertet`; Protokoll
+        `massnahme_bewertet`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ergebnis, begruendung]
+              properties:
+                ergebnis: { type: string, enum: [belegt, nicht_belegt, nicht_messbar] }
+                begruendung: { type: string, minLength: 10, maxLength: 500, description: "bei `belegt`: was die Person weiß und die Zahl nicht zeigt (WK6)" }
+      responses:
+        "201":
+          description: Bewertet; die Maßnahme mit dem Stand in `bewertung`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/bewertungen/beantragen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Beantragt die Bewertung (Vier-Augen) - eine zweite Person bestätigt oder lehnt ab.
+      description: >
+        Recht `verbesserung.abschliessen` (WK6). Wie `POST …/bewertungen`, aber als Antrag Nr. n (`bewertung_antrag`);
+        ohne Vier-Augen-Freigabe 409 `vieraugen_aus`, ein offener Antrag 409 `bewertung_beantragt`. Protokoll
+        `bewertung_beantragt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ergebnis, begruendung]
+              properties:
+                ergebnis: { type: string, enum: [belegt, nicht_belegt, nicht_messbar] }
+                begruendung: { type: string, minLength: 10, maxLength: 500, description: "bei `belegt`: was die Person weiß und die Zahl nicht zeigt (WK6)" }
+      responses:
+        "201":
+          description: Beantragt; die Maßnahme mit dem Antrag in `bewertung_antrag`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/bewertungen/freigeben:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Die zweite Person bestätigt den Antrag - die Maßnahme ist bewertet.
+      description: >
+        Recht `verbesserung.abschliessen` (WK6, §5.7). Wer beantragt hat, 422 `vieraugen_urheber`; der Verantwortliche
+        der Maßnahme 422 `vieraugen_verantwortlich`; nicht Kundenadministrator oder Energiemanager 403
+        `vieraugen_rolle`; ohne Antrag 409 `bewertung_nicht_beantragt`. Ergebnis, Kopie und Prüfsumme bleiben die des
+        Antrags. Protokoll `massnahme_bewertet`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Bestätigt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/bewertungen/ablehnen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Die zweite Person lehnt den Antrag mit Begründung ab - er behält seine Nr.
+      description: >
+        Recht `verbesserung.abschliessen` (WK6). Dieselben Prüfungen wie `freigeben`; `begruendung` Pflicht. Danach
+        darf ein neuer Antrag kommen (Nr. n + 1). Protokoll `bewertung_abgelehnt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Abgelehnt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/massnahmen/{id}/verantwortlicher:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -28237,7 +28385,7 @@ components:
       description: >
         Eine Maßnahme (UEMS AP-18 IP-10, M1–M4, M6); `messgrundlage` oder `ohne_messgrundlage` ist gesetzt, nie beide;
         `frist` über die Operation `frist` beim Abruf; `kopf_satz` erst ab umgesetzt; `verlauf` nur an der einzelnen.
-      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, verlauf]
+      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, verlauf]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^M-[0-9]{4}-[0-9]{4,9}$" }
@@ -28284,10 +28432,50 @@ components:
             seit_tagen: { type: integer, nullable: true }
             satz: { type: string, nullable: true, description: "Kundensatz `ueberfaellig` (§5.9)" }
         kopf_satz: { type: string, nullable: true, description: "Kundensatz `massnahme_kopf` (§5.9)" }
+        bewertung: { $ref: "#/components/schemas/MassnahmeBewertung", description: "der jüngste bewertete Stand; null ohne Stand (die Fläche sagt „beobachtet — nicht belegt“)" }
+        bewertung_antrag: { $ref: "#/components/schemas/MassnahmeBewertung", description: "der offene Antrag (Vier-Augen) oder null" }
         verlauf:
           type: array
           nullable: true
           items: { $ref: "#/components/schemas/MassnahmeEintrag" }
+    MassnahmeBewertung:
+      type: object
+      nullable: true
+      description: >
+        Ein Stand Nr. n der Bewertung (IP-12, WK6) - nie zurückgenommen. `kopie` ist der kanonische Text der Wirkung
+        zum Bewertungstag (ohne Messgrundlage null), `pruefsumme` sein sha256; `person`/`am` wer bewertet bzw.
+        beantragt hat, bei Vier-Augen `entscheidung` die zweite Person; `satz` der Kundensatz `bewertung_belegt` bzw.
+        `bewertung_nicht_messbar` (§5.9) an einem bewerteten Stand, sonst null.
+      required: [stand_nr, status, ergebnis, begruendung, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme, satz]
+      properties:
+        stand_nr: { type: integer, minimum: 1 }
+        status: { type: string, enum: [beantragt, bewertet, abgelehnt] }
+        ergebnis: { type: string, enum: [belegt, nicht_belegt, nicht_messbar] }
+        begruendung: { type: string }
+        vieraugen: { type: boolean }
+        person:
+          type: object
+          required: [sub, name]
+          properties: { sub: { type: string, nullable: true }, name: { type: string } }
+        am: { type: string, format: date-time }
+        entscheidung:
+          type: object
+          nullable: true
+          required: [sub, name]
+          properties: { sub: { type: string, nullable: true }, name: { type: string } }
+        entschieden_am: { type: string, format: date-time, nullable: true }
+        entscheidungs_begruendung: { type: string, nullable: true }
+        kopie: { type: string, nullable: true }
+        pruefsumme: { type: string, nullable: true, pattern: "^sha256:[0-9a-f]{64}$" }
+        satz: { type: string, nullable: true }
+    MassnahmeBewertungen:
+      type: object
+      required: [id, kennzeichen, zustand, bewertungen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        zustand: { type: string, enum: [geplant, umgesetzt, bewertet, verworfen] }
+        bewertungen: { type: array, items: { $ref: "#/components/schemas/MassnahmeBewertung" } }
     MassnahmeVerweis:
       type: object
       nullable: true

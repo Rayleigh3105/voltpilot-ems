@@ -50,6 +50,17 @@ public final class MassnahmeDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record NeuerEintrag(String art, String text) {}
 
+    /**
+     * {@code POST …/{id}/bewertungen} und {@code …/bewertungen/beantragen} (IP-12, WK6): Ergebnis
+     * {@code belegt · nicht_belegt · nicht_messbar} und Begründung (10–500 Zeichen).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Bewerten(String ergebnis, String begruendung) {}
+
+    /** {@code …/bewertungen/freigeben} (Begründung wahlfrei) und {@code …/bewertungen/ablehnen} (Begründung Pflicht). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Entscheid(String begruendung) {}
+
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Verweis(UUID id, String kennzeichen, String name) {}
@@ -94,7 +105,24 @@ public final class MassnahmeDto {
             OhneMessgrundlage ohneMessgrundlage, Verweis einsatz, Integer einstufungFassung, Verweis energieziel,
             String erwarteteWirkungProzent, String erwarteteWirkungWortlaut, LocalDate angelegtAm,
             LocalDate umgesetztAm, String umgesetztBegruendung, Instant verworfenAm, String verworfenGrund,
-            Frist frist, String kopfSatz, List<Eintrag> verlauf) {}
+            Frist frist, String kopfSatz, Bewertung bewertung, Bewertung bewertungAntrag, List<Eintrag> verlauf) {}
+
+    /**
+     * Ein Stand Nr. n der Bewertung (IP-12, WK6): das Wort einer Person mit Begründung, nie zurückgenommen.
+     * {@code kopie} ist der kanonische Text der Wirkung zum Bewertungstag (ohne Messgrundlage {@code null}),
+     * {@code pruefsumme} sein {@code sha256:}; {@code person}/{@code am} wer bewertet bzw. beantragt hat, bei Vier-Augen
+     * {@code entscheidung} die zweite Person; {@code satz} der Kundensatz aus §5.9, sonst {@code null}.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Bewertung(int standNr, String status, String ergebnis, String begruendung, boolean vieraugen,
+            Person person, Instant am, Person entscheidung, Instant entschiedenAm, String entscheidungsBegruendung,
+            String kopie, String pruefsumme, String satz) {}
+
+    /** {@code GET …/{id}/bewertungen}: alle Stände der Maßnahme nach Nr., auch beantragte und abgelehnte. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Bewertungen(UUID id, String kennzeichen, String zustand, List<Bewertung> bewertungen) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)

@@ -50,12 +50,18 @@ class MassnahmeSchnittstelleVertragTest {
     @Test
     @SuppressWarnings("unchecked")
     void dieFormenSindDieDesDto() throws Exception {
-        Map<String, Class<? extends Record>> formen = Map.of("Massnahme", MassnahmeDto.Massnahme.class,
-                "MassnahmeEintrag", MassnahmeDto.Eintrag.class, "MassnahmeListe", MassnahmeDto.Liste.class,
-                "MassnahmeMessgrundlage", MassnahmeDto.Messgrundlage.class, "MassnahmeVerweis",
-                MassnahmeDto.Verweis.class, "MassnahmeWirkung", MassnahmeDto.Wirkung.class, "MassnahmeWirkungMonat",
-                MassnahmeDto.WirkungMonat.class, "MassnahmeWirkungAusschluss", MassnahmeDto.WirkungAusschluss.class,
-                "MassnahmeWirkungSumme", MassnahmeDto.WirkungSumme.class);
+        Map<String, Class<? extends Record>> formen = Map.ofEntries(
+                Map.entry("Massnahme", MassnahmeDto.Massnahme.class),
+                Map.entry("MassnahmeEintrag", MassnahmeDto.Eintrag.class),
+                Map.entry("MassnahmeListe", MassnahmeDto.Liste.class),
+                Map.entry("MassnahmeMessgrundlage", MassnahmeDto.Messgrundlage.class),
+                Map.entry("MassnahmeVerweis", MassnahmeDto.Verweis.class),
+                Map.entry("MassnahmeWirkung", MassnahmeDto.Wirkung.class),
+                Map.entry("MassnahmeWirkungMonat", MassnahmeDto.WirkungMonat.class),
+                Map.entry("MassnahmeWirkungAusschluss", MassnahmeDto.WirkungAusschluss.class),
+                Map.entry("MassnahmeWirkungSumme", MassnahmeDto.WirkungSumme.class),
+                Map.entry("MassnahmeBewertung", MassnahmeDto.Bewertung.class),
+                Map.entry("MassnahmeBewertungen", MassnahmeDto.Bewertungen.class));
         for (var f : formen.entrySet()) {
             Map<String, Object> s = schema(f.getKey());
             assertThat(s).as(f.getKey()).isNotNull();
@@ -78,7 +84,11 @@ class MassnahmeSchnittstelleVertragTest {
                 "/api/v1/massnahmen/{id}/verantwortlicher put", MassnahmeDto.Verantwortlicher.class,
                 "/api/v1/massnahmen/{id}/umgesetzt post", MassnahmeDto.Umgesetzt.class,
                 "/api/v1/massnahmen/{id}/verwerfen post", MassnahmeDto.Verwerfen.class,
-                "/api/v1/massnahmen/{id}/eintraege post", MassnahmeDto.NeuerEintrag.class);
+                "/api/v1/massnahmen/{id}/eintraege post", MassnahmeDto.NeuerEintrag.class,
+                "/api/v1/massnahmen/{id}/bewertungen post", MassnahmeDto.Bewerten.class,
+                "/api/v1/massnahmen/{id}/bewertungen/beantragen post", MassnahmeDto.Bewerten.class,
+                "/api/v1/massnahmen/{id}/bewertungen/freigeben post", MassnahmeDto.Entscheid.class,
+                "/api/v1/massnahmen/{id}/bewertungen/ablehnen post", MassnahmeDto.Entscheid.class);
         for (var k : koerper.entrySet()) {
             String[] pm = k.getKey().split(" ");
             Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) pfade.get(pm[0])).get(pm[1]);
@@ -122,6 +132,20 @@ class MassnahmeSchnittstelleVertragTest {
         assertThat(s.get("minimum")).isEqualTo(VerbesserungRegeln.STARTWERTE.nachher_monate());
         assertThat(s.get("default")).isEqualTo(VerbesserungRegeln.STARTWERTE.nachher_monate());
         assertThat(s.get("maximum")).isEqualTo(VerbesserungRegeln.STARTWERTE.nachher_monate_hoechstens());
+    }
+
+    /** IP-12: das Ergebnis eines Stands ist genau {@code wirkung_ergebnis}; der Status die Wörter der Tabelle (IP-9). */
+    @Test
+    @SuppressWarnings("unchecked")
+    void dieBewertungSprichtDieWoerterDesVertrags() throws Exception {
+        Map<String, Object> s = schema("MassnahmeBewertung");
+        assertThat(aufzaehlung(s, "ergebnis")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("wirkung_ergebnis"));
+        assertThat(aufzaehlung(s, "status")).containsExactly("beantragt", "bewertet", "abgelehnt");
+        Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) api().get("paths"))
+                .get("/api/v1/massnahmen/{id}/bewertungen")).get("post");
+        Map<String, Object> body = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) ((Map<String,
+                Object>) op.get("requestBody")).get("content")).get("application/json")).get("schema");
+        assertThat(aufzaehlung(body, "ergebnis")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("wirkung_ergebnis"));
     }
 
     @Test

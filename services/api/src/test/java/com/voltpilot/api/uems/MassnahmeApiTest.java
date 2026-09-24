@@ -55,8 +55,8 @@ import org.testcontainers.utility.DockerImageName;
  * M-2028-0002 ohne Messgrundlage am Einsatz EE-3 Druckluft, Termin 29.02.2028, am 15.03.2028 überfällig seit 15 Tagen
  * (R7, R9).
  *
- * <p>Personen: Ines Kaltenbach nie zugewiesen (Kundenadministrator), Peter Hollerbach Bearbeiter an ST-1, Murat
- * Demirci Bedienberechtigter an ST-1, Olga Alt mit beendetem Konto. Die Uhr der Kennzahlen ist gestellt.
+ * <p>Personen: Ines Kaltenbach und Jonas Wendlinger nie zugewiesen (Kundenadministrator), Peter Hollerbach Bearbeiter
+ * an ST-1, Murat Demirci Bedienberechtigter an ST-1, Olga Alt mit beendetem Konto. Die Uhr der Kennzahlen ist gestellt.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -596,11 +596,252 @@ class MassnahmeApiTest {
         assertThat(ruf(w, "murat", HttpMethod.GET, PFAD + "/" + geplantId + "/wirkung", null).status()).isEqualTo(200);
     }
 
+    // ================================================================================ Bewertung (IP-12, WK6)
+
+    /**
+     * R6 (WK6, E6 = A): am 15.11.2028 sagt Ines Kaltenbach „belegt“ mit Begründung — Stand Nr. 1 mit der Kopie der
+     * Wirkung in der Form der Referenzdatei 1.9 ({@code bewertungen[0].kopie}) und genau deren Prüfsumme; ohne Stand ist
+     * {@code bewertung} {@code null}. Stand Nr. 2 am selben Tag hat eine byte-gleiche Kopie; Nr. 1 bleibt unverändert.
+     * Vor der Umsetzung 409; ein Ergebnis, das es nicht gibt, 400; zu kurze Begründung 422.
+     */
+    @Test
+    void r6StandNr1BelegtMitPruefsummeUndNr2() throws Exception {
+        Welt w = welt();
+        String id = umgesetzteMassnahme(w)[0];
+        nachher(w, "2028-01", "2028-10");
+        uhr(Instant.parse("2028-11-15T09:00:00Z"));
+        JsonNode ref = RU.get("M-2028-0001").at("/bewertungen/0");
+
+        JsonNode ohne = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id, null).body();
+        assertThat(ohne.get("zustand").asText()).isEqualTo("umgesetzt");
+        assertThat(ohne.get("bewertung").isNull()).isTrue();
+        assertThat(ohne.get("bewertung_antrag").isNull()).isTrue();
+        Antwort leer = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/bewertungen", null);
+        assertThat(leer.status()).as(leer.text()).isEqualTo(200);
+        assertThat(leer.body().get("bewertungen")).isEmpty();
+
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertungen", Map.of("ergebnis", "gewirkt",
+                "begruendung", ref.get("begruendung").asText())).status()).isEqualTo(400);
+        Antwort kurz = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertungen", Map.of("ergebnis", "belegt",
+                "begruendung", "stimmt"));
+        assertThat(kurz.status()).as(kurz.text()).isEqualTo(422);
+        assertThat(kurz.body().get("code").asText()).isEqualTo("begruendung_fehlt");
+
+        Antwort a = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertungen", Map.of("ergebnis", "belegt",
+                "begruendung", ref.get("begruendung").asText()));
+        assertThat(a.status()).as(a.text()).isEqualTo(201);
+        assertThat(a.body().get("zustand").asText()).isEqualTo("bewertet");
+        JsonNode b = a.body().get("bewertung");
+        assertThat(b.get("stand_nr").asInt()).isEqualTo(ref.get("nr").asInt()).isEqualTo(1);
+        assertThat(b.get("status").asText()).isEqualTo("bewertet");
+        assertThat(b.get("ergebnis").asText()).isEqualTo("belegt");
+        assertThat(b.get("vieraugen").asBoolean()).isFalse();
+        assertThat(b.at("/person/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(b.get("entscheidung").isNull()).isTrue();
+        assertThat(b.get("kopie").asText()).isEqualTo(BerichtRegeln.kanonisch(ref.get("kopie")));
+        assertThat(b.get("pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
+        assertThat(b.get("satz").asText()).isEqualTo("Belegt von Ines Kaltenbach am 15.11.2028: ‚"
+                + ref.get("begruendung").asText() + "‘ Beobachtet: 2,4 % weniger (8 von 12 Monaten). Stand Nr. 1, "
+                + "Prüfsumme 4635…");
+        assertThat(a.body().get("bewertung_antrag").isNull()).isTrue();
+        assertThat(root.queryForObject("SELECT bericht_pruefsumme(wirkung) = pruefsumme FROM massnahme_bewertung "
+                + "WHERE massnahme_id = ?", Boolean.class, UUID.fromString(id))).isTrue();
+        JsonNode letzte = a.body().get("verlauf").get(a.body().get("verlauf").size() - 1);
+        assertThat(letzte.get("art").asText()).isEqualTo("massnahme_bewertet");
+        assertThat(letzte.at("/neu/pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
+        assertThat(letzte.at("/neu/stand_nr").asInt()).isEqualTo(1);
+        assertThat(letzte.get("begruendung").asText()).isEqualTo(ref.get("begruendung").asText());
+        String nr1 = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/bewertungen", null).body().at("/bewertungen/0")
+                .toString();
+
+        // Stand Nr. 2 am selben Tag: die Kopie ist byte-gleich (kein Abrufzeitpunkt darin), Nr. 1 bleibt, wie sie war.
+        Antwort zwei = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertungen", Map.of("ergebnis",
+                "nicht_belegt", "begruendung", "Zur Probe: ein zweiter Stand am selben Tag."));
+        assertThat(zwei.status()).as(zwei.text()).isEqualTo(201);
+        assertThat(zwei.body().at("/bewertung/stand_nr").asInt()).isEqualTo(2);
+        assertThat(zwei.body().at("/bewertung/ergebnis").asText()).isEqualTo("nicht_belegt");
+        assertThat(zwei.body().at("/bewertung/satz").isNull()).as("§5.9 hat keinen Satz für nicht belegt").isTrue();
+        assertThat(zwei.body().at("/bewertung/kopie").asText()).isEqualTo(b.get("kopie").asText());
+        assertThat(zwei.body().at("/bewertung/pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
+        JsonNode alle = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/bewertungen", null).body();
+        assertThat(alle.get("bewertungen")).hasSize(2);
+        assertThat(alle.at("/bewertungen/0").toString()).isEqualTo(nr1);
+        assertThat(alle.get("zustand").asText()).isEqualTo("bewertet");
+        assertThat(a.text()).doesNotContain("hat gewirkt");
+
+        // Vor der Umsetzung gibt es nichts zu bewerten.
+        uhr(ANGELEGT);
+        String geplant = ruf(w, "ines", HttpMethod.POST, PFAD, mitMessgrundlage(w, RU.get("M-2028-0001"))).body()
+                .get("id").asText();
+        Antwort vorher = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + geplant + "/bewertungen", Map.of("ergebnis",
+                "belegt", "begruendung", ref.get("begruendung").asText()));
+        assertThat(vorher.status()).as(vorher.text()).isEqualTo(409);
+        assertThat(vorher.body().get("code").asText()).isEqualTo("massnahme_nicht_umgesetzt");
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme_bewertung WHERE massnahme_id = ?", Integer.class,
+                UUID.fromString(geplant))).isZero();
+    }
+
+    /**
+     * R7 (M4, E2 = A): M-2028-0002 ohne Messgrundlage kann nur „nicht messbar“ bewertet werden — {@code belegt} und
+     * {@code nicht_belegt} 422 {@code ohne_messgrundlage}; der Stand hat keine Kopie. Ohne Recht 403 (Bearbeiter,
+     * Bedienberechtigter), außerhalb der Sicht 404.
+     */
+    @Test
+    void r7OhneMessgrundlageNurNichtMessbarRechtUndZaun() throws Exception {
+        Welt w = welt();
+        Welt fremd = welt();
+        uhr(Instant.parse("2028-01-20T09:00:00Z"));
+        JsonNode r7 = RU.get("M-2028-0002");
+        JsonNode ref = r7.at("/bewertungen/0");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("titel", "Druckluft-Leckagen orten und beseitigen");
+        body.put("verantwortlich", sub(w, "ines"));
+        body.put("termin", r7.get("termin").asText());
+        body.put("herkunft", "einsatz");
+        body.put("einsatz", w.ee3().toString());
+        body.put("standort", w.st1().toString());
+        body.put("erwartete_wirkung_wortlaut", r7.at("/erwartete_wirkung/wortlaut").asText());
+        String id = ruf(w, "ines", HttpMethod.POST, PFAD, body).body().get("id").asText();
+        uhr(Instant.parse("2028-03-28T09:00:00Z"));
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/umgesetzt", Map.of("am", "2028-03-28",
+                "begruendung", "Leckagen geortet und abgedichtet.")).status()).isEqualTo(200);
+        uhr(Instant.parse("2028-11-20T09:00:00Z"));
+        String pfad = PFAD + "/" + id + "/bewertungen";
+
+        for (String ergebnis : List.of("belegt", "nicht_belegt")) {
+            Antwort x = ruf(w, "ines", HttpMethod.POST, pfad, Map.of("ergebnis", ergebnis, "begruendung",
+                    ref.get("begruendung").asText()));
+            assertThat(x.status()).as(ergebnis + " " + x.text()).isEqualTo(422);
+            assertThat(x.body().get("code").asText()).isEqualTo("ohne_messgrundlage");
+            assertThat(x.body().get("kennzeichen").asText()).isEqualTo("ohne Messgrundlage — Wirkung nicht messbar");
+        }
+        Map<String, Object> nichtMessbar = Map.of("ergebnis", "nicht_messbar", "begruendung",
+                ref.get("begruendung").asText());
+        for (String person : List.of("peter", "murat")) {
+            Antwort x = ruf(w, person, HttpMethod.POST, pfad, nichtMessbar);
+            assertThat(x.status()).as(person + " " + x.text()).isEqualTo(403);
+        }
+        for (String p : List.of(pfad, PFAD + "/" + UUID.randomUUID() + "/bewertungen")) {
+            assertThat(ruf(fremd, "ines", HttpMethod.POST, p, nichtMessbar).status()).as(p).isEqualTo(404);
+            assertThat(ruf(fremd, "ines", HttpMethod.GET, p, null).status()).as(p).isEqualTo(404);
+        }
+        assertThat(ruf(fremd, "ines", HttpMethod.POST, pfad + "/freigeben", Map.of()).status()).isEqualTo(404);
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme_bewertung WHERE massnahme_id = ?", Integer.class,
+                UUID.fromString(id))).isZero();
+
+        Antwort a = ruf(w, "ines", HttpMethod.POST, pfad, nichtMessbar);
+        assertThat(a.status()).as(a.text()).isEqualTo(201);
+        assertThat(a.body().get("zustand").asText()).isEqualTo("bewertet");
+        JsonNode b = a.body().get("bewertung");
+        assertThat(b.get("ergebnis").asText()).isEqualTo(ref.get("ergebnis").asText());
+        assertThat(b.get("kopie").isNull()).isTrue();
+        assertThat(b.get("pruefsumme").isNull()).isTrue();
+        assertThat(b.get("satz").asText()).isEqualTo("Bewertet am 20.11.2028 von Ines Kaltenbach: nicht messbar — ‚"
+                + ref.get("begruendung").asText() + "‘");
+        assertThat(ruf(w, "murat", HttpMethod.GET, pfad, null).body().get("bewertungen")).hasSize(1);
+    }
+
+    /**
+     * Vier-Augen nach {@code unternehmen.vieraugen_freigabe} (WK6, §5.7, Muster IP-7): bewerten ist ein Antrag; wer
+     * beantragt hat, darf nicht freigeben (422 {@code vieraugen_urheber}), der Verantwortliche der Maßnahme auch nicht
+     * (422 {@code vieraugen_verantwortlich}), der Bearbeiter hat das Recht nicht (403). Eine zweite Person lehnt ab,
+     * ein neuer Antrag ist Nr. 2, eine zweite Person bestätigt ihn — Ergebnis, Kopie und Prüfsumme des Antrags bleiben.
+     */
+    @Test
+    void vierAugenNichtDerUrheberNichtDerVerantwortliche() throws Exception {
+        Welt w = welt();
+        String a = umgesetzteMassnahme(w, "jonas")[0];
+        String b = umgesetzteMassnahme(w)[0];
+        nachher(w, "2028-01", "2028-10");
+        uhr(Instant.parse("2028-11-15T09:00:00Z"));
+        JsonNode ref = RU.get("M-2028-0001").at("/bewertungen/0");
+        Map<String, Object> belegt = Map.of("ergebnis", "belegt", "begruendung", ref.get("begruendung").asText());
+
+        Antwort aus = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + a + "/bewertungen/beantragen", belegt);
+        assertThat(aus.status()).as(aus.text()).isEqualTo(409);
+        assertThat(aus.body().get("code").asText()).isEqualTo("vieraugen_aus");
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = true WHERE tenant_id = ?", w.mandant());
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + a + "/bewertungen", belegt).body().get("code")
+                .asText()).isEqualTo("vieraugen_beantragen");
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + a + "/bewertungen/freigeben", Map.of()).body()
+                .get("code").asText()).isEqualTo("bewertung_nicht_beantragt");
+
+        Antwort antrag = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + a + "/bewertungen/beantragen", belegt);
+        assertThat(antrag.status()).as(antrag.text()).isEqualTo(201);
+        assertThat(antrag.body().get("zustand").asText()).isEqualTo("umgesetzt");
+        assertThat(antrag.body().get("bewertung").isNull()).isTrue();
+        assertThat(antrag.body().at("/bewertung_antrag/status").asText()).isEqualTo("beantragt");
+        assertThat(antrag.body().at("/bewertung_antrag/vieraugen").asBoolean()).isTrue();
+        assertThat(antrag.body().at("/bewertung_antrag/satz").isNull()).isTrue();
+        assertThat(antrag.body().at("/bewertung_antrag/pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + a + "/bewertungen/beantragen", belegt).body()
+                .get("code").asText()).isEqualTo("bewertung_beantragt");
+
+        Antwort selbst = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + a + "/bewertungen/freigeben", Map.of());
+        assertThat(selbst.status()).as(selbst.text()).isEqualTo(422);
+        assertThat(selbst.body().get("code").asText()).isEqualTo("vieraugen_urheber");
+        for (String schritt : List.of("freigeben", "ablehnen")) {
+            Antwort v = ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + a + "/bewertungen/" + schritt,
+                    Map.of("begruendung", "Ich bin selbst verantwortlich."));
+            assertThat(v.status()).as(schritt + " " + v.text()).isEqualTo(422);
+            assertThat(v.body().get("code").asText()).isEqualTo("vieraugen_verantwortlich");
+        }
+        assertThat(ruf(w, "peter", HttpMethod.POST, PFAD + "/" + a + "/bewertungen/freigeben", Map.of()).status())
+                .isEqualTo(403);
+        assertThat(root.queryForObject("SELECT status FROM massnahme_bewertung WHERE massnahme_id = ?", String.class,
+                UUID.fromString(a))).isEqualTo("beantragt");
+
+        // M-2028-0002 (verantwortlich Murat Demirci): Ines beantragt, Jonas lehnt ab, Jonas beantragt, Ines bestätigt.
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + b + "/bewertungen/beantragen", belegt).status())
+                .isEqualTo(201);
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + b + "/bewertungen/ablehnen", Map.of()).body()
+                .get("code").asText()).isEqualTo("begruendung_fehlt");
+        Antwort ab = ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + b + "/bewertungen/ablehnen",
+                Map.of("begruendung", "Bitte erst die Laufzeiten der Steuerung beilegen."));
+        assertThat(ab.status()).as(ab.text()).isEqualTo(200);
+        assertThat(ab.body().get("zustand").asText()).isEqualTo("umgesetzt");
+        assertThat(ab.body().get("bewertung_antrag").isNull()).isTrue();
+        JsonNode abgelehnt = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + b + "/bewertungen", null).body()
+                .at("/bewertungen/0");
+        assertThat(abgelehnt.get("status").asText()).isEqualTo("abgelehnt");
+        assertThat(abgelehnt.at("/entscheidung/name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(abgelehnt.get("entscheidungs_begruendung").asText()).startsWith("Bitte erst");
+
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + b + "/bewertungen/beantragen", belegt).status())
+                .isEqualTo(201);
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + b + "/bewertungen/freigeben", Map.of()).body()
+                .get("code").asText()).isEqualTo("vieraugen_urheber");
+        Antwort frei = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + b + "/bewertungen/freigeben", Map.of());
+        assertThat(frei.status()).as(frei.text()).isEqualTo(200);
+        JsonNode m = frei.body();
+        assertThat(m.get("zustand").asText()).isEqualTo("bewertet");
+        assertThat(m.at("/bewertung/stand_nr").asInt()).isEqualTo(2);
+        assertThat(m.at("/bewertung/status").asText()).isEqualTo("bewertet");
+        assertThat(m.at("/bewertung/person/name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(m.at("/bewertung/entscheidung/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(m.at("/bewertung/pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
+        assertThat(m.at("/bewertung/satz").asText()).startsWith("Belegt von Jonas Wendlinger am 15.11.2028");
+        assertThat(m.get("bewertung_antrag").isNull()).isTrue();
+        assertThat(m.get("verlauf")).extracting(e -> e.get("art").asText()).containsExactly("massnahme_angelegt",
+                "massnahme_umgesetzt", "bewertung_beantragt", "bewertung_abgelehnt", "bewertung_beantragt",
+                "massnahme_bewertet");
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + b + "/bewertungen/ablehnen",
+                Map.of("begruendung", "Zu spät, aber zur Probe.")).body().get("code").asText())
+                .isEqualTo("bewertung_nicht_beantragt");
+    }
+
     /** M-2028-0001 wie R3: angelegt am 15.01.2028, umgesetzt am 22.01.2028 — ID, Ausgangslage, Prüfsumme. */
     private String[] umgesetzteMassnahme(Welt w) throws Exception {
+        return umgesetzteMassnahme(w, "murat");
+    }
+
+    /** Wie {@link #umgesetzteMassnahme(Welt)}, mit einer anderen verantwortlichen Person. */
+    private String[] umgesetzteMassnahme(Welt w, String verantwortlich) throws Exception {
         JsonNode r3 = RU.get("M-2028-0001");
         uhr(ANGELEGT);
-        Antwort neu = ruf(w, "ines", HttpMethod.POST, PFAD, mitMessgrundlage(w, r3));
+        Map<String, Object> body = mitMessgrundlage(w, r3);
+        body.put("verantwortlich", sub(w, verantwortlich));
+        Antwort neu = ruf(w, "ines", HttpMethod.POST, PFAD, body);
         assertThat(neu.status()).as(neu.text()).isEqualTo(201);
         String id = neu.body().get("id").asText();
         uhr(UMGESETZT);
@@ -718,7 +959,8 @@ class MassnahmeApiTest {
                 + "periode_art, geltung_art, ort_id) VALUES (?, 'BZ-1', 'Produktionsmenge Spritzguss', 'periodenwert', "
                 + "'kg', 'monat', 'gebaeude', ?) RETURNING id", UUID.class, t, g2);
         String[][] personen = {{"ines", "Ines Kaltenbach", null, "aktiv"}, {"peter", "Peter Hollerbach", "bearbeiter", "aktiv"},
-            {"murat", "Murat Demirci", "bedienberechtigt", "aktiv"}, {"olga", "Olga Alt", null, "entfernt"}};
+            {"murat", "Murat Demirci", "bedienberechtigt", "aktiv"}, {"olga", "Olga Alt", null, "entfernt"},
+            {"jonas", "Jonas Wendlinger", null, "aktiv"}};
         for (String[] p : personen) {
             String sub = "sub-" + p[0] + "-" + t;
             root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, ?)",
@@ -832,7 +1074,7 @@ class MassnahmeApiTest {
     }
 
     private static final Map<String, String> NAMEN = Map.of("ines", "Ines Kaltenbach", "peter", "Peter Hollerbach",
-            "murat", "Murat Demirci", "olga", "Olga Alt");
+            "murat", "Murat Demirci", "olga", "Olga Alt", "jonas", "Jonas Wendlinger");
 
     private Antwort ruf(Welt w, String person, HttpMethod methode, String pfad, Object body) throws Exception {
         // Über den Rollen-Konverter wie in Produktion: erst so entsteht der Zugriff-Kontext (Rolle je Standort).

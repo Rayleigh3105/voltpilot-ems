@@ -221,7 +221,7 @@ public class MassnahmeService {
                 throw ohneMessgrundlage(einsatz);
             }
             standort = a.standort();
-            darfAm(standort, wer);
+            darfAm(standort, wer, VERWALTEN);
         }
         BigDecimal prozent = prozent(a.erwarteteWirkungProzent());
         Map<String, Object> person = verantwortlich(a.verantwortlich());
@@ -509,12 +509,23 @@ public class MassnahmeService {
 
     /** Sichtbar (404) und das Recht {@code verbesserung.verwalten} an Kennzahl bzw. Standort (403). */
     private Map<String, Object> schreibbar(UUID id, ProtokollAkteur wer) {
+        return zeile(id, VERWALTEN, wer);
+    }
+
+    /**
+     * Die Zeile der Maßnahme: sichtbar (404) und — mit {@code recht} — das Recht an der Geltung der Kennzahl bzw. am
+     * Standort der Maßnahme (403). Auch für die Bewertung ({@link MassnahmeBewertung}, {@code verbesserung.abschliessen}).
+     */
+    Map<String, Object> zeile(UUID id, String recht, ProtokollAkteur wer) {
         Map<String, Object> z = sichtbar(id);
+        if (recht == null) {
+            return z;
+        }
         UUID kz = (UUID) z.get("kennzahl_id");
         if (kz != null) {
-            kennzahlen.fuerBezugsbasis(kz, VERWALTEN, wer, null);
+            kennzahlen.fuerBezugsbasis(kz, recht, wer, null);
         } else {
-            darfAm((UUID) z.get("standort_id"), wer);
+            darfAm((UUID) z.get("standort_id"), wer, recht);
         }
         return z;
     }
@@ -536,8 +547,11 @@ public class MassnahmeService {
         return new VerbesserungAbgelehnt(404, "nicht_gefunden", "Diese Maßnahme gibt es nicht.", null);
     }
 
-    /** RE1/RE2: {@code verbesserung.verwalten} am Standort bzw. am Unternehmen ({@code null}). */
-    private void darfAm(UUID standort, ProtokollAkteur wer) {
+    /**
+     * RE1/RE2: das Recht ({@code verbesserung.verwalten}, beim Bewerten {@code verbesserung.abschliessen}) am Standort
+     * bzw. am Unternehmen ({@code null}).
+     */
+    private void darfAm(UUID standort, ProtokollAkteur wer, String recht) {
         if (standort != null && jdbc.queryForList("SELECT 1 FROM standort WHERE id = ?", standort).isEmpty()) {
             // RLS: ein Standort außerhalb der eigenen Sicht ist derselbe wie einer, den es nicht gibt (Zaun, 404).
             throw new VerbesserungAbgelehnt(404, "standort_unbekannt", "Diesen Standort gibt es in Ihrem "
@@ -545,7 +559,7 @@ public class MassnahmeService {
         }
         ZoneId zone = zone();
         kennzahlen.darf(wer, new KennzahlService.Geltung(standort == null ? "unternehmen" : "standort", standort, null,
-                null, standort, null, VERWALTEN, zone), kennzahlen.jetzt());
+                null, standort, null, recht, zone), kennzahlen.jetzt());
     }
 
     /** Ein sichtbarer Energieeinsatz des Kundenbereichs, sonst 422 {@code einsatz_unbekannt}. */
@@ -662,7 +676,7 @@ public class MassnahmeService {
 
     // ================================================================================ Protokoll und Darstellung
 
-    private void protokoll(UUID tenant, UUID id, String art, Map<String, Object> alt, Map<String, Object> neu,
+    void protokoll(UUID tenant, UUID id, String art, Map<String, Object> alt, Map<String, Object> neu,
             String begruendung, String kommentar, ProtokollAkteur wer) {
         jdbc.update("INSERT INTO massnahme_aenderung (tenant_id, massnahme_id, art, alt, neu, begruendung, kommentar, "
                 + "actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?)",
@@ -694,8 +708,8 @@ public class MassnahmeService {
         }
     }
 
-    /** Die Zeitzone des Unternehmens (Tag des Anlegens, „heute“, Termin). */
-    private ZoneId zone() {
+    /** Die Zeitzone des Unternehmens (Tag des Anlegens, „heute“, Termin, Tag eines Bewertungs-Stands). */
+    ZoneId zone() {
         return ZoneId.of(jdbc.queryForList("SELECT zeitzone FROM unternehmen LIMIT 1", String.class).stream()
                 .filter(Objects::nonNull).findFirst().orElse("Europe/Berlin"));
     }
@@ -747,6 +761,7 @@ public class MassnahmeService {
         String kopf = umgesetzt == null ? null : satz("massnahme_kopf", Map.of("kennzeichen", kennzeichen,
                 "titel", titel, "person", person, "termin", TAG.format(termin), "umgesetzt_am", TAG.format(umgesetzt)));
         Timestamp verworfen = (Timestamp) z.get("verworfen_am");
+        MassnahmeDto.Bewertung[] staende = staende((UUID) z.get("id"), zone);
         return new MassnahmeDto.Massnahme((UUID) z.get("id"), kennzeichen, titel,
                 new MassnahmeDto.Person((String) z.get("verantwortlich_sub"), person), termin,
                 (UUID) z.get("standort_id"), zustand,
@@ -754,7 +769,80 @@ public class MassnahmeService {
                 einsatz, (Integer) z.get("einstufung_fassung"), ziel, prozent == null ? null : prozent.toPlainString(),
                 wortlaut, angelegt, umgesetzt, (String) z.get("umgesetzt_begruendung"),
                 verworfen == null ? null : verworfen.toInstant(), (String) z.get("verworfen_grund"),
-                new MassnahmeDto.Frist(abruf, termin, faellig, seit, fristSatz), kopf, verlauf);
+                new MassnahmeDto.Frist(abruf, termin, faellig, seit, fristSatz), kopf, staende[0], staende[1], verlauf);
+    }
+
+    // ================================================================================ Stände (WK6, IP-12)
+
+    /** Die Spalten eines Bewertungs-Stands ({@code massnahme_bewertung}) für {@link #stand}. */
+    static final String STAND_SPALTEN = "SELECT stand_nr, status, ergebnis, begruendung, vieraugen, wirkung, pruefsumme, "
+            + "freigabe_sub, freigabe_name, freigabe_am, entscheidung_sub, entscheidung_name, entschieden_am, "
+            + "entscheidungs_begruendung FROM massnahme_bewertung ";
+
+    /** Der jüngste bewertete Stand und der offene Antrag (Vier-Augen) — je {@code null}, wenn es keinen gibt. */
+    private MassnahmeDto.Bewertung[] staende(UUID id, ZoneId zone) {
+        MassnahmeDto.Bewertung[] aus = new MassnahmeDto.Bewertung[2];
+        for (Map<String, Object> r : jdbc.queryForList(STAND_SPALTEN + "WHERE massnahme_id = ? AND status IN "
+                + "('bewertet', 'beantragt') ORDER BY stand_nr DESC", id)) {
+            int i = "bewertet".equals(r.get("status")) ? 0 : 1;
+            if (aus[i] == null) {
+                aus[i] = stand(r, zone);
+            }
+        }
+        return aus;
+    }
+
+    /**
+     * Ein Stand Nr. n mit dem Kundensatz aus §5.9: {@code bewertung_belegt} (die Zahl mit Bedingung aus der Kopie) bzw.
+     * {@code bewertung_nicht_messbar} — nur an einem bewerteten Stand; für {@code nicht_belegt} hat §5.9 keinen Satz.
+     */
+    MassnahmeDto.Bewertung stand(Map<String, Object> r, ZoneId zone) {
+        String status = (String) r.get("status");
+        String ergebnis = (String) r.get("ergebnis");
+        String begruendung = (String) r.get("begruendung");
+        String kopie = (String) r.get("wirkung");
+        String pruefsumme = (String) r.get("pruefsumme");
+        Instant am = ((Timestamp) r.get("freigabe_am")).toInstant();
+        String person = (String) r.get("freigabe_name");
+        int nr = ((Number) r.get("stand_nr")).intValue();
+        String satz = null;
+        if ("bewertet".equals(status) && "nicht_messbar".equals(ergebnis)) {
+            satz = satz("bewertung_nicht_messbar", Map.of("am", TAG.format(LocalDate.ofInstant(am, zone)),
+                    "person", person, "begruendung", begruendung));
+        } else if ("bewertet".equals(status) && "belegt".equals(ergebnis) && kopie != null) {
+            satz = belegtSatz(map(kopie), nr, person, LocalDate.ofInstant(am, zone), begruendung, pruefsumme);
+        }
+        Timestamp entschieden = (Timestamp) r.get("entschieden_am");
+        String entscheider = (String) r.get("entscheidung_name");
+        return new MassnahmeDto.Bewertung(nr, status, ergebnis, begruendung, (Boolean) r.get("vieraugen"),
+                new MassnahmeDto.Person((String) r.get("freigabe_sub"), person), am,
+                entscheider == null ? null : new MassnahmeDto.Person((String) r.get("entscheidung_sub"), entscheider),
+                entschieden == null ? null : entschieden.toInstant(), (String) r.get("entscheidungs_begruendung"),
+                kopie, pruefsumme, satz);
+    }
+
+    /** „Belegt von … am …: ‚…‘ Beobachtet: 2,4 % weniger (8 von 12 Monaten). Stand Nr. 1, Prüfsumme 4635…“ */
+    @SuppressWarnings("unchecked")
+    private static String belegtSatz(Map<String, Object> kopie, int nr, String person, LocalDate am, String begruendung,
+            String pruefsumme) {
+        Map<String, Object> w = (Map<String, Object>) kopie.get("wirkung");
+        Object delta = w == null ? null : w.get("delta_prozent");
+        String nachher = (String) kopie.get("nachher");
+        if (delta == null || nachher == null || w.get("monate_bewertbar") == null) {
+            return null;
+        }
+        String d = new BigDecimal(delta.toString()).toPlainString();
+        long soll = ChronoUnit.MONTHS.between(YearMonth.parse(nachher.substring(0, 7)),
+                YearMonth.parse(nachher.substring(8))) + 1;
+        Map<String, String> werte = new LinkedHashMap<>();
+        werte.put("person", person);
+        werte.put("am", TAG.format(am));
+        werte.put("begruendung", begruendung);
+        werte.put("prozent", EnergiezielService.prozent(d, d.startsWith("-") ? "weniger" : "mehr"));
+        werte.put("monate", w.get("monate_bewertbar") + " von " + soll);
+        werte.put("stand", String.valueOf(nr));
+        werte.put("pruefsumme", pruefsumme.substring("sha256:".length(), "sha256:".length() + 4) + "…");
+        return satz("bewertung_belegt", werte);
     }
 
     /**

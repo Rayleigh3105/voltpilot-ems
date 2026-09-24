@@ -339,6 +339,13 @@ class RechtMatrixApiTest {
                 "eee33333"));
         z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST, "/api/v1/abweichungen/{FREMD}/abschliessen",
                 "ee333333"));
+        // AP-18 IP-12: Maßnahme bewerten (Stand Nr. n) — dieselben Zellen (KA U · EM U).
+        z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/bewertungen",
+                "ee333333"));
+        for (String schritt : List.of("beantragen", "freigeben", "ablehnen")) {
+            z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST,
+                    "/api/v1/massnahmen/{FREMD}/bewertungen/" + schritt, "ee333333"));
+        }
         z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee333333"));

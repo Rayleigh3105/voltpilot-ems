@@ -94,6 +94,10 @@ class RechtRoutenArchitekturTest {
             m.put("AbweichungController#" + r, abweichung);
         }
         m.put("AuffaelligkeitController#antwort", abweichung);
+        for (String r : List.of("bewerten", "bewertungBeantragen", "bewertungFreigeben", "bewertungAblehnen")) {
+            m.put("MassnahmeController#" + r, "MassnahmeBewertung über MassnahmeService.zeile — "
+                    + "verbesserung.abschliessen an der Geltung der Kennzahl oder am Standort der Maßnahme");
+        }
         m.put("BezugsbasisPflegeController#bleibt", bezugsbasis);
         m.put("BezugsbasisPflegeController#beenden", bezugsbasis);
         m.put("KorrekturPortalController#vorschau", "KorrekturPortalService — lesende Vorschau ohne Schreibvorgang");
