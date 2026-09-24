@@ -115,6 +115,16 @@ type Agent struct {
 	// the charge-side counterpart of trim, which only ever lowers; the edge
 	// enforces, the cloud priced).
 	absorb *guards.SurplusCharger
+	// damp is the DAMPED FOLLOWER behind the measured corrections above
+	// (guards.FollowDamper, concept vp-wechselrichter-eigenregelung-k1 §6.5):
+	// they act only on a device measurement pair taken after the last write
+	// had settled, retreat from the expensive side at once and approach it in
+	// ramps with a reserve - the fallback for every device that cannot regulate
+	// itself (Herzogau 2026-09-24: the box swung behind the clouds).
+	damp *guards.FollowDamper
+	// dampProfileFor overrides guards.DampProfileFor (nil = that); a field only
+	// so a replay test can run the same box with and without the damper.
+	dampProfileFor func(family, controlPath string) guards.DampProfile
 	// native carries the per-slot supervision of the NATIVE SELF-REGULATION: in
 	// a covering slot the setpoint itself is handed back to the inverter, which
 	// then decides its own watts - and this type is what takes it back at the
@@ -611,6 +621,7 @@ func New(cfg config.Config) (*Agent, error) {
 		trim:         guards.NewPriceTrimmer(),
 		follow:       guards.NewLoadFollower(),
 		absorb:       guards.NewSurplusCharger(),
+		damp:         guards.NewFollowDamper(),
 		export:       guards.NewExportLimiter(),
 		curtailTrack: guards.NewCurtailTracker(),
 		despikeStore: ds,
@@ -1538,6 +1549,17 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		GridLimitKw: pick("grid_limit_kw"),
 	}
 	a.lastReadingAt = ts
+	// The device clock of the damped follower: the two halves of the surplus
+	// pair exactly as the device reported them (before the despiker holds a
+	// channel), so a refresh is a refresh.
+	pairGrid, pairBatt := guards.Unknown(), guards.Unknown()
+	if siteGrid != nil {
+		pairGrid = *siteGrid
+	}
+	if battKw != nil {
+		pairBatt = *battKw
+	}
+	a.damp.Observe(ts, pairGrid, pairBatt)
 	// Keep the last-good raw SoC for the status heartbeat when this sample had
 	// no (or a despiked) SoC - mirrors the tile's last-good behaviour rather
 	// than reporting a hole to the cloud.
@@ -2485,6 +2507,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// A bounded First-Light write owns the inverter for its TTL, so no
 		// economic execution mode may carry an armed state across it.
 		a.native.Release()
+		a.damp.Release()
 		return
 	}
 
@@ -2592,6 +2615,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		a.follow.Release()
 		a.absorb.Release()
 		a.native.Release()
+		a.damp.Release()
 		return
 	}
 
@@ -2653,8 +2677,31 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// registry transition even before its first holder command is available.
 	// Hard export/compliance/watchdog and device write gates remain downstream.
 	marketCorrectionsAllowed := !paused && !nonPlanHolder && !a.batteryOwnerClaimed()
+	// MEASURE, THEN SET (guards/followdamper.go, concept
+	// vp-wechselrichter-eigenregelung-k1 §6.5, Captain E2 A): every measured
+	// in-slot correction below - trim, load follower, deficit cover, surplus
+	// store and absorption - acts on the CONTROL READING rc, whose pv/load only
+	// advance on a device measurement pair taken after the last write had
+	// settled. The live reading r keeps every compliance and watchdog stage.
+	a.invMu.Lock()
+	dampFamily := ""
+	if a.inv != nil {
+		dampFamily = a.inv.Family
+	}
+	a.invMu.Unlock()
+	dampPath := ""
+	if c := a.State.Get().Control; c != nil {
+		dampPath = c.ControlPath
+	}
+	profileFor := guards.DampProfileFor
+	if a.dampProfileFor != nil {
+		profileFor = a.dampProfileFor
+	}
+	dampProfile := profileFor(dampFamily, dampPath)
+	rc, dampPair := a.damp.Gate(now, dampProfile, r, readingAt)
+	preCorrectionKw := kw
 	trimmed := a.trim.Apply(now, kw,
-		marketCorrectionsAllowed && p.ActiveChargeFromSurplusOnly(now), r)
+		marketCorrectionsAllowed && p.ActiveChargeFromSurplusOnly(now), rc)
 	kw = trimmed.Kw
 
 	// In-slot LOAD FOLLOWING (2026-07-30, the discharge-side mirror of the trim
@@ -2758,13 +2805,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 		CommandKw:         kw,
 		SocPct:            r.SocPct,
 		EffectiveFloorPct: floor,
-		PvKw:              r.PvKw,
-		LoadKw:            r.LoadKw,
+		PvKw:              rc.PvKw,
+		LoadKw:            rc.LoadKw,
 	})
 	preFollowKw := kw
 	followed := a.follow.ApplyAuthorized(now, kw,
 		coverLoad,
-		unplanned, deficitCover.Active, limitToLoad, floor, measurementFresh, limits, r)
+		unplanned, deficitCover.Active, limitToLoad, floor, measurementFresh, limits, rc)
 	kw = followed.Kw
 
 	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that
@@ -2829,11 +2876,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 		CommandKw:         kw,
 		SocPct:            r.SocPct,
 		SocMaxPct:         limits.SocMaxPct,
-		PvKw:              r.PvKw,
-		LoadKw:            r.LoadKw,
+		PvKw:              rc.PvKw,
+		LoadKw:            rc.LoadKw,
 	})
 	absorbed := a.absorb.Apply(now, kw,
-		absorbAuthorized || surplusStore.Active, limits, r)
+		absorbAuthorized || surplusStore.Active, limits, rc)
 	surplusStored := surplusStore.Active && absorbed.Active
 	if surplusStored {
 		absorbed.Path = execModeSurplusStore
@@ -2847,6 +2894,24 @@ func (a *Agent) applySetpoint(now time.Time) {
 		}
 	}
 	kw = absorbed.Kw
+
+	// THE EXPENSIVE DIRECTION AT ONCE, THE CHEAP ONE DAMPED (guards/
+	// followdamper.go): while a measured correction is engaged, a new target
+	// is taken only on the settled pair Gate consumed above; retreating from the
+	// side the correction is bounded against (a charge beyond the surplus is
+	// bought, a discharge beyond the house is sold) happens in one step,
+	// approaching it in ramps of RampKw onto surplus/deficit minus ReserveKw.
+	// The damped value lies between the command and what the corrections
+	// accepted, and it is re-clamped with the LIVE reading, so rated band, SoC
+	// window, EEG solar-only charge and §14a bind on every tick while the
+	// economic target waits. Off (byte-identical) without a selected inverter
+	// and on a persistent-lever surface (Deye ToU).
+	correctionEngaged := trimmed.Active || followed.Active || absorbed.Active ||
+		a.trim.Engaged() || a.follow.Engaged() || a.absorb.Engaged()
+	if damped, shaped := a.damp.Shape(dampProfile, preCorrectionKw, kw,
+		correctionEngaged, dampPair, rc); shaped {
+		kw = guards.Clamp(damped, limits, r)
+	}
 
 	// „AUTO VOR SPEICHER" (OCPP-Lastmanagement Stufe 4, internal/lastmgmt/
 	// surplus.go): the customer decided their VEHICLES get the PV surplus
@@ -3079,6 +3144,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 		slog.Error("setpoint publish failed", "err", err)
 		return
 	}
+	// The damper's settle clock runs from the value Layer 1 now writes.
+	a.damp.Commit(now, kw)
 	// The per-entity retained command is owned by the ARBITER since E2 (the
 	// plan executor injects the plan as market desires, the failsafe is the
 	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is

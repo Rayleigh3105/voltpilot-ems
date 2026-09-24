@@ -131,9 +131,12 @@ func TestAPlantWhoseLayer1CannotGoNativeIsUnchanged(t *testing.T) {
 		return ok && m["battery_mode"] == batteryModeSetpoint
 	})
 	m, _ := sub.latest()
-	// The published value is the follower's, i.e. exactly what a pre-feature
-	// core would have published for this reading (grid -> 0 => -7.087 kW).
-	if got := m["battery_setpoint_kw"].(float64); got > -7.086 || got < -7.088 {
+	// The published value is the follower's, i.e. exactly what the setpoint
+	// path without the native mode publishes for this reading: the damped follower
+	// (guards/followdamper.go) deepens toward the 7.087 kW deficit and keeps its
+	// 0.5 kW reserve on the import side, so a discharge never overshoots into
+	// selling the storage (grid -> +0.5 => -6.587 kW).
+	if got := m["battery_setpoint_kw"].(float64); got > -6.586 || got < -6.588 {
 		t.Fatalf("the follower must carry the slot unchanged, got %v", got)
 	}
 	if got := executionSummary(a.State.Get()); got == nil || got.Mode == execModeAutonomousDischarge {
@@ -171,8 +174,8 @@ func TestAConfirmedCoveringSlotHandsTheSetpointToTheInverter(t *testing.T) {
 	}
 	// The reference value is STILL published: the take-back must be instant, and
 	// the surfaces need a number. It is simply not written by the executor.
-	if got := m["battery_setpoint_kw"].(float64); got > -7.086 || got < -7.088 {
-		t.Fatalf("the reference must still be the guarded value, got %v", got)
+	if got := m["battery_setpoint_kw"].(float64); got > -6.586 || got < -6.588 {
+		t.Fatalf("the reference must still be the guarded (damped) value, got %v", got)
 	}
 
 	// A slot WITHOUT the duty is the ordinary setpoint path again.
