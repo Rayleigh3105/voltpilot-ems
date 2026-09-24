@@ -34,9 +34,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Energieziele (UEMS AP-18 IP-6, Z1–Z4; Vertrag verbesserung.md §4): anlegen, lesen, ändern solange offen,
- * Verantwortlicher, beenden und der Ziel-Stand. Die Arbeit macht {@link EnergiezielService}; die Bewertung bringt IP-7.
+ * Verantwortlicher, beenden und der Ziel-Stand; bewerten mit Vier-Augen (IP-7, Z5). Die Arbeit macht
+ * {@link EnergiezielService}.
  *
- * <p><b>Rechte:</b> Schreibrouten {@code verbesserung.verwalten} an der Geltung der Kennzahl (403 {@code recht_fehlt});
+ * <p><b>Rechte:</b> Schreibrouten {@code verbesserung.verwalten}, die Bewertung {@code verbesserung.abschliessen} — je
+ * an der Geltung der Kennzahl (403 {@code recht_fehlt});
  * Lesen {@code verbesserung.ansehen} als Kennung im Kommentar — die Sichtbarkeit kommt über die Kennzahl und
  * {@code standort_id} (RLS), außerhalb 404.
  */
@@ -117,6 +119,50 @@ public class EnergiezielController {
     @GetMapping("/{id}/stand")
     public EnergiezielDto.Stand stand(@PathVariable UUID id) {
         return ziele.stand(id);
+    }
+
+    /**
+     * Recht: {@code verbesserung.abschliessen} an der Geltung der Kennzahl. Bewertet das Ziel nach dem Ende der
+     * Zielperiode (letzter Monat endgültig, sonst 409 {@code bewertung_nicht_faellig}): Ergebnis
+     * {@code erreicht · verfehlt · nicht_bewertbar}, Begründung 10–500 Zeichen; die Bewertung ist eine Kopie des
+     * Ziel-Stands mit Prüfsumme (Z5). Mit Vier-Augen 409 {@code vieraugen_beantragen}; ein zweites Mal 409
+     * {@code energieziel_nicht_offen}.
+     */
+    @PostMapping("/{id}/bewerten")
+    @Recht(value = "verbesserung.abschliessen", ziel = RechtZiel.DIENST)
+    public EnergiezielDto.Energieziel bewerten(@PathVariable UUID id, @RequestBody(required = false) JsonNode body,
+            Authentication auth) {
+        return ziele.bewerten(id, lies(body, EnergiezielDto.Bewerten.class), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code verbesserung.abschliessen} an der Geltung der Kennzahl. Mit Vier-Augen beantragt die erste Person
+     * die Bewertung (Ergebnis, Begründung, Kopie mit Prüfsumme); ohne Vier-Augen 409 {@code vieraugen_aus}.
+     */
+    @PostMapping("/{id}/bewertung/beantragen")
+    @Recht(value = "verbesserung.abschliessen", ziel = RechtZiel.DIENST)
+    public EnergiezielDto.Energieziel bewertungBeantragen(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return ziele.beantragen(id, lies(body, EnergiezielDto.Bewerten.class), akteur(auth));
+    }
+
+    /**
+     * Recht: {@code verbesserung.abschliessen} an der Geltung der Kennzahl. Die zweite Person (KA/EM) bestätigt den
+     * Antrag; wer beantragt hat, 422 {@code vieraugen_urheber}; ohne Antrag 409 {@code bewertung_nicht_beantragt}.
+     */
+    @PostMapping("/{id}/bewertung/freigeben")
+    @Recht(value = "verbesserung.abschliessen", ziel = RechtZiel.DIENST)
+    public EnergiezielDto.Energieziel bewertungFreigeben(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return ziele.freigeben(id, lies(body, EnergiezielDto.Entscheid.class), akteur(auth));
+    }
+
+    /** Recht: {@code verbesserung.abschliessen} an der Geltung der Kennzahl. Die zweite Person lehnt mit Begründung ab. */
+    @PostMapping("/{id}/bewertung/ablehnen")
+    @Recht(value = "verbesserung.abschliessen", ziel = RechtZiel.DIENST)
+    public EnergiezielDto.Energieziel bewertungAblehnen(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return ziele.ablehnen(id, lies(body, EnergiezielDto.Entscheid.class), akteur(auth));
     }
 
     private <T> T lies(JsonNode body, Class<T> form) {

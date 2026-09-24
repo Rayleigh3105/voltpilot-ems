@@ -416,9 +416,13 @@ public class BezugsbasisAnstoss {
         List<Gesetzt> gesetzt = new ArrayList<>();
         String urteil;
         int weitergegeben = 0;
+        int ziele = 0;
         if (!eingeschaltet) {
             urteil = ABGESCHALTET;
         } else if (BEZUGSBASIS_AENDERUNG.equals(z.protokoll())) {
+            // AP-18 IP-7 (Z5): Basis beendet oder neu gefasst → Anstoß an den offenen Zielen, dieselbe Transaktion.
+            // Das Urteil bleibt das der Berichte; die Zahl der Anstöße zählt die Ziele mit.
+            ziele = VorgangAnstoss.anZielen(con, z.tenant(), z.objekt(), z.art(), z.id(), jetzt).size();
             weitergegeben = basisWeitergeben(con, z, jetzt);
             urteil = berichte == null ? OHNE_BERICHTE : weitergegeben == 0 ? OHNE_STAND : AN_BERICHTE;
         } else {
@@ -440,7 +444,7 @@ public class BezugsbasisAnstoss {
             }
         }
         j.update("INSERT INTO bezugsbasis_struktur_gelesen (protokoll, eintrag_id, urteil, anstoesse) VALUES (?, ?, ?, ?)",
-                z.protokoll(), z.id(), urteil, gesetzt.size() + weitergegeben);
+                z.protokoll(), z.id(), urteil, gesetzt.size() + weitergegeben + ziele);
         return gesetzt;
     }
 

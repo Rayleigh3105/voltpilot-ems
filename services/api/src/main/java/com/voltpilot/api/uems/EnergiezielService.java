@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.BezugsbasisVergleichDto;
@@ -53,6 +54,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class EnergiezielService {
 
     static final String VERWALTEN = "verbesserung.verwalten";
+    static final String ABSCHLIESSEN = "verbesserung.abschliessen";
+    /** {@code energieziel_entscheidung_chk}: die zweite Person hat eine dieser Rollen. */
+    private static final Set<String> ZWEITE_ROLLEN = Set.of("kundenadministrator", "energiemanager");
+    /** {@code energieziel_bewertung_chk}: die Person der Bewertung (auch wer beantragt) hat eine dieser Rollen. */
+    private static final Set<String> FREIGABE_ROLLEN = Set.of("kundenadministrator", "energiemanager",
+            "voltpilot_betrieb");
     static final Set<String> LISTE_PARAMETER = Set.of("kennzahl", "zustand");
     /** Die Zielperiode liest der Vergleich-Leser in einem Zug ({@link BezugsbasisVergleich#HOECHSTENS_MONATE}). */
     static final int HOECHSTENS_MONATE = BezugsbasisVergleich.HOECHSTENS_MONATE;
@@ -86,12 +93,23 @@ public class EnergiezielService {
     private record Zeile(UUID id, String kennzeichen, UUID kennzahlId, String kennzahl, String kennzahlName,
             UUID basisId, String basis, int fassung, BigDecimal zielwert, String zielperiode, String wortlaut,
             String begruendung, String verantwortlichSub, String verantwortlichName, UUID standortId, String zustand,
-            java.time.Instant angelegtAm, LocalDate beendetZum, String beendetGrund, String ergebnis) {}
+            java.time.Instant angelegtAm, LocalDate beendetZum, String beendetGrund, String ergebnis,
+            String bewertungStatus, String bewertungBegruendung, String kopie, String pruefsumme, boolean vieraugen,
+            String freigabeSub, String freigabeName, java.time.Instant freigabeAm, String entscheidungSub,
+            String entscheidungName, java.time.Instant entschiedenAm, String entscheidungsBegruendung,
+            java.time.Instant letzterMonatEndgueltigAb) {}
 
     private static final String SPALTEN = "SELECT e.id, e.kennzeichen, e.kennzahl_id, k.kennzeichen AS kz, "
             + "k.name AS kz_name, e.bezugsbasis_id, b.kennzeichen AS bb, e.fassung, e.zielwert_prozent, e.zielperiode, "
             + "e.wortlaut, e.begruendung, e.verantwortlich_sub, e.verantwortlich_name, e.standort_id, e.zustand, "
-            + "e.angelegt_am, e.beendet_zum, e.beendet_grund, e.ergebnis FROM energieziel e "
+            + "e.angelegt_am, e.beendet_zum, e.beendet_grund, e.ergebnis, e.bewertung_status, e.bewertung_begruendung, "
+            + "e.bewertung_kopie, e.bewertung_pruefsumme, e.vieraugen, e.freigabe_sub, e.freigabe_name, e.freigabe_am, "
+            + "e.entscheidung_sub, e.entscheidung_name, e.entschieden_am, e.entscheidungs_begruendung, "
+            // F1: ob der letzte Monat der Zielperiode endgültig ist, liest die Frist aus seinem jüngsten Wert.
+            + "(SELECT w.endgueltig_ab FROM kennzahl_wert w WHERE w.kennzahl_id = e.kennzahl_id "
+            + "AND w.periode_art = 'monat' AND w.periode_von = to_date(substring(e.zielperiode FROM 9 FOR 7), 'YYYY-MM') "
+            + "ORDER BY w.version DESC NULLS LAST, w.berechnet_am DESC LIMIT 1) AS letzter_endgueltig_ab "
+            + "FROM energieziel e "
             + "JOIN kennzahl k ON k.id = e.kennzahl_id AND k.tenant_id = e.tenant_id "
             + "JOIN bezugsbasis b ON b.id = e.bezugsbasis_id AND b.tenant_id = e.tenant_id ";
 
@@ -104,7 +122,17 @@ public class EnergiezielService {
                 rs.getString("begruendung"), rs.getString("verantwortlich_sub"), rs.getString("verantwortlich_name"),
                 rs.getObject("standort_id", UUID.class), rs.getString("zustand"),
                 rs.getTimestamp("angelegt_am").toInstant(), zum == null ? null : zum.toLocalDate(),
-                rs.getString("beendet_grund"), rs.getString("ergebnis"));
+                rs.getString("beendet_grund"), rs.getString("ergebnis"), rs.getString("bewertung_status"),
+                rs.getString("bewertung_begruendung"), rs.getString("bewertung_kopie"),
+                rs.getString("bewertung_pruefsumme"), rs.getBoolean("vieraugen"), rs.getString("freigabe_sub"),
+                rs.getString("freigabe_name"), zeit(rs, "freigabe_am"), rs.getString("entscheidung_sub"),
+                rs.getString("entscheidung_name"), zeit(rs, "entschieden_am"),
+                rs.getString("entscheidungs_begruendung"), zeit(rs, "letzter_endgueltig_ab"));
+    }
+
+    private static java.time.Instant zeit(ResultSet rs, String spalte) throws SQLException {
+        Timestamp t = rs.getTimestamp(spalte);
+        return t == null ? null : t.toInstant();
     }
 
     // ================================================================================ lesen
@@ -137,7 +165,7 @@ public class EnergiezielService {
         sql.append("ORDER BY e.kennzeichen");
         List<EnergiezielDto.Energieziel> aus = new ArrayList<>();
         for (Zeile z : jdbc.query(sql.toString(), EnergiezielService::zeile, args.toArray())) {
-            aus.add(dto(z, zone(z), null));
+            aus.add(dto(z, zone(z), null, null));
         }
         return new EnergiezielDto.Liste(List.copyOf(aus));
     }
@@ -145,7 +173,7 @@ public class EnergiezielService {
     /** Das Energieziel mit Verlauf; Sichtbarkeit über das Ziel (RLS) und über seine Kennzahl — sonst 404. */
     public EnergiezielDto.Energieziel eines(UUID id) {
         Zeile z = sichtbar(id);
-        return dto(z, zone(z), verlauf(id));
+        return dto(z, zone(z), anstoesse(id), verlauf(id));
     }
 
     /**
@@ -205,7 +233,7 @@ public class EnergiezielService {
                         .get("satz");
             }
         }
-        return new EnergiezielDto.Stand(dto(z, zone(z), null), zv.heute(), z.zielperiode(),
+        return new EnergiezielDto.Stand(dto(z, zone(z), null, null), zv.heute(), z.zielperiode(),
                 z.zielwert().toPlainString(), List.copyOf(monate), bewertbar, (int) r.get("monate_endgueltig"),
                 (int) r.get("monate_soll"), monateText, (boolean) r.get("vollstaendig"), ausschluesse, summe, vorschlag,
                 satz, vorschlagSatz);
@@ -360,6 +388,229 @@ public class EnergiezielService {
         return eines(id);
     }
 
+    // ================================================================================ bewerten (Z4, Z5)
+
+    /**
+     * Z5 ohne Vier-Augen: nach dem Ende der Zielperiode (letzter Monat endgültig, sonst 409
+     * {@code bewertung_nicht_faellig}) setzt die Person mit {@code verbesserung.abschliessen} das Ergebnis mit
+     * Begründung; die Bewertung ist eine Kopie des Ziel-Stands zum Bewertungstag mit Prüfsumme — nie zurückgenommen.
+     * Mit Vier-Augen 409 {@code vieraugen_beantragen}; ein zweites Mal 409 {@code energieziel_nicht_offen}.
+     */
+    public EnergiezielDto.Energieziel bewerten(UUID id, EnergiezielDto.Bewerten b, ProtokollAkteur wer) {
+        return bewerten(id, b, wer, false);
+    }
+
+    /** Z5 mit Vier-Augen: die erste Person beantragt (Ergebnis, Begründung, Kopie); ohne Vier-Augen 409 {@code vieraugen_aus}. */
+    public EnergiezielDto.Energieziel beantragen(UUID id, EnergiezielDto.Bewerten b, ProtokollAkteur wer) {
+        return bewerten(id, b, wer, true);
+    }
+
+    private EnergiezielDto.Energieziel bewerten(UUID id, EnergiezielDto.Bewerten b, ProtokollAkteur wer,
+            boolean antrag) {
+        Zeile z = abschliessbar(id, wer);
+        String ergebnis = b == null ? null : b.ergebnis();
+        if (ergebnis == null || !VerbesserungRegeln.VOKABULARE.get("energieziel_ergebnis").contains(ergebnis)) {
+            throw VerbesserungAbgelehnt.anfrage("ergebnis");
+        }
+        String begruendung = begruendung(b.begruendung());
+        UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        java.time.Instant jetzt = kennzahlen.jetzt();
+        EnergiezielDto.Stand stand = stand(id);
+        List<EnergiezielDto.Monat> monate = stand.monate();
+        if (monate.isEmpty() || !monate.get(monate.size() - 1).endgueltig()) {
+            throw new VerbesserungAbgelehnt(409, "bewertung_nicht_faellig", "Bewertet wird nach dem Ende der "
+                    + "Zielperiode, wenn ihr letzter Monat endgültig ist.",
+                    Map.of("termin", stand.energieziel().frist().termin().toString()));
+        }
+        String kopie = BerichtRegeln.kanonisch(kopie(z, stand));
+        String pruefsumme = BerichtRegeln.pruefsumme(kopie);
+        transaktion.executeWithoutResult(s -> {
+            String status = gesperrt(z).status();
+            if ("beantragt".equals(status)) {
+                throw new VerbesserungAbgelehnt(409, "bewertung_beantragt", "Über die beantragte Bewertung entscheidet "
+                        + "eine zweite Person.", Map.of("kennzeichen", z.kennzeichen()));
+            }
+            boolean vierAugen = vierAugen(tenant);
+            if (vierAugen && !antrag) {
+                throw new VerbesserungAbgelehnt(409, "vieraugen_beantragen", "Mit Vier-Augen-Freigabe beantragen Sie "
+                        + "die Bewertung; eine zweite Person bestätigt sie.", Map.of("kennzeichen", z.kennzeichen()));
+            }
+            if (!vierAugen && antrag) {
+                throw new VerbesserungAbgelehnt(409, "vieraugen_aus", "Ohne Vier-Augen-Freigabe bewerten Sie das "
+                        + "Energieziel direkt.", Map.of("kennzeichen", z.kennzeichen()));
+            }
+            String neuerStatus = antrag ? "beantragt" : "bewertet";
+            jdbc.update("UPDATE energieziel SET zustand = ?, bewertung_status = ?, ergebnis = ?, bewertung_begruendung = ?, "
+                    + "bewertung_kopie = ?, bewertung_pruefsumme = ?, vieraugen = ?, freigabe_sub = ?, freigabe_name = ?, "
+                    + "freigabe_rolle = ?, freigabe_art = ?, freigabe_am = ?, entscheidung_sub = NULL, "
+                    + "entscheidung_name = NULL, entscheidung_rolle = NULL, entscheidung_art = NULL, entschieden_am = NULL, "
+                    + "entscheidungs_begruendung = NULL WHERE id = ?", antrag ? OFFEN : "bewertet", neuerStatus, ergebnis,
+                    begruendung, kopie, pruefsumme, antrag, wer.sub(), wer.name(), freigabeRolle(wer), wer.art(),
+                    Timestamp.from(jetzt), id);
+            Map<String, Object> neu = new LinkedHashMap<>();
+            neu.put("zustand", antrag ? OFFEN : "bewertet");
+            neu.put("bewertung_status", neuerStatus);
+            neu.put("ergebnis", ergebnis);
+            neu.put("vorschlag", stand.vorschlag());
+            neu.put("pruefsumme", pruefsumme);
+            protokoll(tenant, id, antrag ? "bewertung_beantragt" : "energieziel_bewertet", Map.of("zustand", OFFEN), neu,
+                    begruendung, wer);
+        });
+        return eines(id);
+    }
+
+    /**
+     * Vier-Augen: eine zweite Person (Rolle KA/EM, nie wer beantragt hat: 422 {@code vieraugen_urheber}) bestätigt den
+     * Antrag — das Ziel ist {@code bewertet}; Ergebnis, Kopie und Prüfsumme bleiben die des Antrags.
+     */
+    public EnergiezielDto.Energieziel freigeben(UUID id, EnergiezielDto.Entscheid e, ProtokollAkteur wer) {
+        Zeile z = abschliessbar(id, wer);
+        String begruendung = e == null || e.begruendung() == null || e.begruendung().isBlank() ? null
+                : begruendung(e.begruendung());
+        UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        java.time.Instant jetzt = kennzahlen.jetzt();
+        transaktion.executeWithoutResult(s -> {
+            Gesperrt g = beantragt(z, gesperrt(z));
+            zweitePerson(z.kennzeichen(), g.freigabeSub(), wer);
+            jdbc.update("UPDATE energieziel SET zustand = 'bewertet', bewertung_status = 'bewertet', entscheidung_sub = ?, "
+                    + "entscheidung_name = ?, entscheidung_rolle = ?, entscheidung_art = ?, entschieden_am = ? WHERE id = ?",
+                    wer.sub(), wer.name(), wer.rolle(), wer.art(), Timestamp.from(jetzt), id);
+            Map<String, Object> neu = new LinkedHashMap<>();
+            neu.put("zustand", "bewertet");
+            neu.put("bewertung_status", "bewertet");
+            neu.put("ergebnis", g.ergebnis());
+            neu.put("vieraugen", true);
+            neu.put("pruefsumme", g.pruefsumme());
+            protokoll(tenant, id, "energieziel_bewertet", Map.of("zustand", OFFEN, "bewertung_status", "beantragt"), neu,
+                    begruendung, wer);
+        });
+        return eines(id);
+    }
+
+    /** Vier-Augen: die zweite Person lehnt den Antrag mit Begründung ab; danach darf ein neuer Antrag kommen. */
+    public EnergiezielDto.Energieziel ablehnen(UUID id, EnergiezielDto.Entscheid e, ProtokollAkteur wer) {
+        Zeile z = abschliessbar(id, wer);
+        String begruendung = begruendung(e == null ? null : e.begruendung());
+        UUID tenant = Objects.requireNonNull(TenantContext.get(), "kein Kundenbereich");
+        java.time.Instant jetzt = kennzahlen.jetzt();
+        transaktion.executeWithoutResult(s -> {
+            Gesperrt g = beantragt(z, gesperrt(z));
+            zweitePerson(z.kennzeichen(), g.freigabeSub(), wer);
+            jdbc.update("UPDATE energieziel SET bewertung_status = 'abgelehnt', entscheidung_sub = ?, entscheidung_name = ?, "
+                    + "entscheidung_rolle = ?, entscheidung_art = ?, entschieden_am = ?, entscheidungs_begruendung = ? "
+                    + "WHERE id = ?", wer.sub(), wer.name(), wer.rolle(), wer.art(), Timestamp.from(jetzt), begruendung,
+                    id);
+            protokoll(tenant, id, "bewertung_abgelehnt", Map.of("bewertung_status", "beantragt"),
+                    Map.of("bewertung_status", "abgelehnt", "ergebnis", g.ergebnis(), "pruefsumme", g.pruefsumme()),
+                    begruendung, wer);
+        });
+        return eines(id);
+    }
+
+    /**
+     * Die Kopie des Ziel-Stands zum Bewertungstag (Z5) in der Form der Referenzdatei 1.9
+     * ({@code energieziele[].bewertung.kopie}): Anker, Zielwert, Abruf, Σ ÷ Σ mit „x von y“ und Ausschlüssen, der
+     * Vorschlag des Lesers — und warum es keinen gibt. Kanonisch (A1) ergibt sie genau die Prüfsumme der Referenzdatei.
+     */
+    private com.fasterxml.jackson.databind.node.ObjectNode kopie(Zeile z, EnergiezielDto.Stand stand) {
+        var k = json.createObjectNode();
+        k.put("kennzahl", z.kennzahl());
+        k.put("bezugsbasis", z.basis());
+        k.put("fassung", z.fassung());
+        k.put("zielperiode", z.zielperiode());
+        k.put("zielwert_prozent", z.zielwert());
+        k.put("abruf", stand.abruf().toString());
+        var st = k.putObject("stand");
+        EnergiezielDto.Summe summe = stand.summe();
+        String einheit = stand.monate().stream().map(m -> m.vergleich().bereinigt().gemessen().einheit())
+                .filter(Objects::nonNull).findFirst().orElse(null);
+        String endung = "kWh".equals(einheit) ? "_kwh" : "";
+        if (endung.isEmpty()) {
+            st.put("einheit", einheit);
+        }
+        // In kWh ganze Kilowattstunden wie die Referenzdatei (SP4); andere Einheiten ungerundet.
+        st.put("gemessen" + endung, ganz(dezimal(summe.gemessen()), endung));
+        st.put("erwartet" + endung, ganz(dezimal(summe.erwartet()), endung));
+        st.put("delta_prozent", dezimal(summe.deltaProzent()));
+        st.put("urteil", summe.urteil());
+        st.put("band_prozent", dezimal(summe.bandProzent()));
+        st.put("monate_bewertbar", stand.monateBewertbar());
+        st.put("monate_gesamt", stand.monateSoll());
+        var aus = st.putObject("ausgeschlossen");
+        stand.nichtGezaehlt().forEach(a -> aus.put(a.monat(), a.grund()));
+        k.put("vorschlag", stand.vorschlag());
+        if (stand.vorschlag() == null) {
+            List<String> teile = stand.nichtGezaehlt().stream()
+                    .map(a -> KennzahlRegeln.periodeText("monat", a.monat()) + " " + a.grund()).toList();
+            k.put("grund_kein_vorschlag", "Zielperiode nicht vollständig bewertbar (" + stand.monateText() + " Monaten"
+                    + (teile.isEmpty() ? "" : ": " + String.join(", ", teile)) + ")");
+        } else {
+            k.putNull("grund_kein_vorschlag");
+        }
+        return k;
+    }
+
+    private static BigDecimal ganz(BigDecimal wert, String endung) {
+        return wert == null || endung.isEmpty() ? wert : wert.setScale(0, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal dezimal(String text) {
+        return text == null ? null : new BigDecimal(text);
+    }
+
+    /** Sichtbar (404), {@code verbesserung.abschliessen} an der Geltung der Kennzahl (403), noch offen (409). */
+    private Zeile abschliessbar(UUID id, ProtokollAkteur wer) {
+        Zeile z = sichtbar(id);
+        kennzahlen.fuerBezugsbasis(z.kennzahlId(), ABSCHLIESSEN, wer, null);
+        offen(z);
+        return z;
+    }
+
+    /** Die Bewertung, wie sie unter der Sperre steht. */
+    private record Gesperrt(String status, String freigabeSub, String ergebnis, String pruefsumme) {}
+
+    /** Die Zeile unter Sperre: noch offen (409) — mit dem Stand der Bewertung. */
+    private Gesperrt gesperrt(Zeile z) {
+        Map<String, Object> r = jdbc.queryForMap("SELECT zustand, bewertung_status, freigabe_sub, ergebnis, "
+                + "bewertung_pruefsumme FROM energieziel WHERE id = ? FOR UPDATE", z.id());
+        if (!OFFEN.equals(r.get("zustand"))) {
+            throw nichtOffen(z.kennzeichen(), (String) r.get("zustand"));
+        }
+        return new Gesperrt((String) r.get("bewertung_status"), (String) r.get("freigabe_sub"),
+                (String) r.get("ergebnis"), (String) r.get("bewertung_pruefsumme"));
+    }
+
+    private static Gesperrt beantragt(Zeile z, Gesperrt g) {
+        if (!"beantragt".equals(g.status())) {
+            throw new VerbesserungAbgelehnt(409, "bewertung_nicht_beantragt", "Entschieden wird nur über eine "
+                    + "beantragte Bewertung.", Map.of("kennzeichen", z.kennzeichen()));
+        }
+        return g;
+    }
+
+    /** Vier-Augen: die zweite Person ist nicht, wer beantragt hat (422), und hat Rolle KA/EM (403). */
+    private static void zweitePerson(String kennzeichen, String urheber, ProtokollAkteur wer) {
+        if (Objects.equals(wer.sub(), urheber)) {
+            throw VerbesserungAbgelehnt.fachlich("vieraugen_urheber", "Bei Vier-Augen-Freigabe entscheidet eine "
+                    + "zweite Person — nicht, wer die Bewertung beantragt hat.", Map.of("kennzeichen", kennzeichen));
+        }
+        if (wer.sub() == null || !ZWEITE_ROLLEN.contains(wer.rolle())) {
+            throw new VerbesserungAbgelehnt(403, "vieraugen_rolle", "Die zweite Person ist Kundenadministrator oder "
+                    + "Energiemanager.", Map.of("kennzeichen", kennzeichen));
+        }
+    }
+
+    private static String freigabeRolle(ProtokollAkteur wer) {
+        return FREIGABE_ROLLEN.contains(wer.rolle()) ? wer.rolle() : null;
+    }
+
+    /** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens; ohne Einstellung gilt die Vorgabe aus. */
+    private boolean vierAugen(UUID tenant) {
+        List<Boolean> werte = jdbc.queryForList("SELECT vieraugen_freigabe FROM unternehmen WHERE tenant_id = ? "
+                + "FOR SHARE", Boolean.class, tenant);
+        return !werte.isEmpty() && Boolean.TRUE.equals(werte.get(0));
+    }
+
     // ================================================================================ Prüfungen
 
     /** Sichtbar über RLS ({@code site_scope}) und über die Kennzahl (404). */
@@ -374,11 +625,19 @@ public class EnergiezielService {
     private Zeile schreibbar(UUID id, ProtokollAkteur wer) {
         Zeile z = sichtbar(id);
         kennzahlen.fuerBezugsbasis(z.kennzahlId(), VERWALTEN, wer, null);
-        if (!OFFEN.equals(z.zustand())) {
-            throw new VerbesserungAbgelehnt(409, "energieziel_nicht_offen", "Das Energieziel " + z.kennzeichen()
-                    + " ist " + z.zustand() + " und wird nicht mehr geändert.", Map.of("zustand", z.zustand()));
-        }
+        offen(z);
         return z;
+    }
+
+    private static void offen(Zeile z) {
+        if (!OFFEN.equals(z.zustand())) {
+            throw nichtOffen(z.kennzeichen(), z.zustand());
+        }
+    }
+
+    private static VerbesserungAbgelehnt nichtOffen(String kennzeichen, String zustand) {
+        return new VerbesserungAbgelehnt(409, "energieziel_nicht_offen", "Das Energieziel " + kennzeichen
+                + " ist " + zustand + " und wird nicht mehr geändert.", Map.of("zustand", zustand));
     }
 
     /** Z1: je Kennzahl höchstens ein laufendes Ziel, dessen Zielperiode sich mit dieser überschneidet. */
@@ -518,13 +777,52 @@ public class EnergiezielService {
         return kennzahlen.fuerBezugsbasis(z.kennzahlId(), null, null, null).zone();
     }
 
-    private static EnergiezielDto.Energieziel dto(Zeile z, ZoneId zone, List<EnergiezielDto.Eintrag> verlauf) {
+    private EnergiezielDto.Energieziel dto(Zeile z, ZoneId zone, List<EnergiezielDto.Anstoss> anstoesse,
+            List<EnergiezielDto.Eintrag> verlauf) {
         return new EnergiezielDto.Energieziel(z.id(), z.kennzeichen(),
                 new EnergiezielDto.Kennzahl(z.kennzahlId(), z.kennzahl(), z.kennzahlName()),
                 new EnergiezielDto.Basis(z.basisId(), z.basis(), z.fassung()), z.zielwert().toPlainString(),
                 z.zielperiode(), z.wortlaut(), z.begruendung(),
                 new EnergiezielDto.Person(z.verantwortlichSub(), z.verantwortlichName()), z.standortId(), z.zustand(),
-                LocalDate.ofInstant(z.angelegtAm(), zone), z.beendetZum(), z.beendetGrund(), z.ergebnis(), verlauf);
+                LocalDate.ofInstant(z.angelegtAm(), zone), z.beendetZum(), z.beendetGrund(), z.ergebnis(),
+                frist(z, zone), bewertung(z), anstoesse, verlauf);
+    }
+
+    /** F1: die Operation {@code frist} mit der Uhr der Kennzahlen als Abruf-Tag — nichts wird gespeichert. */
+    private EnergiezielDto.Frist frist(Zeile z, ZoneId zone) {
+        java.time.Instant jetzt = kennzahlen.jetzt();
+        boolean endgueltig = z.letzterMonatEndgueltigAb() != null && !z.letzterMonatEndgueltigAb().isAfter(jetzt);
+        Map<String, Object> f = VerbesserungRegeln.frist(new VerbesserungRegeln.FristEingang("energieziel", z.zustand(),
+                null, z.zielperiode(), endgueltig, LocalDate.ofInstant(jetzt, zone).toString()));
+        return new EnergiezielDto.Frist(LocalDate.parse((String) f.get("termin")), (String) f.get("faellig"),
+                (Integer) f.get("seit_tagen"));
+    }
+
+    private EnergiezielDto.Bewertung bewertung(Zeile z) {
+        if (z.bewertungStatus() == null) {
+            return null;
+        }
+        String vorschlag = null;
+        try {
+            JsonNode kopie = json.readTree(z.kopie());
+            vorschlag = kopie.path("vorschlag").isTextual() ? kopie.get("vorschlag").asText() : null;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException x) {
+            throw new IllegalStateException(x);
+        }
+        return new EnergiezielDto.Bewertung(z.bewertungStatus(), z.ergebnis(), z.bewertungBegruendung(), vorschlag,
+                z.vieraugen(), new EnergiezielDto.Person(z.freigabeSub(), z.freigabeName()), z.freigabeAm(),
+                z.entscheidungName() == null ? null
+                        : new EnergiezielDto.Person(z.entscheidungSub(), z.entscheidungName()),
+                z.entschiedenAm(), z.entscheidungsBegruendung(), z.kopie(), z.pruefsumme());
+    }
+
+    private List<EnergiezielDto.Anstoss> anstoesse(UUID id) {
+        return jdbc.query("SELECT id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung "
+                + "FROM vorgang_anstoss WHERE energieziel_id = ? ORDER BY angestossen_am, anlass_kennung", (rs, i) ->
+                        new EnergiezielDto.Anstoss(rs.getObject("id", UUID.class), rs.getString("art"),
+                                rs.getString("anlass_kennung"), rs.getTimestamp("angestossen_am").toInstant(),
+                                rs.getString("zustand"), rs.getString("antwort"), rs.getString("antwort_begruendung")),
+                id);
     }
 
     /** „Januar bis Dezember 2028“ bzw. „November 2027 bis Oktober 2028“ (§5.9). */

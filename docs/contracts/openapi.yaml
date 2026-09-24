@@ -12036,6 +12036,138 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/bewerten:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Bewertet ein Energieziel nach dem Ende der Zielperiode - Ergebnis mit Begründung, Kopie des Stands mit Prüfsumme.
+      description: >
+        Recht `verbesserung.abschliessen` am Geltungsbereich der Kennzahl (Z4, Z5). Nur offen und nach dem Ende der
+        Zielperiode, wenn ihr letzter Monat endgültig ist (sonst 409 `bewertung_nicht_faellig`). Das Ergebnis setzt die
+        Person; `bewertung.vorschlag` zeigt daneben den Vorschlag des Lesers (null bei unvollständiger Periode). Die
+        Bewertung ist eine Kopie des Ziel-Stands zum Bewertungstag als kanonischer Text (`bewertung.kopie`) mit
+        `bewertung.pruefsumme` (sha256) - nie zurückgenommen. Mit Vier-Augen (`unternehmen.vieraugen_freigabe`) 409
+        `vieraugen_beantragen`; ein zweites Mal 409 `energieziel_nicht_offen`; ein offener Antrag 409
+        `bewertung_beantragt`. Protokoll `energieziel_bewertet`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ergebnis, begruendung]
+              properties:
+                ergebnis: { type: string, enum: [erreicht, verfehlt, nicht_bewertbar] }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Bewertet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/bewertung/beantragen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Beantragt die Bewertung eines Energieziels bei Vier-Augen-Freigabe.
+      description: >
+        Recht `verbesserung.abschliessen`. Wie `bewerten`, aber das Ziel bleibt offen mit `bewertung.status =
+        beantragt`, bis eine zweite Person entscheidet; ohne Vier-Augen 409 `vieraugen_aus`. Nach einer Ablehnung darf
+        ein neuer Antrag kommen. Protokoll `bewertung_beantragt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ergebnis, begruendung]
+              properties:
+                ergebnis: { type: string, enum: [erreicht, verfehlt, nicht_bewertbar] }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Beantragt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/bewertung/freigeben:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Bestätigt die beantragte Bewertung als zweite Person.
+      description: >
+        Recht `verbesserung.abschliessen`; die zweite Person hat die Rolle Kundenadministrator oder Energiemanager
+        (403 `vieraugen_rolle`) und ist nie, wer beantragt hat (422 `vieraugen_urheber`). Ohne Antrag 409
+        `bewertung_nicht_beantragt`. Ergebnis, Kopie und Prüfsumme bleiben die des Antrags; das Ziel ist `bewertet`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Bewertet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/bewertung/ablehnen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Lehnt die beantragte Bewertung als zweite Person mit Begründung ab.
+      description: >
+        Recht `verbesserung.abschliessen`; zweite Person wie bei `freigeben`; Begründung 10–500 Zeichen. Das Ziel
+        bleibt offen, `bewertung.status = abgelehnt`; ein neuer Antrag ist möglich. Protokoll `bewertung_abgelehnt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Abgelehnt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/energieziele/{id}/stand:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -27640,8 +27772,10 @@ components:
         beendet_grund: { type: string, nullable: true }
     Energieziel:
       type: object
-      description: Ein Energieziel (UEMS AP-18 IP-6, Z1/Z2); `verlauf` nur am einzelnen Ziel, sonst null.
-      required: [id, kennzeichen, kennzahl, bezugsbasis, zielwert_prozent, zielperiode, wortlaut, begruendung, verantwortlich, standort_id, zustand, angelegt_am, beendet_zum, beendet_grund, ergebnis, verlauf]
+      description: >
+        Ein Energieziel (UEMS AP-18 IP-6/IP-7, Z1/Z2/Z5); `anstoesse` und `verlauf` nur am einzelnen Ziel, sonst null.
+        `frist` wird beim Abruf abgeleitet (Operation `frist`), `bewertung` ist null, solange niemand bewertet hat.
+      required: [id, kennzeichen, kennzahl, bezugsbasis, zielwert_prozent, zielperiode, wortlaut, begruendung, verantwortlich, standort_id, zustand, angelegt_am, beendet_zum, beendet_grund, ergebnis, frist, bewertung, anstoesse, verlauf]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^EZ-[0-9]{4}-[0-9]{4,9}$" }
@@ -27667,10 +27801,66 @@ components:
         beendet_zum: { type: string, format: date, nullable: true }
         beendet_grund: { type: string, nullable: true }
         ergebnis: { type: string, nullable: true, enum: [erreicht, verfehlt, nicht_bewertbar, null] }
+        frist: { $ref: "#/components/schemas/EnergiezielFrist" }
+        bewertung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergiezielBewertung" }]
+        anstoesse:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/EnergiezielAnstoss" }
         verlauf:
           type: array
           nullable: true
           items: { $ref: "#/components/schemas/EnergiezielEintrag" }
+    EnergiezielFrist:
+      type: object
+      description: >
+        F1 (Operation `frist`): Termin = letzter Tag der Zielperiode; `faellig` = `bewertung_faellig` („Bewertung fällig
+        seit n Tagen“, 0 am Termintag), solange das Ziel offen und der letzte Monat endgültig ist - sonst null.
+      required: [termin, faellig, seit_tagen]
+      properties:
+        termin: { type: string, format: date }
+        faellig: { type: string, nullable: true, enum: [bewertung_faellig, null] }
+        seit_tagen: { type: integer, nullable: true, minimum: 0 }
+    EnergiezielBewertung:
+      type: object
+      description: >
+        Z5: die Bewertung - `kopie` ist der kanonische Text des Ziel-Stands zum Bewertungstag, `pruefsumme` sein
+        sha256; `person`/`am` wer bewertet bzw. beantragt hat, bei Vier-Augen `entscheidung` die zweite Person.
+      required: [status, ergebnis, begruendung, vorschlag, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme]
+      properties:
+        status: { type: string, enum: [beantragt, bewertet, abgelehnt] }
+        ergebnis: { type: string, enum: [erreicht, verfehlt, nicht_bewertbar] }
+        begruendung: { type: string }
+        vorschlag: { type: string, nullable: true, enum: [erreicht, nicht_erreicht, null] }
+        vieraugen: { type: boolean }
+        person:
+          type: object
+          required: [sub, name]
+          properties: { sub: { type: string, nullable: true }, name: { type: string } }
+        am: { type: string, format: date-time }
+        entscheidung:
+          type: object
+          nullable: true
+          required: [sub, name]
+          properties: { sub: { type: string, nullable: true }, name: { type: string } }
+        entschieden_am: { type: string, format: date-time, nullable: true }
+        entscheidungs_begruendung: { type: string, nullable: true }
+        kopie: { type: string }
+        pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+    EnergiezielAnstoss:
+      type: object
+      description: Ein Anstoß am Ziel (`vorgang_anstoss`, Z5) - Basis beendet oder neu gefasst; eine Person antwortet.
+      required: [id, art, anlass_kennung, angestossen_am, zustand, antwort, antwort_begruendung]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [ausgangslage_korrigiert, bewertung_korrigiert, messgrundlage_beendet, messgrundlage_neu_gefasst] }
+        anlass_kennung: { type: string }
+        angestossen_am: { type: string, format: date-time }
+        zustand: { type: string, enum: [offen, beantwortet] }
+        antwort: { type: string, nullable: true, enum: [bleibt, neu_kopiert, neu_bewertet, null] }
+        antwort_begruendung: { type: string, nullable: true }
     EnergiezielEintrag:
       type: object
       description: Eine Zeile des Protokolls `energieziel_aenderung`.

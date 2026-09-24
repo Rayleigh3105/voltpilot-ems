@@ -48,7 +48,9 @@ class EnergiezielSchnittstelleVertragTest {
     void dieFormenSindDieDesDto() throws Exception {
         Map<String, Class<? extends Record>> formen = Map.of("Energieziel", EnergiezielDto.Energieziel.class,
                 "EnergiezielEintrag", EnergiezielDto.Eintrag.class, "EnergiezielListe", EnergiezielDto.Liste.class,
-                "EnergiezielStand", EnergiezielDto.Stand.class);
+                "EnergiezielStand", EnergiezielDto.Stand.class, "EnergiezielFrist", EnergiezielDto.Frist.class,
+                "EnergiezielBewertung", EnergiezielDto.Bewertung.class, "EnergiezielAnstoss",
+                EnergiezielDto.Anstoss.class);
         for (var f : formen.entrySet()) {
             Map<String, Object> s = schema(f.getKey());
             assertThat(s).as(f.getKey()).isNotNull();
@@ -68,6 +70,17 @@ class EnergiezielSchnittstelleVertragTest {
         assertThat(aufzaehlung(ziel, "ergebnis")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("energieziel_ergebnis"));
         assertThat(aufzaehlung(schema("EnergiezielStand"), "vorschlag"))
                 .isEqualTo(VerbesserungRegeln.VOKABULARE.get("zielstand_vorschlag"));
+        // IP-7: Bewertung, Frist und Anstoß sprechen die Wörter des Vertrags.
+        Map<String, Object> bewertung = schema("EnergiezielBewertung");
+        assertThat(aufzaehlung(bewertung, "ergebnis")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("energieziel_ergebnis"));
+        assertThat(aufzaehlung(bewertung, "vorschlag")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("zielstand_vorschlag"));
+        assertThat(aufzaehlung(bewertung, "status")).containsExactly("beantragt", "bewertet", "abgelehnt");
+        assertThat(VerbesserungRegeln.VOKABULARE.get("frist_faellig"))
+                .containsAll(aufzaehlung(schema("EnergiezielFrist"), "faellig").stream().map(String::valueOf).toList());
+        Map<String, Object> anstoss = schema("EnergiezielAnstoss");
+        assertThat(aufzaehlung(anstoss, "art")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_art"));
+        assertThat(aufzaehlung(anstoss, "zustand")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_zustand"));
+        assertThat(aufzaehlung(anstoss, "antwort")).isEqualTo(VerbesserungRegeln.VOKABULARE.get("anstoss_antwort"));
         Map<String, Object> ng = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) schema(
                 "EnergiezielStand").get("properties")).get("nicht_gezaehlt")).get("items");
         // Der Ziel-Stand nennt die Gründe der Bezugsbasis und „unvollständig“, nie die der Wirkung (Umsetzung).

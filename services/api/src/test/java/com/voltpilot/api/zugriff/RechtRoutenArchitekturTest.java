@@ -84,6 +84,10 @@ class RechtRoutenArchitekturTest {
         for (String r : List.of("anlegen", "aendern", "verantwortlicher", "umgesetzt", "verwerfen", "eintrag")) {
             m.put("MassnahmeController#" + r, massnahme);
         }
+        for (String r : List.of("bewerten", "bewertungBeantragen", "bewertungFreigeben", "bewertungAblehnen")) {
+            m.put("EnergiezielController#" + r, "EnergiezielService über KennzahlService.fuerBezugsbasis — "
+                    + "verbesserung.abschliessen an der Geltung der Kennzahl des Ziels");
+        }
         m.put("BezugsbasisPflegeController#bleibt", bezugsbasis);
         m.put("BezugsbasisPflegeController#beenden", bezugsbasis);
         m.put("KorrekturPortalController#vorschau", "KorrekturPortalService — lesende Vorschau ohne Schreibvorgang");

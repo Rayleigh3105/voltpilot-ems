@@ -35,6 +35,17 @@ public final class EnergiezielDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Beenden(LocalDate zum, String begruendung) {}
 
+    /**
+     * {@code POST …/{id}/bewerten} und {@code …/bewertung/beantragen} (Z4, Z5): das Ergebnis
+     * {@code erreicht · verfehlt · nicht_bewertbar} und die Begründung (10–500 Zeichen).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Bewerten(String ergebnis, String begruendung) {}
+
+    /** {@code …/bewertung/freigeben} (Begründung wahlfrei) und {@code …/bewertung/ablehnen} (Begründung Pflicht). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Entscheid(String begruendung) {}
+
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Kennzahl(UUID id, String kennzeichen, String name) {}
@@ -58,7 +69,32 @@ public final class EnergiezielDto {
     public record Energieziel(UUID id, String kennzeichen, Kennzahl kennzahl, Basis bezugsbasis,
             String zielwertProzent, String zielperiode, String wortlaut, String begruendung, Person verantwortlich,
             UUID standortId, String zustand, LocalDate angelegtAm, LocalDate beendetZum, String beendetGrund,
-            String ergebnis, List<Eintrag> verlauf) {}
+            String ergebnis, Frist frist, Bewertung bewertung, List<Anstoss> anstoesse, List<Eintrag> verlauf) {}
+
+    /**
+     * F1 (Operation {@code frist}): Termin = letzter Tag der Zielperiode; {@code faellig} = {@code bewertung_faellig}
+     * mit {@code seit_tagen} (0 am Termintag), solange das Ziel offen und der letzte Monat endgültig ist — beim Abruf
+     * abgeleitet, nie gespeichert.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Frist(LocalDate termin, String faellig, Integer seitTagen) {}
+
+    /**
+     * Z5: die Bewertung — {@code status} {@code beantragt · bewertet · abgelehnt}; die Kopie des Ziel-Stands zum
+     * Bewertungstag (kanonischer Text) mit Prüfsumme; bei Vier-Augen die zweite Person. Ohne Bewertung {@code null}.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Bewertung(String status, String ergebnis, String begruendung, String vorschlag, boolean vieraugen,
+            Person person, Instant am, Person entscheidung, Instant entschiedenAm, String entscheidungsBegruendung,
+            String kopie, String pruefsumme) {}
+
+    /** Ein Anstoß am Ziel ({@code vorgang_anstoss}, Z5): Basis beendet oder neu gefasst — eine Person antwortet. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Anstoss(UUID id, String art, String anlassKennung, Instant angestossenAm, String zustand,
+            String antwort, String antwortBegruendung) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)

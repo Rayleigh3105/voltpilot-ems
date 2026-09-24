@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -34,6 +35,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
@@ -69,6 +71,9 @@ class EnergiezielApiTest {
     private static final String PFAD = "/api/v1/energieziele";
     private static final Instant ANGELEGT = Instant.parse("2027-12-20T09:00:00Z");
     private static final Instant ABRUF = Instant.parse("2028-07-10T09:00:00Z");
+    private static final Instant BEWERTUNGSTAG = Instant.parse("2029-01-15T09:00:00Z");
+    private static final JsonNode REFERENZ = referenz();
+    private static final JsonNode R10 = REFERENZ.get("energieziele").get(0);
     private static final Map<String, Object> R4 = ziel();
 
     @Container
@@ -105,6 +110,10 @@ class EnergiezielApiTest {
 
     @Autowired
     KennzahlService kennzahlen;
+
+    @Autowired
+    @Qualifier("adminJdbcTemplate")
+    JdbcTemplate admin;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -331,21 +340,214 @@ class EnergiezielApiTest {
 
     // ================================================================================ Welt
 
-    private static Map<String, Object> ziel() {
+    // ================================================================================ IP-7: Bewertung (Z4, Z5, F1)
+
+    /**
+     * R10: EZ-2028-0001 nach dem Ende — am 15.01.2029 2,7 % weniger über 11 von 12 Monaten (März
+     * {@code variable_ausserhalb}), kein Vorschlag; „Bewertung fällig seit 15 Tagen“; Ines bewertet „verfehlt“ — die
+     * Kopie des Stands ergibt genau die Prüfsumme der Referenzdatei 1.9; ein zweites Mal 409.
+     */
+    @Test
+    void r10VerfehltMitKopieUndPruefsumme() throws Exception {
+        Welt w = welt();
+        String id = ruf(w, "ines", HttpMethod.POST, PFAD, anlegen(w.kz4(), (String) R4.get("zielperiode"))).body()
+                .get("id").asText();
+        zweitesHalbjahr(w);
+
+        uhr(ABRUF);
+        Antwort frueh = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewerten", bewerten("verfehlt"));
+        assertThat(frueh.status()).as(frueh.text()).isEqualTo(409);
+        assertThat(frueh.body().get("code").asText()).isEqualTo("bewertung_nicht_faellig");
+        assertThat(frueh.body().get("termin").asText()).isEqualTo("2028-12-31");
+        JsonNode vorher = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id, null).body();
+        assertThat(vorher.at("/frist/termin").asText()).isEqualTo("2028-12-31");
+        assertThat(vorher.at("/frist/faellig").isNull()).isTrue();
+        assertThat(vorher.get("bewertung").isNull()).isTrue();
+
+        uhr(BEWERTUNGSTAG);
+        JsonNode faellig = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id, null).body();
+        assertThat(faellig.at("/frist/faellig").asText()).isEqualTo("bewertung_faellig");
+        assertThat(faellig.at("/frist/seit_tagen").asInt()).isEqualTo(15);
+        JsonNode register = ruf(w, "ines", HttpMethod.GET, PFAD, null).body();
+        assertThat(register.at("/energieziele/0/frist/seit_tagen").asInt()).isEqualTo(15);
+        JsonNode s = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/stand", null).body();
+        assertThat(s.get("monate_text").asText()).isEqualTo("11 von 12");
+        assertThat(zahl(s.at("/summe/gemessen"))).isEqualByComparingTo("876600");
+        assertThat(zahl(s.at("/summe/erwartet")).setScale(0, RoundingMode.HALF_UP)).isEqualByComparingTo("900892");
+        assertThat(s.at("/summe/delta_prozent").asText()).isEqualTo("-2.7");
+        assertThat(s.get("vorschlag").isNull()).as("11 von 12 → kein Vorschlag").isTrue();
+
+        // Lars (Leser) darf nicht bewerten; ein Wort außerhalb des Vertrags ist 400.
+        assertThat(ruf(w, "lars", HttpMethod.POST, PFAD + "/" + id + "/bewerten", bewerten("verfehlt")).status())
+                .isEqualTo(403);
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewerten", bewerten("nicht_erreicht"))
+                .status()).isEqualTo(400);
+
+        Antwort b = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewerten", bewerten("verfehlt"));
+        assertThat(b.status()).as(b.text()).isEqualTo(200);
+        JsonNode z = b.body();
+        JsonNode ref = R10.get("bewertung");
+        assertThat(z.get("zustand").asText()).isEqualTo("bewertet");
+        assertThat(z.get("ergebnis").asText()).isEqualTo("verfehlt");
+        assertThat(z.at("/bewertung/status").asText()).isEqualTo("bewertet");
+        assertThat(z.at("/bewertung/vieraugen").asBoolean()).isFalse();
+        assertThat(z.at("/bewertung/vorschlag").isNull()).isTrue();
+        assertThat(z.at("/bewertung/begruendung").asText()).isEqualTo(ref.get("begruendung").asText());
+        assertThat(z.at("/bewertung/person/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(z.at("/bewertung/am").asText()).startsWith("2029-01-15");
+        // Die Kopie ist der kanonische Text des Stands zum Bewertungstag — byte-gleich zur Referenzdatei.
+        assertThat(z.at("/bewertung/pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
+        assertThat(z.at("/bewertung/kopie").asText()).isEqualTo(BerichtRegeln.kanonisch(ref.get("kopie")));
+        assertThat(root.queryForObject("SELECT bericht_pruefsumme(bewertung_kopie) = bewertung_pruefsumme "
+                + "FROM energieziel WHERE id = ?::uuid", Boolean.class, id)).isTrue();
+        assertThat(z.at("/frist/faellig").isNull()).isTrue();
+        assertThat(z.at("/verlauf/1/art").asText()).isEqualTo("energieziel_bewertet");
+        assertThat(z.at("/verlauf/1/neu/pruefsumme").asText()).isEqualTo(ref.get("pruefsumme").asText());
+
+        Antwort zweite = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewerten", bewerten("erreicht"));
+        assertThat(zweite.status()).as(zweite.text()).isEqualTo(409);
+        assertThat(zweite.body().get("code").asText()).isEqualTo("energieziel_nicht_offen");
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id, null).body().get("ergebnis").asText())
+                .isEqualTo("verfehlt");
+    }
+
+    /**
+     * Vier-Augen nach {@code unternehmen.vieraugen_freigabe}: bewerten ist dann ein Antrag; der Urheber darf nicht
+     * freigeben (422), eine zweite Person lehnt ab oder bestätigt; nach der Ablehnung kommt ein neuer Antrag.
+     */
+    @Test
+    void vierAugenDerUrheberDarfNichtFreigeben() throws Exception {
+        Welt w = welt();
+        String id = ruf(w, "ines", HttpMethod.POST, PFAD, anlegen(w.kz4(), (String) R4.get("zielperiode"))).body()
+                .get("id").asText();
+        zweitesHalbjahr(w);
+        uhr(BEWERTUNGSTAG);
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertung/beantragen", bewerten("verfehlt"))
+                .body().get("code").asText()).isEqualTo("vieraugen_aus");
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = true WHERE tenant_id = ?", w.mandant());
+
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewerten", bewerten("verfehlt")).body()
+                .get("code").asText()).isEqualTo("vieraugen_beantragen");
+        Antwort antrag = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertung/beantragen",
+                bewerten("verfehlt"));
+        assertThat(antrag.status()).as(antrag.text()).isEqualTo(200);
+        assertThat(antrag.body().get("zustand").asText()).isEqualTo("offen");
+        assertThat(antrag.body().at("/bewertung/status").asText()).isEqualTo("beantragt");
+        assertThat(antrag.body().at("/bewertung/vieraugen").asBoolean()).isTrue();
+        assertThat(antrag.body().at("/bewertung/pruefsumme").asText())
+                .isEqualTo(R10.at("/bewertung/pruefsumme").asText());
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertung/beantragen", bewerten("verfehlt"))
+                .body().get("code").asText()).isEqualTo("bewertung_beantragt");
+
+        Antwort selbst = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertung/freigeben", Map.of());
+        assertThat(selbst.status()).as(selbst.text()).isEqualTo(422);
+        assertThat(selbst.body().get("code").asText()).isEqualTo("vieraugen_urheber");
+        assertThat(ruf(w, "lars", HttpMethod.POST, PFAD + "/" + id + "/bewertung/freigeben", Map.of()).status())
+                .isEqualTo(403);
+
+        Antwort ab = ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + id + "/bewertung/ablehnen",
+                Map.of("begruendung", "Der März fehlt — bitte erst die Spannweite prüfen."));
+        assertThat(ab.status()).as(ab.text()).isEqualTo(200);
+        assertThat(ab.body().at("/bewertung/status").asText()).isEqualTo("abgelehnt");
+        assertThat(ab.body().at("/bewertung/entscheidung/name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(ab.body().get("zustand").asText()).isEqualTo("offen");
+
+        // Ein neuer Antrag — diesmal von Jonas; Ines ist jetzt die zweite Person.
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + id + "/bewertung/beantragen", bewerten("verfehlt"))
+                .status()).isEqualTo(200);
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + id + "/bewertung/freigeben", Map.of()).body()
+                .get("code").asText()).isEqualTo("vieraugen_urheber");
+        Antwort frei = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/bewertung/freigeben", Map.of());
+        assertThat(frei.status()).as(frei.text()).isEqualTo(200);
+        JsonNode z = frei.body();
+        assertThat(z.get("zustand").asText()).isEqualTo("bewertet");
+        assertThat(z.at("/bewertung/status").asText()).isEqualTo("bewertet");
+        assertThat(z.at("/bewertung/person/name").asText()).isEqualTo("Jonas Wendlinger");
+        assertThat(z.at("/bewertung/entscheidung/name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(z.get("verlauf")).extracting(e -> e.get("art").asText()).containsExactly("energieziel_angelegt",
+                "bewertung_beantragt", "bewertung_abgelehnt", "bewertung_beantragt", "energieziel_bewertet");
+        assertThat(ruf(w, "jonas", HttpMethod.POST, PFAD + "/" + id + "/bewertung/ablehnen",
+                Map.of("begruendung", "Zu spät, aber zur Probe.")).body().get("code").asText())
+                .isEqualTo("energieziel_nicht_offen");
+    }
+
+    /**
+     * Z5, Pfad 2: die Basis BB-0001 endet → der Struktur-Läufer (Admin-Rolle) setzt genau einen Anstoß
+     * {@code messgrundlage_beendet} am offenen Ziel, nicht am beendeten; ein zweiter Takt setzt keinen zweiten. Die
+     * App-Rolle löscht weiterhin keinen Anstoß.
+     */
+    @Test
+    void basisBeendetStoesstDasOffeneZielGenauEinmalAn() throws Exception {
+        Welt w = welt();
+        String offen = ruf(w, "ines", HttpMethod.POST, PFAD, anlegen(w.kz4(), "2028-01/2028-12")).body().get("id")
+                .asText();
+        String beendet = ruf(w, "ines", HttpMethod.POST, PFAD, anlegen(w.kz4(), "2029-01/2029-12")).body().get("id")
+                .asText();
+        uhr(ABRUF);
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + beendet + "/beenden",
+                Map.of("begruendung", "Ziel 2029 wird nach der Neufassung gesetzt.")).status()).isEqualTo(200);
+        UUID basis = root.queryForObject("SELECT id FROM bezugsbasis WHERE tenant_id = ?", UUID.class, w.mandant());
+        Antwort ende = ruf(w, "ines", HttpMethod.POST, "/api/v1/kennzahlen/" + w.kz4() + "/bezugsbasen/" + basis
+                + "/beenden", Map.of("tag", "2028-07-31", "grund", "struktur_geaendert",
+                        "begruendung", "Anbau Halle 2 ändert die Struktur"));
+        assertThat(ende.status()).as(ende.text()).isEqualTo(200);
+
+        StrukturAenderungLaeufer laeufer = new StrukturAenderungLaeufer(admin, new BerichteNaht.Keine(), 200);
+        laeufer.bezugsbasis(BezugsbasisAnstoss.mitSchalter(true));
+        assertThat(laeufer.lauf(ABRUF).gescheitert()).isEmpty();
+        assertThat(laeufer.lauf(ABRUF).gescheitert()).isEmpty();
+
+        JsonNode z = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + offen, null).body();
+        assertThat(z.get("anstoesse")).hasSize(1);
+        assertThat(z.at("/anstoesse/0/art").asText()).isEqualTo("messgrundlage_beendet");
+        assertThat(z.at("/anstoesse/0/anlass_kennung").asText()).isEqualTo("BB-0001/beendet");
+        assertThat(z.at("/anstoesse/0/zustand").asText()).isEqualTo("offen");
+        assertThat(z.get("verlauf")).extracting(e -> e.get("art").asText())
+                .containsExactly("energieziel_angelegt", "anstoss_gesetzt");
+        assertThat(z.at("/verlauf/1/person").asText()).isEqualTo("VoltPilot (Struktur-Läufer)");
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "/" + beendet, null).body().get("anstoesse")).isEmpty();
+        assertThat(root.queryForObject("SELECT count(*) FROM vorgang_anstoss WHERE tenant_id = ?", Integer.class,
+                w.mandant())).isEqualTo(1);
+
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        assertThatThrownBy(() -> app.update("DELETE FROM vorgang_anstoss")).rootCause()
+                .hasMessageContaining("permission denied");
+    }
+
+    /** R10 „gegeben“: Juli bis Dezember 2028 aus {@code kennzahlen_1_9_monate} der Referenzdatei 1.9. */
+    private static void zweitesHalbjahr(Welt w) {
+        UUID bz1 = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+        for (JsonNode m : REFERENZ.at("/kennzahlen_1_9_monate/0/monate")) {
+            String p = m.get("periode").asText();
+            if (p.compareTo("2028-07") >= 0 && p.compareTo("2028-12") <= 0) {
+                monat(w, w.kz4(), bz1, p + "-01", m.get("kwh").asText(), m.get("kg").asText());
+            }
+        }
+    }
+
+    private static Map<String, Object> bewerten(String ergebnis) {
+        return Map.of("ergebnis", ergebnis, "begruendung", R10.at("/bewertung/begruendung").asText());
+    }
+
+    private static JsonNode referenz() {
         try {
-            JsonNode datei = MAPPER.readTree(java.nio.file.Path.of("..", "..", "docs", "contracts", "v2",
+            return MAPPER.readTree(java.nio.file.Path.of("..", "..", "docs", "contracts", "v2",
                     "uems-referenzunternehmen.json").toFile());
-            JsonNode ez = datei.get("energieziele").get(0);
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("kennzeichen", ez.get("kennzeichen").asText());
-            m.put("zielwert_prozent", ez.get("zielwert_prozent").decimalValue());
-            m.put("zielperiode", ez.get("zielperiode").asText());
-            m.put("wortlaut", ez.get("wortlaut").asText());
-            m.put("begruendung", ez.get("begruendung").asText());
-            return m;
         } catch (java.io.IOException x) {
             throw new IllegalStateException(x);
         }
+    }
+
+    private static Map<String, Object> ziel() {
+        JsonNode ez = REFERENZ.get("energieziele").get(0);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("kennzeichen", ez.get("kennzeichen").asText());
+        m.put("zielwert_prozent", ez.get("zielwert_prozent").decimalValue());
+        m.put("zielperiode", ez.get("zielperiode").asText());
+        m.put("wortlaut", ez.get("wortlaut").asText());
+        m.put("begruendung", ez.get("begruendung").asText());
+        return m;
     }
 
     private static Map<String, Object> anlegen(UUID kennzahl, String zielperiode) {
@@ -385,7 +587,8 @@ class EnergiezielApiTest {
         UUID bz1 = root.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
                 + "periode_art, geltung_art, ort_id) VALUES (?, 'BZ-1', 'Produktionsmenge Spritzguss', 'periodenwert', "
                 + "'kg', 'monat', 'gebaeude', ?) RETURNING id", UUID.class, t, g2);
-        for (String[] p : new String[][] {{"ines", "Ines Kaltenbach"}, {"lars", "Lars Vogel"}}) {
+        for (String[] p : new String[][] {{"ines", "Ines Kaltenbach"}, {"lars", "Lars Vogel"},
+            {"jonas", "Jonas Wendlinger"}}) {
             root.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?, ?, 'benutzer', ?, "
                     + "'aktiv')", t, "sub-" + p[0] + "-" + t, p[1]);
         }
@@ -490,9 +693,16 @@ class EnergiezielApiTest {
         return new BigDecimal(n.asText());
     }
 
-    /** ines = Ines Kaltenbach (nie zugewiesen → Kundenadministrator), lars = Lars Vogel (Leser an jedem Standort). */
+    /**
+     * ines = Ines Kaltenbach, jonas = Jonas Wendlinger (beide nie zugewiesen → Kundenadministrator), lars = Lars Vogel
+     * (Leser an jedem Standort).
+     */
     private Antwort ruf(Welt w, String person, HttpMethod methode, String pfad, Object body) throws Exception {
-        String name = "lars".equals(person) ? "Lars Vogel" : "Ines Kaltenbach";
+        String name = switch (person) {
+            case "lars" -> "Lars Vogel";
+            case "jonas" -> "Jonas Wendlinger";
+            default -> "Ines Kaltenbach";
+        };
         MockHttpServletRequestBuilder anfrage = request(methode, pfad)
                 .with(jwt().jwt(j -> {
                     j.subject("sub-" + person + "-" + w.mandant());
