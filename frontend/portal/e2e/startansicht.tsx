@@ -842,6 +842,11 @@ Object.assign(api, {
   bezugsbasisVergleich: async () =>
     ({ r2: vergleichR2, maerz: vergleichMitMaerz, stand: vergleichMitStand })[params.get('vergleich') ?? '']?.() ?? vergleichLeer(),
   kennzahlBezugsbasen: async () => ({ bezugsbasen: [] }),
+  // AP-17 IP-17 / IP-12c: die Bühne hat keine laufende Bezugsbasis und keinen Wetterbezug — Kachel und Zeile „Wetter“
+  // bleiben weg, und kein Abruf geht an den (nicht laufenden) Server.
+  bezugsbasisUebersicht: async () => ({ stichtag: '2026-10-20', laufend: 0, freigegeben: 0, vorlaeufig: 0, mit_anstoss: 0,
+    ueberpruefung_faellig: 0, faellig: [] }),
+  standortWetter: async () => null,
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,
     kennzeichen: kennzahlenDerBuehne().find((x) => x.id === id)?.kennzeichen ?? '',
