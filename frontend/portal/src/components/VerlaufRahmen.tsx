@@ -240,6 +240,8 @@ export interface LegendenEintrag {
   form: 'flaeche' | 'linie' | 'punkt';
   /** Mit `onToggle` ist der Eintrag ein Schalter; `aktiv` = sichtbar. */
   aktiv?: boolean;
+  /** Ein Zuschalt-Eintrag („+ Börsenpreis") ist aus nicht durchgestrichen. */
+  zuschalten?: boolean;
   onToggle?: () => void;
 }
 
@@ -260,7 +262,7 @@ export function VrLegende({ eintraege, label }: { eintraege: readonly LegendenEi
             {e.onToggle ? (
               <button
                 type="button"
-                className={e.aktiv === false ? 'is-off' : undefined}
+                className={e.aktiv === false ? (e.zuschalten ? 'is-plus' : 'is-off') : undefined}
                 aria-pressed={e.aktiv !== false}
                 onClick={e.onToggle}
               >

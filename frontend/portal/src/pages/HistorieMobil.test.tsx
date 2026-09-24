@@ -25,9 +25,14 @@ import { api, type History, type Site, type SiteEarnings } from '../api';
  */
 
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
-vi.mock('../HistoryChart', () => ({
-  HistoryEnergieChart: () => <div data-testid="energie-chart" />,
-}));
+vi.mock('../components/energie/EnergieCharts', () => {
+  const Chart = (p: { vergleich?: { name: string } | null }) => (
+    <div data-testid="energie-chart" data-vergleich={p.vergleich ? 'ja' : 'nein'}>
+      {p.vergleich ? `Vergleich: ${p.vergleich.name}` : ''}
+    </div>
+  );
+  return { EnergieTagChart: Chart, EnergieBilanzChart: Chart };
+});
 
 const site: Site = {
   id: 's-1',
@@ -240,46 +245,6 @@ function kachel(gruppe: HTMLElement, label: string): string {
   return (k.textContent ?? '').replace(/\u00a0/g, ' ');
 }
 
-describe('Mobil · Messwerte führt mit dem DIAGRAMM (P3)', () => {
-  it('stellt das Diagramm VOR die kWh-Summen — am Schreibtisch bleibt es umgekehrt', async () => {
-    await renderMesswerte();
-    const chart = screen.getByTestId('energie-chart');
-    const summen = screen.getByLabelText('Energiemengen im Zeitraum');
-    // `compareDocumentPosition` liest die echte DOM-Reihenfolge, nicht nur die
-    // optische: ein Screenreader muss dieselbe Seite lesen wie das Auge.
-    expect(
-      chart.compareDocumentPosition(summen) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('zeigt alle sechs Summen — nur enger, nichts fällt weg', async () => {
-    await renderMesswerte();
-    const liste = screen.getByLabelText('Energiemengen im Zeitraum');
-    for (const label of ['Erzeugt', 'Verbraucht', 'Bezogen', 'Eingespeist', 'Geladen', 'Entladen']) {
-      expect(within(liste).getByText(label)).toBeInTheDocument();
-    }
-  });
-
-  /**
-   * ⚠ **P3 hat die Telefon-Eindampfung ERSETZT, nicht verloren.** Bis dahin
-   * standen am Telefon sechs Kacheln OHNE Δ und darunter EINE zusammengefasste
-   * Zeile — die Ledger-Zeile trägt ihre Sekundärzeile ohnehin unter dem Namen,
-   * also steht der Vergleich jetzt AN SEINER Zahl, auf jeder Breite.
-   */
-  it('trägt das Δ in der ZEILE, zu der es gehört — auf jeder Breite', async () => {
-    await renderMesswerte();
-    // Die Vorperiode erzeugte 3 kWh, dieser Tag 4 → +33 % auf „Erzeugt".
-    expect(HEUTE).not.toEqual(GESTERN);
-    const delta = await screen.findByText(/33 % mehr als am Vortag/);
-    // Es steht in der Sekundärzeile der Ledger-Zeile, nicht in einer Meta-Zeile.
-    expect(delta.closest('.vp-c-led-sek')).toBeTruthy();
-    const zeile = delta.closest('.vp-c-led-row') as HTMLElement;
-    expect(within(zeile).getByText('Erzeugt')).toBeInTheDocument();
-    // Die zusammengefasste Telefon-Zeile ist ersatzlos entfallen.
-    expect(document.querySelector('.vp-esum-meta')).toBeNull();
-  });
-});
-
 describe('Mobil · die klebende Bedienzeile hat GENAU ZWEI Zeilen (P4)', () => {
   it('trägt Perioden + ⋯ oben und ‹ Zeitraum › Heute darunter', async () => {
     await renderMesswerte();
@@ -309,8 +274,9 @@ describe('Mobil · die klebende Bedienzeile hat GENAU ZWEI Zeilen (P4)', () => {
     const blatt = await screen.findByRole('dialog', { name: 'Zeitraum & Vergleich' });
     expect(within(blatt).getByLabelText('Tag wählen')).toBeInTheDocument();
     expect(within(blatt).getByText('Vergleichen')).toBeInTheDocument();
-    // F4 · die Datenlage-Zeile reist mit (94 % von 2000 Viertelstunden).
-    expect(within(blatt).getByText(/94 %/)).toBeInTheDocument();
+    // F4 · die Datenlage steht seit dem Verlauf-Rework in der Statuszeile.
+    expect(within(blatt).queryByText(/94 %/)).toBeNull();
+    expect(screen.getByText(/94 % der Viertelstunden gemessen/)).toBeInTheDocument();
   });
 
   it('schließt das Blatt mit Escape', async () => {
@@ -369,30 +335,6 @@ function aufklapper(name: RegExp): HTMLElement {
   }
   return treffer[0] as HTMLElement;
 }
-
-describe('Mobil · der Welt-Kopf ist ganz entfallen, das Abzeichen bleibt', () => {
-  it('rendert weder Kartenpaar noch Kopfzeile — und behält „Gemessen" an der Karte', async () => {
-    await renderMesswerte();
-    expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
-    // E3: auch die eine Kopf-ZEILE des Telefons ist weg (Bar-Slot + Reiter
-    // sagen dasselbe). Übrig bleibt die unsichtbare Überschrift.
-    expect(document.querySelector('.vp-welt-zeile')).toBeNull();
-    const h1 = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
-    expect(h1).toHaveClass('vp-sr-only');
-    // Das Ehrlichkeits-Abzeichen sitzt an den Karten, nicht am Kopf — seit P3
-    // in der EINEN Chip-Form des Bereichs, im Label der Karte.
-    const abzeichen = screen.getAllByText('Gemessen', { selector: '.vp-c-label .vp-chip' });
-    expect(abzeichen.length).toBeGreaterThan(0);
-  });
-
-  it('macht die Fußkarte zum Aufklapper — der Wortlaut bleibt erreichbar', async () => {
-    await renderMesswerte();
-    const knopf = aufklapper(/Was diese Zahlen sind/);
-    expect(knopf).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(knopf);
-    expect(await screen.findByText(/nicht geeignet/)).toBeInTheDocument();
-  });
-});
 
 describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
   it('zeigt zuerst die Zahl, darunter die Posten als Liste und die Steuerung', async () => {
@@ -461,9 +403,12 @@ describe('Der Schreibtisch bleibt, was er war', () => {
     expect(document.querySelector('.vp-zeitleiste-mobil')).toBeNull();
     // P3: am Rechner steht DIESELBE Ledger-Liste wie am Telefon — die frühere
     // Gabelung (dort ein `dl`-Raster, hier sechs Kacheln) ist entfallen.
-    const liste = screen.getByLabelText('Energiemengen im Zeitraum');
-    expect(within(liste).getAllByText(/^(Erzeugt|Verbraucht|Bezogen|Eingespeist|Geladen|Entladen)$/))
-      .toHaveLength(6);
+    const liste = screen.getByRole('group', { name: /^Energie · / });
+    expect(
+      within(liste).getAllByText(
+        /^(Erzeugung|Verbrauch|Netzbezug|Einspeisung|Speicher geladen|Speicher entladen)$/,
+      ),
+    ).toHaveLength(6);
     expect(document.querySelector('.vp-esum')).toBeNull();
     expect(document.querySelector('.vp-esum-kompakt')).toBeNull();
   });

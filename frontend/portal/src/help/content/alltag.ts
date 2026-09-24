@@ -7,7 +7,7 @@ export const everydayArticles: HelpArticle[] = [
     keywords: ['Summenwert', 'Register', 'Summe', 'Rolle', 'PV-Produktion', 'Verbrauch', 'Netz'],
     sections: [
       { id: 'anlegen', title: 'Von den Registern zum Summenwert', paragraphs: [
-        'Öffnen Sie „Summenwert anlegen“ am Gerät oder unter Verlauf → Messwerte. Wählen Sie passende Register derselben Anlage, prüfen Sie Plus, Minus und Faktoren und geben Sie dem Wert einen Namen.',
+        'Öffnen Sie „Summenwert anlegen“ am Gerät oder unter Verlauf → Messwerte (Summenwerte). Wählen Sie passende Register derselben Anlage, prüfen Sie Plus, Minus und Faktoren und geben Sie dem Wert einen Namen.',
         'Jeder Live-Wert trägt seinen Stand. Noch nicht beobachtete Register werden einmal gelesen und erst beim Speichern beobachtet; die zusätzliche Datenmenge steht dabei. Fehlt ein aktueller Eingang, bleibt die Summe unvollständig.',
       ] },
       { id: 'rolle', title: 'Eine Rolle wirkt ab jetzt', paragraphs: [
@@ -31,7 +31,7 @@ export const everydayArticles: HelpArticle[] = [
         "Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, die Anlagenzahl einzuordnen.",
       ] },
       { id: 'weiter', title: 'Was tun bei einem Hinweis?', paragraphs: [
-        "Öffnen Sie einen Hinweis für seine Ursache. Geplante Aktionen stehen im Fahrplan, vergangene Messungen unter Verlauf → Messwerte und Geräteverbindungen unter Anlage. Prüfen Sie bei fehlenden Zahlen zuerst Quelle und Datenstand.",
+        "Öffnen Sie einen Hinweis für seine Ursache. Geplante Aktionen stehen im Fahrplan, vergangene Messungen unter Verlauf → Energie und Geräteverbindungen unter Anlage. Prüfen Sie bei fehlenden Zahlen zuerst Quelle und Datenstand.",
       ] },
     ], related: ['energiefluesse', 'fahrplan', 'probleme'],
   },
@@ -58,7 +58,7 @@ export const everydayArticles: HelpArticle[] = [
     keywords: ['Historie', 'Verlauf', 'Messungen', 'Diagramm', 'Vergleich', 'Tag', 'Woche', 'Monat', 'Jahr'],
     sections: [
       { id: 'auswahl', title: 'Die richtige Frage eingrenzen', paragraphs: [
-        "Wählen Sie unter Verlauf → Messwerte zuerst Zeitraum und Messgröße. Auf Portfolio-Ebene gilt die gewählte Anlagenauswahl. Achten Sie auf Einheit und Zusammenfassung: Leistung, Energiesumme und Durchschnitt beantworten unterschiedliche Fragen.",
+        "Unter Verlauf → Energie stehen die Energiemengen des Zeitraums, am Tag die Leistung in Feldern über einer Zeitachse; Verlauf → Messwerte vergleicht bis zu drei einzelne Messwerte. Wählen Sie zuerst den Zeitraum. Auf Portfolio-Ebene gilt die gewählte Anlagenauswahl. Achten Sie auf Einheit und Zusammenfassung: Leistung, Energiesumme und Durchschnitt beantworten unterschiedliche Fragen.",
       ], figure: 'messwerte' },
       { id: 'vergleich', title: 'Zwei Zeiträume sinnvoll vergleichen', paragraphs: [
         "Die Vergleichsansicht nennt den zusätzlichen Zeitraum. Vergleichen Sie dieselbe Größe und Einheit. Wetter, Nutzung, neue Geräte und Einstellungen können Unterschiede erklären.",

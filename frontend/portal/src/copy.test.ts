@@ -699,6 +699,8 @@ const CHART_FILES = [
   // Das Erlöse-Diagramm des Verlauf-Reworks (P2) — seine Beschriftungen leben
   // in der reinen Ableitung, also steht sie hier neben dem Render.
   'components/erloese/ErloeseChart.tsx',
+  'components/energie/EnergieCharts.tsx',
+  'energieSeite.ts',
   'erloeseSeite.ts',
   'verlaufRaster.ts',
 ];

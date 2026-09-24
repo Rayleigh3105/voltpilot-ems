@@ -260,6 +260,7 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
       // folgerichtig - der Reiter-Streifen rendert damit gar nicht.
       expect(sidebar.bereiche.find((b) => b.key === 'verlauf')?.tabs.map((t) => t.key)).toEqual([
         'messwerte',
+        'einzelwerte',
       ]);
       // Kein „0"-Badge, das die Anlage schlechter aussehen lässt, als sie ist.
       expect(sidebar.bereiche.every((b) => b.badge === null)).toBe(true);

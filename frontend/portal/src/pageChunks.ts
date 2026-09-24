@@ -49,6 +49,7 @@ export const SUB_CHUNK = {
   daten: () => import('./pages/DataPages'),
   messwerte: () => import('./pages/MesswerteSection'),
   erloese: () => import('./pages/ErloeseSection'),
+  einzelwerte: () => import('./pages/EinzelwerteSection'),
   modell: () => import('./pages/AnlagenModellSection'),
   geraet: () => import('./pages/GeraetSeiteSection'),
   box: () => import('./pages/BoxSeiteSection'),

@@ -168,50 +168,50 @@
     ]
   },
   "messwerte": {
-    "title": "Messwerte: Zeitraum und Energie",
+    "title": "Energie: Zeitraum, Mengen und Verlauf",
     "file": "messwerte.png",
     "width": 1192,
-    "height": 1750,
-    "alt": "Messwerte: Zeitraum und Energie. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 1062,
+    "alt": "Energie: Zeitraum, Mengen und Verlauf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 10.17,
-        "y": 12.17,
+        "y": 20.06,
         "text": "Wählen Sie den Zeitrahmen passend zu Ihrer Frage."
       },
       {
-        "x": 6.46,
-        "y": 20.74,
-        "text": "Diese Mengen summieren die Energie im gewählten Zeitraum."
+        "x": 4.36,
+        "y": 31.36,
+        "text": "Diese Mengen summieren die Energie im gewählten Zeitraum, jede mit ihrem Vergleich."
       },
       {
         "x": 6.46,
-        "y": 60.34,
-        "text": "Das Diagramm zeigt die gemessenen Reihen; Einheiten und Richtung stehen an der Legende."
+        "y": 49.25,
+        "text": "Die Felder teilen eine Zeitachse; jedes hat seine eigene Einheit."
       }
     ]
   },
   "erloese": {
-    "title": "Erlöse: Ergebnis und Zusammensetzung",
+    "title": "Erlöse: Ergebnis und Abrechnung",
     "file": "erloese.png",
     "width": 1192,
-    "height": 1500,
-    "alt": "Erlöse: Ergebnis und Zusammensetzung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 1346,
+    "alt": "Erlöse: Ergebnis und Abrechnung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 10.17,
-        "y": 14.2,
+        "y": 15.81,
         "text": "Der Zeitrahmen gilt für die gezeigte wirtschaftliche Auswertung."
       },
       {
-        "x": 6.46,
-        "y": 35.25,
-        "text": "Einspeisung ist eine eigene Position der Zusammensetzung."
+        "x": 4.36,
+        "y": 24.72,
+        "text": "Das Ergebnis steht vorn; daneben die Posten, aus denen es entsteht."
       },
       {
-        "x": 6.46,
-        "y": 47.12,
-        "text": "Die Kosten des bezogenen Stroms werden separat ausgewiesen."
+        "x": 68.9,
+        "y": 36.07,
+        "text": "Die Abrechnung zeigt je Posten Menge, Durchschnittspreis und Betrag."
       }
     ]
   },

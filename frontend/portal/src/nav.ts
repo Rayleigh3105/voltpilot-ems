@@ -39,6 +39,9 @@ export type AnlagenSub =
   | 'fahrplan'
   | 'messwerte'
   | 'erloese'
+  // Die einzelnen Messwerte und Summenwerte (Verlauf-Rework P3): der frühere
+  // Aufklapper der Energie-Seite als eigener Reiter „Messwerte".
+  | 'einzelwerte'
   // Marktpreise und Prognose sind seit der Navigations-Runde „zwei Ebenen"
   // (r2 §5.5, E3) Unterseiten DER ANLAGE statt Seiten daneben: sie beantworten
   // eine Frage ÜBER diese Anlage (ihr Börsentarif, ihr Prognosemodell) und
@@ -57,7 +60,7 @@ export type AnlagenSub =
   | 'box';
 
 const SUBS = new Set<string>([
-  'fahrplan', 'messwerte', 'erloese', 'marktpreise', 'prognose', 'wetter',
+  'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'wetter',
   'technik', 'modell', 'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle',
   'geraet', 'box',
 ]);
@@ -580,8 +583,15 @@ export function canonicalAnlageHash(hash: string): string | null {
   if (raw === 'geraet' && segments[3] && !segments[4]) {
     return `${boxSeiteHash(segments[1], decodeURIComponent(segments[3]))}${query}`;
   }
+  // Ein Lesezeichen auf EINZELNE Messwerte (`…/messwerte?m=…`) meint seit dem
+  // Verlauf-Rework den Reiter „Messwerte" (`einzelwerte`); ohne `m=` bleibt
+  // `messwerte` die Energie-Seite. Die Parameter reisen mit.
+  if (raw === 'messwerte' && !segments[3] && /(?:^|[?&])m=/.test(query)) {
+    return `#/anlage/${segments[1]}/einzelwerte${query}`;
+  }
   if (!raw || !(raw in LEGACY_SUBS)) return null;
-  const sub = LEGACY_SUBS[raw];
+  const alt = LEGACY_SUBS[raw];
+  const sub = alt === 'messwerte' && /(?:^|[?&])m=/.test(query) ? 'einzelwerte' : alt;
   const path = sub ? `#/anlage/${segments[1]}/${sub}` : `#/anlage/${segments[1]}`;
   return `${path}${query}`;
 }

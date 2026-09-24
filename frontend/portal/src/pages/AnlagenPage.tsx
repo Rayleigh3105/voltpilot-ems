@@ -134,6 +134,9 @@ const MesswerteSection = lazy(() =>
 const ErloeseSection = lazy(() =>
   SUB_CHUNK.erloese().then((m) => ({ default: m.ErloeseSection })),
 );
+const EinzelwerteSection = lazy(() =>
+  SUB_CHUNK.einzelwerte().then((m) => ({ default: m.EinzelwerteSection })),
+);
 const AnlagenModellSection = lazy(() =>
   SUB_CHUNK.modell().then((m) => ({ default: m.AnlagenModellSection })),
 );
@@ -521,9 +524,13 @@ function AnlagenSubPage({
    * andere Frage und startet mit seiner eigenen Vorgabe.
    */
   const oeffneReiter = (ziel: AnlagenSub) => {
-    const welten: AnlagenSub[] = ['messwerte', 'erloese'];
+    const welten: AnlagenSub[] = ['messwerte', 'erloese', 'einzelwerte'];
     if (ziel !== sub && welten.includes(ziel) && welten.includes(sub)) {
-      const query = window.location.hash.split('?')[1];
+      // Die gewählten Einzel-Messwerte (`m=`) gehören nur dem Reiter
+      // „Messwerte" — sie reisen nicht in Energie oder Erlöse mit.
+      const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+      if (ziel !== 'einzelwerte') params.delete('m');
+      const query = params.toString();
       if (query) {
         window.location.hash = `#/anlage/${site.id}/${ziel}?${query}`;
         return;
@@ -572,6 +579,7 @@ function AnlagenSubPage({
         {sub === 'erloese' && (
           <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
         )}
+        {sub === 'einzelwerte' && <EinzelwerteSection site={site} />}
         {sub === 'wetter' && <WetterSection site={site} />}
         {/* Als Reiter des Verlaufs: die Anlage steht im Pfad, den Titel trägt
             der Seitenkopf oben - `embedded` unterdrückt darum Überschrift und

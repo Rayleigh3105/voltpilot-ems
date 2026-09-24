@@ -102,6 +102,7 @@ const BLAETTER: ReadonlyArray<{
   // Der Rahmen des Verlauf-Reworks und die neue Erlöse-Seite — von Anfang an 0.
   { reiter: 'Rahmen', datei: 'components/VerlaufRahmen.css', offen: 0, bekannt: [] },
   { reiter: 'Erlöse', datei: 'components/erloese/ErloeseSeite.css', offen: 0, bekannt: [] },
+  { reiter: 'Energie', datei: 'components/energie/EnergieSeite.css', offen: 0, bekannt: [] },
   // P4 hat den Profi-Aufklapper auf den geteilten `Aufklapper` (48 px)
   // umgestellt und `preisFenster.css` ersatzlos aufgelöst — die Ratsche geht
   // damit auf 0 und nie wieder hoch.

@@ -114,7 +114,7 @@ export function availableWelten(surface: AnlageSurface | null | undefined): Welt
  * `WeltId` aufzunehmen hieße, ihnen eine `Welt`-Zeile zu erfinden, die niemand
  * rendert.
  */
-export type VerlaufZeitReiter = WeltId | 'marktpreise' | 'lastspitzen' | 'prognose';
+export type VerlaufZeitReiter = WeltId | 'einzelwerte' | 'marktpreise' | 'lastspitzen' | 'prognose';
 
 /**
  * Der Link in eine Welt — MIT Zeitraum, damit der Wechsel ihn mitnimmt.

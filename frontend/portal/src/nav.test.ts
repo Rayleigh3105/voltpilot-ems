@@ -398,9 +398,15 @@ describe('zwei Welten: die Historie-Route leitet MIT Parametern weiter', () => {
   });
 
   it('schreibt die Adresse kanonisch um und behält ?m=/z=/at=', () => {
+    // Einzelne Messwerte (`m=`) wohnen seit dem Verlauf-Rework im Reiter
+    // „Messwerte" (`einzelwerte`) — aus der alten und der heutigen Adresse.
     expect(canonicalAnlageHash('#/anlage/s-1/historie?m=e:c&z=woche&at=2026-05-01')).toBe(
-      '#/anlage/s-1/messwerte?m=e:c&z=woche&at=2026-05-01',
+      '#/anlage/s-1/einzelwerte?m=e:c&z=woche&at=2026-05-01',
     );
+    expect(canonicalAnlageHash('#/anlage/s-1/messwerte?m=e:c&z=woche')).toBe(
+      '#/anlage/s-1/einzelwerte?m=e:c&z=woche',
+    );
+    expect(canonicalAnlageHash('#/anlage/s-1/historie?z=woche')).toBe('#/anlage/s-1/messwerte?z=woche');
     // Auch ohne Parameter, und für die anderen stillgelegten Unterseiten.
     expect(canonicalAnlageHash('#/anlage/s-1/historie')).toBe('#/anlage/s-1/messwerte');
     expect(canonicalAnlageHash('#/anlage/s-1/entitaeten')).toBe('#/anlage/s-1/modell');

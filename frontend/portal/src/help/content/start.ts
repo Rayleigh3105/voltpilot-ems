@@ -13,7 +13,7 @@ export const startArticles: HelpArticle[] = [
         "Im Portal verwalten Sie die Anlage. Die Planung berücksichtigt Messwerte, Vorhersagen, Preise und Grenzen. Die Box verbindet die Geräte vor Ort und führt freigegebene Vorgaben aus.",
       ], diagram: 'system' },
       { id: 'einstieg', title: 'So finden Sie sich zurecht', paragraphs: [
-        "Cockpit: aktueller Zustand. Fahrplan: nächste Speicheraktionen. Verlauf: Messwerte und verfügbare Erlöse. Steuerung: Betriebsmodelle und Regeln. Anlage: Geräte und Einstellungen. Voraussetzungen für optionale Funktionen stehen am Artikelanfang.",
+        "Cockpit: aktueller Zustand. Fahrplan: nächste Speicheraktionen. Verlauf: Energie, Erlöse und einzelne Messwerte. Steuerung: Betriebsmodelle und Regeln. Anlage: Geräte und Einstellungen. Voraussetzungen für optionale Funktionen stehen am Artikelanfang.",
       ] },
     ],
     related: ['energiefluesse', 'beispieltag', 'orientierung'],

@@ -376,7 +376,11 @@
   color: var(--vp-text-gray);
   text-decoration: line-through;
 }
-.vp-vr-legend button.is-off .vp-vr-key {
+.vp-vr-legend button.is-plus {
+  color: var(--vp-action);
+}
+.vp-vr-legend button.is-off .vp-vr-key,
+.vp-vr-legend button.is-plus .vp-vr-key {
   opacity: 0.3;
 }
 .vp-vr-legend .vp-vr-key.punkt {
@@ -392,8 +396,14 @@
 .vp-vr-chart.flach {
   height: 220px;
 }
+.vp-vr-chart.mittel {
+  height: 340px;
+}
 .vp-vr-chart.hoch {
   height: 400px;
+}
+.vp-vr-chart.sehrhoch {
+  height: 480px;
 }
 .vp-vr-chart.klickbar {
   min-height: 200px;
@@ -721,7 +731,13 @@
   .vp-vr-chart.flach {
     height: 200px;
   }
+  .vp-vr-chart.mittel {
+    height: 300px;
+  }
   .vp-vr-chart.hoch {
     height: 360px;
+  }
+  .vp-vr-chart.sehrhoch {
+    height: 430px;
   }
 }

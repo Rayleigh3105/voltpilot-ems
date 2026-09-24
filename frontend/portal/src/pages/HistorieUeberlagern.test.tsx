@@ -21,18 +21,14 @@ import { api, type History, type Site, type SiteEarnings } from '../api';
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
 
 /** Das Diagramm wird durch eine Attrappe ersetzt, die ihre Prop-Werte zeigt. */
-vi.mock('../HistoryChart', () => ({
-  HistoryEnergieChart: (p: {
-    vergleich?: History | null;
-    legende?: { satz: string } | null;
-  }) => {
-    return (
-      <div data-testid="energie-chart" data-vergleich={p.vergleich ? 'ja' : 'nein'}>
-        {p.legende?.satz ?? ''}
-      </div>
-    );
-  },
-}));
+vi.mock('../components/energie/EnergieCharts', () => {
+  const Chart = (p: { vergleich?: { name: string } | null }) => (
+    <div data-testid="energie-chart" data-vergleich={p.vergleich ? 'ja' : 'nein'}>
+      {p.vergleich ? `Vergleich: ${p.vergleich.name}` : ''}
+    </div>
+  );
+  return { EnergieTagChart: Chart, EnergieBilanzChart: Chart };
+});
 
 vi.mock('../components/erloese/ErloeseChart', () => ({
   ErloeseChart: (p: { d: { vergleichNetto: (number | null)[] | null }; vergleichName: string | null }) => (
@@ -228,7 +224,7 @@ describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Juni 2026' }));
     const chart = await screen.findByTestId('energie-chart');
     await waitFor(() => expect(chart).toHaveAttribute('data-vergleich', 'ja'));
-    expect(chart).toHaveTextContent('Durchgezogen: Juli 2026 · blass gestrichelt: Juni 2026');
+    expect(chart).toHaveTextContent('Vergleich: Juni 2026');
   });
 
   it('holt beim Vorjahr WIRKLICH den verschobenen Anker — und Δ-Kopf wie Überlagerung nennen ihn', async () => {
@@ -242,7 +238,7 @@ describe('F8 · der „Vergleichen"-Umschalter der Zeit-Leiste', () => {
     // der Zeit-Leiste (E3) und in der Legende.
     await waitFor(() => expect(screen.getAllByText('Vergleich: Juli 2025').length)
       .toBeGreaterThan(0));
-    expect(screen.getByTestId('energie-chart')).toHaveTextContent('blass gestrichelt: Juli 2025');
+    expect(screen.getByTestId('energie-chart')).toHaveTextContent('Vergleich: Juli 2025');
   });
 
   it('kostet KEINEN zusätzlichen Abruf, wenn die Vergleichsperiode schon im Cache liegt', async () => {

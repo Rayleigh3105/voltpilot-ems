@@ -1122,6 +1122,9 @@ export function FahrplanSection({ site }: { site: Site }) {
           selectedIndex={hasWhy ? selSlot : undefined}
           consumers={verbraucherAktiv ? verbraucher : undefined}
           plantKind={site.plantKind}
+          // Der Zielwert der Lastspitzen-Kappung gehört zum Plan, den er
+          // begrenzt (Verlauf-Rework E1) — ohne Modul bleibt er null, nie 0.
+          peakTargetKw={plan?.peakTargetKw ?? null}
         />
         {selSlot != null && slotPanel}
         {/* §14.11: die Verbraucher des angetippten Slots - Ziel + Grund aus

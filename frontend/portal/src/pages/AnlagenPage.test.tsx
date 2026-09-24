@@ -565,7 +565,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     ) as HTMLButtonElement;
     fireEvent.click(netzRow);
     // Der Hash trägt den Verlauf-Deeplink (Messwert + übernommener Zeitraum).
-    expect(window.location.hash).toContain('/anlage/s-1/messwerte');
+    expect(window.location.hash).toContain('/anlage/s-1/einzelwerte');
     expect(window.location.hash).toContain('m=e-grid:power_kw');
     expect(window.location.hash).toContain('z=tag'); // Default „Heute" → Tag
     // NIE ein Modal — weder am body noch im Container.

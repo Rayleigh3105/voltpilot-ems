@@ -221,7 +221,7 @@ export function SteuerungKarte({
 }
 
 /** **Lastspitze** — gehaltene Spitze gegen dieselbe Anlage ohne Speichereinsatz. */
-export function LastspitzeKarte({ k }: { k: LastspitzeKontext }) {
+export function LastspitzeKarte({ k, detailHref }: { k: LastspitzeKontext; detailHref?: string }) {
   const t = chartTheme();
   return (
     <VrKarte
@@ -251,6 +251,11 @@ export function LastspitzeKarte({ k }: { k: LastspitzeKontext }) {
         <p className="vp-vr-empty">In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.</p>
       )}
       {k.rechnung && <p className="vp-vr-foot">{k.rechnung} · nicht im Ergebnis</p>}
+      {detailHref && (
+        <a className="vp-vr-link" href={detailHref}>
+          Alle Abrechnungsperioden ›
+        </a>
+      )}
     </VrKarte>
   );
 }

@@ -332,9 +332,9 @@ export function ErloeseSection({
       <VerlaufStatus
         art="bewertet"
         laeuft={laeuft ? (stand ? `Stand ${stand}` : 'Zwischenstand') : null}
-        abdeckung={abdeckung?.satz ?? null}
+        abdeckung={abdeckung ? [abdeckung.satz, abdeckung.luecken].filter(Boolean).join(' · ') : null}
         alt={stale}
-        info={{ titel: 'So entstehen die Beträge', text: WELTEN.erloese.fussText }}
+        info={{ titel: 'So entstehen die Beträge', text: [WELTEN.erloese.fussText, abdeckung?.abText ? `${abdeckung.abText}.` : null].filter(Boolean).join(' ') }}
       />
 
       <div className={`vp-vr-body${stale ? ' alt' : ''}`} aria-busy={loading || undefined}>
@@ -453,7 +453,7 @@ export function ErloeseSection({
                       ) : null}
                     </SteuerungKarte>
                   )}
-                  {lastspitze && <LastspitzeKarte k={lastspitze} />}
+                  {lastspitze && <LastspitzeKarte k={lastspitze} detailHref={`#/anlage/${site.id}/lastspitzen`} />}
                 </div>
 
                 {verdient && (

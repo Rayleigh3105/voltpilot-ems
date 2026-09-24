@@ -872,7 +872,7 @@ function UnifiedPortal() {
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
         // lassen.
-        activeKey: activeAreaKey(route.sub),
+        activeKey: activeAreaKey(route.sub, anlageSidebar(surface)),
         onOpenSub: (sub: Parameters<typeof anlageRoute>[1]) =>
           navigate(anlageRoute(shellSite.id, sub ?? null)),
         onOpenPage: (target: PageId) => navigate(target),

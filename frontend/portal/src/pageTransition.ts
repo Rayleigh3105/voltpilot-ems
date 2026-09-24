@@ -121,6 +121,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   marktpreise: SUB_CHUNK.daten,
   messwerte: SUB_CHUNK.messwerte,
   erloese: SUB_CHUNK.erloese,
+  einzelwerte: SUB_CHUNK.einzelwerte,
   modell: SUB_CHUNK.modell,
   geraet: SUB_CHUNK.geraet,
   box: SUB_CHUNK.box,

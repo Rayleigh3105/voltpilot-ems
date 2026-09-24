@@ -37,15 +37,15 @@ export const captures = [
     point('.vp-lage-zeile', 'Diese Zeile nennt den Verlauf des Tages und den Ausblick auf morgen. Die Grundlage des Plans steht unter „Mehr erklären“.'),
     point('.vp-chart.panels', 'Preis und Speicherleistung liegen auf getrennten Skalen über derselben Zeitachse.'),
   ] },
-  { id: 'messwerte', title: 'Messwerte: Zeitraum und Energie', hash: plant('messwerte'), root: 'main', maxHeight: 1750, points: [
+  { id: 'messwerte', title: 'Energie: Zeitraum, Mengen und Verlauf', hash: plant('messwerte'), root: 'main', maxHeight: 1750, points: [
     point('button:has-text("Woche")', 'Wählen Sie den Zeitrahmen passend zu Ihrer Frage.'),
-    point('[aria-label="Energiemengen im Zeitraum"]', 'Diese Mengen summieren die Energie im gewählten Zeitraum.'),
-    point('text=Ihre Energie im Verlauf', 'Das Diagramm zeigt die gemessenen Reihen; Einheiten und Richtung stehen an der Legende.'),
+    point('[aria-label^="Energie ·"]', 'Diese Mengen summieren die Energie im gewählten Zeitraum, jede mit ihrem Vergleich.'),
+    point('text=Leistung im Tagesverlauf', 'Die Felder teilen eine Zeitachse; jedes hat seine eigene Einheit.'),
   ] },
-  { id: 'erloese', title: 'Erlöse: Ergebnis und Zusammensetzung', hash: plant('erloese'), root: 'main', maxHeight: 1500, points: [
+  { id: 'erloese', title: 'Erlöse: Ergebnis und Abrechnung', hash: plant('erloese'), root: 'main', maxHeight: 1500, points: [
     point('button:has-text("Woche")', 'Der Zeitrahmen gilt für die gezeigte wirtschaftliche Auswertung.'),
-    point('text=Einspeise-Erlös', 'Einspeisung ist eine eigene Position der Zusammensetzung.'),
-    point('text=Netzbezug', 'Die Kosten des bezogenen Stroms werden separat ausgewiesen.'),
+    point('[aria-label^="Erlöse ·"]', 'Das Ergebnis steht vorn; daneben die Posten, aus denen es entsteht.'),
+    point('section[aria-label="Abrechnung"]', 'Die Abrechnung zeigt je Posten Menge, Durchschnittspreis und Betrag.'),
   ] },
   { id: 'marktpreise', title: 'Börsenpreise im Tagesverlauf', hash: plant('marktpreise'), root: 'main', maxHeight: 1500, points: [
     point('main h1', 'Marktpreise beschreiben die Börse, nicht automatisch Ihren vollständigen Tarif.'),

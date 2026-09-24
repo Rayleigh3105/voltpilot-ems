@@ -71,6 +71,7 @@ const BLAETTER: ReadonlyArray<{
   // Bausteine der neuen Erlöse-Seite — von Anfang an streng.
   { reiter: 'Rahmen', datei: 'components/VerlaufRahmen.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Erlöse', datei: 'components/erloese/ErloeseSeite.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Energie', datei: 'components/energie/EnergieSeite.css', fs: 0, ff: 0, fw: 0 },
   // --- noch nicht umgestellt — Ratsche auf dem IST-Stand vom 03.09.2026 --
   // P2b hat die Aufklapp-ZEILE aus diesem Blatt in den geteilten Baustein
   // gehoben; ihre drei Telefon-Ausnahmen (1,05 rem · 0,875 rem · 0,72 rem)

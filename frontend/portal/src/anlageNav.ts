@@ -124,30 +124,31 @@ export const HELP_ITEM: SidebarItem = {
 };
 
 /**
- * Die REITER des Bereichs „Verlauf", in der Reihenfolge des Zielbilds
- * (Mockup `06-navigation-ist-ziel.html`): Messwerte · Erlöse · Marktpreise ·
- * Lastspitzen · Prognose · Wetter.
+ * Die REITER des Bereichs „Verlauf" (Verlauf-Rework, Entscheid E1 = A):
+ * **Energie · Erlöse · Messwerte** — was gemessen, was bewertet und welche
+ * einzelnen Werte dahinterstehen.
  *
- * `view: null` = unbedingt. Das gilt genau für **Messwerte**: die Basis-Welt
- * der Historie existiert auf JEDER Anlage (sie war vor diesem Umbau ein fester
- * Basis-Eintrag und bleibt es) — ohne sie hätte eine frisch angelegte Anlage
- * einen leeren Bereich, und genau das verbietet Gesetz 1.
+ * `view: null` = unbedingt: Energie und Messwerte existieren auf JEDER Anlage,
+ * sonst hätte eine frisch angelegte Anlage einen leeren Bereich (Gesetz 1).
+ * Der Schlüssel `messwerte` bleibt für die Energie-Seite (jedes Lesezeichen
+ * gilt); die einzelnen Messwerte wohnen unter `einzelwerte`.
  *
- * ⚠ **`wetter` ist hier eine bewusste Abweichung vom Mockup-Wortlaut.** Das
- * Fragment sagt „Wetter bleibt Cockpit-Karte mit Absprung" — eine solche Karte
- * gibt es heute NICHT (`AnlagenPage.tsx` kennt nur die Unterseite), und mit dem
- * Wegfall des Telefon-Blatts verlöre die Ansicht damit ihren einzigen
- * Wohnort. Sie ist eine abgeleitete Basis-Ansicht des Read-Models wie die
- * anderen, also bekommt sie einen Reiter statt einer erfundenen Karte. Baut
- * jemand die Cockpit-Karte, kann der Reiter entfallen — der Wächter „nichts
- * ist verwaist" merkt es sofort.
+ * Preise und Wetter gehören seit dem Rework zum FAHRPLAN (sie erklären den
+ * Plan), die Prognosen zur ANLAGE (sie beschreiben ihr Modell). Wo es keinen
+ * Fahrplan-Bereich gibt, bleiben Preise und Wetter hier — eine Ansicht wird nie
+ * heimatlos. Die Lastspitze ist kein Reiter mehr: ihr Geld steht auf „Erlöse",
+ * ihre gemessene Spitze auf „Energie"; die Seite bleibt über die Erlöse-Karte
+ * erreichbar.
  */
 const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId | null }[] = [
-  { key: 'messwerte', label: 'Messwerte', sub: 'messwerte', view: null },
+  { key: 'messwerte', label: 'Energie', sub: 'messwerte', view: null },
   { key: 'erloese', label: 'Erlöse', sub: 'erloese', view: 'erloes-historie' },
-  { key: 'marktpreise', label: 'Marktpreise', sub: 'marktpreise', view: 'marktpreise' },
-  { key: 'lastspitzen', label: 'Lastspitzen', sub: 'lastspitzen', view: 'lastspitzen' },
-  { key: 'prognose', label: 'Prognose', sub: 'prognose', view: 'prognosequalitaet' },
+  { key: 'einzelwerte', label: 'Messwerte', sub: 'einzelwerte', view: null },
+];
+
+/** Preise und Wetter — im Fahrplan, wo es ihn gibt, sonst im Verlauf. */
+const PLAN_KONTEXT_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId }[] = [
+  { key: 'marktpreise', label: 'Preise', sub: 'marktpreise', view: 'marktpreise' },
   { key: 'wetter', label: 'Wetter', sub: 'wetter', view: 'wetter' },
 ];
 
@@ -162,7 +163,7 @@ const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepVie
  * — sie hat nur keinen eigenen Reiter mehr und hebt wie {@link SUB_BEREICH}
  * `geraet`/`box` ihren Wirt, den Bereich „Anlage", hervor.
  */
-const ANLAGE_TABS: BereichTab[] = [
+const ANLAGE_TABS_BASIS: BereichTab[] = [
   // ⚠ „Komponenten", nicht „Modell": seit Steuerung Stufe 8 heisst der Reiter
   // wie das, was er zeigt (Konzept `vp-steuerung-konzept-b3` §3.9 — „Komponenten
   // & Regeln" → „Komponenten"; die Regeln wohnen in der Steuerung, EIN Ort je
@@ -177,9 +178,11 @@ const SUB_BEREICH: Record<AnlagenSub, BereichId> = {
   ladevorgaenge: 'fahrplan',
   messwerte: 'verlauf',
   erloese: 'verlauf',
+  einzelwerte: 'verlauf',
+  // Rückfall, wenn das Modell sie nicht in einen Reiter legt (siehe `bereichFor`).
   marktpreise: 'verlauf',
   lastspitzen: 'verlauf',
-  prognose: 'verlauf',
+  prognose: 'anlage',
   wetter: 'verlauf',
   steuerung: 'steuerung',
   modell: 'anlage',
@@ -238,9 +241,13 @@ export function anlageBereiche(
   // ihn nicht.
   const hatFahrplan = views.includes('fahrplan');
   const hatLade = views.includes('ladevorgaenge');
+  const planKontext = PLAN_KONTEXT_TABS.filter((t) => views.includes(t.view)).map(
+    ({ key, label, sub }) => ({ key, label, sub }),
+  );
   if (hatFahrplan) {
     const tabs: BereichTab[] = [{ key: 'fahrplan', label: 'Fahrplan', sub: 'fahrplan' }];
     if (hatLade) tabs.push({ key: 'ladevorgaenge', label: 'Ladevorgänge', sub: 'ladevorgaenge' });
+    tabs.push(...planKontext);
     out.push(bereich('fahrplan', 'Fahrplan', 'calendar', 'fahrplan', tabs));
   } else if (hatLade) {
     out.push(
@@ -250,16 +257,24 @@ export function anlageBereiche(
     );
   }
 
-  const verlaufTabs = VERLAUF_TABS.filter((t) => t.view === null || views.includes(t.view)).map(
+  const verlaufTabs: BereichTab[] = VERLAUF_TABS.filter((t) => t.view === null || views.includes(t.view)).map(
     ({ key, label, sub }) => ({ key, label, sub }),
   );
+  if (!hatFahrplan) {
+    verlaufTabs.push(
+      ...planKontext.map((t) => (t.sub === 'marktpreise' ? { ...t, label: 'Marktpreise' } : t)),
+    );
+  }
   out.push(bereich('verlauf', 'Verlauf', 'history', verlaufTabs[0].sub, verlaufTabs));
 
   out.push(
     bereich('steuerung', 'Steuerung', 'zap', 'steuerung', [], badge,
       badge == null ? null : (badgeTitel ?? null)),
   );
-  out.push(bereich('anlage', 'Anlage', 'layers', 'modell', ANLAGE_TABS));
+  const anlageTabs = views.includes('prognosequalitaet')
+    ? [...ANLAGE_TABS_BASIS, { key: 'prognose', label: 'Prognosen', sub: 'prognose' as AnlagenSub }]
+    : ANLAGE_TABS_BASIS;
+  out.push(bereich('anlage', 'Anlage', 'layers', 'modell', anlageTabs));
   return out;
 }
 
@@ -304,9 +319,15 @@ export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
   }));
 }
 
-/** Der Bereich, in dem eine Unterseite wohnt. */
-export function bereichFor(sub: AnlagenSub | null): BereichId {
-  return sub == null ? 'cockpit' : SUB_BEREICH[sub];
+/**
+ * Der Bereich, in dem eine Unterseite wohnt. Mit Modell zählt, wo ihr REITER
+ * steht (Preise und Wetter wandern mit dem Fahrplan); ohne Reiter gilt die
+ * feste Zuordnung {@link SUB_BEREICH}.
+ */
+export function bereichFor(sub: AnlagenSub | null, sidebar?: AnlageSidebar | null): BereichId {
+  if (sub == null) return 'cockpit';
+  const wirt = sidebar?.bereiche.find((b) => b.tabs.some((t) => t.sub === sub));
+  return wirt?.key ?? SUB_BEREICH[sub];
 }
 
 /**
@@ -334,14 +355,14 @@ const OHNE_BEREICHS_REITER: ReadonlySet<AnlagenSub> = new Set(['geraet', 'box'])
  */
 export function tabsFor(sidebar: AnlageSidebar, sub: AnlagenSub | null): BereichTab[] {
   if (sub != null && OHNE_BEREICHS_REITER.has(sub)) return [];
-  const key = bereichFor(sub);
+  const key = bereichFor(sub, sidebar);
   const tabs = sidebar.bereiche.find((b) => b.key === key)?.tabs ?? [];
   return tabs.length > 1 ? tabs : [];
 }
 
 /** Die Beschriftung des Bereichs, in dem eine Unterseite wohnt. */
 export function bereichLabel(sidebar: AnlageSidebar, sub: AnlagenSub | null): string {
-  const key = bereichFor(sub);
+  const key = bereichFor(sub, sidebar);
   return sidebar.bereiche.find((b) => b.key === key)?.label ?? key;
 }
 
@@ -349,8 +370,8 @@ export function bereichLabel(sidebar: AnlageSidebar, sub: AnlagenSub | null): st
  * Welcher Bereich die offene Route hervorhebt. EINE Regel, hier entschieden
  * und nie in die `AppShell` verstreut.
  */
-export function activeAreaKey(sub: AnlagenSub | null): BereichId {
-  return bereichFor(sub);
+export function activeAreaKey(sub: AnlagenSub | null, sidebar?: AnlageSidebar | null): BereichId {
+  return bereichFor(sub, sidebar);
 }
 
 /**

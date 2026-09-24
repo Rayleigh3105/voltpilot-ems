@@ -20,9 +20,14 @@ import {
 
 // The explorer chart uses useEChart (canvas); jsdom has neither, so stub it.
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
-vi.mock('../HistoryChart', () => ({
-  HistoryEnergieChart: () => <div data-testid="energie-chart" />,
-}));
+vi.mock('../components/energie/EnergieCharts', () => {
+  const Chart = (p: { vergleich?: { name: string } | null }) => (
+    <div data-testid="energie-chart" data-vergleich={p.vergleich ? 'ja' : 'nein'}>
+      {p.vergleich ? `Vergleich: ${p.vergleich.name}` : ''}
+    </div>
+  );
+  return { EnergieTagChart: Chart, EnergieBilanzChart: Chart };
+});
 
 const site: Site = {
   id: 's-1',
@@ -316,124 +321,6 @@ beforeEach(() => {
 });
 
 /**
- * Die Historie ist ZWEI WELTEN (Konzept `data/vp-historie-konzept-t4`,
- * Captain-Struktur H1): zwei Routen, ein Skelett, ein Ehrlichkeits-Abzeichen je
- * Karte - und der frühere dritte Umschalter ist ersatzlos weg.
- */
-describe('Welt A · Messwerte', () => {
-  it('führt mit ihrem Welt-Kopf statt mit drei gestapelten Umschaltern', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    // E3: die Überschrift beantwortet „wo bin ich?" für Screenreader und die
-    // Dokumentstruktur — SICHTBAR sagen es die Bereichs-Reiter der Schale.
-    const h1 = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
-    expect(h1).toHaveClass('vp-sr-only');
-    // Die früheren Umschalter „Energie | Erlöse" und „Übersicht | Messwerte"
-    // existieren nicht mehr.
-    expect(screen.queryByRole('tab', { name: 'Energie' })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Übersicht' })).toBeNull();
-    // Und das Welt-Kartenpaar auch nicht: es war der Bereichs-Reiter ein
-    // zweites Mal und kostete 189 px vor der ersten Zahl (Befund B4).
-    expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
-    expect(document.querySelector('.vp-welt-kopf')).toBeNull();
-    // Übrig bleibt EINE Bedienzeile: die Zeit-Leiste.
-    expect(screen.getByRole('tablist', { name: 'Zeitraum' })).toBeInTheDocument();
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-  });
-
-  it('nennt das Raster in der EINEN Chip-Form statt im getönten Abzeichen', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    // B7: `Badge variant="tint"` mass 1,66:1 (im echten Browser bei 1440
-    // nachgemessen). Seit E9 trägt das Raster-Wort die EINE Haus-Chip-Form.
-    const raster = await screen.findByText('15-Minuten-Mittel');
-    expect(raster).toHaveClass('vp-chip');
-    expect(raster.className).not.toMatch(/tint/);
-  });
-
-  it('zeigt die sechs Energiemengen des Zeitraums, mit dem Abzeichen „Gemessen"', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    const row = await screen.findByLabelText('Energiemengen im Zeitraum');
-    for (const label of ['Erzeugt', 'Verbraucht', 'Bezogen', 'Eingespeist', 'Geladen', 'Entladen']) {
-      expect(row).toHaveTextContent(label);
-    }
-    // Laden/entladen kommen NICHT aus totals - sie werden über die Buckets
-    // gebildet (2,0 + 1,0 kWh geladen, 0 + 3,0 kWh entladen).
-    expect(row).toHaveTextContent('3 kWh');
-    expect(screen.getByRole('heading', { level: 2, name: /Energie im Zeitraum · / })).toBeInTheDocument();
-    expect(screen.getByTestId('energie-chart')).toBeInTheDocument();
-    // Jede Karte dieser Welt trägt „Gemessen" - und keine „Bewertet".
-    expect(screen.getAllByText('Gemessen').length).toBeGreaterThan(1);
-    expect(screen.queryByText('Bewertet')).toBeNull();
-  });
-
-  it('trägt die STROMKOSTEN nicht mehr — eine bewertete Zahl in einer gemessenen Karte', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    expect(screen.queryByText(/Stromkosten/)).toBeNull();
-    expect(screen.queryByText(/zu Börsenpreisen/)).toBeNull();
-    // Autarkie/Eigenverbrauch (gemessene Quoten) bleiben.
-    expect(screen.getByText('Autarkie')).toBeInTheDocument();
-  });
-
-  it('nennt beim VERGANGENEN Zeitraum ausdrücklich sein Etikett', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    fireEvent.click(screen.getByLabelText('Vorheriger Zeitraum'));
-    await waitFor(() => expect(screen.getByText(/nicht für heute/)).toBeInTheDocument());
-  });
-
-  it('schließt die Fußkarte „Was diese Zahlen sind" an', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    expect(screen.getByText('Was diese Zahlen sind')).toBeInTheDocument();
-    expect(screen.getByText(/für eine Abrechnung/)).toBeInTheDocument();
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-  });
-
-  /**
-   * §4.1 · der Leer-Zustand nennt den ZEITRAUM und bietet den einen Weg, den es
-   * WIRKLICH gibt. Ohne je gemessene Viertelstunde bleibt er weg — ein toter
-   * Link ist schlimmer als keiner (P3).
-   */
-  it('nennt im Leer-Zustand den Zeitraum und führt zum letzten Tag mit Daten', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue({
-      ...historyEmpty,
-      coverage: {
-        firstDataAt: '2026-08-01T00:00:00Z',
-        lastDataAt: '2026-08-28T21:45:00Z',
-        expectedFrom: '2026-09-03T00:00:00Z',
-        expectedTo: '2026-09-04T00:00:00Z',
-        expectedBuckets: 96,
-        measuredBuckets: 0,
-        gaps: 1,
-        resolutionMinutes: 15,
-      },
-    } as History);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-    expect(screen.getByText(/liegen keine Messwerte vor/)).toBeInTheDocument();
-    const weg = screen.getByRole('button', { name: /Zum letzten Tag mit Daten/ });
-    fireEvent.click(weg);
-    // Der Weg führt auf GENAU diesen Tag — er ist nicht dekorativ.
-    await waitFor(() => expect(window.location.hash).toContain('at=2026-08-28'));
-  });
-
-  it('bietet ohne je gemessene Viertelstunde GAR KEINEN Weg an', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-    expect(screen.queryByRole('button', { name: /Zum letzten Tag mit Daten/ })).toBeNull();
-  });
-});
-
-/**
  * ⚠ Die Aufklapper des Verlaufs sind seit P2b ein natives `<details>`/`<summary>`
  * (der geteilte `Aufklapper`, Konzept §3.2 V8) — kein `<button>` mehr, und
  * `getByRole('button')` findet ein `summary` nicht. `aria-expanded` steht
@@ -448,45 +335,6 @@ function aufklapper(name: RegExp): HTMLElement {
   }
   return treffer[0] as HTMLElement;
 }
-
-describe('Der Explorer ist ein Abschnitt DIESER Welt (der dritte Umschalter entfällt)', () => {
-  it('ist zugeklappt und öffnet auf Klick die Messwert-Auswahl', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
-    vi.spyOn(api, 'topology').mockResolvedValue(topology);
-    const eh = vi.spyOn(api, 'entityHistory').mockResolvedValue(entityHistory(true));
-
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    const toggle = aufklapper(/Einzelne Messwerte vergleichen/);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('Batteriespeicher')).toBeNull();
-
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-
-    // Die Leiste gruppiert nach Komponente, mit deutschen Messwert-Namen.
-    await screen.findByText('Batteriespeicher');
-    expect(screen.getByText('Netzanschluss')).toBeInTheDocument();
-    expect(screen.getAllByText('Ladestand').length).toBeGreaterThan(0);
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)));
-  });
-
-  it('öffnet ein Deep-Link (?m=…) direkt aufgeklappt - alte Lesezeichen bleiben gültig', async () => {
-    window.location.hash = '#/anlage/s-1/messwerte?m=grid:power_kw&z=woche';
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
-    vi.spyOn(api, 'topology').mockResolvedValue(topology);
-    const eh = vi.spyOn(api, 'entityHistory').mockResolvedValue({
-      ...entityHistory(true),
-      range: 'week',
-    });
-
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    expect(aufklapper(/Einzelne Messwerte vergleichen/)).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('tab', { name: 'Woche' })).toHaveAttribute('aria-selected', 'true');
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'grid', 'week', expect.any(String)));
-  });
-});
 
 /**
  * Welt B · Erlöse — seit dem Verlauf-Rework (P2) eine Abrechnung:
@@ -629,7 +477,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
   it('hat KEINEN eigenen Welt-Link mehr — der Wechsel wohnt in den Reitern', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // E3: die Fläche bietet den Wechsel nicht ein zweites Mal an.
     expect(screen.queryByRole('link', { name: /Erlöse/ })).toBeNull();
@@ -646,7 +494,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     const mess = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
     const nachErstemAufbau = hist.mock.calls.length;
     expect(nachErstemAufbau).toBeGreaterThan(0);
 
@@ -659,7 +507,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
 
     // Und zurück - ebenfalls ohne Abruf.
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findAllByLabelText('Energiemengen im Zeitraum');
+    await screen.findAllByRole('group', { name: /^Energie · / });
     expect(hist.mock.calls.length).toBe(nachErstemAufbau);
   });
 
@@ -677,16 +525,16 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    expect(container.querySelector('.vp-welt-stale')).toBeNull();
+    await screen.findByRole('group', { name: /^Energie · / });
+    expect(container.querySelector('.vp-vr-body.alt')).toBeNull();
 
     fireEvent.click(screen.getByLabelText('Vorheriger Zeitraum'));
     // Die Zahlen der vorherigen Periode stehen noch da, nur gedimmt.
-    await waitFor(() => expect(container.querySelector('.vp-welt-stale')).toBeTruthy());
-    expect(screen.getByLabelText('Energiemengen im Zeitraum')).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector('.vp-vr-body.alt')).toBeTruthy());
+    expect(screen.getByRole('group', { name: /^Energie · / })).toBeInTheDocument();
 
     offen.forEach((r) => r(historyEmpty));
-    await waitFor(() => expect(container.querySelector('.vp-welt-stale')).toBeNull());
+    await waitFor(() => expect(container.querySelector('.vp-vr-body.alt')).toBeNull());
   });
 
   it('sagt es, wenn eine Periode NICHT geladen werden konnte (P5) - statt still stehenzubleiben', async () => {
@@ -696,12 +544,12 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     );
 
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
     fireEvent.click(screen.getByLabelText('Vorheriger Zeitraum'));
 
     await screen.findByText(/konnte nicht geladen werden/);
     // Die zuletzt geladenen Zahlen bleiben stehen - nur eben beschriftet.
-    expect(screen.getByLabelText('Energiemengen im Zeitraum')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /^Energie · / })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
   });
 });
@@ -717,7 +565,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // Seit dem Picker-System ist es der Haus-Kalender (Wochenstart Montag),
     // kein natives Feld - der Wert bleibt derselbe ISO-Wert.
@@ -746,7 +594,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
   it('wechselt mit dem Zeitraum auch die Art des Sprungfelds', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // Die ANZEIGE ist deutsch, der Wert bleibt ISO - je Zeitraum eine andere
     // Art desselben Kalenders.
@@ -766,7 +614,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
     // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
@@ -789,7 +637,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
   it('zeigt den Streifen nur dort, wo Blättern wirklich weh tut', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
     // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
     // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
     // noch, was man ständig braucht.
@@ -814,15 +662,13 @@ describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
   it('sagt ab wann es Daten gibt, wie viel gemessen ist und wie viele Lücken', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
-    // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
-    // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
-    // noch, was man ständig braucht.
-    fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
-    expect(screen.getByText('Daten ab 19.06.2026')).toBeInTheDocument();
-    expect(screen.getByText('94 % der Viertelstunden gemessen')).toBeInTheDocument();
-    expect(screen.getByText('· 6 Lücken')).toBeInTheDocument();
+    // Seit dem Verlauf-Rework steht die Datenlage in der EINEN Statuszeile
+    // unter der Zeit-Leiste; „Daten ab …" steht in ihrem ⓘ.
+    expect(screen.getByText('94 % der Viertelstunden gemessen · 6 Lücken')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Erklärung: So entstehen die Werte' }));
+    expect(await screen.findByText(/Daten ab 19\.06\.2026/)).toBeInTheDocument();
   });
 
   it('behauptet ohne Abdeckungsdaten GAR KEINE - auch in der Geld-Welt', async () => {
@@ -833,78 +679,6 @@ describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
     await screen.findByRole('group', { name: /^Erlöse · / });
     expect(screen.queryByText(/Daten ab/)).toBeNull();
     expect(screen.queryByText(/gemessen$/)).toBeNull();
-  });
-});
-
-/**
- * PR D · F3 — Δ zur Vorperiode: die billigste Form von „nachschauen".
- */
-describe('F3 · Vergleich mit der Vorperiode', () => {
-  /** Eine Antwort mit frei gesetzten Summen (die Buckets tragen die Wahrheit). */
-  function tag(pv: number, bezug: number | null): History {
-    return {
-      ...historyWithData,
-      buckets: [
-        {
-          ...historyWithData.buckets[0],
-          pvKwh: pv,
-          gridImportKwh: bezug,
-          batteryChargeKwh: null,
-          batteryDischargeKwh: null,
-        },
-      ],
-    };
-  }
-
-  it('zeigt je Kennzahl das Δ und wertet nur, wo die Richtung eindeutig ist', async () => {
-    const heute = isoDate(new Date());
-    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
-      Promise.resolve(at === heute ? tag(118, 91) : tag(100, 100)),
-    );
-    const { container } = render(
-      <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
-    );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-
-    // +18 % Erzeugung ist eindeutig gut, −9 % Netzbezug ebenfalls.
-    await screen.findByText('18 % mehr als am Vortag');
-    expect(screen.getByText('9 % weniger als am Vortag')).toBeInTheDocument();
-    expect(container.querySelectorAll('.vp-delta-gut').length).toBe(2);
-    // Die Karte nennt, womit verglichen wird.
-    expect(screen.getByText(/^Vergleich: /)).toBeInTheDocument();
-  });
-
-  it('vergleicht NIE gegen eine erfundene Null', async () => {
-    const heute = isoDate(new Date());
-    // Die Vorperiode trug den Netzbezug gar nicht.
-    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
-      Promise.resolve(at === heute ? tag(118, 91) : tag(100, null)),
-    );
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('18 % mehr als am Vortag');
-    expect(screen.queryByText(/als am Vortag/)).not.toBeNull();
-    // Kein Δ auf der Bezogen-Kachel - lieber keine Aussage als eine falsche.
-    expect(screen.queryByText(/% weniger als am Vortag/)).toBeNull();
-  });
-
-  it('beschriftet eine LAUFENDE Periode als solche', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(tag(118, 91));
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    // Der laufende Tag gegen einen vollen Vortag - das muss dastehen.
-    await waitFor(() =>
-      expect(screen.getByText(/läuft noch — verglichen wird mit dem vollständigen/))
-        .toBeInTheDocument(),
-    );
-  });
-
-  it('holt die Vorperiode gar nicht erst, wenn der Zeitraum leer ist', async () => {
-    const hist = vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-    // Nur der EINE Abruf der gezeigten Periode (im StrictMode-freien Test).
-    const anker = new Set(hist.mock.calls.map((c) => c[2]));
-    expect(anker.size).toBe(1);
   });
 });
 
