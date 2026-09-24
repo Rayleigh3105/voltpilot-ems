@@ -418,6 +418,27 @@
   margin: var(--vp-space-2, 8px) 0 0;
 }
 
+/* K8/B2: der Satz „Laden bei Bezug" direkt unter dem Fluss - ein Hinweis,
+   kein Alarm (gedämpfte Schrift, bricht auf dem Telefon um). */
+.vp-hero-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--vp-text-muted);
+}
+.vp-hero-hinweis svg {
+  flex: none;
+  margin-top: 2px;
+}
+.vp-hero-hinweis span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* V14 (Audit): der Weg nach vorn bekommt den Platz des leeren Diagramms. */
 .vp-hero-noflow {
   display: flex;

@@ -255,3 +255,18 @@ describe('H-3: der adaptive Fluss liest dieselben Rollen wie die Aufschlüsselun
     expect(topology.topology.nodes[0].value_kw).toBe(99);
   });
 });
+
+describe('Laden bei Bezug unter dem Fluss (K8/B2)', () => {
+  it('steht als Hinweis unter dem Fluss, nur wenn es einen Satz gibt', () => {
+    const satz = 'Eine Wolke hat die Sonne gerade verdeckt – der Speicher regelt in den nächsten Sekunden nach.';
+    const mit = render(
+      <CockpitHero view={pilstingView()} topology={null} snapshot={SNAP} onOpenSub={() => {}} ladenHinweis={satz} />,
+    );
+    const p = mit.container.querySelector('.vp-hero-flow .vp-hero-hinweis');
+    expect(p?.textContent).toBe(satz);
+    expect(p?.getAttribute('role')).toBe('status');
+    mit.unmount();
+    const ohne = renderStage(pilstingView());
+    expect(ohne.container.querySelector('.vp-hero-hinweis')).toBeNull();
+  });
+});

@@ -213,6 +213,15 @@ export const SUMMENWERT_VERBOTENE_WOERTER = ['Gesamtwert', 'PV gesamt', 'Helfer'
 /** @deprecated Kompatibler Exportname für bestehende Aufrufer; neue Flächen verwenden SUMMENWERT. */
 export const GESAMTWERT = SUMMENWERT;
 
+/**
+ * Laden bei Bezug im Cockpit (Herzogau 24.09.2026, h4 §7 B2; `ladenBeiBezug.ts`):
+ * die kurze Totzeit nach einer Wolkenkante ist kein Fehler und wird so gesagt;
+ * ein bewusstes Netz-Laden des Fahrplans nennt seinen Grund.
+ */
+export const LADEN_BEI_BEZUG_WOLKE =
+  'Eine Wolke hat die Sonne gerade verdeckt – der Speicher regelt in den nächsten Sekunden nach.';
+export const LADEN_BEI_BEZUG_FAHRPLAN = 'Der Fahrplan lädt jetzt für die teuren Stunden.';
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------

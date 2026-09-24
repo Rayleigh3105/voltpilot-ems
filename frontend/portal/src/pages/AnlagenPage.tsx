@@ -50,6 +50,14 @@ import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook, steuerungKurz } from '../control';
 import { curtailTruth, curtailTruthForSlot, exportGuardView } from '../curtailment';
 import { flowConflict, flowConflictCandidate, stepFlowConflict } from '../flowConflict';
+import {
+  flussAusKnoten,
+  flussAusSnapshot,
+  ladenBeiBezug,
+  ladenBeiBezugJetzt,
+  ladenBeiBezugSeit,
+} from '../ladenBeiBezug';
+import { cockpitRollenTopologie } from '../pvRolle';
 import { todaySlots } from '../schedule';
 import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
@@ -1210,6 +1218,8 @@ export function AnlageSeite({
     setFlowConflictStreak((s) => stepFlowConflict(s, flowCandRef.current));
   }, [flowConflictObs]);
   const cockpitFlow = flowConflict(cockpitFlowInput, flowConflictStreak);
+  // Seit wann der Speicher lädt, während das Netz liefert (K8/B2) - null = gerade nicht.
+  const ladenBeiBezugSeitRef = useRef<number | null>(null);
 
   // WHY the current setpoint is what it is: the OPTIMIZER's own recorded reason
   // for the slot being executed (Fahrplan-Warum), never a second explanation
@@ -1525,6 +1535,24 @@ export function AnlageSeite({
   } | null>(null);
   const [pvRollen, verbrauchRollen, netzRollen] = rollenStand?.siteId === site.id
     ? rollenStand.werte : [null, null, null];
+  // Laden bei Bezug (K8/B2, Herzogau 24.09.2026): aus DENSELBEN Zahlen, die der
+  // Fluss zeichnet (Topologie + kanonische Rollen, sonst der v1-Schnappschuss).
+  // Die Uhr ist der Seiten-Takt `now`; der Beginn wird über die Abrufe gehalten.
+  const ladenFluss = adaptiveLive.topology
+    ? flussAusKnoten(
+        cockpitRollenTopologie(adaptiveLive.topology, [pvRollen, verbrauchRollen, netzRollen])
+          ?.topology.nodes,
+      )
+    : flussAusSnapshot(heroSnapshot);
+  ladenBeiBezugSeitRef.current = ladenBeiBezugSeit(
+    ladenBeiBezugSeitRef.current,
+    ladenBeiBezugJetzt(ladenFluss, !heroStale),
+    now.getTime(),
+  );
+  const ladenHinweis = ladenBeiBezug(ladenBeiBezugSeitRef.current, now.getTime(), {
+    slotRole: activePlanSlot?.slotRole,
+    grund: baseReason,
+  });
   // ⚠ Der Abruf hängt an den GESPEICHERTEN Auswertungen, nicht am Entwurf: der
   // Server beantwortet genau die gespeicherten, und der Schlüssel ändert sich
   // damit exakt dann, wenn ein Speichern gelandet ist. Am Entwurf zu hängen
@@ -1687,8 +1715,13 @@ export function AnlageSeite({
              (register-bestätigt, aber nicht fließend) entzieht den Haken -
              er wäre sonst genau die „lädt 3,3 kW ✓"-Lüge aus Pilsting. */
           controlConfirmed={
-            controlView?.state === 'healthy' && cockpitFlow?.severity !== 'warn'
+            controlView?.state === 'healthy' &&
+            cockpitFlow?.severity !== 'warn' &&
+            // Laden bei Bezug (K8/B2): kein „lädt … kW ✓", solange Netzstrom
+            // in den Speicher fließt - der Satz unter dem Fluss erklärt es.
+            ladenHinweis == null
           }
+          ladenHinweis={ladenHinweis?.text ?? null}
           /* Die Lade-Kreise (Konzept §6, E3; Phase 1 / C2) - der Abzweig VOM
              HAUS und, für Säulen an einem EIGENEN Anschluss, ein Kreis am HUB.
              Beide aus DERSELBEN Ableitung, die auch die Kachel rendert.
