@@ -862,3 +862,9 @@
     flex: 1 1 100%;
   }
 }
+
+/* I/O-Modul: der Test-Schalter je Ausgang sitzt unter Zustand und Zuordnung. */
+.vp-io-ausgaenge .vp-io-schalter {
+  display: flex;
+  margin-top: 4px;
+}

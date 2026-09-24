@@ -13,6 +13,15 @@ import type {
 } from './types';
 import type { IoModulZustandDto } from './ioZustand';
 
+/** Das Ergebnis eines Test-Schaltens: `state` ist der ZURÜCKGELESENE Zustand. */
+export interface IoAusgangTestErgebnis {
+  ok: boolean;
+  channel: number;
+  state: boolean | null;
+  offAfterSeconds: number | null;
+  message: string;
+}
+
 export interface CreateConsumerBody {
   type: string;
   name?: string;
@@ -74,6 +83,15 @@ export const consumersApi = {
   options: (siteId: string) =>
     request<ConsumerOptions>(`/api/v1/sites/${siteId}/consumer-options`),
   list: (siteId: string) => request<Consumer[]>(base(siteId)),
+  /**
+   * Test-Schalten eines freien Ausgangs: `on` schaltet für höchstens 120 s ein
+   * (die Box schaltet danach von selbst ab), `off` sofort aus.
+   */
+  ioAusgangTesten: (siteId: string, entityId: string, channel: number, on: boolean) =>
+    request<IoAusgangTestErgebnis>(
+      `/api/v1/sites/${siteId}/io-modules/${entityId}/outputs/${channel}/test`,
+      { method: 'POST', body: JSON.stringify({ on, seconds: 120 }) },
+    ),
   /** Die zuletzt gemeldeten Ein-/Ausgänge eines I/O-Moduls samt Zuordnung. */
   ioModulZustand: (siteId: string, entityId: string) =>
     request<IoModulZustandDto>(`/api/v1/sites/${siteId}/io-modules/${entityId}/zustand`),

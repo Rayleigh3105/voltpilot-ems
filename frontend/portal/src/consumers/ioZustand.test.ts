@@ -55,6 +55,24 @@ describe('ioZustandView', () => {
     expect(ioZustandView(null, now).leer).toContain('nichts gemeldet');
   });
 
+  it('bietet einen freien Ausgang zum Test-Schalten an, einen vergebenen nie', () => {
+    const v = ioZustandView(dto(), now);
+    expect(v.ausgaenge[0]).toMatchObject({ channel: 3, schalten: null });
+    expect(v.ausgaenge[1]).toMatchObject({ channel: 4, schalten: { on: true, label: 'Test: 2 Min. an' } });
+    const an = ioZustandView(dto({
+      outputs: [{ channel: 4, on: true, consumerId: null, consumerName: null }],
+    }), now);
+    expect(an.ausgaenge[0].schalten).toEqual({ on: false, label: 'Aus' });
+  });
+
+  it('bietet bei veraltetem Zustand das Einschalten an, nie ein geratenes Aus', () => {
+    const v = ioZustandView(dto({
+      receivedAt: new Date(now - VERALTET_MS - 1000).toISOString(),
+      outputs: [{ channel: 4, on: true, consumerId: null, consumerName: null }],
+    }), now);
+    expect(v.ausgaenge[0].schalten?.on).toBe(true);
+  });
+
   it('zeigt vergebene Ausgaenge auch ohne Meldung - als Luecke', () => {
     const v = ioZustandView(dto({
       inputs: [],

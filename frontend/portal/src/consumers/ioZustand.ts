@@ -36,9 +36,24 @@ export interface IoModulZustandDto {
 /** Ab wann ein gemeldeter Zustand nicht mehr als aktuell gilt (drei Minuten-Meldungen). */
 export const VERALTET_MS = 3 * 60 * 1000;
 
+/**
+ * Ein Ausgang mit seiner Schalt-Möglichkeit auf der Geräteseite.
+ *
+ * `schalten` ist `null`, wenn der Ausgang einem Verbraucher gehört: dann
+ * schaltet ihn dessen Handeingriff (mit Grenzen und Schonzeiten), nie der
+ * Test hier - der Verbraucher zöge ihn sonst beim nächsten Takt zurück.
+ */
+export interface IoAusgangZeile extends Zeile {
+  channel: number;
+  schalten: { on: boolean; label: string } | null;
+}
+
+/** Wie lange ein Test-Einschalten hält (die Obergrenze des Vertrags). */
+export const TEST_SEKUNDEN = 120;
+
 export interface IoZustandView {
   eingaenge: Zeile[];
-  ausgaenge: Zeile[];
+  ausgaenge: IoAusgangZeile[];
   /** Der Satz über das Alter der Meldung, oder null ohne Meldung. */
   stand: string | null;
   veraltet: boolean;
@@ -60,11 +75,20 @@ export function ioZustandView(dto: IoModulZustandDto | null, now: number): IoZus
     label: `Eingang DI${k.channel}`,
     ...zustandWort(hatMeldung ? k.on : null, veraltet),
   }));
-  const ausgaenge: Zeile[] = (dto?.outputs ?? []).map((k) => ({
-    label: `Ausgang DO${k.channel}`,
-    ...zustandWort(hatMeldung ? k.on : null, veraltet),
-    detail: k.consumerId ? `schaltet ${k.consumerName?.trim() || 'einen Verbraucher'}` : 'frei',
-  }));
+  const ausgaenge: IoAusgangZeile[] = (dto?.outputs ?? []).map((k) => {
+    const an = hatMeldung && !veraltet ? k.on : null;
+    return {
+      label: `Ausgang DO${k.channel}`,
+      ...zustandWort(hatMeldung ? k.on : null, veraltet),
+      detail: k.consumerId ? `schaltet ${k.consumerName?.trim() || 'einen Verbraucher'}` : 'frei',
+      channel: k.channel,
+      schalten: k.consumerId
+        ? null
+        : an === true
+          ? { on: false, label: 'Aus' }
+          : { on: true, label: `Test: ${TEST_SEKUNDEN / 60} Min. an` },
+    };
+  });
   return {
     eingaenge,
     ausgaenge,

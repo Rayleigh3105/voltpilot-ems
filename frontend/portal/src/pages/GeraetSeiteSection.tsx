@@ -116,7 +116,7 @@ import {
 import { HandeingriffDialog } from '../components/HandeingriffDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
-import { ioZustandView, type IoModulZustandDto } from '../consumers/ioZustand';
+import { ioZustandView, TEST_SEKUNDEN, type IoModulZustandDto } from '../consumers/ioZustand';
 import type { Consumer } from '../consumers/types';
 import {
   sofortAktionen,
@@ -1569,6 +1569,9 @@ const IO_MODUL_TAKT_MS = 15_000;
 function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: string; now: number }) {
   const [dto, setDto] = useState<IoModulZustandDto | null>(null);
   const [fehler, setFehler] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [meldung, setMeldung] = useState<{ text: string; ok: boolean } | null>(null);
   useEffect(() => {
     let aktiv = true;
     const lesen = () => {
@@ -1580,8 +1583,23 @@ function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: str
     lesen();
     const t = window.setInterval(lesen, IO_MODUL_TAKT_MS);
     return () => { aktiv = false; window.clearInterval(t); };
-  }, [siteId, entityId]);
+  }, [siteId, entityId, reload]);
   const v = ioZustandView(dto, now);
+  const schalten = (channel: number, on: boolean) => {
+    setBusy(channel);
+    setMeldung(null);
+    consumersApi.ioAusgangTesten(siteId, entityId, channel, on).then(
+      (r) => setMeldung({ text: r.message, ok: r.ok }),
+      (e: unknown) => setMeldung({
+        text: e instanceof Error && e.message ? e.message : 'Der Ausgang ließ sich nicht schalten.',
+        ok: false,
+      }),
+    ).finally(() => {
+      setBusy(null);
+      // Die Box meldet den neuen Zustand binnen Sekunden - dann nachlesen.
+      window.setTimeout(() => setReload((x) => x + 1), 3000);
+    });
+  };
   return (
     <Block titel="Eingänge & Ausgänge" icon="sliders">
       {fehler && !dto && (
@@ -1593,7 +1611,42 @@ function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: str
           {v.stand}{v.veraltet ? ' — der gezeigte Zustand ist nicht aktuell.' : ''}
         </p>
       )}
-      <ZeilenListe zeilen={v.ausgaenge} />
+      {meldung && (
+        <p className={meldung.ok ? 'vp-geraet-sec-sub' : 'vp-note is-warn'} role="status">
+          {meldung.text}
+        </p>
+      )}
+      {v.ausgaenge.length > 0 && (
+        <dl className="vp-geraet-kv vp-io-ausgaenge">
+          {v.ausgaenge.map((z) => (
+            <div key={z.label} className={z.ton ? `is-${z.ton}` : undefined}>
+              <dt>{z.label}</dt>
+              <dd>
+                <span>{z.wert}</span>
+                {z.detail && <small>{z.detail}</small>}
+                {!z.schalten && <small>Schalten über den Handeingriff des Verbrauchers</small>}
+                {z.schalten && (
+                  <span className="vp-io-schalter">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy !== null}
+                      onClick={() => schalten(z.channel, z.schalten!.on)}
+                    >
+                      {busy === z.channel ? 'Schaltet …' : z.schalten.label}
+                    </Button>
+                  </span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <p className="vp-geraet-sec-sub">
+        „Test" schaltet einen freien Ausgang für {TEST_SEKUNDEN / 60} Minuten ein; danach schaltet
+        die Box ihn von selbst wieder ab. Dauerhaft schaltet ein Verbraucher, dem der Ausgang
+        zugeordnet ist.
+      </p>
       <ZeilenListe zeilen={v.eingaenge} />
     </Block>
   );
