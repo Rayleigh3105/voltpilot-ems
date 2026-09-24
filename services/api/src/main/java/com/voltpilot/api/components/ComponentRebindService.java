@@ -60,10 +60,16 @@ public class ComponentRebindService {
     public Outcome rebindOrphanedPins(UUID siteId) {
         List<ComponentRebind.PinnedComponent> pinned = new ArrayList<>();
         for (EntityRow row : entityRepo.pointsForSite(siteId)) {
-            if (row.edgeSourceId() == null || row.edgeSourceId().isBlank()) {
+            boolean hasPin = row.edgeSourceId() != null && !row.edgeSourceId().isBlank();
+            // Ohne Pin zählt nur eine Komponente mit gespeicherter Anbindung
+            // (die Erstbindung einer im Portal angelegten Komponente); eine
+            // komponierte Zeile ohne Verbindung hat nichts wiederzuerkennen.
+            if (!hasPin && (row.communication() == null || row.communication().isBlank()
+                    || row.connectionJson() == null || row.connectionJson().isBlank())) {
                 continue;
             }
-            pinned.add(new ComponentRebind.PinnedComponent(row.id(), row.edgeSourceId(),
+            pinned.add(new ComponentRebind.PinnedComponent(row.id(),
+                    hasPin ? row.edgeSourceId() : null,
                     row.role(), row.communication(), row.connectionJson(), row.label()));
         }
         if (pinned.isEmpty()) {
@@ -90,6 +96,11 @@ public class ComponentRebindService {
         }
         for (ComponentRebind.Rebind r : plan) {
             entityRepo.setEdgeSource(r.pointId(), r.toSourceId());
+            if (r.fromSourceId() == null) {
+                log.info("Bindung hergestellt: Komponente {} (\"{}\") der Anlage {} hängt jetzt an "
+                        + "der gemeldeten Quelle {}", r.pointId(), r.label(), siteId, r.toSourceId());
+                continue;
+            }
             log.warn("Bindung wiederhergestellt: Komponente {} (\"{}\") der Anlage {} war an die "
                     + "Kennung {} gepinnt und hängt jetzt wieder an demselben Gerät unter {}",
                     r.pointId(), r.label(), siteId, r.fromSourceId(), r.toSourceId());

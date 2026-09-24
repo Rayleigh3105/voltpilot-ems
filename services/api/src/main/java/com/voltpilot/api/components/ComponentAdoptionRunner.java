@@ -224,12 +224,16 @@ public class ComponentAdoptionRunner {
         return adminJdbc.query(
                 "SELECT DISTINCT s.id, s.tenant_id, s.name, s.created_at FROM site s "
                         + "JOIN measurement_point mp ON mp.site_id = s.id "
-                        + "  AND mp.edge_source_id IS NOT NULL "
                         + "WHERE EXISTS (SELECT 1 FROM entity_observed_state o "
                         + "  WHERE o.site_id = s.id AND o.source = 'local') "
-                        + "AND NOT EXISTS (SELECT 1 FROM entity_observed_state o2 "
+                        + "AND ((mp.edge_source_id IS NOT NULL "
+                        + "  AND NOT EXISTS (SELECT 1 FROM entity_observed_state o2 "
                         + "  WHERE o2.site_id = s.id AND o2.source = 'local' "
-                        + "  AND o2.entity_id = 'local:' || mp.edge_source_id) "
+                        + "  AND o2.entity_id = 'local:' || mp.edge_source_id)) "
+                        // Erstbindung: eine im Portal angelegte Komponente mit
+                        // Anbindung, aber noch ohne Pin.
+                        + " OR (mp.edge_source_id IS NULL AND mp.entity_type IS NOT NULL "
+                        + "  AND mp.communication IS NOT NULL AND mp.connection_json IS NOT NULL)) "
                         + "ORDER BY s.created_at, s.id",
                 (rs, n) -> new Candidate(rs.getObject("id", UUID.class),
                         rs.getObject("tenant_id", UUID.class), rs.getString("name")));
