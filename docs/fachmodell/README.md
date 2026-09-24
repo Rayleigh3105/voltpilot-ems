@@ -10,7 +10,7 @@ ist ein Fehler, kein Stilproblem.
 
 | Datei | Inhalt |
 |---|---|
-| [`glossar.md`](glossar.md) | Die 23 Begriffs-Einträge: Definition · Erläuterung · Beispiel aus dem Referenzunternehmen · „Heute im Code“ mit Belegen `datei:zeile` · Abgrenzung zu den Nachbarbegriffen. |
+| [`glossar.md`](glossar.md) | Die Begriffs-Einträge — 23 aus AP-00 §4.1 und die Nachträge späterer Pakete (Stand 24.09.2026: 59 Einträge; die aktuelle Zahl nennt der Kopf der erzeugten Datei): Definition · Erläuterung · Beispiel aus dem Referenzunternehmen · „Heute im Code“ mit Belegen `datei:zeile` · Abgrenzung zu den Nachbarbegriffen. |
 | [`beziehungen.md`](beziehungen.md) | Die Beziehungsliste mit Kardinalität und **Zeitgültigkeit**, die offenen Spannungen (W1–W4) und was AP-00 den Nachbarpaketen vorgibt. |
 | [`zustaende.md`](zustaende.md) | Das Zustandsvokabular: Lebenszyklus (Entwurf · eingerichtet · aktiv · angehalten · archiviert) und Beobachtung (liefert Daten · steuert), Matrix je Objekt, Übergänge, Entscheidungslog. |
 | [`fachmodell.svg`](fachmodell.svg) | Das Diagramm: die drei Sichten Ort (blau) · Organisation (grün) · elektrisch (orange) und die graue Erfassungskette um die logische Messstelle. |

@@ -617,7 +617,7 @@
         "unterstuetzer": "-",
         "voltpilot_betrieb": "-"
       },
-      "anmerkung": "Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
+      "anmerkung": "Gebaut in AP-17 IP-7/IP-8 (Routen), „geprüft, bleibt“ und Beenden in IP-17; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
     },
     {
       "kennung": "bezugsbasis.freigeben",
@@ -635,7 +635,7 @@
         "unterstuetzer": "-",
         "voltpilot_betrieb": "-"
       },
-      "anmerkung": "Reserviert für AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
+      "anmerkung": "Gebaut in AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
     },
     {
       "kennung": "bezugsbasis.ansehen",
@@ -653,7 +653,7 @@
         "unterstuetzer": "A",
         "voltpilot_betrieb": "-"
       },
-      "anmerkung": "Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
+      "anmerkung": "Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
     },
     {
       "kennung": "export.standort",
@@ -1953,7 +1953,7 @@
             "bezugsbasis.verwalten"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
+          "anmerkung": "Gebaut in AP-17 IP-7/IP-8 (Routen), „geprüft, bleibt“ und Beenden in IP-17; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
         },
         {
           "handlung": "Bezugsbasis freigeben · ablehnen",
@@ -1963,7 +1963,7 @@
             "bezugsbasis.freigeben"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Reserviert für AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
+          "anmerkung": "Gebaut in AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
         },
         {
           "handlung": "Bezugsbasen und Vergleich ansehen",
@@ -1973,7 +1973,7 @@
             "bezugsbasis.ansehen"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
+          "anmerkung": "Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
         }
       ],
       "regeln": [

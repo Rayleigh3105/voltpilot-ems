@@ -306,16 +306,26 @@ Vertrag des Berichts: [`bericht.md`](./bericht.md).
 angelegt: Bezug `energieeinsatz` (EE-…), Urheber `kunde`, Pflicht Fassung,
 Einstufung und Gründe K1–K4. Der unveränderliche Herkunftssatz und die Begründung
 stehen an der Fassung; Zahlen allein erzeugen nie die Meldung. `messbedarf_erfasst` und
-`messbedarf_eingeloest` (Bezug `messbedarf`, Anlage IP-19/IP-20) haben jeweils Urheber
-`kunde`. Eine Person erfasst/löst einen Messbedarf ein. Diese beiden stehen weiter nur
-im Block `reserviert`; bis zu ihrer Anlage lehnen die bestehenden Prüfer sie ab.
+`messbedarf_eingeloest` (Bezug `messbedarf`) haben jeweils Urheber `kunde`. Eine Person
+erfasst/löst einen Messbedarf ein. Beide sind seit AP-16 IP-19 angelegt (Migration
+`V20260922246000__uems_messbedarf.sql`, `vokabular.arten`; `EreignisVokabular.Art.MESSBEDARF_ERFASST`
+und `MESSBEDARF_EINGELOEST`, Zwilling im Timescale-Writer); der API-Schreibweg meldet sie atomar mit
+dem Messbedarf. Die Reservierung im Block `reserviert` bleibt als Herkunft stehen
+(`EreignisVokabularVectorsTest.bewertungsEreignisseSindAusDerReservierungAktiviert`). Nachtrag AP-18
+W11 (24.09.2026).
 
-**Reserviert für die Bezugsbasis (AP-17 IP-6).** `bezugsbasis_freigegeben` (Urheber `kunde`,
-Anlage IP-8), `bezugsbasis_beendet` (`kunde` oder `cloud` — die Archivierung der Kennzahl
-beendet die Basis; Anlage IP-8/IP-17) und `bezugsbasis_anstoss` (`cloud`, Kaskade oder
-Struktur-Läufer; Anlage IP-15), alle mit Bezug `bezugsbasis` (BB-…). Sie stehen nur im Block
-`reserviert`; noch kein Schreiber und kein Eintrag in `vokabular.arten` oder der
-Ereignis-Tabelle. Bis zur Anlage lehnen die bestehenden Prüfer diese Wörter ab.
+**Reserviert für die Bezugsbasis (AP-17 IP-6).** `bezugsbasis_freigegeben` (Urheber `kunde`),
+`bezugsbasis_beendet` (`kunde` oder `cloud` — die Archivierung der Kennzahl beendet die Basis)
+und `bezugsbasis_anstoss` (`cloud`, Kaskade oder Struktur-Läufer), alle mit Bezug `bezugsbasis`
+(BB-…). **Anlage offen** (Nachtrag AP-18 W15, 24.09.2026): IP-8, IP-15 und IP-17 sind gebaut, haben
+die Wörter aber nicht angelegt — Freigabe, Anstoß und Beenden stehen im Änderungsprotokoll
+`bezugsbasis_aenderung` und in `bezugsbasis_anstoss`, nicht im Ereignisstrom. Die Wörter stehen nur im
+Block `reserviert`; kein Schreiber und kein Eintrag in `vokabular.arten` oder der Ereignis-Tabelle.
+Bis zur Anlage lehnen die bestehenden Prüfer diese Wörter ab
+(`EreignisVokabularVectorsTest.bezugsbasisEreignisseBleibenBisZumSchreibpaketNurReserviert`). Die
+gleichnamigen Werte `bezugsbasis_anstoss`/`bezugsbasis_beendet` in `EreignisVokabular.ANSTOSS_ART`
+sind Anlässe eines Bericht-Anstoßes, keine Ereignis-Wörter. Die Anlage bleibt AP-17 (Konzept AP-18
+§6.8); AP-18 hängt seine Auslöser an die Transaktion, nicht an diese Ereignisse.
 
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen

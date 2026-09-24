@@ -2472,10 +2472,10 @@
       "urheber": [
         "kunde"
       ],
-      "angelegt_von": "AP-17 IP-8; Reservierung mit IP-6",
+      "angelegt_von": "Anlage offen (AP-17; IP-8 ist gebaut, ohne das Wort anzulegen — Nachtrag AP-18 W15); Reservierung mit IP-6",
       "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
       "regel": "Eine Person gibt eine Fassung der Bezugsbasis (BB-…) mit Begründung frei; bei Vier-Augen bestätigt eine zweite Person. Kein Läufer gibt frei.",
-      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. Freigabe, Beenden und Anstoß stehen bis dahin im Protokoll bezugsbasis_aenderung bzw. in bezugsbasis_anstoss."
     },
     {
       "art": "bezugsbasis_beendet",
@@ -2484,10 +2484,10 @@
         "kunde",
         "cloud"
       ],
-      "angelegt_von": "AP-17 IP-8/IP-17; Reservierung mit IP-6",
+      "angelegt_von": "Anlage offen (AP-17; IP-8 und IP-17 sind gebaut, ohne das Wort anzulegen — Nachtrag AP-18 W15); Reservierung mit IP-6",
       "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
       "regel": "Eine Person beendet eine Bezugsbasis oder Fassung mit Grund, oder die Archivierung der Kennzahl beendet die Basis am selben Tag; beendet, nie gelöscht.",
-      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. Freigabe, Beenden und Anstoß stehen bis dahin im Protokoll bezugsbasis_aenderung bzw. in bezugsbasis_anstoss."
     },
     {
       "art": "bezugsbasis_anstoss",
@@ -2495,10 +2495,10 @@
       "urheber": [
         "cloud"
       ],
-      "angelegt_von": "AP-17 IP-15; Reservierung mit IP-6",
+      "angelegt_von": "Anlage offen (AP-17; IP-15 ist gebaut, ohne das Wort anzulegen — Nachtrag AP-18 W15); Reservierung mit IP-6",
       "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
       "regel": "Kaskade (Pfad 1) oder Struktur-Läufer (Pfad 2) setzt „Anstoß liegt vor“ an einer freigegebenen Fassung; die Fassung bleibt byte-gleich, eine Person antwortet.",
-      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt."
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. Freigabe, Beenden und Anstoß stehen bis dahin im Protokoll bezugsbasis_aenderung bzw. in bezugsbasis_anstoss."
     }
   ],
   "cases": [

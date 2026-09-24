@@ -100,6 +100,37 @@ Zwillingen). Neu ist die **gemeinsame Steuerung** von AN-1 — zwei steuernde Bo
   `MessstelleRegisterApiTest` (legt nur den Bestand an). `UemsDatenquelleMigrationTest` leitet
   seine Kennzeichen aus der Datei ab und legt DQ-8 … DQ-10 mit an.
 
+## Was die Fassungen 1.6 bis 1.8 dazugelegt haben (22./23.09.2026)
+
+Herkunft je Fassung: `_herkunft.fassung_1_6` … `fassung_1_8` in der Datei. Jede Fassung legt ihre
+Zusätze in eigene Blöcke oder markierte Zeilen, damit „ohne die Zusätze = Vorgänger“ nachrechenbar
+bleibt (Nachtrag AP-18 IP-3, 24.09.2026).
+
+- **1.6 (AP-16 IP-1, E11 = A):** `bewertung_umfang`, Prozess P-7, `energieeinsaetze[]` EE-1 … EE-8,
+  `bewertung_kriterien[]`, `einstufungen[]`, `messbedarfe[]` MB-1, MS-23 mit GR-19/K-15,
+  `messmittel_angaben[]`, die Toleranz an der Vergleichsquelle von MS-01, die Bewertungs-Berichte
+  BW-2026-0001/BW-2027-0001, `abnahmefaelle_ap16` und elf Zeilen der Zeitachse. Zahlen 2027 sind
+  ausdrücklich Annahmen.
+- **1.7 (Befund aus PR 1104, AP-16 IP-17):** K-1 steht an MS-01 zusätzlich an der Hauptgröße
+  Wirkenergie Bezug (`herleitung: integration`) und trägt dort die Toleranz-Fassung; die
+  Zeitachsen-Zeile vom 20.11.2026 nennt beide Größen; `abnahmefaelle_ap16` ergänzt R9. ⚠ Keine
+  reine Ergänzung — der Rückweg zu 1.6 setzt K-1 an die Nebengröße zurück.
+- **1.8 (AP-17 IP-1, E12 = A, E9 = C):** `bezugsgroessen_1_8` BZ-8, `kennzahlen_1_8` KZ-0006,
+  `fassungen` an den Kennzahlen, `bezugsbasen[]` BB-0001 … BB-0005, `leistungsvergleiche[]`
+  VB-2028-0001, `abnahmefaelle_ap17` und dreizehn Zeitachsen-Zeilen mit `bezugsbasis`. ⚠ Zwei
+  W12-Nachträge ändern Bestandswerte: die Eingänge der Einstufungen von EE-5/EE-6 nennen jetzt
+  die Einzelwerte der Messstellen (Summen gleich). `null` sind Monatswerte MS-10 Jan./Feb. 2027 und
+  die Prüfsumme von VB-2028-0001/1; die `sha256:…`-Kürzel in den gegeben-Blöcken sind Platzhalter
+  des Konzepts, nachrechenbar ist nur die Prüfsumme in `bezugsbasen[]`. Die Koeffizienten sind
+  gröber gerundet als der Vertrag einfriert (siehe `uems-bezugsbasis-vertrag.md`).
+
+**Falle für die nächste Fassung:** `UemsReferenzunternehmenVectorsTest` hält je Fassung einen
+Fingerabdruck (`FASSUNG_1_x_SHA256`) und die Zahl der `_comment`-Zeilen (`KOMMENTAR_ZEILEN_1_x`)
+fest; `ohneFassung18` nimmt die Zusätze von 1.8 heraus und muss danach 1.7 treffen,
+`ohneFassung19` (AP-18 IP-1) ebenso bis 1.8. Wer die nächste Fassung anlegt, schreibt ihr
+`ohneFassung…` samt Fingerabdruck der Vorgängerin, hängt Kommentarzeilen nur ANS ENDE
+von `_comment` und fährt beide Zwillinge sowie die Leser der Datei (siehe unten).
+
 ## Die Prüfungen
 
 Die Zwillinge Java `uems/UemsReferenzunternehmenVectorsTest` und TS

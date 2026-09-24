@@ -7,8 +7,24 @@ Verbindlich: [Bezugsbasis-Vertrag](../../contracts/v2/bezugsbasis.md),
 
 Java `uems/BezugsbasisRegeln`, TS `bezugsbasis.ts`, Python
 `voltpilot_optimization/bezugsbasis.py` rechnen jeden Vektor derselben Datei. Die Python-Referenz
-ist die bereinigte Rechnung aus AP-17 `k_faelle.py` (fit1, pearson, erwartet, urteil). Noch ruft
-niemand an: keine Tabelle, keine Route, keine Fläche.
+ist die bereinigte Rechnung aus AP-17 `k_faelle.py` (fit1, pearson, erwartet, urteil).
+
+**Stand 24.09.2026 (Nachtrag AP-18 W12):** die Regeln haben Aufrufer. Java: `BezugsbasisService`,
+`BezugsbasisGrundlage`, `BezugsbasisPflegeService`, `BezugsbasisAnstoesse`, `BezugsbasisVergleich`
+(+ `…Satz`), `VariablenAbhaengigkeit`. TS: `bezugsbasisVergleich.ts`, `variablenAbhaengigkeit.ts`.
+Python: nur die Tests (Referenz, kein Dienst). Tabellen `bezugsbasis`, `bezugsbasis_fassung`,
+`…_variable`, `…_faktor`, `…_anstoss`, `…_aenderung` (`V20260924071500`, IP-6),
+`bezugsbasis_struktur_gelesen` (`V20260924200500`, IP-15). Routen: Methoden `GET
+/api/v1/bezugsbasis-methoden` (IP-5), `…/kennzahlen/{id}/bezugsbasen[/{bid}/fassungen…]` mit
+beantragen/freigeben/ablehnen und Verantwortlichem (IP-7/IP-8, `BezugsbasisController`), `…/bleibt`,
+`…/beenden`, `GET /api/v1/bezugsbasen/uebersicht` (IP-17, `BezugsbasisPflegeController`), `GET
+…/kennzahlen/{id}/vergleich` (IP-19), Faktoren-Vorschlag (IP-16a). Flächen: Reiter und Assistent
+(IP-9, `BezugsbasisReiter`, `BezugsbasisAssistent`), Modell (IP-14), Fassungen und Anstoß (IP-18),
+Reiter „Vergleich mit Bezugsbasis“ (IP-20, `BezugsbasisVergleich`), Übersichts-Baustein
+(`BezugsbasisUebersichtKarte`), Leistungsvergleich als Bericht (IP-21a–IP-24). Einzelheiten: die
+Wegweiser `uems-bezugsbasis-datenhaltung.md`, `-grundlage.md`, `-freigabe.md`, `-methoden.md`,
+`uems-bezugsbasis.md` (Einstieg). Die Ereignis-Wörter `bezugsbasis_*` sind weiter nur reserviert
+(Anlage offen, `events-vocabulary.md`).
 
 | Was | Wo |
 |---|---|

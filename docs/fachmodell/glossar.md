@@ -748,7 +748,7 @@ Ein Bericht zitiert nur die Welt der Messstellen: Messstellen, Kostenstellen-Ene
 
 **Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001, Monatsbericht Werk Ahrenberg Oktober 2026: Berichtsstand Nr. 1 am 10.11.2026, Nr. 2 (Revision) am 16.11.2026.
 
-**Heute im Code.** Heute nicht vorhanden; es gibt nur den Geräte-Export ohne Stand. Die Regeln stehen als Vertrag in `docs/contracts/v2/bericht.md` samt Vektoren (`bericht-vectors.json`, Zwillinge `uems/BerichtRegeln` ⟷ `uemsBericht.ts`, AP-12 IP-1/IP-3); Tabellen, Routen und Fläche kommen mit AP-12 IP-4 ff.
+**Heute im Code.** Gebaut mit AP-12 IP-1 ff. (Stand 24.09.2026, Nachtrag AP-18 W13). Vertrag `docs/contracts/v2/bericht.md` samt Vektoren (`bericht-vectors.json`, Zwillinge `uems/BerichtRegeln` ⟷ `uemsBericht.ts`); Tabellen `bericht` und `bericht_entwurf` (MIG/V20260915050000__uems_bericht.sql:162, :223); Routen `/api/v1/berichte` für Anlegen, Entwurf, Freigabe, Stände, PDF/CSV und Archivieren (services/api/src/main/java/com/voltpilot/api/web/BerichtController.java:83); Fläche PORTAL/pages/BerichtePage.tsx:1 und PORTAL/pages/BerichtSeite.tsx:1. Der Geräte-Export ohne Stand bleibt daneben.
 
 **Abgrenzung.** Nicht der Export (der zitiert nichts und hat keinen Stand), nicht die Erlöse-Karte (keine Berichtsquelle, E3), nicht der freie Zeitraum des Lese-Modells.
 
@@ -762,7 +762,7 @@ Es gibt vier Vorlagen: Monats- und Jahresbericht je Standort und je Unternehmen.
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Monatsbericht Standort, Fassung 1: Kopf · Zusammenfassung · Verbrauch je Messstelle · Tagesverlauf · Kennzahlen · Qualität · Quellenverzeichnis.
 
-**Heute im Code.** Heute nicht vorhanden. Der Katalog steht in `docs/contracts/v2/bericht-vorlagen.json` (vier Vorlagen, AP-12 IP-1); ausgeliefert wird er ab AP-12 IP-5.
+**Heute im Code.** Gebaut mit AP-12 IP-1/IP-5 (Stand 24.09.2026, Nachtrag AP-18 W13). Der Katalog steht in `docs/contracts/v2/bericht-vorlagen.json` (heute sechs Vorlagen: die vier aus AP-12, dazu die energetische Bewertung aus AP-16 und seit AP-17 IP-21a der Leistungsvergleich) und wird byte-gleich als API-Ressource `berichte/bericht-vorlagen.json` über `GET /api/v1/bericht-vorlagen` ausgeliefert (services/api/src/main/java/com/voltpilot/api/web/BerichtVorlagenController.java:44).
 
 **Abgrenzung.** Nicht die Kennzahlvorlage (die legt eine Kennzahl an), nicht ein freier Berichtsdesigner (E9, nicht gewählt).
 
@@ -776,7 +776,7 @@ Er entsteht nur, wenn eine Person mit Recht den Entwurf freigibt — der Zeitrau
 
 **Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001 Nr. 1 nennt MS-12 mit 6 100 kWh in Version 1 — auch 2036, wenn die Zeilen der Speicherklasse gelöscht sind.
 
-**Heute im Code.** Heute nicht vorhanden. Die Form steht in `docs/contracts/v2/bericht.schema.json` (Abzug, Stand); die Tabelle kommt mit AP-12 IP-4.
+**Heute im Code.** Gebaut mit AP-12 IP-4 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Form steht in `docs/contracts/v2/bericht.schema.json` (Abzug, Stand); Tabelle `bericht_stand` mit Prüfsumme, Nummer und Datenstand ≤ Freigabe (MIG/V20260915050000__uems_bericht.sql:252); Freigabe und Abruf über `POST …/freigeben` und `GET …/staende/{nr}` (services/api/src/main/java/com/voltpilot/api/web/BerichtController.java:195, :214).
 
 **Abgrenzung.** Nicht die Version eines Werts (die gehört der Zahl), nicht der Entwurf (der bildet sich neu), nicht eine Datei (PDF und CSV werden aus ihm erzeugt).
 
@@ -790,7 +790,7 @@ Eine Korrektur, ein Ersatzwert oder eine rückwirkende Änderung der Struktur tr
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Die Korrektur K-2026-0007 stößt Nr. 1 an („Revision nötig — Korrektur K-2026-0007“); Ines Kaltenbach gibt am 16.11.2026 Nr. 2 frei, drei Abweichungen.
 
-**Heute im Code.** Heute nicht vorhanden. Die Regeln stehen in `docs/contracts/v2/bericht.md` (Betroffenheit, Anstoß, Abweichung); Anstoß-Tabelle und Kaskaden-Naht kommen mit AP-12 IP-4/IP-8.
+**Heute im Code.** Gebaut mit AP-12 IP-4/IP-8 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Regeln stehen in `docs/contracts/v2/bericht.md` (Betroffenheit, Anstoß, Abweichung); Anstoß-Tabelle `bericht_revision_anstoss` (MIG/V20260915050000__uems_bericht.sql:341), Kaskaden-Naht `uems/BerichtKaskade` (services/api/src/main/java/com/voltpilot/api/uems/BerichtKaskade.java:61), Verwerfen mit Begründung über `POST …/anstoesse/{id}/verwerfen` (services/api/src/main/java/com/voltpilot/api/web/BerichtController.java:260).
 
 **Abgrenzung.** Nicht die Korrektur eines Werts (die macht eine neue Version einer Zahl), nicht das Zurücknehmen einer Freigabe (gibt es nicht).
 
@@ -804,7 +804,7 @@ Der Datenstand ist eine Aussage über die Daten, die Freigabe eine über eine Pe
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Berichtsstand Nr. 2: Datenstand 12.11.2026 10:05 (MEZ), freigegeben 16.11.2026 14:20 von Ines Kaltenbach.
 
-**Heute im Code.** Für Berichte heute nicht vorhanden. Die Regeln stehen in `docs/contracts/v2/bericht.md` (Datenstand, D1–D5, AP-12 IP-1/IP-3).
+**Heute im Code.** Für Berichte gebaut mit AP-12 IP-4 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Regeln stehen in `docs/contracts/v2/bericht.md` (Datenstand, D1–D5); Spalte `datenstand` an Entwurf und Stand (MIG/V20260915050000__uems_bericht.sql:229, :259).
 
 **Abgrenzung.** Nicht der Freigabe-Zeitpunkt, nicht „endgültig ab“ eines Werts, nicht die Berechnungszeit einer einzelnen Zahl.
 
@@ -818,7 +818,7 @@ Das Quellenverzeichnis entscheidet, welche Änderung einen Bericht trifft: Zeitr
 
 **Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001: 19 Einträge von BZ-4 bis MS-15, darunter KZ-0001 und KZ-0005.
 
-**Heute im Code.** Heute nicht vorhanden. Die Form einer Zeile steht in `docs/contracts/v2/bericht.schema.json` (Quelle); die Tabelle kommt mit AP-12 IP-4.
+**Heute im Code.** Gebaut mit AP-12 IP-4 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Form einer Zeile steht in `docs/contracts/v2/bericht.schema.json` (Quelle); Tabelle `bericht_quelle` mit dem Namen zum Datenstand (MIG/V20260915050000__uems_bericht.sql:299).
 
 **Abgrenzung.** Nicht die Quellenbindung einer Messstelle (die verbindet Messstelle und Messkanal), nicht die Herkunft eines Werts (die erklärt eine einzelne Zahl).
 

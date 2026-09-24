@@ -95,9 +95,9 @@ AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Capt
 |---|---|---|---|---|---|---|---|---|---|
 | **Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13)** |  |  |  |  |  |  |  |  |  |
 | Energetische Bewertung anlegen · freigeben · abrufen | AP-16 §6.1 (S1–S5, R7/R10) | U | U | - | - | - | - | - | Nur die Vorlage energetische_bewertung; derselbe Unternehmenszaun wie bei bericht.unternehmen, ohne andere Berichtsvorlagen zu öffnen. |
-| Bezugsbasis anlegen · Fassung bilden · beenden | AP-17 §6.1 (B1/B4, F4) | U | U | S | - | - | - | - | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
-| Bezugsbasis freigeben · ablehnen | AP-17 §6.1 (F1/F2) | U | U | - | - | - | - | - | Reserviert für AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
-| Bezugsbasen und Vergleich ansehen | AP-17 §6.1 (B1, U1–U6) | U | U | S | S | S | A | - | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| Bezugsbasis anlegen · Fassung bilden · beenden | AP-17 §6.1 (B1/B4, F4) | U | U | S | - | - | - | - | Gebaut in AP-17 IP-7/IP-8 (Routen), „geprüft, bleibt“ und Beenden in IP-17; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| Bezugsbasis freigeben · ablehnen | AP-17 §6.1 (F1/F2) | U | U | - | - | - | - | - | Gebaut in AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| Bezugsbasen und Vergleich ansehen | AP-17 §6.1 (B1, U1–U6) | U | U | S | S | S | A | - | Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
 | **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |
 | Messstellen-Register lesen (Messstelle, Ort, Quelle, Zustand, letzter Wert) | AP-04 §6.7 | U | U | S | S | S | A | - | AP-04: „Register lesbar für Leser und Bedienberechtigte“; wer Messstellen pflegt, liest sie; Unterstützer „Ansehen“ liest wie ein Leser (AP-03 §4.2). |
 | Ereignisse einsehen | AP-07 §4.10 | U | U | S | S | S | A | - | AP-07: „wie Verlauf“ — Zellen der Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“. |
@@ -167,9 +167,9 @@ Welche Kennung jede Handlung trägt: eine **neue Zeile** (oben) oder eine **best
 | AP-16 §6.1 | Energieeinsatz einstufen | KA U · EM U | `energieeinsatz.einstufen` | `energieeinsatz.einstufen` | neue Zeile | Seit AP-16 IP-11 setzen PUT …/einstufung und POST …/einstufung/bestaetigen die Kennung durch; gelesen wird über energieeinsatz.ansehen. |
 | AP-16 §6.1 | Energieeinsätze ansehen | KA U · EM U · BE S · BD S · LE S · US A | `energieeinsatz.ansehen` | `energieeinsatz.ansehen` | neue Zeile | Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12. |
 | AP-16 §6.1 | Messmittel-Angaben und Belege eintragen | KA U · EM U · BE S · US Ei | `messmittel.angaben` | `messmittel.angaben` | neue Zeile | Angaben am Einbau (Klasse, Prüfung, Beleg als Verweis mit SHA-256) und die Wandler-Klasse; Standort-Zaun über die Anlage des Geräts. Lesen über messwerte.ansehen; ohne Angabe nicht erhoben. |
-| AP-17 §6.1 | Bezugsbasis anlegen · Fassung bilden · beenden | KA U · EM U · BE S | `bezugsbasis.verwalten` | `bezugsbasis.verwalten` | neue Zeile | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
-| AP-17 §6.1 | Bezugsbasis freigeben · ablehnen | KA U · EM U | `bezugsbasis.freigeben` | `bezugsbasis.freigeben` | neue Zeile | Reserviert für AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
-| AP-17 §6.1 | Bezugsbasen und Vergleich ansehen | KA U · EM U · BE S · BD S · LE S · US A | `bezugsbasis.ansehen` | `bezugsbasis.ansehen` | neue Zeile | Reserviert für AP-17 IP-7/IP-8 (Routen); Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| AP-17 §6.1 | Bezugsbasis anlegen · Fassung bilden · beenden | KA U · EM U · BE S | `bezugsbasis.verwalten` | `bezugsbasis.verwalten` | neue Zeile | Gebaut in AP-17 IP-7/IP-8 (Routen), „geprüft, bleibt“ und Beenden in IP-17; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| AP-17 §6.1 | Bezugsbasis freigeben · ablehnen | KA U · EM U | `bezugsbasis.freigeben` | `bezugsbasis.freigeben` | neue Zeile | Gebaut in AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| AP-17 §6.1 | Bezugsbasen und Vergleich ansehen | KA U · EM U · BE S · BD S · LE S · US A | `bezugsbasis.ansehen` | `bezugsbasis.ansehen` | neue Zeile | Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
 
 ### Regeln ohne eigene Zeile
 
