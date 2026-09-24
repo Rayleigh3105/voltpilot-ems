@@ -26728,6 +26728,44 @@ components:
         beendet_grund: { type: string, nullable: true }
         angelegt_am: { type: string, format: date-time }
         fassungen: { type: array, items: { $ref: "#/components/schemas/BezugsbasisFassungKurz" } }
+        anstoesse:
+          type: array
+          description: "Nachlese 3 (A2–A4): jeder Anstoß an einer Fassung der Basis, jüngster zuerst; ohne Anstoß []."
+          items: { $ref: "#/components/schemas/BezugsbasisAnstoss" }
+        frist:
+          allOf: [{ $ref: "#/components/schemas/BezugsbasisFrist" }]
+          nullable: true
+          description: "F5 (§15): Frist der laufenden freigegebenen Fassung; null ohne sie und an einer beendeten Basis."
+    BezugsbasisAnstoss:
+      type: object
+      description: Ein Anstoß an einer Fassung (bezugsbasis.md §15 „Anstöße lesen“).
+      properties:
+        art: { type: string, enum: [grundlage_korrigiert, struktur_geaendert, variable_geaendert, nicht_mehr_anwendbar] }
+        pfad: { type: integer, enum: [1, 2], description: "1 = Kaskade (A2), 2 = Struktur-Läufer (A3)" }
+        anlass_kennung: { type: string, description: "K-2026-0007 … bzw. ort_aenderung:<id> …" }
+        anlass_satz: { type: string, description: "Kundensatz nach §10, ohne Code-Wörter" }
+        zeitpunkt: { type: string, format: date-time }
+        fassung: { type: integer }
+        offen: { type: boolean }
+        antwort:
+          allOf: [{ $ref: "#/components/schemas/BezugsbasisAnstossAntwort" }]
+          nullable: true
+    BezugsbasisAnstossAntwort:
+      type: object
+      properties:
+        art: { type: string, enum: [neue_fassung, beendet, bleibt] }
+        person: { type: string }
+        am: { type: string, format: date-time }
+        begruendung: { type: string, nullable: true }
+    BezugsbasisFrist:
+      type: object
+      description: Die Frist der laufenden Fassung über BezugsbasisRegeln.frist (§15).
+      properties:
+        ueberpruefung_faellig: { type: boolean }
+        faellig_am: { type: string, format: date }
+        faellig_seit_tagen: { type: integer, nullable: true }
+        wiedervorlage_monate: { type: integer }
+        bestaetigt_am: { type: string, format: date, nullable: true }
     BezugsbasisFassungKurz:
       type: object
       properties:

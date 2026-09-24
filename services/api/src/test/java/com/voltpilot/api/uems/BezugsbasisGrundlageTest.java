@@ -95,7 +95,11 @@ class BezugsbasisGrundlageTest {
                 Map.entry("BezugsbasisUebersicht", BezugsbasisPflegeService.Uebersicht.class),
                 // IP-16b (§17): statische Faktoren an der Fassung.
                 Map.entry("BezugsbasisFaktorWahl", BezugsbasisDto.FaktorWahl.class),
-                Map.entry("BezugsbasisFaktor", BezugsbasisDto.Faktor.class));
+                Map.entry("BezugsbasisFaktor", BezugsbasisDto.Faktor.class),
+                // Nachlese 3 (§15): Anstöße und Frist an der Basis.
+                Map.entry("BezugsbasisAnstoss", BezugsbasisDto.Anstoss.class),
+                Map.entry("BezugsbasisAnstossAntwort", BezugsbasisDto.AnstossAntwort.class),
+                Map.entry("BezugsbasisFrist", BezugsbasisDto.Frist.class));
         formen.forEach((name, form) -> assertThat(((Map<String, Object>) ((Map<String, Object>) schemas.get(name))
                 .get("properties")).keySet()).as(name).containsExactlyElementsOf(felder(form)));
     }

@@ -68,10 +68,36 @@ public final class BezugsbasisDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Person(String name, String rolle, OffsetDateTime am) {}
 
+    /**
+     * Die Basis mit ihren Fassungen. {@code anstoesse} (A2–A4, Nachlese 3): jeder Anstoß an einer ihrer Fassungen, jüngster
+     * zuerst — ohne Anstoß {@code []}. {@code frist} (F5, §15): die Frist der laufenden freigegebenen Fassung über
+     * {@code BezugsbasisRegeln.frist} — {@code null} ohne freigegebene Fassung und an einer beendeten Basis.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bezugsbasis(UUID id, String kennzeichen, UUID kennzahlId, String kennzahl, String zweck,
             String verantwortlichName, LocalDate beendetZum, String beendetGrund, OffsetDateTime angelegtAm,
-            List<FassungKurz> fassungen) {}
+            List<FassungKurz> fassungen, List<Anstoss> anstoesse, Frist frist) {}
+
+    /**
+     * Ein Anstoß an einer Fassung (A2–A4, IP-15; Nachlese 3): {@code art} {@code grundlage_korrigiert · struktur_geaendert ·
+     * variable_geaendert · nicht_mehr_anwendbar}, {@code pfad} 1 (Kaskade) oder 2 (Struktur-Läufer), {@code anlass_satz}
+     * der Kundensatz (§10), {@code offen} bis eine Person antwortet ({@code antwort}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Anstoss(String art, int pfad, String anlassKennung, String anlassSatz, OffsetDateTime zeitpunkt,
+            int fassung, boolean offen, AnstossAntwort antwort) {}
+
+    /** Die Antwort einer Person auf einen Anstoß (A4): {@code neue_fassung · beendet · bleibt}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnstossAntwort(String art, String person, OffsetDateTime am, String begruendung) {}
+
+    /**
+     * Die Frist der laufenden Fassung (F5): Beginn = Freigabetag oder jüngstes „geprüft, bleibt“ ({@code bestaetigt_am}),
+     * fällig am Beginn + {@code wiedervorlage_monate}; Stichtag = heute in der Zone der Kennzahl.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Frist(boolean ueberpruefungFaellig, LocalDate faelligAm, Integer faelligSeitTagen,
+            int wiedervorlageMonate, LocalDate bestaetigtAm) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FassungKurz(int fassung, String referenzperiode, String methode, String datenlage,

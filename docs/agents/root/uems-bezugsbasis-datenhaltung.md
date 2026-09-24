@@ -32,6 +32,9 @@ Fläche/Standort/Anlage (`ort_aenderung`), Prozess/Kostenstelle (`messstelle_aen
 Schalter `voltpilot.uems.bezugsbasis.enabled`: aus → Pfad 2 schreibt nur Wasserzeichen `abgeschaltet`.
 Beide Pfade lesen nur Fassungen von Basen mit `beendet_am IS NULL` (A4, Nachlese 1): die Archivierungs-Naht beendet
 die Basis in ihrer Transaktion, ihr `kennzahl_archiviert` urteilt danach `ohne_bezugsbasis`.
+Gelesen (Nachlese 3, §15): `BezugsbasisAnstoesse` hängt `anstoesse[]` mit Kundensatz an `GET …/bezugsbasen[/{bid}]`,
+`BezugsbasisPflegeService#frist` die `frist` — ⚠ der Satz parst das `anlass`-Format des Pfads 1 (`<kennung> (<status>):
+<treffer>, …`); wer es ändert, zieht `BezugsbasisAnstoesse` und `BezugsbasisPflegeApiTest` mit.
 ⚠ `bezugsbasis_vokabular()` steht jetzt in ZWEI Migrationen — wer sie weitet, nimmt `('protokoll', 13, 'anstoss_gesetzt')` mit.
 ⚠ A5 (Weitergabe an Leistungsvergleichs-Stände) fehlt: Quellenart `bezugsbasis` kommt mit IP-21a, die Weitergabe mit
 IP-23 (`Gesetzt`-Rückgabe beider Pfade). Nachweis: `UemsBezugsbasisAnstossTest`.

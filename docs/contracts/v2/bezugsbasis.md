@@ -198,7 +198,7 @@ anderer Kundenbereich 404 über RLS). Ablehnungen `{code, message, …Fakten}`.
 |---|---|---|
 | `GET /api/v1/kennzahlen/{id}/bezugsbasen` | alle Bezugsbasen der Kennzahl `{bezugsbasen: [ … ]}`, je Eintrag in der Form von `GET …/bezugsbasen/{bid}`, die laufende zuerst, danach die beendeten (jüngste zuerst) | 404 |
 | `POST /api/v1/kennzahlen/{id}/bezugsbasen` | legt BB-… an; Körper `{zweck?}`; Verantwortlicher = der der Kennzahl (B4, ohne ihn die anlegende Person); Protokoll `bezugsbasis_angelegt`; 201 | 409 `bezugsbasis_laeuft` (B1) · 409 `kennzahl_archiviert` · 422 `kennzahl_ohne_bezugsbasis` (B2: Anteil, Quotient ohne Messstelle im Zähler) |
-| `GET …/bezugsbasen/{bid}` | die Basis mit ihren Fassungen (Nummer, Referenzperiode, Methode, Datenlage, `freigabe_status`, Basiswert, `gilt_ab`, Prüfsumme) | 404 |
+| `GET …/bezugsbasen/{bid}` | die Basis mit ihren Fassungen (Nummer, Referenzperiode, Methode, Datenlage, `freigabe_status`, Basiswert, `gilt_ab`, Prüfsumme), dazu additiv `anstoesse[]` und `frist` (Nachlese 3, §15 „Anstöße und Frist lesen“) | 404 |
 | `POST …/bezugsbasen/{bid}/fassungen` | Entwurf mit Vorschau (F1): Körper `{referenzperiode, methode, variablen?, toleranz_prozent?, wiedervorlage_monate?, faktoren?}` (`faktoren` §17); ein offener Entwurf wird neu gebildet (gleiche Nummer, Variablen und Faktoren aufgehoben und neu); Protokoll `fassung_entworfen` je Bildung; 200 = die gespeicherte Fassung. **Ab Fassung 2** (nach einer freigegebenen oder abgelehnten Fassung, `bezugsbasis_fassung_anpassungsgruende_chk`) zusätzlich `anpassungsgruende` (A1, einer oder mehrere, je höchstens einmal), `anpassung_wortlaut` (nur und immer mit `sonstiger`) und `begruendung` (10–500) Pflicht; `gilt_ab?` Vorgabe der Tag nach der Referenzperiode (P4) | 422 `anpassungsgrund_fehlt` · `anpassungsgrund_unbekannt` · `anpassung_wortlaut` · `anpassung_ohne_vorgaengerin` (Fassung 1 mit Grund) · `begruendung_fehlt` · `gilt_ab_vor_periodenende` · `gilt_ab_vor_vorgaengerin` (vor dem `gilt_ab` der laufenden freigegebenen Fassung) · `referenzperiode_format` · `referenzperiode_reihenfolge` · `periode_nicht_zu_ende` (P1/P3, laufender Monat in der Zeitzone der Kennzahl) · `methode_unbekannt` · `keine_werte` · `zu_viele_variablen` · `variable_nicht_nenner` (V2) · Modelle: `zu_wenig_perioden` (G1, mit `monate`/`mindest_monate`) · `variable_fehlt` (G2, mit `variable` und `perioden`) · `variable_keine_gradtagzahl` (M3) · `zweite_variable_fehlt` · `variable_unbekannt` · `modell_ohne_nenner` · `variable_ohne_periodenwerte` · `toleranz_ungueltig` · `wiedervorlage_ungueltig` · `faktor_unbekannt` · `faktor_doppelt` (§17); 409 `bezugsbasis_beendet` · `fassung_beantragt`; 400 `anfrage_ungueltig` (unbekanntes Feld) |
 | `GET …/bezugsbasen/{bid}/fassungen/{n}` | die gespeicherte Fassung — **byte-gleich** zur Antwort ihres Entwurfs | 404 |
 | `POST …/fassungen/{n}/beantragen` | F2, nur mit `unternehmen.vieraugen_freigabe`: Entwurf → `beantragt`; Körper `{begruendung?}` (sonst die des Entwurfs; 10–500); Recht `bezugsbasis.freigeben` — wer beantragt, ist die Freigabe-Person (`freigabe_*`, Rolle KA/EM per `bezugsbasis_fassung_freigabe_chk`); Protokoll `fassung_beantragt` mit Begründung. **Nachlese 2:** prüft die Grundlage und bewertet die Faktoren am Antragstag neu wie `freigeben` (unten) — die Neukopie geschieht hier, solange die Fassung noch Entwurf ist | 409 `vieraugen_aus` · `fassung_beantragt` · `fassung_freigegeben` · `fassung_abgelehnt` · `bezugsbasis_beendet` · `entwurf_veraltet`; 422 `begruendung_fehlt` · `faktor_ungueltig`; 403 `recht_fehlt` |
@@ -350,6 +350,31 @@ bzw. `bezugsbasis_beendet` weiter — ohne einen Anstoß an der Basis zu setzen.
 zuerst). Die Portal-Kachel `BezugsbasisUebersichtKarte` am Unternehmen zeigt die Zähler und je fälliger Basis den Satz
 „Frist“ (§10); ohne laufende Basis zeigt sie nichts (R10). Kundensätze der Kachel:
 „Überprüfung fällig seit n Tagen — bestätigen oder neu fassen.“ (1 Tag · n Tagen · am Fälligkeitstag „seit heute“).
+
+**Anstöße und Frist lesen (A2–A4, F5; Nachlese 3).** `GET …/bezugsbasen/{bid}` und jeder Eintrag von
+`GET …/bezugsbasen` tragen additiv (sonst unverändert; ohne Anstoß und ohne freigegebene Fassung `anstoesse: []`,
+`frist: null`):
+
+- `anstoesse[]` — jede Zeile von `bezugsbasis_anstoss` an einer Fassung der Basis, jüngste zuerst: `art`
+  (`grundlage_korrigiert · struktur_geaendert · variable_geaendert · nicht_mehr_anwendbar`), `pfad` (1 Kaskade, 2
+  Struktur-Läufer), `anlass_kennung`, `anlass_satz`, `zeitpunkt` (`angestossen_am`), `fassung`, `offen` (keine Antwort)
+  und `antwort` `{art: neue_fassung · beendet · bleibt, person, am, begruendung}` bzw. `null`. Der technische Anlass-Text
+  (`anlass`) bleibt in der Tabelle.
+- `frist` — `{ueberpruefung_faellig, faellig_am, faellig_seit_tagen, wiedervorlage_monate, bestaetigt_am}` über die
+  Operation `frist` oben, mit demselben Leser wie die Übersicht (`BezugsbasisPflegeService#frist`): Stichtag heute in
+  der Zone der Kennzahl; `null` ohne laufende freigegebene Fassung und an einer beendeten Basis.
+
+`anlass_satz` (Kundensatz, `BezugsbasisAnstoesse`): Pfad 1 nennt den Vorgang der Anlass-Kennung und je Treffer die
+zitierte Version der gespeicherten Grundlage gegen die jetzt gültige (`kennzahl_wert`, 4 Stellen) — „Grundlage korrigiert
+(K-2026-0007, 12.11.2026) — Fassung 1 zitiert Version 1 (0,1488), gültig ist jetzt Version 2 (0,1473).“ (mehrere
+Monate mit „für Oktober 2026 …“, höchstens drei, der Rest gezählt; Bezugsgröße „BZ-6 für Oktober 2026 in Fassung 1,
+gültig ist jetzt Fassung 2“; Messstelle „… dort gilt jetzt ein korrigierter Wert“; Rücknahme „K-… zurückgenommen“). Der
+Tag ist der des Anstoßes. Pfad 2 liest die Protokollzeile hinter `<protokoll>:<id>` — „Die Fläche des Gebäudes Halle 2
+hat sich geändert (3 100 → 3 400 m² ab 01.01.2027) — Fassung 1 prüfen.“; `verschoben · korrigiert · archiviert ·
+geloescht` am Ort, Prozesse bzw. Verteilung der Messstelle, Einflussgröße geändert; `nicht_mehr_anwendbar` endet mit
+„— Fassung n ist nicht mehr anwendbar.“ **Abweichung von §5.8:** der Satz nennt die Ort-Art im Genitiv („des Gebäudes
+Halle 2“) statt „der Halle 2“ — das grammatische Geschlecht eines Namens ist nicht bekannt. Lässt sich die Kennung nicht
+auflösen, steht das Wort der Art mit Tag („Struktur geändert (12.11.2026) — Fassung 1 prüfen.“), nie der Code-Text.
 
 Rechte: Schreiben `bezugsbasis.verwalten` am Geltungsbereich der Kennzahl (`@Recht` mit Ziel DIENST, genaue Prüfung
 `KennzahlService.darfAnKennzahl`), Lesen `bezugsbasis.ansehen`. Prüfreihenfolge: Anfrage 400 → Kennzahl 404 → Recht

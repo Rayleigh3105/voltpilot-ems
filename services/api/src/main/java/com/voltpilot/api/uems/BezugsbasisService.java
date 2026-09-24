@@ -91,11 +91,13 @@ public class BezugsbasisService {
     private final BezugsgroesseService bezugsgroessen;
     private final RechtPruefung rechte;
     private final FaktorenVorschlag faktorenVorschlag;
+    private final BezugsbasisPflegeService pflege;
 
     public BezugsbasisService(KennzahlService kennzahlen, JdbcTemplate jdbc, PlatformTransactionManager transactionManager,
             ObjectMapper json, BezugsgroesseService bezugsgroessen, RechtPruefung rechte,
-            FaktorenVorschlag faktorenVorschlag) {
+            FaktorenVorschlag faktorenVorschlag, BezugsbasisPflegeService pflege) {
         this.kennzahlen = kennzahlen;
+        this.pflege = pflege;
         this.faktorenVorschlag = faktorenVorschlag;
         this.bezugsgroessen = bezugsgroessen;
         this.rechte = rechte;
@@ -353,8 +355,13 @@ public class BezugsbasisService {
                 basisId).stream().map(f -> new BezugsbasisDto.FassungKurz(f.fassung(), f.referenzperiode(), f.methode(),
                         f.datenlage(), f.freigabeStatus(), dezimal(f.basiswert()), f.giltAb(), f.giltBis(),
                         f.pruefsumme())).toList();
+        // Nachlese 3: Anstöße (A2–A4) mit Kundensatz und die Frist (F5) über die Regel der Übersicht (IP-17).
+        List<BezugsbasisDto.Anstoss> anstoesse = BezugsbasisAnstoesse.lesen(jdbc, basisId, k.zeile().kennzeichen(),
+                k.zone());
+        BezugsbasisDto.Frist frist = pflege.frist(b.kennzahlId(), basisId, LocalDate.ofInstant(k.jetzt(), k.zone()),
+                k.zone());
         return new BezugsbasisDto.Bezugsbasis(b.id(), b.kennzeichen(), b.kennzahlId(), k.zeile().kennzeichen(), b.zweck(),
-                b.verantwortlichName(), b.beendetZum(), b.beendetGrund(), b.angelegtAm(), fassungen);
+                b.verantwortlichName(), b.beendetZum(), b.beendetGrund(), b.angelegtAm(), fassungen, anstoesse, frist);
     }
 
     /** Die gespeicherte Fassung — dieselbe Antwort, die der Entwurf als Vorschau gab. */

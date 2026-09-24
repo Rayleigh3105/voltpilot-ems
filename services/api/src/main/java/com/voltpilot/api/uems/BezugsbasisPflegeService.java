@@ -6,6 +6,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BezugsbasisPflegeRepository.Basis;
 import com.voltpilot.api.uems.BezugsbasisPflegeRepository.Fassung;
 import com.voltpilot.api.uems.KennzahlRepository.Zeile;
+import com.voltpilot.api.web.dto.BezugsbasisDto;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -201,6 +202,23 @@ public class BezugsbasisPflegeService {
         faellig.sort((a, c) -> Integer.compare(c.faelligSeitTagen(), a.faelligSeitTagen()));
         return new Uebersicht((stichtag == null ? LocalDate.ofInstant(jetzt, ZoneId.of("Europe/Berlin")) : stichtag)
                 .toString(), laufend, freigegeben, vorlaeufig, anstoss, faellig.size(), List.copyOf(faellig));
+    }
+
+    /**
+     * Die Frist an der Basis-Antwort ({@code GET …/bezugsbasen[/{bid}]}, Nachlese 3): derselbe Leser und dieselbe Regel
+     * wie die Übersicht — {@code null} ohne laufende freigegebene Fassung und an einer beendeten Basis.
+     */
+    public BezugsbasisDto.Frist frist(UUID kennzahlId, UUID basisId, LocalDate heute, ZoneId zone) {
+        Basis b = repo.basis(kennzahlId, basisId).orElse(null);
+        if (b == null || b.beendetAm() != null || b.laufende().isEmpty()) {
+            return null;
+        }
+        Fassung f = b.laufende().get();
+        Map<String, Object> frist = BezugsbasisRegeln.frist(eingang(b, f, heute, zone));
+        LocalDate bestaetigt = f.bestaetigtAm() == null ? null : LocalDate.ofInstant(f.bestaetigtAm(), zone);
+        return new BezugsbasisDto.Frist("ueberpruefung_faellig".equals(frist.get("zustand")),
+                LocalDate.parse((String) frist.get("faellig_am")), (Integer) frist.get("faellig_seit_tagen"),
+                f.wiedervorlageMonate(), bestaetigt);
     }
 
     // ================================================================================ Gerüst

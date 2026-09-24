@@ -14,6 +14,7 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.UUID;
@@ -141,6 +142,24 @@ class BezugsbasisPflegeApiTest {
         assertThat(f.path("zustand").asText()).isEqualTo("ueberpruefung_faellig");
         assertThat(protokoll(w)).isZero();
 
+        // Nachlese 3: dieselbe Frist und der offene Anstoß an der Basis selbst — Einzel-Route und Liste gleich.
+        JsonNode basis = basis(w);
+        assertThat(basis.path("frist").toString()).isEqualTo("{\"ueberpruefung_faellig\":true,\"faellig_am\":"
+                + "\"2028-11-24\",\"faellig_seit_tagen\":1,\"wiedervorlage_monate\":12,\"bestaetigt_am\":null}");
+        assertThat(basis.path("anstoesse")).hasSize(1);
+        JsonNode anstoss = basis.path("anstoesse").get(0);
+        assertThat(anstoss.path("art").asText()).isEqualTo("grundlage_korrigiert");
+        assertThat(anstoss.path("pfad").asInt()).isEqualTo(1);
+        assertThat(anstoss.path("anlass_kennung").asText()).isEqualTo("K-2028-0001");
+        // Der Anlass ist kein Kaskaden-Text: der Satz der Art mit Kennung und Tag, nie der Rohtext.
+        assertThat(anstoss.path("anlass_satz").asText())
+                .isEqualTo("Grundlage korrigiert (K-2028-0001, 20.11.2028) — Fassung 2 prüfen.");
+        assertThat(anstoss.path("zeitpunkt").asText()).isEqualTo("2028-11-20T09:00:00Z");
+        assertThat(anstoss.path("fassung").asInt()).isEqualTo(2);
+        assertThat(anstoss.path("offen").asBoolean()).isTrue();
+        assertThat(anstoss.path("antwort").isNull()).isTrue();
+        assertThat(liste(w).get(0)).isEqualTo(basis);
+
         String vorher = fassungText(w.fassung2());
         String bleibt = "/api/v1/kennzahlen/" + w.kennzahl() + "/bezugsbasen/" + w.basis() + "/bleibt";
         Antwort kurz = ruf(w, HttpMethod.POST, bleibt, Map.of("begruendung", "passt"));
@@ -165,6 +184,16 @@ class BezugsbasisPflegeApiTest {
                 .containsEntry("faellig", "2029-11-25").containsEntry("created_at", Timestamp.from(R13));
         assertThat(root.queryForObject("SELECT antwort FROM bezugsbasis_anstoss WHERE fassung_id = ?", String.class,
                 w.fassung2())).isEqualTo("bleibt");
+
+        JsonNode gelesen = basis(w);
+        assertThat(gelesen.path("frist").toString()).isEqualTo("{\"ueberpruefung_faellig\":false,\"faellig_am\":"
+                + "\"2029-11-25\",\"faellig_seit_tagen\":null,\"wiedervorlage_monate\":12,"
+                + "\"bestaetigt_am\":\"2028-11-25\"}");
+        JsonNode beantwortet = gelesen.path("anstoesse").get(0);
+        assertThat(beantwortet.path("offen").asBoolean()).isFalse();
+        assertThat(beantwortet.path("antwort").toString()).isEqualTo("{\"art\":\"bleibt\",\"person\":"
+                + "\"Ines Kaltenbach\",\"am\":\"2028-11-25T10:00:00Z\",\"begruendung\":"
+                + "\"Produktion unverändert, Basis trägt weiter\"}");
 
         Antwort danach = ruf(w, HttpMethod.GET, "/api/v1/bezugsbasen/uebersicht", null);
         assertThat(danach.body().path("ueberpruefung_faellig").asInt()).isZero();
@@ -209,9 +238,19 @@ class BezugsbasisPflegeApiTest {
         assertThat(zweimal.body().path("message").asText()).isEqualTo("Nicht bewertbar: Bezugsbasis beendet am 31.12.2028.");
         assertThat(ruf(w, HttpMethod.GET, "/api/v1/bezugsbasen/uebersicht", null).body().path("laufend").asInt()).isZero();
         // B1: nach dem Ende darf die Kennzahl eine neue Basis bekommen; die alte bleibt (nie gelöscht).
-        basis(w.mandant(), w.kennzahl());
+        JsonNode alt = basis(w);
+        assertThat(alt.path("frist").isNull()).isTrue();
+        assertThat(alt.path("anstoesse").get(0).path("offen").asBoolean()).isFalse();
+        assertThat(alt.path("anstoesse").get(0).path("antwort").path("art").asText()).isEqualTo("beendet");
+        assertThat(alt.path("anstoesse").get(0).path("antwort").path("begruendung").isNull()).isTrue();
+        UUID neu = basis(w.mandant(), w.kennzahl());
         assertThat(root.queryForObject("SELECT count(*) FROM bezugsbasis WHERE kennzahl_id = ?", Integer.class,
                 w.kennzahl())).isEqualTo(2);
+        // Ohne Anstoß und ohne freigegebene Fassung: die neuen Felder leer, der Rest wie bisher.
+        JsonNode leer = basis(new Welt(w.mandant(), w.kennzahl(), neu, null));
+        assertThat(leer.path("anstoesse").toString()).isEqualTo("[]");
+        assertThat(leer.path("frist").isNull()).isTrue();
+        assertThat(leer.path("fassungen").toString()).isEqualTo("[]");
     }
 
     // ================================================================ F4: Naht an der Archivierung
@@ -255,10 +294,103 @@ class BezugsbasisPflegeApiTest {
                 .isZero();
     }
 
+    // ================================================================ Nachlese 3: Anstöße lesen
+
+    @Test
+    void anstoesseTragenDenKundensatzAusGrundlageVersionUndProtokoll() throws Exception {
+        // Fassung 2 zitiert KZ-0004 Oktober 2027 in Version 1; die Kaskade hat Version 2 gebildet (§5.8 „Anstoß“).
+        Welt w = welt("{\"perioden\":[{\"periode\":\"2027-10\",\"kennzahl\":{\"objekt\":\"KZ-0004\","
+                + "\"wert\":\"0.14875\",\"version\":1}}]}");
+        kennzahlWert(w, "2027-10-01", "0.14875", "0.1473");
+        root.update("INSERT INTO bezugsbasis_anstoss (tenant_id, fassung_id, pfad, art, anlass_kennung, anlass, "
+                + "angestossen_am) VALUES (?, ?, 1, 'grundlage_korrigiert', 'K-2026-0007', "
+                + "'K-2026-0007 (freigegeben): KZ-0004 2027-10 Version 2', TIMESTAMPTZ '2028-11-21 23:30:00+00')",
+                w.mandant(), w.fassung2());
+        // R5: die Fläche von Halle 2 (Faktor) ändert sich — Pfad 2 mit Protokollzeile.
+        UUID halle = root.queryForObject("INSERT INTO ort (tenant_id, art, name, kurzzeichen, zustand) VALUES (?, "
+                + "'gebaeude', 'Halle 2', 'G-2', 'aktiv') RETURNING id", UUID.class, w.mandant());
+        long anbau = root.queryForObject("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt, neu, "
+                + "gilt_ab, rueckwirkend, actor_sub, actor_name, actor_art) VALUES (?, 'gebaeude', ?, 'flaeche_geaendert', "
+                + "'{\"flaeche_m2\": 3100}'::jsonb, '{\"flaeche_m2\": 3400}'::jsonb, DATE '2027-01-01', true, 'JW', "
+                + "'Jonas Wendlinger', 'kunde') RETURNING id", Long.class, w.mandant(), halle);
+        root.update("INSERT INTO bezugsbasis_anstoss (tenant_id, fassung_id, pfad, art, anlass_kennung, anlass, "
+                + "angestossen_am) VALUES (?, ?, 2, 'struktur_geaendert', ?, 'ort_aenderung flaeche_geaendert G-2 "
+                + "3100 → 3400 m² ab 2027-01-01 (rückwirkend), Struktur-Läufer Pfad 2', TIMESTAMPTZ '2028-11-23 10:00:00+01')",
+                w.mandant(), w.fassung2(), "ort_aenderung:" + anbau);
+        // Eine Kennung, deren Zeile es nicht (mehr) gibt: der Satz der Art, nie der technische Text.
+        root.update("INSERT INTO bezugsbasis_anstoss (tenant_id, fassung_id, pfad, art, anlass_kennung, anlass, "
+                + "angestossen_am) VALUES (?, ?, 2, 'variable_geaendert', 'bezugsgroesse_aenderung:999999999', "
+                + "'bezugsgroesse_aenderung bearbeitet BZ-9, Struktur-Läufer Pfad 2', TIMESTAMPTZ '2028-11-24 10:00:00+01')",
+                w.mandant(), w.fassung2());
+
+        JsonNode anstoesse = basis(w).path("anstoesse");
+        assertThat(anstoesse).hasSize(4);
+        assertThat(anstoesse.findValuesAsText("anlass_satz")).containsExactly(
+                "Einflussgröße geändert (24.11.2028) — Fassung 2 prüfen.",
+                "Die Fläche des Gebäudes Halle 2 hat sich geändert (3 100 → 3 400 m² ab 01.01.2027) — Fassung 2 prüfen.",
+                // Der Tag des Anstoßes in der Zone der Kennzahl (23:30 UTC = 22.11. in Berlin).
+                "Grundlage korrigiert (K-2026-0007, 22.11.2028) — Fassung 2 zitiert Version 1 (0,1488), gültig ist jetzt "
+                        + "Version 2 (0,1473).",
+                "Grundlage korrigiert (K-2028-0001, 20.11.2028) — Fassung 2 prüfen.");
+        assertThat(anstoesse.findValuesAsText("art")).containsExactly("variable_geaendert", "struktur_geaendert",
+                "grundlage_korrigiert", "grundlage_korrigiert");
+        assertThat(anstoesse.get(1).path("pfad").asInt()).isEqualTo(2);
+        assertThat(anstoesse.get(1).path("anlass_kennung").asText()).isEqualTo("ort_aenderung:" + anbau);
+        for (JsonNode a : anstoesse) {
+            assertThat(a.path("anlass_satz").asText()).doesNotContain("ort_aenderung", "flaeche_geaendert",
+                    "Struktur-Läufer", "Pfad", "freigegeben)");
+        }
+    }
+
+    @Test
+    void eineBasisAusEinemAnderenKundenbereichIstNichtDa() throws Exception {
+        Welt eigene = welt();
+        Welt fremde = welt();
+        Antwort a = ruf(eigene, HttpMethod.GET, "/api/v1/kennzahlen/" + fremde.kennzahl() + "/bezugsbasen/"
+                + fremde.basis(), null);
+        assertThat(a.status()).isEqualTo(404);
+        assertThat(a.body().toString()).doesNotContain("anstoesse", "K-2028-0001");
+        assertThat(ruf(eigene, HttpMethod.GET, "/api/v1/kennzahlen/" + fremde.kennzahl() + "/bezugsbasen", null)
+                .status()).isEqualTo(404);
+    }
+
     // ================================================================ Gerüst
+
+    private JsonNode basis(Welt w) throws Exception {
+        Antwort a = ruf(w, HttpMethod.GET, "/api/v1/kennzahlen/" + w.kennzahl() + "/bezugsbasen/" + w.basis(), null);
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+        return a.body();
+    }
+
+    private JsonNode liste(Welt w) throws Exception {
+        Antwort a = ruf(w, HttpMethod.GET, "/api/v1/kennzahlen/" + w.kennzahl() + "/bezugsbasen", null);
+        assertThat(a.status()).isEqualTo(200);
+        return a.body().path("bezugsbasen");
+    }
+
+    /** Ein Monat von KZ-0004 in {@code kennzahl_wert}: Version 1 endgültig, dann Version 2 aus einer Korrektur (Anlass). */
+    private static void kennzahlWert(Welt w, String von, String alt, String neu) {
+        UUID fassung = root.queryForObject("INSERT INTO kennzahl_fassung (tenant_id, kennzahl_id, nummer, rechenform, "
+                + "herkunft, actor_sub, actor_name, actor_rolle, actor_art, einheit) VALUES (?, ?, 1, 'quotient', 'anlage', "
+                + "'IK', 'Ines Kaltenbach', 'energiemanager', 'kunde', 'kWh/kg') RETURNING id", UUID.class, w.mandant(),
+                w.kennzahl());
+        LocalDate tag = LocalDate.parse(von);
+        for (int version = 1; version <= 2; version++) {
+            root.update("INSERT INTO kennzahl_wert (tenant_id, kennzahl_id, periode_art, periode_von, periode_bis, "
+                    + "zeitzone, version, wert, zaehler, nenner, menge_zustand, zustand, endgueltig_ab, "
+                    + "definition_fassung_id, berechnet_am, anlass_art, anlass_kennung) VALUES (?, ?, 'monat', ?, ?, "
+                    + "'Europe/Berlin', ?, ?::numeric, 1473, 10000, 'vollständig', 'endgueltig', now(), ?, now(), ?, ?)", w.mandant(), w.kennzahl(),
+                    Date.valueOf(tag), Date.valueOf(tag.plusMonths(1).minusDays(1)), version, version == 1 ? alt : neu,
+                    fassung, version == 1 ? null : "eingang", version == 1 ? null : "K-2026-0007");
+        }
+    }
 
     /** Kunststoffwerk Ahrenberg, KZ-0004 mit BB-0001: Fassung 1 (beendet 31.10.2027), Fassung 2 (R13), ein Anstoß. */
     private Welt welt() {
+        return welt(null);
+    }
+
+    private Welt welt(String grundlage2) {
         int nr = NR.incrementAndGet();
         UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class, "R13 #" + nr);
         UUID u = root.queryForObject("INSERT INTO unternehmen (tenant_id, name, zeitzone) VALUES (?, "
@@ -268,9 +400,10 @@ class BezugsbasisPflegeApiTest {
         UUID bb = basis(t, kz);
         fassung(t, bb, 1, "2026-10/2026-10", "vorlaeufig", "2026-11-01", "2026-11-12 10:00:00", "2027-10-31", null);
         UUID f2 = fassung(t, bb, 2, "2026-11/2027-10", "vollstaendig", "2027-11-01", "2027-11-24 10:00:00", null,
-                "{referenzperiode_vervollstaendigt}");
-        root.update("INSERT INTO bezugsbasis_anstoss (tenant_id, fassung_id, pfad, art, anlass_kennung, anlass) "
-                + "VALUES (?, ?, 1, 'grundlage_korrigiert', 'K-2028-0001', 'Korrektur Oktober 2027')", t, f2);
+                "{referenzperiode_vervollstaendigt}", grundlage2);
+        root.update("INSERT INTO bezugsbasis_anstoss (tenant_id, fassung_id, pfad, art, anlass_kennung, anlass, "
+                + "angestossen_am) VALUES (?, ?, 1, 'grundlage_korrigiert', 'K-2028-0001', 'Korrektur Oktober 2027', "
+                + "TIMESTAMPTZ '2028-11-20 10:00:00+01')", t, f2);
         return new Welt(t, kz, bb, f2);
     }
 
@@ -294,17 +427,24 @@ class BezugsbasisPflegeApiTest {
 
     private static UUID fassung(UUID t, UUID bb, int nr, String periode, String datenlage, String giltAb,
             String freigegeben, String giltBis, String gruende) {
+        return fassung(t, bb, nr, periode, datenlage, giltAb, freigegeben, giltBis, gruende, null);
+    }
+
+    private static UUID fassung(UUID t, UUID bb, int nr, String periode, String datenlage, String giltAb,
+            String freigegeben, String giltBis, String gruende, String grundlage) {
         Timestamp am = Timestamp.from(java.time.LocalDateTime.parse(freigegeben.replace(' ', 'T'))
                 .atZone(java.time.ZoneId.of("Europe/Berlin")).toInstant());
         return root.queryForObject("INSERT INTO bezugsbasis_fassung (tenant_id, bezugsbasis_id, fassung, referenzperiode, "
                 + "methode, datenlage, gilt_ab, gilt_bis, beendet_am, beendet_grund, anpassungsgruende, begruendung, "
                 + "actor_sub, actor_name, actor_rolle, actor_art, freigabe_status, freigabe_sub, freigabe_name, "
-                + "freigabe_rolle, freigabe_art, freigabe_am, freigegeben_am) VALUES (?, ?, ?, ?, 'verhaeltnis', ?, "
-                + "?::date, ?::date, ?, ?, coalesce(?::text[], '{}'), 'Referenzperiode geprüft und freigegeben', "
-                + "'IK', 'Ines Kaltenbach', 'energiemanager', 'kunde', 'freigegeben', 'IK', 'Ines Kaltenbach', "
-                + "'energiemanager', 'kunde', ?, ?) RETURNING id", UUID.class, t, bb, nr, periode, datenlage, giltAb,
-                giltBis, giltBis == null ? null : am, giltBis == null ? null : "referenzperiode_vervollstaendigt",
-                gruende, am, am);
+                + "freigabe_rolle, freigabe_art, freigabe_am, freigegeben_am, grundlage, pruefsumme) VALUES (?, ?, ?, ?, "
+                + "'verhaeltnis', ?, ?::date, ?::date, ?, ?, coalesce(?::text[], '{}'), "
+                + "'Referenzperiode geprüft und freigegeben', 'IK', 'Ines Kaltenbach', 'energiemanager', 'kunde', "
+                + "'freigegeben', 'IK', 'Ines Kaltenbach', 'energiemanager', 'kunde', ?, ?, ?, "
+                + "CASE WHEN ?::text IS NULL THEN NULL ELSE bericht_pruefsumme(?) END) RETURNING id", UUID.class, t, bb, nr,
+                periode, datenlage, giltAb, giltBis, giltBis == null ? null : am,
+                giltBis == null ? null : "referenzperiode_vervollstaendigt", gruende, am, am, grundlage, grundlage,
+                grundlage);
     }
 
     private static String fassungText(UUID fassung) {
