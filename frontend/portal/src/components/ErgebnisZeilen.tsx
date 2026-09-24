@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ErgebnisZeilenView, ErloesZeileId, SekundaerZiel } from '../erloesZeilen';
-import type { Provenienz } from '../historieWelten';
+import type { Provenienz } from '../provenienz';
 import { Kontoauszug } from './erloese/Kontoauszug';
 import { Statement, type StatementEinordnung } from './erloese/Statement';
 import './erloese/ErgebnisKarte.css';

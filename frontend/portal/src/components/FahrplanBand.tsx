@@ -12,7 +12,7 @@ import {
 } from '../schedule';
 import { phases } from '../fahrplanWhy';
 import { filmRows, speicherKurzzeile } from '../fahrplanFilm';
-import { PROVENIENZ } from '../historieWelten';
+import { PROVENIENZ } from '../provenienz';
 import { energyLabel } from '../anlage';
 import { fahrplanZeile } from '../cockpitWidgets';
 import type { MiniPoint } from '../miniChart';

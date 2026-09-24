@@ -39,7 +39,6 @@ import type {
   EarningsVergleich,
   History,
   HistoryRange,
-  Site,
 } from './api';
 import {
   energieSummen,
@@ -57,7 +56,6 @@ import {
 } from './vergleichLaufend';
 import { WELTEN, type Provenienz, type WeltId } from './historieWelten';
 import type { PageId } from './nav';
-import { activeModes } from './surface';
 import { rangeWord } from './verlauf';
 
 // ---------------------------------------------------------------------------
@@ -191,32 +189,8 @@ export function portfolioHash(
 // Der Nav-Eintrag der Erlöse-Welt
 // ---------------------------------------------------------------------------
 
-/**
- * Gibt es im Portfolio überhaupt Geld zu zeigen? Genau dann, wenn **mindestens
- * eine Anlage einen Geld-Modus hat** — dieselbe Regel wie auf der Anlage
- * (`erloes-historie` kommt aus dem Markt- bzw. dem Lastspitzen-Manifest,
- * `surface.ts`), nur über die Flotte. Eine reine Privat-Flotte bekommt gar
- * keinen Erlöse-Eintrag statt einer Fläche, die dann nichts erklärt.
- *
- * **Bewusste Grenze (dokumentiert, kein Versehen):** abgeleitet wird aus den
- * Stammdaten, die die Schale ohnehin geladen hat (`SiteDto`) — es kostet
- * KEINEN zusätzlichen Abruf je Anlage. Ein Geld-Modus, der ausschließlich aus
- * einem aktiven Markt-FLOW stammt (ohne Direktvermarktung, ohne Netzladen auf
- * dynamischem Tarif, ohne Leistungspreis), ist hier deshalb nicht sichtbar; die
- * Erlöse-Welt DIESER Anlage bleibt über die Anlage selbst erreichbar.
- */
-export function hatGeldWelt(sites: readonly Site[]): boolean {
-  return sites.some((s) =>
-    activeModes({
-      config: {
-        plantKind: s.plantKind,
-        tarifArt: s.tarifArt,
-        netzladenErlaubt: s.netzladenErlaubt,
-        leistungspreisEurKw: s.leistungspreisEurKw ?? null,
-      },
-    }).some((m) => m.manifest.deepViews.includes('erloes-historie')),
-  );
-}
+/** Wohnt in `geldWelt.ts` (Einstiegs-Bündel). */
+export { hatGeldWelt } from './geldWelt';
 
 // ---------------------------------------------------------------------------
 // Abdeckung: wie viele Anlagen tragen den Zeitraum?

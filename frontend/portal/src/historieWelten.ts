@@ -28,6 +28,7 @@
  */
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { HistoryRange } from './api';
+import type { Provenienz } from './provenienz';
 import type { AnlagenSub } from './nav';
 import type { AnlageSurface } from './surface';
 import { rangeWord } from './verlauf';
@@ -35,32 +36,8 @@ import { rangeWord } from './verlauf';
 /** Die zwei Welten der Historie. */
 export type WeltId = 'messwerte' | 'erloese';
 
-/** Woraus eine Zahl entstanden ist — das Abzeichen an der Karte (report §7). */
-export type Provenienz = 'gemessen' | 'bewertet' | 'geplant';
-
-
-/** Das Abzeichen: ein Wort plus der Satz, der seine Einschränkung ausspricht. */
-export interface ProvenienzInfo {
-  label: string;
-  /** Der eine Satz, den die UI zum Abzeichen sagen muss (report §7). */
-  satz: string;
-}
-
-export const PROVENIENZ: Record<Provenienz, ProvenienzInfo> = {
-  gemessen: {
-    label: 'Gemessen',
-    satz:
-      'Gemessene Werte Ihrer Anlage; einzelne Ausreißer sind durch den letzten gültigen Wert ersetzt.',
-  },
-  bewertet: {
-    label: 'Bewertet',
-    satz: 'Bewertet mit dem heute gepflegten Preisblatt — nicht Ihre Abrechnung.',
-  },
-  geplant: {
-    label: 'Geplant',
-    satz: 'Vorab geplant — nicht die gemessene Ersparnis.',
-  },
-};
+/** Das Abzeichen „Gemessen/Bewertet/Geplant" wohnt in `provenienz.ts` (Einstiegs-Bündel). */
+export { PROVENIENZ, type Provenienz, type ProvenienzInfo } from './provenienz';
 
 /** Alles, was eine Welt beschreibt. */
 export interface Welt {

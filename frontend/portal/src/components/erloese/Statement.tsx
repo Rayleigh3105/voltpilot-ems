@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { InfoTip } from '../InfoTip';
-import { PROVENIENZ, type Provenienz } from '../../historieWelten';
+import { PROVENIENZ, type Provenienz } from '../../provenienz';
 import { SwapNumber } from '../SwapNumber';
 
 /**

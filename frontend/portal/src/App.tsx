@@ -40,7 +40,7 @@ import {
 } from './nav';
 import { PAGE_CHUNK } from './pageChunks';
 import { transitionToRoute } from './pageTransition';
-import { hatGeldWelt } from './portfolioHistorie';
+import { hatGeldWelt } from './geldWelt';
 import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';

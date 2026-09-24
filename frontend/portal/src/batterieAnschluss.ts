@@ -1372,14 +1372,8 @@ export function speicherZiele(
     .map((r) => ({ id: r.id, label: (r.label ?? '').trim() || 'Wechselrichter' }));
 }
 
-/**
- * Der Satz „Ladestand von: <Batterie>" - die EINE Formulierung, damit Cockpit
- * und Geräteseite sie nicht zweimal verschieden erfinden (P6).
- */
-export function ladestandVon(label: string | null | undefined): string | null {
-  const name = (label ?? '').trim();
-  return name === '' ? null : `Ladestand von: ${name}`;
-}
+/** „Ladestand von: <Batterie>" - wohnt in `ladestandVon.ts` (Einstiegs-Bündel). */
+export { ladestandVon } from './ladestandVon';
 
 // -- Was vom Server zurückkommt (Bearbeiten) ----------------------------------
 

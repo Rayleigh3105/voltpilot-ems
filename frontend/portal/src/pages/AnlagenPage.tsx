@@ -37,7 +37,7 @@ import {
   type Route,
 } from '../nav';
 import { useStaffel, mitStaffel } from '../staffel';
-import { boxRefOf, chargerGeraetId } from '../geraetSeite';
+import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE für alles Gemessene (Cockpit, Steuerung, Viertelstunden-Band), LIST für
 // die Zeitraum-Aggregate der Historie.

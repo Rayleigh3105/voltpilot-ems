@@ -43,7 +43,7 @@
 import type {
   ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
 } from './api';
-import { ladestandVon } from './batterieAnschluss';
+import { ladestandVon } from './ladestandVon';
 import { channelLabel } from './channels';
 import { NACHWEIS_FREIGABE, type NachweisArt } from './consumers/questions';
 import { controlStrip, freigabeWort } from './control';

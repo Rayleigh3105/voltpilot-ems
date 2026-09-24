@@ -53,6 +53,7 @@ import { NO_DATA } from './nodata';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
 import { deviceState } from './komponenten';
 import { isPrivateHost } from './selbstbau';
+import { chargePointIdOf } from './geraetAdresse';
 
 /** Welche ART von Gerät die Seite zeigt. */
 /**
@@ -351,28 +352,8 @@ function str(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
-/**
- * Die Referenz der EINEN VoltPilot-Box dieser Anlage - sonst null.
- *
- * Eine Anlage hat per Captain-Korrektur genau EINE Box; sind es (noch) mehrere
- * oder keine, wird KEINE geraten: ein Weg auf eine Geräteseite, die vielleicht
- * die falsche Box meint, ist schlechter als kein Weg.
- */
-export function boxRefOf(devices: Device[] | null | undefined, siteId: string): string | null {
-  return boxOf(devices, siteId)?.externalRef ?? null;
-}
-
-/**
- * Dieselbe Regel, aber das ganze Gerät - für alles, was mehr braucht als die
- * Referenz (etwa die gemeldete LAN-Adresse, D5).
- *
- * ⚠ Sie lebt EINMAL: zwei Stellen, die „welche Box ist es denn?" verschieden
- * beantworten, wären zwei Wahrheiten über dieselbe Anlage.
- */
-export function boxOf(devices: Device[] | null | undefined, siteId: string): Device | null {
-  const eigene = (devices ?? []).filter((d) => d.siteId === siteId);
-  return eigene.length === 1 ? eigene[0] : null;
-}
+/** Box- und Säulen-Adressen wohnen in `geraetAdresse.ts` (Einstiegs-Bündel). */
+export { boxOf, boxRefOf, chargePointIdOf, chargerGeraetId } from './geraetAdresse';
 
 /**
  * Hat dieses Gerät des Anlagen-Modells eine eigene Seite?
@@ -406,18 +387,6 @@ export function geraeteArtWort(
   }
   if (art === 'quelle') return ROLLEN_WORT[rolle ?? ''] ?? ART_WORT.quelle;
   return ART_WORT[art];
-}
-
-/** Die Kennung einer OCPP-Säule im Pfad: `cp-<ChargePointId>`. */
-export function chargerGeraetId(chargePointId: string): string {
-  return `cp-${chargePointId}`;
-}
-
-/** Rückrichtung: `cp-…` → die ChargePointId; null wenn es keine Säule ist. */
-export function chargePointIdOf(geraetId: string | null): string | null {
-  if (!geraetId || !geraetId.startsWith('cp-')) return null;
-  const id = geraetId.slice(3);
-  return id ? id : null;
 }
 
 /**
