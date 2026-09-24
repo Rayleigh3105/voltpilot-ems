@@ -438,6 +438,76 @@ func TestGridTestAbortsFromTheObservationWhenTheEnvelopeIsLeft(t *testing.T) {
 	}
 }
 
+// ⚠ Steht die Telemetrie, bricht der SOLLWERT-TAKT den Lauf ab - nicht erst die
+// Frist. Die 15-s-Grenze lag frueher in der Beobachtung, und die wird ohne
+// Messung gar nicht gerufen: in der Produktion griff sie nie. Die Zeit ist
+// injiziert (applySetpoint mit gewaehlter Uhr), gewartet wird nicht.
+func TestGridTestAbortsOnTheClockWhenTelemetryStops(t *testing.T) {
+	now := time.Now().UTC()
+	a, addr, _ := gridRig(t, now)
+	sub := subscribeSetpoint(t, addr)
+	if _, err := a.GridTestStart(curtailcal.GridModeGrid); err != nil {
+		t.Fatalf("GridTestStart: %v", err)
+	}
+	// Der letzte Messwert faellt in den Neutralschritt und latcht das
+	// Halte-Ziel; danach kommt keiner mehr.
+	last := now.Add(10 * time.Second)
+	gridFeedTelemetry(a, last, 45, -24.9, 52)
+
+	// Genau an der Grenze ist die Messung noch frisch: der Lauf steht - und
+	// zwar netzseitig, der Fall, in dem blindes Weiterkommandieren schadet.
+	edge := last.Add(curtailcal.GridMeasurementMaxAge)
+	a.applySetpoint(edge)
+	waitFor(t, 5*time.Second, "netzseitiger Schritt an der Grenze", func() bool {
+		m, ok := sub.latest()
+		if !ok {
+			return false
+		}
+		b, ok := gridBlock(m)
+		return ok && b["side"] == curtailcal.GridSideGrid
+	})
+	if v := a.gridView(curtailcal.GridModeGrid, edge); v.Run == nil {
+		t.Fatalf("an der Grenze laeuft der Test weiter: %+v", v.Evidence)
+	}
+
+	// Eine Sekunde darueber - und KEIN Messwert kam: derselbe Takt bricht ab
+	// und veroeffentlicht die batterieseitige Rueckkehr.
+	stale := edge.Add(time.Second)
+	a.applySetpoint(stale)
+	waitFor(t, 5*time.Second, "Rueckkehr nach veralteter Messung", func() bool {
+		m, ok := sub.latest()
+		if !ok {
+			return false
+		}
+		b, ok := gridBlock(m)
+		return ok && b["step"] == curtailcal.GridStepRueckkehr
+	})
+	m, _ := sub.latest()
+	if b, _ := gridBlock(m); b["side"] != curtailcal.GridSideBattery || b["neutralize"] != true {
+		t.Fatalf("die Rueckkehr ist ein batterieseitiger Seitenwechsel: %+v", b)
+	}
+	v := a.gridView(curtailcal.GridModeGrid, stale.Add(time.Second))
+	if v.Evidence == nil || v.Evidence.Verdict != curtailcal.GridVerdictAborted {
+		t.Fatalf("eine veraltete Messung beendet den Lauf: %+v", v.Evidence)
+	}
+	if want := "Die Messwerte sind 16 s alt - ohne frische Messung wird nicht weiter kommandiert."; v.Evidence.Reason != want {
+		t.Fatalf("Grund = %q, erwartet %q", v.Evidence.Reason, want)
+	}
+
+	// Nach der Rueckkehr veroeffentlicht wieder der Fahrplan - auch ohne dass
+	// die Telemetrie zurueckkam: die Freigabe haengt an der Uhr.
+	after := stale.Add(curtailcal.GridReturnGrace + time.Second)
+	a.applySetpoint(after)
+	waitFor(t, 5*time.Second, "gewoehnlicher Sollwert", func() bool {
+		m, ok := sub.latest()
+		if !ok {
+			return false
+		}
+		_, isTest := gridBlock(m)
+		return !isTest && m["source"] != gridTestSource
+	})
+}
+
 // Der Rueckmelde-Zyklus zaehlt nur ENTSCHIEDEN: zwei nicht gehaltene Zyklen
 // beenden den Lauf, ein Zyklus ohne Antwort ist keine Aussage.
 func TestGridTestAbortsAfterTwoUnconfirmedRegisterCycles(t *testing.T) {

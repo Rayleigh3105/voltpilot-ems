@@ -294,7 +294,6 @@ func TestGridSocAndBatteryEnvelopeAbort(t *testing.T) {
 		{"Ladestand zu hoch", GridObservation{GridKw: f(-20), SocPct: f(GridAbortSocMaxPct + 1)}},
 		{"Ladestand zu niedrig", GridObservation{GridKw: f(-20), SocPct: f(GridAbortSocMinPct - 1)}},
 		{"Batterie zu stark", GridObservation{GridKw: f(-20), SocPct: f(52), BatteryKw: f(GridMaxBatteryKw + 1)}},
-		{"Messwerte veraltet", GridObservation{GridKw: f(-20), SocPct: f(52), Age: 2 * GridMeasurementMaxAge}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := NewGrid()
@@ -306,6 +305,77 @@ func TestGridSocAndBatteryEnvelopeAbort(t *testing.T) {
 				t.Fatalf("%s muss den Lauf beenden", tc.name)
 			}
 		})
+	}
+}
+
+// ⚠ Die Frische laeuft auf der TAKT-Uhr, nicht in der Beobachtung: steht die
+// Telemetrie, wird Observe gar nicht gerufen - genau dann muss der Takt
+// abbrechen, und derselbe Takt faehrt schon die Rueckkehr. Ein Messwert ohne
+// Netzpunkt haelt die Uhr nicht an.
+func TestGridStaleTelemetryAbortsOnTheClock(t *testing.T) {
+	t0 := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	s := NewGrid()
+	if _, err := s.Start(okCond(), t0); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	last := t0.Add(5 * time.Second)
+	s.Observe(GridObservation{GridKw: f(-24.9), DeyePvKw: f(21), FroniusPvKw: f(24), SocPct: f(52)}, last)
+	// Ohne Netzpunkt kein frischer Messwert - auch nicht ein Takt spaeter.
+	s.Observe(GridObservation{SocPct: f(52)}, last.Add(10*time.Second))
+
+	if s.CheckFresh(last.Add(GridMeasurementMaxAge)) {
+		t.Fatal("genau an der Grenze ist die Messung noch frisch")
+	}
+	if _, own := s.Publish(last.Add(GridMeasurementMaxAge)); !own || !s.Active(last.Add(GridMeasurementMaxAge)) {
+		t.Fatal("vor der Grenze laeuft der Test weiter")
+	}
+
+	stale := last.Add(GridMeasurementMaxAge + time.Second)
+	if !s.CheckFresh(stale) {
+		t.Fatal("eine 16 s alte Messung muss den Lauf auf dem Takt beenden")
+	}
+	if s.CheckFresh(stale.Add(time.Second)) {
+		t.Fatal("ein beendeter Lauf wird nicht zweimal abgebrochen")
+	}
+	cmd, own := s.Publish(stale)
+	if !own || cmd.Step != GridStepRueckkehr || cmd.Side != GridSideBattery || !cmd.Neutralize {
+		t.Fatalf("derselbe Takt faehrt die batterieseitige Rueckkehr: %+v (own=%v)", cmd, own)
+	}
+	ev := s.Evidence(stale.Add(time.Second))
+	if ev == nil || ev.Verdict != GridVerdictAborted {
+		t.Fatalf("das Urteil ist %q, bekam %+v", GridVerdictAborted, ev)
+	}
+	if want := "Die Messwerte sind 16 s alt - ohne frische Messung wird nicht weiter kommandiert."; ev.Reason != want {
+		t.Fatalf("Grund = %q, erwartet %q", ev.Reason, want)
+	}
+	if _, own := s.Publish(stale.Add(GridReturnGrace + time.Second)); own {
+		t.Fatal("nach der Rueckkehr gehoert der Sollwert wieder dem Fahrplan")
+	}
+}
+
+// Die Frische beginnt bei der Messung, mit der Start die Lage beurteilt hat -
+// und nach der Frist bricht die Uhr nichts mehr ab: dann ist es die TTL.
+func TestGridFreshnessStartsAtTheStartMeasurementAndEndsWithTheRun(t *testing.T) {
+	t0 := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	c := okCond()
+	c.MeasurementAge = 14 * time.Second
+	s := NewGrid()
+	if _, err := s.Start(c, t0); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !s.CheckFresh(t0.Add(2 * time.Second)) {
+		t.Fatal("eine beim Start 14 s alte Messung ist zwei Sekunden spaeter zu alt")
+	}
+
+	s2 := NewGrid()
+	if _, err := s2.Start(okCond(), t0); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if s2.CheckFresh(t0.Add(GridDefaultTTL + time.Second)) {
+		t.Fatal("nach der Frist ist der Lauf keiner mehr - die Uhr bricht nichts mehr ab")
+	}
+	if ev := s2.Evidence(t0.Add(GridDefaultTTL + 2*time.Second)); ev == nil || ev.Verdict == GridVerdictAborted {
+		t.Fatalf("ein abgelaufener Lauf ist kein abgebrochener: %+v", ev)
 	}
 }
 

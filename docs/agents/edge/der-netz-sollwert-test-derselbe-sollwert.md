@@ -57,16 +57,24 @@ Fronius-Abregelweg strukturell nicht erreicht. Konzept: Scout
   (`agent.GridTestStart` armiert das automatische Aus, BEVOR geschrieben wird —
   das Kalibrier-Muster): ein Schreibvorgang kann angekommen sein und nur seine
   Antwort verloren haben.
+- **⚠ Die Messfrische (15 s) läuft auf der TAKT-Uhr, nicht in `Observe`.**
+  `GridSession.CheckFresh` steht in `gridTestOverride` vor `Publish` (das
+  K5-Muster aus `nativepilot.Session.Publish`); frisch macht nur ein Messwert MIT
+  Netzpunkt. Eine Altersgrenze in der Beobachtung greift nie — steht die
+  Telemetrie, wird `Observe` gar nicht gerufen (K5-Befund aus #1221:
+  das frühere `GridObservation.Age` setzte niemand). `Publish` bleibt die reine
+  Schrittfolge.
 - **Die geplante Fronius-Kappe reist UNVERÄNDERT weiter** (`pv_limit_kw` +
   `curtail`-Block im Testsollwert): ohne sie läse `sunspec/curtail.js` ein
   fehlendes Anlagen-Limit als `release` und gäbe mitten im Test genau die
   Abregelung frei, gegen die gemessen wird.
-- **Beweise:** rein `internal/curtailcal/gridtest_test.go` (34 Fälle: Schrittfolge
+- **Beweise:** rein `internal/curtailcal/gridtest_test.go` (35 Fälle: Schrittfolge
   und ihre Summe, jede Zulassungsregel mit ihrem deutschen Grund, Abbruch-Hülle,
   Plateau inkl. „ein einzelner Treffer ist kein Beweis", die vier Urteile, TTL und
-  Rückkehr-Kulanz) · `internal/agent/gridtest_test.go` (15: die Reise auf dem
+  Rückkehr-Kulanz, Frische auf der Takt-Uhr) · `internal/agent/gridtest_test.go` (17: die Reise auf dem
   Bus, byte-identisch ohne Armierung, jede offene Voraussetzung ohne
-  Schreibvorgang, Not-Aus MITTEN im Lauf, Abbruch nimmt SOFORT zurück) ·
+  Schreibvorgang, Not-Aus MITTEN im Lauf, Abbruch nimmt SOFORT zurück, stehende
+  Telemetrie bricht auf dem Takt ab) ·
   `internal/web` (Routen, Kennwort-Tor, //go:embed-Vertrag der Karte) ·
   `nodered/inverter-control-routing.test.js` (Reihenfolge, beide Konventionen,
   1115, strenge Form) · `flows-sync.test.js` (die Inline-Kopie == das Modul für
