@@ -95,7 +95,8 @@ class UemsZugriffMigrationTest {
             "20260922246000", // AP-16 IP-19: Messbedarf baut auf dem Energieeinsatz aus IP-3 auf.
             "20260923234500", // AP-16 P1: Ort und Größe am Messbedarf aus IP-19 strukturiert.
             "20260924071500", // AP-17 IP-6: Verantwortlicher der Bezugsbasis verweist auf benutzer(tenant_id, sub).
-            "20260924223000"); // AP-18 IP-5: Verantwortlicher des Energieziels verweist auf benutzer(tenant_id, sub).
+            "20260924223000", // AP-18 IP-5: Verantwortlicher des Energieziels verweist auf benutzer(tenant_id, sub).
+            "20260924233000"); // AP-18 IP-9: Verantwortlicher der Maßnahme verweist auf benutzer(tenant_id, sub).
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

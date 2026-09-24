@@ -54,7 +54,8 @@ class UemsBezugsbasisMigrationTest {
      * MIT dieser, nicht vor ihr.
      */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
-            "20260924223000"); // AP-18 IP-5: das Energieziel zitiert eine Bezugsbasis-Fassung.
+            "20260924223000", // AP-18 IP-5: das Energieziel zitiert eine Bezugsbasis-Fassung.
+            "20260924233000"); // AP-18 IP-9: die Messgrundlage der Maßnahme zitiert eine Bezugsbasis-Fassung.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

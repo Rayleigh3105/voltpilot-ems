@@ -83,7 +83,8 @@ class UemsKennzahlMigrationTest {
             "20260924200500", // AP-17 IP-15: Anstoß-Wort und Wasserzeichen auf den Tabellen von IP-6.
             "20260924211800", // AP-17 IP-21b: der Leistungsvergleich verweist auf seine Kennzahl.
             "20260924214500", // AP-17 IP-23: weitet den CHECK des Wasserzeichens aus IP-15.
-            "20260924223000"); // AP-18 IP-5: das Energieziel verweist auf seine Kennzahl.
+            "20260924223000", // AP-18 IP-5: das Energieziel verweist auf seine Kennzahl.
+            "20260924233000"); // AP-18 IP-9: die Messgrundlage der Maßnahme verweist auf ihre Kennzahl.
     private static final List<String> TABELLEN = List.of("kennzahl", "kennzahl_kennzeichen_verlauf", "kennzahl_fassung",
             "kennzahl_eingang", "kennzahl_wert", "kennzahl_wert_eingang", "kennzahl_aenderung");
 

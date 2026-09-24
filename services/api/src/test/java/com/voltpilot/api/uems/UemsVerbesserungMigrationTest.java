@@ -55,6 +55,9 @@ class UemsVerbesserungMigrationTest {
             "energieziel_aenderung");
     private static final String BEGRUENDUNG = "Jahresplanung 2028 nach der Freigabe der Fassung 2 (24.11.2027).";
     private static final String AM_20_12_2027 = "2027-12-20 10:00:00";
+    /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20260924233000"); // AP-18 IP-9: die Maßnahme zitiert Energieziel, Zähler und Vokabular.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -396,7 +399,7 @@ class UemsVerbesserungMigrationTest {
                 Map.entry("verbesserung.abschliessen", "UU-----"), Map.entry("verbesserung.ansehen", "UUSSSA-"));
     }
 
-    /** Jede Liste des Vertrags (IP-2) steht Zeile für Zeile in der Datenbank; dazu genau drei Wörter-Listen der Tabellen. */
+    /** Jede Liste des Vertrags (IP-2) steht Zeile für Zeile in der Datenbank; dazu nur Wörter-Listen der Tabellen. */
     @Test
     void dieVokabulareDerDatenbankSindDieDesVertrags() throws IOException {
         JsonNode vertrag = MAPPER.readTree(Path.of("../../docs/contracts/v2/verbesserung-vectors.json").toFile())
@@ -414,7 +417,9 @@ class UemsVerbesserungMigrationTest {
         List<String> nurTabellen = new ArrayList<>(root.queryForList("SELECT DISTINCT vokabular FROM verbesserung_vokabular() "
                 + "ORDER BY vokabular", String.class));
         nurTabellen.removeAll(bloecke);
-        assertThat(nurTabellen).containsExactly("energieziel_bewertung_status", "energieziel_protokoll", "kennung_art");
+        // IP-9 weitet die Funktion um die Wörter seiner Tabellen (massnahme_*).
+        assertThat(nurTabellen).containsExactly("energieziel_bewertung_status", "energieziel_protokoll", "kennung_art",
+                "massnahme_bewertung_status", "massnahme_protokoll");
         assertThat(root.queryForList("SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'kennung_art' ORDER BY nr",
                 String.class)).containsExactly("EZ", "M", "AW");
         // Die Reihenfolge der Blöcke in der Funktion ist die des Vertrags; `nr` ist lückenlos ab 1.
@@ -465,14 +470,18 @@ class UemsVerbesserungMigrationTest {
         Path ohneDiese = Files.createTempDirectory("ohne-verbesserung");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
         }
         flyway(url).locations("filesystem:" + ohneDiese).load().migrate();
         var spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
         JdbcTemplate spaetDb = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         String schema = "SELECT string_agg(conrelid::regclass || ':' || conname || ':' || pg_get_constraintdef(oid), '|' "
                 + "ORDER BY conrelid::regclass::text, conname) FROM pg_constraint WHERE conrelid::regclass::text "
