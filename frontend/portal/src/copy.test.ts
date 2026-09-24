@@ -38,6 +38,41 @@ import { describe, expect, it } from 'vitest';
 import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
 import {
+  UEMS_ABWEICHUNG,
+  UEMS_ABWEICHUNG_ERGEBNISSE,
+  UEMS_ABWEICHUNG_ZUSTAENDE,
+  UEMS_ABWEICHUNGEN,
+  UEMS_AUFFAELLIGKEIT,
+  UEMS_AUFFAELLIGKEIT_ANTWORTEN,
+  UEMS_AUSGANGSLAGE,
+  UEMS_AUSSAGE_VON,
+  UEMS_BEOBACHTET,
+  UEMS_BEOBACHTET_NICHT_BELEGT,
+  UEMS_BEWERTUNGSMETHODE,
+  UEMS_ENERGIEZIEL,
+  UEMS_ENERGIEZIEL_ERGEBNISSE,
+  UEMS_ENERGIEZIEL_ZUSTAENDE,
+  UEMS_ENERGIEZIELE,
+  UEMS_ERWARTETE_WIRKUNG,
+  UEMS_MASSNAHME,
+  UEMS_MASSNAHME_ERGEBNISSE,
+  UEMS_MASSNAHME_ZUSTAENDE,
+  UEMS_MASSNAHMEN,
+  UEMS_MESSGRUNDLAGE,
+  UEMS_OHNE_MESSGRUNDLAGE,
+  UEMS_OHNE_MESSGRUNDLAGE_SATZ,
+  UEMS_TERMIN,
+  UEMS_UEBERFAELLIG_SEIT,
+  UEMS_UMGESETZT_AM,
+  UEMS_URSACHE_AUSSAGE_VON,
+  UEMS_VERBESSERUNG_SAETZE,
+  UEMS_WIRKUNG,
+  UEMS_ZIELE_UND_MASSNAHMEN,
+  UEMS_ZIELPERIODE,
+  UEMS_ZIELWERT,
+  UEMS_ZUR_KENNTNIS_GENOMMEN,
+} from './glossar';
+import {
   BERECHNET_AUS,
   FILTER,
   FILTER_OHNE_TREFFER,
@@ -2688,6 +2723,282 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
       for (const re of verstoesse(text)) violations.push(`parameter: ${re} in „${text}“`);
     }
     expect(violations, violations.join('\n')).toEqual([]);
+  });
+});
+
+describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwörter (SP1–SP4)', () => {
+  /**
+   * IP-8/IP-13/IP-18/IP-20 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren Dateiname
+   * mit „Energieziel“, „Massnahme“, „Abweichung“, „Auffaelligkeit“ oder „Verbesserung“ beginnt, als Fläche — heute gibt
+   * es keine, der Block greift ab der ersten, ohne dass jemand an ihn denken muss. Die Wörter aus AP-14 S1 und AP-17
+   * SP2 prüfen deren Blöcke auf jeder Kundenfläche; dieser Block ergänzt sie, er öffnet sie nicht.
+   */
+  const VERBESSERUNG_FLAECHEN: string[] = [];
+  const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
+  const verbesserungFlaechen = () => [
+    ...new Set([
+      ...VERBESSERUNG_FLAECHEN,
+      ...customerFiles()
+        .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+        .filter((datei) => VERBESSERUNG_NAMENSMUSTER.test(datei)),
+    ]),
+  ];
+
+  /** SP2: die Norm- und Kausal-Wörter des Konzepts — auf keiner Kundenfläche. */
+  const VERBOTEN = [
+    /Nicht[-\s]?konformit(?:ä|ae)t/iu,
+    /(^|[^\p{L}\p{N}])Korrektur[-\s]?ma(?:ß|ss)nahme/iu,
+    /(^|[^\p{L}\p{N}])Aktions[-\s]?pl(?:a|ä)n/iu,
+    /(^|[^\p{L}\p{N}])Ursachen[-\s]?analyse/iu,
+    /(^|[^\p{L}\p{N}])Root[-\s]?Cause/iu,
+    /(^|[^\p{L}\p{N}])(?:hat|haben)\s+gewirkt([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])Einsparung(?:en)?\s+durch([^\p{L}\p{N}]|$)/iu,
+  ];
+  const verstoesse = (text: string) => {
+    const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
+    return VERBOTEN.filter((re) => re.test(ohneGrenze));
+  };
+  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+
+  /**
+   * U1–U3: eine Ursache ist die Aussage einer Person. „Ursache“ steht nur in der Nähe von „Aussage von“ (auch als
+   * Konstante oder Satzmuster aus `glossar.ts`) oder als Überschrift „Ursache-Aussagen“ — ein Satz des Systems
+   * „Ursache: …“ fällt durch.
+   */
+  const URSACHE = /(?<![\p{L}])Ursache(?![\p{L}]|-Aussage)/gu;
+  const AUSSAGE_VON = /Aussage\s+von|UEMS_AUSSAGE_VON|UEMS_URSACHE_AUSSAGE_VON|ursacheAussage/u;
+  const ursacheOhnePerson = (text: string) =>
+    [...text.matchAll(URSACHE)].some((m) => !AUSSAGE_VON.test(text.slice(Math.max(0, m.index - 80), m.index + 80)));
+
+  /**
+   * W5 (SP2): „Verbesserung“ nur im Wirkungs-Satz mit Bedingung — der Satz nennt, was die Bezugsbasis erwarten lässt,
+   * und über wie viele Monate. Nie als Beschriftung, nie an einer rohen Zahl. Platzhalter zählen (`${x} von ${n}`).
+   */
+  const VERBESSERUNG = /verbesserung/iu;
+  const WIRKUNGS_SATZ = /erwarten\s+lässt/u;
+  const BEDINGUNG = /von\s+[\p{N}\s]*Monat/u;
+  const verbesserungOhneBedingung = (text: string) =>
+    VERBESSERUNG.test(text) && !(WIRKUNGS_SATZ.test(text) && BEDINGUNG.test(text));
+
+  /** W6 (SP1): „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der Steuerung, außerhalb dieses Bereichs. */
+  const ZIEL_ALLEIN = /(?<![\p{L}])Ziel(?![\p{L}])/u;
+
+  /** VG3 (AP-17 E8 = A): dieselbe Pfeil-Probe wie im Block „Bezugsbasis“. */
+  const PFEIL = /(?:^|[^\p{L}])(?:besser|schlechter|verbesser|verschlechter)|[↑↓▲▼⬆⬇]/iu;
+  const BEREINIGT = /erwart|bereinigt/iu;
+  const ZAHL = /[\p{N}%]|kWh|m³/u;
+  const pfeilAnRoherZahl = (text: string) => ZAHL.test(text) && PFEIL.test(text) && !BEREINIGT.test(text);
+  /** Wie im Block „Bezugsbasis“: `visibleTexts` plus jeder `>Text<`-Lauf (ein §5.9-Satz hat fast immer einen Doppelpunkt). */
+  const kundenTexte = (code: string) =>
+    [...visibleTexts(code), ...[...code.matchAll(/>([^<>{}]*\p{L}[^<>{}]*)</gu)].map((m) => m[1])].filter(isKundentext);
+
+  /** Die 24 Sätze aus AP-18 §5.9, wörtlich. */
+  const SAETZE = [
+    'Auffälligkeit: Dezember 2027 — 78 000 kWh gemessen, 69 098 kWh erwartet bei 250 000 kg: 12,9 % mehr als die Bezugsbasis erwarten lässt (schlechter, Band ± 2 %). Vermerkt am 07.01.2028. Abweichung eröffnen oder zur Kenntnis nehmen.',
+    'Auffälligkeit Juli 2028: 2,5 % mehr als die Bezugsbasis erwarten lässt (schlechter, Band ± 2 %) — zur Kenntnis genommen von Ines Kaltenbach am 10.08.2028: ‚Kleinserien-Sonderauftrag KW 27–29, im Produktionsplan dokumentiert; keine Abweichung des Prozesses.‘',
+    'Abweichung AW-2028-0001 · KZ-0004 Stromeinsatz Spritzguss je kg, Dezember 2027: 12,9 % mehr als die Bezugsbasis erwarten lässt · Verantwortlich Ines Kaltenbach · Frist 31.01.2028 · offen.',
+    'Ursache — Aussage von Murat Demirci, 14.01.2028 (keine Messung): ‚Die Werkzeugheizungen der Maschinen 3 bis 6 liefen vom 23.12. bis 02.01. durch — keine Abschaltung in der Betriebspause programmiert.‘',
+    'Ursache — Aussage von Jonas Wendlinger, 18.11.2026 (mit Beleg: Zählerwechsel Z-5a → Z-5b am 18.11.2026): ‚Der Anfangsstand des neuen Zählers wurde erst nachgetragen.‘',
+    'Abgeschlossen am 15.01.2028 von Ines Kaltenbach: Maßnahme M-2028-0001 — ‚Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme mit Messgrundlage angelegt; Dezember-Werte bleiben, keine Korrektur.‘',
+    'Abgeschlossen am 20.12.2026 von Ines Kaltenbach: erklärt — ‚Baustellenstrom des Anbaus über MS-10 (Aussage JW); keine Maßnahme am Gebäude.‘',
+    'M-2028-0001 · Werkzeugheizungen in Betriebspausen abschalten · Verantwortlich Murat Demirci · Termin 31.01.2028 · umgesetzt am 22.01.2028.',
+    'Messgrundlage: KZ-0004 Stromeinsatz Spritzguss je kg, Bezugsbasis BB-0001, Fassung 2 — bereinigt um Produktionsmenge (Modell mit einer Einflussgröße). Ausgangslage Dezember 2027: 12,9 % mehr als erwartet (Version 1, Kopie vom 15.01.2028). Erwartete Wirkung: 3 % weniger — ‚Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion.‘',
+    'M-2028-0002 · Druckluft-Leckagen orten und beseitigen · ohne Messgrundlage — Wirkung nicht messbar. Um die Wirkung zu messen, braucht Druckluft eine Energieleistungskennzahl (zum Beispiel Stromeinsatz je Betriebsstunde mit einer Bezugsbasis).',
+    'Wirkung von M-2028-0001, beobachtet: 2,4 % weniger Strom als die Bezugsbasis erwarten lässt (Februar bis Oktober 2028, 8 von 12 Monaten; März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis) — erwartet waren 3 % weniger. Ob die Maßnahme das bewirkt hat, sagt eine Person.',
+    'Januar 2028: Umsetzungsmonat — nicht gezählt. März 2028: nicht bewertbar — Produktionsmenge 390 000 kg außerhalb der Bezugsbasis (228 600–375 100 kg).',
+    'November 2028: nicht bewertbar — die Bezugsbasis BB-0001, Fassung 3 hat eine Referenzperiode (November 2027 bis Oktober 2028), die nach der Umsetzung endet; sie enthielte die Maßnahme.',
+    'Belegt von Ines Kaltenbach am 15.11.2028: ‚Zeitschaltung seit 22.01.2028 aktiv, Laufzeit der Werkzeugheizungen laut Steuerung 18 % niedriger; keine andere Änderung am Prozess Spritzguss im Zeitraum.‘ Beobachtet: 2,4 % weniger (8 von 12 Monaten). Stand Nr. 1, Prüfsumme 7c1e…',
+    'Beobachtet — nicht belegt. Eine Bewertung mit Begründung setzt eine Person.',
+    'Bewertet am 20.11.2028 von Ines Kaltenbach: nicht messbar — ‚Keine Messgrundlage: Druckluft hat keine Energieleistungskennzahl.‘',
+    'Energieziel EZ-2028-0001 · Spritzguss: 5 % weniger Strom als die Bezugsbasis erwarten lässt · Januar bis Dezember 2028 · Verantwortlich Ines Kaltenbach. Stand nach 5 von 12 Monaten: 2,9 % weniger (März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis). Bezugsbasis BB-0001, Fassung 2.',
+    'Energieziel EZ-2028-0001, Zielperiode Januar bis Dezember 2028: 2,7 % weniger Strom als die Bezugsbasis erwarten lässt (11 von 12 Monaten; März 2028 nicht bewertbar) — Zielwert 5 % weniger. Über die ganze Zielperiode nicht bewertbar; die Bewertung trifft eine Person. Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.',
+    'Zielwert nicht erreicht: 2,7 % weniger gegenüber 5 % weniger (12 von 12 Monaten) — Vorschlag; bestätigen oder mit Begründung abweichen.',
+    'M-2028-0002 · geplant · Termin 29.02.2028 · überfällig seit 15 Tagen · Ines Kaltenbach.',
+    'Ziele und Maßnahmen — 1 Maßnahme überfällig: M-2028-0002 Druckluft-Leckagen, Termin 29.02.2028, überfällig seit 15 Tagen (Ines Kaltenbach) · 1 Maßnahme umgesetzt, noch nicht bewertet · 1 Energieziel läuft.',
+    'Ausgangslage korrigiert: K-2028-0001 (03.04.2028) — die Ausgangslage zitiert Dezember 2027 in Version 1 (12,9 % mehr als erwartet), gültig ist Version 2 (12,0 % mehr). Beibehalten mit Begründung oder neu kopieren.',
+    'Noch keine Energieziele, Maßnahmen oder Abweichungen. Sie entstehen aus Ihren Energieleistungskennzahlen: aus einer Auffälligkeit, aus einem Energieziel oder von Hand.',
+    UEMS_NORMGRENZE,
+  ];
+
+  it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
+    for (const probe of [
+      'Nichtkonformität', 'Nichtkonformitäten', 'Nicht-Konformität', 'nichtkonformitaet', 'Korrekturmaßnahme',
+      'Korrekturmassnahmen', 'Korrektur-Maßnahme', 'Aktionsplan', 'Aktionspläne', 'Ursachenanalyse', 'Ursachen-Analyse',
+      'Root Cause', 'Root-Cause-Analyse', 'die Maßnahme hat gewirkt', 'Maßnahmen haben gewirkt', 'Einsparung durch M-2028-0001',
+      'Einsparungen durch die Zeitschaltung',
+    ]) {
+      expect(verstoesse(`Maßnahme: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse('Transaktionsplanung, Konformität des Zählers, gewirkte Stoffe und die Einsparung bleiben normale Wörter.')).toEqual([]);
+    expect(verstoesse(UEMS_NORMGRENZE)).toEqual([]);
+  });
+
+  it('„Ursache“ nur mit „Aussage von“ — ein Systemsatz mit Ursache fällt durch', () => {
+    for (const probe of [
+      'Ursache: Werkzeugheizungen liefen in der Betriebspause durch.',
+      'Ursache — Werkzeugheizungen liefen durch.',
+      'Abweichung AW-2028-0001 · Ursache: Leckage.',
+      'Mögliche Ursache: Produktionsmenge.',
+      '<dt>Ursache</dt><dd>{abweichung.ursache}</dd>',
+    ]) {
+      expect(ursacheOhnePerson(probe), probe).toBe(true);
+    }
+    expect(ursacheOhnePerson('Ursache — Aussage von Murat Demirci, 14.01.2028 (keine Messung): ‚…‘')).toBe(false);
+    expect(ursacheOhnePerson('<dt>{UEMS_URSACHE_AUSSAGE_VON} {person}</dt>')).toBe(false);
+    expect(ursacheOhnePerson('const zeile = `Ursache — ${UEMS_AUSSAGE_VON} ${person}, ${datum}`;')).toBe(false);
+    expect(ursacheOhnePerson('<h3>Ursache-Aussagen</h3>')).toBe(false);
+    expect(ursacheOhnePerson('Ursachen-freie Wörter wie Sache und Ursprung bleiben.')).toBe(false);
+  });
+
+  it('„Verbesserung“ nur im Wirkungs-Satz mit Bedingung (W5)', () => {
+    for (const probe of [
+      'Verbesserung',
+      'Verbesserungen',
+      'Verbesserungsmaßnahmen',
+      'Beobachtete Verbesserung: 2,4 %.',
+      'Verbesserung: 2,4 % weniger Strom als die Bezugsbasis erwarten lässt.',
+      'Verbesserung um 2,4 % in 8 von 12 Monaten.',
+    ]) {
+      expect(verbesserungOhneBedingung(probe), probe).toBe(true);
+    }
+    expect(verbesserungOhneBedingung(
+      'Beobachtete Verbesserung: 2,4 % weniger Strom als die Bezugsbasis erwarten lässt (8 von 12 Monaten seit der Umsetzung).',
+    )).toBe(false);
+    expect(verbesserungOhneBedingung('Verbesserung:   % weniger Strom als die   erwarten lässt (  von   Monaten).')).toBe(false);
+  });
+
+  it('„Energieziel“, nie „Ziel“ allein (W6) — der Bereichsname „Ziele und Maßnahmen“ bleibt', () => {
+    for (const probe of ['Ziel: 5 % weniger', 'Ziel setzen', 'Ziel EZ-2028-0001', 'Neues Ziel']) {
+      expect(ZIEL_ALLEIN.test(probe), probe).toBe(true);
+    }
+    for (const probe of [UEMS_ZIELE_UND_MASSNAHMEN, 'Energieziel setzen', 'Zielwert 5 % weniger', 'Zielperiode 2028']) {
+      expect(ZIEL_ALLEIN.test(probe), probe).toBe(false);
+    }
+  });
+
+  it('verlangt den Grenz-Satz auf jeder Fläche des Bereichs und hält Wörter, Ursachen und Pfeile fern', () => {
+    for (const datei of verbesserungFlaechen()) {
+      const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      // Die Wörter an den Kundentexten, nicht am Code: ein Vertragsschlüssel wie `'nichtkonformitaet'` (E7) ist Protokoll.
+      const texte = kundenTexte(code);
+      expect(texte.flatMap(verstoesse), datei).toEqual([]);
+      expect(traegtGrenze(code), datei).toBe(true);
+      expect(ursacheOhnePerson(code), `${datei}: „Ursache“ ohne „Aussage von“`).toBe(false);
+      expect(texte.filter(verbesserungOhneBedingung), `${datei}: „Verbesserung“ ohne Bedingung`).toEqual([]);
+      expect(texte.filter((text) => ZIEL_ALLEIN.test(text)), `${datei}: „Ziel“ allein`).toEqual([]);
+      expect(texte.filter(pfeilAnRoherZahl), `${datei}: Pfeil-Wort an roher Zahl`).toEqual([]);
+    }
+  });
+
+  it('findet Flächen über den Dateinamen und prüft die Mechanik am Prüfling', () => {
+    for (const datei of [
+      'pages/EnergiezielSeite.tsx', 'components/Energieziele.tsx', 'components/MassnahmeKopf.tsx', 'pages/MassnahmenRegister.tsx',
+      'components/AbweichungSeite.tsx', 'components/AuffaelligkeitZeile.tsx', 'pages/VerbesserungBereich.tsx',
+    ]) {
+      expect(VERBESSERUNG_NAMENSMUSTER.test(datei), datei).toBe(true);
+    }
+    for (const datei of ['glossar.ts', 'uemsMassnahme.ts', 'components/KennzahlenRegister.tsx', 'components/StromAbweichungsBalken.tsx']) {
+      expect(VERBESSERUNG_NAMENSMUSTER.test(datei), datei).toBe(false);
+    }
+    expect(traegtGrenze('<p>Maßnahme ohne Abgrenzung</p>')).toBe(false);
+    expect(traegtGrenze('<p className="x">{UEMS_NORMGRENZE}</p>')).toBe(true);
+    expect(traegtGrenze("import { UEMS_NORMGRENZE } from '../glossar';")).toBe(false);
+    expect(kundenTexte('<section><h2>Verbesserung</h2><p>{UEMS_NORMGRENZE}</p></section>').filter(verbesserungOhneBedingung))
+      .not.toEqual([]);
+    expect(kundenTexte('<p>Ziel: 5 % weniger</p>').filter((text) => ZIEL_ALLEIN.test(text))).not.toEqual([]);
+    expect(kundenTexte('<p>Vorjahr ↓ 8,8 %</p>').filter(pfeilAnRoherZahl)).not.toEqual([]);
+    expect(kundenTexte('const f = (x: number) => x < 3 ? a : b; <p>{UEMS_NORMGRENZE}</p>').filter(pfeilAnRoherZahl)).toEqual([]);
+    for (const datei of VERBESSERUNG_FLAECHEN) {
+      expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
+    }
+  });
+
+  it('findet die verbotenen Wörter auf keiner Kundenfläche', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+  });
+
+  it('die 24 Sätze aus §5.9 bestehen den Wächter', () => {
+    expect(SAETZE).toHaveLength(24);
+    for (const satz of SAETZE) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(ursacheOhnePerson(satz), satz).toBe(false);
+      expect(verbesserungOhneBedingung(satz), satz).toBe(false);
+      expect(ZIEL_ALLEIN.test(satz), satz).toBe(false);
+      expect(pfeilAnRoherZahl(satz), satz).toBe(false);
+    }
+    expect(SAETZE.some(traegtGrenze)).toBe(true);
+  });
+
+  it('die Satzmuster in `glossar.ts` bilden die §5.9-Sätze wörtlich (SP4)', () => {
+    const S = UEMS_VERBESSERUNG_SAETZE;
+    expect(S.ursacheAussage('Murat Demirci', '14.01.2028', null,
+      'Die Werkzeugheizungen der Maschinen 3 bis 6 liefen vom 23.12. bis 02.01. durch — keine Abschaltung in der Betriebspause programmiert.'))
+      .toBe(SAETZE[3]);
+    expect(S.ursacheAussage('Jonas Wendlinger', '18.11.2026', 'Zählerwechsel Z-5a → Z-5b am 18.11.2026',
+      'Der Anfangsstand des neuen Zählers wurde erst nachgetragen.')).toBe(SAETZE[4]);
+    expect(S.ohneMessgrundlage('M-2028-0002', 'Druckluft-Leckagen orten und beseitigen', 'Druckluft',
+      'Stromeinsatz je Betriebsstunde mit einer Bezugsbasis')).toBe(SAETZE[9]);
+    expect(S.wirkung('M-2028-0001', -2.4, 'Strom', 'Februar bis Oktober 2028', 8, 12,
+      'März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis', -3)).toBe(SAETZE[10]);
+    expect(S.bewertungOffen()).toBe(SAETZE[14]);
+    expect(S.energiezielStand('EZ-2028-0001', 'Spritzguss', -5, 'Strom', 'Januar bis Dezember 2028', 'Ines Kaltenbach', 5, 12,
+      -2.9, 'März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis', 'BB-0001', 2)).toBe(SAETZE[16]);
+    expect(S.ueberfaellig('M-2028-0002', UEMS_MASSNAHME_ZUSTAENDE.geplant, '29.02.2028', 15, 'Ines Kaltenbach')).toBe(SAETZE[19]);
+    expect(S.leer()).toBe(SAETZE[22]);
+    expect(S.grenze()).toBe(SAETZE[23]);
+    // Ohne Ausschluss und ohne erwartete Zahl bleibt die Bedingung (x von 12) im Satz.
+    const ohneErwartung = S.wirkung('M-2028-0003', 1.25, 'Gas', 'Februar bis März 2029', 2, 12, null, null);
+    expect(ohneErwartung).toBe(
+      'Wirkung von M-2028-0003, beobachtet: 1,3 % mehr Gas als die Bezugsbasis erwarten lässt (Februar bis März 2029, 2 von 12 Monaten). Ob die Maßnahme das bewirkt hat, sagt eine Person.',
+    );
+    for (const satz of [ohneErwartung, S.ueberfaellig('M-1', 'geplant', '01.01.2029', 1, 'A B')]) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(pfeilAnRoherZahl(satz), satz).toBe(false);
+    }
+    expect(UEMS_UEBERFAELLIG_SEIT(1)).toBe('überfällig seit 1 Tag');
+    expect(UEMS_UEBERFAELLIG_SEIT(15)).toBe('überfällig seit 15 Tagen');
+  });
+
+  it('bildet die Kundenwörter und Vokabulare als Konstanten ab (SP1, E2, E5, E6)', () => {
+    const woerter = [
+      UEMS_ZIELE_UND_MASSNAHMEN, UEMS_ENERGIEZIEL, UEMS_ENERGIEZIELE, UEMS_ZIELWERT, UEMS_ZIELPERIODE, UEMS_MASSNAHME,
+      UEMS_MASSNAHMEN, UEMS_TERMIN, UEMS_UMGESETZT_AM, UEMS_ABWEICHUNG, UEMS_ABWEICHUNGEN, UEMS_AUFFAELLIGKEIT,
+      UEMS_MESSGRUNDLAGE, UEMS_AUSGANGSLAGE, UEMS_ERWARTETE_WIRKUNG, UEMS_BEWERTUNGSMETHODE, UEMS_WIRKUNG, UEMS_BEOBACHTET,
+      UEMS_BEOBACHTET_NICHT_BELEGT, UEMS_ZUR_KENNTNIS_GENOMMEN, UEMS_AUSSAGE_VON, UEMS_URSACHE_AUSSAGE_VON,
+      UEMS_OHNE_MESSGRUNDLAGE, UEMS_OHNE_MESSGRUNDLAGE_SATZ,
+    ];
+    expect(woerter).toEqual([
+      'Ziele und Maßnahmen', 'Energieziel', 'Energieziele', 'Zielwert', 'Zielperiode', 'Maßnahme',
+      'Maßnahmen', 'Termin', 'umgesetzt am', 'Abweichung', 'Abweichungen', 'Auffälligkeit',
+      'Messgrundlage', 'Ausgangslage', 'erwartete Wirkung', 'Bewertungsmethode', 'Wirkung', 'beobachtet',
+      'beobachtet — nicht belegt', 'zur Kenntnis genommen', 'Aussage von', 'Ursache — Aussage von',
+      'ohne Messgrundlage', 'ohne Messgrundlage — Wirkung nicht messbar',
+    ]);
+    expect(UEMS_ENERGIEZIEL_ZUSTAENDE).toEqual({ offen: 'offen', bewertet: 'bewertet', beendet: 'beendet' });
+    expect(UEMS_ENERGIEZIEL_ERGEBNISSE).toEqual({ erreicht: 'erreicht', verfehlt: 'verfehlt', nicht_bewertbar: 'nicht bewertbar' });
+    expect(UEMS_MASSNAHME_ZUSTAENDE).toEqual({ geplant: 'geplant', umgesetzt: 'umgesetzt', bewertet: 'bewertet', verworfen: 'verworfen' });
+    expect(UEMS_MASSNAHME_ERGEBNISSE).toEqual({ belegt: 'belegt', nicht_belegt: 'nicht belegt', nicht_messbar: 'nicht messbar' });
+    expect(UEMS_ABWEICHUNG_ZUSTAENDE).toEqual({ offen: 'offen', abgeschlossen: 'abgeschlossen' });
+    expect(UEMS_ABWEICHUNG_ERGEBNISSE).toEqual({
+      massnahme: 'Maßnahme', erklaert: 'erklärt', keine_abweichung: 'keine Abweichung', nicht_bewertbar: 'nicht bewertbar',
+    });
+    expect(UEMS_AUFFAELLIGKEIT_ANTWORTEN).toEqual({ abweichung: 'Abweichung eröffnen', zur_kenntnis: 'zur Kenntnis genommen' });
+    const alle = [
+      ...woerter, ...[UEMS_ENERGIEZIEL_ZUSTAENDE, UEMS_ENERGIEZIEL_ERGEBNISSE, UEMS_MASSNAHME_ZUSTAENDE, UEMS_MASSNAHME_ERGEBNISSE,
+        UEMS_ABWEICHUNG_ZUSTAENDE, UEMS_ABWEICHUNG_ERGEBNISSE, UEMS_AUFFAELLIGKEIT_ANTWORTEN].flatMap((v) => Object.values(v)),
+    ];
+    for (const wort of alle) {
+      expect(verstoesse(wort), wort).toEqual([]);
+      expect(ursacheOhnePerson(wort), wort).toBe(false);
+      expect(verbesserungOhneBedingung(wort), wort).toBe(false);
+      expect(ZIEL_ALLEIN.test(wort), wort).toBe(false);
+    }
   });
 });
 

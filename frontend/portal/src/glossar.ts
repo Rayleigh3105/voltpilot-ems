@@ -568,6 +568,100 @@ export const UEMS_KOORDINATEN_FEHLEN = 'Koordinaten fehlen';
 export const UEMS_KOORDINATEN_FEHLEN_SATZ = (standort: string) =>
   `Für den Standort ${standort} kann VoltPilot kein Wetter beziehen: die ${UEMS_KOORDINATEN_FEHLEN}. Eine Wetterbereinigung über Gradtage ist hier erst möglich, wenn der Standort Koordinaten hat.`;
 
+/**
+ * UEMS AP-18 IP-4 (SP1–SP4) — Kundenwörter des Bereichs „Ziele und Maßnahmen“. Die Norm-Wörter (Nichtkonformität,
+ * Korrekturmaßnahme, Aktionsplan) stehen nur im Konzept und in Verträgen; `copy.test.ts` (Block „Ziele und
+ * Maßnahmen“) hält sie von den Kundenflächen fern. „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der
+ * Steuerung (W6); „Verbesserung“ nur im Wirkungs-Satz mit Bedingung, nie als Beschriftung (W5).
+ */
+export const UEMS_ZIELE_UND_MASSNAHMEN = 'Ziele und Maßnahmen';
+export const UEMS_ENERGIEZIEL = 'Energieziel';
+export const UEMS_ENERGIEZIELE = 'Energieziele';
+export const UEMS_ZIELWERT = 'Zielwert';
+export const UEMS_ZIELPERIODE = 'Zielperiode';
+export const UEMS_MASSNAHME = 'Maßnahme';
+export const UEMS_MASSNAHMEN = 'Maßnahmen';
+export const UEMS_TERMIN = 'Termin';
+export const UEMS_UMGESETZT_AM = 'umgesetzt am';
+export const UEMS_ABWEICHUNG = 'Abweichung';
+export const UEMS_ABWEICHUNGEN = 'Abweichungen';
+export const UEMS_AUFFAELLIGKEIT = 'Auffälligkeit';
+export const UEMS_MESSGRUNDLAGE = 'Messgrundlage';
+export const UEMS_AUSGANGSLAGE = 'Ausgangslage';
+export const UEMS_ERWARTETE_WIRKUNG = 'erwartete Wirkung';
+export const UEMS_BEWERTUNGSMETHODE = 'Bewertungsmethode';
+export const UEMS_WIRKUNG = 'Wirkung';
+export const UEMS_BEOBACHTET = 'beobachtet';
+export const UEMS_BEOBACHTET_NICHT_BELEGT = `${UEMS_BEOBACHTET} — nicht belegt`;
+export const UEMS_ZUR_KENNTNIS_GENOMMEN = 'zur Kenntnis genommen';
+/** U1–U3: eine Ursache ist immer die Aussage einer Person — nie ein Satz des Systems, nie ein Vokabular. */
+export const UEMS_AUSSAGE_VON = 'Aussage von';
+export const UEMS_URSACHE_AUSSAGE_VON = `Ursache — ${UEMS_AUSSAGE_VON}`;
+/** E2 = A: ohne Messgrundlage kann eine Maßnahme nur „nicht messbar“ bewertet werden. */
+export const UEMS_OHNE_MESSGRUNDLAGE = 'ohne Messgrundlage';
+export const UEMS_OHNE_MESSGRUNDLAGE_SATZ = `${UEMS_OHNE_MESSGRUNDLAGE} — ${UEMS_WIRKUNG} nicht messbar`;
+/** E5 = A: beim Abruf abgeleitet — kein Läufer, keine Nachricht. */
+export const UEMS_UEBERFAELLIG_SEIT = (tage: number) => `überfällig seit ${tage} Tag${tage === 1 ? '' : 'en'}`;
+
+/** Die geschlossenen Vokabulare (`verbesserung-vectors.json`) in der Kundensicht; `nicht_bewertbar` wie bei AP-17. */
+export const UEMS_ENERGIEZIEL_ZUSTAENDE = { offen: 'offen', bewertet: 'bewertet', beendet: 'beendet' } as const;
+export const UEMS_ENERGIEZIEL_ERGEBNISSE = {
+  erreicht: 'erreicht',
+  verfehlt: 'verfehlt',
+  nicht_bewertbar: 'nicht bewertbar',
+} as const;
+export const UEMS_MASSNAHME_ZUSTAENDE = {
+  geplant: 'geplant',
+  umgesetzt: 'umgesetzt',
+  bewertet: 'bewertet',
+  verworfen: 'verworfen',
+} as const;
+/** E6 = A: „belegt“ sagt nur eine Person, als Stand mit Prüfsumme — das System zeigt „beobachtet“. */
+export const UEMS_MASSNAHME_ERGEBNISSE = {
+  belegt: 'belegt',
+  nicht_belegt: 'nicht belegt',
+  nicht_messbar: 'nicht messbar',
+} as const;
+export const UEMS_ABWEICHUNG_ZUSTAENDE = { offen: 'offen', abgeschlossen: 'abgeschlossen' } as const;
+export const UEMS_ABWEICHUNG_ERGEBNISSE = {
+  massnahme: UEMS_MASSNAHME,
+  erklaert: 'erklärt',
+  keine_abweichung: 'keine Abweichung',
+  nicht_bewertbar: 'nicht bewertbar',
+} as const;
+export const UEMS_AUFFAELLIGKEIT_ANTWORTEN = {
+  abweichung: `${UEMS_ABWEICHUNG} eröffnen`,
+  zur_kenntnis: UEMS_ZUR_KENNTNIS_GENOMMEN,
+} as const;
+
+/** Gemessenes Δ mit einer Stelle; der Wert einer Person (erwartete Wirkung, Zielwert) so, wie sie ihn gesetzt hat. */
+const verbesserungRichtung = (delta: number, stellen: number | null = 1) =>
+  `${Math.abs(delta).toLocaleString('de-DE', { minimumFractionDigits: stellen ?? 0, maximumFractionDigits: stellen ?? 1 })} % ${delta < 0 ? 'weniger' : 'mehr'}`;
+
+/**
+ * Die Satzmuster aus AP-18 §5.9 (SP4). Jede Zahl mit Richtung trägt ihre Bedingung — Bezugsbasis und x von n
+ * Monaten (SP3); ob eine Maßnahme etwas bewirkt hat, sagt eine Person (E6, U3).
+ */
+export const UEMS_VERBESSERUNG_SAETZE = {
+  ursacheAussage: (person: string, datum: string, beleg: string | null, wortlaut: string) =>
+    `${UEMS_URSACHE_AUSSAGE_VON} ${person}, ${datum} (${beleg ? `mit ${UEMS_BELEG}: ${beleg}` : 'keine Messung'}): ‚${wortlaut}‘`,
+  ohneMessgrundlage: (kennung: string, titel: string, einsatz: string, beispiel: string) =>
+    `${kennung} · ${titel} · ${UEMS_OHNE_MESSGRUNDLAGE_SATZ}. Um die ${UEMS_WIRKUNG} zu messen, braucht ${einsatz} eine ${UEMS_ENERGIELEISTUNGSKENNZAHL} (zum Beispiel ${beispiel}).`,
+  wirkung: (kennung: string, delta: number, medium: string, zeitraum: string, bewertbar: number, monate: number,
+    ausschluesse: string | null, erwartet: number | null) =>
+    `${UEMS_WIRKUNG} von ${kennung}, ${UEMS_BEOBACHTET}: ${verbesserungRichtung(delta)} ${medium} als die ${UEMS_BEZUGSBASIS} erwarten lässt (${zeitraum}, ${bewertbar} von ${monate} Monaten${ausschluesse ? `; ${ausschluesse}` : ''})${erwartet === null ? '' : ` — erwartet waren ${verbesserungRichtung(erwartet, null)}`}. Ob die ${UEMS_MASSNAHME} das bewirkt hat, sagt eine Person.`,
+  bewertungOffen: () => 'Beobachtet — nicht belegt. Eine Bewertung mit Begründung setzt eine Person.',
+  energiezielStand: (kennung: string, name: string, zielwert: number, medium: string, zielperiode: string,
+    verantwortlich: string, bewertbar: number, monate: number, delta: number, ausschluesse: string | null,
+    basis: string, fassung: number) =>
+    `${UEMS_ENERGIEZIEL} ${kennung} · ${name}: ${verbesserungRichtung(zielwert, null)} ${medium} als die ${UEMS_BEZUGSBASIS} erwarten lässt · ${zielperiode} · ${UEMS_VERANTWORTLICH} ${verantwortlich}. Stand nach ${bewertbar} von ${monate} Monaten: ${verbesserungRichtung(delta)}${ausschluesse ? ` (${ausschluesse})` : ''}. ${UEMS_BEZUGSBASIS} ${basis}, Fassung ${fassung}.`,
+  ueberfaellig: (kennung: string, zustand: string, termin: string, tage: number, verantwortlich: string) =>
+    `${kennung} · ${zustand} · ${UEMS_TERMIN} ${termin} · ${UEMS_UEBERFAELLIG_SEIT(tage)} · ${verantwortlich}.`,
+  leer: () =>
+    'Noch keine Energieziele, Maßnahmen oder Abweichungen. Sie entstehen aus Ihren Energieleistungskennzahlen: aus einer Auffälligkeit, aus einem Energieziel oder von Hand.',
+  grenze: () => UEMS_NORMGRENZE,
+} as const;
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------
