@@ -349,6 +349,48 @@ GLOSSAR += [
      "beispiel": "Am Netzzähler trägt Ines Kaltenbach Eichung und Beleg ein; am Druckluft-Zähler steht „Klasse und Prüfung nicht erhoben“ — als Prüfaufgabe, nicht als Schätzung (R8).",
      "heute": "`services/api/src/main/java/com/voltpilot/api/uems/MessmittelService.java` (AP-16 IP-15), Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-messmittel.md`.",
      "abgrenzung": "Nicht eine Katalog-Eigenschaft (die steht daneben: „laut Hersteller“)."},
+    {"id": "energieleistungskennzahl", "sicht": "org", "begriff": "Energieleistungskennzahl", "nachtrag": "AP-17 §4.1 (SP1, E1)",
+     "kurz": "Eine Kennzahl mit freigegebener Bezugsbasis — ein Wort an der Kennzahl, kein eigenes Objekt.",
+     "lang": "Eine Energieleistungskennzahl ist eine Kennzahl (AP-11), für die eine Bezugsbasis freigegeben ist. Sie ist kein neues Objekt und keine neue Rechenform: Wert, Versionen, Kaskade und Herkunft der Kennzahl bleiben, wie sie sind (Invariante 1). Das Wort leitet der Leser aus der freigegebenen Fassung ab; ohne Basis bleibt die Kennzahl eine allgemeine Kennzahl (R10).",
+     "beispiel": "KZ-0004 „Strom je Kilogramm Spritzguss“ wird mit der Freigabe von BB-0001 zur Energieleistungskennzahl; KZ-0003 bleibt ohne Basis eine Kennzahl wie bisher.",
+     "heute": "Kein Feld, sondern abgeleitet: `bezugsbasis` am Register-Eintrag der Kennzahl (`services/api/src/main/java/com/voltpilot/api/web/dto/KennzahlDto.java`, AP-17 IP-8; für eine Kennzahl ohne Basis `null`); Anzeigewort `UEMS_ENERGIELEISTUNGSKENNZAHL` (PORTAL/glossar.ts:542). Wegweiser: `docs/agents/root/uems-bezugsbasis.md`.",
+     "abgrenzung": "Nicht eine neue Kennzahl-Art; nicht eine gespeicherte bereinigte Kennzahl (Rechenform `modell` bleibt Folgestufe, E7)."},
+    {"id": "bezugsbasis", "sicht": "org", "begriff": "Bezugsbasis", "nachtrag": "AP-17 §4.2–§4.5 (B1, B4, F1–F5)",
+     "kurz": "Fassung an einer Kennzahl: Referenzperiode, Methode, eingefrorene Grundlage, Basiswert; Freigabe durch eine Person (BB-…).",
+     "lang": "Eine Bezugsbasis hängt an genau einer Kennzahl (eine laufende je Kennzahl) und trägt Fassungen. Jede Fassung nennt Referenzperiode, Methode (Verhältnis, eine oder zwei Einflussgrößen, Gradtage), die eingefrorene Grundlage mit Prüfsumme, Basiswert und Koeffizienten samt Modellgüte, statische Faktoren und Begründung. Eine Person gibt frei (Vier-Augen nach Unternehmenseinstellung); danach bleibt die Fassung byte-gleich — eine Änderung darunter ist ein Anstoß, den eine Person beantwortet (Fassung n + 1 oder bestätigt). Kein Läufer legt an, gibt frei, fasst neu oder beendet (Invariante 4).",
+     "beispiel": "BB-0001 an KZ-0004: Fassung 1 vorläufig (Referenzperiode Oktober 2026, Verhältnis), Fassung 2 mit Einflussgröße Produktionsmenge BZ-6, freigegeben von Ines Kaltenbach.",
+     "heute": "Tabellen `bezugsbasis`, `bezugsbasis_fassung`, `bezugsbasis_anstoss`, `bezugsbasis_aenderung` (MIG/V20260924071500__uems_bezugsbasis.sql:151, :228, :481, :511; RLS + FORCE); Routen `/api/v1/kennzahlen/{id}/bezugsbasen` (services/api/src/main/java/com/voltpilot/api/web/BezugsbasisController.java:39); Dienst `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisService.java`, Grundlage `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisGrundlage.java`, Anstoß `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisAnstoss.java`; Vertrag `docs/contracts/v2/bezugsbasis.md` mit `bezugsbasis-vectors.json`, Zwillinge `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisRegeln.java` · Portal · Python. Wegweiser: `docs/agents/root/uems-bezugsbasis.md`.",
+     "abgrenzung": "Nicht ein Ziel und keine Maßnahme (AP-18); nicht eine Vorperiode (der Vergleich rechnet „erwartet“ statt „Vormonat“)."},
+    {"id": "referenzperiode", "sicht": "org", "begriff": "Referenzperiode", "nachtrag": "AP-17 §4.3 (P1–P3, E2)",
+     "kurz": "Die Monate einer Fassung, aus denen Basiswert und Modell gerechnet werden; unter zwölf Monaten „vorläufig (n von 12)“.",
+     "lang": "Die Referenzperiode ist ein Monatsbereich an der Fassung (`JJJJ-MM/JJJJ-MM`). Sie gilt erst als vollständig, wenn ihre Monate endgültig sind (Endgültigkeits-Läufer, AP-07); die Werte der Kennzahl, der Messstellen und der Einflussgrößen werden mit Version in die Grundlage eingefroren. Kürzer als zwölf Monate wird die Zahl trotzdem gebildet und trägt „vorläufig (n von 12)“ (E2 = A).",
+     "beispiel": "Fassung 1 von BB-0001: Referenzperiode 2026-10/2026-10 — „vorläufig (1 von 12)“.",
+     "heute": "Spalte `referenzperiode` an `bezugsbasis_fassung` (MIG/V20260924071500__uems_bezugsbasis.sql:228); Leser `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisGrundlage.java` (AP-17 IP-7); Anzeigewort `UEMS_REFERENZPERIODE` (PORTAL/glossar.ts:544).",
+     "abgrenzung": "Nicht der Vergleichszeitraum; nicht ein Kalender (W2, E10 = A)."},
+    {"id": "einflussgroesse", "sicht": "org", "begriff": "Einflussgröße (Variable)", "nachtrag": "AP-17 §4.4 (V1, V2, E3)",
+     "kurz": "Eine Bezugsgröße mit Periodenwerten, die das Modell einer Fassung als Variable liest (höchstens zwei).",
+     "lang": "Eine Einflussgröße der Bezugsbasis ist eine Bezugsgröße (AP-09) mit Werten je Periode, zitiert mit ihrer Fassung. Das Modell der Fassung nimmt eine oder zwei (E4 = A: keine nichtlinearen Modelle, keine dritte Variable). Der Vorschlag kommt aus den Einflussgrößen des Energieeinsatzes (AP-16) — dort sind sie Dokumentation, hier eine gerechnete Variable. Die Betriebszeit ist eine Variable wie jede (W2).",
+     "beispiel": "Produktionsmenge BZ-6 (kg je Monat) als Einflussgröße von BB-0001; die Gradtagzahl BZ-8 als Einflussgröße der Heizung.",
+     "heute": "Tabelle `bezugsbasis_variable` (MIG/V20260924071500__uems_bezugsbasis.sql:384); Vorschlag `GET /api/v1/kennzahlen/{id}/variablen-vorschlag` (services/api/src/main/java/com/voltpilot/api/web/KennzahlVariablenVorschlagController.java:42, `services/api/src/main/java/com/voltpilot/api/uems/VariablenVorschlag.java`, AP-17 IP-11a); Anzeigewort `UEMS_EINFLUSSGROESSE` (PORTAL/glossar.ts:545).",
+     "abgrenzung": "Nicht die Einflussgröße des Energieeinsatzes selbst (die bleibt Wortlaut, AP-16 W1); nicht ein statischer Faktor."},
+    {"id": "statischer_faktor", "sicht": "org", "begriff": "Statischer Faktor", "nachtrag": "AP-17 §4.4 (V3, E6)",
+     "kurz": "Was in der Referenzperiode als gleichbleibend angenommen wird, als Liste an der Fassung — ändert es sich, entsteht ein Anstoß.",
+     "lang": "Ein statischer Faktor ist eine Annahme an der Fassung: Fläche, Standort, Anlage, Prozess-Zuordnung oder ein Wortlaut. Die strukturellen Faktoren werden zum Stichtag aus der Struktur kopiert und beim Freigeben neu gelesen; ändert sich einer danach, stößt der Struktur-Läufer die Fassung an (Pfad 2). Ein Wortlaut-Faktor löst nie etwas aus (E6 = A).",
+     "beispiel": "An BB-0001: Fläche Halle 1 = 4 200 m² zum 01.10.2026; „Ein-Schicht-Betrieb“ als Wortlaut.",
+     "heute": "Tabelle `bezugsbasis_faktor` (MIG/V20260924071500__uems_bezugsbasis.sql:415); Vorschlag `GET /api/v1/kennzahlen/{id}/faktoren-vorschlag` (services/api/src/main/java/com/voltpilot/api/web/FaktorenVorschlagController.java:42, `services/api/src/main/java/com/voltpilot/api/uems/FaktorenVorschlag.java`), Kopie zum Stichtag `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisFaktoren.java` (AP-17 IP-16a/b); Anzeigewort `UEMS_STATISCHER_FAKTOR` (PORTAL/glossar.ts:546).",
+     "abgrenzung": "Nicht ein Betriebskalender und kein Schichtmodell als Stammdatum (E10 = A); nicht eine Variable."},
+    {"id": "leistungsvergleich", "sicht": "org", "begriff": "Leistungsvergleich", "nachtrag": "AP-17 §4.7–§4.9 (U1–U6, S1–S5, E8)",
+     "kurz": "Wert gegen „erwartet“ aus der freigegebenen Basis: roh ohne Urteil, bereinigt mit Band und Bedingung; als Bericht ein Stand mit Prüfsumme.",
+     "lang": "Der Leistungsvergleich stellt je Monat den Wert der Kennzahl dem erwarteten Wert der freigegebenen Fassung gegenüber. Roh gibt es kein Urteil; bereinigt urteilt er „besser · im Rahmen · schlechter“ nur mit Band = max(Toleranz, Streuung), Variable, Basis-Fassung und Vorbehalten, sonst steht ein Grund statt einer Zahl (außerhalb der Spannweite `nicht_anwendbar`). Der Zeitraum rechnet Σ ÷ Σ. Als Bericht ist er die Vorlage `leistungsvergleich` je Kennzahl; ein freigegebener Stand belegt die Basis-Fassung (409 `berichts_belege`).",
+     "beispiel": "Dezember 2027 für Spritzguss: KZ-0004 gegen BB-0001 Fassung 2, bereinigt um die Produktionsmenge — Stand Nr. 1 mit Prüfsumme (R8).",
+     "heute": "Leser `GET /api/v1/kennzahlen/{id}/vergleich` (services/api/src/main/java/com/voltpilot/api/web/BezugsbasisVergleichController.java:44, `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisVergleich.java`, AP-17 IP-19/IP-13); Vorlage `leistungsvergleich` in `bericht_vorlage()` (MIG/V20260924071945__uems_leistungsvergleich_vorlage.sql:68), Spalte `bericht.kennzahl_id` (MIG/V20260924211800__uems_leistungsvergleich_kennzahl.sql:7), Abzug `services/api/src/main/java/com/voltpilot/api/uems/BerichtLeistungsvergleich.java` (AP-17 IP-21a/b, IP-22); Anzeigewort `UEMS_LEISTUNGSVERGLEICH` (PORTAL/glossar.ts:551).",
+     "abgrenzung": "Nicht der Vergleich der Messdaten-Oberflächen (AP-13, Vorperiode); nicht eine Ursache und keine Maßnahmenwirkung (AP-18, U6)."},
+    {"id": "wetterbezug", "sicht": "erf", "begriff": "Wetterbezug", "nachtrag": "AP-17 §6.6 (E9 = C)",
+     "kurz": "Eine Gradtagzahl am Standort, deren Tagesmittel VoltPilot aus einem Wetter-Archiv bezieht — Herkunft `bezogen`.",
+     "lang": "Der Wetterbezug bindet eine Gradtagzahl eines Standorts an das Wetter-Archiv (Open-Meteo-Archiv; Quelle, Adresse und Schlüssel sind Werte des Betreibers). Ein täglicher Abruf holt die Tagesmittel über die Koordinaten des Standorts und schreibt Gradtage mit Herkunft `bezogen`, Quelle und Abrufzeit. Ein fehlender Tag fehlt — nie eine Null; der Monat ist dann „unvollständig, x von y Tagen“, der nächste Abruf holt nach. Ein gebundener Wetterbezug sperrt Eingabe und Import derselben Zahl.",
+     "beispiel": "BZ-8 „Gradtagzahl Werk Ahrenberg“ (G20/15) ist an das Wetter-Archiv gebunden; der Oktober 2026 hat 31 von 31 Tagen.",
+     "heute": "Tabelle `bezugsgroesse_wetterbezug` und Spalten `bezugsgroesse_wert.bezug_quelle`, `abgerufen_am`, `bezug_herkunft` (MIG/V20260924192700__uems_wetter_archiv_bezug.sql:310, :344); Takt `services/api/src/main/java/com/voltpilot/api/uems/WetterArchivLaeufer.java` (06:10 Europe/Berlin, Not-Aus `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED`), Abruf `services/api/src/main/java/com/voltpilot/api/uems/WetterArchivAbruf.java`, Quelle `services/api/src/main/java/com/voltpilot/api/uems/OpenMeteoWetterArchiv.java` (AP-17 IP-12b); Binden/Lösen `PUT/DELETE /api/v1/bezugsgroessen/{id}/wetterbezug` (services/api/src/main/java/com/voltpilot/api/web/WetterbezugController.java:33, AP-17 IP-12c).",
+     "abgrenzung": "Nicht eine Vorhersage (AP-09 E13); nicht eine Temperatur-Datei des Kunden (benannte Folgestufe, Auslegung LA1)."},
 ]
 
 # ---------------------------------------------------------------------------------------------
@@ -548,8 +590,15 @@ VERFEINERUNGEN = {
          '`/api/v1/bezugsdaten/importe`; Regeln `uems/BezugsdatenRegeln` ⟷ `bezugsdaten.ts` gegen '
          '`docs/contracts/v2/bezugsdaten-vectors.json`; Portal „Unternehmen › Bezugsgrößen“ (PORTAL/nav.ts:250). '
          'Die Herkunft `bezogen` einer Gradtagzahl (von VoltPilot aus einem Wetter-Archiv, AP-17 E9 = C) ist '
-         'entschieden, aber noch nicht gebaut (AP-17 IP-12). Einstieg: '
+         'seit AP-17 IP-12 gebaut (siehe „Wetterbezug“). Einstieg: '
          '`docs/agents/root/uems-bezugsgroessen-abschluss.md`.'),
+        ('AP-17 W2 (E10 = A)',
+         'Erledigt: AP-09 §6.5 wies Betriebskalender, Arbeitszeitmodell und Wetterbereinigung AP-17 zu. '
+         'Es gibt keinen Kalender und kein Arbeitszeitmodell als Stammdatum — die Betriebszeit ist eine '
+         'Bezugsgröße mit Periodenwerten und als Einflussgröße eine Variable wie jede; ein Schichtmodell ist '
+         'höchstens ein Wortlaut-Faktor an der Fassung. Die Wetterbereinigung ist mit Gradtagen eingelöst, die '
+         'Temperatur dafür bezieht VoltPilot aus dem Wetter-Archiv (E9 = C). AP-09 E2 („die Zahl wäre geplant, '
+         'nicht gemessen“) bleibt. Einstieg: `docs/agents/root/uems-bezugsbasis.md`.'),
     ],
     "unternehmen": [
         ("AP-02 E2", "Neben dem Kundenbereich entsteht ein eigenes Objekt „Unternehmen“ (Name, Kurzname, Zeitzone-Vorgabe, Sitz, Rechtsform); 1 : n für Konzerne bleibt vorbereitet."),
