@@ -2506,6 +2506,15 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-fleet-back:hover {
   background: var(--vp-tint, #eef3ff);
 }
+/* V-03 (UX-Review 24.09.2026): am Telefon führen die Leiste unten („Cockpit")
+   und der Anlagenname oben denselben Weg - der Bereichs-Rückweg „‹ Anlage …"
+   war dort eine zweite Zeile ohne neue Möglichkeit. Tiefere Rückwege (Modus-
+   Container, Geräte-Brotkrume) bleiben. */
+@media (max-width: 720px) {
+  .vp-fleet-back.vp-bereich-back {
+    display: none;
+  }
+}
 
 /* --- Der Zustands-PUNKT: er lebt weiter an der Anlagen-Karte (#/anlagen) und
    am Cockpit. Der Geld-HELD, das Zeitraum-Segment und die Flotten-Status-KARTE

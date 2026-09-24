@@ -711,3 +711,35 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     expect(screen.queryByTitle('Geräte')).toBeNull();
   });
 });
+
+describe('AppShell · Kontexthilfe am Telefon in der Kopfleiste (UX-Review V-03)', () => {
+  it('führt die Hilfe zusätzlich als „?" in der Kopfleiste - mit zugänglichem Namen', () => {
+    const { container } = render(
+      <AppShell {...baseProps} helpArticle="fahrplan">
+        <div>content</div>
+      </AppShell>,
+    );
+    const oben = container.querySelector('header .vp-topbar-help a')!;
+    expect(oben).not.toBeNull();
+    expect(oben.textContent).toBe('Diese Ansicht verstehen');
+    expect(oben.querySelector('.vp-visually-hidden')).not.toBeNull();
+    // Die Zeile in <main> bleibt für breite Bildschirme; CSS wählt je Breite eine.
+    expect(container.querySelector('main > .vp-context-help a')).not.toBeNull();
+  });
+
+  it('das Stylesheet zeigt am Telefon nur die Kopfleisten-Hilfe', () => {
+    const css = readFileSync(join(process.cwd(), 'src/help/HelpLink.css'), 'utf8');
+    const telefon = css.slice(css.indexOf('@media (max-width: 720px)'));
+    expect(telefon).toMatch(/\.vp-topbar-help\s*\{\s*display:\s*inline-flex/);
+    expect(telefon).toMatch(/\.vp-main > \.vp-context-help\s*\{\s*display:\s*none/);
+  });
+
+  it('ohne Hilfe-Artikel gibt es auch kein „?"', () => {
+    const { container } = render(
+      <AppShell {...baseProps}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(container.querySelector('.vp-topbar-help')).toBeNull();
+  });
+});

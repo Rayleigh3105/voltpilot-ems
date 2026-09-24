@@ -37,12 +37,18 @@ export function HelpProvider({ children }: { children: ReactNode }) {
   </HelpContext.Provider>;
 }
 
-export function HelpLink({ article, children = 'Diese Ansicht verstehen' }: { article: HelpArticleId; children?: ReactNode }) {
+/**
+ * `iconOnly`: nur das Fragezeichen, der Text bleibt als zugänglicher Name
+ * erhalten - die Telefon-Kopfleiste trägt die Kontexthilfe so, statt ihr eine
+ * eigene Zeile über jeder Seite zu geben (UX-Review V-03).
+ */
+export function HelpLink({ article, children = 'Diese Ansicht verstehen', iconOnly = false }: { article: HelpArticleId; children?: ReactNode; iconOnly?: boolean }) {
   const open = useContext(HelpContext);
-  return <a className="vp-help-link" href={helpHref(article)} target="_blank" rel="noopener noreferrer"
+  return <a className={iconOnly ? 'vp-help-link vp-help-link-icon' : 'vp-help-link'} href={helpHref(article)} target="_blank" rel="noopener noreferrer"
+    title={iconOnly && typeof children === 'string' ? children : undefined}
     onClick={(event) => {
       if (!open || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       open(article, event.currentTarget);
-    }}><Icon name="help-circle" size={17} /><span>{children}</span></a>;
+    }}><Icon name="help-circle" size={iconOnly ? 22 : 17} /><span className={iconOnly ? 'vp-visually-hidden' : undefined}>{children}</span></a>;
 }

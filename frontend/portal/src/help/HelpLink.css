@@ -5,3 +5,13 @@
 /* Reuse the shared centered modal, including its stack and closing motion. */
 .vp-modal:has(.vp-help-panel) { width: min(840px, 100%); }
 .vp-modal:has(.vp-help-panel) .dfoot { flex-wrap: wrap; justify-content: space-between; }
+/* V-03 (UX-Review 24.09.2026): am Telefon trägt die Kopfleiste die
+   Kontexthilfe als „?"; die Zeile „Diese Ansicht verstehen" über jeder Seite
+   kostete dort eine eigene Zeile, bevor irgendein Inhalt kam. Der Bereichs-
+   Rückweg „‹ Anlage …" entfällt dort ebenso (`index.css`, `.vp-bereich-back`). */
+.vp-topbar-help { display: none; }
+.vp-help-link-icon { justify-content: center; min-width: 44px; padding: 0; text-decoration: none; }
+@media (max-width: 720px) {
+  .vp-topbar-help { display: inline-flex; align-items: center; flex: 0 0 auto; }
+  .vp-main > .vp-context-help { display: none; }
+}

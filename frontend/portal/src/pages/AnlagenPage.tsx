@@ -534,7 +534,9 @@ function AnlagenSubPage({
   return (
     <>
       {!eigenerRueckweg && (
-        <button type="button" className="vp-fleet-back" onClick={onBack}>
+        /* `vp-bereich-back`: am Telefon ausgeblendet (V-03) - dort führen die
+           Leiste unten („Cockpit") und der Anlagenname oben denselben Weg. */
+        <button type="button" className="vp-fleet-back vp-bereich-back" onClick={onBack}>
           <Icon name="chevron-left" size={18} />
           Anlage {site.name}
         </button>

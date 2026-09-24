@@ -479,6 +479,14 @@ export function AppShell({
             </span>
           )}
 
+          {/* V-03: am Telefon wohnt die Kontexthilfe als „?" hier oben statt
+              als eigene Zeile über jeder Seite (CSS blendet sie nur dort ein
+              und die Zeile in <main> dort aus). */}
+          {helpArticle && (
+            <span className="vp-topbar-help">
+              <HelpLink article={helpArticle} iconOnly />
+            </span>
+          )}
           <div className="vp-usermenu" ref={menuRef}>
             <div className="meta">
               <div className="n">
