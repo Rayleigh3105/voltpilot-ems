@@ -179,6 +179,17 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: npm run test:bundle
 
+      # Layout-Waechter (UX-Review V-07): vermisst Cockpit und Fahrplan in
+      # einem echten Browser - Chromium und WebKit, 1440 und 375 px. Die
+      # aufgeblasenen Energiefluss-Symbole hingen an der Browser-Version und
+      # kein Test sah sie. Geometrie statt Pixelvergleich; startet auf dem
+      # Runner kein Browser, ueberspringt der Schritt mit Warnung (wie der
+      # Browser-Teil von test:csp).
+      - name: Layout smoke (Cockpit + Fahrplan im Browser)
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run test:layout
+
       # ---- Repo-Werkzeuge (Shell) -----------------------------------------
       # PyYAML, weil test-gitops-bump-workflow.sh den echten `run:`-Text des
       # Tag-Bump-Schritts AUS den Workflow-Dateien liest und ihn ausfuehrt.

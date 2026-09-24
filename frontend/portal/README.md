@@ -26,6 +26,8 @@ Vite startet auf <http://localhost:5173>. API-/Keycloak-Adressen werden über `V
 
 Gezielte Browserfälle: `npm run test:e2e -- help.spec.ts`; weitere Fälle entsprechend auswählen. Browserabhängigkeiten einmalig mit `npx playwright install chromium webkit` installieren.
 
+`npm run test:layout` vermisst Cockpit und Fahrplan in Chromium und WebKit bei 1440 und 375 px (`e2e/layout-waechter.spec.ts`): Symbolgröße im Energiefluss, Überlauf, Leerraum, eine Legende unter dem Fahrplan-Bild, Seitenhöhe. Das Deploy-Gate führt ihn aus; startet auf dem Runner kein Browser, überspringt er mit Warnung.
+
 ## Messbare Ladezeiten
 
 Wiederholbare Cockpit-/Anlagenwechsel-Messungen: [Performance-Rig](e2e/performance/README.md). `npm run test:bundle` prüft die Grenzen für Einstieg (230 kB gzip) und gemeinsames Chart-Bundle (210 kB gzip).
