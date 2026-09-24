@@ -62,3 +62,14 @@ Stand (Trigger `massnahme_bewertet_mit_stand`). Neuer Stand nach einem Anstoß (
 Vorgang](uems-vorgang-anstoss.md). ⚠ Nicht gebaut: die Fläche (IP-20). Nachweis: `MassnahmeApiTest` (`r6StandNr1BelegtMitPruefsummeUndNr2`,
 `r7OhneMessgrundlageNurNichtMessbarRechtUndZaun`, `vierAugenNichtDerUrheberNichtDerVerantwortliche`),
 `MassnahmeSchnittstelleVertragTest`, Zeilen in `RechtMatrixApiTest`, `RechtRoutenArchitekturTest.DIENST`.
+
+## Abnahme der Plan-Konstruktion (AP-18 IP-22, NW-6)
+
+`UemsMassnahmeAbnahmeTest` fährt die Zeitachse der Referenzdatei 1.9 (R8, R2, R3, R5–R7, R10, R12) über die Routen und
+prüft die zwei Sätze des Auftrags: verbunden (Ziel, Verantwortlicher, Messgrundlage, Ergebnis) und keine Ursache ohne
+„Aussage von“ — im Quelltext der Leser (`LESER`, `VerbesserungRegeln.SAETZE`) UND in jeder Leser-Antwort des Plans.
+⚠ Ein neuer Leser mit Kundensätzen gehört in `LESER`; ein neuer Text mit „Ursache“ ohne „Aussage von“ macht den Test
+rot (Ausnahme nur die zwei Eingabe-Ablehnungen in `ABLEHNUNGEN`). Die Welt (KZ-0004 × BB-0001 F1/F2, EE-3, fünf
+Personen) steht einmal in `MassnahmeWelt` und wird von `MassnahmeApiTest` und der Abnahme geteilt — keine zweite
+Welt bauen. ⚠ `bewertung: null` ist die ganze API-Aussage „ohne Person“; den Satz `bewertung_offen` („Beobachtet — nicht
+belegt …“) bildet die Fläche aus ihrem Zwilling, die API liefert ihn nicht.
