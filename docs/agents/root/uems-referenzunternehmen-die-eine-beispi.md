@@ -177,12 +177,22 @@ davon.** Sie laufen mit `./mvnw clean test -Dtest='com.voltpilot.api.uems.*Test'
 Rein ADDITIV: `ohneFassung19` nimmt die Zusätze heraus, dann ist die Datei Zeichen für Zeichen
 1.8 (Fingerabdruck in beiden Zwillingen). Neu sind Ziele, Maßnahmen und Abweichungen:
 
-- **Vier Wurzel-Blöcke:** `energieziele[]` (EZ-2028-0001), `massnahmen[]` (M-2028-0001 mit
-  Messgrundlage, M-2028-0002 ohne), `abweichungen[]` (AW-2026-0001, AW-2028-0001),
-  `auffaelligkeiten[]` (drei Vermerke) — dazu `kennzahlen_1_9_monate` (KZ-0004 04/2028–01/2029,
-  Annahme) und `abnahmefaelle_ap18` (R1, R3–R8, R12 „gegeben“ wörtlich).
+- **Sechs neue Wurzel-Schlüssel** (§8 IP-1 zählte vier — Zählfehler, AP-18 B.6 B5):
+  `energieziele[]` (EZ-2028-0001), `massnahmen[]` (M-2028-0001 mit Messgrundlage, M-2028-0002
+  ohne), `abweichungen[]` (AW-2026-0001, AW-2028-0001), `auffaelligkeiten[]` (drei Vermerke),
+  `kennzahlen_1_9_monate` (KZ-0004 04/2028–01/2029, Annahme) und `abnahmefaelle_ap18` (R1, R3–R8,
+  R12 „gegeben“ wörtlich).
 - **Nachträge in Bestandsblöcken:** K-2028-0001 in `korrekturen[]`, EE-3 Fassung 3 in
   `einstufungen[]` (Fassung 2 endet am 19.11.2028), `pflege[]` nur an BB-0001.
+- **Nachlese 24.09.2026 (Z7–Z9, Lesarten LA7/LA8), innerhalb von 1.9:** R3 nennt für EE-1 die
+  Einstufungs-Fassung 1 (keine Ausnahme mehr in den Zwillingen). EE-3 Fassung 3 urteilt nach
+  Kriterien-Fassung 2 K1 `ueber_schwelle` (6,2 % ≥ 5 %), Vorschlag `ueber_schwelle`, Einstufung
+  der Person `nicht_wesentlich` — die Abweichung vom Vorschlag ist `vorschlag` ≠ `einstufung`,
+  wie bei EE-3 Fassung 1; ein eigenes Feld gibt es nicht. ⚠ **Eine berechnete Messstelle wird nie
+  direkt berichtigt:** K-2028-0001 trifft MS-06 (−600 kWh), MS-20 und KZ-0004 stehen in `folgen[]`;
+  `berichtigungsFehler` in beiden Zwillingen prüft das. Werte ohne Konzept-Beleg nennt
+  `korrekturen[].annahme.felder`. Die Oktober-Rechnung der Zwillinge liest nur Korrekturen der
+  Periode 2026-10.
 - **Ein Muster für jeden Vorgang:** Verantwortlicher aus `personen[]`, Termin bzw. Frist, `zustand`
   = letzter Schritt eines append-only `verlauf[]`. Jeder Schritt ist einer der 18 Übergänge aus AP-18
   `vorgaenge.json` (Tabelle `UEBERGAENGE` in beiden Zwillingen). `person: null` gibt es nur bei

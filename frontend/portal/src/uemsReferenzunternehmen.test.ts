@@ -1632,7 +1632,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.6 (AP-16 E11)', () => {
       if (typeof m.beispielwerte.oktober_2026_kwh === 'number') oktober.set(m.kennzeichen, m.beispielwerte.oktober_2026_kwh);
     }
     for (const k of daten.korrekturen as any[]) {
-      for (const f of k.folgen as any[]) if (f.objekt.startsWith('MS-')) oktober.set(f.objekt, f.wert);
+      if (k.periode === '2026-10') for (const f of k.folgen as any[]) if (f.objekt.startsWith('MS-')) oktober.set(f.objekt, f.wert);
     }
     const personen = new Set((daten.personen as any[]).map((p) => p.kuerzel as string));
     const bezugsgroessen = new Set((daten.bezugsgroessen as any[]).map((b) => b.kennzeichen as string));
@@ -2255,6 +2255,22 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
     expect(ursachenFehler(e)).toHaveLength(1);
   });
 
+  /** Eine berechnete Messstelle wird nie direkt berichtigt (LA7): die Reihe einer Korrektur ist gemessen, jede berechnete Folge nennt sie in ihrer Formel. */
+  const berichtigungsFehler = (d: any): string[] => {
+    const ms = nach(d.messstellen);
+    return (d.korrekturen as any[]).flatMap((k) => [
+      ...(ms[k.reihe]?.art === 'gemessen' ? [] : [`${k.kennung}: ${k.reihe} ist nicht gemessen`]),
+      ...(k.folgen as any[]).filter((f) => ms[f.objekt]?.art === 'berechnet' && !ms[f.objekt].formel.split(' ').includes(k.reihe))
+        .map((f) => `${k.kennung}: ${f.objekt} folgt nicht aus ${k.reihe}`),
+    ]);
+  };
+  it('eine berechnete Messstelle wird nie direkt berichtigt — Rot-Probe: Korrektur auf MS-20', () => {
+    expect(berichtigungsFehler(daten)).toEqual([]);
+    const d = structuredClone(daten);
+    d.korrekturen.find((k: any) => k.kennung === 'K-2028-0001').reihe = 'MS-20';
+    expect(berichtigungsFehler(d)).toEqual(['K-2028-0001: MS-20 ist nicht gemessen', 'K-2028-0001: MS-20 folgt nicht aus MS-20']);
+  });
+
   it('die Kennzeichen-Zähler sind je Jahr und Art lückenlos — Rot-Probe: Lücke, falsches Jahr', () => {
     expect(zaehlerFehler(daten)).toEqual([]);
     const d = structuredClone(daten); d.massnahmen[1].kennzeichen = 'M-2028-0003';
@@ -2367,9 +2383,11 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
     expect(ziel.bewertung.pruefsumme).toBe(pruef(ziel.bewertung.kopie));
     const k = daten.korrekturen.find((x: any) => x.kennung === 'K-2028-0001');
     const kg = m1.ausgangslage.kopie.bedingung['BZ-1_kg'];
-    expect(k.folgen[1].wert).toBe(halbAuf(k.neu_kwh / kg, 4));
-    expect(g.R12.vergleich_version_2.delta_prozent).toBe(vergleiche(f, kg, k.neu_kwh).delta);
-    expect(m1.ausgangslage.kopie.delta_prozent).toBe(vergleiche(f, kg, k.alt_kwh).delta);
+    // K-2028-0001 trifft MS-06; die Kennzahl liest die berechnete MS-20, die ihrer Formel folgt (LA7)
+    const ms20 = k.folgen.find((x: any) => x.objekt === 'MS-20');
+    expect(k.folgen.find((x: any) => x.objekt === 'KZ-0004').wert).toBe(halbAuf(ms20.wert / kg, 4));
+    expect(g.R12.vergleich_version_2.delta_prozent).toBe(vergleiche(f, kg, ms20.wert).delta);
+    expect(m1.ausgangslage.kopie.delta_prozent).toBe(vergleiche(f, kg, ms20.wert - (k.neu_kwh - k.alt_kwh)).delta);
     expect(m1.ausgangslage.kopie.gemessen_version).toBe(1);
     expect(Date.parse(k.vorgeschlagen_am)).toBeLessThan(Date.parse(k.freigegeben_am));
     const aw1 = nach(daten.abweichungen)['AW-2026-0001'].anlass;
@@ -2402,8 +2420,7 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
     expect(m1.ausgangslage.kopie).toEqual(r3a);
     expect(m1.ausgangslage.kopiert_am).toBe(kopiert_am);
     for (const feld of ['kennzahl', 'bezugsbasis', 'fassung', 'methode', 'bewertungsmethode_satz']) expect(m1.messgrundlage[feld], feld).toBe(r3.messgrundlage[feld]);
-    // Befund (PR-Text): R3 nennt für EE-1 die Einstufungs-Fassung 2 — EE-1 hat in der Datei nur Fassung 1
-    expect([m1.einsatz.kennzeichen, r3.einsatz.einstufung_fassung, m1.einsatz.einstufung_fassung]).toEqual([r3.einsatz.kennzeichen, 2, 1]);
+    expect([m1.einsatz.kennzeichen, m1.einsatz.einstufung_fassung]).toEqual([r3.einsatz.kennzeichen, r3.einsatz.einstufung_fassung]);
     const r4 = g.R4.energieziel;
     for (const feld of ['kennzeichen', 'kennzahl', 'bezugsbasis', 'fassung', 'zielwert_prozent', 'zielperiode', 'verantwortlich', 'wortlaut', 'begruendung', 'angelegt']) {
       expect(ez[feld], feld).toEqual(r4[feld]);
@@ -2421,6 +2438,14 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
     const f3 = daten.einstufungen.find((e: any) => e.einsatz === 'EE-3').fassungen[2];
     const rs = r7.ap16_rueckstufung;
     expect([f3.fassung, f3.gueltig_ab, f3.einstufung, f3.person, f3.begruendung]).toEqual([rs.fassung, rs.ab, rs.einstufung, rs.person, `${rs.begruendung}.`]);
+    // LA8 (Z8): nach Kriterien-Fassung 2 liegt 6,2 % über K1 — Urteil und Vorschlag „über Schwelle“, die Person stuft zurück
+    const kriterien2 = daten.bewertung_kriterien.find((k: any) => k.fassung === f3.herkunft.kriterien_fassung);
+    const k1 = kriterien2.kriterien.find((k: any) => k.kennung === 'K1');
+    const anteil = (100 * f3.herkunft.eingaenge[0].wert) / f3.herkunft.nenner.wert;
+    expect([f3.herkunft.kriterien_fassung, k1.schwelle, Math.round(anteil * 10) / 10]).toEqual([2, 5, 6.2]);
+    expect([f3.herkunft.urteil.K1, f3.herkunft.vorschlag]).toEqual([anteil >= k1.schwelle ? 'ueber_schwelle' : 'unter_schwelle', 'ueber_schwelle']);
+    expect(f3.einstufung).not.toBe('wesentlich');
+    expect(rs.vorschlag_nach_kriterien_fassung_2).toContain('ÜBER der Schwelle K1');
     const r8 = g.R8, w1 = aw['AW-2026-0001'];
     for (const feld of ['kennzahl', 'bezugsbasis', 'fassung', 'gemessen_kwh', 'flaeche_m2', 'kennzahl_kwh_je_m2', 'basiswert', 'delta_prozent', 'urteil', 'kennzeichen']) {
       expect(w1.anlass[feld], feld).toEqual(r8.vergleich_november_2026[feld]);
@@ -2432,8 +2457,14 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
     for (const feld of ['am', 'person', 'ergebnis', 'begruendung']) expect(w1.abschluss[feld], feld).toBe(r8.abschluss[feld]);
     const r12 = g.R12;
     const k = daten.korrekturen.find((x: any) => x.kennung === 'K-2028-0001');
-    expect([k.reihe, k.periode, k.alt_kwh, k.neu_kwh, k.freigegeben_am, k.freigegeben_von, k.folgen[1].wert])
-      .toEqual([r12.korrektur.messstelle, r12.korrektur.periode, r12.korrektur.alt_kwh, r12.korrektur.neu_kwh, r12.korrektur.freigegeben_am, r12.korrektur.person, r12.korrektur.kennzahl_version_2]);
+    const folge = (o: string) => k.folgen.find((f: any) => f.objekt === o);
+    expect([k.reihe, k.periode, k.neu_kwh - k.alt_kwh, k.freigegeben_am, k.freigegeben_von, folge('KZ-0004').wert])
+      .toEqual([r12.korrektur.reihe.split(' ')[0], r12.korrektur.periode, r12.korrektur.differenz_kwh, r12.korrektur.freigegeben_am, r12.korrektur.person, r12.korrektur.kennzahl_version_2]);
+    const ms20 = r12.korrektur.folge_ms_20;
+    expect([folge(ms20.berechnete_messstelle).version, folge(ms20.berechnete_messstelle).wert, ms20.neu_kwh - ms20.alt_kwh])
+      .toEqual([ms20.version, ms20.neu_kwh, r12.korrektur.differenz_kwh]);
+    // der absolute Dezember-Wert von MS-06 und die Vorschlagszeit sind Annahmen des Baus (LA7)
+    expect(k.annahme.felder).toEqual(['alt_kwh', 'neu_kwh', 'vorgeschlagen_am']);
     const a = m1.anstoesse[0];
     expect([a.art, a.anlass_kennung, a.am]).toEqual([r12.anstoss.art, r12.anstoss.anlass_kennung, r12.anstoss.am]);
     for (const feld of ['am', 'person', 'antwort', 'begruendung']) expect(a.antwort[feld], feld).toBe(r12.antwort[feld]);

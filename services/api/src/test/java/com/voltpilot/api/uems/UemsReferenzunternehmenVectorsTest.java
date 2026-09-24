@@ -1977,6 +1977,9 @@ class UemsReferenzunternehmenVectorsTest {
             }
         }
         for (JsonNode k : kinder(d.get("korrekturen"))) {
+            if (!"2026-10".equals(text(k, "periode"))) {
+                continue;
+            }
             for (JsonNode f : kinder(k.get("folgen"))) {
                 if (text(f, "objekt").startsWith("MS-")) {
                     oktober.put(text(f, "objekt"), f.get("wert").decimalValue());
@@ -2826,6 +2829,42 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(ursachenFehler(e)).hasSize(1);
     }
 
+    /** Die Folge einer Korrektur an einem Objekt (Messstelle oder Kennzahl). */
+    static JsonNode folge(JsonNode korrektur, String objekt) {
+        return kinder(korrektur.get("folgen")).stream().filter(f -> objekt.equals(text(f, "objekt"))).findFirst().orElseThrow();
+    }
+
+    /** Eine berechnete Messstelle wird nie direkt berichtigt (LA7): die Reihe einer Korrektur ist gemessen, jede berechnete Folge nennt sie in ihrer Formel. */
+    static List<String> berichtigungsFehler(JsonNode d) {
+        Map<String, JsonNode> ms = nachKennzeichen(d.get("messstellen"));
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode k : kinder(d.get("korrekturen"))) {
+            String reihe = text(k, "reihe");
+            if (!ms.containsKey(reihe) || !"gemessen".equals(text(ms.get(reihe), "art"))) {
+                fehler.add(text(k, "kennung") + ": " + reihe + " ist nicht gemessen");
+            }
+            for (JsonNode f : kinder(k.get("folgen"))) {
+                JsonNode m = ms.get(text(f, "objekt"));
+                if (m != null && "berechnet".equals(text(m, "art")) && !List.of(text(m, "formel").split(" ")).contains(reihe)) {
+                    fehler.add(text(k, "kennung") + ": " + text(f, "objekt") + " folgt nicht aus " + reihe);
+                }
+            }
+        }
+        return fehler;
+    }
+
+    @Test
+    void eineBerechneteMessstelleWirdNieDirektBerichtigt() throws Exception {
+        assertThat(berichtigungsFehler(daten())).isEmpty();
+    }
+
+    @Test
+    void rotProbeBerichtigung() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        kinder(d.get("korrekturen")).stream().filter(k -> "K-2028-0001".equals(text(k, "kennung"))).forEach(k -> ((ObjectNode) k).put("reihe", "MS-20"));
+        assertThat(berichtigungsFehler(d)).containsExactly("K-2028-0001: MS-20 ist nicht gemessen", "K-2028-0001: MS-20 folgt nicht aus MS-20");
+    }
+
     /** Kennzeichen EZ-/M-/AW-JJJJ-NNNN: je Art und Jahr lückenlos ab 1; das Jahr ist das des Anlegens (EZ: der Zielperiode). */
     static List<String> zaehlerFehler(JsonNode d) {
         List<String> fehler = new ArrayList<>();
@@ -3196,10 +3235,12 @@ class UemsReferenzunternehmenVectorsTest {
         // die Korrektur: Version 2 des Dezembers 2027 (R12) — die Ausgangslage bleibt Version 1
         JsonNode k = kinder(d.get("korrekturen")).stream().filter(x -> "K-2028-0001".equals(text(x, "kennung"))).findFirst().orElseThrow();
         BigDecimal kg = m1.at("/ausgangslage/kopie/bedingung/BZ-1_kg").decimalValue();
-        assertThat(k.at("/folgen/1/wert").decimalValue()).isEqualByComparingTo(k.get("neu_kwh").decimalValue().divide(kg, 4, RoundingMode.HALF_UP));
-        Map<String, Object> v2 = vergleiche(f2, kg, k.get("neu_kwh").decimalValue());
+        // K-2028-0001 trifft MS-06; die Kennzahl liest die berechnete MS-20, die ihrer Formel folgt (LA7)
+        BigDecimal ms20 = folge(k, "MS-20").get("wert").decimalValue();
+        assertThat(folge(k, "KZ-0004").get("wert").decimalValue()).isEqualByComparingTo(ms20.divide(kg, 4, RoundingMode.HALF_UP));
+        Map<String, Object> v2 = vergleiche(f2, kg, ms20);
         assertThat(g.get("R12").at("/vergleich_version_2/delta_prozent").decimalValue()).isEqualByComparingTo((BigDecimal) v2.get("delta"));
-        Map<String, Object> v1 = vergleiche(f2, kg, k.get("alt_kwh").decimalValue());
+        Map<String, Object> v1 = vergleiche(f2, kg, ms20.subtract(k.get("neu_kwh").decimalValue().subtract(k.get("alt_kwh").decimalValue())));
         assertThat(m1.at("/ausgangslage/kopie/delta_prozent").decimalValue()).isEqualByComparingTo((BigDecimal) v1.get("delta"));
         assertThat(m1.at("/ausgangslage/kopie/gemessen_version").asInt()).isOne();
         assertThat(zeit(text(k, "vorgeschlagen_am"))).isBefore(zeit(text(k, "freigegeben_am")));
@@ -3256,10 +3297,8 @@ class UemsReferenzunternehmenVectorsTest {
         for (String feld : List.of("kennzahl", "bezugsbasis", "fassung", "methode", "bewertungsmethode_satz")) {
             assertThat(m1.at("/messgrundlage/" + feld).asText()).as("R3 " + feld).isEqualTo(r3.at("/messgrundlage/" + feld).asText());
         }
-        // Befund (PR-Text): R3 nennt für EE-1 die Einstufungs-Fassung 2 — EE-1 hat in der Datei nur Fassung 1 (seit 06.11.2026)
-        assertThat(m1.at("/einsatz/kennzeichen").asText()).isEqualTo(r3.at("/einsatz/kennzeichen").asText());
-        assertThat(r3.at("/einsatz/einstufung_fassung").asInt()).isEqualTo(2);
-        assertThat(m1.at("/einsatz/einstufung_fassung").asInt()).isOne();
+        assertThat(List.of(m1.at("/einsatz/kennzeichen").asText(), m1.at("/einsatz/einstufung_fassung").asInt()))
+                .isEqualTo(List.of(r3.at("/einsatz/kennzeichen").asText(), r3.at("/einsatz/einstufung_fassung").asInt()));
         // R4: das Energieziel
         JsonNode r4 = g.get("R4").get("energieziel");
         for (String feld : List.of("kennzeichen", "kennzahl", "bezugsbasis", "fassung", "zielwert_prozent", "zielperiode", "verantwortlich", "wortlaut", "begruendung")) {
@@ -3290,6 +3329,17 @@ class UemsReferenzunternehmenVectorsTest {
         JsonNode rs = r7.get("ap16_rueckstufung");
         assertThat(List.of(f3.get("fassung").asText(), text(f3, "gueltig_ab"), text(f3, "einstufung"), text(f3, "person"), text(f3, "begruendung")))
                 .isEqualTo(List.of(rs.get("fassung").asText(), text(rs, "ab"), text(rs, "einstufung"), text(rs, "person"), text(rs, "begruendung") + "."));
+        // LA8 (Z8): nach Kriterien-Fassung 2 liegt 6,2 % über K1 — Urteil und Vorschlag „über Schwelle“, die Person stuft zurück
+        JsonNode h3 = f3.get("herkunft");
+        JsonNode k1 = kinder(kinder(d.get("bewertung_kriterien")).stream().filter(x -> x.get("fassung").asInt() == h3.get("kriterien_fassung").asInt())
+                .findFirst().orElseThrow().get("kriterien")).stream().filter(x -> "K1".equals(text(x, "kennung"))).findFirst().orElseThrow();
+        BigDecimal anteil = h3.at("/eingaenge/0/wert").decimalValue().multiply(BigDecimal.valueOf(100)).divide(h3.at("/nenner/wert").decimalValue(), 1, RoundingMode.HALF_UP);
+        assertThat(List.of(h3.get("kriterien_fassung").asInt(), k1.get("schwelle").asInt())).containsExactly(2, 5);
+        assertThat(anteil).isEqualByComparingTo("6.2");
+        assertThat(List.of(h3.at("/urteil/K1").asText(), text(h3, "vorschlag")))
+                .containsExactly(anteil.compareTo(k1.get("schwelle").decimalValue()) >= 0 ? "ueber_schwelle" : "unter_schwelle", "ueber_schwelle");
+        assertThat(text(f3, "einstufung")).isNotEqualTo("wesentlich");
+        assertThat(text(rs, "vorschlag_nach_kriterien_fassung_2")).contains("ÜBER der Schwelle K1");
         // R8: Abschluss ohne Maßnahme — Anlass, Aussage, Abschluss
         JsonNode r8 = g.get("R8");
         JsonNode w1 = aw.get("AW-2026-0001");
@@ -3310,10 +3360,17 @@ class UemsReferenzunternehmenVectorsTest {
         // R12: die Korrektur und der Anstoß an M-2028-0001
         JsonNode r12 = g.get("R12");
         JsonNode k = kinder(d.get("korrekturen")).stream().filter(x -> "K-2028-0001".equals(text(x, "kennung"))).findFirst().orElseThrow();
-        assertThat(List.of(text(k, "reihe"), text(k, "periode"), k.get("alt_kwh").asText(), k.get("neu_kwh").asText(), text(k, "freigegeben_am"), text(k, "freigegeben_von")))
-                .isEqualTo(List.of(r12.at("/korrektur/messstelle").asText(), r12.at("/korrektur/periode").asText(), r12.at("/korrektur/alt_kwh").asText(),
-                        r12.at("/korrektur/neu_kwh").asText(), r12.at("/korrektur/freigegeben_am").asText(), r12.at("/korrektur/person").asText()));
-        assertThat(k.at("/folgen/1/wert").decimalValue()).isEqualByComparingTo(r12.at("/korrektur/kennzahl_version_2").decimalValue());
+        assertThat(List.of(text(k, "reihe"), text(k, "periode"), text(k, "freigegeben_am"), text(k, "freigegeben_von")))
+                .isEqualTo(List.of(r12.at("/korrektur/reihe").asText().split(" ")[0], r12.at("/korrektur/periode").asText(),
+                        r12.at("/korrektur/freigegeben_am").asText(), r12.at("/korrektur/person").asText()));
+        assertThat(k.get("neu_kwh").decimalValue().subtract(k.get("alt_kwh").decimalValue())).isEqualByComparingTo(r12.at("/korrektur/differenz_kwh").decimalValue());
+        assertThat(folge(k, "KZ-0004").get("wert").decimalValue()).isEqualByComparingTo(r12.at("/korrektur/kennzahl_version_2").decimalValue());
+        JsonNode r12ms20 = r12.at("/korrektur/folge_ms_20");
+        JsonNode f20 = folge(k, text(r12ms20, "berechnete_messstelle"));
+        assertThat(List.of(f20.get("version").asInt(), f20.get("wert").asInt(), r12ms20.get("neu_kwh").asInt() - r12ms20.get("alt_kwh").asInt()))
+                .containsExactly(r12ms20.get("version").asInt(), r12ms20.get("neu_kwh").asInt(), r12.at("/korrektur/differenz_kwh").asInt());
+        // der absolute Dezember-Wert von MS-06 und die Vorschlagszeit sind Annahmen des Baus (LA7)
+        assertThat(kinder(k.at("/annahme/felder")).stream().map(JsonNode::asText)).containsExactly("alt_kwh", "neu_kwh", "vorgeschlagen_am");
         JsonNode a = m1.at("/anstoesse/0");
         assertThat(List.of(text(a, "art"), text(a, "anlass_kennung"), text(a, "am"))).isEqualTo(List.of(r12.at("/anstoss/art").asText(),
                 r12.at("/anstoss/anlass_kennung").asText(), r12.at("/anstoss/am").asText()));

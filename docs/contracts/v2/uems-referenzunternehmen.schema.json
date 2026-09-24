@@ -621,6 +621,14 @@
           "freigegeben_von": { "type": "string", "description": "Kürzel einer Person dieser Datei." },
           "vieraugen": { "type": "boolean", "description": "Galt bei der Freigabe das Vier-Augen-Prinzip des Unternehmens?" },
           "begruendung": { "type": "string", "minLength": 1 },
+          "annahme": {
+            "type": "object", "additionalProperties": false, "required": ["felder", "grund"],
+            "description": "Fassung 1.9, Nachlese 24.09.2026 (AP-18 LA7): welche Felder dieser Korrektur Annahmen des Baus sind, weil das Konzept sie nicht nennt.",
+            "properties": {
+              "felder": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["alt_kwh", "neu_kwh", "vorgeschlagen_am", "freigegeben_am"] } },
+              "grund": { "type": "string", "minLength": 1 }
+            }
+          },
           "folgen": {
             "type": "array", "minItems": 1,
             "items": {
