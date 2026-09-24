@@ -93,12 +93,13 @@ export const PROZESSE_NICHT_ABRUFBAR = 'Die Prozesse sind gerade nicht abrufbar.
 
 /**
  * Kostenstelle B (21.09.2026): die Mengen je Kostenstelle trägt `…/energie`, und die prüft `messwerte.ansehen` auf
- * Unternehmensebene — eine U-Zelle haben nur diese beiden Rollen (`rechte-matrix.json`; der Test hält beides zusammen).
+ * Unternehmensebene — eine U-Zelle haben nur diese Rollen, seit AP-19 IP-12 auch Einsicht (`rechte-matrix.json`; der Test
+ * hält beides zusammen).
  * Wer sie nicht hat, sieht die Stammdaten der Liste und statt der Zahlen EINEN Satz, warum und wer sie sieht.
  */
 export const MENGEN_RECHT = 'messwerte.ansehen';
-export const MENGEN_ROLLEN = ['energiemanager', 'kundenadministrator'] as const;
-export const OHNE_MENGEN = `Die Mengen je Kostenstelle sehen nur die Rollen ${ROLLE_KUNDENWORT.energiemanager} und ${ROLLE_KUNDENWORT.kundenadministrator}, weil eine Kostenstelle Messstellen aller Standorte umfassen kann.`;
+export const MENGEN_ROLLEN = ['energiemanager', 'kundenadministrator', 'einsicht'] as const;
+export const OHNE_MENGEN = `Die Mengen je Kostenstelle sehen nur die Rollen ${ROLLE_KUNDENWORT.energiemanager}, ${ROLLE_KUNDENWORT.kundenadministrator} und ${ROLLE_KUNDENWORT.einsicht}, weil eine Kostenstelle Messstellen aller Standorte umfassen kann.`;
 
 /** {@link OHNE_MENGEN} mit dem Weg aus der Selbstauskunft (Muster AP-03: wer es hat, wen man fragt). */
 export function ohneMengenSatz(kundenadministratoren: readonly { name: string }[]): string {

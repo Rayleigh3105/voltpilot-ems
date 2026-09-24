@@ -51,6 +51,7 @@ export const ROLLE_LABEL: Record<string, string> = {
   leser: 'Leser',
   unterstuetzer: 'Unterstützer',
   voltpilot_betrieb: 'VoltPilot',
+  einsicht: 'Einsicht',
 };
 
 /** Eine fertige Zeile — jedes Feld ist entweder ein Fakt oder `null`. */

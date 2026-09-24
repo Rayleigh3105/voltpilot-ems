@@ -26,6 +26,10 @@
     "    Widersprüche zwischen Abschnitt und Matrix stehen benannt in rechte-vectors.json",
     "    (`widersprueche`, W-R8 … W-R11) — samt Fällen, die die Auflösung pinnen.",
     "",
+    "SPALTEN SPÄTERER PAKETE: eine Rolle MIT `nachtrag` (heute Einsicht, AP-19 §4.11, RE3/RE5)",
+    "steht NICHT in der Konzept-Tabelle — die bleibt byte-gleich mit ihren sieben Spalten —,",
+    "sondern in der Nachtrags-Tabelle und in „Spalten der Nachträge“ von rechte-matrix.md.",
+    "",
     "ZELLEN-CODES (Legende des Konzepts): U erlaubt, unternehmensweit · S erlaubt je",
     "zugewiesenem Standort · E nur das eigene Konto · - nein · P bleibt beim VoltPilot-Betrieb",
     "(Plattform). Unterstützer: A ab Umfang „Ansehen“ · Ei ab Umfang „Einrichten“ · B nur",
@@ -46,7 +50,7 @@
   ],
   "schema_version": "1.0",
   "$schema_datei": "./rechte.schema.json#/$defs/matrix",
-  "herkunft": "UEMS AP-03 §4.3 (Konzept-Tabelle, Quelle k_matrix.py), §4.1/§4.2 (Rollen, Achsen), Entscheide E1–E15 vom 10.09.2026 · Nachträge: AP-04 §6.7, AP-05 §6 (Zeile „Rechte (AP-03)“), AP-06 §4.8, AP-07 §4.10 (je vom Captain mit dem Paket abgenommen, 10.09.2026)",
+  "herkunft": "UEMS AP-03 §4.3 (Konzept-Tabelle, Quelle k_matrix.py), §4.1/§4.2 (Rollen, Achsen), Entscheide E1–E15 vom 10.09.2026 · Nachträge: AP-04 §6.7, AP-05 §6 (Zeile „Rechte (AP-03)“), AP-06 §4.8, AP-07 §4.10 (je vom Captain mit dem Paket abgenommen, 10.09.2026) · Spalte Einsicht: AP-19 §4.11 (RE3, RE5, E8; IP-12, 24.09.2026)",
   "tabelle": "./rechte-matrix.md",
   "konzept_tabelle": {
     "abschnitt": "AP-03 §4.3",
@@ -181,6 +185,20 @@
         "-"
       ],
       "achsen": "Plattform-Betrieb"
+    },
+    {
+      "kennung": "einsicht",
+      "kundenwort": "Einsicht",
+      "kuerzel": "EI",
+      "geltungsbereich": "unternehmen",
+      "zuweisbar": true,
+      "zellen": [
+        "U",
+        "E",
+        "-"
+      ],
+      "achsen": "Daten: nur sehen (alle Standorte) · Steuerung ✘ · Verwaltung ✘ · nie eine Freigabe, nie ein Eintrag, kein Export",
+      "nachtrag": "AP-19 §4.11"
     }
   ],
   "umfaenge": [
@@ -243,7 +261,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -259,7 +278,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-02 nennt Kundenadministrator und Energiemanager."
     },
@@ -275,7 +295,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "„Standort-Bearbeiter“ aus AP-02 = Bearbeiter."
     },
@@ -291,7 +312,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -307,7 +329,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Bearbeiter nur ab heute (W14)."
     },
@@ -323,7 +346,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "„jeder Leser des Standorts“ (AP-02)."
     },
@@ -339,7 +363,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "heute jeder Benutzer (SiteController ohne Rollenprüfung)."
     },
@@ -355,7 +380,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Installateur: Schritte 2–3 des Mess-Assistenten (AP-01)."
     },
@@ -371,7 +397,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Unterstützer nie (zerstörend)."
     },
@@ -387,7 +414,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "heute jeder Benutzer."
     },
@@ -403,7 +431,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -419,7 +448,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -435,7 +465,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -451,7 +482,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Messdatenpflege — nie der Unterstützer (Nachweis bleibt beim Kunden)."
     },
@@ -467,7 +499,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -483,7 +516,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -499,7 +533,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": null
     },
@@ -515,7 +550,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -531,7 +567,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Unternehmensweite Kennzahlen nur unternehmensweite Rollen (R-A1)."
     },
@@ -547,7 +584,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": null
     },
@@ -563,7 +601,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -579,7 +618,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -589,7 +629,6 @@
       "kundenwort": "Unternehmens-Bericht und Stände ansehen, PDF abrufen",
       "herkunft": "AP-19 §4.2 (RE4, W10)",
       "nachtrag": "AP-19 §4.2",
-      "wie": "bericht.unternehmen",
       "zellen": {
         "kundenadministrator": "U",
         "energiemanager": "U",
@@ -597,9 +636,10 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
-      "anmerkung": "Getrennt von „freigeben“ (W10): Abrufen und PDF am Unternehmens-Bericht; Anlegen, Freigeben, Verwerfen und Archivieren bleiben bei bericht.unternehmen, die CSV bei export.unternehmen. KA und EM behalten dieselben Zellen (RE4); die Spalte Einsicht folgt mit AP-19 IP-12."
+      "anmerkung": "Getrennt von „freigeben“ (W10): Abrufen und PDF am Unternehmens-Bericht; Anlegen, Freigeben, Verwerfen und Archivieren bleiben bei bericht.unternehmen, die CSV bei export.unternehmen. KA und EM behalten dieselben Zellen (RE4); seit AP-19 IP-12 trägt die Spalte Einsicht hier U, die Zeile daneben − — darum ohne `wie`."
     },
     {
       "kennung": "bewertung.abrufen",
@@ -615,7 +655,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Nur die Vorlage energetische_bewertung; derselbe Unternehmenszaun wie bei bericht.unternehmen, ohne andere Berichtsvorlagen zu öffnen."
     },
@@ -625,7 +666,6 @@
       "kundenwort": "Energetische Bewertung und Stände ansehen, PDF abrufen",
       "herkunft": "AP-19 §4.2 (RE4, W10)",
       "nachtrag": "AP-19 §4.2",
-      "wie": "bewertung.abrufen",
       "zellen": {
         "kundenadministrator": "U",
         "energiemanager": "U",
@@ -633,9 +673,10 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
-      "anmerkung": "Getrennt von „anlegen · freigeben“ (W10): Abrufen und PDF der Vorlage energetische_bewertung; Anlegen, Freigeben, Verwerfen, Archivieren, Wiedervorlage und CSV bleiben bei bewertung.abrufen. KA und EM behalten dieselben Zellen (RE4); die Spalte Einsicht folgt mit AP-19 IP-12."
+      "anmerkung": "Getrennt von „anlegen · freigeben“ (W10): Abrufen und PDF der Vorlage energetische_bewertung; Anlegen, Freigeben, Verwerfen, Archivieren, Wiedervorlage und CSV bleiben bei bewertung.abrufen. KA und EM behalten dieselben Zellen (RE4); seit AP-19 IP-12 trägt die Spalte Einsicht hier U, die Zeile daneben − — darum ohne `wie`."
     },
     {
       "kennung": "bezugsbasis.verwalten",
@@ -651,7 +692,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Gebaut in AP-17 IP-7/IP-8 (Routen), „geprüft, bleibt“ und Beenden in IP-17; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
     },
@@ -669,7 +711,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Gebaut in AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
     },
@@ -687,7 +730,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
     },
@@ -705,7 +749,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Datenhaltung des Energieziels seit IP-5. Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
     },
@@ -723,7 +768,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Reserviert für AP-18 IP-7 ff. (Routen); Ergebnis mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
     },
@@ -741,7 +787,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
     },
@@ -759,7 +806,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Reserviert für AP-19 IP-6 ff. (Routen); Datenhaltung von Person, Aufgabe und Dokument seit IP-5. Standort-Zaun über den Standort des Bezugs, ohne Standort = Unternehmen (RE1, RE2): ein Dokument am Unternehmen, an einer Person oder einer Aufgabe nur unternehmensweit. Zuständigkeit verleiht kein Recht."
     },
@@ -777,7 +825,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Reserviert für AP-19 IP-7 ff. (Routen); Freigabe mit „entschieden von“ (Person) und Begründung (10–500 Zeichen), bei Energiepolitik, Anwendungsbereich und Bestellung die Leitung des Unternehmens; bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
     },
@@ -795,7 +844,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "Reserviert für AP-19 IP-6 ff. (Routen); der Unterstützer liest nur an Standort-Bezügen (RE5). Standort-Zaun über den Standort des Bezugs, ohne Standort = Unternehmen (RE1, RE2): ein Dokument am Unternehmen, an einer Person oder einer Aufgabe nur unternehmensweit. Zuständigkeit verleiht kein Recht."
     },
@@ -811,7 +861,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Unterstützer: kein Export (Datenabfluss)."
     },
@@ -827,7 +878,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "standortbeschränkte Nutzer bekommen stattdessen den Export ihrer Standorte mit Kopfzeile „Teilansicht“ (R-A4)."
     },
@@ -843,7 +895,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "Vorgabe-Schicht bleibt VoltPilot; Leser/Bedienberechtigte/Unterstützer schreiben kein Organisations-Layout (W8)."
     },
@@ -859,7 +912,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -875,7 +929,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Unterstützer: Schritte 2–3 (Datenquelle, Messstellen); Schritt 1 und Abschluss der Kunde."
     },
@@ -891,7 +946,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Unterstützer bereitet vor (Tests, Grenze); die Freigabe und der Start bleiben beim Kundenadministrator."
     },
@@ -907,7 +963,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Plan: „Kundenadministrator … nach technischen Prüfungen starten“."
     },
@@ -923,7 +980,8 @@
         "bedienberechtigt": "S",
         "leser": "-",
         "unterstuetzer": "B",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -939,7 +997,8 @@
         "bedienberechtigt": "S",
         "leser": "-",
         "unterstuetzer": "B",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Dauer Pflicht, TTL ≤ 24 h — bleibt beim Entzug bis zum Ablauf (E15)."
     },
@@ -955,7 +1014,8 @@
         "bedienberechtigt": "S",
         "leser": "-",
         "unterstuetzer": "B",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "E4 = A: Betrieb im Rahmen; Regel gewinnt weiterhin immer."
     },
@@ -971,7 +1031,8 @@
         "bedienberechtigt": "S",
         "leser": "-",
         "unterstuetzer": "B",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "Plattform-Aktionen (HardReset, Firmware, Diagnose) bleiben VoltPilot."
     },
@@ -987,7 +1048,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -1003,7 +1065,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "Stufe 1 (Zertifizierung + Scharfschaltung) bleibt VoltPilot (S1); Widerruf auch durch den Kundenadministrator."
     },
@@ -1019,7 +1082,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "Ladepark-Rahmen-Auslegung (Hausreserve, Marge …) bleibt VoltPilot (S5)."
     },
@@ -1035,7 +1099,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "Journal trägt künftig den Benutzer als Urheber (W7)."
     },
@@ -1051,7 +1116,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -1067,7 +1133,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "Plattform-Vorgabe bleibt VoltPilot; „gehört dem Kunden“ → Datenachse."
     },
@@ -1083,7 +1150,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "VoltPilot legt nur den ersten Kundenadministrator eines Kundenbereichs an (W4)."
     },
@@ -1099,7 +1167,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "der letzte Kundenadministrator ist geschützt (W12)."
     },
@@ -1115,7 +1184,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "VoltPilot: nur anfragen; Notfall-Zugriff sichtbar und befristet (E8)."
     },
@@ -1131,7 +1201,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "VoltPilot sieht das Plattform-Protokoll seiner Notfall-Zugriffe."
     },
@@ -1147,7 +1218,8 @@
         "bedienberechtigt": "E",
         "leser": "E",
         "unterstuetzer": "E",
-        "voltpilot_betrieb": "E"
+        "voltpilot_betrieb": "E",
+        "einsicht": "E"
       },
       "anmerkung": null
     },
@@ -1163,7 +1235,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -1179,7 +1252,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": null
     },
@@ -1195,7 +1269,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "AP-01 W6: Admin-Route bleibt; die Anschlussgrenze gehört dem Kunden."
     },
@@ -1211,7 +1286,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "P"
+        "voltpilot_betrieb": "P",
+        "einsicht": "-"
       },
       "anmerkung": "unverändert."
     },
@@ -1228,7 +1304,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "AP-04: „Register lesbar für Leser und Bedienberechtigte“; wer Messstellen pflegt, liest sie; Unterstützer „Ansehen“ liest wie ein Leser (AP-03 §4.2)."
     },
@@ -1246,7 +1323,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "AP-07: „wie Verlauf“ — Zellen der Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“."
     },
@@ -1263,7 +1341,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Auch Erhebungsbogen und Assistent „WAGO-Steuerung anbinden“ (AP-05 §6, W-R10)."
     },
@@ -1280,7 +1359,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Steuerquelle: nur Kundenadministrator — in AP-06 gesperrt. Den Energiemanager nennt AP-06 hier nicht (W-R9)."
     },
@@ -1297,7 +1377,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "AP-06: „alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen““."
     },
@@ -1315,7 +1396,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-10 E15: „Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Bis AP-10 IP-3 trugen das Anlegen der berechneten Messstelle `messstelle.bearbeiten`."
     },
@@ -1333,7 +1415,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-10 E15: „`messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`)“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Seit AP-10 IP-8 nennt `PUT /api/v1/messstellen/{id}/verteilung` die Kennung; gelesen wird über `messstelle.ansehen`. Die Durchsetzung bringt AP-03."
     },
@@ -1351,7 +1434,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/kostenstellen`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung."
     },
@@ -1369,7 +1453,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/prozesse`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung. Eine Messstelle einem Prozess zuordnen bleibt `messstelle.bearbeiten` („Ort, Prozess, Kostenstelle zuordnen“)."
     },
@@ -1387,7 +1472,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
     },
@@ -1405,7 +1491,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Kriterien als Fassung mit Begründung ändern, freigeben oder ablehnen. Lesen über energieeinsatz.ansehen; Vier-Augen nach Unternehmen."
     },
@@ -1423,7 +1510,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Seit AP-16 IP-11 setzen PUT …/einstufung und POST …/einstufung/bestaetigen die Kennung durch; Begründung, vollständige Herkunft und gegebenenfalls eine zweite Person sind Pflicht."
     },
@@ -1441,7 +1529,8 @@
         "bedienberechtigt": "S",
         "leser": "S",
         "unterstuetzer": "A",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
       },
       "anmerkung": "Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12."
     },
@@ -1459,7 +1548,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "Ei",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Angaben am Einbau (Klasse, Prüfung, Beleg als Verweis mit SHA-256) und die Wandler-Klasse; Standort-Zaun über die Anlage des Geräts. Lesen über messwerte.ansehen; ohne Angabe nicht erhoben."
     },
@@ -1477,7 +1567,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-10 E15: „`netzanschluss.verwalten` (Zellen wie `standort.verwalten`)“. Beendet, nie gelöscht (§5.1); seit AP-10 IP-6 nennen `POST /api/v1/standorte/{id}/netzanschluesse`, `PUT …/netzanschluesse/{id}` und `POST …/netzanschluesse/{id}/anlagen` die Kennung. Lesen bleibt ohne eigene Kennung (wie das Standort-Lesemodell)."
     },
@@ -1494,7 +1585,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-09 W8: „U U S - - - -“ — Bearbeiter nur für Geltungsbereiche seines Standorts, nie Unterstützer. Seit AP-09 IP-5 nennen `POST /api/v1/bezugsgroessen`, `PUT`/`DELETE …/{id}` und `POST …/{id}/archivieren` die Kennung; auch das Löschen einer Bezugsgröße ohne Wert (M6)."
     },
@@ -1512,7 +1604,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-08 §4.8 nennt als Recht die Konzept-Zeile `korrektur.erfassen` (AP-03 Z. 202); AP-08 IP-15 gibt dem Ersatzwert eine eigene Kennung mit denselben Zellen — nie der Unterstützer. Auch der Widerruf eines Ersatzwerts gehört hierher (§4.8 wörtlich, W-R12). Die Route kommt mit AP-08 IP-16."
     },
@@ -1529,7 +1622,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "E8: bei Vier-Augen an gibt eine zweite Person frei (Ersteller ≠ Freigeber), und nur Energiemanager oder Kundenadministrator; der Bearbeiter nur bei Vier-Augen aus. Die Zelle sagt, wer überhaupt freigeben kann — Einstellung und Ersteller prüft `korrekturEntscheiden` (rechte-vectors.json, Familie `vieraugen`). Nie der Unterstützer. Seit AP-08 IP-15 nennt `POST /api/v1/korrekturen/{kennung}/freigeben` die Kennung und setzt sie durch."
     },
@@ -1546,7 +1640,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "Bearbeiter nur für eigene Korrekturen und nur bei Vier-Augen aus — die Bedingung prüft `korrekturEntscheiden` (Familie `vieraugen`). Die Zeile regelt die Korrektur; den Ersatzwert widerruft `ersatzwert.erfassen` (§4.8 wörtlich, W-R12). Nie der Unterstützer. Seit AP-08 IP-15 nennt `POST /api/v1/korrekturen/{kennung}/zuruecknehmen` die Kennung und setzt sie durch."
     },
@@ -1563,7 +1658,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "E8: „Konfigurierbar je Unternehmen durch den Kundenadministrator: ‚Freigabe durch eine zweite Person‘ aus (Vorgabe) oder an“. Seit AP-08 IP-15 nennt `PUT /api/v1/unternehmen/vieraugen` die Kennung und setzt sie durch; gelesen wird ohne eigene Kennung (`GET /api/v1/unternehmen/vieraugen`, wie das Unternehmen-Lesemodell)."
     },
@@ -1580,7 +1676,8 @@
         "bedienberechtigt": "-",
         "leser": "-",
         "unterstuetzer": "-",
-        "voltpilot_betrieb": "-"
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
       },
       "anmerkung": "AP-09 IP-8: Erstwert und Berichtigung an der Messstelle; U U S - - - -, nie Unterstützer."
     }
@@ -2183,7 +2280,7 @@
             "bericht.unternehmen_abrufen"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Muster bericht.standort_abrufen; Zellen wie bericht.unternehmen. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+          "anmerkung": "Muster bericht.standort_abrufen; Zellen wie bericht.unternehmen. EI (Einsicht) trägt seit AP-19 IP-12 U."
         },
         {
           "handlung": "Energetische Bewertung und Stände ansehen, PDF abrufen (getrennt von „anlegen · freigeben“, W10)",
@@ -2193,7 +2290,7 @@
             "bewertung.ansehen"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Muster bericht.standort_abrufen; Zellen wie bewertung.abrufen. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+          "anmerkung": "Muster bericht.standort_abrufen; Zellen wie bewertung.abrufen. EI (Einsicht) trägt seit AP-19 IP-12 U."
         },
         {
           "handlung": "Dokumente, Aufgaben, Personen, Audits, Feststellungen und Managementbewertungen anlegen und bearbeiten",
@@ -2203,7 +2300,7 @@
             "energiemanagement.verwalten"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Muster verbesserung.verwalten; Zellen wie verbesserung.verwalten. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+          "anmerkung": "Muster verbesserung.verwalten; Zellen wie verbesserung.verwalten. EI (Einsicht) trägt seit AP-19 IP-12 − (nie ein Eintrag, nie eine Freigabe)."
         },
         {
           "handlung": "Fassung freigeben · „geprüft, bleibt“ · Wirksamkeit festhalten · Audit abschließen · Managementbewertung freigeben",
@@ -2213,7 +2310,7 @@
             "energiemanagement.freigeben"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Muster bezugsbasis.freigeben; Zellen wie bezugsbasis.freigeben. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+          "anmerkung": "Muster bezugsbasis.freigeben; Zellen wie bezugsbasis.freigeben. EI (Einsicht) trägt seit AP-19 IP-12 − (nie ein Eintrag, nie eine Freigabe)."
         },
         {
           "handlung": "Energiemanagement ansehen (Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertungen)",
@@ -2223,7 +2320,7 @@
             "energiemanagement.ansehen"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Muster verbesserung.ansehen; Zellen wie verbesserung.ansehen. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+          "anmerkung": "Muster verbesserung.ansehen; Zellen wie verbesserung.ansehen. EI (Einsicht) trägt seit AP-19 IP-12 U."
         }
       ],
       "regeln": [
@@ -2234,6 +2331,56 @@
         {
           "wortlaut": "Keine Entscheidung ohne Person: wer freigibt, „geprüft, bleibt“ festhält oder aufhebt, braucht `energiemanagement.freigeben` und nennt „entschieden von“ (eine Person im Energiemanagement, auch ohne Konto); bei Vier-Augen bestätigt nie der Urheber (G2, DK3).",
           "wo": "V20260925013500 (energiemanagement_fassung_freigabe_chk, energiemanagement_fassung_entscheidung_chk, energiemanagement_fassung_leitung); Rechte-Zellen dieser drei Kennungen"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-19 §4.11",
+      "titel": "Rolle „Einsicht“ (IP-12)",
+      "konzept": "AP-19 §4.11 (RE3, RE5), E8, R6; entschieden am 24.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Einsicht: unternehmensweit lesen — Nachweise, Änderungsprotokoll, Messwerte, Messstellen, Ereignisse, Boxen, Energieeinsätze, Bezugsbasen, Ziele und Maßnahmen, Berichte und die energetische Bewertung mit ihren Ständen, PDF eines Stands (RE3)",
+          "wer": "EI U; KA, EM und alle anderen Spalten unverändert",
+          "recht": null,
+          "kennungen": [
+            "aenderungsprotokoll.lesen",
+            "bericht.standort_abrufen",
+            "bericht.unternehmen_abrufen",
+            "bewertung.ansehen",
+            "bezugsbasis.ansehen",
+            "datenquelle.ansehen",
+            "energieeinsatz.ansehen",
+            "energiemanagement.ansehen",
+            "ereignisse.ansehen",
+            "messstelle.ansehen",
+            "messwerte.ansehen",
+            "verbesserung.ansehen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Keine neue Zeile: die Spalte Einsicht trägt U genau an den lesenden Zeilen (R6), E am eigenen Konto, sonst −. energiemanagement.ansehen bekommt U mit seiner Zeile (IP-5)."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "nie eine Freigabe, nie ein Eintrag — jede Schreibroute 403 recht_fehlt",
+          "wo": "Spalte einsicht: − an jeder Zeile außer den lesenden (RechtMatrixApiTest, EinsichtApiTest)"
+        },
+        {
+          "wortlaut": "auch − an den Exporten von Messdaten und Berichts-CSV (export.*) und am Zugriffsprotokoll",
+          "wo": "Zeilen export.standort, export.unternehmen, zugriffsprotokoll.lesen; die CSV eines Berichtsstands prüft export.* (BerichtRechte#CSV)"
+        },
+        {
+          "wortlaut": "PDF eines Stands: ja, protokolliert mit Rolle einsicht",
+          "wo": "bericht_abruf.actor_rolle (CHECK bericht_abruf_actor_rolle_chk, getauscht in V20260925030000)"
+        },
+        {
+          "wortlaut": "unternehmensweit, vom Kundenadministrator zuweisbar, befristbar; nach dem Ende gilt wieder die Teilansicht der übrigen Zuweisungen (AP-03 E10)",
+          "wo": "zugriff_rolle() Zeile 8 (V20260925030000); Zuweisung mit gueltig_bis; rechte-vectors.json Fälle r6-*"
+        },
+        {
+          "wortlaut": "der Unterstützer bekommt kein Unternehmensrecht und keine Freigabe (RE5)",
+          "wo": "Spalte unterstuetzer unverändert; energiemanagement.* mit ihrer Zeile (IP-5)"
         }
       ]
     }

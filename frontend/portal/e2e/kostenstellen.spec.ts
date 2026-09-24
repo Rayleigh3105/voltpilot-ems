@@ -19,7 +19,7 @@ const BREITEN = [375, 1440] as const;
 const JETZT = new Date('2026-11-05T08:00:00Z');
 const KEINE_SUMME = 'Die Kostenstellen sind nicht summierbar — nicht verteilte Mengen gehören keiner.';
 const OHNE_MENGEN =
-  'Die Mengen je Kostenstelle sehen nur die Rollen Energiemanager und Kundenadministrator, weil eine Kostenstelle Messstellen aller Standorte umfassen kann.';
+  'Die Mengen je Kostenstelle sehen nur die Rollen Energiemanager, Kundenadministrator und Einsicht, weil eine Kostenstelle Messstellen aller Standorte umfassen kann.';
 const PROZESSE_KEINE_SUMME = 'Die Prozesse sind nicht summierbar — eine Messstelle kann zu mehreren Prozessen gehören.';
 const n = (s: string | null | undefined): string => (s ?? '').replace(/ /g, ' ');
 

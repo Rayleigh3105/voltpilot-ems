@@ -108,11 +108,26 @@ public class ZugriffAenderung {
      */
     @Transactional
     public UUID zuweisen(String benutzerSub, Rolle rolle, UUID standortId, String grund, ProtokollAkteur akteur) {
+        return zuweisen(benutzerSub, rolle, standortId, null, grund, akteur);
+    }
+
+    /**
+     * Wie {@link #zuweisen(String, Rolle, UUID, String, ProtokollAkteur)}, mit einem ENDDATUM {@code bis} (letzter
+     * Tag, einschließlich; {@code null} = unbefristet). Befristen lässt sich allein die Rolle Einsicht (AP-19 IP-12,
+     * RE3: „befristbar“) — ein befristeter Kundenadministrator könnte still als letzter ablaufen; ein Ende in der
+     * Vergangenheit (Zeitzone des Kundenbereichs) ist 400.
+     */
+    @Transactional
+    public UUID zuweisen(String benutzerSub, Rolle rolle, UUID standortId, LocalDate bis, String grund,
+            ProtokollAkteur akteur) {
         sperreKundenbereich();
         Instant jetzt = Instant.now();
         if (rolle == null || rolle == Rolle.UNTERSTUETZER || rolle == Rolle.VOLTPILOT_BETRIEB) {
             // Der Unterstützer entsteht allein über POST /api/v1/unterstuetzung (IP-8, mit Art, Umfang und Ende).
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rolle nicht zuweisbar.");
+        }
+        if (bis != null && rolle != Rolle.EINSICHT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Befristen lässt sich nur die Rolle Einsicht.");
         }
         String name = zugriffe.spiegel(benutzerSub).filter(b -> b.konto() == Konto.BENUTZER
                 && b.zustand() != KontoZustand.GESPERRT && b.zustand() != KontoZustand.ENTFERNT)
@@ -124,7 +139,11 @@ public class ZugriffAenderung {
         pruefen(AenderungsArt.ZUWEISEN, benutzerSub, rolle, standorte, jetzt);
         String bereinigt = grund == null || grund.isBlank() ? null : grund.trim();
         ZoneId zone = zugriffe.kundenbereichKopf().zeitzone();
-        UUID id = zugriffe.zuweisen(new NeueZuweisung(benutzerSub, rolle, standortId, null, null, jetzt, null, null,
+        if (bis != null && bis.isBefore(LocalDate.ofInstant(jetzt, zone))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Das Enddatum liegt in der Vergangenheit.");
+        }
+        Instant endetAm = bis == null ? null : bis.plusDays(1).atStartOfDay(zone).toInstant();
+        UUID id = zugriffe.zuweisen(new NeueZuweisung(benutzerSub, rolle, standortId, null, null, jetzt, bis, endetAm,
                 zone, akteur.sub()), name, akteur, bereinigt);
         protokollieren(ART_ZUGEWIESEN, zugriffe.zeile(id).orElseThrow(), bereinigt, jetzt, akteur);
         return id;

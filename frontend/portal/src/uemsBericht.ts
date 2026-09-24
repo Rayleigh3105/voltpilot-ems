@@ -12,7 +12,7 @@ import {
   WERT_NACHKOMMASTELLEN,
 } from './uemsKennzahl';
 import { datumText } from './uemsOrtsbaum';
-import { darf, type Benutzer, type Kundenbereich, type Matrix } from './rechte';
+import { darf, wirksam, type Benutzer, type Kundenbereich, type Matrix } from './rechte';
 
 /**
  * Die reinen Regeln des BERICHTS (UEMS AP-12 IP-1/IP-3) — der TS-Zwilling von
@@ -656,9 +656,13 @@ export const kennung = (handlung: string, geltungArt: string): string => {
   return k;
 };
 
-/** G3 (R-A4) — die Teilansicht einer Person; `null` = keine. Beide Urteile spricht `darf`. */
+/**
+ * G3 (R-A4) — die Teilansicht einer Person; `null` = keine. Beide Urteile spricht `darf`. Eine wirksame
+ * unternehmensweite Zuweisung ist nie eine Teilansicht — Einsicht (AP-19 IP-12) sieht alles und exportiert nicht.
+ */
 export const teilansicht = (m: Matrix, b: Benutzer, k: Kundenbereich, jetzt: string): string[] | null => {
   if (darf(m, b, k, kennung('csv', UNTERNEHMEN), { standort: null, anlage: null, stichtag: null }, jetzt).darf) return null;
+  if (b.zuweisungen.some((z) => z.standorte === null && wirksam(z, jetzt))) return null;
   return k.standorte
     .filter((s) => darf(m, b, k, TEILANSICHT_RECHT, { standort: s.kennzeichen, anlage: null, stichtag: null }, jetzt).darf)
     .map((s) => s.name);

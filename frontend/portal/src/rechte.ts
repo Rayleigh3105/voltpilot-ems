@@ -27,7 +27,10 @@ import { aufzaehlung, VORGABE_ZEITZONE } from './uemsZustand';
 
 // ─────────────────────────────────────────────────────────────── Vokabular
 
-/** Die sieben Spalten der Matrix, in der Spaltenreihenfolge der Konzept-Tabelle. */
+/**
+ * Die Spalten der Matrix: die sieben der Konzept-Tabelle in ihrer Reihenfolge, dahinter
+ * `einsicht` (Nachtrag AP-19 §4.11, IP-12 — nur lesen, unternehmensweit, befristbar).
+ */
 export const ROLLEN = [
   'kundenadministrator',
   'energiemanager',
@@ -36,6 +39,7 @@ export const ROLLEN = [
   'leser',
   'unterstuetzer',
   'voltpilot_betrieb',
+  'einsicht',
 ] as const;
 export type Rolle = (typeof ROLLEN)[number];
 
@@ -48,11 +52,13 @@ export const ROLLE_KUNDENWORT: Record<Rolle, string> = {
   leser: 'Leser',
   unterstuetzer: 'Unterstützer',
   voltpilot_betrieb: 'VoltPilot-Betrieb',
+  einsicht: 'Einsicht',
 };
 
 /**
  * Die Reihenfolge, in der `rolleNoetig` die KLEINSTE Rolle sucht, die das Recht
- * hätte. Wo Leser es hat, haben es Bearbeiter und Bedienberechtigt auch.
+ * hätte. Wo Leser es hat, haben es Bearbeiter und Bedienberechtigt auch. Einsicht
+ * steht nicht darin: `rolleNoetig` nennt weiter die Rollen von vorher (AP-19 IP-12, NW-5).
  */
 export const ROLLE_NOETIG_REIHENFOLGE: readonly Rolle[] = [
   'leser',
@@ -201,7 +207,7 @@ export function matrixAus(datei: { aktionen: Aktion[] }): Matrix {
   const m = new Map<string, Aktion>();
   for (const a of datei.aktionen) {
     if (ROLLEN.some((r) => a.zellen[r] === undefined)) {
-      throw new Error(`Zeile ohne alle sieben Rollen: ${a.kennung}`);
+      throw new Error(`Zeile ohne alle Rollen: ${a.kennung}`);
     }
     m.set(a.kennung, { kennung: a.kennung, kundenwort: a.kundenwort, zellen: { ...a.zellen } });
   }

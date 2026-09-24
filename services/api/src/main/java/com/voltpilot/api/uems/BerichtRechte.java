@@ -93,23 +93,26 @@ public final class BerichtRechte {
 
     private static Matrix matrix() {
         Map<String, Aktion> m = new LinkedHashMap<>();
-        zeile(m, STANDORT_ABRUFEN, "Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf)", "U", "U", "S", "S", "S", "-", "-");
-        zeile(m, STANDORT_FREIGEBEN, "Standort-Bericht freigeben (Berichtsstand)", "U", "U", "S", "-", "-", "-", "-");
-        zeile(m, UNTERNEHMEN, "Unternehmens-Bericht abrufen / freigeben", "U", "U", "-", "-", "-", "-", "-");
-        zeile(m, UNTERNEHMEN_ABRUFEN, "Unternehmens-Bericht und Stände ansehen, PDF abrufen", "U", "U", "-", "-", "-", "-", "-");
-        zeile(m, BEWERTUNG, "Energetische Bewertung anlegen · freigeben · abrufen", "U", "U", "-", "-", "-", "-", "-");
-        zeile(m, BEWERTUNG_ANSEHEN, "Energetische Bewertung und Stände ansehen, PDF abrufen", "U", "U", "-", "-", "-", "-",
+        zeile(m, STANDORT_ABRUFEN, "Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf)", "U", "U", "S", "S", "S", "-", "-",
+                "U");
+        zeile(m, STANDORT_FREIGEBEN, "Standort-Bericht freigeben (Berichtsstand)", "U", "U", "S", "-", "-", "-", "-", "-");
+        zeile(m, UNTERNEHMEN, "Unternehmens-Bericht abrufen / freigeben", "U", "U", "-", "-", "-", "-", "-", "-");
+        zeile(m, UNTERNEHMEN_ABRUFEN, "Unternehmens-Bericht und Stände ansehen, PDF abrufen", "U", "U", "-", "-", "-", "-",
+                "-", "U");
+        zeile(m, BEWERTUNG, "Energetische Bewertung anlegen · freigeben · abrufen", "U", "U", "-", "-", "-", "-", "-",
                 "-");
-        zeile(m, EXPORT_STANDORT, "Export je Standort (CSV: Messwerte, Kennzahlen)", "U", "U", "S", "S", "S", "-", "-");
-        zeile(m, EXPORT_UNTERNEHMEN, "Unternehmens-Export (alle Standorte)", "U", "U", "-", "-", "-", "-", "-");
-        zeile(m, ANSEHEN, "Messwerte, Zeitreihen, Datenqualität ansehen", "U", "U", "S", "S", "S", "A", "-");
+        zeile(m, BEWERTUNG_ANSEHEN, "Energetische Bewertung und Stände ansehen, PDF abrufen", "U", "U", "-", "-", "-", "-",
+                "-", "U");
+        zeile(m, EXPORT_STANDORT, "Export je Standort (CSV: Messwerte, Kennzahlen)", "U", "U", "S", "S", "S", "-", "-", "-");
+        zeile(m, EXPORT_UNTERNEHMEN, "Unternehmens-Export (alle Standorte)", "U", "U", "-", "-", "-", "-", "-", "-");
+        zeile(m, ANSEHEN, "Messwerte, Zeitreihen, Datenqualität ansehen", "U", "U", "S", "S", "S", "A", "-", "U");
         return new Matrix(Map.copyOf(m));
     }
 
     private static void zeile(Map<String, Aktion> m, String kennung, String kundenwort, String... zellen) {
         Map<Rolle, Zelle> z = new EnumMap<>(Rolle.class);
         Rolle[] rollen = {Rolle.KUNDENADMINISTRATOR, Rolle.ENERGIEMANAGER, Rolle.BEARBEITER, Rolle.BEDIENBERECHTIGT,
-            Rolle.LESER, Rolle.UNTERSTUETZER, Rolle.VOLTPILOT_BETRIEB};
+            Rolle.LESER, Rolle.UNTERSTUETZER, Rolle.VOLTPILOT_BETRIEB, Rolle.EINSICHT};
         for (int i = 0; i < rollen.length; i++) {
             z.put(rollen[i], Zelle.vonCode(zellen[i]));
         }

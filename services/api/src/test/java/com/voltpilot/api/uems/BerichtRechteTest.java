@@ -180,50 +180,56 @@ class BerichtRechteTest {
         return new Benutzer("P", "Person", konto, KontoZustand.AKTIV, List.of(z));
     }
 
-    /** B13 — die dreizehn Zeilen der Matrix und die Teilansicht je Person, durch die Stelle der Routen. */
+    /**
+     * B13 — die dreizehn Zeilen der Matrix und die Teilansicht je Person, durch die Stelle der Routen; dazu die zwei
+     * Prüfungen der Rolle Einsicht (AP-19 IP-12, R6): lesen und PDF ja, CSV und Freigabe 403, keine Teilansicht — und
+     * nach dem Ende der Einsicht wieder die Teilansicht der Leserin.
+     */
     @Test
     void b13AlleDreizehnZeilenUndDieTeilansichtGehenDurchBerichtRechte() throws Exception {
-        JsonNode pruefung = null;
+        List<JsonNode> pruefungen = new ArrayList<>();
         for (JsonNode c : JSON.readTree(V2.resolve("bericht-vectors.json").toFile()).path("cases")) {
             for (JsonNode p : c.path("pruefungen")) {
                 if ("rechte".equals(p.path("regel").asText())) {
-                    pruefung = p;
+                    pruefungen.add(p);
                 }
             }
         }
-        assertThat(pruefung).as("Prüfung rechte in bericht-vectors.json").isNotNull();
-        JsonNode e = pruefung.path("eingang");
-        Instant jetzt = OffsetDateTime.parse(e.path("jetzt").asText()).toInstant();
-        List<Standort> standorte = new ArrayList<>();
-        e.path("kundenbereich").path("standorte").forEach(s -> standorte.add(new Standort(s.path("kennzeichen").asText(),
-                s.path("name").asText())));
-        List<Person> admins = new ArrayList<>();
-        e.path("kundenbereich").path("kundenadministratoren").forEach(p -> admins.add(new Person(p.path("kennung").asText(),
-                p.path("name").asText())));
-        Kundenbereich kb = new Kundenbereich(e.path("kundenbereich").path("name").asText(), standorte, admins);
-        Map<String, Benutzer> personen = personen(e.path("personen"));
+        assertThat(pruefungen).as("Prüfungen rechte in bericht-vectors.json: B13 und die zwei der Einsicht").hasSize(3);
+        assertThat(pruefungen.get(0).path("eingang").path("anfragen")).as("B13: dreizehn Zeilen").hasSize(13);
+        for (JsonNode pruefung : pruefungen) {
+            JsonNode e = pruefung.path("eingang");
+            Instant jetzt = OffsetDateTime.parse(e.path("jetzt").asText()).toInstant();
+            List<Standort> standorte = new ArrayList<>();
+            e.path("kundenbereich").path("standorte").forEach(s -> standorte.add(new Standort(s.path("kennzeichen").asText(),
+                    s.path("name").asText())));
+            List<Person> admins = new ArrayList<>();
+            e.path("kundenbereich").path("kundenadministratoren").forEach(p -> admins.add(new Person(p.path("kennung").asText(),
+                    p.path("name").asText())));
+            Kundenbereich kb = new Kundenbereich(e.path("kundenbereich").path("name").asText(), standorte, admins);
+            Map<String, Benutzer> personen = personen(e.path("personen"));
 
-        List<JsonNode> soll = new ArrayList<>();
-        pruefung.path("ergebnis").path("ergebnisse").forEach(soll::add);
-        assertThat(soll).hasSize(13);
-        int i = 0;
-        for (JsonNode a : e.path("anfragen")) {
-            String standort = a.path("standort").isNull() ? null : a.path("standort").asText();
-            DarfErgebnis d = BerichtRechte.darf(personen.get(a.path("person").asText()), kb, a.path("handlung").asText(),
-                    a.path("geltung_art").asText(), standort, jetzt);
-            JsonNode s = soll.get(i++);
-            assertThat(BerichtRegeln.kennung(a.path("handlung").asText(), a.path("geltung_art").asText()))
-                    .isEqualTo(s.path("kennung").asText());
-            assertThat(d.darf() ? "ja" : String.valueOf(d.http())).as(a.toString()).isEqualTo(s.path("ergebnis").asText());
+            List<JsonNode> soll = new ArrayList<>();
+            pruefung.path("ergebnis").path("ergebnisse").forEach(soll::add);
+            assertThat(soll).as(pruefung.path("name").asText()).hasSize(e.path("anfragen").size());
+            int i = 0;
+            for (JsonNode a : e.path("anfragen")) {
+                String standort = a.path("standort").isNull() ? null : a.path("standort").asText();
+                DarfErgebnis d = BerichtRechte.darf(personen.get(a.path("person").asText()), kb, a.path("handlung").asText(),
+                        a.path("geltung_art").asText(), standort, jetzt);
+                JsonNode s = soll.get(i++);
+                assertThat(BerichtRegeln.kennung(a.path("handlung").asText(), a.path("geltung_art").asText()))
+                        .isEqualTo(s.path("kennung").asText());
+                assertThat(d.darf() ? "ja" : String.valueOf(d.http())).as(a.toString()).isEqualTo(s.path("ergebnis").asText());
+            }
+
+            JsonNode teil = pruefung.path("ergebnis").path("teilansicht");
+            personen.forEach((kennung, b) -> {
+                List<String> t = BerichtRechte.teilansicht(b, kb, jetzt);
+                assertThat(t == null ? null : String.join(", ", t)).as(kennung)
+                        .isEqualTo(teil.path(kennung).isNull() ? null : teil.path(kennung).asText());
+            });
         }
-        assertThat(i).isEqualTo(13);
-
-        JsonNode teil = pruefung.path("ergebnis").path("teilansicht");
-        personen.forEach((kennung, b) -> {
-            List<String> t = BerichtRechte.teilansicht(b, kb, jetzt);
-            assertThat(t == null ? null : String.join(", ", t)).as(kennung)
-                    .isEqualTo(teil.path(kennung).isNull() ? null : teil.path(kennung).asText());
-        });
     }
 
     /** Der Plattform-Admin von heute ist VoltPilot-Unterstützung (AP-03 E8): nie ein Entwurf, nie ein Stand, nie ein Anlegen. */

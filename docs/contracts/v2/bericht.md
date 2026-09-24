@@ -325,7 +325,9 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   Unterstützung nie eine Datei. Die 403/404-Sätze spricht die Rechte-Ableitung.
 - **G3 Teilansicht (R-A4):** wer das Unternehmen nicht exportieren darf, bekommt die Namen der Standorte, deren Messwerte er
   ansehen darf (`messwerte.ansehen`), in der Folge des Kundenbereichs — „Teilansicht: Werk Ahrenberg, Werk Lindach“, im CSV
-  `# teilansicht=…`; unternehmensweit keine. `BerichtRegeln.teilansicht` ⟷ `uemsBericht.teilansicht`.
+  `# teilansicht=…`; unternehmensweit keine — auch nicht mit einer unternehmensweiten Rolle ohne Export (Einsicht, AP-19
+  IP-12: eine wirksame unternehmensweite Zuweisung ist nie eine Teilansicht). `BerichtRegeln.teilansicht` ⟷
+  `uemsBericht.teilansicht`.
 - **G4** Jede Route nennt ihre Kennung (`RechteKennungenDerRoutenTest`).
 
 **Rechte-Anmerkung (AP-12 IP-1).** Die fünf Zeilen `bericht.standort_abrufen`, `bericht.standort_freigeben`,

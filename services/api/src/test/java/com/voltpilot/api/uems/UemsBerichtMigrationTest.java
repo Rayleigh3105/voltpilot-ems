@@ -86,7 +86,8 @@ class UemsBerichtMigrationTest {
             "20260924223000", // AP-18 IP-5: die Bewertungs-Kopie des Energieziels prüft bericht_pruefsumme.
             "20260924233000", // AP-18 IP-9: Ausgangslage und Stände der Maßnahme prüfen bericht_pruefsumme.
             "20260924235130", // AP-18 IP-14: der Anlass von Vermerk und Abweichung prüft bericht_pruefsumme.
-            "20260925013500"); // AP-19 IP-5: die Prüfsumme einer Dokument-Fassung prüft bericht_pruefsumme.
+            "20260925013500", // AP-19 IP-5: die Prüfsumme einer Dokument-Fassung prüft bericht_pruefsumme.
+            "20260925030000"); // AP-19 IP-12: tauscht bericht_abruf_actor_rolle_chk (plus einsicht).
     private static final List<String> TABELLEN = List.of("bericht", "bericht_entwurf", "bericht_stand", "bericht_quelle",
             "bericht_revision_anstoss", "bericht_abruf", "bericht_aenderung", "bericht_kennung_seq");
 

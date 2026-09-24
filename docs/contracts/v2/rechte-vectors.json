@@ -143,7 +143,9 @@
     "— der Java-Test prüft das Fall für Fall. Was die Referenzdatei nicht kennt (ST-3 „Werk Ahrenberg",
     "Nord“, Sabine Rauch, Zeitpunkte aus den Abnahmefällen, zusätzliche Zuweisungen), nennt der Fall",
     "in `annahme`. `widersprueche` führt die benannten Widersprüche mit den Fällen, die ihre",
-    "Auflösung pinnen — W-R8 … W-R11 sind die Widersprüche der Nachträge (Rechte-Abschnitt eines späteren Pakets gegen eine Konzept-Zeile oder gegen sich selbst)."
+    "Auflösung pinnen — W-R8 … W-R11 sind die Widersprüche der Nachträge (Rechte-Abschnitt eines späteren Pakets gegen eine Konzept-Zeile oder gegen sich selbst).",
+    "",
+    "AP-19 IP-12 (RE3, R6): Spalte `einsicht` — Fälle r6-* (darf und sichtbare_standorte); `einsicht` steht NICHT in rolle_noetig_reihenfolge (NW-5)."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./rechte.schema.json",
@@ -15190,6 +15192,1161 @@
         "rolle_noetig": null,
         "umfang_noetig": null,
         "text": null
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-liest-den-unternehmensbericht",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6 (RE3): Robert Falk hat nur „Einsicht“ — unternehmensweit sieht er Unternehmens-Berichte und ihre Stände und ruft das PDF ab (bericht.unternehmen_abrufen, Spalte Einsicht U).",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bericht.unternehmen_abrufen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "einsicht",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-liest-die-bewertung",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6 (RE3, RE4): die energetische Bewertung und ihre Stände liest Einsicht über bewertung.ansehen — die Zeile, die IP-11 dafür vom Freigeben getrennt hat.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bewertung.ansehen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "einsicht",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-sieht-messwerte-an-jedem-standort",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6: Einsicht ist unternehmensweit — Messwerte an Werk Ahrenberg Nord ohne eine Zuweisung an diesem Standort.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messwerte.ansehen",
+        "ziel": {
+          "standort": "ST-3",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-3",
+        "rolle": "einsicht",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-gibt-keinen-unternehmensbericht-frei",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6 Schritt 3 (RE3): nie eine Freigabe — bericht.unternehmen (anlegen · freigeben) ist 403; rolle_noetig nennt wie vorher den Energiemanager (Einsicht steht nicht in der Reihenfolge, NW-5).",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bericht.unternehmen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-exportiert-nicht",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6 Schritt 2 (RE3): die Exporte von Messdaten und Berichts-CSV sind Datenabfluss — export.unternehmen ist 403.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "export.unternehmen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-schreibt-keine-massnahme",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6 Schritt 3: nie ein Eintrag — verbesserung.verwalten (Ziele, Maßnahmen, Abweichungen) ist 403.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "verbesserung.verwalten",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-liest-kein-zugriffsprotokoll",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 RE3: das Zugriffsprotokoll bleibt beim Kundenadministrator — auch lesend − für Einsicht.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "zugriffsprotokoll.lesen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "kundenadministrator",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-eigenes-konto",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 RE3: E am eigenen Konto — Name, Passwort, Abmelden.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "konto.eigenes",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "r6-claudia-waehrend-des-audits-sieht-werk-nord",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6: am 22.01.2029 trägt Claudia Berger zusätzlich „Einsicht“ (20.–31.01.2029) — Werk Ahrenberg Nord sieht sie über Einsicht, nicht als Leserin.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            },
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-01-20T09:00:00+01:00",
+              "gueltig_bis": "2029-01-31",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messwerte.ansehen",
+        "ziel": {
+          "standort": "ST-3",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-01-22T10:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-3",
+        "rolle": "einsicht",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "r6-claudia-waehrend-des-audits-liest-als-leserin-zuerst",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6: an ihren Leser-Standorten gewährt die Leserin zuerst (Reihenfolge der Matrix) — das Protokoll nennt dort die Rolle leser.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            },
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-01-20T09:00:00+01:00",
+              "gueltig_bis": "2029-01-31",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messwerte.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-01-22T10:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "leser",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "r6-claudia-nach-dem-audit-werk-nord-beendet",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6 Schritt 5: ab 01.02.2029 ist die Einsicht abgelaufen — Werk Ahrenberg Nord ist für sie ein beendeter Zugriff (404, AP-03 A6).",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            },
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-01-20T09:00:00+01:00",
+              "gueltig_bis": "2029-01-31",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messwerte.ansehen",
+        "ziel": {
+          "standort": "ST-3",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-01T10:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "zugriff_beendet",
+        "standort": "ST-3",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Ihr Zugriff auf Werk Ahrenberg Nord wurde beendet."
+      }
+    },
+    {
+      "name": "r6-claudia-nach-dem-audit-kein-unternehmensbericht",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 R6 Schritt 5: nach dem Ende der Einsicht ist der Unternehmens-Bericht wieder 403 — wie vor dem Audit.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            },
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-01-20T09:00:00+01:00",
+              "gueltig_bis": "2029-01-31",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bericht.unternehmen_abrufen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-01T10:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "r6-claudia-waehrend-des-audits-alle-standorte",
+      "familie": "sichtbare_standorte",
+      "ableitung": "sichtbare_standorte",
+      "abnahme": null,
+      "why": "AP-19 R6 / §8.5 „Gelesen, nicht ausprobiert“: eine unternehmensweite Rolle ohne Schreibrecht trifft die Teilansicht-Regel (AP-03 E10) wie jede unternehmensweite — alle drei Standorte, keine Teilansicht, unternehmensweite Objekte sichtbar.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            },
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-01-20T09:00:00+01:00",
+              "gueltig_bis": "2029-01-31",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "jetzt": "2029-01-22T10:00:00+01:00"
+      },
+      "expected": {
+        "standorte": [
+          {
+            "kennzeichen": "ST-1",
+            "name": "Werk Ahrenberg",
+            "rollen": [
+              "leser",
+              "einsicht"
+            ],
+            "umfang": null
+          },
+          {
+            "kennzeichen": "ST-2",
+            "name": "Werk Lindach",
+            "rollen": [
+              "leser",
+              "einsicht"
+            ],
+            "umfang": null
+          },
+          {
+            "kennzeichen": "ST-3",
+            "name": "Werk Ahrenberg Nord",
+            "rollen": [
+              "einsicht"
+            ],
+            "umfang": null
+          }
+        ],
+        "unternehmensweit": true,
+        "kuenftig": [],
+        "text": null,
+        "teilansicht": {
+          "sichtbar": 3,
+          "gesamt": 3,
+          "unternehmensebene": true,
+          "teilansicht": false,
+          "kopfzeile": null,
+          "export_kopfzeile": null,
+          "unternehmensweite_objekte": true
+        }
+      }
+    },
+    {
+      "name": "r6-claudia-nach-dem-audit-wieder-teilansicht",
+      "familie": "sichtbare_standorte",
+      "ableitung": "sichtbare_standorte",
+      "abnahme": null,
+      "why": "AP-19 R6 Schritt 5: ab 01.02.2029 gilt wieder nur die Leserin an ST-1 und ST-2 — Teilansicht 2 von 3, unternehmensweite Objekte unsichtbar (AP-03 E10), wie a2-claudia-zwei-von-drei.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            },
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-01-20T09:00:00+01:00",
+              "gueltig_bis": "2029-01-31",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "jetzt": "2029-02-01T10:00:00+01:00"
+      },
+      "expected": {
+        "standorte": [
+          {
+            "kennzeichen": "ST-1",
+            "name": "Werk Ahrenberg",
+            "rollen": [
+              "leser"
+            ],
+            "umfang": null
+          },
+          {
+            "kennzeichen": "ST-2",
+            "name": "Werk Lindach",
+            "rollen": [
+              "leser"
+            ],
+            "umfang": null
+          }
+        ],
+        "unternehmensweit": false,
+        "kuenftig": [],
+        "text": null,
+        "teilansicht": {
+          "sichtbar": 2,
+          "gesamt": 3,
+          "unternehmensebene": true,
+          "teilansicht": true,
+          "kopfzeile": "Teilansicht: 2 von 3 Standorten",
+          "export_kopfzeile": "Teilansicht: Werk Ahrenberg, Werk Lindach (2 von 3 Standorten)",
+          "unternehmensweite_objekte": false
+        }
+      }
+    },
+    {
+      "name": "r6-robert-einsicht-alle-standorte",
+      "familie": "sichtbare_standorte",
+      "ableitung": "sichtbare_standorte",
+      "abnahme": null,
+      "why": "AP-19 R6: Robert Falk mit nur „Einsicht“ sieht alle drei Standorte, unternehmensweit, ohne Teilansicht.",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "standorte": [
+          {
+            "kennzeichen": "ST-1",
+            "name": "Werk Ahrenberg",
+            "rollen": [
+              "einsicht"
+            ],
+            "umfang": null
+          },
+          {
+            "kennzeichen": "ST-2",
+            "name": "Werk Lindach",
+            "rollen": [
+              "einsicht"
+            ],
+            "umfang": null
+          },
+          {
+            "kennzeichen": "ST-3",
+            "name": "Werk Ahrenberg Nord",
+            "rollen": [
+              "einsicht"
+            ],
+            "umfang": null
+          }
+        ],
+        "unternehmensweit": true,
+        "kuenftig": [],
+        "text": null,
+        "teilansicht": {
+          "sichtbar": 3,
+          "gesamt": 3,
+          "unternehmensebene": true,
+          "teilansicht": false,
+          "kopfzeile": null,
+          "export_kopfzeile": null,
+          "unternehmensweite_objekte": true
+        }
       }
     }
   ]

@@ -10,6 +10,8 @@ import com.voltpilot.api.zugriff.RechtZiel;
 import com.voltpilot.api.zugriff.ZugriffAenderung;
 import com.voltpilot.api.zugriff.ZugriffRepository;
 import java.net.URI;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -53,7 +55,7 @@ public class ZugriffController {
     /** Eine Zuweisung, wie das Portal sie liest — die Namen von {@code docs/contracts/openapi.yaml}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ZugriffDto(UUID id, String benutzerSub, String benutzerName, String rolle, UUID standortId,
-            String standortKurzzeichen, String standortName, String gueltigAb, String beendetAm) {}
+            String standortKurzzeichen, String standortName, String gueltigAb, String gueltigBis, String beendetAm) {}
 
     private final ZugriffAenderung aenderung;
     private final ZugriffRepository zugriffe;
@@ -79,7 +81,10 @@ public class ZugriffController {
         return zugriffe.zuweisungen(benutzer).stream().map(ZugriffController::dto).toList();
     }
 
-    /** Recht: {@code zuweisung.verwalten}. Eine neue Zuweisung gilt ab jetzt; nie die eigene (409). */
+    /**
+     * Recht: {@code zuweisung.verwalten}. Eine neue Zuweisung gilt ab jetzt; nie die eigene (409). {@code gueltig_bis}
+     * (letzter Tag, einschließlich) befristet sie — allein die Rolle Einsicht (AP-19 IP-12, RE3), sonst 400.
+     */
     @PostMapping
     @Recht(value = RECHT, ziel = RechtZiel.UNTERNEHMEN)
     public ResponseEntity<ZugriffDto> zuweisen(@RequestBody(required = false) JsonNode body, Authentication auth) {
@@ -94,7 +99,8 @@ public class ZugriffController {
         }
         UUID standort = body.hasNonNull("standort_id") ? uuid(body.get("standort_id").asText()) : null;
         String grund = body.hasNonNull("grund") ? body.get("grund").asText() : null;
-        UUID id = aenderung.zuweisen(body.get("benutzer_sub").asText(), rolle, standort, grund, akteur(auth));
+        LocalDate bis = body.hasNonNull("gueltig_bis") ? tag(body.get("gueltig_bis").asText()) : null;
+        UUID id = aenderung.zuweisen(body.get("benutzer_sub").asText(), rolle, standort, bis, grund, akteur(auth));
         return ResponseEntity.created(URI.create("/api/v1/zugriff/" + id))
                 .body(zugriffe.zeile(id).map(ZugriffController::dto).orElseThrow());
     }
@@ -115,7 +121,16 @@ public class ZugriffController {
     private static ZugriffDto dto(ZugriffRepository.Zeile z) {
         return new ZugriffDto(z.id(), z.benutzerSub(), null, z.rolle().code(), z.standortId(),
                 z.standortKurzzeichen(), z.standortName(), z.gueltigAb().toString(),
+                z.gueltigBis() == null ? null : z.gueltigBis().toString(),
                 z.beendetAm() == null ? null : z.beendetAm().toString());
+    }
+
+    private static LocalDate tag(String wert) {
+        try {
+            return LocalDate.parse(wert);
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "gueltig_bis ist kein Tag (JJJJ-MM-TT).");
+        }
     }
 
     private static UUID uuid(String wert) {

@@ -804,11 +804,13 @@ public final class BerichtRegeln {
     /**
      * G3 (R-A4) — die Teilansicht einer Person: wer das Unternehmen nicht exportieren darf, sieht die Standorte, deren
      * Messwerte er ansehen darf, in der Folge des Kundenbereichs; {@code null} = keine Teilansicht. Beide Urteile spricht
-     * {@link RechteAbleitung#darf}.
+     * {@link RechteAbleitung#darf}. Eine wirksame UNTERNEHMENSWEITE Zuweisung ist nie eine Teilansicht (AP-03 E10): bis
+     * AP-19 IP-12 durfte jede solche Rolle auch exportieren, die Rolle Einsicht sieht alles und exportiert nicht (RE3).
      */
     public static List<String> teilansicht(RechteAbleitung.Matrix m, RechteAbleitung.Benutzer b,
             RechteAbleitung.Kundenbereich k, Instant jetzt) {
-        if (RechteAbleitung.darf(m, b, k, kennung("csv", UNTERNEHMEN), RechteAbleitung.Ziel.unternehmen(), jetzt).darf()) {
+        if (RechteAbleitung.darf(m, b, k, kennung("csv", UNTERNEHMEN), RechteAbleitung.Ziel.unternehmen(), jetzt).darf()
+                || b.zuweisungen().stream().anyMatch(z -> z.unternehmensweit() && z.wirksam(jetzt))) {
             return null;
         }
         return k.standorte().stream()

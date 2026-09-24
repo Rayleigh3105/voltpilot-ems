@@ -170,6 +170,78 @@ class ZugriffEntzugApiTest {
                 .isEqualTo(1);
     }
 
+    // ================================================================= AP-19 IP-12 — Einsicht (R6)
+
+    /**
+     * AP-19 IP-12, R6 (RE3, AP-03 E10): der Kundenadministrator weist „Einsicht“ zu und befristet sie ({@code gueltig_bis},
+     * letzter Tag einschließlich); befristen lässt sich nur Einsicht (400 sonst), ein Ende in der Vergangenheit ist 400.
+     * Mit Einsicht sieht die Leserin unternehmensweit — alle Standorte, die Unternehmens-Rechte nur lesend, keine
+     * Teilansicht —; nach dem Ende (eine Einsicht, die gestern endete) sieht sie wieder nur ihren Leser-Standort, den
+     * anderen als beendeten Zugriff, und kein Unternehmens-Objekt.
+     */
+    @Test
+    void r6EinsichtWirdBefristetZugewiesenUndDanachGiltWiederDieTeilansicht() throws Exception {
+        Authentication jonas = konto(JONAS, DEMO);
+        String pruefer = "sub-entzug-pruefer";
+        String nachher = "sub-entzug-pruefer-danach";
+        spiegel(pruefer);
+        amStandort(pruefer, "leser", standortA);
+        spiegel(nachher);
+        amStandort(nachher, "leser", standortA);
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, gueltig_ab, gueltig_bis, endet_am, zeitzone) "
+                + "VALUES (?, ?, 'einsicht', now() - interval '12 days', (now() AT TIME ZONE 'Europe/Berlin')::date - 1, "
+                + "(((now() AT TIME ZONE 'Europe/Berlin')::date)::timestamp AT TIME ZONE 'Europe/Berlin'), 'Europe/Berlin')",
+                DEMO, nachher);
+        java.time.LocalDate heute = java.time.LocalDate.now(java.time.ZoneId.of("Europe/Berlin"));
+
+        assertThat(ruf(post("/api/v1/zugriff", "{\"benutzer_sub\":\"" + pruefer + "\",\"rolle\":\"leser\","
+                + "\"standort_id\":\"" + standortB + "\",\"gueltig_bis\":\"" + heute + "\"}"), jonas).status())
+                .as("befristen lässt sich nur Einsicht").isEqualTo(400);
+        assertThat(ruf(post("/api/v1/zugriff", "{\"benutzer_sub\":\"" + pruefer + "\",\"rolle\":\"einsicht\","
+                + "\"gueltig_bis\":\"" + heute.minusDays(1) + "\"}"), jonas).status())
+                .as("ein Ende in der Vergangenheit").isEqualTo(400);
+        assertThat(ruf(post("/api/v1/zugriff", "{\"benutzer_sub\":\"" + pruefer + "\",\"rolle\":\"einsicht\","
+                + "\"gueltig_bis\":\"31.01.2029\"}"), jonas).status()).as("kein Tag").isEqualTo(400);
+        Antwort zugewiesen = ruf(post("/api/v1/zugriff", "{\"benutzer_sub\":\"" + pruefer + "\",\"rolle\":\"einsicht\","
+                + "\"gueltig_bis\":\"" + heute.plusDays(10) + "\",\"grund\":\"Internes Audit AU-2029-0001\"}"), jonas);
+        assertThat(zugewiesen.status()).as(zugewiesen.body()).isEqualTo(201);
+        JsonNode z = MAPPER.readTree(zugewiesen.body());
+        assertThat(z.path("rolle").asText()).isEqualTo("einsicht");
+        assertThat(z.path("standort_id").isNull()).as("unternehmensweit, ohne Standort").isTrue();
+        assertThat(z.path("gueltig_bis").asText()).isEqualTo(heute.plusDays(10).toString());
+        assertThat(root.queryForObject("SELECT endet_am = ((gueltig_bis + 1)::timestamp AT TIME ZONE zeitzone) FROM zugriff "
+                + "WHERE tenant_id = ? AND benutzer_sub = ? AND rolle = 'einsicht'", Boolean.class, DEMO, pruefer)).isTrue();
+        assertThat(root.queryForObject("SELECT count(*) FROM zugriff_protokoll WHERE tenant_id = ? AND betroffener_sub = ? "
+                + "AND aktion = 'zuweisen' AND rolle = 'einsicht'", Integer.class, DEMO, pruefer)).isEqualTo(1);
+
+        Authentication waehrend = konto(pruefer, DEMO);
+        JsonNode ich = MAPPER.readTree(ruf(get("/api/v1/me"), waehrend).body());
+        assertThat(ich.path("unternehmensweit").asBoolean()).isTrue();
+        assertThat(ich.path("teilansicht").path("teilansicht").asBoolean()).isFalse();
+        assertThat(ich.path("teilansicht").path("unternehmensweite_objekte").asBoolean()).isTrue();
+        List<String> rechte = new java.util.ArrayList<>();
+        ich.path("unternehmen_rechte").forEach(r -> rechte.add(r.asText()));
+        assertThat(rechte).contains("bericht.unternehmen_abrufen", "bewertung.ansehen", "messwerte.ansehen",
+                "aenderungsprotokoll.lesen").doesNotContain("bericht.unternehmen", "bewertung.abrufen",
+                "export.unternehmen", "zugriffsprotokoll.lesen", "zuweisung.verwalten", "verbesserung.verwalten");
+        assertThat(ruf(get("/api/v1/sites/" + siteB), waehrend).status()).as("Werk Ahrenberg Nord über Einsicht")
+                .isEqualTo(200);
+        assertThat(ruf(post("/api/v1/zugriff", "{\"benutzer_sub\":\"" + nachher + "\",\"rolle\":\"leser\","
+                + "\"standort_id\":\"" + standortB + "\"}"), waehrend).status()).as("Einsicht weist nichts zu").isEqualTo(403);
+
+        Authentication danach = konto(nachher, DEMO);
+        JsonNode spaeter = MAPPER.readTree(ruf(get("/api/v1/me"), danach).body());
+        assertThat(spaeter.path("unternehmensweit").asBoolean()).isFalse();
+        assertThat(spaeter.path("teilansicht").path("unternehmensweite_objekte").asBoolean()).isFalse();
+        List<String> sichtbar = new java.util.ArrayList<>();
+        spaeter.path("standorte").forEach(st -> sichtbar.add(st.path("name").asText()));
+        assertThat(sichtbar).containsExactly("Werk Ahrenberg");
+        assertThat(ruf(get("/api/v1/sites/" + siteB), danach).status())
+                .as("Werk Ahrenberg Nord ist wieder unsichtbar (Standort-Zaun) — sie hat noch eine Zuweisung, darum kein "
+                        + "„jeder Zugriff beendet“").isEqualTo(404);
+        assertThat(ruf(get("/api/v1/sites/" + BERLIN_SITE), danach).status()).as("die Leser-Anlage bleibt").isEqualTo(200);
+    }
+
     // ================================================================= A7
 
     @Test

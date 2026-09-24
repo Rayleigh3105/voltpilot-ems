@@ -34,12 +34,26 @@ Seit AP-19 IP-11 (Nachtrag `AP-19 §4.2`, RE4, W10): Lesen und Freigeben getrenn
 `bericht.unternehmen`, `bewertung.ansehen` neben `bewertung.abrufen`, je mit `wie` auf die alte Zeile (gleiche Zellen,
 keine Bestandsrolle darf mehr oder weniger; `BerichtRechteTest` vergleicht vorher/nachher). Die Kundenwörter tragen den
 Konzept-Zusatz „(getrennt von …, W10)“ nicht, denn `benutzer.ts#rechteVorschau` zeigt `kundenwort` in der
-Benutzerverwaltung; der Zusatz steht in `nachtraege[].handlung`. ⚠ Die Spalte „Einsicht“ (IP-12) gibt den neuen Zeilen
-andere Zellen als den alten — dann fällt `wie` weg, sonst bricht `jedeNachtragsZeileStehtGegenIhreHerkunft`.
+Benutzerverwaltung; der Zusatz steht in `nachtraege[].handlung`. Die Spalte „Einsicht“ (IP-12) gibt den neuen Zeilen
+andere Zellen als den alten — darum tragen sie kein `wie` mehr.
 Seit AP-19 IP-5 (derselbe Nachtrag `AP-19 §4.2`, RE1): `energiemanagement.verwalten · .freigeben · .ansehen` mit `wie`
-auf `verbesserung.verwalten`, `bezugsbasis.freigeben`, `verbesserung.ansehen` (Zellen gleich, solange die Spalte Einsicht
-fehlt; mit IP-12 bleibt `wie` nur, wo auch die Einsicht-Zelle gleich ist), je ein `darf`-Fall `ap19-energiemanagement-*`,
-reserviert in `RechtMatrixApiTest.OHNE_SCHREIBROUTE` bis zu den Routen (IP-6 ff.).
+auf `verbesserung.verwalten`, `bezugsbasis.freigeben`, `verbesserung.ansehen` (Zellen gleich, seit IP-12 auch in der
+Spalte Einsicht: − an verwalten/freigeben, U an ansehen), je ein `darf`-Fall `ap19-energiemanagement-*`, reserviert in `RechtMatrixApiTest.OHNE_SCHREIBROUTE` bis zu den Routen (IP-6 ff.).
+
+Seit AP-19 IP-12 (Nachtrag `AP-19 §4.11`, RE3, RE5, E8 = A, R6): **Rolle `einsicht`** — unternehmensweit, zuweisbar,
+befristbar (`POST /api/v1/zugriff` mit `gueltig_bis`, nur diese Rolle), U genau an den lesenden Zeilen (R6-Liste),
+E am eigenen Konto, sonst − (auch `export.*`, `zugriffsprotokoll.lesen`, jede Freigabe). Sie ist die erste Spalte MIT
+`nachtrag`: die Konzept-Tabelle bleibt byte-gleich mit sieben Spalten (`konzept_rollen` im Generator,
+`konzeptRollen` im Test), die Spalte steht unter „Spalten der Nachträge“ und in der Nachtrags-Tabelle. Datenbank:
+`V20260925030000` ersetzt `zugriff_rolle()` (Vereinigung, Zeile 8) und tauscht `bericht_abruf_actor_rolle_chk`; wer
+`zugriff_rolle()` oder `bericht_abruf` später ersetzt, schreibt die Vereinigung. Nicht in `rolle_noetig_reihenfolge`
+(die Sätze der Bestandsrollen bleiben). Fallen: ⚠ `BerichtRegeln.teilansicht` (G3) nahm „darf das Unternehmen
+exportieren“ als Merkmal für „sieht alles“ — mit Einsicht falsch; jetzt ist eine wirksame unternehmensweite
+Zuweisung nie eine Teilansicht (Java/TS, `bericht-vectors.json` B13 zwei Prüfungen). ⚠ Kundensätze, die Rollen mit
+einem Lese-U aufzählen (`OHNE_MENGEN` der Kostenstellen), nennen Einsicht mit. Nachweis: `RolleEinsichtBestandTest`
+(sieben Spalten byte-gleich zu vorher), `RechtMatrixApiTest` (neunte Person RF, jede `@Recht`-Route 403 außer eigenem
+Konto und den rechnenden Lese-Routen), `BerichtApiTest` (PDF mit `actor_rolle` einsicht, CSV 403),
+`ZugriffEntzugApiTest` (Befristung, danach Teilansicht).
 
 ## Die benannten Widersprüche (rechte-vectors.json)
 

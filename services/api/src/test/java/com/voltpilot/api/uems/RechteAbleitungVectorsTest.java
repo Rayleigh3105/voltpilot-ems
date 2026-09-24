@@ -124,7 +124,8 @@ class RechteAbleitungVectorsTest {
 
     /**
      * 48 Konzept-Zeilen (ohne {@code nachtrag}) plus die Nachträge, jede Kennung eindeutig; 7 Rollen
-     * in der Spaltenreihenfolge, 3 Umfänge aufsteigend.
+     * der Konzept-Tabelle in der Spaltenreihenfolge, dahinter die Spalten der Nachträge (Einsicht, AP-19 IP-12),
+     * 3 Umfänge aufsteigend.
      */
     @Test
     void dieMatrixIstDieKonzeptTabelleMitIhrenNachtraegen() throws Exception {
@@ -134,6 +135,8 @@ class RechteAbleitungVectorsTest {
         assertThat(konzeptZeilen(m)).hasSize(m.path("konzept_tabelle").path("aktionen").asInt()).hasSize(48);
         assertThat(nachtragsZeilen(m)).isNotEmpty();
         assertThat(texte(m.path("rollen"), "kennung")).containsExactlyElementsOf(codes(Rolle.values()));
+        assertThat(konzeptRollen(m)).hasSize(7);
+        assertThat(texte(m.path("rollen"), "kennung")).endsWith("einsicht");
         assertThat(texte(m.path("umfaenge"), "kennung")).containsExactlyElementsOf(codes(Umfang.values()));
         for (JsonNode r : m.path("rollen")) {
             Rolle rolle = Rolle.vonCode(r.path("kennung").asText());
@@ -161,9 +164,11 @@ class RechteAbleitungVectorsTest {
 
     /**
      * Die BUILD-PRÜFUNG: die erzeugte Tabelle {@code rechte-matrix.md} ist zeilengleich zur
-     * Matrix-Datei — unter „Matrix“ die Konzept-Zeilen, unter „Nachträge …“ die Zeilen mit
-     * {@code nachtrag}: Kopf, Gruppenzeilen, Wortlaut, Herkunft, sieben Zellen, Anmerkung. Wer die
-     * JSON-Datei ändert, erzeugt die Tabelle neu ({@code python3 docs/contracts/v2/tools/rechte_matrix.py}).
+     * Matrix-Datei — unter „Matrix“ die Konzept-Zeilen mit den sieben Konzept-Spalten, unter
+     * „Spalten der Nachträge“ dieselben Zeilen mit den Spalten späterer Pakete (Einsicht, AP-19 IP-12), unter
+     * „Nachträge …“ die Zeilen mit {@code nachtrag} und allen Spalten: Kopf, Gruppenzeilen, Wortlaut, Herkunft,
+     * Zellen, Anmerkung. Wer die JSON-Datei ändert, erzeugt die Tabelle neu
+     * ({@code python3 docs/contracts/v2/tools/rechte_matrix.py}).
      */
     @Test
     void dieErzeugteTabelleIstZeilengleichZurMatrix() throws Exception {
@@ -171,9 +176,31 @@ class RechteAbleitungVectorsTest {
         List<List<String>> tabellen = matrixTabellen();
         assertThat(tabellen).as("rechte-matrix.md: Konzept-Tabelle und Nachtrags-Tabelle").hasSize(2);
         assertThat(tabellen.get(0)).as("rechte-matrix.md veraltet → python3 docs/contracts/v2/tools/rechte_matrix.py")
-                .containsExactlyElementsOf(sollTabelle(m, konzeptZeilen(m)));
+                .containsExactlyElementsOf(sollTabelle(m, konzeptZeilen(m), konzeptRollen(m)));
         assertThat(tabellen.get(1)).as("rechte-matrix.md veraltet → python3 docs/contracts/v2/tools/rechte_matrix.py")
-                .containsExactlyElementsOf(sollTabelle(m, nachtragsZeilen(m)));
+                .containsExactlyElementsOf(sollTabelle(m, nachtragsZeilen(m), alleRollen(m)));
+        List<JsonNode> spalten = new ArrayList<>(alleRollen(m));
+        spalten.removeAll(konzeptRollen(m));
+        List<String> soll = new ArrayList<>();
+        List<String> kopf = new ArrayList<>(List.of("Kennung", "Aktion"));
+        spalten.forEach(r -> kopf.add(r.path("kundenwort").asText() + " (" + r.path("nachtrag").asText() + ")"));
+        soll.add(zeile(kopf));
+        soll.add("|" + "---|".repeat(kopf.size()));
+        for (JsonNode a : konzeptZeilen(m)) {
+            List<String> z = new ArrayList<>(List.of("`" + a.path("kennung").asText() + "`", a.path("kundenwort").asText()));
+            spalten.forEach(r -> z.add(a.path("zellen").path(r.path("kennung").asText()).asText()));
+            soll.add(zeile(z));
+        }
+        List<String> ist = new ArrayList<>();
+        List<String> alle = Files.readAllLines(TABELLE);
+        for (int i = alle.indexOf("### Spalten der Nachträge") + 1; i < alle.size(); i++) {
+            if (alle.get(i).startsWith("|")) {
+                ist.add(alle.get(i));
+            } else if (!ist.isEmpty()) {
+                break;
+            }
+        }
+        assertThat(ist).as("rechte-matrix.md „Spalten der Nachträge“ veraltet").containsExactlyElementsOf(soll);
     }
 
     /**
@@ -184,7 +211,8 @@ class RechteAbleitungVectorsTest {
      */
     @Test
     void dieKonzeptZeilenSindByteGleichZurKonzeptTabelle() throws Exception {
-        String tabelle = String.join("\n", sollTabelle(lies(MATRIX), konzeptZeilen(lies(MATRIX)))) + "\n";
+        String tabelle = String.join("\n", sollTabelle(lies(MATRIX), konzeptZeilen(lies(MATRIX)),
+                konzeptRollen(lies(MATRIX)))) + "\n";
         String ist = HexFormat.of().formatHex(
                 MessageDigest.getInstance("SHA-256").digest(tabelle.getBytes(StandardCharsets.UTF_8)));
         assertThat(ist).isEqualTo(lies(MATRIX).path("konzept_tabelle").path("sha256").asText())
@@ -271,11 +299,28 @@ class RechteAbleitungVectorsTest {
         return out;
     }
 
-    /** Die Zeilen der Tabelle, die der Generator aus diesen Aktionen erzeugt. */
-    private static List<String> sollTabelle(JsonNode m, List<JsonNode> aktionen) {
+    /** Die sieben Spalten der Konzept-Tabelle AP-03 §4.3 — die Rollen ohne {@code nachtrag}. */
+    private static List<JsonNode> konzeptRollen(JsonNode m) {
+        List<JsonNode> out = new ArrayList<>();
+        m.path("rollen").forEach(r -> {
+            if (!r.has("nachtrag")) {
+                out.add(r);
+            }
+        });
+        return out;
+    }
+
+    private static List<JsonNode> alleRollen(JsonNode m) {
+        List<JsonNode> out = new ArrayList<>();
+        m.path("rollen").forEach(out::add);
+        return out;
+    }
+
+    /** Die Zeilen der Tabelle, die der Generator aus diesen Aktionen mit diesen Spalten erzeugt. */
+    private static List<String> sollTabelle(JsonNode m, List<JsonNode> aktionen, List<JsonNode> rollen) {
         List<String> soll = new ArrayList<>();
         List<String> kopf = new ArrayList<>(List.of("Aktion", "Herkunft"));
-        m.path("rollen").forEach(r -> kopf.add(r.path("kundenwort").asText()));
+        rollen.forEach(r -> kopf.add(r.path("kundenwort").asText()));
         kopf.add("Anmerkung");
         soll.add(zeile(kopf));
         soll.add("|" + "---|".repeat(kopf.size()));
@@ -292,7 +337,7 @@ class RechteAbleitungVectorsTest {
                 soll.add(zeile(g));
             }
             List<String> z = new ArrayList<>(List.of(a.path("kundenwort").asText(), a.path("herkunft").asText()));
-            m.path("rollen").forEach(r -> z.add(a.path("zellen").path(r.path("kennung").asText()).asText()));
+            rollen.forEach(r -> z.add(a.path("zellen").path(r.path("kennung").asText()).asText()));
             z.add(a.path("anmerkung").isNull() ? "" : a.path("anmerkung").asText());
             soll.add(zeile(z));
         }

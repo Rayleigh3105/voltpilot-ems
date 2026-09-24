@@ -117,7 +117,7 @@ public final class KorrekturRechte {
         return new Matrix(Map.copyOf(m));
     }
 
-    /** Bedienberechtigt, Leser, Unterstützer und VoltPilot-Betrieb tragen in allen fünf Zeilen „-“. */
+    /** Bedienberechtigt, Leser, Unterstützer, VoltPilot-Betrieb und Einsicht tragen in allen fünf Zeilen „-“. */
     private static void zeile(Map<String, Aktion> m, String kennung, String kundenwort, String ka, String em,
             String be) {
         Map<Rolle, Zelle> z = new EnumMap<>(Rolle.class);
@@ -128,6 +128,7 @@ public final class KorrekturRechte {
         z.put(Rolle.LESER, Zelle.NEIN);
         z.put(Rolle.UNTERSTUETZER, Zelle.NEIN);
         z.put(Rolle.VOLTPILOT_BETRIEB, Zelle.NEIN);
+        z.put(Rolle.EINSICHT, Zelle.NEIN);
         m.put(kennung, new Aktion(kennung, kundenwort, Map.copyOf(z)));
     }
 }

@@ -549,7 +549,7 @@ class UemsEnergiemanagementMigrationTest {
                     .isTrue();
         }
         // RE1: drei Kennungen in der Gruppe kennzahlen, Zellen wie verbesserung.verwalten, bezugsbasis.freigeben,
-        // verbesserung.ansehen (die Spalte Einsicht folgt mit IP-12).
+        // verbesserung.ansehen; seit IP-12 die achte Spalte Einsicht: − an verwalten/freigeben, U an ansehen (RE3).
         JsonNode matrix = MAPPER.readTree(Path.of("../../docs/contracts/v2/rechte-matrix.json").toFile());
         Map<String, String> zellen = new LinkedHashMap<>();
         matrix.path("aktionen").forEach(r -> {
@@ -560,8 +560,8 @@ class UemsEnergiemanagementMigrationTest {
                 zellen.put(r.path("kennung").asText(), s.toString());
             }
         });
-        assertThat(zellen).containsExactly(Map.entry("energiemanagement.verwalten", "UUS----"),
-                Map.entry("energiemanagement.freigeben", "UU-----"), Map.entry("energiemanagement.ansehen", "UUSSSA-"));
+        assertThat(zellen).containsExactly(Map.entry("energiemanagement.verwalten", "UUS-----"),
+                Map.entry("energiemanagement.freigeben", "UU------"), Map.entry("energiemanagement.ansehen", "UUSSSA-U"));
     }
 
     /** Vertrag IP-2: Vokabulare zeilengleich, `leitungs_pflicht`, `dokument_art_klasse`, Kennzeichen-Muster, Startwerte. */

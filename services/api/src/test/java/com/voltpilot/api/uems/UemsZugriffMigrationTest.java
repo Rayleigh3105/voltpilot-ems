@@ -98,7 +98,8 @@ class UemsZugriffMigrationTest {
             "20260924223000", // AP-18 IP-5: Verantwortlicher des Energieziels verweist auf benutzer(tenant_id, sub).
             "20260924233000", // AP-18 IP-9: Verantwortlicher der Maßnahme verweist auf benutzer(tenant_id, sub).
             "20260924235130", // AP-18 IP-14: Verantwortlicher der Abweichung verweist auf benutzer(tenant_id, sub).
-            "20260925013500"); // AP-19 IP-5: Person im Energiemanagement verweist wahlfrei auf benutzer(tenant_id, sub).
+            "20260925013500", // AP-19 IP-5: Person im Energiemanagement verweist wahlfrei auf benutzer(tenant_id, sub).
+            "20260925030000"); // AP-19 IP-12: ersetzt zugriff_rolle() durch die Vereinigung mit einsicht.
 
     /** Die Vokabular-Blöcke des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("konto", "konto_zustand", "art", "umfang", "aenderung");

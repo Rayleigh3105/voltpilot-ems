@@ -311,8 +311,8 @@ class UemsBezugsbasisMigrationTest {
                 zellen.put(r.path("kennung").asText(), s.toString());
             }
         });
-        assertThat(zellen).containsExactly(Map.entry("bezugsbasis.verwalten", "UUS----"),
-                Map.entry("bezugsbasis.freigeben", "UU-----"), Map.entry("bezugsbasis.ansehen", "UUSSSA-"));
+        assertThat(zellen).containsExactly(Map.entry("bezugsbasis.verwalten", "UUS-----"),
+                Map.entry("bezugsbasis.freigeben", "UU------"), Map.entry("bezugsbasis.ansehen", "UUSSSA-U"));
     }
 
     /** Jede Liste des Vertrags (IP-2) steht Zeile für Zeile in der Datenbank; `freigabe_status` ist die Vereinigung. */

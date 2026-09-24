@@ -51,8 +51,13 @@ def tabelle(kopf, zeilen):
     return "\n".join(out)
 
 
-def matrix_tabelle(m, aktionen):
-    rollen = m["rollen"]
+def konzept_rollen(m):
+    """Die sieben Spalten der Konzept-Tabelle — ohne die Spalten späterer Pakete (`nachtrag`)."""
+    return [r for r in m["rollen"] if "nachtrag" not in r]
+
+
+def matrix_tabelle(m, aktionen, rollen=None):
+    rollen = m["rollen"] if rollen is None else rollen
     titel = {g["kennung"]: g["titel"] for g in m["gruppen"]}
     kopf = ["Aktion", "Herkunft"] + [r["kundenwort"] for r in rollen] + ["Anmerkung"]
     zeilen = []
@@ -69,7 +74,7 @@ def matrix_tabelle(m, aktionen):
 
 def konzept_tabelle(m):
     """Die Tabelle der Zeilen OHNE `nachtrag` — und ob sie noch die des Konzepts ist."""
-    t = matrix_tabelle(m, [a for a in m["aktionen"] if "nachtrag" not in a])
+    t = matrix_tabelle(m, [a for a in m["aktionen"] if "nachtrag" not in a], konzept_rollen(m))
     k = m["konzept_tabelle"]
     ist = hashlib.sha256((t + "\n").encode("utf-8")).hexdigest()
     if ist != k["sha256"]:
@@ -110,6 +115,12 @@ def markdown(m):
         [[n["abschnitt"], r["wortlaut"], r["wo"]] for n in m["nachtraege"] for r in n["regeln"]],
     )
     quellen = " · ".join(f"{n['abschnitt']} ({n['konzept']})" for n in m["nachtraege"])
+    spalten = [r for r in rollen if "nachtrag" in r]
+    spalten_tab = tabelle(
+        ["Kennung", "Aktion"] + [f"{r['kundenwort']} ({r['nachtrag']})" for r in spalten],
+        [[f"`{a['kennung']}`", a["kundenwort"]] + [a["zellen"][r["kennung"]] for r in spalten]
+         for a in konzept],
+    )
     kennung_tab = tabelle(
         ["Kennung", "Gruppe", "Aktion", "Quelle"],
         [[f"`{a['kennung']}`", titel[a["gruppe"]], a["kundenwort"],
@@ -130,9 +141,14 @@ def markdown(m):
         "## Rollen\n\n" + rollen_tab + "\n\n"
         "## Unterstützer-Umfang (E9)\n\n" + umfang_tab + "\n\n"
         "## Matrix\n\n"
-        f"{len(konzept)} Aktionen × {len(rollen)} Rollen — zeichengleich zur Tabelle im "
-        f"AP-03-Konzept §4.3 (SHA-256 `{m['konzept_tabelle']['sha256']}`).\n\n"
+        f"{len(konzept)} Aktionen × {len(konzept_rollen(m))} Rollen — zeichengleich zur Tabelle im "
+        f"AP-03-Konzept §4.3 (SHA-256 `{m['konzept_tabelle']['sha256']}`). Die Spalten späterer "
+        "Pakete stehen darunter in „Spalten der Nachträge“.\n\n"
         + konzept_tabelle(m) + "\n\n"
+        "### Spalten der Nachträge\n\n"
+        "Rollen aus dem Rechte-Abschnitt eines späteren Pakets, je Zeile der Konzept-Tabelle. Die "
+        "Nachtrags-Zeilen tragen sie in ihrer eigenen Tabelle.\n\n"
+        + spalten_tab + "\n\n"
         "## Nachträge der später konzipierten Pakete\n\n"
         "AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem "
         f"jeweiligen Paket abgenommen: {quellen}. "

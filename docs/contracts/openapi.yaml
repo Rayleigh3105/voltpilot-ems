@@ -15319,7 +15319,9 @@ paths:
         UEMS AP-03 IP-9 (§5.2), Recht `zuweisung.verwalten`. Eine Rolle je Standort braucht einen Standort
         (422 `standort_fehlt`); niemand erweitert die EIGENE Zuweisung (409 `eigene_zuweisung`). Das Konto muss
         im Kundenbereich schon gespiegelt sein - Konten legt `benutzer.verwalten` an (IP-13/IP-14). Der
-        Unterstützer entsteht allein über `POST /api/v1/unterstuetzung` (400 sonst).
+        Unterstützer entsteht allein über `POST /api/v1/unterstuetzung` (400 sonst). AP-19 IP-12: `einsicht`
+        (nur lesen, unternehmensweit, ohne Standort) lässt sich mit `gueltig_bis` befristen - letzter Tag,
+        einschließlich; jede andere Rolle mit `gueltig_bis` und ein Ende in der Vergangenheit sind 400.
       requestBody:
         required: true
         content:
@@ -15331,8 +15333,9 @@ paths:
                 benutzer_sub: { type: string }
                 rolle:
                   type: string
-                  enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser]
+                  enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, einsicht]
                 standort_id: { type: string, format: uuid, nullable: true }
+                gueltig_bis: { type: string, format: date, nullable: true, description: "Nur bei `einsicht`: letzter Tag, einschließlich (AP-19 IP-12)." }
                 grund: { type: string, nullable: true }
       responses:
         "201":
@@ -17823,11 +17826,12 @@ components:
         benutzer_name: { type: string, nullable: true }
         rolle:
           type: string
-          enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, unterstuetzer]
+          enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, unterstuetzer, einsicht]
         standort_id: { type: string, format: uuid, nullable: true }
         standort_kurzzeichen: { type: string, nullable: true }
         standort_name: { type: string, nullable: true }
         gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Enddatum, letzter Tag einschließlich; null = unbefristet (AP-19 IP-12: Einsicht, Unterstützung)." }
         beendet_am: { type: string, format: date-time, nullable: true }
     Unterstuetzung:
       type: object
@@ -24879,7 +24883,7 @@ components:
         email: { type: string, format: email }
         vorname: { type: string }
         nachname: { type: string }
-        rolle: { type: string, enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser] }
+        rolle: { type: string, enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, einsicht] }
         standorte:
           type: array
           description: Bei standortbezogener Rolle mindestens ein Standort; sonst leer.

@@ -70,8 +70,9 @@ import org.testcontainers.utility.DockerImageName;
  * (ST-3); Halle 1 hängt an ST-1, Lindach an ST-2.
  *
  * <ol>
- *   <li><b>Je Matrix-Zeile der Gruppen 1–3</b> eine Route und alle acht Personen: erlaubt · 403 {@code recht_fehlt} ·
- *       404 außerhalb des Geltungsbereichs.</li>
+ *   <li><b>Je Matrix-Zeile der Gruppen 1–3</b> eine Route und alle neun Personen (die acht des Personen-Satzes und
+ *       Robert Falk mit „Einsicht“, AP-19 IP-12): erlaubt · 403 {@code recht_fehlt} · 404 außerhalb des
+ *       Geltungsbereichs.</li>
  *   <li><b>{@code SiteController}-Löschen als Leser → 403</b> mit Rolle und Weg; die Anlage bleibt.</li>
  *   <li><b>Außerhalb ist dieselbe 404 wie eine Kennung, die es nicht gibt</b> (Messstelle, Bezugsgröße — die Objekte
  *       ohne Standort-Zaun; ein Gerät ({@code geraet}) trägt den Zaun selbst, ist am fremden Standort unsichtbar und
@@ -195,7 +196,9 @@ class RechtMatrixApiTest {
             "partner")), KUNDENBEREICH, AHR.toString());
     private static final Person LV = new Person("LV", "Lena Voss", authentication(konto("sub-ahr-voss", null,
             "platform-admin")), KUNDENBEREICH, AHR.toString());
-    private static final List<Person> ACHT = List.of(JW, IK, PH, SR, MD, CB, TB, LV);
+    /** AP-19 IP-12: Robert Falk mit nur „Einsicht“ (unternehmensweit, nur lesen) — die neunte Person, die achte Spalte. */
+    private static final Person RF = kunde("RF", "Robert Falk", "sub-ahr-robert");
+    private static final List<Person> PERSONEN = List.of(JW, IK, PH, SR, MD, CB, TB, LV, RF);
 
     /** Der Notfall-Zugriff (E8) und der Umschalter (W3) — für das Akteur-Vokabular der Journale (IP-7). */
     private static final Person NF = new Person("NF", "VoltPilot-Support (Notfall-Zugriff)",
@@ -223,7 +226,7 @@ class RechtMatrixApiTest {
     // ------------------------------------------------------------------ 1. Je Matrix-Zeile
 
     /**
-     * Eine Zeile: Kennung(en), Route, Erwartung je Person in der Folge JW IK PH SR MD CB TB LV — {@code e} erlaubt,
+     * Eine Zeile: Kennung(en), Route, Erwartung je Person in der Folge JW IK PH SR MD CB TB LV RF — {@code e} erlaubt,
      * {@code 3} 403 {@code recht_fehlt}, {@code 4} außerhalb des Geltungsbereichs.
      */
     private record Zeile(String kennungen, HttpMethod methode, String pfad, String erwartet, String typ) {
@@ -235,120 +238,120 @@ class RechtMatrixApiTest {
     private static List<Zeile> zeilen() {
         List<Zeile> z = new ArrayList<>();
         // Gruppe 1 — Unternehmen, Standorte, Struktur
-        z.add(new Zeile("unternehmen.bearbeiten", HttpMethod.PUT, "/api/v1/unternehmen", "ee333333"));
-        z.add(new Zeile("standort.verwalten", HttpMethod.POST, "/api/v1/standorte", "ee333333"));
-        z.add(new Zeile("standort.verwalten", HttpMethod.PUT, "/api/v1/standorte/{S1}", "ee443333"));
-        z.add(new Zeile("gebaeude.pflegen", HttpMethod.PUT, "/api/v1/orte/{G1}", "ee4433e3"));
-        z.add(new Zeile("gebaeude.pflegen", HttpMethod.PUT, "/api/v1/orte/{G2}", "eee44344"));
-        z.add(new Zeile("gebaeude.pflegen", HttpMethod.POST, "/api/v1/standorte/{S2}/orte", "eee44344"));
-        z.add(new Zeile("anlage.zuordnen", HttpMethod.PUT, "/api/v1/sites/{A1}/standort", "e3443333"));
-        z.add(new Zeile("anlage.verwalten", HttpMethod.POST, "/api/v1/sites", "e333333e"));
-        z.add(new Zeile("anlage.verwalten", HttpMethod.DELETE, "/api/v1/sites/{A1}", "e344333e"));
-        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/components", "ee4433e3"));
-        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A2}/components", "eee44344"));
-        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/modbus-probe", "ee4433e3"));
-        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/devices/claim", "eee333e3"));
-        z.add(new Zeile("komponente.loeschen", HttpMethod.DELETE, "/api/v1/devices/{D1}", "ee443333"));
+        z.add(new Zeile("unternehmen.bearbeiten", HttpMethod.PUT, "/api/v1/unternehmen", "ee3333333"));
+        z.add(new Zeile("standort.verwalten", HttpMethod.POST, "/api/v1/standorte", "ee3333333"));
+        z.add(new Zeile("standort.verwalten", HttpMethod.PUT, "/api/v1/standorte/{S1}", "ee4433333"));
+        z.add(new Zeile("gebaeude.pflegen", HttpMethod.PUT, "/api/v1/orte/{G1}", "ee4433e33"));
+        z.add(new Zeile("gebaeude.pflegen", HttpMethod.PUT, "/api/v1/orte/{G2}", "eee443443"));
+        z.add(new Zeile("gebaeude.pflegen", HttpMethod.POST, "/api/v1/standorte/{S2}/orte", "eee443443"));
+        z.add(new Zeile("anlage.zuordnen", HttpMethod.PUT, "/api/v1/sites/{A1}/standort", "e34433333"));
+        z.add(new Zeile("anlage.verwalten", HttpMethod.POST, "/api/v1/sites", "e333333e3"));
+        z.add(new Zeile("anlage.verwalten", HttpMethod.DELETE, "/api/v1/sites/{A1}", "e344333e3"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/components", "ee4433e33"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A2}/components", "eee443443"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/sites/{A1}/modbus-probe", "ee4433e33"));
+        z.add(new Zeile("geraet.einrichten", HttpMethod.POST, "/api/v1/devices/claim", "eee333e33"));
+        z.add(new Zeile("komponente.loeschen", HttpMethod.DELETE, "/api/v1/devices/{D1}", "ee4433333"));
         z.add(new Zeile("komponente.loeschen", HttpMethod.DELETE, "/api/v1/sites/{A1}/components/custom/{FREMD}",
-                "ee443333"));
-        z.add(new Zeile("aufzeichnungen.loeschen", HttpMethod.POST, "/api/v1/devices/{D1}/purge-data", "e3443333"));
+                "ee4433333"));
+        z.add(new Zeile("aufzeichnungen.loeschen", HttpMethod.POST, "/api/v1/devices/{D1}/purge-data", "e34433333"));
         z.add(new Zeile("mess_selektion.bearbeiten", HttpMethod.PUT, "/api/v1/devices/{D1}/measurement-selection/p1",
-                "ee4433e3"));
-        z.add(new Zeile("kostenstelle.verwalten", HttpMethod.POST, "/api/v1/unternehmen/kostenstellen", "ee333333"));
-        z.add(new Zeile("prozess.verwalten", HttpMethod.POST, "/api/v1/unternehmen/prozesse", "ee333333"));
+                "ee4433e33"));
+        z.add(new Zeile("kostenstelle.verwalten", HttpMethod.POST, "/api/v1/unternehmen/kostenstellen", "ee3333333"));
+        z.add(new Zeile("prozess.verwalten", HttpMethod.POST, "/api/v1/unternehmen/prozesse", "ee3333333"));
         z.add(new Zeile("netzanschluss.verwalten", HttpMethod.POST, "/api/v1/standorte/{S1}/netzanschluesse",
-                "ee443333"));
-        z.add(new Zeile("datenquelle.bearbeiten", HttpMethod.POST, "/api/v1/sites/{A1}/data-sources", "ee4433e3"));
+                "ee4433333"));
+        z.add(new Zeile("datenquelle.bearbeiten", HttpMethod.POST, "/api/v1/sites/{A1}/data-sources", "ee4433e33"));
         z.add(new Zeile("datenquelle.zustaendigkeit", HttpMethod.POST,
-                "/api/v1/sites/{A1}/data-sources/{FREMD}/assignments", "e34433e3"));
+                "/api/v1/sites/{A1}/data-sources/{FREMD}/assignments", "e34433e33"));
         // Gruppe 2 — Messstellen und Messdaten
-        z.add(new Zeile("messstelle.bearbeiten", HttpMethod.PUT, "/api/v1/messstellen/{M1}", "ee4433e3"));
-        z.add(new Zeile("messstelle.bearbeiten", HttpMethod.PUT, "/api/v1/messstellen/{M0}", "eee333e3"));
-        z.add(new Zeile("messstelle.bearbeiten", HttpMethod.POST, "/api/v1/messstellen", "eee333e3"));
-        z.add(new Zeile("messstelle.quelle", HttpMethod.POST, "/api/v1/messstellen/{M1}/quellen", "ee4433e3"));
-        z.add(new Zeile("messstelle.quelle", HttpMethod.POST, "/api/v1/geraete/{GR1}/austausch", "ee4433e3"));
+        z.add(new Zeile("messstelle.bearbeiten", HttpMethod.PUT, "/api/v1/messstellen/{M1}", "ee4433e33"));
+        z.add(new Zeile("messstelle.bearbeiten", HttpMethod.PUT, "/api/v1/messstellen/{M0}", "eee333e33"));
+        z.add(new Zeile("messstelle.bearbeiten", HttpMethod.POST, "/api/v1/messstellen", "eee333e33"));
+        z.add(new Zeile("messstelle.quelle", HttpMethod.POST, "/api/v1/messstellen/{M1}/quellen", "ee4433e33"));
+        z.add(new Zeile("messstelle.quelle", HttpMethod.POST, "/api/v1/geraete/{GR1}/austausch", "ee4433e33"));
         // AP-16 IP-15: Standort-Zaun über den Einbauort; der Unterstützer mit „Einrichten“ darf.
-        z.add(new Zeile("messmittel.angaben", HttpMethod.PUT, "/api/v1/geraete/{GR1}/messmittel", "ee4433e3"));
-        z.add(new Zeile("messstelle.formel", HttpMethod.POST, "/api/v1/sites/{A1}/bilanz/rest", "ee4433e3"));
-        z.add(new Zeile("messstelle.verteilung", HttpMethod.PUT, "/api/v1/messstellen/{M1}/verteilung", "ee4433e3"));
-        z.add(new Zeile("ablesung.erfassen", HttpMethod.POST, "/api/v1/messstellen/MS-1/ablesungen", "eee33333"));
+        z.add(new Zeile("messmittel.angaben", HttpMethod.PUT, "/api/v1/geraete/{GR1}/messmittel", "ee4433e33"));
+        z.add(new Zeile("messstelle.formel", HttpMethod.POST, "/api/v1/sites/{A1}/bilanz/rest", "ee4433e33"));
+        z.add(new Zeile("messstelle.verteilung", HttpMethod.PUT, "/api/v1/messstellen/{M1}/verteilung", "ee4433e33"));
+        z.add(new Zeile("ablesung.erfassen", HttpMethod.POST, "/api/v1/messstellen/MS-1/ablesungen", "eee333333"));
         z.add(new Zeile("ablesung.erfassen", HttpMethod.POST,
-                "/api/v1/messstellen/MS-1/ablesungen/2026-09-16T12:00:00Z/berichtigung", "eee33333"));
-        z.add(new Zeile("korrektur.freigeben", HttpMethod.POST, "/api/v1/korrekturen/K-1/freigeben", "eee33333"));
+                "/api/v1/messstellen/MS-1/ablesungen/2026-09-16T12:00:00Z/berichtigung", "eee333333"));
+        z.add(new Zeile("korrektur.freigeben", HttpMethod.POST, "/api/v1/korrekturen/K-1/freigeben", "eee333333"));
         z.add(new Zeile("korrektur.zuruecknehmen", HttpMethod.POST, "/api/v1/korrekturen/K-1/zuruecknehmen",
-                "eee33333"));
-        z.add(new Zeile("vieraugen.einstellen", HttpMethod.PUT, "/api/v1/unternehmen/vieraugen", "e3333333"));
+                "eee333333"));
+        z.add(new Zeile("vieraugen.einstellen", HttpMethod.PUT, "/api/v1/unternehmen/vieraugen", "e33333333"));
         z.add(new Zeile("bezugsgroesse.verwalten", HttpMethod.POST, "/api/v1/bezugsgroessen/{B1}/archivieren",
-                "ee443333"));
-        z.add(new Zeile("bezugsgroesse.eingeben", HttpMethod.POST, "/api/v1/bezugsgroessen/{B1}/werte", "ee443333"));
+                "ee4433333"));
+        z.add(new Zeile("bezugsgroesse.eingeben", HttpMethod.POST, "/api/v1/bezugsgroessen/{B1}/werte", "ee4433333"));
         z.add(new Zeile("bezugsgroesse.importieren", HttpMethod.POST, "/api/v1/bezugsdaten/importe/vorschau",
-                "eee33333", MediaType.MULTIPART_FORM_DATA_VALUE));
+                "eee333333", MediaType.MULTIPART_FORM_DATA_VALUE));
         // Gruppe 3 — Kennzahlen, Berichte, Exporte
         z.add(new Zeile("kennzahl.standort_definieren|kennzahl.unternehmen_definieren", HttpMethod.POST,
-                "/api/v1/kennzahlen", "eee33333"));
-        z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST, "/api/v1/kennzahlen/{FREMD}/bezugsbasen", "eee33333"));
+                "/api/v1/kennzahlen", "eee333333"));
+        z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST, "/api/v1/kennzahlen/{FREMD}/bezugsbasen", "eee333333"));
         z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST,
-                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/fassungen", "eee33333"));
+                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/fassungen", "eee333333"));
         z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.PUT,
-                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/verantwortlicher", "eee33333"));
+                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/verantwortlicher", "eee333333"));
         for (String schritt : List.of("beantragen", "freigeben", "ablehnen")) {
             z.add(new Zeile("bezugsbasis.freigeben", HttpMethod.POST,
-                    "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/fassungen/1/" + schritt, "ee333333"));
+                    "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/fassungen/1/" + schritt, "ee3333333"));
         }
         z.add(new Zeile("bericht.standort_freigeben|bericht.unternehmen|bewertung.abrufen", HttpMethod.POST, "/api/v1/berichte",
-                "eee33333"));
-        z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/sites/{A1}/cockpit-layout", "ee44333e"));
-        z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/tenant/cockpit-layout", "ee33333e"));
-        z.add(new Zeile("energieeinsatz.verwalten", HttpMethod.POST, "/api/v1/unternehmen/energieeinsaetze", "ee333333"));
+                "eee333333"));
+        z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/sites/{A1}/cockpit-layout", "ee44333e3"));
+        z.add(new Zeile("cockpit.anpassen", HttpMethod.PUT, "/api/v1/tenant/cockpit-layout", "ee33333e3"));
+        z.add(new Zeile("energieeinsatz.verwalten", HttpMethod.POST, "/api/v1/unternehmen/energieeinsaetze", "ee3333333"));
         z.add(new Zeile("energieeinsatz.einstufen", HttpMethod.PUT,
-                "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung", "ee333333"));
+                "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung", "ee3333333"));
         z.add(new Zeile("energieeinsatz.einstufen", HttpMethod.POST,
-                "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung/bestaetigen", "ee333333"));
+                "/api/v1/unternehmen/energieeinsaetze/{A1}/einstufung/bestaetigen", "ee3333333"));
         z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST,
-                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/bleibt", "eee33333"));
+                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/bleibt", "eee333333"));
         z.add(new Zeile("bezugsbasis.verwalten", HttpMethod.POST,
-                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/beenden", "eee33333"));
+                "/api/v1/kennzahlen/{FREMD}/bezugsbasen/{FREMD}/beenden", "eee333333"));
         // AP-18 IP-6: Energieziele — Zellen wie bezugsbasis.verwalten (KA U · EM U · BE S).
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/energieziele", "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/energieziele/{FREMD}", "eee33333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/energieziele", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/energieziele/{FREMD}", "eee333333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/energieziele/{FREMD}/verantwortlicher",
-                "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/energieziele/{FREMD}/beenden", "eee33333"));
+                "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/energieziele/{FREMD}/beenden", "eee333333"));
         // AP-18 IP-10: Maßnahmen — dieselben Zellen (KA U · EM U · BE S).
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen", "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}", "eee33333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}", "eee333333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}/verantwortlicher",
-                "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/umgesetzt", "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/verwerfen", "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/eintraege", "eee33333"));
+                "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/umgesetzt", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/verwerfen", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/eintraege", "eee333333"));
         // AP-18 IP-7: Energieziel bewerten — Zellen wie bezugsbasis.freigeben (KA U · EM U).
         z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST, "/api/v1/energieziele/{FREMD}/bewerten",
-                "ee333333"));
+                "ee3333333"));
         for (String schritt : List.of("beantragen", "freigeben", "ablehnen")) {
             z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST,
-                    "/api/v1/energieziele/{FREMD}/bewertung/" + schritt, "ee333333"));
+                    "/api/v1/energieziele/{FREMD}/bewertung/" + schritt, "ee3333333"));
         }
         // AP-18 IP-16: Auffälligkeit und Abweichung — verwalten wie oben, der Abschluss nur KA U · EM U.
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST,
-                "/api/v1/kennzahlen/{FREMD}/auffaelligkeiten/{FREMD}/antwort", "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/abweichungen", "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/abweichungen/{FREMD}/eintraege", "eee33333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/abweichungen/{FREMD}/frist", "eee33333"));
+                "/api/v1/kennzahlen/{FREMD}/auffaelligkeiten/{FREMD}/antwort", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/abweichungen", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/abweichungen/{FREMD}/eintraege", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/abweichungen/{FREMD}/frist", "eee333333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/abweichungen/{FREMD}/verantwortlicher",
-                "eee33333"));
+                "eee333333"));
         z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST, "/api/v1/abweichungen/{FREMD}/abschliessen",
-                "ee333333"));
+                "ee3333333"));
         // AP-18 IP-12: Maßnahme bewerten (Stand Nr. n) — dieselben Zellen (KA U · EM U).
         z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/bewertungen",
-                "ee333333"));
+                "ee3333333"));
         for (String schritt : List.of("beantragen", "freigeben", "ablehnen")) {
             z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST,
-                    "/api/v1/massnahmen/{FREMD}/bewertungen/" + schritt, "ee333333"));
+                    "/api/v1/massnahmen/{FREMD}/bewertungen/" + schritt, "ee3333333"));
         }
-        z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee333333"));
-        z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee333333"));
-        z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee333333"));
+        z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee3333333"));
+        z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee3333333"));
+        z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee3333333"));
         return z;
     }
 
@@ -394,8 +397,8 @@ class RechtMatrixApiTest {
         Map<String, String> tabelle = new LinkedHashMap<>();
         for (Zeile z : zeilen) {
             StringBuilder ist = new StringBuilder();
-            for (int i = 0; i < ACHT.size(); i++) {
-                Person p = ACHT.get(i);
+            for (int i = 0; i < PERSONEN.size(); i++) {
+                Person p = PERSONEN.get(i);
                 MvcResult r = ruf(z.methode(), pfad(z.pfad()), p, true, "{}", z.typ());
                 char c = urteil(r, Set.of(z.kennungen().split("\\|")));
                 ist.append(c);
@@ -408,7 +411,7 @@ class RechtMatrixApiTest {
             }
             tabelle.put(z.kennungen() + "  " + z.methode() + " " + z.pfad(), ist.toString());
         }
-        System.out.println("Rechte je Zeile " + titel + " (JW IK PH SR MD CB TB LV; e erlaubt · 3 recht_fehlt · "
+        System.out.println("Rechte je Zeile " + titel + " (JW IK PH SR MD CB TB LV RF; e erlaubt · 3 recht_fehlt · "
                 + "4 außerhalb):");
         tabelle.forEach((k, v) -> System.out.println("  " + v + "  " + k));
         assertThat(abweichungen).as("Abweichungen von der Matrix").isEmpty();
@@ -580,6 +583,57 @@ class RechtMatrixApiTest {
         assertThat(abweichungen).as("heutige Konten, die eine Route mit @Recht nicht mehr erreichen").isEmpty();
     }
 
+    /**
+     * AP-19 IP-12, R6 (RE3): „Einsicht“ kommt an KEINER Schreibroute durch. Jede Route mit {@link Recht} aus dem
+     * Handler-Mapping (keine Liste von Hand) antwortet Robert Falk mit 403 {@code recht_fehlt} — außer den Zeilen, die
+     * jede Rolle mit E tragen (eigenes Konto); in der Spalte {@code einsicht} steht an keiner Schreib-Kennung ein U.
+     */
+    @Test
+    void einsichtKommtAnKeinerSchreibrouteDurch() throws Exception {
+        JsonNode datei = MAPPER.readTree(getClass().getClassLoader().getResourceAsStream(RechteMatrixDatei.PFAD));
+        Map<String, JsonNode> aktionen = new HashMap<>();
+        for (JsonNode a : datei.path("aktionen")) {
+            aktionen.put(a.path("kennung").asText(), a);
+        }
+        List<String> durch = new ArrayList<>();
+        Set<String> nichtMinus = new java.util.TreeSet<>();
+        int geprueft = 0;
+        for (Map.Entry<RequestMappingInfo, HandlerMethod> e : mapping.getHandlerMethods().entrySet()) {
+            Recht recht = e.getValue().getMethodAnnotation(Recht.class);
+            if (recht == null) {
+                continue;
+            }
+            List<String> nicht = List.of(recht.value()).stream()
+                    .filter(k -> !"-".equals(aktionen.get(k).path("zellen").path("einsicht").asText())).toList();
+            if (!nicht.isEmpty()) {
+                nichtMinus.addAll(nicht);
+                continue;
+            }
+            for (String muster : e.getKey().getPatternValues()) {
+                for (RequestMethod m : e.getKey().getMethodsCondition().getMethods()) {
+                    String typ = e.getKey().getConsumesCondition().getConsumableMediaTypes().stream().findFirst()
+                            .map(Object::toString).orElse(MediaType.APPLICATION_JSON_VALUE);
+                    MvcResult r = ruf(HttpMethod.valueOf(m.name()), bestandPfad(muster), RF, true, "{}", typ);
+                    geprueft++;
+                    if (r.getResponse().getStatus() != 403
+                            || !"recht_fehlt".equals(r.getRequest().getAttribute(RechtInterceptor.URTEIL))) {
+                        durch.add(m + " " + muster + ": " + r.getResponse().getStatus() + " "
+                                + r.getRequest().getAttribute(RechtInterceptor.URTEIL));
+                    }
+                }
+            }
+        }
+        System.out.println("Einsicht an Routen mit @Recht geprüft: " + geprueft + " Aufrufe, ohne − in der Spalte: "
+                + nichtMinus);
+        assertThat(durch).as("Schreibrouten, an denen Einsicht durchkommt").isEmpty();
+        assertThat(geprueft).isGreaterThanOrEqualTo(160);
+        // Nur das eigene Konto (E) und lesende Zeilen an Routen, die rechnen statt zu schreiben (Vorschau, Simulation
+        // mit messwerte.ansehen) — keine Freigabe, kein Eintrag, kein Export.
+        assertThat(nichtMinus).as("Routen mit @Recht, die Einsicht erreicht").containsExactlyInAnyOrder("konto.eigenes",
+                "messwerte.ansehen");
+        assertThat(aktionen.get("konto.eigenes").path("zellen").path("einsicht").asText()).isEqualTo("E");
+    }
+
     /** Alle Routen mit {@link Recht} aus dem Handler-Mapping — keine Liste von Hand. */
     private List<String[]> rechtRouten() {
         List<String[]> aus = new ArrayList<>();
@@ -618,16 +672,16 @@ class RechtMatrixApiTest {
 
     /**
      * Die Zeilen der Gruppe 4 mit den Routen, die sie tragen — 50 Schreibwege, die an einer realen Anlage eingreifen.
-     * Muster der Erwartung (JW IK PH SR MD CB TB LV): {@code betrieb} = „Betrieb im Rahmen" (E4), {@code rahmen} =
+     * Muster der Erwartung (JW IK PH SR MD CB TB LV RF): {@code betrieb} = „Betrieb im Rahmen" (E4), {@code rahmen} =
      * Sache des Kundenadministrators, {@code einrichten} = auch der Unterstützer ab „Einrichten".
      */
     private static List<Zeile> zeilenSteuerung() {
         List<Zeile> z = new ArrayList<>();
-        String betrieb = "e344e3e3";            // U - - S - B -
-        String ladepunktBetrieb = "e344e3ee";   // U - - S - B P
-        String einrichten = "e34433e3";         // U - - - - Ei -
-        String einrichtenP = "e34433ee";        // U - - - - Ei P
-        String rahmen = "e344333e";             // U - - - - - P
+        String betrieb = "e344e3e33";            // U - - S - B -
+        String ladepunktBetrieb = "e344e3ee3";   // U - - S - B P
+        String einrichten = "e34433e33";         // U - - - - Ei -
+        String einrichtenP = "e34433ee3";        // U - - - - Ei P
+        String rahmen = "e344333e3";             // U - - - - - P
         String s1 = "/api/v1/sites/{A1}";
         // Handeingriffe — Zone Jetzt (Dauer Pflicht, TTL ≤ 24 h)
         z.add(new Zeile("handeingriff.setzen", HttpMethod.POST, s1 + "/automation-pause", betrieb));
@@ -676,7 +730,7 @@ class RechtMatrixApiTest {
         z.add(new Zeile("schalttest.durchfuehren", HttpMethod.POST,
                 s1 + "/components/custom/{FREMD}/switch-test/cancel", einrichten));
         z.add(new Zeile("funktion.messen_einrichten", HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/messen",
-                "ee4433e3"));
+                "ee4433e33"));
         // Register schreiben — Vorschau und Schreiben, beide mit Journal
         z.add(new Zeile("register.schreiben", HttpMethod.POST, s1 + "/register-write", einrichtenP));
         z.add(new Zeile("register.schreiben", HttpMethod.POST, s1 + "/register-write/preview", einrichtenP));
@@ -687,20 +741,20 @@ class RechtMatrixApiTest {
                 rahmen));
         z.add(new Zeile("freigabe.erteilen", HttpMethod.PUT, s1 + "/ocpp/control", rahmen));
         z.add(new Zeile("anlage.verwalten", HttpMethod.PUT, s1 + "/supply-price", rahmen));
-        z.add(new Zeile("prognose.befoerdern", HttpMethod.POST, s1 + "/forecast-models", "ee44333e"));
+        z.add(new Zeile("prognose.befoerdern", HttpMethod.POST, s1 + "/forecast-models", "ee44333e3"));
         // Was nichts an der Anlage ändert, hängt am Lese-Recht (Vorschau und Ersparnis-Simulation)
-        z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/steuerung-vorschau", "ee44eeee"));
-        z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/simulation", "ee44eeee"));
+        z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/steuerung-vorschau", "ee44eeeee"));
+        z.add(new Zeile("messwerte.ansehen", HttpMethod.POST, s1 + "/simulation", "ee44eeeee"));
         // Mehrere Rechte in einem Aufruf: die Vorprüfung „irgendwo", die genaue Prüfung im Handler
         String steuernAnlage = "funktion.steuern_einrichten|steuerung.starten_beenden|steuerung.anhalten_fortsetzen";
         String steuernStandort = "steuerung.starten_beenden|steuerung.anhalten_fortsetzen";
-        z.add(new Zeile(steuernAnlage, HttpMethod.PUT, s1 + "/funktionen/steuern", "e333e3e3"));
-        z.add(new Zeile(steuernStandort, HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/steuern", "e333e3e3"));
+        z.add(new Zeile(steuernAnlage, HttpMethod.PUT, s1 + "/funktionen/steuern", "e333e3e33"));
+        z.add(new Zeile(steuernStandort, HttpMethod.PUT, "/api/v1/standorte/{S1}/funktionen/steuern", "e333e3e33"));
         z.add(new Zeile("grenze.eintragen|betriebsweise.aendern", HttpMethod.PUT, s1 + "/charging-config",
-                "e333e3ee"));
+                "e333e3ee3"));
         // Gemeinsame Steuerung (AP-15 IP-5, I5): der Kunde richtet ein und hält an; scharf schaltet nur die
         // Plattform unter /api/v1/admin (keine Zeile hier)
-        String nurKa = "e3443333";              // U - - - - - -
+        String nurKa = "e34433333";              // U - - - - - -
         String gs = s1 + "/gemeinsame-steuerung";
         z.add(new Zeile("funktion.steuern_einrichten", HttpMethod.PUT, gs, einrichten));
         // Frage 6 für einen Entwurf (schreibt nichts, gehört aber zum Einrichten) — Recht wie einrichten
@@ -751,7 +805,7 @@ class RechtMatrixApiTest {
             aktionen.put(a.path("kennung").asText(), a);
         }
         record Ohne(Person person, String rolle) {}
-        List<Ohne> ohne = List.of(new Ohne(CB, "leser"), new Ohne(IK, "energiemanager"));
+        List<Ohne> ohne = List.of(new Ohne(CB, "leser"), new Ohne(IK, "energiemanager"), new Ohne(RF, "einsicht"));
         List<String> durch = new ArrayList<>();
         int geprueft = 0;
         for (Map.Entry<RequestMappingInfo, HandlerMethod> e : mapping.getHandlerMethods().entrySet()) {
@@ -1139,6 +1193,8 @@ class RechtMatrixApiTest {
         spiegel("sub-ahr-claudia", "benutzer", "Claudia Berger");
         zuweisung("sub-ahr-claudia", "leser", S1, frueher);
         zuweisung("sub-ahr-claudia", "leser", S2, frueher);
+        spiegel("sub-ahr-robert", "benutzer", "Robert Falk");
+        zuweisung("sub-ahr-robert", "einsicht", null, frueher);
         spiegel("sub-ahr-brunner", "partner", "Thomas Brunner");
         unterstuetzung("sub-ahr-brunner", "installateur", "einrichten_und_bedienen");
         spiegel("sub-ahr-voss", "plattform", "Lena Voss");

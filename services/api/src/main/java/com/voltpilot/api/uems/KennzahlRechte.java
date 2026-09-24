@@ -54,17 +54,18 @@ public final class KennzahlRechte {
 
     private static Matrix matrix() {
         Map<String, Aktion> m = new LinkedHashMap<>();
-        zeile(m, STANDORT_DEFINIEREN, "Kennzahl definieren — Geltungsbereich Standort", "U", "U", "S", "-", "-", "-", "-");
+        zeile(m, STANDORT_DEFINIEREN, "Kennzahl definieren — Geltungsbereich Standort", "U", "U", "S", "-", "-", "-", "-",
+                "-");
         zeile(m, UNTERNEHMEN_DEFINIEREN, "Kennzahl definieren — Geltungsbereich Unternehmen", "U", "U", "-", "-", "-",
-                "-", "-");
-        zeile(m, ANSEHEN, "Messwerte, Zeitreihen, Datenqualität ansehen", "U", "U", "S", "S", "S", "A", "-");
+                "-", "-", "-");
+        zeile(m, ANSEHEN, "Messwerte, Zeitreihen, Datenqualität ansehen", "U", "U", "S", "S", "S", "A", "-", "U");
         return new Matrix(Map.copyOf(m));
     }
 
     private static void zeile(Map<String, Aktion> m, String kennung, String kundenwort, String... zellen) {
         Map<Rolle, Zelle> z = new EnumMap<>(Rolle.class);
         Rolle[] rollen = {Rolle.KUNDENADMINISTRATOR, Rolle.ENERGIEMANAGER, Rolle.BEARBEITER, Rolle.BEDIENBERECHTIGT,
-            Rolle.LESER, Rolle.UNTERSTUETZER, Rolle.VOLTPILOT_BETRIEB};
+            Rolle.LESER, Rolle.UNTERSTUETZER, Rolle.VOLTPILOT_BETRIEB, Rolle.EINSICHT};
         for (int i = 0; i < rollen.length; i++) {
             z.put(rollen[i], Zelle.vonCode(zellen[i]));
         }

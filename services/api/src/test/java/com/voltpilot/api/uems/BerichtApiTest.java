@@ -878,6 +878,44 @@ class BerichtApiTest {
                 .as("ein freigegebener Stand wird nie für die Teilansicht gefiltert oder neu gerechnet").isEqualTo(abzug);
     }
 
+    /**
+     * AP-19 IP-12, R6 (RE3): „Einsicht“ liest den Unternehmens-Bericht, seinen Entwurf und seine Stände und lädt das PDF
+     * — protokolliert mit {@code actor_rolle} {@code einsicht}, das Wort, das der getauschte CHECK
+     * {@code bericht_abruf_actor_rolle_chk} erst trägt —; die CSV eines Stands ist Datenabfluss ({@code export.*} −,
+     * 403) und schreibt keinen Abruf; anlegen, freigeben und archivieren sind 403 (nie eine Freigabe).
+     */
+    @Test
+    void r6EinsichtLiestUndLaedtDasPdfAberNichtDieCsvUndGibtNichtsFrei() throws Exception {
+        Welt w = welt();
+        Wer robert = person(w.mandant(), "RF", "Robert Falk", "benutzer", zuweisung("einsicht", null));
+        UUID u = bericht(w, "BR-2026-0002", "monatsbericht_unternehmen", null, "2026-10");
+        entwurf(w, u, nummerEins, "2026-11-10T08:55:00+01:00");
+        String k = PFAD + "/BR-2026-0002";
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(robert, HttpMethod.GET, k + "/entwurf", null), 200);
+        verboten(ruf(robert, HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen", w.unternehmen(), "2026-11")));
+        verboten(ruf(robert, HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")));
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+
+        uhr("2026-11-20T17:45:00+01:00");
+        ok(ruf(robert, HttpMethod.GET, k, null), 200);
+        ok(ruf(robert, HttpMethod.GET, k + "/staende/1", null), 200);
+        verboten(ruf(robert, HttpMethod.GET, k + "/staende/1/csv", null));
+        verboten(ruf(robert, HttpMethod.POST, k + "/archivieren", null));
+        MvcResult pdf = datei(robert, k + "/staende/1/pdf");
+        assertThat(pdf.getResponse().getStatus()).isEqualTo(200);
+        assertThat(pdf.getResponse().getContentType()).isEqualTo("application/pdf");
+        assertThat(pdf.getResponse().getContentAsByteArray()).as("dieselbe Datei wie für den Kundenadministrator")
+                .isEqualTo(datei(w.jonas(), k + "/staende/1/pdf").getResponse().getContentAsByteArray());
+
+        List<Map<String, Object>> abrufe = root.queryForList("SELECT actor_name, actor_rolle, actor_art, format, "
+                + "teilansicht FROM bericht_abruf WHERE tenant_id = ? ORDER BY abgerufen_am, actor_name", w.mandant());
+        assertThat(abrufe).as("zwei PDF-Abrufe, keine CSV").hasSize(2)
+                .allSatisfy(a -> assertThat(a).containsEntry("format", "pdf").containsEntry("teilansicht", false));
+        assertThat(abrufe.stream().map(a -> a.get("actor_name") + "/" + a.get("actor_rolle") + "/" + a.get("actor_art"))
+                .toList()).containsExactlyInAnyOrder("Robert Falk/einsicht/kunde", "Jonas Wendlinger/kundenadministrator/kunde");
+    }
+
     /** V4: Archivieren verbirgt den Bericht in der Liste, der Bericht bleibt lesbar; ein zweites Mal ändert nichts. */
     @Test
     void archivierenVerbirgtInDerListeUndIstEinmalig() throws Exception {

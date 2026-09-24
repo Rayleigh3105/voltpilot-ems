@@ -94,6 +94,8 @@ import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTE
 import { UEMS_BEREICH, UEMS_GEBAEUDE, UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossar';
 import { UEMS_ROLLEN_STANDORT, UEMS_ROLLEN_UNTERNEHMEN, UEMS_ROLLE_UNTERSTUETZER } from './glossar';
 import { ARTEN as RECHTE_ARTEN, KONTEN as RECHTE_KONTEN, ROLLE_KUNDENWORT, TEXTE as RECHTE_TEXTE, UMFANG_KUNDENWORT } from './rechte';
+import { KUNDENROLLEN } from './benutzer';
+import { ROLLE_BESCHREIBUNG } from './components/BenutzerEinladen';
 import { STAND_AM, bannerTitel } from './standAm';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
 import { FLAECHE as STEUERUNG_FLAECHE, flaechenSatz as steuerungFlaechenSatz, KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
@@ -1239,6 +1241,18 @@ describe('UEMS AP-03 IP-16 · die Personen der Demo-Daten sprechen die Kundenwö
     for (const wort of [...UEMS_ROLLEN_UNTERNEHMEN, ...UEMS_ROLLEN_STANDORT, UEMS_ROLLE_UNTERSTUETZER]) {
       expect(Object.values(ROLLE_KUNDENWORT), wort).toContain(wort);
     }
+  });
+
+  it('AP-19 IP-12: die Rolle Einsicht spricht das Wort des Wörterbuchs und jede zuweisbare Rolle hat ihre Beschreibung', () => {
+    expect(ROLLE_KUNDENWORT.einsicht).toBe(UEMS_EINSICHT);
+    expect(KUNDENROLLEN.map((r) => r.value)).toEqual([
+      'kundenadministrator', 'energiemanager', 'bearbeiter', 'bedienberechtigt', 'leser', 'einsicht',
+    ]);
+    expect(KUNDENROLLEN.find((r) => r.value === 'einsicht')).toEqual({ value: 'einsicht', label: UEMS_EINSICHT, unternehmensweit: true });
+    for (const r of KUNDENROLLEN) expect(ROLLE_BESCHREIBUNG[r.value], r.value).toBeTruthy();
+    // „nur lesen“ steht im Satz, ohne Norm-Wort (SP2) — dieselbe Aussage wie „Was man sieht“ in R6.
+    expect(ROLLE_BESCHREIBUNG.einsicht).toContain('kann nichts ändern');
+    expect(ROLLE_BESCHREIBUNG.einsicht).not.toMatch(/ISO|konform|zertifiz|Audit/i);
   });
 
   it('jede Rolle, Kontoart, Art und jeder Umfang der Demo-Daten hat ein Kundenwort', () => {

@@ -396,8 +396,8 @@ class UemsVerbesserungMigrationTest {
                 zellen.put(r.path("kennung").asText(), s.toString());
             }
         });
-        assertThat(zellen).containsExactly(Map.entry("verbesserung.verwalten", "UUS----"),
-                Map.entry("verbesserung.abschliessen", "UU-----"), Map.entry("verbesserung.ansehen", "UUSSSA-"));
+        assertThat(zellen).containsExactly(Map.entry("verbesserung.verwalten", "UUS-----"),
+                Map.entry("verbesserung.abschliessen", "UU------"), Map.entry("verbesserung.ansehen", "UUSSSA-U"));
     }
 
     /** Jede Liste des Vertrags (IP-2) steht Zeile für Zeile in der Datenbank; dazu nur Wörter-Listen der Tabellen. */

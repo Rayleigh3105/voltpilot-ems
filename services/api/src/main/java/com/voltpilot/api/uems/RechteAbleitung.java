@@ -90,7 +90,14 @@ public final class RechteAbleitung {
         BEDIENBERECHTIGT("bedienberechtigt", "Bedienberechtigt"),
         LESER("leser", "Leser"),
         UNTERSTUETZER("unterstuetzer", "Unterstützer"),
-        VOLTPILOT_BETRIEB("voltpilot_betrieb", "VoltPilot-Betrieb");
+        VOLTPILOT_BETRIEB("voltpilot_betrieb", "VoltPilot-Betrieb"),
+        /**
+         * Nur lesen, unternehmensweit, zuweisbar und befristbar (AP-19 IP-12, RE3, E8 = A): U an den lesenden Zeilen, E
+         * am eigenen Konto, sonst − — nie eine Freigabe, nie ein Eintrag, kein Export. Eine Spalte aus einem Nachtrag
+         * (AP-19 §4.11), darum hinter den sieben Spalten der Konzept-Tabelle; sie steht NICHT in
+         * {@link #ROLLE_NOETIG_REIHENFOLGE} — {@code rolle_noetig} nennt weiter die Rollen von vorher (NW-5).
+         */
+        EINSICHT("einsicht", "Einsicht");
 
         private final String code;
         private final String kundenwort;
@@ -456,7 +463,7 @@ public final class RechteAbleitung {
             a.path("zellen").fields().forEachRemaining(
                     e -> zellen.put(Rolle.vonCode(e.getKey()), Zelle.vonCode(e.getValue().asText())));
             if (zellen.size() != Rolle.values().length) {
-                throw new IllegalArgumentException("Zeile ohne alle sieben Rollen: " + a.path("kennung"));
+                throw new IllegalArgumentException("Zeile ohne alle Rollen: " + a.path("kennung"));
             }
             String kennung = a.path("kennung").asText();
             aktionen.put(kennung, new Aktion(kennung, a.path("kundenwort").asText(), Map.copyOf(zellen)));

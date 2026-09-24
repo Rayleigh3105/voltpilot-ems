@@ -8,12 +8,14 @@ import { useRollen } from '../rollen';
 import { BenutzerAnlegenDialog } from './BenutzerAnlegenDialog';
 import { VpPicker } from './VpPicker';
 
-const beschreibung: Record<string, string> = {
+/** Die Rollen-Beschreibung im Rollen-Wähler — je zuweisbare Rolle ein Satz (`copy.test.ts` hält sie vollständig). */
+export const ROLLE_BESCHREIBUNG: Record<string, string> = {
   kundenadministrator: 'Verwaltet Benutzer, Daten und Steuerung im ganzen Unternehmen.',
   energiemanager: 'Pflegt Daten an allen Standorten; bedient keine Steuerung und verwaltet keine Benutzer.',
   bearbeiter: 'Pflegt Daten an ausgewählten Standorten; bedient keine Steuerung.',
   bedienberechtigt: 'Bedient die Steuerung an ausgewählten Standorten; pflegt keine Messdaten und erteilt keine Freigaben.',
   leser: 'Sieht Daten an ausgewählten Standorten; ändert nichts.',
+  einsicht: 'Sieht das Energiemanagement des ganzen Unternehmens und kann nichts ändern — für Leitung und Prüfende, auch befristet.',
 };
 export function RechteVorschau({ rolle, standorte }: { rolle: Rolle; standorte: string[] }) {
   const v = rechteVorschau(rolle, standorte);
@@ -92,9 +94,9 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
           <div className="vp-benutzer-zwei"><Input label="Vorname" value={anlage.vorname} onChange={e => setAnlage(a => ({ ...a, vorname: e.target.value }))} />
             <Input label="Nachname" value={anlage.nachname} onChange={e => setAnlage(a => ({ ...a, nachname: e.target.value }))} /></div>
         </>}
-        <VpPicker label="Rolle" value={anlage.rolle} options={KUNDENROLLEN.map(r => ({ ...r, sub: beschreibung[r.value] }))}
+        <VpPicker label="Rolle" value={anlage.rolle} options={KUNDENROLLEN.map(r => ({ ...r, sub: ROLLE_BESCHREIBUNG[r.value] }))}
           onChange={rolle => setAnlage(a => ({ ...a, rolle }))} />
-        <p>{beschreibung[anlage.rolle]}</p>
+        <p>{ROLLE_BESCHREIBUNG[anlage.rolle]}</p>
         {bearbeiten && <><p>Die Änderung gilt sofort. Andere Rollen und Standorte bleiben erhalten.</p>{auswahl}</>}
         {fehler && <p role="alert">{fehler}</p>}
       </form>

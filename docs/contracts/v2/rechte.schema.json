@@ -186,7 +186,8 @@
         "bedienberechtigt",
         "leser",
         "unterstuetzer",
-        "voltpilot_betrieb"
+        "voltpilot_betrieb",
+        "einsicht"
       ]
     },
     "zelle": { "enum": ["U", "S", "E", "-", "P", "A", "Ei", "B"] },
@@ -257,9 +258,9 @@
           }
         },
         "rollen": {
-          "description": "Die sieben Spalten in der Spaltenreihenfolge der Konzept-Tabelle.",
+          "description": "Die sieben Spalten in der Spaltenreihenfolge der Konzept-Tabelle, danach die Spalten späterer Pakete (mit `nachtrag`, heute Einsicht aus AP-19 §4.11).",
           "type": "array",
-          "minItems": 7,
+          "minItems": 8,
           "items": {
             "type": "object",
             "required": ["kennung", "kundenwort", "kuerzel", "geltungsbereich", "zuweisbar", "zellen", "achsen"],
@@ -278,7 +279,11 @@
                 "minItems": 1,
                 "items": { "$ref": "#/$defs/zelle" }
               },
-              "achsen": { "type": "string", "minLength": 1 }
+              "achsen": { "type": "string", "minLength": 1 },
+              "nachtrag": {
+                "description": "Die Spalte stammt aus dem Rechte-Abschnitt eines späteren Pakets: sie steht nicht in der Konzept-Tabelle AP-03 §4.3 (die bleibt byte-gleich), sondern in der Nachtrags-Tabelle und in „Spalten der Nachträge“.",
+                "$ref": "#/$defs/abschnitt"
+              }
             },
             "additionalProperties": false
           }
@@ -347,7 +352,8 @@
                   "bedienberechtigt",
                   "leser",
                   "unterstuetzer",
-                  "voltpilot_betrieb"
+                  "voltpilot_betrieb",
+                  "einsicht"
                 ],
                 "properties": {
                   "kundenadministrator": { "enum": ["U", "E", "-"] },
@@ -356,7 +362,8 @@
                   "bedienberechtigt": { "enum": ["S", "E", "-"] },
                   "leser": { "enum": ["S", "E", "-"] },
                   "unterstuetzer": { "enum": ["A", "Ei", "B", "E", "-"] },
-                  "voltpilot_betrieb": { "enum": ["P", "E", "-"] }
+                  "voltpilot_betrieb": { "enum": ["P", "E", "-"] },
+                  "einsicht": { "enum": ["U", "E", "-"] }
                 },
                 "additionalProperties": false
               },
@@ -680,7 +687,7 @@
           "required": ["art", "rolle", "standorte"],
           "properties": {
             "art": { "$ref": "#/$defs/aenderung_art" },
-            "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", null] },
+            "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "einsicht", null] },
             "standorte": { "type": ["array", "null"], "items": { "$ref": "#/$defs/standort_kennzeichen" } }
           },
           "additionalProperties": false
@@ -700,7 +707,7 @@
         "http": { "enum": [200, 201, 401, 403, 404, 409, 422] },
         "grund": { "$ref": "#/$defs/grund" },
         "standort": { "type": ["string", "null"], "pattern": "^ST-[0-9]+$" },
-        "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "unterstuetzer", "voltpilot_betrieb", null] },
+        "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "unterstuetzer", "voltpilot_betrieb", "einsicht", null] },
         "rolle_noetig": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "voltpilot_betrieb", null] },
         "umfang_noetig": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
         "text": { "type": ["string", "null"], "minLength": 1 },
