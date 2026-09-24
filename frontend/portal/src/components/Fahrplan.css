@@ -896,7 +896,7 @@
   margin: 0 0 var(--vp-space-3);
 }
 .vp-lage-zeile .vp-lage-satz {
-  font-size: 0.86rem;
+  font-size: var(--vp-c-fs-14);
   color: var(--vp-text-muted, #6c757d);
 }
 /* V-02: „Ihr Vorteil" wohnt in „Mehr erklären" - als Abschnitt, nicht Karte. */
