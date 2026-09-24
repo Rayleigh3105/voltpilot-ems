@@ -1,0 +1,3340 @@
+{
+  "schema_version": "1.0",
+  "herkunft": "AP-19 entschieden 24.09.2026 (E1–E10 = A, W1–W15 übernommen), §4.2–4.9, §5.8, §7 R1–R3, R7–R14; Python-Referenz aus k_faelle.py (ueberpruefung, AUDIT_NAECHSTES, MB_NAECHSTE, F1_FRIST, zeile/KANDIDATEN, vergleich_anwendungsbereich, vz); Referenzdatei 1.10 (dokumente[], audits[], feststellungen[], managementbewertungen[]) für die Prüfsummen. Die kanonische Zahlform ist die von bericht.md A1 (−5, nie −5.0) — der Katalog rechnete den Stand BR-2029-0001 über json.dumps (sha256:7db218a7…), gültig ist sha256:0a52c97d….",
+  "startwerte": {
+    "ueberpruefung_monate": 12,
+    "ueberpruefung_monate_mindestens": 1,
+    "ueberpruefung_monate_hoechstens": 60,
+    "audit_rhythmus_monate": 12,
+    "managementbewertung_rhythmus_monate": 12,
+    "feststellung_frist_tage": 90,
+    "vorschau_tage": 30,
+    "wortlaut_zeichen_hoechstens": 20000,
+    "begruendung_zeichen_mindestens": 10,
+    "begruendung_zeichen_hoechstens": 500,
+    "eintrag_zeichen_hoechstens": 2000
+  },
+  "vokabulare": {
+    "dokument_art": [
+      "energiepolitik",
+      "anwendungsbereich",
+      "kontext",
+      "rechtliche_anforderungen",
+      "risiken_chancen",
+      "bestellung",
+      "verfahren",
+      "betrieb",
+      "beschaffung",
+      "kommunikation",
+      "auslegung",
+      "kompetenz"
+    ],
+    "dokument_klasse": [
+      "vorgabe",
+      "nachweis"
+    ],
+    "dokument_zustand": [
+      "entwurf",
+      "gueltig",
+      "aufgehoben"
+    ],
+    "dokument_bezug": [
+      "unternehmen",
+      "standort",
+      "energieeinsatz",
+      "person",
+      "aufgabe"
+    ],
+    "fassung_form": [
+      "wortlaut",
+      "verweis"
+    ],
+    "fassung_status": [
+      "entwurf",
+      "beantragt",
+      "freigegeben",
+      "abgelehnt",
+      "abgeloest"
+    ],
+    "dokument_eintrag": [
+      "bekannt_gemacht",
+      "geprueft_bleibt",
+      "aufgehoben",
+      "kommentar"
+    ],
+    "bekanntmachung_weg": [
+      "aushang",
+      "intranet",
+      "unterweisung",
+      "besprechung",
+      "e_mail",
+      "weiterer"
+    ],
+    "aufgabe": [
+      "unternehmensleitung",
+      "energiemanagement_leiten",
+      "energieteam",
+      "bezugsbasen",
+      "energieziele_massnahmen",
+      "bewertung_messplanung",
+      "interne_audits",
+      "managementbewertung",
+      "dokumente",
+      "weitere"
+    ],
+    "person_zustand": [
+      "aktiv",
+      "beendet"
+    ],
+    "aufgabe_zustand": [
+      "laufend",
+      "beendet"
+    ],
+    "audit_zustand": [
+      "geplant",
+      "durchgefuehrt",
+      "abgeschlossen",
+      "abgesagt"
+    ],
+    "audit_eintrag": [
+      "hinweis",
+      "kommentar"
+    ],
+    "feststellung_quelle": [
+      "internes_audit",
+      "eigene",
+      "extern",
+      "managementbewertung"
+    ],
+    "feststellung_zustand": [
+      "offen",
+      "abgeschlossen"
+    ],
+    "feststellung_eintrag": [
+      "kommentar",
+      "behebung",
+      "ursache_aussage",
+      "aehnliche_faelle"
+    ],
+    "wirksamkeit_ergebnis": [
+      "wirksam",
+      "nicht_wirksam",
+      "ohne_massnahme",
+      "zurueckgenommen"
+    ],
+    "managementbewertung_zustand": [
+      "entwurf",
+      "freigegeben"
+    ],
+    "beschluss_art": [
+      "energieziel",
+      "massnahme",
+      "dokument",
+      "aufgabe",
+      "ressourcen",
+      "audit",
+      "keine_aenderung",
+      "weitere"
+    ],
+    "folge_art": [
+      "energieziel",
+      "massnahme",
+      "dokument",
+      "aufgabe",
+      "audit"
+    ],
+    "wiedervorlage_art": [
+      "dokument_ueberpruefung",
+      "internes_audit",
+      "managementbewertung",
+      "feststellung",
+      "bewertung_ueberpruefung",
+      "bezugsbasis_ueberpruefung",
+      "energieziel_bewertung",
+      "massnahme_termin",
+      "abweichung_frist",
+      "messbedarf_frist",
+      "bericht_anstoss"
+    ],
+    "verzeichnis_ort": [
+      "in_voltpilot",
+      "wortlaut_original_beim_kunden",
+      "verweis"
+    ],
+    "verzeichnis_gruppe": [
+      "grundlagen",
+      "verantwortung",
+      "risiken_chancen",
+      "kompetenz_kommunikation",
+      "betrieb_auslegung_beschaffung",
+      "bewertung_messplanung",
+      "kennzahlen_bezugsbasen",
+      "ziele_massnahmen_abweichungen",
+      "audits_feststellungen",
+      "managementbewertung",
+      "berichte"
+    ],
+    "ueberpruefung_art": [
+      "dokument",
+      "internes_audit",
+      "managementbewertung",
+      "feststellung"
+    ],
+    "ueberpruefung_grund": [
+      "nachweis",
+      "keine_fassung",
+      "kein_audit",
+      "keine_managementbewertung",
+      "abgeschlossen"
+    ]
+  },
+  "dokument_art_klasse": {
+    "energiepolitik": "vorgabe",
+    "anwendungsbereich": "vorgabe",
+    "kontext": "vorgabe",
+    "rechtliche_anforderungen": "vorgabe",
+    "risiken_chancen": "vorgabe",
+    "bestellung": "vorgabe",
+    "verfahren": "vorgabe",
+    "betrieb": "vorgabe",
+    "beschaffung": "vorgabe",
+    "kommunikation": "vorgabe",
+    "auslegung": "nachweis",
+    "kompetenz": "nachweis"
+  },
+  "leitungs_pflicht": [
+    "energiepolitik",
+    "anwendungsbereich",
+    "bestellung"
+  ],
+  "kennzeichen_muster": {
+    "dokument": "^D-[0-9]{4,13}$",
+    "internes_audit": "^AU-[0-9]{4}-[0-9]{4,9}$",
+    "feststellung": "^F-[0-9]{4}-[0-9]{4,9}$",
+    "beschluss": "^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$"
+  },
+  "woerter": {
+    "dokument_art": {
+      "energiepolitik": "Energiepolitik",
+      "anwendungsbereich": "Anwendungsbereich",
+      "kontext": "Kontext und interessierte Parteien",
+      "rechtliche_anforderungen": "Rechtliche Anforderungen",
+      "risiken_chancen": "Risiken und Chancen",
+      "bestellung": "Bestellung und Aufgaben (Beleg)",
+      "verfahren": "Vorgehen",
+      "betrieb": "Betrieb und Instandhaltung",
+      "beschaffung": "Beschaffung",
+      "kommunikation": "Kommunikation",
+      "auslegung": "Auslegung (Nachweis)",
+      "kompetenz": "Kompetenz (Nachweis)"
+    },
+    "aufgabe": {
+      "unternehmensleitung": "Leitung des Unternehmens",
+      "energiemanagement_leiten": "Energiemanagement leiten und an die Leitung berichten",
+      "energieteam": "Mitglied im Energieteam",
+      "bezugsbasen": "Bezugsbasen pflegen und freigeben",
+      "energieziele_massnahmen": "Energieziele und Maßnahmen führen",
+      "bewertung_messplanung": "Energetische Bewertung und Messplanung",
+      "interne_audits": "Interne Audits planen und durchführen",
+      "managementbewertung": "Managementbewertung vorbereiten",
+      "dokumente": "Dokumente des Energiemanagements pflegen",
+      "weitere": "weitere Aufgabe (mit Wortlaut)"
+    },
+    "verzeichnis_gruppe": {
+      "grundlagen": "Anwendungsbereich, Kontext und Energiepolitik",
+      "verantwortung": "Aufgaben und Verantwortliche",
+      "risiken_chancen": "Risiken und Chancen",
+      "kompetenz_kommunikation": "Kompetenz und Kommunikation",
+      "betrieb_auslegung_beschaffung": "Betrieb, Auslegung und Beschaffung",
+      "bewertung_messplanung": "Energetische Bewertung und Messplanung",
+      "kennzahlen_bezugsbasen": "Kennzahlen, Bezugsbasen und Leistungsvergleiche",
+      "ziele_massnahmen_abweichungen": "Energieziele, Maßnahmen und Abweichungen",
+      "audits_feststellungen": "Interne Audits und Feststellungen",
+      "managementbewertung": "Managementbewertung",
+      "berichte": "Berichte"
+    },
+    "verzeichnis_ort": {
+      "in_voltpilot": "in VoltPilot",
+      "wortlaut_original_beim_kunden": "Wortlaut in VoltPilot, Original bei Ihnen",
+      "verweis": "Geführt in Ihrem System"
+    }
+  },
+  "saetze": {
+    "verantwortung": "Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.",
+    "grenz_satz": "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.",
+    "dokument_kopf": "{art} {kennzeichen} · Fassung {fassung} · freigegeben am {am} · entschieden von {entschieden_von} · eingetragen von {eingetragen_von}.",
+    "ort_wortlaut": "Wortlaut in VoltPilot, Original bei Ihnen: {ablage}.",
+    "ort_verweis": "Geführt in Ihrem System: {ablage} ({angaben}).",
+    "verweis_pruefsumme": "Die Prüfsumme wird in Ihrem Browser gebildet; die Datei verlässt Ihren Rechner nicht.",
+    "verweis_keine_datei": "VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.",
+    "ueberpruefung": "Überprüfung fällig seit {tage} Tagen.",
+    "geprueft_bleibt": "Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘",
+    "bekanntmachung": "Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.",
+    "anwendungsbereich_deckungsgleich": "Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.",
+    "anwendungsbereich_unterschied": "{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).",
+    "freigabe_ohne_leitung": "Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.",
+    "aufgabe_ohne_person": "{aufgabe} — keine Person festgelegt.",
+    "person_ohne_konto": "{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.",
+    "einsicht_rolle": "Einsicht — Sie sehen das Energiemanagement des ganzen Unternehmens und können nichts ändern.",
+    "einsicht_schreibversuch": "Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.",
+    "audit_kopf": "Internes Audit {kennzeichen} · durchgeführt am {am} von {auditor} ({unabhaengigkeit}).",
+    "hinweis": "Hinweis — festgestellt von {festgestellt_von}, eingetragen von {eingetragen_von} am {am}.",
+    "feststellung_kopf": "Feststellung {kennzeichen} · {quelle} · festgestellt von {person} am {am} · Verantwortlich {verantwortlich} · Frist {frist} · {zustand}.",
+    "behebung": "Sofortige Behebung — {person}, {am}: {wortlaut}",
+    "ursache_aussage": "Ursache — Aussage von {person}, {am}: {wortlaut}",
+    "herkunft_feststellung": "Herkunft: Feststellung {kennung}.",
+    "herkunft_audit": "Herkunft: internes Audit {kennung}.",
+    "herkunft_managementbewertung": "Herkunft: Managementbewertung {kennung} (Beschluss {beschluss}).",
+    "wirksamkeit": "Wirksamkeit geprüft am {am} von {person}: {ergebnis} — Stand Nr. {nr} mit Prüfsumme.",
+    "wirksamkeit_noch_nicht": "Die Wirksamkeit lässt sich prüfen, sobald jede Maßnahme umgesetzt, bewertet oder verworfen ist.",
+    "vieraugen_nicht_erfuellbar": "Vier-Augen nicht erfüllbar: außer {personen} darf niemand freigeben, und {beteiligt} sind hier beteiligt.",
+    "managementbewertung_kopf": "Managementbewertung {jahr} · Sitzung am {sitzung} · Leitung {leitung} · Stand Nr. {nr} vom {stand_vom}, mit Prüfsumme.",
+    "managementbewertung_erste": "Keine frühere Managementbewertung festgehalten.",
+    "beschluss": "Beschluss {nr} — entschieden von {entschieden_von}, eingetragen von {eingetragen_von}: {wortlaut}",
+    "beschluss_ohne_folge": "Keine Folge in VoltPilot — der Beschluss steht im Stand vom {am}.",
+    "stand_seines_tages": "Dieser Stand zeigt die Eingaben vom {datenstand}. Was sich danach geändert hat, zeigt die nächste Managementbewertung.",
+    "wiedervorlage_zeile": "{gegenstand}: {was} seit {tage} Tagen fällig.",
+    "wiedervorlage_leer": "Zurzeit ist nichts fällig.",
+    "kalender_abzug": "Stand vom {am} aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.",
+    "baustein": "Energiemanagement — {faellig} fällig · {vorschau} in den nächsten {tage} Tagen.",
+    "verzeichnis_leer": "Hier ist noch nichts festgehalten.",
+    "verzeichnis_filter": "In meinem Namen festgehalten: {anzahl} Einträge.",
+    "zuschnitt_titel": "Was VoltPilot führt — was bei Ihnen liegt."
+  },
+  "cases": [
+    {
+      "name": "R1 D-0001 seit 64 Tagen fällig (Abruf 12.02.2029): „geprüft, bleibt“ 10.12.2027 + 12 Monate",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "R1 · k_faelle UEB_D1 · §5.8 Überprüfung",
+      "rechnung": "jüngere von Freigabe 15.12.2026 und „geprüft, bleibt“ 10.12.2027 = 10.12.2027; + 12 Monate = 10.12.2028; 12.02.2029 − 10.12.2028 = 64 Tage",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "energiepolitik",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2029-03-20"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          }
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": "2028-12-10",
+        "basis": "2027-12-10",
+        "fassung": 1,
+        "tage": 64,
+        "satz": "seit 64 Tagen fällig",
+        "grund": null
+      }
+    },
+    {
+      "name": "R14 D-0001 am 30.04.2029: Fassung 2 gilt, Überprüfung am 20.03.2030",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "R14 · k_faelle UEB_D1_APRIL",
+      "rechnung": "Fassung 2 freigegeben 20.03.2029 (B3); das „geprüft, bleibt“ gehört zu Fassung 1 und zählt nicht; 20.03.2029 + 12 Monate = 20.03.2030; 30.04.2029 − 20.03.2030 = −324",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "energiepolitik",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2029-03-20"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          }
+        ],
+        "abruf": "2029-04-30"
+      },
+      "erwartet": {
+        "faellig_am": "2030-03-20",
+        "basis": "2029-03-20",
+        "fassung": 2,
+        "tage": -324,
+        "satz": "fällig in 324 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: D-0001 vor dem „geprüft, bleibt“ (Abruf 09.12.2027) — Freigabe + 12 Monate",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "DK5",
+      "rechnung": "das „geprüft, bleibt“ vom 10.12.2027 liegt nach dem Abruf; 15.12.2026 + 12 Monate = 15.12.2027; 09.12.2027 − 15.12.2027 = −6",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "energiepolitik",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2029-03-20"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          }
+        ],
+        "abruf": "2027-12-09"
+      },
+      "erwartet": {
+        "faellig_am": "2027-12-15",
+        "basis": "2026-12-15",
+        "fassung": 1,
+        "tage": -6,
+        "satz": "fällig in 6 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "R2 D-0002 am 12.02.2029 seit 64 Tagen fällig",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "R2, R12 · k_faelle UEB_D2",
+      "rechnung": "„geprüft, bleibt“ 10.12.2027 + 12 Monate = 10.12.2028 → 64 Tage; das zweite „geprüft, bleibt“ (13.02.2029, B6) liegt nach dem Abruf",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "anwendungsbereich",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          },
+          {
+            "fassung": 1,
+            "am": "2029-02-13"
+          }
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": "2028-12-10",
+        "basis": "2027-12-10",
+        "fassung": 1,
+        "tage": 64,
+        "satz": "seit 64 Tagen fällig",
+        "grund": null
+      }
+    },
+    {
+      "name": "R14 D-0002 am 13.02.2029 nach B6: „geprüft, bleibt“ verschiebt auf 13.02.2030",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "R14 · k_faelle UEB_D2_NACH_B6",
+      "rechnung": "„geprüft, bleibt“ 13.02.2029 + 12 Monate = 13.02.2030; 13.02.2029 − 13.02.2030 = −365",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "anwendungsbereich",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          },
+          {
+            "fassung": 1,
+            "am": "2029-02-13"
+          }
+        ],
+        "abruf": "2029-02-13"
+      },
+      "erwartet": {
+        "faellig_am": "2030-02-13",
+        "basis": "2029-02-13",
+        "fassung": 1,
+        "tage": -365,
+        "satz": "fällig in 365 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "R7 D-0003 Verweis Rechtskataster: Freigabe 05.12.2028 + 12 Monate",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "R3 · k_faelle UEB_D3",
+      "rechnung": "05.12.2028 + 12 Monate = 05.12.2029; 12.02.2029 − 05.12.2029 = −296",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "rechtliche_anforderungen",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2028-12-05"
+          }
+        ],
+        "geprueft_bleibt": [],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": "2029-12-05",
+        "basis": "2028-12-05",
+        "fassung": 1,
+        "tage": -296,
+        "satz": "fällig in 296 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "R8 D-0005 Kompetenz-Nachweis: keine Überprüfung",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "R8 · DK5 · k_faelle ueberpruefung(D-0005) is None",
+      "rechnung": "Art kompetenz ist ein Nachweis (ohne Überprüfung)",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "kompetenz",
+        "monate": null,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2028-01-25"
+          }
+        ],
+        "geprueft_bleibt": [],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": null,
+        "basis": null,
+        "fassung": null,
+        "tage": null,
+        "satz": null,
+        "grund": "nachweis"
+      }
+    },
+    {
+      "name": "Rand: Vorgabe ohne freigegebene Fassung — keine Frist",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "DK4, DK5",
+      "rechnung": "die einzige Fassung wird erst am 15.12.2026 freigegeben; Abruf 01.12.2026",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "energiepolitik",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2029-03-20"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          }
+        ],
+        "abruf": "2026-12-01"
+      },
+      "erwartet": {
+        "faellig_am": null,
+        "basis": null,
+        "fassung": null,
+        "tage": null,
+        "satz": null,
+        "grund": "keine_fassung"
+      }
+    },
+    {
+      "name": "Rand: Überprüfung 60 Monate (Grenze)",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "§4.2 Startwerte (1–60)",
+      "rechnung": "15.12.2026 + 60 Monate = 15.12.2031",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "anwendungsbereich",
+        "monate": 60,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          }
+        ],
+        "geprueft_bleibt": [],
+        "abruf": "2027-01-01"
+      },
+      "erwartet": {
+        "faellig_am": "2031-12-15",
+        "basis": "2026-12-15",
+        "fassung": 1,
+        "tage": -1809,
+        "satz": "fällig in 1809 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: Überprüfung 61 Monate abgelehnt",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "§4.2 Startwerte (1–60)",
+      "rechnung": "61 > 60",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "anwendungsbereich",
+        "monate": 61,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          },
+          {
+            "fassung": 1,
+            "am": "2029-02-13"
+          }
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "fehler": "ueberpruefung_monate"
+      }
+    },
+    {
+      "name": "Rand: Überprüfung 0 Monate abgelehnt",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "§4.2 Startwerte (1–60)",
+      "rechnung": "0 < 1",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "anwendungsbereich",
+        "monate": 0,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          },
+          {
+            "fassung": 1,
+            "am": "2029-02-13"
+          }
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "fehler": "ueberpruefung_monate"
+      }
+    },
+    {
+      "name": "Rand: Vorgabe ohne Monate abgelehnt",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "DK5",
+      "rechnung": "eine Vorgabe-Art braucht ihre Monate (Einstellung, Startwert 12)",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "energiepolitik",
+        "monate": null,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2029-03-20"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          }
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "fehler": "ueberpruefung_monate"
+      }
+    },
+    {
+      "name": "Rand: Art „sonstiges“ gibt es nicht",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "G5",
+      "rechnung": "geschlossene Liste, keine Art „sonstiges“",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "sonstiges",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2029-03-20"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          }
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "fehler": "dokument_art"
+      }
+    },
+    {
+      "name": "Rand: Monatsende geklemmt — Freigabe 31.01.2027 + 1 Monat = 28.02.2027",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "DK5 · plus_monate wie LocalDate.plusMonths",
+      "rechnung": "31.01.2027 + 1 Monat, Februar 2027 hat 28 Tage",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "verfahren",
+        "monate": 1,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2027-01-31"
+          }
+        ],
+        "geprueft_bleibt": [],
+        "abruf": "2027-02-28"
+      },
+      "erwartet": {
+        "faellig_am": "2027-02-28",
+        "basis": "2027-01-31",
+        "fassung": 1,
+        "tage": 0,
+        "satz": "heute fällig",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: Schaltjahr — Freigabe 29.02.2028 + 12 Monate = 28.02.2029",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "DK5 · plus_monate",
+      "rechnung": "2029 hat keinen 29.02.",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "betrieb",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2028-02-29"
+          }
+        ],
+        "geprueft_bleibt": [],
+        "abruf": "2029-03-01"
+      },
+      "erwartet": {
+        "faellig_am": "2029-02-28",
+        "basis": "2028-02-29",
+        "fassung": 1,
+        "tage": 1,
+        "satz": "seit 1 Tagen fällig",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: am Fälligkeitstag heute fällig (0 Tage)",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "WV3 „heute“",
+      "rechnung": "10.12.2028 − 10.12.2028 = 0",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "energiepolitik",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2026-12-15"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2029-03-20"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2027-12-10"
+          }
+        ],
+        "abruf": "2028-12-10"
+      },
+      "erwartet": {
+        "faellig_am": "2028-12-10",
+        "basis": "2027-12-10",
+        "fassung": 1,
+        "tage": 0,
+        "satz": "heute fällig",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: „geprüft, bleibt“ einer abgelösten Fassung zählt nicht",
+      "regel": "DK5",
+      "operation": "ueberpruefung",
+      "quelle": "DK4, DK5",
+      "rechnung": "gültig ist Fassung 2 (01.03.2028); das „geprüft, bleibt“ vom 01.06.2028 nennt Fassung 1 → Basis 01.03.2028 + 12 = 01.03.2029",
+      "eingang": {
+        "art": "dokument",
+        "dokument_art": "kontext",
+        "monate": 12,
+        "fassungen": [
+          {
+            "nr": 1,
+            "freigegeben_am": "2027-01-10"
+          },
+          {
+            "nr": 2,
+            "freigegeben_am": "2028-03-01"
+          }
+        ],
+        "geprueft_bleibt": [
+          {
+            "fassung": 1,
+            "am": "2028-06-01"
+          }
+        ],
+        "abruf": "2028-07-01"
+      },
+      "erwartet": {
+        "faellig_am": "2029-03-01",
+        "basis": "2028-03-01",
+        "fassung": 2,
+        "tage": -243,
+        "satz": "fällig in 243 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "R9 AU-2029-0001: nächstes internes Audit am 22.01.2030",
+      "regel": "IA4",
+      "operation": "ueberpruefung",
+      "quelle": "R9 · k_faelle AUDIT_NAECHSTES",
+      "rechnung": "letzter Durchführungstag 22.01.2029 + 12 Monate = 22.01.2030; 12.02.2029 − 22.01.2030 = −344",
+      "eingang": {
+        "art": "internes_audit",
+        "monate": 12,
+        "tage": [
+          "2029-01-22"
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": "2030-01-22",
+        "basis": "2029-01-22",
+        "fassung": null,
+        "tage": -344,
+        "satz": "fällig in 344 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: ohne durchgeführtes Audit keine Frist — kein erfundener Beginn",
+      "regel": "IA4",
+      "operation": "ueberpruefung",
+      "quelle": "IA4",
+      "rechnung": "kein Durchführungstag bis zum Abruf",
+      "eingang": {
+        "art": "internes_audit",
+        "monate": 12,
+        "tage": [],
+        "abruf": "2029-01-10"
+      },
+      "erwartet": {
+        "faellig_am": null,
+        "basis": null,
+        "fassung": null,
+        "tage": null,
+        "satz": null,
+        "grund": "kein_audit"
+      }
+    },
+    {
+      "name": "Rand: ein Audit nach dem Abruf zählt nicht",
+      "regel": "IA4",
+      "operation": "ueberpruefung",
+      "quelle": "IA4",
+      "rechnung": "22.01.2029 liegt nach dem Abruf 20.01.2029",
+      "eingang": {
+        "art": "internes_audit",
+        "monate": 12,
+        "tage": [
+          "2029-01-22"
+        ],
+        "abruf": "2029-01-20"
+      },
+      "erwartet": {
+        "faellig_am": null,
+        "basis": null,
+        "fassung": null,
+        "tage": null,
+        "satz": null,
+        "grund": "kein_audit"
+      }
+    },
+    {
+      "name": "Rand: der letzte Durchführungstag zählt",
+      "regel": "IA4",
+      "operation": "ueberpruefung",
+      "quelle": "IA4",
+      "rechnung": "max(22.01.2029, 15.01.2030) = 15.01.2030 + 12 Monate = 15.01.2031",
+      "eingang": {
+        "art": "internes_audit",
+        "monate": 12,
+        "tage": [
+          "2030-01-15",
+          "2029-01-22"
+        ],
+        "abruf": "2030-02-01"
+      },
+      "erwartet": {
+        "faellig_am": "2031-01-15",
+        "basis": "2030-01-15",
+        "fassung": null,
+        "tage": -348,
+        "satz": "fällig in 348 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: Rhythmus 0 Monate abgelehnt",
+      "regel": "IA4",
+      "operation": "ueberpruefung",
+      "quelle": "IA4",
+      "rechnung": "ein Rhythmus hat mindestens einen Monat",
+      "eingang": {
+        "art": "internes_audit",
+        "monate": 0,
+        "tage": [
+          "2029-01-22"
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "fehler": "rhythmus_monate"
+      }
+    },
+    {
+      "name": "R13 BR-2029-0001: nächste Managementbewertung am 12.02.2030",
+      "regel": "MG7",
+      "operation": "ueberpruefung",
+      "quelle": "R13 · k_faelle MB_NAECHSTE",
+      "rechnung": "Sitzung 12.02.2029 + 12 Monate = 12.02.2030; 12.02.2029 − 12.02.2030 = −365",
+      "eingang": {
+        "art": "managementbewertung",
+        "monate": 12,
+        "tage": [
+          "2029-02-12"
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": "2030-02-12",
+        "basis": "2029-02-12",
+        "fassung": null,
+        "tage": -365,
+        "satz": "fällig in 365 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "R13 vor der ersten Managementbewertung: keine Frist",
+      "regel": "MG7",
+      "operation": "ueberpruefung",
+      "quelle": "R13 · §5.8 Managementbewertung, erste",
+      "rechnung": "keine Sitzung festgehalten",
+      "eingang": {
+        "art": "managementbewertung",
+        "monate": 12,
+        "tage": [],
+        "abruf": "2029-02-11"
+      },
+      "erwartet": {
+        "faellig_am": null,
+        "basis": null,
+        "fassung": null,
+        "tage": null,
+        "satz": null,
+        "grund": "keine_managementbewertung"
+      }
+    },
+    {
+      "name": "R10 F-2029-0001: Frist 22.04.2029 (22.01.2029 + 90 Tage)",
+      "regel": "FS1",
+      "operation": "ueberpruefung",
+      "quelle": "R10 · k_faelle F1_FRIST",
+      "rechnung": "22.01.2029 + 90 Tage = 22.04.2029; 12.02.2029 − 22.04.2029 = −69",
+      "eingang": {
+        "art": "feststellung",
+        "festgestellt_am": "2029-01-22",
+        "frist": null,
+        "frist_tage": 90,
+        "zustand": "offen",
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": "2029-04-22",
+        "basis": "2029-01-22",
+        "fassung": null,
+        "tage": -69,
+        "satz": "fällig in 69 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: F-2029-0001 offen nach der Frist — seit 3 Tagen fällig",
+      "regel": "FS1",
+      "operation": "ueberpruefung",
+      "quelle": "FS1 „überfällig seit n Tagen“",
+      "rechnung": "25.04.2029 − 22.04.2029 = 3",
+      "eingang": {
+        "art": "feststellung",
+        "festgestellt_am": "2029-01-22",
+        "frist": "2029-04-22",
+        "frist_tage": 90,
+        "zustand": "offen",
+        "abruf": "2029-04-25"
+      },
+      "erwartet": {
+        "faellig_am": "2029-04-22",
+        "basis": "2029-01-22",
+        "fassung": null,
+        "tage": 3,
+        "satz": "seit 3 Tagen fällig",
+        "grund": null
+      }
+    },
+    {
+      "name": "R11 F-2029-0001 abgeschlossen (wirksam 15.04.2029): keine Frist mehr",
+      "regel": "FS1",
+      "operation": "ueberpruefung",
+      "quelle": "R11 · FS1 „solange offen“",
+      "rechnung": "abgeschlossen → nicht in der Wiedervorlage",
+      "eingang": {
+        "art": "feststellung",
+        "festgestellt_am": "2029-01-22",
+        "frist": "2029-04-22",
+        "frist_tage": 90,
+        "zustand": "abgeschlossen",
+        "abruf": "2029-04-30"
+      },
+      "erwartet": {
+        "faellig_am": null,
+        "basis": "2029-01-22",
+        "fassung": null,
+        "tage": null,
+        "satz": null,
+        "grund": "abgeschlossen"
+      }
+    },
+    {
+      "name": "Rand: gesetzte Frist schlägt die Vorgabe",
+      "regel": "FS1",
+      "operation": "ueberpruefung",
+      "quelle": "FS1 (Vorgabe 90 Tage)",
+      "rechnung": "Frist 31.03.2029 gesetzt; 12.02.2029 − 31.03.2029 = −47",
+      "eingang": {
+        "art": "feststellung",
+        "festgestellt_am": "2029-01-22",
+        "frist": "2029-03-31",
+        "frist_tage": 90,
+        "zustand": "offen",
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "faellig_am": "2029-03-31",
+        "basis": "2029-01-22",
+        "fassung": null,
+        "tage": -47,
+        "satz": "fällig in 47 Tagen",
+        "grund": null
+      }
+    },
+    {
+      "name": "Rand: unbekannter Zustand der Feststellung abgelehnt",
+      "regel": "FS1",
+      "operation": "ueberpruefung",
+      "quelle": "§4.2 feststellung_zustand",
+      "rechnung": "„ueberfaellig“ ist kein Zustand (Lage beim Abruf)",
+      "eingang": {
+        "art": "feststellung",
+        "festgestellt_am": "2029-01-22",
+        "frist": null,
+        "frist_tage": 90,
+        "zustand": "ueberfaellig",
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "fehler": "feststellung_zustand"
+      }
+    },
+    {
+      "name": "Rand: unbekannte Art der Überprüfung abgelehnt",
+      "regel": "WV2",
+      "operation": "ueberpruefung",
+      "quelle": "WV2",
+      "rechnung": "die Wiedervorlage rechnet keine fremde Frist nach",
+      "eingang": {
+        "art": "bezugsbasis",
+        "monate": 12,
+        "tage": [
+          "2026-11-13"
+        ],
+        "abruf": "2029-02-12"
+      },
+      "erwartet": {
+        "fehler": "ueberpruefung_art"
+      }
+    },
+    {
+      "name": "R12 BB-0002 seit 457 Tagen zuerst — Wiedervorlage am 12.02.2029: 8 fällig, 1 Vorschau (M-2029-0001 in 16 Tagen)",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "R12 · k_faelle KANDIDATEN/FAELLIG/VORSCHAU/NICHT_IN_LISTE · §5.8 Baustein",
+      "rechnung": "fällig: BB-0002 457, BB-0005 450, BB-0003 344, VB-2028-0001 315, BB-0004 80, BW-2027-0001 80, D-0001 64, D-0002 64 (am längsten fällig zuerst, gleicher Tag nach Kennzeichen); Vorschau ≤ 30 Tage: M-2029-0001 in 16; übrige 6 außerhalb",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "bewertung_ueberpruefung",
+            "kennzeichen": "BW-2027-0001",
+            "titel": "Energetische Bewertung 2027 — Überprüfung",
+            "faellig_am": "2028-11-24",
+            "verantwortlich": null
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0001",
+            "titel": "Energiepolitik — Überprüfung",
+            "faellig_am": "2028-12-10",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0002",
+            "titel": "Anwendungsbereich — Überprüfung",
+            "faellig_am": "2028-12-10",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0003",
+            "titel": "Rechtliche Anforderungen — Überprüfung",
+            "faellig_am": "2029-12-05",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0004",
+            "titel": "Betrieb und Instandhaltung Spritzguss — Überprüfung",
+            "faellig_am": "2029-11-10",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "bericht_anstoss",
+            "kennzeichen": "VB-2028-0001",
+            "titel": "Leistungsvergleich Spritzguss Dezember 2027 — Revision angestoßen (K-2028-0001)",
+            "faellig_am": "2028-04-03",
+            "verantwortlich": null
+          },
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0001",
+            "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
+            "faellig_am": "2029-02-28",
+            "verantwortlich": "JW"
+          },
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-31",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "feststellung",
+            "kennzeichen": "F-2029-0001",
+            "titel": "Feststellung — Frist",
+            "faellig_am": "2029-04-22",
+            "verantwortlich": "JW"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2030-01-22",
+            "verantwortlich": "CB"
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0001",
+            "titel": "Bezugsbasis BB-0001, Fassung 2 — Überprüfung (nach „geprüft, bleibt“ 25.11.2028)",
+            "faellig_am": "2029-11-25",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0002",
+            "titel": "Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)",
+            "faellig_am": "2027-11-13",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0003",
+            "titel": "Bezugsbasis BB-0003, Fassung 2 — Überprüfung (Freigabe 05.03.2027 + 12 Monate)",
+            "faellig_am": "2028-03-05",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0004",
+            "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+            "faellig_am": "2028-11-24",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0005",
+            "titel": "Bezugsbasis BB-0005, Fassung 1 — Überprüfung (Freigabe 20.11.2026 + 12 Monate)",
+            "faellig_am": "2027-11-20",
+            "verantwortlich": null
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0002",
+            "titel": "Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)",
+            "faellig_am": "2027-11-13",
+            "tage": 457,
+            "satz": "seit 457 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0005",
+            "titel": "Bezugsbasis BB-0005, Fassung 1 — Überprüfung (Freigabe 20.11.2026 + 12 Monate)",
+            "faellig_am": "2027-11-20",
+            "tage": 450,
+            "satz": "seit 450 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0003",
+            "titel": "Bezugsbasis BB-0003, Fassung 2 — Überprüfung (Freigabe 05.03.2027 + 12 Monate)",
+            "faellig_am": "2028-03-05",
+            "tage": 344,
+            "satz": "seit 344 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "bericht_anstoss",
+            "kennzeichen": "VB-2028-0001",
+            "titel": "Leistungsvergleich Spritzguss Dezember 2027 — Revision angestoßen (K-2028-0001)",
+            "faellig_am": "2028-04-03",
+            "tage": 315,
+            "satz": "seit 315 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0004",
+            "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+            "faellig_am": "2028-11-24",
+            "tage": 80,
+            "satz": "seit 80 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "bewertung_ueberpruefung",
+            "kennzeichen": "BW-2027-0001",
+            "titel": "Energetische Bewertung 2027 — Überprüfung",
+            "faellig_am": "2028-11-24",
+            "tage": 80,
+            "satz": "seit 80 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0001",
+            "titel": "Energiepolitik — Überprüfung",
+            "faellig_am": "2028-12-10",
+            "tage": 64,
+            "satz": "seit 64 Tagen fällig",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "dokument_ueberpruefung",
+            "kennzeichen": "D-0002",
+            "titel": "Anwendungsbereich — Überprüfung",
+            "faellig_am": "2028-12-10",
+            "tage": 64,
+            "satz": "seit 64 Tagen fällig",
+            "verantwortlich": "IK"
+          }
+        ],
+        "vorschau": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0001",
+            "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
+            "faellig_am": "2029-02-28",
+            "tage": -16,
+            "satz": "fällig in 16 Tagen",
+            "verantwortlich": "JW"
+          }
+        ],
+        "anzahl_faellig": 8,
+        "anzahl_vorschau": 1,
+        "nicht_in_liste": [
+          "AU-2029-0001",
+          "BB-0001",
+          "D-0003",
+          "D-0004",
+          "F-2029-0001",
+          "M-2029-0002"
+        ]
+      }
+    },
+    {
+      "name": "Rand: nichts fällig",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "§5.8 Wiedervorlage, leer",
+      "rechnung": "keine Zeile",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 30,
+        "zeilen": []
+      },
+      "erwartet": {
+        "faellig": [],
+        "vorschau": [],
+        "anzahl_faellig": 0,
+        "anzahl_vorschau": 0,
+        "nicht_in_liste": []
+      }
+    },
+    {
+      "name": "Rand: genau 30 Tage in der Vorschau, 31 nicht; heute fällig",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "WV3 (Vorschau 30 Tage, „heute“)",
+      "rechnung": "12.02.2029 → 14.03.2029 = 30 Tage (Vorschau), 15.03.2029 = 31 Tage (außerhalb), 12.02.2029 = 0 (fällig, heute)",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-14",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "feststellung",
+            "kennzeichen": "F-2029-0001",
+            "titel": "Feststellung — Frist",
+            "faellig_am": "2029-03-15",
+            "verantwortlich": "JW"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2029-02-12",
+            "verantwortlich": "CB"
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2029-02-12",
+            "tage": 0,
+            "satz": "heute fällig",
+            "verantwortlich": "CB"
+          }
+        ],
+        "vorschau": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-14",
+            "tage": -30,
+            "satz": "fällig in 30 Tagen",
+            "verantwortlich": "IK"
+          }
+        ],
+        "anzahl_faellig": 1,
+        "anzahl_vorschau": 1,
+        "nicht_in_liste": [
+          "F-2029-0001"
+        ]
+      }
+    },
+    {
+      "name": "Rand: Vorschau 0 Tage — nur Fälliges",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "WV3",
+      "rechnung": "M-2029-0002 in 30 Tagen fällt heraus",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 0,
+        "zeilen": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-14",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "feststellung",
+            "kennzeichen": "F-2029-0001",
+            "titel": "Feststellung — Frist",
+            "faellig_am": "2029-03-15",
+            "verantwortlich": "JW"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2029-02-12",
+            "verantwortlich": "CB"
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2029-02-12",
+            "tage": 0,
+            "satz": "heute fällig",
+            "verantwortlich": "CB"
+          }
+        ],
+        "vorschau": [],
+        "anzahl_faellig": 1,
+        "anzahl_vorschau": 0,
+        "nicht_in_liste": [
+          "F-2029-0001",
+          "M-2029-0002"
+        ]
+      }
+    },
+    {
+      "name": "Rand: negative Vorschau abgelehnt",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "WV3",
+      "rechnung": "−1 Tage gibt es nicht",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": -1,
+        "zeilen": [
+          {
+            "art": "massnahme_termin",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-14",
+            "verantwortlich": "IK"
+          },
+          {
+            "art": "feststellung",
+            "kennzeichen": "F-2029-0001",
+            "titel": "Feststellung — Frist",
+            "faellig_am": "2029-03-15",
+            "verantwortlich": "JW"
+          },
+          {
+            "art": "internes_audit",
+            "kennzeichen": "AU-2029-0001",
+            "titel": "Nächstes internes Audit",
+            "faellig_am": "2029-02-12",
+            "verantwortlich": "CB"
+          }
+        ]
+      },
+      "erwartet": {
+        "fehler": "vorschau_tage"
+      }
+    },
+    {
+      "name": "Rand: unbekannte Art abgelehnt",
+      "regel": "WV1",
+      "operation": "wiedervorlage",
+      "quelle": "§4.2 wiedervorlage_art",
+      "rechnung": "„bericht“ steht nicht im Vokabular",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "bericht",
+            "kennzeichen": "M-2029-0002",
+            "titel": "Energiepolitik in die Einarbeitung neuer Mitarbeitender aufnehmen",
+            "faellig_am": "2029-03-14",
+            "verantwortlich": "IK"
+          }
+        ]
+      },
+      "erwartet": {
+        "fehler": "wiedervorlage_art"
+      }
+    },
+    {
+      "name": "Rand: gleicher Tag — das Kennzeichen entscheidet, nicht der Eingang",
+      "regel": "WV3",
+      "operation": "wiedervorlage",
+      "quelle": "R12 · k_faelle sortiert (Tag, Kennzeichen)",
+      "rechnung": "beide 24.11.2028; BB-0004 < BW-2027-0001",
+      "eingang": {
+        "abruf": "2029-02-12",
+        "vorschau_tage": 30,
+        "zeilen": [
+          {
+            "art": "bewertung_ueberpruefung",
+            "kennzeichen": "BW-2027-0001",
+            "titel": "Energetische Bewertung 2027 — Überprüfung",
+            "faellig_am": "2028-11-24",
+            "verantwortlich": null
+          },
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0004",
+            "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+            "faellig_am": "2028-11-24",
+            "verantwortlich": null
+          }
+        ]
+      },
+      "erwartet": {
+        "faellig": [
+          {
+            "art": "bezugsbasis_ueberpruefung",
+            "kennzeichen": "BB-0004",
+            "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+            "faellig_am": "2028-11-24",
+            "tage": 80,
+            "satz": "seit 80 Tagen fällig",
+            "verantwortlich": null
+          },
+          {
+            "art": "bewertung_ueberpruefung",
+            "kennzeichen": "BW-2027-0001",
+            "titel": "Energetische Bewertung 2027 — Überprüfung",
+            "faellig_am": "2028-11-24",
+            "tage": 80,
+            "satz": "seit 80 Tagen fällig",
+            "verantwortlich": null
+          }
+        ],
+        "vorschau": [],
+        "anzahl_faellig": 2,
+        "anzahl_vorschau": 0,
+        "nicht_in_liste": []
+      }
+    },
+    {
+      "name": "R2 deckungsgleich: beide Werke, Strom und Gas",
+      "regel": "DK7",
+      "operation": "anwendungsbereich_vergleich",
+      "quelle": "R2 · k_faelle VGL_AB · §5.8 Anwendungsbereich, deckungsgleich",
+      "rechnung": "D-0002 Fassung 1 (ST-1, ST-2; Strom, Gas) = Betrachtungsumfang Fassung 1 ab 04.11.2026",
+      "eingang": {
+        "anwendungsbereich": {
+          "standorte": [
+            "ST-1",
+            "ST-2"
+          ],
+          "traeger": [
+            "Strom",
+            "Gas"
+          ]
+        },
+        "betrachtungsumfang": {
+          "standorte": [
+            "ST-1",
+            "ST-2"
+          ],
+          "traeger": [
+            "Strom",
+            "Gas"
+          ]
+        }
+      },
+      "erwartet": {
+        "standorte_nur_im_anwendungsbereich": [],
+        "standorte_nur_im_betrachtungsumfang": [],
+        "traeger_nur_im_anwendungsbereich": [],
+        "traeger_nur_im_betrachtungsumfang": [],
+        "deckungsgleich": true
+      }
+    },
+    {
+      "name": "R2 nur Strom → Gas nicht im Betrachtungsumfang",
+      "regel": "DK7",
+      "operation": "anwendungsbereich_vergleich",
+      "quelle": "R2 Prüffall · k_faelle VGL_AB_NUR_STROM · §5.8 Anwendungsbereich, Unterschied",
+      "rechnung": "Umfang nur Strom: Gas steht nur im Anwendungsbereich",
+      "eingang": {
+        "anwendungsbereich": {
+          "standorte": [
+            "ST-1",
+            "ST-2"
+          ],
+          "traeger": [
+            "Strom",
+            "Gas"
+          ]
+        },
+        "betrachtungsumfang": {
+          "standorte": [
+            "ST-1",
+            "ST-2"
+          ],
+          "traeger": [
+            "Strom"
+          ]
+        }
+      },
+      "erwartet": {
+        "standorte_nur_im_anwendungsbereich": [],
+        "standorte_nur_im_betrachtungsumfang": [],
+        "traeger_nur_im_anwendungsbereich": [
+          "Gas"
+        ],
+        "traeger_nur_im_betrachtungsumfang": [],
+        "deckungsgleich": false
+      }
+    },
+    {
+      "name": "Rand: Standort nur im Betrachtungsumfang",
+      "regel": "DK7",
+      "operation": "anwendungsbereich_vergleich",
+      "quelle": "DK7",
+      "rechnung": "ST-3 steht nur im Umfang",
+      "eingang": {
+        "anwendungsbereich": {
+          "standorte": [
+            "ST-1",
+            "ST-2"
+          ],
+          "traeger": [
+            "Strom",
+            "Gas"
+          ]
+        },
+        "betrachtungsumfang": {
+          "standorte": [
+            "ST-1",
+            "ST-2",
+            "ST-3"
+          ],
+          "traeger": [
+            "Strom",
+            "Gas"
+          ]
+        }
+      },
+      "erwartet": {
+        "standorte_nur_im_anwendungsbereich": [],
+        "standorte_nur_im_betrachtungsumfang": [
+          "ST-3"
+        ],
+        "traeger_nur_im_anwendungsbereich": [],
+        "traeger_nur_im_betrachtungsumfang": [],
+        "deckungsgleich": false
+      }
+    },
+    {
+      "name": "Rand: Standort und Träger in beiden Richtungen",
+      "regel": "DK7",
+      "operation": "anwendungsbereich_vergleich",
+      "quelle": "DK7",
+      "rechnung": "ST-2 nur im Anwendungsbereich, Fernwärme nur im Umfang, Gas nur im Anwendungsbereich",
+      "eingang": {
+        "anwendungsbereich": {
+          "standorte": [
+            "ST-1",
+            "ST-2"
+          ],
+          "traeger": [
+            "Strom",
+            "Gas"
+          ]
+        },
+        "betrachtungsumfang": {
+          "standorte": [
+            "ST-1"
+          ],
+          "traeger": [
+            "Strom",
+            "Fernwärme"
+          ]
+        }
+      },
+      "erwartet": {
+        "standorte_nur_im_anwendungsbereich": [
+          "ST-2"
+        ],
+        "standorte_nur_im_betrachtungsumfang": [],
+        "traeger_nur_im_anwendungsbereich": [
+          "Gas"
+        ],
+        "traeger_nur_im_betrachtungsumfang": [
+          "Fernwärme"
+        ],
+        "deckungsgleich": false
+      }
+    },
+    {
+      "name": "Rand: Reihenfolge zählt nicht",
+      "regel": "DK7",
+      "operation": "anwendungsbereich_vergleich",
+      "quelle": "DK7",
+      "rechnung": "dieselben Mengen in anderer Reihenfolge",
+      "eingang": {
+        "anwendungsbereich": {
+          "standorte": [
+            "ST-2",
+            "ST-1"
+          ],
+          "traeger": [
+            "Gas",
+            "Strom"
+          ]
+        },
+        "betrachtungsumfang": {
+          "standorte": [
+            "ST-1",
+            "ST-2"
+          ],
+          "traeger": [
+            "Strom",
+            "Gas"
+          ]
+        }
+      },
+      "erwartet": {
+        "standorte_nur_im_anwendungsbereich": [],
+        "standorte_nur_im_betrachtungsumfang": [],
+        "traeger_nur_im_anwendungsbereich": [],
+        "traeger_nur_im_betrachtungsumfang": [],
+        "deckungsgleich": true
+      }
+    },
+    {
+      "name": "R3 D-0001 Fassung 1: Wortlaut in VoltPilot, Original bei Ihnen",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "R3 · k_faelle VERZEICHNIS (vz) · G1",
+      "rechnung": "Ort wortlaut_original_beim_kunden → „Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik“",
+      "eingang": {
+        "gruppe": "grundlagen",
+        "art": "energiepolitik",
+        "kennzeichen": "D-0001",
+        "titel": "Energiepolitik",
+        "nr": 1,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "tag": "2026-12-15",
+        "pruefsumme": "sha256:163ae8360abb4f614f4fb4b37a7e983dff1f42e548b7f10c64890fdde68b09bb",
+        "ort": "wortlaut_original_beim_kunden",
+        "ablage": "QM-Laufwerk, Ordner Energiemanagement/Politik"
+      },
+      "erwartet": {
+        "gruppe": "grundlagen",
+        "art": "energiepolitik",
+        "kennzeichen": "D-0001",
+        "titel": "Energiepolitik",
+        "nr": 1,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "tag": "2026-12-15",
+        "pruefsumme": "sha256:163ae8360abb4f614f4fb4b37a7e983dff1f42e548b7f10c64890fdde68b09bb",
+        "ort": "wortlaut_original_beim_kunden",
+        "ort_satz": "Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik",
+        "gruppe_wort": "Anwendungsbereich, Kontext und Energiepolitik"
+      }
+    },
+    {
+      "name": "R3 D-0003: Geführt in Ihrem System (Rechtskataster)",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "R3 · k_faelle VERZEICHNIS (vz) · G1",
+      "rechnung": "Ort verweis → „Geführt in Ihrem System: Rechtskataster-Dienst (Abonnement)“",
+      "eingang": {
+        "gruppe": "grundlagen",
+        "art": "rechtliche_anforderungen",
+        "kennzeichen": "D-0003",
+        "titel": "Rechtliche Anforderungen zum Energieeinsatz",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2028-12-05",
+        "pruefsumme": null,
+        "ort": "verweis",
+        "ablage": "Rechtskataster-Dienst (Abonnement)"
+      },
+      "erwartet": {
+        "gruppe": "grundlagen",
+        "art": "rechtliche_anforderungen",
+        "kennzeichen": "D-0003",
+        "titel": "Rechtliche Anforderungen zum Energieeinsatz",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2028-12-05",
+        "pruefsumme": null,
+        "ort": "verweis",
+        "ort_satz": "Geführt in Ihrem System: Rechtskataster-Dienst (Abonnement)",
+        "gruppe_wort": "Anwendungsbereich, Kontext und Energiepolitik"
+      }
+    },
+    {
+      "name": "R7 D-0004: Geführt in Ihrem System (Arbeitsplan)",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "R3 · k_faelle VERZEICHNIS (vz) · G1",
+      "rechnung": "Ort verweis → „Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne“",
+      "eingang": {
+        "gruppe": "betrieb_auslegung_beschaffung",
+        "art": "betrieb",
+        "kennzeichen": "D-0004",
+        "titel": "Kriterien für Betrieb und Instandhaltung — Spritzguss",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2028-11-10",
+        "pruefsumme": "f0570ce5f1d332e648fe404bfe958841213b08b91c17667c3b0cd28c6acd49f9",
+        "ort": "verweis",
+        "ablage": "Instandhaltungssystem, Arbeitspläne"
+      },
+      "erwartet": {
+        "gruppe": "betrieb_auslegung_beschaffung",
+        "art": "betrieb",
+        "kennzeichen": "D-0004",
+        "titel": "Kriterien für Betrieb und Instandhaltung — Spritzguss",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2028-11-10",
+        "pruefsumme": "f0570ce5f1d332e648fe404bfe958841213b08b91c17667c3b0cd28c6acd49f9",
+        "ort": "verweis",
+        "ort_satz": "Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne",
+        "gruppe_wort": "Betrieb, Auslegung und Beschaffung"
+      }
+    },
+    {
+      "name": "R3 Betrachtungsumfang: in VoltPilot",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "R3 · k_faelle VERZEICHNIS (vz) · G1",
+      "rechnung": "Ort in_voltpilot → „in VoltPilot“",
+      "eingang": {
+        "gruppe": "grundlagen",
+        "art": "betrachtungsumfang",
+        "kennzeichen": "Betrachtungsumfang",
+        "titel": "Betrachtungsumfang der energetischen Bewertung",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2026-11-04",
+        "pruefsumme": null,
+        "ort": "in_voltpilot",
+        "ablage": null
+      },
+      "erwartet": {
+        "gruppe": "grundlagen",
+        "art": "betrachtungsumfang",
+        "kennzeichen": "Betrachtungsumfang",
+        "titel": "Betrachtungsumfang der energetischen Bewertung",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2026-11-04",
+        "pruefsumme": null,
+        "ort": "in_voltpilot",
+        "ort_satz": "in VoltPilot",
+        "gruppe_wort": "Anwendungsbereich, Kontext und Energiepolitik"
+      }
+    },
+    {
+      "name": "R9 AU-2029-0001: Wortlaut in VoltPilot, Original bei Ihnen (Auditbericht)",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "R3 · k_faelle VERZEICHNIS (vz) · G1",
+      "rechnung": "Ort wortlaut_original_beim_kunden → „Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Audits“",
+      "eingang": {
+        "gruppe": "audits_feststellungen",
+        "art": "internes_audit",
+        "kennzeichen": "AU-2029-0001",
+        "titel": "Internes Audit 2029: Bezugsbasen, Energieziele, Maßnahmen und Grundlagen",
+        "nr": null,
+        "entschieden_von": null,
+        "eingetragen_von": "IK",
+        "tag": "2029-01-31",
+        "pruefsumme": "sha256:27a580b9761668e43f8cdc5afb66a4124f1394cb030a8629c8dc4f82a4d56701",
+        "ort": "wortlaut_original_beim_kunden",
+        "ablage": "QM-Laufwerk, Ordner Energiemanagement/Audits"
+      },
+      "erwartet": {
+        "gruppe": "audits_feststellungen",
+        "art": "internes_audit",
+        "kennzeichen": "AU-2029-0001",
+        "titel": "Internes Audit 2029: Bezugsbasen, Energieziele, Maßnahmen und Grundlagen",
+        "nr": null,
+        "entschieden_von": null,
+        "eingetragen_von": "IK",
+        "tag": "2029-01-31",
+        "pruefsumme": "sha256:27a580b9761668e43f8cdc5afb66a4124f1394cb030a8629c8dc4f82a4d56701",
+        "ort": "wortlaut_original_beim_kunden",
+        "ort_satz": "Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Audits",
+        "gruppe_wort": "Interne Audits und Feststellungen"
+      }
+    },
+    {
+      "name": "R5 Aufgabe mit Bestellung als Verweis (Personalakte)",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "R3 · k_faelle VERZEICHNIS (vz) · G1",
+      "rechnung": "Ort verweis → „Geführt in Ihrem System: Personalakte (Personalabteilung)“",
+      "eingang": {
+        "gruppe": "verantwortung",
+        "art": "aufgabe",
+        "kennzeichen": "Energiemanagement leiten und an die Leitung berichten",
+        "titel": "Energiemanagement leiten und an die Leitung berichten: Ines Kaltenbach",
+        "nr": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "tag": "2026-10-01",
+        "pruefsumme": null,
+        "ort": "verweis",
+        "ablage": "Personalakte (Personalabteilung)"
+      },
+      "erwartet": {
+        "gruppe": "verantwortung",
+        "art": "aufgabe",
+        "kennzeichen": "Energiemanagement leiten und an die Leitung berichten",
+        "titel": "Energiemanagement leiten und an die Leitung berichten: Ines Kaltenbach",
+        "nr": null,
+        "entschieden_von": "RF",
+        "eingetragen_von": "IK",
+        "tag": "2026-10-01",
+        "pruefsumme": null,
+        "ort": "verweis",
+        "ort_satz": "Geführt in Ihrem System: Personalakte (Personalabteilung)",
+        "gruppe_wort": "Aufgaben und Verantwortliche"
+      }
+    },
+    {
+      "name": "R3 BB-0002 Fassung 2: Bezugsbasis-Fassung in VoltPilot",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "R3 · k_faelle VERZEICHNIS (vz) · G1",
+      "rechnung": "Ort in_voltpilot → „in VoltPilot“",
+      "eingang": {
+        "gruppe": "kennzahlen_bezugsbasen",
+        "art": "bezugsbasis_fassung",
+        "kennzeichen": "BB-0002",
+        "titel": "Bezugsbasis BB-0002 (KZ-0001)",
+        "nr": 2,
+        "entschieden_von": null,
+        "eingetragen_von": "IK",
+        "tag": "2026-11-13",
+        "pruefsumme": "sha256:f1c91d707917c6c728e233716ea8f9f342e37c9df815091ac56e2efc24cafdcd",
+        "ort": "in_voltpilot",
+        "ablage": null
+      },
+      "erwartet": {
+        "gruppe": "kennzahlen_bezugsbasen",
+        "art": "bezugsbasis_fassung",
+        "kennzeichen": "BB-0002",
+        "titel": "Bezugsbasis BB-0002 (KZ-0001)",
+        "nr": 2,
+        "entschieden_von": null,
+        "eingetragen_von": "IK",
+        "tag": "2026-11-13",
+        "pruefsumme": "sha256:f1c91d707917c6c728e233716ea8f9f342e37c9df815091ac56e2efc24cafdcd",
+        "ort": "in_voltpilot",
+        "ort_satz": "in VoltPilot",
+        "gruppe_wort": "Kennzahlen, Bezugsbasen und Leistungsvergleiche"
+      }
+    },
+    {
+      "name": "Rand: Verweis ohne Ablage abgelehnt",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "KS1 (Ablage Pflicht)",
+      "rechnung": "ort verweis, ablage leer",
+      "eingang": {
+        "gruppe": "grundlagen",
+        "art": "rechtliche_anforderungen",
+        "kennzeichen": "D-0003",
+        "titel": "Rechtliche Anforderungen zum Energieeinsatz",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2028-12-05",
+        "pruefsumme": null,
+        "ort": "verweis",
+        "ablage": ""
+      },
+      "erwartet": {
+        "fehler": "ablage_fehlt"
+      }
+    },
+    {
+      "name": "Rand: in VoltPilot mit Ablage abgelehnt",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "G1",
+      "rechnung": "was VoltPilot führt, hat keine Ablage beim Kunden",
+      "eingang": {
+        "gruppe": "grundlagen",
+        "art": "betrachtungsumfang",
+        "kennzeichen": "Betrachtungsumfang",
+        "titel": "Betrachtungsumfang der energetischen Bewertung",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2026-11-04",
+        "pruefsumme": null,
+        "ort": "in_voltpilot",
+        "ablage": "QM-Laufwerk"
+      },
+      "erwartet": {
+        "fehler": "ablage_unerwartet"
+      }
+    },
+    {
+      "name": "Rand: unbekannte Gruppe abgelehnt",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "VZ3 (elf Gruppen)",
+      "rechnung": "„vollstaendigkeit“ ist keine Gruppe",
+      "eingang": {
+        "gruppe": "vollstaendigkeit",
+        "art": "betrachtungsumfang",
+        "kennzeichen": "Betrachtungsumfang",
+        "titel": "Betrachtungsumfang der energetischen Bewertung",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2026-11-04",
+        "pruefsumme": null,
+        "ort": "in_voltpilot",
+        "ablage": null
+      },
+      "erwartet": {
+        "fehler": "verzeichnis_gruppe"
+      }
+    },
+    {
+      "name": "Rand: unbekannter Ort abgelehnt",
+      "regel": "VZ2",
+      "operation": "verzeichnis_zeile",
+      "quelle": "G1 (vier Stufen, drei im Verzeichnis)",
+      "rechnung": "„bei_ihnen“ hat keine Zeile im Verzeichnis",
+      "eingang": {
+        "gruppe": "grundlagen",
+        "art": "betrachtungsumfang",
+        "kennzeichen": "Betrachtungsumfang",
+        "titel": "Betrachtungsumfang der energetischen Bewertung",
+        "nr": 1,
+        "entschieden_von": "IK",
+        "eingetragen_von": "IK",
+        "tag": "2026-11-04",
+        "pruefsumme": null,
+        "ort": "bei_ihnen",
+        "ablage": null
+      },
+      "erwartet": {
+        "fehler": "verzeichnis_ort"
+      }
+    },
+    {
+      "name": "R13 BR-2029-0001 Stand Nr. 1: −5.0 wird −5 — die Prüfsumme der Referenzdatei, nicht die des Katalogs",
+      "regel": "A1",
+      "operation": "pruefsumme",
+      "quelle": "R13 · Referenzdatei 1.10 managementbewertungen[0].staende[0] · bericht.md A1/A6",
+      "rechnung": "kanonisch nach A1: zielwert_prozent −5 und erwartet_prozent −3 in kürzester Form, 6005 Bytes → sha256:0a52c97d0296449feb4cf94cecdc4cd90e11dd1d258437a10e436b7a7f078ccd; json.dumps des Katalogs (k_faelle.pz) schriebe −5.0/−3.0, 6009 Bytes → sha256:7db218a7aed06c3db3f54e24d236206cbb26469f670874a82c0d9f903b2fd66f",
+      "eingang": {
+        "kopie": {
+          "kennung": "BR-2029-0001",
+          "vorlage": "managementbewertung",
+          "vorlage_fassung": 1,
+          "geltung": "U",
+          "zeitraum": "2028",
+          "datenstand": "2029-02-12T14:00:00+01:00",
+          "eingaben": {
+            "vorige_beschluesse": "Keine frühere Managementbewertung festgehalten.",
+            "grundlagen": {
+              "energiepolitik": {
+                "dokument": "D-0001",
+                "fassung": 1,
+                "freigegeben_am": "2026-12-15",
+                "entschieden_von": "RF",
+                "ueberpruefung": "seit 64 Tagen fällig"
+              },
+              "anwendungsbereich": {
+                "dokument": "D-0002",
+                "fassung": 1,
+                "freigegeben_am": "2026-12-15",
+                "entschieden_von": "RF",
+                "ueberpruefung": "seit 64 Tagen fällig",
+                "vergleich_betrachtungsumfang": "deckungsgleich"
+              },
+              "aufgaben": {
+                "laufend": 10,
+                "ohne_person": [
+                  "bezugsbasen"
+                ]
+              },
+              "rechtliche_anforderungen": {
+                "dokument": "D-0003",
+                "ort": "Geführt in Ihrem System: Rechtskataster-Dienst (Abonnement)",
+                "fassungsangabe": "Stand 01.12.2028"
+              },
+              "risiken_chancen": "Hier ist noch nichts festgehalten."
+            },
+            "energieziele": [
+              {
+                "kennzeichen": "EZ-2028-0001",
+                "zielwert_prozent": -5.0,
+                "zielperiode": "2028-01/2028-12",
+                "bewertet_am": "2029-01-15",
+                "ergebnis": "verfehlt",
+                "stand": {
+                  "delta_prozent": -2.7,
+                  "monate": "11 von 12"
+                },
+                "pruefsumme": "sha256:3d55664a697dd1059f2f9e75065cd6df60cf5b47f7bb4b102890a48fb665f86e",
+                "person": "IK"
+              }
+            ],
+            "energieleistung": {
+              "leistungsvergleiche": [
+                {
+                  "kennung": "VB-2028-0001",
+                  "stand": 1,
+                  "freigegeben_am": "2028-01-12",
+                  "delta_prozent": 12.9,
+                  "urteil": "schlechter",
+                  "anstoss": "Revision angestoßen durch K-2028-0001 am 03.04.2028 — offen (Annahme)"
+                }
+              ],
+              "bezugsbasen": {
+                "BB-0001": {
+                  "fassung": 2,
+                  "ueberpruefung": "fällig in 286 Tagen"
+                },
+                "BB-0002": {
+                  "fassung": 2,
+                  "ueberpruefung": "seit 457 Tagen fällig"
+                },
+                "BB-0003": {
+                  "fassung": 2,
+                  "ueberpruefung": "seit 344 Tagen fällig"
+                },
+                "BB-0004": {
+                  "fassung": 1,
+                  "ueberpruefung": "seit 80 Tagen fällig"
+                },
+                "BB-0005": {
+                  "fassung": 1,
+                  "ueberpruefung": "seit 450 Tagen fällig"
+                }
+              }
+            },
+            "massnahmen": [
+              {
+                "kennzeichen": "M-2028-0001",
+                "zustand": "bewertet",
+                "stand": 1,
+                "ergebnis": "belegt",
+                "am": "2028-11-15",
+                "wirkung_prozent": -2.4,
+                "monate_bewertbar": 8,
+                "erwartet_prozent": -3.0,
+                "pruefsumme": "sha256:4635f20ac0ef79c28d33bc0ce5314cc3402ef71cd0a5cc1ef98e76d2f3ed76a3"
+              },
+              {
+                "kennzeichen": "M-2028-0002",
+                "zustand": "bewertet",
+                "stand": 1,
+                "ergebnis": "nicht_messbar",
+                "am": "2028-11-20"
+              },
+              {
+                "kennzeichen": "M-2029-0001",
+                "zustand": "geplant",
+                "termin": "2029-02-28",
+                "herkunft": "Feststellung F-2029-0001"
+              },
+              {
+                "kennzeichen": "M-2029-0002",
+                "zustand": "geplant",
+                "termin": "2029-03-31",
+                "herkunft": "internes Audit AU-2029-0001"
+              }
+            ],
+            "abweichungen": {
+              "im_jahr": [
+                {
+                  "kennzeichen": "AW-2028-0001",
+                  "abgeschlossen_am": "2028-01-15",
+                  "ergebnis": "massnahme",
+                  "massnahme": "M-2028-0001"
+                }
+              ],
+              "auffaelligkeiten": [
+                {
+                  "kennzahl": "KZ-0004",
+                  "monat": "2028-07",
+                  "antwort": "zur_kenntnis",
+                  "am": "2028-08-10"
+                }
+              ],
+              "offen": 0
+            },
+            "audits_feststellungen": {
+              "audits": [
+                {
+                  "kennzeichen": "AU-2029-0001",
+                  "durchgefuehrt_am": "2029-01-22",
+                  "zustand": "abgeschlossen",
+                  "auditor": "CB",
+                  "hinweise": 1,
+                  "feststellungen": 1
+                }
+              ],
+              "feststellungen": [
+                {
+                  "kennzeichen": "F-2029-0001",
+                  "zustand": "offen",
+                  "frist": "2029-04-22",
+                  "massnahmen": [
+                    "M-2029-0001"
+                  ]
+                }
+              ]
+            },
+            "bewertung_messplanung": {
+              "bewertung": {
+                "kennung": "BW-2027-0001",
+                "stand": 1,
+                "freigegeben_am": "2027-11-24",
+                "ueberpruefung": "seit 80 Tagen fällig"
+              },
+              "messbedarf": {
+                "MB-1": "eingelöst (MS-23)",
+                "offen": 0
+              }
+            },
+            "wiedervorlage": [
+              {
+                "kennzeichen": "BB-0002",
+                "titel": "Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)",
+                "faellig_am": "2027-11-13",
+                "satz": "seit 457 Tagen fällig"
+              },
+              {
+                "kennzeichen": "BB-0005",
+                "titel": "Bezugsbasis BB-0005, Fassung 1 — Überprüfung (Freigabe 20.11.2026 + 12 Monate)",
+                "faellig_am": "2027-11-20",
+                "satz": "seit 450 Tagen fällig"
+              },
+              {
+                "kennzeichen": "BB-0003",
+                "titel": "Bezugsbasis BB-0003, Fassung 2 — Überprüfung (Freigabe 05.03.2027 + 12 Monate)",
+                "faellig_am": "2028-03-05",
+                "satz": "seit 344 Tagen fällig"
+              },
+              {
+                "kennzeichen": "VB-2028-0001",
+                "titel": "Leistungsvergleich Spritzguss Dezember 2027 — Revision angestoßen (K-2028-0001)",
+                "faellig_am": "2028-04-03",
+                "satz": "seit 315 Tagen fällig"
+              },
+              {
+                "kennzeichen": "BB-0004",
+                "titel": "Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)",
+                "faellig_am": "2028-11-24",
+                "satz": "seit 80 Tagen fällig"
+              },
+              {
+                "kennzeichen": "BW-2027-0001",
+                "titel": "Energetische Bewertung 2027 — Überprüfung",
+                "faellig_am": "2028-11-24",
+                "satz": "seit 80 Tagen fällig"
+              },
+              {
+                "kennzeichen": "D-0001",
+                "titel": "Energiepolitik — Überprüfung",
+                "faellig_am": "2028-12-10",
+                "satz": "seit 64 Tagen fällig"
+              },
+              {
+                "kennzeichen": "D-0002",
+                "titel": "Anwendungsbereich — Überprüfung",
+                "faellig_am": "2028-12-10",
+                "satz": "seit 64 Tagen fällig"
+              },
+              {
+                "kennzeichen": "M-2029-0001",
+                "titel": "Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden",
+                "faellig_am": "2029-02-28",
+                "satz": "fällig in 16 Tagen"
+              }
+            ]
+          },
+          "sitzung": {
+            "tag": "2029-02-12",
+            "leitung": "RF",
+            "teilnehmende": [
+              "IK",
+              "JW",
+              "PH",
+              "CB"
+            ],
+            "ort": "Werk Ahrenberg, Besprechungsraum"
+          },
+          "beschluesse": [
+            {
+              "nr": 1,
+              "art": "energieziel",
+              "wortlaut": "Energieziel 2029 für den Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt; die Arbeit an den Werkzeugheizungen geht weiter.",
+              "entschieden_von": "RF",
+              "zustaendig": "IK",
+              "termin": "2029-02-28"
+            },
+            {
+              "nr": 2,
+              "art": "massnahme",
+              "wortlaut": "Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal.",
+              "entschieden_von": "RF",
+              "zustaendig": "IK",
+              "termin": "2029-06-30"
+            },
+            {
+              "nr": 3,
+              "art": "dokument",
+              "wortlaut": "Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.",
+              "entschieden_von": "RF",
+              "zustaendig": "IK",
+              "termin": "2029-03-31"
+            },
+            {
+              "nr": 4,
+              "art": "aufgabe",
+              "wortlaut": "Die Aufgabe „Bezugsbasen pflegen und freigeben“ übernimmt Ines Kaltenbach, Vertretung Jonas Wendlinger. Eine zweite Prüfung bei Freigaben bleibt aus, solange nur zwei Personen freigeben dürfen; die Leitung sieht die Freigaben in der Managementbewertung durch.",
+              "entschieden_von": "RF",
+              "zustaendig": "JW",
+              "termin": "2029-02-28"
+            },
+            {
+              "nr": 5,
+              "art": "ressourcen",
+              "wortlaut": "Für 2029 stehen 25 000 € für Maßnahmen an der Druckluft bereit.",
+              "entschieden_von": "RF",
+              "zustaendig": "RF",
+              "termin": null
+            },
+            {
+              "nr": 6,
+              "art": "keine_aenderung",
+              "wortlaut": "Der Anwendungsbereich (D-0002, Fassung 1) bleibt unverändert.",
+              "entschieden_von": "RF",
+              "zustaendig": "IK",
+              "termin": null
+            }
+          ]
+        }
+      },
+      "erwartet": {
+        "kanonisch": "{\"beschluesse\":[{\"art\":\"energieziel\",\"entschieden_von\":\"RF\",\"nr\":1,\"termin\":\"2029-02-28\",\"wortlaut\":\"Energieziel 2029 für den Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt; die Arbeit an den Werkzeugheizungen geht weiter.\",\"zustaendig\":\"IK\"},{\"art\":\"massnahme\",\"entschieden_von\":\"RF\",\"nr\":2,\"termin\":\"2029-06-30\",\"wortlaut\":\"Druckluft: Leckagen jährlich orten, 2029 im zweiten Quartal.\",\"zustaendig\":\"IK\"},{\"art\":\"dokument\",\"entschieden_von\":\"RF\",\"nr\":3,\"termin\":\"2029-03-31\",\"wortlaut\":\"Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.\",\"zustaendig\":\"IK\"},{\"art\":\"aufgabe\",\"entschieden_von\":\"RF\",\"nr\":4,\"termin\":\"2029-02-28\",\"wortlaut\":\"Die Aufgabe „Bezugsbasen pflegen und freigeben“ übernimmt Ines Kaltenbach, Vertretung Jonas Wendlinger. Eine zweite Prüfung bei Freigaben bleibt aus, solange nur zwei Personen freigeben dürfen; die Leitung sieht die Freigaben in der Managementbewertung durch.\",\"zustaendig\":\"JW\"},{\"art\":\"ressourcen\",\"entschieden_von\":\"RF\",\"nr\":5,\"termin\":null,\"wortlaut\":\"Für 2029 stehen 25 000 € für Maßnahmen an der Druckluft bereit.\",\"zustaendig\":\"RF\"},{\"art\":\"keine_aenderung\",\"entschieden_von\":\"RF\",\"nr\":6,\"termin\":null,\"wortlaut\":\"Der Anwendungsbereich (D-0002, Fassung 1) bleibt unverändert.\",\"zustaendig\":\"IK\"}],\"datenstand\":\"2029-02-12T14:00:00+01:00\",\"eingaben\":{\"abweichungen\":{\"auffaelligkeiten\":[{\"am\":\"2028-08-10\",\"antwort\":\"zur_kenntnis\",\"kennzahl\":\"KZ-0004\",\"monat\":\"2028-07\"}],\"im_jahr\":[{\"abgeschlossen_am\":\"2028-01-15\",\"ergebnis\":\"massnahme\",\"kennzeichen\":\"AW-2028-0001\",\"massnahme\":\"M-2028-0001\"}],\"offen\":0},\"audits_feststellungen\":{\"audits\":[{\"auditor\":\"CB\",\"durchgefuehrt_am\":\"2029-01-22\",\"feststellungen\":1,\"hinweise\":1,\"kennzeichen\":\"AU-2029-0001\",\"zustand\":\"abgeschlossen\"}],\"feststellungen\":[{\"frist\":\"2029-04-22\",\"kennzeichen\":\"F-2029-0001\",\"massnahmen\":[\"M-2029-0001\"],\"zustand\":\"offen\"}]},\"bewertung_messplanung\":{\"bewertung\":{\"freigegeben_am\":\"2027-11-24\",\"kennung\":\"BW-2027-0001\",\"stand\":1,\"ueberpruefung\":\"seit 80 Tagen fällig\"},\"messbedarf\":{\"MB-1\":\"eingelöst (MS-23)\",\"offen\":0}},\"energieleistung\":{\"bezugsbasen\":{\"BB-0001\":{\"fassung\":2,\"ueberpruefung\":\"fällig in 286 Tagen\"},\"BB-0002\":{\"fassung\":2,\"ueberpruefung\":\"seit 457 Tagen fällig\"},\"BB-0003\":{\"fassung\":2,\"ueberpruefung\":\"seit 344 Tagen fällig\"},\"BB-0004\":{\"fassung\":1,\"ueberpruefung\":\"seit 80 Tagen fällig\"},\"BB-0005\":{\"fassung\":1,\"ueberpruefung\":\"seit 450 Tagen fällig\"}},\"leistungsvergleiche\":[{\"anstoss\":\"Revision angestoßen durch K-2028-0001 am 03.04.2028 — offen (Annahme)\",\"delta_prozent\":12.9,\"freigegeben_am\":\"2028-01-12\",\"kennung\":\"VB-2028-0001\",\"stand\":1,\"urteil\":\"schlechter\"}]},\"energieziele\":[{\"bewertet_am\":\"2029-01-15\",\"ergebnis\":\"verfehlt\",\"kennzeichen\":\"EZ-2028-0001\",\"person\":\"IK\",\"pruefsumme\":\"sha256:3d55664a697dd1059f2f9e75065cd6df60cf5b47f7bb4b102890a48fb665f86e\",\"stand\":{\"delta_prozent\":-2.7,\"monate\":\"11 von 12\"},\"zielperiode\":\"2028-01/2028-12\",\"zielwert_prozent\":-5}],\"grundlagen\":{\"anwendungsbereich\":{\"dokument\":\"D-0002\",\"entschieden_von\":\"RF\",\"fassung\":1,\"freigegeben_am\":\"2026-12-15\",\"ueberpruefung\":\"seit 64 Tagen fällig\",\"vergleich_betrachtungsumfang\":\"deckungsgleich\"},\"aufgaben\":{\"laufend\":10,\"ohne_person\":[\"bezugsbasen\"]},\"energiepolitik\":{\"dokument\":\"D-0001\",\"entschieden_von\":\"RF\",\"fassung\":1,\"freigegeben_am\":\"2026-12-15\",\"ueberpruefung\":\"seit 64 Tagen fällig\"},\"rechtliche_anforderungen\":{\"dokument\":\"D-0003\",\"fassungsangabe\":\"Stand 01.12.2028\",\"ort\":\"Geführt in Ihrem System: Rechtskataster-Dienst (Abonnement)\"},\"risiken_chancen\":\"Hier ist noch nichts festgehalten.\"},\"massnahmen\":[{\"am\":\"2028-11-15\",\"ergebnis\":\"belegt\",\"erwartet_prozent\":-3,\"kennzeichen\":\"M-2028-0001\",\"monate_bewertbar\":8,\"pruefsumme\":\"sha256:4635f20ac0ef79c28d33bc0ce5314cc3402ef71cd0a5cc1ef98e76d2f3ed76a3\",\"stand\":1,\"wirkung_prozent\":-2.4,\"zustand\":\"bewertet\"},{\"am\":\"2028-11-20\",\"ergebnis\":\"nicht_messbar\",\"kennzeichen\":\"M-2028-0002\",\"stand\":1,\"zustand\":\"bewertet\"},{\"herkunft\":\"Feststellung F-2029-0001\",\"kennzeichen\":\"M-2029-0001\",\"termin\":\"2029-02-28\",\"zustand\":\"geplant\"},{\"herkunft\":\"internes Audit AU-2029-0001\",\"kennzeichen\":\"M-2029-0002\",\"termin\":\"2029-03-31\",\"zustand\":\"geplant\"}],\"vorige_beschluesse\":\"Keine frühere Managementbewertung festgehalten.\",\"wiedervorlage\":[{\"faellig_am\":\"2027-11-13\",\"kennzeichen\":\"BB-0002\",\"satz\":\"seit 457 Tagen fällig\",\"titel\":\"Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)\"},{\"faellig_am\":\"2027-11-20\",\"kennzeichen\":\"BB-0005\",\"satz\":\"seit 450 Tagen fällig\",\"titel\":\"Bezugsbasis BB-0005, Fassung 1 — Überprüfung (Freigabe 20.11.2026 + 12 Monate)\"},{\"faellig_am\":\"2028-03-05\",\"kennzeichen\":\"BB-0003\",\"satz\":\"seit 344 Tagen fällig\",\"titel\":\"Bezugsbasis BB-0003, Fassung 2 — Überprüfung (Freigabe 05.03.2027 + 12 Monate)\"},{\"faellig_am\":\"2028-04-03\",\"kennzeichen\":\"VB-2028-0001\",\"satz\":\"seit 315 Tagen fällig\",\"titel\":\"Leistungsvergleich Spritzguss Dezember 2027 — Revision angestoßen (K-2028-0001)\"},{\"faellig_am\":\"2028-11-24\",\"kennzeichen\":\"BB-0004\",\"satz\":\"seit 80 Tagen fällig\",\"titel\":\"Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)\"},{\"faellig_am\":\"2028-11-24\",\"kennzeichen\":\"BW-2027-0001\",\"satz\":\"seit 80 Tagen fällig\",\"titel\":\"Energetische Bewertung 2027 — Überprüfung\"},{\"faellig_am\":\"2028-12-10\",\"kennzeichen\":\"D-0001\",\"satz\":\"seit 64 Tagen fällig\",\"titel\":\"Energiepolitik — Überprüfung\"},{\"faellig_am\":\"2028-12-10\",\"kennzeichen\":\"D-0002\",\"satz\":\"seit 64 Tagen fällig\",\"titel\":\"Anwendungsbereich — Überprüfung\"},{\"faellig_am\":\"2029-02-28\",\"kennzeichen\":\"M-2029-0001\",\"satz\":\"fällig in 16 Tagen\",\"titel\":\"Aufgabe „Bezugsbasen pflegen und freigeben“ festlegen und über die zweite Prüfung entscheiden\"}]},\"geltung\":\"U\",\"kennung\":\"BR-2029-0001\",\"sitzung\":{\"leitung\":\"RF\",\"ort\":\"Werk Ahrenberg, Besprechungsraum\",\"tag\":\"2029-02-12\",\"teilnehmende\":[\"IK\",\"JW\",\"PH\",\"CB\"]},\"vorlage\":\"managementbewertung\",\"vorlage_fassung\":1,\"zeitraum\":\"2028\"}",
+        "pruefsumme": "sha256:0a52c97d0296449feb4cf94cecdc4cd90e11dd1d258437a10e436b7a7f078ccd"
+      }
+    },
+    {
+      "name": "R1 D-0001 Fassung 1 (wortlaut): Prüfsumme der Fassung",
+      "regel": "DK2",
+      "operation": "pruefsumme",
+      "quelle": "Referenzdatei 1.10 dokumente[D-0001] · DK2",
+      "rechnung": "Kopie {nr, form, wortlaut, verweis, anwendungsbereich} → sha256:163ae8360abb4f614f4fb4b37a7e983dff1f42e548b7f10c64890fdde68b09bb",
+      "eingang": {
+        "kopie": {
+          "nr": 1,
+          "form": "wortlaut",
+          "wortlaut": "Die Kunststoffwerk Ahrenberg GmbH will ihren Energieeinsatz in beiden Werken kennen und ihre energiebezogene Leistung Jahr für Jahr verbessern. Wir messen den Energieeinsatz, setzen uns jährlich Energieziele und stellen die Informationen und Mittel bereit, die dafür nötig sind. Wir legen fest, wer im Energiemanagement wofür zuständig ist. Wir halten die für uns geltenden rechtlichen Anforderungen zum Energieeinsatz ein.",
+          "verweis": null,
+          "anwendungsbereich": null
+        }
+      },
+      "erwartet": {
+        "kanonisch": "{\"anwendungsbereich\":null,\"form\":\"wortlaut\",\"nr\":1,\"verweis\":null,\"wortlaut\":\"Die Kunststoffwerk Ahrenberg GmbH will ihren Energieeinsatz in beiden Werken kennen und ihre energiebezogene Leistung Jahr für Jahr verbessern. Wir messen den Energieeinsatz, setzen uns jährlich Energieziele und stellen die Informationen und Mittel bereit, die dafür nötig sind. Wir legen fest, wer im Energiemanagement wofür zuständig ist. Wir halten die für uns geltenden rechtlichen Anforderungen zum Energieeinsatz ein.\"}",
+        "pruefsumme": "sha256:163ae8360abb4f614f4fb4b37a7e983dff1f42e548b7f10c64890fdde68b09bb"
+      }
+    },
+    {
+      "name": "R1 D-0002 Fassung 1 (wortlaut): Prüfsumme der Fassung",
+      "regel": "DK2",
+      "operation": "pruefsumme",
+      "quelle": "Referenzdatei 1.10 dokumente[D-0002] · DK2",
+      "rechnung": "Kopie {nr, form, wortlaut, verweis, anwendungsbereich} → sha256:583a847c7af4b4a29d4517d2acf77468413a95fa38778ba1159ed280c363ecf4",
+      "eingang": {
+        "kopie": {
+          "nr": 1,
+          "form": "wortlaut",
+          "wortlaut": "Das Energiemanagement umfasst beide Werke der Kunststoffwerk Ahrenberg GmbH — Werk Ahrenberg und Werk Lindach — mit allen Gebäuden, Anlagen und Prozessen und allen dort eingesetzten Energieträgern (Strom und Erdgas).",
+          "verweis": null,
+          "anwendungsbereich": {
+            "standorte": [
+              "ST-1",
+              "ST-2"
+            ],
+            "traeger": [
+              "Strom",
+              "Gas"
+            ],
+            "ausschluesse": []
+          }
+        }
+      },
+      "erwartet": {
+        "kanonisch": "{\"anwendungsbereich\":{\"ausschluesse\":[],\"standorte\":[\"ST-1\",\"ST-2\"],\"traeger\":[\"Strom\",\"Gas\"]},\"form\":\"wortlaut\",\"nr\":1,\"verweis\":null,\"wortlaut\":\"Das Energiemanagement umfasst beide Werke der Kunststoffwerk Ahrenberg GmbH — Werk Ahrenberg und Werk Lindach — mit allen Gebäuden, Anlagen und Prozessen und allen dort eingesetzten Energieträgern (Strom und Erdgas).\"}",
+        "pruefsumme": "sha256:583a847c7af4b4a29d4517d2acf77468413a95fa38778ba1159ed280c363ecf4"
+      }
+    },
+    {
+      "name": "R1 D-0004 Fassung 1 (verweis): Prüfsumme der Fassung",
+      "regel": "DK2",
+      "operation": "pruefsumme",
+      "quelle": "Referenzdatei 1.10 dokumente[D-0004] · DK2",
+      "rechnung": "Kopie {nr, form, wortlaut, verweis, anwendungsbereich} → sha256:bd330fe410c905c8bf7be395ade7d5e93e4bc9140fbd25c3d69c93186d403398",
+      "eingang": {
+        "kopie": {
+          "nr": 1,
+          "form": "verweis",
+          "wortlaut": null,
+          "verweis": {
+            "bezeichnung": "Arbeitsplan Spritzgussmaschinen, Rev. 4",
+            "ablage": "Instandhaltungssystem, Arbeitspläne",
+            "kennung": "IH-SG-01",
+            "adresse": "https://instandhaltung.ahrenberg.example/plan/IH-SG-01",
+            "fassungsangabe": "Rev. 4 vom 03.11.2028",
+            "datum": "2028-11-03",
+            "sha256": "f0570ce5f1d332e648fe404bfe958841213b08b91c17667c3b0cd28c6acd49f9"
+          },
+          "anwendungsbereich": null
+        }
+      },
+      "erwartet": {
+        "kanonisch": "{\"anwendungsbereich\":null,\"form\":\"verweis\",\"nr\":1,\"verweis\":{\"ablage\":\"Instandhaltungssystem, Arbeitspläne\",\"adresse\":\"https://instandhaltung.ahrenberg.example/plan/IH-SG-01\",\"bezeichnung\":\"Arbeitsplan Spritzgussmaschinen, Rev. 4\",\"datum\":\"2028-11-03\",\"fassungsangabe\":\"Rev. 4 vom 03.11.2028\",\"kennung\":\"IH-SG-01\",\"sha256\":\"f0570ce5f1d332e648fe404bfe958841213b08b91c17667c3b0cd28c6acd49f9\"},\"wortlaut\":null}",
+        "pruefsumme": "sha256:bd330fe410c905c8bf7be395ade7d5e93e4bc9140fbd25c3d69c93186d403398"
+      }
+    },
+    {
+      "name": "R9 AU-2029-0001 Abschluss: Prüfsumme der Kopie",
+      "regel": "IA3",
+      "operation": "pruefsumme",
+      "quelle": "Referenzdatei 1.10 audits[0].abgeschlossen · IA3",
+      "rechnung": "Kopie {kennzeichen, hinweise, feststellungen, bericht} → sha256:27a580b9761668e43f8cdc5afb66a4124f1394cb030a8629c8dc4f82a4d56701",
+      "eingang": {
+        "kopie": {
+          "kennzeichen": "AU-2029-0001",
+          "hinweise": [
+            {
+              "nr": 1,
+              "am": "2029-01-22",
+              "festgestellt_von": "CB",
+              "eingetragen_von": "IK",
+              "wortlaut": "Die Energiepolitik wurde im Dezember 2026 bekannt gemacht; wer seitdem eingestellt wurde, lernt sie in der Einarbeitung nicht kennen.",
+              "massnahme": "M-2029-0002"
+            }
+          ],
+          "feststellungen": [
+            "F-2029-0001"
+          ],
+          "bericht": {
+            "bezeichnung": "Bericht internes Audit 2029, unterschrieben",
+            "ablage": "QM-Laufwerk, Ordner Energiemanagement/Audits",
+            "kennung": "IA-2029",
+            "adresse": null,
+            "sha256": "761d45606a2ed3511c91e2a61bf4ba3287dac583b70f43ead3f3d8716233fdeb"
+          }
+        }
+      },
+      "erwartet": {
+        "kanonisch": "{\"bericht\":{\"ablage\":\"QM-Laufwerk, Ordner Energiemanagement/Audits\",\"adresse\":null,\"bezeichnung\":\"Bericht internes Audit 2029, unterschrieben\",\"kennung\":\"IA-2029\",\"sha256\":\"761d45606a2ed3511c91e2a61bf4ba3287dac583b70f43ead3f3d8716233fdeb\"},\"feststellungen\":[\"F-2029-0001\"],\"hinweise\":[{\"am\":\"2029-01-22\",\"eingetragen_von\":\"IK\",\"festgestellt_von\":\"CB\",\"massnahme\":\"M-2029-0002\",\"nr\":1,\"wortlaut\":\"Die Energiepolitik wurde im Dezember 2026 bekannt gemacht; wer seitdem eingestellt wurde, lernt sie in der Einarbeitung nicht kennen.\"}],\"kennzeichen\":\"AU-2029-0001\"}",
+        "pruefsumme": "sha256:27a580b9761668e43f8cdc5afb66a4124f1394cb030a8629c8dc4f82a4d56701"
+      }
+    },
+    {
+      "name": "R11 F-2029-0001 Wirksamkeit Stand Nr. 1: Prüfsumme der Kopie",
+      "regel": "FS4",
+      "operation": "pruefsumme",
+      "quelle": "Referenzdatei 1.10 feststellungen[0].wirksamkeit[0] · FS4",
+      "rechnung": "Kopie (Feststellung, Maßnahmen mit Zustand, Aufgabe) → sha256:dbda6affa5cfa0796bbdcc1ef1f2eb0d1725e7534b404ac9db5b706525f15b04",
+      "eingang": {
+        "kopie": {
+          "feststellung": "F-2029-0001",
+          "wortlaut": "Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt: an den Bezugsbasen stehen als Verantwortliche die der Kennzahlen (Vorgabe), freigegeben hat alle fünf dieselbe Person ohne zweite Prüfung.",
+          "eintraege": 3,
+          "massnahmen": [
+            {
+              "kennzeichen": "M-2029-0001",
+              "zustand": "umgesetzt",
+              "umgesetzt_am": "2029-03-01"
+            }
+          ],
+          "aufgabe": {
+            "aufgabe": "bezugsbasen",
+            "person": "IK",
+            "vertretung": "JW",
+            "gilt_ab": "2029-03-01",
+            "entschieden_von": "RF"
+          },
+          "am": "2029-04-15"
+        }
+      },
+      "erwartet": {
+        "kanonisch": "{\"am\":\"2029-04-15\",\"aufgabe\":{\"aufgabe\":\"bezugsbasen\",\"entschieden_von\":\"RF\",\"gilt_ab\":\"2029-03-01\",\"person\":\"IK\",\"vertretung\":\"JW\"},\"eintraege\":3,\"feststellung\":\"F-2029-0001\",\"massnahmen\":[{\"kennzeichen\":\"M-2029-0001\",\"umgesetzt_am\":\"2029-03-01\",\"zustand\":\"umgesetzt\"}],\"wortlaut\":\"Wer die Bezugsbasen pflegt und freigibt und wer vertritt, ist nicht festgelegt: an den Bezugsbasen stehen als Verantwortliche die der Kennzahlen (Vorgabe), freigegeben hat alle fünf dieselbe Person ohne zweite Prüfung.\"}",
+        "pruefsumme": "sha256:dbda6affa5cfa0796bbdcc1ef1f2eb0d1725e7534b404ac9db5b706525f15b04"
+      }
+    },
+    {
+      "name": "Rand: Zahlform und Schlüsselfolge der kanonischen Form",
+      "regel": "A1",
+      "operation": "pruefsumme",
+      "quelle": "bericht.md A1",
+      "rechnung": "Zahlen ohne Exponent und ohne nachgestellte Nullen (−5.0 → −5, 0.0 und −0.0 → 0, 1.5E-7 → 0.00000015, 1E+21 ausgeschrieben), Schlüssel nach UTF-16, Zeichenketten wie JSON.stringify",
+      "eingang": {
+        "kopie": {
+          "b": -5.0,
+          "a": [
+            12.9,
+            0.0,
+            -0.0,
+            6100,
+            1.5e-07,
+            1e+21
+          ],
+          "ä": "Zeile\n\"zitiert\"\t\\",
+          "Z": null,
+          "t": true,
+          "é": {
+            "y": 2,
+            "x": 1
+          }
+        }
+      },
+      "erwartet": {
+        "kanonisch": "{\"Z\":null,\"a\":[12.9,0,0,6100,0.00000015,1000000000000000000000],\"b\":-5,\"t\":true,\"ä\":\"Zeile\\n\\\"zitiert\\\"\\t\\\\\",\"é\":{\"x\":1,\"y\":2}}",
+        "pruefsumme": "sha256:578938ce6f69271470029fbd8992da75c749e2525c102079ed9044e886582de4"
+      }
+    },
+    {
+      "name": "§5.8 verantwortung",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "verantwortung",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt."
+      }
+    },
+    {
+      "name": "§5.8 grenz_satz",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "grenz_satz",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden."
+      }
+    },
+    {
+      "name": "§5.8 dokument_kopf",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "dokument_kopf",
+        "werte": {
+          "art": "Energiepolitik",
+          "kennzeichen": "D-0001",
+          "fassung": "1",
+          "am": "15.12.2026",
+          "entschieden_von": "Robert Falk (Geschäftsführer)",
+          "eingetragen_von": "Ines Kaltenbach"
+        }
+      },
+      "erwartet": {
+        "satz": "Energiepolitik D-0001 · Fassung 1 · freigegeben am 15.12.2026 · entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach."
+      }
+    },
+    {
+      "name": "§5.8 ort_wortlaut",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "ort_wortlaut",
+        "werte": {
+          "ablage": "QM-Laufwerk, Ordner Energiemanagement/Politik"
+        }
+      },
+      "erwartet": {
+        "satz": "Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik."
+      }
+    },
+    {
+      "name": "§5.8 ort_verweis",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "ort_verweis",
+        "werte": {
+          "ablage": "Instandhaltungssystem, Arbeitspläne",
+          "angaben": "IH-SG-01, Rev. 4 vom 03.11.2028"
+        }
+      },
+      "erwartet": {
+        "satz": "Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne (IH-SG-01, Rev. 4 vom 03.11.2028)."
+      }
+    },
+    {
+      "name": "§5.8 verweis_pruefsumme",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "verweis_pruefsumme",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Die Prüfsumme wird in Ihrem Browser gebildet; die Datei verlässt Ihren Rechner nicht."
+      }
+    },
+    {
+      "name": "§5.8 verweis_keine_datei",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "verweis_keine_datei",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist."
+      }
+    },
+    {
+      "name": "§5.8 ueberpruefung",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "ueberpruefung",
+        "werte": {
+          "tage": "64"
+        }
+      },
+      "erwartet": {
+        "satz": "Überprüfung fällig seit 64 Tagen."
+      }
+    },
+    {
+      "name": "§5.8 geprueft_bleibt",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "geprueft_bleibt",
+        "werte": {
+          "person": "Robert Falk",
+          "am": "10.12.2027",
+          "begruendung": "Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert."
+        }
+      },
+      "erwartet": {
+        "satz": "Geprüft, bleibt — entschieden von Robert Falk am 10.12.2027: ‚Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.‘"
+      }
+    },
+    {
+      "name": "§5.8 bekanntmachung",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "bekanntmachung",
+        "werte": {
+          "am": "18.12.2026",
+          "kreis": "alle Mitarbeitenden beider Werke",
+          "weg": "Aushang und Intranet",
+          "person": "Ines Kaltenbach"
+        }
+      },
+      "erwartet": {
+        "satz": "Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet — eingetragen von Ines Kaltenbach."
+      }
+    },
+    {
+      "name": "§5.8 anwendungsbereich_deckungsgleich",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "anwendungsbereich_deckungsgleich",
+        "werte": {
+          "fassung": "1",
+          "ab": "04.11.2026"
+        }
+      },
+      "erwartet": {
+        "satz": "Der Betrachtungsumfang der energetischen Bewertung (Fassung 1, ab 04.11.2026) umfasst dieselben Standorte und Energieträger."
+      }
+    },
+    {
+      "name": "§5.8 anwendungsbereich_unterschied",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "anwendungsbereich_unterschied",
+        "werte": {
+          "was": "Gas",
+          "fassung": "1"
+        }
+      },
+      "erwartet": {
+        "satz": "Gas gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung 1)."
+      }
+    },
+    {
+      "name": "§5.8 freigabe_ohne_leitung",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "freigabe_ohne_leitung",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt."
+      }
+    },
+    {
+      "name": "§5.8 aufgabe_ohne_person",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "aufgabe_ohne_person",
+        "werte": {
+          "aufgabe": "Bezugsbasen pflegen und freigeben"
+        }
+      },
+      "erwartet": {
+        "satz": "Bezugsbasen pflegen und freigeben — keine Person festgelegt."
+      }
+    },
+    {
+      "name": "§5.8 person_ohne_konto",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "person_ohne_konto",
+        "werte": {
+          "name": "Robert Falk",
+          "funktion": "Geschäftsführer"
+        }
+      },
+      "erwartet": {
+        "satz": "Robert Falk · Geschäftsführer · ohne Konto — erscheint als ‚entschieden von‘."
+      }
+    },
+    {
+      "name": "§5.8 einsicht_rolle",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "einsicht_rolle",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Einsicht — Sie sehen das Energiemanagement des ganzen Unternehmens und können nichts ändern."
+      }
+    },
+    {
+      "name": "§5.8 einsicht_schreibversuch",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "einsicht_schreibversuch",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet."
+      }
+    },
+    {
+      "name": "§5.8 audit_kopf",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "audit_kopf",
+        "werte": {
+          "kennzeichen": "AU-2029-0001",
+          "am": "22.01.2029",
+          "auditor": "Claudia Berger",
+          "unabhaengigkeit": "Controlling; gehört nicht zum Energieteam"
+        }
+      },
+      "erwartet": {
+        "satz": "Internes Audit AU-2029-0001 · durchgeführt am 22.01.2029 von Claudia Berger (Controlling; gehört nicht zum Energieteam)."
+      }
+    },
+    {
+      "name": "§5.8 hinweis",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "hinweis",
+        "werte": {
+          "festgestellt_von": "Claudia Berger",
+          "eingetragen_von": "Ines Kaltenbach",
+          "am": "22.01.2029"
+        }
+      },
+      "erwartet": {
+        "satz": "Hinweis — festgestellt von Claudia Berger, eingetragen von Ines Kaltenbach am 22.01.2029."
+      }
+    },
+    {
+      "name": "§5.8 feststellung_kopf",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "feststellung_kopf",
+        "werte": {
+          "kennzeichen": "F-2029-0001",
+          "quelle": "aus dem internen Audit AU-2029-0001",
+          "person": "Claudia Berger",
+          "am": "22.01.2029",
+          "verantwortlich": "Jonas Wendlinger",
+          "frist": "22.04.2029",
+          "zustand": "offen"
+        }
+      },
+      "erwartet": {
+        "satz": "Feststellung F-2029-0001 · aus dem internen Audit AU-2029-0001 · festgestellt von Claudia Berger am 22.01.2029 · Verantwortlich Jonas Wendlinger · Frist 22.04.2029 · offen."
+      }
+    },
+    {
+      "name": "§5.8 behebung",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "behebung",
+        "werte": {
+          "person": "Ines Kaltenbach",
+          "am": "23.01.2029",
+          "wortlaut": "Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei."
+        }
+      },
+      "erwartet": {
+        "satz": "Sofortige Behebung — Ines Kaltenbach, 23.01.2029: Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei."
+      }
+    },
+    {
+      "name": "§5.8 ursache_aussage",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "ursache_aussage",
+        "werte": {
+          "person": "Ines Kaltenbach",
+          "am": "25.01.2029",
+          "wortlaut": "Die Aufgabenliste entstand zum Start, bevor es Bezugsbasen gab; sie wurde nicht nachgeführt."
+        }
+      },
+      "erwartet": {
+        "satz": "Ursache — Aussage von Ines Kaltenbach, 25.01.2029: Die Aufgabenliste entstand zum Start, bevor es Bezugsbasen gab; sie wurde nicht nachgeführt."
+      }
+    },
+    {
+      "name": "§5.8 herkunft_feststellung",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "herkunft_feststellung",
+        "werte": {
+          "kennung": "F-2029-0001"
+        }
+      },
+      "erwartet": {
+        "satz": "Herkunft: Feststellung F-2029-0001."
+      }
+    },
+    {
+      "name": "§5.8 herkunft_audit",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "herkunft_audit",
+        "werte": {
+          "kennung": "AU-2029-0001"
+        }
+      },
+      "erwartet": {
+        "satz": "Herkunft: internes Audit AU-2029-0001."
+      }
+    },
+    {
+      "name": "§5.8 herkunft_managementbewertung",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "herkunft_managementbewertung",
+        "werte": {
+          "kennung": "BR-2029-0001",
+          "beschluss": "2"
+        }
+      },
+      "erwartet": {
+        "satz": "Herkunft: Managementbewertung BR-2029-0001 (Beschluss 2)."
+      }
+    },
+    {
+      "name": "§5.8 wirksamkeit",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "wirksamkeit",
+        "werte": {
+          "am": "15.04.2029",
+          "person": "Ines Kaltenbach",
+          "ergebnis": "wirksam",
+          "nr": "1"
+        }
+      },
+      "erwartet": {
+        "satz": "Wirksamkeit geprüft am 15.04.2029 von Ines Kaltenbach: wirksam — Stand Nr. 1 mit Prüfsumme."
+      }
+    },
+    {
+      "name": "§5.8 wirksamkeit_noch_nicht",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "wirksamkeit_noch_nicht",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Die Wirksamkeit lässt sich prüfen, sobald jede Maßnahme umgesetzt, bewertet oder verworfen ist."
+      }
+    },
+    {
+      "name": "§5.8 vieraugen_nicht_erfuellbar",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "vieraugen_nicht_erfuellbar",
+        "werte": {
+          "personen": "Ines Kaltenbach und Jonas Wendlinger",
+          "beteiligt": "beide"
+        }
+      },
+      "erwartet": {
+        "satz": "Vier-Augen nicht erfüllbar: außer Ines Kaltenbach und Jonas Wendlinger darf niemand freigeben, und beide sind hier beteiligt."
+      }
+    },
+    {
+      "name": "§5.8 managementbewertung_kopf",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "managementbewertung_kopf",
+        "werte": {
+          "jahr": "2028",
+          "sitzung": "12.02.2029",
+          "leitung": "Robert Falk",
+          "nr": "1",
+          "stand_vom": "12.02.2029, 14:10"
+        }
+      },
+      "erwartet": {
+        "satz": "Managementbewertung 2028 · Sitzung am 12.02.2029 · Leitung Robert Falk · Stand Nr. 1 vom 12.02.2029, 14:10, mit Prüfsumme."
+      }
+    },
+    {
+      "name": "§5.8 managementbewertung_erste",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "managementbewertung_erste",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Keine frühere Managementbewertung festgehalten."
+      }
+    },
+    {
+      "name": "§5.8 beschluss",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "beschluss",
+        "werte": {
+          "nr": "3",
+          "entschieden_von": "Robert Falk",
+          "eingetragen_von": "Ines Kaltenbach",
+          "wortlaut": "Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029."
+        }
+      },
+      "erwartet": {
+        "satz": "Beschluss 3 — entschieden von Robert Falk, eingetragen von Ines Kaltenbach: Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029."
+      }
+    },
+    {
+      "name": "§5.8 beschluss_ohne_folge",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "beschluss_ohne_folge",
+        "werte": {
+          "am": "12.02.2029"
+        }
+      },
+      "erwartet": {
+        "satz": "Keine Folge in VoltPilot — der Beschluss steht im Stand vom 12.02.2029."
+      }
+    },
+    {
+      "name": "§5.8 stand_seines_tages",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "stand_seines_tages",
+        "werte": {
+          "datenstand": "12.02.2029, 14:00"
+        }
+      },
+      "erwartet": {
+        "satz": "Dieser Stand zeigt die Eingaben vom 12.02.2029, 14:00. Was sich danach geändert hat, zeigt die nächste Managementbewertung."
+      }
+    },
+    {
+      "name": "§5.8 wiedervorlage_zeile",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "wiedervorlage_zeile",
+        "werte": {
+          "gegenstand": "Bezugsbasis BB-0002, Fassung 2",
+          "was": "Überprüfung",
+          "tage": "457"
+        }
+      },
+      "erwartet": {
+        "satz": "Bezugsbasis BB-0002, Fassung 2: Überprüfung seit 457 Tagen fällig."
+      }
+    },
+    {
+      "name": "§5.8 wiedervorlage_leer",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "wiedervorlage_leer",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Zurzeit ist nichts fällig."
+      }
+    },
+    {
+      "name": "§5.8 kalender_abzug",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "kalender_abzug",
+        "werte": {
+          "am": "12.02.2029"
+        }
+      },
+      "erwartet": {
+        "satz": "Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal."
+      }
+    },
+    {
+      "name": "§5.8 baustein",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "baustein",
+        "werte": {
+          "faellig": "8",
+          "vorschau": "1",
+          "tage": "30"
+        }
+      },
+      "erwartet": {
+        "satz": "Energiemanagement — 8 fällig · 1 in den nächsten 30 Tagen."
+      }
+    },
+    {
+      "name": "§5.8 verzeichnis_leer",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "verzeichnis_leer",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Hier ist noch nichts festgehalten."
+      }
+    },
+    {
+      "name": "§5.8 verzeichnis_filter",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "verzeichnis_filter",
+        "werte": {
+          "anzahl": "11"
+        }
+      },
+      "erwartet": {
+        "satz": "In meinem Namen festgehalten: 11 Einträge."
+      }
+    },
+    {
+      "name": "§5.8 zuschnitt_titel",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "Report §5.8",
+      "rechnung": "Schablone gefüllt = Satz aus §5.8 wörtlich",
+      "eingang": {
+        "schluessel": "zuschnitt_titel",
+        "werte": {}
+      },
+      "erwartet": {
+        "satz": "Was VoltPilot führt — was bei Ihnen liegt."
+      }
+    },
+    {
+      "name": "R12 BB-0002 seit 457 Tagen als Wiedervorlage-Satz",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "R12 · §5.8 Wiedervorlage, Zeile",
+      "rechnung": "Zahl aus dem Vektor R12 (457)",
+      "eingang": {
+        "schluessel": "wiedervorlage_zeile",
+        "werte": {
+          "gegenstand": "Bezugsbasis BB-0002, Fassung 2",
+          "was": "Überprüfung",
+          "tage": "457"
+        }
+      },
+      "erwartet": {
+        "satz": "Bezugsbasis BB-0002, Fassung 2: Überprüfung seit 457 Tagen fällig."
+      }
+    },
+    {
+      "name": "Rand: unbekannter Satz",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "SP4",
+      "rechnung": "kein Schlüssel „konform“",
+      "eingang": {
+        "schluessel": "konform",
+        "werte": {}
+      },
+      "erwartet": {
+        "fehler": "satz_unbekannt"
+      }
+    },
+    {
+      "name": "Rand: fehlender Wert",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "SP4",
+      "rechnung": "{tage} fehlt",
+      "eingang": {
+        "schluessel": "ueberpruefung",
+        "werte": {}
+      },
+      "erwartet": {
+        "fehler": "wert_fehlt:tage"
+      }
+    },
+    {
+      "name": "Rand: übriger Wert",
+      "regel": "SP4",
+      "operation": "satz",
+      "quelle": "SP4",
+      "rechnung": "„prozent“ hat keinen Platz",
+      "eingang": {
+        "schluessel": "ueberpruefung",
+        "werte": {
+          "tage": "64",
+          "prozent": "100 %"
+        }
+      },
+      "erwartet": {
+        "fehler": "wert_uebrig:prozent"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1958 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/energiemanagement.schema.json",
+  "title": "Energiemanagement – gemeinsame Vertragsvektoren (AP-19 NW-1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "startwerte",
+    "vokabulare",
+    "dokument_art_klasse",
+    "leitungs_pflicht",
+    "kennzeichen_muster",
+    "woerter",
+    "saetze",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "herkunft": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startwerte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ueberpruefung_monate",
+        "ueberpruefung_monate_mindestens",
+        "ueberpruefung_monate_hoechstens",
+        "audit_rhythmus_monate",
+        "managementbewertung_rhythmus_monate",
+        "feststellung_frist_tage",
+        "vorschau_tage",
+        "wortlaut_zeichen_hoechstens",
+        "begruendung_zeichen_mindestens",
+        "begruendung_zeichen_hoechstens",
+        "eintrag_zeichen_hoechstens"
+      ],
+      "properties": {
+        "ueberpruefung_monate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ueberpruefung_monate_mindestens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ueberpruefung_monate_hoechstens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "audit_rhythmus_monate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "managementbewertung_rhythmus_monate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "feststellung_frist_tage": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "vorschau_tage": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wortlaut_zeichen_hoechstens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "begruendung_zeichen_mindestens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "begruendung_zeichen_hoechstens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "eintrag_zeichen_hoechstens": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "vokabulare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dokument_art",
+        "dokument_klasse",
+        "dokument_zustand",
+        "dokument_bezug",
+        "fassung_form",
+        "fassung_status",
+        "dokument_eintrag",
+        "bekanntmachung_weg",
+        "aufgabe",
+        "person_zustand",
+        "aufgabe_zustand",
+        "audit_zustand",
+        "audit_eintrag",
+        "feststellung_quelle",
+        "feststellung_zustand",
+        "feststellung_eintrag",
+        "wirksamkeit_ergebnis",
+        "managementbewertung_zustand",
+        "beschluss_art",
+        "folge_art",
+        "wiedervorlage_art",
+        "verzeichnis_ort",
+        "verzeichnis_gruppe",
+        "ueberpruefung_art",
+        "ueberpruefung_grund"
+      ],
+      "properties": {
+        "dokument_art": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "dokument_klasse": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "dokument_zustand": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "dokument_bezug": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "fassung_form": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "fassung_status": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "dokument_eintrag": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "bekanntmachung_weg": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "aufgabe": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "person_zustand": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "aufgabe_zustand": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "audit_zustand": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "audit_eintrag": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "feststellung_quelle": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "feststellung_zustand": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "feststellung_eintrag": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "wirksamkeit_ergebnis": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "managementbewertung_zustand": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "beschluss_art": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "folge_art": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "wiedervorlage_art": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "verzeichnis_ort": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "verzeichnis_gruppe": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "ueberpruefung_art": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "ueberpruefung_grund": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "dokument_art_klasse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "energiepolitik",
+        "anwendungsbereich",
+        "kontext",
+        "rechtliche_anforderungen",
+        "risiken_chancen",
+        "bestellung",
+        "verfahren",
+        "betrieb",
+        "beschaffung",
+        "kommunikation",
+        "auslegung",
+        "kompetenz"
+      ],
+      "properties": {
+        "energiepolitik": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "anwendungsbereich": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "kontext": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "rechtliche_anforderungen": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "risiken_chancen": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "bestellung": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "verfahren": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "betrieb": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "beschaffung": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "kommunikation": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "auslegung": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        },
+        "kompetenz": {
+          "enum": [
+            "vorgabe",
+            "nachweis"
+          ]
+        }
+      }
+    },
+    "leitungs_pflicht": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "energiepolitik",
+          "anwendungsbereich",
+          "kontext",
+          "rechtliche_anforderungen",
+          "risiken_chancen",
+          "bestellung",
+          "verfahren",
+          "betrieb",
+          "beschaffung",
+          "kommunikation",
+          "auslegung",
+          "kompetenz"
+        ]
+      },
+      "minItems": 1
+    },
+    "kennzeichen_muster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dokument",
+        "internes_audit",
+        "feststellung",
+        "beschluss"
+      ],
+      "properties": {
+        "dokument": {
+          "type": "string",
+          "pattern": "^\\^.*\\$$"
+        },
+        "internes_audit": {
+          "type": "string",
+          "pattern": "^\\^.*\\$$"
+        },
+        "feststellung": {
+          "type": "string",
+          "pattern": "^\\^.*\\$$"
+        },
+        "beschluss": {
+          "type": "string",
+          "pattern": "^\\^.*\\$$"
+        }
+      }
+    },
+    "woerter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dokument_art",
+        "aufgabe",
+        "verzeichnis_gruppe",
+        "verzeichnis_ort"
+      ],
+      "properties": {
+        "dokument_art": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "energiepolitik",
+            "anwendungsbereich",
+            "kontext",
+            "rechtliche_anforderungen",
+            "risiken_chancen",
+            "bestellung",
+            "verfahren",
+            "betrieb",
+            "beschaffung",
+            "kommunikation",
+            "auslegung",
+            "kompetenz"
+          ],
+          "properties": {
+            "energiepolitik": {
+              "type": "string",
+              "minLength": 1
+            },
+            "anwendungsbereich": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kontext": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rechtliche_anforderungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "risiken_chancen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bestellung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "verfahren": {
+              "type": "string",
+              "minLength": 1
+            },
+            "betrieb": {
+              "type": "string",
+              "minLength": 1
+            },
+            "beschaffung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kommunikation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "auslegung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kompetenz": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "aufgabe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unternehmensleitung",
+            "energiemanagement_leiten",
+            "energieteam",
+            "bezugsbasen",
+            "energieziele_massnahmen",
+            "bewertung_messplanung",
+            "interne_audits",
+            "managementbewertung",
+            "dokumente",
+            "weitere"
+          ],
+          "properties": {
+            "unternehmensleitung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energiemanagement_leiten": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energieteam": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energieziele_massnahmen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bewertung_messplanung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "interne_audits": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dokumente": {
+              "type": "string",
+              "minLength": 1
+            },
+            "weitere": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "verzeichnis_gruppe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "grundlagen",
+            "verantwortung",
+            "risiken_chancen",
+            "kompetenz_kommunikation",
+            "betrieb_auslegung_beschaffung",
+            "bewertung_messplanung",
+            "kennzahlen_bezugsbasen",
+            "ziele_massnahmen_abweichungen",
+            "audits_feststellungen",
+            "managementbewertung",
+            "berichte"
+          ],
+          "properties": {
+            "grundlagen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "verantwortung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "risiken_chancen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kompetenz_kommunikation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "betrieb_auslegung_beschaffung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bewertung_messplanung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kennzahlen_bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ziele_massnahmen_abweichungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "audits_feststellungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "berichte": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "verzeichnis_ort": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "in_voltpilot",
+            "wortlaut_original_beim_kunden",
+            "verweis"
+          ],
+          "properties": {
+            "in_voltpilot": {
+              "type": "string",
+              "minLength": 1
+            },
+            "wortlaut_original_beim_kunden": {
+              "type": "string",
+              "minLength": 1
+            },
+            "verweis": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "saetze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verantwortung",
+        "grenz_satz",
+        "dokument_kopf",
+        "ort_wortlaut",
+        "ort_verweis",
+        "verweis_pruefsumme",
+        "verweis_keine_datei",
+        "ueberpruefung",
+        "geprueft_bleibt",
+        "bekanntmachung",
+        "anwendungsbereich_deckungsgleich",
+        "anwendungsbereich_unterschied",
+        "freigabe_ohne_leitung",
+        "aufgabe_ohne_person",
+        "person_ohne_konto",
+        "einsicht_rolle",
+        "einsicht_schreibversuch",
+        "audit_kopf",
+        "hinweis",
+        "feststellung_kopf",
+        "behebung",
+        "ursache_aussage",
+        "herkunft_feststellung",
+        "herkunft_audit",
+        "herkunft_managementbewertung",
+        "wirksamkeit",
+        "wirksamkeit_noch_nicht",
+        "vieraugen_nicht_erfuellbar",
+        "managementbewertung_kopf",
+        "managementbewertung_erste",
+        "beschluss",
+        "beschluss_ohne_folge",
+        "stand_seines_tages",
+        "wiedervorlage_zeile",
+        "wiedervorlage_leer",
+        "kalender_abzug",
+        "baustein",
+        "verzeichnis_leer",
+        "verzeichnis_filter",
+        "zuschnitt_titel"
+      ],
+      "properties": {
+        "verantwortung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grenz_satz": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dokument_kopf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ort_wortlaut": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ort_verweis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verweis_pruefsumme": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verweis_keine_datei": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ueberpruefung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "geprueft_bleibt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bekanntmachung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anwendungsbereich_deckungsgleich": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anwendungsbereich_unterschied": {
+          "type": "string",
+          "minLength": 1
+        },
+        "freigabe_ohne_leitung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aufgabe_ohne_person": {
+          "type": "string",
+          "minLength": 1
+        },
+        "person_ohne_konto": {
+          "type": "string",
+          "minLength": 1
+        },
+        "einsicht_rolle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "einsicht_schreibversuch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "audit_kopf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hinweis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "feststellung_kopf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "behebung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ursache_aussage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "herkunft_feststellung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "herkunft_audit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "herkunft_managementbewertung": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirksamkeit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wirksamkeit_noch_nicht": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vieraugen_nicht_erfuellbar": {
+          "type": "string",
+          "minLength": 1
+        },
+        "managementbewertung_kopf": {
+          "type": "string",
+          "minLength": 1
+        },
+        "managementbewertung_erste": {
+          "type": "string",
+          "minLength": 1
+        },
+        "beschluss": {
+          "type": "string",
+          "minLength": 1
+        },
+        "beschluss_ohne_folge": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stand_seines_tages": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wiedervorlage_zeile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wiedervorlage_leer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kalender_abzug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baustein": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verzeichnis_leer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verzeichnis_filter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "zuschnitt_titel": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(DK|IA|MG|FS|WV)[0-9]$"
+              },
+              "operation": {
+                "const": "ueberpruefung"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "art",
+                      "dokument_art",
+                      "monate",
+                      "fassungen",
+                      "geprueft_bleibt",
+                      "abruf"
+                    ],
+                    "properties": {
+                      "art": {
+                        "const": "dokument"
+                      },
+                      "dokument_art": {
+                        "type": "string",
+                        "pattern": "^[a-z_]+$"
+                      },
+                      "monate": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "fassungen": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "nr",
+                            "freigegeben_am"
+                          ],
+                          "properties": {
+                            "nr": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "freigegeben_am": {
+                              "type": "string",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                            }
+                          }
+                        }
+                      },
+                      "geprueft_bleibt": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "fassung",
+                            "am"
+                          ],
+                          "properties": {
+                            "fassung": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "am": {
+                              "type": "string",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                            }
+                          }
+                        }
+                      },
+                      "abruf": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "art",
+                      "monate",
+                      "tage",
+                      "abruf"
+                    ],
+                    "properties": {
+                      "art": {
+                        "enum": [
+                          "internes_audit",
+                          "managementbewertung",
+                          "bezugsbasis"
+                        ]
+                      },
+                      "monate": {
+                        "type": "integer"
+                      },
+                      "tage": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                        }
+                      },
+                      "abruf": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "art",
+                      "festgestellt_am",
+                      "frist",
+                      "frist_tage",
+                      "zustand",
+                      "abruf"
+                    ],
+                    "properties": {
+                      "art": {
+                        "const": "feststellung"
+                      },
+                      "festgestellt_am": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      },
+                      "frist": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                          }
+                        ]
+                      },
+                      "frist_tage": {
+                        "type": "integer"
+                      },
+                      "zustand": {
+                        "type": "string",
+                        "pattern": "^[a-z_]+$"
+                      },
+                      "abruf": {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      }
+                    }
+                  }
+                ]
+              },
+              "erwartet": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "faellig_am",
+                      "basis",
+                      "fassung",
+                      "tage",
+                      "satz",
+                      "grund"
+                    ],
+                    "properties": {
+                      "faellig_am": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                          }
+                        ]
+                      },
+                      "fassung": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "tage": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "satz": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "grund": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "enum": [
+                              "nachweis",
+                              "keine_fassung",
+                              "kein_audit",
+                              "keine_managementbewertung",
+                              "abgeschlossen"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/$defs/fehler"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^WV[0-9]$"
+              },
+              "operation": {
+                "const": "wiedervorlage"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "abruf",
+                  "vorschau_tage",
+                  "zeilen"
+                ],
+                "properties": {
+                  "abruf": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                  },
+                  "vorschau_tage": {
+                    "type": "integer"
+                  },
+                  "zeilen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "art",
+                        "kennzeichen",
+                        "titel",
+                        "faellig_am",
+                        "verantwortlich"
+                      ],
+                      "properties": {
+                        "art": {
+                          "type": "string",
+                          "pattern": "^[a-z_]+$"
+                        },
+                        "kennzeichen": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "titel": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "faellig_am": {
+                          "type": "string",
+                          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                        },
+                        "verantwortlich": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "faellig",
+                      "vorschau",
+                      "anzahl_faellig",
+                      "anzahl_vorschau",
+                      "nicht_in_liste"
+                    ],
+                    "properties": {
+                      "faellig": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "art",
+                            "kennzeichen",
+                            "titel",
+                            "faellig_am",
+                            "tage",
+                            "satz",
+                            "verantwortlich"
+                          ],
+                          "properties": {
+                            "art": {
+                              "type": "string",
+                              "pattern": "^[a-z_]+$"
+                            },
+                            "kennzeichen": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "titel": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "faellig_am": {
+                              "type": "string",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                            },
+                            "tage": {
+                              "type": "integer"
+                            },
+                            "satz": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "verantwortlich": {
+                              "anyOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      "vorschau": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "art",
+                            "kennzeichen",
+                            "titel",
+                            "faellig_am",
+                            "tage",
+                            "satz",
+                            "verantwortlich"
+                          ],
+                          "properties": {
+                            "art": {
+                              "type": "string",
+                              "pattern": "^[a-z_]+$"
+                            },
+                            "kennzeichen": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "titel": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "faellig_am": {
+                              "type": "string",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                            },
+                            "tage": {
+                              "type": "integer"
+                            },
+                            "satz": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "verantwortlich": {
+                              "anyOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      "anzahl_faellig": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "anzahl_vorschau": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "nicht_in_liste": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/$defs/fehler"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^DK7$"
+              },
+              "operation": {
+                "const": "anwendungsbereich_vergleich"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "anwendungsbereich",
+                  "betrachtungsumfang"
+                ],
+                "properties": {
+                  "anwendungsbereich": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "standorte",
+                      "traeger"
+                    ],
+                    "properties": {
+                      "standorte": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "traeger": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "betrachtungsumfang": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "standorte",
+                      "traeger"
+                    ],
+                    "properties": {
+                      "standorte": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "traeger": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "standorte_nur_im_anwendungsbereich",
+                      "standorte_nur_im_betrachtungsumfang",
+                      "traeger_nur_im_anwendungsbereich",
+                      "traeger_nur_im_betrachtungsumfang",
+                      "deckungsgleich"
+                    ],
+                    "properties": {
+                      "standorte_nur_im_anwendungsbereich": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "standorte_nur_im_betrachtungsumfang": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "traeger_nur_im_anwendungsbereich": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "traeger_nur_im_betrachtungsumfang": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "deckungsgleich": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/$defs/fehler"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^VZ[0-9]$"
+              },
+              "operation": {
+                "const": "verzeichnis_zeile"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "gruppe",
+                  "art",
+                  "kennzeichen",
+                  "titel",
+                  "nr",
+                  "entschieden_von",
+                  "eingetragen_von",
+                  "tag",
+                  "pruefsumme",
+                  "ort",
+                  "ablage"
+                ],
+                "properties": {
+                  "gruppe": {
+                    "type": "string",
+                    "pattern": "^[a-z_]+$"
+                  },
+                  "art": {
+                    "type": "string",
+                    "pattern": "^[a-z_]+$"
+                  },
+                  "kennzeichen": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "titel": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "nr": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "entschieden_von": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "eingetragen_von": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "tag": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                      }
+                    ]
+                  },
+                  "pruefsumme": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^(sha256:)?[0-9a-f]{64}$"
+                      }
+                    ]
+                  },
+                  "ort": {
+                    "type": "string",
+                    "pattern": "^[a-z_]+$"
+                  },
+                  "ablage": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              },
+              "erwartet": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "gruppe",
+                      "art",
+                      "kennzeichen",
+                      "titel",
+                      "nr",
+                      "entschieden_von",
+                      "eingetragen_von",
+                      "tag",
+                      "pruefsumme",
+                      "ort",
+                      "gruppe_wort",
+                      "ort_satz"
+                    ],
+                    "properties": {
+                      "gruppe": {
+                        "type": "string",
+                        "pattern": "^[a-z_]+$"
+                      },
+                      "art": {
+                        "type": "string",
+                        "pattern": "^[a-z_]+$"
+                      },
+                      "kennzeichen": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "titel": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "nr": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      },
+                      "entschieden_von": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "eingetragen_von": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "tag": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                          }
+                        ]
+                      },
+                      "pruefsumme": {
+                        "anyOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "string",
+                            "pattern": "^(sha256:)?[0-9a-f]{64}$"
+                          }
+                        ]
+                      },
+                      "ort": {
+                        "type": "string",
+                        "pattern": "^[a-z_]+$"
+                      },
+                      "gruppe_wort": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "ort_satz": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/$defs/fehler"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^(A1|DK2|IA3|FS4)$"
+              },
+              "operation": {
+                "const": "pruefsumme"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kopie"
+                ],
+                "properties": {
+                  "kopie": {}
+                }
+              },
+              "erwartet": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kanonisch",
+                      "pruefsumme"
+                    ],
+                    "properties": {
+                      "kanonisch": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "pruefsumme": {
+                        "type": "string",
+                        "pattern": "^sha256:[0-9a-f]{64}$"
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/$defs/fehler"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "regel",
+              "operation",
+              "quelle",
+              "rechnung",
+              "eingang",
+              "erwartet"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "regel": {
+                "type": "string",
+                "pattern": "^SP4$"
+              },
+              "operation": {
+                "const": "satz"
+              },
+              "quelle": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rechnung": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eingang": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schluessel",
+                  "werte"
+                ],
+                "properties": {
+                  "schluessel": {
+                    "type": "string",
+                    "pattern": "^[a-z_]+$"
+                  },
+                  "werte": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "erwartet": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "satz"
+                    ],
+                    "properties": {
+                      "satz": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  {
+                    "$ref": "#/$defs/fehler"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "fehler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fehler"
+      ],
+      "properties": {
+        "fehler": {
+          "type": "string",
+          "pattern": "^[a-z_]+(:[a-z_]+)?$"
+        }
+      }
+    }
+  }
+}
