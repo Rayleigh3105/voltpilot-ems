@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { ladeCsv } from '../ladeCsv';
 import type { HistoryRange, Site } from '../api';
 import { isoDate, periodLabel } from '../periodNav';
@@ -31,6 +31,7 @@ import {
   csvDateiname,
   erloesKennzahlen,
   mehrwertBand,
+  mitPreisFeld,
   GELD_SPALTEN,
   geldCsv,
   geldDiagramm,
@@ -43,6 +44,7 @@ import { chartTheme } from '../chartTheme';
 import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { PeriodeFehlgeschlagen, WeltKopf, ZeitLeiste } from '../components/HistorieWelt';
 import {
+  ChartPlatz,
   Kennzahl,
   Kennzahlen,
   VerlaufStatus,
@@ -52,7 +54,8 @@ import {
   VrUmschalter,
   type LegendenEintrag,
 } from '../components/VerlaufRahmen';
-import { ErloeseChart, type ErloeseModus } from '../components/erloese/ErloeseChart';
+import type { ErloeseModus } from '../components/erloese/ErloeseChart';
+import { CHART_CHUNK } from '../pageChunks';
 import {
   AbrechnungKarte,
   LastspitzeKarte,
@@ -86,6 +89,10 @@ import { RechenZeilen, SteuerungFormel } from '../components/SteuerungFormel';
  * nie als Absatz im Weg. Alle Zahlen kommen aus reinen Ableitungen
  * (`erloeseSeite.ts`, `speicherAussage.ts`, `erloesEbenen.ts`).
  */
+
+// Das Diagramm trägt die Diagramm-Bibliothek und lädt als eigenes Stück nach:
+// Kennzahlen, Abrechnung und Tabelle stehen sofort (`CHART_CHUNK`).
+const ErloeseChart = lazy(() => CHART_CHUNK.erloese().then((m) => ({ default: m.ErloeseChart })));
 
 const TITEL: Record<HistoryRange, string> = {
   day: 'Erlöse je Stunde',
@@ -430,14 +437,18 @@ export function ErloeseSection({
                       ) : (
                         <>
                           <VrLegende eintraege={legende} label="Legende" />
-                          <ErloeseChart
-                            d={diagramm}
-                            modus={darstellung}
-                            preise={preise}
-                            vergleichName={vergleichLabel}
-                            onZelle={oeffneZelle}
-                            label={`${TITEL[range]} · ${label}`}
-                          />
+                          <Suspense
+                            fallback={<ChartPlatz klasse={mitPreisFeld(diagramm, darstellung, preise) ? 'hoch' : undefined} />}
+                          >
+                            <ErloeseChart
+                              d={diagramm}
+                              modus={darstellung}
+                              preise={preise}
+                              vergleichName={vergleichLabel}
+                              onZelle={oeffneZelle}
+                              label={`${TITEL[range]} · ${label}`}
+                            />
+                          </Suspense>
                         </>
                       )
                     ) : (

@@ -4,7 +4,7 @@ import { chartTheme } from '../../chartTheme';
 import { kopf, notizZeile, tooltip, TOOLTIP_CSS, wertZeile } from '../../chartTooltip';
 import { zeigerSchwebt } from '../../chartFokus';
 import { fmtNum } from '../../format';
-import type { EnergieBilanzView, EnergieTag } from '../../energieSeite';
+import { tagHoehe, type EnergieBilanzView, type EnergieTag } from '../../energieSeite';
 import { useEChart } from '../../useEChart';
 
 /**
@@ -43,7 +43,7 @@ export function EnergieTagChart({
     ...(tag.hatSoc ? [{ key: 'soc' as const, titel: 'Ladestand · %' }] : []),
     ...(sichtbar.has('preis') && tag.hatPreis ? [{ key: 'preis' as const, titel: 'Börsenpreis · ct/kWh' }] : []),
   ];
-  const hoehe = felder.length === 2 ? 'mittel' : felder.length === 3 ? 'hoch' : 'sehrhoch';
+  const hoehe = tagHoehe(tag, sichtbar.has('preis'));
 
   const ref = useEChart(
     (chart, width) => {

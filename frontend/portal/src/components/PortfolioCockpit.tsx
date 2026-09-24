@@ -14,7 +14,7 @@ import {
 } from '../api';
 import { fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
-import { anlageRoute, type Route } from '../nav';
+import { anlageRoute, hashForRoute, type Route } from '../nav';
 import {
   CANONICAL_PORTFOLIO,
   anlagenZeilen,
@@ -30,6 +30,18 @@ import {
 } from '../portfolioCockpit';
 import { vorschauZeilen, type VorschauZeile } from '../portfolioVorschau';
 import { useCockpitLayout } from '../useCockpitLayout';
+import {
+  anlagenKarten,
+  heuteKarte,
+  jetztBlock,
+  statusZeile,
+  tagesKurve,
+  uebersichtBloecke,
+} from '../kundenUebersicht';
+import { speicherAussage } from '../speicherAussage';
+import { usePortfolioHistorie } from '../usePortfolioHistorie';
+import { berlinDay } from '../fleet';
+import { KundenUebersicht } from './portfolio/KundenUebersicht';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsPhone } from '../useIsPhone';
 import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
@@ -45,6 +57,9 @@ import { LIVE_POLL_MS } from '../pollCadence';
 
 /** Re-render cadence of the freshness/liveness derivations. */
 const TICK_MS = 5_000;
+
+/** Bis zu so vielen Anlagen zeigt die Kunden-Übersicht Tageskurven. */
+const KURVEN_BIS_ANLAGEN = 12;
 
 /**
  * DAS PORTFOLIO-COCKPIT — EINE Kunden-Fläche für jeden Mehr-Anlagen-Kunden
@@ -210,6 +225,19 @@ export function PortfolioCockpit({
 
   const vorschau = useVorschau(offen, overview, now);
 
+  // DIE KUNDEN-ÜBERSICHT (Konzept „Meine Anlagen neu", Ü1–Ü5 = A): der
+  // Endkunde bekommt vier Blöcke statt Leiste und Tabelle. Die Tageskurven
+  // lesen dieselbe Tages-Historie wie der Reiter Energie (geteilter Cache);
+  // bei sehr vielen Anlagen entfallen sie, statt die Seite zu bremsen.
+  const kundenAnsicht = betriebsart === 'endkunde';
+  const liste = useMemo(() => sites.map((s) => ({ id: s.id, name: s.name })), [sites]);
+  const tagesHistorie = usePortfolioHistorie(
+    liste,
+    'day',
+    berlinDay(now),
+    kundenAnsicht && sites.length > 0 && sites.length <= KURVEN_BIS_ANLAGEN,
+  );
+
   const aktionen = [
     {
       label: 'Anlage anlegen',
@@ -326,6 +354,74 @@ export function PortfolioCockpit({
         <div style={{ marginTop: 'var(--vp-space-4)' }}>
           <Skeleton height={240} radius="var(--vp-radius-md)" />
         </div>
+        {drawers}
+      </>
+    );
+  }
+
+  if (kundenAnsicht) {
+    const bloecke = uebersichtBloecke(layout.resolved.order, verfuegbar, CANONICAL_PORTFOLIO);
+    const heute = heuteKarte({
+      earnings,
+      sites: liste,
+      overview,
+      now,
+      speicher: (agg) =>
+        speicherAussage(
+          {
+            savedEur: agg.steuerungEur,
+            savedSteuerungEur: agg.steuerungEur,
+            range: 'day',
+            to: earnings?.to ?? null,
+          },
+          { now, laeuft: true },
+        ),
+    });
+    const historien = tagesHistorie.daten;
+    return (
+      <>
+        <KundenUebersicht
+          titel={titel}
+          titelVersteckt={titelBereitsGenannt}
+          status={statusZeile(overview.sites, now)}
+          aktionen={[
+            { label: 'Anpassen', icon: 'sliders', onClick: layout.start },
+            ...aktionen,
+          ]}
+          bloecke={bloecke}
+          heute={heute}
+          kurve={historien ? tagesKurve(historien, now) : null}
+          jetzt={jetztBlock(overview, now)}
+          anlagen={anlagenKarten({ overview, aggregat: heute.aggregat, historien, now })}
+          hrefFor={(id) => hashForRoute(anlageRoute(id))}
+          anpassen={
+            layout.anpassen ? (
+              <>
+                <AnpassenLeiste
+                  quelle={layout.resolved.quelle}
+                  resetSatz={layout.resetSatz}
+                  dirty={layout.dirty}
+                  saving={layout.saving}
+                  fehler={layout.fehler}
+                  band={layout.band}
+                  alsVorgabe={layout.alsVorgabe}
+                  onAlsVorgabe={layout.setAlsVorgabe}
+                  onFertig={layout.fertig}
+                  onAbbrechen={layout.abbrechen}
+                  onZuruecksetzen={layout.zuruecksetzen}
+                  mitStern={false}
+                />
+                <AnpassenListe
+                  zeilen={layout.zeilen}
+                  onVerschieben={layout.verschieben}
+                  onSichtbar={layout.setSichtbar}
+                  onLead={() => {}}
+                  note={(z) => ortsHinweis(z.id)}
+                />
+              </>
+            ) : null
+          }
+        />
         {drawers}
       </>
     );

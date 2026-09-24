@@ -128,7 +128,7 @@ export const everydayArticles: HelpArticle[] = [
     prerequisite: 'Mehrere Anlagen oder ein Konto mit Betreiber-Ansicht.',
     sections: [
       { id: 'ueberblick', title: 'Die gemeinsame Übersicht', paragraphs: [
-        "Portfolio beziehungsweise Meine Anlagen zeigt Ihre zugänglichen Standorte. Öffnen Sie eine Anlage für Details; der Name im Kopf zeigt den aktuellen Standort. Über den Anlagenwechsler gelangen Sie zu einem anderen.",
+        "Meine Anlagen beantwortet vier Fragen: Läuft alles? Was hat es heute gebracht? Was passiert gerade? Wie steht jede Anlage? Die Statuszeile nennt eine Anlage, die Aufmerksamkeit braucht, mit Link. Ein Tipp auf eine Anlage öffnet sie. Anpassen, Anlage anlegen und Gerät hinzufügen stehen im ⋯-Menü. Im Portfolio von Betreibern stehen stattdessen Kennzahlen-Leiste und Anlagen-Tabelle.",
       ], figure: 'portfolio' },
       { id: 'auswertung', title: 'Anlagenübergreifende Zahlen und einzelne Anlagen', paragraphs: [
         "Die Reiter Energie und Erlöse zeigen oben die Summen über alle Anlagen und darunter jede Anlage als Balken; die Tabelle nennt alle Werte je Anlage. Ein Tipp auf eine Anlage öffnet dieselbe Seite dieser Anlage im gleichen Zeitraum. Eine Anlage ohne Werte zählt nicht als Null, sondern steht mit ihrem Grund in der Liste.",

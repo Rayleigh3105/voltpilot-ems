@@ -1,6 +1,7 @@
 import { Fragment, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { SUB_CHUNK } from '../pageChunks';
+import { useVerlaufVorladen } from '../verlaufVorladen';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -220,6 +221,8 @@ export interface AnlagenPageProps {
  */
 export function AnlagenPage(props: AnlagenPageProps) {
   const { sites, route, onNavigate, isAdmin = false } = props;
+  // Eine offene Anlage lädt ihre Verlaufsseiten im Leerlauf vor.
+  useVerlaufVorladen(sites.length > 0 && resolveAnlage(sites, route.siteId) != null);
 
   if (sites.length === 0) {
     return <AnlagenEmpty onReload={props.onReload} isAdmin={isAdmin} />;

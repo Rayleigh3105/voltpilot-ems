@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { ladeCsv } from '../ladeCsv';
 import type { HistoryRange, Site } from '../api';
 import { isoDate, periodLabel } from '../periodNav';
@@ -26,6 +26,7 @@ import {
   energieBilanzView,
   energieCsv,
   energieKennzahlen,
+  tagHoehe,
   energieQuoten,
   energieSpitzen,
   energieTabelle,
@@ -36,6 +37,7 @@ import { chartTheme } from '../chartTheme';
 import { VerlaufFehler, VerlaufKarteSkeleton, VerlaufLeer } from '../components/States';
 import { PeriodeFehlgeschlagen, ZeitLeiste } from '../components/HistorieWelt';
 import {
+  ChartPlatz,
   Kennzahl,
   Kennzahlen,
   VerlaufStatus,
@@ -45,12 +47,8 @@ import {
   VrUmschalter,
   type LegendenEintrag,
 } from '../components/VerlaufRahmen';
-import {
-  EnergieBilanzChart,
-  EnergieTagChart,
-  type BilanzReihe,
-  type TagReihe,
-} from '../components/energie/EnergieCharts';
+import type { BilanzReihe, TagReihe } from '../components/energie/EnergieCharts';
+import { CHART_CHUNK } from '../pageChunks';
 import { EreignisseKarte, QuotenKarte, rollenFarbe, SpitzenKarte } from '../components/energie/EnergieKarten';
 
 /**
@@ -83,6 +81,11 @@ const TITEL: Record<HistoryRange, string> = {
   month: 'Energiebilanz je Tag',
   year: 'Energiebilanz je Monat',
 };
+
+// Die Diagramme tragen die Diagramm-Bibliothek und laden als eigenes Stück
+// nach: Kennzahlen, Karten und Tabelle stehen sofort (`CHART_CHUNK`).
+const EnergieTagChart = lazy(() => CHART_CHUNK.energie().then((m) => ({ default: m.EnergieTagChart })));
+const EnergieBilanzChart = lazy(() => CHART_CHUNK.energie().then((m) => ({ default: m.EnergieBilanzChart })));
 
 const TAG_REIHEN: { id: TagReihe; label: string; rolle: 'pv' | 'load' | 'grid' | 'soc' }[] = [
   { id: 'pv', label: 'Erzeugung', rolle: 'pv' },
@@ -383,21 +386,25 @@ export function MesswerteSection({
                   <>
                     <VrLegende eintraege={legende} label="Reihen ein- und ausblenden" />
                     {tag && (
-                      <EnergieTagChart
-                        tag={tag}
-                        vergleich={tagVergleich}
-                        sichtbar={tagSichtbar}
-                        label={`${TITEL.day} · ${label}`}
-                      />
+                      <Suspense fallback={<ChartPlatz klasse={tagHoehe(tag, tagSichtbar.has('preis'))} />}>
+                        <EnergieTagChart
+                          tag={tag}
+                          vergleich={tagVergleich}
+                          sichtbar={tagSichtbar}
+                          label={`${TITEL.day} · ${label}`}
+                        />
+                      </Suspense>
                     )}
                     {bilanz && (
-                      <EnergieBilanzChart
-                        bilanz={bilanz}
-                        vergleich={bilanzVergleich}
-                        sichtbar={bilanzSichtbar}
-                        onZelle={oeffneZelle}
-                        label={`${TITEL[range]} · ${label}`}
-                      />
+                      <Suspense fallback={<ChartPlatz />}>
+                        <EnergieBilanzChart
+                          bilanz={bilanz}
+                          vergleich={bilanzVergleich}
+                          sichtbar={bilanzSichtbar}
+                          onZelle={oeffneZelle}
+                          label={`${TITEL[range]} · ${label}`}
+                        />
+                      </Suspense>
                     )}
                   </>
                 ) : (

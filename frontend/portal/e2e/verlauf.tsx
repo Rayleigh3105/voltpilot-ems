@@ -94,4 +94,15 @@ Object.assign(api, {
     ? async () => ({ ...(await tenantContext()), betriebsart: 'endkunde' })
     : tenantContext,
 });
+// Messhilfe für Performance-Prüfungen: zählt jeden API-Aufruf mit Argumenten.
+const zaehler: { name: string; args: string }[] = [];
+(window as unknown as { __apiCalls: typeof zaehler }).__apiCalls = zaehler;
+for (const key of Object.keys(api)) {
+  const fn = (api as Record<string, unknown>)[key];
+  if (typeof fn !== 'function') continue;
+  (api as Record<string, unknown>)[key] = (...args: unknown[]) => {
+    zaehler.push({ name: key, args: JSON.stringify(args).slice(0, 80) });
+    return (fn as (...a: unknown[]) => unknown)(...args);
+  };
+}
 ReactDOM.createRoot(document.getElementById('root')!).render(<App initialAuth />);

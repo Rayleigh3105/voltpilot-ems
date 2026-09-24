@@ -567,3 +567,12 @@ export function aufloesungText(history: History | null): string | null {
   if (m >= 1440) return 'Tageswerte';
   return m > 0 ? `${m}-Minuten-Werte` : null;
 }
+
+/**
+ * Die Höhenklasse des Tagesdiagramms — eine Stelle für Diagramm UND seinen
+ * Platzhalter, damit beim Nachladen nichts springt.
+ */
+export function tagHoehe(tag: EnergieTag, preisSichtbar: boolean): 'mittel' | 'hoch' | 'sehrhoch' {
+  const felder = 2 + (tag.hatSoc ? 1 : 0) + (preisSichtbar && tag.hatPreis ? 1 : 0);
+  return felder === 2 ? 'mittel' : felder === 3 ? 'hoch' : 'sehrhoch';
+}

@@ -386,3 +386,12 @@ export function VrTabelle({
     </>
   );
 }
+
+/**
+ * Der freigehaltene Platz eines nachladenden Diagramms (Suspense-Fallback):
+ * dieselbe Klasse und Höhe wie das Diagramm, damit beim Eintreffen nichts
+ * springt. Kein Text, keine Bewegung — die Seite steht schon.
+ */
+export function ChartPlatz({ klasse }: { klasse?: string }) {
+  return <div className={`vp-vr-chart vp-vr-chart-platz${klasse ? ` ${klasse}` : ''}`} aria-hidden="true" />;
+}

@@ -123,7 +123,9 @@ function renderCockpit(
       sites={FILIALEN}
       onNavigate={onNavigate}
       onReload={() => {}}
-      betriebsart="endkunde"
+      // Leiste und Tabelle sind seit „Meine Anlagen neu" die Fläche des
+      // BETREIBERS; der Endkunde bekommt die Übersicht (eigener Block unten).
+      betriebsart="betreiber"
       titel="Portfolio"
       {...props}
     />,
@@ -182,17 +184,15 @@ describe('§4.3 C: der Nur-Monitoring-Kunde sieht ECHTE Zahlen statt „—, —
 });
 
 describe('die Betriebsart steuert NUR die Dichte (E5, Revision 2)', () => {
-  it('beide Rahmen rendern DIESELBE Tabelle - nur die Zeilenhöhe unterscheidet sie', async () => {
-    // Das war der Befund K4: die Betriebsart änderte nicht die Dichte, sondern
-    // den INHALT (Karten gegen Tabelle).
+  it('der Betreiber bekommt die kompakte Tabelle, der Endkunde die Übersicht', async () => {
+    vi.spyOn(api, 'history').mockRejectedValue(new Error('keine Historie im Test'));
     const endkunde = renderCockpit({ betriebsart: 'endkunde' });
-    let tabelle = await screen.findByRole('table');
-    expect(tabelle.getAttribute('data-dichte')).toBe('komfortabel');
-    expect(within(tabelle).getByText('Filiale Nord')).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Ihre Anlagen' })).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
     endkunde.unmount();
 
     renderCockpit({ betriebsart: 'betreiber' });
-    tabelle = await screen.findByRole('table');
+    const tabelle = await screen.findByRole('table');
     expect(tabelle.getAttribute('data-dichte')).toBe('kompakt');
     expect(within(tabelle).getByText('Filiale Nord')).toBeTruthy();
     expect(within(tabelle).getByText('Filiale West')).toBeTruthy();
@@ -410,5 +410,82 @@ describe('Der Kopf und die Reiter der Ebene (#503)', () => {
     const h1 = await screen.findByRole('heading', { level: 1, name: 'Portfolio' });
     expect(h1.className).toContain('vp-sr-only');
     expect(document.querySelector('.vp-portfolio-satz')).not.toBeNull();
+  });
+});
+
+describe('Meine Anlagen · die Übersicht des Endkunden (Ü1–Ü5 = A)', () => {
+  const ERLOESE_HEUTE = {
+    range: 'day',
+    from: '',
+    to: '',
+    sites: [
+      { id: 'f1', name: 'Filiale Nord', einspeiseErloesEur: 2, eigenverbrauchsWertEur: 4, actualEur: -1.5, savedEur: 0.9, savedSteuerungEur: 0.4, reason: null, series: [], dailySaved: [], coveredSlots: 48 },
+      { id: 'f2', name: 'Filiale Süd', einspeiseErloesEur: 1, eigenverbrauchsWertEur: 2, actualEur: -0.5, savedEur: 0.3, savedSteuerungEur: 0.1, reason: null, series: [], dailySaved: [], coveredSlots: 48 },
+      { id: 'f3', name: 'Filiale West', einspeiseErloesEur: null, eigenverbrauchsWertEur: null, actualEur: null, reason: 'no_prices', series: [], dailySaved: [], coveredSlots: 0 },
+    ],
+    totals: { savedEur: null },
+  } as unknown as Earnings;
+  const nb = (t: string | null | undefined) => (t ?? '').replace(/\u00a0/g, ' ');
+
+  beforeEach(() => {
+    vi.spyOn(api, 'earnings').mockResolvedValue(ERLOESE_HEUTE);
+    vi.spyOn(api, 'history').mockRejectedValue(new Error('keine Historie im Test'));
+  });
+
+  it('führt mit Statuszeile, Ergebnis heute und der Kachel VoltPilot-Steuerung', async () => {
+    renderCockpit({ betriebsart: 'endkunde', titel: 'Meine Anlagen' });
+    expect(await screen.findByText('Alles in Ordnung · 3 Anlagen')).toBeTruthy();
+    const heute = screen.getByRole('region', { name: 'Heute' });
+    // (2 + 4 − 0,5) + (1 + 2 − 0,5) = 8,00 € — die Anlage ohne Preise fehlt, zählt nie als 0.
+    expect(nb(heute.textContent)).toMatch(/\+ 8,00 €/);
+    expect(nb(heute.textContent)).toMatch(/VoltPilot-Steuerung/);
+    expect(nb(heute.textContent)).toMatch(/\+ 0,50 €/);
+    // Nie die Admin-Zahl gegen „ohne Speicher".
+    expect(nb(heute.textContent)).not.toMatch(/1,20/);
+  });
+
+  it('sagt „Jetzt" in Worten - summiert nur über frische Messwerte', async () => {
+    renderCockpit({ betriebsart: 'endkunde' });
+    const jetzt = await screen.findByRole('region', { name: 'Jetzt' });
+    expect(nb(jetzt.textContent)).toMatch(/Sonne\s*41,2 kW\s*alle 3 Anlagen/);
+    expect(nb(jetzt.textContent)).toMatch(/Netz\s*18,8 kW\s*Bezug/);
+    // Kein Speicher in der Flotte → kein Speicher-Wert, nie „—".
+    expect(jetzt.textContent).not.toMatch(/Speicher/);
+  });
+
+  it('zeigt jede Anlage als Karte mit Satz und Zahlen und verlinkt sie', async () => {
+    renderCockpit({ betriebsart: 'endkunde' });
+    const anlagen = await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    const nord = within(anlagen).getByText('Filiale Nord').closest('a') as HTMLAnchorElement;
+    expect(nord.getAttribute('href')).toBe('#/anlage/f1');
+    expect(nb(nord.textContent)).toMatch(/Bezieht Strom aus dem Netz/);
+    expect(nb(nord.textContent)).toMatch(/Sonne\s*13,7 kW/);
+    const west = within(anlagen).getByText('Filiale West').closest('a') as HTMLElement;
+    expect(nb(west.textContent)).toMatch(/Heute\s*—/);
+  });
+
+  it('nennt eine stumme Anlage in der Statuszeile - mit Weg dorthin', async () => {
+    const alt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    vi.spyOn(api, 'overview').mockResolvedValue({
+      ...MONITORING_OVERVIEW,
+      sites: [
+        MONITORING_OVERVIEW.sites[0],
+        overviewSite({ id: 'f2', name: 'Hof Lindenberg', onlineCount: 0, worstStatus: 'stale', lastSeenAt: alt.toISOString() }),
+      ],
+    } as unknown as Overview);
+    renderCockpit({ betriebsart: 'endkunde', sites: FILIALEN.slice(0, 2) });
+    const zeile = (await screen.findByText(/Hof Lindenberg meldet sich/)).closest('p') as HTMLElement;
+    expect(zeile.className).toContain('is-warn');
+    expect(within(zeile).getByRole('link', { name: 'Zur Anlage ›' }).getAttribute('href')).toBe('#/anlage/f2');
+  });
+
+  it('legt Anpassen, Anlage anlegen und Gerät hinzufügen ins „···"-Menü - keine großen Knöpfe', async () => {
+    renderCockpit({ betriebsart: 'endkunde' });
+    await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    expect(screen.queryByRole('button', { name: 'Anpassen' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(screen.getByText('Anpassen')).toBeTruthy();
+    expect(screen.getByText('Anlage anlegen')).toBeTruthy();
+    expect(screen.getByText('Gerät hinzufügen')).toBeTruthy();
   });
 });

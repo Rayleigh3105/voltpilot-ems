@@ -3,7 +3,7 @@ import { AXIS, BAR, FILL, STROKE, ghostItem, ghostLine, withAlpha, NARROW_PX } f
 import { chartTheme } from '../../chartTheme';
 import { kopf, notizZeile, tooltip, TOOLTIP_CSS, wertZeile } from '../../chartTooltip';
 import { zeigerSchwebt } from '../../chartFokus';
-import { betrag, type GeldDiagramm, type LeerBand } from '../../erloeseSeite';
+import { betrag, mitPreisFeld, type GeldDiagramm, type LeerBand } from '../../erloeseSeite';
 import { useEChart } from '../../useEChart';
 
 /**
@@ -70,7 +70,7 @@ export function ErloeseChart({
   const klick = useRef({ d, onZelle });
   klick.current = { d, onZelle };
   const gebunden = useRef(false);
-  const mitPreis = modus === 'saeulen' && d.range === 'day' && !!preise && preise.some((p) => p != null);
+  const mitPreis = mitPreisFeld(d, modus, preise);
 
   const ref = useEChart(
     (chart, width) => {

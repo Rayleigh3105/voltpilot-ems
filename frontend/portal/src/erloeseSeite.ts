@@ -714,3 +714,15 @@ export function csvDateiname(teil: string, name: string, range: HistoryRange, at
 export function hatErgebnis(money: SiteEarnings | null): boolean {
   return num(money?.nettoErgebnisEur) != null;
 }
+
+/**
+ * Ob das Erlöse-Diagramm das Preisfeld trägt (Säulen am Tag mit Preisen) —
+ * eine Stelle für Diagramm UND seinen Platzhalter (Höhenklasse `hoch`).
+ */
+export function mitPreisFeld(
+  d: { range: HistoryRange },
+  modus: 'saeulen' | 'kumuliert',
+  preise: readonly (number | null)[] | null | undefined,
+): boolean {
+  return modus === 'saeulen' && d.range === 'day' && !!preise && preise.some((p) => p != null);
+}

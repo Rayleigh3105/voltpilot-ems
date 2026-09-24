@@ -409,6 +409,11 @@
   min-height: 200px;
   cursor: pointer;
 }
+/* Der Platz eines nachladenden Diagramms: ruhige Fläche, keine Bewegung. */
+.vp-vr-chart-platz {
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-chart-grid);
+}
 
 /* --- Tabellen ------------------------------------------------------------- */
 .vp-vr-tablewrap {
@@ -618,6 +623,14 @@
     align-items: flex-start;
   }
   .vp-vr-card-actions {
+    width: 100%;
+  }
+  /* Der Ansicht-Umschalter steht am Telefon als eigene, volle Zeile unter
+     dem Titel — gleich breite Felder statt eines links hängenden Stummels. */
+  .vp-vr-card-actions > .vp-vr-seg {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     width: 100%;
   }
   .vp-vr-seg > button {

@@ -60,6 +60,7 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Erlöse', datei: 'components/PortfolioWelt.css', fs: 0, ff: 0, fw: 0 },
   // Der Anlagen-Vergleich der Portfolio-Seiten (Energie · Erlöse) — streng.
   { reiter: 'Portfolio', datei: 'components/portfolio/PortfolioSeite.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Portfolio', datei: 'components/portfolio/KundenUebersicht.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', fs: 0, ff: 0, fw: 0 },
   // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an streng.
   { reiter: 'Bausteine', datei: 'components/Aufklapper.css', fs: 0, ff: 0, fw: 0 },
