@@ -81,6 +81,11 @@ Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
   Tripel (`generic_modbus` / `sunspec-sim` / `sim`) kann nur den Simulator treffen,
   und er ist ausschliesslich im SIMULATOR-Tab verdrahtet (dessen Auswahl ein
   fester Literal ist). Der Auto-Tab reicht den PRODUKTIONS-Katalog durch.
+  Seit K4b (24.09.2026) trägt er drei Einträge: E↓
+  (`native_charge_block_discharge_auto`) und die Ladeseite
+  (`native_surplus_charge`, `native_self_consumption`, beide `windowLimits`) –
+  über die Sim-Register 43/44 (Lade-/Entladegrenze im Eigenmodus). Die
+  Ladeseite hat in der PRODUKTION keinen Eintrag (Deye = K5, weitere = K9).
 - **⚠ DER PRODUKTIONS-KATALOG TRÄGT SEIT DEM 26.08.2026 GENAU EINEN EINTRAG: den
   Deye-Piloten** (Captain-Entscheid „kein separater Prüfstand — der Pilot IST der
   Prüfstand"). Gebunden an `deye` + die KATALOG-MODELL-ID `sun-30k-sg01hp3` + die

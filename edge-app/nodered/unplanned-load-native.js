@@ -47,6 +47,34 @@
  */
 const DEYE_REMOTE_PR978_FIRMWARE = 'remote-pr978';
 
+/**
+ * THE CAPABILITY VOCABULARY (K4b, 24.09.2026 - concept "Der Wechselrichter
+ * regelt, die Box setzt Absicht und Grenzen" §3/§4). The core publishes an
+ * INTENT word (`battery_native_intent` on edge/setpoint); a certificate entry
+ * releases exactly ONE capability word, and each word realises exactly one
+ * intent:
+ *   native_charge_block_discharge_auto -> cover_load       (E-down: Verbrauch decken)
+ *   native_surplus_charge              -> surplus_charge   (E-up: nur aus Überschuss laden)
+ *   native_self_consumption            -> self_consumption (E: Eigenverbrauch; E~ only
+ *                                         with `windowLimits`, because a throttled
+ *                                         charge IS a window narrower than the device's
+ *                                         natural one)
+ * Two additive entry fields answer the remaining questions of §4:
+ *   windowLimits: true = the device can bound its charge/discharge power INSIDE its
+ *                 own mode ("Grenzen im Eigenmodus"). Without it only the intent's
+ *                 natural window is executable.
+ *   persistent:   true = the lever is an EEPROM/flash write; it counts against the
+ *                 core's day budget (concept §6.6, F12: <= 20 per day).
+ * ⚠ The vocabulary is not a release. Production still carries ONLY the Deye
+ * pilot's cover_load entry - the Deye charge side is K5, SMA/Fronius/Huawei are K9.
+ */
+const NATIVE_CAPABILITY_FOR_INTENT = Object.freeze({
+  cover_load: 'native_charge_block_discharge_auto',
+  surplus_charge: 'native_surplus_charge',
+  self_consumption: 'native_self_consumption',
+});
+const NATIVE_INTENTS = Object.freeze(Object.keys(NATIVE_CAPABILITY_FOR_INTENT));
+
 const CERTIFIED_NATIVE_CAPABILITIES = Object.freeze([
   /**
    * THE PILOT (captain decision 2026-08-26: "kein separater Prüfstand - der
@@ -132,8 +160,39 @@ const SIMULATOR_NATIVE_CAPABILITIES = Object.freeze([
     brand: 'generic_modbus', model: 'sunspec-sim', firmware: 'sim',
     capability: 'native_charge_block_discharge_auto',
     certified: true, readback: true, watchdog: true,
+    windowLimits: true, persistent: false,
     // The bytes below MUST equal what the adapter plans for this tier - the
     // simulator's control_enable + setpoint pair (see sunspecNative).
+    chargeBlockWrites: [{ addr: 41, value: 0 }, { addr: 40, value: 0 }],
+    readbackChecks: [{ addr: 41, expect: 0 }, { addr: 40, expect: 0 }],
+    releaseWrites: [{ addr: 41, value: 1 }],
+    releaseReadbackChecks: [{ addr: 41, expect: 1 }],
+    watchdogSpec: { timeoutS: 0, note: 'simulator: none - the sim never reverts by itself' },
+    benchRecord: 'software-only: edge-app/nodered/native-selfregulation.e2e.test.js',
+  }),
+  // K4b: the charge side of the same stand-in. The hand-over bytes are the SAME
+  // (41 <- 0, 40 <- 0: the sim's own regulation); what makes the intent is the
+  // window the adapter writes FIRST into the sim's limit registers 43/44
+  // (edge/sim/sim-model.js). Software only, like the entry above.
+  Object.freeze({
+    simulatorOnly: true,
+    brand: 'generic_modbus', model: 'sunspec-sim', firmware: 'sim',
+    capability: 'native_surplus_charge',
+    certified: true, readback: true, watchdog: true,
+    windowLimits: true, persistent: false,
+    chargeBlockWrites: [{ addr: 41, value: 0 }, { addr: 40, value: 0 }],
+    readbackChecks: [{ addr: 41, expect: 0 }, { addr: 40, expect: 0 }],
+    releaseWrites: [{ addr: 41, value: 1 }],
+    releaseReadbackChecks: [{ addr: 41, expect: 1 }],
+    watchdogSpec: { timeoutS: 0, note: 'simulator: none - the sim never reverts by itself' },
+    benchRecord: 'software-only: edge-app/nodered/native-selfregulation.e2e.test.js',
+  }),
+  Object.freeze({
+    simulatorOnly: true,
+    brand: 'generic_modbus', model: 'sunspec-sim', firmware: 'sim',
+    capability: 'native_self_consumption',
+    certified: true, readback: true, watchdog: true,
+    windowLimits: true, persistent: false,
     chargeBlockWrites: [{ addr: 41, value: 0 }, { addr: 40, value: 0 }],
     readbackChecks: [{ addr: 41, expect: 0 }, { addr: 40, expect: 0 }],
     releaseWrites: [{ addr: 41, value: 1 }],
@@ -164,13 +223,14 @@ const SIMULATOR_NATIVE_CAPABILITIES = Object.freeze([
  * accidentally broad entry can still never lift it silently, because the lift is
  * a property of the ENTRY, not of the manufacturer.
  */
-function exactCapability(selection, catalog = CERTIFIED_NATIVE_CAPABILITIES) {
+function exactCapability(selection, catalog = CERTIFIED_NATIVE_CAPABILITIES,
+  capabilityWord = 'native_charge_block_discharge_auto') {
   if (!selection || !selection.brand || !selection.model || !selection.firmware) return null;
   const deye = String(selection.brand).toLowerCase() === 'deye';
   const complete = (c) =>
     c.brand === selection.brand && c.model === selection.model &&
     c.firmware === selection.firmware &&
-    c.capability === 'native_charge_block_discharge_auto' &&
+    c.capability === capabilityWord &&
     c.certified === true && c.readback === true && c.watchdog === true &&
     Array.isArray(c.chargeBlockWrites) && Array.isArray(c.readbackChecks) &&
     Array.isArray(c.releaseWrites) && Array.isArray(c.releaseReadbackChecks) &&
@@ -234,8 +294,50 @@ function nativeWritePlan(request, catalog = CERTIFIED_NATIVE_CAPABILITIES) {
   };
 }
 
+/**
+ * capabilityForIntent - the capability word an intent needs ("" for a word we do
+ * not know: an unknown intent is never mapped to a guess).
+ */
+function capabilityForIntent(intent) {
+  return Object.prototype.hasOwnProperty.call(NATIVE_CAPABILITY_FOR_INTENT, intent)
+    ? NATIVE_CAPABILITY_FOR_INTENT[intent] : '';
+}
+
+/**
+ * nativeLevers - the REPORT side (Layer 1 -> core, `native_capabilities` on the
+ * control readback): for which intents does THIS selection have a certified lever
+ * whose recorded bytes still match what the adapter plans? `plannedFor(intent)`
+ * returns the adapter's { planned, readbacks } for that intent (or null when the
+ * tier has no primitive for it); the certificate is checked exactly like the
+ * hand-over itself (exactCapability + certificateMatchesPlan), so a report can
+ * never promise more than a hand-over would execute.
+ *
+ * window     = every certified lever can bound its power inside the device's own
+ *              mode (false when nothing is certified);
+ * persistent = at least one certified lever is a flash/EEPROM write.
+ */
+function nativeLevers(selection, catalog, plannedFor) {
+  const intents = [];
+  let window = true;
+  let persistent = false;
+  for (const intent of NATIVE_INTENTS) {
+    const cap = exactCapability(selection, catalog, capabilityForIntent(intent));
+    if (!cap) continue;
+    const p = typeof plannedFor === 'function' ? plannedFor(intent) : null;
+    if (!p || !certificateMatchesPlan(cap, p.planned, p.readbacks)) continue;
+    intents.push(intent);
+    if (cap.windowLimits !== true) window = false;
+    if (cap.persistent === true) persistent = true;
+  }
+  return { intents, window: intents.length > 0 && window, persistent };
+}
+
 module.exports = {
   DEYE_REMOTE_PR978_FIRMWARE,
+  NATIVE_CAPABILITY_FOR_INTENT,
+  NATIVE_INTENTS,
+  capabilityForIntent,
+  nativeLevers,
   CERTIFIED_NATIVE_CAPABILITIES,
   SIMULATOR_NATIVE_CAPABILITIES,
   exactCapability,

@@ -2216,8 +2216,96 @@ test('nativ: der Not-Aus und die fehlende Freigabe halten - jede mit ihrem Grund
   assert.match(un.reason, /freigegeben/);
   // Released, and the certificate matches the shipped plan.
   const ok = C.nativeSelfConsumption(sim, { controlEnabled: true, catalog: cat });
-  assert.strictEqual(ok.writes.length, 3); // the native pair + the PV cap
+  // K4b: the two window registers are cleared FIRST (an E-up slot before may
+  // have left a limit standing), then the native pair, then the PV cap.
+  assert.deepStrictEqual(ok.writes.map((w) => [w.addr, w.value]),
+    [[43, 0xffff], [44, 0xffff], [41, 0], [40, 0], [42, 0xffff]]);
+  assert.strictEqual(ok.nativeIntent, 'cover_load');
   assert.strictEqual(ok.certificate.simulator_only, true);
+});
+
+// --- K4b: Absicht + Fenster auf der generischen/Simulator-Stufe ---------------
+const K4B_SIM = {
+  schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim', family: 'sunspec',
+  communication: 'modbus_tcp', rated_kw: 50,
+  connection: { ip: '10.0.0.5', port: 502, unit_id: 1, firmware: 'sim' },
+};
+const k4bWindow = (intent, min, max, extra = {}) => C.nativeSelfConsumption(K4B_SIM, {
+  controlEnabled: true, catalog: require('./unplanned-load-native').SIMULATOR_NATIVE_CAPABILITIES,
+  nativeMode: 'native_window', intent, windowMinKw: min, windowMaxKw: max, ...extra,
+});
+
+test('nativ K4b: E-up schreibt ZUERST das Fenster (Entladen 0), dann die Übergabe', () => {
+  const up = k4bWindow('surplus_charge', 0, 50);
+  assert.strictEqual(up.reason, undefined);
+  assert.strictEqual(up.nativeIntent, 'surplus_charge');
+  assert.deepStrictEqual(up.writes.map((w) => [w.addr, w.value]),
+    [[43, 5000], [44, 0], [41, 0], [40, 0], [42, 0xffff]]);
+  assert.deepStrictEqual(up.readbacks.map((r) => [r.addr, r.expect]),
+    [[43, 5000], [44, 0], [41, 0], [40, 0], [42, 0xffff]]);
+  // E and E~ share the self_consumption lever; E~ is only the narrower cap.
+  const e = k4bWindow('self_consumption', -50, 50);
+  assert.deepStrictEqual(e.writes.slice(0, 2).map((w) => [w.addr, w.value]), [[43, 5000], [44, 5000]]);
+  const eTilde = k4bWindow('self_consumption', -50, 4.2);
+  assert.deepStrictEqual(eTilde.writes.slice(0, 2).map((w) => [w.addr, w.value]), [[43, 420], [44, 5000]]);
+  // The intent closes its own side, whatever the window says.
+  const upWide = k4bWindow('surplus_charge', -3, 50);
+  assert.deepStrictEqual(upWide.writes.slice(0, 2).map((w) => [w.addr, w.value]), [[43, 5000], [44, 0]]);
+});
+
+test('nativ K4b: ein Fenster, das einen Fluss erzwingt oder fehlt, wird verweigert', () => {
+  for (const [min, max] of [[1, 5], [-5, -1], [undefined, 5], [0, NaN]]) {
+    const r = k4bWindow('self_consumption', min, max);
+    assert.deepStrictEqual(r.writes, [], `window [${min};${max}]`);
+    assert.match(r.reason, /Fenster der Absicht ist ungültig/);
+  }
+  const unknown = k4bWindow('grid_charge', -1, 1);
+  assert.deepStrictEqual(unknown.writes, []);
+  assert.match(unknown.reason, /Unbekannte Absicht/);
+});
+
+test('nativ K4b: ohne windowLimits nur das natürliche Fenster, ohne Nennleistung nie', () => {
+  const noWin = require('./unplanned-load-native').SIMULATOR_NATIVE_CAPABILITIES
+    .map((c) => ({ ...c, windowLimits: false }));
+  const natural = k4bWindow('surplus_charge', 0, 50, { catalog: noWin });
+  assert.strictEqual(natural.writes.length, 5, 'E-up [0 ; rated] is the lever\'s own window');
+  const capped = k4bWindow('self_consumption', -50, 4.2, { catalog: noWin });
+  assert.deepStrictEqual(capped.writes, []);
+  assert.match(capped.reason, /enger als der Eigenmodus/);
+  const unrated = C.nativeSelfConsumption({ ...K4B_SIM, rated_kw: undefined }, {
+    controlEnabled: true, catalog: noWin, nativeMode: 'native_window', intent: 'surplus_charge',
+    windowMinKw: 0, windowMaxKw: 50,
+  });
+  assert.deepStrictEqual(unrated.writes, [], 'no rated power = a free window cannot be told from a capped one');
+});
+
+test('nativ K4b: die Produktion kennt keinen Ladeseiten-Hebel - Deye bleibt bei cover_load', () => {
+  const prod = C.nativeSelfConsumption(K4B_SIM, {
+    controlEnabled: true, nativeMode: 'native_window', intent: 'surplus_charge', windowMinKw: 0, windowMaxKw: 50,
+  });
+  assert.deepStrictEqual(prod.writes, []);
+  assert.match(prod.reason, /noch nicht am Prüfstand freigegeben/);
+  assert.deepStrictEqual(C.nativeCapabilityReport(K4B_SIM, { deviceCertified: true }),
+    { intents: [], window: false, persistent: false });
+});
+
+test('nativ K4b: der Fähigkeitsbericht nennt genau die zertifizierten Hebel', () => {
+  const cat = require('./unplanned-load-native').SIMULATOR_NATIVE_CAPABILITIES;
+  assert.deepStrictEqual(C.nativeCapabilityReport(K4B_SIM, { deviceCertified: true, catalog: cat }),
+    { intents: ['cover_load', 'surplus_charge', 'self_consumption'], window: true, persistent: false });
+  // EEG: the compact profile cannot prove it will not grid-charge -> nothing.
+  assert.deepStrictEqual(C.nativeCapabilityReport(K4B_SIM, { deviceCertified: true, catalog: cat, solarOnlyCharge: true }),
+    { intents: [], window: false, persistent: false });
+  // An uncertified family reports nothing either.
+  assert.deepStrictEqual(C.nativeCapabilityReport({ ...K4B_SIM, family: 'hybrid_3p' }, { catalog: cat }),
+    { intents: [], window: false, persistent: false });
+  // A drifted certificate is not a lever.
+  const drifted = cat.map((c) => ({ ...c, chargeBlockWrites: [{ addr: 41, value: 0 }] }));
+  assert.deepStrictEqual(C.nativeCapabilityReport(K4B_SIM, { deviceCertified: true, catalog: drifted }).intents, []);
+  // A persistent lever is reported as such (the core counts it against the day budget).
+  const eeprom = cat.map((c) => (c.capability === 'native_surplus_charge' ? { ...c, persistent: true } : c));
+  assert.strictEqual(C.nativeCapabilityReport(K4B_SIM, { deviceCertified: true, catalog: eeprom }).persistent, true);
+  assert.strictEqual(C.nativeCapabilityReport(null), null);
 });
 
 test('nativ: eine Freigabe, die den Schreibplan nicht mehr beschreibt, wird verweigert', () => {

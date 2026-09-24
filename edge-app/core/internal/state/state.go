@@ -93,6 +93,9 @@ type Snapshot struct {
 	// "proven by the device", because "we stopped writing" and "we died" must
 	// never look the same on a surface.
 	Native *NativeInfo `json:"native,omitempty"`
+	// NativeWithheld (K4b, additive) names why a slot that opens a window is
+	// NOT regulated by the device right now - see NativeWithheldInfo.
+	NativeWithheld *NativeWithheldInfo `json:"native_withheld,omitempty"`
 
 	// ExportGuard is the live feed-in watchdog at the grid connection point
 	// (dynamische Einspeisebegrenzung), non-nil whenever the site HAS a feed-in
@@ -311,6 +314,18 @@ type AbsorbInfo struct {
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
+// NativeWithheldInfo says why the device does NOT regulate itself right now
+// although this slot opens a window (K4b): a take-back (latched until the slot
+// ends) or a refusal (no lever, window closed, budget ...). Closed vocabulary +
+// German sentence, both from guards/nativemode.go. nil when the slot opens no
+// window or the operator switched the mode off.
+type NativeWithheldInfo struct {
+	Reason string `json:"reason"`
+	Text   string `json:"text"`
+	// Intent is the plan intent that was withheld ("" = the pre-existing duty).
+	Intent string `json:"intent,omitempty"`
+}
+
 // NativeInfo is the UI-facing state of the native self-regulation: the cloud
 // marked this slot worth covering from the battery, and instead of writing a
 // recomputed watt value every 10 s the edge handed the setpoint back to the
@@ -334,6 +349,22 @@ type NativeInfo struct {
 	// Reason is the closed-vocabulary code, Text its German sentence.
 	Reason string `json:"reason"`
 	Text   string `json:"text"`
+
+	// K4b (Absicht + Fenster), all additive. Intent is the wire word the device
+	// regulates (cover_load | surplus_charge | self_consumption), Kind the
+	// concept letter (E, E_up, E_down, E_tilde), Mode the battery_mode word.
+	Intent string `json:"intent,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+	Mode   string `json:"mode,omitempty"`
+	// WindowMinKw / WindowMaxKw is the window the device regulates in
+	// (+ charge, - discharge), after the guards.
+	WindowMinKw float64 `json:"window_min_kw"`
+	WindowMaxKw float64 `json:"window_max_kw"`
+	// Hint is an observation without take-back, HintText its sentence.
+	Hint     string `json:"hint,omitempty"`
+	HintText string `json:"hint_text,omitempty"`
+	// WritesToday counts the device's mode changes of this day (§6.6).
+	WritesToday int `json:"writes_today"`
 }
 
 // ExportGuardInfo is the UI-facing state of the dynamic feed-in limitation: the
@@ -515,6 +546,12 @@ type ControlInfo struct {
 	// never stands in for the proof a device in its own mode owes. TRI-STATE
 	// like its sibling.
 	NativePreconditionGridChargeBlocked *bool `json:"native_precondition_grid_charge_blocked,omitempty"`
+	// NativeIntent is the intent word a native cycle says its primitive
+	// realises (readback native.intent, K4b); "" = not said (pre-K4b Layer 1).
+	NativeIntent string `json:"native_intent,omitempty"`
+	// NativeCapabilities is Layer 1's report of its CERTIFIED levers for the
+	// current selection (readback native_capabilities, K4b); nil = not reported.
+	NativeCapabilities *NativeCapabilities `json:"native_capabilities,omitempty"`
 	// ControlPath names WHICH surface drove the write on a Deye: "remote" = the
 	// Tier-2 register block 1100-1121 (a true signed watt setpoint, armed behind the
 	// inverter's own watchdog, touching no installer setting), "tou" = the legacy
@@ -872,4 +909,13 @@ type OcppConnector struct {
 	// things, and one flag for „an override runs" would let a surface put
 	// „lädt voll" over a charge it just stopped.
 	HandPaused bool `json:"hand_paused,omitempty"`
+}
+
+// NativeCapabilities is what Layer 1 can hand to the device itself: the intents
+// it holds a certified lever for, whether that lever honours window bounds, and
+// whether it writes persistent memory (the §6.6 write budget).
+type NativeCapabilities struct {
+	Intents    []string `json:"intents"`
+	Window     bool     `json:"window"`
+	Persistent bool     `json:"persistent"`
 }

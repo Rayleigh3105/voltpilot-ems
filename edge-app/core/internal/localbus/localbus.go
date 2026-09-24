@@ -45,6 +45,28 @@
 //	                same answer as native_precondition.grid_charge_blocked.
 //	                An intent that is never confirmed is WITHDRAWN by the core
 //	                after a bounded grace - see internal/guards/nativemode.go.
+//	                "native" also carries `battery_native_duty` (cover_load |
+//	                unplanned_load).
+//	                K4b ABSICHT + FENSTER (ADDITIVE, concept
+//	                vp-wechselrichter-eigenregelung-k1): `battery_mode` may also
+//	                be "native_window" - the device regulates grid -> 0 by itself
+//	                INSIDE a power window, for the charge-side intents. With every
+//	                native mode ride `battery_native_intent` ("cover_load" |
+//	                "surplus_charge" | "self_consumption") and the guard-clipped
+//	                window `battery_window_min_kw` / `battery_window_max_kw`
+//	                (+ charge / - discharge; for "native_window" always
+//	                min <= 0 <= max). A Layer 1 that predates it sees a mode that
+//	                is not "native", runs the ordinary setpoint plan (it writes
+//	                the reference) and never confirms - so the core withdraws the
+//	                intent after the grace and the box regulates, damped. That is
+//	                the whole compatibility argument; the pre-existing "native"
+//	                (E↓) is unchanged. Layer 1 answers additively on the readback
+//	                with native.intent (which intent the proven primitive
+//	                realises - a window intent counts as proven only with its own
+//	                word) and native_capabilities {intents, window, persistent}
+//	                (the CERTIFIED levers of the current selection; absent =
+//	                unknown = only the pre-existing E↓ path). Shape and rules:
+//	                docs/contracts/v2/plan-execution-ownership.md "Absicht + Fenster".
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
 //	edge/control/readback  Layer 1 -> core   NOT retained. Per-register

@@ -186,6 +186,9 @@ type Agent struct {
 	// von beiden. nil = nie gemessen, nie eine erfundene 0. Unter a.mu wie
 	// lastReading/lastBattKw.
 	lastGridKw  *float64
+	// nativeLastReason is the last native supervision verdict, so a CHANGED
+	// cause is logged once (noteNativeReason). Under a.mu.
+	nativeLastReason string
 	calMu       sync.Mutex
 	cal         *calibration.Session
 	calWatchdog *time.Timer
@@ -1932,6 +1935,13 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 		}
 	}
 	sum.Execution = executionSummary(snap)
+	// In every autonomous_* mode the box WRITES no battery value: commanded_kw
+	// and confirmed_kw are null there by contract (a register that happens to
+	// read 0 on the device is not a command of 0 kW). The reference the box
+	// would take back to is execution.planned_kw.
+	if e := sum.Execution; e != nil && isAutonomousMode(e.Mode) {
+		sum.CommandedKw, sum.ConfirmedKw = nil, nil
+	}
 	// WHICH source granted the certification, and what the PLATFORM register
 	// says about the selected model. Both come from the CORE snapshot for the
 	// same reason `certified` does (see above): a Layer-1 readback stamp cannot
@@ -1986,6 +1996,20 @@ const (
 	execModeFallback            = "fallback"
 )
 
+// K4b: the device regulates the CHARGE side itself - E↑ (store the surplus,
+// never from the grid, never discharge) and E/E~ (both sides; E~ with a charge
+// cap). The words are shared with the cloud listener (K4a, PR #1217).
+const (
+	execModeAutonomousCharge          = "autonomous_charge"
+	execModeAutonomousSelfConsumption = "autonomous_selfconsumption"
+)
+
+// isAutonomousMode reports whether the device, not the box, decides the watts.
+func isAutonomousMode(mode string) bool {
+	return mode == execModeAutonomousDischarge || mode == execModeAutonomousCharge ||
+		mode == execModeAutonomousSelfConsumption
+}
+
 // executionSummary folds the in-slot corrections (snap.Follow / snap.Trim) plus
 // the plan-vs-fallback mode into the additive heartbeat block, so the cloud can
 // name WHY the commanded value deviates from the plan's watt value instead of
@@ -2006,13 +2030,28 @@ func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
 	// nobody executed. Only a PROVEN mode makes the claim - while the device has
 	// not confirmed it, the reference value IS what the executor writes, so the
 	// honest report is the correction that produced it.
+	//
+	// The word falls in the SAME tick as any take-back: snap.Native is rewritten
+	// by every setpoint tick and is nil the moment the supervision lets go, so
+	// "we stopped writing" can never outlive the device's proof.
 	if n := snap.Native; n != nil && n.Active && n.Proven {
-		return &cloud.ExecutionSummary{
+		sum := &cloud.ExecutionSummary{
 			Mode:                 execModeAutonomousDischarge,
 			PlannedKw:            copyFloat(&n.ReferenceKw),
 			EffectiveFloorSocPct: copyFloat(snap.EffectiveFloorSocPct),
 			MeasurementsFresh:    true,
 		}
+		switch n.Intent {
+		case guards.NativeIntentSurplusCharge:
+			sum.Mode = execModeAutonomousCharge
+		case guards.NativeIntentSelfConsumption:
+			sum.Mode = execModeAutonomousSelfConsumption
+		}
+		if sum.Mode != execModeAutonomousDischarge {
+			sum.WindowMinKw = copyFloat(&n.WindowMinKw)
+			sum.WindowMaxKw = copyFloat(&n.WindowMaxKw)
+		}
+		return sum
 	}
 	if a := snap.Absorb; a != nil && a.Active {
 		mode := execModeAbsorb
@@ -2239,7 +2278,12 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		// every other cycle and for an older Layer-1 build.
 		Native struct {
 			GridChargeBlocked *bool `json:"grid_charge_blocked"`
+			// Intent (K4b) is the intent word the executed primitive realises.
+			Intent string `json:"intent"`
 		} `json:"native"`
+		// NativeCapabilities (K4b) is Layer 1's report of the CERTIFIED levers
+		// of the current selection; absent on a pre-K4b Layer 1.
+		NativeCapabilities *state.NativeCapabilities `json:"native_capabilities"`
 		// NativePrecondition is the same device answer read BEFORE the hand-over
 		// (the executor's precondition read on a cycle the follower still
 		// carried). Absent on every other cycle and on an older Layer-1 build.
@@ -2306,6 +2350,12 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	if m.NativePrecondition.GridChargeBlocked != nil {
 		v := *m.NativePrecondition.GridChargeBlocked
 		info.NativePreconditionGridChargeBlocked = &v
+	}
+	info.NativeIntent = m.Native.Intent
+	if c := m.NativeCapabilities; c != nil {
+		info.NativeCapabilities = &state.NativeCapabilities{
+			Intents: append([]string{}, c.Intents...), Window: c.Window, Persistent: c.Persistent,
+		}
 	}
 	for _, r := range m.Registers {
 		info.Registers = append(info.Registers, state.ControlRegister{
@@ -2604,6 +2654,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			// so a previous claim is cleared rather than left standing - the
 			// same rule the three corrections above follow.
 			s.Native = nil
+			s.NativeWithheld = nil
 			s.CarsFirstCapKw = nil
 			s.ExportGuard = exportGuard
 			// Without a reading the tracker has no evaluation point at all, so a
@@ -3064,9 +3115,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// grace and the proven follower carries the slot. `kw` is published either
 	// way - unchanged for the executor to write in setpoint mode, and as the
 	// display/take-back reference in native mode.
-	nativeDec, nativeInfo := a.nativeDecide(now, p, r, kw,
+	nativeDec, nativeInfo, nativeWithheldInfo := a.nativeDecide(now, p, r, kw,
 		marketCorrectionsAllowed && !surplusStored, controlEnabled, measurementFresh, freshWindow,
-		effectiveFloor, peakTarget, solarOnly)
+		effectiveFloor, peakTarget, solarOnly, limits)
 
 	msg := map[string]any{
 		"battery_setpoint_kw": kw,
@@ -3106,8 +3157,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 		"battery_mode": batteryModeSetpoint,
 	}
 	if nativeDec.Native {
-		msg["battery_mode"] = batteryModeNative
-		msg["battery_native_duty"] = nativeDec.Duty
+		// "native" = the pre-existing E↓ primitive, byte-identical for every
+		// Layer 1; "native_window" = a window intent (K4b), which a Layer 1 that
+		// predates it treats as the ordinary setpoint path and never confirms.
+		// The intent word and the guard-clipped window ride along additively.
+		msg["battery_mode"] = nativeDec.Mode
+		if nativeDec.Mode == batteryModeNative {
+			msg["battery_native_duty"] = nativeDec.Duty
+		}
+		msg["battery_native_intent"] = nativeDec.Intent
+		msg["battery_window_min_kw"] = nativeDec.Window.MinKw
+		msg["battery_window_max_kw"] = nativeDec.Window.MaxKw
 	}
 	if effectiveFloor != nil {
 		msg["effective_floor_soc_pct"] = *effectiveFloor
@@ -3172,6 +3232,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.ExportGuard = exportGuard
 		s.CurtailTrack = curtailTrack
 		s.Native = nativeInfo
+		s.NativeWithheld = nativeWithheldInfo
 	})
 }
 

@@ -101,6 +101,11 @@ const DEFAULT_FRONIUS_CONTROL_PORT = 502;
 // (automatisch)" generic path). Mirrors edge/sim/sunspec-sim.js writable regs.
 const SUNSPEC_REG = { SETPOINT: 40, ENABLE: 41, PVLIMIT: 42 };
 const NO_PV_LIMIT = 0xffff; // pv_limit sentinel: inverter free-runs (no cap)
+// K4b "Grenzen im Eigenmodus" on the compact sim profile (edge/sim/sim-model.js):
+// the charge/discharge power the device may use INSIDE its own regulation
+// (register 41 = 0). uint16, 0.01 kW, 0xFFFF = no limit (the power-on default).
+const SUNSPEC_NATIVE_WINDOW_REG = { CHARGE_LIMIT: 43, DISCHARGE_LIMIT: 44 };
+const NO_NATIVE_LIMIT = 0xffff;
 
 // The per-family control CERTIFICATION allowlist (report §6.7). Only families
 // listed here may emit EXECUTABLE writes; everything else is read-only until its
@@ -870,6 +875,11 @@ function controlRelease(selection, opts = {}) {
 function nativeSelfConsumption(selection, opts = {}) {
   const controlEnabled = opts.controlEnabled === true;
   const solarOnly = opts.solarOnlyCharge === true;
+  // K4b: "native" is the unchanged E-down hand-over (intent cover_load, whatever
+  // else the setpoint carries); "native_window" carries the charge-side intents
+  // plus the guard-clipped window [windowMinKw ; windowMaxKw].
+  const nativeMode = opts.nativeMode === 'native_window' ? 'native_window' : 'native';
+  const intent = nativeMode === 'native_window' ? String(opts.intent || '') : 'cover_load';
   const catalog = Array.isArray(opts.catalog) ? opts.catalog : unplannedNative.CERTIFIED_NATIVE_CAPABILITIES;
   const idle = (reason) => ({
     adapter: 'idle', family: '', tier: CONTROL_TIER.READ_ONLY, mode: 'native',
@@ -907,6 +917,10 @@ function nativeSelfConsumption(selection, opts = {}) {
     // What an executor must READ from the device BEFORE the hand-over. Empty on
     // every tier whose own configuration cannot make the hand-over meaningless.
     preconditions: built.preconditions || [],
+    // K4b: the intent word this primitive realises - echoed on the readback as
+    // native.intent, so the core never counts an E-down hand-over as proof of a
+    // charge-side intent.
+    nativeIntent: intent,
   };
 
   // EEG: the ban on grid charging moves into the DEVICE's own configuration the
@@ -925,7 +939,17 @@ function nativeSelfConsumption(selection, opts = {}) {
     return out;
   }
 
-  const capability = unplannedNative.exactCapability(nativeSelectionKey(selection, built), catalog);
+  const capabilityWord = unplannedNative.capabilityForIntent(intent);
+  if (!capabilityWord) {
+    out.reason = 'Unbekannte Absicht für die Wechselrichter-Automatik';
+    return out;
+  }
+  const windowCheck = nativeWindowCheck(nativeMode, intent, opts.windowMinKw, opts.windowMaxKw, selection);
+  if (windowCheck.refusal) {
+    out.reason = windowCheck.refusal;
+    return out;
+  }
+  const capability = unplannedNative.exactCapability(nativeSelectionKey(selection, built), catalog, capabilityWord);
   if (!capability) {
     out.reason = 'Wechselrichter-Automatik für dieses Modell noch nicht am Prüfstand freigegeben';
     return out;
@@ -935,6 +959,13 @@ function nativeSelfConsumption(selection, opts = {}) {
   // sequence under a certificate that describes a different one.
   if (!unplannedNative.certificateMatchesPlan(capability, built.planned, built.readbacks)) {
     out.reason = 'Prüfstand-Freigabe und Schreibplan stimmen nicht überein - Freigabe erneuern';
+    return out;
+  }
+  // A window narrower than the intent's natural one (E~, a capped E-up) needs a
+  // lever that can bound the power INSIDE the device's own mode - certified for
+  // it AND writable by this tier.
+  if (windowCheck.narrower && !(capability.windowLimits === true && built.windowSupported === true)) {
+    out.reason = 'Das Fenster ist enger als der Eigenmodus des Wechselrichters - für Grenzen im Eigenmodus gibt es keine Freigabe';
     return out;
   }
   // ⚠ LAST GATE, and deliberately AFTER the certificate: the certificate answers
@@ -949,11 +980,99 @@ function nativeSelfConsumption(selection, opts = {}) {
       return out;
     }
   }
-  out.writes = built.planned.map((w) => ({ ...w })).concat(built.extraWrites || []);
-  out.readbacks = built.readbacks.map((r) => ({ ...r })).concat(built.extraReadbacks || []);
+  // The window registers go FIRST: the limits stand before the device is handed
+  // its own regulation, so it never self-regulates unbounded for a single poll.
+  out.writes = (built.windowWrites || []).map((w) => ({ ...w }))
+    .concat(built.planned.map((w) => ({ ...w }))).concat(built.extraWrites || []);
+  out.readbacks = (built.windowReadbacks || []).map((r) => ({ ...r }))
+    .concat(built.readbacks.map((r) => ({ ...r }))).concat(built.extraReadbacks || []);
   out.certificate = { brand: capability.brand, model: capability.model, firmware: capability.firmware,
     simulator_only: capability.simulatorOnly === true, bench_record: capability.benchRecord || '' };
   return out;
+}
+
+/**
+ * nativeWindowCheck - the tier-independent half of the K4b window: is the window
+ * valid, and is it NARROWER than the intent's natural window (then the lever
+ * needs `windowLimits`)? The core only ever hands over a window that contains 0
+ * (a window that forces a flow is a setpoint, not a self-regulation), so a window
+ * that does not - or a missing/non-finite bound - is refused, never repaired.
+ *
+ * Natural windows: cover_load [-rated ; 0], surplus_charge [0 ; +rated],
+ * self_consumption [-rated ; +rated]. An open side counts as natural only when its
+ * bound reaches the selection's rated power; with no rated power known every
+ * bound counts as narrower (fail-closed: without it we cannot tell a throttled
+ * charge from a free one).
+ */
+function nativeWindowCheck(nativeMode, intent, minKw, maxKw, selection) {
+  if (nativeMode !== 'native_window') return { refusal: null, narrower: false };
+  if (!isFiniteNum(minKw) || !isFiniteNum(maxKw) || minKw > 0 || maxKw < 0) {
+    return { refusal: 'Das Fenster der Absicht ist ungültig oder erzwingt einen Fluss - es bleibt bei der 10-Sekunden-Nachführung', narrower: false };
+  }
+  const rated = selection && isFiniteNum(selection.rated_kw) && selection.rated_kw > 0 ? selection.rated_kw : null;
+  const reaches = (kw) => rated !== null && kw >= rated - 1e-9;
+  const chargeOpen = intent !== 'cover_load';
+  const dischargeOpen = intent !== 'surplus_charge';
+  const narrower = (chargeOpen && !reaches(maxKw)) || (dischargeOpen && !reaches(-minKw));
+  return { refusal: null, narrower };
+}
+
+/**
+ * sunspecNativeWindow - the window as the compact sim profile writes it: the
+ * charge/discharge limits of the device's own regulation (registers 43/44). The
+ * intent itself closes one side (cover_load never charges, surplus_charge never
+ * discharges); "native" (E-down, legacy) CLEARS both limits, so a window left
+ * standing by an earlier charge-side slot can never bind the covering slot.
+ */
+function sunspecNativeWindow(nativeMode, intent, minKw, maxKw) {
+  const raw = (kw) => Math.min(0xfffe, Math.max(0, Math.round(kw * 100)));
+  let charge = NO_NATIVE_LIMIT;
+  let discharge = NO_NATIVE_LIMIT;
+  if (nativeMode === 'native_window' && isFiniteNum(minKw) && isFiniteNum(maxKw)) {
+    charge = intent === 'cover_load' ? 0 : raw(Math.max(maxKw, 0));
+    discharge = intent === 'surplus_charge' ? 0 : raw(Math.max(-minKw, 0));
+  }
+  const op = (role, addr, value) => ({ role, fc: 6, addr, value,
+    encode: { kind: 'native_limit_x100_u16', scale: 100, sentinel: NO_NATIVE_LIMIT,
+      kw: value === NO_NATIVE_LIMIT ? null : value / 100 },
+    dwell_s: 0, min_change: 0 });
+  return {
+    writes: [
+      op('native_charge_limit', SUNSPEC_NATIVE_WINDOW_REG.CHARGE_LIMIT, charge),
+      op('native_discharge_limit', SUNSPEC_NATIVE_WINDOW_REG.DISCHARGE_LIMIT, discharge),
+    ],
+    readbacks: [
+      { role: 'native_charge_limit', fc: 3, addr: SUNSPEC_NATIVE_WINDOW_REG.CHARGE_LIMIT, expect: charge, tolerance: 0 },
+      { role: 'native_discharge_limit', fc: 3, addr: SUNSPEC_NATIVE_WINDOW_REG.DISCHARGE_LIMIT, expect: discharge, tolerance: 0 },
+    ],
+  };
+}
+
+/**
+ * nativeCapabilityReport - the `native_capabilities` block Layer 1 reports on the
+ * control readback: the intents THIS selection has a certified, still-matching
+ * lever for (unplanned-load-native.js nativeLevers). It runs the hand-over's own
+ * gates except the runtime ones the core supervises itself (control enabled,
+ * the Deye own-config precondition): EEG without a grid-charge proof and an
+ * uncertified family report NOTHING. null = a transport with no primitive at all.
+ */
+function nativeCapabilityReport(selection, opts = {}) {
+  if (!selection) return null;
+  const conn = selection.connection || {};
+  const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
+  if (!ip) return null;
+  const family = typeof selection.family === 'string' ? selection.family.trim() : '';
+  const tier = resolveControlTier(selection);
+  const comm = selection.communication;
+  const built = nativeForTier({ selection, conn, ip, family, tier, comm, opts });
+  if (!built || built.unsupported) return null;
+  const certified = CERTIFIED_CONTROL_FAMILIES.has(family) || opts.deviceCertified === true;
+  const catalog = Array.isArray(opts.catalog) ? opts.catalog : unplannedNative.CERTIFIED_NATIVE_CAPABILITIES;
+  if (!certified || (opts.solarOnlyCharge === true && !built.gridChargeProof)) {
+    return { intents: [], window: false, persistent: false };
+  }
+  return unplannedNative.nativeLevers(nativeSelectionKey(selection, built), catalog,
+    () => ({ planned: built.planned, readbacks: built.readbacks }));
 }
 
 /**
@@ -1171,6 +1290,10 @@ function nativeForTier({ selection, conn, ip, family, tier, comm, opts }) {
     // what the certificate attests byte for byte).
     const pvKw = isFiniteNum(opts.pvLimitKw) && opts.pvLimitKw >= 0 ? opts.pvLimitKw : null;
     const pvRaw = pvKw == null ? NO_PV_LIMIT : Math.max(0, Math.round(pvKw * 100)) & 0xffff;
+    const windowMode = opts.nativeMode === 'native_window' ? 'native_window' : 'native';
+    const win = sunspecNativeWindow(windowMode,
+      windowMode === 'native_window' ? String(opts.intent || '') : 'cover_load',
+      opts.windowMinKw, opts.windowMaxKw);
     return {
       adapter: 'modbus_tcp', target: ip + ':' + port,
       connection: { ip, port, unit_id: unitId },
@@ -1182,6 +1305,9 @@ function nativeForTier({ selection, conn, ip, family, tier, comm, opts }) {
       extraWrites: [{ role: 'pv_limit', fc: 6, addr: SUNSPEC_REG.PVLIMIT, value: pvRaw,
         encode: { kind: 'pv_limit_x100_u16', scale: 100, sentinel: NO_PV_LIMIT, kw: pvKw }, dwell_s: 0, min_change: 0 }],
       extraReadbacks: [{ role: 'pv_limit', fc: 3, addr: SUNSPEC_REG.PVLIMIT, expect: pvRaw, tolerance: 1 }],
+      windowWrites: win.writes,
+      windowReadbacks: win.readbacks,
+      windowSupported: true,
       observations: [],
       // The compact profile carries no charging-source register, so an EEG site
       // is refused rather than assumed safe.
@@ -2917,6 +3043,8 @@ module.exports = {
   DEFAULT_FRONIUS_CONTROL_PORT,
   SUNSPEC_REG,
   NO_PV_LIMIT,
+  SUNSPEC_NATIVE_WINDOW_REG,
+  NO_NATIVE_LIMIT,
   DEYE_CONTROL_REG,
   DEYE_WORK_MODE,
   DEYE_ENERGY_PATTERN,
@@ -2976,6 +3104,8 @@ module.exports = {
   controlRoute,
   controlRelease,
   nativeSelfConsumption,
+  nativeCapabilityReport,
+  nativeWindowCheck,
   deyeNativePrecondition,
   setpointStale,
   dualControllerSignal,

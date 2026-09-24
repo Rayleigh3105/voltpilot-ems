@@ -1768,6 +1768,107 @@ test('the inline native planner agrees with the module on the generic tier', () 
     'and the same proof registers');
 });
 
+// K4b: the charge-side intents ride the SAME inline planner ("native_window" +
+// intent + window). Inline and module must agree on the bytes (window registers
+// first), on the German reason of every refusal, and on the lever REPORT.
+function k4bInlineGeneric(sp, sel) {
+  const body = byId['auto-control-plan'].func
+    .replace('__NATIVE.CERTIFIED_NATIVE_CAPABILITIES', '__NATIVE.SIMULATOR_NATIVE_CAPABILITIES');
+  assert.ok(body !== byId['auto-control-plan'].func, 'the catalog expression changed - update this guard');
+  return runFunctionNode(body, { msg: { setpoint: sp }, flow: { inverter_config: sel } }).msg;
+}
+const K4B_SEL = {
+  schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim', family: 'sunspec',
+  communication: 'modbus_tcp', control_tier: 1, rated_kw: 50,
+  connection: { ip: '10.0.0.9', port: 502, unit_id: 1, firmware: 'sim' },
+};
+function k4bSp(extra) {
+  return { battery_setpoint_kw: 3.2, control_enabled: true, device_certified: true,
+    grid_charge_allowed: true, battery_mode: 'native_window', ts: new Date().toISOString(),
+    source: 'schedule', ...extra };
+}
+
+test('K4b: the inline planner agrees with the module for every window intent and refusal', () => {
+  const { nativeSelfConsumption } = require('./inverter-control-routing');
+  const nat = require('./unplanned-load-native');
+  const cases = [
+    { battery_native_intent: 'surplus_charge', battery_window_min_kw: 0, battery_window_max_kw: 50 },
+    { battery_native_intent: 'self_consumption', battery_window_min_kw: -50, battery_window_max_kw: 50, pv_limit_kw: 7 },
+    { battery_native_intent: 'self_consumption', battery_window_min_kw: -50, battery_window_max_kw: 4.2 },
+    { battery_native_intent: 'self_consumption', battery_window_min_kw: 1, battery_window_max_kw: 4.2 },
+    { battery_native_intent: 'grid_charge', battery_window_min_kw: -1, battery_window_max_kw: 1 },
+    { battery_native_intent: 'surplus_charge' },
+  ];
+  for (const extra of cases) {
+    const sp = k4bSp(extra);
+    const inline = k4bInlineGeneric(sp, K4B_SEL).control;
+    const module_ = nativeSelfConsumption(K4B_SEL, {
+      controlEnabled: true, deviceCertified: true, solarOnlyCharge: false,
+      catalog: nat.SIMULATOR_NATIVE_CAPABILITIES, pvLimitKw: sp.pv_limit_kw,
+      nativeMode: 'native_window', intent: sp.battery_native_intent,
+      windowMinKw: sp.battery_window_min_kw, windowMaxKw: sp.battery_window_max_kw,
+    });
+    const label = JSON.stringify(extra);
+    if (module_.writes.length === 0) {
+      assert.notStrictEqual(inline.mode, 'native', `inline must refuse too: ${label}`);
+      continue;
+    }
+    assert.strictEqual(inline.mode, 'native', label);
+    assert.strictEqual(inline.nativeIntent, module_.nativeIntent, label);
+    assert.deepStrictEqual(inline.writes.map((w) => ({ addr: w.addr, value: w.value })),
+      module_.writes.map((w) => ({ addr: w.addr, value: w.value })), label);
+    assert.deepStrictEqual(inline.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })),
+      module_.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })), label);
+  }
+  // The refusal reasons are the same sentences (read directly, not via the flow).
+  const vm2 = require('node:vm');
+  const box = { __out: null };
+  vm2.createContext(box);
+  const src = byId['auto-control-plan'].func;
+  const start = src.indexOf('function nativeWindowCheckInline');
+  const end = src.indexOf('function nativeWindowOpsGeneric');
+  vm2.runInContext(src.slice(start, end) + '; __out = nativeWindowCheckInline;', box);
+  const { nativeWindowCheck } = require('./inverter-control-routing');
+  for (const [m, i, lo, hi, sel] of [
+    ['native_window', 'self_consumption', 1, 4, K4B_SEL],
+    ['native_window', 'surplus_charge', 0, 50, K4B_SEL],
+    ['native_window', 'surplus_charge', 0, 20, K4B_SEL],
+    ['native_window', 'self_consumption', -50, 50, { ...K4B_SEL, rated_kw: undefined }],
+    ['native', 'cover_load', undefined, undefined, K4B_SEL],
+  ]) {
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(box.__out(m, i, lo, hi, sel))),
+      nativeWindowCheck(m, i, lo, hi, sel), `${m}/${i} [${lo};${hi}]`);
+  }
+});
+
+test('K4b: the inline lever report equals the module report and rides beside msg.control', () => {
+  const { nativeCapabilityReport } = require('./inverter-control-routing');
+  const nat = require('./unplanned-load-native');
+  for (const extra of [{}, { grid_charge_allowed: false }, { battery_mode: 'setpoint' }]) {
+    const sp = k4bSp({ battery_native_intent: 'surplus_charge', battery_window_min_kw: 0, battery_window_max_kw: 50, ...extra });
+    const out = k4bInlineGeneric(sp, K4B_SEL);
+    const module_ = nativeCapabilityReport(K4B_SEL, {
+      deviceCertified: true, catalog: nat.SIMULATOR_NATIVE_CAPABILITIES,
+      solarOnlyCharge: sp.grid_charge_allowed !== true,
+    });
+    assert.deepStrictEqual(out.nativeCapabilities, module_, JSON.stringify(extra));
+    assert.strictEqual(out.control.nativeCapabilities, undefined, 'never inside the plan');
+  }
+  // Production catalog: the generic tier reports an EMPTY list (known: no lever).
+  const prod = runFunctionNode(byId['auto-control-plan'].func,
+    { msg: { setpoint: k4bSp({ battery_mode: 'setpoint' }) }, flow: { inverter_config: K4B_SEL } }).msg;
+  assert.deepStrictEqual(prod.nativeCapabilities, { intents: [], window: false, persistent: false });
+});
+
+test('K4b: a charge-side intent is never handed to the Deye remote tier', () => {
+  const sp = deyeNativeSetpoint({ battery_mode: 'native_window', battery_native_intent: 'surplus_charge',
+    battery_window_min_kw: 0, battery_window_max_kw: 30 });
+  const out = deyeNativePlan(sp);
+  assert.notStrictEqual(out && out.mode, 'native', 'the pilot has exactly ONE lever: E-down');
+  const legacy = deyeNativePlan(deyeNativeSetpoint());
+  assert.strictEqual(legacy.mode, 'native', 'and the E-down hand-over is untouched');
+});
+
 // The DEYE REMOTE tier is the SECOND one the flow covers (the released pilot).
 // Same two guards as the generic tier: the inline copy must agree with the module
 // on the bytes it plans, and on the German reason of every refusal - the reasons
