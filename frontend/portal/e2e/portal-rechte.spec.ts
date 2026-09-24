@@ -11,6 +11,11 @@ for (const breite of [375, 1440]) {
       await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
       await page.setViewportSize({ width: breite, height: 1000 });
       await page.goto(`/e2e/startansicht.html?bild=unternehmen&rechte=1&person=${person}${bild === 'T3' ? '&messen=bestand' : ''}`);
+      // R1 landet auf der Steuerung - ein nachgeladenes Stück, das der
+      // Entwicklungsserver nach `load` noch Modul für Modul ausliefert (warm
+      // 1–11 s, kalt über 60 s gemessen). Erst sein Ende abwarten, dann gelten
+      // die strengen 5 s der Zusicherungen - wie in den Geschwister-Specs der Bühne.
+      await page.waitForLoadState('networkidle');
       if (bild === 'R1') {
         await expect(page.getByRole('button', { name: 'Automatik pausieren' })).toBeVisible();
         await expect(page.getByRole('button', { name: /Speicher: eingreifen/ })).toBeVisible();

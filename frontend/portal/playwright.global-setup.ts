@@ -31,9 +31,25 @@ import { chromium, type Browser, type FullConfig } from '@playwright/test';
 
    Das Wärmen ist BESTENFALLS-Arbeit: schlägt es fehl, läuft der Lauf wie
    zuvor weiter. Ein kalter Server ist langsam, kein Fehler.
+
+   ⚠ Der Hilfe-Wirt wärmt NICHT jedes nachgeladene Stück. Die Unterseite
+     „Steuerung“ einer Anlage (`SUB_CHUNK.steuerung`, rund 670 Module samt
+     Regel-Editor) zieht er nicht mit. Gemessen am 24.09.2026 an
+     `portal-rechte.spec.ts` „R1 · MD“ (allein gefahren, zwei Container,
+     61 % Speicher frei): `goto` endet nach 4–11 s, das Stück braucht danach
+     4,4 s bis über 60 s, einzelne Module 28–38 s — rot in 3 von 6, 4 von 6
+     und 4 von 4 Läufen. Im Gesamtlauf blieb es grün, weil andere Specs das
+     Stück schon übersetzt hatten. Die Spec wartet seither auf `networkidle`
+     (warme Streuung); die kalte Übersetzung aber hielt die ganze erste Welle
+     über 30 s fest, auch Fälle ohne Steuerung. Darum steht die Steuerung als
+     zweiter Wirt hier; „fertig“ heisst: der Platzhalter der nachladenden
+     Unterseite (`PageLoading`, `.vp-lazy-page`) ist weg.
    ========================================================================= */
 
-const WIRT = '/e2e/help.html#/hilfe/fahrplan';
+const WIRTE = [
+  '/e2e/help.html#/hilfe/fahrplan',
+  '/e2e/startansicht.html?bild=unternehmen&rechte=1&person=MD',
+];
 const GEDULD = 120_000;
 
 export default async function globalSetup(config: FullConfig): Promise<void> {
@@ -43,17 +59,33 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   // ⚠ Auch das Starten des Browsers steht IM Versuch: fehlt Chromium (etwa
   //   weil jemand nur ein WebKit-Projekt fährt), soll der Lauf trotzdem
   //   beginnen — nicht schon vor dem ersten Test scheitern.
-  let browser: Browser | undefined;
+  let browser: Browser;
   try {
     browser = await chromium.launch();
-    const page = await browser.newPage();
-    await page.goto(new URL(WIRT, baseURL).href, { waitUntil: 'load', timeout: GEDULD });
-    // Erst wenn die nachgeladene Hilfe-Seite steht, ist auch ihr Stück
+  } catch (fehler) {
+    console.warn(`[e2e] Kein Browser zum Vorwaermen: ${String(fehler)}`);
+    return;
+  }
+  try {
+    // Nacheinander: der zweite Wirt teilt `src/App.tsx` mit dem ersten und
+    // bezahlt dann nur noch sein eigenes Stück.
+    for (const wirt of WIRTE) await waerme(browser, new URL(wirt, baseURL).href);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function waerme(browser: Browser, url: string): Promise<void> {
+  const page = await browser.newPage();
+  try {
+    await page.goto(url, { waitUntil: 'load', timeout: GEDULD });
+    // Erst wenn die nachgeladene Seite steht, ist auch ihr Stück
     // übersetzt — `load` allein sagt darüber nichts.
     await page.locator('main h1').first().waitFor({ state: 'visible', timeout: GEDULD });
+    await page.locator('.vp-lazy-page').first().waitFor({ state: 'detached', timeout: GEDULD });
   } catch (fehler) {
-    console.warn(`[e2e] Wirt ${WIRT} liess sich nicht vorwaermen: ${String(fehler)}`);
+    console.warn(`[e2e] Wirt ${url} liess sich nicht vorwaermen: ${String(fehler)}`);
   } finally {
-    await browser?.close();
+    await page.close();
   }
 }
