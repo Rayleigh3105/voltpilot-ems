@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CockpitLayoutDocument } from '../cockpitLayout';
 import { tagModell, type TagSlot } from '../fahrplanTag';
+import { bildGeometrie } from '../fahrplanBildfahrplan';
 import { EINFUEHRUNG_KEY } from '../fahrplanTagesbild';
 import { UHR_C, uhrPunkt } from '../fahrplanUhr';
 import { NBSP } from '../format';
@@ -244,6 +245,21 @@ describe('Tagesuhr · bedienen', () => {
     expect(vibrate).not.toHaveBeenCalled();
   });
 
+  it('bestätigt am Telefon jeden Tipp auf die Ringe mit einem Tick - auch in derselben Phase', () => {
+    const vibrate = vi.fn(() => true);
+    telefon(vibrate);
+    zeichnen();
+    const uhr = screen.getByRole('slider', { name: /Tagesuhr/ });
+    fireEvent.pointerDown(uhr, { ...amRing(15 * 60), pointerId: 1, pointerType: 'touch' });
+    fireEvent.pointerUp(uhr, { ...amRing(15 * 60), pointerId: 1, pointerType: 'touch' });
+    vibrate.mockClear();
+    haptikZuruecksetzen();
+    // 16:00 liegt wie 15:00 in „Sonne speichern" - der Tipp versetzt den Zeiger trotzdem.
+    fireEvent.pointerDown(uhr, { ...amRing(16 * 60), pointerId: 2, pointerType: 'touch' });
+    expect(uhr).toHaveAttribute('aria-valuenow', '64');
+    expect(vibrate).toHaveBeenLastCalledWith(8);
+  });
+
   it('öffnet alle Gründe der gewählten Viertelstunde unter ihrer Waage', () => {
     const { warumPanel, container } = zeichnen();
     const knopf = screen.getByRole('button', { name: /Alle Gründe/ });
@@ -312,6 +328,93 @@ describe('Antworten zeigen ihren Ort', () => {
     fireEvent.keyDown(screen.getByRole('slider', { name: /Tagesuhr/ }), { key: 'ArrowRight' });
     expect(container.querySelector('.vp-tb-jetzt')).toBeNull();
     expect(container.querySelector('.vp-tb-moment-plan')?.textContent).toContain('Geplant');
+  });
+});
+
+describe('Haptik an jeder Bedienstelle am Telefon', () => {
+  it('lässt „Zurück zu jetzt" sich anfühlen wie den Tipp in die Mitte', () => {
+    const vibrate = vi.fn(() => true);
+    telefon(vibrate);
+    zeichnen();
+    const uhr = screen.getByRole('slider', { name: /Tagesuhr/ });
+    fireEvent.keyDown(uhr, { key: 'End' });
+    vibrate.mockClear();
+    haptikZuruecksetzen();
+    fireEvent.click(screen.getByRole('button', { name: /Zurück zu jetzt/ }));
+    expect(uhr).toHaveAttribute('aria-valuenow', '56');
+    expect(vibrate).toHaveBeenLastCalledWith([6, 45, 10]);
+  });
+
+  it('tickt, wenn man einen Wert am Zeiger antippt', () => {
+    const vibrate = vi.fn(() => true);
+    telefon(vibrate);
+    zeichnen();
+    fireEvent.click(screen.getByRole('button', { name: /^Strompreis/ }));
+    expect(vibrate).toHaveBeenLastCalledWith(8);
+  });
+
+  it('lässt den abgespielten Tag an jeder Phasengrenze ticken und endet mit „jetzt"', () => {
+    // Der Mindestabstand der Haptik misst mit `performance.now()`: die
+    // Attrappe der Zeit muss sie mitführen (Vitest 2 täuscht sie sonst nicht).
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'Date', 'performance'],
+    });
+    try {
+      const vibrate = vi.fn((_muster: VibratePattern) => true);
+      telefon(vibrate);
+      zeichnen();
+      fireEvent.click(screen.getByRole('button', { name: 'Den Tag abspielen' }));
+      act(() => {
+        vi.advanceTimersByTime(900 * 10);
+      });
+      // Sechs Phasen, sechs Ticks (ohne Bewegung Phase für Phase) - dann jetzt.
+      expect(vibrate.mock.calls.filter(([m]) => m === 8)).toHaveLength(6);
+      expect(vibrate).toHaveBeenLastCalledWith([6, 45, 10]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tickt am Tablet beim Antippen einer Viertelstunde im Bildfahrplan - mit der Maus nie', () => {
+    breite(1100);
+    // Die Zeichenfläche misst in jsdom 0 × 0; sie bekommt dieselbe Breite.
+    vi.spyOn(SVGElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 1100,
+      height: 330,
+      top: 0,
+      left: 0,
+      right: 1100,
+      bottom: 330,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const vibrate = vi.fn(() => true);
+    telefon(vibrate);
+    zeichnen();
+    const bild = screen.getByRole('slider', { name: /Bildfahrplan/ });
+    const x = bildGeometrie(1100).x(18 * 60 + 5);
+    fireEvent.pointerDown(bild, { clientX: x, clientY: 200, pointerType: 'touch' });
+    fireEvent.click(bild, { clientX: x, clientY: 200 });
+    expect(bild).toHaveAttribute('aria-valuenow', '72');
+    expect(vibrate).toHaveBeenLastCalledWith(8);
+
+    vibrate.mockClear();
+    haptikZuruecksetzen();
+    const y = bildGeometrie(1100).x(20 * 60 + 5);
+    fireEvent.pointerDown(bild, { clientX: y, clientY: 200, pointerType: 'mouse' });
+    fireEvent.click(bild, { clientX: y, clientY: 200 });
+    expect(bild).toHaveAttribute('aria-valuenow', '80');
+    expect(vibrate).not.toHaveBeenCalled();
+  });
+
+  it('gibt auch im Bildfahrplan einen Impuls, wenn man eine Antwort antippt', () => {
+    breite(1100);
+    const vibrate = vi.fn(() => true);
+    telefon(vibrate);
+    zeichnen();
+    fireEvent.click(screen.getByRole('button', { name: /Wie geht es weiter\?/ }));
+    expect(vibrate).toHaveBeenLastCalledWith(14);
   });
 });
 

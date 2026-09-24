@@ -33,7 +33,7 @@ import { chartMotion } from '../chartMotion';
 import { chartTheme } from '../chartTheme';
 import type { CockpitLayoutDocument } from '../cockpitLayout';
 import { antworten, type Antwort } from '../fahrplanAntworten';
-import { uhrzeit, viertelBei, type TagModell } from '../fahrplanTag';
+import { phaseVon, uhrzeit, viertelBei, type TagModell } from '../fahrplanTag';
 import {
   BILD_AB_PX,
   EINFUEHRUNG,
@@ -223,6 +223,15 @@ export function FahrplanTagesbild({
     [jetztI],
   );
 
+  /**
+   * Der Knopf „Zurück zu jetzt" fühlt sich an wie der Tipp in die Mitte: ein
+   * Doppel-Impuls. (Den Mitte-Tipp spielt die Uhr selbst, darum hier getrennt.)
+   */
+  const zurueckKnopf = () => {
+    haptik('jetzt');
+    zurueckZuJetzt();
+  };
+
   const zurueckZuJetzt = () => {
     anhalten();
     setAntwort(null);
@@ -322,6 +331,9 @@ export function FahrplanTagesbild({
       : tag.phasen.map((p) => tag.phasenRoh[p.phaseIndex].startIdx);
     const takt = bewegt ? TAKT_VIERTEL_MS : TAKT_PHASE_MS;
     let k = 0;
+    // Fühlbar abgespielt: ein Tick, sobald eine neue Phase beginnt, und am
+    // Ende der Doppel-Impuls von „jetzt" (am Telefon; sonst geschieht nichts).
+    let letztePhase = phaseVon(tag, auswahl)?.phaseIndex ?? null;
     setSpielt(true);
     const weiter = () => {
       if (k >= schritte.length) {
@@ -329,10 +341,14 @@ export function FahrplanTagesbild({
           spielTimer.current = null;
           setSpielt(false);
           setWahl(null);
+          if (jetztI >= 0) haptik('jetzt');
         }, TAKT_PHASE_MS / 2);
         return;
       }
       const i = schritte[k];
+      const phase = phaseVon(tag, i)?.phaseIndex ?? null;
+      if (phase !== letztePhase) haptik('tick');
+      letztePhase = phase;
       setWahl(i === jetztI ? null : i);
       k += 1;
       spielTimer.current = window.setTimeout(weiter, takt);
@@ -348,11 +364,11 @@ export function FahrplanTagesbild({
 
   /** Ein Tipp auf eine Antwort: ihre Stelle zeigen (Uhr: Zeiger dorthin) und sie ausführlich nennen. */
   const antwortWaehlen = (a: Antwort) => {
+    haptik('ziel');
     if (bild) {
       setAntwort((cur) => (cur?.key === a.key ? null : a));
       return;
     }
-    haptik('ziel');
     anhalten();
     if (tour != null) tourEnde();
     setWarumOffen(false);
@@ -398,7 +414,7 @@ export function FahrplanTagesbild({
         </span>
       </p>
       {!istJetzt && jetztI >= 0 && (
-        <button type="button" className="vp-tb-zurueck" onClick={zurueckZuJetzt}>
+        <button type="button" className="vp-tb-zurueck" onClick={zurueckKnopf}>
           <Icon name="history" size={14} />
           Zurück zu jetzt
         </button>
@@ -429,6 +445,7 @@ export function FahrplanTagesbild({
             aria-label={x.satz}
             title="Im Bild hervorheben"
             onClick={() => {
+              haptik('tick');
               if (tour != null) tourEnde();
               setAntwort(null);
               setFokus((cur) => (cur === x.ebene ? null : x.ebene));
@@ -527,7 +544,7 @@ export function FahrplanTagesbild({
           </button>
         )}
         {!bild && !istJetzt && jetztI >= 0 ? (
-          <button type="button" className="vp-tb-zurueck" onClick={zurueckZuJetzt}>
+          <button type="button" className="vp-tb-zurueck" onClick={zurueckKnopf}>
             <Icon name="history" size={14} />
             Zurück zu jetzt
           </button>

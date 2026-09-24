@@ -10,8 +10,9 @@
  *  - **Tipp in die Mitte** holt die Gegenwart zurück.
  *  - **Tasten:** Pfeile je Viertelstunde, Bild auf/ab je Stunde, Pos1/Ende,
  *    Escape zurück zu jetzt (die Uhr ist ein `slider`).
- *  - **Haptik** (Telefon): ein kurzer Impuls an jeder Phasengrenze, ein
- *    doppelter bei „jetzt" (`haptik.ts`; ohne Unterstützung passiert nichts).
+ *  - **Haptik** (Telefon): ein kurzer Impuls für jeden Tipp auf die Ringe und
+ *    beim Ziehen an jeder Phasengrenze, ein doppelter bei „jetzt"
+ *    (`haptik.ts`; ohne Unterstützung passiert nichts).
  *
  * Farben kommen aus `chartTheme()`/`roleColor` — dieselbe Farbsprache wie
  * Diagramm, Film und Erklär-Panel. Die Identität einer Phase hängt nie an der
@@ -126,7 +127,8 @@ export function FahrplanUhr({
 
   const phaseIndexVon = (i: number) => phaseVon(tag, i)?.phaseIndex ?? null;
 
-  const waehle = (ev: PointerEvent<SVGSVGElement>) => {
+  /** `getippt`: der erste Kontakt eines Fingers — er bestätigt jeden Sprung, das Ziehen nur neue Phasen. */
+  const waehle = (ev: PointerEvent<SVGSVGElement>, getippt = false) => {
     let { minute } = polar(ev);
     // Einrasten: kurz vor einer Phasengrenze springt der Zeiger auf ihren Beginn.
     for (const ph of tag.phasen) {
@@ -137,7 +139,7 @@ export function FahrplanUhr({
     if (ev.pointerType !== 'mouse') {
       const ph = phaseIndexVon(i);
       if (i === tag.jetztIndex) haptik('jetzt');
-      else if (zug.current && ph !== zug.current.phase) haptik('tick');
+      else if (getippt || (zug.current && ph !== zug.current.phase)) haptik('tick');
       if (zug.current) zug.current.phase = ph;
     }
     onWahl(i);
@@ -156,7 +158,7 @@ export function FahrplanUhr({
       return;
     }
     zug.current = { art: 'ring', phase: phaseIndexVon(auswahl) };
-    waehle(ev);
+    waehle(ev, true);
   };
 
   const ziehen = (ev: PointerEvent<SVGSVGElement>) => {

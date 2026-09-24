@@ -13,7 +13,7 @@
  * wählt sie für Moment-Zeile, Antworten und Waage. Tastatur wie an der Uhr.
  */
 
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { chartTheme } from '../chartTheme';
 import type { AntwortZiel } from '../fahrplanAntworten';
@@ -28,6 +28,7 @@ import {
 } from '../fahrplanTagesbild';
 import type { SlotRole } from '../fahrplanWhy';
 import { fmtNum } from '../format';
+import { haptik } from '../haptik';
 import { ProvBadge } from './HistorieWelt';
 import { roleColor } from './FahrplanWhy';
 
@@ -61,6 +62,8 @@ export function FahrplanBildfahrplan({
   const g = useMemo(() => bildGeometrie(breite), [breite]);
   const m = useMemo(() => bildModell(tag, g), [tag, g]);
   const [schwebt, setSchwebt] = useState<number | null>(null);
+  // Tablet quer: ein Tipp mit dem Finger gibt denselben Tick wie die Uhr.
+  const letzterZeiger = useRef<string>('mouse');
 
   /** Die Viertelstunde unter einem Zeiger- oder Klick-Ereignis; -1 = keine. */
   const indexBei = (ev: { clientX: number; currentTarget: SVGSVGElement }) => {
@@ -130,6 +133,9 @@ export function FahrplanBildfahrplan({
         aria-valuemax={Math.max(0, tag.slots.length - 1)}
         aria-valuenow={auswahl}
         aria-valuetext={wertText}
+        onPointerDown={(ev) => {
+          letzterZeiger.current = ev.pointerType;
+        }}
         onPointerMove={(ev) => {
           if (ev.pointerType !== 'mouse') return;
           const i = indexBei(ev);
@@ -137,7 +143,9 @@ export function FahrplanBildfahrplan({
         }}
         onClick={(ev) => {
           const i = indexBei(ev);
-          if (i >= 0) onWahl(i);
+          if (i < 0) return;
+          if (letzterZeiger.current !== 'mouse' && i !== auswahl) haptik('tick');
+          onWahl(i);
         }}
         onKeyDown={taste}
       >

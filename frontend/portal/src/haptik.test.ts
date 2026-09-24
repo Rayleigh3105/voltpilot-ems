@@ -46,6 +46,17 @@ describe('haptik · fühlbare Rückmeldung am Telefon', () => {
     expect(vibrate).toHaveBeenCalledTimes(2);
   });
 
+  it('misst den Abstand mit der monotonen Uhr: eine stehende Wanduhr lässt sie nicht verstummen', () => {
+    zeiger(true);
+    // Wie in den Browser-Wächtern (`page.clock.setFixedTime`): Date.now() steht.
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const monoton = vi.spyOn(performance, 'now').mockReturnValue(5_000);
+    expect(haptik('tick')).toBe('vibrate');
+    monoton.mockReturnValue(5_000 + HAPTIK_ABSTAND_MS);
+    expect(haptik('jetzt')).toBe('vibrate');
+    expect(vibrate).toHaveBeenCalledTimes(2);
+  });
+
   it('leiht sich auf dem iPhone den Impuls eines unsichtbaren Schalters und räumt ihn sofort weg', () => {
     zeiger(true);
     delete (navigator as { vibrate?: unknown }).vibrate;

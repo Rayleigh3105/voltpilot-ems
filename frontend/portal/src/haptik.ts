@@ -3,9 +3,12 @@
  * 24.09.2026: „für Handy auch Vibrationshaptik").
  *
  * Drei kurze Muster — eine Rückmeldung, nie ein Alarm:
- *  - `tick`  : der Zeiger rastet an einer Phasengrenze ein;
- *  - `jetzt` : der Zeiger erreicht „jetzt" (auch per Tipp in die Mitte);
- *  - `ziel`  : ein Tipp auf eine Antwort schickt den Zeiger zu ihrer Stelle.
+ *  - `tick`  : ein Tipp versetzt den Zeiger (Ring der Uhr, Viertelstunde im
+ *              Bildfahrplan), beim Ziehen und Abspielen ist eine neue Phase
+ *              erreicht, oder ein Wert am Zeiger wird angetippt;
+ *  - `jetzt` : zurück bei „jetzt" — der Zeiger erreicht es, ein Tipp in die
+ *              Mitte, der Knopf „Zurück zu jetzt", das Ende des Abspielens;
+ *  - `ziel`  : ein Tipp auf eine Antwort zeigt ihre Stelle.
  *
  * Zwei Wege, und ohne beide passiert schlicht nichts — Haptik ist eine Zugabe,
  * nie eine Information:
@@ -34,11 +37,18 @@ export const HAPTIK_MUSTER: Readonly<Record<HaptikArt, number | readonly number[
 
 /**
  * Mindestabstand zweier Impulse: wer den Zeiger schnell über mehrere Grenzen
- * zieht, spürt einzelne Ticks statt eines Brummens.
+ * zieht, spürt einzelne Ticks statt eines Brummens. Gemessen mit der
+ * MONOTONEN Uhr (`performance.now()`), nie mit der Wanduhr: stellt ein
+ * Zeitabgleich `Date.now()` zurück oder hält eine Testumgebung sie fest (die
+ * Browser-Wächter tun das), bliebe nach dem ersten Impuls sonst alles still.
  */
 export const HAPTIK_ABSTAND_MS = 45;
 
 let letzter = Number.NEGATIVE_INFINITY;
+
+function monoton(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+}
 
 /** Nur für Tests: der Abstands-Zähler beginnt von vorn. */
 export function haptikZuruecksetzen(): void {
@@ -51,9 +61,10 @@ function grobeEingabe(): boolean {
 
 /**
  * Spielt einen Impuls. Gibt den benutzten Weg zurück (`'vibrate'` oder
- * `'schalter'`) oder null, wenn nichts gespielt wurde.
+ * `'schalter'`) oder null, wenn nichts gespielt wurde. `jetztMs` (monotone
+ * Millisekunden) übergeben nur Tests.
  */
-export function haptik(art: HaptikArt, jetztMs: number = Date.now()): 'vibrate' | 'schalter' | null {
+export function haptik(art: HaptikArt, jetztMs: number = monoton()): 'vibrate' | 'schalter' | null {
   if (typeof window === 'undefined' || typeof document === 'undefined') return null;
   if (!grobeEingabe()) return null;
   if (jetztMs - letzter < HAPTIK_ABSTAND_MS) return null;
