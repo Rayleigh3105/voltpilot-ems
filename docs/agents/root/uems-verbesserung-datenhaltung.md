@@ -48,6 +48,13 @@ fort; `UemsVerbesserungMigrationTest` nennt die Tabellen-Listen, `UemsMassnahmeM
 `UemsZugriffMigrationTest`, `UemsBerichtMigrationTest`, `UemsBezugsbasisMigrationTest` und (neu)
 `UemsVerbesserungMigrationTest`. Offboarding: Anstoß, Stände, Protokoll, Maßnahme vor Energieziel & Co.
 ⚠ **PL/pgSQL:** `IF x IS DISTINCT FROM CASE … THEN … END THEN` bricht (`IF` liest bis zum ersten `THEN`) — `CASE` klammern.
+⚠ **Die Herkunft ist per CHECK geschlossen (AP-19 W1, 24.09.2026):** anders als die Vokabular-Zeile oben und der
+Kommentar in `V20260924223000` (Zeilen 38–40, „ohne einen CHECK anzufassen“) sagen, weitet `CREATE OR REPLACE` der
+Funktion die Herkunft NICHT: `massnahme_herkunft_chk` endet mit `CASE … ELSE false`, und der `switch` in
+`MassnahmeService` lehnt jede fremde Kennung ab (`default`). „Additiv“ (AP-18 E7) heißt: die Wortmenge wächst, kein
+Bestandswert ändert sich — eine neue Herkunft braucht eine EIGENE Migration mit `DROP/ADD CONSTRAINT` (validiert gegen
+den Bestand, Version nach dem höchsten ausgelieferten Stand), die Vokabular-Vereinigung und `switch`, Regeln, Portal,
+Vertrag und Vektoren (AP-19 IP-17). Die angewandten Migrationen bleiben, wie sie sind (Flyway-Regel).
 Nachweis: `UemsMassnahmeMigrationTest`.
 
 ## Abweichung und Auffälligkeit (AP-18 IP-14, A1–A4, A6, U1/U2)

@@ -40,6 +40,8 @@ Kennzahl *benutzt* die erprobten Muster — sie kopiert sie nicht: der Kreis ist
 | `zusammenfassung` | 2 … n Kennzahlen derselben Form und Einheit, je mit Zähler UND Nenner — oder die Teilperioden einer Kennzahl | Σ Zähler ÷ Σ Nenner | Einheit der Paare |
 | `produkt` | — vorgesehen, nicht gebaut | — | `rechenform_unbekannt` |
 
+`produkt` (× Faktor mit Einheit, etwa CO₂) ist ein eigenes, noch nicht beauftragtes Paket nach AP-17 W3/N4 — nicht AP-17 und nicht AP-19: nichts Organisatorisches (AP-19 E1 = A, W13, 24.09.2026). Bis dahin gilt `rechenform_unbekannt`.
+
 - **R1** Summen und Differenzen sind Gesamtwerte (AP-10), keine Kennzahl: eine Kennzahl summiert nie selbst.
 - **R2** Genau zwei Rollen je `quotient`/`anteil`, keine Konstante als Eingang.
 - **R3** Eine Kennzahl als Eingang wird mit ihrem gespeicherten Wert DERSELBEN Periode gelesen; ist sie selbst schon ein

@@ -72,4 +72,5 @@ Sie urteilt nicht und legt keinen Vorgang an. Einzelheiten und Fallen: `uems-ver
   und die Release-Notiz-Zeile „Unter „Ziele und Maßnahmen“ …“ (`docs/rollout/release-notiz-vorlage.md`) sind die Hand
   des Betreibers (§15.2). `VERBESSERUNG` fehlt noch in gitops PR 37 — ohne Eintrag gilt die Vorgabe.
 - **Grenze zu AP-19:** Nichtkonformitäten des Managementsystems, Wiedervorlage-Liste und Managementbewertung baut AP-19
-  (E7 = A); die Maßnahme wird dort wiederverwendet (Herkunft additiv an `herkunft_art`).
+  (E7 = A); die Maßnahme wird dort wiederverwendet — die neuen Herkünfte kommen per CHECK-Tausch an
+  `massnahme_herkunft_chk`, nicht per Vokabular allein (AP-19 W1, siehe `uems-verbesserung-datenhaltung.md`).

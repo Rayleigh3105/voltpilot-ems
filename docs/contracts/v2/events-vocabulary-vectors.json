@@ -2540,7 +2540,7 @@
         "kunde"
       ],
       "angelegt_von": "Anlage offen (AP-18 IP-12 ff.); Reservierung mit IP-5",
-      "gelesen_von": "AP-18 Verlauf der Maßnahme, Bewertungs-Stände und Berichte (AP-19)",
+      "gelesen_von": "AP-18 Verlauf der Maßnahme und Bewertungs-Stände; nicht AP-19 — die Managementbewertung liest die Bewertungs-Stände direkt und braucht das Ereignis nicht (AP-19 §6.2, IP-4)",
       "regel": "Eine Person bewertet die Wirkung einer Maßnahme als Stand Nr. n (belegt · nicht belegt · nicht messbar) mit Begründung und Kopie mit Prüfsumme; bei Vier-Augen bestätigt eine zweite Person. Das System behauptet nichts.",
       "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
     }

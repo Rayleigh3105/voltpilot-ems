@@ -208,6 +208,13 @@ Rein ADDITIV: `ohneFassung19` nimmt die Zusätze heraus, dann ist die Datei Zeic
 
 ## Gesehen, bewusst nicht angefasst
 
+- **Kennungen der Datei ≠ Kennungen des Produkts (AP-19 W11, 24.09.2026).** `BW-2026-0001`/`BW-2027-0001`
+  (Bewertungs-Berichte, 1.6) und `VB-2028-0001` (Leistungsvergleich, 1.8) sind Konzept-Kennungen; das Produkt
+  nennt jeden Bericht `BR-JJJJ-nnnn` (`bericht_kennung_chk` in `V20260915050000`), die Familie steht an `vorlage`.
+  Nachweise vergleichen Berichte darum über Vorlage und Zeitraum, nie über den Präfix; die Managementbewertung
+  heißt in Datei und Produkt `BR-2029-0001`. Die `bezugsbasen[]` tragen keinen Verantwortlichen — das Produkt
+  verlangt ihn und leitet ihn nach AP-17 B4 aus dem Verantwortlichen der Kennzahl ab (`V20260924071500`). Die
+  Datei bleibt, wie sie ist.
 - **Claudia Berger und Werk Lindach.** Ihre Zuweisung „seit 01.10.2026“ gilt auch für Werk
   Lindach, das erst ab 15.10.2026 besteht (AP-03 §4.1).
 - **`messstelle-vectors.json`, Fall `vorschlag-naechste-nummer`** sagt in seiner Begründung
