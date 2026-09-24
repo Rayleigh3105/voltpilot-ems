@@ -36,6 +36,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ebyte"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
@@ -489,7 +490,7 @@ func (a *Agent) ebyteTest(req testconn.Request) testconn.Result {
 			slog.Warn("ebyte identity not pinned", "target", cfg.Address(), "err", err)
 		}
 	}
-	res := testconn.Result{OK: true, Reading: &testconn.Reading{}}
+	res := testconn.Result{OK: true, Reading: &testconn.Reading{}, States: ebyteTestStates(st)}
 	if req.ControlTest {
 		msg := "Geräte-Watchdog nicht eingerichtet - er wird vor dem ersten Einschalten automatisch gesetzt (nur wenn alle Ausgänge aus sind)."
 		if st.Watchdog.Armed() {
@@ -499,6 +500,29 @@ func (a *Agent) ebyteTest(req testconn.Request) testconn.Result {
 			DeviceModel: id.Label(), Message: msg}
 	}
 	return res
+}
+
+// ebyteTestStates lists the channels a test read, outputs first (what the
+// customer will assign next), then inputs - balanced so a stack larger than the
+// contract's 16 sample rows still shows both kinds.
+func ebyteTestStates(st ebyte.State) []testconn.ChannelState {
+	half := probe.MaxSamples / 2
+	nOut, nIn := len(st.Outputs), len(st.Inputs)
+	if nOut > half && nIn > half {
+		nOut, nIn = half, half
+	} else if nOut > half {
+		nOut = min(nOut, probe.MaxSamples-nIn)
+	} else if nIn > half {
+		nIn = min(nIn, probe.MaxSamples-nOut)
+	}
+	out := make([]testconn.ChannelState, 0, nOut+nIn)
+	for i := 0; i < nOut; i++ {
+		out = append(out, testconn.ChannelState{Channel: ebyte.OutputKey(i + 1), Value: b01(st.Outputs[i])})
+	}
+	for i := 0; i < nIn; i++ {
+		out = append(out, testconn.ChannelState{Channel: ebyte.InputKey(i + 1), Value: b01(st.Inputs[i])})
+	}
+	return out
 }
 
 func ebyteTestFailure(de *ebyte.DriverError) testconn.Result {

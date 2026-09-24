@@ -22,6 +22,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
@@ -65,7 +66,7 @@ func ioAgent(t *testing.T, sim *ebytesim.Sim, reg entities.Registry, arb *desire
 	cfg.DataDir = t.TempDir()
 	cfg.ControlEnabled = true
 	cfg.ConsumerControlEnabled = true
-	return &Agent{Cfg: cfg, entRegistry: reg, arb: arb,
+	return &Agent{Cfg: cfg, entRegistry: reg, arb: arb, invCat: inverter.DefaultCatalog(),
 		ebyteDial: func(ctx context.Context, _ string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "tcp", addr)
@@ -342,5 +343,29 @@ func TestEbyteDeviceTelemetryTravelsOnChangePlusHeartbeat(t *testing.T) {
 	ch, _ := msgs()[1]["channels"].(map[string]any)
 	if ch["di_5"] != 1.0 {
 		t.Fatalf("the change must carry the new input state: %v", ch)
+	}
+}
+
+func TestEbyteConnectionTestReportsItsChannelStatesAsContractSamples(t *testing.T) {
+	sim := armedSim()
+	sim.SetInput(1, true)
+	reg := ioRegistry("")
+	a := ioAgent(t, sim, reg, minimalArbiter(reg))
+	conn := json.RawMessage(`{"ip":"192.168.3.50","port":502,"unit_id":1}`)
+	res := a.runProbeTestConnection(probe.Op{ID: "verbindung", Op: probe.OpTestConnection,
+		Brand: "ebyte", Model: "m31_axax8080g_u", Role: "consumer", Connection: conn})
+	if !res.OK || len(res.Samples) != 16 {
+		t.Fatalf("expected 16 samples, got %+v", res)
+	}
+	if res.Samples[0].Channel != "do_1" || res.Samples[8].Channel != "di_1" ||
+		*res.Samples[9].Value != 1 || res.Samples[9].Count != 1 {
+		t.Fatalf("samples %+v", res.Samples)
+	}
+
+	// A larger stack stays inside the contract's 16 rows and shows both kinds.
+	big := ebyte.State{Inputs: make([]bool, 24), Outputs: make([]bool, 24)}
+	states := ebyteTestStates(big)
+	if len(states) != 16 || states[7].Channel != "do_8" || states[8].Channel != "di_1" {
+		t.Fatalf("balanced states %+v", states)
 	}
 }
