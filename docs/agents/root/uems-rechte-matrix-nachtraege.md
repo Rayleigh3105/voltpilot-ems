@@ -30,6 +30,12 @@ Seit AP-08 IP-15: `ersatzwert.erfassen` (wie `korrektur.erfassen`, bis dahin nur
 `vieraugen.einstellen` (AP-08 §4.8, vorher „Regeln ohne Zeile“) und `korrektur.zuruecknehmen` (eigener Abschnitt
 AP-08 §5); die Bedingung „Ersteller ≠ Freigeber, Bearbeiter nur bei aus“ ist die Familie `vieraugen` (neu in beiden
 Zwillingen, `uems-vieraugen-freigabe.md`).
+Seit AP-19 IP-11 (Nachtrag `AP-19 §4.2`, RE4, W10): Lesen und Freigeben getrennt — `bericht.unternehmen_abrufen` neben
+`bericht.unternehmen`, `bewertung.ansehen` neben `bewertung.abrufen`, je mit `wie` auf die alte Zeile (gleiche Zellen,
+keine Bestandsrolle darf mehr oder weniger; `BerichtRechteTest` vergleicht vorher/nachher). Die Kundenwörter tragen den
+Konzept-Zusatz „(getrennt von …, W10)“ nicht, denn `benutzer.ts#rechteVorschau` zeigt `kundenwort` in der
+Benutzerverwaltung; der Zusatz steht in `nachtraege[].handlung`. ⚠ Die Spalte „Einsicht“ (IP-12) gibt den neuen Zeilen
+andere Zellen als den alten — dann fällt `wie` weg, sonst bricht `jedeNachtragsZeileStehtGegenIhreHerkunft`.
 
 ## Die benannten Widersprüche (rechte-vectors.json)
 

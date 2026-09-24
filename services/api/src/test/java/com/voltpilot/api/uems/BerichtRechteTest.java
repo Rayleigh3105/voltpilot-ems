@@ -31,8 +31,10 @@ import org.junit.jupiter.api.Test;
  * {@code rechte} von {@code bericht-vectors.json}.
  *
  * <ul>
- *   <li>{@link BerichtRechte#MATRIX} ist Zelle für Zelle die Matrix-Datei (fünf Berichts-Zeilen und
+ *   <li>{@link BerichtRechte#MATRIX} ist Zelle für Zelle die Matrix-Datei (acht Berichts-Zeilen und
  *       {@code messwerte.ansehen} für die Teilansicht).</li>
+ *   <li>AP-19 IP-11 (RE4, W10, NW-5): Lesen und Freigeben sind am Unternehmen und an der energetischen Bewertung getrennt —
+ *       und jede Bestandsrolle darf danach an jeder Handlung genau, was sie vorher durfte (Vorher-Nachher-Tabelle).</li>
  *   <li>B13: ALLE dreizehn Zeilen und die Teilansicht je Person gehen durch {@link BerichtRechte} — dieselbe Stelle, die
  *       die Routen fragen. Die vier Export-Zeilen haben ihre Route erst mit IP-10; ihr Urteil steht hier schon fest.</li>
  *   <li>Der heutige Plattform-Admin (VoltPilot-Unterstützung) bekommt an keiner Handlung eines Berichts ein Ja.</li>
@@ -46,10 +48,11 @@ class BerichtRechteTest {
             BerichtRechte.FREIGEBEN, BerichtRechte.VERWERFEN, BerichtRechte.ARCHIVIEREN);
 
     @Test
-    void dieSiebenZeilenSindZelleFuerZelleDieDerMatrixDatei() throws Exception {
+    void dieNeunZeilenSindZelleFuerZelleDieDerMatrixDatei() throws Exception {
         Matrix datei = RechteAbleitung.matrix(JSON.readTree(V2.resolve("rechte-matrix.json").toFile()));
         assertThat(BerichtRechte.MATRIX.aktionen().keySet()).containsExactlyInAnyOrder(BerichtRechte.STANDORT_ABRUFEN,
-                BerichtRechte.STANDORT_FREIGEBEN, BerichtRechte.UNTERNEHMEN, BerichtRechte.BEWERTUNG, BerichtRechte.EXPORT_STANDORT,
+                BerichtRechte.STANDORT_FREIGEBEN, BerichtRechte.UNTERNEHMEN, BerichtRechte.UNTERNEHMEN_ABRUFEN,
+                BerichtRechte.BEWERTUNG, BerichtRechte.BEWERTUNG_ANSEHEN, BerichtRechte.EXPORT_STANDORT,
                 BerichtRechte.EXPORT_UNTERNEHMEN, BerichtRechte.ANSEHEN);
         for (String kennung : BerichtRechte.MATRIX.aktionen().keySet()) {
             assertThat(BerichtRechte.MATRIX.aktion(kennung)).as(kennung).isEqualTo(datei.aktion(kennung));
@@ -57,26 +60,124 @@ class BerichtRechteTest {
         assertThat(BerichtRegeln.RECHTE).allMatch(k -> BerichtRechte.MATRIX.aktionen().containsKey(k));
     }
 
-    /** G1 — die Handlungen der Routen dieses Pakets tragen die Kennung aus {@link BerichtRegeln#kennung}. */
+    /**
+     * G1 — die Handlungen der Routen dieses Pakets tragen die Kennung aus {@link BerichtRegeln#kennung}; seit AP-19 IP-11
+     * lesen Abrufen und PDF am Unternehmen und an der energetischen Bewertung über ihre eigene Kennung (RE4, W10).
+     */
     @Test
     void jedeHandlungDerRoutenHatIhreKennung() {
         Map<String, String> erwartet = new LinkedHashMap<>();
         erwartet.put("standort/abrufen", BerichtRechte.STANDORT_ABRUFEN);
+        erwartet.put("standort/pdf", BerichtRechte.STANDORT_ABRUFEN);
         erwartet.put("standort/anlegen", BerichtRechte.STANDORT_FREIGEBEN);
         erwartet.put("standort/freigeben", BerichtRechte.STANDORT_FREIGEBEN);
         erwartet.put("standort/verwerfen", BerichtRechte.STANDORT_FREIGEBEN);
         erwartet.put("standort/archivieren", BerichtRechte.STANDORT_FREIGEBEN);
-        for (String h : HANDLUNGEN) {
+        erwartet.put("unternehmen/abrufen", BerichtRechte.UNTERNEHMEN_ABRUFEN);
+        erwartet.put("unternehmen/pdf", BerichtRechte.UNTERNEHMEN_ABRUFEN);
+        erwartet.put("unternehmen/csv", BerichtRechte.EXPORT_UNTERNEHMEN);
+        for (String h : List.of(BerichtRechte.ANLEGEN, BerichtRechte.FREIGEBEN, BerichtRechte.VERWERFEN,
+                BerichtRechte.ARCHIVIEREN, BerichtRechte.WIEDERVORLAGE_AENDERN)) {
             erwartet.put("unternehmen/" + h, BerichtRechte.UNTERNEHMEN);
         }
         erwartet.forEach((schluessel, kennung) -> {
             String[] teile = schluessel.split("/");
             assertThat(BerichtRegeln.kennung(teile[1], teile[0])).as(schluessel).isEqualTo(kennung);
         });
-        for (String handlung : HANDLUNGEN) {
-            assertThat(BerichtRechte.kennung(handlung, BerichtRegeln.UNTERNEHMEN,
-                    BerichtRegeln.ENERGETISCHE_BEWERTUNG)).as(handlung).isEqualTo(BerichtRechte.BEWERTUNG);
+        for (String handlung : BerichtRegeln.HANDLUNGEN) {
+            boolean lesen = BerichtRechte.ABRUFEN.equals(handlung) || BerichtRechte.PDF.equals(handlung);
+            assertThat(BerichtRechte.kennung(handlung, BerichtRegeln.UNTERNEHMEN, BerichtRegeln.ENERGETISCHE_BEWERTUNG))
+                    .as(handlung).isEqualTo(lesen ? BerichtRechte.BEWERTUNG_ANSEHEN : BerichtRechte.BEWERTUNG);
         }
+    }
+
+    /**
+     * NW-5 (AP-19 IP-11, RE4): jede Bestandsrolle darf nach der Trennung genau, was sie vorher durfte. „Vorher“ ist die
+     * Kennung, die jede Handlung bis AP-19 IP-11 trug ({@link #vorher}); „nachher“ ist {@link BerichtRechte#kennung}.
+     * Verglichen wird das ganze Urteil (ja/403/404, Rolle, nötige Rolle, Text) gegen die Matrix-Datei — je Rolle, Handlung,
+     * Geltung, Standort und Vorlage. Der Test druckt die Tabelle; {@code *} markiert die Zeilen mit neuer Kennung.
+     */
+    @Test
+    void jedeBestandsrolleDarfNachDerTrennungGenauWasSieVorherDurfte() throws Exception {
+        Matrix datei = RechteAbleitung.matrix(JSON.readTree(V2.resolve("rechte-matrix.json").toFile()));
+        Instant jetzt = Instant.parse("2026-11-25T09:00:00Z");
+        Kundenbereich kb = new Kundenbereich("Kunststoffwerk Ahrenberg GmbH",
+                List.of(new Standort("ST-1", "Werk Ahrenberg"), new Standort("ST-2", "Werk Lindach")),
+                List.of(new Person("JW", "Jonas Wendlinger")));
+        Map<String, Benutzer> rollen = bestandsrollen();
+        List<String> abweichungen = new ArrayList<>();
+        List<String> tabelle = new ArrayList<>();
+        int neu = 0;
+        record Fall(String geltung, String standort, String vorlage) {}
+        List<Fall> faelle = List.of(new Fall(BerichtRegeln.STANDORT, "ST-1", BerichtRegeln.MONATSBERICHT_STANDORT),
+                new Fall(BerichtRegeln.STANDORT, "ST-2", BerichtRegeln.MONATSBERICHT_STANDORT),
+                new Fall(BerichtRegeln.UNTERNEHMEN, null, BerichtRegeln.MONATSBERICHT_UNTERNEHMEN),
+                new Fall(BerichtRegeln.UNTERNEHMEN, null, BerichtRegeln.ENERGETISCHE_BEWERTUNG));
+        for (Fall f : faelle) {
+            RechteAbleitung.Ziel ziel = f.standort() == null ? RechteAbleitung.Ziel.unternehmen()
+                    : RechteAbleitung.Ziel.standort(f.standort());
+            for (String h : BerichtRegeln.HANDLUNGEN) {
+                String alt = vorher(h, f.geltung(), f.vorlage());
+                String jetztKennung = BerichtRechte.kennung(h, f.geltung(), f.vorlage());
+                StringBuilder zeile = new StringBuilder();
+                for (Map.Entry<String, Benutzer> r : rollen.entrySet()) {
+                    DarfErgebnis a = RechteAbleitung.darf(datei, r.getValue(), kb, alt, ziel, jetzt);
+                    DarfErgebnis n = RechteAbleitung.darf(datei, r.getValue(), kb, jetztKennung, ziel, jetzt);
+                    if (!a.equals(n)) {
+                        abweichungen.add(r.getKey() + " " + f + " " + h + ": vorher " + a + ", nachher " + n);
+                    }
+                    zeile.append(String.format(" %-5s", a.darf() ? "ja" : String.valueOf(a.http())));
+                }
+                boolean anders = !alt.equals(jetztKennung);
+                neu += anders ? 1 : 0;
+                tabelle.add(String.format("%s%s", zeile, String.format("  %s %-33s %-26s %-11s %s", anders ? "*" : " ",
+                        f.geltung() + "/" + h, f.vorlage(), f.standort() == null ? "Unternehmen" : f.standort(),
+                        anders ? alt + " → " + jetztKennung : alt)));
+            }
+        }
+        System.out.println("NW-5 vorher = nachher je Bestandsrolle (Urteil vorher; nachher gleich, sonst rot):");
+        System.out.println(String.format("%s", rollen.keySet().stream().map(k -> String.format(" %-5s", k))
+                .reduce("", String::concat)) + "    Handlung                          Vorlage                    Ziel        Kennung");
+        tabelle.forEach(System.out::println);
+        assertThat(abweichungen).as("Bestandsrollen mit anderem Urteil nach der Trennung").isEmpty();
+        // Die Trennung ist wirklich geschehen: Abrufen und PDF am Unternehmen und an der Bewertung — sonst nichts.
+        assertThat(neu).isEqualTo(4);
+    }
+
+    /** Die Kennung jeder Handlung bis AP-19 IP-11 — die Tabelle von damals, als Orakel des Vorher-Nachher-Vergleichs. */
+    private static String vorher(String handlung, String geltungArt, String vorlage) {
+        if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(vorlage)) {
+            return BerichtRechte.BEWERTUNG;
+        }
+        boolean standort = BerichtRegeln.STANDORT.equals(geltungArt);
+        return BerichtRechte.CSV.equals(handlung) ? (standort ? BerichtRechte.EXPORT_STANDORT : BerichtRechte.EXPORT_UNTERNEHMEN)
+                : !standort ? BerichtRechte.UNTERNEHMEN
+                : BerichtRechte.ABRUFEN.equals(handlung) || BerichtRechte.PDF.equals(handlung) ? BerichtRechte.STANDORT_ABRUFEN
+                : BerichtRechte.STANDORT_FREIGEBEN;
+    }
+
+    /** Die sieben Bestandsrollen (der Unterstützer in allen drei Umfängen), Standort-Rollen an Werk Ahrenberg (ST-1). */
+    private static Map<String, Benutzer> bestandsrollen() {
+        Instant ab = Instant.parse("2026-01-01T00:00:00Z");
+        Map<String, Benutzer> r = new LinkedHashMap<>();
+        r.put("KA", person(Konto.BENUTZER, new Zuweisung(Rolle.KUNDENADMINISTRATOR, null, null, null, ab, null, null)));
+        r.put("EM", person(Konto.BENUTZER, new Zuweisung(Rolle.ENERGIEMANAGER, null, null, null, ab, null, null)));
+        r.put("BE", person(Konto.BENUTZER, new Zuweisung(Rolle.BEARBEITER, List.of("ST-1"), null, null, ab, null, null)));
+        r.put("BD", person(Konto.BENUTZER,
+                new Zuweisung(Rolle.BEDIENBERECHTIGT, List.of("ST-1"), null, null, ab, null, null)));
+        r.put("LE", person(Konto.BENUTZER, new Zuweisung(Rolle.LESER, List.of("ST-1"), null, null, ab, null, null)));
+        Map<Umfang, String> umfang = Map.of(Umfang.ANSEHEN, "US-A", Umfang.EINRICHTEN, "US-Ei",
+                Umfang.EINRICHTEN_UND_BEDIENEN, "US-B");
+        for (Umfang u : Umfang.values()) {
+            r.put(umfang.get(u), person(Konto.PARTNER,
+                    new Zuweisung(Rolle.UNTERSTUETZER, List.of("ST-1"), u, Art.INSTALLATEUR, ab, null, null)));
+        }
+        r.put("VB", person(Konto.PLATTFORM, new Zuweisung(Rolle.VOLTPILOT_BETRIEB, null, null, null, ab, null, null)));
+        return r;
+    }
+
+    private static Benutzer person(Konto konto, Zuweisung z) {
+        return new Benutzer("P", "Person", konto, KontoZustand.AKTIV, List.of(z));
     }
 
     /** B13 — die dreizehn Zeilen der Matrix und die Teilansicht je Person, durch die Stelle der Routen. */

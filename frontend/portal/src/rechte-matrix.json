@@ -584,6 +584,24 @@
       "anmerkung": null
     },
     {
+      "kennung": "bericht.unternehmen_abrufen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Unternehmens-Bericht und Stände ansehen, PDF abrufen",
+      "herkunft": "AP-19 §4.2 (RE4, W10)",
+      "nachtrag": "AP-19 §4.2",
+      "wie": "bericht.unternehmen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Getrennt von „freigeben“ (W10): Abrufen und PDF am Unternehmens-Bericht; Anlegen, Freigeben, Verwerfen und Archivieren bleiben bei bericht.unternehmen, die CSV bei export.unternehmen. KA und EM behalten dieselben Zellen (RE4); die Spalte Einsicht folgt mit AP-19 IP-12."
+    },
+    {
       "kennung": "bewertung.abrufen",
       "gruppe": "kennzahlen",
       "kundenwort": "Energetische Bewertung anlegen · freigeben · abrufen",
@@ -600,6 +618,24 @@
         "voltpilot_betrieb": "-"
       },
       "anmerkung": "Nur die Vorlage energetische_bewertung; derselbe Unternehmenszaun wie bei bericht.unternehmen, ohne andere Berichtsvorlagen zu öffnen."
+    },
+    {
+      "kennung": "bewertung.ansehen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Energetische Bewertung und Stände ansehen, PDF abrufen",
+      "herkunft": "AP-19 §4.2 (RE4, W10)",
+      "nachtrag": "AP-19 §4.2",
+      "wie": "bewertung.abrufen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Getrennt von „anlegen · freigeben“ (W10): Abrufen und PDF der Vorlage energetische_bewertung; Anlegen, Freigeben, Verwerfen, Archivieren, Wiedervorlage und CSV bleiben bei bewertung.abrufen. KA und EM behalten dieselben Zellen (RE4); die Spalte Einsicht folgt mit AP-19 IP-12."
     },
     {
       "kennung": "bezugsbasis.verwalten",
@@ -2077,6 +2113,39 @@
         {
           "wortlaut": "Verantwortung verleiht kein Recht; wer bewertet oder abschließt, braucht `verbesserung.abschliessen`, bei Vier-Augen bestätigt nie der Urheber (RE3, Z5).",
           "wo": "V20260924223000 (energieziel_entscheidung_chk); Rechte-Zellen dieser drei Kennungen"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-19 §4.2",
+      "titel": "Lesen und Freigeben trennen (IP-11)",
+      "konzept": "AP-19 §4.2 (Rechte), §4.11 (RE4), W10; entschieden am 24.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Unternehmens-Bericht und Stände ansehen, PDF abrufen (getrennt von „freigeben“, W10)",
+          "wer": "KA U · EM U · BE − · BD − · LE − · US − · EI U · VB −",
+          "recht": "`bericht.unternehmen_abrufen`",
+          "kennungen": [
+            "bericht.unternehmen_abrufen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Muster bericht.standort_abrufen; Zellen wie bericht.unternehmen. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+        },
+        {
+          "handlung": "Energetische Bewertung und Stände ansehen, PDF abrufen (getrennt von „anlegen · freigeben“, W10)",
+          "wer": "KA U · EM U · BE − · BD − · LE − · US − · EI U · VB −",
+          "recht": "`bewertung.ansehen`",
+          "kennungen": [
+            "bewertung.ansehen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Muster bericht.standort_abrufen; Zellen wie bewertung.abrufen. EI (Einsicht) ist die Spalte von AP-19 IP-12 und steht hier noch nicht."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Lesen und Freigeben werden getrennt, wo eine Kennung beides trägt: `bericht.unternehmen_abrufen` neben `bericht.unternehmen`, `bewertung.ansehen` neben `bewertung.abrufen`; KA und EM behalten dieselben Zellen — kein bestehender Weg wird enger (RE4).",
+          "wo": "BerichtRegeln.kennung und BerichtRechte.kennung (Abrufen und PDF); BerichtRechteTest vergleicht je Bestandsrolle vorher und nachher"
         }
       ]
     }

@@ -11273,8 +11273,9 @@ paths:
       tags: [berichte]
       summary: Die Berichte, die die Person lesen darf - mit Vermerk (R5); archivierte nicht (V4).
       description: >
-        Recht je Bericht: `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
-        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        Recht je Bericht: `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen_abrufen` am
+        Unternehmens-Bericht, `bewertung.ansehen` an der energetischen Bewertung (Lesen getrennt vom Freigeben,
+        AP-19 IP-11) (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
         fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
         bekommt nie Entwurf oder Stand. Die Liste enthält nur, was die Person lesen darf; darf sie
         nirgends einen Bericht lesen, ist das 403. Neueste zuerst. UEMS AP-12 IP-7.
@@ -11327,8 +11328,9 @@ paths:
       tags: [berichte]
       summary: Die Zeile „Freigegebene Berichte …“ einer Folgen-Karte - wen eine Strukturänderung ab gilt_ab träfe.
       description: >
-        Recht je Bericht: `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
-        Unternehmens-Bericht; genannt werden nur Stände, die die Person lesen darf; darf sie nirgends einen
+        Recht je Bericht: `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen_abrufen` am
+        Unternehmens-Bericht, `bewertung.ansehen` an der energetischen Bewertung (Lesen getrennt vom Freigeben,
+        AP-19 IP-11); genannt werden nur Stände, die die Person lesen darf; darf sie nirgends einen
         Bericht lesen, 403 `recht_fehlt`. Für die Folgen-Karten „Fläche ändern“ (anlass flaeche_rueckwirkend,
         objekt = Gebäude, Bereich oder Standort), „Anlage zuordnen“ (anlage_umzug_rueckwirkend, objekt = Anlage)
         und „Archivieren“ (zuordnung_rueckwirkend, objekt = Ort oder Standort, gilt_ab = Archivtag). Dieselbe
@@ -11362,8 +11364,9 @@ paths:
       tags: [berichte]
       summary: Kopf, Berichtsstände (Nr. 1 zuerst) und Revisions-Anstöße eines Berichts.
       description: >
-        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
-        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen_abrufen` am
+        Unternehmens-Bericht, `bewertung.ansehen` an der energetischen Bewertung (Lesen getrennt vom Freigeben,
+        AP-19 IP-11) (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
         fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
         bekommt nie Entwurf oder Stand. Ein archivierter Bericht bleibt lesbar.
       responses:
@@ -11407,8 +11410,9 @@ paths:
       tags: [berichte]
       summary: Der Entwurf - auf Aktualität geprüft (D4), nötigenfalls neu gebildet.
       description: >
-        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
-        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen_abrufen` am
+        Unternehmens-Bericht, `bewertung.ansehen` an der energetischen Bewertung (Lesen getrennt vom Freigeben,
+        AP-19 IP-11) (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
         fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
         bekommt nie Entwurf oder Stand. D4: hat eine Quelle des Entwurfs seit seinem Datenstand eine
         neue Version, Fassung, Periodenrechnung oder ein rückwirkendes Protokoll, oder lief seitdem das
@@ -11433,8 +11437,9 @@ paths:
       tags: [berichte]
       summary: Vergleicht den aktuellen Entwurf mit einem Berichtsstand - jede Abweichung (R1).
       description: >
-        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
-        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen_abrufen` am
+        Unternehmens-Bericht, `bewertung.ansehen` an der energetischen Bewertung (Lesen getrennt vom Freigeben,
+        AP-19 IP-11) (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
         fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
         bekommt nie Entwurf oder Stand. Erst der Stand (404 `stand_gibt_es_nicht`, Prüfsumme geprüft -
         500 `abzug_beschaedigt`), dann der Entwurf nach D4 wie `…/entwurf`; die Abweichungen spricht die
@@ -11501,8 +11506,9 @@ paths:
       tags: [berichte]
       summary: Ein freigegebener Berichtsstand - seine Prüfsumme wird geprüft, nicht nur mitgeliefert.
       description: >
-        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
-        Unternehmens-Bericht (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen_abrufen` am
+        Unternehmens-Bericht, `bewertung.ansehen` an der energetischen Bewertung (Lesen getrennt vom Freigeben,
+        AP-19 IP-11) (E12 G1, durchgesetzt über uems/BerichtRechte); fremder Kundenbereich oder
         fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
         bekommt nie Entwurf oder Stand. Stimmt die Prüfsumme nicht mehr zum gespeicherten Abzug,
         verlässt er den Server nie: 500 `abzug_beschaedigt`. Ein ersetzter Stand bleibt lesbar
@@ -11555,8 +11561,9 @@ paths:
       tags: [berichte]
       summary: Das PDF eines Stands - server-seitig nur aus dem Abzug, byte-gleich bei jedem Abruf, jeder Abruf protokolliert.
       description: >
-        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen` am
-        Unternehmens-Bericht (E12 G1: das PDF folgt dem Abrufen, durchgesetzt über uems/BerichtRechte);
+        Recht `bericht.standort_abrufen` am Standort-Bericht, `bericht.unternehmen_abrufen` am
+        Unternehmens-Bericht, `bewertung.ansehen` an der energetischen Bewertung (Lesen getrennt vom Freigeben,
+        AP-19 IP-11) (E12 G1: das PDF folgt dem Abrufen, durchgesetzt über uems/BerichtRechte);
         fremder Kundenbereich oder fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403
         `recht_fehlt` - die Unterstützung bekommt nie eine Datei. Inhalt (E11 DA2): Kopf,
         Zusammenfassung, Tabellen, Kennzahlen, Qualität, Quellenverzeichnis, auf jeder Seite der Fuß

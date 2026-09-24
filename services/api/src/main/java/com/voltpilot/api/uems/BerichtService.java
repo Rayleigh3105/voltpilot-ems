@@ -294,7 +294,8 @@ public class BerichtService {
     }
 
     /**
-     * {@code GET …/staende/{nr}/pdf} (DA2, DA5): Recht {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} (G1) →
+     * {@code GET …/staende/{nr}/pdf} (DA2, DA5): Recht {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen}
+     * bzw. {@code bewertung.ansehen} (G1, AP-19 IP-11) →
      * Stand mit geprüfter Prüfsumme (404, 500) → das PDF NUR aus dem Abzug und der Freigabe ({@link BerichtPdf}) → Abruf und
      * Meldung wie beim CSV. Das PDF kennt weder Abrufer noch Abrufzeit noch Teilansicht — darum ist es für jeden, der den Stand
      * abruft, byte-gleich; die Teilansicht steht nur im Protokoll. Ein Entwurf hat keins (EW4).
@@ -730,13 +731,16 @@ public class BerichtService {
                 kopf.standortId() == null ? null : kopf.standortId().toString(), jetzt);
     }
 
-    /** Darf die Person irgendeinen Bericht lesen — am Unternehmen oder an einem Standort? Sonst das Nein (403 vor 404). */
+    /**
+     * Darf die Person irgendeinen Bericht lesen — am Unternehmen oder an einem Standort? Sonst das Nein (403 vor 404). Gefragt
+     * wird nach den Lese-Kennungen (AP-19 IP-11, RE4), nie nach einem Freigabe-Recht.
+     */
     private static void irgendwoLesbar(Benutzer b, Kundenbereich k, Instant jetzt) {
-        DarfErgebnis nein = Geltungsbereich.scope(b, k, BerichtRechte.UNTERNEHMEN, null, jetzt);
+        DarfErgebnis nein = Geltungsbereich.scope(b, k, BerichtRechte.UNTERNEHMEN_ABRUFEN, null, jetzt);
         if (nein.darf()) {
             return;
         }
-        DarfErgebnis bewertung = Geltungsbereich.scope(b, k, BerichtRechte.BEWERTUNG, null, jetzt);
+        DarfErgebnis bewertung = Geltungsbereich.scope(b, k, BerichtRechte.BEWERTUNG_ANSEHEN, null, jetzt);
         if (bewertung.darf()) {
             return;
         }

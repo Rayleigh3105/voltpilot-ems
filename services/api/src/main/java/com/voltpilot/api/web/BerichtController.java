@@ -52,7 +52,9 @@ import org.springframework.web.bind.annotation.PutMapping;
  *
  * <p><b>Rechte — hier DURCHGESETZT</b> über {@code BerichtRechte} → {@code RechteAbleitung}: jede Route nennt ihre Kennungen
  * aus {@code docs/contracts/v2/rechte-matrix.json} — am Standort-Bericht {@code bericht.standort_abrufen} bzw.
- * {@code bericht.standort_freigeben}, am Unternehmens-Bericht {@code bericht.unternehmen} (G1). Fremd und fremder Standort
+ * {@code bericht.standort_freigeben}, am Unternehmens-Bericht {@code bericht.unternehmen_abrufen} bzw.
+ * {@code bericht.unternehmen}, an der energetischen Bewertung {@code bewertung.ansehen} bzw. {@code bewertung.abrufen} (G1;
+ * Lesen und Freigeben getrennt seit AP-19 IP-11, RE4). Fremd und fremder Standort
  * ist 404 {@code nicht_gefunden}, fehlendes Recht 403 {@code recht_fehlt}; der Unterstützer bekommt keinen Entwurf und keinen
  * Stand. Diese Ablehnungen gibt es nur an diesen Routen.
  *
@@ -77,8 +79,8 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} je Bericht — die Liste zeigt nur, was die
-     * Person lesen darf; wer nirgends einen Bericht lesen darf (der Unterstützer), bekommt 403.
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen} je Bericht
+     * — die Liste zeigt nur, was die Person lesen darf; wer nirgends einen Bericht lesen darf (der Unterstützer), bekommt 403.
      */
     @GetMapping("/berichte")
     public BerichtDto.Liste liste(Authentication auth) {
@@ -86,8 +88,9 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} je Bericht — die Zeile „Freigegebene Berichte: …“
-     * der Folgen-Karten (Fläche ändern, Anlage zuordnen, Archivieren; AP-12 IP-9) nennt nur Stände, die die Person lesen
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen} je Bericht
+     * — die Zeile „Freigegebene Berichte: …“ der Folgen-Karten (Fläche ändern, Anlage zuordnen, Archivieren; AP-12 IP-9)
+     * nennt nur Stände, die die Person lesen
      * darf; wer nirgends einen Bericht lesen darf, bekommt 403. {@code anlass} ist die Anstoß-Art einer Strukturänderung
      * (400 sonst); ein Objekt, das der Kundenbereich nicht kennt oder das nicht zur Art passt, ist 404 {@code nicht_gefunden}
      * — ebenso eine Messstelle außerhalb des Zugriffs ({@link RechtPruefung#lesbar}, AP-03 R-A1). Schreibt nichts.
@@ -130,7 +133,7 @@ public class BerichtController {
                 b.kennzahl(), wer)));
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
     @GetMapping("/berichte/{kennung}")
     public BerichtDto.Detail detail(@PathVariable String kennung, Authentication auth) {
         BerichtService.Detail d = dienst.detail(kennung(kennung), OrtAnfrage.akteur(auth));
@@ -164,7 +167,7 @@ public class BerichtController {
                 OrtAnfrage.akteur(auth)));
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
     @GetMapping("/berichte/{kennung}/entwurf")
     public BerichtDto.Entwurf entwurf(@PathVariable String kennung, Authentication auth) {
         BerichtService.Entwurf e = dienst.entwurf(kennung(kennung), OrtAnfrage.akteur(auth));
@@ -174,7 +177,7 @@ public class BerichtController {
                 e.teilansicht(), e.entwurf().abzug());
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
     @GetMapping("/berichte/{kennung}/entwurf/vergleich")
     public BerichtDto.Vergleich vergleich(@PathVariable String kennung, @RequestParam(required = false) String gegen,
             Authentication auth) {
@@ -210,7 +213,7 @@ public class BerichtController {
         return ResponseEntity.status(f.neu() ? 201 : 200).body(stand(f.stand()));
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
+    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
     @GetMapping("/berichte/{kennung}/staende/{nr}")
     public BerichtDto.Stand stand(@PathVariable String kennung, @PathVariable String nr, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -239,8 +242,8 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} (G1) — das PDF eines
-     * Stands (DA2), server-seitig aus dem Abzug, byte-gleich bei jedem Abruf; jeder Abruf protokolliert (DA5); ein Entwurf hat
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen} (G1) — das
+     * PDF eines Stands (DA2), server-seitig aus dem Abzug, byte-gleich bei jedem Abruf; jeder Abruf protokolliert (DA5); ein Entwurf hat
      * keins (EW4). Ablehnungen wie am Stand, als JSON — darum kein {@code produces}.
      */
     @GetMapping("/berichte/{kennung}/staende/{nr}/pdf")

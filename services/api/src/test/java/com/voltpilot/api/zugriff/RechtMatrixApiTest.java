@@ -362,6 +362,8 @@ class RechtMatrixApiTest {
             Map.entry("ersatzwert.erfassen", "keine Schreibroute (Ersatzwert erfassen ist noch nicht gebaut)"),
             Map.entry("messwerte.ansehen", "lesend — Standort-Zaun (IP-5), Teilansicht IP-10/IP-11"),
             Map.entry("bericht.standort_abrufen", "lesend — IP-11"),
+            Map.entry("bericht.unternehmen_abrufen", "lesend — AP-19 IP-11 (RE4, W10), BerichtRechteTest vorher = nachher"),
+            Map.entry("bewertung.ansehen", "lesend — AP-19 IP-11 (RE4, W10), BerichtRechteTest vorher = nachher"),
             Map.entry("export.standort", "lesend — IP-11"),
             Map.entry("export.unternehmen", "lesend — IP-11"),
             Map.entry("auswertung.anlegen", "keine Schreibroute (Eigene Auswertung liest nur)"),

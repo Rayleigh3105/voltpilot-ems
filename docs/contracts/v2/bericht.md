@@ -312,9 +312,15 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
 
 ## 9. Rechte (G1–G4, E12)
 
-- **G1** Die fünf Kennungen der Rechte-Matrix, unverändert (Regel `rechte`, `regeln.kennung`): `abrufen`/`pdf` →
+- **G1** Die Kennungen der Rechte-Matrix (Regel `rechte`, `regeln.kennung`): `abrufen`/`pdf` →
   `bericht.standort_abrufen`; `anlegen`/`freigeben`/`verwerfen`/`archivieren` → `bericht.standort_freigeben`; `csv` →
-  `export.standort`; am Unternehmen `bericht.unternehmen` bzw. `export.unternehmen`.
+  `export.standort`; am Unternehmen `abrufen`/`pdf` → `bericht.unternehmen_abrufen`, `csv` → `export.unternehmen`, sonst
+  `bericht.unternehmen`. Die Vorlage `energetische_bewertung` liest (`abrufen`/`pdf`) über `bewertung.ansehen`, alles andere
+  über `bewertung.abrufen` (`BerichtRechte.kennung` mit Vorlage).
+- **G1a Lesen und Freigeben getrennt (AP-19 IP-11, RE4, W10).** Bis dahin trugen am Unternehmen und an der energetischen
+  Bewertung Lesen und Freigeben dieselbe Kennung. Die zwei Lese-Kennungen sind Nachträge `AP-19 §4.2` mit denselben Zellen wie
+  die alten Zeilen (`wie`): keine Bestandsrolle darf mehr oder weniger — `BerichtRechteTest` vergleicht je Rolle, Handlung,
+  Geltung und Vorlage das Urteil vorher und nachher. Die Rolle „Einsicht“ bekommt erst mit AP-19 IP-12 nur die Lese-Kennungen.
 - **G2** Durchgesetzt über `RechteAbleitung.darf` (Muster `KorrekturRechte`): fremder Standort 404, fehlendes Recht 403,
   Unterstützung nie eine Datei. Die 403/404-Sätze spricht die Rechte-Ableitung.
 - **G3 Teilansicht (R-A4):** wer das Unternehmen nicht exportieren darf, bekommt die Namen der Standorte, deren Messwerte er

@@ -128,16 +128,19 @@ export const EREIGNISSE_RESERVIERT = [
   'bericht_abgerufen/bericht',
 ];
 
+/** Die Rechte der Berichte; seit AP-19 IP-11 (RE4, W10) je eine Lese-Kennung neben dem Freigabe-Recht am Unternehmen. */
 export const RECHTE = ['bericht.standort_abrufen', 'bericht.standort_freigeben', 'bericht.unternehmen',
-  'bewertung.abrufen', 'export.standort', 'export.unternehmen'];
+  'bericht.unternehmen_abrufen', 'bewertung.abrufen', 'bewertung.ansehen', 'export.standort', 'export.unternehmen'];
 
 /** G1 — Handlung × Geltung → Kennung der Rechte-Matrix, Schlüssel `<geltung>/<handlung>`. */
 export const KENNUNG: Record<string, string> = Object.fromEntries(
   GELTUNG_ARTEN.flatMap((g) => HANDLUNGEN.map((h) => {
     const standort = g === STANDORT;
+    const lesen = h === 'abrufen' || h === 'pdf';
+    // AP-19 IP-11 (RE4, W10): am Unternehmen trägt das Lesen seine eigene Kennung, wie am Standort.
     const k = h === 'csv' ? (standort ? 'export.standort' : 'export.unternehmen')
-      : !standort ? 'bericht.unternehmen'
-        : h === 'abrufen' || h === 'pdf' ? 'bericht.standort_abrufen' : 'bericht.standort_freigeben';
+      : standort ? (lesen ? 'bericht.standort_abrufen' : 'bericht.standort_freigeben')
+        : lesen ? 'bericht.unternehmen_abrufen' : 'bericht.unternehmen';
     return [`${g}/${h}`, k];
   })),
 );

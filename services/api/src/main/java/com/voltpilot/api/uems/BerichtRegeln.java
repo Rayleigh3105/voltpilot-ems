@@ -178,8 +178,10 @@ public final class BerichtRegeln {
     public static final List<String> EREIGNISSE_RESERVIERT = List.of("bericht_freigegeben/bericht",
             "bericht_revision_angestossen/bericht", "bericht_entwurf_neu_gebildet/bericht", "bericht_abgerufen/bericht");
 
+    /** Die Rechte der Berichte; seit AP-19 IP-11 (RE4, W10) je eine Lese-Kennung neben dem Freigabe-Recht am Unternehmen. */
     public static final List<String> RECHTE = List.of("bericht.standort_abrufen", "bericht.standort_freigeben",
-            "bericht.unternehmen", "bewertung.abrufen", "export.standort", "export.unternehmen");
+            "bericht.unternehmen", "bericht.unternehmen_abrufen", "bewertung.abrufen", "bewertung.ansehen",
+            "export.standort", "export.unternehmen");
 
     /** G1 — Handlung × Geltung → Kennung der Rechte-Matrix, Schlüssel {@code <geltung>/<handlung>}. */
     public static final Map<String, String> KENNUNG = kennungen();
@@ -1180,9 +1182,11 @@ public final class BerichtRegeln {
         for (String geltung : GELTUNG_ARTEN) {
             for (String h : HANDLUNGEN) {
                 boolean standort = STANDORT.equals(geltung);
+                boolean lesen = "abrufen".equals(h) || "pdf".equals(h);
+                // AP-19 IP-11 (RE4, W10): am Unternehmen trägt das Lesen seine eigene Kennung, wie am Standort.
                 String k = "csv".equals(h) ? (standort ? "export.standort" : "export.unternehmen")
-                        : !standort ? "bericht.unternehmen"
-                        : "abrufen".equals(h) || "pdf".equals(h) ? "bericht.standort_abrufen" : "bericht.standort_freigeben";
+                        : standort ? (lesen ? "bericht.standort_abrufen" : "bericht.standort_freigeben")
+                        : lesen ? "bericht.unternehmen_abrufen" : "bericht.unternehmen";
                 raus.put(geltung + "/" + h, k);
             }
         }

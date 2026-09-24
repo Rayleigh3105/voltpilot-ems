@@ -91,7 +91,9 @@
       "bericht.standort_abrufen",
       "bericht.standort_freigeben",
       "bericht.unternehmen",
+      "bericht.unternehmen_abrufen",
       "bewertung.abrufen",
+      "bewertung.ansehen",
       "export.standort",
       "export.unternehmen"
     ]
@@ -162,8 +164,8 @@
       "standort/verwerfen": "bericht.standort_freigeben",
       "standort/archivieren": "bericht.standort_freigeben",
       "standort/wiedervorlage_aendern": "bericht.standort_freigeben",
-      "unternehmen/abrufen": "bericht.unternehmen",
-      "unternehmen/pdf": "bericht.unternehmen",
+      "unternehmen/abrufen": "bericht.unternehmen_abrufen",
+      "unternehmen/pdf": "bericht.unternehmen_abrufen",
       "unternehmen/csv": "export.unternehmen",
       "unternehmen/anlegen": "bericht.unternehmen",
       "unternehmen/freigeben": "bericht.unternehmen",
@@ -4837,12 +4839,12 @@
       "titel": "Rechte aus der Matrix, jetzt durchgesetzt: Thomas (Unterstützer) nie · Claudia (Leser) abrufen, nicht freigeben · Peter (Bearbeiter Lindach) gibt Lindach frei, ST-1 ist 404, Unternehmen 403 · Murat abrufen, nicht freigeben",
       "why": "E12: die sechs Kennungen `bericht.standort_abrufen`, `bericht.standort_freigeben`, `bericht.unternehmen`, `bewertung.abrufen`, `export.standort`, `export.unternehmen` werden mit `RechteAbleitung.darf` durchgesetzt (Muster KorrekturRechte) — der Export ist Datenabfluss (W-R4), der Unterstützer bekommt nie eine Datei; fremder Standort ist 404 (wie AP-11 K18), fehlendes Recht 403; Teilansicht-Kopfzeile nach R-A4.",
       "schritte": [
-        "Die Kennung folgt aus Handlung × Geltung: abrufen/pdf → bericht.standort_abrufen, anlegen/freigeben/verwerfen/archivieren → bericht.standort_freigeben, csv → export.standort; am Unternehmen bericht.unternehmen bzw. export.unternehmen (G1). Die Vorlage energetische_bewertung verwendet für alle Handlungen bewertung.abrufen.",
+        "Die Kennung folgt aus Handlung × Geltung: abrufen/pdf → bericht.standort_abrufen, anlegen/freigeben/verwerfen/archivieren → bericht.standort_freigeben, csv → export.standort; am Unternehmen abrufen/pdf → bericht.unternehmen_abrufen, csv → export.unternehmen, sonst bericht.unternehmen (G1; Lesen und Freigeben getrennt seit AP-19 IP-11, RE4/W10 — dieselben Zellen). Die Vorlage energetische_bewertung verwendet für abrufen/pdf bewertung.ansehen, für alle anderen Handlungen bewertung.abrufen.",
         "Das Urteil spricht RechteAbleitung.darf gegen rechte-matrix.json: ja, 403 (Recht fehlt, Unterstützer nie) oder 404 (fremder Standort) (G2).",
         "Teilansicht (G3): wer das Unternehmen nicht exportieren darf, bekommt die Namen der Standorte, deren Messwerte er ansehen darf.",
         "Stichtag 25.11.2026 10:00, damit die Unterstützung von Elektro Brunner (ab 24.11.2026 09:40) wirksam ist."
       ],
-      "annahmen": ["Zellen aus rechte-matrix.json (Zeilen 539–615); Personen und Standorte aus der Referenzdatei."],
+      "annahmen": ["Zellen aus rechte-matrix.json (Kennungen bericht.* und bewertung.*); Personen und Standorte aus der Referenzdatei."],
       "pruefungen": [
         {
           "regel": "rechte",
@@ -4983,11 +4985,11 @@
               {"person": "CB", "standort": "ST-1", "kennung": "bericht.standort_freigeben", "ergebnis": "403"},
               {"person": "PH", "standort": "ST-2", "kennung": "bericht.standort_freigeben", "ergebnis": "ja"},
               {"person": "PH", "standort": "ST-1", "kennung": "bericht.standort_freigeben", "ergebnis": "404"},
-              {"person": "PH", "standort": null, "kennung": "bericht.unternehmen", "ergebnis": "403"},
+              {"person": "PH", "standort": null, "kennung": "bericht.unternehmen_abrufen", "ergebnis": "403"},
               {"person": "PH", "standort": null, "kennung": "export.unternehmen", "ergebnis": "403"},
               {"person": "MD", "standort": "ST-1", "kennung": "bericht.standort_abrufen", "ergebnis": "ja"},
               {"person": "MD", "standort": "ST-1", "kennung": "bericht.standort_freigeben", "ergebnis": "403"},
-              {"person": "IK", "standort": null, "kennung": "bericht.unternehmen", "ergebnis": "ja"},
+              {"person": "IK", "standort": null, "kennung": "bericht.unternehmen_abrufen", "ergebnis": "ja"},
               {"person": "JW", "standort": null, "kennung": "export.unternehmen", "ergebnis": "ja"}
             ],
             "teilansicht": {

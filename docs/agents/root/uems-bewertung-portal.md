@@ -88,7 +88,8 @@ Bericht-Routen (`GET /api/v1/berichte`, `…/{kennung}`, `…/entwurf`, `…/sta
 Anlegen ist `BerichtAnlegenDialog` mit `nurVorlage`, Freigeben `BerichtFreigebenDialog`, der Vermerk `revisionBanner`.
 
 - Recht: jede Handlung an `energetische_bewertung` hängt an `bewertung.abrufen` (`berichtDialoge.darf(…, vorlage)`, wie
-  `BerichtRechte.kennung` mit Vorlage). Ohne das Recht fehlen Karte, Frist-Zeile und die Vorlage im Anlegen-Dialog; die
+  `BerichtRechte.kennung` mit Vorlage); nur Abrufen und PDF liest die API seit AP-19 IP-11 über `bewertung.ansehen` (gleiche
+  Zellen). Die Fläche fragt weiter `bewertung.abrufen` — die Trennung der Oberfläche für „Einsicht“ ist AP-19 IP-13. Ohne das Recht fehlen Karte, Frist-Zeile und die Vorlage im Anlegen-Dialog; die
   Karte erscheint erst mit einem Einsatz oder einer Bewertung (R11). Vier-Augen gibt es an der Bericht-Freigabe nicht.
 - ⚠ Der Bewertungs-Abzug hat keine `werte`/`kennzahlen`: `freigabeAntrag` liest sie optional, `freigabeVorschau` lässt den
   Punkt „Alle n Werte endgültig“ bei null Werten weg. `zeitraumWahlen/zeitraumVorgabe('datengrundlage')` = zwölf volle

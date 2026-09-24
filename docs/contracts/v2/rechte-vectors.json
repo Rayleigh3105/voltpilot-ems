@@ -14605,6 +14605,266 @@
         "umfang_noetig": null,
         "text": null
       }
+    },
+    {
+      "name": "ap19-bericht-unternehmen-abrufen-energiemanager",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 §4.2 (RE4, W10): Die Energiemanagerin liest den Unternehmens-Bericht und seine Stände und ruft das PDF ab — über die Lese-Kennung, getrennt von „freigeben“; dieselbe Zelle wie bei bericht.unternehmen.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bericht.unternehmen_abrufen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap19-bericht-unternehmen-abrufen-bearbeiter-am-standort",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 §4.2 (RE4, W10): Die Lese-Kennung öffnet keinen Weg, den bericht.unternehmen nicht schon öffnete: ein Bearbeiter liest den Unternehmens-Bericht auch an seinem Standort nicht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bericht.unternehmen_abrufen",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-2",
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ap19-bewertung-ansehen-kundenadministrator",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 §4.2 (RE4, W10): Der Kundenadministrator liest die energetische Bewertung und ihre Stände und ruft das PDF ab — über die Lese-Kennung, getrennt von „anlegen · freigeben“; dieselbe Zelle wie bei bewertung.abrufen.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bewertung.ansehen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap19-bewertung-ansehen-bearbeiter-am-standort",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-19 §4.2 (RE4, W10): Die Lese-Kennung öffnet keinen Weg, den bewertung.abrufen nicht schon öffnete: ein Bearbeiter liest die energetische Bewertung auch an seinem Standort nicht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "bewertung.ansehen",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-2",
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
     }
   ]
 }
