@@ -26,6 +26,12 @@ describe('iconFor', () => {
     expect(iconFor('', 'pv')).toBe('sun');
     expect(iconFor('', 'grid')).toBe('zap');
   });
+  it('names a hybrid per ROLE - its PV circle shows the sun, not a battery', () => {
+    expect(iconFor('battery-hybrid', 'pv')).toBe('sun');
+    expect(iconFor('battery-hybrid', 'storage')).toBe('battery');
+    expect(iconFor('battery-hybrid', 'consumer')).toBe('home');
+    expect(iconFor('battery-hybrid', 'grid')).toBe('zap');
+  });
 });
 
 describe('isControllableConsumerType', () => {

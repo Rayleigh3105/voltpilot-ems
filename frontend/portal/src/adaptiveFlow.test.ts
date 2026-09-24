@@ -376,6 +376,16 @@ describe('der fünfte Kreis „Laden" (Konzept vp-verbraucher-cockpit-k1 §6, E3
     expect(laden.toY).toBeLessThanOrEqual(laden.y - l.nodeR);
   });
 
+  it('wächst nur so weit, wie der Lade-Kreis samt Wort es braucht - kein leerer Kartenfuß', () => {
+    // Die frühere Pauschale ließ am Telefon ~100 px leere Karte unter „Laden".
+    for (const narrow of [false, true]) {
+      const l = layoutFlow(TOPO, ENTITIES, { narrow, charging: LADEND });
+      const labelBlock = l.lblDy + 3 * l.lblLh;
+      const unten = Math.max(...l.vertices.map((v) => v.y + l.nodeR + labelBlock));
+      expect(l.H - unten).toBeLessThanOrEqual(8);
+    }
+  });
+
   it('lässt die viewBox um GENAU eine Zeile wachsen und die vier Rollen an ihrem Platz', () => {
     const ohne = layoutFlow(TOPO, ENTITIES);
     const mit = layoutFlow(TOPO, ENTITIES, { charging: LADEND });

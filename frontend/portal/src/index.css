@@ -793,7 +793,12 @@ svg [tabindex]:focus-visible {
   display: flex;
   justify-content: center;
 }
-.vp-flow-wrap svg {
+/* ⚠ Nur das DIAGRAMM selbst (`>`): die Knoten-Symbole sind verschachtelte
+   <svg> (`Icon`). Ein Nachfahren-Selektor gab ihnen width/height 100 % - in
+   Chromium/WebKit schlägt CSS die width/height-Attribute, und jedes 16-px-
+   Symbol wurde auf die ganze Diagrammfläche aufgeblasen (dicke Bänder quer
+   über das Bild). Wächter: `energieflussIcons.test.ts`. */
+.vp-flow-wrap > svg {
   width: 100%;
   height: 100%;
   display: block;
