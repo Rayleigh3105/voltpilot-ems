@@ -34,7 +34,7 @@ export const captures = [
   ] },
   { id: 'fahrplan', title: 'Fahrplan: jetzt und im Tagesverlauf', hash: plant('fahrplan'), root: 'main', maxHeight: 2100, points: [
     point('main h1', 'Die Ansicht gehört zur oben genannten Anlage.'),
-    point('text=Heute und morgen', 'Diese Erklärung nennt den Planungshorizont und die Grundlage des Plans.'),
+    point('.vp-lage-zeile', 'Diese Zeile nennt den Verlauf des Tages und den Ausblick auf morgen. Die Grundlage des Plans steht unter „Mehr erklären“.'),
     point('.vp-chart.panels', 'Preis und Speicherleistung liegen auf getrennten Skalen über derselben Zeitachse.'),
   ] },
   { id: 'messwerte', title: 'Messwerte: Zeitraum und Energie', hash: plant('messwerte'), root: 'main', maxHeight: 1750, points: [
