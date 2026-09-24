@@ -2218,6 +2218,12 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		Native struct {
 			GridChargeBlocked *bool `json:"grid_charge_blocked"`
 		} `json:"native"`
+		// NativePrecondition is the same device answer read BEFORE the hand-over
+		// (the executor's precondition read on a cycle the follower still
+		// carried). Absent on every other cycle and on an older Layer-1 build.
+		NativePrecondition struct {
+			GridChargeBlocked *bool `json:"grid_charge_blocked"`
+		} `json:"native_precondition"`
 		Registers []struct {
 			Role         string   `json:"role"`
 			Fc           int      `json:"fc"`
@@ -2274,6 +2280,10 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	if m.Native.GridChargeBlocked != nil {
 		v := *m.Native.GridChargeBlocked
 		info.NativeGridChargeBlocked = &v
+	}
+	if m.NativePrecondition.GridChargeBlocked != nil {
+		v := *m.NativePrecondition.GridChargeBlocked
+		info.NativePreconditionGridChargeBlocked = &v
 	}
 	for _, r := range m.Registers {
 		info.Registers = append(info.Registers, state.ControlRegister{

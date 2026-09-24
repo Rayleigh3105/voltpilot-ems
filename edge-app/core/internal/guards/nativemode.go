@@ -194,8 +194,11 @@ type NativeInput struct {
 	// (grid_charge_allowed == false / absent). When true the device must PROVE
 	// it cannot charge from the grid in its own configuration.
 	SolarOnlyCharge bool
-	// GridChargeBlocked is that proof, from Layer 1's readback. nil = the device
-	// did not say - which counts as NOT proven, never as "fine".
+	// GridChargeBlocked is that proof, from Layer 1's readback: read back in the
+	// device's own mode once Proven, or - before the hand-over - from the
+	// executor's pre-hand-over read of the same register. nil = the device did
+	// not say - which counts as NOT proven, never as "fine" (see step 8 of
+	// Decide for WHEN it is owed).
 	GridChargeBlocked *bool
 	// Proven is Layer 1's evidence that the device really is in its own
 	// regulation right now (a fresh readback whose mode is "native" and whose
@@ -342,8 +345,31 @@ func (n *NativeMode) Decide(now time.Time, in NativeInput) NativeDecision {
 	}
 	// 8. EEG: the ONE compliance rule that moves into the device's own
 	//    configuration when we stop commanding. Unknown is not proven.
-	if in.SolarOnlyCharge && (in.GridChargeBlocked == nil || !*in.GridChargeBlocked) {
-		return takeBack(NativeGridChargeUnproven)
+	//
+	//    ⚠ WHEN the proof is owed decides whether the mode can exist at all. The
+	//    proof is a READ of the device, and the executor only reads it once our
+	//    intent stands - so demanding it before the intent was ever published
+	//    made the mode unreachable on every EEG site (the first tick latched
+	//    this take-back, no intent reached the wire, the device never went
+	//    native, the proof never came). The order is therefore:
+	//      - the device SAID it may charge from the grid (before or after the
+	//        hand-over): take back at once;
+	//      - the device regulates itself (Proven) without saying it cannot:
+	//        take back at once - the hand-over is only as good as this answer;
+	//      - not handed over yet and not answered yet: the intent may stand
+	//        PENDING, because it is a request, not a hand-over. Layer 1 hands an
+	//        EEG site over only after its own pre-hand-over read found the
+	//        device's grid charging disabled (deyeNativePrecondition, 0x00AC),
+	//        and a tier that cannot read such a register refuses EEG sites
+	//        outright. The grace below bounds the wait, and names THIS reason
+	//        if it closes without an answer.
+	if in.SolarOnlyCharge {
+		if in.GridChargeBlocked != nil && !*in.GridChargeBlocked {
+			return takeBack(NativeGridChargeUnproven)
+		}
+		if in.GridChargeBlocked == nil && in.Proven {
+			return takeBack(NativeGridChargeUnproven)
+		}
 	}
 	// 9. The billing peak. In native mode there is no lever left, so a threatened
 	//    quarter hour is answered by taking the lever back.
@@ -366,7 +392,11 @@ func (n *NativeMode) Decide(now time.Time, in NativeInput) NativeDecision {
 	if now.Sub(n.since) > n.grace {
 		// The intent stood, the device never confirmed it. That is not a native
 		// mode, it is an unanswered request - and "we stopped writing" must never
-		// be allowed to look like "the inverter took over".
+		// be allowed to look like "the inverter took over". On an EEG site that
+		// never even answered the grid-charge question, THAT is the cause to name.
+		if in.SolarOnlyCharge && in.GridChargeBlocked == nil {
+			return takeBack(NativeGridChargeUnproven)
+		}
 		return takeBack(NativeUnproven)
 	}
 	n.engaged = true

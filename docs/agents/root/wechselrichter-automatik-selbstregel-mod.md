@@ -70,6 +70,10 @@ Test festgenagelt.
   weit innerhalb der Nachweisfrist des Kerns. **`mode: "native"` wird nur
   gemeldet, wenn `1100` wirklich 0 zurückliest**; nur ein belegter Takt liest
   zusätzlich den `gridChargeProof` (`native.grid_charge_blocked`, dreiwertig).
+  Der Lese-Takt VOR der Übergabe meldet dieselbe Frage aus der
+  Vorbedingungs-Lesung als `native_precondition.grid_charge_blocked` — damit die
+  Absicht an EEG-Anlagen überhaupt stehen bleibt (K3, 24.09.2026; vorher nahm der
+  Kern im ersten Takt zurück, die Automatik war an EEG-Anlagen tot).
   Details + die Beobachtungs-Checkliste: `edge-app/AGENTS.md` und
   `edge-app/nodered/UNPLANNED-LOAD-BENCH.md`.
 - **Ops:** keine neue Pflicht-Variable, keine Migration, keine Cloud-Änderung.

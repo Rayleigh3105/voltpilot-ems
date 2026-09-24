@@ -1875,6 +1875,14 @@ test('the inline native planner refuses like the module, with the same German re
   assert.match(r.module_.reason, /EEG-Anlage/);
   assert.notStrictEqual(r.inline.mode, 'native');
 
+  // 3b. The SAME EEG site whose program blocks grid charging IS handed over by
+  //     both - the key the executor caches (the precondition ROLE) is the key
+  //     both gates judge. (K3: the module once read a different key and refused
+  //     here while the shipped copy handed over.)
+  r = both({ grid_charge_allowed: false }, {}, { cfg: { ...DEYE_NATIVE_CFG, grid_charge_enable: 0 } });
+  assert.strictEqual(r.module_.writes.length, 1, 'module: ' + r.module_.reason);
+  assert.strictEqual(r.inline.mode, 'native', 'inline: the EEG site with grid charging disabled goes native');
+
   // 4. Nothing read at all - the honest "not known", never an assumed zero.
   r = both({}, {}, { cfg: undefined });
   assert.match(r.module_.reason, /eigene Konfiguration/);

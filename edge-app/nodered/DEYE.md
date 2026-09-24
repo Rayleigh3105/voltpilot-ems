@@ -779,6 +779,10 @@ alles andere ist kein Beleg, wird als gewöhnlicher Zyklus gemeldet, und der Ker
 holt die Batterie nach seiner Frist zurück (`nachweis_fehlt`). Nur ein belegter
 Takt liest zusätzlich `0x00AC` als EEG-Beleg und veröffentlicht ihn als
 `native.grid_charge_blocked`; sein Fehlen heißt „das Gerät hat nichts gesagt".
+Der Takt davor, der die Vorbedingungen liest und noch nicht übergibt, meldet
+dieselbe Antwort als `native_precondition.grid_charge_blocked`: an einer
+EEG-Anlage hält der Kern die Absicht damit bis zur Übergabe offen (bei `false`
+nimmt er sie für den Slot zurück); den Beleg im Eigenmodus ersetzt sie nie.
 
 **Was der Prüfstand noch beweisen muss:** die Latenz beider Übergänge (Kriterium 8),
 dass `1100` in beiden Zuständen wirklich unterscheidet (9) und der EEG-Beleg (10) –

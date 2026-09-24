@@ -71,18 +71,26 @@ func nativeDutyFor(p *plan.Plan, now time.Time) string {
 //
 // It demands the SAME freshness window the idle-slot authorization uses plus a
 // held readback - a native mode nobody can currently observe is not one.
+//
+// The grid-charge answer has two sources and the MODE picks one, never both:
+// a cycle that ran the native primitive counts only the answer read back in
+// the device's own mode; any other cycle may carry the executor's read from
+// BEFORE the hand-over (native_precondition). That second source is what lets
+// the intent stand on an EEG site until the device can be handed over at all -
+// guards/nativemode.go step 8 says what it may and may not open.
 func nativeEvidence(control *state.ControlInfo, now time.Time, window time.Duration) (proven bool, gridChargeBlocked *bool) {
 	if !idleReadbackHealthy(control, now, window) {
 		return false, nil
 	}
-	if control.Mode != batteryModeNative {
-		return false, nil
+	answer := control.NativePreconditionGridChargeBlocked
+	if control.Mode == batteryModeNative {
+		proven, answer = true, control.NativeGridChargeBlocked
 	}
-	if control.NativeGridChargeBlocked != nil {
-		v := *control.NativeGridChargeBlocked
+	if answer != nil {
+		v := *answer
 		gridChargeBlocked = &v
 	}
-	return true, gridChargeBlocked
+	return proven, gridChargeBlocked
 }
 
 // nativeDecide runs the supervision for this tick and returns the decision plus

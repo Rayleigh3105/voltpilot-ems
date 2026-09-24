@@ -507,6 +507,14 @@ type ControlInfo struct {
 	// primitive. TRI-STATE on purpose: nil = the device did not say, which on an
 	// EEG site counts as NOT proven - a compliance rule may not rest on silence.
 	NativeGridChargeBlocked *bool `json:"native_grid_charge_blocked,omitempty"`
+	// NativePreconditionGridChargeBlocked is the SAME question answered BEFORE the
+	// hand-over: the executor reads the device's own grid-charge register while
+	// a native intent stands and the device is not yet handed over (Deye:
+	// Program-1 charging 0x00AC, deyeNativePrecondition). Kept apart from the
+	// in-mode answer on purpose - it lets the intent stand on an EEG site, it
+	// never stands in for the proof a device in its own mode owes. TRI-STATE
+	// like its sibling.
+	NativePreconditionGridChargeBlocked *bool `json:"native_precondition_grid_charge_blocked,omitempty"`
 	// ControlPath names WHICH surface drove the write on a Deye: "remote" = the
 	// Tier-2 register block 1100-1121 (a true signed watt setpoint, armed behind the
 	// inverter's own watchdog, touching no installer setting), "tou" = the legacy

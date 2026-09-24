@@ -283,3 +283,65 @@ func TestNativePeakThreatReadsTheMeasuredImport(t *testing.T) {
 		t.Fatal("a meter running above the remaining budget IS a threat")
 	}
 }
+
+// EEG, the ORDER of the proof (K3): the proof is a READ the executor only makes
+// once our intent stands, so it cannot be owed before the intent exists. Before
+// the hand-over, silence keeps the intent pending; a "may charge from the grid"
+// takes back at once; once the device regulates itself, silence takes back too.
+func TestOnAnEegSiteTheProofIsOwedByTheHandOverNotByTheIntent(t *testing.T) {
+	eeg := func(proven bool, blocked *bool) NativeInput {
+		in := good()
+		in.SolarOnlyCharge = true
+		in.Proven = proven
+		in.GridChargeBlocked = blocked
+		return in
+	}
+	for _, c := range []struct {
+		name    string
+		proven  bool
+		blocked *bool
+		native  bool
+		reason  string
+	}{
+		{"not handed over, not answered yet", false, nil, true, NativePending},
+		{"not handed over, pre-read proves the ban", false, bptr(true), true, NativePending},
+		{"not handed over, pre-read says it MAY grid-charge", false, bptr(false), false, NativeGridChargeUnproven},
+		{"handed over, silent", true, nil, false, NativeGridChargeUnproven},
+		{"handed over, says it MAY grid-charge", true, bptr(false), false, NativeGridChargeUnproven},
+		{"handed over, proves the ban", true, bptr(true), true, NativeEngaged},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d := NewNativeMode(time.Minute).Decide(slotA, eeg(c.proven, c.blocked))
+			if d.Native != c.native || d.Reason != c.reason {
+				t.Fatalf("native=%v reason=%q, want native=%v reason=%q", d.Native, d.Reason, c.native, c.reason)
+			}
+		})
+	}
+
+	// A "may grid-charge" before the hand-over is a TAKE-BACK: latched for the
+	// slot, so a later proof cannot toggle the device's mode within it.
+	n := NewNativeMode(time.Minute)
+	n.Decide(slotA, eeg(false, bptr(false)))
+	if d := n.Decide(slotA.Add(10*time.Second), eeg(true, bptr(true))); d.Native || d.Reason != NativeGridChargeUnproven {
+		t.Fatalf("the take-back must hold for the slot: %+v", d)
+	}
+
+	// A device that never answers is withdrawn when the grace closes - and the
+	// reason names the EEG question, not a generic missing confirmation.
+	n = NewNativeMode(time.Minute)
+	if d := n.Decide(slotA, eeg(false, nil)); !d.Native {
+		t.Fatalf("setup: pending first, got %+v", d)
+	}
+	d := n.Decide(slotA.Add(time.Minute+time.Second), eeg(false, nil))
+	if d.Native || d.Reason != NativeGridChargeUnproven {
+		t.Fatalf("an unanswered EEG intent is withdrawn with its own reason: %+v", d)
+	}
+	// A merchant site without confirmation keeps the generic reason.
+	n = NewNativeMode(time.Minute)
+	in := good()
+	in.Proven = false
+	n.Decide(slotA, in)
+	if d := n.Decide(slotA.Add(time.Minute+time.Second), in); d.Reason != NativeUnproven {
+		t.Fatalf("a merchant site keeps nachweis_fehlt: %+v", d)
+	}
+}

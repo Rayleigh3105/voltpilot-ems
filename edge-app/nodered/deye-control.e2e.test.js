@@ -2586,6 +2586,11 @@ test('a covering slot goes native on the Deye pilot: ONE write (1100 <- 0), then
       { tou: 0x00ff, soc: 5, chg: 0 },
       'the executor read the inverter own Time-of-Use program');
     assert.strictEqual(store[REG_REMOTE.mode], 1, 'and nothing was handed over on that tick');
+    // The EEG question is answered from that same read, BEFORE any hand-over -
+    // and kept apart from the in-mode evidence, which a non-native cycle never has.
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(pending.out.payload.native_precondition || null)), { grid_charge_blocked: true },
+      'the pre-hand-over read states the device answer');
+    assert.strictEqual(pending.out.payload.native, undefined, 'no in-mode evidence before the hand-over');
 
     // 3. THE HAND-OVER. Exactly one register write: 1100 <- 0.
     const before = writes.length;
@@ -2603,6 +2608,8 @@ test('a covering slot goes native on the Deye pilot: ONE write (1100 <- 0), then
     // the device answered the EEG question from its own Program-1 charging enum.
     assert.strictEqual(nat.out.payload.mode, 'native', 'the readback is the evidence');
     assert.strictEqual(nat.out.payload.native.grid_charge_blocked, true);
+    assert.strictEqual(nat.out.payload.native_precondition, undefined,
+      'a native cycle carries ONLY the answer read in the device own mode');
     assert.ok(nat.out.payload.registers.every((r) => r.match), 'and it holds what it says');
     assert.ok(rig.planStatuses.some((t) => /Wechselrichter-Automatik \(umgeschaltet\)/.test(t || '')),
       'the node names the hand-over: ' + JSON.stringify(rig.planStatuses.slice(-2)));
@@ -2685,6 +2692,47 @@ test('an EEG plant is refused unless the inverter own program already blocks gri
     assert.ok(rig.warns.some((w) => /EEG-Anlage/.test(w)),
       'the compliance refusal names itself: ' + JSON.stringify(rig.warns));
     assert.strictEqual(store[REG_REMOTE.mode], 1, 'nothing was handed over');
+    // ... and the core hears WHY: the device said, before any hand-over, that it
+    // may charge from the grid - the core then takes the intent back for the slot.
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(t.out.payload.native_precondition || null)), { grid_charge_blocked: false });
+  } finally {
+    server.close();
+  }
+});
+
+test('an EEG plant whose own program blocks grid charging IS handed over: erst normal, dann nativ', async () => {
+  // K3 (concept §2.3): the core may only keep an EEG intent standing if it hears
+  // the device's grid-charge answer before the hand-over - this is that sequence
+  // as the executor really runs it, on an inverter whose Program 1 Charging is
+  // Disabled (the only configuration an EEG hand-over may happen on).
+  const { server, port, writes, store } = await startSolarmanServer(nativeStore());
+  try {
+    const rig = makeNativeRig(port);
+    const eeg = (mode) => nativeSetpoint(mode, { grid_charge_allowed: false });
+
+    const first = await rig.tick(eeg('setpoint'));
+    assert.strictEqual(first.out.payload.mode, 'normal');
+    assert.strictEqual(first.out.payload.native_precondition, undefined,
+      'nothing is read before a native intent stands');
+
+    // The intent's first tick: refused honestly (nothing read yet), follower
+    // carries it, the executor reads 0x00AC and states the answer.
+    const pending = await rig.tick(eeg('native'));
+    assert.notStrictEqual(pending.plan.mode, 'native');
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'no hand-over on the reading tick');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(pending.out.payload.native_precondition || null)), { grid_charge_blocked: true });
+
+    // The hand-over: the last gate (deyeNativePrecondition, EEG branch) passes on
+    // the value just read - one write, and the device repeats the proof in its
+    // own mode.
+    const before = writes.length;
+    const nat = await rig.tick(eeg('native'));
+    assert.strictEqual(nat.plan.mode, 'native');
+    assert.deepStrictEqual(writes.slice(before).map((w) => ({ reg: w.reg, value: w.value })),
+      [{ reg: REG_REMOTE.mode, value: 0 }]);
+    assert.strictEqual(nat.out.payload.mode, 'native');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(nat.out.payload.native || null)), { grid_charge_blocked: true });
+    assert.strictEqual(nat.out.payload.native_precondition, undefined);
   } finally {
     server.close();
   }

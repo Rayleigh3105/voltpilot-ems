@@ -48,6 +48,18 @@ Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
   Adapter, im Rücklesen als `native.grid_charge_blocked`); Schweigen zählt als
   NICHT belegt. Ein Tier ohne solches Register wird auf einer EEG-Anlage
   verweigert, statt zu hoffen.
+- **⚠ WANN der EEG-Beleg fällig ist (K3, 24.09.2026):** die ÜBERGABE schuldet
+  ihn, nicht die ABSICHT. Der Beleg ist eine Lesung, die der Executor erst macht,
+  wenn die Absicht steht; wer ihn schon vor der Absicht verlangte, nahm im ersten
+  Takt zurück (gerastet) — die Automatik war an jeder EEG-Anlage tot. Seitdem:
+  „darf aus dem Netz laden" (vor oder nach der Übergabe) → sofort zurück; im
+  Eigenmodus ohne eigenen Beleg → sofort zurück; noch nicht übergeben und noch
+  keine Antwort → die Absicht bleibt `nachweis_ausstehend` bis zur Frist (dann
+  `netzladen_am_geraet`). Die Sperre VOR der Übergabe hält Layer 1
+  (`deyeNativePrecondition`, `0x00AC == Disabled`); der Executor meldet dieselbe
+  Lesung als `native_precondition.grid_charge_blocked` — getrennt vom Beleg im
+  Eigenmodus, den sie nie ersetzt. Agent-Test:
+  `core/internal/agent/native_eeg_handover_test.go`.
 - **Der Adapter-Primitive ist der RELEASE-Plan seines Tiers PLUS ein
   Zustands-Rücklesen als Beleg — einmal schreiben, dann nur lesen**
   (`nodered/inverter-control-routing.js` `nativeSelfConsumption`; Sequenzen,
@@ -118,7 +130,10 @@ Wechselrichters. **Kein Vertragsfeld** — die Wolke sagt längst, OB Decken
   zurück (`nachweis_fehlt`). Nur ein belegter Takt liest zusätzlich den
   `gridChargeProof` und veröffentlicht ihn als `native.grid_charge_blocked`;
   sein FEHLEN heißt „das Gerät hat nichts gesagt" und zählt auf einer EEG-Anlage
-  als nicht belegt (dieselbe Dreiwertigkeit wie im generischen Executor).
+  als nicht belegt (dieselbe Dreiwertigkeit wie im generischen Executor). Ein
+  NICHT belegter Takt, der die Vorbedingungen gelesen hat, meldet die Antwort aus
+  `0x00AC` stattdessen als `native_precondition.grid_charge_blocked` (Plan-Knoten
+  reicht dafür `nativeGridChargeProof` neben `nativePreconditions` mit).
 - **Ein stehender Grund wird EINMAL gesagt, nicht alle 10 s.** Der Plan-Knoten
   merkt sich den letzten Verweigerungs-Grund und schreibt nur bei einer
   ÄNDERUNG eine Zeile — ein Wechselrichter mit abgeschaltetem Zeitfenster-Programm

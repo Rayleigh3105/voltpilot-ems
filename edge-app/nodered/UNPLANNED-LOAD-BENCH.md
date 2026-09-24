@@ -47,7 +47,7 @@ Alle Zeilen außer dem benannten Deye-Piloten sind Prüfvorlagen, keine Hardware
 
 ## Deye-Pilot: Voraussetzungen und Beobachtung
 
-Vor der Übergabe müssen `0x0092` (ToU aktiv), `0x00A6` (Ziel-SoC höchstens effektive Reserveuntergrenze) und bei Netzladesperre `0x00AC` (Disabled) gelesen sein. Unbekannt verweigert den Übergang. Der erste Takt kann deshalb noch nachführen; erst nach gelesener Konfiguration ist die Übergabe möglich.
+Vor der Übergabe müssen `0x0092` (ToU aktiv), `0x00A6` (Ziel-SoC höchstens effektive Reserveuntergrenze) und bei Netzladesperre `0x00AC` (Disabled) gelesen sein. Unbekannt verweigert den Übergang. Der erste Takt kann deshalb noch nachführen; erst nach gelesener Konfiguration ist die Übergabe möglich. An einer EEG-Anlage trägt der Readback dieses Lese-Takts `native_precondition.grid_charge_blocked` (aus `0x00AC`); `true` hält die Absicht bis zur Übergabe offen, `false` nimmt sie für den Slot zurück (`netzladen_am_geraet`).
 
 Nach **einem** `1100 ← 0` folgen nur Lesungen. `mode: native` wird erst bei `1100 == 0` bestätigt; fehlender Netzladebeleg gilt nicht als Freigabe. Die Rücknahme verwendet ausschließlich den regulären Remote-Schreibplan, keine zweite Befehlsfolge.
 

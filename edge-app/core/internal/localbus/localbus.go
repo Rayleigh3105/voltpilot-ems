@@ -40,9 +40,11 @@
 //	                setpoint is still published, as the display/take-back
 //	                REFERENCE. Layer 1 answers on edge/control/readback with
 //	                mode:"native" (plus native.grid_charge_blocked where the
-//	                family has such a register); an intent that is never
-//	                confirmed is WITHDRAWN by the core after a bounded grace -
-//	                see internal/guards/nativemode.go.
+//	                family has such a register); a cycle that read the
+//	                pre-hand-over preconditions but is not native carries the
+//	                same answer as native_precondition.grid_charge_blocked.
+//	                An intent that is never confirmed is WITHDRAWN by the core
+//	                after a bounded grace - see internal/guards/nativemode.go.
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
 //	edge/control/readback  Layer 1 -> core   NOT retained. Per-register

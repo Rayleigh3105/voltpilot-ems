@@ -996,8 +996,10 @@ function nativeSelectionKey(selection, built) {
  * assumption ("lieber verweigern als blind umschalten"). Every reason is German
  * and names what the operator has to look at.
  *
- *   cfg: { tou_enable, program_target_soc, program_charge_enable } - raw register
- *        values, as read from the device
+ *   cfg: { tou_enable, program_target_soc, grid_charge_enable } - raw register
+ *        values, as read from the device, keyed by the ROLE of each read spec
+ *        in `preconditions` (that is how the executor caches them - the
+ *        shipped inline copy reads exactly these keys)
  *   floorPct: the platform's effective reserve floor (null = unknown)
  *   solarOnly: the site's EEG posture
  *
@@ -1040,7 +1042,7 @@ function deyeNativePrecondition(cfg, { floorPct, solarOnly } = {}) {
       + 'die Deckung zu früh beenden';
   }
   if (solarOnly === true) {
-    const charge = reg(cfg.program_charge_enable);
+    const charge = reg(cfg.grid_charge_enable);
     if (!Number.isFinite(charge) || charge !== DEYE_PROG_CHARGE.DISABLED) {
       return 'EEG-Anlage: das Zeitfenster-Programm des Wechselrichters erlaubt das Laden aus dem Netz '
         + '- es wird nicht umgeschaltet';

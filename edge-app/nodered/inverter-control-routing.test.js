@@ -2254,7 +2254,7 @@ const PILOT_SEL = {
 // The device's own Time-of-Use configuration, read via the adapter's
 // `preconditions` before the hand-over: armed, target SoC at/below the reserve
 // floor, grid charging disabled.
-const PILOT_OWN_CFG = { tou_enable: 0x00ff, program_target_soc: 15, program_charge_enable: 0 };
+const PILOT_OWN_CFG = { tou_enable: 0x00ff, program_target_soc: 15, grid_charge_enable: 0 };
 const pilotOpts = (over = {}) => ({
   controlEnabled: true, deviceCertified: true, deye: OWNER_CAP,
   effectiveFloorSocPct: 20, deyeOwnConfig: PILOT_OWN_CFG, ...over,
@@ -2375,7 +2375,7 @@ test('Pilot-Freigabe: die eigene Konfiguration des Geraets kann sie zur Laufzeit
   // On an EEG site the device's own charging enum must already say "not from
   // grid" BEFORE we let go - the after-proof (gridChargeProof) is not enough.
   const eeg = C.nativeSelfConsumption(PILOT_SEL, pilotOpts({
-    solarOnlyCharge: true, deyeOwnConfig: { ...PILOT_OWN_CFG, program_charge_enable: 1 },
+    solarOnlyCharge: true, deyeOwnConfig: { ...PILOT_OWN_CFG, grid_charge_enable: 1 },
   }));
   assert.deepStrictEqual(eeg.writes, []);
   assert.match(eeg.reason, /EEG/);
@@ -2406,7 +2406,7 @@ test('Pilot-Freigabe: Not-Aus und fehlende Geraete-Freigabe halten unveraendert'
 });
 
 test('deyeNativePrecondition ist rein und urteilt nur ueber Belegtes', () => {
-  const ok = { tou_enable: 0x00ff, program_target_soc: 10, program_charge_enable: 0 };
+  const ok = { tou_enable: 0x00ff, program_target_soc: 10, grid_charge_enable: 0 };
   assert.strictEqual(C.deyeNativePrecondition(ok, { floorPct: 20 }), null);
   // A target EQUAL to the floor is fine - the device stops exactly where we would.
   assert.strictEqual(C.deyeNativePrecondition({ ...ok, program_target_soc: 20 }, { floorPct: 20 }), null);
@@ -2418,7 +2418,7 @@ test('deyeNativePrecondition ist rein und urteilt nur ueber Belegtes', () => {
   // Without the EEG posture the charging enum is not judged (it is an economic
   // matter there, not a compliance one - and the plan already priced the slot).
   assert.strictEqual(
-    C.deyeNativePrecondition({ ...ok, program_charge_enable: 1 }, { floorPct: 20 }), null);
+    C.deyeNativePrecondition({ ...ok, grid_charge_enable: 1 }, { floorPct: 20 }), null);
 
   // ⚠ An ABSENT register must not read as a real 0 (Number(null) === 0). Both
   // outcomes refuse, but only one of them tells the operator the truth.
@@ -2432,7 +2432,7 @@ test('deyeNativePrecondition ist rein und urteilt nur ueber Belegtes', () => {
   assert.ok(C.deyeNativePrecondition(ok, { floorPct: 0 }).includes('0 %'));
   // On an EEG site an absent charging enum is refused, never read as Disabled.
   assert.match(
-    C.deyeNativePrecondition({ ...ok, program_charge_enable: null }, { floorPct: 20, solarOnly: true }),
+    C.deyeNativePrecondition({ ...ok, grid_charge_enable: null }, { floorPct: 20, solarOnly: true }),
     /EEG/);
 });
 
