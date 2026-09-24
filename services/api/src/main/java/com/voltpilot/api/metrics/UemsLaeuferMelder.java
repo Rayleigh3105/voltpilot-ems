@@ -109,6 +109,12 @@ public class UemsLaeuferMelder {
     public static final String BESTAND_RECHTE = "bestand_rechte";
     /** {@code TagesmengeNachtragLaeufer} — Start-Läufer des Nachtrags der Tagesmenge (vor AP-08 IP-5 endgültig). */
     public static final String BESTAND_TAGESMENGE = "bestand_tagesmenge";
+    /**
+     * {@code VerbesserungNaht} (AP-18 IP-15) — KEIN Läufer und darum nicht im {@link #KATALOG}: die Naht läuft im Takt der
+     * Endgültigkeit und in der Kaskade. Sie zählt nur ihre Fehler — der Kennzahl-Lauf übergeht eine Kennzahl, deren
+     * Transaktion an der Naht scheitert, und meldet das sonst nur im Log.
+     */
+    public static final String VERBESSERUNG_NAHT = "verbesserung_naht";
 
     /**
      * Ein Läufer des Katalogs.
@@ -170,6 +176,9 @@ public class UemsLaeuferMelder {
             new Eintrag(BESTAND_TAGESMENGE, "TagesmengeNachtragLaeufer",
                     List.of("voltpilot.uems.tagesmenge-nachtrag.enabled"), "Start"));
 
+    /** Nähte in den Takten bestehender Läufer: kein Alter, kein Zustand — nur der Fehlerzähler. */
+    public static final List<String> NAEHTE = List.of(VERBESSERUNG_NAHT);
+
     /** Die vier Start-Läufer der Schicht „Übernahme“ — sie allein zählen je Ergebnis. */
     public static final List<String> BESTANDS_LAEUFER =
             List.of(BESTAND_STANDORT, BESTAND_FUNKTION, BESTAND_RECHTE, BESTAND_TAGESMENGE);
@@ -191,6 +200,11 @@ public class UemsLaeuferMelder {
             // Von Anfang an registriert und auf 0: eine Regel `increase(...) > 0` braucht die Reihe,
             // bevor der erste Fehler auftritt - sonst faende sie nach einem Neustart nichts vor.
             fehler.put(e.label(), Counter.builder(FEHLER).tag("laeufer", e.label())
+                    .description("Gescheiterte Laeufe seit dem Start dieses Prozesses")
+                    .register(registry));
+        }
+        for (String naht : NAEHTE) {
+            fehler.put(naht, Counter.builder(FEHLER).tag("laeufer", naht)
                     .description("Gescheiterte Laeufe seit dem Start dieses Prozesses")
                     .register(registry));
         }

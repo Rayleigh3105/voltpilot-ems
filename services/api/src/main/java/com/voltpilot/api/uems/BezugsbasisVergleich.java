@@ -121,6 +121,50 @@ public class BezugsbasisVergleich {
         return lesen(id, k, basisText, von, bis);
     }
 
+    /**
+     * Ein Monat für die Auffälligkeits-Naht (AP-18 IP-15, A1): die Vergleichszeile des Lesers gegen die Fassung am letzten
+     * Tag des Monats (P4), die zitierte Bezugsbasis und die Nummer dieser Fassung ({@code null}, wenn keine gilt).
+     */
+    public record NahtMonat(UUID basis, String basisKennzeichen, Integer fassung, BezugsbasisVergleichDto.Monat zeile) {}
+
+    /**
+     * AP-18 IP-15 (A1): derselbe Vergleich EINES Monats wie {@link #vergleich} — ohne Sichtprüfung (kein Aufrufer, die
+     * Naht läuft im Takt bzw. in der Kaskade) und gelesen über {@code transaktion}: die Transaktion, die den endgültigen
+     * Wert eben schrieb (Verwaltungsrolle, jede Abfrage nennt die Kennzahl, die Bezugsbasis oder die Bezugsgröße). Die
+     * Bezugsbasis ist die des Lesers ohne {@code basis}: die laufende, sonst die zuletzt beendete; {@code null} ohne
+     * Bezugsbasis oder ohne freigegebene Fassung. Gerechnet wird hier nichts — {@link BezugsbasisRegeln#vergleich}.
+     */
+    NahtMonat fuerNaht(JdbcTemplate transaktion, KennzahlService.BasisKennzahl k, String einheit, YearMonth m) {
+        KennzahlRepository gespeichert = new KennzahlRepository(transaktion);
+        return new BezugsbasisVergleich(kennzahlen, werte, gespeichert, new BezugsgroesseRepository(transaktion),
+                leser.mit(gespeichert, new WertVersionenLeser(transaktion)), transaktion, json).nahtMonat(k, einheit, m);
+    }
+
+    private NahtMonat nahtMonat(KennzahlService.BasisKennzahl k, String einheit, YearMonth m) {
+        UUID id = k.zeile().id();
+        Basis basis = basis(id, null);
+        if (basis == null) {
+            return null;
+        }
+        Einheiten einheiten = einheiten(k, einheit);
+        List<FassungZeile> fassungen = fassungen(basis, einheiten);
+        if (fassungen.isEmpty()) {
+            return null;
+        }
+        Map<UUID, Map<String, Gelesen>> variablen = new HashMap<>();
+        for (FassungZeile f : fassungen) {
+            for (VariableZeile v : f.variablen()) {
+                variablen.computeIfAbsent(v.bezugsgroesse(), b -> lies(b, m, m));
+            }
+        }
+        Map<String, KennzahlDto.Wert> jeMonat = KennzahlWerteService.monate(jdbc, id, k.zone(),
+                m.minusMonths(1).atDay(1), m.atEndOfMonth());
+        LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
+        ZielMonat z = monat(m, heute, jeMonat, einheiten, basis, fassungen, variablen, k.jetzt());
+        FassungZeile f = fassungAm(fassungen, m.atEndOfMonth());
+        return new NahtMonat(basis.id(), basis.kennzeichen(), f == null ? null : f.fassung(), z.zeile());
+    }
+
     private ZielVergleich lesen(UUID id, KennzahlService.BasisKennzahl k, String basisText, YearMonth von,
             YearMonth bis) {
         LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());

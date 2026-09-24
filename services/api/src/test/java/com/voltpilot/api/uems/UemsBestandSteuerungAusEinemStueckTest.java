@@ -360,7 +360,8 @@ class UemsBestandSteuerungAusEinemStueckTest {
             if (!label.startsWith("bestand_")) assertThat((Optional<?>) ReflectionTestUtils.invokeMethod(reporter,
                     "letzterLauf", label)).as("%s: Takt lief wirklich, kein ausgeschalteter Fruehruecksprung", label).isPresent();
         }
-        assertThat(meters.find("voltpilot_uems_laeufer_fehler").counters()).hasSize(20);
+        // 20 Läufer + die Auffälligkeits-Naht (AP-18 IP-15, `verbesserung_naht`): kein Läufer, nur ihr Fehlerzähler.
+        assertThat(meters.find("voltpilot_uems_laeufer_fehler").counters()).hasSize(21);
         meters.find("voltpilot_uems_laeufer_fehler").counters().forEach(c ->
                 assertThat(c.count()).as("Läufer darf seinen Fehler nicht nur loggen: %s", c.getId()).isZero());
         assertPublishersSilent("alle 20 Läufer");

@@ -442,6 +442,14 @@ voltpilot:
     # Routen und Portal haben keinen Schalter. Vorgabe AN.
     bezugsbasis:
       enabled: ${VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED:true}
+    # UEMS AP-18 IP-15: nur die Auffälligkeits-Naht (VerbesserungNaht) - im
+    # Endgültigkeits-Takt in der Transaktion des endgültigen Monatswerts und in der
+    # Korrekturkaskade nach kennzahl_neu_gebildet; bei `schlechter` ein Vermerk in
+    # auffaelligkeit. Aus: die Naht schweigt, nichts wird nachgeholt; die
+    # Kennzahl-Werte werden trotzdem gebildet. Routen und Portal haben keinen
+    # Schalter. Vorgabe AN.
+    verbesserung:
+      enabled: ${VOLTPILOT_UEMS_VERBESSERUNG_ENABLED:true}
     berichte:
       build: ${VOLTPILOT_BUILD:}
       # UEMS AP-12 IP-8: die Kaskaden-Naht der Berichte (BerichtKaskade). Eine

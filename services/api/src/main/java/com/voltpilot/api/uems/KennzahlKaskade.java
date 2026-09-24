@@ -58,6 +58,12 @@ public class KennzahlKaskade implements KennzahlenNaht {
      */
     private BezugsbasisAnstoss bezugsbasis;
 
+    /**
+     * AP-18 IP-15 (A1): die Auffälligkeits-Naht — ebenso nachgereicht; ohne sie (Minimal-Kontexte) vermerkt die Kaskade
+     * nichts.
+     */
+    private VerbesserungNaht verbesserung;
+
     public KennzahlKaskade(KennzahlLauf lauf) {
         this.lauf = lauf;
     }
@@ -65,6 +71,11 @@ public class KennzahlKaskade implements KennzahlenNaht {
     @Autowired(required = false)
     void bezugsbasis(BezugsbasisAnstoss bezugsbasis) {
         this.bezugsbasis = bezugsbasis;
+    }
+
+    @Autowired(required = false)
+    void verbesserung(VerbesserungNaht verbesserung) {
+        this.verbesserung = verbesserung;
     }
 
     @Override
@@ -82,6 +93,9 @@ public class KennzahlKaskade implements KennzahlenNaht {
         KennzahlNeuGebildet.melden(con, betroffen.tenant(), ausloeser(betroffen), n.neu(), betroffen.jetzt());
         if (bezugsbasis != null) {
             bezugsbasis.nachKorrektur(con, betroffen, n.neu());
+        }
+        if (verbesserung != null) {
+            verbesserung.vermerken(con, betroffen.tenant(), n.endgueltig(), betroffen.jetzt());
         }
         if (n.geschrieben() > 0 || !n.abgelehnt().isEmpty()) {
             log.info("UEMS Kennzahl-Kaskade {} (Fassung {}): {} Kennzahlen, {} Werte geschrieben, davon {} neue Versionen, "

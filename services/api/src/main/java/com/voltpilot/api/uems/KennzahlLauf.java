@@ -98,14 +98,20 @@ public class KennzahlLauf {
     private static final KennzahlRegeln.Anlass EINGANG = new KennzahlRegeln.Anlass("eingang", null);
     /** Der Anlass einer rückwirkend geänderten Berechnung (IP-9) — {@code kennzahl_wert.anlass_art} {@code definition}. */
     private static final String DEFINITION = "definition";
+    /** Die Periode, an der die Auffälligkeits-Naht vermerkt (AP-18 IP-15). */
+    private static final String MONAT = "monat";
 
     private static final Pattern AB = Pattern.compile("^ab (\\d{2}\\.\\d{2}\\.\\d{4})$");
     private static final DateTimeFormatter TAG_TEXT = DateTimeFormatter.ofPattern("dd.MM.uuuu");
 
     public record Abgelehnt(String kennzahl, String grund, List<String> kette) {}
 
+    /**
+     * Was ein Regellauf tat; {@code endgueltig} sind die Monatswerte, die er endgültig schrieb (AP-18 IP-15) — in deren
+     * Transaktion hat die {@link VerbesserungNaht} schon vermerkt.
+     */
     public record Lauf(int kennzahlen, int geschrieben, int unveraendert, int endgueltigUnberuehrt,
-            List<Abgelehnt> abgelehnt) {}
+            List<Abgelehnt> abgelehnt, List<Neu> endgueltig) {}
 
     /** Ein Eingang der Herkunft, wie er in {@code kennzahl_wert_eingang} steht. */
     record HerkunftEingang(int position, String rolle, String art, String objekt, UUID messstelleId,
@@ -125,9 +131,12 @@ public class KennzahlLauf {
     public record Neu(UUID kennzahl, String kennzeichen, String periodeArt, LocalDate von, LocalDate bis, ZoneId zone,
             int version) {}
 
-    /** Was eine Neubildung der Kaskade tat (IP-8). */
+    /**
+     * Was eine Neubildung der Kaskade tat (IP-8); {@code endgueltig} sind die Monatswerte, die sie endgültig schrieb — als
+     * Version n + 1 oder erstmals (AP-18 IP-15, für die {@link VerbesserungNaht}).
+     */
     public record Neubildung(int kennzahlen, int geschrieben, int unveraendert, List<Neu> neu,
-            List<Abgelehnt> abgelehnt) {}
+            List<Abgelehnt> abgelehnt, List<Neu> endgueltig) {}
 
     /**
      * Wovon eine Neubildung der Kaskade ausgeht: die Messstellen (Reihen-Pfad, IP-8), die Bezugsgrößen (Nenner-Auslöser,
@@ -162,6 +171,17 @@ public class KennzahlLauf {
     private final ObjectMapper json;
     private final boolean enabled;
 
+    /**
+     * AP-18 IP-15 (A1): die Auffälligkeits-Naht im Regellauf — nachgereicht statt in den Konstruktor gelegt, damit kein
+     * bestehender Aufbau sich ändert; ohne sie (Minimal-Kontexte) vermerkt der Lauf nichts.
+     */
+    private VerbesserungNaht verbesserung;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void verbesserung(VerbesserungNaht verbesserung) {
+        this.verbesserung = verbesserung;
+    }
+
     public KennzahlLauf(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, KennzahlService kennzahlen,
             KennzahlRepository repo, KennzahlEingangLeser leser, ObjectMapper json,
             @Value("${voltpilot.uems.kennzahlen.enabled:true}") boolean enabled) {
@@ -176,7 +196,7 @@ public class KennzahlLauf {
     /** Ein ganzer Lauf über alle Kundenbereiche mit Kennzahlen. Wirft nie für einen einzelnen. */
     public Lauf lauf(Instant jetzt) {
         if (!enabled) {
-            return new Lauf(0, 0, 0, 0, List.of());
+            return new Lauf(0, 0, 0, 0, List.of(), List.of());
         }
         Zaehler z = new Zaehler();
         for (UUID tenant : adminJdbc.queryForList(
@@ -199,7 +219,8 @@ public class KennzahlLauf {
             log.info("UEMS Kennzahlen: {} Kennzahlen, {} Werte geschrieben, {} unverändert, {} endgültig unberührt, "
                     + "{} abgelehnt", z.kennzahlen, z.geschrieben, z.unveraendert, z.endgueltig, z.abgelehnt.size());
         }
-        return new Lauf(z.kennzahlen, z.geschrieben, z.unveraendert, z.endgueltig, List.copyOf(z.abgelehnt));
+        return new Lauf(z.kennzahlen, z.geschrieben, z.unveraendert, z.endgueltig, List.copyOf(z.abgelehnt),
+                List.copyOf(z.endgueltigeMonate));
     }
 
     private static final class Zaehler {
@@ -208,6 +229,8 @@ public class KennzahlLauf {
         int unveraendert;
         int endgueltig;
         final List<Abgelehnt> abgelehnt = new ArrayList<>();
+        /** Die Monatswerte, die endgültig geschrieben wurden (AP-18 IP-15). */
+        final List<Neu> endgueltigeMonate = new ArrayList<>();
     }
 
     // ------------------------------------------------------------------------------ ein Kundenbereich
@@ -289,7 +312,7 @@ public class KennzahlLauf {
             Map<String, List<String>> kanten = kanten(kat);
             Set<String> betroffene = betroffene(kat, kanten, ausloeser);
             if (betroffene.isEmpty()) {
-                return new Neubildung(0, 0, 0, List.of(), List.of());
+                return new Neubildung(0, 0, 0, List.of(), List.of(), List.of());
             }
             JdbcTemplate transaktion = new JdbcTemplate(new SingleConnectionDataSource(con, true));
             KennzahlRepository gespeichert = new KennzahlRepository(transaktion);
@@ -320,7 +343,7 @@ public class KennzahlLauf {
                 kennzahl(kx, k);
             }
             return new Neubildung(z.kennzahlen, z.geschrieben, z.unveraendert, List.copyOf(neu),
-                    List.copyOf(z.abgelehnt));
+                    List.copyOf(z.abgelehnt), List.copyOf(z.endgueltigeMonate));
         } finally {
             if (vorher == null) {
                 TenantContext.clear();
@@ -724,9 +747,18 @@ public class KennzahlLauf {
         }
         Instant endgueltigAb = ViertelstundeRegeln.ENDGUELTIG.equals(zustand)
                 ? Objects.requireNonNullElse(b.endgueltigAb(), am) : null;
+        // AP-18 IP-15 (A1): ein endgültiger Monatswert — im Regellauf vermerkt die Naht in DERSELBEN Transaktion.
+        Neu endgueltigerMonat = MONAT.equals(art) && ViertelstundeRegeln.ENDGUELTIG.equals(zustand)
+                ? new Neu(r.k().id(), r.k().kennzeichen(), art, p[0], p[1], r.zone(), e.version()) : null;
         String ausgang;
         if (kaskade == null) {
-            ausgang = inTransaktion(con -> zeile(con, r, f, art, p, bisher, b, zustand, am, endgueltigAb, false));
+            ausgang = inTransaktion(con -> {
+                String a = zeile(con, r, f, art, p, bisher, b, zustand, am, endgueltigAb, false);
+                if (endgueltigerMonat != null && verbesserung != null && "geschrieben".equals(a)) {
+                    verbesserung.vermerken(con, r.kx().tenant(), List.of(endgueltigerMonat), r.kx().jetzt());
+                }
+                return a;
+            });
         } else {
             try {
                 ausgang = zeile(kaskade.con(), r, f, art, p, bisher, b, zustand, am, endgueltigAb, neueVersion);
@@ -742,6 +774,9 @@ public class KennzahlLauf {
             if (neueVersion) {
                 kaskade.neu().add(new Neu(r.k().id(), r.k().kennzeichen(), art, p[0], p[1], r.zone(), e.version()));
             }
+        }
+        if (endgueltigerMonat != null && "geschrieben".equals(ausgang)) {
+            z.endgueltigeMonate.add(endgueltigerMonat);
         }
         switch (ausgang) {
             case "geschrieben" -> z.geschrieben++;

@@ -17,7 +17,7 @@ Takt `…interval-ms` (Vorgabe 60 s).
 | `voltpilot_uems_arbeitsliste_offen` | `liste` | Offene Einträge; `liste` = `viertelstunde` \| `tag` \| `periode` |
 | `voltpilot_uems_laeufer_letzter_lauf_age_seconds` | `laeufer` | Alter des letzten beendeten Laufs. **Fehlt, wenn der Läufer aus ist oder seit dem Prozess-Start nie lief** |
 | `voltpilot_uems_laeufer_zustand` | `laeufer`, `zustand` | 1 für den aktiven Zustand: `gelaufen` \| `nie` \| `aus` |
-| `voltpilot_uems_laeufer_fehler_total` | `laeufer` | Gescheiterte Läufe seit dem Prozess-Start; ab Start als `0` vorhanden |
+| `voltpilot_uems_laeufer_fehler_total` | `laeufer` | Gescheiterte Läufe seit dem Prozess-Start; ab Start als `0` vorhanden — dazu `laeufer="verbesserung_naht"` (AP-18 IP-15): KEIN Läufer, die Auffälligkeits-Naht im Endgültigkeits-Takt und in der Kaskade zählt ihre Fehler (der Kennzahl-Lauf übergeht die Kennzahl sonst nur im Log) |
 | `voltpilot_uems_kundenbereich_letzter_messwert_age_seconds` | `tenant` | Alter des jüngsten Mess-EINGANGS. **Fehlt, wenn nie** |
 | `voltpilot_uems_kundenbereich_messwert_zustand` | `tenant`, `zustand` | 1 für den aktiven Zustand: `bekannt` \| `nie` |
 | `voltpilot_uems_bestandslaeufer_total` | `laeufer`, `ergebnis` | Kundenbereiche je Ergebnis des Start-Laufs; `ergebnis` = `erledigt` \| `fehler` |

@@ -73,3 +73,21 @@ und (neu) `UemsMassnahmeMigrationTest`. Offboarding: Vermerk, Protokoll, Abweich
 ⚠ **Kein Zeitbezug in der Datenbank:** weder „Monat vor dem Vermerk“ noch „Frist nach dem Eröffnen“ prüft ein CHECK
 (`now()` im Test läge vor den Ahrenberg-Daten) — das prüfen Naht und Routen mit ihrer `Clock`.
 Nachweis: `UemsAbweichungMigrationTest`.
+
+## Auffälligkeits-Naht (AP-18 IP-15, A1, E4 = A)
+
+`VerbesserungNaht#vermerken(con, tenant, werte, jetzt)` — je endgültigem Monatswert einer Kennzahl mit freigegebener
+Fassung `BezugsbasisVergleich#fuerNaht` (dieselbe Zeile wie der Leser, gegen die Fassung am letzten Tag), bei
+`schlechter` ein Vermerk (`ON CONFLICT … DO NOTHING`); Anlass = kanonische Kopie (`BezugsbasisGrundlage.kanonisch`) von
+Kennzahl, Bezugsbasis, Fassung, Monat, Beschriftung, `bereinigt` und Satz — ohne `roh` (VG3); `vermerkt_am` = Uhr des
+Laufs; Standort = Geltung der Kennzahl (`KennzahlService#fuerNaht`, wie das Energieziel). Schalter
+`voltpilot.uems.verbesserung.enabled` nur hier (`UemsVerbesserungFlagArchitekturTest`), Fehler zählen unter
+`laeufer="verbesserung_naht"`.
+⚠ **Takt = je Wert eine Transaktion:** `KennzahlLauf#lauf` schreibt jede Periode in eigener Transaktion — die Naht hängt
+darum IN `inTransaktion` des Regellaufs (nach `zeile`), nicht hinter `lauf`; `Lauf.endgueltig` nennt die Monatswerte nur
+noch. Die Kaskade ruft sie nach `KennzahlNeuGebildet.melden` mit `Neubildung.endgueltig` (Version n + 1 UND erstmals
+endgültig). Ein Fehler der Naht rollt den Wert mit zurück; der Regellauf übergeht dann die Kennzahl (`nicht_gerechnet`).
+⚠ **Lesen in der Transaktion:** der Vergleich liest über `SingleConnectionDataSource(con)` (Verwaltungsrolle, ohne
+Sichtprüfung) — sonst sähe die Kaskade Version n statt n + 1. Beide Wege schreiben als `voltpilot_admin`:
+`V20260925002000` gibt ihr `INSERT` auf `auffaelligkeit`. Nachweis: `VerbesserungNahtTest` (Takt R1, Schalter, R11,
+`besser`/`im_rahmen`/`nicht_anwendbar`, R13, Kaskade mit Rücklauf, Rechte).

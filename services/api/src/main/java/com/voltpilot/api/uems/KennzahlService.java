@@ -248,6 +248,25 @@ public class KennzahlService {
     /** Was eine Bezugsbasis von ihrer Kennzahl liest; {@code fassung} ist {@code null}, wenn am Tag keine galt. */
     record BasisKennzahl(Zeile zeile, ZoneId zone, Instant jetzt, FassungZeile fassung, List<EingangZeile> eingaenge) {}
 
+    /** Die Kennzahl für die Naht (AP-18 IP-15): wie {@link BasisKennzahl}, dazu der Standort ihrer Geltung und die Einheit. */
+    record NahtKennzahl(BasisKennzahl basis, UUID standort, String einheit) {}
+
+    /**
+     * AP-18 IP-15 (A1): die Kennzahl einer Bezugsbasis für die Auffälligkeits-Naht — ohne Sichtprüfung (die Naht läuft im
+     * Endgültigkeits-Takt bzw. in der Kaskade, es gibt keinen Aufrufer) und mit der Uhr des Laufs; der Standort ist der
+     * ihrer Geltung wie beim Energieziel ({@link #geltungFuerBericht}). Leer, wenn der Kundenbereich sie nicht kennt.
+     */
+    Optional<NahtKennzahl> fuerNaht(UUID id, Instant jetzt) {
+        Katalog kat = katalog();
+        return kat.zeile(id).map(k -> {
+            Geltung g = geltungVon(k, jetzt);
+            Optional<FassungZeile> f = kat.fassungAm(id, LocalDate.ofInstant(jetzt, g.zone()));
+            return new NahtKennzahl(new BasisKennzahl(k, g.zone(), jetzt, f.orElse(null),
+                    f.map(x -> kat.eingaenge(x.id())).orElse(List.of())), g.standort(),
+                    f.map(FassungZeile::einheit).orElse(null));
+        });
+    }
+
     // ================================================================================ schreiben
 
     /** Legt die Kennzahl mit Fassung 1 „gilt seit Beginn“ an (V1, K1). */

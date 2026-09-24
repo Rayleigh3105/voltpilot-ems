@@ -88,20 +88,44 @@ public class KennzahlWerteService {
             String version) {
         Anfrage a = anfrage(parameter, periode, von, bis, version);
         Lesung l = lesung(id);
+        List<KennzahlDto.Wert> werte = schrittWerte(leser, l, id, a.periode(), a.von(), a.bis(), a.version());
+        return new KennzahlDto.Werte(l.kopf(), a.periode(), a.von(), a.bis(), l.zone().getId(), a.version(),
+                List.copyOf(werte), geteilteRegister(id, a.von(), a.bis(), l.zone()));
+    }
+
+    /**
+     * AP-18 IP-15 (A1): die Monatswerte {@code von}–{@code bis} wie {@link #werte} ohne Version (je Monat die neueste
+     * Zeile), aber ohne Sichtprüfung und über {@code jdbc} — die Auffälligkeits-Naht liest in der Transaktion, die den
+     * endgültigen Wert eben schrieb. Schlüssel ist der Monat ({@code 2027-12}).
+     */
+    static Map<String, KennzahlDto.Wert> monate(JdbcTemplate jdbc, UUID id, ZoneId zone, LocalDate von, LocalDate bis) {
+        KennzahlRepository repo = new KennzahlRepository(jdbc);
+        KennzahlRepository.Zeile k = repo.finde(id).orElseThrow(() -> KennzahlAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        Map<Integer, String> einheiten = new HashMap<>();
+        repo.fassungen(id).forEach(f -> einheiten.put(f.nummer(), f.einheit()));
+        Map<String, KennzahlDto.Wert> aus = new HashMap<>();
+        schrittWerte(new KennzahlWerteLeser(jdbc), new Lesung(k, null, zone, einheiten), id, "monat", von, bis, null)
+                .forEach(w -> aus.put(w.schluessel(), w));
+        return aus;
+    }
+
+    /** Je Schritt die gewählte Zeile ({@link #waehle}) mit Herkunft — oder der Grund, warum keine da ist. */
+    private static List<KennzahlDto.Wert> schrittWerte(KennzahlWerteLeser leser, Lesung l, UUID id, String periode,
+            LocalDate von, LocalDate bis, Integer version) {
         Map<LocalDate, List<KennzahlWerteLeser.Zeile>> jePeriode = new HashMap<>();
-        leser.zeilen(id, a.periode(), a.von(), a.bis())
+        leser.zeilen(id, periode, von, bis)
                 .forEach(z -> jePeriode.computeIfAbsent(z.periodeVon(), k -> new ArrayList<>()).add(z));
         int hoechste = 0;
         for (List<KennzahlWerteLeser.Zeile> zeilen : jePeriode.values()) {
             Integer n = versionen(zeilen);
             hoechste = n == null ? hoechste : Math.max(hoechste, n);
         }
-        WertVersionenRegeln.pruefeVorhanden(a.version(), hoechste);
+        WertVersionenRegeln.pruefeVorhanden(version, hoechste);
 
-        List<LocalDate[]> schritte = schritte(a.periode(), a.von(), a.bis());
+        List<LocalDate[]> schritte = schritte(periode, von, bis);
         Map<LocalDate, KennzahlWerteLeser.Zeile> gewaehlt = new LinkedHashMap<>();
         for (LocalDate[] s : schritte) {
-            KennzahlWerteLeser.Zeile z = waehle(jePeriode.getOrDefault(s[0], List.of()), a.version());
+            KennzahlWerteLeser.Zeile z = waehle(jePeriode.getOrDefault(s[0], List.of()), version);
             if (z != null) {
                 gewaehlt.put(s[0], z);
             }
@@ -113,11 +137,10 @@ public class KennzahlWerteService {
             List<KennzahlWerteLeser.Zeile> zeilen = jePeriode.getOrDefault(s[0], List.of());
             KennzahlWerteLeser.Zeile z = gewaehlt.get(s[0]);
             String grund = zeilen.isEmpty() ? NOCH_NICHT_GEBILDET : z == null ? VERSION_NICHT_GESPEICHERT : null;
-            werte.add(wert(l, a.periode(), s, z, versionen(zeilen), grund,
+            werte.add(wert(l, periode, s, z, versionen(zeilen), grund,
                     z == null ? List.of() : eingaenge.getOrDefault(z.id(), List.of())));
         }
-        return new KennzahlDto.Werte(l.kopf(), a.periode(), a.von(), a.bis(), l.zone().getId(), a.version(),
-                List.copyOf(werte), geteilteRegister(id, a.von(), a.bis(), l.zone()));
+        return werte;
     }
 
     /**
