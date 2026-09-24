@@ -3107,6 +3107,11 @@ export interface EdgeVersion {
  *   trim     - preisbewusste Begrenzung: die Ladung hält beim gemessenen
  *              PV-Überschuss
  *   fallback - kein aktueller Fahrplan: die eingebaute Eigenverbrauchs-Regel
+ *   autonomous_discharge / autonomous_charge / autonomous_selfconsumption -
+ *              der WECHSELRICHTER regelt selbst im Fenster, das die Box
+ *              gesetzt hat: nur Verbrauch decken (E↓), nur Solar-Überschuss
+ *              laden (E↑) bzw. beides (E/E~); gemeldet erst nach bestätigtem
+ *              Rücklesen
  */
 export type ExecutionMode =
   | 'plan'
@@ -3120,7 +3125,9 @@ export type ExecutionMode =
   | 'high_soc_follow'
   | 'high_soc_charge'
   | 'surplus_store'
-  | 'autonomous_discharge';
+  | 'autonomous_discharge'
+  | 'autonomous_charge'
+  | 'autonomous_selfconsumption';
 
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
 export type ExecutionDirection = 'deepen' | 'reduce';

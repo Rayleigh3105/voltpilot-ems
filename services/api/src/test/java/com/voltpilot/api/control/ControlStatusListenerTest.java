@@ -189,6 +189,53 @@ class ControlStatusListenerTest {
         assertThat(ex.measurementsFresh()).isTrue();
     }
 
+    /**
+     * Wechselrichter-Eigenregelung (24.09.2026): the cloud must understand the
+     * two charge-side words BEFORE a box sends them - an unknown word is
+     * dropped, and the portal could then no longer say that the inverter, not
+     * the box, decides the watts. E↑ stores only the surplus, so its target is
+     * the measured SURPLUS; the reference the box would write stays planned_kw.
+     */
+    @Test
+    void theChargeSideSelfRegulationIsUnderstoodAndItsTargetIsTheSurplus() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"autonomous_charge\"," +
+                "\"planned_kw\":12.5,\"surplus_kw\":14.2,\"deficit_kw\":0.4," +
+                "\"effective_floor_soc_pct\":10,\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("autonomous_charge");
+        assertThat(ex.direction()).isNull();
+        assertThat(ex.plannedKw()).isEqualTo(12.5);
+        assertThat(ex.targetKw()).isEqualTo(14.2);
+        assertThat(ex.effectiveFloorSocPct()).isEqualTo(10);
+        assertThat(ex.measurementsFresh()).isTrue();
+    }
+
+    /**
+     * E/E~ regulate in BOTH directions: neither the one-sided deficit nor the
+     * surplus describes that, so the target stays null instead of half the
+     * truth - the word itself still lands, and so does the reference.
+     */
+    @Test
+    void theTwoWaySelfRegulationIsUnderstoodWithoutAOneSidedTarget() {
+        var ex = ingest("{" + BASE + ",\"execution\":{\"mode\":\"autonomous_selfconsumption\"," +
+                "\"direction\":\"deepen\",\"planned_kw\":-3.0,\"surplus_kw\":2.0,\"deficit_kw\":5.0," +
+                "\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("autonomous_selfconsumption");
+        assertThat(ex.direction()).isNull();
+        assertThat(ex.plannedKw()).isEqualTo(-3.0);
+        assertThat(ex.targetKw()).isNull();
+        assertThat(ex.measurementsFresh()).isTrue();
+
+        // The discharge-side word is unchanged next to them.
+        setUp();
+        var discharge = ingest("{" + BASE + ",\"execution\":{\"mode\":\"autonomous_discharge\"," +
+                "\"planned_kw\":-4.0,\"measurements_fresh\":true}}", "schedule");
+        assertThat(discharge.mode()).isEqualTo("autonomous_discharge");
+        assertThat(discharge.plannedKw()).isEqualTo(-4.0);
+        assertThat(discharge.targetKw()).isNull();
+    }
+
     /** The full-battery override is distinct and carries its tighter top-band floor. */
     @Test
     void highSocFollowerCarriesItsBoundedFloorWithoutInventingADirection() {
@@ -277,6 +324,14 @@ class ControlStatusListenerTest {
         setUp();
         var trim = ingest("{" + BASE + ",\"execution\":{\"mode\":\"trim\",\"direction\":\"deepen\"}}", "schedule");
         assertThat(trim.direction()).isNull();
+
+        // A neighbour of the self-regulation words that nobody defined is still
+        // unknown: the family is closed, not a prefix.
+        setUp();
+        var guessed = ingest("{" + BASE + ",\"execution\":{\"mode\":\"autonomous_export\","
+                + "\"planned_kw\":-5.0,\"surplus_kw\":6.0}}", "schedule");
+        assertThat(guessed.mode()).isNull();
+        assertThat(guessed.targetKw()).isNull();
     }
 
     /**

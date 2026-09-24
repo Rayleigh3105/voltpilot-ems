@@ -67,11 +67,31 @@ public class ControlStatusListener {
      * measured house on a "grid ~ 0" slot whose economic duty is silent. Its own
      * word on purpose - {@code follow} would claim the cloud weighed the import
      * price for this slot, which is exactly what it did NOT do.
+     *
+     * <p>The three {@code autonomous_*} words (Wechselrichter-Eigenregelung,
+     * 24.09.2026) say the INVERTER regulates by itself inside a window the box
+     * set: {@code autonomous_discharge} is intent E↓ (cover the house only),
+     * {@code autonomous_charge} is E↑ (store only the PV surplus, never from
+     * the grid, no discharge) and {@code autonomous_selfconsumption} is E/E~
+     * (both directions, the charge side possibly capped). A box reports each
+     * one ONLY once the device has CONFIRMED the mode on its readback;
+     * {@code planned_kw} is then the reference the box would write if it took
+     * the battery back on the next tick. The cloud learns the two new words
+     * before any box sends them (API first, then the box release).
      */
     private static final Set<String> EXECUTION_MODES = Set.of(
             "plan", "follow", "trim", "absorb", "fallback", "idle_follow",
             "deficit_cover", "high_soc_follow", "high_soc_charge", "surplus_store",
-            "autonomous_discharge", "limit");
+            "autonomous_discharge", "autonomous_charge", "autonomous_selfconsumption",
+            "limit");
+    /** The modes whose measured target is the PV SURPLUS (all others: the house deficit). */
+    private static final Set<String> SURPLUS_TARGET_MODES = Set.of(
+            "trim", "absorb", "high_soc_charge", "surplus_store", "autonomous_charge");
+    /**
+     * The modes that regulate in BOTH directions - neither one-sided measurement
+     * describes them, so their target stays null rather than half the truth.
+     */
+    private static final Set<String> TWO_WAY_MODES = Set.of("autonomous_selfconsumption");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
     /**
@@ -277,10 +297,10 @@ public class ControlStatusListener {
         }
         // WHICH measurement the target is only follows from the mode, so a
         // dropped/absent mode leaves it out too - an uninterpretable number is
-        // worse than none.
-        Double target = mode == null
+        // worse than none. A two-way mode has no single measurement either.
+        Double target = mode == null || TWO_WAY_MODES.contains(mode)
                 ? null
-                : Set.of("trim", "absorb", "high_soc_charge", "surplus_store").contains(mode)
+                : SURPLUS_TARGET_MODES.contains(mode)
                         ? optDouble(ex, "surplus_kw") : optDouble(ex, "deficit_kw");
         return new ControlStatusRepository.Execution(
                 source, mode, direction, optDouble(ex, "planned_kw"), target,

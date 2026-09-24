@@ -578,6 +578,37 @@ describe('executionNote', () => {
     expect(EXECUTION_MODE_LABEL.surplus_store).toBe('Live-Überschussladung');
   });
 
+  it('says the INVERTER stores the surplus itself on the charge-side automation (E↑)', () => {
+    // Wechselrichter-Eigenregelung (24.09.2026): die Box schreibt nichts, der
+    // Wechselrichter entscheidet die Watt. Der Referenzwert (was die Box beim
+    // Zurücknehmen schreiben WÜRDE) darf nicht als Fahrplan-Wert erscheinen.
+    const note = executionNote(
+      status({ executionMode: 'autonomous_charge', executionPlannedKw: 12.5, executionTargetKw: 14.2 }),
+    )!;
+    expect(note).toContain('Ihr Wechselrichter lädt den Solar-Überschuss gerade selbst in den Speicher');
+    expect(note).toContain('Laden aus dem Netz ist dabei nicht vorgesehen');
+    expect(note).not.toContain('12,5');
+    expect(note).not.toContain('Fahrplan sah');
+    // Die Box regelt hier NICHT nach - kein Satz darf das behaupten.
+    expect(note).not.toMatch(/Nachführung|nachgeführt|VoltPilot/);
+    expect(EXECUTION_MODE_LABEL.autonomous_charge).toBe('Wechselrichter-Automatik · Überschuss laden');
+  });
+
+  it('says the inverter regulates both ways on the self-consumption automation (E/E~)', () => {
+    const note = executionNote(
+      status({ executionMode: 'autonomous_selfconsumption', executionPlannedKw: -3 }),
+    )!;
+    expect(note).toBe(
+      'Ihr Wechselrichter regelt gerade selbst auf Eigenverbrauch: Überschuss geht in den ' +
+        'Speicher, Verbrauch wird aus dem Speicher gedeckt.',
+    );
+    expect(EXECUTION_MODE_LABEL.autonomous_selfconsumption).toBe('Wechselrichter-Automatik · Eigenverbrauch');
+    // Die Entlade-Seite bleibt unverändert.
+    expect(EXECUTION_MODE_LABEL.autonomous_discharge).toBe('Wechselrichter-Automatik');
+    expect(executionNote(status({ executionMode: 'autonomous_discharge' })))
+      .toContain('der Wechselrichter-Automatik');
+  });
+
   it('claims nothing for an uncorrected slot or an older edge', () => {
     expect(executionNote(status({ executionMode: 'plan' }))).toBeNull();
     expect(executionNote(status({}))).toBeNull();

@@ -939,3 +939,73 @@ describe('jetztHeld · Ruhe bei Einspeisung (der Lade-Spiegel)', () => {
     expect(v.chips.map((c) => c.label)).not.toContain('Einspeisewert');
   });
 });
+
+describe('jetztHeld · Wechselrichter-Eigenregelung (Lade- und Eigenverbrauchs-Automatik)', () => {
+  // Die rohen Wörter erscheinen nie in der Oberfläche - an keiner Zeile der Karte.
+  const RAW = /autonomous_(charge|selfconsumption|discharge)/;
+
+  it('E/E~: der geplante Normalfall bleibt ruhig und nennt den Wechselrichter als Regler', () => {
+    // Die Eigenverbrauchs-Automatik regelt in BEIDE Richtungen: hier lädt sie
+    // gerade Überschuss. Kein Bernstein, kein „Unerwarteter Verbrauch".
+    const v = jetztHeld(input({
+      slot: slot({ batteryKw: 0, slotRole: 'warten', unplannedLoadDischarge: true }),
+      planFacts: { generatedAt: '2026-08-01T19:15:00Z', effectiveFloorSocPct: 35 },
+      snapshot: snap({ pvKw: 14, loadKw: 4, gridKw: 0, battKw: 10, socPct: 60 }),
+      control: status({
+        commandedKw: 0,
+        confirmedKw: 0,
+        executionMode: 'autonomous_selfconsumption',
+        executionPlannedKw: 0,
+        executionFloorSocPct: 35,
+        executionMeasurementsFresh: true,
+      }),
+    }));
+    expect(v.state).toBe('angepasst');
+    expect(v.tone).toBe('ok');
+    expect(v.status).toBe('Läuft wie vorgesehen — nichts zu tun');
+    expect(v.adjust).toContain('Ihr Wechselrichter regelt gerade selbst auf Eigenverbrauch');
+    expect(JSON.stringify(v)).not.toMatch(/Unerwarteter Verbrauch|Neuplanung/);
+    expect(JSON.stringify(v)).not.toMatch(RAW);
+  });
+
+  it('E/E~: deutlicher Bezug heißt Grenze, nie „Speicher hält zurück"', () => {
+    const v = jetztHeld(input({
+      slot: slot({ batteryKw: 0, slotRole: 'warten', unplannedLoadDischarge: false }),
+      snapshot: snap({ pvKw: 0, loadKw: 17, gridKw: 5, battKw: -12, socPct: 60 }),
+      control: status({
+        commandedKw: 0,
+        confirmedKw: 0,
+        executionMode: 'autonomous_selfconsumption',
+        executionPlannedKw: 0,
+        executionMeasurementsFresh: true,
+      }),
+    }));
+    expect(v.status).toBe('Entladung durch Reserve/Gerätezustand begrenzt');
+    expect(v.chips).toEqual(expect.arrayContaining([
+      { label: 'Ausführung', value: 'Wechselrichter-Automatik' },
+    ]));
+    expect(JSON.stringify(v)).not.toMatch(RAW);
+  });
+
+  it('E↑: lädt den Überschuss selbst, meldet keine Verbrauchsdeckung und keine Nachführung der Box', () => {
+    const v = jetztHeld(input({
+      slot: slot({ batteryKw: 12, slotRole: 'laden' }),
+      snapshot: snap({ pvKw: 20, loadKw: 4, gridKw: 0, battKw: 16, socPct: 40 }),
+      control: status({
+        commandedKw: 12,
+        confirmedKw: 12,
+        executionMode: 'autonomous_charge',
+        executionPlannedKw: 12,
+        executionTargetKw: 16,
+        executionMeasurementsFresh: true,
+      }),
+    }));
+    expect(v.state).toBe('angepasst');
+    // Die reine Lade-Automatik deckt keinen Verbrauch: der Entlade-Spiegel schweigt.
+    expect(v.status).toBe('Läuft wie vorgesehen — nichts zu tun');
+    expect(v.chips.map((c) => c.label)).not.toContain('Ausführung');
+    expect(v.adjust).toContain('Ihr Wechselrichter lädt den Solar-Überschuss gerade selbst in den Speicher');
+    expect(v.adjust).not.toMatch(/nachgeführt|Nachführung|regelt auf den gemessenen Verbrauch/);
+    expect(JSON.stringify(v)).not.toMatch(RAW);
+  });
+});

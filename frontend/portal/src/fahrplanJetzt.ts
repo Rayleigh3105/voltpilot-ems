@@ -490,6 +490,11 @@ function unplannedLoadStatus(
 ): UnplannedStatus | null {
   const mode = control?.executionMode ?? null;
   const checkedAge = control ? input.now.getTime() - new Date(control.checkedAt).getTime() : Infinity;
+  // Die Eigenverbrauchs-Automatik (Absicht E/E~) ist bewusst NICHT „aktiv":
+  // sie ist der geplante Normalfall in beide Richtungen, und „Unerwarteter
+  // Verbrauch" samt Bernstein wäre in jeder solchen Viertelstunde falsch. Sie
+  // spricht hier nur, wenn trotzdem deutlich bezogen wird (siehe unten).
+  const selfConsumption = mode === 'autonomous_selfconsumption';
   const active = (mode === 'idle_follow' || mode === 'deficit_cover' ||
     mode === 'high_soc_follow' || mode === 'autonomous_discharge') &&
     control?.executionMeasurementsFresh === true && control.allMatch &&
@@ -520,7 +525,9 @@ function unplannedLoadStatus(
     status = 'Unerwarteter Verbrauch · Speicher deckt live bis zur Reserve';
   } else if (reserveBound || (slot?.unplannedLoadDischarge === true && deviceBound)) {
     status = 'Entladung durch Reserve/Gerätezustand begrenzt';
-  } else if (slot?.unplannedLoadDischarge === false) {
+  } else if (slot?.unplannedLoadDischarge === false && !selfConsumption) {
+    // Nie bei der Eigenverbrauchs-Automatik: dort deckt der Wechselrichter den
+    // Verbrauch selbst, ein Bezug heißt also Grenze, nicht Zurückhalten.
     status = 'Speicher hält zurück, weil Energie später mehr wert ist';
   } else {
     status = 'Entladung durch Reserve/Gerätezustand begrenzt';
@@ -532,7 +539,7 @@ function unplannedLoadStatus(
   if (floor != null) chips.push({ label: 'Reserveboden', value: fmtNum(floor, '%', 0) });
   chips.push({
     label: 'Ausführung',
-    value: mode === 'autonomous_discharge'
+    value: mode === 'autonomous_discharge' || mode === 'autonomous_selfconsumption'
       ? 'Wechselrichter-Automatik'
       : mode === 'idle_follow'
         ? '10-Sekunden-Nachführung'
@@ -707,7 +714,8 @@ function resolveState(
   if (mode === 'follow' || mode === 'limit' || mode === 'trim' || mode === 'absorb' ||
       mode === 'idle_follow' || mode === 'deficit_cover' || mode === 'high_soc_follow' ||
       mode === 'high_soc_charge' || mode === 'surplus_store' ||
-      mode === 'autonomous_discharge') return 'angepasst';
+      mode === 'autonomous_discharge' || mode === 'autonomous_charge' ||
+      mode === 'autonomous_selfconsumption') return 'angepasst';
   // Ohne den präzisen Modus (ältere Edge-Version) bleibt die GROBE Wahrheit:
   // das Gerät sagt, dass kein Fahrplan es steuert. Das reicht, um „läuft wie
   // vorgesehen" NICHT zu behaupten — aber NICHT, um die Ursache zu benennen

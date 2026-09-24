@@ -253,6 +253,8 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   high_soc_charge: 'PV-Puffer-Nachladung',
   surplus_store: 'Live-Überschussladung',
   autonomous_discharge: 'Wechselrichter-Automatik',
+  autonomous_charge: 'Wechselrichter-Automatik · Überschuss laden',
+  autonomous_selfconsumption: 'Wechselrichter-Automatik · Eigenverbrauch',
 };
 
 /**
@@ -294,6 +296,24 @@ export function executionNote(status: ControlStatus | null): string | null {
   }
   if (mode === 'absorb') {
     return `${plannedPart}Ihr Gerät nimmt gerade den gemessenen Solar-Überschuss auf.`;
+  }
+  // Wechselrichter-Eigenregelung (Lade- und Beide-Richtungen-Seite): der
+  // WECHSELRICHTER entscheidet die Watt selbst. Darum nennt der Satz keine
+  // Zahl - `executionPlannedKw` ist hier nur der Wert, den die Box schreiben
+  // WÜRDE, wenn sie den Speicher zurücknimmt, nicht der, den das Gerät fährt.
+  // Eine Ladegrenze (Absicht E~) behauptet er nicht: die Fenstergrenzen
+  // reisen im Herzschlag nicht mit.
+  if (mode === 'autonomous_charge') {
+    return (
+      'Ihr Wechselrichter lädt den Solar-Überschuss gerade selbst in den Speicher. ' +
+      'Laden aus dem Netz ist dabei nicht vorgesehen.'
+    );
+  }
+  if (mode === 'autonomous_selfconsumption') {
+    return (
+      'Ihr Wechselrichter regelt gerade selbst auf Eigenverbrauch: Überschuss geht in den ' +
+      'Speicher, Verbrauch wird aus dem Speicher gedeckt.'
+    );
   }
   if (mode === 'idle_follow' || mode === 'autonomous_discharge') {
     const path = mode === 'idle_follow' ? 'der 10-Sekunden-Nachführung' : 'der Wechselrichter-Automatik';

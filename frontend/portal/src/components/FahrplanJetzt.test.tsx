@@ -109,7 +109,7 @@ describe('JetztKompakt', () => {
     })} />);
     const status = screen.getByRole('status');
     expect(status).toHaveAttribute('aria-live', 'polite');
-    expect(screen.queryByText(/autonomous_discharge|idle_follow|high_soc_follow|high_soc_charge|exception|stack|SQLSTATE/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/autonomous_discharge|autonomous_charge|autonomous_selfconsumption|idle_follow|high_soc_follow|high_soc_charge|exception|stack|SQLSTATE/i)).not.toBeInTheDocument();
     // Die einzige interaktive Fläche des Status-Kopfs ist der beschriftete
     // „Warum & Messwerte"-Aufklapper; der Ausführungspfad wohnt dahinter.
     const interactives = container.querySelectorAll('button, a, input, select, textarea, [tabindex]');

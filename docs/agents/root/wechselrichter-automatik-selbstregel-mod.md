@@ -17,7 +17,13 @@ Test festgenagelt.
   10-s-Follower oder die Automatik des Geräts — war immer eine Entscheidung der
   EDGE. Der frozen `mqtt-schedule`-Vertrag ist unberührt, die Cloud und das
   Portal kennen das Wort `autonomous_discharge` seit PR #514 und brauchten
-  KEINE Änderung.
+  KEINE Änderung. Seit K4a (24.09.2026) kennen sie auch `autonomous_charge`
+  (Absicht E↑) und `autonomous_selfconsumption` (E/E~); die Box sendet sie erst
+  mit K4b. Ein neues Wort braucht alle Listen zugleich:
+  `ControlStatusListener.EXECUTION_MODES` (+ Ziel-Messung), das
+  `executionMode`-Enum in `docs/contracts/openapi.yaml`, Portal `ExecutionMode`,
+  `EXECUTION_MODE_LABEL`/`executionNote`, `fahrplanJetzt.resolveState` und
+  `flowConflict.FOLLOWING_MODES`.
 - **Die Arbeitsteilung steht in `docs/contracts/v2/plan-execution-ownership.md`**
   („Native self-regulation"): Wolke = der Preis, Layer 1 = die Register + das
   Zertifikat, Kern = die AUFSICHT und die Rücknahme, Rücklesen = der BELEG.
