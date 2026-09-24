@@ -1,0 +1,102 @@
+package com.voltpilot.api.web.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Die Maßnahme (UEMS AP-18 IP-10, M1–M4, M6, M7; Vertrag {@code verbesserung.md}). Zahlen sind Dezimaltexte wie im
+ * Vergleich der Bezugsbasis; die Ausgangslage ist die kanonische Kopie, wie gespeichert, mit Prüfsumme.
+ */
+public final class MassnahmeDto {
+
+    private MassnahmeDto() {}
+
+    /**
+     * {@code POST /api/v1/massnahmen}. Herkunft {@code abweichung · energieziel · einsatz · von_hand}; die Kennung bei
+     * {@code abweichung} (AW-…), bei {@code energieziel}/{@code einsatz} folgt sie dem Verweis. Messgrundlage: eine
+     * Kennzahl mit freigegebener Bezugsbasis und die Monate der Ausgangslage ({@code JJJJ-MM} oder
+     * {@code JJJJ-MM/JJJJ-MM}; ohne: der letzte abgeschlossene Monat). {@code standort} nur ohne Kennzahl.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Anlegen(String titel, String verantwortlich, LocalDate termin, String herkunft,
+            String herkunftKennung, UUID kennzahl, String monate, UUID einsatz, Integer einstufungFassung,
+            UUID energieziel, UUID standort, BigDecimal erwarteteWirkungProzent, String erwarteteWirkungWortlaut) {}
+
+    /** {@code PUT …/{id}}: Titel, Termin, erwartete Wirkung — solange geplant, immer mit Begründung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Aendern(String titel, LocalDate termin, BigDecimal erwarteteWirkungProzent,
+            String erwarteteWirkungWortlaut, String begruendung) {}
+
+    /** {@code PUT …/{id}/verantwortlicher}: ein aktiver Benutzer des Kundenbereichs ({@code sub}) mit Begründung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Verantwortlicher(String benutzer, String begruendung) {}
+
+    /** {@code POST …/{id}/umgesetzt}: der Tag (nie in der Zukunft) und die Begründung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Umgesetzt(LocalDate am, String begruendung) {}
+
+    /** {@code POST …/{id}/verwerfen}: die Begründung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Verwerfen(String begruendung) {}
+
+    /** {@code POST …/{id}/eintraege}: ein Kommentar (1–2 000 Zeichen). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record NeuerEintrag(String art, String text) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Verweis(UUID id, String kennzeichen, String name) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Person(String sub, String name) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Herkunft(String art, String kennung) {}
+
+    /**
+     * M2: Kennzahl × Bezugsbasis-Fassung × Ausgangslage. {@code ausgangslage} ist der gespeicherte kanonische Text
+     * (byte-gleich), {@code pruefsumme} {@code sha256:…} darüber; {@code bewertungsmethode} die Methode der Fassung (M3).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Messgrundlage(Verweis kennzahl, Verweis bezugsbasis, int fassung, String bewertungsmethode,
+            String ausgangslage, String pruefsumme, Map<String, Object> ausgangslageInhalt, String satz) {}
+
+    /** M4: das Kennzeichen „ohne Messgrundlage — Wirkung nicht messbar“ mit dem Hinweis, welche Kennzahl fehlt. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record OhneMessgrundlage(String kennzeichen, String hinweis, String satz) {}
+
+    /** F1: der Termin beim Abruf (Operation {@code frist}); {@code faellig} {@code ueberfaellig} oder {@code null}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Frist(LocalDate abruf, LocalDate termin, String faellig, Integer seitTagen, String satz) {}
+
+    /** Eine Zeile des Protokolls {@code massnahme_aenderung} — Zustandswechsel, Änderung oder Kommentar. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Eintrag(long nr, String art, Map<String, Object> alt, Map<String, Object> neu, String begruendung,
+            String kommentar, String person, Instant am) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Massnahme(UUID id, String kennzeichen, String titel, Person verantwortlich, LocalDate termin,
+            UUID standortId, String zustand, Herkunft herkunft, Messgrundlage messgrundlage,
+            OhneMessgrundlage ohneMessgrundlage, Verweis einsatz, Integer einstufungFassung, Verweis energieziel,
+            String erwarteteWirkungProzent, String erwarteteWirkungWortlaut, LocalDate angelegtAm,
+            LocalDate umgesetztAm, String umgesetztBegruendung, Instant verworfenAm, String verworfenGrund,
+            Frist frist, String kopfSatz, List<Eintrag> verlauf) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Liste(LocalDate abruf, List<Massnahme> massnahmen) {}
+}

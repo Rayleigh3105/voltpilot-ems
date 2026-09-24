@@ -12057,6 +12057,258 @@ paths:
               schema: { $ref: "#/components/schemas/EnergiezielStand" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen:
+    get:
+      tags: [kennzahlen]
+      summary: Das Register der Maßnahmen - Filter Zustand, überfällig, Kennzahl, Einsatz.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-10); sichtbar sind die Maßnahmen im Zaun (RLS über
+        `standort_id`, eine Maßnahme am Unternehmen nur unternehmensweit; mit Messgrundlage zusätzlich über die
+        Kennzahl). `ueberfaellig` filtert über die Operation `frist` beim Abruf (Uhr der Kennzahlen, kein Läufer,
+        kein Zustand); `kennzahl` ist die ID einer sichtbaren Kennzahl (sonst 404); ein anderer Parameter 400.
+      parameters:
+        - { name: zustand, in: query, required: false, schema: { type: string, enum: [geplant, umgesetzt, bewertet, verworfen] } }
+        - { name: ueberfaellig, in: query, required: false, schema: { type: string, enum: ["true", "false"] } }
+        - { name: kennzahl, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: einsatz, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die sichtbaren Maßnahmen, nach Kennzeichen, mit dem Abruf-Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MassnahmeListe" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+    post:
+      tags: [kennzahlen]
+      summary: Legt eine Maßnahme M-JJJJ-nnnn an - mit oder ohne Messgrundlage (E2 = A).
+      description: >
+        Recht `verbesserung.verwalten` an der Geltung der Kennzahl bzw. am gewählten `standort` (außerhalb der Sicht 404
+        `standort_unbekannt`; ohne Standort = am
+        Unternehmen; M1, RE1, RE2). Pflicht: `titel` (422 `titel_fehlt`), `verantwortlich` als aktives Konto des
+        Kundenbereichs (422 `verantwortlich_fehlt` bzw. `benutzer_unbekannt`), `termin` (400),
+        `erwartete_wirkung_wortlaut` (422 `wortlaut_fehlt`). Herkunft `abweichung · energieziel · einsatz · von_hand`
+        (ohne: `von_hand`); bei `abweichung` die Kennung AW-… in `herkunft_kennung`, bei `energieziel`/`einsatz` folgt
+        sie dem Verweis (422 `herkunft_ohne_verweis`). Mit `kennzahl` (M2): die freigegebene, heute geltende
+        Bezugsbasis-Fassung (sonst 422 `kennzahl_ohne_bezugsbasis`) und die Ausgangslage als KOPIE des Vergleich-Lesers
+        über `monate` (`JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`, höchstens 12, abgeschlossen - 422
+        `monate_nicht_abgeschlossen`; ohne: der letzte abgeschlossene Monat), kanonischer Text mit Prüfsumme; der
+        Standort ist der der Kennzahl (422 `standort_der_kennzahl`). Ohne `kennzahl` (M4) ist
+        `erwartete_wirkung_prozent` 422 `ohne_messgrundlage` mit `kennzeichen` und `hinweis`, welche Kennzahl fehlt.
+        Protokoll `massnahme_angelegt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [titel, verantwortlich, termin, erwartete_wirkung_wortlaut]
+              properties:
+                titel: { type: string, minLength: 1 }
+                verantwortlich: { type: string, description: "sub eines aktiven Benutzers" }
+                termin: { type: string, format: date }
+                herkunft: { type: string, enum: [abweichung, energieziel, einsatz, von_hand] }
+                herkunft_kennung: { type: string, pattern: "^AW-[0-9]{4}-[0-9]{4,9}$" }
+                kennzahl: { type: string, format: uuid }
+                monate: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])(/[0-9]{4}-(0[1-9]|1[0-2]))?$" }
+                einsatz: { type: string, format: uuid }
+                einstufung_fassung: { type: integer, minimum: 1 }
+                energieziel: { type: string, format: uuid }
+                standort: { type: string, format: uuid }
+                erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
+                erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: Angelegt, geplant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Die Maßnahme mit Verlauf.
+      description: Recht `verbesserung.ansehen`; Zaun über `standort_id` und die Kennzahl - außerhalb 404.
+      responses:
+        "200":
+          description: Die Maßnahme.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+    put:
+      tags: [kennzahlen]
+      summary: Ändert Titel, Termin und erwartete Wirkung, solange die Maßnahme geplant ist - mit Begründung.
+      description: >
+        Recht `verbesserung.verwalten` (M6, §5.7). Nicht geplant 409 `massnahme_nicht_geplant`; `begruendung` 10–500
+        Zeichen (422 `begruendung_fehlt`); eine Zahl der erwarteten Wirkung ohne Messgrundlage 422
+        `ohne_messgrundlage`. Die Messgrundlage und ihre Ausgangslage bleiben. Protokoll `massnahme_geaendert` (alt/neu).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                titel: { type: string, minLength: 1 }
+                termin: { type: string, format: date }
+                erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
+                erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Geändert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/verantwortlicher:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kennzahlen]
+      summary: Setzt den Verantwortlichen der Maßnahme (Benutzer + Schnappschuss) mit Begründung.
+      description: >
+        Recht `verbesserung.verwalten`, solange geplant (409 `massnahme_nicht_geplant`); `benutzer` ist ein aktives
+        Konto des Kundenbereichs (422 `benutzer_unbekannt`) - Verantwortung verleiht kein Recht (RE3). Protokoll
+        `verantwortlicher_geaendert`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [benutzer, begruendung]
+              properties:
+                benutzer: { type: string, description: "sub eines aktiven Benutzers" }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Gesetzt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/umgesetzt:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Meldet die Maßnahme als umgesetzt (Tag, Begründung) - einmalig.
+      description: >
+        Recht `verbesserung.verwalten` (M6). Nur geplant, einmalig (409 `massnahme_nicht_geplant`); `am` nie nach
+        heute in der Zeitzone des Unternehmens (422 `umgesetzt_in_der_zukunft`); `begruendung` 10–500 Zeichen.
+        Protokoll `massnahme_umgesetzt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [am, begruendung]
+              properties:
+                am: { type: string, format: date }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Umgesetzt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/verwerfen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Verwirft die geplante Maßnahme mit Begründung - endgültig, nie gelöscht.
+      description: >
+        Recht `verbesserung.verwalten` (M6). Nur geplant (409 `massnahme_nicht_geplant`); `begruendung` 10–500 Zeichen
+        Pflicht. Protokoll `massnahme_verworfen`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Verworfen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/eintraege:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Ein Kommentar im Verlauf der Maßnahme.
+      description: >
+        Recht `verbesserung.verwalten` (M7, §5.7). An einer geplanten oder umgesetzten Maßnahme (sonst 409
+        `massnahme_nicht_geplant`); `text` 1–2 000 Zeichen (422 `text_ungueltig`); `art` nur `kommentar`. Eine
+        Protokollzeile mit Person, Zeit und Text - nichts wird geändert, nichts gelöscht.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [text]
+              properties:
+                art: { type: string, enum: [kommentar] }
+                text: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        "201":
+          description: Eingetragen; die Maßnahme mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Massnahme" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/bezugsbasen/uebersicht:
     get:
       tags: [kennzahlen]
@@ -27480,6 +27732,104 @@ components:
         vorschlag: { type: string, nullable: true, enum: [erreicht, nicht_erreicht, null] }
         satz: { type: string, nullable: true }
         vorschlag_satz: { type: string, nullable: true }
+    Massnahme:
+      type: object
+      description: >
+        Eine Maßnahme (UEMS AP-18 IP-10, M1–M4, M6); `messgrundlage` oder `ohne_messgrundlage` ist gesetzt, nie beide;
+        `frist` über die Operation `frist` beim Abruf; `kopf_satz` erst ab umgesetzt; `verlauf` nur an der einzelnen.
+      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, verlauf]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^M-[0-9]{4}-[0-9]{4,9}$" }
+        titel: { type: string }
+        verantwortlich:
+          type: object
+          required: [sub, name]
+          properties: { sub: { type: string }, name: { type: string } }
+        termin: { type: string, format: date }
+        standort_id: { type: string, format: uuid, nullable: true }
+        zustand: { type: string, enum: [geplant, umgesetzt, bewertet, verworfen] }
+        herkunft:
+          type: object
+          required: [art, kennung]
+          properties:
+            art: { type: string, enum: [abweichung, energieziel, einsatz, von_hand] }
+            kennung: { type: string, nullable: true }
+        messgrundlage: { $ref: "#/components/schemas/MassnahmeMessgrundlage" }
+        ohne_messgrundlage:
+          type: object
+          nullable: true
+          required: [kennzeichen, hinweis, satz]
+          properties:
+            kennzeichen: { type: string, description: "„ohne Messgrundlage — Wirkung nicht messbar“" }
+            hinweis: { type: string, description: "welche Kennzahl fehlt" }
+            satz: { type: string, description: "Kundensatz `ohne_messgrundlage` (§5.9)" }
+        einsatz: { $ref: "#/components/schemas/MassnahmeVerweis" }
+        einstufung_fassung: { type: integer, nullable: true }
+        energieziel: { $ref: "#/components/schemas/MassnahmeVerweis" }
+        erwartete_wirkung_prozent: { type: string, nullable: true, description: "Dezimaltext, eine Stelle, weniger Energie negativ; nur mit Messgrundlage" }
+        erwartete_wirkung_wortlaut: { type: string }
+        angelegt_am: { type: string, format: date }
+        umgesetzt_am: { type: string, format: date, nullable: true }
+        umgesetzt_begruendung: { type: string, nullable: true }
+        verworfen_am: { type: string, format: date-time, nullable: true }
+        verworfen_grund: { type: string, nullable: true }
+        frist:
+          type: object
+          required: [abruf, termin, faellig, seit_tagen, satz]
+          properties:
+            abruf: { type: string, format: date }
+            termin: { type: string, format: date }
+            faellig: { type: string, nullable: true, enum: [ueberfaellig, null] }
+            seit_tagen: { type: integer, nullable: true }
+            satz: { type: string, nullable: true, description: "Kundensatz `ueberfaellig` (§5.9)" }
+        kopf_satz: { type: string, nullable: true, description: "Kundensatz `massnahme_kopf` (§5.9)" }
+        verlauf:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/MassnahmeEintrag" }
+    MassnahmeVerweis:
+      type: object
+      nullable: true
+      required: [id, kennzeichen, name]
+      properties: { id: { type: string, format: uuid }, kennzeichen: { type: string }, name: { type: string, nullable: true } }
+    MassnahmeMessgrundlage:
+      type: object
+      nullable: true
+      description: >
+        M2/M3: Kennzahl × Bezugsbasis-Fassung × Ausgangslage. `ausgangslage` ist der gespeicherte kanonische Text
+        (byte-gleich, Kopie des Vergleich-Lesers je Monat und des Zeitraums), `pruefsumme` `sha256:` darüber (wie
+        `bericht_pruefsumme`); `ausgangslage_inhalt` derselbe Inhalt als Objekt; `bewertungsmethode` die Methode der
+        Fassung in Kundenwörtern; `satz` der Kundensatz `messgrundlage` (§5.9) für einen Monat mit Zahl, sonst null.
+      required: [kennzahl, bezugsbasis, fassung, bewertungsmethode, ausgangslage, pruefsumme, ausgangslage_inhalt, satz]
+      properties:
+        kennzahl: { $ref: "#/components/schemas/MassnahmeVerweis" }
+        bezugsbasis: { $ref: "#/components/schemas/MassnahmeVerweis" }
+        fassung: { type: integer }
+        bewertungsmethode: { type: string }
+        ausgangslage: { type: string }
+        pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        ausgangslage_inhalt: { type: object, additionalProperties: true }
+        satz: { type: string, nullable: true }
+    MassnahmeEintrag:
+      type: object
+      description: Eine Zeile des Protokolls `massnahme_aenderung` - Zustandswechsel, Änderung oder Kommentar.
+      required: [nr, art, alt, neu, begruendung, kommentar, person, am]
+      properties:
+        nr: { type: integer, format: int64 }
+        art: { type: string, enum: [massnahme_angelegt, massnahme_geaendert, verantwortlicher_geaendert, kommentar, massnahme_umgesetzt, massnahme_verworfen, bewertung_beantragt, bewertung_abgelehnt, massnahme_bewertet, anstoss_gesetzt, anstoss_beantwortet] }
+        alt: { type: object, nullable: true, additionalProperties: true }
+        neu: { type: object, nullable: true, additionalProperties: true }
+        begruendung: { type: string, nullable: true }
+        kommentar: { type: string, nullable: true }
+        person: { type: string }
+        am: { type: string, format: date-time }
+    MassnahmeListe:
+      type: object
+      required: [abruf, massnahmen]
+      properties:
+        abruf: { type: string, format: date }
+        massnahmen: { type: array, items: { $ref: "#/components/schemas/Massnahme" } }
     BezugsbasisVergleichMonat:
       type: object
       description: Ein Monat - roh und bereinigt getrennt (U1); nur `bereinigt` trägt ein Urteil.

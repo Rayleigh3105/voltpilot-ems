@@ -60,7 +60,8 @@ class RechteKennungenDerRoutenTest {
             "NetzanschlussController", "BilanzController", "KostenstelleEnergieController",
             "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController", "KorrekturPortalController",
             "AnlageStandortController", "KennzahlController", "KennzahlWerteController",
-            "KennzahlVorlagenController", "EnergiezielController", "BerichtController", "MeController",
+            "KennzahlVorlagenController", "EnergiezielController", "MassnahmeController",
+            "BerichtController", "MeController",
             "UnterstuetzungController", "AdminUnterstuetzungController", "OverviewController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");

@@ -314,6 +314,14 @@ class RechtMatrixApiTest {
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/energieziele/{FREMD}/verantwortlicher",
                 "eee33333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/energieziele/{FREMD}/beenden", "eee33333"));
+        // AP-18 IP-10: Maßnahmen — dieselben Zellen (KA U · EM U · BE S).
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen", "eee33333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}", "eee33333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}/verantwortlicher",
+                "eee33333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/umgesetzt", "eee33333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/verwerfen", "eee33333"));
+        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/eintraege", "eee33333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee333333"));
@@ -336,7 +344,8 @@ class RechtMatrixApiTest {
             Map.entry("energieeinsatz.ansehen", "lesend — EnergieeinsatzApiTest, Prozess-Messstellen-Zaun R14"),
             Map.entry("bezugsbasis.ansehen", "reserviert für AP-17 IP-8 (Routen), Zaun über die Kennzahl"),
             Map.entry("verbesserung.abschliessen", "reserviert für AP-18 IP-7 ff. (Routen)"),
-            Map.entry("verbesserung.ansehen", "lesend — EnergiezielApiTest (IP-6), Zaun über Anker und standort_id"));
+            Map.entry("verbesserung.ansehen", "lesend — EnergiezielApiTest (IP-6), MassnahmeApiTest (IP-10), Zaun über Anker "
+                    + "und standort_id"));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {
