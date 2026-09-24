@@ -681,14 +681,18 @@ const LIVE_WINDOW_MS = 15 * 60 * 1000;
  *   1 Status-Zeile     `JetztKompakt` — Zustands-Punkt + EIN Satz + kompakter
  *                      Plan/Ist-Chip; das Warum & die Messwerte im eigenen Fold
  *   2 Warnungen        ein Plan älter als ~2 h steht als Banner (nie kondensiert)
- *   3 Lage-Zeile       EINE kompakte „Heute und morgen"-Zeile, dauerhaft sichtbar
+ *   3 Lage-Zeile       der Tages-Bogen als ruhige Zeile IN der Diagramm-Karte
  *   4 Diagramm         der HELD: das ScheduleChart, Desktop UND Mobil offen,
  *                      mit dem Phasen-Band als dritter Chart-Spur (Variante A+C):
  *                      ein Tipp auf eine Band-/Preis-/Leistungs-Spalte öffnet
- *                      dasselbe Warum-Panel
- *   5 Euro-Zeile       EINE kompakte Zeile mit dem Abzeichen „Geplant"
- *   6 „Mehr erklären"  Aufklapper (Standard ZU): die volle Lage, der Film des
- *                      Tages und alle Diagramm-Fußnoten
+ *                      dasselbe Warum-Panel; sein Kopfsatz trägt den Betrag
+ *   5 „Mehr erklären"  Aufklapper (Standard ZU): „Ihr Vorteil" (Lesart der Zahl,
+ *                      Folgetag), die volle Lage, der Film des Tages und alle
+ *                      Diagramm-Fußnoten
+ *
+ * UX-Review V-02 (24.09.2026): aus fünf Karten wurden drei - „Heute und
+ * morgen" und „Ihr Vorteil" waren eigene Karten, die einen Satz bzw. den
+ * Betrag des Kopfsatzes wiederholten.
  *
  * Vorher begann die Seite mit drei Planungs-KPIs, einem 12-Zeilen-Absatz und
  * einem unbeschrifteten Farbstreifen; das Diagramm lag hinter einem Fold.
@@ -1064,10 +1068,6 @@ export function FahrplanSection({ site }: { site: Site }) {
         </div>
       )}
 
-      {/* ---- Block 3: die Lage-Zeile (kompakt) ---- EINE „Heute und morgen"-Zeile,
-          dauerhaft sichtbar; die volle Lage wohnt in „Mehr erklären". */}
-      {lage && <FahrplanLage view={lage} variant="kompakt" />}
-
       {/* ---- Block 4: das Diagramm als HELD (Variante A+C) ---- Desktop UND Mobil
           offen, mit dem Phasen-Band als dritter Chart-Spur. Ein Tipp auf eine
           Band-/Preis-/Leistungs-Spalte öffnet dasselbe Warum-Panel (das
@@ -1090,6 +1090,10 @@ export function FahrplanSection({ site }: { site: Site }) {
           Oben der Preis, unten Ihr Speicher, darunter das Phasen-Band -
           tippen Sie eine Spalte fürs Warum.
         </ChartSubtitle>
+        {/* ---- Block 3: die Lage-Zeile ---- V-02 (UX-Review 24.09.2026): als
+            ruhige Zeile IN der Diagramm-Karte statt als eigene Karte „Heute
+            und morgen"; die volle Lage wohnt weiter in „Mehr erklären". */}
+        {lage && <FahrplanLage view={lage} variant="zeile" />}
         {/* P7: direkt über dem Diagramm, weil genau dort die leeren
             Speicher-Balken und die fehlende Ladestandslinie stehen. */}
         {ohneLadestand && (
@@ -1128,47 +1132,6 @@ export function FahrplanSection({ site }: { site: Site }) {
         )}
       </Card>
 
-      {/* ---- Block 5: die Euro-Zeile (kompakt) ---- */}
-      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <div className="vp-jetzt-kick">
-          <span className="vp-card-label">Ihr Vorteil</span>
-          <ProvBadge art="geplant" />
-        </div>
-        {ohneLadestand ? (
-          /* P7: „kein Fahrplan" wäre hier falsch - es GIBT einen Fahrplan, er
-             plant nur den Speicher nicht. Der Grund steht an der Stelle, an der
-             sonst die Euro-Zahl stünde, damit die fehlende Zahl erklärt ist und
-             nicht als Fehler gelesen wird. */
-          <p className="vp-note" style={{ margin: 0 }}>{KEIN_LADESTAND_NOTE}</p>
-        ) : savingsToday == null ? (
-          <p className="vp-note" style={{ margin: 0 }}>
-            Für heute liegt noch kein Fahrplan vor.
-          </p>
-        ) : (
-          <p className="vp-fp-euro">
-            {/* Sign-honest wie überall im Portal: ein Plus wird ausgeschrieben,
-                ein Minus trägt sein eigenes Zeichen (`eurAmount`). */}
-            <b>
-              Heute geplant:{' '}
-              {savingsToday > 0 ? `+${eurAmount(savingsToday)}` : eurAmount(savingsToday)}
-            </b>
-            <span className="sub">
-              gegenüber einem Betrieb ohne Speicher
-              <InfoTip title="Wie diese Zahl zu lesen ist">
-                Verglichen wird mit einem Betrieb ganz ohne Batteriespeicher.
-                Energie, die der Fahrplan über den Tag hinaus im Speicher lässt,
-                ist hier noch nicht mitgezählt: sie wird mit ihrem erwarteten
-                Nutzen am Folgetag bewertet und als eigene Zeile ausgewiesen. An
-                Tagen, an denen viel Energie für den Folgetag gespeichert wird,
-                kann die Zahl deshalb klein oder sogar negativ sein – der
-                gespeicherte Wert kommt morgen zurück.
-              </InfoTip>
-            </span>
-          </p>
-        )}
-        {banked && <p className="vp-fp-euro-note">{banked}</p>}
-      </Card>
-
       {/* ---- Block 6: „Mehr erklären" (Standard ZU) ---- die volle Lage, der
           Film des Tages und alle Diagramm-Fußnoten. Nichts gelöscht, nur
           umsortiert. */}
@@ -1187,6 +1150,49 @@ export function FahrplanSection({ site }: { site: Site }) {
 
         {mehrOpen && (
           <>
+            {/* ---- Ihr Vorteil ---- V-02: die Zahl steht schon als Kopfsatz über
+                dem Diagramm; hier im Aufklapper stehen ihre Lesart (Vergleich,
+                Folgetag) - vorher eine eigene Karte, die den Betrag wiederholte. */}
+            <section className="vp-fp-vorteil" aria-label="Ihr Vorteil">
+              <div className="vp-jetzt-kick">
+                <span className="vp-card-label">Ihr Vorteil</span>
+                <ProvBadge art="geplant" />
+              </div>
+              {ohneLadestand ? (
+                /* P7: „kein Fahrplan" wäre hier falsch - es GIBT einen Fahrplan, er
+                   plant nur den Speicher nicht. Der Grund steht an der Stelle, an der
+                   sonst die Euro-Zahl stünde, damit die fehlende Zahl erklärt ist und
+                   nicht als Fehler gelesen wird. */
+                <p className="vp-note" style={{ margin: 0 }}>{KEIN_LADESTAND_NOTE}</p>
+              ) : savingsToday == null ? (
+                <p className="vp-note" style={{ margin: 0 }}>
+                  Für heute liegt noch kein Fahrplan vor.
+                </p>
+              ) : (
+                <p className="vp-fp-euro">
+                  {/* Sign-honest wie überall im Portal: ein Plus wird ausgeschrieben,
+                      ein Minus trägt sein eigenes Zeichen (`eurAmount`). */}
+                  <b>
+                    Heute geplant:{' '}
+                    {savingsToday > 0 ? `+${eurAmount(savingsToday)}` : eurAmount(savingsToday)}
+                  </b>
+                  <span className="sub">
+                    gegenüber einem Betrieb ohne Speicher
+                    <InfoTip title="Wie diese Zahl zu lesen ist">
+                      Verglichen wird mit einem Betrieb ganz ohne Batteriespeicher.
+                      Energie, die der Fahrplan über den Tag hinaus im Speicher lässt,
+                      ist hier noch nicht mitgezählt: sie wird mit ihrem erwarteten
+                      Nutzen am Folgetag bewertet und als eigene Zeile ausgewiesen. An
+                      Tagen, an denen viel Energie für den Folgetag gespeichert wird,
+                      kann die Zahl deshalb klein oder sogar negativ sein – der
+                      gespeicherte Wert kommt morgen zurück.
+                    </InfoTip>
+                  </span>
+                </p>
+              )}
+              {banked && <p className="vp-fp-euro-note">{banked}</p>}
+            </section>
+
             {/* Die vollständige Lage heute & morgen (Bedingung + Quelle). */}
             {lage && <FahrplanLage view={lage} variant="voll" />}
 

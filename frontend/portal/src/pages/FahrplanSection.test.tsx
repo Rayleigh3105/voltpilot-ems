@@ -162,9 +162,13 @@ describe('FahrplanSection · das Seitengerüst', () => {
     // Der Warum-Satz des laufenden Slots wohnt im „Warum & Messwerte"-Fold des
     // Helden, nicht im Standard-Scroll.
     expect(screen.queryByText(/32,5 ct\/kWh/)).toBeNull();
-    // Die Euro-Zeile ersetzt die alte KPI-Reihe.
-    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+    // Keine KPI-Reihe - und seit V-02 (UX-Review 24.09.2026) auch keine eigene
+    // Euro-Karte mehr im Standard-Scroll: der Betrag steht als Kopfsatz über
+    // dem Diagramm (ScheduleChart), seine Lesart in „Mehr erklären".
     expect(container.querySelector('.vp-kpis')).toBeNull();
+    expect(screen.queryByText(/Heute geplant:/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
+    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
   });
 
   it('zeigt das Diagramm als HELD dauerhaft und die kWh-Summen erst in „Mehr erklären"', async () => {
@@ -191,11 +195,11 @@ describe('FahrplanSection · das Seitengerüst', () => {
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
     expect(screen.queryByText(/32,5 ct\/kWh/)).toBeNull();
-    // ...die Euro-Zeile und das Diagramm bleiben.
-    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+    // ...das Diagramm und die Euro-Lesart (in „Mehr erklären") bleiben.
     expect(screen.getByTestId('chart')).toBeInTheDocument();
-    // In „Mehr erklären" steht kein Film.
     fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
+    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+    // In „Mehr erklären" steht kein Film.
     expect(container.querySelector('.vp-film')).toBeNull();
   });
 
@@ -213,6 +217,7 @@ describe('FahrplanSection · das Seitengerüst', () => {
     telemetry.mockRejectedValue(new Error('down'));
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
     expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
   });
 });
@@ -569,6 +574,7 @@ describe('P7 · eine Anlage ohne Ladestand', () => {
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
     expect(container.textContent).not.toContain('meldet derzeit keinen Ladestand');
+    fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
     expect(container.querySelector('.vp-fp-euro')).toBeTruthy();
   });
 
@@ -579,5 +585,28 @@ describe('P7 · eine Anlage ohne Ladestand', () => {
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-kompakt')).toBeTruthy());
     expect(container.textContent).not.toContain('meldet derzeit keinen Ladestand');
+  });
+});
+
+
+/**
+ * UX-Review V-02 (24.09.2026): aus fünf Karten werden drei. „Heute und morgen"
+ * ist eine ruhige Zeile IN der Diagramm-Karte, „Ihr Vorteil" ein Abschnitt in
+ * „Mehr erklären" - keine Karte wiederholt mehr den Betrag des Kopfsatzes.
+ */
+describe('FahrplanSection · drei Karten statt fünf (V-02)', () => {
+  it('trägt die Lage in der Diagramm-Karte und keine eigene Vorteil-Karte', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await screen.findByTestId('chart');
+    // Keine Karte „Ihr Vorteil" im Standard-Scroll.
+    expect(screen.queryByText('Ihr Vorteil')).toBeNull();
+    // Die Lage (falls belegt) sitzt in derselben Karte wie das Diagramm.
+    const lage = container.querySelector('.vp-lage-zeile');
+    if (lage) expect(lage.closest('.vp-card, [class*="card"]')?.contains(screen.getByTestId('chart'))).toBe(true);
+    // „Ihr Vorteil" steht aufgeklappt als Abschnitt, nicht als eigene Karte.
+    fireEvent.click(screen.getByRole('button', { name: /Mehr erklären/ }));
+    const vorteil = container.querySelector('section.vp-fp-vorteil');
+    expect(vorteil?.textContent).toContain('Ihr Vorteil');
+    expect(vorteil?.textContent).toContain('Heute geplant:');
   });
 });
