@@ -79,10 +79,18 @@ func switchTarget(op probe.Op) string {
 // watchdog bookkeeping has to stay in step with what was really sent.
 func (a *Agent) runSwitchOp(op probe.Op) probe.OpResult {
 	key := switchTarget(op)
-	value := *op.OffValue
+	value := 0
+	if op.OffValue != nil {
+		value = *op.OffValue
+	}
 	var offAfter *int
 
-	if op.Op == probe.OpSwitchTest {
+	if op.Op == probe.OpSwitchSet {
+		// A deliberate ON/OFF: it replaces a still pending test auto-off of the
+		// same output (the customer has now SET it) and arms nothing.
+		a.cancelSwitchWatchdog(key)
+		value = *op.SetValue
+	} else if op.Op == probe.OpSwitchTest {
 		value = *op.OnValue
 		ttl := op.EffectiveTTL()
 		// ARM FIRST - see the package comment. The watchdog owns the revert from

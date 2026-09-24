@@ -7245,17 +7245,18 @@ paths:
               schema: { $ref: "#/components/schemas/IoModuleState" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant, or the entity is not an I/O module. }
-  /api/v1/sites/{siteId}/io-modules/{entityId}/outputs/{channel}/test:
-    post:
+  /api/v1/sites/{siteId}/io-modules/{entityId}/outputs/{channel}:
+    put:
       tags: [consumer]
-      summary: Test-switch ONE output of an I/O module from its device page.
+      summary: Switch ONE free output of an I/O module on or off from its device page.
       description: >
-        The guided switch test (probe `switch_test` / `switch_cancel`, transport
-        `ebyte_modbus_tcp`): `on=true` switches a FREE output on for at most 120 s
-        (`seconds`, default 120) - the box arms the automatic off BEFORE the write;
-        `on=false` switches off at once. An output bound to a consumer is switched
-        through that consumer's manual override (409). `state` is the value READ
-        BACK from the device, never the command.
+        The ON/OFF switch of the device page (probe `switch_set`, transport
+        `ebyte_modbus_tcp`): the state stays until switched again - there is no
+        automatic off. The safety net is the module's own watchdog, which drops
+        every output when the box falls silent. An output bound to a consumer is
+        switched ON through that consumer's manual override (409); switching OFF
+        always works. `state` is the value READ BACK from the device, never the
+        command.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -7269,7 +7270,6 @@ paths:
               required: [on]
               properties:
                 on: { type: boolean }
-                seconds: { type: integer, minimum: 1, maximum: 120 }
       responses:
         "200":
           description: >
@@ -7284,7 +7284,6 @@ paths:
                   ok: { type: boolean }
                   channel: { type: integer }
                   state: { type: boolean, nullable: true }
-                  offAfterSeconds: { type: integer, nullable: true }
                   message: { type: string }
         "400": { description: Missing `on` or an impossible channel. }
         "401": { $ref: "#/components/responses/Unauthorized" }

@@ -37,19 +37,22 @@ export interface IoModulZustandDto {
 export const VERALTET_MS = 3 * 60 * 1000;
 
 /**
- * Ein Ausgang mit seiner Schalt-Möglichkeit auf der Geräteseite.
+ * Ein Ausgang mit seinem Ein/Aus-Schalter auf der Geräteseite (wie in Home
+ * Assistant: der Zustand bleibt, bis erneut geschaltet wird).
  *
  * `schalten` ist `null`, wenn der Ausgang einem Verbraucher gehört: dann
- * schaltet ihn dessen Handeingriff (mit Grenzen und Schonzeiten), nie der
- * Test hier - der Verbraucher zöge ihn sonst beim nächsten Takt zurück.
+ * schaltet ihn dessen Handeingriff (mit Grenzen und Schonzeiten) - der
+ * Verbraucher zöge ihn sonst beim nächsten Takt zurück. Ist der Zustand
+ * unbekannt oder veraltet, werden BEIDE Richtungen angeboten, statt einen
+ * Zustand zu raten.
  */
 export interface IoAusgangZeile extends Zeile {
   channel: number;
-  schalten: { on: boolean; label: string } | null;
+  schalten: { on: boolean; label: string }[] | null;
 }
 
-/** Wie lange ein Test-Einschalten hält (die Obergrenze des Vertrags). */
-export const TEST_SEKUNDEN = 120;
+const EIN = { on: true, label: 'Einschalten' };
+const AUS = { on: false, label: 'Ausschalten' };
 
 export interface IoZustandView {
   eingaenge: Zeile[];
@@ -82,11 +85,7 @@ export function ioZustandView(dto: IoModulZustandDto | null, now: number): IoZus
       ...zustandWort(hatMeldung ? k.on : null, veraltet),
       detail: k.consumerId ? `schaltet ${k.consumerName?.trim() || 'einen Verbraucher'}` : 'frei',
       channel: k.channel,
-      schalten: k.consumerId
-        ? null
-        : an === true
-          ? { on: false, label: 'Aus' }
-          : { on: true, label: `Test: ${TEST_SEKUNDEN / 60} Min. an` },
+      schalten: k.consumerId ? null : an === true ? [AUS] : an === false ? [EIN] : [EIN, AUS],
     };
   });
   return {

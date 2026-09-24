@@ -64,6 +64,13 @@ const (
 	// write - never a value the box chose and never an address it remembered.
 	OpSwitchTest   = "switch_test"
 	OpSwitchCancel = "switch_cancel"
+	// OpSwitchSet is the ON/OFF switch of a FREE I/O-module output on the
+	// portal's device page: set_value stays until someone switches again - no
+	// auto-off. That is only acceptable for TransportEbyte: the module's own
+	// watchdog drops every output when the box falls silent, and the core
+	// driver re-checks identity, stack and ownership. A free Modbus register
+	// has no such net and never gets this op.
+	OpSwitchSet = "switch_set"
 )
 
 // TransportModbusTCP is the only transport V1 executes.
@@ -173,12 +180,16 @@ type Op struct {
 	OffValue        *int `json:"off_value,omitempty"`
 	TTLSeconds      *int `json:"ttl_s,omitempty"`
 	ReadbackAddress *int `json:"readback_address,omitempty"`
+	// switch_set only: 1 = on, 0 = off.
+	SetValue *int `json:"set_value,omitempty"`
 }
 
 // Writes reports whether this op type WRITES to the device. It is the one
 // place that answers that question, so a new op type cannot silently slip past
 // a caller that only meant to allow reads.
-func (o Op) Writes() bool { return o.Op == OpSwitchTest || o.Op == OpSwitchCancel }
+func (o Op) Writes() bool {
+	return o.Op == OpSwitchTest || o.Op == OpSwitchCancel || o.Op == OpSwitchSet
+}
 
 // EffectiveWriteFC returns the function code this switch op writes with, with
 // the contract default applied (coil -> 5, holding -> 16). ValidateOp has
@@ -408,6 +419,8 @@ func ValidateOp(op Op) (code string, message string) {
 		return validateTestConnection(op)
 	case OpSwitchTest, OpSwitchCancel:
 		return validateSwitch(op)
+	case OpSwitchSet:
+		return validateSwitchSet(op)
 	default:
 		return ErrNotSupported, "Diesen Prüfschritt kennt diese VoltPilot-Box nicht."
 	}
@@ -620,6 +633,43 @@ func validateSwitch(op Op) (string, string) {
 	}
 	if op.ReadbackAddress != nil && (*op.ReadbackAddress < 0 || *op.ReadbackAddress > 65535) {
 		return ErrInvalidRequest, "Die Rücklese-Adresse liegt außerhalb des gültigen Bereichs."
+	}
+	return "", ""
+}
+
+// validateSwitchSet admits the persistent ON/OFF of an I/O-module output:
+// the Ebyte transport only, a relay coil only (FC5, 0/1), and none of the
+// switch-test fields - a set that carried a ttl_s would promise an auto-off
+// it does not have.
+func validateSwitchSet(op Op) (string, string) {
+	if op.Transport != TransportEbyte {
+		return ErrInvalidRequest, "Dauerhaft schalten lassen sich nur die Ausgänge eines I/O-Moduls."
+	}
+	if op.RegisterKind != RegisterKindCoil || (op.WriteFC != nil && *op.WriteFC != WriteFCCoil) {
+		return ErrInvalidRequest, "Ein Ausgang des I/O-Moduls ist eine Relais-Spule (Funktionscode 5)."
+	}
+	if op.OnValue != nil || op.OffValue != nil || op.TTLSeconds != nil || op.ReadbackAddress != nil {
+		return ErrInvalidRequest, "Dauerhaftes Schalten kennt nur den Zielwert - keine Testwerte und keine Testdauer."
+	}
+	host := strings.TrimSpace(op.Host)
+	if host == "" {
+		return ErrInvalidRequest, "Es fehlt die Adresse des Geräts."
+	}
+	if !IsPrivateHost(host) {
+		return ErrInvalidRequest,
+			"Die Adresse liegt nicht im eigenen Netz. VoltPilot schaltet nur Geräte im Heim- oder Firmennetz."
+	}
+	if op.Port != nil && (*op.Port < 1 || *op.Port > 65535) {
+		return ErrInvalidRequest, "Der Port liegt außerhalb des gültigen Bereichs."
+	}
+	if op.UnitID != nil && (*op.UnitID < 0 || *op.UnitID > 255) {
+		return ErrInvalidRequest, "Die Unit-ID liegt außerhalb des gültigen Bereichs."
+	}
+	if op.Address == nil || *op.Address < 0 || *op.Address > 255 {
+		return ErrInvalidRequest, "Den Ausgang gibt es nicht."
+	}
+	if op.SetValue == nil || (*op.SetValue != 0 && *op.SetValue != 1) {
+		return ErrInvalidRequest, "Ein Ausgang kennt nur ein (1) und aus (0)."
 	}
 	return "", ""
 }

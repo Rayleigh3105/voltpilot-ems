@@ -116,7 +116,7 @@ import {
 import { HandeingriffDialog } from '../components/HandeingriffDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
-import { ioZustandView, TEST_SEKUNDEN, type IoModulZustandDto } from '../consumers/ioZustand';
+import { ioZustandView, type IoModulZustandDto } from '../consumers/ioZustand';
 import type { Consumer } from '../consumers/types';
 import {
   sofortAktionen,
@@ -1588,7 +1588,7 @@ function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: str
   const schalten = (channel: number, on: boolean) => {
     setBusy(channel);
     setMeldung(null);
-    consumersApi.ioAusgangTesten(siteId, entityId, channel, on).then(
+    consumersApi.ioAusgangSchalten(siteId, entityId, channel, on).then(
       (r) => setMeldung({ text: r.message, ok: r.ok }),
       (e: unknown) => setMeldung({
         text: e instanceof Error && e.message ? e.message : 'Der Ausgang ließ sich nicht schalten.',
@@ -1597,7 +1597,7 @@ function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: str
     ).finally(() => {
       setBusy(null);
       // Die Box meldet den neuen Zustand binnen Sekunden - dann nachlesen.
-      window.setTimeout(() => setReload((x) => x + 1), 3000);
+      window.setTimeout(() => setReload((x) => x + 1), 1500);
     });
   };
   return (
@@ -1627,14 +1627,17 @@ function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: str
                 {!z.schalten && <small>Schalten über den Handeingriff des Verbrauchers</small>}
                 {z.schalten && (
                   <span className="vp-io-schalter">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy !== null}
-                      onClick={() => schalten(z.channel, z.schalten!.on)}
-                    >
-                      {busy === z.channel ? 'Schaltet …' : z.schalten.label}
-                    </Button>
+                    {z.schalten.map((a) => (
+                      <Button
+                        key={a.label}
+                        variant="outline"
+                        size="sm"
+                        disabled={busy !== null}
+                        onClick={() => schalten(z.channel, a.on)}
+                      >
+                        {busy === z.channel ? 'Schaltet …' : a.label}
+                      </Button>
+                    ))}
                   </span>
                 )}
               </dd>
@@ -1643,9 +1646,8 @@ function IoModulBlock({ siteId, entityId, now }: { siteId: string; entityId: str
         </dl>
       )}
       <p className="vp-geraet-sec-sub">
-        „Test" schaltet einen freien Ausgang für {TEST_SEKUNDEN / 60} Minuten ein; danach schaltet
-        die Box ihn von selbst wieder ab. Dauerhaft schaltet ein Verbraucher, dem der Ausgang
-        zugeordnet ist.
+        Ein freier Ausgang bleibt so, wie du ihn schaltest. Ist die Box länger als eine Minute
+        nicht erreichbar, schaltet das Modul alle Ausgänge zur Sicherheit aus.
       </p>
       <ZeilenListe zeilen={v.eingaenge} />
     </Block>

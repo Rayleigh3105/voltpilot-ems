@@ -412,6 +412,71 @@ func TestEbyteTestSwitchNeverTurnsOnAnOutputOwnedByAConsumer(t *testing.T) {
 	}
 }
 
+func ebyteSetOp(channel, value int) probe.Op {
+	addr := channel - 1
+	return probe.Op{Op: probe.OpSwitchSet, ID: "ausgang", Transport: probe.TransportEbyte, Host: ioIP,
+		RegisterKind: probe.RegisterKindCoil, Address: &addr, SetValue: &value}
+}
+
+func TestEbyteSetSwitchesAFreeOutputPersistentlyAndReplacesAPendingTestOff(t *testing.T) {
+	sim := armedSim()
+	reg := ioRegistry("00:54:2c:84:9b:90")
+	a := ioAgent(t, sim, reg, minimalArbiter(reg))
+	// A test switch arms its auto-off ...
+	one, ttl := 1, 1
+	if res := a.runSwitchOp(ebyteSwitchOp(probe.OpSwitchTest, 5, &one, &ttl)); !res.OK {
+		t.Fatalf("test: %+v", res)
+	}
+	// ... and a deliberate ON takes it away: the output stays on.
+	on := ebyteSetOp(5, 1)
+	if v := probe.ValidateOps([]probe.Op{on})[0]; !v.OK() {
+		t.Fatalf("a set of a free output must be admitted: %+v", v)
+	}
+	res := a.runSwitchOp(on)
+	if !res.OK || res.Switched == nil || res.Switched.OffAfterSeconds != nil ||
+		res.Switched.Readback == nil || *res.Switched.Readback != 1 {
+		t.Fatalf("set on: %+v", res)
+	}
+	time.Sleep(1500 * time.Millisecond)
+	if !sim.Outputs()[4] {
+		t.Fatal("a SET output must stay on - no auto-off")
+	}
+	if res := a.runSwitchOp(ebyteSetOp(5, 0)); !res.OK || sim.Outputs()[4] {
+		t.Fatalf("set off: %+v", res)
+	}
+}
+
+func TestEbyteSetNeverTurnsOnAConsumersOutputButAlwaysOff(t *testing.T) {
+	sim := armedSim()
+	reg := ioRegistry("00:54:2c:84:9b:90") // DO3 = heating rod
+	a := ioAgent(t, sim, reg, minimalArbiter(reg))
+	if res := a.runSwitchOp(ebyteSetOp(3, 1)); res.OK || sim.Outputs()[2] {
+		t.Fatalf("a consumer's output must not be set on: %+v", res)
+	}
+	sim.SetOutput(2, true)
+	if res := a.runSwitchOp(ebyteSetOp(3, 0)); !res.OK || sim.Outputs()[2] {
+		t.Fatalf("switching a bound output off must work: %+v", res)
+	}
+}
+
+func TestEbyteSetAdmissionIsIoModuleOnlyAndCarriesNoTestFields(t *testing.T) {
+	free := ebyteSetOp(1, 1)
+	free.Transport = probe.TransportModbusTCP
+	if v := probe.ValidateOps([]probe.Op{free})[0]; v.OK() {
+		t.Fatal("a free Modbus register has no device watchdog and must never be set persistently")
+	}
+	ttl := 60
+	withTTL := ebyteSetOp(1, 1)
+	withTTL.TTLSeconds = &ttl
+	if v := probe.ValidateOps([]probe.Op{withTTL})[0]; v.OK() {
+		t.Fatal("a set carries no test duration")
+	}
+	bad := ebyteSetOp(1, 2)
+	if v := probe.ValidateOps([]probe.Op{bad})[0]; v.OK() {
+		t.Fatal("an output knows only 0 and 1")
+	}
+}
+
 func TestEbyteTestSwitchAdmissionIsCoilOnly(t *testing.T) {
 	one, ttl := 1, 60
 	op := ebyteSwitchOp(probe.OpSwitchTest, 1, &one, &ttl)

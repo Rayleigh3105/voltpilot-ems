@@ -866,5 +866,6 @@
 /* I/O-Modul: der Test-Schalter je Ausgang sitzt unter Zustand und Zuordnung. */
 .vp-io-ausgaenge .vp-io-schalter {
   display: flex;
+  gap: 8px;
   margin-top: 4px;
 }

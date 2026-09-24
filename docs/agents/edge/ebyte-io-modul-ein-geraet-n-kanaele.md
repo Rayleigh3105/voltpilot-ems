@@ -33,6 +33,11 @@ Treiber `edge-app/core/internal/ebyte`, Executor/Poll/Test
   5 min. Weil jedes Lesen den Watchdog wach hält, schaltet der Executor bei
   Not-Aus und entfernten Verbrauchern genau SEINE eingeschalteten Ausgänge
   aktiv AUS (`switchedOn`).
+- **Geräteseite:** freie Ausgänge schaltet jeder Kunde dauerhaft ein/aus
+  (`PUT .../io-modules/{id}/outputs/{k}` → Probe `switch_set`, nur
+  `ebyte_modbus_tcp`, kein Auto-Aus; hebt einen laufenden `switch_test`-Watchdog
+  auf). Vergebene Ausgänge: EIN nur über den Handeingriff des Verbrauchers,
+  AUS immer. Freie Modbus-Register bekommen `switch_set` nie (kein Totmann).
 - **Telemetrie:** Quelle `{inputs, outputs}` (hält die Frische), Entität
   `di_k`/`do_k` bei Änderung + minütlich; API-Leseweg
   `GET /sites/{id}/io-modules/{entityId}/zustand` (10-min-Fenster).

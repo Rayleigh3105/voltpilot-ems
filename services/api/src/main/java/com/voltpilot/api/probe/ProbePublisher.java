@@ -150,7 +150,27 @@ public class ProbePublisher {
      */
     public record SwitchOp(String op, String id, String host, Integer port, Integer unitId,
             String registerKind, int address, Integer writeFc, Integer onValue, int offValue,
-            Integer ttlSeconds, Integer readbackAddress, String transport) {
+            Integer ttlSeconds, Integer readbackAddress, String transport, Integer setValue) {
+
+        /** The persistent ON/OFF of an I/O-module output ({@code switch_set}, no auto-off). */
+        public static SwitchOp ioSet(String host, Integer port, Integer unitId, int channel,
+                boolean on) {
+            return new SwitchOp("switch_set", "ausgang", host, port, unitId, "coil", channel - 1,
+                    5, null, 0, null, null, "ebyte_modbus_tcp", on ? 1 : 0);
+        }
+
+        /** A switch test/cancel with an explicit transport. */
+        public SwitchOp(String op, String id, String host, Integer port, Integer unitId,
+                String registerKind, int address, Integer writeFc, Integer onValue, int offValue,
+                Integer ttlSeconds, Integer readbackAddress, String transport) {
+            this(op, id, host, port, unitId, registerKind, address, writeFc, onValue, offValue,
+                    ttlSeconds, readbackAddress, transport, null);
+        }
+
+        /** {@code switch_set} writes only its target value - no test values. */
+        boolean isSet() {
+            return "switch_set".equals(op);
+        }
 
         /** A free Modbus register (self-built device) - the original shape. */
         public SwitchOp(String op, String id, String host, Integer port, Integer unitId,
@@ -179,6 +199,11 @@ public class ProbePublisher {
                 .append(",\"address\":").append(op.address());
         if (op.writeFc() != null) {
             sb.append(",\"write_fc\":").append(op.writeFc());
+        }
+        if (op.isSet()) {
+            sb.append(",\"set_value\":").append(op.setValue() == null ? 0 : op.setValue());
+            sb.append("}]}");
+            return sb.toString().getBytes(StandardCharsets.UTF_8);
         }
         if (op.onValue() != null) {
             sb.append(",\"on_value\":").append(op.onValue());

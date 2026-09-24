@@ -106,19 +106,18 @@ public class SiteConsumerController {
     }
 
     /**
-     * Test-Schalten EINES Ausgangs eines I/O-Moduls von der Geräteseite: ein
-     * freier Ausgang wird für höchstens 120 s eingeschaltet und fällt danach
-     * von selbst ab (die Box armiert das Aus VOR dem Schreiben); {@code on=false}
-     * schaltet sofort aus. Ein Ausgang, der einem Verbraucher gehört, wird über
-     * dessen Handeingriff geschaltet (409 mit Hinweis).
+     * Ein/Aus EINES freien Ausgangs eines I/O-Moduls von der Geräteseite - wie
+     * ein Schalter in Home Assistant: der Zustand bleibt, bis erneut geschaltet
+     * wird. Ein Ausgang, der einem Verbraucher gehört, wird über dessen
+     * Handeingriff eingeschaltet (409 mit Hinweis); Ausschalten geht immer.
      */
-    @PostMapping("/io-modules/{entityId}/outputs/{channel}/test")
-    public com.voltpilot.api.consumers.IoModuleSwitchService.Outcome testOutput(
+    @PutMapping("/io-modules/{entityId}/outputs/{channel}")
+    public com.voltpilot.api.consumers.IoModuleSwitchService.Outcome switchOutput(
             @PathVariable UUID siteId, @PathVariable UUID entityId, @PathVariable int channel,
             @RequestBody com.voltpilot.api.consumers.IoModuleSwitchService.Request request,
             @AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt) {
         requireSite(siteId);
-        return ioSwitch.test(siteId, entityId, channel, request, jwt == null ? null : jwt.getSubject());
+        return ioSwitch.set(siteId, entityId, channel, request, jwt == null ? null : jwt.getSubject());
     }
 
     /** Die zuletzt gemeldeten Ein-/Ausgänge eines I/O-Moduls (Ebyte M31) samt Zuordnung. */

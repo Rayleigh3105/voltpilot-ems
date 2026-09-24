@@ -88,6 +88,9 @@
               },
               {
                 "$ref": "#/$defs/op_switch_cancel"
+              },
+              {
+                "$ref": "#/$defs/op_switch_set"
               }
             ]
           }
@@ -394,6 +397,66 @@
         }
       }
     },
+    "op_switch_set": {
+      "type": "object",
+      "title": "op 'switch_set' - einen FREIEN Ausgang eines I/O-Moduls dauerhaft ein- oder ausschalten",
+      "description": "Der Ein/Aus-Schalter je Ausgang auf der Geraeteseite eines I/O-Moduls (Ebyte M31), wie ein Schalter in Home Assistant: set_value bleibt stehen, bis jemand anders schaltet - es gibt KEINEN Auto-Aus. Deshalb ist er eng begrenzt: NUR transport ebyte_modbus_tcp, NUR eine Relais-Spule (FC5, 0/1), und die Box verweigert das EINschalten eines Ausgangs, der einem Verbraucher gehoert (der schaltet ueber dessen Handeingriff; Ausschalten bleibt immer erlaubt). Ein noch laufender switch_test-Watchdog desselben Ausgangs wird aufgehoben - der Kunde hat den Ausgang jetzt ausdruecklich gesetzt. Die Schutzgrenze liegt im Geraet: faellt die Box laenger als die Offline-Zeit aus (Werk 60 s), schaltet der Geraete-Watchdog alle Ausgaenge AUS. Frei beschriebene Register (modbus_tcp) haben diesen Schutz nicht und bekommen diesen Op-Typ deshalb nie. Eine aeltere Box antwortet 'not_supported'.",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "transport",
+        "host",
+        "register_kind",
+        "address",
+        "set_value"
+      ],
+      "properties": {
+        "op": {
+          "const": "switch_set"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+        },
+        "transport": {
+          "const": "ebyte_modbus_tcp"
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 502
+        },
+        "unit_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 1
+        },
+        "register_kind": {
+          "const": "coil"
+        },
+        "address": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "Der Ausgang - 1 (DO1 = 0)."
+        },
+        "write_fc": {
+          "const": 5
+        },
+        "set_value": {
+          "enum": [0, 1],
+          "description": "1 = ein, 0 = aus. Bleibt stehen (kein Auto-Aus)."
+        }
+      }
+    },
     "probe_result": {
       "type": "object",
       "title": "probe_result (Edge -> Cloud, .../v2/probe-result)",
@@ -498,13 +561,13 @@
           "required": [
             "written"
           ],
-          "description": "Nur bei op 'switch_test'/'switch_cancel': was WIRKLICH geschrieben wurde und was danach im Register stand. Es ist ein EIGENER Block, weil ein Schalt-Ergebnis keinen Messwert traegt - `raw`/`value` sind fuer eine LESUNG reserviert, und ein Schreibvorgang, der sich als Messwert ausgibt, waere die Art von Doppeldeutigkeit, aus der falsche Bestaetigungen entstehen.",
+          "description": "Nur bei op 'switch_test'/'switch_cancel'/'switch_set': was WIRKLICH geschrieben wurde und was danach im Register stand. Es ist ein EIGENER Block, weil ein Schalt-Ergebnis keinen Messwert traegt - `raw`/`value` sind fuer eine LESUNG reserviert, und ein Schreibvorgang, der sich als Messwert ausgibt, waere die Art von Doppeldeutigkeit, aus der falsche Bestaetigungen entstehen.",
           "properties": {
             "written": {
               "type": "integer",
               "minimum": 0,
               "maximum": 65535,
-              "description": "Der Rohwert, den die Box geschrieben hat - immer genau on_value bzw. off_value der Anfrage."
+              "description": "Der Rohwert, den die Box geschrieben hat - immer genau on_value bzw. off_value (bei switch_set: set_value) der Anfrage."
             },
             "off_after_s": {
               "type": "integer",
