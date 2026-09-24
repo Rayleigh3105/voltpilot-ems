@@ -198,7 +198,9 @@ class KennzahlSchnittstelleVertragTest {
         assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/kennzahlen"))
                 .filter(p -> !p.contains("/bezugsbasen"))
                 // Der Vergleich (AP-17 IP-19) steht in BezugsbasisVergleichSchnittstelleVertragTest.
-                .filter(p -> !p.equals("/api/v1/kennzahlen/{id}/vergleich")).toList())
+                .filter(p -> !p.equals("/api/v1/kennzahlen/{id}/vergleich"))
+                // Die Auffälligkeiten (AP-18 IP-16) stehen in AbweichungSchnittstelleVertragTest.
+                .filter(p -> !p.startsWith("/api/v1/kennzahlen/{id}/auffaelligkeiten")).toList())
                 .containsExactlyInAnyOrderElementsOf(erwartet.keySet());
     }
 

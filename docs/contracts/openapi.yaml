@@ -12469,6 +12469,288 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/kennzahlen/{id}/auffaelligkeiten:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Die Auffälligkeiten (Vermerke) einer Kennzahl - offen und beantwortet.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-16, A1, A2); Zaun über die Kennzahl (außerhalb 404) und über
+        `standort_id` des Vermerks (RLS). Je Vermerk die Kopie des Vergleichsergebnisses mit Prüfsumme, die geerbten
+        Vorbehalte („vorläufig“) und die Antwort; `zustand` (`offen · beantwortet`) filtert, `offen` zählt immer alle
+        offenen; ein anderer Parameter 400. Die Vermerke schreibt die Naht (IP-15).
+      parameters:
+        - { name: zustand, in: query, required: false, schema: { type: string, enum: [offen, beantwortet] } }
+      responses:
+        "200":
+          description: Die Vermerke nach Monat, mit dem Abruf-Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuffaelligkeitListe" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/kennzahlen/{id}/auffaelligkeiten/{aid}/antwort:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: aid, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Die einmalige Antwort auf eine Auffälligkeit - Abweichung eröffnen oder zur Kenntnis nehmen.
+      description: >
+        Recht `verbesserung.verwalten` an der Geltung der Kennzahl (A2, RE1). Einmalig (409
+        `auffaelligkeit_beantwortet`). `abweichung` eröffnet AW-JJJJ-nnnn (Jahr des Eröffnens) mit ALLEN offenen
+        Vermerken derselben Kennzahl × Bezugsbasis-Fassung - Anlass = Kopie des Vermerks (byte-gleich; mehrere als
+        `{"vermerke": […]}` kanonisch) mit Prüfsumme; `verantwortlich` ist ein aktives Konto (422
+        `verantwortlich_fehlt`/`benutzer_unbekannt`), `frist` ohne Angabe Eröffnungstag + 30, nie davor (422
+        `frist_vor_eroeffnung`); 201 mit Vermerk und Abweichung. `zur_kenntnis` verlangt `begruendung` 10–500 (422
+        `begruendung_fehlt`) und kennt weder Frist noch Verantwortlichen (400); 200 mit dem Vermerk. Keine Antwort
+        ändert eine Zahl (A5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [antwort]
+              properties:
+                antwort: { type: string, enum: [abweichung, zur_kenntnis] }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+                frist: { type: string, format: date }
+                verantwortlich: { type: string, description: "sub eines aktiven Benutzers" }
+      responses:
+        "200":
+          description: Zur Kenntnis genommen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuffaelligkeitBeantwortet" }
+        "201":
+          description: Abweichung eröffnet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuffaelligkeitBeantwortet" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/abweichungen:
+    get:
+      tags: [kennzahlen]
+      summary: Das Register der Abweichungen - Filter Zustand, überfällig, Kennzahl.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-16); sichtbar sind die Abweichungen im Zaun (RLS über
+        `standort_id`, eine am Unternehmen nur unternehmensweit, zusätzlich über die Kennzahl). `ueberfaellig` filtert
+        über die Operation `frist` beim Abruf (Uhr der Kennzahlen, kein Läufer); `kennzahl` ist die ID einer sichtbaren
+        Kennzahl (sonst 404); ein anderer Parameter 400.
+      parameters:
+        - { name: zustand, in: query, required: false, schema: { type: string, enum: [offen, abgeschlossen] } }
+        - { name: ueberfaellig, in: query, required: false, schema: { type: string, enum: ["true", "false"] } }
+        - { name: kennzahl, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die sichtbaren Abweichungen, nach Kennzeichen, mit dem Abruf-Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AbweichungListe" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+    post:
+      tags: [kennzahlen]
+      summary: Eröffnet eine Abweichung AW-JJJJ-nnnn von Hand an Vergleichszeilen (A3).
+      description: >
+        Recht `verbesserung.verwalten` an der Geltung der Kennzahl (RE1, RE2). Anlass = KOPIE des Vergleich-Lesers über
+        `monate` (`JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`, höchstens 12, abgeschlossen - 422 `monate_nicht_abgeschlossen`),
+        kanonischer Text mit Prüfsumme; alle Monate gegen EINE freigegebene Fassung (422 `monat_ohne_fassung`,
+        `monate_verschiedene_fassungen`, ohne Bezugsbasis `kennzahl_ohne_bezugsbasis`); `bezugsbasis` (BB-…) wahlfrei.
+        `wortlaut` 10–500, warum (422 `wortlaut_fehlt`) - auch an `im_rahmen`. `verantwortlich` aktives Konto,
+        `frist` wie bei der Antwort. Protokoll `abweichung_eroeffnet`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kennzahl, monate, wortlaut, verantwortlich]
+              properties:
+                kennzahl: { type: string, format: uuid }
+                bezugsbasis: { type: string, pattern: "^BB-[0-9]{4,}$" }
+                monate: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])(/[0-9]{4}-(0[1-9]|1[0-2]))?$" }
+                wortlaut: { type: string, minLength: 10, maxLength: 500 }
+                verantwortlich: { type: string, description: "sub eines aktiven Benutzers" }
+                frist: { type: string, format: date }
+      responses:
+        "201":
+          description: Eröffnet, offen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Abweichung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/abweichungen/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Die Abweichung mit Vermerken und Verlauf.
+      description: Recht `verbesserung.ansehen`; Zaun über `standort_id` und die Kennzahl - außerhalb 404.
+      responses:
+        "200":
+          description: Die Abweichung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Abweichung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/abweichungen/{id}/eintraege:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Ein Kommentar oder eine Ursache-Aussage im Verlauf der Abweichung.
+      description: >
+        Recht `verbesserung.verwalten` (A4, U1–U3). Nur an einer offenen Abweichung (409 `abweichung_abgeschlossen`).
+        `kommentar`: `text` 1–2 000 (422 `text_ungueltig`). `ursache_aussage`: `wortlaut` 10–500 (422
+        `wortlaut_fehlt`), die aussagende Person als `aussage_sub` (aktives Konto, Name als Schnappschuss) und/oder
+        `aussage_name` (422 `aussage_ohne_person`), `aussage_am` (nie in der Zukunft - 422 `aussage_in_der_zukunft`),
+        wahlfrei `beleg_kennung`. Wer einträgt, muss nicht wer aussagt sein (R2). Eine Protokollzeile - nichts wird
+        geändert, nichts gelöscht.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                art: { type: string, enum: [kommentar, ursache_aussage] }
+                text: { type: string, minLength: 1, maxLength: 2000 }
+                wortlaut: { type: string, minLength: 10, maxLength: 500 }
+                aussage_sub: { type: string }
+                aussage_name: { type: string }
+                aussage_am: { type: string, format: date }
+                beleg_kennung: { type: string, maxLength: 200 }
+      responses:
+        "201":
+          description: Eingetragen; die Abweichung mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Abweichung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/abweichungen/{id}/frist:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kennzahlen]
+      summary: Setzt die Frist der offenen Abweichung mit Begründung.
+      description: >
+        Recht `verbesserung.verwalten` (A4). Nie vor dem Eröffnungstag (422 `frist_vor_eroeffnung`, Uhr der Kennzahlen,
+        Zeitzone des Unternehmens); Begründung 10–500 (422 `begruendung_fehlt`); nur offen (409). Protokoll
+        `abweichung_geaendert` mit alt/neu.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [frist, begruendung]
+              properties:
+                frist: { type: string, format: date }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Geändert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Abweichung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/abweichungen/{id}/verantwortlicher:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kennzahlen]
+      summary: Setzt den Verantwortlichen der offenen Abweichung mit Begründung.
+      description: >
+        Recht `verbesserung.verwalten` (A4, RE3). Ein aktives Konto des Kundenbereichs (422 `benutzer_unbekannt`), sein
+        Name als Schnappschuss; Begründung 10–500; nur offen (409). Protokoll `verantwortlicher_geaendert`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [benutzer, begruendung]
+              properties:
+                benutzer: { type: string }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Geändert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Abweichung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/abweichungen/{id}/abschliessen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Schließt die Abweichung ab - einmalig, mit Ergebnis und Begründung.
+      description: >
+        Recht `verbesserung.abschliessen` an der Geltung der Kennzahl (A6; Bearbeiter 403 `recht_fehlt`). Einmalig (409
+        `abweichung_abgeschlossen`). `ergebnis` `massnahme · erklaert · keine_abweichung · nicht_bewertbar`; bei
+        `massnahme` ist `massnahme` Pflicht (422 `massnahme_fehlt`) und eine sichtbare Maßnahme (422
+        `massnahme_unbekannt`), sonst verboten (400); Begründung 10–500 (422 `begruendung_fehlt`). Protokoll
+        `abweichung_abgeschlossen`; nichts an der Kennzahl ändert sich (A5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ergebnis, begruendung]
+              properties:
+                ergebnis: { type: string, enum: [massnahme, erklaert, keine_abweichung, nicht_bewertbar] }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+                massnahme: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Abgeschlossen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Abweichung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/bezugsbasen/uebersicht:
     get:
       tags: [kennzahlen]
@@ -28105,6 +28387,147 @@ components:
         richtung: { type: string, nullable: true }
         urteil: { type: string, enum: [besser, schlechter, im_rahmen, nicht_anwendbar, ohne_urteil] }
         kennzeichen: { type: array, items: { type: string } }
+    AbweichungVerweis:
+      type: object
+      nullable: true
+      required: [id, kennzeichen, name]
+      properties: { id: { type: string, format: uuid }, kennzeichen: { type: string, nullable: true }, name: { type: string, nullable: true } }
+    Auffaelligkeit:
+      type: object
+      description: >
+        Ein Vermerk an der Kennzahl (UEMS AP-18 IP-16, A1, A2): `anlass` ist die gespeicherte kanonische Kopie des
+        Vergleichsergebnisses (byte-gleich), `anlass_pruefsumme` `sha256:` darüber, `anlass_inhalt` dasselbe als Objekt;
+        `vorbehalte` die Kennzeichen mit „vorläufig“ daraus (geerbt, R8); `satz` §5.9 nur bei `zur_kenntnis`.
+      required: [id, kennzahl, bezugsbasis, fassung, periode, standort_id, anlass, anlass_pruefsumme, anlass_inhalt, vorbehalte, vermerkt_am, zustand, antwort, antwort_begruendung, abweichung, beantwortet_am, beantwortet_von, satz]
+      properties:
+        id: { type: string, format: uuid }
+        kennzahl: { $ref: "#/components/schemas/AbweichungVerweis" }
+        bezugsbasis: { $ref: "#/components/schemas/AbweichungVerweis" }
+        fassung: { type: integer }
+        periode: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$" }
+        standort_id: { type: string, format: uuid, nullable: true }
+        anlass: { type: string }
+        anlass_pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        anlass_inhalt: { type: object, additionalProperties: true }
+        vorbehalte: { type: array, items: { type: string } }
+        vermerkt_am: { type: string, format: date-time }
+        zustand: { type: string, enum: [offen, beantwortet] }
+        antwort: { type: string, nullable: true, enum: [abweichung, zur_kenntnis, null] }
+        antwort_begruendung: { type: string, nullable: true }
+        abweichung: { $ref: "#/components/schemas/AbweichungVerweis" }
+        beantwortet_am: { type: string, format: date-time, nullable: true }
+        beantwortet_von: { type: string, nullable: true }
+        satz: { type: string, nullable: true, description: "Kundensatz `auffaelligkeit_zur_kenntnis` (§5.9)" }
+    AuffaelligkeitListe:
+      type: object
+      required: [kennzahl, abruf, offen, vermerke]
+      properties:
+        kennzahl: { $ref: "#/components/schemas/AbweichungVerweis" }
+        abruf: { type: string, format: date }
+        offen: { type: integer }
+        vermerke: { type: array, items: { $ref: "#/components/schemas/Auffaelligkeit" } }
+    AuffaelligkeitBeantwortet:
+      type: object
+      required: [vermerk, abweichung]
+      properties:
+        vermerk: { $ref: "#/components/schemas/Auffaelligkeit" }
+        abweichung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/Abweichung" }]
+    Abweichung:
+      type: object
+      description: >
+        Eine Abweichung (UEMS AP-18 IP-16, A3–A6): Kennzahl × Fassung × Monate, Anlass als Kopie mit Prüfsumme,
+        `vorbehalte` geerbt (R8); `frist` über die Operation `frist` beim Abruf; `abschluss` erst abgeschlossen;
+        `kopf_satz` §5.9 für einen Monat mit Δ; `vermerke` und `verlauf` nur an der einzelnen.
+      required: [id, kennzeichen, kennzahl, bezugsbasis, fassung, monate, herkunft, anlass, anlass_pruefsumme, anlass_inhalt, vorbehalte, verantwortlich, frist, standort_id, zustand, eroeffnet_am, eroeffnet_von, abschluss, kopf_satz, vermerke, verlauf]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^AW-[0-9]{4}-[0-9]{4,9}$" }
+        kennzahl: { $ref: "#/components/schemas/AbweichungVerweis" }
+        bezugsbasis: { $ref: "#/components/schemas/AbweichungVerweis" }
+        fassung: { type: integer }
+        monate: { type: array, items: { type: string } }
+        herkunft:
+          type: object
+          required: [art, wortlaut]
+          properties:
+            art: { type: string, enum: [auffaelligkeit, von_hand] }
+            wortlaut: { type: string, nullable: true }
+        anlass: { type: string }
+        anlass_pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        anlass_inhalt: { type: object, additionalProperties: true }
+        vorbehalte: { type: array, items: { type: string } }
+        verantwortlich:
+          type: object
+          required: [sub, name]
+          properties: { sub: { type: string }, name: { type: string } }
+        frist:
+          type: object
+          required: [abruf, termin, faellig, seit_tagen]
+          properties:
+            abruf: { type: string, format: date }
+            termin: { type: string, format: date }
+            faellig: { type: string, nullable: true, enum: [ueberfaellig, null] }
+            seit_tagen: { type: integer, nullable: true }
+        standort_id: { type: string, format: uuid, nullable: true }
+        zustand: { type: string, enum: [offen, abgeschlossen] }
+        eroeffnet_am: { type: string, format: date }
+        eroeffnet_von: { type: string }
+        abschluss: { $ref: "#/components/schemas/AbweichungAbschluss" }
+        kopf_satz: { type: string, nullable: true, description: "Kundensatz `abweichung_kopf` (§5.9)" }
+        vermerke:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/Auffaelligkeit" }
+        verlauf:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/AbweichungEintrag" }
+    AbweichungAbschluss:
+      type: object
+      nullable: true
+      required: [ergebnis, massnahme, begruendung, am, person, satz]
+      properties:
+        ergebnis: { type: string, enum: [massnahme, erklaert, keine_abweichung, nicht_bewertbar] }
+        massnahme: { $ref: "#/components/schemas/AbweichungVerweis" }
+        begruendung: { type: string }
+        am: { type: string, format: date }
+        person: { type: string }
+        satz: { type: string, nullable: true, description: "Kundensatz `abschluss_massnahme`/`abschluss_erklaert` (§5.9)" }
+    AbweichungAussage:
+      type: object
+      nullable: true
+      description: U1/U2 - die Aussage einer Person, nie ein Fakt des Systems.
+      required: [wortlaut, sub, name, am, beleg_kennung, kennzeichen, satz]
+      properties:
+        wortlaut: { type: string }
+        sub: { type: string, nullable: true }
+        name: { type: string }
+        am: { type: string, format: date }
+        beleg_kennung: { type: string, nullable: true }
+        kennzeichen: { type: string, description: "„Aussage von …, TT.MM.JJJJ — keine Messung“ bzw. „— mit Beleg …“" }
+        satz: { type: string, nullable: true, description: "Kundensatz `ursache_aussage`/`ursache_aussage_mit_beleg` (§5.9)" }
+    AbweichungEintrag:
+      type: object
+      description: Eine Zeile des Protokolls `abweichung_aenderung`; `person` hat eingetragen (nicht zwingend ausgesagt).
+      required: [nr, art, alt, neu, begruendung, kommentar, aussage, person, am]
+      properties:
+        nr: { type: integer, format: int64 }
+        art: { type: string, enum: [abweichung_eroeffnet, kommentar, ursache_aussage, abweichung_geaendert, verantwortlicher_geaendert, abweichung_abgeschlossen] }
+        alt: { type: object, nullable: true, additionalProperties: true }
+        neu: { type: object, nullable: true, additionalProperties: true }
+        begruendung: { type: string, nullable: true }
+        kommentar: { type: string, nullable: true }
+        aussage: { $ref: "#/components/schemas/AbweichungAussage" }
+        person: { type: string }
+        am: { type: string, format: date-time }
+    AbweichungListe:
+      type: object
+      required: [abruf, abweichungen]
+      properties:
+        abruf: { type: string, format: date }
+        abweichungen: { type: array, items: { $ref: "#/components/schemas/Abweichung" } }
     BezugsbasisVergleichMonat:
       type: object
       description: Ein Monat - roh und bereinigt getrennt (U1); nur `bereinigt` trägt ein Urteil.

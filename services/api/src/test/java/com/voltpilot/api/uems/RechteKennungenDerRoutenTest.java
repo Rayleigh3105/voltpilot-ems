@@ -60,7 +60,8 @@ class RechteKennungenDerRoutenTest {
             "NetzanschlussController", "BilanzController", "KostenstelleEnergieController",
             "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController", "KorrekturPortalController",
             "AnlageStandortController", "KennzahlController", "KennzahlWerteController",
-            "KennzahlVorlagenController", "EnergiezielController", "MassnahmeController",
+            "KennzahlVorlagenController", "EnergiezielController", "MassnahmeController", "AbweichungController",
+            "AuffaelligkeitController",
             "BerichtController", "MeController",
             "UnterstuetzungController", "AdminUnterstuetzungController", "OverviewController");
 

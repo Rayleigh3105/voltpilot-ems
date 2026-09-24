@@ -88,6 +88,12 @@ class RechtRoutenArchitekturTest {
             m.put("EnergiezielController#" + r, "EnergiezielService über KennzahlService.fuerBezugsbasis — "
                     + "verbesserung.abschliessen an der Geltung der Kennzahl des Ziels");
         }
+        String abweichung = "AbweichungService über KennzahlService.fuerBezugsbasis — verbesserung.verwalten bzw. "
+                + "verbesserung.abschliessen an der Geltung der Kennzahl der Abweichung bzw. des Vermerks";
+        for (String r : List.of("anlegen", "eintrag", "frist", "verantwortlicher", "abschliessen")) {
+            m.put("AbweichungController#" + r, abweichung);
+        }
+        m.put("AuffaelligkeitController#antwort", abweichung);
         m.put("BezugsbasisPflegeController#bleibt", bezugsbasis);
         m.put("BezugsbasisPflegeController#beenden", bezugsbasis);
         m.put("KorrekturPortalController#vorschau", "KorrekturPortalService — lesende Vorschau ohne Schreibvorgang");
