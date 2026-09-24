@@ -218,7 +218,9 @@
    vorher nicht, die Warnung konnte ihre Ursache also nirgends nennen. */
 .vp-cockpit-health {
   min-width: 0;
-  max-width: 32rem;
+  /* Kein Breitendeckel mehr: als einzige Karte des Stapels endete sie bei
+     32 rem und ließ am Rechner die halbe Zeile leer - der Stapel schloss mit
+     einem Stummel statt einer Kante. „Leise" bleibt sie durch EINE Zeile. */
   margin-top: var(--vp-space-4, 16px);
 }
 
@@ -499,6 +501,12 @@
 @media (min-width: 1100px) {
   .vp-widgets {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* Drei Spalten nur, wo sie sich füllen: zwei Kacheln ließen sonst ein
+     leeres Drittel stehen, vier eine einzelne Kachel in der zweiten Reihe. */
+  .vp-widgets[data-count='2'],
+  .vp-widgets[data-count='4'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -27,7 +27,15 @@ export function WidgetGrid({
        <button> überschreibt dessen implizite Rolle - Screenreader kündigten sie
        als Listenelement an und ließen sie aus der Bedienelement-Liste fallen.
        Also: keine Rollen-Überschreibung, stattdessen eine benannte Gruppe. */
-    <div className="vp-widgets" role="group" aria-label="Kennzahlen Ihrer Anlage">
+    /* `data-count`: das Raster füllt seine Reihe (zwei Kacheln stehen halb-
+       halb statt als zwei Drittel mit leerer dritter Spalte, vier als 2 × 2
+       statt 3 + 1) - `CockpitBlocks.css`. */
+    <div
+      className="vp-widgets"
+      role="group"
+      aria-label="Kennzahlen Ihrer Anlage"
+      data-count={widgets.length}
+    >
       {widgets.map((w) => (
         <button
           key={w.id}
