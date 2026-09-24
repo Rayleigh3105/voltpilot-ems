@@ -1852,6 +1852,7 @@ const KENNZAHL_BESTAND: string[] = [
   'bezugsgroesseListe.ts', // neu: AP-09 erklärt Zweck und Archivfolgen
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
   'components/MarktpreiseMobil.tsx', // alt
+  'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
   'components/PortfolioCockpit.tsx', // alt
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
@@ -1859,6 +1860,7 @@ const KENNZAHL_BESTAND: string[] = [
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
+  'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
@@ -2740,6 +2742,10 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     'pages/EnergiezielSeite.tsx',
     'components/EnergiezieleRegister.tsx',
     'components/EnergiezielDialoge.tsx',
+    // IP-13: Register „Maßnahmen“, „Maßnahme anlegen“ (auch am Energieziel und am Energieeinsatz) und die Maßnahmen-Seite.
+    'components/MassnahmenRegister.tsx',
+    'components/MassnahmeDialoge.tsx',
+    'pages/MassnahmeSeite.tsx',
   ];
   const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
   const verbesserungFlaechen = () => [

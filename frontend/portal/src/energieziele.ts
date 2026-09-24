@@ -74,8 +74,8 @@ export const LADEFEHLER = `Die ${UEMS_ENERGIEZIELE} konnten nicht geladen werden
 export const LADEFEHLER_SEITE = `Das ${UEMS_ENERGIEZIEL} konnte nicht geladen werden.`;
 export const NICHT_GEFUNDEN = `Dieses ${UEMS_ENERGIEZIEL} gibt es nicht oder Sie dürfen es nicht sehen.`;
 export const STAND_OHNE_MONAT = 'noch kein bewertbarer Monat';
-/** Die Reiter Maßnahmen und Abweichungen kommen mit AP-18 IP-13/IP-18 — bis dahin ehrlich leer, ohne Knopf. */
-export const LEER_SPAETER = (was: string) => `Noch keine ${was}. Diese Liste folgt; heute entstehen hier nur ${UEMS_ENERGIEZIELE}.`;
+/** Der Reiter Abweichungen kommt mit AP-18 IP-18 — bis dahin ehrlich leer, ohne Knopf (Maßnahmen: IP-13). */
+export const LEER_SPAETER = (was: string) => `Noch keine ${was}. Diese Liste folgt; heute entstehen hier ${UEMS_ENERGIEZIELE} und ${UEMS_MASSNAHMEN}.`;
 
 export const ZUSTAND_WORT = UEMS_ENERGIEZIEL_ZUSTAENDE;
 export const ERGEBNIS_WORT = UEMS_ENERGIEZIEL_ERGEBNISSE;

@@ -162,6 +162,8 @@ export interface Route {
    */
   verbesserungReiter?: VerbesserungReiter;
   energiezielId?: string;
+  /** UEMS AP-18 IP-13: WELCHE Maßnahme die Seite zeigt (`#/portfolio/verbesserung/massnahmen/{id}`). */
+  massnahmeId?: string;
   /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
@@ -651,6 +653,7 @@ export function parseRoute(hash: string): Route {
     if (segments[1] === 'bewertung' && segments[2]) return energieeinsatzRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'verbesserung') {
       if (segments[2] === 'energieziele' && segments[3]) return energiezielRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'massnahmen' && segments[3]) return massnahmeRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'massnahmen' || segments[2] === 'abweichungen') return verbesserungRoute(segments[2]);
       return verbesserungRoute();
     }
@@ -777,9 +780,11 @@ export function hashForRoute(route: Route): string {
         ? ''
         : route.energiezielId
           ? `/energieziele/${encodeURIComponent(route.energiezielId)}`
-          : route.verbesserungReiter && route.verbesserungReiter !== 'energieziele'
-            ? `/${route.verbesserungReiter}`
-            : '';
+          : route.massnahmeId
+            ? `/massnahmen/${encodeURIComponent(route.massnahmeId)}`
+            : route.verbesserungReiter && route.verbesserungReiter !== 'energieziele'
+              ? `/${route.verbesserungReiter}`
+              : '';
     return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
@@ -839,6 +844,11 @@ export function verbesserungRoute(reiter: VerbesserungReiter = 'energieziele'): 
 /** Route der Seite eines Energieziels (UEMS AP-18 IP-8): `#/portfolio/verbesserung/energieziele/{id}` — nur am Unternehmen. */
 export function energiezielRoute(energiezielId: string): Route {
   return { page: 'portfolio-verbesserung', siteId: null, sub: null, energiezielId };
+}
+
+/** Route der Seite einer Maßnahme (UEMS AP-18 IP-13): `#/portfolio/verbesserung/massnahmen/{id}` — nur am Unternehmen. */
+export function massnahmeRoute(massnahmeId: string): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, verbesserungReiter: 'massnahmen', massnahmeId };
 }
 
 /** Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6): `#/portfolio/bewertung/{id}` — nur am Unternehmen. */

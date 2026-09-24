@@ -16,7 +16,7 @@ import '../pages/Verbesserung.css';
 
 const ABBRECHEN = 'Abbrechen';
 
-function Begruendung({ id, wert, setze, fehler }: { id: string; wert: string; setze: (t: string) => void; fehler: string | null }) {
+export function Begruendung({ id, wert, setze, fehler }: { id: string; wert: string; setze: (t: string) => void; fehler: string | null }) {
   return (
     <div className="vp-ez-feld">
       <label className="vp-ez-label" htmlFor={id}>
@@ -28,7 +28,7 @@ function Begruendung({ id, wert, setze, fehler }: { id: string; wert: string; se
   );
 }
 
-function Ablehnung({ satz }: { satz: string | null }) {
+export function Ablehnung({ satz }: { satz: string | null }) {
   return satz ? (
     <p className="vp-alert vp-alert-err" role="alert">
       {satz}

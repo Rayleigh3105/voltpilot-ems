@@ -4,6 +4,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Energieziel, type EnergiezielStand } from '../api';
 import { EnergiezielBeendenDialog, EnergiezielBewertenDialog } from '../components/EnergiezielDialoge';
+import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import { Recht } from '../components/Recht';
 import { ErrorState, Skeleton } from '../components/States';
 import * as Z from '../energieziele';
@@ -23,10 +24,13 @@ export function EnergiezielSeite({
   id,
   onListe,
   onKennzahl,
+  onMassnahme,
 }: {
   id: string;
   onListe: () => void;
   onKennzahl?: (kennzahlId: string) => void;
+  /** AP-18 IP-13 (§5.4): nach „Maßnahme anlegen“ die Seite der neuen Maßnahme. */
+  onMassnahme?: (massnahmeId: string) => void;
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
@@ -118,6 +122,14 @@ export function EnergiezielSeite({
           <p className="vp-ez-frist" data-testid="energieziel-frist">
             {frist}
           </p>
+        )}
+        {/* AP-18 IP-13 (§5.4): „Maßnahme anlegen“ am Energieziel — Herkunft `energieziel`, Kennzahl vorbelegt. */}
+        {offen && (
+          <MassnahmeAnlegen
+            vorbelegung={{ herkunft: 'energieziel', energieziel: ez.id, kennzahl: ez.kennzahl.id }}
+            standort={ez.standort_id}
+            onAngelegt={onMassnahme ? (m) => onMassnahme(m.id) : undefined}
+          />
         )}
       </header>
 

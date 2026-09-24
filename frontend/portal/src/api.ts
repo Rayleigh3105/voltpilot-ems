@@ -2745,6 +2745,110 @@ export interface Kennzahl {
   } | null;
 }
 
+// ---------------------------------------------------------------------------------------- Maßnahmen (UEMS AP-18)
+
+export type MassnahmeZustand = 'geplant' | 'umgesetzt' | 'bewertet' | 'verworfen';
+export type MassnahmeHerkunft = 'abweichung' | 'energieziel' | 'einsatz' | 'von_hand';
+
+/** Ein Verweis der Maßnahme (OpenAPI `MassnahmeVerweis`) — Kennzahl, Bezugsbasis, Einsatz, Energieziel. */
+export interface MassnahmeVerweis {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+}
+
+/** M2/M3 (OpenAPI `MassnahmeMessgrundlage`): Kennzahl × Fassung × Ausgangslage als Kopie mit Prüfsumme. */
+export interface MassnahmeMessgrundlage {
+  kennzahl: MassnahmeVerweis;
+  bezugsbasis: MassnahmeVerweis;
+  fassung: number;
+  /** Die Methode der Fassung in Kundenwörtern — ein Satz, nie eine Wahl (M3). */
+  bewertungsmethode: string;
+  /** Der gespeicherte kanonische Text, byte-gleich. */
+  ausgangslage: string;
+  pruefsumme: string;
+  ausgangslage_inhalt: Record<string, unknown>;
+  /** Kundensatz `messgrundlage` (§5.9) für einen Monat mit Zahl, sonst `null`. */
+  satz: string | null;
+}
+
+/** Eine Zeile des Protokolls `massnahme_aenderung` (OpenAPI `MassnahmeEintrag`) — der Verlauf. */
+export interface MassnahmeEintrag {
+  nr: number;
+  art:
+    | 'massnahme_angelegt' | 'massnahme_geaendert' | 'verantwortlicher_geaendert' | 'kommentar' | 'massnahme_umgesetzt'
+    | 'massnahme_verworfen' | 'bewertung_beantragt' | 'bewertung_abgelehnt' | 'massnahme_bewertet' | 'anstoss_gesetzt'
+    | 'anstoss_beantwortet';
+  alt: Record<string, unknown> | null;
+  neu: Record<string, unknown> | null;
+  begruendung: string | null;
+  kommentar: string | null;
+  person: string;
+  am: string;
+}
+
+/** Eine Maßnahme (OpenAPI `Massnahme`, AP-18 IP-10, M1–M4, M6); `messgrundlage` ODER `ohne_messgrundlage`. */
+export interface Massnahme {
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  verantwortlich: { sub: string; name: string };
+  termin: string;
+  standort_id: string | null;
+  zustand: MassnahmeZustand;
+  herkunft: { art: MassnahmeHerkunft; kennung: string | null };
+  messgrundlage: MassnahmeMessgrundlage | null;
+  ohne_messgrundlage: { kennzeichen: string; hinweis: string; satz: string } | null;
+  einsatz: MassnahmeVerweis | null;
+  einstufung_fassung: number | null;
+  energieziel: MassnahmeVerweis | null;
+  /** Dezimaltext, eine Stelle, weniger Energie negativ; nur mit Messgrundlage. */
+  erwartete_wirkung_prozent: string | null;
+  erwartete_wirkung_wortlaut: string;
+  angelegt_am: string;
+  umgesetzt_am: string | null;
+  umgesetzt_begruendung: string | null;
+  verworfen_am: string | null;
+  verworfen_grund: string | null;
+  /** E5 = A: beim Abruf abgeleitet — Zahl und Satz von der Route. */
+  frist: { abruf: string; termin: string; faellig: 'ueberfaellig' | null; seit_tagen: number | null; satz: string | null };
+  /** Kundensatz `massnahme_kopf` (§5.9), erst ab umgesetzt. */
+  kopf_satz: string | null;
+  verlauf: MassnahmeEintrag[] | null;
+}
+
+export interface MassnahmeListe {
+  abruf: string;
+  massnahmen: Massnahme[];
+}
+
+/** `POST /api/v1/massnahmen` — die Zahl der erwarteten Wirkung nur mit `kennzahl` (M4). */
+export interface MassnahmeNeu {
+  titel: string;
+  verantwortlich: string;
+  termin: string;
+  herkunft?: MassnahmeHerkunft;
+  herkunft_kennung?: string;
+  kennzahl?: string;
+  /** `JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`. */
+  monate?: string;
+  einsatz?: string;
+  einstufung_fassung?: number;
+  energieziel?: string;
+  standort?: string;
+  erwartete_wirkung_prozent?: number;
+  erwartete_wirkung_wortlaut: string;
+}
+
+/** `PUT /api/v1/massnahmen/{id}` — nur solange geplant, mit Begründung. */
+export interface MassnahmeAendern {
+  titel?: string;
+  termin?: string;
+  erwartete_wirkung_prozent?: number;
+  erwartete_wirkung_wortlaut?: string;
+  begruendung: string;
+}
+
 // ---------------------------------------------------------------------------------------- Energieziele (UEMS AP-18)
 
 export type EnergiezielZustand = 'offen' | 'bewertet' | 'beendet';
@@ -9888,6 +9992,22 @@ export const api = {
     request<Energieziel>(`/api/v1/energieziele/${id}/${schritt === 'bewerten' ? 'bewerten' : `bewertung/${schritt}`}`, {
       method: 'POST', body: JSON.stringify(body),
     }),
+  // ------------------------------------------------------------------ Maßnahmen (UEMS AP-18 IP-10)
+  /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
+  massnahmen: () => request<MassnahmeListe>('/api/v1/massnahmen'),
+  massnahme: (id: string) => request<Massnahme>(`/api/v1/massnahmen/${id}`),
+  massnahmeAnlegen: (body: MassnahmeNeu) =>
+    request<Massnahme>('/api/v1/massnahmen', { method: 'POST', body: JSON.stringify(body) }),
+  massnahmeAendern: (id: string, body: MassnahmeAendern) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  massnahmeVerantwortlicher: (id: string, body: { benutzer: string; begruendung: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/verantwortlicher`, { method: 'PUT', body: JSON.stringify(body) }),
+  massnahmeUmgesetzt: (id: string, body: { am: string; begruendung: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/umgesetzt`, { method: 'POST', body: JSON.stringify(body) }),
+  massnahmeVerwerfen: (id: string, body: { begruendung: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/verwerfen`, { method: 'POST', body: JSON.stringify(body) }),
+  massnahmeKommentar: (id: string, body: { text: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
   kennzahlVariablenVorschlag: (id: string, referenzperiode?: string) =>
     request<VariablenVorschlag>(`/api/v1/kennzahlen/${id}/variablen-vorschlag` + (referenzperiode ? `?referenzperiode=${encodeURIComponent(referenzperiode)}` : '')),
   kennzahlFaktorenVorschlag: (id: string, stichtag?: string) =>

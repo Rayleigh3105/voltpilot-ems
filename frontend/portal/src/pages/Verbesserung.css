@@ -339,3 +339,55 @@
   color: var(--vp-c-destructive);
   font-size: var(--vp-c-fs-14);
 }
+
+/* ------------------------------------------------------------------ Maßnahmen (AP-18 IP-13) */
+
+.vp-ez-wahl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-3) var(--vp-c-space-5);
+}
+
+.vp-ez-wahl-punkt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  min-height: 44px;
+  font-size: var(--vp-c-fs-14);
+  cursor: pointer;
+}
+
+.vp-ez-wahl-punkt input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--vp-c-primary);
+}
+
+.vp-ez-filter {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--vp-c-space-3);
+  align-items: end;
+  min-width: 0;
+}
+
+.vp-ez-ohne {
+  color: var(--vp-c-muted-fg);
+  font-style: italic;
+}
+
+.vp-ez-kopie summary {
+  cursor: pointer;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ez-kopie pre {
+  margin: var(--vp-c-space-2) 0 0;
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  font-size: var(--vp-c-fs-12);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

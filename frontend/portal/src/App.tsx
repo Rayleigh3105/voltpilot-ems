@@ -53,6 +53,7 @@ import {
   berichtRoute,
   energieeinsatzRoute,
   energiezielRoute,
+  massnahmeRoute,
   verbesserungRoute,
   messstelleRoute,
   standortRoute,
@@ -1490,10 +1491,12 @@ function UnifiedPortal() {
             <VerbesserungBereich
               reiter={route.verbesserungReiter ?? 'energieziele'}
               energiezielId={route.energiezielId ?? null}
+              massnahmeId={route.massnahmeId ?? null}
               onReiter={(r) => navigate(verbesserungRoute(r))}
               onOeffnen={(id) => navigate(energiezielRoute(id))}
               onListe={() => navigate(verbesserungRoute())}
               onKennzahl={(id) => navigate(kennzahlRoute(id))}
+              onMassnahme={(id) => navigate(massnahmeRoute(id))}
             />
           )}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}

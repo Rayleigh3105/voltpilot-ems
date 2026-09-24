@@ -34,6 +34,7 @@ import {
 import { EnergieeinsatzBearbeitenDialog, EnergieeinsatzBeendenDialog } from '../components/EnergieeinsatzDialoge';
 import { EinstufungDialog, EinstufungHistorie } from '../components/BewertungEntscheidungen';
 import { EinsatzMessmittel, istWesentlich } from '../components/EinsatzMessmittel';
+import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import { MessbedarfKarte } from '../components/Messplanung';
 import { ErrorState, Skeleton } from '../components/States';
 import { UEMS_NORMGRENZE } from '../glossar';
@@ -47,6 +48,10 @@ import { useRollen } from '../rollen';
  * ⚠ Die Einflussgröße trägt nur die Kennung ihrer Bezugsgröße; den Namen liest die Seite aus dem Bezugsgrößen-Katalog
  * (Stammdaten, keine Werte) — erst, wenn eine Einflussgröße eine Bezugsgröße nennt.
  */
+/** Die jüngste freigegebene Einstufungs-Fassung — sie zitiert eine Maßnahme am Einsatz; ohne keine. */
+const freigegebeneFassung = (fassungen: readonly EnergieeinsatzEinstufungFassung[]) =>
+  fassungen.filter((f) => f.freigabe_status === 'freigegeben').reduce<number | undefined>((n, f) => (n === undefined || f.fassung > n ? f.fassung : n), undefined);
+
 export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () => void }) {
   const { selbst } = useRollen();
   const verwalten = darfVerwalten(selbst);
@@ -127,6 +132,14 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
               </div>
             )}
           </header>
+          {/* UEMS AP-18 IP-13 (§5.4): „Maßnahme anlegen“ am Energieeinsatz — Herkunft `einsatz` mit der freigegebenen
+              Einstufungs-Fassung; ohne Kennzahl öffnet der Dialog auf „ohne Messgrundlage“ (E2 = A). */}
+          {laeuft(einsatz) && (
+            <MassnahmeAnlegen
+              vorbelegung={{ herkunft: 'einsatz', einsatz: einsatz.id, einstufungFassung: freigegebeneFassung(einstufungen) }}
+              standort={null}
+            />
+          )}
 
           <section className="vp-bw-karte" aria-label="Stammdaten">
             <dl className="vp-bw-felder">

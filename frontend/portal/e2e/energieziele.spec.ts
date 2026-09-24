@@ -83,7 +83,7 @@ const begruendung = (page: Page) => page.locator('.vp-modal').getByLabel('Begrü
 
 for (const breite of [375, 1440]) {
   test.describe(`Energieziele bei ${breite} px`, () => {
-    test('leerer Zustand (R13): Satz und Grenz-Satz; die Reiter Maßnahmen und Abweichungen ehrlich leer', async ({ page }) => {
+    test('leerer Zustand (R13): Satz und Grenz-Satz; der Reiter Abweichungen ehrlich leer', async ({ page }) => {
       await oeffne(page, 'lage=leer', breite, AM_20_12_2027);
       await expect(page.getByTestId('energieziele-leer')).toHaveText(LEER);
       await expect(page.getByTestId('verbesserung-bereich').getByText(GRENZE)).toBeVisible();
@@ -92,10 +92,10 @@ for (const breite of [375, 1440]) {
       if (breite >= 720) expect(m.reiter).toContain('Ziele und Maßnahmen');
       ohneQuerlauf(m, 'leer');
       await ablegen(page, `leer-${breite}`, true);
-      await page.getByTestId('verbesserung-reiter-massnahmen').click();
-      await expect(page.getByTestId('verbesserung-leer-massnahmen')).toBeVisible();
-      await expect(page.getByTestId('verbesserung-leer-massnahmen').getByRole('button')).toHaveCount(0);
-      expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/verbesserung/massnahmen');
+      await page.getByTestId('verbesserung-reiter-abweichungen').click();
+      await expect(page.getByTestId('verbesserung-leer-abweichungen')).toBeVisible();
+      await expect(page.getByTestId('verbesserung-leer-abweichungen').getByRole('button')).toHaveCount(0);
+      expect(await page.evaluate(() => location.hash)).toBe('#/portfolio/verbesserung/abweichungen');
     });
 
     test('Anlegen an KZ-0004 (R4): Basis-Zeile, Vorgabe Januar bis Dezember 2028, danach die Seite des Energieziels', async ({ page }) => {

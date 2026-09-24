@@ -144,10 +144,10 @@ describe('die Flächen gegen R4/R10', () => {
     expect(await screen.findByText(UEMS_VERBESSERUNG_SAETZE.leer())).toBeTruthy();
     expect(screen.getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
-  it('Maßnahmen und Abweichungen: ehrlicher Leer-Satz ohne Knopf, mit Grenz-Satz', () => {
+  it('Abweichungen: ehrlicher Leer-Satz ohne Knopf, mit Grenz-Satz (Maßnahmen: IP-13)', () => {
     setSelbstauskunft(rechteSeed('IK').me);
-    bereich('massnahmen');
-    const leer = screen.getByTestId('verbesserung-leer-massnahmen');
+    bereich('abweichungen');
+    const leer = screen.getByTestId('verbesserung-leer-abweichungen');
     expect(within(leer).queryByRole('button')).toBeNull();
     expect(within(leer).getByText(UEMS_NORMGRENZE)).toBeTruthy();
   });
