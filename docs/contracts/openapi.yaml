@@ -11864,6 +11864,199 @@ paths:
         "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
         "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
         "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/energieziele:
+    get:
+      tags: [kennzahlen]
+      summary: Das Register der Energieziele - wahlweise einer Kennzahl oder eines Zustands.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-6); sichtbar sind die Ziele im Zaun (RLS über `standort_id`,
+        ein Ziel am Unternehmen nur unternehmensweit). `kennzahl` ist die ID einer sichtbaren Kennzahl (sonst 404),
+        `zustand` aus `offen · bewertet · beendet`; ein anderer Parameter 400.
+      parameters:
+        - { name: kennzahl, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: zustand, in: query, required: false, schema: { type: string, enum: [offen, bewertet, beendet] } }
+      responses:
+        "200":
+          description: Die sichtbaren Energieziele, nach Kennzeichen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiezielListe" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+    post:
+      tags: [kennzahlen]
+      summary: Legt ein Energieziel EZ-JJJJ-nnnn an einer Kennzahl mit freigegebener Bezugsbasis an.
+      description: >
+        Recht `verbesserung.verwalten` am Geltungsbereich der Kennzahl (Z1, Z2, E3 = A). Das Ziel zitiert die
+        freigegebene, heute geltende Bezugsbasis-Fassung; ohne sie 422 `kennzahl_ohne_bezugsbasis`. `zielwert_prozent`
+        ist Prozent gegenüber dem Erwarteten (eine Stelle, weniger Energie negativ, −100 < x < 100; sonst 400) - kein
+        absoluter Wert. `zielperiode` fest aus ganzen Monaten `JJJJ-MM/JJJJ-MM` (höchstens 120), nie rollierend (400
+        `zielperiode_ungueltig`), Beginn frühestens im Monat nach dem Anlegen (400 `zielperiode_rueckwirkend`) und nicht
+        vor der Geltung der Fassung (422 `zielperiode_vor_fassung`). `wortlaut` Pflicht (422 `wortlaut_fehlt`),
+        `begruendung` 10–500 Zeichen (422 `begruendung_fehlt`); `verantwortlich` ein aktiver Benutzer (`sub`, 422
+        `benutzer_unbekannt`), ohne ihn der der Kennzahl bzw. die anlegende Person. Je Kennzahl höchstens ein offenes
+        Ziel mit überschneidender Zielperiode (409 `energieziel_laeuft`). Das Kennzeichen trägt das erste Jahr der
+        Zielperiode; Protokoll `energieziel_angelegt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kennzahl, zielwert_prozent, zielperiode, wortlaut, begruendung]
+              properties:
+                kennzahl: { type: string, format: uuid }
+                zielwert_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
+                zielperiode: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])/[0-9]{4}-(0[1-9]|1[0-2])$" }
+                wortlaut: { type: string, minLength: 1 }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+                verantwortlich: { type: string, description: "sub eines aktiven Benutzers" }
+      responses:
+        "201":
+          description: Angelegt, offen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Das Energieziel mit Verlauf.
+      description: Recht `verbesserung.ansehen`; Zaun über die Kennzahl und `standort_id` - außerhalb 404.
+      responses:
+        "200":
+          description: Das Energieziel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+    put:
+      tags: [kennzahlen]
+      summary: Ändert Wortlaut und Ende der Zielperiode, solange das Ziel offen ist - mit Begründung.
+      description: >
+        Recht `verbesserung.verwalten` am Geltungsbereich der Kennzahl (§5.7). Die Zielperiode verschiebt nur ihr
+        Ende nach hinten (422 `zielperiode_nur_nach_hinten`); `begruendung` 10–500 Zeichen Pflicht; nicht offen 409
+        `energieziel_nicht_offen`. Zielwert, Kennzahl und Fassung bleiben. Protokoll `energieziel_geaendert` (alt/neu).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                wortlaut: { type: string, minLength: 1 }
+                zielperiode: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])/[0-9]{4}-(0[1-9]|1[0-2])$" }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Geändert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/verantwortlicher:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kennzahlen]
+      summary: Setzt den Verantwortlichen des Energieziels (Benutzer + Schnappschuss) mit Begründung.
+      description: >
+        Recht `verbesserung.verwalten` am Geltungsbereich der Kennzahl; ein aktiver Benutzer des Kundenbereichs (422
+        `benutzer_unbekannt`), solange offen. Verantwortung verleiht kein Recht (RE3). Protokoll
+        `verantwortlicher_geaendert`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [benutzer, begruendung]
+              properties:
+                benutzer: { type: string }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Umbesetzt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/beenden:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [kennzahlen]
+      summary: Beendet ein offenes Energieziel vorzeitig (Tag, Begründung) - endgültig, nie gelöscht.
+      description: >
+        Recht `verbesserung.verwalten` am Geltungsbereich der Kennzahl. `zum` ohne Angabe heute, nie in der Zukunft
+        oder vor dem Anlegen (422 `tag_ungueltig`); `begruendung` 10–500 Zeichen. Protokoll `energieziel_beendet`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [begruendung]
+              properties:
+                zum: { type: string, format: date }
+                begruendung: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        "200":
+          description: Beendet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Energieziel" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/energieziele/{id}/stand:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Der Ziel-Stand - je Monat der Vergleich mit der Bezugsbasis, Summe durch Summe, x von y.
+      description: >
+        Recht `verbesserung.ansehen` (Z3, Z4; Vertrag verbesserung.md §4). Je Monat der Zielperiode die Zeile des
+        Vergleich-Lesers der zitierten Bezugsbasis (Fassung am letzten Tag des Monats, P4) und ob der Monat endgültig
+        ist; über die endgültigen Monate die Operation `zielstand`: Σ gemessen ÷ Σ erwartet über die bewertbaren
+        (nie ein Mittel), `monate_text` „x von y“, `nicht_gezaehlt` mit Grund, `vorschlag` (`erreicht ·
+        nicht_erreicht`) nur bei vollständiger Periode, sonst null. `satz` und `vorschlag_satz` sind Kundensätze des
+        Vertrags (§6), ohne bewertbaren Monat null.
+      responses:
+        "200":
+          description: Der Stand zum Abruf-Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiezielStand" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/bezugsbasen/uebersicht:
     get:
       tags: [kennzahlen]
@@ -14929,6 +15122,14 @@ components:
       description: >
         Abgelehnt, nichts geschrieben. `{code, message, …Fakten}`; die Codes stehen in bezugsbasis.md §13
         (403/404 der Kennzahl in deren Form).
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true, required: [code, message],
+                    properties: { code: { type: string }, message: { type: string } } }
+    VerbesserungAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben. `{code, message, …Fakten}` (UEMS AP-18: Energieziel, Maßnahme, Abweichung;
+        403/404 der Kennzahl in deren Form).
       content:
         application/json:
           schema: { type: object, additionalProperties: true, required: [code, message],
@@ -27185,6 +27386,100 @@ components:
         kennzeichen: { type: string, example: BB-0001 }
         beendet_zum: { type: string, format: date, nullable: true }
         beendet_grund: { type: string, nullable: true }
+    Energieziel:
+      type: object
+      description: Ein Energieziel (UEMS AP-18 IP-6, Z1/Z2); `verlauf` nur am einzelnen Ziel, sonst null.
+      required: [id, kennzeichen, kennzahl, bezugsbasis, zielwert_prozent, zielperiode, wortlaut, begruendung, verantwortlich, standort_id, zustand, angelegt_am, beendet_zum, beendet_grund, ergebnis, verlauf]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^EZ-[0-9]{4}-[0-9]{4,9}$" }
+        kennzahl:
+          type: object
+          required: [id, kennzeichen, name]
+          properties: { id: { type: string, format: uuid }, kennzeichen: { type: string }, name: { type: string } }
+        bezugsbasis:
+          type: object
+          required: [id, kennzeichen, fassung]
+          properties: { id: { type: string, format: uuid }, kennzeichen: { type: string }, fassung: { type: integer } }
+        zielwert_prozent: { type: string, description: "Dezimaltext mit einer Stelle, weniger Energie negativ" }
+        zielperiode: { type: string }
+        wortlaut: { type: string }
+        begruendung: { type: string }
+        verantwortlich:
+          type: object
+          required: [sub, name]
+          properties: { sub: { type: string }, name: { type: string } }
+        standort_id: { type: string, format: uuid, nullable: true }
+        zustand: { type: string, enum: [offen, bewertet, beendet] }
+        angelegt_am: { type: string, format: date }
+        beendet_zum: { type: string, format: date, nullable: true }
+        beendet_grund: { type: string, nullable: true }
+        ergebnis: { type: string, nullable: true, enum: [erreicht, verfehlt, nicht_bewertbar, null] }
+        verlauf:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/EnergiezielEintrag" }
+    EnergiezielEintrag:
+      type: object
+      description: Eine Zeile des Protokolls `energieziel_aenderung`.
+      required: [art, alt, neu, begruendung, person, am]
+      properties:
+        art: { type: string, enum: [energieziel_angelegt, energieziel_geaendert, verantwortlicher_geaendert, bewertung_beantragt, bewertung_abgelehnt, energieziel_bewertet, energieziel_beendet, anstoss_gesetzt, anstoss_beantwortet] }
+        alt: { type: object, nullable: true, additionalProperties: true }
+        neu: { type: object, nullable: true, additionalProperties: true }
+        begruendung: { type: string, nullable: true }
+        person: { type: string }
+        am: { type: string, format: date-time }
+    EnergiezielListe:
+      type: object
+      required: [energieziele]
+      properties:
+        energieziele: { type: array, items: { $ref: "#/components/schemas/Energieziel" } }
+    EnergiezielStand:
+      type: object
+      description: Der Ziel-Stand (Z3, Z4) - Ausgang der Operation `zielstand` und je Monat die Vergleichszeile.
+      required: [energieziel, abruf, zielperiode, zielwert_prozent, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vollstaendig, nicht_gezaehlt, summe, vorschlag, satz, vorschlag_satz]
+      properties:
+        energieziel: { $ref: "#/components/schemas/Energieziel" }
+        abruf: { type: string, format: date }
+        zielperiode: { type: string }
+        zielwert_prozent: { type: string }
+        monate:
+          type: array
+          items:
+            type: object
+            required: [periode, endgueltig, vergleich]
+            properties:
+              periode: { type: string }
+              endgueltig: { type: boolean }
+              vergleich: { $ref: "#/components/schemas/BezugsbasisVergleichMonat" }
+        monate_bewertbar: { type: integer }
+        monate_endgueltig: { type: integer }
+        monate_soll: { type: integer }
+        monate_text: { type: string, description: "x von y" }
+        vollstaendig: { type: boolean }
+        nicht_gezaehlt:
+          type: array
+          items:
+            type: object
+            required: [monat, grund]
+            properties:
+              monat: { type: string }
+              grund: { type: string, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, periode_nicht_zu_ende, keine_werte, unvollstaendig] }
+        summe:
+          type: object
+          required: [gemessen, erwartet, delta_prozent, band_prozent, richtung, urteil, kennzeichen]
+          properties:
+            gemessen: { type: string, nullable: true }
+            erwartet: { type: string, nullable: true }
+            delta_prozent: { type: string, nullable: true }
+            band_prozent: { type: string, nullable: true }
+            richtung: { type: string, nullable: true }
+            urteil: { type: string, enum: [besser, schlechter, im_rahmen, nicht_anwendbar, ohne_urteil] }
+            kennzeichen: { type: array, items: { type: string } }
+        vorschlag: { type: string, nullable: true, enum: [erreicht, nicht_erreicht, null] }
+        satz: { type: string, nullable: true }
+        vorschlag_satz: { type: string, nullable: true }
     BezugsbasisVergleichMonat:
       type: object
       description: Ein Monat - roh und bereinigt getrennt (U1); nur `bereinigt` trägt ein Urteil.

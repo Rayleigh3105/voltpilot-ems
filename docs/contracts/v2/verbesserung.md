@@ -19,8 +19,10 @@ sagt eine Person.
 | `frontend/portal/src/verbesserung.ts` | der TS-Zwilling (rein; eigene Satz-Schablonen, nicht das Glossar) |
 | `services/optimization/voltpilot_optimization/verbesserung.py` | die Python-Referenz — `zeitraum` und `ueberfaellig_seit` aus `k_faelle.py` |
 
-> **Wer anruft:** noch niemand. Die Leser `GET …/massnahmen/{id}/wirkung` (IP-11), `GET …/energieziele/{id}/stand`
-> (IP-6) und die Übersicht (Frist, F2) folgen; sie rechnen nicht selbst, sondern rufen diese Operationen.
+> **Wer anruft:** `zielstand` der Leser `GET /api/v1/energieziele/{id}/stand` (IP-6, `EnergiezielService` über
+> `BezugsbasisVergleich.fuerZiel`, nur endgültige Monate), `satz` dessen Kundensätze `energieziel_stand` und
+> `energieziel_vorschlag`. Der Leser `GET …/massnahmen/{id}/wirkung` (IP-11) und die Übersicht (Frist, F2) folgen; sie
+> rechnen nicht selbst, sondern rufen diese Operationen.
 
 ## 1. Vokabulare (geschlossen, in `verbesserung-vectors.json`)
 

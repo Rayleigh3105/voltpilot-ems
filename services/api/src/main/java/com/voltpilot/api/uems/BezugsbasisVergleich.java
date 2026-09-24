@@ -97,8 +97,32 @@ public class BezugsbasisVergleich {
         KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(id, null, null, null);
         LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
         YearMonth[] spanne = spanne(vonText, bisText, YearMonth.from(heute));
-        YearMonth von = spanne[0], bis = spanne[1];
+        return lesen(id, k, basisText, spanne[0], spanne[1]).vergleich();
+    }
 
+    /**
+     * Ein Monat für den Ziel-Stand (AP-18 IP-6, Z3): die Vergleichszeile des Lesers, der Eingang der Operation
+     * {@code vergleich} gegen die Fassung am letzten Tag des Monats (P4) samt deren Referenzperiode und ob der
+     * gespeicherte Monatswert zum Abruf endgültig ist ({@code endgueltig_ab} erreicht).
+     */
+    public record ZielMonat(BezugsbasisVergleichDto.Monat zeile, VerbesserungRegeln.MonatEingang eingang,
+            boolean endgueltig) {}
+
+    /** Der Vergleich über die Zielperiode und je Monat der Eingang für {@link VerbesserungRegeln#zielstand}. */
+    public record ZielVergleich(BezugsbasisVergleichDto.Vergleich vergleich, List<ZielMonat> monate, LocalDate heute) {}
+
+    /**
+     * AP-18 IP-6 (Z3): der Vergleich der Kennzahl gegen die zitierte Bezugsbasis {@code basisText} über die Monate
+     * {@code von}–{@code bis} — derselbe Leser, gerechnet wird hier nichts. Sichtbarkeit wie {@link #vergleich} (404).
+     */
+    public ZielVergleich fuerZiel(UUID id, String basisText, YearMonth von, YearMonth bis) {
+        KennzahlService.BasisKennzahl k = kennzahlen.fuerBezugsbasis(id, null, null, null);
+        return lesen(id, k, basisText, von, bis);
+    }
+
+    private ZielVergleich lesen(UUID id, KennzahlService.BasisKennzahl k, String basisText, YearMonth von,
+            YearMonth bis) {
+        LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
         KennzahlDto.Werte gelesen = werte.werte(id, Set.of("periode", "von", "bis"), "monat",
                 von.minusMonths(1).atDay(1).toString(), bis.atEndOfMonth().toString(), null);
         Map<String, KennzahlDto.Wert> jeMonat = new HashMap<>();
@@ -115,8 +139,11 @@ public class BezugsbasisVergleich {
         }
 
         List<BezugsbasisVergleichDto.Monat> monate = new ArrayList<>();
+        List<ZielMonat> ziel = new ArrayList<>();
         for (YearMonth m = von; !m.isAfter(bis); m = m.plusMonths(1)) {
-            monate.add(monat(m, heute, jeMonat, einheiten, basis, fassungen, variablen));
+            ZielMonat z = monat(m, heute, jeMonat, einheiten, basis, fassungen, variablen, k.jetzt());
+            monate.add(z.zeile());
+            ziel.add(z);
         }
 
         BezugsbasisVergleichDto.Zeitraum zeitraum = zeitraum(von, bis, heute, jeMonat, einheiten, basis, fassungen,
@@ -125,9 +152,10 @@ public class BezugsbasisVergleich {
                 : new BezugsbasisVergleichDto.Basis(basis.id(), basis.kennzeichen(), basis.beendetZum(),
                         basis.beendetGrund());
         List<BezugsbasisVergleichDto.Stand> staende = basis == null ? List.of() : staende(basis.id(), k.zone());
-        return new BezugsbasisVergleichDto.Vergleich(gelesen.kennzahl(), kopfBasis, von.toString(), bis.toString(),
-                gelesen.zeitzone(), List.copyOf(monate), zeitraum, staende, BezugsbasisVergleichSatz.stand(staende),
-                basis == null ? BezugsbasisVergleichSatz.LEER : null);
+        return new ZielVergleich(new BezugsbasisVergleichDto.Vergleich(gelesen.kennzahl(), kopfBasis, von.toString(),
+                bis.toString(), gelesen.zeitzone(), List.copyOf(monate), zeitraum, staende,
+                BezugsbasisVergleichSatz.stand(staende), basis == null ? BezugsbasisVergleichSatz.LEER : null),
+                List.copyOf(ziel), heute);
     }
 
     /**
@@ -146,8 +174,9 @@ public class BezugsbasisVergleich {
 
     // ================================================================================ je Monat
 
-    private BezugsbasisVergleichDto.Monat monat(YearMonth m, LocalDate heute, Map<String, KennzahlDto.Wert> jeMonat,
-            Einheiten einheiten, Basis basis, List<FassungZeile> fassungen, Map<UUID, Map<String, Gelesen>> variablen) {
+    private ZielMonat monat(YearMonth m, LocalDate heute, Map<String, KennzahlDto.Wert> jeMonat,
+            Einheiten einheiten, Basis basis, List<FassungZeile> fassungen, Map<UUID, Map<String, Gelesen>> variablen,
+            java.time.Instant jetzt) {
         KennzahlDto.Wert w = jeMonat.get(m.toString());
         KennzahlDto.Wert vorher = jeMonat.get(m.minusMonths(1).toString());
         String beschriftung = w != null ? w.beschriftung() : KennzahlRegeln.periodeText("monat", m.toString());
@@ -161,9 +190,10 @@ public class BezugsbasisVergleich {
         FassungZeile f = fassungAm(fassungen, letzter);
         boolean beendet = f == null && beendet(basis, fassungen, letzter);
         List<Variablenwert> bedingung = f == null ? List.of() : bedingung(f, m, w, einheiten, variablen);
-        Map<String, Object> e = BezugsbasisRegeln.vergleich(new BezugsbasisRegeln.VergleichEingang(
+        BezugsbasisRegeln.VergleichEingang eingang = new BezugsbasisRegeln.VergleichEingang(
                 f == null ? null : f.regel(), beendet, letzter.isBefore(heute), gemessen(w),
-                bedingung.stream().map(Variablenwert::wert).toList()));
+                bedingung.stream().map(Variablenwert::wert).toList());
+        Map<String, Object> e = BezugsbasisRegeln.vergleich(eingang);
 
         BezugsbasisVergleichDto.Bereinigt bereinigt = new BezugsbasisVergleichDto.Bereinigt(fassungDto(f),
                 new BezugsbasisVergleichDto.Gemessen(zaehler(w), einheiten.zaehler(), w == null ? null : w.version(),
@@ -181,7 +211,11 @@ public class BezugsbasisVergleich {
                 v, basis == null ? null : basis.kennzeichen(), beendetZum(basis, fassungen, letzter),
                 basis == null ? null : basis.beendetGrund(), folge == null ? null : folge.fassung(),
                 folge == null ? null : folge.giltAb(), hinweis));
-        return new BezugsbasisVergleichDto.Monat(m.toString(), beschriftung, roh, bereinigt, satz);
+        boolean endgueltig = w != null && w.endgueltigAb() != null
+                && !java.time.OffsetDateTime.parse(w.endgueltigAb()).toInstant().isAfter(jetzt);
+        return new ZielMonat(new BezugsbasisVergleichDto.Monat(m.toString(), beschriftung, roh, bereinigt, satz),
+                new VerbesserungRegeln.MonatEingang(m.toString(), f == null ? null : f.referenzperiode(), eingang),
+                endgueltig);
     }
 
     /**
