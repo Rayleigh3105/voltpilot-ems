@@ -2499,6 +2499,50 @@
       "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
       "regel": "Kaskade (Pfad 1) oder Struktur-Läufer (Pfad 2) setzt „Anstoß liegt vor“ an einer freigegebenen Fassung; die Fassung bleibt byte-gleich, eine Person antwortet.",
       "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. Freigabe, Beenden und Anstoß stehen bis dahin im Protokoll bezugsbasis_aenderung bzw. in bezugsbasis_anstoss."
+    },
+    {
+      "art": "auffaelligkeit_vermerkt",
+      "bezug": "kennzahl",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-15 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Vermerk-Zeile an der Kennzahl und Übersichts-Baustein „Ziele und Maßnahmen“",
+      "regel": "Die Naht vermerkt einen endgültigen Monatswert einer Energieleistungskennzahl mit Urteil „schlechter“ als Auffälligkeit (A1), in derselben Transaktion wie ihr Anlass; eindeutig je Kennzahl × Fassung × Monat, eine Person antwortet.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
+    },
+    {
+      "art": "abweichung_eroeffnet",
+      "bezug": "kennzahl",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-14 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Verlauf der Abweichung und Übersichts-Baustein „Ziele und Maßnahmen“",
+      "regel": "Eine Person eröffnet eine Abweichung (AW-…) an Kennzahl × Fassung × Monaten — als Antwort auf eine Auffälligkeit oder von Hand — mit Verantwortlichem und Frist (A3). Kein Läufer eröffnet.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
+    },
+    {
+      "art": "massnahme_umgesetzt",
+      "bezug": "massnahme",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-10 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Verlauf der Maßnahme und Wirkung (Nachher-Monate ab dem Monat nach der Umsetzung)",
+      "regel": "Eine Person meldet eine Maßnahme (M-…) mit dem Tag der Umsetzung als umgesetzt (nie in der Zukunft); ab dem Folgemonat zählen die Nachher-Monate (WK1).",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
+    },
+    {
+      "art": "massnahme_bewertet",
+      "bezug": "massnahme",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-12 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Verlauf der Maßnahme, Bewertungs-Stände und Berichte (AP-19)",
+      "regel": "Eine Person bewertet die Wirkung einer Maßnahme als Stand Nr. n (belegt · nicht belegt · nicht messbar) mit Begründung und Kopie mit Prüfsumme; bei Vier-Augen bestätigt eine zweite Person. Das System behauptet nichts.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
     }
   ],
   "cases": [

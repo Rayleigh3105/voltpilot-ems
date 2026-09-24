@@ -327,6 +327,15 @@ gleichnamigen Werte `bezugsbasis_anstoss`/`bezugsbasis_beendet` in `EreignisVoka
 sind Anlässe eines Bericht-Anstoßes, keine Ereignis-Wörter. Die Anlage bleibt AP-17 (Konzept AP-18
 §6.8); AP-18 hängt seine Auslöser an die Transaktion, nicht an diese Ereignisse.
 
+**Reserviert für die Vorgänge (AP-18 IP-5, §6.2).** `auffaelligkeit_vermerkt` (Urheber `cloud`, die
+Naht vermerkt einen endgültigen Monat mit Urteil „schlechter“) und `abweichung_eroeffnet` (`kunde`),
+beide mit Bezug `kennzahl`; `massnahme_umgesetzt` und `massnahme_bewertet` (`kunde`) mit Bezug
+`massnahme` (M-…). **Anlage offen:** AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4), die
+Übergänge stehen im Protokoll des Vorgangs (`energieziel_aenderung` seit V20260924223000, die übrigen
+mit IP-9/IP-14). Die Wörter stehen nur im Block `reserviert`; kein Schreiber und kein Eintrag in
+`vokabular.arten` oder der Ereignis-Tabelle. Bis zur Anlage lehnen die bestehenden Prüfer sie ab
+(`EreignisVokabularVectorsTest.vorgangsEreignisseBleibenNurReserviert`).
+
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
 deutsch und Namen aus dem, was die Fläche kennt — etwa „Zählerwechsel am 18.11.2026 10:40:

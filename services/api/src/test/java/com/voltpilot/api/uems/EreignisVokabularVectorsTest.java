@@ -896,4 +896,33 @@ class EreignisVokabularVectorsTest {
         }
     }
 
+    /**
+     * AP-18 IP-5: die vier Wörter der Vorgänge sind nur reserviert (§6.2, W15) — AP-18 hängt seine Auslöser an die
+     * Transaktion; bis zur Anlage lehnt der Prüfer sie ab.
+     */
+    @Test
+    void vorgangsEreignisseBleibenNurReserviert() throws Exception {
+        JsonNode datei = MAPPER.readTree(VECTORS.toFile());
+        Map<String, String> bezugUndUrheber = Map.of("auffaelligkeit_vermerkt", "kennzahl [\"cloud\"]",
+                "abweichung_eroeffnet", "kennzahl [\"kunde\"]", "massnahme_umgesetzt", "massnahme [\"kunde\"]",
+                "massnahme_bewertet", "massnahme [\"kunde\"]");
+        for (Map.Entry<String, String> e : bezugUndUrheber.entrySet()) {
+            List<JsonNode> reservierungen = new ArrayList<>();
+            datei.path("reserviert").forEach(r -> {
+                if (r.path("art").asText().equals(e.getKey())) reservierungen.add(r);
+            });
+            assertThat(reservierungen).as(e.getKey()).hasSize(1);
+            String[] erwartet = e.getValue().split(" ", 2);
+            assertThat(reservierungen.getFirst().path("bezug").asText()).isEqualTo(erwartet[0]);
+            assertThat(reservierungen.getFirst().path("urheber")).isEqualTo(MAPPER.readTree(erwartet[1]));
+            assertThat(reservierungen.getFirst().path("angelegt_von").asText()).startsWith("Anlage offen");
+            assertThat(EreignisVokabular.Art.vonCode(e.getKey())).isNull();
+            assertThat(datei.at("/vokabular/arten").findValuesAsText("art")).doesNotContain(e.getKey());
+            for (Urheber u : List.of(Urheber.KUNDE, Urheber.CLOUD)) {
+                assertThat(EreignisVokabular.pruefe(MAPPER.createObjectNode().put("art", e.getKey()), u).grund())
+                        .isEqualTo(Grund.WORT_UNBEKANNT);
+            }
+        }
+    }
+
 }

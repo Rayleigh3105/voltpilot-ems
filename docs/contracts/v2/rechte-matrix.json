@@ -656,6 +656,60 @@
       "anmerkung": "Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht."
     },
     {
+      "kennung": "verbesserung.verwalten",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Energieziele, Maßnahmen und Abweichungen anlegen, bearbeiten, umgesetzt melden, Auffälligkeiten beantworten",
+      "herkunft": "AP-18 §4.9 (RE1, Z1, M1, A3)",
+      "nachtrag": "AP-18 §4.9",
+      "wie": "bezugsbasis.verwalten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Datenhaltung des Energieziels seit IP-5. Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
+    },
+    {
+      "kennung": "verbesserung.abschliessen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Abweichung abschließen · Maßnahme bewerten · Energieziel bewerten",
+      "herkunft": "AP-18 §4.9 (RE1, Z4/Z5, WK6)",
+      "nachtrag": "AP-18 §4.9",
+      "wie": "bezugsbasis.freigeben",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-18 IP-7 ff. (Routen); Ergebnis mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
+    },
+    {
+      "kennung": "verbesserung.ansehen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Energieziele, Maßnahmen, Abweichungen und Auffälligkeiten ansehen",
+      "herkunft": "AP-18 §4.9 (RE1, RE2)",
+      "nachtrag": "AP-18 §4.9",
+      "wie": "bezugsbasis.ansehen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
+    },
+    {
       "kennung": "export.standort",
       "gruppe": "kennzahlen",
       "kundenwort": "Export je Standort (CSV: Messwerte, Kennzahlen)",
@@ -1980,6 +2034,49 @@
         {
           "wortlaut": "Wer eine Fassung bildet, gibt sie nicht ohne das Recht `bezugsbasis.freigeben` frei; bei Vier-Augen bestätigt nie der Urheber (F1/F2).",
           "wo": "V20260924071500 (bezugsbasis_fassung_entscheidung_chk); Rechte-Zellen dieser drei Kennungen"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-18 §4.9",
+      "titel": "Ziele, Maßnahmen und Abweichungen (IP-5)",
+      "konzept": "AP-18 §4.2, §4.9, §6.1; entschieden am 24.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Energieziele, Maßnahmen und Abweichungen anlegen, bearbeiten, umgesetzt melden, Auffälligkeiten beantworten",
+          "wer": "KA U · EM U · BE S",
+          "recht": "`verbesserung.verwalten`",
+          "kennungen": [
+            "verbesserung.verwalten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Datenhaltung des Energieziels seit IP-5. Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
+        },
+        {
+          "handlung": "Abweichung abschließen · Maßnahme bewerten · Energieziel bewerten",
+          "wer": "KA U · EM U",
+          "recht": "`verbesserung.abschliessen`",
+          "kennungen": [
+            "verbesserung.abschliessen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Reserviert für AP-18 IP-7 ff. (Routen); Ergebnis mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager)."
+        },
+        {
+          "handlung": "Energieziele, Maßnahmen, Abweichungen und Auffälligkeiten ansehen",
+          "wer": "KA U · EM U · BE S · BD S · LE S · US A",
+          "recht": "`verbesserung.ansehen`",
+          "kennungen": [
+            "verbesserung.ansehen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Verantwortung verleiht kein Recht; wer bewertet oder abschließt, braucht `verbesserung.abschliessen`, bei Vier-Augen bestätigt nie der Urheber (RE3, Z5).",
+          "wo": "V20260924223000 (energieziel_entscheidung_chk); Rechte-Zellen dieser drei Kennungen"
         }
       ]
     }

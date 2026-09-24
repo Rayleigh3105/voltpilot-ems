@@ -273,8 +273,11 @@ public class TenantRepository {
                 // AP-16 IP-17: the Toleranz-Fassungen name the tenant (RESTRICT) and their Vergleichsquelle.
                 // AP-17 IP-6: the Bezugsbasen name their Kennzahl, Benutzer and Bezugsgroessen (RESTRICT):
                 // parts before their Fassung, Fassungen and protocol before the Basis.
+                // AP-18 IP-5: the Energieziele cite a Fassung, Kennzahl, Standort and Benutzer (RESTRICT):
+                // protocol and Ziel before all of them, their Kennzeichen counter with them.
                 // Current repository code also runs against older migration fixtures.
-                for (String table : new String[] {"bezugsbasis_anstoss", "bezugsbasis_faktor", "bezugsbasis_variable",
+                for (String table : new String[] {"energieziel_aenderung", "energieziel", "verbesserung_kennung_seq",
+                        "bezugsbasis_anstoss", "bezugsbasis_faktor", "bezugsbasis_variable",
                         "bezugsbasis_fassung", "bezugsbasis_aenderung", "bezugsbasis", "bezugsbasis_kennzeichen_seq",
                         "geraet_aenderung", "vergleich_toleranz",
                         "bewertung_aenderung", "bewertung_kriterien_fassung", "bewertung_umfang_ausschluss",

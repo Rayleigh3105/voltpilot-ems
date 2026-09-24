@@ -44,8 +44,8 @@ import org.testcontainers.utility.DockerImageName;
  * bekommt mit {@code V20260924192700} drei leere Spalten), eine Gradtagzahl am Standort ohne Wetterbezug, zwei
  * Protokollzeilen, die Pfad 2 des Anstoßes lesen würde ({@code ort_aenderung} korrigiert, {@code bezugsgroesse_aenderung}
  * bearbeitet), und ein Monatsbericht (die Tabelle {@code bericht} bekommt mit {@code V20260924211800} die leere Spalte
- * {@code kennzahl_id}). Danach laufen ALLE späteren Migrationen — die AP-17-Migrationen sind die jüngsten Versionen, der
- * Lauf ist also zugleich die frische Reihenfolge und die späte Ankunft.
+ * {@code kennzahl_id}). Danach laufen die Migrationen bis zur letzten von AP-17 ({@link #LETZTE_AP17}, Abdruck für „genau
+ * diese Tabellen und Wörter“) und dann ALLE späteren (AP-18 ff.) — der Bestand bleibt auch über sie byte-gleich.
  *
  * <p><b>Was sich außerhalb der neuen Tabellen ändern DARF, steht mit Namen da:</b> nichts an einer Zeile. Neue Tabellen
  * ({@link #NEUE_TABELLEN}) müssen leer, neue Spalten in jeder Bestandszeile NULL sein ({@link Bestandsschutz}). Die neue
@@ -65,6 +65,13 @@ class UemsBezugsbasisBestandsschutzTest {
 
     /** Die erste Migration von AP-17 (IP-6); der Bestand entsteht auf der Fassung davor. */
     private static final String ERSTE_AP17 = "20260924071500";
+    /**
+     * Die letzte Migration von AP-17 (IP-23). „Genau diese Tabellen“ und „nur die genannten Wörter“ gelten für AP-17 und
+     * werden auf DIESEM Stand gemessen — spätere Programme (AP-18 ff.) legen danach eigene Tabellen und Wörter an und
+     * haben dafür ihren eigenen Bestandsschutz. Der Rollout bis zum neuesten Stand prüft danach weiter, dass die
+     * Bestandszeilen byte-gleich bleiben, die AP-17-Tabellen leer und kein AP-17-Wort verschwindet oder umnummeriert wird.
+     */
+    private static final String LETZTE_AP17 = "20260924214500";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";
@@ -91,8 +98,10 @@ class UemsBezugsbasisBestandsschutzTest {
 
     private static JdbcTemplate root;
     private static Map<String, String> vorher;
+    private static Map<String, String> bisAp17;
     private static Map<String, String> nachher;
     private static Map<String, TreeSet<String>> woerterVorher;
+    private static Map<String, TreeSet<String>> woerterBisAp17;
     private static long ortKorrektur;
     private static long bezugBearbeitet;
 
@@ -105,6 +114,11 @@ class UemsBezugsbasisBestandsschutzTest {
         jobsAus();
         vorher = Bestandsschutz.fingerabdruck(root, List.of());
         woerterVorher = woerter();
+
+        flyway().target(LETZTE_AP17).load().migrate();
+        jobsAus();
+        bisAp17 = Bestandsschutz.fingerabdruck(root, List.of());
+        woerterBisAp17 = woerter();
 
         flyway().load().migrate();
         jobsAus();
@@ -136,24 +150,38 @@ class UemsBezugsbasisBestandsschutzTest {
             assertThat(vorher).as(tabelle + " kommt erst mit AP-17").doesNotContainKey(tabelle);
             assertThat(nachher.get(tabelle)).as(tabelle + " nach dem Rollout").isEqualTo(Bestandsschutz.LEER);
         }
-        List<String> neu = new ArrayList<>(nachher.keySet());
+        try (var dateien = Files.list(MIGRATIONEN)) {
+            assertThat(dateien.map(d -> d.getFileName().toString()))
+                    .as("die letzte AP-17-Migration").anyMatch(n -> n.startsWith("V" + LETZTE_AP17 + "__"));
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        List<String> neu = new ArrayList<>(bisAp17.keySet());
         neu.removeAll(vorher.keySet());
         neu.removeIf(t -> t.startsWith(Bestandsschutz.KATALOG_METADATEN + "@"));
         assertThat(neu).as("AP-17 legt genau diese Tabellen an").containsExactlyInAnyOrderElementsOf(NEUE_TABELLEN);
+        assertThat(nachher.keySet()).as("spätere Programme nehmen keine AP-17-Tabelle weg").containsAll(bisAp17.keySet());
         assertThat(root.queryForObject("SELECT count(*) FROM bericht WHERE vorlage = 'leistungsvergleich'",
                 Integer.class)).as("kein Leistungsvergleich entsteht von selbst").isZero();
     }
 
-    /** Die neue Vorlage und die neuen Wörter: additiv, jedes Wort von vorher mit derselben Nummer. */
+    /**
+     * Die neue Vorlage und die neuen Wörter: additiv, jedes Wort von vorher mit derselben Nummer — gemessen am Endstand von
+     * AP-17 ({@link #LETZTE_AP17}); danach verliert kein Wort seinen Platz, auch nicht durch ein späteres Programm.
+     */
     @Test
     void vorlageUndVokabulareWachsenNurUmDieGenanntenWoerter() {
-        Map<String, TreeSet<String>> jetzt = woerter();
+        Map<String, TreeSet<String>> jetzt = woerterBisAp17;
+        Map<String, TreeSet<String>> neuester = woerter();
         Map<String, List<String>> erwartet = Map.of(
                 "bericht_vorlage", List.of("leistungsvergleich|unternehmen|monat",
                         "leistungsvergleich|unternehmen|jahr", "leistungsvergleich|unternehmen|datengrundlage",
                         "leistungsvergleich|standort|monat", "leistungsvergleich|standort|jahr",
                         "leistungsvergleich|standort|datengrundlage"),
-                "bericht_vokabular", List.of("vorlage|6|leistungsvergleich", "quelle_art|10|bezugsbasis"),
+                // IP-21a (V20260924071945) und IP-23 (V20260924214500, die Anlässe des Anstoßes am Leistungsvergleich).
+                "bericht_vokabular", List.of("vorlage|6|leistungsvergleich", "quelle_art|10|bezugsbasis",
+                        "anstoss_art|17|bezugsbasis_anstoss", "anstoss_art|18|bezugsbasis_fassung",
+                        "anstoss_art|19|bezugsbasis_beendet"),
                 "bezugsdaten_vokabular", List.of("herkunft_art|5|bezogen|"));
         woerterVorher.forEach((funktion, alt) -> {
             TreeSet<String> dazu = new TreeSet<>(jetzt.get(funktion));
@@ -161,6 +189,8 @@ class UemsBezugsbasisBestandsschutzTest {
             dazu.removeAll(alt);
             assertThat(dazu).as(funktion + ": nur die genannten Wörter kommen dazu")
                     .containsExactlyInAnyOrderElementsOf(erwartet.get(funktion));
+            assertThat(neuester.get(funktion)).as(funktion + ": kein AP-17-Wort verschwindet oder wird umnummeriert")
+                    .containsAll(jetzt.get(funktion));
         });
     }
 

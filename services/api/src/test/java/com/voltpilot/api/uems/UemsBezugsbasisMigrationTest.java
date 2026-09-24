@@ -49,6 +49,12 @@ class UemsBezugsbasisMigrationTest {
             "bezugsbasis_fassung", "bezugsbasis_variable", "bezugsbasis_faktor", "bezugsbasis_anstoss",
             "bezugsbasis_aenderung");
     private static final String BEGRUENDUNG = "Erste Energieleistungskennzahl: ein abgeschlossener Monat — vorläufig.";
+    /**
+     * Migrationen, die auf diesen Tabellen AUFBAUEN (ohne {@code to_regclass}-Wache) — in der späten Ankunft kommen sie
+     * MIT dieser, nicht vor ihr.
+     */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20260924223000"); // AP-18 IP-5: das Energieziel zitiert eine Bezugsbasis-Fassung.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -380,14 +386,18 @@ class UemsBezugsbasisMigrationTest {
         Path ohneDiese = Files.createTempDirectory("ohne-bezugsbasis");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
         }
         flyway(url).locations("filesystem:" + ohneDiese).load().migrate();
         var spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new java.util.ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
         JdbcTemplate spaetDb = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         String schema = "SELECT string_agg(conrelid::regclass || ':' || conname || ':' || pg_get_constraintdef(oid), '|' "
                 + "ORDER BY conrelid::regclass::text, conname) FROM pg_constraint WHERE conrelid::regclass::text LIKE 'bezugsbasis%'";
