@@ -1283,7 +1283,7 @@ export function ScheduleChart({
   // zeichnet bis zu zwölf (`useDirectLabels`). Nichts hier ist ein Umschalter -
   // die Balkenfarben sind per-Slot-ZUSTÄNDE einer Serie, und die Schichten
   // schalten die drei Gruppen-Knöpfe darüber (D4).
-  const legend: LegendItem[] = [
+  const preisLegende: LegendItem[] = [
     // Zuerst das Preis-Panel, in der Lesereihenfolge des Bildes.
     ...(showSpread
       ? ([
@@ -1315,6 +1315,8 @@ export function ScheduleChart({
           } as LegendItem,
         ]
       : []),
+  ];
+  const speicherLegende: LegendItem[] = [
     { color: t.charge, label: 'Laden aus Solarstrom', unit: 'kW', shape: 'bar', toggleable: false },
     ...(gridCharging
       ? [
@@ -1336,6 +1338,8 @@ export function ScheduleChart({
       shape: 'bar',
       toggleable: false,
     },
+  ];
+  const weitereLegende: LegendItem[] = [
     // Orange steht am Canvas als BAND + Sockel-Tick (und in der
     // Prognosen-Ebene als Fläche), also trägt die Legende die Flächen-Form.
     // Gate = dasselbe `curtailing` wie das Canvas.
@@ -1445,6 +1449,21 @@ export function ScheduleChart({
         ]
       : []),
   ];
+  // V-06 (UX-Review 24.09.2026): EINE Legende. Mit Phasen-Band nennen dessen
+  // Phasen die Speicherfarben - vorher standen dieselben Farben zweimal mit
+  // zwei Wortlauten da („Laden aus Solarstrom" über dem Bild, „Solar laden"
+  // darunter). Die eine Legende steht dann UNTER dem Bild, wo der Blick nach
+  // dem Band ankommt. Der Verlauf-Rahmen (`verlauf`) bleibt, wie er ist.
+  const phasenLegende: LegendItem[] = bandLegend.map((b) => ({
+    color: bandRoleColor(b.role, t),
+    label: b.label,
+    shape: 'bar',
+    toggleable: false,
+  }));
+  const eineLegende = !verlauf && phasenLegende.length > 0;
+  const legend: LegendItem[] = eineLegende
+    ? [...preisLegende, ...phasenLegende, ...weitereLegende]
+    : [...preisLegende, ...speicherLegende, ...weitereLegende];
 
   // The three layer switches. A group whose series the plan does not carry is
   // NOT offered - a switch that can only ever show nothing is worse than none.
@@ -1511,8 +1530,9 @@ export function ScheduleChart({
         ref={ref}
         className={`vp-chart ${twoPanel ? 'panels' : 'tall'}${showPhaseBand ? ' band' : ''}`}
       />
-      {/* K10: Farbe nie allein - jede vorkommende Phase mit Wort UND Farbe. */}
-      {showPhaseBand && bandLegend.length > 0 && (
+      {/* K10: Farbe nie allein - jede vorkommende Phase mit Wort UND Farbe.
+          Außerhalb des Verlauf-Rahmens trägt sie die EINE Legende (V-06). */}
+      {showPhaseBand && bandLegend.length > 0 && !eineLegende && (
         <ul className="vp-sched-bandlegend" aria-label="Phasen des Tages">
           {bandLegend.map((b) => (
             <li key={b.role}>
@@ -1575,8 +1595,9 @@ export function ScheduleChart({
     <div>
       <ChartHeadline kern={kern} />
       {schalter}
-      <ChartLegend items={legend} />
+      {!eineLegende && <ChartLegend items={legend} />}
       {bild}
+      {eineLegende && <ChartLegend items={legend} />}
       {hinweise}
       {insight && (
         <ChartInsight>

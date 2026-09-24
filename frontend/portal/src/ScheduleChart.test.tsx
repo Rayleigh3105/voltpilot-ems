@@ -928,3 +928,43 @@ describe('ScheduleChart · das WORT nur, wo das Band-Segment es fasst (Pixel-Gat
     expect(series('Phase').markPoint).toBeUndefined();
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * V-06 (UX-Review 24.09.2026) · EINE Legende
+ *
+ * Mit Phasen-Band standen dieselben Speicherfarben zweimal mit zwei Wortlauten
+ * da: „Laden aus Solarstrom" über dem Bild, „Solar laden" darunter. Jetzt
+ * nennt die eine Legende UNTER dem Bild die Phasen des Bands.
+ * ------------------------------------------------------------------------- */
+describe('ScheduleChart · eine Legende mit Phasen-Band (V-06)', () => {
+  const tagMitPhasen = () =>
+    plan(
+      Array.from({ length: 96 }, (_, i) =>
+        slot({ batteryKw: i >= 40 && i < 60 ? 2 : i >= 72 && i < 88 ? -2 : 0, gridKw: -1, socPct: 50 }),
+      ),
+    );
+
+  it('zeigt genau eine Legende - unter dem Bild, mit den Wörtern des Bands', () => {
+    const { container } = render(<ScheduleChart plan={tagMitPhasen()} showPhaseBand />);
+    const legenden = container.querySelectorAll('.vp-chart-legend');
+    expect(legenden).toHaveLength(1);
+    expect(container.querySelector('.vp-sched-bandlegend')).toBeNull();
+    const text = legenden[0].textContent ?? '';
+    expect(text).toContain('Solar laden');
+    expect(text).toContain('Entladen');
+    expect(text).toContain('Ruhe');
+    expect(text).not.toContain('Laden aus Solarstrom');
+    // Unter dem Bild: das Diagramm steht im Dokument VOR der Legende.
+    const bild = container.querySelector('.vp-chart')!;
+    expect(bild.compareDocumentPosition(legenden[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('ohne Band bleibt die Speicher-Legende über dem Bild', () => {
+    const { container } = render(<ScheduleChart plan={tagMitPhasen()} />);
+    const text = container.querySelector('.vp-chart-legend')?.textContent ?? '';
+    expect(text).toContain('Laden aus Solarstrom');
+    const bild = container.querySelector('.vp-chart')!;
+    const legende = container.querySelector('.vp-chart-legend')!;
+    expect(legende.compareDocumentPosition(bild) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
