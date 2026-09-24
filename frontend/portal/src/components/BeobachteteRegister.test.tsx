@@ -66,7 +66,8 @@ describe('BeobachteteRegister · die Liste (Teil 1)', () => {
     expect(within(zeile).getByText('0x02a6')).toBeVisible();
     expect(within(zeile).getByText('4,2 A')).toBeVisible();
     expect(within(zeile).getByText('beobachtet')).toBeVisible();
-    expect(within(zeile).getByText(/^vor /)).toBeVisible();
+    // Die Frische steht an der Zeile - ein soeben gelesener Wert sagt „gerade eben".
+    expect(within(zeile).getByText(/^(vor |gerade eben$)/)).toBeVisible();
     // Die frühere „Wichtige zusätzliche Messwerte"-Vorauswahl gibt es nicht mehr:
     // sie beantwortete die umgekehrte Frage.
     expect(screen.queryByText('Wichtige zusätzliche Messwerte')).toBeNull();
