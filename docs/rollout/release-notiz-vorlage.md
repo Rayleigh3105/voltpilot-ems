@@ -26,6 +26,11 @@ ab [TT.MM.JJJJ, HH:MM Uhr] finden Sie im Portal neue Möglichkeiten:
   mit der Bezugsbasis und der Bericht „Leistungsvergleich“ zeigen je Monat, was gemessen und was
   erwartet war, ein Urteil nur bereinigt und mit seinem Rahmen. Solange Sie keine Bezugsbasis
   anlegen, ändert sich an Ihren Kennzahlen nichts.
+- Unter „Ziele und Maßnahmen“ setzen Sie an einer Energieleistungskennzahl Energieziele und planen
+  Maßnahmen mit Verantwortlichen und Terminen. Ist ein abgeschlossener Monat schlechter, als die
+  Bezugsbasis erwarten lässt, vermerkt das Portal eine Auffälligkeit; ob daraus eine Abweichung oder
+  eine Maßnahme wird und ob die Wirkung einer Maßnahme belegt ist, entscheiden Sie selbst, mit
+  Begründung. Solange Sie nichts anlegen, ändert sich nichts.
 
 Beim ersten Aufruf lädt das Portal einmal neu. Von allein wird nichts zugeordnet oder
 eingerichtet. An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich dadurch nichts.

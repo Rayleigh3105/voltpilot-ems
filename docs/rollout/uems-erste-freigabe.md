@@ -922,7 +922,7 @@ sicher").
   nginx-Ergänzung aus PR 37 ist nur lokal geprüft.
 - **Wetter-Archiv (AP-17):** Quelle, Nutzungsbedingungen und gegebenenfalls Schlüssel
   (`VOLTPILOT_UEMS_WETTER_ARCHIV_*`) sowie jeder vom Vorgabewert `true` abweichende Wert für
-  `BEZUGSBASIS`/`BEWERTUNG`/`WETTER_ARCHIV` — §15.2. Standorte ohne Koordinaten bekommen keine
+  `BEZUGSBASIS`/`BEWERTUNG`/`VERBESSERUNG`/`WETTER_ARCHIV` — §15.2. Standorte ohne Koordinaten bekommen keine
   Gradtagzahl aus dem Archiv.
 
 ---
@@ -1023,7 +1023,7 @@ sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vo
 | `VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED` | **`false`** | (bleibt aus bis zum Quoten-Termin, E12 — sichtbare 0–100-%-Klemme) |
 | `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` | `true` | die Kaskaden- und Struktur-Naht der energetischen Bewertung; Routen und übrige Berichte bleiben, Bewertungs-Protokolle bekommen dann noch kein Wasserzeichen |
 | `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED` | `true` | den Anstoß an freigegebenen Bezugsbasis-Fassungen (Kaskade und Struktur-Läufer); aus setzt der Läufer nur das Wasserzeichen, nichts wird nachgeholt — noch nicht in gitops PR 37 |
-| `VOLTPILOT_UEMS_VERBESSERUNG_ENABLED` | `true` | die Auffälligkeits-Naht (AP-18 IP-15: Vermerk bei `schlechter` im Endgültigkeits-Takt und in der Kaskade); die Kennzahl-Werte werden weiter gebildet, nichts wird nachgeholt; Routen und Portal bleiben — noch nicht in gitops PR 37 (Vorgabe AN) |
+| `VOLTPILOT_UEMS_VERBESSERUNG_ENABLED` | `true` | die Naht der Ziele und Maßnahmen: Auffälligkeit (AP-18 IP-15: Vermerk bei `schlechter` im Endgültigkeits-Takt und in der Kaskade) und Anstoß am Vorgang (IP-17: Kaskade Pfad 1, Struktur-Läufer Pfad 2); die Kennzahl-Werte werden weiter gebildet, nichts wird nachgeholt; Routen und Portal bleiben — noch nicht in gitops PR 37 (Vorgabe AN) |
 | `VOLTPILOT_UEMS_BERICHTE_ENABLED` | `true` | Berichte in der Korrekturkaskade; entfernt keine Route und keine Tabelle |
 | `VOLTPILOT_UEMS_BERICHTE_STRUKTUR_ENABLED` | `true` | Strukturänderungen alle fünf Minuten (nur wirksam, wenn auch BERICHTE an ist) |
 | `VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED` | `true` | Standorte/Vorschläge für Bestandsanlagen beim Start |
@@ -1282,13 +1282,14 @@ zugestellt wird, zeigt nur diese Übung. Sie ist Betreiber-Punkt `nw6_alarmuebun
 
 ---
 
-## 15. Bewertung (AP-16) und Bezugsbasis (AP-17) am Rollout-Tag
+## 15. Bewertung (AP-16), Bezugsbasis (AP-17), Ziele und Maßnahmen (AP-18) am Rollout-Tag
 
-Beide Bereiche kommen mit dem Rollout-Tag, ohne Freigabe-Tor und ohne eigenen Schritt im
+Die drei Bereiche kommen mit dem Rollout-Tag, ohne Freigabe-Tor und ohne eigenen Schritt im
 Fenster (E1 = B). Sie sind **leer ausgeliefert**: kein Bestandskunde sieht eine geänderte Zahl,
-bis jemand einen Energieeinsatz bzw. eine Bezugsbasis anlegt (AP-16 R11, AP-17 R10). Der
-Rollout-Tag prüft darum nur, dass sie wirklich leer und still sind. Wegweiser:
-`docs/agents/root/uems-bewertung.md` und `docs/agents/root/uems-bezugsbasis.md`.
+bis jemand einen Energieeinsatz, eine Bezugsbasis bzw. ein Energieziel, eine Maßnahme oder eine
+Abweichung anlegt (AP-16 R11, AP-17 R10, AP-18 R13). Der Rollout-Tag prüft darum nur, dass sie
+wirklich leer und still sind. Wegweiser: `docs/agents/root/uems-bewertung.md`,
+`docs/agents/root/uems-bezugsbasis.md` und `docs/agents/root/uems-verbesserung-naht.md`.
 
 ### 15.1 Was am Rollout-Tag geprüft wird
 
@@ -1296,6 +1297,7 @@ Rollout-Tag prüft darum nur, dass sie wirklich leer und still sind. Wegweiser:
 |---|---|---|---|---|
 | `bewertung` (AP-16) | `UemsBewertungBestandsschutzTest` grün: Bestand byte-gleich, einzige benannte Ausnahme `bericht.wiedervorlage_monate`; die 15 neuen Tabellen leer; Vorlage `energetische_bewertung` ist eine Funktion, keine Zeile | die neuen Tabellen ohne Zeile; kein Läufer schreibt für die Bewertung (der Struktur-Läufer liest nur die AP-12-Ortskorrektur, die Frist hat keinen Läufer) | `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` — nur Kaskaden- und Struktur-Naht | Zeile in einer neuen Tabelle → R |
 | `bezugsbasis` (AP-17) | `UemsBezugsbasisBestandsschutzTest` grün: Bestand byte-gleich **ohne** benannte Ausnahme (`bericht.kennzahl_id` und `bezugsgroesse_wert.bezug_*` in jeder Bestandszeile NULL); die neun neuen Tabellen leer; Vorlage `leistungsvergleich` und die neuen Wörter nur als Funktionen, jedes alte Wort mit seiner Nummer; `UemsBezugsbasisFlagArchitekturTest` hält §12 gleich `application.yml` | die neun neuen Tabellen ohne Zeile; `bericht.kennzahl_id` überall NULL; im Vorlagen-Katalog steht `leistungsvergleich` (Fassung 1); das Kennzahl-Register trägt `bezugsbasis: null` an jeder Kennzahl | `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED` — nur der Anstoß (Kaskade Pfad 1, Struktur-Läufer Pfad 2) | Zeile in einer neuen Tabelle, `bezugsbasis` ≠ null → R |
+| `verbesserung` (AP-18) | `UemsVerbesserungBestandsschutzTest` grün: Bestand byte-gleich **ohne** benannte Ausnahme (AP-18 hängt an keine Bestandstabelle eine Spalte), die zehn neuen Tabellen leer, kein bestehendes Vokabular ändert sich (die Wörter stehen in `verbesserung_vokabular()`); die Naht schreibt ohne Energieleistungskennzahl und mit Schalter aus nichts; `UemsVerbesserungFlagArchitekturTest`: nur die Naht liest den Schalter | die zehn neuen Tabellen ohne Zeile; Register „Ziele und Maßnahmen“ mit dem Leer-Satz; kein Übersichts-Baustein ohne Inhalt | `VOLTPILOT_UEMS_VERBESSERUNG_ENABLED` — nur die Naht (Auffälligkeit, Anstoß am Vorgang) | Zeile in einer neuen Tabelle → R |
 | Wetter-Archiv (AP-17 IP-12b) | Läufer `wetter_archiv` im Katalog von `UemsLaeuferMelder` | Läufer-Zustand an, erster Lauf am nächsten Morgen **06:10** Europe/Berlin; ohne gebundenen Wetterbezug fragt er kein Archiv und schreibt nichts | `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` — Not-Aus des Abrufs | kein Abbruchgrund; bei Auffälligkeit Läufer aus (§12) |
 
 **Die Struktur-Läufer und die Kaskade schreiben für die Bezugsbasis nur mit Basis.** Pfad 2
@@ -1304,7 +1306,13 @@ Bestand hat keine, also setzt er am Rollout-Tag nicht einmal ein Wasserzeichen �
 an wie aus. Einen neuen Läufer der Bezugsbasis gibt es nicht; der einzige neue Takt ist der
 Wetter-Abruf.
 
-**Beide Schalter fehlen noch in gitops PR 37** (`BEZUGSBASIS`, `WETTER_ARCHIV`). Ohne Eintrag gilt
+**Die Naht der Ziele und Maßnahmen vermerkt nur an einer Energieleistungskennzahl.** Eine
+Auffälligkeit braucht einen endgültigen Monat mit Urteil `schlechter` gegen eine freigegebene
+Fassung, ein Anstoß am Vorgang ein Energieziel oder eine Maßnahme — der Bestand hat beides nicht.
+Einen neuen Läufer gibt es nicht (E5 = A): die Naht läuft im Endgültigkeits-Takt, in der Kaskade
+und im Struktur-Läufer mit; Termine und Fristen leitet der Abruf ab.
+
+**Die Schalter fehlen noch in gitops PR 37** (`BEZUGSBASIS`, `VERBESSERUNG`, `WETTER_ARCHIV`). Ohne Eintrag gilt
 die Vorgabe `true`; das ist gewollt. Nur wer abweichen will, braucht einen Eintrag (§15.2).
 
 ### 15.2 Hand des Betreibers
@@ -1325,10 +1333,12 @@ die Vorgabe `true`; das ist gewollt. Nur wer abweichen will, braucht einen Eintr
   Koordinaten fehlen. …“ — Beispiel aus dem Referenzunternehmen). Das ist kein Fehler des Abrufs
   und kein Support-Fall für den Betrieb; die Koordinaten trägt der Kunde nach.
 - **Ein vom Vorgabewert abweichender gitops-Wert** für `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED`,
-  `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` oder `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` ist seine
-  Entscheidung (W14); das Drehbuch verlangt keinen.
-- **Die Release-Notiz** (Zeilen „Unter „Bewertung“ …“ und „Mit einer Bezugsbasis …“ in der
-  [Vorlage](release-notiz-vorlage.md)) gibt ausschließlich der Betreiber frei.
+  `VOLTPILOT_UEMS_BEWERTUNG_ENABLED`, `VOLTPILOT_UEMS_VERBESSERUNG_ENABLED` oder
+  `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` ist seine Entscheidung (AP-17 W14, AP-18 §8 IP-21); das
+  Drehbuch verlangt keinen.
+- **Die Release-Notiz** (Zeilen „Unter „Bewertung“ …“, „Mit einer Bezugsbasis …“ und „Unter
+  „Ziele und Maßnahmen“ …“ in der [Vorlage](release-notiz-vorlage.md)) gibt ausschließlich der
+  Betreiber frei.
 
 ### 15.3 Support-Probe F7 — „Kunde legt seine erste Bezugsbasis an“
 

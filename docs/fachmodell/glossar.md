@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 36 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 43 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -69,6 +69,13 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Statischer Faktor](#statischer-faktor) — Sicht Organisation · Nachtrag AP-17 §4.4 (V3, E6)
 - [Leistungsvergleich](#leistungsvergleich) — Sicht Organisation · Nachtrag AP-17 §4.7–§4.9 (U1–U6, S1–S5, E8)
 - [Wetterbezug](#wetterbezug) — Sicht Erfassung · Nachtrag AP-17 §6.6 (E9 = C)
+- [Energieziel](#energieziel) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.3 (Z1–Z5, E3)
+- [Maßnahme](#maßnahme) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.4 (M1–M7, E1, E2)
+- [Abweichung](#abweichung) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.5 (A2–A6, E1, E7)
+- [Auffälligkeit](#auffälligkeit) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.5 (A1, E4)
+- [Ursache-Aussage](#ursache-aussage) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.6 (U1–U3, E6)
+- [Wirkung (beobachtet · belegt)](#wirkung-beobachtet--belegt) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.7 (WK1–WK6, E6)
+- [Anstoß am Vorgang](#anstoß-am-vorgang) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.4 (M5, Z5, E4)
 
 ## Kundenbereich
 
@@ -1074,3 +1081,101 @@ Der Wetterbezug bindet eine Gradtagzahl eines Standorts an das Wetter-Archiv (Op
 **Heute im Code.** Tabelle `bezugsgroesse_wetterbezug` und Spalten `bezugsgroesse_wert.bezug_quelle`, `abgerufen_am`, `bezug_herkunft` (MIG/V20260924192700__uems_wetter_archiv_bezug.sql:310, :344); Takt `services/api/src/main/java/com/voltpilot/api/uems/WetterArchivLaeufer.java` (06:10 Europe/Berlin, Not-Aus `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED`), Abruf `services/api/src/main/java/com/voltpilot/api/uems/WetterArchivAbruf.java`, Quelle `services/api/src/main/java/com/voltpilot/api/uems/OpenMeteoWetterArchiv.java` (AP-17 IP-12b); Binden/Lösen `PUT/DELETE /api/v1/bezugsgroessen/{id}/wetterbezug` (services/api/src/main/java/com/voltpilot/api/web/WetterbezugController.java:33, AP-17 IP-12c).
 
 **Abgrenzung.** Nicht eine Vorhersage (AP-09 E13); nicht eine Temperatur-Datei des Kunden (benannte Folgestufe, Auslegung LA1).
+
+## Energieziel
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.3 (Z1–Z5, E3)*
+
+**Ein Ziel an genau einer Energieleistungskennzahl: Prozent weniger, als die Bezugsbasis erwarten lässt, für eine feste Zielperiode (EZ-…).**
+
+Ein Energieziel zitiert eine Energieleistungskennzahl mit ihrer freigegebenen Bezugsbasis-Fassung und setzt einen Zielwert in Prozent gegenüber dem Erwarteten für ganze Monate (Zielperiode, vorher gesetzt, nie rückwirkend), dazu Verantwortlichen und Begründung. Den Ziel-Stand liest das Portal beim Abruf (Σ gemessen ÷ Σ erwartet über die endgültigen Monate, „x von y“); „erreicht“ oder „verfehlt“ ist der Vorschlag nur bei vollständiger Periode, die Bewertung ist ein Stand einer Person mit Prüfsumme (E3 = A). Zustand offen · bewertet · beendet.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** EZ-2028-0001 „Spritzguss: 5,0 % weniger Strom als die Bezugsbasis erwarten lässt“ an KZ-0004 mit BB-0001 Fassung 2, Zielperiode 2028-01/2028-12, angelegt von Ines Kaltenbach am 20.12.2027.
+
+**Heute im Code.** Tabellen `energieziel`, `energieziel_aenderung`, Zähler `verbesserung_kennung_seq` (MIG/V20260924223000__uems_verbesserung.sql:228, :469, :142; RLS + FORCE); Routen `/api/v1/energieziele` (services/api/src/main/java/com/voltpilot/api/web/EnergiezielController.java:47, services/api/src/main/java/com/voltpilot/api/uems/EnergiezielService.java, AP-18 IP-6/IP-7); Anzeigewort `UEMS_ENERGIEZIEL` (PORTAL/glossar.ts:578). Wegweiser: `docs/agents/root/uems-energieziel-routen.md`.
+
+**Abgrenzung.** Nicht ein Steuerungs-Ziel („Ziel: 2,2 kW“ gehört der Steuerung, W6); nicht ein absoluter kWh-Wert; nicht die Toleranz der Bezugsbasis.
+
+## Maßnahme
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.4 (M1–M7, E1, E2)*
+
+**Ein geplantes Vorhaben mit Verantwortlichem, Termin und erwarteter Wirkung (M-…); geplant · umgesetzt · bewertet · verworfen.**
+
+Eine Maßnahme trägt Titel, Verantwortlichen (aktives Konto, Fremdschlüssel plus Schnappschuss), Termin, Herkunft (Auffälligkeit, Energieziel, Energieeinsatz oder von Hand) und die erwartete Wirkung als Wortlaut. Die Messgrundlage — Energieleistungskennzahl × Bezugsbasis-Fassung × Ausgangslage als Kopie mit Prüfsumme — ist beim Anlegen wahlfrei und erst für die Bewertung der Wirkung Pflicht (E2 = A); ohne sie gibt es keine Zahl, nur „nicht messbar“. „Überfällig seit n Tagen“ leitet der Abruf ab — kein Läufer, keine Nachricht (E5 = A).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** M-2028-0001 „Werkzeugheizungen in Betriebspausen abschalten“, verantwortlich Murat Demirci, mit Messgrundlage KZ-0004 × BB-0001 Fassung 2; M-2028-0002 „Druckluft-Leckagen orten und beseitigen“ am Einsatz EE-3 ohne Messgrundlage.
+
+**Heute im Code.** Tabellen `massnahme`, `massnahme_aenderung`, `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:170, :428, :466; RLS + FORCE); Routen `/api/v1/massnahmen` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:49, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeService.java, AP-18 IP-10/IP-12); Anzeigewort `UEMS_MASSNAHME` (PORTAL/glossar.ts:582). Wegweiser: `docs/agents/root/uems-massnahme-routen.md`.
+
+**Abgrenzung.** Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ (SP1).
+
+## Abweichung
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.5 (A2–A6, E1, E7)*
+
+**Ein Vorgang, den eine Person zu einer Auffälligkeit eröffnet, untersucht und mit Ergebnis abschließt (AW-…).**
+
+Eine Abweichung zitiert Kennzahl, Bezugsbasis-Fassung und Monate; ihr Anlass ist die Kopie des Vergleichsergebnisses mit Prüfsumme. Sie hat Verantwortlichen und Frist, ein Protokoll aus Kommentaren und Ursache-Aussagen (append-only) und endet mit einem Abschluss einer Person: Maßnahme (nur mit Verweis), erklärt, keine Abweichung oder nicht bewertbar — immer mit Begründung. Nichts wird gelöscht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** AW-2028-0001 zur Auffälligkeit Dezember 2027 an KZ-0004: Frist, zwei Kommentare, eine Ursache-Aussage von Murat Demirci; am 15.01.2028 von Ines Kaltenbach mit Ergebnis „Maßnahme“ (M-2028-0001) abgeschlossen.
+
+**Heute im Code.** Tabellen `abweichung`, `abweichung_aenderung` (MIG/V20260924235130__uems_abweichung.sql:214, :376; RLS + FORCE); Routen `/api/v1/abweichungen` (services/api/src/main/java/com/voltpilot/api/web/AbweichungController.java:45, services/api/src/main/java/com/voltpilot/api/uems/AbweichungService.java, AP-18 IP-16); Anzeigewort `UEMS_ABWEICHUNG` (PORTAL/glossar.ts:586). Wegweiser: `docs/agents/root/uems-abweichung-routen.md`.
+
+**Abgrenzung.** Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7); „wesentlich“ bleibt das Wort der Einstufung (W2).
+
+## Auffälligkeit
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.5 (A1, E4)*
+
+**Ein Vermerk an der Energieleistungskennzahl: ein endgültiger Monat mit Urteil „schlechter“ — eine Person antwortet.**
+
+Wird ein Monatswert einer Kennzahl mit freigegebener Bezugsbasis endgültig und urteilt der bereinigte Vergleich „schlechter“ (außerhalb des Bands der Basis — keine zweite Schwelle), vermerkt die Naht in derselben Transaktion genau eine Auffälligkeit mit Kopie des Vergleichsergebnisses und Prüfsumme (E4 = A). Sie ist kein Vorgang: eine Person antwortet einmal mit „Abweichung eröffnen“ oder „zur Kenntnis genommen“ (mit Begründung). Das System urteilt nicht und legt nichts an.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Dezember 2027 wird am 07.01.2028 endgültig; der Vergleich von KZ-0004 sagt 12,9 % mehr als erwartet — schlechter; Ines Kaltenbach eröffnet AW-2028-0001.
+
+**Heute im Code.** Tabelle `auffaelligkeit` (MIG/V20260924235130__uems_abweichung.sql:430; RLS + FORCE, Admin-`INSERT` aus MIG/V20260925002000__uems_auffaelligkeit_admin.sql); Naht services/api/src/main/java/com/voltpilot/api/uems/VerbesserungNaht.java (AP-18 IP-15, Schalter `voltpilot.uems.verbesserung.enabled`); Routen `/api/v1/kennzahlen/{id}/auffaelligkeiten` (services/api/src/main/java/com/voltpilot/api/web/AuffaelligkeitController.java:44); Anzeigewort `UEMS_AUFFAELLIGKEIT` (PORTAL/glossar.ts:588). Wegweiser: `docs/agents/root/uems-verbesserung-naht.md`.
+
+**Abgrenzung.** Nicht ein Alarm und keine Nachricht (E5 = A); nicht ein Urteil des Läufers; nicht „wesentlich“ (W2).
+
+## Ursache-Aussage
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.6 (U1–U3, E6)*
+
+**Der Wortlaut einer Person zur Ursache einer Abweichung — immer „Aussage von <Name>, <Datum>“.**
+
+Eine Ursache nennt in VoltPilot nie das System: sie ist ein Eintrag im Protokoll einer Abweichung mit Namen, Datum und Wortlaut der Person, wahlfrei mit Beleg-Kennung (etwa ein Messmittel-Befund oder ein Zählerwechsel). Überall, wo sie erscheint, steht „Aussage von …“; ein Satz des Systems mit „Ursache“ ist verboten (Sprach-Wächter, SP1).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** „Ursache — Aussage von Murat Demirci, 14.01.2028 (keine Messung): ‚Die Werkzeugheizungen der Maschinen 3 bis 6 liefen vom 23.12. bis 02.01. durch.‘“
+
+**Heute im Code.** Eintrag der Art `ursache` in `abweichung_aenderung` (MIG/V20260924235130__uems_abweichung.sql:376), Route `POST /api/v1/abweichungen/{id}/eintraege` (services/api/src/main/java/com/voltpilot/api/web/AbweichungController.java:45); Anzeigewort `UEMS_URSACHE_AUSSAGE_VON` (PORTAL/glossar.ts:599); Wächter `frontend/portal/src/copy.test.ts` (Block AP-18 IP-4).
+
+**Abgrenzung.** Nicht ein Satz des Systems; nicht ein Vokabular von Ursachen; nicht eine „Ursachenanalyse“ (SP1).
+
+## Wirkung (beobachtet · belegt)
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.7 (WK1–WK6, E6)*
+
+**Beobachtet: was der Leser nach der Umsetzung misst, mit Bedingung. Belegt: das Wort einer Person, als Stand mit Prüfsumme.**
+
+Die beobachtete Wirkung liest das Portal beim Abruf: Nachher-Monate ab dem Monat nach der Umsetzung (Startwert zwölf, verlängerbar bis 36), Σ gemessen ÷ Σ erwartet über die bewertbaren Monate, „x von 12“, Ausschlüsse mit Grund, Urteil nur mit Band. Ohne Stand steht „beobachtet — nicht belegt“. „Belegt“, „nicht belegt“ oder „nicht messbar“ sagt eine Person in einer Bewertung (Stand Nr. n: Kopie der Wirkung mit Prüfsumme, Begründung, Vier-Augen nach Einstellung) — das System sagt nie, eine Maßnahme habe gewirkt (E6 = A).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** M-2028-0001 am 15.11.2028: 2,4 % weniger, als die Bezugsbasis erwarten lässt, über 8 von 12 Monaten (März nicht bewertbar, Juli schlechter) — erwartet waren 3,0 % weniger; der Januar 2028 vor der Umsetzung zählt nicht.
+
+**Heute im Code.** Leser `GET /api/v1/massnahmen/{id}/wirkung` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:105, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeWirkung.java, AP-18 IP-11), Stand `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:466, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeBewertung.java, IP-12); Operation `wirkung` in `docs/contracts/v2/verbesserung-vectors.json`; Anzeigewörter `UEMS_WIRKUNG`, `UEMS_BEOBACHTET_NICHT_BELEGT`, `UEMS_MASSNAHME_ERGEBNISSE` (PORTAL/glossar.ts:593).
+
+**Abgrenzung.** Nicht „hat gewirkt“ und keine „Einsparung durch“ (SP1); nicht ein Mittel und kein gespeicherter Wert; nicht der Ziel-Stand eines Energieziels.
+
+## Anstoß am Vorgang
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.4 (M5, Z5, E4)*
+
+**Ein Vermerk an Maßnahme oder Energieziel, wenn eine zitierte Zahl eine neue Version bekommt oder die Bezugsbasis endet bzw. neu gefasst wird.**
+
+Die Kopien einer Maßnahme (Ausgangslage, Bewertung) und eines Energieziels (Bewertung) bleiben byte-gleich. Bekommt ein zitierter Monat in der Kaskade Version n + 1 (Pfad 1) oder endet die zitierte Bezugsbasis bzw. wird nach der Umsetzung neu gefasst (Pfad 2, Struktur-Läufer), vermerkt die Naht einen Anstoß. Eine Person antwortet: bleibt, neu kopiert oder neu bewertet — immer mit Begründung. Muster wie beim Bericht (AP-12 E7) und bei der Bezugsbasis (AP-17), eine Stufe höher.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** K-2028-0001 berichtigt MS-06 um −600 kWh; der Dezember 2027 von KZ-0004 wird Version 2; die Ausgangslage von M-2028-0001 bleibt Version 1 und bekommt „Ausgangslage korrigiert“ — Ines Kaltenbach antwortet „bleibt“ mit Begründung (R12).
+
+**Heute im Code.** Tabelle `vorgang_anstoss` (MIG/V20260924233000__uems_massnahme.sql:596; RLS + FORCE); services/api/src/main/java/com/voltpilot/api/uems/VorgangAnstoss.java über services/api/src/main/java/com/voltpilot/api/uems/VerbesserungNaht.java (AP-18 IP-17), Antwort `POST /api/v1/massnahmen|energieziele/{id}/anstoesse/{aid}/antwort` (services/api/src/main/java/com/voltpilot/api/uems/VorgangAntwort.java). Wegweiser: `docs/agents/root/uems-vorgang-anstoss.md`.
+
+**Abgrenzung.** Nicht ein Umbau der Kopie; nicht ein Läufer, der antwortet; nicht der Anstoß am Bericht (AP-12) oder an der Bezugsbasis (AP-17).
