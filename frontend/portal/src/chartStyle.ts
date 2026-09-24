@@ -84,6 +84,11 @@ export function withAlpha(hex: string, alpha: number): string {
  * Bei 96 Viertelstunden-Slots ergab `barCategoryGap: '8%'` einen durchgehenden
  * Farb-Block statt ablesbarer Stäbe. Der Deckel (14 px) hält auch eine
  * 12-Balken-Monatsreihe schlank, die Fuge macht die Einzelwerte zählbar.
+ *
+ * AUSNAHME Fahrplan (UX-Review V-05, 24.09.2026): der Speicher im Fahrplan ist
+ * eine Folge von PHASEN, keine Reihe von Einzelwerten. Er steht dort als
+ * nahtloser Block (`seamlessBar`), passend zum Phasen-Band darunter; einzelne
+ * Viertelstunden liest man im Tooltip. Alle anderen Balkenreihen bleiben Stäbe.
  * ------------------------------------------------------------------------- */
 export const BAR = {
   /** Breiten-Deckel JEDER Balkenreihe. */
