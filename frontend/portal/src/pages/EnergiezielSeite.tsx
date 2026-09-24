@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Energieziel, type EnergiezielStand } from '../api';
+import { api, ApiError, type Energieziel, type EnergiezielStand, type VorgangAnstoss } from '../api';
 import { EnergiezielBeendenDialog, EnergiezielBewertenDialog } from '../components/EnergiezielDialoge';
 import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import { Recht } from '../components/Recht';
 import { ErrorState, Skeleton } from '../components/States';
+import { VerbesserungAnstoesse } from '../components/VerbesserungAnstoesse';
 import * as Z from '../energieziele';
 import { UEMS_BEZUGSBASIS, UEMS_NORMGRENZE, UEMS_ZIELPERIODE, UEMS_ZIELWERT } from '../glossar';
 import { useRollen } from '../rollen';
@@ -35,6 +36,7 @@ export function EnergiezielSeite({
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
   const [dialog, setDialog] = useState<null | 'bewerten' | 'freigeben' | 'ablehnen' | 'beenden'>(null);
+  const [anstoss, setAnstoss] = useState<VorgangAnstoss | null>(null);
   const sub = useRollen().selbst?.kennung ?? null;
 
   useEffect(() => {
@@ -88,6 +90,7 @@ export function EnergiezielSeite({
   const bewertbar = offen && bewertung.art === 'keine' && (frist !== null || (stand !== null && stand.monate_endgueltig === stand.monate_soll));
   const neu = (x: Energieziel) => {
     setDialog(null);
+    setAnstoss(null);
     setLage({ art: 'da', ez: x, stand });
     setVersuch((v) => v + 1);
   };
@@ -314,22 +317,17 @@ export function EnergiezielSeite({
         )}
       </section>
 
-      {ez.anstoesse && ez.anstoesse.length > 0 && (
-        <section className="vp-ez-karte" aria-labelledby="ez-anstoesse" data-testid="energieziel-anstoesse">
-          <h2 id="ez-anstoesse">{Z.ANSTOESSE}</h2>
-          <ul className="vp-ez-verlauf">
-            {ez.anstoesse.map((a) => (
-              <li key={a.id}>
-                <p>
-                  <strong>{Z.ANSTOSS_WORT[a.art]}</strong> · {a.anlass_kennung} · {Z.tag(a.angestossen_am)} ·{' '}
-                  {a.zustand === 'offen' ? 'offen' : `beantwortet: ${a.antwort ? Z.ANSTOSS_ANTWORT[a.antwort] : '—'}`}
-                </p>
-                {a.antwort_begruendung && <p className="vp-ez-leise">‚{a.antwort_begruendung}‘</p>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {/* IP-20 (§5.6, Z5): die Anstöße mit Antwort-Knöpfen — „beibehalten“ mit Begründung, „neu bewerten“ (IP-17-NAHT). */}
+      <VerbesserungAnstoesse
+        vorgang="energieziel"
+        anstoesse={ez.anstoesse}
+        standort={ez.standort_id}
+        onAntwort={async (a, antwort, begruendung) => neu(await api.energiezielAnstossAntwort(ez.id, a.id, { antwort, ...(begruendung ? { begruendung } : {}) }))}
+        onNeuBewerten={(a) => {
+          setAnstoss(a);
+          setDialog('bewerten');
+        }}
+      />
 
       {ez.verlauf && ez.verlauf.length > 0 && (
         <section className="vp-ez-karte" aria-labelledby="ez-verlauf" data-testid="energieziel-verlauf">
@@ -350,7 +348,17 @@ export function EnergiezielSeite({
       <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
 
       {(dialog === 'bewerten' || dialog === 'freigeben' || dialog === 'ablehnen') && (
-        <EnergiezielBewertenDialog ez={ez} stand={stand} schritt={dialog} onClose={() => setDialog(null)} onFertig={neu} />
+        <EnergiezielBewertenDialog
+          ez={ez}
+          stand={stand}
+          schritt={dialog}
+          anstoss={anstoss}
+          onClose={() => {
+            setDialog(null);
+            setAnstoss(null);
+          }}
+          onFertig={neu}
+        />
       )}
       {dialog === 'beenden' && <EnergiezielBeendenDialog ez={ez} onClose={() => setDialog(null)} onBeendet={neu} />}
     </div>

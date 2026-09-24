@@ -2,10 +2,11 @@ import { useId, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { api, type Energieziel, type EnergiezielErgebnis, type EnergiezielStand, type Kennzahl } from '../api';
+import { api, type Energieziel, type EnergiezielErgebnis, type EnergiezielStand, type Kennzahl, type VorgangAnstoss } from '../api';
 import { heute } from '../bewertung';
 import { basisZeile as bezugsbasisZeile, zeilenFassung } from '../bezugsbasisAnlegen';
 import * as Z from '../energieziele';
+import { anstossZeile } from '../massnahmeWirkung';
 import { UEMS_ENERGIEZIEL, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH, UEMS_ZIELPERIODE, UEMS_ZIELWERT } from '../glossar';
 import { energiezielRoute, hashForRoute } from '../nav';
 import type { BezugsbasisLage } from './BezugsbasisReiter';
@@ -209,17 +210,20 @@ const ERGEBNIS_AUS_VORSCHLAG: Record<'erreicht' | 'nicht_erreicht', EnergiezielE
  * „bewerten“ (Z4/Z5, IP-7): Ergebnis und Begründung einer Person; der Vorschlag des Lesers steht als Vorgabe und eine
  * Abweichung davon sichtbar daneben. Bei Vier-Augen wird daraus ein Antrag, den eine ZWEITE Person bestätigt oder
  * ablehnt (`schritt` `freigeben` · `ablehnen`, dann ohne Ergebnis-Wahl). Die Kopie mit Prüfsumme bildet die Route.
+ * Aus einem Anstoß („neu bewerten“, IP-20) geht die Antwort an `…/anstoesse/{aid}/antwort` (IP-17-NAHT).
  */
 export function EnergiezielBewertenDialog({
   ez,
   stand,
   schritt,
+  anstoss,
   onClose,
   onFertig,
 }: {
   ez: Energieziel;
   stand: EnergiezielStand | null;
   schritt: 'bewerten' | 'freigeben' | 'ablehnen';
+  anstoss?: VorgangAnstoss | null;
   onClose: () => void;
   onFertig: (ez: Energieziel) => void;
 }) {
@@ -251,10 +255,14 @@ export function EnergiezielBewertenDialog({
     const text = begruendung.trim();
     const body = schritt === 'bewerten' ? { ergebnis: ergebnis!, begruendung: text } : text ? { begruendung: text } : {};
     try {
-      onFertig(await api.energiezielBewertung(ez.id, schritt, body));
+      onFertig(
+        anstoss && schritt === 'bewerten'
+          ? await api.energiezielAnstossAntwort(ez.id, anstoss.id, { antwort: 'neu_bewertet', ergebnis: ergebnis!, begruendung: text })
+          : await api.energiezielBewertung(ez.id, schritt, body),
+      );
     } catch (e) {
       // Wie der Bezugsbasis-Assistent folgt der Dialog der Route: mit Vier-Augen wird „bewerten“ ein Antrag.
-      if (schritt === 'bewerten' && Z.ablehnungCode(e) === 'vieraugen_beantragen') {
+      if (schritt === 'bewerten' && !anstoss && Z.ablehnungCode(e) === 'vieraugen_beantragen') {
         try {
           onFertig(await api.energiezielBewertung(ez.id, 'beantragen', body));
         } catch (e2) {
@@ -285,6 +293,7 @@ export function EnergiezielBewertenDialog({
       }
     >
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(e) => void senden(e)} data-testid="energieziel-bewerten">
+        {anstoss && <p className="vp-ez-leise">{anstossZeile(anstoss)}</p>}
         {stand?.satz && <p className="vp-ez-satz">{stand.satz}</p>}
         {schritt === 'bewerten' ? (
           <>

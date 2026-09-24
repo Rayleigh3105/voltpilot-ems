@@ -2,13 +2,17 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Massnahme } from '../api';
+import { api, ApiError, type Massnahme, type VorgangAnstoss } from '../api';
 import { MassnahmeAendernDialog, MassnahmeUmgesetztDialog, MassnahmeVerwerfenDialog } from '../components/MassnahmeDialoge';
+import { MassnahmeBewertenDialog, MassnahmeWirkungBewertung } from '../components/MassnahmeWirkung';
 import { Recht } from '../components/Recht';
 import { ErrorState, Skeleton } from '../components/States';
+import { VerbesserungAnstoesse } from '../components/VerbesserungAnstoesse';
 import * as Z from '../energieziele';
 import { UEMS_BEWERTUNGSMETHODE, UEMS_BEZUGSBASIS, UEMS_ENERGIEZIEL, UEMS_MESSGRUNDLAGE, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH } from '../glossar';
 import * as M from '../massnahmen';
+import * as W from '../massnahmeWirkung';
+import { useRollen } from '../rollen';
 import './Verbesserung.css';
 
 type Lage = { art: 'laedt' } | { art: 'fehlt' } | { art: 'fehler' } | { art: 'da'; m: Massnahme };
@@ -62,7 +66,8 @@ function Kommentar({ m, onNeu }: { m: Massnahme; onNeu: (m: Massnahme) => void }
  * Die Maßnahmen-Seite (AP-18 IP-13, §5.4, M1–M4, M6, M7): Kopf mit Herkunft als Sprung (Kennzahl, Energieziel;
  * Einsatz und Abweichung als Kennung), die Messgrundlage mit Ausgangslage — die Kopie der Route mit Prüfsumme — oder
  * der Satz „ohne Messgrundlage“, die erwartete Wirkung, der Verlauf mit Kommentaren und je Zustand „umgesetzt melden“,
- * „verwerfen“, „ändern“. Wirkung und Bewertung kommen mit IP-20. Das Portal rechnet nichts.
+ * „verwerfen“, „ändern“. Ab `umgesetzt` (IP-20, §5.5–§5.7) der Abschnitt „Wirkung“ mit der Spalte „Bewertung“ und die
+ * Anstöße am Vorgang mit Antwort-Knöpfen. Das Portal rechnet nichts.
  */
 export function MassnahmeSeite({
   id,
@@ -77,7 +82,9 @@ export function MassnahmeSeite({
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
-  const [dialog, setDialog] = useState<null | 'umgesetzt' | 'verwerfen' | 'aendern'>(null);
+  const [dialog, setDialog] = useState<null | 'umgesetzt' | 'verwerfen' | 'aendern' | 'bewerten' | 'freigeben' | 'ablehnen'>(null);
+  const [anstoss, setAnstoss] = useState<VorgangAnstoss | null>(null);
+  const sub = useRollen().selbst?.kennung ?? null;
 
   useEffect(() => {
     let aktiv = true;
@@ -125,6 +132,7 @@ export function MassnahmeSeite({
   const ueberfaellig = M.ueberfaelligText(m);
   const neu = (x: Massnahme) => {
     setDialog(null);
+    setAnstoss(null);
     setLage({ art: 'da', m: x });
   };
 
@@ -230,6 +238,19 @@ export function MassnahmeSeite({
         )}
       </section>
 
+      {W.hatWirkung(m) && <MassnahmeWirkungBewertung m={m} sub={sub} onDialog={setDialog} />}
+
+      <VerbesserungAnstoesse
+        vorgang="massnahme"
+        anstoesse={m.anstoesse}
+        standort={m.standort_id}
+        onAntwort={async (a, antwort, begruendung) => neu(await api.massnahmeAnstossAntwort(m.id, a.id, { antwort, ...(begruendung ? { begruendung } : {}) }))}
+        onNeuBewerten={(a) => {
+          setAnstoss(a);
+          setDialog('bewerten');
+        }}
+      />
+
       <section className="vp-ez-karte" aria-labelledby="ma-verlauf" data-testid="massnahme-verlauf">
         <h2 id="ma-verlauf">{M.VERLAUF}</h2>
         {m.verlauf && m.verlauf.length > 0 && (
@@ -253,6 +274,18 @@ export function MassnahmeSeite({
       {dialog === 'umgesetzt' && <MassnahmeUmgesetztDialog massnahme={m} onClose={() => setDialog(null)} onFertig={neu} />}
       {dialog === 'verwerfen' && <MassnahmeVerwerfenDialog massnahme={m} onClose={() => setDialog(null)} onFertig={neu} />}
       {dialog === 'aendern' && <MassnahmeAendernDialog massnahme={m} onClose={() => setDialog(null)} onFertig={neu} />}
+      {(dialog === 'bewerten' || dialog === 'freigeben' || dialog === 'ablehnen') && (
+        <MassnahmeBewertenDialog
+          m={m}
+          schritt={dialog}
+          anstoss={anstoss}
+          onClose={() => {
+            setDialog(null);
+            setAnstoss(null);
+          }}
+          onFertig={neu}
+        />
+      )}
     </div>
   );
 }

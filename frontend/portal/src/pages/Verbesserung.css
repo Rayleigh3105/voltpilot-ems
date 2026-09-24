@@ -463,3 +463,42 @@
   padding-left: var(--vp-c-space-4);
   font-size: var(--vp-c-fs-14);
 }
+
+/* AP-18 IP-20: „Wirkung“ und rechts daneben die Spalte „Bewertung“ (§5.5); schmal untereinander. */
+.vp-ma-wirkung {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .vp-ma-wirkung {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  }
+}
+.vp-ma-wirkung .vp-ez-tafel th[scope='row'] {
+  white-space: nowrap;
+}
+.vp-ma-wirkung > * {
+  min-width: 0;
+}
+.vp-ma-tafel-rahmen {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.vp-ma-daneben {
+  border-left: 3px solid var(--vp-c-border);
+  padding-left: var(--vp-c-space-3);
+  margin: var(--vp-c-space-2) 0;
+}
+.vp-ma-daneben p {
+  margin: 0;
+}
+.vp-ma-stand {
+  display: grid;
+  gap: 4px;
+}
+.vp-ma-stand p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

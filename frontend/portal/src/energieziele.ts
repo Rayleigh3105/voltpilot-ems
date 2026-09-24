@@ -220,11 +220,6 @@ export const ANSTOSS_WORT: Record<NonNullable<Energieziel['anstoesse']>[number][
   messgrundlage_beendet: 'Bezugsbasis beendet',
   messgrundlage_neu_gefasst: 'Bezugsbasis neu gefasst',
 };
-export const ANSTOSS_ANTWORT: Record<'bleibt' | 'neu_kopiert' | 'neu_bewertet', string> = {
-  bleibt: 'bleibt',
-  neu_kopiert: 'neu kopiert',
-  neu_bewertet: 'neu bewertet',
-};
 export const ANSTOESSE = 'Anstöße';
 export const beendetSatz = (zum: string, grund: string | null) =>
   `Beendet zum ${tag(zum)}${grund ? `: ‚${grund}‘` : '.'}`;

@@ -7,7 +7,7 @@
  * Dezember 2028 sind die Annahme-Reihe der Erweiterung 1.9 (Juli 2,5 % mehr, R11); die Summen Σ ÷ Σ stehen wie im
  * Report (R4: 410 400 ÷ 422 809 kWh). Die Zahlen stellt hier die Fixture — das Portal rechnet keine davon.
  */
-import { ApiError, type api, type Energieziel, type EnergiezielBewertungSchritt, type EnergiezielStand } from '../api';
+import { ApiError, type api, type Energieziel, type EnergiezielBewertungSchritt, type EnergiezielErgebnis, type EnergiezielStand } from '../api';
 import type { BezugsbasisVergleichMonat, VergleichUrteil } from '../bezugsbasisVergleich';
 import { BB_IDS } from './bezugsbasisFixtures';
 
@@ -205,15 +205,29 @@ function bewertung(over: Partial<NonNullable<Energieziel['bewertung']>> = {}): N
 
 const BEGRUENDUNG_R10 = 'Zwei Maßnahmen wirken erst ab dem zweiten Halbjahr; der Juli (Sonderauftrag) und der März ohne Vergleich tragen den Rest.';
 
-export type EnergiezielLage = 'leer' | 'juli' | 'faellig' | 'beantragt' | 'bewertet';
+/** IP-20: ein offener Anstoß am Energieziel (Pfad 2, IP-17) — Bezugsbasis BB-0001 neu gefasst. */
+export const ANSTOSS_NEU_GEFASST: NonNullable<Energieziel['anstoesse']>[number] = {
+  id: 'ab000000-0000-4000-8000-00000000e201',
+  art: 'messgrundlage_neu_gefasst',
+  anlass_kennung: 'BB-0001/Fassung-3',
+  angestossen_am: '2028-11-02T08:00:00+01:00',
+  zustand: 'offen',
+  antwort: null,
+  antwort_begruendung: null,
+  beantwortet_am: null,
+  beantwortet_von: null,
+};
+
+export type EnergiezielLage = 'leer' | 'juli' | 'faellig' | 'beantragt' | 'bewertet' | 'anstoss';
 
 /**
  * Die Routen der Bühne: `leer` (kein Energieziel, R13) · `juli` (R4) · `faellig` (R10 vor der Bewertung, fällig seit
- * 15 Tagen) · `beantragt` (Vier-Augen: IK hat „verfehlt“ beantragt) · `bewertet` (R10 nach dem 15.01.2029). Anlegen,
+ * 15 Tagen) · `beantragt` (Vier-Augen: IK hat „verfehlt“ beantragt) · `bewertet` (R10 nach dem 15.01.2029) · `anstoss`
+ * (IP-20: wie `juli`, dazu ein offener Anstoß „Bezugsbasis neu gefasst“ BB-0001/Fassung-3 aus Pfad 2). Anlegen,
  * Beenden und Bewerten verändern den Zustand der Bühne wie die Route; mit `vieraugen` wird „bewerten“ ein Antrag.
  */
 export function energiezielBuehne(lage: EnergiezielLage, vieraugen = false, sub = 'IK', name = 'Ines Kaltenbach'): Partial<typeof api> {
-  const ende = lage !== 'juli' && lage !== 'leer';
+  const ende = lage !== 'juli' && lage !== 'leer' && lage !== 'anstoss';
   const start: Energieziel[] =
     lage === 'leer'
       ? []
@@ -221,6 +235,8 @@ export function energiezielBuehne(lage: EnergiezielLage, vieraugen = false, sub 
           ez2028(
             lage === 'juli'
               ? {}
+              : lage === 'anstoss'
+                ? { anstoesse: [ANSTOSS_NEU_GEFASST] }
               : lage === 'bewertet'
                 ? {
                     zustand: 'bewertet',
@@ -267,6 +283,33 @@ export function energiezielBuehne(lage: EnergiezielLage, vieraugen = false, sub 
       const neu: Energieziel = {
         ...ez, zustand: 'beendet', beendet_zum: body.zum ?? '2029-01-15', beendet_grund: body.begruendung, frist: { ...ez.frist, faellig: null, seit_tagen: null },
         verlauf: [...(ez.verlauf ?? []), eintrag('energieziel_beendet', body.begruendung)],
+      };
+      ziele.set(id, neu);
+      return neu;
+    },
+    // IP-17-NAHT (Z5): `bleibt` mit Begründung · `neu_bewertet` nur an Basis-Ende/-Neufassung, wie `bewerten`.
+    energiezielAnstossAntwort: async (id, aid, body) => {
+      const ez = holen(id);
+      const a = (ez.anstoesse ?? []).find((x) => x.id === aid);
+      if (!a) throw new ApiError(404, 'nicht gefunden', { code: 'nicht_gefunden' });
+      if (a.zustand !== 'offen') throw new ApiError(409, 'anstoss_beantwortet', { code: 'anstoss_beantwortet' });
+      const basis = a.art === 'messgrundlage_beendet' || a.art === 'messgrundlage_neu_gefasst';
+      if (body.antwort === 'neu_kopiert' || (body.antwort === 'neu_bewertet' && !basis)) {
+        throw new ApiError(422, 'antwort_passt_nicht', { code: 'antwort_passt_nicht' });
+      }
+      const t = body.begruendung?.trim() ?? '';
+      if (body.antwort === 'bleibt' && (t.length < 10 || t.length > 500)) throw new ApiError(422, 'begruendung_fehlt', { code: 'begruendung_fehlt' });
+      const am = '2028-11-05T10:00:00+01:00';
+      const beantwortet = { ...a, zustand: 'beantwortet' as const, antwort: body.antwort, antwort_begruendung: t || null, beantwortet_am: am, beantwortet_von: name };
+      const neu: Energieziel = {
+        ...ez,
+        ...(body.antwort === 'neu_bewertet'
+          ? vieraugen
+            ? { bewertung: bewertung({ status: 'beantragt', ergebnis: body.ergebnis as EnergiezielErgebnis, begruendung: t, vieraugen: true, person: { sub, name }, am }) }
+            : { zustand: 'bewertet' as const, ergebnis: body.ergebnis as EnergiezielErgebnis, bewertung: bewertung({ ergebnis: body.ergebnis as EnergiezielErgebnis, begruendung: t, person: { sub, name }, am }) }
+          : {}),
+        anstoesse: (ez.anstoesse ?? []).map((x) => (x.id === aid ? beantwortet : x)),
+        verlauf: [...(ez.verlauf ?? []), { ...eintrag('anstoss_beantwortet', t), am }],
       };
       ziele.set(id, neu);
       return neu;

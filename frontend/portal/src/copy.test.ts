@@ -1861,6 +1861,7 @@ const KENNZAHL_BESTAND: string[] = [
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
+  'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
@@ -2753,6 +2754,10 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     'components/AbweichungenRegister.tsx',
     'components/AbweichungDialoge.tsx',
     'pages/AbweichungSeite.tsx',
+    // IP-20: Abschnitt „Wirkung“, Spalte „Bewertung“ und Dialog „bewerten“ an der Maßnahme, die Anstöße am Vorgang mit
+    // Antwort-Knöpfen (Maßnahme und Energieziel). Das reine Modul `massnahmeWirkung.ts` prüft der Wörter-Wächter unten.
+    'components/MassnahmeWirkung.tsx',
+    'components/VerbesserungAnstoesse.tsx',
   ];
   const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
   const verbesserungFlaechen = () => [

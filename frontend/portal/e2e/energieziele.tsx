@@ -34,13 +34,13 @@ import '../src/index.css';
  * `VerbesserungBereich` bzw. die ECHTE Kennzahl-Seite von KZ-0004 (BB-0001 Fassung 2 freigegeben, `bezugsbasisBuehne`
  * Lage `modell`) mit „Energieziel setzen“. Die Routen spielt `energiezielBuehne` (`src/test/energiezielFixtures.ts`).
  *
- * Adresse: `?person=IK|JW|CB` (Vorgabe IK) · `&lage=leer|juli|faellig|beantragt|bewertet` (Vorgabe leer) ·
+ * Adresse: `?person=IK|JW|CB` (Vorgabe IK) · `&lage=leer|juli|faellig|beantragt|bewertet|anstoss` (Vorgabe leer) ·
  * `&vieraugen=1` (bewerten wird ein Antrag) · `&seite=kennzahl` öffnet KZ-0004 · `&ez=1` öffnet EZ-2028-0001.
  * Eigene Bühne, keine geteilte Datei wird angefasst.
  */
 const params = new URLSearchParams(location.search);
 const person = params.get('person') ?? 'IK';
-const LAGEN: EnergiezielLage[] = ['leer', 'juli', 'faellig', 'beantragt', 'bewertet'];
+const LAGEN: EnergiezielLage[] = ['leer', 'juli', 'faellig', 'beantragt', 'bewertet', 'anstoss'];
 const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'leer';
 const me = rechteSeed(person).me;
 setSelbstauskunft(me);

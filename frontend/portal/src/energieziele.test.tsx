@@ -234,7 +234,7 @@ describe('die Flächen gegen R4/R10', () => {
     Object.assign(api, {
       energieziel: async () => ({
         ...ez,
-        anstoesse: [{ id: 'a1', art: 'messgrundlage_neu_gefasst' as const, anlass_kennung: 'BB-0001/3', angestossen_am: '2028-11-02T08:00:00+01:00', zustand: 'offen' as const, antwort: null, antwort_begruendung: null }],
+        anstoesse: [{ id: 'a1', art: 'messgrundlage_neu_gefasst' as const, anlass_kennung: 'BB-0001/3', angestossen_am: '2028-11-02T08:00:00+01:00', zustand: 'offen' as const, antwort: null, antwort_begruendung: null, beantwortet_am: null, beantwortet_von: null }],
       }),
     });
     render(<EnergiezielSeite id={EZ_IDS.ez1} onListe={() => undefined} />);

@@ -49,11 +49,12 @@ import '../src/index.css';
  * (`src/test/massnahmeFixtures.ts`, R3/R7/R9), `energiezielBuehne`, `bezugsbasisBuehne('modell')` und `bewertungBuehne`.
  * Der Tag der Routen ist der Tag der Uhr (Playwright `page.clock`).
  *
- * Adresse: `?lage=leer|geplant|r9` (Vorgabe r9) · `&m=1|2` öffnet M-2028-0001/-0002 · `&ez=1` öffnet EZ-2028-0001 ·
- * `&seite=einsatz` öffnet EE-3. Eigene Bühne, keine geteilte Datei wird angefasst.
+ * Adresse: `?lage=leer|geplant|r9|r5|r6|r12|antrag` (Vorgabe r9; die IP-20-Lagen am 15.11.2028) · `&m=1|2` öffnet
+ * M-2028-0001/-0002 · `&ez=1` öffnet EZ-2028-0001 · `&seite=einsatz` öffnet EE-3 · `&vieraugen=1` stellt Vier-Augen ein.
+ * Eigene Bühne, keine geteilte Datei wird angefasst.
  */
 const params = new URLSearchParams(location.search);
-const LAGEN: MassnahmeLage[] = ['leer', 'geplant', 'r9'];
+const LAGEN: MassnahmeLage[] = ['leer', 'geplant', 'r9', 'r5', 'r6', 'r12', 'antrag'];
 const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'r9';
 const tag = heute();
 const me = rechteSeed('IK').me;
@@ -66,7 +67,7 @@ Object.assign(
   bewertungBuehne('voll', 'IK', tag),
   bezugsbasisBuehne('modell'),
   energiezielBuehne('juli', false, me.kennung!, me.name!),
-  massnahmeBuehne(lage, tag, me.name!),
+  massnahmeBuehne(lage, tag, me.name!, { sub: me.kennung!, vieraugen: params.get('vieraugen') === '1' }),
   { standorte: async () => ({ stichtag: tag, standorte: [] }) },
 );
 

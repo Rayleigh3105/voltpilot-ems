@@ -2815,7 +2815,108 @@ export interface Massnahme {
   frist: { abruf: string; termin: string; faellig: 'ueberfaellig' | null; seit_tagen: number | null; satz: string | null };
   /** Kundensatz `massnahme_kopf` (§5.9), erst ab umgesetzt. */
   kopf_satz: string | null;
+  /** WK6 (IP-12): der jüngste BEWERTETE Stand; `null` ohne Stand — die Fläche sagt dann „beobachtet — nicht belegt“. */
+  bewertung: MassnahmeBewertung | null;
+  /** WK6 (IP-12): der offene Antrag (Vier-Augen) oder `null`. */
+  bewertung_antrag: MassnahmeBewertung | null;
+  /** IP-17-NAHT (M5, OpenAPI `MassnahmeAnstoss`): die Anstöße am Vorgang, älteste zuerst — wie `verlauf` nur an der einzelnen. */
+  anstoesse: VorgangAnstoss[] | null;
   verlauf: MassnahmeEintrag[] | null;
+}
+
+export type MassnahmeErgebnis = 'belegt' | 'nicht_belegt' | 'nicht_messbar';
+
+/**
+ * Ein Stand Nr. n der Bewertung (OpenAPI `MassnahmeBewertung`, IP-12, WK6) — nie zurückgenommen. `kopie` ist der
+ * kanonische Text der Wirkung zum Bewertungstag (ohne Messgrundlage `null`), `pruefsumme` sein sha256; `satz` der
+ * Kundensatz `bewertung_belegt` bzw. `bewertung_nicht_messbar` (§5.9) an einem bewerteten Stand, sonst `null`.
+ */
+export interface MassnahmeBewertung {
+  stand_nr: number;
+  status: 'beantragt' | 'bewertet' | 'abgelehnt';
+  ergebnis: MassnahmeErgebnis;
+  begruendung: string;
+  vieraugen: boolean;
+  person: { sub: string | null; name: string };
+  am: string;
+  entscheidung: { sub: string | null; name: string } | null;
+  entschieden_am: string | null;
+  entscheidungs_begruendung: string | null;
+  kopie: string | null;
+  pruefsumme: string | null;
+  satz: string | null;
+}
+
+export interface MassnahmeBewertungen {
+  id: string;
+  kennzeichen: string;
+  zustand: MassnahmeZustand;
+  bewertungen: MassnahmeBewertung[];
+}
+
+export type MassnahmeBewertungSchritt = 'bewerten' | 'beantragen' | 'freigeben' | 'ablehnen';
+
+export type MassnahmeWirkungGrund =
+  | 'umsetzungsmonat' | 'basis_nach_umsetzung' | 'unvollstaendig' | 'basis_fehlt' | 'basis_beendet' | 'zu_wenig_perioden'
+  | 'variable_fehlt' | 'variable_ausserhalb' | 'periode_nicht_zu_ende' | 'keine_werte';
+
+/**
+ * Die Wirkung (OpenAPI `MassnahmeWirkung`, IP-11, WK1–WK5) — ein Leser, kein gespeicherter Wert; das Portal rechnet
+ * nichts. Mit `grund` (`ohne_messgrundlage`, `nicht_umgesetzt`) sind die Zahlen `null` und die Listen leer.
+ */
+export interface MassnahmeWirkung {
+  massnahme: Massnahme;
+  abruf: string;
+  grund: 'ohne_messgrundlage' | 'nicht_umgesetzt' | null;
+  umsetzungsmonat: string | null;
+  nachher_von: string | null;
+  nachher_bis: string | null;
+  /** Vom Umsetzungsmonat an: `gezaehlt` nur endgültig und bewertbar, sonst `grund` mit Kundensatz. */
+  monate: {
+    periode: string;
+    endgueltig: boolean;
+    gezaehlt: boolean;
+    grund: MassnahmeWirkungGrund | null;
+    satz: string | null;
+    /** Der rohe Kennzahl-Wert ohne Wort (WK5). */
+    kennzahl_roh: string | null;
+    vergleich: BezugsbasisVergleichMonat;
+  }[];
+  monate_bewertbar: number | null;
+  monate_endgueltig: number | null;
+  monate_soll: number | null;
+  /** „x von N“. */
+  monate_text: string | null;
+  vorlaeufig: boolean | null;
+  nicht_gezaehlt: { monat: string; grund: MassnahmeWirkungGrund }[];
+  summe: EnergiezielStand['summe'] | null;
+  /** Kundensatz `wirkung_vorlaeufig` bzw. `ohne_messgrundlage` (§5.9). */
+  satz: string | null;
+}
+
+/**
+ * IP-17-NAHT (M5, Z5): ein Anstoß am Vorgang (`vorgang_anstoss`, OpenAPI `MassnahmeAnstoss` bzw. `EnergiezielAnstoss`)
+ * — die Kopie bleibt byte-gleich, eine Person antwortet (`POST …/anstoesse/{aid}/antwort`, IP-17 #1209).
+ */
+export interface VorgangAnstoss {
+  id: string;
+  art: 'ausgangslage_korrigiert' | 'bewertung_korrigiert' | 'messgrundlage_beendet' | 'messgrundlage_neu_gefasst';
+  anlass_kennung: string;
+  angestossen_am: string;
+  zustand: 'offen' | 'beantwortet';
+  antwort: VorgangAnstossAntwortArt | null;
+  antwort_begruendung: string | null;
+  beantwortet_am: string | null;
+  beantwortet_von: string | null;
+}
+
+export type VorgangAnstossAntwortArt = 'bleibt' | 'neu_kopiert' | 'neu_bewertet';
+
+/** IP-17-NAHT: der Körper von `POST …/anstoesse/{aid}/antwort` — `ergebnis` nur bei `neu_bewertet`. */
+export interface VorgangAnstossAntwort {
+  antwort: VorgangAnstossAntwortArt;
+  begruendung?: string;
+  ergebnis?: string;
 }
 
 export interface MassnahmeListe {
@@ -3040,16 +3141,8 @@ export interface EnergiezielFrist {
   seit_tagen: number | null;
 }
 
-/** Ein Anstoß am Energieziel (Z5, `vorgang_anstoss`) — eine Person antwortet. */
-export interface EnergiezielAnstoss {
-  id: string;
-  art: 'ausgangslage_korrigiert' | 'bewertung_korrigiert' | 'messgrundlage_beendet' | 'messgrundlage_neu_gefasst';
-  anlass_kennung: string;
-  angestossen_am: string;
-  zustand: 'offen' | 'beantwortet';
-  antwort: 'bleibt' | 'neu_kopiert' | 'neu_bewertet' | null;
-  antwort_begruendung: string | null;
-}
+/** Ein Anstoß am Energieziel (Z5, `vorgang_anstoss`) — eine Person antwortet; dieselbe Form wie an der Maßnahme. */
+export type EnergiezielAnstoss = VorgangAnstoss;
 
 export interface EnergiezielEintrag {
   art:
@@ -10124,6 +10217,9 @@ export const api = {
     request<Energieziel>(`/api/v1/energieziele/${id}/${schritt === 'bewerten' ? 'bewerten' : `bewertung/${schritt}`}`, {
       method: 'POST', body: JSON.stringify(body),
     }),
+  /** IP-17-NAHT (Z5): Antwort auf einen Anstoß am Energieziel — `bleibt` (Begründung) oder `neu_bewertet`. */
+  energiezielAnstossAntwort: (id: string, aid: string, body: VorgangAnstossAntwort) =>
+    request<Energieziel>(`/api/v1/energieziele/${id}/anstoesse/${aid}/antwort`, { method: 'POST', body: JSON.stringify(body) }),
   // ------------------------------------------------------------------ Maßnahmen (UEMS AP-18 IP-10)
   /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
   massnahmen: () => request<MassnahmeListe>('/api/v1/massnahmen'),
@@ -10140,6 +10236,23 @@ export const api = {
     request<Massnahme>(`/api/v1/massnahmen/${id}/verwerfen`, { method: 'POST', body: JSON.stringify(body) }),
   massnahmeKommentar: (id: string, body: { text: string }) =>
     request<Massnahme>(`/api/v1/massnahmen/${id}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-11 (WK1–WK5): die Wirkung — ein Leser; `monate` 12 … 36 (Vorgabe 12), sonst 400. */
+  massnahmeWirkung: (id: string, monate?: number) =>
+    request<MassnahmeWirkung>(`/api/v1/massnahmen/${id}/wirkung${monate ? `?monate=${monate}` : ''}`),
+  /** IP-12 (WK6): alle Stände der Bewertung nach Nr., auch beantragte und abgelehnte. */
+  massnahmeBewertungen: (id: string) => request<MassnahmeBewertungen>(`/api/v1/massnahmen/${id}/bewertungen`),
+  /**
+   * IP-12 (WK6, Muster Energieziel IP-7): `bewerten` setzt Stand Nr. n (mit Vier-Augen 409 `vieraugen_beantragen`),
+   * `beantragen` stellt den Antrag, `freigeben` (Begründung wahlfrei) und `ablehnen` entscheidet eine ZWEITE Person —
+   * nie der Urheber, nie der Verantwortliche; Recht `verbesserung.abschliessen`.
+   */
+  massnahmeBewertung: (id: string, schritt: MassnahmeBewertungSchritt, body: { ergebnis?: MassnahmeErgebnis; begruendung?: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/bewertungen${schritt === 'bewerten' ? '' : `/${schritt}`}`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  /** IP-17-NAHT (M5): Antwort auf einen Anstoß an der Maßnahme — `bleibt` (Begründung), `neu_kopiert`, `neu_bewertet`. */
+  massnahmeAnstossAntwort: (id: string, aid: string, body: VorgangAnstossAntwort) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/anstoesse/${aid}/antwort`, { method: 'POST', body: JSON.stringify(body) }),
   // ------------------------------------------------------------------ Auffälligkeiten und Abweichungen (UEMS AP-18 IP-16)
   /** Die Vermerke einer Kennzahl — offen und beantwortet; `offen` zählt immer alle offenen. */
   auffaelligkeiten: (kennzahlId: string) => request<AuffaelligkeitListe>(`/api/v1/kennzahlen/${kennzahlId}/auffaelligkeiten`),

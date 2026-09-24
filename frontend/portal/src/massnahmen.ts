@@ -2,7 +2,7 @@
  * UEMS AP-18 IP-13 (§5.4, §5.7, M1–M4, M6, M7, SP1–SP4): das reine Bild des Reiters „Maßnahmen“ — Register, Dialog
  * „Maßnahme anlegen“ und die Maßnahmen-Seite. **Hier wird nichts gerechnet:** die Ausgangslage ist die Kopie der Route
  * (Prüfsumme), „überfällig seit n Tagen“ kommt aus `frist` (E5 = A), die Vorschau aus dem Vergleich-Leser. Das Portal
- * ordnet, filtert und prüft nur die Form; entschieden wird an der Route. Keine Wirkung und keine Bewertung (IP-20).
+ * ordnet, filtert und prüft nur die Form; entschieden wird an der Route. Wirkung, Bewertung und Anstöße: `massnahmeWirkung.ts` (IP-20).
  */
 import { ApiError, type Massnahme, type MassnahmeEintrag, type MassnahmeHerkunft, type MassnahmeNeu } from './api';
 import { monatWort } from './bezugsbasisVergleich';
