@@ -99,4 +99,37 @@ public final class MassnahmeDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Liste(LocalDate abruf, List<Massnahme> massnahmen) {}
+
+    /**
+     * Ein Monat der Wirkung (WK1, WK2, WK4): die Vergleichszeile des Bezugsbasis-Lesers gegen die Fassung am letzten Tag
+     * des Monats, ob er endgültig ist, ob er zählt — sonst {@code grund} ({@code wirkung_grund}) mit dem Kundensatz —
+     * und {@code kennzahl_roh}, der rohe Kennzahl-Wert ohne Wort (WK5, VG3).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record WirkungMonat(String periode, boolean endgueltig, boolean gezaehlt, String grund, String satz,
+            String kennzahlRoh, BezugsbasisVergleichDto.Monat vergleich) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record WirkungAusschluss(String monat, String grund) {}
+
+    /** Σ ÷ Σ über die bewertbaren Nachher-Monate (Operation {@code wirkung} → {@code zeitraum}); nie ein Mittel. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record WirkungSumme(String gemessen, String erwartet, String deltaProzent, String bandProzent,
+            String richtung, String urteil, List<String> kennzeichen) {}
+
+    /**
+     * {@code GET …/{id}/wirkung?monate=} (IP-11, WK1–WK5): ein Leser, kein gespeicherter Wert. {@code grund}
+     * {@code ohne_messgrundlage} (nur {@code satz}, keine Zahl) oder {@code nicht_umgesetzt} (noch keine Nachher-Monate,
+     * kein Satz) — sonst {@code null} und die Nachher-Monate mit Summe, „x von N“, {@code vorlaeufig} und den
+     * Ausschlüssen; die erwartete Wirkung und die Ausgangslage (Kopie, byte-gleich) stehen in {@code massnahme}.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Wirkung(Massnahme massnahme, LocalDate abruf, String grund, String umsetzungsmonat,
+            String nachherVon, String nachherBis, List<WirkungMonat> monate, Integer monateBewertbar,
+            Integer monateEndgueltig, Integer monateSoll, String monateText, Boolean vorlaeufig,
+            List<WirkungAusschluss> nichtGezaehlt, WirkungSumme summe, String satz) {}
 }

@@ -23,8 +23,9 @@ sagt eine Person.
 > `BezugsbasisVergleich.fuerZiel`, nur endgültige Monate), `satz` dessen Kundensätze `energieziel_stand` und
 > `energieziel_vorschlag`. `frist` ruft das Maßnahmen-Register `GET /api/v1/massnahmen` (IP-10, `MassnahmeService`,
 > Filter `ueberfaellig`, Uhr der Kennzahlen), `satz` dessen `massnahme_kopf`, `messgrundlage`, `ohne_messgrundlage` und
-> `ueberfaellig`. Der Leser `GET …/massnahmen/{id}/wirkung` (IP-11) und die Übersicht (F2) folgen; sie rechnen nicht
-> selbst, sondern rufen diese Operationen.
+> `ueberfaellig`. `wirkung` ruft der Leser `GET …/massnahmen/{id}/wirkung` (IP-11, `MassnahmeWirkung` über
+> `BezugsbasisVergleich.fuerZiel`: Umsetzungsmonat und die endgültigen Nachher-Monate), `satz` dessen `wirkung_*`.
+> Die Übersicht (F2) folgt; sie rechnet nicht selbst, sondern ruft diese Operationen.
 
 ## 1. Vokabulare (geschlossen, in `verbesserung-vectors.json`)
 

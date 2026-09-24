@@ -17,6 +17,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -71,6 +72,7 @@ class MassnahmeApiTest {
     private static final Instant UMGESETZT = Instant.parse("2028-01-22T09:00:00Z");
     private static final Instant MAERZ = Instant.parse("2028-03-15T09:00:00Z");
     private static final Map<String, JsonNode> RU = referenz();
+    private static final Map<String, JsonNode> FAELLE = faelle();
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -389,6 +391,241 @@ class MassnahmeApiTest {
                 "begruendung", "Bedienberechtigter will ändern.")).status()).isEqualTo(403);
     }
 
+    // ================================================================================ Wirkung (IP-11)
+
+    /**
+     * R5/R6 (WK1–WK3, WK5): M-2028-0001 umgesetzt am 22.01.2028. Am 15.11.2028 (Oktober endgültig seit 07.11.) liest
+     * der Leser Februar bis Oktober 2028 gegen Fassung 2: 2,4 % weniger — Σ 647 000 ÷ Σ 663 139 kWh, nie das Mittel der
+     * Monats-Δ (−2,3 %, NW-1) —, 8 von 12, vorläufig, März ausgeschlossen (Produktionsmenge außerhalb), Juli
+     * {@code schlechter} gezählt; der Januar 2028 war 3,5 % besser und ist der Umsetzungsmonat — nicht gezählt (R6).
+     * Am 10.02.2029: 2,7 % weniger, 11 von 12, nicht mehr vorläufig. Erwartete Wirkung und Ausgangslage daneben,
+     * byte-gleich; kein Satz nennt eine Ursache.
+     */
+    @Test
+    void r5r6WirkungNachDerUmsetzung() throws Exception {
+        Welt w = welt();
+        String[] m = umgesetzteMassnahme(w);
+        String id = m[0];
+        nachher(w, "2028-01", "2028-10");
+
+        uhr(Instant.parse("2028-11-15T09:00:00Z"));
+        Antwort a = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung", null);
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        JsonNode r = a.body();
+        assertThat(r.get("grund").isNull()).isTrue();
+        assertThat(r.get("abruf").asText()).isEqualTo("2028-11-15");
+        assertThat(r.get("umsetzungsmonat").asText()).isEqualTo("2028-01");
+        assertThat(r.get("nachher_von").asText()).isEqualTo("2028-02");
+        assertThat(r.get("nachher_bis").asText()).isEqualTo("2029-01");
+        assertThat(r.get("monate_text").asText()).isEqualTo("8 von 12");
+        assertThat(r.get("monate_bewertbar").asInt()).isEqualTo(8);
+        assertThat(r.get("monate_endgueltig").asInt()).isEqualTo(9);
+        assertThat(r.get("monate_soll").asInt()).isEqualTo(12);
+        assertThat(r.get("vorlaeufig").asBoolean()).isTrue();
+        JsonNode summe = r.get("summe");
+        assertThat(summe.get("delta_prozent").asText()).isEqualTo("-2.4");
+        assertThat(summe.get("urteil").asText()).isEqualTo("besser");
+        assertThat(zahl(summe.get("gemessen"))).isEqualByComparingTo("647000");
+        assertThat(zahl(summe.get("erwartet")).setScale(0, RoundingMode.HALF_UP)).isEqualByComparingTo("663139");
+        assertThat(zahl(summe.get("band_prozent"))).isEqualByComparingTo("2");
+        assertThat(summe.get("kennzeichen").toString()).contains("8 von 12 Monaten");
+        assertThat(r.get("nicht_gezaehlt").toString()).isEqualTo("[{\"monat\":\"2028-01\",\"grund\":\"umsetzungsmonat\"},"
+                + "{\"monat\":\"2028-03\",\"grund\":\"variable_ausserhalb\"}]");
+
+        JsonNode monate = r.get("monate");
+        assertThat(monate).hasSize(13);
+        JsonNode januar = monate.get(0);
+        assertThat(januar.get("periode").asText()).isEqualTo("2028-01");
+        assertThat(januar.get("gezaehlt").asBoolean()).isFalse();
+        assertThat(januar.get("grund").asText()).isEqualTo("umsetzungsmonat");
+        assertThat(januar.get("satz").asText()).isEqualTo("Januar 2028: Umsetzungsmonat — nicht gezählt.");
+        assertThat(januar.at("/vergleich/bereinigt/urteil").asText()).isEqualTo("besser");
+        assertThat(januar.at("/vergleich/bereinigt/delta_prozent").asText()).isEqualTo("-3.5");
+        JsonNode februar = monate.get(1);
+        assertThat(februar.get("gezaehlt").asBoolean()).isTrue();
+        assertThat(februar.get("satz").isNull()).isTrue();
+        assertThat(februar.get("kennzahl_roh").asText()).startsWith("0.2672");
+        assertThat(februar.at("/vergleich/bereinigt/urteil").asText()).isEqualTo("im_rahmen");
+        assertThat(februar.at("/vergleich/bereinigt/gemessen/version").asInt()).isEqualTo(1);
+        assertThat(februar.at("/vergleich/bereinigt/fassung/fassung").asInt()).isEqualTo(2);
+        JsonNode maerz = monate.get(2);
+        assertThat(maerz.get("gezaehlt").asBoolean()).isFalse();
+        assertThat(maerz.get("grund").asText()).isEqualTo("variable_ausserhalb");
+        assertThat(maerz.get("satz").asText()).isEqualTo("März 2028: nicht bewertbar — Produktionsmenge Spritzguss "
+                + "390 000 kg außerhalb der Bezugsbasis (228 600–375 100 kg).");
+        JsonNode juli = monate.get(6);
+        assertThat(juli.get("gezaehlt").asBoolean()).isTrue();
+        assertThat(juli.at("/vergleich/bereinigt/urteil").asText()).isEqualTo("schlechter");
+        assertThat(juli.at("/vergleich/bereinigt/delta_prozent").asText()).isEqualTo("2.5");
+        JsonNode november = monate.get(10);
+        assertThat(november.get("periode").asText()).isEqualTo("2028-11");
+        assertThat(november.get("endgueltig").asBoolean()).isFalse();
+        assertThat(november.get("gezaehlt").asBoolean()).isFalse();
+        assertThat(november.get("grund").isNull()).isTrue();
+
+        String satz = r.get("satz").asText();
+        assertThat(satz).isEqualTo("Wirkung von M-2028-0001, beobachtet: 2,4 % weniger Strom als die Bezugsbasis "
+                + "erwarten lässt (Februar bis Oktober 2028, 8 von 12 Monaten; März 2028 nicht bewertbar: Produktionsmenge "
+                + "Spritzguss außerhalb der Bezugsbasis) — erwartet waren 3 % weniger. Ob die Maßnahme das bewirkt hat, "
+                + "sagt eine Person.");
+        assertThat(a.text()).doesNotContain("hat gewirkt").doesNotContain("Einsparung durch").doesNotContain("Ursache");
+        // Erwartete Wirkung und Ausgangslage daneben: die Kopie aus IP-10, byte-gleich.
+        assertThat(r.at("/massnahme/erwartete_wirkung_prozent").asText()).isEqualTo("-3.0");
+        assertThat(r.at("/massnahme/messgrundlage/ausgangslage").asText()).isEqualTo(m[1]);
+        assertThat(r.at("/massnahme/messgrundlage/pruefsumme").asText()).isEqualTo(m[2]);
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme_aenderung WHERE massnahme_id = ?", Integer.class,
+                UUID.fromString(id))).as("ein Leser schreibt nichts").isEqualTo(2);
+
+        nachher(w, "2028-11", "2029-01");
+        uhr(Instant.parse("2029-02-10T09:00:00Z"));
+        JsonNode voll = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung", null).body();
+        assertThat(voll.at("/summe/delta_prozent").asText()).isEqualTo("-2.7");
+        assertThat(zahl(voll.at("/summe/gemessen"))).isEqualByComparingTo("876700");
+        assertThat(zahl(voll.at("/summe/erwartet")).setScale(0, RoundingMode.HALF_UP)).isEqualByComparingTo("900892");
+        assertThat(voll.get("monate_text").asText()).isEqualTo("11 von 12");
+        assertThat(voll.get("monate_endgueltig").asInt()).isEqualTo(12);
+        assertThat(voll.get("vorlaeufig").asBoolean()).isFalse();
+        assertThat(voll.get("satz").asText()).contains("2,7 % weniger Strom").contains("(Februar 2028 bis Januar 2029, "
+                + "11 von 12 Monaten; März 2028 nicht bewertbar");
+
+        // WK2: ein längerer Zeitraum ist eine Wahl beim Abruf — bis 36, sonst 400.
+        JsonNode lang = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung?monate=24", null).body();
+        assertThat(lang.get("monate_soll").asInt()).isEqualTo(24);
+        assertThat(lang.get("nachher_bis").asText()).isEqualTo("2030-01");
+        assertThat(lang.get("monate_text").asText()).isEqualTo("11 von 24");
+        assertThat(lang.get("vorlaeufig").asBoolean()).isTrue();
+        assertThat(ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung?monate=36", null).status()).isEqualTo(200);
+        for (String q : List.of("monate=37", "monate=11", "monate=zwoelf", "monate=-12", "zeitraum=12")) {
+            Antwort x = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung?" + q, null);
+            assertThat(x.status()).as(q + " " + x.text()).isEqualTo(400);
+            assertThat(x.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
+        }
+    }
+
+    /**
+     * WK4: Fassung 3 (Referenzperiode November 2027 bis Oktober 2028, gilt ab 01.11.2028) enthielte die Umsetzung —
+     * November 2028 bis Januar 2029 zählen nicht ({@code basis_nach_umsetzung}); die Summe bleibt bei den acht
+     * bewertbaren Monaten gegen Fassung 2.
+     */
+    @Test
+    void wk4BasisNachDerUmsetzung() throws Exception {
+        Welt w = welt();
+        String id = umgesetzteMassnahme(w)[0];
+        nachher(w, "2028-01", "2029-01");
+        UUID bb1 = root.queryForObject("SELECT id FROM bezugsbasis WHERE tenant_id = ? AND kennzeichen = 'BB-0001'",
+                UUID.class, w.mandant());
+        root.update("UPDATE bezugsbasis_fassung SET gilt_bis = '2028-10-31', beendet_am = now(), beendet_grund = "
+                + "'Fassung 3 mit der jüngsten Referenzperiode.' WHERE bezugsbasis_id = ? AND fassung = 2", bb1);
+        fassung(w.mandant(), bb1, 3, bz1(w), "regression_eine_variable", "2027-11/2028-10", "2028-11-01", null,
+                "0.2685", "{\"a\": 10523, \"b\": 0.2343}", "0.8", "254000", "341000");
+
+        uhr(Instant.parse("2029-02-10T09:00:00Z"));
+        Antwort a = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + id + "/wirkung", null);
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        JsonNode r = a.body();
+        assertThat(r.get("monate_text").asText()).isEqualTo("8 von 12");
+        assertThat(r.get("vorlaeufig").asBoolean()).isFalse();
+        assertThat(r.at("/summe/delta_prozent").asText()).isEqualTo("-2.4");
+        assertThat(r.get("nicht_gezaehlt").findValuesAsText("grund")).containsExactly("umsetzungsmonat",
+                "variable_ausserhalb", "basis_nach_umsetzung", "basis_nach_umsetzung", "basis_nach_umsetzung");
+        JsonNode november = r.get("monate").get(10);
+        assertThat(november.get("periode").asText()).isEqualTo("2028-11");
+        assertThat(november.get("endgueltig").asBoolean()).isTrue();
+        assertThat(november.get("gezaehlt").asBoolean()).isFalse();
+        assertThat(november.get("grund").asText()).isEqualTo("basis_nach_umsetzung");
+        assertThat(november.at("/vergleich/bereinigt/fassung/fassung").asInt()).isEqualTo(3);
+        assertThat(november.get("satz").asText()).isEqualTo("November 2028: nicht bewertbar — die Bezugsbasis BB-0001, "
+                + "Fassung 3 hat eine Referenzperiode (November 2027 bis Oktober 2028), die nach der Umsetzung endet; sie "
+                + "enthielte die Maßnahme.");
+        assertThat(r.get("satz").asText()).contains("(Februar 2028 bis Januar 2029, 8 von 12 Monaten; März 2028 nicht "
+                + "bewertbar: Produktionsmenge Spritzguss außerhalb der Bezugsbasis; November 2028 nicht bewertbar: ");
+    }
+
+    /**
+     * M4/R7: ohne Messgrundlage nur der Satz, keine Zahl; geplant noch keine Nachher-Monate; der Zaun wie IP-10 —
+     * außerhalb 404, der Bedienberechtigte liest am eigenen Standort.
+     */
+    @Test
+    void wirkungOhneMessgrundlageVorDerUmsetzungUndZaun() throws Exception {
+        Welt w = welt();
+        Welt fremd = welt();
+        uhr(Instant.parse("2028-01-20T09:00:00Z"));
+        JsonNode r7 = RU.get("M-2028-0002");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("titel", "Druckluft-Leckagen orten und beseitigen");
+        body.put("verantwortlich", sub(w, "ines"));
+        body.put("termin", r7.get("termin").asText());
+        body.put("herkunft", "einsatz");
+        body.put("einsatz", w.ee3().toString());
+        body.put("standort", w.st1().toString());
+        body.put("erwartete_wirkung_wortlaut", r7.at("/erwartete_wirkung/wortlaut").asText());
+        Antwort ohne = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+        assertThat(ohne.status()).as(ohne.text()).isEqualTo(201);
+        String ohneId = ohne.body().get("id").asText();
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD + "/" + ohneId + "/umgesetzt", Map.of("am", "2028-01-19",
+                "begruendung", "Leckagen geortet und abgedichtet.")).status()).isEqualTo(200);
+        uhr(Instant.parse("2028-11-15T09:00:00Z"));
+        Antwort a = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + ohneId + "/wirkung", null);
+        assertThat(a.status()).as(a.text()).isEqualTo(200);
+        JsonNode r = a.body();
+        assertThat(r.get("grund").asText()).isEqualTo("ohne_messgrundlage");
+        assertThat(r.get("satz").asText()).isEqualTo(ohne.body().at("/ohne_messgrundlage/satz").asText())
+                .contains("ohne Messgrundlage — Wirkung nicht messbar");
+        for (String feld : List.of("summe", "monate_text", "monate_bewertbar", "vorlaeufig", "nachher_von")) {
+            assertThat(r.get(feld).isNull()).as(feld).isTrue();
+        }
+        assertThat(r.get("monate")).isEmpty();
+        assertThat(r.get("nicht_gezaehlt")).isEmpty();
+        assertThat(a.text()).doesNotContainPattern("\\d+,\\d %");
+
+        uhr(ANGELEGT);
+        Antwort geplant = ruf(w, "ines", HttpMethod.POST, PFAD, mitMessgrundlage(w, RU.get("M-2028-0001")));
+        assertThat(geplant.status()).as(geplant.text()).isEqualTo(201);
+        String geplantId = geplant.body().get("id").asText();
+        JsonNode vorher = ruf(w, "ines", HttpMethod.GET, PFAD + "/" + geplantId + "/wirkung", null).body();
+        assertThat(vorher.get("grund").asText()).isEqualTo("nicht_umgesetzt");
+        assertThat(vorher.get("satz").isNull()).isTrue();
+        assertThat(vorher.get("monate")).isEmpty();
+        assertThat(vorher.get("summe").isNull()).isTrue();
+
+        for (String pfad : List.of(PFAD + "/" + geplantId + "/wirkung", PFAD + "/" + UUID.randomUUID() + "/wirkung",
+                PFAD + "/kein-id/wirkung", PFAD + "/" + geplantId + "/wirkung?monate=37")) {
+            Antwort x = ruf(fremd, "ines", HttpMethod.GET, pfad, null);
+            assertThat(x.status()).as(pfad + " " + x.text()).isEqualTo(404);
+        }
+        assertThat(ruf(w, "murat", HttpMethod.GET, PFAD + "/" + geplantId + "/wirkung", null).status()).isEqualTo(200);
+    }
+
+    /** M-2028-0001 wie R3: angelegt am 15.01.2028, umgesetzt am 22.01.2028 — ID, Ausgangslage, Prüfsumme. */
+    private String[] umgesetzteMassnahme(Welt w) throws Exception {
+        JsonNode r3 = RU.get("M-2028-0001");
+        uhr(ANGELEGT);
+        Antwort neu = ruf(w, "ines", HttpMethod.POST, PFAD, mitMessgrundlage(w, r3));
+        assertThat(neu.status()).as(neu.text()).isEqualTo(201);
+        String id = neu.body().get("id").asText();
+        uhr(UMGESETZT);
+        Antwort um = ruf(w, "ines", HttpMethod.POST, PFAD + "/" + id + "/umgesetzt", Map.of("am", "2028-01-22",
+                "begruendung", r3.get("verlauf").get(1).get("begruendung").asText()));
+        assertThat(um.status()).as(um.text()).isEqualTo(200);
+        return new String[] {id, neu.body().at("/messgrundlage/ausgangslage").asText(),
+                neu.body().at("/messgrundlage/pruefsumme").asText()};
+    }
+
+    /** Die Monate der Referenzdatei 1.9: Januar 2028 aus R6, Februar 2028 bis Januar 2029 aus R5 (kWh, kg). */
+    private static void nachher(Welt w, String von, String bis) {
+        UUID bz = bz1(w);
+        for (YearMonth m = YearMonth.parse(von); !m.isAfter(YearMonth.parse(bis)); m = m.plusMonths(1)) {
+            JsonNode n = m.equals(YearMonth.of(2028, 1)) ? FAELLE.get("R6").at("/gegeben/januar_2028")
+                    : FAELLE.get("R5").at("/gegeben/je_monat/" + m);
+            monat(w.mandant(), w.kz4(), bz, m.atDay(1).toString(), n.get("kwh").asText(), n.get("kg").asText());
+        }
+    }
+
+    private static UUID bz1(Welt w) {
+        return root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = 'BZ-1'",
+                UUID.class, w.mandant());
+    }
+
     // ================================================================================ Welt
 
     private static Map<String, JsonNode> referenz() {
@@ -397,6 +634,19 @@ class MassnahmeApiTest {
                     "uems-referenzunternehmen.json").toFile());
             Map<String, JsonNode> m = new LinkedHashMap<>();
             datei.get("massnahmen").forEach(n -> m.put(n.get("kennzeichen").asText(), n));
+            return m;
+        } catch (java.io.IOException x) {
+            throw new IllegalStateException(x);
+        }
+    }
+
+    /** {@code abnahmefaelle_ap18.faelle[]} der Referenzdatei 1.9 nach Fall (R5, R6). */
+    private static Map<String, JsonNode> faelle() {
+        try {
+            JsonNode datei = MAPPER.readTree(java.nio.file.Path.of("..", "..", "docs", "contracts", "v2",
+                    "uems-referenzunternehmen.json").toFile());
+            Map<String, JsonNode> m = new LinkedHashMap<>();
+            datei.at("/abnahmefaelle_ap18/faelle").forEach(n -> m.put(n.get("fall").asText(), n));
             return m;
         } catch (java.io.IOException x) {
             throw new IllegalStateException(x);

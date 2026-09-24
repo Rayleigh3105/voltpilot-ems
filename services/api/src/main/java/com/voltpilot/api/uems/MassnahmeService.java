@@ -159,6 +159,13 @@ public class MassnahmeService {
         return dto(z, zone, LocalDate.ofInstant(kennzahlen.jetzt(), zone), verlauf(id));
     }
 
+    /** Die Maßnahme ohne Verlauf — der Kopf der Wirkung (IP-11); Sichtbarkeit wie {@link #eine} (404). */
+    public MassnahmeDto.Massnahme ohneVerlauf(UUID id) {
+        Map<String, Object> z = sichtbar(id);
+        ZoneId zone = zone();
+        return dto(z, zone, LocalDate.ofInstant(kennzahlen.jetzt(), zone), null);
+    }
+
     // ================================================================================ anlegen (M1–M4)
 
     public MassnahmeDto.Massnahme anlegen(MassnahmeDto.Anlegen a, ProtokollAkteur wer) {

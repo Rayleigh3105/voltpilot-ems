@@ -65,14 +65,18 @@ public class EnergiezielService {
     static final int HOECHSTENS_MONATE = BezugsbasisVergleich.HOECHSTENS_MONATE;
     private static final String OFFEN = "offen";
 
-    /** Die Gründe eines nicht gezählten Monats als Satzteil „nicht bewertbar: …“ (§5.9, Energieziel, Stand). */
-    private static final Map<String, String> GRUND = Map.of(
+    /**
+     * Die Gründe eines nicht gezählten Monats als Satzteil „nicht bewertbar: …“ (§5.9, Energieziel, Stand; die Wirkung
+     * einer Maßnahme, IP-11, liest dieselben).
+     */
+    static final Map<String, String> GRUND = Map.of(
             "basis_fehlt", "keine Fassung der Bezugsbasis",
             "basis_beendet", "Bezugsbasis beendet",
             "zu_wenig_perioden", "zu wenige Monate in der Bezugsbasis",
             "periode_nicht_zu_ende", "Monat nicht zu Ende",
             "keine_werte", "kein gemessener Wert",
-            "unvollstaendig", "Werte unvollständig");
+            "unvollstaendig", "Werte unvollständig",
+            "basis_nach_umsetzung", "Referenzperiode der Bezugsbasis endet nach der Umsetzung");
 
     private final KennzahlService kennzahlen;
     private final BezugsbasisVergleich vergleich;
@@ -847,7 +851,7 @@ public class EnergiezielService {
     }
 
     /** „März 2028 nicht bewertbar: Produktionsmenge Spritzguss außerhalb der Bezugsbasis“ — je Ausschluss. */
-    private static String ausschluesse(List<EnergiezielDto.Ausschluss> ausschluesse,
+    static String ausschluesse(List<EnergiezielDto.Ausschluss> ausschluesse,
             Map<String, BezugsbasisVergleichDto.Monat> zeilen) {
         if (ausschluesse.isEmpty()) {
             return "kein Monat ausgeschlossen";

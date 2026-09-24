@@ -53,7 +53,9 @@ class MassnahmeSchnittstelleVertragTest {
         Map<String, Class<? extends Record>> formen = Map.of("Massnahme", MassnahmeDto.Massnahme.class,
                 "MassnahmeEintrag", MassnahmeDto.Eintrag.class, "MassnahmeListe", MassnahmeDto.Liste.class,
                 "MassnahmeMessgrundlage", MassnahmeDto.Messgrundlage.class, "MassnahmeVerweis",
-                MassnahmeDto.Verweis.class);
+                MassnahmeDto.Verweis.class, "MassnahmeWirkung", MassnahmeDto.Wirkung.class, "MassnahmeWirkungMonat",
+                MassnahmeDto.WirkungMonat.class, "MassnahmeWirkungAusschluss", MassnahmeDto.WirkungAusschluss.class,
+                "MassnahmeWirkungSumme", MassnahmeDto.WirkungSumme.class);
         for (var f : formen.entrySet()) {
             Map<String, Object> s = schema(f.getKey());
             assertThat(s).as(f.getKey()).isNotNull();
@@ -101,6 +103,25 @@ class MassnahmeSchnittstelleVertragTest {
         assertThat(VerbesserungRegeln.VOKABULARE.get("frist_faellig")).containsAll(aufzaehlung(frist, "faellig")
                 .stream().map(String::valueOf).toList());
         assertThat(MassnahmeService.OHNE_KENNZEICHEN).isEqualTo("ohne Messgrundlage — Wirkung nicht messbar");
+    }
+
+    /** IP-11: die Gründe eines nicht gezählten Monats sind genau {@code wirkung_grund}; {@code monate} 12 … 36. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void dieWirkungSprichtDieWoerterDesVertrags() throws Exception {
+        List<String> grund = VerbesserungRegeln.VOKABULARE.get("wirkung_grund");
+        assertThat(aufzaehlung(schema("MassnahmeWirkungAusschluss"), "grund")).isEqualTo(grund);
+        assertThat(aufzaehlung(schema("MassnahmeWirkungMonat"), "grund")).isEqualTo(grund);
+        assertThat(aufzaehlung(schema("MassnahmeWirkung"), "grund")).containsExactly("ohne_messgrundlage",
+                "nicht_umgesetzt");
+        Map<String, Object> op = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) api().get("paths"))
+                .get("/api/v1/massnahmen/{id}/wirkung")).get("get");
+        Map<String, Object> monate = ((List<Map<String, Object>>) op.get("parameters")).get(0);
+        assertThat(monate.get("name")).isEqualTo("monate");
+        Map<String, Object> s = (Map<String, Object>) monate.get("schema");
+        assertThat(s.get("minimum")).isEqualTo(VerbesserungRegeln.STARTWERTE.nachher_monate());
+        assertThat(s.get("default")).isEqualTo(VerbesserungRegeln.STARTWERTE.nachher_monate());
+        assertThat(s.get("maximum")).isEqualTo(VerbesserungRegeln.STARTWERTE.nachher_monate_hoechstens());
     }
 
     @Test

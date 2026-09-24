@@ -103,10 +103,11 @@ public class BezugsbasisVergleich {
     /**
      * Ein Monat für den Ziel-Stand (AP-18 IP-6, Z3): die Vergleichszeile des Lesers, der Eingang der Operation
      * {@code vergleich} gegen die Fassung am letzten Tag des Monats (P4) samt deren Referenzperiode und ob der
-     * gespeicherte Monatswert zum Abruf endgültig ist ({@code endgueltig_ab} erreicht).
+     * gespeicherte Monatswert zum Abruf endgültig ist ({@code endgueltig_ab} erreicht); für die Wirkung (IP-11) dazu
+     * der rohe Kennzahl-Wert des Monats ohne Wort ({@code null} = keiner) und die Variable, die der Monatssatz nennt.
      */
     public record ZielMonat(BezugsbasisVergleichDto.Monat zeile, VerbesserungRegeln.MonatEingang eingang,
-            boolean endgueltig) {}
+            boolean endgueltig, String kennzahl, BezugsbasisVergleichSatz.Variable variable) {}
 
     /** Der Vergleich über die Zielperiode und je Monat der Eingang für {@link VerbesserungRegeln#zielstand}. */
     public record ZielVergleich(BezugsbasisVergleichDto.Vergleich vergleich, List<ZielMonat> monate, LocalDate heute) {}
@@ -215,7 +216,7 @@ public class BezugsbasisVergleich {
                 && !java.time.OffsetDateTime.parse(w.endgueltigAb()).toInstant().isAfter(jetzt);
         return new ZielMonat(new BezugsbasisVergleichDto.Monat(m.toString(), beschriftung, roh, bereinigt, satz),
                 new VerbesserungRegeln.MonatEingang(m.toString(), f == null ? null : f.referenzperiode(), eingang),
-                endgueltig);
+                endgueltig, w == null ? null : w.wert(), v);
     }
 
     /**

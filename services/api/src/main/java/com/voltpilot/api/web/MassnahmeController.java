@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.KennzahlAbgelehnt;
 import com.voltpilot.api.uems.MassnahmeService;
+import com.voltpilot.api.uems.MassnahmeWirkung;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.VerbesserungAbgelehnt;
 import com.voltpilot.api.web.dto.MassnahmeDto;
@@ -35,7 +36,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Maßnahmen (UEMS AP-18 IP-10, M1–M4, M6, M7, RE1–RE3): anlegen mit oder ohne Messgrundlage, lesen, ändern solange
  * geplant, Verantwortlicher, umgesetzt melden, verwerfen, Kommentare. Die Arbeit macht {@link MassnahmeService}; die
- * Wirkung liest IP-11, die Bewertung bringt IP-12.
+ * Wirkung liest {@link MassnahmeWirkung} (IP-11, WK1–WK5), die Bewertung bringt IP-12.
  *
  * <p><b>Rechte:</b> Schreibrouten {@code verbesserung.verwalten} an der Geltung der Kennzahl bzw. am Standort der
  * Maßnahme (403 {@code recht_fehlt}); Lesen {@code verbesserung.ansehen} als Kennung im Kommentar — die Sichtbarkeit
@@ -46,10 +47,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class MassnahmeController {
 
     private final MassnahmeService massnahmen;
+    private final MassnahmeWirkung wirkung;
     private final ObjectMapper streng;
 
-    public MassnahmeController(MassnahmeService massnahmen, ObjectMapper json) {
+    public MassnahmeController(MassnahmeService massnahmen, MassnahmeWirkung wirkung, ObjectMapper json) {
         this.massnahmen = massnahmen;
+        this.wirkung = wirkung;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -83,6 +86,18 @@ public class MassnahmeController {
     @GetMapping("/{id}")
     public MassnahmeDto.Massnahme eine(@PathVariable UUID id) {
         return massnahmen.eine(id);
+    }
+
+    /**
+     * Recht: {@code verbesserung.ansehen}. Die Wirkung (WK1–WK5): Nachher-Monate ab dem Monat nach {@code umgesetzt_am}
+     * ({@code monate} 12 … 36, Vorgabe 12, sonst 400), je Monat der Vergleich gegen die Fassung am letzten Tag, der
+     * Umsetzungsmonat „nicht gezählt“, Σ ÷ Σ über die bewertbaren, Ausschlüsse mit Grund, „x von N“, „vorläufig“; ohne
+     * Messgrundlage nur der Satz. Ein Leser, kein gespeicherter Wert; außerhalb der Sicht 404.
+     */
+    @GetMapping("/{id}/wirkung")
+    public MassnahmeDto.Wirkung wirkung(@PathVariable UUID id, @RequestParam(required = false) String monate,
+            HttpServletRequest anfrage) {
+        return wirkung.lesen(id, anfrage.getParameterMap().keySet(), monate);
     }
 
     /**

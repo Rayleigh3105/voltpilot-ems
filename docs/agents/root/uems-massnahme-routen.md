@@ -2,7 +2,7 @@
 
 Neu am 24.09.2026: `MassnahmeController` → `uems/MassnahmeService`, DTO `web/dto/MassnahmeDto`, Ablehnungen
 `VerbesserungAbgelehnt`. Keine Migration (Tabellen und Trigger: [Datenhaltung](uems-verbesserung-datenhaltung.md) IP-9),
-keine Fläche (IP-13), keine Wirkung (IP-11), keine Bewertung (IP-12). OpenAPI `/api/v1/massnahmen…`.
+keine Fläche (IP-13), keine Bewertung (IP-12). Die Wirkung (IP-11) steht im Abschnitt unten. OpenAPI `/api/v1/massnahmen…`.
 
 | Route | Recht | Was |
 |---|---|---|
@@ -19,3 +19,20 @@ brechen). ⚠ **Nicht gebaut:** Messgrundlage nachträglich ändern (M2 „solan
 Anlass einer Abweichung als Vorgabe der Monate (IP-14/IP-16), Einsatz als Zaun-Anker (der Standort wird ohne Kennzahl
 gewählt). Nachweis: `MassnahmeApiTest` (R3, R7, R9 der Referenzdatei 1.9), `MassnahmeSchnittstelleVertragTest`, Zeilen
 in `RechtMatrixApiTest`, `RechtRoutenArchitekturTest.DIENST`, `RechteKennungenDerRoutenTest`.
+
+## Wirkung lesen (AP-18 IP-11, WK1–WK5)
+
+`GET /api/v1/massnahmen/{id}/wirkung?monate=` (ansehen, Kommentar) → `uems/MassnahmeWirkung`, DTO
+`MassnahmeDto.Wirkung`. Ein Leser, kein gespeicherter Wert, keine Migration: `BezugsbasisVergleich.fuerZiel` vom
+Umsetzungsmonat bis `monate` Monate danach (Fassung am letzten Tag, P4), dann `VerbesserungRegeln.wirkung` über den
+Umsetzungsmonat (immer, zählt nie) und die **endgültigen** Nachher-Monate. `monate` 12 … 36 (Vorgabe 12), die Grenze
+prüft die Operation selbst (`fehler: nachher_monate` → 400); ein anderer Parameter 400; Zaun zuerst (fremd 404, auch
+bei `monate=37`). `grund` `ohne_messgrundlage` = nur der Satz der Maßnahme, keine Zahl; `nicht_umgesetzt` = keine
+Monate, kein Satz (§5.9 hat keinen). Erwartete Wirkung und Ausgangslage stehen unverändert in `massnahme`.
+
+⚠ **Spannweite im Satz:** `wirkung_nicht_bewertbar` nennt die TOLERIERTE Spannweite (`Spannweite.toleriert_von/bis`
+aus dem Eingang, 228 600–375 100 kg); der Monatssatz des Vergleich-Lesers nennt die rohe (254 000–341 000). ⚠
+`ZielMonat` trägt dafür `kennzahl` (roh, ohne Wort) und `variable` (die des Monatssatzes). ⚠ `{energie}` ist das
+Medium der Zähler-Messstellen, bei keinem oder mehreren „Energie“. ⚠ Der Summensatz nutzt `wirkung_vorlaeufig` auch
+nach zwölf Monaten (die Schablone trägt kein „vorläufig“; das sagt das Feld). Nachweis: `MassnahmeApiTest`
+(`r5r6WirkungNachDerUmsetzung`, `wk4BasisNachDerUmsetzung`, `wirkungOhneMessgrundlageVorDerUmsetzungUndZaun`).

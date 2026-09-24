@@ -12311,6 +12311,34 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/{id}/wirkung:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kennzahlen]
+      summary: Die Wirkung der Maßnahme - Nachher-Monate gegen die Bezugsbasis, Summe durch Summe, x von N.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-11, WK1–WK5; Vertrag verbesserung.md §3). Ein Leser, kein
+        gespeicherter Wert: je Monat vom Umsetzungsmonat bis `monate` Monate danach die Zeile des Vergleich-Lesers
+        (Fassung am letzten Tag des Monats, P4) und ob der Monat endgültig ist; über den Umsetzungsmonat und die
+        endgültigen Nachher-Monate die Operation `wirkung`: der Umsetzungsmonat „nicht gezählt“, eine Fassung mit
+        Referenzperiode bis in den Umsetzungsmonat oder danach `basis_nach_umsetzung`, Σ gemessen ÷ Σ erwartet über die
+        bewertbaren (nie ein Mittel), `monate_text` „x von N“, `vorlaeufig` solange weniger als N Nachher-Monate
+        endgültig sind, `nicht_gezaehlt` mit Grund. Erwartete Wirkung und Ausgangslage (Kopie, byte-gleich) stehen in
+        `massnahme`; kein Satz nennt eine Ursache. Ohne Messgrundlage `grund` `ohne_messgrundlage` und nur `satz`,
+        keine Zahl; vor der Umsetzung `grund` `nicht_umgesetzt` ohne Monate und ohne Satz. Zaun wie die Maßnahme -
+        außerhalb 404; ein anderer Parameter 400.
+      parameters:
+        - { name: monate, in: query, required: false, schema: { type: integer, minimum: 12, maximum: 36, default: 12 }, description: "Länge des Nachher-Zeitraums (WK2); außerhalb 12 … 36 400" }
+      responses:
+        "200":
+          description: Die Wirkung zum Abruf-Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MassnahmeWirkung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/massnahmen/{id}/verantwortlicher:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -28020,6 +28048,63 @@ components:
       properties:
         abruf: { type: string, format: date }
         massnahmen: { type: array, items: { $ref: "#/components/schemas/Massnahme" } }
+    MassnahmeWirkung:
+      type: object
+      description: >
+        Die Wirkung (WK1–WK5) - Ausgang der Operation `wirkung` und je Monat die Vergleichszeile. Mit `grund`
+        (`ohne_messgrundlage`, `nicht_umgesetzt`) sind die Zahlen null und `monate`/`nicht_gezaehlt` leer.
+      required: [massnahme, abruf, grund, umsetzungsmonat, nachher_von, nachher_bis, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vorlaeufig, nicht_gezaehlt, summe, satz]
+      properties:
+        massnahme: { $ref: "#/components/schemas/Massnahme" }
+        abruf: { type: string, format: date }
+        grund: { type: string, nullable: true, enum: [ohne_messgrundlage, nicht_umgesetzt, null] }
+        umsetzungsmonat: { type: string, nullable: true }
+        nachher_von: { type: string, nullable: true }
+        nachher_bis: { type: string, nullable: true }
+        monate: { type: array, items: { $ref: "#/components/schemas/MassnahmeWirkungMonat" } }
+        monate_bewertbar: { type: integer, nullable: true }
+        monate_endgueltig: { type: integer, nullable: true }
+        monate_soll: { type: integer, nullable: true }
+        monate_text: { type: string, nullable: true, description: "x von N" }
+        vorlaeufig: { type: boolean, nullable: true }
+        nicht_gezaehlt: { type: array, items: { $ref: "#/components/schemas/MassnahmeWirkungAusschluss" } }
+        summe:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MassnahmeWirkungSumme" }]
+        satz: { type: string, nullable: true, description: "Kundensatz `wirkung_vorlaeufig` bzw. `ohne_messgrundlage` (§5.9)" }
+    MassnahmeWirkungMonat:
+      type: object
+      description: >
+        Ein Monat vom Umsetzungsmonat an - `gezaehlt` nur endgültig und bewertbar, sonst `grund` mit Kundensatz
+        (`wirkung_umsetzungsmonat`, `wirkung_nicht_bewertbar`, `wirkung_basis_nach_umsetzung`); `kennzahl_roh` der rohe
+        Kennzahl-Wert ohne Wort (WK5).
+      required: [periode, endgueltig, gezaehlt, grund, satz, kennzahl_roh, vergleich]
+      properties:
+        periode: { type: string }
+        endgueltig: { type: boolean }
+        gezaehlt: { type: boolean }
+        grund: { type: string, nullable: true, enum: [umsetzungsmonat, basis_nach_umsetzung, unvollstaendig, basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, periode_nicht_zu_ende, keine_werte, null] }
+        satz: { type: string, nullable: true }
+        kennzahl_roh: { type: string, nullable: true }
+        vergleich: { $ref: "#/components/schemas/BezugsbasisVergleichMonat" }
+    MassnahmeWirkungAusschluss:
+      type: object
+      required: [monat, grund]
+      properties:
+        monat: { type: string }
+        grund: { type: string, enum: [umsetzungsmonat, basis_nach_umsetzung, unvollstaendig, basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, periode_nicht_zu_ende, keine_werte] }
+    MassnahmeWirkungSumme:
+      type: object
+      description: Σ ÷ Σ über die bewertbaren Nachher-Monate (Operation `zeitraum` gegen die Fassung des letzten).
+      required: [gemessen, erwartet, delta_prozent, band_prozent, richtung, urteil, kennzeichen]
+      properties:
+        gemessen: { type: string, nullable: true }
+        erwartet: { type: string, nullable: true }
+        delta_prozent: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, nicht_anwendbar, ohne_urteil] }
+        kennzeichen: { type: array, items: { type: string } }
     BezugsbasisVergleichMonat:
       type: object
       description: Ein Monat - roh und bereinigt getrennt (U1); nur `bereinigt` trägt ein Urteil.
