@@ -29,6 +29,7 @@ import {
   abrechnung,
   csvDateiname,
   erloesKennzahlen,
+  mehrwertBand,
   GELD_SPALTEN,
   geldCsv,
   geldDiagramm,
@@ -55,10 +56,10 @@ import {
   AbrechnungKarte,
   LastspitzeKarte,
   PreiseKarte,
-  SteuerungKarte,
+  MehrwertErklaerung,
 } from '../components/erloese/ErloeseKarten';
 import { SoVerdientInhalt } from '../components/SoVerdient';
-import { SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel';
+import { RechenZeilen, SteuerungFormel } from '../components/SteuerungFormel';
 
 /**
  * **Verlauf › Erlöse** (`#/anlage/{id}/erloese`) — Konzept „Verlauf-Rework",
@@ -67,13 +68,17 @@ import { SpeicherSchritte, SteuerungFormel } from '../components/SteuerungFormel
  * Die Seite liest sich wie eine Abrechnung:
  *
  * 1. **Kennzahlen** — das Ergebnis des Zeitraums groß, daneben Eigenverbrauch,
- *    Einspeisung, Netzbezug und der Mehrwert der Steuerung; jede mit Menge
- *    bzw. Vergleich als Unterzeile.
+ *    Einspeisung und Netzbezug; jede mit Menge bzw. Vergleich als Unterzeile.
+ *    Als letzte Kachel, leicht hervorgehoben: **VoltPilot-Steuerung** — was
+ *    die Steuerung gegenüber demselben Speicher ohne smarte Steuerung
+ *    gebracht hat („+ 1,45 € · mehr als ohne smarte Steuerung"); Maßstab und
+ *    Rechnung im ⓘ. Sie ist kein Anteil des Ergebnisses und steht deshalb
+ *    nicht in der Abrechnung.
  * 2. **Verlauf** — Säulen mit Vorzeichen (Erlöse oben, Kosten unten, Ergebnis
  *    als Punkt), umschaltbar auf „Kumuliert" und auf die Tabelle. Am Tag
  *    steht darunter der Börsenpreis derselben Stunde.
  * 3. **Abrechnung** — Menge × Ø Preis = Betrag je Posten, darunter der Strich.
- * 4. **Kontext** — Preise im Zeitraum, Steuerung, Lastspitze; bei
+ * 4. **Kontext** — Preise im Zeitraum, Lastspitze; bei
  *    Direktvermarktung die Einordnung gegen den Markt.
  *
  * Erklärungen stehen auf Abruf (ⓘ am Begriff, Statuszeile, Hilfeartikel) —
@@ -219,14 +224,16 @@ export function ErloeseSection({
   });
   const speicher = speicherAussage(money, {
     now,
+    // Die Seite weiß, ob ihr Zeitraum läuft — auch wenn die Antwort kein `to` trägt.
+    laeuft,
     steuerungGeplantEur: history && !historyStale ? history.totals.steuerungPlannedEur : null,
   });
   const kennzahlen = erloesKennzahlen({
     money,
     vergleich,
     vergleichVoll: vollerVergleichsName(anchor, range, wirksamerModus(modus)),
-    speicher,
   });
+  const band = mehrwertBand(speicher, range);
 
   const diagramm = useMemo(
     () =>
@@ -352,7 +359,7 @@ export function ErloeseSection({
           <>
             {err && stale && <PeriodeFehlgeschlagen periode={label} onRetry={retry} />}
 
-            <Kennzahlen label={`Erlöse · ${label}`} anzahl={kennzahlen.length - 1}>
+            <Kennzahlen label={`Erlöse · ${label}`} anzahl={kennzahlen.length - 1 + (band ? 1 : 0)}>
               {kennzahlen.map((k) => (
                 <Kennzahl
                   key={k.id}
@@ -372,6 +379,42 @@ export function ErloeseSection({
                   }
                 />
               ))}
+              {band && (
+                <Kennzahl
+                  hervor={`is-${band.ton}`}
+                  label={band.label}
+                  wert={band.wert}
+                  ton={band.ton === 'leer' ? 'leer' : null}
+                  farbe="var(--vp-c-primary)"
+                  info={{
+                    titel: band.titel,
+                    text: (
+                      <MehrwertErklaerung
+                        band={band}
+                        rechnung={
+                          hatSchritte && schritteInput ? (
+                            <RechenZeilen zeilen={speicherSchritte(schritteInput)} kopf="So wird gerechnet" />
+                          ) : formel ? (
+                            <SteuerungFormel input={formel} />
+                          ) : null
+                        }
+                      />
+                    ),
+                  }}
+                  unter={
+                    band.nachtrag ? (
+                      <>
+                        {band.unter} ·{' '}
+                        <a className="vp-vr-link" href={einstellungenHash(site.id, 'speicher')}>
+                          nachtragen ›
+                        </a>
+                      </>
+                    ) : (
+                      band.unter
+                    )
+                  }
+                />
+              )}
             </Kennzahlen>
 
             {!hatErgebnis && diagramm.leer ? (
@@ -436,7 +479,7 @@ export function ErloeseSection({
                       />
                     )}
                   </VrKarte>
-                  <AbrechnungKarte a={abrechnung(money, speicher)} periode={label} hrefFor={hrefFor} />
+                  <AbrechnungKarte a={abrechnung(money)} periode={label} hrefFor={hrefFor} />
                 </div>
 
                 <div className="vp-vr-row3">
@@ -444,15 +487,6 @@ export function ErloeseSection({
                     ebene2={ebene2({ money, netzladenErlaubt: site.netzladenErlaubt ?? null })}
                     hrefFor={hrefFor}
                   />
-                  {speicher?.hatAussage && (
-                    <SteuerungKarte speicher={speicher} nachtragHref={einstellungenHash(site.id, 'speicher')}>
-                      {hatSchritte && schritteInput ? (
-                        <SpeicherSchritte input={schritteInput} />
-                      ) : formel ? (
-                        <SteuerungFormel input={formel} />
-                      ) : null}
-                    </SteuerungKarte>
-                  )}
                   {lastspitze && <LastspitzeKarte k={lastspitze} detailHref={`#/anlage/${site.id}/lastspitzen`} />}
                 </div>
 

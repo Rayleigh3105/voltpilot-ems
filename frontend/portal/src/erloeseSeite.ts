@@ -15,7 +15,11 @@
  * - **Wertung nur bei abgeschlossenen Zeiträumen** — die Regeln aus
  *   `vergleichLaufend.ts`; ein Pfeil ist eine Richtung, kein Urteil.
  * - **Kunden sehen nur den Mehrwert der Steuerung** (`savedSteuerungEur` über
- *   `speicherAussage`), nie die Admin-Zahlen `savedEur`/`baselineEur`.
+ *   `speicherAussage`), nie die Admin-Zahlen `savedEur`/`baselineEur`. Er
+ *   steht als eigene Kachel ({@link mehrwertBand}), nie als Posten oder
+ *   „davon"-Zeile des Ergebnisses: das Ergebnis zählt vermiedenen Netzbezug
+ *   zweimal (Eigenverbrauch + weniger Stromkosten), der Mehrwert einmal —
+ *   er ist kein Anteil des Ergebnisses.
  *
  * Rein und framework-frei.
  */
@@ -26,7 +30,7 @@ import { rundeKaufmaennisch, sekundaerFuer, type SekundaerZiel } from './erloesZ
 import { billingPeriodLabel, LEER_TEXT, LEER_TEXT_FALLBACK } from './erloesKomposition';
 import { peakCounterfactualTip } from './moduleSurface';
 import type { ErloesVergleich } from './vergleichLaufend';
-import type { SpeicherAussage } from './speicherAussage';
+import { MESSLATTE_DATIV, MESSLATTE_KURZ, type SpeicherAussage } from './speicherAussage';
 import {
   geldZellen,
   zeichenbar,
@@ -78,7 +82,7 @@ export function mengeText(kwh: number | null | undefined): string | null {
 // Kennzahlen
 // ---------------------------------------------------------------------------
 
-export type GeldId = 'ergebnis' | 'eigenverbrauch' | 'einspeisung' | 'netzbezug' | 'steuerung';
+export type GeldId = 'ergebnis' | 'eigenverbrauch' | 'einspeisung' | 'netzbezug';
 
 export interface GeldErklaerung {
   titel: string;
@@ -103,7 +107,6 @@ export interface ErloesKennzahlenInput {
   vergleich: ErloesVergleich | null;
   /** Der volle Name der Vergleichsperiode („ganzer August") für laufende Zeiträume. */
   vergleichVoll: string | null;
-  speicher: SpeicherAussage | null;
 }
 
 /** Die Unterzeile des Ergebnisses aus dem Vergleich — nie ein Prozent über einen laufenden Zeitraum. */
@@ -143,9 +146,9 @@ function einspeiseInfo(money: SiteEarnings): GeldErklaerung {
   };
 }
 
-/** Die Kennzahlen der Seite: Ergebnis zuerst, dann die drei Posten, dann die Steuerung. */
+/** Die Kennzahlen der Seite: Ergebnis zuerst, dann die drei Posten. */
 export function erloesKennzahlen(input: ErloesKennzahlenInput): GeldKennzahl[] {
-  const { money, speicher } = input;
+  const { money } = input;
   const netto = num(money?.nettoErgebnisEur);
   const leerGrund = money?.reason ? (LEER_TEXT[money.reason] ?? LEER_TEXT_FALLBACK) : LEER_TEXT_FALLBACK;
   const v = netto == null ? null : vergleichUnter(input.vergleich, input.vergleichVoll);
@@ -201,26 +204,6 @@ export function erloesKennzahlen(input: ErloesKennzahlenInput): GeldKennzahl[] {
     info: { titel: 'Netzbezug', text: erloesBegriff('netzbezug').erklaerung },
   });
 
-  // Die Steuerung steht nur, wo es etwas über sie zu sagen gibt — eine Zahl
-  // oder einen belegten Grund (älteres Backend: gar nichts, nie eine 0).
-  if (speicher?.hatAussage) {
-    out.push({
-      id: 'steuerung',
-      label: 'Steuerung',
-      wert: speicher.steuerung ? speicher.steuerung.wort : '—',
-      ton: speicher.steuerung ? null : 'leer',
-      unter: speicher.steuerung
-        ? speicher.zwischenstand
-          ? 'Zwischenstand · im Ergebnis'
-          : 'Mehrwert · im Ergebnis'
-        : 'Speicherdaten fehlen',
-      pfeil: null,
-      info: {
-        titel: 'Mehrwert der Steuerung',
-        text: speicher.satz ?? speicher.ohneVergleich ?? '',
-      },
-    });
-  }
   return out;
 }
 
@@ -246,8 +229,6 @@ export interface AbrechnungsPosten {
 export interface Abrechnung {
   posten: AbrechnungsPosten[];
   ergebnis: { betrag: string; ton: 'minus' | 'leer' | null };
-  /** „davon Mehrwert der Steuerung" — steckt im Ergebnis, ist kein Summand. */
-  steuerung: { betrag: string; info: string | null } | null;
   /** Posten einer EIGENEN Abrechnungsperiode, unter dem Strich. */
   ausserhalb: { name: string; periode: string; betrag: string; info: string } | null;
   /** Die gerundeten Posten gehen nicht auf den Cent auf — dann steht das dabei. */
@@ -306,7 +287,7 @@ function posten(
 }
 
 /** Die Abrechnung des Zeitraums: Menge × Ø Preis = Betrag, darunter der Strich. */
-export function abrechnung(money: SiteEarnings, speicher: SpeicherAussage | null): Abrechnung {
+export function abrechnung(money: SiteEarnings): Abrechnung {
   const eigen = num(money.eigenverbrauchsWertEur);
   const einsp = num(money.einspeiseErloesEur);
   const kosten = num(money.stromkostenEur);
@@ -332,10 +313,6 @@ export function abrechnung(money: SiteEarnings, speicher: SpeicherAussage | null
   return {
     posten: liste,
     ergebnis: { betrag: betrag(netto), ton: geldTon(netto) },
-    steuerung:
-      speicher?.steuerung != null
-        ? { betrag: speicher.steuerung.wort, info: speicher.satz }
-        : null,
     ausserhalb: peak
       ? {
           name: 'Vermiedene Leistungskosten',
@@ -346,6 +323,80 @@ export function abrechnung(money: SiteEarnings, speicher: SpeicherAussage | null
       : null,
     rundung,
     grundlage: tarifGrundlage(money),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mehrwert durch VoltPilot (das Band unter den Kennzahlen)
+// ---------------------------------------------------------------------------
+
+export interface MehrwertBand {
+  /** Die Kachel-Beschriftung: „VoltPilot-Steuerung". */
+  label: string;
+  /** Titel der Erklärung (ⓘ): „Mehrwert durch VoltPilot". */
+  titel: string;
+  /** „+ 1,45 €" — „—", wo es keinen Vergleich gibt (nie eine 0). */
+  wert: string;
+  /** Anzeige-Ton aus `speicherAussage`: Grün nur abgeschlossen und positiv. */
+  ton: 'ok' | 'neutral' | 'warn' | 'leer';
+  /**
+   * Die Unterzeile, die mit dem Betrag einen Satz bildet: „+ 1,45 € ·
+   * mehr als ohne smarte Steuerung". Laufend mit „bisher".
+   */
+  unter: string;
+  /** Die Sätze des ⓘ: Aussage, Vergleichsmaßstab, ggf. Tageshinweis und Bestand. */
+  info: string[];
+  /** true = „Speicherdaten nachtragen ›" anbieten. */
+  nachtrag: boolean;
+}
+
+/**
+ * Die Kachel „VoltPilot-Steuerung" in der Kennzahlenzeile: die EINE
+ * Kundenzahl der Steuerung (`savedSteuerungEur` über `speicherAussage`).
+ * Betrag und Unterzeile lesen sich als ein Satz („+ 1,45 € — mehr als ohne
+ * smarte Steuerung"); alles Weitere steht im ⓘ. Gerechnet wird hier nichts;
+ * `null` = die Fläche schweigt (älteres Backend).
+ */
+export function mehrwertBand(speicher: SpeicherAussage | null, range: HistoryRange): MehrwertBand | null {
+  if (!speicher?.hatAussage) return null;
+  const s = speicher.steuerung;
+  const titel = 'Mehrwert durch VoltPilot';
+  const label = 'VoltPilot-Steuerung';
+  const bestand = speicher.bestand ? [speicher.bestand] : [];
+  if (!s) {
+    return {
+      label,
+      titel,
+      wert: '—',
+      ton: 'leer',
+      unter: 'Speicherdaten fehlen',
+      info: [speicher.ohneVergleich ?? ''].filter(Boolean),
+      nachtrag: speicher.nachtragLink,
+    };
+  }
+  const richtung =
+    s.ton === 'plus'
+      ? `mehr als ${MESSLATTE_KURZ}`
+      : s.ton === 'minus'
+        ? `weniger als ${MESSLATTE_KURZ}`
+        : `wie ${MESSLATTE_KURZ}`;
+  return {
+    label,
+    titel,
+    wert: s.wort,
+    ton: speicher.anzeigeTon,
+    unter: speicher.zwischenstand ? `bisher ${richtung}` : richtung,
+    info: [
+      // Der Satz zur Zahl nur, wo er mehr sagt als Betrag + Unterzeile
+      // (unter Null: warum ein Zwischenstand sinken kann).
+      s.ton === 'plus' ? '' : (speicher.satz ?? ''),
+      `Verglichen wird mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
+      range === 'day'
+        ? 'Einzelne Tage schwanken: Was am Tagesende noch im Speicher liegt, zählt erst an dem Tag, an dem es genutzt wird.'
+        : '',
+      ...bestand,
+    ].filter(Boolean),
+    nachtrag: false,
   };
 }
 

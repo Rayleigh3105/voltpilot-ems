@@ -336,18 +336,30 @@ function aufklapper(name: RegExp): HTMLElement {
   return treffer[0] as HTMLElement;
 }
 
+/** Die Kachel „VoltPilot-Steuerung" und ihr geöffnetes ⓘ (Maßstab + Rechnung). */
+async function steuerErklaerung(): Promise<HTMLElement> {
+  const kachel = screen.getByText('VoltPilot-Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+  const knopf = within(kachel).getByRole('button', { name: 'Erklärung: Mehrwert durch VoltPilot' });
+  // Die Telefon-Attrappe beantwortet auch `(hover: hover)` mit ja — dann öffnet
+  // das ⓘ beim Überfahren, sonst beim Tippen.
+  if (window.matchMedia?.('(hover: hover)').matches) fireEvent.mouseEnter(knopf);
+  else fireEvent.click(knopf);
+  await screen.findAllByText(/Verglichen wird mit/);
+  return document.querySelector('.vp-vr-mw-info') as HTMLElement;
+}
+
 describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
-  it('zeigt zuerst die Zahl, darunter die Posten als Liste und die Steuerung', async () => {
+  it('zeigt zuerst die Zahl, darunter die Posten als Liste und die VoltPilot-Steuerung', async () => {
     const kpis = await renderErloese();
     const kacheln = [...kpis.querySelectorAll('.vp-vr-kpi-l > span:first-of-type, .vp-vr-kpi-l > span:not(.vp-vr-key)')]
       .map((n) => n.textContent)
       .filter((t, i, a) => t && a.indexOf(t) === i);
-    expect(kacheln).toEqual(['Ergebnis', 'Eigenverbrauch', 'Einspeisung', 'Netzbezug', 'Steuerung']);
+    expect(kacheln).toEqual(['Ergebnis', 'Eigenverbrauch', 'Einspeisung', 'Netzbezug', 'VoltPilot-Steuerung']);
     expect(kachel(kpis, 'Ergebnis')).toMatch(/\+ 9,84 €/);
     // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG: der Betrag
     //   ist `savedSteuerungEur`; die Gesamtzahl (`savedEur` = 2,07 €) steht auf
     //   keiner Kundenfläche.
-    expect(kachel(kpis, 'Steuerung')).toMatch(/\+ 1,07 €/);
+    expect(kachel(kpis, 'VoltPilot-Steuerung')).toMatch(/\+ 1,07 €/);
     expect(document.body.textContent).not.toMatch(/2,07/);
   });
 
@@ -367,14 +379,13 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
   // gemessenen Zahlen.
   it('stellt die GEPLANTE Ersparnis in die Schritte der Steuerung', async () => {
     await renderErloese();
-    const karte = screen.getByRole('region', { name: 'Steuerung' });
+    const karte = await steuerErklaerung();
     const zeile = within(karte).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     // ⚠ `steuerungPlannedEur`, nie `batterySavingsPlannedEur` (4,12 € misst
     //   gegen „ohne Speicher").
     expect(zeile.textContent).toMatch(/1,40/);
     expect(zeile.textContent).not.toMatch(/4,12/);
     expect(zeile.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
-    expect(zeile.closest('details.vp-formel')).toBeTruthy();
     expect(screen.queryByText(/Geplante Speicher-Ersparnis ·/)).toBeNull();
   });
 
@@ -387,7 +398,7 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByRole('group', { name: /^Erlöse · / });
-    const karte = screen.getByRole('region', { name: 'Steuerung' });
+    const karte = await steuerErklaerung();
     expect(within(karte).queryByText(/^Fahrplan:/)).toBeNull();
   });
 });
@@ -417,7 +428,7 @@ describe('Der Schreibtisch bleibt, was er war', () => {
     stubPhone(false);
     await renderErloese();
     // Die Plan-Zeile steht an DERSELBEN Stelle wie am Telefon.
-    const karte = screen.getByRole('region', { name: 'Steuerung' });
+    const karte = await steuerErklaerung();
     expect(within(karte).getByText(/^Fahrplan:/)).toBeInTheDocument();
     expect(document.querySelector('details.vp-c-aufk')).toBeNull();
   });

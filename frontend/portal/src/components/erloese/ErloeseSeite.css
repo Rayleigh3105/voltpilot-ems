@@ -1,6 +1,6 @@
 /*
  * Die Bausteine der Erlöse-Seite, die nur sie hat (Konzept „Verlauf-Rework",
- * Paket P2): die ABRECHNUNG (Menge × Ø Preis = Betrag, darunter der Strich),
+ * Paket P2): das Band „Mehrwert durch VoltPilot", die ABRECHNUNG (Menge × Ø Preis = Betrag, darunter der Strich),
  * die Preis-Liste und der Lastspitzen-Balken. Alles Übrige steht im geteilten
  * Rahmen `VerlaufRahmen.css`; Schrift, Maßstab und Farben sind dieselben
  * Token (Wächter: `verlaufSkala.test.ts`, `verlaufMobil.test.ts`).
@@ -91,17 +91,6 @@
 }
 .vp-vr-bill .summe td.minus {
   color: var(--vp-c-destructive);
-}
-.vp-vr-bill .davon th,
-.vp-vr-bill .davon td {
-  padding-top: 0;
-  border-bottom: 0;
-  color: var(--vp-text-gray);
-  font-size: var(--vp-c-fs-14);
-  font-weight: var(--vp-c-fw-400);
-}
-.vp-vr-bill .davon th {
-  padding-left: var(--vp-c-space-3);
 }
 .vp-vr-bill-extra {
   display: flex;
@@ -208,4 +197,30 @@
   display: block;
   height: 100%;
   border-radius: 4px;
+}
+
+/* --- Kachel „VoltPilot-Steuerung" ----------------------------------------- */
+/* Eine Kennzahl wie die anderen, nur mit einem Hauch der Markenfarbe: der
+   Vorteil der Steuerung fällt auf, ohne das Ergebnis zu verdrängen. Die
+   Zahl ist grün erst bei einem abgeschlossenen, positiven Zeitraum. */
+.vp-vr-kpi.hervor {
+  background: color-mix(in srgb, var(--vp-c-primary) 6%, var(--vp-surface));
+}
+.vp-vr-kpi.hervor.is-ok .vp-vr-kpi-v {
+  color: var(--vp-flow-batt-ink);
+}
+.vp-vr-kpi.hervor.is-warn .vp-vr-kpi-v {
+  color: var(--vp-c-warn-fg);
+}
+.vp-vr-mw-info {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  /* Die Rechnung ist länger als ein Tooltip-Satz: am Telefon scrollt sie
+     in der Blase, statt unter die Navigation zu laufen. */
+  max-height: min(60vh, 28rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.vp-vr-mw-info p {
+  margin: 0;
 }

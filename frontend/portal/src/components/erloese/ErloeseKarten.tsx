@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react';
 import type { Ebene2 } from '../../erloesEbenen';
-import type { Abrechnung, LastspitzeKontext } from '../../erloeseSeite';
+import type { Abrechnung, LastspitzeKontext, MehrwertBand } from '../../erloeseSeite';
 import type { SekundaerZiel } from '../../erloesZeilen';
-import { MESSLATTE_DATIV, type SpeicherAussage } from '../../speicherAussage';
 import { chartTheme } from '../../chartTheme';
 import { Erklaert, VrKarte } from '../VerlaufRahmen';
 import './ErloeseSeite.css';
 
 /**
  * Die Karten der Erlöse-Seite neben dem Diagramm (Konzept „Verlauf-Rework",
- * Paket P2): die ABRECHNUNG und der Kontext darunter — Preise, Steuerung,
- * Lastspitze. Reine Render-Bausteine über `erloeseSeite.ts`.
+ * Paket P2): die Erklärung der Kachel „VoltPilot-Steuerung", die ABRECHNUNG und der
+ * Kontext darunter — Preise, Lastspitze. Reine Render-Bausteine über
+ * `erloeseSeite.ts`.
  */
 
 /** Die Rollenfarbe je Posten — dieselbe wie im Diagramm. */
@@ -21,7 +21,8 @@ export function postenFarbe(id: 'eigenverbrauch' | 'einspeisung' | 'netzbezug'):
 
 /**
  * **Die Abrechnung** — Menge × Ø Preis = Betrag je Posten, darunter der Strich
- * mit dem Ergebnis und der Zurechnung „davon Mehrwert der Steuerung". Die
+ * mit dem Ergebnis. Der Mehrwert der Steuerung ist KEIN Anteil davon und
+ * steht als eigene Kachel in der Kennzahlenzeile. Die
  * vermiedenen Leistungskosten stehen UNTER dem Strich: sie gehören einer
  * eigenen Abrechnungsperiode und sind nie ein Summand des Ergebnisses.
  */
@@ -78,12 +79,6 @@ export function AbrechnungKarte({
             <th scope="row">Ergebnis</th>
             <td className={a.ergebnis.ton ?? undefined}>{a.ergebnis.betrag}</td>
           </tr>
-          {a.steuerung && (
-            <tr className="davon">
-              <th scope="row">davon Mehrwert der Steuerung</th>
-              <td>{a.steuerung.betrag}</td>
-            </tr>
-          )}
         </tbody>
       </table>
       {a.ausserhalb && (
@@ -166,57 +161,17 @@ export function PreiseKarte({
 }
 
 /**
- * **Steuerung** — der Mehrwert gegenüber demselben Speicher ohne smarte
- * Steuerung. Die Rechnung dahinter steht zugeklappt darunter (`children`).
+ * Der Inhalt des ⓘ der Kachel „VoltPilot-Steuerung": die Sätze aus
+ * `mehrwertBand` und darunter die Rechnung mit den eingesetzten Zahlen.
  */
-export function SteuerungKarte({
-  speicher,
-  nachtragHref,
-  children,
-}: {
-  speicher: SpeicherAussage;
-  nachtragHref: string;
-  children?: ReactNode;
-}) {
-  const s = speicher.steuerung;
+export function MehrwertErklaerung({ band, rechnung }: { band: MehrwertBand; rechnung?: ReactNode }) {
   return (
-    <VrKarte
-      titel="Steuerung"
-      info={
-        speicher.satz || speicher.ohneVergleich
-          ? { titel: 'Mehrwert der Steuerung', text: speicher.satz ?? speicher.ohneVergleich ?? '' }
-          : null
-      }
-      aktionen={
-        <span className={`vp-vr-card-value${s ? '' : ' leer'}`}>{s ? s.wort : '—'}</span>
-      }
-    >
-      <ul className="vp-vr-zeilen">
-        {s ? (
-          <li>
-            gegenüber {MESSLATTE_DATIV}
-            {speicher.zwischenstand && <span className="vp-chip">Zwischenstand</span>}
-          </li>
-        ) : (
-          <li>
-            Speicherdaten fehlen — ohne sie ist kein Vergleich möglich.
-            {speicher.nachtragLink && (
-              <a className="vp-vr-link" href={nachtragHref}>
-                Speicherdaten nachtragen ›
-              </a>
-            )}
-          </li>
-        )}
-        {speicher.bestand && (
-          <li title={speicher.bestandTitel ?? undefined}>
-            {speicher.bestand}
-            {speicher.bestandBadge && <span className="vp-chip">{speicher.bestandBadge}</span>}
-          </li>
-        )}
-        {speicher.geplant && <li>{speicher.geplant}</li>}
-      </ul>
-      {children}
-    </VrKarte>
+    <div className="vp-vr-mw-info">
+      {band.info.map((t) => (
+        <p key={t}>{t}</p>
+      ))}
+      {rechnung}
+    </div>
   );
 }
 

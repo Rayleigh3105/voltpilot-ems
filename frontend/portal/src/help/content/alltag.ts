@@ -71,12 +71,15 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'erloese', category: 'alltag', title: 'Erlöse und Einsparungen einordnen',
     summary: 'Die wirtschaftliche Ansicht mit Zeitraum, Vergleich und Speicherbestand lesen.',
-    keywords: ['Geld', 'Euro', 'Kosten', 'Einsparung', 'Ertrag', 'Bilanz', 'Bestandskonto', 'Vergütung'],
+    keywords: ['Geld', 'Euro', 'Kosten', 'Einsparung', 'Ertrag', 'Bilanz', 'Bestandskonto', 'Vergütung', 'Mehrwert', 'Steuerung'],
     prerequisite: 'Eine Anlage mit den nötigen Mess- und Preisdaten und einer verfügbaren Erlöse-Ansicht.',
     sections: [
       { id: 'zeitraum', title: 'Welche Aussage zeigt die Zahl?', paragraphs: [
         "Prüfen Sie Zeitraum und Kennzahl: Einspeiseerlös, Bezugskosten, Einsparung und Planwert haben unterschiedliche Bedeutungen. Die Berechnung hängt von Tarifangaben und Messungen ab; sie ersetzt keine Rechnung Ihres Vertragspartners.",
       ], figure: 'erloese' },
+      { id: 'mehrwert', title: 'Was bringt die VoltPilot-Steuerung?', paragraphs: [
+        "Die Kachel „VoltPilot-Steuerung“ vergleicht Ihre Anlage mit demselben Speicher ohne smarte Steuerung: Der lädt jeden Überschuss sofort und entlädt bei Bedarf sofort, ohne auf Preise zu achten. Der Betrag ist, was die Steuerung darüber hinaus gebracht hat. Er ist kein Teil des Ergebnisses, sondern ein Vergleich. Maßstab und Rechnung stehen im ⓘ der Kachel. Fehlen die Speicherdaten, steht dort ein Strich und der Weg zum Nachtragen.",
+      ] },
       { id: 'speicherbestand', title: 'Warum die Tagesbilanz zwischendurch anders aussieht', paragraphs: [
         "Gespeicherte Energie kann ihren Nutzen erst später bringen. Lesen Sie deshalb Ergebnis und gegebenenfalls Bestandskonto zusammen. Der Zwischenstand am Mittag ist noch kein abgeschlossenes Tagesergebnis.",
       ] },

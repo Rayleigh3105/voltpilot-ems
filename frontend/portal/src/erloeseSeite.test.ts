@@ -6,6 +6,7 @@ import {
   betrag,
   csvDateiname,
   erloesKennzahlen,
+  mehrwertBand,
   geldCsv,
   geldDiagramm,
   geldTabelle,
@@ -46,7 +47,7 @@ describe('betrag / geldTon', () => {
 
 describe('Abrechnung · Menge × Ø Preis = Betrag geht in jeder Fixture auf', () => {
   it.each(FX.map((f) => [f.id, f] as const))('%s', (_id, f) => {
-    const a = abrechnung(f.money, null);
+    const a = abrechnung(f.money);
     expect(a.posten.map((p) => p.id)).toEqual(['eigenverbrauch', 'einspeisung', 'netzbezug']);
     for (const p of a.posten) {
       const m = /([\d.,]+)\s*kWh · Ø ([\d,]+)\s*ct\/kWh/.exec(nurText(p.unter ?? ''));
@@ -70,7 +71,7 @@ describe('Abrechnung · Menge × Ø Preis = Betrag geht in jeder Fixture auf', (
   it('nennt fehlende Grundlagen mit Weg statt einer erfundenen Zahl', () => {
     const f = FX[0];
     const ohneTarif = { ...f.money, eigenverbrauchsWertEur: null } as SiteEarnings;
-    const p = abrechnung(ohneTarif, null).posten[0];
+    const p = abrechnung(ohneTarif).posten[0];
     expect(p.betrag).toBe('—');
     expect(p.ton).toBe('leer');
     expect(p.hinweis?.link?.ziel).toBe('tarif');
@@ -91,7 +92,7 @@ describe('Abrechnung · Menge × Ø Preis = Betrag geht in jeder Fixture auf', (
         history: [],
       },
     } as SiteEarnings;
-    const a = abrechnung(money, null);
+    const a = abrechnung(money);
     expect(a.ausserhalb?.periode).toBe('Abrechnungsjahr 2026');
     expect(nurText(a.ausserhalb!.betrag)).toBe('+ 280,00 €');
     expect(nurText(a.ergebnis.betrag)).toBe(nurText(betrag(money.nettoErgebnisEur)));
@@ -104,27 +105,72 @@ describe('Abrechnung · Menge × Ø Preis = Betrag geht in jeder Fixture auf', (
 describe('Kennzahlen', () => {
   const f = FX[0];
   it('Ergebnis zuerst, Kosten negativ, Mengen als Unterzeile', () => {
-    const k = erloesKennzahlen({ money: f.money, vergleich: null, vergleichVoll: null, speicher: null });
+    const k = erloesKennzahlen({ money: f.money, vergleich: null, vergleichVoll: null });
     expect(k.map((x) => x.id)).toEqual(['ergebnis', 'eigenverbrauch', 'einspeisung', 'netzbezug']);
     expect(k[3].wert.startsWith('−') || k[3].wert === `0,00${NB}€`).toBe(true);
     expect(k[1].unter).toMatch(/kWh$/);
   });
 
-  it('zeigt die Steuerung nur mit Aussage — und nie die Admin-Zahl', () => {
+  it('führt die Steuerung weder als Kennzahl noch in der Abrechnung', () => {
     const money = { ...f.money, savedEur: 5, savedSpeicherEur: 3.2, savedSteuerungEur: 1.8 } as SiteEarnings;
-    const sp = speicherAussage(money, { now: new Date('2026-09-20T12:00:00Z'), laeuft: false });
-    const k = erloesKennzahlen({ money, vergleich: null, vergleichVoll: null, speicher: sp });
-    const st = k.find((x) => x.id === 'steuerung')!;
-    expect(nurText(st.wert)).toBe('+ 1,80 €');
-    expect(k.some((x) => /5,00/.test(x.wert))).toBe(false);
+    const k = erloesKennzahlen({ money, vergleich: null, vergleichVoll: null });
+    expect(k.map((x) => x.id)).toEqual(['ergebnis', 'eigenverbrauch', 'einspeisung', 'netzbezug']);
+    expect(Object.keys(abrechnung(money))).not.toContain('steuerung');
   });
 
   it('ohne Ergebnis steht der Grund, nicht „0,00 €"', () => {
     const money = { ...f.money, nettoErgebnisEur: null, reason: 'no_prices' } as SiteEarnings;
-    const k = erloesKennzahlen({ money, vergleich: null, vergleichVoll: null, speicher: null });
+    const k = erloesKennzahlen({ money, vergleich: null, vergleichVoll: null });
     expect(k[0].wert).toBe('—');
     expect(k[0].ton).toBe('leer');
     expect(k[0].unter).toMatch(/Börsenpreise/);
+  });
+});
+
+describe('mehrwertBand · die Kachel „VoltPilot-Steuerung"', () => {
+  const f = FX[0];
+  const jetzt = new Date('2026-09-20T12:00:00Z');
+  const mit = (over: Partial<SiteEarnings>) => ({ ...f.money, savedEur: 5, savedSpeicherEur: 3.2, ...over }) as SiteEarnings;
+
+  it('abgeschlossen und positiv: Betrag und Unterzeile lesen sich als ein Satz', () => {
+    const b = mehrwertBand(speicherAussage(mit({ savedSteuerungEur: 1.8 }), { now: jetzt, laeuft: false }), 'month')!;
+    expect(b.label).toBe('VoltPilot-Steuerung');
+    expect(nurText(b.wert)).toBe('+ 1,80 €');
+    expect(b.ton).toBe('ok');
+    expect(b.unter).toBe('mehr als ohne smarte Steuerung');
+    expect(b.info.join(' ')).toMatch(/lädt jeden Überschuss sofort/);
+    expect(b.info.join(' ')).not.toMatch(/Einzelne Tage/);
+    // Nie die Admin-Zahl gegen „ohne Speicher".
+    expect(JSON.stringify(b)).not.toMatch(/5,00|3,20/);
+  });
+
+  it('laufender Tag: „bisher", neutral, mit dem Hinweis auf gespeicherte Energie im ⓘ', () => {
+    const b = mehrwertBand(speicherAussage(mit({ savedSpeicherEur: 5.4, savedSteuerungEur: -0.4 }), { now: jetzt, laeuft: true }), 'day')!;
+    expect(nurText(b.wert)).toBe('− 0,40 €');
+    expect(b.ton).toBe('neutral');
+    expect(b.unter).toBe('bisher weniger als ohne smarte Steuerung');
+    expect(b.info.join(' ')).toMatch(/Einzelne Tage schwanken/);
+  });
+
+  it('ohne Speicherdaten: „—" und der Nachtrag-Weg, nie eine 0', () => {
+    const b = mehrwertBand(
+      speicherAussage(mit({ savedSpeicherEur: null, savedSteuerungEur: null, steuerungSplitReason: 'no_battery_data' }), {
+        now: jetzt,
+        laeuft: false,
+      }),
+      'month',
+    )!;
+    expect(b.wert).toBe('—');
+    expect(b.ton).toBe('leer');
+    expect(b.unter).toBe('Speicherdaten fehlen');
+    expect(b.nachtrag).toBe(true);
+  });
+
+  it('älteres Backend ohne Felder: keine Kachel', () => {
+    const money = { ...f.money, savedEur: 5 } as SiteEarnings;
+    delete (money as Partial<SiteEarnings>).savedSteuerungEur;
+    delete (money as Partial<SiteEarnings>).steuerungSplitReason;
+    expect(mehrwertBand(speicherAussage(money, { now: jetzt, laeuft: false }), 'month')).toBeNull();
   });
 });
 

@@ -342,6 +342,14 @@ function aufklapper(name: RegExp): HTMLElement {
  * `ErloeseSeite.test.tsx`; hier bleiben die Zusagen, die über die Seite
  * hinaus gelten.
  */
+/** Die Kachel „VoltPilot-Steuerung" und ihr geöffnetes ⓘ (Maßstab + Rechnung). */
+async function steuerErklaerung(): Promise<HTMLElement> {
+  const kachel = screen.getByText('VoltPilot-Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+  fireEvent.click(within(kachel).getByRole('button', { name: 'Erklärung: Mehrwert durch VoltPilot' }));
+  await screen.findAllByText(/Verglichen wird mit/);
+  return document.querySelector('.vp-vr-mw-info') as HTMLElement;
+}
+
 describe('Welt B · Erlöse', () => {
   const geladen = () => screen.findByRole('group', { name: /^Erlöse · / });
   const nb = (s: string | null | undefined) => (s ?? '').replace(/ /g, ' ');
@@ -360,7 +368,7 @@ describe('Welt B · Erlöse', () => {
     expect(nb(abrechnung.textContent)).toMatch(/\+ 1\.059,40 €/);
     expect(nb(abrechnung.textContent)).toMatch(/− 60,14 €/);
     // Die Steuerung trägt `savedSteuerungEur`, nie `savedEur`.
-    const steuerung = within(kpis).getByText('Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+    const steuerung = within(kpis).getByText('VoltPilot-Steuerung').closest('.vp-vr-kpi') as HTMLElement;
     expect(nb(steuerung.textContent)).toMatch(/\+ 61,44 €/);
     expect(screen.queryByText(/161,44/)).toBeNull();
   });
@@ -383,11 +391,10 @@ describe('Welt B · Erlöse', () => {
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await geladen();
 
-    const karte = screen.getByRole('region', { name: 'Steuerung' });
-    const zeile = within(karte).getAllByText(/44,2 kWh/)[0].closest('li') as HTMLElement;
+    const karte = await steuerErklaerung();
+    const zeile = within(karte).getAllByText(/44,2 kWh/)[0].closest('p') as HTMLElement;
     expect(zeile).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
     expect(nb(zeile.textContent)).toMatch(/Planwert 8,35 €/);
-    expect(within(zeile).getByText(BESTAND_BADGE)).toBeInTheDocument();
     expect(nb(screen.getByRole('region', { name: 'Abrechnung' }).textContent)).not.toMatch(/8,35/);
   });
 
@@ -449,12 +456,11 @@ describe('Welt B · Erlöse', () => {
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await geladen();
 
-    const karte = screen.getByRole('region', { name: 'Steuerung' });
+    const karte = await steuerErklaerung();
     const plan = within(karte).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     expect(plan.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
     expect(plan.textContent).toMatch(/0,18/);
     expect(plan.textContent).not.toMatch(/0,42/);
-    expect(plan.closest('details.vp-formel')).toBeTruthy();
     // Die Energiemengen führen NICHT in der Geld-Welt.
     expect(screen.queryByLabelText('Energiemengen im Zeitraum')).toBeNull();
   });

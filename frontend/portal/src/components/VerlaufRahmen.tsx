@@ -134,6 +134,7 @@ export function Kennzahl({
   haupt,
   ton,
   info,
+  hervor,
 }: {
   label: string;
   /** Der formatierte Wert samt Einheit; „—", wenn es keinen gibt. */
@@ -148,9 +149,11 @@ export function Kennzahl({
   /** `minus` = Kosten/negativ, `leer` = kein Wert. */
   ton?: 'minus' | 'leer' | null;
   info?: Erklaerung | null;
+  /** Leicht hervorgehoben (Erlöse: die Kachel „VoltPilot-Steuerung"). */
+  hervor?: string | null;
 }) {
   return (
-    <div className={`vp-vr-kpi${haupt ? ' haupt' : ''}`}>
+    <div className={`vp-vr-kpi${haupt ? ' haupt' : ''}${hervor ? ` hervor ${hervor}` : ''}`}>
       <div className="vp-vr-kpi-l">
         {farbe && (
           <span

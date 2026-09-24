@@ -20,7 +20,7 @@ flowchart TD
 
 Leere Bereiche werden nicht angeboten. Eine reine Ladeanlage kann Ladevorgänge anstelle eines Speicherfahrplans anzeigen. Preise und Wetter stehen beim Fahrplan, den sie erklären; ohne Fahrplan bleiben sie im Verlauf. Der Verlauf trägt Energie (Route `messwerte`), Erlöse und die einzelnen Messwerte (`einzelwerte`); Lesezeichen mit `messwerte?m=` leiten dorthin um. Die Lastspitzen-Seite hat keinen Reiter mehr und wird aus der Erlöse-Karte geöffnet.
 
-Die Verlauf-Seiten teilen einen Rahmen (`components/VerlaufRahmen`): Zeitleiste, eine Statuszeile (gemessen/bewertet, Auflösung, Datenlage), eine Kennzahlenzeile, Diagramm mit Tabellen-Zwilling und CSV. Lücken bleiben leer (`verlaufRaster.ts`), Erklärungen stehen im ⓘ. Am Telefon werden Kennzahlen und Tabellen zu Listen. Unterseiten bleiben der gewählten Anlage zugeordnet; alte Routen werden gezielt umgeleitet.
+Die Verlauf-Seiten teilen einen Rahmen (`components/VerlaufRahmen`): Zeitleiste, eine Statuszeile (gemessen/bewertet, Auflösung, Datenlage), eine Kennzahlenzeile, Diagramm mit Tabellen-Zwilling und CSV. Lücken bleiben leer (`verlaufRaster.ts`), Erklärungen stehen im ⓘ. Am Telefon werden Kennzahlen und Tabellen zu Listen. Die Erlöse-Seite führt in der Kennzahlenzeile die leicht hervorgehobene Kachel „VoltPilot-Steuerung“ (`savedSteuerungEur` gegenüber demselben Speicher ohne smarte Steuerung, Rechnung im ⓘ); sie ist ein Vergleich, kein Anteil des Ergebnisses, und steht deshalb nicht in der Abrechnung. Unterseiten bleiben der gewählten Anlage zugeordnet; alte Routen werden gezielt umgeleitet.
 
 Quellen: [Navigation](../frontend/portal/src/anlageNav.ts), [Router](../frontend/portal/src/nav.ts), [Anlagenprojektion](../frontend/portal/src/surface.ts).
 

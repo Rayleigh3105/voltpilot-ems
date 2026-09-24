@@ -172,7 +172,7 @@ afterEach(() => {
 });
 
 describe('Aufbau · Kennzahlen, Verlauf, Abrechnung, Kontext', () => {
-  it('Direktvermarktung: Verlauf und Abrechnung, darunter Preise, Steuerung und die Markt-Karte', async () => {
+  it('Direktvermarktung: Verlauf und Abrechnung, darunter Preise und die Markt-Karte', async () => {
     stub();
     render(<ErloeseSection site={site()} />);
     const kpis = await geladen();
@@ -182,7 +182,6 @@ describe('Aufbau · Kennzahlen, Verlauf, Abrechnung, Kontext', () => {
       'Erlöse je Stunde',
       'Abrechnung',
       'Preise im Zeitraum',
-      'Steuerung',
       'So verdient Ihre Anlage · September 2026',
     ]);
   });
@@ -220,7 +219,8 @@ describe('Abrechnung · Menge × Ø Preis = Betrag', () => {
     expect(zeile('Einspeisung')).toMatch(/345,2 kWh · Ø 7,6 ct\/kWh · Prämie 4,79 €.*\+ 26,13 €/);
     expect(zeile('Netzbezug')).toMatch(/6,3 kWh · Ø 25,2 ct\/kWh.*− 1,59 €/);
     expect(zeile('Ergebnis')).toMatch(/\+ 63,23 €/);
-    expect(zeile('davon Mehrwert der Steuerung')).toMatch(/\+ 1,45 €/);
+    // Der Mehrwert der Steuerung ist kein Anteil des Ergebnisses — er steht im Band.
+    expect(within(karte).queryByText(/Mehrwert/)).toBeNull();
     // 38,68 + 26,13 − 1,59 = 63,22 ≠ 63,23: die Rundung wird gesagt, nicht versteckt.
     expect(within(karte).getByText(/Posten einzeln gerundet/)).toBeInTheDocument();
   });
@@ -254,17 +254,50 @@ describe('Abrechnung · Menge × Ø Preis = Betrag', () => {
   });
 });
 
-describe('Steuerung · Planwert nur in der Rechnung', () => {
+/** Die Kachel „VoltPilot-Steuerung" und ihr geöffnetes ⓘ (Maßstab + Rechnung). */
+function steuerKachel(): HTMLElement {
+  return screen.getByText('VoltPilot-Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+}
+async function steuerErklaerung(): Promise<HTMLElement> {
+  fireEvent.click(within(steuerKachel()).getByRole('button', { name: 'Erklärung: Mehrwert durch VoltPilot' }));
+  await screen.findAllByText(/Verglichen wird mit/);
+  return document.querySelector('.vp-vr-mw-info') as HTMLElement;
+}
+
+describe('Kachel „VoltPilot-Steuerung" · der Mehrwert in der Kennzahlenzeile', () => {
+  it('Betrag und Unterzeile lesen sich als ein Satz; die Kachel ist leicht hervorgehoben', async () => {
+    stub();
+    render(<ErloeseSection site={site()} />);
+    const kpis = await geladen();
+
+    const kachel = steuerKachel();
+    expect(kpis.contains(kachel)).toBe(true);
+    expect(kachel.classList.contains('hervor')).toBe(true);
+    expect(nb(kachel.querySelector('.vp-vr-kpi-v')?.textContent)).toBe('+ 1,45 €');
+    expect(kachel.querySelector('.vp-vr-kpi-s')?.textContent).toBe('bisher mehr als ohne smarte Steuerung');
+  });
+
+  it('ohne Speicherdaten: „—" und der Weg zum Nachtragen', async () => {
+    stub({ savedSpeicherEur: null, savedSteuerungEur: null, steuerungSplitReason: 'no_battery_data' });
+    render(<ErloeseSection site={site()} />);
+    await geladen();
+
+    const kachel = steuerKachel();
+    expect(kachel.querySelector('.vp-vr-kpi-v')?.textContent).toBe('—');
+    expect(within(kachel).getByRole('link', { name: 'nachtragen ›' })).toBeInTheDocument();
+  });
+});
+
+describe('Steuerung · Planwert nur in der Rechnung (im ⓘ)', () => {
   it('zeigt den geplanten Mehrwert als Schritt der Rechnung — 3,20 €, nie die 9,40 € gegen „ohne Speicher"', async () => {
     stub();
     render(<ErloeseSection site={site()} />);
     await geladen();
 
-    const karte = screen.getByRole('region', { name: 'Steuerung' });
-    const plan = within(karte).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
+    const info = await steuerErklaerung();
+    const plan = within(info).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     expect(plan.textContent).toMatch(/3,20/);
     expect(plan.textContent).not.toMatch(/9,40/);
-    expect(plan.closest('details.vp-formel')).toBeTruthy();
   });
 
   it('lässt die Plan-Zeile ohne Fahrplan weg', async () => {
@@ -272,8 +305,8 @@ describe('Steuerung · Planwert nur in der Rechnung', () => {
     render(<ErloeseSection site={site()} />);
     await geladen();
 
-    const karte = screen.getByRole('region', { name: 'Steuerung' });
-    expect(within(karte).queryByText(/^Fahrplan:/)).toBeNull();
+    const info = await steuerErklaerung();
+    expect(within(info).queryByText(/^Fahrplan:/)).toBeNull();
   });
 });
 
