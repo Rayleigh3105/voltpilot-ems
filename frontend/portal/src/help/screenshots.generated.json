@@ -147,22 +147,22 @@
     "title": "Fahrplan: jetzt und im Tagesverlauf",
     "file": "fahrplan.png",
     "width": 1192,
-    "height": 1887,
+    "height": 1863,
     "alt": "Fahrplan: jetzt und im Tagesverlauf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 4.36,
-        "y": 7.68,
+        "y": 7.78,
         "text": "Die Ansicht gehört zur oben genannten Anlage."
       },
       {
         "x": 7.13,
-        "y": 26.51,
+        "y": 26.85,
         "text": "Diese Erklärung nennt den Planungshorizont und die Grundlage des Plans."
       },
       {
         "x": 7.8,
-        "y": 46.21,
+        "y": 46.8,
         "text": "Preis und Speicherleistung liegen auf getrennten Skalen über derselben Zeitachse."
       }
     ]
