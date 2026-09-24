@@ -156,6 +156,46 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from './test/kennzahlWerteFixtures';
+import { HERKUNFT_WORT as MASSNAHME_HERKUNFT_WORT } from './massnahmen';
+import {
+  UEMS_AEHNLICHE_FAELLE,
+  UEMS_ANWENDUNGSBEREICH,
+  UEMS_AUFGABE_IM_ENERGIEMANAGEMENT,
+  UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT,
+  UEMS_BEKANNT_GEMACHT,
+  UEMS_BESCHLUSS,
+  UEMS_DOKUMENT,
+  UEMS_DOKUMENTE,
+  UEMS_EINGETRAGEN_VON,
+  UEMS_EINSICHT,
+  UEMS_ENERGIEMANAGEMENT,
+  UEMS_ENERGIEPOLITIK,
+  UEMS_ENTSCHIEDEN_VON,
+  UEMS_FASSUNG,
+  UEMS_FESTSTELLUNG,
+  UEMS_FESTSTELLUNGEN,
+  UEMS_FOLGE,
+  UEMS_GEFUEHRT_IN_IHREM_SYSTEM,
+  UEMS_GELTUNGSBEREICH,
+  UEMS_GEPRUEFT_BLEIBT,
+  UEMS_HINWEIS,
+  UEMS_INTERNES_AUDIT,
+  UEMS_LEITUNG,
+  UEMS_MANAGEMENTBEWERTUNG,
+  UEMS_NOCH_NICHTS_FESTGEHALTEN,
+  UEMS_PERSON,
+  UEMS_PERSON_IM_ENERGIEMANAGEMENT,
+  UEMS_SITZUNG,
+  UEMS_SOFORTIGE_BEHEBUNG,
+  UEMS_UEBERPRUEFUNG_FAELLIG,
+  UEMS_VERANTWORTUNG,
+  UEMS_VERWEIS,
+  UEMS_VERZEICHNIS,
+  UEMS_WER_IST_WOFUER_VERANTWORTLICH,
+  UEMS_WIEDERVORLAGE,
+  UEMS_WIRKSAMKEIT,
+  UEMS_WORTLAUT,
+} from './glossar';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -2731,6 +2771,21 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
   });
 });
 
+/**
+ * AP-18 SP2: die Norm- und Kausal-Wörter des Bereichs „Ziele und Maßnahmen“ — auf Modul-Ebene, damit der Block
+ * „Energiemanagement“ (AP-19 SP5, W3) an genau diesen Regeln zeigt, dass die Maßnahmen-Seite „Feststellung“ sagen darf
+ * und „Nichtkonformität“ nicht. Der AP-18-Wächter bleibt, wie er ist: keine Ausnahme, kein Wort weniger.
+ */
+const VERBESSERUNG_VERBOTEN = [
+  /Nicht[-\s]?konformit(?:ä|ae)t/iu,
+  /(^|[^\p{L}\p{N}])Korrektur[-\s]?ma(?:ß|ss)nahme/iu,
+  /(^|[^\p{L}\p{N}])Aktions[-\s]?pl(?:a|ä)n/iu,
+  /(^|[^\p{L}\p{N}])Ursachen[-\s]?analyse/iu,
+  /(^|[^\p{L}\p{N}])Root[-\s]?Cause/iu,
+  /(^|[^\p{L}\p{N}])(?:hat|haben)\s+gewirkt([^\p{L}\p{N}]|$)/iu,
+  /(^|[^\p{L}\p{N}])Einsparung(?:en)?\s+durch([^\p{L}\p{N}]|$)/iu,
+];
+
 describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwörter (SP1–SP4)', () => {
   /**
    * IP-8/IP-13/IP-18/IP-20 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren Dateiname
@@ -2770,15 +2825,7 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
   ];
 
   /** SP2: die Norm- und Kausal-Wörter des Konzepts — auf keiner Kundenfläche. */
-  const VERBOTEN = [
-    /Nicht[-\s]?konformit(?:ä|ae)t/iu,
-    /(^|[^\p{L}\p{N}])Korrektur[-\s]?ma(?:ß|ss)nahme/iu,
-    /(^|[^\p{L}\p{N}])Aktions[-\s]?pl(?:a|ä)n/iu,
-    /(^|[^\p{L}\p{N}])Ursachen[-\s]?analyse/iu,
-    /(^|[^\p{L}\p{N}])Root[-\s]?Cause/iu,
-    /(^|[^\p{L}\p{N}])(?:hat|haben)\s+gewirkt([^\p{L}\p{N}]|$)/iu,
-    /(^|[^\p{L}\p{N}])Einsparung(?:en)?\s+durch([^\p{L}\p{N}]|$)/iu,
-  ];
+  const VERBOTEN = VERBESSERUNG_VERBOTEN;
   const verstoesse = (text: string) => {
     const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
     return VERBOTEN.filter((re) => re.test(ohneGrenze));
@@ -3023,6 +3070,335 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
       expect(ursacheOhnePerson(wort), wort).toBe(false);
       expect(verbesserungOhneBedingung(wort), wort).toBe(false);
       expect(ZIEL_ALLEIN.test(wort), wort).toBe(false);
+    }
+  });
+});
+
+describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, Verantwortungs-Satz (SP1–SP5)', () => {
+  /**
+   * IP-9/IP-13/IP-15/IP-20/IP-24 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren
+   * Dateiname mit einem Wort des Bereichs beginnt, als Fläche — heute gibt es keine, der Block greift ab der ersten,
+   * ohne dass jemand an ihn denken muss. Ein reines Modul mit demselben Namensanfang (`energiemanagement.ts`,
+   * `feststellungen.ts` …) prüft er auf die Wörter, ohne die zwei Sätze zu verlangen. Die Maßnahmen-Seite bleibt eine
+   * Fläche des AP-18-Blocks: sie zeigt die Herkunft „Feststellung F-…“ (SP5), der Fall dazu steht unten.
+   */
+  const ENERGIEMANAGEMENT_FLAECHEN: string[] = [];
+  const ENERGIEMANAGEMENT_NAMENSMUSTER =
+    /(?:^|\/)(?:Energiemanagement|Energiepolitik|Anwendungsbereich|Dokument|Verzeichnis|Wiedervorlage|InternesAudit|Audit|Feststellung|Managementbewertung|Beschluss|Wirksamkeit|Zuschnitt|Nachweis)[^/]*\.tsx?$/i;
+  const energiemanagementDateien = () =>
+    customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => ENERGIEMANAGEMENT_NAMENSMUSTER.test(datei));
+  const energiemanagementFlaechen = () => [
+    ...new Set([...ENERGIEMANAGEMENT_FLAECHEN, ...energiemanagementDateien().filter((datei) => datei.endsWith('.tsx'))]),
+  ];
+  const energiemanagementModule = () => energiemanagementDateien().filter((datei) => datei.endsWith('.ts'));
+
+  /**
+   * SP2: nur zwei Sätze dürfen Konformität und ISO nennen — der Grenz-Satz und die neutrale Nennung aus AP-14 S1.
+   * Beide fallen vor jeder Probe heraus; alles andere auf einer Fläche ist ohne Norm-Wort und ohne Norm-Nummer.
+   */
+  const NEUTRALE_ISO_NENNUNG = 'Eine Zertifizierung nach ISO 50001 wird nicht versprochen.';
+  const ohneErlaubteSaetze = (text: string) =>
+    [UEMS_NORMGRENZE, NEUTRALE_ISO_NENNUNG].reduce((rest, satz) => rest.replaceAll(satz, ' '), text);
+
+  /** SP2 (R4): „wie AP-18“ plus die Konformitäts-, Zertifizierungs- und Vollständigkeits-Wörter des Energiemanagements. */
+  const VERBOTEN = [
+    ...VERBESSERUNG_VERBOTEN,
+    /(^|[^\p{L}\p{N}])CAPA([^\p{L}\p{N}]|$)/iu,
+    /konform/iu,
+    /zertifizier/iu,
+    /audit-?(?:fest|sicher|bereit)(?:e[nmrs]?)?(?![\p{L}])/iu,
+    /revisions-?sicher/iu,
+    /norm-?gerecht/iu,
+    /(^|[^\p{L}\p{N}])EnMS([^\p{L}\p{N}]|$)/iu,
+    /management[-\s]?system/iu,
+    /erf(?:ü|ue)llungs[-\s]?grad/iu,
+    /reife[-\s]?grad/iu,
+    /vollst(?:ä|ae)ndig\s+(?:dokumentiert|erf(?:ü|ue)llt|abgedeckt|nachgewiesen)/iu,
+    /(?:Energiemanagement|Nachweise?|Dokumentation)\s+(?:ist|sind)\s+vollst(?:ä|ae)ndig/iu,
+    /alle\s+(?:erforderlichen\s+)?Nachweise\s+(?:liegen|sind)/iu,
+    /bereit\s+f(?:ü|ue)r\s+(?:\p{L}+\s+){0,2}(?:Audit|Zertifizierung)/iu,
+    /(^|[^\p{L}\p{N}])ISO([^\p{L}\p{N}]|$)/iu,
+  ];
+  /** §8 IP-3, R4 (`norm_nummer_auf_flaeche: false`): weder die Nummer einer Norm noch ein Normabschnitt. */
+  const NORM_NUMMER = [
+    /(^|[^\p{L}\p{N}])(?:ISO|DIN|EN|IEC|VDI)(?:[\s/-]+(?:EN|ISO|IEC))*[\s-]*\d{3,}/u,
+    /(^|[^\p{N}.,])(?:5000\d|500[1-4]\d|16247)(?![\p{N}])/u,
+    /(?:Kapitel|Kap\.|Abschnitt|Ziffer|Klausel)\s*\d+(?:\.\d+)+/iu,
+  ];
+  /**
+   * SP3 (W6): keine Doppelbelegung — die Wörter gehören anderen Bereichen. „Revision“ und „Abweichung“ bleiben
+   * erlaubt: die Wiedervorlage nennt den Revisions-Anstoß eines Berichts, die Managementbewertung offene Abweichungen.
+   */
+  const DOPPELT = [
+    /Geltungs[-\s]?bereich/iu,
+    /Zust(?:ä|ae)ndigkeit|zust(?:ä|ae)ndige\s+Box/iu,
+    /(?<!energetische[nrs]?\s+)(?<![\p{L}-])Bewertung(?![\p{L}])/iu,
+    /(?<![\p{L}])Befund/iu,
+  ];
+  const verstoesse = (text: string) => VERBOTEN.filter((re) => re.test(ohneErlaubteSaetze(text)));
+  const normNummern = (text: string) => NORM_NUMMER.filter((re) => re.test(ohneErlaubteSaetze(text)));
+  const doppelt = (text: string) => DOPPELT.filter((re) => re.test(text));
+
+  // Der Satz steht wörtlich ODER als JSX-Kind aus seiner einen Quelle (`glossar.ts`) — nie nur als Import.
+  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+  const traegtVerantwortung = (text: string) =>
+    text.includes(UEMS_VERANTWORTUNG) || />\s*\{\s*UEMS_VERANTWORTUNG\s*\}\s*</.test(text);
+  /** Wie in den Blöcken „Bezugsbasis“ und „Ziele und Maßnahmen“: `visibleTexts` plus jeder `>Text<`-Lauf, jeder einmal. */
+  const kundenTexte = (code: string) => [
+    ...new Set(
+      [...visibleTexts(code), ...[...code.matchAll(/>([^<>{}]*\p{L}[^<>{}]*)</gu)].map((m) => m[1])].filter(isKundentext),
+    ),
+  ];
+  const wortFehler = (code: string) =>
+    kundenTexte(code).flatMap((text) => [
+      ...verstoesse(text).map((re) => `SP2 ${re} in „${text}“`),
+      ...normNummern(text).map((re) => `Norm-Nummer ${re} in „${text}“`),
+      ...doppelt(text).map((re) => `SP3 ${re} in „${text}“`),
+    ]);
+  /** Alles, was eine Fläche falsch machen kann — leer heißt: die Fläche besteht den Wächter. */
+  const flaechenFehler = (code: string) => {
+    const sichtbar = stripComments(code);
+    return [
+      ...wortFehler(sichtbar),
+      ...(traegtGrenze(sichtbar) ? [] : ['ohne Grenz-Satz (SP4)']),
+      ...(traegtVerantwortung(sichtbar) ? [] : ['ohne Verantwortungs-Satz (SP4)']),
+    ];
+  };
+
+  /** Die 37 Sätze der Energiemanagement-Flächen aus AP-19 §5.8, wörtlich (ohne die Herkunft-Zeile der Maßnahmen-Seite). */
+  const SAETZE = [
+    UEMS_VERANTWORTUNG,
+    UEMS_NORMGRENZE,
+    'Energiepolitik D-0001 · Fassung 1 · freigegeben am 15.12.2026 · entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach.',
+    'Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik.',
+    'Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne (IH-SG-01, Rev. 4 vom 03.11.2028).',
+    'Die Prüfsumme wird in Ihrem Browser gebildet; die Datei verlässt Ihren Rechner nicht.',
+    'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
+    'Überprüfung fällig seit 64 Tagen.',
+    'Geprüft, bleibt — entschieden von Robert Falk am 10.12.2027: ‚Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.‘',
+    'Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet — eingetragen von Ines Kaltenbach.',
+    'Der Betrachtungsumfang der energetischen Bewertung (Fassung 1, ab 04.11.2026) umfasst dieselben Standorte und Energieträger.',
+    'Gas gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung 1).',
+    'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
+    'Bezugsbasen pflegen und freigeben — keine Person festgelegt.',
+    'Robert Falk · Geschäftsführer · ohne Konto — erscheint als ‚entschieden von‘.',
+    'Einsicht — Sie sehen das Energiemanagement des ganzen Unternehmens und können nichts ändern.',
+    'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.',
+    'Internes Audit AU-2029-0001 · durchgeführt am 22.01.2029 von Claudia Berger (Controlling; gehört nicht zum Energieteam).',
+    'Hinweis — festgestellt von Claudia Berger, eingetragen von Ines Kaltenbach am 22.01.2029.',
+    'Feststellung F-2029-0001 · aus dem internen Audit AU-2029-0001 · festgestellt von Claudia Berger am 22.01.2029 · Verantwortlich Jonas Wendlinger · Frist 22.04.2029 · offen.',
+    'Sofortige Behebung — Ines Kaltenbach, 23.01.2029: Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei.',
+    'Ursache — Aussage von Ines Kaltenbach, 25.01.2029: Die Aufgabenliste entstand zum Start, bevor es Bezugsbasen gab; sie wurde nicht nachgeführt.',
+    'Wirksamkeit geprüft am 15.04.2029 von Ines Kaltenbach: wirksam — Stand Nr. 1 mit Prüfsumme.',
+    'Die Wirksamkeit lässt sich prüfen, sobald jede Maßnahme umgesetzt, bewertet oder verworfen ist.',
+    'Vier-Augen nicht erfüllbar: außer Ines Kaltenbach und Jonas Wendlinger darf niemand freigeben, und beide sind hier beteiligt.',
+    'Managementbewertung 2028 · Sitzung am 12.02.2029 · Leitung Robert Falk · Stand Nr. 1 vom 12.02.2029, 14:10, mit Prüfsumme.',
+    'Keine frühere Managementbewertung festgehalten.',
+    'Beschluss 3 — entschieden von Robert Falk, eingetragen von Ines Kaltenbach: Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.',
+    'Keine Folge in VoltPilot — der Beschluss steht im Stand vom 12.02.2029.',
+    'Dieser Stand zeigt die Eingaben vom 12.02.2029, 14:00. Was sich danach geändert hat, zeigt die nächste Managementbewertung.',
+    'Bezugsbasis BB-0002, Fassung 2: Überprüfung seit 457 Tagen fällig.',
+    'Zurzeit ist nichts fällig.',
+    'Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.',
+    'Energiemanagement — 8 fällig · 1 in den nächsten 30 Tagen.',
+    UEMS_NOCH_NICHTS_FESTGEHALTEN,
+    'In meinem Namen festgehalten: 11 Einträge.',
+    'Was VoltPilot führt — was bei Ihnen liegt.',
+  ];
+  /** §5.8, Zeile „Maßnahme, Herkunft (AP-18-Fläche)“ — SP5. */
+  const HERKUNFT_SAETZE = [
+    'Herkunft: Feststellung F-2029-0001.',
+    'Herkunft: internes Audit AU-2029-0001.',
+    'Herkunft: Managementbewertung BR-2029-0001 (Beschluss 2).',
+  ];
+
+  it('beißt an jedem verbotenen Wort (SP2, R4) und lässt die Wortgrenzen heil', () => {
+    for (const probe of [
+      'Nichtkonformität', 'Nicht-Konformität', 'Korrekturmaßnahme', 'Aktionsplan', 'Ursachenanalyse', 'CAPA',
+      'konform', 'nicht konform', 'Konformität', 'normkonform', 'zertifiziert', 'zertifizierbar', 'Zertifizierungsaudit',
+      'zertifizierungsreif', 'auditfest', 'audit-sicher', 'auditsichere Ablage', 'auditbereit', 'revisionssicher',
+      'normgerecht', 'EnMS', 'Managementsystem', 'Energiemanagementsystem', 'Erfüllungsgrad', 'Reifegrad',
+      'vollständig dokumentiert', 'vollständig erfüllt', 'Ihr Energiemanagement ist vollständig', 'alle Nachweise liegen vor',
+      'bereit für das Audit', 'bereit für die Zertifizierung', 'bereit für das externe Audit', 'ISO', 'nach ISO',
+    ]) {
+      expect(verstoesse(`Energiemanagement: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse(
+      'Das interne Audit festhalten, das Audit sicher planen, Fassungen vollständig lesen: Isolierung, Museum, Zertifikat und Transaktionsplanung bleiben normale Wörter.',
+    )).toEqual([]);
+    for (const erlaubt of [UEMS_NORMGRENZE, NEUTRALE_ISO_NENNUNG, `${UEMS_VERANTWORTUNG} ${UEMS_NORMGRENZE}`]) {
+      expect(verstoesse(erlaubt), erlaubt).toEqual([]);
+      expect(normNummern(erlaubt), erlaubt).toEqual([]);
+    }
+  });
+
+  it('keine Norm-Nummer (§8, R4) — Kennzeichen, Daten und Fassungsangaben bleiben', () => {
+    for (const probe of [
+      'ISO 50001', 'DIN EN ISO 50001', 'EN 16247-1', 'ISO 50006', '50001', 'nach 50003', 'Kapitel 9.2', 'Abschnitt 10.2',
+      'Ziffer 6.3',
+    ]) {
+      expect(normNummern(`Energiemanagement: ${probe}.`), probe).not.toEqual([]);
+    }
+    for (const probe of [
+      'AU-2029-0001', 'F-2029-0001', 'BR-2029-0001 (Beschluss 2)', 'IH-SG-01, Rev. 4 vom 03.11.2028', '12.02.2029, 14:10',
+      '50 001 kWh', 'Stand Nr. 1', 'Fassung 2', 'D-0001',
+    ]) {
+      expect(normNummern(probe), probe).toEqual([]);
+    }
+  });
+
+  it('keine Doppelbelegung (SP3, W6): Anwendungsbereich, Aufgaben im Energiemanagement, Managementbewertung, Feststellung', () => {
+    for (const probe of [
+      'Geltungsbereich des Energiemanagements', 'Zuständigkeiten', 'Zuständige Box', 'Bewertung 2028', 'zur Bewertung',
+      'Befund', 'Befunde des Audits',
+    ]) {
+      expect(doppelt(probe), probe).not.toEqual([]);
+    }
+    for (const probe of [
+      UEMS_ANWENDUNGSBEREICH, UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_MANAGEMENTBEWERTUNG, UEMS_FESTSTELLUNG,
+      'der energetischen Bewertung', 'Energetische Bewertung', 'Bewertungsstand', 'bewertet', 'Revisions-Anstoß',
+      'keine offene Abweichung',
+    ]) {
+      expect(doppelt(probe), probe).toEqual([]);
+    }
+    // Die belegten Wörter bleiben, wo sie hingehören: der Geltungsbereich ist ein Stammdatum der Kennzahl.
+    expect(UEMS_GELTUNGSBEREICH).toBe('Geltungsbereich');
+    expect(UEMS_ANWENDUNGSBEREICH).not.toBe(UEMS_GELTUNGSBEREICH);
+  });
+
+  it('verlangt Grenz-Satz UND Verantwortungs-Satz auf jeder Fläche (SP4) und hält Wörter und Norm-Nummern fern', () => {
+    for (const datei of energiemanagementFlaechen()) {
+      expect(flaechenFehler(readFileSync(join(SRC, datei), 'utf8')), datei).toEqual([]);
+    }
+    for (const datei of energiemanagementModule()) {
+      expect(wortFehler(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toEqual([]);
+    }
+    for (const datei of ENERGIEMANAGEMENT_FLAECHEN) {
+      expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
+    }
+  });
+
+  it('findet Flächen über den Dateinamen und prüft die Mechanik am Prüfling', () => {
+    for (const datei of [
+      'pages/EnergiemanagementBereich.tsx', 'pages/DokumentSeite.tsx', 'components/DokumentDialoge.tsx',
+      'components/VerzeichnisTabelle.tsx', 'components/WiedervorlageListe.tsx', 'components/EnergiepolitikKopf.tsx',
+      'components/AnwendungsbereichVergleich.tsx', 'pages/AuditSeite.tsx', 'components/InternesAuditDialoge.tsx',
+      'pages/FeststellungSeite.tsx', 'components/ManagementbewertungEntwurf.tsx', 'components/BeschlussDialog.tsx',
+      'components/WirksamkeitDialog.tsx', 'components/ZuschnittHilfe.tsx', 'components/NachweiseAmEinsatz.tsx',
+      'energiemanagement.ts', 'feststellungen.ts', 'wiedervorlage.ts',
+    ]) {
+      expect(ENERGIEMANAGEMENT_NAMENSMUSTER.test(datei), datei).toBe(true);
+    }
+    for (const datei of [
+      'pages/MassnahmeSeite.tsx', 'components/MassnahmeDialoge.tsx', 'glossar.ts', 'pages/BewertungPage.tsx',
+      'pages/BerichtSeite.tsx', 'components/KennzahlenRegister.tsx', 'pages/BenutzerPage.tsx',
+    ]) {
+      expect(ENERGIEMANAGEMENT_NAMENSMUSTER.test(datei), datei).toBe(false);
+    }
+    const saetze = '<p>{UEMS_NORMGRENZE}</p><p>{UEMS_VERANTWORTUNG}</p>';
+    expect(flaechenFehler(`<section><h2>Energiepolitik</h2><p>Überprüfung fällig seit 64 Tagen.</p>${saetze}</section>`))
+      .toEqual([]);
+    expect(flaechenFehler('<section><h2>Energiepolitik</h2><p>{UEMS_NORMGRENZE}</p></section>'))
+      .toEqual(['ohne Verantwortungs-Satz (SP4)']);
+    expect(flaechenFehler('<section><h2>Energiepolitik</h2><p>{UEMS_VERANTWORTUNG}</p></section>'))
+      .toEqual(['ohne Grenz-Satz (SP4)']);
+    expect(flaechenFehler("import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';"))
+      .toEqual(['ohne Grenz-Satz (SP4)', 'ohne Verantwortungs-Satz (SP4)']);
+    expect(flaechenFehler(`<p>Ihr Energiemanagement ist zertifizierbar.</p>${saetze}`)).not.toEqual([]);
+    expect(flaechenFehler(`<h3>Kapitel 9.2 Internes Audit</h3>${saetze}`)).not.toEqual([]);
+    expect(flaechenFehler(`<h3>Zuständigkeiten</h3>${saetze}`)).not.toEqual([]);
+    // Ein Kommentar und ein Vertragsschlüssel sind kein Kundentext — das interne Wort steht nur im Code (SP5).
+    expect(flaechenFehler(`{/* Nichtkonformität heißt hier Feststellung */}<p>{UEMS_FESTSTELLUNG}</p>${saetze}`)).toEqual([]);
+    expect(flaechenFehler(`const art = 'nichtkonformitaet';${saetze}`)).toEqual([]);
+  });
+
+  it('die Maßnahmen-Seite sagt „Feststellung“, nie „Nichtkonformität“ — an den Regeln des AP-18-Blocks (SP5, W3)', () => {
+    const ap18 = (text: string) => VERBESSERUNG_VERBOTEN.filter((re) => re.test(text));
+    // Die Seite bleibt eine AP-18-Fläche; dieser Block öffnet und schließt dort nichts.
+    expect(ENERGIEMANAGEMENT_NAMENSMUSTER.test('pages/MassnahmeSeite.tsx')).toBe(false);
+    expect(ENERGIEMANAGEMENT_FLAECHEN).not.toContain('pages/MassnahmeSeite.tsx');
+    // Die echte Seite, um die Herkunft-Zeile aus §5.8 ergänzt: der AP-18-Wächter lässt „Feststellung“ durch …
+    const seite = stripComments(readFileSync(join(SRC, 'pages/MassnahmeSeite.tsx'), 'utf8'));
+    const mitHerkunft = (satz: string) => `${seite}\n<span>${satz}</span>`;
+    for (const satz of HERKUNFT_SAETZE) {
+      expect(kundenTexte(mitHerkunft(satz)).flatMap(ap18), satz).toEqual([]);
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(normNummern(satz), satz).toEqual([]);
+    }
+    // … und beißt am Norm-Wort, auch in der Schreibweise des Vertrags.
+    for (const probe of [
+      'Herkunft: Nichtkonformität F-2029-0001.', 'Herkunft: Nichtkonformitaet F-2029-0001.',
+      'Herkunft: Korrekturmaßnahme aus dem internen Audit AU-2029-0001.',
+    ]) {
+      expect(kundenTexte(mitHerkunft(probe)).flatMap(ap18), probe).not.toEqual([]);
+    }
+    // Die Herkunft-Wörter der Maßnahme sind die einzige Stelle, an der die Herkunft-Art zu Text wird: keines ist ein
+    // Norm-Wort; kommen die neuen Arten dazu (AP-19 IP-17), trägt jede das Kundenwort ihres Objekts.
+    const herkunftWorte: Record<string, string> = MASSNAHME_HERKUNFT_WORT;
+    for (const [art, wort] of Object.entries(herkunftWorte)) {
+      expect(ap18(wort), art).toEqual([]);
+      expect(verstoesse(wort), art).toEqual([]);
+    }
+    const kundenwortDerArt: Record<string, RegExp> = {
+      nichtkonformitaet: new RegExp(UEMS_FESTSTELLUNG),
+      audit: /Audit/,
+      managementbewertung: new RegExp(UEMS_MANAGEMENTBEWERTUNG),
+    };
+    for (const [art, kundenwort] of Object.entries(kundenwortDerArt)) {
+      if (art in herkunftWorte) expect(herkunftWorte[art], art).toMatch(kundenwort);
+    }
+  });
+
+  it('die 37 Sätze aus §5.8 bestehen den Wächter — einzeln und als Fläche (NW-4)', () => {
+    expect(SAETZE).toHaveLength(37);
+    expect(new Set(SAETZE).size).toBe(SAETZE.length);
+    for (const satz of SAETZE) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(normNummern(satz), satz).toEqual([]);
+      expect(doppelt(satz), satz).toEqual([]);
+    }
+    const flaeche = `<section>${SAETZE.slice(2).map((satz) => `<p>${satz}</p>`).join('')}<p>{UEMS_NORMGRENZE}</p><p>{UEMS_VERANTWORTUNG}</p></section>`;
+    expect(flaechenFehler(flaeche)).toEqual([]);
+    // Der Wächter hat jeden Satz gesehen — keiner ist als Nicht-Kundentext durchgerutscht.
+    const gesehen = kundenTexte(flaeche);
+    for (const satz of SAETZE.slice(2)) expect(gesehen, satz).toContain(satz);
+  });
+
+  it('bildet die Kundenwörter als Konstanten ab (SP1, §4.1) — der Grenz-Satz bleibt Wort für Wort (W7)', () => {
+    const woerter = [
+      UEMS_ENERGIEMANAGEMENT, UEMS_VERZEICHNIS, UEMS_WIEDERVORLAGE, UEMS_DOKUMENT, UEMS_DOKUMENTE, UEMS_FASSUNG,
+      UEMS_WORTLAUT, UEMS_VERWEIS, UEMS_GEFUEHRT_IN_IHREM_SYSTEM, UEMS_ENERGIEPOLITIK, UEMS_ANWENDUNGSBEREICH,
+      UEMS_PERSON_IM_ENERGIEMANAGEMENT, UEMS_AUFGABE_IM_ENERGIEMANAGEMENT, UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT,
+      UEMS_WER_IST_WOFUER_VERANTWORTLICH, UEMS_PERSON, UEMS_LEITUNG, UEMS_EINSICHT, UEMS_INTERNES_AUDIT, UEMS_HINWEIS,
+      UEMS_FESTSTELLUNG, UEMS_FESTSTELLUNGEN, UEMS_SOFORTIGE_BEHEBUNG, UEMS_AEHNLICHE_FAELLE, UEMS_WIRKSAMKEIT,
+      UEMS_MANAGEMENTBEWERTUNG, UEMS_SITZUNG, UEMS_BESCHLUSS, UEMS_FOLGE, UEMS_ENTSCHIEDEN_VON, UEMS_EINGETRAGEN_VON,
+      UEMS_UEBERPRUEFUNG_FAELLIG, UEMS_GEPRUEFT_BLEIBT, UEMS_BEKANNT_GEMACHT, UEMS_NOCH_NICHTS_FESTGEHALTEN,
+    ];
+    expect(woerter).toEqual([
+      'Energiemanagement', 'Verzeichnis', 'Wiedervorlage', 'Dokument', 'Dokumente', 'Fassung',
+      'Wortlaut', 'Verweis', 'Geführt in Ihrem System', 'Energiepolitik', 'Anwendungsbereich',
+      'Person im Energiemanagement', 'Aufgabe im Energiemanagement', 'Aufgaben im Energiemanagement',
+      'Wer ist wofür verantwortlich', 'Person', 'Leitung', 'Einsicht', 'internes Audit', 'Hinweis',
+      'Feststellung', 'Feststellungen', 'sofortige Behebung', 'ähnliche Fälle', 'Wirksamkeit',
+      'Managementbewertung', 'Sitzung', 'Beschluss', 'Folge', 'entschieden von', 'eingetragen von',
+      'Überprüfung fällig', 'geprüft, bleibt', 'bekannt gemacht', 'Hier ist noch nichts festgehalten.',
+    ]);
+    for (const wort of [...woerter, UEMS_VERANTWORTUNG]) {
+      expect(verstoesse(wort), wort).toEqual([]);
+      expect(normNummern(wort), wort).toEqual([]);
+      expect(doppelt(wort), wort).toEqual([]);
+    }
+    // W7: der Verantwortungs-Satz steht NEBEN dem Grenz-Satz; der Grenz-Satz ist der aus §5.8 und steht unverändert in
+    // beiden Kopien der Berichts-Vorlagen (und damit in deren Prüfsummen).
+    expect(UEMS_VERANTWORTUNG).toBe(SAETZE[0]);
+    expect(UEMS_NORMGRENZE).toBe(
+      'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.',
+    );
+    expect(UEMS_NORMGRENZE.includes(UEMS_VERANTWORTUNG)).toBe(false);
+    for (const vorlagen of ['berichte/bericht-vorlagen.json', '../../../services/api/src/main/resources/berichte/bericht-vorlagen.json']) {
+      expect(readFileSync(join(SRC, vorlagen), 'utf8').includes(UEMS_NORMGRENZE), vorlagen).toBe(true);
     }
   });
 });

@@ -664,6 +664,61 @@ export const UEMS_VERBESSERUNG_SAETZE = {
   grenze: () => UEMS_NORMGRENZE,
 } as const;
 
+/**
+ * UEMS AP-19 IP-3 (SP1–SP5) — Kundenwörter des Bereichs „Energiemanagement“. VoltPilot hält fest, der Kunde
+ * entscheidet. Die Norm-Wörter (Nichtkonformität, Korrekturmaßnahme, Managementsystem, konform, zertifiziert …)
+ * stehen nur im Konzept und in Verträgen; `copy.test.ts` (Block „Energiemanagement“) hält sie von den Flächen fern.
+ * Keine Doppelbelegung (SP3, W6): „Anwendungsbereich“, nicht der „Geltungsbereich“ einer Kennzahl; „Aufgaben im
+ * Energiemanagement“, nicht die „zuständige Box“; „Managementbewertung“, nie „Bewertung“ allein. „Fassung“ ist
+ * `UEMS_FASSUNG`, „Überprüfung fällig“ ist `UEMS_UEBERPRUEFUNG_FAELLIG` — dieselben Wörter, keine zweite Konstante.
+ */
+export const UEMS_ENERGIEMANAGEMENT = 'Energiemanagement';
+export const UEMS_VERZEICHNIS = 'Verzeichnis';
+export const UEMS_WIEDERVORLAGE = 'Wiedervorlage';
+export const UEMS_DOKUMENT = 'Dokument';
+export const UEMS_DOKUMENTE = 'Dokumente';
+export const UEMS_WORTLAUT = 'Wortlaut';
+export const UEMS_VERWEIS = 'Verweis';
+export const UEMS_GEFUEHRT_IN_IHREM_SYSTEM = 'Geführt in Ihrem System';
+export const UEMS_ENERGIEPOLITIK = 'Energiepolitik';
+export const UEMS_ANWENDUNGSBEREICH = 'Anwendungsbereich';
+export const UEMS_PERSON_IM_ENERGIEMANAGEMENT = 'Person im Energiemanagement';
+export const UEMS_AUFGABE_IM_ENERGIEMANAGEMENT = 'Aufgabe im Energiemanagement';
+export const UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT = 'Aufgaben im Energiemanagement';
+export const UEMS_WER_IST_WOFUER_VERANTWORTLICH = 'Wer ist wofür verantwortlich';
+export const UEMS_PERSON = 'Person';
+/** Die Person mit der laufenden Aufgabe „Leitung des Unternehmens“ — keine Rolle, kein Konto. */
+export const UEMS_LEITUNG = 'Leitung';
+/** Zugriffsrolle: unternehmensweit nur ansehen, befristbar (E8 = A). */
+export const UEMS_EINSICHT = 'Einsicht';
+export const UEMS_INTERNES_AUDIT = 'internes Audit';
+export const UEMS_HINWEIS = 'Hinweis';
+/** Das Kundenwort einer Nichterfüllung (E9 = A, SP5) — `nichtkonformitaet` steht nur in Vertrag und Code. */
+export const UEMS_FESTSTELLUNG = 'Feststellung';
+export const UEMS_FESTSTELLUNGEN = 'Feststellungen';
+export const UEMS_SOFORTIGE_BEHEBUNG = 'sofortige Behebung';
+export const UEMS_AEHNLICHE_FAELLE = 'ähnliche Fälle';
+/** Ein Stand Nr. n einer Person an der Feststellung — nicht die Wirkung einer Maßnahme (AP-18). */
+export const UEMS_WIRKSAMKEIT = 'Wirksamkeit';
+export const UEMS_MANAGEMENTBEWERTUNG = 'Managementbewertung';
+export const UEMS_SITZUNG = 'Sitzung';
+export const UEMS_BESCHLUSS = 'Beschluss';
+export const UEMS_FOLGE = 'Folge';
+/** Die zwei Träger jeder Entscheidung (G2): eine Person, auch ohne Konto · ein Konto. */
+export const UEMS_ENTSCHIEDEN_VON = 'entschieden von';
+export const UEMS_EINGETRAGEN_VON = 'eingetragen von';
+export const UEMS_GEPRUEFT_BLEIBT = 'geprüft, bleibt';
+export const UEMS_BEKANNT_GEMACHT = 'bekannt gemacht';
+export const UEMS_NOCH_NICHTS_FESTGEHALTEN = 'Hier ist noch nichts festgehalten.';
+
+/**
+ * AP-19 SP4 (W7): der Verantwortungs-Satz steht auf jeder Energiemanagement-Fläche NEBEN dem Grenz-Satz
+ * `UEMS_NORMGRENZE`. Der Grenz-Satz bleibt Wort für Wort — er steht in Berichts-Vorlagen und damit in Prüfsummen;
+ * eine neue Fassung bleibt AP-20 vorbehalten.
+ */
+export const UEMS_VERANTWORTUNG =
+  'Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.';
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------
