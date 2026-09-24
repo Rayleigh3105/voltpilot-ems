@@ -604,6 +604,37 @@ class PortalApiTest {
         assertThat((String) seeded.get("lastSeenAt")).isNotNull();
     }
 
+    /**
+     * A box without an inverter (only an I/O module) never writes v1 telemetry;
+     * its v2 entity telemetry alone must make it „verbunden".
+     */
+    @Test
+    void aBoxWithOnlyEntityTelemetryIsSeenToo() {
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-v2only-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String id = (String) claimed.getBody().get("id");
+
+        exec("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                + "entity_id, channel, value) VALUES (now() - interval '1 minute', "
+                + "now() - interval '1 minute', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', '" + id + "', gen_random_uuid(), 'do_1', 1)");
+
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        Map<String, Object> mine = res.getBody().stream()
+                .filter(d -> "edge-v2only-01".equals(d.get("externalRef")))
+                .findFirst().orElseThrow();
+        assertThat((String) mine.get("lastSeenAt")).isNotNull();
+        assertThat(java.time.Instant.parse((String) mine.get("lastSeenAt")))
+                .isBetween(java.time.Instant.now().minusSeconds(600), java.time.Instant.now());
+    }
+
     @Test
     void deviceReplayingBackloggedTelemetryReadsLiveNotStale() {
         String demo = token("demo", "demo");
