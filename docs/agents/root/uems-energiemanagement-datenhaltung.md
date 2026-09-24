@@ -1,7 +1,7 @@
 # UEMS-Energiemanagement: Datenhaltung von Grundlage und Dokument (AP-19 IP-5)
 
 Neu am 25.09.2026: Migration `V20260925013500__uems_energiemanagement.sql`, neun leere Tabellen, keine Route, kein
-Leser, keine Fläche. Routen: Personen und Aufgaben IP-6, Dokument IP-7, Verzeichnis IP-8; Audit und Feststellung
+Leser, keine Fläche. Routen: Personen und Aufgaben IP-6 ([gebaut](uems-energiemanagement-personen.md)), Dokument IP-7, Verzeichnis IP-8; Audit und Feststellung
 bauen in IP-16 daneben. Konzept: AP-19 §4.2–§4.5, §4.11, §5.6, §6.1 (`vp-uems-ap19-fundament/report.md`).
 
 | Stelle | Was |

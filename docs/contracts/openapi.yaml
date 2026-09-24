@@ -343,6 +343,11 @@ tags:
       UEMS AP-03 Rollen und Standortrechte. `GET /api/v1/me` ist die Selbstauskunft (IP-4). Partner- und
       Plattform-Konten wählen den Kundenbereich mit `X-Kundenbereich`, angenommen nur gegen eine wirksame
       Unterstützung - sonst 404 auf jeder Kundenroute.
+  - name: energiemanagement
+    description: >
+      UEMS AP-19 Dokumentation und Managementabläufe. VoltPilot hält fest, der Kunde entscheidet, und jede Zeile
+      sagt, wo das Original liegt. IP-6: Personen im Energiemanagement (auch ohne Konto) und Aufgaben mit
+      „entschieden von“; die Leitung ist, wer am Tag die Aufgabe „Leitung des Unternehmens“ trägt.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -11871,6 +11876,179 @@ paths:
         "404": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
         "409": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
         "422": { $ref: "#/components/responses/BezugsbasisAbgelehnt" }
+  /api/v1/energiemanagement/personen:
+    get:
+      tags: [energiemanagement]
+      summary: Personen im Energiemanagement - aktive zuerst, beendete danach.
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-6, PA1). Personen tragen nur den Mandanten-Zaun: auch ein
+        Standort-Leser braucht den Namen hinter „entschieden von“. `konto` ist `null` für eine Person ohne Konto (die
+        Leitung ohne Login, eine externe Auditorin).
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementPersonen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+    post:
+      tags: [energiemanagement]
+      summary: Person erfassen, auch ohne Konto (PA1).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen (403 `recht_fehlt`). Name und Funktion Pflicht (422
+        `name_fehlt`, `funktion_fehlt`, `angabe_ungueltig` über 200 Zeichen bzw. ein Kürzel über 10); das Konto ist
+        eines des Kundenbereichs (422 `konto_unbekannt`) und gehört höchstens einer Person (409 `konto_vergeben`),
+        ebenso das Kürzel (409 `kuerzel_vergeben`). Protokoll `person_erfasst`. Eine Löschroute gibt es nicht (PA5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementPersonAnlegen" }
+      responses:
+        "201":
+          description: Die Person mit ihrem Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementPersonMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/personen/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Eine Person mit ihrem Verlauf.
+      description: >
+        Recht `energiemanagement.ansehen`. Der Verlauf nennt jeden Übergang (`person_erfasst`, `person_geaendert`,
+        `person_beendet`) mit alt, neu, Begründung, Akteur und Zeit - so steht auch jede Konto-Verknüpfung darin.
+        Unbekannt 404.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementPersonMitVerlauf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+    put:
+      tags: [energiemanagement]
+      summary: Person ändern, mit einem Konto verknüpfen oder mit „bis“ beenden.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Der ganze änderbare Stand (Name, Funktion, Kürzel,
+        Organisation, Konto, seit) - Protokoll `person_geaendert` mit alt und neu. Ein anderes Konto (verknüpfen,
+        wechseln, lösen) braucht eine Begründung mit 10 bis 500 Zeichen (422 `begruendung_fehlt`). `bis` beendet die
+        Person endgültig - Begründung Pflicht, `bis` nicht vor `seit` (422 `zeitraum_ungueltig`), und nur, wenn sie
+        danach keine Aufgabe mehr trägt, auch nicht als Vertretung (409 `aufgaben_laufen` mit den `zuordnungen`);
+        Protokoll `person_beendet`. Eine beendete Person 409 `person_beendet`. Gelöscht wird eine Person nie (PA5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementPersonAendern" }
+      responses:
+        "200":
+          description: Die Person mit ihrem Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementPersonMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/aufgaben:
+    get:
+      tags: [energiemanagement]
+      summary: Aufgaben im Energiemanagement am Tag, mit der Leitung (PA2, PA3).
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit - wer nur Standorte liest, bekommt keine Zeile,
+        ohne Hinweis und nie den Satz. `tag` (Vorgabe heute in der Zeitzone des Unternehmens, sonst 400): je Wort
+        des Vokabulars `aufgabe` die laufenden Zuordnungen (gilt ab ≤ tag ≤ gilt bis, der letzte Tag zählt mit);
+        ohne Person der Satz „… — keine Person festgelegt.“ aus dem Vertrag (nie für `weitere`), ein Satz, keine
+        Warnung. `leitung` sind die Personen mit laufender Aufgabe `unternehmensleitung` - leer heißt, Freigaben mit
+        Leitungs-Pflicht sind gesperrt. `zuordnungen` nennt alle, auch beendete und künftige.
+      parameters:
+        - in: query
+          name: tag
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementAufgaben" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+    post:
+      tags: [energiemanagement]
+      summary: Aufgabe zuordnen - Aufgabe × Person × gilt ab, mit „entschieden von“ (PA2).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. `aufgabe` aus dem Vokabular (422 `aufgabe_unbekannt`),
+        `weitere` mit Wortlaut (422 `wortlaut_fehlt`, ein Wortlaut an einer anderen Aufgabe `angabe_ungueltig`);
+        Person (422 `person_fehlt`, `person_unbekannt`), gilt ab (422 `gilt_ab_fehlt`), Begründung 10 bis 500
+        Zeichen (422 `begruendung_fehlt`). „entschieden von“ ist eine Person im Energiemanagement und Pflicht außer
+        bei `unternehmensleitung` (422 `entschieden_von_fehlt`). Wahlfrei Vertretung (eine andere Person, 422
+        `vertretung_gleich_person`), Beleg als Verweis mit Ablage (422 `beleg_ungueltig`) und Beschluss
+        `BR-JJJJ-nnnn/Bn` (422 `beschluss_ungueltig`). Eine Person, deren `bis` vor gilt ab liegt, 422
+        `person_beendet`; dieselbe Aufgabe für dieselbe Person im selben Zeitraum 409 `zuordnung_laeuft_bereits`.
+        Nur anhängen - Protokoll `aufgabe_zugeordnet`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementAufgabeZuordnen" }
+      responses:
+        "201":
+          description: Die Zuordnung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/aufgaben/{id}/beenden:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Zuordnung beenden - einmal, der letzte Tag zählt mit.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. `gilt_bis` Pflicht (422 `gilt_bis_fehlt`), nicht vor
+        gilt ab (422 `zeitraum_ungueltig`), Begründung 10 bis 500 Zeichen (422 `begruendung_fehlt`); schon beendet 409
+        `aufgabe_beendet`. Eine Übergabe ist danach eine neue Zuordnung ab dem Folgetag. Protokoll `aufgabe_beendet`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementAufgabeBeenden" }
+      responses:
+        "200":
+          description: Die beendete Zuordnung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energieziele:
     get:
       tags: [kennzahlen]
@@ -16079,6 +16257,14 @@ components:
         application/json:
           schema: { type: object, additionalProperties: true, required: [code, message],
                     properties: { code: { type: string }, message: { type: string } } }
+    EnergiemanagementAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. `{code, message, …Fakten}` (UEMS AP-19); 403
+        `recht_fehlt` in der Form des Rechte-Interceptors.
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true, required: [code, message],
+                    properties: { code: { type: string }, message: { type: string } } }
     BezugsgroesseAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code, Status und der
@@ -16772,6 +16958,182 @@ components:
                   rolle: { type: string, nullable: true }
                   art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
               zeit: { type: string, format: date-time }
+    EnergiemanagementPersonAnlegen:
+      type: object
+      additionalProperties: false
+      required: [name, funktion]
+      properties:
+        name: { type: string, maxLength: 200 }
+        funktion: { type: string, maxLength: 200 }
+        kuerzel: { type: string, nullable: true, maxLength: 10, description: So nennen die Kopien die Person („entschieden_von“ „RF“). }
+        organisation: { type: string, nullable: true, maxLength: 200 }
+        konto_sub: { type: string, nullable: true, description: Ein Konto des Kundenbereichs; ohne Konto ist die Person trotzdem eine Person. }
+        seit: { type: string, format: date, nullable: true }
+    EnergiemanagementPersonAendern:
+      type: object
+      additionalProperties: false
+      required: [name, funktion]
+      description: >
+        Der ganze änderbare Stand; ein fehlendes wahlfreies Feld heißt „keins“. Ein anderes `konto_sub` und `bis`
+        brauchen `begruendung`.
+      properties:
+        name: { type: string, maxLength: 200 }
+        funktion: { type: string, maxLength: 200 }
+        kuerzel: { type: string, nullable: true, maxLength: 10 }
+        organisation: { type: string, nullable: true, maxLength: 200 }
+        konto_sub: { type: string, nullable: true }
+        seit: { type: string, format: date, nullable: true }
+        bis: { type: string, format: date, nullable: true, description: Beendet die Person endgültig. }
+        begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500 }
+    EnergiemanagementPerson:
+      type: object
+      required: [id, name, funktion, kuerzel, organisation, konto, seit, bis, zustand, beendet_begruendung, eingetragen]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        funktion: { type: string }
+        kuerzel: { type: string, nullable: true }
+        organisation: { type: string, nullable: true }
+        konto:
+          type: object
+          nullable: true
+          description: "`null`: eine Person ohne Konto."
+          properties:
+            sub: { type: string }
+            name: { type: string, nullable: true, description: Anzeigename aus der Benutzerverwaltung. }
+            zustand: { type: string, nullable: true }
+        seit: { type: string, format: date, nullable: true }
+        bis: { type: string, format: date, nullable: true }
+        zustand: { type: string, enum: [aktiv, beendet] }
+        beendet_begruendung: { type: string, nullable: true }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    EnergiemanagementEingetragen:
+      type: object
+      required: [akteur, am]
+      properties:
+        akteur:
+          type: object
+          properties:
+            sub: { type: string, nullable: true }
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        am: { type: string, format: date-time }
+    EnergiemanagementPersonen:
+      type: object
+      required: [personen]
+      properties:
+        personen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementPerson" }
+    EnergiemanagementAenderung:
+      type: object
+      required: [id, art, alt, neu, begruendung, akteur, zeit]
+      properties:
+        id: { type: integer, format: int64 }
+        art: { type: string, enum: [person_erfasst, person_geaendert, person_beendet, aufgabe_zugeordnet, aufgabe_beendet] }
+        alt: { nullable: true, description: Schnappschuss vorher. }
+        neu: { nullable: true, description: Schnappschuss nachher. }
+        begruendung: { type: string, nullable: true }
+        akteur:
+          type: object
+          properties:
+            sub: { type: string, nullable: true }
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        zeit: { type: string, format: date-time }
+    EnergiemanagementPersonMitVerlauf:
+      type: object
+      required: [person, verlauf]
+      properties:
+        person: { $ref: "#/components/schemas/EnergiemanagementPerson" }
+        verlauf:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementAenderung" }
+    EnergiemanagementPersonKurz:
+      type: object
+      required: [id, name, funktion, kuerzel, mit_konto]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        funktion: { type: string }
+        kuerzel: { type: string, nullable: true }
+        mit_konto: { type: boolean }
+    EnergiemanagementBeleg:
+      type: object
+      additionalProperties: false
+      description: Ein Verweis (G3) - ohne Ablage keiner seiner Teile.
+      properties:
+        bezeichnung: { type: string, nullable: true, maxLength: 200 }
+        ablage: { type: string, nullable: true, maxLength: 200 }
+        kennung: { type: string, nullable: true, maxLength: 200 }
+        adresse: { type: string, nullable: true, maxLength: 2000 }
+        sha256: { type: string, nullable: true, pattern: "^[0-9a-f]{64}$" }
+    EnergiemanagementAufgabeZuordnen:
+      type: object
+      additionalProperties: false
+      required: [aufgabe, person_id, gilt_ab, begruendung]
+      properties:
+        aufgabe: { type: string, enum: [unternehmensleitung, energiemanagement_leiten, energieteam, bezugsbasen, energieziele_massnahmen, bewertung_messplanung, interne_audits, managementbewertung, dokumente, weitere] }
+        aufgabe_wortlaut: { type: string, nullable: true, maxLength: 200, description: Nur und Pflicht bei `weitere`. }
+        person_id: { type: string, format: uuid }
+        gilt_ab: { type: string, format: date }
+        vertretung_person_id: { type: string, format: uuid, nullable: true }
+        entschieden_von: { type: string, format: uuid, nullable: true, description: Eine Person im Energiemanagement; Pflicht außer bei `unternehmensleitung`. }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+        beleg: { $ref: "#/components/schemas/EnergiemanagementBeleg" }
+        beschluss_kennung: { type: string, nullable: true, pattern: "^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$" }
+    EnergiemanagementAufgabeBeenden:
+      type: object
+      additionalProperties: false
+      required: [gilt_bis, begruendung]
+      properties:
+        gilt_bis: { type: string, format: date, description: Der letzte Tag, eingeschlossen. }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    EnergiemanagementZuordnung:
+      type: object
+      required: [id, aufgabe, wort, aufgabe_wortlaut, person, vertretung, gilt_ab, gilt_bis, zustand, entschieden_von, begruendung, beleg, beschluss_kennung, beendet_begruendung, eingetragen]
+      properties:
+        id: { type: string, format: uuid }
+        aufgabe: { type: string }
+        wort: { type: string, description: Das Kundenwort der Aufgabe (Vertrag `woerter.aufgabe`), bei `weitere` der Wortlaut. }
+        aufgabe_wortlaut: { type: string, nullable: true }
+        person: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        vertretung: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
+        gilt_ab: { type: string, format: date }
+        gilt_bis: { type: string, format: date, nullable: true }
+        zustand: { type: string, enum: [laufend, beendet] }
+        entschieden_von: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
+        begruendung: { type: string }
+        beleg: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementBeleg" }], nullable: true }
+        beschluss_kennung: { type: string, nullable: true }
+        beendet_begruendung: { type: string, nullable: true }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    EnergiemanagementAufgabe:
+      type: object
+      required: [aufgabe, wort, laufend, satz]
+      properties:
+        aufgabe: { type: string }
+        wort: { type: string }
+        laufend:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
+        satz: { type: string, nullable: true, description: „… — keine Person festgelegt.“ genau dann, wenn keine Zuordnung läuft (nie bei `weitere`). }
+    EnergiemanagementAufgaben:
+      type: object
+      required: [tag, leitung, aufgaben, zuordnungen]
+      properties:
+        tag: { type: string, format: date }
+        leitung:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        aufgaben:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementAufgabe" }
+        zuordnungen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
     MessbedarfAnlegen:
       type: object
       additionalProperties: false
