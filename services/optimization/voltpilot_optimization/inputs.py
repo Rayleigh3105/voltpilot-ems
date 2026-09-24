@@ -85,6 +85,7 @@ from voltpilot_optimization.pricing import (
     SupplyPriceComponents,
     berlin_month,
     export_values,
+    grid_charge_hurdle_ct_kwh,
     import_prices,
     needs_market_values,
 )
@@ -757,6 +758,9 @@ def gather_inputs(
         night_error_quantiles=night_errors,
         # P7: WOHER der Start-Ladestand kam. `unbekannt` ist der Ruhe-Plan.
         soc_source=soc_source,
+        # E6 A: die ehrliche Marge fuer Netzanteil beim Laden - nur am
+        # Festpreis-Tarif, Spot-Anlagen bleiben bei 0 (kein Term).
+        grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
     )
 
 

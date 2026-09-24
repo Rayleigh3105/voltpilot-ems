@@ -52,6 +52,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from voltpilot_optimization.config import (
+    FEST_GRID_CHARGE_HURDLE_CT_PER_KWH,
     EegRateBand,
     SOLARSPITZENGESETZ_CUTOFF,
     default_supply_components_enabled,
@@ -546,3 +547,15 @@ def needs_market_values(tariff: SiteTariff, netzladen_erlaubt: bool) -> bool:
         and tariff.plant_kind == PLANT_KIND_DIREKTVERMARKTUNG
         and tariff.anzulegender_wert_ct_kwh is not None
     )
+
+
+def grid_charge_hurdle_ct_kwh(tariff: SiteTariff) -> float:
+    """The ehrliche Marge a grid-sourced charge must earn at this site (ct per
+    AC kWh, Captain-Entscheid E6 A): :data:`FEST_GRID_CHARGE_HURDLE_CT_PER_KWH`
+    on a fixed tariff, 0 everywhere else (spot-priced import keeps today's
+    model byte-identically). Keyed on ``tarif_art`` alone - a ``fest`` site
+    without a maintained price still IS a flat-tariff site, whatever its
+    import degrades to."""
+    if tariff.tarif_art == TARIF_FEST:
+        return FEST_GRID_CHARGE_HURDLE_CT_PER_KWH
+    return 0.0

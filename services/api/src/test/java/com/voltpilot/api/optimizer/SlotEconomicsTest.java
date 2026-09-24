@@ -397,6 +397,36 @@ class SlotEconomicsTest {
     }
 
     /**
+     * PV-Bus-Laden (FK3) erzählt keinen Überschuss, den es nicht gibt (K0
+     * vp-wr-k0-plandaten, Herzogau 22.09. 16:30Z: Last 17,75 > PV 7,72, der
+     * Satz sagte „Speichert 2,7 kW PV-Überschuss … mehr wert als sofortige
+     * Einspeisung zu 41,8 ct/kWh" neben λ 26,6). Bezieht der Slot aus dem Netz,
+     * ist die Alternative der Netzbezug; ein Vergleich steht nur, wenn er stimmt.
+     */
+    @Test
+    void pvBusChargeWhileTheHouseImportsNamesTheImportNotASurplus() {
+        String herzogau = SlotEconomics.whyText("solarladen", 2.7, 10.03, null, 25.0, 41.8, 26.6);
+        assertThat(herzogau)
+                .isEqualTo("Lädt 2,7 kW PV in den Speicher, während das Haus 10,0 kW aus dem Netz "
+                        + "bezieht: spätere Nutzung (≈ 26,6 ct/kWh) ist mehr wert als der "
+                        + "Netzbezug zu 25,0 ct/kWh.")
+                .doesNotContain("Überschuss").doesNotContain("Einspeisung");
+        // λ unter dem Bezugspreis: die Zahlen fehlen lieber, als dass der Satz lügt.
+        assertThat(SlotEconomics.whyText("solarladen", 2.7, 10.03, null, 30.0, 41.8, 26.6))
+                .isEqualTo("Lädt 2,7 kW PV in den Speicher, während das Haus 10,0 kW aus dem Netz "
+                        + "bezieht.");
+        // Ohne Preise bleibt der Satz zahlenfrei.
+        assertThat(SlotEconomics.whyText("solarladen", 2.7, 10.03, null, null, null, null))
+                .isEqualTo("Lädt 2,7 kW PV in den Speicher, während das Haus 10,0 kW aus dem Netz "
+                        + "bezieht.");
+        // Echter Überschuss: der bisherige Satz, aber nur mit einem wahren Vergleich.
+        assertThat(SlotEconomics.whyText("solarladen", 5.0, -1.0, null, 30.0, 41.8, 26.6))
+                .isEqualTo("Speichert 5,0 kW PV-Überschuss.");
+        assertThat(SlotEconomics.whyText("solarladen", 5.0, 0.0, null, 30.0, 7.9, 20.0))
+                .contains("PV-Überschuss").contains("sofortige Einspeisung zu 7,9 ct/kWh");
+    }
+
+    /**
      * Der WARUM-WÄCHTER des Betreiber-Blicks (Erklärbarkeit Stufe 0, Konzept
      * vp-warum-erklaerbar-e2 §3.2 Beleg 3 / §4.4): der Ruhe-Zweig hat keinen aus
      * diesem Slot belegbaren Treiber, also darf er keine Ursache behaupten. Der

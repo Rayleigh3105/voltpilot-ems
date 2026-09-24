@@ -598,6 +598,15 @@ class OptimizationInput:
     #: ``initial_soc_kwh`` ist dann ein reiner MODELL-PLATZHALTER, der den
     #: Solver nie verlaesst (siehe :meth:`SchedulePlan.soc_pct`).
     soc_source: str = SOC_SOURCE_GEMESSEN
+    #: Ehrliche Marge (Captain-Entscheid E6 A): what a GRID-SOURCED charge must
+    #: earn after the full round trip, in ct per AC kWh - the fixed-tariff
+    #: constant from :func:`voltpilot_optimization.pricing.grid_charge_hurdle_ct_kwh`,
+    #: priced by the LP on the charge beyond the slot's PV surplus and read by
+    #: the in-slot trim (:mod:`voltpilot_optimization.slot_trim`). ``0.0`` (the
+    #: default) builds no term at all, so every spot site and every caller that
+    #: builds its own inputs (What-if, Ersparnis-Simulation, Golden-Suite) is
+    #: byte-identical to before.
+    grid_charge_hurdle_ct_kwh: float = 0.0
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -630,6 +639,11 @@ class OptimizationInput:
             raise ValueError("leistungspreis_eur_kw must be finite and >= 0 when set")
         if not (math.isfinite(self.peak_so_far_kw) and self.peak_so_far_kw >= 0.0):
             raise ValueError("peak_so_far_kw must be finite and >= 0")
+        if not (
+            math.isfinite(self.grid_charge_hurdle_ct_kwh)
+            and self.grid_charge_hurdle_ct_kwh >= 0.0
+        ):
+            raise ValueError("grid_charge_hurdle_ct_kwh must be finite and >= 0")
         if self.pv_anchor_ratio is not None and not (
             math.isfinite(self.pv_anchor_ratio) and self.pv_anchor_ratio > 0.0
         ):

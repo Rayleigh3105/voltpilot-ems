@@ -34,6 +34,9 @@ Formulation (per slot t, dt = 0.25 h):
                peak_below >= grid_import_t                          period's import peak)
     with objective +=  LP * (peak - peak_so_far)                   (the Leistungspreis, exact)
                      + peak_ratchet_eur_per_kw(LP) * peak_below    (the shave-target ratchet)
+    and, ONLY when grid_charge_hurdle_ct_kwh > 0 (fixed tariff, E6 A, see below):
+               gc_t >= charge_t + curtail_t - max(pv_t - load_t, 0), gc_t >= 0
+    with objective +=  hurdle * gc_t * dt                          (the ehrliche Marge)
 
 Design decisions, deliberately:
 
@@ -216,6 +219,22 @@ Design decisions, deliberately:
   unrestricted for the FEED-IN side - full curtailment while importing the
   LOAD remains a legitimate (and EEG-clean) negative-price play; a fully
   curtailed slot simply cannot charge.
+
+- **Ehrliche Marge on grid-sourced charge (Captain-Entscheid E6 A,
+  24.09.2026; K0 vp-wr-k0-plandaten).** FK3 is a LEGAL statement (the PV bus
+  may feed the battery while the house imports), not an economic one:
+  economically every kW charged beyond the slot's PV surplus is a kW bought
+  at the import price. At a fixed-tariff site the model used to take that
+  purchase for a hairline gain - Herzogau 24.09. 14:00-14:30Z charged
+  7,1/5,4/4,0 kW over the PV bus at 25 ct to sell at 28,8/29,1 ct, +0,5 to
+  +0,8 ct/kWh after the round trip, lambda pinned at (25 + 0,5)/eta = 26,6.
+  ``gc_t >= charge_t + curtail_t - max(pv_t - load_t, 0)`` isolates that
+  grid-sourced part, and ``grid_charge_hurdle_ct_kwh`` (the ONE constant
+  ``FEST_GRID_CHARGE_HURDLE_CT_PER_KWH``, 0 = no term for spot sites) prices
+  it, so a purchase must now clear the round trip PLUS the hurdle. The
+  in-slot trim reads the same constant, which is what lets it mark such a
+  slot ``charge_from_surplus_only`` at all (its consistency guard never
+  undoes a purchase the plan intends).
 
 - **Peak shaving is priced ECONOMICALLY, never enforced as a hard cap (PS-1,
   scout vp-battery-models-b9 Teil 3 b/c).** An RLM site's Leistungspreis
@@ -547,6 +566,30 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             rule=lambda model, t: model.charge[t]
             <= max(inp.pv_kw[t], 0.0) - model.curtail[t],
         )
+    # Ehrliche Marge (Captain-Entscheid E6 A, K0 vp-wr-k0-plandaten): at a
+    # fixed-tariff site the grid-sourced part of a charge must earn the hurdle
+    # AFTER the full round trip. grid_charge_kw is that part - the charge
+    # beyond the slot's forecast PV surplus: in a deficit slot every charged
+    # kW is one more kW imported (FK3's PV bus feeds the battery, the grid the
+    # house), in a surplus slot only the charge above the surplus is. Adding
+    # curtail keeps "curtail PV, import the house" inside the count. FK3 itself
+    # (solar_only_charge) is untouched - EEG still lets the PV bus charge while
+    # the house imports; only the economics get the honest hurdle. Built only
+    # with a hurdle > 0, so a spot site's model is byte-identical.
+    hurdle_eur_per_kwh = inp.grid_charge_hurdle_ct_kwh / 100.0
+    hurdle_cost = 0.0
+    if hurdle_eur_per_kwh > 0.0:
+        m.grid_charge_kw = Var(m.T, domain=NonNegativeReals)
+        m.grid_charge_hurdle = Constraint(
+            m.T,
+            rule=lambda model, t: model.grid_charge_kw[t]
+            >= model.charge[t]
+            + model.curtail[t]
+            - max(max(inp.pv_kw[t], 0.0) - inp.load_kw[t], 0.0),
+        )
+        hurdle_cost = sum(
+            hurdle_eur_per_kwh * m.grid_charge_kw[t] * dt for t in m.T
+        )
     if enforce_grid_limit and inp.grid_limit_kw is not None:
         m.grid_import_cap = Constraint(
             m.T, rule=lambda model, t: model.grid_import[t] <= inp.grid_limit_kw
@@ -629,6 +672,7 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             for t in m.T
         )
         + peak_cost
+        + hurdle_cost
         - v_end * (m.soc[n] - soc0),
         sense=minimize,
     )
@@ -937,6 +981,9 @@ def _charge_from_surplus_only(inp: OptimizationInput, t: int, slot, why) -> bool
         # BatteryParams.wear_cost_eur_per_kwh_each_way (which is EUR).
         wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
         one_way_efficiency=p.one_way_efficiency,
+        # E6 A: the SAME hurdle the LP priced on the grid-sourced charge - 0 on
+        # a spot site, which keeps the old margin rule byte-identically.
+        hurdle_ct_per_kwh=inp.grid_charge_hurdle_ct_kwh,
     )
 
 

@@ -319,6 +319,37 @@ describe('slotWhy (per-slot customer sentence)', () => {
     );
   });
 
+  it('pv_speichern while the house imports tells no surplus story (PV-Bus, K0 Herzogau)', () => {
+    // Herzogau 22.09. 16:30Z: Last 17,75 > PV 7,72 - kein Überschuss, keine
+    // Einspeisung; die Alternative zur gespeicherten kWh ist der Netzbezug.
+    const bus = {
+      ...base,
+      slotRole: 'pv_speichern',
+      gridKw: 10.0,
+      storedValueCtKwh: 26.6,
+      importPriceCtKwh: 25.0,
+      importPriceSource: 'fest',
+    };
+    const satz = slotWhy(bus, 'direktvermarktung');
+    expect(satz).toBe(
+      'Solarstrom lädt den Speicher, während das Haus Strom aus dem Netz bezieht – gespeicherte Energie ist später ≈ 26,6 ct/kWh wert, Netzstrom kostet Sie jetzt 25,0 ct/kWh (Ihr Festpreis-Tarif).',
+    );
+    expect(satz).not.toContain('Überschüssig');
+    expect(satz).not.toContain('eingespeist');
+    // λ unter dem Bezugspreis: kein Vergleich, der nicht stimmt.
+    expect(slotWhy({ ...bus, importPriceCtKwh: 30.0 }, 'direktvermarktung')).toBe(
+      'Solarstrom lädt den Speicher, während das Haus Strom aus dem Netz bezieht.',
+    );
+    // Ohne Bezugspreis bleibt der Satz zahlenfrei.
+    expect(slotWhy({ ...bus, importPriceCtKwh: null }, 'direktvermarktung')).toBe(
+      'Solarstrom lädt den Speicher, während das Haus Strom aus dem Netz bezieht.',
+    );
+    // Netz ≈ 0 (Totzone) ist weiter echter Überschuss.
+    expect(slotWhy({ ...bus, gridKw: 0.05 }, 'direktvermarktung')).toContain(
+      'Überschüssiger Solarstrom',
+    );
+  });
+
   it('guenstig_laden compares the BEZUGSPREIS against the stored value', () => {
     expect(
       slotWhy(

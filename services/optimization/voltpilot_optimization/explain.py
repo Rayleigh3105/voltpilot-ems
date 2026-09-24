@@ -31,7 +31,9 @@ facts the model honestly provides (design scout vp-fahrplan-why-design):
   Sign conventions verified empirically on APPSI-HiGHS against the KKT
   stationarity identities (max error 0.000 ct/kWh beyond the documented
   epsilon tie-breaks): charging interior slots satisfy
-  ``eta * lambda = pi + wear``, discharging ones ``lambda = eta * (pi - wear)``.
+  ``eta * lambda = pi + wear``, discharging ones ``lambda = eta * (pi - wear)``;
+  a charging slot whose ``grid_charge_hurdle`` binds (fixed tariff, E6 A) adds
+  the hurdle: ``eta * lambda = pi + wear + hurdle``.
 
 - **Layer 2, the slot role + binding flags.** Bindings come from a plain
   primal-slack/bounds scan on the MILP solution (no duals needed); the role is
@@ -95,6 +97,11 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         # Nacht-Wertfunktion (P3, night_reserve.py): the epigraph per quantile
         # over the sunrise SoC node. It can bind, and the scan below says so.
         "vf_c",
+        # Ehrliche Marge (E6 A, fixed tariff only): the grid-sourced part of a
+        # charge. It carries no flag of its own - where it binds it moves
+        # lambda to (import + hurdle + wear)/eta, and the lambda-based texts
+        # and duties read it from there; next_best_alternative prices it.
+        "grid_charge_hurdle",
     }
 )
 
@@ -277,7 +284,11 @@ def next_best_alternative(
         if surplus_kw > SLOT_DEADBAND_KW:
             options.append((NEXT_BEST_SOLAR_SPEICHERN, eta * lam - exp - wear))
         if inp.netzladen_erlaubt:
-            options.append((NEXT_BEST_NETZLADEN, eta * lam - imp - wear))
+            # The ehrliche Marge (E6 A) is part of what a grid charge must
+            # earn at a fixed-tariff site - without it a charge the hurdle
+            # rejected would read as a tie (0 for spot sites).
+            hurdle = inp.grid_charge_hurdle_ct_kwh / 100.0
+            options.append((NEXT_BEST_NETZLADEN, eta * lam - imp - wear - hurdle))
     if not options:
         return None, None
     # Ties by name, so the pick is deterministic across runs of an identical
