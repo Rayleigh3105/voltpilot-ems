@@ -369,3 +369,54 @@ func TestEbyteConnectionTestReportsItsChannelStatesAsContractSamples(t *testing.
 		t.Fatalf("balanced states %+v", states)
 	}
 }
+
+func ebyteSwitchOp(op string, channel int, on *int, ttl *int) probe.Op {
+	addr, off, fc := channel-1, 0, probe.WriteFCCoil
+	return probe.Op{Op: op, ID: "ausgang", Transport: probe.TransportEbyte, Host: ioIP,
+		RegisterKind: probe.RegisterKindCoil, Address: &addr, WriteFC: &fc,
+		OnValue: on, OffValue: &off, TTLSeconds: ttl}
+}
+
+func TestEbyteTestSwitchOfAFreeOutputSwitchesAndFallsBackByItself(t *testing.T) {
+	sim := armedSim()
+	reg := ioRegistry("00:54:2c:84:9b:90")
+	a := ioAgent(t, sim, reg, minimalArbiter(reg))
+	one, ttl := 1, 1
+	op := ebyteSwitchOp(probe.OpSwitchTest, 5, &one, &ttl)
+	if code, msg := probe.ValidateOps([]probe.Op{op})[0].Code, probe.ValidateOps([]probe.Op{op})[0].Message; code != "" {
+		t.Fatalf("a valid output test must be admitted: %s %s", code, msg)
+	}
+	res := a.runSwitchOp(op)
+	if !res.OK || res.Switched == nil || res.Switched.Readback == nil || *res.Switched.Readback != 1 {
+		t.Fatalf("switch test: %+v", res)
+	}
+	if !sim.Outputs()[4] {
+		t.Fatal("DO5 must be on during the test")
+	}
+	waitFor(t, 5*time.Second, "automatic off", func() bool { return !sim.Outputs()[4] })
+}
+
+func TestEbyteTestSwitchNeverTurnsOnAnOutputOwnedByAConsumer(t *testing.T) {
+	sim := armedSim()
+	reg := ioRegistry("00:54:2c:84:9b:90") // DO3 = heating rod, DO4 = pump
+	a := ioAgent(t, sim, reg, minimalArbiter(reg))
+	one, ttl := 1, 60
+	res := a.runSwitchOp(ebyteSwitchOp(probe.OpSwitchTest, 3, &one, &ttl))
+	if res.OK || sim.Outputs()[2] {
+		t.Fatalf("a consumer's output must not be test-switched on: %+v", res)
+	}
+	sim.SetOutput(2, true)
+	// Switching OFF stays possible - it is always the safe direction.
+	if res := a.runSwitchOp(ebyteSwitchOp(probe.OpSwitchCancel, 3, nil, nil)); !res.OK || sim.Outputs()[2] {
+		t.Fatalf("switching a bound output off must work: %+v", res)
+	}
+}
+
+func TestEbyteTestSwitchAdmissionIsCoilOnly(t *testing.T) {
+	one, ttl := 1, 60
+	op := ebyteSwitchOp(probe.OpSwitchTest, 1, &one, &ttl)
+	op.RegisterKind = probe.RegisterKindHolding
+	if v := probe.ValidateOps([]probe.Op{op})[0]; v.OK() {
+		t.Fatal("an I/O-module output is a coil only")
+	}
+}

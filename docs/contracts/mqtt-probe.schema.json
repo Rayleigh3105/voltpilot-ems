@@ -254,7 +254,8 @@
           "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
         },
         "transport": {
-          "const": "modbus_tcp"
+          "enum": ["modbus_tcp", "ebyte_modbus_tcp"],
+          "description": "modbus_tcp = frei beschriebenes Register (Selbstbau). ebyte_modbus_tcp = ein Relais-Ausgang eines I/O-Moduls (register_kind coil, address = Ausgang - 1, FC5); die Box schreibt ihn ueber ihren eigenen Modul-Treiber und verweigert das EINschalten eines Ausgangs, der einem Verbraucher gehoert."
         },
         "host": {
           "type": "string",
@@ -342,7 +343,8 @@
           "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
         },
         "transport": {
-          "const": "modbus_tcp"
+          "enum": ["modbus_tcp", "ebyte_modbus_tcp"],
+          "description": "modbus_tcp = frei beschriebenes Register (Selbstbau). ebyte_modbus_tcp = ein Relais-Ausgang eines I/O-Moduls (register_kind coil, address = Ausgang - 1, FC5); die Box schreibt ihn ueber ihren eigenen Modul-Treiber und verweigert das EINschalten eines Ausgangs, der einem Verbraucher gehoert."
         },
         "host": {
           "type": "string",

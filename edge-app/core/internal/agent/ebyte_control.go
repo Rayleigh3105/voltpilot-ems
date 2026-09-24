@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -466,6 +467,84 @@ func (a *Agent) publishEbyteReadback(entityID string, res ebyte.Result, now time
 	if err := a.Bus.Publish(entities.ReadbackTopic(entityID), payload, false); err != nil {
 		slog.Error("ebyte readback publish failed", "entity", entityID, "err", err)
 	}
+}
+
+// --- Test-Schalten eines Ausgangs (Geräteseite, probe switch_test) -----------
+
+// ebyteChannelOwner names the consumer entity whose driver binds this module
+// output, or "" when the output is free. A bound output belongs to the
+// executor: a test write there would be undone on the next control pass and
+// would bypass the consumer's guards - the portal switches it through the
+// consumer's manual override instead.
+func (a *Agent) ebyteChannelOwner(cfg ebyte.Config, channel int) string {
+	a.entMu.Lock()
+	reg := a.entRegistry
+	a.entMu.Unlock()
+	modules := map[string]bool{}
+	for _, e := range reg.Entities {
+		if dc, ok := ebyte.ParseDeviceDriver(e.Driver); ok && dc.Key() == cfg.Key() {
+			modules[e.ID] = true
+		}
+	}
+	for _, e := range reg.Entities {
+		if d, ok := ebyte.ParseChannelDriver(e.Driver); ok && modules[d.IOEntityID] && d.Channel == channel {
+			if e.Label != "" {
+				return e.Label
+			}
+			return e.ID
+		}
+	}
+	return ""
+}
+
+// ebyteSwitchExchange writes ONE module output for the guided test switch:
+// identity pin, proven stack, level mode and range are re-checked by the
+// driver in the same session, and the answer carries the coil read back.
+func (a *Agent) ebyteSwitchExchange(op probe.Op, value int) *switchBusResult {
+	cfg := ebyte.Config{IP: strings.TrimSpace(op.Host), Port: op.EffectivePort(), UnitID: op.EffectiveUnit()}
+	channel := op.EffectiveAddress() + 1
+	fail := func(code, msg string) *switchBusResult {
+		return &switchBusResult{ID: op.ID, OK: false, ErrorCode: code, Message: msg}
+	}
+	if owner := a.ebyteChannelOwner(cfg, channel); owner != "" && value != 0 {
+		// Switching OFF stays allowed (it is always the safe direction, and the
+		// auto-off must never be refused); switching ON a bound output is not.
+		return fail(probe.ErrInvalidRequest, fmt.Sprintf(
+			"Ausgang DO%d gehört zum Verbraucher „%s“ - bitte dort per Handeingriff schalten.", channel, owner))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), switchExchangeTimeout)
+	defer cancel()
+	cl := a.ebyteClientRef()
+	id, _, de := cl.Read(ctx, cfg)
+	if de == nil {
+		if store := a.ebyteStoreRef(); store != nil {
+			de = store.Verify(cfg, id)
+		}
+	}
+	if de != nil {
+		return fail(ebyteProbeCode(de), de.Message)
+	}
+	_, st, de := cl.SetOutput(ctx, cfg, channel, value != 0)
+	if de != nil {
+		return fail(ebyteProbeCode(de), de.Message)
+	}
+	rb := 0
+	if channel-1 < len(st.Outputs) && st.Outputs[channel-1] {
+		rb = 1
+	}
+	slog.Info("I/O-Modul: Test-Schalten", "target", cfg.Address(), "channel", channel, "wert", value, "ruecklesen", rb)
+	return &switchBusResult{ID: op.ID, OK: true, Readback: &rb}
+}
+
+// ebyteProbeCode maps a driver error onto the probe vocabulary.
+func ebyteProbeCode(de *ebyte.DriverError) string {
+	switch de.Code {
+	case ebyte.ErrUnreachable:
+		return probe.ErrUnreachable
+	case ebyte.ErrInvalidRequest, ebyte.ErrChannelUnknown:
+		return probe.ErrInvalidRequest
+	}
+	return probe.ErrInvalidResponse
 }
 
 // --- "Verbindung testen" (core-side one-shot) ---------------------------------

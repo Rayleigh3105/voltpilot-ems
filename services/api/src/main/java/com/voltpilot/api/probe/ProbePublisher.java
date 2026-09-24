@@ -150,14 +150,27 @@ public class ProbePublisher {
      */
     public record SwitchOp(String op, String id, String host, Integer port, Integer unitId,
             String registerKind, int address, Integer writeFc, Integer onValue, int offValue,
-            Integer ttlSeconds, Integer readbackAddress) {
+            Integer ttlSeconds, Integer readbackAddress, String transport) {
+
+        /** A free Modbus register (self-built device) - the original shape. */
+        public SwitchOp(String op, String id, String host, Integer port, Integer unitId,
+                String registerKind, int address, Integer writeFc, Integer onValue, int offValue,
+                Integer ttlSeconds, Integer readbackAddress) {
+            this(op, id, host, port, unitId, registerKind, address, writeFc, onValue, offValue,
+                    ttlSeconds, readbackAddress, null);
+        }
+
+        /** The contract transport word ({@code modbus_tcp} unless stated). */
+        public String effectiveTransport() {
+            return transport == null || transport.isBlank() ? "modbus_tcp" : transport;
+        }
     }
 
     static byte[] switchEnvelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
             Instant requestedAt, String requestedBy, SwitchOp op) {
         StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
         sb.append(",\"ops\":[{\"op\":\"").append(esc(op.op())).append('"')
-                .append(",\"transport\":\"modbus_tcp\"")
+                .append(",\"transport\":\"").append(esc(op.effectiveTransport())).append('"')
                 .append(",\"id\":\"").append(esc(op.id())).append('"')
                 .append(",\"host\":\"").append(esc(op.host().trim())).append('"')
                 .append(",\"port\":").append(op.port() == null ? 502 : op.port())

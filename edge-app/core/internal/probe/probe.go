@@ -69,6 +69,12 @@ const (
 // TransportModbusTCP is the only transport V1 executes.
 const TransportModbusTCP = "modbus_tcp"
 
+// TransportEbyte is the Ebyte I/O module's output: a WRITE-only transport of
+// the switch ops (switch_test / switch_cancel) that the CORE executes through
+// its own module driver (internal/ebyte - the one socket owner, MAC and stack
+// checks included). The coil address is the 0-based output (DO1 = 0).
+const TransportEbyte = "ebyte_modbus_tcp"
+
 // Modbus function codes a switch op may use. FC16 is the DEFAULT for a holding
 // register, not FC6: a single-register write is ACCEPTED but not ADOPTED by
 // several real devices (the documented Fronius/Deye lesson), so the safe
@@ -542,8 +548,13 @@ func validateTestConnection(op Op) (string, string) {
 //   - a switch_test must carry a bounded ttl_s: the auto-off is the safety net,
 //     and a test without one would be a switch-on with no way back.
 func validateSwitch(op Op) (string, string) {
-	if op.Transport != TransportModbusTCP {
+	if op.Transport != TransportModbusTCP && op.Transport != TransportEbyte {
 		return ErrNotSupported, "Diese Verbindungsart kann diese VoltPilot-Box nicht schalten."
+	}
+	// An I/O-module output is a relay coil and nothing else: FC5, values 0/1.
+	if op.Transport == TransportEbyte && (op.RegisterKind != RegisterKindCoil ||
+		(op.WriteFC != nil && *op.WriteFC != WriteFCCoil) || op.ReadbackAddress != nil) {
+		return ErrInvalidRequest, "Ein Ausgang des I/O-Moduls ist eine Relais-Spule (Funktionscode 5)."
 	}
 	host := strings.TrimSpace(op.Host)
 	if host == "" {

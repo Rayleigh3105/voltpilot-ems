@@ -158,6 +158,12 @@ func (a *Agent) cancelSwitchWatchdog(key string) {
 // discipline as probeExchange: buffered channel, no retry (a write is repeated
 // by a deliberate second click, never by the box).
 func (a *Agent) switchExchange(op probe.Op, value int) *switchBusResult {
+	if op.Transport == probe.TransportEbyte {
+		// The I/O module is CORE-owned: its outputs are written by the core
+		// driver, never by the Node-RED switch node (one socket owner). The
+		// auto-off below reaches this same branch, so it cannot miss.
+		return a.ebyteSwitchExchange(op, value)
+	}
 	if a.Bus == nil {
 		return nil
 	}

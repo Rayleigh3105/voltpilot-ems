@@ -72,13 +72,16 @@ public class SiteConsumerController {
     private final ConsumerDeviationReader deviation;
     private final ConsumerOverrideService overrideService;
     private final ConsumerOverrideRepository overrides;
+    private final com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch;
 
     public SiteConsumerController(SiteRepository sites, ConsumerService consumers,
             ConsumerScheduleRepository consumerSchedules,
             ConsumerRuntimeStatusRepository runtimeStatus,
             ConsumerPolicyActivationService activation, ConsumerFulfillmentReader fulfillment,
             ConsumerDeviationReader deviation, ConsumerOverrideService overrideService,
-            ConsumerOverrideRepository overrides) {
+            ConsumerOverrideRepository overrides,
+            com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch) {
+        this.ioSwitch = ioSwitch;
         this.sites = sites;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
@@ -100,6 +103,22 @@ public class SiteConsumerController {
     public ConsumerOptionsDto options(@PathVariable UUID siteId) {
         requireSite(siteId);
         return consumers.options(siteId);
+    }
+
+    /**
+     * Test-Schalten EINES Ausgangs eines I/O-Moduls von der Geräteseite: ein
+     * freier Ausgang wird für höchstens 120 s eingeschaltet und fällt danach
+     * von selbst ab (die Box armiert das Aus VOR dem Schreiben); {@code on=false}
+     * schaltet sofort aus. Ein Ausgang, der einem Verbraucher gehört, wird über
+     * dessen Handeingriff geschaltet (409 mit Hinweis).
+     */
+    @PostMapping("/io-modules/{entityId}/outputs/{channel}/test")
+    public com.voltpilot.api.consumers.IoModuleSwitchService.Outcome testOutput(
+            @PathVariable UUID siteId, @PathVariable UUID entityId, @PathVariable int channel,
+            @RequestBody com.voltpilot.api.consumers.IoModuleSwitchService.Request request,
+            @AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt) {
+        requireSite(siteId);
+        return ioSwitch.test(siteId, entityId, channel, request, jwt == null ? null : jwt.getSubject());
     }
 
     /** Die zuletzt gemeldeten Ein-/Ausgänge eines I/O-Moduls (Ebyte M31) samt Zuordnung. */
