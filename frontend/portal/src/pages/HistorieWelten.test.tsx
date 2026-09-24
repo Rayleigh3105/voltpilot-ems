@@ -20,9 +20,6 @@ import {
 
 // The explorer chart uses useEChart (canvas); jsdom has neither, so stub it.
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
-vi.mock('../components/Tagesbild', () => ({
-  Tagesbild: () => <div data-testid="day-chart" />,
-}));
 vi.mock('../HistoryChart', () => ({
   HistoryEnergieChart: () => <div data-testid="energie-chart" />,
 }));
@@ -491,40 +488,39 @@ describe('Der Explorer ist ein Abschnitt DIESER Welt (der dritte Umschalter entf
   });
 });
 
+/**
+ * Welt B · Erlöse — seit dem Verlauf-Rework (P2) eine Abrechnung:
+ * Kennzahlen, Verlauf, Abrechnung, Kontext. Die Aufbau-Tests stehen in
+ * `ErloeseSeite.test.tsx`; hier bleiben die Zusagen, die über die Seite
+ * hinaus gelten.
+ */
 describe('Welt B · Erlöse', () => {
-  it('führt mit dem GEMESSENEN Ergebnis und macht es nachrechenbar (F1)', async () => {
+  const geladen = () => screen.findByRole('group', { name: /^Erlöse · / });
+  const nb = (s: string | null | undefined) => (s ?? '').replace(/ /g, ' ');
+
+  it('führt mit dem GEMESSENEN Ergebnis und zeigt die Steuerung — nie die Zahl gegen „ohne Speicher"', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    const kpis = await geladen();
 
-    // Die eine große Zahl - Vorzeichen als eigenes Zeichen. Sie steht ein
-    // zweites Mal als letzter Balken des Wasserfalls (die Zeile „Ergebnis"),
-    // der die Addition beweist - deshalb wird der Hero gezielt adressiert.
-    expect(
-      await screen.findByText('+ 999,26 €', { selector: '.vp-c-stm-zahl' }),
-    ).toBeInTheDocument();
-    // ... und die Zeilen, aus denen sie entsteht (seit Revision 2 mit
-    // 1-3-Wort-Namen, Konzept §3.12).
-    const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(komposition).toHaveTextContent('Einspeise-Erlös');
-    expect(komposition).toHaveTextContent('1.059,40 €');
-    expect(komposition).toHaveTextContent('Netzbezug');
-    expect(komposition).toHaveTextContent('60,14 €');
-    // Die STEUERUNGS-KARTE ist eine UNTERZEILE, kein weiterer Summand — und
-    // sie trägt seit dem 04.09.2026 `savedSteuerungEur`, nie mehr `savedEur`.
-    expect(screen.getByText('Steuerung an diesem Tag')).toBeInTheDocument();
-    // Der Betrag steht ein zweites Mal in Schritt 3 der Rechenzeilen darunter
-    // (dieselbe Rechnung, zweite Lesehöhe) - deshalb gezielt die Block-Zeile.
-    expect(screen.getByText(/\+ 61,44/, { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
-    expect(komposition).not.toHaveTextContent('61,44');
-    // ⚠ Die Gesamtzahl gegen „ohne Speicher" steht NIRGENDS mehr.
+    // Die eine große Zahl — Vorzeichen als eigenes Zeichen.
+    const haupt = within(kpis).getByText('Ergebnis').closest('.vp-vr-kpi') as HTMLElement;
+    expect(nb(haupt.textContent)).toMatch(/\+ 999,26 €/);
+    // … und die Posten, aus denen sie entsteht (1.059,40 − 60,14 = 999,26).
+    const abrechnung = screen.getByRole('region', { name: 'Abrechnung' });
+    expect(nb(abrechnung.textContent)).toMatch(/\+ 1\.059,40 €/);
+    expect(nb(abrechnung.textContent)).toMatch(/− 60,14 €/);
+    // Die Steuerung trägt `savedSteuerungEur`, nie `savedEur`.
+    const steuerung = within(kpis).getByText('Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+    expect(nb(steuerung.textContent)).toMatch(/\+ 61,44 €/);
     expect(screen.queryByText(/161,44/)).toBeNull();
   });
 
   // Diagnose vp-tagesbild-minus-f3: die gemessene Kasse kennt eingelagerte
-  // Energie nur als entgangenen Erlös. Ohne den zweiten Posten stand über
-  // einem einwandfreien Plan „−4,69 €".
-  it('stellt das BESTANDSKONTO neben die Kasse - und nie in die grosse Zahl', async () => {
+  // Energie nur als entgangenen Erlös — der Bestand steht als eigener Posten
+  // neben der Steuerung, nie in der großen Zahl.
+  it('stellt das BESTANDSKONTO neben die Steuerung — und nie in die Abrechnung', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({
       ...moneyWithData,
@@ -537,63 +533,40 @@ describe('Welt B · Erlöse', () => {
       speicherWertBasis: 'plan',
     });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await geladen();
 
-    // Die Bestandszeile selbst - die Zahl steht seit Ebene 1 auch in der
-    // Planwert-Rechnung der Speicher-Schritte, deshalb gezielt adressiert.
-    const satz = await screen.findByText(/44,2 kWh/, { selector: '.vp-c-sp-bestand span' });
-    expect(satz).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
-    expect(satz).toHaveTextContent('Planwert 8,35 €');
-    // Der Betrag bleibt sichtbar von der gemessenen Kasse getrennt.
-    expect(satz.closest('p')).toHaveTextContent('Kein Abzug');
-    // Die grosse Zahl bleibt die gemessene Kasse.
-    expect(screen.getByText('+ 999,26 €', { selector: '.vp-c-stm-zahl' })).toBeInTheDocument();
-    const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(komposition).not.toHaveTextContent('8,35');
+    const karte = screen.getByRole('region', { name: 'Steuerung' });
+    const zeile = within(karte).getAllByText(/44,2 kWh/)[0].closest('li') as HTMLElement;
+    expect(zeile).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
+    expect(nb(zeile.textContent)).toMatch(/Planwert 8,35 €/);
+    expect(within(zeile).getByText(BESTAND_BADGE)).toBeInTheDocument();
+    expect(nb(screen.getByRole('region', { name: 'Abrechnung' }).textContent)).not.toMatch(/8,35/);
   });
 
-  it('bleibt ohne die Bestandsfelder zeichengleich zu vorher', async () => {
+  it('lässt die Bestandszeile ohne die Bestandsfelder weg', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    // Die BESTANDSZEILE fehlt - der Satz „was jetzt im Speicher liegt" der
-    // Speicher-Schritte (Ebene 1) ist eine andere Aussage und bleibt.
-    // ⚠ Seit P1+P5 wohnt sie als Zeile 3 IM SpeicherBlock; ein Wächter auf dem
-    //   abgelösten Wirt `.vp-erg-bestand` wäre stillschweigend wahr geworden.
-    // ⚠ In Anatomie C hat der Bestand eine EIGENE Zeile in der Speicher-Karte
-    //   (§3.10 (3)); der Planwert wohnt seit E6 in den Schritten und kann sie
-    //   deshalb nicht mehr vortäuschen.
-    expect(document.querySelector('.vp-c-sp-bestand')).toBeNull();
+    await geladen();
     expect(screen.queryByText(BESTAND_BADGE)).not.toBeInTheDocument();
     expect(screen.queryByText(/Folgetag gespeichert/)).not.toBeInTheDocument();
   });
 
-  // P6/E5: die Karte „Was den Preis gemacht hat" ist ENTFALLEN — ihre Zeilen
-  // wohnen in Ebene 2 der Ergebnis-Karte („Preise & Vergütung"). Dieselbe
-  // Preiswahrheit stand zweimal auf der Seite.
-  it('zeigt Geld im Verlauf — und die Preise eine Ebene tiefer statt als Karte', async () => {
+  it('zeigt die Preise im Zeitraum und die Markt-Einordnung', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({ ...moneyWithData, range: 'month' });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await geladen();
 
-    expect(screen.getByRole('heading', { level: 2, name: /Geld im Verlauf/ })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 2, name: 'Was den Preis gemacht hat' })).toBeNull();
-
-    // Der Bezugspreis steht in der Tabelle hinter „Preise & Vergütung".
-    const ebene2 = document.querySelector('details.vp-c-preise') as HTMLDetailsElement;
-    expect(ebene2).toBeTruthy();
-    expect(within(ebene2).getByText('Bezugspreis')).toBeInTheDocument();
-    expect(ebene2.textContent).toMatch(/4,9.ct/);
-
-    // Die EXPORT-Zeilen leben unverändert im Kombinations-Bild eine Karte
-    // höher; die Einordnung trägt dort der Verdikt-Chip.
+    const preise = screen.getByRole('region', { name: 'Preise im Zeitraum' });
+    expect(within(preise).getByText('Bezugspreis')).toBeInTheDocument();
+    expect(nb(preise.textContent)).toMatch(/4,9.ct/);
     expect(screen.getByText('+ 3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
   });
 
   // Der reale Kundenfall vom 05.08.2026: „+ 0,00 € · Marktprämie" ohne ein Wort
   // dazu. Die Zustände selbst sind in `marktpraemie.test.ts` festgenagelt.
-  it('erklärt die Marktprämie-Null - statt sie nackt stehen zu lassen', async () => {
+  it('erklärt die Marktprämie-Null — statt sie nackt stehen zu lassen', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({
       ...moneyWithData,
@@ -603,22 +576,18 @@ describe('Welt B · Erlöse', () => {
       marketValueProvisional: true,
     });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await geladen();
     expect(screen.getByText(/Ihre Vergütung kommt diesen Monat voll aus dem Markt/)).toBeInTheDocument();
     expect(screen.getByText(/die Prämie kann sich noch ändern/)).toBeInTheDocument();
-    // Der Monat ist die Abrechnungseinheit und steht in der Überschrift; die
-    // Tagesansicht sagt zusätzlich, dass die Zahl eine Zurechnung ist.
     expect(screen.getByText('Marktprämie · Juli 2026')).toBeInTheDocument();
     expect(screen.getByText('anteilig — abgerechnet je Monat')).toBeInTheDocument();
   });
 
-  it('zeigt ohne anzulegenden Wert „—" MIT Weg - nie eine erfundene Null', async () => {
+  it('zeigt ohne anzulegenden Wert „—" MIT Weg — nie eine erfundene Null', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await geladen();
     expect(screen.getByText(/Kein anzulegender Wert hinterlegt/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Zu den Einstellungen' })).toHaveAttribute(
       'href',
@@ -626,43 +595,32 @@ describe('Welt B · Erlöse', () => {
     );
   });
 
-  // E6: die Karte „Geplante Speicher-Ersparnis" ist ENTFALLEN — die Zahl
-  // steht als SCHRITT der Speicher-Rechnung, direkt hinter der Rechnung, mit
-  // der sie sich vergleicht. Die TRENNUNG der zwei Abzeichen bleibt.
-  it('trennt die BEWERTETE Zahl von der GEPLANTEN — Fläche gegen Schritt', async () => {
+  it('trennt die BEWERTETE Zahl von der GEPLANTEN — der Planwert steht nur in der Rechnung', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await geladen();
 
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(screen.queryByRole('heading', { level: 2, name: /Geplante Speicher-Ersparnis/ })).toBeNull();
-    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
-    expect(speicher).toBeTruthy();
-    const plan = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
-    // Beide Abzeichen existieren - und zwar an verschiedenen Flächen.
-    expect(screen.getAllByText('Bewertet').length).toBeGreaterThan(0);
+    const karte = screen.getByRole('region', { name: 'Steuerung' });
+    const plan = within(karte).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     expect(plan.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
-    // Die geplante Zahl kommt weiterhin aus der Historie-Antwort — seit dem
-    // 04.09.2026 aus `steuerungPlannedEur`, nie mehr aus
-    // `batterySavingsPlannedEur` (0,42 misst gegen „ohne Speicher").
     expect(plan.textContent).toMatch(/0,18/);
     expect(plan.textContent).not.toMatch(/0,42/);
-    expect(plan.textContent).toMatch(/Mehrwert der Steuerung/);
-    // Der Tages-Nachweis + das Tagesprotokoll bleiben hier.
-    expect(screen.getByTestId('day-chart')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'Tagesprotokoll' })).toBeInTheDocument();
+    expect(plan.closest('details.vp-formel')).toBeTruthy();
     // Die Energiemengen führen NICHT in der Geld-Welt.
     expect(screen.queryByLabelText('Energiemengen im Zeitraum')).toBeNull();
   });
 
-  it('sagt in der Fußkarte, dass sie bewertet und nicht abgerechnet ist', async () => {
+  it('sagt in der Statuszeile, dass sie bewertet und nicht abgerechnet ist', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
     stubMoney(moneyEmpty);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    expect(screen.getByText(/Bewertet, nicht abgerechnet/)).toBeInTheDocument();
+    expect(screen.getByText('Bewertet')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Erklärung: So entstehen die Beträge' }));
+    expect(await screen.findByText(/Bewertet, nicht abgerechnet/)).toBeInTheDocument();
     // Ein leerer Zeitraum nennt seinen Grund, statt eine Null zu zeigen.
     await screen.findByText('Noch kein Ergebnis für diesen Zeitraum');
-    expect(screen.getByText(/noch keine Messwerte/)).toBeInTheDocument();
+    expect(screen.getAllByText(/noch keine Messwerte/).length).toBeGreaterThan(0);
     expect(screen.queryByText('0,00 €')).toBeNull();
   });
 });
@@ -696,7 +654,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     // identischer Abruf derselben Periode.
     mess.unmount();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await screen.findByRole('group', { name: /^Erlöse · / });
     expect(hist.mock.calls.length).toBe(nachErstemAufbau);
 
     // Und zurück - ebenfalls ohne Abruf.
@@ -872,7 +830,7 @@ describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
     vi.spyOn(api, 'history').mockResolvedValue(ohne);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await screen.findByRole('group', { name: /^Erlöse · / });
     expect(screen.queryByText(/Daten ab/)).toBeNull();
     expect(screen.queryByText(/gemessen$/)).toBeNull();
   });

@@ -1,0 +1,211 @@
+/*
+ * Die Bausteine der Erlöse-Seite, die nur sie hat (Konzept „Verlauf-Rework",
+ * Paket P2): die ABRECHNUNG (Menge × Ø Preis = Betrag, darunter der Strich),
+ * die Preis-Liste und der Lastspitzen-Balken. Alles Übrige steht im geteilten
+ * Rahmen `VerlaufRahmen.css`; Schrift, Maßstab und Farben sind dieselben
+ * Token (Wächter: `verlaufSkala.test.ts`, `verlaufMobil.test.ts`).
+ */
+
+/* --- Abrechnung ------------------------------------------------------------ */
+.vp-vr-bill {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-bill thead th {
+  padding: 0 0 var(--vp-c-space-2);
+  border-bottom: 1px solid var(--vp-border);
+  color: var(--vp-text-gray);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  text-align: left;
+}
+.vp-vr-bill thead th:last-child,
+.vp-vr-bill td {
+  text-align: right;
+}
+.vp-vr-bill tbody th,
+.vp-vr-bill td {
+  padding: var(--vp-c-space-3) 0;
+  border-bottom: 1px solid var(--vp-chart-grid);
+  vertical-align: top;
+}
+.vp-vr-bill tbody th {
+  font-weight: var(--vp-c-fw-400);
+  text-align: left;
+  padding-right: var(--vp-c-space-3);
+}
+.vp-vr-bill td {
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-dark);
+  white-space: nowrap;
+}
+.vp-vr-bill td.minus {
+  color: var(--vp-c-destructive);
+}
+.vp-vr-bill td.leer {
+  color: var(--vp-text-gray);
+}
+.vp-vr-bill-pos {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vp-text-dark);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+}
+.vp-vr-bill-unter {
+  display: block;
+  margin-top: 2px;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+.vp-vr-bill-hinweis {
+  display: block;
+  margin-top: 2px;
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-vr-bill-hinweis .vp-vr-link {
+  margin-left: 4px;
+}
+.vp-vr-bill .summe th,
+.vp-vr-bill .summe td {
+  border-top: 2px solid var(--vp-text-dark);
+  border-bottom: 0;
+  padding-top: var(--vp-c-space-3);
+}
+.vp-vr-bill .summe th {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-text-dark);
+}
+.vp-vr-bill .summe td {
+  font-size: var(--vp-c-fs-20);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-navy);
+}
+.vp-vr-bill .summe td.minus {
+  color: var(--vp-c-destructive);
+}
+.vp-vr-bill .davon th,
+.vp-vr-bill .davon td {
+  padding-top: 0;
+  border-bottom: 0;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-400);
+}
+.vp-vr-bill .davon th {
+  padding-left: var(--vp-c-space-3);
+}
+.vp-vr-bill-extra {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  padding-top: var(--vp-c-space-3);
+  border-top: 1px dashed var(--vp-border);
+}
+.vp-vr-bill-extra-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-vr-bill-extra-name > span:first-child {
+  font-weight: var(--vp-c-fw-600);
+}
+.vp-vr-bill-extra-name > span + span {
+  color: var(--vp-text-gray);
+}
+.vp-vr-bill-extra-wert {
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Preise (Name über Wert — die Werte sind oft ein halber Satz) ---------- */
+.vp-vr-liste {
+  display: grid;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+}
+.vp-vr-liste > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-vr-liste dt {
+  color: var(--vp-text-gray);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-vr-liste dd {
+  margin: 0;
+  color: var(--vp-text-dark);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+.vp-vr-begriffe {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+}
+.vp-vr-begriffe dt {
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-vr-begriffe dd {
+  margin: 0;
+}
+
+/* --- Steuerung ------------------------------------------------------------- */
+.vp-vr-zeilen {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-gray);
+}
+.vp-vr-zeilen li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+}
+
+/* --- Lastspitze: zwei Balken auf einer Skala ------------------------------ */
+.vp-vr-bullet {
+  display: grid;
+  gap: 6px;
+}
+.vp-vr-bullet-zeile {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-gray);
+}
+.vp-vr-bullet-zeile b {
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-c-fw-600);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-bullet-spur {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--vp-neutral-soft);
+  overflow: hidden;
+}
+.vp-vr-bullet-spur > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}

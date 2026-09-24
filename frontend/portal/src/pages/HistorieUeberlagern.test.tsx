@@ -21,9 +21,6 @@ import { api, type History, type Site, type SiteEarnings } from '../api';
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
 
 /** Das Diagramm wird durch eine Attrappe ersetzt, die ihre Prop-Werte zeigt. */
-vi.mock('../components/Tagesbild', () => ({
-  Tagesbild: () => <div data-testid="day-chart" />,
-}));
 vi.mock('../HistoryChart', () => ({
   HistoryEnergieChart: (p: {
     vergleich?: History | null;
@@ -37,10 +34,13 @@ vi.mock('../HistoryChart', () => ({
   },
 }));
 
-vi.mock('../components/ErloeseVerlaufChart', () => ({
-  ErloeseVerlaufChart: (p: { vergleich?: unknown[] | null; legende?: { satz: string } | null }) => (
-    <div data-testid="geld-chart" data-vergleich={p.vergleich?.length ? 'ja' : 'nein'}>
-      {p.legende?.satz ?? ''}
+vi.mock('../components/erloese/ErloeseChart', () => ({
+  ErloeseChart: (p: { d: { vergleichNetto: (number | null)[] | null }; vergleichName: string | null }) => (
+    <div
+      data-testid="geld-chart"
+      data-vergleich={p.d.vergleichNetto?.some((v) => v != null) ? 'ja' : 'nein'}
+    >
+      {p.vergleichName ?? ''}
     </div>
   ),
 }));
@@ -329,14 +329,27 @@ describe('F8 · dieselbe Geste in der Erlöse-Welt', () => {
 
   it('überlagert den Geld-Verlauf mit derselben Wahl', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(history());
-    vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
+    // Die Vergleichsperiode trägt IHRE Tage — überlagert wird nach Position im
+    // Zeitraum (1. Juni neben 1. Juli), nie ein Datum auf ein fremdes gelegt.
+    vi.spyOn(api, 'siteEarnings').mockImplementation(async (_id, _r, at) =>
+      at === '2026-06-01'
+        ? {
+            ...money,
+            from: '2026-06-01T00:00:00Z',
+            to: '2026-07-01T00:00:00Z',
+            series: money.series.map((b) => ({ ...b, start: b.start.replace('2026-07-', '2026-06-') })),
+          }
+        : money,
+    );
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
     await oeffneVergleich();
     fireEvent.click(await screen.findByRole('button', { name: 'Juni 2026' }));
     const chart = await screen.findByTestId('geld-chart');
     await waitFor(() => expect(chart).toHaveAttribute('data-vergleich', 'ja'));
-    expect(chart).toHaveTextContent('blass gestrichelt: Juni 2026');
+    expect(chart).toHaveTextContent('Juni 2026');
+    // Die Legende nennt die überlagerte Reihe beim Namen.
+    expect(screen.getByText('Ergebnis Juni 2026')).toBeInTheDocument();
   });
 
   it('sagt auch hier eine Vergleichsperiode ohne bewertete Viertelstunden', async () => {

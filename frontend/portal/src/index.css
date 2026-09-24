@@ -213,6 +213,16 @@
      und liest sich als das, was es ist: die Bezugsgröße, nicht die zweite
      Hauptreihe. */
   --vp-c-chart-price-2: #475569; /* = --vp-c-muted-fg · 7,58:1 */
+  /* Die KOSTEN-Reihe der Geld-Charts (Verlauf-Rework P2, E6): Netzbezug in
+     Euro, unter der Nulllinie.
+     ⚠ Bewusst NICHT `--vp-c-destructive` (#B91C1C): neben dem Eigenverbrauch
+     in Erzeugungs-Orange misst es nur ΔE 13,3 bei Normalsicht — unter der
+     Grenze 15 des dataviz-Validators, und nachts liegen beide Säulen direkt
+     an der Nulllinie aneinander. Das Weinrot des Hauses trennt mit ΔE 22,5
+     (Normalsicht) und ΔE ≥ 8,2 (Farbfehlsichtigkeit) von Orange UND Petrol.
+     Der Betrag im Text bleibt `--vp-c-destructive` — Text trägt Text-Token,
+     nie die Reihenfarbe. */
+  --vp-c-chart-kosten: #8b1e3f; /* = --vp-chart-battdischarge · 9,00:1 */
 }
 
 * {

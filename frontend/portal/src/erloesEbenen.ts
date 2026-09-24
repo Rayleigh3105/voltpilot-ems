@@ -366,6 +366,16 @@ const GLOSSAR: Record<string, GlossarEintrag> = {
   },
 };
 
+/**
+ * Ein Begriff des Glossars — für die ⓘ der Verlauf-Seiten, damit die
+ * Erklärung eines Wortes an JEDER Stelle derselbe Satz ist.
+ */
+export function erloesBegriff(
+  key: 'boerse' | 'praemie' | 'monatsmarktwert' | 'anzulegender' | 'feste' | 'eigenverbrauch' | 'netzbezug' | 'ergebnis' | 'planwert' | 'zwischenstand',
+): GlossarEintrag {
+  return GLOSSAR[key];
+}
+
 /** Der E12-Satz: warum Einspeisen bei 0,0 ct richtig sein kann. */
 export function nullCtSatz(satzCt: number): string {
   return (

@@ -695,12 +695,12 @@ const CHART_FILES = [
   'PriceHistoryChart.tsx',
   'ForecastQualityChart.tsx',
   'components/VerlaufChart.tsx',
-  'components/ErloeseVerlaufChart.tsx',
   'components/PeakHistoryChart.tsx',
-  // Das Tagesbild (Stufe 3) - seine Beschriftungen leben in der reinen Regel,
-  // also steht die Regel-Datei hier gleichberechtigt neben dem Render.
-  'components/Tagesbild.tsx',
-  'tagesbild.ts',
+  // Das Erlöse-Diagramm des Verlauf-Reworks (P2) — seine Beschriftungen leben
+  // in der reinen Ableitung, also steht sie hier neben dem Render.
+  'components/erloese/ErloeseChart.tsx',
+  'erloeseSeite.ts',
+  'verlaufRaster.ts',
 ];
 
 const CHART_FORBIDDEN: Array<{ re: RegExp; why: string }> = [

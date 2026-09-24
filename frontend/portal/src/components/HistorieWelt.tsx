@@ -642,6 +642,7 @@ export function ZeitLeiste({
   vergleich,
   onVergleich,
   vergleichHinweis,
+  abdeckungInStatus = false,
   now = new Date(),
 }: {
   range: HistoryRange;
@@ -650,6 +651,12 @@ export function ZeitLeiste({
   onAnchor: (d: Date) => void;
   /** Datenabdeckung des gezeigten Zeitraums (F4) — optional. */
   coverage?: HistoryCoverage | null;
+  /**
+   * Die Seite nennt die Datenlage selbst in ihrer Statuszeile (Verlauf-Rework
+   * P1) — dann zeigt die Leiste sie nicht noch einmal. `coverage` bleibt
+   * trotzdem nötig: sie begrenzt Sprungfeld und Vorjahres-Vergleich.
+   */
+  abdeckungInStatus?: boolean;
   /** Die Abdeckung gehört noch zur vorherigen Periode (P5: gedimmt). */
   stale?: boolean;
   /** F8: der gewählte Vergleichs-Modus — ohne `onVergleich` gibt es keinen Schalter. */
@@ -760,7 +767,7 @@ export function ZeitLeiste({
                 />
               </div>
               {schalter}
-              <AbdeckungZeile coverage={coverage} stale={stale} />
+              {!abdeckungInStatus && <AbdeckungZeile coverage={coverage} stale={stale} />}
             </>
           )}
         </ZeitBlatt>
@@ -779,7 +786,8 @@ export function ZeitLeiste({
    * Telefon: eine überlagerte Reihe, deren Schalter im Popover wohnt, hätte
    * sonst niemand bestellt.
    */
-  const hatPopInhalt = streifen || schalter != null || abdeckungView(coverage) != null;
+  const hatPopInhalt =
+    streifen || schalter != null || (!abdeckungInStatus && abdeckungView(coverage) != null);
 
   return (
     <ZeitLeisteRahmen
@@ -827,7 +835,7 @@ export function ZeitLeiste({
             />
           )}
           {schalter}
-          <AbdeckungZeile coverage={coverage} stale={stale} />
+          {!abdeckungInStatus && <AbdeckungZeile coverage={coverage} stale={stale} />}
         </ZeitPopover>
       )}
     </ZeitLeisteRahmen>

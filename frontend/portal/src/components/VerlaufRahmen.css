@@ -1,0 +1,727 @@
+/*
+ * Der RAHMEN der Verlauf-Reiter Energie · Erlöse · Messwerte (Konzept
+ * „Verlauf-Rework", Paket P1, Entscheide E5/E6 = A).
+ *
+ * Eine Statuszeile statt Herkunfts-Abzeichen an jeder Karte, EINE
+ * Kennzahlenzeile, ruhige Karten mit Titel links und Umschaltern rechts,
+ * Legenden als Bedienung, Tabellen als Zwilling der Diagramme.
+ *
+ * SCHRIFT: die Haus-Schriften Inter (Text) und Inter Tight (Zahlen). Der
+ * Rahmen setzt dafür das Verlauf-Token `--vp-c-font` in SEINEM Baum auf die
+ * Haus-Schrift um — so sprechen alle Bausteine darin (Chips, Zeit-Leiste,
+ * Zustände) dieselbe Schrift, und der Skala-Wächter (`verlaufSkala.test.ts`)
+ * sieht weiter nur das eine Token. Schale und übrige Bereiche bleiben
+ * unberührt.
+ *
+ * TON: jede Farbe ist ein Token aus `designsystem/tokens/` oder der
+ * Verlauf-Schicht in `index.css`; Zahlen stehen in Navy, Bedienung in
+ * `--vp-action`. Maßstab und Abstände: `--vp-c-fs-*` / `--vp-c-space-*`.
+ *
+ * TELEFON (≤ 720 px): nichts wird abgeschnitten. Etiketten und Unterzeilen
+ * brechen um, Zahlen behalten ihre Zeile, Tabellen scrollen in ihrem eigenen
+ * Rahmen, und jede Bedienung trifft man auf mindestens 44 px
+ * (`verlaufMobil.test.ts`).
+ */
+
+.vp-vr {
+  --vp-c-font: var(--vp-font-body);
+  --vp-c-font-heading: var(--vp-font-heading);
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-text-dark);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-vr-body {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+.vp-vr-body > *,
+.vp-vr-row > *,
+.vp-vr-row3 > *,
+.vp-vr-col > * {
+  min-width: 0;
+}
+.vp-vr-body.alt {
+  opacity: 0.55;
+  transition: opacity var(--vp-motion-base);
+}
+
+/* --- Statuszeile ---------------------------------------------------------- */
+.vp-vr-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-1) var(--vp-c-space-2);
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-gray);
+}
+.vp-vr-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-flow-batt);
+  flex-shrink: 0;
+}
+.vp-vr-status-dot.laeuft {
+  background: var(--vp-primary-deep);
+}
+.vp-vr-status-dot.alt {
+  background: var(--vp-gray);
+}
+.vp-vr-status b {
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-c-fw-600);
+}
+.vp-vr-status-sep {
+  color: var(--vp-gray);
+}
+
+/* --- Kennzahlen ----------------------------------------------------------- */
+/* Die 1-px-Fugen zwischen den Kacheln sind der Grund des Rasters: so trennt
+   eine Linie jede Kachel in JEDER Aufteilung, ohne Rand-Regeln je Spalte. */
+.vp-vr-kpis {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(var(--vp-vr-kpi-n, 4), minmax(0, 1fr));
+  gap: 1px;
+  background: var(--vp-border);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  overflow: hidden;
+}
+.vp-vr-kpis.gleich {
+  grid-template-columns: repeat(var(--vp-vr-kpi-n, 5), minmax(0, 1fr));
+}
+.vp-vr-kpi {
+  background: var(--vp-surface);
+  padding: var(--vp-c-space-4);
+  display: grid;
+  gap: var(--vp-c-space-1);
+  align-content: start;
+  min-width: 0;
+}
+.vp-vr-kpi.haupt {
+  padding-inline: var(--vp-c-space-5);
+}
+.vp-vr-kpi-l {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-gray);
+}
+.vp-vr-kpi-l > span:not(.vp-vr-key) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-vr-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.vp-vr-key.linie {
+  width: 14px;
+  height: 3px;
+}
+.vp-vr-key.punkt {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.vp-vr-kpi-v {
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: var(--vp-tracking-tight);
+  color: var(--vp-navy);
+  line-height: var(--vp-c-lh-title);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-vr-kpi.haupt .vp-vr-kpi-v {
+  font-size: var(--vp-c-fs-48);
+  line-height: var(--vp-c-lh-tight);
+  letter-spacing: var(--vp-tracking-display);
+}
+.vp-vr-kpi-v.minus {
+  color: var(--vp-c-destructive);
+}
+.vp-vr-kpi-v.leer {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-c-fw-600);
+}
+.vp-vr-kpi-s {
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-gray);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.vp-vr-kpi-s b,
+.vp-vr-dlt {
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-c-fw-600);
+}
+
+/* --- Zeilen und Karten ---------------------------------------------------- */
+.vp-vr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
+  gap: var(--vp-c-space-4);
+  align-items: start;
+}
+.vp-vr-col {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  align-content: start;
+}
+.vp-vr-row3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--vp-c-space-4);
+  align-items: start;
+}
+.vp-vr-card {
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  padding: var(--vp-c-space-4) var(--vp-c-space-5);
+  display: grid;
+  gap: var(--vp-c-space-3);
+  align-content: start;
+  min-width: 0;
+}
+.vp-vr-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vp-vr-card-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px var(--vp-c-space-2);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-title);
+  color: var(--vp-text-dark);
+}
+.vp-vr-card-title small {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-400);
+  color: var(--vp-text-gray);
+}
+.vp-vr-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+}
+.vp-vr-card-value {
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-navy);
+  letter-spacing: var(--vp-tracking-tight);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-vr-card-value.minus {
+  color: var(--vp-c-destructive);
+}
+.vp-vr-card-value.leer {
+  color: var(--vp-text-gray);
+}
+.vp-vr-foot {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-gray);
+}
+.vp-vr-empty {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-gray);
+}
+
+/* --- Textlinks und Hinweise ----------------------------------------------- */
+/* Ein Textlink weitet seine Trefferfläche über ein Pseudo-Element auf 44 px
+   (das Overlay-Muster aus `ErgebnisKarte.css`), statt die Zeile aufzublähen. */
+.vp-vr-link {
+  position: relative;
+  color: var(--vp-action);
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.vp-vr-link::before {
+  content: '';
+  position: absolute;
+  inset: -12px -4px;
+}
+.vp-vr-textbtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-action);
+  cursor: pointer;
+}
+.vp-vr-textbtn::before {
+  content: '';
+  position: absolute;
+  inset: -12px -4px;
+}
+.vp-vr-hinweis {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-warn-fg);
+}
+
+/* --- Umschalter ----------------------------------------------------------- */
+.vp-vr-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-neutral-soft);
+}
+.vp-vr-seg > button {
+  position: relative;
+  border: 0;
+  background: none;
+  border-radius: 8px;
+  min-height: 32px;
+  padding: 0 var(--vp-c-space-3);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--vp-motion-chrome);
+}
+/* 32 px Knopf + 2 × 6 px Trefferrand = 44 px — ohne die Leiste aufzublähen. */
+.vp-vr-seg > button::before {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
+.vp-vr-seg > button:hover {
+  color: var(--vp-text-dark);
+}
+.vp-vr-seg > button.is-on {
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  box-shadow: var(--vp-shadow-sm), 0 0 0 1px var(--vp-border);
+}
+
+/* --- Legende (zugleich Bedienung) ---------------------------------------- */
+.vp-vr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-1) var(--vp-c-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-vr-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+.vp-vr-legend button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--vp-text-dark);
+  cursor: pointer;
+}
+.vp-vr-legend button::before {
+  content: '';
+  position: absolute;
+  inset: -6px -4px;
+}
+.vp-vr-legend button.is-off {
+  color: var(--vp-text-gray);
+  text-decoration: line-through;
+}
+.vp-vr-legend button.is-off .vp-vr-key {
+  opacity: 0.3;
+}
+.vp-vr-legend .vp-vr-key.punkt {
+  box-shadow: 0 0 0 2px var(--vp-surface);
+}
+
+/* --- Diagrammfläche ------------------------------------------------------- */
+.vp-vr-chart {
+  position: relative;
+  width: 100%;
+  height: 300px;
+}
+.vp-vr-chart.flach {
+  height: 220px;
+}
+.vp-vr-chart.hoch {
+  height: 400px;
+}
+.vp-vr-chart.klickbar {
+  min-height: 200px;
+  cursor: pointer;
+}
+
+/* --- Tabellen ------------------------------------------------------------- */
+.vp-vr-tablewrap {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.vp-vr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.vp-vr-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--vp-bg-light);
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-c-fw-600);
+  font-size: var(--vp-c-fs-12);
+  text-align: right;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  border-bottom: 1px solid var(--vp-border);
+  white-space: nowrap;
+}
+.vp-vr-table td {
+  text-align: right;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  border-bottom: 1px solid var(--vp-chart-grid);
+  white-space: nowrap;
+}
+.vp-vr-table tbody th {
+  position: sticky;
+  left: 0;
+  top: auto;
+  z-index: 1;
+  text-align: left;
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-400);
+  border-bottom: 1px solid var(--vp-chart-grid);
+}
+.vp-vr-table thead th:first-child {
+  left: 0;
+  z-index: 2;
+  text-align: left;
+}
+/* Der Zeitraum einer Zeile öffnet ihn (Tag bzw. Monat) — am Telefon der Weg in
+   die Zelle, weil ein Antippen der Säule dort den Tooltip öffnet. */
+.vp-vr-table tbody th button {
+  position: relative;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--vp-action);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.vp-vr-table tbody th button::before {
+  content: '';
+  position: absolute;
+  inset: -12px -8px;
+}
+.vp-vr-table .minus {
+  color: var(--vp-c-destructive);
+}
+.vp-vr-table .leer {
+  color: var(--vp-text-gray);
+  text-align: left;
+}
+.vp-vr-table tfoot th,
+.vp-vr-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: var(--vp-bg-light);
+  color: var(--vp-text-dark);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  border-top: 1px solid var(--vp-border);
+  border-bottom: 0;
+}
+.vp-vr-table tfoot th {
+  left: 0;
+  z-index: 2;
+  text-align: left;
+}
+.vp-vr-tablefoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2) var(--vp-c-space-4);
+}
+
+/* --- Kennwert-Listen (Name … Wert) ----------------------------------------- */
+.vp-vr-kv {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+}
+.vp-vr-kv > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-vr-kv dt {
+  color: var(--vp-text-gray);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.vp-vr-kv dd {
+  margin: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: var(--vp-c-fw-600);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* --- Rechner mittlerer Breite -------------------------------------------- */
+@media (max-width: 1180px) {
+  .vp-vr-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vp-vr-kpis {
+    grid-template-columns: repeat(var(--vp-vr-kpi-n, 4), minmax(0, 1fr));
+  }
+  .vp-vr-kpi.haupt {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 721px) and (max-width: 960px) {
+  .vp-vr-kpis.gleich {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .vp-vr-kpis.gleich > .vp-vr-kpi:last-child:nth-child(3n + 2) {
+    grid-column: span 2;
+  }
+}
+
+/* --- Telefon --------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .vp-vr,
+  .vp-vr-body {
+    gap: var(--vp-c-space-3);
+  }
+  /* Am Telefon werden die Kennzahlen eine LISTE wie auf einem Kontoauszug:
+     Name links, Betrag rechts, Menge darunter. Zwei schmale Spalten hätten
+     „Eigenverbrauch" mitten im Wort gebrochen. Die Hauptzahl bleibt oben. */
+  .vp-vr-kpis,
+  .vp-vr-kpis.gleich {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vp-vr-kpi,
+  .vp-vr-kpi.haupt {
+    padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  }
+  .vp-vr-kpi:not(.haupt) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--vp-c-space-3);
+    row-gap: 2px;
+    align-items: center;
+  }
+  .vp-vr-kpi:not(.haupt) > .vp-vr-kpi-l {
+    grid-column: 1;
+    grid-row: 1;
+    color: var(--vp-text-dark);
+    font-size: var(--vp-c-fs-16);
+  }
+  .vp-vr-kpi:not(.haupt) > .vp-vr-kpi-v {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    font-size: var(--vp-c-fs-20);
+    text-align: right;
+  }
+  .vp-vr-kpi:not(.haupt) > .vp-vr-kpi-s {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .vp-vr-kpi.haupt .vp-vr-kpi-v {
+    font-size: var(--vp-c-fs-hero-phone);
+  }
+  .vp-vr-card {
+    padding: var(--vp-c-space-4);
+  }
+  .vp-vr-card-head {
+    align-items: flex-start;
+  }
+  .vp-vr-card-actions {
+    width: 100%;
+  }
+  .vp-vr-seg > button {
+    min-height: 36px;
+  }
+  .vp-vr-legend {
+    gap: 0 var(--vp-c-space-4);
+  }
+  .vp-vr-legend li {
+    min-height: 36px;
+  }
+  .vp-vr-legend button {
+    min-height: 36px;
+  }
+  .vp-vr-row3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vp-vr-chart {
+    height: 260px;
+  }
+  /* Tabellen werden am Telefon ein Stapel kleiner Blöcke: Zeitraum und
+     Hauptwert in der ersten Zeile, die übrigen Werte mit Namen darunter —
+     nichts scrollt seitlich, jede Zahl steht neben ihrem Namen. */
+  .vp-vr-tablewrap:has(.stapelbar) {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+  .vp-vr-table.stapelbar thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .vp-vr-table.stapelbar,
+  .vp-vr-table.stapelbar tbody,
+  .vp-vr-table.stapelbar tfoot {
+    display: block;
+  }
+  .vp-vr-table.stapelbar tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--vp-c-space-3);
+    row-gap: 2px;
+    padding: var(--vp-c-space-3) 0;
+    border-bottom: 1px solid var(--vp-chart-grid);
+  }
+  .vp-vr-table.stapelbar tr::after {
+    content: '';
+    order: 1;
+    flex-basis: 100%;
+    height: 0;
+  }
+  .vp-vr-table.stapelbar th,
+  .vp-vr-table.stapelbar td,
+  .vp-vr-table.stapelbar tfoot th,
+  .vp-vr-table.stapelbar tfoot td {
+    position: static;
+    padding: 0;
+    border: 0;
+    background: none;
+    white-space: normal;
+  }
+  .vp-vr-table.stapelbar tbody th,
+  .vp-vr-table.stapelbar tfoot th {
+    order: 0;
+    flex: 1 1 auto;
+    font-size: var(--vp-c-fs-16);
+    font-weight: var(--vp-c-fw-600);
+  }
+  .vp-vr-table.stapelbar td {
+    order: 2;
+    text-align: left;
+    color: var(--vp-text-gray);
+    font-size: var(--vp-c-fs-14);
+  }
+  .vp-vr-table.stapelbar td::before {
+    content: attr(data-label) ' ';
+    color: var(--vp-text-gray);
+  }
+  .vp-vr-table.stapelbar td.minus {
+    color: var(--vp-c-destructive);
+  }
+  .vp-vr-table.stapelbar td.haupt {
+    order: 0;
+    margin-left: auto;
+    color: var(--vp-text-dark);
+    font-size: var(--vp-c-fs-16);
+    font-weight: var(--vp-c-fw-700);
+  }
+  .vp-vr-table.stapelbar td.haupt.minus {
+    color: var(--vp-c-destructive);
+  }
+  .vp-vr-table.stapelbar td.haupt::before {
+    content: none;
+  }
+  .vp-vr-table.stapelbar td.leer {
+    order: 2;
+    flex-basis: 100%;
+  }
+  .vp-vr-table.stapelbar td.leer::before {
+    content: none;
+  }
+  .vp-vr-table.stapelbar tfoot tr {
+    border-top: 2px solid var(--vp-text-dark);
+    border-bottom: 0;
+  }
+  .vp-vr-chart.flach {
+    height: 200px;
+  }
+  .vp-vr-chart.hoch {
+    height: 360px;
+  }
+}
