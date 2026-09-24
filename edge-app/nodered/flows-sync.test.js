@@ -2007,6 +2007,74 @@ test('the inline native planner refuses like the module, with the same German re
   assert.notStrictEqual(undated.mode, 'native', 'and neither does an undated one');
 });
 
+// K5: the Deye CHARGE side. The candidates are ONE module embedded verbatim
+// (deye-charge-side.js), so the pin is (1) the embed itself and (2) the
+// surrounding glue - which candidate, which reads, which refusal - agreeing with
+// inverter-control-routing.js deyeChargeSideHandOver.
+test('K5: the control plan node embeds the current deye-charge-side.js verbatim', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'deye-charge-side.js'), 'utf8');
+  assert.ok(byId['auto-control-plan'].func.includes(src),
+    'flows.json auto-control-plan is out of sync with deye-charge-side.js - re-run build-flows.js');
+  const facts = JSON.stringify(require('./inverter-control-routing').DEYE_CHARGE_SIDE_FACTS);
+  assert.ok(byId['auto-control-plan'].func.includes('var __DCSF = ' + facts + ';'),
+    'the register facts come straight from the routing module');
+});
+
+function k5OwnBlock(workMode) {
+  const spec = require('./deye-charge-side').deyeOwnConfigBlockSpec(
+    require('./inverter-control-routing').DEYE_CONTROL_REG.hybrid_3p);
+  const b = new Array(spec.count).fill(0);
+  b[0] = 1; b[1] = workMode; b[4] = 1; b[5] = 0x00ff; // Load First, Solar Sell, ToU on
+  for (let i = 0; i < 6; i++) { b[13 + i] = 3000; b[25 + i] = 5; } // power, target SoC
+  return b;
+}
+
+test('K5: inline and module agree on the Deye charge side - pilot bytes, reads, refusals, report', () => {
+  const { nativeSelfConsumption, nativeCapabilityReport } = require('./inverter-control-routing');
+  const cfg = { ...DEYE_NATIVE_CFG, own_config: k5OwnBlock(0), now_min: 600 };
+  const both = (spExtra, cfgIn = cfg) => {
+    const sp = deyeNativeSetpoint({ battery_mode: 'native_window', battery_native_duty: undefined,
+      battery_window_min_kw: -30, battery_window_max_kw: 30, grid_charge_allowed: false, ...spExtra });
+    const inline = deyeNativePlan(sp, { cfg: cfgIn });
+    const module_ = nativeSelfConsumption(DEYE_NATIVE_SEL, {
+      controlEnabled: true, deviceCertified: true, solarOnlyCharge: true,
+      deyeSticky: deyeNativeSticky(), deyeOwnConfig: cfgIn, effectiveFloorSocPct: 10,
+      nativeMode: 'native_window', intent: sp.battery_native_intent,
+      windowMinKw: sp.battery_window_min_kw, windowMaxKw: sp.battery_window_max_kw,
+      pilot: sp.native_pilot,
+    });
+    return { inline, module_ };
+  };
+  const bytes = (p) => (p.writes || []).map((w) => [w.addr, w.value]);
+  // 1. Pilot grid_zero: the same five writes, the same proofs, the same reads.
+  let r = both({ battery_native_intent: 'self_consumption', native_pilot: { candidate: 'grid_zero', intent: 'self_consumption' } });
+  assert.strictEqual(r.module_.writes.length, 5, 'module: ' + r.module_.reason);
+  assert.strictEqual(r.inline.mode, 'native');
+  assert.deepStrictEqual(bytes(r.inline), bytes(r.module_));
+  assert.deepStrictEqual(r.inline.readbacks.map((x) => [x.addr, x.expect]), r.module_.readbacks.map((x) => [x.addr, x.expect]));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r.inline.nativePreconditions)), JSON.parse(JSON.stringify(r.module_.preconditions)));
+  assert.strictEqual(r.inline.heartbeat, true); assert.strictEqual(r.module_.heartbeat, true);
+  assert.strictEqual(r.inline.curtailsOwnPv, true); assert.strictEqual(r.module_.curtailsOwnPv, true);
+  // 2. Pilot own_config on the Herzogau configuration: the same German refusal.
+  r = both({ battery_native_intent: 'self_consumption', native_pilot: { candidate: 'own_config', intent: 'self_consumption' } });
+  assert.match(r.module_.reason, /Selling First/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+  assert.ok(r.inline.nativePreconditions.some((p) => p.role === 'own_config' && p.count === 37),
+    'the refused plan still carries the block read (it is what fills the cache)');
+  // 3. No pilot, production catalog: nothing released, both say so.
+  r = both({ battery_native_intent: 'surplus_charge', battery_window_min_kw: 0 });
+  assert.match(r.module_.reason, /Prüfstand/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+  // 4. The report: E-down only, on both sides.
+  const inlineCaps = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: deyeNativeSetpoint({ battery_mode: 'setpoint' }) },
+    flow: { inverter_config: DEYE_NATIVE_SEL, ['deye_path:10.0.0.8:8899']: deyeNativeSticky() },
+  }).msg.nativeCapabilities;
+  const moduleCaps = nativeCapabilityReport(DEYE_NATIVE_SEL, { deviceCertified: true, solarOnlyCharge: false, deyeSticky: deyeNativeSticky() });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(inlineCaps)), moduleCaps);
+  assert.deepStrictEqual(moduleCaps, { intents: ['cover_load'], window: false, persistent: false });
+});
+
 test('the inline native planner refuses every tier it does not cover', () => {
   const sp = {
     battery_setpoint_kw: -7, control_enabled: true, device_certified: true,

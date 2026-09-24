@@ -788,3 +788,24 @@ nimmt er sie für den Slot zurück); den Beleg im Eigenmodus ersetzt sie nie.
 dass `1100` in beiden Zuständen wirklich unterscheidet (9) und der EEG-Beleg (10) –
 am PILOTEN, im ersten Decken-Slot. Die Beobachtungs-Checkliste dafür steht in
 [`UNPLANNED-LOAD-BENCH.md`](UNPLANNED-LOAD-BENCH.md) „Pilot-Freigabe 2026-08-26".
+
+### Die Ladeseite (K5, 24.09.2026) – vorbereitet, nicht freigegeben
+
+Für nur Überschuss laden (E↑) und Eigenverbrauch (E) gibt es zwei Übergabe-Kandidaten in
+[`deye-charge-side.js`](deye-charge-side.js). Das Modul ist genau einmal vorhanden: Der Plan-Knoten
+bettet es wörtlich ein. Jeder Kandidat braucht seinen **eigenen** Zertifikat-Eintrag.
+
+- **`grid_zero`** („netzseitig Ziel 0“): `1101 ← 60`, `1109 ← 0` (Neutralschritt vor dem
+  Seitenwechsel), `1104 ← 2`, `1115 ← 999`, `1100 ← 1` zuletzt. Danach hält der Herzschlag
+  (`1101`/`1109`/`1100` je Takt) die Fernsteuerung wach. Die Box stirbt → Totmann 60 s.
+  Nebenwirkung: Bei vollem Speicher drosselt der Deye seine eigene PV. Die Box meldet das als
+  `native.curtails_own_pv`, der Core nimmt zurück (`pv_abgeregelt`).
+- **`own_config`** („Eigenkonfiguration“): `1100 ← 0` wie E↓, aber mit **erweiterter
+  Vorbedingung**. Ein Blocklesen `0x008D..0x00B1` liefert Arbeitsmodus, Energiemuster, Solar Sell
+  und das **gerade gültige** Zeitfenster-Programm. Die Box schreibt davon nichts. Passt die
+  Einstellung nicht, verweigert sie mit deutschem Grund. An Herzogau („Selling First“) wird E
+  verweigert.
+
+Bis ein Pilotfenster einen Kandidaten belegt, meldet der Deye-Executor nur `cover_load` und die
+Ladeseite bleibt gedämpft. Drehbuch für die betreuten Fenster (höchstens 15 min, der Captain löst
+jedes aus): [`DEYE-LADESEITE-PILOT.md`](DEYE-LADESEITE-PILOT.md).

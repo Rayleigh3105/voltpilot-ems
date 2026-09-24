@@ -18,6 +18,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
@@ -169,6 +170,13 @@ func (f *fakeActiveControl) ActiveControl() cloud.ActiveControl {
 // fakeCalibration is an in-memory CalibrationController for the HTTP-layer test:
 // it records the calls the routes make and returns a configurable snapshot/error.
 type fakeCalibration struct {
+	// K5 Pilotfenster der Deye-Ladeseite.
+	pilotView   nativepilot.View
+	pilotErr    error
+	pilotStarts int
+	pilotAborts int
+	lastPilot   nativepilot.Request
+
 	snap    calibration.Snapshot
 	armErr  error
 	testErr error
@@ -230,6 +238,16 @@ func (f *fakeCalibration) GridTestStart(mode string) (curtailcal.GridView, error
 func (f *fakeCalibration) GridTestAbort() curtailcal.GridView {
 	f.gridAborts++
 	return f.gridView
+}
+func (f *fakeCalibration) NativePilotSnapshot() nativepilot.View { return f.pilotView }
+func (f *fakeCalibration) NativePilotStart(req nativepilot.Request) (nativepilot.View, error) {
+	f.lastPilot = req
+	f.pilotStarts++
+	return f.pilotView, f.pilotErr
+}
+func (f *fakeCalibration) NativePilotAbort() nativepilot.View {
+	f.pilotAborts++
+	return f.pilotView
 }
 func (f *fakeCalibration) CalibrationAdminSecret() string { return f.adminSecret }
 func (f *fakeCalibration) CalibrationArm(armed bool) (calibration.Snapshot, error) {
@@ -4378,5 +4396,76 @@ func TestGridTestCardIsServedAndWired(t *testing.T) {
 				t.Fatalf("%s traegt %q nicht", tc.path, n)
 			}
 		}
+	}
+}
+
+// K5: das Pilotfenster der Deye-Ladeseite - offen zu lesen, jede Handlung am
+// Betreiber-Kennwort, eine abgewiesene Anfrage erreicht den Controller nie, und
+// eine Verweigerung des Automaten ist ein 400 mit deutschem Satz.
+func TestNativePilotRoutesAreOpenToReadAndGuardedToAct(t *testing.T) {
+	const secret = "geheim-123"
+	fc := &fakeCalibration{adminSecret: secret, pilotView: nativepilot.View{Available: true, MaxMinutes: 15}}
+	srv := gridTestServer(t, fc)
+	r, err := http.Get(srv.URL + "/api/native/pilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Pilot nativepilot.View `json:"native_pilot"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&got); err != nil || r.StatusCode != http.StatusOK || got.Pilot.MaxMinutes != 15 {
+		t.Fatalf("GET muss offen sein und die Sicht durchreichen: %d %v %+v", r.StatusCode, err, got)
+	}
+	r.Body.Close()
+	post := func(path, tok, body string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set("X-VP-Calibration-Token", tok)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	for _, path := range []string{"/api/native/pilot", "/api/native/pilot/abort"} {
+		resp := post(path, "", `{"candidate":"grid_zero"}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("POST %s ohne Kennwort: %d", path, resp.StatusCode)
+		}
+	}
+	if fc.pilotStarts != 0 || fc.pilotAborts != 0 {
+		t.Fatal("eine abgewiesene Anfrage darf den Controller nie erreichen")
+	}
+	resp := post("/api/native/pilot", secret, `{"candidate":"grid_zero","intent":"self_consumption","case":"F11","minutes":12}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fc.pilotStarts != 1 {
+		t.Fatalf("armieren: %d", resp.StatusCode)
+	}
+	if fc.lastPilot != (nativepilot.Request{Candidate: "grid_zero", Intent: "self_consumption", Case: "F11", Minutes: 12}) {
+		t.Fatalf("die Anfrage wird durchgereicht: %+v", fc.lastPilot)
+	}
+	fc.pilotErr = nativepilot.ValidationError{Msg: "Die Steuerung ist per Sicherheitsvorgabe deaktiviert (Not-Aus)."}
+	resp = post("/api/native/pilot", secret, `{"candidate":"grid_zero"}`)
+	var bad struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&bad)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(bad.Error, "Not-Aus") {
+		t.Fatalf("eine Verweigerung ist ein 400 mit Grund: %d %+v", resp.StatusCode, bad)
+	}
+	resp = post("/api/native/pilot", secret, `kein json`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("kaputtes JSON: %d", resp.StatusCode)
+	}
+	resp = post("/api/native/pilot/abort", secret, ``)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fc.pilotAborts != 1 {
+		t.Fatalf("abbrechen: %d", resp.StatusCode)
 	}
 }

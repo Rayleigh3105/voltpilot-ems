@@ -57,6 +57,9 @@
 const deyeDecode = require('./deye/deye-decode');
 const sunspec = require('./sunspec/model-discovery');
 const unplannedNative = require('./unplanned-load-native');
+// K5: the Deye charge side (two hand-over candidates) - one pure module that the
+// flow embeds verbatim, so there is no second copy to keep in sync.
+const deyeChargeSide = require('./deye-charge-side');
 // The firmware CONDITION the Deye pilot certificate is keyed on - imported, never
 // re-spelled here, so adapter and certificate can never disagree about the key.
 const DEYE_REMOTE_PR978_FIRMWARE = unplannedNative.DEYE_REMOTE_PR978_FIRMWARE;
@@ -949,6 +952,10 @@ function nativeSelfConsumption(selection, opts = {}) {
     out.reason = windowCheck.refusal;
     return out;
   }
+  // K5: the Deye remote tier's charge side has its own Box ② (two candidates).
+  if (built.chargeSide && intent !== 'cover_load') {
+    return deyeChargeSideHandOver(out, built, { catalog, intent, windowCheck, selection, opts });
+  }
   const capability = unplannedNative.exactCapability(nativeSelectionKey(selection, built), catalog, capabilityWord);
   if (!capability) {
     out.reason = 'Wechselrichter-Automatik für dieses Modell noch nicht am Prüfstand freigegeben';
@@ -988,6 +995,48 @@ function nativeSelfConsumption(selection, opts = {}) {
     .concat(built.readbacks.map((r) => ({ ...r }))).concat(built.extraReadbacks || []);
   out.certificate = { brand: capability.brand, model: capability.model, firmware: capability.firmware,
     simulator_only: capability.simulatorOnly === true, bench_record: capability.benchRecord || '' };
+  return out;
+}
+
+/**
+ * deyeChargeSideHandOver - K5: the Deye remote tier's charge-side hand-over
+ * (deye-charge-side.js selectDeyeChargeSide). The reads the candidates in play
+ * need ride on the plan whether or not it hands over - the first tick of an
+ * intent is the one that fills the executor's cache. A pilot (`opts.pilot`, the
+ * core's armed window) runs its candidate without a certificate; everything else
+ * needs the candidate's own entry.
+ */
+function deyeChargeSideHandOver(out, built, { catalog, intent, windowCheck, selection, opts }) {
+  const pilot = deyeChargeSide.parseNativePilot(opts.pilot);
+  const key = nativeSelectionKey(selection, built);
+  const names = pilot ? [pilot.candidate]
+    : unplannedNative.exactCapabilities(key, catalog, unplannedNative.capabilityForIntent(intent))
+      .map((e) => e.candidate).filter((n) => typeof n === 'string');
+  const pre = deyeChargeSide.deyeChargeSidePreconditions(built.chargeSide, names);
+  out.preconditions = pre.length > 0 ? pre : (built.preconditions || []);
+  out.planned = [];
+  out.plannedReadbacks = [];
+  if (pilot) out.pilot = { candidate: pilot.candidate, intent: pilot.intent, run: pilot.run };
+  const pick = deyeChargeSide.selectDeyeChargeSide({
+    native: unplannedNative, catalog, key, intent, candidates: built.chargeSide,
+    windowNarrower: windowCheck.narrower, pilot, precond: opts,
+  });
+  if (pick.refusal) {
+    out.reason = pick.refusal;
+    return out;
+  }
+  const c = pick.cand;
+  out.candidate = pick.name;
+  out.heartbeat = c.heartbeat === true;
+  out.curtailsOwnPv = c.curtailsOwnPv === true;
+  out.planned = c.planned;
+  out.plannedReadbacks = c.readbacks;
+  out.writes = c.planned.map((w) => { const x = { ...w }; delete x.bench_pending; return x; });
+  out.readbacks = c.readbacks.map((r) => ({ ...r }));
+  if (pick.entry) {
+    out.certificate = { brand: pick.entry.brand, model: pick.entry.model, firmware: pick.entry.firmware,
+      simulator_only: pick.entry.simulatorOnly === true, bench_record: pick.entry.benchRecord || '' };
+  }
   return out;
 }
 
@@ -1071,8 +1120,16 @@ function nativeCapabilityReport(selection, opts = {}) {
   if (!certified || (opts.solarOnlyCharge === true && !built.gridChargeProof)) {
     return { intents: [], window: false, persistent: false };
   }
-  return unplannedNative.nativeLevers(nativeSelectionKey(selection, built), catalog,
-    () => ({ planned: built.planned, readbacks: built.readbacks }));
+  return unplannedNative.nativeLevers(nativeSelectionKey(selection, built), catalog, (intent, entry) => {
+    // K5: a Deye charge-side entry attests ITS candidate's bytes.
+    if (built.chargeSide && intent !== 'cover_load') {
+      const c = entry && typeof entry.candidate === 'string' &&
+        Object.prototype.hasOwnProperty.call(built.chargeSide, entry.candidate)
+        ? built.chargeSide[entry.candidate] : null;
+      return c ? { planned: c.planned, readbacks: c.readbacks } : null;
+    }
+    return { planned: built.planned, readbacks: built.readbacks };
+  });
 }
 
 /**
@@ -1244,6 +1301,12 @@ function nativeForTier({ selection, conn, ip, family, tier, comm, opts }) {
       precondition: (o) => deyeNativePrecondition(o && o.deyeOwnConfig, {
         floorPct: o && o.effectiveFloorSocPct,
         solarOnly: o && o.solarOnlyCharge === true,
+      }),
+      // K5: the CHARGE side (surplus_charge / self_consumption) - two candidates,
+      // each released by its own certificate entry (or run by the armed pilot).
+      // Everything above stays the E-down pilot's, byte for byte.
+      chargeSide: deyeChargeSide.deyeChargeSideCandidates(DEYE_CHARGE_SIDE_FACTS, {
+        reg, writeFc, watchdogS: resolveDeyeRemoteWatchdog(conn),
       }),
     };
   }
@@ -1973,6 +2036,23 @@ const DEYE_REMOTE_WATCHDOG_OFF = 0xffff;
 // held, so this is the drift backstop, not the primary self-heal. 300 s = 30 ticks
 // of the ~10 s setpoint cadence.
 const DEYE_REMOTE_CFG_REASSERT_S = 300;
+
+// K5: the register facts deye-charge-side.js plans with - handed in (the module
+// requires nothing, because the flow embeds it verbatim) and JSON'd into the
+// flow by build-flows.js from HERE, never retyped.
+const DEYE_CHARGE_SIDE_FACTS = Object.freeze({
+  remote: DEYE_REMOTE_REG,
+  modeOn: DEYE_REMOTE_MODE.ON,
+  modeOff: DEYE_REMOTE_MODE.OFF,
+  gridSide: DEYE_POWER_CONTROL_MODE.GRID_SIDE,
+  reassertS: DEYE_REMOTE_CFG_REASSERT_S,
+  slot: DEYE_CONTROL_SLOT,
+  chargeDisabled: DEYE_PROG_CHARGE.DISABLED,
+  touEnableBit: DEYE_TOU_ENABLE_BIT,
+  workMode: DEYE_WORK_MODE,
+  energyPattern: DEYE_ENERGY_PATTERN,
+  solarSellOn: DEYE_SOLAR_SELL.ON,
+});
 
 // The two Deye control PATHS. `remote` = the Tier-2 register block above;
 // `tou` = the legacy Time-of-Use synthesis (the fallback when the firmware has no
@@ -3107,6 +3187,7 @@ module.exports = {
   nativeCapabilityReport,
   nativeWindowCheck,
   deyeNativePrecondition,
+  DEYE_CHARGE_SIDE_FACTS,
   setpointStale,
   dualControllerSignal,
 };

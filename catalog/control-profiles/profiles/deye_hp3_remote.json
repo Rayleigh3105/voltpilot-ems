@@ -86,7 +86,38 @@
       "wie": "1109 positiv (Entladen/Einspeisen), live mit −30 kW-Slots gefahren."
     },
     "E": {
-      "beleg": null,
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 999,
+          "ziel": {
+            "register": 1115
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
       "hebel": "netzziel",
       "quellen": [
         "k2",
@@ -94,9 +125,51 @@
         "repo_deye"
       ],
       "rueckfall": "box",
-      "schreibfolge": null,
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S; ein anderer remote_watchdog_s passt nicht zum Zertifikat)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Netz-Sollwert 0 VOR dem Seitenwechsel: batterieseitig neutral, netzseitig das Ziel",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Netzseite",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "eigene PV-Kappe 999 (1000 regelt die PV im Netzmodus auf 0)",
+          "speicher": "ram",
+          "wert": 999,
+          "ziel": {
+            "register": 1115
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt; danach Herzschlag 1101/1109/1100 je Takt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
       "sicherheit": "C",
-      "wie": "Kandidat 1: 1104 = 2, Netz-Sollwert 1109 = 0 (Neutralschritt davor). Kandidat 2: 1100 ← 0 (Eigenkonfiguration). Beides am Pilot messen."
+      "wie": "Zwei Übergabe-Kandidaten, gebaut (K5, deye-charge-side.js), aber NICHT freigegeben: Kandidat 1 „netzseitig Ziel 0“ (diese Folge; drosselt bei vollem Speicher die eigene PV → Rücknahme pv_abgeregelt) und Kandidat 2 „Eigenkonfiguration“ (Folge ladeseite_eigenkonfiguration, 1100 ← 0 mit erweiterter, nur lesender Vorbedingung; an Herzogau wird E wegen „Selling First“ verweigert). Jeder braucht seinen eigenen Zertifikat-Eintrag nach einem Pilotfenster (edge-app/nodered/DEYE-LADESEITE-PILOT.md); bis dahin regelt die Box gedämpft.",
+      "adapter_folge": "ladeseite_netz_null"
     },
     "E_decken": {
       "adapter_folge": "uebergabe",
@@ -553,6 +626,102 @@
           },
           {
             "hinweis": "Fernsteuerung an - zuletzt",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
+      "ladeseite_eigenkonfiguration": {
+        "beleg": [
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Fernsteuerung aus → Eigenkonfiguration; erweiterte Vorbedingung liest 0x008D..0x00B1 (Arbeitsmodus, Energiemuster, Solar Sell, gültiges ToU-Programm), schreibt nichts davon",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
+      "ladeseite_netz_null": {
+        "beleg": [
+          {
+            "erwartet": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "erwartet": 2,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "erwartet": 999,
+            "ziel": {
+              "register": 1115
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S; ein anderer remote_watchdog_s passt nicht zum Zertifikat)",
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "hinweis": "Netz-Sollwert 0 VOR dem Seitenwechsel: batterieseitig neutral, netzseitig das Ziel",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "hinweis": "Netzseite",
+            "speicher": "ram",
+            "wert": 2,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "hinweis": "eigene PV-Kappe 999 (1000 regelt die PV im Netzmodus auf 0)",
+            "speicher": "ram",
+            "wert": 999,
+            "ziel": {
+              "register": 1115
+            }
+          },
+          {
+            "hinweis": "Fernsteuerung an - zuletzt; danach Herzschlag 1101/1109/1100 je Takt",
             "speicher": "ram",
             "wert": 1,
             "ziel": {

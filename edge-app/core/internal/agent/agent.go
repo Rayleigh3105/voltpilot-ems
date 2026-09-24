@@ -41,6 +41,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
@@ -235,6 +236,13 @@ type Agent struct {
 	gridCal      *curtailcal.GridSession
 	gridWatchdog *time.Timer
 	gridPv       curtailcal.GridPvTracker
+
+	// K5 Pilotfenster der Deye-Ladeseite (agent/nativepilot.go): von Hand
+	// armiert, hoechstens 15 Minuten, danach uebernimmt der Plan. Unter pilotMu
+	// (nie mit gridMu verschachtelt gehalten).
+	pilotMu       sync.Mutex
+	pilot         *nativepilot.Session
+	pilotWatchdog *time.Timer
 
 	// OCPP charge points (agent/ocpp.go). nil while VP_OCPP_ENABLED is off,
 	// which is the default - the box then behaves byte-for-byte as it did
@@ -635,6 +643,7 @@ func New(cfg config.Config) (*Agent, error) {
 		curtailCal:   curtailcal.New(0),
 		curtailCert:  map[string]bool{},
 		gridCal:      curtailcal.NewGrid(),
+		pilot:        nativepilot.New(),
 		curtailUnits: map[string]state.CurtailUnit{},
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
@@ -1635,6 +1644,8 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// Armieren beantwortbar sein), der Zustandsautomat nur waehrend eines
 	// Laufs. Ohne Test kostet das eine Zuweisung.
 	a.gridObserve(ts, measurements, battKw)
+	// K5 Pilotfenster: dieselbe Messung speist Huelle und Messgroessen.
+	a.nativePilotObserve(ts, measurements, battKw)
 
 	// While the device is removed (unclaimed) in the cloud, the local dashboard
 	// stays fully alive (guard reading, history ring, KPIs below) but the
@@ -2281,7 +2292,16 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 			GridChargeBlocked *bool `json:"grid_charge_blocked"`
 			// Intent (K4b) is the intent word the executed primitive realises.
 			Intent string `json:"intent"`
+			// CurtailsOwnPv / Candidate (K5): the proven primitive's PV side
+			// effect and which hand-over candidate ran.
+			CurtailsOwnPv bool   `json:"curtails_own_pv"`
+			Candidate     string `json:"candidate"`
 		} `json:"native"`
+		// NativeRefusal (K5) is Layer 1's reason why a wanted native mode did
+		// not engage (absent on an older Layer 1 and on every native cycle).
+		NativeRefusal string `json:"native_refusal"`
+		// Wrote (Deye executor) - did this cycle write a register (K5 pilot).
+		Wrote bool `json:"wrote"`
 		// NativeCapabilities (K4b) is Layer 1's report of the CERTIFIED levers
 		// of the current selection; absent on a pre-K4b Layer 1.
 		NativeCapabilities *state.NativeCapabilities `json:"native_capabilities"`
@@ -2353,6 +2373,10 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		info.NativePreconditionGridChargeBlocked = &v
 	}
 	info.NativeIntent = m.Native.Intent
+	info.NativeCurtailsOwnPv = m.Native.CurtailsOwnPv
+	info.NativeCandidate = m.Native.Candidate
+	info.NativeRefusal = m.NativeRefusal
+	info.Wrote = m.Wrote
 	if c := m.NativeCapabilities; c != nil {
 		info.NativeCapabilities = &state.NativeCapabilities{
 			Intents: append([]string{}, c.Intents...), Window: c.Window, Persistent: c.Persistent,
@@ -2418,6 +2442,11 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	if !m.Blocked && cycle != controlCycleUnconfirmed &&
 		strings.EqualFold(strings.TrimSpace(m.Source), gridTestSource) {
 		a.gridNoteReadback(cycle == controlCycleHeld, checkedAt)
+	}
+	// K5 Pilotfenster: nur ein Zyklus DIESER Quelle zaehlt, ein blockierter hat
+	// nichts geschrieben.
+	if !m.Blocked {
+		a.nativePilotNoteReadback(info, cycle == controlCycleUnconfirmed, checkedAt)
 	}
 	// Sticky-path backfill (2026-07-28): a NORMAL driving readback names the surface
 	// a device-granted family is actually controlled on. For a grant certified before
@@ -2574,6 +2603,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// Voraussetzungen des Armierens (curtailcal.GridSession.Start), nicht
 	// Dinge, die er beiseiteschiebt.
 	if a.gridTestOverride(now, p) {
+		return
+	}
+	// K5 Pilotfenster der Deye-Ladeseite: derselbe Gedanke - von Hand armiert,
+	// begrenzt, und es umgeht nur das Zertifikat des Kandidaten.
+	if a.nativePilotOverride(now, p) {
 		return
 	}
 

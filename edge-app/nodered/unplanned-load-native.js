@@ -75,6 +75,95 @@ const NATIVE_CAPABILITY_FOR_INTENT = Object.freeze({
 });
 const NATIVE_INTENTS = Object.freeze(Object.keys(NATIVE_CAPABILITY_FOR_INTENT));
 
+/**
+ * K5 (concept §9 "Deye Überschuss-Übergabe"): the Deye remote tier has TWO
+ * hand-over candidates for the charge side, and a certificate names WHICH one
+ * was measured (additive entry field `candidate`):
+ *   grid_zero  - "netzseitig Ziel 0": 1104 <- 2 with the grid target 1109 = 0;
+ *                the inverter regulates its own grid meter (the Herzogau CT sees
+ *                the Fronius too). Kept alive by the ordinary RAM heartbeat
+ *                (1101 watchdog), so "the box died" still ends it within 60 s.
+ *   own_config - "Eigenkonfiguration": 1100 <- 0, the device's own Work-Mode /
+ *                Time-of-Use configuration regulates - the same bytes as the
+ *                E-down pilot, but behind the EXTENDED precondition (Work Mode,
+ *                Energy Pattern, Solar Sell, the ACTIVE ToU program).
+ * The bytes live in the adapter (deye-charge-side.js); a certificate only
+ * attests them, exactly like every other entry here.
+ */
+const DEYE_NATIVE_CANDIDATE = Object.freeze({ GRID_ZERO: 'grid_zero', OWN_CONFIG: 'own_config' });
+
+/**
+ * The bytes the two candidates were built with (deye-charge-side.js plans them
+ * from DEYE_REMOTE_REG and the DEFAULT 60-s watchdog). A released entry records
+ * exactly these - certificateMatchesPlan refuses the moment the adapter drifts
+ * (and an operator-tuned watchdog is such a drift: the pilot measured 60 s).
+ */
+const DEYE_CHARGE_SIDE_BYTES = Object.freeze({
+  grid_zero: Object.freeze({
+    // 1101 watchdog FIRST, 1109 <- 0 BEFORE the side switch (neutral in the old
+    // battery-side meaning AND the grid target of the new one), 1104 <- 2,
+    // 1115 <- 999 (1000 would throttle the own PV to 0 in grid mode), 1100 LAST.
+    chargeBlockWrites: Object.freeze([
+      { addr: 0x044d, value: 60 }, { addr: 0x0455, value: 0 }, { addr: 0x0450, value: 2 },
+      { addr: 0x045b, value: 999 }, { addr: 0x044c, value: 1 },
+    ]),
+    readbackChecks: Object.freeze([
+      { addr: 0x044d, expect: 60 }, { addr: 0x0455, expect: 0 }, { addr: 0x0450, expect: 2 },
+      { addr: 0x045b, expect: 999 }, { addr: 0x044c, expect: 1 },
+    ]),
+  }),
+  own_config: Object.freeze({
+    chargeBlockWrites: Object.freeze([{ addr: 0x044c, value: 0 }]),
+    readbackChecks: Object.freeze([{ addr: 0x044c, expect: 0 }]),
+  }),
+});
+
+/**
+ * The placeholder a prepared entry carries until a pilot window proved it. A
+ * release with this text (or an empty one) THROWS at load time - a certificate
+ * without its evidence must not even build.
+ */
+const DEYE_CHARGE_SIDE_BENCH_PLACEHOLDER =
+  '<Prüfnachweis: Datum, Fall (F11/F1/F2/F5), Lauf-ID und Messwerte aus GET /api/native/pilot>';
+
+/**
+ * releaseDeyeChargeSide - builds ONE prepared Deye charge-side certificate for
+ * the pilot (deye / sun-30k-sg01hp3 / probed PR-978 layout). It exists so the
+ * release after a pilot window is a ONE-LINE step in the catalog below (see
+ * edge-app/nodered/DEYE-LADESEITE-PILOT.md, "Was danach freigeschaltet wird").
+ *
+ * windowLimits is false for both candidates: no volatile charge/discharge LIMIT
+ * inside the Deye's own regulation is known (0x006C/0x006D are EEPROM installer
+ * registers and are never written), so E~ (a throttled charge) stays the box's.
+ */
+function releaseDeyeChargeSide(candidate, intent, benchRecord) {
+  const bytes = Object.prototype.hasOwnProperty.call(DEYE_CHARGE_SIDE_BYTES, candidate)
+    ? DEYE_CHARGE_SIDE_BYTES[candidate] : null;
+  if (!bytes) throw new Error('releaseDeyeChargeSide: unbekannter Kandidat ' + candidate);
+  if (intent !== 'surplus_charge' && intent !== 'self_consumption') {
+    throw new Error('releaseDeyeChargeSide: nur Ladeseiten-Absichten, nicht ' + intent);
+  }
+  if (typeof benchRecord !== 'string' || benchRecord.trim() === '' ||
+      benchRecord === DEYE_CHARGE_SIDE_BENCH_PLACEHOLDER) {
+    throw new Error('releaseDeyeChargeSide: ohne Prüfnachweis keine Freigabe');
+  }
+  return Object.freeze({
+    brand: 'deye', model: 'sun-30k-sg01hp3', firmware: DEYE_REMOTE_PR978_FIRMWARE,
+    capability: NATIVE_CAPABILITY_FOR_INTENT[intent],
+    candidate,
+    certified: true, readback: true, watchdog: true,
+    interlockLifted: 'deye',
+    windowLimits: false, persistent: false,
+    chargeBlockWrites: bytes.chargeBlockWrites.map((w) => ({ ...w })),
+    readbackChecks: bytes.readbackChecks.map((r) => ({ ...r })),
+    // The way back is the ordinary remote plan (1100 <- 1 last), as for E-down.
+    releaseWrites: [{ addr: 0x044c, value: 1 }],
+    releaseReadbackChecks: [{ addr: 0x044c, expect: 1 }],
+    watchdogSpec: { timeoutS: 60, note: 'geräteeigener Totmann 1101 (DEYE_REMOTE_WATCHDOG_DEFAULT_S)' },
+    benchRecord,
+  });
+}
+
 const CERTIFIED_NATIVE_CAPABILITIES = Object.freeze([
   /**
    * THE PILOT (captain decision 2026-08-26: "kein separater Prüfstand - der
@@ -136,6 +225,14 @@ const CERTIFIED_NATIVE_CAPABILITIES = Object.freeze([
       + 'Live-Sonde 2026-07-27 SUN-30K-SG01HP3-EU, PR-978-Remote-Layout; '
       + 'Beobachtungs-Checkliste in edge-app/nodered/UNPLANNED-LOAD-BENCH.md',
   }),
+  // ⚠ K5 - DIE DEYE-LADESEITE IST NOCH NICHT FREIGEGEBEN. Erst nach einem
+  // bestandenen Pilotfenster (der Captain löst jedes aus) wird GENAU die Zeile
+  // des belegten Kandidaten einkommentiert und der Platzhalter durch den
+  // Prüfnachweis ersetzt - Drehbuch: edge-app/nodered/DEYE-LADESEITE-PILOT.md.
+  // releaseDeyeChargeSide('grid_zero', 'self_consumption', '<Prüfnachweis: Datum, Fall (F11/F1/F2/F5), Lauf-ID und Messwerte aus GET /api/native/pilot>'),
+  // releaseDeyeChargeSide('grid_zero', 'surplus_charge', '<Prüfnachweis: Datum, Fall (F11/F1/F2/F5), Lauf-ID und Messwerte aus GET /api/native/pilot>'),
+  // releaseDeyeChargeSide('own_config', 'self_consumption', '<Prüfnachweis: Datum, Fall (F11/F1/F2/F5), Lauf-ID und Messwerte aus GET /api/native/pilot>'),
+  // releaseDeyeChargeSide('own_config', 'surplus_charge', '<Prüfnachweis: Datum, Fall (F11/F1/F2/F5), Lauf-ID und Messwerte aus GET /api/native/pilot>'),
 ]);
 
 /**
@@ -242,6 +339,20 @@ function exactCapability(selection, catalog = CERTIFIED_NATIVE_CAPABILITIES,
 }
 
 /**
+ * exactCapabilities - EVERY complete entry for the triple and word, in catalog
+ * order (K5: the Deye charge side may carry one entry per candidate). The gate
+ * is exactCapability's, entry for entry; the first element IS exactCapability.
+ */
+function exactCapabilities(selection, catalog = CERTIFIED_NATIVE_CAPABILITIES,
+  capabilityWord = 'native_charge_block_discharge_auto') {
+  const out = [];
+  for (const c of catalog) {
+    if (exactCapability(selection, [c], capabilityWord)) out.push(c);
+  }
+  return out;
+}
+
+/**
  * certificateMatchesPlan - the drift check between the bench's recorded bytes and
  * the shipped adapter's intended sequence. Both sides are compared as
  * {addr, value} / {addr, expect} pairs IN ORDER (the order is part of the
@@ -321,10 +432,15 @@ function nativeLevers(selection, catalog, plannedFor) {
   let window = true;
   let persistent = false;
   for (const intent of NATIVE_INTENTS) {
-    const cap = exactCapability(selection, catalog, capabilityForIntent(intent));
+    // K5: an intent may have several entries (one per Deye candidate); the first
+    // whose recorded bytes still match what the adapter plans FOR THAT ENTRY
+    // counts. `plannedFor(intent, entry)` - the generic tier ignores the entry.
+    let cap = null;
+    for (const c of exactCapabilities(selection, catalog, capabilityForIntent(intent))) {
+      const p = typeof plannedFor === 'function' ? plannedFor(intent, c) : null;
+      if (p && certificateMatchesPlan(c, p.planned, p.readbacks)) { cap = c; break; }
+    }
     if (!cap) continue;
-    const p = typeof plannedFor === 'function' ? plannedFor(intent) : null;
-    if (!p || !certificateMatchesPlan(cap, p.planned, p.readbacks)) continue;
     intents.push(intent);
     if (cap.windowLimits !== true) window = false;
     if (cap.persistent === true) persistent = true;
@@ -334,6 +450,11 @@ function nativeLevers(selection, catalog, plannedFor) {
 
 module.exports = {
   DEYE_REMOTE_PR978_FIRMWARE,
+  DEYE_NATIVE_CANDIDATE,
+  DEYE_CHARGE_SIDE_BYTES,
+  DEYE_CHARGE_SIDE_BENCH_PLACEHOLDER,
+  releaseDeyeChargeSide,
+  exactCapabilities,
   NATIVE_CAPABILITY_FOR_INTENT,
   NATIVE_INTENTS,
   capabilityForIntent,

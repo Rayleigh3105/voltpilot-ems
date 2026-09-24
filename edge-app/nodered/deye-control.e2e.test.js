@@ -2523,7 +2523,7 @@ function nativeSetpoint(mode, extra = {}) {
 // One rig = one plant: ONE shared flow store (the capability probe, the sticky
 // path decision and the native config cache all live there, exactly as in
 // Node-RED) plus one context per node.
-function makeNativeRig(port, sel = nativeSel(port)) {
+function makeNativeRig(port, sel = nativeSel(port), planFunc = DEYE_NATIVE_PLAN) {
   const planCtx = {};
   const execCtx = {};
   const flowStore = { inverter_config: sel };
@@ -2547,7 +2547,7 @@ function makeNativeRig(port, sel = nativeSel(port)) {
     const msg = { setpoint };
     const planBox = sandbox(msg, planCtx, planStatuses);
     vm.createContext(planBox);
-    const planned = vm.runInContext('(function () {\n' + DEYE_NATIVE_PLAN + '\n})()', planBox);
+    const planned = vm.runInContext('(function () {\n' + planFunc + '\n})()', planBox);
     if (!planned) return { plan: null, out: null };
     const execBox = sandbox(msg, execCtx, execStatuses);
     vm.createContext(execBox);
@@ -2731,7 +2731,9 @@ test('an EEG plant whose own program blocks grid charging IS handed over: erst n
     assert.deepStrictEqual(writes.slice(before).map((w) => ({ reg: w.reg, value: w.value })),
       [{ reg: REG_REMOTE.mode, value: 0 }]);
     assert.strictEqual(nat.out.payload.mode, 'native');
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(nat.out.payload.native || null)), { grid_charge_blocked: true });
+    // K5 (K4b point 4): the proving cycle now also names the intent it realises.
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(nat.out.payload.native || null)),
+      { grid_charge_blocked: true, intent: 'cover_load' });
     assert.strictEqual(nat.out.payload.native_precondition, undefined);
   } finally {
     server.close();
@@ -2974,6 +2976,190 @@ test('Netz-Sollwert-Test: ohne Freigabe erreicht KEIN Byte den Wechselrichter', 
     assert.deepStrictEqual(writes, [], 'nichts geschrieben');
     assert.strictEqual(store[0x044c], undefined, 'die Fernsteuerung wurde nie eingeschaltet');
     assert.ok(!out || out.payload.wrote !== true);
+  } finally {
+    server.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// K5 "Deye Überschuss-Übergabe": the CHARGE side of the same pilot, through the
+// shipped plan node + Deye executor against the Solarman stub. Two candidates
+// (grid_zero, own_config), each released only by its own certificate entry -
+// none is in the production catalog yet, so the armed pilot window
+// (`native_pilot`, only the core's operator path publishes it) is the one way
+// to run them, exactly like the grid-setpoint test.
+// ---------------------------------------------------------------------------
+
+const REG_K5 = {
+  energyPattern: 0x008d, workMode: 0x008e, solarSell: 0x0091, touEnable: 0x0092,
+  progTime: 0x0094, progPower: 0x009a, progSoc: 0x00a6, progCharge: 0x00ac, pvMax: 0x045b,
+};
+// The device's OWN configuration: `prog` is applied to ALL six ToU programs, so
+// which one governs at the test's wall-clock time does not matter here (the
+// active-program choice is proven in deye-charge-side.test.js with an injected
+// time of day).
+function k5Store({ workMode = 0, pattern = 1, solarSell = 1, tou = 0x00ff, prog = {} } = {}) {
+  const p = { power: 3000, soc: 5, charge: 0, ...prog };
+  const out = nativeStore({
+    [REG_K5.energyPattern]: pattern, [REG_K5.workMode]: workMode,
+    [REG_K5.solarSell]: solarSell, [REG_K5.touEnable]: tou, [REG_K5.pvMax]: 1000,
+  });
+  const times = [0, 500, 900, 1300, 1700, 2100];
+  for (let i = 0; i < 6; i++) {
+    out[REG_K5.progTime + i] = times[i];
+    out[REG_K5.progPower + i] = p.power;
+    out[REG_K5.progSoc + i] = p.soc;
+    out[REG_K5.progCharge + i] = p.charge;
+  }
+  return out;
+}
+function k5Setpoint(intent, extra = {}) {
+  const win = intent === 'surplus_charge' ? { battery_window_min_kw: 0, battery_window_max_kw: 30 }
+    : { battery_window_min_kw: -30, battery_window_max_kw: 30 };
+  return nativeSetpoint('native_window', {
+    battery_native_intent: intent, battery_native_duty: undefined, battery_setpoint_kw: 0,
+    grid_charge_allowed: false, ...win, ...extra,
+  });
+}
+const k5Pilot = (candidate, intent) => ({ native_pilot: { candidate, intent, run: 'k5-test' } });
+
+test('K5: ohne Zertifikat bleibt die Ladeseite gedämpft - nur E↓ wird gemeldet, nichts wird übergeben', async () => {
+  const { server, port, writes, store } = await startSolarmanServer(k5Store());
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    const r = await rig.tick(k5Setpoint('self_consumption'));
+    assert.notStrictEqual(r.plan.mode, 'native', 'no certificate, no hand-over');
+    assert.strictEqual(store[REG_REMOTE.mode], 1, 'remote mode stays armed (the box regulates)');
+    assert.ok(!writes.some((w) => w.reg === REG_REMOTE.powerControlMode && w.value === 2), 'never the grid side');
+    // K4b point 4: the Deye executor reports its levers - today exactly E↓.
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.out.payload.native_capabilities)),
+      { intents: ['cover_load'], window: false, persistent: false });
+    assert.match(r.out.payload.native_refusal, /Prüfstand/, 'and says why nothing moved');
+  } finally {
+    server.close();
+  }
+});
+
+test('K5 Pilot Kandidat 1 (netzseitig Ziel 0): Totmann zuerst, 1109 <- 0 vor 1104 <- 2, 1115 <- 999, 1100 zuletzt; danach nur der Herzschlag', async () => {
+  const { server, port, writes, store } = await startSolarmanServer(k5Store());
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint', { battery_setpoint_kw: -7.087 }));
+    // First pilot tick: the device's configuration is not read yet -> refused by
+    // name, the follower carries it, the executor fills the cache.
+    const pending = await rig.tick(k5Setpoint('self_consumption', k5Pilot('grid_zero', 'self_consumption')));
+    assert.notStrictEqual(pending.plan.mode, 'native');
+    assert.match(pending.out.payload.native_refusal, /eigene Konfiguration/);
+    const before = writes.length;
+    const nat = await rig.tick(k5Setpoint('self_consumption', k5Pilot('grid_zero', 'self_consumption')));
+    assert.strictEqual(nat.plan.mode, 'native');
+    assert.strictEqual(nat.plan.candidate, 'grid_zero');
+    assert.deepStrictEqual(writes.slice(before).map((w) => [w.reg, w.value]), [
+      [REG_REMOTE.watchdog, 60], [REG_REMOTE.constantPower, 0], [REG_REMOTE.powerControlMode, 2],
+      [REG_K5.pvMax, 999], [REG_REMOTE.mode, 1],
+    ], 'the neutral step stands BEFORE the side switch, the enable LAST');
+    assert.strictEqual(nat.out.payload.mode, 'native');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(nat.out.payload.native)), {
+      grid_charge_blocked: true, intent: 'self_consumption', curtails_own_pv: true, candidate: 'grid_zero',
+    }, 'the proof names the intent, the candidate and its PV side effect (§6.3)');
+    // Next tick: the watchdog kick keeps remote mode alive (RAM ops re-asserted),
+    // the two configuration ops are NOT rewritten while they hold.
+    const hb0 = writes.length;
+    const hb = await rig.tick(k5Setpoint('self_consumption', k5Pilot('grid_zero', 'self_consumption')));
+    assert.strictEqual(hb.out.payload.mode, 'native');
+    assert.deepStrictEqual(writes.slice(hb0).map((w) => [w.reg, w.value]),
+      [[REG_REMOTE.watchdog, 60], [REG_REMOTE.constantPower, 0], [REG_REMOTE.mode, 1]]);
+    // Back to the ordinary plan: battery side again, 1100 stays the last word.
+    const back0 = writes.length;
+    await rig.tick(nativeSetpoint('setpoint', { battery_setpoint_kw: -5 }));
+    const back = writes.slice(back0).map((w) => w.reg);
+    assert.ok(back.includes(REG_REMOTE.powerControlMode), 'the side is switched back');
+    assert.strictEqual(store[REG_REMOTE.powerControlMode], 1, 'battery side again');
+    assert.strictEqual(back[back.length - 1], REG_REMOTE.mode, 'enable last');
+  } finally {
+    server.close();
+  }
+});
+
+test('K5 Pilot Kandidat 2 (Eigenkonfiguration): die Herzogau-Einstellung wird gelesen und mit Grund verweigert - kein Schreiben', async () => {
+  // Herzogau (m6): Work Mode 0 "Selling First", Load First, Solar Sell on, ToU on.
+  const { server, port, writes, store } = await startSolarmanServer(k5Store());
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    const sc = k5Setpoint('self_consumption', k5Pilot('own_config', 'self_consumption'));
+    await rig.tick(sc);
+    const w0 = writes.length;
+    const r = await rig.tick(sc);
+    assert.notStrictEqual(r.plan.mode, 'native');
+    assert.match(r.out.payload.native_refusal, /Selling First/);
+    assert.ok(!writes.slice(w0).some((w) => w.reg === REG_REMOTE.mode && w.value === 0), 'no 1100 <- 0');
+    assert.strictEqual(store[REG_REMOTE.mode], 1);
+    const cache = rig.flowStore['deye_native_cfg:127.0.0.1:' + port];
+    assert.strictEqual(cache.own_config.length, 37, 'ONE block read of the own configuration');
+    assert.strictEqual(cache.own_config[REG_K5.workMode - REG_K5.energyPattern], 0);
+    // E-up with a program that may discharge: refused too, with its own reason.
+    const sp = k5Setpoint('surplus_charge', k5Pilot('own_config', 'surplus_charge'));
+    await rig.tick(sp);
+    const up = await rig.tick(sp);
+    assert.notStrictEqual(up.plan.mode, 'native');
+    assert.match(up.out.payload.native_refusal, /zu entladen/);
+    // The box never touched an installer register.
+    for (const reg of [REG_K5.workMode, REG_K5.energyPattern, REG_K5.solarSell, REG_K5.touEnable, 0x00e7, 0x006c, 0x006d]) {
+      assert.ok(!writes.some((w) => w.reg === reg), 'installer register 0x' + reg.toString(16) + ' untouched');
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('K5 Pilot Kandidat 2: E↑ wird übergeben, wenn das gültige Programm nicht entladen darf (Leistung 0)', async () => {
+  const { server, port, writes } = await startSolarmanServer(k5Store({ prog: { power: 0 } }));
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    const sp = k5Setpoint('surplus_charge', k5Pilot('own_config', 'surplus_charge'));
+    await rig.tick(sp);
+    const w0 = writes.length;
+    const r = await rig.tick(sp);
+    assert.strictEqual(r.plan.mode, 'native', r.out && r.out.payload.native_refusal);
+    assert.deepStrictEqual(writes.slice(w0).map((w) => [w.reg, w.value]), [[REG_REMOTE.mode, 0]]);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.out.payload.native)),
+      { grid_charge_blocked: true, intent: 'surplus_charge', candidate: 'own_config' });
+    // Write once, then only read (no heartbeat on this candidate).
+    const w1 = writes.length;
+    await rig.tick(sp);
+    assert.strictEqual(writes.length, w1, 'no second write');
+  } finally {
+    server.close();
+  }
+});
+
+test('K5: mit Zertifikat-Eintrag (nur Test-Katalog) wählt die Box den Kandidaten ohne Pilot, und die Meldung nennt die Ladeseite', async () => {
+  const { server, port, writes } = await startSolarmanServer(k5Store());
+  // The ONE line a release after the pilot adds - injected here into the shipped
+  // plan node's catalog variable, never into production.
+  const line = "var nativeCatalogGeneric = __NATIVE.CERTIFIED_NATIVE_CAPABILITIES;";
+  assert.ok(DEYE_NATIVE_PLAN.includes(line), 'the plan node has one catalog variable');
+  const planWithEntry = DEYE_NATIVE_PLAN.replace(line,
+    "var nativeCatalogGeneric = __NATIVE.CERTIFIED_NATIVE_CAPABILITIES.concat([__NATIVE.releaseDeyeChargeSide('grid_zero', 'self_consumption', 'Test: kein echter Nachweis')]);");
+  try {
+    const rig = makeNativeRig(port, nativeSel(port), planWithEntry);
+    const tick = rig.tick;
+    const first = await tick(nativeSetpoint('setpoint'));
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(first.out.payload.native_capabilities)),
+      { intents: ['cover_load', 'self_consumption'], window: false, persistent: false });
+    await tick(k5Setpoint('self_consumption'));
+    const w0 = writes.length;
+    const r = await tick(k5Setpoint('self_consumption'));
+    assert.strictEqual(r.plan.mode, 'native');
+    assert.strictEqual(r.plan.candidate, 'grid_zero');
+    assert.strictEqual(r.plan.certificate.bench_record, 'Test: kein echter Nachweis');
+    assert.strictEqual(writes.slice(w0).length, 5);
+    // E-up has no entry: it stays with the box.
+    const up = await tick(k5Setpoint('surplus_charge'));
+    assert.notStrictEqual(up.plan.mode, 'native');
   } finally {
     server.close();
   }

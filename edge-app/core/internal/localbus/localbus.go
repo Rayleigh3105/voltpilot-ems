@@ -67,6 +67,11 @@
 //	                (the CERTIFIED levers of the current selection; absent =
 //	                unknown = only the pre-existing E↓ path). Shape and rules:
 //	                docs/contracts/v2/plan-execution-ownership.md "Absicht + Fenster".
+//	                K5 (ADDITIVE): `native_pilot` {candidate, intent, run,
+//	                seconds_remaining} only in the operator-armed pilot window
+//	                (internal/agent/nativepilot.go); the readback adds
+//	                native.curtails_own_pv, native.candidate, native_refusal
+//	                and wrote.
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
 //	edge/control/readback  Layer 1 -> core   NOT retained. Per-register

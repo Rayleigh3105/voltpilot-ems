@@ -154,6 +154,42 @@ test('Deye Fernsteuer-Block: Profil deye_hp3_remote = heutiger Plan von deyeRemo
   for (const b of p.bindung) assert.equal(b.steuerpfad, C.DEYE_PATH_REMOTE);
 });
 
+// K5: the two charge-side candidates are described in the profile (E cell +
+// adapter.folgen) exactly as deye-charge-side.js plans them, and each prepared
+// (commented) release entry attests those bytes with a RAM hand-over.
+test('Deye Ladeseite (K5): Profilfolgen = Kandidaten des Planers, vorbereitete Zertifikate passen', () => {
+  const p = profile('deye_hp3_remote');
+  const f = p.adapter.folgen;
+  // The pilot's natural window needs the nameplate (the fixture has none).
+  const sel = { ...DEYE_REMOTE_SEL, rated_kw: 30 };
+  const win = { nativeMode: 'native_window', intent: 'self_consumption', windowMinKw: -30, windowMaxKw: 30 };
+  const cfg = { ...PILOT_OPTS.deyeOwnConfig, grid_charge_enable: 0 };
+  const gz = C.nativeSelfConsumption(sel, { ...PILOT_OPTS, ...win, deyeOwnConfig: cfg,
+    pilot: { candidate: 'grid_zero', intent: 'self_consumption' } });
+  assert.equal(gz.candidate, 'grid_zero', gz.reason);
+  assertWrites('ladeseite_netz_null', f.ladeseite_netz_null, gz.planned);
+  assertReadbacks('ladeseite_netz_null', f.ladeseite_netz_null, gz.readbacks);
+  assert.equal(p.absichten.E.adapter_folge, 'ladeseite_netz_null');
+  // own_config: its plan is the same one write whether or not the device's
+  // configuration passes - the bytes come from the candidate itself.
+  const cands = require('./deye-charge-side.js').deyeChargeSideCandidates(C.DEYE_CHARGE_SIDE_FACTS,
+    { reg: C.DEYE_CONTROL_REG.hybrid_3p, writeFc: 16, watchdogS: 60 });
+  assertWrites('ladeseite_eigenkonfiguration', f.ladeseite_eigenkonfiguration, cands.own_config.planned);
+  assertReadbacks('ladeseite_eigenkonfiguration', f.ladeseite_eigenkonfiguration, cands.own_config.readbacks);
+  const toPairs = (steps) => steps.map((s) => ({ addr: addrOf(s.ziel), value: s.wert }));
+  const toChecks = (b) => b.map((x) => ({ addr: addrOf(x.ziel), expect: x.erwartet }));
+  for (const [cand, folge] of [['grid_zero', f.ladeseite_netz_null], ['own_config', f.ladeseite_eigenkonfiguration]]) {
+    for (const intent of ['surplus_charge', 'self_consumption']) {
+      const e = U.releaseDeyeChargeSide(cand, intent, 'Test');
+      assert.deepEqual(e.chargeBlockWrites, toPairs(folge.schreibfolge), `${cand}/${intent}: Bytes`);
+      assert.deepEqual(e.readbackChecks, toChecks(folge.beleg), `${cand}/${intent}: Beleg`);
+      assert.equal(e.persistent === true, folge.schreibfolge.some((s) => s.speicher === 'dauerspeicher'));
+      assert.equal(e.watchdogSpec.timeoutS, p.totmann.sekunden);
+      assert.equal(e.firmware, p.firmware_bedingung.wert);
+    }
+  }
+});
+
 test('Deye ToU: Profil deye_tou = heutiger Plan von deyeControl, jeder Schritt Dauerspeicher', () => {
   const p = profile('deye_tou');
   const f = p.adapter.folgen;

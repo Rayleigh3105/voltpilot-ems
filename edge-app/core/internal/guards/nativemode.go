@@ -135,6 +135,13 @@ const (
 	// NativeWriteBudget: the device's lever writes persistent memory and today's
 	// budget of mode changes is spent (§6.6, F12).
 	NativeWriteBudget = "schreibbudget"
+	// NativeOwnPvCurtailed (K5, concept §6.3): the proven primitive throttles the
+	// device's OWN PV once the storage cannot take more (Deye "netzseitig Ziel
+	// 0"), and the plan does not ask for curtailment in this slot - so at the SoC
+	// ceiling (minus NativeCeilingMarginPct), or charging at the window's limit
+	// while exporting for longer than NativeChargeSideHold, the battery goes back
+	// to the setpoint path (battery side), where the PV feeds in freely.
+	NativeOwnPvCurtailed = "pv_abgeregelt"
 
 	// NativeHintExportWithHeadroom is a HINT, never a take-back: the grid point
 	// exports while the battery could still take more. The device's own meter
@@ -150,6 +157,11 @@ const (
 	NativeChargeSideLimitKw = 0.5
 	NativeChargeSideHold    = 60 * time.Second
 )
+
+// NativeCeilingMarginPct is how far below the upper SoC bound a primitive that
+// throttles its own PV (NativeOwnPvCurtailed) is taken back: the same headroom
+// as the reserve floor, for the same reason (the take-back is not instant).
+const NativeCeilingMarginPct = 3.0
 
 // NativeWriteBudgetPerDay bounds the mode changes of a lever that writes
 // PERSISTENT memory (§6.6, F12). A RAM lever is counted, never bounded. It is
@@ -189,6 +201,7 @@ var nativeReasonText = map[string]string{
 	NativeDischargeAgainstIntent: "Der Speicher hat über eine Minute entladen, obwohl er nur Überschuss laden sollte - VoltPilot übernimmt wieder.",
 	NativeStorageFull:            "Der Speicher ist voll - VoltPilot übernimmt für den Rest des Zeitabschnitts.",
 	NativeWriteBudget:            "Die Umschaltungen dieses Wechselrichters für heute sind aufgebraucht - VoltPilot regelt selbst nach.",
+	NativeOwnPvCurtailed:         "Der Speicher nimmt nichts mehr auf und der Wechselrichter würde seine eigene PV abregeln, obwohl Einspeisen sich lohnt - VoltPilot übernimmt wieder.",
 	NativeHintExportWithHeadroom: "Die Anlage speist ein, obwohl der Speicher noch laden könnte - der Zähler des Wechselrichters sieht vermutlich die zweite PV-Anlage nicht.",
 }
 
@@ -327,6 +340,16 @@ type NativeInput struct {
 	// battery; SocMaxPct the configured upper SoC bound. NaN = unknown.
 	GridKw, BatteryKw float64
 	SocMaxPct         float64
+
+	// --- K5: Deye Überschuss-Übergabe ---
+
+	// ProvenCurtailsOwnPv is Layer 1's statement on the proving readback that the
+	// executed primitive throttles the device's own PV when the storage cannot
+	// take more (native.curtails_own_pv).
+	ProvenCurtailsOwnPv bool
+	// CurtailmentWanted: the plan caps the PV in this slot (negative price,
+	// §51) - then that side effect is exactly what the slot asks for.
+	CurtailmentWanted bool
 }
 
 // NativeDecision is one evaluation.
@@ -394,6 +417,9 @@ type NativeMode struct {
 	winSet                      bool
 	gridChargeSince, dischSince time.Time
 	exportSince                 time.Time
+	// K5: first-seen time of "charging at the limit while exporting" on a
+	// primitive that throttles its own PV.
+	atLimitSince time.Time
 	// The day's write counter (§6.6): published = the battery_mode/intent the
 	// last tick published ("" = setpoint), day = the counter's day.
 	published string
@@ -647,6 +673,20 @@ func (n *NativeMode) decide(now time.Time, in NativeInput) NativeDecision {
 			&n.dischSince) {
 			return takeBack(NativeDischargeAgainstIntent)
 		}
+		// K5 (§6.3): a primitive that regulates the grid to 0 throttles its OWN
+		// PV once the storage cannot take more - at a positive price that is
+		// feed-in given away, so the battery goes back to the setpoint path.
+		if in.ProvenCurtailsOwnPv && !in.CurtailmentWanted {
+			if !math.IsNaN(in.SocPct) && in.SocMaxPct > 0 && in.SocPct >= in.SocMaxPct-NativeCeilingMarginPct {
+				return takeBack(NativeOwnPvCurtailed)
+			}
+			if held(known && grid < -NativeChargeSideLimitKw && batt >= win.MaxKw-NativeChargeSideLimitKw,
+				&n.atLimitSince) {
+				return takeBack(NativeOwnPvCurtailed)
+			}
+		} else {
+			n.atLimitSince = time.Time{}
+		}
 		headroom := !math.IsNaN(in.SocPct) && (in.SocMaxPct <= 0 || in.SocPct < in.SocMaxPct)
 		if held(known && headroom && grid < -NativeChargeSideLimitKw &&
 			batt < win.MaxKw-NativeChargeSideLimitKw, &n.exportSince) {
@@ -654,6 +694,7 @@ func (n *NativeMode) decide(now time.Time, in NativeInput) NativeDecision {
 		}
 	} else {
 		n.gridChargeSince, n.dischSince, n.exportSince = time.Time{}, time.Time{}, time.Time{}
+		n.atLimitSince = time.Time{}
 	}
 	if in.Levers != nil {
 		n.win, n.winSet = win, true
@@ -713,6 +754,7 @@ func (n *NativeMode) reset() {
 func (n *NativeMode) clearSlotState() {
 	n.win, n.winSet = Window{}, false
 	n.gridChargeSince, n.dischSince, n.exportSince = time.Time{}, time.Time{}, time.Time{}
+	n.atLimitSince = time.Time{}
 }
 
 // NativePeakThreat answers "is the running quarter hour's billing peak threatened

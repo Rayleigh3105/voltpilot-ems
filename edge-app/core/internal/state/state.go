@@ -549,6 +549,19 @@ type ControlInfo struct {
 	// NativeIntent is the intent word a native cycle says its primitive
 	// realises (readback native.intent, K4b); "" = not said (pre-K4b Layer 1).
 	NativeIntent string `json:"native_intent,omitempty"`
+	// NativeCurtailsOwnPv (K5) says the proven primitive throttles the device's
+	// OWN PV when the storage cannot take more (Deye grid_zero, concept §6.3) -
+	// the core then supervises it (guards.NativeOwnPvCurtailed).
+	NativeCurtailsOwnPv bool `json:"native_curtails_own_pv,omitempty"`
+	// NativeCandidate (K5) names the executed hand-over candidate (Deye:
+	// grid_zero | own_config); "" on every other tier.
+	NativeCandidate string `json:"native_candidate,omitempty"`
+	// NativeRefusal (K5) is Layer 1's German reason why a wanted native mode did
+	// not engage on this cycle ("" = none stated).
+	NativeRefusal string `json:"native_refusal,omitempty"`
+	// Wrote (K5) says this cycle wrote at least one register (the Deye
+	// executor's `wrote`); the pilot window counts write cycles with it.
+	Wrote bool `json:"wrote,omitempty"`
 	// NativeCapabilities is Layer 1's report of its CERTIFIED levers for the
 	// current selection (readback native_capabilities, K4b); nil = not reported.
 	NativeCapabilities *NativeCapabilities `json:"native_capabilities,omitempty"`

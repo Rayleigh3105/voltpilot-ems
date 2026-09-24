@@ -153,6 +153,11 @@ func (a *Agent) nativeDecide(
 ) (guards.NativeDecision, *state.NativeInfo, *state.NativeWithheldInfo) {
 	control := a.State.Get().Control
 	proven, provenIntent, gridChargeBlocked := nativeEvidence(control, now, freshWindow)
+	// K5 (§6.3): the proven primitive's PV side effect, and whether this slot
+	// asks for curtailment anyway (then the side effect is the point).
+	curtailsOwnPv := proven && control != nil && control.NativeCurtailsOwnPv
+	lim := p.ActivePvLimit(now)
+	curtailWanted := lim != nil && *lim >= 0
 	intent := nativePlanIntent(p, now, limits)
 	var window guards.Window
 	if intent.Open() {
@@ -192,6 +197,9 @@ func (a *Agent) nativeDecide(
 		GridKw:            gridKw,
 		BatteryKw:         battKw,
 		SocMaxPct:         limits.SocMaxPct,
+		// K5 (§6.3): the PV side effect of the proven primitive.
+		ProvenCurtailsOwnPv: curtailsOwnPv,
+		CurtailmentWanted:   curtailWanted,
 	}
 	in.PersistentWriteBudget = a.persistentWriteBudget()
 	dec := a.native.Decide(now, in)
