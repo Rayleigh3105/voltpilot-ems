@@ -36,7 +36,7 @@
  */
 
 import type { ControlStatus } from './api';
-import { controlStrip, executionNote, nextChargeStart } from './control';
+import { controlStrip, executionNote, isWrAutomatik, nextChargeStart } from './control';
 import {
   CURTAIL_PLAN,
   curtailActionPhrase,
@@ -490,13 +490,14 @@ function unplannedLoadStatus(
 ): UnplannedStatus | null {
   const mode = control?.executionMode ?? null;
   const checkedAge = control ? input.now.getTime() - new Date(control.checkedAt).getTime() : Infinity;
-  // Die Eigenverbrauchs-Automatik (Absicht E/E~) ist bewusst NICHT „aktiv":
-  // sie ist der geplante Normalfall in beide Richtungen, und „Unerwarteter
-  // Verbrauch" samt Bernstein wäre in jeder solchen Viertelstunde falsch. Sie
-  // spricht hier nur, wenn trotzdem deutlich bezogen wird (siehe unten).
-  const selfConsumption = mode === 'autonomous_selfconsumption';
+  // Die Wechselrichter-Automatik zur Verbrauchsdeckung (Absicht E/E~ und E↓)
+  // ist bewusst NICHT „aktiv": sie ist der geplante Normalfall (E↓ läuft nur
+  // in einer Deckungs-Viertelstunde), und „Unerwarteter Verbrauch" samt
+  // Bernstein wäre in jeder solchen Viertelstunde falsch. Sie spricht hier
+  // nur, wenn in geplanter Ruhe trotzdem deutlich bezogen wird (siehe unten).
+  const selfConsumption = mode === 'autonomous_selfconsumption' || mode === 'autonomous_discharge';
   const active = (mode === 'idle_follow' || mode === 'deficit_cover' ||
-    mode === 'high_soc_follow' || mode === 'autonomous_discharge') &&
+    mode === 'high_soc_follow') &&
     control?.executionMeasurementsFresh === true && control.allMatch &&
     control.controlEnabled && control.certified && checkedAge >= 0 && checkedAge <= 30_000;
   const gridKw = num(input.snapshot?.gridKw);
@@ -704,6 +705,11 @@ function resolveState(
   if (stripState === 'preparing') return 'wird_vorbereitet';
   if (stripState === 'mismatch') return 'abweichung';
   if (stripState === 'stale') return 'unbestaetigt';
+  // Wechselrichter-Automatik: die Box schreibt keinen Sollwert, `commandedKw`
+  // ist dort null - das heißt „der Wechselrichter regelt", nicht „wird
+  // vorbereitet". Der gemeldete Modus ist schon die Bestätigung (die Box
+  // meldet ihn erst nach dem Rücklesen).
+  if (isWrAutomatik(input.control?.executionMode)) return 'angepasst';
   if (executedKw == null) return 'wird_vorbereitet';
   // Seit PR 3 sagt das GERÄT selbst, warum sein Wert so ist. Das schlägt jede
   // Ableitung aus der Differenz: eine Nachführung, die zufällig innerhalb des
@@ -713,9 +719,7 @@ function resolveState(
   if (mode === 'fallback') return 'sicherung';
   if (mode === 'follow' || mode === 'limit' || mode === 'trim' || mode === 'absorb' ||
       mode === 'idle_follow' || mode === 'deficit_cover' || mode === 'high_soc_follow' ||
-      mode === 'high_soc_charge' || mode === 'surplus_store' ||
-      mode === 'autonomous_discharge' || mode === 'autonomous_charge' ||
-      mode === 'autonomous_selfconsumption') return 'angepasst';
+      mode === 'high_soc_charge' || mode === 'surplus_store') return 'angepasst';
   // Ohne den präzisen Modus (ältere Edge-Version) bleibt die GROBE Wahrheit:
   // das Gerät sagt, dass kein Fahrplan es steuert. Das reicht, um „läuft wie
   // vorgesehen" NICHT zu behaupten — aber NICHT, um die Ursache zu benennen

@@ -240,6 +240,44 @@ describe('periodenSatz - was befohlen wurde', () => {
     expect(fremd.ton).toBe('warn');
   });
 
+  it('Wechselrichter-Automatik: keine erfundene kW-Zahl, die Absicht als Grund, nie das rohe Wort', () => {
+    // K4b: in jedem autonomous_*-Modus schreibt die Box keinen Batteriewert -
+    // commanded_kw ist null, der Verlauf-Schlüssel hängt am Referenzwert.
+    const ohneWert = { commandedKwFirst: null, commandedKwLast: null, commandedKwMin: null, commandedKwMax: null };
+    const erwartet: Record<string, string> = {
+      autonomous_discharge: 'Automatik: Verbrauch aus dem Speicher decken',
+      autonomous_charge: 'Automatik: nur Solarüberschuss laden',
+      autonomous_selfconsumption: 'Automatik: Eigenverbrauch',
+    };
+    for (const [mode, grund] of Object.entries(erwartet)) {
+      const satz = periodenSatz(periode({ mode, whyRef: '-2.00', ...ohneWert }));
+      expect(satz).toContain('Vom Wechselrichter selbst geregelt');
+      expect(satz).toContain(`Fahrplan, ${grund}`);
+      expect(satz).not.toMatch(/kW|angehalten|Laden mit|Entladen mit|autonomous_/);
+    }
+  });
+
+  it('nennt die Live-Korrekturen der Box mit eigenem Satz statt nur „Fahrplan"', () => {
+    const faelle: Record<string, string> = {
+      idle_follow: 'unerwarteter Verbrauch live aus dem Speicher gedeckt',
+      deficit_cover: 'Verbrauch live aus dem Speicher gedeckt statt eingekauft',
+      surplus_store: 'gemessener Solarüberschuss eingespeichert statt eingespeist',
+    };
+    for (const [mode, grund] of Object.entries(faelle)) {
+      const satz = periodenSatz(periode({ mode }));
+      expect(satz).toContain(`Fahrplan, ${grund}`);
+      expect(satz).not.toMatch(/idle_follow|deficit_cover|surplus_store/);
+    }
+  });
+
+  it('ein fehlender Sollwert ist kein Stillstand', () => {
+    const satz = periodenSatz(periode({
+      mode: 'plan', commandedKwFirst: null, commandedKwLast: null, commandedKwMin: null, commandedKwMax: null,
+    }));
+    expect(satz).toContain('Speicher-Sollwert nicht gemeldet');
+    expect(satz).not.toMatch(/angehalten|0,0/);
+  });
+
   it('spricht bei der Abregelung von Einspeisung, nicht von der Batterie', () => {
     expect(periodenSatz(periode({ stream: 'abregelung', mode: 'abregeln' })))
       .toContain('Einspeisung begrenzt');

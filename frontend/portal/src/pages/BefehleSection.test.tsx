@@ -69,6 +69,29 @@ describe('BefehleSection', () => {
     expect(screen.getByText('vom Gerät bestätigt')).toBeInTheDocument();
   });
 
+  it('Wechselrichter-Automatik: nie das rohe Wort, nie eine erfundene kW-Zahl - auch im Roh-Blick', async () => {
+    const ohneWert = { commandedKwFirst: null, commandedKwLast: null, commandedKwMin: null, commandedKwMax: null };
+    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({
+      entries: [
+        periode({ id: 1, mode: 'autonomous_discharge', ...ohneWert }),
+        periode({ id: 2, mode: 'autonomous_charge', ...ohneWert }),
+        periode({ id: 3, mode: 'autonomous_selfconsumption', ...ohneWert }),
+        periode({ id: 4, mode: 'idle_follow' }),
+        periode({ id: 5, mode: 'deficit_cover' }),
+        periode({ id: 6, mode: 'surplus_store', commandedKwFirst: 3, commandedKwLast: 3, commandedKwMin: 3, commandedKwMax: 3 }),
+      ],
+    }));
+    const { container } = render(<BefehleSection site={site} entityId="e1" />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText(/Vom Wechselrichter selbst geregelt/).length).toBe(3));
+    fireEvent.click(screen.getAllByText('Technische Details')[0]);
+    const text = container.textContent ?? '';
+    expect(text).toContain('Automatik: nur Solarüberschuss laden');
+    expect(text).not.toMatch(/autonomous_|idle_follow|deficit_cover|surplus_store/);
+    expect(text).not.toMatch(/Sollwert 0,0|angehalten/);
+  });
+
   /**
    * Captain-Entscheid F1: der Roh-Blick ist für ALLE Kunden aufklappbar - die
    * Transparenz IST das Produktversprechen. Der Test mockt bewusst KEINE

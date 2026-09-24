@@ -258,6 +258,21 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
 };
 
 /**
+ * Die Modi der Wechselrichter-Eigenregelung: der WECHSELRICHTER entscheidet
+ * die Batterie-Leistung selbst, die Box schreibt keinen Sollwert - darum sind
+ * `commandedKw`/`confirmedKw` dort null (K4b). Jede Fläche, die sonst aus dem
+ * Sollwert eine Richtung liest, muss diesen Fall vorher abfangen: null ist
+ * kein „pausiert".
+ */
+export function isWrAutomatik(mode: ExecutionMode | string | null | undefined): boolean {
+  return mode === 'autonomous_discharge' || mode === 'autonomous_charge' ||
+    mode === 'autonomous_selfconsumption';
+}
+
+/** Der gesunde Satz der Wechselrichter-Automatik - ohne erfundene kW-Zahl. */
+export const WR_AUTOMATIK_SATZ = 'Ihr Wechselrichter regelt den Speicher gerade selbst';
+
+/**
  * executionNote - der EINE deutsche Satz, der die bewusste Abweichung des
  * Geräts vom Plan-Watt-Wert benennt.
  *
@@ -315,9 +330,15 @@ export function executionNote(status: ControlStatus | null): string | null {
       'Speicher, Verbrauch wird aus dem Speicher gedeckt.'
     );
   }
-  if (mode === 'idle_follow' || mode === 'autonomous_discharge') {
-    const path = mode === 'idle_follow' ? 'der 10-Sekunden-Nachführung' : 'der Wechselrichter-Automatik';
-    return `${plannedPart}Unerwarteter Verbrauch wird live mit ${path}${measured} gedeckt.`;
+  // Die Entlade-Seite (Absicht E↓): auch hier ist `executionPlannedKw` nur der
+  // Wert, den die Box beim Zurücknehmen schreiben WÜRDE - kein „Der Fahrplan
+  // sah X vor". Der Verbrauch ist in einer solchen Viertelstunde auch nicht
+  // „unerwartet": die Deckung aus dem Speicher ist der Plan.
+  if (mode === 'autonomous_discharge') {
+    return 'Ihr Wechselrichter deckt Ihren Verbrauch gerade selbst aus dem Speicher.';
+  }
+  if (mode === 'idle_follow') {
+    return `${plannedPart}Unerwarteter Verbrauch wird live mit der 10-Sekunden-Nachführung${measured} gedeckt.`;
   }
   if (mode === 'limit') {
     // Netz-null-Reduzieren: die Box hat die geplante Entladung auf den
@@ -546,6 +567,8 @@ export function controlStrip(
   const ago = fmtRelative(status.checkedAt, now);
   const ageMs = now.getTime() - new Date(status.checkedAt).getTime();
   const stale = !isNaN(ageMs) && ageMs > CONTROL_STALE_MS;
+  // Wechselrichter-Automatik: kein Sollwert, also auch keine Richtung daraus.
+  const automatik = isWrAutomatik(status.executionMode);
 
   // Control switched off (Not-Aus): honest, calm, not an error.
   if (!status.controlEnabled) {
@@ -565,7 +588,9 @@ export function controlStrip(
     return {
       state: 'stale',
       tone: 'off',
-      sentence: staleSentence(status.commandedKw),
+      sentence: automatik
+        ? 'Zuletzt: Ihr Wechselrichter regelte den Speicher selbst – bestätigt'
+        : staleSentence(status.commandedKw),
       agoNote: `zuletzt geprüft ${ago}`,
       reason,
       execution: note,
@@ -578,7 +603,9 @@ export function controlStrip(
     return {
       state: 'mismatch',
       tone: 'warn',
-      sentence: mismatchSentence(status.commandedKw, status.confirmedKw),
+      sentence: automatik
+        ? 'Ihr Wechselrichter soll den Speicher selbst regeln – eine Einstellung weicht ab'
+        : mismatchSentence(status.commandedKw, status.confirmedKw),
       agoNote: `Abweichung · geprüft ${ago}`,
       reason,
       execution: note,
@@ -593,7 +620,7 @@ export function controlStrip(
   // explains the feed-in itself (`surplusActive`) - it names the export (and,
   // in the "waits to charge later" case, the charge time), so appending the
   // clarification or a second outlook line would only repeat it.
-  const isRuhe = batteryDirection(status.commandedKw) === 'pausieren';
+  const isRuhe = !automatik && batteryDirection(status.commandedKw) === 'pausieren';
   const ruheReason =
     isRuhe && reason && !surplusActive ? `${reason} ${PV_CLARIFICATION}` : reason;
   const ruheOutlook = isRuhe && !surplusActive ? outlook : null;
@@ -623,7 +650,9 @@ export function controlStrip(
   return {
     state: 'healthy',
     tone: 'ok',
-    sentence: directionSentence(status.commandedKw),
+    sentence: automatik
+      ? `${WR_AUTOMATIK_SATZ} – ${VOM_WR_BESTAETIGT}`
+      : directionSentence(status.commandedKw),
     agoNote: `geprüft ${ago}`,
     reason: ruheReason,
     execution: note,
