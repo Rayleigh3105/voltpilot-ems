@@ -151,6 +151,32 @@ public class TenantRepository {
 
     /** Recheck directory blocking under the same tenant lock as account administration, before any DELETE. */
     public OffboardCounts offboard(UUID tenantId, Runnable beforeTeardown) {
+        return offboard(tenantId, beforeTeardown, null);
+    }
+
+    /**
+     * Runs inside the offboarding transaction (UEMS AP-20 IP-18): {@link #vorDemAbbau} under the tenant lock and
+     * before any DELETE, {@link #nachDemAbbau} after the tenant row is gone and before the commit. Whatever either
+     * throws rolls the whole teardown back; an {@link AbbauVerweigert} reaches the caller unwrapped.
+     */
+    public interface Abbauwache {
+        void vorDemAbbau(java.sql.Connection con) throws java.sql.SQLException;
+
+        void nachDemAbbau(java.sql.Connection con) throws java.sql.SQLException;
+    }
+
+    /** The {@link Abbauwache} refused the teardown; nothing was deleted. */
+    public static class AbbauVerweigert extends RuntimeException {
+        public AbbauVerweigert(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * The guarded teardown of the delete route: {@code wache} (may be {@code null} only for the migration fixtures,
+     * which run today's teardown against older schemas) decides and records inside the same transaction.
+     */
+    public OffboardCounts offboard(UUID tenantId, Runnable beforeTeardown, Abbauwache wache) {
         return jdbc.execute((java.sql.Connection con) -> {
             boolean autoCommit = con.getAutoCommit();
             con.setAutoCommit(false);
@@ -158,6 +184,9 @@ public class TenantRepository {
                 try (var lock = con.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
                     lock.setString(1, "uems-benutzerverwaltung:" + tenantId);
                     lock.execute();
+                }
+                if (wache != null) {
+                    wache.vorDemAbbau(con);
                 }
                 beforeTeardown.run();
                 for (String table : new String[] {
@@ -437,10 +466,16 @@ public class TenantRepository {
                     deleteByTenant(con, table, tenantId);
                 }
                 deleteByTenant(con, "tenant", tenantId, "id");
+                if (wache != null) {
+                    wache.nachDemAbbau(con);
+                }
                 con.commit();
                 return new OffboardCounts(sites, devices, telemetryRows);
             } catch (Exception e) {
                 con.rollback();
+                if (e instanceof AbbauVerweigert verweigert) {
+                    throw verweigert;
+                }
                 throw e instanceof java.sql.SQLException sql ? sql
                         : new java.sql.SQLException("tenant offboarding failed", e);
             } finally {

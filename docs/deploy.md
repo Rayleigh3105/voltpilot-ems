@@ -64,6 +64,19 @@ Auf einer reinen Daten-VM ausschließlich die benötigten Datendienste verwalten
 - Vor zustandsverändernden Wartungsarbeiten eine zur Umgebung passende, getestete Wiederherstellung für Datenbank, CA, ACL und Konfiguration bereithalten.
 - Die erste UEMS-Produktfreigabe ist die benannte Ausnahme mit Wartungsfenster und Wiederherstellungspunkt; ihr wörtlicher Ablauf steht im [Rollout-Drehbuch](rollout/uems-erste-freigabe.md). Danach gilt Expand-Contract wirklich — bewacht von `MigrationHygieneTest`: eine neue Migration mit `RENAME COLUMN`, `DROP COLUMN` oder `DROP CONSTRAINT …_pkey` braucht den Marker `-- freigabe: fenster`, mit dem sie ausdrücklich ein Wartungsfenster anmeldet.
 
+## Kundenbereich löschen (Vertragsende)
+
+**Regel BT5 (UEMS AP-20, gilt ab sofort, auch auf `main`):** kein Löschen eines Kundenbereichs ohne schriftlichen Auftrag des Kunden und angebotene Mitnahme seiner Daten. Den Auftrag legt der Betreiber zu den Vertragsunterlagen; keine Route prüft ihn — er ist die Hand des Betreibers. Es wird nicht anonymisiert: nach Vertragsende, Mitnahme und Frist wird gelöscht (E10 = A, BT4).
+
+1. **Beenden:** `POST /api/v1/admin/tenants/{id}/beenden` mit Auftrag, Begründung, Name eintippen und Frist in Tagen (Startwert 90; die geltende steht im Vertrag). Danach schreibt niemand mehr in den Bereich, nur der Kundenadministrator liest. Innerhalb der Frist nimmt `…/wiederaufnehmen` ihn zurück — derselbe Bereich, kein neuer.
+2. **Mitnahme anbieten:** der Kundenadministrator lädt den Gesamtabzug (`GET /api/v1/unternehmen/abzug`; im Portal im Hinweis „beendet“ und unter „Unternehmen › Einstellungen“). Jeder abgeschlossene Abruf steht mit Prüfsumme im Protokoll `kundenbereich_abzug`.
+3. **Nach der Frist löschen:** `POST /api/v1/admin/tenants/{id}/delete` (Name eintippen). Vorher antwortet die Route `409 kundenbereich_nicht_beendet` bzw. `409 frist_laeuft` mit `loeschung_fruehestens` — bevor ein Konto gesperrt wird.
+4. **Der Löschnachweis bleibt:** `mandant_loeschnachweis`, Kennzeichen `LN-JJJJ-nnnn`, auch im Bericht der Route unter `loeschnachweis`: Kennung des Bereichs, beendet am, Frist, gelöscht am und von wem (Betrieb), Zeilen je Tabelle, `verblieben` und die Prüfsumme des letzten Gesamtabzugs — ohne Namen, Konten oder Auftragstexte des Kunden. Niemand ändert oder löscht ihn; nur die Admin-Rolle der Datenbank liest ihn.
+
+- **`verblieben` ist heute nicht leer:** die append-only-Protokolle `ort_aenderung`, `messstelle_aenderung` und `data_source_aenderung` tragen keinen Fremdschlüssel, ein Trigger verbietet jedes Löschen — sie überleben den Löschweg und können Firmen- und Personennamen enthalten. Der Nachweis nennt ihre Zeilen; das Mitlöschen ist offen (Befund AP-20 IP-18).
+- **Sicherungen** ([Backup-Runbook](backup-restore.md)) enthalten den Bereich weiter, bis sie nach ihrer eigenen Aufbewahrung wegfallen; der Löschweg erreicht sie nicht.
+- `POST …/offboarding/cleanup` löscht nur übrige Keycloak-Konten eines schon gelöschten Bereichs und verweigert, solange der Bereich existiert.
+
 ## Betrieb prüfen
 
 [Kubernetes-Betriebsvertrag](k8s-readiness.md): Probes, Singleton-Grenzen, Shutdown und Metriken. [MQTT-Sicherheit](security-mqtt.md): Zertifikate, ACL-Mounts und Reload.

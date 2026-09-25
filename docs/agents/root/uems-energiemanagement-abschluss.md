@@ -66,7 +66,8 @@ in `UemsEnergiemanagementBestandsschutzTest#keinSchalterKeinLaeuferKeineNaht` wi
 - **Release-Notiz:** die Zeile „Unter „Energiemanagement“ …“ in `docs/rollout/release-notiz-vorlage.md` ist die
   einzige Hand des Betreibers (§8.3) — Ablage, Keycloak je Kunde, Schlüsselverwaltung und SMTP gehörten nur zu den nicht
   gewählten Optionen. Wächter: `copy.test.ts` (Block AP-19 IP-3, Fall „Release-Notiz“, und AP-14 S1–S3).
-- **Datenschutz:** Personen ohne Konto sind personenbezogene Daten; sie bleiben, solange eine Zeile sie nennt, und
-  werden am Ende eines Kundenbereichs anonymisiert — Naht AP-20 (Aufbewahrung, Zugriffsschutz), hier nicht gebaut.
+- **Datenschutz:** Personen ohne Konto sind personenbezogene Daten; sie bleiben, solange eine Zeile sie nennt. Am Ende
+  eines Kundenbereichs wird **nicht anonymisiert** (Berichtigung AP-20 W1, E10 = A): beendet → Mitnahme (Gesamtabzug)
+  → nach der Frist gelöscht, mit Löschnachweis ohne Personendaten — [Vertragsende](uems-kundenbereich-beendet.md).
 - **Seed:** der Demo-Seed bleibt auf 1.4 (AP-18 W14); jede Bühne legt Dokumente, Aufgaben und Audits nach der
   Referenzdatei 1.10 selbst an.

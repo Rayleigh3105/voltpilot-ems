@@ -5416,6 +5416,12 @@ paths:
         directory cleanup with POST /tenants/{tenantId}/offboarding/cleanup.
         Existing customer JWTs of a removed tenant are rejected with 401,
         including GET /api/v1/me.
+        UEMS AP-20 IP-18 (E10 = A, BT4, BT5): only a tenant in the state
+        „beendet“ whose period has run out (`loeschung_fruehestens`, a calendar
+        day in Europe/Berlin) is deleted; otherwise 409 `kundenbereich_nicht_beendet`
+        or 409 `frist_laeuft`, answered before any account is blocked. The same
+        transaction writes the deletion record `mandant_loeschnachweis`
+        (`loeschnachweis` in the report) without the customer's personal data.
       parameters:
         - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -5433,6 +5439,21 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant not found. }
+        "409":
+          description: >
+            `kundenbereich_nicht_beendet` (the tenant is not „beendet“) or
+            `frist_laeuft` (the period after the end of contract has not run
+            out yet). Nothing is blocked or deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message]
+                properties:
+                  code: { type: string, enum: [kundenbereich_nicht_beendet, frist_laeuft] }
+                  message: { type: string }
+                  beendet_am: { type: string, format: date-time }
+                  loeschung_fruehestens: { type: string, format: date }
         "502": { description: Accounts could not be completely listed or disabled; no database teardown. }
   /api/v1/admin/tenants/{tenantId}/offboarding/cleanup:
     post:
@@ -27716,6 +27737,27 @@ components:
         failedUsers:
           type: array
           items: { type: string }
+        loeschnachweis:
+          type: object
+          description: >
+            UEMS AP-20 IP-18: the deletion record (`mandant_loeschnachweis`) that
+            stays after the tenant is gone - the tenant only by its id, no names,
+            accounts or order texts. `zaehlungen` = rows per table before the
+            deletion (every table with `tenant_id`, plus `tenant`); `verblieben` =
+            rows per table that still carry the tenant id afterwards (empty =
+            completely deleted); `abzugSha256` = manifest checksum of the last
+            completed Gesamtabzug, null if none was downloaded.
+          required: [kennzeichen, geloeschtAm, zaehlungen, verblieben]
+          properties:
+            kennzeichen: { type: string, pattern: "^LN-[0-9]{4}-[0-9]{4,}$" }
+            geloeschtAm: { type: string, format: date-time }
+            zaehlungen:
+              type: object
+              additionalProperties: { type: integer, format: int64 }
+            verblieben:
+              type: object
+              additionalProperties: { type: integer, format: int64 }
+            abzugSha256: { type: string, nullable: true }
     TenantOffboardingCleanup:
       type: object
       required: [tenantId, deletedUsers, failedUsers]

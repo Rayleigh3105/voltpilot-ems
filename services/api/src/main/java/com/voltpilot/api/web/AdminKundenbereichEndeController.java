@@ -34,7 +34,8 @@ import org.springframework.web.server.ResponseStatusException;
  * </ul>
  * Jeder Übergang ist einmalig: ein zweiter Aufruf bewegt nichts und antwortet 409 ({@code kundenbereich_schon_beendet}
  * bzw. {@code kundenbereich_nicht_beendet}). Beide schreiben das Plattform-Protokoll {@code kundenbereich_uebergang}.
- * Der Löschweg {@code POST …/delete} bleibt unverändert (IP-18).
+ * Der Löschweg {@code POST …/delete} nimmt seit IP-18 nur einen beendeten Bereich nach der Frist
+ * ({@code KundenbereichLoeschung}).
  */
 @RestController
 @RequestMapping("/api/v1/admin/tenants/{tenantId}")

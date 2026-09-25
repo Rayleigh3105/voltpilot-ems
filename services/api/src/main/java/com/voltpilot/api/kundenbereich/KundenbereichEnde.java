@@ -37,6 +37,11 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
         return beendetAmTag().plusDays(fristTage);
     }
 
+    /** Ob der Betreiber an diesem Kalendertag löschen darf (IP-18): ab {@link #loeschungFruehestens}, nie davor. */
+    public boolean fristAbgelaufen(LocalDate heute) {
+        return !heute.isBefore(loeschungFruehestens());
+    }
+
     /** Der Kopf-Hinweis für jede Person des Kundenbereichs. */
     public String text() {
         return "Ihr Vertrag ist am " + beendetAmTag().format(DATUM) + " beendet. Ihre Daten können Sie nur noch lesen; "

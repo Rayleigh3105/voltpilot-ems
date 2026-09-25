@@ -2,7 +2,7 @@
 
 E10 = A, BT4, RF-08: der Betreiber setzt einen Kundenbereich auf „beendet"; danach ist jeder
 Schreibweg `409 kundenbereich_beendet`, nur der Kundenadministrator liest noch, die Datenannahme
-verwirft mit Zählung. IP-17 (Gesamtabzug, unten) ist gebaut; IP-18 (Löschen nach der Frist, Löschnachweis) folgt.
+verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, Löschnachweis) stehen unten.
 
 - **Zustand:** `tenant.beendet_am` / `beendet_frist_tage` / `beendet_von` (`V20260925170000`).
   NULL = aktiv — bewusst keine Zustandsspalte mit Default (sie änderte jede Bestandszeile, der
@@ -87,3 +87,29 @@ verwirft mit Zählung. IP-17 (Gesamtabzug, unten) ist gebaut; IP-18 (Löschen na
   „Unternehmen › Einstellungen“ (`BenutzerPage`, nur Kundenadministrator); Download als Blob.
 - **Nachweis:** `GesamtabzugApiTest` (NW-5: Manifest-Prüfsummen, 403, „beendet“, 1 Mio. Messzeilen mit offenem
   Cursor beim Empfang und +1 MB lebendem Speicher), `GesamtabzugTest`, `ZugriffZaunApiTest` (`NACH_IP4`).
+
+## Löschen nach der Frist (IP-18)
+
+`POST /api/v1/admin/tenants/{id}/delete` (`AdminController` → `kundenbereich/KundenbereichLoeschung`), BT4, BT5, RF-08 Schritt 4–5.
+Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-löschen-vertragsende).
+
+- **Wache:** nur „beendet“ und ab `KundenbereichEnde.loeschungFruehestens` (Kalendertag Berlin) — sonst `409
+  kundenbereich_nicht_beendet` bzw. `409 frist_laeuft` (Körper `code`, `message`, `beendet_am`,
+  `loeschung_fruehestens`). Zweimal: `pruefen` VOR dem Sperren der Konten, dann `Wache.vorDemAbbau` im Löschzug unter
+  `FOR UPDATE` auf der Mandantenzeile (eine gleichzeitige Wiederaufnahme gewinnt ganz oder findet nichts).
+- **`TenantRepository.offboard(id, runnable, wache)`:** die Wache läuft in DERSELBEN Transaktion vor dem ersten und
+  nach dem letzten DELETE. `offboard(id)`/`offboard(id, runnable)` bleiben ohne Wache — **nur für die
+  Migrations-Fixtures**, die den Löschweg von heute gegen ältere Schemata fahren (dort gibt es `beendet_am` nicht).
+  Stubs in Tests auf die Drei-Argument-Form (`AdminApiTest`).
+- **Löschnachweis `mandant_loeschnachweis`** (`V20260925223000`): Spalte `kundenbereich` statt `tenant_id` (kein
+  RLS-Mandant, kein FK, fällt aus Gesamtabzug und Katalog-Zählung), Kennzeichen `LN-JJJJ-nnnn`, `zaehlungen` und
+  `verblieben` aus dem **Katalog** (jede Tabelle mit `tenant_id`, nicht die Liste des Löschwegs), `abzug_sha256` =
+  `manifest_sha256` des letzten abgeschlossenen Abzugs. Kein Name, keine Konten, kein Auftrag/Begründung (Freitext).
+  Trigger `mandant_loeschnachweis_bleibt`, Admin-Rolle nur SELECT/INSERT, App-Rolle nichts.
+- **Befund `verblieben`:** `ort_aenderung` (jede Anlage eines Mandanten schreibt dort den Firmennamen),
+  `messstelle_aenderung`, `data_source_aenderung` haben keinen FK und append-only-Trigger für ALLE Rollen — sie
+  überleben das Löschen, `UemsOrteMigrationTest` sichert das zu. Der Nachweis nennt sie; Mitlöschen = eigener Schnitt.
+- **`offboarding/cleanup`** nimmt nicht denselben Löschweg: nur Keycloak-Konten, und nur ohne Mandantenzeile.
+- **Nachweis:** `KundenbereichLoeschenApiTest` (NW-5: RF-08 mit Zeitraffer 89/90 Tage, Spalten und Inhalt ohne
+  Personendaten, `verblieben` = Katalog danach, Nachweis unveränderlich), `AdminApiTest` (Löschweg-Fälle mit
+  `vertragsendeUndFristAbgelaufen`).

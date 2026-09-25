@@ -4,6 +4,7 @@ import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.kundenbereich.KundenbereichLoeschung;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.AdminEnrollmentRepository;
 import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
@@ -32,6 +33,7 @@ import org.springframework.security.core.Authentication;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +45,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -80,12 +83,13 @@ public class AdminController {
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final BenutzerService benutzer;
     private final AdminBenutzerService adminBenutzer;
+    private final KundenbereichLoeschung loeschung;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
             ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer,
-            AdminBenutzerService adminBenutzer) {
+            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
@@ -94,6 +98,7 @@ public class AdminController {
         this.provisioning = provisioning;
         this.benutzer = benutzer;
         this.adminBenutzer = adminBenutzer;
+        this.loeschung = loeschung;
     }
 
     // ---- tenants -------------------------------------------------------------
@@ -128,10 +133,15 @@ public class AdminController {
      * data, the tenant row) runs in ONE transaction, AFTER all accounts have been
      * disabled through the shared account path. Failed final deletions leave disabled
      * accounts and are reported/logged; the cleanup route can repeat them without a tenant row.
+     *
+     * <p>UEMS AP-20 IP-18 (E10 = A, BT4, BT5): only a tenant in the state „beendet" whose period has run out
+     * ({@code 409 kundenbereich_nicht_beendet} / {@code 409 frist_laeuft}, checked BEFORE any account is blocked and
+     * again under the row lock in the teardown); the same transaction writes the deletion record
+     * {@code mandant_loeschnachweis} without the customer's personal data ({@link KundenbereichLoeschung}).
      */
     @PostMapping("/tenants/{tenantId}/delete")
     public TenantOffboardingReportDto deleteTenant(@PathVariable UUID tenantId,
-            @Valid @RequestBody DeleteTenantRequest request) {
+            @Valid @RequestBody DeleteTenantRequest request, Authentication auth) {
         TenantDto tenant = tenants.findById(tenantId);
         if (tenant == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
@@ -140,6 +150,9 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "confirmName does not match the tenant name");
         }
+        loeschung.pruefen(tenantId);
+        KundenbereichLoeschung.Wache wache = loeschung.wache(tenantId, ProtokollAkteur.aus(auth)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED)));
 
         // Collected BEFORE the cascade: afterwards the rows are gone.
         List<TenantDevice> devices = tenants.devicesOfTenant(tenantId);
@@ -159,7 +172,11 @@ public class AdminController {
                 List<KeycloakUser> current = adminBenutzer.offboardingResteSperren(tenantId);
                 users.clear();
                 users.addAll(current);
-            });
+            }, wache);
+        } catch (KundenbereichLoeschung.Verweigert ex) {
+            log.warn("Offboarding tenant {}: refused under the row lock ({}); accounts remain disabled", tenantId,
+                    ex.getMessage());
+            throw ex;
         } catch (RuntimeException ex) {
             log.error("Offboarding tenant {}: database removal failed; accounts remain disabled; retry offboarding", tenantId);
             throw ex;
@@ -181,8 +198,19 @@ public class AdminController {
                 + "{} users deleted, {} disabled users pending cleanup", tenantId, tenant.name(),
                 counts.sites(), counts.devices(), counts.telemetryRows(),
                 cleanup.deletedUsers().size(), cleanup.failedUsers().size());
+        KundenbereichLoeschung.Nachweis nachweis = wache.nachweis();
+        log.info("Offboarded tenant {}: deletion record {}, {} tables with remaining rows", tenantId,
+                nachweis.kennzeichen(), nachweis.verblieben().size());
         return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
-                counts.devices(), counts.telemetryRows(), cleanup.deletedUsers(), cleanup.failedUsers());
+                counts.devices(), counts.telemetryRows(), cleanup.deletedUsers(), cleanup.failedUsers(),
+                new TenantOffboardingReportDto.Loeschnachweis(nachweis.kennzeichen(), nachweis.geloeschtAm(),
+                        nachweis.zaehlungen(), nachweis.verblieben(), nachweis.abzugSha256()));
+    }
+
+    /** IP-18: the delete route's refusal in the form of the UEMS refusals ({@code code}, {@code message}, facts). */
+    @ExceptionHandler(KundenbereichLoeschung.Verweigert.class)
+    public ResponseEntity<Map<String, Object>> loeschenVerweigert(KundenbereichLoeschung.Verweigert ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.koerper());
     }
 
     /** Only the platform may repeat cleanup, and only after the tenant's data has been removed. */

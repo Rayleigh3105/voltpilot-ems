@@ -724,6 +724,14 @@ class AdminApiTest {
                 new HttpEntity<>(Map.of("confirmName", "Weggezogen GmbH"), bearer(customer)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
+        // UEMS AP-20 IP-18: an active tenant is refused (409) BEFORE any account is blocked - nothing moves.
+        ResponseEntity<Map<String, Object>> aktiv = offboard(admin, tenantId, "Weggezogen GmbH");
+        assertThat(aktiv.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(aktiv.getBody()).containsEntry("code", "kundenbereich_nicht_beendet");
+        assertThat(queryLong("SELECT count(*) FROM device WHERE tenant_id = '" + tenantId + "'")).isEqualTo(1L);
+        assertThat(tryToken("weggezogen-operator", "weg-pw-123")).containsKey("access_token");
+        vertragsendeUndFristAbgelaufen(tenantId);
+
         // The exact name unlocks the cascade; the report says what was removed.
         ResponseEntity<Map<String, Object>> report = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
@@ -736,6 +744,8 @@ class AdminApiTest {
         assertThat((List<?>) report.getBody().get("deletedUsers"))
                 .isEqualTo(List.of("weggezogen-operator"));
         assertThat((List<?>) report.getBody().get("failedUsers")).isEmpty();
+        assertThat(queryLong("SELECT count(*) FROM mandant_loeschnachweis WHERE kundenbereich = '" + tenantId + "'"))
+                .isEqualTo(1L);
 
         // Database: tenant, site, device, telemetry - all gone.
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isZero();
@@ -768,6 +778,7 @@ class AdminApiTest {
         Map<String, Object> tokens = tryToken("offboarding-fehler", "offboarding-pw-123");
         String before = (String) tokens.get("access_token");
         assertThat(before).isNotBlank();
+        vertragsendeUndFristAbgelaufen(tenantId);
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated directory deletion failure"))
                 .when(keycloakAdmin).deleteUser(userId);
         org.mockito.Mockito.doAnswer(invocation -> {
@@ -775,7 +786,7 @@ class AdminApiTest {
             keycloakAdmin.setEnabled(userId, true);
             return invocation.callRealMethod();
         }).when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)),
-                org.mockito.ArgumentMatchers.any(Runnable.class));
+                org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
 
         var report = offboard(admin, tenantId, "Offboarding Fehlerfall");
         assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -799,7 +810,7 @@ class AdminApiTest {
         }
         var order = org.mockito.Mockito.inOrder(keycloakAdmin, offboardingTenants);
         order.verify(keycloakAdmin).setEnabled(userId, false);
-        order.verify(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+        order.verify(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
         order.verify(keycloakAdmin).deleteUser(userId);
         assertThat(output).contains("disabled Keycloak user " + userId + " pending cleanup");
 
@@ -822,11 +833,12 @@ class AdminApiTest {
         String tenantId = (String) createTenant(admin, "Sperrfehler", "CI").get("id");
         String userId = (String) createUser(admin, tenantId, "offboarding-sperre",
                 "sperre@offboarding.example", "offboarding-pw-123").get("id");
+        vertragsendeUndFristAbgelaufen(tenantId);
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated blocking failure"))
                 .when(keycloakAdmin).setEnabled(userId, false);
         assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
-        org.mockito.Mockito.verify(offboardingTenants, org.mockito.Mockito.never()).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+        org.mockito.Mockito.verify(offboardingTenants, org.mockito.Mockito.never()).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
         org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
         assertThat(cleanup(admin, tenantId).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         org.mockito.Mockito.doCallRealMethod().when(keycloakAdmin).setEnabled(userId, false);
@@ -840,8 +852,9 @@ class AdminApiTest {
         String userId = (String) createUser(admin, tenantId, "offboarding-datenbank",
                 "datenbank@offboarding.example", "offboarding-pw-123").get("id");
         String customer = token("offboarding-datenbank", "offboarding-pw-123");
+        vertragsendeUndFristAbgelaufen(tenantId);
         org.mockito.Mockito.doThrow(new IllegalStateException("simulated database failure"))
-                .when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+                .when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
         assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
         assertThat(queryLong("SELECT count(*) FROM benutzer WHERE tenant_id = '" + tenantId
@@ -851,8 +864,17 @@ class AdminApiTest {
         assertThat(rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(bearer(customer)), String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
-        org.mockito.Mockito.doCallRealMethod().when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class));
+        org.mockito.Mockito.doCallRealMethod().when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
         assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    /**
+     * UEMS AP-20 IP-18: the delete route takes only a tenant in the state „beendet" whose period has run out. The
+     * transition itself is {@code KundenbereichBeendetApiTest}'s; here the tenant is set 91 days back directly.
+     */
+    private static void vertragsendeUndFristAbgelaufen(String tenantId) {
+        exec("UPDATE tenant SET beendet_am = now() - interval '91 days', beendet_frist_tage = 90,"
+                + " beendet_von = 'Betrieb' WHERE id = '" + tenantId + "'");
     }
 
     private ResponseEntity<Map<String, Object>> offboard(String admin, String tenantId, String name) {
