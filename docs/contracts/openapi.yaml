@@ -5418,6 +5418,82 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { description: Tenant still exists; use the confirmed offboarding route. }
         "502": { description: Accounts could not be completely listed or disabled; no deletions attempted. }
+  /api/v1/admin/tenants/{tenantId}/beenden:
+    post:
+      tags: [admin]
+      summary: Vertragsende I - set a Kundenbereich to "beendet" (UEMS AP-20 IP-16, platform-admin only).
+      description: >
+        aktiv -> beendet with Auftrag, Begruendung and the tenant's EXACT name (type-to-confirm, like the
+        offboarding). From then on every write route of the Kundenbereich answers 409 kundenbereich_beendet
+        (customer routes and platform routes carrying its tenant, site or device); only the
+        Kundenadministrator still reads (GET /api/v1/me carries kundenbereich.beendet). fristTage defaults to 90 (the contract's value is the operator's);
+        loeschung_fruehestens = day of the end + fristTage, Europe/Berlin. The transition is written to the
+        platform protocol kundenbereich_uebergang and happens once - a second call is 409.
+        The offboarding route is unchanged by this package.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auftrag, begruendung, confirmName]
+              properties:
+                auftrag: { type: string }
+                begruendung: { type: string }
+                confirmName: { type: string }
+                fristTage: { type: integer, minimum: 1, maximum: 3650, default: 90 }
+      responses:
+        "200":
+          description: The Kundenbereich is beendet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  zustand: { type: string, enum: [beendet] }
+                  beendet_am: { type: string, format: date-time }
+                  frist_tage: { type: integer }
+                  loeschung_fruehestens: { type: string, format: date }
+        "400": { description: confirmName does not match the tenant's name, or a mandatory field is empty. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
+        "409": { description: kundenbereich_schon_beendet - the Kundenbereich is already beendet. }
+  /api/v1/admin/tenants/{tenantId}/wiederaufnehmen:
+    post:
+      tags: [admin]
+      summary: Vertragsende I - resume a beendet Kundenbereich (UEMS AP-20 IP-16, platform-admin only).
+      description: >
+        beendet -> aktiv with Auftrag and Begruendung; the same Kundenbereich, not a new one. Written to
+        kundenbereich_uebergang; a second call is 409.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auftrag, begruendung]
+              properties:
+                auftrag: { type: string }
+                begruendung: { type: string }
+      responses:
+        "200":
+          description: The Kundenbereich is aktiv again.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  zustand: { type: string, enum: [aktiv] }
+        "400": { description: A mandatory field is empty. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
+        "409": { description: kundenbereich_nicht_beendet - the Kundenbereich is not beendet. }
   /api/v1/admin/tenants/{tenantId}/sites:
     get:
       tags: [admin]
@@ -20352,10 +20428,26 @@ components:
               endet: { type: string, format: date-time }
     SelbstauskunftKundenbereich:
       type: object
-      required: [id, name]
+      required: [id, name, beendet]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+        beendet:
+          description: >
+            UEMS AP-20 IP-16 - null while the Kundenbereich is aktiv. Once beendet, every other customer
+            route answers this person 409 kundenbereich_beendet {code, message, beendet_am,
+            loeschung_fruehestens} unless liest is true (the Kundenadministrator), and every write route
+            answers it to everyone.
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/SelbstauskunftKundenbereichBeendet" }]
+    SelbstauskunftKundenbereichBeendet:
+      type: object
+      required: [beendet_am, loeschung_fruehestens, liest, text]
+      properties:
+        beendet_am: { type: string, format: date }
+        loeschung_fruehestens: { type: string, format: date, description: day of the end + Frist, computed on request }
+        liest: { type: boolean, description: true only for the Kundenadministrator }
+        text: { type: string, description: the sentence for THIS person, built by the API }
     SelbstauskunftStandort:
       type: object
       required: [id, kennzeichen, name, rollen, umfang, ocpp_stufe, rechte]

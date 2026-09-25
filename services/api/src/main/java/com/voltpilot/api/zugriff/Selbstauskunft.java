@@ -1,5 +1,7 @@
 package com.voltpilot.api.zugriff;
 
+import com.voltpilot.api.kundenbereich.KundenbereichEndeFilter;
+import com.voltpilot.api.kundenbereich.KundenbereichEndeRepository;
 import com.voltpilot.api.uems.KorrekturRechte;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.RechteAbleitung;
@@ -36,6 +38,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -66,11 +69,31 @@ public class Selbstauskunft {
     private final ZugriffRepository zugriffe;
     private final ZugriffKontextLader lader;
     private final Geltungsbereich geltungsbereich;
+    private final ObjectProvider<KundenbereichEndeRepository> ende;
 
-    public Selbstauskunft(ZugriffRepository zugriffe, ZugriffKontextLader lader, Geltungsbereich geltungsbereich) {
+    public Selbstauskunft(ZugriffRepository zugriffe, ZugriffKontextLader lader, Geltungsbereich geltungsbereich,
+            ObjectProvider<KundenbereichEndeRepository> ende) {
         this.zugriffe = zugriffe;
         this.lader = lader;
         this.geltungsbereich = geltungsbereich;
+        this.ende = ende;
+    }
+
+    /**
+     * Das Vertragsende des angenommenen Kundenbereichs (UEMS AP-20 IP-16) — {@code null}, solange er aktiv ist. Der
+     * Satz hängt an der Person: der Kundenadministrator liest weiter, jede andere Person nicht mehr
+     * ({@link KundenbereichEndeFilter#kundenadministrator}).
+     */
+    private SelbstauskunftDto.Beendet beendet(Zugriff z) {
+        KundenbereichEndeRepository repo = ende.getIfAvailable();
+        if (repo == null) {
+            return null;
+        }
+        return repo.beendet(z.kundenbereich()).map(e -> {
+            boolean liest = KundenbereichEndeFilter.kundenadministrator(z);
+            return new SelbstauskunftDto.Beendet(e.beendetAmTag().toString(), e.loeschungFruehestens().toString(),
+                    liest, liest ? e.text() : e.textNurKundenadministrator());
+        }).orElse(null);
     }
 
     @Transactional
@@ -133,7 +156,7 @@ public class Selbstauskunft {
                 b.name(),
                 code(b.konto()),
                 b.zustand().code(),
-                new SelbstauskunftDto.Kundenbereich(z.kundenbereich(), k.name()),
+                new SelbstauskunftDto.Kundenbereich(z.kundenbereich(), k.name(), beendet(z)),
                 z.zugang().code(),
                 rollen,
                 sicht.unternehmensweit(),

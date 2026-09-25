@@ -42,8 +42,27 @@ public record SelbstauskunftDto(
                 standorte, unternehmenRechte, kuenftig, text, teilansicht, unterstuetzungen, kundenadministratoren, eigene);
     }
 
+    /**
+     * @param beendet {@code null}, solange der Kundenbereich aktiv ist; sonst das Vertragsende (UEMS AP-20 IP-16)
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Kundenbereich(UUID id, String name) {}
+    public record Kundenbereich(UUID id, String name, Beendet beendet) {
+
+        public Kundenbereich(UUID id, String name) {
+            this(id, name, null);
+        }
+    }
+
+    /**
+     * Der beendete Kundenbereich (UEMS AP-20 IP-16, RF-08) — die Quelle des Kopf-Hinweises im Portal.
+     *
+     * @param beendetAm der Kalendertag des Endes (Europe/Berlin)
+     * @param loeschungFruehestens Tag des Endes plus Frist, beim Abruf gerechnet
+     * @param liest {@code true} nur für den Kundenadministrator; jede andere Person liest nicht mehr
+     * @param text der Satz für DIESE Person — gebildet in der API ({@code KundenbereichEnde}), nie im Portal
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Beendet(String beendetAm, String loeschungFruehestens, boolean liest, String text) {}
 
     /**
      * Ein sichtbarer Standort.

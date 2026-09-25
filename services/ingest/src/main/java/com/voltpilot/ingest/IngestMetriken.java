@@ -61,9 +61,11 @@ public class IngestMetriken {
 
     static final String IDENTITAET = "identitaet";
     static final String SERIALISIERUNG = "serialisierung";
+    /** UEMS AP-20 IP-16: der Umschlag gehoert zu einem beendeten Kundenbereich ({@link BeendeteKundenbereiche}). */
+    static final String KUNDENBEREICH_BEENDET = "kundenbereich_beendet";
 
     private static final String[] STROEME = {MEASUREMENTS, TELEMETRY, TELEMETRY_V2, EVENTS};
-    private static final String[] GRUENDE = {UNGUELTIG, IDENTITAET, SERIALISIERUNG};
+    private static final String[] GRUENDE = {UNGUELTIG, IDENTITAET, SERIALISIERUNG, KUNDENBEREICH_BEENDET};
 
     private final Map<String, Counter> angenommen;
     private final Map<String, Counter> weitergereicht;

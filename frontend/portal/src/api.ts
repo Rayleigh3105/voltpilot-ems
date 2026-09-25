@@ -2548,6 +2548,18 @@ export type SelbstauskunftUmfang = 'ansehen' | 'einrichten' | 'einrichten_und_be
 export interface SelbstauskunftKundenbereich {
   id: string;
   name: string;
+  /**
+   * UEMS AP-20 IP-16: `null` (bzw. fehlend in älteren Antworten), solange der Kundenbereich aktiv ist. Den Satz bildet
+   * die API; `liest` ist nur für den Kundenadministrator wahr — jede andere Person liest nicht mehr.
+   */
+  beendet?: SelbstauskunftKundenbereichBeendet | null;
+}
+
+export interface SelbstauskunftKundenbereichBeendet {
+  beendet_am: string;
+  loeschung_fruehestens: string;
+  liest: boolean;
+  text: string;
 }
 
 export interface SelbstauskunftStandort {

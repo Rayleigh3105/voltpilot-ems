@@ -85,10 +85,10 @@ class MetrikEndpunktTest {
                 .contains("voltpilot_ingest_weitergereicht_total")
                 .contains("voltpilot_ingest_verworfen_total")
                 .contains("voltpilot_ingest_letzter_schreibzug_age_seconds");
-        // Vier Stroeme x drei Gruende, alle ab Start auf 0 - ohne die Schreibweise des Exporters
+        // Vier Stroeme x vier Gruende (seit AP-20 IP-16 mit kundenbereich_beendet), alle ab Start auf 0 - ohne die Schreibweise des Exporters
         // festzunageln (Reihenfolge und Komma der Label sind seine Sache, nicht unsere).
         assertThat(rumpf.lines().filter(l -> l.startsWith("voltpilot_ingest_verworfen_total")).toList())
-                .hasSize(12)
+                .hasSize(16)
                 .allSatisfy(zeile -> assertThat(zeile).endsWith(" 0.0"))
                 .anySatisfy(zeile -> assertThat(zeile)
                         .contains("grund=\"identitaet\"").contains("strom=\"telemetry\""));

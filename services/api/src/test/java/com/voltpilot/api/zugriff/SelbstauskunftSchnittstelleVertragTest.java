@@ -40,6 +40,7 @@ class SelbstauskunftSchnittstelleVertragTest {
         Map<Class<?>, String> m = new LinkedHashMap<>();
         m.put(SelbstauskunftDto.class, "Selbstauskunft");
         m.put(SelbstauskunftDto.Kundenbereich.class, "SelbstauskunftKundenbereich");
+        m.put(SelbstauskunftDto.Beendet.class, "SelbstauskunftKundenbereichBeendet");
         m.put(SelbstauskunftDto.Standort.class, "SelbstauskunftStandort");
         m.put(SelbstauskunftDto.Kuenftig.class, "SelbstauskunftKuenftig");
         m.put(SelbstauskunftDto.Teilansicht.class, "SelbstauskunftTeilansicht");

@@ -1,3 +1,4 @@
+import { KundenbereichEndeHinweis } from '../components/KundenbereichEndeHinweis';
 import { UnterstuetzungBanner } from '../components/UnterstuetzungBanner';
 import { useRollen } from '../rollen';
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -689,6 +690,7 @@ export function AppShell({
               { value: '', label: 'Kundenbereich wählen' },
               ...[...new Map((selbst.kundenbereiche ?? []).filter(k => Date.parse(k.endet) > Date.now()).map(k => [k.id, k])).values()].map(k => ({ value: k.id, label: k.name })),
             ]} /></div>}
+          <KundenbereichEndeHinweis beendet={selbst?.kundenbereich?.beendet} />
           <UnterstuetzungBanner />
           {children}
         </main>

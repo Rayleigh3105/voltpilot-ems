@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.integration.IntegrationMessageHeaderAccessor;
 import org.springframework.integration.acks.SimpleAcknowledgment;
 import org.springframework.integration.annotation.ServiceActivator;
@@ -34,6 +35,7 @@ public class BoxEventsIngestHandler {
     private final EventsRawProducer ereignisse;
     private final Clock clock;
     private final IngestMetriken metriken;
+    private BeendeteKundenbereiche beendete;
 
     public BoxEventsIngestHandler(BoxEventsValidator validator, EventsRawProducer ereignisse,
             Clock clock, IngestMetriken metriken) {
@@ -41,6 +43,12 @@ public class BoxEventsIngestHandler {
         this.ereignisse = ereignisse;
         this.clock = clock;
         this.metriken = metriken;
+    }
+
+    /** UEMS AP-20 IP-16 - fehlt die Sperre (abgeschaltet, Tests), nimmt der Strom alles an wie vorher. */
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
     }
 
     @ServiceActivator(inputChannel = MqttEventsIngestConfig.CHANNEL)
@@ -51,6 +59,14 @@ public class BoxEventsIngestHandler {
         Instant eingang = clock.instant();
         String payload = message.getPayload();
         metriken.angenommen(IngestMetriken.EVENTS);
+        if (beendete != null && beendete.beendet(mqttTopic)) {
+            // UEMS AP-20 IP-16: ein beendeter Kundenbereich nimmt nichts mehr an - gezaehlt, nicht gemeldet.
+            metriken.verworfen(IngestMetriken.EVENTS, IngestMetriken.KUNDENBEREICH_BEENDET);
+            if (acknowledgement != null) {
+                acknowledgement.acknowledge();
+            }
+            return;
+        }
         boolean weitergereicht = false;
         try {
             List<CompletableFuture<?>> sends = new ArrayList<>();

@@ -162,9 +162,9 @@ class IngestMetrikenTest {
                 .hasSize(4).allMatch(l -> l.endsWith(" 0.0"));
         assertThat(zeilen.stream().filter(l -> l.startsWith("voltpilot_ingest_weitergereicht_total")))
                 .hasSize(4).allMatch(l -> l.endsWith(" 0.0"));
-        // vier Stroeme x drei Gruende
+        // vier Stroeme x vier Gruende (seit AP-20 IP-16 mit kundenbereich_beendet)
         assertThat(zeilen.stream().filter(l -> l.startsWith("voltpilot_ingest_verworfen_total")))
-                .hasSize(12).allMatch(l -> l.endsWith(" 0.0"));
+                .hasSize(16).allMatch(l -> l.endsWith(" 0.0"));
 
         assertThat(zeilen).allSatisfy(zeile ->
                 assertThat(zeile).doesNotContain(TENANT, SITE, DEVICE, EREIGNIS_KB, EREIGNIS_BOX));

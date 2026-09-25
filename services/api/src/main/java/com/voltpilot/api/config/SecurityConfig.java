@@ -1,10 +1,13 @@
 package com.voltpilot.api.config;
 
+import com.voltpilot.api.kundenbereich.KundenbereichEndeFilter;
+import com.voltpilot.api.kundenbereich.KundenbereichEndeRepository;
 import com.voltpilot.api.tenant.TenantFilter;
 import com.voltpilot.api.zugriff.ZugriffFilter;
 import com.voltpilot.api.zugriff.ZugriffKontextLader;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -52,7 +55,8 @@ public class SecurityConfig {
     @Bean
     @ConditionalOnProperty(name = "voltpilot.security.oidc.enabled", havingValue = "true",
             matchIfMissing = true)
-    SecurityFilterChain secured(HttpSecurity http, TenantFilter tenantFilter, ZugriffFilter zugriffFilter)
+    SecurityFilterChain secured(HttpSecurity http, TenantFilter tenantFilter, ZugriffFilter zugriffFilter,
+            KundenbereichEndeFilter kundenbereichEndeFilter)
             throws Exception {
         http
             .cors(Customizer.withDefaults())
@@ -129,7 +133,9 @@ public class SecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
                 jwt.jwtAuthenticationConverter(new KeycloakRealmRoleConverter())))
             .addFilterAfter(tenantFilter, BearerTokenAuthenticationFilter.class)
-            .addFilterAfter(zugriffFilter, TenantFilter.class);
+            .addFilterAfter(zugriffFilter, TenantFilter.class)
+            // UEMS AP-20 IP-16: nach dem angenommenen Kundenbereich die Sperre des beendeten (409 an jedem Schreibweg).
+            .addFilterAfter(kundenbereichEndeFilter, ZugriffFilter.class);
         return http.build();
     }
 
@@ -156,6 +162,11 @@ public class SecurityConfig {
     @Bean
     ZugriffFilter zugriffFilter(ZugriffKontextLader lader) {
         return new ZugriffFilter(lader);
+    }
+
+    @Bean
+    KundenbereichEndeFilter kundenbereichEndeFilter(ObjectProvider<KundenbereichEndeRepository> zustand) {
+        return new KundenbereichEndeFilter(zustand);
     }
 
     @Bean

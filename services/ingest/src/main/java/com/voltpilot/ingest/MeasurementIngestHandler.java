@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.integration.IntegrationMessageHeaderAccessor;
 import org.springframework.integration.acks.SimpleAcknowledgment;
 import org.springframework.integration.annotation.ServiceActivator;
@@ -41,6 +42,7 @@ public class MeasurementIngestHandler {
     private final EventsRawProducer ereignisse;
     private final Clock clock;
     private final IngestMetriken metriken;
+    private BeendeteKundenbereiche beendete;
 
     public MeasurementIngestHandler(MeasurementSamplesValidator validator, ObjectMapper mapper,
             KafkaTemplate<String, String> kafka,
@@ -55,6 +57,12 @@ public class MeasurementIngestHandler {
         this.metriken = metriken;
     }
 
+    /** UEMS AP-20 IP-16 - fehlt die Sperre (abgeschaltet, Tests), nimmt der Strom alles an wie vorher. */
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     @ServiceActivator(inputChannel = MqttMeasurementIngestConfig.CHANNEL)
     public void handle(Message<String> message,
             @Header(MqttHeaders.RECEIVED_TOPIC) String mqttTopic,
@@ -63,6 +71,14 @@ public class MeasurementIngestHandler {
         Instant eingang = clock.instant();
         String payload = message.getPayload();
         metriken.angenommen(IngestMetriken.MEASUREMENTS);
+        if (beendete != null && beendete.beendet(mqttTopic)) {
+            // UEMS AP-20 IP-16: ein beendeter Kundenbereich nimmt nichts mehr an - gezaehlt, nicht gemeldet.
+            metriken.verworfen(IngestMetriken.MEASUREMENTS, IngestMetriken.KUNDENBEREICH_BEENDET);
+            if (acknowledgement != null) {
+                acknowledgement.acknowledge();
+            }
+            return;
+        }
         boolean weitergereicht = false;
         try {
             List<CompletableFuture<?>> sends = new ArrayList<>();

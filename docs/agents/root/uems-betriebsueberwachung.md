@@ -50,7 +50,7 @@ niemand abholen konnte — auch das ältere `voltpilot_ingest_events_undelivered
 |---|---|---|
 | `voltpilot_ingest_angenommen_total` | `strom` | Bei der Datenannahme eingegangene Umschläge |
 | `voltpilot_ingest_weitergereicht_total` | `strom` | An Redpanda übergebene Umschläge |
-| `voltpilot_ingest_verworfen_total` | `strom`, `grund` | Umschläge, die ihr Nutzlast-Topic nicht erreicht haben; `grund` = `ungueltig` \| `identitaet` \| `serialisierung` |
+| `voltpilot_ingest_verworfen_total` | `strom`, `grund` | Umschläge, die ihr Nutzlast-Topic nicht erreicht haben; `grund` = `ungueltig` \| `identitaet` \| `serialisierung` \| `kundenbereich_beendet` (AP-20 IP-16) |
 | `voltpilot_ingest_letzter_schreibzug_age_seconds` | `strom` | Sekunden seit dem letzten von Redpanda BESTÄTIGTEN Schreibzug; `NaN` bis zum ersten |
 
 `strom` ist dasselbe geschlossene Wort wie beim Writer (`measurements` \| `telemetry` \|

@@ -5,6 +5,7 @@ import java.time.Clock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.integration.annotation.ServiceActivator;
 import org.springframework.integration.mqtt.support.MqttHeaders;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -38,6 +39,7 @@ public class TelemetryIngestHandler {
     private final String topic;
     private final Clock clock;
     private final IngestMetriken metriken;
+    private BeendeteKundenbereiche beendete;
 
     public TelemetryIngestHandler(
             TelemetryValidator validator,
@@ -54,9 +56,20 @@ public class TelemetryIngestHandler {
         this.metriken = metriken;
     }
 
+    /** UEMS AP-20 IP-16 - fehlt die Sperre (abgeschaltet, Tests), nimmt der Strom alles an wie vorher. */
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     @ServiceActivator(inputChannel = MqttIngestConfig.INBOUND_CHANNEL)
     public void handle(Message<String> message, @Header(MqttHeaders.RECEIVED_TOPIC) String mqttTopic) {
         metriken.angenommen(IngestMetriken.TELEMETRY);
+        if (beendete != null && beendete.beendet(mqttTopic)) {
+            // UEMS AP-20 IP-16: ein beendeter Kundenbereich nimmt nichts mehr an - gezaehlt, nicht gemeldet.
+            metriken.verworfen(IngestMetriken.TELEMETRY, IngestMetriken.KUNDENBEREICH_BEENDET);
+            return;
+        }
         TelemetryRawEvent event;
         try {
             event = validator.toEvent(mqttTopic, message.getPayload(), clock.instant());
