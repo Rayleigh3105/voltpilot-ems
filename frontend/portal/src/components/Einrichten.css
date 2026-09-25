@@ -222,6 +222,60 @@
   border-width: 2px;
 }
 
+/* Drei Felder in einer Reihe (Adresse · Port · Unit-ID; Name · Register · Einheit),
+   am schmalen Fenster untereinander. Die erste Spalte ist die breite. */
+.vp-ein-drei {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: start;
+}
+@container vp-ein (max-width: 520px) {
+  .vp-ein-drei {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .vp-ein-drei > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+.vp-ein-drei .vp-assist-field {
+  margin-bottom: 0;
+}
+.vp-ein-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+/* Ein Häkchen mit Satz darunter („Als eigene Vorlage speichern"). */
+.vp-ein-cb {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-2);
+  align-items: start;
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  cursor: pointer;
+}
+.vp-ein-cb input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--vp-action);
+}
+.vp-ein-cb small {
+  display: block;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-medium);
+  color: var(--vp-text-gray);
+}
+
 /* --- Fuß ------------------------------------------------------------------------ */
 .vp-ein-fuss {
   width: 100%;

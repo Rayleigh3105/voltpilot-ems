@@ -686,7 +686,7 @@ export function AufbauSection({
             setKatalogOffen(true);
           }}
           onFertig={(info) => {
-            setErfolg(abschlussTitel(info.titel, info.uebernommen));
+            setErfolg([abschlussTitel(info.titel, info.uebernommen), info.hinweis].filter(Boolean).join(' '));
             // Auf das neue Gerät springen - die Zeile leuchtet kurz auf.
             if (info.id) window.location.hash = komponenteHash(site.id, info.id);
           }}

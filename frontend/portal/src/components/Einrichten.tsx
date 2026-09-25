@@ -148,7 +148,8 @@ export function EinrichtenFuss({
   zweit,
 }: {
   grund: string | null;
-  onAbbrechen: () => void;
+  /** Ohne = es gibt nichts abzubrechen (die Ladesäule legt nichts an). */
+  onAbbrechen?: () => void;
   primaer: { label: string; onClick: () => void; disabled?: boolean; testId?: string };
   /** Eine zweite Handlung neben „Abbrechen" (selten). */
   zweit?: ReactNode;
@@ -161,9 +162,11 @@ export function EinrichtenFuss({
         </p>
       )}
       <div className="vp-ein-knoepfe">
-        <Button variant="ghost" onClick={onAbbrechen}>
-          Abbrechen
-        </Button>
+        {onAbbrechen && (
+          <Button variant="ghost" onClick={onAbbrechen}>
+            Abbrechen
+          </Button>
+        )}
         {zweit}
         <Button onClick={primaer.onClick} disabled={primaer.disabled} data-testid={primaer.testId}>
           {primaer.label}

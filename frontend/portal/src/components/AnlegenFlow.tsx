@@ -13,14 +13,12 @@ import {
   type SiteComponentTemplate,
   type SiteComponentRow,
 } from '../api';
-import { AnlegenDialog } from './AnlegenDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
 import { BatterieAssistent } from './BatterieAssistent';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 import { HEBEL_HINWEIS, HEBEL_INTRO, SKALIERUNG_X10, hebel } from '../testHebel';
-import { komponenteHash } from '../nav';
 import { KATEGORIE_SYMBOL, einrichtenUnterzeile, kategorieVon, modellTitel } from '../geraeteKatalog';
 import { Abschnitt, Abschnitte, EinrichtenFuss, EinrichtenKopf, EinrichtenSeite, type AbschnittZustand } from './Einrichten';
 // Das Bauteil bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
@@ -30,7 +28,6 @@ import './KomponenteAssistent.css';
 import './AnlegenFlow.css';
 import * as socSchaetzung from '../socSchaetzung';
 import {
-  ABSCHLUSS_HINWEIS,
   bilanzHinweis,
   fehlendeFelder,
   felder,
@@ -47,17 +44,11 @@ import {
   type TestZustand,
 } from '../komponentenAssistent';
 import {
-  ABSPRUNG_LABEL,
   AUTO_TEST_MS,
-  DIALOG_TITEL,
-  WEITERES_LABEL,
-  abschlussTitel,
   feldGruppen,
   geraeteFuerTyp,
-  legtAn,
   neueKomponente,
   rollenWahl,
-  schritte as schritteFuer,
   typFuerTemplate,
   vorschlagRolle,
   type TypId,
@@ -174,7 +165,7 @@ export function AnlegenFlow({
   /** Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). */
   onZurueck?: (() => void) | null;
   /** Nach dem Anlegen: was entstanden ist - der Wirt springt darauf und sagt es. */
-  onFertig?: (info: { id: string | null; titel: string; uebernommen: boolean }) => void;
+  onFertig?: (info: { id: string | null; titel: string; uebernommen: boolean; hinweis?: string | null }) => void;
   onClose: () => void;
   onSaved: (result: SiteComponents) => void;
 }) {
@@ -189,7 +180,8 @@ export function AnlegenFlow({
   const [typ] = useState<TypId | null>(
     vorlage ? 'eigenbau' : (edit ? typFuerZeile(edit) : (startTyp ?? initialTyp ?? null)),
   );
-  const [schritt, setSchritt] = useState(vorlage || initialTyp || edit || startTyp ? 2 : 1);
+  // Nur die Batterie-Bearbeitung auf der Geräteseite hat noch Schritte.
+  const [batterieSchritt, setBatterieSchritt] = useState<1 | 2 | 3 | 4>(1);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
     edit ? kundenRolle(edit) : startTyp ? vorschlagRolle(startTyp, [], startRolle) : null,
   );
@@ -234,9 +226,6 @@ export function AnlegenFlow({
   const [vorhandene, setVorhandene] = useState<string[]>([]);
   const [vorherigeIds, setVorherigeIds] = useState<{ id: string }[]>([]);
   /** Die Komponente, die gerade entstanden ist - BELEGT, nie geraten. */
-  const [neueId, setNeueId] = useState<string | null>(null);
-  const [uebernommen, setUebernommen] = useState(false);
-  const [gespeichert, setGespeichert] = useState<SiteComponents | null>(null);
   /**
    * Die vorhandene Komponente, die dieses Gerät übernimmt - VOM SERVER, nie
    * hier abgeleitet (Alias-Kontinuität). `null` = es entsteht eine neue.
@@ -245,8 +234,6 @@ export function AnlegenFlow({
   const [fragVerwerfen, setFragVerwerfen] = useState(false);
   const [fragRollenwechsel, setFragRollenwechsel] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<BlockedNavigation | null>(null);
-  /** Der Fuß-Platz, in den der Selbstbau-Assistent seine Bedienzeile rendert. */
-  const [fussEl, setFussEl] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -311,7 +298,6 @@ export function AnlegenFlow({
     [alle, typ],
   );
   const rollen = typ ? rollenWahl(typ, vorhandene) : [];
-  const schritte = schritteFuer(typ);
 
   /**
    * Die Picker-Zeilen: EINE Zeile je Modell, gruppiert nach Marke. Die
@@ -618,12 +604,8 @@ export function AnlegenFlow({
         onClose();
         return;
       }
-      setNeueId(neu);
-      setUebernommen(Boolean(uebernahme) || Boolean(edit));
       setVorherigeIds(result.components.map((r) => ({ id: r.id })));
       setVorhandene(result.components.map((r) => r.role ?? ''));
-      setSchritt(5);
-      setGespeichert(result);
       onSaved(result);
     } catch (e) {
       setFehler(e instanceof ApiError
@@ -692,112 +674,6 @@ export function AnlegenFlow({
     if (navigation) window.setTimeout(navigation.resume, 0);
   }
 
-  function zurueck() {
-    if (schritt <= 1) return;
-    setSchritt(schritt - 1);
-  }
-
-  const selbstbauSchritt = Math.min(Math.max(schritt - 1, 1), 4) as 1 | 2 | 3 | 4;
-
-  /** Die Bedienzeile am Fuß - je Schritt genau die zwei Wege, die es gibt. */
-  // Die Ladesäulen-Karte legt nichts an - sie hat deshalb keinen „Fertig".
-  const istFertig =
-    typ !== null
-    && legtAn(typ)
-    && schritt === (typ === 'eigenbau' || typ === 'batterie' ? 6 : 5);
-
-  function fuss() {
-    if (istFertig) {
-      return (
-        <>
-          {/* Ein weiteres Gerät beginnt wieder im Katalog. */}
-          {onZurueck && (
-            <Button variant="ghost" onClick={onZurueck}>
-              {WEITERES_LABEL}
-            </Button>
-          )}
-          {neueId ? (
-            <Button
-              onClick={() => {
-                window.location.hash = komponenteHash(siteId, neueId);
-                onClose();
-              }}
-            >
-              {ABSPRUNG_LABEL}
-            </Button>
-          ) : (
-            <Button onClick={onClose}>Schließen</Button>
-          )}
-        </>
-      );
-    }
-    if (typ === 'eigenbau' || typ === 'batterie') {
-      /*
-        Der Selbstbau- bzw. Batterie-Assistent BEHÄLT seine Bedienzeile (nur er
-        weiß, wann „Weiter" freigibt) - sie wird hier nur hineingerendert, damit
-        auch diese Wege am Telefon eine klebende Fußzeile haben.
-      */
-      return <div className="vp-anlegen-navslot" ref={setFussEl} />;
-    }
-    if (typ === 'ladesaeule') {
-      return (
-        <>
-          {onZurueck && (
-            <Button variant="ghost" onClick={onZurueck}>
-              Zurück
-            </Button>
-          )}
-          <Button onClick={onClose}>Fertig</Button>
-        </>
-      );
-    }
-    if (schritt === 2) {
-      return (
-        <>
-          <Button variant="ghost" onClick={zurueck}>
-            Zurück
-          </Button>
-          <Button onClick={() => setSchritt(3)} disabled={!template}>
-            Weiter
-          </Button>
-        </>
-      );
-    }
-    if (schritt === 3) {
-      // „Weiter" erst mit Beleg: bestandener Test oder die abgenickte Ausnahme.
-      return (
-        <>
-          <Button variant="ghost" onClick={zurueck}>
-            Zurück
-          </Button>
-          <Button
-            onClick={() => setSchritt(4)}
-            disabled={fehlend.length > 0 || (testNoetig && testZustand !== 'bestanden' && !ohneKanal)}
-          >
-            Weiter
-          </Button>
-        </>
-      );
-    }
-    if (schritt === 4) {
-      return (
-        <>
-          <Button variant="ghost" onClick={zurueck}>
-            Zurück
-          </Button>
-          <Button
-            onClick={anlegen}
-            disabled={speichern || (testNoetig && testZustand !== 'bestanden' && !ohneKanal)
-              || !rolle || (Boolean(edit) && aenderungen.length === 0)}
-          >
-            {speichern ? 'Speichere …' : edit ? 'Änderungen speichern' : 'Komponente anlegen'}
-          </Button>
-        </>
-      );
-    }
-    return null;
-  }
-
   /*
    * BESTEHENDES Gerät auf seiner EIGENEN Seite: kein Portal, kein Scrim, keine
    * künstliche Schrittzahl. Die seltene Technik bleibt vollständig erhalten,
@@ -828,8 +704,8 @@ export function AnlegenFlow({
         </header>
         <BatterieAssistent
           siteId={siteId}
-          schritt={selbstbauSchritt}
-          onSchritt={(st) => setSchritt(st + 1)}
+          schritt={batterieSchritt}
+          onSchritt={setBatterieSchritt}
           navPortal={null}
           bearbeiten={{
             entityId: edit.id,
@@ -1502,96 +1378,79 @@ export function AnlegenFlow({
     );
   }
 
-  return (
-    <AnlegenDialog
-      titel={edit ? 'Gerät bearbeiten' : DIALOG_TITEL}
-      schritte={schritte}
-      aktiv={schritt}
-      onClose={onClose}
-      onBack={istFertig ? null : schritt > 2 ? zurueck : onZurueck}
-      footer={fuss()}
-    >
-      {ladeFehler && <p className="vp-assist-error" role="alert">{ladeFehler}</p>}
+  /** Nach dem Anlegen über einen Weg ohne Vorlage: melden, was entstanden ist, und schließen. */
+  function fertigMelden(result: SiteComponents, fallback: string) {
+    const id = neueKomponente(vorherigeIds, result.components);
+    const titel = result.components.find((r) => r.id === id)?.label?.trim() || fallback;
+    onSaved(result);
+    onFertig?.({ id, titel, uebernommen: false });
+    onClose();
+  }
 
-      {/* Die Ladesäulen-Karte legt weiterhin NICHTS an (§13.4) - die Säule
-          verbindet sich selbst. Hier steht der ANBINDE-ASSISTENT, derselbe
-          Körper wie im Drawer der Ladevorgänge-Seite: eine zweite Kopie wären
-          zwei Wahrheiten über denselben Weg. */}
-      {schritt >= 2 && typ === 'ladesaeule' && (
+  /*
+   * Das MODBUS-GERÄT (auch aus einer eigenen Vorlage): Anschluss, Messwerte und
+   * Name auf einer Seite - der Assistent zeichnet sie selbst, denn nur er weiß,
+   * wann „Speichern" freigibt.
+   */
+  if (typ === 'eigenbau') {
+    return (
+      <SelbstbauAssistent
+        siteId={siteId}
+        vorlage={vorlage}
+        vorher={vorherigeIds}
+        onZurueck={onZurueck}
+        onClose={onClose}
+        onGespeichert={(result, info) => {
+          onSaved(result);
+          onFertig?.({ id: info.id, titel: info.titel, uebernommen: false, hinweis: info.hinweis });
+          onClose();
+        }}
+      />
+    );
+  }
+
+  /* Die BATTERIE mit eigenem BMS (P5d): derselbe Assistent wie beim Bearbeiten, als eine Seite. */
+  if (typ === 'batterie') {
+    return (
+      <BatterieAssistent
+        siteId={siteId}
+        seite={{ onZurueck, onClose }}
+        onSaved={(result) => fertigMelden(result, 'Batterie')}
+      />
+    );
+  }
+
+  /*
+   * Die LADESÄULE mit OCPP legt weiterhin NICHTS an (§13.4) - sie meldet sich
+   * selbst bei der Box. Hier steht der ANBINDE-ASSISTENT, derselbe Körper wie im
+   * Drawer der Ladevorgänge-Seite: eine zweite Kopie wären zwei Wahrheiten über
+   * denselben Weg.
+   */
+  if (typ === 'ladesaeule') {
+    return (
+      <EinrichtenSeite
+        titel="Gerät einrichten"
+        onClose={onClose}
+        onZurueck={onZurueck}
+        kopf={
+          <EinrichtenKopf
+            titel="Ladesäule mit OCPP 1.6"
+            unterzeile="Laden · meldet sich selbst bei Ihrer Box"
+            kategorie="ev"
+            icon="link"
+            brauchen={['Zugang zur App oder Weboberfläche der Säule']}
+          />
+        }
+        fuss={<EinrichtenFuss grund={null} primaer={{ label: 'Fertig', onClick: onClose }} />}
+      >
         <section data-testid="typ-ladesaeule">
           <LadesaeuleAnbinden siteId={siteId} device={box} />
         </section>
-      )}
+      </EinrichtenSeite>
+    );
+  }
 
-      {/* Der Eigenbau-Weg: die Schritte des Selbstbau-Baukastens SIND die
-          Schritte 2-5 dieses Flusses (Konzept Stufe 2). */}
-      {schritt >= 2 && schritt <= 5 && typ === 'eigenbau' && (
-        <SelbstbauAssistent
-          siteId={siteId}
-          vorlage={vorlage}
-          schritt={selbstbauSchritt}
-          onSchritt={(s) => setSchritt(s + 1)}
-          navPortal={fussEl}
-          onBack={() => (vorlage || !onZurueck ? onClose() : onZurueck())}
-          onSaved={(result) => {
-            setNeueId(neueKomponente(vorherigeIds, result.components));
-            setUebernommen(false);
-            setVorherigeIds(result.components.map((r) => ({ id: r.id })));
-            setSchritt(6);
-            onSaved(result);
-          }}
-        />
-      )}
-
-      {/* Der Batterie-Weg (P5d): der EIGENE Anschluss eines Batteriemanagements.
-          Seine vier Fragen SIND die Schritte 2-5 dieses Flusses - dieselbe
-          Bauform wie der Selbstbau-Weg darüber. */}
-      {schritt >= 2 && schritt <= 5 && typ === 'batterie' && (
-        <BatterieAssistent
-          siteId={siteId}
-          schritt={selbstbauSchritt}
-          onSchritt={(s) => setSchritt(s + 1)}
-          navPortal={fussEl}
-          bearbeiten={
-            edit && edit.entityType === UDB_TYP
-              ? { entityId: edit.id, label: edit.label ?? null, connection: edit.connection ?? null }
-              : null
-          }
-          onBack={() => (edit || !onZurueck ? onClose() : onZurueck())}
-          onSaved={(result) => {
-            setNeueId(neueKomponente(vorherigeIds, result.components));
-            setUebernommen(false);
-            setVorherigeIds(result.components.map((r) => ({ id: r.id })));
-            setSchritt(6);
-            onSaved(result);
-          }}
-        />
-      )}
-
-      {/* 5 · Fertig - was entstanden ist, und der Weg dorthin. */}
-      {istFertig && (
-        <section className="vp-anlegen-fertig" data-testid="schritt-fertig">
-          <p className="vp-assist-ok">
-            <Icon name="check" />{' '}
-            {edit
-              ? `„${name.trim() || template?.modelLabel || 'Gerät'}“ wurde als neue Fassung gespeichert.`
-              : abschlussTitel(
-                name.trim() || uebernahme?.label?.trim() || template?.modelLabel || '',
-                uebernommen,
-              )}
-          </p>
-          <p className="vp-assist-help">
-            {edit
-              ? gespeichert?.components.find((row) => row.id === edit.id)?.syncStatus === 'in_sync'
-                ? 'Die Box hat diese Fassung bereits vollständig aktiviert.'
-                : 'Die bisherige Fassung bleibt aktiv, bis die Box die neue vollständig bestätigt. Bei Ablehnung können Sie in der Gerätehistorie zurückrollen.'
-              : ABSCHLUSS_HINWEIS}
-          </p>
-        </section>
-      )}
-
-    </AnlegenDialog>
-  );
+  return null;
 }
 
 /** EIN Verbindungsfeld, GENERISCH aus dem `transport_schema` der Vorlage. */

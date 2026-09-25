@@ -21,7 +21,6 @@
  * WORTSCHATZ: Set A („Komponente", „Gerät", „Messwert").
  */
 
-import type { IconName } from '../designsystem/components/core/Icon';
 import {
   ROLLEN,
   rolleVerfuegbar,
@@ -29,7 +28,11 @@ import {
   type KomponentenRolle,
 } from './komponentenAssistent';
 
-/** Die sechs Typ-Karten aus Schritt 1 („Was möchten Sie anbinden?"). */
+/**
+ * Die ART eines Anlege-Wegs. Seit dem Gerätekatalog (Konzept „Aufbau und
+ * Gerätekatalog") ergibt sie sich aus dem gewählten Modell (`typFuerTemplate`)
+ * oder aus dem gewählten Weg ohne Vorlage (Ladesäule, Batterie, Modbus-Gerät).
+ */
 export type TypId =
   | 'wechselrichter'
   | 'wallbox'
@@ -40,7 +43,7 @@ export type TypId =
   | 'eigenbau';
 
 /**
- * Die Gerätetyp-Dimension des Katalogs, auf die eine Karte hört.
+ * Die Gerätetyp-Dimension des Katalogs, auf die eine Art hört.
  *
  * ⚠ `ladesaeule`, `batterie` und `eigenbau` haben KEINE: die erste erklärt nur
  * den Weg (die Säule wählt VoltPilot selbst an), die beiden anderen
@@ -52,7 +55,7 @@ const TYP_DEVICE_TYPES: Record<TypId, string[]> = {
   wallbox: ['wallbox'],
   // Ein I/O-Modul (Ebyte M31) ist EIN Gerät mit N Ausgängen; seine Ausgänge
   // werden danach einzeln Verbrauchern zugeordnet - der Weg beginnt deshalb
-  // bei derselben Karte wie ein Schaltaktor.
+  // bei derselben Art wie ein Schaltaktor.
   verbraucher: ['switch', 'io_module'],
   zaehler: ['meter'],
   ladesaeule: [],
@@ -78,7 +81,7 @@ export function typFuerTemplate(template: ComponentTemplate | null): TypId {
 /** Die Rollen, die ein Typ in der Anlage einnehmen kann. */
 const TYP_ROLLEN: Record<TypId, KomponentenRolle[]> = {
   // Ein Wechselrichter kann das Herz der Anlage ODER ein weiterer Erzeuger
-  // sein - die EINZIGE Karte mit einer echten Rest-Frage.
+  // sein - die EINZIGE Art mit einer echten Rest-Frage.
   wechselrichter: ['inverter', 'pv-generation'],
   wallbox: ['consumer'],
   verbraucher: ['consumer'],
@@ -88,82 +91,12 @@ const TYP_ROLLEN: Record<TypId, KomponentenRolle[]> = {
   eigenbau: [],
 };
 
-export type TypKarte = {
-  id: TypId;
-  label: string;
-  hint: string;
-  /** Der Icon-Name des Designsystems - die Karte trägt ein Bild, nicht nur Text. */
-  icon: IconName;
-  /** Wie viele Katalog-Geräte hinter dieser Karte stehen (0 = keine eigene Vorlage). */
-  treffer: number;
-  /**
-   * Der ehrliche Satz, wenn es für diesen Typ (noch) keine eigene Vorlage gibt.
-   * `null` = es gibt welche, die Karte braucht keine Erklärung.
-   */
-  hinweis: string | null;
-};
-
-const KARTEN: Omit<TypKarte, 'treffer' | 'hinweis'>[] = [
-  {
-    id: 'wechselrichter',
-    label: 'Wechselrichter',
-    hint: 'Das Herz Ihrer Anlage - erzeugt Solarstrom und lädt Ihren Speicher.',
-    icon: 'zap',
-  },
-  {
-    id: 'wallbox',
-    label: 'Wallbox',
-    hint: 'Ihre eigene Ladestation zu Hause - VoltPilot steuert, wann sie lädt.',
-    icon: 'battery-charging',
-  },
-  {
-    id: 'ladesaeule',
-    label: 'Ladesäule (OCPP)',
-    hint: 'Eine Säule, die VoltPilot selbst anwählt - so tragen Sie sie ein.',
-    icon: 'link',
-  },
-  {
-    id: 'verbraucher',
-    label: 'Schaltbarer Verbraucher',
-    hint: 'Heizstab, Pumpe, Wärmepumpe - alles, was sich ein- und ausschalten lässt, auch über ein I/O-Modul.',
-    icon: 'sliders',
-  },
-  {
-    id: 'zaehler',
-    label: 'Zähler',
-    hint: 'Misst am Hausanschluss, was Sie beziehen und einspeisen.',
-    icon: 'activity',
-  },
-  /*
-    P5d: die eigene BATTERIE hat eine EIGENE Karte, nicht die Eigenbau-Tür.
-
-    ⚠ Der Grund ist nicht Kosmetik: der Weg fragt völlig andere Dinge
-    (Broker, Topics, Wertepfade, wie der Ladestand entsteht) und mündet in
-    einen anderen Entitätstyp. Ihn unter „Eigenbau (Modbus)" zu verstecken
-    hieße, den einen Kunden, der genau dieses Problem hat - ein BMS, das
-    VoltPilot nicht kennt -, an einer Modbus-Register-Tabelle scheitern zu
-    lassen, die es bei ihm gar nicht gibt.
-  */
-  {
-    id: 'batterie',
-    label: 'Eigene Batterie (BMS)',
-    hint: 'Ein Speicher mit eigenem Batteriemanagement - DIYBMS, Seplos, JK, ESP am Shunt.',
-    icon: 'battery',
-  },
-  {
-    id: 'eigenbau',
-    label: 'Eigenbau (Modbus)',
-    hint: 'Ein Gerät selbst beschreiben: Adresse, Register, Messwerte - mit Live-Vorschau.',
-    icon: 'cpu',
-  },
-];
-
 /**
- * Der Satz an einer Karte, hinter der KEINE eigene Vorlage steht.
+ * Der Satz zu einer Art, hinter der KEINE eigene Vorlage steht.
  *
- * ⚠ Er ist kein Schmuck, er ist die Ehrlichkeits-Hälfte der Erweiterung: die
- * Karte führt dann in die VOLLE Geräteliste, und der Kunde muss wissen, warum
- * dort Wechselrichter stehen, obwohl er einen Zähler sucht.
+ * ⚠ Er ist kein Schmuck, er ist die Ehrlichkeits-Hälfte der Erweiterung: der
+ * Katalog zeigt dann die VOLLE Geräteliste (unter „Zähler" etwa), und der Kunde
+ * muss wissen, warum dort Wechselrichter stehen, obwohl er einen Zähler sucht.
  */
 export function keineVorlageHinweis(typ: TypId): string {
   switch (typ) {
@@ -183,7 +116,7 @@ export function keineVorlageHinweis(typ: TypId): string {
 }
 
 /**
- * Die Vorlagen hinter einer Typ-Karte.
+ * Die Vorlagen einer Art (die Modellwahl beim Bearbeiten auf der Geräteseite).
  *
  * ⚠ **Der Typ ist ein FILTER, kein Zaun - und wo er nichts findet, WEITET er
  * sich sichtbar.** Das ist die Kompatibilitäts-Hälfte des Umbaus: der alte
@@ -196,7 +129,7 @@ export function keineVorlageHinweis(typ: TypId): string {
  *
  * ⚠ Eine Vorlage OHNE `deviceType` (`null`/absent - „die Vorlage sagt es
  * nicht", der ältere Backend-Stand, eine von Hand eingetragene geprüfte
- * Vorlage) passt zu JEDER Karte. Sie zu verstecken hieße, aus „unbekannt" ein
+ * Vorlage) passt zu JEDER Art. Sie zu verstecken hieße, aus „unbekannt" ein
  * „gehört hier nicht hin" zu machen.
  */
 export function geraeteFuerTyp(
@@ -215,26 +148,6 @@ export function geraeteFuerTyp(
   return { templates, erweitert: templates.length > 0 };
 }
 
-/** Die sieben Karten, mit ihrer Trefferzahl und ihrem ehrlichen Satz. */
-export function typKarten(templates: ComponentTemplate[]): TypKarte[] {
-  return KARTEN.map((k) => {
-    const { erweitert } = geraeteFuerTyp(templates, k.id);
-    const eigene = templates.filter((t) =>
-      TYP_DEVICE_TYPES[k.id].includes((t.deviceType ?? '').trim()),
-    ).length;
-    return {
-      ...k,
-      treffer: eigene,
-      hinweis: erweitert ? keineVorlageHinweis(k.id) : null,
-    };
-  });
-}
-
-/** Legt diese Karte überhaupt eine Komponente an? (Die Ladesäule tut es nicht.) */
-export function legtAn(typ: TypId): boolean {
-  return typ !== 'ladesaeule';
-}
-
 export type RollenWahl = {
   rolle: KomponentenRolle;
   label: string;
@@ -245,10 +158,10 @@ export type RollenWahl = {
 };
 
 /**
- * Die Rest-Frage einer Typ-Karte: welche Rolle das Gerät in der Anlage spielt.
+ * Die Rest-Frage einer Art: welche Rolle das Gerät in der Anlage spielt.
  *
  * Sie hat GENAU EINE echte Ausprägung - der Wechselrichter, der auch ein
- * weiterer Erzeuger sein kann. Jede andere Karte beantwortet sie selbst; dann
+ * weiterer Erzeuger sein kann. Jede andere Art beantwortet sie selbst; dann
  * ist die Liste einelementig und die Fläche stellt keine Frage.
  */
 export function rollenWahl(typ: TypId, vorhandeneRollen: string[]): RollenWahl[] {
@@ -266,7 +179,7 @@ export function rollenWahl(typ: TypId, vorhandeneRollen: string[]): RollenWahl[]
 }
 
 /**
- * Die VORGESCHLAGENE Rolle einer Karte - ein Vorschlag, nie eine Entscheidung.
+ * Die VORGESCHLAGENE Rolle einer Art - ein Vorschlag, nie eine Entscheidung.
  *
  * ⚠ Sie fällt NICHT auf eine unverfügbare Rolle zurück und blockiert
  * umgekehrt auch nichts: eine Anlage, deren Wechselrichter-Zeile von der
@@ -300,26 +213,9 @@ export function vorschlagRolle(
 }
 
 /**
- * Die Schritt-Leiste - sie hängt am TYP, weil die Wege verschiedene Fragen
- * stellen. (Dasselbe Prinzip wie zuvor die Umbenennung von Schritt 2 in der
- * Selbstbau-Tür, nur konsequent zu Ende gedacht.)
- */
-export function schritte(typ: TypId | null): string[] {
-  if (typ === 'eigenbau') {
-    return ['Was anbinden', 'Adresse', 'Messwerte', 'Was ist es?', 'Prüfen', 'Fertig'];
-  }
-  if (typ === 'batterie') {
-    return ['Was anbinden', 'Erreichbar', 'Zuordnung', 'Ladestand', 'Prüfen', 'Fertig'];
-  }
-  if (typ === 'ladesaeule') return ['Was anbinden', 'Anbinden'];
-  // E4: Verbinden und Testen sind EIN Schritt - der Test läuft darin von
-  // selbst. Der Abschluss danach ist kein Schritt mehr, sondern das Ergebnis.
-  return ['Was anbinden', 'Gerät wählen', 'Verbinden', 'Name'];
-}
-
-/**
- * Wie lange die Eingabe ruhen muss, bevor der Verbindungstest von selbst läuft
- * (Schritt „Verbinden"). Wer das Feld verlässt, wartet nicht.
+ * Wie lange die Eingabe ruhen muss, bevor der Verbindungstest (bzw. das Lesen
+ * eines Messwerts, die Vorschau einer Batterie) von selbst läuft. Wer das Feld
+ * verlässt, wartet nicht.
  */
 export const AUTO_TEST_MS = 800;
 
@@ -360,8 +256,8 @@ export function feldGruppen<T extends { required?: boolean }>(
 }
 
 /**
- * Die Komponente, die gerade entstanden ist - für den Absprung im Schritt
- * „Fertig".
+ * Die Komponente, die gerade entstanden ist - der Aufbau springt nach dem
+ * Speichern auf sie.
  *
  * ⚠ Sie wird BELEGT bestimmt, nie geraten: bei einer Übernahme ist es die
  * übernommene Zeile, sonst die EINE Id, die vorher noch nicht da war. Sind es
@@ -379,25 +275,8 @@ export function neueKomponente(
   return neu.length === 1 ? neu[0] : null;
 }
 
-/** Die Überschrift des Schritts „Fertig" - Übernahme und Neuanlage sind zwei Sätze. */
+/** Der Satz nach dem Speichern (Aufbau) - Übernahme und Neuanlage sind zwei Sätze. */
 export function abschlussTitel(name: string, uebernommen: boolean): string {
   const wer = name.trim() || 'Die Komponente';
   return uebernommen ? `„${wer}" ist wieder verbunden.` : `„${wer}" ist angelegt.`;
 }
-
-/**
- * Der Absprung aus dem Schritt „Fertig".
- *
- * ⚠ Er führt auf die KOMPONENTE in ihrer Geräte-Karte, nicht direkt auf die
- * Geräteseite - das ist die Haus-Regel des Drill-ins (Anlagen-Zentrale Stufe 3):
- * von der Zeile führt der Kartenkopf mit „Geräteseite ›" weiter, und dort
- * hängen die Handlungen. Ohne belegte Komponente gibt es keinen Absprung,
- * sondern nur „Schließen".
- */
-export const ABSPRUNG_LABEL = 'Zur Komponente';
-
-/** Der Knopf, der einen zweiten Durchlauf startet, ohne den Dialog zu schließen. */
-export const WEITERES_LABEL = 'Weiteres Gerät anbinden';
-
-/** Die Überschrift des Dialogs - sie sagt, was hier passiert. */
-export const DIALOG_TITEL = 'Gerät anbinden';

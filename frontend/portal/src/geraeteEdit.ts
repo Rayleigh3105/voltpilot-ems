@@ -134,10 +134,3 @@ export function auswirkungen(rows: AenderungsZeile[]): string[] {
   }
   return out;
 }
-
-export const GESPERRTE_FELDER = [
-  { feld: 'Geräte-ID / Anmelde-Referenz', grund: 'Technische Identität; bleibt für Historie und Befehle stabil.' },
-  { feld: 'Mandant', grund: 'Sicherheitsgrenze; ein Wechsel des Kundenbereichs ist nie eine Gerätebearbeitung.' },
-  { feld: 'Standort', grund: 'Feste Zuordnung beim Verbinden; nicht Teil der Gerätebearbeitung.' },
-  { feld: 'Gemeldete Firmware / Herstellerdaten', grund: 'Beobachtung des Geräts; nicht vom Portal überschreibbar.' },
-] as const;

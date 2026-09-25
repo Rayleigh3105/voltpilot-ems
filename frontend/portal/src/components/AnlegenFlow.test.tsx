@@ -64,6 +64,7 @@ const updateComponent = vi.fn();
 const readCustomComponent = vi.fn();
 const createCustomComponent = vi.fn();
 const matchComponent = vi.fn();
+const duplicateCustomComponent = vi.fn();
 // P5d: der Batterie-Weg holt seine Kurven-Vorlagen selbst.
 const socCurveTemplates = vi.fn();
 // Der Anbinde-Assistent hinter der Ladesäulen-Karte holt sich seine zwei Listen
@@ -89,6 +90,7 @@ vi.mock('../api', async () => {
       readCustomComponent: (...a: unknown[]) => readCustomComponent(...a),
       createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
       matchComponent: (...a: unknown[]) => matchComponent(...a),
+      duplicateCustomComponent: (...a: unknown[]) => duplicateCustomComponent(...a),
       socCurveTemplates: () => socCurveTemplates(),
     },
   };
@@ -426,17 +428,17 @@ describe('die anderen Türen desselben Flusses', () => {
 
   /*
     Einheitsmodell Stufe 6: „Gerät daraus anlegen" an einer EIGENEN Vorlage.
-    Die Typ-Frage ist damit schon beantwortet - der Fluss startet vorbefüllt im
-    Eigenbau-Weg, und „Zurück" schließt, statt in eine Frage zu führen, die es
-    hier nicht gibt.
+    Die Seite öffnet vorbefüllt - nur die Adresse fehlt, denn eine Vorlage
+    beschreibt einen Gerätetyp, kein Exemplar.
   */
-  it('startet mit einer eigenen Vorlage direkt im Eigenbau-Weg, vorbefüllt', async () => {
-    const onClose = vi.fn();
+  it('öffnet mit einer eigenen Vorlage vorbefüllt - nur die Adresse fehlt', async () => {
+    const onZurueck = vi.fn();
     render(
       <AnlegenFlow
         siteId="s1"
-        onClose={onClose}
+        onClose={() => {}}
         onSaved={() => {}}
+        onZurueck={onZurueck}
         vorlage={{
           templateRef: 'custom:s1:waermepumpe',
           label: 'Wärmepumpe Keller',
@@ -453,16 +455,17 @@ describe('die anderen Türen desselben Flusses', () => {
         } as never}
       />,
     );
-    await screen.findByText('Wo steht das Gerät?');
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    expect(within(seite).getByText('Wärmepumpe Keller')).toBeInTheDocument();
     expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('5020');
-    // ⚠ Die ADRESSE bleibt leer - eine Vorlage beschreibt einen Gerätetyp,
-    // kein Exemplar.
-    expect((screen.getByLabelText('Adresse im Netzwerk') as HTMLInputElement).value).toBe('');
-    fireEvent.click(knopf('Zurück'));
-    expect(onClose).toHaveBeenCalled();
+    expect((screen.getByLabelText('IP-Adresse des Geräts') as HTMLInputElement).value).toBe('');
+    // Die Vorlage gibt es schon - die Seite bietet sie nicht noch einmal an.
+    expect(screen.queryByLabelText(/Als eigene Vorlage speichern/)).toBeNull();
+    fireEvent.click(within(seite).getByRole('button', { name: 'Zurück zum Katalog' }));
+    expect(onZurueck).toHaveBeenCalled();
   });
 
-  it('führt die Eigenbau-Schritte IM selben Fluss bis zum Anlegen', async () => {
+  it('beschreibt ein Modbus-Gerät auf EINER Seite - gelesen wird von selbst, gespeichert erst mit Beleg', async () => {
     readCustomComponent.mockResolvedValue({
       ok: true,
       raw: 13750,
@@ -473,45 +476,78 @@ describe('die anderen Türen desselben Flusses', () => {
       receipt: true,
     });
     createCustomComponent.mockResolvedValue({ components: [{ id: 'sb-1' }] });
+    duplicateCustomComponent.mockResolvedValue([]);
+    const onFertig = vi.fn();
+    const onClose = vi.fn();
+    render(<AnlegenFlow siteId="s1" initialTyp="eigenbau" onClose={onClose} onSaved={() => {}} onFertig={onFertig} />);
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
 
-    render(<AnlegenFlow siteId="s1" initialTyp="eigenbau" onClose={() => {}} onSaved={() => {}} />);
-    await screen.findByText('Wo steht das Gerät?');
+    // Ein öffentliches Ziel wird SOFORT benannt - und nichts wird gelesen.
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '8.8.8.8' } });
+    expect(screen.getAllByRole('status').map((e) => e.textContent).join(' ')).toMatch(/nicht nachweisbar/);
+    expect(screen.getByText('Erst die Adresse, dann liest die Box die Messwerte.')).toBeInTheDocument();
+    expect(screen.getByTestId('einrichten-speichern')).toBeDisabled();
 
-    // Ein öffentliches Ziel wird SOFORT benannt und lässt nicht weiter.
-    fireEvent.change(screen.getByLabelText('Adresse im Netzwerk'), {
-      target: { value: '8.8.8.8' },
-    });
-    expect(
-      screen.getAllByRole('status').map((e) => e.textContent).join(' '),
-    ).toMatch(/nicht nachweisbar/);
-    expect(knopf('Weiter')).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('Adresse im Netzwerk'), {
-      target: { value: '192.168.1.50' },
-    });
-    fireEvent.click(knopf('Weiter'));
-
-    await screen.findByText('Welche Messwerte liefert das Gerät?');
-    // Die Schrittleiste des Wirts ist mitgewandert.
-    expect(screen.getByLabelText('Schritte').querySelector('.is-active')?.textContent)
-      .toContain('Messwerte');
-
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '192.168.1.50' } });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Vorlauf' } });
-    fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: '100' } });
-    fireEvent.click(knopf('Jetzt lesen'));
-    await screen.findByText('13.750');
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '100' } });
+    // Kein „Jetzt lesen" nötig: die Box liest, sobald die Eingabe ruht.
+    await screen.findByText('13.750', {}, { timeout: 2500 });
     expect(screen.getByText('1.375 °C')).toBeInTheDocument();
+    expect(readCustomComponent).toHaveBeenCalledTimes(1);
 
-    await waitFor(() => expect(knopf('Weiter')).toBeEnabled());
-    fireEvent.click(knopf('Weiter'));
-    await screen.findByText('Was ist dieses Gerät?');
-    fireEvent.click(knopf('Weiter'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
+    await waitFor(() => expect(screen.getByTestId('einrichten-speichern')).toBeEnabled());
+    fireEvent.click(screen.getByLabelText(/Als eigene Vorlage speichern/));
+    fireEvent.click(screen.getByTestId('einrichten-speichern'));
 
     await waitFor(() => expect(createCustomComponent).toHaveBeenCalled());
-    // Der GEMEINSAME Abschluss-Schritt - der Selbstbau-Weg hat keinen eigenen.
-    await screen.findByTestId('schritt-fertig');
-    expect(knopf('Zur Komponente')).toBeInTheDocument();
+    expect(createCustomComponent.mock.calls[0][1]).toMatchObject({
+      connection: { host: '192.168.1.50', port: 502, unitId: 1 },
+      channels: [{ label: 'Vorlauf', address: 100 }],
+    });
+    // Die Vorlage entsteht aus dem NEUEN Gerät - ohne Adresse.
+    await waitFor(() => expect(duplicateCustomComponent).toHaveBeenCalledWith('s1', 'sb-1', 'Eigenes Modbus-Gerät'));
+    expect(onFertig).toHaveBeenCalledWith({
+      id: 'sb-1',
+      titel: 'Eigenes Modbus-Gerät',
+      uebernommen: false,
+      hinweis: 'Die Vorlage steht im Katalog unter „Selbst beschreiben".',
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('rechnet eine Handbuch-Nummer nie still um - die Modicon-Lesart ist ein Knopf', async () => {
+    readCustomComponent.mockResolvedValue({ ok: true, raw: 1, value: 1, receipt: true });
+    render(<AnlegenFlow siteId="s1" initialTyp="eigenbau" onClose={() => {}} onSaved={() => {}} />);
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    // Die Messwerte kommen erst nach dem Anschluss dran.
+    expect(screen.queryByLabelText('Register')).toBeNull();
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '192.168.1.50' } });
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '40011' } });
+    const hinweis = screen.getByTestId('modicon-hinweis');
+    expect(hinweis).toHaveTextContent('Holding-Register 10');
+    expect((screen.getByLabelText('Register') as HTMLInputElement).value).toBe('40011');
+    fireEvent.click(within(hinweis).getByRole('button', { name: 'Als Holding-Register 10 lesen' }));
+    expect((screen.getByLabelText('Register') as HTMLInputElement).value).toBe('10');
+  });
+
+  it('sagt es, wenn die Vorlage nicht gespeichert werden konnte - das Gerät ist trotzdem angelegt', async () => {
+    readCustomComponent.mockResolvedValue({ ok: true, raw: 1, value: 1, receipt: true });
+    createCustomComponent.mockResolvedValue({ components: [{ id: 'sb-2' }] });
+    duplicateCustomComponent.mockRejectedValue(new ApiError(500, 'kaputt'));
+    const onFertig = vi.fn();
+    render(<AnlegenFlow siteId="s1" initialTyp="eigenbau" onClose={() => {}} onSaved={() => {}} onFertig={onFertig} />);
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '192.168.1.50' } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Puffer' } });
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '5' } });
+    await waitFor(() => expect(screen.getByTestId('einrichten-speichern')).toBeEnabled(), { timeout: 2500 });
+    fireEvent.change(screen.getByLabelText('So erscheint es im Aufbau'), { target: { value: 'Pufferspeicher' } });
+    fireEvent.click(screen.getByLabelText(/Als eigene Vorlage speichern/));
+    fireEvent.click(screen.getByTestId('einrichten-speichern'));
+    await waitFor(() => expect(onFertig).toHaveBeenCalled());
+    expect(onFertig.mock.calls[0][0]).toMatchObject({ id: 'sb-2', titel: 'Pufferspeicher' });
+    expect(onFertig.mock.calls[0][0].hinweis).toMatch(/Vorlage konnte nicht gespeichert werden/);
   });
 });
 
@@ -1219,8 +1255,9 @@ describe('AnlegenFlow · der Batterie-Weg (P5d)', () => {
   it('führt vom Batterie-Weg des Katalogs in den Batterie-Assistenten', async () => {
     render(<AnlegenFlow siteId="s1" initialTyp="batterie" onClose={() => {}} onSaved={() => {}} />);
     expect(await screen.findByTestId('anschlussart-mqtt')).toBeVisible();
-    // NICHT der Katalog-Weg: dort stünde jetzt der Anschluss einer Vorlage.
-    expect(screen.queryByTestId('einrichten-speichern')).toBeNull();
+    // NICHT der Katalog-Weg: kein Anschluss einer Vorlage, sondern der des BMS.
+    expect(screen.getByText('Batterie mit eigenem BMS')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/IP-Adresse des Datenloggers/)).toBeNull();
   });
 
   /**
