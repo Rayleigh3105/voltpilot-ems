@@ -12061,7 +12061,8 @@ paths:
         Verantwortlichen so, wie die Register der Objekte sie heute zeigen - jede Quelle in ihrem eigenen Zaun und mit
         ihren Rechten gelesen, nichts kopiert: laufende Kennzahlen, Energieeinsätze und Bezugsbasen (der
         Verantwortliche der Bezugsbasis ist die Vorgabe aus der Kennzahl, AP-17 B4), Energieziele, Maßnahmen und
-        Abweichungen in jedem Zustand. `bezugsbasen_freigaben` nennt jede freigegebene Fassung mit der Person, die sie
+        Abweichungen in jedem Zustand, interne Audits (IP-18) in jedem Zustand mit ihrem Verantwortlichen (Konto).
+        `bezugsbasen_freigaben` nennt jede freigegebene Fassung mit der Person, die sie
         freigegeben hat, auch abgelöste. Der Leser urteilt nicht, ob die Verteilung genügt; Verantwortung verleiht
         kein Recht.
       parameters:
@@ -12424,6 +12425,225 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/audits:
+    get:
+      tags: [energiemanagement]
+      summary: Das Auditprogramm - alle internen Audits und das nächste fällige (IA4).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-18). Sichtbar sind die Audits im Zaun (RLS aus IP-16: ein Audit
+        ohne Standort nur unternehmensweit, eines mit Standorten nur, wer alle sieht), Termin absteigend, jeder Zustand.
+        `naechstes` ist beim Abruf abgeleitet, nie gespeichert: letzter Durchführungstag bis `tag` + Rhythmus der
+        Einstellung (Startwert 12 Monate) - die Operation `ueberpruefung` des Vertrags `energiemanagement.md`; ohne
+        durchgeführtes Audit keine Frist (`grund` = `kein_audit`, kein erfundener Beginn). `tag` Vorgabe heute.
+      parameters:
+        - in: query
+          name: tag
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditprogramm" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Internes Audit planen (IA1).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen (403 `recht_fehlt`, auch für „Einsicht“). Pflicht: `titel`,
+        `termin`, `was`, `woran` (422 `angabe_fehlt` mit `feld`), `auditor_ids` - Personen im Energiemanagement, auch
+        ohne Konto, jede einmal (422 `auditor_fehlt`, `person_unbekannt`, `person_beendet` wenn sie am Termin nicht mehr
+        dabei ist), `unabhaengigkeit` als Wortlaut (422 `unabhaengigkeit_fehlt`), `verantwortlich` ein aktives Konto
+        (422 `verantwortlich_fehlt`, `konto_unbekannt`); wahlfrei `standort_ids` (422 `standort_unbekannt`). Wortlaute
+        höchstens 2 000 Zeichen, Titel 200 (422 `angabe_ungueltig`). Das Kennzeichen AU-JJJJ-nnnn trägt das Jahr des
+        Anlegens. Protokoll `audit_geplant`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternesAuditStand" }
+      responses:
+        "201":
+          description: Das Audit mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/audits/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Ein internes Audit mit Hinweisen, Abschluss und Verlauf.
+      description: >
+        Recht `energiemanagement.ansehen`. Ein Audit außerhalb des Zauns oder eines anderen Kundenbereichs gibt es
+        nicht (404 `nicht_gefunden`). Hinweise mit „festgestellt von“ (Person) und „eingetragen von“ (Konto); der
+        Abschluss mit Kopie und Prüfsumme.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditMitVerlauf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+    put:
+      tags: [energiemanagement]
+      summary: Ein geplantes Audit ändern - der ganze Stand.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Nur geplant (409 `audit_nicht_geplant`); dieselben
+        Prüfungen wie beim Planen; ein anderer Termin braucht eine Begründung mit 10 bis 500 Zeichen (422
+        `begruendung_fehlt`). Protokoll `audit_geaendert` mit alt und neu; ein unveränderter Stand schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternesAuditStand" }
+      responses:
+        "200":
+          description: Das Audit mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/audits/{id}/durchgefuehrt:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Durchgeführt melden - geplant → durchgeführt.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Nur geplant (409 `audit_nicht_geplant`); `am` Pflicht
+        (422 `angabe_fehlt`), nie in der Zukunft (422 `tag_in_zukunft`). Protokoll `audit_durchgefuehrt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternesAuditDurchgefuehrt" }
+      responses:
+        "200":
+          description: Das Audit mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/audits/{id}/hinweise:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Einen Hinweis festhalten (IA2, IA5).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Nur am durchgeführten Audit (409
+        `audit_nicht_durchgefuehrt`). `wortlaut` (höchstens 2 000 Zeichen) und `festgestellt_von` - die Person, die
+        prüft; sie braucht kein Konto und kein Schreibrecht - sind Pflicht (422 `angabe_fehlt`, `person_unbekannt`);
+        „eingetragen von“ ist das Konto, das festhält. `am` Vorgabe der Durchführungstag, nicht davor (422
+        `tag_vor_durchfuehrung`) und nie in der Zukunft. Die Nummer vergibt die Datenbank lückenlos. Protokoll `hinweis`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternesAuditHinweisFesthalten" }
+      responses:
+        "201":
+          description: Das Audit mit dem neuen Hinweis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/audits/{id}/abschliessen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Ein durchgeführtes Audit abschließen - Kopie mit Prüfsumme (IA3).
+      description: >
+        Recht `energiemanagement.freigeben` am Unternehmen. Nur am durchgeführten Audit (409
+        `audit_nicht_durchgefuehrt`, ein zweiter Abschluss ebenso). `entschieden_von` Pflicht, eine Person (422
+        `entschieden_von_fehlt`, `person_unbekannt`); `am` Vorgabe heute, nicht vor der Durchführung, nie in der Zukunft;
+        der Bericht als Verweis (`bericht.ablage`, die Prüfsumme bildet der Browser) oder eine `zusammenfassung` (422
+        `bericht_oder_zusammenfassung`, `bericht_ungueltig`). `massnahmen` nennt wahlfrei je Hinweis die Maßnahme, die
+        aus ihm wurde - sie muss dieses Audit als Herkunft `audit` tragen (422 `hinweis_unbekannt`,
+        `massnahme_unbekannt`). Die Kopie hält `kennzeichen`, `hinweise`, `feststellungen` (mit Quelle dieses Audit) und
+        `bericht` fest; `pruefsumme` in der kanonischen Form des Vertrags. Danach ist das Audit unveränderlich.
+        Protokoll `audit_abgeschlossen`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternesAuditAbschliessen" }
+      responses:
+        "200":
+          description: Das abgeschlossene Audit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/audits/{id}/absagen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Ein geplantes Audit absagen.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Nur geplant (409 `audit_nicht_geplant`); Begründung 10 bis
+        500 Zeichen (422 `begruendung_fehlt`); endgültig. Protokoll `audit_abgesagt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InternesAuditAbsagen" }
+      responses:
+        "200":
+          description: Das abgesagte Audit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InternesAuditMitVerlauf" }
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
@@ -17534,7 +17754,7 @@ components:
       type: object
       required: [art, id, kennzeichen, titel, verantwortlich, zustand]
       properties:
-        art: { type: string, enum: [kennzahl, energieeinsatz, bezugsbasis, energieziel, massnahme, abweichung], description: Internes Audit (IP-18) und Feststellung (IP-19) docken über `VerantwortungQuelle` an und ergänzen diese Liste. }
+        art: { type: string, enum: [kennzahl, energieeinsatz, bezugsbasis, energieziel, massnahme, abweichung, internes_audit], description: Die Arten des Bestands, dann die angedockten Quellen (`VerantwortungQuelle`) - internes Audit seit IP-18; die Feststellung (IP-19) ergänzt diese Liste. }
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
         titel: { type: string }
@@ -17542,7 +17762,7 @@ components:
           nullable: true
           description: "`null`: am Objekt ist niemand eingetragen."
           allOf: [{ $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }]
-        zustand: { type: string, nullable: true, description: Der Zustand des Objekts, wo es selbst einen führt (Energieziel, Maßnahme, Abweichung). }
+        zustand: { type: string, nullable: true, description: Der Zustand des Objekts, wo es selbst einen führt (Energieziel, Maßnahme, Abweichung, internes Audit). }
     EnergiemanagementBezugsbasisFreigabe:
       type: object
       required: [bezugsbasis_id, bezugsbasis, kennzahl_id, kennzahl, fassung, freigegeben_von, freigegeben_am, vieraugen, zweite_person]
@@ -17634,6 +17854,162 @@ components:
         gruppen:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisGruppe" }
+    InternesAuditStand:
+      type: object
+      additionalProperties: false
+      description: Planen und ändern (IA1) - beim Ändern der ganze Stand.
+      properties:
+        titel: { type: string, maxLength: 200 }
+        termin: { type: string, format: date }
+        auditor_ids: { type: array, items: { type: string, format: uuid }, minItems: 1 }
+        unabhaengigkeit: { type: string, maxLength: 2000 }
+        was: { type: string, maxLength: 2000 }
+        woran: { type: string, maxLength: 2000 }
+        verantwortlich: { type: string, description: Das Konto (`sub`). }
+        standort_ids: { type: array, nullable: true, items: { type: string, format: uuid } }
+        begruendung: { type: string, nullable: true, description: Beim Ändern Pflicht, wenn sich der Termin ändert (10–500). }
+    InternesAuditDurchgefuehrt:
+      type: object
+      additionalProperties: false
+      properties:
+        am: { type: string, format: date }
+    InternesAuditHinweisFesthalten:
+      type: object
+      additionalProperties: false
+      properties:
+        wortlaut: { type: string, maxLength: 2000 }
+        festgestellt_von: { type: string, format: uuid }
+        am: { type: string, format: date, nullable: true }
+    InternesAuditHinweisMassnahme:
+      type: object
+      additionalProperties: false
+      properties:
+        hinweis: { type: integer }
+        massnahme: { type: string, pattern: "^M-[0-9]{4}-[0-9]{4,9}$" }
+    InternesAuditBericht:
+      type: object
+      additionalProperties: false
+      description: Der unterschriebene Bericht als Verweis (G3) - ohne Ablage keiner seiner Teile.
+      properties:
+        bezeichnung: { type: string, nullable: true, maxLength: 200 }
+        ablage: { type: string, nullable: true, maxLength: 200 }
+        kennung: { type: string, nullable: true, maxLength: 200 }
+        adresse: { type: string, nullable: true, maxLength: 2000 }
+        sha256: { type: string, nullable: true, pattern: "^[0-9a-f]{64}$" }
+    InternesAuditAbschliessen:
+      type: object
+      additionalProperties: false
+      properties:
+        entschieden_von: { type: string, format: uuid }
+        am: { type: string, format: date, nullable: true }
+        zusammenfassung: { type: string, nullable: true, maxLength: 2000 }
+        bericht:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/InternesAuditBericht" }]
+        massnahmen:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/InternesAuditHinweisMassnahme" }
+    InternesAuditAbsagen:
+      type: object
+      additionalProperties: false
+      properties:
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    InternesAuditHinweis:
+      type: object
+      required: [nr, am, festgestellt_von, wortlaut, eingetragen]
+      properties:
+        nr: { type: integer }
+        am: { type: string, format: date }
+        festgestellt_von: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        wortlaut: { type: string }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    InternesAuditAbschluss:
+      type: object
+      required: [am, entschieden_von, zusammenfassung, bericht, kopie, pruefsumme, eingetragen]
+      properties:
+        am: { type: string, format: date }
+        entschieden_von: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        zusammenfassung: { type: string, nullable: true }
+        bericht:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/InternesAuditBericht" }]
+        kopie: { type: object, description: "`kennzeichen`, `hinweise` (nr, am, festgestellt_von, eingetragen_von, wortlaut, massnahme), `feststellungen`, `bericht`." }
+        pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    InternesAudit:
+      type: object
+      required: [id, kennzeichen, titel, termin, auditoren, unabhaengigkeit, was, woran, verantwortlich, standort_ids, zustand, durchgefuehrt_am, abgesagt_begruendung, hinweise, feststellungen, abschluss, eingetragen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^AU-[0-9]{4}-[0-9]{4,9}$" }
+        titel: { type: string }
+        termin: { type: string, format: date }
+        auditoren:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        unabhaengigkeit: { type: string }
+        was: { type: string }
+        woran: { type: string }
+        verantwortlich: { $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }
+        standort_ids: { type: array, items: { type: string, format: uuid } }
+        zustand: { type: string, enum: [geplant, durchgefuehrt, abgeschlossen, abgesagt] }
+        durchgefuehrt_am: { type: string, format: date, nullable: true }
+        abgesagt_begruendung: { type: string, nullable: true }
+        hinweise: { type: integer, description: Anzahl der Hinweise. }
+        feststellungen: { type: array, items: { type: string }, description: Die Kennzeichen der Feststellungen mit Quelle dieses Audit. }
+        abschluss:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/InternesAuditAbschluss" }]
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    InternesAuditAenderung:
+      type: object
+      required: [id, art, alt, neu, begruendung, akteur, zeit]
+      properties:
+        id: { type: integer, format: int64 }
+        art: { type: string, enum: [audit_geplant, audit_geaendert, audit_durchgefuehrt, hinweis, audit_abgeschlossen, audit_abgesagt] }
+        alt: { nullable: true, description: Schnappschuss vorher. }
+        neu: { nullable: true, description: Schnappschuss nachher (beim Hinweis der Eintrag). }
+        begruendung: { type: string, nullable: true }
+        akteur:
+          type: object
+          properties:
+            sub: { type: string, nullable: true }
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        zeit: { type: string, format: date-time }
+    InternesAuditMitVerlauf:
+      type: object
+      required: [audit, hinweise, verlauf]
+      properties:
+        audit: { $ref: "#/components/schemas/InternesAudit" }
+        hinweise:
+          type: array
+          items: { $ref: "#/components/schemas/InternesAuditHinweis" }
+        verlauf:
+          type: array
+          items: { $ref: "#/components/schemas/InternesAuditAenderung" }
+    InternesAuditNaechstes:
+      type: object
+      required: [rhythmus_monate, faellig_am, basis, tage, satz, grund]
+      description: Die Felder der Operation `ueberpruefung` (Art `internes_audit`) des Vertrags `energiemanagement.md`.
+      properties:
+        rhythmus_monate: { type: integer }
+        faellig_am: { type: string, format: date, nullable: true }
+        basis: { type: string, format: date, nullable: true, description: Der letzte Durchführungstag bis zum Abruf. }
+        tage: { type: integer, nullable: true, description: Abruf − fällig am (positiv = fällig, 0 am Fälligkeitstag). }
+        satz: { type: string, nullable: true }
+        grund: { type: string, nullable: true, description: "`kein_audit` - ohne durchgeführtes Audit bis zum Abruf keine Frist." }
+    InternesAuditprogramm:
+      type: object
+      required: [tag, audits, naechstes]
+      properties:
+        tag: { type: string, format: date }
+        audits:
+          type: array
+          items: { $ref: "#/components/schemas/InternesAudit" }
+        naechstes: { $ref: "#/components/schemas/InternesAuditNaechstes" }
     EnergiemanagementDokumentBezug:
       type: object
       additionalProperties: false

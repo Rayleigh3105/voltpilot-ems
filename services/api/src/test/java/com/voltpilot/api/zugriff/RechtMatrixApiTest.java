@@ -370,6 +370,16 @@ class RechtMatrixApiTest {
             z.add(new Zeile("energiemanagement.freigeben", HttpMethod.POST,
                     "/api/v1/energiemanagement/dokumente/{FREMD}/" + weg, "ee3333333"));
         }
+        // AP-19 IP-18: internes Audit — am Unternehmen; abschließen mit energiemanagement.freigeben (KA U · EM U).
+        z.add(new Zeile("energiemanagement.verwalten", HttpMethod.POST, "/api/v1/energiemanagement/audits", "ee3333333"));
+        z.add(new Zeile("energiemanagement.verwalten", HttpMethod.PUT, "/api/v1/energiemanagement/audits/{FREMD}",
+                "ee3333333"));
+        for (String schritt : List.of("durchgefuehrt", "hinweise", "absagen")) {
+            z.add(new Zeile("energiemanagement.verwalten", HttpMethod.POST,
+                    "/api/v1/energiemanagement/audits/{FREMD}/" + schritt, "ee3333333"));
+        }
+        z.add(new Zeile("energiemanagement.freigeben", HttpMethod.POST,
+                "/api/v1/energiemanagement/audits/{FREMD}/abschliessen", "ee3333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee3333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee3333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee3333333"));

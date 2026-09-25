@@ -50,17 +50,20 @@ class EnergiemanagementVerantwortungSchnittstelleVertragTest {
             assertThat((List<String>) schema.get("required")).as(dto.getKey() + " required")
                     .containsExactlyInAnyOrderElementsOf(namen);
         }
-        // Die Arten der Andockstelle: heute genau die des Bestands (IP-18/IP-19 ergänzen Audit und Feststellung).
+        // Die Arten der Andockstelle: die des Bestands, dann das interne Audit (IP-18); IP-19 ergänzt die Feststellung.
         var art = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) schemas
                 .get("EnergiemanagementVerantwortungObjekt")).get("properties")).get("art");
-        assertThat((List<String>) art.get("enum")).containsExactlyElementsOf(VerantwortungBestand.ARTEN);
+        var arten = new java.util.ArrayList<>(VerantwortungBestand.ARTEN);
+        arten.addAll(AuditVerantwortung.ARTEN);
+        assertThat((List<String>) art.get("enum")).containsExactlyElementsOf(arten);
     }
 
     /** PA4 und VZ1: der Leser, der Bestand und die Verzeichnis-Quelle halten keine eigene Abfrage — nur Dienste. */
     @Test
     void gelesenUeberDieDiensteNieUeberEigeneAbfragen() throws Exception {
         for (String klasse : List.of("EnergiemanagementVerantwortungService", "VerantwortungQuelle",
-                "VerantwortungBestand", "VerzeichnisQuelle", "AufgabenVerzeichnis")) {
+                "VerantwortungBestand", "VerzeichnisQuelle", "AufgabenVerzeichnis", "AuditVerzeichnis",
+                "AuditVerantwortung")) {
             String text = Files.readString(UEMS.resolve(klasse + ".java"));
             assertThat(text).as(klasse).doesNotContain("JdbcTemplate", "SELECT ", "INSERT ", "UPDATE ", "Repository");
         }
@@ -68,6 +71,10 @@ class EnergiemanagementVerantwortungSchnittstelleVertragTest {
         String bestand = Files.readString(UEMS.resolve("VerantwortungBestand.java"));
         for (String a : VerantwortungBestand.ARTEN) {
             assertThat(bestand).as(a).contains("new Objekt(\"" + a + "\"");
+        }
+        String audits = Files.readString(UEMS.resolve("AuditVerantwortung.java"));
+        for (String a : AuditVerantwortung.ARTEN) {
+            assertThat(audits).as(a).contains("new Objekt(\"" + a + "\"");
         }
     }
 }

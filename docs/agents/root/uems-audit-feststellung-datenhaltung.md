@@ -2,7 +2,7 @@
 
 Neu am 25.09.2026: Migration `V20260925031500__uems_audit_feststellung.sql`, fünf leere Tabellen neben denen von
 IP-5 ([Datenhaltung Grundlage und Dokument](uems-energiemanagement-datenhaltung.md)), keine Route, kein Leser, keine
-Fläche. Routen: Audit IP-18, Feststellung und Wirksamkeit IP-19; die Herkunft der Maßnahme (F-…/AU-…) weitet IP-17
+Fläche. Routen: Audit IP-18 ([Routen](uems-audit-routen.md)), Feststellung und Wirksamkeit IP-19; die Herkunft der Maßnahme (F-…/AU-…) weitet IP-17
 (`V20260925040000`; die Maßnahmen einer Feststellung findet man über `massnahme.herkunft_kennung`, keine Spalte hier).
 Konzept: AP-19 §4.2, §4.6, §4.7, §4.14, §5.6 (`vp-uems-ap19-fundament/report.md`).
 

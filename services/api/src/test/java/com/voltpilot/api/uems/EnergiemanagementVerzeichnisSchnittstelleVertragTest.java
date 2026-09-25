@@ -26,7 +26,7 @@ class EnergiemanagementVerzeichnisSchnittstelleVertragTest {
     private static final Path UEMS = Path.of("src/main/java/com/voltpilot/api/uems");
     private static final Path WEB = Path.of("src/main/java/com/voltpilot/api/web");
     private static final List<String> LESER = List.of("EnergiemanagementVerzeichnisService", "VerzeichnisQuelle",
-            "DokumentVerzeichnis", "AufgabenVerzeichnis", "VerzeichnisBestand");
+            "DokumentVerzeichnis", "AufgabenVerzeichnis", "VerzeichnisBestand", "AuditVerzeichnis");
 
     @Test
     @SuppressWarnings("unchecked")
@@ -103,7 +103,7 @@ class EnergiemanagementVerzeichnisSchnittstelleVertragTest {
         Pattern verboten = Pattern.compile("(?i)vollst[aä]ndig|prozent|%|erf[uü]llungsgrad|ampel|anzahl|\\.count\\(|"
                 + "\\.size\\(\\)|fehlt\"|konform|auditfest|zertifiz|bereit f[uü]r das audit");
         for (Path datei : List.of(UEMS.resolve("EnergiemanagementVerzeichnisService.java"),
-                UEMS.resolve("VerzeichnisBestand.java"), WEB.resolve("EnergiemanagementVerzeichnisController.java"),
+                UEMS.resolve("VerzeichnisBestand.java"), UEMS.resolve("AuditVerzeichnis.java"), WEB.resolve("EnergiemanagementVerzeichnisController.java"),
                 WEB.resolve("dto/EnergiemanagementVerzeichnisDto.java"))) {
             String code = ohneKommentare(Files.readString(datei));
             assertThat(verboten.matcher(code).results().map(m -> m.group()).toList()).as(datei.toString()).isEmpty();
