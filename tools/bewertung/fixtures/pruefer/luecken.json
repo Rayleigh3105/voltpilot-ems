@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "lesehilfe": "Lückenliste der Fixture des Matrix-Prüfers (AP-20 IP-4).",
+  "luecken": [
+    {
+      "kennzeichen": "L-001",
+      "text": "Keine Kopie der Sicherung außer Haus (Fixture)",
+      "quelle": "Fixture",
+      "betrifft": [
+        "Z-004"
+      ],
+      "wer_liefert": [
+        {
+          "wer": "Betreiber",
+          "was": "L-001 beheben (Fixture)"
+        }
+      ],
+      "zustand": "offen",
+      "verlauf": [
+        {
+          "am": "2026-09-20",
+          "nach": "offen",
+          "person": "Crew (Fixture)",
+          "begruendung": "nach offen (Fixture)"
+        }
+      ]
+    },
+    {
+      "kennzeichen": "L-002",
+      "text": "Ein Befund an Z-005 wird bearbeitet (Fixture)",
+      "quelle": "Fixture",
+      "betrifft": [
+        "Z-005"
+      ],
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "L-002 beheben (Fixture)"
+        }
+      ],
+      "zustand": "in_arbeit",
+      "verlauf": [
+        {
+          "am": "2026-09-20",
+          "nach": "offen",
+          "person": "Crew (Fixture)",
+          "begruendung": "nach offen (Fixture)"
+        },
+        {
+          "am": "2026-09-21",
+          "nach": "in_arbeit",
+          "person": "Crew (Fixture)",
+          "begruendung": "nach in_arbeit (Fixture)"
+        }
+      ]
+    },
+    {
+      "kennzeichen": "L-003",
+      "text": "Eine Grenze an Z-011 (Fixture)",
+      "quelle": "Fixture",
+      "betrifft": [
+        "Z-011"
+      ],
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "L-003 beheben (Fixture)"
+        }
+      ],
+      "zustand": "restpunkt",
+      "verlauf": [
+        {
+          "am": "2026-09-20",
+          "nach": "offen",
+          "person": "Crew (Fixture)",
+          "begruendung": "nach offen (Fixture)"
+        },
+        {
+          "am": "2026-09-22",
+          "nach": "restpunkt",
+          "person": "Crew (Fixture)",
+          "begruendung": "nach restpunkt (Fixture)",
+          "angenommen_von": "Captain",
+          "grenze": "gilt nicht für getrennte Stromsysteme (Fixture)",
+          "bis": "2026-12-31"
+        }
+      ]
+    },
+    {
+      "kennzeichen": "L-004",
+      "text": "Aufbewahrung am Vertragsende nicht gebaut (Fixture)",
+      "quelle": "Fixture",
+      "betrifft": [
+        "7.5.3"
+      ],
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "L-004 beheben (Fixture)"
+        }
+      ],
+      "zustand": "offen",
+      "verlauf": [
+        {
+          "am": "2026-09-20",
+          "nach": "offen",
+          "person": "Crew (Fixture)",
+          "begruendung": "nach offen (Fixture)"
+        }
+      ]
+    }
+  ]
+}

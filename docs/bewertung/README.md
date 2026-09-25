@@ -18,7 +18,7 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | [`luecken.json`](luecken.json), [`luecken.schema.json`](luecken.schema.json) | Lückenliste des Betreibers (L-nnn) mit Verlauf je Übergang, nie beim Kunden | AP-20 IP-3 |
 | [`uebungen/`](uebungen/README.md), [`uebung.schema.json`](uebung.schema.json) | Übungen des Betreibers (U-JJJJ-nn): Rückweg-Übung und Alarm-Übung mit Artefakt und Prüfsumme, Vorlagen; gelesen von `tools/bewertung/uebungen.py` (RF-07) | AP-20 IP-19 |
 | [`vorschlaege/gitops/`](vorschlaege/gitops/README.md) | Regel `VoltPilotSicherungZuAlt` mit promtool-Test als Vorschlag; als Zweig nach gitops, gemergt vom Captain | AP-20 IP-19 |
-| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3); später der Matrix-Prüfer | AP-20 IP-2, IP-3, IP-5, IP-4 |
+| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3), Matrix-Prüfer (`pruefe_matrix.py`, AP-20 NW-2) | AP-20 IP-2, IP-3, IP-5, IP-4 |
 
 ## Aufbau (MX1, MX2)
 
@@ -240,6 +240,102 @@ stimmen überein (AP-20 NW-1).
 
 Gegenüber dem Konzept sagt KA-06 „den Gesamtabzug laden“ statt „nehmen“, wie der Knopf (AP-20 BT4).
 
+## Matrix-Prüfer (AP-20 IP-4, E3 = A)
+
+`tools/bewertung/pruefe_matrix.py` fällt je Zeile ein Urteil nach NR1 bis NR9. Er **fährt keine
+Tests**: er liest Lauf-Berichte, Stand-Blatt, Artefakte und Lückenliste, wie der Tor-Prüfer, und
+nutzt dessen Lesefunktionen (`tools/freigabe/pruefe_tor.py`: `zaehler`, `lies_stand_txt`,
+`gleicher_stand`, `lies_stand`, die Artefakt-Leser). Die Matrix ändert er nicht. Er urteilt nur
+über eine Matrix, deren Vertrag und Lückenliste halten. Sonst bricht er ab.
+
+```sh
+python3 tools/bewertung/pruefe_matrix.py \
+  --laeufe services/api/target/surefire-reports --laeufe /LAEUFE/portal-junit \
+  --artefakte /BETREIBER/generalprobe --blatt /BETREIBER/bewertung-stand.yaml \
+  [--stand <commit>] [--heute JJJJ-MM-TT] [--aus docs/bewertung/bewertungen] [--kennung BWB-JJJJ-nn]
+```
+
+**Lauf-Ordner.** Jede JUnit-Datei darin zählt: Surefire `TEST-*.xml` und Vitest
+`--reporter=junit`. Jeder Ordner braucht eine `stand.txt`, sonst trägt keiner seiner Berichte
+einen Stand (NR3). Die erste Zeile ist der Commit wie beim Tor-Prüfer. Danach folgen
+`gefahren_von` (Pflicht) und `datum` (ohne sie gilt der Tag der Berichtsdatei):
+
+```text
+5ec44cdaeb802740f31b5dacd7a54d97aa243372
+datum: 2026-09-28
+gefahren_von: Crew (Lauf AP-20 IP-10)
+```
+
+Ein Artefakt-Ordner trägt dieselbe `stand.txt`.
+
+**Kandidaten, die der Prüfer liest.** Es sind die Formen der [Klammer](#nachweis-kandidaten-und-klammer-ap-20-ip-6).
+Nach einer Klasse oder einer Testdatei darf eine Anmerkung in Klammern stehen.
+
+| Kandidat | liest | Beleg |
+|---|---|---|
+| `Klasse` | die Suite der Klasse: jeder Fall grün, keiner übersprungen | `test_lauf` |
+| `Klasse#methode` | die Fälle der Methode, auch parametrisiert | `test_lauf` |
+| `pfad#Fall` | den Fall in der Testdatei, auch unter `describe` („… > Fall“) | `test_lauf` |
+| `pfad` einer Testdatei | jeden Fall der Datei | `test_lauf` |
+| `werkzeug → rueckweg.json`, `→ probe.json` | das Artefakt, geprüft vom Leser des Tor-Prüfers | `werkzeug_artefakt` |
+
+Eine Testdatei findet der Prüfer so. Vitest nennt ihren Pfad in Suite und `classname`,
+`node --test --test-reporter=junit` nennt ihn in `file`. pytest `--junitxml` nennt das Modul in
+`classname`. Go nennt den Import-Pfad des Pakets aus dem `go.mod` darüber, über gotestsum oder
+go-junit-report. Ein anderer Kandidat ist kein Beleg (NR1, NR7). Das gilt auch für
+`pfad[:zeile] Bemerkung` ohne Artefakt, etwa eine Vektor-Datei, ein Dokument oder ein Skript. Die
+Zeile bleibt offen, bis ein Lauf sie trägt.
+
+**Reste in `wer_liefert`.** Was `wer_liefert` außer „Lauf am Stand (AP-20 IP-10)“ nennt, trägt
+kein Kandidat (AP-20 IP-6). Solch ein Rest hält die Zusage offen, auch neben einem grünen Test. Die
+Crew nimmt ihn aus der Matrix, wenn er geliefert ist. Einen **Rest des Betreibers** beantwortet
+allein sein Stand-Blatt, und zwar unter dem Kennzeichen der Zusage. Die Form ist die des
+Tor-Prüfers:
+
+```yaml
+Z-015:
+  bestaetigt: ja
+  am: 2026-10-14
+  durch: Betreiber (Vorname Name)
+  beleg: Q15 WAL-Archiv läuft, letztes Segment 2 min alt
+```
+
+Das Stand-Blatt macht nie einen Test grün. Für einen Punkt ohne Rest des Betreibers liest der
+Prüfer es nicht.
+
+**Urteil je Zusage.**
+
+- `belegt`: jeder Kandidat hat einen grünen Lauf oder ein geprüftes Artefakt **dieses** Standes.
+  Dazu nennt `wer_liefert` keinen Rest, und keine offene Lücke nennt die Zusage.
+- `nicht_maschinell_pruefbar`: alles trägt, aber mindestens ein Teil nur mit einer Bestätigung.
+  Das schwächste Glied entscheidet. Eine Bestätigung aus dem Stand-Blatt oder aus `bestaetigung`
+  der Matrix zählt nur mit Person, Datum bis zum Prüftag und Aussage (NR4). Eine Rolle allein
+  („Betreiber“, „Fachperson“) ist keine Person.
+- `offen`: alles andere. Das Urteil nennt je Befund, was fehlt und wer liefert. Offen machen
+  diese Befunde:
+  - rot, übersprungen oder der Fall fehlt;
+  - älterer oder anderer Stand, ohne `stand.txt`, ohne `gefahren_von`, kein Bericht;
+  - ein Kandidat ohne lesbaren Lauf, keine Kandidaten (RF-05), ein Rest in `wer_liefert`;
+  - eine Bestätigung ohne Person, Datum oder Aussage;
+  - eine Lücke `offen` oder `in_arbeit` (NR6).
+
+  Ein Restpunkt hält nicht offen. Er steht mit Grenze und Frist am Urteil (LU4).
+- `nicht_zugesagt` bleibt, wie die Matrix es sagt: eine Grenze.
+
+Eine **Norm-Zeile** wird `nicht_maschinell_pruefbar` nur mit der Lesart `traegt` einer benannten
+Fachperson mit Datum und Text (RF-03). Eine Anmerkung oder ein Widerspruch bleibt offen (FP3).
+**Kundenaufgaben** stehen ohne Urteil im Bericht und werden nie gezählt (NR5).
+
+**Der Entwurf.** Der Prüfer schreibt `BWB-JJJJ-nn.json`, `BWB-JJJJ-nn.md` und
+`BWB-JJJJ-nn.sha256` nach `--aus`. Vorgabe ist `docs/bewertung/bewertungen/`, die Kennung ist
+die nächste freie im Jahr des Prüftags. Die `.md` nennt die Prüfsumme der JSON-Fassung.
+`shasum -a 256 -c BWB-JJJJ-nn.sha256` prüft beide. Eine Kennung, die es schon gibt, schreibt er
+nicht noch einmal (G3). Jede Zeile der JSON-Fassung ohne `pruefung` hält den Vertrag der Matrix.
+So kann ein Lauf (AP-20 IP-10) die Urteile in die Matrix übernehmen. Gleiche Eingaben ergeben
+gleiche Bytes. Gezählt wird je Urteil und Träger, nie in Prozent (MX4). Exit 0 heißt: der
+Entwurf ist geschrieben. Das ist kein Tor (G4). Freigeben kann nur der Captain (G5). Exit 2
+heißt: Aufruf, Eingabe oder Wache rot.
+
 ## Vokabulare
 
 Die Vokabulare sind geschlossen. Quelle ist das Schema. Wer eines ändert, ändert Schema,
@@ -285,7 +381,7 @@ wird eine Lücke. Kein Satz ändert sich still (FP3).
 
 Die Regeln sind die des Tor-Prüfers ([`tools/freigabe/README.md`](../../tools/freigabe/README.md)),
 ausgedehnt auf die ganze Matrix. Der Vertrag (AP-20 NW-1) prüft die Form. Die Urteile aus
-Lauf-Berichten fällt später der Matrix-Prüfer (AP-20 IP-4, AP-20 NW-2).
+Lauf-Berichten fällt der [Matrix-Prüfer](#matrix-prüfer-ap-20-ip-4-e3--a) (AP-20 IP-4, AP-20 NW-2).
 
 - **NR1**: Ein Beleg ist nie „die Datei existiert“. Ein Test zählt nur mit einem Lauf-Bericht,
   ein Werkzeug nur mit seinem Artefakt.
@@ -347,7 +443,7 @@ Bewertung. Fristen rechnet das Werkzeug beim Abruf.
 | Wer | Tut | Tut nie |
 |---|---|---|
 | Crew | pflegt Matrix und Lückenliste, fährt die Läufe im Testfenster mit `stand.txt`, stellt die Normfassung fest | ein positives Urteil ohne Lauf oder Bestätigung eintragen |
-| Werkzeug | prüft den Vertrag (heute) und urteilt nach NR1 bis NR9 (AP-20 IP-4) | freigeben, einen Restpunkt annehmen, löschen (G5) |
+| Werkzeug | prüft den Vertrag und urteilt nach NR1 bis NR9 in einem Entwurf (AP-20 IP-4) | freigeben, einen Restpunkt annehmen, löschen, die Matrix ändern (G5) |
 | Betreiber | bestätigt mit Datum, was nur er wissen kann, und fährt Übungen | ein Urteil des Werkzeugs überschreiben |
 | Fachperson | liest den Norm-Teil an ihrer lizenzierten Ausgabe und trägt je Zeile eine Lesart mit Name und Datum ein | VoltPilot bei der Umsetzung beraten (FP2) |
 | Captain | gibt eine Bewertung frei und nimmt einen Restpunkt mit Grenze und Datum an | — |
@@ -360,7 +456,8 @@ python3 tools/bewertung/nachweismatrix.py                       # Exit 0 = Vertr
 python3 tools/bewertung/zusagen.py [--plan <plan.md>]          # Wache MX5: Exit 0 = jede Zusage hat ihre Zeile
 python3 tools/bewertung/klammer.py                             # Klammer AP-20 NW-1: Exit 0 = jeder Kandidat existiert, keine Zeile ohne Kandidat oder Lieferant
 python3 tools/bewertung/luecken.py [--heute JJJJ-MM-TT]        # Wache AP-20 NW-3: Exit 0 = Liste hält, zeigt Zustand und Frist
-python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1 und die Wachen
+python3 tools/bewertung/pruefe_matrix.py --laeufe <ordner> …    # Urteil je Zeile, BWB-Entwurf mit SHA-256 (AP-20 NW-2)
+python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1, AP-20 NW-2 und die Wachen
 ```
 
 Der Test braucht `jsonschema`, wie die Vertragstests von `services/optimization`. Fehlt es,

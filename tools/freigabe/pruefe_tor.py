@@ -123,6 +123,37 @@ def tag(zeit: dt.datetime) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Lesefunktionen - auch der Matrix-Pruefer (tools/bewertung/pruefe_matrix.py) liest damit
+# --------------------------------------------------------------------------- #
+
+def zaehler(suite) -> dict:
+    """Die Zahlen einer JUnit-Suite (Surefire oder Vitest), fehlende Angaben als 0."""
+    return {name: int(suite.get(name) or 0) for name in ('tests', 'failures', 'errors', 'skipped')}
+
+
+def lies_stand_txt(ordner: pathlib.Path):
+    """`<ordner>/stand.txt`: das erste Wort ist der Commit des Laufs, ohne Datei None.
+
+    Zeilen `feld: wert` nach der ersten liest nur der Matrix-Pruefer (`datum:`, `gefahren_von:`)."""
+    datei = ordner / 'stand.txt'
+    if not datei.exists():
+        return None
+    text = datei.read_text(encoding='utf-8')
+    worte = text.split()
+    felder = {}
+    for zeile in text.splitlines()[1:]:
+        if ':' in zeile:
+            feld, wert = zeile.split(':', 1)
+            felder[feld.strip()] = wert.strip()
+    return {'stand': worte[0] if worte else '', 'felder': felder}
+
+
+def gleicher_stand(sha: str, kopf: str) -> bool:
+    """Der Commit aus stand.txt traegt den geprueften Stand nur, wenn er ihn benennt."""
+    return len(sha) >= 7 and (kopf.startswith(sha) or sha.startswith(kopf))
+
+
+# --------------------------------------------------------------------------- #
 # Pruefer
 # --------------------------------------------------------------------------- #
 
@@ -145,7 +176,7 @@ def surefire(klasse: str, landete_mit: str = '', wer: str = 'Crew'):
             suite = ET.parse(datei).getroot()
         except ET.ParseError as fehler:
             return OFFEN, f'{datei.name} ist nicht lesbar ({fehler}); Lauf wiederholen ({wer})'
-        zahl = lambda name: int(suite.get(name) or 0)  # noqa: E731
+        zahl = zaehler(suite).__getitem__
         rot = zahl('failures') + zahl('errors')
         if rot:
             return OFFEN, (f'{kurz} ist im Bericht vom {tag(ctx.mtime(datei))} ROT '
@@ -154,11 +185,10 @@ def surefire(klasse: str, landete_mit: str = '', wer: str = 'Crew'):
             return OFFEN, (f'{kurz} hat im Bericht vom {tag(ctx.mtime(datei))} nichts ausgefuehrt '
                            f'({zahl("skipped")} uebersprungen) - uebersprungen ist nicht gruen ({wer})')
 
-        stand_datei = ctx.laeufe / 'stand.txt'
-        if stand_datei.exists():
-            worte = stand_datei.read_text(encoding='utf-8').split()
-            sha = worte[0] if worte else ''
-            if len(sha) < 7 or not (ctx.kopf.startswith(sha) or sha.startswith(ctx.kopf)):
+        stand_txt = lies_stand_txt(ctx.laeufe)
+        if stand_txt is not None:
+            sha = stand_txt['stand']
+            if not gleicher_stand(sha, ctx.kopf):
                 return OFFEN, (f'{kurz} ist gruen, aber der Bericht stammt laut stand.txt von {sha or "?"}, '
                                f'geprueft wird {ctx.kopf[:8]}; Lauf auf diesem Stand wiederholen ({wer})')
             woher = f'Stand {sha[:8]} laut stand.txt'

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testcase name="die Vertragsfaelle V1…V13 lesen sich wie beschrieben" time="0.0015" classname="test" file="/runner/work/voltpilot-ems/edge-app/nodered/measurements/fixture.test.js"/>
+	<testsuite name="Gruppe" time="0.0008" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="fixture">
+		<testcase name="innen" time="0.0003" classname="test" file="/runner/work/voltpilot-ems/edge-app/nodered/measurements/fixture.test.js"/>
+	</testsuite>
+</testsuites>

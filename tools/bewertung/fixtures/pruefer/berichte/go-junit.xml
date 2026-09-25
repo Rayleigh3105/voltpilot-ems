@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="2" failures="0" errors="0" time="0.050">
+	<testsuite tests="2" failures="0" time="0.050" name="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/fixture" timestamp="2026-09-28T08:00:00Z">
+		<testcase classname="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/fixture" name="TestFixtureGruen" time="0.020"></testcase>
+		<testcase classname="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/fixture" name="TestFixtureGruen/unterfall" time="0.010"></testcase>
+	</testsuite>
+</testsuites>

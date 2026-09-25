@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="3" failures="0" errors="0" time="1.9">
+    <testsuite name="src/copy.test.ts" timestamp="2026-09-28T08:00:00.000Z" hostname="fixture" tests="2" failures="0" errors="0" skipped="0" time="0.8">
+        <testcase classname="src/copy.test.ts" name="S1 &gt; der Grenz-Satz steht an jeder Fläche" time="0.4">
+        </testcase>
+        <testcase classname="src/copy.test.ts" name="SP2 &gt; kein verbotenes Wort" time="0.4">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/anderes.test.ts" timestamp="2026-09-28T08:00:01.000Z" hostname="fixture" tests="1" failures="0" errors="0" skipped="0" time="1.1">
+        <testcase classname="src/anderes.test.ts" name="etwas anderes" time="1.1">
+        </testcase>
+    </testsuite>
+</testsuites>

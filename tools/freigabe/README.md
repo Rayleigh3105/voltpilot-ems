@@ -91,6 +91,11 @@ python3 -m unittest discover -s tools/freigabe -p 'test_*.py'
 shellcheck tools/freigabe/*.sh
 ```
 
+Die Lesefunktionen (`zaehler`, `lies_stand_txt`, `gleicher_stand`, `lies_stand`, die Leser von
+`probe.json` und `rueckweg.json`) nutzt auch der Matrix-Prüfer der Bewertung
+([`tools/bewertung/pruefe_matrix.py`](../bewertung/pruefe_matrix.py), AP-20 IP-4). Wer sie ändert,
+fährt auch `python3 -m unittest discover -s tools/bewertung -p 'test_*.py'`.
+
 Die Tests bauen ein Wegwerf-Repo mit genau der Geschichte, die G0 verlangt, und prüfen die
 Fälle, an denen das Werkzeug scheitern könnte: alles belegt → Exit 0 · ein Beleg fehlt →
 Exit 1 und die Zeile nennt ihn · roter oder übersprungener Surefire-Bericht → offen ·
