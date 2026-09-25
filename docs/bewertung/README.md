@@ -14,7 +14,7 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | Datei | Inhalt | Paket |
 |---|---|---|
 | [`nachweismatrix.schema.json`](nachweismatrix.schema.json) | Vertrag: Felder, Pflichten je Urteil, Vokabulare, Gliederung | AP-20 IP-2 |
-| [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil seit IP-7, Kundenaufgaben folgen | AP-20 IP-2, IP-5, IP-7 |
+| [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil seit IP-7, Kundenaufgaben seit IP-8 | AP-20 IP-2, IP-5, IP-7, IP-8 |
 | [`luecken.json`](luecken.json), [`luecken.schema.json`](luecken.schema.json) | Lückenliste des Betreibers (L-nnn) mit Verlauf je Übergang, nie beim Kunden | AP-20 IP-3 |
 | [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3); später der Matrix-Prüfer | AP-20 IP-2, IP-3, IP-5, IP-4 |
 
@@ -35,9 +35,9 @@ Eine Datei, zwei Teile, dazu die Kundenaufgaben. Verbunden sind sie über Abschn
   Kundenaufgabe hat **kein Urteil** (NR5).
 
 Die Verweise gelten in beide Richtungen. Nennt eine Norm-Zeile `Z-005`, nennt `Z-005` auch
-diesen Abschnitt. Dasselbe gilt für Norm-Zeile und Kundenaufgabe. Ein Verweis in einen Teil,
-der noch keine Zeile trägt, wird nicht geprüft. So können die Teile nacheinander entstehen:
-Zusagen (IP-5), Norm-Teil (IP-7), Kundenaufgaben (IP-8).
+diesen Abschnitt. Dasselbe gilt für Norm-Zeile und Kundenaufgabe. Die Teile sind nacheinander
+entstanden: Zusagen (IP-5), Norm-Teil (IP-7), Kundenaufgaben (IP-8). Seitdem wird jeder Verweis
+geprüft, auch in einen leeren Teil.
 
 ## Zusagen-Inventar (AP-20 IP-5, E1 = A)
 
@@ -167,6 +167,29 @@ der noch leer ist, wird nicht geprüft.
 - eine Zeile mit `belegt` oder `nicht_maschinell_pruefbar` eine offene Lücke nennt (NR6).
 - eine L-nnn auf einer Kundenfläche steht (G2): Portal (`frontend/portal/src`, `public`),
   `services/api/src/main`, Keycloak-Thema, Release-Notiz-Vorlage. Testdateien zählen nicht.
+
+## Kundenaufgaben (AP-20 IP-8, NR5, RF-04)
+
+Die neun Kundenaufgaben KA-01 … KA-09 sagen, was außerhalb von VoltPilot beim Kunden bleibt. Jede
+Norm-Zeile nennt genau eine, jede Kundenaufgabe nennt ihre Norm-Zeilen, und beide Richtungen
+stimmen überein (AP-20 NW-1).
+
+- **Herkunft** ist die Spalte „beim Kunden“ von `FM/vp-uems-ap19-fundament/zuschnitt.json`, „Z. n“
+  wie im Norm-Teil. Ergänzt ist, was AP-19 nicht hatte: Ursache und Wirkung im Leistungsteil
+  (KA-04, AP-18), die Klimafrage der Änderung 1 (KA-05), die eigene Aufbewahrung vor Vertragsende
+  (KA-06) sowie Messmittel, Messplanung und Einstufung (KA-07).
+- **Der Satz** (`text`) ist Kundensprache. Er erscheint später im Hilfe-Artikel (AP-20 IP-22) und
+  in der Übersicht für Prüfende (AP-20 IP-21) und nennt die Aufgabe als Verantwortung des Kunden.
+  Abschnittsnummer, Kennzeichen, Norm und Vokabular-Schlüssel stehen nie darin.
+- **Kein Urteil**, weder als Feld noch im Satz. Das Schema kennt kein Feld dafür. Der Prüfer ist rot
+  an jedem Wort des Urteil-Vokabulars und an „erfüllt“, „konform“, „zertifiziert“, „vollständig“ und
+  „Lücke“, auch gebeugt. Das Verb der Aufgabe bleibt erlaubt: „belegen“ und „erfüllen“ sagen, was der
+  Kunde tut, nicht ob er es getan hat. VoltPilot weiß das nicht und behauptet darum nichts. Eine
+  Kundenaufgabe wird nie gezählt, auch nicht als erfüllt, offen oder Lücke.
+- **Wo gesagt** (`wo_gesagt`) nennt, wo der Kunde die Aufgabe heute liest. Als Liste steht sie noch
+  nirgends kundenlesbar (L-010). Einzelne Teile sagen heute schon Zusagen (Z-048, Z-054, Z-059, Z-075).
+
+Gegenüber dem Konzept sagt KA-06 „den Gesamtabzug laden“ statt „nehmen“, wie der Knopf (AP-20 BT4).
 
 ## Vokabulare
 

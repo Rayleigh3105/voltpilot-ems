@@ -3,8 +3,9 @@
 
 Prüft eine Matrix gegen `docs/bewertung/nachweismatrix.schema.json` und gegen die Regeln,
 die ein Schema nicht ausdrücken kann: eindeutige Kennzeichen, Verweise zwischen den Teilen,
-NR9 und die Bindung von Matrix-Fassung und Normfassung (MX6). Er urteilt NICHT über
-Nachweise - das tut der Matrix-Prüfer (AP-20 IP-4) nach NR1-NR9 an Lauf-Berichten.
+den Satz einer Kundenaufgabe (NR5, RF-04), NR9 und die Bindung von Matrix-Fassung und
+Normfassung (MX6). Er urteilt NICHT über Nachweise - das tut der Matrix-Prüfer (AP-20 IP-4)
+nach NR1-NR9 an Lauf-Berichten.
 
     python3 tools/bewertung/nachweismatrix.py [matrix.json]
 
@@ -30,6 +31,19 @@ NORMFASSUNGEN = {
 
 NW_KENNUNG = re.compile(r'\bNW-\d+')
 PAKET_DAVOR = re.compile(r'\bAP-\d+ $')
+
+# NR5, RF-04: eine Kundenaufgabe urteilt nicht, auch nicht im Satz. Verboten sind die Wörter des
+# Urteil-Vokabulars (aus dem Schema), die nie gesagten aus MX4 und „Lücke“, auch gebeugt. Das Verb
+# der Aufgabe („belegen“, „erfüllen“) bleibt: es sagt, was der Kunde tut, nicht ob er es getan hat.
+NIE_IM_SATZ = ('erfüllt', 'konform', 'zertifiziert', 'vollständig', 'Lücke')
+# Kundensprache: der Satz steht später im Hilfe-Artikel (AP-20 IP-22), wo Abschnittsnummern,
+# Kennzeichen, Norm und Vokabular-Schlüssel nie erscheinen.
+NIE_FUER_KUNDEN = (
+    (re.compile(r'\b\d+\.\d+(?:\.\d+)?\b'), 'Abschnittsnummer'),
+    (re.compile(r'\b[A-Z]{1,3}-\d+\b'), 'Kennzeichen'),
+    (re.compile(r'\b(?:ISO|DIN|Norm)\b'), 'Norm'),
+    (re.compile(r'\w_\w'), 'Vokabular-Schlüssel'),
+)
 
 
 def lade_schema():
@@ -64,32 +78,57 @@ def _doppelte(werte):
 def _verweise(matrix):
     """Norm-Teil, Zusagen und Kundenaufgaben nennen einander gegenseitig (MX1).
 
-    Ein Verweis in einen Teil, der noch keine Zeile trägt, wird nicht geprüft: die Teile
-    entstehen nacheinander (Zusagen AP-20 IP-5, Norm-Teil IP-7, Kundenaufgaben IP-8)."""
+    Jeder Verweis wird geprüft, auch in einen leeren Teil: seit AP-20 IP-8 tragen alle drei
+    Teile Zeilen. Eine Norm-Zeile, deren Kundenaufgabe fehlt, ist rot (AP-20 NW-1)."""
     norm = {z['abschnitt']: z for z in matrix['norm_teil']}
     zusagen = {z['kennzeichen']: z for z in matrix['zusagen']}
     aufgaben = {k['kennzeichen']: k for k in matrix['kundenaufgaben']}
     fehler = []
 
-    if norm and zusagen:
-        von_norm = {(kz, a) for a, z in norm.items() for kz in z['zusagen']}
-        von_zusage = {(kz, a) for kz, z in zusagen.items() for a in z['norm']}
-        for kz, a in sorted(von_norm - von_zusage):
-            fehler.append(f'norm_teil[{a}].zusagen: {kz} gibt es im Zusagen-Teil nicht' if kz not in zusagen
-                          else f'norm_teil[{a}].zusagen: {kz} nennt Abschnitt {a} nicht')
-        for kz, a in sorted(von_zusage - von_norm):
-            fehler.append(f'zusagen[{kz}].norm: Abschnitt {a} hat keine Zeile im Norm-Teil' if a not in norm
-                          else f'zusagen[{kz}].norm: die Norm-Zeile {a} nennt {kz} nicht')
+    von_norm = {(kz, a) for a, z in norm.items() for kz in z['zusagen']}
+    von_zusage = {(kz, a) for kz, z in zusagen.items() for a in z['norm']}
+    for kz, a in sorted(von_norm - von_zusage):
+        fehler.append(f'norm_teil[{a}].zusagen: {kz} gibt es im Zusagen-Teil nicht' if kz not in zusagen
+                      else f'norm_teil[{a}].zusagen: {kz} nennt Abschnitt {a} nicht')
+    for kz, a in sorted(von_zusage - von_norm):
+        fehler.append(f'zusagen[{kz}].norm: Abschnitt {a} hat keine Zeile im Norm-Teil' if a not in norm
+                      else f'zusagen[{kz}].norm: die Norm-Zeile {a} nennt {kz} nicht')
 
-    if norm and aufgaben:
-        von_norm = {(z['kundenaufgabe'], a) for a, z in norm.items()}
-        von_aufgabe = {(kz, a) for kz, k in aufgaben.items() for a in k['norm']}
-        for kz, a in sorted(von_norm - von_aufgabe):
-            fehler.append(f'norm_teil[{a}].kundenaufgabe: {kz} gibt es bei den Kundenaufgaben nicht' if kz not in aufgaben
-                          else f'norm_teil[{a}].kundenaufgabe: {kz} nennt Abschnitt {a} nicht')
-        for kz, a in sorted(von_aufgabe - von_norm):
-            fehler.append(f'kundenaufgaben[{kz}].norm: Abschnitt {a} hat keine Zeile im Norm-Teil' if a not in norm
-                          else f'kundenaufgaben[{kz}].norm: die Norm-Zeile {a} nennt eine andere Kundenaufgabe')
+    von_norm = {(z['kundenaufgabe'], a) for a, z in norm.items()}
+    von_aufgabe = {(kz, a) for kz, k in aufgaben.items() for a in k['norm']}
+    for kz, a in sorted(von_norm - von_aufgabe):
+        fehler.append(f'norm_teil[{a}].kundenaufgabe: {kz} gibt es bei den Kundenaufgaben nicht' if kz not in aufgaben
+                      else f'norm_teil[{a}].kundenaufgabe: {kz} nennt Abschnitt {a} nicht')
+    for kz, a in sorted(von_aufgabe - von_norm):
+        fehler.append(f'kundenaufgaben[{kz}].norm: Abschnitt {a} hat keine Zeile im Norm-Teil' if a not in norm
+                      else f'kundenaufgaben[{kz}].norm: die Norm-Zeile {a} nennt eine andere Kundenaufgabe')
+    return fehler
+
+
+def _urteil_im_satz():
+    """Ein Wort des Urteils in jeder Schreibung: „Lücke“ wie „Luecken“, „nicht_zugesagt“ wie „nicht zugesagt“."""
+    stamm = []
+    for wort in lade_schema()['$defs']['urteil']['enum'] + list(NIE_IM_SATZ):
+        muster = re.escape(wort.lower().replace('_', ' ')).replace(r'\ ', r'[\s_]+')
+        for umlaut, aus in (('ä', 'ae'), ('ö', 'oe'), ('ü', 'ue')):
+            muster = muster.replace(umlaut, aus).replace(aus, f'(?:{umlaut}|{aus})')
+        stamm.append(muster)
+    return re.compile(rf'(?<![^\W\d_])(?:{"|".join(stamm)})(?:e|em|en|er|es|n)?(?![^\W\d_])', re.IGNORECASE)
+
+
+def _kundenaufgaben(matrix):
+    """Der Satz einer Kundenaufgabe: ohne Urteil (NR5, RF-04) und in Kundensprache.
+
+    Das Feld `urteil` verbietet schon das Schema; hier fällt ein Satz, der urteilt."""
+    urteil = _urteil_im_satz()
+    fehler = []
+    for k in matrix['kundenaufgaben']:
+        for m in urteil.finditer(k['text']):
+            fehler.append(f'kundenaufgaben[{k["kennzeichen"]}].text: „{m.group()}“ urteilt - '
+                          f'eine Kundenaufgabe hat kein Urteil (NR5, RF-04)')
+        for muster, was in NIE_FUER_KUNDEN:
+            for m in muster.finditer(k['text']):
+                fehler.append(f'kundenaufgaben[{k["kennzeichen"]}].text: {was} „{m.group()}“ ist keine Kundensprache')
     return fehler
 
 
@@ -147,7 +186,7 @@ def verstoesse(matrix):
         return fehler + _nr9(matrix)
     for teil, feld in (('norm_teil', 'abschnitt'), ('zusagen', 'kennzeichen'), ('kundenaufgaben', 'kennzeichen')):
         fehler += [f'{teil}: {w} steht mehr als einmal' for w in _doppelte(z[feld] for z in matrix[teil])]
-    return fehler + _verweise(matrix) + _nr9(matrix) + _normfassung(matrix)
+    return fehler + _verweise(matrix) + _kundenaufgaben(matrix) + _nr9(matrix) + _normfassung(matrix)
 
 
 def _anzeige(pfad):

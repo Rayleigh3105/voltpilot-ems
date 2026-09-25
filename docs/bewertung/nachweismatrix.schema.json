@@ -254,14 +254,21 @@
     "kundenaufgabe": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kennzeichen", "text", "norm"],
-      "description": "Was außerhalb der Software beim Kunden bleibt. Kein Urteil, nie als erfüllt, offen oder Lücke gezählt (NR5).",
+      "required": ["kennzeichen", "text", "norm", "herkunft"],
+      "description": "Was außerhalb der Software beim Kunden bleibt (AP-20 IP-8). Kein Urteil, weder als Feld noch im Satz, nie als erfüllt, offen oder Lücke gezählt (NR5, RF-04). Den Satz prüft tools/bewertung/nachweismatrix.py.",
       "properties": {
         "kennzeichen": { "$ref": "#/$defs/kundenaufgabe_kennzeichen" },
-        "text": { "$ref": "#/$defs/text" },
+        "text": {
+          "$ref": "#/$defs/text",
+          "description": "Was bei Ihnen bleibt, in Kundensprache: ohne Abschnittsnummer, Kennzeichen und Norm, ohne Urteil."
+        },
         "norm": {
           "allOf": [{ "$ref": "#/$defs/abschnitte" }],
           "minItems": 1
+        },
+        "herkunft": {
+          "$ref": "#/$defs/text",
+          "description": "Woher die Aufgabe stammt: Spalte „beim Kunden“ des AP-19-Zuschnitts oder die Ergänzung für Leistungs-, Mess- und Betriebsteil."
         },
         "wo_gesagt": { "$ref": "#/$defs/text" }
       }

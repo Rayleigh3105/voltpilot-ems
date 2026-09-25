@@ -178,27 +178,32 @@
     {
       "kennzeichen": "KA-02",
       "text": "Festlegen, welche Kompetenz nötig ist, sie sicherstellen und nachweisen; Bewusstsein schaffen. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.",
-      "norm": ["7.2", "7.3"]
+      "norm": ["7.2", "7.3"],
+      "herkunft": "zuschnitt.json Z. 7 und Z. 18 (Beispiel)"
     },
     {
       "kennzeichen": "KA-03",
       "text": "Bewerten, ob Sie rechtliche und andere Anforderungen einhalten. VoltPilot bewertet das nicht.",
-      "norm": ["9.1.2"]
+      "norm": ["9.1.2"],
+      "herkunft": "zuschnitt.json Z. 19 (Beispiel)"
     },
     {
       "kennzeichen": "KA-06",
       "text": "Ihre eigenen Aufbewahrungspflichten erfüllen: vor dem Ende Ihres Vertrags den Gesamtabzug nehmen und selbst aufbewahren.",
-      "norm": ["7.5.3"]
+      "norm": ["7.5.3"],
+      "herkunft": "für den Betrieb ergänzt (Beispiel)"
     },
     {
       "kennzeichen": "KA-07",
       "text": "Messmittel und Zähler prüfen lassen, die Messplanung verantworten, eine Einstufung fachlich tragen.",
-      "norm": ["6.3", "6.6"]
+      "norm": ["6.3", "6.6"],
+      "herkunft": "für den Leistungs- und Messteil ergänzt (Beispiel)"
     },
     {
       "kennzeichen": "KA-08",
       "text": "Interne Audits durchführen, Auditorinnen und Auditoren auswählen und ihre Unabhängigkeit sichern.",
       "norm": ["9.2.1", "9.2.2"],
+      "herkunft": "zuschnitt.json Z. 13 (Beispiel)",
       "wo_gesagt": "Hilfe-Artikel (AP-20 IP-22), Übersicht für Ihre Prüfenden (AP-20 IP-21)"
     }
   ]

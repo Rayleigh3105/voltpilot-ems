@@ -7,6 +7,7 @@ Braucht `jsonschema` (wie die Vertragstests von services/optimization). Fehlt es
 Lauf mit ImportError ab - er wird nie übersprungen (NR2).
 """
 
+import collections
 import copy
 import io
 import json
@@ -63,9 +64,10 @@ class LeereMatrix(unittest.TestCase):
         self.assertEqual((m['normfassung']['international'], m['normfassung']['deutsch']),
                          nachweismatrix.NORMFASSUNGEN[1])
         self.assertRegex(m['normfassung']['stichtag'], r'^\d{4}-\d{2}-\d{2}$')
-        # Zusagen seit AP-20 IP-5 (Wache: test_zusagen.py), Norm-Teil seit IP-7 (NormTeil unten); Kundenaufgaben folgen (IP-8).
+        # Zusagen seit AP-20 IP-5 (Wache: test_zusagen.py), Norm-Teil seit IP-7 (NormTeil unten), Kundenaufgaben seit IP-8.
         self.assertTrue(m['zusagen'])
         self.assertTrue(m['norm_teil'])
+        self.assertTrue(m['kundenaufgaben'])
 
     def test_die_gliederung_hat_dreissig_abschnitte_und_nur_nummern(self):
         gliederung = nachweismatrix.lade_schema()['$defs']['abschnitt']['enum']
@@ -134,6 +136,46 @@ class NormTeil(unittest.TestCase):
                 dateien = list(self.TESTS.rglob(f'{klasse}.java'))
                 self.assertEqual(len(dateien), 1, f'{kz}: {klasse}')
                 self.assertRegex(dateien[0].read_text(encoding='utf-8'), rf'void {methode}\(', f'{kz}: {kandidat}')
+
+
+class Kundenaufgaben(unittest.TestCase):
+    """Die Kundenaufgaben der Matrix im Repo (AP-20 IP-8, NR5, RF-04): je Norm-Zeile genau eine, keine mit Urteil."""
+
+    def setUp(self):
+        self.m = lade(nachweismatrix.MATRIX_PFAD)
+        self.aufgaben = {k['kennzeichen']: k for k in self.m['kundenaufgaben']}
+
+    def test_es_sind_die_neun_ka01_bis_ka09(self):
+        self.assertEqual([k['kennzeichen'] for k in self.m['kundenaufgaben']], [f'KA-{n:02d}' for n in range(1, 10)])
+
+    def test_jede_norm_zeile_hat_genau_eine_kundenaufgabe_nw1(self):
+        je_abschnitt = collections.Counter(a for k in self.m['kundenaufgaben'] for a in k['norm'])
+        self.assertEqual(sorted(je_abschnitt), sorted(z['abschnitt'] for z in self.m['norm_teil']))
+        self.assertEqual(set(je_abschnitt.values()), {1})
+        for z in self.m['norm_teil']:
+            self.assertIn(z['abschnitt'], self.aufgaben[z['kundenaufgabe']]['norm'], z['abschnitt'])
+
+    def test_keine_kundenaufgabe_hat_ein_urteil_nr5_rf04(self):
+        for k in self.m['kundenaufgaben']:
+            self.assertLessEqual(set(k), {'kennzeichen', 'text', 'norm', 'herkunft', 'wo_gesagt'}, k['kennzeichen'])
+        self.assertEqual(nachweismatrix._kundenaufgaben(self.m), [])
+
+    def test_die_herkunft_ist_der_zuschnitt_oder_die_ergaenzung(self):
+        # §3.4: aus der Spalte „beim Kunden“ des AP-19-Zuschnitts; ergänzt für Leistungs-, Mess- und Betriebsteil und die Klimafrage.
+        for kz, k in self.aufgaben.items():
+            self.assertRegex(k['herkunft'], r'zuschnitt\.json|ergänzt', kz)
+        self.assertEqual(sorted(kz for kz, k in self.aufgaben.items() if 'ergänzt' in k['herkunft']),
+                         ['KA-04', 'KA-05', 'KA-06', 'KA-07'])
+
+    def test_wo_gesagt_nennt_nur_zusagen_die_es_gibt(self):
+        zusagen = {z['kennzeichen'] for z in self.m['zusagen']}
+        for kz, k in self.aufgaben.items():
+            for genannt in re.findall(r'Z-\d{3}', k['wo_gesagt']):
+                self.assertIn(genannt, zusagen, kz)
+
+    def test_die_klimafrage_bleibt_beim_kunden_ka05(self):
+        self.assertIn('Klimawandel', self.aufgaben['KA-05']['text'])
+        self.assertIn('VoltPilot führt dazu keine Angaben.', self.aufgaben['KA-05']['text'])
 
 
 class FixtureMatrix(unittest.TestCase):
@@ -261,14 +303,48 @@ class Gegenproben(unittest.TestCase):
         normzeile(self.m, '7.5.3')['zusagen'] = ['Z-015']
         self.assertRot(self.m, 'zusagen[Z-013].norm: die Norm-Zeile 7.5.3 nennt Z-013 nicht')
 
-    def test_ein_verweis_in_einen_noch_leeren_teil_wird_nicht_geprueft(self):
-        # Die Teile entstehen nacheinander: Zusagen (AP-20 IP-5) vor Norm-Teil (IP-7) vor Kundenaufgaben (IP-8).
-        nur_zusagen = copy.deepcopy(self.m)
-        nur_zusagen['norm_teil'], nur_zusagen['kundenaufgaben'] = [], []
-        self.assertEqual(nachweismatrix.verstoesse(nur_zusagen), [])
-        ohne_aufgaben = copy.deepcopy(self.m)
-        ohne_aufgaben['kundenaufgaben'] = []
-        self.assertEqual(nachweismatrix.verstoesse(ohne_aufgaben), [])
+    def test_ohne_kundenaufgaben_ist_jede_norm_zeile_rot_nw1(self):
+        # Seit AP-20 IP-8 tragen alle drei Teile Zeilen: ein leerer Teil setzt die Prüfung nicht mehr aus.
+        self.m['kundenaufgaben'] = []
+        fehler = self.assertRot(self.m, 'norm_teil[7.2].kundenaufgabe: KA-02 gibt es bei den Kundenaufgaben nicht')
+        self.assertEqual(len(fehler), len(self.m['norm_teil']))
+
+    def test_ein_verweis_in_einen_leeren_norm_teil_ist_rot(self):
+        self.m['norm_teil'] = []
+        self.assertRot(self.m, 'zusagen[Z-013].norm: Abschnitt 7.5.3 hat keine Zeile im Norm-Teil',
+                       'kundenaufgaben[KA-02].norm: Abschnitt 7.2 hat keine Zeile im Norm-Teil')
+
+    def test_eine_kundenaufgabe_ohne_norm_zeile_ist_rot(self):
+        self.m['kundenaufgaben'][0]['norm'] = ['4.1']
+        self.assertRot(self.m, 'kundenaufgaben[KA-02].norm: Abschnitt 4.1 hat keine Zeile im Norm-Teil',
+                       'norm_teil[7.2].kundenaufgabe: KA-02 nennt Abschnitt 7.2 nicht')
+
+    def test_eine_kundenaufgabe_ohne_abschnitt_oder_herkunft_ist_rot(self):
+        self.m['kundenaufgaben'][0]['norm'] = []
+        del self.m['kundenaufgaben'][1]['herkunft']
+        self.assertRot(self.m, 'kundenaufgaben/0/norm', "kundenaufgaben/1: 'herkunft' is a required property")
+
+    def test_eine_kundenaufgabe_die_im_satz_urteilt_ist_rot_rf04(self):
+        for satz in ('Das ist erfüllt.', 'Die Aufgabe bleibt offen.', 'Belegt durch den Kunden.', 'Sonst entsteht eine Lücke.',
+                     'Von VoltPilot nicht zugesagt.', 'nicht_maschinell_pruefbar', 'Damit sind Sie konform.',
+                     'Die Liste ist vollständig.', 'Zertifiziert ist das nicht.'):
+            with self.subTest(satz=satz):
+                m = copy.deepcopy(self.m)
+                m['kundenaufgaben'][0]['text'] += ' ' + satz
+                self.assertRot(m, 'kundenaufgaben[KA-02].text:', 'urteilt - eine Kundenaufgabe hat kein Urteil (NR5, RF-04)')
+
+    def test_das_verb_der_aufgabe_ist_kein_urteil(self):
+        # KA-06 der Fixture sagt „erfüllen“; „belegen“ und „offenlegen“ sagen, was der Kunde tut, nicht ob er es getan hat.
+        self.m['kundenaufgaben'][0]['text'] += ' Die Wirkung belegen und die Gründe offenlegen.'
+        self.assertEqual(nachweismatrix.verstoesse(self.m), [])
+
+    def test_eine_kundenaufgabe_ausserhalb_der_kundensprache_ist_rot(self):
+        for zusatz, erwartet in (('(Abschnitt 7.2)', 'Abschnittsnummer „7.2“'), ('Siehe Z-005.', 'Kennzeichen „Z-005“'),
+                                 ('Nach ISO 50001.', 'Norm „ISO“'), ('Träger beim_kunden.', 'Vokabular-Schlüssel')):
+            with self.subTest(zusatz=zusatz):
+                m = copy.deepcopy(self.m)
+                m['kundenaufgaben'][0]['text'] += ' ' + zusatz
+                self.assertRot(m, f'kundenaufgaben[KA-02].text: {erwartet}')
 
     def test_eine_geaenderte_normfassung_ohne_neue_matrix_fassung_ist_rot_mx6(self):
         self.m['normfassung']['international'] = 'ISO 50001:2031'
@@ -311,6 +387,7 @@ class Kommandozeile(unittest.TestCase):
         code, aus = self.lauf()
         self.assertEqual(code, 0)
         self.assertIn('Vertrag hält', aus)
+        self.assertIn(', 9 Kundenaufgaben)', aus)
         self.assertIn('Norm-Teil je Träger (RF-12): haelt_fest 15 · verweis 7 · misst 4 · beim_kunden 4; '
                       'jede Zeile der Gliederung existiert', aus)
 
