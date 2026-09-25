@@ -25,6 +25,7 @@
  * Rein: kein React, kein Netz.
  */
 
+import type { TarifArt } from './api';
 import { filmLabel } from './fahrplanFilm';
 import { phases, type PhaseKind, type PlanPhase, type SlotRole, type WhySlot } from './fahrplanWhy';
 import type { PlanWordingKind } from './schedule';
@@ -71,10 +72,11 @@ export interface TagPhase {
 }
 
 /**
- * Der Preis je Viertelstunde, den das Bild zeigt. `bezug` ist der Preis, mit
- * dem der Optimierer entschieden hat (P0-Preiswahrheit); nur wenn ihn nicht
- * jede Viertelstunde trägt, zeigt das Bild den Börsenpreis — und nennt ihn
- * dann auch so, statt ihn als „Netzstrom" auszugeben.
+ * Der Preis je Viertelstunde, den das Bild zeigt — der Preis, der den Plan
+ * TREIBT ({@link bildPreisArt}). `bezug` ist der Preis, mit dem der Optimierer
+ * entschieden hat (P0-Preiswahrheit); trägt ihn nicht jede Viertelstunde,
+ * zeigt das Bild den Börsenpreis — und nennt ihn dann auch so, statt ihn als
+ * „Netzstrom" auszugeben.
  */
 export interface TagPreis {
   art: 'bezug' | 'boerse';
@@ -111,8 +113,47 @@ export interface TagEingabe {
   slotMinutes: number;
   now: Date;
   plantKind: PlanWordingKind;
+  /**
+   * Der hinterlegte Tarif der Anlage — er entscheidet mit `plantKind` und den
+   * Preisen des Tages, welcher Preis im Bild steht ({@link bildPreisArt}).
+   * Ohne Angabe (ältere Aufrufer) liest das Bild den Bezugspreis, sonst die
+   * Börse, wie die Daten es tragen.
+   */
+  tarifArt?: TarifArt | null;
   /** Der Tag, der gezeigt wird; ohne Angabe der Kalendertag von `now`. */
   tag?: Date;
+}
+
+/** Unter dieser Tagesspanne (ct/kWh) gilt der Bezugspreis als flach. */
+export const PREIS_FLACH_CT = 0.5;
+
+/**
+ * Welcher Preis den Plan TREIBT und deshalb im Bild steht — im Geist des
+ * Strompreis-Streifens des Cockpits (`strompreis.gateStrompreis`, D1: ein
+ * flacher Preis erklärt nichts), entschieden an den Daten des Tages:
+ *  - der BEZUGSPREIS, mit dem der Optimierer entschieden hat, sobald er sich
+ *    über den Tag ändert — dynamischer Tarif ebenso wie ein Preisblatt mit
+ *    Hoch- und Niedertarif („Strompreis");
+ *  - ist er flach (fester Preis), bei DIREKTVERMARKTUNG der Börsenpreis, zu
+ *    dem der Plan verkauft;
+ *  - sonst KEIN Preis: der Plan folgt Sonne und Verbrauch, und 96 gleich hohe
+ *    Balken wären Zahlen ohne Konsequenz.
+ * Ältere Läufe ohne Bezugspreis zeigen die Börse, außer der Tarif ist bekannt
+ * fest und die Anlage vermarktet nicht.
+ */
+export function bildPreisArt(
+  slots: readonly WhySlot[],
+  tarifArt: TarifArt | null | undefined,
+  plantKind: PlanWordingKind,
+): TagPreis['art'] | null {
+  const bezug = slots.map((s) => zahl(s.importPriceCtKwh));
+  if (bezug.length > 0 && bezug.every((v) => v != null)) {
+    const werte = bezug as number[];
+    if (Math.max(...werte) - Math.min(...werte) >= PREIS_FLACH_CT) return 'bezug';
+    return plantKind === 'direktvermarktung' ? 'boerse' : null;
+  }
+  if (tarifArt != null && tarifArt !== 'dynamisch' && plantKind !== 'direktvermarktung') return null;
+  return 'boerse';
 }
 
 /** Lokale Mitternacht eines Zeitpunkts. */
@@ -135,11 +176,14 @@ function zahl(v: number | null | undefined): number | null {
   return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
 }
 
-/** Der Preis des Bildes — siehe {@link TagPreis}. */
-function tagPreis(slots: WhySlot[]): TagPreis | null {
-  if (slots.length === 0) return null;
+/**
+ * Der Preis des Bildes — siehe {@link TagPreis}. `wunsch` kommt aus
+ * {@link bildPreisArt}; null = kein Preis, undefined = wie die Daten es tragen.
+ */
+function tagPreis(slots: WhySlot[], wunsch: TagPreis['art'] | null | undefined): TagPreis | null {
+  if (slots.length === 0 || wunsch === null) return null;
   const bezug = slots.map((s) => zahl(s.importPriceCtKwh));
-  const art: 'bezug' | 'boerse' = bezug.every((v) => v != null) ? 'bezug' : 'boerse';
+  const art: 'bezug' | 'boerse' = wunsch !== 'boerse' && bezug.every((v) => v != null) ? 'bezug' : 'boerse';
   const ct =
     art === 'bezug'
       ? bezug
@@ -209,7 +253,7 @@ export function tagModell(input: TagEingabe): TagModell {
     phasen,
     jetzt: heute ? minuteDesTages(input.now) : null,
     jetztIndex,
-    preis: tagPreis(slots),
+    preis: tagPreis(slots, input.tarifArt === undefined ? undefined : bildPreisArt(slots, input.tarifArt, input.plantKind)),
     hatWarum: phasenRoh.length > 0,
   };
 }

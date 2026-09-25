@@ -102,14 +102,15 @@ test('mit der Maus vibriert nichts', async ({ page }, testInfo) => {
   await oeffnen(page);
   expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(false);
 
-  await page.getByRole('button', { name: /Wie geht es weiter\?/ }).click();
+  // Ab 900 px Inhaltsbreite der Bildfahrplan (E10): eine Antwort markiert dort
+  // ihre Stelle im Bild, ein Klick wählt eine Viertelstunde.
   const bild = page.getByRole('slider', { name: /Tagesuhr|Bildfahrplan/ });
-  await expect(bild).not.toHaveAttribute('aria-valuetext', /^Jetzt/);
-  await page.getByRole('button', { name: 'Zurück zu jetzt' }).first().click();
-  await expect(bild).toHaveAttribute('aria-valuetext', /^Jetzt/);
+  await page.getByRole('button', { name: /Wie geht es weiter\?/ }).click();
   const box = (await bild.boundingBox())!;
   await bild.click({ position: { x: box.width * 0.85, y: box.height / 2 } });
   await expect(bild).not.toHaveAttribute('aria-valuetext', /^Jetzt/);
+  await page.getByRole('button', { name: 'Zurück zu jetzt' }).first().click();
+  await expect(bild).toHaveAttribute('aria-valuetext', /^Jetzt/);
 
   expect(await gespielt(page)).toEqual([]);
 });

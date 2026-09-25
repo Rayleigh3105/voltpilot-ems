@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bildPreisArt,
   ladestandPlan,
   minuteDesTages,
   phaseVon,
@@ -101,6 +102,35 @@ describe('tagModell · der Tag auf der Uhrzeit', () => {
     expect(b.preis?.art).toBe('boerse');
     expect(b.preis?.min).toBeCloseTo(-1.4);
     expect(b.preis?.ct[0]).toBeCloseTo(10);
+  });
+
+  it('zeigt den Preis, der den Plan treibt - ein flacher Preis erklärt nichts (D1)', () => {
+    // Fester Bezug zu 25 ct, die Börse schwankt: genau die Anlage, deren
+    // Spur vorher aus 96 gleich hohen Balken bestand.
+    const fest = tag(TAGESLAUF, (i) => ({ importPriceCtKwh: 25, priceEurMwh: 40 + i }));
+    const mit = (slots: TagSlot[], tarifArt: 'dynamisch' | 'fest' | 'ohne', plantKind: 'eigenverbrauch' | 'direktvermarktung') =>
+      tagModell({ slots, slotMinutes: 15, now: JETZT, plantKind, tarifArt }).preis;
+
+    // Flacher Bezug + Direktvermarktung: der Börsenpreis, zu dem verkauft wird.
+    expect(mit(fest, 'fest', 'direktvermarktung')).toMatchObject({ art: 'boerse', min: 4, iMin: 0, iMax: 95 });
+    // Flacher Bezug ohne Vermarktung: der Preis erklärt nichts - kein Preis im Bild.
+    expect(mit(fest, 'fest', 'eigenverbrauch')).toBeNull();
+    expect(mit(fest, 'ohne', 'eigenverbrauch')).toBeNull();
+
+    // Ein Bezugspreis, der sich über den Tag ändert, treibt den Plan - der
+    // dynamische Tarif ebenso wie ein Preisblatt mit Hoch- und Niedertarif.
+    const nt = tag(TAGESLAUF, (i) => ({ importPriceCtKwh: i < 24 ? 21 : 31 }));
+    expect(mit(nt, 'fest', 'eigenverbrauch')).toMatchObject({ art: 'bezug', min: 21, max: 31 });
+    expect(mit(nt, 'dynamisch', 'direktvermarktung')?.art).toBe('bezug');
+
+    // Ältere Läufe ohne Bezugspreis: die Börse - außer bei bekannt festem Tarif ohne Vermarktung.
+    const alt = tag(TAGESLAUF, () => ({ importPriceCtKwh: null }));
+    expect(mit(alt, 'dynamisch', 'eigenverbrauch')?.art).toBe('boerse');
+    expect(mit(alt, 'fest', 'eigenverbrauch')).toBeNull();
+
+    expect(bildPreisArt(fest, 'fest', 'direktvermarktung')).toBe('boerse');
+    expect(bildPreisArt(nt, 'fest', 'eigenverbrauch')).toBe('bezug');
+    expect(bildPreisArt(alt, null, 'eigenverbrauch')).toBe('boerse');
   });
 
   it('hat ohne vollständige Warum-Ebene kein Tagesbild - nie eine erfundene Tätigkeit', () => {

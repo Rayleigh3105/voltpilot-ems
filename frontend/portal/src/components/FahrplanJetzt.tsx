@@ -157,10 +157,61 @@ export function JetztInhalt({
 }
 
 /**
+ * Die GEMESSENE Seite der Jetzt-Aussage für das Tagesbild, im Aufklapper
+ * „Messwerte": die ruhigen grünen Bestätigungen (gutartige Physik, belegte
+ * Abregelung) und die Messwert-Chips — wie in der kompakten Karte klappen nur
+ * sie ein. Aussage, Zahl, Zustand und Warum zeigt das Tagesbild selbst
+ * (Jetzt-Band bzw. Zeile unter der Uhr); die Warnungen stehen immer sichtbar
+ * über dem Bild ({@link JetztWarnungen}, K10). Ohne Messung: nichts.
+ */
+export function JetztMesswerte({ view }: { view: JetztHeldView }) {
+  const [open, setOpen] = useState(false);
+  const infoFlow = view.flowConflict && view.flowConflictSeverity === 'info';
+  if (view.chips.length === 0 && !view.curtailment && !infoFlow) return null;
+  return (
+    <div className="vp-tb-messwerte">
+      <button
+        type="button"
+        className={`vp-kompakt-fold${open ? ' is-open' : ''}`}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name="chevron-down" size={16} />
+        Messwerte{view.badgeNote ? ` · ${view.badgeNote}` : ''}
+      </button>
+      {open && (
+        <div className="vp-kompakt-detail">
+          {infoFlow && (
+            <p className="vp-jetzt-confirm">
+              <Icon name="check" size={14} />
+              {view.flowConflict}
+            </p>
+          )}
+          {view.curtailment && (
+            <p className="vp-jetzt-confirm">
+              <Icon name="check" size={14} />
+              {view.curtailment}
+            </p>
+          )}
+          {view.chips.length > 0 && (
+            <div className="vp-jetzt-chips">
+              {view.chips.map((c) => (
+                <span key={c.label} className="vp-jetzt-chip">
+                  {c.label} <b>{c.value}</b>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Die WARNUNGEN der Jetzt-Aussage allein (K10: sie stehen immer sichtbar, nie
  * im Aufklapper): der bernsteinfarbene Flussabgleich und der Widerspruch der
- * Abregelung. Das Tagesbild setzt sie über die Uhr, weil seine Jetzt-Aussage
- * am Telefon erst unter den Antworten steht. Ohne Warnung: nichts.
+ * Abregelung. Das Tagesbild setzt sie über sein Bild. Ohne Warnung: nichts.
  */
 export function JetztWarnungen({ view }: { view: JetztHeldView }) {
   const warnFlow = view.flowConflict && view.flowConflictSeverity === 'warn';

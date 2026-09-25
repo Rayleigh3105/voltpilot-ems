@@ -57,6 +57,13 @@ describe('bildGeometrie · Zeit nach rechts, Ladestand nach oben', () => {
     expect(g.y(100)).toBe(g.ladestand[0]);
     expect(g.y(50)).toBeCloseTo((g.ladestand[0] + g.ladestand[1]) / 2);
   });
+
+  it('lässt die Preisspur samt Lücke weg, wenn kein Preis den Plan treibt', () => {
+    const ohne = bildGeometrie(984, false);
+    expect(ohne.preis[1] - ohne.preis[0]).toBe(0);
+    expect(ohne.sonne[0]).toBe(g.preis[0]);
+    expect(g.hoehe - ohne.hoehe).toBe(g.sonne[0] - g.preis[0]);
+  });
 });
 
 describe('bildModell · die Spuren des Tages', () => {

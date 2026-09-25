@@ -103,7 +103,7 @@ test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über 
   }
   await einfuehrungBeenden(page);
 
-  const mass = await page.locator('.vp-tb-karte').first().evaluate((card) => {
+  const mass = await page.locator('.vp-tb').first().evaluate((card) => {
     const k = card.getBoundingClientRect();
     // Am Telefon und Tablet die Uhr, ab 900 px Inhaltsbreite der Bildfahrplan (E10).
     const bild = card.querySelector('.vp-uhr-svg, .vp-bf-svg')!;
@@ -136,14 +136,23 @@ test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über 
     expect(s.h, `Symbol ${s.w}×${s.h} px ist aufgeblasen`).toBeLessThanOrEqual(24);
   }
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+
+  // Rückmeldung 25.09.2026 („zwei doppelte Diagramme"): neben dem Tagesbild
+  // steht kein zweites Bild desselben Tages, kein Film und kein Aufklapper.
+  // Das bisherige Diagramm öffnet sich nur als Dialog „Alle Werte".
+  await expect(page.locator('.vp-uhr-svg, .vp-bf-svg')).toHaveCount(1);
+  await expect(page.locator('.vp-film')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Mehr erklären/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Alle Werte im Diagramm/ })).toHaveCount(1);
 });
 
 /**
- * E1/E9 (Konzept „Tagesuhr und Bildfahrplan", 24.09.2026): am Telefon steht
- * die Uhr ganz oben, direkt darunter die Antworten - und ALLE Antworten
- * beginnen im ersten Bildschirm (375 × 812, über der unteren Leiste). Darunter
- * darf die Seite länger werden; die frühere Grenze der Gesamthöhe (1 750 px,
- * V-02/V-06) ersetzt E9 A durch dieses Budget des ersten Bildschirms.
+ * E1/E9 (Konzept „Tagesuhr und Bildfahrplan", 24.09.2026): am Telefon stehen
+ * Kopfsatz, Uhr, Werte und die Zeile zum Moment ganz oben, direkt darunter die
+ * Antworten - und ALLE Antworten beginnen im ersten Bildschirm (375 × 812,
+ * über der unteren Leiste). Darunter darf die Seite länger werden; die frühere
+ * Grenze der Gesamthöhe (1 750 px, V-02/V-06) ersetzt E9 A durch dieses
+ * Budget des ersten Bildschirms.
  */
 test('Fahrplan: die Uhr ganz oben, alle Antworten im ersten Bildschirm (E1, E9)', async ({ page }) => {
   await oeffnen(page, FAHRPLAN);
@@ -163,12 +172,12 @@ test('Fahrplan: die Uhr ganz oben, alle Antworten im ersten Bildschirm (E1, E9)'
     const leiste = document.querySelector('.vp-bottombar');
     const leisteOben = leiste && leiste.getBoundingClientRect().height > 0 ? leiste.getBoundingClientRect().top : innerHeight;
     const bild = document.querySelector('.vp-uhr, .vp-bf')!.getBoundingClientRect();
-    const jetzt = document.querySelector('.vp-tb .vp-kompakt');
+    const kopf = document.querySelector('.vp-tb-kopf');
     return {
       sichtbarBis: Math.min(innerHeight, leisteOben),
       bildOben: bild.top,
+      kopfOben: kopf ? kopf.getBoundingClientRect().top : null,
       antworten: [...document.querySelectorAll('.vp-antw-kachel')].map((el) => el.getBoundingClientRect().top),
-      jetztOben: jetzt ? jetzt.getBoundingClientRect().top : null,
     };
   });
   expect(mass.antworten.length, 'Antworten unter dem Tagesbild').toBeGreaterThanOrEqual(2);
@@ -178,6 +187,6 @@ test('Fahrplan: die Uhr ganz oben, alle Antworten im ersten Bildschirm (E1, E9)'
     // Unter dem Bild (Telefon, Rechner) oder daneben (Tablet) - nie davor.
     expect(oben, 'die Antworten stehen nicht vor dem Bild').toBeGreaterThanOrEqual(mass.bildOben - 1);
   }
-  // Die Jetzt-Aussage steht im Tagesbild nach den Antworten, nicht über der Uhr.
-  if (mass.jetztOben != null) expect(mass.jetztOben).toBeGreaterThan(Math.max(...mass.antworten));
+  // Aufbau des Prototyps: der Kopfsatz des Tages steht über dem Bild.
+  if (mass.kopfOben != null) expect(mass.kopfOben).toBeLessThan(mass.bildOben);
 });

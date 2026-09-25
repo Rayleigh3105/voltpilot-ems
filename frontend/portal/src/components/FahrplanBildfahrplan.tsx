@@ -59,7 +59,9 @@ export function FahrplanBildfahrplan({
   onJetzt,
 }: FahrplanBildfahrplanProps) {
   const t = chartTheme();
-  const g = useMemo(() => bildGeometrie(breite), [breite]);
+  // Ohne einen Preis, der den Plan treibt (fester Tarif), entfällt die Spur.
+  const mitPreis = tag.preis != null;
+  const g = useMemo(() => bildGeometrie(breite, mitPreis), [breite, mitPreis]);
   const m = useMemo(() => bildModell(tag, g), [tag, g]);
   const [schwebt, setSchwebt] = useState<number | null>(null);
   // Tablet quer: ein Tipp mit dem Finger gibt denselben Tick wie die Uhr.
@@ -94,7 +96,7 @@ export function FahrplanBildfahrplan({
   };
 
   const leise = (e: TagesbildEbene) => (fokus != null && fokus !== e ? ' is-leise' : '');
-  const oben = g.preis[0];
+  const oben = mitPreis ? g.preis[0] : g.sonne[0];
   const unten = g.taetigkeit[1];
   const v = tag.viertel[auswahl];
   const ph = phaseVon(tag, auswahl);
@@ -151,9 +153,16 @@ export function FahrplanBildfahrplan({
       >
         {/* Die Spuren-Namen links. */}
         <g className="vp-bf-namen" aria-hidden="true">
-          <text x={0} y={(g.preis[0] + g.preis[1]) / 2 + 4}>
-            {tag.preis?.art === 'boerse' ? 'Börsenpreis' : 'Strompreis'}
-          </text>
+          {mitPreis && (
+            <>
+              <text x={0} y={(g.preis[0] + g.preis[1]) / 2 - 2}>
+                {tag.preis?.art === 'boerse' ? 'Börsenpreis' : 'Strompreis'}
+              </text>
+              <text x={0} y={(g.preis[0] + g.preis[1]) / 2 + 13} className="is-klein">
+                ct je kWh
+              </text>
+            </>
+          )}
           <text x={0} y={(g.sonne[0] + g.sonne[1]) / 2 - 2}>Sonne</text>
           <text x={0} y={(g.sonne[0] + g.sonne[1]) / 2 + 13} className="is-klein">
             Verbrauch
@@ -168,21 +177,24 @@ export function FahrplanBildfahrplan({
           </text>
         </g>
 
-        {/* Strompreis: ein Balken je Viertelstunde, hell günstig, dunkel teuer. */}
-        <g className={`vp-bf-spur${leise('preis')}`}>
-          <rect x={g.x(0)} y={g.preis[0]} width={g.x(1440) - g.x(0)} height={g.preis[1] - g.preis[0]} className="vp-bf-grund" />
-          {m.preis.map((b) => (
-            <rect key={b.i} x={b.x} y={b.y} width={b.w} height={Math.max(0.5, b.h)} fill={t.price} fillOpacity={0.18 + 0.82 * (b.stufe ?? 0.5)} />
-          ))}
-          {m.preisNull != null && (
-            <line x1={g.x(0)} x2={g.x(1440)} y1={m.preisNull} y2={m.preisNull} stroke={t.ink} strokeWidth={1} strokeDasharray="3 3" />
-          )}
-          {m.preisMarken.map((p) => (
-            <text key={p.art} x={p.x} y={p.y} textAnchor="middle" className="vp-bf-marke" fill={t.price}>
-              {fmtNum(p.ct, 'ct', 1)}
-            </text>
-          ))}
-        </g>
+        {/* Strompreis: ein Balken je Viertelstunde ab null, hell günstig, dunkel
+            teuer; günstigster und teuerster Wert beschriftet. */}
+        {mitPreis && (
+          <g className={`vp-bf-spur${leise('preis')}`}>
+            <rect x={g.x(0)} y={g.preis[0]} width={g.x(1440) - g.x(0)} height={g.preis[1] - g.preis[0]} className="vp-bf-grund" />
+            {m.preis.map((b) => (
+              <rect key={b.i} x={b.x} y={b.y} width={b.w} height={Math.max(0.5, b.h)} fill={t.price} fillOpacity={0.16 + 0.84 * (b.stufe ?? 0.5)} />
+            ))}
+            {m.preisNull != null && (
+              <line x1={g.x(0)} x2={g.x(1440)} y1={m.preisNull} y2={m.preisNull} stroke={t.ink} strokeWidth={1} strokeDasharray="3 3" />
+            )}
+            {m.preisMarken.map((p) => (
+              <text key={p.art} x={p.x} y={p.y} textAnchor="middle" className="vp-bf-marke" fill={t.price}>
+                {fmtNum(p.ct, 'ct', 1)}
+              </text>
+            ))}
+          </g>
+        )}
 
         {/* Sonne (Fläche) und Verbrauch (Linie): kräftig gemessen, hell erwartet. */}
         <g className={`vp-bf-spur${leise('sonne')}`}>

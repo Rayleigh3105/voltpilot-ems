@@ -76,7 +76,8 @@ export function FahrplanWaage({
   fuss,
 }: {
   waage: Waage;
-  zeit: string;
+  /** Die Uhrzeit hinter der Frage („jetzt", „um 15:30 Uhr"); ohne: nur die Frage. */
+  zeit?: string;
   /** Unter dem Satz: der Weg zu allen Gründen der Viertelstunde. */
   fuss?: React.ReactNode;
 }) {
@@ -84,7 +85,8 @@ export function FahrplanWaage({
   return (
     <section className="vp-waage" aria-label="Die Waage dieser Viertelstunde">
       <p className="vp-waage-frage">
-        {waage.frage} <span className="vp-waage-zeit">{zeit}</span>
+        {waage.frage}
+        {zeit && <span className="vp-waage-zeit"> {zeit}</span>}
       </p>
       {waage.seiten && (
         <div className="vp-waage-seiten">

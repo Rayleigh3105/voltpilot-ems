@@ -16,10 +16,13 @@
  */
 
 import type { IconName } from '../designsystem/components/core/Icon';
+import { VOM_WR_BESTAETIGT } from './control';
 import { energieFluss, type FlussStrom } from './fahrplanBildfahrplan';
+import type { JetztHeldView } from './fahrplanJetzt';
 import { phaseVon, uhrzeit, type TagModell } from './fahrplanTag';
-import type { SlotRole } from './fahrplanWhy';
+import { phaseWhy, type SlotRole } from './fahrplanWhy';
 import { fmtNum } from './format';
+import type { PlanWordingKind } from './schedule';
 
 /** Die Ebenen des Bildes, die man einzeln hervorheben kann. */
 export type TagesbildEbene = 'sonne' | 'preis' | 'taetigkeit' | 'ladestand';
@@ -111,6 +114,166 @@ export function momentZeile(tag: TagModell, i: number, istJetzt: boolean): Momen
   };
 }
 
+// ---- Kopfsatz, Moment-Band, Stationen (Aufbau des Prototyps) -----------------------
+
+/** Die Tageszeit einer Minute, wie man sie sagt. */
+function tageszeit(minute: number): string {
+  if (minute < 5 * 60) return 'nachts';
+  if (minute < 10 * 60) return 'morgens';
+  if (minute < 14 * 60) return 'mittags';
+  if (minute < 17 * 60) return 'nachmittags';
+  if (minute < 22 * 60) return 'abends';
+  return 'nachts';
+}
+
+/** Ein Listenwort mitten im Satz: „zum Spitzenpreis verkaufen", aber „Sonne speichern". */
+function imSatz(label: string): string {
+  return /^(Zum|Günstig|Einspeisen)\b/.test(label) ? label.charAt(0).toLowerCase() + label.slice(1) : label;
+}
+
+/** Ab dieser Dauer (Minuten) zählt eine Tätigkeit für den Kopfsatz. */
+const KOPF_MIN_DAUER = 30;
+
+/**
+ * Der KOPFSATZ des Tages (Prototyp: die Zeile über Uhr und Bildfahrplan): was
+ * der Speicher heute tut, nach Tageszeiten — aus den Phasen des Plans und mit
+ * ihren Wörtern (E8). Ohne Wetter- oder Preisurteil: das stünde nirgends
+ * belegt. „Warten" ist keine Tätigkeit; höchstens die drei längsten zählen,
+ * in der Reihenfolge des Tages. Ohne Tätigkeit: „Heute wartet der Speicher."
+ */
+export function kopfsatz(tag: TagModell): string | null {
+  if (tag.phasen.length === 0) return null;
+  const aktiv = tag.phasen.filter((p) => p.role !== 'warten');
+  if (aktiv.length === 0) return 'Heute wartet der Speicher.';
+  const lang = aktiv.filter((p) => p.bis - p.von >= KOPF_MIN_DAUER);
+  const auswahl = (lang.length > 0 ? lang : aktiv)
+    .slice()
+    .sort((a, b) => b.bis - b.von - (a.bis - a.von) || a.von - b.von)
+    .slice(0, 3)
+    .sort((a, b) => a.von - b.von);
+  // Gleiche Tätigkeit hintereinander: „mittags und nachmittags Sonne speichern";
+  // gleiche Tageszeit hintereinander: „abends Verbrauch decken und … verkaufen".
+  const teile: { zeiten: string[]; woerter: string[] }[] = [];
+  for (const p of auswahl) {
+    const zeit = tageszeit((p.von + p.bis) / 2);
+    const wort = imSatz(p.label);
+    const letzter = teile[teile.length - 1];
+    if (letzter && letzter.woerter.length === 1 && letzter.woerter[0] === wort) {
+      if (!letzter.zeiten.includes(zeit)) letzter.zeiten.push(zeit);
+    } else if (letzter && letzter.zeiten.length === 1 && letzter.zeiten[0] === zeit) {
+      if (!letzter.woerter.includes(wort)) letzter.woerter.push(wort);
+    } else {
+      teile.push({ zeiten: [zeit], woerter: [wort] });
+    }
+  }
+  const saetze = teile.map((t) => `${t.zeiten.join(' und ')} ${t.woerter.join(' und ')}`);
+  const satz = saetze.join(', ');
+  return `Heute: ${satz}.`;
+}
+
+/**
+ * Die Zeile zum MOMENT am Zeiger — am Rechner das Jetzt-Band über dem Bild,
+ * am Telefon die Zeile unter der Uhr. Steht der Zeiger auf jetzt, spricht das
+ * GERÄT (Ausführung aus `jetztHeld`, getrennt vom Plan); sonst der Plan der
+ * Viertelstunde, für Vergangenes als „war geplant".
+ */
+export interface MomentBand {
+  /** „Jetzt · 14:10" bzw. „15:45–16:00 Uhr · geplant". */
+  kopf: string;
+  /** Was geschieht; null ohne Aussage. */
+  was: string | null;
+  role: SlotRole | null;
+  /** Die Zahl dazu: die Ausführung (jetzt) bzw. der Plan; null = keine. */
+  zahl: string | null;
+  /** Der eine Warum-Satz; null = keiner aufgezeichnet. */
+  warum: string | null;
+}
+
+export function momentBand(
+  tag: TagModell,
+  i: number,
+  istJetzt: boolean,
+  held: JetztHeldView | null,
+  /** Der Satz der Waage dieser Viertelstunde (`fahrplanWaage`); null = keine Waage. */
+  waageSatz: string | null,
+): MomentBand | null {
+  const v = tag.viertel[i];
+  const s = tag.slots[i];
+  if (!v || !s) return null;
+  const ph = phaseVon(tag, i);
+  if (istJetzt && held && tag.jetzt != null) {
+    const wert = held.value
+      ? `${held.value}${held.valueNote ? ` ${held.valueNote}` : ''}`
+      : held.valueMissing
+        ? `— ${held.valueMissing}`
+        : null;
+    const zahl = [wert, held.confirm ? VOM_WR_BESTAETIGT : null].filter((x): x is string => x != null).join(' · ');
+    return {
+      kopf: `Jetzt · ${uhrzeit(tag.jetzt)}`,
+      was: held.lead || ph?.label || null,
+      role: ph?.role ?? null,
+      zahl: zahl || null,
+      warum: held.why ?? waageSatz,
+    };
+  }
+  const art: MomentArt = istJetzt ? 'jetzt' : v.vorbei ? 'vorbei' : 'geplant';
+  const soc = zahl(s.socPct);
+  const teile = [planLeistung(zahl(s.batteryKw)), soc == null ? null : `Ladestand danach ${pct(soc)}`].filter(
+    (x): x is string => x != null,
+  );
+  return {
+    kopf:
+      istJetzt && tag.jetzt != null
+        ? `Jetzt · ${uhrzeit(tag.jetzt)}`
+        : `${uhrzeit(v.von)}–${uhrzeit(v.bis)} Uhr · ${art === 'vorbei' ? 'war geplant' : 'geplant'}`,
+    was: ph ? (art === 'vorbei' ? `War geplant: ${ph.label}` : ph.label) : null,
+    role: ph?.role ?? null,
+    zahl: teile.length === 0 ? null : teile.join(' · '),
+    warum: waageSatz,
+  };
+}
+
+/** Eine STATION des Tages (Prototyp „Der Tag in Stationen"): eine Phase als Halt. */
+export interface Station {
+  phaseIndex: number;
+  role: SlotRole;
+  label: string;
+  /** „05:45–07:30". */
+  zeit: string;
+  vorbei: boolean;
+  laeuft: boolean;
+  /** „21 % → 10 %" bzw. „95 %" (geplant); null ohne Ladestand. */
+  ladestand: string | null;
+  /** Der Satz der Phase (dieselbe Quelle wie die Phasen-Karte); beim Warten keiner. */
+  grund: string | null;
+}
+
+/**
+ * Die Stationen des Tages — dieselben Phasen wie Uhr und Bildfahrplan
+ * (`tag.phasen`), also nie ein zweiter Schnitt. Der Ladestand ist der PLAN:
+ * Anfang = Stand am Ende der Viertelstunde davor, Ende = Stand am Ende der
+ * Phase; fehlt der Anfang (Mitternacht), steht nur das Ende.
+ */
+export function stationen(tag: TagModell, plantKind: PlanWordingKind): Station[] {
+  return tag.phasen.map((p) => {
+    const roh = tag.phasenRoh[p.phaseIndex];
+    const anfang = roh.startIdx > 0 ? zahl(tag.slots[roh.startIdx - 1]?.socPct) : null;
+    const ende = zahl(tag.slots[roh.endIdx]?.socPct);
+    const ladestand =
+      ende == null ? null : anfang == null || Math.abs(anfang - ende) < 1 ? pct(ende) : `${pct(anfang)} → ${pct(ende)}`;
+    return {
+      phaseIndex: p.phaseIndex,
+      role: p.role,
+      label: p.label,
+      zeit: `${uhrzeit(p.von)}–${uhrzeit(p.bis)}`,
+      vorbei: p.vorbei,
+      laeuft: p.laeuft,
+      ladestand,
+      grund: p.role === 'warten' ? null : phaseWhy(roh, plantKind),
+    };
+  });
+}
+
 /** Ein Wert am Zeiger — drei kurze Zeilen, damit vier nebeneinander passen. */
 export interface ZeigerWert {
   ebene: TagesbildEbene;
@@ -145,6 +308,23 @@ export function werteAmZeiger(tag: TagModell, i: number): ZeigerWert[] {
   // Zelle nennt die Leistung und dass sie geplant ist.
   const speicherWert = kw == null ? '–' : Math.abs(kw) > RUHE_KW ? fmtNum(Math.abs(kw), 'kW') : 'ruht';
   const richtung = kw == null ? '' : kw > RUHE_KW ? 'lädt ' : kw < -RUHE_KW ? 'gibt ab ' : '';
+  // Ohne einen Preis, der den Plan treibt (fester Tarif), hat die Uhr keinen
+  // Preisring — und die Leiste keine Preiszelle.
+  const preisZelle: ZeigerWert[] = tag.preis
+    ? [
+        {
+          ebene: 'preis',
+          label: 'Preis',
+          // Kurz in der Leiste („ct" je kWh); voll in Lupe und Erklär-Panel.
+          wert: preis == null ? '–' : fmtNum(preis, 'ct', 1),
+          herkunft: preisHer,
+          satz:
+            preis == null
+              ? 'Preis: kein Wert'
+              : `${tag.preis.art === 'boerse' ? 'Börsenpreis' : 'Strompreis'}: ${ct(preis)}`,
+        },
+      ]
+    : [];
   return [
     {
       ebene: 'sonne',
@@ -153,17 +333,7 @@ export function werteAmZeiger(tag: TagModell, i: number): ZeigerWert[] {
       herkunft: sonneHer,
       satz: `Sonne: ${sonneWert}${sonneHer ? `, ${sonneHer}` : ''}`,
     },
-    {
-      ebene: 'preis',
-      label: 'Preis',
-      // Kurz in der Leiste („ct" je kWh); voll in Lupe und Erklär-Panel.
-      wert: preis == null ? '–' : fmtNum(preis, 'ct', 1),
-      herkunft: preisHer,
-      satz:
-        preis == null
-          ? 'Preis: kein Wert'
-          : `${tag.preis?.art === 'boerse' ? 'Börsenpreis' : 'Strompreis'}: ${ct(preis)}`,
-    },
+    ...preisZelle,
     {
       ebene: 'taetigkeit',
       label: 'Speicher',
@@ -189,6 +359,14 @@ export const EINFUEHRUNG: readonly { ebene: TagesbildEbene | 'zeiger'; titel: st
   { ebene: 'ladestand', titel: 'Ladestand' },
   { ebene: 'zeiger', titel: 'Der Zeiger' },
 ];
+
+/** Die Einführung dieses Tages: ohne Preisring kein Schritt, der ihn erklärt. */
+export function einfuehrungFuer(tag: TagModell): readonly { ebene: TagesbildEbene | 'zeiger'; titel: string }[] {
+  if (!tag.preis) return EINFUEHRUNG.filter((s) => s.ebene !== 'preis');
+  return tag.preis.art === 'boerse'
+    ? EINFUEHRUNG.map((s) => (s.ebene === 'preis' ? { ...s, titel: 'Börsenpreis' } : s))
+    : EINFUEHRUNG;
+}
 
 /**
  * Der Schlüssel der „gesehen"-Marke der Einführung — im Layout-Dokument der
@@ -254,6 +432,10 @@ export function lupe(tag: TagModell, i: number): LupeView | null {
   const zeilen: { label: string; wert: string }[] = [];
   const preis = tag.preis?.ct[i] ?? null;
   if (preis != null) zeilen.push({ label: tag.preis?.art === 'boerse' ? 'Börsenpreis' : 'Strompreis', wert: ct(preis) });
+  // Zeigt das Bild die Börse (oder gar keinen Preis), nennt die Lupe den
+  // Bezugspreis trotzdem: was eine kWh aus dem Netz hier kostet, ist ein Fakt.
+  const bezug = tag.preis?.art === 'bezug' ? null : zahl(s.importPriceCtKwh);
+  if (bezug != null) zeilen.push({ label: 'Strom kostet', wert: ct(bezug) });
   const einspeisung = zahl(s.exportValueCtKwh);
   if (einspeisung != null) zeilen.push({ label: 'Einspeisewert', wert: ct(einspeisung) });
   const lambda = zahl(s.storedValueCtKwh);

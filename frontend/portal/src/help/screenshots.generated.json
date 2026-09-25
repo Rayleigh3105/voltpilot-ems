@@ -151,19 +151,24 @@
     "alt": "Fahrplan: der Tag im Bild. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 7.8,
-        "y": 23.92,
-        "text": "Diese Zeile nennt den Verlauf des Tages und den Ausblick auf morgen. Die Grundlage des Plans steht unter „Mehr erklären“."
+        "x": 4.36,
+        "y": 24.14,
+        "text": "Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen."
       },
       {
-        "x": 7.8,
-        "y": 27.42,
-        "text": "Von oben nach unten: Strompreis, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde."
+        "x": 5.62,
+        "y": 37.86,
+        "text": "Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde."
       },
       {
-        "x": 7.8,
-        "y": 53.49,
+        "x": 4.36,
+        "y": 60.06,
         "text": "Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild."
+      },
+      {
+        "x": 52.35,
+        "y": 68.45,
+        "text": "Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten."
       }
     ]
   },
@@ -559,18 +564,18 @@
     "alt": "Fahrplan am Telefon: die Tagesuhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 12.56,
-        "y": 34.52,
+        "x": 20.26,
+        "y": 39.08,
         "text": "Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand."
       },
       {
-        "x": 12.56,
-        "y": 79.07,
+        "x": 9.23,
+        "y": 72.25,
         "text": "Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn."
       },
       {
-        "x": 12.56,
-        "y": 86.53,
+        "x": 9.23,
+        "y": 84.96,
         "text": "Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle."
       }
     ]

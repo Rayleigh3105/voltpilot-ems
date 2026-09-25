@@ -57,11 +57,17 @@ export interface BildGeometrie {
   minuteBei: (x: number) => number | null;
 }
 
-export function bildGeometrie(breite: number): BildGeometrie {
+/**
+ * `mitPreis = false`: der Tag trägt keinen Preis, der den Plan treibt
+ * (`fahrplanTag.bildPreisArt`) — dann entfällt die Spur samt ihrer Lücke, statt
+ * leer über dem Bild zu stehen.
+ */
+export function bildGeometrie(breite: number, mitPreis = true): BildGeometrie {
   const b = Math.max(480, breite);
   let y = SPUR.oben;
-  const preis: [number, number] = [y, y + SPUR.preis];
-  y += SPUR.preis + SPUR.luecke1;
+  const preisHoehe = mitPreis ? SPUR.preis : 0;
+  const preis: [number, number] = [y, y + preisHoehe];
+  y += preisHoehe + (mitPreis ? SPUR.luecke1 : 0);
   const sonne: [number, number] = [y, y + SPUR.sonne];
   y += SPUR.sonne + SPUR.luecke2;
   const ladestand: [number, number] = [y, y + SPUR.ladestand];

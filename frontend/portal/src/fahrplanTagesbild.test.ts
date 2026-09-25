@@ -2,14 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { tagModell, type TagSlot } from './fahrplanTag';
 import {
   EINFUEHRUNG,
+  einfuehrungFuer,
   ROLLEN_SYMBOL,
   ebenenSatz,
   indexImLauf,
+  kopfsatz,
   ladestandText,
   lupe,
+  momentBand,
   momentZeile,
+  stationen,
   werteAmZeiger,
 } from './fahrplanTagesbild';
+import type { JetztHeldView } from './fahrplanJetzt';
 import { NBSP } from './format';
 
 const TAG = new Date(2026, 8, 24);
@@ -132,6 +137,12 @@ describe('werteAmZeiger · die ablesbare Legende', () => {
     expect(w.map((x) => x.wert)).toEqual(['–', `30,0${NBSP}ct`, '–', '–']);
     expect(w[0].herkunft).toBeNull();
   });
+
+  it('hat ohne treibenden Preis (fester Tarif) keine Preiszelle', () => {
+    const fest = tagModell({ slots: tag(LAUF), slotMinutes: 15, now: JETZT, plantKind: 'eigenverbrauch', tarifArt: 'fest' });
+    // Der Bezug ist den ganzen Tag 30 ct: flach, also keine Preiszelle.
+    expect(werteAmZeiger(fest, 70).map((x) => x.ebene)).toEqual(['sonne', 'taetigkeit', 'ladestand']);
+  });
 });
 
 describe('Einführung und Ebenen-Sätze (E11)', () => {
@@ -149,6 +160,14 @@ describe('Einführung und Ebenen-Sätze (E11)', () => {
   it('hat für jede Ebene einen Satz', () => {
     const t = modell();
     for (const s of EINFUEHRUNG) expect(ebenenSatz(t, s.ebene).length).toBeGreaterThan(40);
+  });
+
+  it('erklärt nur Ringe, die es gibt: ohne Preis vier Schritte, bei der Börse ihr Name', () => {
+    const mit = (tarifArt: 'fest' | 'dynamisch', plantKind: 'eigenverbrauch' | 'direktvermarktung', bezug?: (i: number) => number) =>
+      tagModell({ slots: tag(LAUF, bezug ? (i) => ({ importPriceCtKwh: bezug(i) }) : undefined), slotMinutes: 15, now: JETZT, plantKind, tarifArt });
+    expect(einfuehrungFuer(mit('fest', 'eigenverbrauch')).map((s) => s.ebene)).toEqual(['sonne', 'taetigkeit', 'ladestand', 'zeiger']);
+    expect(einfuehrungFuer(mit('fest', 'direktvermarktung'))[1]).toEqual({ ebene: 'preis', titel: 'Börsenpreis' });
+    expect(einfuehrungFuer(mit('dynamisch', 'eigenverbrauch', (i) => 20 + i / 10))).toBe(EINFUEHRUNG);
   });
 });
 
@@ -197,5 +216,96 @@ describe('lupe · eine Viertelstunde im Detail', () => {
     const t = modell((i) => ({ measuredPvKw: 1.2, measuredLoadKw: 0.7, pvKw: 2 }));
     expect(lupe(t, 30)!.zeilen.map((z) => z.label)).toContain('Sonne gemessen');
     expect(lupe(t, 70)!.zeilen.map((z) => z.label)).toContain('Sonne erwartet');
+  });
+
+  it('nennt neben dem Börsenpreis auch, was Strom aus dem Netz kostet', () => {
+    const dv = tagModell({ slots: tag(LAUF, () => ({ importPriceCtKwh: 25 })), slotMinutes: 15, now: JETZT, plantKind: 'direktvermarktung', tarifArt: 'fest' });
+    const z = lupe(dv, 70)!.zeilen;
+    expect(z.slice(0, 2)).toEqual([
+      { label: 'Börsenpreis', wert: `10,0${NBSP}ct/kWh` },
+      { label: 'Strom kostet', wert: `25,0${NBSP}ct/kWh` },
+    ]);
+  });
+});
+
+describe('kopfsatz · der Tag in einer Zeile (Prototyp)', () => {
+  it('nennt die längsten Tätigkeiten nach Tageszeit, in der Reihenfolge des Tages', () => {
+    expect(kopfsatz(modell())).toBe('Heute: morgens Verbrauch decken, nachmittags Sonne speichern, abends Verbrauch decken.');
+  });
+
+  it('fasst eine Tageszeit zusammen und schreibt Listenwörter im Satz klein', () => {
+    const t = tagModell({
+      slots: tag([['warten', 40], ['pv_speichern', 16], ['warten', 16], ['verkaufen', 4], ['eigenverbrauch', 12], ['warten', 8]]),
+      slotMinutes: 15,
+      now: JETZT,
+      plantKind: 'direktvermarktung',
+    });
+    expect(kopfsatz(t)).toBe('Heute: mittags Sonne speichern, abends zum Spitzenpreis verkaufen und Verbrauch decken.');
+  });
+
+  it('sagt es, wenn der Speicher nur wartet - und schweigt ohne Phasen', () => {
+    expect(kopfsatz(tagModell({ slots: tag([['warten', 96]]), slotMinutes: 15, now: JETZT, plantKind: 'eigenverbrauch' }))).toBe(
+      'Heute wartet der Speicher.',
+    );
+    expect(kopfsatz(modell((i) => (i === 3 ? { slotRole: null } : {})))).toBeNull();
+  });
+});
+
+describe('momentBand · die Zeile zum Moment am Zeiger', () => {
+  const held = {
+    lead: 'Ihre Batterie speichert gerade Solarstrom',
+    value: `2,2${NBSP}kW`,
+    valueNote: 'in den Speicher',
+    valueMissing: null,
+    confirm: 'vom Wechselrichter bestätigt · geprüft vor 8 Sek.',
+    why: 'Günstigster Strom des restlichen Tages.',
+  } as unknown as JetztHeldView;
+
+  it('lässt bei „jetzt" das Gerät sprechen: Ausführung und Bestätigung, getrennt vom Plan', () => {
+    expect(momentBand(modell(), 56, true, held, 'Satz der Waage')).toEqual({
+      kopf: 'Jetzt · 14:10',
+      was: 'Ihre Batterie speichert gerade Solarstrom',
+      role: 'guenstig_laden',
+      zahl: `2,2${NBSP}kW in den Speicher · vom Wechselrichter bestätigt`,
+      warum: 'Günstigster Strom des restlichen Tages.',
+    });
+  });
+
+  it('nennt für eine andere Viertelstunde den Plan - Vergangenes als „war geplant"', () => {
+    const t = modell((i) => ({ batteryKw: i === 80 ? -1.5 : 0, socPct: 40 + i / 4 }));
+    expect(momentBand(t, 80, false, held, 'Satz der Waage')).toEqual({
+      kopf: '20:00–20:15 Uhr · geplant',
+      was: 'Verbrauch decken',
+      role: 'eigenverbrauch',
+      zahl: `abgeben mit 1,5${NBSP}kW · Ladestand danach 60${NBSP}%`,
+      warum: 'Satz der Waage',
+    });
+    expect(momentBand(t, 30, false, held, null)).toMatchObject({
+      kopf: '07:30–07:45 Uhr · war geplant',
+      was: 'War geplant: Verbrauch decken',
+      warum: null,
+    });
+  });
+});
+
+describe('stationen · der Tag in Stationen', () => {
+  const t = modell((i) => ({ socPct: 40 + i / 4 }));
+  const st = stationen(t, 'eigenverbrauch');
+
+  it('sind dieselben Phasen wie Uhr und Bildfahrplan', () => {
+    expect(st.map((s) => s.label)).toEqual(t.phasen.map((p) => p.label));
+    expect(st.map((s) => s.zeit)).toEqual(['00:00–05:45', '05:45–10:00', '10:00–13:30', '13:30–14:30', '14:30–17:30', '17:30–24:00']);
+    expect(st.find((s) => s.laeuft)?.label).toBe('Günstig aus dem Netz laden');
+    expect(st[1].vorbei).toBe(true);
+  });
+
+  it('nennt den geplanten Ladestand von - bis, um Mitternacht nur das Ende', () => {
+    expect(st[0].ladestand).toBe(`46${NBSP}%`);
+    expect(st[1].ladestand).toBe(`46${NBSP}% → 50${NBSP}%`);
+  });
+
+  it('gibt jeder Tätigkeit den Satz ihrer Phasen-Karte - beim Warten keinen', () => {
+    expect(st[0].grund).toBeNull();
+    expect(st[1].grund).toBe('Der Speicher deckt den Verbrauch und vermeidet teuren Netzbezug.');
   });
 });
