@@ -73,6 +73,14 @@ export function ohneStandort(s = selbst): boolean {
   return s !== null && !s.unternehmensweit && s.standorte.length === 0;
 }
 
+/**
+ * UEMS AP-20 IP-17: den Gesamtabzug lädt nur der Kundenadministrator mit eigenem Konto — der Zwilling von
+ * `KundenbereichEndeFilter.kundenadministrator` (Java); die API entscheidet trotzdem selbst (403).
+ */
+export function gesamtabzugLaden(s = selbst): boolean {
+  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto' && s.rollen.includes('kundenadministrator');
+}
+
 /** Die Benutzerliste hat keine eigene Aktionskennung (AP-03 E2): Energiemanager lesen mit. */
 export function benutzerLesen(s = selbst): boolean {
   return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto'

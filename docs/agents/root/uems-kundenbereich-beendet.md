@@ -2,7 +2,7 @@
 
 E10 = A, BT4, RF-08: der Betreiber setzt einen Kundenbereich auf „beendet"; danach ist jeder
 Schreibweg `409 kundenbereich_beendet`, nur der Kundenadministrator liest noch, die Datenannahme
-verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, Löschnachweis) folgen.
+verwirft mit Zählung. IP-17 (Gesamtabzug, unten) ist gebaut; IP-18 (Löschen nach der Frist, Löschnachweis) folgt.
 
 - **Zustand:** `tenant.beendet_am` / `beendet_frist_tage` / `beendet_von` (`V20260925170000`).
   NULL = aktiv — bewusst keine Zustandsspalte mit Default (sie änderte jede Bestandszeile, der
@@ -34,7 +34,7 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
   `selbst.kundenbereich.beendet` — **keine eigene Anfrage**: eine erste Fassung holte eine eigene
   Route und machte 76 E2E-Fälle rot (`ERR_CONNECTION_REFUSED` auf der Bühne, die Specs zählen
   Konsolenfehler). Der Satz kommt aus der API (`KundenbereichEnde.text()`), er nennt den
-  Gesamtabzug erst mit IP-17.
+  Gesamtabzug nur für den Kundenadministrator (`KundenbereichEnde.textKundenadministrator()`, §5.8).
 - **Wege ohne Route (Folgepaket zu IP-16):** EINE Stelle `BeendeteKundenbereiche` (api, liest
   `tenant.beendet_am` höchstens einmal je Minute über die Admin-Verbindung; Lesefehler = letzter
   Stand; `beenden`/`wiederaufnehmen` dieser Instanz wirken sofort über `vergessen()`).
@@ -60,3 +60,30 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
   dem Code, Läufer, Rollout — mit aktivem Bereich als Gegenprobe), `RueckmeldewegArchitekturTest`,
   `LaeuferBeendetArchitekturTest`, `KundenbereichEndeTest`, ingest `BeendeteKundenbereicheTest`,
   Portal `KundenbereichEndeHinweis.test.tsx`.
+
+## Gesamtabzug (IP-17)
+
+`GET /api/v1/unternehmen/abzug` (`UnternehmenAbzugController` → `kundenbereich/Gesamtabzug`), BT4, RF-08 Schritt 3.
+
+- **Wer:** nur `KundenbereichEndeFilter.kundenadministrator(...)` — sonst 403 `recht_fehlt`
+  (`rolle_noetig: kundenadministrator`), auch Unterstützer, Einsicht, Umschalter. Im Zustand „beendet“ lässt der
+  Filter ihn als GET durch; alle anderen bekommen dort die 409 des Filters. Recht-Kommentar: „keine eigene Kennung“
+  (keine Matrix-Zeile). Portal-Zwilling `rollen.ts#gesamtabzugLaden`.
+- **Inhalt:** `staende/` (Berichtsstand = gespeicherter Text, SHA-256 = gespeicherte Prüfsumme ohne `sha256:`),
+  `verzeichnis/` (AP-19 IP-8, JSON + CSV), dann je Tabelle eine CSV unter `berichte|nachweise|messreihen|protokolle|
+  bestand` (`Gesamtabzug.objektart`). **Die Tabellen kommen aus dem Katalog** (`Gesamtabzug.TABELLEN`): lesbar für
+  die App-Rolle UND (`tenant_id` → ausdrücklicher Filter | erzwungene RLS). Eine neue Tabelle ist ohne Pflege dabei;
+  eine Kunden-Tabelle ohne beides fällt heraus — das wäre ohnehin ein Mandanten-Loch. Spalten mit Zugangsdaten
+  (Name + Text/bytea, `Gesamtabzug.zugangsdaten`) bleiben draußen und stehen im Manifest (`ausgelassen`); heute trägt
+  keine Kunden-Tabelle eine. Danach `LIESMICH.txt`, `manifest.json`, `pruefsummen.sha256` (`sha256sum -c`).
+- **Strom:** EINE Transaktion `REPEATABLE READ`, nur lesend, `SET LOCAL TimeZone 'UTC'`; Cursor mit 1 000 Zeilen je
+  Abruf (`fetchSize` wirkt nur in der Transaktion); direkt in `response.getOutputStream()` auf dem Anfrage-Faden —
+  **kein `StreamingResponseBody`**: der liefe auf einem anderen Faden ohne `TenantContext`/`ZugriffContext`, RLS sähe
+  nichts. Kompression `application/zip` ist nicht in `server.compression.mime-types`.
+- **Protokoll `kundenbereich_abzug`** (`V20260925201700`): INSERT „begonnen“ vor dem ersten Byte, EIN UPDATE der fünf
+  Abschluss-Spalten (Spalten-GRANT + Trigger `kundenbereich_abzug_einmalig`) nach dem Manifest; abgebrochen bleibt
+  „begonnen“. FK CASCADE — der Löschweg bleibt unverändert; IP-18 liest `manifest_sha256` des letzten Abschlusses.
+- **Portal:** `GesamtabzugKnopf` (Satz §5.8 + Knopf) im Hinweis „beendet“ (nur `liest`) und unter
+  „Unternehmen › Einstellungen“ (`BenutzerPage`, nur Kundenadministrator); Download als Blob.
+- **Nachweis:** `GesamtabzugApiTest` (NW-5: Manifest-Prüfsummen, 403, „beendet“, 1 Mio. Messzeilen mit offenem
+  Cursor beim Empfang und +1 MB lebendem Speicher), `GesamtabzugTest`, `ZugriffZaunApiTest` (`NACH_IP4`).

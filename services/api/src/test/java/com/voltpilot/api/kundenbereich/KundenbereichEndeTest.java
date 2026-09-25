@@ -28,8 +28,12 @@ class KundenbereichEndeTest {
                 + "lesen; gelöscht werden sie frühestens am 28.09.2029.");
         assertThat(AHRENBERG.textNurKundenadministrator()).isEqualTo("Ihr Vertrag ist am 30.06.2029 beendet. Nur Ihr "
                 + "Kundenadministrator kann die Daten bis zur Löschung noch lesen.");
-        // Den Gesamtabzug nennt der Satz erst mit IP-17 — kein Knopf ohne Knopf.
+        // Den Gesamtabzug (IP-17) nennt nur der Satz an den Kundenadministrator — nur er kann ihn laden (§5.8, RF-08).
+        assertThat(AHRENBERG.textKundenadministrator()).isEqualTo("Ihr Vertrag ist am 30.06.2029 beendet. Ihre Daten "
+                + "können Sie nur noch lesen; gelöscht werden sie frühestens am 28.09.2029. Bis dahin können Sie den "
+                + "Gesamtabzug laden.");
         assertThat(AHRENBERG.text()).doesNotContain("Gesamtabzug");
+        assertThat(AHRENBERG.textNurKundenadministrator()).doesNotContain("Gesamtabzug");
         assertThat(AHRENBERG.koerper("x")).containsEntry("code", "kundenbereich_beendet")
                 .containsEntry("loeschung_fruehestens", "2029-09-28");
     }

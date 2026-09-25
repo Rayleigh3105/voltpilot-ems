@@ -206,7 +206,12 @@ class SiteScopeArchitekturTest {
             new Erlaubt("uems/EreignisVokabular.java", "telemetry", 1, Grund.KEIN_SQL, "uems/EreignisVokabular.java",
                     "STROM = List.of(\"telemetry\""),
             new Erlaubt("consumers/LoadResidualReplanListener.java", "telemetry", 1, Grund.KEIN_SQL,
-                    "consumers/LoadResidualReplanListener.java", "\"telemetry\".equals(parts[4])"));
+                    "consumers/LoadResidualReplanListener.java", "\"telemetry\".equals(parts[4])"),
+            // AP-20 IP-17: das Literal ordnet eine Tabelle ihrer Objektart (Ordner) zu. Gelesen wird über den Katalog
+            // (Tabellenname aus pg_class, für den Scanner unsichtbar) und nur vom Kundenadministrator — unternehmensweit,
+            // der Standort-Zaun hat für ihn nichts zu filtern; jede andere Person bekommt vorher 403.
+            new Erlaubt("kundenbereich/Gesamtabzug.java", "telemetry", 1, Grund.KEIN_SQL,
+                    "web/UnternehmenAbzugController.java", "if (!KundenbereichEndeFilter.kundenadministrator(z)"));
 
     @Test
     void keineAbfrageAufMessdatenOhneSiteOderBegruendetenEintrag() throws IOException {

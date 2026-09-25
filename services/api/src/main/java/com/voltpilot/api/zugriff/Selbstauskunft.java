@@ -92,7 +92,7 @@ public class Selbstauskunft {
         return repo.beendet(z.kundenbereich()).map(e -> {
             boolean liest = KundenbereichEndeFilter.kundenadministrator(z);
             return new SelbstauskunftDto.Beendet(e.beendetAmTag().toString(), e.loeschungFruehestens().toString(),
-                    liest, liest ? e.text() : e.textNurKundenadministrator());
+                    liest, liest ? e.textKundenadministrator() : e.textNurKundenadministrator());
         }).orElse(null);
     }
 

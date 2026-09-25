@@ -253,13 +253,15 @@ class KundenbereichBeendetApiTest {
         assertThat(endeAdmin.path("liest").asBoolean()).isTrue();
         assertThat(endeAdmin.path("loeschung_fruehestens").asText()).isNotBlank();
         assertThat(endeAdmin.path("text").asText()).startsWith("Ihr Vertrag ist am ")
-                .contains("nur noch lesen").contains("frühestens am");
+                .contains("nur noch lesen").contains("frühestens am")
+                .endsWith("Bis dahin können Sie den Gesamtabzug laden."); // IP-17, §5.8
         MvcResult meLeserin = ruf(get("/api/v1/me"), konto(leserin));
         assertThat(meLeserin.getResponse().getStatus()).as("die Selbstauskunft erreicht jede Person").isEqualTo(200);
         JsonNode endeLeserin = JSON.readTree(meLeserin.getResponse().getContentAsString(StandardCharsets.UTF_8))
                 .path("kundenbereich").path("beendet");
         assertThat(endeLeserin.path("liest").asBoolean()).isFalse();
-        assertThat(endeLeserin.path("text").asText()).contains("Nur Ihr Kundenadministrator");
+        assertThat(endeLeserin.path("text").asText()).contains("Nur Ihr Kundenadministrator")
+                .doesNotContain("Gesamtabzug");
 
         // Der Umschalter der Plattform liest einen beendeten Bereich nicht als Kunde; die Plattform-Liste bleibt.
         assertThat(ruf(get("/api/v1/sites").header("X-Tenant-Id", tenant.toString()), plattform())

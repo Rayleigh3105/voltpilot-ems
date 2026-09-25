@@ -547,6 +547,43 @@ paths:
         "400": { $ref: "#/components/responses/OrtAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/unternehmen/abzug:
+    get:
+      tags: [unternehmen]
+      summary: Vertragsende II - der Gesamtabzug des Kundenbereichs als ZIP-Strom (UEMS AP-20 IP-17, E10, BT4).
+      description: >
+        Only the Kundenadministrator (customer account with an effective Kundenadministrator assignment, or the
+        Bestandskonto E12) - in the state "aktiv" and "beendet" (the KundenbereichEndeFilter lets this read through).
+        Every other person, Unterstuetzer, Einsicht and the platform switch get 403 recht_fehlt. Built on request
+        from ONE read-only REPEATABLE READ snapshot and streamed (cursor, no server-side file or buffer); nothing
+        is stored. Content per Objektart: staende/ (every released Berichtsstand as the exact stored text - its
+        SHA-256 is the stored Pruefsumme), verzeichnis/ (Energiemanagement-Verzeichnis, JSON and CSV),
+        berichte/, nachweise/, messreihen/, protokolle/, bestand/ (one CSV per table of the Kundenbereich, read
+        from the database catalog: every table the app role may read that carries tenant_id - filtered explicitly -
+        or is under forced row-level security; columns with credentials are left out and named). Then
+        LIESMICH.txt, manifest.json (per file: pfad, objektart, quelle, format, zeilen, bytes, sha256, optional
+        pruefsumme and ausgelassen) and pruefsummen.sha256 (sha256sum -c format, including the manifest). A
+        stream without manifest is incomplete. Every call is written to kundenbereich_abzug - begun before the
+        first byte, completed with the manifest's SHA-256 after the last.
+      responses:
+        "200":
+          description: The Gesamtabzug; Content-Disposition attachment; filename=gesamtabzug-<day>.zip.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: recht_fehlt - only the Kundenadministrator loads the Gesamtabzug.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, enum: [recht_fehlt] }
+                  message: { type: string }
+                  recht: { type: string, nullable: true }
+                  rolle_noetig: { type: string, enum: [kundenadministrator] }
+        "409": { description: "kundenbereich_beendet - a person other than the Kundenadministrator in a beendet Kundenbereich (KundenbereichEndeFilter)." }
   /api/v1/unternehmen/aenderungen:
     parameters:
       - $ref: "#/components/parameters/ProtokollVon"

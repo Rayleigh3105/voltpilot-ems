@@ -15,8 +15,8 @@ import java.util.UUID;
  * {@code KundenbereichEnde}; „aktiv" ist {@code tenant.beendet_am IS NULL}.
  *
  * <p>Die Sätze stehen HIER und gehen über {@code GET /api/v1/me} ({@code kundenbereich.beendet}) und den Körper
- * der 409 ans Portal — nie dort nachgebaut. Den Gesamtabzug nennt der Satz erst, wenn es ihn gibt (IP-17): ein Satz
- * über einen Knopf, den es nicht gibt, wäre eine Zusage ohne Beleg.
+ * der 409 ans Portal — nie dort nachgebaut. Den Gesamtabzug nennt nur der Satz an den Kundenadministrator
+ * ({@link #textKundenadministrator}, §5.8): nur er kann ihn laden (IP-17, {@code GET /api/v1/unternehmen/abzug}).
  */
 public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int fristTage, String beendetVon) {
 
@@ -41,6 +41,14 @@ public record KundenbereichEnde(UUID kundenbereich, Instant beendetAm, int frist
     public String text() {
         return "Ihr Vertrag ist am " + beendetAmTag().format(DATUM) + " beendet. Ihre Daten können Sie nur noch lesen; "
                 + "gelöscht werden sie frühestens am " + loeschungFruehestens().format(DATUM) + ".";
+    }
+
+    /**
+     * Der Kopf-Hinweis für den Kundenadministrator (§5.8, RF-08): der Satz für alle und dazu der Weg zum Gesamtabzug
+     * (IP-17), den nur er laden kann.
+     */
+    public String textKundenadministrator() {
+        return text() + " Bis dahin können Sie den Gesamtabzug laden.";
     }
 
     /** Die Antwort an jede Person außer dem Kundenadministrator: sie liest nicht mehr (E10 „alles gesperrt"). */

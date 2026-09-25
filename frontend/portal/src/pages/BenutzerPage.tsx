@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { benutzerApi, benutzerFehler, type BenutzerEintrag, type BenutzerZuweisung, type ZugriffProtokoll } from '../benutzer';
-import { useRollen } from '../rollen';
+import { gesamtabzugLaden, useRollen } from '../rollen';
+import { GesamtabzugKnopf } from '../components/GesamtabzugKnopf';
 import { datumZeit, ROLLE_KUNDENWORT } from '../rechte';
 import { BenutzerEinladen } from '../components/BenutzerEinladen';
 import { StartpasswortNeuVergeben } from '../components/StartpasswortNeuVergeben';
@@ -106,6 +107,8 @@ export function BenutzerPage() {
         <p>{e.standort ?? 'Unternehmen'} · von {e.urheber}</p>{e.grund && <p>{e.grund}</p>}
       </article>)}</div>
     </section>}
+    {gesamtabzugLaden(rechte.selbst) && <section className="vp-benutzer-abzug" aria-label="Gesamtabzug"><h2>Gesamtabzug</h2>
+      <GesamtabzugKnopf /></section>}
     {schreiben && (anlegen || bearbeiten) && <BenutzerEinladen bearbeiten={bearbeiten} onClose={() => { setAnlegen(false); setBearbeiten(undefined); }} onCreated={() => setRevision(x => x + 1)} />}
     <Modal open={!!entzug && schreiben} onClose={() => { if (!busy) zurueck(); }} title={entzug?.zuweisung ? 'Zugriff beenden' : entzug?.entfernen ? 'Benutzer entfernen' : 'Benutzer sperren'}
       footer={<><Button variant="ghost" disabled={busy} onClick={zurueck}>Abbrechen</Button><Button disabled={busy} onClick={() => void beenden()}>{entzug?.zuweisung ? 'Zugriff beenden' : entzug?.entfernen ? 'Entfernen' : 'Sperren'}</Button></>}>

@@ -1,0 +1,4 @@
+/* UEMS AP-20 IP-17: Knopf „Gesamtabzug laden“ mit Erklärung — Satz links, Knopf daneben, am Telefon darunter. */
+.vp-gesamtabzug { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vp-space-2) var(--vp-space-3); margin-top: var(--vp-space-3); }
+.vp-gesamtabzug p { margin: 0; flex: 1 1 18rem; }
+.vp-gesamtabzug .vp-alert { flex-basis: 100%; }

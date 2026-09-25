@@ -9,6 +9,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.uems.GesamtabzugApiTest;
 import jakarta.servlet.ServletException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -318,12 +319,16 @@ class ZugriffZaunApiTest {
      */
     private record NachIp4(String muster, String probe, Class<?> vertragstest) {}
 
-    /** AP-03 IP-13 (Einfuehrung 83e3820e): Benutzerliste und Protokoll der Benutzerverwaltung. */
+    /**
+     * AP-03 IP-13 (Einfuehrung 83e3820e): Benutzerliste und Protokoll der Benutzerverwaltung. AP-20 IP-17: der
+     * Gesamtabzug — nur der Kundenadministrator, erkannt am Zugriffs-Kontext.
+     */
     private static final List<NachIp4> NACH_IP4 = List.of(
             new NachIp4("/api/v1/benutzer", "/api/v1/benutzer", BenutzerVerwaltungApiTest.class),
             new NachIp4("/api/v1/benutzer/protokoll",
                     "/api/v1/benutzer/protokoll?von=2024-01-01T00:00:00Z&bis=2024-12-31T00:00:00Z",
-                    BenutzerVerwaltungApiTest.class));
+                    BenutzerVerwaltungApiTest.class),
+            new NachIp4("/api/v1/unternehmen/abzug", "/api/v1/unternehmen/abzug", GesamtabzugApiTest.class));
 
     private static final Set<String> AUSGENOMMEN =
             NACH_IP4.stream().map(NachIp4::muster).collect(Collectors.toCollection(TreeSet::new));

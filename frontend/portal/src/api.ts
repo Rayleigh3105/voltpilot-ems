@@ -7465,6 +7465,36 @@ export async function downloadMeasurementExport(
   URL.revokeObjectURL(href);
 }
 
+/** UEMS AP-20 IP-17 (§5.8): der Knopf und seine Erklärung — ein Wortlaut für den Hinweis „beendet“ und das Konto-Menü. */
+export const GESAMTABZUG_KNOPF = 'Gesamtabzug laden';
+export const GESAMTABZUG_ERKLAERUNG = 'Gesamtabzug laden — alle Stände, Berichte, Nachweise und Messreihen Ihres Unternehmens, mit Prüfsumme je Datei.';
+
+/**
+ * UEMS AP-20 IP-17: lädt den Gesamtabzug (`GET /api/v1/unternehmen/abzug`, nur der Kundenadministrator, auch im
+ * Zustand „beendet“) und legt ihn als ZIP ab — der Name kommt vom Server (`gesamtabzug-<Tag>.zip`). Eine Ablehnung
+ * (403 `recht_fehlt`, 409 `kundenbereich_beendet`) kommt als {@link ApiError} mit dem Satz der API.
+ */
+export async function ladeGesamtabzug(): Promise<void> {
+  const token = await freshToken();
+  const res = await fetch(`${API_BASE}/api/v1/unternehmen/abzug`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Der Gesamtabzug konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? 'gesamtabzug.zip';
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
 export interface RegisterInput {
   name: string;
   email: string;
