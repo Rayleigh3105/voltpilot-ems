@@ -764,6 +764,14 @@ class MessstelleMigrationTest {
         // Nie Kaskade: weder der Mandant noch eine Messstelle mit Geschichte gehen still.
         abgelehnt("23503", null, () -> root.update("DELETE FROM tenant WHERE id = ?", t));
         abgelehnt("23503", null, () -> root.update("DELETE FROM messstelle WHERE id = ?", ms));
+        // Während der Laufzeit bleibt das Protokoll append-only — auch für Verwaltungsrolle und Eigentümer.
+        abgelehntWegen("42501", "permission denied",
+                () -> new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW))
+                        .update("DELETE FROM messstelle_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("DELETE FROM messstelle_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("UPDATE messstelle_aenderung SET tenant_id = tenant_id WHERE tenant_id = ?", t));
 
         // Das Offboarding ist der eine Weg, auf dem ein Kundenbereich endet.
         new TenantRepository(new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW))).offboard(t);
@@ -773,8 +781,9 @@ class MessstelleMigrationTest {
             assertThat(anzahl("SELECT count(*) FROM " + tabelle + " WHERE tenant_id = ?", t))
                     .as(tabelle).isZero();
         }
-        // Das Protokoll bleibt: append-only und ohne Fremdschlüssel.
-        assertThat(anzahl("SELECT count(*) FROM messstelle_aenderung WHERE tenant_id = ?", t)).isOne();
+        // Das Protokoll geht nach der Mandantenzeile mit (AP-20 E10 = A, V20260925234500): ohne Fremdschlüssel,
+        // aber nicht mehr übrig.
+        assertThat(anzahl("SELECT count(*) FROM messstelle_aenderung WHERE tenant_id = ?", t)).isZero();
     }
 
     // ---- Gerüst: Referenz und Vektor-Datei -----------------------------------

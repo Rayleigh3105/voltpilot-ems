@@ -27,7 +27,8 @@ Felder, §4.2 Zustände, §4.5 Invarianten, §6.2/§6.3); die Gültigkeitsmechan
   löscht deshalb `anlage_standort`, `standort`, `unternehmen` VOR dem Mandanten — wer eine neue
   RESTRICT-Tabelle mit `tenant_id` anlegt, trägt sie dort ein, sonst bricht das Offboarding
   jedes Bestandsmandanten. `ort_aenderung` hat (wie `component_change_event`) gar keinen
-  Fremdschlüssel und bleibt nach dem Offboarding stehen. Eine Anlage mit Zuordnung ist nicht
+  Fremdschlüssel; es geht erst nach der Mandantenzeile mit (AP-20 E10 = A, `V20260925234500`,
+  [Vertragsende](uems-kundenbereich-beendet.md)). Eine Anlage mit Zuordnung ist nicht
   löschbar, bis IP-9/AP-14 den Grabstein (AP-02 W5) baut.
 - **`tenant_id` VORN in jedem Exklusions-/Unique-Schlüssel.** Ein Exklusions-Constraint und
   ein Unique-Index prüfen VOR dem Fremdschlüssel und OHNE RLS: ohne `tenant_id` im Schlüssel

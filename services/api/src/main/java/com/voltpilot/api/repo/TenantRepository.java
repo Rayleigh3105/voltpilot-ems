@@ -96,8 +96,8 @@ public class TenantRepository {
      * this fail by FK, which is the safety we want. The ONE exception is the
      * {@code unternehmen} {@link #create} made with it (FK ON DELETE RESTRICT):
      * it goes first, in the same transaction - so a tenant that has grown any
-     * other data still refuses. Its log entry stays (append-only, no FK - the
-     * offboarding rule).
+     * other data still refuses. Its log entry goes after the tenant row, like in
+     * {@link #offboard} (E10 = A).
      */
     public void deleteById(UUID tenantId) {
         jdbc.execute((java.sql.Connection con) -> {
@@ -106,6 +106,7 @@ public class TenantRepository {
             try {
                 deleteByTenant(con, "unternehmen", tenantId);
                 deleteByTenant(con, "tenant", tenantId, "id");
+                protokolleOhneMandantLoeschen(con, tenantId);
                 con.commit();
                 return null;
             } catch (Exception e) {
@@ -287,8 +288,8 @@ public class TenantRepository {
                 // Kurzzeichen occupancy and counter of the Orte (no FK to the Orte, only
                 // to the tenant) with them. The
                 // append-only logs ort_aenderung, messstelle_aenderung and
-                // data_source_aenderung carry no FK and stay (the component_change_event
-                // pattern). The components go with the
+                // data_source_aenderung carry no FK: they go after the tenant row (see
+                // protokolleOhneMandantLoeschen). The components go with the
                 // tenant cascade below, but their data_source_id is RESTRICT too: they
                 // let go of their source first.
                 try (java.sql.PreparedStatement st = con.prepareStatement(
@@ -466,6 +467,8 @@ public class TenantRepository {
                     deleteByTenant(con, table, tenantId);
                 }
                 deleteByTenant(con, "tenant", tenantId, "id");
+                // After the tenant row, before the Löschnachweis counts what remains.
+                protokolleOhneMandantLoeschen(con, tenantId);
                 if (wache != null) {
                     wache.nachDemAbbau(con);
                 }
@@ -482,6 +485,29 @@ public class TenantRepository {
                 con.setAutoCommit(autoCommit);
             }
         });
+    }
+
+    /**
+     * The append-only logs without a FK to the tenant (E10 = A: deleted, not anonymised): ort_aenderung,
+     * messstelle_aenderung, data_source_aenderung, component_change_event, device_site_assignment. Their trigger lets a
+     * DELETE through only once the tenant row is gone, and one narrow SECURITY DEFINER function, executable only by
+     * the admin role, removes them (V20260925234500) - so this runs after {@code DELETE FROM tenant}, in the same
+     * transaction. Older migration fixtures run this code before that migration: there the logs stay.
+     */
+    private static void protokolleOhneMandantLoeschen(java.sql.Connection con, UUID tenantId)
+            throws java.sql.SQLException {
+        try (var probe = con.prepareStatement(
+                "SELECT to_regprocedure('uems_protokolle_ohne_mandant_entfernen(uuid)') IS NOT NULL");
+                var vorhanden = probe.executeQuery()) {
+            vorhanden.next();
+            if (!vorhanden.getBoolean(1)) {
+                return;
+            }
+        }
+        try (var ps = con.prepareStatement("SELECT uems_protokolle_ohne_mandant_entfernen(?)")) {
+            ps.setObject(1, tenantId);
+            ps.executeQuery().close();
+        }
     }
 
     private static long deleteByTenant(java.sql.Connection con, String table, UUID tenantId)

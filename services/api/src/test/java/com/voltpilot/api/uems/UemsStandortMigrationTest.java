@@ -613,6 +613,13 @@ class UemsStandortMigrationTest {
         // als Grabstein stehen, nie still mitgenommen.
         assertThat(root.update("DELETE FROM site WHERE id = ?", anlage)).isOne();
         assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE site_id = ?", anlage)).isOne();
+        // Während der Laufzeit bleibt das Protokoll append-only — auch für Verwaltungsrolle und Eigentümer.
+        abgelehntWegen("P0001", "append-only",
+                () -> admin.update("DELETE FROM ort_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("DELETE FROM ort_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("UPDATE ort_aenderung SET tenant_id = tenant_id WHERE tenant_id = ?", t));
 
         // Das Offboarding ist der eine Weg, auf dem ein Unternehmen endet.
         new TenantRepository(admin).offboard(t);
@@ -621,8 +628,9 @@ class UemsStandortMigrationTest {
             assertThat(anzahl("SELECT count(*) FROM " + tabelle + " WHERE tenant_id = ?", t))
                     .as(tabelle).isZero();
         }
-        // Das Protokoll bleibt: append-only und ohne Fremdschlüssel.
-        assertThat(anzahl("SELECT count(*) FROM ort_aenderung WHERE tenant_id = ?", t)).isOne();
+        // Das Protokoll geht nach der Mandantenzeile mit (AP-20 E10 = A, V20260925234500): ohne Fremdschlüssel,
+        // aber nicht mehr übrig.
+        assertThat(anzahl("SELECT count(*) FROM ort_aenderung WHERE tenant_id = ?", t)).isZero();
     }
 
     // ---- Rechte: nie löschen, kein Intervall umschreiben, Protokoll unveränderlich

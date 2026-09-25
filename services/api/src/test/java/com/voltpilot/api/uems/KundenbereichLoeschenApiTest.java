@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.repo.TenantRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -55,8 +56,13 @@ import org.testcontainers.utility.DockerImageName;
  *   <li><b>Löschnachweis ohne Personendaten:</b> die Spalten sind genau die erwarteten, der Inhalt nennt weder Namen
  *       noch Konten, Anzeigenamen oder Auftragstexte; die Zählungen stimmen mit dem Katalog, die Prüfsumme mit dem
  *       letzten abgeschlossenen Abzug.</li>
- *   <li><b>{@code verblieben} ist ehrlich:</b> jede Katalog-Tabelle mit {@code tenant_id} trägt danach genau so viele
- *       Zeilen, wie der Nachweis nennt — heute die append-only-Protokolle ohne Fremdschlüssel (Befund im PR).</li>
+ *   <li><b>{@code verblieben} ist ehrlich und leer:</b> jede Katalog-Tabelle mit {@code tenant_id} trägt danach genau
+ *       so viele Zeilen, wie der Nachweis nennt — keine. Auch die fünf append-only-Protokolle ohne Fremdschlüssel
+ *       ({@link #PROTOKOLLE}, je eine Zeile mit einem Namen gesät) gehen nach der Mandantenzeile mit (Folge zu IP-18,
+ *       V20260925234500).</li>
+ *   <li><b>Bis dahin bleiben sie:</b> während der Laufzeit, auch „beendet" nach der Frist, ändert oder löscht sie
+ *       keine Rolle — weder der Eigentümer noch die Verwaltungsrolle noch die App-Rolle. Die Rücknahme einer
+ *       gescheiterten Selbstregistrierung ({@code TenantRepository.deleteById}) nimmt ihre Zeile ebenso mit.</li>
  *   <li><b>Der Nachweis bleibt:</b> niemand ändert oder löscht ihn, die App-Rolle sieht ihn nicht.</li>
  * </ul>
  */
@@ -76,6 +82,9 @@ class KundenbereichLoeschenApiTest {
     private static final List<String> SPALTEN = List.of("id", "kennzeichen", "kundenbereich", "beendet_am",
             "frist_tage", "loeschung_fruehestens", "geloescht_am", "geloescht_von", "zaehlungen", "verblieben",
             "abzug_sha256", "abzug_am");
+    /** Die append-only-Protokolle mit {@code tenant_id}, aber ohne Fremdschlüssel auf {@code tenant} (Katalog). */
+    private static final List<String> PROTOKOLLE = List.of("ort_aenderung", "messstelle_aenderung",
+            "data_source_aenderung", "component_change_event", "device_site_assignment");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -107,6 +116,7 @@ class KundenbereichLoeschenApiTest {
     }
 
     @Autowired MockMvc mvc;
+    @Autowired TenantRepository tenants;
     @MockBean KeycloakAdminClient keycloak;
 
     private JdbcTemplate root;
@@ -142,6 +152,20 @@ class KundenbereichLoeschenApiTest {
         spiegel(leserin, "Nora Berger");
         zuweisung(kundenadmin, "kundenadministrator", null);
         zuweisung(leserin, "leser", standort);
+        // Je eine Zeile in den Protokollen ohne Fremdschlüssel, mit einem Namen darin wie im Betrieb. ort_aenderung
+        // hat schon eine: das Anlegen über die Route schreibt den Firmennamen.
+        root.update("INSERT INTO messstelle_aenderung (tenant_id, messstelle_id, art, gilt_ab, rueckwirkend, actor_sub,"
+                + " actor_name, actor_art) VALUES (?, gen_random_uuid(), 'angelegt', date_trunc('minute', now()), false, ?,"
+                + " 'Jonas Wendlinger', 'kunde')", tenant, kundenadmin);
+        root.update("INSERT INTO data_source_aenderung (tenant_id, data_source_id, art, gilt_ab, actor_sub, actor_name,"
+                + " actor_art) VALUES (?, gen_random_uuid(), 'angelegt', date_trunc('minute', now()), ?,"
+                + " 'Jonas Wendlinger', 'kunde')", tenant, kundenadmin);
+        root.update("INSERT INTO component_change_event (tenant_id, site_id, entity_id, revision, event_type,"
+                + " effective_at, created_by, note) VALUES (?, ?, gen_random_uuid(), 1, 'edited', now(), ?,"
+                + " 'Jonas Wendlinger hat umbenannt')", tenant, site, kundenadmin);
+        root.update("INSERT INTO device_site_assignment (tenant_id, device_id, revision, from_site_id, to_site_id,"
+                + " effective_at, created_by) VALUES (?, ?, 1, ?, gen_random_uuid(), now(), ?)", tenant, box, site,
+                kundenadmin);
     }
 
     /** NW-5, RF-08: nicht beendet 409, vor der Frist 409, danach gelöscht — und der Löschnachweis bleibt. */
@@ -202,7 +226,11 @@ class KundenbereichLoeschenApiTest {
         assertThat(zaehlungen).isEqualTo(erwartet);
         assertThat(zaehlungen).containsEntry("benutzer", 2L).containsEntry("zugriff", 2L).containsEntry("device", 1L)
                 .containsEntry("telemetry", 1L).containsEntry("kundenbereich_abzug", 1L);
+        for (String protokoll : PROTOKOLLE) {
+            assertThat(zaehlungen.get(protokoll)).as(protokoll + " vor dem Löschen").isPositive();
+        }
         assertThat(katalog()).as("verblieben = was nach dem Löschen noch die Kennung trägt").isEqualTo(verblieben);
+        assertThat(verblieben).as("E10 = A: gelöscht, auch die Protokolle ohne Fremdschlüssel").isEmpty();
         System.out.printf("NW-5 IP-18: %s gelöscht, %d Tabellen gezählt, verblieben %s%n",
                 nachweis.get("kennzeichen").asText(), zaehlungen.size(), verblieben);
 
@@ -244,6 +272,64 @@ class KundenbereichLoeschenApiTest {
         JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
         assertThatThrownBy(() -> app.queryForList("SELECT * FROM mandant_loeschnachweis"))
                 .hasStackTraceContaining("permission denied");
+    }
+
+    /**
+     * Die Protokolle ohne Fremdschlüssel bleiben append-only, solange die Mandantenzeile existiert — auch „beendet"
+     * nach der Frist, für jede Rolle. Erst der Löschzug nimmt sie mit, nach der Mandantenzeile.
+     */
+    @Test
+    void dieProtokolleBleibenBisZurMandantenzeileUndGehenImLoeschzugMit() throws Exception {
+        vertragsendeVor(120);
+        JdbcTemplate admin = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), "voltpilot_admin",
+                "voltpilot_admin_test_pw"));
+        JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
+        Map<String, Long> vorher = katalog();
+        for (String protokoll : PROTOKOLLE) {
+            String loeschen = "DELETE FROM " + protokoll + " WHERE tenant_id = ?";
+            String aendern = "UPDATE " + protokoll + " SET tenant_id = tenant_id WHERE tenant_id = ?";
+            assertThatThrownBy(() -> root.update(loeschen, tenant)).as(protokoll)
+                    .hasStackTraceContaining("audit rows are append-only");
+            assertThatThrownBy(() -> root.update(aendern, tenant)).as(protokoll)
+                    .hasStackTraceContaining("audit rows are append-only");
+            // Die Verwaltungsrolle: wo sie das Tabellenrecht hat (Standardrechte), hält sie der Trigger.
+            for (String sql : List.of(loeschen, aendern)) {
+                assertThatThrownBy(() -> admin.update(sql, tenant)).as(protokoll).satisfiesAnyOf(
+                        e -> assertThat(e).hasStackTraceContaining("audit rows are append-only"),
+                        e -> assertThat(e).hasStackTraceContaining("permission denied"));
+            }
+            assertThatThrownBy(() -> app.update(loeschen, tenant)).as(protokoll)
+                    .hasStackTraceContaining("permission denied");
+            assertThatThrownBy(() -> app.update(aendern, tenant)).as(protokoll)
+                    .hasStackTraceContaining("permission denied");
+        }
+        // Der eine Weg verweigert, solange die Mandantenzeile existiert; die App-Rolle darf ihn gar nicht gehen.
+        assertThatThrownBy(() -> admin.queryForObject("SELECT uems_protokolle_ohne_mandant_entfernen(?)", Long.class,
+                tenant)).hasStackTraceContaining("existiert noch");
+        assertThatThrownBy(() -> app.queryForObject("SELECT uems_protokolle_ohne_mandant_entfernen(?)", Long.class,
+                tenant)).hasStackTraceContaining("permission denied");
+        assertThat(katalog()).as("nichts bewegt").isEqualTo(vorher);
+        for (String protokoll : PROTOKOLLE) {
+            assertThat(vorher.get(protokoll)).as(protokoll).isPositive();
+        }
+
+        assertThat(loeschen().getResponse().getStatus()).isEqualTo(200);
+        for (String protokoll : PROTOKOLLE) {
+            assertThat(root.queryForObject("SELECT count(*) FROM " + protokoll + " WHERE tenant_id = ?", Long.class,
+                    tenant)).as(protokoll).isZero();
+        }
+    }
+
+    /** Die Rücknahme einer gescheiterten Selbstregistrierung nimmt die Protokollzeile des Anlegens mit. */
+    @Test
+    void dieRuecknahmeEinerRegistrierungNimmtDasProtokollMit() {
+        UUID neu = tenants.create("Registrierung " + UUID.randomUUID(), "B2C").id();
+        assertThat(root.queryForObject("SELECT count(*) FROM ort_aenderung WHERE tenant_id = ?", Long.class, neu))
+                .isOne();
+        tenants.deleteById(neu);
+        assertThat(root.queryForObject("SELECT count(*) FROM tenant WHERE id = ?", Long.class, neu)).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM ort_aenderung WHERE tenant_id = ?", Long.class, neu))
+                .isZero();
     }
 
     /** Eine Wiederaufnahme vor dem Löschen: der Bereich ist wieder aktiv und der Löschweg verweigert wieder. */

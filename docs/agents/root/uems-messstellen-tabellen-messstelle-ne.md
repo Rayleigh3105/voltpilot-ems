@@ -20,7 +20,8 @@ der Test spielt die Kennzeichen-Fälle der Vektor-Datei gegen die Datenbank.
   identifiziert `MessstelleRegeln.Bindung` die Größe einer Quelle); Medium über den Verweis
   `(messstelle_id, tenant_id, medium)` gleich dem der Messstelle.
 - `messstelle_kennzeichen_seq`: der Zähler je Mandant, `messstelle_aenderung`: das Protokoll
-  (wie `ort_aenderung`: append-only per Trigger, ohne Fremdschlüssel, bleibt nach dem Offboarding).
+  (wie `ort_aenderung`: append-only per Trigger, ohne Fremdschlüssel; geht erst im Löschzug nach der
+  Mandantenzeile mit, `V20260925234500`).
 - Kein Endpunkt (IP-3), keine Zuordnung zu Ort/Stellung (IP-7), keine Quellenbindung (IP-13).
 
 ## ⚠ Die Fallen

@@ -106,10 +106,20 @@ Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-lösc
   `verblieben` aus dem **Katalog** (jede Tabelle mit `tenant_id`, nicht die Liste des Löschwegs), `abzug_sha256` =
   `manifest_sha256` des letzten abgeschlossenen Abzugs. Kein Name, keine Konten, kein Auftrag/Begründung (Freitext).
   Trigger `mandant_loeschnachweis_bleibt`, Admin-Rolle nur SELECT/INSERT, App-Rolle nichts.
-- **Befund `verblieben`:** `ort_aenderung` (jede Anlage eines Mandanten schreibt dort den Firmennamen),
-  `messstelle_aenderung`, `data_source_aenderung` haben keinen FK und append-only-Trigger für ALLE Rollen — sie
-  überleben das Löschen, `UemsOrteMigrationTest` sichert das zu. Der Nachweis nennt sie; Mitlöschen = eigener Schnitt.
+- **Protokolle ohne FK gehen mit (Folge zu IP-18, `V20260925234500`):** `ort_aenderung` (jede Anlage eines
+  Mandanten schreibt dort den Firmennamen), `messstelle_aenderung`, `data_source_aenderung`, `component_change_event`,
+  `device_site_assignment` tragen `tenant_id` ohne FK. `reject_audit_mutation()` lässt für GENAU diese fünf (Liste
+  im Funktionskörper) NUR ein DELETE durch, wenn `public.tenant` die Kennung nicht mehr hat — die Regel sitzt in der
+  Funktion, damit ein erneuter Lauf der Ursprungsmigration (`UemsStandortMigrationTest`, `MessstelleMigrationTest`)
+  sie nicht aufhebt. Den Weg geht `uems_protokolle_ohne_mandant_entfernen(uuid)` (SECURITY DEFINER, nur Admin-Rolle,
+  verweigert bei bestehender Mandantenzeile); `TenantRepository.protokolleOhneMandantLoeschen` ruft sie nach
+  `DELETE FROM tenant` (Löschzug und `deleteById`) und VOR `nachDemAbbau` — sonst zählte der Nachweis sie als
+  `verblieben`. Während der Laufzeit bleibt alles append-only (jede Rolle), Standort- und Box-Löschen lassen die
+  Einträge stehen. ⚠ Eine NEUE Tabelle mit `tenant_id` ohne FK braucht einen Weg im Löschzug (mit
+  `reject_audit_mutation` auf DELETE: Liste der Funktion UND der Entfernen-Funktion) — der Katalog-Nachweis zeigt
+  sonst `verblieben`; `KundenbereichLoeschenApiTest` sät je Protokoll eine Zeile.
 - **`offboarding/cleanup`** nimmt nicht denselben Löschweg: nur Keycloak-Konten, und nur ohne Mandantenzeile.
 - **Nachweis:** `KundenbereichLoeschenApiTest` (NW-5: RF-08 mit Zeitraffer 89/90 Tage, Spalten und Inhalt ohne
-  Personendaten, `verblieben` = Katalog danach, Nachweis unveränderlich), `AdminApiTest` (Löschweg-Fälle mit
+  Personendaten, `verblieben` = Katalog danach = leer, Nachweis unveränderlich, die fünf Protokolle vorher
+  unveränderlich für jede Rolle), `AdminApiTest` (Löschweg-Fälle mit
   `vertragsendeUndFristAbgelaufen`).
