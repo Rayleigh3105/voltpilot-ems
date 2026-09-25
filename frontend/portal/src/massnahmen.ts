@@ -13,6 +13,8 @@ import {
   UEMS_BEWERTUNGSMETHODE,
   UEMS_ENERGIEZIEL,
   UEMS_ERWARTETE_WIRKUNG,
+  UEMS_FESTSTELLUNG,
+  UEMS_MANAGEMENTBEWERTUNG,
   UEMS_MASSNAHME,
   UEMS_MASSNAHME_ZUSTAENDE,
   UEMS_MASSNAHMEN,
@@ -65,7 +67,14 @@ export const HERKUNFT_WORT: Record<MassnahmeHerkunft, string> = {
   energieziel: `aus dem ${UEMS_ENERGIEZIEL}`,
   einsatz: 'am Energieeinsatz',
   von_hand: 'von Hand angelegt',
+  // AP-19 IP-17: das Kundenwort des Objekts, nie das Vertragswort (`nichtkonformitaet` ist „Feststellung“, SP5).
+  nichtkonformitaet: `aus der ${UEMS_FESTSTELLUNG}`,
+  audit: 'aus dem internen Audit',
+  managementbewertung: `aus der ${UEMS_MANAGEMENTBEWERTUNG}`,
 };
+
+/** Die Herkünfte, deren Kennung die Anfrage mitschickt; Energieziel und Einsatz folgen ihrem Verweis. */
+const MIT_KENNUNG: ReadonlySet<MassnahmeHerkunft> = new Set(['abweichung', 'nichtkonformitaet', 'audit', 'managementbewertung']);
 
 export const VERLAUF_WORT: Record<MassnahmeEintrag['art'], string> = {
   massnahme_angelegt: 'angelegt',
@@ -264,7 +273,7 @@ export function anfrage(e: MassnahmeEntwurf, v: MassnahmeVorbelegung, einstufung
     verantwortlich: e.verantwortlich,
     termin: e.termin,
     herkunft: v.herkunft,
-    ...(v.herkunft === 'abweichung' && v.herkunftKennung ? { herkunft_kennung: v.herkunftKennung } : {}),
+    ...(MIT_KENNUNG.has(v.herkunft) && v.herkunftKennung ? { herkunft_kennung: v.herkunftKennung } : {}),
     ...(mit ? { kennzahl: e.kennzahl, monate: monateWert(e.von, e.bis) } : {}),
     ...(!mit && e.standort ? { standort: e.standort } : {}),
     ...(e.einsatz ? { einsatz: e.einsatz } : {}),

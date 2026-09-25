@@ -48,14 +48,18 @@ fort; `UemsVerbesserungMigrationTest` nennt die Tabellen-Listen, `UemsMassnahmeM
 `UemsZugriffMigrationTest`, `UemsBerichtMigrationTest`, `UemsBezugsbasisMigrationTest` und (neu)
 `UemsVerbesserungMigrationTest`. Offboarding: Anstoß, Stände, Protokoll, Maßnahme vor Energieziel & Co.
 ⚠ **PL/pgSQL:** `IF x IS DISTINCT FROM CASE … THEN … END THEN` bricht (`IF` liest bis zum ersten `THEN`) — `CASE` klammern.
-⚠ **Die Herkunft ist per CHECK geschlossen (AP-19 W1, 24.09.2026):** anders als die Vokabular-Zeile oben und der
-Kommentar in `V20260924223000` (Zeilen 38–40, „ohne einen CHECK anzufassen“) sagen, weitet `CREATE OR REPLACE` der
-Funktion die Herkunft NICHT: `massnahme_herkunft_chk` endet mit `CASE … ELSE false`, und der `switch` in
-`MassnahmeService` lehnt jede fremde Kennung ab (`default`). „Additiv“ (AP-18 E7) heißt: die Wortmenge wächst, kein
-Bestandswert ändert sich — eine neue Herkunft braucht eine EIGENE Migration mit `DROP/ADD CONSTRAINT` (validiert gegen
-den Bestand, Version nach dem höchsten ausgelieferten Stand), die Vokabular-Vereinigung und `switch`, Regeln, Portal,
-Vertrag und Vektoren (AP-19 IP-17). Die angewandten Migrationen bleiben, wie sie sind (Flyway-Regel).
-Nachweis: `UemsMassnahmeMigrationTest`.
+⚠ **Die Herkunft ist per CHECK geschlossen (AP-19 W1):** `CREATE OR REPLACE` der Vokabular-Funktion weitet die
+Herkunft NICHT (anders als der Kommentar in `V20260924223000`, Zeilen 38–40): `massnahme_herkunft_chk` endet mit
+`CASE … ELSE false`, und der `switch` in `MassnahmeService#anlegen` lehnt jede fremde Art ab. AP-19 IP-17
+(`V20260925040000`, 25.09.2026) hat den CHECK per `DROP/ADD CONSTRAINT` getauscht (validiert gegen den Bestand) und um
+`nichtkonformitaet` F-… · `audit` AU-… · `managementbewertung` BR-…/Bn geweitet — die Wörter stehen als Nr. 5–7 AM
+ENDE der Funktion, damit die Präfix-Vergleiche der Nachbartests halten. Eine weitere Herkunft braucht wieder eine EIGENE
+Migration mit dem ganzen CASE (Version nach dem höchsten Stand), die Vokabular-Vereinigung, `switch` +
+`herkunftPruefen` (Existenz/Zustand, W14), `VerbesserungRegeln`/`verbesserung.py`/`verbesserung.ts`, `HERKUNFT_WORT`
+in `massnahmen.ts`, `api.ts`, Vertrag, Vektoren, OpenAPI — und die Version in `BAUEN_DARAUF_AUF` aller Migrationstests,
+die `V20260924233000` oder `V20260924235130` spät ankommen lassen (sonst läuft der Tausch vor der Tabelle bzw. wird vom
+Vokabular der späten Abweichung überschrieben). Die angewandten Migrationen bleiben, wie sie sind (Flyway-Regel).
+Nachweis: `UemsMassnahmeHerkunftMigrationTest`, `UemsMassnahmeMigrationTest`.
 
 ## Abweichung und Auffälligkeit (AP-18 IP-14, A1–A4, A6, U1/U2)
 

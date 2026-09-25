@@ -14,7 +14,7 @@ export const VOKABULARE: Record<string, string[]> = {
   energieziel_ergebnis: ['erreicht', 'verfehlt', 'nicht_bewertbar'],
   zielstand_vorschlag: ['erreicht', 'nicht_erreicht'],
   massnahme_zustand: ['geplant', 'umgesetzt', 'bewertet', 'verworfen'],
-  massnahme_herkunft: ['abweichung', 'energieziel', 'einsatz', 'von_hand'],
+  massnahme_herkunft: ['abweichung', 'energieziel', 'einsatz', 'von_hand', 'nichtkonformitaet', 'audit', 'managementbewertung'],
   abweichung_zustand: ['offen', 'abgeschlossen'],
   abweichung_ergebnis: ['massnahme', 'erklaert', 'keine_abweichung', 'nicht_bewertbar'],
   abweichung_eintrag_art: ['kommentar', 'ursache_aussage'],

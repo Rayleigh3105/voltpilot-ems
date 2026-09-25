@@ -56,7 +56,8 @@ class UemsMassnahmeMigrationTest {
     private static final String DIESE = "20260924233000";
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
-            "20260924235130"); // AP-18 IP-14: die Abweichung verweist auf ihre Maßnahme und weitet das Vokabular.
+            "20260924235130", // AP-18 IP-14: die Abweichung verweist auf ihre Maßnahme und weitet das Vokabular.
+            "20260925040000"); // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme und weitet das Vokabular.
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap18_ip9_test_pw";
     private static final List<String> TABELLEN = List.of("massnahme", "massnahme_aenderung", "massnahme_bewertung",
             "vorgang_anstoss");
@@ -535,7 +536,10 @@ class UemsMassnahmeMigrationTest {
                 "abweichung_herkunft:1:auffaelligkeit", "abweichung_herkunft:2:von_hand",
                 "abweichung_protokoll:1:abweichung_eroeffnet", "abweichung_protokoll:2:kommentar",
                 "abweichung_protokoll:3:ursache_aussage", "abweichung_protokoll:4:abweichung_geaendert",
-                "abweichung_protokoll:5:verantwortlicher_geaendert", "abweichung_protokoll:6:abweichung_abgeschlossen");
+                "abweichung_protokoll:5:verantwortlicher_geaendert", "abweichung_protokoll:6:abweichung_abgeschlossen",
+                // AP-19 IP-17 weitet dahinter die Herkunft der Maßnahme.
+                "massnahme_herkunft:5:nichtkonformitaet", "massnahme_herkunft:6:audit",
+                "massnahme_herkunft:7:managementbewertung");
     }
 
     @Test

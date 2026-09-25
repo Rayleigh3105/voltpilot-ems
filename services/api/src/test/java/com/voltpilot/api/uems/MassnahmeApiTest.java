@@ -375,6 +375,117 @@ class MassnahmeApiTest {
                 "begruendung", "Bedienberechtigter will ändern.")).status()).isEqualTo(403);
     }
 
+    // ================================================================================ Herkunft aus dem Energiemanagement (AP-19 IP-17)
+
+    /**
+     * R10 (W1, W4, W14; FS3): M-2029-0001 entsteht mit Herkunft {@code nichtkonformitaet} an der offenen Feststellung
+     * F-2029-0001 — bis IP-17 lehnte die Route das Wort ab (400) und der CHECK die Zeile ({@code ELSE false}). Eine
+     * unbekannte Kennung ist 422 {@code herkunft_kennung}, eine abgeschlossene Feststellung 422
+     * {@code feststellung_nicht_offen}, ein geplantes Audit 422 {@code audit_nicht_durchgefuehrt}; ein Beschluss der
+     * Managementbewertung ist bis IP-23 unbekannt. Außerhalb des Zauns sieht der Bearbeiter die Feststellung am
+     * Unternehmen nicht — dieselbe Antwort wie unbekannt, kein Hinweis auf ihre Existenz.
+     */
+    @Test
+    void r10HerkunftAusFeststellungAuditUndManagementbewertung() throws Exception {
+        Welt w = welt();
+        UUID cb = root.queryForObject("INSERT INTO energiemanagement_person (tenant_id, name, funktion, kuerzel, actor_sub, "
+                + "actor_name, actor_art) VALUES (?, 'Claudia Berger', 'Controlling', 'CB', 'IK', 'Ines Kaltenbach', "
+                + "'kunde') RETURNING id", UUID.class, w.mandant());
+        root.update("INSERT INTO internes_audit (tenant_id, kennzeichen, titel, termin, auditor_ids, unabhaengigkeit, was, "
+                + "woran, verantwortlich_sub, verantwortlich_name, verantwortlich_konto, actor_sub, actor_name, actor_art, "
+                + "angelegt_am) VALUES (?, 'AU-2029-0001', 'Internes Audit 2029', '2029-01-22', ?::uuid[], 'Claudia Berger "
+                + "(Controlling) gehört nicht zum Energieteam.', 'Bezugsbasen und Energieziel', 'Energiepolitik D-0001 "
+                + "Fassung 1', ?, 'Ines Kaltenbach', 'benutzer', 'IK', 'Ines Kaltenbach', 'kunde', '2029-01-10 09:00+01')",
+                w.mandant(), "{" + cb + "}", sub(w, "ines"));
+        UUID f1 = feststellung(w, cb, "F-2029-0001", null);
+        UUID f2 = feststellung(w, cb, "F-2029-0002", null);
+        feststellung(w, cb, "F-2029-0003", w.st1());
+        String kopie = "{\"am\":\"2029-01-24\",\"feststellung\":\"F-2029-0002\",\"massnahmen\":[]}";
+        root.update("INSERT INTO feststellung_wirksamkeit (tenant_id, feststellung_id, ergebnis, begruendung, "
+                + "entschieden_von, entschieden_tag, kopie, pruefsumme, vieraugen, status, freigabe_sub, freigabe_name, "
+                + "freigabe_rolle, freigabe_art, freigabe_am) VALUES (?, ?, 'ohne_massnahme', 'Die sofortige Behebung "
+                + "genügt.', ?, '2029-01-24', ?, bericht_pruefsumme(?), false, 'freigegeben', 'IK', 'Ines Kaltenbach', "
+                + "'energiemanager', 'kunde', '2029-01-24 10:00+01')", w.mandant(), f2, cb, kopie, kopie);
+        assertThat(root.queryForList("SELECT zustand FROM feststellung WHERE id IN (?, ?) ORDER BY kennzeichen",
+                String.class, f1, f2)).containsExactly("offen", "abgeschlossen");
+        uhr(Instant.parse("2029-01-26T09:00:00Z"));
+
+        JsonNode r10 = MassnahmeWelt.REFERENZ.at("/massnahmen_1_10/0");
+        Map<String, Object> body = vonHand(w, null);
+        body.put("titel", r10.get("titel").asText());
+        body.put("verantwortlich", sub(w, "jonas"));
+        body.put("termin", r10.get("termin").asText());
+        body.put("erwartete_wirkung_wortlaut", r10.at("/erwartete_wirkung/wortlaut").asText());
+        body.put("herkunft", r10.at("/herkunft/art").asText());
+        Antwort ohneKennung = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+        assertThat(ohneKennung.status()).as(ohneKennung.text()).isEqualTo(400);
+        for (String[] fall : new String[][] {{"AU-2029-0001", "400", "anfrage_ungueltig"},
+            {"F-2029-0099", "422", "herkunft_kennung"}, {"F-2029-0002", "422", "feststellung_nicht_offen"}}) {
+            body.put("herkunft_kennung", fall[0]);
+            Antwort a = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+            assertThat(a.status()).as(fall[0] + " " + a.text()).isEqualTo(Integer.parseInt(fall[1]));
+            assertThat(a.body().get("code").asText()).as(fall[0]).isEqualTo(fall[2]);
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme WHERE tenant_id = ?", Integer.class,
+                w.mandant())).isZero();
+
+        body.put("herkunft_kennung", r10.at("/herkunft/kennung").asText());
+        Antwort neu = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+        assertThat(neu.status()).as(neu.text()).isEqualTo(201);
+        JsonNode m = neu.body();
+        assertThat(m.get("kennzeichen").asText()).isEqualTo(r10.get("kennzeichen").asText());
+        assertThat(m.at("/herkunft/art").asText()).isEqualTo("nichtkonformitaet");
+        assertThat(m.at("/herkunft/kennung").asText()).isEqualTo("F-2029-0001");
+        assertThat(m.get("messgrundlage").isNull()).isTrue();
+        assertThat(m.at("/ohne_messgrundlage/kennzeichen").asText()).isEqualTo("ohne Messgrundlage — Wirkung nicht messbar");
+        assertThat(root.queryForObject("SELECT (neu ->> 'herkunft') || ' ' || (neu ->> 'herkunft_kennung') FROM "
+                + "massnahme_aenderung WHERE massnahme_id = ?::uuid", String.class, m.get("id").asText()))
+                .isEqualTo("nichtkonformitaet F-2029-0001");
+
+        // Das interne Audit: erst durchgeführt (IA1), dann Herkunft eines Hinweises.
+        body.put("herkunft", "audit");
+        body.put("herkunft_kennung", "AU-2029-0001");
+        Antwort geplant = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+        assertThat(geplant.status()).as(geplant.text()).isEqualTo(422);
+        assertThat(geplant.body().get("code").asText()).isEqualTo("audit_nicht_durchgefuehrt");
+        root.update("UPDATE internes_audit SET zustand = 'durchgefuehrt', durchgefuehrt_am = '2029-01-22' "
+                + "WHERE tenant_id = ?", w.mandant());
+        Antwort ausAudit = ruf(w, "ines", HttpMethod.POST, PFAD, body);
+        assertThat(ausAudit.status()).as(ausAudit.text()).isEqualTo(201);
+        assertThat(ausAudit.body().at("/herkunft/kennung").asText()).isEqualTo("AU-2029-0001");
+
+        // Die Managementbewertung gibt es erst mit IP-23: jeder Beschluss ist unbekannt; das Muster ist BR-…/Bn.
+        body.put("herkunft", "managementbewertung");
+        body.put("herkunft_kennung", "BR-2029-0001/B2");
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD, body).body().get("code").asText()).isEqualTo("herkunft_kennung");
+        body.put("herkunft_kennung", "BR-2029-0001");
+        assertThat(ruf(w, "ines", HttpMethod.POST, PFAD, body).status()).isEqualTo(400);
+
+        // Zaun: der Bearbeiter an ST-1 sieht F-2029-0001 (am Unternehmen) nicht, F-2029-0003 (an ST-1) schon.
+        Map<String, Object> be = vonHand(w, w.st1());
+        be.put("herkunft", "nichtkonformitaet");
+        be.put("herkunft_kennung", "F-2029-0001");
+        Antwort beFirma = ruf(w, "peter", HttpMethod.POST, PFAD, be);
+        assertThat(beFirma.status()).as(beFirma.text()).isEqualTo(422);
+        assertThat(beFirma.body().get("code").asText()).isEqualTo("herkunft_kennung");
+        be.put("herkunft_kennung", "F-2029-0003");
+        Antwort beSt1 = ruf(w, "peter", HttpMethod.POST, PFAD, be);
+        assertThat(beSt1.status()).as(beSt1.text()).isEqualTo(201);
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme WHERE tenant_id = ?", Integer.class,
+                w.mandant())).isEqualTo(3);
+    }
+
+    /** Eine offene Feststellung (Quelle eigene), festgestellt von CB am 22.01.2029, verantwortlich Jonas. */
+    private UUID feststellung(Welt w, UUID festgestelltVon, String kennzeichen, UUID standort) {
+        return root.queryForObject("INSERT INTO feststellung (tenant_id, kennzeichen, quelle_art, wortlaut, "
+                + "vorgabe_wortlaut, standort_id, festgestellt_von, festgestellt_am, verantwortlich_sub, verantwortlich_name, "
+                + "verantwortlich_konto, actor_sub, actor_name, actor_art, angelegt_am) VALUES (?, ?, 'eigene', "
+                + "'Wer die Bezugsbasen pflegt und freigibt, ist nicht festgelegt.', '„Wir legen fest, wer im "
+                + "Energiemanagement wofür zuständig ist.“', ?, ?, '2029-01-22', ?, 'Jonas Wendlinger', 'benutzer', 'IK', "
+                + "'Ines Kaltenbach', 'kunde', '2029-01-23 10:00+01') RETURNING id", UUID.class, w.mandant(), kennzeichen,
+                standort, festgestelltVon, sub(w, "jonas"));
+    }
+
     // ================================================================================ Wirkung (IP-11)
 
     /**

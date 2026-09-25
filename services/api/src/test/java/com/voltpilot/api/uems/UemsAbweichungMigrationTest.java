@@ -53,6 +53,9 @@ import org.testcontainers.utility.DockerImageName;
 class UemsAbweichungMigrationTest {
 
     private static final String DIESE = "20260924235130";
+    /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20260925040000"); // AP-19 IP-17: weitet das Vokabular als Vereinigung (mit den Wörtern dieser Migration).
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap18_ip14_test_pw";
     private static final List<String> TABELLEN = List.of("auffaelligkeit", "abweichung", "abweichung_aenderung");
     private static final String BEGRUENDUNG = "Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme "
@@ -498,7 +501,10 @@ class UemsAbweichungMigrationTest {
         assertThat(neu).containsExactly("abweichung_herkunft:1:auffaelligkeit", "abweichung_herkunft:2:von_hand",
                 "abweichung_protokoll:1:abweichung_eroeffnet", "abweichung_protokoll:2:kommentar",
                 "abweichung_protokoll:3:ursache_aussage", "abweichung_protokoll:4:abweichung_geaendert",
-                "abweichung_protokoll:5:verantwortlicher_geaendert", "abweichung_protokoll:6:abweichung_abgeschlossen");
+                "abweichung_protokoll:5:verantwortlicher_geaendert", "abweichung_protokoll:6:abweichung_abgeschlossen",
+                // AP-19 IP-17 weitet dahinter die Herkunft der Maßnahme.
+                "massnahme_herkunft:5:nichtkonformitaet", "massnahme_herkunft:6:audit",
+                "massnahme_herkunft:7:managementbewertung");
         // Die Einträge des Vertrags (`abweichung_eintrag_art`) sind Wörter des Protokolls.
         assertThat(root.queryForList("SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'abweichung_eintrag_art' "
                 + "EXCEPT SELECT wort FROM verbesserung_vokabular() WHERE vokabular = 'abweichung_protokoll'", String.class))
@@ -547,14 +553,18 @@ class UemsAbweichungMigrationTest {
         Path ohneDiese = Files.createTempDirectory("ohne-abweichung");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
         }
         flyway(url).locations("filesystem:" + ohneDiese).load().migrate();
         var spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
         JdbcTemplate spaetDb = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         String liste = "'" + String.join("', '", TABELLEN) + "'";
         String schema = "SELECT string_agg(conrelid::regclass || ':' || conname || ':' || pg_get_constraintdef(oid), '|' "

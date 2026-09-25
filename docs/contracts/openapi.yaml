@@ -12779,9 +12779,14 @@ paths:
         `standort_unbekannt`; ohne Standort = am
         Unternehmen; M1, RE1, RE2). Pflicht: `titel` (422 `titel_fehlt`), `verantwortlich` als aktives Konto des
         Kundenbereichs (422 `verantwortlich_fehlt` bzw. `benutzer_unbekannt`), `termin` (400),
-        `erwartete_wirkung_wortlaut` (422 `wortlaut_fehlt`). Herkunft `abweichung · energieziel · einsatz · von_hand`
-        (ohne: `von_hand`); bei `abweichung` die Kennung AW-… in `herkunft_kennung`, bei `energieziel`/`einsatz` folgt
-        sie dem Verweis (422 `herkunft_ohne_verweis`). Mit `kennzahl` (M2): die freigegebene, heute geltende
+        `erwartete_wirkung_wortlaut` (422 `wortlaut_fehlt`). Herkunft `abweichung · energieziel · einsatz · von_hand ·
+        nichtkonformitaet · audit · managementbewertung` (ohne: `von_hand`); bei `abweichung` die Kennung AW-… in
+        `herkunft_kennung`, bei `energieziel`/`einsatz` folgt sie dem Verweis (422 `herkunft_ohne_verweis`). Aus dem
+        Energiemanagement (AP-19 IP-17): `nichtkonformitaet` mit F-… einer offenen Feststellung (422
+        `feststellung_nicht_offen`), `audit` mit AU-… eines durchgeführten oder abgeschlossenen internen Audits (422
+        `audit_nicht_durchgefuehrt`), `managementbewertung` mit BR-…/Bn eines Beschlusses einer freigegebenen
+        Managementbewertung (bis AP-19 IP-23 gibt es keine); eine unbekannte oder nicht sichtbare Kennung ist 422
+        `herkunft_kennung`, ein falsches Muster 400. Mit `kennzahl` (M2): die freigegebene, heute geltende
         Bezugsbasis-Fassung (sonst 422 `kennzahl_ohne_bezugsbasis`) und die Ausgangslage als KOPIE des Vergleich-Lesers
         über `monate` (`JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`, höchstens 12, abgeschlossen - 422
         `monate_nicht_abgeschlossen`; ohne: der letzte abgeschlossene Monat), kanonischer Text mit Prüfsumme; der
@@ -12800,8 +12805,12 @@ paths:
                 titel: { type: string, minLength: 1 }
                 verantwortlich: { type: string, description: "sub eines aktiven Benutzers" }
                 termin: { type: string, format: date }
-                herkunft: { type: string, enum: [abweichung, energieziel, einsatz, von_hand] }
-                herkunft_kennung: { type: string, pattern: "^AW-[0-9]{4}-[0-9]{4,9}$" }
+                herkunft:
+                  type: string
+                  enum: [abweichung, energieziel, einsatz, von_hand, nichtkonformitaet, audit, managementbewertung]
+                herkunft_kennung:
+                  type: string
+                  pattern: "^(AW-[0-9]{4}-[0-9]{4,9}|F-[0-9]{4}-[0-9]{4,9}|AU-[0-9]{4}-[0-9]{4,9}|BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3})$"
                 kennzahl: { type: string, format: uuid }
                 monate: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])(/[0-9]{4}-(0[1-9]|1[0-2]))?$" }
                 einsatz: { type: string, format: uuid }
@@ -29588,7 +29597,9 @@ components:
           type: object
           required: [art, kennung]
           properties:
-            art: { type: string, enum: [abweichung, energieziel, einsatz, von_hand] }
+            art:
+              type: string
+              enum: [abweichung, energieziel, einsatz, von_hand, nichtkonformitaet, audit, managementbewertung]
             kennung: { type: string, nullable: true }
         messgrundlage: { $ref: "#/components/schemas/MassnahmeMessgrundlage" }
         ohne_messgrundlage:

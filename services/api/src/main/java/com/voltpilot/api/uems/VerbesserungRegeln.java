@@ -69,7 +69,8 @@ public final class VerbesserungRegeln {
         m.put("energieziel_ergebnis", List.of("erreicht", "verfehlt", "nicht_bewertbar"));
         m.put("zielstand_vorschlag", List.of("erreicht", "nicht_erreicht"));
         m.put("massnahme_zustand", List.of("geplant", "umgesetzt", "bewertet", "verworfen"));
-        m.put("massnahme_herkunft", List.of("abweichung", "energieziel", "einsatz", "von_hand"));
+        m.put("massnahme_herkunft", List.of("abweichung", "energieziel", "einsatz", "von_hand", "nichtkonformitaet", "audit",
+                "managementbewertung"));
         m.put("abweichung_zustand", List.of("offen", "abgeschlossen"));
         m.put("abweichung_ergebnis", List.of("massnahme", "erklaert", "keine_abweichung", "nicht_bewertbar"));
         m.put("abweichung_eintrag_art", List.of("kommentar", "ursache_aussage"));

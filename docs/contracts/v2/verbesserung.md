@@ -32,7 +32,7 @@ sagt eine Person.
 | Gruppe | Schlüssel | Werte |
 |---|---|---|
 | Z | `energieziel_zustand` · `energieziel_ergebnis` · `zielstand_vorschlag` | `offen · bewertet · beendet` · `erreicht · verfehlt · nicht_bewertbar` · `erreicht · nicht_erreicht` |
-| M | `massnahme_zustand` · `massnahme_herkunft` | `geplant · umgesetzt · bewertet · verworfen` · `abweichung · energieziel · einsatz · von_hand` |
+| M | `massnahme_zustand` · `massnahme_herkunft` | `geplant · umgesetzt · bewertet · verworfen` · `abweichung · energieziel · einsatz · von_hand · nichtkonformitaet · audit · managementbewertung` (die letzten drei seit AP-19 IP-17) |
 | A | `abweichung_zustand` · `abweichung_ergebnis` · `abweichung_eintrag_art` · `auffaelligkeit_zustand` · `auffaelligkeit_antwort` · `anstoss_art` · `anstoss_zustand` · `anstoss_antwort` | `offen · abgeschlossen` · `massnahme · erklaert · keine_abweichung · nicht_bewertbar` · `kommentar · ursache_aussage` · `offen · beantwortet` · `abweichung · zur_kenntnis` · `ausgangslage_korrigiert · bewertung_korrigiert · messgrundlage_beendet · messgrundlage_neu_gefasst` · `offen · beantwortet` · `bleibt · neu_kopiert · neu_bewertet` |
 | U | `ursache_beleg` | `keine_messung · mit_beleg` — eine Ursache ist immer die Aussage einer Person (U1–U3); es gibt **kein** Ursachen-Vokabular |
 | WK | `wirkung_ergebnis` · `wirkung_grund` | `belegt · nicht_belegt · nicht_messbar` (ohne Stand: „beobachtet — nicht belegt“) · `umsetzungsmonat · basis_nach_umsetzung · unvollstaendig` und die Gründe der Bezugsbasis `basis_fehlt · basis_beendet · zu_wenig_perioden · variable_fehlt · variable_ausserhalb · periode_nicht_zu_ende · keine_werte` |
@@ -40,6 +40,15 @@ sagt eine Person.
 
 Pflicht-Beiwerte der Konzept-Liste (`massnahme` mit Verweis, `zur_kenntnis`/`bleibt` mit Begründung, `ursache_aussage`
 mit Wortlaut, Person, Datum) sind Regeln der Schreibwege (IP-5 ff.), nicht Teil der Wörter.
+
+**Herkunft aus dem Energiemanagement (AP-19 IP-17, W1, W4, W14; FS3).** Die Wortmenge von `massnahme_herkunft` ist
+additiv gewachsen, kein Bestandswert hat sich geändert: `nichtkonformitaet` (Kennung `F-JJJJ-nnnn`, das Objekt
+„Feststellung“), `audit` (`AU-JJJJ-nnnn`, ein Hinweis aus dem internen Audit ohne Nichterfüllung) und
+`managementbewertung` (`BR-JJJJ-nnnn/Bn`, Beschluss n); die Muster sind die von `energiemanagement-vectors.json` ›
+`kennzeichen_muster`. Der Schreibweg prüft Existenz und Zustand (422 `herkunft_kennung` bei unbekannter oder nicht
+sichtbarer Kennung, 422 `feststellung_nicht_offen`, 422 `audit_nicht_durchgefuehrt`); eine BR-Kennung ist unbekannt,
+bis es die Managementbewertung gibt (AP-19 IP-23). Das interne Wort `nichtkonformitaet` steht nur in Vertrag und Code,
+das Kundenwort ist „Feststellung“ (SP5).
 
 **Startwerte** (ohne Norm-Herleitung): Nachher-Zeitraum `nachher_monate` 12, höchstens 36 (WK2); Vorgabe der
 Abweichungs-Frist 30 Tage (A3). Band und Toleranz sind die der Bezugsbasis (AP-17 U3).

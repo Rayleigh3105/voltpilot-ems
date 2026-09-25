@@ -128,6 +128,19 @@ describe('Dialog-Regeln (M4, E2 = A) — nur Form, entschieden wird an der Route
     });
     expect(M.anfrage(entwurf({ von: '2027-11', bis: '2027-12' }), { herkunft: 'von_hand' }).monate).toBe('2027-11/2027-12');
   });
+  it('Herkunft aus dem Energiemanagement (AP-19 IP-17): die Kennung geht mit, das Wort ist das Kundenwort (SP5)', () => {
+    const f = M.anfrage(entwurf({ wahl: 'ohne', kennzahl: '', wirkungZahl: '' }), { herkunft: 'nichtkonformitaet', herkunftKennung: 'F-2029-0001' });
+    expect(f).toMatchObject({ herkunft: 'nichtkonformitaet', herkunft_kennung: 'F-2029-0001' });
+    expect(M.anfrage(entwurf(), { herkunft: 'audit', herkunftKennung: 'AU-2029-0001' }).herkunft_kennung).toBe('AU-2029-0001');
+    expect(M.anfrage(entwurf(), { herkunft: 'managementbewertung', herkunftKennung: 'BR-2029-0001/B2' }).herkunft_kennung)
+      .toBe('BR-2029-0001/B2');
+    // Energieziel und Einsatz folgen ihrem Verweis — eine mitgegebene Kennung geht nicht an die Route.
+    expect(M.anfrage(entwurf(), { herkunft: 'energieziel', herkunftKennung: 'EZ-2028-0001' })).not.toHaveProperty('herkunft_kennung');
+    expect(M.HERKUNFT_WORT.nichtkonformitaet).toBe('aus der Feststellung');
+    expect(M.HERKUNFT_WORT.audit).toBe('aus dem internen Audit');
+    expect(M.HERKUNFT_WORT.managementbewertung).toBe('aus der Managementbewertung');
+    expect(Object.values(M.HERKUNFT_WORT).join(' ')).not.toMatch(/[Nn]ichtkonformit/);
+  });
   it('der Wortlaut der erwarteten Wirkung ist Pflicht, die Zahl nicht', () => {
     expect(M.pruefen(entwurf({ wirkungWortlaut: '   ' }))).toHaveProperty('wirkungWortlaut');
     expect(M.pruefen(entwurf({ wirkungZahl: '' }))).toEqual({});

@@ -58,7 +58,8 @@ class UemsVerbesserungMigrationTest {
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
             "20260924233000", // AP-18 IP-9: die Maßnahme zitiert Energieziel, Zähler und Vokabular.
-            "20260924235130"); // AP-18 IP-14: die Abweichung zitiert Zähler und Vokabular.
+            "20260924235130", // AP-18 IP-14: die Abweichung zitiert Zähler und Vokabular.
+            "20260925040000"); // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme und weitet das Vokabular.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

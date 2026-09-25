@@ -31,7 +31,10 @@
       "abweichung",
       "energieziel",
       "einsatz",
-      "von_hand"
+      "von_hand",
+      "nichtkonformitaet",
+      "audit",
+      "managementbewertung"
     ],
     "abweichung_zustand": [
       "offen",

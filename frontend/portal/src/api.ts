@@ -2749,7 +2749,9 @@ export interface Kennzahl {
 // ---------------------------------------------------------------------------------------- Maßnahmen (UEMS AP-18)
 
 export type MassnahmeZustand = 'geplant' | 'umgesetzt' | 'bewertet' | 'verworfen';
-export type MassnahmeHerkunft = 'abweichung' | 'energieziel' | 'einsatz' | 'von_hand';
+/** Die Herkunft einer Maßnahme; die letzten drei kommen aus dem Energiemanagement (AP-19 IP-17, Kennung F-/AU-/BR-…/Bn). */
+export type MassnahmeHerkunft =
+  | 'abweichung' | 'energieziel' | 'einsatz' | 'von_hand' | 'nichtkonformitaet' | 'audit' | 'managementbewertung';
 
 /** Ein Verweis der Maßnahme (OpenAPI `MassnahmeVerweis`) — Kennzahl, Bezugsbasis, Einsatz, Energieziel. */
 export interface MassnahmeVerweis {

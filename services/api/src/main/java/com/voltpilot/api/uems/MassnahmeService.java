@@ -68,6 +68,11 @@ public class MassnahmeService {
     private static final String GEPLANT = "geplant";
     private static final Pattern MONAT = Pattern.compile("\\d{4}-(0[1-9]|1[0-2])");
     private static final Pattern ABWEICHUNG = Pattern.compile("AW-[0-9]{4}-[0-9]{4,9}");
+    /** Die Kennungen der Herkünfte aus dem Energiemanagement (AP-19 W4; {@code kennzeichen_muster} des Vertrags). */
+    private static final Map<String, Pattern> ENERGIEMANAGEMENT_HERKUNFT = Map.of(
+            "nichtkonformitaet", Pattern.compile("F-[0-9]{4}-[0-9]{4,9}"),
+            "audit", Pattern.compile("AU-[0-9]{4}-[0-9]{4,9}"),
+            "managementbewertung", Pattern.compile("BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}"));
     private static final DateTimeFormatter TAG = DateTimeFormatter.ofPattern("dd.MM.yyyy");
     /** Die Methoden der Bezugsbasis in Kundenwörtern (SP1, wie {@code BerichtPdf}). */
     private static final Map<String, String> METHODEN = Map.of("verhaeltnis", "Verhältnis",
@@ -196,6 +201,13 @@ public class MassnahmeService {
             }
             case "energieziel" -> (String) verweisPflicht(ziel, "energieziel").get("kennzeichen");
             case "einsatz" -> (String) verweisPflicht(einsatz, "einsatz").get("kennzeichen");
+            case "nichtkonformitaet", "audit", "managementbewertung" -> {
+                if (a.herkunftKennung() == null
+                        || !ENERGIEMANAGEMENT_HERKUNFT.get(herkunft).matcher(a.herkunftKennung()).matches()) {
+                    throw VerbesserungAbgelehnt.anfrage("herkunft_kennung");
+                }
+                yield a.herkunftKennung();
+            }
             default -> {
                 if (a.herkunftKennung() != null) {
                     throw VerbesserungAbgelehnt.anfrage("herkunft_kennung");
@@ -229,6 +241,7 @@ public class MassnahmeService {
         Instant jetzt = kennzahlen.jetzt();
         Messgrundlage m = mg;
         UUID neu = schreiben(() -> transaktion.execute(s -> {
+            herkunftPruefen(herkunft, kennung);
             UUID id = jdbc.queryForObject("INSERT INTO massnahme (tenant_id, titel, verantwortlich_sub, "
                     + "verantwortlich_name, verantwortlich_konto, termin, standort_id, herkunft_art, herkunft_kennung, "
                     + "kennzahl_id, bezugsbasis_id, fassung, ausgangslage, ausgangslage_pruefsumme, einsatz_id, "
@@ -600,6 +613,49 @@ public class MassnahmeService {
                     + "Kundenbereich nicht.", Map.of("feld", "energieziel"));
         }
         return z;
+    }
+
+    /**
+     * W14, FS3: die Herkünfte aus dem Energiemanagement nennen ein sichtbares Objekt (RLS und Standort-Zaun) im richtigen
+     * Zustand, sonst 422 — die Feststellung offen (gesperrt bis zum Ende des Anlegens, damit kein schließender Stand
+     * dazwischenkommt), das interne Audit durchgeführt oder abgeschlossen, der Beschluss n einer freigegebenen
+     * Managementbewertung. Die Managementbewertung hat noch keine Tabelle (AP-19 IP-23): bis dahin ist jede BR-Kennung
+     * unbekannt. Die Abweichung prüft weiter nur ihr Muster — das ist AP-18-Sache (W14).
+     */
+    private void herkunftPruefen(String herkunft, String kennung) {
+        switch (herkunft) {
+            case "nichtkonformitaet" -> {
+                String zustand = zustand("SELECT zustand FROM feststellung WHERE kennzeichen = ? FOR SHARE", kennung);
+                if (!"offen".equals(zustand)) {
+                    throw VerbesserungAbgelehnt.fachlich("feststellung_nicht_offen", "Die Feststellung " + kennung
+                            + " ist abgeschlossen — eine Maßnahme entsteht nur an einer offenen Feststellung.",
+                            Map.of("feld", "herkunft_kennung", "zustand", zustand));
+                }
+            }
+            case "audit" -> {
+                String zustand = zustand("SELECT zustand FROM internes_audit WHERE kennzeichen = ?", kennung);
+                if (!"durchgefuehrt".equals(zustand) && !"abgeschlossen".equals(zustand)) {
+                    throw VerbesserungAbgelehnt.fachlich("audit_nicht_durchgefuehrt", "Das interne Audit " + kennung
+                            + ("abgesagt".equals(zustand) ? " ist abgesagt" : " ist noch nicht durchgeführt")
+                            + " — eine Maßnahme entsteht nur aus einem durchgeführten Audit.",
+                            Map.of("feld", "herkunft_kennung", "zustand", zustand));
+                }
+            }
+            case "managementbewertung" -> throw herkunftUnbekannt(kennung);
+            default -> {
+            }
+        }
+    }
+
+    /** Der Zustand des sichtbaren Objekts mit dieser Kennung, sonst 422 {@code herkunft_kennung}. */
+    private String zustand(String sql, String kennung) {
+        return jdbc.queryForList(sql, String.class, kennung).stream().findFirst()
+                .orElseThrow(() -> herkunftUnbekannt(kennung));
+    }
+
+    private static VerbesserungAbgelehnt herkunftUnbekannt(String kennung) {
+        return VerbesserungAbgelehnt.fachlich("herkunft_kennung", kennung + " gibt es in Ihrem Kundenbereich nicht.",
+                Map.of("feld", "herkunft_kennung"));
     }
 
     private static Map<String, Object> verweisPflicht(Map<String, Object> verweis, String feld) {
