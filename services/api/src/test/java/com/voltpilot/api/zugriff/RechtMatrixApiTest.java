@@ -397,7 +397,8 @@ class RechtMatrixApiTest {
                     + "und standort_id"),
             Map.entry("energiemanagement.ansehen", "lesend — EnergiemanagementPersonenApiTest (IP-6: Personen nur "
                     + "Mandanten-Zaun, Aufgaben nur unternehmensweit), EnergiemanagementDokumentApiTest (IP-7: Zaun "
-                    + "über den Standort des Bezugs)"));
+                    + "über den Standort des Bezugs), EnergiemanagementVerzeichnisApiTest (IP-8: Zaun je Quelle, "
+                    + "Einsicht liest und ruft die CSV ab)"));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {

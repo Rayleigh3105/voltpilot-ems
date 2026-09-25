@@ -12076,6 +12076,50 @@ paths:
               schema: { $ref: "#/components/schemas/EnergiemanagementVerantwortung" }
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/energiemanagement/verzeichnis:
+    get:
+      tags: [energiemanagement]
+      summary: Verzeichnis - jede Entscheidung und jeder Nachweis mit Person, Tag, Fassung oder Nr., Prüfsumme und Ort; auch als CSV (VZ1-VZ4, KS2).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-8). Ein Leser, kein Speicher: er sammelt die Zeilen aller
+        Verzeichnis-Quellen - Dokument-Fassungen und Bekanntmachungen (IP-7), laufende Aufgaben (IP-10) und die Stände,
+        Fassungen und Belege von AP-11/12/16/17/18 - jede über ihren Dienst, im Zaun und mit den Rechten des Aufrufers
+        gelesen, nichts kopiert; was der Aufrufer dort nicht sieht, steht hier nicht, ohne Hinweis. Stichtag ist der
+        Abruf; eine Zeile mit späterem Tag ist noch nicht festgehalten. `gruppe` zeigt nur diese Gruppe, `von`/`bis`
+        filtern den Tag (beide eingeschlossen; eine Zeile ohne Tag fällt dann heraus), `person` (ID einer Person im
+        Energiemanagement) zeigt die Zeilen in ihrem Namen - sie ist „entschieden von“ oder, wo niemand anderes
+        entschieden hat, „eingetragen von“. Eine Gruppe ohne Zeile trägt `satz` „Hier ist noch nichts festgehalten.“
+        und ihre Zeilen des Zuschnitts - nie „fehlt“, keine Zahl über das Ganze. `format=csv` liefert dieselben Zeilen
+        als Datei (UTF-8 mit BOM, CRLF, Trenner `;`): Kopfzeilen `# Stichtag TT.MM.JJJJ HH:MM`, `# <Verantwortungs-Satz>`
+        und die wirksamen Filter, dann die Spalten `Gruppe;Art;Kennzeichen;Titel;Fassung oder Nr.;entschieden von;eingetragen
+        von;Tag;Prüfsumme;Ort` und eine Zeile je Nachweis. Dasselbe Recht wie die Seite, nicht eigens protokolliert.
+      parameters:
+        - in: query
+          name: gruppe
+          schema: { type: string, enum: [grundlagen, verantwortung, risiken_chancen, kompetenz_kommunikation, betrieb_auslegung_beschaffung, bewertung_messplanung, kennzahlen_bezugsbasen, ziele_massnahmen_abweichungen, audits_feststellungen, managementbewertung, berichte] }
+        - in: query
+          name: von
+          schema: { type: string, format: date }
+        - in: query
+          name: bis
+          schema: { type: string, format: date }
+        - in: query
+          name: person
+          schema: { type: string, format: uuid }
+        - in: query
+          name: format
+          schema: { type: string, enum: [json, csv] }
+      responses:
+        "200":
+          description: Ergebnis - JSON oder mit `format=csv` die Datei.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementVerzeichnis" }
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energiemanagement/dokumente:
     get:
       tags: [energiemanagement]
@@ -17533,6 +17577,63 @@ components:
         bezugsbasen_freigaben:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementBezugsbasisFreigabe" }
+    EnergiemanagementVerzeichnisZeile:
+      type: object
+      required: [gruppe, art, kennzeichen, titel, nr, entschieden_von, eingetragen_von, tag, pruefsumme, ort, gruppe_wort, ort_satz]
+      description: >
+        Die Ausgabe der Operation `verzeichnis_zeile` (energiemanagement.md §5). `nr` ist Fassung oder Nr.; was die
+        Quelle nicht trägt, bleibt `null` - nie „fehlt“.
+      properties:
+        gruppe: { type: string }
+        art: { type: string }
+        kennzeichen: { type: string }
+        titel: { type: string }
+        nr: { type: integer, nullable: true }
+        entschieden_von: { type: string, nullable: true }
+        eingetragen_von: { type: string, nullable: true }
+        tag: { type: string, format: date, nullable: true }
+        pruefsumme: { type: string, nullable: true }
+        ort: { type: string, enum: [in_voltpilot, wortlaut_original_beim_kunden, verweis] }
+        gruppe_wort: { type: string }
+        ort_satz: { type: string, description: "„in VoltPilot“, „Wortlaut in VoltPilot, Original bei Ihnen: <Ablage>“ oder „Geführt in Ihrem System: <Ablage>“ (G1)." }
+    EnergiemanagementVerzeichnisZuschnitt:
+      type: object
+      required: [teil, stufe]
+      properties:
+        teil: { type: string }
+        stufe: { type: string, description: Die Stufe des Teils als Wort (G1). }
+    EnergiemanagementVerzeichnisGruppe:
+      type: object
+      required: [gruppe, gruppe_wort, zuschnitt, satz, zeilen]
+      properties:
+        gruppe: { type: string }
+        gruppe_wort: { type: string }
+        zuschnitt:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisZuschnitt" }
+        satz: { type: string, nullable: true, description: "„Hier ist noch nichts festgehalten.“ - nur ohne Zeile." }
+        zeilen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisZeile" }
+    EnergiemanagementVerzeichnisFilter:
+      type: object
+      required: [gruppe, von, bis, person, person_name]
+      properties:
+        gruppe: { type: string, nullable: true }
+        von: { type: string, format: date, nullable: true }
+        bis: { type: string, format: date, nullable: true }
+        person: { type: string, format: uuid, nullable: true }
+        person_name: { type: string, nullable: true }
+    EnergiemanagementVerzeichnis:
+      type: object
+      required: [stichtag, verantwortung, filter, gruppen]
+      properties:
+        stichtag: { type: string, format: date-time, description: Der Abruf in der Zeitzone des Unternehmens, auf die Minute. }
+        verantwortung: { type: string, description: Der Verantwortungs-Satz (SP4). }
+        filter: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisFilter" }
+        gruppen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisGruppe" }
     EnergiemanagementDokumentBezug:
       type: object
       additionalProperties: false

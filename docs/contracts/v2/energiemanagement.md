@@ -22,8 +22,8 @@ aber nicht zum Betrachtungsumfang“. Ein Urteil fällt keine dieser Regeln.
 > **Wer anruft:** noch niemand. `ueberpruefung` rufen die Dokument-Routen (IP-7, Überprüfung beim Abruf), das Auditprogramm,
 > die Feststellung und die Managementbewertung; `wiedervorlage` der Leser `GET /api/v1/energiemanagement/wiedervorlage` (IP-21;
 > er sammelt die fertigen Fristen aus DK5/IA4/FS1/MG7, AP-16 S5, AP-17 F5 und dem Übersichts-Leser von AP-18);
-> `anwendungsbereich_vergleich` der Leser `…/dokumente/{id}/vergleich` (IP-7); `verzeichnis_zeile` das Verzeichnis
-> (IP-8); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
+> `anwendungsbereich_vergleich` der Leser `…/dokumente/{id}/vergleich` (IP-7); `verzeichnis_zeile` jede Quelle des
+> Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
 
 ## 1. Vokabulare, Startwerte, Wörter (geschlossen, in `energiemanagement-vectors.json`)
 
