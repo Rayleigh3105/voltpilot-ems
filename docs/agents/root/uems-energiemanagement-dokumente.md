@@ -1,9 +1,9 @@
 # UEMS-Energiemanagement: Dokumente (AP-19 IP-7)
 
 Neu am 25.09.2026: die Routen über den Dokument-Tabellen aus IP-5 ([Datenhaltung](uems-energiemanagement-datenhaltung.md)).
-Konzept: AP-19 §4.4 DK1–DK8, §5.1, §5.6, R1, R2, W5 (`vp-uems-ap19-fundament/report.md`). Noch keine Fläche (Portal
-IP-9), kein Verzeichnis-Leser (IP-8; die Quelle `DokumentVerzeichnis` steht); Bezug Energieeinsatz, Person und Aufgabe
-seit IP-14 ([Nachweise](uems-energiemanagement-nachweise.md)).
+Konzept: AP-19 §4.4 DK1–DK8, §5.1, §5.6, R1, R2, W5 (`vp-uems-ap19-fundament/report.md`). Die Fläche steht seit IP-9
+([Portal](uems-energiemanagement-portal.md)), der Verzeichnis-Leser seit IP-8 (Quelle `DokumentVerzeichnis`); Bezug
+Energieeinsatz, Person und Aufgabe seit IP-14 ([Nachweise](uems-energiemanagement-nachweise.md)).
 
 | Stelle | Was |
 |---|---|

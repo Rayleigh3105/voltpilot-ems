@@ -8345,6 +8345,243 @@ function protokollFrage(f?: ProtokollAbfrage): string {
   return s ? `?${s}` : '';
 }
 
+// ------------------------------------------------------------------ Energiemanagement (UEMS AP-19 IP-6/IP-7/IP-8)
+
+/** Wer eingetragen hat (ein Konto) und wann — `EnergiemanagementEingetragen` in openapi.yaml. */
+export interface EnergiemanagementEingetragen {
+  akteur: { sub: string | null; name: string; rolle: string | null; art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall' };
+  am: string;
+}
+/** Eine Person im Energiemanagement — auch ohne Konto (PA1). */
+export interface EnergiemanagementPerson {
+  id: string;
+  name: string;
+  funktion: string;
+  kuerzel: string | null;
+  organisation: string | null;
+  konto: { sub: string; name: string | null; zustand: string | null } | null;
+  seit: string | null;
+  bis: string | null;
+  zustand: 'aktiv' | 'beendet';
+  beendet_begruendung: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementPersonKurz {
+  id: string;
+  name: string;
+  funktion: string;
+  kuerzel: string | null;
+  mit_konto: boolean;
+}
+export interface EnergiemanagementPersonAnlegen {
+  name: string;
+  funktion: string;
+  kuerzel?: string | null;
+  organisation?: string | null;
+  konto_sub?: string | null;
+  seit?: string | null;
+}
+/** Ein Verweis auf ein Original beim Kunden (G3) — nie die Datei, höchstens ihre im Browser gebildete Prüfsumme. */
+export interface EnergiemanagementBeleg {
+  bezeichnung?: string | null;
+  ablage?: string | null;
+  kennung?: string | null;
+  adresse?: string | null;
+  sha256?: string | null;
+}
+export interface EnergiemanagementVerweis extends EnergiemanagementBeleg {
+  fassungsangabe?: string | null;
+  datum?: string | null;
+}
+export interface EnergiemanagementZuordnung {
+  id: string;
+  aufgabe: string;
+  wort: string;
+  aufgabe_wortlaut: string | null;
+  person: EnergiemanagementPersonKurz;
+  vertretung: EnergiemanagementPersonKurz | null;
+  gilt_ab: string;
+  gilt_bis: string | null;
+  zustand: 'laufend' | 'beendet';
+  entschieden_von: EnergiemanagementPersonKurz | null;
+  begruendung: string;
+  beleg: EnergiemanagementBeleg | null;
+  beschluss_kennung: string | null;
+  beendet_begruendung: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementAufgaben {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+  aufgaben: { aufgabe: string; wort: string; laufend: EnergiemanagementZuordnung[]; satz: string | null }[];
+  zuordnungen: EnergiemanagementZuordnung[];
+}
+export interface EnergiemanagementAufgabeZuordnen {
+  aufgabe: string;
+  aufgabe_wortlaut?: string | null;
+  person_id: string;
+  gilt_ab: string;
+  vertretung_person_id?: string | null;
+  entschieden_von?: string | null;
+  begruendung: string;
+  beleg?: EnergiemanagementBeleg | null;
+  beschluss_kennung?: string | null;
+}
+export interface EnergiemanagementVerzeichnisZeile {
+  gruppe: string;
+  art: string;
+  kennzeichen: string;
+  titel: string;
+  nr: number | null;
+  entschieden_von: string | null;
+  eingetragen_von: string | null;
+  tag: string | null;
+  pruefsumme: string | null;
+  ort: 'in_voltpilot' | 'wortlaut_original_beim_kunden' | 'verweis';
+  gruppe_wort: string;
+  ort_satz: string;
+}
+export interface EnergiemanagementVerzeichnis {
+  stichtag: string;
+  verantwortung: string;
+  filter: { gruppe: string | null; von: string | null; bis: string | null; person: string | null; person_name: string | null };
+  gruppen: {
+    gruppe: string;
+    gruppe_wort: string;
+    zuschnitt: { teil: string; stufe: string }[];
+    satz: string | null;
+    zeilen: EnergiemanagementVerzeichnisZeile[];
+  }[];
+}
+export interface EnergiemanagementVerzeichnisFilter {
+  gruppe?: string | null;
+  von?: string | null;
+  bis?: string | null;
+  person?: string | null;
+}
+export interface EnergiemanagementStandortKurz {
+  id: string;
+  kurzzeichen: string | null;
+  name: string | null;
+}
+export interface EnergiemanagementAusschluss {
+  art: 'standort' | 'anlage' | 'prozess';
+  verweis: string;
+  begruendung: string;
+}
+export interface EnergiemanagementAnwendungsbereich {
+  standorte: EnergiemanagementStandortKurz[];
+  traeger: string[];
+  ausschluesse: EnergiemanagementAusschluss[];
+}
+export interface EnergiemanagementUeberpruefung {
+  abruf: string;
+  faellig_am: string | null;
+  basis: string | null;
+  fassung: number | null;
+  tage: number | null;
+  satz: string | null;
+  grund: 'nachweis' | 'keine_fassung' | null;
+}
+export interface EnergiemanagementFassung {
+  nr: number;
+  form: 'wortlaut' | 'verweis';
+  wortlaut: string | null;
+  verweis: EnergiemanagementVerweis | null;
+  anwendungsbereich: EnergiemanagementAnwendungsbereich | null;
+  status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt' | 'abgeloest';
+  begruendung: string | null;
+  beschluss_kennung: string | null;
+  pruefsumme: string | null;
+  vieraugen: boolean;
+  entschieden_von: EnergiemanagementPersonKurz | null;
+  entschieden_am: string | null;
+  freigabe_begruendung: string | null;
+  freigabe: EnergiemanagementEingetragen | null;
+  zweite_person: EnergiemanagementEingetragen | null;
+  ablehnung_begruendung: string | null;
+  freigegeben_am: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementDokumentEintrag {
+  id: number;
+  art: 'bekannt_gemacht' | 'geprueft_bleibt' | 'aufgehoben' | 'kommentar';
+  fassung: number | null;
+  am: string | null;
+  person: EnergiemanagementPersonKurz | null;
+  entschieden_von: EnergiemanagementPersonKurz | null;
+  kreis: string | null;
+  weg: string | null;
+  weg_wortlaut: string | null;
+  begruendung: string | null;
+  beschluss_kennung: string | null;
+  kommentar: string | null;
+  satz: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementDokumentKurz {
+  id: string;
+  kennzeichen: string;
+  art: string;
+  art_wort: string;
+  klasse: 'vorgabe' | 'nachweis';
+  titel: string;
+  /** Seit IP-14 auch Energieeinsatz, Person und Aufgabe; `standort` ist der Zaun. */
+  bezug: {
+    art: string;
+    standort: EnergiemanagementStandortKurz | null;
+    energieeinsatz?: { id: string; kennzeichen: string | null; name: string | null } | null;
+    person?: EnergiemanagementPersonKurz | null;
+    aufgabe?: { id: string; aufgabe: string | null; wort: string | null; person: EnergiemanagementPersonKurz | null } | null;
+  };
+  zustand: 'entwurf' | 'gueltig' | 'aufgehoben';
+  gueltige_fassung: number | null;
+  ueberpruefung: EnergiemanagementUeberpruefung | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementDokument extends EnergiemanagementDokumentKurz {
+  ueberpruefung_monate: number | null;
+  beleg: EnergiemanagementBeleg | null;
+  fassungen: EnergiemanagementFassung[];
+  eintraege: EnergiemanagementDokumentEintrag[];
+  saetze: { kopf: string | null; ueberpruefung: string | null; freigabe_gesperrt: string | null };
+  verlauf: { id: number; art: string; begruendung: string | null; akteur: EnergiemanagementEingetragen['akteur']; zeit: string }[];
+}
+export interface EnergiemanagementDokumentAnlegen {
+  art: string;
+  titel: string;
+  bezug: { art: 'unternehmen' | 'standort'; standort_id?: string | null };
+  ueberpruefung_monate?: number | null;
+  beleg?: EnergiemanagementBeleg | null;
+}
+export interface EnergiemanagementFassungEntwerfen {
+  form: 'wortlaut' | 'verweis';
+  wortlaut?: string | null;
+  verweis?: EnergiemanagementVerweis | null;
+  anwendungsbereich?: { standort_ids: string[]; traeger: string[]; ausschluesse?: EnergiemanagementAusschluss[] } | null;
+  begruendung?: string | null;
+  beschluss_kennung?: string | null;
+}
+export interface EnergiemanagementEntscheid {
+  entschieden_von?: string | null;
+  entschieden_am?: string | null;
+  begruendung?: string | null;
+}
+export interface EnergiemanagementVergleich {
+  abruf: string;
+  fassung: number | null;
+  anwendungsbereich: EnergiemanagementAnwendungsbereich | null;
+  betrachtungsumfang: { fassung: number; gueltig_ab: string; standorte: EnergiemanagementStandortKurz[]; traeger: string[]; begruendung: string | null } | null;
+  vergleich: {
+    standorte_nur_im_anwendungsbereich: EnergiemanagementStandortKurz[];
+    standorte_nur_im_betrachtungsumfang: EnergiemanagementStandortKurz[];
+    traeger_nur_im_anwendungsbereich: string[];
+    traeger_nur_im_betrachtungsumfang: string[];
+    deckungsgleich: boolean;
+  } | null;
+  saetze: string[];
+}
+
 export const api = {
   korrekturen: (standortId: string) => request<KorrekturDetail[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/korrekturen`),
   korrektur: (kennung: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}`),
@@ -10470,6 +10707,55 @@ export const api = {
     request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}/verwerfen`, {
       method: 'POST', body: JSON.stringify({ begruendung }),
     }),
+  // ------------------------------------------------------------------ Energiemanagement (UEMS AP-19 IP-6/IP-7/IP-8)
+  /** IP-6 (PA1): die Personen im Energiemanagement — aktive zuerst; Recht `energiemanagement.ansehen`. */
+  energiemanagementPersonen: () => request<{ personen: EnergiemanagementPerson[] }>('/api/v1/energiemanagement/personen'),
+  /** IP-6 (PA1): Person erfassen, auch ohne Konto; Recht `energiemanagement.verwalten` am Unternehmen. */
+  energiemanagementPersonAnlegen: (body: EnergiemanagementPersonAnlegen) =>
+    request<{ person: EnergiemanagementPerson }>('/api/v1/energiemanagement/personen', { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-6 (PA2, PA3): die Aufgaben am Tag mit der Leitung — nur unternehmensweit. */
+  energiemanagementAufgaben: (tag?: string) =>
+    request<EnergiemanagementAufgaben>(`/api/v1/energiemanagement/aufgaben${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  /** IP-6 (PA2): Aufgabe zuordnen — bei `unternehmensleitung` ohne „entschieden von“. */
+  energiemanagementAufgabeZuordnen: (body: EnergiemanagementAufgabeZuordnen) =>
+    request<EnergiemanagementZuordnung>('/api/v1/energiemanagement/aufgaben', { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-8 (VZ1–VZ4): das Verzeichnis zum Abruf — ein Leser über alle Quellen, gefiltert nach Gruppe, Tag, Person. */
+  energiemanagementVerzeichnis: (filter: EnergiemanagementVerzeichnisFilter = {}) => {
+    const q = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => !!e[1])).toString();
+    return request<EnergiemanagementVerzeichnis>(`/api/v1/energiemanagement/verzeichnis${q ? `?${q}` : ''}`);
+  },
+  /** IP-8 (KS2): dasselbe Verzeichnis als CSV-Datei (`format=csv`) — ein Abruf, nichts wird verschickt. */
+  energiemanagementVerzeichnisCsv: async (filter: EnergiemanagementVerzeichnisFilter = {}): Promise<Blob> => {
+    const q = new URLSearchParams([...Object.entries(filter).filter((e): e is [string, string] => !!e[1]), ['format', 'csv']]).toString();
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}/api/v1/energiemanagement/verzeichnis?${q}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** IP-7 (DK1): die Dokumente im Zaun, je mit der Überprüfung beim Abruf. */
+  energiemanagementDokumente: () => request<{ dokumente: EnergiemanagementDokumentKurz[] }>('/api/v1/energiemanagement/dokumente'),
+  energiemanagementDokument: (id: string) => request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}`),
+  /** IP-7 (DK7, W5): Anwendungsbereich neben dem Betrachtungsumfang der energetischen Bewertung — ohne Urteil. */
+  energiemanagementVergleich: (id: string) => request<EnergiemanagementVergleich>(`/api/v1/energiemanagement/dokumente/${id}/vergleich`),
+  energiemanagementDokumentAnlegen: (body: EnergiemanagementDokumentAnlegen) =>
+    request<EnergiemanagementDokument>('/api/v1/energiemanagement/dokumente', { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-7 (DK2, G3): Fassung entwerfen — Wortlaut oder Verweis; ein offener Entwurf wird überschrieben. */
+  energiemanagementFassungEntwerfen: (id: string, body: EnergiemanagementFassungEntwerfen) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-7 (DK3): Freigabe beantragen — nur mit Vier-Augen. */
+  energiemanagementFassungBeantragen: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/beantragen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-7 (DK3, DK4): freigeben — mit „entschieden von“; bei Vier-Augen bestätigt eine zweite Person. */
+  energiemanagementFassungFreigeben: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, { method: 'POST', body: JSON.stringify(body) }),
 };
 
 /** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */

@@ -50,7 +50,7 @@ import {
   type Route,
 } from './nav';
 import type { AnlageSurface, DeepViewId } from './surface';
-import { UEMS_ENERGIEBILANZ, UEMS_ZIELE_UND_MASSNAHMEN } from './glossar';
+import { UEMS_ENERGIEBILANZ, UEMS_ENERGIEMANAGEMENT, UEMS_ZIELE_UND_MASSNAHMEN } from './glossar';
 import type { FunktionZustand } from './uemsFunktion';
 
 /**
@@ -466,7 +466,8 @@ export type EbenenBereichId =
   | 'kennzahlen'
   | 'berichte'
   | 'bewertung'
-  | 'verbesserung';
+  | 'verbesserung'
+  | 'energiemanagement';
 
 export interface EbenenBereich {
   key: EbenenBereichId;
@@ -504,6 +505,11 @@ export interface EbenenLesemodell {
    * `/me`, am Unternehmen oder an einem Standort)? Fehlt der Wert, gibt es den Bereich „Ziele und Maßnahmen“ nicht.
    */
   verbesserung?: boolean | null;
+  /**
+   * UEMS AP-19 IP-9: darf die Person das Energiemanagement ansehen (`energiemanagement.ansehen` aus `/me`, am
+   * Unternehmen oder an einem Standort)? Fehlt der Wert, gibt es den Bereich „Energiemanagement“ nicht.
+   */
+  energiemanagement?: boolean | null;
 }
 
 const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
@@ -519,6 +525,7 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   berichte: { key: 'berichte', label: 'Berichte', icon: 'file-text' },
   bewertung: { key: 'bewertung', label: 'Bewertung', icon: 'list' },
   verbesserung: { key: 'verbesserung', label: UEMS_ZIELE_UND_MASSNAHMEN, icon: 'list' },
+  energiemanagement: { key: 'energiemanagement', label: UEMS_ENERGIEMANAGEMENT, icon: 'file-text' },
 };
 
 /** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
@@ -573,6 +580,8 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
     if (irgendwoGemessen && lm.bewertung === true) out.push('bewertung');
     // AP-18 IP-8 (§6.3): „Ziele und Maßnahmen“ neben Kennzahlen, Berichte, Bewertung — nur mit `verbesserung.ansehen`.
     if (irgendwoGemessen && lm.verbesserung === true) out.push('verbesserung');
+    // AP-19 IP-9 (§6.3): „Energiemanagement“ als neunte Seite, nach derselben Regel mit `energiemanagement.ansehen`.
+    if (irgendwoGemessen && lm.energiemanagement === true) out.push('energiemanagement');
   } else {
     const standort = lebenderStandort(lm, ort.standortId);
     if (standort) {
@@ -619,6 +628,7 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
         berichte: pageRoute('portfolio-berichte'),
         bewertung: pageRoute('portfolio-bewertung'),
         verbesserung: pageRoute('portfolio-verbesserung'),
+        energiemanagement: pageRoute('portfolio-energiemanagement'),
       }
     : {
         uebersicht: standortRoute(ort.standortId),
@@ -763,6 +773,7 @@ export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBerei
   if (page === 'portfolio-berichte') return 'berichte';
   if (page === 'portfolio-bewertung') return 'bewertung';
   if (page === 'portfolio-verbesserung') return 'verbesserung';
+  if (page === 'portfolio-energiemanagement') return 'energiemanagement';
   return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;
 }
 

@@ -56,6 +56,8 @@ import {
   massnahmeRoute,
   abweichungRoute,
   verbesserungRoute,
+  energiemanagementRoute,
+  dokumentRoute,
   messstelleRoute,
   standortRoute,
   transitionKind,
@@ -65,6 +67,7 @@ import {
 import { PAGE_CHUNK } from './pageChunks';
 import { darfAnsehen as darfEnergieeinsaetzeSehen } from './bewertung';
 import { darfAnsehen as darfVerbesserungSehen } from './energieziele';
+import { darfAnsehen as darfEnergiemanagementSehen } from './energiemanagementPortal';
 import { transitionToRoute } from './pageTransition';
 import { hatGeldWelt } from './portfolioHistorie';
 import { geldAnlagen, type UebersichtEbene } from './uebersicht';
@@ -193,6 +196,9 @@ const BewertungPage = lazy(() =>
 );
 const VerbesserungBereich = lazy(() =>
   PAGE_CHUNK['portfolio-verbesserung']().then((m) => ({ default: m.VerbesserungBereich })),
+);
+const EnergiemanagementBereich = lazy(() =>
+  PAGE_CHUNK['portfolio-energiemanagement']().then((m) => ({ default: m.EnergiemanagementBereich })),
 );
 const PortfolioMesswerte = lazy(() =>
   PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
@@ -1200,6 +1206,8 @@ function UnifiedPortal() {
     bewertung: selbst ? darfEnergieeinsaetzeSehen(selbst) : null,
     // AP-18 IP-8: „Ziele und Maßnahmen“ nur mit `verbesserung.ansehen`.
     verbesserung: selbst ? darfVerbesserungSehen(selbst) : null,
+    // AP-19 IP-9: „Energiemanagement“ nur mit `energiemanagement.ansehen`.
+    energiemanagement: selbst ? darfEnergiemanagementSehen(selbst) : null,
   };
   const ebenenKacheln = ebenenOrtHier ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell) : [];
   const standortBereich = standortBereichFuer(route, ebenenLesemodell);
@@ -1227,6 +1235,8 @@ function UnifiedPortal() {
   const bewertungDa = ebenenFakten ? bereicheHier.includes('bewertung') : null;
   // AP-18 IP-8: der Reiter „Ziele und Maßnahmen“ nach derselben Regel mit `verbesserung.ansehen`.
   const verbesserungDa = ebenenFakten ? bereicheHier.includes('verbesserung') : null;
+  // AP-19 IP-9: der Reiter „Energiemanagement“ nach derselben Regel mit `energiemanagement.ansehen`.
+  const energiemanagementDa = ebenenFakten ? bereicheHier.includes('energiemanagement') : null;
   const leisteHier = ebenenKacheln.map((k) => k.key);
   // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Gebäude · Anlagen · Messstellen);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
@@ -1425,6 +1435,7 @@ function UnifiedPortal() {
             showBerichte={berichteDa === true}
             showBewertung={bewertungDa === true}
             showVerbesserung={verbesserungDa === true}
+            showEnergiemanagement={energiemanagementDa === true}
             leiste={leisteHier}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
@@ -1500,6 +1511,16 @@ function UnifiedPortal() {
               onKennzahl={(id) => navigate(kennzahlRoute(id))}
               onMassnahme={(id) => navigate(massnahmeRoute(id))}
               onAbweichung={(id) => navigate(abweichungRoute(id))}
+            />
+          )}
+          {/* UEMS AP-19 IP-9: „Unternehmen › Energiemanagement“ (Verzeichnis, Dokumente, Zuschnitt-Hilfe) und die Seite
+              eines Dokuments. */}
+          {page === 'portfolio-energiemanagement' && (
+            <EnergiemanagementBereich
+              reiter={route.energiemanagementReiter ?? 'verzeichnis'}
+              dokumentId={route.dokumentId ?? null}
+              onReiter={(r) => navigate(energiemanagementRoute(r))}
+              onDokument={(id) => navigate(dokumentRoute(id))}
             />
           )}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}

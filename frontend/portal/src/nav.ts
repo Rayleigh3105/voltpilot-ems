@@ -28,6 +28,7 @@ export type PageId =
   | 'portfolio-berichte'
   | 'portfolio-bewertung'
   | 'portfolio-verbesserung'
+  | 'portfolio-energiemanagement'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
   | 'standort'
@@ -167,6 +168,13 @@ export interface Route {
   /** UEMS AP-18 IP-18: WELCHE Abweichung die Seite zeigt (`#/portfolio/verbesserung/abweichungen/{id}`). */
   abweichungId?: string;
   /**
+   * Nur bei `page === 'portfolio-energiemanagement'` (UEMS AP-19 IP-9): der Reiter des Bereichs „Energiemanagement“
+   * (`#/portfolio/energiemanagement/dokumente`, `…/zuschnitt` die Zuschnitt-Hilfe; absent = Verzeichnis) und WELCHES
+   * Dokument die Seite zeigt (`#/portfolio/energiemanagement/dokumente/{id}`).
+   */
+  energiemanagementReiter?: EnergiemanagementReiter;
+  dokumentId?: string;
+  /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
    * AP-04 IP-8, `#/portfolio/messstellen/{id}` bzw. `#/standort/{sid}/messstellen/{id}`).
@@ -271,6 +279,10 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // UEMS AP-18 IP-8: „Unternehmen › Ziele und Maßnahmen“ (`#/portfolio/verbesserung`, ein Energieziel unter
   // `…/verbesserung/energieziele/{id}`). Der Reiter steht nur mit `verbesserung.ansehen` (`PortfolioTabs.showVerbesserung`).
   { id: 'portfolio-verbesserung', label: 'Ziele und Maßnahmen', icon: 'list' },
+  // UEMS AP-19 IP-9: „Unternehmen › Energiemanagement“ (`#/portfolio/energiemanagement`, ein Dokument unter
+  // `…/energiemanagement/dokumente/{id}`). Der Reiter steht nur mit `energiemanagement.ansehen`
+  // (`PortfolioTabs.showEnergiemanagement`).
+  { id: 'portfolio-energiemanagement', label: 'Energiemanagement', icon: 'file-text' },
   { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
@@ -660,6 +672,11 @@ export function parseRoute(hash: string): Route {
       if (segments[2] === 'massnahmen' || segments[2] === 'abweichungen') return verbesserungRoute(segments[2]);
       return verbesserungRoute();
     }
+    if (segments[1] === 'energiemanagement') {
+      if (segments[2] === 'dokumente' && segments[3]) return dokumentRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'dokumente' || segments[2] === 'zuschnitt') return energiemanagementRoute(segments[2]);
+      return energiemanagementRoute();
+    }
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
@@ -790,7 +807,15 @@ export function hashForRoute(route: Route): string {
               : route.verbesserungReiter && route.verbesserungReiter !== 'energieziele'
                 ? `/${route.verbesserungReiter}`
                 : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}`;
+    const energiemanagement =
+      route.page !== 'portfolio-energiemanagement'
+        ? ''
+        : route.dokumentId
+          ? `/dokumente/${encodeURIComponent(route.dokumentId)}`
+          : route.energiemanagementReiter && route.energiemanagementReiter !== 'verzeichnis'
+            ? `/${route.energiemanagementReiter}`
+            : '';
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
   if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
@@ -859,6 +884,23 @@ export function massnahmeRoute(massnahmeId: string): Route {
 /** Route der Seite einer Abweichung (UEMS AP-18 IP-18): `#/portfolio/verbesserung/abweichungen/{id}` — nur am Unternehmen. */
 export function abweichungRoute(abweichungId: string): Route {
   return { page: 'portfolio-verbesserung', siteId: null, sub: null, verbesserungReiter: 'abweichungen', abweichungId };
+}
+
+/**
+ * Die Reiter des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, §6.3) — heute Verzeichnis und Dokumente, die übrigen
+ * fünf kommen mit ihren Paketen; `zuschnitt` ist die Zuschnitt-Hilfe „Was VoltPilot führt — was bei Ihnen liegt.“,
+ * eine Seite ohne eigenen Reiter.
+ */
+export type EnergiemanagementReiter = 'verzeichnis' | 'dokumente' | 'zuschnitt';
+
+/** Route des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9): `#/portfolio/energiemanagement[/dokumente|/zuschnitt]`. */
+export function energiemanagementRoute(reiter: EnergiemanagementReiter = 'verzeichnis'): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, ...(reiter === 'verzeichnis' ? {} : { energiemanagementReiter: reiter }) };
+}
+
+/** Route der Seite eines Dokuments (UEMS AP-19 IP-9): `#/portfolio/energiemanagement/dokumente/{id}` — nur am Unternehmen. */
+export function dokumentRoute(dokumentId: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'dokumente', dokumentId };
 }
 
 /** Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6): `#/portfolio/bewertung/{id}` — nur am Unternehmen. */

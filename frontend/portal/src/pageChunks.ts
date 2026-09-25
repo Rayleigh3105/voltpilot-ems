@@ -39,6 +39,7 @@ export const PAGE_CHUNK = {
   'portfolio-berichte': () => import('./pages/BerichtePage'),
   'portfolio-bewertung': () => import('./pages/BewertungPage'),
   'portfolio-verbesserung': () => import('./pages/VerbesserungBereich'),
+  'portfolio-energiemanagement': () => import('./pages/EnergiemanagementBereich'),
   'portfolio-messwerte': () => import('./pages/PortfolioMesswerte'),
   'portfolio-erloese': () => import('./pages/PortfolioErloese'),
   standort: () => import('./pages/StandortUebersichtPage'),

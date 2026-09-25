@@ -1911,6 +1911,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/PortfolioCockpit.tsx', // alt
   'components/VerlaufExplorer.tsx', // alt
   'components/WidgetGrid.tsx', // alt
+  'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
@@ -1922,6 +1923,7 @@ const KENNZAHL_BESTAND: string[] = [
   'pages/BezugsgroessenPage.tsx', // neu: AP-09 Kennzahl-Nenner
   'pages/DataPages.tsx', // alt
   'portfolioCockpit.ts', // alt
+  'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
   'test/kennzahlAnlegenFixtures.ts', // neu: die Fixture spiegelt genau diese Ablehnung
   'test/leistungsvergleichFixtures.ts', // neu: die Ablehnung `basis_fehlt` und die Namen der Kennzahlen (AP-17 IP-24)
   'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
@@ -3097,7 +3099,16 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
    * `feststellungen.ts` …) prüft er auf die Wörter, ohne die zwei Sätze zu verlangen. Die Maßnahmen-Seite bleibt eine
    * Fläche des AP-18-Blocks: sie zeigt die Herkunft „Feststellung F-…“ (SP5), der Fall dazu steht unten.
    */
-  const ENERGIEMANAGEMENT_FLAECHEN: string[] = [];
+  const ENERGIEMANAGEMENT_FLAECHEN: string[] = [
+    // IP-9: Bereich (mit Reiter „Dokumente“), Verzeichnis, Dokument-Seite, Dialoge (Anlegen, Fassung/Verweis, Freigabe,
+    // Person anlegen), Vergleich Anwendungsbereich ⟷ Betrachtungsumfang, Zuschnitt-Hilfe.
+    'pages/EnergiemanagementBereich.tsx',
+    'components/VerzeichnisTabelle.tsx',
+    'pages/DokumentSeite.tsx',
+    'components/DokumentDialoge.tsx',
+    'components/AnwendungsbereichVergleich.tsx',
+    'components/ZuschnittHilfe.tsx',
+  ];
   const ENERGIEMANAGEMENT_NAMENSMUSTER =
     /(?:^|\/)(?:Energiemanagement|Energiepolitik|Anwendungsbereich|Dokument|Verzeichnis|Wiedervorlage|InternesAudit|Audit|Feststellung|Managementbewertung|Beschluss|Wirksamkeit|Zuschnitt|Nachweis)[^/]*\.tsx?$/i;
   const energiemanagementDateien = () =>
