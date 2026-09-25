@@ -4,8 +4,8 @@ import {
   gattungVon,
   gesicht,
   IO_MODUL_HELD_SATZ,
-  IO_MODUL_REGISTER_SATZ,
   KEINE_MESSWERTE,
+  typWort,
   type GesichtInput,
 } from './geraetGesicht';
 import type { ControlStatus, CurtailmentStatus, SiteEntity, SiteSource } from './api';
@@ -137,6 +137,11 @@ describe('jede Gattung beantwortet ihre EIGENE erste Frage', () => {
     expect(g.held.titel).toBe('Jetzt');
     expect(g.held.kacheln.map((k) => k.label))
       .toEqual(['Solarstrom', 'Ladestand', 'Netz', 'Haus']);
+    // ⚠ Der Freigabe-Stand wohnt in „Gerät & Verbindung" - auf der Bühne stand
+    // er ein zweites Mal (Befund der Browser-Prüfung).
+    expect(g.held.zeilen.some((z) => /Freigabe/.test(z))).toBe(false);
+    // Die Grafik liest DIESELBEN Zahlen wie die Kacheln.
+    expect(g.held.werte).toMatchObject({ pvKw: 23.9, netzKw: 3.4, hausKw: 7.6, ladestandPct: 76 });
     // ⚠ DIESELBE Ableitung wie Cockpit und Steuerungs-Karte - nie ein eigener Satz.
     expect(g.held.satz).toMatch(/Speicher/);
     // Die Sektions-Folge führt mit dem Jetzt, die Verbindung steht hinten.
@@ -145,14 +150,26 @@ describe('jede Gattung beantwortet ihre EIGENE erste Frage', () => {
       .toBeGreaterThan(g.sektionen.indexOf('befehle'));
   });
 
-  it("B' · ohne gesteuerte Komponente sagt der Held, dass nur gelesen wird", () => {
+  it("B' · ohne gesteuerte Komponente sagt der Held, was das Gerät TUT - „nur gelesen\" trägt der Kopf", () => {
     const g = gesicht(input({
       komponenten: [komponente({ role: 'pv', control: false })],
       src: src({ pvKw: 8.3 }),
     }));
     expect(g.gattung).toBe('wechselrichter');
-    expect(g.held.satz).toMatch(/nur gelesen/);
-    expect(g.held.satzTon).toBe('off');
+    // DERSELBE Satz wie am PV-Melder - eine Ableitung, nicht zwei.
+    expect(g.held.satz).toBe(`Erzeugt gerade 8,3${NBSP}kW.`);
+    expect(g.held.satz).not.toMatch(/nur gelesen/);
+    expect(g.held.satzTon).toBe('ok');
+  });
+
+  it("B' · ein ungesteuerter Speicher-Wechselrichter erfindet keinen Speicher-Satz", () => {
+    const g = gesicht(input({
+      komponenten: [komponente({ role: 'storage', control: false, reading: { value: 55, unit: '%', caption: null } })],
+      src: src({ pvKw: 2.1 }),
+    }));
+    expect(g.gattung).toBe('wechselrichter-speicher');
+    expect(g.held.satz).toBeNull();
+    expect(g.held.kacheln.find((k) => k.gross)?.wert).toBe(`55,0${NBSP}%`);
   });
 
   it('C · der PV-Melder führt mit Erzeugung, Nennleistung und Auslastung', () => {
@@ -201,9 +218,26 @@ describe('jede Gattung beantwortet ihre EIGENE erste Frage', () => {
     expect(g.gattung).toBe('zaehler');
     expect(g.held.satz).toMatch(/speist gerade/);
     expect(g.held.kacheln[0].wort).toBe('Einspeisung');
-    expect(g.held.hinweis).toMatch(/maßgeblich/);
+    // „maßgeblich" und „nur Messung" trägt der KOPF als Abzeichen - die Bühne
+    // wiederholt sie nicht (Befund der Browser-Prüfung).
+    expect(g.held.werte.massgeblich).toBe(true);
+    expect(g.held.hinweis).toBeNull();
+    expect(g.held.zeilen).toEqual([]);
     // Ein Zähler bekommt KEINEN Befehls-Kasten - an ihn geht kein Befehl.
     expect(g.sektionen).not.toContain('befehle');
+  });
+
+  it('D · ein Unterzähler sagt, dass die maßgebliche Messung woanders liegt', () => {
+    const g = gesicht(input({
+      art: 'quelle',
+      rolle: 'grid-meter',
+      communication: 'shelly_http',
+      komponenten: [komponente({ role: 'grid', primary: false })],
+      src: src({ powerKw: 2.1 }),
+    }));
+    expect(g.held.werte.massgeblich).toBe(false);
+    expect(g.held.satz).toBe(`Misst gerade 2,1${NBSP}kW.`);
+    expect(g.held.hinweis).toBe('Die maßgebliche Messung Ihrer Bilanz liefert ein anderes Gerät.');
   });
 
   it('E · der Verbraucher nennt seinen Grund NUR mit einer belegten Regel', () => {
@@ -465,11 +499,9 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
     }));
     expect(g.gattung).toBe('zaehler');
     expect(g.sektionen).not.toContain('befehle');
-    // Der Grund verschwindet nicht, er zieht in die Diagnose (§4.6).
-    expect(g.entfallen.find((e) => e.id === 'befehle')?.grund).toBeTruthy();
-    // Und ein Zähler wird von niemandem gesteuert.
-    expect(g.steuerung).toBe(false);
-    expect(g.entfallen.find((e) => e.id === 'steuerung')?.grund).toBeTruthy();
+    // S5: kein Kasten, der erklärt, dass er leer ist - die Bausteine fallen
+    // still weg, und der Kopf sagt „nur Messung".
+    expect(g.held.zeilen).toEqual([]);
   });
 
   it('E · die Wallbox führt mit ihrer Ladeleistung und ihrer Erfüllung', () => {
@@ -538,9 +570,8 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
     }));
     expect(g.held.zeilen.some((z) => /angenommen|ohne Leistungsmessung|nicht gemessen/i.test(z)))
       .toBe(true);
-    // Ein HTTP-Gerät hat keine Modbus-Register - die Sektion entfällt MIT Grund.
+    // Ein HTTP-Gerät hat keine Modbus-Register - der Teil entfällt still (S5).
     expect(g.sektionen).not.toContain('register');
-    expect(g.entfallen.find((e) => e.id === 'register')?.grund).toBeTruthy();
   });
 
   it('⚠ E · ohne gemeldete Erfüllung behauptet das Blatt keine', () => {
@@ -567,10 +598,9 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
     }));
     expect(g.gattung).toBe('ladepunkt');
     expect(g.sektionen).not.toContain('register');
-    expect(g.entfallen.find((e) => e.id === 'register')?.grund).toMatch(/OCPP|Register/i);
   });
 
-  it('⚠ G · ein Eigenbau hat KEINE Software, die wir lesen könnten', () => {
+  it('⚠ G · ein Eigenbau zeigt seine SELBST definierten Kanäle', () => {
     const g = gesicht(input({
       art: 'quelle',
       geraetId: 'src-eigen',
@@ -587,8 +617,8 @@ describe('Stufe 4 · je Gattung genau das, was sie braucht', () => {
       ] as never,
     }));
     expect(g.eigenbau).toBe(true);
-    expect(g.sektionen).not.toContain('software');
-    expect(g.entfallen.find((e) => e.id === 'software')?.grund).toBeTruthy();
+    // „nur gelesen" steht als Abzeichen im Kopf - nie zusätzlich auf der Bühne.
+    expect(g.held.zeilen).toEqual([]);
     // Seine SELBST definierten Kanäle sind sein Gesicht. ⚠ Der Name kommt aus
     // der geteilten `channelLabel`, die für einen unbekannten Kanal auf den
     // ROHNAMEN zurückfällt - statt ihn zu verstecken oder zu erfinden.
@@ -619,15 +649,16 @@ describe('das I/O-Modul (Ebyte M31)', () => {
 
   it('zeigt keine leeren Leistungs-Kacheln, sondern den Weg zu seinen Zustaenden', () => {
     const g = gesicht(io);
+    expect(g.ioModul).toBe(true);
+    expect(typWort(g)).toBe('I/O-Modul');
     expect(g.gattung).toBe('geraet');
     expect(g.held.kacheln).toEqual([]);
     expect(g.held.hinweis).toBe(IO_MODUL_HELD_SATZ);
     expect(g.held.hinweis).not.toBe(KEINE_MESSWERTE);
   });
 
-  it('sperrt den freien Registerzugriff mit dem eigenen Grund', () => {
+  it('bietet keinen freien Registerzugriff - seine Kanäle schaltet der Klemmenplan', () => {
     const g = gesicht(io);
     expect(g.sektionen).not.toContain('register');
-    expect(g.entfallen.find((e) => e.id === 'register')?.grund).toBe(IO_MODUL_REGISTER_SATZ);
   });
 });

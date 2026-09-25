@@ -493,23 +493,23 @@
     "title": "Verbindung und Zustand der Box",
     "file": "box.png",
     "width": 1192,
-    "height": 1200,
+    "height": 1177,
     "alt": "Verbindung und Zustand der Box. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 7.8,
-        "y": 16.92,
+        "x": 10.07,
+        "y": 13.62,
         "text": "Prüfen Sie Namen und Geräte-ID der Box."
       },
       {
-        "x": 7.97,
-        "y": 49.06,
-        "text": "Der letzte Kontakt beschreibt die Aktualität der Verbindung."
+        "x": 10.07,
+        "y": 18.44,
+        "text": "Der Punkt neben dem Namen zeigt die Verbindung und wie alt der letzte Kontakt ist."
       },
       {
-        "x": 69.74,
-        "y": 56.88,
-        "text": "Die Befehlsansicht unterscheidet Aktionen und ihre Rückmeldungen."
+        "x": 63.61,
+        "y": 23.53,
+        "text": "Die Aktivität unterscheidet Aktionen und ihre Rückmeldungen."
       }
     ]
   },
@@ -517,22 +517,22 @@
     "title": "Gerät und Rückmeldungen",
     "file": "geraete.png",
     "width": 1192,
-    "height": 1200,
+    "height": 1172,
     "alt": "Gerät und Rückmeldungen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 7.8,
-        "y": 16.92,
+        "x": 10.07,
+        "y": 13.35,
         "text": "Diese Ansicht gehört zum einzelnen Gerät hinter der Box."
       },
       {
-        "x": 30.96,
-        "y": 49.59,
+        "x": 34.39,
+        "y": 23.88,
         "text": "Der Ladestand ist eine Messgröße; die Einheit steht direkt am Wert."
       },
       {
-        "x": 69.74,
-        "y": 69.4,
+        "x": 63.61,
+        "y": 42.04,
         "text": "Gesendete Befehle und ihre Rückmeldung helfen bei der Prüfung der Wirkung."
       }
     ]

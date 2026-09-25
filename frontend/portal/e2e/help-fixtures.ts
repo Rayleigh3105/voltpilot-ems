@@ -145,7 +145,20 @@ export function installHelpFixtures() {
       signals: { hasStorage: true, hasPv: true, hasControllableConsumer: true, hasEvCharger: true, activeStrategyNodeTypes: ['strategy_peak_shaving'], plantKind: site.plantKind, hasLeistungspreis: true } }),
     entityStrategies: result({}), cockpitLayout: result({ vorgabe: null, eigen: null }), tenantCockpitLayout: result({ vorgabe: null, eigen: null }),
     siteInterventions: result({ batteryOverride: null, automationPaused: false, interventions: [] }), suggestionStates: result({ states: {} }),
-    siteRuleEvents: result([]), commandHistory: result({ entries: [], commands: [], total: 0 }), measurementPoints: result([]), componentTemplates: result([]), siteComponentTemplates: result([]),
+    siteRuleEvents: result([]),
+    // Der Verlauf ist GERÄTEBEZOGEN wie am Server: Box und Hybrid tragen den laufenden Speicher-Befehl,
+    // jedes andere Gerät wird nur gelesen.
+    commandHistory: async (_siteId: string, opts: { device?: string | null; entity?: string | null } = {}) => {
+      const device = opts.device ?? null;
+      const speicher = (device == null && !opts.entity) || device === 'VP-DEMO-0001' || device === 'inverter';
+      return structuredClone({ recordingSince: '2026-08-01T00:00:00Z', accuracySeconds: 15, from: DAY, to: NOW, entityId: null, entityLabel: null,
+        deviceRef: device, deviceIsBox: device == null ? null : device === 'VP-DEMO-0001', writes: speicher, truncated: false,
+        total: speicher ? 1 : 0, matched: speicher ? 1 : 0, control: null, curtailment: null, commands: [], entries: speicher ? [{
+          id: 1, stream: 'batterie', kind: 'periode', eventKind: null, startedAt: '2026-09-10T08:00:00Z', endedAt: null, mode: 'plan', path: 'remote',
+          whyKind: 'fahrplan', whyRef: null, commandedKwFirst: 2.2, commandedKwLast: 2.2, commandedKwMin: 2.2, commandedKwMax: 2.2, verdict: 'bestaetigt',
+          cycles: null, cyclesConfirmed: null, cyclesNoAnswer: null, cyclesMismatch: null, controlEnabled: true, released: true, foreignInfluence: false,
+          entityId: null, source: 'cloud_abgeleitet', detail: null }] : [] });
+    }, measurementPoints: result([]), componentTemplates: result([]), siteComponentTemplates: result([]),
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
     siteSources: result([]), edgeVersions: result([]), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),

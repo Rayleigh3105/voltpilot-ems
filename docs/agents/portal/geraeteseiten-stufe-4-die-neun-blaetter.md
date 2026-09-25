@@ -1,5 +1,11 @@
 # Geräteseiten Stufe 4: DIE NEUN BLÄTTER — je Gerätetyp genau das, was er braucht
 
+> ⚠ **Seit dem [Kern „Ein Blick, eine Antwort"](geraeteseiten-kern-ein-blick-eine-antwort.md)**
+> rendert der Held als Bühne (große Zahl, Satz, Grafik), die Aktionszeile ist dem Schalter der
+> Steuerung gewichen (K1), und entfallene Sektionen nennen ihren Grund nicht mehr in einer
+> Diagnose (S5). Die Gattungs-Regeln unten (`gattungVon`, `eigenbau`, stabile Kachel-Schlüssel,
+> D3-Zeilen) gelten weiter.
+
 Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 12).
 
 

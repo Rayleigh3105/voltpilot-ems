@@ -39,6 +39,7 @@ import {
   ROLLEN_WORT,
   boxZustand,
   chargerGeraetId,
+  istIoModul,
   lanZeile,
   lokaleBoxUrl,
   privateLanAddress,
@@ -319,7 +320,9 @@ export function boxGeraeteListe(
     out.push({
       geraetId: l.id,
       name: technicalDeviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ?? 'Gerät',
-      art: l.kind === 'inverter' ? 'Hauptgerät' : (ROLLEN_WORT[l.role ?? ''] ?? 'Gerät'),
+      art: l.kind === 'inverter'
+        ? 'Hauptgerät'
+        : istIoModul(l.communication) ? 'I/O-Modul' : (ROLLEN_WORT[l.role ?? ''] ?? 'Gerät'),
       zustand: z.detail ? `${z.wort} · ${z.detail}` : z.wort,
       ton: z.ton,
     });

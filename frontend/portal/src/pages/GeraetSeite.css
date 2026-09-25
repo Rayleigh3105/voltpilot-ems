@@ -135,6 +135,11 @@
   min-width: 0;
 }
 
+.vp-geraet-einrichtung {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
 .vp-geraet-sec-sub {
   margin-left: auto;
   font-size: 0.8rem;

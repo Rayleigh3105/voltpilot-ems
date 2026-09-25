@@ -19,6 +19,7 @@ import {
   EDGE_BOX_HINT,
   GUARD_FOOTNOTE,
   componentActions,
+  ioBindungenAus,
   plantModel,
   reconnectCandidates,
   type ComponentActions,
@@ -316,9 +317,9 @@ export function AnlagenModellSection({
 
   const model = useMemo(
     () => (data && dataSiteId === site.id
-      ? plantModel(data.entities, topology, data.localSetup, sources)
+      ? plantModel(data.entities, topology, data.localSetup, sources, ioBindungenAus(consumers))
       : null),
-    [data, dataSiteId, site.id, topology, sources],
+    [data, dataSiteId, site.id, topology, sources, consumers],
   );
 
   useEffect(() => {
@@ -1239,13 +1240,13 @@ function ComponentRow({
           )}
           {/* §5.3: die BATTERIE hat kein eigenes Blatt - sie ist der
               Speicher-Teil des Hybrid-Gesichts. Der Absprung markiert dort
-              genau ihre Kachel (`?abschnitt=jetzt&kachel=speicher`); ohne
+              genau ihre Kachel (`?abschnitt=buehne&kachel=speicher`); ohne
               Geräteseite gibt es ihn nicht (die `registerZugang`-Regel). */}
           {c.role === 'storage' && geraetHref && (
             <span className="vp-am-actions">
               <a
                 className="vp-am-action"
-                href={abschnittHash(geraetHref, 'jetzt', SPEICHER_KACHEL)}
+                href={abschnittHash(geraetHref, 'buehne', SPEICHER_KACHEL)}
               >
                 <Icon name="battery" size={13} /> {SPEICHER_BLATT_LABEL}
               </a>

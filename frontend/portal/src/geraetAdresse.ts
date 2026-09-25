@@ -44,3 +44,19 @@ export function chargePointIdOf(geraetId: string | null): string | null {
   const id = geraetId.slice(3);
   return id ? id : null;
 }
+
+/**
+ * Die Kennung eines Verbrauchers an einem I/O-Ausgang im Pfad: `io-<Entität>`
+ * (K4). Er hat keine eigene Quelle an der Box - geschaltet wird er über das
+ * Relais eines Moduls -, bekommt aber trotzdem seine eigene Seite.
+ */
+export function ioVerbraucherGeraetId(entityId: string): string {
+  return `io-${entityId}`;
+}
+
+/** Rückrichtung: `io-…` → die Entität des Verbrauchers; null sonst. */
+export function ioVerbraucherIdOf(geraetId: string | null): string | null {
+  if (!geraetId || !geraetId.startsWith('io-')) return null;
+  const id = geraetId.slice(3);
+  return id ? id : null;
+}

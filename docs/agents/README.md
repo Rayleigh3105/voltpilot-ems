@@ -215,7 +215,8 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Erlöse „Neu modern" (Variante C) · P6 — Portfolio › Erlöse in derselben Grammatik](portal/erloese-neu-modern-variante-c-p6-portfol.md)
 - [Erlöse „Neu modern" (Variante C) · P7 — die ABNAHME, und was sie gelehrt hat](portal/erloese-neu-modern-variante-c-p7-die-abn.md)
 - [Geräteseiten Stufe 0: EIN Rückweg, und der Katalog gehört dem GERÄT](portal/geraeteseiten-stufe-0-ein-rueckweg-und-d.md)
-- [Geräteseiten Stufe 1: DER RAHMEN, durch den JEDE Geräteseite fährt](portal/geraeteseiten-stufe-1-der-rahmen-durch-d.md)
+- [Geräteseiten: der KERN — ein Blick, eine Antwort (löst den Rahmen ab)](portal/geraeteseiten-kern-ein-blick-eine-antwort.md)
+- [Geräteseiten Stufe 1: DER RAHMEN, durch den JEDE Geräteseite fährt](portal/geraeteseiten-stufe-1-der-rahmen-durch-d.md) — ⚠ abgelöst
 - [Geräteseiten Stufe 3a: „Beobachtete Register" — die Messbibliothek, richtig herum](portal/geraeteseiten-stufe-3a-beobachtete-regis.md)
 - [Geräteseiten Stufe 4: DIE NEUN BLÄTTER — je Gerätetyp genau das, was er braucht](portal/geraeteseiten-stufe-4-die-neun-blaetter.md)
 - [Bewegung — das Motion-Programm P0–P7 im Detail](portal/bewegung.md)

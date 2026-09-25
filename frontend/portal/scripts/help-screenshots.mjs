@@ -50,6 +50,9 @@ try {
         if (await knopf.count()) await knopf.first().click();
         await page.waitForTimeout(300);
       }
+      // Die Seite lädt ihre Daten nach dem ersten Bild - gewartet wird auf den
+      // ersten Anker, nie auf eine feste Zeit, die auf einem langsamen Rechner fehlt.
+      await page.locator(spec.points[0].selector).first().waitFor({ timeout: 15000 }).catch(() => {});
       if (errors.length) throw new Error(errors.join('\n'));
       const rootNode = spec.viewportOnly ? null : await firstVisible(page, spec.root ?? 'main');
       const origin = rootNode ? await rootNode.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height }; }) : { x: 0, y: 0, ...viewport };

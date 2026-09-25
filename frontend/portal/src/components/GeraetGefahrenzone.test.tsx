@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GeraetGefahrenzone } from './GeraetGefahrenzone';
+import { GeraetGefahrenzone, gefahrMenueLabel } from './GeraetGefahrenzone';
 import { api } from '../api';
 import { entitiesApi } from '../entitiesApi';
 import { plantModel } from '../komponenten';
@@ -55,24 +55,31 @@ afterEach(() => {
   delete window.matchMedia;
 });
 
-describe('GeraetGefahrenzone — der eine Löschort der Geräteseite', () => {
-  it('renders the danger zone card with the delete action for a producer', () => {
+describe('GeraetGefahrenzone — die Rückfrage hinter „⋯ › Entfernen" (V7)', () => {
+  it('nennt den Menü-Eintrag je Zustand - und keinen, wo es keinen Weg gibt', () => {
+    expect(gefahrMenueLabel(zustandOf(entity('p', 'producer', { label: 'Wechselrichter Scheune', edgeSourceId: 'src-1' }))))
+      .toBe('Komponente entfernen …');
+    expect(gefahrMenueLabel(zustandOf(entity('b', 'battery-hybrid', {
+      capabilities: { measure: [{ channel: 'soc_pct', unit: '%' }] },
+    })))).toBe('Batterie am Standort abmelden …');
+    // Eine plattform-eigene Grundausstattung: KEIN Knopf ins Leere.
+    expect(gefahrMenueLabel(zustandOf(entity('netz', 'grid-meter', { label: 'Netzanschluss', sourceKind: 'composed' }))))
+      .toBeNull();
+    expect(gefahrMenueLabel(null)).toBeNull();
+  });
+
+  it('zeigt nichts, solange das Menü die Rückfrage nicht öffnet', () => {
     const z = zustandOf(entity('p', 'producer', { label: 'Wechselrichter Scheune', edgeSourceId: 'src-1' }));
-    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" onDone={() => {}} />);
-    expect(screen.getByLabelText('Gefahrenzone')).toBeTruthy();
-    expect(screen.getByText('Gefahrenzone')).toBeTruthy();
-    // No dialog until the customer opens it.
+    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" offen={false} onSchliessen={() => {}} onDone={() => {}} />);
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByRole('button', { name: /Komponente entfernen/ })).toBeTruthy();
   });
 
   it('two-step confirm: the button stays locked until the name is typed', async () => {
     const remove = vi.spyOn(entitiesApi, 'removeComponent').mockResolvedValue(undefined);
     const onDone = vi.fn();
     const z = zustandOf(entity('p', 'producer', { label: 'Wechselrichter Scheune', edgeSourceId: 'src-1' }));
-    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" onDone={onDone} />);
+    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" offen onSchliessen={() => {}} onDone={onDone} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Komponente entfernen/ }));
     const dialog = screen.getByRole('dialog');
     // The honest consequence list is present.
     const folgen = within(dialog).getByTestId('gz-folgen');
@@ -92,21 +99,16 @@ describe('GeraetGefahrenzone — der eine Löschort der Geräteseite', () => {
     await vi.waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
-  it('battery: shows reason AND way — no dead button — and unregisters at the site', async () => {
+  it('battery: states the reason in the confirmation and unregisters at the site', async () => {
     const unregister = vi.spyOn(api, 'unregisterBattery').mockResolvedValue([]);
     const onDone = vi.fn();
     const z = zustandOf(entity('b', 'battery-hybrid', {
       capabilities: { measure: [{ channel: 'soc_pct', unit: '%' }] },
     }));
-    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Speicher" onDone={onDone} />);
-
-    // The reason is stated, and the way is an ENABLED button (never disabled).
-    expect(screen.getByText(/Grundausstattung/)).toBeTruthy();
-    const way = screen.getByRole('button', { name: /Batterie am Standort abmelden/ });
-    expect(way).toBeEnabled();
-    fireEvent.click(way);
+    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Speicher" offen onSchliessen={() => {}} onDone={onDone} />);
 
     const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Grundausstattung/)).toBeTruthy();
     expect(within(dialog).getByText('Die Optimierung plant ohne diesen Speicher.')).toBeTruthy();
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Speicher' } });
     fireEvent.click(within(dialog).getByRole('button', { name: /Batterie endgültig abmelden/ }));
@@ -115,18 +117,27 @@ describe('GeraetGefahrenzone — der eine Löschort der Geräteseite', () => {
     await vi.waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 
-  it('a synthesized base row shows only the reason — no action button', () => {
+  it('a synthesized base row renders nothing - its reason lives in Technik › Einrichtung', () => {
     const z = zustandOf(entity('netz', 'grid-meter', { label: 'Netzanschluss', sourceKind: 'composed' }));
-    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Netzanschluss" onDone={() => {}} />);
-    expect(screen.getByText(/Grundausstattung/)).toBeTruthy();
-    expect(screen.queryByRole('button')).toBeNull();
+    const { container } = render(
+      <GeraetGefahrenzone siteId="s1" zustand={z} name="Netzanschluss" offen onSchliessen={() => {}} onDone={() => {}} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('cancel closes through the host - the page owns the open state', () => {
+    const onSchliessen = vi.fn();
+    const z = zustandOf(entity('p', 'producer', { label: 'Wechselrichter Scheune', edgeSourceId: 'src-1' }));
+    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" offen onSchliessen={onSchliessen} onDone={() => {}} />);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Abbrechen/ }));
+    expect(onSchliessen).toHaveBeenCalled();
   });
 
   it('mobile: the confirmation is a bottom-sheet with the same consequence list', () => {
     phone(true);
     const z = zustandOf(entity('p', 'producer', { label: 'Wechselrichter Scheune', edgeSourceId: 'src-1' }));
-    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" onDone={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /Komponente entfernen/ }));
+    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" offen onSchliessen={() => {}} onDone={() => {}} />);
     const dialog = screen.getByRole('dialog');
     // The phone form is the bottom-sheet building block, and it carries the list.
     expect(dialog.closest('.vp-bs-wrap')).toBeTruthy();

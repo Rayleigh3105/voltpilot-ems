@@ -36,7 +36,6 @@ import type {
   CurtailmentStatus,
   CurtailmentStatus as Curtailment,
   Device,
-  EdgeVersion,
   EntityLocalSetup,
   EntityStrategy,
   SiteComponentRow,
@@ -46,14 +45,14 @@ import type {
 } from './api';
 import { deviceLiveStatus } from './api';
 import { deviceName, technicalDeviceName } from './entityLabel';
-import { fmtNum, fmtRelative } from './format';
+import { fmtNum, fmtRelative, NBSP } from './format';
 import { WAECHTER_LABEL } from './curtailment';
 import { chargerName, type SiteCharging } from './ladepunkte';
 import { NO_DATA } from './nodata';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
 import { deviceState } from './komponenten';
 import { isPrivateHost } from './selbstbau';
-import { chargePointIdOf } from './geraetAdresse';
+import { chargePointIdOf, ioVerbraucherIdOf } from './geraetAdresse';
 
 /** Welche ART von Gerät die Seite zeigt. */
 /**
@@ -112,8 +111,20 @@ export interface GeraetKopf {
   zustand: { wort: string; ton: GeraetTon; detail: string | null };
   /** „⚡ VoltPilot steuert den Speicher"; null wenn nichts gesteuert wird. */
   steuerAbzeichen: string | null;
-  /** „Einrichtung: im Portal" / „… an Ihrer Box"; null solange unbekannt. */
-  pflegeOrt: string | null;
+  /**
+   * Hersteller und Modell („Deye SUN-12K-SG04LP3-EU") - die zweite Hälfte der
+   * Kopf-Unterzeile („Typ · Hersteller Modell"). `null`, wenn der Titel schon
+   * genau das ist: derselbe Name zweimal wäre Lärm.
+   */
+  modell: string | null;
+  /**
+   * K4: WO ein Verbraucher am Relais eines Moduls hängt („Ausgang DO1 ·
+   * I/O-Modul Keller") - er hat kein eigenes Modell, und genau diese Angabe
+   * beantwortet im Kopf „welches Gerät ist das?". Null für jedes andere Gerät.
+   */
+  anschluss: string | null;
+  /** Der Name der VoltPilot-Box, über die dieses Gerät gelesen wird. */
+  boxName: string;
 }
 
 /** Das Ergebnis: was die Seite rendert. */
@@ -154,9 +165,14 @@ export interface GeraetSeiteView {
   bms: Zeile[];
   /** G · Steuerungs-Bezüge. */
   steuerung: Zeile[];
-  /** H · Software. */
+  /**
+   * H · Software - nur, was das Gerät WIRKLICH über sich meldet (die Firmware
+   * einer Säule). S3: „liest Ihre Box nicht aus" war ein Satz über Nichts.
+   */
   software: Zeile[];
-  /** I · Diagnose (Aufklapper). */
+  /** Technik › Einrichtung: wo gepflegt wird und in welcher Fassung (V2). */
+  einrichtung: Zeile[];
+  /** Technik › Rohdaten. */
   diagnose: Zeile[];
 }
 
@@ -181,7 +197,6 @@ export interface GeraetSeiteInput {
   components: SiteComponents | null;
   control: ControlStatus | null;
   curtailment: CurtailmentStatus | null;
-  edgeVersions: EdgeVersion[] | null;
   charging: SiteCharging | null;
   /** `GET /entity-strategies` - welche Regeln eine Komponente anfassen. */
   strategies: Record<string, EntityStrategy[]> | null;
@@ -287,12 +302,12 @@ export function lanZeile(device: Device | undefined, now: number): Zeile {
   };
 }
 
-/** Der Satz, der die fehlende Verbindungs-Historie ehrlich benennt. */
-export const KEIN_VERBINDUNGS_VERLAUF =
-  'Einen längeren Verlauf der Verbindung zeichnet VoltPilot heute nicht auf.';
-
 /** Die k3-F4-Zeile: dieses Gerät wird nur gelesen. */
 export const NUR_GELESEN = 'VoltPilot steuert dieses Gerät nicht — es wird nur gelesen.';
+
+/** Der Not-Aus der Box - er wird nur genannt, wenn er AN ist (K3). */
+export const NOT_AUS_LABEL = 'Not-Aus an der Box';
+export const NOT_AUS_AN = 'an — VoltPilot steuert nicht';
 
 const HEALTH_TON: Record<ComponentHealth, GeraetTon> = {
   ok: 'ok',
@@ -316,6 +331,17 @@ export const ART_WORT: Record<GeraetArt | 'box', string> = {
   ladepunkt: 'Ladesäule',
 };
 
+/** Die Kommunikation eines I/O-Moduls (Ebyte M31). */
+export const IO_MODUL_KOMMUNIKATION = 'ebyte_modbus_tcp';
+
+/**
+ * Ist dieses Gerät ein I/O-Modul? EINE Regel für Box-Liste und Geräteseite -
+ * seine gemeldete Rolle ist „consumer", es ist aber selbst kein Verbraucher.
+ */
+export function istIoModul(communication: string | null | undefined): boolean {
+  return (communication ?? '').trim() === IO_MODUL_KOMMUNIKATION;
+}
+
 /** Die Rollen-Wörter der gemeldeten Quellen (`localSetup.role`). */
 export const ROLLEN_WORT: Record<string, string> = {
   'pv-generation': 'PV-Wechselrichter',
@@ -335,6 +361,7 @@ const COMM_WORT: Record<string, string> = {
   fronius_solar_api: 'Solar-API über das Netzwerk',
   goe_http_api: 'go-e über das Netzwerk',
   shelly_http: 'Shelly über das Netzwerk',
+  ebyte_modbus_tcp: 'Modbus über das Netzwerk',
   ocpp: 'OCPP 1.6J — die Säule wählt VoltPilot an',
   self_build: 'Modbus über das Netzwerk (selbst eingerichtet)',
 };
@@ -353,7 +380,9 @@ function str(v: unknown): string | null {
 }
 
 /** Box- und Säulen-Adressen wohnen in `geraetAdresse.ts` (Einstiegs-Bündel). */
-export { boxOf, boxRefOf, chargePointIdOf, chargerGeraetId } from './geraetAdresse';
+export {
+  boxOf, boxRefOf, chargePointIdOf, chargerGeraetId, ioVerbraucherGeraetId, ioVerbraucherIdOf,
+} from './geraetAdresse';
 
 /**
  * Hat dieses Gerät des Anlagen-Modells eine eigene Seite?
@@ -494,7 +523,9 @@ function lesetakt(connection: Record<string, unknown> | null | undefined): strin
   const transport =
     ((connection?.transport as Record<string, unknown> | undefined) ?? connection) ?? null;
   const s = num(connection?.interval_s) ?? num(transport?.interval_s);
-  return s == null ? null : `alle ${s} s`;
+  // Zahl und Einheit brechen nie auseinander - die Zeile steht jetzt auch im
+  // schmalen Kurztext von „Gerät & Verbindung".
+  return s == null ? null : `alle ${s}${NBSP}s`;
 }
 
 /**
@@ -540,8 +571,29 @@ function verbindungsWeg(
       : unit == null
         ? null
         : `Modbus-Adresse ${unit}`,
-    takt: takt == null ? null : `alle ${takt} s`,
+    takt: takt == null ? null : `alle ${takt}${NBSP}s`,
   };
+}
+
+/**
+ * Die Modell-Zeile des Kopfs: Hersteller und Modell, wie die Box sie meldet -
+ * sonst der technische Name, wenn der Titel ein eigener ist. Null, wenn sie
+ * nur den Titel wiederholte.
+ *
+ * ⚠ Der technische Name ist zuerst der Box-Name des Geräts; trägt der Titel
+ * genau ihn, verschwieg der Kopf bisher „Deye SUN-12K". Hersteller und Modell
+ * sind eine eigene Auskunft und stehen deshalb vor dem Namen.
+ */
+function kopfModell(
+  titel: string,
+  technicalTitle: string,
+  setup: { brand?: string | null; model?: string | null } | null,
+): string | null {
+  const markeModell = setup
+    ? technicalDeviceName({ edgeLabel: null, brand: setup.brand ?? null, model: setup.model ?? null })
+    : null;
+  if (markeModell && markeModell !== titel) return markeModell;
+  return titel !== technicalTitle ? technicalTitle : null;
 }
 
 /** Die Zeile „Einrichtung" - WO gepflegt wird (Einheitsmodell Stufe 1/2). */
@@ -574,7 +626,9 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       kennung: input.geraetId ?? input.ref,
       zustand: { wort: 'unbekannt', ton: 'off', detail: null },
       steuerAbzeichen: null,
-      pflegeOrt: null,
+      modell: null,
+      anschluss: null,
+      boxName: input.ref,
     },
     verbindung: [],
     verbindungLeer: null,
@@ -587,6 +641,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     bms: [],
     steuerung: [],
     software: [],
+    einrichtung: [],
     diagnose: [],
   });
 
@@ -608,11 +663,28 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       'Diese Adresse nennt kein Gerät an Ihrer Box. Ihre Box selbst hat eine eigene Seite.',
     );
   }
-  if (!setup && !charger) {
+  // K4: ein Verbraucher am Relais-AUSGANG eines I/O-Moduls hat keine eigene
+  // Quelle an der Box - er wird über das Modul geschaltet und hat trotzdem
+  // seine eigene Seite. Erkannt wird er nur über `plantModel` (die Bindung aus
+  // seinem Profil), nie geraten.
+  const ioEntity = !setup && !charger ? ioVerbraucherIdOf(input.geraetId) : null;
+  const ioKomponenten = ioEntity
+    ? (model?.components.filter((c) => c.entityId === ioEntity && c.io) ?? [])
+    : [];
+  const ioAusgang = ioKomponenten[0]?.io ?? null;
+  if (!setup && !charger && !ioAusgang) {
     return leer(
-      'Dieses Gerät meldet sich an Ihrer Box gerade nicht. Sobald es wieder Daten liefert, erscheint hier seine Seite.',
+      ioEntity
+        ? 'Dieser Verbraucher hängt an keinem Ausgang eines I/O-Moduls mehr.'
+        : 'Dieses Gerät meldet sich an Ihrer Box gerade nicht. Sobald es wieder Daten liefert, erscheint hier seine Seite.',
     );
   }
+  // Das Modul, über dessen Relais geschaltet wird - sein Zustand ist der des
+  // Ausgangs, seine Anbindung die des Verbrauchers.
+  const modulSetup = ioAusgang ? localSetup.find((l) => l.id === ioAusgang.modulGeraetId) : undefined;
+  const modulName = ioAusgang
+    ? model?.devices.find((d) => d.id === ioAusgang.modulGeraetId)?.label ?? 'I/O-Modul'
+    : null;
 
   const art: GeraetArt = charger
     ? 'ladepunkt'
@@ -633,7 +705,9 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     ? (charger.entityId
         ? (model?.components.filter((c) => c.entityId === charger.entityId) ?? [])
         : [])
-    : (input.geraetId
+    : ioAusgang
+      ? ioKomponenten
+      : (input.geraetId
         ? (model?.devices.find((d) => d.id === input.geraetId)?.componentIds
             .map((cid) => model?.components.find((c) => c.id === cid))
             .filter((c): c is PlantComponent => c != null) ?? [])
@@ -641,10 +715,13 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   const entityIds = new Set(komponenten.map((c) => c.entityId));
   const componentRow = componentRowOf(input.components, entityIds, input.geraetId);
 
-  // Der gemeldete Ist-Zustand dieses Geräts (`/sources`).
-  const src = input.geraetId
-    ? sources.find((s) => s.sourceId === input.geraetId)
-    : undefined;
+  // Der gemeldete Ist-Zustand dieses Geräts (`/sources`) - am Ausgang eines
+  // Moduls der des MODULS: es meldet, was sein Relais tut (K4).
+  const src = ioAusgang
+    ? sources.find((s) => s.sourceId === ioAusgang.modulGeraetId)
+    : input.geraetId
+      ? sources.find((s) => s.sourceId === input.geraetId)
+      : undefined;
 
   // ------------------------------------------------------------------
   // Kopf
@@ -652,15 +729,25 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   const boxLabel = box ? deviceName({ storedLabel: box.name }) || box.externalRef : input.ref;
   const technicalTitle = charger
     ? chargerName(charger)
-    : (technicalDeviceName({
-        edgeLabel: setup?.label ?? null,
-        brand: setup?.brand ?? null,
-        model: setup?.model ?? null,
-      }) ?? 'Gerät');
-  const titel = charger ? technicalTitle : (componentRow?.label?.trim() || technicalTitle);
+    : ioAusgang
+      // Am Ausgang eines Moduls ist der Verbraucher selbst das Gerät - sein
+      // Name ist der seiner Komponente, nie der des Moduls.
+      ? komponenten[0].label
+      : (technicalDeviceName({
+          edgeLabel: setup?.label ?? null,
+          brand: setup?.brand ?? null,
+          model: setup?.model ?? null,
+        }) ?? 'Gerät');
+  const titel = charger || ioAusgang
+    ? technicalTitle
+    : (componentRow?.label?.trim() || technicalTitle);
 
-  const artWort = geraeteArtWort(art, setup?.role ?? null, komponenten);
-  const unterzeile = `${titel !== technicalTitle ? `${technicalTitle} · ` : ''}${artWort} an Ihrer VoltPilot-Box ${boxLabel}`;
+  const artWort = ioAusgang
+    ? ROLLEN_WORT.consumer
+    : geraeteArtWort(art, setup?.role ?? null, komponenten);
+  const unterzeile = ioAusgang
+    ? `${artWort} am Ausgang DO${ioAusgang.kanal} von ${modulName} an Ihrer VoltPilot-Box ${boxLabel}`
+    : `${titel !== technicalTitle ? `${technicalTitle} · ` : ''}${artWort} an Ihrer VoltPilot-Box ${boxLabel}`;
 
   const zustand = charger
     ? {
@@ -670,7 +757,10 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       }
     : quellenZustand(src, now);
 
-  const gesteuert = komponenten.filter((c) => c.control);
+  // K4: die Verbraucher an den Relais eines Moduls werden gesteuert, das
+  // MODUL selbst bekommt keinen Befehl - auf seiner Seite zählen sie nicht
+  // (die Bühne nennt sie). Auf der Seite des Verbrauchers ist er es selbst.
+  const gesteuert = komponenten.filter((c) => c.control && (ioAusgang != null || !c.io));
   const steuerAbzeichen =
     gesteuert.length === 0
       ? null
@@ -687,10 +777,9 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     kennung: charger ? charger.chargePointId : input.geraetId,
     zustand,
     steuerAbzeichen,
-    // Die Pflege-Herkunft beschreibt die KOMPONENTEN-Konfiguration; ein
-    // Ladepunkt hat keine, also behauptet die Seite dort auch keine.
-    pflegeOrt:
-      art === 'ladepunkt' ? null : pflegeOrtWort(input.components?.componentAuthority),
+    modell: kopfModell(titel, technicalTitle, charger || ioAusgang ? null : setup ?? null),
+    anschluss: ioAusgang ? `Ausgang DO${ioAusgang.kanal} · ${modulName}` : null,
+    boxName: boxLabel,
   };
 
   // ------------------------------------------------------------------
@@ -705,21 +794,15 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       wert: COMM_WORT.ocpp,
       detail: 'Die Säule baut die Verbindung auf; VoltPilot verteilt nur die Leistung.',
     });
-    verbindung.push({ label: 'Kennung', wert: charger.chargePointId, mono: true });
-    verbindung.push({
-      label: 'Letzte Meldung',
-      wert: uhrzeit(charger.lastSeen) ?? NO_DATA,
-      detail: alter(charger.lastSeen, now),
-      ton: zustand.ton,
-    });
-    verbindung.push({
-      label: 'Zustand',
-      wert: zustand.wort,
-      detail: KEIN_VERBINDUNGS_VERLAUF,
-      ton: zustand.ton,
-    });
+    // S6/V1: Zustand, letzte Meldung und Kennung stehen NICHT mehr hier - der
+    // Live-Punkt im Kopf trägt Zustand und Datenalter, die Kennung wohnt in
+    // Technik › Rohdaten. Dieselbe Aussage dreimal war der Befund.
   } else {
-    const weg = verbindungsWeg(componentRow, setup);
+    if (ioAusgang) {
+      verbindung.push({ label: 'Geschaltet über', wert: `${modulName} · Ausgang DO${ioAusgang.kanal}` });
+    }
+    // K4: am Ausgang eines Moduls ist die Anbindung die des MODULS.
+    const weg = ioAusgang ? verbindungsWeg(null, modulSetup) : verbindungsWeg(componentRow, setup);
     if (weg.anbindung || weg.adresse) {
       if (weg.anbindung) verbindung.push({ label: 'Anbindung', wert: weg.anbindung });
       if (weg.adresse) {
@@ -735,20 +818,15 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       verbindungLeer =
         'Dieses Gerät meldet keine Verbindungsdaten — dafür braucht Ihre Box einen neueren Stand.';
     }
-    verbindung.push({
-      label: 'Letzte Messung',
-      wert: uhrzeit(src?.readAt) ?? NO_DATA,
-      detail: zustand.detail,
-      ton: zustand.ton,
-    });
-    verbindung.push({
-      label: 'Zustand',
-      wert: zustand.wort,
-      detail: KEIN_VERBINDUNGS_VERLAUF,
-      ton: zustand.ton,
-    });
+  }
+  verbindung.push({ label: 'Gelesen über', wert: `VoltPilot-Box ${boxLabel}` });
+
+  // V2: WO gepflegt wird und in welcher Fassung - für Installateur und
+  // Support, nicht für den Blick des Kunden (Technik › Einrichtung).
+  const einrichtung: Zeile[] = [];
+  if (!charger) {
     const stand = fassungsSatz(input.components, componentRow);
-    if (stand) verbindung.push({ label: 'Einrichtung', wert: stand });
+    if (stand) einrichtung.push({ label: 'Einrichtung', wert: stand });
   }
 
   // ------------------------------------------------------------------
@@ -808,22 +886,23 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // ------------------------------------------------------------------
   const steuerung: Zeile[] = [];
   {
-    if (gesteuert.length === 0) {
-      steuerung.push({ label: 'Steuerung', wert: NUR_GELESEN, ton: 'off' });
-    } else {
-      steuerung.push({
-        label: 'VoltPilot steuert',
-        wert: gesteuert.map((c) => c.label).join(', '),
-        detail: 'nach dem Fahrplan Ihrer Anlage',
-        ton: 'ok',
-      });
-      const freigabe = freigabeSatz(input.control, box?.id ?? null);
+    // ⚠ „VoltPilot steuert …" steht hier NICHT mehr: der Kopf trägt es als
+    // Abzeichen, und derselbe Satz viermal auf einer Seite war der Befund.
+    if (gesteuert.length > 0) {
+      // K3: Freigabe und Rücklesen gelten der SPEICHER-Steuerung des
+      // Wechselrichters. Auf einem Verbraucher behaupteten sie „das Gerät
+      // bestätigt die Sollwerte" über einen Heizstab, der keine Sollwerte kennt.
+      const freigabe = art === 'hauptgeraet'
+        ? freigabeSatz(input.control, box?.id ?? null)
+        : null;
       if (freigabe) steuerung.push({ label: 'Freigabe', wert: freigabe.wert, detail: freigabe.detail });
-      if (input.control && input.control.deviceId === box?.id) {
+      // K3: der Not-Aus der Box steht auf jeder steuerbaren Seite - aber nur,
+      // wenn er AN ist. „aus — Steuerung läuft" war eine Zeile über Nichts.
+      if (input.control && input.control.deviceId === box?.id && !input.control.controlEnabled) {
         steuerung.push({
-          label: 'Not-Aus an der Box',
-          wert: input.control.controlEnabled ? 'aus — Steuerung läuft' : 'an — VoltPilot steuert nicht',
-          ton: input.control.controlEnabled ? 'ok' : 'warn',
+          label: NOT_AUS_LABEL,
+          wert: NOT_AUS_AN,
+          ton: 'warn',
         });
       }
     }
@@ -839,28 +918,15 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // H · Software
   // ------------------------------------------------------------------
   const software: Zeile[] = [];
-  const edge = input.edgeVersions?.find((v) => v.deviceId === box?.id);
   if (charger) {
-    software.push({
-      label: 'Firmware der Säule',
-      wert: text(charger.firmware) ?? 'meldet keine Firmware',
-      ton: charger.firmware ? 'ok' : 'off',
-    });
+    const firmware = text(charger.firmware);
+    if (firmware) software.push({ label: 'Firmware der Säule', wert: firmware });
     const hersteller = [text(charger.vendor), text(charger.model)].filter(Boolean).join(' ');
     if (hersteller) software.push({ label: 'Hersteller', wert: hersteller });
-  } else {
-    software.push({
-      label: 'Firmware des Geräts',
-      wert: 'liest Ihre Box nicht aus',
-      detail: 'Über die Messverbindung meldet dieses Gerät seinen Software-Stand nicht.',
-      ton: 'off',
-    });
-    software.push({
-      label: 'Software Ihrer Box',
-      wert: text(edge?.coreVersion) ?? 'meldet keinen Stand',
-      mono: edge?.coreVersion != null,
-    });
   }
+  // S3: ein Gerät hinter der Box meldet über die Messverbindung keine Firmware -
+  // der Satz darüber half niemandem, und die Software der Box steht auf IHRER
+  // Seite. Was fehlt, fehlt.
 
   // ------------------------------------------------------------------
   // I · Diagnose
@@ -872,7 +938,9 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   if (kanaele.length > 0) {
     diagnose.push({ label: 'Rohkanäle', wert: kanaele.join(' · '), mono: true });
   }
-  diagnose.push({ label: 'Kennung auf der Box', wert: input.geraetId, mono: true });
+  diagnose.push(ioAusgang
+    ? { label: 'Modul auf der Box', wert: `${ioAusgang.modulGeraetId} · DO${ioAusgang.kanal}`, mono: true }
+    : { label: 'Kennung auf der Box', wert: input.geraetId, mono: true });
   if (!charger) {
     const row = componentRowOf(input.components, entityIds, input.geraetId);
     const familie = text(row?.family);
@@ -909,6 +977,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     bms: bmsZeilen(src ?? null),
     steuerung,
     software,
+    einrichtung,
     diagnose,
   };
 }

@@ -1,36 +1,125 @@
 /**
- * DER RAHMEN aller Geräteseiten (Konzept `data/vp-geraeteseite-rahmen-r2` §4,
- * Geräteseiten Stufe 1; Captain-Entscheide **D1a** Brotkrume · **D2a** Standard
- * offen = Jetzt + Befehle).
+ * DER KERN aller Geräteseiten (Konzept „Geräteseiten: Ein Blick, eine Antwort",
+ * 25.09.2026; freigegeben mit Streichliste S1–S7, V1–V9, K1–K4 und E1–E5 = a).
  *
- * **Der behobene Befund ist ZUSCHNITT, nicht fehlende Gestaltung** (§2.2): eine
- * Geräteseite warf elf bis zwölf gleich laute Blöcke in EIN `auto-fit`-Raster,
- * das nach BREITE ordnete statt nach Bedeutung - bei 1440 px standen Befehle und
- * Komponenten nebeneinander, bei 1100 px rutschte die Zuordnung. Einklappen ließ
- * sich nichts außer Diagnose und Plattform-Sicht, eine Sprungnavigation gab es
- * nicht, und die drei Sektionen, die alle die Steuerung erklären („Grenzen dieses
- * Geräts", „Einspeise-Begrenzung", „Steuerungs-Bezüge"), standen an drei Orten.
+ * **Der behobene Befund war die Sortierung.** Die Seite stand als technisches
+ * Inventar da: neun gleich laute Abschnitte (Jetzt · Befehle · Steuerung &
+ * Grenzen · Komponenten · Register · Verbindung · Software · Diagnose ·
+ * Plattform), eine eigene Sprungleiste, der erste Messwert am Telefon erst bei
+ * 550–641 px und die erste Handlung unter dem ersten Bildschirm.
  *
- * Diese Datei ist die EINE Wahrheit darüber, **welche Sektionen es gibt, in
- * welcher Reihenfolge sie stehen, welche offen beginnt und was passiert, wenn
- * eine leer ist**. Sie ist rein und framework-frei (der
- * `geraetSeite.ts`/`geraetGesicht.ts`-Präzedenzfall) - `components/GeraetRahmen.tsx`
- * rendert sie und entscheidet nichts.
+ * Neu beantwortet jede Geräteseite im ersten Bildschirm drei Fragen - ist alles
+ * in Ordnung, was tut das Gerät, was kann ich tun - und zwar mit denselben
+ * FÜNF Bausteinen in derselben Reihenfolge:
+ *
+ * | Baustein | Frage |
+ * |---|---|
+ * | Jetzt (Bühne) | Was tut das Gerät gerade? Die eine große Zahl, ein Satz, eine Grafik. |
+ * | Steuerung | Wer entscheidet gerade, und was kann ich selbst tun? |
+ * | Heute | Wie verlief die Hauptgröße heute? |
+ * | Aktivität | Was hat VoltPilot zuletzt geschickt - und kam es an? |
+ * | Gerät & Verbindung | Modell, Anbindung, Grenzen, was es misst. |
+ *
+ * Dazu „Technik & Diagnose" als EIGENE Unteransicht (E1 a, `?ansicht=technik`)
+ * für Register, Summenwerte, Fassungen, Rohdaten und die Plattform-Sicht.
+ *
+ * Fehlt einem Typ ein Baustein (ein Zähler hat keine Knöpfe), fällt er STILL
+ * weg - es gibt keinen Kasten mehr, der erklärt, dass er leer ist (S5).
+ *
+ * Diese Datei ist rein und framework-frei (der `geraetSeite.ts`-Präzedenzfall);
+ * `components/GeraetRahmen.tsx` rendert sie und entscheidet nichts.
  *
  * ⚠ **Sie formuliert KEINEN Befund neu.** Jeder Satz, der hier durchläuft
- * (Kurzfassung, Kopf-Hinweis, Grund einer entfallenen Sektion), kommt von seiner
- * geteilten Ableitung - `exportGuardView`, `deviceLimitLine`, `controlStrip`,
- * `OHNE_REGISTER_SATZ`. Zwei Formulierungen über denselben Befund wären zwei
- * Urteile.
+ * (Kopf-Hinweis), kommt von seiner geteilten Ableitung - `exportGuardView`,
+ * `deviceLimitLine`, `controlStrip`. Zwei Formulierungen über denselben Befund
+ * wären zwei Urteile.
  */
-import type { GeraetTon } from './geraetSeite';
-import type { SektionId as GesichtSektionId } from './geraetGesicht';
+
+/** Ein Baustein der Hauptansicht. Die Reihenfolge ist FEST. */
+export type BausteinId = 'buehne' | 'steuerung' | 'heute' | 'aktivitaet' | 'details';
+
+/** Die kanonische Ordnung - am Telefon genau so untereinander. */
+export const BAUSTEIN_ORDNUNG: readonly BausteinId[] = [
+  'buehne',
+  'steuerung',
+  'heute',
+  'aktivitaet',
+  'details',
+];
+
+/** Der Name eines Bausteins - auf JEDER Geräteseite derselbe. */
+export const BAUSTEIN_TITEL: Record<BausteinId, string> = {
+  buehne: 'Jetzt',
+  steuerung: 'Steuerung',
+  heute: 'Heute',
+  aktivitaet: 'Aktivität',
+  details: 'Gerät & Verbindung',
+};
+
+/** Ein Teil der Unteransicht „Technik & Diagnose". */
+export type TechnikId = 'register' | 'ocpp' | 'auswertung' | 'einrichtung' | 'rohdaten' | 'plattform';
+
+export const TECHNIK_ORDNUNG: readonly TechnikId[] = [
+  'register',
+  'ocpp',
+  'auswertung',
+  'einrichtung',
+  'rohdaten',
+  'plattform',
+];
+
+export const TECHNIK_TITEL: Record<TechnikId, string> = {
+  register: 'Register',
+  ocpp: 'OCPP',
+  auswertung: 'Auswertung',
+  einrichtung: 'Einrichtung',
+  rohdaten: 'Rohdaten',
+  plattform: 'Plattform-Sicht (Admin)',
+};
+
+/** Der Name der Unteransicht - im Menü „⋯" und als ihr Titel. */
+export const TECHNIK_ANSICHT_TITEL = 'Technik & Diagnose';
 
 /**
- * Eine Sektion des Rahmens. Die Reihenfolge ist FEST (§4.4) - ein Blatt LÄSST
- * AUS, was sein Typ nicht hat, sortiert aber nie um.
+ * Die Bausteine EINER Seite: kanonisch geordnet, doppelt Genanntes einmal,
+ * Leeres (`null`/`false`) still weg.
+ *
+ * ⚠ Die Ordnung gehört dem Kern, nicht dem Aufrufer - sonst stünde dasselbe
+ * Fach auf zwei Geräten an zwei Orten.
  */
-export type RahmenSektionId =
+export function bausteine(
+  angebote: readonly (BausteinId | null | false | undefined)[],
+): BausteinId[] {
+  const da = new Set(angebote.filter((a): a is BausteinId => Boolean(a)));
+  return BAUSTEIN_ORDNUNG.filter((id) => da.has(id));
+}
+
+/** Dieselbe Regel für die Teile der Technik-Ansicht. */
+export function technikTeile(
+  angebote: readonly (TechnikId | null | false | undefined)[],
+): TechnikId[] {
+  const da = new Set(angebote.filter((a): a is TechnikId => Boolean(a)));
+  return TECHNIK_ORDNUNG.filter((id) => da.has(id));
+}
+
+// ---------------------------------------------------------------------------
+// Adressen: `?ansicht=technik`, `?abschnitt=…`, `?kachel=…`
+// ---------------------------------------------------------------------------
+
+/**
+ * Wohin eine Adresse springt: ein Baustein der Hauptansicht oder ein Teil der
+ * Technik-Ansicht (`teil: null` = ihr Anfang).
+ */
+export type Ziel =
+  | { ansicht: 'geraet'; baustein: BausteinId }
+  | { ansicht: 'technik'; teil: TechnikId | null };
+
+/**
+ * Die Abschnitte des früheren Rahmens. Ihre Adressen sind Lesezeichen und
+ * bleiben gültig: jeder alte Abschnitt landet dort, wo sein Inhalt heute
+ * wohnt (`?abschnitt=register` öffnet die Technik-Ansicht, E1 a).
+ */
+export type AlterAbschnitt =
   | 'jetzt'
   | 'befehle'
   | 'steuerung'
@@ -41,221 +130,138 @@ export type RahmenSektionId =
   | 'diagnose'
   | 'plattform';
 
-/**
- * Die kanonische Ordnung (§4.4).
- *
- * Warum genau diese: 1-2 sind die 5-Sekunden-Fragen und das tägliche
- * Nachsehen; 3-4 erklären das Jetzt (die Anschlussfrage „warum?"); 5-7 sind
- * Werkzeug und Technik, die man AUFSUCHT; 8-9 sind Support und Betreiber.
- */
-export const SEKTIONS_ORDNUNG: readonly RahmenSektionId[] = [
-  'jetzt',
-  'befehle',
-  'steuerung',
-  'komponenten',
-  'register',
-  'verbindung',
-  'software',
-  'diagnose',
-  'plattform',
-];
-
-/** Der Name einer Sektion - auf JEDER Geräteseite derselbe. */
-export const SEKTION_TITEL: Record<RahmenSektionId, string> = {
-  jetzt: 'Jetzt',
-  befehle: 'Befehle',
-  steuerung: 'Steuerung & Grenzen',
-  komponenten: 'Komponenten',
-  register: 'Register',
-  verbindung: 'Verbindung',
-  software: 'Software',
-  diagnose: 'Diagnose (technisch)',
-  plattform: 'Plattform-Sicht (Admin)',
+export const ALTER_ABSCHNITT: Record<AlterAbschnitt, Ziel> = {
+  jetzt: { ansicht: 'geraet', baustein: 'buehne' },
+  befehle: { ansicht: 'geraet', baustein: 'aktivitaet' },
+  steuerung: { ansicht: 'geraet', baustein: 'steuerung' },
+  komponenten: { ansicht: 'geraet', baustein: 'details' },
+  register: { ansicht: 'technik', teil: 'register' },
+  verbindung: { ansicht: 'geraet', baustein: 'details' },
+  software: { ansicht: 'geraet', baustein: 'details' },
+  diagnose: { ansicht: 'technik', teil: 'rohdaten' },
+  plattform: { ansicht: 'technik', teil: 'plattform' },
 };
 
 /**
- * Die FRAGE, die eine Sektion beantwortet (§4.4). Sie steht im geschlossenen
- * Zustand unter dem Namen: eine Klappe, die nicht sagt, was hinter ihr liegt,
- * ist genau die Wand, die dieser Rahmen beendet.
+ * Die Parameternamen. ⚠ Es sind PARAMETER im Hash, keine zweite Raute: die App
+ * ist hash-geroutet, `#/anlage/…#register` wäre keine gültige Route (das
+ * `settingsNav`-Muster; `parseRoute` schneidet den Query-Teil ohnehin ab).
  */
-export const SEKTION_FRAGE: Record<RahmenSektionId, string | null> = {
-  jetzt: 'Was tut es gerade, steuert VoltPilot es?',
-  befehle: 'Was hat VoltPilot zuletzt geschickt - und kam es an?',
-  steuerung: 'Warum tut es das, was darf es nie?',
-  komponenten: 'Was misst und steuert es?',
-  register: 'Was lese ich, was beobachte ich, was schreibe ich?',
-  verbindung: 'Wie ist es angebunden, wie frisch?',
-  software: 'Welcher Stand läuft?',
-  diagnose: 'Für den Support.',
-  plattform: null,
-};
+const ABSCHNITT = 'abschnitt';
+const ANSICHT = 'ansicht';
+const KACHEL = 'kachel';
+
+function params(hash: string): URLSearchParams {
+  const q = hash.indexOf('?');
+  return new URLSearchParams(q < 0 ? '' : hash.slice(q + 1));
+}
+
+function istBaustein(v: string): v is BausteinId {
+  return (BAUSTEIN_ORDNUNG as readonly string[]).includes(v);
+}
+
+function istTechnikTeil(v: string): v is TechnikId {
+  return (TECHNIK_ORDNUNG as readonly string[]).includes(v);
+}
+
+function istAlterAbschnitt(v: string): v is AlterAbschnitt {
+  return Object.prototype.hasOwnProperty.call(ALTER_ABSCHNITT, v);
+}
 
 /**
- * Das Sinnbild einer Sektion. Bewusst dieselben wie heute, wo eine Sektion
- * schon existiert - der Rahmen ordnet um, er tauscht keine Zeichen.
- */
-export const SEKTION_ICON: Record<RahmenSektionId, string> = {
-  jetzt: 'activity',
-  befehle: 'history',
-  steuerung: 'shield',
-  komponenten: 'layers',
-  register: 'sliders',
-  verbindung: 'wifi',
-  software: 'settings',
-  diagnose: 'file-text',
-  plattform: 'building',
-};
-
-/**
- * Standard offen (Captain-Entscheid **D2a**): Jetzt + Befehle, alles Übrige zu.
+ * Das Ziel einer Adresse, oder null.
  *
- * Begründung aus dem Entscheid: Befehle ist das TÄGLICHE Nachsehen (die
- * 5-Sekunden-Fragen 3/4). „Alles offen" wäre die heutige Wand mit Anker; „nur
- * Jetzt" versteckte die zweithäufigste Frage hinter einem Klick.
+ * ⚠ **Nie raten**: ein unbekanntes Wort öffnet nichts, statt irgendeinen
+ * Baustein anzuspringen. Und `?ansicht=technik` gewinnt - ein Baustein der
+ * Hauptansicht, der daneben steht, wäre dort nicht zu sehen.
  */
-export const STANDARD_OFFEN: readonly RahmenSektionId[] = ['jetzt', 'befehle'];
-
-/**
- * „Jetzt" hat KEINEN Klapp-Kopf (§4.5). Sie ist die Antwort auf die erste
- * Frage; eine Klappe davor wäre ein Klick vor die Auskunft, für die man die
- * Seite geöffnet hat.
- */
-export function istKlappbar(id: RahmenSektionId): boolean {
-  return id !== 'jetzt';
-}
-
-/** Ob eine Sektion ohne gespeicherte Wahl offen beginnt. */
-export function standardOffen(id: RahmenSektionId): boolean {
-  return STANDARD_OFFEN.includes(id);
-}
-
-/**
- * Wo eine Sektion des GESICHTS (`geraetGesicht.SektionId`) im Rahmen aufgeht.
- *
- * ⚠ Vier Sektionen fallen in EINE: „Grenzen dieses Geräts", „Einspeise-
- * Begrenzung", „Ausfall-Schutz" und „Diese Säule im Ladepark" erklären alle
- * dasselbe - was das Gerät darf und was es nie darf. Vier Kästen dafür waren
- * drei zu viel (§4.4).
- */
-export const GESICHT_ZU_RAHMEN: Record<GesichtSektionId, RahmenSektionId> = {
-  jetzt: 'jetzt',
-  befehle: 'befehle',
-  komponenten: 'komponenten',
-  grenzen: 'steuerung',
-  einspeise: 'steuerung',
-  ausfallschutz: 'steuerung',
-  ladepark: 'steuerung',
-  register: 'register',
-  verbindung: 'verbindung',
-  software: 'software',
-};
-
-/** Was ein Wirt dem Rahmen über EINE Sektion sagt. */
-export interface SektionAngebot {
-  id: RahmenSektionId;
-  /**
-   * `true` = STRUKTURELL leer: dieser TYP hat das nie (Register auf einem
-   * HTTP-Gerät, Befehle an einen Zähler). Die Sektion ENTFÄLLT, ihr `grund`
-   * zieht in die Diagnose (§4.6).
-   *
-   * ⚠ Nicht zu verwechseln mit SITUATIV leer („heute noch keine Daten"): die
-   * Sektion BLEIBT und trägt ihren Grund in der Kurzfassung.
-   */
-  entfaellt?: boolean;
-  /** Der Grund einer entfallenen Sektion - er verschwindet nie, er zieht um. */
-  grund?: string | null;
-  /** Der Zustands-Punkt neben dem Namen; null = keine Aussage. */
-  ton?: GeraetTon | null;
-  /** Die Kurzfassung im geschlossenen Zustand („zuletzt 14:02 · bestätigt"). */
-  kurzfassung?: string | null;
-  /**
-   * Ein abweichender Name. Nur für den Fall, dass ein Blatt dasselbe Fach
-   * anders NENNEN muss (eine OCPP-Säule hat keine „Register", aber Messwerte -
-   * D3) - die ORDNUNG bleibt kanonisch, es wird nichts umsortiert.
-   */
-  titel?: string | null;
-}
-
-/** Eine Sektion, wie der Rahmen sie rendert. */
-export interface SektionEintrag {
-  id: RahmenSektionId;
-  titel: string;
-  frage: string | null;
-  icon: string;
-  ton: GeraetTon | null;
-  kurzfassung: string | null;
-  /** false = „Jetzt": ohne Klapp-Kopf, immer sichtbar. */
-  klappbar: boolean;
-  /** Der Zustand ohne gespeicherte Wahl des Kunden. */
-  offenAlsVorgabe: boolean;
-}
-
-export interface RahmenView {
-  sektionen: SektionEintrag[];
-  /**
-   * Die Gründe der WEGGEFALLENEN Sektionen, in kanonischer Ordnung - sie
-   * gehören in die Diagnose, damit „diese Seite hat keine Register" eine
-   * beantwortbare Frage bleibt statt einer stillen Lücke.
-   */
-  entfallen: string[];
-}
-
-/**
- * Die Sektionen einer Geräteseite - kanonisch geordnet, strukturell Leeres
- * entfernt, jede mit ihrem Namen und ihrer Frage.
- *
- * Drei Regeln, die alle drei Wirte teilen:
- * 1. **Die Ordnung gehört dem Rahmen, nicht dem Aufrufer.** Ein Wirt kann
- *    Sektionen weglassen, nie umsortieren - sonst stünde dasselbe Fach auf
- *    zwei Geräten an zwei Orten.
- * 2. **Ein unbekanntes Fach wird ausgelassen**, nie gerendert: eine Sektion,
- *    die niemand füllen kann, ist eine leere Behauptung.
- * 3. **Doppelt genannt = einmal gezeigt** (der erste Eintrag gewinnt).
- */
-export function rahmen(angebote: readonly (SektionAngebot | null | undefined)[]): RahmenView {
-  const gesehen = new Map<RahmenSektionId, SektionAngebot>();
-  for (const a of angebote) {
-    if (!a || !SEKTIONS_ORDNUNG.includes(a.id)) continue;
-    if (!gesehen.has(a.id)) gesehen.set(a.id, a);
+export function sprungZiel(hash: string): Ziel | null {
+  const p = params(hash);
+  const abschnitt = (p.get(ABSCHNITT) ?? '').trim();
+  const technik = p.get(ANSICHT) === 'technik';
+  if (technik) {
+    if (istTechnikTeil(abschnitt)) return { ansicht: 'technik', teil: abschnitt };
+    const alt = istAlterAbschnitt(abschnitt) ? ALTER_ABSCHNITT[abschnitt] : null;
+    return { ansicht: 'technik', teil: alt?.ansicht === 'technik' ? alt.teil : null };
   }
-  const sektionen: SektionEintrag[] = [];
-  const entfallen: string[] = [];
-  for (const id of SEKTIONS_ORDNUNG) {
-    const a = gesehen.get(id);
-    if (!a) continue;
-    if (a.entfaellt) {
-      const grund = (a.grund ?? '').trim();
-      if (grund) entfallen.push(grund);
-      continue;
-    }
-    sektionen.push({
-      id,
-      titel: (a.titel ?? '').trim() || SEKTION_TITEL[id],
-      frage: SEKTION_FRAGE[id],
-      icon: SEKTION_ICON[id],
-      ton: a.ton ?? null,
-      kurzfassung: (a.kurzfassung ?? '').trim() || null,
-      klappbar: istKlappbar(id),
-      offenAlsVorgabe: standardOffen(id),
-    });
-  }
-  return { sektionen, entfallen };
+  if (!abschnitt) return null;
+  if (istBaustein(abschnitt)) return { ansicht: 'geraet', baustein: abschnitt };
+  if (istTechnikTeil(abschnitt)) return { ansicht: 'technik', teil: abschnitt };
+  if (istAlterAbschnitt(abschnitt)) return ALTER_ABSCHNITT[abschnitt];
+  return null;
+}
+
+/** Steht die Adresse in der Technik-Ansicht? */
+export function istTechnikAnsicht(hash: string): boolean {
+  return sprungZiel(hash)?.ansicht === 'technik';
 }
 
 /**
- * Eine Kurzfassung aus Teilen - leere Teile fallen weg, nichts wird erfunden.
- *
- * ⚠ Ohne einen einzigen belegten Teil gibt es KEINE Kurzfassung (`null`), nie
- * ein „—": die geschlossene Zeile sagt dann nur ihren Namen, statt eine
- * Auskunft vorzutäuschen.
+ * Eine Geräte-Adresse mit Ziel (und optional Kachel). Der übrige Query-Teil
+ * bleibt erhalten; `ansicht`/`abschnitt` werden ersetzt, `kachel` nur, wenn
+ * sie genannt ist (`null` entfernt sie).
  */
-export function kurz(...teile: readonly (string | null | undefined)[]): string | null {
-  const echte = teile.map((t) => (t ?? '').trim()).filter((t) => t.length > 0);
-  return echte.length > 0 ? echte.join(' · ') : null;
+export function zielHash(basisHash: string, ziel: Ziel | null, kachel?: string | null): string {
+  const q = basisHash.indexOf('?');
+  const basis = q < 0 ? basisHash : basisHash.slice(0, q);
+  const p = params(basisHash);
+  p.delete(ANSICHT);
+  p.delete(ABSCHNITT);
+  if (ziel?.ansicht === 'technik') {
+    p.set(ANSICHT, 'technik');
+    if (ziel.teil) p.set(ABSCHNITT, ziel.teil);
+  } else if (ziel) {
+    p.set(ABSCHNITT, ziel.baustein);
+  }
+  if (kachel) p.set(KACHEL, kachel);
+  else if (kachel === null) p.delete(KACHEL);
+  const rest = p.toString();
+  return rest ? `${basis}?${rest}` : basis;
+}
+
+/** Die Adresse der Technik-Ansicht dieses Geräts (optional mit Teil). */
+export function technikHash(basisHash: string, teil: TechnikId | null = null): string {
+  return zielHash(basisHash, { ansicht: 'technik', teil });
+}
+
+/** Zurück aus der Technik-Ansicht - alle übrigen Parameter reisen mit. */
+export function ohneTechnikHash(basisHash: string): string {
+  return zielHash(basisHash, null);
+}
+
+/**
+ * Eine Geräte-Adresse mit gezieltem Baustein und optional gezielter Kachel -
+ * der Einstieg aus dem Anlagen-Modell (`?abschnitt=buehne&kachel=speicher`).
+ */
+export function abschnittHash(
+  basisHash: string,
+  id: BausteinId | null,
+  kachel?: string | null,
+): string {
+  return zielHash(basisHash, id ? { ansicht: 'geraet', baustein: id } : null, kachel);
+}
+
+/**
+ * Die angesprungene KACHEL aus einem Hash - null, wenn keine genannt ist.
+ *
+ * ⚠ Die Batterie hat KEINE eigene Seite - ihr Gesicht ist der Speicher-Teil des
+ * Hybrid-Blatts, und ihre Komponenten-Karte im Anlagen-Modell führt deshalb auf
+ * die Hybrid-Seite mit `?abschnitt=buehne&kachel=speicher`. Der Schlüssel ist
+ * der stabile `HeldKachel.key`, NIE das Label: der Kunde darf eine Komponente
+ * umbenennen, die Adresse darf davon nicht abhängen.
+ */
+export function parseKachel(hash: string): string | null {
+  const value = params(hash).get(KACHEL);
+  return value && value.trim() ? value.trim() : null;
+}
+
+/** Die DOM-Kennung eines Bausteins oder Technik-Teils - der Sprungpunkt. */
+export function ankerId(id: BausteinId | TechnikId): string {
+  return `geraet-baustein-${id}`;
 }
 
 // ---------------------------------------------------------------------------
-// Der Kopf-Hinweis (§4.1 Zeile 3, die 5-Sekunden-Frage 4 „muss ich etwas tun?")
+// Der Kopf-Hinweis (Frage 1: „ist alles in Ordnung?")
 // ---------------------------------------------------------------------------
 
 /**
@@ -266,18 +272,18 @@ export type BefundArt = 'verbindung' | 'ruecklesen' | 'waechter' | 'grenze';
 
 const BEFUND_RANG: readonly BefundArt[] = ['verbindung', 'ruecklesen', 'waechter', 'grenze'];
 
-/** In welcher Sektion ein Befund seine Erklärung hat. */
-const BEFUND_SEKTION: Record<BefundArt, RahmenSektionId> = {
-  verbindung: 'verbindung',
-  ruecklesen: 'befehle',
-  waechter: 'steuerung',
-  grenze: 'register',
+/** Wo ein Befund seine Erklärung hat. */
+const BEFUND_ZIEL: Record<BefundArt, Ziel> = {
+  verbindung: { ansicht: 'geraet', baustein: 'details' },
+  ruecklesen: { ansicht: 'geraet', baustein: 'aktivitaet' },
+  waechter: { ansicht: 'geraet', baustein: 'details' },
+  grenze: { ansicht: 'technik', teil: 'register' },
 };
 
 export interface Befund {
   art: BefundArt;
   /**
-   * Der Satz - WÖRTLICH aus seiner geteilten Ableitung. Der Rahmen formuliert
+   * Der Satz - WÖRTLICH aus seiner geteilten Ableitung. Der Kern formuliert
    * keinen; ein leerer Satz ist kein Befund.
    */
   satz: string;
@@ -289,142 +295,48 @@ export interface KopfHinweis {
   ton: 'warn' | 'off';
   art: BefundArt;
   /**
-   * Die Sektion, die den Befund trägt - ein Klick klappt sie auf und springt
-   * hin. `null`, wenn diese Seite die Sektion gar nicht hat: dann steht der
-   * Satz allein da, statt einen Knopf ins Leere anzubieten (die
-   * `registerZugang`-Regel).
+   * Wo der Befund erklärt wird - ein Klick springt hin. `null`, wenn diese
+   * Seite den Ort gar nicht hat: dann steht der Satz allein da, statt einen
+   * Knopf ins Leere anzubieten (die `registerZugang`-Regel).
    */
-  sektion: RahmenSektionId | null;
+  ziel: Ziel | null;
 }
 
 /**
  * Der EINE Hinweis im Kopf - der schlimmste anstehende Befund, oder nichts.
  *
- * ⚠ **Warum die Zustands-Pill hier NICHT noch einmal auftaucht**: sie steht
- * eine Zeile darüber und beantwortet Frage 1 („läuft es, wie aktuell ist
- * das?"). Sie als Hinweis zu wiederholen wäre Lärm - der Hinweis ist für die
- * Befunde da, die seit diesem Rahmen in einer GESCHLOSSENEN Sektion stecken
- * und ohne ihn unsichtbar wären. Ein Verbindungs-Befund reist trotzdem als
- * Art mit, weil ein Blatt ihn ausdrücklich melden darf (etwa eine Box, deren
- * Pill die Anlage meint und nicht dieses Gerät).
+ * ⚠ Der Live-Punkt steht eine Zeile darüber und beantwortet schon „läuft es,
+ * wie frisch ist das?". Ihn hier zu wiederholen wäre Lärm - der Hinweis ist für
+ * Befunde da, die sonst erst weiter unten stünden.
  *
  * @param befunde in beliebiger Reihenfolge; der Rang entscheidet, nicht die Position.
- * @param angeboten die Sektionen, die es auf DIESER Seite gibt.
+ * @param angeboten was es auf DIESER Seite gibt.
  */
 export function kopfHinweis(
   befunde: readonly (Befund | null | undefined)[],
-  angeboten: readonly RahmenSektionId[] = SEKTIONS_ORDNUNG,
+  angeboten: { bausteine: readonly BausteinId[]; technik: readonly TechnikId[] } = {
+    bausteine: BAUSTEIN_ORDNUNG,
+    technik: TECHNIK_ORDNUNG,
+  },
 ): KopfHinweis | null {
-  const echte = befunde.filter(
-    (b): b is Befund => Boolean(b && (b.satz ?? '').trim() && BEFUND_RANG.includes(b.art)),
-  );
-  if (echte.length === 0) return null;
   let beste: Befund | null = null;
-  for (const b of echte) {
+  for (const b of befunde) {
+    if (!b || !(b.satz ?? '').trim() || !BEFUND_RANG.includes(b.art)) continue;
     if (beste == null || BEFUND_RANG.indexOf(b.art) < BEFUND_RANG.indexOf(beste.art)) beste = b;
   }
   if (!beste) return null;
-  const ziel = BEFUND_SEKTION[beste.art];
-  return {
-    satz: beste.satz.trim(),
-    ton: beste.ton,
-    art: beste.art,
-    sektion: angeboten.includes(ziel) ? ziel : null,
-  };
+  const ziel = BEFUND_ZIEL[beste.art];
+  const da = ziel.ansicht === 'geraet'
+    ? angeboten.bausteine.includes(ziel.baustein)
+    : ziel.teil != null && angeboten.technik.includes(ziel.teil);
+  return { satz: beste.satz.trim(), ton: beste.ton, art: beste.art, ziel: da ? ziel : null };
 }
 
-// ---------------------------------------------------------------------------
-// Klapp-Zustand je Gerät und Tab-Sitzung (§4.5)
-// ---------------------------------------------------------------------------
-
-/**
- * Der Speicherschlüssel EINER Sektion EINES Geräts.
- *
- * ⚠ Je GERÄT, nicht je Seite: wer den Registerkasten an seinem Wechselrichter
- * offen lässt, will ihn nicht auch an seiner Wallbox offen finden. Und je
- * TAB-SITZUNG (`sessionStorage`) - `localStorage` bleibt portalweit verboten,
- * sonst ersetzte eine einmalige Wahl den Grundzustand für immer.
- */
-export function sektionKey(geraetKey: string, id: RahmenSektionId): string {
-  return `vp.geraet.sektion.${geraetKey}.${id}`;
-}
-
-/**
- * Die gespeicherte Wahl - sie GEWINNT über den Standard (§4.5), in beide
- * Richtungen. Alles außer den zwei bekannten Wörtern ist keine Wahl.
- */
-export function initialSektionOffen(stored: string | null | undefined, id: RahmenSektionId): boolean {
-  if (stored === '1') return true;
-  if (stored === '0') return false;
-  return standardOffen(id);
-}
-
-// ---------------------------------------------------------------------------
-// Deep-Link `?abschnitt=` (§4.3)
-// ---------------------------------------------------------------------------
-
-/**
- * Der Parametername. ⚠ Es ist ein PARAMETER im Hash, keine zweite Raute: die
- * App ist hash-geroutet, `#/anlage/…#register` wäre keine gültige Route (das
- * `settingsNav`-Muster; `parseRoute` schneidet den Query-Teil ohnehin ab).
- */
-const PARAM = 'abschnitt';
-
-/**
- * Die angesprungene Sektion aus einem Hash - null, wenn keine oder eine
- * unbekannte genannt ist. **Nie raten**: ein unbekanntes Wort öffnet nichts,
- * statt irgendeine Sektion aufzuklappen.
- */
-export function parseAbschnitt(hash: string): RahmenSektionId | null {
-  const q = hash.indexOf('?');
-  if (q < 0) return null;
-  const value = new URLSearchParams(hash.slice(q + 1)).get(PARAM);
-  return value && (SEKTIONS_ORDNUNG as readonly string[]).includes(value)
-    ? (value as RahmenSektionId)
-    : null;
-}
-
-/**
- * Der Parametername der angesprungenen KACHEL (§5.3).
- *
- * ⚠ Die Batterie hat KEINE eigene Seite - ihr Gesicht ist der Speicher-Teil des
- * Hybrid-Blatts, und ihre Komponenten-Karte im Anlagen-Modell führt deshalb auf
- * die Hybrid-Seite mit `?abschnitt=jetzt&kachel=speicher`. Der Schlüssel ist
- * der stabile `HeldKachel.key`, NIE das Label: der Kunde darf eine Komponente
- * umbenennen, die Adresse darf davon nicht abhängen.
- */
-const KACHEL_PARAM = 'kachel';
-
-/** Die angesprungene Kachel aus einem Hash - null, wenn keine genannt ist. */
-export function parseKachel(hash: string): string | null {
-  const q = hash.indexOf('?');
-  if (q < 0) return null;
-  const value = new URLSearchParams(hash.slice(q + 1)).get(KACHEL_PARAM);
-  return value && value.trim() ? value.trim() : null;
-}
-
-/**
- * Eine Geräte-Adresse mit gezielter Sektion (und optional gezielter Kachel).
- * Der bestehende Query-Teil bleibt erhalten (eine Adresse kann schon `?`
- * tragen), `abschnitt`/`kachel` werden ersetzt.
- */
-export function abschnittHash(
-  basisHash: string,
-  id: RahmenSektionId | null,
-  kachel?: string | null,
-): string {
-  const q = basisHash.indexOf('?');
-  const basis = q < 0 ? basisHash : basisHash.slice(0, q);
-  const params = new URLSearchParams(q < 0 ? '' : basisHash.slice(q + 1));
-  if (id) params.set(PARAM, id);
-  else params.delete(PARAM);
-  if (kachel) params.set(KACHEL_PARAM, kachel);
-  else if (kachel === null) params.delete(KACHEL_PARAM);
-  const rest = params.toString();
-  return rest ? `${basis}?${rest}` : basis;
-}
-
-/** Die DOM-Kennung einer Sektion - der Sprungpunkt (`scrollIntoView`). */
-export function ankerId(id: RahmenSektionId): string {
-  return `geraet-abschnitt-${id}`;
+/** Die Beschriftung des Sprungs zu einem Ziel („Aktivität ansehen"). */
+export function zielTitel(ziel: Ziel): string {
+  return ziel.ansicht === 'geraet'
+    ? BAUSTEIN_TITEL[ziel.baustein]
+    : ziel.teil
+      ? TECHNIK_TITEL[ziel.teil]
+      : TECHNIK_ANSICHT_TITEL;
 }

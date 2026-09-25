@@ -19,8 +19,7 @@
 .vp-ocpp-head .vp-geraet-titleline > div { min-width: 0; }
 .vp-ocpp-head .vp-geraet-meta { color: var(--ocpp-muted); }
 .vp-ocpp .vp-mono { color: var(--ocpp-muted); }
-.vp-ocpp .vp-pill small,
-.vp-ocpp .vp-rahmen-nav button { color: var(--ocpp-muted); }
+.vp-ocpp .vp-pill small { color: var(--ocpp-muted); }
 .vp-ocpp-device-type { margin: 0 0 10px; color: var(--ocpp-muted); overflow-wrap: anywhere; }
 .vp-ocpp-loading { min-height: 150px; }
 .vp-ocpp-loading p { margin: 0; color: var(--ocpp-muted); }
@@ -42,15 +41,15 @@
 .vp-ocpp-section-title h2 { margin: 0; font-size: clamp(1.15rem, 2.4vw, 1.55rem); line-height: 1.25; overflow-wrap: anywhere; }
 .vp-ocpp-intro { max-width: 72ch; margin: -8px 0 var(--vp-space-5, 20px); color: var(--ocpp-muted); }
 
-/* Der Geräterahmen ist bereits die Karte. Direkte OCPP-Bausteine brauchen
-   darin keine zweite Rand-/Padding-Schale. */
-.vp-ocpp .vp-rahmen-sek-body > .vp-ocpp-section {
+/* Der Technik-Teil des Kerns ist bereits die Karte. Die OCPP-Bausteine darin
+   brauchen keine zweite Rand-/Padding-Schale - sie trennt eine Linie. */
+.vp-ocpp .vp-kern-technikteil .vp-ocpp-section {
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
-.vp-ocpp .vp-rahmen-sek-body > .vp-ocpp-section + .vp-ocpp-section {
+.vp-ocpp .vp-kern-technikteil .vp-ocpp-section + .vp-ocpp-section {
   margin-top: 30px;
   padding-top: 30px;
   border-top: 1px solid var(--ocpp-border);
@@ -124,7 +123,8 @@
 .vp-ocpp-connector dl > div { display: flex; justify-content: space-between; gap: 12px; min-width: 0; }
 .vp-ocpp-connector dt { color: var(--ocpp-muted); }
 .vp-ocpp-connector dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
-.vp-ocpp details > summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--vp-link, #2c5282); font-weight: 650; }
+/* Nicht die Zeile „Gerät & Verbindung" des Kerns - sie sieht auf JEDER Geräteseite gleich aus. */
+.vp-ocpp details:not(.vp-kern-zeile) > summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--vp-link, #2c5282); font-weight: 650; }
 .vp-ocpp-connector details { grid-column: 1 / -1; min-width: 0; }
 .vp-ocpp-connector details p { margin: 0; color: var(--ocpp-muted); overflow-wrap: anywhere; }
 

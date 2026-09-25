@@ -112,13 +112,13 @@ export const captures = [
   ] },
   { id: 'box', title: 'Verbindung und Zustand der Box', hash: plant('box/VP-DEMO-0001'), root: 'main', points: [
     point('main h1', 'Prüfen Sie Namen und Geräte-ID der Box.'),
-    point('text=Letzte Meldung', 'Der letzte Kontakt beschreibt die Aktualität der Verbindung.'),
-    point('text=Was hat VoltPilot zuletzt geschickt', 'Die Befehlsansicht unterscheidet Aktionen und ihre Rückmeldungen.'),
+    point('[data-testid="geraet-zustand"]', 'Der Punkt neben dem Namen zeigt die Verbindung und wie alt der letzte Kontakt ist.'),
+    point('[data-testid="baustein-aktivitaet"] h2', 'Die Aktivität unterscheidet Aktionen und ihre Rückmeldungen.'),
   ] },
   { id: 'geraete', title: 'Gerät und Rückmeldungen', hash: plant('geraet/VP-DEMO-0001/inverter'), root: 'main', points: [
     point('main h1', 'Diese Ansicht gehört zum einzelnen Gerät hinter der Box.'),
-    point('text=Ladestand', 'Der Ladestand ist eine Messgröße; die Einheit steht direkt am Wert.'),
-    point('text=Was hat VoltPilot zuletzt geschickt', 'Gesendete Befehle und ihre Rückmeldung helfen bei der Prüfung der Wirkung.'),
+    point('.vp-buehne-zahlzeile', 'Der Ladestand ist eine Messgröße; die Einheit steht direkt am Wert.'),
+    point('[data-testid="baustein-aktivitaet"] h2', 'Gesendete Befehle und ihre Rückmeldung helfen bei der Prüfung der Wirkung.'),
   ] },
   { id: 'einstellungen', title: 'Einstellungen der Anlage', hash: plant('technik'), root: 'main', points: [
     point('input[type="search"]', 'Die Suche findet Einstellungen auch über alternative Begriffe.'),

@@ -229,6 +229,34 @@ export interface PlantComponent {
    * Only a PROVEN orphan (backend tri-state true) counts.
    */
   orphaned: boolean;
+  /**
+   * K4: der Relais-Ausgang, über den dieser Verbraucher geschaltet wird - das
+   * Gerät des Moduls und die Nummer des Ausgangs. Absent/null = kein Ausgang.
+   */
+  io?: { modulGeraetId: string; kanal: number } | null;
+}
+
+/** K4: ein Verbraucher am Relais-Ausgang eines I/O-Moduls (aus seinem Profil). */
+export interface IoBindung {
+  /** Die Entität des Verbrauchers. */
+  entityId: string;
+  /** Die Entität des I/O-Moduls. */
+  ioEntityId: string;
+  /** Der 1-basierte Ausgang. */
+  ioChannel: number;
+}
+
+/** K4: die Bindungen aus den Verbraucher-Profilen - nur vollständige (Modul UND Ausgang). */
+export function ioBindungenAus(
+  consumers: readonly { id: string; ioEntityId?: string | null; ioChannel?: number | null }[],
+): IoBindung[] {
+  const out: IoBindung[] = [];
+  for (const c of consumers) {
+    if (c.ioEntityId && typeof c.ioChannel === 'number' && c.ioChannel >= 1) {
+      out.push({ entityId: c.id, ioEntityId: c.ioEntityId, ioChannel: c.ioChannel });
+    }
+  }
+  return out;
 }
 
 /** One Gerät: a physical box the edge reports BEHIND the VoltPilot-Box. */
@@ -1072,6 +1100,12 @@ export function plantModel(
   topology: SiteTopology | null,
   localSetup: EntityLocalSetup[],
   sources?: SiteSource[] | null,
+  /**
+   * K4: welche Verbraucher über einen Relais-AUSGANG eines I/O-Moduls
+   * geschaltet werden (aus ihren Profilen, `consumersApi.list`). Ohne sie gilt
+   * die bisherige Zuordnung - dann nimmt der erste Wechselrichter sie.
+   */
+  ioBindungen?: readonly IoBindung[] | null,
 ): PlantModel {
   const categoryById = new Map<string, string>();
   // F1: the topology entity's `health` is telemetry_v2 liveness — the SAME
@@ -1244,6 +1278,26 @@ export function plantModel(
     );
   }
 
+  // K4. A consumer switched through an I/O module's RELAY has no edge source
+  //    of its own - without this step the first inverter would take it (2.),
+  //    and the Zentrale showed a heating rod "gemessen über Deye SUN-12K".
+  //    It belongs to the module that switches it. A binding whose module has
+  //    no device here changes nothing (never a guessed device).
+  const ioKanal = new Map<string, { modul: string; kanal: number }>();
+  for (const b of ioBindungen ?? []) {
+    const modul = devices.find((d) =>
+      d.componentIds.some((cid) => componentById.get(cid)?.entityId === b.ioEntityId));
+    if (!modul) continue;
+    for (const c of componentsOfEntity(b.entityId)) {
+      if (assigned.has(c.id)) continue;
+      c.deviceIds.push(modul.id);
+      assigned.add(c.id);
+      modul.componentIds.push(c.id);
+      c.io = { modulGeraetId: modul.id, kanal: b.ioChannel };
+      ioKanal.set(c.id, { modul: modul.label, kanal: b.ioChannel });
+    }
+  }
+
   // 2. The inverter (gateway) feeds the composed entities — those not adopted
   //    from a source. The first reported inverter takes them; extras get [].
   const inverters = localSetup.filter((l) => l.kind === 'inverter');
@@ -1309,6 +1363,12 @@ export function plantModel(
     }
     if (c.role === 'house' || label == null) {
       c.provenance = null;
+      continue;
+    }
+    // K4: am Ausgang eines Moduls wird GESCHALTET, nicht gemessen.
+    const io = ioKanal.get(c.id);
+    if (io) {
+      c.provenance = `geschaltet über ${io.modul} · Ausgang DO${io.kanal}`;
       continue;
     }
     const ownBox =

@@ -1,5 +1,11 @@
 # Geräteseiten Stufe 1: DER RAHMEN, durch den JEDE Geräteseite fährt
 
+> ⚠ **Abgelöst** durch [den Kern „Ein Blick, eine Antwort"](geraeteseiten-kern-ein-blick-eine-antwort.md)
+> (25.09.2026): statt neun Sektionen mit Sprungleiste und Klapp-Zustand gibt es fünf Bausteine
+> und die eigene Ansicht „Technik & Diagnose". Weiter gültig sind die Regeln „nie ein `#anker`",
+> „höchstens EIN Kopf-Hinweis" und „kein Befund wird neu formuliert"; die alten `?abschnitt=`-
+> Adressen bleiben als Lesezeichen gültig.
+
 Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 11).
 
 

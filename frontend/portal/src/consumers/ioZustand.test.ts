@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ioZustandView, VERALTET_MS, type IoModulZustandDto } from './ioZustand';
+import { ioBelegung, ioBelegungSatz, ioZustandView, VERALTET_MS, type IoModulZustandDto } from './ioZustand';
 
 const now = Date.parse('2026-09-24T12:00:00Z');
 
@@ -81,5 +81,63 @@ describe('ioZustandView', () => {
     }), now);
     expect(v.leer).toBeNull();
     expect(v.ausgaenge[0]).toMatchObject({ wert: '—', detail: 'schaltet Heizstab' });
+  });
+});
+
+describe('ioBelegung - die große Zahl der Modul-Bühne', () => {
+  it('zählt VERSCHIEDENE Verbraucher und belegte Ausgänge getrennt', () => {
+    const d = dto({
+      outputs: [
+        { channel: 1, on: true, consumerId: 'c-1', consumerName: 'Heizstab' },
+        { channel: 2, on: true, consumerId: 'c-1', consumerName: 'Heizstab' },
+        { channel: 3, on: false, consumerId: 'c-2', consumerName: 'Pumpe' },
+        { channel: 4, on: false, consumerId: null, consumerName: null },
+      ],
+    });
+    expect(ioBelegung(d)).toEqual({ verbraucher: 2, belegt: 3, ausgaenge: 4, eingaenge: 2 });
+  });
+
+  it('gibt ohne Meldung keine Zahl - nie eine geratene „8"', () => {
+    expect(ioBelegung(null)).toBeNull();
+    expect(ioBelegung(dto({ inputs: [], outputs: [] }))).toBeNull();
+  });
+});
+
+describe('ioBelegungSatz - WAS gerade eingeschaltet ist', () => {
+  it('nennt die eingeschalteten Verbraucher - jeden einmal', () => {
+    const d = dto({
+      outputs: [
+        { channel: 1, on: true, consumerId: 'c-1', consumerName: 'Heizstab' },
+        { channel: 2, on: true, consumerId: 'c-1', consumerName: 'Heizstab' },
+        { channel: 3, on: true, consumerId: 'c-2', consumerName: 'Pumpe' },
+      ],
+    });
+    expect(ioBelegungSatz(d, now)).toBe('Eingeschaltet: Heizstab, Pumpe.');
+  });
+
+  it('sagt „alle aus" nur, wenn JEDER belegte Ausgang gemeldet ist', () => {
+    const aus = dto({ outputs: [{ channel: 3, on: false, consumerId: 'c-3', consumerName: 'Heizstab' }] });
+    expect(ioBelegungSatz(aus, now)).toBe('Der angeschlossene Verbraucher ist gerade aus.');
+    const unbekannt = dto({
+      outputs: [
+        { channel: 3, on: false, consumerId: 'c-3', consumerName: 'Heizstab' },
+        { channel: 4, on: null, consumerId: 'c-4', consumerName: 'Pumpe' },
+      ],
+    });
+    expect(ioBelegungSatz(unbekannt, now)).toBeNull();
+  });
+
+  it('behauptet aus einer VERALTETEN Meldung nichts über „jetzt"', () => {
+    const alt = dto({ receivedAt: new Date(now - VERALTET_MS - 1_000).toISOString() });
+    expect(ioBelegungSatz(alt, now)).toBeNull();
+  });
+
+  it('nennt freie Ausgänge und fehlende Ausgänge als Tatsache', () => {
+    expect(ioBelegungSatz(dto({ outputs: [{ channel: 4, on: false, consumerId: null, consumerName: null }] }), now))
+      .toBe('Der Ausgang ist frei.');
+    expect(ioBelegungSatz(dto({ outputs: [1, 2, 3, 4].map((channel) => ({ channel, on: false, consumerId: null, consumerName: null })) }), now))
+      .toBe('Alle 4 Ausgänge sind frei.');
+    expect(ioBelegungSatz(dto({ outputs: [] }), now)).toBe('2 Eingänge, keine Ausgänge gemeldet.');
+    expect(ioBelegungSatz(null, now)).toBeNull();
   });
 });

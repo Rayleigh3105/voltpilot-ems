@@ -9,6 +9,7 @@ import {
   deviceState,
   deviceSummary,
   edgeBoxLine,
+  ioBindungenAus,
   MEASURED_VIA_INVERTER,
   newlyReported,
   plantHeadline,
@@ -1390,5 +1391,46 @@ describe('plantModel — die Herkunft eines berechneten Ladestands (P5d)', () =>
   it('rät bei einem unbekannten Code nicht', () => {
     expect(ladestand(7)?.caption).toBe('geladen');
     expect(ladestand(0)?.caption).toBe('geladen');
+  });
+});
+
+describe('plantModel - K4: Verbraucher an den Relais eines I/O-Moduls', () => {
+  const entities = [
+    entity('batt', 'battery-hybrid', { control: true }),
+    entity('modul', 'io-module', { label: 'I/O-Modul Keller', edgeSourceId: 'src-ebyte', capabilities: { measure: [] } }),
+    entity('heiz', 'heating-rod', { label: 'Heizstab Keller', control: true, role: 'consumer', capabilities: { measure: [] } }),
+  ];
+  const localSetup = [
+    inverter('inv', 'deye', 'Speicher Scheune'),
+    source('src-ebyte', 'consumer', { label: 'I/O-Modul Keller', brand: 'ebyte', adoptedEntityId: 'modul' }),
+  ];
+
+  it('liest die Bindungen aus den Verbraucher-Profilen - nur vollständige', () => {
+    expect(ioBindungenAus([
+      { id: 'heiz', ioEntityId: 'modul', ioChannel: 1 },
+      { id: 'pumpe', ioEntityId: 'modul', ioChannel: 0 },
+      { id: 'shelly', ioEntityId: null, ioChannel: null },
+      { id: 'halb', ioEntityId: 'modul' },
+    ])).toEqual([{ entityId: 'heiz', ioEntityId: 'modul', ioChannel: 1 }]);
+  });
+
+  it('hängt den Verbraucher an das MODUL, das ihn schaltet - nie an den Wechselrichter', () => {
+    const m = plantModel(entities, null, localSetup, undefined, [
+      { entityId: 'heiz', ioEntityId: 'modul', ioChannel: 3 },
+    ]);
+    const heiz = m.components.find((c) => c.entityId === 'heiz')!;
+    expect(heiz.deviceIds).toEqual(['src-ebyte']);
+    expect(heiz.io).toEqual({ modulGeraetId: 'src-ebyte', kanal: 3 });
+    expect(heiz.provenance).toBe('geschaltet über I/O-Modul Keller · Ausgang DO3');
+    expect(m.devices.find((d) => d.id === 'inv')?.componentIds).not.toContain(heiz.id);
+    expect(m.devices.find((d) => d.id === 'src-ebyte')?.componentIds).toContain(heiz.id);
+  });
+
+  it('ändert nichts, wenn das Modul hier kein Gerät hat - nie ein geratenes', () => {
+    const ohneModul = plantModel(entities, null, [inverter('inv', 'deye')], undefined, [
+      { entityId: 'heiz', ioEntityId: 'modul', ioChannel: 1 },
+    ]);
+    const heiz = ohneModul.components.find((c) => c.entityId === 'heiz');
+    expect(heiz?.io ?? null).toBeNull();
   });
 });

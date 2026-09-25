@@ -538,7 +538,9 @@ describe('AnlagenModellSection — Variante A', () => {
     await screen.findByRole('region', { name: 'Deye SUN-30K' });
     const speicher = screen.getByText('Speicher').closest('.vp-am-comp') as HTMLElement;
     const link = within(speicher).getByRole('link', { name: /Speicher am Wechselrichter/ });
-    expect(link.getAttribute('href')).toMatch(/abschnitt=jetzt/);
+    // Die Bühne heißt im Kern `buehne` - das alte `jetzt` bleibt als
+    // Lesezeichen gültig, geschrieben wird der neue Name.
+    expect(link.getAttribute('href')).toMatch(/abschnitt=buehne/);
     expect(link.getAttribute('href')).toMatch(/kachel=speicher/);
     // ⚠ Ein Parameter im Hash, nie eine zweite Raute (der HashRouter läse sie
     // als Route).

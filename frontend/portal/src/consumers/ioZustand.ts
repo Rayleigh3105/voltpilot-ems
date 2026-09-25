@@ -100,3 +100,62 @@ export function ioZustandView(dto: IoModulZustandDto | null, now: number): IoZus
         + 'liest, stehen hier seine Eingänge und Ausgänge.',
   };
 }
+
+/** Die Belegung eines Moduls in Zahlen - die große Zahl seiner Bühne. */
+export interface IoBelegung {
+  /** Wie viele VERSCHIEDENE Verbraucher an seinen Ausgängen hängen. */
+  verbraucher: number;
+  /** Wie viele Ausgänge einem Verbraucher gehören. */
+  belegt: number;
+  /** Wie viele Ausgänge das Modul gemeldet hat. */
+  ausgaenge: number;
+  /** Wie viele Eingänge das Modul gemeldet hat. */
+  eingaenge: number;
+}
+
+/**
+ * Die Belegung aus der letzten Meldung - `null`, solange das Modul nichts
+ * gemeldet hat (dann gibt es keine Zahl, nie eine geratene „8").
+ */
+export function ioBelegung(dto: IoModulZustandDto | null): IoBelegung | null {
+  if (!dto || dto.outputs.length + dto.inputs.length === 0) return null;
+  const verbraucher = new Set(
+    dto.outputs.map((k) => k.consumerId).filter((id): id is string => Boolean(id)),
+  );
+  return {
+    verbraucher: verbraucher.size,
+    belegt: dto.outputs.filter((k) => k.consumerId).length,
+    ausgaenge: dto.outputs.length,
+    eingaenge: dto.inputs.length,
+  };
+}
+
+/**
+ * Der Satz der Modul-Bühne: WAS gerade eingeschaltet ist. Wie viele
+ * Verbraucher angeschlossen sind, sagt die Zahl darüber, die Belegung der
+ * Klemmenplan darunter - der Satz wiederholt keins von beiden.
+ *
+ * ⚠ Nur aus einer AKTUELLEN Meldung: ein veralteter oder unbekannter Zustand
+ * behauptet nichts (wie alt er ist, sagt der Klemmenplan). „Alle aus" steht
+ * nur, wenn JEDER belegte Ausgang gemeldet ist.
+ */
+export function ioBelegungSatz(dto: IoModulZustandDto | null, now: number): string | null {
+  const b = ioBelegung(dto);
+  if (!dto || !b) return null;
+  if (b.ausgaenge === 0) return `${b.eingaenge} Eingänge, keine Ausgänge gemeldet.`;
+  if (b.belegt === 0) return b.ausgaenge === 1 ? 'Der Ausgang ist frei.' : `Alle ${b.ausgaenge} Ausgänge sind frei.`;
+  const at = dto.receivedAt ? Date.parse(dto.receivedAt) : Number.NaN;
+  if (!Number.isFinite(at) || now - at > VERALTET_MS) return null;
+  const an = new Map<string, string>();
+  let gemeldet = 0;
+  for (const k of dto.outputs) {
+    if (!k.consumerId || k.on == null) continue;
+    gemeldet += 1;
+    if (k.on) an.set(k.consumerId, k.consumerName?.trim() || 'Verbraucher');
+  }
+  if (an.size > 0) return `Eingeschaltet: ${[...an.values()].join(', ')}.`;
+  if (gemeldet < b.belegt) return null;
+  return b.verbraucher === 1
+    ? 'Der angeschlossene Verbraucher ist gerade aus.'
+    : `Alle ${b.verbraucher} Verbraucher sind gerade aus.`;
+}
