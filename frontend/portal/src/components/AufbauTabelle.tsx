@@ -188,6 +188,31 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
             />
           ))}
         </div>
+      </div>
+      <div className="vp-auf-leiste">
+        <div className="vp-auf-zahlen" aria-live="polite">
+          {n.aktiv ? (
+            <span>
+              <b>{n.treffer}</b> von {n.geraete} {n.geraete === 1 ? 'Gerät' : 'Geräten'}
+            </span>
+          ) : (
+            <span>
+              <b>{n.geraete}</b> {n.geraete === 1 ? 'Gerät' : 'Geräte'} an dieser Anlage
+            </span>
+          )}
+          {n.achtung > 0 && (
+            <button type="button" className="vp-auf-kurz is-warn" onClick={() => p.onFilter(kurzfilter('achtung'))}>
+              <Icon name="alert-triangle" size={14} />
+              {n.achtung} {n.achtung === 1 ? 'braucht' : 'brauchen'} Aufmerksamkeit
+            </button>
+          )}
+          {n.gemeldet > 0 && (
+            <button type="button" className="vp-auf-kurz" onClick={() => p.onFilter(kurzfilter('gemeldet'))}>
+              <Icon name="search" size={14} />
+              {n.gemeldet} von der Box gemeldet
+            </button>
+          )}
+        </div>
         <div className="vp-auf-neu">
           <button
             type="button"
@@ -215,30 +240,6 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
         {p.technik}
       </div>
       {!p.onGeraetHinzufuegen && p.geraetGesperrt && <p className="vp-auf-gesperrt">{p.geraetGesperrt}</p>}
-
-      <div className="vp-auf-zahlen" aria-live="polite">
-        {n.aktiv ? (
-          <span>
-            <b>{n.treffer}</b> von {n.geraete} {n.geraete === 1 ? 'Gerät' : 'Geräten'}
-          </span>
-        ) : (
-          <span>
-            <b>{n.geraete}</b> {n.geraete === 1 ? 'Gerät' : 'Geräte'} an dieser Anlage
-          </span>
-        )}
-        {n.achtung > 0 && (
-          <button type="button" className="vp-auf-kurz is-warn" onClick={() => p.onFilter(kurzfilter('achtung'))}>
-            <Icon name="alert-triangle" size={14} />
-            {n.achtung} {n.achtung === 1 ? 'braucht' : 'brauchen'} Aufmerksamkeit
-          </button>
-        )}
-        {n.gemeldet > 0 && (
-          <button type="button" className="vp-auf-kurz" onClick={() => p.onFilter(kurzfilter('gemeldet'))}>
-            <Icon name="search" size={14} />
-            {n.gemeldet} von der Box gemeldet
-          </button>
-        )}
-      </div>
 
       {aktive.length > 0 && (
         <div className="vp-auf-aktiv">
