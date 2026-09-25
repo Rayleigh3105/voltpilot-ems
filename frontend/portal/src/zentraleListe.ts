@@ -58,6 +58,13 @@ export interface GeraeteKarte {
   untertitel: string;
   /** Zustand MIT Zeitbezug („liefert Daten · vor 12 Sek."). */
   zustand: string;
+  /**
+   * Derselbe Zustand in seinen zwei Teilen - Wort und Zeitbezug -, für
+   * Flächen, die sie getrennt setzen (die Aufbau-Tabelle: Wort fett, Zeit
+   * darunter). Fehlt er, gilt `zustand` als Wort ohne Zeit.
+   */
+  zustandWort?: string;
+  zustandZeit?: string | null;
   ton: GeraetTon;
   /** Die Adresse der Geräteseite; null = es gibt keine (nie ein Weg ins Leere). */
   href: string | null;
@@ -108,6 +115,14 @@ function alter(iso: string | null | undefined, now: number): string | null {
 
 function mitZeit(wort: string, rel: string | null): string {
   return rel ? `${wort} · ${rel}` : wort;
+}
+
+/** Der Zustand einer Karte: zusammengesetzt UND in seinen zwei Teilen. */
+function zustandFelder(
+  wort: string,
+  rel: string | null,
+): Pick<GeraeteKarte, 'zustand' | 'zustandWort' | 'zustandZeit'> {
+  return { zustand: mitZeit(wort, rel), zustandWort: wort, zustandZeit: rel };
 }
 
 /** Der Satz unter der Säulen-Kopfzeile: „2 Stecker · 1 lädt". */
@@ -170,7 +185,7 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       art: 'box',
       titel: `VoltPilot-Box ${deviceName({ storedLabel: box.name }) || box.externalRef}`,
       untertitel: ART_WORT.box,
-      zustand: mitZeit(boxWort(health), alter(box.lastSeenAt, now)),
+      ...zustandFelder(boxWort(health), alter(box.lastSeenAt, now)),
       ton: HEALTH_TON[health],
       href: boxRef ? boxSeiteHash(siteId, boxRef) : null,
       komponenten: [],
@@ -212,7 +227,7 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       titel: customerName || d.label,
       technischerName: customerName ? d.label : null,
       untertitel: geraeteArtWort(art, rolleVon(d.id), komponenten),
-      zustand: mitZeit(d.state, alter(leseZeit(d.id), now)),
+      ...zustandFelder(d.state, alter(leseZeit(d.id), now)),
       ton: HEALTH_TON[d.health],
       href:
         boxRef && geraetAdressierbar(d.id) ? geraetSeiteHash(siteId, boxRef, d.id) : null,
@@ -232,7 +247,7 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       art: 'ladepunkt',
       titel: chargerName(c),
       untertitel: steckerSatz(c),
-      zustand: mitZeit(c.connected ? 'verbunden' : 'getrennt', alter(c.lastSeen, now)),
+      ...zustandFelder(c.connected ? 'verbunden' : 'getrennt', alter(c.lastSeen, now)),
       ton: c.connected ? 'ok' : 'warn',
       href: boxRef ? geraetSeiteHash(siteId, boxRef, chargerGeraetId(c.chargePointId)) : null,
       komponenten,
@@ -288,9 +303,11 @@ export function boxLage(
   box: Device,
   fetchedAt: number | null | undefined,
   now: number = Date.now(),
-): { ton: GeraetTon; zustand: string } {
+): { ton: GeraetTon; zustand: string; zustandWort: string; zustandZeit: string | null } {
   const health = boxHealth([box], fetchedAt, now);
-  return { ton: HEALTH_TON[health], zustand: mitZeit(boxWort(health), alter(box.lastSeenAt, now)) };
+  const wort = boxWort(health);
+  const rel = alter(box.lastSeenAt, now);
+  return { ton: HEALTH_TON[health], zustand: mitZeit(wort, rel), zustandWort: wort, zustandZeit: rel };
 }
 
 /** Die Lebendigkeit der Box - der Anker ist ihre Telemetrie (`liveness.ts`). */

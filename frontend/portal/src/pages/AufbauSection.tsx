@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Icon, type IconName } from '../../designsystem/components/core/Icon';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   api,
@@ -32,9 +32,15 @@ import {
   type AufbauAnlage,
   type AufbauBox,
   type AufbauGeraet,
-  type AufbauWert,
-  type AufbauWurzel,
 } from '../aufbauBaum';
+import {
+  LEERER_FILTER,
+  aufbauZahlen,
+  filterOptionen,
+  tabellenZeilen,
+  type AufbauFilter,
+} from '../aufbauTabelle';
+import { AufbauSymbol, AufbauTabelle } from '../components/AufbauTabelle';
 import type { SiteCharging } from '../ladepunkte';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';
@@ -54,11 +60,9 @@ import { BEFEHLE_LABEL } from '../befehle';
 import { SPEICHER_BLATT_LABEL, SPEICHER_KACHEL } from '../geraetGesicht';
 import { abschnittHash } from '../geraetRahmen';
 import {
-  anlageRoute,
   befehleHash,
   geraetBearbeitenHash,
   geraetKomponenteBearbeitenHash,
-  hashForRoute,
   komponenteBearbeitenHash,
   modellBearbeitenKomponente,
   ohneModellBearbeiten,
@@ -74,7 +78,6 @@ import {
   type DrawerState,
 } from '../components/TechnischeKarten';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
-import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
 import { AnlageAnlegenDrawerLazy } from '../components/AnlageAnlegenDrawerLazy';
@@ -82,7 +85,6 @@ import { replaceCurrentNavigation } from '../navigationBlocker';
 import { ablehnungText, haltGrund, ohneMesswertHinweis, sollIstText, sollIstTon, verwaltungsHinweis } from '../komponentenAssistent';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { LIST_POLL_MS } from '../pollCadence';
-import { mitStaffel, useStaffel } from '../staffel';
 import '../components/Aufbau.css';
 
 /**
@@ -139,7 +141,6 @@ export function AufbauSection({
 
   // Aufgaben-Flächen
   const [kurzblickId, setKurzblickId] = useState<string | null>(null);
-  const [hinzufuegen, setHinzufuegen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addBox, setAddBox] = useState<Device | null>(null);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
@@ -168,6 +169,9 @@ export function AufbauSection({
   // Welche Knoten offen sind (Anlage/Box). Vorgabe: die geöffnete Anlage und
   // ihre Boxen offen, Nachbar-Anlagen zu.
   const [zu, setZu] = useState<Record<string, boolean>>({});
+  // Suche und Filter der Tabelle, und die Geräte mit aufgeklappten Messwerten (K5).
+  const [filter, setFilter] = useState<AufbauFilter>(LEERER_FILTER);
+  const [geraetOffen, setGeraetOffen] = useState<ReadonlySet<string>>(() => new Set());
   const [nachbarKarten, setNachbarKarten] = useState<Record<string, GeraeteKarte[] | undefined>>({});
   const nachbarLaeuft = useRef(new Set<string>());
 
@@ -319,6 +323,13 @@ export function AufbauSection({
     if (anlage && !anlage.aktuell && !jetztOffen) ladeNachbar(anlage.id);
   };
 
+  const zeilen = useMemo(
+    () => tabellenZeilen(baum, filter, { offen: (id, vorgabe) => (id in zu ? !zu[id] : vorgabe), geraete: geraetOffen }),
+    [baum, filter, zu, geraetOffen],
+  );
+  const optionen = useMemo(() => filterOptionen(baum), [baum]);
+  const zahlen = useMemo(() => aufbauZahlen(baum, filter), [baum, filter]);
+
   const ladeNachbar = (id: string) => {
     if (nachbarKarten[id] || nachbarLaeuft.current.has(id)) return;
     nachbarLaeuft.current.add(id);
@@ -393,7 +404,6 @@ export function AufbauSection({
     ...aktuelleAnlage.boxen.flatMap((b) => b.geraete.map((g) => ({ geraet: g, box: b }))),
     ...aktuelleAnlage.ohneBox.map((g) => ({ geraet: g, box: null })),
   ];
-  const funde = alleGeraete.filter((x) => x.geraet.art === 'neu');
   const kurzblick = alleGeraete.find((x) => x.geraet.id === kurzblickId) ?? null;
   // Das Modal blendet aus: sein Inhalt bleibt während der Ausblendung stehen.
   const letzterKurzblick = useRef<typeof kurzblick>(null);
@@ -401,7 +411,6 @@ export function AufbauSection({
   const kurzblickInhalt = kurzblick ?? letzterKurzblick.current;
 
   const oeffneAnlegen = (box: Device | null, typ: TypId | null = null) => {
-    setHinzufuegen(false);
     setAddBox(box);
     setAddTyp(typ);
     setAddOpen(true);
@@ -458,20 +467,6 @@ export function AufbauSection({
         </div>
       )}
 
-      <Wurzel
-        wurzel={baum.wurzel}
-        anlagenZahl={baum.anlagen.length}
-        boxZahl={baum.boxZahl}
-        onHinzufuegen={() => setHinzufuegen(true)}
-        technik={
-          showTechnical ? (
-            <button type="button" className="vp-auf-technik-add" onClick={() => setTechnikDrawer({ mode: 'create' })}>
-              <Icon name="cpu" size={14} /> Komponente anlegen (technisch)
-            </button>
-          ) : null
-        }
-      />
-
       {hinweise.length > 0 && (
         <ul className="vp-auf-hinweise">
           {hinweise.map((h) => (
@@ -488,17 +483,49 @@ export function AufbauSection({
       {error && <ErrorState message="Der Aufbau konnte nicht geladen werden." onRetry={reload} />}
 
       {data && (
-        <Baum
-          anlagen={baum.anlagen}
-          offen={offen}
-          onUmschalten={umschalten}
+        <AufbauTabelle
+          wurzel={baum.wurzel}
+          anlagenZahl={baum.anlagen.length}
+          boxZahl={baum.boxZahl}
+          zeilen={zeilen}
+          filter={filter}
+          optionen={optionen}
+          zahlen={zahlen}
+          onFilter={setFilter}
+          onAnlageUmschalten={(a) => umschalten(a, a.id, a.aktuell)}
+          onBoxUmschalten={(b) => umschalten(null, b.id, true)}
+          onGeraetUmschalten={(id) =>
+            setGeraetOffen((alt) => {
+              const neu = new Set(alt);
+              if (neu.has(id)) neu.delete(id);
+              else neu.add(id);
+              return neu;
+            })
+          }
           onKurzblick={setKurzblickId}
           onUebernehmen={setAssign}
           onTechnischUebernehmen={showTechnical ? setTechnikAdopt : null}
-          onGeraetAnBox={portalManaged ? (b) => oeffneAnlegen(eigeneBoxen.find((d) => d.id === b.id) ?? null) : null}
+          onGeraetHinzufuegen={
+            portalManaged ? (b) => oeffneAnlegen(b ? eigeneBoxen.find((d) => d.id === b.id) ?? null : boxOf(devices, site.id)) : null
+          }
+          geraetGesperrt={
+            components && !portalManaged
+              ? components.componentAuthority === 'box'
+                ? 'Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.'
+                : 'Für diese Anlage ist keine Gerätebearbeitung im Portal freigegeben.'
+              : null
+          }
           onBoxHinzufuegen={() => setBoxAnmelden(true)}
+          onAnlageHinzufuegen={() => setAnlageAnlegen(true)}
           onBoxVerwalten={(b) => setBoxVerwalten(b.id)}
           hinweisFor={(g) => g.karte.komponenten.map((c) => ohneMesswertById.get(c.entityId)?.badge).find(Boolean) ?? null}
+          technik={
+            showTechnical ? (
+              <button type="button" className="vp-auf-technik-add" onClick={() => setTechnikDrawer({ mode: 'create' })}>
+                <Icon name="cpu" size={14} /> Komponente anlegen (technisch)
+              </button>
+            ) : null
+          }
         />
       )}
 
@@ -509,7 +536,7 @@ export function AufbauSection({
         open={kurzblick != null}
         onClose={() => setKurzblickId(null)}
         title={kurzblickInhalt?.geraet.titel ?? ''}
-        icon={kurzblickInhalt ? <Kachel geraet={kurzblickInhalt.geraet} /> : null}
+        icon={kurzblickInhalt ? <AufbauSymbol kategorie={kurzblickInhalt.geraet.kategorie} icon={kurzblickInhalt.geraet.icon} /> : null}
         footer={
           // Ohne Geräteseite und ohne Bearbeiten-Ort gibt es keinen Fuß - das
           // Schließen-Kreuz im Kopf reicht.
@@ -553,87 +580,6 @@ export function AufbauSection({
             }
           />
         )}
-      </Modal>
-
-      {/* ---------- Hinzufügen (E4) ---------- */}
-      <Modal open={hinzufuegen} onClose={() => setHinzufuegen(false)} title="Hinzufügen">
-        <div className="vp-auf-add">
-          {funde.map(({ geraet }) =>
-            geraet.karte.quelle ? (
-              <div key={geraet.id} className="vp-auf-fund">
-                <span className="vp-auf-tile is-fund" aria-hidden="true">
-                  <Icon name="search" size={16} />
-                </span>
-                <span className="txt">
-                  <b>{geraet.titel}</b>
-                  <small>{geraet.unterzeile}</small>
-                </span>
-                <button
-                  type="button"
-                  className="vp-btn vp-btn--outline vp-btn--sm"
-                  onClick={() => {
-                    setHinzufuegen(false);
-                    setAssign(geraet.karte.quelle as AdoptableSource);
-                  }}
-                >
-                  Übernehmen
-                </button>
-              </div>
-            ) : null,
-          )}
-          <p className="vp-auf-add-frage">Was möchten Sie hinzufügen?</p>
-          <Wahl
-            icon="sun"
-            kategorie="solar"
-            titel="Gerät"
-            text={
-              portalManaged
-                ? 'Wechselrichter, Zähler, Wallbox … an einer Box'
-                : 'Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.'
-            }
-            haupt
-            disabled={!portalManaged}
-            onClick={() => oeffneAnlegen(boxOf(devices, site.id))}
-          />
-          <Wahl
-            icon="wifi"
-            kategorie="navy"
-            titel="VoltPilot-Box"
-            text="mit der Geräte-ID vom Aufkleber"
-            onClick={() => {
-              setHinzufuegen(false);
-              setBoxAnmelden(true);
-            }}
-          />
-          <Wahl
-            icon="layers"
-            kategorie="anlage"
-            titel="Anlage"
-            text={
-              baum.wurzel?.art === 'standort'
-                ? `weiterer Netzanschluss am Standort ${baum.wurzel.name}`
-                : 'weiterer Netzanschluss'
-            }
-            onClick={() => {
-              setHinzufuegen(false);
-              setAnlageAnlegen(true);
-            }}
-          />
-          {portalManaged && (
-            <details className="vp-auf-vorlagen">
-              <summary>
-                <Icon name="chevron-right" size={14} /> Aus eigener Vorlage
-              </summary>
-              <EigeneVorlagenPanel
-                siteId={site.id}
-                onAnlegen={(v) => {
-                  setHinzufuegen(false);
-                  setVorlage(v);
-                }}
-              />
-            </details>
-          )}
-        </div>
       </Modal>
 
       <ConsumerOverrideDialog
@@ -793,66 +739,7 @@ export function AufbauSection({
 }
 
 // ---------------------------------------------------------------------------
-// Standort-Kopf
-// ---------------------------------------------------------------------------
-
-function Wurzel({
-  wurzel,
-  anlagenZahl,
-  boxZahl,
-  onHinzufuegen,
-  technik,
-}: {
-  wurzel: AufbauWurzel | null;
-  anlagenZahl: number;
-  boxZahl: number;
-  onHinzufuegen: () => void;
-  technik: ReactNode;
-}) {
-  return (
-    <section className="vp-auf-wurzel" aria-label={wurzel ? `Standort ${wurzel.name}` : 'Aufbau'}>
-      <span className={`vp-auf-tile is-navy is-gross${wurzel?.art === 'ohne-standort' ? ' is-leer' : ''}`} aria-hidden="true">
-        <Icon name="map-pin" size={20} />
-      </span>
-      <div className="vp-auf-wurzel-name">
-        {wurzel ? (
-          <>
-            <span className="vp-auf-kicker">
-              Standort{wurzel.kurzzeichen ? ` · ${wurzel.kurzzeichen}` : ''}
-              {wurzel.entwurf && <span className="vp-auf-pill is-ruhig">Entwurf</span>}
-            </span>
-            <h2>{wurzel.name}</h2>
-            {wurzel.art === 'standort' && (
-              <span className="vp-auf-sub">{wurzel.adresse ?? 'Adresse noch nicht hinterlegt'}</span>
-            )}
-          </>
-        ) : (
-          <>
-            <span className="vp-auf-kicker">Standort</span>
-            <h2>Ihre Anlage</h2>
-          </>
-        )}
-      </div>
-      <div className="vp-auf-zahlen" aria-label="Umfang">
-        <span className="vp-auf-pill">
-          {anlagenZahl} {anlagenZahl === 1 ? 'Anlage' : 'Anlagen'}
-        </span>
-        <span className="vp-auf-pill">
-          {boxZahl} {boxZahl === 1 ? 'Box' : 'Boxen'}
-        </span>
-      </div>
-      <div className="vp-auf-wurzel-aktion">
-        <button type="button" className="vp-btn vp-btn--primary vp-btn--sm" onClick={onHinzufuegen}>
-          <Icon name="plus" size={16} /> Hinzufügen
-        </button>
-        {technik}
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Der Baum
+// Zustands-Punkte (Kurzblick)
 // ---------------------------------------------------------------------------
 
 const TON_PUNKT: Record<'ok' | 'warn' | 'off', string> = {
@@ -860,333 +747,6 @@ const TON_PUNKT: Record<'ok' | 'warn' | 'off', string> = {
   warn: 'vp-health-warn',
   off: 'vp-health-off',
 };
-
-const WERT_ICON: Record<AufbauWert['art'], IconName> = {
-  pv: 'sun',
-  speicher: 'battery',
-  netz: 'activity',
-  haus: 'home',
-  verbraucher: 'sliders',
-  laden: 'zap',
-};
-
-function Chips({ werte }: { werte: AufbauWert[] }) {
-  if (werte.length === 0) return null;
-  return (
-    <span className="vp-auf-chips">
-      {werte.map((w) => (
-        <span key={`${w.art}:${w.text}`} className={`vp-auf-chip is-${w.art}`} aria-label={w.label} title={w.label}>
-          <Icon name={WERT_ICON[w.art]} size={13} />
-          <span aria-hidden="true">{w.text}</span>
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function Kachel({ geraet }: { geraet: AufbauGeraet }) {
-  return (
-    <span className={`vp-auf-tile is-${geraet.kategorie}`} aria-hidden="true">
-      <Icon name={geraet.icon} size={16} />
-    </span>
-  );
-}
-
-function Baum({
-  anlagen,
-  offen,
-  onUmschalten,
-  onKurzblick,
-  onUebernehmen,
-  onTechnischUebernehmen,
-  onGeraetAnBox,
-  onBoxHinzufuegen,
-  onBoxVerwalten,
-  hinweisFor,
-}: {
-  anlagen: AufbauAnlage[];
-  offen: (id: string, vorgabe: boolean) => boolean;
-  onUmschalten: (anlage: AufbauAnlage | null, id: string, vorgabe: boolean) => void;
-  onKurzblick: (id: string) => void;
-  onUebernehmen: (q: AdoptableSource) => void;
-  onTechnischUebernehmen: ((q: AdoptableSource) => void) | null;
-  onGeraetAnBox: ((b: AufbauBox) => void) | null;
-  onBoxHinzufuegen: () => void;
-  /** Name, Typ, Neu-Verbinden und Entfernen einer Box der geöffneten Anlage. */
-  onBoxVerwalten: (b: AufbauBox) => void;
-  /** Eine Ausnahme an einer Komponente („ohne Ladestand") - sie steht schon in der Zeile. */
-  hinweisFor: (g: AufbauGeraet) => string | null;
-}) {
-  const staffel = useStaffel('aufbau-baum');
-  const geraetZeilen = (geraete: AufbauGeraet[], nurLesend: boolean) =>
-    geraete.map((g) => (
-      <li key={g.id} className="vp-auf-knoten is-geraet">
-        {g.art === 'neu' && g.karte.quelle ? (
-          <FundZeile
-            geraet={g}
-            onUebernehmen={nurLesend ? null : onUebernehmen}
-            onTechnisch={nurLesend ? null : onTechnischUebernehmen}
-          />
-        ) : nurLesend ? (
-          g.karte.href ? (
-            <a className="vp-auf-zeile" href={g.karte.href} data-aufbau-geraet={g.id}>
-              <GeraetInhalt geraet={g} />
-            </a>
-          ) : (
-            <div className="vp-auf-zeile" data-aufbau-geraet={g.id}>
-              <GeraetInhalt geraet={g} ohnePfeil />
-            </div>
-          )
-        ) : (
-          <button
-            type="button"
-            className="vp-auf-zeile"
-            data-aufbau-geraet={g.id}
-            onClick={() => onKurzblick(g.id)}
-            aria-haspopup="dialog"
-          >
-            <GeraetInhalt geraet={g} hinweis={hinweisFor(g)} />
-          </button>
-        )}
-      </li>
-    ));
-
-  return (
-    <ol className={mitStaffel('vp-auf-baum vp-auf-liste', staffel)} aria-label="Anlagen an diesem Standort">
-      {anlagen.map((a) => {
-        const anlageOffen = offen(a.id, a.aktuell);
-        return (
-          <li key={a.id} className={`vp-auf-knoten is-anlage${a.aktuell ? ' is-aktuell' : ''}${anlageOffen ? ' is-offen' : ''}`}>
-            <button
-              type="button"
-              className="vp-auf-zeile"
-              aria-expanded={anlageOffen}
-              onClick={() => onUmschalten(a, a.id, a.aktuell)}
-            >
-              <span className="vp-auf-tile is-anlage" aria-hidden="true">
-                <Icon name="layers" size={16} />
-              </span>
-              <span className="vp-auf-name">
-                <b>
-                  <span className="txt">Anlage {a.name}</span>
-                </b>
-                <small>
-                  {a.aktuell && <span className="vp-auf-hier">Sie sind hier</span>}
-                  <span>
-                    {a.boxen.length} {a.boxen.length === 1 ? 'Box' : 'Boxen'}
-                    {a.geraeteZahl != null && ` · ${a.geraeteZahl} ${a.geraeteZahl === 1 ? 'Gerät' : 'Geräte'}`}
-                  </span>
-                  {a.wertStand === 'veraltet' && <span className="is-warn">keine aktuellen Werte</span>}
-                </small>
-              </span>
-              <Chips werte={a.werte} />
-              <span className="vp-auf-ende" aria-hidden="true">
-                <Icon name="chevron-down" size={18} />
-              </span>
-            </button>
-            <div className="vp-auf-kinder">
-              <div className="vp-auf-kinder-innen">
-                <ol className={mitStaffel('vp-auf-liste', staffel)}>
-                  {a.boxen.map((b) => (
-                    <li key={b.id} className="vp-auf-knoten is-box">
-                      {/* Die Box ist ein TOR mit eigener Seite: ihr Name führt dorthin,
-                          „+ Gerät" beginnt an ihr den Anlege-Weg. Ihre Geräte stehen
-                          immer darunter (E3) - es gibt nichts zuzuklappen. */}
-                      <div className="vp-auf-zeile is-geteilt">
-                        <a className="vp-auf-treffer" href={b.href}>
-                          <span className="vp-auf-tile is-navy" aria-hidden="true">
-                            <Icon name="wifi" size={16} />
-                          </span>
-                          <span className="vp-auf-name">
-                            <b>
-                              <span className={`vp-health-dot ${b.ton === 'ok' ? 'vp-fleet-dot tone-ok' : TON_PUNKT[b.ton]}`} />
-                              <span className="txt">{b.name}</span>
-                            </b>
-                            <small>
-                              {b.fuehrend && (
-                                <span className="vp-auf-fuehrend">
-                                  <Icon name="star" size={11} /> führende Box
-                                </span>
-                              )}
-                              <span className="vp-auf-ref">{b.ref}</span>
-                              <span className={b.ton === 'ok' ? undefined : 'is-warn'}>{b.zustand}</span>
-                            </small>
-                          </span>
-                          <Icon name="chevron-right" size={18} />
-                        </a>
-                        {a.aktuell && (
-                          <span className="vp-auf-ende">
-                            {onGeraetAnBox && (
-                              <button
-                                type="button"
-                                className="vp-auf-plus"
-                                onClick={() => onGeraetAnBox(b)}
-                                aria-label={`Gerät an ${b.name} hinzufügen`}
-                              >
-                                <Icon name="plus" size={16} />
-                                <span className="lbl" aria-hidden="true">
-                                  Gerät
-                                </span>
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="vp-auf-plus is-ruhig"
-                              onClick={() => onBoxVerwalten(b)}
-                              aria-label={`${b.name} verwalten`}
-                              aria-haspopup="dialog"
-                            >
-                              <Icon name="more-horizontal" size={16} />
-                            </button>
-                          </span>
-                        )}
-                      </div>
-                      <ol className={mitStaffel('vp-auf-liste', staffel)}>
-                        {geraetZeilen(b.geraete, !a.aktuell)}
-                        {b.geraete.length === 0 && (
-                          <li className="vp-auf-knoten is-leer">
-                            <span className="vp-auf-leer">
-                              {a.aktuell || a.geraeteZahl != null ? 'Noch kein Gerät an dieser Box' : 'Wird geladen …'}
-                            </span>
-                          </li>
-                        )}
-                      </ol>
-                    </li>
-                  ))}
-                  {a.ohneBox.length > 0 && geraetZeilen(a.ohneBox, !a.aktuell)}
-                  {a.boxen.length === 0 && (
-                    <li className="vp-auf-knoten is-leer">
-                      {a.aktuell ? (
-                        <button type="button" className="vp-auf-leer is-aktion" onClick={onBoxHinzufuegen}>
-                          <Icon name="plus" size={15} /> Noch keine VoltPilot-Box – jetzt hinzufügen
-                        </button>
-                      ) : (
-                        <span className="vp-auf-leer">Noch keine VoltPilot-Box</span>
-                      )}
-                    </li>
-                  )}
-                </ol>
-                {!a.aktuell && (
-                  <a className="vp-auf-wechsel" href={hashForRoute(anlageRoute(a.id, 'modell'))}>
-                    Zu dieser Anlage wechseln <Icon name="chevron-right" size={14} />
-                  </a>
-                )}
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-function GeraetInhalt({
-  geraet,
-  hinweis = null,
-  ohnePfeil = false,
-}: {
-  geraet: AufbauGeraet;
-  hinweis?: string | null;
-  ohnePfeil?: boolean;
-}) {
-  return (
-    <>
-      <Kachel geraet={geraet} />
-      <span className="vp-auf-name">
-        <b>
-          <span className={`vp-health-dot ${TON_PUNKT[geraet.ton]}`} />
-          <span className="txt">{geraet.titel}</span>
-        </b>
-        <small>
-          <span className="vp-auf-modell">{geraet.unterzeile}</span>
-          {geraet.ton !== 'ok' && <span className="is-warn">{geraet.zustand}</span>}
-          {hinweis && <span className="is-warn">{hinweis}</span>}
-        </small>
-      </span>
-      <Chips werte={geraet.werte} />
-      {!ohnePfeil && (
-        <span className="vp-auf-ende" aria-hidden="true">
-          <Icon name="chevron-right" size={18} />
-        </span>
-      )}
-    </>
-  );
-}
-
-function FundZeile({
-  geraet,
-  onUebernehmen,
-  onTechnisch,
-}: {
-  geraet: AufbauGeraet;
-  onUebernehmen: ((q: AdoptableSource) => void) | null;
-  onTechnisch: ((q: AdoptableSource) => void) | null;
-}) {
-  const quelle = geraet.karte.quelle as AdoptableSource;
-  return (
-    <div className="vp-auf-zeile is-fund" data-aufbau-geraet={geraet.id}>
-      <Kachel geraet={geraet} />
-      <span className="vp-auf-name">
-        <b>
-          <span className="txt">{geraet.titel}</span>
-        </b>
-        <small>
-          <span className="vp-auf-modell">{geraet.unterzeile}</span>
-          <span>noch nicht übernommen</span>
-        </small>
-      </span>
-      {onUebernehmen && (
-        <span className="vp-auf-ende">
-          <button type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => onUebernehmen(quelle)}>
-            Übernehmen
-          </button>
-          {/* Die TECHNISCHE Übernahme steht NEBEN der geführten - Typ,
-              Nennleistung und MaStR von Hand. */}
-          {onTechnisch && (
-            <button type="button" className="vp-auf-technik-add" onClick={() => onTechnisch(quelle)}>
-              technisch
-            </button>
-          )}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Hinzufügen: die drei Wege
-// ---------------------------------------------------------------------------
-
-function Wahl({
-  icon,
-  kategorie,
-  titel,
-  text,
-  haupt = false,
-  disabled = false,
-  onClick,
-}: {
-  icon: IconName;
-  kategorie: string;
-  titel: string;
-  text: string;
-  haupt?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" className={`vp-auf-wahl${haupt ? ' is-haupt' : ''}`} onClick={onClick} disabled={disabled}>
-      <span className={`vp-auf-tile is-${kategorie} is-gross`} aria-hidden="true">
-        <Icon name={icon} size={20} />
-      </span>
-      <span className="txt">
-        <b>{titel}</b>
-        <small>{text}</small>
-      </span>
-      <Icon name="chevron-right" size={18} />
-    </button>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Kurzblick (E2)

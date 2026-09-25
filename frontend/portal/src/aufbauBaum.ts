@@ -74,6 +74,16 @@ export interface AufbauGeraet {
   ton: GeraetTon;
   /** Zustand MIT Zeitbezug („liefert Daten · vor 12 Sek."). */
   zustand: string;
+  /** Derselbe Zustand getrennt: das Wort („liefert Daten") … */
+  zustandWort: string;
+  /** … und sein Zeitbezug („vor 12 Sek."); null = keiner bekannt. */
+  zustandZeit: string | null;
+  /** Die Art in Kundenworten („Hybrid-Wechselrichter · Hauptgerät", „Ladesäule"). */
+  artWort: string;
+  /** Der Hersteller, wenn die Box ihn meldet („Deye"); null = unbekannt. */
+  marke: string | null;
+  /** Eine Kennung, nach der man sucht (Ladesäule: ihre OCPP-Kennung); null = keine. */
+  kennung: string | null;
   werte: AufbauWert[];
   kategorie: AufbauKategorie;
   icon: IconName;
@@ -87,6 +97,8 @@ export interface AufbauBox {
   name: string;
   ton: GeraetTon;
   zustand: string;
+  zustandWort: string;
+  zustandZeit: string | null;
   /** Nur ab zwei Boxen: die Box, an die die Geräteliste der Anlage geht. */
   fuehrend: boolean;
   href: string;
@@ -185,14 +197,23 @@ function wert(art: AufbauWertArt, text: string): AufbauWert {
   return { art, text, label: `${WERT_WORT[art]} ${text}` };
 }
 
+/**
+ * Der Messwert EINER Komponente als kurzer Text („6,2 kW", „64 % geladen");
+ * null = sie meldet keinen - fehlend ist keine Null.
+ */
+export function komponentenText(c: PlantComponent): string | null {
+  if (!c.reading) return null;
+  // Ein Ladestand steht als ganze Zahl da - wie am Anlagen-Kopf (`anlagenWerte`).
+  const zahl = fmtNum(c.reading.value, c.reading.unit, c.reading.unit === '%' ? 0 : 1);
+  return c.reading.caption ? `${zahl} ${c.reading.caption}` : zahl;
+}
+
 /** Die Chips eines Geräts aus seinen Komponenten - ohne Messwert kein Chip. */
 export function komponentenWerte(komponenten: PlantComponent[]): AufbauWert[] {
   const out: AufbauWert[] = [];
   for (const c of komponenten) {
-    if (!c.reading) continue;
-    // Ein Ladestand steht als ganze Zahl da - wie am Anlagen-Kopf (`anlagenWerte`).
-    const zahl = fmtNum(c.reading.value, c.reading.unit, c.reading.unit === '%' ? 0 : 1);
-    out.push(wert(ROLLE_WERT[c.role], c.reading.caption ? `${zahl} ${c.reading.caption}` : zahl));
+    const text = komponentenText(c);
+    if (text != null) out.push(wert(ROLLE_WERT[c.role], text));
   }
   return out;
 }
@@ -307,14 +328,16 @@ export function aufbauGeraet(
 ): AufbauGeraet {
   const setup = (kontext.localSetup ?? []).find((l) => l.id === karte.id);
   let werte = komponentenWerte(karte.komponenten);
+  const saeule =
+    karte.art === 'ladepunkt'
+      ? (kontext.charging?.chargers ?? []).find((c) => chargerGeraetId(c.chargePointId) === karte.id)
+      : undefined;
   if (karte.art === 'ladepunkt' && werte.length === 0) {
-    const saeule = (kontext.charging?.chargers ?? []).find(
-      (c) => chargerGeraetId(c.chargePointId) === karte.id,
-    );
     const w = saeule ? ladeWert(saeule) : null;
     werte = w ? [w] : [];
   }
   const kachel = kachelFuer(karte);
+  const markeRoh = karte.art === 'neu' ? karte.quelle?.brand : setup?.brand;
   return {
     id: karte.id,
     art: karte.art as Exclude<KartenArt, 'box'>,
@@ -322,11 +345,30 @@ export function aufbauGeraet(
     unterzeile: unterzeileFuer(karte, setup),
     ton: karte.ton,
     zustand: karte.zustand,
+    zustandWort: karte.zustandWort ?? karte.zustand,
+    zustandZeit: karte.zustandZeit ?? null,
+    artWort: artWortFuer(karte),
+    marke: markeRoh ? technicalDeviceName({ brand: markeRoh, model: null }) : null,
+    kennung: saeule?.chargePointId ?? null,
     werte,
     kategorie: kachel.kategorie,
     icon: kachel.icon,
     karte,
   };
+}
+
+/** Die Art einer Karte in Kundenworten - dieselben Wörter wie auf der Geräteseite. */
+function artWortFuer(karte: GeraeteKarte): string {
+  switch (karte.art) {
+    case 'neu':
+      return 'Von der Box gemeldet';
+    case 'verwaist':
+      return 'Nicht mehr verbunden';
+    case 'ladepunkt':
+      return 'Ladesäule';
+    default:
+      return karte.untertitel;
+  }
 }
 
 /** „Fronius gefunden" - der Hersteller, wenn die Box ihn nennt. */
@@ -413,6 +455,8 @@ function anlageKnoten(
         name: boxName(b),
         ton: lage.ton,
         zustand: lage.zustand,
+        zustandWort: lage.zustandWort,
+        zustandZeit: lage.zustandZeit,
         fuehrend: mehrere && b.id === registryBoxId,
         href: boxSeiteHash(id, b.externalRef),
         geraete: jeBox.get(b.id) ?? [],

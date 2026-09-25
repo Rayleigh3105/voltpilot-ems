@@ -100,6 +100,13 @@ export interface VpPickerProps {
   className?: string;
   /** Zusätzliche Klasse am Auslöser (schmale/eingebettete Fassungen). */
   triggerClassName?: string;
+  /**
+   * Mehrfachauswahl als FILTER-KNOPF (Aufbau-Tabelle): der Auslöser zeigt statt
+   * der gewählten Chips nur seinen Namen - den Platzhalter - und die ZAHL der
+   * gewählten Werte („Art 2"). Die Werte selbst stehen dann als Chips neben
+   * der Tabelle, nicht ein zweites Mal im Knopf.
+   */
+  zaehler?: boolean;
 }
 
 function Teile({ teile }: { teile: TextTeil[] }) {
@@ -137,6 +144,7 @@ export function VpPicker({
   onCreate,
   className,
   triggerClassName,
+  zaehler = false,
 }: VpPickerProps) {
   const reactId = useId();
   const basisId = id ?? `vpp-${reactId}`;
@@ -311,7 +319,16 @@ export function VpPicker({
       onTriggerKey={aufAusloeserTaste}
       onOpened={() => (mitSuche ? sucheRef.current : listeRef.current)?.focus()}
       ausloeserInhalt={
-        mehrfach && chips.length > 0 ? (
+        mehrfach && zaehler ? (
+          <span className="vp-picker-zaehler">
+            <span>{placeholder}</span>
+            {chips.length > 0 && (
+              <span className="vp-picker-anzahl" aria-label={`${chips.length} gewählt`}>
+                {chips.length}
+              </span>
+            )}
+          </span>
+        ) : mehrfach && chips.length > 0 ? (
           <span className="vp-picker-chips">
             {chips.map((c) => (
               <span key={c.value} className="vp-picker-chip">

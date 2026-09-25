@@ -290,37 +290,46 @@ const FORBIDDEN = /Entität|Messpunkt|Quelle|Mess-Einheit|Kanal/;
 describe('AufbauSection · der Baum', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('steht mit allen Ebenen da - Standort, Anlage, Box, Geräte - auch mit EINER Box (E3)', async () => {
+  it('steht als Tabelle mit allen Ebenen da - Standort, Anlage, Box, Geräte - auch mit EINER Box', async () => {
     stub();
     vi.mocked(api.standorte).mockResolvedValue(standortMit([{ id: 's-1', name: 'Testanlage' }]));
     rendere();
 
-    const wurzel = await screen.findByRole('region', { name: 'Standort Sonnenhof' });
-    expect(wurzel).toHaveTextContent('ST-1');
-    expect(wurzel).toHaveTextContent('Sonnenweg 1 · 80331 München');
-    expect(wurzel).toHaveTextContent('1 Anlage');
-    expect(wurzel).toHaveTextContent('1 Box');
+    const ort = await screen.findByLabelText('Standort Sonnenhof');
+    expect(ort).toHaveTextContent('ST-1');
+    expect(ort).toHaveTextContent('Sonnenweg 1 · 80331 München');
+    expect(ort).toHaveTextContent('1 Anlage · 1 Box');
 
-    const baum = screen.getByRole('list', { name: 'Anlagen an diesem Standort' });
-    const anlage = within(baum).getByRole('button', { name: /Anlage Testanlage/ });
+    const tabelle = screen.getByRole('table', { name: /Aufbau/ });
+    expect(within(tabelle).getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Gerät',
+      'Art',
+      'Zustand',
+      'Wert',
+      '',
+    ]);
+    const anlage = within(tabelle).getByRole('button', { name: /Anlage Testanlage/ });
     expect(anlage).toHaveAttribute('aria-expanded', 'true');
     expect(anlage).toHaveTextContent('Sie sind hier');
 
     // Die Box ist ein TOR mit eigener Seite.
-    expect(within(baum).getByRole('link', { name: /VP-ABC123/ })).toHaveAttribute(
+    expect(within(tabelle).getByRole('link', { name: 'VoltPilot-Box' })).toHaveAttribute(
       'href',
       '#/anlage/s-1/box/VP-ABC123',
     );
-    // Die Geräte stehen darunter - Tippen öffnet den Kurzblick.
-    expect(await zeile('inv')).toHaveAttribute('aria-haspopup', 'dialog');
-    expect(await zeile('src-1')).toHaveAttribute('aria-haspopup', 'dialog');
+    // Die Geräte stehen darunter - ihr Name öffnet den Kurzblick.
+    for (const id of ['inv', 'src-1']) {
+      const z = await zeile(id);
+      expect(z).toHaveAttribute('role', 'row');
+      expect(within(z).getAllByRole('button').some((b) => b.getAttribute('aria-haspopup') === 'dialog')).toBe(true);
+    }
   });
 
   it('bleibt ohne Standort-Auskunft ehrlich - keine erfundene Adresse', async () => {
     stub();
     rendere();
-    const wurzel = await screen.findByRole('region', { name: 'Aufbau' });
-    expect(within(wurzel).getByRole('heading', { name: 'Ihre Anlage' })).toBeInTheDocument();
+    const ort = await screen.findByLabelText('Standort');
+    expect(ort).toHaveTextContent('Ihre Anlage');
     expect(screen.queryByText(/Adresse/)).toBeNull();
   });
 
@@ -333,20 +342,50 @@ describe('AufbauSection · der Baum', () => {
       nochNichtZugeordnet: { anlagenZahl: 1, anlagen: [{ id: 's-1', name: 'Testanlage' }] },
     });
     rendere();
-    expect(await screen.findByRole('heading', { name: OHNE_STANDORT })).toBeInTheDocument();
+    expect(await screen.findByText(OHNE_STANDORT)).toBeInTheDocument();
   });
 
-  it('zeigt Werte als kurze Chips - die Richtung bleibt ein Wort, nie ein Minus', async () => {
+  it('trägt den Hauptwert in der Zeile und die Messwerte als Unterzeilen - die Richtung bleibt ein Wort', async () => {
     stub();
     rendere();
     const deye = await zeile('inv');
     expect(deye).toHaveTextContent('Deye SUN-30K');
     // Der Ladestand steht als ganze Zahl - wie am Kopf der Anlage.
     expect(deye).toHaveTextContent('76 %');
-    expect(deye).toHaveTextContent('Einspeisung');
-    expect(deye.textContent).not.toMatch(/[-−]30,0/);
+    // Die weiteren Messwerte klappen darunter auf (K5).
+    fireEvent.click(within(deye).getByRole('button', { name: /Messwerte von .* aufklappen/ }));
+    const teile = await waitFor(() => {
+      const t = [...document.querySelectorAll('[data-komponente-zeile]')];
+      if (t.length === 0) throw new Error('keine Unterzeilen');
+      return t;
+    });
+    const text = teile.map((t) => t.textContent ?? '').join(' | ');
+    expect(text).toContain('Einspeisung');
+    expect(text).not.toMatch(/[-−]30,0/);
     // Der Fronius liefert über die Box - sein Wert steht an seiner Zeile.
     expect(await zeile('src-1')).toHaveTextContent('21,2');
+  });
+
+  it('findet Geräte über die Suche und filtert nach Zustand - Gruppen bleiben sichtbar', async () => {
+    stub();
+    rendere();
+    await zeile('inv');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Geräte suchen' }), { target: { value: 'sun30k' } });
+    await waitFor(() => expect(document.querySelector('[data-aufbau-geraet="src-1"]')).toBeNull());
+    expect(await zeile('inv')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'VoltPilot-Box' })).toBeInTheDocument();
+    expect(screen.getByText(/von \d+ Geräten/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Geräte suchen' }), { target: { value: 'gibtsnicht' } });
+    expect(await screen.findByText(/Kein Gerät passt zu „gibtsnicht"/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Suche und Filter zurücksetzen' }));
+    expect(await zeile('src-1')).toBeInTheDocument();
+
+    // Der Kurzfilter zeigt nur, was die Box meldet - als entfernbarer Chip.
+    fireEvent.click(await screen.findByRole('button', { name: /von der Box gemeldet/ }));
+    await waitFor(() => expect(document.querySelector('[data-aufbau-geraet="inv"]')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Zustand: Von der Box gemeldet entfernen' }));
+    expect(await zeile('inv')).toBeInTheDocument();
   });
 
   it('zeigt ein neues Gerät gestrichelt im Baum - Übernehmen öffnet den Zuordnen-Dialog', async () => {
@@ -766,38 +805,26 @@ describe('AufbauSection · Steuern freigeben an der Komponente', () => {
   });
 });
 
-describe('AufbauSection · Hinzufügen (E4)', () => {
+describe('AufbauSection · Hinzufügen (K6)', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('fragt am Standort: Gerät, VoltPilot-Box oder Anlage - und nennt Funde zuerst', async () => {
+  it('bietet „Gerät hinzufügen" und im Menü VoltPilot-Box und Anlage an', async () => {
     stub();
     portalVerwaltet();
     rendere();
-    fireEvent.click(await screen.findByRole('button', { name: 'Hinzufügen' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Hinzufügen' });
-    expect(within(dialog).getByText('Was möchten Sie hinzufügen?')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: /^Gerät/ })).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: /^VoltPilot-Box/ })).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: /^Anlage/ })).toBeInTheDocument();
-    // Was die Box schon meldet, steht davor - mit dem kürzesten Weg.
-    expect(within(dialog).getByText('go-e gefunden')).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Übernehmen' }));
-    expect(await screen.findByText('Gerät zuordnen')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Box oder Anlage hinzufügen' }));
+    expect(await screen.findByRole('menuitem', { name: /VoltPilot-Box hinzufügen/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Anlage hinzufügen/ })).toBeInTheDocument();
   });
 
-  it('beginnt mit „Gerät" den Assistenten, der ZUERST nach dem Gerätetyp fragt', async () => {
+  it('beginnt mit „Gerät hinzufügen" den Anlege-Weg', async () => {
     stub();
     portalVerwaltet();
     rendere();
-    await waitFor(() => expect(api.siteComponents).toHaveBeenCalled());
-    fireEvent.click(await screen.findByRole('button', { name: 'Hinzufügen' }));
-    const wahl = await screen.findByRole('dialog', { name: 'Hinzufügen' });
-    await waitFor(() => expect(within(wahl).getByRole('button', { name: /^Gerät/ })).toBeEnabled());
-    fireEvent.click(within(wahl).getByRole('button', { name: /^Gerät/ }));
-    const flow = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
-    expect(within(flow).getByText('Was möchten Sie anbinden?')).toBeInTheDocument();
-    expect(within(flow).getByTestId('typ-wechselrichter')).toBeInTheDocument();
-    expect(screen.queryByText('Gerät aus dem VoltPilot-Katalog')).toBeNull();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /Gerät hinzufügen/ }));
+    expect(await screen.findByRole('dialog', { name: 'Gerät anbinden' })).toBeInTheDocument();
   });
 
   it('beginnt mit „+ Gerät" an der Box direkt beim Gerät', async () => {
@@ -811,9 +838,8 @@ describe('AufbauSection · Hinzufügen (E4)', () => {
   it('meldet eine VoltPilot-Box mit der Geräte-ID an', async () => {
     stub();
     rendere();
-    fireEvent.click(await screen.findByRole('button', { name: 'Hinzufügen' }));
-    const wahl = await screen.findByRole('dialog', { name: 'Hinzufügen' });
-    fireEvent.click(within(wahl).getByRole('button', { name: /^VoltPilot-Box/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box oder Anlage hinzufügen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /VoltPilot-Box hinzufügen/ }));
     expect(await screen.findByRole('dialog', { name: 'VoltPilot-Box hinzufügen' })).toBeInTheDocument();
   });
 
@@ -821,11 +847,9 @@ describe('AufbauSection · Hinzufügen (E4)', () => {
     stub();
     vi.mocked(api.standorte).mockResolvedValue(standortMit([{ id: 's-1', name: 'Testanlage' }]));
     rendere();
-    await screen.findByRole('region', { name: 'Standort Sonnenhof' });
-    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
-    const wahl = await screen.findByRole('dialog', { name: 'Hinzufügen' });
-    expect(within(wahl).getByRole('button', { name: /^Anlage/ })).toHaveTextContent('am Standort Sonnenhof');
-    fireEvent.click(within(wahl).getByRole('button', { name: /^Anlage/ }));
+    await screen.findByLabelText('Standort Sonnenhof');
+    fireEvent.click(screen.getByRole('button', { name: 'Box oder Anlage hinzufügen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Anlage hinzufügen/ }));
     expect(await screen.findByTestId('anlage-anlegen')).toHaveAttribute('data-standort', 'st-1');
   });
 
@@ -838,9 +862,9 @@ describe('AufbauSection · Hinzufügen (E4)', () => {
     rendere();
     expect(await screen.findByText(/Diese Anlage wird an Ihrer VoltPilot-Box verwaltet/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Gerät an .* hinzufügen/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
-    const wahl = await screen.findByRole('dialog', { name: 'Hinzufügen' });
-    expect(within(wahl).getByRole('button', { name: /^Gerät/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeDisabled();
+    // Nie ein stummer grauer Knopf: der Grund steht daneben.
+    expect(screen.getByText('Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.')).toBeInTheDocument();
   });
 
   it('erfindet bei einer unbekannten Berechtigung keine Verwaltung durch die Box', async () => {
@@ -850,9 +874,10 @@ describe('AufbauSection · Hinzufügen (E4)', () => {
       components: [{ id: 'batt', definitionVersion: 1, syncStatus: 'in_sync' }],
     } as never);
     rendere();
-    expect(await screen.findByText(/keine Gerätebearbeitung im Portal freigegeben/)).toBeInTheDocument();
+    expect(await screen.findAllByText(/keine Gerätebearbeitung im Portal freigegeben/)).not.toHaveLength(0);
     expect(screen.queryByText(/wird an Ihrer VoltPilot-Box verwaltet/)).toBeNull();
     expect(screen.queryByRole('button', { name: /Gerät an .* hinzufügen/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeDisabled();
   });
 
   it('fordert ohne Box aktiv zur ersten VoltPilot-Box auf', async () => {
@@ -887,18 +912,23 @@ describe('AufbauSection · mehrere Boxen und Anlagen (UEMS)', () => {
     rendere({ devices: [boxDevice, garage] });
 
     await zeile('inv');
-    const boxen = screen.getAllByRole('link', { name: /VP-/ });
+    const boxen = screen.getAllByRole('link', { name: /^(Garage|VoltPilot-Box)$/ });
     expect(boxen.map((b) => b.getAttribute('href'))).toEqual([
       '#/anlage/s-1/box/VP-XYZ789',
       '#/anlage/s-1/box/VP-ABC123',
     ]);
-    expect(boxen[0]).toHaveTextContent('führende Box');
-    expect(boxen[1]).not.toHaveTextContent('führende Box');
-    // Die Geräte meldet die führende Box.
-    const garageKnoten = boxen[0].closest('li') as HTMLElement;
-    expect(within(garageKnoten).getByText('Deye SUN-30K')).toBeInTheDocument();
-    expect(within(boxen[1].closest('li') as HTMLElement).getByText('Noch kein Gerät an dieser Box')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Aufbau' })).toHaveTextContent('2 Boxen');
+    const zeileVon = (el: Element) => el.closest('[role="row"]') as HTMLElement;
+    expect(zeileVon(boxen[0])).toHaveTextContent('führend');
+    expect(zeileVon(boxen[1])).not.toHaveTextContent('führend');
+    // Die Geräte meldet die führende Box: sie stehen zwischen ihr und der zweiten Box.
+    const reihen = screen.getAllByRole('row').map((r) => r.textContent ?? '');
+    const garageAt = reihen.findIndex((t) => t.includes('VP-XYZ789'));
+    const zweiteAt = reihen.findIndex((t) => t.includes('VP-ABC123'));
+    const deyeAt = reihen.findIndex((t) => t.includes('Deye SUN-30K'));
+    expect(garageAt).toBeLessThan(deyeAt);
+    expect(deyeAt).toBeLessThan(zweiteAt);
+    expect(reihen[zweiteAt + 1]).toContain('Noch kein Gerät an dieser Box');
+    expect(screen.getByLabelText('Standort')).toHaveTextContent('2 Boxen');
   });
 
   it('verwaltet die Box dort, wo sie steht - Name, Typ, Neu-Verbinden, Entfernen (E5)', async () => {
@@ -938,20 +968,16 @@ describe('AufbauSection · mehrere Boxen und Anlagen (UEMS)', () => {
     const nachbar = await screen.findByRole('button', { name: /Anlage Halle/ });
     expect(nachbar).toHaveAttribute('aria-expanded', 'false');
     expect(api.siteEntities).not.toHaveBeenCalledWith('s-2');
+    expect(screen.getByRole('link', { name: 'Zu Anlage Halle wechseln' })).toHaveAttribute('href', '#/anlage/s-2/modell');
 
     fireEvent.click(nachbar);
-    expect(nachbar).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Anlage Halle/ })).toHaveAttribute('aria-expanded', 'true'));
     await waitFor(() => expect(api.siteEntities).toHaveBeenCalledWith('s-2'));
 
-    const knoten = nachbar.closest('li') as HTMLElement;
-    const geraet = await within(knoten).findByRole('link', { name: /Dach Halle/ });
+    const geraet = await screen.findByRole('link', { name: /Dach Halle/ });
     expect(geraet.getAttribute('href')).toContain('#/anlage/s-2/geraet/VP-HAL001/');
     // Keine Handlungen an einer fremden Anlage von hier aus - nur der Weg dorthin.
-    expect(within(knoten).queryByRole('button', { name: /Dach Halle/ })).toBeNull();
-    expect(within(knoten).getByRole('link', { name: /Zu dieser Anlage wechseln/ })).toHaveAttribute(
-      'href',
-      '#/anlage/s-2/modell',
-    );
+    expect(screen.queryByRole('button', { name: /Dach Halle/ })).toBeNull();
   });
 });
 
