@@ -40,6 +40,11 @@ Das Fehlen eines Unternehmensrechts wird nicht durch vollständige Sicht auf die
 - `TeilansichtDienst.exportKopf` nennt nur zugängliche Standortnamen und die erlaubte Gesamtanzahl aus IP-10.
   Bei eingeschränkter Sicht lautet die zusätzliche CSV-Kommentarzeile `# Teilansicht: … (n von m Standorten)`.
   Volle Sicht bekommt keine neue Zeile. Archivierte Standorte bleiben abrufbar, zählen aber wie bei IP-10 nicht im Kopf.
+- **Einsicht (AP-19 IP-11/IP-12, RE3–RE5, W10):** das erste Unternehmensrecht ohne Schreibrecht — `einsicht` trägt U
+  nur an lesenden Zeilen (`bericht.unternehmen_abrufen`, `bewertung.ansehen`, `energiemanagement.ansehen`), jede
+  Schreibroute antwortet 403 `recht_fehlt`. Die Teilansicht der Berichte fragt die unternehmensweite Zuweisung, nicht
+  mehr nur `export.unternehmen`; nach `gueltig_bis` gilt wieder die Standort-Sicht. Einzelheiten:
+  `uems-rechte-matrix-nachtraege.md`, `uems-benutzerverwaltung.md`.
 - Ein freigegebener Abzug wird niemals gefiltert oder neu gerechnet; der CSV-Kopf ist ein Abrufzusatz. PDF bleibt
   für jeden berechtigten Abrufer identisch. Vorlagenkataloge enthalten keine Kundendaten und benötigen keinen Objektzaun.
 

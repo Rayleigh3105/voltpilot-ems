@@ -3468,6 +3468,18 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
       expect(readFileSync(join(SRC, vorlagen), 'utf8').includes(UEMS_NORMGRENZE), vorlagen).toBe(true);
     }
   });
+
+  it('IP-25: die Release-Notiz-Zeile „Energiemanagement“ besteht den Wächter und nennt die Verantwortung (SP2, SP3, R4)', () => {
+    const vorlage = readFileSync(join(SRC, '../../../docs/rollout/release-notiz-vorlage.md'), 'utf8');
+    const zeile = vorlage.split(/\n(?=- |\n)/u).find((absatz) => absatz.startsWith('- Unter „Energiemanagement“'));
+    expect(zeile, 'die Zeile steht in der Vorlage').toBeDefined();
+    const text = zeile!.replace(/\s+/gu, ' ');
+    expect(verstoesse(text).map(String)).toEqual([]);
+    expect(normNummern(text).map(String)).toEqual([]);
+    expect(doppelt(text).map(String)).toEqual([]);
+    expect(text).toContain('Inhalte und Entscheidungen verantwortet Ihr Unternehmen');
+    expect(text).toContain('Solange Sie nichts festhalten, ändert sich nichts.');
+  });
 });
 
 describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)', () => {

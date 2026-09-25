@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 43 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 55 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -76,6 +76,18 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Ursache-Aussage](#ursache-aussage) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.6 (U1–U3, E6)
 - [Wirkung (beobachtet · belegt)](#wirkung-beobachtet--belegt) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.7 (WK1–WK6, E6)
 - [Anstoß am Vorgang](#anstoß-am-vorgang) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.4 (M5, Z5, E4)
+- [Energiemanagement (Bereich)](#energiemanagement-bereich) — Sicht Organisation · Nachtrag AP-19 §4.1, §3.1 (G1–G5, E1)
+- [Verzeichnis](#verzeichnis) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.9 (VZ1–VZ4, KS2)
+- [Wiedervorlage](#wiedervorlage) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.9 (WV1–WV5, E10)
+- [Dokument · Fassung](#dokument--fassung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.4 (DK1–DK8, E2)
+- [Energiepolitik · Anwendungsbereich](#energiepolitik--anwendungsbereich) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.4 (DK3, DK7, W5)
+- [Person · Aufgabe im Energiemanagement · Leitung](#person--aufgabe-im-energiemanagement--leitung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.5 (PA1–PA5, E7)
+- [entschieden von · eingetragen von](#entschieden-von--eingetragen-von) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.3 (G2, E7, E8)
+- [Einsicht](#einsicht) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.11 (RE3–RE5, E8)
+- [internes Audit · Hinweis](#internes-audit--hinweis) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.6 (IA1–IA5, E5)
+- [Feststellung · Wirksamkeit](#feststellung--wirksamkeit) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.7 (FS1–FS7, E4)
+- [Managementbewertung](#managementbewertung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG1–MG7, E6)
+- [Sitzung · Beschluss · Folge](#sitzung--beschluss--folge) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)
 
 ## Kundenbereich
 
@@ -1179,3 +1191,171 @@ Die Kopien einer Maßnahme (Ausgangslage, Bewertung) und eines Energieziels (Bew
 **Heute im Code.** Tabelle `vorgang_anstoss` (MIG/V20260924233000__uems_massnahme.sql:596; RLS + FORCE); services/api/src/main/java/com/voltpilot/api/uems/VorgangAnstoss.java über services/api/src/main/java/com/voltpilot/api/uems/VerbesserungNaht.java (AP-18 IP-17), Antwort `POST /api/v1/massnahmen|energieziele/{id}/anstoesse/{aid}/antwort` (services/api/src/main/java/com/voltpilot/api/uems/VorgangAntwort.java). Wegweiser: `docs/agents/root/uems-vorgang-anstoss.md`.
 
 **Abgrenzung.** Nicht ein Umbau der Kopie; nicht ein Läufer, der antwortet; nicht der Anstoß am Bericht (AP-12) oder an der Bezugsbasis (AP-17).
+
+## Energiemanagement (Bereich)
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §3.1 (G1–G5, E1)*
+
+**Die neunte Seite am Unternehmen: Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertung.**
+
+VoltPilot hält fest, der Kunde entscheidet, und jede Zeile sagt, wo das Original liegt (E1 = A). Der Bereich führt, was an VoltPilot hängt (Anwendungsbereich, Aufgaben, Bekanntmachungen, Audits, Feststellungen, Managementbewertung, die Energiepolitik als Wortlaut) und verweist auf alles andere. Jede Fläche trägt den Grenz-Satz und den Verantwortungs-Satz; kein Erfüllungsgrad, keine Ampel, keine Zahl über das Ganze (G4). Ohne Eintrag zeigt der Bereich die Nachweise der Vorgänger und je leerer Gruppe „Hier ist noch nichts festgehalten.“ (R15).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Werk Ahrenberg am 12.02.2029: 64 Nachweise in 11 Gruppen im Verzeichnis, 8 fällige Zeilen in der Wiedervorlage (R3, R12).
+
+**Heute im Code.** Seite `#/portfolio/energiemanagement` (PORTAL/pages/EnergiemanagementBereich.tsx:1, AP-19 IP-9/IP-13/IP-20); Kundenwort `UEMS_ENERGIEMANAGEMENT`, Verantwortungs-Satz `UEMS_VERANTWORTUNG` (PORTAL/glossar.ts:675, :719); Wörter `energiemanagement_vokabular()` (MIG/V20260925013500__uems_energiemanagement.sql:50); kein Schalter, kein Läufer (`UemsEnergiemanagementBestandsschutzTest`). Wegweiser: `docs/agents/root/uems-energiemanagement-abschluss.md`.
+
+**Abgrenzung.** Nicht ein „Managementsystem“ im Sinn einer Zertifizierung und kein allgemeines Dokumentenmanagement (SP2, G5); nicht die Funktion „Messen“.
+
+## Verzeichnis
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.9 (VZ1–VZ4, KS2)*
+
+**Der Leser über alle Nachweise und Entscheidungen: je Zeile Träger, Fassung oder Nr., Prüfsumme und Ort des Originals.**
+
+Das Verzeichnis sammelt beim Abruf die Nachweise aller Pakete — Dokumente, Aufgaben, Audits, Feststellungen, Berichtsstände, Bewertungen, Bezugsbasen, Maßnahmen — in elf festen Gruppen; jede Zeile nennt, wer entschieden hat, wann, mit welcher Fassung oder Nr., mit Prüfsumme und dem Ort (in VoltPilot oder „Geführt in Ihrem System“). Es zählt nichts zusammen und urteilt nicht; der CSV-Abzug trägt Stichtag und Verantwortungs-Satz.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Am 12.02.2029 zeigt der Filter „in meinem Namen festgehalten“ für Robert Falk 11 Zeilen; die Gruppe „Risiken und Chancen“ sagt „Hier ist noch nichts festgehalten.“ (R3).
+
+**Heute im Code.** `GET /api/v1/energiemanagement/verzeichnis` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementVerzeichnisController.java:30, services/api/src/main/java/com/voltpilot/api/uems/EnergiemanagementVerzeichnisService.java, Quellen `VerzeichnisQuelle`, AP-19 IP-8); Operation `verzeichnis_zeile` in `docs/contracts/v2/energiemanagement-vectors.json`; Kundenwort `UEMS_VERZEICHNIS` (PORTAL/glossar.ts:676). Wegweiser: `docs/agents/root/uems-energiemanagement-dokumente.md`.
+
+**Abgrenzung.** Nicht eine Ablage und keine Datei; nicht eine Checkliste; nicht ein Erfüllungsgrad (G4).
+
+## Wiedervorlage
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.9 (WV1–WV5, E10)*
+
+**Der Leser über alle Fristen aller Objekte, am längsten fällig zuerst, mit 30 Tagen Vorschau.**
+
+Die Wiedervorlage rechnet keine Frist selbst: jede Quelle gibt ihr „fällig am“ aus der Regel ihres Objekts (Überprüfung eines Dokuments, nächstes internes Audit, Frist einer Feststellung, Bewertung, Bezugsbasis, Revisions-Anstoß eines Berichts, Maßnahmen und Energieziele). Nichts wird verschickt; der Kalender-Abzug ist ein Abruf mit Stand-Vermerk (E10 = A). Der Baustein „Energiemanagement“ erscheint nur mit Inhalt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** 12.02.2029: 8 fällige Zeilen (vier Bezugsbasen seit 457, 450, 344 und 80 Tagen …) und M-2029-0001 in 16 Tagen als Vorschau (R12).
+
+**Heute im Code.** `GET /api/v1/energiemanagement/wiedervorlage?format=json|ics` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementWiedervorlageController.java:27, services/api/src/main/java/com/voltpilot/api/uems/EnergiemanagementWiedervorlageService.java, AP-19 IP-21); Kundenwort `UEMS_WIEDERVORLAGE` (PORTAL/glossar.ts:677). Wegweiser: `docs/agents/root/uems-energiemanagement-wiedervorlage.md`.
+
+**Abgrenzung.** Nicht ein Postfach, kein Läufer und keine Erinnerung per E-Mail (E10 = A).
+
+## Dokument · Fassung
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.4 (DK1–DK8, E2)*
+
+**Ein Dokument D-nnnn mit Art, Bezug und Fassungen Nr. n — Wortlaut oder Verweis —, Freigabe mit „entschieden von“, Überprüfung und Bekanntmachung.**
+
+Ein Dokument hat eine von zwölf Arten (keine „Sonstiges“, G5) und genau seinen Bezug. Jede Fassung ist entweder Wortlaut in VoltPilot (bis 20 000 Zeichen) oder Verweis auf das Original beim Kunden (Bezeichnung, Ablage, Kennung, Adresse, Fassungsangabe, Prüfsumme aus dem Browser) — nie eine Datei (E2 = A). Die Freigabe trägt „entschieden von“ (eine Person, auch ohne Konto) und „eingetragen von“ (ein Konto), bei Energiepolitik und Anwendungsbereich die Leitung; eine freigegebene Fassung ist unveränderlich, die nächste löst sie ab.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** D-0001 Energiepolitik Fassung 1 am 15.12.2026 — entschieden von Robert Falk (ohne Konto), eingetragen von Ines Kaltenbach; D-0004 ist ein Verweis auf den Arbeitsplan IH-SG-01 Rev. 4 im Instandhaltungssystem (R1, R7).
+
+**Heute im Code.** Tabellen `energiemanagement_dokument`, `energiemanagement_dokument_fassung`, `energiemanagement_dokument_eintrag` (MIG/V20260925013500__uems_energiemanagement.sql:532, :675, :960; RLS + FORCE); Routen `/api/v1/energiemanagement/dokumente` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementDokumentController.java:44, AP-19 IP-7); Kundenwörter `UEMS_DOKUMENT`, `UEMS_WORTLAUT`, `UEMS_VERWEIS`, `UEMS_GEFUEHRT_IN_IHREM_SYSTEM` (PORTAL/glossar.ts:678). Wegweiser: `docs/agents/root/uems-energiemanagement-dokumente.md`.
+
+**Abgrenzung.** Nicht eine Datei, kein Ordner und kein Anhang (E2 = A); nicht die „Revision“ eines Berichts (SP3).
+
+## Energiepolitik · Anwendungsbereich
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.4 (DK3, DK7, W5)*
+
+**Zwei Dokument-Arten mit Leitungs-Pflicht: der Wortlaut der Energiepolitik und die Grenze des Energiemanagements.**
+
+Die Energiepolitik steht als Wortlaut in VoltPilot, das unterschriebene Original bleibt beim Kunden. Der Anwendungsbereich nennt Standorte, Energieträger und Ausschlüsse mit Begründung. Beide gibt die Leitung frei. Neben dem Betrachtungsumfang der energetischen Bewertung sagt die Seite in einem Satz ohne Urteil, ob beide deckungsgleich sind (DK7).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** D-0002 Anwendungsbereich Fassung 1 (Werk Ahrenberg und Werk Lindach, Strom und Gas, keine Ausschlüsse) ist deckungsgleich mit dem Betrachtungsumfang Fassung 1 ab 04.11.2026 (R2).
+
+**Heute im Code.** Arten `energiepolitik`, `anwendungsbereich` in `energiemanagement_vokabular()` (MIG/V20260925013500__uems_energiemanagement.sql:176); Tabelle `energiemanagement_anwendungsbereich` (MIG/V20260925013500__uems_energiemanagement.sql:898); Vergleich `GET /api/v1/energiemanagement/dokumente/{id}/vergleich` (Operation `anwendungsbereich_vergleich`); Kundenwörter `UEMS_ENERGIEPOLITIK`, `UEMS_ANWENDUNGSBEREICH` (PORTAL/glossar.ts:683).
+
+**Abgrenzung.** Nicht der „Geltungsbereich“ einer Kennzahl und nicht der Betrachtungsumfang der Bewertung (SP3, AP-16 U1); nicht die Energiepolitik eines Staates.
+
+## Person · Aufgabe im Energiemanagement · Leitung
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.5 (PA1–PA5, E7)*
+
+**Wer entscheidet, prüft oder teilnimmt — auch ohne Konto — und welche Aufgabe er ab wann bis wann hat, entschieden von wem.**
+
+Eine Person im Energiemanagement hat Namen, Funktion und Organisation und kann mit einem Konto verknüpft sein, muss es aber nicht (E7 = A). Eine Aufgabe ist Aufgabe × Person × gilt ab/bis mit „entschieden von“; sie wird beendet, nie gelöscht. Die Leitung ist die Person mit der laufenden Aufgabe „Leitung des Unternehmens“. „Wer ist wofür verantwortlich“ nennt je Aufgabe die Person oder „keine Person festgelegt“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Am 22.01.2029 zehn laufende Zuordnungen, entschieden von Robert Falk; „Bezugsbasen pflegen und freigeben — keine Person festgelegt“; ab 01.03.2029 Ines Kaltenbach, Vertretung Jonas Wendlinger (R5).
+
+**Heute im Code.** Tabellen `energiemanagement_person`, `energiemanagement_aufgabe` (MIG/V20260925013500__uems_energiemanagement.sql:374, :443; RLS + FORCE); Routen `/api/v1/energiemanagement/personen`, `…/aufgaben` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementPersonenController.java:49, AP-19 IP-6/IP-10); Kundenwörter `UEMS_PERSON_IM_ENERGIEMANAGEMENT`, `UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT`, `UEMS_LEITUNG` (PORTAL/glossar.ts:685). Wegweiser: `docs/agents/root/uems-energiemanagement-personen.md`.
+
+**Abgrenzung.** Nicht ein Konto und keine Zugriffsrolle; nicht die „Zuständigkeit“ einer Box (SP3).
+
+## entschieden von · eingetragen von
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.3 (G2, E7, E8)*
+
+**Die zwei Träger jeder Entscheidung im Energiemanagement: die Person, die entschieden hat, und das Konto, das es eingetragen hat.**
+
+Die Leitung, die kein Konto will, entscheidet trotzdem: eingetragen wird ihre Entscheidung von einer Person mit Recht, sichtbar als zwei Namen. Eine Bestätigung durch die Leitung selbst ist eine benannte spätere Stufe (E8 = A). Beide Namen stehen an jeder Freigabe, jeder Aufgabe und jedem Beschluss.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** „entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach“ an D-0001 Fassung 1 (R1).
+
+**Heute im Code.** Spalten `entschieden_von` (Fremdschlüssel auf `energiemanagement_person`) und `freigabe_*`/`actor_*` an Fassung und Aufgabe (MIG/V20260925013500__uems_energiemanagement.sql:675, :443); Kundenwörter `UEMS_ENTSCHIEDEN_VON`, `UEMS_EINGETRAGEN_VON` (PORTAL/glossar.ts:708).
+
+**Abgrenzung.** Nicht ein Vier-Augen-Paar (das sind zwei Konten).
+
+## Einsicht
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.11 (RE3–RE5, E8)*
+
+**Eine Zugriffsrolle: unternehmensweit nur ansehen, befristbar — für die Leitung und für Prüfende.**
+
+„Einsicht“ ist die achte Rolle der Rechte-Matrix und das erste Unternehmensrecht ohne Schreibrecht: sie sieht unternehmensweit Nachweise, Berichte und die Bewertung, lädt PDFs und ändert nichts (jede Schreibroute 403). Der Kundenadministrator weist sie zu, wahlweise mit Enddatum; danach gilt wieder die vorige Sicht. Die Lese-Kennungen `bericht.unternehmen_abrufen` und `bewertung.ansehen` sind dafür vom Freigeben getrennt (W10) — KA und EM behalten jede Zelle.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Claudia Berger (Leser an ST-1/ST-2) hat vom 20. bis 31.01.2029 „Einsicht“ für das interne Audit; Robert Falk ab 01.02.2029 ein Konto mit „Einsicht“ (R6).
+
+**Heute im Code.** `zugriff_rolle()` Zeile 8 und CHECK-Tausch `bericht_abruf_actor_rolle_chk` (MIG/V20260925030000__uems_rolle_einsicht.sql:38, :52, AP-19 IP-12); Spalte `einsicht` in `docs/contracts/v2/rechte-matrix.json`; Kundenwort `UEMS_EINSICHT` (PORTAL/glossar.ts:693). Wegweiser: `docs/agents/root/uems-benutzerverwaltung.md`.
+
+**Abgrenzung.** Nicht ein Unterstützer (VoltPilot) und nicht ein Leser am Standort; kein Bestätigen und kein Festhalten (E8 = A).
+
+## internes Audit · Hinweis
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.6 (IA1–IA5, E5)*
+
+**Ein internes Audit AU-JJJJ-nnnn mit Auditorin, Unabhängigkeit als Wortlaut, Umfang und Ergebnissen; ein Hinweis ist ein Ergebnis ohne Nichterfüllung.**
+
+Ein internes Audit wird geplant, durchgeführt und abgeschlossen (mit Kopie und Prüfsumme) oder abgesagt. Ergebnisse sind Hinweise (Nr. n, daraus kann eine Maßnahme werden) und Feststellungen. Das nächste Audit leitet der Abruf aus dem letzten Durchführungstag und dem Rhythmus ab (Auditprogramm).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** AU-2029-0001 am 22.01.2029, Auditorin Claudia Berger (Controlling, nicht im Energieteam): ein Hinweis → M-2029-0002, eine Feststellung F-2029-0001; abgeschlossen am 31.01.2029 mit dem Bericht als Verweis; nächstes Audit fällig am 22.01.2030 (R9).
+
+**Heute im Code.** Tabellen `internes_audit`, `internes_audit_eintrag` (MIG/V20260925031500__uems_audit_feststellung.sql:254, :445; RLS + FORCE); Routen `/api/v1/energiemanagement/audits` (services/api/src/main/java/com/voltpilot/api/web/InternesAuditController.java:46, AP-19 IP-18); Kundenwörter `UEMS_INTERNES_AUDIT`, `UEMS_HINWEIS` (PORTAL/glossar.ts:694). Wegweiser: `docs/agents/root/uems-audit-routen.md`.
+
+**Abgrenzung.** Nicht das Zertifizierungsaudit und nicht das Pilot-Audit von AP-20; nicht ein technisches Audit-Protokoll.
+
+## Feststellung · Wirksamkeit
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.7 (FS1–FS7, E4)*
+
+**Eine festgestellte Nichterfüllung einer Vorgabe des Energiemanagements (F-JJJJ-nnnn); ihre Wirksamkeit sagt eine Person als Stand Nr. n.**
+
+Eine Feststellung hat Wortlaut, festgestellt von, Verantwortlichen und Frist, Einträge (sofortige Behebung, Ursache als Aussage einer Person, ähnliche Fälle — je mit Person und Tag) und ihre Maßnahmen: AP-18-Maßnahmen mit der Herkunft `nichtkonformitaet` (Kundenwort „Feststellung F-…“, SP5). Die Wirksamkeit ist kein Rechenergebnis: eine Person hält „wirksam“ oder „nicht wirksam“ mit Begründung, Kopie und Prüfsumme fest (E4 = A); danach ist die Feststellung abgeschlossen.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** F-2029-0001 „Wer die Bezugsbasen pflegt und freigibt …, ist nicht festgelegt“ — Maßnahme M-2029-0001; am 15.04.2029 hält Ines Kaltenbach Stand Nr. 1 „wirksam“ fest (R10, R11).
+
+**Heute im Code.** Tabellen `feststellung`, `feststellung_eintrag`, `feststellung_wirksamkeit` (MIG/V20260925031500__uems_audit_feststellung.sql:519, :667, :724; RLS + FORCE); Routen `/api/v1/energiemanagement/feststellungen` (services/api/src/main/java/com/voltpilot/api/web/FeststellungController.java:48, AP-19 IP-19); Herkunft der Maßnahme per CHECK-Tausch (MIG/V20260925040000__uems_massnahme_herkunft_weiten.sql:140, IP-17); Kundenwörter `UEMS_FESTSTELLUNG`, `UEMS_SOFORTIGE_BEHEBUNG`, `UEMS_WIRKSAMKEIT` (PORTAL/glossar.ts:697). Wegweiser: `docs/agents/root/uems-feststellung-routen.md`.
+
+**Abgrenzung.** Nicht eine Abweichung der Energieleistung (AP-18) und nicht ein Befund (AP-16); nie „Nichtkonformität“ oder „Korrekturmaßnahme“ auf einer Fläche (SP2); die Wirksamkeit ist nicht die Wirkung einer Maßnahme (AP-18).
+
+## Managementbewertung
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.8 (MG1–MG7, E6)*
+
+**Ein Bericht der VoltPilot-Vorlage Nr. 7 „Managementbewertung“ (Unternehmen × Jahr) mit Eingaben, Sitzung, Beschlüssen der Leitung und Stand.**
+
+Die Managementbewertung liest ihre Eingaben aus den Vorgängern — Energieziele, Maßnahmen und ihre Bewertungen, Abweichungen, Leistungsvergleich, Bewertung, Bezugsbasen, Audits und Feststellungen — als Stände und Zustände, nie als neue Rechnung. Der Stand ist eine Kopie seines Tages mit Prüfsumme (MG3); spätere Änderungen erreichen ihn nicht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2029-0001 für 2028 am 12.02.2029: Energieziel EZ-2028-0001 verfehlt, M-2028-0001 belegt, M-2028-0002 nicht messbar, ein Audit mit offener Feststellung; Stand Nr. 1 mit Prüfsumme (R13).
+
+**Heute im Code.** Vorlage `managementbewertung` Nr. 7 (services/api/src/main/resources/berichte/bericht-vorlagen.json:327, `bericht_vokabular()`/`bericht_vorlage()` als Vereinigung in MIG/V20260925061500__uems_managementbewertung_vorlage.sql:11), Abschnitt-Leser services/api/src/main/java/com/voltpilot/api/uems/BerichtManagementbewertung.java (AP-19 IP-22); Kundenwort `UEMS_MANAGEMENTBEWERTUNG` (PORTAL/glossar.ts:703).
+
+**Abgrenzung.** Nicht die energetische Bewertung (AP-16) und nie „Bewertung“ allein (SP3); nicht ein Protokoll-Upload.
+
+## Sitzung · Beschluss · Folge
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)*
+
+**Die Sitzung der Managementbewertung mit der Leitung, ihre Beschlüsse Nr. n und je Beschluss die Verknüpfung mit dem Objekt, das daraus wurde.**
+
+Eine Managementbewertung wird nur mit Sitzung (Tag, Leitung, Teilnehmende), Leitung und mindestens einem Beschluss freigegeben. Ein Beschluss hat Art, Wortlaut und „entschieden von“ (die Leitung), wahlfrei zuständig und Termin; mit der Freigabe steht er im Stand. Eine Folge verknüpft von Hand einen Beschluss mit dem, was daraus wurde — Energieziel, Dokument-Fassung, Aufgabe, internes Audit; Maßnahmen verknüpfen sich über ihre Herkunft `managementbewertung`. Eine Folge ändert den Stand nicht (ein Stand seines Tages).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2029-0001: Sitzung am 12.02.2029 mit Robert Falk als Leitung, sechs Beschlüsse — B1 → EZ-2029-0001, B2 → M-2029-0003, B3 → Energiepolitik Fassung 2, B4 → Aufgabe Bezugsbasen, B5 ohne Folge in VoltPilot, B6 „geprüft, bleibt“ (R13, R14).
+
+**Heute im Code.** Tabellen `managementbewertung_sitzung`, `managementbewertung_beschluss`, `managementbewertung_folge` (MIG/V20260925093000__uems_managementbewertung_beschluesse.sql:30, :57, :89; RLS + FORCE); Routen `/api/v1/energiemanagement/managementbewertungen/{kennung}` (services/api/src/main/java/com/voltpilot/api/web/ManagementbewertungController.java:43, AP-19 IP-23); Kundenwörter `UEMS_SITZUNG`, `UEMS_BESCHLUSS`, `UEMS_FOLGE` (PORTAL/glossar.ts:704). Wegweiser: `docs/agents/root/uems-managementbewertung-beschluesse.md`.
+
+**Abgrenzung.** Nicht eine Aufgabe des Systems und nicht selbst eine Maßnahme; kein Protokoll-Upload.

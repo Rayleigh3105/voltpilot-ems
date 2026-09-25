@@ -14,6 +14,9 @@ auf die Berichts-Tabellen — `bericht_id` ist ein Wert, das Offboarding löscht
 ⚠ Die Migration nennt Personen, Aufgabe, Fassung, Energieziel und Audit per Fremdschlüssel: sie steht in `BAUEN_DARAUF_AUF` von
 `UemsBericht`- (mittelbar über 013500/031500), `UemsZugriff`-, `UemsEnergiemanagement`-, `UemsAuditFeststellung`-, `UemsVerbesserung`-, `UemsBezugsbasis`- und
 `UemsKennzahlMigrationTest` — wer eine weitere Tabelle mit solchen Schlüsseln anlegt, trägt sich dort ebenso ein.
+⚠ Eine genannte `beschluss_kennung` (Aufgabe, Dokument-Fassung, „geprüft, bleibt“) prüft
+`ManagementbewertungBeschluss#pruefen` (Folge nach IP-23): 422 `beschluss_unbekannt`, wenn es den Beschluss nicht gibt,
+422 `managementbewertung_nicht_freigegeben`, wenn er noch nicht im Stand steht; `null` bleibt erlaubt. Maßnahme-Herkunft und Feststellung lesen dieselbe Stelle über `imStand`.
 ⚠ Leser außerhalb einer Anfrage (ohne `TenantContext`) sehen wegen RLS nichts — im Test über die Route prüfen, nicht über den Dienst.
 
 Nachweis: `ManagementbewertungVorlageApiTest` (R13 Sitzung/Beschlüsse/Freigabe-Tor/Verzeichnis/MG7, R14 Folgen und Stand byte-gleich).

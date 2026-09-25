@@ -31,6 +31,12 @@ ab [TT.MM.JJJJ, HH:MM Uhr] finden Sie im Portal neue Möglichkeiten:
   Bezugsbasis erwarten lässt, vermerkt das Portal eine Auffälligkeit; ob daraus eine Abweichung oder
   eine Maßnahme wird und ob die Wirkung einer Maßnahme belegt ist, entscheiden Sie selbst, mit
   Begründung. Solange Sie nichts anlegen, ändert sich nichts.
+- Unter „Energiemanagement“ halten Sie Energiepolitik, Anwendungsbereich und weitere Dokumente mit
+  Fassung und Freigabe fest, dazu Aufgaben, interne Audits, Feststellungen und die Managementbewertung
+  mit den Beschlüssen Ihrer Leitung. Ihre Dateien bleiben in Ihren Systemen; das Portal zeigt, wo das
+  Original liegt, und nennt die Fristen in der Wiedervorlage. Die Rolle „Einsicht“ erlaubt nur das
+  Ansehen. Inhalte und Entscheidungen verantwortet Ihr Unternehmen; VoltPilot beurteilt nicht, ob Ihr
+  Energiemanagement genügt. Solange Sie nichts festhalten, ändert sich nichts.
 
 Beim ersten Aufruf lädt das Portal einmal neu. Von allein wird nichts zugeordnet oder
 eingerichtet. An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich dadurch nichts.
