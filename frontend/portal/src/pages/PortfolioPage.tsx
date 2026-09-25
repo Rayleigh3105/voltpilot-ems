@@ -1,49 +1,33 @@
-import type { Betriebsart, Site } from '../api';
-import type { Route } from '../nav';
+import type { Site } from '../api';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
 
 interface PortfolioProps {
   sites: Site[];
-  onNavigate: (route: Route) => void;
   onReload: (selectSiteId?: string) => void;
   isAdmin?: boolean;
-  /** U0-Rahmen (effektiv, aus /tenant-context); null = unbekannt. */
-  betriebsart?: Betriebsart | null;
 }
 
 /**
- * Die BETREIBER-Landung (`#/portfolio`).
+ * Die Landung der Flotten-Ebene (`#/portfolio`).
  *
  * Seit dem Anwendungs-Programm Stufe 4 (Captain-Entscheid E5) rendert sie
  * dasselbe {@link PortfolioCockpit} wie die Kunden-Übersicht: EINE Fläche,
- * komponiert aus den Anwendungen der Anlagen. Die frühere feste KPI-Zeile
- * (Speicher, Ø Ladestand, Erlös heute/Monat, vermiedene Spitze) und die
- * Betreiber-Tabelle sind darin aufgegangen — die Tabelle als DICHTE der
- * Betriebsart `betreiber`, die Kacheln als Bausteine, die eine aktive
- * Anwendung beisteuert.
+ * komponiert aus den Anwendungen der Anlagen. Seit dem Entscheid vom
+ * 25.09.2026 zeigt diese Fläche für JEDE Betriebsart dieselben vier Blöcke;
+ * die frühere Betreiber-Tabelle und die Kennzahlen-Leiste sind entfallen.
  *
  * Die Route bleibt, damit jedes Lesezeichen gilt; sie liefert der gemeinsamen
- * Fläche seit Revision 2 nur noch ihren TITEL. Die frühere Ansprache („Guten
- * Tag, …") ist ersatzlos entfallen: unter dem Titel steht jetzt die EINE
- * Flotten-Aussage, und eine Begrüßung darüber wäre die zweite Zeile, die
- * nichts über die Flotte sagt (Captain 25.08.2026).
+ * Fläche nur ihren TITEL. Die frühere Ansprache („Guten Tag, …") ist
+ * ersatzlos entfallen: unter dem Titel steht die EINE Statuszeile, und eine
+ * Begrüßung darüber wäre die zweite Zeile, die nichts über die Flotte sagt
+ * (Captain 25.08.2026).
  */
-export function PortfolioPage({
-  sites,
-  onNavigate,
-  onReload,
-  isAdmin = false,
-  betriebsart = null,
-}: PortfolioProps) {
+export function PortfolioPage({ sites, onReload, isAdmin = false }: PortfolioProps) {
   return (
     <PortfolioCockpit
       sites={sites}
-      onNavigate={onNavigate}
       onReload={onReload}
       isAdmin={isAdmin}
-      // Ein Admin sieht das Portfolio des GEWÄHLTEN Mandanten; ohne gewählten
-      // Mandanten kommt er hier gar nicht an (die Schale leitet ihn weiter).
-      betriebsart={betriebsart ?? 'betreiber'}
       titel="Portfolio"
       titelBereitsGenannt
     />

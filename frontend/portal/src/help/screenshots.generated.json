@@ -295,19 +295,19 @@
     "alt": "Anlagen im Portfolio. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 2.73,
-        "y": 15.61,
-        "text": "Das Portfolio fasst die Anlagen Ihres Kontos zusammen."
-      },
-      {
-        "x": 4.45,
-        "y": 37.94,
-        "text": "Die Anlagenliste hilft beim Vergleichen und führt in die einzelne Anlage."
+        "x": 4.36,
+        "y": 17.49,
+        "text": "Die Statuszeile sagt, ob alles läuft, und nennt eine Anlage, die Aufmerksamkeit braucht."
       },
       {
         "x": 4.36,
-        "y": 25.34,
-        "text": "Gemeinsame Kennzahlen sind von Einzelwerten einer Anlage zu unterscheiden."
+        "y": 23.07,
+        "text": "Heute zeigt das Ergebnis des Tages und den Verlauf von Erzeugung und Verbrauch aller Anlagen."
+      },
+      {
+        "x": 4.36,
+        "y": 58.52,
+        "text": "Jede Anlage steht als Karte und führt mit einem Tipp in die Anlage."
       }
     ]
   },

@@ -1010,9 +1010,14 @@ describe('Portfolio Revision 2 — Abbau-Invarianten', () => {
     }
   });
 
-  it('es gibt nur EINE Anlagen-Fläche: die Tabelle - Karten erst am Telefon', () => {
+  it('es gibt nur EINE Übersicht: die vier Blöcke - für jede Betriebsart', () => {
+    // Entscheid 25.09.2026: Endkunde, Automatisch und Betreiber sehen dieselbe
+    // Übersicht. Kehren Leiste und Tabelle oder eine Weiche nach Betriebsart
+    // zurück, sieht ein Konto ohne gesetzte Betriebsart wieder eine andere
+    // Fläche als eines mit „Endkunde".
     const code = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
-    expect(code).toContain('AnlagenTabelle');
+    expect(code).toContain('KundenUebersicht');
+    expect(code).not.toMatch(/\bAnlagenTabelle\b|\bKennzahlLeiste\b|\bbetriebsart\b/i);
     // Die Flotten-Karte lebt weiter - aber als Karte der Anlagen-LISTE
     // (`#/anlagen`), nicht als zweite Flotten-Fassung des Portfolios.
     expect(code).not.toContain('FleetSiteCard');

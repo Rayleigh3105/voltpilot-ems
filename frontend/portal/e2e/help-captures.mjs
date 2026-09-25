@@ -68,9 +68,9 @@ export const captures = [
     point('text=Vergleichsmodell (Vortageswert)', 'Der Name nennt das Modell, dessen Vorhersage aktuell verwendet wird.'),
   ] },
   { id: 'portfolio', title: 'Anlagen im Portfolio', hash: '#/portfolio', root: 'main', points: [
-    point('main h1', 'Das Portfolio fasst die Anlagen Ihres Kontos zusammen.'),
-    point('main table', 'Die Anlagenliste hilft beim Vergleichen und führt in die einzelne Anlage.'),
-    point('[aria-label="Kennzahlen Ihrer Anlagen"]', 'Gemeinsame Kennzahlen sind von Einzelwerten einer Anlage zu unterscheiden.'),
+    point('.vp-ku-status', 'Die Statuszeile sagt, ob alles läuft, und nennt eine Anlage, die Aufmerksamkeit braucht.'),
+    point('[aria-label="Heute"]', 'Heute zeigt das Ergebnis des Tages und den Verlauf von Erzeugung und Verbrauch aller Anlagen.'),
+    point('[aria-label="Ihre Anlagen"]', 'Jede Anlage steht als Karte und führt mit einem Tipp in die Anlage.'),
   ] },
   { id: 'steuerung', title: 'Betriebsmodelle der Anlage', hash: plant('steuerung'), root: '[aria-label="Betriebsmodelle"]', points: [
     point('[aria-label="Betriebsmodelle"] h3', 'Hier wählen Sie das übergeordnete Betriebsziel des Speichers.'),

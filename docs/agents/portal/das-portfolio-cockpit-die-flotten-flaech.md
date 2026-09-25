@@ -9,9 +9,18 @@ der **Revision 2** (Scout `data/vp-portfolio-konzept-r2` §5.2/§5.4, `…-b3` �
 die drei Schärfungen: Status als EINE Zeile · kein kumulierter Ladestand · Reset ohne Drohung).
 Regeln, Katalog und Server-Seite stehen in der Root-`AGENTS.md`; hier die Fläche.
 
-Sie liest von oben nach unten: **Kopf** (Titel + die EINE Flotten-Aussage als Unterzeile,
-Aktionen im „···"-Menü, daneben „Anpassen") → **Kennzahlen-Leiste** → **EINE Anlagen-Tabelle** in
-zwei Dichten mit aufklappbarer Vorschau je Zeile.
+**⚠ Stand 25.09.2026:** Die Fläche zeigt für JEDE Betriebsart die Übersicht in vier Blöcken
+(Konzept „Meine Anlagen neu", Ü1–Ü5 = A: Statuszeile mit ⋯-Menü → Heute → Jetzt → Ihre Anlagen;
+`components/portfolio/KundenUebersicht.tsx`, rein in `src/kundenUebersicht.ts`). Die Betriebsart
+wählt nur noch die Navigation (`betriebsart.ts`); `PortfolioCockpit` kennt sie nicht mehr (Wächter
+in `migration.test.ts`). Kennzahlen-Leiste, Anlagen-Tabelle und Vorschau-Zeile sind aus der Fläche
+entfallen; `KennzahlLeiste`, `AnlagenTabelle` und `portfolioVorschau` rendert nur noch die
+Prüfbühne `e2e/erloese-minus.tsx`. Die Regeln unten zu Leiste, Tabelle, Dichte und Vorschau
+beschreiben diese Bauteile, nicht mehr die Übersicht.
+
+Bis dahin (Revision 2) las sie von oben nach unten: **Kopf** (Titel + die EINE Flotten-Aussage
+als Unterzeile, Aktionen im „···"-Menü, daneben „Anpassen") → **Kennzahlen-Leiste** → **EINE
+Anlagen-Tabelle** in zwei Dichten mit aufklappbarer Vorschau je Zeile.
 
 ### Was Revision 2 ERSATZLOS entfernt hat, und warum
 
@@ -72,20 +81,21 @@ zwei Dichten mit aufklappbarer Vorschau je Zeile.
   auf Zeile oder Name navigiert sofort. Nur der räumlich getrennte Chevron klappt die Vorschau
   lazy auf/zu; er stoppt die Zeilen-Navigation und nennt Vorlesesoftware „Details anzeigen" bzw.
   „ausblenden". „Cockpit öffnen ›" bleibt als zusätzlicher Absprung in der offenen Vorschau.
-- **Anpassen ordnet ZELLEN und SPALTEN** — auf BEIDEN Breiten die kompakte `AnpassenListe`, nie
-  eine `AnpassenHuelle` (eine Hülle um eine Tabellenspalte gibt es nicht). `AnpassenListe` hat
+- **Anpassen ordnet BAUSTEINE in einer Liste** (seit dem 25.09.2026 blenden und ordnen sie die
+  drei Blöcke, `uebersichtBloecke`) — auf BEIDEN Breiten die kompakte `AnpassenListe`, nie
+  eine `AnpassenHuelle`. `AnpassenListe` hat
   dafür das additive `note` bekommen und zeigt den `ortsHinweis` eines unbeweglichen Bausteins
-  („Die Anlagen-Tabelle steht immer zuletzt.") — ein „fest" ohne Begründung ist eine Sperre ohne
+  („Der Block „Ihre Anlagen" steht immer zuletzt.") — ein „fest" ohne Begründung ist eine Sperre ohne
   Grund. **Das Portfolio hat keine Bühne**, also `blocks: []` und kein Stern.
 - **⚠ Der Reset-Satz nennt das ERGEBNIS, nicht den Verlust** („Danach gilt wieder …" statt „Ihre
   Anordnung wird verworfen — …"). Beides ist wahr, aber die zweite Form droht mit einer Handlung,
   die der Kunde selbst ausgelöst hat.
 - **⚠ Der Kopf NENNT die Ebene nur, wo sie sonst niemand nennt (Passung zu #503).** Seit der
-  Navigations-Runde „zwei Ebenen" trägt die BETREIBER-Ebene die Reiter `Übersicht · Messwerte ·
+  Navigations-Runde „zwei Ebenen" trägt die Flotten-Ebene die Reiter `Übersicht · Energie ·
   Erlöse` ÜBER dem Seitenkopf, und die Kopfzeile führt die Krume „Portfolio" — die Überschrift
   stünde dort als DRITTE Nennung, während der aktive Reiter „Übersicht" sagt und sie „Portfolio".
   `titelBereitsGenannt` macht sie deshalb zum reinen Sprungziel (`vp-sr-only`, das
-  `AnlageSeite`-Muster des Mobil-Umbaus), die Flotten-Aussage führt sichtbar. **Der Endkunden-Wirt
+  `AnlageSeite`-Muster des Mobil-Umbaus), die Statuszeile führt sichtbar. **Der Endkunden-Wirt
   setzt es NICHT** — `isPortfolioPage('uebersicht')` ist false, dort gibt es keine Reiter, und die
   Überschrift ist die einzige Stelle, die die Fläche benennt.
 - **`RowMenu` ist das „···"-Menü** — dasselbe Bauteil wie in den Tabellen (portaliert,
@@ -97,8 +107,8 @@ zwei Dichten mit aufklappbarer Vorschau je Zeile.
   der acht Spalten bleibt im EIGENEN Rahmen (`.vp-at-wrap`), nie auf der Seite.
 - **Beweise:** `src/portfolioCockpit.test.ts` (56, rein) · `src/portfolioVorschau.test.ts` (11) ·
   `components/KennzahlLeiste.test.tsx` (7) · `components/AnlagenTabelle.test.tsx` (16, inkl. der
-  Telefon-Fassung mit `matchMedia`-Attrappe) · `components/PortfolioCockpit.test.tsx` (21) ·
-  `pages/PortfolioPage.test.tsx` (4) · `src/betriebsart.test.ts` (24) ·
+  Telefon-Fassung mit `matchMedia`-Attrappe) · `components/PortfolioCockpit.test.tsx` (20, vier
+  Blöcke) · `pages/PortfolioPage.test.tsx` (3) · `src/betriebsart.test.ts` (24) ·
   `src/shell/PortfolioNav.test.tsx` (4) · `src/migration.test.ts` (41, mit vier neuen
   Abbau-Wächtern).
 

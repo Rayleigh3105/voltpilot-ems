@@ -13,8 +13,8 @@ import { RowMenu, type RowMenuItem } from '../RowMenu';
 import './KundenUebersicht.css';
 
 /**
- * **Meine Anlagen · Übersicht** für Endkundinnen und Endkunden (Konzept
- * „Meine Anlagen neu", Ü1–Ü5 = A). Vier Blöcke: Statuszeile mit ⋯-Menü,
+ * **Meine Anlagen · Übersicht** (Konzept „Meine Anlagen neu", Ü1–Ü5 = A) —
+ * seit dem 25.09.2026 für jede Betriebsart. Vier Blöcke: Statuszeile mit ⋯-Menü,
  * „Heute" (Ergebnis, VoltPilot-Steuerung, Tageskurve), „Jetzt" (vier Werte in
  * Worten) und „Ihre Anlagen" (Karte je Anlage). Render-Schicht über
  * `kundenUebersicht.ts`; die Kurven sind schlankes SVG — die Übersicht lädt

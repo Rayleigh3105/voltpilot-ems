@@ -57,8 +57,9 @@ export function UebersichtPage(props: UebersichtProps) {
   }
   // Anwendungs-Programm Stufe 4 (E5): die Flotten-Ebene ist EINE Fläche. Die
   // frühere `FleetUebersicht` ist ersatzlos in das {@link PortfolioCockpit}
-  // übergegangen; seit Revision 2 unterscheidet die Betriebsart dort nur noch
-  // die DICHTE derselben Tabelle, nicht mehr Karten gegen Tabelle.
+  // übergegangen; seit dem 25.09.2026 zeigt es für jede Betriebsart dieselben
+  // vier Blöcke - die Betriebsart entscheidet hier nur, OB die Flotten-Ebene
+  // gilt (`isFleetShell`).
   //
   // ⚠ Ein KUNDE landet hier seit Stufe 4 gar nicht mehr: `showPortfolioNav`
   // hängt an der Flotten-Ebene, also leitet `redirectToPortfolio` ihn auf
@@ -69,10 +70,8 @@ export function UebersichtPage(props: UebersichtProps) {
   return (
     <PortfolioCockpit
       sites={props.sites}
-      onNavigate={props.onNavigate}
       onReload={props.onReload}
       isAdmin={props.isAdmin}
-      betriebsart={props.betriebsart ?? null}
       titel="Meine Anlagen"
     />
   );

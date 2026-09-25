@@ -1,19 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { PortfolioPage } from './PortfolioPage';
 import { api, type Overview, type OverviewSite, type Site } from '../api';
-import type { Route } from '../nav';
 
 /**
- * M6 (#534) in der **Revision 2** vom 25.08.2026: die Zeile einer Anlage nennt
- * die MENGE ihrer Geschäfts-Anwendungen (die M0-Projektion) statt des
- * abgelösten AE7-Profil-Chips (F5) — und sie bleibt der Absprung in genau
- * diese Anlage.
- *
- * ⚠ Die eigene SPALTE „Anwendungen" ist mit Revision 2 entfallen: sie stand in
- * einer Tabelle, deren übrige Spalten Zahlen sind, und drängte die Zahlen an
- * den Rand. Die Anwendungen sind seither die UNTERZEILE der kompakten Dichte
- * — dieselbe Aussage, an dem Ort, an dem der Name steht.
+ * Die Landung `#/portfolio` zeigt seit dem Entscheid vom 25.09.2026 für JEDE
+ * Betriebsart dieselbe Übersicht in vier Blöcken — die frühere
+ * Betreiber-Tabelle (mit den Anwendungen als Unterzeile, M6) ist aus dieser
+ * Fläche entfallen. Die Seite liefert nur noch den Titel; die Reiter über ihr
+ * nennen die Ebene schon, also bleibt die Überschrift ein Sprungziel.
  */
 
 function site(over: Partial<Site> & { id: string; name: string }): Site {
@@ -79,58 +74,33 @@ beforeEach(() => {
     totals: {} as never,
   } as never);
   vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({ vorgabe: null, eigen: null } as never);
-  vi.spyOn(api, 'schedule').mockResolvedValue({ slots: [], deviceId: null } as never);
-  vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
+  vi.spyOn(api, 'history').mockRejectedValue(new Error('keine Historie im Test'));
 });
 
-function renderPage(onNavigate: (r: Route) => void = () => {}) {
-  return render(
-    <PortfolioPage sites={SITES} onNavigate={onNavigate} onReload={() => {}} />,
-  );
+function renderPage() {
+  return render(<PortfolioPage sites={SITES} onReload={() => {}} />);
 }
 
-async function zeile(container: HTMLElement, name: string): Promise<HTMLElement> {
-  await waitFor(() => expect(screen.getByText(name)).toBeInTheDocument());
-  const rows = [...container.querySelectorAll('tbody tr')] as HTMLElement[];
-  const treffer = rows.find((r) => r.textContent?.includes(name));
-  expect(treffer, name).toBeTruthy();
-  return treffer!;
-}
-
-describe('Portfolio: die Anwendungen der Anlage (M6, Revision 2)', () => {
-  it('nennt die aktiven Anwendungen einer migrierten Anlage — mehrere, nicht ein Gesicht', async () => {
-    const { container } = renderPage();
-    const werk = await zeile(container, 'Werk Nord');
-    const unter = werk.querySelector('.vp-at-sub')!;
-    expect(unter.textContent).toBe('Direktvermarktung · Lastspitzenkappung · Marktoptimierung');
-    // Der abgelöste Profil-Chip ist weg - und mit Revision 2 auch die eigene
-    // Spalte, die die Zahlen an den Rand drängte.
-    expect(container.querySelector('.vp-profile-chip')).toBeNull();
-    expect(screen.queryByRole('columnheader', { name: 'Anwendungen' })).toBeNull();
-    expect(screen.queryByRole('columnheader', { name: 'Profil' })).toBeNull();
+describe('Portfolio-Landung: dieselbe Übersicht für jede Betriebsart', () => {
+  it('zeigt die vier Blöcke statt Kennzahlen-Leiste und Anlagen-Tabelle', async () => {
+    renderPage();
+    expect(await screen.findByRole('region', { name: 'Ihre Anlagen' })).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Kennzahlen Ihrer Anlagen' })).toBeNull();
   });
 
-  it('nennt bei einer nie migrierten Anlage nur, was sie belegen kann', async () => {
-    // Ohne Signale bleibt die Veräußerungsform - eine erfundene Anwendung
-    // wäre die schlimmere Auskunft.
-    const { container } = renderPage();
-    const alt = await zeile(container, 'Bestandsanlage');
-    expect(alt.querySelector('.vp-at-sub')!.textContent).toBe('Eigenverbrauch');
-  });
-
-  it('führt KEINE Komponenten-Zähler mehr - die Spalten SIND die Komponenten', async () => {
-    const { container } = renderPage();
-    await zeile(container, 'Werk Nord');
-    expect(container.querySelector('.vp-entity-badges')).toBeNull();
-    expect(screen.queryByRole('columnheader', { name: 'Komponenten' })).toBeNull();
+  it('macht die Überschrift zum Sprungziel - die Reiter nennen die Ebene schon', async () => {
+    renderPage();
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Portfolio' });
+    expect(h1.className).toContain('vp-sr-only');
   });
 
   it('bleibt der Absprung in genau diese Anlage', async () => {
-    const routes: Route[] = [];
-    const { container } = renderPage((r) => routes.push(r));
-    await zeile(container, 'Werk Nord');
-    // Der Name ist wie die ganze Zeile der direkte Absprung in die Anlage.
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage Werk Nord öffnen' }));
-    expect(routes).toEqual([{ page: 'anlagen', siteId: 'werk', sub: null }]);
+    renderPage();
+    const anlagen = await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    const werk = within(anlagen).getByText('Werk Nord').closest('a') as HTMLAnchorElement;
+    expect(werk.getAttribute('href')).toBe('#/anlage/werk');
+    const alt = within(anlagen).getByText('Bestandsanlage').closest('a') as HTMLAnchorElement;
+    expect(alt.getAttribute('href')).toBe('#/anlage/alt');
   });
 });

@@ -672,9 +672,9 @@ export function ortsHinweis(id: string): string | null {
     // beide sind Pflicht, beide haben ihren festen Ort — ohne diese Sätze
     // wäre ihr „fest" im Anpassen-Modus eine Sperre ohne Begründung.
     case 'flotten-status':
-      return 'Der Kopf Ihres Portfolios — er steht immer oben.';
+      return 'Die Statuszeile — sie steht immer oben.';
     case 'anlagen':
-      return 'Die Anlagen-Tabelle steht immer zuletzt.';
+      return 'Der Block „Ihre Anlagen" steht immer zuletzt.';
     default:
       return null;
   }
