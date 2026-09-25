@@ -1,0 +1,205 @@
+{
+  "schema_version": "1.0",
+  "matrix_fassung": 1,
+  "lesehilfe": "FIXTURE des Vertragstests (AP-20 NW-1), gekürzt nach dem Entwurf der Phase 2 - nicht die Matrix, kein Urteil über das Produkt. Die echte Matrix steht in docs/bewertung/nachweismatrix.json.",
+  "normfassung": {
+    "international": "ISO 50001:2018 einschließlich Amd 1:2024",
+    "deutsch": "DIN EN ISO 50001:2018-12 mit DIN EN ISO 50001/A1:2024-12",
+    "stichtag": "2026-09-25",
+    "normtext": "nicht im Repo"
+  },
+  "norm_teil": [
+    {
+      "abschnitt": "6.3",
+      "umschreibung": "Energetische Bewertung",
+      "traeger": "haelt_fest",
+      "zusagen": [],
+      "kundenaufgabe": "KA-07",
+      "herkunft": "Plan-Satz (Fixture)",
+      "luecken": ["L-012"],
+      "urteil": "offen",
+      "wer_liefert": [{ "wer": "Crew", "was": "Zuordnung (AP-20 IP-7)" }]
+    },
+    {
+      "abschnitt": "6.6",
+      "umschreibung": "Planung der Erfassung von Energiedaten",
+      "traeger": "misst",
+      "zusagen": [],
+      "kundenaufgabe": "KA-07",
+      "herkunft": "zuschnitt (Fixture)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{ "wer": "Fachperson", "was": "Abgleich gegen die lizenzierte Ausgabe (AP-20 IP-12)" }]
+    },
+    {
+      "abschnitt": "7.2",
+      "umschreibung": "Kompetenz",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-02",
+      "herkunft": "zuschnitt (Fixture)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{ "wer": "Fachperson", "was": "Abgleich gegen die lizenzierte Ausgabe (AP-20 IP-12)" }]
+    },
+    {
+      "abschnitt": "7.3",
+      "umschreibung": "Bewusstsein",
+      "traeger": "beim_kunden",
+      "zusagen": [],
+      "kundenaufgabe": "KA-02",
+      "herkunft": "zuschnitt, draußen (Fixture)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{ "wer": "Fachperson", "was": "Abgleich gegen die lizenzierte Ausgabe (AP-20 IP-12)" }]
+    },
+    {
+      "abschnitt": "7.5.3",
+      "umschreibung": "Dokumentierte Information: lenken, aufbewahren, schützen",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-013", "Z-015"],
+      "kundenaufgabe": "KA-06",
+      "herkunft": "zuschnitt und Betrieb (Fixture)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{ "wer": "Fachperson", "was": "Abgleich gegen die lizenzierte Ausgabe (AP-20 IP-12)" }]
+    },
+    {
+      "abschnitt": "9.1.2",
+      "umschreibung": "Einhaltung rechtlicher und anderer Anforderungen bewerten",
+      "traeger": "beim_kunden",
+      "zusagen": [],
+      "kundenaufgabe": "KA-03",
+      "herkunft": "zuschnitt, draußen (Fixture)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{ "wer": "Fachperson", "was": "Abgleich gegen die lizenzierte Ausgabe (AP-20 IP-12)" }]
+    },
+    {
+      "abschnitt": "9.2.1",
+      "umschreibung": "Internes Audit: Zweck und Durchführung",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-005"],
+      "kundenaufgabe": "KA-08",
+      "herkunft": "zuschnitt (Fixture)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{ "wer": "Fachperson", "was": "Abgleich gegen die lizenzierte Ausgabe (AP-20 IP-12)" }]
+    },
+    {
+      "abschnitt": "9.2.2",
+      "umschreibung": "Internes Audit: Programm, Auswahl der Auditoren, Berichte",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-005"],
+      "kundenaufgabe": "KA-08",
+      "herkunft": "zuschnitt (Fixture)",
+      "luecken": [],
+      "fachperson": {
+        "name": "Fachperson F. (Fixture)",
+        "datum": "2026-11-12",
+        "lesart": "traegt",
+        "text": "Die Zuordnung trägt: VoltPilot hält Programm und Bericht fest; Durchführung und Auswahl bleiben beim Kunden."
+      },
+      "urteil": "nicht_maschinell_pruefbar"
+    }
+  ],
+  "zusagen": [
+    {
+      "kennzeichen": "Z-005",
+      "art": "plan_abnahme",
+      "wortlaut": "AP-19: Audit, Feststellung, Maßnahme und Wirksamkeit durch eine Person (Kurzform)",
+      "quelle": "PG/plan.md:687",
+      "traeger": "voltpilot",
+      "norm": ["9.2.1", "9.2.2"],
+      "nachweis_kandidaten": ["UemsEnergiemanagementAbnahmeTest#auditFeststellungMassnahmeWirksamkeitDurchEinePerson"],
+      "nachweise": [
+        {
+          "art": "test_lauf",
+          "fundstelle": "UemsEnergiemanagementAbnahmeTest#auditFeststellungMassnahmeWirksamkeitDurchEinePerson",
+          "stand": "27d050fc8",
+          "lauf": "services/api/target/surefire-reports/TEST-com.voltpilot.api.uems.UemsEnergiemanagementAbnahmeTest.xml",
+          "lauf_sha256": "4d2dfb2b3b559aeaa5f051a6de55ddaf675a0afe59f43c1df651a0bc699bd776",
+          "datum": "2026-09-28",
+          "gefahren_von": "Crew (Lauf AP-20 IP-10, Fixture)"
+        }
+      ],
+      "urteil": "belegt",
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-012",
+      "art": "anmeldung",
+      "wortlaut": "DSGVO-konform",
+      "quelle": "frontend/portal/src/components/AuthScreen.tsx:202",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [],
+      "nachweise": [],
+      "urteil": "nicht_zugesagt",
+      "grund": "zurückgenommene Aussage: die Zeile entfällt (AP-20 E9, Fixture)",
+      "luecken": ["L-002"]
+    },
+    {
+      "kennzeichen": "Z-013",
+      "art": "anmeldung",
+      "wortlaut": "Server in Deutschland",
+      "quelle": "frontend/portal/src/components/AuthScreen.tsx:201",
+      "traeger": "voltpilot",
+      "norm": ["7.5.3"],
+      "nachweis_kandidaten": [],
+      "nachweise": [],
+      "urteil": "nicht_maschinell_pruefbar",
+      "bestaetigung": {
+        "von": "Betreiber (Fixture)",
+        "datum": "2026-10-01",
+        "aussage": "Plattform und Datenebene laufen in Rechenzentren in Deutschland."
+      },
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-015",
+      "art": "betrieb",
+      "wortlaut": "Physische Sicherung mit Wiederherstellung auf den Punkt, 7 tägliche und 4 wöchentliche Stände",
+      "quelle": "docs/backup-restore.md:3",
+      "traeger": "voltpilot",
+      "norm": ["7.5.3"],
+      "nachweis_kandidaten": ["tools/generalprobe/rueckweg.sh → rueckweg.json (AP-14 NW-8)"],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        { "wer": "Betreiber", "was": "Q15 „WAL-Archiv läuft“ bestätigen" },
+        { "wer": "Betreiber", "was": "Rückweg-Übung AP-14 NW-8 fahren" }
+      ],
+      "grund": "Q15 und AP-14 NW-8 offen",
+      "luecken": ["L-003", "L-004"]
+    }
+  ],
+  "kundenaufgaben": [
+    {
+      "kennzeichen": "KA-02",
+      "text": "Festlegen, welche Kompetenz nötig ist, sie sicherstellen und nachweisen; Bewusstsein schaffen. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.",
+      "norm": ["7.2", "7.3"]
+    },
+    {
+      "kennzeichen": "KA-03",
+      "text": "Bewerten, ob Sie rechtliche und andere Anforderungen einhalten. VoltPilot bewertet das nicht.",
+      "norm": ["9.1.2"]
+    },
+    {
+      "kennzeichen": "KA-06",
+      "text": "Ihre eigenen Aufbewahrungspflichten erfüllen: vor dem Ende Ihres Vertrags den Gesamtabzug nehmen und selbst aufbewahren.",
+      "norm": ["7.5.3"]
+    },
+    {
+      "kennzeichen": "KA-07",
+      "text": "Messmittel und Zähler prüfen lassen, die Messplanung verantworten, eine Einstufung fachlich tragen.",
+      "norm": ["6.3", "6.6"]
+    },
+    {
+      "kennzeichen": "KA-08",
+      "text": "Interne Audits durchführen, Auditorinnen und Auditoren auswählen und ihre Unabhängigkeit sichern.",
+      "norm": ["9.2.1", "9.2.2"],
+      "wo_gesagt": "Hilfe-Artikel (AP-20 IP-22), Übersicht für Ihre Prüfenden (AP-20 IP-21)"
+    }
+  ]
+}

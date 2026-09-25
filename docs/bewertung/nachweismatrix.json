@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "matrix_fassung": 1,
+  "lesehilfe": "Betreiber-Dokument: nie auf einer Kundenfläche. Abschnittsnummern stehen hier und in der Übersicht für Prüfende, nirgends sonst. Vertrag und Regeln: docs/bewertung/README.md.",
+  "normfassung": {
+    "international": "ISO 50001:2018 einschließlich Amd 1:2024",
+    "deutsch": "DIN EN ISO 50001:2018-12 mit DIN EN ISO 50001/A1:2024-12",
+    "stichtag": "2026-09-25",
+    "normtext": "nicht im Repo; Zeilen tragen Abschnittsnummer und eigene Umschreibung; die Gliederung ist von der Fachperson an ihrer lizenzierten Ausgabe zu prüfen"
+  },
+  "norm_teil": [],
+  "zusagen": [],
+  "kundenaufgaben": []
+}

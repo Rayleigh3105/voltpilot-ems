@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/bewertung/nachweismatrix-1.0.schema.json",
+  "title": "Nachweismatrix 1.0 (AP-20 IP-2, AP-20 NW-1)",
+  "description": "Vertrag der Nachweismatrix: ein Betreiber-Dokument, nie auf einer Kundenfläche. Norm-Teil (je Abschnitt der Gliederung 4 bis 10 eine Zeile), Zusagen-Teil (je Zusage eine Zeile) und Kundenaufgaben, verbunden über Abschnittsnummern (MX1). Kein Normtext: eine Zeile trägt Abschnittsnummer und eigene Umschreibung (MX2). Die Vokabulare stehen in $defs und gleichlautend in docs/bewertung/README.md; wer eines ändert, ändert beide und den Vertragstest tools/bewertung/test_nachweismatrix.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "matrix_fassung", "lesehilfe", "normfassung", "norm_teil", "zusagen", "kundenaufgaben"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "matrix_fassung": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Fassung der Matrix. Eine neue Normausgabe ist eine neue Fassung, keine stille Änderung (MX6); der Vertragstest hält Fassung und Normfassung zusammen."
+    },
+    "lesehilfe": { "type": "string", "minLength": 1 },
+    "normfassung": { "$ref": "#/$defs/normfassung" },
+    "norm_teil": {
+      "type": "array",
+      "description": "Je Abschnitt der Gliederung höchstens eine Zeile; vollständig ist der Teil, wenn jede Zeile der Gliederung existiert (AP-20 IP-7, RF-12). Vollständig heißt nie erfüllt.",
+      "items": { "$ref": "#/$defs/norm_zeile" }
+    },
+    "zusagen": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/zusage" }
+    },
+    "kundenaufgaben": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/kundenaufgabe" }
+    }
+  },
+  "$defs": {
+    "urteil": {
+      "description": "Vokabular Urteil (MX4). belegt: nachprüfbarer Beleg an DIESEM Stand mit Fundstelle, Stand, Datum und wer gefahren hat. nicht_maschinell_pruefbar: eine benannte Person hat mit Datum und Aussage bestätigt, das Werkzeug hat nicht nachgeprüft (NR4). offen: was fehlt und wer es liefert (NR7). nicht_zugesagt: VoltPilot sagt das ausdrücklich nicht zu, erscheint als Grenze, nie als Lücke. Nie erfüllt, konform oder vollständig.",
+      "enum": ["belegt", "nicht_maschinell_pruefbar", "offen", "nicht_zugesagt"]
+    },
+    "urteil_norm": {
+      "description": "Teilmenge des Vokabulars Urteil für eine Norm-Zeile: ihre Zuordnung kann nur die Fachperson an ihrer lizenzierten Ausgabe bestätigen (MX2, FP1). belegt und nicht_zugesagt stehen an Zusagen.",
+      "enum": ["nicht_maschinell_pruefbar", "offen"]
+    },
+    "traeger_norm": {
+      "description": "Vokabular Träger einer Norm-Zeile. haelt_fest: VoltPilot hält fest, der Kunde entscheidet und handelt. verweis: VoltPilot hält einen Verweis auf das System des Kunden. misst: VoltPilot misst, rechnet und berichtet; Deutung und Entscheidung beim Kunden. beim_kunden: nichts in VoltPilot. Gezählt wird der Träger, nie eine Erfüllung.",
+      "enum": ["haelt_fest", "verweis", "misst", "beim_kunden"]
+    },
+    "traeger_zusage": {
+      "description": "Wer eine Zusage gibt und trägt. Heute immer VoltPilot, auch im Betrieb (der Betreiber ist VoltPilot); ein zweiter Wert braucht einen Entscheid.",
+      "enum": ["voltpilot"]
+    },
+    "nachweis_art": {
+      "description": "Vokabular Nachweis-Art. Die ersten drei zählen nur mit Lauf-Bericht oder Artefakt samt Prüfsumme (NR1). Eine Bestätigung trägt nie belegt, sondern nicht_maschinell_pruefbar (NR4).",
+      "enum": ["test_lauf", "vektor_lauf", "werkzeug_artefakt", "betreiber_bestaetigung", "fachperson_bestaetigung", "protokoll", "stand_mit_pruefsumme"]
+    },
+    "zusage_art": {
+      "description": "Vokabular Zusage-Art: der Ort, an dem VoltPilot zusagt.",
+      "enum": ["plan_abnahme", "release_notiz", "flaeche", "anmeldung", "betrieb", "box_notiz"]
+    },
+    "wer": {
+      "description": "Vokabular wer liefert.",
+      "enum": ["Crew", "Betreiber", "Kunde", "Fachperson", "Captain"]
+    },
+    "lesart": {
+      "description": "Lesart der Fachperson je Norm-Zeile (FP1); ein Widerspruch wird eine Lücke (FP3).",
+      "enum": ["traegt", "anmerkung", "widerspruch"]
+    },
+    "abschnitt": {
+      "description": "Gliederung 4 bis 10 der Normfassung von matrix_fassung 1: die 26 Abschnitte der zweiten Ebene, 7.5, 9.1 und 9.2 in ihre Unterabschnitte geteilt (30). Nur Nummern, kein Normtext. Eine neue Ausgabe mit anderer Gliederung ist eine neue Matrix-Fassung (MX6).",
+      "enum": ["4.1", "4.2", "4.3", "4.4", "5.1", "5.2", "5.3", "6.1", "6.2", "6.3", "6.4", "6.5", "6.6", "7.1", "7.2", "7.3", "7.4", "7.5.1", "7.5.2", "7.5.3", "8.1", "8.2", "8.3", "9.1.1", "9.1.2", "9.2.1", "9.2.2", "9.3", "10.1", "10.2"]
+    },
+    "datum": { "type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "text": { "type": "string", "minLength": 1 },
+    "zusage_kennzeichen": { "type": "string", "pattern": "^Z-[0-9]{3}$" },
+    "kundenaufgabe_kennzeichen": { "type": "string", "pattern": "^KA-[0-9]{2}$" },
+    "luecke_kennzeichen": { "type": "string", "pattern": "^L-[0-9]{3}$" },
+    "abschnitte": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/abschnitt" },
+      "uniqueItems": true
+    },
+    "luecken": {
+      "type": "array",
+      "description": "Lücken der Betreiber-Liste (docs/bewertung/luecken.json, AP-20 IP-3), die diese Zeile betreffen; eine offene Lücke hält die Zeile offen (NR6).",
+      "items": { "$ref": "#/$defs/luecke_kennzeichen" },
+      "uniqueItems": true
+    },
+    "wer_liefert": {
+      "type": "array",
+      "description": "Bei offen: was fehlt und wer es liefert (NR7). Eine Nachweis-Kennung trägt ihr Paket, etwa AP-14 NW-8 (NR9).",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["wer", "was"],
+        "properties": {
+          "wer": { "$ref": "#/$defs/wer" },
+          "was": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "normfassung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["international", "deutsch", "stichtag", "normtext"],
+      "description": "Die maßgebliche Fassung mit Stichtag (MX6): am Tag jeder Bewertung neu festzustellen.",
+      "properties": {
+        "international": { "$ref": "#/$defs/text" },
+        "deutsch": { "$ref": "#/$defs/text" },
+        "stichtag": { "$ref": "#/$defs/datum", "description": "Tag, an dem die Fassung zuletzt festgestellt wurde." },
+        "normtext": { "$ref": "#/$defs/text", "description": "Wo der Normtext liegt: nie im Repo (MX2)." }
+      }
+    },
+    "nachweis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "fundstelle", "stand", "datum", "gefahren_von"],
+      "description": "Ein Beleg an genau einem Stand (NR3).",
+      "properties": {
+        "art": { "$ref": "#/$defs/nachweis_art" },
+        "fundstelle": { "$ref": "#/$defs/text", "description": "Klasse#Methode, Vektor-Datei oder Artefakt-Pfad." },
+        "stand": { "type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit, an dem gelaufen oder erzeugt wurde (stand.txt)." },
+        "lauf": { "$ref": "#/$defs/text", "description": "Pfad des Lauf-Berichts oder Artefakts." },
+        "lauf_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "datum": { "$ref": "#/$defs/datum" },
+        "gefahren_von": { "$ref": "#/$defs/text" }
+      },
+      "if": {
+        "required": ["art"],
+        "properties": { "art": { "enum": ["test_lauf", "vektor_lauf", "werkzeug_artefakt"] } }
+      },
+      "then": {
+        "required": ["lauf", "lauf_sha256"],
+        "description": "NR1: ein Test zählt nur mit Lauf-Bericht, ein Werkzeug nur mit seinem Artefakt."
+      }
+    },
+    "bestaetigung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["von", "datum", "aussage"],
+      "description": "NR4: Person, Datum und Aussage.",
+      "properties": {
+        "von": { "$ref": "#/$defs/text" },
+        "datum": { "$ref": "#/$defs/datum" },
+        "aussage": { "$ref": "#/$defs/text" }
+      }
+    },
+    "fachperson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "datum", "lesart", "text"],
+      "description": "Lesart der Fachperson an ihrer lizenzierten Ausgabe (FP1).",
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "datum": { "$ref": "#/$defs/datum" },
+        "lesart": { "$ref": "#/$defs/lesart" },
+        "text": { "$ref": "#/$defs/text" }
+      }
+    },
+    "norm_zeile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["abschnitt", "umschreibung", "traeger", "zusagen", "kundenaufgabe", "herkunft", "luecken", "urteil"],
+      "properties": {
+        "abschnitt": { "$ref": "#/$defs/abschnitt" },
+        "umschreibung": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Eigene Worte, kein Normtext (MX2)."
+        },
+        "traeger": { "$ref": "#/$defs/traeger_norm" },
+        "zusagen": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/zusage_kennzeichen" },
+          "uniqueItems": true
+        },
+        "kundenaufgabe": {
+          "$ref": "#/$defs/kundenaufgabe_kennzeichen",
+          "description": "Was bei Ihnen bleibt: jede Norm-Zeile hat genau eine Kundenaufgabe, auch wenn VoltPilot den Abschnitt festhält (AP-20 NW-1)."
+        },
+        "herkunft": { "$ref": "#/$defs/text" },
+        "luecken": { "$ref": "#/$defs/luecken" },
+        "fachperson": { "$ref": "#/$defs/fachperson" },
+        "urteil": { "$ref": "#/$defs/urteil_norm" },
+        "wer_liefert": { "$ref": "#/$defs/wer_liefert" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["urteil"], "properties": { "urteil": { "const": "offen" } } },
+          "then": { "required": ["wer_liefert"] }
+        },
+        {
+          "if": { "required": ["urteil"], "properties": { "urteil": { "const": "nicht_maschinell_pruefbar" } } },
+          "then": { "required": ["fachperson"] }
+        }
+      ]
+    },
+    "zusage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennzeichen", "art", "wortlaut", "quelle", "traeger", "norm", "nachweis_kandidaten", "nachweise", "urteil", "luecken"],
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/zusage_kennzeichen" },
+        "art": { "$ref": "#/$defs/zusage_art" },
+        "wortlaut": { "$ref": "#/$defs/text", "description": "Wörtlich wie am Ort der Zusage, oder als Kurzform gekennzeichnet." },
+        "quelle": { "$ref": "#/$defs/text", "description": "datei:zeile (MX3)." },
+        "traeger": { "$ref": "#/$defs/traeger_zusage" },
+        "norm": { "$ref": "#/$defs/abschnitte", "description": "Abschnitte, die die Zusage berührt, oder keiner." },
+        "nachweis_kandidaten": {
+          "type": "array",
+          "description": "Was einen Beleg liefern könnte. Ein Kandidat ist kein Beleg (NR7).",
+          "items": { "$ref": "#/$defs/text" },
+          "uniqueItems": true
+        },
+        "nachweise": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nachweis" }
+        },
+        "urteil": { "$ref": "#/$defs/urteil" },
+        "wer_liefert": { "$ref": "#/$defs/wer_liefert" },
+        "bestaetigung": { "$ref": "#/$defs/bestaetigung" },
+        "grund": { "$ref": "#/$defs/text" },
+        "luecken": { "$ref": "#/$defs/luecken" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["urteil"], "properties": { "urteil": { "const": "belegt" } } },
+          "then": {
+            "required": ["nachweise"],
+            "properties": {
+              "nachweise": {
+                "minItems": 1,
+                "contains": {
+                  "required": ["art"],
+                  "properties": { "art": { "enum": ["test_lauf", "vektor_lauf", "werkzeug_artefakt", "protokoll", "stand_mit_pruefsumme"] } },
+                  "description": "belegt braucht mindestens einen Lauf, ein Artefakt, ein Protokoll oder einen Stand mit Prüfsumme; eine Bestätigung allein trägt nicht_maschinell_pruefbar (NR4)."
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "required": ["urteil"], "properties": { "urteil": { "const": "nicht_maschinell_pruefbar" } } },
+          "then": { "required": ["bestaetigung"] }
+        },
+        {
+          "if": { "required": ["urteil"], "properties": { "urteil": { "const": "offen" } } },
+          "then": { "required": ["wer_liefert"] }
+        },
+        {
+          "if": { "required": ["urteil"], "properties": { "urteil": { "const": "nicht_zugesagt" } } },
+          "then": { "required": ["grund"] }
+        }
+      ]
+    },
+    "kundenaufgabe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennzeichen", "text", "norm"],
+      "description": "Was außerhalb der Software beim Kunden bleibt. Kein Urteil, nie als erfüllt, offen oder Lücke gezählt (NR5).",
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/kundenaufgabe_kennzeichen" },
+        "text": { "$ref": "#/$defs/text" },
+        "norm": {
+          "allOf": [{ "$ref": "#/$defs/abschnitte" }],
+          "minItems": 1
+        },
+        "wo_gesagt": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}
