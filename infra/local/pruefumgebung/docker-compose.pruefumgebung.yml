@@ -1,0 +1,13 @@
+# Prüfumgebung Ahrenberg (UEMS AP-20 IP-13, E5, PD1): die api stellt die Leser des
+# Energiemanagements fest auf den 30.04.2029, 08:00 UTC - den letzten Lese-Tag von
+# UemsEnergiemanagementAbnahmeTest. Die Welt der Referenzdatei 1.10 läuft bis
+# dorthin; ohne diese Uhr ließe das Verzeichnis jede künftige Zeile weg.
+# Wirksam nur mit dem Profil `local` (PruefumgebungUhr). Die Uhr der Zuweisungen
+# bleibt die echte - das Einsicht-Konto endet am echten vereinbarten Tag.
+#
+# Nur über `infra/local/pruefumgebung/ahrenberg.sh` benutzen (eigenes
+# Compose-Projekt `voltpilot-pruefumgebung`, eigene Volumes).
+services:
+  api:
+    environment:
+      VOLTPILOT_PRUEFUMGEBUNG_BUEHNEN_UHR: "2029-04-30T08:00:00Z"

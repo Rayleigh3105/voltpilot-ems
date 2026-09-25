@@ -44,10 +44,14 @@ services:
   # Ahrenberg GmbH" ein (AP-00 IP-7 + AP-02 IP-16) - ein DRITTER Kundenbereich
   # neben den beiden Demo-Mandanten, Login `ahrenberg` / `ahrenberg`.
   #
-  # Ein-Weg-Dienst: er wartet, bis die api ihre Flyway-Kette durch hat (die
-  # UEMS-Tabellen stehen), spielt `infra/local/seed/ahrenberg.sql` ein und
-  # endet. Das Skript ist ADDITIV und IDEMPOTENT - es fasst nur den
-  # Ahrenberg-Mandanten an, ein zweiter Lauf ändert nichts.
+  # Ein-Weg-Dienst: er startet erst, wenn die api gesund ist - dann ist ihre
+  # Flyway-Kette durch (alle UEMS-Tabellen stehen) -, spielt
+  # `infra/local/seed/ahrenberg.sql` ein und endet; ein Fehler im Skript ist
+  # ein Fehler des Dienstes (Exit-Code), keine Erfolgsmeldung. Das Skript ist
+  # ADDITIV und IDEMPOTENT - es fasst nur den Ahrenberg-Mandanten an, ein
+  # zweiter Lauf ändert nichts. (AP-20 IP-13: vorher wartete der Dienst nur
+  # auf `ort_zuordnung` und lief in die noch laufende Flyway-Kette -
+  # `benutzer` fehlte, die Transaktion fiel zurück, gemeldet wurde Erfolg.)
   #
   #   docker compose up -d demo-seed      # nachträglich, ohne `down -v`
   #   docker compose logs demo-seed       # „Ahrenberg-Demodaten eingespielt."
@@ -65,7 +69,7 @@ services:
       timescaledb:
         condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     environment:
       PGHOST: timescaledb
       PGUSER: ${POSTGRES_USER:-voltpilot}
@@ -77,16 +81,7 @@ services:
       - /bin/sh
       - -c
       - |
-        i=0
-        until psql -qtAX -c "SELECT to_regclass('public.ort_zuordnung')" | grep -q ort_zuordnung; do
-          i=$$((i + 1))
-          if [ "$$i" -ge 120 ]; then
-            echo "demo-seed: die UEMS-Tabellen sind nach 10 Minuten nicht da - abgebrochen." >&2
-            exit 1
-          fi
-          sleep 5
-        done
-        psql -v ON_ERROR_STOP=1 -q -f /seed/ahrenberg.sql
+        psql -v ON_ERROR_STOP=1 -q -f /seed/ahrenberg.sql || exit 1
         echo "Ahrenberg-Demodaten eingespielt."
 
   # ---------------------------------------------------------------------------
