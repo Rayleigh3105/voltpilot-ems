@@ -23,9 +23,9 @@ const VERANTWORTUNG =
 const OHNE_PERSON = 'Bezugsbasen pflegen und freigeben — keine Person festgelegt.';
 const EINSICHT_ROLLE = 'Einsicht — Sie sehen das Energiemanagement des ganzen Unternehmens und können nichts ändern.';
 const EINSICHT_LEER = 'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.';
-/** Jede Beschriftung eines Schreib-Knopfs im Bereich (IP-9, IP-13 und IP-15 „Nachweis festhalten“). */
+/** Jede Beschriftung eines Schreib-Knopfs im Bereich (IP-9, IP-13, IP-15 „Nachweis festhalten“ und IP-20 Audits/Feststellungen). */
 const SCHREIBEN =
-  /^(Dokument anlegen|Neue Fassung|Entwurf bearbeiten|Freigeben|Freigabe beantragen|Freigabe bestätigen|Aufgabe zuordnen|Person anlegen|Zuordnung beenden|Angaben ändern|Nachweis festhalten)$/;
+  /^(Dokument anlegen|Neue Fassung|Entwurf bearbeiten|Freigeben|Freigabe beantragen|Freigabe bestätigen|Aufgabe zuordnen|Person anlegen|Zuordnung beenden|Angaben ändern|Nachweis festhalten|Audit planen|Durchgeführt melden|Hinweis festhalten|Audit abschließen|Audit absagen|Feststellung erfassen|Eintrag festhalten|Wirksamkeit prüfen|Ohne Maßnahme abschließen|Zurücknehmen)$/;
 const IDS = {
   RF: 'a1900000-0000-4000-8000-0000000000f1',
   IK: 'a1900000-0000-4000-8000-0000000000a1',

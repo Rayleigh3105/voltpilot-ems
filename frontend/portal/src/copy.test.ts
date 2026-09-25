@@ -95,6 +95,7 @@ import { UEMS_BEREICH, UEMS_GEBAEUDE, UEMS_STANDORT, UEMS_UNTERNEHMEN } from './
 import { UEMS_ROLLEN_STANDORT, UEMS_ROLLEN_UNTERNEHMEN, UEMS_ROLLE_UNTERSTUETZER } from './glossar';
 import { ARTEN as RECHTE_ARTEN, KONTEN as RECHTE_KONTEN, ROLLE_KUNDENWORT, TEXTE as RECHTE_TEXTE, UMFANG_KUNDENWORT } from './rechte';
 import { KUNDENROLLEN } from './benutzer';
+import { herkunftSatz } from './auditFeststellung';
 import { ROLLE_BESCHREIBUNG } from './components/BenutzerEinladen';
 import { STAND_AM, bannerTitel } from './standAm';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
@@ -3117,6 +3118,13 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'components/EnergiemanagementAufgabeDialoge.tsx',
     // IP-15: der Abschnitt „Nachweise“ an der Einsatz-Seite (AP-16) und an der Personen-Seite, mit „Nachweis festhalten“.
     'components/Nachweise.tsx',
+    // IP-20: Reiter „Audits“ (Auditprogramm) und „Feststellungen“, Audit-Seite, Feststellungs-Seite, ihre Dialoge.
+    'components/EnergiemanagementAudits.tsx',
+    'components/EnergiemanagementFeststellungen.tsx',
+    'pages/AuditSeite.tsx',
+    'pages/FeststellungSeite.tsx',
+    'components/InternesAuditDialoge.tsx',
+    'components/FeststellungDialoge.tsx',
   ];
   const ENERGIEMANAGEMENT_NAMENSMUSTER =
     /(?:^|\/)(?:Energiemanagement|Energiepolitik|Anwendungsbereich|Dokument|Verzeichnis|Wiedervorlage|InternesAudit|Audit|Feststellung|Managementbewertung|Beschluss|Wirksamkeit|Zuschnitt|Nachweis)[^/]*\.tsx?$/i;
@@ -3383,6 +3391,23 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     };
     for (const [art, kundenwort] of Object.entries(kundenwortDerArt)) {
       if (art in herkunftWorte) expect(herkunftWorte[art], art).toMatch(kundenwort);
+    }
+  });
+
+  it('IP-20: die Maßnahmen-Seite und „Maßnahme anlegen“ bilden die Herkunft über `herkunftSatz` — genau die Sätze aus §5.8 (SP5, W3)', () => {
+    const ap18 = (text: string) => VERBESSERUNG_VERBOTEN.filter((re) => re.test(text));
+    expect([
+      herkunftSatz('nichtkonformitaet', 'F-2029-0001'),
+      herkunftSatz('audit', 'AU-2029-0001'),
+      herkunftSatz('managementbewertung', 'BR-2029-0001/B2'),
+    ]).toEqual(HERKUNFT_SAETZE);
+    // Die Herkünfte von AP-18 bleiben bei ihren Wörtern; das Vertragswort wird nie zu Text.
+    for (const art of ['abweichung', 'energieziel', 'einsatz', 'von_hand'] as const) expect(herkunftSatz(art, 'AW-2028-0001'), art).toBeNull();
+    for (const satz of HERKUNFT_SAETZE) expect(ap18(satz), satz).toEqual([]);
+    for (const datei of ['pages/MassnahmeSeite.tsx', 'components/MassnahmeDialoge.tsx']) {
+      const quelle = readFileSync(join(SRC, datei), 'utf8');
+      expect(quelle, datei).toMatch(/herkunftSatz\(/);
+      expect(kundenTexte(stripComments(quelle)).flatMap(ap18), datei).toEqual([]);
     }
   });
 

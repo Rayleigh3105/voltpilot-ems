@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
 import { ebenenBereiche, EBENEN_SEITEN } from './ebenenNav';
 import * as E from './energiemanagementPortal';
-import { dokumentRoute, energiemanagementRoute, hashForRoute, pageRoute, parseRoute, personRoute } from './nav';
+import { auditRoute, dokumentRoute, energiemanagementRoute, feststellungRoute, hashForRoute, pageRoute, parseRoute, personRoute } from './nav';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { rechteSeed } from './test/rollenFixtures';
 import { werkAhrenberg, werkLindach } from './test/standorteFixtures';
@@ -18,7 +18,7 @@ describe('UEMS AP-19 IP-9 · Energiemanagement im Portal', () => {
     expect(mit[mit.length - 1]).toBe('energiemanagement');
     expect(EBENEN_SEITEN({ art: 'unternehmen' }).energiemanagement).toEqual(pageRoute('portfolio-energiemanagement'));
     expect(E.darfAnsehen(rechteSeed('IK').me)).toBe(true);
-    expect(E.REITER.map((r) => r.label)).toEqual(['Verzeichnis', 'Dokumente', 'Aufgaben']);
+    expect(E.REITER.map((r) => r.label)).toEqual(['Verzeichnis', 'Dokumente', 'Aufgaben', 'Audits', 'Feststellungen']);
   });
 
   it('Routen: Verzeichnis ohne Zusatz, Dokumente, Zuschnitt-Hilfe und ein Dokument hin und zurück', () => {
@@ -104,13 +104,18 @@ describe('UEMS AP-19 IP-13 · Aufgaben, Wer ist wofür verantwortlich, Einsicht'
   });
 
   it('Reiter „Aufgaben“ nach Dokumente (§6.3); Routen für Aufgaben, Verantwortung und Person', () => {
-    expect(E.REITER.map((r) => r.key)).toEqual(['verzeichnis', 'dokumente', 'aufgaben']);
-    for (const r of ['aufgaben', 'verantwortung'] as const) {
+    expect(E.REITER.map((r) => r.key)).toEqual(['verzeichnis', 'dokumente', 'aufgaben', 'audits', 'feststellungen']);
+    for (const r of ['aufgaben', 'verantwortung', 'audits', 'feststellungen'] as const) {
       expect(hashForRoute(energiemanagementRoute(r))).toBe(`#/portfolio/energiemanagement/${r}`);
       expect(parseRoute(`#/portfolio/energiemanagement/${r}`)).toEqual(energiemanagementRoute(r));
     }
     expect(hashForRoute(personRoute('a1'))).toBe('#/portfolio/energiemanagement/personen/a1');
     expect(parseRoute('#/portfolio/energiemanagement/personen/a1')).toEqual(personRoute('a1'));
+    // IP-20: Audit- und Feststellungs-Seite, auch über das Kennzeichen (Sprung von der Maßnahmen-Seite, SP5).
+    expect(hashForRoute(auditRoute('AU-2029-0001'))).toBe('#/portfolio/energiemanagement/audits/AU-2029-0001');
+    expect(parseRoute('#/portfolio/energiemanagement/audits/au1')).toEqual(auditRoute('au1'));
+    expect(hashForRoute(feststellungRoute('F-2029-0001'))).toBe('#/portfolio/energiemanagement/feststellungen/F-2029-0001');
+    expect(parseRoute('#/portfolio/energiemanagement/feststellungen/F-2029-0001')).toEqual(feststellungRoute('F-2029-0001'));
   });
 
   it('Zuordnen: „entschieden von“ Pflicht außer bei der Leitung, Vertretung ist eine andere Person, Beschluss im Muster (PA2)', () => {

@@ -3,7 +3,9 @@ import { Button } from '../../designsystem/components/core/Button';
 import { api, type EnergiemanagementDokumentKurz } from '../api';
 import { DokumentAnlegenDialog } from '../components/DokumentDialoge';
 import { EinsichtRecht } from '../components/EinsichtRecht';
+import { EnergiemanagementAudits } from '../components/EnergiemanagementAudits';
 import { EnergiemanagementAufgaben } from '../components/EnergiemanagementAufgaben';
+import { EnergiemanagementFeststellungen } from '../components/EnergiemanagementFeststellungen';
 import { EnergiemanagementVerantwortung } from '../components/EnergiemanagementVerantwortung';
 import { VerzeichnisTabelle } from '../components/VerzeichnisTabelle';
 import { ZuschnittHilfe } from '../components/ZuschnittHilfe';
@@ -13,8 +15,10 @@ import * as E from '../energiemanagementPortal';
 import { UEMS_DOKUMENTE, UEMS_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import type { EnergiemanagementReiter } from '../nav';
 import { useRollen } from '../rollen';
+import { AuditSeite } from './AuditSeite';
 import { DokumentSeite } from './DokumentSeite';
 import { EnergiemanagementPersonSeite } from './EnergiemanagementPersonSeite';
+import { FeststellungSeite } from './FeststellungSeite';
 import './Energiemanagement.css';
 import './Verbesserung.css';
 
@@ -29,25 +33,38 @@ import './Verbesserung.css';
  * Jede Fläche trägt Grenz-Satz UND Verantwortungs-Satz (SP4, `copy.test.ts` Block „Energiemanagement“).
  * IP-13: Reiter „Aufgaben“ (mit „Wer ist wofür verantwortlich“ als eigener Ansicht darunter, `…/verantwortung`) und die
  * Seite einer Person; wer die Rolle „Einsicht“ hat, liest im Kopf den Rollen-Satz und an jedem Schreib-Knopf den Leer-Satz.
+ * IP-20: Reiter „Audits“ (Auditprogramm) und „Feststellungen“, die Seiten eines Audits und einer Feststellung.
  */
 export function EnergiemanagementBereich({
   reiter,
   dokumentId,
   personId = null,
+  auditId = null,
+  feststellungId = null,
   onReiter,
   onDokument,
   onPerson,
+  onAudit,
+  onFeststellung,
 }: {
   reiter: EnergiemanagementReiter;
   dokumentId: string | null;
   personId?: string | null;
+  auditId?: string | null;
+  feststellungId?: string | null;
   onReiter: (r: EnergiemanagementReiter) => void;
   onDokument: (id: string) => void;
   onPerson: (id: string) => void;
+  onAudit?: (id: string) => void;
+  onFeststellung?: (id: string) => void;
 }) {
   const rollen = useRollen();
   if (dokumentId) return <DokumentSeite id={dokumentId} onListe={() => onReiter('dokumente')} />;
   if (personId) return <EnergiemanagementPersonSeite id={personId} onListe={() => onReiter('aufgaben')} />;
+  const zumAudit = onAudit ?? (() => onReiter('audits'));
+  const zurFeststellung = onFeststellung ?? (() => onReiter('feststellungen'));
+  if (auditId) return <AuditSeite id={auditId} onListe={() => onReiter('audits')} onFeststellung={zurFeststellung} />;
+  if (feststellungId) return <FeststellungSeite id={feststellungId} onListe={() => onReiter('feststellungen')} onAudit={zumAudit} />;
   if (reiter === 'zuschnitt') return <ZuschnittHilfe onZurueck={() => onReiter('verzeichnis')} />;
   // „Wer ist wofür verantwortlich“ steht unter dem Reiter „Aufgaben“ (§6.3 nennt sieben Reiter, diese Ansicht ist keiner).
   const aktiv = reiter === 'verantwortung' ? 'aufgaben' : reiter;
@@ -85,6 +102,10 @@ export function EnergiemanagementBereich({
         <EnergiemanagementAufgaben onPerson={onPerson} onVerantwortung={() => onReiter('verantwortung')} />
       ) : reiter === 'verantwortung' ? (
         <EnergiemanagementVerantwortung onPerson={onPerson} onZurueck={() => onReiter('aufgaben')} />
+      ) : reiter === 'audits' ? (
+        <EnergiemanagementAudits onAudit={zumAudit} />
+      ) : reiter === 'feststellungen' ? (
+        <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
       ) : (
         <VerzeichnisTabelle onDokument={onDokument} />
       )}

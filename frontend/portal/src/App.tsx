@@ -59,6 +59,8 @@ import {
   energiemanagementRoute,
   dokumentRoute,
   personRoute,
+  auditRoute,
+  feststellungRoute,
   messstelleRoute,
   standortRoute,
   transitionKind,
@@ -1514,16 +1516,20 @@ function UnifiedPortal() {
               onAbweichung={(id) => navigate(abweichungRoute(id))}
             />
           )}
-          {/* UEMS AP-19 IP-9/IP-13: „Unternehmen › Energiemanagement“ (Verzeichnis, Dokumente, Aufgaben, Zuschnitt-Hilfe)
-              und die Seiten eines Dokuments und einer Person. */}
+          {/* UEMS AP-19 IP-9/IP-13/IP-20: „Unternehmen › Energiemanagement“ (Verzeichnis, Dokumente, Aufgaben, Audits,
+              Feststellungen, Zuschnitt-Hilfe) und die Seiten eines Dokuments, einer Person, eines Audits, einer Feststellung. */}
           {page === 'portfolio-energiemanagement' && (
             <EnergiemanagementBereich
               reiter={route.energiemanagementReiter ?? 'verzeichnis'}
               dokumentId={route.dokumentId ?? null}
               personId={route.personId ?? null}
+              auditId={route.auditId ?? null}
+              feststellungId={route.feststellungId ?? null}
               onReiter={(r) => navigate(energiemanagementRoute(r))}
               onDokument={(id) => navigate(dokumentRoute(id))}
               onPerson={(id) => navigate(personRoute(id))}
+              onAudit={(id) => navigate(auditRoute(id))}
+              onFeststellung={(id) => navigate(feststellungRoute(id))}
             />
           )}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}

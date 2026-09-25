@@ -2,7 +2,8 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Massnahme, type VorgangAnstoss } from '../api';
+import { api, ApiError, type Massnahme, type MassnahmeHerkunft, type VorgangAnstoss } from '../api';
+import { herkunftSatz } from '../auditFeststellung';
 import { MassnahmeAendernDialog, MassnahmeUmgesetztDialog, MassnahmeVerwerfenDialog } from '../components/MassnahmeDialoge';
 import { MassnahmeBewertenDialog, MassnahmeWirkungBewertung } from '../components/MassnahmeWirkung';
 import { Recht } from '../components/Recht';
@@ -11,11 +12,29 @@ import { VerbesserungAnstoesse } from '../components/VerbesserungAnstoesse';
 import * as Z from '../energieziele';
 import { UEMS_BEWERTUNGSMETHODE, UEMS_BEZUGSBASIS, UEMS_ENERGIEZIEL, UEMS_MESSGRUNDLAGE, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH } from '../glossar';
 import * as M from '../massnahmen';
+import { auditRoute, feststellungRoute, hashForRoute } from '../nav';
 import * as W from '../massnahmeWirkung';
 import { useRollen } from '../rollen';
 import './Verbesserung.css';
 
 type Lage = { art: 'laedt' } | { art: 'fehlt' } | { art: 'fehler' } | { art: 'da'; m: Massnahme };
+
+/**
+ * Die Herkunft aus dem Energiemanagement (AP-19 IP-20, SP5, W3): „Herkunft: Feststellung F-2029-0001.“ als Sprung zur
+ * Feststellung, „Herkunft: internes Audit AU-…“ als Sprung zum Audit — über das Kennzeichen in der Adresse; die
+ * Managementbewertung hat noch keine Seite (AP-19 IP-24) und steht als Satz. Das Vertragswort wird nie zu Text.
+ */
+function HerkunftSprung({ art, kennung }: { art: MassnahmeHerkunft; kennung: string }) {
+  const satz = herkunftSatz(art, kennung)!;
+  const ziel = art === 'nichtkonformitaet' ? feststellungRoute(kennung) : art === 'audit' ? auditRoute(kennung) : null;
+  return ziel ? (
+    <a className="vp-ez-sprung" href={hashForRoute(ziel)} data-testid="massnahme-sprung-herkunft">
+      {satz}
+    </a>
+  ) : (
+    <span data-testid="massnahme-herkunft-satz">{satz}</span>
+  );
+}
 
 /** Ein Kommentar im Verlauf (M7): 1–2 000 Zeichen, an geplant und umgesetzt; nichts wird geändert oder gelöscht. */
 function Kommentar({ m, onNeu }: { m: Massnahme; onNeu: (m: Massnahme) => void }) {
@@ -129,6 +148,8 @@ export function MassnahmeSeite({
 
   const { m } = lage;
   const mg = m.messgrundlage;
+  // AP-19 IP-20 (SP5, W3): die Herkunft aus dem Energiemanagement als Satz aus §5.8 — „Herkunft: Feststellung F-…“.
+  const herkunftAusEnergiemanagement = !!herkunftSatz(m.herkunft.art, m.herkunft.kennung);
   const ueberfaellig = M.ueberfaelligText(m);
   const neu = (x: Massnahme) => {
     setDialog(null);
@@ -148,7 +169,11 @@ export function MassnahmeSeite({
           {M.kopfZeile(m, Z.tag)}
         </p>
         <p className="vp-ez-herkunft" data-testid="massnahme-herkunft">
-          <span>{`${M.HERKUNFT_WORT[m.herkunft.art]}${m.herkunft.kennung && m.herkunft.art !== 'energieziel' ? ` ${m.herkunft.kennung}` : ''}`}</span>
+          {herkunftAusEnergiemanagement ? (
+            <HerkunftSprung art={m.herkunft.art} kennung={m.herkunft.kennung!} />
+          ) : (
+            <span>{`${M.HERKUNFT_WORT[m.herkunft.art]}${m.herkunft.kennung && m.herkunft.art !== 'energieziel' ? ` ${m.herkunft.kennung}` : ''}`}</span>
+          )}
           {m.energieziel &&
             (onEnergieziel ? (
               <button type="button" className="vp-ez-sprung" onClick={() => onEnergieziel(m.energieziel!.id)} data-testid="massnahme-sprung-energieziel">

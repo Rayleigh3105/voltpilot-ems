@@ -2,7 +2,7 @@
 
 Neu am 25.09.2026: die Routen über `internes_audit` und `internes_audit_eintrag` aus IP-16
 ([Datenhaltung](uems-audit-feststellung-datenhaltung.md)). Konzept: AP-19 §4.6 IA1–IA5, §5.4, §5.6, R9
-(`vp-uems-ap19-fundament/report.md`). Noch keine Fläche (Portal IP-20); Feststellung und Wirksamkeit baut IP-19.
+(`vp-uems-ap19-fundament/report.md`). Fläche seit IP-20 ([Portal](uems-energiemanagement-portal.md): Reiter „Audits“, Audit-Seite); Feststellung und Wirksamkeit baut IP-19.
 
 | Stelle | Was |
 |---|---|

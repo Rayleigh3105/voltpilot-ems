@@ -8707,6 +8707,208 @@ export interface EnergiemanagementVergleich {
   saetze: string[];
 }
 
+// ------------------------------------------------------------------ Internes Audit und Feststellung (UEMS AP-19 IP-18/IP-19)
+
+/** Ein Verantwortlicher mit Konto (openapi `EnergiemanagementVerantwortlich`). */
+export interface EnergiemanagementVerantwortlich {
+  sub: string | null;
+  name: string;
+}
+export type InternesAuditZustand = 'geplant' | 'durchgefuehrt' | 'abgeschlossen' | 'abgesagt';
+/** Planen und ändern (IA1) — beim Ändern der ganze Stand (`InternesAuditStand`). */
+export interface InternesAuditStand {
+  titel: string;
+  termin: string;
+  auditor_ids: string[];
+  unabhaengigkeit: string;
+  was: string;
+  woran: string;
+  verantwortlich: string;
+  standort_ids?: string[] | null;
+  begruendung?: string | null;
+}
+/** Der unterschriebene Bericht als Verweis (G3) — nie die Datei, höchstens ihre im Browser gebildete Prüfsumme. */
+export type InternesAuditBericht = EnergiemanagementBeleg;
+export interface InternesAuditAbschliessen {
+  entschieden_von: string;
+  am?: string | null;
+  zusammenfassung?: string | null;
+  bericht?: InternesAuditBericht | null;
+  massnahmen?: { hinweis: number; massnahme: string }[] | null;
+}
+export interface InternesAuditHinweis {
+  nr: number;
+  am: string;
+  festgestellt_von: EnergiemanagementPersonKurz;
+  wortlaut: string;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface InternesAuditAbschluss {
+  am: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  zusammenfassung: string | null;
+  bericht: InternesAuditBericht | null;
+  kopie: Record<string, unknown>;
+  pruefsumme: string;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface InternesAudit {
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  termin: string;
+  auditoren: EnergiemanagementPersonKurz[];
+  unabhaengigkeit: string;
+  was: string;
+  woran: string;
+  verantwortlich: EnergiemanagementVerantwortlich;
+  standort_ids: string[];
+  zustand: InternesAuditZustand;
+  durchgefuehrt_am: string | null;
+  abgesagt_begruendung: string | null;
+  /** Anzahl der Hinweise. */
+  hinweise: number;
+  /** Die Kennzeichen der Feststellungen mit Quelle dieses Audit. */
+  feststellungen: string[];
+  abschluss: InternesAuditAbschluss | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface InternesAuditAenderung {
+  id: number;
+  art: 'audit_geplant' | 'audit_geaendert' | 'audit_durchgefuehrt' | 'hinweis' | 'audit_abgeschlossen' | 'audit_abgesagt';
+  alt: unknown;
+  neu: unknown;
+  begruendung: string | null;
+  akteur: EnergiemanagementEingetragen['akteur'];
+  zeit: string;
+}
+export interface InternesAuditMitVerlauf {
+  audit: InternesAudit;
+  hinweise: InternesAuditHinweis[];
+  verlauf: InternesAuditAenderung[];
+}
+/** Das nächste interne Audit (IA4) — gerechnet beim Abruf, ohne durchgeführtes Audit keine Frist (`grund` = `kein_audit`). */
+export interface InternesAuditNaechstes {
+  rhythmus_monate: number;
+  faellig_am: string | null;
+  basis: string | null;
+  tage: number | null;
+  satz: string | null;
+  grund: string | null;
+}
+export interface InternesAuditprogramm {
+  tag: string;
+  audits: InternesAudit[];
+  naechstes: InternesAuditNaechstes;
+}
+
+export type FeststellungQuelleArt = 'internes_audit' | 'eigene' | 'extern' | 'managementbewertung';
+export type FeststellungEintragArt = 'kommentar' | 'behebung' | 'ursache_aussage' | 'aehnliche_faelle';
+export type FeststellungErgebnis = 'wirksam' | 'nicht_wirksam' | 'ohne_massnahme' | 'zurueckgenommen';
+/** Erfassen (FS1): `quelle` mit genau ihrem Verweis, eine `vorgabe`, wahlfrei ein `bezug`. */
+export interface FeststellungErfassen {
+  quelle: { art: FeststellungQuelleArt; audit_id?: string | null; kennung?: string | null; wortlaut?: string | null };
+  wortlaut: string;
+  vorgabe: { dokument_id?: string | null; fassung?: number | null; wortlaut?: string | null };
+  bezug?: { standort_id?: string | null; aufgabe?: string | null; dokument_id?: string | null; objekte?: string[] | null } | null;
+  festgestellt_von: string;
+  festgestellt_am?: string | null;
+  verantwortlich: string;
+  frist?: string | null;
+}
+export interface FeststellungEintragFesthalten {
+  art: FeststellungEintragArt;
+  wortlaut: string;
+  person_id: string;
+  am?: string | null;
+}
+/** Ein Stand (FS4, FS5): `…/wirksamkeit` nimmt `wirksam · nicht_wirksam`, `…/abschliessen` die anderen zwei. */
+export interface FeststellungStandFesthalten {
+  ergebnis: FeststellungErgebnis;
+  begruendung: string;
+  entschieden_von: string;
+  am?: string | null;
+}
+export interface Feststellung {
+  id: string;
+  kennzeichen: string;
+  quelle: { art: FeststellungQuelleArt; audit_id: string | null; kennung: string | null; wortlaut: string | null };
+  wortlaut: string;
+  vorgabe: { dokument_id: string | null; dokument: string | null; fassung: number | null; wortlaut: string | null };
+  bezug: { standort_id: string | null; aufgabe: string | null; dokument_id: string | null; dokument: string | null; objekte: string[] };
+  festgestellt_von: EnergiemanagementPersonKurz;
+  festgestellt_am: string;
+  verantwortlich: EnergiemanagementVerantwortlich;
+  frist: string;
+  zustand: 'offen' | 'abgeschlossen';
+  /** Vertrag `ueberpruefung` (Art `feststellung`) am Abruf-Tag — „seit n Tagen fällig“; abgeschlossen ohne Frist. */
+  lage: { abruf: string; faellig_am: string | null; tage: number | null; satz: string | null; grund: string | null };
+  ergebnis: 'wirksam' | 'ohne_massnahme' | 'zurueckgenommen' | null;
+  eintraege: number;
+  massnahmen: string[];
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface FeststellungEintrag {
+  id: number;
+  art: FeststellungEintragArt;
+  am: string;
+  person: EnergiemanagementPersonKurz;
+  wortlaut: string;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface FeststellungMassnahme {
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  zustand: MassnahmeZustand;
+  termin: string;
+  umgesetzt_am: string | null;
+  verantwortlich: EnergiemanagementVerantwortlich;
+}
+export interface FeststellungStand {
+  nr: number;
+  ergebnis: FeststellungErgebnis;
+  begruendung: string;
+  am: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  kopie: Record<string, unknown>;
+  pruefsumme: string;
+  vieraugen: boolean;
+  status: 'beantragt' | 'freigegeben' | 'abgelehnt';
+  eingetragen: EnergiemanagementEingetragen;
+  zweite_person: EnergiemanagementEingetragen | null;
+  ablehnung_begruendung: string | null;
+}
+/** FS6/W15 als Antwortfeld: wer zweite Person sein kann — ohne jemanden der Satz „Vier-Augen nicht erfüllbar: …“. */
+export interface FeststellungVierAugen {
+  an: boolean;
+  erfuellbar: boolean;
+  berechtigte: EnergiemanagementVerantwortlich[];
+  zweite_person: EnergiemanagementVerantwortlich[];
+  satz: string | null;
+}
+export interface FeststellungAenderung {
+  id: number;
+  art: 'feststellung_erfasst' | 'eintrag' | 'feststellung_geaendert' | 'wirksamkeit_beantragt' | 'wirksamkeit_geprueft' | 'wirksamkeit_abgelehnt' | 'feststellung_abgeschlossen';
+  alt: unknown;
+  neu: unknown;
+  begruendung: string | null;
+  akteur: EnergiemanagementEingetragen['akteur'];
+  zeit: string;
+}
+export interface FeststellungMitVerlauf {
+  feststellung: Feststellung;
+  eintraege: FeststellungEintrag[];
+  massnahmen: FeststellungMassnahme[];
+  wirksamkeit: FeststellungStand[];
+  vieraugen: FeststellungVierAugen;
+  verlauf: FeststellungAenderung[];
+}
+export interface FeststellungListe {
+  tag: string;
+  feststellungen: Feststellung[];
+}
+
 export const api = {
   korrekturen: (standortId: string) => request<KorrekturDetail[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/korrekturen`),
   korrektur: (kennung: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}`),
@@ -10916,6 +11118,40 @@ export const api = {
   /** IP-7 (DK3, DK4): freigeben — mit „entschieden von“; bei Vier-Augen bestätigt eine zweite Person. */
   energiemanagementFassungFreigeben: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
     request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
+  energiemanagementAudits: (tag?: string) =>
+    request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  energiemanagementAudit: (id: string) => request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}`),
+  /** IA1: planen — `energiemanagement.verwalten` am Unternehmen. */
+  energiemanagementAuditPlanen: (body: InternesAuditStand) =>
+    request<InternesAuditMitVerlauf>('/api/v1/energiemanagement/audits', { method: 'POST', body: JSON.stringify(body) }),
+  energiemanagementAuditDurchgefuehrt: (id: string, am: string) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/durchgefuehrt`, { method: 'POST', body: JSON.stringify({ am }) }),
+  /** IA2, IA5: ein Hinweis — „festgestellt von“ ist die Person, die prüft. */
+  energiemanagementAuditHinweis: (id: string, body: { wortlaut: string; festgestellt_von: string; am?: string | null }) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/hinweise`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IA3: abschließen — `energiemanagement.freigeben`; danach unveränderlich. */
+  energiemanagementAuditAbschliessen: (id: string, body: InternesAuditAbschliessen) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/abschliessen`, { method: 'POST', body: JSON.stringify(body) }),
+  energiemanagementAuditAbsagen: (id: string, begruendung: string) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/absagen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** AP-19 IP-19 (FS1): offene zuerst, am längsten überfällig oben, dann abgeschlossene. */
+  energiemanagementFeststellungen: (tag?: string) =>
+    request<FeststellungListe>(`/api/v1/energiemanagement/feststellungen${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  energiemanagementFeststellung: (id: string) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}`),
+  energiemanagementFeststellungErfassen: (body: FeststellungErfassen) =>
+    request<FeststellungMitVerlauf>('/api/v1/energiemanagement/feststellungen', { method: 'POST', body: JSON.stringify(body) }),
+  /** FS2: Einträge nur anhängen — immer die Aussage einer Person an einem Tag. */
+  energiemanagementFeststellungEintrag: (id: string, body: FeststellungEintragFesthalten) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
+  /** FS4 (`wirksam · nicht_wirksam`) über `…/wirksamkeit`, FS5 (`ohne_massnahme · zurueckgenommen`) über `…/abschliessen`, mit Vier-Augen `…/wirksamkeit/beantragen`. */
+  energiemanagementFeststellungStand: (id: string, weg: 'wirksamkeit' | 'abschliessen' | 'wirksamkeit/beantragen', body: FeststellungStandFesthalten) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/${weg}`, { method: 'POST', body: JSON.stringify(body) }),
+  energiemanagementFeststellungFreigeben: (id: string) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/wirksamkeit/freigeben`, { method: 'POST', body: JSON.stringify({}) }),
+  energiemanagementFeststellungAblehnen: (id: string, begruendung: string) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/wirksamkeit/ablehnen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
 };
 
 /** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */

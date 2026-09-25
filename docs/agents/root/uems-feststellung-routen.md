@@ -2,7 +2,7 @@
 
 Neu am 25.09.2026: die Routen über `feststellung`, `feststellung_eintrag` und `feststellung_wirksamkeit` aus IP-16
 ([Datenhaltung](uems-audit-feststellung-datenhaltung.md)). Konzept: AP-19 §4.7 FS1–FS7, W15, §5.4, §5.6, R10, R11
-(`vp-uems-ap19-fundament/report.md`). Noch keine Fläche (Portal IP-20); das Audit: [Routen](uems-audit-routen.md).
+(`vp-uems-ap19-fundament/report.md`). Fläche seit IP-20 ([Portal](uems-energiemanagement-portal.md): Reiter „Feststellungen“, Feststellungs-Seite, Herkunft-Sprung an der Maßnahmen-Seite); das Audit: [Routen](uems-audit-routen.md).
 
 | Stelle | Was |
 |---|---|

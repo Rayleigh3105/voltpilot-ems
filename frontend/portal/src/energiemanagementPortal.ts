@@ -18,7 +18,7 @@ import {
   type Selbstauskunft,
 } from './api';
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
-import { UEMS_DOKUMENTE, UEMS_VERZEICHNIS } from './glossar';
+import { UEMS_DOKUMENTE, UEMS_FESTSTELLUNGEN, UEMS_VERZEICHNIS } from './glossar';
 import type { EnergiemanagementReiter } from './nav';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
@@ -42,12 +42,15 @@ export const mitEinsicht = (s: Pick<Selbstauskunft, 'rollen' | 'standorte'> | nu
 
 // ------------------------------------------------------------------ Wörter
 
-/** Die Reiter in der Reihenfolge von §6.3 — IP-9 Verzeichnis und Dokumente, IP-13 Aufgaben; Wiedervorlage, Audits … kommen mit ihren Paketen. */
+/** Die Reiter in der Reihenfolge von §6.3 — IP-9 Verzeichnis und Dokumente, IP-13 Aufgaben, IP-20 Audits und Feststellungen; Wiedervorlage und Managementbewertung kommen mit IP-24. */
 export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt'>; label: string }[] = [
   { key: 'verzeichnis', label: UEMS_VERZEICHNIS },
   { key: 'dokumente', label: UEMS_DOKUMENTE },
   // §6.3 nennt den Reiter „Aufgaben“; die Überschrift darin ist das Glossar-Wort „Aufgaben im Energiemanagement“.
   { key: 'aufgaben', label: 'Aufgaben' },
+  // §6.3 nennt den Reiter „Audits“ (das Auditprogramm, IA4); darin heißt jedes „internes Audit“.
+  { key: 'audits', label: 'Audits' },
+  { key: 'feststellungen', label: UEMS_FESTSTELLUNGEN },
 ];
 
 export const KNOPF_ANLEGEN = 'Dokument anlegen';
@@ -162,7 +165,7 @@ export const offeneFassung = (d: EnergiemanagementDokument) =>
 export type Feldfehler = Record<string, string>;
 const leer = (t: string | null | undefined) => !t || !t.trim();
 const leerNull = (t: string | null | undefined) => (leer(t) ? null : t!.trim());
-const begruendungFehler = (t: string) => {
+export const begruendungFehler = (t: string) => {
   const n = t.trim().length;
   return n < STARTWERTE.begruendung_zeichen_mindestens || n > STARTWERTE.begruendung_zeichen_hoechstens
     ? `Bitte begründen Sie in ${BEGRUENDUNG_HINWEIS.replace(/\.$/, '')}.`
@@ -184,7 +187,7 @@ export const LEERER_VERWEIS: VerweisEntwurf = { bezeichnung: '', ablage: '', ken
 const verweisLeer = (v: VerweisEntwurf) => [v.bezeichnung, v.ablage, v.kennung, v.adresse, v.fassungsangabe, v.datum].every(leer) && !v.sha256;
 
 /** Ganz oder gar nicht (G3): ohne Ablage keiner seiner Teile. */
-function verweisKoerper(v: VerweisEntwurf, mitFassung: boolean): EnergiemanagementVerweis | { fehler: string } | null {
+export function verweisKoerper(v: VerweisEntwurf, mitFassung: boolean): EnergiemanagementVerweis | { fehler: string } | null {
   if (verweisLeer(v)) return null;
   if (leer(v.ablage)) return { fehler: 'Bitte nennen Sie, wo das Original bei Ihnen liegt.' };
   return {

@@ -3,6 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Energieeinsatz, type Energieziel, type Kennzahl, type Massnahme, type StandortAmStichtag } from '../api';
+import { herkunftSatz } from '../auditFeststellung';
 import { benutzerApi, type BenutzerEintrag } from '../benutzer';
 import { heute, verantwortlichOptionen } from '../bewertung';
 import { basisZeile, monatsOptionen, type BezugsbasisVergleich } from '../bezugsbasisVergleich';
@@ -151,7 +152,10 @@ export function MassnahmeAnlegenDialog({
   const kennzahlen = (daten?.kennzahlen ?? []).filter((k) => mitBasis(k) || k.id === vorbelegung.kennzahl);
   const monate = monatsOptionen(M.letzterAbgeschlossenerMonat(tagHeute), 36);
   const einsaetze = (daten?.einsaetze ?? []).filter((x) => !x.beendet_am || x.id === vorbelegung.einsatz);
-  const herkunft = vorbelegung.herkunft !== 'von_hand' ? `${M.HERKUNFT_WORT[vorbelegung.herkunft]}${vorbelegung.herkunftKennung ? ` ${vorbelegung.herkunftKennung}` : ''}` : null;
+  // AP-19 IP-20 (SP5): aus dem Energiemanagement der Satz aus §5.8 — „Herkunft: Feststellung F-2029-0001.“
+  const herkunft =
+    herkunftSatz(vorbelegung.herkunft, vorbelegung.herkunftKennung ?? null) ??
+    (vorbelegung.herkunft !== 'von_hand' ? `${M.HERKUNFT_WORT[vorbelegung.herkunft]}${vorbelegung.herkunftKennung ? ` ${vorbelegung.herkunftKennung}` : ''}` : null);
 
   return (
     <Modal
