@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "lesehilfe": "Lückenliste des Betreibers (AP-20 IP-3, E6 = A): die eigenen Lücken von VoltPilot, nie auf einer Kundenfläche (G2). Zustände offen → in_arbeit → behoben (nur mit Nachweis an einem Stand) und offen → restpunkt (nur der Captain, mit Grenze und Datum bis). Jede Zeile der Nachweismatrix, die eine nicht behobene Lücke betrifft, nennt sie; eine offene Lücke hält die Zeile offen (NR6). Vertrag docs/bewertung/luecken.schema.json, Wache tools/bewertung/luecken.py (AP-20 NW-3), Regeln in docs/bewertung/README.md.",
+  "luecken": [
+    {
+      "kennzeichen": "L-001",
+      "text": "Am Vertragsende löscht das Offboarding sofort alles, auch Personen und Zugriffsprotokoll; die angekündigte Anonymisierung ist nicht gebaut",
+      "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A6); AP-20 W1",
+      "betrifft": ["Z-016"],
+      "wer_liefert": [{"wer": "Crew", "was": "Vertragsende nach E10: beendet, Gesamtabzug, Löschen nach der Frist mit Löschnachweis (AP-20 IP-16 … IP-18)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-002",
+      "text": "Die Anmeldung sagt „DSGVO-konform“ ohne Beleg",
+      "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A1.4); AP-20 W2",
+      "betrifft": ["Z-012"],
+      "wer_liefert": [{"wer": "Crew", "was": "die Zeile entfällt auf main, ein Wächter verbietet Rechts- und Konformitätswörter an der Anmeldung (AP-20 IP-1, E9 = A)"}, {"wer": "Captain", "was": "Merge-Wort für AP-20 IP-1 gegen main"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-003",
+      "text": "Kein Alarm auf das Alter der Sicherung; das Alter ist keine Metrik",
+      "quelle": "docs/backup-restore.md:130, :245; AP-20 W6",
+      "betrifft": ["Z-015"],
+      "wer_liefert": [{"wer": "Crew", "was": "Alter der letzten Basissicherung und des letzten WAL-Segments als Metrik, gitops-Vorschlag für den Alarm (AP-20 IP-19)"}, {"wer": "Betreiber", "was": "Export auf der VM, gitops-Merge und die Alarm-Übung - ein nie ausgelöster Alarm ist nicht geliefert (NR8)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-004",
+      "text": "Keine Kopie der Sicherung außer Haus, keine Verschlüsselung der ruhenden Daten",
+      "quelle": "docs/backup-restore.md:243–252; AP-20 E11",
+      "betrifft": ["Z-015"],
+      "wer_liefert": [{"wer": "Betreiber", "was": "Außer-Haus-Kopie und Verschlüsselung der ruhenden Daten"}, {"wer": "Captain", "was": "Restpunkt-Kandidat (E11 = A): als Restpunkt mit Grenze und Datum annehmen oder die Behebung beauftragen; bis dahin offen (LA6)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-005",
+      "text": "Anmeldung ohne Passwort-Vorgabe, ohne Zwei-Faktor-Vorgabe, ohne Anmelde- und Admin-Ereignisse (Realm-Import; Live-Realm ungeprüft)",
+      "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A7)",
+      "betrifft": ["Z-017"],
+      "wer_liefert": [{"wer": "Betreiber", "was": "Realm-Import mit Anmelde- und Admin-Ereignissen, Passwort-Vorgabe und zweitem Faktor für platform-admin und Betrieb, Live-Realm mit Datum bestätigen (AP-20 IP-20, E12 = A)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-006",
+      "text": "UEMS-Alarme nur auf ungemergten gitops-Zweigen; Alarm-Übung AP-14 NW-6 offen",
+      "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A8); AP-20 W5",
+      "betrifft": ["Z-009"],
+      "wer_liefert": [{"wer": "Betreiber", "was": "gitops PR 37 mergen (Captain) und die Alarm-Übung AP-14 NW-6 auslösen (NR8)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-007",
+      "text": "Hardwarebeleg WAGO offen",
+      "quelle": "PG/uebergabe-2026-09-25.md:11",
+      "betrifft": ["Z-007"],
+      "wer_liefert": [{"wer": "Betreiber", "was": "Hardware-Prüfstand PFC200 (AP-05 IP-3, IP-13 … IP-16, IP-17)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-008",
+      "text": "Prüfstand und Pilotanlage der gemeinsamen Steuerung offen",
+      "quelle": "docs/rollout/gemeinsame-steuerung-pilot.md:6–12",
+      "betrifft": ["Z-008"],
+      "wer_liefert": [{"wer": "Betreiber", "was": "Prüfstand (AP-15 NW-7) und Pilotanlage (AP-15 NW-8)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-009",
+      "text": "Berichtigung eines freigegebenen Beschlusses der Managementbewertung nicht gebaut",
+      "quelle": "FM/vp-uems-ap19-fundament/bau-befunde.md:2",
+      "betrifft": ["Z-004"],
+      "wer_liefert": [{"wer": "Crew", "was": "eigenes Folgepaket, nicht AP-20"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-010",
+      "text": "Kein Hilfe-Artikel zum Energiemanagement; die Kundenaufgaben stehen nirgends kundenlesbar",
+      "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A1.5); FM/vp-uems-ap20-fundament/ist/C-luecken.md (C2)",
+      "betrifft": [],
+      "wer_liefert": [{"wer": "Crew", "was": "Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält – und was bei Ihnen bleibt“ (AP-20 IP-22)"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-011",
+      "text": "Keine Datenschutz-Unterlagen im Repo (Auftragsverarbeitung, technische und organisatorische Maßnahmen, Verzeichnis)",
+      "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A7)",
+      "betrifft": ["Z-012"],
+      "wer_liefert": [{"wer": "Betreiber", "was": "Datenschutz-Unterlagen; außerhalb AP-20, eine rechtliche Bewertung entsteht nicht automatisch"}],
+      "zustand": "offen",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+      ]
+    },
+    {
+      "kennzeichen": "L-012",
+      "text": "Norm-Zuordnung für 4.4 und 9.1.1 fehlt, für 6.3 nur ein Plan-Satz",
+      "quelle": "FM/vp-uems-ap20-fundament/ist/D-normfassung-und-nachweisquellen.md (D3)",
+      "betrifft": ["4.4", "6.3", "9.1.1"],
+      "wer_liefert": [{"wer": "Crew", "was": "Zuordnung der Norm-Zeilen 4.4, 6.3 und 9.1.1 (AP-20 IP-7)"}],
+      "zustand": "behoben",
+      "verlauf": [
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"},
+        {"am": "2026-09-25", "nach": "in_arbeit", "person": "Crew (AP-20 IP-7)", "begruendung": "AP-20 IP-7 ordnet die Norm-Zeilen 4.4, 6.3 und 9.1.1 zu"},
+        {"am": "2026-09-25", "nach": "behoben", "person": "Crew (AP-20 IP-3)", "begruendung": "Zuordnung gemergt mit AP-20 IP-7 (https://git.tecmaxx.de/mamotec/voltpilot-ems/pulls/1261); keine Norm-Zeile nennt L-012 mehr", "nachweis": {"art": "stand_mit_pruefsumme", "fundstelle": "docs/bewertung/nachweismatrix.json, norm_teil 4.4, 6.3 und 9.1.1: herkunft beginnt mit „zugeordnet in AP-20 IP-7 (L-012)“", "stand": "1575a631113995e607e86d94e53c855193be9018", "datum": "2026-09-25", "gefahren_von": "Crew (AP-20 IP-7)"}}
+      ]
+    }
+  ]
+}

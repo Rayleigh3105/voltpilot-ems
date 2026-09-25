@@ -456,7 +456,7 @@
       "nachweise": [],
       "urteil": "offen",
       "wer_liefert": [{"wer": "Crew", "was": "neuer Lauf an diesem Stand (AP-20 IP-10)"}],
-      "luecken": []
+      "luecken": ["L-006"]
     },
     {
       "kennzeichen": "Z-010",
@@ -495,7 +495,7 @@
       "nachweise": [],
       "urteil": "offen",
       "wer_liefert": [{"wer": "Captain", "was": "E9 = A, entschieden am 25.09.2026: die Zeile entfällt (AP-20 IP-1)"}],
-      "luecken": ["L-002"]
+      "luecken": ["L-002", "L-011"]
     },
     {
       "kennzeichen": "Z-013",

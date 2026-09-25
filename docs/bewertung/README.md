@@ -15,8 +15,8 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 |---|---|---|
 | [`nachweismatrix.schema.json`](nachweismatrix.schema.json) | Vertrag: Felder, Pflichten je Urteil, Vokabulare, Gliederung | AP-20 IP-2 |
 | [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil seit IP-7, Kundenaufgaben folgen | AP-20 IP-2, IP-5, IP-7 |
-| `luecken.json` | Lückenliste des Betreibers (L-nnn), nie beim Kunden | AP-20 IP-3 |
-| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wache des Zusagen-Inventars (`zusagen.py`); später der Matrix-Prüfer | AP-20 IP-2, IP-5, IP-4 |
+| [`luecken.json`](luecken.json), [`luecken.schema.json`](luecken.schema.json) | Lückenliste des Betreibers (L-nnn) mit Verlauf je Übergang, nie beim Kunden | AP-20 IP-3 |
+| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3); später der Matrix-Prüfer | AP-20 IP-2, IP-3, IP-5, IP-4 |
 
 ## Aufbau (MX1, MX2)
 
@@ -110,6 +110,63 @@ der Release-Notiz (Z-047 … Z-060) und der Verantwortungs-Satz (Z-075) tragen A
 Kandidaten aus Abnahme-, API- und Bestandsschutz-Tests. Der Vertragstest prüft, dass jeder
 Kandidat `Klasse#methode` im Testcode steht. Ein Kandidat bleibt ein Kandidat (NR7): Die Zeile ist
 `offen`, bis der Lauf am Stand sie trägt (AP-20 IP-10).
+## Lückenliste des Betreibers (AP-20 IP-3, E6 = A)
+
+Die eigenen Lücken von VoltPilot stehen in `luecken.json`, der Vertrag in `luecken.schema.json`.
+Die Liste ist Betreiber-Sache. Keine Lücke erscheint als Feststellung, Aufgabe, Hinweis oder Satz
+in einem Kundenbereich (G2). Umgekehrt wird die Feststellung eines Kunden nur dann eine Lücke von
+VoltPilot, wenn ein Befund aus einem Durchlauf es ausdrücklich sagt (PD3). Der Startbestand sind
+die zwölf Lücken L-001 … L-012 des Fundaments, alle `offen` seit dem 25.09.2026. L-012 ist mit
+AP-20 IP-7 behoben.
+
+Eine Lücke trägt Text, Quelle, die Zeilen, die sie betrifft, wer liefert und einen Verlauf mit
+Datum, Person und Begründung je Übergang (LU1). Betroffen ist eine Zusage `Z-nnn` oder eine
+Norm-Zeile (Abschnittsnummer), nie eine Kundenaufgabe (NR5). Der Verlauf wird nur ergänzt, nie
+umgeschrieben. Eine Lücke wird nie gelöscht: `L-nnn` steht lückenlos aufsteigend.
+
+**Zustand** (`zustand`, LU2, LU3):
+
+| Wort | Heißt | Pflicht am Übergang |
+|---|---|---|
+| `offen` | erkannt, niemand arbeitet daran | — |
+| `in_arbeit` | ein Paket hat begonnen | — |
+| `behoben` | geschlossen | `nachweis` an einem Stand, wie in der Matrix (Nachweis-Art, NR1, NR3) |
+| `restpunkt` | bleibt bewusst stehen | `angenommen_von: "Captain"`, `grenze` (was dann nicht gilt) und `bis` |
+
+Der erste Übergang führt nach `offen`. Erlaubt sind danach `offen` → `in_arbeit`,
+`offen` → `restpunkt`, `in_arbeit` → `behoben`, `in_arbeit` → `restpunkt`, `in_arbeit` → `offen`
+(Paket abgebrochen), `restpunkt` → `in_arbeit`, `restpunkt` → `restpunkt` (der Captain verlängert
+mit neuer Grenze oder Frist) und `behoben` → `offen` (wieder aufgetreten).
+
+**Restpunkt.** Einen Restpunkt nimmt nur der Captain an, mit Grenze und Datum „bis“ (LU3). Die
+Crew legt ihn vor und trägt ihn erst ein, wenn das Wort des Captains vorliegt. Die Begründung
+nennt, wo es steht. Eine überschrittene Frist zeigt die Liste beim Abruf („Frist überschritten
+seit …“). Sie schickt nichts und ändert nichts (G4). L-004 ist Restpunkt-Kandidat (E11 = A),
+steht aber `offen`, bis der Captain annimmt (LA6).
+
+```json
+{"am": "2026-10-05", "nach": "restpunkt", "person": "Crew (AP-20 IP-24)", "begruendung": "Wort des Captains: …",
+ "angenommen_von": "Captain", "grenze": "Ein Verlust der Daten-VM verliert auch die Sicherung.", "bis": "2027-03-31"}
+```
+
+**Bindung an die Matrix.** Liste und Matrix nennen einander. Jede Zeile, die eine nicht behobene
+Lücke betrifft, nennt sie in `luecken`. Eine behobene Lücke nennt keine Zeile mehr. Eine offene
+Lücke (`offen`, `in_arbeit`) hält jede Zeile offen, die sie nennt (NR6). Ein Restpunkt hält nicht
+offen. Er begrenzt, was Bericht und Beschreibung sagen dürfen (LU4). Eine Zeile in einem Teil,
+der noch leer ist, wird nicht geprüft.
+
+**Die Wache** `tools/bewertung/luecken.py` (LU5, AP-20 NW-3) ist rot, wenn
+
+- die Matrix eine L-nnn nennt, die nicht auf der Liste steht: eine neue Lücke ohne Eintrag.
+- eine Zeile eine nicht behobene Lücke nicht mehr nennt, die sie betrifft: geheilt, heißt aber
+  noch offen. Wer eine Lücke heilt, entfernt den Verweis und trägt `in_arbeit` → `behoben` mit
+  Nachweis ein.
+- ein Restpunkt ohne `angenommen_von: "Captain"`, Grenze oder `bis` steht.
+- `behoben` ohne Nachweis steht, ein Übergang nicht erlaubt ist oder Datum, Person oder
+  Begründung fehlen.
+- eine Zeile mit `belegt` oder `nicht_maschinell_pruefbar` eine offene Lücke nennt (NR6).
+- eine L-nnn auf einer Kundenfläche steht (G2): Portal (`frontend/portal/src`, `public`),
+  `services/api/src/main`, Keycloak-Thema, Release-Notiz-Vorlage. Testdateien zählen nicht.
 
 ## Vokabulare
 
@@ -229,7 +286,8 @@ Bewertung. Fristen rechnet das Werkzeug beim Abruf.
 ```sh
 python3 tools/bewertung/nachweismatrix.py                       # Exit 0 = Vertrag hält, 1 = rot, 2 = Aufruf; druckt RF-12 je Träger
 python3 tools/bewertung/zusagen.py [--plan <plan.md>]          # Wache MX5: Exit 0 = jede Zusage hat ihre Zeile
-python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1 und die Wache
+python3 tools/bewertung/luecken.py [--heute JJJJ-MM-TT]        # Wache AP-20 NW-3: Exit 0 = Liste hält, zeigt Zustand und Frist
+python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1 und die Wachen
 ```
 
 Der Test braucht `jsonschema`, wie die Vertragstests von `services/optimization`. Fehlt es,
