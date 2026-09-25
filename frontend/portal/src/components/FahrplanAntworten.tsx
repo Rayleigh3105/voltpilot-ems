@@ -99,10 +99,8 @@ export function FahrplanWaage({
                   style={{ width: `${Math.max(4, (s.ct / max) * 100)}%` }}
                 />
               </span>
-              <span className="vp-waage-wert">
-                {fmtNum(s.ct, 'ct/kWh', 1)}
-                <small>{s.hinweis}</small>
-              </span>
+              <span className="vp-waage-wert">{fmtNum(s.ct, 'ct/kWh', 1)}</span>
+              <small className="vp-waage-hinweis">{s.hinweis}</small>
             </div>
           ))}
         </div>

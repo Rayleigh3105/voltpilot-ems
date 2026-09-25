@@ -8,13 +8,25 @@
  * MOBILE-FIRST. Jeder Flex-/Grid-Kasten trägt `min-width: 0`, lange Sätze
  * brechen um. Bewegung nur über die Familie (`--vp-motion-*`), damit der eine
  * Schalter `--vp-motion-scale` sie unter `prefers-reduced-motion` nullt.
+ *
+ * LUFT (Rückmeldung 25.09.2026 „schaut gequetscht aus"): Karten tragen
+ * mindestens 16 px Polster (am Rechner 24 px), Karten stehen 16–24 px
+ * auseinander, Fließtext ist nie kleiner als 0,8 rem. Eng bleibt nur der
+ * erste Bildschirm am Telefon — dort ist jede Zeile Teil des E9-Budgets.
  */
 
 .vp-tb {
   display: grid;
   gap: var(--vp-space-3);
   min-width: 0;
-  margin-bottom: var(--vp-space-4);
+  margin-bottom: var(--vp-space-6);
+}
+
+/* Band, Bild und Antworten stehen wie im Prototyp dicht als EIN Tagesbild —
+   die Antworten beginnen auch am Rechner im ersten Bildschirm (E9, Wächter
+   bei 1440 × 1000). Die Karten darunter setzen sich deutlich ab. */
+.vp-tb.is-bild {
+  gap: var(--vp-space-3);
 }
 
 /* Am Telefon zählt im ersten Bildschirm jede Zeile (E9). */
@@ -22,13 +34,26 @@
   gap: var(--vp-space-2);
 }
 
+/* Unter den Antworten darf es atmen: dort ist das Budget nicht mehr berührt. */
+.vp-tb.is-uhr:not(.is-zweispaltig) > .vp-tb-warumsatz {
+  margin-top: var(--vp-space-1);
+}
+
+.vp-tb.is-uhr:not(.is-zweispaltig) > .vp-tb-karte2 {
+  margin-top: var(--vp-space-2);
+}
+
 .vp-tb-spalte,
 .vp-tb-bildspalte,
 .vp-tb-textspalte {
   display: grid;
-  gap: var(--vp-space-3);
+  gap: var(--vp-space-4);
   align-content: start;
   min-width: 0;
+}
+
+.vp-tb-spalte {
+  gap: var(--vp-space-5);
 }
 
 /* 640–899 px: Uhr, Werte, Moment und Waage links, Antworten und Karten rechts. */
@@ -39,12 +64,13 @@
   align-items: start;
 }
 
-/* Ab 900 px: Waage links, Stationen und Annahmen rechts. */
+/* Ab 900 px: Waage links, Stationen und Annahmen rechts — abgesetzt vom Bild. */
 .vp-tb-unten {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--vp-space-4);
+  gap: var(--vp-space-5);
   align-items: start;
+  margin-top: var(--vp-space-3);
 }
 
 /* ---- Kopfsatz und Stand ------------------------------------------------------------ */
@@ -58,14 +84,21 @@
   min-width: 0;
 }
 
+/* Am Telefon: drei Zeilen Kopfsatz passen mit der Uhr und dem Beginn der
+   Antworten in den ersten Bildschirm (E9, gemessen mit drei Phasen). */
 .vp-tb-titel {
   margin: 0;
   min-width: 0;
-  font-size: 1.03rem;
+  font-size: 0.97rem;
   font-weight: 700;
-  line-height: 1.32;
+  line-height: 1.28;
   color: var(--vp-text);
   text-wrap: pretty;
+}
+
+.vp-tb.is-zweispaltig .vp-tb-titel {
+  font-size: 1.06rem;
+  line-height: 1.32;
 }
 
 .vp-tb.is-bild .vp-tb-titel {
@@ -106,9 +139,14 @@
 
 .vp-tb-karte2 {
   display: grid;
-  gap: var(--vp-space-2);
+  gap: var(--vp-space-3);
   align-content: start;
-  padding: 14px 14px 16px;
+  padding: var(--vp-space-4) var(--vp-space-4) var(--vp-space-5);
+}
+
+.vp-tb.is-bild .vp-tb-karte2 {
+  gap: var(--vp-space-4);
+  padding: var(--vp-space-5);
 }
 
 .vp-tb-karte2-kopf {
@@ -116,15 +154,20 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 8px;
+  gap: 6px var(--vp-space-2);
   min-width: 0;
 }
 
 .vp-tb-karte2-titel {
   margin: 0;
-  font-size: 1.03rem;
+  font-size: 1.06rem;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
+}
+
+.vp-tb.is-bild .vp-tb-karte2-titel,
+.vp-tb.is-zweispaltig .vp-tb-karte2-titel {
+  font-size: 1.125rem;
 }
 
 .vp-tb-kicker {
@@ -137,8 +180,8 @@
 
 .vp-tb-fein {
   margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.8rem;
+  line-height: 1.5;
   color: var(--vp-text-muted);
 }
 
@@ -148,53 +191,94 @@
 
 /* ---- Das Jetzt-Band (ab 900 px) ------------------------------------------------------ */
 
+/* Links der Moment, in der Mitte „Warum?", rechts Zustand und Eingreifen —
+   feste Anteile, damit kein langer Satz den anderen zusammendrückt. */
 .vp-tb-band {
   display: grid;
-  grid-template-columns: minmax(250px, auto) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--vp-space-4);
-  padding: 9px 12px 9px 14px;
+  gap: var(--vp-space-4) var(--vp-space-5);
+  padding: 14px var(--vp-space-5);
 }
 
 .vp-tb-band-l {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
-  align-items: center;
-  gap: var(--vp-space-3);
+  align-items: flex-start;
+  gap: var(--vp-space-4);
   min-width: 0;
+}
+
+.vp-tb-band > .vp-tb-warumsatz {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* Schmaler (Bauteil `BAND_DREISPALTIG_AB_PX`): „Warum?" als eigene Zeile. */
+.vp-tb-band.is-gestapelt {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.vp-tb-band.is-gestapelt > .vp-tb-warumsatz {
+  grid-column: 1 / -1;
+  grid-row: 2;
 }
 
 .vp-tb-band-ic {
   flex: none;
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
+  width: 44px;
+  height: 44px;
+  margin-top: 2px;
+  border-radius: var(--vp-radius-btn);
 }
 
 .vp-tb-band-t {
   display: grid;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
 
 .vp-tb-band-was {
-  font-size: 1.03rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
+.vp-tb-band .vp-tb-moment-zahl {
+  font-size: 0.85rem;
+}
+
+/* Mit der Maus braucht der Aufklapper keine Fingerfläche von 44 px. */
+@media (pointer: fine) {
+  .vp-tb-band .vp-kompakt-fold {
+    min-height: 30px;
+  }
+}
+
+.vp-tb-band .vp-tb-warumsatz {
+  padding: var(--vp-space-3) var(--vp-space-4);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Der Zustand darf umbrechen, damit „Warum?" nicht auf vier Zeilen wächst. */
 .vp-tb-band-r {
+  grid-column: -2 / -1;
+  grid-row: 1;
   display: grid;
   justify-items: end;
-  gap: 4px;
+  gap: var(--vp-space-2);
+  max-width: 220px;
 }
 
 .vp-tb-band-r .vp-kompakt-status,
 .vp-tb-todo .vp-kompakt-status {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
 }
 
 /* ---- Der Moment am Zeiger (Telefon, Tablet) ----------------------------------------- */
@@ -227,13 +311,13 @@
 .vp-tb-moment-was {
   font-size: 1rem;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
 .vp-tb-moment-zahl {
   font-size: 0.8rem;
-  line-height: 1.35;
+  line-height: 1.3;
   color: var(--vp-text-muted);
   overflow-wrap: anywhere;
 }
@@ -243,14 +327,14 @@
   display: block;
   width: 100%;
   min-width: 0;
-  padding: 9px 12px;
+  padding: var(--vp-space-3) 14px;
   border: 0;
   border-radius: var(--vp-radius-btn);
   background: var(--vp-bg-light);
   color: var(--vp-text);
   font: inherit;
   font-size: 0.875rem;
-  line-height: 1.4;
+  line-height: 1.5;
   text-align: left;
   cursor: pointer;
   transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
@@ -278,8 +362,9 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 12px;
+  gap: var(--vp-space-2) var(--vp-space-3);
   min-width: 0;
+  padding: 2px 2px 0;
 }
 
 .vp-tb-messwerte {
@@ -303,9 +388,10 @@
 }
 
 /* Am Telefon teilen sich Kopfsatz, Uhr, Werte und Moment den ersten Bildschirm
-   mit den Antworten (E9, gemessen im Layout-Wächter): die Uhr bleibt darunter. */
+   mit den Antworten (E9, gemessen im Layout-Wächter, auch mit dreizeiligem
+   Kopfsatz): die Uhr bleibt darunter. */
 .vp-tb.is-uhr:not(.is-zweispaltig) .vp-uhr {
-  max-width: 272px;
+  max-width: 264px;
 }
 
 .vp-uhr-svg {
@@ -462,7 +548,7 @@
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -472,7 +558,7 @@
   gap: 0;
   min-width: 0;
   min-height: 44px;
-  padding: 4px 6px 5px;
+  padding: 3px 7px 4px;
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-sm);
   background: var(--vp-surface);
@@ -510,11 +596,11 @@ button.vp-tb-wert:focus-visible {
      werden — „war geplant" ist eine Aussage. Der volle Satz steht im
      Screenreader-Namen der Zelle. */
   overflow-wrap: break-word;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .vp-tb-werte-k {
-  font-size: 0.64rem;
+  font-size: 0.69rem;
   font-weight: 700;
   color: var(--vp-text-muted);
 }
@@ -523,7 +609,7 @@ button.vp-tb-wert:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -537,27 +623,27 @@ button.vp-tb-wert:focus-visible {
 }
 
 .vp-tb-werte-h {
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   color: var(--vp-text-muted);
 }
 
 .vp-tb-notiz {
   margin: 0;
-  padding: 8px 11px;
+  padding: 10px var(--vp-space-3);
   border-radius: var(--vp-radius-sm);
   background: var(--vp-bg-light);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.85rem;
+  line-height: 1.45;
   color: var(--vp-text);
 }
 
 /* ---- Die Bildkarte (ab 900 px) ----------------------------------------------------- */
 
-/* 14 px Polster + 1 px Rand = `BILDKARTE_RAND` im Bauteil (das Bild zeichnet 1 : 1). */
+/* 24 px Polster + 1 px Rand = `BILDKARTE_RAND` im Bauteil (das Bild zeichnet 1 : 1). */
 .vp-tb-bildkarte {
   display: grid;
-  gap: 4px;
-  padding: 10px 14px 8px;
+  gap: var(--vp-space-2);
+  padding: 14px var(--vp-space-5) var(--vp-space-3);
 }
 
 .vp-tb-bildleiste {
@@ -565,30 +651,13 @@ button.vp-tb-wert:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 16px;
+  gap: var(--vp-space-2) var(--vp-space-4);
   min-width: 0;
 }
 
-.vp-tb-legende {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--vp-text-muted);
-}
-
-.vp-tb-legende-soc {
-  width: 18px;
-  height: 11px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--vp-chart-soc) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vp-chart-soc) 45%, transparent);
-}
-
 .vp-tb-hinweis {
-  margin-left: 8px;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--vp-text-muted);
 }
 
 /* Am Rechner stehen die Werte am Zeiger als ruhige Zeile über dem Bild. */
@@ -601,13 +670,22 @@ button.vp-tb-wert:focus-visible {
 .vp-tb-bildleiste .vp-tb-wert {
   display: inline-flex;
   align-items: baseline;
-  gap: 5px;
+  gap: 6px;
   min-height: 0;
-  padding: 3px 9px;
+  padding: 5px 10px;
   border-radius: var(--vp-radius-pill);
+  line-height: 1.2;
 }
 
 .vp-tb-bildleiste .vp-tb-werte-k {
+  font-size: 0.74rem;
+}
+
+.vp-tb-bildleiste .vp-tb-werte-v {
+  font-size: 0.88rem;
+}
+
+.vp-tb-bildleiste .vp-tb-werte-h {
   font-size: 0.72rem;
 }
 
@@ -632,12 +710,16 @@ a.vp-tb-antwort-zusatz {
 .vp-tb-antwort,
 .vp-tb-tour {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  padding: var(--vp-space-3);
+  padding: var(--vp-space-3) var(--vp-space-4);
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-md);
   background: var(--vp-surface);
+}
+
+.vp-tb.is-bild .vp-tb-antwort {
+  padding: var(--vp-space-4) var(--vp-space-5);
 }
 
 .vp-tb-antwort p,
@@ -658,6 +740,15 @@ a.vp-tb-antwort-zusatz {
 .vp-tb-reihe.is-mitte {
   justify-content: center;
   margin-top: 0;
+}
+
+/* Der Weg am Fuß einer Karte fluchtet mit ihrem Text. */
+.vp-tb-karte2 > .vp-tb-reihe {
+  margin-top: -4px;
+}
+
+.vp-tb-karte2 > .vp-tb-reihe > :first-child {
+  padding-left: 0;
 }
 
 .vp-tb-warum,
@@ -827,11 +918,11 @@ a.vp-tb-antwort-zusatz {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 3px;
+  gap: 5px;
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  padding: 12px 13px 13px;
+  padding: 14px var(--vp-space-4) var(--vp-space-4);
   border: 0;
   border-radius: 0;
   background: var(--vp-surface);
@@ -842,8 +933,15 @@ a.vp-tb-antwort-zusatz {
   transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
 }
 
+.vp-antw.is-reihe .vp-antw-knopf {
+  gap: 6px;
+  padding: var(--vp-space-4) var(--vp-space-5) 18px;
+}
+
+/* Drei Kacheln auf 343 px: kurze Zeilen, darum Silbentrennung statt Flatterrand. */
 .vp-antw.is-reihe-schmal .vp-antw-knopf {
-  padding: 9px 9px 10px;
+  gap: 4px;
+  padding: 10px 10px 12px;
 }
 
 .vp-antw-knopf:hover {
@@ -861,10 +959,10 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-antw-frage {
-  padding-right: 18px;
-  font-size: 0.78rem;
+  padding-right: 20px;
+  font-size: 0.8rem;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.35;
   color: var(--vp-text-muted);
   overflow-wrap: anywhere;
 }
@@ -872,6 +970,8 @@ a.vp-tb-antwort-zusatz {
 .vp-antw.is-reihe-schmal .vp-antw-frage {
   padding-right: 0;
   font-size: 0.72rem;
+  line-height: 1.3;
+  hyphens: auto;
 }
 
 .vp-antw-kopf {
@@ -882,6 +982,12 @@ a.vp-tb-antwort-zusatz {
   min-width: 0;
 }
 
+/* In der schmalen Reihe fluchten die Abzeichen am Fuß der Kacheln. */
+.vp-antw.is-reihe-schmal .vp-antw-kopf {
+  margin-top: auto;
+  padding-top: 2px;
+}
+
 .vp-antw-zeit {
   font-size: 0.72rem;
   font-weight: 600;
@@ -889,27 +995,34 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-antw-text {
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .vp-antw.is-reihe-schmal .vp-antw-text {
-  font-size: 0.84rem;
+  font-size: 0.86rem;
+  line-height: 1.3;
+  hyphens: auto;
 }
 
 .vp-antw-zusatz {
-  font-size: 0.8rem;
-  line-height: 1.4;
+  font-size: 0.84rem;
+  line-height: 1.45;
   color: var(--vp-text-muted);
 }
 
 .vp-antw-ort {
   position: absolute;
-  right: 11px;
-  top: 11px;
+  right: 14px;
+  top: 14px;
   color: var(--vp-text-muted);
+}
+
+.vp-antw.is-reihe .vp-antw-ort {
+  right: var(--vp-space-4);
+  top: var(--vp-space-4);
 }
 
 .vp-antw-knopf:hover .vp-antw-ort,
@@ -949,16 +1062,24 @@ a.vp-tb-antwort-zusatz {
 
 .vp-waage-seiten {
   display: grid;
-  gap: 6px;
+  gap: 14px;
 }
 
+/* Wie im Prototyp: Satz und Wert in einer Zeile, der Balken darunter über die
+   volle Breite — so sind beide Seiten auf derselben Strecke vergleichbar. Der
+   Hinweis steht unter dem Wert, ohne die Spalte des Satzes zu verengen. Die
+   Reihenfolge im DOM (Satz, Balken, Wert, Hinweis) bleibt die des Vorlesens. */
 .vp-waage-seite {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label wert'
+    'hinweis hinweis'
+    'balken balken';
+  align-items: end;
+  gap: 6px var(--vp-space-3);
   min-width: 0;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--vp-text-muted);
 }
 
@@ -968,12 +1089,15 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-waage-label {
+  grid-area: label;
+  align-self: center;
   overflow-wrap: anywhere;
 }
 
 .vp-waage-balken {
-  height: 12px;
-  border-radius: 6px;
+  grid-area: balken;
+  height: 10px;
+  border-radius: 5px;
   background: var(--vp-surface);
   box-shadow: inset 0 0 0 1px var(--vp-border);
   overflow: hidden;
@@ -1001,32 +1125,42 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-waage-wert {
-  display: grid;
-  justify-items: end;
+  grid-area: wert;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.vp-waage-wert small {
-  font-size: 0.68rem;
+.vp-waage-hinweis {
+  grid-area: hinweis;
+  justify-self: end;
+  margin-top: -5px;
+  font-size: 0.72rem;
   font-weight: 400;
+  line-height: 1.3;
   color: var(--vp-text-muted);
+  text-align: right;
 }
 
 .vp-waage-urteil {
-  font-size: 0.88rem;
-  line-height: 1.45;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .vp-tb-waagekarte .vp-waage {
+  gap: var(--vp-space-4);
   padding: 0;
   border: 0;
   background: none;
 }
 
 .vp-tb-waagekarte .vp-waage-frage {
-  font-size: 1.03rem;
-  line-height: 1.25;
+  font-size: 1.06rem;
+  line-height: 1.3;
+}
+
+.vp-tb.is-bild .vp-tb-waagekarte .vp-waage-frage,
+.vp-tb.is-zweispaltig .vp-tb-waagekarte .vp-waage-frage {
+  font-size: 1.125rem;
 }
 
 /* ---- Der Tag in Stationen ----------------------------------------------------------- */
@@ -1040,7 +1174,7 @@ a.vp-tb-antwort-zusatz {
 
 .vp-st-halt {
   position: relative;
-  padding-left: 34px;
+  padding: 0 0 2px 36px;
   min-width: 0;
 }
 
@@ -1056,11 +1190,11 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-st-halt:first-child::before {
-  top: 14px;
+  top: 20px;
 }
 
 .vp-st-halt:last-child::before {
-  bottom: calc(100% - 14px);
+  bottom: calc(100% - 20px);
 }
 
 .vp-st-halt.is-ruhe::before {
@@ -1071,10 +1205,11 @@ a.vp-tb-antwort-zusatz {
   opacity: 0.45;
 }
 
+/* Der Punkt steht auf der Zeitzeile der Station. */
 .vp-st-punkt {
   position: absolute;
   left: 3px;
-  top: 9px;
+  top: 8px;
   display: grid;
   place-items: center;
   width: 23px;
@@ -1092,14 +1227,21 @@ a.vp-tb-antwort-zusatz {
   opacity: 0.6;
 }
 
+/* Eine Station liest sich in festem Takt: Zeit und Ladestand, der Name über
+   die volle Breite, darunter der Grund. Die Reihenfolge im DOM (Zeit, Name,
+   Ladestand, Grund) bleibt die des Vorlesens. */
 .vp-st-zeile {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0 10px;
+  grid-template-areas:
+    'zeit soc'
+    'name name'
+    'grund grund';
+  gap: 2px var(--vp-space-3);
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  padding: 7px 8px 8px;
+  padding: 9px var(--vp-space-3) 11px;
   border: 0;
   border-radius: var(--vp-radius-sm);
   background: transparent;
@@ -1125,26 +1267,26 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-st-haupt {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 8px;
-  min-width: 0;
+  display: contents;
 }
 
 .vp-st-zeit {
+  grid-area: zeit;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 0.75rem;
+  gap: 4px;
+  font-size: 0.8rem;
+  line-height: 1.4;
   color: var(--vp-text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .vp-st-name {
-  font-size: 0.9rem;
+  grid-area: name;
+  font-size: 0.95rem;
   font-weight: 700;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
@@ -1163,8 +1305,10 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-st-soc {
+  grid-area: soc;
   align-self: center;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
   color: var(--vp-text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1172,14 +1316,15 @@ a.vp-tb-antwort-zusatz {
 }
 
 .vp-st-grund {
-  grid-column: 1 / -1;
-  font-size: 0.78rem;
-  line-height: 1.4;
+  grid-area: grund;
+  margin-top: 2px;
+  font-size: 0.84rem;
+  line-height: 1.45;
   color: var(--vp-text-muted);
 }
 
 .vp-st-detail {
-  padding: 2px 8px 12px;
+  padding: 4px var(--vp-space-3) var(--vp-space-4);
   min-width: 0;
 }
 
@@ -1195,20 +1340,25 @@ a.vp-tb-antwort-zusatz {
 .vp-annahmen li {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
-  gap: 8px;
-  padding: 6px 0;
+  gap: var(--vp-space-3);
+  padding: 11px 0;
   border-top: 1px solid var(--vp-border);
-  font-size: 0.82rem;
-  line-height: 1.45;
+  font-size: 0.875rem;
+  line-height: 1.5;
   color: var(--vp-text-muted);
 }
 
 .vp-annahmen li:first-child {
+  padding-top: 2px;
   border-top: 0;
 }
 
+.vp-annahmen li:last-child {
+  padding-bottom: 0;
+}
+
 .vp-annahmen li svg {
-  margin-top: 1px;
+  margin-top: 3px;
 }
 
 .vp-annahmen b {

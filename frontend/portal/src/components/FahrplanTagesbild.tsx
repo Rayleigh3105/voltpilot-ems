@@ -786,7 +786,7 @@ export function FahrplanTagesbild({
     // Das Jetzt-Band (Prototyp): links was geschieht, in der Mitte warum,
     // rechts der Zustand und der Weg zum Eingreifen - oder zurück zu jetzt.
     const bandKarte = band ? (
-      <section className="vp-tb-band" aria-live="polite">
+      <section className={`vp-tb-band${breite < BAND_DREISPALTIG_AB_PX ? ' is-gestapelt' : ''}`} aria-live="polite">
         <div className="vp-tb-band-l">
           {band.role && (
             <span
@@ -808,12 +808,10 @@ export function FahrplanTagesbild({
             {istJetzt && held && <JetztMesswerte view={held} />}
           </div>
         </div>
-        {band.warum ? (
+        {band.warum && (
           <button type="button" className="vp-tb-warumsatz" onClick={() => hin(waageRef.current)}>
             <b>Warum?</b> {band.warum} <span className="vp-tb-mehr">Zur Waage ›</span>
           </button>
-        ) : (
-          <span />
         )}
         <div className="vp-tb-band-r">
           {istJetzt ? (
@@ -834,10 +832,8 @@ export function FahrplanTagesbild({
         {bandKarte}
         <section className="vp-tb-bildkarte" aria-label="Tagesverlauf">
           <div className="vp-tb-bildleiste">
-            <span className="vp-tb-legende" aria-hidden="true">
-              <i className="vp-tb-legende-soc" />
-              Ladestand, geplant
-              <span className="vp-tb-hinweis">Maus darüber: Einzelheiten · Klick wählt den Moment</span>
+            <span className="vp-tb-hinweis" aria-hidden="true">
+              Maus darüber: Einzelheiten
             </span>
             {werteLeiste}
           </div>
@@ -945,5 +941,12 @@ export function FahrplanTagesbild({
   );
 }
 
-/** Innenrand der Bildkarte (px, 14 px Polster + 1 px Rand) — das Bild zeichnet 1 : 1 auf die Breite darin. */
-const BILDKARTE_RAND = 15;
+/** Innenrand der Bildkarte (px, 24 px Polster + 1 px Rand) — das Bild zeichnet 1 : 1 auf die Breite darin. */
+const BILDKARTE_RAND = 25;
+
+/**
+ * Ab dieser Inhaltsbreite steht „Warum?" im Jetzt-Band ZWISCHEN dem Moment und
+ * dem Zustand; schmaler (Laptops bis ~1390 px Fenster) darunter, über die
+ * volle Breite - sonst drückten die beiden Seiten den Satz auf neun Zeilen.
+ */
+const BAND_DREISPALTIG_AB_PX = 1080;

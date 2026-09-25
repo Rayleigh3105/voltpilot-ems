@@ -167,7 +167,11 @@ export function FahrplanBildfahrplan({
           <text x={0} y={(g.sonne[0] + g.sonne[1]) / 2 + 13} className="is-klein">
             Verbrauch
           </text>
-          <text x={0} y={(g.ladestand[0] + g.ladestand[1]) / 2 + 4}>Ladestand</text>
+          {/* Die Fläche ist der Plan - gemessen wird sie erst mit der Ist-Spur. */}
+          <text x={0} y={(g.ladestand[0] + g.ladestand[1]) / 2 - 2}>Ladestand</text>
+          <text x={0} y={(g.ladestand[0] + g.ladestand[1]) / 2 + 13} className="is-klein">
+            geplant
+          </text>
           <text x={0} y={(g.taetigkeit[0] + g.taetigkeit[1]) / 2 + 4}>Tätigkeit</text>
           <text x={BILD_LINKS - 8} y={g.y(100) + 4} textAnchor="end" className="is-klein">
             voll

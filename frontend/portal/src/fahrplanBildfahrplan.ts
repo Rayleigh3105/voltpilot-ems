@@ -22,14 +22,18 @@
 import { TAG_MINUTEN, ladestandPlan, uhrzeit, type TagModell } from './fahrplanTag';
 import type { PhaseKind, SlotRole } from './fahrplanWhy';
 
-/** Die Spuren von oben nach unten und ihre Höhen (Pixel). */
+/**
+ * Die Spuren von oben nach unten und ihre Höhen (Pixel). Die Sonnenspur ist
+ * so hoch, dass über der Spitze Platz für ihre Beschriftung bleibt — sonst
+ * liegt die Zahl auf der Kurve (Rückmeldung 25.09.2026 „gequetscht").
+ */
 const SPUR = {
   oben: 25,
   preis: 44,
-  luecke1: 8,
-  sonne: 44,
+  luecke1: 10,
+  sonne: 56,
   luecke2: 12,
-  ladestand: 122,
+  ladestand: 112,
   luecke3: 9,
   taetigkeit: 26,
   achse: 22,
@@ -202,7 +206,8 @@ export function bildModell(tag: TagModell, g: BildGeometrie): BildModell {
   const pvM = tag.slots.map((s, i) => (gemessenErlaubt[i] ? zahl(s.measuredPvKw) : null));
   const ldM = tag.slots.map((s, i) => (gemessenErlaubt[i] ? zahl(s.measuredLoadKw) : null));
   const alle = [...pvF, ...ldF, ...pvM, ...ldM].filter((v): v is number => v != null);
-  const sMax = Math.max(1, ...alle) * 1.18;
+  // Ein Viertel der Spur bleibt über der Spitze frei: dort steht ihre Zahl.
+  const sMax = Math.max(1, ...alle) * 1.3;
   const sy = (v: number) => g.sonne[1] - (Math.max(0, v) / sMax) * (g.sonne[1] - g.sonne[0]);
   const mitte = (i: number) => (tag.viertel[i].von + tag.viertel[i].bis) / 2;
 

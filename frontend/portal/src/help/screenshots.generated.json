@@ -156,18 +156,18 @@
         "text": "Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen."
       },
       {
-        "x": 5.62,
-        "y": 37.86,
+        "x": 6.46,
+        "y": 37.1,
         "text": "Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde."
       },
       {
         "x": 4.36,
-        "y": 60.06,
+        "y": 59.83,
         "text": "Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild."
       },
       {
-        "x": 52.35,
-        "y": 68.45,
+        "x": 52.68,
+        "y": 70.52,
         "text": "Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten."
       }
     ]
@@ -564,18 +564,18 @@
     "alt": "Fahrplan am Telefon: die Tagesuhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 20.26,
-        "y": 39.08,
+        "x": 21.28,
+        "y": 38.63,
         "text": "Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand."
       },
       {
         "x": 9.23,
-        "y": 72.25,
+        "y": 70.86,
         "text": "Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn."
       },
       {
         "x": 9.23,
-        "y": 84.96,
+        "y": 83.31,
         "text": "Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle."
       }
     ]
