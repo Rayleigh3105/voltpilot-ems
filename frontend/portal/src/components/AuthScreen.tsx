@@ -191,7 +191,10 @@ export function AuthScreen({ children }: { children: ReactNode }) {
   );
 }
 
-/** Vertrauenszeile: Verschlüsselt / Server in Deutschland / DSGVO-konform. */
+/**
+ * Vertrauenszeile: nur „Verschlüsselt · Server in Deutschland“ — zwei Tatsachen, die der Betreiber
+ * bestätigt; keine Rechts- oder Konformitätsaussage (AP-20 E9; Wächter „Anmeldung“ in copy.test.ts).
+ */
 export function TrustRow() {
   return (
     <div className="vp-auth-trust">
@@ -199,7 +202,6 @@ export function TrustRow() {
         <Icon name="lock" size={12} strokeWidth={2.4} /> Verschlüsselt
       </span>
       <span>Server in Deutschland</span>
-      <span>DSGVO-konform</span>
     </div>
   );
 }
