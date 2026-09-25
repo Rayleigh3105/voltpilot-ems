@@ -169,7 +169,8 @@ class EnergiemanagementVerzeichnisApiTest {
         Map<String, Integer> je = new LinkedHashMap<>();
         v.path("gruppen").forEach(g -> je.put(g.path("gruppe").asText(), g.path("zeilen").size()));
         assertThat(je).containsExactly(Map.entry("grundlagen", 4), Map.entry("verantwortung", 10),
-                Map.entry("risiken_chancen", 0), Map.entry("kompetenz_kommunikation", 2),
+                // Aushang und Intranet am 18.12.2026 sind EINE Bekanntmachung (IP-14, Katalog R3).
+                Map.entry("risiken_chancen", 0), Map.entry("kompetenz_kommunikation", 1),
                 Map.entry("betrieb_auslegung_beschaffung", 1), Map.entry("bewertung_messplanung", 0),
                 Map.entry("kennzahlen_bezugsbasen", 13), Map.entry("ziele_massnahmen_abweichungen", 0),
                 Map.entry("audits_feststellungen", 0), Map.entry("managementbewertung", 0), Map.entry("berichte", 0));
@@ -185,7 +186,7 @@ class EnergiemanagementVerzeichnisApiTest {
 
         // Jede Zeile mit Person, Tag und Ort (VZ2, G1, G2).
         List<JsonNode> zeilen = alle(v);
-        assertThat(zeilen).hasSize(30).allSatisfy(z -> {
+        assertThat(zeilen).hasSize(29).allSatisfy(z -> {
             assertThat(z.path("eingetragen_von").isNull() && z.path("entschieden_von").isNull()).as(z.toString())
                     .isFalse();
             assertThat(z.path("tag").isNull()).as(z.toString()).isFalse();
@@ -253,7 +254,7 @@ class EnergiemanagementVerzeichnisApiTest {
         assertThat(texte(nurRc.path("gruppen"), "gruppe")).containsExactly("risiken_chancen");
         JsonNode dezember = ruf(VERZEICHNIS + "?von=2026-12-15&bis=2026-12-18", "IK", 200);
         assertThat(texte(alle(dezember), "art")).containsExactlyInAnyOrder("energiepolitik", "anwendungsbereich",
-                "rechtliche_anforderungen", "bekanntmachung", "bekanntmachung");
+                "rechtliche_anforderungen", "bekanntmachung");
 
         // Stichtag: am 14.12.2026 ist noch keine Dokument-Fassung festgehalten.
         abruf("2026-12-14T09:00:00Z");
@@ -272,7 +273,7 @@ class EnergiemanagementVerzeichnisApiTest {
         assertThat(texte(alle(ph), "art")).containsExactly("betrachtungsumfang");
         assertThat(gruppe(ph, "verantwortung").path("satz").asText()).isEqualTo(LEER);
         // Einsicht liest unternehmensweit, wie die Leitung am Morgen der Sitzung.
-        assertThat(alle(ruf(VERZEICHNIS, "RF", 200))).hasSize(30);
+        assertThat(alle(ruf(VERZEICHNIS, "RF", 200))).hasSize(29);
 
         assertThat(ruf(VERZEICHNIS + "?gruppe=alles", "IK", 400).path("feld").asText()).isEqualTo("gruppe");
         assertThat(ruf(VERZEICHNIS + "?von=12.02.2029", "IK", 400).path("feld").asText()).isEqualTo("von");
@@ -287,7 +288,7 @@ class EnergiemanagementVerzeichnisApiTest {
     // ------------------------------------------------------------------ Welt
 
     /**
-     * R3 für die Quellen bis hier: D-0001 Energiepolitik (Wortlaut, Original beim Kunden, zwei Bekanntmachungen),
+     * R3 für die Quellen bis hier: D-0001 Energiepolitik (Wortlaut, Original beim Kunden, bekannt gemacht über zwei Wege),
      * D-0002 Anwendungsbereich, D-0003 Rechtliche Anforderungen und D-0004 Betrieb als Verweis; zehn Aufgaben (neun
      * „entschieden von Robert Falk“); Betrachtungsumfang; fünf Kennzahlen mit acht Bezugsbasis-Fassungen.
      */

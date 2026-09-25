@@ -12121,6 +12121,68 @@ paths:
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/energieeinsaetze/{id}/nachweise:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Der Abschnitt „Nachweise“ am Energieeinsatz - Dokumente mit Ort und Überprüfung (R7).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-14, DK1, KS1). Die Dokumente, deren Bezug dieser Einsatz ist
+        (Betrieb und Instandhaltung, Auslegung, Beschaffung ...), je mit dem Ort der gültigen Fassung - beim Verweis
+        „Geführt in Ihrem System: <Ablage>“, Kennung, Fassungsangabe und die im Browser gebildete Prüfsumme; der Inhalt
+        liegt beim Kunden, VoltPilot öffnet, prüft und lädt nichts -, der Überprüfung beim Abruf und den
+        Bekanntmachungen. Ein Leser über `EnergiemanagementDokumentService`: der Zaun folgt dem Standort des Einsatzes;
+        ein Einsatz, den die Anfrage nicht sieht, ist 404.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementNachweiseAmEinsatz" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/personen/{id}/nachweise:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Die Nachweise an einer Person und an ihren Aufgaben (R8).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-14, DK1, DK5). Die Dokumente am Bezug `person` und an den
+        Aufgaben (Zuordnungen) dieser Person - Kompetenz als Verweis ins Personal- oder Schulungssystem, ohne
+        Überprüfung. Dokumente an Person und Aufgabe haben keinen Standort: wer nur Standorte liest, bekommt die Person
+        mit leerer Liste. Unbekannte Person 404.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementNachweiseDerPerson" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/bekanntmachungen:
+    get:
+      tags: [energiemanagement]
+      summary: Die Bekanntmachungen als Liste der Kommunikationsnachweise (DK6, R8).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-14). Jede Bekanntmachung eines Dokuments im Zaun, nach Tag und
+        Kennzeichen. Die Einträge desselben Dokuments mit derselben Fassung, demselben Tag, demselben Kreis und
+        derselben Person sind EINE Mitteilung mit allen Wegen („über Aushang und Intranet“). VoltPilot verschickt
+        nichts und fragt kein „gelesen“ ab.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementKommunikationsnachweise" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/energiemanagement/dokumente:
     get:
       tags: [energiemanagement]
@@ -12142,9 +12204,13 @@ paths:
       description: >
         Recht `energiemanagement.verwalten` am Standort des Bezugs bzw. am Unternehmen (403 `recht_fehlt`). `art` aus
         der geschlossenen Liste (422 `art_unbekannt`), Titel Pflicht (422 `titel_fehlt`, über 200 Zeichen
-        `angabe_ungueltig`); Bezug `unternehmen` (ohne Standort) oder `standort` (ein Standort des Kundenbereichs im
-        eigenen Zaun, sonst 422 `standort_unbekannt`), sonst 422 `bezug_unbekannt`; Energieeinsatz, Person und Aufgabe
-        folgen (422 `bezug_nicht_verfuegbar`). `ueberpruefung_monate` 1-60 nur an Vorgabe-Arten (422
+        `angabe_ungueltig`); Bezug `unternehmen` (ohne Kennung), `standort` (ein Standort des Kundenbereichs im
+        eigenen Zaun, sonst 422 `standort_unbekannt`), `energieeinsatz` (ein Einsatz, den die Anfrage sieht, sonst 422
+        `energieeinsatz_unbekannt`), `person` (422 `person_unbekannt`) oder `aufgabe` (eine Zuordnung, 422
+        `aufgabe_unbekannt`), sonst 422 `bezug_unbekannt`; eine Kennung einer anderen Art 422 `angabe_ungueltig`
+        (AP-19 IP-14). Der Zaun des Einsatzes ist sein Standort: der eine Standort, an dem am Tag des Anlegens die
+        Messstellen seines Prozesses hängen - an mehreren oder keinem gilt das Dokument am Unternehmen; Person und
+        Aufgabe haben keinen Standort (nur unternehmensweit sichtbar). `ueberpruefung_monate` 1-60 nur an Vorgabe-Arten (422
         `angabe_ungueltig`), ohne Angabe die Einstellung (Startwert 12). Das Original als Verweis mit Ablage (422
         `beleg_ungueltig`). Das Dokument entsteht im Entwurf, D-nnnn vergibt der Zähler. Protokoll `dokument_angelegt`.
       requestBody:
@@ -18014,10 +18080,15 @@ components:
       type: object
       additionalProperties: false
       required: [art]
-      description: Das Unternehmen oder ein Standort; Energieeinsatz, Person und Aufgabe folgen (AP-19 IP-14).
+      description: >
+        Das Unternehmen, ein Standort, ein Energieeinsatz, eine Person oder eine Aufgabe (AP-19 IP-14) - genau die
+        Kennung der Art ist gesetzt; den Standort eines Einsatzes leitet der Dienst ab.
       properties:
         art: { type: string, enum: [unternehmen, standort, energieeinsatz, person, aufgabe] }
         standort_id: { type: string, format: uuid, nullable: true, description: Nur und Pflicht bei `standort`. }
+        energieeinsatz_id: { type: string, format: uuid, nullable: true, description: Nur und Pflicht bei `energieeinsatz`. }
+        person_id: { type: string, format: uuid, nullable: true, description: Nur und Pflicht bei `person`. }
+        aufgabe_id: { type: string, format: uuid, nullable: true, description: Nur und Pflicht bei `aufgabe` - eine Zuordnung. }
     EnergiemanagementDokumentAnlegen:
       type: object
       additionalProperties: false
@@ -18118,12 +18189,34 @@ components:
         id: { type: string, format: uuid }
         kurzzeichen: { type: string, nullable: true }
         name: { type: string, nullable: true }
+    EnergiemanagementEinsatzKurz:
+      type: object
+      required: [id, kennzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+    EnergiemanagementAufgabeKurz:
+      type: object
+      required: [id, aufgabe, wort, person]
+      description: Eine Aufgabe als Bezug - die Zuordnung mit dem Wort der Aufgabe (bei „weitere“ ihr Wortlaut) und ihrer Person.
+      properties:
+        id: { type: string, format: uuid }
+        aufgabe: { type: string, nullable: true }
+        wort: { type: string, nullable: true }
+        person: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
     EnergiemanagementDokumentBezugAus:
       type: object
-      required: [art, standort]
+      required: [art, standort, energieeinsatz, person, aufgabe]
+      description: >
+        `standort` ist der Zaun (beim Energieeinsatz abgeleitet, an Unternehmen, Person und Aufgabe `null`); je Art ist
+        höchstens einer von `energieeinsatz`, `person`, `aufgabe` gesetzt.
       properties:
         art: { type: string }
         standort: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementStandortKurz" }], nullable: true }
+        energieeinsatz: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementEinsatzKurz" }], nullable: true }
+        person: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
+        aufgabe: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementAufgabeKurz" }], nullable: true }
     EnergiemanagementAnwendungsbereich:
       type: object
       required: [standorte, traeger, ausschluesse]
@@ -18290,6 +18383,87 @@ components:
         betrachtungsumfang: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementBetrachtungsumfang" }], nullable: true }
         vergleich: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementVergleichErgebnis" }], nullable: true }
         saetze: { type: array, items: { type: string } }
+    EnergiemanagementNachweisOrt:
+      type: object
+      required: [ort, ort_satz, satz, inhalt_in_voltpilot, fassung, festgehalten_am, ablage, kennung, adresse, adresse_als_verweis, fassungsangabe, datum, sha256]
+      description: >
+        KS1, G1 (AP-19 IP-14): wo der Inhalt der gültigen Fassung liegt. `ort_satz` ist die Zeile des Verzeichnisses
+        (Operation `verzeichnis_zeile`), `satz` der Kundensatz `ort_verweis` bzw. `ort_wortlaut` (in VoltPilot `null`).
+        Eine Adresse wird nur mit `https:` als Verweis gezeigt; VoltPilot öffnet, prüft und lädt nichts.
+      properties:
+        ort: { type: string, enum: [in_voltpilot, wortlaut_original_beim_kunden, verweis] }
+        ort_satz: { type: string }
+        satz: { type: string, nullable: true }
+        inhalt_in_voltpilot: { type: boolean }
+        fassung: { type: integer }
+        festgehalten_am: { type: string, format: date, nullable: true, description: Der Tag der Entscheidung der Fassung. }
+        ablage: { type: string, nullable: true }
+        kennung: { type: string, nullable: true }
+        adresse: { type: string, nullable: true }
+        adresse_als_verweis: { type: boolean }
+        fassungsangabe: { type: string, nullable: true }
+        datum: { type: string, format: date, nullable: true }
+        sha256: { type: string, nullable: true, description: Die im Browser gebildete Prüfsumme der Datei bzw. des Originals. }
+    EnergiemanagementKommunikationsnachweis:
+      type: object
+      required: [dokument_id, kennzeichen, titel, art, fassung, am, kreis, wege, wege_wort, person, satz]
+      description: DK6 - eine Mitteilung an einen Kreis an einem Tag durch eine Person, über einen oder mehrere Wege.
+      properties:
+        dokument_id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^D-[0-9]{4,13}$" }
+        titel: { type: string }
+        art: { type: string }
+        fassung: { type: integer }
+        am: { type: string, format: date }
+        kreis: { type: string }
+        wege: { type: array, items: { type: string, enum: [aushang, intranet, unterweisung, besprechung, e_mail, weiterer] } }
+        wege_wort: { type: string, description: „Aushang und Intranet“; ein weiterer Weg mit seinem Wortlaut. }
+        person: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
+        satz: { type: string }
+    EnergiemanagementKommunikationsnachweise:
+      type: object
+      required: [abruf, bekanntmachungen]
+      properties:
+        abruf: { type: string, format: date }
+        bekanntmachungen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementKommunikationsnachweis" }
+    EnergiemanagementNachweis:
+      type: object
+      required: [id, kennzeichen, art, art_wort, klasse, titel, bezug, zustand, gueltige_fassung, ort, ueberpruefung, bekanntmachungen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^D-[0-9]{4,13}$" }
+        art: { type: string }
+        art_wort: { type: string }
+        klasse: { type: string, enum: [vorgabe, nachweis] }
+        titel: { type: string }
+        bezug: { $ref: "#/components/schemas/EnergiemanagementDokumentBezugAus" }
+        zustand: { type: string, enum: [entwurf, gueltig, aufgehoben] }
+        gueltige_fassung: { type: integer, nullable: true }
+        ort: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementNachweisOrt" }], nullable: true, description: Ohne gültige Fassung `null`. }
+        ueberpruefung: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementUeberpruefung" }], nullable: true, description: Kompetenz und Auslegung haben keine (Grund `nachweis`). }
+        bekanntmachungen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementKommunikationsnachweis" }
+    EnergiemanagementNachweiseAmEinsatz:
+      type: object
+      required: [energieeinsatz, abruf, nachweise]
+      properties:
+        energieeinsatz: { $ref: "#/components/schemas/EnergiemanagementEinsatzKurz" }
+        abruf: { type: string, format: date }
+        nachweise:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementNachweis" }
+    EnergiemanagementNachweiseDerPerson:
+      type: object
+      required: [person, abruf, nachweise]
+      properties:
+        person: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        abruf: { type: string, format: date }
+        nachweise:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementNachweis" }
     MessbedarfAnlegen:
       type: object
       additionalProperties: false

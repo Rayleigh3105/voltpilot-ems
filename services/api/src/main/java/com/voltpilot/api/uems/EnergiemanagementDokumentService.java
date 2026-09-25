@@ -36,8 +36,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * UEMS AP-19 IP-7: Dokumente im Energiemanagement (DK1–DK8, W5, §5.6).
  *
- * <p>Ein Dokument D-nnnn hat Art (zwölf, geschlossen), Titel und Bezug — das Unternehmen oder einen Standort; der Zaun
- * folgt dem Standort des Bezugs, ohne Standort ist es das Unternehmen (DK1). Eine Fassung ist Wortlaut ODER Verweis
+ * <p>Ein Dokument D-nnnn hat Art (zwölf, geschlossen), Titel und Bezug — das Unternehmen, einen Standort, einen
+ * Energieeinsatz, eine Person oder eine Aufgabe (IP-14); der Zaun folgt dem Standort des Bezugs, ohne Standort ist es das
+ * Unternehmen (DK1). Der Standort eines Energieeinsatzes ist der eine Standort, an dem am Tag des Anlegens seine
+ * Messstellen hängen — hängen sie an mehreren oder an keinem, gilt das Dokument am Unternehmen; Person und Aufgabe haben
+ * keinen Standort. Eine Fassung ist Wortlaut ODER Verweis
  * (G3); freigegeben wird sie mit „entschieden von“ (eine Person, auch ohne Konto) — bei Energiepolitik,
  * Anwendungsbereich und Bestellung die Leitung des Unternehmens am Tag der Entscheidung (DK3/PA3, sonst 422
  * {@code leitung_fehlt}); mit Vier-Augen beantragt die erste Person, eine zweite (KA/EM, nie der Urheber) gibt frei
@@ -69,6 +72,9 @@ public class EnergiemanagementDokumentService {
     private final EnergiemanagementPersonenService leitung;
     private final BewertungUmfangRepository umfang;
     private final UnternehmenRepository unternehmen;
+    private final EnergieeinsatzService einsaetze;
+    private final EnergieeinsatzRepository einsatzRepo;
+    private final KennzahlRepository kennzahlen;
     private final RechtPruefung rechte;
     private final ObjectMapper json;
     private final TransactionTemplate tx;
@@ -76,13 +82,17 @@ public class EnergiemanagementDokumentService {
 
     public EnergiemanagementDokumentService(EnergiemanagementDokumentRepository repo,
             EnergiemanagementPersonenRepository personen, EnergiemanagementPersonenService leitung,
-            BewertungUmfangRepository umfang, UnternehmenRepository unternehmen, RechtPruefung rechte,
+            BewertungUmfangRepository umfang, UnternehmenRepository unternehmen, EnergieeinsatzService einsaetze,
+            EnergieeinsatzRepository einsatzRepo, KennzahlRepository kennzahlen, RechtPruefung rechte,
             ObjectMapper json, PlatformTransactionManager tm) {
         this.repo = repo;
         this.personen = personen;
         this.leitung = leitung;
         this.umfang = umfang;
         this.unternehmen = unternehmen;
+        this.einsaetze = einsaetze;
+        this.einsatzRepo = einsatzRepo;
+        this.kennzahlen = kennzahlen;
         this.rechte = rechte;
         this.json = json;
         this.tx = new TransactionTemplate(tm);
@@ -100,11 +110,12 @@ public class EnergiemanagementDokumentService {
         var liste = repo.dokumente();
         Map<UUID, StandortKurz> orte = orte(liste.stream().map(EnergiemanagementDokumentRepository.Dokument::standortId)
                 .filter(Objects::nonNull).distinct().toList());
+        var bezuege = bezuege(liste, null);
         return new EnergiemanagementDokumentDto.Dokumente(liste.stream().map(d -> {
             var fassungen = repo.fassungen(d.id());
             var gilt = gueltige(fassungen);
             return new EnergiemanagementDokumentDto.DokumentKurz(d.id(), d.kennzeichen(), d.art(), artWort(d.art()),
-                    klasse(d.art()), d.titel(), bezug(d, orte), d.zustand(), gilt == null ? null : gilt.nr(),
+                    klasse(d.art()), d.titel(), bezug(d, orte, bezuege), d.zustand(), gilt == null ? null : gilt.nr(),
                     ueberpruefung(d, fassungen, repo.eintraege(d.id()), heute),
                     new Eingetragen(d.akteur(), d.angelegtAm()));
         }).toList());
@@ -138,7 +149,8 @@ public class EnergiemanagementDokumentService {
         var beleg = d.belegAblage() == null ? null : new EnergiemanagementPersonenDto.Beleg(d.belegBezeichnung(),
                 d.belegAblage(), d.belegKennung(), d.belegAdresse(), d.belegSha256());
         return new EnergiemanagementDokumentDto.Dokument(d.id(), d.kennzeichen(), d.art(), artWort(d.art()),
-                klasse(d.art()), d.titel(), bezug(d, orte), d.zustand(), d.ueberpruefungMonate(), beleg,
+                klasse(d.art()), d.titel(), bezug(d, orte, bezuege(List.of(d), leute)), d.zustand(),
+                d.ueberpruefungMonate(), beleg,
                 gilt == null ? null : gilt.nr(),
                 fassungen.stream().map(f -> fassung(f, gilt, leute, orte)).toList(),
                 eintraege.stream().map(e -> eintrag(e, leute)).toList(), ueberpruefung,
@@ -208,7 +220,10 @@ public class EnergiemanagementDokumentService {
 
     // ------------------------------------------------------------------ anlegen, entwerfen
 
-    /** DK1: Dokument anlegen — Art, Titel, Bezug (Unternehmen oder Standort); Protokoll {@code dokument_angelegt}. */
+    /**
+     * DK1: Dokument anlegen — Art, Titel, Bezug (Unternehmen, Standort, Energieeinsatz, Person oder Aufgabe, IP-14);
+     * Protokoll {@code dokument_angelegt}.
+     */
     public UUID anlegen(EnergiemanagementDokumentDto.DokumentAnlegen a, ProtokollAkteur wer) {
         String art = text(a.art());
         if (art == null || !EnergiemanagementRegeln.VOKABULARE.get("dokument_art").contains(art)) {
@@ -225,28 +240,56 @@ public class EnergiemanagementDokumentService {
         String bezugArt = bezug == null ? null : text(bezug.art());
         if (bezugArt == null || !EnergiemanagementRegeln.VOKABULARE.get("dokument_bezug").contains(bezugArt)) {
             throw EnergiemanagementAbgelehnt.fachlich("bezug_unbekannt",
-                    "Bitte wählen Sie, woran das Dokument hängt: am Unternehmen oder an einem Standort.",
-                    Map.of("feld", "bezug.art"));
+                    "Bitte wählen Sie, woran das Dokument hängt: am Unternehmen, an einem Standort, an einem "
+                            + "Energieeinsatz, an einer Person oder an einer Aufgabe.", Map.of("feld", "bezug.art"));
         }
-        if (!Set.of("unternehmen", "standort").contains(bezugArt)) {
-            throw EnergiemanagementAbgelehnt.fachlich("bezug_nicht_verfuegbar",
-                    "Dokumente am Energieeinsatz, an einer Person oder an einer Aufgabe halten Sie hier noch nicht "
-                            + "fest.", Map.of("feld", "bezug.art"));
+        // G5: genau die Kennung der Art — der Standort eines Einsatzes kommt nie aus der Anfrage.
+        Map<String, UUID> kennungen = new LinkedHashMap<>();
+        kennungen.put("standort_id", bezug.standortId());
+        kennungen.put("energieeinsatz_id", bezug.energieeinsatzId());
+        kennungen.put("person_id", bezug.personId());
+        kennungen.put("aufgabe_id", bezug.aufgabeId());
+        String eigene = bezugArt.equals("unternehmen") ? null : bezugArt + "_id";
+        for (var k : kennungen.entrySet()) {
+            if (k.getValue() != null && !k.getKey().equals(eigene)) {
+                throw ungueltig("bezug." + k.getKey(), bezugArt.equals("unternehmen")
+                        ? "Ein Dokument am Unternehmen nennt keinen Standort."
+                        : "Ein Bezug nennt nur die Kennung, woran das Dokument hängt.");
+            }
         }
         UUID standort = bezug.standortId();
-        if ("unternehmen".equals(bezugArt) && standort != null) {
-            throw ungueltig("bezug.standort_id", "Ein Dokument am Unternehmen nennt keinen Standort.");
-        }
-        if ("standort".equals(bezugArt)) {
-            if (standort == null) {
-                throw standortUnbekannt("bezug.standort_id");
+        switch (bezugArt) {
+            case "standort" -> {
+                if (standort == null) {
+                    throw standortUnbekannt("bezug.standort_id");
+                }
+                rechte.pruefen(VERWALTEN, RechtZiel.STANDORT, standort, () -> standortUnbekannt("bezug.standort_id"));
+                if (repo.standorte(List.of(standort)).isEmpty()) {
+                    throw standortUnbekannt("bezug.standort_id");
+                }
             }
-            rechte.pruefen(VERWALTEN, RechtZiel.STANDORT, standort, () -> standortUnbekannt("bezug.standort_id"));
-            if (repo.standorte(List.of(standort)).isEmpty()) {
-                throw standortUnbekannt("bezug.standort_id");
+            case "energieeinsatz" -> {
+                standort = standortDesEinsatzes(bezug.energieeinsatzId());
+                if (standort == null) {
+                    rechte.pruefen(VERWALTEN, RechtZiel.UNTERNEHMEN, null, EnergiemanagementDokumentService::einsatzUnbekannt);
+                } else {
+                    rechte.pruefen(VERWALTEN, RechtZiel.STANDORT, standort, EnergiemanagementDokumentService::einsatzUnbekannt);
+                }
             }
-        } else {
-            rechte.pruefen(VERWALTEN, RechtZiel.UNTERNEHMEN, null, EnergiemanagementAbgelehnt::dokumentFehlt);
+            case "person" -> {
+                rechte.pruefen(VERWALTEN, RechtZiel.UNTERNEHMEN, null, EnergiemanagementAbgelehnt::dokumentFehlt);
+                if (bezug.personId() == null || personen.person(bezug.personId()).isEmpty()) {
+                    throw personUnbekannt("bezug.person_id");
+                }
+            }
+            case "aufgabe" -> {
+                rechte.pruefen(VERWALTEN, RechtZiel.UNTERNEHMEN, null, EnergiemanagementAbgelehnt::dokumentFehlt);
+                if (bezug.aufgabeId() == null || personen.zuordnung(bezug.aufgabeId()).isEmpty()) {
+                    throw EnergiemanagementAbgelehnt.fachlich("aufgabe_unbekannt", "Bitte wählen Sie eine Aufgabe "
+                            + "im Energiemanagement Ihres Kundenbereichs.", Map.of("feld", "bezug.aufgabe_id"));
+                }
+            }
+            default -> rechte.pruefen(VERWALTEN, RechtZiel.UNTERNEHMEN, null, EnergiemanagementAbgelehnt::dokumentFehlt);
         }
         Integer monate = a.ueberpruefungMonate();
         if (monate != null) {
@@ -259,9 +302,10 @@ public class EnergiemanagementDokumentService {
             }
         }
         var beleg = beleg(a.beleg());
+        UUID zaun = standort;
         return tx.execute(s -> repo.anlegen(new EnergiemanagementDokumentRepository.NeuesDokument(art, titel, bezugArt,
-                standort, monate, beleg.bezeichnung(), beleg.ablage(), beleg.kennung(), beleg.adresse(),
-                beleg.sha256()), wer));
+                zaun, bezug.energieeinsatzId(), bezug.personId(), bezug.aufgabeId(), monate, beleg.bezeichnung(),
+                beleg.ablage(), beleg.kennung(), beleg.adresse(), beleg.sha256()), wer));
     }
 
     /**
@@ -730,10 +774,73 @@ public class EnergiemanagementDokumentService {
                 .toList(), b.traeger(), aus);
     }
 
+    /** Was die Bezüge einer Dokumentliste nennen: Energieeinsätze, Personen, Aufgaben (Zuordnungen). */
+    private record Bezuege(Map<UUID, EnergiemanagementDokumentDto.EinsatzKurz> einsaetze,
+            Map<UUID, EnergiemanagementPersonenRepository.Person> leute,
+            Map<UUID, EnergiemanagementPersonenRepository.Zuordnung> aufgaben) {}
+
+    /** Lädt nur, was die Bezüge nennen; {@code leute} ist schon geladen oder {@code null}. */
+    private Bezuege bezuege(List<EnergiemanagementDokumentRepository.Dokument> liste,
+            Map<UUID, EnergiemanagementPersonenRepository.Person> leute) {
+        Map<UUID, EnergiemanagementDokumentDto.EinsatzKurz> ee = new LinkedHashMap<>();
+        repo.einsaetze(liste.stream().map(EnergiemanagementDokumentRepository.Dokument::energieeinsatzId)
+                .filter(Objects::nonNull).distinct().toList())
+                .forEach(e -> ee.put(e.id(), new EnergiemanagementDokumentDto.EinsatzKurz(e.id(), e.kennzeichen(),
+                        e.name())));
+        boolean mitAufgabe = liste.stream().anyMatch(d -> d.aufgabeId() != null);
+        if (leute == null) {
+            leute = liste.stream().anyMatch(d -> d.personId() != null) || mitAufgabe ? personen.personen().stream()
+                    .collect(Collectors.toMap(EnergiemanagementPersonenRepository.Person::id, Function.identity()))
+                    : Map.of();
+        }
+        Map<UUID, EnergiemanagementPersonenRepository.Zuordnung> aufgaben = mitAufgabe ? personen.zuordnungen()
+                .stream().collect(Collectors.toMap(EnergiemanagementPersonenRepository.Zuordnung::id,
+                        Function.identity())) : Map.of();
+        return new Bezuege(ee, leute, aufgaben);
+    }
+
     private static EnergiemanagementDokumentDto.BezugAus bezug(EnergiemanagementDokumentRepository.Dokument d,
-            Map<UUID, StandortKurz> orte) {
+            Map<UUID, StandortKurz> orte, Bezuege b) {
+        EnergiemanagementDokumentDto.AufgabeKurz aufgabe = null;
+        if (d.aufgabeId() != null) {
+            var z = b.aufgaben().get(d.aufgabeId());
+            aufgabe = z == null ? new EnergiemanagementDokumentDto.AufgabeKurz(d.aufgabeId(), null, null, null)
+                    : new EnergiemanagementDokumentDto.AufgabeKurz(z.id(), z.aufgabe(), "weitere".equals(z.aufgabe())
+                            ? z.aufgabeWortlaut() : EnergiemanagementRegeln.WOERTER.get("aufgabe").get(z.aufgabe()),
+                            kurz(b.leute().get(z.personId())));
+        }
         return new EnergiemanagementDokumentDto.BezugAus(d.bezug(), d.standortId() == null ? null
-                : ort(d.standortId(), orte));
+                : ort(d.standortId(), orte), d.energieeinsatzId() == null ? null
+                : b.einsaetze().getOrDefault(d.energieeinsatzId(), new EnergiemanagementDokumentDto.EinsatzKurz(
+                        d.energieeinsatzId(), null, null)), d.personId() == null ? null
+                : kurz(b.leute().get(d.personId())), aufgabe);
+    }
+
+    /**
+     * IP-14: der Standort eines Energieeinsatzes (der Zaun seiner Dokumente) — der eine Standort, an dem am Tag des
+     * Anlegens die Messstellen seines Prozesses hängen; mehrere oder keiner: {@code null} (am Unternehmen). Ein Einsatz,
+     * den die Anfrage nicht sieht, ist 422 {@code energieeinsatz_unbekannt} wie einer, den es nicht gibt.
+     */
+    private UUID standortDesEinsatzes(UUID id) {
+        if (id == null) {
+            throw einsatzUnbekannt();
+        }
+        EnergieeinsatzRepository.Zeile e;
+        try {
+            e = einsaetze.sichtbareZeile(id);
+        } catch (EnergieeinsatzAbgelehnt nichtDa) {
+            throw einsatzUnbekannt();
+        }
+        LocalDate tag = heute();
+        Set<UUID> st = new LinkedHashSet<>();
+        einsatzRepo.messstellen(e.prozessId(), tag)
+                .forEach(ms -> kennzahlen.standortVonMessstelle(ms, tag).ifPresent(st::add));
+        return st.size() == 1 ? st.iterator().next() : null;
+    }
+
+    private static EnergiemanagementAbgelehnt einsatzUnbekannt() {
+        return EnergiemanagementAbgelehnt.fachlich("energieeinsatz_unbekannt",
+                "Bitte wählen Sie einen Energieeinsatz Ihres Unternehmens.", Map.of("feld", "bezug.energieeinsatz_id"));
     }
 
     /** Der Standort des Bezugs und die Standorte jeder Fassung des Anwendungsbereichs. */
@@ -899,7 +1006,8 @@ public class EnergiemanagementDokumentService {
         return s == null ? null : LocalDate.parse((String) s);
     }
 
-    private LocalDate heute() {
+    /** „Heute“ in der Zeitzone des Unternehmens an der Uhr des Dienstes — auch der Abruf-Tag der Nachweise (IP-14). */
+    LocalDate heute() {
         return LocalDate.ofInstant(uhr.instant(), ZoneId.of(unternehmen.desKundenbereichs()
                 .map(UnternehmenRepository.Unternehmen::zeitzone).orElse("Europe/Berlin")));
     }

@@ -203,9 +203,10 @@ class EnergiemanagementDokumentApiTest {
         assertThat(d.at("/saetze/ueberpruefung").asText()).isEqualTo("Überprüfung fällig seit 64 Tagen.");
         JsonNode liste = ruf("GET", DOKUMENTE, "IK", null, 200);
         assertThat(liste.at("/dokumente/0/ueberpruefung/tage").asInt()).isEqualTo(64);
-        // Verzeichnis-Quelle (VZ1, R3): die Fassung mit Person, Tag, Prüfsumme und Ort; zwei Bekanntmachungen.
+        // Verzeichnis-Quelle (VZ1, R3): die Fassung mit Person, Tag, Prüfsumme und Ort; die Bekanntmachung über Aushang
+        // und Intranet ist EINE Zeile (IP-14, Katalog R3).
         List<Map<String, Object>> zeilen = als("IK", () -> verzeichnis.zeilen(LocalDate.parse("2029-02-12")));
-        assertThat(zeilen).hasSize(3);
+        assertThat(zeilen).hasSize(2);
         assertThat(zeilen.get(0)).containsEntry("gruppe", "grundlagen").containsEntry("art", "energiepolitik")
                 .containsEntry("kennzeichen", "D-0001").containsEntry("nr", 1)
                 .containsEntry("entschieden_von", "Robert Falk").containsEntry("eingetragen_von", "Ines Kaltenbach")
@@ -471,8 +472,9 @@ class EnergiemanagementDokumentApiTest {
                 .isEqualTo("art_unbekannt");
         assertThat(code(DOKUMENTE, Map.of("art", "betrieb", "titel", " ", "bezug", Map.of("art", "unternehmen"))))
                 .isEqualTo("titel_fehlt");
+        // Seit IP-14 hängt ein Dokument auch am Energieeinsatz — ohne Einsatz ist er unbekannt.
         assertThat(code(DOKUMENTE, Map.of("art", "betrieb", "titel", "X", "bezug", Map.of("art", "energieeinsatz"))))
-                .isEqualTo("bezug_nicht_verfuegbar");
+                .isEqualTo("energieeinsatz_unbekannt");
         assertThat(code(DOKUMENTE, Map.of("art", "kompetenz", "titel", "X", "bezug", Map.of("art", "unternehmen"),
                 "ueberpruefung_monate", 12))).isEqualTo("angabe_ungueltig");
         assertThat(code(DOKUMENTE, Map.of("art", "betrieb", "titel", "X", "bezug", Map.of("art", "unternehmen"),

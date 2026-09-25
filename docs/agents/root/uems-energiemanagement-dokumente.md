@@ -2,8 +2,8 @@
 
 Neu am 25.09.2026: die Routen über den Dokument-Tabellen aus IP-5 ([Datenhaltung](uems-energiemanagement-datenhaltung.md)).
 Konzept: AP-19 §4.4 DK1–DK8, §5.1, §5.6, R1, R2, W5 (`vp-uems-ap19-fundament/report.md`). Noch keine Fläche (Portal
-IP-9), kein Verzeichnis-Leser (IP-8; die Quelle `DokumentVerzeichnis` steht); Bezug Energieeinsatz, Person und Aufgabe folgen mit IP-14 (heute 422
-`bezug_nicht_verfuegbar`).
+IP-9), kein Verzeichnis-Leser (IP-8; die Quelle `DokumentVerzeichnis` steht); Bezug Energieeinsatz, Person und Aufgabe
+seit IP-14 ([Nachweise](uems-energiemanagement-nachweise.md)).
 
 | Stelle | Was |
 |---|---|
@@ -22,8 +22,9 @@ die Fälle mit gestellter Uhr prüft, stellt `EnergiemanagementDokumentService.u
 ⚠ **Ein offener Entwurf wird überschrieben:** `POST …/fassungen` schreibt bei offenem Entwurf dieselbe Nr. (200),
 sonst Nr. n + 1 (201); ein offener Antrag 409 `fassung_beantragt`. Die zweite Person bei Vier-Augen schickt höchstens
 eine Begründung (nur im Protokoll) — „entschieden von“ und der Tag stehen im Antrag.
-⚠ **Ein Weg je Bekanntmachung:** die Referenzdatei 1.10 schreibt `"weg": "aushang · intranet"`; die Tabelle hält ein
-Wort — zwei Wege sind zwei Einträge.
+⚠ **Ein Weg je Eintrag, eine Bekanntmachung je Mitteilung:** die Referenzdatei 1.10 schreibt `"weg": "aushang ·
+intranet"`; die Tabelle hält ein Wort — zwei Wege sind zwei Einträge. Gelesen (Verzeichnis, `GET …/bekanntmachungen`)
+sind Einträge mit gleicher Fassung, Tag, Kreis und Person EINE Bekanntmachung (IP-14, `EnergiemanagementNachweise#kommunikation`).
 ⚠ **Einsicht und Standort-Konten:** Dokumente am Unternehmen sieht nur, wer unternehmensweit liest; ein Standort-Konto
 bekommt 404 und nie den Satz `freigabe_gesperrt` (die Aufgaben sieht es nicht).
 

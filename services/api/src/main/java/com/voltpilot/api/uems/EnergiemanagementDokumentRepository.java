@@ -25,13 +25,21 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class EnergiemanagementDokumentRepository {
 
+    /**
+     * Ein Dokument mit seinem Bezug (G5): genau einer von Standort, Energieeinsatz, Person und Aufgabe ist gesetzt,
+     * beim Energieeinsatz dazu der abgeleitete Standort als Zaun (IP-14).
+     */
     public record Dokument(UUID id, String kennzeichen, String art, String titel, String bezug, UUID standortId,
-            String zustand, Integer ueberpruefungMonate, String belegBezeichnung, String belegAblage,
-            String belegKennung, String belegAdresse, String belegSha256, ProtokollAkteur akteur, Instant angelegtAm) {}
+            UUID energieeinsatzId, UUID personId, UUID aufgabeId, String zustand, Integer ueberpruefungMonate,
+            String belegBezeichnung, String belegAblage, String belegKennung, String belegAdresse, String belegSha256,
+            ProtokollAkteur akteur, Instant angelegtAm) {}
 
-    public record NeuesDokument(String art, String titel, String bezug, UUID standortId, Integer ueberpruefungMonate,
-            String belegBezeichnung, String belegAblage, String belegKennung, String belegAdresse,
-            String belegSha256) {}
+    public record NeuesDokument(String art, String titel, String bezug, UUID standortId, UUID energieeinsatzId,
+            UUID personId, UUID aufgabeId, Integer ueberpruefungMonate, String belegBezeichnung, String belegAblage,
+            String belegKennung, String belegAdresse, String belegSha256) {}
+
+    /** Ein Energieeinsatz, wie ihn der Bezug eines Dokuments nennt (Kennzeichen und Name, AP-16). */
+    public record Einsatz(UUID id, String kennzeichen, String name) {}
 
     public record Fassung(UUID id, int nr, String form, String wortlaut, String verweisBezeichnung,
             String verweisAblage, String verweisKennung, String verweisAdresse, String verweisFassungsangabe,
@@ -59,7 +67,8 @@ public class EnergiemanagementDokumentRepository {
 
     private static final RowMapper<Dokument> DOKUMENT = (rs, n) -> new Dokument(rs.getObject("id", UUID.class),
             rs.getString("kennzeichen"), rs.getString("art"), rs.getString("titel"), rs.getString("bezug"),
-            rs.getObject("standort_id", UUID.class), rs.getString("zustand"),
+            rs.getObject("standort_id", UUID.class), rs.getObject("energieeinsatz_id", UUID.class),
+            rs.getObject("person_id", UUID.class), rs.getObject("aufgabe_id", UUID.class), rs.getString("zustand"),
             (Integer) rs.getObject("ueberpruefung_monate"), rs.getString("beleg_bezeichnung"),
             rs.getString("beleg_ablage"), rs.getString("beleg_kennung"), rs.getString("beleg_adresse"),
             rs.getString("beleg_sha256"), akteur(rs, "actor"), instant(rs, "angelegt_am"));
@@ -111,12 +120,12 @@ public class EnergiemanagementDokumentRepository {
     public UUID anlegen(NeuesDokument d, ProtokollAkteur wer) {
         UUID id = jdbc.queryForObject("""
                 INSERT INTO energiemanagement_dokument (tenant_id, kennzeichen, art, titel, bezug, standort_id,
-                    ueberpruefung_monate, beleg_bezeichnung, beleg_ablage, beleg_kennung, beleg_adresse, beleg_sha256,
-                    actor_sub, actor_name, actor_rolle, actor_art)
-                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
-                """, UUID.class, tenant(), d.art(), d.titel(), d.bezug(), d.standortId(), d.ueberpruefungMonate(),
-                d.belegBezeichnung(), d.belegAblage(), d.belegKennung(), d.belegAdresse(), d.belegSha256(),
-                wer.sub(), wer.name(), wer.rolle(), wer.art());
+                    energieeinsatz_id, person_id, aufgabe_id, ueberpruefung_monate, beleg_bezeichnung, beleg_ablage,
+                    beleg_kennung, beleg_adresse, beleg_sha256, actor_sub, actor_name, actor_rolle, actor_art)
+                VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+                """, UUID.class, tenant(), d.art(), d.titel(), d.bezug(), d.standortId(), d.energieeinsatzId(),
+                d.personId(), d.aufgabeId(), d.ueberpruefungMonate(), d.belegBezeichnung(), d.belegAblage(),
+                d.belegKennung(), d.belegAdresse(), d.belegSha256(), wer.sub(), wer.name(), wer.rolle(), wer.art());
         protokoll(id, "dokument_angelegt", null, dokumentSchnappschuss(id), null, wer);
         return id;
     }
@@ -313,6 +322,21 @@ public class EnergiemanagementDokumentRepository {
             ps.setArray(1, con.createArrayOf("uuid", ids.toArray()));
             return ps;
         }, (rs, n) -> new Standort(rs.getObject("id", UUID.class), rs.getString("kurzzeichen"), rs.getString("name")));
+    }
+
+    /**
+     * Kennzeichen und Name der Energieeinsätze, die Bezüge nennen (IP-14). Der Einsatz hat keinen eigenen Zaun; wer das
+     * Dokument sieht, sieht, woran es hängt.
+     */
+    public List<Einsatz> einsaetze(List<UUID> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT id, kennzeichen, name FROM energieeinsatz WHERE id = ANY (?)");
+            ps.setArray(1, con.createArrayOf("uuid", ids.toArray()));
+            return ps;
+        }, (rs, n) -> new Einsatz(rs.getObject("id", UUID.class), rs.getString("kennzeichen"), rs.getString("name")));
     }
 
     /** Die Person, die das Konto des Aufrufers trägt — so nennt ein Eintrag, wer ihn festgehalten hat. */

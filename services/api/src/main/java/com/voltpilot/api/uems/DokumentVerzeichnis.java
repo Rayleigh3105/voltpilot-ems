@@ -15,7 +15,10 @@ import org.springframework.stereotype.Component;
  * Kennzeichen, Titel, Fassung, entschieden von, eingetragen von, Tag der Entscheidung; der Ort ist beim Verweis
  * „Geführt in Ihrem System: …“ mit der im Browser gebildeten Prüfsumme, beim Wortlaut „in VoltPilot“ mit der Prüfsumme
  * der Fassung — liegt das unterschriebene Original beim Kunden, „Wortlaut in VoltPilot, Original bei Ihnen: …“. Je
- * Bekanntmachung bis zum Stichtag eine Zeile in „Kompetenz und Kommunikation“ (der Kommunikationsnachweis, DK6).
+ * Bekanntmachung bis zum Stichtag eine Zeile in „Kompetenz und Kommunikation“ (der Kommunikationsnachweis, DK6) — eine
+ * Mitteilung über zwei Wege ist EINE Bekanntmachung (IP-14, {@link EnergiemanagementNachweise#kommunikation}; Katalog R3:
+ * drei Zeilen in „Kompetenz und Kommunikation“ am 12.02.2029). Nachweise am Energieeinsatz und an der Person (IP-14)
+ * stehen in der Gruppe ihrer Art: Betrieb, Auslegung und Beschaffung bzw. Kompetenz und Kommunikation.
  * Gelesen über {@link EnergiemanagementDokumentService} im Zaun des Aufrufers; kopiert wird nichts.
  */
 @Component
@@ -54,11 +57,11 @@ public class DokumentVerzeichnis implements VerzeichnisQuelle {
                     fassungen.add(fassung(d, f));
                 }
             }
-            for (var e : d.eintraege()) {
-                if ("bekannt_gemacht".equals(e.art()) && !e.am().isAfter(stichtag)) {
+            for (var k : EnergiemanagementNachweise.kommunikation(d)) {
+                if (!k.am().isAfter(stichtag)) {
                     bekannt.add(zeile(d.kennzeichen(), new EnergiemanagementRegeln.VerzeichnisEingang(BEKANNTMACHUNG,
-                            "bekanntmachung", d.kennzeichen(), d.titel() + ": bekannt gemacht an " + e.kreis(),
-                            e.fassung(), null, e.person() == null ? null : e.person().name(), e.am().toString(), null,
+                            "bekanntmachung", d.kennzeichen(), d.titel() + ": bekannt gemacht an " + k.kreis(),
+                            k.fassung(), null, k.person() == null ? null : k.person().name(), k.am().toString(), null,
                             "in_voltpilot", null)));
                 }
             }
