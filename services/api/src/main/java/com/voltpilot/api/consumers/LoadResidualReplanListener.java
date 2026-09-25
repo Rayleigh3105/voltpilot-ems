@@ -2,6 +2,7 @@ package com.voltpilot.api.consumers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -30,7 +31,7 @@ import org.springframework.stereotype.Component;
 /** Tenant-safe telemetry-to-plan residual trigger for prompt bounded replans. */
 @Component
 @ConditionalOnProperty(name = "voltpilot.load-residual-replan.enabled", havingValue = "true")
-public class LoadResidualReplanListener {
+public class LoadResidualReplanListener extends Rueckmeldeweg {
     private static final Logger log = LoggerFactory.getLogger(LoadResidualReplanListener.class);
     private static final String FILTER = "ems/+/+/+/telemetry";
     private final String brokerUrl;
@@ -110,6 +111,7 @@ public class LoadResidualReplanListener {
 
     /** Package-visible deterministic seam used by identity/freshness tests. */
     void handle(String topic, byte[] payload, Instant now) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try { json = mapper.readTree(new String(payload, StandardCharsets.UTF_8)); }
         catch (Exception e) { return; }

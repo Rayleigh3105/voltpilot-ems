@@ -2,6 +2,7 @@ package com.voltpilot.api.ocpp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -29,7 +30,7 @@ import org.springframework.stereotype.Component;
 /** MQTT ingress for durable edge OCPP protocol events. */
 @Component
 @ConditionalOnProperty(name = "voltpilot.ocpp.mqtt-listener-enabled", havingValue = "true")
-public class OcppEventListener {
+public class OcppEventListener extends Rueckmeldeweg {
     private static final Logger log = LoggerFactory.getLogger(OcppEventListener.class);
     private static final String FILTER = "ems/+/+/+/v2/ocpp-events";
     private static final int MAX_PAYLOAD_BYTES = 1024 * 1024;
@@ -158,6 +159,7 @@ public class OcppEventListener {
 
     /** Test-visible single-message ingress. */
     public boolean handle(String topic, byte[] raw) {
+        if (kundenbereichBeendet(topic)) return false; // Kundenbereich beendet: verworfen und gezählt
         if (topic == null || raw == null || raw.length == 0 || raw.length > MAX_PAYLOAD_BYTES) return false;
         String[] parts = topic.split("/");
         if (parts.length != 6 || !"ems".equals(parts[0]) || !"v2".equals(parts[4])

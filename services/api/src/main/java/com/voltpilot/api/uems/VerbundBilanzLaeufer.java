@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Clock;
@@ -57,6 +58,14 @@ public class VerbundBilanzLaeufer {
         this.schaetzung = schaetzung;
     }
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public VerbundBilanzLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, VerbundBilanzService bilanz) {
         this.adminJdbc = adminJdbc;
         this.bilanz = bilanz;
@@ -92,6 +101,7 @@ public class VerbundBilanzLaeufer {
                 "SELECT DISTINCT tenant_id FROM steuerungsverbund ORDER BY tenant_id", UUID.class);
         int gerechnet = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 for (UUID anlage : bilanz.anlagen()) {
@@ -119,6 +129,7 @@ public class VerbundBilanzLaeufer {
                 "SELECT DISTINCT tenant_id FROM steuerungsverbund ORDER BY tenant_id", UUID.class);
         int geaendert = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 for (UUID anlage : bilanz.anlagen()) {
@@ -149,6 +160,7 @@ public class VerbundBilanzLaeufer {
                 "SELECT DISTINCT tenant_id FROM steuerungsverbund ORDER BY tenant_id", UUID.class);
         int n = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 for (UUID anlage : bilanz.anlagen()) {

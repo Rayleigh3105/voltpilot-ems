@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.SteuerungsverbundVokabular.DokumentAblehnung;
 import com.voltpilot.api.uems.SteuerungsverbundZweischritt.Stand;
@@ -33,7 +34,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
-public class VerbundAnteileResultListener {
+public class VerbundAnteileResultListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(VerbundAnteileResultListener.class);
     private static final String FILTER = "ems/+/+/+/v2/verbund-anteile-result";
@@ -116,6 +117,7 @@ public class VerbundAnteileResultListener {
 
     /** Prüft und übergibt; false = verworfen (ungültig oder keine aktive Box des Verbunds dieser Anlage). */
     public boolean handle(String topic, byte[] payload, Instant empfangenUm) {
+        if (kundenbereichBeendet(topic)) return false; // Kundenbereich beendet: verworfen und gezählt
         Gepruefte g = pruefe(topic, payload);
         if (g == null) return false;
         TenantContext.set(g.tenantId());

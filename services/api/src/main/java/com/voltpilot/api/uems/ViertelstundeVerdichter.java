@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -153,6 +155,14 @@ public class ViertelstundeVerdichter {
     private final int stapelJeLauf;
     private final int arbeitHochwasser;
     private final AtomicLong spaetankunftFehler = new AtomicLong();
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public ViertelstundeVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -464,6 +474,7 @@ public class ViertelstundeVerdichter {
                 DELETE FROM messreihe_viertelstunde_arbeit a
                  USING (SELECT tenant_id, entity_id, messkanal, intervall_beginn
                           FROM messreihe_viertelstunde_arbeit
+                         WHERE NOT (tenant_id = ANY (?::uuid[]))
                          ORDER BY intervall_beginn, eingetragen_am
                          LIMIT ?
                          FOR UPDATE SKIP LOCKED) c
@@ -471,7 +482,8 @@ public class ViertelstundeVerdichter {
                    AND a.messkanal = c.messkanal AND a.intervall_beginn = c.intervall_beginn
                 RETURNING a.tenant_id, a.entity_id, a.messkanal, a.intervall_beginn, a.grund
                 """)) {
-            ps.setInt(1, limit);
+            ps.setObject(1, beendete.sqlFeld()); // Kundenbereich beendet: der Auftrag bleibt liegen
+            ps.setInt(2, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     auftraege.add(new Auftrag(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),

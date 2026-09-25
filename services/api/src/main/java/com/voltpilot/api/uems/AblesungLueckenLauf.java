@@ -2,10 +2,12 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import java.sql.Connection;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -16,6 +18,14 @@ import org.springframework.stereotype.Component;
 public class AblesungLueckenLauf {
     private static final ObjectMapper JSON=new ObjectMapper();
     private final JdbcTemplate admin;
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public AblesungLueckenLauf(@Qualifier("adminJdbcTemplate") JdbcTemplate admin) { this.admin=admin; }
     record Quelle(UUID tenant,UUID id,UUID messstelle,String kennzeichen) {}
 
@@ -25,6 +35,7 @@ public class AblesungLueckenLauf {
                 + "WHERE q.art='ablesung' AND q.gueltig_bis IS NULL AND m.archiviert_am IS NULL",
                 (rs,n)->new Quelle(rs.getObject(1,UUID.class),rs.getObject(2,UUID.class),rs.getObject(3,UUID.class),rs.getString(4)));
         int zahl=0;
+        quellen=quellen.stream().filter(q->!beendete.beendet(q.tenant())).toList(); // Kundenbereich beendet: ausgelassen
         for (Quelle q:quellen) zahl+=admin.execute((Connection con)->{
             boolean auto=con.getAutoCommit(); con.setAutoCommit(false);
             try {

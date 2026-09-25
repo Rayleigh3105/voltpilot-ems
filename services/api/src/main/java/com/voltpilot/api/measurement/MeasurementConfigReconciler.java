@@ -1,11 +1,13 @@
 package com.voltpilot.api.measurement;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
@@ -22,6 +24,14 @@ public class MeasurementConfigReconciler {
     private final JdbcTemplate adminJdbc;
     private final MeasurementSelectionService selections;
     private final MeasurementConfigPublisher publisher;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public MeasurementConfigReconciler(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementSelectionService selections, MeasurementConfigPublisher publisher) {
@@ -40,6 +50,7 @@ public class MeasurementConfigReconciler {
     public void reconcile() {
         katalogstandNachliefern();
         for (DeviceScope scope : pending()) {
+            if (beendete.beendet(scope.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             TenantContext.set(scope.tenantId());
             try {
                 publisher.publish(scope, selections.forPublishing(scope.deviceId()));
@@ -69,6 +80,7 @@ public class MeasurementConfigReconciler {
         }
         if (stand == null || stand.isBlank()) return;
         for (DeviceScope scope : veralteterKatalogstand(stand)) {
+            if (beendete.beendet(scope.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             TenantContext.set(scope.tenantId());
             try {
                 long revision = selections.planImKatalogstandNeuAusliefern(scope.deviceId());

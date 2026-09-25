@@ -2,7 +2,6 @@ package com.voltpilot.api.provisioning;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -87,6 +86,8 @@ class MoveProvisioningOutboxServiceTest {
 
     @SuppressWarnings("unchecked")
     private void pending(MoveProvisioningOutboxService.PendingMove move) {
-        when(admin.query(anyString(), any(RowMapper.class))).thenReturn(List.of(move));
+        // AP-20: beendete Kundenbereiche bleiben im SQL liegen (ein Parameter, ohne Spring leer)
+        when(admin.query(contains("NOT (tenant_id = ANY (?::uuid[]))"), any(RowMapper.class), any()))
+                .thenReturn(List.of(move));
     }
 }

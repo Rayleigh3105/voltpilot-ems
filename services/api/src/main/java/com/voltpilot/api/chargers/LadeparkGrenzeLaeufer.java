@@ -1,5 +1,6 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
@@ -42,6 +43,14 @@ public class LadeparkGrenzeLaeufer {
         this.melder = melder;
     }
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public LadeparkGrenzeLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             LadeparkNetzgrenzeRepository zugestellt, ChargingConfigService ladepark) {
         this.adminJdbc = adminJdbc;
@@ -68,6 +77,7 @@ public class LadeparkGrenzeLaeufer {
         List<UUID> kundenbereiche = adminJdbc.queryForList("SELECT id FROM tenant ORDER BY created_at, id", UUID.class);
         int zugestellte = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 for (UUID anlage : zugestellt.anlagenMitRahmen()) {

@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -90,6 +91,7 @@ public class StrukturAenderungLaeufer {
     }
 
     private static final String KANDIDATEN = """
+            SELECT * FROM (
             SELECT 'ort_aenderung' AS protokoll, a.id, a.tenant_id, a.objekt_art, a.objekt_id, a.art, a.alt::text AS alt,
                    a.neu::text AS neu, a.gilt_ab AS gilt_ab_tag, CAST(NULL AS timestamptz) AS gilt_ab_zeit, a.rueckwirkend,
                    a.created_at
@@ -146,6 +148,8 @@ public class StrukturAenderungLaeufer {
                             AND b.vorlage='energetische_bewertung')
                AND NOT EXISTS (SELECT 1 FROM bericht_struktur_gelesen g
                                 WHERE g.protokoll = 'geraet_aenderung' AND g.eintrag_id = a.id)
+            ) k
+             WHERE NOT (k.tenant_id = ANY (?::uuid[]))
              ORDER BY created_at, protokoll, id
              LIMIT ?
             """;
@@ -156,6 +160,14 @@ public class StrukturAenderungLaeufer {
 
     @Value("${voltpilot.uems.bewertung.enabled:true}")
     private boolean bewertungEnabled = true;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public StrukturAenderungLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, BerichteNaht naht,
             @Value("${voltpilot.uems.berichte.struktur.je-lauf:200}") int zeilenJeLauf) {
@@ -199,7 +211,8 @@ public class StrukturAenderungLaeufer {
                 (bewertungEnabled ? StrukturAufloesung.MESSSTELLE_ARTEN
                         : StrukturAufloesung.MESSSTELLE_ARTEN.stream()
                                 .filter(a -> !"prozesse_zugeordnet".equals(a)).toList()).toArray(String[]::new),
-                bewertungEnabled, bewertungEnabled, bewertungEnabled, bewertungEnabled, zeilenJeLauf);
+                bewertungEnabled, bewertungEnabled, bewertungEnabled, bewertungEnabled,
+                beendete.sqlFeld(), zeilenJeLauf); // Kundenbereich beendet: bleibt ungelesen liegen
         int gelesen = 0;
         int berichte = 0;
         Map<String, String> gescheitert = new LinkedHashMap<>();

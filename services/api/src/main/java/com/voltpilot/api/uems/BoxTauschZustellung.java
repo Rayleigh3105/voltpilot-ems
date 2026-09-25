@@ -8,6 +8,7 @@ import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementConfigPublisher;
 import com.voltpilot.api.measurement.MeasurementSelectionService;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
@@ -65,6 +66,14 @@ public class BoxTauschZustellung {
     private final com.voltpilot.api.enrollment.EnrollmentDeviceLookup identities;
     private final org.springframework.transaction.support.TransactionTemplate transaction;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public BoxTauschZustellung(JdbcTemplate jdbc, @Qualifier("adminJdbcTemplate") JdbcTemplate admin,
             ObjectProvider<EnrollmentService> enrollment, ObjectProvider<ProvisioningPublisher> provisioning,
             ObjectProvider<EntityRegistryPublisher> entities, ObjectProvider<MeasurementConfigPublisher> measurements,
@@ -91,8 +100,9 @@ public class BoxTauschZustellung {
     public void retryPending() {
         if (!enabled) return;
         var pending = admin.query("SELECT tenant_id,old_device_id FROM device_succession "
-                + "WHERE delivered_at IS NULL ORDER BY effective_at LIMIT 20",
-                (rs,n) -> new UUID[] {rs.getObject(1,UUID.class),rs.getObject(2,UUID.class)});
+                + "WHERE delivered_at IS NULL AND NOT (tenant_id = ANY (?::uuid[])) ORDER BY effective_at LIMIT 20",
+                (rs,n) -> new UUID[] {rs.getObject(1,UUID.class),rs.getObject(2,UUID.class)},
+                (Object) beendete.sqlFeld()); // Kundenbereich beendet: bleibt liegen
         UUID previous=TenantContext.get();
         try {
             for (var row: pending) {

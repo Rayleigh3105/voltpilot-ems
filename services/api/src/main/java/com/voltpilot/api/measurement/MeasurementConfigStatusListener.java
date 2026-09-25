@@ -3,6 +3,7 @@ package com.voltpilot.api.measurement;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -30,7 +31,7 @@ import org.springframework.stereotype.Component;
 /** Authenticated, identity-bound apply acknowledgement consumer. */
 @Component
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
-public class MeasurementConfigStatusListener {
+public class MeasurementConfigStatusListener extends Rueckmeldeweg {
     private static final Logger log = LoggerFactory.getLogger(MeasurementConfigStatusListener.class);
     private static final String FILTER = "ems/+/+/+/v2/measurement-config-status";
     private static final Pattern POINT_KEY = Pattern.compile("^[a-z0-9][a-z0-9._*\\[\\]@-]{0,239}$");
@@ -125,6 +126,7 @@ public class MeasurementConfigStatusListener {
 
     /** Test-visible strict validator and monotone state transition. */
     public boolean handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return false; // Kundenbereich beendet: verworfen und gezählt
         try {
             String[] p = topic == null ? new String[0] : topic.split("/");
             if (p.length != 6 || !"ems".equals(p[0]) || !"v2".equals(p[4])

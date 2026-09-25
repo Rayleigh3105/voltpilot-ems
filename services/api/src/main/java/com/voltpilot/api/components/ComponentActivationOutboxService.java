@@ -1,11 +1,13 @@
 package com.voltpilot.api.components;
 
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.Optional;
 import com.voltpilot.api.web.dto.ComponentActivationStatusDto;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,6 +19,14 @@ public class ComponentActivationOutboxService {
     private final JdbcTemplate admin;
     private final JdbcTemplate jdbc;
     private final EntityRegistryService registry;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public ComponentActivationOutboxService(@Qualifier("adminJdbcTemplate") JdbcTemplate admin,
             JdbcTemplate jdbc, EntityRegistryService registry) {
@@ -45,10 +55,11 @@ public class ComponentActivationOutboxService {
     @Scheduled(fixedDelayString = "${voltpilot.components.activation.interval-ms:2000}")
     public void retryPending() {
         admin.query("SELECT id, tenant_id, site_id FROM component_activation_outbox "
-                        + "WHERE status = 'pending' ORDER BY created_at LIMIT 20",
+                        + "WHERE status = 'pending' AND NOT (tenant_id = ANY (?::uuid[])) ORDER BY created_at LIMIT 20",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> process(
                         rs.getLong("id"), rs.getObject("tenant_id", UUID.class),
-                        rs.getObject("site_id", UUID.class)));
+                        rs.getObject("site_id", UUID.class)),
+                (Object) beendete.sqlFeld()); // Kundenbereich beendet: bleibt liegen
     }
 
     private void process(long id, UUID tenantId, UUID siteId) {

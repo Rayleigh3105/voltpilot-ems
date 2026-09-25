@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.EreignisVokabular.Urheber;
 import com.voltpilot.api.uems.EreignisVokabular.Urteil;
@@ -38,6 +39,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -196,6 +198,14 @@ public class KorrekturKaskade {
     private final KaskadeStufen stufen;
     private final int anlaesseJeLauf;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public KorrekturKaskade(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementCatalog katalog,
@@ -288,7 +298,7 @@ public class KorrekturKaskade {
 
     /** Einen Anlass verarbeiten — {@code null}, wenn es keine Arbeit gibt. */
     private Zug einen(Connection con, Instant jetzt) throws SQLException {
-        for (Anlass a : kandidaten(con)) {
+        for (Anlass a : kandidaten(con, beendete.sqlFeld())) {
             if (!sperre(con, "uems-kaskade:" + a.tenant(), false)) {
                 continue;
             }
@@ -320,7 +330,7 @@ public class KorrekturKaskade {
      * ({@code bezugsgroesse_stammdatum:<ID>}, Fassung = der wievielte Eintrag) — jeweils weiter als ihre Wirkung, älteste
      * zuerst.
      */
-    private static List<Anlass> kandidaten(Connection con) throws SQLException {
+    private static List<Anlass> kandidaten(Connection con, String[] beendet) throws SQLException {
         List<Anlass> aus = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT tenant_id, kennung, quelle, fassung, status, objekt FROM (
@@ -386,9 +396,11 @@ public class KorrekturKaskade {
                                     WHERE b.tenant_id = o.tenant_id AND b.wertart = 'stammdatum'
                                       AND (b.standort_id = o.objekt_id OR b.ort_id = o.objekt_id)
                                       AND bezugsdaten_groesse(b.einheit) = 'flaeche')) a
+                 WHERE NOT (a.tenant_id = ANY (?::uuid[]))
                  ORDER BY created_at, kennung, fassung LIMIT ?
                 """)) {
-            ps.setInt(1, KANDIDATEN);
+            ps.setObject(1, beendet); // Kundenbereich beendet: bleibt liegen
+            ps.setInt(2, KANDIDATEN);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     aus.add(new Anlass(rs.getObject(1, UUID.class), rs.getString(2), Quelle.valueOf(rs.getString(3)),

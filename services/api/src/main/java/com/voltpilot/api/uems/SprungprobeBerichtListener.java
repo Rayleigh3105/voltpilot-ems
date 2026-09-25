@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -28,7 +29,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
-public class SprungprobeBerichtListener {
+public class SprungprobeBerichtListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(SprungprobeBerichtListener.class);
     private static final String FILTER = "ems/+/+/+/v2/" + SprungprobeBericht.ERGEBNIS;
@@ -107,6 +108,7 @@ public class SprungprobeBerichtListener {
 
     /** Prüft und übergibt; false = verworfen (ungültig oder keine laufende Probe dieser Box). */
     public boolean handle(String topic, byte[] payload, Instant empfangenUm) {
+        if (kundenbereichBeendet(topic)) return false; // Kundenbereich beendet: verworfen und gezählt
         SprungprobeBericht b = SprungprobeBericht.lesen(topic, payload, mapper);
         if (b == null) return false;
         TenantContext.set(b.tenantId());

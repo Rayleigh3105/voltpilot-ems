@@ -3,6 +3,7 @@ package com.voltpilot.api.zugriff;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
@@ -88,6 +89,14 @@ public class ZugriffBestandLaeufer {
 
     private final boolean enabled;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public ZugriffBestandLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, KeycloakAdminClient keycloak,
             ZugriffBestand bestand, @Value("${voltpilot.uems.zugriff-bestand.enabled:true}") boolean enabled) {
         this.adminJdbc = adminJdbc;
@@ -131,6 +140,7 @@ public class ZugriffBestandLaeufer {
         int fehler = 0;
         int stichtage = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             List<KeycloakUser> liste;
             try {
                 liste = keycloak.listUsersForTenant(tenant);

@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -131,6 +133,14 @@ public class TagVerdichter {
     private final int stapelJeLauf;
     private final int fristJeLauf;
     private final int arbeitHochwasser;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public TagVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -267,6 +277,7 @@ public class TagVerdichter {
                        AND t.endgueltig_ab <= ?
                        AND t.tag <= ?
                        AND t.entity_id IS NOT NULL
+                       AND NOT (t.tenant_id = ANY (?::uuid[]))
                      ORDER BY t.tag
                      LIMIT ?
                     ON CONFLICT DO NOTHING
@@ -275,7 +286,8 @@ public class TagVerdichter {
                 // Grobe, sichere Obergrenze auf der Partitionierungs-Spalte (Chunk-Ausschluss):
                 // ein Tag, dessen Frist abgelaufen ist, liegt mindestens sieben Tage zurück.
                 ps.setObject(2, LocalDate.ofInstant(jetzt.minus(TagRegeln.FRIST), UTC));
-                ps.setInt(3, fristJeLauf);
+                ps.setObject(3, beendete.sqlFeld()); // Kundenbereich beendet: der Tag bleibt vorläufig
+                ps.setInt(4, fristJeLauf);
                 return ps.executeUpdate();
             }
         });
@@ -371,6 +383,7 @@ public class TagVerdichter {
                 DELETE FROM messreihe_tag_arbeit a
                  USING (SELECT tenant_id, entity_id, messkanal, utc_tag
                           FROM messreihe_tag_arbeit
+                         WHERE NOT (tenant_id = ANY (?::uuid[]))
                          ORDER BY utc_tag, eingetragen_am
                          LIMIT ?
                          FOR UPDATE SKIP LOCKED) c
@@ -378,7 +391,8 @@ public class TagVerdichter {
                    AND a.messkanal = c.messkanal AND a.utc_tag = c.utc_tag
                 RETURNING a.tenant_id, a.entity_id, a.messkanal, a.utc_tag
                 """)) {
-            ps.setInt(1, limit);
+            ps.setObject(1, beendete.sqlFeld()); // Kundenbereich beendet: der Auftrag bleibt liegen
+            ps.setInt(2, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     aus.add(new Auftrag(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),

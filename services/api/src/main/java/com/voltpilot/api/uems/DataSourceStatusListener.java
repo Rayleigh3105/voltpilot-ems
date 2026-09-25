@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.metrics.GemeinsameSteuerungHerzschlag;
 import com.voltpilot.api.metrics.GemeinsameSteuerungUhrMetrik;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -47,7 +48,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "voltpilot.uems.data-source-status.mqtt-listener-enabled",
         havingValue = "true", matchIfMissing = true)
-public class DataSourceStatusListener {
+public class DataSourceStatusListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -184,6 +185,7 @@ public class DataSourceStatusListener {
 
     /** Test-visible parser for one old or new heartbeat fixture. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         Instant empfangenUm = uhr.instant();
         JsonNode json;
         try {

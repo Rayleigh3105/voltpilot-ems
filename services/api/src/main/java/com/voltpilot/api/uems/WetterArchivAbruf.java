@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Connection;
@@ -16,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -49,6 +51,14 @@ public class WetterArchivAbruf {
     private final JdbcTemplate admin;
     private final ObjectMapper json;
     private final WetterArchiv archiv;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public WetterArchivAbruf(@Qualifier("adminJdbcTemplate") JdbcTemplate admin, ObjectMapper json,
             WetterArchiv archiv) {
@@ -92,6 +102,7 @@ public class WetterArchivAbruf {
                 ZoneId.of(r.getString("zone"))), nur, nur);
         int abgerufen = 0, ohne = 0, ausfaelle = 0, fehler = 0, geschrieben = 0;
         for (Bezug b : bezuege) {
+            if (beendete.beendet(b.tenant())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             if (b.breite() == null || b.laenge() == null) {
                 ohne++;
                 continue;

@@ -114,10 +114,14 @@ public class AdminEdgeUpdateController {
     }
 
     @PostMapping("/rollouts")
-    public ResponseEntity<Map<String, String>> createRollout(
+    public ResponseEntity<Map<String, Object>> createRollout(
             @Valid @RequestBody UpdateRequest req, @AuthenticationPrincipal Jwt caller) {
-        UUID id = rollouts.createRollout(req.releaseSeq(), req.devices(), actor(caller));
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("rolloutId", id.toString()));
+        RolloutService.Rollout r = rollouts.createRollout(req.releaseSeq(), req.devices(), actor(caller));
+        // additiv: die ausgelassenen Boxen beendeter Kundenbereiche (AP-20, E10 = A), sonst leer
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("rolloutId", r.id().toString(),
+                "ausgelassen", r.ausgelassen().stream().map(a -> Map.of("deviceId", a.deviceId().toString(),
+                        "label", a.label(), "kundenbereich", a.kundenbereich(),
+                        "grund", "kundenbereich_beendet")).toList()));
     }
 
     // ── Einzelgerät ──────────────────────────────────────────────────────

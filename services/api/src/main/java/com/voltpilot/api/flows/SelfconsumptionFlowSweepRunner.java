@@ -1,5 +1,6 @@
 package com.voltpilot.api.flows;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -57,6 +58,14 @@ public class SelfconsumptionFlowSweepRunner {
     private final FlowService flowService;
     private final boolean enabled;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     /** The {@code @Autowired} is load-bearing (the two-constructor footgun). */
     @Autowired
     public SelfconsumptionFlowSweepRunner(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -94,6 +103,7 @@ public class SelfconsumptionFlowSweepRunner {
         int failed = 0;
         List<Candidate> flows = pending();
         for (Candidate c : flows) {
+            if (beendete.beendet(c.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 if (c.hasActive()) {
                     TenantContext.set(c.tenantId());

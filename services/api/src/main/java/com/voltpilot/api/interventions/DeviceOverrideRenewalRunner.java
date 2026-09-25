@@ -3,6 +3,7 @@ package com.voltpilot.api.interventions;
 import com.voltpilot.api.consumers.ConsumerOverridePublisher;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.RuheRegel;
@@ -12,6 +13,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -58,6 +60,14 @@ public class DeviceOverrideRenewalRunner {
     private final ObjectProvider<ConsumerOverridePublisher> publisher;
     private final ObjectProvider<EntityRegistryService> registry;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public DeviceOverrideRenewalRunner(DeviceOverrideRepository overrides,
             EntityRegistryRepository entities,
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -87,6 +97,7 @@ public class DeviceOverrideRenewalRunner {
         List<DeviceOverrideRepository.Renewal> due =
                 overrides.dueForRenewal(adminJdbc, now.minus(Handeingriff.ERNEUERN_NACH));
         for (DeviceOverrideRepository.Renewal row : due) {
+            if (beendete.beendet(row.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             if (row.entityId() == null) {
                 // Die Anlagen-Pause reist im RETAINED Registry-Push - sie braucht
                 // kein erneutes Aussenden, nur den Stempel, damit sie nicht bei
@@ -101,6 +112,7 @@ public class DeviceOverrideRenewalRunner {
         }
         int ruhe = 0;
         for (DeviceOverrideRepository.RuheErneuerung row : overrides.ruheZuErneuern(adminJdbc, now)) {
+            if (beendete.beendet(row.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             if (pushRuhe(row)) {
                 overrides.markRenewed(adminJdbc, row.id());
                 ruhe++;

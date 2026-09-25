@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -31,7 +32,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
-public class PlanResultListener {
+public class PlanResultListener extends Rueckmeldeweg {
     private static final Logger log = LoggerFactory.getLogger(PlanResultListener.class);
     private static final String FILTER = "ems/+/+/+/v2/plan-result";
     /** Geschlossen; Zwillinge: Go plan2.Grund*, CHECK plan_zustellung_grund_chk, Vektoren. */
@@ -115,6 +116,7 @@ public class PlanResultListener {
 
     /** Prüft und schreibt; false = verworfen (ungültig, fremde Box, älter als das Gespeicherte). */
     public boolean handle(String topic, byte[] payload, Instant empfangenUm) {
+        if (kundenbereichBeendet(topic)) return false; // Kundenbereich beendet: verworfen und gezählt
         Gepruefte g = pruefe(topic, payload, empfangenUm);
         if (g == null) return false;
         TenantContext.set(g.tenantId());

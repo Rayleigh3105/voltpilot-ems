@@ -1,11 +1,13 @@
 package com.voltpilot.api.provisioning;
 
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,6 +23,14 @@ public class MoveProvisioningOutboxService {
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final EntityRegistryService registry;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public MoveProvisioningOutboxService(
             @Qualifier("adminJdbcTemplate") JdbcTemplate admin,
             ObjectProvider<ProvisioningPublisher> provisioning,
@@ -35,12 +45,14 @@ public class MoveProvisioningOutboxService {
         List<PendingMove> pending = admin.query(
                 "SELECT id, tenant_id, device_id, from_site_id, to_site_id, external_ref "
                         + "FROM move_provisioning_operation WHERE status = 'pending' "
+                        + "AND NOT (tenant_id = ANY (?::uuid[])) " // Kundenbereich beendet: bleibt liegen
                         + "ORDER BY created_at LIMIT 20",
                 (rs, rowNum) -> new PendingMove(
                         rs.getLong("id"), rs.getObject("tenant_id", UUID.class),
                         rs.getObject("device_id", UUID.class),
                         rs.getObject("from_site_id", UUID.class),
-                        rs.getObject("to_site_id", UUID.class), rs.getString("external_ref")));
+                        rs.getObject("to_site_id", UUID.class), rs.getString("external_ref")),
+                (Object) beendete.sqlFeld());
         pending.forEach(this::process);
     }
 

@@ -1,5 +1,6 @@
 package com.voltpilot.api.unterstuetzung;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.unterstuetzung.UnterstuetzungService.Lauf;
@@ -56,6 +57,14 @@ public class AblaufLaeufer {
         this.melder = melder;
     }
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public AblaufLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, UnterstuetzungService dienst) {
         this.adminJdbc = adminJdbc;
         this.dienst = dienst;
@@ -83,6 +92,7 @@ public class AblaufLaeufer {
         int abgelaufen = 0;
         int erinnert = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 Lauf l = dienst.lauf(jetzt);

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.uems.EreignisVokabular.Urheber;
 import com.voltpilot.api.uems.EreignisVokabular.Urteil;
 import com.voltpilot.api.uems.KorrekturVorschlagRegeln.Bestehend;
@@ -34,6 +35,7 @@ import java.util.UUID;
 import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -101,6 +103,14 @@ public class KorrekturVorschlagLauf {
     private final ViertelstundeVerdichter verdichter;
     private final SpaetankunftMelder melder;
     private final int jeLauf;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public KorrekturVorschlagLauf(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -225,12 +235,12 @@ public class KorrekturVorschlagLauf {
     private List<Reihe> offeneReihen() {
         return adminJdbc.query("""
                 SELECT tenant_id, entity_id, messkanal FROM messreihe_korrektur_vorschlag
-                 WHERE zustand = 'offen'
+                 WHERE zustand = 'offen' AND NOT (tenant_id = ANY (?::uuid[]))
                  GROUP BY tenant_id, entity_id, messkanal
                  ORDER BY min(endgueltig_ab)
                  LIMIT ?
                 """, (rs, n) -> new Reihe(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getString(3)),
-                jeLauf);
+                beendete.sqlFeld(), jeLauf); // Kundenbereich beendet: bleibt liegen
     }
 
     private void nachlieferung(Connection con, Reihe r, Instant jetzt, Zaehler z) throws SQLException {

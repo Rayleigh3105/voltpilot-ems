@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Clock;
@@ -35,6 +36,14 @@ public class UebergabeLaeufer {
     }
 
     private final Clock uhr;
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public UebergabeLaeufer(UebergabeAufgaben aufgaben, EntityRegistryService registry,
             ObjectProvider<Clock> uhr) {
         this.aufgaben = aufgaben;
@@ -48,6 +57,7 @@ public class UebergabeLaeufer {
         var vorher = TenantContext.get();
         try {
             for (var a : aufgaben.faellig(jetzt)) {
+                if (beendete.beendet(a.tenant())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
                 TenantContext.set(a.tenant());
                 try { registry.pushRegistryBestEffort(a.site(), jetzt); }
                 catch (RuntimeException e) { LOG.warn("Übergabe {} ausstehend: {}", a.site(), e.toString()); }

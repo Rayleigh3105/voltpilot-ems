@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.SpeicherklasseHistorie;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BilanzRestRepository.FassungMitRest;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -113,6 +115,14 @@ public class BerechnetePeriodenLauf {
     private final SpeicherklasseHistorie historie;
     private final BerechnetePeriodenRepository speicher;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public BerechnetePeriodenLauf(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, JdbcTemplate jdbc,
             MessstelleRepository messstellen, BilanzRestRepository reste, MessstelleFormelTermRepository terme,
             BilanzStellungen stellungen, MessstelleWerteService werte, SpeicherklasseHistorie historie,
@@ -133,6 +143,7 @@ public class BerechnetePeriodenLauf {
         Zaehler z = new Zaehler();
         for (UUID tenant : adminJdbc.queryForList(
                 "SELECT DISTINCT tenant_id FROM messstelle WHERE art = 'berechnet' ORDER BY tenant_id", UUID.class)) {
+                    if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             UUID vorher = TenantContext.get();
             TenantContext.set(tenant);
             try {

@@ -3,6 +3,7 @@ package com.voltpilot.api.control;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -49,7 +50,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.control.mqtt-listener-enabled", havingValue = "true")
-public class ControlStatusListener {
+public class ControlStatusListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(ControlStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -178,6 +179,7 @@ public class ControlStatusListener {
 
     /** Package-visible + test-visible: parse one status heartbeat's control block. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

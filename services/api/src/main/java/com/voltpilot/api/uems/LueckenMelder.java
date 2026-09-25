@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.EreignisVokabular.Urheber;
 import com.voltpilot.api.uems.EreignisVokabular.Urteil;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -107,6 +109,14 @@ public class LueckenMelder {
     private final int stapel;
     private final int stapelJeLauf;
     private final int werteJeLochsuche;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public LueckenMelder(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementCatalog katalog,
@@ -239,12 +249,13 @@ public class LueckenMelder {
                   FROM device d
                  CROSS JOIN LATERAL (SELECT max(x.received_at) AS letzte FROM telemetry x
                                       WHERE x.device_id = d.id AND x.received_at <= ?) t
-                 WHERE d.status = 'claimed' AND t.letzte IS NOT NULL
+                 WHERE d.status = 'claimed' AND t.letzte IS NOT NULL AND NOT (d.tenant_id = ANY (?::uuid[]))
                 ON CONFLICT (tenant_id, einheit) DO UPDATE SET
                        zuletzt = GREATEST(st.zuletzt, EXCLUDED.zuletzt), faellig_ab = EXCLUDED.faellig_ab
                 """)) {
             ps.setTimestamp(1, Timestamp.from(jetzt));
             ps.setTimestamp(2, Timestamp.from(bis));
+            ps.setObject(3, beendete.sqlFeld()); // Kundenbereich beendet: sein Stand bleibt, wie er ist
             return ps.executeUpdate();
         }
     }
@@ -377,13 +388,14 @@ public class LueckenMelder {
                        luecke_seit, luecke_kadenz_s, erste_nach, nachlieferung_von,
                        nachlieferung_bis, nachlieferung_gemeldet_bis, geprueft_bis
                   FROM messreihe_luecke_stand
-                 WHERE faellig_ab <= ?
+                 WHERE faellig_ab <= ? AND NOT (tenant_id = ANY (?::uuid[]))
                  ORDER BY (art = 'box'), faellig_ab
                  LIMIT ?
                  FOR UPDATE SKIP LOCKED
                 """)) {
             ps.setTimestamp(1, Timestamp.from(jetzt));
-            ps.setInt(2, stapel);
+            ps.setObject(2, beendete.sqlFeld()); // Kundenbereich beendet: keine Lücke, bleibt liegen
+            ps.setInt(3, stapel);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Einheit e = new Einheit();

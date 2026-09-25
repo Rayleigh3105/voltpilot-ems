@@ -6061,10 +6061,32 @@ paths:
                   minItems: 1
                   items: { type: string, format: uuid }
       responses:
-        "201": { description: Started; every chosen device has its assignment. }
+        "201":
+          description: >
+            Started; every chosen device has its assignment - except devices of
+            an ENDED customer area (UEMS AP-20, E10 = A "alles gesperrt"): they
+            get no row and no retained instruction, and `ausgelassen` names them
+            (additive; empty otherwise).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rolloutId, ausgelassen]
+                properties:
+                  rolloutId: { type: string, format: uuid }
+                  ausgelassen:
+                    type: array
+                    items:
+                      type: object
+                      required: [deviceId, label, kundenbereich, grund]
+                      properties:
+                        deviceId: { type: string, format: uuid }
+                        label: { type: string }
+                        kundenbereich: { type: string, description: Name of the ended customer area. }
+                        grund: { type: string, enum: [kundenbereich_beendet] }
         "400": { description: No devices, or an unknown device. }
         "404": { description: The release is not registered. }
-        "409": { description: The release is not signed. }
+        "409": { description: The release is not signed - or every chosen device belongs to an ended customer area (kundenbereich_beendet). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 

@@ -35,9 +35,28 @@ verwirft mit Zählung. IP-17 (Gesamtabzug) und IP-18 (Löschen nach der Frist, L
   Route und machte 76 E2E-Fälle rot (`ERR_CONNECTION_REFUSED` auf der Bühne, die Specs zählen
   Konsolenfehler). Der Satz kommt aus der API (`KundenbereichEnde.text()`), er nennt den
   Gesamtabzug erst mit IP-17.
-- **Offen (Befund IP-16):** die 20 MQTT-Rückmeldewege der API (`*StatusListener`,
-  `*ResultListener`) und die Läufer (`@Scheduled`) schreiben für beendete Bereiche weiter; der
-  Flotten-Rollout `POST /admin/rollouts` erreicht auch ihre Boxen.
+- **Wege ohne Route (Folgepaket zu IP-16):** EINE Stelle `BeendeteKundenbereiche` (api, liest
+  `tenant.beendet_am` höchstens einmal je Minute über die Admin-Verbindung; Lesefehler = letzter
+  Stand; `beenden`/`wiederaufnehmen` dieser Instanz wirken sofort über `vergessen()`).
+  - **MQTT-Rückmeldewege:** jede Klasse, die bei einem Paho-Client abonniert, erbt von
+    `Rueckmeldeweg`; erste Anweisung ihres `handle(topic, …)` ist `kundenbereichBeendet(topic)` —
+    verworfen, gezählt (`voltpilot_rueckmeldung_verworfen_total{weg, grund}`), keine
+    Ablehnungszeile. OCPP quittiert das Verworfene (sonst stellte der Broker endlos neu zu).
+    Der Stand kommt per Setter (`@Autowired(required = false)`), damit die ~45 `new …Listener(…)`
+    der Tests bleiben; ohne Spring gilt `BeendeteKundenbereiche.KEINE`.
+  - **Läufer:** Schleife je Kundenbereich → `if (beendete.beendet(t)) continue;`. Warteschlange mit
+    `ORDER BY … LIMIT` → Filter IM SQL `NOT (tenant_id = ANY (?::uuid[]))` mit `beendete.sqlFeld()`
+    — **Falle:** in Java auslassen hielte die Zeilen vorn und blockierte jeden anderen Bereich; die
+    Zeilen bleiben liegen und laufen nach einer Wiederaufnahme. Kein neuer Spaltenbezug im SQL der
+    Läufer (Migrationsfalle 2 der Vorrede). Ausnahmen mit Grund (Kennzahlen des Betriebs,
+    Aufbewahrung, OCPP-Zeitablauf, Freigaberegister als Schutz, Plattform-Kataloge) stehen in
+    `LaeuferBeendetArchitekturTest.OHNE_SPERRE` — ein neuer Läufer muss sich dort oder an der
+    Sperre entscheiden.
+  - **Flotten-Rollout:** `POST /admin/rollouts` lässt Boxen beendeter Bereiche aus und nennt sie
+    additiv in `ausgelassen[]`; nur solche → 409, kein Auftrag. Einzelzuweisung 409, der
+    Drift-Wächter veröffentlicht für sie nichts nach. Das Portal zeigt `ausgelassen` noch nicht.
 - **Nachweis:** `KundenbereichBeendetApiTest` (NW-5, Routen aus `RequestMappingHandlerMapping`,
-  Fingerabdruck der ganzen DB unverändert), `KundenbereichEndeTest`, ingest
-  `BeendeteKundenbereicheTest`, Portal `KundenbereichEndeHinweis.test.tsx`.
+  Fingerabdruck der ganzen DB unverändert), `KundenbereichBeendetWegeTest` (jeder Rückmeldeweg aus
+  dem Code, Läufer, Rollout — mit aktivem Bereich als Gegenprobe), `RueckmeldewegArchitekturTest`,
+  `LaeuferBeendetArchitekturTest`, `KundenbereichEndeTest`, ingest `BeendeteKundenbereicheTest`,
+  Portal `KundenbereichEndeHinweis.test.tsx`.

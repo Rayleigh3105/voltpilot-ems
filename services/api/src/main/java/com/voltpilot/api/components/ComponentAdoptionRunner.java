@@ -1,10 +1,12 @@
 package com.voltpilot.api.components;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -65,6 +67,14 @@ public class ComponentAdoptionRunner {
     private final ComponentRebindService rebind;
     private final boolean enabled;
     private final boolean reconcileEnabled;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     /**
      * Das {@code @Autowired} ist TRAGEND (die BrokerAuthzReloader-Falle): mit
@@ -139,6 +149,7 @@ public class ComponentAdoptionRunner {
         int waiting = 0;
         int failed = 0;
         for (Candidate c : candidates) {
+            if (beendete.beendet(c.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(c.tenantId());
                 ComponentAdoptionService.Outcome outcome = adoption.adoptIfComplete(c.siteId());
@@ -202,6 +213,7 @@ public class ComponentAdoptionRunner {
         int rebound = 0;
         int failed = 0;
         for (Candidate c : candidates) {
+            if (beendete.beendet(c.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(c.tenantId());
                 rebound += rebind.rebindOrphanedPins(c.siteId()).rebound();

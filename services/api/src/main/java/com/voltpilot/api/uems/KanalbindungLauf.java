@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.time.*;
@@ -9,6 +10,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -21,6 +23,14 @@ public class KanalbindungLauf {
     private final JdbcTemplate admin;
     private final ObjectMapper json;
     private final AtomicLong fehler=new AtomicLong();
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public KanalbindungLauf(@Qualifier("adminJdbcTemplate") JdbcTemplate admin,ObjectMapper json) {
         this.admin=admin; this.json=json;
     }
@@ -49,6 +59,7 @@ public class KanalbindungLauf {
                 r.getInt("kadenz_s"),r.getTimestamp("von").toInstant(),instant(r,"bis"),ZoneId.of(r.getString("zone")),r.getBigDecimal("raumtemperatur"),r.getBigDecimal("heizgrenze"),r.getObject("messstelle_id",UUID.class),r.getBigDecimal("schwelle_kw")),ts(jetzt),tenant,tenant);
         int anzahl=0;
         for (Bindung b:bindungen) {
+            if (beendete.beendet(b.tenant())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             Integer neu=admin.execute((Connection con)->{
                 boolean auto=con.getAutoCommit(); con.setAutoCommit(false);
                 Savepoint punkt=con.setSavepoint();

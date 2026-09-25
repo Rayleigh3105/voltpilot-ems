@@ -2,6 +2,7 @@ package com.voltpilot.api.probe;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -46,7 +47,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
-public class ProbeResultListener {
+public class ProbeResultListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(ProbeResultListener.class);
     private static final String RESULT_FILTER = "ems/+/+/+/v2/probe-result";
@@ -176,6 +177,7 @@ public class ProbeResultListener {
 
     /** Test-visible: parse one answer and hand it to the waiting request. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

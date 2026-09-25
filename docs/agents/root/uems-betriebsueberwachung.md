@@ -81,6 +81,17 @@ Nachweise: `IngestMetrikenTest` (je Stelle genau ein Zuwachs mit dem richtigen `
 Nachricht wird weiterhin nicht weitergereicht), `MetrikEndpunktTest` (anonymes `GET /metrics`, und
 kein anderer Actuator-Endpunkt ist mitaufgegangen).
 
+## Verwerfungen der Rückmeldewege der api (AP-20, Vertragsende)
+
+| Metrik | Labels | Bedeutung |
+|---|---|---|
+| `voltpilot_rueckmeldung_verworfen_total` | `weg`, `grund` | MQTT-Rückmeldungen einer Box, die die api verworfen hat, ohne etwas zu schreiben; `weg` = Klasse des Rückmeldewegs (`ChargerStatusListener` …, eine Reihe je `Rueckmeldeweg`, ab dem Start mit 0), `grund` = `kundenbereich_beendet` |
+
+Ein Zuwachs heißt: eine Box eines beendeten Kundenbereichs meldet sich noch (Status, Quittung,
+Lösch-Anfrage). Das ist kein Fehler der api, sondern ein Hinweis an den Betrieb, die Box abzubauen.
+Mandant und Box stehen nicht im Label (DEBUG-Zeile). Quelle und Fallen:
+[Vertragsende](uems-kundenbereich-beendet.md).
+
 Die zwei `…_zustand`-Metriken sind der Hausstil von `voltpilot_site_telemetry_state`. Ohne sie kann
 eine Regel „steht“ nicht von „ist abgeschaltet“ und „lief seit dem Neustart noch nie“ unterscheiden
 — und ein abgeschalteter Läufer soll gerade KEINEN Daueralarm erzeugen.

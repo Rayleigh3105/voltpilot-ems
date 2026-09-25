@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.kundenbereich.KundenbereichEnde;
 import com.voltpilot.api.kundenbereich.KundenbereichEndeRepository;
 import com.voltpilot.api.repo.TenantRepository;
@@ -42,10 +43,13 @@ public class AdminKundenbereichEndeController {
 
     private final TenantRepository tenants;
     private final KundenbereichEndeRepository ende;
+    private final BeendeteKundenbereiche beendete;
 
-    public AdminKundenbereichEndeController(TenantRepository tenants, KundenbereichEndeRepository ende) {
+    public AdminKundenbereichEndeController(TenantRepository tenants, KundenbereichEndeRepository ende,
+            BeendeteKundenbereiche beendete) {
         this.tenants = tenants;
         this.ende = ende;
+        this.beendete = beendete;
     }
 
     public record BeendenRequest(@NotBlank String auftrag, @NotBlank String begruendung, @NotBlank String confirmName,
@@ -65,6 +69,7 @@ public class AdminKundenbereichEndeController {
         KundenbereichEnde beendet = ende.beenden(tenantId, request.auftrag().trim(), request.begruendung().trim(), frist,
                 akteur(auth)).orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "kundenbereich_schon_beendet"));
+        beendete.vergessen(); // Rückmeldewege, Läufer und Rollout dieser Instanz sperren sofort
         return Map.of("zustand", "beendet", "beendet_am", beendet.beendetAm().toString(), "frist_tage",
                 beendet.fristTage(), "loeschung_fruehestens", beendet.loeschungFruehestens().toString());
     }
@@ -77,6 +82,7 @@ public class AdminKundenbereichEndeController {
         if (!ende.wiederaufnehmen(tenantId, request.auftrag().trim(), request.begruendung().trim(), akteur(auth))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "kundenbereich_nicht_beendet");
         }
+        beendete.vergessen();
         return Map.of("zustand", "aktiv");
     }
 

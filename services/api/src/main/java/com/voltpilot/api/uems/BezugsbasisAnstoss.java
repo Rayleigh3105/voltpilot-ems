@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -107,6 +108,14 @@ public class BezugsbasisAnstoss {
      * (Pfad 2) läuft über ihren Schalter; ohne sie (Minimal-Kontexte) stößt der Läufer keinen Vorgang an.
      */
     private VerbesserungNaht verbesserung;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public BezugsbasisAnstoss() {}
 
@@ -379,6 +388,7 @@ public class BezugsbasisAnstoss {
                AND EXISTS (SELECT 1 FROM bezugsbasis_fassung f
                             WHERE f.tenant_id = z.tenant_id AND f.freigabe_status = 'freigegeben'
                               AND f.freigegeben_am < z.created_at)
+               AND NOT (z.tenant_id = ANY (?::uuid[]))
              ORDER BY z.created_at, z.protokoll, z.id
              LIMIT ?
             """;
@@ -395,7 +405,7 @@ public class BezugsbasisAnstoss {
                 rs.getLong("id"), rs.getObject("tenant_id", UUID.class), rs.getString("objekt_art"),
                 rs.getObject("objekt_id", UUID.class), rs.getString("art"), json(rs.getString("alt")),
                 json(rs.getString("neu")), rs.getObject("gilt_ab", LocalDate.class), rs.getBoolean("rueckwirkend"),
-                rs.getTimestamp("created_at").toInstant()), zeilenJeLauf);
+                rs.getTimestamp("created_at").toInstant()), beendete.sqlFeld(), zeilenJeLauf);
         int gelesen = 0;
         List<Gesetzt> gesetzt = new ArrayList<>();
         Map<String, String> gescheitert = new LinkedHashMap<>();

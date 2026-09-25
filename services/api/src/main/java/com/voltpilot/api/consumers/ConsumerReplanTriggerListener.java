@@ -2,6 +2,7 @@ package com.voltpilot.api.consumers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -52,7 +53,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "voltpilot.consumer-control.replan-trigger-enabled",
         havingValue = "true")
-public class ConsumerReplanTriggerListener {
+public class ConsumerReplanTriggerListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(ConsumerReplanTriggerListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -160,6 +161,7 @@ public class ConsumerReplanTriggerListener {
 
     /** Package-visible for tests: observe one heartbeat's consumers block. */
     public void handle(String topic, byte[] payload, Instant now) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

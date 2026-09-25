@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.VerbrauchRegeln.Anteil;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -81,6 +83,14 @@ public class ErsatzwertLauf {
     private final MeasurementCatalog katalog;
     private final ViertelstundeVerdichter verdichter;
     private final int ersatzwerteJeLauf;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public ErsatzwertLauf(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -535,7 +545,7 @@ public class ErsatzwertLauf {
                   FROM messreihe_ersatzwert e
                   JOIN messreihe_ersatzwert a ON a.tenant_id = e.tenant_id AND a.kennung = e.kennung AND a.fassung = 1
                   LEFT JOIN messreihe_ersatzwert_wirkung w ON w.tenant_id = e.tenant_id AND w.kennung = e.kennung
-                 WHERE true
+                 WHERE NOT (e.tenant_id = ANY (?::uuid[]))
                    AND NOT EXISTS (
                        SELECT 1 FROM messreihe_korrektur k
                        JOIN LATERAL (SELECT status FROM messreihe_korrektur f
@@ -548,7 +558,8 @@ public class ErsatzwertLauf {
                  ORDER BY max(e.created_at), e.kennung
                  LIMIT ?
                 """)) {
-            ps.setInt(1, KANDIDATEN);
+            ps.setObject(1, beendete.sqlFeld()); // Kundenbereich beendet: bleibt liegen
+            ps.setInt(2, KANDIDATEN);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     out.add(new Kandidat(rs.getObject(1, UUID.class), rs.getString(2), rs.getObject(3, UUID.class),

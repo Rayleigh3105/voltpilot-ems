@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.uems.KaskadeStufen.Gebildet;
@@ -68,6 +69,14 @@ public class TagesmengeNachtragLaeufer {
         this.melder = melder;
     }
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public TagesmengeNachtragLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementCatalog katalog, ErsatzwertLauf ersatzwerte,
             @Value("${voltpilot.uems.tagesmenge-nachtrag.enabled:true}") boolean enabled) {
@@ -111,6 +120,7 @@ public class TagesmengeNachtragLaeufer {
         int fehler = 0;
         List<String> ohneMenge = new ArrayList<>();
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 for (Kandidat k : kandidaten(tenant)) {
                     String ergebnis = inTransaktion(con -> vorschlagen(con, k, jetzt));

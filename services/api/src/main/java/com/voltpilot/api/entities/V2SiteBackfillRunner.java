@@ -1,11 +1,13 @@
 package com.voltpilot.api.entities;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -78,6 +80,14 @@ public class V2SiteBackfillRunner {
     private final Clock clock;
     private final boolean enabled;
     private final boolean reconcileEnabled;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     /**
      * The {@code @Autowired} is LOAD-BEARING (the BrokerAuthzReloader footgun):
@@ -173,6 +183,7 @@ public class V2SiteBackfillRunner {
         int skipped = 0;
         int failed = 0;
         for (Candidate c : candidates) {
+            if (beendete.beendet(c.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(c.tenantId());
                 EntityRegistryService.BackfillOutcome outcome =

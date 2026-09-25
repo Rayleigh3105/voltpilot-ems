@@ -1,9 +1,11 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import java.sql.Timestamp;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -69,6 +71,7 @@ public class EndgueltigkeitLauf {
                  WHERE zustand = 'vorlaeufig'
                    AND intervall_beginn <= ?
                    AND entity_id IS NOT NULL
+                   AND NOT (tenant_id = ANY (?::uuid[]))
                  ORDER BY intervall_beginn
                  LIMIT ?
                  FOR UPDATE SKIP LOCKED)
@@ -83,6 +86,14 @@ public class EndgueltigkeitLauf {
     private final JdbcTemplate adminJdbc;
     private final int stapelGroesse;
     private final int stapelJeLauf;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public EndgueltigkeitLauf(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
@@ -104,7 +115,7 @@ public class EndgueltigkeitLauf {
                 jetzt.minus(ViertelstundeRegeln.FRIST).minus(ViertelstundeRegeln.LAENGE));
         int gesamt = 0;
         for (int i = 0; i < stapelJeLauf; i++) {
-            int n = adminJdbc.update(FAELLIG, schwelle, stapelGroesse);
+            int n = adminJdbc.update(FAELLIG, schwelle, beendete.sqlFeld(), stapelGroesse); // beendet: bleibt vorläufig
             gesamt += n;
             if (n == 0) {
                 break;

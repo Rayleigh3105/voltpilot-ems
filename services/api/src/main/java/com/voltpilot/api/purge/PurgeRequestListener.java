@@ -2,6 +2,7 @@ package com.voltpilot.api.purge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BelegeImWeg;
@@ -47,7 +48,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.purge.mqtt-listener-enabled", havingValue = "true")
-public class PurgeRequestListener {
+public class PurgeRequestListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(PurgeRequestListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -143,6 +144,7 @@ public class PurgeRequestListener {
     }
 
     void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

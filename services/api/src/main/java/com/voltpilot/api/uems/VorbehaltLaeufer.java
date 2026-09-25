@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Clock;
@@ -42,6 +43,14 @@ public class VorbehaltLaeufer {
         this.melder = melder;
     }
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public VorbehaltLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, VorbehaltDienst vorbehalt) {
         this.adminJdbc = adminJdbc;
         this.vorbehalt = vorbehalt;
@@ -71,6 +80,7 @@ public class VorbehaltLaeufer {
                 "SELECT DISTINCT tenant_id FROM steuerungsverbund ORDER BY tenant_id", UUID.class);
         int geprueft = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 for (UUID anlage : vorbehalt.anlagen()) {

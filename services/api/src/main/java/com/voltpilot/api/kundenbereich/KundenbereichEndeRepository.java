@@ -6,6 +6,7 @@ import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -36,6 +37,11 @@ public class KundenbereichEndeRepository {
         return jdbc.query("SELECT id, beendet_am, beendet_frist_tage, beendet_von FROM tenant"
                 + " WHERE id = ? AND beendet_am IS NOT NULL", KundenbereichEndeRepository::ende, kundenbereich)
                 .stream().findFirst();
+    }
+
+    /** Alle beendeten Kundenbereiche — der Stand hinter {@link BeendeteKundenbereiche}. */
+    public Set<UUID> alleBeendeten() {
+        return Set.copyOf(jdbc.queryForList("SELECT id FROM tenant WHERE beendet_am IS NOT NULL", UUID.class));
     }
 
     /** Der Kundenbereich einer Anlage (Plattform-Routen {@code /admin/sites/{siteId}/…}). */

@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
 import com.voltpilot.api.uems.VerbrauchRegeln.Teilperiode;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -78,6 +80,14 @@ public class PeriodeVerdichter {
     private final int stapelJeLauf;
     private final int nachholenJeLauf;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public PeriodeVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementCatalog katalog,
@@ -127,8 +137,9 @@ public class PeriodeVerdichter {
                   FROM messreihe_periode p
                  WHERE p.zustand = 'vorlaeufig' AND p.endgueltig_ab <= ?
                    AND p.entity_id IS NOT NULL
+                   AND NOT (p.tenant_id = ANY (?::uuid[]))
                 ON CONFLICT DO NOTHING
-                """, Timestamp.from(jetzt));
+                """, Timestamp.from(jetzt), beendete.sqlFeld()); // Kundenbereich beendet: bleibt vorläufig
     }
 
     /**
@@ -147,9 +158,10 @@ public class PeriodeVerdichter {
                                       AND p.messkanal = t.messkanal AND p.art = 'monat'
                                       AND p.tag = date_trunc('month', t.tag)::date)
                    AND t.entity_id IS NOT NULL
+                   AND NOT (t.tenant_id = ANY (?::uuid[]))
                  LIMIT ?
                 ON CONFLICT DO NOTHING
-                """, nachholenJeLauf);
+                """, beendete.sqlFeld(), nachholenJeLauf);
     }
 
     // ================================================================== Das Bilden
@@ -200,6 +212,7 @@ public class PeriodeVerdichter {
                 DELETE FROM messreihe_periode_arbeit a
                  USING (SELECT tenant_id, entity_id, messkanal, art, tag
                           FROM messreihe_periode_arbeit
+                         WHERE NOT (tenant_id = ANY (?::uuid[]))
                          ORDER BY art DESC, tag, eingetragen_am
                          LIMIT ?
                          FOR UPDATE SKIP LOCKED) c
@@ -207,7 +220,8 @@ public class PeriodeVerdichter {
                    AND a.messkanal = c.messkanal AND a.art = c.art AND a.tag = c.tag
                 RETURNING a.tenant_id, a.entity_id, a.messkanal, a.art, a.tag
                 """)) {
-            ps.setInt(1, stapelGroesse);
+            ps.setObject(1, beendete.sqlFeld()); // Kundenbereich beendet: der Auftrag bleibt liegen
+            ps.setInt(2, stapelGroesse);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     aus.add(new Auftrag(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),

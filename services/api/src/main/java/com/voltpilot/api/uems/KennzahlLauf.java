@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.KennzahlEingangLeser.Gelesen;
 import com.voltpilot.api.uems.KennzahlEingangLeser.Paar;
@@ -40,6 +41,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -182,6 +184,14 @@ public class KennzahlLauf {
         this.verbesserung = verbesserung;
     }
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public KennzahlLauf(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc, KennzahlService kennzahlen,
             KennzahlRepository repo, KennzahlEingangLeser leser, ObjectMapper json,
             @Value("${voltpilot.uems.kennzahlen.enabled:true}") boolean enabled) {
@@ -201,6 +211,7 @@ public class KennzahlLauf {
         Zaehler z = new Zaehler();
         for (UUID tenant : adminJdbc.queryForList(
                 "SELECT DISTINCT tenant_id FROM kennzahl WHERE archiviert_am IS NULL ORDER BY tenant_id", UUID.class)) {
+                    if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             UUID vorher = TenantContext.get();
             TenantContext.set(tenant);
             try {

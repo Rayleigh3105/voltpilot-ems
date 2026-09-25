@@ -3,6 +3,7 @@ package com.voltpilot.api.entities;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityObservedRepository.ObservedRow;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -45,7 +46,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.entities.mqtt-listener-enabled", havingValue = "true")
-public class EntityStatusListener {
+public class EntityStatusListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(EntityStatusListener.class);
     private com.voltpilot.api.uems.UebergabeRepository uebergaben;
@@ -146,6 +147,7 @@ public class EntityStatusListener {
 
     /** Package-visible + test-visible: parse one heartbeat's entities block. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

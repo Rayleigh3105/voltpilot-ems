@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
@@ -62,7 +63,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.chargers.mqtt-listener-enabled", havingValue = "true")
-public class ChargerStatusListener {
+public class ChargerStatusListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(ChargerStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -206,6 +207,7 @@ public class ChargerStatusListener {
 
     /** Test-sichtbar: EINEN Herzschlag mit seinem chargers-Block verarbeiten. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

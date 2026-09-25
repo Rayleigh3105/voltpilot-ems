@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
@@ -73,6 +74,14 @@ public class FunktionBestandLaeufer {
 
     private final boolean enabled;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public FunktionBestandLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             FunktionBestandService dienst,
             @Value("${voltpilot.uems.funktion-bestand.enabled:true}") boolean enabled) {
@@ -113,6 +122,7 @@ public class FunktionBestandLaeufer {
         int eingerichtet = 0;
         int fehler = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 FunktionBestandService.Ergebnis e = dienst.uebernehmen();
