@@ -3,6 +3,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   api,
+  type ComponentTemplate,
   type Device,
   type EntityStrategy,
   type Overview,
@@ -61,6 +62,7 @@ import { SPEICHER_BLATT_LABEL, SPEICHER_KACHEL } from '../geraetGesicht';
 import { abschnittHash } from '../geraetRahmen';
 import {
   befehleHash,
+  komponenteHash,
   geraetBearbeitenHash,
   geraetKomponenteBearbeitenHash,
   komponenteBearbeitenHash,
@@ -68,7 +70,9 @@ import {
   ohneModellBearbeiten,
   parseKomponente,
 } from '../nav';
-import type { TypId } from '../anlegenFlow';
+import { abschlussTitel, type TypId } from '../anlegenFlow';
+import { katalogFunde, type KatalogWahl, type KatalogWeg } from '../geraeteKatalog';
+import { GeraeteKatalog } from '../components/GeraeteKatalog';
 import {
   AdoptDrawer,
   EntityDrawer,
@@ -99,9 +103,11 @@ import '../components/Aufbau.css';
  *   Tipp weiter die Geräteseite.
  * - **E3 · Alle Ebenen, immer.** Auch mit einer Anlage und einer Box steht der
  *   Baum gleich da - die Struktur ändert sich nicht, sobald eine zweite Box kommt.
- * - **E4 · Hinzufügen, wo es hingehört.** „+ Hinzufügen" am Standort fragt
- *   Gerät · VoltPilot-Box · Anlage; „+" an einer Box beginnt direkt beim Gerät.
- *   Was die Box selbst meldet, steht gestrichelt im Baum („Übernehmen").
+ * - **Hinzufügen beginnt im Gerätekatalog** (Konzept „Aufbau und
+ *   Gerätekatalog", Runde 2): Suche nach Marke oder Modell, die Arten als
+ *   Filter, was die Box meldet obenan. Nach der Wahl öffnet die Einrichten-Seite
+ *   (`AnlegenFlow`); VoltPilot-Box und Anlage stehen im Menü neben „Gerät
+ *   hinzufügen". Was die Box selbst meldet, steht gestrichelt in der Tabelle.
  *
  * Die Daten sind dieselben wie vorher (`plantModel` → `zentraleListe`); die
  * Anordnung im Baum ist die reine Ableitung `aufbauBaum.ts`. Diese Datei rendert
@@ -145,6 +151,12 @@ export function AufbauSection({
   const [addBox, setAddBox] = useState<Device | null>(null);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
+  // Der Katalog vor jedem Anlegen, das dort gewählte Modell und - nach dem
+  // Speichern - der eine Satz, was entstanden ist.
+  const [katalogOffen, setKatalogOffen] = useState(false);
+  const [start, setStart] = useState<{ template: ComponentTemplate; rolle: 'grid-meter' | null } | null>(null);
+  const [anlegenLauf, setAnlegenLauf] = useState(0);
+  const [erfolg, setErfolg] = useState<string | null>(null);
   const [boxAnmelden, setBoxAnmelden] = useState(false);
   const [boxVerwalten, setBoxVerwalten] = useState<string | null>(null);
   const [anlageAnlegen, setAnlageAnlegen] = useState(false);
@@ -410,11 +422,50 @@ export function AufbauSection({
   if (kurzblick) letzterKurzblick.current = kurzblick;
   const kurzblickInhalt = kurzblick ?? letzterKurzblick.current;
 
-  const oeffneAnlegen = (box: Device | null, typ: TypId | null = null) => {
+  /** „Gerät hinzufügen" (allgemein oder an einer Box) beginnt im Katalog. */
+  const oeffneAnlegen = (box: Device | null) => {
     setAddBox(box);
-    setAddTyp(typ);
-    setAddOpen(true);
+    setErfolg(null);
+    setKatalogOffen(true);
   };
+
+  const schliesseAnlegen = () => {
+    setAddOpen(false);
+    setAddTyp(null);
+    setStart(null);
+    setVorlage(null);
+  };
+
+  const WEG_TYP: Record<KatalogWeg, TypId> = { ocpp: 'ladesaeule', bms: 'batterie', modbus: 'eigenbau' };
+
+  /** Was im Katalog gewählt wurde, öffnet den passenden Weg - die Box reist mit. */
+  const katalogWahl = (wahl: KatalogWahl) => {
+    setKatalogOffen(false);
+    setAnlegenLauf((n) => n + 1);
+    switch (wahl.art) {
+      case 'fund':
+        setAssign(wahl.quelle);
+        return;
+      case 'modell':
+        setStart({ template: wahl.template, rolle: wahl.rolle });
+        setAddOpen(true);
+        return;
+      case 'weg':
+        setAddTyp(WEG_TYP[wahl.weg]);
+        setAddOpen(true);
+        return;
+      case 'vorlage':
+        setVorlage(wahl.vorlage);
+        return;
+    }
+  };
+
+  // Der Satz nach dem Speichern bleibt nicht als Dauertext stehen.
+  useEffect(() => {
+    if (!erfolg) return;
+    const t = window.setTimeout(() => setErfolg(null), 10_000);
+    return () => window.clearTimeout(t);
+  }, [erfolg]);
 
   /** Eine Handlung aus dem Kurzblick: erst schließen, dann die Aufgabe öffnen. */
   const ausKurzblick = (tu: () => void) => {
@@ -467,6 +518,15 @@ export function AufbauSection({
         </div>
       )}
 
+      {erfolg && (
+        <p className="vp-auf-erfolg" role="status">
+          <Icon name="check" size={15} />
+          <span>{erfolg}</span>
+          <button type="button" aria-label="Meldung schließen" onClick={() => setErfolg(null)}>
+            <Icon name="x" size={14} />
+          </button>
+        </p>
+      )}
       {hinweise.length > 0 && (
         <ul className="vp-auf-hinweise">
           {hinweise.map((h) => (
@@ -604,21 +664,38 @@ export function AufbauSection({
         />
       )}
 
+      <GeraeteKatalog
+        open={katalogOffen}
+        siteId={site.id}
+        funde={katalogOffen ? katalogFunde(baum) : []}
+        onClose={() => setKatalogOffen(false)}
+        onWahl={katalogWahl}
+      />
+
       {(addOpen || vorlage) && (
         <AnlegenFlow
+          key={anlegenLauf}
           siteId={site.id}
           box={addBox ?? boxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}
-          initialTyp={vorlage ? null : addTyp}
+          initialTyp={vorlage || start ? null : addTyp}
+          startTemplate={start?.template ?? null}
+          startRolle={start?.rolle ?? null}
+          onZurueck={() => {
+            schliesseAnlegen();
+            setKatalogOffen(true);
+          }}
+          onFertig={(info) => {
+            setErfolg(abschlussTitel(info.titel, info.uebernommen));
+            // Auf das neue Gerät springen - die Zeile leuchtet kurz auf.
+            if (info.id) window.location.hash = komponenteHash(site.id, info.id);
+          }}
           onClose={() => {
-            setAddOpen(false);
-            setAddTyp(null);
+            schliesseAnlegen();
             setAddBox(null);
-            setVorlage(null);
           }}
           onSaved={(result) => {
             setComponents(result);
-            setAddTyp(null);
             reload();
           }}
         />

@@ -232,7 +232,27 @@ function stub(hash = `#/anlage/${site.id}/modell`) {
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue(CATALOG as never);
   vi.spyOn(consumersApi, 'list').mockResolvedValue([]);
+  vi.spyOn(api, 'siteComponentTemplates').mockResolvedValue([]);
 }
+
+/** Ein Katalog-Modell, wie `GET /component-templates` es liefert. */
+const DEYE_12K = {
+  templateRef: 'builtin:deye:sun-12k-sg04lp3-eu',
+  kind: 'builtin',
+  version: 1,
+  brand: 'deye',
+  brandLabel: 'Deye',
+  model: 'sun-12k-sg04lp3-eu',
+  modelLabel: 'SUN-12K-SG04LP3-EU',
+  deviceType: 'inverter',
+  communication: 'solarman_v5',
+  communicationLabel: 'Solarman-V5 (WiFi-Datenlogger, TCP 8899)',
+  transportSchema: [
+    { key: 'host', label: 'IP-Adresse', type: 'text', required: true },
+    { key: 'serial', label: 'Logger-Seriennummer', type: 'text', required: true },
+    { key: 'port', label: 'Port', type: 'number', default: 8899 },
+  ],
+};
 
 function portalVerwaltet(extra: object = {}) {
   vi.spyOn(api, 'siteComponents').mockResolvedValue({
@@ -832,21 +852,54 @@ describe('AufbauSection · Hinzufügen (K6)', () => {
     expect(screen.getByRole('menuitem', { name: /Anlage hinzufügen/ })).toBeInTheDocument();
   });
 
-  it('beginnt mit „Gerät hinzufügen" den Anlege-Weg', async () => {
+  it('beginnt mit „Gerät hinzufügen" im Katalog - ein Modell öffnet seine Einrichten-Seite, der Pfeil führt zurück', async () => {
+    stub();
+    portalVerwaltet();
+    vi.mocked(api.componentTemplates).mockResolvedValue([DEYE_12K] as never);
+    rendere();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /Gerät hinzufügen/ }));
+    const katalog = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    fireEvent.change(within(katalog).getByRole('searchbox', { name: 'Katalog durchsuchen' }), { target: { value: '12k' } });
+    // Der Treffer ist markiert (<mark>) - jsdom setzt dort Leerzeichen in den Namen.
+    fireEvent.click(await within(katalog).findByRole('button', { name: /SUN-\s*12K\s*-SG04LP3-EU/ }));
+
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    expect(within(seite).getByText('Anschluss')).toBeInTheDocument();
+    expect(within(seite).getByText('Test mit echten Werten')).toBeInTheDocument();
+    fireEvent.click(within(seite).getByRole('button', { name: 'Zurück zum Katalog' }));
+    expect(await screen.findByRole('dialog', { name: 'Gerät hinzufügen' })).toBeInTheDocument();
+  });
+
+  it('beginnt mit „+ Gerät" an der Box ebenfalls im Katalog', async () => {
+    stub();
+    portalVerwaltet();
+    rendere();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät an VoltPilot-Box hinzufügen' }));
+    expect(await screen.findByRole('dialog', { name: 'Gerät hinzufügen' })).toBeInTheDocument();
+  });
+
+  it('stellt im Katalog obenan, was die Box meldet - „Übernehmen" öffnet die Zuordnung', async () => {
     stub();
     portalVerwaltet();
     rendere();
     await waitFor(() => expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /Gerät hinzufügen/ }));
-    expect(await screen.findByRole('dialog', { name: 'Gerät anbinden' })).toBeInTheDocument();
+    const katalog = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    const gemeldet = await within(katalog).findByRole('region', { name: 'Von Ihrer Box gemeldet' });
+    fireEvent.click(within(gemeldet).getByRole('button', { name: /go-e gefunden/ }));
+    expect(await screen.findByText('Gerät zuordnen')).toBeInTheDocument();
   });
 
-  it('beginnt mit „+ Gerät" an der Box direkt beim Gerät', async () => {
+  it('öffnet über den Katalog auch die Wege ohne Vorlage - hier die Ladesäule mit OCPP', async () => {
     stub();
     portalVerwaltet();
     rendere();
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät an VoltPilot-Box hinzufügen' }));
-    expect(await screen.findByRole('dialog', { name: 'Gerät anbinden' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /Gerät hinzufügen/ }));
+    const katalog = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    fireEvent.click(await within(katalog).findByRole('button', { name: /Ladesäule mit OCPP 1\.6/ }));
+    expect(await screen.findByTestId('typ-ladesaeule')).toBeInTheDocument();
   });
 
   it('meldet eine VoltPilot-Box mit der Geräte-ID an', async () => {

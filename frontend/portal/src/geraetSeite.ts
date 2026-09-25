@@ -367,6 +367,15 @@ const COMM_WORT: Record<string, string> = {
   self_build: 'Modbus über das Netzwerk (selbst eingerichtet)',
 };
 
+/**
+ * Die Anbindung einer Vorlage in Kundenworten („Solarman-Logger (WLAN-Stick)");
+ * null = kein Kundenwort bekannt - dann steht die technische Bezeichnung da.
+ * Der Gerätekatalog liest dieselben Wörter wie die Geräteseite.
+ */
+export function kommunikationsWort(communication: string | null | undefined): string | null {
+  return communication ? COMM_WORT[communication] ?? null : null;
+}
+
 function text(v: string | null | undefined): string | null {
   const t = (v ?? '').trim();
   return t ? t : null;

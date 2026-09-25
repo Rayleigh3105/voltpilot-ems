@@ -122,6 +122,42 @@ const charging = { budget: { deviceId: 'help-box', enabled: true, controlEnabled
   })),
 };
 
+/**
+ * Ein kleiner Gerätekatalog für die Hilfe-Aufnahmen des „Gerät hinzufügen"-Wegs.
+ * Marken, Modelle und Felder wie im echten Katalog; die Adressen der Anlage
+ * bleiben fiktiv (192.0.2.x).
+ */
+const feld = (key: string, label: string, help: string) => ({ key, label, type: 'text', required: true, help });
+const port = (n: number) => ({ key: 'port', label: 'Port', type: 'number', default: n });
+const solarman = {
+  communication: 'solarman_v5', communicationLabel: 'Solarman-V5 (WiFi-Datenlogger, TCP 8899)',
+  transportSchema: [
+    feld('ip', 'IP-Adresse des Datenloggers', 'Die IP des WiFi-Sticks (LSW3) im lokalen Netz, z. B. 192.168.0.28.'),
+    feld('serial', 'Datenlogger-Seriennummer', 'Die Seriennummer des Datenloggers (nicht des Wechselrichters!) - z. B. aus dem WLAN-Namen AP_<Seriennummer> oder der Logger-Statusseite.'),
+    port(8899), { key: 'unit_id', label: 'Modbus-Slave-ID', type: 'number', default: 1 },
+  ],
+};
+const kaco = {
+  communication: 'kaco_http', communicationLabel: 'App-Schnittstelle der Kommunikationseinheit (HTTP 8484)',
+  transportSchema: [feld('ip', 'IP-Adresse der Kommunikationseinheit', 'Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst).'), port(8484)],
+};
+const vorlage = (o: Record<string, unknown>) => ({ kind: 'builtin', version: 1, deviceType: 'inverter', ...o });
+const katalog = [
+  ...['SUN-5K-SG04LP3-EU', 'SUN-8K-SG04LP3-EU', 'SUN-12K-SG04LP3-EU'].map((m) => vorlage({ templateRef: `builtin:deye:${m.toLowerCase()}`, brand: 'deye', brandLabel: 'Deye',
+    model: m.toLowerCase(), modelLabel: m, family: 'deye-sg04lp3', familyLabel: 'Hybrid, 3-phasig', ratedKw: Number(m.split('-')[1].replace('K', '')), ...solarman })),
+  ...['blueplanet hybrid 10.0 NH3 M3', 'blueplanet 15.0 NX3 M2'].map((m) => vorlage({ templateRef: `builtin:kaco:${m.toLowerCase().replace(/ /g, '-')}`, brand: 'kaco', brandLabel: 'KACO',
+    model: m.toLowerCase(), modelLabel: m, ...kaco })),
+  vorlage({ templateRef: 'builtin:fronius:gen24', brand: 'fronius', brandLabel: 'Fronius', model: 'gen24', modelLabel: 'Fronius GEN24 / Symo / Primo',
+    communication: 'fronius_solar_api', communicationLabel: 'Solar API (HTTP)',
+    transportSchema: [feld('ip', 'IP-Adresse des Wechselrichters', 'Die IP des Fronius-Wechselrichters im lokalen Netz. Die Solar API muss in der Weboberfläche des Wechselrichters aktiviert sein.'), port(80)] }),
+  vorlage({ templateRef: 'builtin:go-e:charger', brand: 'go-e', brandLabel: 'go-e', model: 'charger', modelLabel: 'go-e Charger', deviceType: 'wallbox',
+    communication: 'goe_http_api', communicationLabel: 'go-e HTTP API v2 (HTTP/JSON)',
+    transportSchema: [feld('ip', 'IP-Adresse der Wallbox', 'Die IP der go-e-Wallbox im lokalen Netz. Die lokale HTTP-API (v2) muss in der go-e-App aktiviert sein.'), port(80)] }),
+  vorlage({ templateRef: 'builtin:shelly:relais', brand: 'shelly', brandLabel: 'Shelly', model: 'relais', modelLabel: 'Shelly Relais / Schaltaktor', deviceType: 'switch',
+    communication: 'shelly_http', communicationLabel: 'Shelly HTTP API (lokal)',
+    transportSchema: [feld('ip', 'IP-Adresse des Shelly', 'Die IP des Shelly im lokalen Netz; der Passwortschutz der Shelly-Weboberfläche muss AUS sein.'), port(80)] }),
+];
+
 export function installHelpFixtures() {
   const params = new URLSearchParams(location.search);
   const empty = params.get('state') === 'empty';

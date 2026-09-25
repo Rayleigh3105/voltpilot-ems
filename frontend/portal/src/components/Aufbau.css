@@ -370,7 +370,7 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     overflow: visible;
-    animation: vp-auf-filter-ein var(--vp-motion-enter) var(--vp-ease-out) both;
+    animation: vp-auf-ein var(--vp-motion-enter) var(--vp-ease-out) both;
   }
   .vp-auf-werkzeug:not(.is-filter-offen) .vp-auf-filter {
     display: none;
@@ -398,7 +398,7 @@
     background: color-mix(in srgb, var(--vp-warn-ink) 12%, transparent);
   }
 }
-@keyframes vp-auf-filter-ein {
+@keyframes vp-auf-ein {
   from {
     opacity: 0;
     transform: translateY(calc(var(--vp-motion-distance) * -1));
@@ -457,6 +457,43 @@
 .vp-auf-hinweise svg {
   flex: 0 0 auto;
   margin-top: 2px;
+}
+
+/* Der eine Satz nach dem Speichern („„PV Dach" ist angelegt.") - er verschwindet
+   von selbst wieder (AufbauSection), die neue Zeile leuchtet kurz auf. */
+.vp-auf-erfolg {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-mint-start);
+  border: 1px solid var(--vp-mint-end);
+  color: var(--vp-ok-ink);
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  animation: vp-auf-ein var(--vp-motion-enter) var(--vp-ease-out) both;
+}
+.vp-auf-erfolg > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-auf-erfolg button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.vp-auf-erfolg button:hover {
+  background: color-mix(in srgb, var(--vp-ok-ink) 10%, transparent);
 }
 
 /* --- Die Tabelle -------------------------------------------------------------- */
