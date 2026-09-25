@@ -5,6 +5,7 @@
   "alarm": "VoltPilotSicherungZuAlt",
   "betrifft": ["L-003", "Z-015"],
   "datum": "JJJJ-MM-TT",
+  "stand": "<Commit des Produktions-Images am Übungstag>",
   "person": "<wer die Übung gefahren hat>",
   "zustand": "<durchgefuehrt, wenn die Meldung beim Empfänger ankam, sonst fehlgeschlagen>",
   "ergebnis": {

@@ -16,7 +16,7 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | [`nachweismatrix.schema.json`](nachweismatrix.schema.json) | Vertrag: Felder, Pflichten je Urteil, Vokabulare, Gliederung | AP-20 IP-2 |
 | [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil seit IP-7, Kundenaufgaben seit IP-8 | AP-20 IP-2, IP-5, IP-7, IP-8 |
 | [`luecken.json`](luecken.json), [`luecken.schema.json`](luecken.schema.json) | Lückenliste des Betreibers (L-nnn) mit Verlauf je Übergang, nie beim Kunden | AP-20 IP-3 |
-| [`uebungen/`](uebungen/README.md), [`uebung.schema.json`](uebung.schema.json) | Übungen des Betreibers (U-JJJJ-nn): Rückweg-Übung und Alarm-Übung mit Artefakt und Prüfsumme, Vorlagen; gelesen von `tools/bewertung/uebungen.py` (RF-07) | AP-20 IP-19 |
+| [`uebungen/`](uebungen/README.md), [`uebung.schema.json`](uebung.schema.json) | Übungen des Betreibers (U-JJJJ-nn): Rückweg-Übung und Alarm-Übung mit Artefakt und Prüfsumme, Vorlagen; gelesen von `tools/bewertung/uebungen.py` (RF-07); Z-015 urteilt `pruefe_matrix.py` daraus (Stand, Frist, Q15 mit Person) | AP-20 IP-19 
 | [`vorschlaege/gitops/`](vorschlaege/gitops/README.md) | Regel `VoltPilotSicherungZuAlt` mit promtool-Test als Vorschlag; als Zweig nach gitops, gemergt vom Captain | AP-20 IP-19 |
 | [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3), Matrix-Prüfer (`pruefe_matrix.py`, AP-20 NW-2) | AP-20 IP-2, IP-3, IP-5, IP-4 |
 
@@ -299,15 +299,19 @@ allein sein Stand-Blatt, und zwar unter dem Kennzeichen der Zusage. Die Form ist
 Tor-Prüfers:
 
 ```yaml
-Z-015:
+Z-016:
   bestaetigt: ja
   am: 2026-10-14
   durch: Betreiber (Vorname Name)
-  beleg: Q15 WAL-Archiv läuft, letztes Segment 2 min alt
+  beleg: die Aufbewahrungs-Jobs der Speicherklassen laufen, letzter Lauf heute 03:10
 ```
 
 Das Stand-Blatt macht nie einen Test grün. Für einen Punkt ohne Rest des Betreibers liest der
-Prüfer es nicht.
+Prüfer es nicht. **Ausnahme Z-015** (BT1, BT2): dort trägt den Rest „Q15 bestätigen und die
+Rückweg-Übung fahren“ der Befund zu `→ rueckweg.json` selbst - `belegt` nur mit dem Punkt
+`q15_wal_archiv` (Person, Datum, Aussage) UND einer durchgeführten Übung unter
+[`uebungen/`](uebungen/README.md), die ihren Stand trägt und nicht fällig ist; sonst `offen` mit
+dem Grund (`uebung_fehlt`, `uebung_ohne_stand`, `uebung_faellig`, `q15_offen`).
 
 **Urteil je Zusage.**
 

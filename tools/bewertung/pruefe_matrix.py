@@ -6,9 +6,11 @@ Liest die Nachweismatrix, die Lauf-Berichte eines Standes (Surefire oder Vitest,
 Zeile ein Urteil nach NR1-NR9. Er fährt keine Tests und ändert die Matrix nicht. Er schreibt einen
 Entwurf des Bewertungsberichts BWB-JJJJ-nn als `.json` und `.md`, dazu `.sha256` mit den
 Prüfsummen beider Dateien. Freigeben kann ihn nur der Captain (G5). Kein Tor, kein Läufer (G4).
+Z-015 urteilt er über die Übungen des Betreibers (`--uebungen`, Leser `uebungen.py`) und Q15 im
+Stand-Blatt: belegt nur mit beidem, die Übung mit Stand und nicht fällig (BT1, BT2, NR3, NR4).
 
     python3 tools/bewertung/pruefe_matrix.py [--laeufe <ordner>]… [--artefakte <ordner>]…
-        [--blatt <stand-blatt>] [--stand <commit>] [--heute JJJJ-MM-TT] [--aus <ordner>]
+        [--blatt <stand-blatt>] [--uebungen <ordner>] [--stand <commit>] [--heute JJJJ-MM-TT] [--aus <ordner>]
         [--kennung BWB-JJJJ-nn] [--art gebaut|ausgeliefert] [--matrix <datei>] [--luecken <datei>]
 
 Exit 0: Entwurf geschrieben; die Zählung sagt, was belegt und was offen ist. Das ist kein Tor.
@@ -34,6 +36,7 @@ sys.path.insert(0, str(HIER.parent / 'freigabe'))
 import luecken  # noqa: E402
 import nachweismatrix  # noqa: E402
 import pruefe_tor  # noqa: E402
+import uebungen  # noqa: E402
 
 REPO = nachweismatrix.REPO
 AUS_PFAD = REPO / 'docs' / 'bewertung' / 'bewertungen'
@@ -66,6 +69,12 @@ ARTEFAKT_LESER = {
     'rueckweg.json': pruefe_tor.nw8_rueckweg,
 }
 
+# BT1, BT2: eine Wiederherstellung zählt nur mit Übung und Artefakt. Für diese Zusagen urteilt über
+# „→ rueckweg.json“ die Rückweg-Übung aus docs/bewertung/uebungen/ zusammen mit Q15 im Stand-Blatt,
+# nicht ein loses Artefakt; den Rest des Betreibers („Q15 bestätigen und die Übung fahren“) trägt
+# derselbe Befund.
+UEBUNG_PFLICHT = ('Z-015',)
+
 # Reihenfolge, in der ein schlechter Befund eines Laufs einen anderen verdrängt.
 SCHLECHT = ('rot', 'uebersprungen', 'fall_fehlt')
 
@@ -86,9 +95,7 @@ def anzeige(pfad):
         return str(pfad)
 
 
-def rollen():
-    """NR4: eine Rolle ist keine Person. „Betreiber“ allein bestätigt nichts, „Betreiber (M. K.)“ schon."""
-    return {w.lower() for w in nachweismatrix.lade_schema()['$defs']['wer']['enum']} | {'voltpilot', 'werkzeug'}
+rollen = uebungen.rollen
 
 
 def offen(grund, text, wer):
@@ -193,7 +200,8 @@ class Lauf(Ordner):
 
 
 class Kontext:
-    def __init__(self, stand, heute, wurzel=REPO, laeufe=(), artefakte=(), blatt=None, liste=None):
+    def __init__(self, stand, heute, wurzel=REPO, laeufe=(), artefakte=(), blatt=None, liste=None,
+                 uebungen_ordner=uebungen.ORDNER):
         self.wurzel = pathlib.Path(wurzel)
         self.heute = heute
         self.stand = self._voll(stand)
@@ -203,6 +211,12 @@ class Kontext:
         self.blatt = pruefe_tor.lies_stand(self.blatt_pfad) if self.blatt_pfad else None
         self.luecken = {l['kennzeichen']: l for l in (liste or {}).get('luecken', [])}
         self.rollen = rollen()
+        self.uebungen_ordner = pathlib.Path(uebungen_ordner)
+
+    @functools.cached_property
+    def uebungen(self):
+        """Die Übungen mit dem Leser aus uebungen.py: (verstöße, ergebnisse)."""
+        return uebungen.lies(self.uebungen_ordner, self.blatt_pfad)
 
     def git(self, *argv):
         return subprocess.run(['git', '-C', str(self.wurzel), *argv], capture_output=True, text=True, check=False)
@@ -395,6 +409,41 @@ def _artefakt(ctx, name):
     return {'ergebnis': 'belegt', 'grund': 'gruen', 'text': text, 'wer': None, 'nachweis': nachweis}
 
 
+def _uebung(ctx, kennung):
+    """BT1, BT2, NR3, NR4: belegt nur mit Q15 (Person, Datum, Aussage) UND einer durchgeführten
+    Rückweg-Übung, die ihren Stand trägt und nicht fällig ist."""
+    rot, ergebnisse = ctx.uebungen
+    wieder = sorted((e for e in ergebnisse if e['art'] == 'wiederherstellung' and kennung in e['betrifft']
+                     and e['uebung_zustand'] == 'durchgefuehrt' and e['datum'] <= ctx.heute.isoformat()),
+                    key=lambda e: e['datum'])
+    if not wieder:
+        rot_text = f'; {len(rot)} Verstoß/Verstöße in den Übungen zählen nicht (uebungen.py)' if rot else ''
+        return offen('uebung_fehlt', f'keine durchgeführte Rückweg-Übung für {kennung} in '
+                                     f'{anzeige(ctx.uebungen_ordner)}{rot_text} - fällig vor dem Rollout '
+                                     f'(BT2, AP-14 NW-8)', 'Betreiber')
+    e = wieder[-1]
+    if not e['stand']:
+        return offen('uebung_ohne_stand', f'{e["kennzeichen"]} vom {e["datum"]} trägt keinen Stand des '
+                                          f'Produktions-Images; ein Beleg gilt nur an seinem Stand (NR3)', 'Betreiber')
+    if ctx.heute.isoformat() > e['naechste_faellig']:
+        return offen('uebung_faellig', f'Betreiber: Übung fällig - {e["kennzeichen"]} vom {e["datum"]} belegt nur '
+                                       f'bis {e["naechste_faellig"]} (BT1, Rhythmus {uebungen.RHYTHMUS_MONATE} '
+                                       f'Monate)', 'Betreiber')
+    q15_urteil, q15_text = uebungen.q15(ctx.blatt_pfad)
+    if q15_urteil != 'nicht_maschinell_pruefbar':
+        return offen('q15_offen', q15_text, 'Betreiber')
+    q = ctx.blatt[uebungen.Q15_PUNKT]
+    if grund := ctx.nr4(q['durch'], q['am'], q['beleg']):
+        return offen(*grund, 'Betreiber')
+    datei = ctx.uebungen_ordner / e['artefakt']['pfad']
+    nachweis = {'art': 'werkzeug_artefakt', 'fundstelle': f'Übung {e["kennzeichen"]} → rueckweg.json',
+                'stand': e['stand'], 'lauf': anzeige(datei), 'lauf_sha256': e['artefakt']['sha256'],
+                'datum': e['datum'], 'gefahren_von': e['person']}
+    return {'ergebnis': 'belegt', 'grund': 'gruen',
+            'text': (f'{e["kennzeichen"]} am Stand {e["stand"]}, nächste fällig {e["naechste_faellig"]}; '
+                     f'Q15 {q["durch"]} am {q["am"]}: {q["beleg"]}'), 'wer': None, 'nachweis': nachweis}
+
+
 def _bestaetigt(ctx, von, datum, aussage, nachweis):
     grund = ctx.nr4(von, datum, aussage)
     if grund:
@@ -425,9 +474,11 @@ def _blatt(ctx, kennung, reste):
     return _bestaetigt(ctx, von, datum, aussage, nachweis)
 
 
-def kandidat(ctx, text):
+def kandidat(ctx, text, kennung=None):
     """Ein Befund je Kandidat. Ein Kandidat, den der Prüfer nicht lesen kann, ist kein Beleg (NR7)."""
-    if m := ARTEFAKT.match(text):
+    if (m := ARTEFAKT.match(text)) and m['artefakt'] == 'rueckweg.json' and kennung in UEBUNG_PFLICHT:
+        befund = _uebung(ctx, kennung)
+    elif m:
         befund = _artefakt(ctx, m['artefakt'])
     elif m := DATEI_FALL.match(text):
         befund = _test(ctx, text, *_datei(m['datei']), m['fall'])
@@ -465,6 +516,9 @@ def _restbefunde(ctx, z):
     befunde = [{'kandidat': 'wer_liefert', **offen('rest_offen', r['was'], r['wer'])}
                for r in reste if r['wer'] != 'Betreiber']
     betreiber = [r for r in reste if r['wer'] == 'Betreiber']
+    if betreiber and z['kennzeichen'] in UEBUNG_PFLICHT and any(
+            (m := ARTEFAKT.match(k)) and m['artefakt'] == 'rueckweg.json' for k in z['nachweis_kandidaten']):
+        betreiber = []
     if betreiber:
         befunde.append({'kandidat': f'Stand-Blatt {z["kennzeichen"]}', **_blatt(ctx, z['kennzeichen'], betreiber)})
     return befunde
@@ -495,7 +549,7 @@ def urteile_zusage(ctx, z):
         zeile.update(nachweise=[], urteil='nicht_zugesagt', grund=z['grund'], luecken=z['luecken'])
         zeile['pruefung'] = {'urteil_matrix': z['urteil'], 'befunde': [], 'luecken_offen': [], 'restpunkte': []}
         return zeile
-    befunde = [kandidat(ctx, k) for k in z['nachweis_kandidaten']] + _restbefunde(ctx, z)
+    befunde = [kandidat(ctx, k, z['kennzeichen']) for k in z['nachweis_kandidaten']] + _restbefunde(ctx, z)
     if b := z.get('bestaetigung'):
         befunde.append({'kandidat': 'bestaetigung', **_bestaetigt(ctx, b['von'], b['datum'], b['aussage'], None)})
     if not befunde:
@@ -767,6 +821,8 @@ def main(argv=None):
     p.add_argument('--artefakte', action='append', default=[], metavar='ORDNER',
                    help='Artefakte (rueckweg.json, probe.json) mit stand.txt; mehrfach')
     p.add_argument('--blatt', metavar='DATEI', help='Stand-Blatt des Betreibers (Form wie tools/freigabe/)')
+    p.add_argument('--uebungen', default=str(uebungen.ORDNER), metavar='ORDNER',
+                   help='Übungen des Betreibers (BT1); Vorgabe docs/bewertung/uebungen')
     p.add_argument('--stand', metavar='COMMIT', help='geprüfter Stand; Vorgabe HEAD')
     p.add_argument('--heute', type=_datum, default=datetime.date.today(), metavar='JJJJ-MM-TT',
                    help='Prüftag; Vorgabe heute')
@@ -789,7 +845,8 @@ def main(argv=None):
         matrix_pfad, liste_pfad = pathlib.Path(args.matrix), pathlib.Path(args.luecken)
         matrix = json.loads(matrix_pfad.read_text(encoding='utf-8'))
         liste = json.loads(liste_pfad.read_text(encoding='utf-8'))
-        ctx = Kontext(args.stand, args.heute, args.wurzel, args.laeufe, args.artefakte, args.blatt, liste)
+        ctx = Kontext(args.stand, args.heute, args.wurzel, args.laeufe, args.artefakte, args.blatt, liste,
+                      args.uebungen)
         eingaben = {'matrix': {'pfad': anzeige(matrix_pfad), 'sha256': sha256(matrix_pfad)},
                     'luecken': {'pfad': anzeige(liste_pfad), 'sha256': sha256(liste_pfad)}}
         kennung = args.kennung or naechste_kennung(aus, args.heute.year)

@@ -21,7 +21,8 @@ Kein Läufer, keine Nachricht.
 
 1. Q15 lesen: `tools/betriebsabfragen/bestand-vor-uems.sql` (Teil C) und auf der VM
    `/srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh`. Beides ohne Befund, dann im
-   Stand-Blatt `q15_wal_archiv` mit `bestaetigt: ja`, `am:`, `durch:` und `beleg:` setzen (Form und
+   Stand-Blatt `q15_wal_archiv` mit `bestaetigt: ja`, `am:`, `durch:` (benannte Person, nicht nur
+   die Rolle, NR4) und `beleg:` setzen (Form und
    Beispiel in [`tools/freigabe/freigabe-stand.example.yaml`](../../../tools/freigabe/freigabe-stand.example.yaml)).
 2. Rückweg fahren, wie [`tools/generalprobe/README.md`](../../../tools/generalprobe/README.md) es
    beschreibt (`rueckweg.sh … --output /BETREIBER/rueckweg.json`). Nur eine wiederhergestellte
@@ -30,11 +31,19 @@ Kein Läufer, keine Nachricht.
 4. Die Crew legt sie als `U-JJJJ-nn/rueckweg.json` ab und füllt
    [`vorlage-wiederherstellung.json`](vorlage-wiederherstellung.json) als `U-JJJJ-nn.json` aus.
    `zustand` und `ergebnis` schreibt sie so, wie die Datei sie trägt; die Prüfsumme mit
-   `shasum -a 256`.
+   `shasum -a 256`. `stand` ist der Commit des Produktions-Images am Übungstag (NR3); ohne ihn
+   belegt die Übung nichts.
 5. `python3 tools/bewertung/uebungen.py --stand <stand-blatt>` rechnet das Ergebnis am Artefakt
    nach und zeigt die Zeile der Betreiber-Liste, etwa
-   `U-2026-01 · Wiederherstellung · 21 min · Zählungen gleich · 05.10.2026 · Betreiber · nächste fällig 05.04.2027`.
+   `U-2026-01 · Wiederherstellung · 21 min · Zählungen gleich · Stand 8be6a15b2 · 05.10.2026 · Betreiber (A. Muster) · nächste fällig 05.04.2027`.
    Dieselbe `rueckweg.json` belegt im Tor-Prüfer NW-8 (`--generalprobe`).
+
+Der Matrix-Prüfer (`tools/bewertung/pruefe_matrix.py --blatt <stand-blatt>`, Übungen aus
+`--uebungen`, Vorgabe dieser Ordner) urteilt Z-015 genau so: `belegt` nur, wenn Q15 mit Person,
+Datum und Aussage bestätigt ist UND die jüngste durchgeführte Rückweg-Übung ihren Stand trägt und
+nicht fällig ist (BT1, BT2). Ohne Stand, überfällig („Betreiber: Übung fällig“), Q15 ohne Person
+oder ohne Übung bleibt die Zeile `offen`. Ein loses `rueckweg.json` unter `--artefakte` trägt
+Z-015 nicht.
 
 `durchgefuehrt` heißt: `exit_code` 0, Flyway-Stand und Q01 bytegleich, Dauer bekannt. Alles andere
 ist `fehlgeschlagen`. Auch eine fehlgeschlagene Übung wird eingetragen; sie belegt nichts.

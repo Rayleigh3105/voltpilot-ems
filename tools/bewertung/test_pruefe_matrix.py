@@ -30,6 +30,7 @@ import pruefe_matrix  # noqa: E402
 
 HIER = pathlib.Path(__file__).resolve().parent
 FIXTURE = HIER / 'fixtures' / 'pruefer'
+RF07 = HIER / 'fixtures' / 'uebungen' / 'rf07'
 KLASSE_BERICHT = 'TEST-com.voltpilot.api.UemsKlasseApiTest.xml'
 ABNAHME_BERICHT = 'TEST-com.voltpilot.api.uems.UemsFixtureAbnahmeTest.xml'
 HEUTE = '2026-09-28'
@@ -415,6 +416,115 @@ class KandidatIstKeinBeleg(MitBuehne):
         self.assertEqual(z['urteil'], 'nicht_maschinell_pruefbar')
         self.assertEqual([n['art'] for n in z['nachweise']], ['werkzeug_artefakt', 'betreiber_bestaetigung'])
         self.assertEqual(z['bestaetigung']['von'], 'Betreiber (A. Muster)')
+
+
+class Z015NurMitUebung(MitBuehne):
+    """BT1, BT2, NR3, NR4: Z-015 ist nur belegt mit Q15 (Person, Datum, Aussage) UND einer Rückweg-Übung,
+    die ihren Stand trägt und nicht fällig ist. Ein loses rueckweg.json in --artefakte zählt dort nicht."""
+
+    TAG = '2026-10-06'
+    Q15 = ('q15_wal_archiv:\n  bestaetigt: ja\n  am: 2026-10-05\n  durch: {durch}\n'
+           '  beleg: vp-db-backup-check.sh Exit 0, WAL-Archiv aktuell (2 min)\n')
+
+    def setUp(self):
+        super().setUp()
+        self.uebungen = self.b.wurzel / 'uebungen'
+        shutil.copytree(RF07, self.uebungen)
+        (self.uebungen / 'stand-q15.yaml').unlink()
+        self.q15(durch='Betreiber (A. Muster)')
+        z = next(z for z in self.b.matrix['zusagen'] if z['kennzeichen'] == 'Z-015')
+        z.update(art='betrieb', nachweis_kandidaten=[f'{RUECKWEG} → rueckweg.json (AP-14 NW-8)'], luecken=[],
+                 wer_liefert=[{'wer': 'Betreiber', 'was': 'Q15 „WAL-Archiv läuft“ bestätigen und die Rückweg-Übung '
+                                                          'fahren (AP-20 IP-19)'}])
+
+    def q15(self, durch):
+        text = self.b.blatt.read_text(encoding='utf-8')
+        text = text.split('q15_wal_archiv:')[0].rstrip('\n') + '\n\n' + self.Q15.format(durch=durch)
+        self.b.blatt.write_text(text.replace('  durch: \n', ''), encoding='utf-8')
+
+    def uebung(self, **felder):
+        pfad = self.uebungen / 'U-2026-01.json'
+        u = lade(pfad)
+        for k, v in felder.items():
+            if v is None:
+                u.pop(k, None)
+            else:
+                u[k] = v
+        pfad.write_text(json.dumps(u, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    def z015(self, heute=TAG, artefakte=None):
+        ctx = pruefe_matrix.Kontext(self.b.neu, pruefe_matrix.datetime.date.fromisoformat(heute), self.b.repo,
+                                    [self.b.laeufe], [self.b.artefakte] if artefakte is None else artefakte,
+                                    self.b.blatt, self.b.liste, self.uebungen)
+        eingaben = {'matrix': {'pfad': 'matrix.json', 'sha256': '0' * 64},
+                    'luecken': {'pfad': 'luecken.json', 'sha256': '0' * 64}}
+        return zeile(pruefe_matrix.bewerte(self.b.matrix, self.b.liste, ctx, eingaben, 'BWB-2026-01', 'gebaut'),
+                     'Z-015')
+
+    def test_uebung_mit_stand_in_der_frist_und_q15_mit_person_belegt(self):
+        z = self.z015()
+        self.assertEqual('belegt', z['urteil'], z['pruefung'])
+        (n,) = z['nachweise']
+        self.assertEqual(('werkzeug_artefakt', '8be6a15b2', '2026-10-05', 'Betreiber (A. Muster)'),
+                         (n['art'], n['stand'], n['datum'], n['gefahren_von']))
+        self.assertEqual(lade(RF07 / 'U-2026-01.json')['artefakt']['sha256'], n['lauf_sha256'])
+        self.assertEqual(['Übung U-2026-01 → rueckweg.json'], [n['fundstelle'] for n in z['nachweise']])
+        # Das lose Artefakt trägt Z-015 nicht; ohne --artefakte bleibt es belegt.
+        self.assertEqual('belegt', self.z015(artefakte=[])['urteil'])
+
+    def test_ohne_stand_bleibt_offen(self):
+        self.uebung(stand=None)
+        z = self.z015()
+        self.assertEqual(('offen', ['uebung_ohne_stand']), (z['urteil'], gruende(z)))
+        self.assertIn('trägt keinen Stand des Produktions-Images', z['wer_liefert'][0]['was'])
+
+    def test_ueberfaellig_ist_offen_mit_uebung_faellig(self):
+        self.assertEqual('belegt', self.z015(heute='2027-04-05')['urteil'])
+        z = self.z015(heute='2027-04-06')
+        self.assertEqual(('offen', ['uebung_faellig']), (z['urteil'], gruende(z)))
+        self.assertEqual('Betreiber', z['wer_liefert'][0]['wer'])
+        self.assertIn('Betreiber: Übung fällig - U-2026-01 vom 2026-10-05 belegt nur bis 2027-04-05',
+                      z['wer_liefert'][0]['was'])
+
+    def test_q15_ohne_person_ist_offen(self):
+        for durch in ('Betreiber', ''):
+            with self.subTest(durch=durch):
+                self.q15(durch=durch)
+                z = self.z015()
+                self.assertEqual(('offen', ['q15_offen']), (z['urteil'], gruende(z)))
+                self.assertIn('ist keine benannte Person', z['wer_liefert'][0]['was'])
+
+    def test_ohne_q15_oder_ohne_uebung_ist_offen(self):
+        self.b.blatt.write_text(self.b.blatt.read_text(encoding='utf-8').split('q15_wal_archiv:')[0],
+                                encoding='utf-8')
+        self.assertEqual(['q15_offen'], gruende(self.z015()))
+        self.q15(durch='Betreiber (A. Muster)')
+        (self.uebungen / 'U-2026-01.json').unlink()
+        z = self.z015()
+        self.assertEqual(('offen', ['uebung_fehlt']), (z['urteil'], gruende(z)))
+
+    def test_fehlgeschlagene_oder_rote_uebung_belegt_nicht(self):
+        self.uebung(zustand='fehlgeschlagen')  # rueckweg.json sagt durchgefuehrt: rot in uebungen.py
+        z = self.z015()
+        self.assertEqual(['uebung_fehlt'], gruende(z))
+        self.assertIn('1 Verstoß/Verstöße in den Übungen zählen nicht', z['wer_liefert'][0]['was'])
+
+    def test_eine_uebung_nach_dem_prueftag_zaehlt_nicht(self):
+        self.assertEqual(['uebung_fehlt'], gruende(self.z015(heute='2026-10-04')))
+
+    def test_andere_zusagen_lesen_rueckweg_json_weiter_aus_artefakte(self):
+        befunde = {b['kandidat'].split()[0]: b['grund'] for b in zeile(self.b.bericht(), 'Z-004')['pruefung']['befunde']}
+        self.assertEqual('gruen', befunde[RUECKWEG])
+        self.assertEqual('bestaetigt', befunde['Stand-Blatt'])
+
+    def test_am_repo_bleibt_z015_heute_offen(self):
+        matrix, liste = lade(nachweismatrix.MATRIX_PFAD), lade(luecken.LISTE_PFAD)
+        ctx = pruefe_matrix.Kontext(self.b.neu, pruefe_matrix.datetime.date.fromisoformat('2026-09-25'), self.b.repo,
+                                    liste=liste)
+        z = zeile(pruefe_matrix.bewerte(matrix, liste, ctx, {}, 'BWB-2026-01', 'gebaut'), 'Z-015')
+        self.assertEqual('offen', z['urteil'])
+        self.assertIn('uebung_fehlt', gruende(z))
+        self.assertNotIn('blatt_fehlt', gruende(z), 'den Rest des Betreibers trägt der Übungs-Befund')
 
 
 class DerEntwurf(MitBuehne):

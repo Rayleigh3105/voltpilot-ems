@@ -114,9 +114,10 @@ class RF07Test(unittest.TestCase):
     def test_rf07_was_man_sieht(self):
         code, aus, _ = fahre('--heute', '2026-10-06', '--stand', str(STAND_Q15), str(RF07))
         self.assertEqual(0, code)
-        self.assertIn('U-2026-01 · Wiederherstellung · 21 min · Zählungen gleich · 05.10.2026 · Betreiber · '
-                      'nächste fällig 05.04.2027', aus)
-        self.assertIn('nicht_maschinell_pruefbar: Q15 WAL-Archiv laeuft - Betreiber bestaetigt am 2026-10-05', aus)
+        self.assertIn('U-2026-01 · Wiederherstellung · 21 min · Zählungen gleich · Stand 8be6a15b2 · 05.10.2026 · '
+                      'Betreiber (A. Muster) · nächste fällig 05.04.2027', aus)
+        self.assertIn('nicht_maschinell_pruefbar: Q15 WAL-Archiv laeuft - Betreiber (A. Muster) bestaetigt am '
+                      '2026-10-05', aus)
         self.assertNotIn('Wiederherstellung: nächste Übung fällig seit', aus)
 
     def test_naechste_uebung_ist_beim_abruf_faellig_ohne_laeufer(self):
@@ -138,6 +139,19 @@ class RF07Test(unittest.TestCase):
             urteil, text = uebungen.q15(stand)
         self.assertEqual('offen', urteil)
         self.assertIn('nennt aber kein Datum', text)
+
+    def test_q15_ohne_person_oder_aussage_ist_offen(self):
+        # NR4: eine Rolle ist keine Person, und ohne Aussage bestätigt niemand etwas.
+        with tempfile.TemporaryDirectory() as tmp:
+            stand = pathlib.Path(tmp) / 'stand.yaml'
+            for eintrag, erwartet in (('  beleg: Exit 0\n', '„(leer)“ ist keine benannte Person'),
+                                      ('  durch: Betreiber\n  beleg: Exit 0\n', '„Betreiber“ ist keine benannte Person'),
+                                      ('  durch: Betreiber (A. Muster)\n', 'ohne Aussage beleg:')):
+                with self.subTest(erwartet):
+                    stand.write_text(f'q15_wal_archiv:\n  bestaetigt: ja\n  am: 2026-10-05\n{eintrag}', encoding='utf-8')
+                    urteil, text = uebungen.q15(stand)
+                    self.assertEqual('offen', urteil)
+                    self.assertIn(erwartet, text)
 
     def test_monate_am_monatsende(self):
         self.assertEqual('2027-02-28', uebungen.plus_monate(uebungen.datetime.date(2026, 8, 31), 6).isoformat())
@@ -221,6 +235,7 @@ class VorlagenTest(unittest.TestCase):
 
     AUSFUELLEN = {
         'U-JJJJ-nn': 'U-2026-02', 'JJJJ-MM-TT': '2026-10-06',
+        '<Commit des Produktions-Images am Übungstag>': '8be6a15b2',
         '<wer die Übung gefahren hat>': 'Betreiber',
         '<durchgefuehrt oder fehlgeschlagen, so wie rueckweg.json es trägt>': 'durchgefuehrt',
         '<durchgefuehrt, wenn die Meldung beim Empfänger ankam, sonst fehlgeschlagen>': 'durchgefuehrt',
@@ -274,7 +289,7 @@ class VorlagenTest(unittest.TestCase):
             (ordner / 'U-2026-02.json').write_text(json.dumps(alarm, ensure_ascii=False), encoding='utf-8')
             code, aus, _ = fahre('--heute', '2026-10-06', str(ordner))
         self.assertEqual(0, code, aus)
-        self.assertIn('U-2026-02 · Alarm VoltPilotSicherungZuAlt · zugestellt an betreiber · 06.10.2026 · Betreiber · '
+        self.assertIn('U-2026-02 · Alarm VoltPilotSicherungZuAlt · zugestellt an betreiber · Stand 8be6a15b2 · 06.10.2026 · Betreiber · '
                       'nächste fällig 06.04.2027', aus)
         self.assertNotIn('nie ausgelöst', aus)
 

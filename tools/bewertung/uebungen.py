@@ -12,13 +12,16 @@ gegen `docs/bewertung/uebung.schema.json` und rechnet jedes Ergebnis am Artefakt
   Wiederherstellung in `rueckweg.json` exit_code 0, Flyway-Stand und Q01 bytegleich und eine
   Dauer - dieselbe Regel wie NW-8 im Tor-Prüfer (`tools/freigabe/pruefe_tor.py`).
 
-Q15 „WAL-Archiv läuft“ liest es aus dem Stand-Blatt des Betreibers (`--stand`, Punkt
-`q15_wal_archiv`) mit dem Leser des Tor-Prüfers: bestätigt mit Datum heißt
-`nicht_maschinell_pruefbar`, sonst `offen`. Die nächste Übung ist beim Abruf fällig
+Jede Übung trägt den Stand des Produktions-Images am Übungstag (`stand`, NR3); ohne ihn ist sie
+lesbar, belegt im Matrix-Prüfer aber nichts. Q15 „WAL-Archiv läuft“ liest es aus dem Stand-Blatt des
+Betreibers (`--stand`, Punkt `q15_wal_archiv`) mit dem Leser des Tor-Prüfers: bestätigt mit Datum,
+benannter Person (`durch:`, keine bloße Rolle) und Aussage (`beleg:`) heißt
+`nicht_maschinell_pruefbar`, sonst `offen` (NR4). Die nächste Übung ist beim Abruf fällig
 (Startwert sechs Monate nach der letzten durchgeführten, E11 = A) - kein Läufer, keine Nachricht.
 Ein Alarm ohne durchgeführte Übung ist nicht geliefert (NR8); das Werkzeug sagt das und bleibt
 grün, denn offen ist kein Verstoß. Es urteilt über keine Zusage; das tut der Matrix-Prüfer
-(AP-20 IP-4) mit `bewerte()`.
+(`tools/bewertung/pruefe_matrix.py`): Z-015 ist dort nur belegt mit Q15 und einer Rückweg-Übung,
+die ihren Stand trägt und nicht fällig ist (BT1, BT2).
 
     python3 tools/bewertung/uebungen.py [--heute JJJJ-MM-TT] [--stand <stand-blatt>] [ordner]
 
@@ -93,13 +96,28 @@ def aus_rueckweg(bericht):
     }
 
 
+def rollen():
+    """NR4: eine Rolle ist keine Person. „Betreiber“ allein bestätigt nichts, „Betreiber (M. K.)“ schon."""
+    return {w.lower() for w in nachweismatrix.lade_schema()['$defs']['wer']['enum']} | {'voltpilot', 'werkzeug'}
+
+
 def q15(stand_pfad):
-    """Q15 „WAL-Archiv läuft“ aus dem Stand-Blatt, geurteilt vom Leser des Tor-Prüfers (NR4)."""
+    """Q15 „WAL-Archiv läuft“ aus dem Stand-Blatt, geurteilt vom Leser des Tor-Prüfers; dazu NR4:
+    eine benannte Person (`durch:`) und eine Aussage (`beleg:`)."""
     if stand_pfad is None:
         return 'offen', 'kein Stand-Blatt angegeben (--stand); der Betreiber bestätigt Q15 dort (Betreiber)'
     ctx = types.SimpleNamespace(stand_pfad=stand_pfad, stand=pruefe_tor.lies_stand(stand_pfad))
     urteil, text = pruefe_tor.betreiber(Q15_PUNKT, 'Q15 WAL-Archiv laeuft')(ctx)
-    return ('nicht_maschinell_pruefbar' if urteil == pruefe_tor.BETREIBER_WORT else 'offen'), text
+    if urteil != pruefe_tor.BETREIBER_WORT:
+        return 'offen', text
+    eintrag = ctx.stand[Q15_PUNKT]
+    durch = (eintrag.get('durch') or '').strip()
+    if not durch or durch.lower() in rollen():
+        return 'offen', (f'Q15 WAL-Archiv laeuft - bestaetigt am {eintrag["am"]} ohne Person: '
+                         f'„{durch or "(leer)"}“ ist keine benannte Person, durch: ergänzen (NR4; Betreiber)')
+    if not (eintrag.get('beleg') or '').strip():
+        return 'offen', f'Q15 WAL-Archiv laeuft - {durch} bestaetigt am {eintrag["am"]} ohne Aussage beleg: (NR4; Betreiber)'
+    return 'nicht_maschinell_pruefbar', text
 
 
 def bewerte(pfad, ordner=ORDNER, stand_pfad=None):
@@ -119,7 +137,8 @@ def bewerte(pfad, ordner=ORDNER, stand_pfad=None):
         return fehler + [f'artefakt: sha256 von {uebung["artefakt"]["pfad"]} stimmt nicht - Artefakt und '
                          f'Eintrag gehören nicht zusammen'], None
     ergebnis = {'kennzeichen': uebung['kennzeichen'], 'art': uebung['art'], 'datum': uebung['datum'],
-                'person': uebung['person'], 'uebung_zustand': uebung['zustand']}
+                'person': uebung['person'], 'uebung_zustand': uebung['zustand'], 'stand': uebung.get('stand'),
+                'betrifft': uebung['betrifft'], 'artefakt': uebung['artefakt']}
     if uebung['art'] == 'wiederherstellung':
         try:
             nachgerechnet = aus_rueckweg(json.loads(roh.decode('utf-8')))
@@ -169,7 +188,7 @@ def zeile(e):
                  'Zählungen gleich' if e['zaehlungen_gleich'] else 'Zählungen abweichend']
     else:
         teile = [e['kennzeichen'], f'Alarm {e["alarm"]}', f'zugestellt an {e["zugestellt_an"]}']
-    teile += [_datum(e['datum']), e['person']]
+    teile += ([f'Stand {e["stand"][:9]}'] if e['stand'] else ['ohne Stand']) + [_datum(e['datum']), e['person']]
     if e['uebung_zustand'] == 'fehlgeschlagen':
         teile.append('fehlgeschlagen - belegt nichts')
     else:

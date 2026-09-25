@@ -4,7 +4,8 @@
   "art": "wiederherstellung",
   "betrifft": ["Z-015"],
   "datum": "2026-10-05",
-  "person": "Betreiber",
+  "stand": "8be6a15b2",
+  "person": "Betreiber (A. Muster)",
   "zustand": "durchgefuehrt",
   "ergebnis": {
     "dauer_ms": 1260000,

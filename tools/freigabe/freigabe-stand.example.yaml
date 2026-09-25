@@ -33,6 +33,8 @@ m1_ausgewertet:
 # selben Tag BEIDES gilt: Bestandsblatt Q15 ohne Befund (letzte Archivierung
 # juenger als 1 h, Fehler steigen nicht) und
 # /srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh mit Exit 0.
+# durch: eine benannte Person, nicht nur die Rolle - "Betreiber (M. K.)", nie
+# "Betreiber" allein; ohne sie bleibt Z-015 in der Bewertung offen (AP-20 NR4).
 # beleg: die drei OK-Zeilen des Alterschecks in einem Satz, etwa
 #   "vp-db-backup-check.sh Exit 0: Basis-Backup 20261004T024012Z (9 h alt),
 #    WAL-Archiv aktuell (2 min), archive_mode=on, Archiver ok"
