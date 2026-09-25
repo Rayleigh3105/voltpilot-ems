@@ -53,7 +53,9 @@ export const VORJAHRESMONAT = 'vorjahresmonat';
 export const VORJAHR = 'vorjahr';
 export const VERGLEICH_ARTEN = [VORMONAT, VORJAHRESMONAT, VORJAHR];
 
-export const QUELLE_ARTEN = ['messstelle', 'kostenstelle', 'bezugsgroesse', 'stammdatum', 'kennzahl', 'umfang', 'energieeinsatz', 'messbedarf', 'messmittel', 'bezugsbasis'];
+export const QUELLE_ARTEN = ['messstelle', 'kostenstelle', 'bezugsgroesse', 'stammdatum', 'kennzahl', 'umfang', 'energieeinsatz', 'messbedarf', 'messmittel', 'bezugsbasis',
+  // 1.5 (AP-19 IP-22, MG3): die Quellen der Managementbewertung — keine trägt Kennzahl-Werte.
+  'energieziel', 'massnahme', 'abweichung', 'feststellung', 'internes_audit', 'dokument', 'beschluss', 'berichtsstand'];
 export const QUELLE_BEZUEGE = ['unmittelbar', 'mittelbar', 'vergleich'];
 
 export const KORREKTUR_FREIGEGEBEN = 'korrektur_freigegeben';
@@ -276,6 +278,10 @@ export type Vorlage = { schluessel: string; fassung: number; geltung_art: string
 
 /** AP-17 IP-21a (S1, W8): Vertrag 1.4 — die Kennzahl im Vergleich mit ihrer Bezugsbasis. */
 export const LEISTUNGSVERGLEICH = 'leistungsvergleich';
+/** AP-19 IP-22 (MG1): Vertrag 1.5 — die Managementbewertung am Unternehmen für ein Jahr; Rechte `energiemanagement.*`. */
+export const MANAGEMENTBEWERTUNG = 'managementbewertung';
+/** Vorlagen, die im Energiemanagement angelegt werden (AP-19 IP-24), nicht über die Berichte-Karten. */
+export const IM_ENERGIEMANAGEMENT: readonly string[] = [MANAGEMENTBEWERTUNG];
 /**
  * Vorlagen im Katalog, deren Leser noch fehlt: der Server lehnt das Anlegen ab, das Portal zeigt keine Karte. Seit
  * AP-17 IP-21b (der Abzug des Leistungsvergleichs) leer — wie `BerichtRegeln.OHNE_LESER`.
@@ -289,6 +295,7 @@ export const VORLAGEN: Vorlage[] = [
   { schluessel: 'jahresbericht_unternehmen', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: JAHR, geltung_arten: [UNTERNEHMEN], zeitraum_arten: [JAHR], vergleiche: [VORJAHR], abschnitte: ['kopf', 'zusammenfassung', 'standorte', 'kostenstellen', 'monatswerte', 'kennzahlen', 'qualitaet', 'quellenverzeichnis'] },
   { schluessel: 'energetische_bewertung', fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: DATENGRUNDLAGE, geltung_arten: [UNTERNEHMEN], zeitraum_arten: [DATENGRUNDLAGE], vergleiche: [], abschnitte: ['umfang', 'rangliste', 'einstufungen', 'messabdeckung', 'messplanung', 'messmittel', 'qualitaet', 'quellenverzeichnis'] },
   { schluessel: LEISTUNGSVERGLEICH, fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: MONAT, geltung_arten: [UNTERNEHMEN, STANDORT], zeitraum_arten: [MONAT, JAHR, DATENGRUNDLAGE], vergleiche: [], abschnitte: ['kopf', 'kennzahl', 'bezugsbasis', 'vergleich_je_periode', 'urteil', 'grenzen_und_vorbehalte', 'statische_faktoren', 'quellenverzeichnis'] },
+  { schluessel: MANAGEMENTBEWERTUNG, fassung: 1, geltung_art: UNTERNEHMEN, zeitraum_art: JAHR, geltung_arten: [UNTERNEHMEN], zeitraum_arten: [JAHR], vergleiche: [], abschnitte: ['vorige_beschluesse', 'grundlagen', 'energieziele', 'energieleistung', 'massnahmen', 'abweichungen', 'audits_feststellungen', 'bewertung_messplanung', 'wiedervorlage', 'beschluesse', 'sitzung', 'quellenverzeichnis'] },
 ];
 
 /** V2 — die Vorlage zu ihrem Schlüssel; `null` = `vorlage_unbekannt`. */

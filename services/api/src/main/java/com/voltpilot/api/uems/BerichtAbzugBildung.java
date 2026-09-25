@@ -144,6 +144,9 @@ public class BerichtAbzugBildung {
     /** AP-17 IP-21b: der EINE Vergleich-Leser (IP-19) für die Vorlage {@code leistungsvergleich}. */
     @Autowired(required = false)
     private BezugsbasisVergleich vergleichLeser;
+    /** AP-19 IP-22: der EINE Wiedervorlage-Leser für die Fristen der Vorlage {@code managementbewertung}. */
+    @Autowired(required = false)
+    private EnergiemanagementWiedervorlageService wiedervorlageLeser;
 
     @Autowired
     public BerichtAbzugBildung(MeasurementCatalog katalog, ObjectMapper json, ObjectProvider<BuildProperties> build,
@@ -265,6 +268,24 @@ public class BerichtAbzugBildung {
                 x.quellen(), x.zeiten());
     }
 
+    // ============================================================================ Managementbewertung (AP-19 IP-22)
+
+    /**
+     * MG1–MG3: die Abschnitt-Leser {@link BerichtManagementbewertung} — Stände und Zustände, nie ein Kennzahl-Wert; die
+     * Fristen und die Wiedervorlage zum Stichtag aus dem Wiedervorlage-Leser am Datenstand {@code jetzt}.
+     */
+    private Ergebnis managementbewertung(JdbcTemplate j, Kopf b, UUID berichtId, BerichtRegeln.Zeitraum z, Instant jetzt) {
+        if (wiedervorlageLeser == null) {
+            throw new IllegalStateException("Wiedervorlage-Leser ist nicht verdrahtet");
+        }
+        List<WiedervorlageQuelle.Frist> fristen = wiedervorlageLeser.fristen(wiedervorlageLeser.tag(jetzt));
+        BerichtManagementbewertung.Abzug x = BerichtManagementbewertung.abzug(j, json, b.tenant(), berichtId, b.kennung(),
+                b.unternehmen(), z, b.zone(), jetzt, regelwerk, wiedervorlageLeser.lesen(jetzt), fristen);
+        String text = BerichtRegeln.kanonisch(x.abzug());
+        return new Ergebnis(b.tenant(), berichtId, b.kennung(), x.abzug(), text, BerichtRegeln.pruefsumme(text), jetzt,
+                x.quellen(), List.of());
+    }
+
     // ============================================================================ Zusammentragen
 
     private Ergebnis zusammentragen(JdbcTemplate j, UUID berichtId, Instant jetzt) {
@@ -294,6 +315,9 @@ public class BerichtAbzugBildung {
         }
         if (BerichtRegeln.LEISTUNGSVERGLEICH.equals(b.vorlage())) {
             return leistungsvergleich(j, b, berichtId, z, jetzt);
+        }
+        if (BerichtRegeln.MANAGEMENTBEWERTUNG.equals(b.vorlage())) {
+            return managementbewertung(j, b, berichtId, z, jetzt);
         }
         MessstelleWerteService lesemodell = lesemodell(j, jetzt);
         MessstelleRepository messstellen = new MessstelleRepository(j);

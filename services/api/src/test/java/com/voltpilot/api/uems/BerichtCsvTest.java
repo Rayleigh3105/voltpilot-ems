@@ -267,7 +267,7 @@ class BerichtCsvTest {
         JsonNode vorlagen = EXAKT.readTree(Files.readString(V2.resolve("bericht-vorlagen.json")));
         List<String> mitZeilen = List.of(BerichtCsv.MESSSTELLEN, BerichtCsv.STANDORTE, BerichtCsv.KOSTENSTELLEN,
                 BerichtCsv.KENNZAHLEN);
-        assertThat(vorlagen.path("vorlagen")).hasSize(6);
+        assertThat(vorlagen.path("vorlagen")).hasSize(7);
         for (JsonNode v : vorlagen.path("vorlagen")) {
             List<String> folge = new ArrayList<>();
             v.path("abschnitte").forEach(a -> {
@@ -281,6 +281,9 @@ class BerichtCsvTest {
                 assertThat(alle).containsExactlyElementsOf(java.util.stream.Stream.concat(
                         java.util.stream.Stream.of("kopf"), BerichtCsv.ABSCHNITTE_LEISTUNGSVERGLEICH.stream()).toList());
                 continue;
+            }
+            if (BerichtRegeln.OHNE_CSV.contains(v.path("schluessel").asText())) {
+                continue; // AP-19 IP-22: die Managementbewertung gibt es nur als PDF (422 ausgabe_fehlt)
             }
             if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.path("schluessel").asText())) {
                 List<String> alle = new ArrayList<>();

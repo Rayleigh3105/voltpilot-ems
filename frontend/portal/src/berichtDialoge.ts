@@ -124,8 +124,11 @@ export const darf = (
   vorlage: string | null = null,
 ): boolean => {
   if (rechte === null) return false;
-  // AP-16 §6.1: die energetische Bewertung hat für jede Handlung ihre eigene Kennung (`BerichtRechte.kennung` mit Vorlage).
-  const kennung = vorlage === BEWERTUNG_VORLAGE ? BEWERTUNG_KENNUNG : B.kennung(handlung, geltungArt);
+  // AP-16 §6.1: die energetische Bewertung hat für jede Handlung ihre eigene Kennung (`BerichtRechte.kennung` mit Vorlage);
+  // AP-19 IP-22 (MG1): die Managementbewertung die des Energiemanagements.
+  const kennung = vorlage === BEWERTUNG_VORLAGE ? BEWERTUNG_KENNUNG
+    : vorlage === B.MANAGEMENTBEWERTUNG ? (handlung === 'freigeben' ? 'energiemanagement.freigeben' : 'energiemanagement.verwalten')
+    : B.kennung(handlung, geltungArt);
   if (geltungArt === 'unternehmen') return darfInListen(rechte, kennung, null);
   if (geltungId !== null) return darfInListen(rechte, kennung, geltungId);
   return [...rechte.standorte.keys()].some((id) => darfInListen(rechte, kennung, id));
@@ -168,7 +171,8 @@ export const vorlageKarten = (rechte: BerichtRechte | null, standortIds: readonl
   // AP-16 IP-25: die energetische Bewertung erscheint nur mit `bewertung.abrufen` (ihre eigene Kennung, §6.1).
   // AP-17 IP-21a: eine Vorlage ohne Leser bekommt keine Karte (seit IP-21b hat der Leistungsvergleich seinen Leser).
   // AP-17 IP-24: eine Vorlage mit mehreren Geltungen (Leistungsvergleich) erscheint, wenn eine davon erlaubt ist.
-  VORLAGEN.filter((v) => !B.OHNE_LESER.includes(v.schluessel)).filter((v) =>
+  // AP-19 IP-22: die Managementbewertung legt man im Energiemanagement an (IP-24), nicht über diese Karten.
+  VORLAGEN.filter((v) => !B.OHNE_LESER.includes(v.schluessel) && !B.IM_ENERGIEMANAGEMENT.includes(v.schluessel)).filter((v) =>
     (v.geltung_arten ?? [v.geltung_art]).some((art) =>
       art === 'unternehmen'
         ? darf(rechte, 'anlegen', 'unternehmen', null, v.schluessel)

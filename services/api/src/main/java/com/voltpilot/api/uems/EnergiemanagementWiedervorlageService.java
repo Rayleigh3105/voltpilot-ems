@@ -4,6 +4,7 @@ import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Wiedervorlage
 import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Zeile;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -55,13 +56,20 @@ public class EnergiemanagementWiedervorlageService {
     }
 
     /** Die Wiedervorlage am Abruf: fällige Zeilen, Vorschau, die Kennzeichen außerhalb des Fensters. */
-    @SuppressWarnings("unchecked")
     public Wiedervorlage lesen() {
-        OffsetDateTime jetzt = OffsetDateTime.ofInstant(uhr.instant(), zone()).truncatedTo(ChronoUnit.MINUTES);
+        return lesen(uhr.instant());
+    }
+
+    /**
+     * AP-19 IP-22: dieselbe Wiedervorlage zu einem gegebenen Augenblick — dem Datenstand des Abzugs einer
+     * Managementbewertung (Abschnitt „Wiedervorlage zum Stichtag“).
+     */
+    @SuppressWarnings("unchecked")
+    public Wiedervorlage lesen(Instant stichtag) {
+        OffsetDateTime jetzt = OffsetDateTime.ofInstant(stichtag, zone()).truncatedTo(ChronoUnit.MINUTES);
         LocalDate abruf = jetzt.toLocalDate();
         int vorschauTage = einstellung.vorschauTage();
-        List<WiedervorlageQuelle.Frist> fristen = quellen.orderedStream().flatMap(q -> q.fristen(abruf).stream())
-                .filter(f -> f.faelligAm() != null).toList();
+        List<WiedervorlageQuelle.Frist> fristen = fristen(abruf);
         Map<String, Object> r = EnergiemanagementRegeln.wiedervorlage(new EnergiemanagementRegeln.WiedervorlageEingang(
                 abruf.toString(), vorschauTage, fristen.stream().map(f -> new EnergiemanagementRegeln.WiedervorlageZeile(
                         f.art(), f.kennzeichen(), f.titel(), f.faelligAm().toString(), f.verantwortlich())).toList()));
@@ -80,6 +88,20 @@ public class EnergiemanagementWiedervorlageService {
         return new Wiedervorlage(jetzt, vorschauTage, faellig, vorschau, (int) r.get("anzahl_faellig"),
                 (int) r.get("anzahl_vorschau"), (List<String>) r.get("nicht_in_liste"),
                 EnergiemanagementRegeln.SAETZE.get("verantwortung"));
+    }
+
+    /**
+     * Jede Frist am Tag {@code abruf} aus allen Quellen in ihrer Folge — auch außerhalb des Vorschau-Fensters (AP-19 IP-22:
+     * die Überprüfung einer Grundlage, einer Bezugsbasis oder der Bewertung in der Managementbewertung).
+     */
+    public List<WiedervorlageQuelle.Frist> fristen(LocalDate abruf) {
+        return quellen.orderedStream().flatMap(q -> q.fristen(abruf).stream()).filter(f -> f.faelligAm() != null)
+                .toList();
+    }
+
+    /** Der Tag in der Zeitzone des Unternehmens zu einem Augenblick. */
+    public LocalDate tag(Instant augenblick) {
+        return LocalDate.ofInstant(augenblick, zone());
     }
 
     /**

@@ -58,7 +58,7 @@ public record BerichtRegelwerk(String software, Map<String, String> vertraege) {
         m.put("bilanz", "1.1");
         m.put("bilanzwert-herkunft", "1.0");
         m.put("kennzahl", "1.0");
-        m.put("bericht", "1.4");
+        m.put("bericht", "1.5");
         return Collections.unmodifiableMap(m);
     }
 }

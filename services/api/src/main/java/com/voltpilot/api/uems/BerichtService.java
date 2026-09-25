@@ -321,6 +321,9 @@ public class BerichtService {
         if (BerichtRegeln.OHNE_AUSGABE.contains(kopf.vorlage())) {
             throw BerichtAbgelehnt.von(Ablehnung.AUSGABE_FEHLT); // seit AP-17 IP-22 keine Vorlage mehr
         }
+        if (FORMAT_CSV.equals(format) && BerichtRegeln.OHNE_CSV.contains(kopf.vorlage())) {
+            throw BerichtAbgelehnt.von(Ablehnung.AUSGABE_FEHLT); // AP-19 IP-22: die Managementbewertung nur als PDF
+        }
         StandZeile s = geprueft(kopf, nr);
         Instant ersetztAm = s.ersetztDurchNr() == null ? null : repo.staende(kopf.tenant(), kopf.id()).stream()
                 .filter(x -> x.nr() == s.ersetztDurchNr()).map(StandZeile::freigegebenAm).findFirst().orElseThrow();
@@ -399,7 +402,9 @@ public class BerichtService {
         }
         // Q3 — am Standort die Messstellen seiner Orte, am Unternehmen die Netzbezugs-Zähler der Standorte, die Unternehmens-
         // und die Prozess-Messstellen (AP-12 IP-6).
+        // AP-19 IP-22: die Managementbewertung zitiert Stände und Zustände, keine Messstelle — wie die Bewertung ohne Q3.
         if (!BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(v.schluessel())
+                && !BerichtRegeln.MANAGEMENTBEWERTUNG.equals(v.schluessel())
                 && !BerichtAbzugBildung.hatMessstellen(jdbc, tenant, v.geltungArt(), g.id(), zr.ersterTag(), zr.letzterTag())) {
             LocalDate seit = BerichtAbzugBildung.bestehtSeit(jdbc, tenant, v.geltungArt(), g.id(),
                     LocalDate.ofInstant(jetzt, zone));

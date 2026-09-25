@@ -59,6 +59,11 @@ public final class BerichtRegeln {
     /** AP-17 IP-21a (S1, W8): Vertrag 1.4 — die Kennzahl im Vergleich mit ihrer Bezugsbasis. */
     public static final String LEISTUNGSVERGLEICH = "leistungsvergleich";
     /**
+     * AP-19 IP-22 (MG1–MG3): Vertrag 1.5 — die Managementbewertung am Unternehmen für ein Jahr. Ihre Abschnitte zitieren
+     * Stände und Zustände ({@link BerichtManagementbewertung}), ihre Rechte sind {@code energiemanagement.*}.
+     */
+    public static final String MANAGEMENTBEWERTUNG = "managementbewertung";
+    /**
      * AP-17 IP-21a: Vorlagen im Katalog, deren Leser noch fehlt. Anlegen antwortet für sie {@link #VORLAGE_UNBEKANNT};
      * das Portal zeigt keine Karte. Seit IP-21b (der Abzug aus Kennzahl, Basis und Vergleich) leer.
      */
@@ -68,6 +73,11 @@ public final class BerichtRegeln {
      * Leistungsvergleichs in {@link BerichtPdf}/{@link BerichtCsv}) leer.
      */
     public static final Set<String> OHNE_AUSGABE = Set.of();
+    /**
+     * AP-19 IP-22: Vorlagen mit PDF, aber ohne Berichts-CSV ({@code 422 ausgabe_fehlt} nach dem Recht) — die
+     * Managementbewertung ist ein Dokument der Leitung, keine Tabelle zum Weiterrechnen.
+     */
+    public static final Set<String> OHNE_CSV = Set.of(MANAGEMENTBEWERTUNG);
     /** AP-14/AP-16: derselbe Grenz-Satz im Bewertungs-PDF und -CSV; das Portal hält ihn als {@code UEMS_NORMGRENZE}. */
     public static final String BEWERTUNG_GRENZ_SATZ = "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen "
             + "und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.";
@@ -88,7 +98,10 @@ public final class BerichtRegeln {
 
     public static final List<String> QUELLE_ARTEN =
             List.of("messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang",
-                    "energieeinsatz", "messbedarf", "messmittel", "bezugsbasis");
+                    "energieeinsatz", "messbedarf", "messmittel", "bezugsbasis",
+                    // 1.5 (AP-19 IP-22, MG3): die Quellen der Managementbewertung — keine trägt Kennzahl-Werte.
+                    "energieziel", "massnahme", "abweichung", "feststellung", "internes_audit", "dokument", "beschluss",
+                    "berichtsstand");
 
     public static final String UNMITTELBAR = "unmittelbar";
     public static final String MITTELBAR = "mittelbar";
@@ -349,7 +362,11 @@ public final class BerichtRegeln {
             new Vorlage(LEISTUNGSVERGLEICH, 1, UNTERNEHMEN, MONAT, List.of(),
                     List.of("kopf", "kennzahl", "bezugsbasis", "vergleich_je_periode", "urteil", "grenzen_und_vorbehalte",
                             "statische_faktoren", "quellenverzeichnis"),
-                    List.of(UNTERNEHMEN, STANDORT), List.of(MONAT, JAHR, DATENGRUNDLAGE)));
+                    List.of(UNTERNEHMEN, STANDORT), List.of(MONAT, JAHR, DATENGRUNDLAGE)),
+            new Vorlage(MANAGEMENTBEWERTUNG, 1, UNTERNEHMEN, JAHR, List.of(),
+                    List.of("vorige_beschluesse", "grundlagen", "energieziele", "energieleistung", "massnahmen",
+                            "abweichungen", "audits_feststellungen", "bewertung_messplanung", "wiedervorlage", "beschluesse",
+                            "sitzung", "quellenverzeichnis")));
 
     /** V2 — die Vorlage zu ihrem Schlüssel; {@code null} = {@link #VORLAGE_UNBEKANNT}. */
     public static Vorlage vorlage(String schluessel) {

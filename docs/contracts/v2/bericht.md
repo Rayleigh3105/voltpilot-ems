@@ -7,8 +7,9 @@ unverändert. **1.2 (additiv, A9):** Tagesverlauf, Richtungspaar und Kennzahl-An
 S2):** Energetische Bewertung. **Ein Stand für alle Dateien (AP-17 W10, 23.09.2026):** dieser Text, `bericht-vectors.json`,
 `bericht.schema.json`, `bericht-vorlagen.json` (mit ihren Kopien in API und Portal) und `BerichtRegelwerk.VERTRAEGE`
 nennen denselben Stand; W10 hat nur die Angabe auf 1.3 vereinheitlicht, keinen Inhalt. **1.4 (AP-17 IP-21a, additiv,
-S1/S2/W8):** die Vorlage `leistungsvergleich` (Fassung 1) und die Quellenart `bezugsbasis` (§3, §4). Ein Abzug nennt weiter die Fassung, nach der er gebildet
-wurde (A9, RW1).
+S1/S2/W8):** die Vorlage `leistungsvergleich` (Fassung 1) und die Quellenart `bezugsbasis` (§3, §4). **1.5 (AP-19 IP-22,
+additiv, MG1–MG3):** die Vorlage `managementbewertung` (Nr. 7, Fassung 1) und acht Quellenarten (§4 „Managementbewertung“).
+Ein Abzug nennt weiter die Fassung, nach der er gebildet wurde (A9, RW1).
 
 Die Abnahme des Captains: **„Ein freigegebener Bericht lässt sich trotz späterer Korrekturen und abgelaufener Rohdaten
 erklären.“** — Monatsbericht Werk Ahrenberg Oktober 2026: Berichtsstand Nr. 1 (10.11.2026, Datenstand 08:55) nennt
@@ -185,6 +186,22 @@ Schalter: `voltpilot.uems.bezugsbasis.enabled` aus → nichts gesetzt, nichts we
 PDF und CSV des Stands (IP-22) stehen in §10 DA2/DA3; `OHNE_AUSGABE` ist leer (`422 ausgabe_fehlt` bleibt als Code für
 eine künftige Vorlage ohne Ausgabe). `OHNE_LESER` ist leer: anlegbar, die Karte erscheint.
 
+**Managementbewertung (AP-19 IP-22, MG1–MG3, 1.5).** Die Vorlage `managementbewertung` (Nr. 7, Fassung 1) gilt genau für
+Unternehmen × Jahr (`bericht_vorlage()` um ein Paar, Migration `V20260925061500`); eine je Jahr (`bericht_gibt_es_schon`),
+Kennung `BR-<Jahr des Anlegens>-<Nr.>`, keine Messstellen-Prüfung beim Anlegen (Q3 gilt nicht). Ihre zwölf Abschnitte sind
+die Eingaben der Managementbewertung: Beschlüsse der letzten Managementbewertung · Grundlagen (Energiepolitik,
+Anwendungsbereich, rechtliche Anforderungen, Risiken und Chancen mit freigegebener Fassung, Prüfsumme, „entschieden von“,
+Überprüfung; Aufgaben mit und ohne Person) · Energieziele · Energieleistung (Leistungsvergleichs-Stände, Bezugsbasen) ·
+Maßnahmen · Abweichungen und Auffälligkeiten · interne Audits und Feststellungen · energetische Bewertung und Messplanung ·
+Wiedervorlage zum Stichtag · Beschlüsse · Sitzung · Quellenverzeichnis. **Jeder Abschnitt zitiert Stände und Zustände**
+(Kennzeichen, Nr., Prüfsumme, das Ergebnis wie in der Kopie festgehalten) — kein neu gerechnetes Urteil, kein Kennzahl-Wert
+(`uems/BerichtManagementbewertung`); Fristen und Wiedervorlage kommen aus dem Wiedervorlage-Leser am Datenstand. Die
+Quellenarten wachsen additiv um `energieziel · massnahme · abweichung · feststellung · internes_audit · dokument · beschluss ·
+berichtsstand` (MG3); keine trägt Kennzahl-Werte, darum trifft keine Kaskade (Pfad 1 und 2) die Managementbewertung — was
+sich später ändert, zeigt die nächste. Sitzung und Beschlüsse (MG4–MG7) füllt AP-19 IP-23; bis dahin `beschluesse = []`,
+`sitzung = null`. PDF mit allen zwölf Abschnitten, Grenz- und Verantwortungs-Satz; kein Berichts-CSV (`OHNE_CSV`,
+`422 ausgabe_fehlt`). Angelegt wird sie im Energiemanagement (AP-19 IP-24), das Portal zeigt keine Berichte-Karte.
+
 Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld
 `wiedervorlage_monate` startet mit 12 und lässt sich nur mit Begründung ändern (`PUT …/wiedervorlage`).
 
@@ -316,7 +333,9 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   `bericht.standort_abrufen`; `anlegen`/`freigeben`/`verwerfen`/`archivieren` → `bericht.standort_freigeben`; `csv` →
   `export.standort`; am Unternehmen `abrufen`/`pdf` → `bericht.unternehmen_abrufen`, `csv` → `export.unternehmen`, sonst
   `bericht.unternehmen`. Die Vorlage `energetische_bewertung` liest (`abrufen`/`pdf`) über `bewertung.ansehen`, alles andere
-  über `bewertung.abrufen` (`BerichtRechte.kennung` mit Vorlage).
+  über `bewertung.abrufen` (`BerichtRechte.kennung` mit Vorlage). Die Vorlage `managementbewertung` (AP-19 IP-22, MG1) liest
+  (`abrufen`/`pdf`) über `energiemanagement.ansehen`, gibt über `energiemanagement.freigeben` frei, alles andere über
+  `energiemanagement.verwalten` — nie über `bericht.unternehmen`; „Einsicht“ liest und lädt das PDF, sonst nichts.
 - **G1a Lesen und Freigeben getrennt (AP-19 IP-11, RE4, W10).** Bis dahin trugen am Unternehmen und an der energetischen
   Bewertung Lesen und Freigeben dieselbe Kennung. Die zwei Lese-Kennungen sind Nachträge `AP-19 §4.2` mit denselben Zellen wie
   die alten Zeilen (`wie`): keine Bestandsrolle darf mehr oder weniger — `BerichtRechteTest` vergleicht je Rolle, Handlung,

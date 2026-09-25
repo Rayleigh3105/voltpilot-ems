@@ -3,7 +3,7 @@
     "Geteilte Vektoren des BERICHT-VERTRAGS (UEMS AP-12 IP-1, Entscheide E1–E15 und W1–W11 vom 14.09.2026) — Prosa in bericht.md.",
     "Ein Bericht ist ein EIGENES Objekt (Vorlage × Geltung × Zeitraum) mit genau einem gespeicherten Entwurf und null bis n freigegebenen",
     "Berichtsständen. Ein Berichtsstand ist ein ABZUG: der Inhalt als kanonischer Text mit SHA-256 — nie ein Verweis auf lebende Zeilen.",
-    "Die Fälle B1–B16 kommen aus dem Referenzfallkatalog des Konzepts (referenzfaelle.json); B17 ergänzt AP-16 IP-21, B18 AP-17 IP-21a (Vorlage Leistungsvergleich, Vertrag 1.4).",
+    "Die Fälle B1–B16 kommen aus dem Referenzfallkatalog des Konzepts (referenzfaelle.json); B17 ergänzt AP-16 IP-21, B18 AP-17 IP-21a (Vorlage Leistungsvergleich, Vertrag 1.4), B19 AP-19 IP-22 (Vorlage Managementbewertung, Vertrag 1.5).",
     "Jede Zahl ist dort und beim Erzeugen dieser Datei nachgerechnet. Zwei Zwillinge prüfen JEDE Prüfung: Java services/api .../uems/BerichtVectorsTest (BerichtRegeln) und",
     "TypeScript frontend/portal/src/uemsBericht.test.ts (uemsBericht.ts).",
     "Was es schon gibt, wird AUFGERUFEN: Perioden BezugsPeriode.spanneVon, Frist TagRegeln.endgueltigAb, Uhrzeit ErgebnisZustand.uhr,",
@@ -11,7 +11,7 @@
     "Recht RechteAbleitung.darf, die Sprache der Naht BerichteNaht.Bericht und KorrekturKaskade.Betroffen.",
     "Beträge sind Dezimaltext; Zeitpunkte ISO-8601 mit Offset; Tage einschließlich. null heißt „keine Werte“, nie 0."
   ],
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "$schema_datei": "./bericht.schema.json",
   "herkunft": "UEMS AP-12 §4 (A, Q, V, D, F, B, R, EW, RW, DA, G, S), §5.8 (Kundensätze), §7 (B1–B16) — Entscheide E1–E15 und W1–W11 vom 14.09.2026; Bau-Paket IP-1/IP-3",
   "zeitzone": "Europe/Berlin",
@@ -36,11 +36,11 @@
   ],
   "vokabulare": {
     "bericht_stand": ["entwurf", "freigegeben"],
-    "vorlage": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich"],
+    "vorlage": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich", "managementbewertung"],
     "geltung_art": ["standort", "unternehmen"],
     "zeitraum_art": ["monat", "jahr", "datengrundlage"],
     "vergleich_art": ["vormonat", "vorjahresmonat", "vorjahr"],
-    "quelle_art": ["messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang", "energieeinsatz", "messbedarf", "messmittel", "bezugsbasis"],
+    "quelle_art": ["messstelle", "kostenstelle", "bezugsgroesse", "stammdatum", "kennzahl", "umfang", "energieeinsatz", "messbedarf", "messmittel", "bezugsbasis", "energieziel", "massnahme", "abweichung", "feststellung", "internes_audit", "dokument", "beschluss", "berichtsstand"],
     "quelle_bezug": ["unmittelbar", "mittelbar", "vergleich"],
     "anstoss_art": [
       "korrektur_freigegeben",
@@ -5692,6 +5692,53 @@
             "bezeichnung": "November 2026 bis Oktober 2027",
             "vergleiche": []
           }
+        }
+      ]
+    },
+    {
+      "id": "B19",
+      "name": "b19-managementbewertung",
+      "familie": "plan_abnahme",
+      "abnahme": null,
+      "titel": "Die Managementbewertung ist eine Berichtsvorlage am Unternehmen für ein Jahr; ihre Abschnitte zitieren Stände und Zustände",
+      "why": "AP-19 MG1–MG3 (E6 = A): die Managementbewertung folgt dem Muster der energetischen Bewertung — ein Bericht einer VoltPilot-Vorlage mit Entwurf, Stand Nr. n, Prüfsumme und PDF; ihre acht neuen Quellenarten tragen keine Kennzahl-Werte, darum trifft keine Kaskade sie.",
+      "schritte": [
+        "Eine Vorlage `managementbewertung` (Nr. 7, Fassung 1) mit zwölf festen Abschnitten, Unternehmen × Jahr wie in R13 (BR-2029-0001 für 2028).",
+        "Sie gilt genau für das eine Paar; am Standort und für einen Monat gibt es sie nicht."
+      ],
+      "annahmen": ["Die Eingaben von R13 (verfehlt −2,7 %, belegt, nicht messbar, +12,9 %) bildet der Abschnitt-Leser aus gespeicherten Ständen; dieser Fall prüft Vorlage, Geltung und Zeitraum."],
+      "pruefungen": [
+        {
+          "regel": "vorlage",
+          "name": "Vorlage Fassung 1 mit zwölf Abschnitten, Unternehmen und Jahr, ohne Vorjahr",
+          "eingang": {"vorlage": "managementbewertung"},
+          "ergebnis": {
+            "geltung_art": "unternehmen",
+            "zeitraum_art": "jahr",
+            "vergleiche": [],
+            "abschnitte": ["vorige_beschluesse", "grundlagen", "energieziele", "energieleistung", "massnahmen", "abweichungen", "audits_feststellungen", "bewertung_messplanung", "wiedervorlage", "beschluesse", "sitzung", "quellenverzeichnis"],
+            "fehler": null,
+            "status": null,
+            "kundensatz": null
+          }
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Managementbewertung · Unternehmen · Jahr",
+          "eingang": {"vorlage": "managementbewertung", "geltung_art": "unternehmen", "zeitraum_art": "jahr"},
+          "ergebnis": {"passt": true}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Die Managementbewertung gibt es nicht am Standort",
+          "eingang": {"vorlage": "managementbewertung", "geltung_art": "standort", "zeitraum_art": "jahr"},
+          "ergebnis": {"passt": false}
+        },
+        {
+          "regel": "vorlage_passt",
+          "name": "Die Managementbewertung gibt es nicht für einen Monat",
+          "eingang": {"vorlage": "managementbewertung", "geltung_art": "unternehmen", "zeitraum_art": "monat"},
+          "ergebnis": {"passt": false}
         }
       ]
     }

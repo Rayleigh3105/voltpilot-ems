@@ -54,7 +54,8 @@ import org.springframework.web.bind.annotation.PutMapping;
  * aus {@code docs/contracts/v2/rechte-matrix.json} — am Standort-Bericht {@code bericht.standort_abrufen} bzw.
  * {@code bericht.standort_freigeben}, am Unternehmens-Bericht {@code bericht.unternehmen_abrufen} bzw.
  * {@code bericht.unternehmen}, an der energetischen Bewertung {@code bewertung.ansehen} bzw. {@code bewertung.abrufen} (G1;
- * Lesen und Freigeben getrennt seit AP-19 IP-11, RE4). Fremd und fremder Standort
+ * Lesen und Freigeben getrennt seit AP-19 IP-11, RE4), an der Managementbewertung {@code energiemanagement.ansehen},
+ * {@code energiemanagement.verwalten} bzw. {@code energiemanagement.freigeben} (AP-19 IP-22, MG1). Fremd und fremder Standort
  * ist 404 {@code nicht_gefunden}, fehlendes Recht 403 {@code recht_fehlt}; der Unterstützer bekommt keinen Entwurf und keinen
  * Stand. Diese Ablehnungen gibt es nur an diesen Routen.
  *
@@ -112,13 +113,15 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} — Anlegen folgt
-     * dem Freigabe-Recht (G1), die Bewertung ihrer eigenen Unternehmens-Kennung.
+     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen}, {@code bewertung.abrufen} bzw.
+     * {@code energiemanagement.verwalten} — Anlegen folgt dem Freigabe-Recht (G1), die Bewertung ihrer eigenen
+     * Unternehmens-Kennung, die Managementbewertung dem Bearbeiten des Energiemanagements (AP-19 IP-22).
      * {@code kennzahlen_abgewaehlt} (V3, AP-12 IP-14) ist freiwillig: jede eine Kennung, doppelte fallen zusammen.
      * {@code kennzahl} trägt genau der Leistungsvergleich (AP-17 IP-21b, V4 je Kennzahl).
      */
     @PostMapping("/berichte")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen",
+            "energiemanagement.verwalten"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<BerichtDto.Bericht> anlegen(@RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
         BerichtDto.Anlegen b = lies(body, BerichtDto.Anlegen.class);
@@ -133,7 +136,10 @@ public class BerichtController {
                 b.kennzahl(), wer)));
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
+    /**
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen}, {@code bewertung.ansehen} bzw.
+     * {@code energiemanagement.ansehen}.
+     */
     @GetMapping("/berichte/{kennung}")
     public BerichtDto.Detail detail(@PathVariable String kennung, Authentication auth) {
         BerichtService.Detail d = dienst.detail(kennung(kennung), OrtAnfrage.akteur(auth));
@@ -167,7 +173,10 @@ public class BerichtController {
                 OrtAnfrage.akteur(auth)));
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
+    /**
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen}, {@code bewertung.ansehen} bzw.
+     * {@code energiemanagement.ansehen}.
+     */
     @GetMapping("/berichte/{kennung}/entwurf")
     public BerichtDto.Entwurf entwurf(@PathVariable String kennung, Authentication auth) {
         BerichtService.Entwurf e = dienst.entwurf(kennung(kennung), OrtAnfrage.akteur(auth));
@@ -177,7 +186,10 @@ public class BerichtController {
                 e.teilansicht(), e.entwurf().abzug());
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
+    /**
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen}, {@code bewertung.ansehen} bzw.
+     * {@code energiemanagement.ansehen}.
+     */
     @GetMapping("/berichte/{kennung}/entwurf/vergleich")
     public BerichtDto.Vergleich vergleich(@PathVariable String kennung, @RequestParam(required = false) String gegen,
             Authentication auth) {
@@ -193,10 +205,12 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} — F1–F5.
+     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen}, {@code bewertung.abrufen} bzw.
+     * {@code energiemanagement.freigeben} — F1–F5.
      */
     @PostMapping("/berichte/{kennung}/freigeben")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen",
+            "energiemanagement.freigeben"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<BerichtDto.Stand> freigeben(@PathVariable String kennung,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -213,7 +227,10 @@ public class BerichtController {
         return ResponseEntity.status(f.neu() ? 201 : 200).body(stand(f.stand()));
     }
 
-    /** Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen}. */
+    /**
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen}, {@code bewertung.ansehen} bzw.
+     * {@code energiemanagement.ansehen}.
+     */
     @GetMapping("/berichte/{kennung}/staende/{nr}")
     public BerichtDto.Stand stand(@PathVariable String kennung, @PathVariable String nr, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -225,7 +242,8 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code export.standort}, {@code export.unternehmen} bzw. {@code bewertung.abrufen} (G1) — der CSV eines Stands
+     * Recht: {@code export.standort}, {@code export.unternehmen}, {@code bewertung.abrufen} bzw.
+     * {@code energiemanagement.verwalten} (G1) — der CSV eines Stands
      * (DA3), jeder Abruf protokolliert (DA5); ein Entwurf hat keinen (EW4). Ablehnungen wie am Stand, als JSON.
      */
     @GetMapping("/berichte/{kennung}/staende/{nr}/csv")
@@ -242,7 +260,8 @@ public class BerichtController {
     }
 
     /**
-     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen} bzw. {@code bewertung.ansehen} (G1) — das
+     * Recht: {@code bericht.standort_abrufen}, {@code bericht.unternehmen_abrufen}, {@code bewertung.ansehen} bzw.
+     * {@code energiemanagement.ansehen} (G1) — das
      * PDF eines Stands (DA2), server-seitig aus dem Abzug, byte-gleich bei jedem Abruf; jeder Abruf protokolliert (DA5); ein Entwurf hat
      * keins (EW4). Ablehnungen wie am Stand, als JSON — darum kein {@code produces}.
      */
@@ -259,9 +278,13 @@ public class BerichtController {
                 .body(datei.inhalt());
     }
 
-    /** Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen} — R4. */
+    /**
+     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen}, {@code bewertung.abrufen} bzw.
+     * {@code energiemanagement.verwalten} — R4.
+     */
     @PostMapping("/berichte/{kennung}/anstoesse/{id}/verwerfen")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen",
+            "energiemanagement.verwalten"}, ziel = RechtZiel.DIENST)
     public BerichtDto.Anstoss verwerfen(@PathVariable String kennung, @PathVariable String id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -270,9 +293,13 @@ public class BerichtController {
         return anstoss(dienst.verwerfen(k, id, b.begruendung(), wer).anstoss());
     }
 
-    /** Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen} bzw. {@code bewertung.abrufen}. */
+    /**
+     * Recht: {@code bericht.standort_freigeben}, {@code bericht.unternehmen}, {@code bewertung.abrufen} bzw.
+     * {@code energiemanagement.verwalten}.
+     */
     @PostMapping("/berichte/{kennung}/archivieren")
-    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen"}, ziel = RechtZiel.DIENST)
+    @Recht(value = {"bericht.standort_freigeben", "bericht.unternehmen", "bewertung.abrufen",
+            "energiemanagement.verwalten"}, ziel = RechtZiel.DIENST)
     public BerichtDto.Bericht archivieren(@PathVariable String kennung, @RequestBody(required = false) JsonNode body,
             Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);

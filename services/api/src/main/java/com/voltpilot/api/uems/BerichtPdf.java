@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -90,11 +91,23 @@ public final class BerichtPdf {
             "Kennzahl", BerichtCsv.BEZUGSBASIS, "Bezugsbasis", BerichtCsv.VERGLEICH_JE_PERIODE, "Vergleich je Periode",
             BerichtCsv.URTEIL, "Urteil", BerichtCsv.GRENZEN, "Grenzen und Vorbehalte", BerichtCsv.STATISCHE_FAKTOREN,
             "Statische Faktoren", QUELLENVERZEICHNIS, "Quellenverzeichnis");
+    /** AP-19 IP-22 (MG2): die zwölf Abschnitte der Managementbewertung, wie {@code bericht-vorlagen.json}. */
+    public static final Map<String, String> ABSCHNITTE_MANAGEMENTBEWERTUNG = geordnet("vorige_beschluesse",
+            "Beschlüsse der letzten Managementbewertung und ihre Folgen", "grundlagen", "Grundlagen", "energieziele",
+            "Energieziele", "energieleistung", "Energieleistung", "massnahmen", "Maßnahmen", "abweichungen",
+            "Abweichungen und Auffälligkeiten", "audits_feststellungen", "Interne Audits und Feststellungen",
+            "bewertung_messplanung", "Energetische Bewertung und Messplanung", "wiedervorlage", "Wiedervorlage zum Stichtag",
+            "beschluesse", "Beschlüsse", "sitzung", "Sitzung", QUELLENVERZEICHNIS, "Quellenverzeichnis");
     /** Die Namen der Vorlagen (Fassung 1, {@code bericht-vorlagen.json}) — der Titel des PDF. */
     public static final Map<String, String> VORLAGEN = geordnet("monatsbericht_standort", "Monatsbericht Standort",
             "jahresbericht_standort", "Jahresbericht Standort", "monatsbericht_unternehmen", "Monatsbericht Unternehmen",
             "jahresbericht_unternehmen", "Jahresbericht Unternehmen", BerichtRegeln.ENERGETISCHE_BEWERTUNG,
-            "Energetische Bewertung", BerichtRegeln.LEISTUNGSVERGLEICH, "Leistungsvergleich");
+            "Energetische Bewertung", BerichtRegeln.LEISTUNGSVERGLEICH, "Leistungsvergleich",
+            BerichtRegeln.MANAGEMENTBEWERTUNG, "Managementbewertung");
+    /** Die Grundlagen der Managementbewertung in ihrer Folge (MG2). */
+    private static final Map<String, String> GRUNDLAGEN = geordnet("energiepolitik", "Energiepolitik",
+            "anwendungsbereich", "Anwendungsbereich", "rechtliche_anforderungen", "Rechtliche Anforderungen",
+            "risiken_chancen", "Risiken und Chancen");
 
     private static final Map<String, String> SUMMEN = geordnet("netzbezug_kwh", "Netzbezug", "einspeisung_kwh",
             "Einspeisung", "pv_erzeugung_kwh", "PV-Erzeugung", "speicher_laden_kwh", "Speicher laden",
@@ -145,9 +158,11 @@ public final class BerichtPdf {
                 : BerichtRegeln.ersetztDurch(stand.ersetztDurchNr(), stand.ersetztAm(), zone);
         boolean bewertung = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(kopf.path("vorlage").asText());
         boolean leistungsvergleich = BerichtRegeln.LEISTUNGSVERGLEICH.equals(kopf.path("vorlage").asText());
+        boolean managementbewertung = BerichtRegeln.MANAGEMENTBEWERTUNG.equals(kopf.path("vorlage").asText());
         boolean unternehmen = BerichtRegeln.UNTERNEHMEN.equals(kopf.path("geltung").path("art").asText());
         Map<String, String> abschnitte = bewertung ? ABSCHNITTE_BEWERTUNG
                 : leistungsvergleich ? ABSCHNITTE_LEISTUNGSVERGLEICH
+                : managementbewertung ? ABSCHNITTE_MANAGEMENTBEWERTUNG
                 : unternehmen ? ABSCHNITTE_UNTERNEHMEN : ABSCHNITTE_STANDORT;
         try (TrueTypeFont ttf = new TTFParser().parse(new RandomAccessReadBuffer(SCHRIFT_DATEI));
                 PDDocument doc = new PDDocument()) {
@@ -159,6 +174,10 @@ public final class BerichtPdf {
                     continue;
                 }
                 s.ueberschrift(a.getValue());
+                if (managementbewertung && !QUELLENVERZEICHNIS.equals(a.getKey())) {
+                    managementbewertung(s, a.getKey(), abzug.path(a.getKey()));
+                    continue;
+                }
                 switch (a.getKey()) {
                     case ZUSAMMENFASSUNG -> zusammenfassung(s, abzug.path(ZUSAMMENFASSUNG), ebene);
                     case BerichtCsv.MESSSTELLEN -> messstellen(s, abzug.path("werte"), zone, ebene);
@@ -179,7 +198,7 @@ public final class BerichtPdf {
                     case BerichtCsv.GRENZEN -> grenzen(s, abzug);
                     case BerichtCsv.STATISCHE_FAKTOREN -> statischeFaktoren(s, abzug.path(BerichtCsv.STATISCHE_FAKTOREN));
                     case QUELLENVERZEICHNIS -> {
-                        if (leistungsvergleich) {
+                        if (leistungsvergleich || managementbewertung) {
                             quellenMitBezug(s, abzug.path(QUELLENVERZEICHNIS));
                         } else {
                             quellenverzeichnis(s, abzug);
@@ -199,6 +218,183 @@ public final class BerichtPdf {
         }
     }
 
+    // ================================================================================ Managementbewertung (AP-19 IP-22)
+
+    /**
+     * MG2: ein Abschnitt der Managementbewertung als Tabelle — Kennzeichen, Stand und Prüfsumme, wie der Abzug sie zitiert;
+     * kein Urteil wird hier gebildet, ein leerer Abschnitt sagt es in einem Satz.
+     */
+    private static void managementbewertung(Setzer s, String abschnitt, JsonNode n) throws IOException {
+        switch (abschnitt) {
+            case "vorige_beschluesse" -> {
+                JsonNode v = n.path("managementbewertung");
+                if (!v.isObject()) {
+                    s.absatz(textOderStrich(n.path("satz")), NORMAL, GRAU);
+                    return;
+                }
+                s.paare(List.of(paar("Managementbewertung", verbunden(TRENNER, text(v.path("kennung")),
+                        text(v.path("zeitraum")))), paar("Stand", standZelle(v.path("stand_nr"), v.path("freigegeben_am"))),
+                        paar("Prüfsumme", textOderStrich(v.path("pruefsumme")))));
+            }
+            case "grundlagen" -> {
+                List<List<List<String>>> zeilen = new ArrayList<>();
+                for (Map.Entry<String, String> g : GRUNDLAGEN.entrySet()) {
+                    JsonNode d = n.path(g.getKey());
+                    if (d.isTextual()) {
+                        zeilen.add(List.of(List.of(g.getValue()), List.of(d.asText()), List.of(ErgebnisZustand.OHNE_ZAHL),
+                                List.of(ErgebnisZustand.OHNE_ZAHL)));
+                        continue;
+                    }
+                    d.forEach(x -> zeilen.add(List.of(List.of(g.getValue()),
+                            List.of(verbunden(TRENNER, text(x.path("dokument")), text(x.path("titel"))),
+                                    x.path("fassung").isIntegralNumber() ? "Fassung " + x.path("fassung").asInt()
+                                            : "keine freigegebene Fassung"),
+                            List.of(x.hasNonNull("entschieden_am") ? "entschieden am " + tag(x.path("entschieden_am"))
+                                    : ErgebnisZustand.OHNE_ZAHL, x.hasNonNull("entschieden_von")
+                                    ? "entschieden von " + x.path("entschieden_von").asText() : ErgebnisZustand.OHNE_ZAHL),
+                            List.of(x.path("ueberpruefung").isObject() ? x.path("ueberpruefung").path("satz").asText()
+                                    : ErgebnisZustand.OHNE_ZAHL))));
+                }
+                s.tabelle(List.of(new Spalte("Grundlage", 100, false), new Spalte("Dokument", 160, false),
+                        new Spalte("Fassung", 120, false), new Spalte("Überprüfung", 0, false)), zeilen);
+                JsonNode a = n.path("aufgaben");
+                s.absatz("Aufgaben im Energiemanagement: " + a.path("laufend").asInt() + " laufende Zuordnungen"
+                        + (a.path("ohne_person").isEmpty() ? "." : "; keine Person festgelegt für "
+                        + String.join(", ", liste(a.path("ohne_person"))) + "."), NORMAL, SCHWARZ);
+            }
+            case "energieziele" -> tabelleOderSatz(s, n, "Kein Energieziel in diesem Jahr.",
+                    List.of(new Spalte("Energieziel", 80, false), new Spalte("Ziel", 120, false),
+                            new Spalte("Ergebnis", 150, false), new Spalte("Prüfsumme", 0, false)),
+                    e -> List.of(List.of(textOderStrich(e.path("kennzeichen")), textOderStrich(e.path("zustand"))),
+                            List.of(abweichung(e.path("zielwert_prozent")), textOderStrich(e.path("zielperiode"))),
+                            List.of(textOderStrich(e.path("ergebnis")), e.path("stand").isObject()
+                                    ? abweichung(e.path("stand").path("delta_prozent")) + ", "
+                                    + e.path("stand").path("monate").asText() + " Monaten" : ErgebnisZustand.OHNE_ZAHL,
+                                    e.hasNonNull("bewertet_am") ? "bewertet am " + tag(e.path("bewertet_am"))
+                                            : ErgebnisZustand.OHNE_ZAHL),
+                            List.of(textOderStrich(e.path("pruefsumme")))));
+            case "energieleistung" -> {
+                tabelleOderSatz(s, n.path("leistungsvergleiche"), "Kein Leistungsvergleich mit Stand.",
+                        List.of(new Spalte("Leistungsvergleich", 100, false), new Spalte("Stand", 110, false),
+                                new Spalte("Urteil wie festgehalten", 120, false), new Spalte("Revision", 0, false)),
+                        v -> List.of(List.of(textOderStrich(v.path("kennung")), textOderStrich(v.path("zeitraum"))),
+                                List.of(standZelle(v.path("stand"), v.path("freigegeben_am")),
+                                        textOderStrich(v.path("pruefsumme"))),
+                                List.of(abweichung(v.path("delta_prozent")), textOderStrich(v.path("urteil"))),
+                                v.path("anstoesse_offen").isEmpty() ? List.of(ErgebnisZustand.OHNE_ZAHL)
+                                        : anstoesse(v.path("anstoesse_offen"))));
+                tabelleOderSatz(s, n.path("bezugsbasen"), "Keine Bezugsbasis mit Überprüfung.",
+                        List.of(new Spalte("Bezugsbasis", 80, false), new Spalte("Gegenstand", 280, false),
+                                new Spalte("Überprüfung", 0, false)),
+                        b -> List.of(List.of(textOderStrich(b.path("kennzeichen"))), List.of(textOderStrich(b.path("titel"))),
+                                List.of(textOderStrich(b.path("ueberpruefung").path("satz")))));
+            }
+            case "massnahmen" -> tabelleOderSatz(s, n, "Keine Maßnahme festgehalten.",
+                    List.of(new Spalte("Maßnahme", 80, false), new Spalte("Herkunft", 110, false),
+                            new Spalte("Zustand", 70, false), new Spalte("Bewertung wie festgehalten", 0, false)),
+                    m -> List.of(List.of(textOderStrich(m.path("kennzeichen")), textOderStrich(m.path("titel"))),
+                            List.of(verbunden(" ", text(m.path("herkunft_art")), text(m.path("herkunft_kennung")))),
+                            List.of(textOderStrich(m.path("zustand"))),
+                            m.path("bewertung").isObject() ? List.of(verbunden(TRENNER,
+                                    "Stand Nr. " + m.path("bewertung").path("stand").asInt(),
+                                    text(m.path("bewertung").path("ergebnis")),
+                                    m.path("bewertung").path("wirkung_prozent").isNumber()
+                                            ? abweichung(m.path("bewertung").path("wirkung_prozent")) : null),
+                                    textOderStrich(m.path("bewertung").path("pruefsumme")))
+                                    : List.of(m.hasNonNull("termin") ? "Termin " + tag(m.path("termin"))
+                                            : ErgebnisZustand.OHNE_ZAHL)));
+            case "abweichungen" -> {
+                tabelleOderSatz(s, n.path("im_jahr"), "Keine Abweichung in diesem Jahr.",
+                        List.of(new Spalte("Abweichung", 90, false), new Spalte("Monate", 110, false),
+                                new Spalte("Zustand", 90, false), new Spalte("Ergebnis", 0, false)),
+                        a -> List.of(List.of(textOderStrich(a.path("kennzeichen"))), List.of(String.join(", ",
+                                liste(a.path("monate")))), List.of(textOderStrich(a.path("zustand"))),
+                                List.of(verbunden(TRENNER, text(a.path("ergebnis")), text(a.path("massnahme"))))));
+                tabelleOderSatz(s, n.path("auffaelligkeiten"), "Keine Auffälligkeit in diesem Jahr.",
+                        List.of(new Spalte("Kennzahl", 90, false), new Spalte("Monat", 110, false),
+                                new Spalte("Zustand", 90, false), new Spalte("Antwort", 0, false)),
+                        a -> List.of(List.of(textOderStrich(a.path("kennzahl"))), List.of(textOderStrich(a.path("monat"))),
+                                List.of(textOderStrich(a.path("zustand"))), List.of(textOderStrich(a.path("antwort")))));
+                s.absatz("Offene Abweichungen: " + n.path("offen").asInt() + ".", NORMAL, SCHWARZ);
+            }
+            case "audits_feststellungen" -> {
+                tabelleOderSatz(s, n.path("audits"), "Kein internes Audit festgehalten.",
+                        List.of(new Spalte("Audit", 90, false), new Spalte("Termin", 110, false),
+                                new Spalte("Zustand", 110, false), new Spalte("Prüfsumme", 0, false)),
+                        a -> List.of(List.of(textOderStrich(a.path("kennzeichen"))), List.of(tag(a.path("termin"))),
+                                List.of(textOderStrich(a.path("zustand"))), List.of(textOderStrich(a.path("pruefsumme")))));
+                tabelleOderSatz(s, n.path("feststellungen"), "Keine Feststellung festgehalten.",
+                        List.of(new Spalte("Feststellung", 90, false), new Spalte("Frist", 110, false),
+                                new Spalte("Zustand", 110, false), new Spalte("Wirksamkeit", 0, false)),
+                        f -> List.of(List.of(textOderStrich(f.path("kennzeichen")), textOderStrich(f.path("quelle"))),
+                                List.of(tag(f.path("frist"))), List.of(textOderStrich(f.path("zustand"))),
+                                List.of(f.path("wirksamkeit").isObject() ? "Stand Nr. "
+                                        + f.path("wirksamkeit").path("stand").asInt() + TRENNER
+                                        + f.path("wirksamkeit").path("ergebnis").asText() : ErgebnisZustand.OHNE_ZAHL)));
+                s.absatz("Offene Feststellungen: " + n.path("offen").asInt() + ".", NORMAL, SCHWARZ);
+            }
+            case "bewertung_messplanung" -> {
+                tabelleOderSatz(s, n.path("bewertungen"), "Keine energetische Bewertung mit Stand.",
+                        List.of(new Spalte("Bewertung", 90, false), new Spalte("Stand", 170, false),
+                                new Spalte("Überprüfung", 0, false)),
+                        b -> List.of(List.of(textOderStrich(b.path("kennung")), textOderStrich(b.path("zeitraum"))),
+                                List.of(standZelle(b.path("stand"), b.path("freigegeben_am")),
+                                        textOderStrich(b.path("pruefsumme"))),
+                                List.of(textOderStrich(b.path("ueberpruefung").path("satz")))));
+                tabelleOderSatz(s, n.path("messbedarfe"), "Kein Messbedarf eingetragen.",
+                        List.of(new Spalte("Messbedarf", 90, false), new Spalte("Zustand", 170, false),
+                                new Spalte("Frist", 0, false)),
+                        m -> List.of(List.of(textOderStrich(m.path("kennzeichen"))), List.of(textOderStrich(m.path("zustand"))),
+                                List.of(m.hasNonNull("frist") ? tag(m.path("frist")) : ErgebnisZustand.OHNE_ZAHL)));
+            }
+            case "wiedervorlage" -> {
+                List<JsonNode> alle = new ArrayList<>();
+                n.path("faellig").forEach(alle::add);
+                n.path("vorschau").forEach(alle::add);
+                tabelleOderSatz(s, new ObjectMapper().valueToTree(alle), "Zum Stichtag ist nichts fällig.",
+                        List.of(new Spalte("Kennzeichen", 90, false), new Spalte("Gegenstand", 240, false),
+                                new Spalte("Fällig", 0, false)),
+                        w -> List.of(List.of(textOderStrich(w.path("kennzeichen"))), List.of(textOderStrich(w.path("titel"))),
+                                List.of(tag(w.path("faellig_am")), textOderStrich(w.path("satz")))));
+            }
+            case "beschluesse" -> tabelleOderSatz(s, n, "Noch kein Beschluss festgehalten.",
+                    List.of(new Spalte("Nr.", 40, false), new Spalte("Art", 90, false), new Spalte("Wortlaut", 0, false)),
+                    b -> List.of(List.of(textOderStrich(b.path("nr"))), List.of(textOderStrich(b.path("art"))),
+                            List.of(textOderStrich(b.path("wortlaut")))));
+            case "sitzung" -> {
+                if (!n.isObject()) {
+                    s.absatz("Noch keine Sitzung festgehalten.", NORMAL, GRAU);
+                    return;
+                }
+                s.paare(List.of(paar("Tag", tag(n.path("tag"))), paar("Leitung", textOderStrich(n.path("leitung"))),
+                        paar("Teilnehmende", String.join(", ", liste(n.path("teilnehmende"))))));
+            }
+            default -> throw new IllegalStateException("Abschnitt " + abschnitt);
+        }
+    }
+
+    private static void tabelleOderSatz(Setzer s, JsonNode zeilen, String leer, List<Spalte> spalten,
+            java.util.function.Function<JsonNode, List<List<String>>> zeile) throws IOException {
+        if (zeilen.isEmpty()) {
+            s.absatz(leer, NORMAL, GRAU);
+            return;
+        }
+        List<List<List<String>>> tabelle = new ArrayList<>();
+        zeilen.forEach(z -> tabelle.add(zeile.apply(z)));
+        s.tabelle(spalten, tabelle);
+    }
+
+    private static String standZelle(JsonNode nr, JsonNode am) {
+        return verbunden(" ", nr.isIntegralNumber() ? "Stand Nr. " + nr.asInt() : null,
+                am.isTextual() ? "vom " + tag(am) : null);
+    }
+
+    private static List<String> anstoesse(JsonNode offen) {
+        List<String> aus = new ArrayList<>();
+        offen.forEach(a -> aus.add("angestoßen durch " + a.path("anlass").asText() + " am " + tag(a.path("erkannt_am"))));
+        return aus;
+    }
+
     // ================================================================================ Abschnitte
 
     private static void kopf(Setzer s, JsonNode kopf, BerichtCsv.Stand stand, ZoneId zone, String wasserzeichen)
@@ -211,6 +407,12 @@ public final class BerichtPdf {
         if (BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(vorlage) || leistungsvergleich) {
             s.abstand(4);
             s.absatz(BerichtRegeln.BEWERTUNG_GRENZ_SATZ, NORMAL, GRAU);
+        }
+        if (BerichtRegeln.MANAGEMENTBEWERTUNG.equals(vorlage)) {
+            // AP-19 SP-Regeln: jede Energiemanagement-Fläche trägt den Grenz-Satz UND den Verantwortungs-Satz.
+            s.abstand(4);
+            s.absatz(kopf.path("grenz_satz").asText(BerichtRegeln.BEWERTUNG_GRENZ_SATZ), NORMAL, GRAU);
+            s.absatz(kopf.path("verantwortung").asText(), NORMAL, GRAU);
         }
         s.abstand(6);
         List<String[]> paare = new ArrayList<>();
@@ -241,6 +443,9 @@ public final class BerichtPdf {
                 VERGLEICHE.getOrDefault(v.path("art").asText(), v.path("art").asText()),
                 verbunden(": ", text(v.path("schluessel")), text(v.path("ergebnis"))))));
         paare.add(paar("Datenstand", zeitMitZone(zeit(kopf.path("datenstand")), zone)));
+        if (kopf.hasNonNull("stichtag")) {
+            paare.add(paar("Stichtag", tag(kopf.path("stichtag"))));
+        }
         paare.add(paar("Freigegeben", KorrekturVorschlagRegeln.zeitpunkt(stand.freigegebenAm(), zone) + " von "
                 + stand.freigegebenVon()));
         if (wasserzeichen != null) {

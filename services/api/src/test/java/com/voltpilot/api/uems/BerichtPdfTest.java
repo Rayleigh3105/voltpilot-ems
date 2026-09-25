@@ -235,7 +235,7 @@ class BerichtPdfTest {
     @Test
     void dieAbschnitteFolgenDenVorlagen() throws Exception {
         JsonNode vorlagen = EXAKT.readTree(Files.readString(V2.resolve("bericht-vorlagen.json"))).path("vorlagen");
-        assertThat(vorlagen).hasSize(6);
+        assertThat(vorlagen).hasSize(7);
         for (JsonNode v : vorlagen) {
             String schluessel = v.path("schluessel").asText();
             assertThat(v.path("fassung").asInt()).isEqualTo(1);
@@ -247,6 +247,10 @@ class BerichtPdfTest {
             v.path("abschnitte").forEach(a -> soll.put(a.path("schluessel").asText(), a.path("titel").asText()));
             if (BerichtRegeln.LEISTUNGSVERGLEICH.equals(schluessel)) {
                 assertThat(BerichtPdf.ABSCHNITTE_LEISTUNGSVERGLEICH).containsExactlyEntriesOf(soll); // alle acht (IP-22)
+                continue;
+            }
+            if (BerichtRegeln.MANAGEMENTBEWERTUNG.equals(schluessel)) {
+                assertThat(BerichtPdf.ABSCHNITTE_MANAGEMENTBEWERTUNG).containsExactlyEntriesOf(soll); // alle zwölf (AP-19 IP-22)
                 continue;
             }
             Map<String, String> ist = BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(schluessel)

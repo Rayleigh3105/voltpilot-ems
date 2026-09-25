@@ -47,6 +47,10 @@ public final class BerichtRechte {
     public static final String EXPORT_STANDORT = "export.standort";
     public static final String EXPORT_UNTERNEHMEN = "export.unternehmen";
     public static final String ANSEHEN = BerichtRegeln.TEILANSICHT_RECHT;
+    /** AP-19 IP-22 (MG1): die Managementbewertung liest, bearbeitet und gibt frei über die Kennungen des Energiemanagements. */
+    public static final String ENERGIEMANAGEMENT_ANSEHEN = "energiemanagement.ansehen";
+    public static final String ENERGIEMANAGEMENT_VERWALTEN = "energiemanagement.verwalten";
+    public static final String ENERGIEMANAGEMENT_FREIGEBEN = "energiemanagement.freigeben";
 
     /** Die Handlungen der Routen dieses Pakets (G1: Anlegen und Archivieren folgen dem Freigabe-Recht). */
     public static final String ABRUFEN = "abrufen";
@@ -77,9 +81,16 @@ public final class BerichtRechte {
 
     /**
      * AP-16: Nur die neue Vorlage hat ihre eigene Unternehmens-Kennung; alle Bestandsvorlagen bleiben unverändert. AP-19
-     * IP-11: an ihr lesen Abrufen und PDF über {@link #BEWERTUNG_ANSEHEN}, alles andere bleibt {@link #BEWERTUNG}.
+     * IP-11: an ihr lesen Abrufen und PDF über {@link #BEWERTUNG_ANSEHEN}, alles andere bleibt {@link #BEWERTUNG}. AP-19
+     * IP-22 (MG1): die Managementbewertung liest (Abrufen, PDF) mit {@code energiemanagement.ansehen}, gibt mit
+     * {@code energiemanagement.freigeben} frei und legt an, verwirft, archiviert und exportiert (CSV) mit
+     * {@code energiemanagement.verwalten} — nie mit {@code bericht.unternehmen}; „Einsicht“ liest und lädt das PDF, sonst nichts.
      */
     public static String kennung(String handlung, String geltungArt, String vorlage) {
+        if (BerichtRegeln.MANAGEMENTBEWERTUNG.equals(vorlage)) {
+            return ABRUFEN.equals(handlung) || PDF.equals(handlung) ? ENERGIEMANAGEMENT_ANSEHEN
+                    : FREIGEBEN.equals(handlung) ? ENERGIEMANAGEMENT_FREIGEBEN : ENERGIEMANAGEMENT_VERWALTEN;
+        }
         if (!BerichtRegeln.ENERGETISCHE_BEWERTUNG.equals(vorlage)) {
             return BerichtRegeln.kennung(handlung, geltungArt);
         }

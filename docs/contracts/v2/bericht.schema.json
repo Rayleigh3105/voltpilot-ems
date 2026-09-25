@@ -8,7 +8,7 @@
   "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "vorlagen_datei", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "fehler_status", "regeln", "saetze", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "abzuege", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-    "schema_version": { "type": "string", "const": "1.4", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Unternehmensabschnitte; 1.2: Tagesverlauf, Richtungspaar und Kennzahl-Angaben; 1.3: Energetische Bewertung; 1.4: Vorlage Leistungsvergleich und Quellenart bezugsbasis). Alte Abzüge bleiben gültig: alles Neue ist wahlfrei, ihre Prüfsummen rühren sich nicht." },
+    "schema_version": { "type": "string", "const": "1.5", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Unternehmensabschnitte; 1.2: Tagesverlauf, Richtungspaar und Kennzahl-Angaben; 1.3: Energetische Bewertung; 1.5: Vorlage Managementbewertung mit acht Quellenarten (AP-19 IP-22); 1.4: Vorlage Leistungsvergleich und Quellenart bezugsbasis). Alte Abzüge bleiben gültig: alles Neue ist wahlfrei, ihre Prüfsummen rühren sich nicht." },
     "$schema_datei": { "type": "string", "const": "./bericht.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt; die Regeln nehmen die Zone der Geltung." },
@@ -107,7 +107,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "name", "familie", "abnahme", "titel", "why", "schritte", "annahmen", "pruefungen"],
       "properties": {
-        "id": { "type": "string", "pattern": "^B([1-9]|1[0-8])$" },
+        "id": { "type": "string", "pattern": "^B([1-9]|1[0-9])$" },
         "name": { "type": "string", "pattern": "^b[0-9]+-[a-z0-9-]+$" },
         "familie": { "type": "string", "enum": ["plan_abnahme", "revision", "betroffenheit", "freigabe", "datenstand", "vergleich", "struktur", "belegschutz", "rechte", "ausgabe", "jahr", "ablauf"] },
         "abnahme": { "type": ["string", "null"] },
@@ -176,10 +176,22 @@
       "anyOf": [
         {"required": ["qualitaet", "zusammenfassung", "werte", "kennzahlen"]},
         {"required": ["qualitaet", "umfang", "rangliste", "einstufungen", "messabdeckung", "messplanung", "messmittel"]},
-        {"required": ["kennzahl", "bezugsbasis", "vergleich_je_periode", "urteil", "grenzen_und_vorbehalte", "statische_faktoren", "quellenverzeichnis"]}
+        {"required": ["kennzahl", "bezugsbasis", "vergleich_je_periode", "urteil", "grenzen_und_vorbehalte", "statische_faktoren", "quellenverzeichnis"]},
+        {"required": ["vorige_beschluesse", "grundlagen", "energieziele", "energieleistung", "massnahmen", "abweichungen", "audits_feststellungen", "bewertung_messplanung", "wiedervorlage", "beschluesse", "sitzung", "quellenverzeichnis"]}
       ],
       "properties": {
         "kopf": { "$ref": "#/$defs/kopf" },
+        "vorige_beschluesse": { "type": "object", "description": "1.5, Managementbewertung (AP-19 IP-22, MG2): die letzte Managementbewertung mit Stand Nr. und Prüfsumme; ihre Beschlüsse und Folgen trägt AP-19 IP-23 nach." },
+        "grundlagen": { "type": "object", "description": "1.5, Managementbewertung: Dokumente der Grundlage mit freigegebener Fassung, Prüfsumme, „entschieden von“ und Überprüfung; Aufgaben im Energiemanagement mit und ohne Person." },
+        "energieziele": { "type": "array", "items": { "type": "object" }, "description": "1.5, Managementbewertung: Energieziele des Jahres mit Zustand und dem Ergebnis ihrer Bewertung wie festgehalten (Prüfsumme der Kopie) — nie neu gerechnet." },
+        "energieleistung": { "type": "object", "description": "1.5, Managementbewertung: Leistungsvergleichs-Stände (Nr., Prüfsumme, Urteil wie festgehalten, offene Anstöße) und Bezugsbasen mit Fassung und Überprüfung." },
+        "massnahmen": { "type": "array", "items": { "type": "object" }, "description": "1.5, Managementbewertung: Maßnahmen mit Herkunft, Zustand und dem letzten Bewertungsstand (Nr., Ergebnis, Prüfsumme)." },
+        "abweichungen": { "type": "object", "description": "1.5, Managementbewertung: Abweichungen und Auffälligkeiten des Jahres mit Zustand; `offen` zählt die offenen Abweichungen." },
+        "audits_feststellungen": { "type": "object", "description": "1.5, Managementbewertung: interne Audits und Feststellungen mit Zustand, Frist und Wirksamkeits-Stand." },
+        "bewertung_messplanung": { "type": "object", "description": "1.5, Managementbewertung: energetische Bewertungen mit Stand und Überprüfung; Messbedarfe mit Zustand." },
+        "wiedervorlage": { "type": "object", "description": "1.5, Managementbewertung: die Wiedervorlage zum Stichtag (fällig, Vorschau) — dieselben Zeilen wie der Wiedervorlage-Leser." },
+        "beschluesse": { "type": "array", "items": { "type": "object" }, "description": "1.5, Managementbewertung: die Beschlüsse der Leitung (AP-19 IP-23); bis dahin leer." },
+        "sitzung": { "type": ["object", "null"], "description": "1.5, Managementbewertung: Tag, Leitung und Teilnehmende (AP-19 IP-23); bis dahin null." },
         "zusammenfassung": { "type": "object", "additionalProperties": { "type": "number" } },
         "werte": { "type": "array", "items": { "$ref": "#/$defs/wert" } },
         "kennzahlen": { "type": "array", "items": { "$ref": "#/$defs/kennzahl" } },
@@ -200,7 +212,7 @@
         "statische_faktoren": { "type": "array", "items": { "type": "object", "required": ["position", "art"] }, "description": "1.4, Leistungsvergleich: die Faktoren der Fassung als Kopie (V3)." },
         "quellenverzeichnis": {
           "type": "array",
-          "description": "1.4, Leistungsvergleich: jede Quelle mit Bezug, Version (Kennzahl, Messstelle) bzw. Fassung (Bezugsgröße, Bezugsbasis) und ihren Tagen einschließlich; die Bezugsbasis mit `bezug = vergleich` (S2).",
+          "description": "1.4, Leistungsvergleich (1.5 auch Managementbewertung, `version` = Nr. eines Stands): jede Quelle mit Bezug, Version (Kennzahl, Messstelle) bzw. Fassung (Bezugsgröße, Bezugsbasis) und ihren Tagen einschließlich; die Bezugsbasis mit `bezug = vergleich` (S2).",
           "items": {
             "type": "object", "additionalProperties": false, "required": ["art", "kennzeichen", "name_zum_datenstand", "bezug", "version", "fassung", "erster_tag", "letzter_tag"],
             "properties": {
@@ -239,7 +251,7 @@
       "required": ["bericht", "vorlage", "vorlage_fassung", "geltung", "unternehmen", "sitz", "zeitraum", "vergleichszeitraeume", "datenstand", "regelwerk", "darstellung", "quellenverzeichnis"],
       "properties": {
         "bericht": { "type": "string", "pattern": "^BR-[0-9]{4}-[0-9]{4}$" },
-        "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich"] },
+        "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich", "managementbewertung"] },
         "vorlage_fassung": { "type": "integer", "minimum": 1 },
         "geltung": {
           "type": "object", "additionalProperties": false, "required": ["art", "kennzeichen", "name_zum_datenstand"],
@@ -466,7 +478,7 @@
       "description": "Eine Berichtsvorlage (V2): VoltPilot-Katalog, Fassungsnummer, feste Abschnitte.",
       "required": ["schluessel", "fassung", "name", "geltung_art", "zeitraum_art", "vergleiche", "abschnitte"],
       "properties": {
-        "schluessel": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich"] },
+        "schluessel": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen", "energetische_bewertung", "leistungsvergleich", "managementbewertung"] },
         "fassung": { "type": "integer", "minimum": 1 },
         "name": { "type": "string", "minLength": 1 },
         "geltung_art": { "type": "string", "enum": ["standort", "unternehmen"], "description": "Die Geltung der Vorlage; mit `geltung_arten` ihre Vorgabe (das erste Wort dort)." },
@@ -493,10 +505,10 @@
       "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "vorlagen"],
       "properties": {
         "_comment": { "type": "array", "items": { "type": "string" } },
-        "schema_version": { "type": "string", "const": "1.4", "description": "Der Vertragsstand des Berichts, derselbe wie oben (AP-17 W10: vorher 1.0; 1.4 mit AP-17 IP-21a)." },
+        "schema_version": { "type": "string", "const": "1.5", "description": "Der Vertragsstand des Berichts, derselbe wie oben (AP-17 W10: vorher 1.0; 1.4 mit AP-17 IP-21a; 1.5 mit AP-19 IP-22)." },
         "$schema_datei": { "type": "string", "const": "./bericht.schema.json#/$defs/vorlagen_datei" },
         "herkunft": { "type": "string", "minLength": 1 },
-        "vorlagen": { "type": "array", "minItems": 6, "items": { "$ref": "#/$defs/vorlage" } }
+        "vorlagen": { "type": "array", "minItems": 7, "items": { "$ref": "#/$defs/vorlage" } }
       }
     }
   }
