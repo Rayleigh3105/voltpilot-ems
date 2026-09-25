@@ -10,8 +10,9 @@ import java.util.Map;
  * des Vertrags sie formt ({@link EnergiemanagementRegeln#verzeichnisZeile}); sie kopiert nichts.
  *
  * <p>Der Leser {@code GET …/verzeichnis} (IP-8) sammelt alle Quellen in ihrer {@code @Order} und filtert Gruppe,
- * Zeitraum und Person. Heute: {@link AufgabenVerzeichnis} (Gruppe {@code verantwortung}, IP-10); Dokumente und
- * Bekanntmachungen (IP-7/IP-8), Audits (IP-18), Feststellungen (IP-19) und Managementbewertung (IP-23) docken hier an.
+ * Zeitraum und Person. Heute: {@link DokumentVerzeichnis} (Dokument-Fassungen und Bekanntmachungen, IP-7) und
+ * {@link AufgabenVerzeichnis} (Gruppe {@code verantwortung}, IP-10); Audits (IP-18), Feststellungen (IP-19) und
+ * Managementbewertung (IP-23) docken hier an.
  */
 public interface VerzeichnisQuelle {
 

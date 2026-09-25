@@ -12076,6 +12076,316 @@ paths:
               schema: { $ref: "#/components/schemas/EnergiemanagementVerantwortung" }
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/energiemanagement/dokumente:
+    get:
+      tags: [energiemanagement]
+      summary: Dokumente im Energiemanagement - nach Kennzeichen, je mit der Überprüfung beim Abruf.
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-7, DK1). Der Zaun folgt dem Standort des Bezugs: ein Dokument
+        am Unternehmen sieht nur, wer unternehmensweit liest; ein Standort-Konto sieht die Dokumente seiner Standorte -
+        ohne Hinweis auf die übrigen. `ueberpruefung` ist `null` an einem aufgehobenen Dokument.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokumente" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Dokument anlegen - Art, Titel, Bezug (DK1).
+      description: >
+        Recht `energiemanagement.verwalten` am Standort des Bezugs bzw. am Unternehmen (403 `recht_fehlt`). `art` aus
+        der geschlossenen Liste (422 `art_unbekannt`), Titel Pflicht (422 `titel_fehlt`, über 200 Zeichen
+        `angabe_ungueltig`); Bezug `unternehmen` (ohne Standort) oder `standort` (ein Standort des Kundenbereichs im
+        eigenen Zaun, sonst 422 `standort_unbekannt`), sonst 422 `bezug_unbekannt`; Energieeinsatz, Person und Aufgabe
+        folgen (422 `bezug_nicht_verfuegbar`). `ueberpruefung_monate` 1-60 nur an Vorgabe-Arten (422
+        `angabe_ungueltig`), ohne Angabe die Einstellung (Startwert 12). Das Original als Verweis mit Ablage (422
+        `beleg_ungueltig`). Das Dokument entsteht im Entwurf, D-nnnn vergibt der Zähler. Protokoll `dokument_angelegt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementDokumentAnlegen" }
+      responses:
+        "201":
+          description: Das Dokument.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Ein Dokument mit Fassungen, Einträgen, Verlauf und der Überprüfung beim Abruf.
+      description: >
+        Recht `energiemanagement.ansehen`; außerhalb des Zauns 404. Gültig ist die jüngste freigegebene Fassung, die
+        früheren tragen `status: abgeloest` (DK4, gelesen, nie gespeichert). `ueberpruefung` nach dem Vertrag
+        `ueberpruefung` (DK5) am Abruf-Tag: Basis ist der Tag der Entscheidung der gültigen Fassung bzw. ihr letztes
+        „geprüft, bleibt“; Nachweis-Arten ohne Frist (`grund: nachweis`). `saetze` wörtlich aus dem Vertrag:
+        Kopf, „Überprüfung fällig seit n Tagen.“ und - bei einer Leitungs-Art ohne Leitung - der Satz, warum die
+        Freigabe gesperrt ist.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/vergleich:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Anwendungsbereich neben dem Betrachtungsumfang der energetischen Bewertung (DK7, W5).
+      description: >
+        Recht `energiemanagement.ansehen`; nur am Anwendungsbereich (sonst 404). Liest die gültige Fassung und den am
+        Abruf-Tag laufenden Betrachtungsumfang (AP-16 U1, `bewertung_umfang`) und vergleicht Standorte und Träger
+        (Vertrag `anwendungsbereich_vergleich`) - ohne Urteil, der Vergleich ändert nichts. `saetze`: deckungsgleich
+        oder je Unterschied „… gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang …“; die Gegenrichtung
+        steht nur in den Feldern. Ohne gültige Fassung oder ohne Betrachtungsumfang `vergleich: null`; den
+        Betrachtungsumfang (am Unternehmen) bekommt nur, wer unternehmensweit liest.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementVergleich" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/fassungen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Fassung entwerfen - Wortlaut oder Verweis (DK2, G3).
+      description: >
+        Recht `energiemanagement.verwalten` am Standort des Bezugs bzw. am Unternehmen. `form` `wortlaut` (Pflicht,
+        höchstens 20 000 Zeichen, 422 `wortlaut_fehlt`) oder `verweis` (Ablage Pflicht, 422 `ablage_fehlt`; Prüfsumme
+        aus dem Browser 64 Zeichen 0-9/a-f) - ganz oder gar nicht (422 `form_unbekannt`, `angabe_ungueltig`); nie eine
+        Datei. Der Anwendungsbereich nennt Standorte des Kundenbereichs (422 `standort_unbekannt`), Energieträger aus
+        dem Vokabular des Betrachtungsumfangs (422 `traeger_unbekannt`) und Ausschlüsse mit Begründung (422
+        `ausschluss_ungueltig`); fehlen sie, 422 `anwendungsbereich_fehlt`, an anderen Arten 422 `angabe_ungueltig`.
+        Begründung ab Fassung 2 Pflicht (422 `begruendung_fehlt`), Beschluss `BR-JJJJ-nnnn/Bn` (422
+        `beschluss_ungueltig`). Ein offener Entwurf wird überschrieben (200, dieselbe Nr.), sonst entsteht Fassung n
+        + 1 (201); ein offener Antrag 409 `fassung_beantragt`, ein aufgehobenes Dokument 409 `dokument_aufgehoben`.
+        Protokoll `fassung_entworfen`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementFassungEntwerfen" }
+      responses:
+        "200":
+          description: Der Entwurf wurde überschrieben.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "201":
+          description: Eine neue Fassung im Entwurf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/fassungen/{nr}/beantragen:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      - { in: path, name: nr, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      tags: [energiemanagement]
+      summary: Freigabe beantragen - nur mit Vier-Augen (DK3).
+      description: >
+        Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. Nur ein Entwurf (sonst 409
+        `fassung_<status>`), nur mit Vier-Augen (409 `vieraugen_aus`). „entschieden von“ ist eine Person im
+        Energiemanagement (422 `entschieden_von_fehlt`, `person_unbekannt`), `entschieden_am` ein Tag bis heute
+        (Vorgabe heute, 422 `tag_in_der_zukunft`), Begründung 10-500 Zeichen (422 `begruendung_fehlt`). Bei
+        Energiepolitik, Anwendungsbereich und Bestellung ist es die Person mit der am Tag laufenden Aufgabe „Leitung
+        des Unternehmens“ (422 `leitung_fehlt`). Kopie und Prüfsumme entstehen mit dem Antrag. Protokoll
+        `fassung_beantragt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementEntscheid" }
+      responses:
+        "200":
+          description: Das Dokument.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/fassungen/{nr}/freigeben:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      - { in: path, name: nr, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      tags: [energiemanagement]
+      summary: Fassung freigeben - mit „entschieden von“, bei Vier-Augen durch eine zweite Person (DK3, DK4).
+      description: >
+        Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. Ohne Vier-Augen der Entwurf
+        mit „entschieden von“, Tag und Begründung wie beim Antrag (Leitungs-Pflicht 422 `leitung_fehlt`); mit
+        Vier-Augen ist ein Entwurf 409 `vieraugen_beantragen`, und den Antrag bestätigt eine zweite Person - nie, wer
+        die Fassung entworfen oder beantragt hat (422 `vieraugen_urheber`), mit Rolle Kundenadministrator oder
+        Energiemanager (403 `vieraugen_rolle`); sie schickt höchstens eine Begründung (ein „entschieden von“ 422
+        `angabe_ungueltig`). Schon entschieden 409 `fassung_<status>`. Die erste Freigabe macht das Dokument gültig
+        (`dokument_gueltig`), jede weitere löst die vorige ab (`fassung_abgeloest`). Protokoll `fassung_freigegeben`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementEntscheid" }
+      responses:
+        "200":
+          description: Das Dokument.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/fassungen/{nr}/ablehnen:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      - { in: path, name: nr, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      tags: [energiemanagement]
+      summary: Antrag ablehnen - die zweite Person, mit Begründung (DK3).
+      description: >
+        Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. Nur ein Antrag (409
+        `fassung_<status>`), nur die zweite Person (422 `vieraugen_urheber`, 403 `vieraugen_rolle`), Begründung 10-500
+        Zeichen (422 `begruendung_fehlt`). Danach ist ein neuer Entwurf möglich. Protokoll `fassung_abgelehnt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementAblehnen" }
+      responses:
+        "200":
+          description: Das Dokument.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/geprueft:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [energiemanagement]
+      summary: „Geprüft, bleibt“ - Überprüfung ohne neue Fassung (DK5).
+      description: >
+        Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. Nur an einem gültigen Dokument
+        (409 `dokument_nicht_gueltig`, aufgehoben 409 `dokument_aufgehoben`) einer Vorgabe-Art (422
+        `keine_ueberpruefung`); „entschieden von“, Tag bis heute und nicht vor der Freigabe der gültigen Fassung (422
+        `tag_in_der_zukunft`, `angabe_ungueltig`), Begründung 10-500 Zeichen, wahlfrei Beschluss. Die Überprüfung
+        rechnet ab diesem Tag neu. Protokoll `geprueft_bleibt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementGeprueft" }
+      responses:
+        "200":
+          description: Das Dokument.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/bekanntmachungen:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [energiemanagement]
+      summary: Bekannt gemacht - an wen, am, über welchen Weg (DK6).
+      description: >
+        Recht `energiemanagement.verwalten` am Standort des Bezugs bzw. am Unternehmen. Nur an der gültigen Fassung
+        (409 `dokument_nicht_gueltig`); Kreis Pflicht (422 `kreis_fehlt`), Weg aus dem Vokabular (422
+        `weg_unbekannt`), `weiterer` mit Wortlaut (422 `wortlaut_fehlt`), Tag bis heute; die Person ist `person_id`
+        oder die Person des eigenen Kontos (422 `person_fehlt`, `person_unbekannt`). Ein Eintrag je Weg. VoltPilot
+        verschickt nichts und fragt kein „gelesen“ ab. Protokoll `bekannt_gemacht`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementBekanntmachen" }
+      responses:
+        "201":
+          description: Das Dokument mit dem neuen Eintrag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/dokumente/{id}/aufheben:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [energiemanagement]
+      summary: Dokument aufheben - Tag und Begründung; es bleibt lesbar (DK8).
+      description: >
+        Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. „entschieden von“, Tag bis
+        heute, Begründung 10-500 Zeichen, wahlfrei Beschluss; schon aufgehoben 409 `dokument_aufgehoben`. Das
+        Dokument bleibt mit allen Fassungen und Prüfsummen lesbar, eine Löschroute gibt es nicht. Protokoll
+        `dokument_aufgehoben`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementAufheben" }
+      responses:
+        "200":
+          description: Das Dokument.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementDokument" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energieziele:
     get:
       tags: [kennzahlen]
@@ -17214,6 +17524,286 @@ components:
         bezugsbasen_freigaben:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementBezugsbasisFreigabe" }
+    EnergiemanagementDokumentBezug:
+      type: object
+      additionalProperties: false
+      required: [art]
+      description: Das Unternehmen oder ein Standort; Energieeinsatz, Person und Aufgabe folgen (AP-19 IP-14).
+      properties:
+        art: { type: string, enum: [unternehmen, standort, energieeinsatz, person, aufgabe] }
+        standort_id: { type: string, format: uuid, nullable: true, description: Nur und Pflicht bei `standort`. }
+    EnergiemanagementDokumentAnlegen:
+      type: object
+      additionalProperties: false
+      required: [art, titel, bezug]
+      properties:
+        art: { type: string, enum: [energiepolitik, anwendungsbereich, kontext, rechtliche_anforderungen, risiken_chancen, bestellung, verfahren, betrieb, beschaffung, kommunikation, auslegung, kompetenz] }
+        titel: { type: string, maxLength: 200 }
+        bezug: { $ref: "#/components/schemas/EnergiemanagementDokumentBezug" }
+        ueberpruefung_monate: { type: integer, nullable: true, minimum: 1, maximum: 60, description: Nur an Vorgabe-Arten; ohne Angabe die Einstellung (Startwert 12). }
+        beleg: { $ref: "#/components/schemas/EnergiemanagementBeleg" }
+    EnergiemanagementVerweis:
+      type: object
+      additionalProperties: false
+      description: Wo das Original liegt (G3) - ohne Ablage keiner seiner Teile; die Prüfsumme bildet der Browser.
+      properties:
+        bezeichnung: { type: string, nullable: true, maxLength: 200 }
+        ablage: { type: string, nullable: true, maxLength: 200 }
+        kennung: { type: string, nullable: true, maxLength: 200 }
+        adresse: { type: string, nullable: true, maxLength: 2000 }
+        fassungsangabe: { type: string, nullable: true, maxLength: 200 }
+        datum: { type: string, format: date, nullable: true }
+        sha256: { type: string, nullable: true, pattern: "^[0-9a-f]{64}$" }
+    EnergiemanagementAusschluss:
+      type: object
+      additionalProperties: false
+      required: [art, verweis, begruendung]
+      properties:
+        art: { type: string, enum: [standort, anlage, prozess] }
+        verweis: { type: string, format: uuid }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    EnergiemanagementAnwendungsbereichEingang:
+      type: object
+      additionalProperties: false
+      required: [standort_ids, traeger]
+      properties:
+        standort_ids: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        traeger: { type: array, minItems: 1, items: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] } }
+        ausschluesse: { type: array, items: { $ref: "#/components/schemas/EnergiemanagementAusschluss" } }
+    EnergiemanagementFassungEntwerfen:
+      type: object
+      additionalProperties: false
+      required: [form]
+      properties:
+        form: { type: string, enum: [wortlaut, verweis] }
+        wortlaut: { type: string, nullable: true, maxLength: 20000 }
+        verweis: { $ref: "#/components/schemas/EnergiemanagementVerweis" }
+        anwendungsbereich: { $ref: "#/components/schemas/EnergiemanagementAnwendungsbereichEingang" }
+        begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500, description: Ab Fassung 2 Pflicht. }
+        beschluss_kennung: { type: string, nullable: true, pattern: "^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$" }
+    EnergiemanagementEntscheid:
+      type: object
+      additionalProperties: false
+      description: >
+        Antrag und Freigabe ohne Vier-Augen - `entschieden_von` und `begruendung` Pflicht, `entschieden_am` Vorgabe
+        heute. Die zweite Person bei Vier-Augen schickt höchstens `begruendung`.
+      properties:
+        entschieden_von: { type: string, format: uuid, nullable: true, description: Eine Person im Energiemanagement, auch ohne Konto. }
+        entschieden_am: { type: string, format: date, nullable: true }
+        begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500 }
+    EnergiemanagementAblehnen:
+      type: object
+      additionalProperties: false
+      required: [begruendung]
+      properties:
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    EnergiemanagementGeprueft:
+      type: object
+      additionalProperties: false
+      required: [entschieden_von, begruendung]
+      properties:
+        entschieden_von: { type: string, format: uuid }
+        am: { type: string, format: date, nullable: true, description: Vorgabe heute. }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+        beschluss_kennung: { type: string, nullable: true, pattern: "^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$" }
+    EnergiemanagementBekanntmachen:
+      type: object
+      additionalProperties: false
+      required: [kreis, weg]
+      properties:
+        kreis: { type: string, maxLength: 200 }
+        am: { type: string, format: date, nullable: true, description: Vorgabe heute. }
+        weg: { type: string, enum: [aushang, intranet, unterweisung, besprechung, e_mail, weiterer] }
+        weg_wortlaut: { type: string, nullable: true, maxLength: 200, description: Nur und Pflicht bei `weiterer`. }
+        person_id: { type: string, format: uuid, nullable: true, description: Ohne Angabe die Person des eigenen Kontos. }
+    EnergiemanagementAufheben:
+      type: object
+      additionalProperties: false
+      required: [entschieden_von, begruendung]
+      properties:
+        entschieden_von: { type: string, format: uuid }
+        am: { type: string, format: date, nullable: true, description: Vorgabe heute. }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+        beschluss_kennung: { type: string, nullable: true, pattern: "^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$" }
+    EnergiemanagementStandortKurz:
+      type: object
+      required: [id, kurzzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kurzzeichen: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+    EnergiemanagementDokumentBezugAus:
+      type: object
+      required: [art, standort]
+      properties:
+        art: { type: string }
+        standort: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementStandortKurz" }], nullable: true }
+    EnergiemanagementAnwendungsbereich:
+      type: object
+      required: [standorte, traeger, ausschluesse]
+      properties:
+        standorte:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementStandortKurz" }
+        traeger: { type: array, items: { type: string } }
+        ausschluesse:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementAusschluss" }
+    EnergiemanagementFassung:
+      type: object
+      required: [nr, form, wortlaut, verweis, anwendungsbereich, status, begruendung, beschluss_kennung, pruefsumme, vieraugen, entschieden_von, entschieden_am, freigabe_begruendung, freigabe, zweite_person, ablehnung_begruendung, freigegeben_am, eingetragen]
+      properties:
+        nr: { type: integer }
+        form: { type: string, enum: [wortlaut, verweis] }
+        wortlaut: { type: string, nullable: true }
+        verweis: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementVerweis" }], nullable: true }
+        anwendungsbereich: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementAnwendungsbereich" }], nullable: true }
+        status: { type: string, enum: [entwurf, beantragt, freigegeben, abgelehnt, abgeloest], description: „abgeloest“ wird gelesen, nie gespeichert (DK4). }
+        begruendung: { type: string, nullable: true }
+        beschluss_kennung: { type: string, nullable: true }
+        pruefsumme: { type: string, nullable: true, description: "`sha256:` über die kanonische Kopie (Vertrag energiemanagement.md §6); ab dem Antrag." }
+        vieraugen: { type: boolean }
+        entschieden_von: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
+        entschieden_am: { type: string, format: date, nullable: true, description: Der Tag der Entscheidung - Basis der Überprüfung. }
+        freigabe_begruendung: { type: string, nullable: true }
+        freigabe: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementEingetragen" }], nullable: true, description: Das Konto, das die Entscheidung eingetragen (bei Vier-Augen beantragt) hat. }
+        zweite_person: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementEingetragen" }], nullable: true }
+        ablehnung_begruendung: { type: string, nullable: true }
+        freigegeben_am: { type: string, format: date-time, nullable: true }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    EnergiemanagementDokumentEintrag:
+      type: object
+      required: [id, art, fassung, am, person, entschieden_von, kreis, weg, weg_wortlaut, begruendung, beschluss_kennung, kommentar, satz, eingetragen]
+      properties:
+        id: { type: integer, format: int64 }
+        art: { type: string, enum: [bekannt_gemacht, geprueft_bleibt, aufgehoben, kommentar] }
+        fassung: { type: integer, nullable: true }
+        am: { type: string, format: date, nullable: true }
+        person: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
+        entschieden_von: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementPersonKurz" }], nullable: true }
+        kreis: { type: string, nullable: true }
+        weg: { type: string, nullable: true }
+        weg_wortlaut: { type: string, nullable: true }
+        begruendung: { type: string, nullable: true }
+        beschluss_kennung: { type: string, nullable: true }
+        kommentar: { type: string, nullable: true }
+        satz: { type: string, nullable: true, description: Bei „geprüft, bleibt“ der Satz des Vertrags. }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    EnergiemanagementUeberpruefung:
+      type: object
+      required: [abruf, faellig_am, basis, fassung, tage, satz, grund]
+      description: Vertrag `ueberpruefung` (DK5) am Abruf-Tag; ohne Frist sind fällig am, Basis, Fassung, Tage und Satz `null`.
+      properties:
+        abruf: { type: string, format: date }
+        faellig_am: { type: string, format: date, nullable: true }
+        basis: { type: string, format: date, nullable: true }
+        fassung: { type: integer, nullable: true }
+        tage: { type: integer, nullable: true, description: Abruf minus fällig am - positiv = fällig, 0 = heute fällig. }
+        satz: { type: string, nullable: true }
+        grund: { type: string, nullable: true, enum: [nachweis, keine_fassung, null] }
+    EnergiemanagementDokumentSaetze:
+      type: object
+      required: [kopf, ueberpruefung, freigabe_gesperrt]
+      properties:
+        kopf: { type: string, nullable: true }
+        ueberpruefung: { type: string, nullable: true }
+        freigabe_gesperrt: { type: string, nullable: true }
+    EnergiemanagementDokumentKurz:
+      type: object
+      required: [id, kennzeichen, art, art_wort, klasse, titel, bezug, zustand, gueltige_fassung, ueberpruefung, eingetragen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^D-[0-9]{4,13}$" }
+        art: { type: string }
+        art_wort: { type: string }
+        klasse: { type: string, enum: [vorgabe, nachweis] }
+        titel: { type: string }
+        bezug: { $ref: "#/components/schemas/EnergiemanagementDokumentBezugAus" }
+        zustand: { type: string, enum: [entwurf, gueltig, aufgehoben] }
+        gueltige_fassung: { type: integer, nullable: true }
+        ueberpruefung: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementUeberpruefung" }], nullable: true }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    EnergiemanagementDokumente:
+      type: object
+      required: [dokumente]
+      properties:
+        dokumente:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementDokumentKurz" }
+    EnergiemanagementDokumentAenderung:
+      type: object
+      required: [id, art, alt, neu, begruendung, akteur, zeit]
+      properties:
+        id: { type: integer, format: int64 }
+        art: { type: string, enum: [dokument_angelegt, fassung_entworfen, fassung_beantragt, fassung_freigegeben, fassung_abgelehnt, dokument_gueltig, fassung_abgeloest, geprueft_bleibt, bekannt_gemacht, dokument_aufgehoben] }
+        alt: { nullable: true, description: Schnappschuss vorher. }
+        neu: { nullable: true, description: Schnappschuss nachher. }
+        begruendung: { type: string, nullable: true }
+        akteur:
+          type: object
+          properties:
+            sub: { type: string, nullable: true }
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        zeit: { type: string, format: date-time }
+    EnergiemanagementDokument:
+      type: object
+      required: [id, kennzeichen, art, art_wort, klasse, titel, bezug, zustand, ueberpruefung_monate, beleg, gueltige_fassung, fassungen, eintraege, ueberpruefung, saetze, eingetragen, verlauf]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^D-[0-9]{4,13}$" }
+        art: { type: string }
+        art_wort: { type: string, description: Das Kundenwort der Art (Vertrag `woerter.dokument_art`). }
+        klasse: { type: string, enum: [vorgabe, nachweis] }
+        titel: { type: string }
+        bezug: { $ref: "#/components/schemas/EnergiemanagementDokumentBezugAus" }
+        zustand: { type: string, enum: [entwurf, gueltig, aufgehoben] }
+        ueberpruefung_monate: { type: integer, nullable: true }
+        beleg: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementBeleg" }], nullable: true, description: Das Original beim Kunden als Verweis. }
+        gueltige_fassung: { type: integer, nullable: true }
+        fassungen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementFassung" }
+        eintraege:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementDokumentEintrag" }
+        ueberpruefung: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementUeberpruefung" }], nullable: true }
+        saetze: { $ref: "#/components/schemas/EnergiemanagementDokumentSaetze" }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+        verlauf:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementDokumentAenderung" }
+    EnergiemanagementBetrachtungsumfang:
+      type: object
+      required: [fassung, gueltig_ab, standorte, traeger, begruendung]
+      properties:
+        fassung: { type: integer }
+        gueltig_ab: { type: string, format: date }
+        standorte:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementStandortKurz" }
+        traeger: { type: array, items: { type: string } }
+        begruendung: { type: string, nullable: true }
+    EnergiemanagementVergleichErgebnis:
+      type: object
+      required: [standorte_nur_im_anwendungsbereich, standorte_nur_im_betrachtungsumfang, traeger_nur_im_anwendungsbereich, traeger_nur_im_betrachtungsumfang, deckungsgleich]
+      properties:
+        standorte_nur_im_anwendungsbereich: { type: array, items: { $ref: "#/components/schemas/EnergiemanagementStandortKurz" } }
+        standorte_nur_im_betrachtungsumfang: { type: array, items: { $ref: "#/components/schemas/EnergiemanagementStandortKurz" } }
+        traeger_nur_im_anwendungsbereich: { type: array, items: { type: string } }
+        traeger_nur_im_betrachtungsumfang: { type: array, items: { type: string } }
+        deckungsgleich: { type: boolean }
+    EnergiemanagementVergleich:
+      type: object
+      required: [abruf, fassung, anwendungsbereich, betrachtungsumfang, vergleich, saetze]
+      properties:
+        abruf: { type: string, format: date }
+        fassung: { type: integer, nullable: true, description: Die gültige Fassung des Anwendungsbereichs. }
+        anwendungsbereich: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementAnwendungsbereich" }], nullable: true }
+        betrachtungsumfang: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementBetrachtungsumfang" }], nullable: true }
+        vergleich: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementVergleichErgebnis" }], nullable: true }
+        saetze: { type: array, items: { type: string } }
     MessbedarfAnlegen:
       type: object
       additionalProperties: false

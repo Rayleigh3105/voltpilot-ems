@@ -33,6 +33,14 @@ public class EnergiemanagementAbgelehnt extends RuntimeException {
         return new EnergiemanagementAbgelehnt(404, "nicht_gefunden", "Diese Zuordnung gibt es nicht.", null);
     }
 
+    public static EnergiemanagementAbgelehnt dokumentFehlt() {
+        return new EnergiemanagementAbgelehnt(404, "nicht_gefunden", "Dieses Dokument gibt es nicht.", null);
+    }
+
+    public static EnergiemanagementAbgelehnt fassungFehlt() {
+        return new EnergiemanagementAbgelehnt(404, "nicht_gefunden", "Diese Fassung gibt es nicht.", null);
+    }
+
     static EnergiemanagementAbgelehnt fachlich(String code, String satz, Map<String, Object> fakten) {
         return new EnergiemanagementAbgelehnt(422, code, satz, fakten);
     }

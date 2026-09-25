@@ -49,7 +49,7 @@ class RechteKennungenDerRoutenTest {
      * und Bereiche (AP-02) — und seit AP-07 IP-14 der LESEPFAD der Messdatenstrecke (Verlauf,
      * Herkunft, Export) auf {@code DeviceMeasurementSelectionController} — und seit AP-01 IP-3 die Funktionen,
      * seit AP-12 IP-7 die Berichte, seit AP-03 IP-8 die Unterstützung (Kunden- und Plattform-Routen) und seit
-     * AP-19 IP-6 Personen und Aufgaben im Energiemanagement.
+     * AP-19 IP-6 Personen und Aufgaben im Energiemanagement und seit IP-7 seine Dokumente.
      */
     private static final List<String> MINDESTENS = List.of("MessstelleController", "KomponenteMesskanalController",
             "GeraetController", "GeraetEinstellungController", "GeraetWechselController",
@@ -62,7 +62,7 @@ class RechteKennungenDerRoutenTest {
             "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController", "KorrekturPortalController",
             "AnlageStandortController", "KennzahlController", "KennzahlWerteController",
             "KennzahlVorlagenController", "EnergiezielController", "MassnahmeController", "AbweichungController",
-            "AuffaelligkeitController", "EnergiemanagementPersonenController",
+            "AuffaelligkeitController", "EnergiemanagementPersonenController", "EnergiemanagementDokumentController",
             "BerichtController", "MeController",
             "UnterstuetzungController", "AdminUnterstuetzungController", "OverviewController");
 

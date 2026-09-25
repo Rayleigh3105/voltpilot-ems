@@ -357,6 +357,19 @@ class RechtMatrixApiTest {
                 "ee3333333"));
         z.add(new Zeile("energiemanagement.verwalten", HttpMethod.POST,
                 "/api/v1/energiemanagement/aufgaben/{FREMD}/beenden", "ee3333333"));
+        // AP-19 IP-7: Dokumente — der Zaun folgt dem Standort des Bezugs (DIENST: der Bearbeiter kommt bis zum
+        // Dienst, der am Standort genau prüft); Freigabe, „geprüft, bleibt“ und Aufheben nur KA/EM.
+        z.add(new Zeile("energiemanagement.verwalten", HttpMethod.POST, "/api/v1/energiemanagement/dokumente",
+                "eee333333"));
+        for (String weg : List.of("fassungen", "bekanntmachungen")) {
+            z.add(new Zeile("energiemanagement.verwalten", HttpMethod.POST,
+                    "/api/v1/energiemanagement/dokumente/{FREMD}/" + weg, "eee333333"));
+        }
+        for (String weg : List.of("fassungen/1/beantragen", "fassungen/1/freigeben", "fassungen/1/ablehnen", "geprueft",
+                "aufheben")) {
+            z.add(new Zeile("energiemanagement.freigeben", HttpMethod.POST,
+                    "/api/v1/energiemanagement/dokumente/{FREMD}/" + weg, "ee3333333"));
+        }
         z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee3333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee3333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee3333333"));
@@ -382,9 +395,9 @@ class RechtMatrixApiTest {
             Map.entry("bezugsbasis.ansehen", "reserviert für AP-17 IP-8 (Routen), Zaun über die Kennzahl"),
             Map.entry("verbesserung.ansehen", "lesend — EnergiezielApiTest (IP-6), MassnahmeApiTest (IP-10), AbweichungApiTest (IP-16), Zaun über Anker "
                     + "und standort_id"),
-            Map.entry("energiemanagement.freigeben", "reserviert für AP-19 IP-7 ff. (Routen); Datenhaltung IP-5"),
             Map.entry("energiemanagement.ansehen", "lesend — EnergiemanagementPersonenApiTest (IP-6: Personen nur "
-                    + "Mandanten-Zaun, Aufgaben nur unternehmensweit); Dokumente IP-7 mit Zaun über den Standort des Bezugs"));
+                    + "Mandanten-Zaun, Aufgaben nur unternehmensweit), EnergiemanagementDokumentApiTest (IP-7: Zaun "
+                    + "über den Standort des Bezugs)"));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {
