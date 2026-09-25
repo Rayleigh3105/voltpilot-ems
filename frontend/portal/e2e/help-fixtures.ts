@@ -194,7 +194,10 @@ export function installHelpFixtures() {
           whyKind: 'fahrplan', whyRef: null, commandedKwFirst: 2.2, commandedKwLast: 2.2, commandedKwMin: 2.2, commandedKwMax: 2.2, verdict: 'bestaetigt',
           cycles: null, cyclesConfirmed: null, cyclesNoAnswer: null, cyclesMismatch: null, controlEnabled: true, released: true, foreignInfluence: false,
           entityId: null, source: 'cloud_abgeleitet', detail: null }] : [] });
-    }, measurementPoints: result([]), componentTemplates: result([]), siteComponentTemplates: result([]),
+    }, measurementPoints: result([]), componentTemplates: result(katalog), siteComponentTemplates: result([]),
+    // Der Verbindungstest der Einrichten-Seite: die Box liest echte Werte (fiktiv).
+    testComponentConnection: result({ results: [{ id: 'verbindung', ok: true, reading: { pvKw: 3.1, socPct: 58, gridKw: 1.2 } }] }),
+    matchComponent: result(null),
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
     siteSources: result([]), edgeVersions: result([]), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
