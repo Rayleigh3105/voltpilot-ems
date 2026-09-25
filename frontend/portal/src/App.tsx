@@ -58,6 +58,7 @@ import {
   verbesserungRoute,
   energiemanagementRoute,
   dokumentRoute,
+  personRoute,
   messstelleRoute,
   standortRoute,
   transitionKind,
@@ -1513,14 +1514,16 @@ function UnifiedPortal() {
               onAbweichung={(id) => navigate(abweichungRoute(id))}
             />
           )}
-          {/* UEMS AP-19 IP-9: „Unternehmen › Energiemanagement“ (Verzeichnis, Dokumente, Zuschnitt-Hilfe) und die Seite
-              eines Dokuments. */}
+          {/* UEMS AP-19 IP-9/IP-13: „Unternehmen › Energiemanagement“ (Verzeichnis, Dokumente, Aufgaben, Zuschnitt-Hilfe)
+              und die Seiten eines Dokuments und einer Person. */}
           {page === 'portfolio-energiemanagement' && (
             <EnergiemanagementBereich
               reiter={route.energiemanagementReiter ?? 'verzeichnis'}
               dokumentId={route.dokumentId ?? null}
+              personId={route.personId ?? null}
               onReiter={(r) => navigate(energiemanagementRoute(r))}
               onDokument={(id) => navigate(dokumentRoute(id))}
+              onPerson={(id) => navigate(personRoute(id))}
             />
           )}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}

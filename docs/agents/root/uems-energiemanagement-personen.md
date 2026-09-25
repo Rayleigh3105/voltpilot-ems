@@ -3,7 +3,8 @@
 Neu am 25.09.2026: die Routen über den Tabellen `energiemanagement_person` und `energiemanagement_aufgabe` aus IP-5
 ([Datenhaltung](uems-energiemanagement-datenhaltung.md)). Konzept: AP-19 §4.5 PA1–PA5, §5.2, §5.6, R5
 (`vp-uems-ap19-fundament/report.md`). Seit IP-10 daneben der Leser „Wer ist wofür verantwortlich“ (PA4) und die
-Verzeichnis-Quelle „Aufgaben“. Noch keine Fläche (Portal IP-9, IP-13).
+Verzeichnis-Quelle „Aufgaben“. Flächen: Reiter „Aufgaben“, „Wer ist wofür verantwortlich“ und Personen-Seite
+([Portal IP-13](uems-energiemanagement-portal.md)).
 
 | Stelle | Was |
 |---|---|

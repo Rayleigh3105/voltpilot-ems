@@ -8427,6 +8427,63 @@ export interface EnergiemanagementAufgabeZuordnen {
   beleg?: EnergiemanagementBeleg | null;
   beschluss_kennung?: string | null;
 }
+/** Ein Übergang im Verlauf einer Person (`EnergiemanagementAenderung` in openapi.yaml, IP-6). */
+export interface EnergiemanagementPersonVerlauf {
+  id: number;
+  art: string;
+  alt: unknown;
+  neu: unknown;
+  begruendung: string | null;
+  akteur: EnergiemanagementEingetragen['akteur'];
+  zeit: string;
+}
+export interface EnergiemanagementPersonMitVerlauf {
+  person: EnergiemanagementPerson;
+  verlauf: EnergiemanagementPersonVerlauf[];
+}
+/** Der ganze änderbare Stand (PUT, IP-6): ein fehlendes wahlfreies Feld heißt „keins“. */
+export interface EnergiemanagementPersonAendern {
+  name: string;
+  funktion: string;
+  kuerzel: string | null;
+  organisation: string | null;
+  konto_sub: string | null;
+  seit: string | null;
+  bis?: string | null;
+  begruendung?: string | null;
+}
+export interface EnergiemanagementAufgabeBeenden {
+  gilt_bis: string;
+  begruendung: string;
+}
+/** „Wer ist wofür verantwortlich“ (IP-10, PA4) — ein Leser: Aufgaben, Verantwortliche der Objekte, Freigaben der Bezugsbasen. */
+export interface EnergiemanagementVerantwortungObjekt {
+  art: string;
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  verantwortlich: { sub: string | null; name: string } | null;
+  zustand: string | null;
+}
+export interface EnergiemanagementBezugsbasisFreigabe {
+  bezugsbasis_id: string;
+  bezugsbasis: string;
+  kennzahl_id: string;
+  kennzahl: string;
+  fassung: number;
+  freigegeben_von: string | null;
+  freigegeben_am: string | null;
+  vieraugen: boolean;
+  zweite_person: string | null;
+}
+export interface EnergiemanagementVerantwortung {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+  aufgaben: EnergiemanagementAufgaben['aufgaben'];
+  ohne_person: string[];
+  objekte: EnergiemanagementVerantwortungObjekt[];
+  bezugsbasen_freigaben: EnergiemanagementBezugsbasisFreigabe[];
+}
 export interface EnergiemanagementVerzeichnisZeile {
   gruppe: string;
   art: string;
@@ -10719,6 +10776,18 @@ export const api = {
   /** IP-6 (PA2): Aufgabe zuordnen — bei `unternehmensleitung` ohne „entschieden von“. */
   energiemanagementAufgabeZuordnen: (body: EnergiemanagementAufgabeZuordnen) =>
     request<EnergiemanagementZuordnung>('/api/v1/energiemanagement/aufgaben', { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-6 (PA1): eine Person mit ihrem Verlauf (jede Konto-Verknüpfung steht darin). */
+  energiemanagementPerson: (id: string) =>
+    request<EnergiemanagementPersonMitVerlauf>(`/api/v1/energiemanagement/personen/${encodeURIComponent(id)}`),
+  /** IP-6 (PA1, PA5): der ganze Stand — Konto verknüpfen oder mit „bis“ beenden verlangt eine Begründung. */
+  energiemanagementPersonAendern: (id: string, body: EnergiemanagementPersonAendern) =>
+    request<EnergiemanagementPersonMitVerlauf>(`/api/v1/energiemanagement/personen/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** IP-6 (PA2): Zuordnung beenden — einmal, der letzte Tag zählt mit. */
+  energiemanagementAufgabeBeenden: (id: string, body: EnergiemanagementAufgabeBeenden) =>
+    request<EnergiemanagementZuordnung>(`/api/v1/energiemanagement/aufgaben/${encodeURIComponent(id)}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-10 (PA4): „Wer ist wofür verantwortlich“ am Tag — gelesen, nichts kopiert. */
+  energiemanagementVerantwortung: (tag?: string) =>
+    request<EnergiemanagementVerantwortung>(`/api/v1/energiemanagement/verantwortung${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
   /** IP-8 (VZ1–VZ4): das Verzeichnis zum Abruf — ein Leser über alle Quellen, gefiltert nach Gruppe, Tag, Person. */
   energiemanagementVerzeichnis: (filter: EnergiemanagementVerzeichnisFilter = {}) => {
     const q = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => !!e[1])).toString();

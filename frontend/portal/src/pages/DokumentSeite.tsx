@@ -4,6 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type EnergiemanagementDokument, type EnergiemanagementDokumentEintrag } from '../api';
 import { AnwendungsbereichVergleich } from '../components/AnwendungsbereichVergleich';
 import { FassungDialog, FreigabeDialog } from '../components/DokumentDialoge';
+import { EinsichtGruppe } from '../components/EinsichtRecht';
 import { Recht } from '../components/Recht';
 import * as E from '../energiemanagementPortal';
 import { UEMS_DOKUMENTE, UEMS_EINGETRAGEN_VON, UEMS_ENTSCHIEDEN_VON, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_WORTLAUT } from '../glossar';
@@ -99,20 +100,22 @@ export function DokumentSeite({ id, onListe }: { id: string; onListe: () => void
         )}
       </div>
       {!aufgehoben && (
-        <div className="vp-ez-aktionen">
-          <Recht aktion={E.RECHT_VERWALTEN} standort={standort}>
-            <Button variant={offen ? 'ghost' : 'primary'} onClick={() => setDialog('fassung')} disabled={offen?.status === 'beantragt'} data-testid="dokument-fassung">
-              {offen?.status === 'entwurf' ? E.KNOPF_ENTWURF : E.KNOPF_FASSUNG}
-            </Button>
-          </Recht>
-          {offen && (
-            <Recht aktion={E.RECHT_FREIGEBEN} standort={standort}>
-              <Button onClick={() => setDialog('freigabe')} data-testid="dokument-freigeben">
-                {offen.status === 'beantragt' ? E.KNOPF_BESTAETIGEN : E.KNOPF_FREIGEBEN}
+        <EinsichtGruppe aktion={[E.RECHT_VERWALTEN, E.RECHT_FREIGEBEN]} standort={standort}>
+          <div className="vp-ez-aktionen">
+            <Recht aktion={E.RECHT_VERWALTEN} standort={standort}>
+              <Button variant={offen ? 'ghost' : 'primary'} onClick={() => setDialog('fassung')} disabled={offen?.status === 'beantragt'} data-testid="dokument-fassung">
+                {offen?.status === 'entwurf' ? E.KNOPF_ENTWURF : E.KNOPF_FASSUNG}
               </Button>
             </Recht>
-          )}
-        </div>
+            {offen && (
+              <Recht aktion={E.RECHT_FREIGEBEN} standort={standort}>
+                <Button onClick={() => setDialog('freigabe')} data-testid="dokument-freigeben">
+                  {offen.status === 'beantragt' ? E.KNOPF_BESTAETIGEN : E.KNOPF_FREIGEBEN}
+                </Button>
+              </Recht>
+            )}
+          </div>
+        </EinsichtGruppe>
       )}
       {gezeigt && (
         <section className="vp-ez-karte" aria-label={`Fassung ${gezeigt.nr}`} data-testid="dokument-fassung-inhalt">

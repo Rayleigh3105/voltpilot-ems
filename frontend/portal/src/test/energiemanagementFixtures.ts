@@ -25,6 +25,10 @@ import {
   type EnergiemanagementPersonAnlegen,
   type EnergiemanagementPersonKurz,
   type EnergiemanagementAufgabeZuordnen,
+  type EnergiemanagementAufgabeBeenden,
+  type EnergiemanagementPersonAendern,
+  type EnergiemanagementPersonMitVerlauf,
+  type EnergiemanagementVerantwortung,
   type EnergiemanagementVergleich,
   type EnergiemanagementVerzeichnis,
   type EnergiemanagementVerzeichnisFilter,
@@ -139,15 +143,33 @@ export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kenn
   const leitungAm = (tag: string) =>
     zuordnungen.filter((z) => z.aufgabe === 'unternehmensleitung' && z.gilt_ab <= tag && (!z.gilt_bis || z.gilt_bis >= tag)).map((z) => z.person);
 
-  function zuordnen(p: EnergiemanagementPerson, aufgabe: string, gilt_ab: string, begruendung: string, von: string) {
+  function zuordnen(
+    p: EnergiemanagementPerson, aufgabe: string, gilt_ab: string, begruendung: string, von: string,
+    mehr: Partial<Pick<EnergiemanagementZuordnung, 'vertretung' | 'entschieden_von' | 'beleg' | 'beschluss_kennung' | 'aufgabe_wortlaut'>> = {}, am = jetzt(),
+  ) {
     const z: EnergiemanagementZuordnung = {
       id: `a1a00000-0000-4000-8000-${String(zuordnungen.length + 1).padStart(12, '0')}`, aufgabe, wort: WOERTER.aufgabe[aufgabe], aufgabe_wortlaut: null,
       person: kurz(p), vertretung: null, gilt_ab, gilt_bis: null, zustand: 'laufend', entschieden_von: null, begruendung, beleg: null,
-      beschluss_kennung: null, beendet_begruendung: null, eingetragen: eingetragen(von, jetzt()),
+      beschluss_kennung: null, beendet_begruendung: null, eingetragen: eingetragen(von, am), ...mehr,
     };
+    if (aufgabe === 'weitere' && z.aufgabe_wortlaut) z.wort = z.aufgabe_wortlaut;
     zuordnungen.push(z);
     return z;
   }
+  const verlauf: Record<string, EnergiemanagementPersonMitVerlauf['verlauf']> = {};
+  const verlaufAn = (id: string, art: string, begruendung: string | null, alt: unknown = null, neu: unknown = null) => {
+    (verlauf[id] ??= []).push({ id: Object.values(verlauf).flat().length + 1, art, alt, neu, begruendung, akteur: akteur(ich.name), zeit: jetzt() });
+  };
+  const laeuftAm = (z: EnergiemanagementZuordnung, tag: string) => z.gilt_ab <= tag && (!z.gilt_bis || z.gilt_bis >= tag);
+  /** Wie `EnergiemanagementPersonenService#aufgaben(tag)` (IP-6): je Wort die laufenden Zuordnungen und der Satz. */
+  const aufgabenAm = (tag: string): EnergiemanagementAufgaben['aufgaben'] =>
+    VOKABULARE.aufgabe.map((a) => {
+      const laufend = zuordnungen.filter((z) => z.aufgabe === a && laeuftAm(z, tag));
+      return {
+        aufgabe: a, wort: WOERTER.aufgabe[a], laufend: structuredClone(laufend),
+        satz: laufend.length || a === 'weitere' ? null : satzText('aufgabe_ohne_person', { aufgabe: WOERTER.aufgabe[a] }),
+      };
+    });
 
   /** Überprüfung und Sätze wie der Dienst (DK5, §5.8) — gerechnet beim Abruf. */
   function abgerufen(d: EnergiemanagementDokument): EnergiemanagementDokument {
@@ -241,9 +263,41 @@ export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kenn
   if (lage === 'ahrenberg') {
     const rf = person('RF', 'Robert Falk', 'Geschäftsführer', null, '2026-10-01');
     personen.unshift(rf);
-    zuordnen(rf, 'unternehmensleitung', '2026-10-01', 'Geschäftsführer der Kunststoffwerk Ahrenberg GmbH.', 'Ines Kaltenbach');
-    zuordnen(personen[1], 'energiemanagement_leiten', '2026-10-01', 'Bestellung zur Energiemanagerin vom 28.09.2026.', 'Ines Kaltenbach');
+    const am = '2026-12-15T09:00:00+01:00';
+    zuordnen(rf, 'unternehmensleitung', '2026-10-01', 'Geschäftsführer der Kunststoffwerk Ahrenberg GmbH.', 'Ines Kaltenbach', {}, am);
+    // R5: neun Zuordnungen „entschieden von Robert Falk“ mit der Bestellung als Beleg — Bezugsbasen ohne Person.
+    const bestellung = { bezeichnung: 'Bestellung Energiemanagement vom 28.09.2026, unterschrieben', ablage: 'Personalakte (Personalabteilung)', kennung: null, adresse: null, sha256: null };
+    const [ik, jw, ph, md, cb] = ['IK', 'JW', 'PH', 'MD', 'CB'].map((k) => personen.find((p) => p.kuerzel === k)!);
+    const vonRf = { entschieden_von: kurz(rf), beleg: bestellung };
+    zuordnen(ik, 'energiemanagement_leiten', '2026-10-01', 'Bestellung zur Energiemanagerin vom 28.09.2026.', 'Ines Kaltenbach', { ...vonRf, vertretung: kurz(jw) }, am);
+    zuordnen(ik, 'energieteam', '2026-10-01', 'Bestellung ins Energieteam vom 28.09.2026.', 'Ines Kaltenbach', vonRf, am);
+    zuordnen(ph, 'energieteam', '2026-10-15', 'Bestellung ins Energieteam vom 28.09.2026.', 'Ines Kaltenbach', vonRf, am);
+    zuordnen(md, 'energieteam', '2026-10-01', 'Bestellung ins Energieteam vom 28.09.2026.', 'Ines Kaltenbach', vonRf, am);
+    zuordnen(ik, 'energieziele_massnahmen', '2026-10-01', 'Bestellung Energiemanagement vom 28.09.2026.', 'Ines Kaltenbach', vonRf, am);
+    zuordnen(ik, 'bewertung_messplanung', '2026-10-01', 'Bestellung Energiemanagement vom 28.09.2026.', 'Ines Kaltenbach', vonRf, am);
+    zuordnen(ik, 'dokumente', '2026-10-01', 'Bestellung Energiemanagement vom 28.09.2026.', 'Ines Kaltenbach', vonRf, am);
+    zuordnen(ik, 'managementbewertung', '2026-10-01', 'Bestellung Energiemanagement vom 28.09.2026.', 'Ines Kaltenbach', vonRf, am);
+    zuordnen(cb, 'interne_audits', '2028-12-01', 'Claudia Berger plant und führt die internen Audits durch.', 'Ines Kaltenbach', { entschieden_von: kurz(rf) }, '2028-11-20T09:00:00+01:00');
   }
+  /** R5: die Objekte, wie ihre Register sie am 12.02.2029 zeigen (gekürzt), und die acht Freigaben der Bezugsbasen. */
+  const objekt = (art: string, n: number, kennzeichen: string, titel: string, name: string | null, zustand: string | null = null) => ({
+    art, id: `0b100000-0000-4000-8000-${String(n).padStart(12, '0')}`, kennzeichen, titel, verantwortlich: name ? { sub: null, name } : null, zustand,
+  });
+  const NAMEN: Record<string, string> = { IK: 'Ines Kaltenbach', JW: 'Jonas Wendlinger', PH: 'Peter Hollerbach', MD: 'Murat Demirci' };
+  const EINSAETZE = ['Spritzguss Halle 1', 'Extrusion Werk Lindach', 'Trockner', 'Druckluft Werk Ahrenberg', 'Druckluft Werk Lindach', 'Rechenzentrum', 'Beleuchtung', 'Heizung Werk Ahrenberg'];
+  const objekte = lage !== 'ahrenberg' ? [] : [
+    objekt('kennzahl', 1, 'KZ-0004', 'Spritzguss: Strom je Tonne', NAMEN.IK),
+    ...['MD', 'PH', 'IK', 'IK', 'PH', 'JW', 'JW', 'IK'].map((k, i) => objekt('energieeinsatz', 10 + i, `EE-${i + 1}`, EINSAETZE[i], NAMEN[k])),
+    ...['IK', 'IK', 'IK', 'JW', 'PH'].map((k, i) => objekt('bezugsbasis', 20 + i, `BB-000${i + 1}`, `Bezugsbasis ${i + 1}`, NAMEN[k])),
+    objekt('energieziel', 30, 'EZ-2028-0001', 'Spritzguss: 5 % weniger Strom', NAMEN.IK, 'verfehlt'),
+    objekt('massnahme', 31, 'M-2028-0001', 'Zeitschaltung der Trockner', NAMEN.JW, 'umgesetzt'),
+    objekt('massnahme', 32, 'M-2028-0002', 'Druckluft-Leckagen', NAMEN.PH, 'umgesetzt'),
+  ];
+  const freigaben = lage !== 'ahrenberg' ? [] : [[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2], [4, 1], [5, 1]].map(([b, f]) => ({
+    bezugsbasis_id: `0b100000-0000-4000-8000-${String(19 + b).padStart(12, '0')}`, bezugsbasis: `BB-000${b}`,
+    kennzahl_id: `0b100000-0000-4000-8000-${String(40 + b).padStart(12, '0')}`, kennzahl: `KZ-000${b}`, fassung: f,
+    freigegeben_von: 'Ines Kaltenbach', freigegeben_am: f === 1 ? '2027-01-12T10:00:00+01:00' : '2028-01-12T10:00:00+01:00', vieraugen: false, zweite_person: null,
+  }));
 
   /** Der Stand von R1–R3 am 12.02.2029 — gebaut über dieselben Wege wie jede Handlung der Bühne. */
   const bereit = (async () => {
@@ -316,6 +370,7 @@ export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kenn
     };
   };
 
+  const energiemanagementPersonLesen = async (id: string) => routen.energiemanagementPerson(id);
   const routen = {
     standorte: async (): Promise<StandorteAmStichtag> => ({ stichtag: heute(), standorte: [ST1, ST2], nichtGezeigt: [], nochNichtZugeordnet: null }),
     energiemanagementPersonen: async () => {
@@ -335,12 +390,55 @@ export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kenn
     energiemanagementAufgaben: async (tag?: string): Promise<EnergiemanagementAufgaben> => {
       await bereit;
       const t = tag ?? heute();
-      return { tag: t, leitung: leitungAm(t), aufgaben: [], zuordnungen: structuredClone(zuordnungen) };
+      return { tag: t, leitung: leitungAm(t), aufgaben: aufgabenAm(t), zuordnungen: structuredClone(zuordnungen) };
     },
     energiemanagementAufgabeZuordnen: async (b: EnergiemanagementAufgabeZuordnen) => {
       merke('POST /api/v1/energiemanagement/aufgaben', b);
+      if (b.aufgabe !== 'unternehmensleitung' && !b.entschieden_von) {
+        throw new ApiError(422, 'entschieden von fehlt', { code: 'entschieden_von_fehlt', message: 'entschieden von fehlt' });
+      }
       const p = personen.find((x) => x.id === b.person_id)!;
-      return structuredClone(zuordnen(p, b.aufgabe, b.gilt_ab, b.begruendung, ich.name));
+      const person = (id: string | null | undefined) => (id ? kurz(personen.find((x) => x.id === id)!) : null);
+      const z = zuordnen(p, b.aufgabe, b.gilt_ab, b.begruendung, ich.name, {
+        vertretung: person(b.vertretung_person_id), entschieden_von: person(b.entschieden_von), beleg: b.beleg ?? null,
+        beschluss_kennung: b.beschluss_kennung ?? null, aufgabe_wortlaut: b.aufgabe_wortlaut ?? null,
+      });
+      verlaufAn(p.id, 'aufgabe_zugeordnet', b.begruendung);
+      return structuredClone(z);
+    },
+    energiemanagementAufgabeBeenden: async (id: string, b: EnergiemanagementAufgabeBeenden) => {
+      merke(`POST /api/v1/energiemanagement/aufgaben/${id}/beenden`, b);
+      const z = zuordnungen.find((x) => x.id === id)!;
+      Object.assign(z, { gilt_bis: b.gilt_bis, zustand: 'beendet', beendet_begruendung: b.begruendung });
+      return structuredClone(z);
+    },
+    energiemanagementPerson: async (id: string): Promise<EnergiemanagementPersonMitVerlauf> => {
+      await bereit;
+      const p = personen.find((x) => x.id === id);
+      if (!p) throw new ApiError(404, 'Person unbekannt', { code: 'person_unbekannt', message: 'Diese Person gibt es nicht.' });
+      const erfasst = { id: 0, art: 'person_erfasst', alt: null, neu: null, begruendung: null, akteur: p.eingetragen.akteur, zeit: p.eingetragen.am };
+      return { person: structuredClone(p), verlauf: [erfasst, ...(verlauf[id] ?? [])] };
+    },
+    energiemanagementPersonAendern: async (id: string, b: EnergiemanagementPersonAendern) => {
+      merke(`PUT /api/v1/energiemanagement/personen/${id}`, b);
+      const p = personen.find((x) => x.id === id)!;
+      const alt = structuredClone(p);
+      Object.assign(p, {
+        name: b.name, funktion: b.funktion, kuerzel: b.kuerzel, organisation: b.organisation, seit: b.seit,
+        konto: b.konto_sub ? { sub: b.konto_sub, name: p.konto?.sub === b.konto_sub ? p.konto.name : b.konto_sub, zustand: 'aktiv' } : null,
+      });
+      if (b.bis) Object.assign(p, { bis: b.bis, zustand: 'beendet', beendet_begruendung: b.begruendung ?? null });
+      verlaufAn(id, b.bis ? 'person_beendet' : 'person_geaendert', b.begruendung ?? null, alt, structuredClone(p));
+      return energiemanagementPersonLesen(id);
+    },
+    energiemanagementVerantwortung: async (tag?: string): Promise<EnergiemanagementVerantwortung> => {
+      await bereit;
+      const t = tag ?? heute();
+      const aufgaben = aufgabenAm(t);
+      return {
+        tag: t, leitung: leitungAm(t), aufgaben, ohne_person: aufgaben.filter((a) => a.satz).map((a) => a.aufgabe),
+        objekte: structuredClone(objekte), bezugsbasen_freigaben: structuredClone(freigaben),
+      };
     },
     energiemanagementVerzeichnis: async (filter: EnergiemanagementVerzeichnisFilter = {}) => {
       await bereit;

@@ -30,6 +30,13 @@ export const benutzerApi = {
     method: 'PUT', body: JSON.stringify({ bisher, rolle, standorte }),
   }),
   entziehen: (id: string) => request<void>(`/api/v1/zugriff/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /**
+   * AP-19 IP-13: „Einsicht“ als weitere Rolle, wahlfrei befristet (`gueltig_bis` = letzter Tag, einschließlich) und mit
+   * Grund fürs Zugriffsprotokoll — `POST /api/v1/zugriff` (IP-12); nur diese Rolle lässt sich befristen.
+   */
+  einsichtZuweisen: (sub: string, gueltigBis: string | null, grund: string | null) => request<unknown>('/api/v1/zugriff', {
+    method: 'POST', body: JSON.stringify({ benutzer_sub: sub, rolle: 'einsicht', standort_id: null, gueltig_bis: gueltigBis, grund }),
+  }),
   sperren: (sub: string) => request<void>(`/api/v1/benutzer/${encodeURIComponent(sub)}/sperren`, { method: 'POST' }),
   entfernen: (sub: string) => request<void>(`/api/v1/benutzer/${encodeURIComponent(sub)}`, { method: 'DELETE' }),
   anlegen: (anlage: BenutzerAnlage) => request<BenutzerAngelegt>('/api/v1/benutzer', {

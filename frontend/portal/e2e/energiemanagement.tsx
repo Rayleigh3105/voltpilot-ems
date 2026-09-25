@@ -5,7 +5,7 @@ import { keycloak } from '../src/auth';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
 import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell } from '../src/ebenenNav';
 import { darfAnsehen } from '../src/energiemanagementPortal';
-import { dokumentRoute, energiemanagementRoute, hashForRoute, pageRoute, parseRoute, type Route } from '../src/nav';
+import { dokumentRoute, energiemanagementRoute, hashForRoute, pageRoute, parseRoute, personRoute, type Route } from '../src/nav';
 import { EnergiemanagementBereich } from '../src/pages/EnergiemanagementBereich';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
@@ -25,13 +25,14 @@ import '../designsystem/components/shell/shell.css';
 import '../src/index.css';
 
 /**
- * Bühne des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9): die ECHTE `AppShell` mit der ECHTEN Leiste und den ECHTEN
+ * Bühne des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, IP-13): die ECHTE `AppShell` mit der ECHTEN Leiste und den ECHTEN
  * Reitern (`PortfolioTabs`) — dieselben reinen Funktionen wie `App.tsx` — und darin der ECHTE
  * `EnergiemanagementBereich`. Die Routen von IP-6/IP-7/IP-8 spielt `energiemanagementBuehne`
  * (`src/test/energiemanagementFixtures.ts`); jeder Schreib-Körper steht in `window.__emGesendet` (Netzwerk-Probe).
  *
- * Adresse: `?person=IK|JW|CB` (Vorgabe IK) · `&lage=start|ahrenberg` (Vorgabe start) · `&dok=1|2|3` öffnet D-0001 …
- * D-0003 der Lage `ahrenberg` · `&seite=dokumente|zuschnitt`. Die Uhr stellt die Spec (`page.clock`).
+ * Adresse: `?person=IK|JW|CB|RF` (Vorgabe IK; RF = Robert Falk mit der Rolle „Einsicht“, IP-13) · `&lage=start|ahrenberg`
+ * (Vorgabe start) · `&dok=1|2|3` öffnet D-0001 … D-0003 der Lage `ahrenberg` · `&seite=dokumente|aufgaben|verantwortung|zuschnitt`
+ * · `&ps=RF|IK|…` öffnet die Seite dieser Person (IP-13). Die Uhr stellt die Spec (`page.clock`).
  * Eigene Bühne, keine geteilte Datei wird angefasst.
  */
 const params = new URLSearchParams(location.search);
@@ -58,11 +59,14 @@ const DOK: Record<string, string> = { '1': EM_IDS.d1, '2': EM_IDS.d2, '3': EM_ID
 if (!location.hash.startsWith('#/portfolio/')) {
   const seite = params.get('seite');
   const dok = DOK[params.get('dok') ?? ''];
+  const ps = EM_IDS[(params.get('ps') ?? '') as keyof typeof EM_IDS];
   const ziel = dok
     ? dokumentRoute(dok)
-    : seite === 'dokumente' || seite === 'zuschnitt'
-      ? energiemanagementRoute(seite)
-      : energiemanagementRoute();
+    : ps
+      ? personRoute(ps)
+      : seite === 'dokumente' || seite === 'zuschnitt' || seite === 'aufgaben' || seite === 'verantwortung'
+        ? energiemanagementRoute(seite)
+        : energiemanagementRoute();
   history.replaceState(null, '', hashForRoute(ziel));
 }
 
@@ -119,8 +123,10 @@ function Ansicht() {
         <EnergiemanagementBereich
           reiter={route.energiemanagementReiter ?? 'verzeichnis'}
           dokumentId={route.dokumentId ?? null}
+          personId={route.personId ?? null}
           onReiter={(r) => navigate(energiemanagementRoute(r))}
           onDokument={(id) => navigate(dokumentRoute(id))}
+          onPerson={(id) => navigate(personRoute(id))}
         />
       ) : (
         <p>Diese Bühne zeigt nur das Energiemanagement.</p>

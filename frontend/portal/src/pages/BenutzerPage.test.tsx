@@ -6,9 +6,10 @@ import { ApiError } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { benutzerFixture } from '../test/benutzerFixtures';
-import { BenutzerEinladen } from '../components/BenutzerEinladen';
+import { BenutzerEinladen, EINSICHT_BEFRISTEN_HINWEIS } from '../components/BenutzerEinladen';
 vi.mock('../benutzer', async original => ({ ...(await original<typeof import('../benutzer')>()), benutzerApi: {
   liste: vi.fn(), protokoll: vi.fn(), wechseln: vi.fn(), anlegen: vi.fn(), sperren: vi.fn(), entfernen: vi.fn(), entziehen: vi.fn(), startpasswort: vi.fn(),
+  einsichtZuweisen: vi.fn(),
 } }));
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T08:15:30Z'));
@@ -80,6 +81,30 @@ it('Rollenänderung ersetzt nur die gewählte Zuweisung', async () => {
   expect(benutzerApi.wechseln).toHaveBeenCalledWith('CB', [konto.zuweisungen[0].id], 'leser', [konto.zuweisungen[0].standort_id]);
 });
 
+it('AP-19 IP-13 (R6): „Einsicht“ als weitere Rolle befristet zuweisen — mit Grund über POST /zugriff; ohne Frist der bisherige Wechsel', async () => {
+  const konto = benutzerFixture().find(b => b.sub === 'CB')!;
+  const onCreated = vi.fn();
+  vi.mocked(benutzerApi.einsichtZuweisen).mockResolvedValue(undefined);
+  render(<BenutzerEinladen bearbeiten={{ konto }} onClose={() => {}} onCreated={onCreated} />);
+  expect(screen.queryByRole('combobox', { name: 'Gültig bis einschließlich (wahlfrei)' })).toBeNull();
+  fireEvent.click(screen.getByRole('combobox', { name: 'Rolle' }));
+  fireEvent.click(screen.getByRole('option', { name: /^Einsicht/ }));
+  fireEvent.click(screen.getByRole('combobox', { name: 'Gültig bis einschließlich (wahlfrei)' }));
+  fireEvent.click(screen.getByRole('gridcell', { name: '31', exact: true }));
+  fireEvent.change(screen.getByLabelText('Grund (wahlfrei)'), { target: { value: 'Internes Audit: unternehmensweite Nachweise lesen' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+  expect(benutzerApi.einsichtZuweisen).toHaveBeenCalledWith('CB', '2026-10-31', 'Internes Audit: unternehmensweite Nachweise lesen');
+  expect(benutzerApi.wechseln).not.toHaveBeenCalled();
+});
+it('AP-19 IP-13: beim Ändern einer Zuweisung nennt der Dialog den Weg zur Befristung statt eines Datumsfelds', () => {
+  const konto = benutzerFixture().find(b => b.sub === 'CB')!;
+  render(<BenutzerEinladen bearbeiten={{ konto, zuweisung: konto.zuweisungen[0] }} onClose={() => {}} onCreated={() => {}} />);
+  fireEvent.click(screen.getByRole('combobox', { name: 'Rolle' }));
+  fireEvent.click(screen.getByRole('option', { name: /^Einsicht/ }));
+  expect(screen.getByText(EINSICHT_BEFRISTEN_HINWEIS)).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Gültig bis einschließlich (wahlfrei)' })).toBeNull();
+});
 
 it('entzieht eine einzelne Zuweisung über den vorhandenen Weg und erhält das Konto', async () => {
   vi.mocked(benutzerApi.entziehen).mockResolvedValue(undefined);

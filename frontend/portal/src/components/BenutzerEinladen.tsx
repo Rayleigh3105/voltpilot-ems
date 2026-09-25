@@ -5,7 +5,10 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { benutzerApi, benutzerFehler, KUNDENROLLEN, rechteVorschau, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag, type BenutzerZuweisung } from '../benutzer';
 import { ROLLE_KUNDENWORT, type Rolle } from '../rechte';
 import { useRollen } from '../rollen';
+import { heute } from '../bewertung';
+import { ApiError } from '../api';
 import { BenutzerAnlegenDialog } from './BenutzerAnlegenDialog';
+import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 
 /** Die Rollen-Beschreibung im Rollen-Wähler — je zuweisbare Rolle ein Satz (`copy.test.ts` hält sie vollständig). */
@@ -17,6 +20,8 @@ export const ROLLE_BESCHREIBUNG: Record<string, string> = {
   leser: 'Sieht Daten an ausgewählten Standorten; ändert nichts.',
   einsicht: 'Sieht das Energiemanagement des ganzen Unternehmens und kann nichts ändern — für Leitung und Prüfende, auch befristet.',
 };
+/** AP-19 IP-13: befristen lässt sich allein „Einsicht“, und nur als weitere Rolle (`POST /api/v1/zugriff`). */
+export const EINSICHT_BEFRISTEN_HINWEIS = 'Befristen lässt sich „Einsicht“, wenn Sie sie über „Weitere Rolle zuweisen“ hinzufügen.';
 export function RechteVorschau({ rolle, standorte }: { rolle: Rolle; standorte: string[] }) {
   const v = rechteVorschau(rolle, standorte);
   if (!unternehmensrolle(rolle) && !standorte.length) return <p>Wählen Sie mindestens einen Standort.</p>;
@@ -45,6 +50,8 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
   const [schritt, setSchritt] = useState(1);
   const [fehler, setFehler] = useState('');
   const [busy, setBusy] = useState(false);
+  const [einsichtBis, setEinsichtBis] = useState('');
+  const [einsichtGrund, setEinsichtGrund] = useState('');
   const form = useRef<HTMLFormElement>(null);
   const standortFeld = useRef<HTMLDivElement>(null);
   const ausloeser = useRef(document.activeElement as HTMLElement | null);
@@ -67,11 +74,24 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
       <p className="vp-note">Neue Standorte müssen später ausdrücklich zugewiesen werden.</p></div>}
     <RechteVorschau rolle={anlage.rolle as Rolle} standorte={daten.standorte} />
   </>;
+  // „Weitere Rolle zuweisen“ mit „Einsicht“: letzter Tag und Grund wahlfrei; gesetzt geht die Zuweisung über
+  // `POST /api/v1/zugriff`, sonst bleibt es beim bisherigen Wechsel (AP-19 IP-13, RE3).
+  const einsichtWeitere = !!bearbeiten && !z && anlage.rolle === 'einsicht';
+  const befristet = einsichtWeitere && (!!einsichtBis || !!einsichtGrund.trim());
   async function speichern() {
     if (!bearbeiten || !pruefen() || busy) return;
+    if (befristet && einsichtBis && einsichtBis < heute()) { setFehler('Bitte wählen Sie als letzten Tag heute oder einen späteren Tag.'); return; }
     setBusy(true);
-    try { await benutzerApi.wechseln(bearbeiten.konto.sub, z ? [z.id] : [], anlage.rolle, daten.standorte); onCreated(); schliessen(); }
-    catch (e) { setFehler(benutzerFehler(e, 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.')); }
+    try {
+      if (befristet) await benutzerApi.einsichtZuweisen(bearbeiten.konto.sub, einsichtBis || null, einsichtGrund.trim() || null);
+      else await benutzerApi.wechseln(bearbeiten.konto.sub, z ? [z.id] : [], anlage.rolle, daten.standorte);
+      onCreated(); schliessen();
+    }
+    catch (e) {
+      setFehler(befristet && e instanceof ApiError && e.status === 400
+        ? 'Bitte wählen Sie als letzten Tag heute oder einen späteren Tag.'
+        : benutzerFehler(e, 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.'));
+    }
     finally { setBusy(false); }
   }
   return <>
@@ -97,6 +117,11 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
         <VpPicker label="Rolle" value={anlage.rolle} options={KUNDENROLLEN.map(r => ({ ...r, sub: ROLLE_BESCHREIBUNG[r.value] }))}
           onChange={rolle => setAnlage(a => ({ ...a, rolle }))} />
         <p>{ROLLE_BESCHREIBUNG[anlage.rolle]}</p>
+        {einsichtWeitere && <div className="vp-benutzer-zwei">
+          <VpDatePicker label="Gültig bis einschließlich (wahlfrei)" value={einsichtBis || null} min={heute()} onChange={v => { setFehler(''); setEinsichtBis(v ?? ''); }} />
+          <Input label="Grund (wahlfrei)" value={einsichtGrund} onChange={e => setEinsichtGrund(e.target.value)} placeholder="etwa Internes Audit, Nachweise lesen" />
+        </div>}
+        {anlage.rolle === 'einsicht' && !einsichtWeitere && <p className="vp-note">{EINSICHT_BEFRISTEN_HINWEIS}</p>}
         {bearbeiten && <><p>Die Änderung gilt sofort. Andere Rollen und Standorte bleiben erhalten.</p>{auswahl}</>}
         {fehler && <p role="alert">{fehler}</p>}
       </form>

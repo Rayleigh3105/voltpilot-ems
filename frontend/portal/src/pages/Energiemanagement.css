@@ -177,3 +177,55 @@
     overflow-wrap: break-word;
   }
 }
+
+/* IP-13: Reiter „Aufgaben“, „Wer ist wofür verantwortlich“, Personen-Seite. */
+.vp-em-aufgaben-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-em-aufgaben {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-em-aufgabe {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-3) 0;
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-em-aufgabe h3 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+}
+
+.vp-em-zuordnung {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-em-kurzliste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}

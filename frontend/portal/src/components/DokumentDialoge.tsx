@@ -38,7 +38,7 @@ function Fuss({ satz }: { satz: string | null }) {
   );
 }
 
-function Begruendung({ id, wert, setze, fehler, pflicht }: { id: string; wert: string; setze: (t: string) => void; fehler?: string; pflicht: boolean }) {
+export function Begruendung({ id, wert, setze, fehler, pflicht }: { id: string; wert: string; setze: (t: string) => void; fehler?: string; pflicht: boolean }) {
   return (
     <div className="vp-ez-feld">
       <label className="vp-ez-label" htmlFor={id}>
@@ -50,7 +50,7 @@ function Begruendung({ id, wert, setze, fehler, pflicht }: { id: string; wert: s
   );
 }
 
-function Formular({ id, testid, onSubmit, children }: { id: string; testid: string; onSubmit: () => void; children: ReactNode }) {
+export function Formular({ id, testid, onSubmit, children }: { id: string; testid: string; onSubmit: () => void; children: ReactNode }) {
   return (
     <form
       id={id}
@@ -72,7 +72,7 @@ function Formular({ id, testid, onSubmit, children }: { id: string; testid: stri
  * Bezeichnung, Kennung, Adresse, beim Verweis einer Fassung auch Fassungsangabe und Tag. Wer eine Datei wählt,
  * bekommt ihre SHA-256 im Browser gebildet; in den Körper der Route gelangt nur sie, nie die Datei.
  */
-function VerweisFelder({
+export function VerweisFelder({
   basis,
   titel,
   wert,

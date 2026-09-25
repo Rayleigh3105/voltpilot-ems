@@ -1913,6 +1913,7 @@ const KENNZAHL_BESTAND: string[] = [
   'components/WidgetGrid.tsx', // alt
   'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
+  'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
@@ -3108,6 +3109,12 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'components/DokumentDialoge.tsx',
     'components/AnwendungsbereichVergleich.tsx',
     'components/ZuschnittHilfe.tsx',
+    // IP-13: Reiter „Aufgaben“ mit Personen, „Wer ist wofür verantwortlich“, Personen-Seite, Dialoge Zuordnen/Beenden/
+    // Angaben ändern.
+    'components/EnergiemanagementAufgaben.tsx',
+    'components/EnergiemanagementVerantwortung.tsx',
+    'pages/EnergiemanagementPersonSeite.tsx',
+    'components/EnergiemanagementAufgabeDialoge.tsx',
   ];
   const ENERGIEMANAGEMENT_NAMENSMUSTER =
     /(?:^|\/)(?:Energiemanagement|Energiepolitik|Anwendungsbereich|Dokument|Verzeichnis|Wiedervorlage|InternesAudit|Audit|Feststellung|Managementbewertung|Beschluss|Wirksamkeit|Zuschnitt|Nachweis)[^/]*\.tsx?$/i;

@@ -5,7 +5,7 @@
  * (`energiemanagement.ts`, Zwilling von `EnergiemanagementRegeln.java`). Keine Datei verlässt das Gerät — ein Verweis
  * trägt nur Ablage, Kennung, Adresse, Fassungsangabe, Tag und die im Browser gebildete Prüfsumme (G3).
  */
-import { ApiError, type EnergiemanagementBeleg, type EnergiemanagementDokument, type EnergiemanagementFassung, type EnergiemanagementPersonKurz, type EnergiemanagementVerweis, type Selbstauskunft } from './api';
+import { ApiError, type EnergiemanagementZuordnung, type EnergiemanagementBeleg, type EnergiemanagementDokument, type EnergiemanagementFassung, type EnergiemanagementPersonKurz, type EnergiemanagementVerweis, type Selbstauskunft } from './api';
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
 import { UEMS_DOKUMENTE, UEMS_VERZEICHNIS } from './glossar';
 import type { EnergiemanagementReiter } from './nav';
@@ -22,12 +22,21 @@ export const darfAnsehen = (s: Rechte | null | undefined) => hat(s, 'energiemana
 export const RECHT_VERWALTEN = 'energiemanagement.verwalten';
 export const RECHT_FREIGEBEN = 'energiemanagement.freigeben';
 
+/**
+ * Die Rolle „Einsicht“ (IP-12, RE3): unternehmensweit nur lesen. Wer sie hat und an einer Stelle nicht schreiben darf,
+ * liest dort den Satz „Mit ‚Einsicht‘ können Sie hier nichts ändern. …“ statt des allgemeinen Recht-Satzes (IP-13, §5.8).
+ */
+export const mitEinsicht = (s: Pick<Selbstauskunft, 'rollen' | 'standorte'> | null | undefined) =>
+  !!s && (s.rollen.includes('einsicht') || s.standorte.some((st) => st.rollen.includes('einsicht')));
+
 // ------------------------------------------------------------------ Wörter
 
-/** Die Reiter, die IP-9 baut, in der Reihenfolge von §6.3; Wiedervorlage, Aufgaben, Audits … kommen mit ihren Paketen. */
+/** Die Reiter in der Reihenfolge von §6.3 — IP-9 Verzeichnis und Dokumente, IP-13 Aufgaben; Wiedervorlage, Audits … kommen mit ihren Paketen. */
 export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt'>; label: string }[] = [
   { key: 'verzeichnis', label: UEMS_VERZEICHNIS },
   { key: 'dokumente', label: UEMS_DOKUMENTE },
+  // §6.3 nennt den Reiter „Aufgaben“; die Überschrift darin ist das Glossar-Wort „Aufgaben im Energiemanagement“.
+  { key: 'aufgaben', label: 'Aufgaben' },
 ];
 
 export const KNOPF_ANLEGEN = 'Dokument anlegen';
@@ -38,6 +47,10 @@ export const KNOPF_BEANTRAGEN = 'Freigabe beantragen';
 export const KNOPF_BESTAETIGEN = 'Freigabe bestätigen';
 export const KNOPF_PERSON = 'Person anlegen';
 export const KNOPF_CSV = 'Als CSV abrufen';
+export const KNOPF_ZUORDNEN = 'Aufgabe zuordnen';
+export const KNOPF_BEENDEN = 'Zuordnung beenden';
+export const KNOPF_PERSON_AENDERN = 'Angaben ändern';
+export const KNOPF_VERANTWORTUNG = 'Wer ist wofür verantwortlich';
 export const BEGRUENDUNG_HINWEIS = `${STARTWERTE.begruendung_zeichen_mindestens} bis ${STARTWERTE.begruendung_zeichen_hoechstens} Zeichen.`;
 
 /** Wozu jede der zwölf Arten dient — ein Satz je Art (§5.1), in Kundenwörtern. */
@@ -284,6 +297,153 @@ export function personKoerper(e: PersonEntwurf) {
   };
 }
 
+export interface ZuordnenEntwurf {
+  aufgabe: string;
+  wortlaut: string;
+  personId: string;
+  giltAb: string;
+  vertretungId: string;
+  entschiedenVon: string;
+  begruendung: string;
+  beleg: VerweisEntwurf;
+  beschluss: string;
+}
+
+/** Aufgabe × Person × gilt ab (PA2): „entschieden von“ Pflicht außer bei „Leitung des Unternehmens“; nur anhängen. */
+export function zuordnenKoerper(e: ZuordnenEntwurf) {
+  const fehler: Feldfehler = {};
+  if (!e.aufgabe) fehler.aufgabe = 'Bitte wählen Sie die Aufgabe.';
+  if (e.aufgabe === 'weitere' && leer(e.wortlaut)) fehler.wortlaut = 'Bitte beschreiben Sie die Aufgabe.';
+  if (!e.personId) fehler.personId = 'Bitte wählen Sie die Person.';
+  if (!e.giltAb) fehler.giltAb = 'Bitte wählen Sie, ab wann.';
+  if (e.vertretungId && e.vertretungId === e.personId) fehler.vertretungId = 'Die Vertretung ist eine andere Person.';
+  if (e.aufgabe !== 'unternehmensleitung' && !e.entschiedenVon) fehler.entschiedenVon = 'Bitte wählen Sie, wer entschieden hat.';
+  const b = begruendungFehler(e.begruendung);
+  if (b) fehler.begruendung = b;
+  const beleg = verweisKoerper(e.beleg, false);
+  if (beleg && 'fehler' in beleg) fehler.beleg = beleg.fehler;
+  if (!leer(e.beschluss) && !/^BR-\d{4}-\d{4,}\/B\d{1,3}$/.test(e.beschluss.trim())) fehler.beschluss = 'Bitte in der Form BR-2029-0001/B4.';
+  if (Object.keys(fehler).length) return { fehler };
+  return {
+    koerper: {
+      aufgabe: e.aufgabe,
+      ...(e.aufgabe === 'weitere' ? { aufgabe_wortlaut: e.wortlaut.trim() } : {}),
+      person_id: e.personId,
+      gilt_ab: e.giltAb,
+      vertretung_person_id: e.vertretungId || null,
+      entschieden_von: e.aufgabe === 'unternehmensleitung' ? e.entschiedenVon || null : e.entschiedenVon,
+      begruendung: e.begruendung.trim(),
+      beleg: beleg ? (beleg as EnergiemanagementBeleg) : null,
+      beschluss_kennung: leerNull(e.beschluss),
+    },
+  };
+}
+
+/** Beenden (PA2): der letzte Tag zählt mit, nicht vor „gilt ab“; die Begründung ist Pflicht. */
+export function beendenKoerper(e: { giltBis: string; begruendung: string }, giltAb: string) {
+  const fehler: Feldfehler = {};
+  if (!e.giltBis) fehler.giltBis = 'Bitte wählen Sie den letzten Tag.';
+  else if (e.giltBis < giltAb) fehler.giltBis = `Der letzte Tag liegt nicht vor dem ${tagText(giltAb)}.`;
+  const b = begruendungFehler(e.begruendung);
+  if (b) fehler.begruendung = b;
+  if (Object.keys(fehler).length) return { fehler };
+  return { koerper: { gilt_bis: e.giltBis, begruendung: e.begruendung.trim() } };
+}
+
+export interface PersonAendernEntwurf {
+  name: string;
+  funktion: string;
+  kuerzel: string;
+  organisation: string;
+  kontoSub: string;
+  seit: string;
+  bis: string;
+  begruendung: string;
+}
+
+/**
+ * Der ganze Stand einer Person (PUT ist der ganze Stand, IP-6): ein anderes Konto (verknüpfen, wechseln, lösen) und
+ * „bis“ verlangen eine Begründung; „bis“ beendet die Person endgültig und liegt nicht vor „seit“.
+ */
+export function personAendernKoerper(e: PersonAendernEntwurf, bisherKonto: string | null) {
+  const fehler: Feldfehler = {};
+  if (leer(e.name)) fehler.name = 'Bitte geben Sie den Namen an.';
+  if (leer(e.funktion)) fehler.funktion = 'Bitte geben Sie die Funktion an.';
+  if (e.kuerzel.trim().length > 10) fehler.kuerzel = 'Höchstens 10 Zeichen.';
+  if (e.bis && e.seit && e.bis < e.seit) fehler.bis = `Der letzte Tag liegt nicht vor dem ${tagText(e.seit)}.`;
+  const kontoNeu = (e.kontoSub || null) !== bisherKonto;
+  const b = kontoNeu || e.bis || !leer(e.begruendung) ? begruendungFehler(e.begruendung) : null;
+  if (b) fehler.begruendung = b;
+  if (Object.keys(fehler).length) return { fehler };
+  return {
+    koerper: {
+      name: e.name.trim(),
+      funktion: e.funktion.trim(),
+      kuerzel: leerNull(e.kuerzel),
+      organisation: leerNull(e.organisation),
+      konto_sub: e.kontoSub || null,
+      seit: e.seit || null,
+      bis: e.bis || null,
+      begruendung: leerNull(e.begruendung),
+    },
+  };
+}
+
+/**
+ * Eine Zuordnung als Satz hinter dem Namen (R5, R11): „ seit 01.03.2029, Vertretung Jonas Wendlinger, entschieden von
+ * Robert Falk.“ — eine künftige sagt „ab“, eine beendete nennt ihren letzten Tag.
+ */
+export function zuordnungRest(z: Pick<EnergiemanagementZuordnung, 'gilt_ab' | 'gilt_bis' | 'vertretung' | 'entschieden_von'>, tag: string): string {
+  const beginn = z.gilt_ab > tag ? 'ab' : 'seit';
+  return [
+    ` ${beginn} ${tagText(z.gilt_ab)}${z.gilt_bis ? ` bis ${tagText(z.gilt_bis)}` : ''}`,
+    z.vertretung ? ` Vertretung ${z.vertretung.name}` : null,
+    z.entschieden_von ? ` entschieden von ${z.entschieden_von.name}` : null,
+  ].filter(Boolean).join(',') + '.';
+}
+
+/** Die künftigen Zuordnungen einer Aufgabe am Tag (gilt ab nach dem Tag) — sie stehen unter der Aufgabe, nicht an ihrer Stelle. */
+export const kuenftige = (zuordnungen: EnergiemanagementZuordnung[], aufgabe: string, tag: string) =>
+  zuordnungen.filter((z) => z.aufgabe === aufgabe && z.zustand === 'laufend' && z.gilt_ab > tag);
+
+/** Die Zuordnungen einer Person — als Person oder als Vertretung, jüngste zuerst. */
+export const zuordnungenVon = (zuordnungen: EnergiemanagementZuordnung[], personId: string) =>
+  zuordnungen.filter((z) => z.person.id === personId || z.vertretung?.id === personId).sort((a, b) => b.gilt_ab.localeCompare(a.gilt_ab));
+
+/** Alle Freigaben der Bezugsbasen von einer Person: „Alle 5 Bezugsbasen hat Ines Kaltenbach freigegeben.“ — sonst nichts. */
+export function freigabenSatz(freigaben: { bezugsbasis: string; freigegeben_von: string | null }[]): string | null {
+  const von = [...new Set(freigaben.map((f) => f.freigegeben_von))];
+  const basen = new Set(freigaben.map((f) => f.bezugsbasis)).size;
+  if (basen < 2 || von.length !== 1 || !von[0]) return null;
+  return `Alle ${basen} Bezugsbasen hat ${von[0]} freigegeben.`;
+}
+
+export const VERLAUF_WORT: Record<string, string> = {
+  person_erfasst: 'erfasst', person_geaendert: 'geändert', person_beendet: 'beendet', aufgabe_zugeordnet: 'Aufgabe zugeordnet', aufgabe_beendet: 'Zuordnung beendet',
+};
+
+/** Die Arten der Objekte in „Wer ist wofür verantwortlich“ (openapi `EnergiemanagementVerantwortungObjekt.art`). */
+export const OBJEKT_ART_WORT: Record<string, string> = {
+  kennzahl: 'Kennzahlen',
+  energieeinsatz: 'Energieeinsätze',
+  bezugsbasis: 'Bezugsbasen',
+  energieziel: 'Energieziele',
+  massnahme: 'Maßnahmen',
+  abweichung: 'Abweichungen',
+  internes_audit: 'Interne Audits',
+  feststellung: 'Feststellungen',
+};
+
+/** Die Objekte nach Art, in der Reihenfolge der Route (ihre Quellen in `@Order`); unbekannte Arten bleiben mit ihrem Schlüssel. */
+export function objekteNachArt<T extends { art: string }>(objekte: T[]): { art: string; wort: string; objekte: T[] }[] {
+  const arten = [...new Set(objekte.map((o) => o.art))];
+  return arten.map((art) => ({ art, wort: OBJEKT_ART_WORT[art] ?? art, objekte: objekte.filter((o) => o.art === art) }));
+}
+
+/** „Robert Falk (Geschäftsführer)“ oder bei einer Person ohne Konto der Satz aus §5.8. */
+export const personOhneKontoSatz = (p: { name: string; funktion: string }) =>
+  satzText('person_ohne_konto', { name: p.name, funktion: p.funktion });
+
 // ------------------------------------------------------------------ Ablehnungen
 
 /** Die Codes der Routen (openapi `EnergiemanagementAbgelehnt`), die ein Dialog in eigenen Worten sagt. */
@@ -299,6 +459,14 @@ const ABLEHNUNG: Record<string, string> = {
   konto_vergeben: 'Dieses Konto gehört schon einer anderen Person.',
   kuerzel_vergeben: 'Dieses Kürzel trägt schon eine andere Person.',
   zuordnung_laeuft_bereits: 'Diese Person hat die Aufgabe in diesem Zeitraum schon.',
+  entschieden_von_fehlt: 'Bitte wählen Sie, wer entschieden hat.',
+  vertretung_gleich_person: 'Die Vertretung ist eine andere Person.',
+  person_beendet: 'Diese Person ist zu diesem Tag nicht mehr im Energiemanagement.',
+  aufgabe_beendet: 'Diese Zuordnung ist schon beendet.',
+  aufgaben_laufen: 'Diese Person trägt danach noch eine Aufgabe oder eine Vertretung. Beenden Sie zuerst diese Zuordnungen.',
+  zeitraum_ungueltig: 'Der letzte Tag liegt vor dem ersten.',
+  konto_unbekannt: 'Dieses Konto gibt es in Ihrem Unternehmen nicht.',
+  beschluss_ungueltig: 'Bitte nennen Sie den Beschluss in der Form BR-2029-0001/B4.',
 };
 
 export const ablehnungCode = (e: unknown) =>

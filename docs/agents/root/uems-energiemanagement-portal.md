@@ -1,4 +1,4 @@
-# UEMS-Energiemanagement: Portal (AP-19 IP-9)
+# UEMS-Energiemanagement: Portal (AP-19 IP-9, IP-13)
 
 Neu am 25.09.2026: der Bereich „Energiemanagement“ als neunte Unternehmens-Seite über den Routen von IP-6/IP-7/IP-8
 ([Personen](uems-energiemanagement-personen.md), [Dokumente](uems-energiemanagement-dokumente.md), Verzeichnis in der
@@ -11,9 +11,15 @@ Neu am 25.09.2026: der Bereich „Energiemanagement“ als neunte Unternehmens-S
 | `pages/DokumentSeite.tsx` | `#/portfolio/energiemanagement/dokumente/{id}`: Kopf-, Überprüfungs- und Sperr-Satz wörtlich von der Route, Ort-Satz, gezeigte Fassung, Anwendungsbereich + `components/AnwendungsbereichVergleich.tsx`, Fassungen, Einträge |
 | `components/DokumentDialoge.tsx` | Anlegen (Art mit Satz je Art, Bezug Unternehmen/Standort, Original als Verweis), Fassung (Wortlaut ODER Verweis), Freigabe (entschieden von; Leitungs-Arten nur die Leitung am Tag, 409 `vieraugen_beantragen` schaltet auf „Freigabe beantragen“), Person anlegen (mit Aufgabe „Leitung des Unternehmens“) |
 | `components/ZuschnittHilfe.tsx` | statische Seite „Was VoltPilot führt — was bei Ihnen liegt.“: 16 Teile + 4 Nachbarn aus §3.2 in Kundenwörtern, ohne Norm-Spalte |
-| `energiemanagementPortal.ts` | Rechte, Reiter, Wörter, Entwürfe → Körper, Ablehnungs-Sätze; Sätze nur über die Schablonen von `energiemanagement.ts` |
-| Bühne | `e2e/energiemanagement.html?lage=start\|ahrenberg&dok=1\|2\|3&seite=dokumente\|zuschnitt`, Routen in `src/test/energiemanagementFixtures.ts`, Schreib-Körper in `window.__emGesendet` |
-| Nachweis | `e2e/energiemanagement.spec.ts` (R1-Fluss, Verweis-Probe, Stand 12.02.2029), `src/energiemanagementPortal.test.ts`, `copy.test.ts` Block „Energiemanagement“ (`ENERGIEMANAGEMENT_FLAECHEN`) |
+| `components/EnergiemanagementAufgaben.tsx` (IP-13) | Reiter `#/portfolio/energiemanagement/aufgaben`: je Wort des Vokabulars die laufenden Zuordnungen am „Stand am“ (`GET …/aufgaben?tag=`), ohne Person der Satz der Route, künftige Zuordnungen mit „ab“ darunter; Zuordnen (auch aus der Zeile, Aufgabe vorbelegt), Beenden, Person anlegen; darunter die Personen im Energiemanagement |
+| `components/EnergiemanagementVerantwortung.tsx` (IP-13) | „Wer ist wofür verantwortlich“ als Ansicht unter dem Reiter „Aufgaben“ (`…/verantwortung`, Reiter bleibt markiert): Aufgaben, Objekte nach Art (`GET …/verantwortung`), Freigaben der Bezugsbasen mit Satz nur, wenn EINE Person alle freigab — kein Urteil |
+| `pages/EnergiemanagementPersonSeite.tsx` (IP-13) | `…/personen/{id}`: Funktion, Konto oder der Satz „… ohne Konto — erscheint als ‚entschieden von‘.“, Aufgaben als Person und als Vertretung, Verlauf; „Angaben ändern“ (PUT = ganzer Stand, Konto aus der Benutzerliste, „bis“ beendet) |
+| `components/EnergiemanagementAufgabeDialoge.tsx` (IP-13) | Aufgabe zuordnen („entschieden von“ Pflicht außer Leitung, Vertretung, Beleg als Verweis, Beschluss `BR-…/Bn`), Zuordnung beenden, Angaben ändern |
+| `components/EinsichtRecht.tsx` (IP-13) | `EinsichtRecht` (ein Knopf) und `EinsichtGruppe` (mehrere Knöpfe, EIN Satz): mit der Rolle „Einsicht“ und ohne das Recht steht dort „Mit ‚Einsicht‘ können Sie hier nichts ändern. …“; sonst verhält es sich wie `Recht` |
+| `components/BenutzerEinladen.tsx` (IP-13) | „Weitere Rolle zuweisen“ mit „Einsicht“: „Gültig bis einschließlich“ und Grund wahlfrei → `POST /api/v1/zugriff` (`benutzerApi.einsichtZuweisen`); ohne beides der bisherige Wechsel; beim Anlegen/Ändern nur der Hinweis auf diesen Weg |
+| `energiemanagementPortal.ts` | Rechte, Reiter, Wörter, Entwürfe → Körper, Ablehnungs-Sätze; Sätze nur über die Schablonen von `energiemanagement.ts`; seit IP-13 `mitEinsicht`, `zuordnenKoerper`, `beendenKoerper`, `personAendernKoerper`, `zuordnungRest` |
+| Bühne | `e2e/energiemanagement.html?person=IK\|JW\|CB\|RF&lage=start\|ahrenberg&dok=1\|2\|3&seite=dokumente\|aufgaben\|verantwortung\|zuschnitt&ps=RF\|IK…` (RF = „Einsicht“), Routen in `src/test/energiemanagementFixtures.ts` (Lage `ahrenberg` mit den zehn Zuordnungen aus R5), Schreib-Körper in `window.__emGesendet` |
+| Nachweis | `e2e/energiemanagement.spec.ts` (R1-Fluss, Verweis-Probe, Stand 12.02.2029), `e2e/energiemanagement-aufgaben.spec.ts` (IP-13: zuordnen mit „entschieden von“, R5, Einsicht ohne Schreib-Knopf), `src/energiemanagementPortal.test.ts`, `pages/BenutzerPage.test.tsx`, `copy.test.ts` Block „Energiemanagement“ (`ENERGIEMANAGEMENT_FLAECHEN`) |
 
 ⚠ **Nur die Prüfsumme geht hinaus:** ein Verweis bildet die SHA-256 im Browser (`uemsMessmittel.pruefsummeLokal`); der
 Körper trägt `bezeichnung · ablage · kennung · adresse (· fassungsangabe · datum) · sha256`, nie die Datei. Die Spec
@@ -25,3 +31,9 @@ Varianten mit Bildern, gebaut ist die empfohlene: Verzeichnis zuerst, Hilfe als 
 ⚠ **Bekannt machen, „geprüft, bleibt“ und Aufheben** haben Routen (IP-7), aber noch keinen Knopf — die Seite zeigt die
 Einträge nur. Der Anlegen-Dialog bietet Unternehmen und Standort; „Nachweis festhalten“ mit vorbelegtem Bezug
 Einsatz/Person baut IP-15.
+⚠ **„Einsicht“ an Schreib-Knöpfen (IP-13):** neue Knöpfe im Bereich stehen in `EinsichtRecht`/`EinsichtGruppe`, nicht nackt
+in `Recht` — sonst liest „Einsicht“ den allgemeinen Recht-Satz. Zeilen-Knöpfe (Beenden je Zuordnung) blendet der Reiter
+ohne Recht aus; der Satz steht einmal im Kopf. Die Spec `energiemanagement-aufgaben.spec.ts` hält mit `SCHREIBEN` alle
+Beschriftungen fest — ein neuer Schreib-Knopf gehört dort hinein.
+⚠ **„Wer ist wofür verantwortlich“ ist kein achter Reiter** (§6.3 nennt sieben): der PR von IP-13 zeigt die Ansicht
+unter „Aufgaben“ (gebaut) gegen den Abschnitt unter den Aufgaben (Seite 8 365 px bei 375 px).

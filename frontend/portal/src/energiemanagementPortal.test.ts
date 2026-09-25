@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
 import { ebenenBereiche, EBENEN_SEITEN } from './ebenenNav';
 import * as E from './energiemanagementPortal';
-import { dokumentRoute, energiemanagementRoute, hashForRoute, pageRoute, parseRoute } from './nav';
+import { dokumentRoute, energiemanagementRoute, hashForRoute, pageRoute, parseRoute, personRoute } from './nav';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { rechteSeed } from './test/rollenFixtures';
 import { werkAhrenberg, werkLindach } from './test/standorteFixtures';
@@ -18,7 +18,7 @@ describe('UEMS AP-19 IP-9 · Energiemanagement im Portal', () => {
     expect(mit[mit.length - 1]).toBe('energiemanagement');
     expect(EBENEN_SEITEN({ art: 'unternehmen' }).energiemanagement).toEqual(pageRoute('portfolio-energiemanagement'));
     expect(E.darfAnsehen(rechteSeed('IK').me)).toBe(true);
-    expect(E.REITER.map((r) => r.label)).toEqual(['Verzeichnis', 'Dokumente']);
+    expect(E.REITER.map((r) => r.label)).toEqual(['Verzeichnis', 'Dokumente', 'Aufgaben']);
   });
 
   it('Routen: Verzeichnis ohne Zusatz, Dokumente, Zuschnitt-Hilfe und ein Dokument hin und zurück', () => {
@@ -92,5 +92,80 @@ describe('UEMS AP-19 IP-9 · Energiemanagement im Portal', () => {
     expect(E.kurz(`sha256:${SHA}`)).toBe('b045…42bd');
     expect(E.bezugWort({ art: 'unternehmen', standort: null })).toBe('Unternehmen');
     expect(E.bezugWort({ art: 'energieeinsatz', standort: { id: 's', kurzzeichen: 'ST-1', name: 'Werk Ahrenberg' }, energieeinsatz: { id: 'e', kennzeichen: 'EE-1', name: 'Spritzguss' } })).toBe('EE-1 Spritzguss');
+  });
+});
+
+describe('UEMS AP-19 IP-13 · Aufgaben, Wer ist wofür verantwortlich, Einsicht', () => {
+  const RF = { id: 'rf', name: 'Robert Falk', funktion: 'Geschäftsführer', kuerzel: 'RF', mit_konto: false };
+  const JW = { id: 'jw', name: 'Jonas Wendlinger', funktion: 'IT-Leitung', kuerzel: 'JW', mit_konto: true };
+  const entwurf = (teil: Partial<E.ZuordnenEntwurf> = {}): E.ZuordnenEntwurf => ({
+    aufgabe: 'bezugsbasen', wortlaut: '', personId: 'ik', giltAb: '2029-03-01', vertretungId: 'jw', entschiedenVon: 'rf',
+    begruendung: 'Beschluss B4 der Managementbewertung 2028.', beleg: E.LEERER_VERWEIS, beschluss: 'BR-2029-0001/B4', ...teil,
+  });
+
+  it('Reiter „Aufgaben“ nach Dokumente (§6.3); Routen für Aufgaben, Verantwortung und Person', () => {
+    expect(E.REITER.map((r) => r.key)).toEqual(['verzeichnis', 'dokumente', 'aufgaben']);
+    for (const r of ['aufgaben', 'verantwortung'] as const) {
+      expect(hashForRoute(energiemanagementRoute(r))).toBe(`#/portfolio/energiemanagement/${r}`);
+      expect(parseRoute(`#/portfolio/energiemanagement/${r}`)).toEqual(energiemanagementRoute(r));
+    }
+    expect(hashForRoute(personRoute('a1'))).toBe('#/portfolio/energiemanagement/personen/a1');
+    expect(parseRoute('#/portfolio/energiemanagement/personen/a1')).toEqual(personRoute('a1'));
+  });
+
+  it('Zuordnen: „entschieden von“ Pflicht außer bei der Leitung, Vertretung ist eine andere Person, Beschluss im Muster (PA2)', () => {
+    expect(E.zuordnenKoerper(entwurf())).toEqual({
+      koerper: {
+        aufgabe: 'bezugsbasen', person_id: 'ik', gilt_ab: '2029-03-01', vertretung_person_id: 'jw', entschieden_von: 'rf',
+        begruendung: 'Beschluss B4 der Managementbewertung 2028.', beleg: null, beschluss_kennung: 'BR-2029-0001/B4',
+      },
+    });
+    expect(E.zuordnenKoerper(entwurf({ entschiedenVon: '' }))).toEqual({ fehler: { entschiedenVon: 'Bitte wählen Sie, wer entschieden hat.' } });
+    const leitung = E.zuordnenKoerper(entwurf({ aufgabe: 'unternehmensleitung', entschiedenVon: '', vertretungId: '' }));
+    expect('koerper' in leitung && leitung.koerper.entschieden_von).toBeNull();
+    expect(E.zuordnenKoerper(entwurf({ vertretungId: 'ik' })).fehler?.vertretungId).toBeTruthy();
+    expect(E.zuordnenKoerper(entwurf({ beschluss: 'B4' })).fehler?.beschluss).toBeTruthy();
+    expect(E.zuordnenKoerper(entwurf({ aufgabe: 'weitere' })).fehler?.wortlaut).toBeTruthy();
+    expect(E.zuordnenKoerper(entwurf({ begruendung: 'kurz' })).fehler?.begruendung).toBeTruthy();
+  });
+
+  it('Beenden: letzter Tag nicht vor „gilt ab“, Begründung Pflicht', () => {
+    expect(E.beendenKoerper({ giltBis: '2029-02-28', begruendung: 'Übergabe an Ines Kaltenbach.' }, '2026-10-01')).toEqual({
+      koerper: { gilt_bis: '2029-02-28', begruendung: 'Übergabe an Ines Kaltenbach.' },
+    });
+    expect(E.beendenKoerper({ giltBis: '2026-09-30', begruendung: 'Übergabe an Ines Kaltenbach.' }, '2026-10-01').fehler?.giltBis).toContain('01.10.2026');
+  });
+
+  it('Person ändern: ein anderes Konto und „bis“ verlangen eine Begründung; der ganze Stand geht mit (PUT)', () => {
+    const e = { name: 'Robert Falk', funktion: 'Geschäftsführer', kuerzel: 'RF', organisation: '', kontoSub: '', seit: '2026-10-01', bis: '', begruendung: '' };
+    expect(E.personAendernKoerper(e, null)).toEqual({
+      koerper: { name: 'Robert Falk', funktion: 'Geschäftsführer', kuerzel: 'RF', organisation: null, konto_sub: null, seit: '2026-10-01', bis: null, begruendung: null },
+    });
+    expect(E.personAendernKoerper({ ...e, kontoSub: 'RF' }, null).fehler?.begruendung).toBeTruthy();
+    expect(E.personAendernKoerper({ ...e, kontoSub: 'RF', begruendung: 'Konto seit 01.02.2029 für die Einsicht.' }, null)).toMatchObject({ koerper: { konto_sub: 'RF' } });
+    expect(E.personAendernKoerper({ ...e, bis: '2026-09-01', begruendung: 'Ausgeschieden zum Monatsende.' }, null).fehler?.bis).toBeTruthy();
+  });
+
+  it('Sätze: Zuordnung wie R5/R11, Person ohne Konto, Freigaben der Bezugsbasen (R5) — ohne Urteil', () => {
+    const z = { gilt_ab: '2029-03-01', gilt_bis: null, vertretung: JW, entschieden_von: RF };
+    expect(E.zuordnungRest(z, '2029-03-01')).toBe(' seit 01.03.2029, Vertretung Jonas Wendlinger, entschieden von Robert Falk.');
+    expect(E.zuordnungRest(z, '2029-02-12')).toBe(' ab 01.03.2029, Vertretung Jonas Wendlinger, entschieden von Robert Falk.');
+    expect(E.zuordnungRest({ ...z, vertretung: null, entschieden_von: null, gilt_ab: '2026-10-01' }, '2029-01-22')).toBe(' seit 01.10.2026.');
+    expect(E.personOhneKontoSatz(RF)).toBe('Robert Falk · Geschäftsführer · ohne Konto — erscheint als ‚entschieden von‘.');
+    const f = (b: string, von: string) => ({ bezugsbasis: b, freigegeben_von: von });
+    expect(E.freigabenSatz([f('BB-0001', 'Ines Kaltenbach'), f('BB-0001', 'Ines Kaltenbach'), f('BB-0002', 'Ines Kaltenbach')])).toBe('Alle 2 Bezugsbasen hat Ines Kaltenbach freigegeben.');
+    expect(E.freigabenSatz([f('BB-0001', 'Ines Kaltenbach'), f('BB-0002', 'Jonas Wendlinger')])).toBeNull();
+    expect(E.objekteNachArt([{ art: 'energieeinsatz' }, { art: 'bezugsbasis' }, { art: 'energieeinsatz' }]).map((g) => [g.wort, g.objekte.length]))
+      .toEqual([['Energieeinsätze', 2], ['Bezugsbasen', 1]]);
+  });
+
+  it('„Einsicht“ erkennt die Rolle aus /me — Robert Falk (R6) ja, Ines Kaltenbach und Claudia Berger (Leser) nein', () => {
+    const rf = rechteSeed('RF').me;
+    expect(E.mitEinsicht(rf)).toBe(true);
+    expect(E.darfAnsehen(rf)).toBe(true);
+    expect(rf.unternehmen_rechte).not.toContain(E.RECHT_VERWALTEN);
+    expect(rf.unternehmen_rechte).not.toContain(E.RECHT_FREIGEBEN);
+    expect(E.mitEinsicht(rechteSeed('IK').me)).toBe(false);
+    expect(E.mitEinsicht(rechteSeed('CB').me)).toBe(false);
   });
 });
