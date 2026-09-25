@@ -17,7 +17,7 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 | Leser | `leser` | LE | je Standort | Daten: sehen (je Standort) · Steuerung ✘ · Verwaltung ✘ |
 | Unterstützer | `unterstuetzer` | US | je Standort · befristet | je Umfang: Daten sehen/pflegen · Steuerung Betrieb · nie Rahmen, nie Verwaltung · immer befristet + Banner + Protokoll |
 | VoltPilot-Betrieb | `voltpilot_betrieb` | VP | Plattform | Plattform-Betrieb |
-| Einsicht | `einsicht` | EI | Unternehmen | Daten: nur sehen (alle Standorte) · Steuerung ✘ · Verwaltung ✘ · nie eine Freigabe, nie ein Eintrag, kein Export |
+| Einsicht | `einsicht` | EI | Unternehmen | Daten: nur sehen (alle Standorte) · Steuerung ✘ · Verwaltung ✘ · nie eine Freigabe, nie ein Eintrag, kein Export von Messwerten; das Verzeichnis als CSV ja |
 
 ## Unterstützer-Umfang (E9)
 

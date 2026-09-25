@@ -481,7 +481,8 @@
       "nachweis_kandidaten": ["frontend/portal/src/copy.test.ts (S3-Block)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Bedingung an AP-15 binden (AP-20 IP-9)"}, {"wer": "Captain", "was": "neue Fassung bei der ersten Kundenanlage mit Anteilen"}],
+      "gilt_solange": "keine Kundenanlage mit aktiven Anteilen",
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}, {"wer": "Captain", "was": "neue Fassung des Satzes vor der ersten Kundenanlage mit aktiven Anteilen (AP-20 W3)"}],
       "luecken": []
     },
     {
@@ -566,7 +567,7 @@
       "kennzeichen": "Z-018",
       "art": "flaeche",
       "wortlaut": "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.",
-      "quelle": "frontend/portal/src/glossar.ts:475–476; services/api/src/main/resources/berichte/bericht-vorlagen.json:314; docs/rollout/release-notiz-vorlage.md:44, :61, :79",
+      "quelle": "frontend/portal/src/glossar.ts:479–480; services/api/src/main/resources/berichte/bericht-vorlagen.json:314; docs/rollout/release-notiz-vorlage.md:44, :61, :79",
       "traeger": "voltpilot",
       "norm": [],
       "nachweis_kandidaten": ["frontend/portal/src/copy.test.ts (S1, SP2, SP4)"],
@@ -1307,7 +1308,7 @@
       "kennzeichen": "Z-075",
       "art": "flaeche",
       "wortlaut": "Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.",
-      "quelle": "frontend/portal/src/glossar.ts:719–720",
+      "quelle": "frontend/portal/src/glossar.ts:723–724",
       "traeger": "voltpilot",
       "norm": [],
       "nachweis_kandidaten": ["UemsEnergiemanagementAbnahmeTest#verantwortungsSatzAufJederFlaeche", "frontend/portal/src/copy.test.ts (AP-19 SP4: Grenz-Satz und Verantwortungs-Satz auf jeder Fläche)"],

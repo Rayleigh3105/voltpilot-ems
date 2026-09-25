@@ -69,6 +69,12 @@ liegen außerhalb des Repos beim Captain. `<rev>:datei:zeile` zitiert einen fest
 zugeordnet (AP-00 … AP-15, Betrieb und die übrigen Sätze der Notizen), AP-20 IP-7 den ISO-Strang
 AP-16 … AP-19 mit den Abschnitten (siehe unten).
 
+**Bedingung** `gilt_solange` (wahlfrei, AP-20 W3). Ist ein Satz nur unter einer Bedingung wahr, steht sie
+an der Zusage, und die Bewertung nennt sie mit. Endet die Bedingung, braucht der Satz vorher eine neue
+Fassung. Heute trägt nur Z-011 eine: „keine Kundenanlage mit aktiven Anteilen“. Der Schlusssatz der
+Release-Notiz stimmt nur, solange die gemeinsame Steuerung aus AP-15 bei keinem Kunden läuft. Die
+neue Fassung vor der ersten solchen Anlage gibt der Captain.
+
 **Die Wache** `tools/bewertung/zusagen.py` (MX5) ist rot, wenn
 
 - ein Satz der Release-Notiz-Vorlage in keinem Wortlaut einer Zusage steht, deren Quelle die

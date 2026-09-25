@@ -471,7 +471,11 @@ export const UEMS_PRUEFUNGSARTEN = {
 export const UEMS_TOLERANZ = 'Toleranz';
 export const UEMS_PRUEFAUFGABE = 'Prüfaufgabe';
 
-/** AP-14-Grenz-Satz: eine Quelle für jede Bewertungs-Fläche und jeden Stand. */
+/**
+ * AP-14-Grenz-Satz: eine Quelle für jede Bewertungs-Fläche und jeden Stand.
+ * Entschieden in AP-20: unverändert (E8 = A, W8; 25.09.2026) — Wort für Wort, er steht in Berichts-Prüfsummen;
+ * der Verantwortungs-Satz `UEMS_VERANTWORTUNG` steht daneben.
+ */
 export const UEMS_NORMGRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
 
@@ -714,7 +718,7 @@ export const UEMS_NOCH_NICHTS_FESTGEHALTEN = 'Hier ist noch nichts festgehalten.
 /**
  * AP-19 SP4 (W7): der Verantwortungs-Satz steht auf jeder Energiemanagement-Fläche NEBEN dem Grenz-Satz
  * `UEMS_NORMGRENZE`. Der Grenz-Satz bleibt Wort für Wort — er steht in Berichts-Vorlagen und damit in Prüfsummen;
- * eine neue Fassung bleibt AP-20 vorbehalten.
+ * der Vorbehalt für AP-20 ist eingelöst: entschieden in AP-20: unverändert (E8 = A).
  */
 export const UEMS_VERANTWORTUNG =
   'Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.';

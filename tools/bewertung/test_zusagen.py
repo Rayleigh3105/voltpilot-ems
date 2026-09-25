@@ -55,6 +55,14 @@ class ImRepo(unittest.TestCase):
         self.assertTrue(z011['quelle'].startswith(f'{VORLAGE}:45'), z011['quelle'])
         self.assertEqual((z011['art'], z011['urteil']), ('release_notiz', 'offen'))
 
+    def test_z011_traegt_die_bedingung_w3(self):
+        # AP-20 W3 (IP-9): AP-15 ist gebaut - der Schlusssatz ist nur wahr, solange keine Kundenanlage mit aktiven
+        # Anteilen läuft. Die Bedingung steht an der Zusage; die neue Fassung davor gibt der Captain.
+        z011 = zusage(lade_matrix(), 'Z-011')
+        self.assertEqual(z011['gilt_solange'], 'keine Kundenanlage mit aktiven Anteilen')
+        self.assertIn('Captain', {w['wer'] for w in z011['wer_liefert']})
+        self.assertEqual([z['kennzeichen'] for z in lade_matrix()['zusagen'] if 'gilt_solange' in z], ['Z-011'])
+
     def test_die_achtzehn_zusagen_des_entwurfs_behalten_kennzeichen_und_ort(self):
         arten = {zusage(lade_matrix(), f'Z-{n:03d}')['art'] for n in range(12, 15)}
         self.assertEqual(arten, {'anmeldung'})

@@ -93,9 +93,10 @@ public final class RechteAbleitung {
         VOLTPILOT_BETRIEB("voltpilot_betrieb", "VoltPilot-Betrieb"),
         /**
          * Nur lesen, unternehmensweit, zuweisbar und befristbar (AP-19 IP-12, RE3, E8 = A): U an den lesenden Zeilen, E
-         * am eigenen Konto, sonst − — nie eine Freigabe, nie ein Eintrag, kein Export. Eine Spalte aus einem Nachtrag
+         * am eigenen Konto, sonst − — nie eine Freigabe, nie ein Eintrag, kein Export von Messwerten; das Verzeichnis
+         * als CSV ja (AP-20 W4, W-R13). Eine Spalte aus einem Nachtrag
          * (AP-19 §4.11), darum hinter den sieben Spalten der Konzept-Tabelle; sie steht NICHT in
-         * {@link #ROLLE_NOETIG_REIHENFOLGE} — {@code rolle_noetig} nennt weiter die Rollen von vorher (NW-5).
+         * {@link #ROLLE_NOETIG_REIHENFOLGE} — {@code rolle_noetig} nennt weiter die Rollen von vorher (AP-19 NW-5).
          */
         EINSICHT("einsicht", "Einsicht");
 

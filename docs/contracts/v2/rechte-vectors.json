@@ -444,6 +444,16 @@
         "ip15-peter-erfasst-ersatzwert-werk-lindach",
         "ip15-zurueck-aus-peter-fremde-403"
       ]
+    },
+    {
+      "kennung": "W-R13",
+      "titel": "Die Rolle „Einsicht“ und das Verzeichnis als CSV",
+      "stelle": "Beschreibung der Rolle `einsicht` in rechte-matrix.json (AP-19 §4.11): „… nie eine Freigabe, nie ein Eintrag, kein Export“ · AP-19 RE3/Z4 und EnergiemanagementVerzeichnisController: „auch ‚Einsicht‘ darf sie abrufen“ (das Verzeichnis als CSV)",
+      "aufloesung": "AP-20 W4 (25.09.2026, IP-9): die spätere, ausdrückliche Regel AP-19 RE3 gilt. „Export“ meint Messwerte und Berichtsstände (`export.standort`, `export.unternehmen`: Einsicht -); das Verzeichnis als CSV ist Ansehen in anderer Form und hängt an `energiemanagement.ansehen` (Einsicht U). Die Beschreibung der Rolle heißt seither „kein Export von Messwerten; das Verzeichnis als CSV ja“; keine Zelle ändert sich.",
+      "faelle": [
+        "r6-robert-einsicht-exportiert-nicht",
+        "w13-robert-einsicht-ruft-das-verzeichnis-ab"
+      ]
     }
   ],
   "cases": [
@@ -15532,6 +15542,74 @@
         "rolle_noetig": "energiemanager",
         "umfang_noetig": null,
         "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "w13-robert-einsicht-ruft-das-verzeichnis-ab",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-20 W4 (AP-19 RE3, Z4): das Verzeichnis im Energiemanagement — auch als CSV — ist Ansehen in anderer Form und hängt an energiemanagement.ansehen; Einsicht darf es abrufen, obwohl sie keine Messwerte exportiert (r6-robert-einsicht-exportiert-nicht).",
+      "annahme": "AP-19 R6: die Zuweisungen „Einsicht“ von Claudia Berger (20.–31.01.2029) und Robert Falk (ab 01.02.2029) sind Annahmen der Erweiterung 1.10 (IP-1); ST-3 wie a2-claudia-zwei-von-drei.",
+      "input": {
+        "benutzer": {
+          "kennung": "RF",
+          "name": "Robert Falk",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "einsicht",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2029-02-01T09:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            },
+            {
+              "kennzeichen": "ST-3",
+              "name": "Werk Ahrenberg Nord"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "energiemanagement.ansehen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2029-02-12T14:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "einsicht",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
       }
     },
     {

@@ -215,6 +215,7 @@
           "items": { "$ref": "#/$defs/nachweis" }
         },
         "urteil": { "$ref": "#/$defs/urteil" },
+        "gilt_solange": { "$ref": "#/$defs/text", "description": "Bedingung, unter der der Wortlaut wahr ist (AP-20 W3). Die Bewertung nennt sie mit der Zusage; endet sie, braucht der Satz eine neue Fassung, bevor die Zusage wieder gilt." },
         "wer_liefert": { "$ref": "#/$defs/wer_liefert" },
         "bestaetigung": { "$ref": "#/$defs/bestaetigung" },
         "grund": { "$ref": "#/$defs/text" },

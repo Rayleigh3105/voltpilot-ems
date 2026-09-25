@@ -50,7 +50,7 @@
   ],
   "schema_version": "1.0",
   "$schema_datei": "./rechte.schema.json#/$defs/matrix",
-  "herkunft": "UEMS AP-03 §4.3 (Konzept-Tabelle, Quelle k_matrix.py), §4.1/§4.2 (Rollen, Achsen), Entscheide E1–E15 vom 10.09.2026 · Nachträge: AP-04 §6.7, AP-05 §6 (Zeile „Rechte (AP-03)“), AP-06 §4.8, AP-07 §4.10 (je vom Captain mit dem Paket abgenommen, 10.09.2026) · Spalte Einsicht: AP-19 §4.11 (RE3, RE5, E8; IP-12, 24.09.2026)",
+  "herkunft": "UEMS AP-03 §4.3 (Konzept-Tabelle, Quelle k_matrix.py), §4.1/§4.2 (Rollen, Achsen), Entscheide E1–E15 vom 10.09.2026 · Nachträge: AP-04 §6.7, AP-05 §6 (Zeile „Rechte (AP-03)“), AP-06 §4.8, AP-07 §4.10 (je vom Captain mit dem Paket abgenommen, 10.09.2026) · Spalte Einsicht: AP-19 §4.11 (RE3, RE5, E8; IP-12, 24.09.2026), Beschreibung der Rolle berichtigt nach AP-20 W4 (IP-9, 25.09.2026; W-R13)",
   "tabelle": "./rechte-matrix.md",
   "konzept_tabelle": {
     "abschnitt": "AP-03 §4.3",
@@ -197,7 +197,7 @@
         "E",
         "-"
       ],
-      "achsen": "Daten: nur sehen (alle Standorte) · Steuerung ✘ · Verwaltung ✘ · nie eine Freigabe, nie ein Eintrag, kein Export",
+      "achsen": "Daten: nur sehen (alle Standorte) · Steuerung ✘ · Verwaltung ✘ · nie eine Freigabe, nie ein Eintrag, kein Export von Messwerten; das Verzeichnis als CSV ja",
       "nachtrag": "AP-19 §4.11"
     }
   ],

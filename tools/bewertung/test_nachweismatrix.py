@@ -290,6 +290,14 @@ class Gegenproben(unittest.TestCase):
         zusage(self.m, 'Z-015')['grund'] = 'AP-14 NW-8 und AP-20 NW-1 offen'
         self.assertEqual(nachweismatrix.verstoesse(self.m), [])
 
+    def test_eine_leere_bedingung_ist_rot_w3(self):
+        zusage(self.m, 'Z-005')['gilt_solange'] = ''
+        self.assertRot(self.m, 'zusagen/0/gilt_solange')
+
+    def test_eine_nachweis_kennung_ohne_paket_in_der_bedingung_ist_rot_nr9(self):
+        zusage(self.m, 'Z-005')['gilt_solange'] = 'NW-6 grün'
+        self.assertRot(self.m, 'zusagen/0/gilt_solange: Nachweis-Kennung „NW-6“ ohne Paket')
+
     def test_ein_doppeltes_kennzeichen_ist_rot(self):
         self.m['kundenaufgaben'].append(copy.deepcopy(self.m['kundenaufgaben'][0]))
         self.assertRot(self.m, 'kundenaufgaben: KA-02 steht mehr als einmal')
