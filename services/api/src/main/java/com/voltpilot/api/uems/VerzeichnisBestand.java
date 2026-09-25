@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,8 +24,11 @@ import org.springframework.stereotype.Component;
  * Bezugsbasis-Fassungen und die Stände des Leistungsvergleichs in „kennzahlen_bezugsbasen“; Energieziel- und
  * Maßnahmen-Bewertungen und Abweichungs-Abschlüsse in „ziele_massnahmen_abweichungen“; die übrigen Berichtsstände in
  * „berichte“. Eine Entscheidung zählt, wenn sie gilt: freigegeben bzw. bewertet, nicht aufgehoben — auch abgelöste
- * Fassungen und ersetzte Stände. „entschieden von“ steht nur, wo eine zweite Person entschieden hat (Vier-Augen); sonst
- * trägt „eingetragen von“ beides (G2). Was eine Quelle nicht trägt — Prüfsumme, Nr. —, bleibt leer.
+ * Fassungen und ersetzte Stände. Beim Betrachtungsumfang und bei den Kriterien IST {@code aufgehoben_am} die Ablösung
+ * (das Anlegen bzw. die Freigabe der nächsten Fassung setzt es): ihre Zeile bleibt und sagt ab dem Tag der Ablösung
+ * „abgelöst am …“ (AP-19 IP-26, VZ1, DK4 — eine abgelöste Freigabe bleibt eine Entscheidung). „entschieden von“ steht
+ * nur, wo eine zweite Person entschieden hat (Vier-Augen); sonst trägt „eingetragen von“ beides (G2). Was eine Quelle
+ * nicht trägt — Prüfsumme, Nr. —, bleibt leer.
  *
  * <p>Messmittel-Angaben mit ihren Belegen (AP-16, R3 Schritt 2) in „bewertung_messplanung“, gelesen über
  * {@link MessmittelService#alle()} im Zaun des Geräts: der Beleg ist schon ein Verweis, seine Zeile sagt „Geführt in
@@ -35,6 +39,8 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(30)
 public class VerzeichnisBestand implements VerzeichnisQuelle {
+
+    private static final DateTimeFormatter TAG = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private final BewertungUmfangService umfang;
     private final BewertungKriterienService kriterien;
@@ -78,7 +84,7 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         ZoneId zone = ZoneId.of(unternehmen.desKundenbereichs().map(UnternehmenRepository.Unternehmen::zeitzone)
                 .orElse("Europe/Berlin"));
         var aus = new ArrayList<Map<String, Object>>();
-        bewertung(aus, zone);
+        bewertung(aus, zone, stichtag);
         kennzahlen(aus, zone);
         berichte(aus, zone);
         verbesserung(aus, zone);
@@ -87,13 +93,13 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
 
     // ------------------------------------------------------------------ AP-16
 
-    private void bewertung(List<Map<String, Object>> aus, ZoneId zone) {
+    private void bewertung(List<Map<String, Object>> aus, ZoneId zone, LocalDate stichtag) {
         try {
             for (var f : umfang.historie().fassungen()) {
-                if (f.fassung() == null || f.aufgehobenAm() != null) continue;
+                if (f.fassung() == null) continue;
                 aus.add(zeile("grundlagen", "betrachtungsumfang", "Betrachtungsumfang",
-                        "Betrachtungsumfang der energetischen Bewertung", f.fassung(), null, name(f.akteur()),
-                        f.gueltigAb(), null));
+                        abgeloest("Betrachtungsumfang der energetischen Bewertung", f.aufgehobenAm(), zone, stichtag),
+                        f.fassung(), null, name(f.akteur()), f.gueltigAb(), null));
             }
         } catch (BewertungUmfangAbgelehnt keinStandort) {
             // Kein sichtbarer Standort: der Umfang zeigt diesem Aufrufer nichts — also auch das Verzeichnis nicht.
@@ -101,12 +107,12 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         try {
             for (var f : kriterien.historie().fassungen()) {
                 // Die Vorgabe von VoltPilot (nie gespeichert, ohne createdAt) ist keine Entscheidung des Kunden.
-                if (f.createdAt() == null || !"freigegeben".equals(f.freigabeStatus()) || f.aufgehobenAm() != null) {
+                if (f.createdAt() == null || !"freigegeben".equals(f.freigabeStatus())) {
                     continue;
                 }
                 aus.add(zeile("bewertung_messplanung", "kriterien_fassung", "Kriterien",
-                        "Kriterien der energetischen Bewertung", f.fassung(), zweite(f.akteur(), f.entschiedenVon()),
-                        name(f.akteur()), f.gueltigAb(), null));
+                        abgeloest("Kriterien der energetischen Bewertung", f.aufgehobenAm(), zone, stichtag), f.fassung(),
+                        zweite(f.akteur(), f.entschiedenVon()), name(f.akteur()), f.gueltigAb(), null));
             }
         } catch (BewertungKriterienAbgelehnt keinStandort) {
             // wie beim Umfang: nichts sichtbar, keine Zeile.
@@ -246,6 +252,13 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
             throw new IllegalStateException("Verzeichnis-Zeile von " + kennzeichen + ": " + zeile.get("fehler"));
         }
         return zeile;
+    }
+
+    /** DK4 sinngemäß: eine Fassung, die ihre Nachfolgerin am Stichtag schon abgelöst hat, sagt es im Titel. */
+    private static String abgeloest(String titel, Instant aufgehobenAm, ZoneId zone, LocalDate stichtag) {
+        LocalDate am = tag(aufgehobenAm, zone);
+        return am == null || am.isAfter(stichtag) ? titel
+                : titel + " — abgelöst am " + am.format(TAG);
     }
 
     /** G2: die zweite Person — nur, wo sie eine andere ist als die, die eingetragen hat. */

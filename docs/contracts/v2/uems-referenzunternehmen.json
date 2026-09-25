@@ -182,7 +182,11 @@
     "  `managementbewertungen[]` BR-2029-0001: Sitzung mit der Leitung, sechs Beschlüsse, Folgen, Stand Nr. 1 mit Abzug",
     "  und Prüfsumme — ein Stand seines Tages (F-2029-0001 steht darin „offen“, obwohl sie seit 15.04.2029 abgeschlossen",
     "  ist). `energieziele_1_10[]` EZ-2029-0001. Eigene Blöcke statt Nachträgen, damit `personen[]`, `massnahmen[]` und",
-    "  `energieziele[]` byte-gleich bleiben. Zeilen der Zeitachse tragen das Horizont-Merkmal `energiemanagement`."
+    "  `energieziele[]` byte-gleich bleiben. Zeilen der Zeitachse tragen das Horizont-Merkmal `energiemanagement`.",
+    "Nachlese 25.09.2026 (AP-19 IP-26, Captain: Befund R3 = A): die zwei Angaben „nicht erhoben“ in `messmittel_angaben[]`",
+    "  (GR-5, Wandler K-8.2) bleiben Daten von AP-16, sind aber kein Nachweis mit Person und Tag (AP-16 G3) und tragen",
+    "  keine Zeile im Verzeichnis. Das Verzeichnis am 12.02.2029 (R3) hat 62 Zeilen in 11 Gruppen, „Bewertung und",
+    "  Messplanung“ 20 (mit der abgelösten Kriterien-Fassung 1), Orte in VoltPilot 47, Wortlaut 2, Verweis 13."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",

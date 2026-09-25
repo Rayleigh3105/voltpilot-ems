@@ -400,6 +400,62 @@ class EnergiemanagementVerzeichnisApiTest {
                 site, kennzeichen, einbau);
     }
 
+    // ------------------------------------------------------------------ Abgelöste Fassungen (AP-19 IP-26)
+
+    /**
+     * VZ1, DK4: beim Betrachtungsumfang und bei den Kriterien setzt die nächste Fassung {@code aufgehoben_am} der vorigen
+     * — das ist ihre Ablösung, kein Widerruf. Die abgelöste Freigabe bleibt eine Entscheidung und eine Zeile, ab dem Tag
+     * der Ablösung mit „abgelöst am …“; an einem früheren Stichtag liest sie sich wie jede geltende (Befund R3, IP-26).
+     */
+    @Test
+    void abgeloesteFassungenVonUmfangUndKriterienBleibenImVerzeichnis() throws Exception {
+        umfang();
+        root.update("UPDATE bewertung_umfang SET aufgehoben_am = '2027-10-20T10:00:00Z' WHERE tenant_id = ?", tenant);
+        UUID u2 = root.queryForObject("INSERT INTO bewertung_umfang (tenant_id, unternehmen_id, fassung, gueltig_ab, "
+                + "traeger, begruendung, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, 2, '2027-11-01', "
+                + "'{Strom}'::text[], 'Gas ab November nicht mehr betrachtet.', 'IK', 'Ines Kaltenbach', "
+                + "'energiemanager', 'kunde') RETURNING id", UUID.class, tenant, unternehmen);
+        for (UUID s : List.of(s1, s2)) {
+            root.update("INSERT INTO bewertung_umfang_standort (tenant_id, umfang_id, standort_id) VALUES (?, ?, ?)",
+                    tenant, u2, s);
+        }
+        String kriterien = JSON.readTree(Path.of("../../docs/contracts/v2/uems-referenzunternehmen.json").toFile())
+                .at("/bewertung_kriterien/0/kriterien").toString();
+        kriterien(1, "2026-11-04", null, "2026-11-20T10:00:00Z", kriterien);
+        kriterien(2, "2026-11-20", "Schwellen nach der ersten Rangliste nachgeschärft.", null, kriterien);
+
+        abruf("2029-02-12T07:00:00Z");
+        JsonNode v = ruf(VERZEICHNIS, "IK", 200);
+        assertThat(fassungen(v, "betrachtungsumfang")).containsExactlyInAnyOrder(
+                "1 2026-11-04 Ines Kaltenbach Betrachtungsumfang der energetischen Bewertung — abgelöst am 20.10.2027",
+                "2 2027-11-01 Ines Kaltenbach Betrachtungsumfang der energetischen Bewertung");
+        assertThat(fassungen(v, "kriterien_fassung")).containsExactlyInAnyOrder(
+                "1 2026-11-04 Ines Kaltenbach Kriterien der energetischen Bewertung — abgelöst am 20.11.2026",
+                "2 2026-11-20 Ines Kaltenbach Kriterien der energetischen Bewertung");
+        // Vor dem Tag der Ablösung gilt Nr. 1 noch — kein „abgelöst“, die Nachfolgerin gibt es am Stichtag nicht.
+        abruf("2026-11-10T09:00:00Z");
+        JsonNode frueh = ruf(VERZEICHNIS, "IK", 200);
+        assertThat(fassungen(frueh, "betrachtungsumfang"))
+                .containsExactly("1 2026-11-04 Ines Kaltenbach Betrachtungsumfang der energetischen Bewertung");
+        assertThat(fassungen(frueh, "kriterien_fassung"))
+                .containsExactly("1 2026-11-04 Ines Kaltenbach Kriterien der energetischen Bewertung");
+    }
+
+    private static List<String> fassungen(JsonNode v, String art) {
+        return alle(v).stream().filter(z -> z.path("art").asText().equals(art)).map(z -> z.path("nr").asInt() + " "
+                + z.path("tag").asText() + " " + z.path("eingetragen_von").asText() + " " + z.path("titel").asText())
+                .toList();
+    }
+
+    /** AP-16 K ohne Vier-Augen, direkt geschrieben; {@code abgeloest} ist der Augenblick, an dem die nächste frei wird. */
+    private void kriterien(int fassung, String ab, String begruendung, String abgeloest, String kriterien) {
+        root.update("INSERT INTO bewertung_kriterien_fassung (tenant_id, unternehmen_id, fassung, werte, kriterien, "
+                + "gueltig_ab, begruendung, actor_sub, actor_name, actor_rolle, actor_art, vieraugen, freigabe_status, "
+                + "created_at, aufgehoben_am) VALUES (?, ?, ?, '{}'::jsonb, ?::jsonb, ?::date, ?, 'IK', "
+                + "'Ines Kaltenbach', 'energiemanager', 'kunde', false, 'freigegeben', ?::timestamptz, ?::timestamptz)",
+                tenant, unternehmen, fassung, kriterien, ab, begruendung, ab + "T10:00:00Z", abgeloest);
+    }
+
     // ------------------------------------------------------------------ Welt
 
     /**

@@ -1200,7 +1200,7 @@ Die Kopien einer Maßnahme (Ausgangslage, Bewertung) und eines Energieziels (Bew
 
 VoltPilot hält fest, der Kunde entscheidet, und jede Zeile sagt, wo das Original liegt (E1 = A). Der Bereich führt, was an VoltPilot hängt (Anwendungsbereich, Aufgaben, Bekanntmachungen, Audits, Feststellungen, Managementbewertung, die Energiepolitik als Wortlaut) und verweist auf alles andere. Jede Fläche trägt den Grenz-Satz und den Verantwortungs-Satz; kein Erfüllungsgrad, keine Ampel, keine Zahl über das Ganze (G4). Ohne Eintrag zeigt der Bereich die Nachweise der Vorgänger und je leerer Gruppe „Hier ist noch nichts festgehalten.“ (R15).
 
-**Beispiel (Referenzunternehmen Ahrenberg).** Werk Ahrenberg am 12.02.2029: 64 Nachweise in 11 Gruppen im Verzeichnis, 8 fällige Zeilen in der Wiedervorlage (R3, R12).
+**Beispiel (Referenzunternehmen Ahrenberg).** Werk Ahrenberg am 12.02.2029: 62 Nachweise in 11 Gruppen im Verzeichnis, 8 fällige Zeilen in der Wiedervorlage (R3, R12).
 
 **Heute im Code.** Seite `#/portfolio/energiemanagement` (PORTAL/pages/EnergiemanagementBereich.tsx:1, AP-19 IP-9/IP-13/IP-20); Kundenwort `UEMS_ENERGIEMANAGEMENT`, Verantwortungs-Satz `UEMS_VERANTWORTUNG` (PORTAL/glossar.ts:675, :719); Wörter `energiemanagement_vokabular()` (MIG/V20260925013500__uems_energiemanagement.sql:50); kein Schalter, kein Läufer (`UemsEnergiemanagementBestandsschutzTest`). Wegweiser: `docs/agents/root/uems-energiemanagement-abschluss.md`.
 
