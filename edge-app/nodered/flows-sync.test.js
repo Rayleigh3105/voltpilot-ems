@@ -406,6 +406,58 @@ test('flow Deye decoder reads the External CT grid, alias only as fallback, like
   assert.strictEqual(deyeDecode.decode(narrow, cfg).reading.power_kw, -23.7, 'module agrees on the fallback');
 });
 
+// Halbpaare (vp-wr-deye-blocklesen, DEYE.md „Netz und Batterie: ein Block, ein
+// Stempel"): the grid pair 0x026B/0x02C4 and the battery 0x024E come from ONE
+// fn-0x03 read of the flow's own plan and leave in ONE message under ONE ts.
+// The Herzogau lag (grid ~5 s before battery) is therefore in the Deye's
+// register image - replayed below from the ring at 15:20:10Z/15:20:15Z: the
+// same block shows the new grid beside the old battery register, and the next
+// poll brings the battery with the grid unchanged.
+test('hybrid_3p: grid and battery come from ONE block of the flow plan and ONE message with one ts', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'deye', label: 'Deye', family: 'hybrid_3p',
+    communication: 'solarman_v5',
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const reads = ret[0].deye.reads;
+  const covers = (r, addr) => addr >= r.start && addr < r.start + r.count;
+  const pairAddrs = [0x024e, 0x026b, 0x02c4];
+  const holding = reads.filter((r) => pairAddrs.some((a) => covers(r, a)));
+  assert.strictEqual(holding.length, 1, 'battery and grid words live in exactly one read block');
+  const m = holding[0];
+  for (const a of pairAddrs) assert.ok(covers(m, a), '0x' + a.toString(16) + ' inside the one block');
+  assert.deepStrictEqual({ start: m.start, count: m.count }, { start: 0x024b, count: 0x007a });
+  assert.ok(!m.optional, 'the measurement block is mandatory - no poll without both halves');
+
+  const cfg = { family: 'hybrid_3p', power_scale: 1 };
+  const poll = (gridW, battW) => {
+    const regs = new Array(m.count).fill(0);
+    const put = (addr, val) => { regs[addr - m.start] = val & 0xffff; };
+    put(0x024c, 40); // SoC
+    put(0x024e, battW);
+    put(0x026b, gridW); put(0x02c4, gridW < 0 ? 0xffff : 0);
+    put(0x02a0, 7900);
+    const { ret: out } = runDeyeDecode(cfg, [{ start: m.start, regs }]);
+    assert.ok(Array.isArray(out) && out[0] && out[0].payload, 'one telemetry message per poll');
+    return out[0].payload;
+  };
+  // 15:20:05Z: both halves old. 15:20:10Z: new grid, the register still holds
+  // the old battery. 15:20:15Z: the battery follows, grid unchanged.
+  const before = poll(-5356, 2021);
+  const halfPair = poll(12170, 2021);
+  const after = poll(12170, 2605);
+  for (const p of [before, halfPair, after]) {
+    assert.ok(!isNaN(Date.parse(p.ts)), 'one ts stamps the whole message');
+    assert.ok('power_kw' in p && 'battery_power_kw' in p, 'both halves in the same message');
+    assert.ok(!Object.keys(p).some((k) => k !== 'ts' && /(^|_)(ts|at|at_ms)$/.test(k)),
+      'no per-channel stamp: grid and battery share the message ts');
+  }
+  assert.deepStrictEqual([halfPair.power_kw, halfPair.battery_power_kw], [12.17, 2.021],
+    'the half pair is what the device registers held at that read');
+  assert.deepStrictEqual([after.power_kw, after.battery_power_kw], [12.17, 2.605]);
+});
+
 test('flow Deye decoder DROPS an all-zero (unanswered) hybrid_3p read, like the module', () => {
   const cfg = { family: 'hybrid_3p' };
   const blocks = [{ start: 0x024c, regs: new Array(0x58).fill(0) }];
