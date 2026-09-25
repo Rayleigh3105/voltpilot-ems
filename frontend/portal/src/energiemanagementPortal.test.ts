@@ -169,3 +169,51 @@ describe('UEMS AP-19 IP-13 · Aufgaben, Wer ist wofür verantwortlich, Einsicht'
     expect(E.mitEinsicht(rechteSeed('CB').me)).toBe(false);
   });
 });
+
+describe('UEMS AP-19 IP-15 · Nachweise am Einsatz und an der Person (§5.3, R7, R8)', () => {
+  const EE1 = 'ee000000-0000-4000-8000-000000000001';
+  const MD = 'a1900000-0000-4000-8000-0000000000a4';
+  const ort = (teil: Partial<NonNullable<Parameters<typeof E.nachweisOrt>[0]['ort']>> = {}) => ({
+    ort: 'verweis' as const, ort_satz: 'Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne',
+    satz: 'Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne (IH-SG-01, Rev. 4 vom 03.11.2028).', inhalt_in_voltpilot: false,
+    fassung: 1, festgehalten_am: '2028-11-10', ablage: 'Instandhaltungssystem, Arbeitspläne', kennung: 'IH-SG-01',
+    adresse: 'https://instandhaltung.ahrenberg.example/plan/IH-SG-01', adresse_als_verweis: true, fassungsangabe: 'Rev. 4 vom 03.11.2028',
+    datum: null, sha256: 'f0570ce5f1d332e648fe404bfe958841213b08b91c17667c3b0cd28c6acd49f9', ...teil,
+  });
+  const frist = (teil: Record<string, unknown> = {}) => ({
+    abruf: '2028-11-10', faellig_am: '2029-11-10', basis: '2028-11-10', fassung: 1, tage: -365, satz: 'fällig in 365 Tagen', grund: null, ...teil,
+  }) as NonNullable<Parameters<typeof E.nachweisUeberpruefung>[0]['ueberpruefung']>;
+
+  it('„Nachweis festhalten“: der Bezug steht fest und geht mit genau seiner Kennung hinaus; die Arten sind die des Bezugs', () => {
+    const basis = { art: 'betrieb', titel: 'Kriterien für Betrieb und Instandhaltung — Spritzguss', bezug: 'unternehmen' as const, standortId: '', original: verweis() };
+    const einsatz: E.NachweisBezug = { art: 'energieeinsatz', id: EE1, wort: 'EE-1 Spritzguss' };
+    expect(E.anlegenKoerper(basis, einsatz)).toEqual({
+      koerper: { art: 'betrieb', titel: 'Kriterien für Betrieb und Instandhaltung — Spritzguss', bezug: { art: 'energieeinsatz', energieeinsatz_id: EE1 } },
+    });
+    // Ein Standort-Rest aus dem Entwurf zählt nicht, wenn der Bezug feststeht.
+    expect(E.anlegenKoerper({ ...basis, bezug: 'standort' }, einsatz)).toMatchObject({ koerper: { bezug: { art: 'energieeinsatz' } } });
+    expect(E.anlegenKoerper({ ...basis, art: 'kompetenz' }, { art: 'person', id: MD, wort: 'Murat Demirci' })).toMatchObject({
+      koerper: { bezug: { art: 'person', person_id: MD } },
+    });
+    expect(E.nachweisBezugWort(einsatz)).toBe('Energieeinsatz EE-1 Spritzguss');
+    expect(E.nachweisArtOptionen('energieeinsatz').map((o) => o.label)).toEqual(['Betrieb und Instandhaltung', 'Auslegung (Nachweis)', 'Beschaffung']);
+    expect(E.nachweisArtOptionen('person').map((o) => o.value)).toEqual(['kompetenz']);
+  });
+
+  it('die Zeile sagt, wo das Original liegt — wörtlich von der Route, die Prüfsumme als Tag, nie der Inhalt (R7, G1)', () => {
+    expect(E.nachweisOrt({ ort: ort(), zustand: 'gueltig' })).toBe('Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne (IH-SG-01, Rev. 4 vom 03.11.2028).');
+    expect(E.nachweisOrt({ ort: ort({ satz: null, ort: 'in_voltpilot', ort_satz: 'In VoltPilot geführt' }), zustand: 'gueltig' })).toBe('In VoltPilot geführt.');
+    expect(E.nachweisOrt({ ort: null, zustand: 'entwurf' })).toBe('Entwurf — noch keine Fassung freigegeben.');
+    expect(E.nachweisPruefsumme({ ort: ort() })).toBe('Prüfsumme der Datei festgehalten am 10.11.2028.');
+    expect(E.nachweisPruefsumme({ ort: ort({ sha256: null }) })).toBeNull();
+    expect(E.nachweisPruefsumme({ ort: null })).toBeNull();
+  });
+
+  it('Überprüfung wie auf der Dokument-Seite; ein Nachweis wird aufbewahrt, nicht überprüft (DK5, R8)', () => {
+    expect(E.nachweisUeberpruefung({ klasse: 'vorgabe', ueberpruefung: frist() })).toBe('Überprüfung fällig am 10.11.2029.');
+    expect(E.nachweisUeberpruefung({ klasse: 'vorgabe', ueberpruefung: frist({ tage: 64, satz: 'seit 64 Tagen fällig' }) })).toBe('Überprüfung fällig seit 64 Tagen.');
+    expect(E.nachweisUeberpruefung({ klasse: 'vorgabe', ueberpruefung: frist({ faellig_am: null, tage: null, satz: null, grund: 'keine_fassung' }) })).toBeNull();
+    expect(E.nachweisUeberpruefung({ klasse: 'vorgabe', ueberpruefung: null })).toBeNull();
+    expect(E.nachweisUeberpruefung({ klasse: 'nachweis', ueberpruefung: frist({ faellig_am: null, tage: null, satz: null, grund: 'nachweis' }) })).toBe('Ein Nachweis — ohne Überprüfung.');
+  });
+});

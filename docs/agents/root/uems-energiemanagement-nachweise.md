@@ -2,7 +2,7 @@
 
 Neu am 25.09.2026: Dokument-Bezüge Energieeinsatz, Person und Aufgabe über die Routen von IP-7
 ([Dokumente](uems-energiemanagement-dokumente.md)), drei Leser, keine Migration (Spalten, CHECK und Zaun-Spalte stehen seit
-IP-5). Noch keine Fläche (Portal IP-15). Konzept: AP-19 §3.5, §3.7, §4.4 DK1/DK6, §4.10 KS1, §5.3, R7, R8
+IP-5). Fläche seit IP-15: Abschnitt „Nachweise“ an Einsatz- und Personen-Seite ([Portal](uems-energiemanagement-portal.md)). Konzept: AP-19 §3.5, §3.7, §4.4 DK1/DK6, §4.10 KS1, §5.3, R7, R8
 (`vp-uems-ap19-fundament/report.md`).
 
 | Stelle | Was |

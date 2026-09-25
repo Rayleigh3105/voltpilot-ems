@@ -36,6 +36,7 @@ import { EinstufungDialog, EinstufungHistorie } from '../components/BewertungEnt
 import { EinsatzMessmittel, istWesentlich } from '../components/EinsatzMessmittel';
 import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import { MessbedarfKarte } from '../components/Messplanung';
+import { NachweiseAmEinsatz } from '../components/Nachweise';
 import { ErrorState, Skeleton } from '../components/States';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
@@ -203,6 +204,10 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
           <MessbedarfKarte einsatz={einsatz} verwalten={verwalten} />
 
           <EinsatzMessmittel einsatz={`${einsatz.kennzeichen} ${einsatz.name}`} messstellen={einsatz.messstellen} wesentlich={istWesentlich(einstufungen)} />
+
+          {/* AP-19 IP-15 (§5.3, R7): die Dokumente am Einsatz — Betrieb und Instandhaltung, Auslegung, Beschaffung — mit Ort
+              und Überprüfung; „Nachweis festhalten“ mit vorbelegtem Bezug. Nur mit `energiemanagement.ansehen`. */}
+          <NachweiseAmEinsatz einsatz={einsatz} />
 
           <section className="vp-bw-karte" aria-labelledby="ee-protokoll">
             <h2 id="ee-protokoll">{PROTOKOLL}</h2>

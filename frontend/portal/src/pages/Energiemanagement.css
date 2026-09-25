@@ -229,3 +229,48 @@
   padding-left: 20px;
   overflow-wrap: anywhere;
 }
+
+/* UEMS AP-19 IP-15: der Abschnitt „Nachweise“ am Energieeinsatz und an der Person. */
+.vp-nw-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-nw-zeile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: var(--vp-c-space-3);
+  border-top: 1px solid var(--vp-c-border);
+  overflow-wrap: anywhere;
+}
+
+.vp-nw-zeile:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.vp-nw-titel {
+  color: var(--vp-c-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.vp-nw-titel:hover,
+.vp-nw-titel:focus-visible {
+  text-decoration: underline;
+}
+
+.vp-nw-kz {
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-nw-adresse {
+  font-family: var(--vp-c-font-mono, monospace);
+}

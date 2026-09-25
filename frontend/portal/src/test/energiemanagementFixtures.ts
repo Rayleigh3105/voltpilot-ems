@@ -21,6 +21,9 @@ import {
   type EnergiemanagementEntscheid,
   type EnergiemanagementFassung,
   type EnergiemanagementFassungEntwerfen,
+  type EnergiemanagementNachweis,
+  type EnergiemanagementNachweiseAmEinsatz,
+  type EnergiemanagementNachweiseDerPerson,
   type EnergiemanagementPerson,
   type EnergiemanagementPersonAnlegen,
   type EnergiemanagementPersonKurz,
@@ -120,7 +123,16 @@ function bestand(lage: EnergiemanagementLage): EnergiemanagementVerzeichnisZeile
   return lage === 'ahrenberg' ? zeilen : zeilen.slice(0, 1);
 }
 
-export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kennung: string; name: string }, jetzt: () => string = () => new Date().toISOString()) {
+/**
+ * `einsaetze` (IP-15): die Energieeinsätze, die ein Dokument-Bezug `energieeinsatz` nennen darf — die Bühne der Bewertung
+ * reicht ihre eigenen herein; sonst ist jeder Einsatz 422 `energieeinsatz_unbekannt` wie an der Route.
+ */
+export function energiemanagementBuehne(
+  lage: EnergiemanagementLage,
+  ich: { kennung: string; name: string },
+  jetzt: () => string = () => new Date().toISOString(),
+  einsaetze: readonly { id: string; kennzeichen: string; name: string }[] = [],
+) {
   const heute = () => jetzt().slice(0, 10);
   const gesendet: { route: string; koerper: unknown }[] = [];
   const merke = (route: string, koerper: unknown) => {
@@ -203,6 +215,45 @@ export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kenn
     const a = abgerufen(d);
     return { id: a.id, kennzeichen: a.kennzeichen, art: a.art, art_wort: a.art_wort, klasse: a.klasse, titel: a.titel, bezug: a.bezug, zustand: a.zustand, gueltige_fassung: a.gueltige_fassung, ueberpruefung: a.ueberpruefung, eingetragen: a.eingetragen };
   };
+  /** IP-14 `EnergiemanagementNachweise`: Ort der gültigen Fassung (Zeile des Verzeichnisses + Kundensatz), Bekanntmachungen gebündelt. */
+  const nachweis = (d: EnergiemanagementDokument): EnergiemanagementNachweis => {
+    const a = abgerufen(d);
+    const f = a.fassungen.find((x) => x.nr === a.gueltige_fassung) ?? null;
+    const verweis = f?.form === 'verweis' ? f.verweis : null;
+    const ort = !f
+      ? null
+      : (() => {
+          const art = verweis ? 'verweis' : a.beleg ? 'wortlaut_original_beim_kunden' : 'in_voltpilot';
+          const ablage = verweis?.ablage ?? a.beleg?.ablage ?? null;
+          const angaben = verweis ? [verweis.kennung, verweis.fassungsangabe].filter(Boolean).join(', ') + (verweis.datum ? ` vom ${tagText(verweis.datum)}` : '') : '';
+          const zeile = verzeichnisZeile({ gruppe: GRUPPE[a.art], art: a.art, kennzeichen: a.kennzeichen, titel: a.titel, nr: f.nr, entschieden_von: null, eingetragen_von: null, tag: f.entschieden_am, pruefsumme: null, ort: art, ablage: art === 'in_voltpilot' ? null : ablage }) as { ort_satz: string };
+          return {
+            ort: art as 'verweis' | 'wortlaut_original_beim_kunden' | 'in_voltpilot', ort_satz: zeile.ort_satz,
+            satz: art === 'verweis'
+              ? (angaben.trim() ? satzText('ort_verweis', { ablage: ablage!, angaben: angaben.trim() }) : `${zeile.ort_satz}.`)
+              : art === 'wortlaut_original_beim_kunden' ? satzText('ort_wortlaut', { ablage: ablage! }) : null,
+            inhalt_in_voltpilot: art !== 'verweis', fassung: f.nr, festgehalten_am: f.entschieden_am, ablage: art === 'in_voltpilot' ? null : ablage,
+            kennung: verweis?.kennung ?? null, adresse: verweis?.adresse ?? null, adresse_als_verweis: !!verweis?.adresse?.startsWith('https:'),
+            fassungsangabe: verweis?.fassungsangabe ?? null, datum: verweis?.datum ?? null, sha256: verweis?.sha256 ?? null,
+          };
+        })();
+    const bekanntmachungen = a.eintraege
+      .filter((e) => e.art === 'bekannt_gemacht')
+      .reduce<EnergiemanagementNachweis['bekanntmachungen']>((alle, e) => {
+        const gleich = alle.find((x) => x.fassung === e.fassung && x.am === e.am && x.kreis === e.kreis && x.person?.id === e.person?.id);
+        if (gleich) gleich.wege.push(e.weg!);
+        else alle.push({ dokument_id: a.id, kennzeichen: a.kennzeichen, titel: a.titel, art: a.art, fassung: e.fassung!, am: e.am!, kreis: e.kreis!, wege: [e.weg!], wege_wort: '', person: e.person, satz: '' });
+        return alle;
+      }, [])
+      .map((b) => {
+        const wege_wort = b.wege.map((w) => ({ aushang: 'Aushang', intranet: 'Intranet', unterweisung: 'Unterweisung', besprechung: 'Besprechung', e_mail: 'E-Mail' } as Record<string, string>)[w] ?? w).join(' und ');
+        return { ...b, wege_wort, satz: satzText('bekanntmachung', { am: tagText(b.am), kreis: b.kreis, weg: wege_wort, person: b.person?.name ?? '' }) };
+      });
+    return {
+      id: a.id, kennzeichen: a.kennzeichen, art: a.art, art_wort: a.art_wort, klasse: a.klasse, titel: a.titel, bezug: a.bezug, zustand: a.zustand,
+      gueltige_fassung: a.gueltige_fassung, ort, ueberpruefung: a.ueberpruefung, bekanntmachungen,
+    };
+  };
   const finde = (id: string) => {
     const d = dokumente.find((x) => x.id === id);
     if (!d) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Nicht gefunden.' });
@@ -210,12 +261,26 @@ export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kenn
   };
 
   function neuesDokument(b: EnergiemanagementDokumentAnlegen, id?: string, am = jetzt()): EnergiemanagementDokument {
+    const ee = b.bezug.art === 'energieeinsatz' ? einsaetze.find((e) => e.id === b.bezug.energieeinsatz_id) ?? null : null;
+    const pe = b.bezug.art === 'person' ? personen.find((p) => p.id === b.bezug.person_id) ?? null : null;
+    if (b.bezug.art === 'energieeinsatz' && !ee) {
+      throw new ApiError(422, 'Bitte wählen Sie einen Energieeinsatz.', { code: 'energieeinsatz_unbekannt', message: 'Bitte wählen Sie einen Energieeinsatz.' });
+    }
+    if (b.bezug.art === 'person' && !pe) {
+      throw new ApiError(422, 'Bitte wählen Sie eine Person.', { code: 'person_unbekannt', message: 'Bitte wählen Sie eine Person.' });
+    }
     zaehler += 1;
     const st = b.bezug.art === 'standort' ? [ST1, ST2].find((s) => s.id === b.bezug.standort_id) ?? null : null;
     const d: EnergiemanagementDokument = {
       id: id ?? `d1900000-0000-4000-8000-${String(100 + zaehler).padStart(12, '0')}`, kennzeichen: `D-${String(zaehler).padStart(4, '0')}`, art: b.art,
       art_wort: WOERTER.dokument_art[b.art], klasse: DOKUMENT_ART_KLASSE[b.art] as 'vorgabe' | 'nachweis', titel: b.titel,
-      bezug: { art: b.bezug.art, standort: st ? kurzOrt(st) : null }, zustand: 'entwurf',
+      // Der Zaun eines Einsatzes (Standort seiner Messstellen) wird hier nicht abgeleitet — wie „mehrere oder keiner“.
+      bezug: {
+        art: b.bezug.art, standort: st ? kurzOrt(st) : null,
+        ...(ee ? { energieeinsatz: { id: ee.id, kennzeichen: ee.kennzeichen, name: ee.name } } : {}),
+        ...(pe ? { person: kurz(pe) } : {}),
+      },
+      zustand: 'entwurf',
       ueberpruefung_monate: DOKUMENT_ART_KLASSE[b.art] === 'vorgabe' ? (b.ueberpruefung_monate ?? 12) : null, beleg: b.beleg ?? null,
       gueltige_fassung: null, fassungen: [], eintraege: [], ueberpruefung: null, saetze: { kopf: null, ueberpruefung: null, freigabe_gesperrt: null },
       eingetragen: eingetragen(ich.name, am), verlauf: [],
@@ -477,6 +542,24 @@ export function energiemanagementBuehne(lage: EnergiemanagementLage, ich: { kenn
         ? [satzText('anwendungsbereich_deckungsgleich', { fassung: '1', ab: tagText(umfang.gueltig_ab) })]
         : [...vergleich.standorte_nur_im_anwendungsbereich.map((s) => s.name ?? ''), ...nurAb].map((was) => satzText('anwendungsbereich_unterschied', { was, fassung: '1' }));
       return { abruf: heute(), fassung: f!.nr, anwendungsbereich: ab, betrachtungsumfang: umfang, vergleich, saetze };
+    },
+    energiemanagementNachweiseAmEinsatz: async (id: string): Promise<EnergiemanagementNachweiseAmEinsatz> => {
+      await bereit;
+      const ee = einsaetze.find((e) => e.id === id);
+      if (!ee) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Nicht gefunden.' });
+      return {
+        energieeinsatz: { id: ee.id, kennzeichen: ee.kennzeichen, name: ee.name }, abruf: heute(),
+        nachweise: dokumente.filter((d) => d.bezug.energieeinsatz?.id === id).map(nachweis),
+      };
+    },
+    energiemanagementNachweiseDerPerson: async (id: string): Promise<EnergiemanagementNachweiseDerPerson> => {
+      await bereit;
+      const p = personen.find((x) => x.id === id);
+      if (!p) throw new ApiError(404, 'Nicht gefunden.', { code: 'nicht_gefunden', message: 'Nicht gefunden.' });
+      return {
+        person: kurz(p), abruf: heute(),
+        nachweise: dokumente.filter((d) => d.bezug.person?.id === id || d.bezug.aufgabe?.person?.id === id).map(nachweis),
+      };
     },
     energiemanagementDokumentAnlegen: async (b: EnergiemanagementDokumentAnlegen) => {
       await bereit;

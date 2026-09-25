@@ -4,6 +4,7 @@ import { api, type EnergiemanagementPersonMitVerlauf, type EnergiemanagementZuor
 import { heute } from '../bewertung';
 import { EinsichtRecht } from '../components/EinsichtRecht';
 import { PersonAendernDialog } from '../components/EnergiemanagementAufgabeDialoge';
+import { NachweiseDerPerson } from '../components/Nachweise';
 import * as E from '../energiemanagementPortal';
 import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_PERSON_IM_ENERGIEMANAGEMENT, UEMS_VERANTWORTUNG } from '../glossar';
 import './Energiemanagement.css';
@@ -13,7 +14,8 @@ import './Verbesserung.css';
  * Die Seite einer Person im Energiemanagement (UEMS AP-19 IP-13, PA1, PA5; `#/portfolio/energiemanagement/personen/{id}`):
  * Name, Funktion, Organisation, Konto — ohne Konto der Satz aus §5.8 („… erscheint als ‚entschieden von‘.“) —, seit/bis,
  * ihre Aufgaben (als Person und als Vertretung, auch beendete) und der Verlauf der Route mit jeder Konto-Verknüpfung.
- * Gelöscht wird eine Person nie; „bis“ beendet sie. Die Nachweise an der Person kommen mit IP-15.
+ * Gelöscht wird eine Person nie; „bis“ beendet sie. Seit IP-15 die Nachweise an der Person und an ihren Aufgaben (R8)
+ * mit „Nachweis festhalten“ (Bezug die Person, Art Kompetenz).
  */
 export function EnergiemanagementPersonSeite({ id, onListe }: { id: string; onListe: () => void }) {
   const [p, setP] = useState<EnergiemanagementPersonMitVerlauf | null>(null);
@@ -101,6 +103,7 @@ export function EnergiemanagementPersonSeite({ id, onListe }: { id: string; onLi
           </ul>
         )}
       </section>
+      <NachweiseDerPerson person={person} />
       <section className="vp-ez-karte" aria-label="Verlauf" data-testid="person-verlauf">
         <h2>Verlauf</h2>
         <ul className="vp-em-kurzliste">

@@ -21,6 +21,9 @@ reinen Modul `frontend/portal/src/bewertung.ts`; Flächen `BewertungPage`, `Ener
 - ⚠ Offene Lücken der Routen (nicht nachgebaut): das Protokoll liefert `zeit`, `openapi.yaml` nennt es nicht; eine
   Einflussgröße trägt nur `bezugsgroesse_id` — die Einsatz-Seite liest dafür den Bezugsgrößen-Katalog nach.
 - Nachweis: `src/bewertung.test.ts`, `e2e/bewertung.spec.ts` (375/1440; `BEWERTUNG_BILDER=<Ordner>` legt die Bilder ab).
+- AP-19 IP-15: die Einsatz-Seite trägt nach „Messmittel“ den Abschnitt „Nachweise“ (`components/Nachweise.tsx`, nur mit
+  `energiemanagement.ansehen`); die Bühne spielt dafür immer die Energiemanagement-Routen — wer `e2e/bewertung.tsx`
+  ändert, fährt auch `e2e/nachweise.spec.ts` · [Portal Energiemanagement](uems-energiemanagement-portal.md).
 
 ## Rangliste und Einstufung (AP-16 IP-12, Meilenstein M2)
 

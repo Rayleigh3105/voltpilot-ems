@@ -150,17 +150,32 @@ function useStandorte() {
 
 // ------------------------------------------------------------------ Dokument anlegen (DK1)
 
-export function DokumentAnlegenDialog({ onClose, onAngelegt }: { onClose: () => void; onAngelegt: (d: EnergiemanagementDokument) => void }) {
+/**
+ * Dokument anlegen (DK1). Mit `fest` ist es „Nachweis festhalten“ (IP-15, §5.3): der Bezug ist der Einsatz bzw. die
+ * Person der Seite und steht fest, die Arten sind die des Bezugs, und das Original folgt im nächsten Schritt als Fassung.
+ */
+export function DokumentAnlegenDialog({
+  onClose,
+  onAngelegt,
+  fest = null,
+}: {
+  onClose: () => void;
+  onAngelegt: (d: EnergiemanagementDokument) => void;
+  fest?: E.NachweisBezug | null;
+}) {
   const basis = `dk-${useId().replace(/:/g, '')}`;
   const standorte = useStandorte();
-  const [e, setE] = useState<E.AnlegenEntwurf>({ art: '', titel: '', bezug: 'unternehmen', standortId: '', original: E.LEERER_VERWEIS });
+  const [e, setE] = useState<E.AnlegenEntwurf>(() => {
+    const art = fest ? E.NACHWEIS_ARTEN[fest.art][0] : '';
+    return { art, titel: art ? WOERTER.dokument_art[art] : '', bezug: 'unternehmen', standortId: '', original: E.LEERER_VERWEIS };
+  });
   const [fehler, setFehler] = useState<E.Feldfehler>({});
   const [satz, setSatz] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const setze = (t: Partial<E.AnlegenEntwurf>) => setE((alt) => ({ ...alt, ...t }));
 
   async function senden() {
-    const r = E.anlegenKoerper(e);
+    const r = E.anlegenKoerper(e, fest);
     if ('fehler' in r) return setFehler(r.fehler ?? {});
     setFehler({});
     setBusy(true);
@@ -178,7 +193,7 @@ export function DokumentAnlegenDialog({ onClose, onAngelegt }: { onClose: () => 
     <Modal
       open
       onClose={onClose}
-      title={E.KNOPF_ANLEGEN}
+      title={fest ? E.KNOPF_NACHWEIS : E.KNOPF_ANLEGEN}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -190,30 +205,40 @@ export function DokumentAnlegenDialog({ onClose, onAngelegt }: { onClose: () => 
         </>
       }
     >
-      <Formular id={`${basis}-form`} testid="dokument-anlegen-dialog" onSubmit={() => void senden()}>
+      <Formular id={`${basis}-form`} testid={fest ? 'nachweis-anlegen-dialog' : 'dokument-anlegen-dialog'} onSubmit={() => void senden()}>
         <VpPicker
           id={`${basis}-art`}
           label="Art"
-          options={E.artOptionen()}
+          options={fest ? E.nachweisArtOptionen(fest.art) : E.artOptionen()}
           value={e.art || null}
-          onChange={(art) => setze({ art, titel: e.titel || WOERTER.dokument_art[art] })}
+          // Der vorbelegte Titel folgt der Art, solange niemand ihn geändert hat.
+          onChange={(art) => setze({ art, titel: !e.titel || e.titel === WOERTER.dokument_art[e.art] ? WOERTER.dokument_art[art] : e.titel })}
           placeholder="Art wählen"
           error={fehler.art ?? null}
         />
         {e.art && <p className="vp-ez-leise" data-testid="dokument-art-satz">{E.ART_SATZ[e.art]}</p>}
         <Input id={`${basis}-titel`} label="Titel" value={e.titel} onChange={(ev) => setze({ titel: ev.target.value })} error={fehler.titel ?? null} />
-        <div className="vp-ez-feld" role="radiogroup" aria-label="Bezug">
-          <span className="vp-ez-label">Bezug</span>
-          <div className="vp-ez-wahl">
-            {(['unternehmen', 'standort'] as const).map((b) => (
-              <label key={b} className="vp-ez-wahl-punkt">
-                <input type="radio" name={`${basis}-bezug`} checked={e.bezug === b} onChange={() => setze({ bezug: b })} />
-                {b === 'unternehmen' ? 'das ganze Unternehmen' : 'ein Standort'}
-              </label>
-            ))}
+        {fest ? (
+          <div className="vp-ez-feld">
+            <span className="vp-ez-label">Bezug</span>
+            <p className="vp-ez-satz" data-testid="nachweis-bezug">
+              {E.nachweisBezugWort(fest)}
+            </p>
           </div>
-        </div>
-        {e.bezug === 'standort' && (
+        ) : (
+          <div className="vp-ez-feld" role="radiogroup" aria-label="Bezug">
+            <span className="vp-ez-label">Bezug</span>
+            <div className="vp-ez-wahl">
+              {(['unternehmen', 'standort'] as const).map((b) => (
+                <label key={b} className="vp-ez-wahl-punkt">
+                  <input type="radio" name={`${basis}-bezug`} checked={e.bezug === b} onChange={() => setze({ bezug: b })} />
+                  {b === 'unternehmen' ? 'das ganze Unternehmen' : 'ein Standort'}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {!fest && e.bezug === 'standort' && (
           <VpPicker
             id={`${basis}-standort`}
             label="Standort"
@@ -223,15 +248,21 @@ export function DokumentAnlegenDialog({ onClose, onAngelegt }: { onClose: () => 
             error={fehler.bezug ?? null}
           />
         )}
-        <VerweisFelder
-          basis={`${basis}-original`}
-          titel="Original bei Ihnen (wahlfrei)"
-          wert={e.original}
-          setze={(original) => setze({ original })}
-          mitFassung={false}
-          fehler={fehler.original}
-        />
-        <p className="vp-ez-leise">Das Dokument entsteht als Entwurf; das Kennzeichen D-… vergibt VoltPilot. Den Wortlaut oder Verweis halten Sie danach als Fassung fest.</p>
+        {!fest && (
+          <VerweisFelder
+            basis={`${basis}-original`}
+            titel="Original bei Ihnen (wahlfrei)"
+            wert={e.original}
+            setze={(original) => setze({ original })}
+            mitFassung={false}
+            fehler={fehler.original}
+          />
+        )}
+        <p className="vp-ez-leise">
+          {fest
+            ? 'Das Dokument entsteht als Entwurf; das Kennzeichen D-… vergibt VoltPilot. Im nächsten Schritt halten Sie fest, wo das Original bei Ihnen liegt.'
+            : 'Das Dokument entsteht als Entwurf; das Kennzeichen D-… vergibt VoltPilot. Den Wortlaut oder Verweis halten Sie danach als Fassung fest.'}
+        </p>
         <Fuss satz={satz} />
       </Formular>
     </Modal>
@@ -244,10 +275,13 @@ export function FassungDialog({
   dokument,
   onClose,
   onGespeichert,
+  form,
 }: {
   dokument: EnergiemanagementDokument;
   onClose: () => void;
   onGespeichert: (d: EnergiemanagementDokument) => void;
+  /** Die Form der ersten Fassung — „Nachweis festhalten“ (IP-15) beginnt mit dem Verweis, auch an einer Vorgabe-Art. */
+  form?: 'wortlaut' | 'verweis';
 }) {
   const basis = `fs-${useId().replace(/:/g, '')}`;
   const standorte = useStandorte();
@@ -255,7 +289,7 @@ export function FassungDialog({
   const vorlage = offen ?? E.gezeigteFassung(dokument);
   const nr = offen?.status === 'entwurf' ? offen.nr : Math.max(0, ...dokument.fassungen.map((f) => f.nr)) + 1;
   const [e, setE] = useState<E.FassungEntwurf>(() => ({
-    form: vorlage?.form ?? (dokument.klasse === 'nachweis' ? 'verweis' : 'wortlaut'),
+    form: vorlage?.form ?? form ?? (dokument.klasse === 'nachweis' ? 'verweis' : 'wortlaut'),
     wortlaut: vorlage?.wortlaut ?? '',
     verweis: vorlage?.verweis
       ? {

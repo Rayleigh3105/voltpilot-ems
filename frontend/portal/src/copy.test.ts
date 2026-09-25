@@ -3115,6 +3115,8 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'components/EnergiemanagementVerantwortung.tsx',
     'pages/EnergiemanagementPersonSeite.tsx',
     'components/EnergiemanagementAufgabeDialoge.tsx',
+    // IP-15: der Abschnitt „Nachweise“ an der Einsatz-Seite (AP-16) und an der Personen-Seite, mit „Nachweis festhalten“.
+    'components/Nachweise.tsx',
   ];
   const ENERGIEMANAGEMENT_NAMENSMUSTER =
     /(?:^|\/)(?:Energiemanagement|Energiepolitik|Anwendungsbereich|Dokument|Verzeichnis|Wiedervorlage|InternesAudit|Audit|Feststellung|Managementbewertung|Beschluss|Wirksamkeit|Zuschnitt|Nachweis)[^/]*\.tsx?$/i;

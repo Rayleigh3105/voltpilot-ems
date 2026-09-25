@@ -5,7 +5,18 @@
  * (`energiemanagement.ts`, Zwilling von `EnergiemanagementRegeln.java`). Keine Datei verlässt das Gerät — ein Verweis
  * trägt nur Ablage, Kennung, Adresse, Fassungsangabe, Tag und die im Browser gebildete Prüfsumme (G3).
  */
-import { ApiError, type EnergiemanagementZuordnung, type EnergiemanagementBeleg, type EnergiemanagementDokument, type EnergiemanagementFassung, type EnergiemanagementPersonKurz, type EnergiemanagementVerweis, type Selbstauskunft } from './api';
+import {
+  ApiError,
+  type EnergiemanagementZuordnung,
+  type EnergiemanagementBeleg,
+  type EnergiemanagementDokument,
+  type EnergiemanagementDokumentAnlegen,
+  type EnergiemanagementFassung,
+  type EnergiemanagementNachweis,
+  type EnergiemanagementPersonKurz,
+  type EnergiemanagementVerweis,
+  type Selbstauskunft,
+} from './api';
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
 import { UEMS_DOKUMENTE, UEMS_VERZEICHNIS } from './glossar';
 import type { EnergiemanagementReiter } from './nav';
@@ -51,6 +62,9 @@ export const KNOPF_ZUORDNEN = 'Aufgabe zuordnen';
 export const KNOPF_BEENDEN = 'Zuordnung beenden';
 export const KNOPF_PERSON_AENDERN = 'Angaben ändern';
 export const KNOPF_VERANTWORTUNG = 'Wer ist wofür verantwortlich';
+export const KNOPF_NACHWEIS = 'Nachweis festhalten';
+/** Der Abschnitt an der Seite eines Energieeinsatzes und einer Person (IP-15, §5.3). */
+export const NACHWEISE = 'Nachweise';
 export const BEGRUENDUNG_HINWEIS = `${STARTWERTE.begruendung_zeichen_mindestens} bis ${STARTWERTE.begruendung_zeichen_hoechstens} Zeichen.`;
 
 /** Wozu jede der zwölf Arten dient — ein Satz je Art (§5.1), in Kundenwörtern. */
@@ -191,11 +205,42 @@ export interface AnlegenEntwurf {
   original: VerweisEntwurf;
 }
 
-export function anlegenKoerper(e: AnlegenEntwurf) {
+/**
+ * „Nachweis festhalten“ (IP-15, §5.3): der Bezug steht fest — der Energieeinsatz oder die Person, von deren Seite der
+ * Dialog kommt; `wort` ist, wie er im Dialog steht („EE-1 Spritzguss“, „Murat Demirci“).
+ */
+export interface NachweisBezug {
+  art: 'energieeinsatz' | 'person';
+  id: string;
+  wort: string;
+}
+
+/**
+ * Die Arten, die „Nachweis festhalten“ je Bezug anbietet (§3.5, §3.7): am Einsatz Betrieb und Instandhaltung, Auslegung
+ * und Beschaffung, an der Person die Kompetenz. Die Route nimmt jede Art an jedem Bezug — die Auswahl ist Hilfe, kein Verbot.
+ */
+export const NACHWEIS_ARTEN: Record<NachweisBezug['art'], readonly string[]> = {
+  energieeinsatz: ['betrieb', 'auslegung', 'beschaffung'],
+  person: ['kompetenz'],
+};
+
+export const nachweisArtOptionen = (bezug: NachweisBezug['art']) =>
+  NACHWEIS_ARTEN[bezug].map((art) => ({ value: art, label: WOERTER.dokument_art[art], sub: ART_SATZ[art] }));
+
+/** „Energieeinsatz EE-1 Spritzguss“ — so steht der feste Bezug im Dialog. */
+export const nachweisBezugWort = (b: NachweisBezug) => `${b.art === 'energieeinsatz' ? 'Energieeinsatz' : 'Person'} ${b.wort}`;
+
+/** Der Körper von „Nachweis festhalten“: genau die Kennung der Art (`EnergiemanagementDokumentBezug`). */
+export function nachweisBezugKoerper(b: NachweisBezug): EnergiemanagementDokumentAnlegen['bezug'] {
+  return b.art === 'energieeinsatz' ? { art: 'energieeinsatz', energieeinsatz_id: b.id } : { art: 'person', person_id: b.id };
+}
+
+/** `fest` ist der Bezug von „Nachweis festhalten“ (IP-15) — dann gilt er statt Unternehmen/Standort. */
+export function anlegenKoerper(e: AnlegenEntwurf, fest: NachweisBezug | null = null) {
   const fehler: Feldfehler = {};
   if (!e.art) fehler.art = 'Bitte wählen Sie die Art.';
   if (leer(e.titel)) fehler.titel = 'Bitte geben Sie einen Titel an.';
-  if (e.bezug === 'standort' && !e.standortId) fehler.bezug = 'Bitte wählen Sie den Standort.';
+  if (!fest && e.bezug === 'standort' && !e.standortId) fehler.bezug = 'Bitte wählen Sie den Standort.';
   const beleg = verweisKoerper(e.original, false);
   if (beleg && 'fehler' in beleg) fehler.original = beleg.fehler;
   if (Object.keys(fehler).length) return { fehler };
@@ -203,10 +248,42 @@ export function anlegenKoerper(e: AnlegenEntwurf) {
     koerper: {
       art: e.art,
       titel: e.titel.trim(),
-      bezug: e.bezug === 'standort' ? { art: 'standort' as const, standort_id: e.standortId } : { art: 'unternehmen' as const },
+      bezug: fest ? nachweisBezugKoerper(fest) : e.bezug === 'standort' ? { art: 'standort' as const, standort_id: e.standortId } : { art: 'unternehmen' as const },
       ...(beleg ? { beleg: beleg as EnergiemanagementBeleg } : {}),
     },
   };
+}
+
+// ------------------------------------------------------------------ Nachweise am Einsatz und an der Person (IP-15, §5.3)
+
+/**
+ * Die Zeile eines Nachweises (R7 „Was man sieht“): der Ort der gültigen Fassung wörtlich von der Route („Geführt in
+ * Ihrem System: …“), die Prüfsumme als Tag, an dem sie festgehalten wurde — VoltPilot hat den Inhalt nicht. Ohne gültige
+ * Fassung sagt die Zeile nur, dass noch keine freigegeben ist.
+ */
+export function nachweisOrt(n: Pick<EnergiemanagementNachweis, 'ort' | 'zustand'>): string {
+  if (!n.ort) return `${ZUSTAND_WORT[n.zustand]} — noch keine Fassung freigegeben.`;
+  return n.ort.satz ?? `${n.ort.ort_satz}.`;
+}
+
+/** „Prüfsumme der Datei festgehalten am 10.11.2028.“ — nur an einem Verweis mit Prüfsumme. */
+export function nachweisPruefsumme(n: Pick<EnergiemanagementNachweis, 'ort'>): string | null {
+  const o = n.ort;
+  if (!o?.sha256) return null;
+  return o.festgehalten_am ? `Prüfsumme der Datei festgehalten am ${tagText(o.festgehalten_am)}.` : 'Prüfsumme der Datei festgehalten.';
+}
+
+/**
+ * Die Überprüfung beim Abruf (DK5), wie die Dokument-Seite sie sagt: fällig → „Überprüfung fällig seit n Tagen.“ (§5.8),
+ * sonst „Überprüfung fällig am …“; ein Nachweis (Kompetenz, Auslegung) wird aufbewahrt, nicht überprüft — „ohne
+ * Überprüfung“; ohne freigegebene Fassung nichts.
+ */
+export function nachweisUeberpruefung(n: Pick<EnergiemanagementNachweis, 'ueberpruefung' | 'klasse'>): string | null {
+  const u = n.ueberpruefung;
+  if (n.klasse === 'nachweis' || u?.grund === 'nachweis') return 'Ein Nachweis — ohne Überprüfung.';
+  if (!u?.faellig_am) return null;
+  if (u.tage !== null && u.tage > 0) return satzText('ueberpruefung', { tage: String(u.tage) });
+  return `Überprüfung fällig am ${tagText(u.faellig_am)}.`;
 }
 
 export interface FassungEntwurf {

@@ -8608,9 +8608,76 @@ export interface EnergiemanagementDokument extends EnergiemanagementDokumentKurz
 export interface EnergiemanagementDokumentAnlegen {
   art: string;
   titel: string;
-  bezug: { art: 'unternehmen' | 'standort'; standort_id?: string | null };
+  /** Seit IP-14 auch Energieeinsatz, Person und Aufgabe — genau die Kennung der Art (`EnergiemanagementDokumentBezug`). */
+  bezug: {
+    art: 'unternehmen' | 'standort' | 'energieeinsatz' | 'person' | 'aufgabe';
+    standort_id?: string | null;
+    energieeinsatz_id?: string | null;
+    person_id?: string | null;
+    aufgabe_id?: string | null;
+  };
   ueberpruefung_monate?: number | null;
   beleg?: EnergiemanagementBeleg | null;
+}
+/** KS1, G1 (AP-19 IP-14): wo der Inhalt der gültigen Fassung liegt — `EnergiemanagementNachweisOrt` in openapi.yaml. */
+export interface EnergiemanagementNachweisOrt {
+  ort: 'in_voltpilot' | 'wortlaut_original_beim_kunden' | 'verweis';
+  /** Die Zeile des Verzeichnisses: „Geführt in Ihrem System: <Ablage>“. */
+  ort_satz: string;
+  /** Der Kundensatz `ort_verweis` bzw. `ort_wortlaut`; in VoltPilot `null`. */
+  satz: string | null;
+  inhalt_in_voltpilot: boolean;
+  fassung: number;
+  festgehalten_am: string | null;
+  ablage: string | null;
+  kennung: string | null;
+  adresse: string | null;
+  /** Nur mit `https:` — VoltPilot öffnet, prüft und lädt nichts. */
+  adresse_als_verweis: boolean;
+  fassungsangabe: string | null;
+  datum: string | null;
+  sha256: string | null;
+}
+/** DK6: eine Mitteilung an einen Kreis an einem Tag durch eine Person, über einen oder mehrere Wege. */
+export interface EnergiemanagementKommunikationsnachweis {
+  dokument_id: string;
+  kennzeichen: string;
+  titel: string;
+  art: string;
+  fassung: number;
+  am: string;
+  kreis: string;
+  wege: string[];
+  wege_wort: string;
+  person: EnergiemanagementPersonKurz | null;
+  satz: string;
+}
+/** Ein Dokument im Abschnitt „Nachweise“ (IP-14) — mit Ort, Überprüfung beim Abruf und Bekanntmachungen. */
+export interface EnergiemanagementNachweis {
+  id: string;
+  kennzeichen: string;
+  art: string;
+  art_wort: string;
+  klasse: 'vorgabe' | 'nachweis';
+  titel: string;
+  bezug: EnergiemanagementDokumentKurz['bezug'];
+  zustand: 'entwurf' | 'gueltig' | 'aufgehoben';
+  gueltige_fassung: number | null;
+  /** Ohne gültige Fassung `null`. */
+  ort: EnergiemanagementNachweisOrt | null;
+  /** Kompetenz und Auslegung haben keine (Grund `nachweis`). */
+  ueberpruefung: EnergiemanagementUeberpruefung | null;
+  bekanntmachungen: EnergiemanagementKommunikationsnachweis[];
+}
+export interface EnergiemanagementNachweiseAmEinsatz {
+  energieeinsatz: { id: string; kennzeichen: string | null; name: string | null };
+  abruf: string;
+  nachweise: EnergiemanagementNachweis[];
+}
+export interface EnergiemanagementNachweiseDerPerson {
+  person: EnergiemanagementPersonKurz;
+  abruf: string;
+  nachweise: EnergiemanagementNachweis[];
 }
 export interface EnergiemanagementFassungEntwerfen {
   form: 'wortlaut' | 'verweis';
@@ -10832,6 +10899,12 @@ export const api = {
   energiemanagementDokument: (id: string) => request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}`),
   /** IP-7 (DK7, W5): Anwendungsbereich neben dem Betrachtungsumfang der energetischen Bewertung — ohne Urteil. */
   energiemanagementVergleich: (id: string) => request<EnergiemanagementVergleich>(`/api/v1/energiemanagement/dokumente/${id}/vergleich`),
+  /** IP-14 (R7): der Abschnitt „Nachweise“ am Energieeinsatz — der Zaun folgt dem Standort des Einsatzes, sonst 404. */
+  energiemanagementNachweiseAmEinsatz: (id: string) =>
+    request<EnergiemanagementNachweiseAmEinsatz>(`/api/v1/energiemanagement/energieeinsaetze/${encodeURIComponent(id)}/nachweise`),
+  /** IP-14 (R8): die Nachweise an einer Person und an ihren Aufgaben — ohne Standort, wer nur Standorte liest, liest eine leere Liste. */
+  energiemanagementNachweiseDerPerson: (id: string) =>
+    request<EnergiemanagementNachweiseDerPerson>(`/api/v1/energiemanagement/personen/${encodeURIComponent(id)}/nachweise`),
   energiemanagementDokumentAnlegen: (body: EnergiemanagementDokumentAnlegen) =>
     request<EnergiemanagementDokument>('/api/v1/energiemanagement/dokumente', { method: 'POST', body: JSON.stringify(body) }),
   /** IP-7 (DK2, G3): Fassung entwerfen — Wortlaut oder Verweis; ein offener Entwurf wird überschrieben. */

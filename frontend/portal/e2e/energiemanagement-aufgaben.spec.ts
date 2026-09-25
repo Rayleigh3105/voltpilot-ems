@@ -23,9 +23,9 @@ const VERANTWORTUNG =
 const OHNE_PERSON = 'Bezugsbasen pflegen und freigeben — keine Person festgelegt.';
 const EINSICHT_ROLLE = 'Einsicht — Sie sehen das Energiemanagement des ganzen Unternehmens und können nichts ändern.';
 const EINSICHT_LEER = 'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.';
-/** Jede Beschriftung eines Schreib-Knopfs im Bereich (IP-9 und IP-13). */
+/** Jede Beschriftung eines Schreib-Knopfs im Bereich (IP-9, IP-13 und IP-15 „Nachweis festhalten“). */
 const SCHREIBEN =
-  /^(Dokument anlegen|Neue Fassung|Entwurf bearbeiten|Freigeben|Freigabe beantragen|Freigabe bestätigen|Aufgabe zuordnen|Person anlegen|Zuordnung beenden|Angaben ändern)$/;
+  /^(Dokument anlegen|Neue Fassung|Entwurf bearbeiten|Freigeben|Freigabe beantragen|Freigabe bestätigen|Aufgabe zuordnen|Person anlegen|Zuordnung beenden|Angaben ändern|Nachweis festhalten)$/;
 const IDS = {
   RF: 'a1900000-0000-4000-8000-0000000000f1',
   IK: 'a1900000-0000-4000-8000-0000000000a1',
@@ -234,7 +234,9 @@ for (const breite of [375, 1440]) {
 
       await oeffne(page, 'person=RF&lage=ahrenberg&ps=IK', breite);
       await expect(page.getByTestId('person-seite').getByRole('heading', { level: 1 })).toHaveText('Ines Kaltenbach');
-      await expect(page.getByTestId('person-seite').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
+      // Zwei Schreib-Stellen, zwei Sätze: „Angaben ändern“ im Kopf und seit IP-15 „Nachweis festhalten“ im Abschnitt „Nachweise“.
+      await expect(page.getByTestId('person-seite').getByTestId('einsicht-satz')).toHaveText([EINSICHT_LEER, EINSICHT_LEER]);
+      await expect(page.getByTestId('person-nachweise').getByTestId('einsicht-satz')).toHaveText(EINSICHT_LEER);
       await ohneSchreiben('Einsicht: Personen-Seite');
       expect(await gesendet(page)).toEqual([]);
     });

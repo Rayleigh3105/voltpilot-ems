@@ -1,4 +1,4 @@
-# UEMS-Energiemanagement: Portal (AP-19 IP-9, IP-13)
+# UEMS-Energiemanagement: Portal (AP-19 IP-9, IP-13, IP-15)
 
 Neu am 25.09.2026: der Bereich „Energiemanagement“ als neunte Unternehmens-Seite über den Routen von IP-6/IP-7/IP-8
 ([Personen](uems-energiemanagement-personen.md), [Dokumente](uems-energiemanagement-dokumente.md), Verzeichnis in der
@@ -16,10 +16,11 @@ Neu am 25.09.2026: der Bereich „Energiemanagement“ als neunte Unternehmens-S
 | `pages/EnergiemanagementPersonSeite.tsx` (IP-13) | `…/personen/{id}`: Funktion, Konto oder der Satz „… ohne Konto — erscheint als ‚entschieden von‘.“, Aufgaben als Person und als Vertretung, Verlauf; „Angaben ändern“ (PUT = ganzer Stand, Konto aus der Benutzerliste, „bis“ beendet) |
 | `components/EnergiemanagementAufgabeDialoge.tsx` (IP-13) | Aufgabe zuordnen („entschieden von“ Pflicht außer Leitung, Vertretung, Beleg als Verweis, Beschluss `BR-…/Bn`), Zuordnung beenden, Angaben ändern |
 | `components/EinsichtRecht.tsx` (IP-13) | `EinsichtRecht` (ein Knopf) und `EinsichtGruppe` (mehrere Knöpfe, EIN Satz): mit der Rolle „Einsicht“ und ohne das Recht steht dort „Mit ‚Einsicht‘ können Sie hier nichts ändern. …“; sonst verhält es sich wie `Recht` |
+| `components/Nachweise.tsx` (IP-15) | Abschnitt „Nachweise“ an der Einsatz-Seite (`NachweiseAmEinsatz`, AP-16-Fläche, nur mit `energiemanagement.ansehen`) und an der Personen-Seite (`NachweiseDerPerson`) über die Leser von IP-14 ([Nachweise](uems-energiemanagement-nachweise.md)): je Dokument Ort-Satz wörtlich von der Route, https-Adresse als Text, „Prüfsumme der Datei festgehalten am …“, Überprüfung wie die Dokument-Seite, Bekanntmachungen; „Nachweis festhalten“ = Anlegen mit festem Bezug (`fest`, Arten `NACHWEIS_ARTEN`) → Fassung als Verweis (`form="verweis"`) → Freigabe, wer sie darf; ein Abbruch lässt den Entwurf im Abschnitt |
 | `components/BenutzerEinladen.tsx` (IP-13, Folge) | „Einsicht“ bietet „Gültig bis einschließlich“ überall: „Weitere Rolle zuweisen“ dazu Grund wahlfrei → `POST /api/v1/zugriff` (`benutzerApi.einsichtZuweisen`); beim Ändern `gueltig_bis` im Wechsel (`PUT …/zugriff`), beim Anlegen im Körper von `POST /api/v1/benutzer` (Schritt 2 nennt die Frist); ohne Frist der bisherige Aufruf, byte-gleich |
 | `energiemanagementPortal.ts` | Rechte, Reiter, Wörter, Entwürfe → Körper, Ablehnungs-Sätze; Sätze nur über die Schablonen von `energiemanagement.ts`; seit IP-13 `mitEinsicht`, `zuordnenKoerper`, `beendenKoerper`, `personAendernKoerper`, `zuordnungRest` |
-| Bühne | `e2e/energiemanagement.html?person=IK\|JW\|CB\|RF&lage=start\|ahrenberg&dok=1\|2\|3&seite=dokumente\|aufgaben\|verantwortung\|zuschnitt&ps=RF\|IK…` (RF = „Einsicht“), Routen in `src/test/energiemanagementFixtures.ts` (Lage `ahrenberg` mit den zehn Zuordnungen aus R5), Schreib-Körper in `window.__emGesendet` |
-| Nachweis | `e2e/energiemanagement.spec.ts` (R1-Fluss, Verweis-Probe, Stand 12.02.2029), `e2e/energiemanagement-aufgaben.spec.ts` (IP-13: zuordnen mit „entschieden von“, R5, Einsicht ohne Schreib-Knopf), `src/energiemanagementPortal.test.ts`, `pages/BenutzerPage.test.tsx`, `copy.test.ts` Block „Energiemanagement“ (`ENERGIEMANAGEMENT_FLAECHEN`) |
+| Bühne | Einsatz: `e2e/bewertung.html?stand=voll&ee=EE-1` spielt seit IP-15 immer die Energiemanagement-Routen (Lage `ahrenberg`, Einsätze der Bewertung als Bezug, Körper in `window.__emGesendet`) · `e2e/energiemanagement.html?person=IK\|JW\|CB\|RF&lage=start\|ahrenberg&dok=1\|2\|3&seite=dokumente\|aufgaben\|verantwortung\|zuschnitt&ps=RF\|IK…` (RF = „Einsicht“), Routen in `src/test/energiemanagementFixtures.ts` (Lage `ahrenberg` mit den zehn Zuordnungen aus R5), Schreib-Körper in `window.__emGesendet` |
+| Nachweis | `e2e/energiemanagement.spec.ts` (R1-Fluss, Verweis-Probe, Stand 12.02.2029), `e2e/energiemanagement-aufgaben.spec.ts` (IP-13: zuordnen mit „entschieden von“, R5, Einsicht ohne Schreib-Knopf), `e2e/nachweise.spec.ts` (IP-15: R7 Verweis am Einsatz mit Netz-Probe, Entwurf nach Abbruch, R8 Kompetenz an der Person, Einsicht; `NACHWEISE_BILDER=<Ordner>`), `src/energiemanagementPortal.test.ts`, `pages/BenutzerPage.test.tsx`, `copy.test.ts` Block „Energiemanagement“ (`ENERGIEMANAGEMENT_FLAECHEN`) |
 
 ⚠ **Nur die Prüfsumme geht hinaus:** ein Verweis bildet die SHA-256 im Browser (`uemsMessmittel.pruefsummeLokal`); der
 Körper trägt `bezeichnung · ablage · kennung · adresse (· fassungsangabe · datum) · sha256`, nie die Datei. Die Spec
@@ -29,8 +30,11 @@ rechnet die SHA-256 in Node nach und sucht den Datei-Inhalt in jeder Anfrage und
 ⚠ **Reiter-Reihenfolge und Zuschnitt-Hilfe** ließ das Konzept offen (§6.3, B.5 Z3); der PR von IP-9 zeigt je zwei
 Varianten mit Bildern, gebaut ist die empfohlene: Verzeichnis zuerst, Hilfe als eigene Seite. Die übrigen fünf Reiter hängen sich in der Reihenfolge von §6.3 an `REITER` an.
 ⚠ **Bekannt machen, „geprüft, bleibt“ und Aufheben** haben Routen (IP-7), aber noch keinen Knopf — die Seite zeigt die
-Einträge nur. Der Anlegen-Dialog bietet Unternehmen und Standort; „Nachweis festhalten“ mit vorbelegtem Bezug
-Einsatz/Person baut IP-15.
+Einträge nur. Der Anlegen-Dialog bietet Unternehmen und Standort; Einsatz und Person nur über „Nachweis festhalten“ (IP-15).
+⚠ **„Nachweis festhalten“ prüft das Recht am Unternehmen** (`EinsichtRecht standort={null}`, wie „Maßnahme anlegen“): den
+Zaun eines Einsatzes leitet erst die Route ab (Standort seiner Messstellen) — ein reines Standort-Konto sieht den Knopf nicht.
+⚠ **Der Abschnitt ist eine Fläche** (`copy.test.ts`, Namensmuster `Nachweis…`): an der Einsatz-Seite trägt er den
+Verantwortungs-Satz (`verantwortung`), den Grenz-Satz hat die Seite schon; auf der Personen-Seite stehen beide am Fuß.
 ⚠ **„Einsicht“ an Schreib-Knöpfen (IP-13):** neue Knöpfe im Bereich stehen in `EinsichtRecht`/`EinsichtGruppe`, nicht nackt
 in `Recht` — sonst liest „Einsicht“ den allgemeinen Recht-Satz. Zeilen-Knöpfe (Beenden je Zuordnung) blendet der Reiter
 ohne Recht aus; der Satz steht einmal im Kopf. Die Spec `energiemanagement-aufgaben.spec.ts` hält mit `SCHREIBEN` alle

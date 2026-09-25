@@ -11,9 +11,10 @@ import { BewertungPage } from '../src/pages/BewertungPage';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
 import { benutzerFixture } from '../src/test/benutzerFixtures';
-import { bewertungBuehne } from '../src/test/bewertungFixtures';
+import { ahrenbergEinsaetze, bewertungBuehne } from '../src/test/bewertungFixtures';
+import { energiemanagementBuehne } from '../src/test/energiemanagementFixtures';
 import { bewertungStandBuehne, type BewertungsLage } from '../src/test/bewertungStandBuehne';
-import { mb1 } from '../src/test/messplanungBuehne';
+import { ee8, mb1 } from '../src/test/messplanungBuehne';
 import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
 import { ahrenbergBezugsgroessen, ahrenbergProzesse } from '../src/test/kennzahlAnlegenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
@@ -38,7 +39,8 @@ import '../src/index.css';
  * Einsatz — R11) · `&ee=EE-2` öffnet die Seite dieses Einsatzes · `&messplanung=1|mb1` (IP-20) mit EE-8 und den Routen von
  * Messbedarf und Messstellen-Dialog · `&bewertungsstand=keine|entwurf|nr1|revision|nr2|faellig` (IP-25, Vorgabe keine:
  * kein Bericht der Vorlage `energetische_bewertung`) mit den Bericht-Routen aus `src/test/bewertungStandBuehne.ts`. Eigene Bühne, damit `startansicht` (25 Specs) unberührt
- * bleibt.
+ * bleibt. Seit AP-19 IP-15 spielt sie immer auch die Energiemanagement-Routen (Lage `ahrenberg`: D-0001 … D-0003 am
+ * Unternehmen, kein Nachweis an einem Einsatz) für den Abschnitt „Nachweise“; `window.__emGesendet` hält die Körper.
  */
 const params = new URLSearchParams(location.search);
 const person = params.get('person') ?? 'IK';
@@ -56,7 +58,10 @@ Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => 
 
 const buehne = bewertungBuehne(stand, person, messplanung ? '2026-11-27' : stand === 'leer' ? '2026-11-04' : '2026-11-20', vieraugen, historieR13,
   messplanung ? { bedarfe: messplanung === 'mb1' ? [mb1()] : [] } : false);
-Object.assign(api, buehne, bewertungStandBuehne(lage), {
+const em = energiemanagementBuehne('ahrenberg', { kennung: me.kennung!, name: me.name! }, () => new Date().toISOString(),
+  [...ahrenbergEinsaetze(), ee8()].map((e) => ({ id: e.id, kennzeichen: e.kennzeichen, name: e.name })));
+(window as unknown as { __emGesendet: unknown }).__emGesendet = em.gesendet;
+Object.assign(api, em.routen, buehne, bewertungStandBuehne(lage), {
   prozesse: async () => ({ stichtag: null, prozesse: ahrenbergProzesse() }),
   bezugsgroessen: async () => ahrenbergBezugsgroessen(),
 });
