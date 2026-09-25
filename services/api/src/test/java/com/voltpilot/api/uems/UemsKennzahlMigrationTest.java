@@ -87,7 +87,8 @@ class UemsKennzahlMigrationTest {
             "20260924233000", // AP-18 IP-9: die Messgrundlage der Maßnahme verweist auf ihre Kennzahl.
             "20260924235130", // AP-18 IP-14: Vermerk und Abweichung verweisen auf ihre Kennzahl.
             "20260925040000", // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme.
-            "20260925093000"); // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
+            "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
+            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
     private static final List<String> TABELLEN = List.of("kennzahl", "kennzahl_kennzeichen_verlauf", "kennzahl_fassung",
             "kennzahl_eingang", "kennzahl_wert", "kennzahl_wert_eingang", "kennzahl_aenderung");
 

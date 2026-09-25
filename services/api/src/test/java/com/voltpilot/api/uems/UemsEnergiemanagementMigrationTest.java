@@ -63,7 +63,8 @@ class UemsEnergiemanagementMigrationTest {
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
             "20260925031500", // AP-19 IP-16: Audit und Feststellung nennen Person, Fassung und Zähler; weitet das Protokoll.
-            "20260925093000"); // AP-19 IP-23: Sitzung, Beschluss und Folge nennen Person, Aufgabe und Fassung.
+            "20260925093000", // AP-19 IP-23: Sitzung, Beschluss und Folge nennen Person, Aufgabe und Fassung.
+            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

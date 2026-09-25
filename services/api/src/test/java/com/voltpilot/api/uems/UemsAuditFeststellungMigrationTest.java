@@ -52,7 +52,8 @@ class UemsAuditFeststellungMigrationTest {
     private static final String DIESE = "20260925031500";
     /** Migrationen, die auf diesen Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser, in Versionsfolge. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
-            "20260925093000"); // AP-19 IP-23: eine Folge der Managementbewertung nennt ein internes Audit.
+            "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein internes Audit.
+            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap19_ip16_test_pw";
     private static final List<String> TABELLEN = List.of("internes_audit", "internes_audit_eintrag", "feststellung",
             "feststellung_eintrag", "feststellung_wirksamkeit");

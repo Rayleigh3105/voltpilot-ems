@@ -47,7 +47,11 @@ E am eigenen Konto, sonst − (auch `export.*`, `zugriffsprotokoll.lesen`, jede 
 `nachtrag`: die Konzept-Tabelle bleibt byte-gleich mit sieben Spalten (`konzept_rollen` im Generator,
 `konzeptRollen` im Test), die Spalte steht unter „Spalten der Nachträge“ und in der Nachtrags-Tabelle. Datenbank:
 `V20260925030000` ersetzt `zugriff_rolle()` (Vereinigung, Zeile 8) und tauscht `bericht_abruf_actor_rolle_chk`; wer
-`zugriff_rolle()` oder `bericht_abruf` später ersetzt, schreibt die Vereinigung. Nicht in `rolle_noetig_reihenfolge`
+`zugriff_rolle()` oder `bericht_abruf` später ersetzt, schreibt die Vereinigung. `V20260926001500` weitet generisch jeden
+CHECK mit fester Liste der sieben (`…, 'leser', 'unterstuetzer', 'voltpilot_betrieb'`) um `einsicht` (Akteur-, Urheber-,
+Freigeber-Rollen; ein Vokabular) — ⚠ neue feste Rollen-Listen tragen alle acht, `MessstelleMigrationTest` prüft jeden
+solchen CHECK gegen `RechteAbleitung.Rolle`; wer eine Rolle anlegt, fährt `rg -l "Rolle.values()" services/api/src/test`
+(die Klasse liest das Enum, nicht die Matrix-Datei). Nicht in `rolle_noetig_reihenfolge`
 (die Sätze der Bestandsrollen bleiben). Fallen: ⚠ `BerichtRegeln.teilansicht` (G3) nahm „darf das Unternehmen
 exportieren“ als Merkmal für „sieht alles“ — mit Einsicht falsch; jetzt ist eine wirksame unternehmensweite
 Zuweisung nie eine Teilansicht (Java/TS, `bericht-vectors.json` B13 zwei Prüfungen). ⚠ Kundensätze, die Rollen mit

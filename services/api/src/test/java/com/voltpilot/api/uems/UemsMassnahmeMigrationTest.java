@@ -57,7 +57,8 @@ class UemsMassnahmeMigrationTest {
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
             "20260924235130", // AP-18 IP-14: die Abweichung verweist auf ihre Maßnahme und weitet das Vokabular.
-            "20260925040000"); // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme und weitet das Vokabular.
+            "20260925040000", // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme und weitet das Vokabular.
+            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap18_ip9_test_pw";
     private static final List<String> TABELLEN = List.of("massnahme", "massnahme_aenderung", "massnahme_bewertung",
             "vorgang_anstoss");

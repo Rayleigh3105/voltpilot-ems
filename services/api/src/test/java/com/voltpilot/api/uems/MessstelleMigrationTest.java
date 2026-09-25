@@ -702,13 +702,30 @@ class MessstelleMigrationTest {
         protokollChk("messstelle_aenderung_actor_chk", "bearbeitet", "NULL", "'kunde'", "now()", false);
         protokollChk("messstelle_aenderung_actor_chk", "bearbeitet", "''", "'kunde'", "now()", false);
         // „rückwirkend" an einer Änderung, die erst später gilt: nie.
-        // Die Rolle ist die KENNUNG des Rechte-Vertrags — genau seine sieben, nie das Kundenwort.
+        // Die Rolle ist die KENNUNG des Rechte-Vertrags — genau seine Rollen (seit V20260926001500 auch
+        // „einsicht“), nie das Kundenwort.
         String rollenChk = root.queryForObject("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
                 + "WHERE conname = 'messstelle_aenderung_actor_rolle_chk'", String.class);
         assertThat(rollenChk.split("'").length / 2).isEqualTo(RechteAbleitung.Rolle.values().length);
         for (RechteAbleitung.Rolle r : RechteAbleitung.Rolle.values()) {
             assertThat(rollenChk).contains("'" + r.code() + "'");
         }
+        // Dasselbe Vokabular an JEDEM CHECK, der die Rollen als feste Liste trägt (die Akteur-Rolle jedes
+        // Protokolls, Urheber-, Freigeber-, Beantworter-Rolle): ein Paket, das eine Rolle anlegt, zieht sie alle
+        // mit. Kürzere Listen (Freigabe nur durch drei Rollen) tragen „leser“ nicht und bleiben außen vor.
+        List<String> unvollstaendig = new ArrayList<>();
+        for (Map<String, Object> c : root.queryForList("SELECT conrelid::regclass::text AS tabelle, conname, "
+                + "pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE contype = 'c' AND coninhcount = 0 "
+                + "AND pg_get_constraintdef(oid) LIKE '%''leser''%' "
+                + "AND pg_get_constraintdef(oid) LIKE '%''voltpilot_betrieb''%'")) {
+            String def = (String) c.get("def");
+            for (RechteAbleitung.Rolle r : RechteAbleitung.Rolle.values()) {
+                if (!def.contains("'" + r.code() + "'")) {
+                    unvollstaendig.add(c.get("tabelle") + "." + c.get("conname") + " ohne " + r.code());
+                }
+            }
+        }
+        assertThat(unvollstaendig).as("feste Rollen-Listen ohne jede Rolle des Rechte-Vertrags").isEmpty();
         abgelehnt("23514", "messstelle_aenderung_actor_rolle_chk", () -> root.update(
                 "INSERT INTO messstelle_aenderung (tenant_id, messstelle_id, art, gilt_ab, "
                         + "rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art) "

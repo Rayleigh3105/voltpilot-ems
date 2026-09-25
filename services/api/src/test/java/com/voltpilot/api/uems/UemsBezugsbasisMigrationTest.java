@@ -58,7 +58,8 @@ class UemsBezugsbasisMigrationTest {
             "20260924233000", // AP-18 IP-9: die Messgrundlage der Maßnahme zitiert eine Bezugsbasis-Fassung.
             "20260924235130", // AP-18 IP-14: Vermerk und Abweichung zitieren eine Bezugsbasis-Fassung.
             "20260925040000", // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme.
-            "20260925093000"); // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
+            "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
+            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

@@ -55,7 +55,8 @@ class UemsAbweichungMigrationTest {
     private static final String DIESE = "20260924235130";
     /** Spätere Migrationen, die auf diese aufbauen: sie reisen bei der späten Ankunft mit. */
     private static final List<String> BAUEN_DARAUF_AUF = List.of(
-            "20260925040000"); // AP-19 IP-17: weitet das Vokabular als Vereinigung (mit den Wörtern dieser Migration).
+            "20260925040000", // AP-19 IP-17: weitet das Vokabular als Vereinigung (mit den Wörtern dieser Migration).
+            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap18_ip14_test_pw";
     private static final List<String> TABELLEN = List.of("auffaelligkeit", "abweichung", "abweichung_aenderung");
     private static final String BEGRUENDUNG = "Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme "

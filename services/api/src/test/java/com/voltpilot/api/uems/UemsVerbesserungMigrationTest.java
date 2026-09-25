@@ -60,7 +60,8 @@ class UemsVerbesserungMigrationTest {
             "20260924233000", // AP-18 IP-9: die Maßnahme zitiert Energieziel, Zähler und Vokabular.
             "20260924235130", // AP-18 IP-14: die Abweichung zitiert Zähler und Vokabular.
             "20260925040000", // AP-19 IP-17: tauscht den Herkunft-CHECK der Maßnahme und weitet das Vokabular.
-            "20260925093000"); // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
+            "20260925093000", // AP-19 IP-23: eine Folge der Managementbewertung nennt ein Energieziel.
+            "20260926001500"); // Folge zu AP-19 IP-12: weitet die Akteur-Rollen-CHECKs um einsicht.
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
