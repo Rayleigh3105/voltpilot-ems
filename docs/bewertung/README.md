@@ -283,7 +283,7 @@ Nach einer Klasse oder einer Testdatei darf eine Anmerkung in Klammern stehen.
 |---|---|---|
 | `Klasse` | die Suite der Klasse: jeder Fall grün, keiner übersprungen | `test_lauf` |
 | `Klasse#methode` | die Fälle der Methode, auch parametrisiert | `test_lauf` |
-| `pfad#Fall` | den Fall in der Testdatei, auch unter `describe` („… > Fall“) | `test_lauf` |
+| `pfad#Fall` | den Fall in der Testdatei, auch unter `describe` („… > Fall“); einen Test mit Untertests (`node --test` schreibt ihn als `<testsuite>`) nur, wenn jeder Untertest grün ist und keiner übersprungen | `test_lauf` |
 | `pfad` einer Testdatei | jeden Fall der Datei | `test_lauf` |
 | `werkzeug → rueckweg.json`, `→ probe.json` | das Artefakt, geprüft vom Leser des Tor-Prüfers | `werkzeug_artefakt` |
 

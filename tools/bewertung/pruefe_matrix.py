@@ -175,7 +175,8 @@ class Lauf(Ordner):
 
     def __init__(self, pfad):
         super().__init__(pfad)
-        self.suiten, self.faelle, self.unlesbar = [], [], []
+        self.suiten, self.faelle, self.gruppen, self.unlesbar = [], [], [], []
+        self.fehler_ohne_fall = {}
         for datei in sorted(self.pfad.rglob('*.xml')):
             try:
                 wurzel = ET.parse(datei).getroot()
@@ -183,6 +184,7 @@ class Lauf(Ordner):
                 self.unlesbar.append(anzeige(datei))
                 continue
             self._lies(datei, wurzel, wurzel.get('name') or '')
+            self.fehler_ohne_fall[datei] = _fehler_ohne_fall(datei, wurzel)
 
     def _lies(self, datei, knoten, suite):
         if knoten.tag == 'testsuite':
@@ -192,6 +194,8 @@ class Lauf(Ordner):
             if kind.tag == 'testcase':
                 self.faelle.append((datei, suite, kind))
             elif kind.tag in ('testsuite', 'testsuites'):
+                if kind.tag == 'testsuite':
+                    self.gruppen.append((datei, suite, kind))
                 self._lies(datei, kind, suite)
 
     def eingabe(self, ctx):
@@ -275,14 +279,35 @@ def _ist_fall(name, fall):
     return name == fall or name.startswith((fall + '(', fall + '[')) or name.endswith(' > ' + fall)
 
 
+def _fehler_ohne_fall(datei, wurzel):
+    """`node --test` schreibt den Fehler eines Tests mit Untertests an keinen `<testcase>`, nur in die
+    Summe `<!-- fail N -->` am Ende; was darin über die roten Fälle hinausgeht, gehört keinem Fall."""
+    summe = re.search(r'<!--\s*fail\s+(\d+)\s*-->', datei.read_text(encoding='utf-8', errors='replace'))
+    if summe is None:
+        return 0
+    rot = sum(1 for f in wurzel.iter('testcase') if _zustand(f) == 'rot')
+    return max(0, int(summe[1]) - rot)
+
+
 def _zustand(fall):
     if fall.find('failure') is not None or fall.find('error') is not None:
         return 'rot'
     return 'uebersprungen' if fall.find('skipped') is not None else 'gruen'
 
 
-def _befund(suiten, faelle, fall):
-    """(befund, text, datei) eines Ziels in einem Lauf-Ordner; NR2: übersprungen ist nicht grün, rot nicht."""
+def _gruppen_zustand(gruppe, fehler_ohne_fall):
+    """Ein Test mit Untertests (`node --test` schreibt ihn als `<testsuite>`): grün nur, wenn jeder Untertest
+    grün ist; ein roter macht ihn rot, ein übersprungener übersprungen, ohne Untertest ist nichts gelaufen.
+    Ein Fehler im Bericht, der keinem Fall gehört, kann seiner sein - dann ist er rot."""
+    zustaende = [_zustand(f) for f in gruppe.iter('testcase')]
+    if fehler_ohne_fall or 'rot' in zustaende or _zustand(gruppe) == 'rot':
+        return 'rot'
+    return 'uebersprungen' if not zustaende or 'uebersprungen' in zustaende else 'gruen'
+
+
+def _befund(suiten, faelle, fall, gruppen=(), fehler_ohne_fall=None):
+    """(befund, text, datei) eines Ziels in einem Lauf-Ordner; NR2: übersprungen ist nicht grün, rot nicht.
+    Ein Fall ist ein `<testcase>` oder ein `<testsuite>` mit Untertests (`node --test`)."""
     if fall is None:
         zahlen = [pruefe_tor.zaehler(s) for _, s in suiten]
         tests, rot = sum(z['tests'] for z in zahlen), sum(z['failures'] + z['errors'] for z in zahlen)
@@ -296,11 +321,15 @@ def _befund(suiten, faelle, fall):
             if tests == 0:
                 return 'uebersprungen', 'nichts ausgeführt - übersprungen ist nicht grün (NR2)', suiten[0][0]
             return 'gruen', f'{tests} Tests grün', suiten[0][0]
+        zustaende = [_zustand(f) for _, f in faelle]
     else:
         faelle = [(d, f) for d, f in faelle if _ist_fall(f.get('name') or '', fall)]
-        if not faelle:
+        gruppen = [(d, g) for d, g in gruppen if _ist_fall(g.get('name') or '', fall)]
+        if not faelle and not gruppen:
             return 'fall_fehlt', f'der Fall „{fall}“ steht nicht im Bericht', None
-    zustaende = [_zustand(f) for _, f in faelle]
+        zustaende = [_zustand(f) for _, f in faelle] + \
+            [_gruppen_zustand(g, (fehler_ohne_fall or {}).get(d, 0)) for d, g in gruppen]
+        faelle = faelle + gruppen
     for schlecht, satz in (('rot', 'rot'), ('uebersprungen', 'übersprungen - übersprungen ist nicht grün (NR2)')):
         if schlecht in zustaende:
             return schlecht, f'{zustaende.count(schlecht)} von {len(zustaende)} Fällen {satz}', faelle[0][0]
@@ -313,8 +342,10 @@ def _test(ctx, fundstelle, suite_passt, fall_gehoert, fall):
     for lauf in ctx.laeufe:
         suiten = [(d, s) for d, s in lauf.suiten if suite_passt(s.get('name') or '')]
         faelle = [(d, f) for d, suite, f in lauf.faelle if fall_gehoert(suite, f)]
-        if suiten or faelle:
-            treffer.append((lauf, suiten, faelle))
+        gruppen = [(d, g) for d, _, g in lauf.gruppen
+                   if any(fall_gehoert(g.get('name') or '', f) for f in g.iter('testcase'))]
+        if suiten or faelle or gruppen:
+            treffer.append((lauf, suiten, faelle, gruppen))
     if not treffer:
         woher = (f'in {len(ctx.laeufe)} Lauf-Ordner{"n" if len(ctx.laeufe) > 1 else ""}' if ctx.laeufe
                  else '- kein Lauf-Ordner angegeben (--laeufe)')
@@ -324,7 +355,8 @@ def _test(ctx, fundstelle, suite_passt, fall_gehoert, fall):
     if not am_stand:
         grund, text = treffer[0][0].grund(ctx)
         return offen(grund, f'{fundstelle}: {text}', 'Crew')
-    befunde = [(lauf, *_befund(suiten, faelle, fall)) for lauf, suiten, faelle in am_stand]
+    befunde = [(lauf, *_befund(suiten, faelle, fall, gruppen, lauf.fehler_ohne_fall))
+               for lauf, suiten, faelle, gruppen in am_stand]
     for schlecht in SCHLECHT:
         for lauf, befund, text, datei in befunde:
             if befund == schlecht:

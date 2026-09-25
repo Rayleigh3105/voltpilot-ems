@@ -213,6 +213,65 @@ class FallInJederTestwelt(MitBuehne):
         self.assertEqual(gruende(zeile(self.b.bericht(), 'Z-017')), ['fall_fehlt'])
 
 
+class TestMitUntertestenAusNodeTest(MitBuehne):
+    """`node --test --test-reporter=junit` schreibt einen Test mit Untertests als `<testsuite>` (Folge aus
+    BWB-2026-01, Z-007): er ist der Fall - grün nur, wenn alle Untertests grün sind und keiner übersprungen."""
+
+    GRUPPE = 'die Simulator-Faelle S1…S3 ueber den echten Modbus-Weg'
+    DATEI = 'edge-app/nodered/measurements/fixture.test.js'
+
+    def setUp(self):
+        super().setUp()
+        z = next(z for z in self.b.matrix['zusagen'] if z['kennzeichen'] == 'Z-015')
+        z['nachweis_kandidaten'] = [f'{self.DATEI}#{self.GRUPPE}']
+
+    def untertest(self, name, innen):
+        self.b.bericht_aendern('node-junit.xml', f'name="{name}" time="0.0002" classname="test" '
+                               f'file="/runner/work/voltpilot-ems/{self.DATEI}"/>',
+                               f'name="{name}" time="0.0002" classname="test" '
+                               f'file="/runner/work/voltpilot-ems/{self.DATEI}">{innen}</testcase>')
+
+    def test_drei_gruene_untertests_belegen_den_fall(self):
+        z = zeile(self.b.bericht(), 'Z-015')
+        self.assertEqual(z['urteil'], 'belegt', z['pruefung'])
+        n = z['nachweise'][0]
+        self.assertEqual((n['fundstelle'], n['stand'], n['gefahren_von']),
+                         (f'{self.DATEI}#{self.GRUPPE}', self.b.neu, GEFAHREN))
+        self.assertTrue(n['lauf'].endswith('node-junit.xml'))
+
+    def test_ein_roter_untertest_macht_den_fall_rot(self):
+        self.untertest('S2 Karte gelesen', '<failure type="testCodeFailure" message="x">x</failure>')
+        self.b.bericht_aendern('node-junit.xml', '<!-- fail 0 -->', '<!-- fail 1 -->')
+        self.assertEqual(gruende(zeile(self.b.bericht(), 'Z-015')), ['rot'])
+
+    def test_ein_uebersprungener_untertest_macht_den_fall_uebersprungen(self):
+        self.untertest('S3 Karte ausgefallen', '<skipped type="skipped" message="true"/>')
+        self.assertEqual(gruende(zeile(self.b.bericht(), 'Z-015')), ['uebersprungen'])
+
+    def test_ein_fehler_nur_in_der_summe_kann_der_des_tests_sein(self):
+        # node schreibt den Fehler des Tests selbst (nach grünen Untertests) an keinen <testcase>
+        self.b.bericht_aendern('node-junit.xml', '<!-- fail 0 -->', '<!-- fail 1 -->')
+        self.assertEqual(gruende(zeile(self.b.bericht(), 'Z-015')), ['rot'])
+
+    def test_ohne_untertest_gehoert_der_test_keiner_datei_und_belegt_nichts(self):
+        pfad = self.b.laeufe / 'node-junit.xml'
+        text = pfad.read_text(encoding='utf-8')
+        text = re.sub(r'(<testsuite name="die Simulator[^>]*>).*?(</testsuite>)', r'\1\2', text, flags=re.S)
+        pfad.write_text(text, encoding='utf-8')
+        self.assertEqual(gruende(zeile(self.b.bericht(), 'Z-015')), ['fall_fehlt'])
+
+    def test_untertests_einer_anderen_datei_sind_nicht_der_fall(self):
+        self.b.bericht_aendern('node-junit.xml', 'hostname="fixture">\n\t\t<testcase name="S1 Kopf gelesen" '
+                               'time="0.0003" classname="test" file="/runner/work/voltpilot-ems/edge-app/nodered/'
+                               'measurements/fixture.test.js"', 'hostname="fixture">\n\t\t<testcase name="S1 Kopf '
+                               'gelesen" time="0.0003" classname="test" file="/runner/work/anders.test.js"')
+        for name in ('S2 Karte gelesen', 'S3 Karte ausgefallen'):
+            self.b.bericht_aendern('node-junit.xml', f'name="{name}" time="0.0002" classname="test" '
+                                   f'file="/runner/work/voltpilot-ems/{self.DATEI}"',
+                                   f'name="{name}" time="0.0002" classname="test" file="/runner/work/anders.test.js"')
+        self.assertEqual(gruende(zeile(self.b.bericht(), 'Z-015')), ['fall_fehlt'])
+
+
 class UngeprueftBleibtOffen(MitBuehne):
     """NR2, NR3, RF-01 Gegenproben, RF-11: nichts Ungeprüftes wird positiv."""
 
