@@ -3,17 +3,27 @@ import type { HelpArticle } from '../model';
 export const plantArticles: HelpArticle[] = [
   {
     id: 'anlagenmodell', category: 'anlage', title: 'Den Aufbau Ihrer Anlage verstehen',
-    summary: 'Wie Standort, Anlage, VoltPilot-Box und Geräte zusammengehören.',
-    keywords: ['Aufbau', 'Standort', 'Komponente', 'Modell', 'Gerät', 'Box', 'Zuordnung', 'Messwert', 'Hinzufügen'],
+    summary: 'Wie Anlage, VoltPilot-Box und Geräte zusammengehören und wie Sie ein Gerät hinzufügen.',
+    keywords: ['Aufbau', 'Standort', 'Komponente', 'Modell', 'Gerät', 'Box', 'Zuordnung', 'Messwert', 'Hinzufügen', 'Katalog', 'Suche', 'Filter', 'Modbus', 'Ladesäule', 'Batterie'],
     sections: [
-      { id: 'ordnung', title: 'Vom Standort bis zum Messwert', paragraphs: [
-        "Der Reiter „Aufbau“ zeigt Ihre Anlage als Baum: oben der Standort, darunter seine Anlagen, die VoltPilot-Boxen und die Geräte daran. Ein Gerät kann mehrere Komponenten liefern, etwa Speicher und Netzanschluss. Eine Datenverbindung allein erlaubt noch keine Steuerung.",
+      { id: 'ordnung', title: 'Von der Anlage bis zum Messwert', paragraphs: [
+        "Der Reiter „Aufbau“ zeigt Ihre Anlage als Tabelle: die Anlage, ihre VoltPilot-Boxen und die Geräte daran, jedes mit Art, Zustand und Wert. Die Suche findet Namen, Modelle und Kennungen; die Filter grenzen nach Art, Zustand, Box und Hersteller ein. Ein Gerät kann mehrere Komponenten liefern, etwa Speicher und Netzanschluss. Eine Datenverbindung allein erlaubt noch keine Steuerung.",
       ], figure: 'modell' },
       { id: 'pruefen', title: 'Die eigene Anlage wiedererkennen', paragraphs: [], steps: [
-        'Unter Anlage den Reiter „Aufbau“ öffnen und die Namen im Baum prüfen.',
+        'Unter Anlage den Reiter „Aufbau“ öffnen und die Namen in der Tabelle prüfen.',
         'Ein Gerät antippen: Der Kurzblick zeigt, was es misst, und führt zur Geräteseite. Gerätetyp und Messgrößen mit der tatsächlichen Installation abgleichen.',
-        'Neues über „Hinzufügen“ anlegen: ein Gerät, eine VoltPilot-Box oder eine weitere Anlage. Was die Box schon meldet, steht gestrichelt im Baum und lässt sich übernehmen.',
+        'Was die Box schon meldet, steht gestrichelt in der Tabelle und lässt sich übernehmen.',
       ] },
+      { id: 'hinzufuegen', title: 'Ein Gerät hinzufügen', paragraphs: [
+        "Ohne passende Vorlage stehen Ladesäulen mit OCPP, Batterien mit eigenem BMS und Modbus-Geräte als eigene Einträge im Katalog. Eine VoltPilot-Box oder eine weitere Anlage legen Sie über das Menü neben „Gerät hinzufügen“ an.",
+      ], steps: [
+        '„Gerät hinzufügen“ öffnet den Gerätekatalog. Suchen Sie nach Marke oder Modell, so wie es auf dem Typenschild steht, oder wählen Sie über Art und Marke.',
+        'Nach der Wahl öffnet die Einrichten-Seite. Tragen Sie den Anschluss ein; die Box testet dann von selbst und zeigt echte Werte.',
+        'Mit echten Werten geht „Speichern“. Danach springt der Aufbau auf das neue Gerät.',
+      ], figure: 'geraet-hinzufuegen' },
+      { id: 'einrichten', title: 'Die Einrichten-Seite lesen', paragraphs: [
+        "Die Leiste links zeigt, was fertig ist, was jetzt dran ist und was danach kommt. Solange etwas fehlt, steht der Grund neben „Speichern“. Ein Test ohne gültige Werte speichert nichts; die Hinweise darunter nennen, was Sie prüfen können.",
+      ], figure: 'geraet-einrichten' },
       { id: 'unvollstaendig', title: 'Wenn das Modell unvollständig ist', paragraphs: [
         "Fehlende Komponenten oder Zuordnungen können Werte und Ansichten unvollständig machen. Prüfen Sie vorhandene Einträge, Synchronisation und Messwerte, bevor Sie ein Gerät erneut hinzufügen.",
       ] },

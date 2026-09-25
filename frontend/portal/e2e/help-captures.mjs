@@ -105,11 +105,32 @@ export const captures = [
     point('h2:has-text("Ladevorgänge")', 'Jeder Anschluss nennt seinen aktuellen Zustand und den Grund.'),
     point('h2:has-text("Ladesäulen")', 'Über die jeweilige Geräteseite gelangen Sie zu weiteren Details.'),
   ] },
-  { id: 'modell', title: 'Aufbau: Standort, Anlagen, Boxen und Geräte', hash: plant('modell'), root: 'main', maxHeight: 1400, points: [
-    point('.vp-auf-wurzel h2', 'Der Standort steht oben; darunter folgen seine Anlagen und Boxen.'),
-    point('.vp-auf-treffer', 'Die VoltPilot-Box verbindet die Geräte darunter mit VoltPilot.'),
+  { id: 'modell', title: 'Aufbau: Anlagen, Boxen und Geräte', hash: plant('modell'), root: 'main', maxHeight: 1400, points: [
+    point('.vp-auf-suche', 'Die Suche findet Namen, Modelle und Kennungen; die Filter daneben grenzen nach Art, Zustand, Box und Hersteller ein.'),
+    point('.vp-auf-t-zeile.is-box', 'Die VoltPilot-Box verbindet die Geräte darunter mit VoltPilot.'),
     point('[data-aufbau-geraet]', 'Ein Tippen auf ein Gerät öffnet den Kurzblick mit allen Werten.'),
-    point('.vp-auf-wurzel-aktion button', 'Hier legen Sie ein Gerät, eine Box oder eine Anlage an.'),
+    point('.vp-auf-neu-haupt', '„Gerät hinzufügen“ öffnet den Gerätekatalog; im Menü daneben legen Sie eine Box oder Anlage an.'),
+  ] },
+  { id: 'geraet-hinzufuegen', title: 'Gerät hinzufügen: der Gerätekatalog', hash: plant('modell'), root: '.vp-modal',
+    aktionen: [{ klick: 'Gerät hinzufügen' }], points: [
+    point('.vp-kat-suche', 'Suchen Sie nach Marke oder Modell, so wie es auf dem Typenschild steht.'),
+    point('.vp-kat-arten', 'Die Arten grenzen den Katalog ein. Unter „Zähler“ steht, wie Sie ohne eigene Zähler-Vorlage am Hausanschluss messen.'),
+    point('.vp-kat-eintrag.is-marke', 'Ohne Suche führt der Weg über die Marke zum Modell.'),
+    point('.vp-kat-eintrag.is-weg', 'Geräte ohne Vorlage, etwa eine Ladesäule mit OCPP, stehen als eigene Einträge.'),
+  ] },
+  { id: 'geraet-einrichten', title: 'Gerät einrichten: eine Seite mit Test', hash: plant('modell'), root: '.vp-modal',
+    aktionen: [
+      { klick: 'Gerät hinzufügen' },
+      { fuellen: ['Katalog durchsuchen', '12k'] },
+      { klick: /SUN-12K/ },
+      { fuellen: ['IP-Adresse des Datenloggers', '192.168.178.28'] },
+      { fuellen: ['Datenlogger-Seriennummer', '2712345678'] },
+      { warten: 'text=Diese Messwerte kommen gerade an' },
+      { zeigen: '.vp-assist-test' },
+    ], points: [
+    point('.vp-assist-test', 'Der Test läuft von selbst, sobald der Anschluss vollständig ist, und zeigt echte Werte.'),
+    point('#anlegen-name', 'Der Name ist frei wählbar; leer lassen ist in Ordnung.'),
+    point('[data-testid="einrichten-speichern"]', 'Gespeichert wird erst mit echten Werten. Solange etwas fehlt, steht der Grund daneben.'),
   ] },
   { id: 'box', title: 'Verbindung und Zustand der Box', hash: plant('box/VP-DEMO-0001'), root: 'main', points: [
     point('main h1', 'Prüfen Sie Namen und Geräte-ID der Box.'),

@@ -53,6 +53,19 @@ try {
       // Die Seite lädt ihre Daten nach dem ersten Bild - gewartet wird auf den
       // ersten Anker, nie auf eine feste Zeit, die auf einem langsamen Rechner fehlt.
       await page.locator(spec.points[0].selector).first().waitFor({ timeout: 15000 }).catch(() => {});
+      // Ein Weg durch echte Formulare (Katalog → Einrichten): klicken, ausfüllen,
+      // auf ein Ergebnis warten, eine Stelle ins Bild holen - wie ein Kunde.
+      for (const a of spec.aktionen ?? []) {
+        if (a.klick) await page.getByRole('button', { name: a.klick }).first().click();
+        if (a.fuellen) {
+          const feld = page.getByLabel(a.fuellen[0]).first();
+          await feld.fill(a.fuellen[1]);
+          await feld.blur();
+        }
+        if (a.warten) await page.locator(a.warten).first().waitFor({ timeout: 10000 });
+        if (a.zeigen) await page.locator(a.zeigen).first().evaluate((el) => el.scrollIntoView({ block: 'center' }));
+        await page.waitForTimeout(400);
+      }
       if (errors.length) throw new Error(errors.join('\n'));
       const rootNode = spec.viewportOnly ? null : await firstVisible(page, spec.root ?? 'main');
       const origin = rootNode ? await rootNode.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height }; }) : { x: 0, y: 0, ...viewport };

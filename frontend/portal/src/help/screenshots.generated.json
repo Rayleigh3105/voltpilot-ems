@@ -466,31 +466,31 @@
     ]
   },
   "modell": {
-    "title": "Aufbau: Standort, Anlagen, Boxen und Geräte",
+    "title": "Aufbau: Anlagen, Boxen und Geräte",
     "file": "modell.png",
     "width": 1192,
     "height": 932,
-    "alt": "Aufbau: Standort, Anlagen, Boxen und Geräte. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "alt": "Aufbau: Anlagen, Boxen und Geräte. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 10.15,
+        "x": 4.36,
         "y": 38.8,
-        "text": "Der Standort steht oben; darunter folgen seine Anlagen und Boxen."
+        "text": "Die Suche findet Namen, Modelle und Kennungen; die Filter daneben grenzen nach Art, Zustand, Box und Hersteller ein."
       },
       {
-        "x": 9.82,
-        "y": 57.55,
+        "x": 4.45,
+        "y": 60.12,
         "text": "Die VoltPilot-Box verbindet die Geräte darunter mit VoltPilot."
       },
       {
-        "x": 10.91,
-        "y": 64.69,
+        "x": 4.45,
+        "y": 66.67,
         "text": "Ein Tippen auf ein Gerät öffnet den Kurzblick mit allen Werten."
       },
       {
-        "x": 85.78,
-        "y": 38.81,
-        "text": "Hier legen Sie ein Gerät, eine Box oder eine Anlage an."
+        "x": 80.79,
+        "y": 44.38,
+        "text": "„Gerät hinzufügen“ öffnet den Gerätekatalog; im Menü daneben legen Sie eine Box oder Anlage an."
       }
     ]
   },
@@ -592,6 +592,59 @@
         "x": 9.23,
         "y": 86.94,
         "text": "Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle."
+      }
+    ]
+  },
+  "geraet-hinzufuegen": {
+    "title": "Gerät hinzufügen: der Gerätekatalog",
+    "file": "geraet-hinzufuegen.png",
+    "width": 640,
+    "height": 968,
+    "alt": "Gerät hinzufügen: der Gerätekatalog. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 8.28,
+        "y": 14.05,
+        "text": "Suchen Sie nach Marke oder Modell, so wie es auf dem Typenschild steht."
+      },
+      {
+        "x": 3.28,
+        "y": 19.83,
+        "text": "Die Arten grenzen den Katalog ein. Unter „Zähler“ steht, wie Sie ohne eigene Zähler-Vorlage am Hausanschluss messen."
+      },
+      {
+        "x": 8.44,
+        "y": 29.12,
+        "text": "Ohne Suche führt der Weg über die Marke zum Modell."
+      },
+      {
+        "x": 8.44,
+        "y": 61.59,
+        "text": "Geräte ohne Vorlage, etwa eine Ladesäule mit OCPP, stehen als eigene Einträge."
+      }
+    ]
+  },
+  "geraet-einrichten": {
+    "title": "Gerät einrichten: eine Seite mit Test",
+    "file": "geraet-einrichten.png",
+    "width": 640,
+    "height": 968,
+    "alt": "Gerät einrichten: eine Seite mit Test. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 14.22,
+        "y": 41.57,
+        "text": "Der Test läuft von selbst, sobald der Anschluss vollständig ist, und zeigt echte Werte."
+      },
+      {
+        "x": 14.22,
+        "y": 71.41,
+        "text": "Der Name ist frei wählbar; leer lassen ist in Ordnung."
+      },
+      {
+        "x": 76.84,
+        "y": 94.4,
+        "text": "Gespeichert wird erst mit echten Werten. Solange etwas fehlt, steht der Grund daneben."
       }
     ]
   }
