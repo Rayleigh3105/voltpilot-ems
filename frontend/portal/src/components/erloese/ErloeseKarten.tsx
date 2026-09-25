@@ -1,16 +1,17 @@
 import type { ReactNode } from 'react';
-import type { Ebene2 } from '../../erloesEbenen';
 import type { Abrechnung, LastspitzeKontext, MehrwertBand } from '../../erloeseSeite';
 import type { SekundaerZiel } from '../../erloesZeilen';
+import { PREISE_TITEL, type PreisVergleich } from '../../preisVergleich';
 import { chartTheme } from '../../chartTheme';
 import { Erklaert, VrKarte } from '../VerlaufRahmen';
+import { Balkenliste } from './Balkenliste';
 import './ErloeseSeite.css';
 
 /**
  * Die Karten der Erlöse-Seite neben dem Diagramm (Konzept „Verlauf-Rework",
  * Paket P2): die Erklärung der Kachel „VoltPilot-Steuerung", die ABRECHNUNG und der
  * Kontext darunter — Preise, Lastspitze. Reine Render-Bausteine über
- * `erloeseSeite.ts`.
+ * `erloeseSeite.ts` und `preisVergleich.ts`.
  */
 
 /** Die Rollenfarbe je Posten — dieselbe wie im Diagramm. */
@@ -101,42 +102,32 @@ export function AbrechnungKarte({
   );
 }
 
-/** „… — Tarif hinterlegen ›": der Weg am Ende eines Preis-Werts wird ein Link. */
-function preisWert(wert: string, hrefFor: (ziel: SekundaerZiel) => string): ReactNode {
-  const i = wert.lastIndexOf(' — ');
-  if (i < 0 || !wert.trim().endsWith('›')) return wert;
-  const weg = wert.slice(i + 3);
-  const ziel: SekundaerZiel = /verknüpf/i.test(weg) ? 'mastr' : 'tarif';
-  const text = weg.replace(/^nicht verknüpft:\s*/, '');
-  return (
-    <>
-      {wert.slice(0, i)}
-      {' · '}
-      <a className="vp-vr-link" href={hrefFor(ziel)}>
-        {text}
-      </a>
-    </>
-  );
-}
-
-/** **Preise im Zeitraum** — die Zeilen von Ebene 2, Begriffe im ⓘ. */
+/**
+ * **Preise im Zeitraum** — was eine Kilowattstunde wert war: Eigenverbrauch ·
+ * Einspeisung · Netzbezug als Balken auf einer ct-Skala (Konzept „Erlöse ·
+ * Preise und Verdienst", 25.09.2026). Die Antwort steht als Merksatz darüber,
+ * die Tarif-Grundlage als Unterzeile, die Begriffe im ⓘ.
+ */
 export function PreiseKarte({
-  ebene2,
+  preise,
+  periode,
   hrefFor,
 }: {
-  ebene2: Ebene2;
+  preise: PreisVergleich;
+  periode: string;
   hrefFor: (ziel: SekundaerZiel) => string;
 }) {
   return (
     <VrKarte
-      titel="Preise im Zeitraum"
+      titel={PREISE_TITEL}
+      sub={`${periode} · je kWh`}
       info={
-        ebene2.glossar.length > 0
+        preise.glossar.length > 0
           ? {
               titel: 'Begriffe',
               text: (
                 <dl className="vp-vr-begriffe">
-                  {ebene2.glossar.map((g) => (
+                  {preise.glossar.map((g) => (
                     <div key={g.begriff}>
                       <dt>{g.begriff}</dt>
                       <dd>{g.erklaerung}</dd>
@@ -148,14 +139,9 @@ export function PreiseKarte({
           : null
       }
     >
-      <dl className="vp-vr-liste">
-        {ebene2.zeilen.map((z) => (
-          <div key={z.label}>
-            <dt>{z.label}</dt>
-            <dd>{preisWert(z.wert, hrefFor)}</dd>
-          </div>
-        ))}
-      </dl>
+      {preise.merksatz && <p className="vp-bl-merksatz">{preise.merksatz}</p>}
+      <Balkenliste liste={preise.liste} hrefFor={hrefFor} />
+      <p className="vp-vr-foot">{preise.fuss}</p>
     </VrKarte>
   );
 }

@@ -205,22 +205,22 @@
     "title": "Erlöse: Ergebnis und Abrechnung",
     "file": "erloese.png",
     "width": 1192,
-    "height": 1346,
+    "height": 1427,
     "alt": "Erlöse: Ergebnis und Abrechnung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 10.17,
-        "y": 15.81,
+        "y": 14.92,
         "text": "Der Zeitrahmen gilt für die gezeigte wirtschaftliche Auswertung."
       },
       {
         "x": 4.36,
-        "y": 24.72,
+        "y": 23.32,
         "text": "Das Ergebnis steht vorn; daneben die Posten, aus denen es entsteht."
       },
       {
         "x": 68.9,
-        "y": 36.07,
+        "y": 34.02,
         "text": "Die Abrechnung zeigt je Posten Menge, Durchschnittspreis und Betrag."
       }
     ]

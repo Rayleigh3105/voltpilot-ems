@@ -386,6 +386,34 @@ export function nullCtSatz(satzCt: number): string {
   );
 }
 
+/** Worauf die Beträge beruhen — der Wert der Zeile „Bewertung". */
+export const BEWERTUNG_WERT = 'heutige Tarif- und Vergütungsangaben — nicht Ihre Abrechnung';
+
+/**
+ * Was der Speicher darf — und, wo der Endpunkt es liefert, was das Netzladen
+ * gebracht hat. `null` = die Anlage sagt es nicht (`site.netzladenErlaubt`).
+ *
+ * P6/E5: die Preis-Karte „Was den Preis gemacht hat" ist ENTFALLEN, ihre
+ * Zeilen wohnen in Ebene 2 bzw. in der Preis-Karte. Ihre Netzladen-Zeile trug
+ * neben dem Hinweis auch die ZAHL („davon durch Netzladen + 12,40 €") — sie
+ * steht deshalb im selben Satz wie der Hinweis.
+ *
+ * ⚠ Die Zahl wird NUR genannt, wenn der Endpunkt sie liefert UND sie etwas
+ *   bewegt hat — eine „+ 0,00 €"-Zeile behauptete einen Netzlade-Handel, den
+ *   es nicht gab. Fehlt sie auf einer Anlage, die netzladen DARF, bleibt es
+ *   beim Hinweis: „nicht geladen" wäre eine Aussage über einen Zeitraum, für
+ *   den der Endpunkt keine Zurechnung hat.
+ */
+export function speicherWert(money: SiteEarnings, netzladenErlaubt: boolean | null | undefined): string | null {
+  if (netzladenErlaubt == null) return null;
+  const arb = num(money.arbitrageEur);
+  const handel =
+    netzladenErlaubt && arb != null && Math.abs(arb) >= 0.005
+      ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}`
+      : '';
+  return `${netzladenErlaubt ? 'darf aus dem Netz laden' : 'lädt nur Sonnenstrom'}${handel}`;
+}
+
 export interface Ebene2Input {
   money: SiteEarnings;
   /** Ob der Speicher aus dem Netz laden darf (`site.netzladenErlaubt`). */
@@ -482,34 +510,10 @@ export function ebene2(input: Ebene2Input): Ebene2 {
     if (!glossar.includes(GLOSSAR.boerse)) glossar.push(GLOSSAR.boerse);
   }
 
-  // --- Speicher + Bewertung ---------------------------------------------
-  //
-  // P6/E5: die Preis-Karte „Was den Preis gemacht hat" ist ENTFALLEN, ihre
-  // Zeilen wohnen hier. Ihre Netzladen-Zeile trug neben dem Hinweis auch die
-  // ZAHL („davon durch Netzladen + 12,40 €") — sie steht deshalb im selben
-  // Satz wie der Hinweis, statt eine eigene Zeile zu bekommen: das
-  // Textbudget der Tabelle (§3.4: höchstens acht Zeilen) gehört den Preisen.
-  //
-  // ⚠ Die Zahl wird NUR genannt, wenn der Endpunkt sie liefert UND sie etwas
-  //   bewegt hat — eine „+ 0,00 €"-Zeile behauptete einen Netzlade-Handel, den
-  //   es nicht gab. Fehlt sie auf einer Anlage, die netzladen DARF, bleibt es
-  //   beim Hinweis: „nicht geladen" wäre eine Aussage über einen Zeitraum, für
-  //   den der Endpunkt keine Zurechnung hat.
-  if (input.netzladenErlaubt != null) {
-    const arb = num(money.arbitrageEur);
-    const handel =
-      input.netzladenErlaubt && arb != null && Math.abs(arb) >= 0.005
-        ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}`
-        : '';
-    zeilen.push({
-      label: 'Speicher',
-      wert: `${input.netzladenErlaubt ? 'darf aus dem Netz laden' : 'lädt nur Sonnenstrom'}${handel}`,
-    });
-  }
-  zeilen.push({
-    label: 'Bewertung',
-    wert: 'heutige Tarif- und Vergütungsangaben — nicht Ihre Abrechnung',
-  });
+  // --- Speicher + Bewertung (dieselben Sätze wie in `preisVergleich.ts`) --
+  const speicher = speicherWert(money, input.netzladenErlaubt);
+  if (speicher != null) zeilen.push({ label: 'Speicher', wert: speicher });
+  zeilen.push({ label: 'Bewertung', wert: BEWERTUNG_WERT });
 
   glossar.push(GLOSSAR.eigenverbrauch, GLOSSAR.netzbezug, GLOSSAR.ergebnis);
   if (num(money.speicherWertEur) != null) glossar.push(GLOSSAR.planwert);

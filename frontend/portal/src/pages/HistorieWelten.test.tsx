@@ -414,7 +414,9 @@ describe('Welt B · Erlöse', () => {
     await geladen();
 
     const preise = screen.getByRole('region', { name: 'Preise im Zeitraum' });
-    expect(within(preise).getByText('Bezugspreis')).toBeInTheDocument();
+    // Seit dem Balken-Umbau (25.09.2026) heißt die Zeile wie der Posten der
+    // Abrechnung: „Netzbezug" — ihr Wert ist derselbe Ø-Bezugspreis.
+    expect(within(preise).getByText('Netzbezug')).toBeInTheDocument();
     expect(nb(preise.textContent)).toMatch(/4,9.ct/);
     expect(screen.getByText('+ 3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
   });

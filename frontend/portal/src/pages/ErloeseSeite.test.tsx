@@ -182,8 +182,34 @@ describe('Aufbau · Kennzahlen, Verlauf, Abrechnung, Kontext', () => {
       'Erlöse je Stunde',
       'Abrechnung',
       'Preise im Zeitraum',
-      'So verdient Ihre Anlage · September 2026',
+      'So verdient Ihre Anlage',
     ]);
+  });
+
+  it('Preise und „So verdient" stehen in EINER Reihe, die Lastspitze rückt darunter', async () => {
+    stub({
+      peakShaving: {
+        leistungspreisEurKw: 120,
+        abrechnung: 'jahr',
+        periodStart: '2026-01-01',
+        peakKw: 61.2,
+        baselinePeakKw: 71.24,
+        avoidedKw: 10.04,
+        avoidedEur: 1204,
+        history: [],
+      },
+    });
+    render(<ErloeseSection site={site()} />);
+    await geladen();
+
+    const preise = screen.getByRole('region', { name: 'Preise im Zeitraum' });
+    const verdient = screen.getByRole('region', { name: 'So verdient Ihre Anlage' });
+    const spitze = screen.getByRole('region', { name: 'Lastspitze' });
+    expect(preise.parentElement).toBe(verdient.parentElement);
+    expect(spitze.parentElement).not.toBe(preise.parentElement);
+    // Der Monat steht als Unterzeile neben dem Titel, wie bei der Abrechnung.
+    const titel = within(verdient).getByRole('heading', { level: 2 });
+    expect(within(titel).getByText('September 2026').tagName).toBe('SMALL');
   });
 
   it('EEG: ohne Markt-Karte — eine feste Vergütung hat keinen Monatsdurchschnitt', async () => {
@@ -204,6 +230,36 @@ describe('Aufbau · Kennzahlen, Verlauf, Abrechnung, Kontext', () => {
     expect(text).not.toMatch(/2,67/);
     expect(text).not.toMatch(/4,10 €/);
     expect(text).not.toMatch(/Ohne Speicher wären/i);
+  });
+});
+
+describe('Preise im Zeitraum · was eine Kilowattstunde wert war', () => {
+  it('zeigt drei Balken mit DENSELBEN Ø-Preisen wie die Abrechnung', async () => {
+    stub();
+    render(<ErloeseSection site={site()} />);
+    await geladen();
+
+    const karte = screen.getByRole('region', { name: 'Preise im Zeitraum' });
+    const liste = within(karte).getByRole('list', { name: 'Preise je Kilowattstunde' });
+    const zeilen = within(liste).getAllByRole('listitem').map((li) => nb(li.textContent));
+    expect(zeilen[0]).toMatch(/^Eigenverbrauch\s*25,0 ct\s*gespart: vermiedener Netzbezug$/);
+    expect(zeilen[1]).toMatch(/^Einspeisung.*7,6 ct\s*verdient: Börse \+ Marktprämie$/);
+    expect(zeilen[2]).toMatch(/^Netzbezug\s*25,2 ct\s*bezahlt: fester Tarif 25 ct\/kWh$/);
+    // Die Antwort über den Balken — und die Fußzeile mit Speicher und Bewertung.
+    expect(within(karte).getByText('Selbst genutzter Strom war mehr wert als eingespeister.')).toBeInTheDocument();
+    expect(nb(karte.textContent)).toMatch(/Speicher lädt nur Sonnenstrom · Bewertung: heutige Tarif- und Vergütungsangaben/);
+    // Die Direktvermarktungs-Größen stehen nicht mehr doppelt in dieser Karte.
+    expect(within(karte).queryByText(/Anzulegender Wert/)).toBeNull();
+    expect(within(karte).queryByText(/Monatsmarktwert/)).toBeNull();
+  });
+
+  it('legt den Satz „Bei 0,0 ct Börsenpreis" wortgleich ins ⓘ an der Einspeisung', async () => {
+    stub();
+    render(<ErloeseSection site={site()} />);
+    await geladen();
+
+    const karte = screen.getByRole('region', { name: 'Preise im Zeitraum' });
+    expect(within(karte).getByRole('button', { name: 'Erklärung: Bei 0,0 ct Börsenpreis' })).toBeInTheDocument();
   });
 });
 

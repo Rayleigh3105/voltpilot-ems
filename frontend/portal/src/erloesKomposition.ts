@@ -1321,10 +1321,10 @@ function steeringTitel(money: SiteEarnings | null): string | null {
 //   Ebene 2 der Ergebnis-Karte („Preise & Vergütung", `erloesEbenen.ebene2`).
 //   Dieselbe Preiswahrheit stand zweimal auf der Seite.
 //
-//   Der TYP bleibt, weil `soVerdient()` ihn für seine eigene Zeilen-Form (S8)
-//   benutzt — die Rückfall-Darstellung des Kombinations-Bilds, wenn es kein
-//   Bild zu zeichnen gibt. Er ist also nicht der Rest einer toten Karte,
-//   sondern das Zeilen-Format der Karte „So verdient Ihre Anlage".
+//   ⚠ Seit dem Balken-Umbau von „So verdient Ihre Anlage" (25.09.2026) hat
+//   der TYP keinen Verwender mehr: auch die Mehrmonats-Form (S8) zeigt ihre
+//   zwei Werte als Balken (`balkenliste.ts`). Er bleibt vorerst stehen —
+//   entfernt wird er erst nach Rückfrage.
 // ---------------------------------------------------------------------------
 
 export type PreisZeileId =

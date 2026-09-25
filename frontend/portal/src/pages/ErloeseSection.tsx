@@ -14,9 +14,10 @@ import {
 import { abdeckungView, mitVergleich, parseVergleichModus } from '../historieZeit';
 import { erloesVergleich, vollerVergleichsName } from '../vergleichLaufend';
 import { erloesErgebnis } from '../erloesKomposition';
-import { ebene2, speicherSchritte, type SpeicherSchritteInput } from '../erloesEbenen';
+import { speicherSchritte, type SpeicherSchritteInput } from '../erloesEbenen';
 import { isCurrentPeriod } from '../energieBilanz';
-import { soVerdient } from '../soVerdient';
+import { KARTEN_TITEL as SO_VERDIENT_TITEL, soVerdient } from '../soVerdient';
+import { preisVergleich } from '../preisVergleich';
 import { historieHash, WELTEN, type WeltId } from '../historieWelten';
 import { useHistoryPeriod } from '../useHistoryPeriod';
 import { useSiteEarnings, useVergleichsErloese } from '../useSiteEarnings';
@@ -85,8 +86,10 @@ import { RechenZeilen, SpeicherSchritte, SteuerungFormel } from '../components/S
  *    als Punkt), umschaltbar auf „Kumuliert" und auf die Tabelle. Am Tag
  *    steht darunter der Börsenpreis derselben Stunde.
  * 3. **Abrechnung** — Menge × Ø Preis = Betrag je Posten, darunter der Strich.
- * 4. **Kontext** — Preise im Zeitraum, Lastspitze; bei
- *    Direktvermarktung die Einordnung gegen den Markt.
+ * 4. **Kontext** — „Preise im Zeitraum" (was eine kWh wert war, als Balken)
+ *    und bei Direktvermarktung daneben „So verdient Ihre Anlage" (die
+ *    Einordnung gegen den Markt); die Lastspitze rückt dann in die nächste
+ *    Reihe, sonst steht sie neben den Preisen.
  *
  * Erklärungen stehen auf Abruf (ⓘ am Begriff, Statuszeile, Hilfeartikel) —
  * nie als Absatz im Weg. Alle Zahlen kommen aus reinen Ableitungen
@@ -525,18 +528,29 @@ export function ErloeseSection({
                   </div>
                 </div>
 
+                {/* Preise und „So verdient" stehen nebeneinander (Konzept „Erlöse ·
+                    Preise und Verdienst", E1 = nebeneinander): dieselbe Frage —
+                    was eine kWh wert war — einmal für alle drei Posten, einmal
+                    für die Einspeisung gegen den Markt. */}
                 <div className="vp-vr-row3">
                   <PreiseKarte
-                    ebene2={ebene2({ money, netzladenErlaubt: site.netzladenErlaubt ?? null })}
+                    preise={preisVergleich({ money, netzladenErlaubt: site.netzladenErlaubt ?? null })}
+                    periode={label}
                     hrefFor={hrefFor}
                   />
-                  {lastspitze && <LastspitzeKarte k={lastspitze} detailHref={`#/anlage/${site.id}/lastspitzen`} />}
+                  {verdient ? (
+                    <VrKarte titel={SO_VERDIENT_TITEL} sub={verdient.monatLabel ?? undefined}>
+                      <SoVerdientInhalt view={verdient} />
+                    </VrKarte>
+                  ) : (
+                    lastspitze && <LastspitzeKarte k={lastspitze} detailHref={`#/anlage/${site.id}/lastspitzen`} />
+                  )}
                 </div>
 
-                {verdient && (
-                  <VrKarte titel={verdient.titel}>
-                    <SoVerdientInhalt view={verdient} />
-                  </VrKarte>
+                {verdient && lastspitze && (
+                  <div className="vp-vr-row3">
+                    <LastspitzeKarte k={lastspitze} detailHref={`#/anlage/${site.id}/lastspitzen`} />
+                  </div>
                 )}
               </>
             )}
