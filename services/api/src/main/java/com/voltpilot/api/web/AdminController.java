@@ -304,7 +304,7 @@ public class AdminController {
         requireTenant(tenantId);
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(org.springframework.http.CacheControl.noStore())
                 .body(benutzer.erster(tenantId, new BenutzerService.Anlage(request.username(), request.email(),
-                        request.firstName(), request.lastName(), null, List.of()),
+                        request.firstName(), request.lastName(), null, List.of(), null),
                         ProtokollAkteur.aus(auth).orElseThrow()));
     }
 

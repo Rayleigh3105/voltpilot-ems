@@ -1,12 +1,22 @@
 package com.voltpilot.api.zugriff;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.benutzer.Startpasswort;
+import com.voltpilot.api.benutzer.StartpasswortKonten;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,7 +28,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.core.Authentication;
@@ -81,6 +93,10 @@ class BenutzerVerwaltungApiTest {
 
     @Autowired
     MockMvc mvc;
+
+    /** Das Keycloak-Konto beim Anlegen (AP-19 Folge IP-13) — ohne Keycloak-Container; die Zuweisung ist echt. */
+    @MockBean
+    StartpasswortKonten konten;
 
     private static JdbcTemplate root;
     private static UUID standortA;
@@ -217,6 +233,111 @@ class BenutzerVerwaltungApiTest {
         assertThat(zuweisungen(sub)).hasSize(2);
     }
 
+    // ================================================================= AP-19 Folge IP-13 — Einsicht befristen (R6)
+
+    /**
+     * AP-19 Folge IP-13 (RE3, R6: „Einsicht bis 31.01.2029“ in einem Schritt): {@code POST /api/v1/benutzer} nimmt
+     * {@code gueltig_bis} an — dieselben Regeln wie {@code POST /api/v1/zugriff}: nur Einsicht (400), nicht vor heute
+     * (422 {@code gueltig_bis_vergangen}), und jede Ablehnung kommt VOR dem Keycloak-Konto. Die Frist steht in der
+     * Zuweisung und im Zugriffsprotokoll; nach ihrem Ende ist die unternehmensweite Sicht weg. Ohne {@code gueltig_bis}
+     * bleibt die Zuweisung unbefristet wie bisher; ohne {@code benutzer.verwalten} 403.
+     */
+    @Test void ap19FolgeAnlegenMitBisBefristetEinsichtInEinemSchritt() throws Exception {
+        var jonas = konto(JONAS, DEMO);
+        LocalDate heute = LocalDate.now(ZoneId.of("Europe/Berlin"));
+        when(konten.kunde(any(), anyString(), anyString(), any(), any())).thenAnswer(a -> new StartpasswortKonten.Angelegt(
+                new KeycloakUser("kc-" + a.getArgument(1), a.getArgument(1), a.getArgument(2), null, null, true,
+                        DEMO.toString()), new Startpasswort("Start-Passwort-24!")));
+
+        assertThat(ruf(post("/api/v1/benutzer", anlage("bis-leser", "leser", List.of(standortA), heute.plusDays(3).toString())),
+                jonas).status()).as("befristen lässt sich nur Einsicht").isEqualTo(400);
+        Antwort gestern = ruf(post("/api/v1/benutzer", anlage("bis-gestern", "einsicht", List.of(), heute.minusDays(1).toString())), jonas);
+        assertThat(gestern.status()).as("ein letzter Tag vor heute").isEqualTo(422);
+        assertThat(gestern.body()).contains("gueltig_bis_vergangen");
+        assertThat(ruf(post("/api/v1/benutzer", anlage("bis-kein-tag", "einsicht", List.of(), "31.01.2029")), jonas).status())
+                .as("kein Tag").isEqualTo(400);
+        assertThat(ruf(post("/api/v1/benutzer", anlage("bis-ines", "einsicht", List.of(), heute.plusDays(3).toString())),
+                konto(INES, DEMO)).status()).as("Energiemanager hat benutzer.verwalten nicht").isEqualTo(403);
+        verify(konten, never()).kunde(any(), anyString(), anyString(), any(), any());
+
+        Antwort befristet = ruf(post("/api/v1/benutzer", anlage("bis-falk", "einsicht", List.of(), heute.plusDays(10).toString())), jonas);
+        assertThat(befristet.status()).as(befristet.body()).isEqualTo(201);
+        String falk = "kc-bis-falk";
+        assertThat(root.queryForObject("SELECT gueltig_bis FROM zugriff WHERE tenant_id = ? AND benutzer_sub = ? "
+                + "AND rolle = 'einsicht'", LocalDate.class, DEMO, falk)).isEqualTo(heute.plusDays(10));
+        assertThat(root.queryForObject("SELECT endet_am = ((gueltig_bis + 1)::timestamp AT TIME ZONE zeitzone) FROM zugriff "
+                + "WHERE tenant_id = ? AND benutzer_sub = ?", Boolean.class, DEMO, falk)).as("letzter Tag einschließlich").isTrue();
+        assertThat(root.queryForObject("SELECT count(*) FROM zugriff_protokoll WHERE tenant_id = ? AND betroffener_sub = ? "
+                + "AND aktion = 'zuweisen' AND rolle = 'einsicht' AND gueltig_bis = ?", Integer.class, DEMO, falk,
+                heute.plusDays(10))).as("protokolliert mit Frist").isEqualTo(1);
+
+        Antwort ohne = ruf(post("/api/v1/benutzer", anlage("bis-ohne", "einsicht", List.of(), null)), jonas);
+        assertThat(ohne.status()).as(ohne.body()).isEqualTo(201);
+        assertThat(root.queryForObject("SELECT gueltig_bis IS NULL AND endet_am IS NULL FROM zugriff WHERE tenant_id = ? "
+                + "AND benutzer_sub = 'kc-bis-ohne'", Boolean.class, DEMO)).as("ohne Frist unbefristet wie bisher").isTrue();
+        Antwort leser = ruf(post("/api/v1/benutzer", anlage("ohne-frist-leser", "leser", List.of(standortA), null)), jonas);
+        assertThat(leser.status()).as("Bestand: Standortrolle ohne Frist").isEqualTo(201);
+
+        assertThat(MAPPER.readTree(ruf(get("/api/v1/me"), konto(falk, DEMO)).body()).path("unternehmensweit").asBoolean())
+                .as("während der Frist unternehmensweit").isTrue();
+        assertThat(ruf(get("/api/v1/sites/" + siteB), konto(falk, DEMO)).status()).isEqualTo(200);
+        ablaufen(falk);
+        assertThat(ruf(get("/api/v1/sites/" + siteB), konto(falk, DEMO)).status()).as("nach dem letzten Tag").isNotEqualTo(200);
+        assertThat(ruf(get("/api/v1/sites/" + BERLIN_SITE), konto(falk, DEMO)).status()).isNotEqualTo(200);
+    }
+
+    /**
+     * AP-19 Folge IP-13 (R6): {@code PUT /api/v1/benutzer/{sub}/zugriff} nimmt {@code gueltig_bis} an — eine Leserin
+     * bekommt „Einsicht“ befristet dazu, eine unbefristete Einsicht wird durch eine befristete ersetzt. Dieselben Regeln
+     * (400, 422, 403), und eine Ablehnung ändert nichts — auch nicht an der bisherigen Zuweisung. Nach dem Ende sieht sie
+     * wieder die Teilansicht ihres Leser-Standorts (AP-03 E10).
+     */
+    @Test void ap19FolgeAendernMitBisBefristetEinsichtUndDanachGiltWiederDieTeilansicht() throws Exception {
+        String sub = "konto-einsicht-bis"; spiegel(sub); amStandort(sub, "leser", standortA);
+        var jonas = konto(JONAS, DEMO);
+        LocalDate heute = LocalDate.now(ZoneId.of("Europe/Berlin"));
+        String pfad = "/api/v1/benutzer/" + sub + "/zugriff";
+
+        assertThat(ruf(put(pfad, List.of(), "leser", List.of(standortB), heute.plusDays(3).toString()), jonas).status())
+                .as("befristen lässt sich nur Einsicht").isEqualTo(400);
+        Antwort gestern = ruf(put(pfad, List.of(), "einsicht", List.of(), heute.minusDays(1).toString()), jonas);
+        assertThat(gestern.status()).isEqualTo(422);
+        assertThat(gestern.body()).contains("gueltig_bis_vergangen");
+        assertThat(ruf(put(pfad, List.of(), "einsicht", List.of(), heute.plusDays(3).toString()), konto(INES, DEMO)).status())
+                .isEqualTo(403);
+        assertThat(zuweisungen(sub)).as("keine Ablehnung ändert etwas").hasSize(1);
+
+        assertThat(ruf(put(pfad, List.of(), "einsicht", List.of(), null), jonas).status()).isEqualTo(204);
+        UUID unbefristet = zuweisung(sub, "einsicht");
+        assertThat(root.queryForObject("SELECT gueltig_bis IS NULL FROM zugriff WHERE id = ?", Boolean.class, unbefristet))
+                .as("ohne Frist unbefristet wie bisher").isTrue();
+        Antwort vergangenErsetzen = ruf(put(pfad, List.of(unbefristet), "einsicht", List.of(), heute.minusDays(1).toString()), jonas);
+        assertThat(vergangenErsetzen.status()).isEqualTo(422);
+        assertThat(zuweisung(sub, "einsicht")).as("die bisherige Einsicht bleibt").isEqualTo(unbefristet);
+
+        assertThat(ruf(put(pfad, List.of(unbefristet), "einsicht", List.of(), heute.toString()), jonas).status())
+                .as("Ändern mit „bis“").isEqualTo(204);
+        UUID befristet = zuweisung(sub, "einsicht");
+        assertThat(befristet).isNotEqualTo(unbefristet);
+        assertThat(root.queryForObject("SELECT gueltig_bis FROM zugriff WHERE id = ?", LocalDate.class, befristet)).isEqualTo(heute);
+        assertThat(root.queryForObject("SELECT count(*) FROM zugriff_protokoll WHERE tenant_id = ? AND betroffener_sub = ? "
+                + "AND aktion = 'zuweisen' AND rolle = 'einsicht' AND gueltig_bis = ?", Integer.class, DEMO, sub, heute))
+                .as("protokolliert mit Frist").isEqualTo(1);
+        assertThat(zuweisungen(sub)).as("die Leser-Zuweisung bleibt").hasSize(2);
+
+        Authentication pruefer = konto(sub, DEMO);
+        assertThat(MAPPER.readTree(ruf(get("/api/v1/me"), pruefer).body()).path("unternehmensweit").asBoolean()).isTrue();
+        assertThat(ruf(get("/api/v1/sites/" + siteB), pruefer).status()).as("heute ist der letzte Tag").isEqualTo(200);
+        ablaufen(sub);
+        JsonNode danach = MAPPER.readTree(ruf(get("/api/v1/me"), pruefer).body());
+        assertThat(danach.path("unternehmensweit").asBoolean()).isFalse();
+        List<String> sichtbar = new ArrayList<>();
+        danach.path("standorte").forEach(st -> sichtbar.add(st.path("name").asText()));
+        assertThat(sichtbar).as("Teilansicht ihres Leser-Standorts").containsExactly("Werk Ahrenberg");
+        assertThat(ruf(get("/api/v1/sites/" + siteB), pruefer).status()).isEqualTo(404);
+        assertThat(ruf(get("/api/v1/sites/" + BERLIN_SITE), pruefer).status()).isEqualTo(200);
+    }
+
     @Test void parallelesSperrenLaesstImmerEinenAdministratorUebrig() throws Exception {
         UUID tenant = UUID.randomUUID();
         root.update("INSERT INTO tenant (id, name) VALUES (?, 'Ahrenberg Paralleltest')", tenant);
@@ -233,6 +354,42 @@ class BenutzerVerwaltungApiTest {
         }
         assertThat(root.queryForObject("SELECT count(*) FROM zugriff z JOIN benutzer b ON b.tenant_id = z.tenant_id AND b.sub = z.benutzer_sub "
                 + "WHERE z.tenant_id = ? AND z.beendet_am IS NULL AND b.zustand = 'aktiv'", Integer.class, tenant)).isEqualTo(1);
+    }
+
+    private static String anlage(String username, String rolle, List<UUID> standorte, String gueltigBis) throws Exception {
+        Map<String, Object> body = new HashMap<>(Map.of("username", username, "email", username + "@folge-ip13.example",
+                "rolle", rolle, "standorte", standorte));
+        if (gueltigBis != null) body.put("gueltig_bis", gueltigBis);
+        return MAPPER.writeValueAsString(body);
+    }
+
+    private static MockHttpServletRequestBuilder put(String pfad, List<UUID> bisher, String rolle, List<UUID> standorte,
+            String gueltigBis) throws Exception {
+        Map<String, Object> body = new HashMap<>(Map.of("bisher", bisher, "rolle", rolle, "standorte", standorte));
+        if (gueltigBis != null) body.put("gueltig_bis", gueltigBis);
+        return MockMvcRequestBuilders.put(uri(pfad)).contentType(MediaType.APPLICATION_JSON)
+                .content(MAPPER.writeValueAsString(body));
+    }
+
+    /**
+     * Die laufende Einsicht endet „gestern“ — wie nach Ablauf ihrer Frist. Ein Zugriff wird nie umgeschrieben (Trigger
+     * {@code zugriff_nur_beenden}); nur dieser Test schiebt die Zeile darum an ihm vorbei in die Vergangenheit.
+     */
+    private static void ablaufen(String sub) {
+        int zeilen = root.execute((ConnectionCallback<Integer>) c -> {
+            try (var st = c.prepareStatement("UPDATE zugriff SET gueltig_ab = gueltig_ab - interval '30 days', "
+                    + "gueltig_bis = (now() AT TIME ZONE zeitzone)::date - 1, "
+                    + "endet_am = (((now() AT TIME ZONE zeitzone)::date)::timestamp AT TIME ZONE zeitzone) "
+                    + "WHERE tenant_id = ? AND benutzer_sub = ? AND rolle = 'einsicht' AND beendet_am IS NULL")) {
+                c.createStatement().execute("SET session_replication_role = replica");
+                st.setObject(1, DEMO);
+                st.setString(2, sub);
+                return st.executeUpdate();
+            } finally {
+                c.createStatement().execute("SET session_replication_role = origin");
+            }
+        });
+        assertThat(zeilen).isEqualTo(1);
     }
 
     private static List<UUID> zuweisungen(String sub) {

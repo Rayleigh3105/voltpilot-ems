@@ -20,6 +20,10 @@ Die Folgenvorschau ruft `rechte.darf` mit `rechte-matrix.json` auf. Sie gibt kei
   die angegebenen Zuweisungen über `ZugriffAenderung`; leeres `bisher` ergänzt eine Rolle.
   Fremdes Konto oder fremde Zuweisung: 404, fehlender Standort: 422, vorhandene Rolle im gleichen
   Geltungsbereich: 409 `zuweisung_vorhanden`. Keine Änderung bei einer Ablehnung.
+- `gueltig_bis` (AP-19 Folge IP-13) an `PUT …/zugriff` und `POST /api/v1/benutzer`: letzter Tag, einschließlich,
+  nur bei `einsicht` (400 sonst), vor heute 422 `gueltig_bis_vergangen` — dieselbe Regel wie `POST /api/v1/zugriff`
+  (`ZugriffAenderung.befristbar`/`vorHeute`), aber in `benutzer/Befristung` VOR dem Keycloak-Konto bzw. dem Entzug
+  geprüft. Ohne Feld unverändert unbefristet.
 - `POST /api/v1/benutzer/{sub}/sperren` hält Zuweisungen über den Spiegelzustand an;
   `DELETE /api/v1/benutzer/{sub}` beendet alle Zuweisungen einschließlich der künftigen. Identität und Protokoll
   bleiben erhalten. Beide verlangen `benutzer.verwalten`, eigene Rolle und letzter Administrator
@@ -39,7 +43,7 @@ bei einer Keycloak-Kollision eine E-Mail in einem fremden Kundenbereich (409 mit
 ## Nachweise und angrenzender Bestand
 
 `BenutzerVerwaltungApiTest`: RLS, lesende Energiemanager, Sofortwirkung, atomarer Wechsel, A8 auch bei
-parallelem Sperren. `BenutzerStartpasswortApiTest`: A9, fremde E-Mail, einmaliges Passwort, Pflichtwechsel.
+parallelem Sperren, befristete Einsicht beim Anlegen/Ändern bis nach Ablauf (Keycloak über `@MockBean StartpasswortKonten`). `BenutzerStartpasswortApiTest`: A9, fremde E-Mail, einmaliges Passwort, Pflichtwechsel.
 Dazu `ZugriffEntzugApiTest`, `ZugriffStichtagTest` und Rechte-/Routen-Architekturwächter.
 Portal: `BenutzerPage.test.tsx`, `AppShell.test.tsx`, additiver Routennachweis in `migration.test.ts`.
 `e2e/benutzer.vite.config.ts` baut einen statischen Wirt; `benutzer.playwright.config.ts` prüft N1–N3/N8

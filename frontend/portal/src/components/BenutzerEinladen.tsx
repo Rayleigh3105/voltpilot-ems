@@ -2,10 +2,10 @@ import { useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
-import { benutzerApi, benutzerFehler, KUNDENROLLEN, rechteVorschau, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag, type BenutzerZuweisung } from '../benutzer';
+import { benutzerApi, benutzerFehler, EINSICHT_BIS_VERGANGEN, KUNDENROLLEN, rechteVorschau, unternehmensrolle, type BenutzerAnlage, type BenutzerEintrag, type BenutzerZuweisung } from '../benutzer';
 import { ROLLE_KUNDENWORT, type Rolle } from '../rechte';
 import { useRollen } from '../rollen';
-import { heute } from '../bewertung';
+import { heute, tag } from '../bewertung';
 import { ApiError } from '../api';
 import { BenutzerAnlegenDialog } from './BenutzerAnlegenDialog';
 import { VpDatePicker } from './VpDatePicker';
@@ -20,8 +20,6 @@ export const ROLLE_BESCHREIBUNG: Record<string, string> = {
   leser: 'Sieht Daten an ausgewählten Standorten; ändert nichts.',
   einsicht: 'Sieht das Energiemanagement des ganzen Unternehmens und kann nichts ändern — für Leitung und Prüfende, auch befristet.',
 };
-/** AP-19 IP-13: befristen lässt sich allein „Einsicht“, und nur als weitere Rolle (`POST /api/v1/zugriff`). */
-export const EINSICHT_BEFRISTEN_HINWEIS = 'Befristen lässt sich „Einsicht“, wenn Sie sie über „Weitere Rolle zuweisen“ hinzufügen.';
 export function RechteVorschau({ rolle, standorte }: { rolle: Rolle; standorte: string[] }) {
   const v = rechteVorschau(rolle, standorte);
   if (!unternehmensrolle(rolle) && !standorte.length) return <p>Wählen Sie mindestens einen Standort.</p>;
@@ -56,9 +54,13 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
   const standortFeld = useRef<HTMLDivElement>(null);
   const ausloeser = useRef(document.activeElement as HTMLElement | null);
   const uw = unternehmensrolle(anlage.rolle);
-  const daten = { ...anlage, standorte: uw ? [] : anlage.standorte };
+  // Befristen lässt sich allein „Einsicht“ — beim Anlegen, Ändern und als weitere Rolle (AP-19 IP-13 und Folge, RE3).
+  const einsicht = anlage.rolle === 'einsicht';
+  const bis = einsicht && einsichtBis ? einsichtBis : null;
+  const daten: BenutzerAnlage = { ...anlage, standorte: uw ? [] : anlage.standorte, ...(bis ? { gueltig_bis: bis } : {}) };
   const schliessen = () => { onClose(); requestAnimationFrame(() => ausloeser.current?.focus()); };
   const pruefen = () => {
+    if (bis && bis < heute()) { setFehler(EINSICHT_BIS_VERGANGEN); return false; }
     if (!uw && !anlage.standorte.length) {
       setFehler('Wählen Sie mindestens einen Standort.');
       standortFeld.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
@@ -74,22 +76,23 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
       <p className="vp-note">Neue Standorte müssen später ausdrücklich zugewiesen werden.</p></div>}
     <RechteVorschau rolle={anlage.rolle as Rolle} standorte={daten.standorte} />
   </>;
-  // „Weitere Rolle zuweisen“ mit „Einsicht“: letzter Tag und Grund wahlfrei; gesetzt geht die Zuweisung über
-  // `POST /api/v1/zugriff`, sonst bleibt es beim bisherigen Wechsel (AP-19 IP-13, RE3).
-  const einsichtWeitere = !!bearbeiten && !z && anlage.rolle === 'einsicht';
+  // „Weitere Rolle zuweisen“ mit „Einsicht“ trägt zusätzlich einen Grund; mit Frist oder Grund geht die Zuweisung über
+  // `POST /api/v1/zugriff` (AP-19 IP-13). Beim Ändern reist die Frist im Wechsel mit (`gueltig_bis`, AP-19 Folge IP-13).
+  const einsichtWeitere = !!bearbeiten && !z && einsicht;
   const befristet = einsichtWeitere && (!!einsichtBis || !!einsichtGrund.trim());
   async function speichern() {
     if (!bearbeiten || !pruefen() || busy) return;
-    if (befristet && einsichtBis && einsichtBis < heute()) { setFehler('Bitte wählen Sie als letzten Tag heute oder einen späteren Tag.'); return; }
     setBusy(true);
     try {
+      const bisher = z ? [z.id] : [];
       if (befristet) await benutzerApi.einsichtZuweisen(bearbeiten.konto.sub, einsichtBis || null, einsichtGrund.trim() || null);
-      else await benutzerApi.wechseln(bearbeiten.konto.sub, z ? [z.id] : [], anlage.rolle, daten.standorte);
+      else if (bis) await benutzerApi.wechseln(bearbeiten.konto.sub, bisher, anlage.rolle, daten.standorte, bis);
+      else await benutzerApi.wechseln(bearbeiten.konto.sub, bisher, anlage.rolle, daten.standorte);
       onCreated(); schliessen();
     }
     catch (e) {
       setFehler(befristet && e instanceof ApiError && e.status === 400
-        ? 'Bitte wählen Sie als letzten Tag heute oder einen späteren Tag.'
+        ? EINSICHT_BIS_VERGANGEN
         : benutzerFehler(e, 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.'));
     }
     finally { setBusy(false); }
@@ -99,6 +102,7 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
       footer={<><Button variant="ghost" disabled={busy} onClick={schliessen}>Abbrechen</Button><Button disabled={busy} onClick={() => {
         if (bearbeiten) { void speichern(); return; }
         const ungueltig = form.current?.querySelector<HTMLInputElement>('input:invalid');
+        if (bis && bis < heute()) { setFehler(EINSICHT_BIS_VERGANGEN); return; }
         if (!anlage.username.trim() || ungueltig) {
           setFehler(!anlage.username.trim() || ungueltig?.type !== 'email'
             ? 'Bitte geben Sie einen Benutzernamen ein.' : 'Bitte geben Sie eine gültige E-Mail-Adresse ein.');
@@ -117,17 +121,16 @@ export function BenutzerEinladen({ onClose, onCreated, bearbeiten }: {
         <VpPicker label="Rolle" value={anlage.rolle} options={KUNDENROLLEN.map(r => ({ ...r, sub: ROLLE_BESCHREIBUNG[r.value] }))}
           onChange={rolle => setAnlage(a => ({ ...a, rolle }))} />
         <p>{ROLLE_BESCHREIBUNG[anlage.rolle]}</p>
-        {einsichtWeitere && <div className="vp-benutzer-zwei">
+        {einsicht && <div className="vp-benutzer-zwei">
           <VpDatePicker label="Gültig bis einschließlich (wahlfrei)" value={einsichtBis || null} min={heute()} onChange={v => { setFehler(''); setEinsichtBis(v ?? ''); }} />
-          <Input label="Grund (wahlfrei)" value={einsichtGrund} onChange={e => setEinsichtGrund(e.target.value)} placeholder="etwa Internes Audit, Nachweise lesen" />
+          {einsichtWeitere && <Input label="Grund (wahlfrei)" value={einsichtGrund} onChange={e => setEinsichtGrund(e.target.value)} placeholder="etwa Internes Audit, Nachweise lesen" />}
         </div>}
-        {anlage.rolle === 'einsicht' && !einsichtWeitere && <p className="vp-note">{EINSICHT_BEFRISTEN_HINWEIS}</p>}
         {bearbeiten && <><p>Die Änderung gilt sofort. Andere Rollen und Standorte bleiben erhalten.</p>{auswahl}</>}
         {fehler && <p role="alert">{fehler}</p>}
       </form>
     </Modal>}
     {!bearbeiten && schritt === 2 && <BenutzerAnlegenDialog open={schritt === 2} onClose={() => setSchritt(1)} anlage={daten}
-      rollenname={ROLLE_KUNDENWORT[anlage.rolle as Rolle]} standortnamen={standorte.filter(s => daten.standorte.includes(s.id)).map(s => s.name)}
+      rollenname={ROLLE_KUNDENWORT[anlage.rolle as Rolle] + (bis ? ` · gültig bis einschließlich ${tag(bis)}` : '')} standortnamen={standorte.filter(s => daten.standorte.includes(s.id)).map(s => s.name)}
       pruefen={pruefen} onCreated={() => { onCreated(); schliessen(); }}>
       <p className="vp-note">Schritt 2 von 2 · Zugriff und Startpasswort</p>{auswahl}
     </BenutzerAnlegenDialog>}

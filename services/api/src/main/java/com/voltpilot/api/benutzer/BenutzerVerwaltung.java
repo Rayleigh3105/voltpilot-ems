@@ -1,5 +1,6 @@
 package com.voltpilot.api.benutzer;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.RechteAbleitung.Konto;
@@ -19,7 +20,9 @@ public class BenutzerVerwaltung {
     public record Zuweisung(UUID id, String rolle, UUID standort_id, String standort_name,
             String gueltig_ab, String gueltig_bis) {}
     public record Eintrag(String sub, String anzeigename, String email, String zustand, List<Zuweisung> zuweisungen) {}
-    public record Wechsel(List<UUID> bisher, String rolle, List<UUID> standorte) {}
+    /** {@code gueltig_bis}: wahlfrei der letzte Tag (einschließlich) — nur bei Einsicht (AP-19 Folge IP-13, RE3). */
+    public record Wechsel(List<UUID> bisher, String rolle, List<UUID> standorte,
+            @JsonProperty("gueltig_bis") String gueltigBis) {}
     public record Protokoll(long id, String zeit, String betroffener, String aktion, String rolle,
             String standort, String urheber, String grund) {}
     private final JdbcTemplate jdbc;
@@ -52,7 +55,8 @@ public class BenutzerVerwaltung {
         catch (RuntimeException e) { throw new BenutzerFehler(400, "anfrage_ungueltig", "Bitte wählen Sie eine Rolle."); }
         if (rolle == null || rolle == Rolle.UNTERSTUETZER || rolle == Rolle.VOLTPILOT_BETRIEB)
             throw new BenutzerFehler(400, "anfrage_ungueltig", "Bitte wählen Sie eine Kundenrolle.");
-        aenderung.ersetzen(sub, w.bisher(), rolle, w.standorte(), akteur);
+        // Vor dem Entzug der bisherigen Zuweisung: eine abgelehnte Frist ändert nichts.
+        aenderung.ersetzen(sub, w.bisher(), rolle, w.standorte(), Befristung.lesen(w.gueltigBis(), rolle, aenderung), akteur);
     }
 
     public void beenden(String sub, boolean entfernen, ProtokollAkteur akteur) {

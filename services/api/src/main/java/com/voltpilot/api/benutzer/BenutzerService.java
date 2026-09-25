@@ -1,5 +1,6 @@
 package com.voltpilot.api.benutzer;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
 import com.voltpilot.api.tenant.TenantContext;
@@ -14,6 +15,7 @@ import com.voltpilot.api.zugriff.ZugriffRepository;
 import com.voltpilot.api.zugriff.ZugriffRepository.BenutzerSpiegel;
 import com.voltpilot.api.zugriff.ZugriffRepository.NeueZuweisung;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,8 +25,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class BenutzerService {
+    /** {@code gueltig_bis}: wahlfrei der letzte Tag (einschließlich) — nur bei Einsicht (AP-19 Folge IP-13, RE3). */
     public record Anlage(String username, String email, String vorname, String nachname, String rolle,
-            List<UUID> standorte) {}
+            List<UUID> standorte, @JsonProperty("gueltig_bis") String gueltigBis) {}
     public record Benutzer(String sub, String anzeigename, String email, String zustand) {}
     public record Angelegt(Benutzer benutzer, Startpasswort startpasswort) {}
 
@@ -65,7 +68,7 @@ public class BenutzerService {
                             "Weitere Benutzer legt der Kundenadministrator an.");
                 }
                 return anlegen(new Anlage(anlage.username(), anlage.email(), anlage.vorname(), anlage.nachname(),
-                        Rolle.KUNDENADMINISTRATOR.code(), List.of()), akteur, true);
+                        Rolle.KUNDENADMINISTRATOR.code(), List.of(), null), akteur, true);
             });
         } finally {
             if (vorher == null) TenantContext.clear(); else TenantContext.set(vorher);
@@ -95,6 +98,8 @@ public class BenutzerService {
         }
         List<UUID> sichtbar = zugriffe.standorte().stream().map(ZugriffRepository.StandortEintrag::id).toList();
         if (!sichtbar.containsAll(standorte)) throw nichtGefunden();
+        // Vor dem Keycloak-Konto: eine abgelehnte Frist hinterlässt kein Konto.
+        LocalDate bis = erster ? null : Befristung.lesen(a.gueltigBis(), rolle, aenderung);
         StartpasswortKonten.Angelegt neu;
         try {
             neu = konten.kunde(TenantContext.get(), a.username().trim(), a.email().trim(), a.vorname(), a.nachname());
@@ -118,7 +123,7 @@ public class BenutzerService {
         } else if (rolle.jeStandort()) {
             for (UUID standort : standorte) aenderung.zuweisen(konto.id(), rolle, standort, null, akteur);
         } else {
-            aenderung.zuweisen(konto.id(), rolle, null, null, akteur);
+            aenderung.zuweisen(konto.id(), rolle, null, bis, null, akteur);
         }
         return new Angelegt(new Benutzer(konto.id(), name, konto.email(), "angelegt"), neu.startpasswort());
     }

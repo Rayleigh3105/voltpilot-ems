@@ -10,6 +10,8 @@ export interface BenutzerAnlage {
   nachname?: string;
   rolle: string;
   standorte: string[];
+  /** AP-19 Folge IP-13: nur bei „Einsicht“ — letzter Tag, einschließlich; fehlt = unbefristet. */
+  gueltig_bis?: string | null;
 }
 export interface BenutzerKonto {
   sub: string;
@@ -26,8 +28,9 @@ export interface BenutzerAngelegt { benutzer: BenutzerKonto; startpasswort: stri
 export const benutzerApi = {
   liste: () => request<BenutzerEintrag[]>('/api/v1/benutzer'),
   protokoll: (von: string, bis: string) => request<ZugriffProtokoll[]>(`/api/v1/benutzer/protokoll?von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`),
-  wechseln: (sub: string, bisher: string[], rolle: string, standorte: string[]) => request<void>(`/api/v1/benutzer/${encodeURIComponent(sub)}/zugriff`, {
-    method: 'PUT', body: JSON.stringify({ bisher, rolle, standorte }),
+  /** `gueltigBis` nur bei „Einsicht“ (AP-19 Folge IP-13): letzter Tag, einschließlich; ohne ihn der bisherige Wechsel. */
+  wechseln: (sub: string, bisher: string[], rolle: string, standorte: string[], gueltigBis?: string | null) => request<void>(`/api/v1/benutzer/${encodeURIComponent(sub)}/zugriff`, {
+    method: 'PUT', body: JSON.stringify(gueltigBis ? { bisher, rolle, standorte, gueltig_bis: gueltigBis } : { bisher, rolle, standorte }),
   }),
   entziehen: (id: string) => request<void>(`/api/v1/zugriff/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /**
@@ -47,6 +50,9 @@ export const benutzerApi = {
   }),
 };
 
+/** AP-19 IP-13/Folge: der letzte Tag einer befristeten „Einsicht“ liegt vor heute (422 `gueltig_bis_vergangen`). */
+export const EINSICHT_BIS_VERGANGEN = 'Bitte wählen Sie als letzten Tag heute oder einen späteren Tag.';
+
 export function benutzerFehler(fehler: unknown, fallback = 'Das Startpasswort konnte nicht vergeben werden. Bitte versuchen Sie es erneut.'): string {
   if (fehler instanceof ApiError) {
     const body = fehler.body as { code?: string; message?: string } | undefined;
@@ -54,6 +60,7 @@ export function benutzerFehler(fehler: unknown, fallback = 'Das Startpasswort ko
     if (body?.code === 'zuweisung_vorhanden') return 'Diese Rolle ist für den gewählten Geltungsbereich bereits zugewiesen. Ändern Sie den vorhandenen Eintrag.';
     if (body?.code === 'eigene_zuweisung') return 'Ihre eigenen Rechte kann nur ein weiterer Kundenadministrator ändern.';
     if (body?.code === 'email_fremder_kundenbereich') return 'Diese E-Mail-Adresse ist bereits einem anderen Kundenbereich zugeordnet. Als Unterstützung gewähren?';
+    if (body?.code === 'gueltig_bis_vergangen') return EINSICHT_BIS_VERGANGEN;
     if (fehler.status === 422) return 'Bitte wählen Sie mindestens einen Standort.';
     if (fehler.status === 409) return 'Benutzername oder E-Mail-Adresse ist bereits vergeben.';
     if (fehler.status === 403) return grundUndWeg();

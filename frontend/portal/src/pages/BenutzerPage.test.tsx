@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { BenutzerPage } from './BenutzerPage';
-import { benutzerApi, benutzerFehler, rechteVorschau } from '../benutzer';
+import { benutzerApi, benutzerFehler, EINSICHT_BIS_VERGANGEN, rechteVorschau } from '../benutzer';
 import { ApiError } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
 import { benutzerFixture } from '../test/benutzerFixtures';
-import { BenutzerEinladen, EINSICHT_BEFRISTEN_HINWEIS } from '../components/BenutzerEinladen';
+import { BenutzerEinladen } from '../components/BenutzerEinladen';
 vi.mock('../benutzer', async original => ({ ...(await original<typeof import('../benutzer')>()), benutzerApi: {
   liste: vi.fn(), protokoll: vi.fn(), wechseln: vi.fn(), anlegen: vi.fn(), sperren: vi.fn(), entfernen: vi.fn(), entziehen: vi.fn(), startpasswort: vi.fn(),
   einsichtZuweisen: vi.fn(),
@@ -97,13 +97,41 @@ it('AP-19 IP-13 (R6): „Einsicht“ als weitere Rolle befristet zuweisen — mi
   expect(benutzerApi.einsichtZuweisen).toHaveBeenCalledWith('CB', '2026-10-31', 'Internes Audit: unternehmensweite Nachweise lesen');
   expect(benutzerApi.wechseln).not.toHaveBeenCalled();
 });
-it('AP-19 IP-13: beim Ändern einer Zuweisung nennt der Dialog den Weg zur Befristung statt eines Datumsfelds', () => {
+it('AP-19 Folge IP-13 (R6): beim Ändern einer Zuweisung zu „Einsicht“ reist die Frist im Wechsel mit (PUT gueltig_bis)', async () => {
   const konto = benutzerFixture().find(b => b.sub === 'CB')!;
-  render(<BenutzerEinladen bearbeiten={{ konto, zuweisung: konto.zuweisungen[0] }} onClose={() => {}} onCreated={() => {}} />);
+  const onCreated = vi.fn();
+  vi.mocked(benutzerApi.wechseln).mockResolvedValue(undefined);
+  render(<BenutzerEinladen bearbeiten={{ konto, zuweisung: konto.zuweisungen[0] }} onClose={() => {}} onCreated={onCreated} />);
   fireEvent.click(screen.getByRole('combobox', { name: 'Rolle' }));
   fireEvent.click(screen.getByRole('option', { name: /^Einsicht/ }));
-  expect(screen.getByText(EINSICHT_BEFRISTEN_HINWEIS)).toBeInTheDocument();
+  expect(screen.queryByLabelText('Grund (wahlfrei)')).toBeNull();
+  fireEvent.click(screen.getByRole('combobox', { name: 'Gültig bis einschließlich (wahlfrei)' }));
+  fireEvent.click(screen.getByRole('gridcell', { name: '31', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+  expect(benutzerApi.wechseln).toHaveBeenCalledWith('CB', [konto.zuweisungen[0].id], 'einsicht', [], '2026-10-31');
+  expect(benutzerApi.einsichtZuweisen).not.toHaveBeenCalled();
+});
+it('AP-19 Folge IP-13 (R6): „Einsicht“ gleich beim Anlegen befristen — gueltig_bis im Anlegen, im Schritt 2 genannt', async () => {
+  render(<BenutzerEinladen onClose={() => {}} onCreated={() => {}} />);
+  fireEvent.change(screen.getByLabelText('Benutzername'), { target: { value: 'falk' } });
+  fireEvent.change(screen.getByLabelText('E-Mail'), { target: { value: 'falk@ahrenberg.example' } });
   expect(screen.queryByRole('combobox', { name: 'Gültig bis einschließlich (wahlfrei)' })).toBeNull();
+  fireEvent.click(screen.getByRole('combobox', { name: 'Rolle' }));
+  fireEvent.click(screen.getByRole('option', { name: /^Einsicht/ }));
+  fireEvent.click(screen.getByRole('combobox', { name: 'Gültig bis einschließlich (wahlfrei)' }));
+  fireEvent.click(screen.getByRole('gridcell', { name: '31', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  await screen.findByText(/Schritt 2 von 2/);
+  expect(screen.getByText(/Einsicht · gültig bis einschließlich 31\.10\.2026/)).toBeInTheDocument();
+  vi.mocked(benutzerApi.anlegen).mockResolvedValue({ benutzer: benutzerFixture()[0], startpasswort: 'Test-24!' });
+  fireEvent.click(screen.getByRole('button', { name: 'Benutzer anlegen', exact: true }));
+  await screen.findByLabelText('Startpasswort');
+  expect(benutzerApi.anlegen).toHaveBeenCalledWith(expect.objectContaining({ rolle: 'einsicht', standorte: [], gueltig_bis: '2026-10-31' }));
+});
+it('AP-19 Folge IP-13: ohne Frist bleibt das Anlegen, wie es war; ein vergangener letzter Tag spricht einen Satz', () => {
+  expect(benutzerFehler(new ApiError(422, '', { code: 'gueltig_bis_vergangen' }))).toBe(EINSICHT_BIS_VERGANGEN);
+  expect(benutzerFehler(new ApiError(422, '', { code: 'standort_fehlt' }))).toContain('mindestens einen Standort');
 });
 
 it('entzieht eine einzelne Zuweisung über den vorhandenen Weg und erhält das Konto', async () => {

@@ -41,7 +41,8 @@ auf `verbesserung.verwalten`, `bezugsbasis.freigeben`, `verbesserung.ansehen` (Z
 Spalte Einsicht: − an verwalten/freigeben, U an ansehen), je ein `darf`-Fall `ap19-energiemanagement-*`, reserviert in `RechtMatrixApiTest.OHNE_SCHREIBROUTE` bis zu den Routen (IP-6 ff.).
 
 Seit AP-19 IP-12 (Nachtrag `AP-19 §4.11`, RE3, RE5, E8 = A, R6): **Rolle `einsicht`** — unternehmensweit, zuweisbar,
-befristbar (`POST /api/v1/zugriff` mit `gueltig_bis`, nur diese Rolle), U genau an den lesenden Zeilen (R6-Liste),
+befristbar (`gueltig_bis` an `POST /api/v1/zugriff`, seit der Folge von IP-13 auch an `POST /api/v1/benutzer` und
+`PUT /api/v1/benutzer/{sub}/zugriff`; nur diese Rolle), U genau an den lesenden Zeilen (R6-Liste),
 E am eigenen Konto, sonst − (auch `export.*`, `zugriffsprotokoll.lesen`, jede Freigabe). Sie ist die erste Spalte MIT
 `nachtrag`: die Konzept-Tabelle bleibt byte-gleich mit sieben Spalten (`konzept_rollen` im Generator,
 `konzeptRollen` im Test), die Spalte steht unter „Spalten der Nachträge“ und in der Nachtrags-Tabelle. Datenbank:

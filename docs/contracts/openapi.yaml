@@ -16445,6 +16445,8 @@ paths:
         Recht benutzer.verwalten. Nur der Kundenadministrator des eigenen Kundenbereichs; der Mandant
         stammt aus dem JWT. Konto und Zuweisung entstehen gemeinsam. Keycloak prüft seine Realm-Policy
         und erzwingt UPDATE_PASSWORD. Kein Passwort in weiteren Antworten, Protokollen oder E-Mails.
+        AP-19 Folge IP-13: `gueltig_bis` befristet `einsicht` gleich beim Anlegen - dieselben Regeln wie
+        `POST /api/v1/zugriff`, geprüft vor dem Keycloak-Konto; protokolliert wie jede Zuweisung.
       requestBody:
         required: true
         content:
@@ -16458,11 +16460,44 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BenutzerAngelegt" }
-        "400": { description: Ungültige Angaben oder Passwortregeln des Realms. }
+        "400": { description: "Ungültige Angaben oder Passwortregeln des Realms; `gueltig_bis` bei einer anderen Rolle als `einsicht` oder kein Tag." }
         "403": { description: recht_fehlt. }
         "404": { description: Standort außerhalb des Kundenbereichs. }
         "409": { description: Benutzername oder E-Mail-Adresse ist im Realm bereits vergeben. }
-        "422": { description: standort_fehlt bei einer standortbezogenen Rolle. }
+        "422": { description: "standort_fehlt bei einer standortbezogenen Rolle; gueltig_bis_vergangen, wenn der letzte Tag vor heute liegt (Kalender des Kundenbereichs)." }
+  /api/v1/benutzer/{sub}/zugriff:
+    put:
+      tags: [zugriff]
+      summary: Zuweisungen einer Person ersetzen (Rolle ändern).
+      description: >
+        Recht benutzer.verwalten. Entzieht die Zuweisungen `bisher` und weist `rolle` zu - atomar, jede Ablehnung
+        rollt den ganzen Wechsel zurück; andere Rollen der Person bleiben. `bisher` leer = weitere Rolle.
+        AP-19 Folge IP-13: `gueltig_bis` befristet `einsicht` (letzter Tag, einschließlich) - dieselben Regeln wie
+        `POST /api/v1/zugriff`, geprüft vor dem Entzug; protokolliert wie jede Zuweisung.
+      parameters:
+        - { name: sub, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bisher, rolle, standorte]
+              properties:
+                bisher: { type: array, items: { type: string, format: uuid } }
+                rolle: { type: string, enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, einsicht] }
+                standorte:
+                  type: array
+                  description: Bei standortbezogener Rolle mindestens ein Standort; sonst leer.
+                  items: { type: string, format: uuid }
+                gueltig_bis: { type: string, format: date, nullable: true, description: "Nur bei `einsicht`: letzter Tag, einschließlich (AP-19 Folge IP-13)." }
+      responses:
+        "204": { description: Gewechselt. }
+        "400": { description: "anfrage_ungueltig - keine Kundenrolle, `gueltig_bis` bei einer anderen Rolle als `einsicht` oder kein Tag." }
+        "403": { description: recht_fehlt. }
+        "404": { description: Benutzer oder Zuweisung nicht im Kundenbereich. }
+        "409": { description: zuweisung_vorhanden, eigene_zuweisung oder letzter_kundenadministrator. }
+        "422": { description: "Standort fehlt bei einer standortbezogenen Rolle; gueltig_bis_vergangen, wenn der letzte Tag vor heute liegt." }
   /api/v1/benutzer/{sub}/startpasswort:
     post:
       tags: [zugriff]
@@ -27207,6 +27242,7 @@ components:
           type: array
           description: Bei standortbezogener Rolle mindestens ein Standort; sonst leer.
           items: { type: string, format: uuid }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Nur bei `einsicht`: letzter Tag, einschließlich (AP-19 Folge IP-13)." }
     BenutzerAngelegt:
       type: object
       required: [benutzer, startpasswort]

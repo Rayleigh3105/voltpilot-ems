@@ -126,7 +126,7 @@ public class ZugriffAenderung {
             // Der Unterstützer entsteht allein über POST /api/v1/unterstuetzung (IP-8, mit Art, Umfang und Ende).
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rolle nicht zuweisbar.");
         }
-        if (bis != null && rolle != Rolle.EINSICHT) {
+        if (bis != null && !befristbar(rolle)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Befristen lässt sich nur die Rolle Einsicht.");
         }
         String name = zugriffe.spiegel(benutzerSub).filter(b -> b.konto() == Konto.BENUTZER
@@ -139,7 +139,7 @@ public class ZugriffAenderung {
         pruefen(AenderungsArt.ZUWEISEN, benutzerSub, rolle, standorte, jetzt);
         String bereinigt = grund == null || grund.isBlank() ? null : grund.trim();
         ZoneId zone = zugriffe.kundenbereichKopf().zeitzone();
-        if (bis != null && bis.isBefore(LocalDate.ofInstant(jetzt, zone))) {
+        if (bis != null && vorHeute(bis, jetzt, zone)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Das Enddatum liegt in der Vergangenheit.");
         }
         Instant endetAm = bis == null ? null : bis.plusDays(1).atStartOfDay(zone).toInstant();
@@ -147,6 +147,24 @@ public class ZugriffAenderung {
                 zone, akteur.sub()), name, akteur, bereinigt);
         protokollieren(ART_ZUGEWIESEN, zugriffe.zeile(id).orElseThrow(), bereinigt, jetzt, akteur);
         return id;
+    }
+
+    /**
+     * Befristen lässt sich allein die Rolle Einsicht (AP-19 IP-12, RE3). Die Benutzerverwaltung fragt dieselbe Regel
+     * VOR jedem Schreiben ab (Konto anlegen, Zuweisung ersetzen — AP-19 Folge IP-13), damit sie ablehnt, bevor ein
+     * Keycloak-Konto entsteht oder eine Zuweisung entzogen ist.
+     */
+    public static boolean befristbar(Rolle rolle) {
+        return rolle == Rolle.EINSICHT;
+    }
+
+    /** Der letzte Tag {@code bis} liegt vor dem heutigen Tag des Kundenbereichs — derselbe Maßstab wie beim Zuweisen. */
+    public boolean vorHeute(LocalDate bis) {
+        return vorHeute(bis, Instant.now(), zugriffe.kundenbereichKopf().zeitzone());
+    }
+
+    private static boolean vorHeute(LocalDate bis, Instant jetzt, ZoneId zone) {
+        return bis.isBefore(LocalDate.ofInstant(jetzt, zone));
     }
 
     /** Ein Konto sperren oder entfernen: derselbe Vertragsentscheid wie beim Zuweisungsentzug. */
@@ -225,6 +243,16 @@ public class ZugriffAenderung {
     /** Ersetzt die angegebenen Zuweisungen atomar; andere Rollen und künftige Zuweisungen bleiben erhalten. */
     @Transactional
     public void ersetzen(String sub, List<UUID> bisher, Rolle rolle, List<UUID> standorte, ProtokollAkteur akteur) {
+        ersetzen(sub, bisher, rolle, standorte, null, akteur);
+    }
+
+    /**
+     * Wie {@link #ersetzen(String, List, Rolle, List, ProtokollAkteur)}; die neue Zuweisung endet mit dem Tag
+     * {@code bis} (einschließlich, {@code null} = unbefristet) — dieselben Regeln wie beim Zuweisen (AP-19 Folge IP-13).
+     */
+    @Transactional
+    public void ersetzen(String sub, List<UUID> bisher, Rolle rolle, List<UUID> standorte, LocalDate bis,
+            ProtokollAkteur akteur) {
         sperreKundenbereich();
         zugriffe.spiegel(sub).filter(b -> b.konto() == RechteAbleitung.Konto.BENUTZER
                 && b.zustand() != RechteAbleitung.KontoZustand.GESPERRT
@@ -246,10 +274,10 @@ public class ZugriffAenderung {
         if (rolle.jeStandort()) {
             if (standorte.isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Wählen Sie mindestens einen Standort.");
-            for (UUID id : standorte.stream().distinct().toList()) zuweisen(sub, rolle, id, null, akteur);
+            for (UUID id : standorte.stream().distinct().toList()) zuweisen(sub, rolle, id, bis, null, akteur);
         } else {
             if (!standorte.isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-            zuweisen(sub, rolle, null, null, akteur);
+            zuweisen(sub, rolle, null, bis, null, akteur);
         }
     }
 
