@@ -10,11 +10,11 @@ import jakarta.validation.constraints.Size;
  *
  * <p>{@code temporary} (default {@code true}) marks the password
  * must-change-on-next-login, so support can hand out a one-time password and
- * the customer immediately replaces it with their own. The length rule matches
- * self-registration.
+ * the customer immediately replaces it with their own. The length rule (12,
+ * AP-20 E12) matches self-registration.
  */
 public record ResetPasswordRequest(
-        @NotBlank @Size(min = 8, max = 128) String password,
+        @NotBlank @Size(min = 12, max = 128) String password,
         Boolean temporary) {
 
     public boolean temporaryOrDefault() {

@@ -294,7 +294,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RegistrationResponse" }
-        "400": { description: Invalid input (blank name, invalid email, password shorter than 8 chars). }
+        "400": { description: Invalid input (blank name, invalid email, password shorter than 12 chars or equal to the email or name). }
         "409": { description: An account with this email already exists. }
         "429": { description: Too many registration attempts (sliding-window rate limit per client address plus a global cap; nothing was created). }
   /api/v1/enrollment/{ref}/csr:
@@ -7008,7 +7008,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminUser" }
-        "400": { description: Invalid password (must be 8-128 characters). }
+        "400": { description: Invalid password (must be 12-128 characters). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant or user not found (including a user outside this tenant). }
@@ -11318,8 +11318,9 @@ components:
           description: Login email (doubles as the username; lowercased).
         password:
           type: string
-          minLength: 8
+          minLength: 12
           maxLength: 128
+          description: At least 12 characters; must not equal the email or the name (case-insensitive).
     RegistrationResponse:
       type: object
       properties:
@@ -15559,7 +15560,7 @@ components:
       type: object
       required: [password]
       properties:
-        password: { type: string, minLength: 8, maxLength: 128, description: The new password (same length rule as self-registration). }
+        password: { type: string, minLength: 12, maxLength: 128, description: The new password (same length rule as self-registration). }
         temporary: { type: boolean, description: "If true (default), the user must change it at next login." }
     UpdateTenantRequest:
       type: object

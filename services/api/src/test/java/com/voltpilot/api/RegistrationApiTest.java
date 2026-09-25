@@ -124,7 +124,7 @@ class RegistrationApiTest {
                 url("/api/v1/registration"), HttpMethod.POST,
                 json(Map.of("name", "Sonnenhof Kaiser GmbH",
                         "email", "Erika@Sonnenhof-Kaiser.example",
-                        "password", "sonne-123")),
+                        "password", "sonnenhof-123")),
                 new ParameterizedTypeReference<>() {});
         assertThat(registered.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(registered.getBody()).containsEntry("tenantName", "Sonnenhof Kaiser GmbH");
@@ -134,7 +134,7 @@ class RegistrationApiTest {
         // The fresh customer is signed in with exactly what they typed - via the
         // PUBLIC frontend client's direct grant, the same call the portal makes
         // for its seamless post-registration auto-login (no Keycloak login page).
-        String token = publicClientToken("erika@sonnenhof-kaiser.example", "sonne-123");
+        String token = publicClientToken("erika@sonnenhof-kaiser.example", "sonnenhof-123");
 
         // Their world starts empty (tenant-scoped, not an error)...
         ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
@@ -178,12 +178,12 @@ class RegistrationApiTest {
     @Test
     void duplicateEmailIsRefusedWithoutOrphanTenant() {
         Map<String, Object> first = Map.of("name", "Doppelt GmbH",
-                "email", "doppelt@example.com", "password", "doppelt-pw");
+                "email", "doppelt@example.com", "password", "doppelt-pw-1234");
         assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST, json(first),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
         Map<String, Object> second = Map.of("name", "Doppelt Zwei GmbH",
-                "email", "doppelt@example.com", "password", "doppelt-pw-2");
+                "email", "doppelt@example.com", "password", "doppelt-pw-5678");
         assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST, json(second),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 
@@ -209,6 +209,15 @@ class RegistrationApiTest {
                 json(Map.of("name", "X", "email", "ok@example.com", "password", "short")),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
+        // AP-20 E12: 11 characters are one too few, and the login name is no password.
+        assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                json(Map.of("name", "X", "email", "ok@example.com", "password", "abcdefghijk")),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                json(Map.of("name", "X", "email", "gleich@example.com", "password", "Gleich@Example.com")),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
         assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
                 json(Map.of("name", " ", "email", "ok@example.com", "password", "long-enough-pw")),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -222,7 +231,7 @@ class RegistrationApiTest {
         for (int i = 1; i <= 5; i++) {
             assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
                     json(Map.of("name", "Flut " + i + " GmbH",
-                            "email", "flut-" + i + "@example.com", "password", "flut-pw-123"),
+                            "email", "flut-" + i + "@example.com", "password", "flut-pw-12345"),
                             "198.51.100.23"),
                     String.class).getStatusCode()).isEqualTo(HttpStatus.CREATED);
         }
@@ -230,7 +239,7 @@ class RegistrationApiTest {
         // ...then it is refused BEFORE any tenant or Keycloak work happens...
         assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
                 json(Map.of("name", "Flut Sechs GmbH",
-                        "email", "flut-6@example.com", "password", "flut-pw-123"),
+                        "email", "flut-6@example.com", "password", "flut-pw-12345"),
                         "198.51.100.23"),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 

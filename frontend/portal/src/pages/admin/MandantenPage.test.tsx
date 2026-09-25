@@ -84,13 +84,13 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
 
     const reset = await screen.findByRole('dialog', { name: /Passwort zurücksetzen: anna/ });
     fireEvent.change(within(reset).getByLabelText(/Neues Passwort/), {
-      target: { value: 'geheim12345' },
+      target: { value: 'geheim123456' },
     });
     fireEvent.click(within(reset).getByRole('button', { name: 'Passwort setzen' }));
 
     await waitFor(() =>
       expect(resetPassword).toHaveBeenCalledWith('t-1', 'u-1', {
-        password: 'geheim12345',
+        password: 'geheim123456',
         temporary: true,
       }),
     );

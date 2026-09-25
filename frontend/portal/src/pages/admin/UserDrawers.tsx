@@ -4,6 +4,7 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
+import { PASSWORT_MIN_ZEICHEN, passwortGleichtName } from '../../passwortRegel';
 
 /**
  * Die zwei Benutzer-Einschübe, WÖRTLICH aus der stillgelegten Benutzer-Seite
@@ -124,7 +125,8 @@ export function ResetPasswordDrawer({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const valid = password.length >= 8;
+  const gleichtName = passwortGleichtName(password, user.username, user.email ?? '');
+  const valid = password.length >= PASSWORT_MIN_ZEICHEN && !gleichtName;
 
   async function submit() {
     if (!valid || busy) return;
@@ -145,7 +147,7 @@ export function ResetPasswordDrawer({
         ok: false,
         text:
           e instanceof ApiError && e.status === 400
-            ? 'Das Passwort muss mindestens 8 Zeichen lang sein.'
+            ? `Das Passwort muss mindestens ${PASSWORT_MIN_ZEICHEN} Zeichen lang sein und darf nicht Benutzername oder E-Mail-Adresse sein.`
             : e instanceof ApiError
               ? `Zurücksetzen fehlgeschlagen: ${e.message}`
               : 'Zurücksetzen fehlgeschlagen.',
@@ -179,8 +181,9 @@ export function ResetPasswordDrawer({
         <Input
           label="Neues Passwort *"
           type="password"
-          placeholder="mind. 8 Zeichen"
+          placeholder={`mind. ${PASSWORT_MIN_ZEICHEN} Zeichen`}
           value={password}
+          error={gleichtName ? 'Das Passwort darf nicht Benutzername oder E-Mail-Adresse sein.' : null}
           autoComplete="new-password"
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
         />
