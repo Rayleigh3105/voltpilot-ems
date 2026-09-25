@@ -2,6 +2,7 @@ import { AuthRedirectError, freshToken } from './auth';
 import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
 import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
 import type { VerbesserungUebersicht } from './verbesserungUebersicht';
+import type { Wiedervorlage } from './wiedervorlage';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -10798,6 +10799,23 @@ export const api = {
     const q = new URLSearchParams([...Object.entries(filter).filter((e): e is [string, string] => !!e[1]), ['format', 'csv']]).toString();
     const token = await freshToken();
     const res = await fetch(`${API_BASE}/api/v1/energiemanagement/verzeichnis?${q}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** IP-21 (WV1–WV4): die Wiedervorlage — fällig und Vorschau über alle Objekte, beim Abruf abgeleitet. */
+  energiemanagementWiedervorlage: () => request<Wiedervorlage>('/api/v1/energiemanagement/wiedervorlage'),
+  /** IP-21 (E10 = A): dieselben Zeilen als Kalender-Abzug (`format=ics`) — ein Abruf, nichts wird verschickt. */
+  energiemanagementWiedervorlageIcs: async (): Promise<Blob> => {
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}/api/v1/energiemanagement/wiedervorlage?format=ics`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),

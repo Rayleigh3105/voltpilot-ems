@@ -80,6 +80,7 @@ import {
   type KennzahlWerte,
 } from '../src/api';
 import { iso } from '../src/bezugsPeriode';
+import { UEMS_VERANTWORTUNG } from '../src/glossar';
 import { ABLEHNUNG_SATZ, fassungEintrag, naechsteNummer, wirksame } from '../src/kennzahlAendern';
 import { AnlagenPage } from '../src/pages/AnlagenPage';
 import { BerichtePage } from '../src/pages/BerichtePage';
@@ -864,6 +865,18 @@ Object.assign(api, {
       messbedarfe_ueberfaellig: 0,
     },
     faellig: [],
+  }),
+  // AP-19 IP-21: keine Frist im Energiemanagement — der Baustein „Energiemanagement“ bleibt weg (WV5), und kein Abruf
+  // geht an den (nicht laufenden) Server.
+  energiemanagementWiedervorlage: async () => ({
+    stichtag: '2026-10-20T10:00:00+02:00',
+    vorschau_tage: 30,
+    faellig: [],
+    vorschau: [],
+    anzahl_faellig: 0,
+    anzahl_vorschau: 0,
+    nicht_in_liste: [],
+    verantwortung: UEMS_VERANTWORTUNG,
   }),
   kennzahlFassungen: async (id: string) => ({
     kennzahl_id: id,

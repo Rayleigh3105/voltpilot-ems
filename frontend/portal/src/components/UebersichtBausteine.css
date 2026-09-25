@@ -111,6 +111,19 @@
   color: var(--vp-text-muted, #6c757d);
 }
 
+/* AP-19 IP-21: der Kalender-Abzug am Baustein „Energiemanagement“ — bündig mit dem Text darüber. */
+.vp-ub-kalender {
+  margin: 0 0 var(--vp-space-1, 4px) -8px;
+}
+
+.vp-ub-hinweis.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-ub-baustein .vp-ub-hinweis + .vp-ub-hinweis {
+  margin-top: var(--vp-space-2, 8px);
+}
+
 .vp-ub-gruppe {
   min-width: 0;
 }

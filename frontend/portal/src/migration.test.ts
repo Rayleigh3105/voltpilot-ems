@@ -1012,6 +1012,8 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
       'bewertung',
       // UEMS AP-18 IP-19: nur am Unternehmen, nur mit einem Energieziel, einer Maßnahme, Abweichung oder Auffälligkeit.
       'ziele-massnahmen',
+      // UEMS AP-19 IP-21: nur am Unternehmen, nur mit einer fälligen oder in den nächsten Tagen fälligen Frist.
+      'energiemanagement',
       'anlagen',
     ]);
     expect([...CANONICAL_PORTFOLIO].sort()).toEqual(PORTFOLIO_BAUSTEINE.map((b) => b.id).sort());

@@ -16,6 +16,7 @@
 import type { Bilanz, BilanzEingang, Kennzahl, MessstelleRegisterAbdeckung, MessstellenRegister } from './api';
 import type { BewertungFristBild } from './bewertungFrist';
 import type { VerbesserungUebersichtBild } from './verbesserungUebersicht';
+import type { EnergiemanagementBausteinBild } from './wiedervorlage';
 import { dez, dezText } from './bezugsdaten';
 import { UEMS_MESSSTELLE, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
 import { amStandort } from './kennzahlKarte';
@@ -25,7 +26,13 @@ import { ebene as ebenenSumme, gebaeude as gebaeudeSicht, type GebaeudeZeile, ty
 import { zahl } from './uemsErgebnis';
 
 /** Die drei Bausteine in der Reihenfolge von Ü1 — zugleich ihre Schlüssel im Katalog (`anwendungen/catalog.json`). */
-export type UebersichtBausteinId = 'messstellen' | 'energiebilanz' | 'kennzahlen' | 'bewertung' | 'ziele-massnahmen';
+export type UebersichtBausteinId =
+  | 'messstellen'
+  | 'energiebilanz'
+  | 'kennzahlen'
+  | 'bewertung'
+  | 'ziele-massnahmen'
+  | 'energiemanagement';
 
 // ---------------------------------------------------------------------------------------------- Messstellen
 
@@ -378,6 +385,8 @@ export function bausteineMitInhalt(i: {
   bewertung?: BewertungFristBild | null;
   /** AP-18 IP-19: „Ziele und Maßnahmen“ — nur mit einem Vorgang im Zaun (`verbesserungUebersicht.ts`, R13). */
   zieleMassnahmen?: VerbesserungUebersichtBild | null;
+  /** AP-19 IP-21 (WV5): „Energiemanagement“ — nur mit einer fälligen oder bald fälligen Frist (`wiedervorlage.ts`). */
+  energiemanagement?: EnergiemanagementBausteinBild | null;
 }): UebersichtBausteinId[] {
   const out: UebersichtBausteinId[] = [];
   if (i.messstellen) out.push('messstellen');
@@ -385,5 +394,6 @@ export function bausteineMitInhalt(i: {
   if (i.kennzahlen) out.push('kennzahlen');
   if (i.bewertung) out.push('bewertung');
   if (i.zieleMassnahmen) out.push('ziele-massnahmen');
+  if (i.energiemanagement) out.push('energiemanagement');
   return out;
 }

@@ -63,6 +63,7 @@ export type PortfolioBausteinId =
   | 'kennzahlen'
   | 'bewertung'
   | 'ziele-massnahmen'
+  | 'energiemanagement'
   | 'anlagen';
 
 /** Alle Portfolio-Bausteine aus dem EINEN Katalog, in Katalog-Reihenfolge. */
@@ -103,6 +104,8 @@ export const CANONICAL_PORTFOLIO: PortfolioBausteinId[] = [
   'bewertung',
   // UEMS AP-18 IP-19 (F2/F3): Ziele und Maßnahmen — nur am Unternehmen, nur mit einem Vorgang im Zaun.
   'ziele-massnahmen',
+  // UEMS AP-19 IP-21 (WV5): Energiemanagement — nur am Unternehmen, nur mit einer fälligen oder bald fälligen Frist.
+  'energiemanagement',
   'anlagen',
 ];
 
@@ -150,6 +153,7 @@ const ORT: Record<PortfolioBausteinId, BausteinOrt> = {
   kennzahlen: { leiste: false, spalte: false },
   bewertung: { leiste: false, spalte: false },
   'ziele-massnahmen': { leiste: false, spalte: false },
+  energiemanagement: { leiste: false, spalte: false },
   // Die Tabelle SELBST — sie steht immer, und immer zuletzt.
   anlagen: { leiste: false, spalte: false },
 };
@@ -196,6 +200,7 @@ export const UEMS_UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = [
   'kennzahlen',
   'bewertung',
   'ziele-massnahmen',
+  'energiemanagement',
 ];
 
 /**

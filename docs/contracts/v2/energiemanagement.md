@@ -20,8 +20,9 @@ aber nicht zum Betrachtungsumfang“. Ein Urteil fällt keine dieser Regeln.
 | `services/optimization/voltpilot_optimization/energiemanagement.py` | die Python-Referenz — `ueberpruefung`, `zeile`, `vergleich_anwendungsbereich`, `vz` aus `k_faelle.py` |
 
 > **Wer anruft:** noch niemand. `ueberpruefung` rufen die Dokument-Routen (IP-7, Überprüfung beim Abruf), das Auditprogramm,
-> die Feststellung und die Managementbewertung; `wiedervorlage` der Leser `GET /api/v1/energiemanagement/wiedervorlage` (IP-21;
-> er sammelt die fertigen Fristen aus DK5/IA4/FS1/MG7, AP-16 S5, AP-17 F5 und dem Übersichts-Leser von AP-18);
+> die Feststellung und die Managementbewertung; `wiedervorlage` der Leser `GET /api/v1/energiemanagement/wiedervorlage` (IP-21,
+> `EnergiemanagementWiedervorlageService`: er sammelt die fertigen Fristen der `WiedervorlageQuelle`n — DK5, IA4, FS1,
+> AP-16 S5, AP-17 F5, AP-12 E7, `faellig[]` des Übersichts-Lesers von AP-18 samt Messbedarf; MG7 dockt mit IP-23 an);
 > `anwendungsbereich_vergleich` der Leser `…/dokumente/{id}/vergleich` (IP-7); `verzeichnis_zeile` jede Quelle des
 > Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
 
@@ -164,7 +165,7 @@ die Einstellung der Referenzdatei.
   nicht; `anwendungsbereich_vergleich` liefert sie, den Satz ergänzt IP-7 mit Vektor, wenn die Seite ihn braucht.
 - **Welche Zeilen der Aufrufer übergibt**, entscheidet er: aufgehobene Dokumente (DK8), abgesagte Audits, Sitzungen einer
   Managementbewertung im Entwurf. Die Operation filtert nur nach dem Abruf-Tag.
-- Nicht in diesem Vertrag: Leitungs-Pflicht und Vier-Augen (Schreibwege IP-6/IP-7), Kalender-Abzug (.ics, IP-21) und
+- Nicht in diesem Vertrag: Leitungs-Pflicht und Vier-Augen (Schreibwege IP-6/IP-7), Kalender-Abzug (.ics, IP-21: `openapi.yaml`) und
   Verzeichnis-CSV (IP-8), „Wer ist wofür verantwortlich“ (IP-10), Rechte und Zaun, Tabellen.
 
 ## Prüfen

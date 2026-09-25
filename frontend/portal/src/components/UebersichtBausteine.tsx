@@ -9,6 +9,7 @@ import { UEMS_ENERGIEBILANZ, UEMS_GEBAEUDE, UEMS_KENNZAHLEN } from '../glossar';
 import { heuteIn, listenKarte, ZUR_LISTE } from '../kennzahlKarte';
 import {
   abweichungRoute,
+  energiemanagementRoute,
   energiezielRoute,
   kennzahlRoute,
   massnahmeRoute,
@@ -19,6 +20,7 @@ import {
 } from '../nav';
 import type { UebersichtEbene } from '../uebersicht';
 import { verbesserungUebersichtBild, type VerbesserungUebersicht, type VerbesserungUebersichtBild } from '../verbesserungUebersicht';
+import { energiemanagementBaustein, type EnergiemanagementBausteinBild, type Wiedervorlage } from '../wiedervorlage';
 import {
   BILANZ_PERIODEN,
   MESSSTELLEN_TITEL,
@@ -42,6 +44,7 @@ import { useRollen } from '../rollen';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { BewertungBaustein } from './BewertungBaustein';
 import { BezugsbasisUebersichtKarte } from './BezugsbasisUebersichtKarte';
+import { EnergiemanagementBaustein } from './EnergiemanagementBaustein';
 import { ZeitSegment } from './HistorieWelt';
 import { KennzahlKarte, useKennzahlenListe } from './KennzahlListe';
 import { VerbesserungUebersichtKarte } from './VerbesserungUebersichtKarte';
@@ -73,6 +76,8 @@ export interface UebersichtDaten {
   bezugsbasen?: BezugsbasisUebersichtBild | null;
   /** AP-18 IP-19: „Ziele und Maßnahmen“ am Unternehmen — `null` ohne Vorgang im Zaun (R13: keine neue Kachel). */
   zieleMassnahmen?: VerbesserungUebersichtBild | null;
+  /** AP-19 IP-21 (WV5): „Energiemanagement“ am Unternehmen — `null` ohne fällige und ohne Vorschau-Zeile. */
+  energiemanagement?: EnergiemanagementBausteinBild | null;
   /** Die Bausteine MIT Inhalt — nur sie bietet die Fläche an. */
   inhalt: UebersichtBausteinId[];
 }
@@ -249,6 +254,26 @@ export function useUebersichtBausteine(
   }, [zieleAn]);
   const zieleMassnahmen = zieleAn ? verbesserungUebersichtBild(zieleDaten) : null;
 
+  // AP-19 IP-21 (WV5): „Energiemanagement“ nur am Unternehmen; die Fristen liest der Server beim Abruf aus ihren Regeln,
+  // der Zaun ist der jeder Quelle. Ohne fällige und ohne Vorschau-Zeile bleibt die Kachel weg (AP-13 E3).
+  const energiemanagementAn = an && ebene?.art === 'unternehmen';
+  const [wiedervorlage, setWiedervorlage] = useState<Wiedervorlage | null>(null);
+  useEffect(() => {
+    if (!energiemanagementAn) {
+      setWiedervorlage(null);
+      return;
+    }
+    let aktiv = true;
+    api
+      .energiemanagementWiedervorlage()
+      .then((r) => aktiv && setWiedervorlage(r))
+      .catch(() => aktiv && setWiedervorlage(null));
+    return () => {
+      aktiv = false;
+    };
+  }, [energiemanagementAn]);
+  const energiemanagement = energiemanagementAn ? energiemanagementBaustein(wiedervorlage) : null;
+
   if (!ebene || !an) return null;
   const gebaeude: GebaeudeEingang[] = gebaeudeListe.map((g) => ({
     ...g,
@@ -266,6 +291,7 @@ export function useUebersichtBausteine(
     kennzahlen: kennzahlenDerEbene(ebene, kennzahlen.liste),
     bewertung,
     zieleMassnahmen,
+    energiemanagement,
   });
   return {
     ebene,
@@ -281,6 +307,7 @@ export function useUebersichtBausteine(
     bewertung,
     bezugsbasen,
     zieleMassnahmen,
+    energiemanagement,
     inhalt,
   };
 }
@@ -309,7 +336,17 @@ export function UebersichtBausteine({
   // Die Bezugsbasen gehören zur Welt der Kennzahlen: wer „Kennzahlen“ ausblendet, blendet sie mit aus.
   const bezugsbasen = zeigen.includes('kennzahlen') ? (daten.bezugsbasen ?? null) : null;
   const zieleMassnahmen = zeigen.includes('ziele-massnahmen') ? (daten.zieleMassnahmen ?? null) : null;
-  if (!messstellen && !energie && gebaeude.length === 0 && !kennzahlen && !bewertung && !bezugsbasen && !zieleMassnahmen) {
+  const energiemanagement = zeigen.includes('energiemanagement') ? (daten.energiemanagement ?? null) : null;
+  if (
+    !messstellen &&
+    !energie &&
+    gebaeude.length === 0 &&
+    !kennzahlen &&
+    !bewertung &&
+    !bezugsbasen &&
+    !zieleMassnahmen &&
+    !energiemanagement
+  ) {
     return null;
   }
 
@@ -482,6 +519,42 @@ export function UebersichtBausteine({
           }
         />
       )}
+
+      {energiemanagement && (
+        <EnergiemanagementKachel bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute())} />
+      )}
     </div>
+  );
+}
+
+/** Der Baustein „Energiemanagement“ mit dem Laden des Kalender-Abzugs (E10) — ein Abruf, nichts wird verschickt. */
+function EnergiemanagementKachel({ bild, onOeffnen }: { bild: EnergiemanagementBausteinBild; onOeffnen: () => void }) {
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState(false);
+  async function kalender() {
+    setLaeuft(true);
+    setFehler(false);
+    try {
+      const datei = await api.energiemanagementWiedervorlageIcs();
+      const url = URL.createObjectURL(datei);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'wiedervorlage-energiemanagement.ics';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      setFehler(true);
+    } finally {
+      setLaeuft(false);
+    }
+  }
+  return (
+    <EnergiemanagementBaustein
+      bild={bild}
+      onOeffnen={onOeffnen}
+      onKalender={kalender}
+      kalenderLaeuft={laeuft}
+      kalenderFehler={fehler}
+    />
   );
 }

@@ -526,6 +526,17 @@
       "aggregation_regel": "Zählt offene Auffälligkeiten, offene und überfällige Abweichungen, geplante, überfällige und umgesetzte, noch nicht bewertete Maßnahmen, laufende Energieziele mit fälliger Bewertung, offene Anstöße und überfällige Messbedarfe und nennt je fälligem Vorgang eine Zeile mit Sprung — alles aus der Übersichts-Route, beim Abruf abgeleitet, nichts wird hier gerechnet. Nur auf der Unternehmens-Übersicht und nur mit einem Energieziel, einer Maßnahme, einer Abweichung oder einer Auffälligkeit im Zaun (UEMS AP-18 IP-19)."
     },
     {
+      "id": "energiemanagement",
+      "label": "Energiemanagement",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Nennt aus der Wiedervorlage des Energiemanagements, wie viele Fristen fällig sind und wie viele in den nächsten Tagen fällig werden (Dokument-Überprüfung, internes Audit, Feststellung, energetische Bewertung, Bezugsbasen, Revisions-Anstöße, Energieziele, Maßnahmen, Abweichungen, Messbedarfe), und bietet den Kalender-Abzug an — alles aus der Wiedervorlage-Route, beim Abruf abgeleitet, nichts wird hier gerechnet oder verschickt. Nur auf der Unternehmens-Übersicht und nur mit einer fälligen oder bald fälligen Frist im Zaun (UEMS AP-19 IP-21)."
+    },
+    {
       "id": "anlagen",
       "label": "Anlagen",
       "flaeche": "portfolio",
@@ -618,6 +629,7 @@
           "kennzahlen",
           "bewertung",
           "ziele-massnahmen",
+          "energiemanagement",
           "anlagen"
         ],
         "geldstrom": null,

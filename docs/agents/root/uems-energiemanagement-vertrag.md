@@ -11,7 +11,7 @@ rechnen jeden Vektor derselben Datei. Noch ruft niemand an: keine Tabelle, keine
 | Was | Wo |
 |---|---|
 | Fristen (DK5, IA4, MG7, FS1) | `ueberpruefung`: Dokument (gültige Fassung, jüngere von Freigabe und „geprüft, bleibt“ + Monate), Audit und Managementbewertung (letzter Tag + Rhythmus), Feststellung (Frist oder + 90 Tage, nur offen); `tage` und „seit n Tagen fällig“ gegen den Eingang `abruf` |
-| Wiedervorlage (WV1–WV3) | `wiedervorlage`: fertige Fristen je Zeile, fällig/Vorschau 30 Tage, sortiert nach Tag und Kennzeichen |
+| Wiedervorlage (WV1–WV3) | `wiedervorlage`: fertige Fristen je Zeile, fällig/Vorschau 30 Tage, sortiert nach Tag und Kennzeichen; Aufrufer seit IP-21 der Leser `GET …/wiedervorlage` ([Wiedervorlage](uems-energiemanagement-wiedervorlage.md)) |
 | Vergleich (DK7) | `anwendungsbereich_vergleich`: Standorte und Träger in beiden Richtungen, `deckungsgleich` |
 | Verzeichnis-Zeile (VZ2, G1) | `verzeichnis_zeile`: Gruppen-Wort, Ort als Wort mit Ablage |
 | Prüfsumme | `pruefsumme`: kanonische Form von `bericht.md` A1 (Java `BerichtRegeln.kanonisch`, TS `uemsBericht.kanonisch`) |

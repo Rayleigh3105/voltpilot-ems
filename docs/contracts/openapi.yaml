@@ -12121,6 +12121,38 @@ paths:
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/wiedervorlage:
+    get:
+      tags: [energiemanagement]
+      summary: Wiedervorlage - was fällig ist und was in den nächsten Tagen fällig wird, über alle Objekte; auch als Kalender-Abzug (WV1-WV4, E10).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-21). Ein Leser, kein Speicher, kein Läufer, keine Nachricht: er
+        sammelt die Fristen aller Wiedervorlage-Quellen - Dokument-Überprüfung (DK5), nächstes internes Audit (IA4),
+        offene Feststellungen (FS1), die Überprüfung der energetischen Bewertung (AP-16 S5), der laufenden Bezugsbasen
+        (AP-17 F5), offene Revisions-Anstöße der Berichte (AP-12 E7), die fälligen Vorgänge des Übersichts-Lesers
+        „Ziele und Maßnahmen“ (AP-18) samt der noch nicht fälligen offenen Vorgänge und die Fristen offener Messbedarfe -
+        jede über ihren Dienst, im Zaun und mit den Rechten des Aufrufers gelesen; keine Frist wird nachgerechnet (WV2).
+        Abruf ist der Tag in der Zeitzone des Unternehmens. `faellig` (Abruf ≥ fällig am, 0 Tage = „heute fällig“) am
+        längsten fällig zuerst, bei gleichem Tag nach Kennzeichen; `vorschau` die Fristen in den nächsten
+        `vorschau_tage` Tagen (Einstellung, Startwert 30; genau 30 ist Vorschau); `nicht_in_liste` die Kennzeichen mit
+        späterer Frist. `format=ics` liefert dieselben Zeilen (fällig und Vorschau) als Kalender-Abzug nach RFC 5545 -
+        je Zeile ein ganztägiger Termin am Tag, an dem sie fällig ist bzw. wird, Titel „Kennzeichen: Titel“,
+        Beschreibung und Kalender mit dem Vermerk „Stand vom TT.MM.JJJJ aus VoltPilot; maßgeblich ist die Wiedervorlage
+        im Portal.“ Dasselbe Recht wie die Seite, nicht eigens protokolliert; nichts wird verschickt.
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [json, ics] }
+      responses:
+        "200":
+          description: Ergebnis - JSON oder mit `format=ics` der Kalender-Abzug.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementWiedervorlage" }
+            text/calendar:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/energiemanagement/energieeinsaetze/{id}/nachweise:
     parameters:
       - in: path
@@ -18251,6 +18283,40 @@ components:
         gruppen:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisGruppe" }
+    EnergiemanagementWiedervorlageZeile:
+      type: object
+      required: [art, kennzeichen, titel, faellig_am, tage, satz, verantwortlich, id, kennzahl_id]
+      description: >
+        Die Ausgabe der Operation `wiedervorlage` (energiemanagement.md §3). `faellig_am` kommt aus der Regel des
+        Objekts; `id` und `kennzahl_id` tragen den Sprung auf die Seite des Objekts - wo es keine gibt, `null`.
+      properties:
+        art: { type: string, enum: [dokument_ueberpruefung, internes_audit, managementbewertung, feststellung, bewertung_ueberpruefung, bezugsbasis_ueberpruefung, energieziel_bewertung, massnahme_termin, abweichung_frist, messbedarf_frist, bericht_anstoss] }
+        kennzeichen: { type: string }
+        titel: { type: string }
+        faellig_am: { type: string, format: date }
+        tage: { type: integer, description: "Abruf − fällig am in Kalendertagen: positiv = fällig, 0 = heute, negativ = Vorschau." }
+        satz: { type: string, description: "„seit n Tagen fällig“, „heute fällig“ oder „fällig in n Tagen“." }
+        verantwortlich: { type: string, nullable: true }
+        id: { type: string, format: uuid, nullable: true }
+        kennzahl_id: { type: string, format: uuid, nullable: true }
+    EnergiemanagementWiedervorlage:
+      type: object
+      required: [stichtag, vorschau_tage, faellig, vorschau, anzahl_faellig, anzahl_vorschau, nicht_in_liste, verantwortung]
+      properties:
+        stichtag: { type: string, format: date-time, description: Der Abruf in der Zeitzone des Unternehmens, auf die Minute. }
+        vorschau_tage: { type: integer, description: Das Vorschau-Fenster der Einstellung (Startwert 30). }
+        faellig:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZeile" }
+        vorschau:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZeile" }
+        anzahl_faellig: { type: integer }
+        anzahl_vorschau: { type: integer, description: "Mit `anzahl_faellig` der Baustein „Energiemanagement — n fällig · m in den nächsten 30 Tagen.“ (WV5)." }
+        nicht_in_liste:
+          type: array
+          items: { type: string }
+        verantwortung: { type: string, description: Der Verantwortungs-Satz (SP4). }
     FeststellungQuelle:
       type: object
       additionalProperties: false
