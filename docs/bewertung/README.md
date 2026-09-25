@@ -18,6 +18,7 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | [`luecken.json`](luecken.json), [`luecken.schema.json`](luecken.schema.json) | Lückenliste des Betreibers (L-nnn) mit Verlauf je Übergang, nie beim Kunden | AP-20 IP-3 |
 | [`uebungen/`](uebungen/README.md), [`uebung.schema.json`](uebung.schema.json) | Übungen des Betreibers (U-JJJJ-nn): Rückweg-Übung und Alarm-Übung mit Artefakt und Prüfsumme, Vorlagen; gelesen von `tools/bewertung/uebungen.py` (RF-07); Z-015 urteilt `pruefe_matrix.py` daraus (Stand, Frist, Q15 mit Person) | AP-20 IP-19 
 | [`vorschlaege/gitops/`](vorschlaege/gitops/README.md) | Regel `VoltPilotSicherungZuAlt` mit promtool-Test als Vorschlag; als Zweig nach gitops, gemergt vom Captain | AP-20 IP-19 |
+| [`bewertungen/`](bewertungen/) | Entwürfe des Matrix-Prüfers (`BWB-JJJJ-nn.json`, `.md`, `.sha256`), je Lauf ein Laufprotokoll: Befehle, übersprungene Fälle, nicht gefahrene Klassen | AP-20 IP-10 |
 | [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3), Matrix-Prüfer (`pruefe_matrix.py`, AP-20 NW-2) | AP-20 IP-2, IP-3, IP-5, IP-4 |
 
 ## Aufbau (MX1, MX2)
@@ -447,6 +448,13 @@ Die Entscheidung AP-20 E2 = A lautet: gestuft, ohne Tor.
 
 Kein Tor, kein Läufer, keine Nachricht (G4). Weder Merge noch Rollout warten auf die
 Bewertung. Fristen rechnet das Werkzeug beim Abruf.
+
+**Der erste Lauf** (AP-20 IP-10) ist [`BWB-2026-01`](bewertungen/BWB-2026-01.md) am Stand
+`09862815f`. Wie er gefahren wurde, steht im
+[Laufprotokoll](bewertungen/BWB-2026-01-laufprotokoll.md): ein Lauf-Ordner je Suite mit
+`stand.txt`, gefahren werden die Klassen und Dateien, die ein Kandidat nennt. Jede Klasse ohne
+Kandidat steht dort als „nicht gefahren“, denn sie trägt kein Urteil (NR1). Ein neuer Stand
+braucht einen neuen Lauf. Ein Bericht eines älteren Standes trägt ihn nicht (NR3, RF-11).
 
 ## Wer was tut
 
