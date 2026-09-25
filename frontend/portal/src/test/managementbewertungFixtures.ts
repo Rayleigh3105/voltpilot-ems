@@ -63,7 +63,7 @@ export function r12Wiedervorlage(): Wiedervorlage {
       zeile('bezugsbasis_ueberpruefung', 'BB-0002', 'Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)', '2027-11-13', 457),
       zeile('bezugsbasis_ueberpruefung', 'BB-0005', 'Bezugsbasis BB-0005, Fassung 1 — Überprüfung (Freigabe 20.11.2026 + 12 Monate)', '2027-11-20', 450),
       zeile('bezugsbasis_ueberpruefung', 'BB-0003', 'Bezugsbasis BB-0003, Fassung 2 — Überprüfung (Freigabe 05.03.2027 + 12 Monate)', '2028-03-05', 344),
-      zeile('bericht_anstoss', 'BR-2028-0001', 'Kunststoffwerk Ahrenberg GmbH · leistungsvergleich — Revision angestoßen (K-2028-0001)', '2028-04-03', 315),
+      zeile('bericht_anstoss', 'BR-2028-0001', 'Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Dezember 2027 — Revision angestoßen (K-2028-0001)', '2028-04-03', 315),
       zeile('bezugsbasis_ueberpruefung', 'BB-0004', 'Bezugsbasis BB-0004, Fassung 1 — Überprüfung (Freigabe 24.11.2027 + 12 Monate)', '2028-11-24', 80),
       zeile('bewertung_ueberpruefung', 'BR-2027-0001', 'Energetische Bewertung — Überprüfung', '2028-11-24', 80),
       zeile('dokument_ueberpruefung', 'D-0001', 'Energiepolitik — Überprüfung', '2028-12-10', 64, null, EM_IDS.d1),
@@ -76,6 +76,7 @@ export function r12Wiedervorlage(): Wiedervorlage {
     anzahl_vorschau: 1,
     nicht_in_liste: ['AU-2029-0001', 'BB-0001', 'D-0003', 'D-0004', 'F-2029-0001', 'M-2029-0002'],
     verantwortung: UEMS_VERANTWORTUNG,
+    naechste_managementbewertung: null,
   };
 }
 
@@ -457,7 +458,8 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
       return ansicht(kennung);
     },
     // MG7 (IP-23 `ManagementbewertungWiedervorlage`): letzte Sitzung einer freigegebenen Managementbewertung + 12 Monate
-    // (Startwert der Einstellung) — im Fenster als Zeile, sonst nur das Kennzeichen in `nicht_in_liste`.
+    // (Startwert der Einstellung) — im Fenster als Zeile, sonst nur das Kennzeichen in `nicht_in_liste`; das Feld
+    // `naechste_managementbewertung` trägt Tag und Herkunft immer (Folge IP-24).
     energiemanagementWiedervorlage: async () => {
       await staendeFertig;
       const w = r12Wiedervorlage();
@@ -468,6 +470,7 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
         const faellig = `${Number(tagS.slice(0, 4)) + 1}${tagS.slice(4)}`;
         const tage = Math.round((Date.parse(`${heute()}T00:00:00Z`) - Date.parse(`${faellig}T00:00:00Z`)) / 86_400_000);
         const z = zeile('managementbewertung', letzte.bericht.kennung, 'Nächste Managementbewertung', faellig, tage, 'Ines Kaltenbach');
+        w.naechste_managementbewertung = { faellig_am: faellig, kennzeichen: letzte.bericht.kennung, sitzung_am: tagS, rhythmus_monate: 12 };
         if (tage >= 0) w.faellig.push(z);
         else if (-tage <= w.vorschau_tage) w.vorschau.push(z);
         else w.nicht_in_liste = [...w.nicht_in_liste, letzte.bericht.kennung].sort();

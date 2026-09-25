@@ -72,6 +72,9 @@ class ManagementbewertungVorlageApiTest {
     private static final Map<String, String> NAMEN = Map.of("IK", "Ines Kaltenbach", "JW", "Jonas Wendlinger",
             "PH", "Peter Hollerbach", "CB", "Claudia Berger", "RF", "Robert Falk");
     private static final String VERMERK = "Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.";
+    /** MG7 mit Herkunft (Folge IP-24): Sitzung von BR-2029-0001 am 12.02.2029 + 12 Monate. */
+    private static final String NAECHSTE_2030 = "{\"faellig_am\":\"2030-02-12\",\"kennzeichen\":\"BR-2029-0001\","
+            + "\"sitzung_am\":\"2029-02-12\",\"rhythmus_monate\":12}";
     private static final String BEGRUENDUNG = "In der Besprechung am selben Tag entschieden.";
 
     @Container
@@ -310,6 +313,8 @@ class ManagementbewertungVorlageApiTest {
         String datenstand = entwurf.path("datenstand").asText();
         berichte.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:10:00Z"), ZoneOffset.UTC));
         ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "RF", Map.of("entwurf_datenstand", datenstand), 403);
+        // Vor der Freigabe: Sitzung festgehalten, aber kein Stand — keine nächste Managementbewertung (kein erfundener Tag).
+        assertThat(ruf(WIEDERVORLAGE, "IK", 200).path("naechste_managementbewertung").isNull()).isTrue();
         JsonNode stand = ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "IK",
                 Map.of("entwurf_datenstand", datenstand), 201);
         assertThat(stand.path("nr").asInt()).isEqualTo(1);
@@ -354,6 +359,14 @@ class ManagementbewertungVorlageApiTest {
             assertThat(z.path("kennzeichen").asText()).isEqualTo("BR-2029-0001");
             assertThat(z.path("faellig_am").asText()).isEqualTo("2030-02-12");
         });
+        assertThat(ruf(WIEDERVORLAGE, "IK", 200).path("naechste_managementbewertung").toString())
+                .isEqualTo(NAECHSTE_2030);
+        // Folge IP-24: am Tag der Freigabe liegt die Frist ein Jahr weit außerhalb des Fensters — die Zeile fehlt, das
+        // Feld nennt Tag und Herkunft aus derselben Rechnung (Sitzung von BR-2029-0001 am 12.02.2029 + 12 Monate).
+        wiedervorlage.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:30:00Z"), ZoneOffset.UTC));
+        JsonNode amTag = ruf(WIEDERVORLAGE, "RF", 200);
+        assertThat(amTag.path("nicht_in_liste").toString()).contains("\"BR-2029-0001\"");
+        assertThat(amTag.path("naechste_managementbewertung").toString()).isEqualTo(NAECHSTE_2030);
         wiedervorlage.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:00:00Z"), ZoneOffset.UTC));
 
         // PDF-Abschnitte: die zwölf Überschriften, Grenz- und Verantwortungs-Satz — auch „Einsicht“ lädt es.

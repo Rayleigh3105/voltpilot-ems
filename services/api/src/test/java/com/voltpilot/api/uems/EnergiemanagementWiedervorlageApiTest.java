@@ -168,7 +168,7 @@ class EnergiemanagementWiedervorlageApiTest {
         assertThat(w.at("/faellig/0/titel").asText())
                 .isEqualTo("Bezugsbasis BB-0002, Fassung 2 — Überprüfung (Freigabe 13.11.2026 + 12 Monate)");
         assertThat(w.at("/faellig/3/titel").asText())
-                .isEqualTo("Kunststoffwerk Ahrenberg GmbH · 2027-12 — Revision angestoßen (K-2028-0001)");
+                .isEqualTo("Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Dezember 2027 — Revision angestoßen (K-2028-0001)");
         assertThat(w.at("/faellig/6/titel").asText()).isEqualTo("Energiepolitik — Überprüfung");
         // Der Sprung: die Bezugsbasis mit ihrer Kennzahl, das Dokument mit seiner ID; Berichte haben ihr Kennzeichen.
         assertThat(w.at("/faellig/0/id").isNull()).isFalse();
@@ -187,6 +187,8 @@ class EnergiemanagementWiedervorlageApiTest {
         // Frist der Feststellung (22.04.2029), M-2029-0002 (30.06.2029).
         assertThat(texte(w.path("nicht_in_liste"), null)).containsExactly("AU-2029-0001", "BB-0001", "D-0003",
                 "D-0004", "F-2029-0001", "M-2029-0002");
+        // R12 hat noch keine freigegebene Managementbewertung — kein Tag für die nächste (Folge IP-24).
+        assertThat(w.path("naechste_managementbewertung").isNull()).isTrue();
 
         // WV4, E10: der Kalender-Abzug — dieselben neun Zeilen als ganztägige Termine, jeder mit dem Stand-Vermerk.
         MockHttpServletResponse ics = roh(WIEDERVORLAGE + "?format=ics", "IK");
@@ -223,6 +225,7 @@ class EnergiemanagementWiedervorlageApiTest {
         assertThat(w.path("vorschau").size()).isZero();
         assertThat(w.path("anzahl_faellig").asInt()).isZero();
         assertThat(w.path("nicht_in_liste").size()).isZero();
+        assertThat(w.path("naechste_managementbewertung").isNull()).isTrue();
         String ics = roh(WIEDERVORLAGE + "?format=ics", "IK").getContentAsString(StandardCharsets.UTF_8);
         assertThat(ics).doesNotContain("BEGIN:VEVENT").contains("X-WR-CALDESC:Stand vom 12.02.2029");
     }

@@ -51,7 +51,9 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
         var mapper = new ObjectMapper();
         var dtos = Map.of(
                 "EnergiemanagementWiedervorlageZeile", EnergiemanagementWiedervorlageDto.Zeile.class,
-                "EnergiemanagementWiedervorlage", EnergiemanagementWiedervorlageDto.Wiedervorlage.class);
+                "EnergiemanagementWiedervorlage", EnergiemanagementWiedervorlageDto.Wiedervorlage.class,
+                "EnergiemanagementWiedervorlageNaechsteManagementbewertung",
+                EnergiemanagementWiedervorlageDto.NaechsteManagementbewertung.class);
         for (var dto : dtos.entrySet()) {
             var schema = (Map<String, Object>) schemas.get(dto.getKey());
             assertThat(schema).as(dto.getKey()).isNotNull();
@@ -133,7 +135,7 @@ class EnergiemanagementWiedervorlageSchnittstelleVertragTest {
                 LocalDate.parse("2029-02-28"), -16, "fällig in 16 Tagen", "Jonas Wendlinger", UUID.randomUUID(), null);
         var w = new EnergiemanagementWiedervorlageDto.Wiedervorlage(OffsetDateTime.parse("2029-02-12T08:00:00+01:00"),
                 30, List.of(faellig, doppelt, doppelt), List.of(vorschau), 3, 1, List.of(),
-                EnergiemanagementRegeln.SAETZE.get("verantwortung"));
+                EnergiemanagementRegeln.SAETZE.get("verantwortung"), null);
         String text = new String(EnergiemanagementWiedervorlageService.ics(w), StandardCharsets.UTF_8);
 
         assertThat(EnergiemanagementWiedervorlageService.vermerk(LocalDate.parse("2029-02-12"))).isEqualTo(VERMERK);

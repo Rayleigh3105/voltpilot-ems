@@ -80,3 +80,29 @@ describe('Wiedervorlage: Art-Wörter und Sprünge (WV3)', () => {
     expect(wiedervorlageSprung(z('messbedarf_frist', 'MB-1', 'mb1'))).toBeNull();
   });
 });
+
+describe('Nächste Managementbewertung (MG7, Folge IP-24)', () => {
+  const leer = { faellig: [], vorschau: [], nicht_in_liste: [], vorschau_tage: 30 };
+  const liste = [{ kennung: 'BR-2029-0001', neueste_nr: 1 }];
+  const r13 = { faellig_am: '2030-02-12', kennzeichen: 'BR-2029-0001', sitzung_am: '2029-02-12', rhythmus_monate: 12 };
+
+  it('außerhalb des Vorschau-Fensters: Tag und Herkunft aus dem Feld der Route, nichts selbst gerechnet', () => {
+    expect(M.naechsteSatz({ ...leer, nicht_in_liste: ['BR-2029-0001'], naechste_managementbewertung: r13 }, liste)).toBe(
+      'Nächste Managementbewertung fällig am 12.02.2030 (Sitzung von BR-2029-0001 am 12.02.2029 + 12 Monate).',
+    );
+  });
+
+  it('im Fenster kommt der Satz der Zeile dazu; ein Monat heißt „Monat“', () => {
+    const zeile = { art: 'managementbewertung', kennzeichen: 'BR-2029-0001', faellig_am: '2029-03-12', satz: 'fällig in 16 Tagen' };
+    const monat = { ...r13, faellig_am: '2029-03-12', rhythmus_monate: 1 };
+    expect(M.naechsteSatz({ ...leer, vorschau: [zeile], naechste_managementbewertung: monat }, liste)).toBe(
+      'Nächste Managementbewertung fällig am 12.03.2029 — fällig in 16 Tagen (Sitzung von BR-2029-0001 am 12.02.2029 + 1 Monat).',
+    );
+  });
+
+  it('ohne freigegebene Managementbewertung bleibt der heutige Satz', () => {
+    expect(M.naechsteSatz({ ...leer, naechste_managementbewertung: null }, [])).toBe(
+      'Ohne freigegebene Managementbewertung mit Sitzung nennt VoltPilot keine nächste.',
+    );
+  });
+});

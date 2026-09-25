@@ -28,8 +28,20 @@ public final class EnergiemanagementWiedervorlageDto {
      * Die Wiedervorlage am Abruf ({@code stichtag}, Zeitzone des Unternehmens): {@code faellig} am längsten fällig
      * zuerst, dann nach Kennzeichen; {@code vorschau} die nächsten {@code vorschau_tage} Tage; {@code nicht_in_liste} die
      * Kennzeichen mit späterer Frist. {@code verantwortung} ist der Verantwortungs-Satz (SP4).
+     * {@code naechste_managementbewertung} (additiv, Folge AP-19 IP-24) ist die Frist von MG7 mit ihrer Herkunft — auch
+     * außerhalb des Vorschau-Fensters; {@code null} ohne freigegebene Managementbewertung mit Sitzung.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Wiedervorlage(OffsetDateTime stichtag, int vorschauTage, List<Zeile> faellig, List<Zeile> vorschau,
-            int anzahlFaellig, int anzahlVorschau, List<String> nichtInListe, String verantwortung) {}
+            int anzahlFaellig, int anzahlVorschau, List<String> nichtInListe, String verantwortung,
+            NaechsteManagementbewertung naechsteManagementbewertung) {}
+
+    /**
+     * MG7: die nächste Managementbewertung ist fällig am {@code faellig_am} = Tag der letzten Sitzung ({@code sitzung_am})
+     * der freigegebenen Managementbewertung {@code kennzeichen} + {@code rhythmus_monate} — gerechnet in
+     * {@code ManagementbewertungWiedervorlage}, derselben Stelle wie die Zeile der Wiedervorlage (WV2).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record NaechsteManagementbewertung(LocalDate faelligAm, String kennzeichen, LocalDate sitzungAm,
+            int rhythmusMonate) {}
 }

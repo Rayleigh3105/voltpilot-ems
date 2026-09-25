@@ -13,6 +13,7 @@ import { UEMS_MASSNAHME_ERGEBNISSE, UEMS_MASSNAHME_ZUSTAENDE, UEMS_ENERGIEZIEL_E
 import { HERKUNFT_WORT } from './massnahmen';
 import type { MassnahmeHerkunft } from './api';
 import { MANAGEMENTBEWERTUNG } from './uemsBericht';
+import type { NaechsteManagementbewertung } from './wiedervorlage';
 
 // ------------------------------------------------------------------ Wörter
 
@@ -238,13 +239,25 @@ export const freigabeBereit = (mb: Managementbewertung | null) =>
 
 /**
  * MG7 „nächste fällig“: die Frist rechnet die Wiedervorlage (letzte Sitzung + Rhythmus der Einstellung) — hier wird sie nur
- * gelesen. Steht sie im Fenster, mit Tag und Satz; liegt sie später, sagt die Route nur, DASS es eine gibt.
+ * gelesen. Das Feld `naechste_managementbewertung` trägt Tag und Herkunft auch außerhalb des Vorschau-Fensters (Folge
+ * IP-24); steht die Frist im Fenster, kommt der Satz der Zeile dazu. Ohne das Feld (ältere Antwort) wie bisher.
  */
 export function naechsteSatz(
-  w: { faellig: { art: string; kennzeichen: string; faellig_am: string; satz: string }[]; vorschau: { art: string; kennzeichen: string; faellig_am: string; satz: string }[]; nicht_in_liste: string[]; vorschau_tage: number } | null,
+  w: {
+    faellig: { art: string; kennzeichen: string; faellig_am: string; satz: string }[];
+    vorschau: { art: string; kennzeichen: string; faellig_am: string; satz: string }[];
+    nicht_in_liste: string[];
+    vorschau_tage: number;
+    naechste_managementbewertung?: NaechsteManagementbewertung | null;
+  } | null,
   liste: readonly Pick<Bericht, 'kennung' | 'neueste_nr'>[],
 ): string {
   const zeile = w ? [...w.faellig, ...w.vorschau].find((z) => z.art === 'managementbewertung') : undefined;
+  const n = w?.naechste_managementbewertung;
+  if (n) {
+    const monate = `${n.rhythmus_monate} ${n.rhythmus_monate === 1 ? 'Monat' : 'Monate'}`;
+    return `Nächste Managementbewertung fällig am ${tag(n.faellig_am)}${zeile ? ` — ${zeile.satz}` : ''} (Sitzung von ${n.kennzeichen} am ${tag(n.sitzung_am)} + ${monate}).`;
+  }
   if (zeile) return `Nächste Managementbewertung fällig am ${tag(zeile.faellig_am)} — ${zeile.satz} (aus der Sitzung von ${zeile.kennzeichen}).`;
   const spaeter = w ? liste.find((b) => b.neueste_nr && w.nicht_in_liste.includes(b.kennung)) : undefined;
   if (spaeter && w) return `Nächste Managementbewertung: nicht in den nächsten ${w.vorschau_tage} Tagen fällig (aus der Sitzung von ${spaeter.kennung}).`;

@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.NaechsteManagementbewertung;
 import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Wiedervorlage;
 import com.voltpilot.api.web.dto.EnergiemanagementWiedervorlageDto.Zeile;
 import java.nio.charset.StandardCharsets;
@@ -39,13 +40,16 @@ public class EnergiemanagementWiedervorlageService {
     private static final DateTimeFormatter ICS_ZEIT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
 
     private final ObjectProvider<WiedervorlageQuelle> quellen;
+    private final ObjectProvider<ManagementbewertungWiedervorlage> managementbewertung;
     private final EnergiemanagementEinstellungRepository einstellung;
     private final UnternehmenRepository unternehmen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public EnergiemanagementWiedervorlageService(ObjectProvider<WiedervorlageQuelle> quellen,
+            ObjectProvider<ManagementbewertungWiedervorlage> managementbewertung,
             EnergiemanagementEinstellungRepository einstellung, UnternehmenRepository unternehmen) {
         this.quellen = quellen;
+        this.managementbewertung = managementbewertung;
         this.einstellung = einstellung;
         this.unternehmen = unternehmen;
     }
@@ -87,7 +91,15 @@ public class EnergiemanagementWiedervorlageService {
         List<Zeile> vorschau = zeilen((List<Map<String, Object>>) r.get("vorschau"), je);
         return new Wiedervorlage(jetzt, vorschauTage, faellig, vorschau, (int) r.get("anzahl_faellig"),
                 (int) r.get("anzahl_vorschau"), (List<String>) r.get("nicht_in_liste"),
-                EnergiemanagementRegeln.SAETZE.get("verantwortung"));
+                EnergiemanagementRegeln.SAETZE.get("verantwortung"), naechsteManagementbewertung(abruf));
+    }
+
+    /** MG7 mit Herkunft, auch außerhalb des Fensters — aus derselben Quelle wie die Zeile, nie nachgerechnet (WV2). */
+    private NaechsteManagementbewertung naechsteManagementbewertung(LocalDate abruf) {
+        var quelle = managementbewertung.getIfAvailable();
+        if (quelle == null) return null;
+        return quelle.naechste(abruf).map(n -> new NaechsteManagementbewertung(n.faelligAm(), n.kennzeichen(),
+                n.sitzungAm(), n.rhythmusMonate())).orElse(null);
     }
 
     /**

@@ -96,11 +96,20 @@ public class WiedervorlageBestand implements WiedervorlageQuelle {
             if (!BerichtService.ZEICHEN_REVISION.equals(u.standZeichen())) continue;
             for (var a : berichte.detail(kopf.kennung(), wer).anstoesse()) {
                 if (!BerichtService.OFFEN.equals(a.zustand())) continue;
-                aus.add(new Frist("bericht_anstoss", kopf.kennung(), kopf.geltungName() + " · " + kopf.schluessel()
-                        + " — Revision angestoßen (" + a.anlassKennung() + ")", tag(a.erkanntAm(), zone), null, null,
-                        null));
+                aus.add(new Frist("bericht_anstoss", kopf.kennung(), berichtName(kopf.vorlage(), kopf.geltungName(),
+                        kopf.zeitraumArt(), kopf.schluessel()) + " — Revision angestoßen ("
+                        + a.anlassKennung() + ")", tag(a.erkanntAm(), zone), null, null, null));
             }
         }
+    }
+
+    /**
+     * Der Bericht in Kundenwörtern — Name der Vorlage ({@code bericht-vorlagen.json}), Geltung, Zeitraum: „Leistungsvergleich
+     * Spritzguss Dezember 2027“ (Referenz 1.10), nie der Vorlagen- oder Zeitraum-Schlüssel.
+     */
+    static String berichtName(String vorlage, String geltungName, String zeitraumArt, String schluessel) {
+        return BerichtPdf.VORLAGEN.getOrDefault(vorlage, vorlage) + " " + geltungName + " "
+                + KennzahlRegeln.periodeText(zeitraumArt, schluessel);
     }
 
     // ------------------------------------------------------------------ AP-17

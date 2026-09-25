@@ -12136,7 +12136,8 @@ paths:
         Abruf ist der Tag in der Zeitzone des Unternehmens. `faellig` (Abruf ≥ fällig am, 0 Tage = „heute fällig“) am
         längsten fällig zuerst, bei gleichem Tag nach Kennzeichen; `vorschau` die Fristen in den nächsten
         `vorschau_tage` Tagen (Einstellung, Startwert 30; genau 30 ist Vorschau); `nicht_in_liste` die Kennzeichen mit
-        späterer Frist. `format=ics` liefert dieselben Zeilen (fällig und Vorschau) als Kalender-Abzug nach RFC 5545 -
+        späterer Frist; `naechste_managementbewertung` die Frist von MG7 mit Herkunft, auch außerhalb des Fensters.
+        `format=ics` liefert dieselben Zeilen (fällig und Vorschau) als Kalender-Abzug nach RFC 5545 -
         je Zeile ein ganztägiger Termin am Tag, an dem sie fällig ist bzw. wird, Titel „Kennzeichen: Titel“,
         Beschreibung und Kalender mit dem Vermerk „Stand vom TT.MM.JJJJ aus VoltPilot; maßgeblich ist die Wiedervorlage
         im Portal.“ Dasselbe Recht wie die Seite, nicht eigens protokolliert; nichts wird verschickt.
@@ -18497,7 +18498,7 @@ components:
         kennzahl_id: { type: string, format: uuid, nullable: true }
     EnergiemanagementWiedervorlage:
       type: object
-      required: [stichtag, vorschau_tage, faellig, vorschau, anzahl_faellig, anzahl_vorschau, nicht_in_liste, verantwortung]
+      required: [stichtag, vorschau_tage, faellig, vorschau, anzahl_faellig, anzahl_vorschau, nicht_in_liste, verantwortung, naechste_managementbewertung]
       properties:
         stichtag: { type: string, format: date-time, description: Der Abruf in der Zeitzone des Unternehmens, auf die Minute. }
         vorschau_tage: { type: integer, description: Das Vorschau-Fenster der Einstellung (Startwert 30). }
@@ -18513,6 +18514,23 @@ components:
           type: array
           items: { type: string }
         verantwortung: { type: string, description: Der Verantwortungs-Satz (SP4). }
+        naechste_managementbewertung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergiemanagementWiedervorlageNaechsteManagementbewertung" }]
+          description: >
+            Additiv (Folge AP-19 IP-24): die Frist von MG7 mit ihrer Herkunft - auch außerhalb des Vorschau-Fensters, aus
+            derselben Rechnung wie die Zeile `managementbewertung`; `null` ohne freigegebene Managementbewertung mit Sitzung.
+    EnergiemanagementWiedervorlageNaechsteManagementbewertung:
+      type: object
+      required: [faellig_am, kennzeichen, sitzung_am, rhythmus_monate]
+      description: >
+        MG7: fällig am = Tag der letzten Sitzung einer freigegebenen Managementbewertung + Rhythmus der Einstellung
+        (`managementbewertung_rhythmus_monate`, Startwert 12) - beim Abruf, nie gespeichert.
+      properties:
+        faellig_am: { type: string, format: date }
+        kennzeichen: { type: string, description: "Die Managementbewertung (BR-JJJJ-nnnn), an deren Sitzung die Frist hängt." }
+        sitzung_am: { type: string, format: date }
+        rhythmus_monate: { type: integer }
     FeststellungQuelle:
       type: object
       additionalProperties: false

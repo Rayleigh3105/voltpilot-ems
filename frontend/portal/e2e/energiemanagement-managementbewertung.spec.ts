@@ -260,7 +260,7 @@ for (const breite of [375, 1440]) {
       await seite.getByTestId('mb-zur-liste').click();
       await expect(page.getByTestId('mb-zeile-BR-2029-0001')).toContainText('Managementbewertung 2028');
       await expect(page.getByTestId('mb-zeile-BR-2029-0001')).toContainText('Stand Nr. 1');
-      await expect(page.getByTestId('mb-naechste')).toHaveText('Nächste Managementbewertung: nicht in den nächsten 30 Tagen fällig (aus der Sitzung von BR-2029-0001).');
+      await expect(page.getByTestId('mb-naechste')).toHaveText('Nächste Managementbewertung fällig am 12.02.2030 (Sitzung von BR-2029-0001 am 12.02.2029 + 12 Monate).');
       await ablegen(page, `m10-liste-${breite}`);
     });
 

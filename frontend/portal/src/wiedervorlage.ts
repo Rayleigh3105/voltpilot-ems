@@ -55,6 +55,19 @@ export type Wiedervorlage = {
   anzahl_vorschau: number;
   nicht_in_liste: string[];
   verantwortung: string;
+  /**
+   * Additiv (Folge AP-19 IP-24): MG7 mit Herkunft, auch außerhalb des Vorschau-Fensters — gerechnet an derselben Stelle
+   * wie die Zeile `managementbewertung`; `null` ohne freigegebene Managementbewertung mit Sitzung.
+   */
+  naechste_managementbewertung?: NaechsteManagementbewertung | null;
+};
+
+/** MG7: fällig am = Tag der letzten Sitzung (`sitzung_am`) der Managementbewertung `kennzeichen` + `rhythmus_monate`. */
+export type NaechsteManagementbewertung = {
+  faellig_am: string;
+  kennzeichen: string;
+  sitzung_am: string;
+  rhythmus_monate: number;
 };
 
 export const ENERGIEMANAGEMENT_TITEL = 'Energiemanagement';
