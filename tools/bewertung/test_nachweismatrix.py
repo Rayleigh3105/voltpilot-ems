@@ -63,8 +63,9 @@ class LeereMatrix(unittest.TestCase):
         self.assertEqual((m['normfassung']['international'], m['normfassung']['deutsch']),
                          nachweismatrix.NORMFASSUNGEN[1])
         self.assertRegex(m['normfassung']['stichtag'], r'^\d{4}-\d{2}-\d{2}$')
-        # Das Zusagen-Inventar steht seit AP-20 IP-5 (Wache: test_zusagen.py); Norm-Teil (IP-7) und Kundenaufgaben (IP-8) folgen.
+        # Zusagen seit AP-20 IP-5 (Wache: test_zusagen.py), Norm-Teil seit IP-7 (NormTeil unten); Kundenaufgaben folgen (IP-8).
         self.assertTrue(m['zusagen'])
+        self.assertTrue(m['norm_teil'])
 
     def test_die_gliederung_hat_dreissig_abschnitte_und_nur_nummern(self):
         gliederung = nachweismatrix.lade_schema()['$defs']['abschnitt']['enum']
@@ -72,6 +73,67 @@ class LeereMatrix(unittest.TestCase):
         self.assertEqual(len(set(gliederung)), 30)
         for a in gliederung:
             self.assertRegex(a, r'^(4|5|6|7|8|9|10)\.\d(\.\d)?$')
+
+
+class NormTeil(unittest.TestCase):
+    """Der Norm-Teil der Matrix im Repo (AP-20 IP-7): RF-12, L-012, KA-05, W7 und der ISO-Strang AP-16 bis AP-19."""
+
+    ISO_STRANG = ['Z-001', 'Z-002', 'Z-003', 'Z-004', 'Z-005', 'Z-039', *(f'Z-{n:03d}' for n in range(47, 61)), 'Z-075']
+    TESTS = nachweismatrix.REPO / 'services' / 'api' / 'src' / 'test' / 'java'
+
+    def setUp(self):
+        self.m = lade(nachweismatrix.MATRIX_PFAD)
+
+    def test_jede_zeile_der_gliederung_existiert_rf12(self):
+        fehlend, _ = nachweismatrix.gliederung(self.m)
+        self.assertEqual(fehlend, [])
+        self.assertEqual(len(self.m['norm_teil']), 30)
+
+    def test_gezaehlt_wird_je_traeger_nie_eine_erfuellung_rf12(self):
+        _, je_traeger = nachweismatrix.gliederung(self.m)
+        self.assertEqual(je_traeger, {'haelt_fest': 15, 'verweis': 7, 'misst': 4, 'beim_kunden': 4})
+
+    def test_jede_norm_zeile_ist_offen_bis_zur_fachperson(self):
+        for z in self.m['norm_teil']:
+            self.assertEqual(z['urteil'], 'offen', z['abschnitt'])
+            self.assertIn('Fachperson', [w['wer'] for w in z['wer_liefert']], z['abschnitt'])
+
+    def test_4_4_6_3_und_9_1_1_sind_zugeordnet_l012(self):
+        for abschnitt in ('4.4', '6.3', '9.1.1'):
+            z = normzeile(self.m, abschnitt)
+            self.assertIn('zugeordnet in AP-20 IP-7 (L-012)', z['herkunft'], abschnitt)
+            self.assertNotIn('L-012', z['luecken'], abschnitt)
+
+    def test_die_klimafrage_ist_die_kundenaufgabe_ka05(self):
+        self.assertEqual(sorted(z['abschnitt'] for z in self.m['norm_teil'] if z['kundenaufgabe'] == 'KA-05'), ['4.1', '4.2'])
+        self.assertIn('Klimawandel', normzeile(self.m, '4.1')['umschreibung'])
+
+    def test_die_ursachenregel_nennt_ihre_quellen_und_nicht_das_etikett_w7(self):
+        mit_regel = [z for z in self.m['norm_teil'] if 'Ursachenregel' in z['herkunft']]
+        self.assertEqual(sorted(z['abschnitt'] for z in mit_regel), ['10.1', '10.2', '6.2', '9.1.1'])
+        regel = nachweismatrix.REPO / 'docs' / 'agents' / 'root' / 'erklaerbarkeit-stufe-0-die-echtheits-reg.md'
+        self.assertIn('URSACHE behauptet', ''.join(regel.read_text(encoding='utf-8').splitlines(True)[8:10]))
+        for z in mit_regel:
+            for quelle in ('erklaerbarkeit-stufe-0-die-echtheits-reg.md:9–10', 'PG/plan.md:413', ':659'):
+                self.assertIn(quelle, z['herkunft'], z['abschnitt'])
+        for pfad, text in nachweismatrix._texte(self.m):
+            for treffer in re.finditer('AP-08 E7', text):
+                self.assertTrue(text[:treffer.start()].endswith('nicht „'), f'{pfad}: „AP-08 E7“ ist der Kasten Ersatzwerte (W7)')
+
+    def test_jede_zusage_des_iso_strangs_traegt_einen_kandidaten(self):
+        for kz in self.ISO_STRANG:
+            self.assertTrue(zusage(self.m, kz)['nachweis_kandidaten'], kz)
+
+    def test_jeder_kandidat_klasse_methode_steht_im_testcode(self):
+        for kz in self.ISO_STRANG:
+            for kandidat in zusage(self.m, kz)['nachweis_kandidaten']:
+                treffer = re.fullmatch(r'(\w+)#(\w+)', kandidat)
+                if not treffer:
+                    continue
+                klasse, methode = treffer.groups()
+                dateien = list(self.TESTS.rglob(f'{klasse}.java'))
+                self.assertEqual(len(dateien), 1, f'{kz}: {klasse}')
+                self.assertRegex(dateien[0].read_text(encoding='utf-8'), rf'void {methode}\(', f'{kz}: {kandidat}')
 
 
 class FixtureMatrix(unittest.TestCase):
@@ -249,6 +311,8 @@ class Kommandozeile(unittest.TestCase):
         code, aus = self.lauf()
         self.assertEqual(code, 0)
         self.assertIn('Vertrag hält', aus)
+        self.assertIn('Norm-Teil je Träger (RF-12): haelt_fest 15 · verweis 7 · misst 4 · beim_kunden 4; '
+                      'jede Zeile der Gliederung existiert', aus)
 
     def test_rot_mit_einer_zeile_je_verstoss(self):
         m = lade(FIXTURE)

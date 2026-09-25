@@ -8,7 +8,338 @@
     "stichtag": "2026-09-25",
     "normtext": "nicht im Repo; Zeilen tragen Abschnittsnummer und eigene Umschreibung; die Gliederung ist von der Fachperson an ihrer lizenzierten Ausgabe zu prüfen"
   },
-  "norm_teil": [],
+  "norm_teil": [
+    {
+      "abschnitt": "4.1",
+      "umschreibung": "Innere und äußere Themen, die das Energiemanagement betreffen; seit der Änderung 1 auch die Frage, ob der Klimawandel dazugehört",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-05",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 2 (Dokument „Kontext“ als Verweis); Klimafrage aus der Änderung 1 als Kundenaufgabe KA-05, VoltPilot führt dazu keine Angaben (AP-20 E1, ist/D D1)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "4.2",
+      "umschreibung": "Wer ein Interesse am Energiemanagement hat und was diese Parteien erwarten, auch rechtlich und klimabezogen",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-05",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 2 und Z. 3 (Kontext, rechtliche Anforderungen als Verweis); klimabezogene Erwartungen als Kundenaufgabe KA-05 (AP-20 E1, ist/D D1)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "4.3",
+      "umschreibung": "Wofür das Energiemanagement gilt: Standorte, Energieträger und begründete Ausschlüsse als festgehaltenes Dokument",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004", "Z-056"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 1 (Dokument „Anwendungsbereich“, daneben der Betrachtungsumfang der Bewertung, AP-16); docs/agents/root/uems-energiemanagement-dokumente.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "4.4",
+      "umschreibung": "Das Energiemanagement als Ganzes aufbauen, am Laufen halten und weiterentwickeln",
+      "traeger": "beim_kunden",
+      "zusagen": [],
+      "kundenaufgabe": "KA-01",
+      "herkunft": "zugeordnet in AP-20 IP-7 (L-012): ganz beim Kunden, KA-01; VoltPilot trägt nur Teile, die andere Zeilen nennen. Zuvor nur FM/vp-uems-ap19-fundament/ist/C-luecken.md:31",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "5.1",
+      "umschreibung": "Wie die Leitung Verantwortung für das Energiemanagement übernimmt und es sichtbar mitträgt",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 4 (mit 5.2 an der Energiepolitik: Wortlaut in VoltPilot, unterschriebenes Original beim Kunden)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "5.2",
+      "umschreibung": "Die Grundsatzerklärung der Leitung zur Energie, mit Fassung und Freigabe",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004", "Z-056"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 4; docs/agents/root/uems-energiemanagement-dokumente.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "5.3",
+      "umschreibung": "Wer im Energiemanagement welche Aufgabe, Verantwortung und Befugnis hat, das Team eingeschlossen",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004", "Z-056"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 5 (Aufgaben im Energiemanagement geführt); docs/agents/root/uems-energiemanagement-personen.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "6.1",
+      "umschreibung": "Welche Risiken und Chancen das Energiemanagement berücksichtigt und wie es darauf eingeht",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 6 (Verweis auf das Risiko-Management des Kunden, Eingabe der Managementbewertung)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "6.2",
+      "umschreibung": "Energieziele setzen und planen, mit welchen Maßnahmen, Verantwortlichen und Terminen sie erreicht werden sollen",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-003", "Z-039", "Z-053"],
+      "kundenaufgabe": "KA-04",
+      "herkunft": "AP-18 Energieziel und Maßnahme: FM/vp-uems-ap18-fundament/ist/C-luecken-iso-50001.md:4, :23, :33; docs/agents/root/uems-massnahme-routen.md. Ursachenregel „Ursache braucht Fakt“: docs/agents/root/erklaerbarkeit-stufe-0-die-echtheits-reg.md:9–10 (aus AGENTS.md ausgelagert), PG/plan.md:413 und :659; nicht „AP-08 E7“, das ist der Kasten Ersatzwerte (AP-20 W7)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "6.3",
+      "umschreibung": "Den Energieeinsatz erheben und auswerten und die wesentlichen Einsätze begründet bestimmen",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-001", "Z-047", "Z-048"],
+      "kundenaufgabe": "KA-07",
+      "herkunft": "zugeordnet in AP-20 IP-7 (L-012): AP-16 Betrachtungsumfang, Energieeinsatz, Kriterien und Einstufung; PG/plan.md:600–612; docs/agents/root/uems-bewertung.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "6.4",
+      "umschreibung": "Kennzahlen, an denen die Energieleistung gemessen und über die Zeit verfolgt wird",
+      "traeger": "misst",
+      "zusagen": ["Z-002", "Z-051"],
+      "kundenaufgabe": "KA-04",
+      "herkunft": "AP-17 Energieleistungskennzahl: FM/vp-uems-ap17-fundament/ist/C-luecken-iso-50001.md:4; docs/agents/root/uems-bezugsbasis.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "6.5",
+      "umschreibung": "Der Bezugszeitraum, gegen den spätere Energieleistung verglichen wird, und wann er neu gesetzt wird",
+      "traeger": "misst",
+      "zusagen": ["Z-002", "Z-050", "Z-051"],
+      "kundenaufgabe": "KA-04",
+      "herkunft": "AP-17 Bezugsbasis: FM/vp-uems-ap17-fundament/ist/C-luecken-iso-50001.md:4, :40; docs/agents/root/uems-bezugsbasis.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "6.6",
+      "umschreibung": "Festlegen, welche Energiedaten wie, wie oft und mit welchen Messmitteln erfasst werden",
+      "traeger": "misst",
+      "zusagen": ["Z-007", "Z-009"],
+      "kundenaufgabe": "KA-07",
+      "herkunft": "AP-16 Messbedarf und Messplanung, AP-17 Normalisierung: FM/vp-uems-ap17-fundament/ist/C-luecken-iso-50001.md:4, :53; PG/plan.md:612; Messung AP-04 bis AP-07",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "7.1",
+      "umschreibung": "Mittel für das Energiemanagement bereitstellen: Personal, Budget, Technik",
+      "traeger": "beim_kunden",
+      "zusagen": [],
+      "kundenaufgabe": "KA-01",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 17 (draußen; nur die Beschluss-Art „Ressourcen“ der Managementbewertung)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "7.2",
+      "umschreibung": "Welche Fähigkeiten die beteiligten Personen brauchen und wie das sichergestellt und belegt wird",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-02",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 7 (an der Person nur der Verweis auf den Nachweis des Kunden, ohne Überprüfung)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "7.3",
+      "umschreibung": "Dass die Beschäftigten die Energiepolitik und ihren eigenen Beitrag kennen",
+      "traeger": "beim_kunden",
+      "zusagen": [],
+      "kundenaufgabe": "KA-02",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 18 (draußen: Unterweisung und Kultur)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "7.4",
+      "umschreibung": "Was über das Energiemanagement wem, wann und auf welchem Weg mitgeteilt wird, nach innen und außen",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 8 (Bekanntmachung geführt; die Kanäle beim Kunden)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "7.5.1",
+      "umschreibung": "Welche Dokumente und Aufzeichnungen das Energiemanagement braucht",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 9 (Verzeichnis geführt); docs/agents/root/uems-energiemanagement-nachweise.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "7.5.2",
+      "umschreibung": "Dokumente anlegen und ändern: Kennzeichnung, Fassung, Prüfung und Freigabe",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004", "Z-056"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 9 (Fassung und Freigabe geführt, ohne Datei); docs/agents/root/uems-energiemanagement-dokumente.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "7.5.3",
+      "umschreibung": "Dokumente und Aufzeichnungen lenken: verfügbar halten, schützen, aufbewahren, Änderungen nachvollziehen",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004", "Z-006", "Z-013", "Z-014", "Z-015", "Z-016", "Z-017", "Z-057", "Z-058"],
+      "kundenaufgabe": "KA-06",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 9 (Lenkung geführt); Betrieb: Sicherung, Aufbewahrung, Zugriffsschutz (AP-20 ist/D D4); docs/backup-restore.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "8.1",
+      "umschreibung": "Betrieb und Wartung der wesentlichen Energieeinsätze nach festgelegten Vorgaben planen und steuern",
+      "traeger": "verweis",
+      "zusagen": ["Z-008", "Z-011"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 10 (Verweis am Energieeinsatz auf Arbeitspläne und Wartung des Kunden)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "8.2",
+      "umschreibung": "Bei neuen oder geänderten Anlagen und Prozessen die Energieleistung schon in der Planung berücksichtigen",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 11 (Verweis auf die Planungsunterlagen des Kunden)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "8.3",
+      "umschreibung": "Beim Einkauf von Energie, Anlagen und Dienstleistungen die Energieleistung heranziehen",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 12 (Verweis auf Einkauf und Lieferantenbewertung des Kunden)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "9.1.1",
+      "umschreibung": "Energieleistung und Energiemanagement überwachen, messen, auswerten und bewerten",
+      "traeger": "misst",
+      "zusagen": ["Z-002", "Z-009", "Z-051", "Z-054"],
+      "kundenaufgabe": "KA-04",
+      "herkunft": "zugeordnet in AP-20 IP-7 (L-012): Messung, Kennzahlen und Berichte AP-04 bis AP-13, Leistungsvergleich AP-17, Auffälligkeit AP-18; FM/vp-uems-ap18-fundament/ist/C-luecken-iso-50001.md:4, :43. Ursachenregel „Ursache braucht Fakt“: docs/agents/root/erklaerbarkeit-stufe-0-die-echtheits-reg.md:9–10 (aus AGENTS.md ausgelagert), PG/plan.md:413 und :659; nicht „AP-08 E7“, das ist der Kasten Ersatzwerte (AP-20 W7)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "9.1.2",
+      "umschreibung": "Prüfen, ob rechtliche und andere Anforderungen zur Energie eingehalten werden",
+      "traeger": "beim_kunden",
+      "zusagen": [],
+      "kundenaufgabe": "KA-03",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 19 (draußen: die Bewertung selbst) und Z. 3 (Rechtskataster als Verweis)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "9.2.1",
+      "umschreibung": "Interne Audits: wozu sie dienen und dass sie in geplanten Abständen stattfinden",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-005", "Z-056"],
+      "kundenaufgabe": "KA-08",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 13 (Audit, Hinweis und Feststellung geführt; Durchführung beim Kunden)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "9.2.2",
+      "umschreibung": "Interne Audits planen: Programm, Umfang, Auswahl unabhängiger Auditierender, Bericht an die Leitung",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-005"],
+      "kundenaufgabe": "KA-08",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 13",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "9.3",
+      "umschreibung": "Die Leitung bewertet das Energiemanagement in Abständen: Eingaben, Ergebnisse, Beschlüsse",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-004", "Z-056"],
+      "kundenaufgabe": "KA-09",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 14 (Vorlage, Sitzung und Beschlüsse geführt); docs/agents/root/uems-managementbewertung-beschluesse.md",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "10.1",
+      "umschreibung": "Mit Abweichungen umgehen: korrigieren, Ursachen klären, handeln und die Wirksamkeit prüfen",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-005", "Z-056"],
+      "kundenaufgabe": "KA-04",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 15 (Feststellung, Maßnahme, Wirksamkeit geführt; die Ursachenanalyse beim Kunden). Ursachenregel „Ursache braucht Fakt“: docs/agents/root/erklaerbarkeit-stufe-0-die-echtheits-reg.md:9–10 (aus AGENTS.md ausgelagert), PG/plan.md:413 und :659; nicht „AP-08 E7“, das ist der Kasten Ersatzwerte (AP-20 W7)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    },
+    {
+      "abschnitt": "10.2",
+      "umschreibung": "Energieleistung und Energiemanagement fortlaufend verbessern",
+      "traeger": "haelt_fest",
+      "zusagen": ["Z-003", "Z-054"],
+      "kundenaufgabe": "KA-04",
+      "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 20; AP-18: FM/vp-uems-ap18-fundament/ist/C-luecken-iso-50001.md:73. Ursachenregel „Ursache braucht Fakt“: docs/agents/root/erklaerbarkeit-stufe-0-die-echtheits-reg.md:9–10 (aus AGENTS.md ausgelagert), PG/plan.md:413 und :659; nicht „AP-08 E7“, das ist der Kasten Ersatzwerte (AP-20 W7)",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [{"wer": "Fachperson", "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"}]
+    }
+  ],
   "zusagen": [
     {
       "kennzeichen": "Z-001",
@@ -510,11 +841,11 @@
       "wortlaut": "Eine Maßnahme ist mit Ziel, Verantwortlichem, Messgrundlage und Ergebnis verbunden.",
       "quelle": "PG/plan.md:659",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["6.2"],
+      "nachweis_kandidaten": ["UemsMassnahmeAbnahmeTest#verbundenMitZielVerantwortlichemMessgrundlageUndErgebnis", "UemsMassnahmeAbnahmeTest#ohneMessgrundlageNurNichtMessbar"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Kandidat aus den Abnahme-Tests AP-16 bis AP-19 benennen (AP-20 IP-7), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -614,11 +945,11 @@
       "wortlaut": "Unter „Bewertung“ legen Sie fest, welche Prozesse Energie einsetzen.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:21",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["6.3"],
+      "nachweis_kandidaten": ["EnergieeinsatzApiTest#b1R5FilterVorschlaegeUndJedeAenderungMitAkteur"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -627,11 +958,11 @@
       "wortlaut": "Die Messwerte schlagen eine Rangliste vor; einstufen, mit Begründung, tun Sie selbst.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:21–22",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["6.3"],
+      "nachweis_kandidaten": ["BewertungRanglisteApiTest#r1UndR4R5R12AhrenbergOktober", "EnergieeinsatzEinstufungApiTest#r3PflichtbegruendungHerkunftUndAbweichungVomVorschlag", "UemsEinstufungAbnahmeTest#derPlanIstBegruendetVersioniertUndMitDenVerwendetenDatenVerbunden"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -641,10 +972,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:22–23",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsBewertungBestandsschutzTest#derRolloutLaesstDenBestandByteGleich_nurDieWiedervorlageDesBerichtsTraegtIhreVorgabe", "UemsBewertungBestandsschutzTest#keinLaeuferSchreibtFuerDieBewertung_mitFlagAnUndAus"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -653,11 +984,11 @@
       "wortlaut": "Mit einer Bezugsbasis legen Sie an einer Kennzahl fest, gegen welchen Zeitraum spätere Monate verglichen werden.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:24–25",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["6.5"],
+      "nachweis_kandidaten": ["BezugsbasisApiTest#r1OktoberIstVorlaeufigMitBasiswertUndStabilerPruefsumme", "BezugsbasisApiTest#r1FreigabeOhneVierAugenMitBegruendung"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -666,11 +997,11 @@
       "wortlaut": "Nach der Freigabe heißt die Kennzahl Energieleistungskennzahl; der Vergleich mit der Bezugsbasis und der Bericht „Leistungsvergleich“ zeigen je Monat, was gemessen und was erwartet war, ein Urteil nur bereinigt und mit seinem Rahmen.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:25–27",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["6.4", "6.5", "9.1.1"],
+      "nachweis_kandidaten": ["BezugsbasisVergleichApiTest#r2DezemberRohOhneUrteilBereinigtSchlechter", "BezugsbasisVergleichSatzTest#r2RohTraegtNieEinUrteil", "UemsProduktionsrueckgangAbnahmeTest#r2PlanAbnahmeRohOhneUrteilBereinigtSchlechter"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -680,10 +1011,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:27–28",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsBezugsbasisBestandsschutzTest#derRolloutLaesstDenBestandByteGleich"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -692,11 +1023,11 @@
       "wortlaut": "Unter „Ziele und Maßnahmen“ setzen Sie an einer Energieleistungskennzahl Energieziele und planen Maßnahmen mit Verantwortlichen und Terminen.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:29–30",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["6.2"],
+      "nachweis_kandidaten": ["EnergiezielApiTest#r4StandAm10Juli2028", "MassnahmeApiTest#r3AusgangslageDezember2027UndUmgesetzt"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -705,11 +1036,11 @@
       "wortlaut": "Ist ein abgeschlossener Monat schlechter, als die Bezugsbasis erwarten lässt, vermerkt das Portal eine Auffälligkeit; ob daraus eine Abweichung oder eine Maßnahme wird und ob die Wirkung einer Maßnahme belegt ist, entscheiden Sie selbst, mit Begründung.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:30–33",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["9.1.1", "10.2"],
+      "nachweis_kandidaten": ["AbweichungApiTest#r1AntwortEroeffnetAbweichung", "UemsMassnahmeAbnahmeTest#ohnePersonBleibtBewertungNullBeobachtetNichtBelegt", "UemsMassnahmeAbnahmeTest#januar2028BesserVorDerUmsetzungIstKeineWirkung"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -719,10 +1050,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:33",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsVerbesserungBestandsschutzTest#derRolloutLaesstDenBestandByteGleich"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -731,11 +1062,11 @@
       "wortlaut": "Unter „Energiemanagement“ halten Sie Energiepolitik, Anwendungsbereich und weitere Dokumente mit Fassung und Freigabe fest, dazu Aufgaben, interne Audits, Feststellungen und die Managementbewertung mit den Beschlüssen Ihrer Leitung.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:34–36",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["4.3", "5.2", "5.3", "7.5.2", "9.2.1", "9.3", "10.1"],
+      "nachweis_kandidaten": ["EnergiemanagementDokumentApiTest#r1EnergiepolitikFassungEinsMitPruefsummeGeprueftBleibtUndVierundsechzigTage", "UemsEnergiemanagementAbnahmeTest#auditFeststellungMassnahmeWirksamkeitDurchEinePerson", "UemsEnergiemanagementAbnahmeTest#managementbewertungMitBeschluessenDerLeitungUndFolgen"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -744,11 +1075,11 @@
       "wortlaut": "Ihre Dateien bleiben in Ihren Systemen; das Portal zeigt, wo das Original liegt, und nennt die Fristen in der Wiedervorlage.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:36–37",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["7.5.3"],
+      "nachweis_kandidaten": ["EnergiemanagementDokumentApiTest#verweisMitPruefsummeJedeAblehnungUndAufhebenLaesstLesbar", "EnergiemanagementWiedervorlageApiTest#r12AchtFaelligEineVorschauAmLaengstenFaelligZuerstUndDerKalenderAbzugMitStandVermerk"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -757,11 +1088,11 @@
       "wortlaut": "Die Rolle „Einsicht“ erlaubt nur das Ansehen.",
       "quelle": "docs/rollout/release-notiz-vorlage.md:37–38",
       "traeger": "voltpilot",
-      "norm": [],
-      "nachweis_kandidaten": [],
+      "norm": ["7.5.3"],
+      "nachweis_kandidaten": ["RolleEinsichtBestandTest#einsichtTraegtUGenauAnDenLesendenZeilenEAmEigenenKontoSonstNichts"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -771,10 +1102,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:38–39",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsEnergiemanagementAbnahmeTest#verantwortungsSatzAufJederFlaeche", "UemsEnergiemanagementAbnahmeTest#keinVollstaendigkeitsOderKonformitaetswortInDenAntwortenDerLeser"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -784,10 +1115,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:39",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsEnergiemanagementBestandsschutzTest#derRolloutLaesstDenBestandByteGleich"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -979,10 +1310,10 @@
       "quelle": "frontend/portal/src/glossar.ts:719–720",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsEnergiemanagementAbnahmeTest#verantwortungsSatzAufJederFlaeche", "frontend/portal/src/copy.test.ts (AP-19 SP4: Grenz-Satz und Verantwortungs-Satz auf jeder Fläche)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Kandidat aus den Abnahme-Tests AP-16 bis AP-19 benennen (AP-20 IP-7), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {

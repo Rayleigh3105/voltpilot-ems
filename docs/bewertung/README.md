@@ -14,7 +14,7 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | Datei | Inhalt | Paket |
 |---|---|---|
 | [`nachweismatrix.schema.json`](nachweismatrix.schema.json) | Vertrag: Felder, Pflichten je Urteil, Vokabulare, Gliederung | AP-20 IP-2 |
-| [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil und Kundenaufgaben folgen | AP-20 IP-2, IP-5 |
+| [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil seit IP-7, Kundenaufgaben folgen | AP-20 IP-2, IP-5, IP-7 |
 | `luecken.json` | Lückenliste des Betreibers (L-nnn), nie beim Kunden | AP-20 IP-3 |
 | [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wache des Zusagen-Inventars (`zusagen.py`); später der Matrix-Prüfer | AP-20 IP-2, IP-5, IP-4 |
 
@@ -65,7 +65,7 @@ liegen außerhalb des Repos beim Captain. `<rev>:datei:zeile` zitiert einen fest
 
 **Urteil.** Jede Zeile ist `offen` und nennt, wer liefert (NR7). Kandidaten und Abschnitte trägt
 die Zeile nur, wo das Konzept sie schon nennt. Zugeordnet werden sie in AP-20 IP-6 (AP-00 … AP-15
-und Betrieb) und IP-7 (AP-16 … AP-19, Norm-Teil).
+und Betrieb) und IP-7 (AP-16 … AP-19, Norm-Teil; siehe unten).
 
 **Die Wache** `tools/bewertung/zusagen.py` (MX5) ist rot, wenn
 
@@ -80,6 +80,36 @@ und Betrieb) und IP-7 (AP-16 … AP-19, Norm-Teil).
 
 Wer einen Kunden-Satz ändert, ändert die Zusage mit. Entfällt ein Satz, bleibt die Zusage stehen:
 ihre Quelle zeigt dann auf den Stand, an dem der Satz galt (`<rev>:datei:zeile`).
+
+## Norm-Teil (AP-20 IP-7, W7, W9)
+
+Der Norm-Teil trägt die 30 Zeilen der Gliederung. Jede Zeile nennt Abschnitt, eigene Umschreibung,
+Träger, die Zusagen des Abschnitts, genau eine Kundenaufgabe und die Herkunft der Zuordnung. Das
+Urteil bleibt `offen`, bis die Fachperson ihre Lesart an der lizenzierten Ausgabe einträgt
+(AP-20 IP-12). Die Umschreibung ist kein Titel und kein Normtext, sondern sagt, worum es geht.
+
+- **Eingabe** ist die Spalte `norm_intern` von `FM/vp-uems-ap19-fundament/zuschnitt.json`. „Z. n“ in
+  der Herkunft ist der n-te Eintrag von `zeilen`. Den Leistungsteil 6.2 … 6.6 tragen die Ist-Berichte
+  von AP-16 … AP-18.
+- **Zählung je Träger (RF-12):** 15 `haelt_fest`, 7 `verweis`, 4 `misst`, 4 `beim_kunden`. Der
+  Prüfer druckt sie, der Vertragstest hält sie fest. Wer einen Träger ändert, ändert den Test mit.
+- **L-012 ist geheilt.** 4.4 liegt ganz beim Kunden (KA-01), 6.3 hält VoltPilot mit AP-16 fest, 9.1.1
+  misst VoltPilot mit Messung, Kennzahlen, Berichten und Leistungsvergleich. Ihre Herkunft beginnt mit
+  „zugeordnet in AP-20 IP-7 (L-012)“.
+- **Die Klimafrage** aus der Änderung 1 steht an 4.1 und 4.2 als Kundenaufgabe KA-05. VoltPilot
+  führt dazu keine Angaben.
+- **Die Ursachenregel** „Ursache braucht Fakt“ steht an 6.2, 9.1.1, 10.1 und 10.2 mit ihren Quellen:
+  [`erklaerbarkeit-stufe-0-die-echtheits-reg.md`](../agents/root/erklaerbarkeit-stufe-0-die-echtheits-reg.md)
+  Zeile 9–10, `PG/plan.md:413` und `:659`. „AP-08 E7“ ist der Kasten Ersatzwerte und nie diese
+  Regel (W7).
+- **Die Zusagen einer Zeile** folgen aus `norm` der Zusagen. Nennt eine Zusage einen Abschnitt, steht
+  sie in dessen Zeile (MX1).
+
+**ISO-Strang AP-16 … AP-19.** Die Plan-Abnahmen dieser Pakete (Z-001 … Z-005, Z-039), ihre Sätze
+der Release-Notiz (Z-047 … Z-060) und der Verantwortungs-Satz (Z-075) tragen Abschnitte und
+Kandidaten aus Abnahme-, API- und Bestandsschutz-Tests. Der Vertragstest prüft, dass jeder
+Kandidat `Klasse#methode` im Testcode steht. Ein Kandidat bleibt ein Kandidat (NR7): Die Zeile ist
+`offen`, bis der Lauf am Stand sie trägt (AP-20 IP-10).
 
 ## Vokabulare
 
@@ -197,7 +227,7 @@ Bewertung. Fristen rechnet das Werkzeug beim Abruf.
 ## Prüfen
 
 ```sh
-python3 tools/bewertung/nachweismatrix.py                       # Exit 0 = Vertrag hält, 1 = rot, 2 = Aufruf
+python3 tools/bewertung/nachweismatrix.py                       # Exit 0 = Vertrag hält, 1 = rot, 2 = Aufruf; druckt RF-12 je Träger
 python3 tools/bewertung/zusagen.py [--plan <plan.md>]          # Wache MX5: Exit 0 = jede Zusage hat ihre Zeile
 python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1 und die Wache
 ```

@@ -126,6 +126,18 @@ def _normfassung(matrix):
     return []
 
 
+def gliederung(matrix):
+    """RF-12: welche Abschnitte der Gliederung ohne Zeile sind, und die Zeilen je Träger.
+
+    Gezählt wird der Träger, nie eine Erfüllung (MX4). Vollständig heißt nur: jede Zeile existiert."""
+    defs = lade_schema()['$defs']
+    da = {z['abschnitt'] for z in matrix['norm_teil']}
+    je_traeger = dict.fromkeys(defs['traeger_norm']['enum'], 0)
+    for z in matrix['norm_teil']:
+        je_traeger[z['traeger']] += 1
+    return [a for a in defs['abschnitt']['enum'] if a not in da], je_traeger
+
+
 def verstoesse(matrix):
     """Alle Verstöße gegen den Vertrag; leer heißt: der Vertrag hält.
 
@@ -166,6 +178,9 @@ def main(argv):
     print(f'Vertrag hält: {_anzeige(pfad)} (Fassung {matrix["matrix_fassung"]}, Stichtag {matrix["normfassung"]["stichtag"]}, '
           f'{len(matrix["norm_teil"])} Norm-Zeilen, {len(matrix["zusagen"])} Zusagen, '
           f'{len(matrix["kundenaufgaben"])} Kundenaufgaben)')
+    fehlend, je_traeger = gliederung(matrix)
+    print('Norm-Teil je Träger (RF-12): ' + ' · '.join(f'{t} {n}' for t, n in je_traeger.items())
+          + (f'; ohne Zeile: {", ".join(fehlend)}' if fehlend else '; jede Zeile der Gliederung existiert'))
     return 0
 
 
