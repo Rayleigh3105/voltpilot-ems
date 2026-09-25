@@ -127,12 +127,20 @@ Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-lösc
   Trigger), geht auf seinen Savepoint zurück und wird wiederholt, solange eine andere Tabelle noch Zeilen verliert;
   was bleibt, nennt `verblieben` (ein scheiternder Trigger steht zusätzlich im Log „Löschzug …: nicht löschbar“; eine Tabelle ohne Löschrecht wird gar nicht versucht). ⚠ Eine NEUE Tabelle mit `tenant_id` geht also
   ohne Pflege mit — AUSSER sie nimmt der Admin-Rolle das DELETE oder hat einen append-only-Trigger: dann braucht sie
-  einen eigenen Weg (Entfernen-Funktion wie oben). ⚠ Die Rollup-Jobs (`telemetry_v2_rollups_job`: letzte 7 Tage) lesen
-  in eigener Transaktion; sendete die Box bis zuletzt, kann ein Lauf, der vor dem Commit las, danach Buckets
-  zurückschreiben — der Nachweis sieht sie nicht (gilt ebenso für die v1-Rollups, offen). Nicht in `deleteById`: ein
+  einen eigenen Weg (Entfernen-Funktion wie oben). Nachläufer: nächster Punkt. Nicht in `deleteById`: ein
   eben angelegter Bereich hat nur die Protokollzeile. `LoeschzugKatalogApiTest` ist der Wächter (Bereich mit Zeilen in
   allen 31 + einer Probe-Tabelle, die keine Liste kennt; Nachbar Zeile für Zeile unverändert; Probe ohne Löschrecht
   bzw. mit Trigger erscheint unter `verblieben`).
+- **Nachläufer schreiben nur für lebende Mandanten (Folge „Rollup-Race“, `V20260926004700`):** die drei Timescale-Jobs
+  (`telemetry_rollups_job` v1 und `telemetry_v2_rollups_job` je 7 Tage, `device_measurement_rollup_job` 90 Tage)
+  verdichten in eigener Transaktion mit `ON CONFLICT`. Jede Stufe ihrer `refresh_*`-Prozeduren liest nur Zeilen mit
+  `tenant_id IN (SELECT id FROM tenant FOR KEY SHARE SKIP LOCKED)` — die Sperre eines Fremdschlüssels. Ein EXISTS ohne
+  Sperre reicht NICHT (READ COMMITTED: das Statement sieht den Mandanten noch, wenn der Löschzug währenddessen
+  committet). Läuft der Job zuerst, wartet der Löschzug an der FOR-UPDATE-Sperre der Wache (vor jedem DELETE) und nimmt
+  die frischen Buckets mit; hält der Löschzug die Sperre, lässt der Job den Bereich ohne Warten aus. ⚠ Wer einen
+  weiteren Job anlegt, der aus einem Fenster in eine Tabelle OHNE FK auf den Mandanten schreibt, braucht denselben
+  Filter; und die Wache muss die Mandantenzeile weiter VOR dem ersten DELETE sperren, sonst verklemmen sich Job und
+  Löschzug. Wächter: `LoeschzugRollupNachlaeuferApiTest` (beide Reihenfolgen, Nachbar weiter verdichtet).
 - **`offboarding/cleanup`** nimmt nicht denselben Löschweg: nur Keycloak-Konten, und nur ohne Mandantenzeile.
 - **Nachweis:** `KundenbereichLoeschenApiTest` (NW-5: RF-08 mit Zeitraffer 89/90 Tage, Spalten und Inhalt ohne
   Personendaten, `verblieben` = Katalog danach = leer, Nachweis unveränderlich, die fünf Protokolle vorher

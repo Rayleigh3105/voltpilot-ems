@@ -118,6 +118,8 @@ public class KundenbereichLoeschung {
 
         @Override
         public void vorDemAbbau(Connection con) throws SQLException {
+            // FOR UPDATE before any DELETE: the rollup jobs hold FOR KEY SHARE on the tenant row while they write
+            // (V20260926004700), so the teardown waits for a running job here instead of deadlocking with it later.
             try (PreparedStatement st = con.prepareStatement("SELECT id, beendet_am, beendet_frist_tage, beendet_von"
                     + " FROM tenant WHERE id = ? FOR UPDATE")) {
                 st.setObject(1, kundenbereich);

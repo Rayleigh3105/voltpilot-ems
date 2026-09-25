@@ -49,7 +49,8 @@ import org.testcontainers.utility.DockerImageName;
  * {@code refresh_telemetry_rollups} mit {@code V20260922020000} (AP-15 Folgepunkt
  * {@code vp-uems-v15-folge-leser-je-anlage}) - neuer Zweig NUR fuer Mehr-Box-Anlagen mit
  * bestimmter fuehrender Box, jede andere Anlage rechnet Wort fuer Wort wie vorher; den
- * Zeilenbeweis fuehrt {@code UemsRollupMehrBoxMigrationTest}. Cockpit und Erloese werden von den bestehenden
+ * Zeilenbeweis fuehrt {@code UemsRollupMehrBoxMigrationTest}. Alle drei mit {@code V20260926004700} (AP-20,
+ * Rollup-Race): je Stufe nur der Filter auf gesperrt lebende Mandanten. Cockpit und Erloese werden von den bestehenden
  * Bestandsmustern {@code PortalApiTest#overviewAggregatesFleetTenantScopedWithBerlinDaySavings}
  * und {@code PortalApiTest#earningsComputesRealizedSavingsPerSiteWithHonestDegradation}
  * abgedeckt und deshalb hier nicht nachgebaut.
@@ -66,21 +67,28 @@ class UemsVerbrauchBestandsschutzTest {
     private static final Instant ERSTER = Instant.parse("2026-10-01T00:00:00Z");
     private static final Instant ZWEITER = Instant.parse("2026-10-02T00:00:00Z");
 
+    // V20260926004700 (AP-20 Folge zu IP-18, Rollup-Race; vorher je Prozedur in Klammern): alle drei
+    // woertlich plus je Stufe EINE Filterzeile tenant_id IN (SELECT id FROM tenant FOR KEY SHARE SKIP LOCKED);
+    // fuer jeden lebenden Mandanten Zeile fuer Zeile gleich (jede Gruppe enthaelt tenant_id), dieser Test und
+    // die Leser oben bleiben gruen; den Race-Beweis fuehrt LoeschzugRollupNachlaeuferApiTest.
     private static final Map<String, String> ROLLUP_FINGERABDRUECKE = Map.of(
             // V20260922236000 (vorher 6290471ab9cd23b33415e31b97731c1d14a81aa7c4966083561b83e2ac4b492a):
             // die Verdichtung aus V20260853000000 woertlich plus EINE Filterbedingung
             // AND edge_entity_id IS NULL; jede Bestandszeile traegt NULL, die Buckets sind
             // Zeile fuer Zeile gleich (UemsGeteilterPunktBoxSchluesselMigrationTest).
+            // V20260926004700 (vorher 174759bad2eea4bbb2d83f124b6cce6fb4b0898323e7683deed7febf4356db20).
             "refresh_device_measurement_rollup",
-            "174759bad2eea4bbb2d83f124b6cce6fb4b0898323e7683deed7febf4356db20",
+            "b6c7938ba1f187b645c17c59a74adbe6c7fa746b7f50fdedd3f7ae1086697432",
             // V20260922020000 (vorher 89c6795528f28718173c57613646e8251b70e32dd7d21cc486f316a44bad9cd4),
             // V20260922170000 (vorher e3c35a4157b245227daaa65a4dd92b94dc9b9d34e0ea9f96574f60dd4bec3945):
             // die 15m-Stufe liest telemetry_anlage_15m, Werte Zeile fuer Zeile gleich
             // (UemsAnlageLeserMigrationTest).
+            // V20260926004700 (vorher 1a9e79a5c575a5e0602a49cb2b5a8a12a23007be436a3c3c07fa63932bc7e2f8).
             "refresh_telemetry_rollups",
-            "1a9e79a5c575a5e0602a49cb2b5a8a12a23007be436a3c3c07fa63932bc7e2f8",
+            "2092a4d3c0b698759e0ced94c5352e16cb67c8d86cd0a78a6cb670a00ceacc71",
+            // V20260926004700 (vorher 906ae662ee2e974c2b6822cda07e5dedc4f072990b0b5e28f771397d3569485c).
             "refresh_telemetry_v2_rollups",
-            "906ae662ee2e974c2b6822cda07e5dedc4f072990b0b5e28f771397d3569485c");
+            "72712bb7d25a5bbc66649cedbefdcefd1ed11948e9cc17f49f2f54289117a0ba");
 
     private static final String HISTORIE_SNAPSHOT = "{\"range\":\"month\","
             + "\"from\":\"2026-09-30T22:00:00Z\",\"to\":\"2026-10-31T23:00:00Z\",\"bucketMinutes\":1440,"
