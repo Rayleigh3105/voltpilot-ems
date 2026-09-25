@@ -19,8 +19,9 @@ from voltpilot_forecast.repository import TimescaleForecastRepository
 
 
 class _FakeCursor:
-    def __init__(self, sink: dict) -> None:
+    def __init__(self, sink: dict, live: bool) -> None:
         self._sink = sink
+        self._live = live
 
     def __enter__(self):
         return self
@@ -28,18 +29,26 @@ class _FakeCursor:
     def __exit__(self, *exc):
         return False
 
+    def execute(self, sql, params):
+        # The area lock (voltpilot_forecast.kundenbereich) before the upsert.
+        self._sink["sperre"] = (sql, params)
+
+    def fetchone(self):
+        return (1,) if self._live else None
+
     def executemany(self, sql, rows):
         self._sink["sql"] = sql
         self._sink["rows"] = list(rows)
 
 
 class _FakeConnection:
-    def __init__(self) -> None:
+    def __init__(self, live: bool = True) -> None:
         self.sink: dict = {}
         self.commits = 0
+        self._live = live
 
     def cursor(self):
-        return _FakeCursor(self.sink)
+        return _FakeCursor(self.sink, self._live)
 
     def commit(self):
         self.commits += 1
@@ -96,3 +105,15 @@ def test_save_empty_series_is_a_noop():
     TimescaleForecastRepository(conn).save(empty)
     assert conn.sink == {}
     assert conn.commits == 0
+
+
+def test_save_takes_the_area_lock_first_and_writes_nothing_without_it():
+    """UEMS AP-20 E10 = A: an area that is "beendet", deleted or locked by the
+    Löschzug gets no forecast row - the transaction still ends (commit)."""
+    conn = _FakeConnection(live=False)
+    TimescaleForecastRepository(conn).save(_series())
+    sql, params = conn.sink["sperre"]
+    assert "FOR KEY SHARE OF t SKIP LOCKED" in sql
+    assert params == ("tenant-1",)
+    assert "rows" not in conn.sink
+    assert conn.commits == 1

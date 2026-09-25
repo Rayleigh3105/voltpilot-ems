@@ -52,6 +52,7 @@ from voltpilot_forecast.domain import (
 )
 from voltpilot_forecast.evaluation import BERLIN
 from voltpilot_forecast.features import WeatherHistory
+from voltpilot_forecast.kundenbereich import NICHT_BEENDET
 from voltpilot_forecast.load import SeasonalPersistenceLoadForecaster
 from voltpilot_forecast.openmeteo import (
     OpenMeteoWeatherProvider,
@@ -150,7 +151,10 @@ class CollectorConfig:
 # ---- DB reads -------------------------------------------------------------------
 
 def load_sites(conn) -> list[SiteRow]:
-    """Every site, with its authoritative PV asset parameters when linked.
+    """Every site of a live area, with its authoritative PV asset parameters when linked.
+
+    A "beendet" customer area is left out (UEMS AP-20 E10 = A,
+    :mod:`voltpilot_forecast.kundenbereich`): no new forecast for it.
 
     The LEFT JOIN picks the site's `pv` asset row (created by the portal's
     MaStR "Anlage verknüpfen" apply step); orientation/tilt are nullable there
@@ -163,6 +167,7 @@ def load_sites(conn) -> list[SiteRow]:
             SELECT s.tenant_id, s.id, s.latitude, s.longitude,
                    a.pv_capacity_kwp, a.azimuth_deg, a.tilt_deg
             FROM site s
+            JOIN tenant t ON t.id = s.tenant_id
             LEFT JOIN LATERAL (
                 SELECT pv_capacity_kwp, azimuth_deg, tilt_deg
                 FROM asset
@@ -170,6 +175,9 @@ def load_sites(conn) -> list[SiteRow]:
                 ORDER BY created_at DESC
                 LIMIT 1
             ) a ON TRUE
+            WHERE """
+            + NICHT_BEENDET
+            + """
             ORDER BY s.id
             """
         )

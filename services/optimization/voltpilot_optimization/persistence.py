@@ -251,11 +251,20 @@ class TimescaleScheduleRepository:
         self._dsn = dsn
 
     def upsert_plan(self, plan: SchedulePlan) -> int:
+        """0 rows for an area that is "beendet", deleted or locked by the
+        Löschzug (UEMS AP-20 E10 = A, :mod:`voltpilot_forecast.kundenbereich`)."""
         import psycopg  # lazy: optional [db] extra
+        from voltpilot_forecast.kundenbereich import lebenden_bereich_sperren
 
         rows = plan_rows(plan)
         with psycopg.connect(self._dsn) as conn:
             with conn.cursor() as cur:
+                if not lebenden_bereich_sperren(cur, plan.tenant_id):
+                    logger.info(
+                        "persist.bereich_ausgelassen",
+                        extra={"context": {"site_id": str(plan.site_id)}},
+                    )
+                    return 0
                 cur.executemany(_UPSERT_SQL, rows)
             conn.commit()
         logger.info(

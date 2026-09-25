@@ -37,6 +37,7 @@ from voltpilot_forecast.evaluation import (
     plan_economics,
     skill_vs_baseline,
 )
+from voltpilot_forecast.kundenbereich import NICHT_BEENDET
 from voltpilot_forecast.quality_repository import (
     AccuracyRecord,
     PlanAccuracyRecord,
@@ -72,7 +73,12 @@ def _dsn_from_env(env: dict[str, str]) -> str:
 # ---- DB reads (trusted backend role) ------------------------------------------
 
 def _sites(cur) -> list[tuple[str, str]]:
-    cur.execute("SELECT tenant_id, id FROM site ORDER BY id")
+    """Every site of a live area - a "beendet" one gets no new evaluation
+    (UEMS AP-20 E10 = A, :mod:`voltpilot_forecast.kundenbereich`)."""
+    cur.execute(
+        "SELECT s.tenant_id, s.id FROM site s JOIN tenant t ON t.id = s.tenant_id "
+        "WHERE " + NICHT_BEENDET + " ORDER BY s.id"
+    )
     return [(str(t), str(s)) for t, s in cur.fetchall()]
 
 

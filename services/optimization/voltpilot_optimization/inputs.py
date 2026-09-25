@@ -368,8 +368,13 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     :mod:`voltpilot_optimization.whatif`) - deliberately the same resolution
     path as the tick loop, so a preview can never disagree with the plan that
     will actually run.
+
+    A site of a "beendet" customer area is absent (UEMS AP-20 E10 = A,
+    :mod:`voltpilot_forecast.kundenbereich`): no plan, no publish, and the
+    on-demand replan finds no site.
     """
     import psycopg  # lazy: optional [db] extra
+    from voltpilot_forecast.kundenbereich import NICHT_BEENDET
 
     # Platform default for assets without a per-asset wear override (NULL
     # column); resolved once per cycle so an env change needs only a restart.
@@ -406,10 +411,14 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                    ssp.komponenten_stand
             FROM asset a
             JOIN site s ON s.id = a.site_id
+            JOIN tenant t ON t.id = s.tenant_id
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv' AND pv.is_primary
             LEFT JOIN site_supply_price ssp ON ssp.site_id = a.site_id
             WHERE a.type = 'battery' AND a.is_primary
               AND (%(site_id)s::uuid IS NULL OR a.site_id = %(site_id)s::uuid)
+              AND """
+            + NICHT_BEENDET
+            + """
             ORDER BY a.site_id
             """,
             {"site_id": str(site_id) if site_id is not None else None},

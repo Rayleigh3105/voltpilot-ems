@@ -18,11 +18,15 @@ upserts are idempotent (re-running a day overwrites, never duplicates).
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from voltpilot_forecast.domain import ensure_utc
+from voltpilot_forecast.kundenbereich import lebenden_bereich_sperren
+
+logger = logging.getLogger(__name__)
 
 #: forecast_model_state.status values (machine codes; German copy lives in the
 #: portal): 'collecting' = self-gate unmet, NO predictions; 'ready' = predicting.
@@ -166,56 +170,66 @@ class TimescaleQualityRepository(QualityRepository):
     def upsert_model_state(self, state: ModelState) -> None:
         import json  # noqa: PLC0415
 
-        with self._conn.cursor() as cur:
-            cur.execute(
-                _STATE_SQL,
-                (
-                    state.tenant_id,
-                    state.site_id,
-                    state.model,
-                    state.kind,
-                    state.status,
-                    state.days_collected,
-                    state.days_required,
-                    None if state.trained_at is None else ensure_utc(state.trained_at),
-                    state.train_rows,
-                    json.dumps(state.feature_importance),
-                    ensure_utc(state.updated_at),
-                ),
-            )
-        self._conn.commit()
+        self._upsert(
+            state.tenant_id,
+            state.site_id,
+            _STATE_SQL,
+            (
+                state.tenant_id,
+                state.site_id,
+                state.model,
+                state.kind,
+                state.status,
+                state.days_collected,
+                state.days_required,
+                None if state.trained_at is None else ensure_utc(state.trained_at),
+                state.train_rows,
+                json.dumps(state.feature_importance),
+                ensure_utc(state.updated_at),
+            ),
+        )
 
     def upsert_accuracy(self, record: AccuracyRecord) -> None:
-        with self._conn.cursor() as cur:
-            cur.execute(
-                _ACCURACY_SQL,
-                (
-                    record.day,
-                    record.tenant_id,
-                    record.site_id,
-                    record.model,
-                    record.kind,
-                    record.mae_kw,
-                    record.nmae_pct,
-                    record.bias_kw,
-                    record.skill_vs_baseline,
-                    record.n_slots,
-                ),
-            )
-        self._conn.commit()
+        self._upsert(
+            record.tenant_id,
+            record.site_id,
+            _ACCURACY_SQL,
+            (
+                record.day,
+                record.tenant_id,
+                record.site_id,
+                record.model,
+                record.kind,
+                record.mae_kw,
+                record.nmae_pct,
+                record.bias_kw,
+                record.skill_vs_baseline,
+                record.n_slots,
+            ),
+        )
 
     def upsert_plan_accuracy(self, record: PlanAccuracyRecord) -> None:
+        self._upsert(
+            record.tenant_id,
+            record.site_id,
+            _PLAN_SQL,
+            (
+                record.day,
+                record.tenant_id,
+                record.site_id,
+                record.planned_cost_eur,
+                record.baseline_cost_eur,
+                record.realized_cost_eur,
+                record.n_slots,
+            ),
+        )
+
+    def _upsert(self, tenant_id, site_id, sql: str, params: tuple) -> None:  # noqa: ANN001
+        """One upsert in its own transaction, only for a live, lockable area
+        (:mod:`voltpilot_forecast.kundenbereich`)."""
         with self._conn.cursor() as cur:
-            cur.execute(
-                _PLAN_SQL,
-                (
-                    record.day,
-                    record.tenant_id,
-                    record.site_id,
-                    record.planned_cost_eur,
-                    record.baseline_cost_eur,
-                    record.realized_cost_eur,
-                    record.n_slots,
-                ),
-            )
+            if lebenden_bereich_sperren(cur, tenant_id):
+                cur.execute(sql, params)
+            else:
+                logger.info("quality.bereich_ausgelassen site=%s", site_id)
         self._conn.commit()

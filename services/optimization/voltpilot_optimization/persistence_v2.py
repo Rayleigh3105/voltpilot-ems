@@ -175,11 +175,16 @@ class TimescaleSitePlanRepository:
         self._dsn = dsn
 
     def upsert_site_plan(self, plan: SitePlan) -> int:
+        """Run + slots, or nothing: an area that is "beendet", deleted or
+        locked by the Löschzug gets neither (UEMS AP-20 E10 = A,
+        :mod:`voltpilot_forecast.kundenbereich`); returns 0 then."""
         import psycopg  # lazy: optional [db] extra
 
         rows = consumer_slot_rows(plan)
         with psycopg.connect(self._dsn) as conn:
             with conn.cursor() as cur:
+                if not _lebend_gesperrt(cur, plan):
+                    return 0
                 cur.execute(
                     _RUN_UPSERT_SQL,
                     (
@@ -216,6 +221,8 @@ class TimescaleSitePlanRepository:
 
         with psycopg.connect(self._dsn) as conn:
             with conn.cursor() as cur:
+                if not _lebend_gesperrt(cur, plan):
+                    return
                 cur.execute(
                     _PUBLICATION_UPSERT_SQL,
                     (
@@ -234,9 +241,28 @@ class TimescaleSitePlanRepository:
 
         with psycopg.connect(self._dsn) as conn:
             with conn.cursor() as cur:
+                if not _lebend_gesperrt(cur, plan):
+                    return None
                 cur.execute(
                     _RUN_NUMBER_SQL, (plan.site_id, plan.plan_id, plan.generated_at)
                 )
                 row = cur.fetchone()
             conn.commit()
         return int(row[0]) if row else None
+
+
+def _lebend_gesperrt(cur, plan: SitePlan) -> bool:  # noqa: ANN001
+    """``True`` = write: the plan's area is live and now locked until commit.
+
+    ``False`` logs the skip; the caller writes nothing in this transaction
+    (:mod:`voltpilot_forecast.kundenbereich`).
+    """
+    from voltpilot_forecast.kundenbereich import lebenden_bereich_sperren
+
+    if lebenden_bereich_sperren(cur, plan.tenant_id):
+        return True
+    logger.info(
+        "persist_v2.bereich_ausgelassen",
+        extra={"context": {"site_id": str(plan.site_id), "plan_id": str(plan.plan_id)}},
+    )
+    return False

@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from voltpilot_forecast.domain import GeoLocation
+from voltpilot_forecast.kundenbereich import NICHT_BEENDET
 from voltpilot_forecast.openmeteo import (
     OpenMeteoConfig,
     OpenMeteoWeatherSource,
@@ -69,15 +70,21 @@ def _now_utc() -> datetime:
 
 
 def load_sites_with_coordinates(dsn: str) -> list[SiteRow]:
-    """Return every site that has latitude/longitude set (weather is per-location)."""
+    """Return every site that has latitude/longitude set (weather is per-location).
+
+    A "beendet" customer area is left out (UEMS AP-20 E10 = A,
+    :mod:`voltpilot_forecast.kundenbereich`).
+    """
     import psycopg  # lazy: optional [db] extra
 
     sites: list[SiteRow] = []
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT tenant_id, id, latitude, longitude FROM site "
-                "WHERE latitude IS NOT NULL AND longitude IS NOT NULL"
+                "SELECT s.tenant_id, s.id, s.latitude, s.longitude FROM site s "
+                "JOIN tenant t ON t.id = s.tenant_id "
+                "WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL "
+                "AND " + NICHT_BEENDET
             )
             for tenant_id, site_id, lat, lon in cur.fetchall():
                 sites.append(

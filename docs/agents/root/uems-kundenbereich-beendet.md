@@ -141,6 +141,20 @@ Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-lösc
   weiteren Job anlegt, der aus einem Fenster in eine Tabelle OHNE FK auf den Mandanten schreibt, braucht denselben
   Filter; und die Wache muss die Mandantenzeile weiter VOR dem ersten DELETE sperren, sonst verklemmen sich Job und
   Löschzug. Wächter: `LoeschzugRollupNachlaeuferApiTest` (beide Reihenfolgen, Nachbar weiter verdichtet).
+- **Python-Dienste (Prognose, Wetter, Bewertung, Optimierer):** EINE Stelle `voltpilot_forecast.kundenbereich`, der
+  Optimierer importiert sie. (1) Jede Anlagenliste, aus der ein Zyklus schreibt (`forecast_collect.load_sites`,
+  `weather_collect.load_sites_with_coordinates`, `evaluate._sites`, `inputs.load_battery_sites` samt Einzel-Neuplan),
+  verbindet `tenant t` und filtert `NICHT_BEENDET`. (2) Jede Schreibtransaktion ruft vor ihren INSERTs
+  `lebenden_bereich_sperren` (`FOR KEY SHARE OF t SKIP LOCKED` auf die nicht beendete Mandantenzeile) und schreibt bei
+  `False` nichts; die INSERTs selbst sind unverändert. Das betrifft `forecast`, `forecast_model_state`,
+  `forecast_accuracy`, `plan_accuracy`, `weather_forecast`, `schedule`, `site_plan_run` + `entity_plan_slot` (EINE
+  Entscheidung für Lauf und Slots) sowie `plan_zustellung` und die Laufnummer. Eine Sperre je Transaktion statt einer
+  Unterabfrage je INSERT: ein Plan sind mehrere Anweisungen, nie ein halber. `beendet_am` liest sie über `to_jsonb`,
+  denn vor der api-Migration heißt die fehlende Spalte „nichts beendet“ und bricht keinen Zyklus. ⚠ Ein neuer
+  Python-Schreiber in eine Tabelle mit `tenant_id` braucht beides. Wächter: `tests/test_kundenbereich.py` (Form, läuft
+  in CI) und `tests/test_kundenbereich_db.py` (echter Postgres im Wegwerf-Container, beide Reihenfolgen, beendet
+  mitten im Zyklus, Nachbar; überspringt sich ohne psycopg/Docker) in beiden Diensten. `optimizer_cycle_stat` ist
+  global (kein `tenant_id`).
 - **`offboarding/cleanup`** nimmt nicht denselben Löschweg: nur Keycloak-Konten, und nur ohne Mandantenzeile.
 - **Nachweis:** `KundenbereichLoeschenApiTest` (NW-5: RF-08 mit Zeitraffer 89/90 Tage, Spalten und Inhalt ohne
   Personendaten, `verblieben` = Katalog danach = leer, Nachweis unveränderlich, die fünf Protokolle vorher
