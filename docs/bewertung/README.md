@@ -63,9 +63,9 @@ Dateien durch `; ` getrennt. `PG/` ist der Programmplan und `FM/` die Ablage ein
 liegen außerhalb des Repos beim Captain. `<rev>:datei:zeile` zitiert einen festen Stand. Der
 **Wortlaut** ist wörtlich. Eine Kurzform trägt `(Kurzform` im Wortlaut.
 
-**Urteil.** Jede Zeile ist `offen` und nennt, wer liefert (NR7). Kandidaten und Abschnitte trägt
-die Zeile nur, wo das Konzept sie schon nennt. Zugeordnet werden sie in AP-20 IP-6 (AP-00 … AP-15
-und Betrieb) und IP-7 (AP-16 … AP-19, Norm-Teil; siehe unten).
+**Urteil.** Jede Zeile ist `offen` und nennt, wer liefert (NR7). Die Kandidaten hat AP-20 IP-6
+zugeordnet (AP-00 … AP-15, Betrieb und die übrigen Sätze der Notizen), AP-20 IP-7 den ISO-Strang
+AP-16 … AP-19 mit den Abschnitten (siehe unten).
 
 **Die Wache** `tools/bewertung/zusagen.py` (MX5) ist rot, wenn
 
@@ -110,6 +110,53 @@ der Release-Notiz (Z-047 … Z-060) und der Verantwortungs-Satz (Z-075) tragen A
 Kandidaten aus Abnahme-, API- und Bestandsschutz-Tests. Der Vertragstest prüft, dass jeder
 Kandidat `Klasse#methode` im Testcode steht. Ein Kandidat bleibt ein Kandidat (NR7): Die Zeile ist
 `offen`, bis der Lauf am Stand sie trägt (AP-20 IP-10).
+
+## Nachweis-Kandidaten und Klammer (AP-20 IP-6)
+
+AP-20 IP-6 hat jeder Zusage außerhalb des ISO-Strangs ihre Kandidaten zugeordnet: den
+Plan-Abnahmen AP-00 … AP-15, dem Betrieb und den übrigen Sätzen von Release- und Box-Notiz. Ein
+Kandidat ist kein Beleg (NR7). Jede Zeile bleibt `offen`, bis der Lauf am Stand sie trägt
+(AP-20 IP-10). Ein Kandidat hat eine von drei Formen:
+
+| Form | Beispiel | Die Klammer verlangt |
+|---|---|---|
+| `Klasse#methode` | `UnterstuetzungApiTest#a14NotfallZugriffIstEngUndLaut` | die Java-Testklasse genau einmal unter `services/*/src/test/java`, darin `void methode(` |
+| `pfad#Fall` | `tools/edge-simulator/test_uems_ahrenberg.py#test_a1_two_edges_configure_no_foreign_sources` | die Testdatei, darin `it('Fall'` oder `test('Fall'` wörtlich (`.ts`, `.tsx`, `.js`), `def Fall(` (`.py`) oder `func Fall(` (`.go`) |
+| `pfad[:zeile] Bemerkung` | `tools/generalprobe/rueckweg.sh → rueckweg.json (AP-14 NW-8)` | die Datei im Repo und die Zeile darin; für Artefakte, Werkzeuge und Dokumente |
+
+**Die Klammer** `tools/bewertung/klammer.py` (AP-20 NW-1) ist rot, wenn
+
+- eine genannte Klasse, Methode, Testdatei, ein Fall oder eine Zeile fehlt oder eine Klasse
+  mehrdeutig ist. Gleiche einfache Namen gibt es in mehreren Diensten.
+- ein Kandidat keine der drei Formen hat, etwa eine Klasse ohne Methode.
+- eine Zeile weder Kandidat noch Lieferant nennt.
+- eine Plan-Abnahme keinen Fall trägt (`Klasse#methode` oder `pfad#Fall`).
+- eine offene Betriebszusage den Betreiber nicht nennt, der bestätigt.
+- eine Zeile noch auf AP-20 IP-6 wartet.
+
+Die Klammer prüft den Baum, nicht die Laufzeit. Ob ein Kandidat grün ist, sagt der Lauf. Ob er die
+Zusage trägt, hat IP-6 gelesen. Trägt er nur einen Teil, nennt `wer_liefert` den Rest.
+
+**Gegen den Abnahmetext gelesen** (AP-01, AP-02, AP-06, AP-13; in Klammern der Abnahmefall des
+Konzepts):
+
+| Zusage | tragen die Kandidaten | trägt keiner |
+|---|---|---|
+| Z-020 (AP-01 A1) | Aufnehmen legt nur Entwurf und Ruhe an; gestartet wird erst mit grüner Liste; der Assistent schaltet vor dem Start nichts scharf | dass Geräte, Datenquellen und Messstellen vorher und nachher dieselben sind |
+| Z-021 (AP-01 A2) | Landung im Anlage-Cockpit bei einem Standort mit einer Anlage, die Leiste Cockpit · Fahrplan · Verlauf · Steuerung · Anlage, das Lesezeichen `#/anlage/{id}` | — |
+| Z-022 (AP-02 A1) | ein rückwirkender Umzug: Kennzeichen, Stand am Stichtag, Anstoß des Berichts; die Vorschau ist die Wirkung | den Fall selbst: Umzug ab 01.03.2027, der Februar-Bericht zeigt neu gebildet weiter 156 100 kWh |
+| Z-025 (AP-06 A1) | der Push je Box trägt nur ihre Quellen, gezählt am Broker; die Steuerquelle wechselt die Box nicht | — |
+| Z-026 (AP-06 A2) | der Ausfall liest nur festgehaltene Fakten; die Lücke ist nie Stillstand | dass die Messungen der anderen Box vollständig bleiben, zeigt nur der Simulator |
+| Z-037 (AP-13 O1) | Zeitraum mit Zone, Verlauf mit Lücke in einem Abzeichen, der Satz des Grundes, die Zahlen der Route | alle drei Teile zusammen auf einer Fläche |
+
+**Betrieb.** Eine Betriebszusage gilt in Produktion, ein Test zeigt nur, dass der Code es kann.
+Darum nennt jede offene Betriebszusage den Betreiber, der mit Datum bestätigt: Z-015 Q15 und die
+Rückweg-Übung, Z-016 und Z-076 die Aufbewahrungs-Jobs, Z-017 die Anmelde-Ereignisse.
+
+**Ohne Kandidat** bleiben Z-012 und Z-013 (Captain und Betreiber), Z-040 (die Einleitung der
+Notiz), Z-066 und Z-067 (kein Test hält, dass die Anzeige nichts speichert) und Z-068 … Z-070
+(Ankündigungen am Versandtag). Jede nennt, wer liefert.
+
 ## Lückenliste des Betreibers (AP-20 IP-3, E6 = A)
 
 Die eigenen Lücken von VoltPilot stehen in `luecken.json`, der Vertrag in `luecken.schema.json`.
@@ -309,6 +356,7 @@ Bewertung. Fristen rechnet das Werkzeug beim Abruf.
 ```sh
 python3 tools/bewertung/nachweismatrix.py                       # Exit 0 = Vertrag hält, 1 = rot, 2 = Aufruf; druckt RF-12 je Träger
 python3 tools/bewertung/zusagen.py [--plan <plan.md>]          # Wache MX5: Exit 0 = jede Zusage hat ihre Zeile
+python3 tools/bewertung/klammer.py                             # Klammer AP-20 NW-1: Exit 0 = jeder Kandidat existiert, keine Zeile ohne Kandidat oder Lieferant
 python3 tools/bewertung/luecken.py [--heute JJJJ-MM-TT]        # Wache AP-20 NW-3: Exit 0 = Liste hält, zeigt Zustand und Frist
 python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1 und die Wachen
 ```

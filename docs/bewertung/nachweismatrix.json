@@ -413,10 +413,10 @@
       "quelle": "PG/plan.md:183",
       "traeger": "voltpilot",
       "norm": ["7.5.3"],
-      "nachweis_kandidaten": ["ZugriffZaunApiTest (Methode in AP-20 IP-6 zu benennen; ZAUN_OFFEN leer, :592)"],
+      "nachweis_kandidaten": ["KennzahlWerteApiTest#a15W3UndRa6SchuetzenAlleKennzahlLesewegeOhneTeilrechnung", "KennzahlWerteApiTest#ra6VerbirgtAuchStandortKennzahlMitSpaeterFremdemEingang", "TeilansichtApiTest#a1PeterSiehtNurWerkLindachUndKeineUnternehmenssumme", "TeilansichtApiTest#a12GeraeteCsvUndEigeneAuswertungPruefenDenStandort", "BerichtApiTest#ip11ExportUmfangStehtImCsvUndUnternehmensExportBleibt403", "ZugriffZaunApiTest#jedeNachIp4NurZufaelligGrueneRouteTrifftEinEchtesObjektUndMachtEineZaunAussage", "SiteScopeArchitekturTest#kennzahlenBerichteUndExporteFuehrenZumSelbenPruefpunkt"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Methode benennen (AP-20 IP-6) und Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -426,7 +426,7 @@
       "quelle": "PG/plan.md:250",
       "traeger": "voltpilot",
       "norm": ["6.6"],
-      "nachweis_kandidaten": ["docs/contracts/v2/wago-registerbild-vectors.json (Simulator)"],
+      "nachweis_kandidaten": ["docs/contracts/v2/wago-registerbild-vectors.json (Simulator)", "edge-app/nodered/measurements/wago-registerbild.test.js#die Vertragsfaelle V1…V13 lesen sich wie beschrieben", "edge-app/nodered/measurements/wago-registerbild.test.js#die Simulator-Faelle S1…S6 ueber den echten Modbus-Weg"],
       "nachweise": [],
       "urteil": "offen",
       "wer_liefert": [{"wer": "Betreiber", "was": "Hardware-Prüfstand PFC200 (AP-05 IP-3, IP-13 bis IP-17)"}],
@@ -439,7 +439,7 @@
       "quelle": "PG/plan.md:584",
       "traeger": "voltpilot",
       "norm": ["8.1"],
-      "nachweis_kandidaten": ["docs/rollout/gemeinsame-steuerung-ausfalltests.md (Simulator, AP-15 NW-3)"],
+      "nachweis_kandidaten": ["docs/rollout/gemeinsame-steuerung-ausfalltests.md (Simulator, AP-15 NW-3)", "edge-app/core/internal/agent/verbund_anteile_test.go#TestAnteilVerlorenesDokumentErweitertNie", "GemeinsameSteuerungApiTest#r2RueckfaelleUeberDerGrenzePassenNicht", "GemeinsameSteuerungApiTest#r20BoxEinerAnderenAnlageWirdKeinMitglied", "GemeinsameSteuerungKeinVerbundApiTest#r21LesenMachtKeinMitglied"],
       "nachweise": [],
       "urteil": "offen",
       "wer_liefert": [{"wer": "Betreiber", "was": "Prüfstand (AP-15 NW-7) und Pilotanlage (AP-15 NW-8)"}],
@@ -452,7 +452,7 @@
       "quelle": "PG/plan.md:557",
       "traeger": "voltpilot",
       "norm": ["6.6", "9.1.1"],
-      "nachweis_kandidaten": ["UemsMesskundenLaufAbnahmeTest (AP-14 NW-4, am 19.09.2026 an einem älteren Stand belegt)"],
+      "nachweis_kandidaten": ["UemsMesskundenLaufAbnahmeTest#derNeueMesskundeGehtVonDerDatenquelleBisZumFreigegebenenBericht", "PortalwegMesskundeAbnahmeTest#portalwegEinesReinenMesskunden"],
       "nachweise": [],
       "urteil": "offen",
       "wer_liefert": [{"wer": "Crew", "was": "neuer Lauf an diesem Stand (AP-20 IP-10)"}],
@@ -465,10 +465,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:42",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsBestandSteuerungAusEinemStueckTest#migrationenUndAlleLaeuferSchaltenNichtsUndBewahrenDenBestand", "UemsBestandSteuerungAusEinemStueckTest#plan_ReferenzGetSitesSchedule_MainUndMqttScheduleVertrag", "UemsKennzahlenBestandsschutzTest#dieGanzeKennzahlMaschineLaeuftUndDerKernBleibtByteGleich", "UemsBerichteBestandsschutzTest#dieGanzeBerichtsMaschineLaeuftUndDerKernBleibtByteGleich", "UemsVerbrauchBestandsschutzTest#plausibleHistorienAntwortBleibtMitDemAp10SchalterByteGleich"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Bestandsschutz-Tests zuordnen (AP-20 IP-6)"}, {"wer": "Betreiber", "was": "Generalprobe AP-14 NW-1 fahren, Z08 = 0"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}, {"wer": "Betreiber", "was": "Generalprobe AP-14 NW-1 fahren, Z08 = 0"}],
       "luecken": []
     },
     {
@@ -543,10 +543,10 @@
       "quelle": "PG/plan.md:28",
       "traeger": "voltpilot",
       "norm": ["7.5.3"],
-      "nachweis_kandidaten": ["UemsRohdatenablaufAbnahmeTest (Speicherklassen)"],
+      "nachweis_kandidaten": ["DataRetentionPolicyTest#theQuarterHourClassKeepsTenYearsWithoutCompressionButWithAPreparedLayout", "DataRetentionPolicyTest#theDayClassKeepsTenYearsWithoutCompressionButWithAPreparedLayout", "UemsRohdatenablaufAbnahmeTest#a8_derBerichtDatenstandIstNachDemChunkDropReproduzierbar"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Vertragsende nach E10 (AP-20 IP-16 bis IP-18)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}, {"wer": "Betreiber", "was": "mit Datum bestätigen, dass die Aufbewahrungs-Jobs der Speicherklassen in Produktion laufen"}, {"wer": "Crew", "was": "Vertragsende nach E10 (AP-20 IP-16 bis IP-18)"}],
       "luecken": ["L-001"]
     },
     {
@@ -556,10 +556,10 @@
       "quelle": "FM/vp-uems-ap03-rechte/captain-entscheid-2026-09-10.txt:10",
       "traeger": "voltpilot",
       "norm": ["7.5.3"],
-      "nachweis_kandidaten": ["Tests zur Gewährung und zum Notfall-Zugriff (Klassen in AP-20 IP-6 zu benennen)", "services/api/src/main/resources/db/migration/V20260915030000__uems_zugriff.sql:19 (zugriff_protokoll)"],
+      "nachweis_kandidaten": ["UnterstuetzungApiTest#a5VoltPilotFragtAnUndDerKundenadministratorGewaehrt", "UnterstuetzungApiTest#ohneAnfrageGibtEsKeineVoltPilotUnterstuetzung", "UnterstuetzungApiTest#a14NotfallZugriffIstEngUndLaut", "ZugriffZaunApiTest#einPartnerOhneWirksameUnterstuetzungBekommtAufJederKundenroute404", "services/api/src/main/resources/db/migration/V20260915030000__uems_zugriff.sql:19 (zugriff_protokoll)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweise benennen (AP-20 IP-6)"}, {"wer": "Betreiber", "was": "Anmelde-Ereignisse einschalten (AP-20 IP-20)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}, {"wer": "Betreiber", "was": "Anmelde-Ereignisse einschalten (AP-20 IP-20)"}],
       "luecken": ["L-005"]
     },
     {
@@ -582,10 +582,10 @@
       "quelle": "PG/plan.md:71",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsReferenzunternehmenVectorsTest#dieDateiHaeltIhrSchema", "UemsReferenzunternehmenVectorsTest#derUmfangDesReferenzunternehmensStimmt", "frontend/portal/src/uemsReferenzunternehmen.test.ts (TS-Zwilling der Referenzdatei)", "docs/fachmodell/tools/check_belege.sh (Glossar und Fachmodell: jeder Beleg datei:zeile zeigt auf eine Datei)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand und Ausgabe von check_belege.sh an diesem Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -595,10 +595,10 @@
       "quelle": "PG/plan.md:117",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["FunktionApiTest#a3AufnehmenLegtNurEntwurfUndRuheAnUndLoestKeineSteuerungAus", "FunktionApiTest#dieListeLaeuftInDerTransaktionErneutUndErstEineGrueneGrenzeStartet", "frontend/portal/src/components/SteuernAssistent.test.tsx#bereitet Halle 2 vor, schreibt die Grenze, aktiviert aber weder Steuerart noch profiles", "frontend/portal/e2e/steuern-assistent.spec.ts (Referenzfall 5, Schritte 1–6 bei 375 und 1440 px)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Zusicherung ergänzen: gelesen gegen AP-01 A1 zählt kein Kandidat Geräte, Datenquellen und Messstellen vor und nach dem Start (vorher = nachher); danach Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -608,10 +608,10 @@
       "quelle": "PG/plan.md:117",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/startansicht.test.ts#1 Standort, 1 Anlage → Anlage-Cockpit (heutiges Verhalten)", "frontend/portal/src/shell/AppShell.test.tsx#belegt die Leiste mit den BEREICHEN der Anlage - ohne „Mehr\"", "frontend/portal/src/nav.test.ts#maps the Anlagen entry and one Anlage with its subpages", "frontend/portal/e2e/startansicht.spec.ts (Fall „einzel“ bei 375 und 1440 px: Landung, Pfad, kein Querlauf)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -621,10 +621,10 @@
       "quelle": "PG/plan.md:150",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsStrukturAenderungTest#einGebaeudeWechseltRueckwirkendDenStandort_innerhalbDesStandortsNicht", "OrtVerschiebenApiTest#zukunftGeplantVergangenheitRueckwirkendGekennzeichnetVorDemBeginnAbgelehntMitGrund", "OrtVerschiebenApiTest#wasDieVorschauAnkuendigtTrittEinUndSieSchreibtNichts", "OrtAenderungenApiTest#a2DieZeitraumAbfrageLiefertDenRueckwirkendenUmzugMitSeinemKennzeichen", "StandortLesemodellApiTest#a12StandAmDreiStichtageAufDemReferenzunternehmen"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Zusicherung ergänzen: gelesen gegen AP-02 A1 tragen die Kandidaten Kennzeichnung, Stand am Stichtag und Anstoß eines rückwirkenden Umzugs; den Fall selbst (Umzug ab 01.03.2027, der Februar-Bericht zeigt neu gebildet weiter 156 100 kWh) rechnet keiner nach; danach Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -634,10 +634,10 @@
       "quelle": "PG/plan.md:216",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["ZaehlerwechselApiTest#derZaehlerwechselVonMs06IstEinVorgang", "MessstelleRegisterApiTest#a17DerStandAmVorUndNachDemZaehlerwechsel", "AenderungsprotokollApiTest#a2DerAmZwanzigstenNachgetrageneWechselBleibtAmAchtzehntenAuffindbar"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -647,10 +647,10 @@
       "quelle": "PG/plan.md:216",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["ZaehlerwechselApiTest#derZaehlerwechselVonMs06IstEinVorgang", "ZaehlerwechselApiTest#a6ControllerWechseltVierKartenUndBindungenAtomarMitEigenenEndstaenden", "UemsStrukturAenderungTest#a2EinSpaeterZaehlerwechselStoesstBetroffeneBerichteAnUndAendertKeinenStand"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -660,10 +660,10 @@
       "quelle": "PG/plan.md:284",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["RegistryPushJeBoxApiTest#a1JedeBoxBekommtGenauIhreQuellenUndDieSchnittmengeIstLeer", "DatenquelleApiTest#a13DieSteuerquelleWechseltNicht409MitGrund", "tools/edge-simulator/test_uems_ahrenberg.py#test_a1_two_edges_configure_no_foreign_sources"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -673,10 +673,10 @@
       "quelle": "PG/plan.md:284",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["StandortApiTest#a2A15AusfallAm03112026LiestNurFestgehalteneFaktenUndFremdBleibt404", "UemsViertelstundeMengeTest#planAbnahme2EinBoxAusfallErscheintNieAlsGemessenerStillstand", "tools/edge-simulator/test_uems_ahrenberg.py#test_a2_failure_marks_only_the_sources_of_box_halle_2_offline"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10); gelesen gegen AP-06 A2: dass die Messungen der anderen Box vollständig bleiben, zeigt nur der Simulator an der Referenzwelt, kein Lauf an einer Box"}],
       "luecken": []
     },
     {
@@ -686,10 +686,10 @@
       "quelle": "PG/plan.md:319",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["WriterPipeTest#dasselbePaketZweimalIstEinWertEinWiderspruchIstEinEreignis", "UemsStreckeAbnahmeTest#a1_dieWiederholungVerdoppeltKeinenVerbrauch"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -699,10 +699,10 @@
       "quelle": "PG/plan.md:319",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsRohdatenablaufAbnahmeTest#a2_nachDemEchtenChunkDropTraegtJedeViertelstundeIhreHerkunft", "UemsRohdatenablaufAbnahmeTest#a8_derBerichtDatenstandIstNachDemChunkDropReproduzierbar", "UemsViertelstundeMigrationTest#a2NachDemRohdatenablaufTraegtDerViertelstundenwertNochAlles"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -712,10 +712,10 @@
       "quelle": "PG/plan.md:353",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsViertelstundeMengeTest#planAbnahme1EinZaehlerruecksprungErzeugtKeinenErfundenenVerbrauch", "UemsZaehlerbruecheTest#f6RuecksetzungOhneEndstandIstUnvollstaendigOhneFiktivenVerbrauch"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -725,10 +725,10 @@
       "quelle": "PG/plan.md:353",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsViertelstundeMengeTest#planAbnahme2EinBoxAusfallErscheintNieAlsGemessenerStillstand", "MessstelleWerteApiTest#f8JedeErwartungUeberDieRoute"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -738,10 +738,10 @@
       "quelle": "PG/plan.md:387",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["BezugsdatenVectorsTest#diePlanAbnahmenHabenIhrenFall", "BezugsdatenImportUebernahmeApiTest#b1b2b3b14UndWiederaufnahme"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -751,10 +751,10 @@
       "quelle": "PG/plan.md:387",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["BezugsdatenVectorsTest#diePlanAbnahmenHabenIhrenFall", "BezugsflaecheStammdatumApiTest#b6DerNennerJeMonatIstDerStandAmLetztenTag", "UemsStrukturAenderungTest#b9_eineRueckwirkendeFlaecheStoesstKeinenStandAn_derEntwurfJanuarBildetSichNeu"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -764,10 +764,10 @@
       "quelle": "PG/plan.md:422",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["BilanzVectorsTest#diePlanAbnahmeHatIhrenFall", "MessstelleFormelFassungRegelnTest#derAbnahmefallRechnetUeberDieFassungDesTages", "UemsBerechnetePeriodenwerteTest#f1DerRestIstAlsTagesUndViertelstundenwertGespeichertUndLesbar", "UemsReferenzunternehmenVectorsTest#diePlanAbnahmeDesWerksLindachRechnetAmTagDerAbnahme"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -777,10 +777,10 @@
       "quelle": "PG/plan.md:457",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["KennzahlVectorsTest#diePlanAbnahmeHatIhreFaelle", "UemsKennzahlRechenlaufTest#k1K2K3RechnenInEinemLaufInDerOrdnungIhrerEingaenge"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -790,10 +790,10 @@
       "quelle": "PG/plan.md:457",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["KennzahlVectorsTest#diePlanAbnahmeHatIhreFaelle", "UemsKennzahlRechenlaufTest#k21K8K14DasJahrIstSummeDurchSummeUnd032Und02346EntstehenNirgends"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -803,10 +803,10 @@
       "quelle": "PG/plan.md:491",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsBerichtNachDenFristenTest#einFreigegebenerBerichtBleibtNachKorrekturUndAbgelaufenenRohdatenErklaerbar", "BerichtVectorsTest#diePlanAbnahmeHatIhreFaelle"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -816,10 +816,10 @@
       "quelle": "PG/plan.md:525",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["MessstelleWerteApiTest#f8JedeErwartungUeberDieRoute", "frontend/portal/src/uemsOberflaechen.test.ts#O1: der 03.11.2026 hat 96 Viertelstunden; O14: der 25.10.2026 hat 25 Stunden mit der doppelten Stunde", "frontend/portal/src/components/WerteKarte.test.tsx#F8: „Verlauf 85 % · 1 Lücke“ in EINEM Abzeichen, kein eigenes daneben", "frontend/portal/src/components/WerteKarte.test.tsx#keine Werte: der Strich und das Wort des Vertrags — darunter der Satz SEINES Grundes, nie der des noch nicht Gebildeten", "frontend/portal/src/uemsErgebnis.test.ts#jedes Beispiel passt auf sein Muster und spricht sich zurück; jeder Satz wird in einem Fall gesprochen"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis-Kandidat mit Klasse#Methode benennen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10); gelesen gegen AP-13 O1: jeder der drei Teile hat seinen Kandidaten, alle drei zusammen auf einer Fläche prüft keiner"}],
       "luecken": []
     },
     {
@@ -829,10 +829,10 @@
       "quelle": "PG/plan.md:557",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsBestandSteuerungAusEinemStueckTest#migrationenUndAlleLaeuferSchaltenNichtsUndBewahrenDenBestand", "UemsBestandSteuerungAusEinemStueckTest#plan_ReferenzGetSitesSchedule_MainUndMqttScheduleVertrag", "UemsBestandSteuerungAusEinemStueckTest#registry_ReferenzEntityRegistryPublisher_V2EntityConfig_BytegleichOhneBestaetigung", "UemsA11BestandsanlageTest#keinKommandoDurchDenUmstieg"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Bestandsschutz-Tests zuordnen (AP-20 IP-6)"}, {"wer": "Betreiber", "was": "Generalprobe AP-14 NW-1 fahren, Z08 = 0"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}, {"wer": "Betreiber", "was": "Generalprobe AP-14 NW-1 fahren, Z08 = 0"}],
       "luecken": []
     },
     {
@@ -858,7 +858,7 @@
       "nachweis_kandidaten": [],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Datum und Uhrzeit am Versandtag einsetzen; der Satz leitet nur ein, die Möglichkeiten tragen Z-041 bis Z-059 mit ihren Kandidaten"}],
       "luecken": []
     },
     {
@@ -868,10 +868,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:14–15",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["BestandsuebernahmeApiTest#vorschauZusammenlegenUndBestaetigen", "frontend/portal/src/standortVorschlag.test.ts#bildet die Vektoren 1+1+1, 3 und jede Besetzung 2+1"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -881,10 +881,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:15",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["BestandsuebernahmeApiTest#vorschauZusammenlegenUndBestaetigen", "UemsStandortVorschlagMigrationTest#dieAppRolleLiestLegtAnUndLoeschtNachBestaetigungAberSchreibtNieUm", "frontend/portal/src/standortVorschlag.test.ts#baut für 2+1 genau die bestätigte Anfrage und aktualisiert die Folgen"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -894,10 +894,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:16–17",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsMesskundenLaufAbnahmeTest#derNeueMesskundeGehtVonDerDatenquelleBisZumFreigegebenenBericht", "PortalwegMesskundeAbnahmeTest#portalwegEinesReinenMesskunden"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -907,10 +907,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:18–19",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/shell/AppShell.test.tsx (AP-03 IP-13: Eintrag „Benutzer“ im Avatar-Menü)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10); den Weg über „Unternehmen und Einstellungen“ nennt der Kandidat nicht, das Wort steht so nicht im Portal"}],
       "luecken": []
     },
     {
@@ -920,10 +920,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:19",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["ZugriffBestandTest#jederBenutzerEinesBestandsmandantenIstDanachKundenadministratorUndKeinerOhne", "ZugriffZaunApiTest#jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4UndIp5", "UemsBestandSteuerungAusEinemStueckTest#ocpp_ReferenzActionPermissions_BestandskontoLeerRealmRolleVonVorher"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -933,10 +933,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:20",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["UemsBefehlsverlaufAusbauMigrationTest#imBefehlsverlaufEndenGenauDieOffenenPeriodenOhneAktiveBoxAnIhremLetztenBeleg", "UemsBefehlsverlaufAusbauMigrationTest#derAusbauBeendetDieOffenenPeriodenSeinerBoxUndHaeltDenZaun"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -1128,10 +1128,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:41",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/deployWatch.test.ts#ein Dokument aus einer alten Schicht lädt beim Boot AUTOMATISCH neu", "frontend/portal/src/deployWatch.test.ts#verdeckter Tab lädt still neu - je Ziel-Bundle nur EINMAL (Schleifen-Schutz)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -1141,10 +1141,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:41–42",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["BestandsuebernahmeApiTest#a5UndA6UndDieAnlagenAntwortenBleibenZeichengleich", "UemsStandortVorschlagMigrationTest#dieMigrationLegtKeineZeileAnUndLaesstDenBestandZeichengleich", "UemsBestandSteuerungAusEinemStueckTest#migrationenUndAlleLaeuferSchaltenNichtsUndBewahrenDenBestand"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -1154,10 +1154,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:53–54",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/quoteUnplausibel.test.ts#unplausibel: KEIN Bogen (vorher 100), die ungeklemmte Zahl und der Satz"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -1167,10 +1167,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:54–56",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/quoteUnplausibel.test.ts#unplausibel: KEIN Bogen (vorher 100), die ungeklemmte Zahl und der Satz", "frontend/portal/src/quoteUnplausibel.test.ts#ein negativer Eigenverbrauch wird nicht zu 0 % (vorher: leerer Bogen, „-25 %\")"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -1180,10 +1180,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:56",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/quoteUnplausibel.test.ts#ist `saetze.rest_negativ` wörtlich, mit der ungeklemmten Zahl", "frontend/portal/src/quoteUnplausibel.test.ts#unplausibel: die Zahl ungeklemmt, der Satz statt der Erklärung"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -1196,7 +1196,7 @@
       "nachweis_kandidaten": [],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Zusicherung fehlt: kein Test hält, dass die geänderte Anzeige nichts speichert; quoteUnplausibel.ts ist ein reines Anzeige-Modul, das ist kein Lauf"}],
       "luecken": []
     },
     {
@@ -1209,7 +1209,7 @@
       "nachweis_kandidaten": [],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Zusicherung fehlt: kein Test hält, dass Messwerte und gespeicherte Werte mit der Anzeige-Änderung unverändert bleiben"}],
       "luecken": []
     },
     {
@@ -1222,7 +1222,7 @@
       "nachweis_kandidaten": [],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Betreiber", "was": "Box, Datum und Version am Versandtag gegen den Rollout-Plan prüfen; der Satz ist eine Ankündigung ohne prüfbare Eigenschaft der Software"}],
       "luecken": []
     },
     {
@@ -1235,7 +1235,7 @@
       "nachweis_kandidaten": [],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Betreiber", "was": "nur Geliefertes eintragen: jede genannte Änderung braucht ihren Kandidaten, bevor die Notiz hinausgeht"}],
       "luecken": []
     },
     {
@@ -1248,7 +1248,7 @@
       "nachweis_kandidaten": [],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Betreiber", "was": "Dauer der Unterbrechung an einer Prüfbox messen und mit Datum festhalten"}],
       "luecken": []
     },
     {
@@ -1258,10 +1258,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:72–73",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["edge-app/core/internal/otaupdater/engine_test.go#TestARestartMidSwapResumesTheRunInsteadOfStartingOver"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}, {"wer": "Betreiber", "was": "an einer Prüfbox nach der Aktualisierung bestätigen, dass Messung und Steuerung weiterlaufen; Simulatornachweise ersetzen keinen Prüfstand"}],
       "luecken": []
     },
     {
@@ -1271,10 +1271,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:73–74",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["edge-app/core/internal/otaupdater/engine_test.go#TestAFailedSelfTestRevertsToTheLastKnownGood", "edge-app/core/internal/otaapply/watchdog_test.go#TestAPassedSelfTestCommitsAndAFailedOneReverts"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}],
       "luecken": []
     },
     {
@@ -1284,10 +1284,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:76",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/copy.test.ts (AP-14 S1–S3 über Portal, Bericht-Vorlagen und Release-Notiz)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Betreiber", "was": "vor dem Versand prüfen, dass die Notiz nur Geliefertes nennt"}],
       "luecken": []
     },
     {
@@ -1297,10 +1297,10 @@
       "quelle": "docs/rollout/release-notiz-vorlage.md:76–77",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["frontend/portal/src/copy.test.ts (AP-14 S1–S3 über Portal, Bericht-Vorlagen und Release-Notiz)"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Betreiber", "was": "vor dem Versand prüfen, dass die Notiz nur Geliefertes nennt"}],
       "luecken": []
     },
     {
@@ -1323,10 +1323,10 @@
       "quelle": "PG/plan.md:29",
       "traeger": "voltpilot",
       "norm": [],
-      "nachweis_kandidaten": [],
+      "nachweis_kandidaten": ["DataRetentionPolicyTest#theRawClassKeepsItsNinetyDays", "UemsRohdatenablaufAbnahmeTest#derRetentionDropNimmtDieAltenRohwerteUndNurSie"],
       "nachweise": [],
       "urteil": "offen",
-      "wer_liefert": [{"wer": "Crew", "was": "Nachweis zuordnen (AP-20 IP-6), Lauf am Stand (AP-20 IP-10)"}],
+      "wer_liefert": [{"wer": "Crew", "was": "Lauf am Stand (AP-20 IP-10)"}, {"wer": "Betreiber", "was": "mit Datum bestätigen, dass der Aufbewahrungs-Job der Rohwerte in Produktion läuft"}],
       "luecken": []
     }
   ],
