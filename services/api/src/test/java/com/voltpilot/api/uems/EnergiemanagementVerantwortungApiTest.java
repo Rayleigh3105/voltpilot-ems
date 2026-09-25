@@ -249,6 +249,7 @@ class EnergiemanagementVerantwortungApiTest {
         Map<String, Object> b4 = entschieden("bezugsbasen", p.get("IK"), "2029-03-01", id(p.get("RF")),
                 id(p.get("JW")));
         b4.put("beschluss_kennung", "BR-2029-0001/B4");
+        ManagementbewertungImStand.anlegen(root, tenant, unternehmen, UUID.fromString(id(p.get("RF"))), "BR-2029-0001", 6);
         ruf("POST", BASIS + "/aufgaben", "IK", b4, 201);
         JsonNode maerz = ruf("GET", BASIS + "/verantwortung?tag=2029-03-01", "IK", null, 200);
         assertThat(maerz.path("ohne_person")).isEmpty();

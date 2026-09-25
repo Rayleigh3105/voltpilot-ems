@@ -224,6 +224,11 @@ class EnergiemanagementDokumentApiTest {
         JsonNode ohne = ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut",
                 "wortlaut", wortlaut + " Wir beziehen die Druckluft ein."), 422);
         assertThat(ohne.path("code").asText()).isEqualTo("begruendung_fehlt");
+        assertThat(ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut", "wortlaut",
+                wortlaut + " Wir beziehen die Druckluft ein.", "begruendung", "Beschluss B3 der Managementbewertung 2028.",
+                "beschluss_kennung", "BR-2029-0001/B3"), 422).path("code").asText()).as("MG6: den Beschluss gibt es nicht")
+                .isEqualTo("beschluss_unbekannt");
+        ManagementbewertungImStand.anlegen(root, tenant, unternehmen, UUID.fromString(id(p.get("RF"))), "BR-2029-0001", 6);
         ruf("POST", DOKUMENTE + "/" + id + "/fassungen", "IK", Map.of("form", "wortlaut", "wortlaut",
                 wortlaut + " Wir beziehen die Druckluft ein.", "begruendung", "Beschluss B3 der Managementbewertung 2028.",
                 "beschluss_kennung", "BR-2029-0001/B3"), 201);

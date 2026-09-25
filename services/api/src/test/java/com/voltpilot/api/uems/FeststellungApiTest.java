@@ -268,6 +268,7 @@ class FeststellungApiTest {
         Map<String, Object> b4 = new LinkedHashMap<>(Map.of("aufgabe", "bezugsbasen", "person_id", person.get("IK"),
                 "gilt_ab", "2029-03-01", "vertretung_person_id", person.get("JW"), "entschieden_von", person.get("RF"),
                 "begruendung", "Beschluss B4 der Managementbewertung 2028", "beschluss_kennung", "BR-2029-0001/B4"));
+        ManagementbewertungImStand.anlegen(root, tenant, unternehmen, UUID.fromString(person.get("RF")), "BR-2029-0001", 6);
         ruf("POST", "/api/v1/energiemanagement/aufgaben", "JW", b4, 201);
 
         // 15.04.2029: Stand Nr. 1 `wirksam`, festgehalten von Ines Kaltenbach (nicht der Verantwortliche) — die Kopie

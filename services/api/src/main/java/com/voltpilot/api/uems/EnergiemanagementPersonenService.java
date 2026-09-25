@@ -224,6 +224,7 @@ public class EnergiemanagementPersonenService {
             if (a.entschiedenVon() != null && repo.person(a.entschiedenVon()).isEmpty()) {
                 throw unbekannt("entschieden_von");
             }
+            repo.beschlussPruefen(beschluss);
             if (repo.ueberschneidet(aufgabe, wortlaut, a.personId(), a.giltAb())) {
                 throw EnergiemanagementAbgelehnt.konflikt("zuordnung_laeuft_bereits",
                         "Diese Person trägt diese Aufgabe in diesem Zeitraum bereits.", null);

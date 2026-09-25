@@ -219,4 +219,9 @@ public class EnergiemanagementPersonenRepository {
         Timestamp t = rs.getTimestamp(spalte);
         return t == null ? null : t.toInstant();
     }
+
+    /** MG6: der genannte Beschluss BR-…/Bn gibt es, und seine Managementbewertung ist freigegeben (sonst 422). */
+    public void beschlussPruefen(String kennung) {
+        ManagementbewertungBeschluss.pruefen(jdbc, kennung);
+    }
 }

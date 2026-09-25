@@ -644,15 +644,9 @@ public class MassnahmeService {
             }
             case "managementbewertung" -> {
                 int b = kennung.lastIndexOf("/B");
-                List<Boolean> freigegeben = jdbc.queryForList("SELECT EXISTS (SELECT 1 FROM bericht_stand s "
-                        + "WHERE s.tenant_id = r.tenant_id AND s.bericht_id = r.id) FROM bericht r "
-                        + "JOIN managementbewertung_beschluss m ON m.tenant_id = r.tenant_id AND m.bericht_id = r.id "
-                        + "WHERE r.kennung = ? AND r.vorlage = 'managementbewertung' AND m.nr = ?", Boolean.class,
-                        kennung.substring(0, b), Integer.parseInt(kennung.substring(b + 2)));
-                if (freigegeben.isEmpty()) {
-                    throw herkunftUnbekannt(kennung);
-                }
-                if (!freigegeben.get(0)) {
+                boolean freigegeben = ManagementbewertungBeschluss.imStand(jdbc, kennung)
+                        .orElseThrow(() -> herkunftUnbekannt(kennung));
+                if (!freigegeben) {
                     throw VerbesserungAbgelehnt.fachlich("managementbewertung_nicht_freigegeben", "Die "
                             + "Managementbewertung " + kennung.substring(0, b) + " ist noch nicht freigegeben — eine "
                             + "Maßnahme entsteht aus einem Beschluss im Stand.", Map.of("feld", "herkunft_kennung"));

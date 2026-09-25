@@ -194,6 +194,10 @@ class EnergiemanagementPersonenApiTest {
 
         // Beschluss B4 → ab 01.03.2029 Ines Kaltenbach, Vertretung Jonas Wendlinger (R5 Schritt 5).
         Map<String, Object> b4 = entschieden("bezugsbasen", p.get("IK"), "2029-03-01", rf, id(p.get("JW")));
+        b4.put("beschluss_kennung", "BR-2029-0001/B9");
+        assertThat(ruf("POST", AUFGABEN, "IK", b4, 422).path("code").asText()).as("MG6: den Beschluss gibt es nicht")
+                .isEqualTo("beschluss_unbekannt");
+        ManagementbewertungImStand.anlegen(root, tenant, unternehmen, UUID.fromString(rf), "BR-2029-0001", 6);
         b4.put("beschluss_kennung", "BR-2029-0001/B4");
         JsonNode bezugsbasen = zuordnen(b4);
         assertThat(bezugsbasen.path("beschluss_kennung").asText()).isEqualTo("BR-2029-0001/B4");

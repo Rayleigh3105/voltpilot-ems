@@ -12000,7 +12000,8 @@ paths:
         Zeichen (422 `begruendung_fehlt`). „entschieden von“ ist eine Person im Energiemanagement und Pflicht außer
         bei `unternehmensleitung` (422 `entschieden_von_fehlt`). Wahlfrei Vertretung (eine andere Person, 422
         `vertretung_gleich_person`), Beleg als Verweis mit Ablage (422 `beleg_ungueltig`) und Beschluss
-        `BR-JJJJ-nnnn/Bn` (422 `beschluss_ungueltig`). Eine Person, deren `bis` vor gilt ab liegt, 422
+        `BR-JJJJ-nnnn/Bn` (422 `beschluss_ungueltig`) einer freigegebenen Managementbewertung (MG6: unbekannt 422
+        `beschluss_unbekannt`, ohne Stand 422 `managementbewertung_nicht_freigegeben`). Eine Person, deren `bis` vor gilt ab liegt, 422
         `person_beendet`; dieselbe Aufgabe für dieselbe Person im selben Zeitraum 409 `zuordnung_laeuft_bereits`.
         Nur anhängen - Protokoll `aufgabe_zugeordnet`.
       requestBody:
@@ -12326,7 +12327,8 @@ paths:
         dem Vokabular des Betrachtungsumfangs (422 `traeger_unbekannt`) und Ausschlüsse mit Begründung (422
         `ausschluss_ungueltig`); fehlen sie, 422 `anwendungsbereich_fehlt`, an anderen Arten 422 `angabe_ungueltig`.
         Begründung ab Fassung 2 Pflicht (422 `begruendung_fehlt`), Beschluss `BR-JJJJ-nnnn/Bn` (422
-        `beschluss_ungueltig`). Ein offener Entwurf wird überschrieben (200, dieselbe Nr.), sonst entsteht Fassung n
+        `beschluss_ungueltig`) einer freigegebenen Managementbewertung (MG6: unbekannt 422 `beschluss_unbekannt`,
+        ohne Stand 422 `managementbewertung_nicht_freigegeben`). Ein offener Entwurf wird überschrieben (200, dieselbe Nr.), sonst entsteht Fassung n
         + 1 (201); ein offener Antrag 409 `fassung_beantragt`, ein aufgehobenes Dokument 409 `dokument_aufgehoben`.
         Protokoll `fassung_entworfen`.
       requestBody:
@@ -12453,7 +12455,9 @@ paths:
         Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. Nur an einem gültigen Dokument
         (409 `dokument_nicht_gueltig`, aufgehoben 409 `dokument_aufgehoben`) einer Vorgabe-Art (422
         `keine_ueberpruefung`); „entschieden von“, Tag bis heute und nicht vor der Freigabe der gültigen Fassung (422
-        `tag_in_der_zukunft`, `angabe_ungueltig`), Begründung 10-500 Zeichen, wahlfrei Beschluss. Die Überprüfung
+        `tag_in_der_zukunft`, `angabe_ungueltig`), Begründung 10-500 Zeichen, wahlfrei Beschluss `BR-JJJJ-nnnn/Bn`
+        (422 `beschluss_ungueltig`) einer freigegebenen Managementbewertung (MG6: unbekannt 422
+        `beschluss_unbekannt`, ohne Stand 422 `managementbewertung_nicht_freigegeben`). Die Überprüfung
         rechnet ab diesem Tag neu. Protokoll `geprueft_bleibt`.
       requestBody:
         required: true

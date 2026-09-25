@@ -391,4 +391,9 @@ public class EnergiemanagementDokumentRepository {
     private static List<String> texte(Array a) throws SQLException {
         return Arrays.asList((String[]) a.getArray());
     }
+
+    /** MG6: der genannte Beschluss BR-…/Bn gibt es, und seine Managementbewertung ist freigegeben (sonst 422). */
+    public void beschlussPruefen(String kennung) {
+        ManagementbewertungBeschluss.pruefen(jdbc, kennung);
+    }
 }

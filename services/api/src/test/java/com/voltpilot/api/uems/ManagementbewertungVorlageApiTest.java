@@ -427,6 +427,11 @@ class ManagementbewertungVorlageApiTest {
         assertThat(ruf("POST", "/api/v1/massnahmen", "IK", massnahmeKoerper("Druckluft: Leckagen jährlich orten, 2029 "
                 + "im zweiten Quartal", "IK", "2029-06-30", "managementbewertung", "BR-2029-0001/B2"), 422).path("code")
                 .asText()).isEqualTo("managementbewertung_nicht_freigegeben");
+        // MG6: auch eine Aufgabe nennt nur einen Beschluss im Stand — sonst wäre sie still keine Folge.
+        assertThat(ruf("POST", BASIS + "/aufgaben", "JW", new LinkedHashMap<>(Map.of("aufgabe", "bezugsbasen",
+                "person_id", person.get("IK"), "gilt_ab", "2029-03-01", "entschieden_von", person.get("RF"),
+                "begruendung", "Beschluss B4 der Managementbewertung 2028", "beschluss_kennung", "BR-2029-0001/B4")),
+                422).path("code").asText()).isEqualTo("managementbewertung_nicht_freigegeben");
         String datenstand = ruf("/api/v1/berichte/BR-2029-0001/entwurf", "IK", 200).path("datenstand").asText();
         berichte.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:10:00Z"), ZoneOffset.UTC));
         ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "IK", Map.of("entwurf_datenstand", datenstand), 201);
@@ -442,6 +447,10 @@ class ManagementbewertungVorlageApiTest {
 
         // B6 13.02.2029: „geprüft, bleibt“ an D-0002 nennt den Beschluss.
         heute("2029-02-13T10:00:00Z");
+        assertThat(ruf("POST", BASIS + "/dokumente/" + d2 + "/geprueft", "IK", Map.of("entschieden_von",
+                person.get("RF"), "am", "2029-02-13", "begruendung", "Beschluss B9 der Managementbewertung 2028: bleibt "
+                + "unverändert.", "beschluss_kennung", "BR-2029-0001/B9"), 422).path("code").asText())
+                .as("MG6: B9 gibt es nicht").isEqualTo("beschluss_unbekannt");
         ruf("POST", BASIS + "/dokumente/" + d2 + "/geprueft", "IK", Map.of("entschieden_von", person.get("RF"), "am",
                 "2029-02-13", "begruendung", "Beschluss B6 der Managementbewertung 2028: bleibt unverändert.",
                 "beschluss_kennung", "BR-2029-0001/B6"), 200);

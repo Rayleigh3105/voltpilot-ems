@@ -333,6 +333,7 @@ public class EnergiemanagementDokumentService {
             if (nr > 1 && begruendung == null) {
                 throw begruendungFehlt();
             }
+            repo.beschlussPruefen(inhalt.beschlussKennung());
             if (entwurf != null) {
                 repo.entwurfUeberschreiben(id, entwurf, inhalt, bereich, wer);
                 return new Entwurf(nr, false);
@@ -441,6 +442,7 @@ public class EnergiemanagementDokumentService {
                 throw ungueltig("am", "Geprüft wird die gültige Fassung — ab dem Tag ihrer Freigabe ("
                         + gilt.entschiedenTag().format(TAG) + ").");
             }
+            repo.beschlussPruefen(beschluss);
             repo.eintragMitProtokoll(id, new EnergiemanagementDokumentRepository.NeuerEintrag("geprueft_bleibt",
                     gilt.nr(), entscheid.tag(), repo.personDesKontos(wer.sub()).orElse(null), entscheid.von(), null,
                     null, null, entscheid.begruendung(), beschluss), wer);
