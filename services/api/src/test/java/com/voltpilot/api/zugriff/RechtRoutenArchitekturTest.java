@@ -138,6 +138,13 @@ class RechtRoutenArchitekturTest {
                 "aufheben")) {
             m.put("EnergiemanagementDokumentController#" + r, dokument);
         }
+        // AP-19 IP-19: die Feststellung ebenso — beim Erfassen aus dem Körper (`bezug.standort_id`), sonst an ihr.
+        m.put("FeststellungController#erfassen", "FeststellungService.neu — energiemanagement.verwalten am Standort des "
+                + "Bezugs aus dem Körper bzw. am Unternehmen");
+        for (String r : List.of("eintrag", "frist", "verantwortlicher")) {
+            m.put("FeststellungController#" + r, "FeststellungService.schreibbar — energiemanagement.verwalten am "
+                    + "Standort des Bezugs bzw. am Unternehmen");
+        }
         return m;
     }
 

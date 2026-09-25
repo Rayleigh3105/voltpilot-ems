@@ -50,11 +50,12 @@ class EnergiemanagementVerantwortungSchnittstelleVertragTest {
             assertThat((List<String>) schema.get("required")).as(dto.getKey() + " required")
                     .containsExactlyInAnyOrderElementsOf(namen);
         }
-        // Die Arten der Andockstelle: die des Bestands, dann das interne Audit (IP-18); IP-19 ergänzt die Feststellung.
+        // Die Arten der Andockstelle: die des Bestands, dann das interne Audit (IP-18) und die Feststellung (IP-19).
         var art = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) schemas
                 .get("EnergiemanagementVerantwortungObjekt")).get("properties")).get("art");
         var arten = new java.util.ArrayList<>(VerantwortungBestand.ARTEN);
         arten.addAll(AuditVerantwortung.ARTEN);
+        arten.addAll(FeststellungVerantwortung.ARTEN);
         assertThat((List<String>) art.get("enum")).containsExactlyElementsOf(arten);
     }
 
@@ -63,7 +64,7 @@ class EnergiemanagementVerantwortungSchnittstelleVertragTest {
     void gelesenUeberDieDiensteNieUeberEigeneAbfragen() throws Exception {
         for (String klasse : List.of("EnergiemanagementVerantwortungService", "VerantwortungQuelle",
                 "VerantwortungBestand", "VerzeichnisQuelle", "AufgabenVerzeichnis", "AuditVerzeichnis",
-                "AuditVerantwortung")) {
+                "AuditVerantwortung", "FeststellungVerzeichnis", "FeststellungVerantwortung")) {
             String text = Files.readString(UEMS.resolve(klasse + ".java"));
             assertThat(text).as(klasse).doesNotContain("JdbcTemplate", "SELECT ", "INSERT ", "UPDATE ", "Repository");
         }
@@ -75,6 +76,10 @@ class EnergiemanagementVerantwortungSchnittstelleVertragTest {
         String audits = Files.readString(UEMS.resolve("AuditVerantwortung.java"));
         for (String a : AuditVerantwortung.ARTEN) {
             assertThat(audits).as(a).contains("new Objekt(\"" + a + "\"");
+        }
+        String feststellungen = Files.readString(UEMS.resolve("FeststellungVerantwortung.java"));
+        for (String a : FeststellungVerantwortung.ARTEN) {
+            assertThat(feststellungen).as(a).contains("new Objekt(\"" + a + "\"");
         }
     }
 }

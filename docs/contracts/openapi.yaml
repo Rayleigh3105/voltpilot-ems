@@ -12497,6 +12497,337 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen:
+    get:
+      tags: [energiemanagement]
+      summary: Die Feststellungen - offene zuerst, am längsten überfällig oben, dann abgeschlossene (FS1).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-19). Sichtbar sind die Feststellungen im Zaun (RLS aus IP-16:
+        eine Feststellung ohne Standort nur unternehmensweit, eine am Standort, wer ihn sieht). `lage` ist beim Abruf
+        abgeleitet, nie gespeichert: die Operation `ueberpruefung` (Art `feststellung`) des Vertrags
+        `energiemanagement.md` - Frist, sonst festgestellt am + Frist der Einstellung (Startwert 90 Tage); abgeschlossen
+        ohne Frist (`grund` = `abgeschlossen`). `ergebnis` ist das des schließenden Stands. `tag` Vorgabe heute.
+      parameters:
+        - in: query
+          name: tag
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungListe" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Eine Feststellung erfassen (FS1).
+      description: >
+        Recht `energiemanagement.verwalten` am Standort des Bezugs, ohne Standort am Unternehmen (403 `recht_fehlt`,
+        auch für „Einsicht“). `quelle.art` aus `internes_audit` (mit `audit_id`, nur am durchgeführten Audit: 422
+        `audit_unbekannt`, 409 `audit_nicht_durchgefuehrt`), `eigene`, `extern` (mit `wortlaut`, höchstens 500 Zeichen),
+        `managementbewertung` (bis AP-19 IP-23 ist jede Managementbewertung unbekannt: 422 `quelle_unbekannt`); sonst
+        422 `quelle_ungueltig`, ein fremder Verweis 422 `angabe_ungueltig`. Pflicht: `wortlaut` (höchstens 2 000
+        Zeichen), eine `vorgabe` - Dokument mit Fassung und/oder Wortlaut (422 `vorgabe_fehlt`, `vorgabe_unbekannt`),
+        `festgestellt_von` eine Person im Energiemanagement, auch ohne Konto (422 `festgestellt_von_fehlt`,
+        `person_unbekannt`), `verantwortlich` ein aktives Konto (422 `verantwortlich_fehlt`, `konto_unbekannt`).
+        `festgestellt_am` Vorgabe heute, nie in der Zukunft (422 `tag_in_zukunft`), beim Audit nicht vor seiner
+        Durchführung (422 `tag_vor_durchfuehrung`); `frist` wahlfrei, nicht davor (422 `frist_ungueltig`). `bezug`
+        wahlfrei: `standort_id` (422 `standort_unbekannt`), `aufgabe` (422 `aufgabe_unbekannt`), `dokument_id` (422
+        `dokument_unbekannt`), `objekte` (Kennzeichen, je einmal). F-JJJJ-nnnn trägt das Jahr des Anlegens. Protokoll
+        `feststellung_erfasst`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungErfassen" }
+      responses:
+        "201":
+          description: Die Feststellung mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Eine Feststellung mit Einträgen, Maßnahmen, Wirksamkeit, Vier-Augen und Verlauf.
+      description: >
+        Recht `energiemanagement.ansehen`. Eine Feststellung außerhalb des Zauns oder eines anderen Kundenbereichs gibt
+        es nicht (404 `nicht_gefunden`). `massnahmen` sind die AP-18-Maßnahmen mit Herkunft `nichtkonformitaet` und
+        dieser Kennung (IP-17) mit ihrem Zustand; `wirksamkeit` die Stände Nr. n mit Kopie und Prüfsumme. `vieraugen`
+        ist das Antwortfeld von FS6/W15: bei Vier-Augen nach Einstellung die Berechtigten (KA/EM am Unternehmen), wer
+        jetzt zweite Person sein kann - nie die Urheberin (die eines offenen Antrags, sonst die anfragende Person),
+        nie der Verantwortliche - und ohne jemanden `erfuellbar` = false mit dem Satz „Vier-Augen nicht erfüllbar: …“.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/eintraege:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Einen Eintrag anhängen - Kommentar, sofortige Behebung, Ursache (Aussage), ähnliche Fälle (FS2).
+      description: >
+        Recht `energiemanagement.verwalten` am Standort des Bezugs. `art` aus dem Vokabular `feststellung_eintrag`
+        (422 `eintrag_art_ungueltig`); nach dem Abschluss nur `kommentar` (409 `feststellung_abgeschlossen`).
+        `wortlaut` 1 bis 2 000 Zeichen; `person_id` Pflicht - jeder Eintrag, auch die Ursache, ist die Aussage einer
+        Person, nie ein Satz des Systems (422 `person_fehlt`, `person_unbekannt`); `am` Vorgabe heute, nie in der
+        Zukunft, nicht vor dem Tag der Feststellung (422 `tag_vor_feststellung`). Nur anhängen. Protokoll `eintrag`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungEintragFesthalten" }
+      responses:
+        "201":
+          description: Die Feststellung mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/frist:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [energiemanagement]
+      summary: Die Frist einer offenen Feststellung ändern.
+      description: >
+        Recht `energiemanagement.verwalten` am Standort des Bezugs. Nur offen (409 `feststellung_abgeschlossen`);
+        `frist` Pflicht, nicht vor dem Tag der Feststellung (422 `frist_ungueltig`); Begründung 10 bis 500 Zeichen
+        (422 `begruendung_fehlt`). Protokoll `feststellung_geaendert` mit alt und neu; dieselbe Frist schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungFristAendern" }
+      responses:
+        "200":
+          description: Die Feststellung mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/verantwortlicher:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [energiemanagement]
+      summary: Den Verantwortlichen einer offenen Feststellung ändern.
+      description: >
+        Recht `energiemanagement.verwalten` am Standort des Bezugs. Nur offen (409 `feststellung_abgeschlossen`);
+        `verantwortlich` ein aktives Konto (422 `verantwortlich_fehlt`, `konto_unbekannt`); Begründung 10 bis 500
+        Zeichen (422 `begruendung_fehlt`). Protokoll `feststellung_geaendert`; dasselbe Konto schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungVerantwortlichAendern" }
+      responses:
+        "200":
+          description: Die Feststellung mit Verlauf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/wirksamkeit:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Die Wirksamkeit als Stand Nr. n festhalten - ohne Vier-Augen (FS4).
+      description: >
+        Recht `energiemanagement.freigeben` am Unternehmen. Nur offen (409 `feststellung_abgeschlossen`), kein offener
+        Antrag (409 `wirksamkeit_beantragt`); mit Vier-Augen nach Einstellung 409 `vieraugen_beantragen`. `ergebnis`
+        `wirksam` (schließt ab) oder `nicht_wirksam` (hält offen) - sonst 422 `ergebnis_ungueltig`; erlaubt, wenn jede
+        Maßnahme mit Herkunft dieser Feststellung umgesetzt, bewertet oder verworfen ist und mindestens eine umgesetzt
+        oder bewertet (409 `wirksamkeit_noch_nicht`). Begründung 10 bis 500 Zeichen (422 `begruendung_fehlt`),
+        `entschieden_von` eine Person (422 `entschieden_von_fehlt`, `person_unbekannt`), `am` Vorgabe heute. Die Kopie
+        (Feststellung, Wortlaut, Anzahl der Einträge, Maßnahmen mit Zustand, laufende Aufgabe des Bezugs, Tag) mit
+        Prüfsumme in der kanonischen Form des Vertrags. Protokoll `wirksamkeit_geprueft` bzw. `feststellung_abgeschlossen`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungStandFesthalten" }
+      responses:
+        "201":
+          description: Die Feststellung mit dem neuen Stand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/wirksamkeit/beantragen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Vier-Augen - einen Stand beantragen (FS6).
+      description: >
+        Recht `energiemanagement.freigeben` am Unternehmen. Nur mit Vier-Augen nach Einstellung (409 `vieraugen_aus`);
+        `ergebnis` eines der vier Wörter von `wirksamkeit_ergebnis`, sonst dieselben Prüfungen wie `…/wirksamkeit` und
+        `…/abschliessen`. Kann niemand zweite Person sein - nie die Urheberin, nie der Verantwortliche -, 409
+        `vieraugen_nicht_erfuellbar` mit `satz` („Vier-Augen nicht erfüllbar: …“) und `berechtigte`: kein Antrag, über
+        den niemand entscheiden könnte. Protokoll `wirksamkeit_beantragt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungStandFesthalten" }
+      responses:
+        "201":
+          description: Die Feststellung mit dem Antrag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/wirksamkeit/freigeben:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Vier-Augen - die zweite Person bestätigt den offenen Antrag.
+      description: >
+        Recht `energiemanagement.freigeben` am Unternehmen. Kein offener Antrag 409 `kein_antrag`; die zweite Person ist
+        nie die Urheberin (422 `vieraugen_urheber`) und nie der Verantwortliche der Feststellung (422
+        `vieraugen_verantwortlich`) und hat Rolle KA oder EM (403 `vieraugen_rolle`). Der Körper ist leer. Ein
+        schließendes Ergebnis schließt die Feststellung. Protokoll `wirksamkeit_geprueft` bzw.
+        `feststellung_abgeschlossen`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200":
+          description: Die Feststellung mit dem bestätigten Stand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/wirksamkeit/ablehnen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Vier-Augen - die zweite Person lehnt den offenen Antrag ab.
+      description: >
+        Recht `energiemanagement.freigeben` am Unternehmen. Wie `…/freigeben`; Begründung 10 bis 500 Zeichen (422
+        `begruendung_fehlt`). Der Stand behält seine Nr.; danach ist ein neuer Stand möglich. Protokoll
+        `wirksamkeit_abgelehnt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungAblehnen" }
+      responses:
+        "200":
+          description: Die Feststellung mit dem abgelehnten Stand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/feststellungen/{id}/abschliessen:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Ohne Maßnahme abschließen oder zurücknehmen - ein Stand mit Kopie (FS5).
+      description: >
+        Recht `energiemanagement.freigeben` am Unternehmen. `ergebnis` `ohne_massnahme` (die sofortige Behebung genügt)
+        oder `zurueckgenommen` (keine Nichterfüllung) - sonst 422 `ergebnis_ungueltig`; Begründung Pflicht; sonst wie
+        `…/wirksamkeit` (ohne die Voraussetzung an den Maßnahmen); mit Vier-Augen 409 `vieraugen_beantragen`. Endgültig;
+        eine neue Nichterfüllung ist eine neue Feststellung (FS7). Protokoll `feststellung_abgeschlossen`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeststellungStandFesthalten" }
+      responses:
+        "201":
+          description: Die abgeschlossene Feststellung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FeststellungMitVerlauf" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energiemanagement/audits:
     get:
       tags: [energiemanagement]
@@ -17820,7 +18151,7 @@ components:
       type: object
       required: [art, id, kennzeichen, titel, verantwortlich, zustand]
       properties:
-        art: { type: string, enum: [kennzahl, energieeinsatz, bezugsbasis, energieziel, massnahme, abweichung, internes_audit], description: Die Arten des Bestands, dann die angedockten Quellen (`VerantwortungQuelle`) - internes Audit seit IP-18; die Feststellung (IP-19) ergänzt diese Liste. }
+        art: { type: string, enum: [kennzahl, energieeinsatz, bezugsbasis, energieziel, massnahme, abweichung, internes_audit, feststellung], description: Die Arten des Bestands, dann die angedockten Quellen (`VerantwortungQuelle`) - internes Audit seit IP-18, Feststellung seit IP-19. }
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
         titel: { type: string }
@@ -17828,7 +18159,7 @@ components:
           nullable: true
           description: "`null`: am Objekt ist niemand eingetragen."
           allOf: [{ $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }]
-        zustand: { type: string, nullable: true, description: Der Zustand des Objekts, wo es selbst einen führt (Energieziel, Maßnahme, Abweichung, internes Audit). }
+        zustand: { type: string, nullable: true, description: Der Zustand des Objekts, wo es selbst einen führt (Energieziel, Maßnahme, Abweichung, internes Audit, Feststellung). }
     EnergiemanagementBezugsbasisFreigabe:
       type: object
       required: [bezugsbasis_id, bezugsbasis, kennzahl_id, kennzahl, fassung, freigegeben_von, freigegeben_am, vieraugen, zweite_person]
@@ -17920,6 +18251,236 @@ components:
         gruppen:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisGruppe" }
+    FeststellungQuelle:
+      type: object
+      additionalProperties: false
+      description: Die Quelle (FS1) mit genau ihrem Verweis - `internes_audit` mit `audit_id`, `eigene` ohne, `extern` mit `wortlaut`, `managementbewertung` mit `kennung` (BR-JJJJ-nnnn/Bn).
+      properties:
+        art: { type: string, enum: [internes_audit, eigene, extern, managementbewertung] }
+        audit_id: { type: string, format: uuid, nullable: true }
+        kennung: { type: string, nullable: true }
+        wortlaut: { type: string, nullable: true, maxLength: 500 }
+    FeststellungVorgabe:
+      type: object
+      additionalProperties: false
+      description: Was nicht erfüllt ist - eine Dokument-Fassung (beide Felder) und/oder ein Wortlaut.
+      properties:
+        dokument_id: { type: string, format: uuid, nullable: true }
+        fassung: { type: integer, nullable: true }
+        wortlaut: { type: string, nullable: true, maxLength: 2000 }
+    FeststellungBezug:
+      type: object
+      additionalProperties: false
+      description: Der Bezug - ohne Standort das Unternehmen (der Zaun, RE1); wahlfrei eine Aufgabe (Vokabular `aufgabe`), ein Dokument, Objekt-Kennzeichen.
+      properties:
+        standort_id: { type: string, format: uuid, nullable: true }
+        aufgabe: { type: string, nullable: true }
+        dokument_id: { type: string, format: uuid, nullable: true }
+        objekte: { type: array, nullable: true, items: { type: string, maxLength: 60 } }
+    FeststellungErfassen:
+      type: object
+      additionalProperties: false
+      description: Erfassen (FS1).
+      properties:
+        quelle: { $ref: "#/components/schemas/FeststellungQuelle" }
+        wortlaut: { type: string, maxLength: 2000 }
+        vorgabe: { $ref: "#/components/schemas/FeststellungVorgabe" }
+        bezug:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/FeststellungBezug" }]
+        festgestellt_von: { type: string, format: uuid, description: Eine Person im Energiemanagement, auch ohne Konto. }
+        festgestellt_am: { type: string, format: date, nullable: true, description: Vorgabe heute. }
+        verantwortlich: { type: string, description: Das Konto (`sub`). }
+        frist: { type: string, format: date, nullable: true, description: Ohne Frist festgestellt am + Frist der Einstellung (Startwert 90 Tage). }
+    FeststellungEintragFesthalten:
+      type: object
+      additionalProperties: false
+      description: Ein Eintrag (FS2) - immer die Aussage einer Person an einem Tag.
+      properties:
+        art: { type: string, enum: [kommentar, behebung, ursache_aussage, aehnliche_faelle] }
+        wortlaut: { type: string, maxLength: 2000 }
+        person_id: { type: string, format: uuid }
+        am: { type: string, format: date, nullable: true, description: Vorgabe heute. }
+    FeststellungFristAendern:
+      type: object
+      additionalProperties: false
+      properties:
+        frist: { type: string, format: date }
+        begruendung: { type: string, description: 10–500 Zeichen. }
+    FeststellungVerantwortlichAendern:
+      type: object
+      additionalProperties: false
+      properties:
+        verantwortlich: { type: string, description: Das Konto (`sub`). }
+        begruendung: { type: string, description: 10–500 Zeichen. }
+    FeststellungStandFesthalten:
+      type: object
+      additionalProperties: false
+      description: Ein Stand (FS4, FS5) - `…/wirksamkeit` nimmt `wirksam · nicht_wirksam`, `…/abschliessen` `ohne_massnahme · zurueckgenommen`, `…/wirksamkeit/beantragen` alle vier.
+      properties:
+        ergebnis: { type: string, enum: [wirksam, nicht_wirksam, ohne_massnahme, zurueckgenommen] }
+        begruendung: { type: string, description: 10–500 Zeichen, bei jedem Ergebnis. }
+        entschieden_von: { type: string, format: uuid, description: Die Person, die geprüft hat. }
+        am: { type: string, format: date, nullable: true, description: Vorgabe heute. }
+    FeststellungAblehnen:
+      type: object
+      additionalProperties: false
+      properties:
+        begruendung: { type: string, description: 10–500 Zeichen. }
+    FeststellungQuelleAus:
+      type: object
+      required: [art, audit_id, kennung, wortlaut]
+      properties:
+        art: { type: string, enum: [internes_audit, eigene, extern, managementbewertung] }
+        audit_id: { type: string, format: uuid, nullable: true }
+        kennung: { type: string, nullable: true, description: AU-… beim Audit, BR-…/Bn bei der Managementbewertung. }
+        wortlaut: { type: string, nullable: true }
+    FeststellungVorgabeAus:
+      type: object
+      required: [dokument_id, dokument, fassung, wortlaut]
+      properties:
+        dokument_id: { type: string, format: uuid, nullable: true }
+        dokument: { type: string, nullable: true, description: Das Kennzeichen D-nnnn. }
+        fassung: { type: integer, nullable: true }
+        wortlaut: { type: string, nullable: true }
+    FeststellungBezugAus:
+      type: object
+      required: [standort_id, aufgabe, dokument_id, dokument, objekte]
+      properties:
+        standort_id: { type: string, format: uuid, nullable: true }
+        aufgabe: { type: string, nullable: true }
+        dokument_id: { type: string, format: uuid, nullable: true }
+        dokument: { type: string, nullable: true }
+        objekte: { type: array, items: { type: string } }
+    FeststellungFrist:
+      type: object
+      required: [abruf, faellig_am, tage, satz, grund]
+      description: Vertrag `ueberpruefung` (Art `feststellung`) am Abruf-Tag; abgeschlossen ohne Frist.
+      properties:
+        abruf: { type: string, format: date }
+        faellig_am: { type: string, format: date, nullable: true }
+        tage: { type: integer, nullable: true, description: Abruf minus Frist - positiv = überfällig. }
+        satz: { type: string, nullable: true, description: „seit n Tagen fällig“, „heute fällig“, „fällig in n Tagen“. }
+        grund: { type: string, nullable: true, enum: [abgeschlossen, null] }
+    Feststellung:
+      type: object
+      required: [id, kennzeichen, quelle, wortlaut, vorgabe, bezug, festgestellt_von, festgestellt_am, verantwortlich, frist, zustand, lage, ergebnis, eintraege, massnahmen, eingetragen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^F-[0-9]{4}-[0-9]{4,9}$" }
+        quelle: { $ref: "#/components/schemas/FeststellungQuelleAus" }
+        wortlaut: { type: string }
+        vorgabe: { $ref: "#/components/schemas/FeststellungVorgabeAus" }
+        bezug: { $ref: "#/components/schemas/FeststellungBezugAus" }
+        festgestellt_von: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        festgestellt_am: { type: string, format: date }
+        verantwortlich: { $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }
+        frist: { type: string, format: date }
+        zustand: { type: string, enum: [offen, abgeschlossen] }
+        lage: { $ref: "#/components/schemas/FeststellungFrist" }
+        ergebnis: { type: string, nullable: true, enum: [wirksam, ohne_massnahme, zurueckgenommen, null], description: Das Ergebnis des schließenden Stands. }
+        eintraege: { type: integer, description: Anzahl der Einträge. }
+        massnahmen: { type: array, items: { type: string }, description: Die Kennzeichen der Maßnahmen mit Herkunft dieser Feststellung. }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    FeststellungEintrag:
+      type: object
+      required: [id, art, am, person, wortlaut, eingetragen]
+      properties:
+        id: { type: integer, format: int64 }
+        art: { type: string, enum: [kommentar, behebung, ursache_aussage, aehnliche_faelle] }
+        am: { type: string, format: date }
+        person: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        wortlaut: { type: string }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+    FeststellungMassnahme:
+      type: object
+      required: [id, kennzeichen, titel, zustand, termin, umgesetzt_am, verantwortlich]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        titel: { type: string }
+        zustand: { type: string, enum: [geplant, umgesetzt, bewertet, verworfen] }
+        termin: { type: string, format: date }
+        umgesetzt_am: { type: string, format: date, nullable: true }
+        verantwortlich: { $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }
+    FeststellungStand:
+      type: object
+      required: [nr, ergebnis, begruendung, am, entschieden_von, kopie, pruefsumme, vieraugen, status, eingetragen, zweite_person, ablehnung_begruendung]
+      properties:
+        nr: { type: integer }
+        ergebnis: { type: string, enum: [wirksam, nicht_wirksam, ohne_massnahme, zurueckgenommen] }
+        begruendung: { type: string }
+        am: { type: string, format: date }
+        entschieden_von: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        kopie: { type: object, description: "`feststellung`, `wortlaut`, `eintraege` (Anzahl), `massnahmen` (kennzeichen, zustand, umgesetzt_am), `aufgabe` (aufgabe, person, vertretung, gilt_ab, entschieden_von - ohne Aufgabe im Bezug null), `am`." }
+        pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        vieraugen: { type: boolean }
+        status: { type: string, enum: [beantragt, freigegeben, abgelehnt] }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+        zweite_person:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergiemanagementEingetragen" }]
+        ablehnung_begruendung: { type: string, nullable: true }
+    FeststellungVierAugen:
+      type: object
+      required: [an, erfuellbar, berechtigte, zweite_person, satz]
+      description: >
+        FS6/W15 als Antwortfeld: ohne Vier-Augen `an` = false. Sonst die Berechtigten (KA/EM am Unternehmen), wer jetzt
+        zweite Person sein kann (nie die Urheberin, nie der Verantwortliche) und ohne jemanden `erfuellbar` = false mit
+        `satz` („Vier-Augen nicht erfüllbar: außer … darf niemand freigeben, und … sind hier beteiligt.“).
+      properties:
+        an: { type: boolean }
+        erfuellbar: { type: boolean }
+        berechtigte:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }
+        zweite_person:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }
+        satz: { type: string, nullable: true }
+    FeststellungAenderung:
+      type: object
+      required: [id, art, alt, neu, begruendung, akteur, zeit]
+      properties:
+        id: { type: integer, format: int64 }
+        art: { type: string, enum: [feststellung_erfasst, eintrag, feststellung_geaendert, wirksamkeit_beantragt, wirksamkeit_geprueft, wirksamkeit_abgelehnt, feststellung_abgeschlossen] }
+        alt: { nullable: true, description: Schnappschuss vorher. }
+        neu: { nullable: true, description: Schnappschuss nachher (beim Eintrag der Eintrag, beim Stand der Stand ohne Kopie). }
+        begruendung: { type: string, nullable: true }
+        akteur:
+          type: object
+          properties:
+            sub: { type: string, nullable: true }
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        zeit: { type: string, format: date-time }
+    FeststellungMitVerlauf:
+      type: object
+      required: [feststellung, eintraege, massnahmen, wirksamkeit, vieraugen, verlauf]
+      properties:
+        feststellung: { $ref: "#/components/schemas/Feststellung" }
+        eintraege:
+          type: array
+          items: { $ref: "#/components/schemas/FeststellungEintrag" }
+        massnahmen:
+          type: array
+          items: { $ref: "#/components/schemas/FeststellungMassnahme" }
+        wirksamkeit:
+          type: array
+          items: { $ref: "#/components/schemas/FeststellungStand" }
+        vieraugen: { $ref: "#/components/schemas/FeststellungVierAugen" }
+        verlauf:
+          type: array
+          items: { $ref: "#/components/schemas/FeststellungAenderung" }
+    FeststellungListe:
+      type: object
+      required: [tag, feststellungen]
+      properties:
+        tag: { type: string, format: date }
+        feststellungen:
+          type: array
+          items: { $ref: "#/components/schemas/Feststellung" }
     InternesAuditStand:
       type: object
       additionalProperties: false

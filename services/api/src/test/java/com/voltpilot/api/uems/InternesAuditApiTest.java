@@ -265,8 +265,12 @@ class InternesAuditApiTest {
                 200).at("/gruppen/0");
         assertThat(gruppe.path("gruppe").asText()).isEqualTo("audits_feststellungen");
         assertThat(gruppe.path("satz").isNull()).isTrue();
-        assertThat(werte(gruppe.path("zeilen"), "kennzeichen")).containsExactly("AU-2029-0001");
-        assertThat(gruppe.at("/zeilen/0/pruefsumme").asText()).isEqualTo(pruefsumme);
+        // Seit IP-19 steht auch die Feststellung F-2029-0001 in der Gruppe (R3: am 12.02.2029 zwei Zeilen).
+        assertThat(werte(gruppe.path("zeilen"), "kennzeichen")).containsExactlyInAnyOrder("AU-2029-0001",
+                "F-2029-0001");
+        JsonNode auZeile = null;
+        for (JsonNode z : gruppe.path("zeilen")) if (z.path("kennzeichen").asText().equals("AU-2029-0001")) auZeile = z;
+        assertThat(auZeile.path("pruefsumme").asText()).isEqualTo(pruefsumme);
         assertThat(ruf("GET", "/api/v1/energiemanagement/verzeichnis?gruppe=audits_feststellungen", "CB", null, 200)
                 .at("/gruppen/0/zeilen")).isEmpty();
 

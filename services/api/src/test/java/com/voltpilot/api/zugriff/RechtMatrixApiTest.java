@@ -380,6 +380,21 @@ class RechtMatrixApiTest {
         }
         z.add(new Zeile("energiemanagement.freigeben", HttpMethod.POST,
                 "/api/v1/energiemanagement/audits/{FREMD}/abschliessen", "ee3333333"));
+        // AP-19 IP-19: Feststellung — erfassen, Einträge, Frist und Verantwortlich am Standort des Bezugs (DIENST: der
+        // Bearbeiter kommt bis zum Dienst, der genau prüft); jeder Stand mit energiemanagement.freigeben (KA U · EM U).
+        z.add(new Zeile("energiemanagement.verwalten", HttpMethod.POST, "/api/v1/energiemanagement/feststellungen",
+                "eee333333"));
+        z.add(new Zeile("energiemanagement.verwalten", HttpMethod.POST,
+                "/api/v1/energiemanagement/feststellungen/{FREMD}/eintraege", "eee333333"));
+        for (String weg : List.of("frist", "verantwortlicher")) {
+            z.add(new Zeile("energiemanagement.verwalten", HttpMethod.PUT,
+                    "/api/v1/energiemanagement/feststellungen/{FREMD}/" + weg, "eee333333"));
+        }
+        for (String weg : List.of("wirksamkeit", "wirksamkeit/beantragen", "wirksamkeit/freigeben",
+                "wirksamkeit/ablehnen", "abschliessen")) {
+            z.add(new Zeile("energiemanagement.freigeben", HttpMethod.POST,
+                    "/api/v1/energiemanagement/feststellungen/{FREMD}/" + weg, "ee3333333"));
+        }
         z.add(new Zeile("bewertung.kriterien", HttpMethod.PUT, "/api/v1/unternehmen/bewertung/kriterien", "ee3333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/freigeben", "ee3333333"));
         z.add(new Zeile("bewertung.kriterien", HttpMethod.POST, "/api/v1/unternehmen/bewertung/kriterien/2/ablehnen", "ee3333333"));
