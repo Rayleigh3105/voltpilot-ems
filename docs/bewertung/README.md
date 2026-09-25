@@ -14,9 +14,9 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | Datei | Inhalt | Paket |
 |---|---|---|
 | [`nachweismatrix.schema.json`](nachweismatrix.schema.json) | Vertrag: Felder, Pflichten je Urteil, Vokabulare, Gliederung | AP-20 IP-2 |
-| [`nachweismatrix.json`](nachweismatrix.json) | die Matrix; heute leer, mit Normfassung und Stichtag | AP-20 IP-2, gefüllt ab IP-5 |
+| [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil und Kundenaufgaben folgen | AP-20 IP-2, IP-5 |
 | `luecken.json` | Lückenliste des Betreibers (L-nnn), nie beim Kunden | AP-20 IP-3 |
-| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1); später der Matrix-Prüfer | AP-20 IP-2, IP-4 |
+| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wache des Zusagen-Inventars (`zusagen.py`); später der Matrix-Prüfer | AP-20 IP-2, IP-5, IP-4 |
 
 ## Aufbau (MX1, MX2)
 
@@ -38,6 +38,48 @@ Die Verweise gelten in beide Richtungen. Nennt eine Norm-Zeile `Z-005`, nennt `Z
 diesen Abschnitt. Dasselbe gilt für Norm-Zeile und Kundenaufgabe. Ein Verweis in einen Teil,
 der noch keine Zeile trägt, wird nicht geprüft. So können die Teile nacheinander entstehen:
 Zusagen (IP-5), Norm-Teil (IP-7), Kundenaufgaben (IP-8).
+
+## Zusagen-Inventar (AP-20 IP-5, E1 = A)
+
+Der Zusagen-Teil trägt jede Zusage an einen UEMS-Kunden aus den Orten, an denen VoltPilot zusagt.
+Je Satz eine Zeile. Mehrere Sätze stehen nur dann in einer Zeile, wenn sie zusammen eine Zusage
+sind, etwa Z-011.
+
+| Ort | Zusage-Art | Quelle |
+|---|---|---|
+| Plan-Abnahmen AP-01 … AP-19, Ergebnis AP-00 | `plan_abnahme` | `PG/plan.md:zeile` |
+| Release-Notiz-Vorlage, jeder Satz | `release_notiz` | `docs/rollout/release-notiz-vorlage.md` |
+| Box-Notiz (Abschnitt „Software-Aktualisierung der Box“ der Vorlage) | `box_notiz` | dieselbe Datei |
+| Kundensätze der Flächen: Grenz-Satz und Verantwortungs-Satz | `flaeche` | `frontend/portal/src/glossar.ts` |
+| Anmelde-Zeile | `anmeldung` | `AuthScreen.tsx`, Keycloak-Thema |
+| Betriebszusagen: Sicherung, Aufbewahrung, Zugriffsschutz | `betrieb` | `docs/backup-restore.md`, `PG/`, `FM/` |
+
+Hilfe, Wegweiser und Fachmodell sagen nichts zu. Die Hilfe hat keinen UEMS-Artikel, Wegweiser und
+Fachmodell sind Arbeitsregeln. Die Kennzeichen Z-001 … Z-018 stammen aus dem Konzept und bleiben,
+weil Lückenliste und spätere Pakete sie nennen.
+
+**Quelle** ist `datei:zeile`, Bereiche als `von–bis`, mehrere Zeilen als `datei:45, :62`, mehrere
+Dateien durch `; ` getrennt. `PG/` ist der Programmplan und `FM/` die Ablage eines Pakets. Beide
+liegen außerhalb des Repos beim Captain. `<rev>:datei:zeile` zitiert einen festen Stand. Der
+**Wortlaut** ist wörtlich. Eine Kurzform trägt `(Kurzform` im Wortlaut.
+
+**Urteil.** Jede Zeile ist `offen` und nennt, wer liefert (NR7). Kandidaten und Abschnitte trägt
+die Zeile nur, wo das Konzept sie schon nennt. Zugeordnet werden sie in AP-20 IP-6 (AP-00 … AP-15
+und Betrieb) und IP-7 (AP-16 … AP-19, Norm-Teil).
+
+**Die Wache** `tools/bewertung/zusagen.py` (MX5) ist rot, wenn
+
+- ein Satz der Release-Notiz-Vorlage in keinem Wortlaut einer Zusage steht, deren Quelle die
+  Vorlage nennt. Rahmen sind nur die Anleitung vor dem ersten Abschnitt, Überschriften, Betreff und
+  Anrede. Der Betreff wiederholt den ersten Satz, der die Zusage trägt.
+- eine Quelle nicht `datei:zeile` ist oder ihre Zeilen im Repo fehlen.
+- der Wortlaut nicht an seinen Zeilen steht. Verglichen wird über Buchstaben und Ziffern, damit
+  Anführungszeichen und Umbrüche im Quelltext nicht zählen. Eine Kurzform prüft nur die Zeilen. Hat
+  sich eine Zeile nur verschoben, nennt die Wache die neue Zeile. Die Quelle wird dann mitgezogen.
+- mit `--plan <pfad zu plan.md>` ein Satz der Plan-Abnahmen ohne Zusage bleibt.
+
+Wer einen Kunden-Satz ändert, ändert die Zusage mit. Entfällt ein Satz, bleibt die Zusage stehen:
+ihre Quelle zeigt dann auf den Stand, an dem der Satz galt (`<rev>:datei:zeile`).
 
 ## Vokabulare
 
@@ -111,7 +153,7 @@ Lauf-Berichten fällt später der Matrix-Prüfer (AP-20 IP-4, AP-20 NW-2).
 - **MX3**: Jede Zusage trägt Wortlaut, Quelle, Träger, Abschnitte, Kandidaten, Urteil und bei
   `offen` auch, wer liefert.
 - **MX4**: Das Urteil kommt aus dem Vokabular. Gezählt wird nur je Urteil und Träger.
-- **MX5**: Eine Zusage ohne Zeile ist rot. Die Wache dafür baut AP-20 IP-5.
+- **MX5**: Eine Zusage ohne Zeile ist rot. Die Wache ist `tools/bewertung/zusagen.py` (AP-20 IP-5).
 - **MX6**: Die Normfassung steht mit Stichtag in der Datei und wird bei jeder Bewertung neu
   festgestellt. Eine neue Ausgabe ist eine neue Matrix-Fassung und keine stille Änderung.
 
@@ -156,7 +198,8 @@ Bewertung. Fristen rechnet das Werkzeug beim Abruf.
 
 ```sh
 python3 tools/bewertung/nachweismatrix.py                       # Exit 0 = Vertrag hält, 1 = rot, 2 = Aufruf
-python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1
+python3 tools/bewertung/zusagen.py [--plan <plan.md>]          # Wache MX5: Exit 0 = jede Zusage hat ihre Zeile
+python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1 und die Wache
 ```
 
 Der Test braucht `jsonschema`, wie die Vertragstests von `services/optimization`. Fehlt es,

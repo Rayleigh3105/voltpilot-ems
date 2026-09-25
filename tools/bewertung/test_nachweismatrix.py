@@ -57,13 +57,14 @@ class LeereMatrix(unittest.TestCase):
     def test_die_leere_matrix_im_repo_haelt_den_vertrag(self):
         self.assertEqual(nachweismatrix.verstoesse(lade(nachweismatrix.MATRIX_PFAD)), [])
 
-    def test_die_leere_matrix_traegt_normfassung_und_stichtag_und_noch_keine_zeile(self):
+    def test_die_matrix_traegt_normfassung_und_stichtag_und_die_zusagen(self):
         m = lade(nachweismatrix.MATRIX_PFAD)
         self.assertEqual(m['matrix_fassung'], 1)
         self.assertEqual((m['normfassung']['international'], m['normfassung']['deutsch']),
                          nachweismatrix.NORMFASSUNGEN[1])
         self.assertRegex(m['normfassung']['stichtag'], r'^\d{4}-\d{2}-\d{2}$')
-        self.assertEqual((m['norm_teil'], m['zusagen'], m['kundenaufgaben']), ([], [], []))
+        # Das Zusagen-Inventar steht seit AP-20 IP-5 (Wache: test_zusagen.py); Norm-Teil (IP-7) und Kundenaufgaben (IP-8) folgen.
+        self.assertTrue(m['zusagen'])
 
     def test_die_gliederung_hat_dreissig_abschnitte_und_nur_nummern(self):
         gliederung = nachweismatrix.lade_schema()['$defs']['abschnitt']['enum']
