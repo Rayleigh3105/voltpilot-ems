@@ -347,7 +347,8 @@ tags:
     description: >
       UEMS AP-19 Dokumentation und Managementabläufe. VoltPilot hält fest, der Kunde entscheidet, und jede Zeile
       sagt, wo das Original liegt. IP-6: Personen im Energiemanagement (auch ohne Konto) und Aufgaben mit
-      „entschieden von“; die Leitung ist, wer am Tag die Aufgabe „Leitung des Unternehmens“ trägt.
+      „entschieden von“; die Leitung ist, wer am Tag die Aufgabe „Leitung des Unternehmens“ trägt. IP-10: „Wer ist
+      wofür verantwortlich“ liest die Verantwortlichen der Objekte und die Freigaben der Bezugsbasen daneben.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -12049,6 +12050,32 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/verantwortung:
+    get:
+      tags: [energiemanagement]
+      summary: Wer ist wofür verantwortlich - Aufgaben, Verantwortliche der Objekte, Freigaben der Bezugsbasen (PA2, PA4).
+      description: >
+        Recht `energiemanagement.ansehen`. Ein Leser, kein Speicher (UEMS AP-19 IP-10). `aufgaben`, `leitung` und
+        `tag` wie `GET …/aufgaben` (nur unternehmensweit; wer nur Standorte liest, bekommt keine Aufgabe und nie den
+        Satz), `ohne_person` die Aufgaben des Vokabulars ohne laufende Zuordnung am Tag. `objekte` nennt die
+        Verantwortlichen so, wie die Register der Objekte sie heute zeigen - jede Quelle in ihrem eigenen Zaun und mit
+        ihren Rechten gelesen, nichts kopiert: laufende Kennzahlen, Energieeinsätze und Bezugsbasen (der
+        Verantwortliche der Bezugsbasis ist die Vorgabe aus der Kennzahl, AP-17 B4), Energieziele, Maßnahmen und
+        Abweichungen in jedem Zustand. `bezugsbasen_freigaben` nennt jede freigegebene Fassung mit der Person, die sie
+        freigegeben hat, auch abgelöste. Der Leser urteilt nicht, ob die Verteilung genügt; Verantwortung verleiht
+        kein Recht.
+      parameters:
+        - in: query
+          name: tag
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementVerantwortung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/energieziele:
     get:
       tags: [kennzahlen]
@@ -17134,6 +17161,59 @@ components:
         zuordnungen:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
+    EnergiemanagementVerantwortlich:
+      type: object
+      required: [sub, name]
+      properties:
+        sub: { type: string, nullable: true, description: Nur wo das Objekt ein Konto führt; Kennzahl und Bezugsbasis tragen nur den Namen. }
+        name: { type: string }
+    EnergiemanagementVerantwortungObjekt:
+      type: object
+      required: [art, id, kennzeichen, titel, verantwortlich, zustand]
+      properties:
+        art: { type: string, enum: [kennzahl, energieeinsatz, bezugsbasis, energieziel, massnahme, abweichung], description: Internes Audit (IP-18) und Feststellung (IP-19) docken über `VerantwortungQuelle` an und ergänzen diese Liste. }
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        titel: { type: string }
+        verantwortlich:
+          nullable: true
+          description: "`null`: am Objekt ist niemand eingetragen."
+          allOf: [{ $ref: "#/components/schemas/EnergiemanagementVerantwortlich" }]
+        zustand: { type: string, nullable: true, description: Der Zustand des Objekts, wo es selbst einen führt (Energieziel, Maßnahme, Abweichung). }
+    EnergiemanagementBezugsbasisFreigabe:
+      type: object
+      required: [bezugsbasis_id, bezugsbasis, kennzahl_id, kennzahl, fassung, freigegeben_von, freigegeben_am, vieraugen, zweite_person]
+      properties:
+        bezugsbasis_id: { type: string, format: uuid }
+        bezugsbasis: { type: string }
+        kennzahl_id: { type: string, format: uuid }
+        kennzahl: { type: string }
+        fassung: { type: integer }
+        freigegeben_von: { type: string, nullable: true }
+        freigegeben_am: { type: string, format: date-time, nullable: true }
+        vieraugen: { type: boolean }
+        zweite_person: { type: string, nullable: true, description: Bei Vier-Augen die Person, die entschieden hat. }
+    EnergiemanagementVerantwortung:
+      type: object
+      required: [tag, leitung, aufgaben, ohne_person, objekte, bezugsbasen_freigaben]
+      properties:
+        tag: { type: string, format: date }
+        leitung:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        aufgaben:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementAufgabe" }
+        ohne_person:
+          type: array
+          items: { type: string }
+          description: Die Aufgaben des Vokabulars ohne laufende Zuordnung am Tag (nie `weitere`) - dieselben, deren `satz` gesetzt ist.
+        objekte:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementVerantwortungObjekt" }
+        bezugsbasen_freigaben:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementBezugsbasisFreigabe" }
     MessbedarfAnlegen:
       type: object
       additionalProperties: false

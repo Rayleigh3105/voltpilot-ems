@@ -7,8 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.EnergiemanagementAbgelehnt;
 import com.voltpilot.api.uems.EnergiemanagementPersonenService;
+import com.voltpilot.api.uems.EnergiemanagementVerantwortungService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.EnergiemanagementPersonenDto;
+import com.voltpilot.api.web.dto.EnergiemanagementVerantwortungDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
@@ -34,8 +36,9 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * UEMS AP-19 IP-6: Personen im Energiemanagement und Aufgaben (PA1–PA3, PA5, §5.6). Die Arbeit macht
- * {@link EnergiemanagementPersonenService}.
+ * UEMS AP-19 IP-6: Personen im Energiemanagement und Aufgaben (PA1–PA3, PA5, §5.6) — und seit IP-10 der Leser „Wer
+ * ist wofür verantwortlich“ (PA4). Die Arbeit machen {@link EnergiemanagementPersonenService} und
+ * {@link EnergiemanagementVerantwortungService}.
  *
  * <p><b>Rechte:</b> Schreibrouten {@code energiemanagement.verwalten} am Unternehmen (403 {@code recht_fehlt});
  * Lesen {@code energiemanagement.ansehen} als Kennung im Kommentar — Personen tragen nur den Mandanten-Zaun (ein
@@ -47,10 +50,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class EnergiemanagementPersonenController {
 
     private final EnergiemanagementPersonenService dienst;
+    private final EnergiemanagementVerantwortungService verantwortung;
     private final ObjectMapper streng;
 
-    public EnergiemanagementPersonenController(EnergiemanagementPersonenService dienst, ObjectMapper json) {
+    public EnergiemanagementPersonenController(EnergiemanagementPersonenService dienst,
+            EnergiemanagementVerantwortungService verantwortung, ObjectMapper json) {
         this.dienst = dienst;
+        this.verantwortung = verantwortung;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS);
     }
@@ -128,6 +134,16 @@ public class EnergiemanagementPersonenController {
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         dienst.beenden(id, lies(body, EnergiemanagementPersonenDto.AufgabeBeenden.class), akteur(auth));
         return dienst.zuordnung(id);
+    }
+
+    /**
+     * Recht: {@code energiemanagement.ansehen}. „Wer ist wofür verantwortlich“ (PA4): die Aufgaben am {@code tag}
+     * (Vorgabe heute; nur unternehmensweit, wie {@code GET …/aufgaben}), die Verantwortlichen der Objekte und die
+     * Freigaben der Bezugsbasen — jede Quelle in ihrem eigenen Zaun gelesen, nichts kopiert.
+     */
+    @GetMapping("/verantwortung")
+    public EnergiemanagementVerantwortungDto.Verantwortung verantwortung(@RequestParam(required = false) String tag) {
+        return verantwortung.lesen(tag(tag));
     }
 
     private static LocalDate tag(String tag) {
