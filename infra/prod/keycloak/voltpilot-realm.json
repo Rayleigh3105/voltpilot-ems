@@ -23,6 +23,16 @@
   "maxDeltaTimeSeconds": 43200,
   "quickLoginCheckMilliSeconds": 1000,
   "minimumQuickLoginWaitSeconds": 60,
+  "passwordPolicy": "length(12) and notUsername and passwordHistory(3)",
+  "eventsEnabled": true,
+  "eventsExpiration": 7776000,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "attributes": {
+    "adminEventsExpiration": "7776000"
+  },
+  "browserFlow": "voltpilot-browser",
+  "directGrantFlow": "voltpilot-direct-grant",
   "roles": {
     "realm": [
       { "name": "operator", "description": "Portal-User, legacy accounts only: customer scoped to one tenant via tenant_id. Since UEMS AP-03 IP-3 new customer accounts get no realm role" },
@@ -37,7 +47,7 @@
     {
       "clientId": "voltpilot-release-publisher",
       "name": "VoltPilot OTA Release Publisher",
-      "description": "Service account for the edge-* tag pipeline. Client credentials only: no login, no browser flow, no password grant - the token carries edge-release-publisher and nothing else. Ships DISABLED: enable it only after setting VP_RELEASE_PUBLISHER_SECRET (infra/prod/keycloak/README.md).",
+      "description": "Service account for the edge-* tag pipeline: client credentials only, the token carries edge-release-publisher and nothing else. Ships DISABLED - enable it only after setting VP_RELEASE_PUBLISHER_SECRET (infra/prod/keycloak/README.md).",
       "enabled": false,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -145,36 +155,101 @@
         { "type": "password", "value": "${VP_PORTAL_ADMIN_PASSWORD}", "temporary": false }
       ],
       "realmRoles": ["platform-admin"]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "voltpilot-rolle-platform-admin",
+      "config": { "condUserRole": "platform-admin", "negate": "false" }
     },
     {
-      "username": "demo",
-      "enabled": true,
-      "emailVerified": true,
-      "email": "demo@voltpilot.local",
-      "firstName": "Demo",
-      "lastName": "Operator",
-      "attributes": {
-        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
-      },
-      "credentials": [
-        { "type": "password", "value": "demo", "temporary": false }
-      ],
-      "realmRoles": ["operator"]
+      "alias": "voltpilot-rolle-nicht-platform-admin",
+      "config": { "condUserRole": "platform-admin", "negate": "true" }
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "voltpilot-browser",
+      "description": "Browser-Anmeldung (UEMS AP-20 IP-20, E12): zweiter Faktor Pflicht fuer platform-admin (VoltPilot-Betrieb), fuer alle anderen Konten waehlbar",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-cookie", "authenticatorFlow": false, "requirement": "ALTERNATIVE", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "identity-provider-redirector", "authenticatorFlow": false, "requirement": "ALTERNATIVE", "priority": 25, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "flowAlias": "voltpilot-browser-formular", "requirement": "ALTERNATIVE", "priority": 30, "userSetupAllowed": false }
+      ]
     },
     {
-      "username": "demo2",
-      "enabled": true,
-      "emailVerified": true,
-      "email": "demo2@voltpilot.local",
-      "firstName": "Nordwind",
-      "lastName": "Operator",
-      "attributes": {
-        "tenant_id": ["10000000-0000-0000-0000-000000000001"]
-      },
-      "credentials": [
-        { "type": "password", "value": "demo2", "temporary": false }
-      ],
-      "realmRoles": ["operator"]
+      "alias": "voltpilot-browser-formular",
+      "description": "Benutzername und Passwort, danach der zweite Faktor je Konto",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "auth-username-password-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "flowAlias": "voltpilot-browser-otp-betrieb", "requirement": "CONDITIONAL", "priority": 20, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "flowAlias": "voltpilot-browser-otp-gewaehlt", "requirement": "CONDITIONAL", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "voltpilot-browser-otp-betrieb",
+      "description": "platform-admin: OTP Pflicht; ohne eingerichtetes OTP verlangt Keycloak die Einrichtung bei dieser Anmeldung",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticatorConfig": "voltpilot-rolle-platform-admin", "authenticator": "conditional-user-role", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "voltpilot-browser-otp-gewaehlt",
+      "description": "Alle anderen Konten: OTP nur, wenn das Konto es selbst eingerichtet hat",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticatorConfig": "voltpilot-rolle-nicht-platform-admin", "authenticator": "conditional-user-role", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-user-configured", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "auth-otp-form", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "voltpilot-direct-grant",
+      "description": "Passwort-Grant (UEMS AP-20 IP-20, E12): kein Token fuer platform-admin, OTP fuer Konten, die es eingerichtet haben",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticator": "direct-grant-validate-username", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "direct-grant-validate-password", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "flowAlias": "voltpilot-direct-grant-betrieb", "requirement": "CONDITIONAL", "priority": 30, "userSetupAllowed": false },
+        { "authenticatorFlow": true, "flowAlias": "voltpilot-direct-grant-otp-gewaehlt", "requirement": "CONDITIONAL", "priority": 40, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "voltpilot-direct-grant-betrieb",
+      "description": "platform-admin: kein Passwort-Grant - Betriebskonten melden sich nur im Browser mit zweitem Faktor an",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticatorConfig": "voltpilot-rolle-platform-admin", "authenticator": "conditional-user-role", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "deny-access-authenticator", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false }
+      ]
+    },
+    {
+      "alias": "voltpilot-direct-grant-otp-gewaehlt",
+      "description": "Alle anderen Konten: OTP nur, wenn das Konto es selbst eingerichtet hat",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        { "authenticatorConfig": "voltpilot-rolle-nicht-platform-admin", "authenticator": "conditional-user-role", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false },
+        { "authenticator": "conditional-user-configured", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false },
+        { "authenticator": "direct-grant-validate-otp", "authenticatorFlow": false, "requirement": "REQUIRED", "priority": 30, "userSetupAllowed": false }
+      ]
     }
   ],
   "components": {

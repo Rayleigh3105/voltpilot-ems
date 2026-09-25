@@ -10,7 +10,7 @@ Keycloak ersetzt `${VAR}` / `${VAR:default}` aus der Containerumgebung. `${env.V
 |---|---|
 | `VP_PUBLIC_ORIGIN` | Redirects und Web Origins |
 | `VP_API_CLIENT_SECRET` | Vertraulicher API-Client |
-| `VP_PORTAL_ADMIN_PASSWORD` | Initialer Portal-Admin |
+| `VP_PORTAL_ADMIN_PASSWORD` | Initialer Portal-Admin; muss die Passwort-Vorgabe erfüllen (mindestens 12 Zeichen, nicht `admin`), sonst bricht der Import ab |
 | `VP_RELEASE_PUBLISHER_SECRET` | Optionaler OTA-Publisher |
 
 Die ersten Secret-Platzhalter haben keinen eingebauten Standardwert. Fehlende Werte außerhalb der Compose-Prüfungen können als Literal stehen bleiben; das ist kein gültiges Secret-Setup.
@@ -28,6 +28,10 @@ Die ersten Secret-Platzhalter haben keinen eingebauten Standardwert. Fehlende We
 | „Angemeldet bleiben“ | 90 Tage | 180 Tage |
 
 Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen ist im Theme vorbelegt; die Sitzungsdauer gehört zum Realm.
+
+## Anmeldung härten (UEMS AP-20 IP-20, E12)
+
+Der Import speichert Anmelde- und Admin-Ereignisse 90 Tage lang. Er setzt die Passwort-Vorgabe `length(12) and notUsername and passwordHistory(3)`, die erst beim nächsten Setzen eines Passworts greift. Für `platform-admin` verlangt er den zweiten Faktor (TOTP) im Browser und sperrt den Passwort-Grant; für alle anderen Konten ist der zweite Faktor wählbar. Der Live-Realm bekommt das **nicht** von selbst. Handgriff, Prüfskript und Bestätigung mit Datum stehen im Blatt [Live-Realm = Import](live-realm-import.md). Keycloak prüft die Vorgabe schon beim Import: Ein importiertes Konto mit kürzerem Klartext-Passwort bricht den Start eines neuen Realms ab. `ProduktionsRealmAnmeldungTest` prüft die Datei, `ProduktionsRealmImportTest` lädt sie in Keycloak im Produktionsmodus.
 
 ## Rolle `partner` nachziehen (manueller Betriebsschritt, UEMS AP-03 IP-3)
 
@@ -51,4 +55,4 @@ Oder in der Administration: Realm `voltpilot` › Realm roles › Create role �
 
 Der Client `voltpilot-release-publisher` wird deaktiviert importiert. Sein Servicekonto besitzt nur `edge-release-publisher` für die dafür freigegebenen Release-/Trust-Set-Routen, keine Geräte-Rollout-Rechte. Vor Aktivierung ein echtes Secret setzen; den Platzhalter `change-me` nicht verwenden. [Signierung](../../../docs/ota-signing.md)
 
-Der Import enthält initiale Admin- und Demo-Benutzer. Für Kundenbetrieb Demozugänge entfernen und das API-Profil leer lassen; `local` aktiviert zusätzliche Demo-Seeds. [API und Mandanten](../../../docs/api.md)
+Der Import enthält den initialen Portal-Admin `admin` und keine Demo-Benutzer mehr. `demo`/`demo` und `demo2`/`demo2` hätten die Passwort-Vorgabe gebrochen und den Import abgebrochen; sie stehen nur noch im [lokalen Realm](../../local/keycloak/voltpilot-realm.json). Für den Kundenbetrieb das API-Profil leer lassen; `local` aktiviert zusätzliche Demo-Seeds. [API und Mandanten](../../../docs/api.md)

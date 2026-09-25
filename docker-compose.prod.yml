@@ -366,7 +366,9 @@ services:
       # Production default is a BLANK profile: only db/migration (prod-safe core)
       # runs, never db/dev, so no demo tenants/telemetry land on a real DB. Set
       # SPRING_PROFILES_ACTIVE=local in .env ONLY for a throwaway demo VM (seeds
-      # the two demo tenants + demo/demo realm user). Editing a db/dev migration
+      # the two demo tenants; the prod realm import carries no demo login since
+      # AP-20 IP-20 - its password policy would reject demo/demo - so create one
+      # via the Portal-Admin). Editing a db/dev migration
       # after a VM ran `local` no longer bricks startup - see the api's
       # spring.flyway.ignore-migration-patterns "*:missing" (docs/deploy.md).
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}

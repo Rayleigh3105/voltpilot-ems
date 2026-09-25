@@ -52,9 +52,10 @@
       "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A7)",
       "betrifft": ["Z-017"],
       "wer_liefert": [{"wer": "Betreiber", "was": "Realm-Import mit Anmelde- und Admin-Ereignissen, Passwort-Vorgabe und zweitem Faktor für platform-admin und Betrieb, Live-Realm mit Datum bestätigen (AP-20 IP-20, E12 = A)"}],
-      "zustand": "offen",
+      "zustand": "in_arbeit",
       "verlauf": [
-        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"},
+        {"am": "2026-09-25", "nach": "in_arbeit", "person": "Crew (AP-20 IP-20)", "begruendung": "Realm-Import infra/prod/keycloak/voltpilot-realm.json gehärtet (Ereignisse 90 Tage, Passwort-Vorgabe, zweiter Faktor Pflicht für platform-admin), belegt mit ProduktionsRealmAnmeldungTest und ProduktionsRealmImportTest; behoben erst mit der Bestätigung des Betreibers am Live-Realm (infra/prod/keycloak/live-realm-import.md)"}
       ]
     },
     {
