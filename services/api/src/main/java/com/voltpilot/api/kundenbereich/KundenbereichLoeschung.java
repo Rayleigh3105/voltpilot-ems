@@ -41,10 +41,8 @@ public class KundenbereichLoeschung {
     public static final String FRIST_LAEUFT = "frist_laeuft";
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String TABELLEN = "SELECT c.relname FROM pg_class c"
-            + " JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'"
-            + " JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped"
-            + " WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition ORDER BY c.relname";
+    /** Derselbe Katalog, über den der Löschzug zuletzt löscht. */
+    private static final String TABELLEN = TenantRepository.KATALOG_MIT_MANDANT;
 
     private final KundenbereichEndeRepository ende;
 

@@ -3,8 +3,13 @@ package com.voltpilot.api.repo;
 import com.voltpilot.api.tenant.Betriebsart;
 import com.voltpilot.api.web.dto.TenantDto;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -21,6 +26,22 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class TenantRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(TenantRepository.class);
+
+    /**
+     * Every table that can hold a tenant's rows: each table in {@code public} with a {@code tenant_id} column (a
+     * hypertable's chunks live in {@code _timescaledb_internal}, a partition counts through its parent). The
+     * Löschnachweis counts over it before and after, the teardown's last step deletes over it (UEMS AP-20, E10 = A).
+     */
+    public static final String KATALOG_MIT_MANDANT = "SELECT c.relname FROM pg_class c"
+            + " JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'"
+            + " JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped"
+            + " WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition ORDER BY c.relname";
+
+    /** {@link #KATALOG_MIT_MANDANT}, as far as the connected role may DELETE there (the rest has its own function). */
+    private static final String KATALOG_LOESCHBAR = KATALOG_MIT_MANDANT.replace(" ORDER BY",
+            " AND has_table_privilege(c.oid, 'DELETE') ORDER BY");
 
     private final JdbcTemplate jdbc;
 
@@ -469,6 +490,7 @@ public class TenantRepository {
                 deleteByTenant(con, "tenant", tenantId, "id");
                 // After the tenant row, before the Löschnachweis counts what remains.
                 protokolleOhneMandantLoeschen(con, tenantId);
+                katalogRestLoeschen(con, tenantId);
                 if (wache != null) {
                     wache.nachDemAbbau(con);
                 }
@@ -508,6 +530,59 @@ public class TenantRepository {
             ps.setObject(1, tenantId);
             ps.executeQuery().close();
         }
+    }
+
+    /**
+     * The teardown's last step (UEMS AP-20, E10 = A): whatever still carries the tenant's id once the tenant row, its
+     * cascade, the functions above and the logs are through. Those are the tables without any FK to the tenant -
+     * telemetry_v2 and its rollups, the device status, command and plan tables, flow acknowledgements, the outboxes.
+     * They come from the catalog, not from a hand list, so a new table cannot stay behind silently. Each table the
+     * admin role may delete gets ONE set-based DELETE by tenant: on a hypertable TimescaleDB runs it chunk by chunk
+     * (the chunks are cut by time and hold every tenant, so drop_chunks is no option; the rollups are plain
+     * hypertables filled by jobs, not continuous aggregates - RLS forbids those). Running last means nothing earlier
+     * in this transaction writes the tenant's rows again. A DELETE that fails (a FK between two leftovers, an
+     * append-only trigger) goes back to its savepoint and is retried while another table still makes progress; what
+     * is left, the Löschnachweis names under {@code verblieben}.
+     */
+    private static Map<String, Long> katalogRestLoeschen(java.sql.Connection con, UUID tenantId)
+            throws java.sql.SQLException {
+        List<String> offen = new ArrayList<>();
+        try (var st = con.prepareStatement(KATALOG_LOESCHBAR); var rs = st.executeQuery()) {
+            while (rs.next()) {
+                offen.add(rs.getString(1));
+            }
+        }
+        Map<String, Long> geloescht = new TreeMap<>();
+        Map<String, String> fehler = new TreeMap<>();
+        boolean fortschritt = true;
+        while (fortschritt && !offen.isEmpty()) {
+            fortschritt = false;
+            for (var it = offen.iterator(); it.hasNext(); ) {
+                String tabelle = it.next();
+                java.sql.Savepoint savepoint = con.setSavepoint();
+                try {
+                    long zeilen = deleteByTenant(con, "\"" + tabelle.replace("\"", "\"\"") + "\"", tenantId);
+                    con.releaseSavepoint(savepoint);
+                    if (zeilen > 0) {
+                        geloescht.put(tabelle, zeilen);
+                        fortschritt = true;
+                    }
+                    fehler.remove(tabelle);
+                    it.remove();
+                } catch (java.sql.SQLException e) {
+                    con.rollback(savepoint);
+                    fehler.put(tabelle, e.getSQLState());
+                }
+            }
+        }
+        if (!geloescht.isEmpty()) {
+            log.info("Löschzug {}: ohne Fremdschlüssel gelöscht {}", tenantId, geloescht);
+        }
+        if (!fehler.isEmpty()) {
+            log.warn("Löschzug {}: nicht löschbar {} (SQLState) - der Löschnachweis nennt, was verbleibt", tenantId,
+                    fehler);
+        }
+        return geloescht;
     }
 
     private static long deleteByTenant(java.sql.Connection con, String table, UUID tenantId)

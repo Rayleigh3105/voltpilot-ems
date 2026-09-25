@@ -115,9 +115,24 @@ Betreiber-Ablauf und Regel BT5: [Deployment](../../deploy.md#kundenbereich-lösc
   verweigert bei bestehender Mandantenzeile); `TenantRepository.protokolleOhneMandantLoeschen` ruft sie nach
   `DELETE FROM tenant` (Löschzug und `deleteById`) und VOR `nachDemAbbau` — sonst zählte der Nachweis sie als
   `verblieben`. Während der Laufzeit bleibt alles append-only (jede Rolle), Standort- und Box-Löschen lassen die
-  Einträge stehen. ⚠ Eine NEUE Tabelle mit `tenant_id` ohne FK braucht einen Weg im Löschzug (mit
-  `reject_audit_mutation` auf DELETE: Liste der Funktion UND der Entfernen-Funktion) — der Katalog-Nachweis zeigt
-  sonst `verblieben`; `KundenbereichLoeschenApiTest` sät je Protokoll eine Zeile.
+  Einträge stehen.
+- **Der Rest geht über den Katalog (Folge „Löschzug vollständig“):** der letzte Schritt des Löschzugs
+  (`TenantRepository.katalogRestLoeschen`, nach den Protokollen, vor `nachDemAbbau`) liest
+  `TenantRepository.KATALOG_MIT_MANDANT` — denselben Katalog, über den der Nachweis zählt — und löscht in jeder Tabelle,
+  die die Admin-Rolle löschen darf, nach `tenant_id`: heute die 31 Tabellen ohne FK aus PR 1279 (`telemetry_v2` + drei
+  Rollups, `device_measurement_rollup_5m/15m`, Status-/Befehls-/Plan-/Fluss-Tabellen, Ausgangslisten; vier davon mit
+  `actor_name`). Hypertables: EIN DELETE je Tabelle, TimescaleDB läuft es Chunk für Chunk; `drop_chunks` scheidet aus
+  (Chunks sind nach Zeit geschnitten und tragen alle Mandanten), Continuous Aggregates gibt es nicht (RLS verbietet sie;
+  die Rollups sind Hypertables, die Jobs füllen). Ein DELETE, das scheitert (FK zwischen zwei Resten, append-only-
+  Trigger), geht auf seinen Savepoint zurück und wird wiederholt, solange eine andere Tabelle noch Zeilen verliert;
+  was bleibt, nennt `verblieben` (ein scheiternder Trigger steht zusätzlich im Log „Löschzug …: nicht löschbar“; eine Tabelle ohne Löschrecht wird gar nicht versucht). ⚠ Eine NEUE Tabelle mit `tenant_id` geht also
+  ohne Pflege mit — AUSSER sie nimmt der Admin-Rolle das DELETE oder hat einen append-only-Trigger: dann braucht sie
+  einen eigenen Weg (Entfernen-Funktion wie oben). ⚠ Die Rollup-Jobs (`telemetry_v2_rollups_job`: letzte 7 Tage) lesen
+  in eigener Transaktion; sendete die Box bis zuletzt, kann ein Lauf, der vor dem Commit las, danach Buckets
+  zurückschreiben — der Nachweis sieht sie nicht (gilt ebenso für die v1-Rollups, offen). Nicht in `deleteById`: ein
+  eben angelegter Bereich hat nur die Protokollzeile. `LoeschzugKatalogApiTest` ist der Wächter (Bereich mit Zeilen in
+  allen 31 + einer Probe-Tabelle, die keine Liste kennt; Nachbar Zeile für Zeile unverändert; Probe ohne Löschrecht
+  bzw. mit Trigger erscheint unter `verblieben`).
 - **`offboarding/cleanup`** nimmt nicht denselben Löschweg: nur Keycloak-Konten, und nur ohne Mandantenzeile.
 - **Nachweis:** `KundenbereichLoeschenApiTest` (NW-5: RF-08 mit Zeitraffer 89/90 Tage, Spalten und Inhalt ohne
   Personendaten, `verblieben` = Katalog danach = leer, Nachweis unveränderlich, die fünf Protokolle vorher
