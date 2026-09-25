@@ -13,6 +13,8 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -68,6 +70,10 @@ class EnergiemanagementVerzeichnisApiTest {
             "bezeichnung", "Energiepolitik Fassung 1, unterschrieben",
             "ablage", "QM-Laufwerk, Ordner Energiemanagement/Politik", "kennung", "EP-2026",
             "sha256", "3f1f253d0c40224028a65d3cd9409b689463ff4feab3282db32f83252bf73b9b");
+    private static final String SHA_GR2 = "3b1f4d86f164c8e54eaa3a9c335975dd54dcbd68b42bbb9c7b24d2195e2a9a2e";
+    private static final String SHA_Z5B = "c07dd7a33d2b17df6fece484ec4e08bb50c93326653576cfb1b8dd8dcf8a41f0";
+    private static final String SHA_GR9 = "9d4e1c2b7a5f3e8d6c0b4a2f1e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d";
+    private static final String SHA_FREMD = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0";
     private static final String LEER = "Hier ist noch nichts festgehalten.";
     private static final String VERANTWORTUNG = "Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr "
             + "Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr "
@@ -283,6 +289,115 @@ class EnergiemanagementVerzeichnisApiTest {
         assertThat(ruf(VERZEICHNIS + "?person=" + UUID.randomUUID(), "IK", 404).path("code").asText())
                 .isEqualTo("nicht_gefunden");
         assertThat(ruf(VERZEICHNIS + "?person=kein-name", "IK", 404).path("code").asText()).isEqualTo("nicht_gefunden");
+    }
+
+    // ------------------------------------------------------------------ Messmittel-Belege (AP-16) im Zaun des Geräts
+
+    /**
+     * R3 Schritt 2 (Folgepunkt aus IP-8): die Messmittel-Belege von AP-16 sind schon Verweise — je Einbau mit Beleg eine
+     * Zeile in „bewertung_messplanung“ mit Person und Tag des Eintragens, der im Browser gebildeten Prüfsumme und
+     * „Geführt in Ihrem System: <Ablage>“. Eine Angabe ohne Beleg trägt keine Zeile. Zaun des Geräts: ein Standort-Konto
+     * sieht die Einbauten seines Standorts, ein fremder Kundenbereich keinen — ohne Hinweis.
+     */
+    @Test
+    void messmittelBelegeAlsVerweisInDerMessplanungImZaunDesGeraets() throws Exception {
+        UUID an1 = anlage("AN-1", s1);
+        UUID gr2 = geraet(tenant, an1, "GR-2", "GR-2");
+        UUID z5b = geraet(tenant, an1, "GR-4", "Z-5b");
+        UUID gr5 = geraet(tenant, an1, "GR-5", "GR-5");
+        UUID gr9 = geraet(tenant, anlage("AN-2", s2), "GR-9", "GR-9");
+        ruf("PUT", messmittel(gr2), "IK", Map.of("pruefungsart", "eichung", "beleg", Map.of("bezeichnung",
+                "Zählerstandsmitteilung 10/2026, Netzgesellschaft Ahrental", "ablage", "beim Kunden (Netzrechnung)",
+                "sha256", SHA_GR2)), 200);
+        ruf("PUT", messmittel(z5b), "IK", Map.of("genauigkeitsklasse", "1", "beleg", Map.of("bezeichnung",
+                "Werksprüfprotokoll Seriennr. 88231", "ablage", "beim Kunden", "sha256", SHA_Z5B)), 200);
+        ruf("PUT", messmittel(gr5), "IK", Map.of("genauigkeitsklasse", "1"), 200);
+        ruf("PUT", messmittel(gr9), "PH", Map.of("pruefungsart", "kalibrierung", "beleg", Map.of("bezeichnung",
+                "Kalibrierschein 2026-117", "sha256", SHA_GR9)), 200);
+        LocalDate heute = LocalDate.now(ZoneId.of("Europe/Berlin"));
+        // Ein fremder Kundenbereich mit eigenem Beleg.
+        UUID fremd = root.queryForObject("INSERT INTO tenant(name) VALUES ('Fremd IP-8') RETURNING id", UUID.class);
+        root.update("INSERT INTO unternehmen(tenant_id,name,zeitzone) VALUES (?,'Fremd GmbH','Europe/Berlin')", fremd);
+        root.update("INSERT INTO benutzer(tenant_id,sub,konto,anzeigename,zustand) VALUES (?,'JW','benutzer',"
+                + "'Jonas Wendlinger','aktiv')", fremd);
+        root.update("INSERT INTO zugriff(tenant_id,benutzer_sub,rolle,standort_id,gueltig_ab,zeitzone) "
+                + "VALUES (?,'JW','energiemanager',NULL,'2024-01-01','Europe/Berlin')", fremd);
+        UUID fremdeAnlage = root.queryForObject("INSERT INTO site(tenant_id,name) VALUES (?,'Fremd') RETURNING id",
+                UUID.class, fremd);
+        root.update("UPDATE geraet SET beleg_bezeichnung='Fremder Eichschein', beleg_ablage='Fremdes Archiv', "
+                + "beleg_sha256=?, beleg_actor_sub='JW', beleg_actor_name='Jonas Wendlinger', beleg_actor_rolle="
+                + "'energiemanager', beleg_actor_art='kunde', beleg_am=now() WHERE id=?", SHA_FREMD,
+                geraet(fremd, fremdeAnlage, "GR-2", "GR-2"));
+        abruf(Instant.now().plusSeconds(3600).toString());
+
+        JsonNode v = ruf(VERZEICHNIS, "IK", 200);
+        List<JsonNode> mm = messmittelZeilen(v);
+        assertThat(texte(mm, "kennzeichen")).containsExactly("GR-2", "GR-9", "Z-5b");
+        assertThat(texte(gruppe(v, "bewertung_messplanung").path("zeilen"), "kennzeichen"))
+                .containsExactly("GR-2", "GR-9", "Z-5b");
+        {
+            JsonNode z = zeile(v, "messmittel_angabe", "GR-2");
+            assertThat(z.path("titel").asText())
+                    .isEqualTo("Messmittel GR-2: Zählerstandsmitteilung 10/2026, Netzgesellschaft Ahrental");
+            assertThat(z.path("nr").isNull()).isTrue();
+            assertThat(z.path("entschieden_von").isNull()).as("niemand sonst hat entschieden (G2)").isTrue();
+            assertThat(z.path("eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
+            assertThat(z.path("tag").asText()).isEqualTo(heute.toString());
+            assertThat(z.path("pruefsumme").asText()).isEqualTo(SHA_GR2);
+            assertThat(z.path("ort").asText()).isEqualTo("verweis");
+            assertThat(z.path("ort_satz").asText()).isEqualTo("Geführt in Ihrem System: beim Kunden (Netzrechnung)");
+        }
+        // Die Angabe hängt am Einbau: Z-5b ist der Einbau von GR-4 (AP-16 R8).
+        assertThat(zeile(v, "messmittel_angabe", "Z-5b").path("titel").asText())
+                .isEqualTo("Messmittel Z-5b (GR-4): Werksprüfprotokoll Seriennr. 88231");
+        {
+            JsonNode z = zeile(v, "messmittel_angabe", "GR-9");
+            assertThat(z.path("eingetragen_von").asText()).isEqualTo("Peter Hollerbach");
+            assertThat(z.path("pruefsumme").asText()).isEqualTo(SHA_GR9);
+            // Ohne Ablage nennt der Ort die Bezeichnung des Belegs.
+            assertThat(z.path("ort_satz").asText()).isEqualTo("Geführt in Ihrem System: Kalibrierschein 2026-117");
+        }
+        assertThat(texte(mm, "pruefsumme")).doesNotContain(SHA_FREMD);
+
+        // Zaun des Geräts: je Standort nur seine Einbauten; Einsicht liest unternehmensweit; der fremde Kundenbereich
+        // sieht nur seinen eigenen Beleg.
+        assertThat(texte(messmittelZeilen(ruf(VERZEICHNIS, "PH", 200)), "kennzeichen")).containsExactly("GR-9");
+        assertThat(texte(messmittelZeilen(ruf(VERZEICHNIS, "CB", 200)), "kennzeichen")).containsExactly("GR-2", "Z-5b");
+        assertThat(texte(messmittelZeilen(ruf(VERZEICHNIS, "RF", 200)), "kennzeichen"))
+                .containsExactly("GR-2", "GR-9", "Z-5b");
+        UUID eigen = tenant;
+        tenant = fremd;
+        try {
+            assertThat(texte(messmittelZeilen(ruf(VERZEICHNIS, "JW", 200)), "pruefsumme")).containsExactly(SHA_FREMD);
+        } finally {
+            tenant = eigen;
+        }
+
+        // Stichtag: vor dem Eintragen ist kein Beleg festgehalten.
+        abruf(heute.minusDays(1) + "T12:00:00Z");
+        assertThat(messmittelZeilen(ruf(VERZEICHNIS, "IK", 200))).isEmpty();
+    }
+
+    private static List<JsonNode> messmittelZeilen(JsonNode v) {
+        return alle(v).stream().filter(z -> z.path("art").asText().equals("messmittel_angabe")).toList();
+    }
+
+    private static String messmittel(UUID geraet) {
+        return "/api/v1/geraete/" + geraet + "/messmittel";
+    }
+
+    private UUID anlage(String name, UUID standort) {
+        UUID id = root.queryForObject("INSERT INTO site(tenant_id,name) VALUES (?,?) RETURNING id", UUID.class,
+                tenant, name);
+        root.update("INSERT INTO anlage_standort(tenant_id,site_id,standort_id,gueltig_ab) VALUES (?,?,?,'2024-01-01')",
+                tenant, id, standort);
+        return id;
+    }
+
+    private static UUID geraet(UUID mandant, UUID site, String kennzeichen, String einbau) {
+        return root.queryForObject("INSERT INTO geraet(tenant_id,site_id,kennzeichen,einbau_kennzeichen,geraeteart,"
+                + "eingebaut_am) VALUES (?,?,?,?,'zaehler','2024-01-01T00:00:00Z') RETURNING id", UUID.class, mandant,
+                site, kennzeichen, einbau);
     }
 
     // ------------------------------------------------------------------ Welt

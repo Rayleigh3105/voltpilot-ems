@@ -59,6 +59,16 @@ public class MessmittelRepository {
                 .stream().findFirst();
     }
 
+    /**
+     * AP-19 (VZ1): jeder Einbau des Kundenbereichs mit einer Angabe, auch ausgebaute. Nur der Mandanten-Zaun (RLS);
+     * den Standort-Zaun prüft der Dienst je Gerät.
+     */
+    public List<Stand> erhobene() {
+        return jdbc.query("SELECT " + SPALTEN + " FROM geraet g WHERE g.genauigkeitsklasse IS NOT NULL "
+                + "OR g.pruefungsart IS NOT NULL OR g.pruefung_am IS NOT NULL OR g.pruefung_gueltig_bis IS NOT NULL "
+                + "OR g.beleg_sha256 IS NOT NULL ORDER BY g.einbau_kennzeichen, g.id", this::zeile);
+    }
+
     /** Alle Wandler-Fassungen des Einbaus, älteste zuerst — auch beendete (die Klasse gilt je Fassung). */
     public List<Wandler> wandler(UUID geraetId) {
         return jdbc.query("SELECT id, art, wert::text, gueltig_ab, gueltig_bis, klasse FROM quelle_einstellung "

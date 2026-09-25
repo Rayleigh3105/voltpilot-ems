@@ -17,3 +17,6 @@ Verbindlich: [Bewertung §12](../../contracts/v2/bewertung.md#12-messmittel-anga
   über `STROM_GERAET` im Geräte- und Unternehmensprotokoll; Sichtbarkeit über `RechtZiel.GERAET`.
 - Recht `messmittel.angaben` hat die Zellen von `geraet.einrichten` (`wie`); der Zaun ist die
   Anlage des Geräts. GET trägt kein `@Recht`, nur den Pflicht-Kommentar `messwerte.ansehen`.
+- `alle()` (AP-19, für das Verzeichnis): jede erhobene Angabe über alle Einbauten, gefiltert mit
+  `RechtPruefung#lesbar(GERAET, …)` — `geraet` trägt nur Mandanten-RLS, kein `site_scope`; eine Liste über
+  `geraet` ohne diesen Filter zeigte einem Standort-Konto fremde Standorte.

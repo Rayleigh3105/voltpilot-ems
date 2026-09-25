@@ -26,8 +26,11 @@ import org.springframework.stereotype.Component;
  * Fassungen und ersetzte Stände. „entschieden von“ steht nur, wo eine zweite Person entschieden hat (Vier-Augen); sonst
  * trägt „eingetragen von“ beides (G2). Was eine Quelle nicht trägt — Prüfsumme, Nr. —, bleibt leer.
  *
- * <p>Nicht hier: Messmittel-Angaben mit ihren Belegen (AP-16) — {@link MessmittelService} liest nur je Gerät; ein
- * unternehmensweiter Leser im Zaun des Geräts ist ein Folgepunkt.
+ * <p>Messmittel-Angaben mit ihren Belegen (AP-16, R3 Schritt 2) in „bewertung_messplanung“, gelesen über
+ * {@link MessmittelService#alle()} im Zaun des Geräts: der Beleg ist schon ein Verweis, seine Zeile sagt „Geführt in
+ * Ihrem System: …“ mit der im Browser gebildeten Prüfsumme, Person und Tag seines Eintragens. Ohne Ablage nennt der
+ * Ort die Bezeichnung des Belegs — mehr hat der Kunde über das Original nicht gesagt. Eine Angabe ohne Beleg nennt
+ * kein Original und keine Person — sie ist kein Nachweis und trägt keine Zeile.
  */
 @Component
 @Order(30)
@@ -38,6 +41,7 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
     private final EnergieeinsatzService einsaetze;
     private final EnergieeinsatzEinstufungService einstufungen;
     private final MessbedarfService messbedarfe;
+    private final MessmittelService messmittel;
     private final KennzahlService kennzahlen;
     private final BezugsbasisService bezugsbasen;
     private final BerichtService berichte;
@@ -49,14 +53,16 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
 
     public VerzeichnisBestand(BewertungUmfangService umfang, BewertungKriterienService kriterien,
             EnergieeinsatzService einsaetze, EnergieeinsatzEinstufungService einstufungen,
-            MessbedarfService messbedarfe, KennzahlService kennzahlen, BezugsbasisService bezugsbasen,
-            BerichtService berichte, EnergiezielService energieziele, MassnahmeService massnahmen,
-            MassnahmeBewertung massnahmeBewertung, AbweichungService abweichungen, UnternehmenRepository unternehmen) {
+            MessbedarfService messbedarfe, MessmittelService messmittel, KennzahlService kennzahlen,
+            BezugsbasisService bezugsbasen, BerichtService berichte, EnergiezielService energieziele,
+            MassnahmeService massnahmen, MassnahmeBewertung massnahmeBewertung, AbweichungService abweichungen,
+            UnternehmenRepository unternehmen) {
         this.umfang = umfang;
         this.kriterien = kriterien;
         this.einsaetze = einsaetze;
         this.einstufungen = einstufungen;
         this.messbedarfe = messbedarfe;
+        this.messmittel = messmittel;
         this.kennzahlen = kennzahlen;
         this.bezugsbasen = bezugsbasen;
         this.berichte = berichte;
@@ -120,6 +126,15 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
             aus.add(zeile("bewertung_messplanung", "messbedarf", b.kennzeichen(), "Messbedarf " + b.kennzeichen()
                     + (ee == null ? "" : " (" + ee + ")") + ": " + b.zustand(), null, null, name(b.akteur()),
                     tag(b.angelegtAm(), zone), null));
+        }
+        for (var a : messmittel.alle()) {
+            var b = a.beleg();
+            if (b == null) continue;
+            String einbau = a.einbauKennzeichen().equals(a.kennzeichen()) ? a.einbauKennzeichen()
+                    : a.einbauKennzeichen() + " (" + a.kennzeichen() + ")";
+            aus.add(zeile("bewertung_messplanung", "messmittel_angabe", a.einbauKennzeichen(),
+                    "Messmittel " + einbau + ": " + b.bezeichnung(), null, null, name(b.person()),
+                    tag(b.zeitpunkt(), zone), b.sha256(), "verweis", b.ablage() == null ? b.bezeichnung() : b.ablage()));
         }
     }
 
@@ -215,9 +230,16 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
     /** Alles, was VoltPilot selbst lenkt, liegt „in VoltPilot“ — ohne Ablage (G1). */
     private static Map<String, Object> zeile(String gruppe, String art, String kennzeichen, String titel, Integer nr,
             String entschiedenVon, String eingetragenVon, LocalDate tag, String pruefsumme) {
+        return zeile(gruppe, art, kennzeichen, titel, nr, entschiedenVon, eingetragenVon, tag, pruefsumme,
+                "in_voltpilot", null);
+    }
+
+    /** G1 mit Ort: ein Verweis („Geführt in Ihrem System“) nennt seine Ablage. */
+    private static Map<String, Object> zeile(String gruppe, String art, String kennzeichen, String titel, Integer nr,
+            String entschiedenVon, String eingetragenVon, LocalDate tag, String pruefsumme, String ort, String ablage) {
         Map<String, Object> zeile = EnergiemanagementRegeln.verzeichnisZeile(new EnergiemanagementRegeln.VerzeichnisEingang(
                 gruppe, art, kennzeichen, titel, nr, entschiedenVon, eingetragenVon, tag == null ? null : tag.toString(),
-                pruefsumme, "in_voltpilot", null));
+                pruefsumme, ort, ablage));
         if (zeile.containsKey("fehler")) {
             throw new IllegalStateException("Verzeichnis-Zeile von " + kennzeichen + ": " + zeile.get("fehler"));
         }

@@ -67,6 +67,15 @@ public class MessmittelService {
         return antwort(messmittel.stand(geraetId).orElseThrow(MessmittelAbgelehnt::fehlt));
     }
 
+    /**
+     * AP-19 (VZ1, R3 Schritt 2): die erhobenen Angaben aller Einbauten, die der Aufrufer sieht — im Zaun des Geräts
+     * wie {@link #lesen}: ein Einbau außerhalb fehlt ohne Hinweis. Ein Einbau ohne Angabe steht nicht darin.
+     */
+    public List<Angaben> alle() {
+        return messmittel.erhobene().stream().filter(s -> rechte.lesbar(RechtZiel.GERAET, s.id()))
+                .map(this::antwort).toList();
+    }
+
     @Transactional
     public Angaben eintragen(UUID geraetId, Eintrag in, ProtokollAkteur akteur) {
         Stand alt = messmittel.standZumAendern(geraetId).orElseThrow(MessmittelAbgelehnt::fehlt);
