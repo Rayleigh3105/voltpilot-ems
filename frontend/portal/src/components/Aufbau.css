@@ -246,11 +246,6 @@
     display: inline;
   }
 }
-.vp-auf-gesperrt {
-  margin: -4px 0 0;
-  font-size: var(--vp-text-meta);
-  color: var(--vp-text-gray);
-}
 
 /* Zahlen + Kurzfilter, aktive Filter als Chips */
 .vp-auf-zahlen {
@@ -316,6 +311,98 @@
 }
 .vp-auf-aktiv-chip button:hover {
   background: color-mix(in srgb, var(--vp-navy-2) 12%, transparent);
+}
+
+/* Der Filter-Knopf am Ende des Suchfelds - nur am Telefon (unten). */
+.vp-auf-filter-auf {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vp-text-dark);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-bold);
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+.vp-auf-filter-auf:hover,
+.vp-auf-filter-auf[aria-expanded='true'] {
+  background: var(--vp-bg-light);
+}
+.vp-auf-filter-auf.is-aktiv {
+  color: var(--vp-action);
+}
+.vp-auf-filter-auf span {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--vp-action);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * AM TELEFON steht über der Tabelle nur, was man zum Finden braucht: die Suche
+ * (mit dem Filter-Knopf darin), die Zahl der Geräte und „+ Gerät". Der Standort
+ * steht schon oben im Seitenkopf und als Anlage in der Tabelle, die vier Filter
+ * klappen erst auf Wunsch auf, und die Kurzfilter zeigen nur Symbol und Zahl -
+ * ihre Wörter bleiben für Screenreader lesbar.
+ */
+@container vp-auf (max-width: 719px) {
+  .vp-auf-ort,
+  .vp-auf-breit {
+    display: none;
+  }
+  .vp-auf-filter-auf {
+    display: inline-flex;
+  }
+  .vp-auf-filter {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    animation: vp-auf-filter-ein var(--vp-motion-enter) var(--vp-ease-out) both;
+  }
+  .vp-auf-werkzeug:not(.is-filter-offen) .vp-auf-filter {
+    display: none;
+  }
+  .vp-auf-filter .vp-picker-ausloeser.vp-auf-filterknopf {
+    width: 100%;
+  }
+  .vp-auf-schmal-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .vp-auf-zahlen {
+    gap: 2px var(--vp-space-2);
+  }
+  .vp-auf-kurz {
+    padding: 2px 8px;
+    border-radius: var(--vp-radius-pill);
+    background: var(--vp-paleblue-start);
+  }
+  .vp-auf-kurz.is-warn {
+    background: color-mix(in srgb, var(--vp-warn-ink) 12%, transparent);
+  }
+}
+@keyframes vp-auf-filter-ein {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--vp-motion-distance) * -1));
+  }
 }
 
 .vp-auf-technik-add {

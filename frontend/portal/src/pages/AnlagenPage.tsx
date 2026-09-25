@@ -471,9 +471,11 @@ const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>
   modell: {
     // Der Reiter heisst seit „Anlage – neu gedacht" (E1 = A, 25.09.2026)
     // „Aufbau": er zeigt den Baum Standort → Anlage → Box → Gerät. Die Route
-    // `modell` bleibt, damit jedes Lesezeichen gilt.
+    // `modell` bleibt, damit jedes Lesezeichen gilt. Der Untertitel ist wie
+    // beim Fahrplan EINE Zeile am Telefon (V-03) - über der Tabelle soll dort
+    // wenig Text stehen.
     title: 'Aufbau',
-    subtitle: 'Standort, Anlagen, Boxen und Geräte auf einen Blick.',
+    subtitle: 'Ihre Geräte, Boxen und Anlagen.',
   },
   steuerung: {
     title: 'Steuerung',

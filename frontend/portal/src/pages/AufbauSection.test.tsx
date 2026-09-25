@@ -388,6 +388,20 @@ describe('AufbauSection · der Baum', () => {
     expect(await zeile('inv')).toBeInTheDocument();
   });
 
+  it('hält die Filter am Telefon hinter EINEM Knopf im Suchfeld - mit der Zahl der aktiven', async () => {
+    stub();
+    rendere();
+    await zeile('inv');
+    const knopf = screen.getByRole('button', { name: 'Filter' });
+    expect(knopf).toHaveAttribute('aria-expanded', 'false');
+    expect(document.getElementById(knopf.getAttribute('aria-controls') ?? '')).toHaveAttribute('aria-label', 'Filter');
+    fireEvent.click(knopf);
+    expect(knopf).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(await screen.findByRole('button', { name: /von der Box gemeldet/ }));
+    expect(await screen.findByRole('button', { name: 'Filter, 1 aktiv' })).toBeInTheDocument();
+  });
+
   it('zeigt ein neues Gerät gestrichelt im Baum - Übernehmen öffnet den Zuordnen-Dialog', async () => {
     stub();
     rendere();
@@ -862,9 +876,12 @@ describe('AufbauSection · Hinzufügen (K6)', () => {
     rendere();
     expect(await screen.findByText(/Diese Anlage wird an Ihrer VoltPilot-Box verwaltet/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Gerät an .* hinzufügen/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /Gerät hinzufügen/ })).toBeDisabled();
-    // Nie ein stummer grauer Knopf: der Grund steht daneben.
-    expect(screen.getByText('Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.')).toBeInTheDocument();
+    const knopf = screen.getByRole('button', { name: /Gerät hinzufügen/ });
+    expect(knopf).toBeDisabled();
+    // Nie ein stummer grauer Knopf: der Grund steht EINMAL über der Tabelle
+    // (oben geprüft) und am Knopf - nicht ein zweites Mal als Satz darunter.
+    expect(knopf).toHaveAttribute('title', 'Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.');
+    expect(screen.queryByText('Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.')).toBeNull();
   });
 
   it('erfindet bei einer unbekannten Berechtigung keine Verwaltung durch die Box', async () => {

@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { VpPicker } from './VpPicker';
 import { RowMenu } from './RowMenu';
@@ -136,11 +136,16 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
   const begriffe = suchBegriffe(p.filter.q);
   const aktive = aktiveFilter(p.filter, p.optionen);
   const n = p.zahlen;
+  // Am Telefon stehen die vier Filter hinter EINEM Knopf im Suchfeld - über der
+  // Tabelle bleibt nur, was man zum Finden braucht. Am breiten Fenster stehen
+  // sie immer da; der Knopf ist dort ausgeblendet (`Aufbau.css`).
+  const [filterOffen, setFilterOffen] = useState(false);
+  const filterId = useId();
   return (
     <>
       <Ort wurzel={p.wurzel} anlagenZahl={p.anlagenZahl} boxZahl={p.boxZahl} />
 
-      <div className="vp-auf-werkzeug">
+      <div className={`vp-auf-werkzeug${filterOffen ? ' is-filter-offen' : ''}`}>
         <label className="vp-auf-suche">
           <Icon name="search" size={16} aria-hidden="true" />
           <input
@@ -168,8 +173,19 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
               <Icon name="x" size={15} />
             </button>
           )}
+          <button
+            type="button"
+            className={`vp-auf-filter-auf${aktive.length > 0 ? ' is-aktiv' : ''}`}
+            aria-expanded={filterOffen}
+            aria-controls={filterId}
+            aria-label={aktive.length > 0 ? `Filter, ${aktive.length} aktiv` : 'Filter'}
+            onClick={() => setFilterOffen((offen) => !offen)}
+          >
+            <Icon name="sliders" size={16} />
+            {aktive.length > 0 && <span aria-hidden="true">{aktive.length}</span>}
+          </button>
         </label>
-        <div className="vp-auf-filter" role="group" aria-label="Filter">
+        <div className="vp-auf-filter" id={filterId} role="group" aria-label="Filter">
           {(Object.keys(FILTER_LABEL) as FilterSchluessel[]).map((k) => (
             <VpPicker
               key={k}
@@ -197,19 +213,22 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
             </span>
           ) : (
             <span>
-              <b>{n.geraete}</b> {n.geraete === 1 ? 'Gerät' : 'Geräte'} an dieser Anlage
+              <b>{n.geraete}</b> {n.geraete === 1 ? 'Gerät' : 'Geräte'}
+              <span className="vp-auf-breit"> an dieser Anlage</span>
             </span>
           )}
           {n.achtung > 0 && (
             <button type="button" className="vp-auf-kurz is-warn" onClick={() => p.onFilter(kurzfilter('achtung'))}>
               <Icon name="alert-triangle" size={14} />
-              {n.achtung} {n.achtung === 1 ? 'braucht' : 'brauchen'} Aufmerksamkeit
+              {n.achtung}
+              <span className="vp-auf-schmal-sr"> {n.achtung === 1 ? 'braucht' : 'brauchen'} Aufmerksamkeit</span>
             </button>
           )}
           {n.gemeldet > 0 && (
             <button type="button" className="vp-auf-kurz" onClick={() => p.onFilter(kurzfilter('gemeldet'))}>
               <Icon name="search" size={14} />
-              {n.gemeldet} von der Box gemeldet
+              {n.gemeldet}
+              <span className="vp-auf-schmal-sr"> von der Box gemeldet</span>
             </button>
           )}
         </div>
@@ -239,7 +258,6 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
         </div>
         {p.technik}
       </div>
-      {!p.onGeraetHinzufuegen && p.geraetGesperrt && <p className="vp-auf-gesperrt">{p.geraetGesperrt}</p>}
 
       {aktive.length > 0 && (
         <div className="vp-auf-aktiv">
