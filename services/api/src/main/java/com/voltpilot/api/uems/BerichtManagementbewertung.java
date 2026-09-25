@@ -14,6 +14,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -34,8 +35,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
  *
  * <p>Die Fristen (Überprüfung einer Grundlage, einer Bezugsbasis, der Bewertung) und der Abschnitt „Wiedervorlage zum
  * Stichtag“ kommen aus dem EINEN Leser {@link EnergiemanagementWiedervorlageService} am Datenstand — dieselben Zeilen wie
- * {@code GET …/energiemanagement/wiedervorlage}. Sitzung und Beschlüsse (MG4, MG5) und die Folgen der vorigen
- * Managementbewertung (MG6) trägt AP-19 IP-23 nach; bis dahin stehen sie leer da.
+ * {@code GET …/energiemanagement/wiedervorlage}. Sitzung und Beschlüsse (MG4, MG5) sind die Zeilen von AP-19 IP-23,
+ * wie sie zum Datenstand stehen — die Freigabe friert sie mit ein; die Leitung nur, solange die genannte Person am Tag
+ * der Sitzung die laufende Aufgabe „Leitung des Unternehmens“ hat (PA3), sonst {@code null}. Der erste Abschnitt liest die
+ * Beschlüsse der vorigen Managementbewertung und ihre Folgen mit dem Zustand von heute (MG6, {@link ManagementbewertungLeser}).
  */
 final class BerichtManagementbewertung {
 
@@ -47,6 +50,7 @@ final class BerichtManagementbewertung {
             "risiken_chancen");
     static final String NICHTS_FESTGEHALTEN = "Hier ist noch nichts festgehalten.";
     static final String KEINE_VORIGE = "Keine frühere Managementbewertung festgehalten.";
+    private static final DateTimeFormatter DATUM = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     record Abzug(ObjectNode abzug, List<BerichtAbzugBildung.Quelle> quellen) {}
 
@@ -105,8 +109,8 @@ final class BerichtManagementbewertung {
         abzug.set("audits_feststellungen", l.auditsFeststellungen());
         abzug.set("bewertung_messplanung", l.bewertungMessplanung());
         abzug.set("wiedervorlage", l.wiedervorlage(wiedervorlage));
-        abzug.putArray("beschluesse");
-        abzug.putNull("sitzung");
+        abzug.set("beschluesse", l.beschluesse(bericht, kennung));
+        abzug.set("sitzung", l.sitzung(bericht));
 
         List<BerichtAbzugBildung.Quelle> quellen = List.copyOf(new LinkedHashSet<>(l.quellen));
         ArrayNode verzeichnis = abzug.putArray("quellenverzeichnis");
@@ -185,7 +189,9 @@ final class BerichtManagementbewertung {
 
         ObjectNode vorigeBeschluesse(UUID bericht, String jahr) {
             ObjectNode n = json.createObjectNode();
-            List<ObjectNode> vorige = j.query("SELECT b.kennung, b.zeitraum_schluessel, s.id, s.nr, s.pruefsumme, "
+            List<UUID> vorigeId = new ArrayList<>();
+            List<ObjectNode> vorige = j.query("SELECT b.id AS bericht_id, b.kennung, b.zeitraum_schluessel, s.id, s.nr, "
+                    + "s.pruefsumme, "
                     + "s.freigegeben_am FROM bericht b JOIN bericht_stand s ON s.tenant_id = b.tenant_id "
                     + "AND s.bericht_id = b.id WHERE b.tenant_id = ? AND b.vorlage = ? AND b.id <> ? "
                     + "AND b.archiviert_am IS NULL AND b.zeitraum_schluessel < ? "
@@ -198,16 +204,104 @@ final class BerichtManagementbewertung {
                         v.put("freigegeben_am", tag(rs.getTimestamp("freigegeben_am")));
                         quelle("berichtsstand", rs.getString("kennung"), rs.getObject("id", UUID.class), rs.getInt("nr"),
                                 null, "Managementbewertung " + rs.getString("zeitraum_schluessel"));
+                        vorigeId.add(rs.getObject("bericht_id", UUID.class));
                         return v;
                     }, tenant, BerichtRegeln.MANAGEMENTBEWERTUNG, bericht, jahr);
+            ArrayNode beschluesse = n.putArray("beschluesse");
             if (vorige.isEmpty()) {
                 n.putNull("managementbewertung");
                 n.put("satz", KEINE_VORIGE);
-            } else {
-                n.set("managementbewertung", vorige.get(0));
-                n.putNull("satz");
+                return n;
             }
-            n.putArray("beschluesse");
+            ObjectNode v = vorige.get(0);
+            n.set("managementbewertung", v);
+            n.putNull("satz");
+            // MG6: die Beschlüsse, wie sie im Stand stehen (nach der Freigabe unveränderlich), und ihre Folgen mit dem
+            // Zustand von heute; ein Beschluss ohne Folge sagt es in einem Satz (B5).
+            String vorigeKennung = v.path("kennung").asText();
+            UUID vorigerBericht = vorigeId.get(0);
+            List<ManagementbewertungLeser.Beschluss> alle = ManagementbewertungLeser.beschluesse(j, tenant, vorigerBericht,
+                    zone);
+            List<ManagementbewertungLeser.Folge> folgen = ManagementbewertungLeser.folgen(j, tenant, vorigerBericht,
+                    vorigeKennung, zone);
+            Map<UUID, String> namen = ManagementbewertungLeser.namen(j, tenant, alle.stream()
+                    .map(ManagementbewertungLeser.Beschluss::entschiedenVon).distinct().toList());
+            String standVom = v.path("freigegeben_am").isNull() ? null
+                    : DATUM.format(LocalDate.parse(v.path("freigegeben_am").asText()));
+            for (ManagementbewertungLeser.Beschluss b : alle) {
+                String bn = vorigeKennung + "/B" + b.nr();
+                ObjectNode x = beschluesse.addObject();
+                x.put("nr", b.nr());
+                x.put("kennung", bn);
+                x.put("art", b.art());
+                x.put("wortlaut", b.wortlaut());
+                x.put("entschieden_von", namen.get(b.entschiedenVon()));
+                ArrayNode fs = x.putArray("folgen");
+                folgen.stream().filter(f -> f.beschluss() == b.nr()).forEach(f -> folge(fs.addObject(), f));
+                x.put("satz", !fs.isEmpty() || standVom == null ? null : (String) EnergiemanagementRegeln
+                        .satz("beschluss_ohne_folge", Map.of("am", standVom)).get("satz"));
+                quelle("beschluss", bn, b.id(), null, null, "Beschluss " + b.nr() + " der Managementbewertung "
+                        + v.path("zeitraum").asText());
+            }
+            return n;
+        }
+
+        private void folge(ObjectNode n, ManagementbewertungLeser.Folge f) {
+            n.put("art", f.art());
+            n.put("objekt", f.objekt());
+            n.put("wie", f.wie());
+            n.put("zustand", f.zustand());
+            n.put("tag", f.tag() == null ? null : f.tag().toString());
+            n.put("angabe", f.angabe());
+            n.put("verknuepft_am", f.verknuepftAm() == null ? null : f.verknuepftAm().toString());
+            n.put("eingetragen_von", f.eingetragenVon());
+        }
+
+        // ------------------------------------------------------------ beschluesse, sitzung (MG4, MG5)
+
+        ArrayNode beschluesse(UUID bericht, String kennung) {
+            ArrayNode a = json.createArrayNode();
+            List<ManagementbewertungLeser.Beschluss> alle = ManagementbewertungLeser.beschluesse(j, tenant, bericht, zone);
+            List<UUID> ids = new ArrayList<>();
+            alle.forEach(b -> {
+                ids.add(b.entschiedenVon());
+                if (b.zustaendig() != null) ids.add(b.zustaendig());
+            });
+            Map<UUID, String> namen = ManagementbewertungLeser.namen(j, tenant, ids.stream().distinct().toList());
+            for (ManagementbewertungLeser.Beschluss b : alle) {
+                ObjectNode x = a.addObject();
+                x.put("nr", b.nr());
+                x.put("kennung", kennung + "/B" + b.nr());
+                x.put("art", b.art());
+                x.put("wortlaut", b.wortlaut());
+                x.put("entschieden_von", namen.get(b.entschiedenVon()));
+                x.put("eingetragen_von", b.eingetragenVon());
+                x.put("eingetragen_am", b.eingetragenAm() == null ? null : b.eingetragenAm().toString());
+                x.put("zustaendig", b.zustaendig() == null ? null : namen.get(b.zustaendig()));
+                x.put("termin", b.termin() == null ? null : b.termin().toString());
+            }
+            return a;
+        }
+
+        JsonNode sitzung(UUID bericht) {
+            var s = ManagementbewertungLeser.sitzung(j, tenant, bericht, zone).orElse(null);
+            if (s == null) {
+                return json.nullNode();
+            }
+            List<UUID> ids = new ArrayList<>(s.teilnehmende());
+            ids.add(s.leitung());
+            Map<UUID, String> namen = ManagementbewertungLeser.namen(j, tenant, ids.stream().distinct().toList());
+            ObjectNode n = json.createObjectNode();
+            n.put("tag", s.tag().toString());
+            // PA3: die Leitung nur, solange die Person am Tag der Sitzung die laufende Aufgabe hat — sonst sperrt die
+            // Freigabe (leitung_fehlt).
+            n.put("leitung", ManagementbewertungLeser.istLeitung(j, tenant, s.leitung(), s.tag())
+                    ? namen.get(s.leitung()) : null);
+            ArrayNode t = n.putArray("teilnehmende");
+            s.teilnehmende().forEach(p -> t.add(namen.get(p)));
+            n.put("ort", s.ort());
+            n.put("eingetragen_von", s.eingetragenVon());
+            n.put("eingetragen_am", s.eingetragenAm() == null ? null : s.eingetragenAm().toString());
             return n;
         }
 

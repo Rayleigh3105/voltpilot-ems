@@ -30,8 +30,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * UEMS AP-19 IP-19: Feststellung und Wirksamkeit (FS1–FS7, W15, §5.4, §5.6) über der Datenhaltung von IP-16.
  *
- * <p>Erfasst mit Quelle (ein durchgeführtes Audit, eigene, von außen mit Wortlaut; die Managementbewertung hat noch
- * keine Tabelle — IP-23 — und ist bis dahin unbekannt, Muster {@code MassnahmeService}), Wortlaut, Vorgabe, Bezug,
+ * <p>Erfasst mit Quelle (ein durchgeführtes Audit, eigene, von außen mit Wortlaut, ein Beschluss BR-…/Bn einer
+ * freigegebenen Managementbewertung — AP-19 IP-23, Muster {@code MassnahmeService}), Wortlaut, Vorgabe, Bezug,
  * „festgestellt von“ (eine Person, auch ohne Konto) und Verantwortlich (Konto) · Einträge nur anhängen, jeder mit
  * Person und Tag — nie ein Satz des Systems (FS2) · offen ändern sich nur Frist und Verantwortlich, mit Begründung ·
  * die Wirksamkeit als Stand Nr. n mit Kopie und Prüfsumme, erlaubt, wenn jede Maßnahme mit Herkunft dieser
@@ -47,6 +47,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @Service
 public class FeststellungService {
+
+    private static final java.util.regex.Pattern BESCHLUSS = java.util.regex.Pattern.compile(
+            "^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$");
 
     static final String VERWALTEN = "energiemanagement.verwalten";
     private static final int WORTLAUT = EnergiemanagementRegeln.STARTWERTE.eintrag_zeichen_hoechstens();
@@ -455,9 +458,19 @@ public class FeststellungService {
                 laenge("quelle.wortlaut", quelleWortlaut, BEGRUENDUNG_MAX);
                 nurQuelle(q, "wortlaut");
             }
-            case "managementbewertung" -> throw EnergiemanagementAbgelehnt.fachlich("quelle_unbekannt",
-                    (text(q.kennung()) == null ? "Diese Managementbewertung" : q.kennung().strip())
-                            + " gibt es in Ihrem Kundenbereich nicht.", Map.of("feld", "quelle.kennung"));
+            case "managementbewertung" -> {
+                // AP-19 IP-23: der Beschluss BR-…/Bn einer freigegebenen Managementbewertung — sonst unbekannt.
+                kennung = text(q.kennung());
+                if (kennung == null || !BESCHLUSS.matcher(kennung).matches()
+                        || !repo.beschlussImStand(kennung).orElse(false)) {
+                    throw EnergiemanagementAbgelehnt.fachlich("quelle_unbekannt", (kennung == null
+                            ? "Diese Managementbewertung" : kennung) + " gibt es in Ihrem Kundenbereich nicht.",
+                            Map.of("feld", "quelle.kennung"));
+                }
+                if (q.auditId() != null || text(q.wortlaut()) != null) {
+                    throw ungueltig("quelle", "Bitte nennen Sie zur Quelle nur ihren eigenen Verweis.");
+                }
+            }
             default -> nurQuelle(q, "");
         }
         String wortlaut = text(e.wortlaut());

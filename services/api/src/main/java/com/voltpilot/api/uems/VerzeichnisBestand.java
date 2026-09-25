@@ -179,10 +179,12 @@ public class VerzeichnisBestand implements VerzeichnisQuelle {
         }
         for (var u : liste) {
             var kopf = u.kopf();
+            if (BerichtRegeln.MANAGEMENTBEWERTUNG.equals(kopf.vorlage())) {
+                continue; // AP-19 IP-23: mit „entschieden von“ der Leitung in ManagementbewertungVerzeichnis
+            }
             String gruppe = switch (kopf.vorlage()) {
                 case "energetische_bewertung" -> "bewertung_messplanung";
                 case "leistungsvergleich" -> "kennzahlen_bezugsbasen";
-                case "managementbewertung" -> "managementbewertung";
                 default -> "berichte";
             };
             for (var s : berichte.detail(kopf.kennung(), wer).staende()) {

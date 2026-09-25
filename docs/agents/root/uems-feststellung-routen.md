@@ -19,8 +19,8 @@ beide sind hier beteiligt.“ `…/beantragen` lehnt dann mit 409 `vieraugen_nic
 ein Antrag, über den niemand entscheiden kann, würde jeden weiteren Stand sperren (ein offener Antrag je Feststellung).
 ⚠ **Den Zustand `abgeschlossen` schreibt nie der Dienst** — der schließende Stand setzt ihn im Trigger; der
 Vertragstest hält `SET zustand` aus dem Repository heraus.
-⚠ **Managementbewertung als Quelle ist bis IP-23 unbekannt** (422 `quelle_unbekannt`, Muster `MassnahmeService`
-W14) — wer IP-23 baut, prüft dort die BR-Kennung gegen die neue Tabelle.
+⚠ **Managementbewertung als Quelle = Beschluss BR-…/Bn einer Managementbewertung mit Stand** (seit IP-23,
+`FeststellungRepository#beschlussImStand`; sonst 422 `quelle_unbekannt`, Muster `MassnahmeService` W14).
 ⚠ **Ein Bearbeiter kommt bis zum Dienst** (`DIENST`): eine Feststellung am Unternehmen gibt es für ihn nicht (404,
 Zaun vor Recht), an seinem Standort erfasst er; beim Erfassen außerhalb 422 `standort_unbekannt`.
 ⚠ **Die Wirksamkeit prüft die Maßnahmen im Zaun der Anfrage** (Herkunft `nichtkonformitaet` + Kennung, IP-17):

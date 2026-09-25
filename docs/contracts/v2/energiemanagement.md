@@ -22,9 +22,10 @@ aber nicht zum Betrachtungsumfang“. Ein Urteil fällt keine dieser Regeln.
 > **Wer anruft:** noch niemand. `ueberpruefung` rufen die Dokument-Routen (IP-7, Überprüfung beim Abruf), das Auditprogramm,
 > die Feststellung und die Managementbewertung; `wiedervorlage` der Leser `GET /api/v1/energiemanagement/wiedervorlage` (IP-21,
 > `EnergiemanagementWiedervorlageService`: er sammelt die fertigen Fristen der `WiedervorlageQuelle`n — DK5, IA4, FS1,
-> AP-16 S5, AP-17 F5, AP-12 E7, `faellig[]` des Übersichts-Lesers von AP-18 samt Messbedarf; MG7 dockt mit IP-23 an);
+> AP-16 S5, AP-17 F5, AP-12 E7, `faellig[]` des Übersichts-Lesers von AP-18 samt Messbedarf; MG7 seit IP-23:
+> `ManagementbewertungWiedervorlage`, letzte Sitzung einer freigegebenen Managementbewertung + Rhythmus);
 > `anwendungsbereich_vergleich` der Leser `…/dokumente/{id}/vergleich` (IP-7); `verzeichnis_zeile` jede Quelle des
-> Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
+> Verzeichnisses `GET /api/v1/energiemanagement/verzeichnis` (IP-8: `DokumentVerzeichnis`, `AufgabenVerzeichnis`, `VerzeichnisBestand`; IP-23: `ManagementbewertungVerzeichnis`); `pruefsumme` jeder Schreibweg, der eine Kopie festhält (Fassung, Audit-Abschluss, Wirksamkeit, Stand).
 
 ## 1. Vokabulare, Startwerte, Wörter (geschlossen, in `energiemanagement-vectors.json`)
 

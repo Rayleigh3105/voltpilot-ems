@@ -284,8 +284,11 @@ public class TenantRepository {
                 // first, Personen before Benutzer, the setting and the Kennzeichen counter with them.
                 // AP-19 IP-16: Staende and entries name their Feststellung, the Feststellung its Audit,
                 // Fassung, Dokument, Person, Standort and Benutzer, a Hinweis its Audit (RESTRICT): before IP-5.
+                // AP-19 IP-23: a Folge names its Beschluss and the linked Energieziel, Fassung, Aufgabe or Audit,
+                // Sitzung and Beschluss name their Personen (RESTRICT) and their Bericht by value: before all of them.
                 // Current repository code also runs against older migration fixtures.
-                for (String table : new String[] {"feststellung_wirksamkeit", "feststellung_eintrag", "feststellung",
+                for (String table : new String[] {"managementbewertung_folge", "managementbewertung_beschluss",
+                        "managementbewertung_sitzung", "feststellung_wirksamkeit", "feststellung_eintrag", "feststellung",
                         "internes_audit_eintrag", "internes_audit",
                         "energiemanagement_aenderung", "energiemanagement_dokument_eintrag",
                         "energiemanagement_anwendungsbereich", "energiemanagement_dokument_fassung",

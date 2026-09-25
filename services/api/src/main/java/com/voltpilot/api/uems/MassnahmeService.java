@@ -619,8 +619,9 @@ public class MassnahmeService {
      * W14, FS3: die Herkünfte aus dem Energiemanagement nennen ein sichtbares Objekt (RLS und Standort-Zaun) im richtigen
      * Zustand, sonst 422 — die Feststellung offen (gesperrt bis zum Ende des Anlegens, damit kein schließender Stand
      * dazwischenkommt), das interne Audit durchgeführt oder abgeschlossen, der Beschluss n einer freigegebenen
-     * Managementbewertung. Die Managementbewertung hat noch keine Tabelle (AP-19 IP-23): bis dahin ist jede BR-Kennung
-     * unbekannt. Die Abweichung prüft weiter nur ihr Muster — das ist AP-18-Sache (W14).
+     * Managementbewertung (AP-19 IP-23): Beschluss n muss es geben und die Managementbewertung einen Stand haben, sonst 422
+     * — die Maßnahme verknüpft sich dann selbst als Folge (MG6, {@link ManagementbewertungLeser#folgen}). Die Abweichung
+     * prüft weiter nur ihr Muster — das ist AP-18-Sache (W14).
      */
     private void herkunftPruefen(String herkunft, String kennung) {
         switch (herkunft) {
@@ -641,7 +642,22 @@ public class MassnahmeService {
                             Map.of("feld", "herkunft_kennung", "zustand", zustand));
                 }
             }
-            case "managementbewertung" -> throw herkunftUnbekannt(kennung);
+            case "managementbewertung" -> {
+                int b = kennung.lastIndexOf("/B");
+                List<Boolean> freigegeben = jdbc.queryForList("SELECT EXISTS (SELECT 1 FROM bericht_stand s "
+                        + "WHERE s.tenant_id = r.tenant_id AND s.bericht_id = r.id) FROM bericht r "
+                        + "JOIN managementbewertung_beschluss m ON m.tenant_id = r.tenant_id AND m.bericht_id = r.id "
+                        + "WHERE r.kennung = ? AND r.vorlage = 'managementbewertung' AND m.nr = ?", Boolean.class,
+                        kennung.substring(0, b), Integer.parseInt(kennung.substring(b + 2)));
+                if (freigegeben.isEmpty()) {
+                    throw herkunftUnbekannt(kennung);
+                }
+                if (!freigegeben.get(0)) {
+                    throw VerbesserungAbgelehnt.fachlich("managementbewertung_nicht_freigegeben", "Die "
+                            + "Managementbewertung " + kennung.substring(0, b) + " ist noch nicht freigegeben — eine "
+                            + "Maßnahme entsteht aus einem Beschluss im Stand.", Map.of("feld", "herkunft_kennung"));
+                }
+            }
             default -> {
             }
         }

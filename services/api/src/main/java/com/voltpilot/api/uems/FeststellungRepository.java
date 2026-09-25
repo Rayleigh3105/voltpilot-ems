@@ -317,4 +317,16 @@ public class FeststellungRepository {
         Timestamp t = rs.getTimestamp(spalte);
         return t == null ? null : t.toInstant();
     }
+
+    /**
+     * AP-19 IP-23 (FS1): gibt es den Beschluss {@code BR-…/Bn} einer sichtbaren Managementbewertung mit Stand? Leer ohne
+     * Beschluss, sonst ob die Managementbewertung freigegeben ist.
+     */
+    public java.util.Optional<Boolean> beschlussImStand(String kennung) {
+        int b = kennung.lastIndexOf("/B");
+        return jdbc.queryForList("SELECT EXISTS (SELECT 1 FROM bericht_stand s WHERE s.tenant_id = r.tenant_id "
+                + "AND s.bericht_id = r.id) FROM bericht r JOIN managementbewertung_beschluss m ON m.tenant_id = r.tenant_id "
+                + "AND m.bericht_id = r.id WHERE r.kennung = ? AND r.vorlage = 'managementbewertung' AND m.nr = ?",
+                Boolean.class, kennung.substring(0, b), Integer.parseInt(kennung.substring(b + 2))).stream().findFirst();
+    }
 }

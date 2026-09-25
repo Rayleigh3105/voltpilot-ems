@@ -103,6 +103,7 @@ class ManagementbewertungVorlageApiTest {
     @Autowired KennzahlService kennzahlen;
     @Autowired BerichtService berichte;
     @Autowired BerichtAbzugBildung bildung;
+    @Autowired EnergiemanagementVerzeichnisService verzeichnis;
     static JdbcTemplate root;
     static Map<String, JsonNode> kopien;
     static JsonNode referenz;
@@ -152,7 +153,8 @@ class ManagementbewertungVorlageApiTest {
     @AfterEach
     void uhrZurueck() {
         for (var dienst : List.<java.util.function.Consumer<Clock>>of(wiedervorlage::uhrStellen, dokumente::uhrStellen,
-                audits::uhrStellen, feststellungen::uhrStellen, kennzahlen::uhrStellen, berichte::uhrStellen)) {
+                audits::uhrStellen, feststellungen::uhrStellen, kennzahlen::uhrStellen, berichte::uhrStellen,
+                verzeichnis::uhrStellen)) {
             dienst.accept(Clock.systemUTC());
         }
     }
@@ -285,14 +287,74 @@ class ManagementbewertungVorlageApiTest {
                         "berichtsstand");
         assertThat(texte(a.path("quellenverzeichnis"), "art")).allMatch(BerichtManagementbewertung.QUELLE_ARTEN::contains);
 
-        // RE3/RE5: „Einsicht“ liest den Entwurf; Freigabe nur mit energiemanagement.freigeben.
+        // AP-19 IP-23 (MG4, MG5, PA3): Sitzung und Beschlüsse — ohne sie keine Freigabe.
+        sitzungUndBeschluesse(entwurf.path("datenstand").asText());
+        entwurf = ruf("/api/v1/berichte/BR-2029-0001/entwurf", "IK", 200);
+        JsonNode a2 = entwurf.path("abzug");
+        JsonNode rmb = referenz.at("/managementbewertungen/0");
+        assertThat(a2.at("/sitzung/tag").asText()).isEqualTo(rmb.at("/sitzung/tag").asText());
+        assertThat(a2.at("/sitzung/leitung").asText()).isEqualTo("Robert Falk");
+        assertThat(texte(a2.at("/sitzung/teilnehmende"), null)).containsExactly("Ines Kaltenbach", "Jonas Wendlinger",
+                "Peter Hollerbach", "Claudia Berger");
+        assertThat(a2.path("beschluesse")).hasSize(6);
+        assertThat(texte(a2.path("beschluesse"), "wortlaut")).isEqualTo(texte(rmb.path("beschluesse"), "wortlaut"));
+        assertThat(texte(a2.path("beschluesse"), "art")).isEqualTo(texte(rmb.path("beschluesse"), "art"));
+        assertThat(texte(a2.path("beschluesse"), "kennung")).containsExactly("BR-2029-0001/B1", "BR-2029-0001/B2",
+                "BR-2029-0001/B3", "BR-2029-0001/B4", "BR-2029-0001/B5", "BR-2029-0001/B6");
+        assertThat(texte(a2.path("beschluesse"), "entschieden_von")).containsOnly("Robert Falk");
+        assertThat(texte(a2.path("beschluesse"), "eingetragen_von")).containsOnly("Ines Kaltenbach");
+
+        // RE3/RE5: „Einsicht“ liest den Entwurf; Freigabe nur mit energiemanagement.freigeben — 14:10 durch Ines.
         assertThat(ruf("/api/v1/berichte/BR-2029-0001/entwurf", "RF", 200).at("/abzug/kopf/bericht").asText())
                 .isEqualTo("BR-2029-0001");
         String datenstand = entwurf.path("datenstand").asText();
+        berichte.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:10:00Z"), ZoneOffset.UTC));
         ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "RF", Map.of("entwurf_datenstand", datenstand), 403);
         JsonNode stand = ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "IK",
                 Map.of("entwurf_datenstand", datenstand), 201);
         assertThat(stand.path("nr").asInt()).isEqualTo(1);
+        assertThat(stand.path("pruefsumme").asText()).matches("sha256:[0-9a-f]{64}");
+        // MG7: im Stand stehen Sitzung und Beschlüsse — „entschieden von“ die Leitung, „freigegeben von“ das Konto.
+        JsonNode nr1 = ruf("/api/v1/berichte/BR-2029-0001/staende/1", "RF", 200);
+        assertThat(nr1.at("/abzug/sitzung/leitung").asText()).isEqualTo("Robert Falk");
+        assertThat(nr1.at("/abzug/beschluesse")).hasSize(6);
+        assertThat(nr1.path("pruefsumme").asText()).isEqualTo(stand.path("pruefsumme").asText());
+        assertThat(root.queryForObject("SELECT freigeber_name FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
+                + "WHERE b.tenant_id = ? AND b.kennung = 'BR-2029-0001'", String.class, tenant)).isEqualTo("Ines Kaltenbach");
+        // Danach ändern sich Sitzung und Beschlüsse nicht mehr (409); der Beschluss ohne Folge sagt es.
+        String mbPfad = BASIS + "/managementbewertungen/BR-2029-0001";
+        assertThat(ruf("POST", mbPfad + "/beschluesse", "IK", beschluss(rmb.path("beschluesse").get(5)), 409)
+                .path("code").asText()).isEqualTo("managementbewertung_freigegeben");
+        assertThat(ruf("PUT", mbPfad + "/beschluesse/6", "IK", beschluss(rmb.path("beschluesse").get(5)), 409)
+                .path("code").asText()).isEqualTo("managementbewertung_freigegeben");
+        JsonNode mbSeite = ruf(mbPfad, "RF", 200);
+        assertThat(mbSeite.path("freigegeben").asBoolean()).isTrue();
+        assertThat(mbSeite.path("stand_nr").asInt()).isEqualTo(1);
+        assertThat(mbSeite.at("/beschluesse/4/satz").asText())
+                .isEqualTo("Keine Folge in VoltPilot — der Beschluss steht im Stand vom 12.02.2029.");
+        // Verzeichnis-Quelle: der Stand in der Gruppe „Managementbewertung“, entschieden von der Leitung (R3, VZ2).
+        verzeichnis.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:30:00Z"), ZoneOffset.UTC));
+        JsonNode vz = ruf(BASIS + "/verzeichnis?gruppe=managementbewertung", "RF", 200);
+        JsonNode zeilen = null;
+        for (JsonNode g : vz.path("gruppen")) {
+            if (g.path("gruppe").asText().equals("managementbewertung")) zeilen = g.path("zeilen");
+        }
+        assertThat(zeilen).hasSize(1);
+        assertThat(zeilen.at("/0/kennzeichen").asText()).isEqualTo("BR-2029-0001");
+        assertThat(zeilen.at("/0/entschieden_von").asText()).isEqualTo("Robert Falk");
+        assertThat(zeilen.at("/0/eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(zeilen.at("/0/pruefsumme").asText()).isEqualTo(stand.path("pruefsumme").asText());
+        // MG7: nächste Managementbewertung fällig = Sitzung + 12 Monate, beim Abruf — am 20.01.2030 in der Vorschau.
+        wiedervorlage.uhrStellen(Clock.fixed(Instant.parse("2030-01-20T08:00:00Z"), ZoneOffset.UTC));
+        List<JsonNode> mg7 = new ArrayList<>();
+        ruf(WIEDERVORLAGE, "IK", 200).path("vorschau").forEach(z -> {
+            if (z.path("art").asText().equals("managementbewertung")) mg7.add(z);
+        });
+        assertThat(mg7).singleElement().satisfies(z -> {
+            assertThat(z.path("kennzeichen").asText()).isEqualTo("BR-2029-0001");
+            assertThat(z.path("faellig_am").asText()).isEqualTo("2030-02-12");
+        });
+        wiedervorlage.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:00:00Z"), ZoneOffset.UTC));
 
         // PDF-Abschnitte: die zwölf Überschriften, Grenz- und Verantwortungs-Satz — auch „Einsicht“ lädt es.
         MockHttpServletResponse pdf = roh("/api/v1/berichte/BR-2029-0001/staende/1/pdf", "RF");
@@ -304,7 +366,7 @@ class ManagementbewertungVorlageApiTest {
         assertThat(text).contains("Managementbewertung", "Beschlüsse der letzten Managementbewertung und ihre Folgen",
                 "Grundlagen", "Energieziele", "Energieleistung", "Maßnahmen", "Abweichungen und Auffälligkeiten",
                 "Interne Audits und Feststellungen", "Energetische Bewertung und Messplanung", "Wiedervorlage zum Stichtag",
-                "Sitzung", "Quellenverzeichnis", "EZ-2028-0001", "−2,7 %", "M-2028-0001", "+12,9 %", "F-2029-0001",
+                "Sitzung", "Quellenverzeichnis", "Robert Falk", "Druckluft: Leckagen jährlich orten", "EZ-2028-0001", "−2,7 %", "M-2028-0001", "+12,9 %", "F-2029-0001",
                 "seit 80 Tagen fällig", "Keine frühere Managementbewertung festgehalten.",
                 "Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.",
                 "Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen.");
@@ -345,6 +407,228 @@ class ManagementbewertungVorlageApiTest {
         assertThat(root.queryForObject("SELECT s.pruefsumme FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
                 + "WHERE b.tenant_id = ? AND b.kennung = 'BR-2029-0001' AND s.nr = 1", String.class, tenant))
                 .isEqualTo(pruefsumme);
+    }
+
+    // ------------------------------------------------------------------ R14 (AP-19 IP-23)
+
+    @Test
+    void r14FolgenDerBeschluesseUndEinStandSeinesTagesOhneAnstoss() throws Exception {
+        r12Welt();
+        r13Welt();
+        abruf("2029-02-12T13:00:00Z");
+        berichte.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:00:00Z"), ZoneOffset.UTC));
+        ruf("POST", "/api/v1/berichte", "IK", Map.of("vorlage", "managementbewertung", "geltung_id",
+                unternehmen.toString(), "zeitraum", "2028"), 201);
+        String mb = BASIS + "/managementbewertungen/BR-2029-0001";
+        // Vor der Freigabe gibt es keine Folge (409) und keine Maßnahme aus einem Beschluss (422).
+        sitzungUndBeschluesse(ruf("/api/v1/berichte/BR-2029-0001/entwurf", "IK", 200).path("datenstand").asText());
+        assertThat(ruf("POST", mb + "/beschluesse/1/folgen", "IK", Map.of("art", "audit", "objekt", "AU-2029-0001"), 409)
+                .path("code").asText()).isEqualTo("managementbewertung_nicht_freigegeben");
+        assertThat(ruf("POST", "/api/v1/massnahmen", "IK", massnahmeKoerper("Druckluft: Leckagen jährlich orten, 2029 "
+                + "im zweiten Quartal", "IK", "2029-06-30", "managementbewertung", "BR-2029-0001/B2"), 422).path("code")
+                .asText()).isEqualTo("managementbewertung_nicht_freigegeben");
+        String datenstand = ruf("/api/v1/berichte/BR-2029-0001/entwurf", "IK", 200).path("datenstand").asText();
+        berichte.uhrStellen(Clock.fixed(Instant.parse("2029-02-12T13:10:00Z"), ZoneOffset.UTC));
+        ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "IK", Map.of("entwurf_datenstand", datenstand), 201);
+        String abzugNr1 = root.queryForObject("SELECT s.abzug FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
+                + "WHERE b.tenant_id = ? AND b.kennung = 'BR-2029-0001' AND s.nr = 1", String.class, tenant);
+        String pruefsummeNr1 = root.queryForObject("SELECT s.pruefsumme FROM bericht_stand s JOIN bericht b "
+                + "ON b.id = s.bericht_id WHERE b.tenant_id = ? AND b.kennung = 'BR-2029-0001' AND s.nr = 1", String.class,
+                tenant);
+        String d1 = root.queryForObject("SELECT id FROM energiemanagement_dokument WHERE tenant_id = ? "
+                + "AND kennzeichen = 'D-0001'", UUID.class, tenant).toString();
+        String d2 = root.queryForObject("SELECT id FROM energiemanagement_dokument WHERE tenant_id = ? "
+                + "AND kennzeichen = 'D-0002'", UUID.class, tenant).toString();
+
+        // B6 13.02.2029: „geprüft, bleibt“ an D-0002 nennt den Beschluss.
+        heute("2029-02-13T10:00:00Z");
+        ruf("POST", BASIS + "/dokumente/" + d2 + "/geprueft", "IK", Map.of("entschieden_von", person.get("RF"), "am",
+                "2029-02-13", "begruendung", "Beschluss B6 der Managementbewertung 2028: bleibt unverändert.",
+                "beschluss_kennung", "BR-2029-0001/B6"), 200);
+        // B2 14.02.2029: die Maßnahme mit Herkunft `managementbewertung` verknüpft sich selbst — B9 gibt es nicht.
+        kennzahlen.uhrStellen(Clock.fixed(Instant.parse("2029-02-14T10:00:00Z"), ZoneOffset.UTC));
+        assertThat(ruf("POST", "/api/v1/massnahmen", "IK", massnahmeKoerper("Unbekannter Beschluss", "IK", "2029-06-30",
+                "managementbewertung", "BR-2029-0001/B9"), 422).path("code").asText()).isEqualTo("herkunft_kennung");
+        JsonNode m3 = ruf("POST", "/api/v1/massnahmen", "IK", massnahmeKoerper("Druckluft: Leckagen jährlich orten, 2029 "
+                + "im zweiten Quartal", "IK", "2029-06-30", "managementbewertung", "BR-2029-0001/B2"), 201);
+        assertThat(m3.path("kennzeichen").asText()).isEqualTo("M-2029-0003");
+        assertThat(ruf("POST", mb + "/beschluesse/2/folgen", "IK", Map.of("art", "massnahme", "objekt", "M-2029-0003"),
+                422).path("code").asText()).isEqualTo("folge_art");
+        // B1 15.02.2029: das Energieziel hat keine Herkunft — von Hand verknüpft, ab März (AP-18 Z1), zweimal = einmal.
+        berichte.uhrStellen(Clock.fixed(Instant.parse("2029-02-15T10:00:00Z"), ZoneOffset.UTC));
+        JsonNode ez = referenz.at("/managementbewertungen/0/folgen/0");
+        assertThat(ez.path("objekt").asText()).isEqualTo("EZ-2029-0001");
+        root.update("INSERT INTO energieziel (tenant_id, kennzeichen, kennzahl_id, bezugsbasis_id, fassung, "
+                + "zielwert_prozent, zielperiode, wortlaut, begruendung, verantwortlich_sub, verantwortlich_name, "
+                + "verantwortlich_konto, standort_id, actor_sub, actor_name, actor_rolle, actor_art, angelegt_am) "
+                + "SELECT tenant_id, 'EZ-2029-0001', kennzahl_id, bezugsbasis_id, fassung, -4.0, '2029-03/2029-12', "
+                + "'Energieziel 2029 für den Spritzguss: 4 % weniger Strom, als die Bezugsbasis erwarten lässt.', "
+                + "'Beschluss B1 der Managementbewertung vom 12.02.2029 (BR-2029-0001).', verantwortlich_sub, "
+                + "verantwortlich_name, verantwortlich_konto, standort_id, actor_sub, actor_name, actor_rolle, actor_art, "
+                + "'2029-02-15T09:00:00Z' FROM energieziel WHERE tenant_id = ? AND kennzeichen = 'EZ-2028-0001'", tenant);
+        assertThat(ruf("POST", mb + "/beschluesse/1/folgen", "IK", Map.of("art", "energieziel", "objekt",
+                "EZ-2029-0009"), 422).path("code").asText()).isEqualTo("objekt_unbekannt");
+        ruf("POST", mb + "/beschluesse/1/folgen", "RF", Map.of("art", "energieziel", "objekt", "EZ-2029-0001"), 403);
+        ruf("POST", mb + "/beschluesse/1/folgen", "IK", Map.of("art", "energieziel", "objekt", "EZ-2029-0001"), 201);
+        ruf("POST", mb + "/beschluesse/1/folgen", "IK", Map.of("art", "energieziel", "objekt", "EZ-2029-0001"), 201);
+        assertThat(root.queryForObject("SELECT count(*) FROM managementbewertung_folge WHERE tenant_id = ?",
+                Integer.class, tenant)).isEqualTo(1);
+        // B4 26.02.2029: die Aufgabe „Bezugsbasen“ ab 01.03.2029 — bei der Zuordnung verknüpft (Jonas Wendlinger).
+        ruf("POST", BASIS + "/aufgaben", "JW", new LinkedHashMap<>(Map.of("aufgabe", "bezugsbasen", "person_id",
+                person.get("IK"), "gilt_ab", "2029-03-01", "vertretung_person_id", person.get("JW"), "entschieden_von",
+                person.get("RF"), "begruendung", "Beschluss B4 der Managementbewertung 2028", "beschluss_kennung",
+                "BR-2029-0001/B4")), 201);
+        // B3 10.03./20.03.2029: D-0001 Fassung 2 aus dem Beschluss, freigegeben, entschieden von Robert Falk.
+        heute("2029-03-10T10:00:00Z");
+        fassung(d1, Map.of("form", "wortlaut", "wortlaut", "Energiepolitik, ergänzt um Einkauf und Planung.",
+                "begruendung", "Beschluss B3 der Managementbewertung 2028", "beschluss_kennung", "BR-2029-0001/B3"));
+        heute("2029-03-20T10:00:00Z");
+        ruf("POST", BASIS + "/dokumente/" + d1 + "/fassungen/2/freigeben", "IK", Map.of("entschieden_von",
+                person.get("RF"), "begruendung", BEGRUENDUNG), 200);
+        // 01.03./15.04.2029: M-2029-0001 umgesetzt, F-2029-0001 wirksam und abgeschlossen (R11).
+        String m1 = root.queryForObject("SELECT id FROM massnahme WHERE tenant_id = ? AND kennzeichen = 'M-2029-0001'",
+                UUID.class, tenant).toString();
+        kennzahlen.uhrStellen(Clock.fixed(Instant.parse("2029-03-01T10:00:00Z"), ZoneOffset.UTC));
+        ruf("POST", "/api/v1/massnahmen/" + m1 + "/umgesetzt", "JW", Map.of("am", "2029-03-01", "begruendung",
+                "Aufgabe seit 01.03.2029 Ines Kaltenbach, Vertretung Jonas Wendlinger (Beschluss B4)."), 200);
+        String f1 = root.queryForObject("SELECT id FROM feststellung WHERE tenant_id = ? AND kennzeichen = 'F-2029-0001'",
+                UUID.class, tenant).toString();
+        feststellungen.uhrStellen(Clock.fixed(Instant.parse("2029-04-15T10:00:00Z"), ZoneOffset.UTC));
+        ruf("POST", BASIS + "/feststellungen/" + f1 + "/wirksamkeit", "IK", Map.of("ergebnis", "wirksam", "begruendung",
+                "Die Zuständigkeit ist festgelegt und wird seit März gelebt.", "entschieden_von", person.get("IK")), 201);
+        assertThat(root.queryForObject("SELECT zustand FROM feststellung WHERE id = ?::uuid", String.class, f1))
+                .isEqualTo("abgeschlossen");
+
+        // MG3/MG7: der Stand vom 12.02.2029 bleibt byte-gleich — kein Anstoß, keine neue Nr.; er sagt weiter „offen“.
+        assertThat(root.queryForObject("SELECT s.abzug FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
+                + "WHERE b.tenant_id = ? AND b.kennung = 'BR-2029-0001' AND s.nr = 1", String.class, tenant))
+                .isEqualTo(abzugNr1);
+        assertThat(root.queryForObject("SELECT count(*) FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
+                + "WHERE b.tenant_id = ? AND b.kennung = 'BR-2029-0001'", Integer.class, tenant)).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM bericht_revision_anstoss a JOIN bericht_stand s ON "
+                + "s.id = a.stand_id JOIN bericht b ON b.id = s.bericht_id WHERE b.tenant_id = ? "
+                + "AND b.kennung = 'BR-2029-0001'", Integer.class, tenant)).isZero();
+        JsonNode nr1 = ruf("/api/v1/berichte/BR-2029-0001/staende/1", "RF", 200);
+        assertThat(nr1.path("pruefsumme").asText()).isEqualTo(pruefsummeNr1);
+        assertThat(nr1.at("/abzug/audits_feststellungen/feststellungen/0/zustand").asText()).isEqualTo("offen");
+
+        // 30.04.2029: der Entwurf der nächsten Managementbewertung liest die Beschlüsse und ihre Folgen von heute.
+        abruf("2029-04-30T08:00:00Z");
+        berichte.uhrStellen(Clock.fixed(Instant.parse("2029-04-30T08:00:00Z"), ZoneOffset.UTC));
+        JsonNode naechste = ruf("POST", "/api/v1/berichte", "IK", Map.of("vorlage", "managementbewertung", "geltung_id",
+                unternehmen.toString(), "zeitraum", "2029"), 201);
+        JsonNode v = ruf("/api/v1/berichte/" + naechste.path("kennung").asText() + "/entwurf", "IK", 200)
+                .at("/abzug/vorige_beschluesse");
+        assertThat(v.at("/managementbewertung/kennung").asText()).isEqualTo("BR-2029-0001");
+        assertThat(v.at("/managementbewertung/pruefsumme").asText()).isEqualTo(pruefsummeNr1);
+        JsonNode b = v.path("beschluesse");
+        assertThat(texte(b, "kennung")).containsExactly("BR-2029-0001/B1", "BR-2029-0001/B2", "BR-2029-0001/B3",
+                "BR-2029-0001/B4", "BR-2029-0001/B5", "BR-2029-0001/B6");
+        assertThat(folge(b.get(0))).containsExactly("energieziel EZ-2029-0001 von_hand offen 2029-03/2029-12");
+        assertThat(folge(b.get(1))).containsExactly("massnahme M-2029-0003 herkunft geplant 2029-06-30");
+        assertThat(folge(b.get(2))).containsExactly("dokument D-0001/2 fassung freigegeben 2029-03-20");
+        assertThat(folge(b.get(3))).containsExactly("aufgabe bezugsbasen zuordnung laufend 2029-03-01 Ines Kaltenbach");
+        assertThat(b.get(4).path("folgen")).isEmpty();
+        assertThat(b.get(4).path("satz").asText())
+                .isEqualTo("Keine Folge in VoltPilot — der Beschluss steht im Stand vom 12.02.2029.");
+        assertThat(folge(b.get(5))).containsExactly("dokument D-0002 geprueft_bleibt geprueft_bleibt 2029-02-13");
+        assertThat(texte(b, "entschieden_von")).containsOnly("Robert Falk");
+        // MG3: jeder vorige Beschluss ist eine Quelle der Art `beschluss` — keine trägt Kennzahl-Werte.
+        List<String> beschlussQuellen = root.queryForList("SELECT q.kennzeichen FROM bericht_quelle q JOIN bericht r "
+                + "ON r.id = q.bericht_id WHERE r.tenant_id = ? AND r.kennung = ? AND q.art = 'beschluss' "
+                + "AND q.stand_nr IS NULL ORDER BY q.kennzeichen", String.class, tenant, naechste.path("kennung").asText());
+        assertThat(beschlussQuellen).hasSize(6).first().isEqualTo("BR-2029-0001/B1");
+        // Dieselben Folgen an der Route — „Einsicht“ liest.
+        JsonNode seite = ruf(mb, "RF", 200);
+        assertThat(texte(seite.at("/beschluesse/1/folgen"), "objekt")).containsExactly("M-2029-0003");
+        assertThat(seite.at("/beschluesse/0/folgen/0/verknuepft_am").asText()).isEqualTo("2029-02-15");
+        assertThat(seite.at("/beschluesse/0/folgen/0/eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
+        // FS1: eine Feststellung aus einem Beschluss der freigegebenen Managementbewertung.
+        feststellungen.uhrStellen(Clock.fixed(Instant.parse("2029-04-30T08:00:00Z"), ZoneOffset.UTC));
+        Map<String, Object> f = new LinkedHashMap<>();
+        f.put("quelle", Map.of("art", "managementbewertung", "kennung", "BR-2029-0001/B9"));
+        f.put("wortlaut", "Die Freigaben der Bezugsbasen hat die Leitung nicht durchgesehen.");
+        f.put("vorgabe", Map.of("wortlaut", "Beschluss B4: die Leitung sieht die Freigaben durch."));
+        f.put("festgestellt_von", person.get("RF"));
+        f.put("festgestellt_am", "2029-04-30");
+        f.put("verantwortlich", "IK");
+        assertThat(ruf("POST", BASIS + "/feststellungen", "IK", f, 422).path("code").asText())
+                .isEqualTo("quelle_unbekannt");
+        f.put("quelle", Map.of("art", "managementbewertung", "kennung", "BR-2029-0001/B4"));
+        assertThat(ruf("POST", BASIS + "/feststellungen", "IK", f, 201).at("/feststellung/kennzeichen").asText())
+                .isEqualTo("F-2029-0002");
+    }
+
+    /** Die Folgen eines Beschlusses als „art objekt wie zustand [tag] [angabe]“. */
+    private static List<String> folge(JsonNode beschluss) {
+        List<String> aus = new ArrayList<>();
+        for (JsonNode f : beschluss.path("folgen")) {
+            StringBuilder z = new StringBuilder(f.path("art").asText() + " " + f.path("objekt").asText() + " "
+                    + f.path("wie").asText() + " " + f.path("zustand").asText());
+            if (f.hasNonNull("tag")) z.append(' ').append(f.path("tag").asText());
+            if (f.hasNonNull("angabe")) z.append(' ').append(f.path("angabe").asText());
+            aus.add(z.toString());
+        }
+        return aus;
+    }
+
+    // ------------------------------------------------------------------ IP-23: Sitzung und Beschlüsse
+
+    /**
+     * R13 Schritte 4 und 5 über die Routen von IP-23 (MG4, MG5): jede Lücke sperrt die Freigabe — ohne Sitzung
+     * {@code sitzung_fehlt}, ohne Beschluss {@code beschluss_fehlt}; die Leitung ist die Person mit der laufenden Aufgabe
+     * „Leitung des Unternehmens“ (PA3). Danach die Sitzung vom 12.02.2029 und die Beschlüsse B1–B6 der Referenzdatei.
+     */
+    private void sitzungUndBeschluesse(String datenstand) throws Exception {
+        String mb = BASIS + "/managementbewertungen/BR-2029-0001";
+        JsonNode rmb = referenz.at("/managementbewertungen/0");
+        assertThat(ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "IK", Map.of("entwurf_datenstand",
+                datenstand), 422).path("code").asText()).isEqualTo("sitzung_fehlt");
+        assertThat(ruf("POST", mb + "/beschluesse", "IK", beschluss(rmb.path("beschluesse").get(0)), 422).path("code")
+                .asText()).isEqualTo("sitzung_fehlt");
+        assertThat(ruf(BASIS + "/managementbewertungen/BR-2028-0001", "IK", 404).path("code").asText())
+                .isEqualTo("nicht_gefunden");
+        if (!person.containsKey("PH")) person.put("PH", personAnlegen("Peter Hollerbach", "Instandhaltung", "PH", "PH"));
+        Map<String, Object> sitzung = new LinkedHashMap<>();
+        sitzung.put("tag", rmb.at("/sitzung/tag").asText());
+        sitzung.put("leitung", person.get("IK"));
+        List<String> teilnehmende = new ArrayList<>();
+        rmb.at("/sitzung/teilnehmende").forEach(t -> teilnehmende.add(person.get(t.asText())));
+        sitzung.put("teilnehmende", teilnehmende);
+        sitzung.put("ort", rmb.at("/sitzung/ort").asText());
+        ruf("PUT", mb + "/sitzung", "RF", sitzung, 403);
+        assertThat(ruf("PUT", mb + "/sitzung", "IK", sitzung, 422).path("code").asText()).isEqualTo("leitung_fehlt");
+        sitzung.put("leitung", person.get("RF"));
+        JsonNode s = ruf("PUT", mb + "/sitzung", "IK", sitzung, 200);
+        assertThat(s.at("/sitzung/leitung/name").asText()).isEqualTo("Robert Falk");
+        assertThat(s.at("/sitzung/leitung_gilt").asBoolean()).isTrue();
+        String neu = ruf("/api/v1/berichte/BR-2029-0001/entwurf", "IK", 200).path("datenstand").asText();
+        assertThat(ruf("POST", "/api/v1/berichte/BR-2029-0001/freigeben", "IK", Map.of("entwurf_datenstand", neu), 422)
+                .path("code").asText()).isEqualTo("beschluss_fehlt");
+        Map<String, Object> nichtLeitung = beschluss(rmb.path("beschluesse").get(0));
+        nichtLeitung.put("entschieden_von", person.get("IK"));
+        assertThat(ruf("POST", mb + "/beschluesse", "IK", nichtLeitung, 422).path("code").asText())
+                .isEqualTo("leitung_fehlt");
+        JsonNode letzte = null;
+        for (JsonNode b : rmb.path("beschluesse")) {
+            letzte = ruf("POST", mb + "/beschluesse", "IK", beschluss(b), 201);
+        }
+        assertThat(texte(letzte.path("beschluesse"), "nr")).containsExactly("1", "2", "3", "4", "5", "6");
+        // Bis zur Freigabe änderbar — die Nr. bleibt.
+        JsonNode geaendert = ruf("PUT", mb + "/beschluesse/6", "IK", beschluss(rmb.path("beschluesse").get(5)), 200);
+        assertThat(geaendert.at("/beschluesse/5/entschieden_von/name").asText()).isEqualTo("Robert Falk");
+        assertThat(geaendert.at("/beschluesse/5/satz").isNull()).isTrue();
+        ruf("PUT", mb + "/beschluesse/7", "IK", beschluss(rmb.path("beschluesse").get(5)), 404);
+    }
+
+    /** Ein Beschluss der Referenzdatei als Körper — ohne „entschieden von“ (Vorgabe: die Leitung der Sitzung). */
+    private Map<String, Object> beschluss(JsonNode b) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("art", b.path("art").asText());
+        m.put("wortlaut", b.path("wortlaut").asText());
+        m.put("zustaendig", person.get(b.path("zustaendig").asText()));
+        if (b.hasNonNull("termin")) m.put("termin", b.path("termin").asText());
+        return m;
     }
 
     // ------------------------------------------------------------------ Welt R13
@@ -570,6 +854,11 @@ class ManagementbewertungVorlageApiTest {
 
     private void massnahme(String titel, String verantwortlich, String termin, String herkunft, String kennung)
             throws Exception {
+        ruf("POST", "/api/v1/massnahmen", "IK", massnahmeKoerper(titel, verantwortlich, termin, herkunft, kennung), 201);
+    }
+
+    private static Map<String, Object> massnahmeKoerper(String titel, String verantwortlich, String termin,
+            String herkunft, String kennung) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("titel", titel);
         m.put("verantwortlich", verantwortlich);
@@ -577,7 +866,7 @@ class ManagementbewertungVorlageApiTest {
         m.put("herkunft", herkunft);
         m.put("herkunft_kennung", kennung);
         m.put("erwartete_wirkung_wortlaut", "Zuständigkeit festgelegt; jede Freigabe nennt die zuständige Person.");
-        ruf("POST", "/api/v1/massnahmen", "IK", m, 201);
+        return m;
     }
 
     private UUID kennzahlAnlegen(String kennzeichen, String name) throws Exception {

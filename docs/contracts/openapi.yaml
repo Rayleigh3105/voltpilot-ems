@@ -12558,7 +12558,7 @@ paths:
         Recht `energiemanagement.verwalten` am Standort des Bezugs, ohne Standort am Unternehmen (403 `recht_fehlt`,
         auch für „Einsicht“). `quelle.art` aus `internes_audit` (mit `audit_id`, nur am durchgeführten Audit: 422
         `audit_unbekannt`, 409 `audit_nicht_durchgefuehrt`), `eigene`, `extern` (mit `wortlaut`, höchstens 500 Zeichen),
-        `managementbewertung` (bis AP-19 IP-23 ist jede Managementbewertung unbekannt: 422 `quelle_unbekannt`); sonst
+        `managementbewertung` mit `kennung` BR-…/Bn eines Beschlusses einer freigegebenen Managementbewertung (AP-19 IP-23; sonst 422 `quelle_unbekannt`); sonst
         422 `quelle_ungueltig`, ein fremder Verweis 422 `angabe_ungueltig`. Pflicht: `wortlaut` (höchstens 2 000
         Zeichen), eine `vorgabe` - Dokument mit Fassung und/oder Wortlaut (422 `vorgabe_fehlt`, `vorgabe_unbekannt`),
         `festgestellt_von` eine Person im Energiemanagement, auch ohne Konto (422 `festgestellt_von_fehlt`,
@@ -13079,6 +13079,162 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/managementbewertungen/{kennung}:
+    parameters:
+      - in: path
+        name: kennung
+        required: true
+        schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }
+    get:
+      tags: [energiemanagement]
+      summary: Sitzung, Beschlüsse und Folgen einer Managementbewertung (MG4–MG6).
+      description: >
+        Recht `energiemanagement.ansehen` (UEMS AP-19 IP-23); Sichtbarkeit aus RLS und dem Zaun des Berichts. Ein
+        Bericht einer anderen Vorlage oder eine unbekannte Kennung ist 404. Die Folgen jedes Beschlusses mit dem Zustand
+        von heute - von Hand verknüpft (`von_hand`) und die Objekte, die den Beschluss selbst nennen: Maßnahme mit
+        Herkunft `managementbewertung` (`herkunft`), Aufgabe (`zuordnung`), Dokument-Fassung (`fassung`), „geprüft,
+        bleibt“ (`geprueft_bleibt`). Nach der Freigabe trägt ein Beschluss ohne Folge den Satz `beschluss_ohne_folge`.
+      responses:
+        "200":
+          description: Die Managementbewertung mit Sitzung und Beschlüssen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Managementbewertung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/managementbewertungen/{kennung}/sitzung:
+    parameters:
+      - in: path
+        name: kennung
+        required: true
+        schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }
+    put:
+      tags: [energiemanagement]
+      summary: Die Sitzung festhalten - Tag, Leitung, Teilnehmende (MG4).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Bis zur Freigabe (409 `managementbewertung_freigegeben`);
+        ein zweites Festhalten ersetzt die erste Angabe. `tag` nie in der Zukunft (422 `tag_in_der_zukunft`); `leitung`
+        eine Person mit der laufenden Aufgabe „Leitung des Unternehmens“ am Tag der Sitzung (PA3, 422 `leitung_fehlt`);
+        `teilnehmende` Personen (422 `person_unbekannt`); `ort` wahlfrei, höchstens 200 Zeichen. Bildet den Entwurf in
+        derselben Transaktion neu - die Freigabe friert genau diese Sitzung ein.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManagementbewertungSitzungFesthalten" }
+      responses:
+        "200":
+          description: Die Managementbewertung mit der Sitzung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Managementbewertung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/managementbewertungen/{kennung}/beschluesse:
+    parameters:
+      - in: path
+        name: kennung
+        required: true
+        schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }
+    post:
+      tags: [energiemanagement]
+      summary: Einen Beschluss der Leitung festhalten (MG5).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Nach der Sitzung (422 `sitzung_fehlt`), bis zur Freigabe
+        (409 `managementbewertung_freigegeben`); die nächste Nr. `art` aus `beschluss_art`, `wortlaut` 1 bis 2 000
+        Zeichen; `entschieden_von` die Leitung (Vorgabe: die Leitung der Sitzung, sonst 422 `leitung_fehlt`); wahlfrei
+        `zustaendig` und `termin`. Bildet den Entwurf in derselben Transaktion neu.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManagementbewertungBeschlussFesthalten" }
+      responses:
+        "201":
+          description: Die Managementbewertung mit dem neuen Beschluss.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Managementbewertung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/managementbewertungen/{kennung}/beschluesse/{nr}:
+    parameters:
+      - in: path
+        name: kennung
+        required: true
+        schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }
+      - in: path
+        name: nr
+        required: true
+        schema: { type: integer, minimum: 1 }
+    put:
+      tags: [energiemanagement]
+      summary: Einen Beschluss ändern - bis zur Freigabe (MG5).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Wie das Festhalten; die Nr. bleibt, eine unbekannte ist 404.
+        Nach der Freigabe 409 `managementbewertung_freigegeben` - eine Berichtigung ist eine neue Freigabe mit Grund.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManagementbewertungBeschlussFesthalten" }
+      responses:
+        "200":
+          description: Die Managementbewertung mit dem geänderten Beschluss.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Managementbewertung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/managementbewertungen/{kennung}/beschluesse/{nr}/folgen:
+    parameters:
+      - in: path
+        name: kennung
+        required: true
+        schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }
+      - in: path
+        name: nr
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      tags: [energiemanagement]
+      summary: Eine Folge mit einem Beschluss verknüpfen (MG6).
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Nach der Freigabe (409
+        `managementbewertung_nicht_freigegeben`); nur anhängen, dasselbe Objekt ein zweites Mal ändert nichts; der Stand
+        ändert sich nie. `art` `energieziel` (EZ-…), `dokument` (die Fassung D-…/n), `aufgabe` (ID der Zuordnung) oder
+        `audit` (AU-…); ein unbekanntes Objekt 422 `objekt_unbekannt`. Eine Maßnahme verknüpft sich selbst über ihre
+        Herkunft `managementbewertung` (422 `folge_art`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManagementbewertungFolgeVerknuepfen" }
+      responses:
+        "201":
+          description: Die Managementbewertung mit der Folge.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Managementbewertung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energieziele:
     get:
       tags: [kennzahlen]
@@ -13478,7 +13634,8 @@ paths:
         Energiemanagement (AP-19 IP-17): `nichtkonformitaet` mit F-… einer offenen Feststellung (422
         `feststellung_nicht_offen`), `audit` mit AU-… eines durchgeführten oder abgeschlossenen internen Audits (422
         `audit_nicht_durchgefuehrt`), `managementbewertung` mit BR-…/Bn eines Beschlusses einer freigegebenen
-        Managementbewertung (bis AP-19 IP-23 gibt es keine); eine unbekannte oder nicht sichtbare Kennung ist 422
+        Managementbewertung (AP-19 IP-23, noch ohne Stand 422 `managementbewertung_nicht_freigegeben`; die Maßnahme ist
+        dann selbst die Folge des Beschlusses, MG6); eine unbekannte oder nicht sichtbare Kennung ist 422
         `herkunft_kennung`, ein falsches Muster 400. Mit `kennzahl` (M2): die freigegebene, heute geltende
         Bezugsbasis-Fassung (sonst 422 `kennzahl_ohne_bezugsbasis`) und die Ausgangslage als KOPIE des Vergleich-Lesers
         über `monate` (`JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`, höchstens 12, abgeschlossen - 422
@@ -18582,6 +18739,86 @@ components:
         feststellungen:
           type: array
           items: { $ref: "#/components/schemas/Feststellung" }
+    ManagementbewertungPerson:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: [string, "null"] }
+    ManagementbewertungSitzung:
+      type: object
+      required: [tag, leitung, leitung_gilt, teilnehmende]
+      properties:
+        tag: { type: string, format: date }
+        leitung: { $ref: "#/components/schemas/ManagementbewertungPerson" }
+        leitung_gilt: { type: boolean, description: "PA3 - die Person hat am Tag der Sitzung die laufende Aufgabe „Leitung des Unternehmens“." }
+        teilnehmende: { type: array, items: { $ref: "#/components/schemas/ManagementbewertungPerson" } }
+        ort: { type: [string, "null"] }
+        eingetragen_von: { type: string }
+        eingetragen_am: { type: string, format: date }
+    ManagementbewertungFolge:
+      type: object
+      required: [art, objekt, wie, zustand]
+      properties:
+        art: { type: string, enum: [energieziel, massnahme, dokument, aufgabe, audit] }
+        objekt: { type: string, description: "Kennzeichen (EZ-…, M-…, D-…/n, D-…, AU-…) oder das Aufgaben-Wort." }
+        objekt_id: { type: string, format: uuid }
+        wie: { type: string, enum: [von_hand, herkunft, zuordnung, fassung, geprueft_bleibt] }
+        zustand: { type: string, description: "Das Zustandswort des Objekts von heute." }
+        tag: { type: [string, "null"], format: date }
+        angabe: { type: [string, "null"], description: "Zielperiode des Energieziels, Person der Aufgabe." }
+        verknuepft_am: { type: string, format: date }
+        eingetragen_von: { type: string }
+    ManagementbewertungBeschluss:
+      type: object
+      required: [nr, kennung, art, wortlaut, entschieden_von, folgen]
+      properties:
+        nr: { type: integer }
+        kennung: { type: string, description: "BR-JJJJ-nnnn/Bn" }
+        art: { type: string, enum: [energieziel, massnahme, dokument, aufgabe, ressourcen, audit, keine_aenderung, weitere] }
+        wortlaut: { type: string }
+        entschieden_von: { $ref: "#/components/schemas/ManagementbewertungPerson" }
+        zustaendig: { oneOf: [{ $ref: "#/components/schemas/ManagementbewertungPerson" }, { type: "null" }] }
+        termin: { type: [string, "null"], format: date }
+        eingetragen_von: { type: string }
+        eingetragen_am: { type: string, format: date }
+        folgen: { type: array, items: { $ref: "#/components/schemas/ManagementbewertungFolge" } }
+        satz: { type: [string, "null"], description: "Nach der Freigabe ohne Folge: „Keine Folge in VoltPilot - der Beschluss steht im Stand vom …“." }
+    Managementbewertung:
+      type: object
+      required: [kennung, freigegeben, beschluesse]
+      properties:
+        kennung: { type: string }
+        freigegeben: { type: boolean }
+        stand_nr: { type: [integer, "null"] }
+        sitzung: { oneOf: [{ $ref: "#/components/schemas/ManagementbewertungSitzung" }, { type: "null" }] }
+        beschluesse: { type: array, items: { $ref: "#/components/schemas/ManagementbewertungBeschluss" } }
+    ManagementbewertungSitzungFesthalten:
+      type: object
+      additionalProperties: false
+      required: [tag, leitung]
+      properties:
+        tag: { type: string, format: date }
+        leitung: { type: string, format: uuid }
+        teilnehmende: { type: array, items: { type: string, format: uuid } }
+        ort: { type: string, maxLength: 200 }
+    ManagementbewertungBeschlussFesthalten:
+      type: object
+      additionalProperties: false
+      required: [art, wortlaut]
+      properties:
+        art: { type: string, enum: [energieziel, massnahme, dokument, aufgabe, ressourcen, audit, keine_aenderung, weitere] }
+        wortlaut: { type: string, minLength: 1, maxLength: 2000 }
+        entschieden_von: { type: string, format: uuid }
+        zustaendig: { type: string, format: uuid }
+        termin: { type: string, format: date }
+    ManagementbewertungFolgeVerknuepfen:
+      type: object
+      additionalProperties: false
+      required: [art, objekt]
+      properties:
+        art: { type: string, enum: [energieziel, dokument, aufgabe, audit] }
+        objekt: { type: string }
     InternesAuditStand:
       type: object
       additionalProperties: false
@@ -33387,13 +33624,13 @@ components:
         `gleichzeitig`; 422 `vorlage_unbekannt` (`feld`), `keine_quellen` (`feld`),
         `zeitraum_nicht_zu_ende` (`moeglich_ab`), `werte_vorlaeufig` (`vorlaeufig`, `vorlaeufige`,
         `moeglich_ab`), `begruendung_fehlt` (`feld`, `zeichen`), `basis_fehlt` (Leistungsvergleich ohne freigegebene
-        Bezugsbasis, AP-17 IP-21b), `ausgabe_fehlt` (eine Vorlage ohne PDF/CSV; seit AP-17 IP-22 keine); 500 `abzug_beschaedigt` (`nr`). Zeitpunkte
+        Bezugsbasis, AP-17 IP-21b), `ausgabe_fehlt` (eine Vorlage ohne PDF/CSV; seit AP-17 IP-22 keine), `sitzung_fehlt` · `leitung_fehlt` (`tag`) · `beschluss_fehlt` (Freigabe einer Managementbewertung nur mit Sitzung, Leitung und Beschluss, AP-19 IP-23); 500 `abzug_beschaedigt` (`nr`). Zeitpunkte
         der Fakten mit dem Versatz der Zone der Geltung.
       required: [code, message]
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, vorlage_unbekannt, geltung_unbekannt, bericht_gibt_es_schon, keine_quellen, zeitraum_nicht_zu_ende, werte_vorlaeufig, entwurf_veraltet, stand_gibt_es_nicht, abzug_beschaedigt, begruendung_fehlt, anstoss_nicht_offen, gleichzeitig, basis_fehlt, ausgabe_fehlt]
+          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, vorlage_unbekannt, geltung_unbekannt, bericht_gibt_es_schon, keine_quellen, zeitraum_nicht_zu_ende, werte_vorlaeufig, entwurf_veraltet, stand_gibt_es_nicht, abzug_beschaedigt, begruendung_fehlt, anstoss_nicht_offen, gleichzeitig, basis_fehlt, ausgabe_fehlt, sitzung_fehlt, leitung_fehlt, beschluss_fehlt]
         message: { type: string }
         feld: { type: string }
         rolle_noetig: { type: string, nullable: true }

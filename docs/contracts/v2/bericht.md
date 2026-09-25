@@ -198,8 +198,15 @@ Wiedervorlage zum Stichtag · Beschlüsse · Sitzung · Quellenverzeichnis. **Je
 (`uems/BerichtManagementbewertung`); Fristen und Wiedervorlage kommen aus dem Wiedervorlage-Leser am Datenstand. Die
 Quellenarten wachsen additiv um `energieziel · massnahme · abweichung · feststellung · internes_audit · dokument · beschluss ·
 berichtsstand` (MG3); keine trägt Kennzahl-Werte, darum trifft keine Kaskade (Pfad 1 und 2) die Managementbewertung — was
-sich später ändert, zeigt die nächste. Sitzung und Beschlüsse (MG4–MG7) füllt AP-19 IP-23; bis dahin `beschluesse = []`,
-`sitzung = null`. PDF mit allen zwölf Abschnitten, Grenz- und Verantwortungs-Satz; kein Berichts-CSV (`OHNE_CSV`,
+sich später ändert, zeigt die nächste. **Sitzung und Beschlüsse (MG4–MG7, AP-19 IP-23)** sind Zeilen
+(`managementbewertung_sitzung`, `…_beschluss`), die jede Eingabe in den Entwurf bildet und die Freigabe mit einfriert:
+`sitzung` = `{tag, leitung, teilnehmende[], ort, eingetragen_von, eingetragen_am}` — `leitung` nur, solange die Person am Tag
+der Sitzung die laufende Aufgabe „Leitung des Unternehmens“ hat, sonst `null`; `beschluesse[]` = `{nr, kennung BR-…/Bn, art,
+wortlaut, entschieden_von, eingetragen_von, eingetragen_am, zustaendig, termin}`. **Freigabe nur mit Sitzung, Leitung und
+Beschluss** (422 `sitzung_fehlt` · `leitung_fehlt` · `beschluss_fehlt`, geprüft am Abzug). `vorige_beschluesse.beschluesse[]`
+liest die Beschlüsse der letzten Managementbewertung mit ihren Folgen und deren Zustand von heute (`folgen[]` =
+`{art, objekt, wie, zustand, tag, angabe, verknuepft_am, eingetragen_von}`, ohne Folge der Satz `beschluss_ohne_folge`); jeder
+ist eine Quelle der Art `beschluss`. Eine Folge ändert keinen Stand, kein Anstoß (MG6, MG7). PDF mit allen zwölf Abschnitten, Grenz- und Verantwortungs-Satz; kein Berichts-CSV (`OHNE_CSV`,
 `422 ausgabe_fehlt`). Angelegt wird sie im Energiemanagement (AP-19 IP-24), das Portal zeigt keine Berichte-Karte.
 
 Die Vorlage `energetische_bewertung` startet ohne Angabe bei den letzten zwölf vollen Monaten. Ihr Feld

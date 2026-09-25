@@ -568,6 +568,9 @@ public class BerichtService {
         List<StandZeile> staende = repo.staende(tenant, kopf.id());
         StandZeile gueltig = staende.isEmpty() ? null : staende.get(staende.size() - 1);
         JsonNode abzug = baum(e.abzug());
+        if (BerichtRegeln.MANAGEMENTBEWERTUNG.equals(kopf.vorlage())) {
+            sitzungUndBeschluss(abzug);
+        }
 
         // D2 bei der Freigabe und D3: seit dem Datenstand darf sich an keiner Quelle etwas geändert haben.
         List<BerichtRegeln.Aenderung> dazwischen = new ArrayList<>(BerichtRegeln.d2(e.datenstand(),
@@ -607,6 +610,66 @@ public class BerichtService {
         protokoll.put("anlass_anstoss_id", anlassAnstoss == null ? null : anlassAnstoss.toString());
         repo.protokoll(tenant, kopf.id(), nr, BerichtRechte.FREIGEBEN, null, text(protokoll), null, wer, rolle, jetzt);
         return new Freigabe(new Stand(kopf, neu, teilansicht(z)), true);
+    }
+
+    /**
+     * AP-19 IP-23 (MG4, MG5, PA3): die Managementbewertung wird nur mit Sitzung, Leitung und mindestens einem Beschluss
+     * freigegeben — geprüft am Abzug, den die Freigabe einfriert, nicht an den Tabellen daneben.
+     */
+    private static void sitzungUndBeschluss(JsonNode abzug) {
+        JsonNode sitzung = abzug.path("sitzung");
+        if (!sitzung.isObject()) {
+            throw BerichtAbgelehnt.von(Ablehnung.SITZUNG_FEHLT);
+        }
+        if (!sitzung.path("leitung").isTextual()) {
+            throw BerichtAbgelehnt.von(Ablehnung.LEITUNG_FEHLT, Map.of("tag", sitzung.path("tag").asText()));
+        }
+        if (abzug.path("beschluesse").isEmpty()) {
+            throw BerichtAbgelehnt.von(Ablehnung.BESCHLUSS_FEHLT);
+        }
+    }
+
+    // ================================================================================ Managementbewertung (AP-19 IP-23)
+
+    /** Was eine Eingabe an der Managementbewertung von ihrem Bericht weiß — {@code freigegeben}: es gibt einen Stand. */
+    public record Eingabe(UUID tenant, UUID bericht, String kennung, ZoneId zone, boolean freigegeben, Instant jetzt) {}
+
+    /**
+     * AP-19 IP-23 (MG4–MG6): eine Eingabe an der Managementbewertung {@code kennung} — Recht und Zaun wie ihr Anlegen
+     * ({@code energiemanagement.verwalten}), unter der Sperre des Berichts. Mit {@code neuBilden} bildet DIESELBE
+     * Transaktion danach den Entwurf neu, damit die Freigabe genau die festgehaltene Sitzung und die Beschlüsse einfriert;
+     * wer einen älteren Entwurf gesehen hat, bekommt bei der Freigabe {@code entwurf_veraltet}. Ein Bericht einer anderen
+     * Vorlage ist hier 404.
+     */
+    public <T> T managementbewertungEingabe(String kennung, ProtokollAkteur wer, boolean neuBilden,
+            java.util.function.Function<Eingabe, T> schreiben) {
+        Zugriff z = zugriff(kennung, wer, BerichtRechte.ANLEGEN);
+        Kopf kopf = managementbewertung(z.kopf());
+        return transaktion.execute(tx -> {
+            repo.sperren(kopf.tenant(), kopf.id());
+            boolean freigegeben = !repo.staende(kopf.tenant(), kopf.id()).isEmpty();
+            T aus = schreiben.apply(new Eingabe(kopf.tenant(), kopf.id(), kopf.kennung(), kopf.zone(), freigegeben,
+                    z.jetzt()));
+            if (neuBilden) {
+                bilden(kopf.id(), z.jetzt(), GEBILDET_BEIM_ABRUF);
+            }
+            return aus;
+        });
+    }
+
+    /** AP-19 IP-23: die Managementbewertung {@code kennung} zum Lesen ({@code energiemanagement.ansehen}); sonst 404. */
+    public Eingabe managementbewertungLesen(String kennung, ProtokollAkteur wer) {
+        Zugriff z = zugriff(kennung, wer, BerichtRechte.ABRUFEN);
+        Kopf kopf = managementbewertung(z.kopf());
+        return new Eingabe(kopf.tenant(), kopf.id(), kopf.kennung(), kopf.zone(),
+                !repo.staende(kopf.tenant(), kopf.id()).isEmpty(), z.jetzt());
+    }
+
+    private static Kopf managementbewertung(Kopf kopf) {
+        if (!BerichtRegeln.MANAGEMENTBEWERTUNG.equals(kopf.vorlage())) {
+            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
+        }
+        return kopf;
     }
 
     // ================================================================================ Anstoß, archivieren

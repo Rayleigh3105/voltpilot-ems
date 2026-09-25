@@ -46,8 +46,9 @@ additiv gewachsen, kein Bestandswert hat sich geändert: `nichtkonformitaet` (Ke
 „Feststellung“), `audit` (`AU-JJJJ-nnnn`, ein Hinweis aus dem internen Audit ohne Nichterfüllung) und
 `managementbewertung` (`BR-JJJJ-nnnn/Bn`, Beschluss n); die Muster sind die von `energiemanagement-vectors.json` ›
 `kennzeichen_muster`. Der Schreibweg prüft Existenz und Zustand (422 `herkunft_kennung` bei unbekannter oder nicht
-sichtbarer Kennung, 422 `feststellung_nicht_offen`, 422 `audit_nicht_durchgefuehrt`); eine BR-Kennung ist unbekannt,
-bis es die Managementbewertung gibt (AP-19 IP-23). Das interne Wort `nichtkonformitaet` steht nur in Vertrag und Code,
+sichtbarer Kennung, 422 `feststellung_nicht_offen`, 422 `audit_nicht_durchgefuehrt`); eine BR-Kennung nennt den Beschluss
+n einer Managementbewertung mit Stand (AP-19 IP-23; noch ohne Stand 422 `managementbewertung_nicht_freigegeben`) — die
+Maßnahme ist damit selbst die Folge des Beschlusses (MG6). Das interne Wort `nichtkonformitaet` steht nur in Vertrag und Code,
 das Kundenwort ist „Feststellung“ (SP5).
 
 **Startwerte** (ohne Norm-Herleitung): Nachher-Zeitraum `nachher_monate` 12, höchstens 36 (WK2); Vorgabe der

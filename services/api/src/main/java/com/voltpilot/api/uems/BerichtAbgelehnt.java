@@ -40,7 +40,16 @@ public final class BerichtAbgelehnt extends RuntimeException {
                 + "freigegebene Bezugsbasis. Geben Sie zuerst eine Bezugsbasis frei."),
         /** AP-17 IP-21b: eine Vorlage in {@code OHNE_AUSGABE} — seit IP-22 keine; der Stand selbst bleibt abrufbar. */
         AUSGABE_FEHLT("ausgabe_fehlt", 422, "PDF und CSV gibt es für diese Vorlage noch nicht. Der Stand selbst "
-                + "ist mit Prüfsumme abrufbar.");
+                + "ist mit Prüfsumme abrufbar."),
+        /** AP-19 IP-23 (MG4): eine Managementbewertung ohne festgehaltene Sitzung wird nicht freigegeben. */
+        SITZUNG_FEHLT("sitzung_fehlt", 422, "Halten Sie zuerst die Sitzung fest — Tag, Leitung und Teilnehmende. "
+                + "Ohne Sitzung gibt es keinen Stand der Managementbewertung."),
+        /** AP-19 IP-23 (MG4, PA3): die Sitzung nennt niemanden mit der laufenden Aufgabe „Leitung des Unternehmens“. */
+        LEITUNG_FEHLT("leitung_fehlt", 422, "Die Sitzung nennt keine Leitung des Unternehmens. Für die Aufgabe "
+                + "‚Leitung des Unternehmens‘ ist am Tag der Sitzung keine Person festgelegt."),
+        /** AP-19 IP-23 (MG5): ohne Beschluss kein Stand — auch „bleibt, wie es ist“ ist ein Beschluss. */
+        BESCHLUSS_FEHLT("beschluss_fehlt", 422, "Halten Sie mindestens einen Beschluss der Leitung fest — auch "
+                + "„bleibt, wie es ist“ ist ein Beschluss.");
 
         private final String code;
         private final int status;

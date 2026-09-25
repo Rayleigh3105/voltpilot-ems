@@ -50,6 +50,9 @@ import org.testcontainers.utility.DockerImageName;
 class UemsAuditFeststellungMigrationTest {
 
     private static final String DIESE = "20260925031500";
+    /** Migrationen, die auf diesen Tabellen AUFBAUEN — in der späten Ankunft kommen sie mit dieser, in Versionsfolge. */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of(
+            "20260925093000"); // AP-19 IP-23: eine Folge der Managementbewertung nennt ein internes Audit.
     private static final String APP = "voltpilot_app", ADMIN = "voltpilot_admin", PW = "ap19_ip16_test_pw";
     private static final List<String> TABELLEN = List.of("internes_audit", "internes_audit_eintrag", "feststellung",
             "feststellung_eintrag", "feststellung_wirksamkeit");
@@ -429,14 +432,18 @@ class UemsAuditFeststellungMigrationTest {
         Path ohneDiese = Files.createTempDirectory("ohne-audit-feststellung");
         try (var dateien = Files.list(Path.of("src", "main", "resources", "db", "migration"))) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
         }
         flyway(url).locations("filesystem:" + ohneDiese).load().migrate();
         var spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
         JdbcTemplate spaetDb = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         List<String> alle = new ArrayList<>(TABELLEN);
         alle.add("energiemanagement_aenderung");

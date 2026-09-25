@@ -235,6 +235,19 @@ public final class BerichtPdf {
                 s.paare(List.of(paar("Managementbewertung", verbunden(TRENNER, text(v.path("kennung")),
                         text(v.path("zeitraum")))), paar("Stand", standZelle(v.path("stand_nr"), v.path("freigegeben_am"))),
                         paar("Prüfsumme", textOderStrich(v.path("pruefsumme")))));
+                // AP-19 IP-23 (MG6): jeder Beschluss mit seinen Folgen und deren Zustand — oder dem Satz ohne Folge.
+                tabelleOderSatz(s, n.path("beschluesse"), "Keine Beschlüsse festgehalten.",
+                        List.of(new Spalte("Nr.", 40, false), new Spalte("Wortlaut", 0, false),
+                                new Spalte("Folgen", 170, false)),
+                        b -> {
+                            List<String> folgen = new ArrayList<>();
+                            for (JsonNode f : b.path("folgen")) {
+                                folgen.add(text(f.path("objekt")) + " (" + textOderStrich(f.path("zustand")) + ")");
+                            }
+                            if (folgen.isEmpty()) folgen.add(textOderStrich(b.path("satz")));
+                            return List.of(List.of(textOderStrich(b.path("kennung"))),
+                                    List.of(textOderStrich(b.path("wortlaut"))), folgen);
+                        });
             }
             case "grundlagen" -> {
                 List<List<List<String>>> zeilen = new ArrayList<>();
@@ -358,16 +371,19 @@ public final class BerichtPdf {
                                 List.of(tag(w.path("faellig_am")), textOderStrich(w.path("satz")))));
             }
             case "beschluesse" -> tabelleOderSatz(s, n, "Noch kein Beschluss festgehalten.",
-                    List.of(new Spalte("Nr.", 40, false), new Spalte("Art", 90, false), new Spalte("Wortlaut", 0, false)),
+                    List.of(new Spalte("Nr.", 40, false), new Spalte("Art", 90, false), new Spalte("Wortlaut", 0, false),
+                            new Spalte("Entschieden von", 110, false)),
                     b -> List.of(List.of(textOderStrich(b.path("nr"))), List.of(textOderStrich(b.path("art"))),
-                            List.of(textOderStrich(b.path("wortlaut")))));
+                            List.of(textOderStrich(b.path("wortlaut"))), List.of(textOderStrich(b.path("entschieden_von")),
+                                    "eingetragen von " + textOderStrich(b.path("eingetragen_von")))));
             case "sitzung" -> {
                 if (!n.isObject()) {
                     s.absatz("Noch keine Sitzung festgehalten.", NORMAL, GRAU);
                     return;
                 }
                 s.paare(List.of(paar("Tag", tag(n.path("tag"))), paar("Leitung", textOderStrich(n.path("leitung"))),
-                        paar("Teilnehmende", String.join(", ", liste(n.path("teilnehmende"))))));
+                        paar("Teilnehmende", String.join(", ", liste(n.path("teilnehmende")))),
+                        paar("Ort", textOderStrich(n.path("ort")))));
             }
             default -> throw new IllegalStateException("Abschnitt " + abschnitt);
         }
