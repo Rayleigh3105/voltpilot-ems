@@ -95,6 +95,11 @@ test('am Telefon gibt jede Bedienstelle der Uhr ihren Impuls - auch bei festgeha
   const mitte = await aufDerUhr(page, 0, 0);
   await schritt(() => page.touchscreen.tap(mitte.x, mitte.y), [JETZT]);
   await expect(uhr).toHaveAttribute('aria-valuetext', /^Jetzt/);
+
+  // Der Tagesschalter (E2) ist eine Bedienstelle wie jede andere: ein Tick.
+  await schritt(() => page.getByRole('tab', { name: /^Gestern/ }).tap(), [TICK]);
+  await schritt(() => page.getByRole('tab', { name: /^Heute/ }).tap(), [TICK]);
+  await expect(page.getByRole('slider', { name: /Tagesuhr/ })).toHaveAttribute('aria-valuetext', /^Jetzt/);
 });
 
 test('mit der Maus vibriert nichts', async ({ page }, testInfo) => {

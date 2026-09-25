@@ -1804,6 +1804,13 @@ paths:
 
         Both modes are RLS-scoped by tenant and carry the recomposed decision
         prices (importPriceCtKwh / exportValueCtKwh / importPriceSource).
+
+
+        `mode=day&date=YYYY-MM-DD` (the portal's Tagesschalter "Gestern · Heute
+        · Morgen") splices EXACTLY that Europe/Berlin day - bounded at the next
+        midnight, so yesterday carries no today and tomorrow no day after.
+        Only yesterday, today and tomorrow are accepted; `date=<today>` is the
+        open-ended `mode=day` reading above (it keeps the plan's tomorrow).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - name: mode
@@ -1811,13 +1818,21 @@ paths:
           required: false
           description: Which reading of the plan; unknown values are rejected (400).
           schema: { type: string, enum: [latest, day], default: latest }
+        - name: date
+          in: query
+          required: false
+          description: >
+            Only with `mode=day`: the Europe/Berlin calendar day to splice -
+            yesterday, today or tomorrow. Any other day, a malformed date or a
+            date without `mode=day` is rejected (400), never read as today.
+          schema: { type: string, format: date }
       responses:
         "200":
           description: The site's current plan (empty slots array if none yet).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Schedule" }
-        "400": { description: Unknown mode. }
+        "400": { description: Unknown mode, or a date outside yesterday..tomorrow / without mode=day. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/control-status:

@@ -152,22 +152,27 @@
     "callouts": [
       {
         "x": 4.36,
-        "y": 24.14,
+        "y": 13.73,
+        "text": "Gestern, heute, morgen: der Plan, wie er gestern galt, der von heute und, sobald die Börsenpreise da sind, der für morgen."
+      },
+      {
+        "x": 4.36,
+        "y": 19.92,
         "text": "Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen."
       },
       {
         "x": 6.46,
-        "y": 37.1,
+        "y": 32.88,
         "text": "Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde."
       },
       {
         "x": 4.36,
-        "y": 59.83,
+        "y": 55.61,
         "text": "Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild."
       },
       {
         "x": 52.68,
-        "y": 70.52,
+        "y": 66.3,
         "text": "Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten."
       }
     ]
@@ -564,18 +569,23 @@
     "alt": "Fahrplan am Telefon: die Tagesuhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 21.28,
-        "y": 38.63,
+        "x": 9.23,
+        "y": 18.84,
+        "text": "Hier wechseln Sie zwischen gestern, heute und morgen."
+      },
+      {
+        "x": 9.23,
+        "y": 31.13,
         "text": "Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand."
       },
       {
         "x": 9.23,
-        "y": 70.86,
+        "y": 74.49,
         "text": "Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn."
       },
       {
         "x": 9.23,
-        "y": 83.31,
+        "y": 86.94,
         "text": "Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle."
       }
     ]

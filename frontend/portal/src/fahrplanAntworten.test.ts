@@ -184,3 +184,34 @@ describe('antworten · Reihenfolge', () => {
     ]);
   });
 });
+
+describe('antworten · je Tag des Tagesschalters (wie im Prototyp)', () => {
+  const VORTAG = new Date(2026, 8, 23);
+  const tagesGeld = (from: Date, to: Date) => ({
+    range: 'day',
+    from: from.toISOString(),
+    to: to.toISOString(),
+    savedEur: 2.1,
+    savedSpeicherEur: 1.4,
+    savedSteuerungEur: 0.7,
+    steuerungSplitReason: null,
+  });
+
+  it('fragt gestern in der Vergangenheit - und nicht, ob er gereicht hat (das weiß nur die Messung)', () => {
+    const aussage = speicherAussage(tagesGeld(VORTAG, TAG), { now: JETZT });
+    const liste = antworten({ tag: modell(), auswahl: 56, istJetzt: false, speicher: aussage, art: 'gestern' });
+    expect(liste.map((a) => a.frage)).toEqual(['Wie ging es weiter?', 'Was hat es gebracht?']);
+    // Dieselbe Aussage wie auf der Erlöse-Seite: der ganze Tag, kein Zwischenstand.
+    expect(liste[1].zusatz).toContain('an diesem Tag');
+    expect(liste[1].art).toBe('gemessen');
+  });
+
+  it('fragt morgen nach dem Abend - ohne Geldzahl, für morgen gibt es keine gemessene', () => {
+    const aussage = speicherAussage(tagesGeld(TAG, new Date(MORGEN)), { now: JETZT });
+    const liste = antworten({ tag: modell(), auswahl: 56, istJetzt: false, speicher: aussage, art: 'morgen' });
+    expect(liste.map((a) => a.frage)).toEqual(['Wie geht es weiter?', 'Reicht der Speicher morgen Abend?']);
+    const ohneAbend = modell([['warten', 96]]);
+    expect(antwortReicht(ohneAbend, 'morgen')?.antwort).toBe('Morgen Abend ist kein Entladen geplant.');
+    expect(antwortBringt(aussage, 'morgen')).toBeNull();
+  });
+});

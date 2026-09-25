@@ -38,7 +38,7 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'fahrplan', category: 'alltag', title: 'Den Fahrplan verstehen',
     summary: 'Wann Ihr Speicher laden oder entladen soll und wie Sie Plan und Ausführung auseinanderhalten.',
-    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum', 'Tagesuhr', 'Bildfahrplan'],
+    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum', 'Tagesuhr', 'Bildfahrplan', 'Gestern', 'Morgen'],
     prerequisite: 'Ein Speicher beziehungsweise eine Anlage, für die ein Fahrplan angeboten wird.',
     sections: [
       { id: 'lesen', title: 'Der Tag in einem Bild', paragraphs: [
@@ -49,6 +49,10 @@ export const everydayArticles: HelpArticle[] = [
       { id: 'uhr', title: 'Die Tagesuhr am Telefon', paragraphs: [
         "Am Telefon ist der Tag ein Kreis: oben Mittag, unten Mitternacht. Außen stehen Sonne und Preis, der breite Ring zeigt die Tätigkeit, innen der Ladestand. Ziehen Sie den Zeiger oder tippen Sie auf eine Uhrzeit; Werte und Antworten gelten dann für diesen Moment. Ein Tipp in die Mitte holt die Gegenwart zurück, das Fragezeichen erklärt die Uhr Schritt für Schritt.",
       ], figure: 'fahrplan-uhr' },
+      { id: 'tage', title: 'Gestern, heute, morgen', paragraphs: [
+        "Über dem Bild wählen Sie den Tag. Gestern zeigt den Plan, wie er galt: für jede Viertelstunde den Stand, mit dem sie begann, dazu gemessene Sonne und gemessenen Verbrauch und unter „Was hat es gebracht?“, was die Steuerung an diesem Tag gebracht hat. Ob der Speicher wirklich gereicht hat, sagen die Messwerte.",
+        "Morgen zeigt den jüngsten Plan für den nächsten Tag. Er entsteht, sobald die Börsenpreise für morgen gegen 13 Uhr veröffentlicht sind, und wird bis dahin alle 15 Minuten neu gerechnet; vorher steht dort, wann er kommt. Was der Speicher gerade tut und ob Sie eingreifen müssen, steht nur bei Heute.",
+      ] },
       { id: 'gruende', title: 'Warum die Batterie gerade so geplant ist', paragraphs: [
         "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Die Waage unter den Antworten stellt die zwei Werte je Kilowattstunde nebeneinander, zwischen denen entschieden wurde; „Alle Gründe“ öffnet die ausführliche Erklärung.",
       ] },

@@ -470,6 +470,47 @@ describe('Einführung (E11)', () => {
     });
     expect(screen.queryByText(/Die Uhr erklärt ·/)).toBeNull();
   });
+
+  it('startet an einem anderen Tag des Tagesschalters nicht von selbst - der ist kein erster Besuch', async () => {
+    breite(375);
+    const q = quelle({ order: [], hidden: [], shown: [], lead: null, seen: [] });
+    zeichnen({ einfuehrung: q, autoEinfuehrung: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(/Die Uhr erklärt ·/)).toBeNull();
+  });
+});
+
+describe('Tagesschalter (E2 = A) · ein Tag ohne Jetzt', () => {
+  // Derselbe Tag, gelesen von einem „jetzt" am Folgetag aus: gestern.
+  const GESTERN = tagModell({
+    slots: tagSlots(),
+    slotMinutes: 15,
+    now: new Date(2026, 8, 25, 14, 10),
+    plantKind: 'eigenverbrauch',
+    tag: TAG,
+  });
+
+  it('stellt den Zeiger auf dieselbe Uhrzeit wie jetzt und nennt den Tag in der Mitte', () => {
+    const { container } = zeichnen({ tag: GESTERN, art: 'gestern', zeigerStart: 14 * 60 + 10, autoEinfuehrung: false });
+    const uhr = screen.getByRole('slider', { name: /Tagesuhr/ });
+    expect(uhr).toHaveAttribute('aria-valuetext', expect.stringMatching(/^Gestern, 14:00 Uhr/));
+    expect(container.querySelector('.vp-uhr-m1')?.textContent).toMatch(/^gestern · 14:00/i);
+    expect(container.querySelector('.vp-tb-titel')?.textContent).toMatch(/^Gestern:/);
+    expect(screen.getByText('Wie ging es weiter?')).toBeInTheDocument();
+    // Ohne Jetzt gibt es kein „Zurück zu jetzt".
+    expect(screen.queryByRole('button', { name: 'Zurück zu jetzt' })).toBeNull();
+  });
+
+  it('dämpft einen ganz vergangenen Tag nicht - „war geplant" sagt der Text', () => {
+    const { container } = zeichnen({ tag: GESTERN, art: 'gestern', zeigerStart: 14 * 60 + 10, autoEinfuehrung: false });
+    const deckkraft = [...container.querySelectorAll('.vp-uhr-svg path[fill-opacity]')]
+      .map((p) => p.getAttribute('fill-opacity'))
+      .filter((o) => o === '0.45');
+    expect(deckkraft).toEqual([]);
+    expect(container.querySelector('.vp-uhr-m3, .vp-uhr-svg')?.textContent).toContain('war geplant');
+  });
 });
 
 describe('Den Tag abspielen', () => {

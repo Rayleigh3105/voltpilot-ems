@@ -227,7 +227,8 @@ export function FahrplanBildfahrplan({
               d={s.d}
               fill="none"
               stroke={RUHE.has(s.role) ? t.neutral : roleColor(s.role, t)}
-              strokeOpacity={s.vorbei ? 0.5 : 1}
+              // Gedämpft nur neben Kommendem (ein Tag mit Jetzt), wie an der Uhr.
+              strokeOpacity={s.vorbei && tag.jetzt != null ? 0.5 : 1}
               strokeWidth={3.2}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -250,7 +251,7 @@ export function FahrplanBildfahrplan({
             const tinte = hell ? t.ink : '#FFFFFF';
             const mitte = (g.taetigkeit[0] + g.taetigkeit[1]) / 2;
             return (
-              <g key={b.phaseIndex} opacity={b.vorbei ? 0.55 : 1}>
+              <g key={b.phaseIndex} opacity={b.vorbei && tag.jetzt != null ? 0.55 : 1}>
                 <rect
                   x={b.x}
                   y={g.taetigkeit[0]}

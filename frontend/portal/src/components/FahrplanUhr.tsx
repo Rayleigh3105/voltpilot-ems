@@ -76,6 +76,11 @@ export interface FahrplanUhrProps {
   onErklaeren: () => void;
   /** Wird bei jeder Berührung gerufen (hält Abspielen und Einführung an). */
   onBeruehrt: () => void;
+  /**
+   * Der Tag des Tagesschalters, wenn es nicht heute ist („Gestern", „Morgen"):
+   * er steht in der Mitte vor der Uhrzeit, wie im Prototyp. null = heute.
+   */
+  tagWort?: string | null;
 }
 
 export function FahrplanUhr({
@@ -92,6 +97,7 @@ export function FahrplanUhr({
   onSpielen,
   onErklaeren,
   onBeruehrt,
+  tagWort = null,
 }: FahrplanUhrProps) {
   const t = chartTheme();
   // Eine eigene Kennung je Uhr: `url(#…)` greift sonst in die falsche Uhr.
@@ -208,9 +214,14 @@ export function FahrplanUhr({
   const socZahl = soc == null || !Number.isFinite(Number(soc)) ? null : Number(soc);
   const griffFarbe = ph ? roleColor(ph.role, t) : t.neutral;
   const knopfFarbe = ph && (ph.role === 'warten' || ph.role === 'reserve_halten') ? t.neutral : griffFarbe;
-  const zeitText = istJetzt && tag.jetzt != null ? `Jetzt · ${uhrzeit(tag.jetzt)}` : v ? uhrzeit(v.von) : '';
+  const zeitText =
+    istJetzt && tag.jetzt != null
+      ? `Jetzt · ${uhrzeit(tag.jetzt)}`
+      : v
+        ? `${tagWort ? `${tagWort} · ` : ''}${uhrzeit(v.von)}`
+        : '';
   const wertText = v
-    ? `${istJetzt ? 'Jetzt' : `${uhrzeit(v.von)} Uhr`}${ph ? `, ${ph.label}` : ''}${
+    ? `${istJetzt ? 'Jetzt' : `${tagWort ? `${tagWort}, ` : ''}${uhrzeit(v.von)} Uhr`}${ph ? `, ${ph.label}` : ''}${
         socZahl != null ? `, ${ladestandText(socZahl, v.vorbei)}` : ''
       }`
     : undefined;
@@ -414,7 +425,10 @@ const UhrRinge = memo(function UhrRinge({
         ))}
       </g>
 
-      {/* Tätigkeit: der breite Ring, immer mit Symbol ab 45 Minuten. */}
+      {/* Tätigkeit: der breite Ring, immer mit Symbol ab 45 Minuten. Gedämpft
+          wird Vergangenes nur NEBEN Kommendem - an einem Tag mit Jetzt; ein
+          ganz vergangener Tag (Tagesschalter „Gestern") stünde sonst blass da,
+          als wäre er abgeschaltet. „war geplant" sagt der Text. */}
       <g className={`vp-uhr-ebene${ebene('taetigkeit')}`}>
         {modell.phasen.map((p, k) => {
           const ruhe = p.role === 'warten' || p.role === 'reserve_halten';
@@ -423,7 +437,7 @@ const UhrRinge = memo(function UhrRinge({
               key={k}
               d={p.d}
               fill={roleColor(p.role, t)}
-              fillOpacity={p.vorbei ? 0.45 : 1}
+              fillOpacity={p.vorbei && tag.jetzt != null ? 0.45 : 1}
               stroke={ruhe ? t.axisLine : 'none'}
               strokeWidth={ruhe ? 0.8 : 0}
             />
@@ -441,7 +455,7 @@ const UhrRinge = memo(function UhrRinge({
               x={s.x - 7.5}
               y={s.y - 7.5}
               stroke={ruhe ? t.ink : '#FFFFFF'}
-              opacity={vorbei ? 0.6 : 1}
+              opacity={vorbei && tag.jetzt != null ? 0.6 : 1}
             />
           );
         })}

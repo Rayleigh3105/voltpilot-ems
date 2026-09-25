@@ -18,11 +18,19 @@
  *    Ohne Aussage gibt es keine Antwort, nie eine 0.
  *  - „Was hat sich geändert?" folgt mit der Zeitmaschine (Schritt 3), sobald
  *    frühere Planstände lesbar sind; bis dahin wird darüber nichts behauptet.
+ *  - Der TAGESSCHALTER (E2 = A) fragt je Tag wie der Prototyp: gestern „Wie
+ *    ging es weiter?" und „Was hat es gebracht?" (die Aussage des vollen
+ *    Tages); morgen „Reicht der Speicher morgen Abend?", aber keine Geldzahl
+ *    (für morgen gibt es keine gemessene). „Hat der Speicher gestern
+ *    gereicht?" fragt nach dem, was WIRKLICH geschah — ohne gemessenen
+ *    Ladestand (Ist-Spur, Schritt 2) bleibt die Frage aus, statt sie mit dem
+ *    Plan zu beantworten.
  *
  * Rein: kein React, kein Netz.
  */
 
 import { phaseVon, uhrzeit, TAG_MINUTEN, type TagModell, type TagPhase } from './fahrplanTag';
+import type { TagArt } from './fahrplanTagesbild';
 import type { SpeicherAussage } from './speicherAussage';
 
 export type AntwortKey = 'weiter' | 'reicht' | 'bringt';
@@ -88,20 +96,26 @@ function letzteViertelMitte(tag: TagModell, ph: TagPhase): number {
  * Phasen mit ihrem Listenwort (E8) und ihrer Startzeit, dazu — falls der Plan
  * es trägt — wann der Speicher voll ist.
  */
-export function antwortWeiter(tag: TagModell, auswahl: number, istJetzt: boolean): Antwort | null {
+export function antwortWeiter(
+  tag: TagModell,
+  auswahl: number,
+  istJetzt: boolean,
+  art: TagArt = 'heute',
+): Antwort | null {
   if (!tag.hatWarum || auswahl < 0 || auswahl >= tag.slots.length) return null;
   const aktuell = phaseVon(tag, auswahl);
   if (!aktuell) return null;
   const k = tag.phasen.indexOf(aktuell);
   const naechste = tag.phasen.slice(k + 1, k + 3);
   const zeit = istJetzt ? null : `${uhrzeit(tag.viertel[auswahl].von)} Uhr`;
+  const frage = art === 'gestern' ? 'Wie ging es weiter?' : 'Wie geht es weiter?';
   if (naechste.length === 0) {
     // Die letzte Phase: sie endet um Mitternacht - oder dort, wo der geladene
     // Plan endet. Dann wird nichts über die Zeit danach behauptet.
     const bisMitternacht = aktuell.bis >= TAG_MINUTEN;
     return {
       key: 'weiter',
-      frage: 'Wie geht es weiter?',
+      frage,
       zeit,
       antwort: bisMitternacht
         ? `${aktuell.label} bis Mitternacht.`
@@ -126,7 +140,7 @@ export function antwortWeiter(tag: TagModell, auswahl: number, istJetzt: boolean
   const letzte = naechste[naechste.length - 1];
   return {
     key: 'weiter',
-    frage: 'Wie geht es weiter?',
+    frage,
     zeit,
     antwort,
     zusatz,
@@ -149,18 +163,22 @@ export function antwortWeiter(tag: TagModell, auswahl: number, istJetzt: boolean
  * am Abend beginnt, ihr Ende und der geplante Ladestand danach. Nur für Tage,
  * deren Plan den Abend überhaupt enthält.
  */
-export function antwortReicht(tag: TagModell): Antwort | null {
+export function antwortReicht(tag: TagModell, art: TagArt = 'heute'): Antwort | null {
+  // Gestern fragte man, ob er GEREICHT hat — das sagt erst der gemessene
+  // Ladestand (Ist-Spur), nicht der Plan.
+  if (art === 'gestern') return null;
   if (!tag.hatWarum || tag.viertel.length === 0) return null;
   const letzteMinute = tag.viertel[tag.viertel.length - 1].bis;
   if (letzteMinute <= ABEND_AB_MIN) return null;
   const abend = tag.phasen.filter((p) => p.role === 'eigenverbrauch' && p.von >= ABEND_AB_MIN);
-  const frage = 'Reicht der Speicher heute Abend?';
+  const wann = art === 'morgen' ? 'morgen' : 'heute';
+  const frage = `Reicht der Speicher ${wann} Abend?`;
   if (abend.length === 0) {
     return {
       key: 'reicht',
       frage,
       zeit: null,
-      antwort: 'Heute Abend ist kein Entladen geplant.',
+      antwort: `${art === 'morgen' ? 'Morgen' : 'Heute'} Abend ist kein Entladen geplant.`,
       zusatz: null,
       notiz: null,
       art: 'geplant',
@@ -215,11 +233,12 @@ export function antwortReicht(tag: TagModell): Antwort | null {
  * „Was bringt es heute?" — die Steuerungs-Aussage der Erlöse-Welt, unverändert.
  * Ohne Aussage (älteres Backend, keine Kasse) gibt es keine Antwort.
  */
-export function antwortBringt(aussage: SpeicherAussage | null): Antwort | null {
-  if (!aussage || !aussage.hatAussage) return null;
+export function antwortBringt(aussage: SpeicherAussage | null, art: TagArt = 'heute'): Antwort | null {
+  // Für morgen gibt es keine gemessene Aussage - und keine zweite Geldzahl (E6).
+  if (art === 'morgen' || !aussage || !aussage.hatAussage) return null;
   return {
     key: 'bringt',
-    frage: 'Was bringt es heute?',
+    frage: art === 'gestern' ? 'Was hat es gebracht?' : 'Was bringt es heute?',
     zeit: null,
     antwort: aussage.steuerung ? aussage.wert : 'Noch kein Vergleich',
     zusatz: aussage.steuerung ? aussage.satz : aussage.ohneVergleich,
@@ -237,10 +256,13 @@ export function antworten(input: {
   auswahl: number;
   istJetzt: boolean;
   speicher: SpeicherAussage | null;
+  /** Der Tag des Tagesschalters; ohne Angabe heute. */
+  art?: TagArt;
 }): Antwort[] {
+  const art = input.art ?? 'heute';
   return [
-    antwortWeiter(input.tag, input.auswahl, input.istJetzt),
-    antwortReicht(input.tag),
-    antwortBringt(input.speicher),
+    antwortWeiter(input.tag, input.auswahl, input.istJetzt, art),
+    antwortReicht(input.tag, art),
+    antwortBringt(input.speicher, art),
   ].filter((a): a is Antwort => a != null);
 }

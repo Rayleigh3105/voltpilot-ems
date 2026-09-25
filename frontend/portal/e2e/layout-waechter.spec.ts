@@ -148,25 +148,22 @@ test('Fahrplan: das Tagesbild passt, Symbole bleiben Symbole, nichts ragt über 
 
 /**
  * E1/E9 (Konzept „Tagesuhr und Bildfahrplan", 24.09.2026): am Telefon stehen
- * Kopfsatz, Uhr, Werte und die Zeile zum Moment ganz oben, direkt darunter die
- * Antworten - und ALLE Antworten beginnen im ersten Bildschirm (375 × 812,
- * über der unteren Leiste). Darunter darf die Seite länger werden; die frühere
- * Grenze der Gesamthöhe (1 750 px, V-02/V-06) ersetzt E9 A durch dieses
- * Budget des ersten Bildschirms.
+ * Tagesschalter, Kopfsatz, Uhr, Werte und die Zeile zum Moment ganz oben,
+ * direkt darunter die Antworten - und ALLE Antworten beginnen im ersten
+ * Bildschirm (375 × 812, über der unteren Leiste). Darunter darf die Seite
+ * länger werden; die frühere Grenze der Gesamthöhe (1 750 px, V-02/V-06)
+ * ersetzt E9 A durch dieses Budget des ersten Bildschirms.
+ *
+ * Seit dem Tagesschalter (25.09.2026) trägt der Fahrplan wie seine Reiter
+ * Preise und Wetter keinen SICHTBAREN Seitenkopf: die Reiterleiste springt
+ * nicht mehr, und die Uhr bekam den Platz („so groß wie möglich").
  */
 test('Fahrplan: die Uhr ganz oben, alle Antworten im ersten Bildschirm (E1, E9)', async ({ page }) => {
   await oeffnen(page, FAHRPLAN);
   await page.locator('.vp-antw').first().waitFor();
   await einfuehrungBeenden(page);
-  // V-03: der Untertitel ist EINE Zeile, auch bei 375 px.
-  const zeilen = await page
-    .locator('main h1')
-    .first()
-    .evaluate((h) => {
-      const p = h.parentElement!.querySelector('p')!;
-      return p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight);
-    });
-  expect(Math.round(zeilen), 'Zeilen des Untertitels').toBe(1);
+  // Die Überschrift ist da - für Screenreader, nicht auf der Fläche.
+  await expect(page.locator('main h1', { hasText: 'Fahrplan' })).toHaveClass(/vp-sr-only/);
 
   const mass = await page.evaluate(() => {
     const leiste = document.querySelector('.vp-bottombar');
@@ -187,6 +184,24 @@ test('Fahrplan: die Uhr ganz oben, alle Antworten im ersten Bildschirm (E1, E9)'
     // Unter dem Bild (Telefon, Rechner) oder daneben (Tablet) - nie davor.
     expect(oben, 'die Antworten stehen nicht vor dem Bild').toBeGreaterThanOrEqual(mass.bildOben - 1);
   }
-  // Aufbau des Prototyps: der Kopfsatz des Tages steht über dem Bild.
+  // Aufbau des Prototyps: der Tagesschalter über dem Kopfsatz, der über dem Bild.
   if (mass.kopfOben != null) expect(mass.kopfOben).toBeLessThan(mass.bildOben);
+  const tage = await page.getByRole('tablist', { name: 'Tag' }).boundingBox();
+  expect(tage, 'der Tagesschalter (E2)').not.toBeNull();
+  if (mass.kopfOben != null) expect(tage!.y).toBeLessThan(mass.kopfOben);
+});
+
+/**
+ * Befund B1 für den Fahrplan-Bereich: ein Kopf nur über „Fahrplan" ließ die
+ * Reiterleiste beim Wechsel zu Preise und Wetter um 140 px springen.
+ */
+test('Fahrplan: die Reiterleiste steht auf Fahrplan, Preise und Wetter an derselben Stelle', async ({ page }) => {
+  const oben: number[] = [];
+  for (const reiter of ['fahrplan', 'marktpreise', 'wetter']) {
+    await oeffnen(page, `/e2e/help.html#/anlage/help-site/${reiter}`);
+    const leiste = page.getByRole('tablist', { name: /Reiter des Bereichs/ });
+    await leiste.waitFor();
+    oben.push(Math.round((await leiste.boundingBox())!.y));
+  }
+  expect(oben, 'Oberkante der Reiterleiste je Reiter').toEqual([oben[0], oben[0], oben[0]]);
 });

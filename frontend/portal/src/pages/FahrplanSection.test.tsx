@@ -696,3 +696,162 @@ describe('FahrplanSection · das Tagesbild', () => {
     expect(container.querySelector('.vp-tb')?.contains(container.querySelector('.vp-st'))).toBe(true);
   });
 });
+
+/**
+ * Der TAGESSCHALTER (Konzept „Tagesuhr und Bildfahrplan", E2 = A; Wunsch vom
+ * 25.09.2026 „gestern anschauen und morgen wie beim Prototyp"): gestern ist
+ * der Tages-Splice des Vortags (`mode=day&date=`), morgen der jüngste Lauf ab
+ * Mitternacht. Nur heute spricht das Gerät; gestern nennt, was der ganze Tag
+ * gebracht hat, morgen keine Geldzahl.
+ */
+describe('FahrplanSection · der Tagesschalter (E2 = A)', () => {
+  const lokal = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const heute0 = () => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  };
+  const vortag0 = () => {
+    const h = heute0();
+    return new Date(h.getFullYear(), h.getMonth(), h.getDate() - 1);
+  };
+  const folgetag0 = () => {
+    const h = heute0();
+    return new Date(h.getFullYear(), h.getMonth(), h.getDate() + 1);
+  };
+  /** Ein ganzer Tag ab `tag0`: Warten, mittags Sonne speichern, abends Verbrauch decken. */
+  function ganzerTag(tag0: Date): ScheduleSlot[] {
+    const rollen: [string, number][] = [
+      ['warten', 40],
+      ['pv_speichern', 20],
+      ['warten', 12],
+      ['eigenverbrauch', 20],
+      ['warten', 4],
+    ];
+    const out: ScheduleSlot[] = [];
+    for (const [rolle, n] of rollen) {
+      for (let k = 0; k < n; k++) {
+        out.push(
+          slot({
+            start: new Date(tag0.getTime() + out.length * 15 * 60_000).toISOString(),
+            slotRole: rolle,
+            batteryKw: rolle === 'pv_speichern' ? 3 : rolle === 'eigenverbrauch' ? -2 : 0,
+          }),
+        );
+      }
+    }
+    return out;
+  }
+  /** Der jüngste Lauf, strikt auf heute beschnitten - morgen ist noch nicht geplant. */
+  const nurHeute = () => {
+    const p = plan();
+    return { ...p, slots: p.slots.filter((s) => lokal(new Date(s.start)) === lokal(heute0())) };
+  };
+  const GELD_GESTERN = {
+    range: 'day',
+    from: vortag0().toISOString(),
+    to: heute0().toISOString(),
+    savedEur: 2.1,
+    savedSpeicherEur: 1.4,
+    savedSteuerungEur: 0.7,
+    steuerungSplitReason: null,
+  };
+
+  it('steht über dem Tagesbild - der Seitenkopf ist unsichtbar wie bei Preise und Wetter', async () => {
+    schedule.mockImplementation(() => Promise.resolve(nurHeute()));
+    render(<FahrplanSection site={SITE} />);
+    const schalter = await screen.findByRole('tablist', { name: 'Tag' });
+    const reiter = within(schalter).getAllByRole('tab');
+    expect(reiter.map((r) => r.textContent)).toEqual([
+      expect.stringMatching(/^Gestern/),
+      expect.stringMatching(/^Heute/),
+      expect.stringMatching(/^Morgen(ab ca\. 13 Uhr|noch kein Plan)$/),
+    ]);
+    expect(reiter[1]).toHaveAttribute('aria-selected', 'true');
+    // Die Überschrift bleibt für Screenreader und Dokumentstruktur.
+    const h1 = screen.getByRole('heading', { level: 1, name: 'Fahrplan' });
+    expect(h1).toHaveClass('vp-sr-only');
+  });
+
+  it('zeigt gestern den Plan, wie er galt - und was der ganze Tag gebracht hat', async () => {
+    const gesternIso = lokal(vortag0());
+    schedule.mockImplementation((_id: unknown, mode?: unknown, date?: unknown) =>
+      Promise.resolve(
+        date === gesternIso
+          ? { ...plan(), planId: null, slots: ganzerTag(vortag0()) }
+          : mode === 'day'
+            ? dayPlan()
+            : plan(),
+      ),
+    );
+    siteEarnings.mockImplementation((_id: unknown, _r: unknown, at: unknown) =>
+      at === gesternIso ? Promise.resolve(GELD_GESTERN) : Promise.reject(new Error('404')),
+    );
+    const { container } = render(<FahrplanSection site={SITE} />);
+    fireEvent.click(await screen.findByRole('tab', { name: /^Gestern/ }));
+    await waitFor(() => expect(container.querySelector('.vp-tb-titel')?.textContent).toMatch(/^Gestern:/));
+    expect(schedule).toHaveBeenCalledWith('s1', 'day', gesternIso);
+    expect(siteEarnings).toHaveBeenCalledWith('s1', 'day', gesternIso);
+    const antworten = screen.getByRole('list', { name: 'Antworten zum Fahrplan' });
+    await waitFor(() => expect(within(antworten).getByText('Was hat es gebracht?')).toBeInTheDocument());
+    expect(within(antworten).getByText('Wie ging es weiter?')).toBeInTheDocument();
+    // „Hat er gereicht?" weiß nur die Messung - die Frage bleibt aus.
+    expect(within(antworten).queryByText(/Reicht der Speicher/)).toBeNull();
+    // Die Uhr nennt den Tag; das Gerät spricht nur über jetzt.
+    expect(container.querySelector('.vp-uhr-m1')?.textContent).toMatch(/^gestern · /i);
+    expect(screen.queryByRole('link', { name: /Eingreifen/ })).toBeNull();
+    // Die Annahmen beschreiben den Plan von JETZT - nicht den von gestern.
+    expect(screen.queryByRole('region', { name: 'Worauf Ihr Plan achtet' })).toBeNull();
+    // Zurück auf heute: alles wie vorher.
+    fireEvent.click(screen.getByRole('tab', { name: /^Heute/ }));
+    await waitFor(() => expect(container.querySelector('.vp-tb-titel')?.textContent).toMatch(/^Heute:/));
+  });
+
+  it('bietet nach einem gescheiterten Abruf von gestern „Erneut versuchen"', async () => {
+    const gesternIso = lokal(vortag0());
+    let versuche = 0;
+    schedule.mockImplementation((_id: unknown, mode?: unknown, date?: unknown) => {
+      if (date === gesternIso) {
+        versuche += 1;
+        return versuche === 1
+          ? Promise.reject(new Error('502'))
+          : Promise.resolve({ ...plan(), planId: null, slots: ganzerTag(vortag0()) });
+      }
+      return Promise.resolve(mode === 'day' ? dayPlan() : plan());
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    fireEvent.click(await screen.findByRole('tab', { name: /^Gestern/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Erneut versuchen' }));
+    await waitFor(() => expect(container.querySelector('.vp-tb-titel')?.textContent).toMatch(/^Gestern:/));
+    expect(versuche).toBe(2);
+  });
+
+  it('sagt morgen ohne Plan den Grund - mit Plan zeigt es ihn, ohne Geldzahl und ohne Gerät', async () => {
+    schedule.mockImplementation(() => Promise.resolve(nurHeute()));
+    const { container, unmount } = render(<FahrplanSection site={SITE} />);
+    fireEvent.click(await screen.findByRole('tab', { name: /^Morgen/ }));
+    expect(await screen.findByText('Für morgen gibt es noch keinen Plan')).toBeInTheDocument();
+    expect(container.querySelector('.vp-tb')).toBeNull();
+    unmount();
+
+    // Der jüngste Lauf trägt den Folgetag, sobald dessen Preise da sind.
+    schedule.mockImplementation((_id: unknown, mode?: unknown) =>
+      Promise.resolve(
+        mode === 'day' ? dayPlan() : { ...nurHeute(), slots: [...nurHeute().slots, ...ganzerTag(folgetag0())] },
+      ),
+    );
+    siteEarnings.mockResolvedValue({ ...GELD_GESTERN, from: heute0().toISOString(), to: folgetag0().toISOString() });
+    const zwei = render(<FahrplanSection site={SITE} />);
+    const morgen = await screen.findByRole('tab', { name: /^Morgen/ });
+    expect(morgen.textContent).not.toMatch(/13 Uhr|noch kein Plan/);
+    fireEvent.click(morgen);
+    await waitFor(() => expect(zwei.container.querySelector('.vp-tb-titel')?.textContent).toMatch(/^Morgen:/));
+    const antworten = screen.getByRole('list', { name: 'Antworten zum Fahrplan' });
+    expect(within(antworten).getByText('Reicht der Speicher morgen Abend?')).toBeInTheDocument();
+    expect(within(antworten).queryByText(/Was bringt es/)).toBeNull();
+    expect(zwei.container.querySelector('.vp-uhr-m1')?.textContent).toMatch(/^morgen · /i);
+    expect(screen.getByRole('region', { name: 'Der Tag in Stationen' }).textContent).toContain(
+      'rechnet den Plan für morgen bis dahin alle 15 Minuten neu',
+    );
+  });
+});

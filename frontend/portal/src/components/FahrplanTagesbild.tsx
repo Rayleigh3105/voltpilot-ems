@@ -57,6 +57,8 @@ import {
   momentBand,
   stationen,
   werteAmZeiger,
+  type TagArt,
+  type TagOhneBild,
   type TagesbildEbene,
 } from '../fahrplanTagesbild';
 import { uhrModell } from '../fahrplanUhr';
@@ -126,6 +128,23 @@ export interface FahrplanTagesbildProps {
   onAlleWerte?: (() => void) | null;
   /** Der Hinweis auf morgen unter den Stationen („Morgen · 3 weitere Phasen"). */
   morgen?: string | null;
+  /**
+   * Der Tag des Tagesschalters (E2 = A). Er bestimmt die Fragen („Wie ging es
+   * weiter?"), den Kopfsatz („Gestern: …") und die Mitte der Uhr; ohne Angabe
+   * heute.
+   */
+  art?: TagArt;
+  /**
+   * Wo der Zeiger an einem Tag OHNE Jetzt steht (Minute des Tages) — die
+   * Uhrzeit von jetzt, damit „Gestern" zeigt, was gestern um diese Zeit geplant
+   * war. null = Mitternacht.
+   */
+  zeigerStart?: number | null;
+  /**
+   * Darf die Einführung beim ersten Besuch von selbst starten? Nur heute:
+   * ein Wechsel auf „Gestern" ist kein erster Besuch der Seite.
+   */
+  autoEinfuehrung?: boolean;
   /** Nur für Tests: wo die „gesehen"-Marke der Einführung wohnt. */
   einfuehrung?: EinfuehrungQuelle;
 }
@@ -148,6 +167,9 @@ export function FahrplanTagesbild({
   berechnung = null,
   onAlleWerte = null,
   morgen = null,
+  art = 'heute',
+  zeigerStart = null,
+  autoEinfuehrung = true,
   einfuehrung = ECHTE_QUELLE,
 }: FahrplanTagesbildProps) {
   const t = chartTheme();
@@ -190,7 +212,9 @@ export function FahrplanTagesbild({
   // ---- Auswahl --------------------------------------------------------------------
   const jetztI = tag.jetztIndex;
   const n = tag.slots.length;
-  const auswahl = Math.min(n - 1, wahl ?? (jetztI >= 0 ? jetztI : 0));
+  // Ohne Jetzt (gestern, morgen) steht der Zeiger auf derselben Uhrzeit.
+  const startI = zeigerStart != null ? Math.max(0, viertelBei(tag, zeigerStart)) : 0;
+  const auswahl = Math.min(n - 1, wahl ?? (jetztI >= 0 ? jetztI : startI));
   const istJetzt = wahl == null && jetztI >= 0;
   const mitte = (i: number) => (tag.viertel[i] ? (tag.viertel[i].von + tag.viertel[i].bis) / 2 : 0);
   const zielMinute = istJetzt && tag.jetzt != null ? tag.jetzt : mitte(auswahl);
@@ -329,11 +353,11 @@ export function FahrplanTagesbild({
 
   // Beim ersten Besuch einmal von selbst — nur mit der Uhr.
   useEffect(() => {
-    if (autoGestartet.current || gesehen !== false || breite === 0 || bild || n === 0) return;
+    if (!autoEinfuehrung || autoGestartet.current || gesehen !== false || breite === 0 || bild || n === 0) return;
     autoGestartet.current = true;
     tourStarten(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gesehen, breite, bild, n]);
+  }, [gesehen, breite, bild, n, autoEinfuehrung]);
 
   // Der Schritt „Der Zeiger" zeigt einmal, wie er sich bewegt.
   const tourSchritt = tour == null ? null : (tourSchritte[tour] ?? null);
@@ -395,8 +419,8 @@ export function FahrplanTagesbild({
 
   // ---- Antworten ----------------------------------------------------------------------------
   const liste = useMemo(
-    () => antworten({ tag, auswahl, istJetzt, speicher }),
-    [tag, auswahl, istJetzt, speicher],
+    () => antworten({ tag, auswahl, istJetzt, speicher, art }),
+    [tag, auswahl, istJetzt, speicher, art],
   );
 
   /** Ein Tipp auf eine Antwort: ihre Stelle zeigen (Uhr: Zeiger dorthin) und sie ausführlich nennen. */
@@ -427,7 +451,7 @@ export function FahrplanTagesbild({
   const warumSlot = slotFuerWarum(auswahl);
   const w = warumSlot ? waage(warumSlot, plantKind) : null;
   const band = momentBand(tag, auswahl, istJetzt, held, w?.urteil ?? null);
-  const satz = useMemo(() => kopfsatz(tag), [tag]);
+  const satz = useMemo(() => kopfsatz(tag, art), [tag, art]);
   const halte = useMemo(() => stationen(tag, plantKind), [tag, plantKind]);
   const v = tag.viertel[auswahl];
   const erloeseHref = `#/anlage/${siteId}/erloese`;
@@ -741,10 +765,16 @@ export function FahrplanTagesbild({
         })}
       </ol>
       {morgen && <p className="vp-tb-fein">{morgen}</p>}
-      <p className="vp-tb-fein">
-        Vergangenes ist der Plan, der damals galt. Was wirklich passiert ist, steht unter{' '}
-        <a href={`#/anlage/${siteId}/messwerte`}>Messwerte</a>.
-      </p>
+      {art === 'morgen' ? (
+        <p className="vp-tb-fein">
+          Alles ist geplant: VoltPilot rechnet den Plan für morgen bis dahin alle 15 Minuten neu.
+        </p>
+      ) : (
+        <p className="vp-tb-fein">
+          Vergangenes ist der Plan, der damals galt. Was wirklich passiert ist, steht unter{' '}
+          <a href={`#/anlage/${siteId}/messwerte`}>Messwerte</a>.
+        </p>
+      )}
     </section>
   );
 
@@ -850,12 +880,23 @@ export function FahrplanTagesbild({
         </section>
         {antwortListe}
         {antwortBanner}
+        {/* Ohne Annahmen (gestern: sie beschreiben den Plan von JETZT) stehen
+            Waage und Stationen nebeneinander, statt eine Spalte leer zu lassen. */}
         <div className="vp-tb-unten">
-          <div className="vp-tb-spalte">
-            {waageKarte}
-            {stationenKarte}
-          </div>
-          <div className="vp-tb-spalte">{annahmenKarte}</div>
+          {annahmenKarte ? (
+            <>
+              <div className="vp-tb-spalte">
+                {waageKarte}
+                {stationenKarte}
+              </div>
+              <div className="vp-tb-spalte">{annahmenKarte}</div>
+            </>
+          ) : (
+            <>
+              <div className="vp-tb-spalte">{waageKarte}</div>
+              <div className="vp-tb-spalte">{stationenKarte}</div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -876,6 +917,7 @@ export function FahrplanTagesbild({
       onSpielen={spielen}
       onErklaeren={() => (tour != null ? tourEnde() : tourStarten(true))}
       onBeruehrt={beruehrt}
+      tagWort={art === 'gestern' ? 'Gestern' : art === 'morgen' ? 'Morgen' : null}
     />
   );
 
@@ -938,6 +980,46 @@ export function FahrplanTagesbild({
       {annahmenKarte}
       {tourKarte}
     </div>
+  );
+}
+
+/**
+ * Ein Tag des Tagesschalters ohne Tagesbild: der Grund an der Stelle des
+ * Bildes (`fahrplanTagesbild.tagOhneBild`), nie eine leere Fläche.
+ */
+export function TagOhneBildKarte({
+  zustand,
+  siteId,
+  onErneut,
+}: {
+  zustand: TagOhneBild;
+  siteId: string;
+  onErneut: () => void;
+}) {
+  return (
+    <section className="vp-tb-leer" aria-live="polite" aria-busy={zustand.laedt || undefined}>
+      <span className="vp-tb-leer-ic" aria-hidden="true">
+        <Icon name={zustand.laedt ? 'refresh-cw' : zustand.erneut ? 'alert-triangle' : 'calendar'} size={20} />
+      </span>
+      <div className="vp-tb-leer-t">
+        <p className="vp-tb-leer-titel">{zustand.titel}</p>
+        {zustand.text && <p className="vp-tb-leer-text">{zustand.text}</p>}
+        {(zustand.mitMesswerte || zustand.erneut) && (
+          <div className="vp-tb-reihe">
+            {zustand.mitMesswerte && (
+              <a className="vp-tb-link" href={`#/anlage/${siteId}/messwerte`}>
+                Zu den Messwerten ›
+              </a>
+            )}
+            {zustand.erneut && (
+              <button type="button" className="vp-tb-knopf" onClick={onErneut}>
+                Erneut versuchen
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

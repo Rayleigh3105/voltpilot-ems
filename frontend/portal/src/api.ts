@@ -5455,10 +5455,18 @@ export const api = {
    * den Tages-Splice — siehe {@link ScheduleMode}. Ein Backend ohne den
    * Parameter beantwortet `mode=day` mit einem 400, der Aufrufer fällt dann
    * fail-soft auf die Standard-Lesart zurück.
+   *
+   * `date` (YYYY-MM-DD, Berliner Kalender, nur mit `mode: 'day'`) nennt den Tag
+   * des Tagesschalters: gestern, heute oder morgen — der Server lehnt jeden
+   * anderen Tag mit 400 ab. Ein älteres Backend überginge den Parameter und
+   * schickte HEUTE; der Aufrufer schneidet deshalb selbst nach dem Kalendertag
+   * (`tagModell`), ein falscher Tag bleibt dann leer statt fremd.
    */
-  schedule: (siteId: string, mode?: ScheduleMode) =>
+  schedule: (siteId: string, mode?: ScheduleMode, date?: string) =>
     request<SchedulePlan>(
-      `/api/v1/sites/${siteId}/schedule${mode && mode !== 'latest' ? `?mode=${mode}` : ''}`,
+      `/api/v1/sites/${siteId}/schedule${
+        mode && mode !== 'latest' ? `?mode=${mode}${date ? `&date=${date}` : ''}` : ''
+      }`,
     ),
   forecastQuality: (siteId: string, days = 30) =>
     request<ForecastQuality>(`/api/v1/sites/${siteId}/forecast-quality?days=${days}`),

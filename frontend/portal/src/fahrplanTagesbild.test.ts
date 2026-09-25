@@ -7,11 +7,15 @@ import {
   ebenenSatz,
   indexImLauf,
   kopfsatz,
+  kurzDatum,
   ladestandText,
   lupe,
   momentBand,
   momentZeile,
   stationen,
+  tagDatum,
+  tagesSchalter,
+  tagOhneBild,
   werteAmZeiger,
 } from './fahrplanTagesbild';
 import type { JetztHeldView } from './fahrplanJetzt';
@@ -248,6 +252,59 @@ describe('kopfsatz · der Tag in einer Zeile (Prototyp)', () => {
       'Heute wartet der Speicher.',
     );
     expect(kopfsatz(modell((i) => (i === 3 ? { slotRole: null } : {})))).toBeNull();
+  });
+
+  it('nennt den Tag des Tagesschalters - gestern auch im Warten in der Vergangenheit', () => {
+    expect(kopfsatz(modell(), 'gestern')).toBe(
+      'Gestern: morgens Verbrauch decken, nachmittags Sonne speichern, abends Verbrauch decken.',
+    );
+    expect(kopfsatz(modell(), 'morgen')).toMatch(/^Morgen: morgens Verbrauch decken/);
+    const warten = tagModell({ slots: tag([['warten', 96]]), slotMinutes: 15, now: JETZT, plantKind: 'eigenverbrauch' });
+    expect(kopfsatz(warten, 'gestern')).toBe('Gestern wartete der Speicher.');
+    expect(kopfsatz(warten, 'morgen')).toBe('Morgen wartet der Speicher.');
+  });
+});
+
+describe('Tagesschalter (E2 = A: Gestern · Heute · Morgen)', () => {
+  it('zählt Kalendertage, auch über Monats- und Jahresgrenzen', () => {
+    expect(tagDatum(new Date(2026, 8, 24, 14, 10), 'gestern')).toEqual(new Date(2026, 8, 23));
+    expect(tagDatum(new Date(2026, 8, 30, 23, 50), 'morgen')).toEqual(new Date(2026, 9, 1));
+    expect(tagDatum(new Date(2027, 0, 1, 0, 5), 'gestern')).toEqual(new Date(2026, 11, 31));
+    // Zeitumstellung (25.10.2026): der Vortag bleibt ein Kalendertag.
+    expect(tagDatum(new Date(2026, 9, 26, 1, 0), 'gestern')).toEqual(new Date(2026, 9, 25));
+    expect(kurzDatum(new Date(2026, 8, 23))).toBe('Mi 23.09.');
+  });
+
+  it('trägt Wort und Datum wie der Prototyp - ohne Plan für morgen den Grund', () => {
+    const mittag = new Date(2026, 8, 24, 12, 0);
+    expect(tagesSchalter(mittag, true)).toEqual({
+      optionen: [
+        { id: 'gestern', label: 'Gestern', datum: 'Mi 23.09.' },
+        { id: 'heute', label: 'Heute', datum: 'Do 24.09.' },
+        { id: 'morgen', label: 'Morgen', datum: 'Fr 25.09.' },
+      ],
+      chip: null,
+    });
+    expect(tagesSchalter(mittag, false).optionen[2].datum).toBe('ab ca. 13 Uhr');
+    // Nach 14 Uhr wäre „ab ca. 13 Uhr" eine falsche Zusage.
+    expect(tagesSchalter(new Date(2026, 8, 24, 16, 0), false).optionen[2].datum).toBe('noch kein Plan');
+  });
+
+  it('sagt an Stelle eines fehlenden Bildes den Grund - nie eine leere Fläche', () => {
+    const mittag = new Date(2026, 8, 24, 12, 0);
+    expect(tagOhneBild('heute', null, mittag)).toBeNull();
+    expect(tagOhneBild('morgen', null, mittag)).toMatchObject({
+      titel: 'Für morgen gibt es noch keinen Plan',
+      text: 'Die Börsenpreise für morgen kommen gegen 13 Uhr. Dann plant VoltPilot den ganzen Tag.',
+      laedt: false,
+    });
+    expect(tagOhneBild('morgen', null, new Date(2026, 8, 24, 18, 0))?.text).toMatch(/^Sobald die Börsenpreise/);
+    expect(tagOhneBild('gestern', null, mittag)).toMatchObject({ laedt: true, erneut: false });
+    expect(tagOhneBild('gestern', { laedt: false, fehler: true }, mittag)).toMatchObject({ erneut: true, mitMesswerte: false });
+    expect(tagOhneBild('gestern', { laedt: false, fehler: false }, mittag)).toMatchObject({
+      titel: 'Für gestern ist kein vollständiger Plan gespeichert',
+      mitMesswerte: true,
+    });
   });
 });
 

@@ -302,19 +302,20 @@ describe('Verlauf-Sprache P1 · das Chrome der sechs Reiter', () => {
    * bräche das still wieder: er sieht wie eine Verbesserung aus und ist die
    * teuerste Verletzung der stabilen Bühne (App-Kriterien A5/A8).
    *
-   * Die Bereiche AUSSERHALB des Verlaufs behalten ihren Kopf — sie sind nicht
-   * Teil von P1, und ein halb umgestelltes Portal wäre ein zweiter Sprung
-   * statt keinem.
+   * Seit Preise und Wetter Reiter des FAHRPLANS sind, gilt dasselbe für ihn
+   * (25.09.2026): ein Kopf nur über „Fahrplan" ließ genau diese Leiste
+   * springen. Die übrigen Bereiche (Einstellungen, Komponenten, Steuerung)
+   * behalten ihren Kopf — dort trägt jeder Reiter einen, nichts springt.
    */
-  it('kein Verlauf-Reiter trägt einen sichtbaren Seitenkopf', () => {
+  it('kein Verlauf- oder Fahrplan-Reiter trägt einen sichtbaren Seitenkopf', () => {
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/AnlagenPage.tsx'), 'utf8'));
     const block = code.slice(code.indexOf('const SUB_PAGES'));
     const gedeckelt = block.slice(0, block.indexOf('\n};'));
-    for (const reiter of ['marktpreise', 'lastspitzen', 'prognose', 'wetter']) {
+    for (const reiter of ['marktpreise', 'lastspitzen', 'prognose', 'wetter', 'fahrplan']) {
       expect(gedeckelt, reiter).not.toMatch(new RegExp(`\\n\\s*${reiter}\\s*:`));
     }
-    // Nicht-vakuum: die Bereiche außerhalb des Verlaufs stehen weiterhin drin.
-    expect(gedeckelt).toMatch(/\n\s*fahrplan\s*:/);
+    // Nicht-vakuum: die übrigen Bereiche stehen weiterhin drin.
+    expect(gedeckelt).toMatch(/\n\s*technik\s*:/);
     expect(gedeckelt).toMatch(/\n\s*steuerung\s*:/);
   });
 

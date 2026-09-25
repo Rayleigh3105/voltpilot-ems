@@ -27,6 +27,120 @@ import type { PlanWordingKind } from './schedule';
 /** Die Ebenen des Bildes, die man einzeln hervorheben kann. */
 export type TagesbildEbene = 'sonne' | 'preis' | 'taetigkeit' | 'ladestand';
 
+/**
+ * Der Tag des Tagesschalters (E2 = A: Gestern · Heute · Morgen). Nur HEUTE hat
+ * ein Jetzt, eine Ausführung und eine Geldzahl im Lauf; gestern ist der Plan,
+ * wie er galt, morgen der jüngste Plan für den Folgetag.
+ */
+export type TagArt = 'gestern' | 'heute' | 'morgen';
+
+/** Mitternacht (lokal) des Tages `art`, von `now` aus gezählt. */
+export function tagDatum(now: Date, art: TagArt): Date {
+  const versatz = art === 'gestern' ? -1 : art === 'morgen' ? 1 : 0;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + versatz);
+}
+
+const WOCHENTAG = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'] as const;
+
+function zweistellig(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** „Mi 24.09." */
+export function kurzDatum(d: Date): string {
+  return `${WOCHENTAG[d.getDay()]} ${zweistellig(d.getDate())}.${zweistellig(d.getMonth() + 1)}.`;
+}
+
+/** Ab dieser Stunde ist „ab ca. 13 Uhr" für den fehlenden Folgetag vorbei. */
+const MORGEN_PREISE_BIS_H = 14;
+
+/**
+ * Die drei Einträge des Tagesschalters, je mit Wort und Datum wie im
+ * Prototyp. Gibt es für morgen noch keinen Plan, steht an Stelle des Datums
+ * der Grund — wie beim Tag-Segment der Marktpreise („Morgen ab ca. 13 Uhr":
+ * die Börse veröffentlicht den Folgetag gegen 12:45, der nächste Lauf plant
+ * ihn). Nach 14 Uhr wäre das eine falsche Zusage; dann „noch kein Plan".
+ */
+export function tagesSchalter(
+  now: Date,
+  morgenGeplant: boolean,
+): { optionen: { id: TagArt; label: string; datum: string }[]; chip: null } {
+  const morgen = morgenGeplant
+    ? kurzDatum(tagDatum(now, 'morgen'))
+    : now.getHours() < MORGEN_PREISE_BIS_H
+      ? 'ab ca. 13 Uhr'
+      : 'noch kein Plan';
+  return {
+    optionen: [
+      { id: 'gestern', label: 'Gestern', datum: kurzDatum(tagDatum(now, 'gestern')) },
+      { id: 'heute', label: 'Heute', datum: kurzDatum(tagDatum(now, 'heute')) },
+      { id: 'morgen', label: 'Morgen', datum: morgen },
+    ],
+    chip: null,
+  };
+}
+
+/** Ein Tag des Schalters OHNE Tagesbild: was die Fläche statt dessen sagt. */
+export interface TagOhneBild {
+  titel: string;
+  text: string | null;
+  /** Der Abruf läuft noch. */
+  laedt: boolean;
+  /** Der Abruf ist gescheitert — „Erneut versuchen" hilft. */
+  erneut: boolean;
+  /** Der Weg zu dem, was wirklich passiert ist. */
+  mitMesswerte: boolean;
+}
+
+/**
+ * Der GRUND statt einer leeren Fläche, wenn der gewählte Tag kein Tagesbild
+ * hat (heute entscheidet darüber der Aufbau der Seite, nicht der Schalter):
+ *  - morgen, solange der jüngste Lauf den Folgetag nicht trägt — die Börse
+ *    veröffentlicht ihn gegen 12:45, der nächste Lauf plant ihn;
+ *  - gestern, solange der Abruf läuft, wenn er scheitert, oder wenn der Tag
+ *    keinen Plan trägt, dessen Viertelstunden alle ihren Grund kennen (das
+ *    Tagesbild erfände sonst Tätigkeiten).
+ * Die Seite lädt den Plan nicht nach; „erscheint von selbst" wäre gelogen.
+ */
+export function tagOhneBild(
+  art: TagArt,
+  gestern: { laedt: boolean; fehler: boolean } | null,
+  now: Date,
+): TagOhneBild | null {
+  if (art === 'heute') return null;
+  if (art === 'morgen') {
+    return {
+      titel: 'Für morgen gibt es noch keinen Plan',
+      text:
+        now.getHours() < MORGEN_PREISE_BIS_H
+          ? 'Die Börsenpreise für morgen kommen gegen 13 Uhr. Dann plant VoltPilot den ganzen Tag.'
+          : 'Sobald die Börsenpreise für morgen vorliegen, plant VoltPilot den ganzen Tag.',
+      laedt: false,
+      erneut: false,
+      mitMesswerte: false,
+    };
+  }
+  if (gestern == null || gestern.laedt) {
+    return { titel: 'Der Plan von gestern wird geladen …', text: null, laedt: true, erneut: false, mitMesswerte: false };
+  }
+  if (gestern.fehler) {
+    return {
+      titel: 'Der Plan von gestern ist gerade nicht abrufbar',
+      text: 'Bitte versuchen Sie es gleich noch einmal.',
+      laedt: false,
+      erneut: true,
+      mitMesswerte: false,
+    };
+  }
+  return {
+    titel: 'Für gestern ist kein vollständiger Plan gespeichert',
+    text: 'Das Tagesbild zeigt nur Tage, an denen jede Viertelstunde ihren Grund kennt. Was gestern wirklich passiert ist, zeigen die Messwerte.',
+    laedt: false,
+    erneut: false,
+    mitMesswerte: true,
+  };
+}
+
 /** E10: ab dieser Inhaltsbreite zeigt die Seite den Bildfahrplan statt der Uhr. */
 export const BILD_AB_PX = 900;
 /** Ab dieser Breite stehen Uhr und Antworten nebeneinander (bis E10). */
@@ -140,11 +254,18 @@ const KOPF_MIN_DAUER = 30;
  * ihren Wörtern (E8). Ohne Wetter- oder Preisurteil: das stünde nirgends
  * belegt. „Warten" ist keine Tätigkeit; höchstens die drei längsten zählen,
  * in der Reihenfolge des Tages. Ohne Tätigkeit: „Heute wartet der Speicher."
+ * Der Tagesschalter nennt seinen Tag: „Gestern: …", „Morgen: …".
  */
-export function kopfsatz(tag: TagModell): string | null {
+export function kopfsatz(tag: TagModell, art: TagArt = 'heute'): string | null {
   if (tag.phasen.length === 0) return null;
   const aktiv = tag.phasen.filter((p) => p.role !== 'warten');
-  if (aktiv.length === 0) return 'Heute wartet der Speicher.';
+  if (aktiv.length === 0) {
+    return art === 'gestern'
+      ? 'Gestern wartete der Speicher.'
+      : art === 'morgen'
+        ? 'Morgen wartet der Speicher.'
+        : 'Heute wartet der Speicher.';
+  }
   const lang = aktiv.filter((p) => p.bis - p.von >= KOPF_MIN_DAUER);
   const auswahl = (lang.length > 0 ? lang : aktiv)
     .slice()
@@ -168,7 +289,7 @@ export function kopfsatz(tag: TagModell): string | null {
   }
   const saetze = teile.map((t) => `${t.zeiten.join(' und ')} ${t.woerter.join(' und ')}`);
   const satz = saetze.join(', ');
-  return `Heute: ${satz}.`;
+  return `${art === 'gestern' ? 'Gestern' : art === 'morgen' ? 'Morgen' : 'Heute'}: ${satz}.`;
 }
 
 /**

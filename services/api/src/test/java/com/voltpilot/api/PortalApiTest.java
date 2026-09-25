@@ -1717,6 +1717,80 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * The Tagesschalter "Gestern · Heute · Morgen" (Konzept "Tagesuhr und
+     * Bildfahrplan", E2 = A): {@code mode=day&date=} splices EXACTLY the named
+     * Berlin day - yesterday with the run that was in force back then, tomorrow
+     * with the newest run - while {@code date=<today>} stays byte-identical to
+     * the open-ended {@code mode=day} (it carries the plan's tomorrow). Any
+     * other day, a malformed date, or a date without {@code mode=day} is a 400,
+     * never a silent "today"; RLS fences it like every schedule read.
+     *
+     * <p>Own site + cleanup, like its siblings above.
+     */
+    @Test
+    void scheduleDayModeReadsYesterdayAndTomorrowAsTheirOwnDay() {
+        final String site = "0000000a-0000-0000-0000-0000000000fb";
+        final String device = "0000000a-0000-0000-0000-0000000000eb";
+        final String tenant = "00000000-0000-0000-0000-000000000001";
+        final String planOld = "aaaaaaaa-0000-0000-0000-0000000000fb";
+        final String planNew = "aaaaaaaa-0000-0000-0000-0000000000fc";
+        ZoneId berlin = ZoneId.of("Europe/Berlin");
+        LocalDate today = LocalDate.now(berlin);
+        ZonedDateTime day0 = today.atStartOfDay(berlin);
+        ZonedDateTime yesterday = today.minusDays(1).atStartOfDay(berlin);
+        ZonedDateTime tomorrow = today.plusDays(1).atStartOfDay(berlin);
+        // Planned two days ago for yesterday; the newest run (just before today)
+        // covers today and tomorrow.
+        String genOld = iso(yesterday.minusHours(12));
+        String genNew = iso(day0.minusMinutes(15));
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES ('" + site + "', '"
+                + tenant + "', 'E2 Tagesschalter', 'DE-LU') ON CONFLICT DO NOTHING");
+        try {
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                    + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
+                    + "baseline_cost_eur, peak_target_kw, terminal_value_eur_per_kwh, fallback_14a) VALUES "
+                    + spliceRow(iso(yesterday.plusHours(6)), genOld, planOld, site, tenant, device, 1.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(yesterday.plusHours(20)), genOld, planOld, site, tenant, device, -2.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(day0.plusHours(10)), genNew, planNew, site, tenant, device, 3.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(tomorrow.plusHours(11)), genNew, planNew, site, tenant, device, 4.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(tomorrow.plusDays(1).plusHours(1)), genNew, planNew, site, tenant, device, 5.0, 0.01, 0.03)
+                    + " ON CONFLICT DO NOTHING");
+            java.util.function.Function<String, List<Double>> kw = (query) -> {
+                ResponseEntity<Map<String, Object>> r = rest.exchange(
+                        url("/api/v1/sites/" + site + "/schedule" + query), HttpMethod.GET,
+                        new HttpEntity<>(bearer(token("demo", "demo"))),
+                        new ParameterizedTypeReference<>() {});
+                assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+                return ((List<?>) r.getBody().get("slots")).stream()
+                        .map(x -> ((Number) ((Map<?, ?>) x).get("batteryKw")).doubleValue()).toList();
+            };
+
+            // Yesterday: exactly its two slots, from the run in force back then.
+            assertThat(kw.apply("?mode=day&date=" + today.minusDays(1))).containsExactly(1.0, -2.0);
+            // Tomorrow: exactly its one slot - not the day after.
+            assertThat(kw.apply("?mode=day&date=" + today.plusDays(1))).containsExactly(4.0);
+            // Today by date = the open-ended reading, tomorrow included.
+            assertThat(kw.apply("?mode=day&date=" + today)).isEqualTo(kw.apply("?mode=day"));
+            assertThat(kw.apply("?mode=day")).containsExactly(3.0, 4.0, 5.0);
+
+            for (String bad : List.of("?mode=day&date=" + today.minusDays(2),
+                    "?mode=day&date=" + today.plusDays(2), "?mode=day&date=gestern",
+                    "?date=" + today.minusDays(1))) {
+                assertThat(rest.exchange(url("/api/v1/sites/" + site + "/schedule" + bad),
+                        HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))), String.class)
+                        .getStatusCode()).as(bad).isEqualTo(HttpStatus.BAD_REQUEST);
+            }
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/schedule?mode=day&date="
+                            + today.minusDays(1)),
+                    HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
     /** One schedule row of the Tages-Splice fixture. */
     private static String spliceRow(String time, String generatedAt, String planId, String site,
             String tenant, String device, double batteryKw, double costEur, double baselineEur) {

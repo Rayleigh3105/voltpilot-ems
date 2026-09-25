@@ -66,9 +66,10 @@ import { jetztHeld } from '../fahrplanJetzt';
 import { lageView } from '../fahrplanLage';
 import { JetztKompakt, JetztWarnungen, TagesFilm } from '../components/FahrplanJetzt';
 import { FahrplanLage } from '../components/FahrplanLage';
-import { FahrplanTagesbild } from '../components/FahrplanTagesbild';
-import { tagModell } from '../fahrplanTag';
-import { indexImLauf } from '../fahrplanTagesbild';
+import { FahrplanTagesbild, TagOhneBildKarte } from '../components/FahrplanTagesbild';
+import { minuteDesTages, tagModell } from '../fahrplanTag';
+import { indexImLauf, tagDatum, tagesSchalter, tagOhneBild, type TagArt } from '../fahrplanTagesbild';
+import { haptik } from '../haptik';
 import { speicherAussage } from '../speicherAussage';
 import { planAnnahmen } from '../fahrplanAnnahmen';
 import { flowConflictCandidate, stepFlowConflict } from '../flowConflict';
@@ -698,6 +699,9 @@ const FAHRPLAN_BERECHNUNG =
  * Die Fahrplan-Seite einer Anlage (Konzept „Tagesuhr und Bildfahrplan",
  * Entscheide E1–E11 vom 24.09.2026) im AUFBAU DES PROTOTYPS:
  *
+ *   0 Tagesschalter    Gestern · Heute · Morgen (E2 = A) direkt unter den
+ *                      Reitern; gestern der Tages-Splice des Vortags, morgen
+ *                      der jüngste Lauf. Nur heute spricht das Gerät.
  *   1 Warnungen        ein Plan älter als ~2 h, dazu die Warnungen der
  *                      Jetzt-Aussage (K10) und die P7-Hinweise - über dem Bild
  *   2 Tagesbild        `FahrplanTagesbild` trägt alles Weitere selbst: Kopfsatz
@@ -755,7 +759,32 @@ function VerbraucherSlotCard({
   );
 }
 
+/** Der Vortag des Tagesschalters, wie er geholt wurde — je Kalendertag. */
+interface GesternStand {
+  iso: string;
+  plan: SchedulePlan | null;
+  fehler: boolean;
+}
+
+/** Stabile leere Listen (Memo-Abhängigkeiten ändern sich nicht bei jedem Rendern). */
+const KEINE_SLOTS: SchedulePlan['slots'] = [];
+const KEINE_ANNAHMEN: ReturnType<typeof planAnnahmen> = [];
+
+/**
+ * Der Fahrplan-Reiter trägt wie seine Nachbarn Preise und Wetter nur eine
+ * unsichtbare `h1` (`VerlaufKopf`, Befund B1): ein sichtbarer Kopf ließ die
+ * Reiterleiste springen und nahm am Telefon der Tagesuhr 140 px.
+ */
 export function FahrplanSection({ site }: { site: Site }) {
+  return (
+    <>
+      <VerlaufKopf titel="Fahrplan" />
+      <FahrplanInhalt site={site} />
+    </>
+  );
+}
+
+function FahrplanInhalt({ site }: { site: Site }) {
   const { data: plan, loading, err, reload } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
   const [selSlot, setSelSlot] = useState<number | null>(null);
   const [selPhase, setSelPhase] = useState<number | null>(null);
@@ -854,6 +883,50 @@ export function FahrplanSection({ site }: { site: Site }) {
       active = false;
     };
   }, [siteId]);
+
+  // ---- Der TAGESSCHALTER (Konzept „Tagesuhr und Bildfahrplan", E2 = A) ----
+  // Gestern · Heute · Morgen. Heute bleibt alles wie bisher; morgen kommt aus
+  // dem jüngsten Lauf (er trägt den Folgetag, sobald dessen Preise da sind);
+  // gestern ist der Tages-Splice des Vortags („wie der Tag geplant war") —
+  // erst beim ersten Blick geholt und FAIL-SOFT wie alles hier.
+  const isPhone = useIsPhone();
+  const [tagArt, setTagArt] = useState<TagArt>('heute');
+  const gesternIso = isoDate(tagDatum(now, 'gestern'));
+  const [gestern, setGestern] = useState<GesternStand | null>(null);
+  const [gesternVersuch, setGesternVersuch] = useState(0);
+  const [gesternGeld, setGesternGeld] = useState<SiteEarnings | null>(null);
+  useEffect(() => {
+    setTagArt('heute');
+    setGestern(null);
+    setGesternGeld(null);
+  }, [siteId]);
+  useEffect(() => {
+    if (tagArt !== 'gestern') return;
+    let active = true;
+    setGestern((g: GesternStand | null) => (g?.iso === gesternIso && !g.fehler ? g : null));
+    api
+      .schedule(siteId, 'day', gesternIso)
+      .then((p) => active && setGestern({ iso: gesternIso, plan: p, fehler: false }))
+      .catch(() => active && setGestern({ iso: gesternIso, plan: null, fehler: true }));
+    // „Was hat es gebracht?": die Aussage des VOLLEN Vortags, dieselbe Quelle
+    // wie „Was bringt es heute?" (E6) - ohne Antwort entfällt nur sie.
+    try {
+      api
+        .siteEarnings(siteId, 'day', gesternIso)
+        .then((m) => active && setGesternGeld(m))
+        .catch(() => active && setGesternGeld(null));
+    } catch {
+      if (active) setGesternGeld(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [tagArt, siteId, gesternIso, gesternVersuch]);
+  const waehleTag = (art: TagArt) => {
+    if (art === tagArt) return;
+    haptik('tick');
+    setTagArt(art);
+  };
 
   const slots = plan?.slots ?? [];
   const slotMinutes = plan?.slotMinutes ?? 15;
@@ -1017,11 +1090,43 @@ export function FahrplanSection({ site }: { site: Site }) {
   // Im Bild steht der Preis, der den Plan treibt (`bildPreisArt`): ändert sich
   // der Bezugspreis über den Tag, er; ist er flach, bei Direktvermarktung die
   // Börse, sonst keiner (ein flacher Preis erklärt nichts, vgl. D1).
-  const tag = useMemo(
+  const tagHeute = useMemo(
     () => tagModell({ slots: filmSlots, slotMinutes, now, plantKind: site.plantKind, tarifArt: site.tarifArt ?? null }),
     [filmSlots, slotMinutes, now, site.plantKind, site.tarifArt],
   );
-  const hasTagesbild = tag.hatWarum && tag.slots.length > 0;
+  // Der AUFBAU der Seite hängt an heute: ohne Warum-Ebene heute gibt es kein
+  // Tagesbild und damit auch keinen Tagesschalter.
+  const hasTagesbild = tagHeute.hatWarum && tagHeute.slots.length > 0;
+  const morgenMs = tagDatum(now, 'morgen').getTime();
+  const tagMorgen = useMemo(
+    () =>
+      tagModell({
+        slots,
+        slotMinutes,
+        now,
+        plantKind: site.plantKind,
+        tarifArt: site.tarifArt ?? null,
+        tag: new Date(morgenMs),
+      }),
+    [slots, slotMinutes, now, site.plantKind, site.tarifArt, morgenMs],
+  );
+  const morgenGeplant = tagMorgen.hatWarum && tagMorgen.slots.length > 0;
+  const gesternSlots = gestern?.iso === gesternIso ? (gestern.plan?.slots ?? KEINE_SLOTS) : KEINE_SLOTS;
+  const tagGestern = useMemo(
+    () =>
+      tagModell({
+        slots: gesternSlots,
+        slotMinutes,
+        now,
+        plantKind: site.plantKind,
+        tarifArt: site.tarifArt ?? null,
+        tag: tagDatum(now, 'gestern'),
+      }),
+    [gesternSlots, slotMinutes, now, site.plantKind, site.tarifArt],
+  );
+  const gesternPhasen = useMemo(() => phases(gesternSlots, slotMinutes), [gesternSlots, slotMinutes]);
+  const tag = tagArt === 'gestern' ? tagGestern : tagArt === 'morgen' ? tagMorgen : tagHeute;
+  const tagHatBild = tag.hatWarum && tag.slots.length > 0;
   // „Was bringt es heute?" (E6): die Steuerungs-Aussage der Erlöse-Welt aus
   // `GET /sites/{id}/earnings?range=day`, FAIL-SOFT wie Wetter und Verbraucher
   // (auch gegen eine api-Attrappe ohne die Methode) - ohne Antwort entfällt
@@ -1053,6 +1158,10 @@ export function FahrplanSection({ site }: { site: Site }) {
   const speicher = useMemo(
     () => (tagesGeld ? speicherAussage(tagesGeld, { now }) : null),
     [tagesGeld, now],
+  );
+  const speicherGestern = useMemo(
+    () => (gesternGeld ? speicherAussage(gesternGeld, { now }) : null),
+    [gesternGeld, now],
   );
   // „Alle Werte": das bisherige Diagramm als Dialog - zum Nachschlagen, nicht
   // als zweites Bild desselben Tages auf der Seite.
@@ -1112,13 +1221,16 @@ export function FahrplanSection({ site }: { site: Site }) {
         />
       );
     }
+    // Nicht im jüngsten Lauf: der Splice, der die Viertelstunde geplant hat -
+    // heute der des Tages, gestern der des Vortags.
     const s = tag.slots[i];
-    const fi = s ? indexImLauf(s.start, filmSlots) : -1;
+    const quelle = tagArt === 'gestern' ? gesternSlots : filmSlots;
+    const fi = s ? indexImLauf(s.start, quelle) : -1;
     if (fi < 0) return null;
     return (
       <FahrplanWhyPanel
-        phases={filmPhases}
-        slots={filmSlots}
+        phases={tagArt === 'gestern' ? gesternPhasen : filmPhases}
+        slots={quelle}
         plantKind={site.plantKind}
         slotMinutes={slotMinutes}
         selectedPhase={null}
@@ -1126,7 +1238,7 @@ export function FahrplanSection({ site }: { site: Site }) {
         curtail={curtail}
         grenzen={grenzen}
         siteId={site.id}
-        currentSlotIndex={activeFilmIdx}
+        currentSlotIndex={tagArt === 'heute' ? activeFilmIdx : -1}
         ohneGeld
         onClose={schliessen}
       />
@@ -1201,6 +1313,12 @@ export function FahrplanSection({ site }: { site: Site }) {
       </Card>
     );
   }
+
+  const staleBlock = staleNote ? (
+    <div className="vp-alert vp-alert-warn" role="status" style={{ margin: '0 0 var(--vp-space-4)' }}>
+      {staleNote}
+    </div>
+  ) : null;
 
   // Die Diagramm-Karte der bisherigen Seite: ohne Warum-Ebene der Held, mit
   // Tagesbild der Inhalt von „Alle Werte" (dann ohne eigene Geldzahl - die
@@ -1295,52 +1413,81 @@ export function FahrplanSection({ site }: { site: Site }) {
       {!hasTagesbild && <JetztKompakt view={held} />}
 
       {/* ---- Block 2: Warnungen ---- Ein Plan älter als ~2 h ist nicht der Plan
-          von heute; das steht ganz oben, nie kondensiert. */}
-      {staleNote && (
-        <div className="vp-alert vp-alert-warn" role="status" style={{ margin: '0 0 var(--vp-space-4)' }}>
-          {staleNote}
-        </div>
-      )}
+          von heute; das steht ganz oben, nie kondensiert. Mit Tagesbild unter
+          dem Tagesschalter - und nur für heute und morgen (beide kommen aus
+          diesem Lauf; gestern ist der Plan, wie er damals galt). */}
+      {!hasTagesbild && staleBlock}
 
       {hasTagesbild ? (
         <>
+          {/* ---- Der TAGESSCHALTER (E2 = A) ---- direkt unter den Reitern, in
+              der Form des Tag-Segments der Preise: EIN Muster im Bereich. */}
+          <div className="vp-tb-tage">
+            <TagSegment
+              wahl={tagesSchalter(now, morgenGeplant)}
+              wert={tagArt}
+              onWert={waehleTag}
+              voll={isPhone}
+            />
+          </div>
+          {tagArt !== 'gestern' && staleBlock}
           {/* ---- Block 3: das TAGESBILD im Aufbau des Prototyps (E1/E10) ----
-              Warnungen der Jetzt-Aussage stehen ÜBER dem Bild (K10); das
-              Tagesbild trägt Kopfsatz, Jetzt-Band bzw. Uhr, Antworten, Waage,
-              Stationen und „Worauf Ihr Plan achtet" selbst. */}
-          <JetztWarnungen view={held} />
-          {ladestandHinweise}
-          <FahrplanTagesbild
-            tag={tag}
-            plantKind={site.plantKind}
-            speicher={speicher}
-            siteId={site.id}
-            slotFuerWarum={slotFuerWarum}
-            warumPanel={warumPanel}
-            phasenPanel={(phaseIndex, schliessen) => (
-              <FahrplanWhyPanel
-                phases={tag.phasenRoh}
-                slots={tag.slots}
-                plantKind={site.plantKind}
-                slotMinutes={slotMinutes}
-                selectedPhase={phaseIndex}
-                selectedSlot={null}
-                curtail={curtail}
-                grenzen={grenzen}
-                siteId={site.id}
-                currentSlotIndex={tag.jetztIndex}
-                ohneGeld
-                onClose={schliessen}
-              />
-            )}
-            nachtragHref={einstellungenHash(site.id, 'speicher')}
-            held={held}
-            planVon={planVon}
-            annahmen={annahmen}
-            berechnung={FAHRPLAN_BERECHNUNG}
-            onAlleWerte={() => setAlleWerteOpen(true)}
-            morgen={film.tomorrowSummary}
-          />
+              Warnungen der Jetzt-Aussage stehen ÜBER dem Bild (K10) - sie
+              gelten nur heute. Das Tagesbild trägt Kopfsatz, Jetzt-Band bzw.
+              Uhr, Antworten, Waage, Stationen und „Worauf Ihr Plan achtet". */}
+          {tagArt === 'heute' && <JetztWarnungen view={held} />}
+          {tagArt !== 'gestern' && ladestandHinweise}
+          {tagHatBild ? (
+            <FahrplanTagesbild
+              tag={tag}
+              plantKind={site.plantKind}
+              speicher={tagArt === 'heute' ? speicher : tagArt === 'gestern' ? speicherGestern : null}
+              siteId={site.id}
+              slotFuerWarum={slotFuerWarum}
+              warumPanel={warumPanel}
+              phasenPanel={(phaseIndex, schliessen) => (
+                <FahrplanWhyPanel
+                  phases={tag.phasenRoh}
+                  slots={tag.slots}
+                  plantKind={site.plantKind}
+                  slotMinutes={slotMinutes}
+                  selectedPhase={phaseIndex}
+                  selectedSlot={null}
+                  curtail={curtail}
+                  grenzen={grenzen}
+                  siteId={site.id}
+                  currentSlotIndex={tag.jetztIndex}
+                  ohneGeld
+                  onClose={schliessen}
+                />
+              )}
+              nachtragHref={einstellungenHash(site.id, 'speicher')}
+              // Die Ausführung spricht nur über jetzt; „Plan von …", die
+              // Annahmen und „Alle Werte" beschreiben den jüngsten Lauf - er
+              // trägt heute und morgen, nicht gestern.
+              held={tagArt === 'heute' ? held : null}
+              planVon={tagArt === 'gestern' ? null : planVon}
+              annahmen={tagArt === 'gestern' ? KEINE_ANNAHMEN : annahmen}
+              berechnung={FAHRPLAN_BERECHNUNG}
+              onAlleWerte={tagArt === 'gestern' ? null : () => setAlleWerteOpen(true)}
+              morgen={tagArt === 'heute' ? film.tomorrowSummary : null}
+              art={tagArt}
+              zeigerStart={tagArt === 'heute' ? null : minuteDesTages(now)}
+              autoEinfuehrung={tagArt === 'heute'}
+            />
+          ) : (
+            <TagOhneBildKarte
+              zustand={
+                tagOhneBild(
+                  tagArt,
+                  gestern?.iso === gesternIso ? { laedt: false, fehler: gestern.fehler } : { laedt: true, fehler: false },
+                  now,
+                ) ?? { titel: '', text: null, laedt: false, erneut: false, mitMesswerte: false }
+              }
+              siteId={site.id}
+              onErneut={() => setGesternVersuch((v) => v + 1)}
+            />
+          )}
 
           {/* ---- „Alle Werte" ---- das bisherige Diagramm mit allen Spuren als
               Dialog zum Nachschlagen. Es entsteht ERST beim Öffnen: ein

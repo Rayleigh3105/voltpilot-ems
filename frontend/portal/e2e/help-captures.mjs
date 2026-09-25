@@ -33,12 +33,14 @@ export const captures = [
     point('.dfoot button:has-text("Gerät hinzufügen")', 'Die Abschlussaktion bleibt am unteren Rand erreichbar.'),
   ] },
   { id: 'fahrplan', title: 'Fahrplan: der Tag im Bild', hash: plant('fahrplan'), root: 'main', maxHeight: 1500, points: [
+    point('.vp-tb-tage', 'Gestern, heute, morgen: der Plan, wie er gestern galt, der von heute und, sobald die Börsenpreise da sind, der für morgen.'),
     point('.vp-tb-band', 'Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen.'),
     point('.vp-bf', 'Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde.'),
     point('.vp-antw', 'Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild.'),
     point('section[aria-label="Worauf Ihr Plan achtet"]', 'Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten.'),
   ] },
   { id: 'fahrplan-uhr', title: 'Fahrplan am Telefon: die Tagesuhr', hash: plant('fahrplan'), mobile: true, viewportOnly: true, klick: 'Beenden', points: [
+    point('.vp-tb-tage', 'Hier wechseln Sie zwischen gestern, heute und morgen.'),
     point('.vp-uhr', 'Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand.'),
     point('.vp-tb-werte', 'Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn.'),
     point('.vp-antw', 'Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle.'),

@@ -451,20 +451,17 @@ function AnlagenListe({
  * Lead-Satz lebt als Fuß-Aufklapper weiter (`VerlaufFuss`) — Nachschlage-Text,
  * kein Scrollweg-Inhalt.
  *
- * Die Bereiche AUSSERHALB des Verlaufs (Fahrplan, Einstellungen, Komponenten,
- * Steuerung) behalten ihren Kopf: sie sind nicht Teil dieses Pakets, und ein
- * halb umgestelltes Portal wäre ein zweiter Sprung statt keinem.
+ * Der FAHRPLAN folgt demselben Muster seit dem Tagesschalter (25.09.2026):
+ * Preise und Wetter sind seine Reiter und trugen schon keinen Kopf — die
+ * Leiste sprang also zwischen „Fahrplan" und ihnen um 140 px; und am Telefon
+ * braucht die Tagesuhr den Platz (Kundenwunsch „so groß wie möglich" bei
+ * E9: alle Antworten im ersten Bildschirm). Seine unsichtbare `h1` trägt
+ * `FahrplanSection`; was der Untertitel sagte, sagt dort der Kopfsatz des Tages.
+ *
+ * Die übrigen Bereiche (Einstellungen, Komponenten, Steuerung) behalten ihren
+ * Kopf: ihre Reiter tragen einheitlich einen, dort springt nichts.
  */
 const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>> = {
-  fahrplan: {
-    title: 'Fahrplan',
-    // V-03 (UX-Review 24.09.2026): EIN kurzer Satz in Kundenwörtern, wie bei
-    // der Steuerung. „Kostenoptimaler Batterie-Fahrplan aus Börsenpreisen und
-    // Prognosen." brauchte am Telefon zwei Zeilen vor der ersten Karte; das
-    // Warum erzählt die Seite selbst. Der Layout-Wächter prüft die eine Zeile
-    // bei 375 px (`e2e/layout-waechter.spec.ts`).
-    subtitle: 'Wann Ihr Speicher lädt und entlädt.',
-  },
   technik: {
     // D2 (Captain, 31.07.2026): die Seite heisst „Einstellungen". Der Untertitel
     // nennt seit E1 wieder das, was dort auch WIRKLICH steht - Stromtarif und
