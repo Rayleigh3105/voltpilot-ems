@@ -1,0 +1,271 @@
+{
+ "art": "protokoll_vorlage",
+ "paket": "AP-20 IP-11",
+ "lesehilfe": "Vorlage für die Lesart der Fachperson (FP1). Je Norm-Zeile name, datum (JJJJ-MM-TT), lesart (traegt, anmerkung oder widerspruch) und text; AP-20 IP-12 übernimmt sie in das Feld fachperson der Matrix. Eine Zeile ohne Lesart bleibt offen. Ein Widerspruch wird eine Lücke (FP3). Die Bestätigung trägt nur die Zeilen, die gelesen sind (FP4).",
+ "pruefpaket": {
+  "datei": "pruefpaket.md",
+  "sha256": "0d7c6bb4e866c2df60b39f6d020a8d56c1d6ae03eeca63100d0cf5586b3aa0a5"
+ },
+ "matrix_fassung": 1,
+ "normfassung": {
+  "international": "ISO 50001:2018 einschließlich Amd 1:2024",
+  "deutsch": "DIN EN ISO 50001:2018-12 mit DIN EN ISO 50001/A1:2024-12",
+  "stichtag": "2026-09-25"
+ },
+ "fachperson": {
+  "name": null,
+  "rolle": null,
+  "unabhaengig_von_der_entwicklung": null,
+  "normausgabe": null
+ },
+ "lesarten": [
+  {
+   "abschnitt": "4.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "4.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "4.3",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "4.4",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "5.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "5.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "5.3",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "6.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "6.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "6.3",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "6.4",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "6.5",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "6.6",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "7.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "7.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "7.3",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "7.4",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "7.5.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "7.5.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "7.5.3",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "8.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "8.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "8.3",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "9.1.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "9.1.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "9.2.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "9.2.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "9.3",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "10.1",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  },
+  {
+   "abschnitt": "10.2",
+   "name": null,
+   "datum": null,
+   "lesart": null,
+   "text": null
+  }
+ ],
+ "antworten": [
+  {
+   "frage": "F-01",
+   "name": null,
+   "datum": null,
+   "text": null
+  },
+  {
+   "frage": "F-02",
+   "name": null,
+   "datum": null,
+   "text": null
+  },
+  {
+   "frage": "F-03",
+   "name": null,
+   "datum": null,
+   "text": null
+  },
+  {
+   "frage": "F-04",
+   "name": null,
+   "datum": null,
+   "text": null
+  },
+  {
+   "frage": "F-05",
+   "name": null,
+   "datum": null,
+   "text": null
+  },
+  {
+   "frage": "F-06",
+   "name": null,
+   "datum": null,
+   "text": null
+  }
+ ]
+}

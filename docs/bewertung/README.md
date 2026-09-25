@@ -19,6 +19,7 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | [`uebungen/`](uebungen/README.md), [`uebung.schema.json`](uebung.schema.json) | Übungen des Betreibers (U-JJJJ-nn): Rückweg-Übung und Alarm-Übung mit Artefakt und Prüfsumme, Vorlagen; gelesen von `tools/bewertung/uebungen.py` (RF-07); Z-015 urteilt `pruefe_matrix.py` daraus (Stand, Frist, Q15 mit Person) | AP-20 IP-19 
 | [`vorschlaege/gitops/`](vorschlaege/gitops/README.md) | Regel `VoltPilotSicherungZuAlt` mit promtool-Test als Vorschlag; als Zweig nach gitops, gemergt vom Captain | AP-20 IP-19 |
 | [`bewertungen/`](bewertungen/) | Entwürfe des Matrix-Prüfers (`BWB-JJJJ-nn.json`, `.md`, `.sha256`), je Lauf ein Laufprotokoll: Befehle, übersprungene Fälle, nicht gefahrene Klassen | AP-20 IP-10 |
+| [`pruefpaket/`](pruefpaket/pruefpaket.md) | Prüfpaket für die Fachperson: Norm-Teil ohne Normtext, Frageliste, Protokoll-Vorlage, `.sha256`; gebaut von `tools/bewertung/pruefpaket.py` | AP-20 IP-11 |
 | [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3), Matrix-Prüfer (`pruefe_matrix.py`, AP-20 NW-2) | AP-20 IP-2, IP-3, IP-5, IP-4 |
 
 ## Aufbau (MX1, MX2)
@@ -456,6 +457,27 @@ Bewertung. Fristen rechnet das Werkzeug beim Abruf.
 Kandidat steht dort als „nicht gefahren“, denn sie trägt kein Urteil (NR1). Ein neuer Stand
 braucht einen neuen Lauf. Ein Bericht eines älteren Standes trägt ihn nicht (NR3, RF-11).
 
+## Prüfpaket für die Fachperson (AP-20 IP-11, E4 = A)
+
+Die externe Auditorin (oder der Auditor) für Energiemanagementsysteme liest den Norm-Teil an ihrer
+lizenzierten Ausgabe. Was sie dafür bekommt, liegt unter [`pruefpaket/`](pruefpaket/pruefpaket.md) und
+entsteht nur aus den Quellen, nie von Hand: `tools/bewertung/pruefpaket.py` liest Matrix, jüngsten
+BWB-Entwurf und, sobald es ihn gibt, `produktbeschreibung/` (AP-20 IP-21).
+
+- **`pruefpaket.md`**: jede der 30 Zeilen mit Abschnittsnummer, eigener Umschreibung, Träger,
+  Kundenaufgabe, Herkunft und den Zusagen mit ihrem Urteil im Entwurf; Stand von Übersicht und
+  Beschreibung; die Frageliste (Gliederung, 4.4, 6.3 und 9.1.1 aus L-012, Klimafrage, Grenze zwischen
+  Verweis und geführt); die Anleitung zur Vorlage.
+- **`protokoll-vorlage.json`**: je Norm-Zeile `name`, `datum`, `lesart`, `text` leer, in der Form des
+  Felds `fachperson` der Matrix; dazu je Frage eine Antwort und ein Kopf zur Person (FP2). AP-20
+  IP-12 übernimmt die ausgefüllte Vorlage (FP1, FP3, FP4).
+- **`pruefpaket.sha256`**: `cd docs/bewertung/pruefpaket && shasum -a 256 -c pruefpaket.sha256`.
+- **Kein Normtext (MX2).** Das Werkzeug baut kein Paket, wenn eine Umschreibung länger als 160 Zeichen
+  ist, die Pflichtform der Norm trägt („Organisation muss“, „shall“) oder ein Zitat enthält.
+- **Wer Matrix oder Bewertung ändert, baut das Paket neu** (`python3 tools/bewertung/pruefpaket.py`).
+  Der Test `test_pruefpaket.py` ist rot, solange das Paket im Repo nicht der Bau aus den Quellen ist.
+  Ein zweiter Bau ist byte-gleich; der Tag im Kopf ist der Stichtag der Normfassung.
+
 ## Wer was tut
 
 | Wer | Tut | Tut nie |
@@ -475,6 +497,7 @@ python3 tools/bewertung/zusagen.py [--plan <plan.md>]          # Wache MX5: Exit
 python3 tools/bewertung/klammer.py                             # Klammer AP-20 NW-1: Exit 0 = jeder Kandidat existiert, keine Zeile ohne Kandidat oder Lieferant
 python3 tools/bewertung/luecken.py [--heute JJJJ-MM-TT]        # Wache AP-20 NW-3: Exit 0 = Liste hält, zeigt Zustand und Frist
 python3 tools/bewertung/pruefe_matrix.py --laeufe <ordner> …    # Urteil je Zeile, BWB-Entwurf mit SHA-256 (AP-20 NW-2)
+python3 tools/bewertung/pruefpaket.py [--check]                # Prüfpaket für die Fachperson (AP-20 IP-11): Exit 0 = gebaut bzw. hält
 python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1, AP-20 NW-2 und die Wachen
 ```
 
