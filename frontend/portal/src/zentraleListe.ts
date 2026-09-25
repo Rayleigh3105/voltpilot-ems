@@ -279,6 +279,20 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
   return karten;
 }
 
+/**
+ * Zustand EINER Box für den Aufbau-Baum (`aufbauBaum.ts`): dieselben Wörter
+ * und dieselbe Frische-Regel wie die Box-Karte oben, nur je Box statt über
+ * alle Boxen der Anlage zusammengefasst - im Baum steht jede Box für sich.
+ */
+export function boxLage(
+  box: Device,
+  fetchedAt: number | null | undefined,
+  now: number = Date.now(),
+): { ton: GeraetTon; zustand: string } {
+  const health = boxHealth([box], fetchedAt, now);
+  return { ton: HEALTH_TON[health], zustand: mitZeit(boxWort(health), alter(box.lastSeenAt, now)) };
+}
+
 /** Die Lebendigkeit der Box - der Anker ist ihre Telemetrie (`liveness.ts`). */
 function boxHealth(
   devices: Device[],

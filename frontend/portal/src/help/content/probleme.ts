@@ -40,7 +40,7 @@ export const problemArticles: HelpArticle[] = [
         'Erlös: wirtschaftlicher Ertrag einer betrachteten Position. Einsparung: Vorteil gegenüber dem jeweils erläuterten Vergleich. Bestandskonto: Einordnung der im Speicher zurückgehaltenen Energie. Lastspitze: ein hoher Leistungswert im betrachteten Mess- oder Auswertungszeitraum.',
       ] },
       { id: 'technik', title: 'Anlage und Verbindung', paragraphs: [
-        'Anlage: der zusammengehörige Standort im Portal. Box: das VoltPilot-Gerät zur Anbindung vor Ort. Komponente: ein im Anlagen-Modell zugeordneter Teil mit bestimmten Mess- oder Steuerfähigkeiten. Messwert: eine konkrete gemessene Größe.',
+        'Standort: der Ort mit Adresse; er kann mehrere Anlagen haben. Anlage: ein Netzanschluss mit seinen Geräten, die VoltPilot beobachtet und steuert. Box: das VoltPilot-Gerät zur Anbindung vor Ort. Komponente: ein im Aufbau zugeordneter Teil mit bestimmten Mess- oder Steuerfähigkeiten. Messwert: eine konkrete gemessene Größe.',
         'Synchronisation: Übertragung und Abgleich einer Konfiguration. Befehl: eine an ein Gerät gerichtete Aktion. Bestätigung: eine Rückmeldung zu dieser Aktion; sie ist von der später gemessenen Wirkung zu unterscheiden. OCPP: ein Kommunikationsverfahren zur Anbindung von Ladepunkten.',
       ] },
     ], related: ['energiefluesse', 'fahrplan', 'einstellungen'],

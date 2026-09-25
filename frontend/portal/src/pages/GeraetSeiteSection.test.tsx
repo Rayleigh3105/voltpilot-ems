@@ -592,7 +592,7 @@ describe('GeraetSeiteSection', () => {
     const pfad = await screen.findByRole('navigation', { name: 'Pfad zur Geräteseite' });
     expect(within(pfad).getByRole('link', { name: 'Anlage' }).getAttribute('href'))
       .toBe('#/anlage/s-1');
-    expect(within(pfad).getByRole('link', { name: 'Komponenten' }).getAttribute('href'))
+    expect(within(pfad).getByRole('link', { name: 'Aufbau' }).getAttribute('href'))
       .toBe('#/anlage/s-1/modell');
     expect(pfad.querySelector('[aria-current="page"]')?.textContent).toBeTruthy();
     // Der frueher direkt darunter stehende ZWEITE Rueckweg ist ersatzlos

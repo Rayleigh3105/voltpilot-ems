@@ -102,7 +102,7 @@ describe('GuidedRuleBuilder · audit fixes', () => {
     expect(screen.queryByRole('button', { name: /Weiter zur Prüfung/ })).toBeNull();
     expect(document.body.textContent).toMatch(/kein schaltbares Gerät/);
     // A real next step, into the page where a device is assigned.
-    const link = screen.getByRole('link', { name: /Zu den Komponenten/ });
+    const link = screen.getByRole('link', { name: /Zum Aufbau/ });
     expect(link.getAttribute('href')).toBe('#/anlage/s1/modell');
     expect(onBuild).not.toHaveBeenCalled();
   });

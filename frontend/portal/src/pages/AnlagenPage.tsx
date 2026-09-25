@@ -62,7 +62,7 @@ import { todaySlots } from '../schedule';
 import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
-import { resolveAnlage } from '../anlageNav';
+import { AUFBAU_REITER, resolveAnlage } from '../anlageNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
@@ -148,8 +148,8 @@ const ErloeseSection = lazy(() =>
 const EinzelwerteSection = lazy(() =>
   SUB_CHUNK.einzelwerte().then((m) => ({ default: m.EinzelwerteSection })),
 );
-const AnlagenModellSection = lazy(() =>
-  SUB_CHUNK.modell().then((m) => ({ default: m.AnlagenModellSection })),
+const AufbauSection = lazy(() =>
+  SUB_CHUNK.modell().then((m) => ({ default: m.AufbauSection })),
 );
 const GeraetSeiteSection = lazy(() =>
   SUB_CHUNK.geraet().then((m) => ({ default: m.GeraetSeiteSection })),
@@ -464,19 +464,16 @@ function AnlagenListe({
 const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>> = {
   technik: {
     // D2 (Captain, 31.07.2026): die Seite heisst „Einstellungen". Der Untertitel
-    // nennt seit E1 wieder das, was dort auch WIRKLICH steht - Stromtarif und
-    // Vergütung sind zurueck (Konzept `vp-settings-ux-konzept` §3.4).
+    // nennt, was dort WIRKLICH steht - seit E5 ohne die Box (die wohnt im Aufbau).
     title: 'Einstellungen',
-    subtitle:
-      'Stromtarif, Vergütung, Speicher, Wechselrichter und der Standort Ihrer Anlage - an einem Ort.',
+    subtitle: 'Tarif, Vergütung, Speicher und die Grunddaten Ihrer Anlage.',
   },
   modell: {
-    // ⚠ Der Bereich heisst seit Steuerung Stufe 8 „Komponenten" (§3.9,
-    // Captain 25.08.2026: „Komponenten & Regeln" → „Komponenten"). Die Regeln
-    // wohnen in der Steuerung — EIN Ort je Sache. Die Route `modell` bleibt,
-    // damit jedes Lesezeichen gilt.
-    title: 'Komponenten',
-    subtitle: 'So ist Ihre Anlage verschaltet: Geräte, Komponenten und was das Cockpit daraus macht.',
+    // Der Reiter heisst seit „Anlage – neu gedacht" (E1 = A, 25.09.2026)
+    // „Aufbau": er zeigt den Baum Standort → Anlage → Box → Gerät. Die Route
+    // `modell` bleibt, damit jedes Lesezeichen gilt.
+    title: 'Aufbau',
+    subtitle: 'Standort, Anlagen, Boxen und Geräte auf einen Blick.',
   },
   steuerung: {
     title: 'Steuerung',
@@ -518,8 +515,25 @@ function AnlagenSubPage({
   // Die REITER dieses Bereichs - aus DEMSELBEN Modell wie die Seitenleiste
   // (`anlageSidebar`), damit Leiste und Reiter nie Verschiedenes behaupten.
   // Ein Bereich, der EINE Seite ist (Cockpit, Steuerung), liefert keine.
-  const sidebar = anlageSidebar(surface);
+  // `isAdmin` ist das EINE Tor der technischen Sicht (Plattform-Admin, wie
+  // `rollen.showTechnicalLayer`) - hier als Prop, damit die Hülle im
+  // Einstiegs-Bündel nicht die Rollen-Ableitung mitzieht.
+  const technisch = isAdmin;
+  const sidebar = anlageSidebar(surface, undefined, undefined, technisch);
   const tabs = tabsFor(sidebar, sub);
+
+  // E6 = A: die Prognosen-Seite ist ein Werkzeug für VoltPilot. Ein Kunde, der
+  // ein altes Lesezeichen öffnet, landet dort, wo die Treffsicherheit jetzt
+  // steht - im Fahrplan (ohne Speicher gibt es keinen, dann im Cockpit). Solange
+  // die Anlage noch lädt, ist das unbekannt: dann wird gewartet, und bis dahin
+  // steht ein Satz mit dem Weg da - nie eine leere Seite.
+  // `replace`: kein Verlaufseintrag, der Zurück-Knopf springt nicht im Kreis.
+  const prognoseUmleiten = sub === 'prognose' && !technisch;
+  const hatFahrplan = surface ? surface.deepViews.includes('fahrplan') : null;
+  useEffect(() => {
+    if (!prognoseUmleiten || hatFahrplan == null) return;
+    window.location.replace(hashForRoute(anlageRoute(site.id, hatFahrplan ? 'fahrplan' : null)));
+  }, [prognoseUmleiten, hatFahrplan, site.id]);
 
   /**
    * **Der Welt-Wechsel wohnt seit E3 in DIESEN Reitern** (Konzept
@@ -602,16 +616,27 @@ function AnlagenSubPage({
             embedded
           />
         )}
-        {sub === 'prognose' && (
+        {sub === 'prognose' && !prognoseUmleiten && (
           <PrognosePage sites={[site]} selectedSite={site.id} onSelectSite={() => {}} embedded />
         )}
-      {/* The Anlagen-Modell names the ONE VoltPilot-Box every reported device
-          hangs off (Captain-Korrektur) — from the devices list the shell already
-          holds and keeps fresh, so this page adds no request of its own. Its
-          Bezugszeit travels along: der Zustand der Box altert gegen die
-          Server-Antwort, nie gegen eine weiterlaufende Uhr (`liveness.ts`). */}
+        {prognoseUmleiten && (
+          <p className="vp-muted">
+            Wie gut die Vorhersage trifft, steht jetzt im{' '}
+            <a href={hashForRoute(anlageRoute(site.id, 'fahrplan'))}>Fahrplan</a>.
+          </p>
+        )}
+      {/* Der Aufbau zeigt die Boxen aus der Geräteliste, die die Schale ohnehin
+          hält und frisch hält. Ihre Bezugszeit reist mit: der Zustand einer Box
+          altert gegen die Server-Antwort, nie gegen eine weiterlaufende Uhr
+          (`liveness.ts`). */}
         {sub === 'modell' && (
-          <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
+          <AufbauSection
+            site={site}
+            sites={sites}
+            devices={devices}
+            devicesFetchedAt={devicesFetchedAt}
+            onReload={onReload}
+          />
         )}
         {/* Die BOX ist ein TOR, kein Gerät (E3) - eigene Adresse, eigene
             Gattung. Die Referenz ist optional: eine Anlage hat genau EINE Box,
@@ -2176,7 +2201,7 @@ function AnlageUnassigned({ onOpenModell }: { onOpenModell: () => void }) {
           <p className="vp-muted" style={{ margin: 0 }}>
             Ihre Anlage sendet bereits Messwerte, aber die Komponenten (PV, Speicher, Netz)
             fehlen - vermutlich, weil mehrere Geräte gemeldet werden. Ordnen Sie sie unter
-            „Komponenten" zu.
+            „{AUFBAU_REITER}“ zu.
           </p>
         </div>
       </div>

@@ -65,6 +65,7 @@ import type { Consumer } from './consumers/types';
 import type { SteuerartWunsch } from './steuerartDialog';
 import { fmtNum } from './format';
 import { MIN_SPANNE_CT } from './preisFenster';
+import { AUFBAU_REITER } from './anlageNav';
 
 // ---------------------------------------------------------------------------
 // Vokabular
@@ -566,7 +567,7 @@ export function keinVorschlagGrund(input: VorschlagInput): string | null {
   }
   if (input.consumers.length === 0) {
     return 'Für Vorschläge braucht VoltPilot ein schaltbares Gerät — unter '
-      + '„Komponenten" legen Sie eines an.';
+      + `„${AUFBAU_REITER}" legen Sie eines an.`;
   }
   if (!input.slots || input.slots.length === 0) {
     return 'Für Vorschläge braucht VoltPilot einen Fahrplan — für diese Anlage '

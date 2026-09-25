@@ -197,6 +197,12 @@ export function installHelpFixtures() {
     ].map(([id,label,active]) => ({ id,label,active, state: active ? 'an' : 'aus', derivedActive: active,
       unlocks: { views: [], widgets: [], moneyStream: null }, requirements: [], blockedReason: null, origin: 'masterdata',
       flowRef: null, gatedNodeTypes: [], gatedNodesEnabled: true, exklusivGruppe: id === 'lastmanagement' ? null : 'speicher', seit: '2026-08-01T10:00:00Z' })), weitere: [] }),
+    // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort.
+    standorte: result({ stichtag: '2026-09-10', nichtGezeigt: [], nochNichtZugeordnet: null, standorte: [{
+      id: 'help-standort', kurzzeichen: 'ST-1', name: 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
+      adresse: { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,
+      anlagen: sites.map((s) => ({ id: s.id, name: s.name, gueltigAb: '2026-08-01', gueltigBis: null })),
+      anlagenZahl: 2, gebaeudeZahl: 0, bereichZahl: 0, flaecheM2: null, flaecheQuelle: null }] }),
     createSite: async (input: object) => ({ ...site, ...input }), claimDevice: result(devices[0]),
   });
   Object.assign(entitiesApi, { typeCatalog: result({ catalog_version: '1.0', types: definitions.map((d) => ({ type: d.entityType, label: d.typeLabel, category: d.category, controllable: d.control, composed: false, default_failsafe: 'release' })) }) });

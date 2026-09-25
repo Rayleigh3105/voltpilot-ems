@@ -51,7 +51,8 @@ test('prefills the existing wizard, masks secrets and saves a stable revisioned 
   await expect(page.getByLabel('Kennwort')).toHaveAttribute('placeholder', /unverändert/);
   await page.getByRole('button', { name: 'Weiter', exact: true }).click();
   await page.getByLabel('Name').fill('Batterie Scheune');
-  await expect(page.getByText('Nur diese Änderungen')).toBeVisible();
+  // Der Schritt „Name" heißt im Bearbeiten „Änderungen prüfen" (E4: vier Schritte).
+  await expect(page.getByRole('heading', { name: 'Änderungen prüfen' })).toBeVisible();
   await expect(page.getByText('Geräte-ID, Messhistorie, Transaktionen, Befehle und Audit bleiben erhalten.')).toBeVisible();
   await page.getByRole('button', { name: 'Änderungen speichern' }).click();
   await expect(page.getByText('E2E gespeichert', { exact: true })).toBeVisible();

@@ -24,8 +24,6 @@ import {
   modellBearbeitenKomponente,
   ohneModellBearbeiten,
   ohneGeraetBearbeiten,
-  parseZentraleAnsicht,
-  zentraleAnsichtHash,
   PLATFORM_GROUPS,
   PLATFORM_PAGES,
   PLATFORM_TAB_PAGES,
@@ -633,25 +631,6 @@ describe('befehleGeraetHash - das Gerät als Hash-Parameter', () => {
     expect(parseBefehleKomponente(befehleGeraetHash('s-1', 'inverter'))).toBeNull();
     expect(parseBefehleGeraet('#/anlage/s-1/befehle')).toBeNull();
     expect(parseBefehleGeraet('#/anlage/s-1/befehle?geraet=%20%20')).toBeNull();
-  });
-});
-
-describe('zentraleAnsichtHash / parseZentraleAnsicht', () => {
-  it('trägt die Listen-Zweitsicht als Hash-Parameter und lässt die Route unberührt', () => {
-    const h = zentraleAnsichtHash('s-1', 'geraete');
-    expect(h).toBe('#/anlage/s-1/modell?ansicht=geraete');
-    expect(parseRoute(h)).toEqual({ page: 'anlagen', siteId: 's-1', sub: 'modell' });
-    expect(parseZentraleAnsicht(h)).toBe('geraete');
-  });
-
-  it('schreibt für die VORGABE keinen Parameter - der Einstieg ist das Anlagenbild', () => {
-    expect(zentraleAnsichtHash('s-1', 'schaltbild')).toBe('#/anlage/s-1/modell');
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell')).toBe('schaltbild');
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell?ansicht=phantasie')).toBe('schaltbild');
-  });
-
-  it('öffnet einen Komponenten-Deep-Link weiterhin in der Liste', () => {
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell?komponente=grid')).toBe('geraete');
   });
 });
 

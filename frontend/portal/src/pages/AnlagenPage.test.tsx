@@ -359,6 +359,52 @@ describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anl
   });
 });
 
+/**
+ * E6 = A („Anlage – neu gedacht"): die Prognosen-Seite ist ein Werkzeug für
+ * VoltPilot. Ein Kunde mit altem Lesezeichen landet dort, wo die
+ * Treffsicherheit jetzt steht - im Fahrplan -, und nie auf einer leeren Seite.
+ */
+describe('E6 = A · die Prognosen-Seite ist ein Werkzeug für VoltPilot', () => {
+  const MIT_SPEICHER = anlageSurface({
+    entities: [
+      { id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } },
+    ] as never,
+    config: { plantKind: 'eigenverbrauch' },
+  });
+
+  function renderPrognose(surface: ReturnType<typeof anlageSurface> | null) {
+    return render(
+      <AnlagenPage
+        sites={[site]}
+        devices={[]}
+        devicesFetchedAt={null}
+        route={{ page: 'anlagen', siteId: 's-1', sub: 'prognose' as never, geraet: null as never }}
+        onNavigate={() => {}}
+        onReload={() => {}}
+        surface={surface}
+      />,
+    );
+  }
+
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  it('führt einen Kunden mit altem Lesezeichen in den Fahrplan', async () => {
+    expect(MIT_SPEICHER.deepViews).toContain('fahrplan');
+    window.location.hash = '#/anlage/s-1/prognose';
+    renderPrognose(MIT_SPEICHER);
+    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/fahrplan'));
+  });
+
+  it('wartet, solange die Anlage lädt - und nennt bis dahin den Weg', () => {
+    window.location.hash = '#/anlage/s-1/prognose';
+    renderPrognose(null);
+    expect(window.location.hash).toBe('#/anlage/s-1/prognose');
+    expect(screen.getByRole('link', { name: 'Fahrplan' })).toHaveAttribute('href', '#/anlage/s-1/fahrplan');
+  });
+});
+
 describe('Endzustand „nicht zugeordnet": Anlage MIT Daten, ohne v2-Komponenten (Captain-Nachtrag 06.08.2026)', () => {
   it('rendert die ruhige Zeile + den Hebel, und KEINEN M3-Knoten', async () => {
     mockAdaptive(false);
@@ -912,7 +958,7 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     expect(card?.querySelector('.vp-zustand.befund')).not.toBeNull();
     expect(card?.textContent).toContain('Zustand der Anlage');
     expect(card?.textContent).toContain('Gerät: meldet sich nicht');
-    expect(card?.textContent).toContain('Komponenten');
+    expect(card?.textContent).toContain('Aufbau');
   });
 
   it('alles grün: EINE ruhige Zeile mit dem Modus-Fuß in der Fläche (D5/D6)', async () => {

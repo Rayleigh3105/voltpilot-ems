@@ -82,7 +82,7 @@ describe('OcppWallboxPage integration', () => {
     // Die mittlere Stufe heisst wie die Seite, auf die sie zeigt: seit Stufe 0
     // ist die Brotkrume die geteilte `GeraetBrotkrume`, und der Bereich wurde in
     // Steuerung Stufe 8 zu Komponenten umbenannt.
-    expect(within(breadcrumb).getByRole('link', { name: 'Komponenten' })).toHaveAttribute('href', '#devices');
+    expect(within(breadcrumb).getByRole('link', { name: 'Aufbau' })).toHaveAttribute('href', '#devices');
     // Die große Zahl der Bühne ist die Ladeleistung - Zahl und Einheit getrennt gesetzt.
     const held = screen.getByTestId('geraet-held');
     expect(held.querySelector('[data-kachel="leistung"]')).toHaveTextContent(/11\s*kW/);

@@ -399,7 +399,7 @@ describe('BoxSeiteSection', () => {
     const pfad = await screen.findByRole('navigation', { name: 'Pfad zur Geräteseite' });
     expect(within(pfad).getByRole('link', { name: 'Anlage' }).getAttribute('href'))
       .toBe('#/anlage/s-1');
-    expect(within(pfad).getByRole('link', { name: 'Komponenten' }).getAttribute('href'))
+    expect(within(pfad).getByRole('link', { name: 'Aufbau' }).getAttribute('href'))
       .toBe('#/anlage/s-1/modell');
     expect(screen.queryByRole('link', { name: /Zurück zu den Komponenten/ })).toBeNull();
   });

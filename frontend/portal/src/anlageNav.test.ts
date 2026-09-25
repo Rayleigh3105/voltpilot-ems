@@ -202,11 +202,24 @@ describe('die REITER entstehen aus dem M0-Read-Model', () => {
     ]);
   });
 
-  it('gibt dem Bereich „Anlage" die Prognosen, wo es sie gibt', () => {
+  it('gibt dem Bereich „Anlage" die Prognosen nur für VoltPilot, wo es sie gibt', () => {
     for (const surface of [MARKT, PRIVAT]) {
-      expect(tabsOf(anlageBereiche(surface), 'anlage')).toEqual(['modell', 'technik', 'prognose']);
+      expect(tabsOf(anlageBereiche(surface, undefined, undefined, true), 'anlage')).toEqual([
+        'modell',
+        'technik',
+        'prognose',
+      ]);
     }
-    expect(tabsOf(anlageBereiche(null), 'anlage')).toEqual(['modell', 'technik']);
+    expect(tabsOf(anlageBereiche(null, undefined, undefined, true), 'anlage')).toEqual([
+      'modell',
+      'technik',
+    ]);
+  });
+
+  it('gibt dem Kunden keinen Prognosen-Reiter (E6 = A: die Zeile steht im Fahrplan)', () => {
+    for (const surface of [MARKT, PRIVAT]) {
+      expect(tabsOf(anlageBereiche(surface), 'anlage')).toEqual(['modell', 'technik']);
+    }
   });
 
   it('gibt Cockpit und Steuerung GAR KEINE Reiter - sie sind je EINE Seite', () => {
@@ -293,8 +306,10 @@ describe('tabsFor - EINE Ableitung für Leiste und Reiter', () => {
   it('gibt einer Unterseite die Reiter IHRES Bereichs', () => {
     const s = anlageSidebar(ALLE);
     expect(tabsFor(s, 'erloese').map((t) => t.sub)).toEqual(['messwerte', 'erloese', 'einzelwerte']);
-    expect(tabsFor(s, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik', 'prognose']);
+    expect(tabsFor(s, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik']);
     expect(tabsFor(s, 'wetter').map((t) => t.sub)).toEqual(['fahrplan', 'marktpreise', 'wetter']);
+    const betreiber = anlageSidebar(ALLE, undefined, undefined, true);
+    expect(tabsFor(betreiber, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik', 'prognose']);
   });
 
   it('liefert LEER, wo der Bereich EINE Seite ist', () => {
@@ -338,7 +353,7 @@ describe('nichts ist verwaist: jede AnlagenSub hat einen Bereich oder einen Reit
         hasLeistungspreis: true,
       },
     });
-    const subs = reachable(anlageBereiche(beides));
+    const subs = reachable(anlageBereiche(beides, undefined, undefined, true));
     // Die Lastspitze hat keinen Reiter mehr; sie wird von der Erlöse-Karte aus geöffnet.
     for (const sub of ALL_SUBS) {
       expect(subs.filter((s) => s === sub)).toHaveLength(1);

@@ -188,13 +188,8 @@ describe('rollenWahl / vorschlagRolle', () => {
 
 describe('Schritte', () => {
   it('gibt jedem Weg seine eigene Leiste', () => {
-    expect(schritte('wechselrichter')).toEqual([
-      'Was anbinden',
-      'Gerät wählen',
-      'Verbinden',
-      'Testen',
-      'Fertig',
-    ]);
+    // E4: Verbinden und Testen sind EIN Schritt; der Abschluss zählt nicht mit.
+    expect(schritte('wechselrichter')).toEqual(['Was anbinden', 'Gerät wählen', 'Verbinden', 'Name']);
     expect(schritte('eigenbau')).toHaveLength(6);
     expect(schritte('ladesaeule')).toEqual(['Was anbinden', 'Anbinden']);
     expect(schritte(null)[0]).toBe('Was anbinden');
@@ -202,9 +197,10 @@ describe('Schritte', () => {
 
   it('zaehlt den Fortschritt, ohne ueber den Rand zu laufen', () => {
     const s = schritte('wechselrichter');
-    expect(fortschritt(s, 2)).toBe('Schritt 2 von 5');
-    expect(fortschritt(s, 99)).toBe('Schritt 5 von 5');
-    expect(fortschritt(s, 0)).toBe('Schritt 1 von 5');
+    expect(fortschritt(s, 2)).toBe('Schritt 2 von 4');
+    expect(fortschritt(s, 0)).toBe('Schritt 1 von 4');
+    // Hinter dem letzten Schritt steht das Ergebnis - kein „Schritt 5 von 4".
+    expect(fortschritt(s, 5)).toBe('Fertig');
     expect(fortschrittAnteil(s, 5)).toBe(1);
     expect(fortschrittAnteil([], 1)).toBe(0);
   });

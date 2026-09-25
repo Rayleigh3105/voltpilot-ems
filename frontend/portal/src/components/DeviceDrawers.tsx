@@ -56,11 +56,14 @@ export function AddDeviceDrawer({
   onClose,
   sites,
   onClaimed,
+  title = 'Gerät hinzufügen',
 }: {
   open: boolean;
   onClose: () => void;
   sites: Site[];
   onClaimed: (device: Device) => void;
+  /** Titel und Knopf; der Aufbau nennt die Box beim Namen („VoltPilot-Box hinzufügen"). */
+  title?: string;
 }) {
   const [externalRef, setExternalRef] = useState('');
   const [siteId, setSiteId] = useState('');
@@ -116,7 +119,7 @@ export function AddDeviceDrawer({
     <Modal
       open={open}
       onClose={close}
-      title="Gerät hinzufügen"
+      title={title}
       icon={
         <IconTile category="battery" size={40}>
           <Icon name="zap" size={20} />
@@ -133,7 +136,7 @@ export function AddDeviceDrawer({
               Abbrechen
             </Button>
             <Button variant="primary" onClick={claim} disabled={busy || !siteId}>
-              {busy ? 'Wird hinzugefügt…' : 'Gerät hinzufügen'}
+              {busy ? 'Wird hinzugefügt…' : title}
             </Button>
           </>
         )

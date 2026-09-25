@@ -868,7 +868,13 @@ function UnifiedPortal() {
         // AUFMERKSAMKEIT brauchen (§3.1) - nicht mehr die aktiven Anwendungen.
         // Der ORT ist derselbe geblieben, also ist das hier genau der
         // Argument-Wechsel, den `anlageNav.ts` vorgesehen hatte.
-        sidebar: anlageSidebar(surface, aufmerksam.anzahl, aufmerksamkeitTitel(aufmerksam)),
+        sidebar: anlageSidebar(
+          surface,
+          aufmerksam.anzahl,
+          aufmerksamkeitTitel(aufmerksam),
+          // Das EINE Tor (`rollen.showTechnicalLayer` = Plattform-Admin).
+          isAdmin,
+        ),
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
         // lassen.

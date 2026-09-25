@@ -17,7 +17,10 @@ import {
   type SiteEarnings,
   type TelemetryPoint,
   type WeatherForecast,
+  type ForecastQuality,
 } from '../api';
+import { mittlereMae } from '../prognose';
+import { showTechnicalLayer } from '../rollen';
 import { eurAmount, fmtNum } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
@@ -775,6 +778,30 @@ const KEINE_ANNAHMEN: ReturnType<typeof planAnnahmen> = [];
  * unsichtbare `h1` (`VerlaufKopf`, Befund B1): ein sichtbarer Kopf ließ die
  * Reiterleiste springen und nahm am Telefon der Tagesuhr 140 px.
  */
+
+/** Über wie viele Tage die Vorhersage-Zeile des Fahrplans mittelt. */
+const VORHERSAGE_TAGE = 7;
+
+/**
+ * Die gemessene mittlere Abweichung der AKTIVEN Modelle über die letzten
+ * {@link VORHERSAGE_TAGE} bewerteten Tage - dieselbe Rechnung wie die
+ * Prognose-Seite (`prognose.mittlereMae`). Ohne Bewertung: null, keine Zeile.
+ */
+function vorhersageZeile(
+  q: ForecastQuality | null,
+): { verbrauchKw: number | null; pvKw: number | null; tage: number; fenster: number } | null {
+  if (!q) return null;
+  const verbrauch = mittlereMae(q.accuracy, q.activeLoadModel, VORHERSAGE_TAGE);
+  const pv = mittlereMae(q.accuracy, q.activePvModel, VORHERSAGE_TAGE);
+  if (!verbrauch && !pv) return null;
+  return {
+    verbrauchKw: verbrauch?.mae ?? null,
+    pvKw: pv?.mae ?? null,
+    tage: Math.max(verbrauch?.tage ?? 0, pv?.tage ?? 0),
+    fenster: VORHERSAGE_TAGE,
+  };
+}
+
 export function FahrplanSection({ site }: { site: Site }) {
   return (
     <>
@@ -812,6 +839,10 @@ function FahrplanInhalt({ site }: { site: Site }) {
   // morgen (`weatherWhyTomorrow`); jede kWh-Zahl kommt aus den Plan-Eingaben.
   // Ohne sie fehlt der Himmels-Satz, sonst ändert sich nichts.
   const [wetter, setWetter] = useState<WeatherForecast | null>(null);
+  // „Anlage – neu gedacht" (E6 = A): die Treffsicherheit der Vorhersagen steht
+  // als EINE Zeile in „Worauf Ihr Plan achtet" statt auf einer eigenen Seite.
+  // FAIL-SOFT: ohne Bewertung fehlt nur diese Zeile.
+  const [vorhersage, setVorhersage] = useState<ForecastQuality | null>(null);
 
   const siteId = site.id;
   const loadLive = useCallback(() => {
@@ -927,6 +958,22 @@ function FahrplanInhalt({ site }: { site: Site }) {
     haptik('tick');
     setTagArt(art);
   };
+
+  useEffect(() => {
+    let active = true;
+    setVorhersage(null);
+    try {
+      api
+        .forecastQuality(siteId, VORHERSAGE_TAGE)
+        .then((q) => active && setVorhersage(q))
+        .catch(() => active && setVorhersage(null));
+    } catch {
+      // Eine api-Attrappe ohne die Methode reißt die Seite nicht mit.
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
 
   const slots = plan?.slots ?? [];
   const slotMinutes = plan?.slotMinutes ?? 15;
@@ -1183,8 +1230,10 @@ function FahrplanInhalt({ site }: { site: Site }) {
         fallback14a: hasWhy && plan?.fallback14a === true,
         lage,
         horizont: horizonNote,
+        vorhersage: vorhersageZeile(vorhersage),
+        prognoseSeite: showTechnicalLayer() ? `#/anlage/${site.id}/prognose` : null,
       }),
-    [plan, slotMinutes, site.plantKind, site.tarifArt, site.tarifParamCtKwh, site.netzladenErlaubt, site.maxFeedInKw, hasWhy, lage, horizonNote],
+    [plan, slotMinutes, site.id, site.plantKind, site.tarifArt, site.tarifParamCtKwh, site.netzladenErlaubt, site.maxFeedInKw, hasWhy, lage, horizonNote, vorhersage],
   );
   const planVon = plan?.generatedAt
     ? new Date(plan.generatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })

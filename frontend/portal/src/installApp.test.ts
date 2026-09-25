@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  APP_GROUP_SUMMARY,
   initInstallApp,
   installSnapshot,
   installState,
@@ -200,10 +199,6 @@ describe('installView: Kundencopy, kein Fachwort', () => {
     expect(v.state).toBe('nicht-verfuegbar');
     expect(v.text).toMatch(/abgebrochen/);
     expect(v.hint).toMatch(/Menü Ihres Browsers/);
-  });
-
-  it('jede Situation hat ihre Zusammenfassung für die zugeklappte Telefon-Karte', () => {
-    for (const v of all) expect(APP_GROUP_SUMMARY[v.state]).toBeTruthy();
   });
 });
 

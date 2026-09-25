@@ -25,6 +25,7 @@ export function AnlageAnlegenDrawerLazy(props: {
   onClose: () => void;
   onChanged: (createdSiteId: string) => void;
   existingSites?: Site[];
+  standortId?: string | null;
 }) {
   const [everOpened, setEverOpened] = useState(props.open);
   const openRef = useRef(props.open);

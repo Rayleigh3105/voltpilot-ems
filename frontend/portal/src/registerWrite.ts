@@ -17,6 +17,7 @@
 //  3. Was den Schreibvorgang verhindern WIRD, steht VOR dem Klick.
 //  4. Ein Wort außerhalb des Vokabulars erzeugt KEINE Behauptung.
 import type { RegisterWriteEvent, RegisterWriteOutcome, RegisterWriteTarget } from './api';
+import { AUFBAU_REITER } from './anlageNav';
 
 /** Die drei Warnklassen des Register-Wissens. */
 export type RegisterKlasse = 'netz_compliance' | 'bekannt' | 'unbekannt';
@@ -710,7 +711,7 @@ export const KEIN_SCHREIBWEG =
  */
 export const ERST_ALS_KOMPONENTE =
   'Dieses Gerät ist noch keine Komponente Ihrer Anlage - deshalb kennt VoltPilot '
-  + 'seinen Schreibweg nicht. Übernehmen Sie es unter „Komponenten", danach lassen '
+  + `seinen Schreibweg nicht. Übernehmen Sie es unter „${AUFBAU_REITER}", danach lassen `
   + 'sich seine Register lesen und schreiben.';
 
 export function geraetRegisterZugang(

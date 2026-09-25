@@ -229,6 +229,7 @@ export function AnlageFlow({
   sites,
   existingSites,
   waitForFirstData,
+  standortId,
   onSiteCreated,
   onDone,
   onSkipAll,
@@ -247,6 +248,12 @@ export function AnlageFlow({
    * false = drawer: the flow ends on a summary card.
    */
   waitForFirstData: boolean;
+  /**
+   * Der Standort, an dem die neue Anlage entsteht (UEMS AP-02 IP-9) - gesetzt,
+   * wenn „+ Hinzufügen › Anlage" im Aufbau eines Standorts beginnt. Ohne ihn
+   * belegt der Server bei genau einem Standort selbst vor.
+   */
+  standortId?: string | null;
   /** Fired the moment the Anlage row exists (host refreshes on close). */
   onSiteCreated?: (site: Site) => void;
   /** The flow is finished or deliberately left - host closes/returns. */
@@ -277,6 +284,7 @@ export function AnlageFlow({
       {step === 1 && (
         <AnlageStep
           locationSites={locationSites}
+          standortId={standortId ?? null}
           onCreated={(s) => {
             setSite(s);
             setCreatedHere(true);
@@ -356,9 +364,11 @@ export function AnlageFlow({
  */
 function AnlageStep({
   locationSites,
+  standortId,
   onCreated,
 }: {
   locationSites: Site[];
+  standortId: string | null;
   onCreated: (site: Site) => void;
 }) {
   const [name, setName] = useState('');
@@ -464,6 +474,7 @@ function AnlageStep({
         tarifParamCtKwh: tarifParamValue,
         netzladenErlaubt: netzladen,
         maxFeedInKw: maxFeedInValue,
+        ...(standortId ? { standortId } : {}),
       });
       if (supplyPatch) {
         // Best-effort: the site exists; a sheet write failure must not block

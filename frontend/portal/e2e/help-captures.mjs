@@ -10,7 +10,7 @@ export const captures = [
   { id: 'orientierung', title: 'Navigation auf dem Rechner', hash: plant(), viewportOnly: true, points: [
     point('.vp-anlagenav', 'Die Bereiche führen zu den täglichen Aufgaben dieser Anlage.'),
     point('.vp-topbar-anlage', 'Der Anlagenname oben ist zugleich der Anlagenwechsler.'),
-    point('.vp-avatar-btn', 'Das Konto-Menü enthält Hilfe & Kontakt sowie Abmelden.'),
+    point('.vp-avatar-btn', 'Das Konto-Menü enthält Hilfe & Kontakt, die App-Einrichtung und Abmelden.'),
   ] },
   { id: 'orientierung-mobil', title: 'Navigation auf dem Telefon', hash: plant(), mobile: true, viewportOnly: true, menu: true, points: [
     point('.vp-topbar-anlage', 'Hier erkennen und wechseln Sie die geöffnete Anlage.'),
@@ -65,10 +65,10 @@ export const captures = [
     point('text=erwartete Spitze heute', 'Diese Leistung ist vorhergesagt, nicht bereits gemessen.'),
     point('main canvas', 'Der Verlauf macht die erwarteten Änderungen über den Tag sichtbar.'),
   ] },
-  { id: 'prognose', title: 'Prognosequalität und aktive Modelle', hash: plant('prognose'), root: 'main', points: [
-    point('h2:has-text("Aktive Modelle")', 'Diese Modelle liefern die Vorhersagen für die laufende Planung.'),
-    point('text=Mittlere Abweichung je Viertelstunde', 'Die ausgewiesene Abweichung hat eine eigene Einheit und ist keine Genauigkeit in Prozent.'),
-    point('text=Vergleichsmodell (Vortageswert)', 'Der Name nennt das Modell, dessen Vorhersage aktuell verwendet wird.'),
+  { id: 'prognose', title: 'Wie gut die Vorhersage zuletzt traf', hash: plant('fahrplan'), root: '[aria-label="Worauf Ihr Plan achtet"]', points: [
+    point('h3:has-text("Worauf Ihr Plan achtet")', 'Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage.'),
+    point('text=Vorhersage, letzte 7 Tage', 'Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent.'),
+    point('text=Prognosen:', 'Vorhersagen sind Annahmen; der Fahrplan wird laufend neu gerechnet.'),
   ] },
   { id: 'portfolio', title: 'Anlagen im Portfolio', hash: '#/portfolio', root: 'main', points: [
     point('.vp-ku-status', 'Die Statuszeile sagt, ob alles läuft, und nennt eine Anlage, die Aufmerksamkeit braucht.'),
@@ -105,10 +105,11 @@ export const captures = [
     point('h2:has-text("Ladevorgänge")', 'Jeder Anschluss nennt seinen aktuellen Zustand und den Grund.'),
     point('h2:has-text("Ladesäulen")', 'Über die jeweilige Geräteseite gelangen Sie zu weiteren Details.'),
   ] },
-  { id: 'modell', title: 'Elektrische Struktur und Geräte', hash: plant('modell'), root: 'main', maxHeight: 1400, points: [
-    point('text=Elektrische Struktur', 'Das Anlagenbild zeigt die Zuordnung der Geräte, keine gemessenen Energieflüsse.'),
-    point('text=Speicher Scheune', 'Die Gerätekarte öffnet die zugehörige Detailansicht.'),
-    point('text=Datenverbindung', 'Die Box verbindet die Geräte dieses Standorts mit VoltPilot.'),
+  { id: 'modell', title: 'Aufbau: Standort, Anlagen, Boxen und Geräte', hash: plant('modell'), root: 'main', maxHeight: 1400, points: [
+    point('.vp-auf-wurzel h2', 'Der Standort steht oben; darunter folgen seine Anlagen und Boxen.'),
+    point('.vp-auf-treffer', 'Die VoltPilot-Box verbindet die Geräte darunter mit VoltPilot.'),
+    point('[data-aufbau-geraet]', 'Ein Tippen auf ein Gerät öffnet den Kurzblick mit allen Werten.'),
+    point('.vp-auf-wurzel-aktion button', 'Hier legen Sie ein Gerät, eine Box oder eine Anlage an.'),
   ] },
   { id: 'box', title: 'Verbindung und Zustand der Box', hash: plant('box/VP-DEMO-0001'), root: 'main', points: [
     point('main h1', 'Prüfen Sie Namen und Geräte-ID der Box.'),
@@ -121,8 +122,8 @@ export const captures = [
     point('[data-testid="baustein-aktivitaet"] h2', 'Gesendete Befehle und ihre Rückmeldung helfen bei der Prüfung der Wirkung.'),
   ] },
   { id: 'einstellungen', title: 'Einstellungen der Anlage', hash: plant('technik'), root: 'main', points: [
-    point('input[type="search"]', 'Die Suche findet Einstellungen auch über alternative Begriffe.'),
-    point('text=Strompreis & Vergütung', 'Bezugspreis und Einspeisevergütung haben getrennte Angaben.'),
-    point('text=Mein Speicher', 'Die Speicherangaben beschreiben Kapazität, Leistung und den Umgang mit dem Speicher.'),
+    point('#technik-anlage h3', 'Jede Zeile zeigt ihren aktuellen Wert; ein Tippen öffnet das Bearbeiten.'),
+    point('[role="switch"]', 'Einfache Schalter wirken sofort und lassen sich rückgängig machen.'),
+    point('#technik-speicher h3', 'Beim Speicher stehen Kapazität und der Umgang mit dem Speicher.'),
   ] },
 ];

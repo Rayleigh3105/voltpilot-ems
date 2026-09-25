@@ -43,7 +43,7 @@
       {
         "x": 96.46,
         "y": 3.25,
-        "text": "Das Konto-Menü enthält Hilfe & Kontakt sowie Abmelden."
+        "text": "Das Konto-Menü enthält Hilfe & Kontakt, die App-Einrichtung und Abmelden."
       }
     ]
   },
@@ -274,26 +274,26 @@
     ]
   },
   "prognose": {
-    "title": "Prognosequalität und aktive Modelle",
+    "title": "Wie gut die Vorhersage zuletzt traf",
     "file": "prognose.png",
-    "width": 1192,
-    "height": 1200,
-    "alt": "Prognosequalität und aktive Modelle. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "width": 552,
+    "height": 646,
+    "alt": "Wie gut die Vorhersage zuletzt traf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 6.46,
-        "y": 51.17,
-        "text": "Diese Modelle liefern die Vorhersagen für die laufende Planung."
+        "x": 8.15,
+        "y": 5.68,
+        "text": "Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage."
       },
       {
-        "x": 6.46,
-        "y": 32.71,
-        "text": "Die ausgewiesene Abweichung hat eine eigene Einheit und ist keine Genauigkeit in Prozent."
+        "x": 13.95,
+        "y": 72.54,
+        "text": "Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent."
       },
       {
-        "x": 76.36,
-        "y": 54.75,
-        "text": "Der Name nennt das Modell, dessen Vorhersage aktuell verwendet wird."
+        "x": 13.95,
+        "y": 82.6,
+        "text": "Vorhersagen sind Annahmen; der Fahrplan wird laufend neu gerechnet."
       }
     ]
   },
@@ -466,26 +466,31 @@
     ]
   },
   "modell": {
-    "title": "Elektrische Struktur und Geräte",
+    "title": "Aufbau: Standort, Anlagen, Boxen und Geräte",
     "file": "modell.png",
     "width": 1192,
-    "height": 1400,
-    "alt": "Elektrische Struktur und Geräte. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 932,
+    "alt": "Aufbau: Standort, Anlagen, Boxen und Geräte. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 20.59,
-        "y": 30.45,
-        "text": "Das Anlagenbild zeigt die Zuordnung der Geräte, keine gemessenen Energieflüsse."
+        "x": 10.15,
+        "y": 38.8,
+        "text": "Der Standort steht oben; darunter folgen seine Anlagen und Boxen."
       },
       {
-        "x": 10.74,
-        "y": 43.19,
-        "text": "Die Gerätekarte öffnet die zugehörige Detailansicht."
+        "x": 9.82,
+        "y": 57.55,
+        "text": "Die VoltPilot-Box verbindet die Geräte darunter mit VoltPilot."
       },
       {
-        "x": 14.01,
-        "y": 85.19,
-        "text": "Die Box verbindet die Geräte dieses Standorts mit VoltPilot."
+        "x": 10.91,
+        "y": 64.69,
+        "text": "Ein Tippen auf ein Gerät öffnet den Kurzblick mit allen Werten."
+      },
+      {
+        "x": 85.78,
+        "y": 38.81,
+        "text": "Hier legen Sie ein Gerät, eine Box oder eine Anlage an."
       }
     ]
   },
@@ -541,23 +546,23 @@
     "title": "Einstellungen der Anlage",
     "file": "einstellungen.png",
     "width": 1192,
-    "height": 1200,
+    "height": 1115,
     "alt": "Einstellungen der Anlage. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 27.35,
-        "y": 27.44,
-        "text": "Die Suche findet Einstellungen auch über alternative Begriffe."
+        "x": 4.7,
+        "y": 28.43,
+        "text": "Jede Zeile zeigt ihren aktuellen Wert; ein Tippen öffnet das Bearbeiten."
       },
       {
-        "x": 4.36,
-        "y": 30.45,
-        "text": "Bezugspreis und Einspeisevergütung haben getrennte Angaben."
+        "x": 93.37,
+        "y": 39.79,
+        "text": "Einfache Schalter wirken sofort und lassen sich rückgängig machen."
       },
       {
-        "x": 4.36,
-        "y": 38.95,
-        "text": "Die Speicherangaben beschreiben Kapazität, Leistung und den Umgang mit dem Speicher."
+        "x": 4.7,
+        "y": 65.81,
+        "text": "Beim Speicher stehen Kapazität und der Umgang mit dem Speicher."
       }
     ]
   },

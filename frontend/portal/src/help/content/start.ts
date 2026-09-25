@@ -65,7 +65,7 @@ export const startArticles: HelpArticle[] = [
         "Am Rechner stehen die Bereiche in der Seitenleiste, innerhalb einer Anlage am Telefon unten. Über den Anlagennamen wechseln Sie den Standort. Je nach Ausstattung erscheinen weitere Reiter oder Ladevorgänge anstelle eines Speicher-Fahrplans.",
       ], figure: 'orientierung' },
       { id: 'mobil', title: 'Hilfe auf dem Telefon', paragraphs: [
-        "Hilfe & Kontakt und Abmelden stehen im Konto-Menü hinter dem Avatar. Ein Hilfelink öffnet die passende Erklärung; beim Schließen bleibt Ihre Eingabe erhalten. Bei vergessenem Passwort hilft Ihr VoltPilot-Ansprechpartner.",
+        "Hilfe & Kontakt, „Als App auf dem Handy“ und Abmelden stehen im Konto-Menü hinter dem Avatar. Ein Hilfelink öffnet die passende Erklärung; beim Schließen bleibt Ihre Eingabe erhalten. Bei vergessenem Passwort hilft Ihr VoltPilot-Ansprechpartner.",
       ], figure: 'orientierung-mobil' },
     ],
     related: ['anlage-anlegen', 'portfolio', 'kontakt'],

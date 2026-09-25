@@ -153,7 +153,14 @@ const PLAN_KONTEXT_TABS: { key: string; label: string; sub: AnlagenSub; view: De
 ];
 
 /**
- * Die REITER des Bereichs „Anlage": Komponenten · Einstellungen. Beide sind
+ * Der Name des Reiters, der den Aufbau der Anlage zeigt. Texte, die auf ihn
+ * verweisen („Sie finden es unter „Aufbau""), nehmen diese Konstante - ein
+ * umbenannter Reiter hinterlässt sonst Wegweiser ins Nichts.
+ */
+export const AUFBAU_REITER = 'Aufbau';
+
+/**
+ * Die REITER des Bereichs „Anlage": Aufbau · Einstellungen. Beide sind
  * STRUKTURELL da (sie folgen keinem Modus).
  *
  * ⚠ **„Befehle an Geräte" ist als SEITEN-Reiter ERSATZLOS entfallen**
@@ -164,11 +171,11 @@ const PLAN_KONTEXT_TABS: { key: string; label: string; sub: AnlagenSub; view: De
  * `geraet`/`box` ihren Wirt, den Bereich „Anlage", hervor.
  */
 const ANLAGE_TABS_BASIS: BereichTab[] = [
-  // ⚠ „Komponenten", nicht „Modell": seit Steuerung Stufe 8 heisst der Reiter
-  // wie das, was er zeigt (Konzept `vp-steuerung-konzept-b3` §3.9 — „Komponenten
-  // & Regeln" → „Komponenten"; die Regeln wohnen in der Steuerung, EIN Ort je
-  // Sache). Der SCHLÜSSEL `modell` und die Route bleiben — jedes Lesezeichen gilt.
-  { key: 'modell', label: 'Komponenten', sub: 'modell' },
+  // „Aufbau" (Konzept „Anlage – neu gedacht", E1 = A vom 25.09.2026): der
+  // Reiter zeigt den Baum Standort → Anlage → Box → Gerät, nicht nur
+  // Komponenten. Der SCHLÜSSEL `modell` und die Route bleiben — jedes
+  // Lesezeichen gilt.
+  { key: 'modell', label: AUFBAU_REITER, sub: 'modell' },
   { key: 'technik', label: 'Einstellungen', sub: 'technik' },
 ];
 
@@ -225,6 +232,13 @@ export function anlageBereiche(
   surface: AnlageSurface | null | undefined,
   badgeAnzahl?: number | null,
   badgeTitel?: string | null,
+  /**
+   * Der Reiter „Prognosen" (Modelle, Abweichungen, Kandidaten) ist seit
+   * „Anlage – neu gedacht" (E6 = A) ein Werkzeug für VoltPilot: der Kunde sieht
+   * die Treffsicherheit als Zeile im Fahrplan. Der Aufrufer reicht das EINE Tor
+   * (`showTechnicalLayer()`) herein - dieses Modul bleibt rein.
+   */
+  mitPrognosen = false,
 ): AnlageBereich[] {
   const raw = badgeAnzahl === undefined ? surface?.modes.length ?? null : badgeAnzahl;
   const badge =
@@ -271,7 +285,7 @@ export function anlageBereiche(
     bereich('steuerung', 'Steuerung', 'zap', 'steuerung', [], badge,
       badge == null ? null : (badgeTitel ?? null)),
   );
-  const anlageTabs = views.includes('prognosequalitaet')
+  const anlageTabs = mitPrognosen && views.includes('prognosequalitaet')
     ? [...ANLAGE_TABS_BASIS, { key: 'prognose', label: 'Prognosen', sub: 'prognose' as AnlagenSub }]
     : ANLAGE_TABS_BASIS;
   out.push(bereich('anlage', 'Anlage', 'layers', 'modell', anlageTabs));
@@ -289,9 +303,10 @@ export function anlageSidebar(
   surface: AnlageSurface | null | undefined,
   badgeAnzahl?: number | null,
   badgeTitel?: string | null,
+  mitPrognosen = false,
 ): AnlageSidebar {
   return {
-    bereiche: anlageBereiche(surface, badgeAnzahl, badgeTitel),
+    bereiche: anlageBereiche(surface, badgeAnzahl, badgeTitel, mitPrognosen),
     foot: [HELP_ITEM],
   };
 }

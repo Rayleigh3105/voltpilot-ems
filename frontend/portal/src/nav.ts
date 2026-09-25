@@ -749,37 +749,6 @@ function befehleParam(hash: string, name: string): string | null {
 }
 
 /**
- * Welche ANSICHT der Anlagen-Zentrale gemeint ist (Anlagen-Zentrale Stufe 2,
- * Konzept `data/vp-anlagen-zentrale-konzept-h6` §13.2): die Liste „Ihre
- * Geräte" oder das Struktur-Schaltbild.
- */
-export type ZentraleAnsicht = 'geraete' | 'schaltbild';
-
-/**
- * Die Adresse einer ANSICHT der Zentrale (`…/modell?ansicht=schaltbild`).
- *
- * Das Muster ist das von {@link befehleHash} - ein HASH-PARAMETER, keine
- * eigene Unterseite: `parseRoute` schneidet den Query-Teil ohnehin ab, die
- * Route bleibt also die Zentrale, und ein Lesezeichen öffnet exakt dieselbe
- * Ansicht wieder. Seit Geräte-Erlebnis Slice 1 trägt das ANLAGENBILD als
- * Vorgabe keinen Parameter; die Liste ist die explizite Zweitsicht.
- */
-export function zentraleAnsichtHash(siteId: string, ansicht: ZentraleAnsicht): string {
-  const base = `#/anlage/${siteId}/modell`;
-  return ansicht === 'geraete' ? `${base}?ansicht=geraete` : base;
-}
-
-/**
- * Die Ansicht aus einem `?ansicht=`-Hash. Ein Komponenten-Deep-Link öffnet
- * weiterhin die Liste, weil dort seine Pflegezeile wohnt; alles andere fällt
- * auf den neuen Standardeinstieg Anlagenbild zurück.
- */
-export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
-  if (befehleParam(hash, 'komponente')) return 'geraete';
-  return befehleParam(hash, 'ansicht') === 'geraete' ? 'geraete' : 'schaltbild';
-}
-
-/**
  * Der Weg ZURÜCK auf EINE Komponente (Anlagen-Zentrale Stufe 3, PR 3c):
  * `…/modell?komponente=<entityId>`.
  *
@@ -789,9 +758,9 @@ export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
  * Kartenkopf mit „Geräteseite ›" weiter; ein zweiter Weg direkt auf die
  * Geräteseite würde die Zeile überspringen, an der die Handlungen hängen.
  *
- * Wie {@link zentraleAnsichtHash} ein HASH-PARAMETER, keine eigene Unterseite -
- * die Route bleibt die Zentrale, und ein Lesezeichen öffnet exakt dieselbe
- * Komponente wieder.
+ * Ein HASH-PARAMETER, keine eigene Unterseite (das Muster von
+ * {@link befehleHash}) - die Route bleibt der Aufbau, und ein Lesezeichen
+ * öffnet exakt dieselbe Komponente wieder.
  */
 export function komponenteHash(siteId: string, entityId: string): string {
   return `#/anlage/${siteId}/modell?komponente=${encodeURIComponent(entityId)}`;

@@ -123,13 +123,13 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'prognosen', category: 'alltag', title: 'Wetter und Prognosen verstehen',
     summary: 'Vorhersagen für PV und Verbrauch sowie deren spätere Bewertung einordnen.',
-    keywords: ['Wetter', 'Forecast', 'Vorhersage', 'Prognosequalität', 'Genauigkeit', 'Modell', 'Schatten'],
+    keywords: ['Wetter', 'Forecast', 'Vorhersage', 'Prognosequalität', 'Genauigkeit', 'Abweichung', 'Fahrplan'],
     sections: [
       { id: 'wetter', title: 'Wetter beschreibt die erwarteten Bedingungen', paragraphs: [
         "Die Wetteransicht schätzt Bedingungen am Anlagenstandort; sie misst keine Solarproduktion. Bei unplausiblen Ortsangaben prüfen Sie den Standort. Lokales Wetter kann von der Vorhersage abweichen.",
       ], figure: 'wetter' },
       { id: 'modelle', title: 'Prognose und Prognosequalität', paragraphs: [
-        "Das aktive Modell liefert Prognosen, ein Kandidat im Schattenbetrieb wird nur bewertet. Prognosequalität vergleicht gespeicherte Vorhersagen mit Messungen. Wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich.",
+        "Im Fahrplan steht unter „Worauf Ihr Plan achtet“, wie weit die Vorhersage zuletzt danebenlag: die mittlere Abweichung je Viertelstunde für Verbrauch und PV. Verglichen werden gespeicherte Vorhersagen mit Messungen; wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich. Welches Vorhersagemodell plant, betreut VoltPilot.",
       ], figure: 'prognose' },
       { id: 'bewertung', title: 'Abweichungen mit ihrer Einheit lesen', paragraphs: [
         "Lesen Sie Fehlermetrik und Einheit: Eine Abweichung in kW ist keine Prozentgenauigkeit. Vergleichen Sie dieselbe Größe und denselben Zeitraum. Ein historisch besseres Modell garantiert keinen besseren einzelnen Tag.",

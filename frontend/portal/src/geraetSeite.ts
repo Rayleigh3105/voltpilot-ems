@@ -53,6 +53,7 @@ import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten'
 import { deviceState } from './komponenten';
 import { isPrivateHost } from './selbstbau';
 import { chargePointIdOf, ioVerbraucherIdOf } from './geraetAdresse';
+import { AUFBAU_REITER } from './anlageNav';
 
 /** Welche ART von Gerät die Seite zeigt. */
 /**
@@ -878,7 +879,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // ------------------------------------------------------------------
   const komponentenLeer =
     komponenten.length === 0
-      ? 'Dieses Gerät misst noch nichts — übernehmen Sie es unter „Komponenten".'
+      ? `Dieses Gerät misst noch nichts — übernehmen Sie es unter „${AUFBAU_REITER}".`
       : null;
 
   // ------------------------------------------------------------------

@@ -312,11 +312,21 @@ export function schritte(typ: TypId | null): string[] {
     return ['Was anbinden', 'Erreichbar', 'Zuordnung', 'Ladestand', 'Prüfen', 'Fertig'];
   }
   if (typ === 'ladesaeule') return ['Was anbinden', 'Anbinden'];
-  return ['Was anbinden', 'Gerät wählen', 'Verbinden', 'Testen', 'Fertig'];
+  // E4: Verbinden und Testen sind EIN Schritt - der Test läuft darin von
+  // selbst. Der Abschluss danach ist kein Schritt mehr, sondern das Ergebnis.
+  return ['Was anbinden', 'Gerät wählen', 'Verbinden', 'Name'];
 }
 
-/** „Schritt 2 von 5" - die Fortschritts-Zeile der Vollbild-Fassung am Telefon. */
+/**
+ * Wie lange die Eingabe ruhen muss, bevor der Verbindungstest von selbst läuft
+ * (Schritt „Verbinden"). Wer das Feld verlässt, wartet nicht.
+ */
+export const AUTO_TEST_MS = 800;
+
+/** „Schritt 2 von 4" - die Fortschritts-Zeile der Vollbild-Fassung am Telefon. */
 export function fortschritt(schrittListe: string[], aktiv: number): string {
+  // Hinter dem letzten Schritt steht das Ergebnis, kein weiterer Schritt.
+  if (schrittListe.length > 0 && aktiv > schrittListe.length) return 'Fertig';
   const n = Math.min(Math.max(aktiv, 1), schrittListe.length);
   return `Schritt ${n} von ${schrittListe.length}`;
 }

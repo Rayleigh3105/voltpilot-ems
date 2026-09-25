@@ -1,0 +1,46 @@
+/* ---------------------------------------------------------------------------
+   Als App auf dem Handy (PWA-Hülle)
+
+   Seit E5 ein Blatt im Konto-Menü (vorher eine Gruppe der Einstellungen):
+   ein Satz, gegebenenfalls die Anleitung, gegebenenfalls der Knopf. Keine
+   eigene Farbwelt - die
+   Einrichtung ist eine Möglichkeit, kein Zustand, der Aufmerksamkeit fordert.
+   `min-width: 0` überall, damit ein langer Satz die Karte am Telefon nie
+   auseinanderzieht.
+--------------------------------------------------------------------------- */
+.vp-installapp {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-installapp-text {
+  margin: 0;
+  min-width: 0;
+  line-height: 1.55;
+}
+
+.vp-installapp-steps {
+  margin: 0;
+  padding-left: 1.25em;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+.vp-installapp-hint {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* Der Knopf ist die einzige Handlung der Gruppe und nimmt am Telefon die volle
+   Breite - das entscheidet aber `fullWidth` in `InstallAppPanel`, NICHT eine
+   Regel hier: der Haus-`Button` setzt seine Breite inline, und ein Inline-Stil
+   schlägt jede Medienabfrage (im Browser gemessen: 175 px statt 343 px). */

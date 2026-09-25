@@ -47,6 +47,7 @@ import {
 } from '../komponentenAssistent';
 import {
   ABSPRUNG_LABEL,
+  AUTO_TEST_MS,
   DIALOG_TITEL,
   WEITERES_LABEL,
   abschlussTitel,
@@ -98,10 +99,14 @@ const UDB_TYP = 'user-defined-battery';
  * Der NEUE ANLEGE-FLUSS (Anlegen-Rework Stufe 2, Konzept
  * `data/vp-anlegen-rework/konzept.md`).
  *
- * Fünf Schritte im zentrierten Dialog (Rechner) bzw. als Vollbild-Schrittfolge
+ * Vier Schritte im zentrierten Dialog (Rechner) bzw. als Vollbild-Schrittfolge
  * (Telefon): **Was anbinden** (Typ-Karten) → **Gerät wählen** (VpPicker-Suche)
- * → **Verbinden** (Felder je Anbindung, Experten-Angaben unter „Erweitert") →
- * **Testen** (ehrlicher Befund + Hebel + „Trotzdem fortfahren") → **Fertig**.
+ * → **Verbinden** (Felder je Anbindung, Experten-Angaben unter „Erweitert" -
+ * und der Verbindungstest läuft darunter VON SELBST, sobald alle Pflichtfelder
+ * stehen: ehrlicher Befund + Hebel + „Trotzdem fortfahren") → **Name** (was
+ * gleich entsteht) - danach der Abschluss (Konzept „Anlage – neu gedacht", E4).
+ * Vorher waren Verbinden und Testen zwei Schritte mit einem „Weiter" dazwischen,
+ * das nur den Test auslöste.
  *
  * <b>⚠ Die Anlege-SEMANTIK ist unverändert.</b> Dieselben Aufrufe mit denselben
  * Rümpfen (`testComponentConnection` → `matchComponent` → `createComponent`),
@@ -377,18 +382,34 @@ export function AnlegenFlow({
   }, [hatAenderungen, inlineBearbeitung, speichern]);
 
   /**
-   * Der Test läuft beim BETRETEN des Schritts „Testen" von selbst an - der
-   * Schritt heißt so, weil er testet. Ein Knopf davor wäre eine zweite Hürde
-   * vor derselben Handlung; „Erneut testen" steht danebe für den zweiten Anlauf.
+   * Der Test läuft im Schritt „Verbinden" VON SELBST, sobald alle Pflichtfelder
+   * stehen (E4) - ohne einen Knopf davor, der nur eine zweite Hürde vor
+   * derselben Handlung wäre. Während getippt wird, wartet er, bis die Eingabe
+   * ruht (`AUTO_TEST_MS`); wer das Feld verlässt, stößt ihn sofort an. So
+   * prüft nicht jeder Tastendruck die Box. „Erneut testen" bleibt für den
+   * zweiten Anlauf.
    */
   const laeuft = useRef(false);
+  /** Jeder Lauf trägt eine Nummer; ein Ergebnis zu einer ÄLTEREN Eingabe verfällt. */
+  const testLauf = useRef(0);
+  const letzteEingabe = useRef(0);
+  const [anstoss, setAnstoss] = useState(0);
   useEffect(() => {
-    if (schritt !== 4 || typ === 'eigenbau' || typ === 'batterie' || typ === 'ladesaeule')
+    if (schritt !== 3 || typ === 'eigenbau' || typ === 'batterie' || typ === 'ladesaeule')
       return;
     if (!template || !testNoetig || testZustand !== 'ungeprueft' || laeuft.current) return;
-    void testen();
+    if (fehlend.length > 0) return;
+    const seitEingabe = Date.now() - letzteEingabe.current;
+    const t = window.setTimeout(() => void testen(), Math.max(0, AUTO_TEST_MS - seitEingabe));
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schritt, template, testNoetig, testZustand, typ]);
+  }, [schritt, template, testNoetig, testZustand, typ, fehlend.length, verbindung, anstoss]);
+
+  /** Ein Feld verlassen = fertig getippt: der Test darf sofort laufen. */
+  function feldVerlassen() {
+    letzteEingabe.current = 0;
+    setAnstoss((n) => n + 1);
+  }
 
   function waehleTyp(id: TypId) {
     setTyp(id);
@@ -433,6 +454,9 @@ export function AnlegenFlow({
       else delete out[socSchaetzung.SOC_VOLTAGE_KEY];
       return out;
     });
+    letzteEingabe.current = Date.now();
+    testLauf.current += 1;
+    laeuft.current = false;
     setTestZustand('ungeprueft');
     setTestText(null);
     setOhneKanal(null);
@@ -446,6 +470,10 @@ export function AnlegenFlow({
     );
     setVerbindung((v) => ({ ...v, [field.key]: normalized }));
     // Jede Änderung entwertet den Beleg - genau das ist der Sinn der Pflicht.
+    // Auch ein Lauf, der gerade noch unterwegs ist, gilt der ALTEN Eingabe.
+    letzteEingabe.current = Date.now();
+    testLauf.current += 1;
+    laeuft.current = false;
     setTestZustand('ungeprueft');
     setTestText(null);
     // ... und damit auch die Ausnahme: sie galt GENAU dieser Verbindung.
@@ -493,6 +521,7 @@ export function AnlegenFlow({
 
   async function testen() {
     if (!template) return;
+    const lauf = ++testLauf.current;
     laeuft.current = true;
     setTestZustand('laeuft');
     setTestText(null);
@@ -507,12 +536,14 @@ export function AnlegenFlow({
         connection: verbindungFuerSpeichern(template, verbindung),
         entityId: edit?.id,
       });
+      if (lauf !== testLauf.current) return;
       const ergebnis = testErgebnis(antwort);
       setTestText(ergebnis);
       setTestZustand(ergebnis.zustand);
       if (ergebnis.override?.channel === 'soc_pct') setSocAngeboten(true);
       if (ergebnis.zustand === 'bestanden') void frageUebernahme();
     } catch (e) {
+      if (lauf !== testLauf.current) return;
       setTestZustand('fehlgeschlagen');
       setTestText({
         zustand: 'fehlgeschlagen',
@@ -520,7 +551,7 @@ export function AnlegenFlow({
         messwerte: [],
       });
     } finally {
-      laeuft.current = false;
+      if (lauf === testLauf.current) laeuft.current = false;
     }
   }
 
@@ -731,12 +762,16 @@ export function AnlegenFlow({
       );
     }
     if (schritt === 3) {
+      // „Weiter" erst mit Beleg: bestandener Test oder die abgenickte Ausnahme.
       return (
         <>
           <Button variant="ghost" onClick={zurueck}>
             Zurück
           </Button>
-          <Button onClick={() => setSchritt(4)} disabled={fehlend.length > 0}>
+          <Button
+            onClick={() => setSchritt(4)}
+            disabled={fehlend.length > 0 || (testNoetig && testZustand !== 'bestanden' && !ohneKanal)}
+          >
             Weiter
           </Button>
         </>
@@ -1311,7 +1346,7 @@ export function AnlegenFlow({
           <h3 className="vp-assist-h">Verbindung zu {template.modelLabel}</h3>
           <p className="vp-assist-sub">{template.communicationLabel}</p>
           {gruppen.pflicht.map((f) => (
-            <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} />
+            <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} onBlur={feldVerlassen} />
           ))}
           {gruppen.erweitert.length > 0 && (
             <details
@@ -1324,149 +1359,151 @@ export function AnlegenFlow({
                 Vorgaben, die fast immer passen - ändern Sie sie nur, wenn Ihr Gerät es verlangt.
               </p>
               {gruppen.erweitert.map((f) => (
-                <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} />
+                <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} onBlur={feldVerlassen} />
               ))}
             </details>
           )}
           {fehlend.length > 0 && (
             <p className="vp-assist-help">Es fehlt noch: {fehlend.map((f) => f.label).join(', ')}</p>
           )}
-        </section>
-      )}
-
-      {/* 4 · Testen - der Befund, die Hebel, der Ausweg, und was gleich entsteht. */}
-      {schritt === 4 && template && (
-        <section>
-          <h3 className="vp-assist-h">{edit ? 'Änderungen prüfen' : 'Verbindung testen'}</h3>
-          <div className="vp-assist-test">
-            {!testNoetig && (
-              <p className="vp-assist-ok" role="status">
-                Verbindung und Vorlage sind unverändert — kein neuer Verbindungstest nötig.
-              </p>
-            )}
-            {testNoetig && testZustand === 'laeuft' && <p role="status">Prüfe …</p>}
-            {testText && (
-              <div
-                className={testText.zustand === 'bestanden' ? 'vp-assist-ok' : 'vp-assist-error'}
-                role="status"
-              >
-                <p>{testText.text}</p>
-                {/* Die VERLETZTE REGEL im Klartext - direkt über den Werten,
-                    die wirklich ankamen. */}
-                {testText.regelText && <p className="vp-assist-regel">{testText.regelText}</p>}
-                {testText.messwerte.length > 0 && (
-                  <ul className="vp-assist-readings">
-                    {testText.messwerte.map((m) => (
-                      <li key={m.label}>
-                        <span>{m.label}</span>
-                        <strong>{m.wert}</strong>
+          {/* Der Test - von selbst, sobald alles Nötige dasteht (E4). */}
+          {fehlend.length === 0 && (
+            <div className="vp-assist-test">
+              {!testNoetig && (
+                <p className="vp-assist-ok" role="status">
+                  Verbindung und Vorlage sind unverändert — kein neuer Verbindungstest nötig.
+                </p>
+              )}
+              {testNoetig && testZustand === 'laeuft' && <p role="status">Verbindung wird geprüft …</p>}
+              {testText && (
+                <div
+                  className={testText.zustand === 'bestanden' ? 'vp-assist-ok' : 'vp-assist-error'}
+                  role="status"
+                >
+                  <p>{testText.text}</p>
+                  {/* Die VERLETZTE REGEL im Klartext - direkt über den Werten,
+                      die wirklich ankamen. */}
+                  {testText.regelText && <p className="vp-assist-regel">{testText.regelText}</p>}
+                  {testText.messwerte.length > 0 && (
+                    <ul className="vp-assist-readings">
+                      {testText.messwerte.map((m) => (
+                        <li key={m.label}>
+                          <span>{m.label}</span>
+                          <strong>{m.wert}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {testNoetig && testZustand !== 'laeuft' && (
+                <Button variant="outline" className="vp-anlegen-nochmal" onClick={testen}>
+                  Erneut testen
+                </Button>
+              )}
+              {/* Die HEBEL: konkrete Wege statt eines Fließtexts. Sie erscheinen
+                  auch neben einem BESTANDENEN Test - der Faktor-10-Fall verletzt
+                  keine Plausibilitätsregel und käme sonst nie zur Sprache. */}
+              {hebelListe.length > 0 && (
+                <div className="vp-assist-hebel" data-testid="test-hebel">
+                  <p className="vp-assist-hebel-intro">{HEBEL_INTRO}</p>
+                  <ul>
+                    {hebelListe.map((h) => (
+                      <li key={h.id}>
+                        <div>
+                          <strong>{h.titel}</strong>
+                          <span>{h.satz}</span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          data-testid={`hebel-${h.id}`}
+                          onClick={() => hebelKlick(h)}
+                        >
+                          {h.aktion}
+                        </Button>
                       </li>
                     ))}
                   </ul>
-                )}
-              </div>
-            )}
-            {testNoetig && testZustand !== 'laeuft' && (
-              <Button variant="outline" className="vp-anlegen-nochmal" onClick={testen}>
-                Erneut testen
-              </Button>
-            )}
-            {/* Die HEBEL: konkrete Wege statt eines Fließtexts. Sie erscheinen
-                auch neben einem BESTANDENEN Test - der Faktor-10-Fall verletzt
-                keine Plausibilitätsregel und käme sonst nie zur Sprache. */}
-            {hebelListe.length > 0 && (
-              <div className="vp-assist-hebel" data-testid="test-hebel">
-                <p className="vp-assist-hebel-intro">{HEBEL_INTRO}</p>
-                <ul>
-                  {hebelListe.map((h) => (
-                    <li key={h.id}>
-                      <div>
-                        <strong>{h.titel}</strong>
-                        <span>{h.satz}</span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        data-testid={`hebel-${h.id}`}
-                        onClick={() => hebelKlick(h)}
-                      >
-                        {h.aktion}
-                      </Button>
-                    </li>
+                  <p className="vp-assist-hebel-note">{HEBEL_HINWEIS}</p>
+                </div>
+              )}
+              {/* Der Ladestand aus der Batteriespannung - NUR im selben Fall, in
+                  dem es überhaupt einen Ausweg gibt („das BMS meldet nichts").
+                  Eine Anlage mit funktionierendem BMS sieht die Felder nie. */}
+              {socAngeboten && (
+                <div className="vp-assist-socvolt" data-testid="soc-schaetzung">
+                  <strong>{socSchaetzung.SOC_VOLTAGE_TITEL}</strong>
+                  <p className="vp-assist-help">{socSchaetzung.SOC_VOLTAGE_INTRO}</p>
+                  {socSchaetzung.SOC_VOLTAGE_FELDER.map((f) => (
+                    <div className="vp-assist-field" key={f.id}>
+                      <label htmlFor={f.id}>{f.label}</label>
+                      <Input
+                        id={f.id}
+                        inputMode="decimal"
+                        value={socVolt[f.key]}
+                        placeholder={f.platzhalter}
+                        onChange={(e) => setzeSocVolt({ ...socVolt, [f.key]: e.target.value })}
+                      />
+                      <p className="vp-assist-help">{f.hilfe}</p>
+                    </div>
                   ))}
-                </ul>
-                <p className="vp-assist-hebel-note">{HEBEL_HINWEIS}</p>
-              </div>
-            )}
-            {/* Der Ladestand aus der Batteriespannung - NUR im selben Fall, in
-                dem es überhaupt einen Ausweg gibt („das BMS meldet nichts").
-                Eine Anlage mit funktionierendem BMS sieht die Felder nie. */}
-            {socAngeboten && (
-              <div className="vp-assist-socvolt" data-testid="soc-schaetzung">
-                <strong>{socSchaetzung.SOC_VOLTAGE_TITEL}</strong>
-                <p className="vp-assist-help">{socSchaetzung.SOC_VOLTAGE_INTRO}</p>
-                {socSchaetzung.SOC_VOLTAGE_FELDER.map((f) => (
-                  <div className="vp-assist-field" key={f.id}>
-                    <label htmlFor={f.id}>{f.label}</label>
-                    <Input
-                      id={f.id}
-                      inputMode="decimal"
-                      value={socVolt[f.key]}
-                      placeholder={f.platzhalter}
-                      onChange={(e) => setzeSocVolt({ ...socVolt, [f.key]: e.target.value })}
-                    />
-                    <p className="vp-assist-help">{f.hilfe}</p>
-                  </div>
-                ))}
-                {socSchaetzung.fehler(socVolt) && (
-                  <p className="vp-assist-warn" data-testid="soc-schaetzung-fehler">
-                    {socSchaetzung.fehler(socVolt)}
-                  </p>
-                )}
-                {/* Der BELEG der Box - die Rückmeldung, an der der Kunde seine
-                    Angaben kalibriert. Ohne ihn wird nichts behauptet. */}
-                {socSchaetzung.schaetzungSatz(testText?.befund) && (
-                  <p className="vp-assist-uebernahme" data-testid="soc-schaetzung-beleg">
-                    {socSchaetzung.schaetzungSatz(testText?.befund)}
-                  </p>
-                )}
-                {!socSchaetzung.schaetzungSatz(testText?.befund)
-                  && !socSchaetzung.istLeer(socVolt)
-                  && !socSchaetzung.fehler(socVolt) && (
-                  <p className="vp-assist-help" data-testid="soc-schaetzung-erneut">
-                    {socSchaetzung.SOC_VOLTAGE_ERNEUT_TESTEN}
-                  </p>
-                )}
-                <ul className="vp-assist-folgen">
-                  {socSchaetzung.SOC_VOLTAGE_FOLGEN.map((z) => (
-                    <li key={z}>{z}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {/* Der Ausweg - NUR wenn der Server ihn als solchen ausweist. */}
-            {testZustand === 'fehlgeschlagen' && testText?.override && !ohneKanal && (
-              <Button
-                variant="outline"
-                onClick={() => setFragOhneKanal(true)}
-                data-testid="override-anbieten"
-              >
-                {testText.override.label}
-              </Button>
-            )}
-            {ohneKanal && (
-              <p className="vp-assist-uebernahme" data-testid="override-aktiv">
-                Sie fahren fort, ohne dass diese Komponente einen Ladestand meldet. Alle anderen
-                Messwerte laufen normal; die Steuerung des Speichers bleibt aus.
-              </p>
-            )}
-          </div>
+                  {socSchaetzung.fehler(socVolt) && (
+                    <p className="vp-assist-warn" data-testid="soc-schaetzung-fehler">
+                      {socSchaetzung.fehler(socVolt)}
+                    </p>
+                  )}
+                  {/* Der BELEG der Box - die Rückmeldung, an der der Kunde seine
+                      Angaben kalibriert. Ohne ihn wird nichts behauptet. */}
+                  {socSchaetzung.schaetzungSatz(testText?.befund) && (
+                    <p className="vp-assist-uebernahme" data-testid="soc-schaetzung-beleg">
+                      {socSchaetzung.schaetzungSatz(testText?.befund)}
+                    </p>
+                  )}
+                  {!socSchaetzung.schaetzungSatz(testText?.befund)
+                    && !socSchaetzung.istLeer(socVolt)
+                    && !socSchaetzung.fehler(socVolt) && (
+                    <p className="vp-assist-help" data-testid="soc-schaetzung-erneut">
+                      {socSchaetzung.SOC_VOLTAGE_ERNEUT_TESTEN}
+                    </p>
+                  )}
+                  <ul className="vp-assist-folgen">
+                    {socSchaetzung.SOC_VOLTAGE_FOLGEN.map((z) => (
+                      <li key={z}>{z}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {/* Der Ausweg - NUR wenn der Server ihn als solchen ausweist. */}
+              {testZustand === 'fehlgeschlagen' && testText?.override && !ohneKanal && (
+                <Button
+                  variant="outline"
+                  onClick={() => setFragOhneKanal(true)}
+                  data-testid="override-anbieten"
+                >
+                  {testText.override.label}
+                </Button>
+              )}
+              {ohneKanal && (
+                <p className="vp-assist-uebernahme" data-testid="override-aktiv">
+                  Sie fahren fort, ohne dass diese Komponente einen Ladestand meldet. Alle anderen
+                  Messwerte laufen normal; die Steuerung des Speichers bleibt aus.
+                </p>
+              )}
+            </div>
 
+          )}
+        </section>
+      )}
+
+      {/* 4 · Name - was gleich entsteht; erreichbar erst mit Beleg aus Schritt 3. */}
+      {schritt === 4 && template && (
+        <section>
+          <h3 className="vp-assist-h">{edit ? 'Änderungen prüfen' : 'Wie soll es heißen?'}</h3>
           {/* Was gleich entsteht - erst nach einem Ja (oder der abgenickten
               Ausnahme). Vorher gibt es nichts anzulegen. */}
           {rolle && (!testNoetig || testZustand === 'bestanden' || ohneKanal) && (
             <div className="vp-anlegen-fertigmachen" data-testid="fertigmachen">
-              <h4 className="vp-assist-h">{edit ? 'Nur diese Änderungen' : 'Fast fertig'}</h4>
               {uebernahmeHinweis(uebernahme, template) && (
                 <p className="vp-assist-uebernahme">{uebernahmeHinweis(uebernahme, template)}</p>
               )}
@@ -1581,11 +1618,14 @@ function Feld({
   feld,
   wert,
   onChange,
+  onBlur,
   disabled = false,
 }: {
   feld: TemplateField;
   wert: unknown;
   onChange: (feld: TemplateField, value: unknown) => void;
+  /** Das Feld verlassen - der Anlege-Weg stößt damit den Test sofort an. */
+  onBlur?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -1600,6 +1640,7 @@ function Feld({
           type="checkbox"
           checked={Boolean(wert)}
           onChange={(e) => onChange(feld, e.target.checked)}
+          onBlur={onBlur}
           disabled={disabled}
         />
       ) : feld.options ? (
@@ -1619,6 +1660,7 @@ function Feld({
           placeholder={istSecret(feld) && wert ? '•••••••• (unverändert)' : undefined}
           autoComplete={istSecret(feld) ? 'new-password' : undefined}
           onChange={(e) => onChange(feld, e.target.value)}
+          onBlur={onBlur}
           disabled={disabled}
         />
       )}

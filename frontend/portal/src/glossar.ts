@@ -1,24 +1,18 @@
 /**
- * Das Wörterbuch der Einstellungs-Seite und ihre Suche (E6) — rein, ohne React.
+ * Die Kundenwörter des Portals — rein, ohne React.
  *
- * Zwei Aufgaben, eine Quelle:
- *  1. **Die Suche** (Report §7 P9, Befund B10): ~25 Einstellungen auf einer
- *     Seite ohne Suchfeld sind unauffindbar — „Wo stelle ich meinen Strompreis
- *     ein?" war bis hier auch für den Support unbeantwortbar. Gesucht wird über
- *     Label **und Synonym**, damit „Strompreis", „Arbeitspreis", „ct/kWh" oder
- *     „Börsenpreis" alle beim Stromtarif landen.
- *  2. **Die Umbenennungen** (Captain-Entscheid D6, Wortquelle: Begriffs-Audit
- *     `data/vp-energiemarkt-x9/report.md` Teil 3, Zeilen 2/5/6). Sie stehen hier
- *     als Konstanten, damit die drei Flächen, die dasselbe Feld aufnehmen
- *     (Einstellungs-Seite, Anlege-Assistent, Admin-Anlegen-Drawer), nie
- *     auseinanderlaufen.
+ * **Die Umbenennungen** (Captain-Entscheid D6, Wortquelle: Begriffs-Audit
+ * `data/vp-energiemarkt-x9/report.md` Teil 3, Zeilen 2/5/6) stehen hier als
+ * Konstanten, damit die Flächen, die dasselbe Feld aufnehmen
+ * (Einstellungs-Seite, Anlege-Assistent, Admin-Anlegen-Drawer), nie
+ * auseinanderlaufen. Das ist das **Zwei-Register-Modell** des Audits: Register A
+ * ist der marktkorrekte Begriff, Register B die Kundenformulierung — und jede
+ * Kundenformulierung ist die Übersetzung genau EINES Begriffs aus A.
  *
- * Das ist das **Zwei-Register-Modell** des Audits: Register A ist der
- * marktkorrekte Begriff (`term`), Register B die Kundenformulierung (`kunde`) —
- * und jede Kundenformulierung ist die Übersetzung genau EINES Begriffs aus A.
- * Die Suche kennt beide Register plus die Wörter, unter denen jemand tatsächlich
- * sucht (auch die ALTEN — wer „Anlagentyp" tippt, muss die Veräußerungsform
- * finden, sonst wäre die Umbenennung eine Sackgasse).
+ * Die frühere Suche der Einstellungs-Seite (E6) ist mit „Anlage – neu gedacht"
+ * (E5 = A) entfallen: bei gut einem Dutzend Zeilen steht alles auf einen Blick
+ * da. Ihre Suchwörter (`GLOSSAR`) speisen weiter die Hilfe-Suche, und
+ * `normalizeTerm` bleibt - andere Suchen im Portal vergleichen damit.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * **Eine bewusste Abweichung von D6, damit die Fläche nicht falsch wird.**
@@ -29,11 +23,10 @@
  * serverseitig das ganze Preisblatt, `pricing.py import_prices`), der
  * `vertriebsaufschlagCt` des Preisblatts ist nur die MARGE (typisch 1–3 ct).
  * Beide tragen denselben Namen zu geben, hieße zwei verschiedene Größen in
- * derselben Maske gleich zu benennen — der Selbstwiderspruch, den die
- * Umbenennung beenden soll, nur schlimmer. Umgesetzt ist deshalb die ABSICHT:
- * der Sammelaufschlag heißt jetzt ausdrücklich „gesamt", das Preisblatt behält
- * „Vertriebsaufschlag", und die Suche führt beide Wörter zusammen. Ein
- * anderslautender Entscheid ist eine Zeile in `tariffInput.TARIF_PARAM_FIELDS`.
+ * derselben Maske gleich zu benennen. Umgesetzt ist deshalb die ABSICHT: der
+ * Sammelaufschlag heißt ausdrücklich „gesamt", das Preisblatt behält
+ * „Vertriebsaufschlag". Ein anderslautender Entscheid ist eine Zeile in
+ * `tariffInput.TARIF_PARAM_FIELDS`.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import type { SettingsGroupId } from './settingsNav';
@@ -58,17 +51,6 @@ export const VERAEUSSERUNGSFORM_TIP =
   'Die Veräußerungsform nach § 21b EEG: Bekommen Sie für Ihren eingespeisten Strom die feste ' +
   'Einspeisevergütung, oder vermarkten Sie ihn direkt am Markt? Danach richtet sich, wie ' +
   'VoltPilot Ihre Einspeisung bewertet.';
-
-/** Die Gruppen-Überschriften, damit die Suche auch „Speicher" findet. */
-export const GROUP_LABEL: Record<SettingsGroupId, string> = {
-  anlage: 'Meine Anlage',
-  geld: 'Strompreis & Vergütung',
-  geraet: 'Mein Gerät',
-  speicher: 'Mein Speicher',
-  registrierung: 'Registrierung',
-  app: 'Als App auf dem Handy',
-  loeschen: 'Anlage löschen',
-};
 
 // ---------------------------------------------------------------------------
 // 2 · UEMS — die Kundenwörter des Unternehmens-Energiemanagements (AP-00 IP-4)
@@ -239,7 +221,7 @@ export const LADEN_BEI_BEZUG_WOLKE =
 export const LADEN_BEI_BEZUG_FAHRPLAN = 'Der Fahrplan lädt jetzt für die teuren Stunden.';
 
 // ---------------------------------------------------------------------------
-// 3 · Der Suchindex
+// 3 · Die Suchwörter der Einstellungen
 // ---------------------------------------------------------------------------
 
 export interface GlossarEntry {
@@ -260,8 +242,11 @@ export interface GlossarEntry {
 }
 
 /**
- * Der Index. Er bildet die Zeilen ab, die die Seite wirklich rendert — eine
- * Suche, die auf etwas Nichtvorhandenes zeigt, wäre schlimmer als keine.
+ * Die Wörter, unter denen Kunden ihre Einstellungen suchen - Label, Fachwort
+ * und Synonyme (auch die ALTEN Namen). Seit die Einstellungs-Seite keine eigene
+ * Suche mehr hat (E5 = A), sind sie die Stichworte des Hilfe-Artikels
+ * „Begriffe einfach erklärt" (`help/content/probleme.ts`): wer dort
+ * „Anlagentyp" oder „Arbeitspreis" sucht, findet weiter die Erklärung.
  */
 export const GLOSSAR: GlossarEntry[] = [
   {
@@ -409,8 +394,9 @@ export const GLOSSAR: GlossarEntry[] = [
   },
 ];
 
-/** Höchstens so viele Treffer — eine lange Liste ist keine Antwort. */
-export const MAX_HITS = 6;
+// ---------------------------------------------------------------------------
+// 4 · Vergleichen
+// ---------------------------------------------------------------------------
 
 /**
  * Normalisiert für den Vergleich: Kleinbuchstaben, Umlaute/ß aufgelöst,
@@ -429,39 +415,3 @@ export function normalizeTerm(text: string): string {
     .replace(/[^a-z0-9/]+/g, ' ')
     .trim();
 }
-
-function haystack(entry: GlossarEntry): string {
-  return normalizeTerm(
-    [entry.label, entry.fachwort ?? '', GROUP_LABEL[entry.group], ...entry.synonyms].join(' '),
-  );
-}
-
-/**
- * Die Treffer zu einer Eingabe — in der Reihenfolge des Index (die der Seite),
- * gedeckelt auf `MAX_HITS`.
- *
- * Regel: JEDES Wort der Eingabe muss vorkommen (so verengt Tippen die Liste,
- * statt sie zu verbreitern), verglichen wird auf Teilzeichenkette (damit
- * „speicher" auch „Speicherschonung" trifft). Eine leere Eingabe trifft
- * NICHTS — die Suche zeigt dann gar keine Liste, statt so zu tun, als hätte
- * jemand gesucht.
- */
-export function searchSettings(query: string): GlossarEntry[] {
-  const tokens = normalizeTerm(query).split(' ').filter(Boolean);
-  if (tokens.length === 0) return [];
-  const hits: GlossarEntry[] = [];
-  for (const entry of GLOSSAR) {
-    const hay = haystack(entry);
-    if (tokens.every((t) => hay.includes(t))) hits.push(entry);
-    if (hits.length >= MAX_HITS) break;
-  }
-  return hits;
-}
-
-/** Der Satz unter dem Suchfeld, wenn nichts passt — nie eine leere Liste. */
-export function noHitText(query: string): string {
-  return `Zu „${query.trim()}" haben wir hier nichts gefunden. Alle Einstellungen dieser Anlage stehen unten in sechs Gruppen.`;
-}
-
-/** Der Platzhalter des Suchfelds, mit echten Beispielwörtern aus dem Index. */
-export const SEARCH_PLACEHOLDER = 'Einstellung suchen … z. B. „Strompreis", „Netzladen", „Reserve"';

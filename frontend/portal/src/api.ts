@@ -5520,6 +5520,15 @@ export const api = {
   kennzeichenVorschlag: () =>
     request<{ kennzeichen: string }>(`/api/v1/messstellen/kennzeichen-vorschlag`),
 
+  /**
+   * Die Standorte des Kundenbereichs mit ihren Anlagen (UEMS AP-02 IP-3) —
+   * die Wurzel des Aufbau-Baums. Ohne Stichtag antwortet der Server für heute.
+   */
+  standorte: (stichtag?: string) =>
+    request<StandorteAmStichtag>(
+      `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+
   /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),

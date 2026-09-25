@@ -1,184 +1,9 @@
-/* Die Einstellungs-Seite: Suchfeld (E6), Autoritäts-Legende (E4),
- * Zuständigkeits-Grenze zur Box (E7) und der Schutz-Streifen ③ am Fuß.
+/* Die Einstellungs-Seite: die kurze Liste in vier Gruppen (E5, Konzept
+ * „Anlage – neu gedacht") und der Schutz-Streifen ③ am Fuß.
  *
- * Komponenten-lokal (das v3-Muster): `index.css` bleibt unangetastet — dort
- * lebt weiter das `.vp-technik*`-Grundgerüst dieser Seite. Alle Regeln hier
- * tragen NEUE Klassennamen, kollidieren also nicht mit der Basis und sind
- * unabhängig von der Ladereihenfolge. */
-
-/* --- E6 · Suche ----------------------------------------------------------- */
-
-.vp-set-search {
-  position: relative;
-  min-width: 0;
-  margin-bottom: var(--vp-space-4, 16px);
-}
-
-.vp-set-search-box {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-2, 8px);
-  min-width: 0;
-  padding: 0 12px;
-  min-height: 44px;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 10px);
-  background: #fff;
-  color: var(--vp-text-muted, #667);
-}
-
-.vp-set-search-box:focus-within {
-  border-color: var(--vp-action, #2c5282);
-  box-shadow: 0 0 0 3px rgba(44, 82, 130, 0.12);
-}
-
-.vp-set-search-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: none;
-  font: inherit;
-  font-size: 1rem;
-  color: var(--vp-text, #223);
-}
-
-/* Die Trefferliste hängt UNTER dem Feld im Fluss (kein Overlay): die Seite ist
- * eine lange Liste von Karten, ein schwebendes Panel müsste dort gegen jeden
- * Kartenrand ankämpfen. */
-.vp-set-search-res {
-  margin-top: 6px;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 10px);
-  background: #fff;
-  overflow: hidden;
-}
-
-.vp-set-search-none {
-  margin: 0;
-  padding: 10px 12px;
-  font-size: 0.85rem;
-  color: var(--vp-text-muted, #667);
-}
-
-.vp-set-search-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.vp-set-search-hit {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-3, 12px);
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 0;
-  border-top: 1px solid var(--vp-border, #e2e8f0);
-  background: none;
-  font: inherit;
-  text-align: left;
-  color: var(--vp-text, #223);
-  cursor: pointer;
-}
-
-.vp-set-search-list > li:first-child .vp-set-search-hit {
-  border-top: 0;
-}
-
-.vp-set-search-hit:hover,
-.vp-set-search-hit:focus-visible {
-  background: rgba(44, 82, 130, 0.06);
-}
-
-.vp-set-search-lbl {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 0.9rem;
-  overflow-wrap: anywhere;
-}
-
-.vp-set-search-lbl small {
-  font-size: 0.74rem;
-  color: var(--vp-text-muted, #667);
-}
-
-.vp-set-search-grp {
-  flex: 0 0 auto;
-  font-size: 0.76rem;
-  color: var(--vp-text-muted, #667);
-  white-space: nowrap;
-}
-
-@media (max-width: 480px) {
-  .vp-set-search-grp {
-    display: none;
-  }
-}
-
-/* --- E4 · die Legende der drei Stufen ------------------------------------- */
-
-.vp-set-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px var(--vp-space-3, 12px);
-  margin: 0 0 var(--vp-space-4, 16px);
-  padding: 0;
-  list-style: none;
-  font-size: 0.78rem;
-  color: var(--vp-text-muted, #667);
-  min-width: 0;
-}
-
-.vp-set-legend li {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
-
-.vp-set-legend i {
-  font-style: normal;
-  font-weight: 800;
-  color: var(--vp-navy, #1a365d);
-}
-
-/* --- E7 · die Grenze zur Box ---------------------------------------------- */
-
-.vp-set-box {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  margin-top: var(--vp-space-3, 12px);
-  padding: 12px;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 10px);
-  background: var(--vp-surface-2, #f6f8fb);
-}
-
-.vp-set-box-h {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--vp-navy, #1a365d);
-  min-width: 0;
-}
-
-.vp-set-box p {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--vp-text-muted, #667);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
+ * Komponenten-lokal (das v3-Muster): alle Regeln tragen eigene Klassennamen,
+ * kollidieren also nicht mit der Basis in `index.css` und sind unabhängig von
+ * der Ladereihenfolge. */
 
 /* --- ③ · der Schutz-Streifen am Seitenfuß --------------------------------- */
 
@@ -225,47 +50,282 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Als App auf dem Handy (PWA-Hülle)
+   Einstellungen – kurze, sortierte Liste (Konzept „Anlage – neu gedacht", E5)
 
-   Eine ruhige Gruppe wie jede andere auf dieser Seite: ein Satz, gegebenenfalls
-   die Anleitung, gegebenenfalls der Knopf. Keine eigene Farbwelt - die
-   Einrichtung ist eine Möglichkeit, kein Zustand, der Aufmerksamkeit fordert.
-   `min-width: 0` überall, damit ein langer Satz die Karte am Telefon nie
-   auseinanderzieht.
+   Vier Gruppen als weiße Listen; jede Zeile: Kachel · Name mit Wert · Pfeil
+   (oder Schloss). Ab 720 px Inhaltsbreite zwei Spalten - gemessen am eigenen
+   Behälter, nicht am Fenster, damit die Seite in jeder Hülle gleich bricht.
 --------------------------------------------------------------------------- */
-.vp-installapp {
+/* Die Haarlinie der Wertezeilen (`.vp-kv-row`, index.css) - früher vom Gerüst
+   `.vp-technik` gesetzt, jetzt von der Seite und ihren Blättern. */
+.vp-einst,
+.vp-einst-blatt {
+  --vp-tech-hair: color-mix(in srgb, var(--vp-border) 60%, #ffffff);
+}
+
+.vp-einst {
+  container: vp-einst / inline-size;
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+
+.vp-einst-raster {
+  display: grid;
+  gap: var(--vp-space-5);
+  min-width: 0;
+}
+
+@container vp-einst (min-width: 720px) {
+  .vp-einst-raster {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.vp-einst-grp {
+  display: grid;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  scroll-margin-top: 96px;
+}
+
+.vp-einst-grp > h3 {
+  margin: 0 0 0 4px;
+  font-family: var(--vp-font-body);
+  font-size: 0.78rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+
+.vp-einst-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-lg);
+  overflow: hidden;
+}
+
+.vp-einst-liste > li + li {
+  border-top: 1px solid var(--vp-border);
+}
+
+.vp-einst-liste > li {
+  scroll-margin-top: 96px;
+}
+
+.vp-einst-zeile {
+  width: 100%;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--vp-space-3);
+  align-items: center;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.vp-einst-zeile {
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+button.vp-einst-zeile:hover {
+  background: var(--vp-bg-light);
+}
+
+button.vp-einst-zeile:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: -2px;
+}
+
+.vp-einst-lab {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vp-einst-lab b {
+  font-size: 0.95rem;
+  font-weight: var(--vp-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.vp-einst-wert {
+  font-size: 0.88rem;
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+
+.vp-einst-lab small {
+  font-size: 0.8rem;
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+
+.vp-einst-lab small.is-warn {
+  color: var(--vp-warn-ink);
+}
+
+.vp-einst-ende {
+  display: inline-flex;
+  align-items: center;
+  color: var(--vp-text-gray);
+}
+
+.vp-einst-schloss {
+  display: inline-flex;
+  color: var(--vp-navy);
+}
+
+.vp-einst-zeile.is-gefahr .vp-einst-lab b {
+  color: var(--vp-chart-discharge);
+}
+
+.vp-einst-tile {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--vp-radius-sm);
+  color: #fff;
+  background: var(--vp-grad-button);
+  box-shadow: var(--vp-shadow-sm);
+}
+
+.vp-einst-tile.is-home { background: var(--vp-grad-home); }
+.vp-einst-tile.is-dynamic { background: var(--vp-grad-dynamic); }
+.vp-einst-tile.is-grid { background: var(--vp-grid); }
+.vp-einst-tile.is-navy { background: var(--vp-action); }
+.vp-einst-tile.is-battery { background: var(--vp-grad-battery); }
+.vp-einst-tile.is-gefahr { background: var(--vp-grad-industry); }
+
+/* Drei Stufen als Umschalter - direkt wirksam, die Folge steht darunter. */
+.vp-einst-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0 14px 12px;
+  padding: 3px;
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-neutral-soft);
+}
+
+.vp-einst-seg button {
+  min-height: 40px;
+  min-width: 0;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: var(--vp-radius-sm);
+  background: transparent;
+  color: var(--vp-text-gray);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: var(--vp-weight-semibold);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  transition:
+    background-color var(--vp-motion-fast) var(--vp-ease-inout),
+    color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+.vp-einst-seg button[aria-checked='true'] {
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  box-shadow: var(--vp-shadow-sm);
+}
+
+.vp-einst-seg button:disabled {
+  cursor: default;
+}
+
+.vp-einst-seg button:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 1px;
+}
+
+/* Die Folge nach dem Umlegen - mit „Rückgängig". Sie erscheint weich
+   (Eintritt `--vp-motion-base`; unter reduzierter Bewegung sofort). */
+.vp-einst-folge {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--vp-space-3, 12px);
+  align-items: center;
+  gap: var(--vp-space-2);
+  margin: 0 14px 12px;
+  padding: 8px 10px;
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-paleblue-start);
+  color: var(--vp-navy-2);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  min-width: 0;
+  animation: vp-einst-folge var(--vp-motion-base) var(--vp-ease-out) both;
+}
+
+.vp-einst-folge > span {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.vp-installapp-text {
-  margin: 0;
-  min-width: 0;
-  line-height: 1.55;
+.vp-einst-folge > svg {
+  flex: 0 0 auto;
 }
 
-.vp-installapp-steps {
-  margin: 0;
-  padding-left: 1.25em;
-  min-width: 0;
+.vp-einst-folge.is-fehler {
+  background: #fdecea;
+  color: var(--vp-industry-end);
+}
+
+@keyframes vp-einst-folge {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.vp-einst-warnung {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  line-height: 1.5;
-}
-
-.vp-installapp-hint {
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--vp-space-3);
   margin: 0;
-  min-width: 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: var(--vp-text-muted, #6c757d);
 }
 
-/* Der Knopf ist die einzige Handlung der Gruppe und nimmt am Telefon die volle
-   Breite - das entscheidet aber `fullWidth` in `InstallAppPanel`, NICHT eine
-   Regel hier: der Haus-`Button` setzt seine Breite inline, und ein Inline-Stil
-   schlägt jede Medienabfrage (im Browser gemessen: 175 px statt 343 px). */
+.vp-einst-platz {
+  padding: 12px 14px;
+}
+
+.vp-einst-grenze {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-gray);
+}
+
+/* Das Blatt: Erklärung, „Wirkt auf …" und das Formular untereinander. */
+.vp-einst-blatt {
+  display: grid;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-einst-blatt > .vp-note {
+  margin: 0;
+}
+
+.vp-einst-gross {
+  margin: 0;
+  font-family: var(--vp-font-heading);
+  font-size: 1.4rem;
+  font-weight: var(--vp-weight-bold);
+  color: var(--vp-text-dark);
+}

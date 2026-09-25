@@ -48,6 +48,22 @@ export interface AnnahmenEingabe {
   lage?: LageView | null;
   /** Der Horizont-Hinweis (`schedule.horizonHint`); null = der Plan reicht über heute. */
   horizont?: string | null;
+  /**
+   * Wie weit die Vorhersagen zuletzt daneben lagen - die gemessene mittlere
+   * Abweichung je Viertelstunde der AKTIVEN Modelle (`prognose.mittlereMae`).
+   * Seit „Anlage – neu gedacht" (E6 = A) steht sie hier statt auf einer
+   * eigenen Kundenseite. null/fehlend = noch keine Bewertung, keine Zeile.
+   */
+  vorhersage?: {
+    verbrauchKw: number | null;
+    pvKw: number | null;
+    /** Wie viele Tage im Fenster wirklich bewertet sind. */
+    tage: number;
+    /** Das Fenster in Tagen (die Abfrage), z. B. 7. */
+    fenster: number;
+  } | null;
+  /** Der Weg zur Prognose-Seite - nur für VoltPilot; null = kein Link. */
+  prognoseSeite?: string | null;
 }
 
 function zahl(v: number | null | undefined): number | null {
@@ -114,6 +130,30 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
       `Zuletzt um ${uhr(e.planVon)} Uhr; VoltPilot plant alle ${e.slotMinutes} Minuten neu.`,
     );
   }
-  zeile('prognosen', 'activity', 'Prognosen', FORECAST_FOOTNOTE, { href: '#/prognose', text: 'Zur Prognosequalität' });
+  const v = e.vorhersage;
+  const teile = v
+    ? [
+        zahl(v.verbrauchKw) != null ? `Verbrauch ${fmtNum(v.verbrauchKw, 'kW')}` : null,
+        zahl(v.pvKw) != null ? `PV ${fmtNum(v.pvKw, 'kW')}` : null,
+      ].filter((t): t is string => t != null)
+    : [];
+  if (v && teile.length > 0 && v.tage > 0) {
+    // Das Fenster ist die Abfrage; bewertet sind darin womöglich weniger Tage -
+    // das steht dann dabei, statt ein kürzeres Fenster zu behaupten.
+    const fenster = v.fenster === 1 ? 'letzter Tag' : `letzte ${v.fenster} Tage`;
+    zeile(
+      'vorhersage',
+      'trending-up',
+      `Vorhersage, ${fenster}${v.tage < v.fenster ? ` (${v.tage} bewertet)` : ''}`,
+      `Ø Abweichung je Viertelstunde: ${teile.join(' · ')}.`,
+    );
+  }
+  zeile(
+    'prognosen',
+    'activity',
+    'Prognosen',
+    FORECAST_FOOTNOTE,
+    e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
+  );
   return out;
 }

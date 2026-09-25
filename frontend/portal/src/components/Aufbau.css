@@ -1,0 +1,973 @@
+/*
+ * Der Reiter „Aufbau" (Konzept „Anlage – neu gedacht", E1–E6 = A): EIN Baum
+ * Standort → Anlagen → VoltPilot-Boxen → Geräte. Bauteil-lokal wie
+ * `AnlagenModell.css`; `index.css` bleibt unberührt.
+ *
+ * Layout über CONTAINER-Queries (das `GeraetRahmen.css`-Muster): die Zeile
+ * entscheidet nach der Breite, die IHR zur Verfügung steht - am Rechner neben
+ * der Seitenleiste genauso wie im schmalen Telefon.
+ *
+ * Bewegung NUR über die Familie `--vp-motion-*` (Bewegungs-Programm P0-P7):
+ * die Baumlinien wachsen einmal, Zeilen staffeln über `.vp-stagger`
+ * (`useStaffel`), Auf-/Zuklappen läuft als Zustandswechsel mit
+ * `--vp-motion-base`. Der Puls der verbundenen Box ist der vorhandene
+ * Flotten-Herzschlag (`.vp-fleet-dot`), also KEIN neuer Loop; unter
+ * `prefers-reduced-motion` hält der EINE Block in `index.css` ihn an und die
+ * Dauern stehen auf 0.
+ */
+
+.vp-auf {
+  container: vp-auf / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+/* --- Kacheln (IconTile-Sprache: Kategorie-Verlauf, weisses Zeichen) -------- */
+
+.vp-auf-tile {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--vp-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: var(--vp-grad-button);
+  box-shadow: var(--vp-shadow-sm);
+}
+.vp-auf-tile.is-gross {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--vp-radius-btn);
+}
+.vp-auf-tile.is-solar { background: var(--vp-grad-solar); }
+.vp-auf-tile.is-battery { background: var(--vp-grad-battery); }
+.vp-auf-tile.is-ev { background: var(--vp-grad-ev); }
+.vp-auf-tile.is-home { background: var(--vp-grad-home); }
+.vp-auf-tile.is-grid { background: var(--vp-grid); }
+.vp-auf-tile.is-navy { background: var(--vp-action); }
+.vp-auf-tile.is-anlage { background: var(--vp-grad-hero); }
+.vp-auf-tile.is-warn { background: var(--vp-warn-ink); }
+.vp-auf-tile.is-fund {
+  background: var(--vp-surface);
+  color: var(--vp-text-gray);
+  border: 1.5px dashed var(--vp-field-border);
+  box-shadow: none;
+}
+.vp-auf-tile.is-leer {
+  background: var(--vp-neutral-soft);
+  color: var(--vp-text-gray);
+  box-shadow: none;
+}
+
+/* --- Kleine Bausteine ------------------------------------------------------- */
+
+.vp-auf-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-badge);
+  font-weight: var(--vp-weight-semibold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+
+.vp-auf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--vp-radius-pill);
+  border: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  font-size: var(--vp-text-badge);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-gray);
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.vp-auf-pill.is-ruhig {
+  background: var(--vp-neutral-soft);
+  border-color: transparent;
+}
+
+.vp-auf-sub {
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-meta);
+  overflow-wrap: anywhere;
+}
+
+/* --- Standort-Kopf ---------------------------------------------------------- */
+
+.vp-auf-wurzel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: center;
+  padding: var(--vp-space-4);
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  box-shadow: var(--vp-shadow-sm);
+  min-width: 0;
+}
+.vp-auf-wurzel-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-auf-wurzel-name h2 {
+  margin: 0;
+  font-family: var(--vp-font-heading);
+  font-size: 1.2rem;
+  letter-spacing: var(--vp-tracking-tight);
+  overflow-wrap: anywhere;
+}
+.vp-auf-zahlen {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+}
+.vp-auf-wurzel-aktion {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+.vp-auf-wurzel-aktion .vp-btn {
+  flex: 1 1 auto;
+}
+@container vp-auf (min-width: 640px) {
+  .vp-auf-wurzel {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+  .vp-auf-zahlen,
+  .vp-auf-wurzel-aktion {
+    grid-column: auto;
+  }
+  .vp-auf-wurzel-aktion .vp-btn {
+    flex: 0 0 auto;
+  }
+}
+
+.vp-auf-technik-add {
+  border: 1px dashed var(--vp-field-border);
+  background: transparent;
+  color: var(--vp-text-gray);
+  border-radius: var(--vp-radius-sm);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-technik-add:hover {
+  color: var(--vp-action);
+  border-color: var(--vp-action);
+}
+
+/* --- Hinweise (nur, wenn es etwas zu sagen gibt) ---------------------------- */
+
+.vp-auf-hinweise {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-auf-hinweise li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-sm);
+  font-size: var(--vp-text-sm);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  color: var(--vp-text);
+  min-width: 0;
+}
+.vp-auf-hinweise li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-auf-hinweise li.is-warn {
+  background: #fff7e6;
+  border-color: #f6d9a6;
+  color: var(--vp-warn-ink);
+}
+.vp-auf-hinweise svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+/* --- Der Baum ---------------------------------------------------------------- */
+
+.vp-auf {
+  --vp-auf-einzug: 12px;
+}
+@container vp-auf (min-width: 640px) {
+  .vp-auf-baum {
+    --vp-auf-einzug: 26px;
+  }
+}
+
+.vp-auf-liste {
+  list-style: none;
+  margin: 0;
+  padding: var(--vp-space-2) 0 0 var(--vp-auf-einzug);
+  display: grid;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-auf-baum {
+  padding-top: 0;
+}
+
+.vp-auf-knoten {
+  position: relative;
+  min-width: 0;
+}
+
+/* Senkrechte Linie + Abzweig: die Struktur, gezeichnet, nicht erzählt. */
+.vp-auf-liste > .vp-auf-knoten::before,
+.vp-auf-liste > .vp-auf-knoten::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-color: var(--vp-gray);
+  border-style: solid;
+  border-width: 0;
+}
+.vp-auf-liste > .vp-auf-knoten::before {
+  left: calc(var(--vp-auf-einzug) * -0.55);
+  top: calc(var(--vp-space-2) * -1);
+  bottom: calc(var(--vp-space-2) * -1);
+  border-left-width: 2px;
+  transform-origin: top;
+  animation: vp-auf-linie var(--vp-motion-page) var(--vp-ease-out) both;
+}
+.vp-auf-liste > .vp-auf-knoten:last-child::before {
+  bottom: auto;
+  height: calc(var(--vp-space-2) + 24px);
+}
+.vp-auf-liste > .vp-auf-knoten::after {
+  left: calc(var(--vp-auf-einzug) * -0.55);
+  top: 24px;
+  width: calc(var(--vp-auf-einzug) * 0.55);
+  border-top-width: 2px;
+  transform-origin: left;
+  animation: vp-auf-abzweig var(--vp-motion-base) var(--vp-ease-out) both;
+}
+@keyframes vp-auf-linie {
+  from { transform: scaleY(0); }
+}
+@keyframes vp-auf-abzweig {
+  from { transform: scaleX(0); }
+}
+
+/* Die Zeile: Kachel · Name/Unterzeile · Chips · Ende. */
+.vp-auf-zeile {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'kachel name ende'
+    'kachel chips chips';
+  column-gap: var(--vp-space-3);
+  row-gap: 6px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  color: var(--vp-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  transition:
+    var(--vp-motion-chrome),
+    transform var(--vp-motion-fast) var(--vp-ease-out);
+}
+button.vp-auf-zeile,
+a.vp-auf-zeile {
+  cursor: pointer;
+}
+button.vp-auf-zeile:hover,
+a.vp-auf-zeile:hover {
+  border-color: var(--vp-primary-light);
+  box-shadow: var(--vp-shadow-hover);
+  transform: var(--vp-lift);
+}
+.vp-auf-zeile:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+@media (hover: none) {
+  button.vp-auf-zeile:active,
+  a.vp-auf-zeile:active {
+    transform: scale(0.98);
+  }
+}
+.vp-auf-zeile > .vp-auf-tile {
+  grid-area: kachel;
+  align-self: start;
+}
+.vp-auf-zeile > .vp-auf-name {
+  grid-area: name;
+}
+.vp-auf-zeile > .vp-auf-chips {
+  grid-area: chips;
+}
+.vp-auf-zeile > .vp-auf-ende {
+  grid-area: ende;
+}
+
+.vp-auf-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-auf-name b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--vp-font-heading);
+  font-weight: var(--vp-weight-bold);
+  font-size: 1rem;
+  color: var(--vp-text-dark);
+}
+.vp-auf-name b .txt {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+.vp-auf-name small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  min-width: 0;
+  font-size: var(--vp-text-badge);
+  color: var(--vp-text-gray);
+}
+.vp-auf-name small > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-auf-name small .is-warn {
+  color: var(--vp-warn-ink);
+  font-weight: var(--vp-weight-semibold);
+}
+.vp-auf-modell {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-auf-ref {
+  font-variant-numeric: tabular-nums;
+}
+.vp-auf-hier {
+  display: inline-flex;
+  padding: 1px 7px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-action);
+  color: #fff;
+  font-weight: var(--vp-weight-bold);
+  font-size: 0.68rem;
+}
+.vp-auf-fuehrend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-tint);
+  color: var(--vp-action);
+  font-weight: var(--vp-weight-bold);
+  font-size: 0.68rem;
+}
+
+.vp-auf-name .vp-health-dot {
+  width: 9px;
+  height: 9px;
+}
+.vp-auf-name .vp-fleet-dot {
+  margin-top: 0;
+}
+
+.vp-auf-ende {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-1);
+  color: var(--vp-text-gray);
+}
+.vp-auf-knoten.is-anlage > .vp-auf-zeile .vp-auf-ende svg {
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-auf-knoten.is-anlage:not(.is-offen) > .vp-auf-zeile .vp-auf-ende svg {
+  transform: rotate(-90deg);
+}
+
+/* Chips: Zahl + kurzes Wort, das Symbol trägt die Rolle. */
+.vp-auf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-auf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  font-size: 0.8rem;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.vp-auf-chip.is-pv svg { color: var(--vp-chart-pv-line); }
+.vp-auf-chip.is-speicher svg { color: var(--vp-battery-end); }
+.vp-auf-chip.is-netz svg { color: var(--vp-grid); }
+.vp-auf-chip.is-laden svg { color: var(--vp-ev-end); }
+.vp-auf-chip.is-haus svg,
+.vp-auf-chip.is-verbraucher svg { color: var(--vp-chart-load-line); }
+
+@container vp-auf (min-width: 640px) {
+  .vp-auf-zeile {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto;
+    grid-template-areas: 'kachel name chips ende';
+  }
+  .vp-auf-chips {
+    justify-content: flex-end;
+  }
+}
+
+/* Anlage: die geöffnete trägt den Markenrand. */
+.vp-auf-knoten.is-anlage > .vp-auf-zeile {
+  border-color: color-mix(in srgb, var(--vp-primary) 45%, var(--vp-border));
+}
+.vp-auf-knoten.is-anlage.is-aktuell > .vp-auf-zeile {
+  background:
+    linear-gradient(var(--vp-surface), var(--vp-surface)) padding-box,
+    var(--vp-grad-hero) border-box;
+  border: 1.5px solid transparent;
+}
+
+/* Box: geteilte Zeile - Aufklappen und „+ Gerät" sind zwei Knöpfe. */
+.vp-auf-zeile.is-geteilt {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'treffer ende';
+  background: var(--vp-paleblue-start);
+  border-color: var(--vp-paleblue-end);
+}
+@container vp-auf (min-width: 640px) {
+  .vp-auf-zeile.is-geteilt {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'treffer ende';
+  }
+}
+.vp-auf-treffer {
+  grid-area: treffer;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  text-decoration: none;
+  column-gap: var(--vp-space-3);
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--vp-radius-sm);
+}
+.vp-auf-treffer:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-auf-treffer > .vp-auf-tile {
+  align-self: start;
+}
+.vp-auf-treffer > svg {
+  color: var(--vp-text-gray);
+}
+.vp-auf-treffer:hover > svg {
+  color: var(--vp-action);
+}
+
+.vp-auf-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: var(--vp-radius-sm);
+  border: 1.5px solid var(--vp-paleblue-end);
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  font: inherit;
+  font-family: var(--vp-font-heading);
+  font-weight: var(--vp-weight-bold);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-plus:hover {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-auf-plus .lbl {
+  display: none;
+}
+/* „Verwalten" (…) steht leiser neben „+ Gerät": die Box ist selten zu ändern. */
+.vp-auf-plus.is-ruhig {
+  border-color: transparent;
+  color: var(--vp-text-gray);
+}
+.vp-auf-plus.is-ruhig:hover {
+  border-color: var(--vp-border);
+  background: var(--vp-bg-light);
+  color: var(--vp-text-dark);
+}
+@container vp-auf (min-width: 640px) {
+  .vp-auf-plus {
+    padding: 0 12px;
+  }
+  .vp-auf-plus .lbl {
+    display: inline;
+  }
+}
+
+/* Kinder: Auf-/Zuklappen als Zustandswechsel (P6: System → base). */
+.vp-auf-kinder {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-auf-knoten:not(.is-offen) > .vp-auf-kinder {
+  grid-template-rows: 0fr;
+}
+.vp-auf-kinder-innen {
+  min-height: 0;
+  overflow: hidden;
+}
+.vp-auf-knoten:not(.is-offen) > .vp-auf-kinder .vp-auf-kinder-innen {
+  visibility: hidden;
+}
+
+/* Box ohne Gerät, Anlage ohne Box. */
+.vp-auf-leer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1.5px dashed var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-sm);
+  background: transparent;
+  font: inherit;
+  width: 100%;
+  text-align: left;
+}
+.vp-auf-leer.is-aktion {
+  cursor: pointer;
+  color: var(--vp-action);
+  font-weight: var(--vp-weight-semibold);
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-leer.is-aktion:hover {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+
+.vp-auf-wechsel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: var(--vp-space-2) 0 0 var(--vp-auf-einzug);
+  font-weight: var(--vp-weight-semibold);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-link);
+}
+
+/* Ein Fund der Box: gestrichelt, bis er übernommen ist. */
+.vp-auf-zeile.is-fund {
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'kachel name'
+    'kachel ende';
+  background: repeating-linear-gradient(
+    135deg,
+    var(--vp-surface) 0 10px,
+    var(--vp-bg-light) 10px 20px
+  );
+  border: 1.5px dashed var(--vp-field-border);
+}
+.vp-auf-zeile.is-fund .vp-auf-name b {
+  color: var(--vp-text-gray);
+}
+.vp-auf-zeile.is-fund > .vp-auf-ende {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+@container vp-auf (min-width: 640px) {
+  .vp-auf-zeile.is-fund {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'kachel name ende';
+  }
+}
+
+/* Die Antwort auf einen Sprung (`?komponente=`): kurz hervorgehoben. */
+.vp-auf-zeile.is-angesprungen {
+  box-shadow: 0 0 0 3px var(--vp-primary-light);
+  border-color: var(--vp-primary);
+}
+
+/* --- Hinzufügen ------------------------------------------------------------- */
+
+.vp-auf-add {
+  container: vp-auf-modal / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-auf-add-frage {
+  margin: var(--vp-space-1) 0 0;
+  font-family: var(--vp-font-heading);
+  font-weight: var(--vp-weight-bold);
+  font-size: 1.05rem;
+}
+.vp-auf-wahl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--vp-space-3);
+  align-items: center;
+  width: 100%;
+  padding: 14px;
+  border: 1.5px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  font: inherit;
+  color: var(--vp-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    var(--vp-motion-chrome),
+    transform var(--vp-motion-fast) var(--vp-ease-out);
+}
+.vp-auf-wahl:not(:disabled):hover {
+  border-color: var(--vp-primary);
+  box-shadow: var(--vp-shadow-hover);
+  transform: var(--vp-lift);
+}
+.vp-auf-wahl:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.vp-auf-wahl.is-haupt {
+  border-color: var(--vp-primary);
+  background: var(--vp-paleblue-start);
+}
+.vp-auf-wahl .txt,
+.vp-auf-fund .txt {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-auf-wahl b {
+  font-family: var(--vp-font-heading);
+  font-size: 1.02rem;
+}
+.vp-auf-wahl small,
+.vp-auf-fund small {
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-meta);
+  overflow-wrap: anywhere;
+}
+.vp-auf-fund {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px var(--vp-space-3);
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-mint-start);
+  border: 1px solid var(--vp-mint-end);
+}
+.vp-auf-fund .vp-btn {
+  grid-column: 2;
+  justify-self: start;
+}
+@container vp-auf-modal (min-width: 480px) {
+  .vp-auf-fund {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .vp-auf-fund .vp-btn {
+    grid-column: auto;
+  }
+}
+.vp-auf-vorlagen summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--vp-link);
+  font-weight: var(--vp-weight-semibold);
+  font-size: var(--vp-text-sm);
+  list-style: none;
+}
+.vp-auf-vorlagen summary::-webkit-details-marker {
+  display: none;
+}
+.vp-auf-vorlagen summary svg {
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-auf-vorlagen[open] summary svg {
+  transform: rotate(90deg);
+}
+.vp-auf-vorlagen[open] summary {
+  margin-bottom: var(--vp-space-3);
+}
+
+/* --- Kurzblick --------------------------------------------------------------- */
+
+.vp-auf-kb {
+  container: vp-auf-modal / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-auf-kb-sub {
+  margin: 0;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-sm);
+  overflow-wrap: anywhere;
+}
+.vp-auf-kb-zustand {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text);
+}
+.vp-auf-kb-notiz {
+  margin: 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-auf-kb-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  overflow: hidden;
+}
+.vp-auf-kb-zeile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--vp-surface);
+  min-width: 0;
+}
+.vp-auf-kb-zeile + .vp-auf-kb-zeile {
+  border-top: 1px solid var(--vp-border);
+}
+.vp-auf-kb-kopf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-auf-kb-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: var(--vp-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.vp-auf-kb-wert {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  font-weight: var(--vp-weight-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-auf-kb-wert small {
+  font-weight: var(--vp-weight-regular);
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-badge);
+}
+.vp-auf-kb-wert.is-leer {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-weight-regular);
+}
+.vp-auf-stift {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--vp-radius-sm);
+  color: var(--vp-text-gray);
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-stift:hover {
+  color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-auf-kb-marken {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-auf-marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-neutral-soft);
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-badge);
+  font-weight: var(--vp-weight-semibold);
+}
+.vp-auf-marke.is-ok {
+  background: var(--vp-mint-start);
+  color: var(--vp-ok-ink);
+}
+.vp-auf-marke.is-warn {
+  background: #fff7e6;
+  color: var(--vp-warn-ink);
+}
+.vp-auf-kb-verwaist {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--vp-warn-ink);
+  font-size: var(--vp-text-sm);
+}
+.vp-auf-gefahr {
+  color: var(--vp-chart-discharge);
+  border-color: color-mix(in srgb, var(--vp-chart-discharge) 45%, transparent);
+  background: transparent;
+}
+.vp-auf-kb-mehr summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-meta);
+  list-style: none;
+}
+.vp-auf-kb-mehr summary::-webkit-details-marker {
+  display: none;
+}
+.vp-auf-kb-mehr summary svg {
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-auf-kb-mehr[open] summary svg {
+  transform: rotate(90deg);
+}
+.vp-auf-kb-mehr[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vp-auf-kb-kanaele {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-auf-kb-kanaele span {
+  padding: 2px 8px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  font-size: var(--vp-text-badge);
+  color: var(--vp-text-gray);
+}
+.vp-auf-kb-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vp-auf-aktion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: var(--vp-radius-sm);
+  border: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-semibold);
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-aktion:hover {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-auf-aktion.is-gefahr {
+  color: var(--vp-chart-discharge);
+}
+.vp-auf-kb-fuss {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  width: 100%;
+}
+.vp-auf-kb-register {
+  margin: 0;
+  font-size: var(--vp-text-badge);
+  color: var(--vp-text-gray);
+}
+.vp-auf-kb-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vp-space-2);
+}

@@ -167,6 +167,7 @@ import '../components/AnlagenModell.css';
 // Geräteseite ankommt (im Browser gefunden).
 import './Befehle.css';
 import './GeraetSeite.css';
+import { AUFBAU_REITER } from '../anlageNav';
 
 /**
  * Die GERÄTE-DETAILSEITE der Anlagen-Zentrale
@@ -2156,7 +2157,7 @@ function RegisterSektion({
               {zugang.weg === 'anlagen-modell' && (
                 <>
                   {' '}
-                  <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zu den Komponenten →</a>
+                  <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zum {AUFBAU_REITER} →</a>
                 </>
               )}
             </p>

@@ -9,7 +9,38 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
   it('nennt nur gepflegte Werte - ohne Angaben bleiben die Prognosen', () => {
     const z = planAnnahmen(BASIS);
     expect(z.map((x) => x.key)).toEqual(['prognosen']);
-    expect(z[0]).toMatchObject({ text: FORECAST_FOOTNOTE, link: { href: '#/prognose', text: 'Zur Prognosequalität' } });
+    // Die Prognose-Seite ist VoltPilot vorbehalten (E6 = A) - ohne Ziel kein Link.
+    expect(z[0]).toMatchObject({ text: FORECAST_FOOTNOTE, link: null });
+  });
+
+  it('verlinkt die Prognose-Seite nur, wenn sie ein Ziel bekommt', () => {
+    const z = planAnnahmen({ ...BASIS, prognoseSeite: '#/anlage/a1/prognose' });
+    expect(z.find((x) => x.key === 'prognosen')?.link).toEqual({
+      href: '#/anlage/a1/prognose',
+      text: 'Zur Prognosequalität',
+    });
+  });
+
+  it('nennt die gemessene Abweichung der Vorhersage - nie eine erfundene', () => {
+    const z = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: 0.42, pvKw: 0.6, tage: 7, fenster: 7 } });
+    expect(z.map((x) => x.key)).toEqual(['vorhersage', 'prognosen']);
+    expect(z[0]).toMatchObject({
+      titel: 'Vorhersage, letzte 7 Tage',
+      text: `Ø Abweichung je Viertelstunde: Verbrauch 0,4${NBSP}kW · PV 0,6${NBSP}kW.`,
+    });
+    // Eine fehlende Art bleibt weg - sie wird nie zur Null.
+    const nurPv = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: null, pvKw: 0.6, tage: 1, fenster: 1 } });
+    expect(nurPv[0]).toMatchObject({
+      titel: 'Vorhersage, letzter Tag',
+      text: `Ø Abweichung je Viertelstunde: PV 0,6${NBSP}kW.`,
+    });
+    // Weniger bewertete Tage als das Fenster: das steht dabei - kein kürzeres Fenster.
+    const teils = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: 0.4, pvKw: null, tage: 3, fenster: 7 } });
+    expect(teils[0].titel).toBe('Vorhersage, letzte 7 Tage (3 bewertet)');
+    // Ohne Bewertung keine Zeile.
+    for (const vorhersage of [null, { verbrauchKw: null, pvKw: null, tage: 7, fenster: 7 }]) {
+      expect(planAnnahmen({ ...BASIS, vorhersage }).some((x) => x.key === 'vorhersage')).toBe(false);
+    }
   });
 
   it('beschreibt Tarif, Vermarktung, Netzladen und die Grenzen des Laufs', () => {

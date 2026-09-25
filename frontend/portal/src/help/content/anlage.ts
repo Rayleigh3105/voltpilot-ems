@@ -2,17 +2,17 @@ import type { HelpArticle } from '../model';
 
 export const plantArticles: HelpArticle[] = [
   {
-    id: 'anlagenmodell', category: 'anlage', title: 'Das Anlagen-Modell verstehen',
-    summary: 'Wie Box, Geräte, Komponenten und Messwerte zusammengehören.',
-    keywords: ['Komponente', 'Modell', 'Topologie', 'Gerät', 'Zuordnung', 'Messwert'],
+    id: 'anlagenmodell', category: 'anlage', title: 'Den Aufbau Ihrer Anlage verstehen',
+    summary: 'Wie Standort, Anlage, VoltPilot-Box und Geräte zusammengehören.',
+    keywords: ['Aufbau', 'Standort', 'Komponente', 'Modell', 'Gerät', 'Box', 'Zuordnung', 'Messwert', 'Hinzufügen'],
     sections: [
       { id: 'ordnung', title: 'Vom Standort bis zum Messwert', paragraphs: [
-        "Die Anlage ist Ihr Standort, die Box verbindet dessen Geräte. Komponenten ordnen Mess- und Steuerfähigkeiten zu; ein Gerät kann mehrere liefern. Eine Datenverbindung allein erlaubt noch keine Steuerung.",
+        "Der Reiter „Aufbau“ zeigt Ihre Anlage als Baum: oben der Standort, darunter seine Anlagen, die VoltPilot-Boxen und die Geräte daran. Ein Gerät kann mehrere Komponenten liefern, etwa Speicher und Netzanschluss. Eine Datenverbindung allein erlaubt noch keine Steuerung.",
       ], figure: 'modell' },
       { id: 'pruefen', title: 'Die eigene Anlage wiedererkennen', paragraphs: [], steps: [
-        'Unter Anlage die Komponentenübersicht öffnen und die angezeigten Namen prüfen.',
-        'Bei einer unklaren Zuordnung das Gerät beziehungsweise die Box öffnen. Gerätetyp und vorhandene Messgrößen mit der tatsächlichen Installation abgleichen.',
-        'Beim Hinzufügen oder Bearbeiten das passende Modell und den angebotenen Verbindungsweg wählen. Anschließend den Synchronisationszustand und die eingehenden Werte prüfen.',
+        'Unter Anlage den Reiter „Aufbau“ öffnen und die Namen im Baum prüfen.',
+        'Ein Gerät antippen: Der Kurzblick zeigt, was es misst, und führt zur Geräteseite. Gerätetyp und Messgrößen mit der tatsächlichen Installation abgleichen.',
+        'Neues über „Hinzufügen“ anlegen: ein Gerät, eine VoltPilot-Box oder eine weitere Anlage. Was die Box schon meldet, steht gestrichelt im Baum und lässt sich übernehmen.',
       ] },
       { id: 'unvollstaendig', title: 'Wenn das Modell unvollständig ist', paragraphs: [
         "Fehlende Komponenten oder Zuordnungen können Werte und Ansichten unvollständig machen. Prüfen Sie vorhandene Einträge, Synchronisation und Messwerte, bevor Sie ein Gerät erneut hinzufügen.",
@@ -41,13 +41,13 @@ export const plantArticles: HelpArticle[] = [
     keywords: ['Tarif', 'Strompreis', 'Vergütung', 'Anzulegender Wert', 'Bezugspreis', 'Netzladen', 'Standort', 'Kapazität', 'Einstellungen'],
     sections: [
       { id: 'finden', title: 'Mit der gesuchten Größe beginnen', paragraphs: [
-        "Prüfen Sie den Anlagennamen und suchen Sie nach der gewünschten Einstellung. Feldbeschreibung und Einheit erklären die Eingabe. Die Ansicht zeigt auch, welche Werte VoltPilot verwaltet.",
+        "Die Einstellungen stehen als kurze Liste in vier Gruppen: Anlage, Strom & Geld, Speicher und Weiteres. Jede Zeile zeigt ihren aktuellen Wert; ein Tippen öffnet das Bearbeiten mit Erklärung und Einheit. Ein Schloss kennzeichnet Werte, die VoltPilot eingerichtet hat.",
       ], figure: 'einstellungen' },
       { id: 'geld', title: 'Bezug und Einspeisung getrennt erfassen', paragraphs: [
         "Bezugstarif und Einspeisevergütung gelten für entgegengesetzte Stromrichtungen. Übertragen Sie Werte aus Ihren Unterlagen mit korrekter Einheit und Tarifart. Falsche Angaben beeinflussen Planung und wirtschaftliche Einordnung.",
       ] },
       { id: 'speichern', title: 'Eine Änderung überprüfen', paragraphs: [
-        "Kontrollieren Sie nach dem Speichern den übernommenen Wert und offene Voraussetzungen. Auswirkungen können erst nach neuer Planung oder Übertragung sichtbar werden. Bei unklaren Angaben nutzen Sie Feldhilfe und Ansprechpartner.",
+        "Kontrollieren Sie nach dem Speichern den übernommenen Wert und offene Voraussetzungen. Schalter wie „Netzladen“ wirken sofort; die Zeile nennt danach die Folge und bietet „Rückgängig“. Auswirkungen können erst nach neuer Planung oder Übertragung sichtbar werden.",
       ] },
     ], related: ['speicher', 'marktpreise', 'erloese'],
   },

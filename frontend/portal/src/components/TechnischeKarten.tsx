@@ -43,6 +43,7 @@ import {
 } from '../rollen';
 import { InfoTip } from '../components/InfoTip';
 import { fmtNum } from '../format';
+import { AUFBAU_REITER } from '../anlageNav';
 
 /**
  * Anlagen-Zentrale Stufe 3 (PR 3a) — die AUFGELÖSTE Installateur-Ansicht.
@@ -62,7 +63,7 @@ import { fmtNum } from '../format';
  *    „Neues Gerät gefunden"; {@link EntityDrawer} ist die Admin-Tür von
  *    „＋ Hinzufügen".
  *
- * ⚠ Es gibt KEINEN zweiten Gate-Ort: der Wirt (`AnlagenModellSection`) prüft
+ * ⚠ Es gibt KEINEN zweiten Gate-Ort: der Wirt (`AufbauSection`) prüft
  * `rollen.showTechnicalLayer()` EINMAL und rendert nichts hiervon ohne ihn
  * (M7 — eine künftige Installateur-Rolle steckt dort ein und nirgends sonst).
  * Alle Ableitungen bleiben die reinen `entities.ts` / `rollen.ts`.
@@ -245,7 +246,7 @@ export function TechnischeZeile({
       <ConfirmDialog
         open={ask}
         title="Komponente entfernen?"
-        intro={`„${entity.label ?? entity.typeLabel}" verschwindet aus dem Anlagen-Modell.`}
+        intro={`„${entity.label ?? entity.typeLabel}" verschwindet aus dem ${AUFBAU_REITER}.`}
         consequences={[
           'Die aufgezeichneten Messwerte bleiben erhalten.',
           composedPoint

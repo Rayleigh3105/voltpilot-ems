@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
 import { anlageSidebar } from '../anlageNav';
 import { anlageSurface } from '../surface';
+import { initInstallApp, resetInstallApp } from '../installApp';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
 vi.mock('../auth', () => ({
@@ -451,6 +452,43 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     renderShell();
     fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     expect(screen.getByRole('menu', { name: 'Konto-Menü' }).textContent).not.toContain('Plattform');
+  });
+
+  it('trägt „Als App auf dem Handy" - die Einrichtung gilt dem Gerät, nicht der Anlage (E5)', async () => {
+    resetInstallApp();
+    initInstallApp({
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      matchMedia: () => ({ matches: false }),
+      navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari' },
+    });
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Als App auf dem Handy' }));
+    // Das Menü schließt, das Blatt öffnet (lazy geladen).
+    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
+    // Lazy geladen: der erste Aufruf darf länger dauern als eine Sekunde.
+    expect(
+      await screen.findByRole('dialog', { name: 'Als App auf dem Handy' }, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    // Schließen gibt den Fokus an den Avatar zurück - der Menüeintrag ist fort.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Als App auf dem Handy' })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /Konto-Menü/ })));
+  });
+
+  it('lässt den Eintrag in der installierten App weg', () => {
+    resetInstallApp();
+    initInstallApp({
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      matchMedia: () => ({ matches: true }),
+      navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/151' },
+    });
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Als App auf dem Handy' })).toBeNull();
+    resetInstallApp();
   });
 
   it('das Avatar-Menü schließt mit Escape', () => {

@@ -174,11 +174,11 @@ export function PrognosePage(props: {
   }, [props.embedded, site?.id, tage]);
 
   /*
-   * Der Prognose-Schalter (Captain-Auftrag 19.08.2026). Er gilt JE ANLAGE und
-   * gehört dem, dem die Anlage gehört - es gibt hier deshalb KEIN Rollen-Gate
-   * mehr; die Route ist mandantenbezogen wie jede `/sites/**`-Route (eine
-   * fremde Anlage ist 404). Der Technik-Schalter des Hauses steuert nur noch,
-   * ob die Plattform-Vorgabe als Betreiber-Hinweis danebensteht.
+   * Der Prognose-Schalter gilt JE ANLAGE; die Route ist mandantenbezogen wie
+   * jede `/sites/**`-Route (eine fremde Anlage ist 404). Seit E6 = A bietet
+   * die Fläche den Knopf nur VoltPilot an (Technik-Schalter des Hauses) - der
+   * Kunde sieht die Treffsicherheit als Zeile im Fahrplan. Derselbe Schalter
+   * stellt die Plattform-Vorgabe als Betreiber-Hinweis daneben.
    */
   const istBetreiber = showTechnicalLayer();
   const [wahl, setWahl] = useState<ModellWahlZustand | null>(null);
@@ -488,7 +488,9 @@ export function PrognosePage(props: {
                           (z) => z.model === m.model,
                         )?.stand ?? ''
                       }
-                      onPromote={() => setSchalten({ kind: m.kind, model: m.model })}
+                      // E6 = A: ein Modell umzustellen ist Sache von VoltPilot - der
+                      // Kunde sieht die Treffsicherheit im Fahrplan.
+                      onPromote={istBetreiber ? () => setSchalten({ kind: m.kind, model: m.model }) : null}
                     />
                   ))
                 )}
@@ -597,7 +599,8 @@ function KandidatZeileKarte({
   activeModel: ForecastModelId;
   /** Die eine Aussage aus `kandidatenZeilen` — die Fläche formuliert sie nicht neu. */
   stand: string;
-  onPromote: () => void;
+  /** null = kein Schalter (nur VoltPilot stellt ein Modell um). */
+  onPromote: (() => void) | null;
 }) {
   const collecting = state.status === 'collecting';
   const record = skillBilanz(accuracy, state.model);
@@ -700,11 +703,13 @@ function KandidatZeileKarte({
 
       {/* Der Schalter - in BEIDEN Zuständen, denn ein gesperrter Knopf MIT
           Grund ist die ehrliche Antwort auf „warum kann ich nicht?". */}
-      <UebernahmeAktion
-        state={state}
-        bewertet={bewerteteTage(accuracy, state.model)}
-        onClick={onPromote}
-      />
+      {onPromote && (
+        <UebernahmeAktion
+          state={state}
+          bewertet={bewerteteTage(accuracy, state.model)}
+          onClick={onPromote}
+        />
+      )}
     </div>
   );
 }

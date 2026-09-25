@@ -18,6 +18,7 @@ export function AnlageAnlegenDrawer({
   onClose,
   onChanged,
   existingSites,
+  standortId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -29,6 +30,8 @@ export function AnlageAnlegenDrawer({
    * step 1; these are location suggestions only).
    */
   existingSites?: Site[];
+  /** Der Standort der neuen Anlage (aus dem Aufbau); ohne ihn entscheidet der Server. */
+  standortId?: string | null;
 }) {
   // The reload is DEFERRED to close: reloading the host's site list mid-flow
   // would re-render an empty-state host into the full page and unmount this
@@ -59,6 +62,7 @@ export function AnlageAnlegenDrawer({
           // existing customers add their next Anlage with this drawer.
           sites={[]}
           existingSites={existingSites}
+          standortId={standortId}
           waitForFirstData={false}
           onSiteCreated={(s: Site) => {
             createdSiteId.current = s.id;
