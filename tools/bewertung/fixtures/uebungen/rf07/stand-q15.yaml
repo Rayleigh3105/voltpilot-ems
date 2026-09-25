@@ -1,0 +1,6 @@
+# Stand-Blatt der Fixture RF-07 (AP-20 IP-19): Q15 bestaetigt am Tag der Uebung.
+q15_wal_archiv:
+  bestaetigt: ja
+  am: 2026-10-05
+  durch: Betreiber
+  beleg: vp-db-backup-check.sh Exit 0, WAL-Archiv aktuell (2 min), archive_mode=on, Archiver ok

@@ -58,6 +58,13 @@ def l012_wieder_offen(liste):
     l['verlauf'], l['zustand'] = l['verlauf'][:1], 'offen'
 
 
+def l003_wie_im_referenzfall(liste):
+    """L-003 wie im Referenzfall RF-06 (`offen` seit 2026-09-25): die Liste im Repo steht seit AP-20 IP-19
+    auf `in_arbeit`; RF-06 und die Gegenproben spielen den ganzen Weg ab `offen`."""
+    l = luecke(liste, 'L-003')
+    l['verlauf'], l['zustand'] = l['verlauf'][:1], 'offen'
+
+
 def uebergang(liste, kz, am, nach, **mehr):
     l = luecke(liste, kz)
     l['verlauf'].append({'am': am, 'nach': nach, 'person': 'Crew (Test)', 'begruendung': 'Gegenprobe', **mehr})
@@ -77,6 +84,7 @@ def restpunkt(bis='2027-03-31', **ueber):
 def rf06():
     """RF-06: L-003 offen → in_arbeit → behoben, L-004 offen → restpunkt (Captain, Grenze, bis 31.03.2027)."""
     liste, matrix = lade(luecken.LISTE_PFAD), lade(luecken.MATRIX_PFAD)
+    l003_wie_im_referenzfall(liste)
     uebergang(liste, 'L-003', '2026-10-01', 'in_arbeit')
     uebergang(liste, 'L-003', '2026-11-02', 'behoben', nachweis=nachweis())
     zusage(matrix, 'Z-015')['luecken'].remove('L-003')
@@ -102,6 +110,16 @@ class ImRepo(unittest.TestCase):
         for l in liste['luecken'][:12]:
             self.assertEqual((l['verlauf'][0]['am'], l['verlauf'][0]['nach']), ('2026-09-25', 'offen'), l['kennzeichen'])
 
+    def test_l003_ist_erst_mit_ausgeloester_alarm_uebung_behoben_nr8(self):
+        """AP-20 IP-19 liefert Export und Regel-Vorschlag; behoben trägt erst gitops-Merge UND Alarm-Übung (RF-06)."""
+        l = luecke(lade(luecken.LISTE_PFAD), 'L-003')
+        if l['zustand'] == 'behoben':
+            self.assertIn('VoltPilotSicherungZuAlt', l['verlauf'][-1]['nachweis']['fundstelle'])
+            self.assertEqual('Betreiber', l['verlauf'][-1]['nachweis']['gefahren_von'])
+        else:
+            self.assertEqual('in_arbeit', l['zustand'])
+            self.assertIn('Betreiber', [w['wer'] for w in l['wer_liefert']])
+
     def test_l004_steht_offen_bis_der_captain_den_restpunkt_annimmt_la6(self):
         l = luecke(lade(luecken.LISTE_PFAD), 'L-004')
         self.assertTrue(l['zustand'] != 'restpunkt' or l['verlauf'][-1]['angenommen_von'] == 'Captain')
@@ -113,6 +131,7 @@ class Gegenproben(unittest.TestCase):
 
     def setUp(self):
         self.l, self.m = lade(luecken.LISTE_PFAD), lade(luecken.MATRIX_PFAD)
+        l003_wie_im_referenzfall(self.l)
         self.assertEqual(luecken.verstoesse(self.l, self.m), [], 'Liste und Matrix müssen vor der Gegenprobe grün sein')
 
     def assertRot(self, *erwartet, liste=None, matrix=None):

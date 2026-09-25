@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "kennzeichen": "U-JJJJ-nn",
+  "art": "alarm",
+  "alarm": "VoltPilotSicherungZuAlt",
+  "betrifft": ["L-003", "Z-015"],
+  "datum": "JJJJ-MM-TT",
+  "person": "<wer die Übung gefahren hat>",
+  "zustand": "<durchgefuehrt, wenn die Meldung beim Empfänger ankam, sonst fehlgeschlagen>",
+  "ergebnis": {
+    "ausgeloest_am": "<JJJJ-MM-TTThh:mm:ssZ, Ankunft der Meldung>",
+    "zugestellt_an": "<Empfänger im Alertmanager>",
+    "aufgehoben_am": "<JJJJ-MM-TTThh:mm:ssZ, Ankunft der Entwarnung>"
+  },
+  "artefakt": {
+    "pfad": "U-JJJJ-nn/zustellung.txt",
+    "sha256": "<shasum -a 256 U-JJJJ-nn/zustellung.txt>"
+  },
+  "bemerkung": "<welche Zeilen kamen (teil, zustand), wie ausgelöst>"
+}

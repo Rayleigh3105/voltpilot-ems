@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "kennzeichen": "U-JJJJ-nn",
+  "art": "wiederherstellung",
+  "betrifft": ["Z-015"],
+  "datum": "JJJJ-MM-TT",
+  "person": "<wer die Übung gefahren hat>",
+  "zustand": "<durchgefuehrt oder fehlgeschlagen, so wie rueckweg.json es trägt>",
+  "ergebnis": {
+    "dauer_ms": "<wiederherstellung_ms aus rueckweg.json>",
+    "flyway_bytegleich": "<flyway_stimmt aus rueckweg.json: true bei 1>",
+    "q01_zaehlungen_gleich": "<Q01_stimmt aus rueckweg.json: true bei 1>"
+  },
+  "artefakt": {
+    "pfad": "U-JJJJ-nn/rueckweg.json",
+    "sha256": "<shasum -a 256 U-JJJJ-nn/rueckweg.json>"
+  },
+  "bemerkung": "<Stand der Kopie, Sicherung (--from-backup, --target-time), Auffälliges>"
+}

@@ -16,6 +16,8 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | [`nachweismatrix.schema.json`](nachweismatrix.schema.json) | Vertrag: Felder, Pflichten je Urteil, Vokabulare, Gliederung | AP-20 IP-2 |
 | [`nachweismatrix.json`](nachweismatrix.json) | die Matrix mit Normfassung und Stichtag; Zusagen-Teil seit IP-5, Norm-Teil seit IP-7, Kundenaufgaben seit IP-8 | AP-20 IP-2, IP-5, IP-7, IP-8 |
 | [`luecken.json`](luecken.json), [`luecken.schema.json`](luecken.schema.json) | Lückenliste des Betreibers (L-nnn) mit Verlauf je Übergang, nie beim Kunden | AP-20 IP-3 |
+| [`uebungen/`](uebungen/README.md), [`uebung.schema.json`](uebung.schema.json) | Übungen des Betreibers (U-JJJJ-nn): Rückweg-Übung und Alarm-Übung mit Artefakt und Prüfsumme, Vorlagen; gelesen von `tools/bewertung/uebungen.py` (RF-07) | AP-20 IP-19 |
+| [`vorschlaege/gitops/`](vorschlaege/gitops/README.md) | Regel `VoltPilotSicherungZuAlt` mit promtool-Test als Vorschlag; als Zweig nach gitops, gemergt vom Captain | AP-20 IP-19 |
 | [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3); später der Matrix-Prüfer | AP-20 IP-2, IP-3, IP-5, IP-4 |
 
 ## Aufbau (MX1, MX2)

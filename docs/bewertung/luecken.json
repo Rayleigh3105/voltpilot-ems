@@ -29,10 +29,11 @@
       "text": "Kein Alarm auf das Alter der Sicherung; das Alter ist keine Metrik",
       "quelle": "docs/backup-restore.md:130, :245; AP-20 W6",
       "betrifft": ["Z-015"],
-      "wer_liefert": [{"wer": "Crew", "was": "Alter der letzten Basissicherung und des letzten WAL-Segments als Metrik, gitops-Vorschlag für den Alarm (AP-20 IP-19)"}, {"wer": "Betreiber", "was": "Export auf der VM, gitops-Merge und die Alarm-Übung - ein nie ausgelöster Alarm ist nicht geliefert (NR8)"}],
-      "zustand": "offen",
+      "wer_liefert": [{"wer": "Crew", "was": "gitops-Zweig aus docs/bewertung/vorschlaege/gitops/ anlegen, danach Alarm-Übung eintragen und die Lücke mit Nachweis schließen (AP-20 IP-19)"}, {"wer": "Betreiber", "was": "Export auf der VM (vp-db-backup-metrics.timer, Textfile-Verzeichnis im node-exporter), gitops-Merge und die Alarm-Übung nach docs/bewertung/uebungen/README.md - ein nie ausgelöster Alarm ist nicht geliefert (NR8)"}],
+      "zustand": "in_arbeit",
       "verlauf": [
-        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"},
+        {"am": "2026-09-25", "nach": "in_arbeit", "person": "Crew (AP-20 IP-19)", "begruendung": "AP-20 IP-19 liefert den Textfile-Export tools/backup/vp-db-backup-metrics.sh und die Regel VoltPilotSicherungZuAlt als gitops-Vorschlag, im promtool-Test ausgelöst. Behoben erst mit gitops-Merge und ausgelöster Alarm-Übung in Produktion (RF-06, NR8); beides fehlt"}
       ]
     },
     {

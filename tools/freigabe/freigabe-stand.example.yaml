@@ -27,6 +27,19 @@ m1_ausgewertet:
   bestaetigt: nein
   beleg: Bestandsblatt gegen Produktion noch nicht gefahren, Q03 Lage c/f offen
 
+# Q15 "WAL-Archiv laeuft" (AP-20 IP-19, BT2): eigener Punkt, weil er auch die
+# Zusage Z-015 der Bewertung traegt (tools/bewertung/uebungen.py). M-1b ist erst
+# bestaetigt, wenn m1_ausgewertet UND dieser Punkt es sind. "ja" nur, wenn am
+# selben Tag BEIDES gilt: Bestandsblatt Q15 ohne Befund (letzte Archivierung
+# juenger als 1 h, Fehler steigen nicht) und
+# /srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh mit Exit 0.
+# beleg: die drei OK-Zeilen des Alterschecks in einem Satz, etwa
+#   "vp-db-backup-check.sh Exit 0: Basis-Backup 20261004T024012Z (9 h alt),
+#    WAL-Archiv aktuell (2 min), archive_mode=on, Archiver ok"
+q15_wal_archiv:
+  bestaetigt: nein
+  beleg: Q15 gegen Produktion nicht gelesen, vp-db-backup-check.sh auf der VM nicht gefahren
+
 nw5_lastmessung:
   bestaetigt: nein
   beleg: 24-h-Messung nach L1-L4 steht aus; tools/lastprofil-messung/ liegt bereit

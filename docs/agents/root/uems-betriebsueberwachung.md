@@ -199,3 +199,13 @@ gültiger Mitgliedschaft (`repo/BoxMetrikRepository`, Admin-Rolle; Rolle und Ant
 und die acht Regeln: [Übergabe an Teil B](../../rollout/gemeinsame-steuerung-metriken.md).
 ⚠ „veröffentlicht“/„angenommen“ sind die ERZEUGUNG des Plans, nicht die Ankunft der Quittung — die
 retained Quittung kommt nach jedem api-Neustart erneut und setzte ein Ankunfts-Alter zurück.
+
+## Sicherung der Datenebene (AP-20 IP-19, W6)
+
+Die neunte Schicht. Sie kommt nicht aus der api, sondern von der VM: `tools/backup/vp-db-backup-metrics.sh`
+(Timer 5 min) schreibt `voltpilot_sicherung_{basis,wal,export}_timestamp_seconds` als Textfile für den
+node-exporter der Datenebene (Ziel `datenebene-node`). **Zeitpunkte, kein Alter**, und eine fehlende
+Sicherung ist eine fehlende Zeile, keine `0`. Die Regel `VoltPilotSicherungZuAlt` (Labels `teil`,
+`zustand`) mit promtool-Test liegt als Vorschlag unter `docs/bewertung/vorschlaege/gitops/`. Sie ist nicht
+gemergt, und die gitops-Datenebene ist geparkt. Geliefert ist der Alarm erst mit einer Alarm-Übung
+(NR8, `docs/bewertung/uebungen/`). Details: [Backup-Runbook](../../backup-restore.md#sicherungsalter-als-metrik-ap-20-ip-19).

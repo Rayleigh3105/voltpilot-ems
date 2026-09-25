@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "kennzeichen": "U-2026-01",
+  "art": "wiederherstellung",
+  "betrifft": ["Z-015"],
+  "datum": "2026-10-05",
+  "person": "Betreiber",
+  "zustand": "durchgefuehrt",
+  "ergebnis": {
+    "dauer_ms": 1260000,
+    "flyway_bytegleich": true,
+    "q01_zaehlungen_gleich": true
+  },
+  "artefakt": {
+    "pfad": "U-2026-01/rueckweg.json",
+    "sha256": "12b37e36747439026a27dfd698b323535a6178446ef06507763199060e8ae7ba"
+  },
+  "bemerkung": "RF-07 (AP-20): Rückweg-Übung AP-14 NW-8 an einer wiederhergestellten Kopie. Dauer und Datum sind angenommen; die echte Zahl liefert der Betreiber."
+}

@@ -250,3 +250,28 @@ Nach einem reinen TimescaleDB-PITR können in Keycloak Benutzer existieren, dere
 - Außer-Haus-Kopie (rsync/restic/S3) + Verschlüsselung at rest.
 - Streaming-Standby (zweite VM, `primary_conninfo`) sobald das Restore-Fenster bei TB-Skala die Anforderungen reißt - das WAL-Archiv hier ist dafür die halbe Miete.
 - Backup-Alter als Prometheus-Gauge (zusammen mit den §6.3-Gauges des Skalierungs-Gutachtens).
+
+## Sicherungsalter als Metrik (AP-20 IP-19)
+
+Gebaut als Vorstufe zum Alarm, der Alarm selbst ist ein gitops-Vorschlag. Bis Export, Regel und
+Alarm-Übung in Produktion stehen, gilt oben weiter: `systemctl --failed` ist der Alarm (Lücke L-003,
+`in_arbeit`).
+
+- **Export:** `tools/backup/vp-db-backup-metrics.sh` schreibt alle 5 min
+  (`systemd/vp-db-backup-metrics.{service,timer}`) die Datei
+  `/var/lib/node_exporter/textfile_collector/voltpilot_sicherung.prom` für den Textfile-Collector des
+  node-exporters: `voltpilot_sicherung_basis_timestamp_seconds`, `…_wal_timestamp_seconds` und
+  `…_export_timestamp_seconds`. Es sind **Zeitpunkte, kein Alter**. Das Alter rechnet die Regel mit
+  `time() - x`, also meldet sich auch ein stehender Export. Für „jüngstes Basis-Backup“ und „jüngste
+  WAL-Datei“ gelten dieselben Regeln wie beim Alterscheck. Gibt es keines, fehlt die Zeile: unbekannt
+  ist keine Null. Der Export liest nur `DB_BACKUP_DIR` und braucht weder Docker noch die Datenbank.
+- **Alarm:** `VoltPilotSicherungZuAlt` mit denselben Schwellen wie der Alterscheck (Basis 26 h,
+  kritisch ab 50 h; WAL 60 min; dazu „keine Sicherung“ und „Export steht/fehlt“), als Vorschlag mit
+  promtool-Test unter [`bewertung/vorschlaege/gitops/`](bewertung/vorschlaege/gitops/README.md).
+  Dort stehen auch der Einbau in gitops und die Schritte auf der VM.
+- **Beleg:** eine Wiederherstellung zählt nur mit Übung und Artefakt, der Alarm nur mit einer
+  ausgelösten Übung (AP-20 BT1, NR8). Ablauf, Vorlagen und Leser:
+  [`bewertung/uebungen/`](bewertung/uebungen/README.md). Q15 „WAL-Archiv läuft“ bestätigt der
+  Betreiber im Stand-Blatt (`q15_wal_archiv`, Tor G1 M-1b).
+- **Prüfen:** `bash tools/backup/test-backup-metrics.sh` (offline, auch in Phase 0 von
+  `test-backup-restore.sh`).

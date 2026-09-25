@@ -13,6 +13,7 @@
 #       Fehler bei abweichendem Inhalt, keine .part-Reste
 #     - Lockstep-Waechter: enabled.yml traegt exakt das archive_command, das
 #       dieser Test faehrt (Drift Overlay <-> Test faellt hier um)
+#     - Textfile-Export des Sicherungsalters (test-backup-metrics.sh)
 #     - shellcheck (falls installiert)
 #
 #   Phase B (mit Docker):
@@ -110,11 +111,19 @@ else
   fail "Lockstep: enabled.yml ohne archive_mode/Skript-Mount"
 fi
 
+# Textfile-Export des Sicherungsalters (AP-20 IP-19): eigener Offline-Test.
+if bash tools/backup/test-backup-metrics.sh >"$TMP/metrics.out" 2>&1; then
+  pass "vp-db-backup-metrics.sh: Textfile-Export ($(grep -c '  PASS' "$TMP/metrics.out") Faelle, test-backup-metrics.sh)"
+else
+  fail "test-backup-metrics.sh:"; sed 's/^/        /' "$TMP/metrics.out"
+fi
+
 if command -v shellcheck >/dev/null 2>&1; then
   if shellcheck tools/backup/vp-db-backup.sh tools/backup/vp-db-restore.sh \
        tools/backup/vp-db-backup-check.sh tools/backup/test-backup-restore.sh \
+       tools/backup/vp-db-backup-metrics.sh tools/backup/test-backup-metrics.sh \
        infra/prod/backup/archive-wal.sh >"$TMP/shellcheck.out" 2>&1; then
-    pass "shellcheck sauber (5 Skripte)"
+    pass "shellcheck sauber (7 Skripte)"
   else
     fail "shellcheck:"; sed 's/^/        /' "$TMP/shellcheck.out"
   fi

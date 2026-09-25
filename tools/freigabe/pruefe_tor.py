@@ -365,6 +365,23 @@ def betreiber(schluessel: str, was: str, wer_liefert: str = 'Betreiber'):
     return pruefe
 
 
+def betreiber_alle(*teile, wer_liefert: str = 'Betreiber'):
+    """Ein Pruefpunkt aus mehreren Stand-Blatt-Punkten: bestaetigt erst, wenn jeder es ist.
+
+    Jeder Teil steht fuer sich im Blatt, damit ihn auch ein anderer Leser einzeln findet
+    (Q15 traegt zugleich die Zusage Z-015 der Bewertung, tools/bewertung/uebungen.py).
+    """
+    pruefer = [betreiber(schluessel, was, wer_liefert) for schluessel, was in teile]
+
+    def pruefe(ctx: Kontext):
+        urteile = [p(ctx) for p in pruefer]
+        offen = [text for urteil, text in urteile if urteil != BETREIBER_WORT]
+        if offen:
+            return OFFEN, ' · '.join(offen)
+        return BETREIBER_WORT, ' · '.join(text for _, text in urteile)
+    return pruefe
+
+
 # --------------------------------------------------------------------------- #
 # Die Pruefpunkte je Tor - die Liste aus §3.4 ist verbindlich
 # --------------------------------------------------------------------------- #
@@ -388,7 +405,8 @@ def punkte(tor: str):
         return [
             ('M-1a', 'Bestandsblatt gegen Produktion gefahren', '§3.4', m1_blatt),
             ('M-1b', 'Bestandsblatt ausgewertet: Q03 Lage c/f erklaert, Q15 WAL-Archiv laeuft', '§3.4',
-             betreiber('m1_ausgewertet', 'Q03 Lage c/f erklaert und Q15 WAL-Archiv laeuft')),
+             betreiber_alle(('m1_ausgewertet', 'Q03 Lage c/f erklaert'),
+                            ('q15_wal_archiv', 'Q15 WAL-Archiv laeuft (AP-20 IP-19)'))),
             ('NW-1', 'Generalprobe an einer wiederhergestellten Kopie', '§3.4 / §4.13', nw1_generalprobe),
             ('NW-8', 'Rueckweg geuebt, Dauer bekannt', '§3.4 / §4.13', nw8_rueckweg),
             ('NW-3', 'Das ausgelieferte Box-Image gegen die neue Cloud', '§3.4 / §4.13', nw3_ausgeliefert),

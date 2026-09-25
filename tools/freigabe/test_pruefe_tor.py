@@ -56,7 +56,7 @@ NW3_GRUEN = {
 }
 
 # Genau die Punkte, die allein der Betreiber weiss - alle vier Tore zusammen.
-STAND_PUNKTE = ['m1_ausgewertet', 'nw5_lastmessung', 'nw6_alarmuebung', 'kapazitaet_l6', 'pilotkunden',
+STAND_PUNKTE = ['m1_ausgewertet', 'q15_wal_archiv', 'nw5_lastmessung', 'nw6_alarmuebung', 'kapazitaet_l6', 'pilotkunden',
                 'gitops_pr37', 'gitops_platzhalter', 'supportweg', 'kundennachricht', 'ip18_dauerlaeufer',
                 'startwaechter_main', 'budgetpruefung_produktion', 'core_palette_gemeinsam',
                 'flotte_auf_release_a', 'q10_pending_edge', 'wago_hardware_pilot']
@@ -318,6 +318,21 @@ class TorPrueferTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn('[offen] NW-6', text)
         self.assertIn('fehlt der Punkt "nw6_alarmuebung"', text)
+
+    def test_m1b_bleibt_offen_bis_auch_q15_bestaetigt_ist(self):
+        """AP-20 IP-19: Q15 steht als eigener Punkt im Blatt; Q03 allein bestaetigt M-1b nicht."""
+        punkte = {p: ('ja', '2026-09-20') for p in STAND_PUNKTE}
+        punkte['q15_wal_archiv'] = ('nein', '2026-09-20')
+        self.b.stand_schreiben(punkte)
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('[offen] M-1b', text)
+        self.assertIn('"q15_wal_archiv" steht im Stand-Blatt auf bestaetigt: nein', text)
+        punkte['q15_wal_archiv'] = ('ja', '2026-09-21')
+        self.b.stand_schreiben(punkte)
+        code, text = self.b.fahre('G1')
+        self.assertIn('[nicht maschinell pruefbar] M-1b', text)
+        self.assertIn('Q15 WAL-Archiv laeuft (AP-20 IP-19) - Betreiber bestaetigt am 2026-09-21', text)
 
     def test_bestaetigung_ohne_datum_ist_offen(self):
         self.b.stand.write_text('nw6_alarmuebung:\n  bestaetigt: ja\n', encoding='utf-8')

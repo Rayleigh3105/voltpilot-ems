@@ -1,0 +1,10 @@
+# Alle 5 min: das Alter der Sicherung als Textfile fuer den node-exporter
+# (AP-20 IP-19). Liest nur DB_BACKUP_DIR, braucht weder Docker noch die DB.
+# Einrichtung und Alarm: docs/backup-restore.md "Sicherungsalter als Metrik".
+# Weicht DB_BACKUP_DIR vom Default ab: --backup-dir hier ergaenzen.
+[Unit]
+Description=VoltPilot DB backup age export (node-exporter textfile)
+
+[Service]
+Type=oneshot
+ExecStart=/srv/docker/voltpilot/tools/backup/vp-db-backup-metrics.sh --backup-dir /srv/backup/voltpilot-db --textfile-dir /var/lib/node_exporter/textfile_collector

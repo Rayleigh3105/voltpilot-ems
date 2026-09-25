@@ -42,7 +42,9 @@ Ein Beleg ist **nie** „die Datei existiert“. Was das Werkzeug tatsächlich p
   **Übersprungen ist nicht grün**, rot ist nicht grün.
 - **Bestandsblatt** (M-1): eine datierte Ergebnisdatei des Betreibers, **jünger als sieben
   Tage** (`--blatt`). Die Auswertung selbst — Q03 Lage c/f erklärt, Q15 WAL-Archiv läuft —
-  weiß nur er und steht im Stand-Blatt.
+  weiß nur er und steht im Stand-Blatt, als zwei Punkte `m1_ausgewertet` und `q15_wal_archiv`.
+  M-1b ist erst bestätigt, wenn beide es sind. Q15 steht eigens, weil er auch die Zusage Z-015 der
+  Bewertung trägt (`tools/bewertung/uebungen.py`, AP-20 IP-19).
 - **Generalprobe** (NW-1): `probe.json` mit `exit_code` 0, 21 oder 22 **und** Z08 = 0 in
   Rubrik C und nach dem alten Start (`W1.Z08`) — erfolgreiche DELETE-Marker sind ein
   Schaden, kein bestandener Lauf. Und: eine **Migrationssumme unter einer Sekunde** ist
