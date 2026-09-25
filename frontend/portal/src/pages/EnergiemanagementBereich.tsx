@@ -6,19 +6,22 @@ import { EinsichtRecht } from '../components/EinsichtRecht';
 import { EnergiemanagementAudits } from '../components/EnergiemanagementAudits';
 import { EnergiemanagementAufgaben } from '../components/EnergiemanagementAufgaben';
 import { EnergiemanagementFeststellungen } from '../components/EnergiemanagementFeststellungen';
+import { EnergiemanagementManagementbewertung } from '../components/EnergiemanagementManagementbewertung';
 import { EnergiemanagementVerantwortung } from '../components/EnergiemanagementVerantwortung';
+import { EnergiemanagementWiedervorlage } from '../components/EnergiemanagementWiedervorlage';
 import { VerzeichnisTabelle } from '../components/VerzeichnisTabelle';
 import { ZuschnittHilfe } from '../components/ZuschnittHilfe';
 import '../components/BereichTabs.css';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
 import { UEMS_DOKUMENTE, UEMS_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
-import type { EnergiemanagementReiter } from '../nav';
+import type { EnergiemanagementReiter, Route } from '../nav';
 import { useRollen } from '../rollen';
 import { AuditSeite } from './AuditSeite';
 import { DokumentSeite } from './DokumentSeite';
 import { EnergiemanagementPersonSeite } from './EnergiemanagementPersonSeite';
 import { FeststellungSeite } from './FeststellungSeite';
+import { ManagementbewertungSeite } from './ManagementbewertungSeite';
 import './Energiemanagement.css';
 import './Verbesserung.css';
 
@@ -34,6 +37,8 @@ import './Verbesserung.css';
  * IP-13: Reiter „Aufgaben“ (mit „Wer ist wofür verantwortlich“ als eigener Ansicht darunter, `…/verantwortung`) und die
  * Seite einer Person; wer die Rolle „Einsicht“ hat, liest im Kopf den Rollen-Satz und an jedem Schreib-Knopf den Leer-Satz.
  * IP-20: Reiter „Audits“ (Auditprogramm) und „Feststellungen“, die Seiten eines Audits und einer Feststellung.
+ * IP-24: Reiter „Wiedervorlage“ (an zweiter Stelle, §6.3; `onSprung` führt jede Zeile auf ihre Seite, auch außerhalb
+ * des Bereichs) und „Managementbewertung“ (je Jahr) mit der Seite einer Managementbewertung.
  */
 export function EnergiemanagementBereich({
   reiter,
@@ -41,22 +46,29 @@ export function EnergiemanagementBereich({
   personId = null,
   auditId = null,
   feststellungId = null,
+  managementbewertungKennung = null,
   onReiter,
   onDokument,
   onPerson,
   onAudit,
   onFeststellung,
+  onManagementbewertung,
+  onSprung,
 }: {
   reiter: EnergiemanagementReiter;
   dokumentId: string | null;
   personId?: string | null;
   auditId?: string | null;
   feststellungId?: string | null;
+  managementbewertungKennung?: string | null;
   onReiter: (r: EnergiemanagementReiter) => void;
   onDokument: (id: string) => void;
   onPerson: (id: string) => void;
   onAudit?: (id: string) => void;
   onFeststellung?: (id: string) => void;
+  onManagementbewertung?: (kennung: string) => void;
+  /** Der Sprung einer Wiedervorlage-Zeile (WV3) — auch auf Seiten außerhalb des Bereichs; ohne ihn springt keine Zeile. */
+  onSprung?: (ziel: Route) => void;
 }) {
   const rollen = useRollen();
   if (dokumentId) return <DokumentSeite id={dokumentId} onListe={() => onReiter('dokumente')} />;
@@ -65,6 +77,8 @@ export function EnergiemanagementBereich({
   const zurFeststellung = onFeststellung ?? (() => onReiter('feststellungen'));
   if (auditId) return <AuditSeite id={auditId} onListe={() => onReiter('audits')} onFeststellung={zurFeststellung} />;
   if (feststellungId) return <FeststellungSeite id={feststellungId} onListe={() => onReiter('feststellungen')} onAudit={zumAudit} />;
+  if (managementbewertungKennung) return <ManagementbewertungSeite kennung={managementbewertungKennung} onListe={() => onReiter('managementbewertung')} />;
+  const zurManagementbewertung = onManagementbewertung ?? (() => onReiter('managementbewertung'));
   if (reiter === 'zuschnitt') return <ZuschnittHilfe onZurueck={() => onReiter('verzeichnis')} />;
   // „Wer ist wofür verantwortlich“ steht unter dem Reiter „Aufgaben“ (§6.3 nennt sieben Reiter, diese Ansicht ist keiner).
   const aktiv = reiter === 'verantwortung' ? 'aufgaben' : reiter;
@@ -106,6 +120,10 @@ export function EnergiemanagementBereich({
         <EnergiemanagementAudits onAudit={zumAudit} />
       ) : reiter === 'feststellungen' ? (
         <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
+      ) : reiter === 'wiedervorlage' ? (
+        <EnergiemanagementWiedervorlage onSprung={onSprung} />
+      ) : reiter === 'managementbewertung' ? (
+        <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
       ) : (
         <VerzeichnisTabelle onDokument={onDokument} />
       )}

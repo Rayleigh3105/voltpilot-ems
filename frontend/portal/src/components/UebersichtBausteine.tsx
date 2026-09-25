@@ -521,7 +521,7 @@ export function UebersichtBausteine({
       )}
 
       {energiemanagement && (
-        <EnergiemanagementKachel bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute())} />
+        <EnergiemanagementKachel bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute('wiedervorlage'))} />
       )}
     </div>
   );

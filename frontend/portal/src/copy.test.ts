@@ -3125,6 +3125,13 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     'pages/FeststellungSeite.tsx',
     'components/InternesAuditDialoge.tsx',
     'components/FeststellungDialoge.tsx',
+    // IP-24: Reiter „Wiedervorlage“ (mit Kalender-Abzug) und „Managementbewertung“, die Seite einer Managementbewertung,
+    // ihre Eingaben und Dialoge.
+    'components/EnergiemanagementWiedervorlage.tsx',
+    'components/EnergiemanagementManagementbewertung.tsx',
+    'pages/ManagementbewertungSeite.tsx',
+    'components/ManagementbewertungEingaben.tsx',
+    'components/ManagementbewertungDialoge.tsx',
   ];
   const ENERGIEMANAGEMENT_NAMENSMUSTER =
     /(?:^|\/)(?:Energiemanagement|Energiepolitik|Anwendungsbereich|Dokument|Verzeichnis|Wiedervorlage|InternesAudit|Audit|Feststellung|Managementbewertung|Beschluss|Wirksamkeit|Zuschnitt|Nachweis)[^/]*\.tsx?$/i;

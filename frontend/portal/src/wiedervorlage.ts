@@ -5,6 +5,19 @@
  * aus AP-19 §5.8 über den Zwilling `energiemanagement.ts`. Reines Modul: kein React, kein Netz.
  */
 import { satz } from './energiemanagement';
+import {
+  abweichungRoute,
+  auditRoute,
+  berichtRoute,
+  dokumentRoute,
+  energiezielRoute,
+  feststellungRoute,
+  kennzahlRoute,
+  managementbewertungRoute,
+  massnahmeRoute,
+  pageRoute,
+  type Route,
+} from './nav';
 
 export type WiedervorlageArt =
   | 'dokument_ueberpruefung'
@@ -45,7 +58,7 @@ export type Wiedervorlage = {
 };
 
 export const ENERGIEMANAGEMENT_TITEL = 'Energiemanagement';
-/** Der Sprung in den Bereich „Energiemanagement“ (IP-9) — der Reiter „Wiedervorlage“ kommt mit IP-24. */
+/** Der Sprung in den Bereich „Energiemanagement“ (IP-9) — seit IP-24 auf den Reiter „Wiedervorlage“. */
 export const ENERGIEMANAGEMENT_OEFFNEN = 'Zum Energiemanagement';
 export const KALENDER_ABZUG = 'Kalender-Abzug (.ics)';
 /** E10, Folgen von Option A: die Termine veralten im Kalender des Kunden — der Hinweis sagt es, der Abzug trägt den Vermerk. */
@@ -100,4 +113,56 @@ export function energiemanagementBaustein(w: Wiedervorlage | null): Energiemanag
     summe: voll.startsWith(TITEL_PRAEFIX) ? voll.slice(TITEL_PRAEFIX.length) : voll,
     faellig: w.anzahl_faellig > 0,
   };
+}
+
+// ------------------------------------------------------------------ Der Reiter „Wiedervorlage“ (IP-24, WV3)
+
+/** WV3: die Art einer Zeile als Kundenwort — der Gegenstand, nicht die Frist (die sagt der Titel der Route). */
+export const ART_WORT: Record<WiedervorlageArt, string> = {
+  dokument_ueberpruefung: 'Dokument',
+  internes_audit: 'Internes Audit',
+  managementbewertung: 'Managementbewertung',
+  feststellung: 'Feststellung',
+  bewertung_ueberpruefung: 'Energetische Bewertung',
+  bezugsbasis_ueberpruefung: 'Bezugsbasis',
+  energieziel_bewertung: 'Energieziel',
+  massnahme_termin: 'Maßnahme',
+  abweichung_frist: 'Abweichung',
+  messbedarf_frist: 'Messbedarf',
+  bericht_anstoss: 'Bericht',
+};
+
+export const FAELLIG = 'Fällig';
+export const VORSCHAU = (tage: number) => `In den nächsten ${tage} Tagen`;
+export const KALENDER_VERMERK_TITEL = 'Der Kalender-Abzug trägt den Vermerk';
+
+/**
+ * WV3 (AP-13 E10): der Sprung einer Zeile — nur zu einer Seite, die es gibt, und nur mit der Kennung, die die Route
+ * mitgibt. Der Messbedarf hat keine eigene Seite und springt nicht.
+ */
+export function wiedervorlageSprung(z: Pick<WiedervorlageZeile, 'art' | 'kennzeichen' | 'id' | 'kennzahl_id'>): Route | null {
+  switch (z.art) {
+    case 'dokument_ueberpruefung':
+      return z.id ? dokumentRoute(z.id) : null;
+    case 'internes_audit':
+      return z.id ? auditRoute(z.id) : null;
+    case 'feststellung':
+      return z.id ? feststellungRoute(z.id) : null;
+    case 'managementbewertung':
+      return managementbewertungRoute(z.kennzeichen);
+    case 'massnahme_termin':
+      return z.id ? massnahmeRoute(z.id) : null;
+    case 'energieziel_bewertung':
+      return z.id ? energiezielRoute(z.id) : null;
+    case 'abweichung_frist':
+      return z.id ? abweichungRoute(z.id) : null;
+    case 'bezugsbasis_ueberpruefung':
+      return z.kennzahl_id ? kennzahlRoute(z.kennzahl_id) : null;
+    case 'bewertung_ueberpruefung':
+      return pageRoute('portfolio-bewertung');
+    case 'bericht_anstoss':
+      return berichtRoute(z.kennzeichen);
+    default:
+      return null;
+  }
 }

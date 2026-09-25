@@ -150,7 +150,7 @@ describe('Übersichts-Baustein „Energiemanagement“ am Unternehmen', () => {
     await act(async () => {});
     expect(screen.getByTestId('energiemanagement-summe').textContent).toBe('8 fällig · 1 in den nächsten 30 Tagen.');
     fireEvent.click(screen.getByRole('button', { name: 'Zum Energiemanagement' }));
-    expect(onNavigate).toHaveBeenLastCalledWith(energiemanagementRoute());
+    expect(onNavigate).toHaveBeenLastCalledWith(energiemanagementRoute('wiedervorlage'));
   });
 
   it('der Kalender-Abzug ist ein Abruf: er lädt die Datei, nichts wird verschickt; scheitert er, steht der Satz da', async () => {

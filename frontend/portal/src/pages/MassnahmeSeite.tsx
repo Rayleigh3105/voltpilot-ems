@@ -12,7 +12,7 @@ import { VerbesserungAnstoesse } from '../components/VerbesserungAnstoesse';
 import * as Z from '../energieziele';
 import { UEMS_BEWERTUNGSMETHODE, UEMS_BEZUGSBASIS, UEMS_ENERGIEZIEL, UEMS_MESSGRUNDLAGE, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH } from '../glossar';
 import * as M from '../massnahmen';
-import { auditRoute, feststellungRoute, hashForRoute } from '../nav';
+import { auditRoute, feststellungRoute, hashForRoute, managementbewertungRoute } from '../nav';
 import * as W from '../massnahmeWirkung';
 import { useRollen } from '../rollen';
 import './Verbesserung.css';
@@ -21,12 +21,20 @@ type Lage = { art: 'laedt' } | { art: 'fehlt' } | { art: 'fehler' } | { art: 'da
 
 /**
  * Die Herkunft aus dem Energiemanagement (AP-19 IP-20, SP5, W3): „Herkunft: Feststellung F-2029-0001.“ als Sprung zur
- * Feststellung, „Herkunft: internes Audit AU-…“ als Sprung zum Audit — über das Kennzeichen in der Adresse; die
- * Managementbewertung hat noch keine Seite (AP-19 IP-24) und steht als Satz. Das Vertragswort wird nie zu Text.
+ * Feststellung, „Herkunft: internes Audit AU-…“ als Sprung zum Audit — über das Kennzeichen in der Adresse; seit
+ * AP-19 IP-24 „Herkunft: Managementbewertung BR-… (Beschluss n).“ als Sprung zur Seite der Managementbewertung (die Kennung
+ * vor dem „/B…“). Das Vertragswort wird nie zu Text.
  */
 function HerkunftSprung({ art, kennung }: { art: MassnahmeHerkunft; kennung: string }) {
   const satz = herkunftSatz(art, kennung)!;
-  const ziel = art === 'nichtkonformitaet' ? feststellungRoute(kennung) : art === 'audit' ? auditRoute(kennung) : null;
+  const ziel =
+    art === 'nichtkonformitaet'
+      ? feststellungRoute(kennung)
+      : art === 'audit'
+        ? auditRoute(kennung)
+        : art === 'managementbewertung'
+          ? managementbewertungRoute(kennung.split('/')[0])
+          : null;
   return ziel ? (
     <a className="vp-ez-sprung" href={hashForRoute(ziel)} data-testid="massnahme-sprung-herkunft">
       {satz}

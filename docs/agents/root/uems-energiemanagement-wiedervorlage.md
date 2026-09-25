@@ -2,7 +2,7 @@
 
 Neu am 25.09.2026. Konzept: AP-19 §4.9 WV1–WV5, W9, E10 = A, R12, Anhang B.5 Z1 (`vp-uems-ap19-fundament/report.md`);
 Vertrag: Operation `wiedervorlage` in [energiemanagement.md](../../contracts/v2/energiemanagement.md) §3. Kein Läufer,
-kein Ereignis, keine Nachricht, keine Migration. Der Reiter „Wiedervorlage“ im Bereich kommt mit IP-24.
+kein Ereignis, keine Nachricht, keine Migration. Den Reiter „Wiedervorlage“ im Bereich baut IP-24 ([Portal](uems-energiemanagement-portal.md)).
 
 | Stelle | Was |
 |---|---|

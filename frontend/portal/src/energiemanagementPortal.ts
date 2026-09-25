@@ -18,7 +18,7 @@ import {
   type Selbstauskunft,
 } from './api';
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
-import { UEMS_DOKUMENTE, UEMS_FESTSTELLUNGEN, UEMS_VERZEICHNIS } from './glossar';
+import { UEMS_DOKUMENTE, UEMS_FESTSTELLUNGEN, UEMS_MANAGEMENTBEWERTUNG, UEMS_VERZEICHNIS, UEMS_WIEDERVORLAGE } from './glossar';
 import type { EnergiemanagementReiter } from './nav';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
@@ -42,15 +42,20 @@ export const mitEinsicht = (s: Pick<Selbstauskunft, 'rollen' | 'standorte'> | nu
 
 // ------------------------------------------------------------------ Wörter
 
-/** Die Reiter in der Reihenfolge von §6.3 — IP-9 Verzeichnis und Dokumente, IP-13 Aufgaben, IP-20 Audits und Feststellungen; Wiedervorlage und Managementbewertung kommen mit IP-24. */
-export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt'>; label: string }[] = [
+/**
+ * Die sieben Reiter in der Reihenfolge von §6.3 — IP-9 Verzeichnis und Dokumente, IP-13 Aufgaben, IP-20 Audits und
+ * Feststellungen, IP-24 Wiedervorlage (an zweiter Stelle, wie §6.3 sie nennt) und Managementbewertung.
+ */
+export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt' | 'verantwortung'>; label: string }[] = [
   { key: 'verzeichnis', label: UEMS_VERZEICHNIS },
+  { key: 'wiedervorlage', label: UEMS_WIEDERVORLAGE },
   { key: 'dokumente', label: UEMS_DOKUMENTE },
   // §6.3 nennt den Reiter „Aufgaben“; die Überschrift darin ist das Glossar-Wort „Aufgaben im Energiemanagement“.
   { key: 'aufgaben', label: 'Aufgaben' },
   // §6.3 nennt den Reiter „Audits“ (das Auditprogramm, IA4); darin heißt jedes „internes Audit“.
   { key: 'audits', label: 'Audits' },
   { key: 'feststellungen', label: UEMS_FESTSTELLUNGEN },
+  { key: 'managementbewertung', label: UEMS_MANAGEMENTBEWERTUNG },
 ];
 
 export const KNOPF_ANLEGEN = 'Dokument anlegen';

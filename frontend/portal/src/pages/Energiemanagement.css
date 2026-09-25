@@ -274,3 +274,143 @@
 .vp-nw-adresse {
   font-family: var(--vp-c-font-mono, monospace);
 }
+
+/* UEMS AP-19 IP-24: Reiter „Wiedervorlage“ — eine Zeile je Frist, bei 375 px untereinander, ab 720 px in vier Spalten. */
+.vp-wv-titel {
+  margin: var(--vp-c-space-4) 0 var(--vp-c-space-2);
+  font-size: 1rem;
+}
+
+.vp-wv-liste,
+.vp-mb-liste,
+.vp-mb-zeilen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-wv-zeile,
+.vp-mb-zeile,
+.vp-mb-zeilen > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: var(--vp-c-space-3);
+  border-top: 1px solid var(--vp-c-border);
+  overflow-wrap: anywhere;
+}
+
+.vp-wv-zeile:first-child,
+.vp-mb-zeile:first-child,
+.vp-mb-zeilen > li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.vp-wv-art,
+.vp-wv-wer,
+.vp-mb-zustand,
+.vp-mb-pruef {
+  color: var(--vp-c-muted-fg);
+  font-size: 0.875rem;
+}
+
+.vp-wv-kz {
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-wv-gegenstand,
+.vp-mb-gegenstand {
+  min-width: 0;
+  font-weight: 600;
+  text-align: left;
+}
+
+.vp-wv-zeile.is-faellig .vp-wv-frist strong {
+  color: var(--vp-c-warn-fg);
+}
+
+.vp-mb-pruef {
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-mb-stand {
+  font-weight: 600;
+}
+
+@media (min-width: 720px) {
+  .vp-wv-zeile {
+    display: grid;
+    grid-template-columns: 11rem minmax(0, 1fr) 13rem 12rem;
+    gap: var(--vp-c-space-4);
+    align-items: baseline;
+  }
+
+  .vp-mb-zeile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 9rem 12rem;
+    gap: var(--vp-c-space-4);
+    align-items: baseline;
+  }
+}
+
+/* Seite einer Managementbewertung: die Abschnitte der Vorlage untereinander, Unterüberschriften der Grundlagen. */
+.vp-mb-eingaben {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-5);
+}
+
+.vp-mb-abschnitt h3 {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: 1rem;
+}
+
+.vp-mb-grundlage h4 {
+  margin: var(--vp-c-space-3) 0 var(--vp-c-space-1);
+  font-size: 0.875rem;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mb-abschnitt > .vp-mb-zeilen + .vp-mb-zeilen,
+.vp-mb-abschnitt > .vp-mb-zeilen + p,
+.vp-mb-abschnitt > p + .vp-mb-zeilen {
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-mb-quellen summary {
+  cursor: pointer;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mb-entwurf .vp-em-kopf p {
+  margin: 0;
+}
+
+.vp-mb-folgen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1);
+  margin-top: var(--vp-c-space-2);
+  padding-left: var(--vp-c-space-3);
+  border-left: 2px solid var(--vp-c-border);
+}
+
+.vp-mb-folgen-titel {
+  color: var(--vp-c-muted-fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.vp-mb-vorige {
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-mb-zeilen > li > .vp-btn {
+  align-self: flex-start;
+}

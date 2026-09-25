@@ -8411,6 +8411,78 @@ export interface EnergiemanagementZuordnung {
   beendet_begruendung: string | null;
   eingetragen: EnergiemanagementEingetragen;
 }
+// UEMS AP-19 IP-23 (MG4–MG6): Sitzung, Beschlüsse und Folgen einer Managementbewertung
+// (`/api/v1/energiemanagement/managementbewertungen/{kennung}`, openapi `Managementbewertung…`). Namen sind die von heute.
+export interface ManagementbewertungPerson {
+  id: string;
+  name: string | null;
+}
+export interface ManagementbewertungSitzung {
+  tag: string;
+  leitung: ManagementbewertungPerson;
+  /** PA3: die Person hat am Tag der Sitzung die laufende Aufgabe „Leitung des Unternehmens“ — sonst sperrt die Freigabe. */
+  leitung_gilt: boolean;
+  teilnehmende: ManagementbewertungPerson[];
+  ort?: string | null;
+  eingetragen_von?: string;
+  eingetragen_am?: string;
+}
+export type ManagementbewertungFolgeArt = 'energieziel' | 'massnahme' | 'dokument' | 'aufgabe' | 'audit';
+export interface ManagementbewertungFolge {
+  art: ManagementbewertungFolgeArt;
+  /** Kennzeichen (EZ-…, M-…, D-…/n, D-…, AU-…) oder das Aufgaben-Wort. */
+  objekt: string;
+  objekt_id?: string | null;
+  wie: 'von_hand' | 'herkunft' | 'zuordnung' | 'fassung' | 'geprueft_bleibt';
+  /** Das Zustandswort des Objekts von heute. */
+  zustand: string;
+  tag?: string | null;
+  angabe?: string | null;
+  verknuepft_am?: string | null;
+  eingetragen_von?: string | null;
+}
+export type ManagementbewertungBeschlussArt =
+  | 'energieziel' | 'massnahme' | 'dokument' | 'aufgabe' | 'ressourcen' | 'audit' | 'keine_aenderung' | 'weitere';
+export interface ManagementbewertungBeschluss {
+  nr: number;
+  /** BR-JJJJ-nnnn/Bn */
+  kennung: string;
+  art: ManagementbewertungBeschlussArt;
+  wortlaut: string;
+  entschieden_von: ManagementbewertungPerson;
+  zustaendig?: ManagementbewertungPerson | null;
+  termin?: string | null;
+  eingetragen_von?: string;
+  eingetragen_am?: string;
+  folgen: ManagementbewertungFolge[];
+  /** Nach der Freigabe ohne Folge: „Keine Folge in VoltPilot — der Beschluss steht im Stand vom …“. */
+  satz?: string | null;
+}
+export interface Managementbewertung {
+  kennung: string;
+  freigegeben: boolean;
+  stand_nr?: number | null;
+  sitzung?: ManagementbewertungSitzung | null;
+  beschluesse: ManagementbewertungBeschluss[];
+}
+export interface ManagementbewertungSitzungFesthalten {
+  tag: string;
+  leitung: string;
+  teilnehmende?: string[];
+  ort?: string;
+}
+export interface ManagementbewertungBeschlussFesthalten {
+  art: ManagementbewertungBeschlussArt;
+  wortlaut: string;
+  entschieden_von?: string;
+  zustaendig?: string;
+  termin?: string;
+}
+export interface ManagementbewertungFolgeVerknuepfen {
+  art: Exclude<ManagementbewertungFolgeArt, 'massnahme'>;
+  objekt: string;
+}
+
 export interface EnergiemanagementAufgaben {
   tag: string;
   leitung: EnergiemanagementPersonKurz[];
@@ -11096,6 +11168,33 @@ export const api = {
     }
     return res.blob();
   },
+  /** AP-19 IP-23 (MG4–MG6): Sitzung, Beschlüsse und ihre Folgen mit dem Zustand von heute; Recht `energiemanagement.ansehen`. */
+  managementbewertung: (kennung: string) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}`),
+  /** MG4: die Sitzung festhalten (ersetzt die vorige Angabe) — bis zur Freigabe; `energiemanagement.verwalten`. */
+  managementbewertungSitzung: (kennung: string, body: ManagementbewertungSitzungFesthalten) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/sitzung`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /** MG5: einen Beschluss festhalten (nächste Nr.) — nach der Sitzung, bis zur Freigabe. */
+  managementbewertungBeschluss: (kennung: string, body: ManagementbewertungBeschlussFesthalten) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/beschluesse`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** MG5: Beschluss `nr` ändern — bis zur Freigabe; die Nr. bleibt. */
+  managementbewertungBeschlussAendern: (kennung: string, nr: number, body: ManagementbewertungBeschlussFesthalten) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/beschluesse/${nr}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /** MG6: eine Folge mit Beschluss `nr` verknüpfen — nach der Freigabe, nur anhängen; die Maßnahme verknüpft sich selbst. */
+  managementbewertungFolge: (kennung: string, nr: number, body: ManagementbewertungFolgeVerknuepfen) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/beschluesse/${nr}/folgen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   /** IP-7 (DK1): die Dokumente im Zaun, je mit der Überprüfung beim Abruf. */
   energiemanagementDokumente: () => request<{ dokumente: EnergiemanagementDokumentKurz[] }>('/api/v1/energiemanagement/dokumente'),
   energiemanagementDokument: (id: string) => request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}`),

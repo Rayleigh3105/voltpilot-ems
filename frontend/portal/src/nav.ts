@@ -175,12 +175,15 @@ export interface Route {
    * (`#/portfolio/energiemanagement/personen/{id}`). Seit IP-20 die Reiter `audits` und `feststellungen` und WELCHES
    * Audit bzw. WELCHE Feststellung die Seite zeigt (`…/audits/{id}`, `…/feststellungen/{id}`) — statt der Kennung darf
    * das Kennzeichen stehen (`…/feststellungen/F-2029-0001`), so springt die Maßnahmen-Seite zu ihrer Herkunft (SP5).
+   * Seit IP-24 die Reiter `wiedervorlage` und `managementbewertung` und WELCHE Managementbewertung die Seite zeigt
+   * (`…/managementbewertung/BR-2029-0001` — die Kennung des Berichts).
    */
   energiemanagementReiter?: EnergiemanagementReiter;
   dokumentId?: string;
   personId?: string;
   auditId?: string;
   feststellungId?: string;
+  managementbewertungKennung?: string;
   /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
@@ -684,9 +687,10 @@ export function parseRoute(hash: string): Route {
       if (segments[2] === 'personen' && segments[3]) return personRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'audits' && segments[3]) return auditRoute(decodeURIComponent(segments[3]));
       if (segments[2] === 'feststellungen' && segments[3]) return feststellungRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'managementbewertung' && segments[3]) return managementbewertungRoute(decodeURIComponent(segments[3]));
       if (
         segments[2] === 'dokumente' || segments[2] === 'zuschnitt' || segments[2] === 'aufgaben' || segments[2] === 'verantwortung' ||
-        segments[2] === 'audits' || segments[2] === 'feststellungen'
+        segments[2] === 'audits' || segments[2] === 'feststellungen' || segments[2] === 'wiedervorlage' || segments[2] === 'managementbewertung'
       ) {
         return energiemanagementRoute(segments[2]);
       }
@@ -833,6 +837,8 @@ export function hashForRoute(route: Route): string {
             ? `/audits/${encodeURIComponent(route.auditId)}`
             : route.feststellungId
             ? `/feststellungen/${encodeURIComponent(route.feststellungId)}`
+            : route.managementbewertungKennung
+            ? `/managementbewertung/${encodeURIComponent(route.managementbewertungKennung)}`
             : route.energiemanagementReiter && route.energiemanagementReiter !== 'verzeichnis'
             ? `/${route.energiemanagementReiter}`
             : '';
@@ -908,14 +914,23 @@ export function abweichungRoute(abweichungId: string): Route {
 }
 
 /**
- * Die Reiter des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, §6.3) — heute Verzeichnis, Dokumente, Aufgaben
- * (IP-13), Audits und Feststellungen (IP-20), die übrigen zwei kommen mit ihren Paketen; `zuschnitt` ist die Zuschnitt-Hilfe „Was VoltPilot führt — was
+ * Die Reiter des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, §6.3) — Verzeichnis, Wiedervorlage (IP-24), Dokumente,
+ * Aufgaben (IP-13), Audits und Feststellungen (IP-20), Managementbewertung (IP-24); `zuschnitt` ist die Zuschnitt-Hilfe „Was VoltPilot führt — was
  * bei Ihnen liegt.“, eine Seite ohne eigenen Reiter; `verantwortung` („Wer ist wofür verantwortlich“, IP-13) eine
  * Ansicht unter dem Reiter „Aufgaben“.
  */
-export type EnergiemanagementReiter = 'verzeichnis' | 'dokumente' | 'aufgaben' | 'verantwortung' | 'audits' | 'feststellungen' | 'zuschnitt';
+export type EnergiemanagementReiter =
+  | 'verzeichnis'
+  | 'wiedervorlage'
+  | 'dokumente'
+  | 'aufgaben'
+  | 'verantwortung'
+  | 'audits'
+  | 'feststellungen'
+  | 'managementbewertung'
+  | 'zuschnitt';
 
-/** Route des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9/IP-13): `#/portfolio/energiemanagement[/dokumente|/aufgaben|/verantwortung|/audits|/feststellungen|/zuschnitt]`. */
+/** Route des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9/IP-13/IP-24): `#/portfolio/energiemanagement[/wiedervorlage|/dokumente|/aufgaben|/verantwortung|/audits|/feststellungen|/managementbewertung|/zuschnitt]`. */
 export function energiemanagementRoute(reiter: EnergiemanagementReiter = 'verzeichnis'): Route {
   return { page: 'portfolio-energiemanagement', siteId: null, sub: null, ...(reiter === 'verzeichnis' ? {} : { energiemanagementReiter: reiter }) };
 }
@@ -933,6 +948,11 @@ export function auditRoute(auditId: string): Route {
 /** Route der Seite einer Feststellung (UEMS AP-19 IP-20): `#/portfolio/energiemanagement/feststellungen/{id|F-…}`. */
 export function feststellungRoute(feststellungId: string): Route {
   return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'feststellungen', feststellungId };
+}
+
+/** Route der Seite einer Managementbewertung (UEMS AP-19 IP-24): `#/portfolio/energiemanagement/managementbewertung/{BR-…}`. */
+export function managementbewertungRoute(kennung: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'managementbewertung', managementbewertungKennung: kennung };
 }
 
 /** Route der Seite eines Dokuments (UEMS AP-19 IP-9): `#/portfolio/energiemanagement/dokumente/{id}` — nur am Unternehmen. */
