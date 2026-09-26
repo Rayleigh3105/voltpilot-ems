@@ -61,9 +61,31 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   bekommt einen neuen Hash und startet die api neu — harmlos auf dem **alten** Schema, im
   Fenster genau der Fehlstart. Und **Auto-Sync lässt sich nur per gitops-Commit anhalten**,
   nicht nebenbei ([Drehbuch §2.2, §3](../../rollout/uems-erste-freigabe.md)).
-- **Zwei Platzhalter in PR 37 stehen auf `CHANGE-ME`**: die DB-Warnschwelle (aus **Q14**
-  und der nutzbaren Platte, nicht „0,5 TB“ blind) und der Tenant des Dauerläufers (IP-18, Einrichtung Drehbuch §14, [Wegweiser](uems-dauerlaeufer.md)).
-  Ungesetzt alarmiert die Überwachung am Rollout-Tag falsch oder gar nicht.
+- **Alle 27 Schalter stehen ausdrücklich in gitops**, auch die, deren Vorgabe `true` ist:
+  W10 verlangt es vor G1, und NW-6 legt jeden einmal um. Die drei aus AP-17/AP-18
+  (`BEZUGSBASIS`, `VERBESSERUNG`, `WETTER_ARCHIV`) kommen mit einem Nachtrag in PR 37. Der
+  Läufer-Katalog (`UemsLaeuferMelder.KATALOG`) hat 20 Einträge, zuletzt `WetterArchivLaeufer`
+  ([Drehbuch §12](../../rollout/uems-erste-freigabe.md)).
+- **`${UEMS_SHA}` ist nach dem Merge der Merge-Commit auf `main`**: gleicher Baum wie der
+  G0-Stand auf `uems`, aber ein anderer SHA. Aus ihm werden die Images gebaut; die
+  Nachweis-Läufe am G0-Commit trägt er über den gleichen Baum (siehe oben)
+  ([Drehbuch §2.6](../../rollout/uems-erste-freigabe.md)).
+- **Nach dem Merge ist jeder Dispatch auf `main` ein Rollout ohne Fenster**, und der Tag-Bump
+  schreibt alle neun Image-Tags in einem Commit. Vorgesehen sind Deploy-Stopp bis Schritt 2
+  und Bau ohne `GITOPS_PUSH_TOKEN`; beides entscheidet der Captain noch (B1, B2 des
+  Bereitschaftsberichts vom 26.09.2026; [Drehbuch §2.9, §2.10](../../rollout/uems-erste-freigabe.md)).
+  `main-migrations.txt` bleibt bis nach dem Rollout der Produktionsstand.
+- **Der Live-Realm wird nach Schritt 10 von Hand gehärtet**: `--import-realm` ändert keinen
+  bestehenden Realm. Erst Portal/API mit 12 Zeichen, dann die Keycloak-Vorgabe
+  ([Drehbuch, nach Schritt 10](../../rollout/uems-erste-freigabe.md),
+  [`live-realm-import.md`](../../../infra/prod/keycloak/live-realm-import.md)).
+- **Der nächste Box-Release-Tag heißt nicht `edge-2026.09.5`**: den hat `main` am 24.09.2026
+  vergeben ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md)).
+- **Ein Platzhalter in PR 37 steht noch auf `CHANGE-ME`**: der Tenant des Dauerläufers
+  (IP-18, Einrichtung Drehbuch §14, [Wegweiser](uems-dauerlaeufer.md)). Ihn gibt es erst
+  nach Schritt 10; ob IP-18 darum aus G1 wandert, entscheidet der Captain (B4). Die
+  DB-Warnschwelle ist seit dem 21.09.2026 gesetzt (8 GiB aus **Q14**). Ungesetzt alarmiert
+  die Überwachung am Rollout-Tag falsch oder gar nicht.
 - **Wegwerf-Zahlen sind keine Fensterplanung.** Eine Migrationssumme aus einer leeren
   Datenbank liegt bei Millisekunden; die Fensterlänge ist *gemessene Summe × 3, mindestens
   30 Minuten*. Der Tor-Prüfer weist eine Summe unter einer Sekunde ausdrücklich zurück.

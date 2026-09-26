@@ -56,13 +56,15 @@ Historie umschreiben" — nicht „die alte api muss beim Start brechen".
 
 | Voraussetzung | Beleg | Quelle |
 |---|---|---|
-| Rollout-Satz eingefroren (G0) | ein Commit-SHA auf `uems`; er ist der Wert von `${UEMS_SHA}` in allen Diffs unten | Konzept D9 = F7 |
+| Rollout-Satz eingefroren (G0) | ein Commit-SHA auf `uems` (der G0-Stand); nach dem Merge trägt der Merge-Commit auf `main` denselben Baum, und **er** ist der Wert von `${UEMS_SHA}` in allen Diffs unten | Konzept D9 = F7, §2.6 |
 | Generalprobe gelaufen, `probe.json` gelesen | Exit 0; `startbudget_reicht=1`; Rubrik A trägt Summe und `je_migration_ms` | `tools/generalprobe/README.md` |
 | Rückweg-Übung gelaufen (NW-8) | `rueckweg.json`, `wiederherstellung_ms` bekannt; Flyway-Stand und Q01 bytegleich | `rueckweg.sh` |
 | WAL-Archiv läuft, Basis-Backup < 24 h | `bash tools/backup/vp-db-backup-check.sh` | Q15, Konzept E2 |
 | Bus-Aufbewahrung ≥ Fenster + Rückweg + Reserve, als Zahl notiert | Betreiber-Notiz | Regel D5 |
-| **PR 37 (gitops, IP-10) gemergt und ausgerollt — mindestens einen Tag vorher** | ein Sync, ein api-Neustart auf dem **alten** Schema, beobachtet | siehe 2.2 |
-| Die zwei Platzhalter aus PR 37 gesetzt | siehe 2.3 | |
+| **PR 37 (gitops, IP-10) gemergt und ausgerollt — mindestens einen Tag vorher** | ein Sync, ein api-Neustart auf dem **alten** Schema, beobachtet; alle 27 Schalter ausdrücklich gesetzt (§12) | siehe 2.2 |
+| Die zwei Platzhalter aus PR 37 gesetzt | siehe 2.3 (der Dauerläufer-Tenant erst nach Schritt 10, §14) | |
+| Seit dem Merge nach `main` kein Dispatch auf `main` | kein Actions-Lauf auf `main` nach dem Merge-Commit | §2.9 |
+| Images für `${UEMS_SHA}` gebaut, **ohne** Tag-Bump | neun Images in der Registry; gitops ohne neuen `ci(images)`-Commit | §2.10 |
 | Kundennachricht 48 h vorher raus | §10 | Schritt 1 |
 | Support-Weg einmal gegangen (F6) | §11 | Schritt 1 |
 | Box-Release zurückgehalten bis nach Schritt 10 | kein Box-Update mit dem neuen Laufzeitstand vor dem api-Deploy | §2.8, PR 1143 |
@@ -70,7 +72,7 @@ Historie umschreiben" — nicht „die alte api muss beim Start brechen".
 ### 2.2 PR 37 gehört **vor** das Fenster, nicht hinein
 
 `apps/voltpilot/overlays/prod/uems-betrieb.md` sagt es selbst: die ConfigMap mit den
-ausdrücklichen Schaltern (seit Commit `5ad2f32` alle 24, §12) bekommt einen neuen Hash,
+ausdrücklichen Schaltern (alle 27 aus `application.yml`, §12) bekommt einen neuen Hash,
 **„api wird neu gestartet, auch bei unverändertem Image"**, und die nginx-ConfigMap löst
 zusätzlich einen Frontend-Rollout aus.
 
@@ -92,11 +94,13 @@ Rollout-Tag falsch oder gar nicht.
    behauptete Kapazität". Die Metrik ist die **Summe der Hypertables**, nicht die ganze
    Datenbank, nicht WAL, nicht freier Plattenplatz. Wert aus **Q14** (Datenbankgröße,
    Vorher-Blatt) **und** der tatsächlich nutzbaren Platte bilden; anschließend den
-   Grenztest in `hack/alert-tests/uems_test.yaml` nachziehen.
+   Grenztest in `hack/alert-tests/uems_test.yaml` nachziehen. Stand 26.09.2026: in PR 37
+   gesetzt, `vector(8589934592)`, also 8 GiB aus Q14 vom 21.09.2026, vom Betreiber bestätigt.
 2. **`voltpilot:uems_dauerlaeufer`**, Label `tenant: CHANGE-ME-dauerlaeufer-tenant` — die
    interne UUID des Dauerläufer-Kundenbereichs (IP-18). Erst sie macht
    `VoltPilotDauerlaeuferStumm` scharf. Woher die UUID kommt und wohin sie noch gehört:
-   §14.
+   §14. Die UUID gibt es erst, wenn der Dauerläufer eingerichtet ist, und das geht erst
+   nach Schritt 10 (§14, „Wann“).
 
 ### 2.4 Die Fensterlänge (Regel D4)
 
@@ -147,8 +151,8 @@ auf der Produktionshardware zutrifft. Die Kopie ist eine andere Maschine.
 ### 2.6 Die Variablen dieses Drehbuchs
 
 ```sh
-export UEMS_SHA=…                 # der eingefrorene Rollout-Satz (G0), Commit-SHA auf `uems`
-export ALT_SHA=4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3   # der heute ausgerollte Stand
+export UEMS_SHA=…                 # der Merge-Commit uems -> main, Baum = G0-Stand (siehe unten)
+export ALT_SHA=8b8b6a03bcf757a241d60567080259ccb2163422   # Beispiel: Stand 26.09.2026 (gitops 211b71a)
 export NS=voltpilot-prod          # Namespace (apps/voltpilot/overlays/prod/namespace.yaml)
 export APP=voltpilot-prod         # Argo-CD-Application (clusters/prod/apps/voltpilot.yaml)
 export GITOPS=…                   # lokaler Klon von mamotec/gitops, Zweig main
@@ -158,20 +162,44 @@ export PUNKT=…                    # Name des Wiederherstellungspunkts, in Schr
 ⧉ `ALT_SHA` ist der Wert, der am Tag **tatsächlich** im `images:`-Block steht — vor dem
 Fenster ablesen, nicht aus diesem Dokument übernehmen.
 
+**Warum das Beispiel nicht mehr `4aa1e7fb3` heißt.** Das war der Stand vom 16.09.2026.
+Produktion läuft seit dem 25.09.2026 auf `8b8b6a03b` (gitops `211b71a`, „ci(images):
+voltpilot-ems@8b8b6a03b“) und hat dabei `V20260924120000` angewandt. Ein Image vom 16.09.
+kennt diese Version nicht. Gerade der Rückweg R4 setzt die Images auf `ALT_SHA`: Auf `main`
+gibt es keinen Start-Wächter (§9.1), die alte api würde die Historie still „reparieren“
+(DELETE-Marker, Befund W1), und die Flotte stünde auf einem Stand, der 62 `main`-Commits
+zurückdreht, darunter die Deye-Sicherheit (#1226).
+
+**`${UEMS_SHA}` ist der Merge-Commit, nicht der `uems`-Commit.** Bis zum Merge ist der
+G0-Stand ein Commit auf `uems`. Gebaut und ausgerollt wird, was auf `main` steht: der
+Merge-Commit `uems` → `main`. Sein Baum muss gleich dem eingefrorenen Stand sein:
+
+```sh
+test "$(git rev-parse "${UEMS_SHA}^{tree}")" = "$(git rev-parse "<G0-SHA>^{tree}")" && echo baumgleich
+```
+
+Die Nachweis-Läufe für den Tor-Prüfer tragen in `stand.txt` den SHA, an dem sie liefen.
+`tools/freigabe/pruefe_tor.py` nimmt seit #1288 denselben Commit **oder** einen Commit mit
+demselben Baum an (`stand_des_laufs`, Belegzeile nennt `commit` bzw. `baum`). Läufe am G0-Commit
+auf `uems` belegen den Merge-Commit also, solange der Baum-Vergleich oben „baumgleich“ meldet.
+Weicht der Baum ab, ist der Merge-Commit nicht der eingefrorene Stand: dann nicht bauen.
+
 ### 2.7 Die Fenster-Migrationen auf `device_measurement_sample`
 
-Drei Migrationen des Rollout-Satzes ändern die größte Tabelle selbst; zwei davon kosten Zeit je
-Zeile. Gemessen hat sie die Generalprobe vom 23.09.2026
+Vier Migrationen des Rollout-Satzes ändern die größte Tabelle selbst; drei davon lesen sie dabei
+ganz. Die ersten drei hat die Generalprobe vom 23.09.2026 gemessen
 (Bericht `/Users/mvogt/…/vp-uems-rollout-generalprobe/report.md`, Teil 1): das gebaute uems-api-Image
 migriert beim Start wie am Rollout-Tag einen main-Stand mit **2 800 000 Samples** (14 Tages-Chunks à
-200 000 Zeilen, 979 MB, synthetisch), parallel dazu 10 INSERT/s in den heutigen Chunk. Alle 108
-neuen Migrationen zusammen: **24,1 s**; die übrigen 102 davon 9,4 s, keine länger als 793 ms.
+200 000 Zeilen, 979 MB, synthetisch), parallel dazu 10 INSERT/s in den heutigen Chunk. Die damals
+108 neuen Migrationen (Generalprobe-Stand `02a23ce59`) zusammen: **24,1 s**; die übrigen 102 davon
+9,4 s, keine länger als 793 ms. Die vierte kam danach und ist nicht gemessen.
 
 | Migration | gemessen (2,8 Mio.) | hochgerechnet (6 Mio.) | Transaktion | Sperrverhalten |
 |---|---|---|---|---|
 | `V20260913150000` Löschwege (zwei Fremdschlüssel `NOT VALID`) | 332 ms | – | eine | prüft den Bestand nicht (`NOT VALID`), darum kurz |
 | `V20260916180000` Ablesungen (CHECK, Fremdschlüssel, `uq_device_measurement_sample_ablesung`) | **7 470 ms** (2,67 µs je Zeile) | ≈ 16,0 s | **eine** | **sperrt den Schreiber für ihre ganze Dauer**: der parallele INSERT wartete 7 426 ms, bis zum `COMMIT` |
 | `V20260922236500` Box-Schlüssel bauen | **7 280 ms** (2,60 µs je Zeile) | ≈ 15,6 s | je Chunk eine | sperrarm: 0 wartende Sperren, längster INSERT 139 ms |
+| `V20260926001500` Akteur-Rolle „Einsicht“: generischer Tausch jedes CHECKs mit fester Rollen-Liste, darunter `device_measurement_sample_ablesung_chk` (aus `V20260916180000`) | **nicht gemessen** (kam nach der Generalprobe) | – | eine | `DROP` + `ADD … NOT VALID` + `VALIDATE`: ein voller Lesedurchgang; die Sperre aus `DROP`/`ADD` hält bis zum `COMMIT` der Migration. Im Fenster steht der Writer ohnehin auf 0 |
 
 `V20260912140000` und `V20260912170000` gehören **nicht** in diese Liste: beide sind seit #691 auf
 `main` und in Produktion längst gelaufen.
@@ -180,6 +208,53 @@ neuen Migrationen zusammen: **24,1 s**; die übrigen 102 davon 9,4 s, keine län
 der synthetische Satz hat keine Auswahlzeilen mit `entity_id` und keine `measurement_point`-Daten
 (Bericht Teil 1, „Grenze der Messung“). Die Tabelle oben sagt, **welche** `je_migration_ms` in
 `probe.json` man zuerst ansieht und welche Größenordnung zu erwarten ist.
+
+#### Was seit der Generalprobe dazukam
+
+Der Rollout-Satz hat heute (Stand `f694b5252`, nach dem Nachzug PR 1287) **134 Migrationen**:
+135 Dateien unter `services/api/src/main/resources/db/migration`, die nicht in
+`main-migrations.txt` stehen, eine davon `V20260922236500…sql.conf`. Seit dem Generalprobe-Stand
+`02a23ce59` kamen **26** dazu, außerdem `V20260924120000` aus `main` (in Produktion schon
+angewandt):
+
+- `V20260924…`: `050000` wago_soll · `061500` verbund_anteile_einspeisung_unbegrenzt · `071500`
+  bezugsbasis · `071945` leistungsvergleich_vorlage · `192700` wetter_archiv_bezug · `200500`
+  bezugsbasis_anstoss · `204500` wetterbezug_binden · `211800` leistungsvergleich_kennzahl ·
+  `214500` leistungsvergleich_anstoss · `223000` verbesserung · `233000` massnahme · `235130`
+  abweichung
+- `V20260925…`: `001000` verbesserung_admin_anstoss · `002000` auffaelligkeit_admin · `013500`
+  energiemanagement · `030000` rolle_einsicht · `031500` audit_feststellung · `040000`
+  massnahme_herkunft_weiten · `061500` managementbewertung_vorlage · `093000`
+  managementbewertung_beschluesse · `170000` kundenbereich_beendet · `201700` kundenbereich_abzug ·
+  `223000` mandant_loeschnachweis · `234500` protokolle_mit_dem_mandanten_loeschen
+- `V20260926…`: `001500` akteur_rolle_einsicht · `004700` rollups_nur_fuer_lebende_mandanten
+
+Was sie an Bestehendem ändern:
+
+- **`device_measurement_sample`:** nur `V20260926001500` (Tabelle oben). Sie schreibt keine
+  Zeile, liest die Tabelle aber beim `VALIDATE` einmal ganz. Keine andere der 26 ändert die
+  Tabelle oder liest sie beim Migrieren.
+- **`V20260926004700`** ersetzt nur Prozedur-Körper und ruft keine Prozedur auf (unten).
+- **Bestandstabellen:** `tenant` (`V20260925170000`: drei nullbare Spalten, `tenant_beendet_chk`
+  und der Trigger `tenant_beendet_einmalig` vor jedem UPDATE); `geraet` und `geraet_teil`
+  (`V20260924050000`: je eine nullbare Spalte mit CHECK); dazu die Rollen-CHECKs der
+  UEMS-Tabellen, die schon auf `main` stehen (`V20260926001500`, nur weiter, nie enger).
+- **Alles andere** sind neue Tabellen, Funktionen und Wörter in bestehenden Vokabularen.
+
+Die Generalprobe an der Kopie läuft am G0-Stand und misst die 26 ohnehin mit (§2.4).
+
+#### Ersetzte Prozeduren
+
+Beim Rollout nennen: zwei Migrationen des Satzes ersetzen die Verdichtungs-Prozeduren, die die
+Timescale-Jobs aufrufen.
+
+- `V20260922236000` (PR 1097) ersetzt `refresh_device_measurement_rollup`.
+- `V20260926004700` (AP-20, Folge zu IP-18) ersetzt `refresh_telemetry_rollups`,
+  `refresh_telemetry_v2_rollups` und noch einmal `refresh_device_measurement_rollup`. Sie lesen
+  nur noch Mandanten, deren Zeile sie mit `FOR KEY SHARE SKIP LOCKED` sperren konnten. Für jeden
+  lebenden Mandanten ist die Verdichtung Zeile für Zeile dieselbe.
+- **Nichts wird neu berechnet.** Beide ersetzen nur den Körper; den nächsten Lauf macht der
+  jeweilige Timescale-Job wie bisher.
 
 #### `V20260922236500`: der Index-Umbau
 
@@ -261,6 +336,61 @@ Grenzen: `docs/agents/root/uems-messplan-nach-box-update.md`.
 > neue api kann nachliefern. Eine Box, die ihr Update vorher bekommt, misst bis zum api-Deploy
 > nicht; die neue api liefert beim Start nach. Tor GA, Punkt `NW-3u`, verlangt dafür den grünen
 > Bericht von `MessplanNachBoxUpdateApiTest`.
+
+**Der Name des nächsten Box-Release.** Er darf **nicht** `edge-2026.09.5` heißen, auch wenn der
+Generalprobe-Bericht (§6.4) genau diesen Namen vorschlägt. Den Tag hat `main` am 24.09.2026 schon
+vergeben (`1b6b79175`, „Deye-Sicherheit vor dem Box-Release“, #1226), signiert und
+veröffentlicht, mit Palette `2026.08.26.3` und Katalog `2026.09.11.1`. Den nächsten freien Namen am
+Tag mit `git tag -l 'edge-*'` bestimmen. Beim Taggen nachziehen:
+
+- `KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` (Z. 45, heute `2026.08.26.3`) auf
+  den Stand des neuen Release;
+- `tools/nw3-box-image/paare.json` um das neue Paar (NW-3 gegen das neue Image, Tor GA).
+
+### 2.9 Zwischen Merge und Fenster
+
+Nach dem Merge `uems` → `main` ist `main` das Release. `deploy.yaml` und `deploy-fast.yaml` laufen
+nur per `workflow_dispatch` (`deploy.yaml:23-24`, `deploy-fast.yaml:20-21`). Jeder Dispatch auf
+`main` baut dann den UEMS-Stand **und** stellt über den Tag-Bump (§2.10) alle Dienste auf einmal
+um. Das wäre das UEMS-Rollout ohne Nullstand, ohne Wiederherstellungspunkt und ohne
+Kundennachricht. Allein am 24. und 25.09.2026 gab es 14 solcher Produktions-Deploys.
+
+- **Vorgesehen, Entscheid des Captains offen (Bereitschaftsbericht B1):** G0 früh einfrieren, den
+  Merge-Akt spät legen (am Vortag oder am Tag des Fensters), Merge-Commit baumgleich zum G0-Stand
+  (§2.6), und **vom Merge bis Schritt 2 kein Dispatch auf `main`**. Ein dringender `main`-Fix in
+  dieser Zeit fährt mit dem Rollout mit oder verschiebt das Fenster.
+- **Die Alternative:** sofort mergen; dann gilt derselbe Deploy-Stopp vom Merge bis zum Fenster,
+  entsprechend länger.
+
+**`main-migrations.txt` nicht fortschreiben.** Die Datei
+(`services/api/src/test/resources/migration/main-migrations.txt`) beschreibt den Stand der
+Produktion: 169 Migrationen am Stand `8b8b6a03b`. `update-main-migrations.py` liest `origin/main`;
+nach dem Merge hielte es alle Migrationen des Zweigs für „main“, und der Produktionssatz der
+Wächter (`UemsProduktionsreihenfolgeMigrationTest`) wäre falsch. Fortgeschrieben wird erst nach dem
+Rollout, auf den ausgerollten Stand.
+
+### 2.10 Images bauen ohne Tag-Bump
+
+C1–C3 (§4) setzen die Tags **von Hand und getrennt**: zuerst die api, Writer, ingest, Portal und
+die übrigen erst mit C3. Der Bau-Workflow tut das Gegenteil. Sein Job „Bump gitops image tags“
+(`deploy.yaml:375-377`, `deploy-fast.yaml:147-148`) schreibt nach dem Bau **alle neun** Tags in
+**einem** Commit auf gitops `main`. Er überspringt nur dann sauber, wenn das Secret
+`GITOPS_PUSH_TOKEN` fehlt (`deploy-fast.yaml:184-194`: „der gitops-Tag-Bump wird UEBERSPRUNGEN“,
+nichts geklont, committet oder gepusht).
+
+- **Vorgesehen, Entscheid des Captains offen (Bereitschaftsbericht B2):** vor dem Bau-Dispatch das
+  Secret `GITOPS_PUSH_TOKEN` entziehen oder umbenennen (Forgejo › voltpilot-ems › Settings ›
+  Actions › Secrets). Dann `deploy.yaml` auf `main` dispatchen; er fährt vor dem Bau die
+  Test-Matrix, `deploy-fast.yaml` hat kein Test-Gate. Alle neun Images grün abwarten. C1–C3 laufen
+  danach von Hand wie in §4. Das Secret kommt **nach Schritt 10** zurück.
+- **Die Alternative:** die Klammer F1 (§3) vorher setzen, den Bump-Commit laufen lassen und C1 als
+  dessen Korrektur schreiben. Das ist fehleranfälliger: alle Tags außer dem der api müssten bis C3
+  wieder auf `${ALT_SHA}` zurück.
+
+**Beleg:** Die Zusammenfassung des Laufs meldet „gitops-Tag-Bump uebersprungen“;
+`git -C "$GITOPS" log -1 --format=%s origin/main` zeigt keinen neuen `ci(images)`-Commit; die neun
+Images `…:<UEMS_SHA>` liegen in der Registry. Der Beleg gehört **vor** Schritt 2; fehlt er,
+beginnt das Fenster nicht.
 
 ---
 
@@ -352,7 +482,7 @@ spec:
 +  - path: patches/rollout-fenster-null.yaml
 @@ images:
    - name: git.tecmaxx.de/mamotec/voltpilot-ems/api
--    newTag: 4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3
+-    newTag: ${ALT_SHA}
 +    newTag: ${UEMS_SHA}
 ```
 
@@ -396,7 +526,7 @@ dieser Commit ändert **kein** Image.
 -  - path: patches/rollout-fenster-null.yaml
 @@ images:
    - name: git.tecmaxx.de/mamotec/voltpilot-ems/frontend
--    newTag: 4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3
+-    newTag: ${ALT_SHA}
 +    newTag: ${UEMS_SHA}
    … dieselbe Zeile fuer keycloak, ingest, timescale-writer, market-data,
      forecast, optimization, flowc …
@@ -553,11 +683,14 @@ psql "$VP_DB_URL" -Atc "SELECT count(*) FILTER (WHERE success), count(*) FILTER 
 
 Die Dauer soll der Generalprobe entsprechen (Rubrik A). **Scheitert eine Migration → R.**
 
-Zum Vergleich die Generalprobe vom 23.09.2026 (Bericht Teil 1 und §7, synthetischer Bestand):
-108 Migrationen in 24,1 s, api bereit nach **54 s** bei 2,8 Mio. Samples, ≈ **71 s** bei 6 Mio.,
-je weitere Sample-Zeile ≈ **5,3 µs** mehr. Die zwei langen Migrationen sind `V20260916180000` und
-`V20260922236500` (§2.7); sie in `flyway_schema_history` (`execution_time`) zuerst ansehen, wenn
-der Start deutlich länger dauert.
+Zum Vergleich die Generalprobe vom 23.09.2026 (Bericht Teil 1 und §7, synthetischer Bestand,
+Stand `02a23ce59`): die damals 108 neuen Migrationen in 24,1 s, api bereit nach **54 s** bei
+2,8 Mio. Samples, ≈ **71 s** bei 6 Mio., je weitere Sample-Zeile ≈ **5,3 µs** mehr. Der
+Rollout-Satz hat heute **134** Migrationen; die 26 seither dazugekommenen hat diese Probe nicht
+gemessen (§2.7, „Was seit der Generalprobe dazukam“). Die zwei langen Migrationen sind
+`V20260916180000` und `V20260922236500`, dazu der ungemessene CHECK-Tausch `V20260926001500`
+(§2.7); sie in `flyway_schema_history` (`execution_time`) zuerst ansehen, wenn der Start deutlich
+länger dauert.
 
 **Abbruch → R**, wenn: der Pod innerhalb des 180-s-Startbudgets nicht bereit wird · eine
 Migration scheitert · `fehlgeschlagen > 0`.
@@ -590,12 +723,9 @@ ROLLBACK;
 des eingefrorenen Satzes (am geprobten Stand: 235). **Jeder Wert > 0 in
 `geloescht_markiert` ist §8, nicht R-mit-Nachdenken.**
 
-> ⬥ **Abgleich beim Rebase:** die parallele Bahn `vp-uems-flyway-startwaechter` baut
-> diese Abfrage gerade als feste Zeile in
-> [`tools/betriebsabfragen/bestand-nach-rollout.sql`](../../tools/betriebsabfragen/bestand-nach-rollout.sql)
-> ein. Sobald sie dort steht, gilt **ihr** Name und **ihr** Wortlaut; die Abfrage oben ist
-> die Fassung aus der Untersuchung (§5, „Konkreter neuer Prüfpunkt") und steht hier, damit
-> das Drehbuch auch ohne sie vollständig ist.
+Dieselbe Abfrage steht seit #976 als **Z08** im Nachher-Blatt
+([`tools/betriebsabfragen/bestand-nach-rollout.sql`](../../tools/betriebsabfragen/bestand-nach-rollout.sql),
+ab Z. 99); der Aufruf oben fährt sie also mit.
 
 **Nur DELETE zu zählen reicht für allgemeine Reparaturen nicht.** Zusätzlich müssen die
 bereits vorhandenen `(installed_rank, version, type, checksum, success, description,
@@ -667,10 +797,50 @@ Wartungsseite weg. **Ab hier nur vorwärts (R2)** — und ab hier haben **alle a
 (E1 = B): jeder Mehr-Anlagen-Kunde sieht die Karte „Noch nicht zugeordnet", jeder Kunde
 kann „Standort anlegen" und „Messen & Auswerten" einrichten.
 
-Danach: **Sync-Klammer auf (F2)**, siehe §3.
+Danach: **Sync-Klammer auf (F2)**, siehe §3; das Secret `GITOPS_PUSH_TOKEN` zurücksetzen,
+falls es für §2.10 entzogen wurde. Dann den Live-Realm härten (unten) und den Dauerläufer
+einrichten (§14).
 
 **Ab Schritt 10 gibt es keinen Rückweg mehr.** Was bleibt, ist der Not-Aus je Läufer
 (§12) und die Vorwärts-Reparatur.
+
+### Nach Schritt 10 — Live-Realm härten (AP-20 IP-20, E12 = A)
+
+`start --import-realm` legt nur einen **neuen** Realm an; der laufende Realm `voltpilot` bleibt,
+wie er ist. Ohne diesen Handgriff gilt die Härtung aus `infra/prod/keycloak/voltpilot-realm.json`
+nur für eine Neuinstallation
+([`live-realm-import.md`](../../infra/prod/keycloak/live-realm-import.md), Z. 3–5): Anmelde- und
+Admin-Ereignisse 90 Tage, Passwort-Vorgabe 12 Zeichen, zweiter Faktor für `platform-admin`.
+
+**Reihenfolge:** zuerst Portal und API mit der 12-Zeichen-Regel (PR 1268: `RegistrationRequest`
+`@Size(min = 12, max = 128)`, Portal `PASSWORT_MIN_ZEICHEN`), sie kommen mit C2 und C3. **Danach**
+die Keycloak-Vorgabe. Umgekehrt lehnte Keycloak Registrierungen mit 8 bis 11 Zeichen ab, die das
+alte Portal noch erlaubt; der Kunde sähe nur „Die Registrierung ist zurzeit nicht möglich“.
+Darum steht der Handgriff hinter Schritt 10, nie davor.
+
+Sichern und Anmelden (Schritte 1–2 in `live-realm-import.md`), dann prüfen, angleichen, prüfen:
+
+```sh
+S=infra/prod/keycloak/live-realm-anmeldung.sh
+kubectl -n "$NS" exec -i deploy/keycloak -- bash -c 'export HOME=/tmp; bash -s pruefen'    < $S   # nennt jede Abweichung
+kubectl -n "$NS" exec -i deploy/keycloak -- bash -c 'export HOME=/tmp; bash -s angleichen' < $S
+kubectl -n "$NS" exec -i deploy/keycloak -- bash -c 'export HOME=/tmp; bash -s pruefen'    < $S   # Exit 0
+```
+
+Danach die Sitzungen der Betriebskonten beenden, beide Anmeldungen ansehen und den
+`master`-Administrator auf den zweiten Faktor stellen (Schritte 4–6 dort). Dort stehen auch der
+Rückweg (`browserFlow=browser`, `passwordPolicy=`) und die Bestätigungszeile zu Z-017/L-005.
+
+**In derselben Sitzung:** SMTP für den Realm und `resetPasswordAllowed` (Paket
+`vp-login-smtp-reset-d6`, beim Rollout-Fenster vorgesehen; das Passwort liegt in der
+sops-Geheimnisdatei im gitops-Repo).
+
+**Beleg:** Das zweite `pruefen` endet mit Exit 0; die Bestätigungszeile in `live-realm-import.md`
+ist eingetragen. **Abbruch:** Klemmt die Anmeldung, gilt der Rückweg aus `live-realm-import.md`,
+nicht R: das Portal bleibt offen.
+
+⧉ **Vom Betreiber beim ersten Lauf zu bestätigen:** dass `deploy/keycloak` im Namespace `$NS`
+läuft (in `live-realm-import.md` steht `<namespace>`).
 
 ---
 
@@ -679,6 +849,8 @@ Danach: **Sync-Klammer auf (F2)**, siehe §3.
 | # | Schritt | Beleg | Abbruch |
 |---|---|---|---|
 | 1 | Kundennachricht 48 h vorher, F6 geprobt | Nachricht raus, Checkliste | Fenster verschieben |
+| — | Merge-Commit = `UEMS_SHA`, baumgleich zu G0; seitdem kein Dispatch auf `main` (§2.6, §2.9) | Baum-Vergleich; Actions ohne Lauf | Fenster verschieben |
+| — | Images für `UEMS_SHA` bauen, **ohne** Tag-Bump (§2.10) | neun Images; gitops ohne `ci(images)`-Commit | Fenster verschieben |
 | — | Sync-Klammer zu (F1) | `syncPolicy` ohne `automated` | Fenster verschieben |
 | 2 | C1: neues api-Image **+** api/Writer auf 0, syncen | Soll = `UEMS_SHA` und 0/0 | Fenster abbrechen |
 | 3 | Writer steht | Pod-Liste leer, RS 0 | → R |
@@ -689,8 +861,10 @@ Danach: **Sync-Klammer auf (F2)**, siehe §3.
 | 8 | C3: Writer, ingest, Portal-Image | Rückstand baut ab; api unverändert | → R |
 | 9 | Rauchprobe (4 Proben) | alle vier grün | → R |
 | 9b | **Z08 erneut** | 0 Marker, Zeilenzahl unverändert | → R · bei Markern: §8 |
-| 10 | **Go:** Portal öffnen, Klammer auf (F2) | — | ab hier nur vorwärts |
-| danach | **Box-Release** an die Boxen, erst jetzt (§2.8) | Boxen quittieren den heutigen Katalogstand | Release anhalten |
+| 10 | **Go:** Portal öffnen, Klammer auf (F2), `GITOPS_PUSH_TOKEN` zurück | — | ab hier nur vorwärts |
+| danach | **Live-Realm härten** und SMTP/Reset (§5, nach Schritt 10) | `pruefen` Exit 0, Bestätigungszeile | Rückweg aus `live-realm-import.md` |
+| danach | Dauerläufer einrichten, Platzhalter setzen (§14) | Kundenbereich angelegt, UUID in gitops | Kundenbereich bleibt intern |
+| danach | **Box-Release** an die Boxen, erst jetzt (§2.8), Tag ≠ `edge-2026.09.5` | Boxen quittieren den heutigen Katalogstand | Release anhalten |
 
 ---
 
@@ -726,11 +900,12 @@ Die Dauer ist aus NW-8 (`rueckweg.json`, `wiederherstellung_ms`) bekannt.
 ### R3 — Gegenprobe, **bevor** ein altes Image kommt
 
 ```sh
-psql "$VP_DB_URL" -Atc "SELECT count(*), max(version) FROM flyway_schema_history;"
+psql "$VP_DB_URL" -Atc "SELECT count(*), max(version::numeric) FROM flyway_schema_history;"
 ```
 
-**Erwartet:** der Flyway-Stand **vor** der Migration (also `ALT_SHA`-Stand, höchste
-Version `20260916203000`), und **Q01** des Vorher-Blatts bytegleich zum notierten
+**Erwartet:** der Flyway-Stand **vor** der Migration (also `ALT_SHA`-Stand; am Stand
+`8b8b6a03b` höchste Version `20260924120000`), und **Q01** des Vorher-Blatts bytegleich zum
+notierten
 Fingerabdruck. Das ist genau die Zusicherung, die `rueckweg.sh` in der Übung prüft
 (Exit 31: „Flyway-Stand oder Q01 am Rückweg abweichend").
 
@@ -916,8 +1091,9 @@ sicher").
 - **Die zwei Platzhalter** aus §2.3 — `voltpilot:uems_datenbank_warnschwelle_bytes` (Q14)
   und der Dauerläufer-Tenant (IP-18, Einrichtung §14).
 - **NW-6 bleibt eine reale Übung:** jeden der zwölf Alarme einmal auslösen, Zustellung an
-  `betreiber` beobachten, jeden Läufer-Schalter umlegen. Lokale Regeltests beweisen weder
-  Zustellung noch tatsächlichen Not-Aus.
+  `betreiber` beobachten, jeden der 27 Schalter aus §12 einmal umlegen, darunter die der
+  20 Läufer im Katalog von `UemsLaeuferMelder` (zuletzt dazugekommen: `WetterArchivLaeufer`).
+  Lokale Regeltests beweisen weder Zustellung noch tatsächlichen Not-Aus.
 - **Der echte Upload-Weg** einschließlich äußerem Proxy gehört vor G1 geprüft; die
   nginx-Ergänzung aus PR 37 ist nur lokal geprüft.
 - **Wetter-Archiv (AP-17):** Quelle, Nutzungsbedingungen und gegebenenfalls Schlüssel
@@ -1008,8 +1184,11 @@ gelöscht. Ein Image-Rückweg steht nach Schritt 10 nicht mehr zur Verfügung (W
 keine selbst hergeleiteten Spring-Namen einsetzen.
 
 Die Tabelle nennt alle **27** `VOLTPILOT_UEMS_*_ENABLED`-Schalter aus
-`services/api/src/main/resources/application.yml`, in derselben Reihenfolge; gitops PR 37 setzt
-sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vom 23.09.2026).
+`services/api/src/main/resources/application.yml`, in derselben Reihenfolge. gitops PR 37 setzt
+seit Commit `5ad2f32` alle bis auf drei (vorher 17, Befund B3 der Generalprobe vom 23.09.2026).
+Die drei mit AP-17 und AP-18 dazugekommenen — `BEZUGSBASIS`, `VERBESSERUNG`, `WETTER_ARCHIV` —
+trägt das Paket `vp-uems-gitops37-drei-schalter` in PR 37 nach. Erst dann stehen alle 27
+ausdrücklich in gitops, wie W10 (AP-14, entschieden am 18.09.2026) es vor G1 verlangt.
 
 > ⚠ **`VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED` muss am Rollout-Tag `false` sein.**
 > Die Vorgabe in `application.yml` ist `true` (Historienquoten außerhalb 0–100 % reisen
@@ -1022,15 +1201,15 @@ sie seit Commit `5ad2f32` vollständig (vorher 17, Befund B3 der Generalprobe vo
 | `VOLTPILOT_UEMS_UEBERGABE_ENABLED` | `true` | Quellenübergaben und die Zustellung beim Box-Tausch |
 | `VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED` | **`false`** | (bleibt aus bis zum Quoten-Termin, E12 — sichtbare 0–100-%-Klemme) |
 | `VOLTPILOT_UEMS_BEWERTUNG_ENABLED` | `true` | die Kaskaden- und Struktur-Naht der energetischen Bewertung; Routen und übrige Berichte bleiben, Bewertungs-Protokolle bekommen dann noch kein Wasserzeichen |
-| `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED` | `true` | den Anstoß an freigegebenen Bezugsbasis-Fassungen (Kaskade und Struktur-Läufer); aus setzt der Läufer nur das Wasserzeichen, nichts wird nachgeholt — noch nicht in gitops PR 37 |
-| `VOLTPILOT_UEMS_VERBESSERUNG_ENABLED` | `true` | die Naht der Ziele und Maßnahmen: Auffälligkeit (AP-18 IP-15: Vermerk bei `schlechter` im Endgültigkeits-Takt und in der Kaskade) und Anstoß am Vorgang (IP-17: Kaskade Pfad 1, Struktur-Läufer Pfad 2); die Kennzahl-Werte werden weiter gebildet, nichts wird nachgeholt; Routen und Portal bleiben — noch nicht in gitops PR 37 (Vorgabe AN) |
+| `VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED` | `true` | den Anstoß an freigegebenen Bezugsbasis-Fassungen (Kaskade und Struktur-Läufer); aus setzt der Läufer nur das Wasserzeichen, nichts wird nachgeholt — kommt mit dem Nachtrag in PR 37 |
+| `VOLTPILOT_UEMS_VERBESSERUNG_ENABLED` | `true` | die Naht der Ziele und Maßnahmen: Auffälligkeit (AP-18 IP-15: Vermerk bei `schlechter` im Endgültigkeits-Takt und in der Kaskade) und Anstoß am Vorgang (IP-17: Kaskade Pfad 1, Struktur-Läufer Pfad 2); die Kennzahl-Werte werden weiter gebildet, nichts wird nachgeholt; Routen und Portal bleiben — kommt mit dem Nachtrag in PR 37 |
 | `VOLTPILOT_UEMS_BERICHTE_ENABLED` | `true` | Berichte in der Korrekturkaskade; entfernt keine Route und keine Tabelle |
 | `VOLTPILOT_UEMS_BERICHTE_STRUKTUR_ENABLED` | `true` | Strukturänderungen alle fünf Minuten (nur wirksam, wenn auch BERICHTE an ist) |
 | `VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED` | `true` | Standorte/Vorschläge für Bestandsanlagen beim Start |
 | `VOLTPILOT_UEMS_FUNKTION_BESTAND_ENABLED` | `true` | Ableitung von Funktionen und Teilnahmen beim Start |
 | `VOLTPILOT_UEMS_ZUGRIFF_BESTAND_ENABLED` | `true` | Übernahme der Bestandsrechte aus den Keycloak-Konten beim Start |
 | `VOLTPILOT_UEMS_TAGESMENGE_NACHTRAG_ENABLED` | `true` | den Start-Lauf, der für vor AP-08 endgültige Tage ohne Menge eine Korrektur `menge_nachgetragen` vorschlägt (Freigabe von Hand) |
-| `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` | `true` | den täglichen Abruf des Wetter-Archivs um 06:10 (Tagesmittel → Gradtage mit Herkunft `bezogen`, holt 60 Tage nach); Quelle, Adresse und Schlüssel: `VOLTPILOT_UEMS_WETTER_ARCHIV_QUELLE` (`open-meteo`), `…_BASIS_URL`, `…_SCHLUESSEL` (optional) — noch nicht in gitops PR 37 |
+| `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED` | `true` | den täglichen Abruf des Wetter-Archivs um 06:10 (Tagesmittel → Gradtage mit Herkunft `bezogen`, holt 60 Tage nach); Quelle, Adresse und Schlüssel: `VOLTPILOT_UEMS_WETTER_ARCHIV_QUELLE` (`open-meteo`), `…_BASIS_URL`, `…_SCHLUESSEL` (optional) — kommt mit dem Nachtrag in PR 37 |
 | `VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED` | `true` | Protokoll abgelaufener Unterstützung und Erinnerung vor Ablauf |
 | `VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED` | **`false`** | (alter `X-Tenant-Id`-Umschalter bleibt aus) |
 | `VOLTPILOT_UEMS_VIERTELSTUNDE_ENABLED` | `true` | Fünfminutentakt und die einmalige 90-Tage-Rückrechnung |
@@ -1069,7 +1248,7 @@ mehr (`…_zustand` sagt `aus`), damit aus dem Not-Aus kein Daueralarm wird.
   `patches:`-Liste, Deployment-Namen, `replicas`-Felder, Sync-Wellen 0/1,
   `terminationGracePeriodSeconds: 45`, Namespace `voltpilot-prod`, Application
   `voltpilot-prod`, Root-App mit `selfHeal: true`, die Schalter (17, seit Commit `5ad2f32`
-  alle 24) und die zwei
+  alle bis auf die drei aus AP-17/AP-18, mit dem Nachtrag 27, §12) und die zwei
   `CHANGE-ME`-Platzhalter.
 - `/Users/mvogt/…/vp-uems-w1-alte-api-repariert-historie/report.md` — §4 (jede Stelle, an
   der eine alte api starten kann) und §5 Option a samt neuem Prüfpunkt.
@@ -1077,7 +1256,14 @@ mehr (`…_zustand` sagt `aus`), damit aus dem Not-Aus kein Daueralarm wird.
 - Bericht der Rollout-Generalprobe vom 23.09.2026
   (`/Users/mvogt/…/vp-uems-rollout-generalprobe/report.md`) — Kurzfazit B2–B5, Teil 1
   (Migrationsdauern, Sperren, Hochrechnung), Teil 3 (Schalter-Inventar), Teil 4 (Box-Kopplung),
-  §7 (Reihenfolge des Rollout-Tags); dazu PR 1143 und die 24 Schalter in `application.yml`.
+  §7 (Reihenfolge des Rollout-Tags); dazu PR 1143 und die Schalter in `application.yml`
+  (heute 27, §12).
+- Stand nach dem Nachzug `main` → `uems` (PR 1287, `f694b5252`) und Bereitschaftsbericht vom
+  26.09.2026 (`/Users/mvogt/…/vp-uems-bereitschaft-main-0926/report.md`, A2, B1–B4) —
+  Migrationsliste gegen `main-migrations.txt`, `V20260926001500` und `V20260926004700` im
+  Wortlaut, `.forgejo/workflows/deploy.yaml` und `deploy-fast.yaml`,
+  `infra/prod/keycloak/live-realm-import.md`, `RegistrationRequest`, `UemsLaeuferMelder.KATALOG`,
+  die Box-Tags `edge-2026.09.*`, `tools/freigabe/pruefe_tor.py` (`stand_des_laufs`, #1288).
 
 **Nicht gegenlesbar auf einer Entwicklungsmaschine** (alles mit ⧉ markiert): jede Ausgabe
 eines echten Clusters, die echten Dauern an Produktionsdaten, der Name des produktiven
@@ -1105,6 +1291,14 @@ Anlegen selbst. Eine vorgegebene Kennung wie `e1b07da2-…` lässt sich nicht ei
 Anlege-Route nimmt nur Name und Segment an (`CreateTenantRequest.java:10-12`), die Datenbank
 vergibt die UUID (`TenantRepository.java:50-53`). Trag also die Kennung ein, die die Plattform
 beim Anlegen vergibt.
+
+**Wann:** nach Schritt 10. Der Dauerläufer wird über die Messkunden-Wege aufgebaut (§14.2), und
+die gibt es in Produktion erst mit der neuen api. Vor dem Rollout kann der Tor-Punkt IP-18 darum
+nicht grün werden.
+
+- **Vorgesehen, Entscheid des Captains offen (Bereitschaftsbericht B4):** IP-18 wandert aus G1
+  auf den Rollout-Tag nach Schritt 10 bzw. in die Nachbeobachtung M-6.
+- **Die Alternative:** IP-18 bleibt ein G1-Punkt; dann bleibt G1 bis nach dem Rollout offen.
 
 ### 14.1 Kundenbereich anlegen
 
@@ -1312,8 +1506,11 @@ Fassung, ein Anstoß am Vorgang ein Energieziel oder eine Maßnahme — der Best
 Einen neuen Läufer gibt es nicht (E5 = A): die Naht läuft im Endgültigkeits-Takt, in der Kaskade
 und im Struktur-Läufer mit; Termine und Fristen leitet der Abruf ab.
 
-**Die Schalter fehlen noch in gitops PR 37** (`BEZUGSBASIS`, `VERBESSERUNG`, `WETTER_ARCHIV`). Ohne Eintrag gilt
-die Vorgabe `true`; das ist gewollt. Nur wer abweichen will, braucht einen Eintrag (§15.2).
+**Die drei Schalter gehören ausdrücklich nach gitops** (`BEZUGSBASIS`, `VERBESSERUNG`,
+`WETTER_ARCHIV`; Nachtrag in PR 37, §12). Ohne Eintrag gälte zwar die Vorgabe `true`, aber W10
+(AP-14, entschieden am 18.09.2026) verlangt vor G1 jeden Schalter ausdrücklich in gitops und
+jeden einmal umgelegt (NW-6). Ein fehlender Eintrag ist also ein offener G1-Punkt, keine gewollte
+Vorgabe. Welchen Wert ein Schalter bekommt, entscheidet der Betreiber (§15.2).
 
 ### 15.2 Hand des Betreibers
 
