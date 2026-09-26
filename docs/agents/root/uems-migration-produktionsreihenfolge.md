@@ -25,6 +25,22 @@ Satz und migriert dann aus der vollständigen Location mit `outOfOrder(true)` bi
 Zwei Datenbanken im selben Testcontainer vergleichen den Nachzug mit der frischen Installation.
 Es gibt keinen Zugriff auf bestehende Datenbanken. Timescale-Hintergrundarbeiter sind abgeschaltet.
 
+## Was jeder Nachzug außer der Liste wiederholt
+
+Erprobt beim Nachzug von main `8b8b6a03b` (26.09.2026); Einzelheiten stehen im jeweiligen Wächter.
+
+- **Fingerabdruck-Wächter** (`frontend/portal/src/migration.test.ts`, `test/kundenBestand-vor-ip12.json`): ein von main
+  ausgeliefert entferntes Bedienelement fällt nur über den Block `mainNachzug` (je Element main-Commit und Nachfolger,
+  `main` = alle Fingerabdrücke der main-Fassung). Vorher nachmessen, dass es auf der main-Basis stand — nie `--update`,
+  nie eine neue Basis.
+- **Bestandsschutz-Aufnahmen** (`frontend/portal/src/test/bestandsschutz/README.md`): eine von main umgebaute Fläche
+  wird auf einem `git archive origin/main` mit demselben Testfall aufgenommen; der Merge-Baum muss sie bytegleich rendern.
+- **NW-2** (`services/api/src/test/resources/uems/nw2/README.md`): die Referenz auf dem neuen main-Commit nachmessen
+  (Aufnahme im Klon, Hinweis zu den uems-only Sendern dort), nicht aus dem uems-Lauf neu schreiben.
+- **Auto-Merge ohne Konflikt** prüfen: doppelte Objektschlüssel (`api.ts`, E2E-Bühnen wie `help-fixtures.ts`),
+  doppelte Exporte, und `playwright test --project=desktop-chromium` komplett — main-Neubauten brechen UEMS-Specs, die
+  auf alte Flächen klicken.
+
 ## Was der Wächter schützt
 
 - Vor dem Nachzug stehen `rolle_gesetzt` und `rolle_entzogen` im Ortsprotokoll. Die Migration muss
