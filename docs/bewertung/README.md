@@ -244,8 +244,9 @@ stimmen überein (AP-20 NW-1).
   „Lücke“, auch gebeugt. Das Verb der Aufgabe bleibt erlaubt: „belegen“ und „erfüllen“ sagen, was der
   Kunde tut, nicht ob er es getan hat. VoltPilot weiß das nicht und behauptet darum nichts. Eine
   Kundenaufgabe wird nie gezählt, auch nicht als erfüllt, offen oder Lücke.
-- **Wo gesagt** (`wo_gesagt`) nennt, wo der Kunde die Aufgabe heute liest. Als Liste steht sie noch
-  nirgends kundenlesbar (L-010). Einzelne Teile sagen heute schon Zusagen (Z-048, Z-054, Z-059, Z-075).
+- **Wo gesagt** (`wo_gesagt`) nennt, wo der Kunde die Aufgabe heute liest: alle neun im Hilfe-Artikel
+  (AP-20 IP-22, L-010 behoben) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21). Einzelne Teile sagen
+  daneben Zusagen (Z-048, Z-054, Z-059, Z-075).
 
 Gegenüber dem Konzept sagt KA-06 „den Gesamtabzug laden“ statt „nehmen“, wie der Knopf (AP-20 BT4).
 
@@ -507,6 +508,16 @@ bis seine Zeile positiv ist. Ohne Bindung gehen nur die Rahmen-Sätze des Werkze
 Fuß der Übersicht, Grenz-Satz, Träger). Ein Restpunkt der Bewertung ohne Satz in der Quelle ist rot (PB4). Texte
 außerhalb des Repos (Website, Angebot) prüft `--entwurf <datei>` in derselben Form wie RF-09.
 
+**Hilfe-Artikel im Portal (AP-20 IP-22, E7 = A).** Der Artikel „Was VoltPilot für Ihr Energiemanagement festhält —
+und was bei Ihnen bleibt“ (`frontend/portal/src/help/content/energiemanagement.ts`, Einstieg aus dem Bereich
+Energiemanagement) trägt nur Sätze aus §5.8: Titel, Kurztext, die Überschriften der Beschreibung, die Funktionssätze
+an einer positiven Zeile, alle Kundenaufgaben, Verantwortungs- und Grenz-Satz, jeden angenommenen Restpunkt mit
+Grenze. `--check` liest ihn gegen Quelle und jüngste Bewertung und ist rot an einem Satz an einer offenen Zeile
+(heute Z-004), an einem Satz ohne Quelle, an einem fehlenden Pflicht-Satz und an einer Stelle, die kein Wortlaut
+ist. Die Richtung ist fest: das Werkzeug liest den Artikel, der Artikel verweist auf nichts hier (ein Verweis wäre
+rot, s. u.). Wird eine Zeile positiv, kommt ihr Satz von Hand in den Artikel; wird sie offen, ist `--check` rot, bis
+er herausgenommen ist. Wortliste und die zwei Pflicht-Sätze prüft zusätzlich `copy.test.ts` (Block AP-20 IP-22).
+
 **Gilt nur mit ihrer Bewertung (PB5).** `--check` ist rot, wenn eine jüngere Bewertung die eigene ablöst, wenn sich
 die Bewertung seit dem Bau geändert hat (etwa durch ihre Freigabe), wenn eine Datei nicht der Bau ist oder wenn
 Portal oder API auf die Beschreibung verweisen. Ein Entwurf bleibt grün und sagt, dass er einer ist:
@@ -535,7 +546,7 @@ python3 tools/bewertung/klammer.py                             # Klammer AP-20 N
 python3 tools/bewertung/luecken.py [--heute JJJJ-MM-TT]        # Wache AP-20 NW-3: Exit 0 = Liste hält, zeigt Zustand und Frist
 python3 tools/bewertung/pruefe_matrix.py --laeufe <ordner> …    # Urteil je Zeile, BWB-Entwurf mit SHA-256 (AP-20 NW-2)
 python3 tools/bewertung/pruefpaket.py [--check]                # Prüfpaket für die Fachperson (AP-20 IP-11): Exit 0 = gebaut bzw. hält
-python3 tools/bewertung/produktbeschreibung.py [--check]       # Beschreibung + Übersicht (AP-20 IP-21, NW-4): Exit 0 = gebaut bzw. hält, meldet Entwurf
+python3 tools/bewertung/produktbeschreibung.py [--check]       # Beschreibung + Übersicht (AP-20 IP-21, NW-4), mit --check auch der Hilfe-Artikel (IP-22): Exit 0 = gebaut bzw. hält, meldet Entwurf
 python3 tools/bewertung/produktbeschreibung.py --vor-ausgabe   # PB5: Exit 1, solange die Bewertung nicht freigegeben ist
 python3 tools/bewertung/produktbeschreibung.py --entwurf <datei>  # Wächter über einen fremden Text: Exit 1 = ein Satz abgelehnt
 python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1, AP-20 NW-2 und die Wachen

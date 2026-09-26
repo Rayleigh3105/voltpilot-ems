@@ -13,6 +13,7 @@ export function helpForRoute(route: Route): HelpArticleId | null {
   if (route.page === 'anlagen') return route.sub ? HELP_FOR_SUB[route.sub] : 'cockpit';
   if (route.page === 'portfolio-messwerte') return 'messwerte';
   if (route.page === 'portfolio-erloese') return 'erloese';
+  if (route.page === 'portfolio-energiemanagement') return 'energiemanagement';
   if (route.page === 'portfolio' || route.page === 'uebersicht' || route.page === 'standort') return 'portfolio';
   return null;
 }

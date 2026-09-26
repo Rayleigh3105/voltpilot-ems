@@ -4,6 +4,7 @@ import { GELD_BLEIBT, STARTSEITE_UNTERNEHMEN, STEUERUNG_BLEIBT } from './standor
 import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from './steuernAssistent';
 import { everydayArticles } from './help/content/alltag';
 import { plantArticles } from './help/content/anlage';
+import { energiemanagementArticles } from './help/content/energiemanagement';
 import { KORREKTUR_VORSPANN } from './anlageUmziehen';
 import {
   GESAMTWERT,
@@ -1921,6 +1922,7 @@ const KENNZAHL_BESTAND: string[] = [
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
+  'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)
   'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
   'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
   'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
@@ -3482,6 +3484,105 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
     expect(doppelt(text).map(String)).toEqual([]);
     expect(text).toContain('Inhalte und Entscheidungen verantwortet Ihr Unternehmen');
     expect(text).toContain('Solange Sie nichts festhalten, ändert sich nichts.');
+  });
+
+  describe('UEMS AP-20 IP-22 · Hilfe-Artikel Energiemanagement: Wortliste, Verantwortungs- und Grenz-Satz (E7, E8, PB2–PB4, NW-4)', () => {
+    /**
+     * Der Artikel trägt nur Sätze aus AP-20 (§5.8 und die Texte der Kundenaufgaben), Wort für Wort. Welcher
+     * Funktionssatz stehen darf, entscheidet die geltende Bewertung (PB1) — das prüft
+     * `tools/bewertung/produktbeschreibung.py --check` von außen, nie dieser Test: das Portal liest die Bewertung nicht. Hier stehen die Wortliste (SP2 dieses Blocks, der AP-14 S1 enthält,
+     * dazu die Rechtsaussagen aus PB2 und die Abschnittsnummern aus PB3) und die zwei Sätze, ohne die der Artikel
+     * nicht erscheint (E8 = A: der Grenz-Satz unverändert, der Verantwortungs-Satz daneben).
+     */
+    type Artikel = (typeof energiemanagementArticles)[number];
+    const [ARTIKEL] = energiemanagementArticles;
+    const RECHTSAUSSAGEN = [/(?:DSGVO|GDPR)[-\s]?(?:konform|compliant)/iu, /complian(?:t|ce)/iu, /rechts-?sicher/iu, /garanti(?:e|er)/iu];
+    const ABSCHNITTSNUMMER = /(?<![\p{L}\p{N}.])(?:[4-9]|10)\.[1-9](?:\.[1-9])?(?![\p{L}\p{N}]|\.\p{N})/u;
+    /** Jeder sichtbare Text in Lesefolge: Titel, Kurztext, je Abschnitt Überschrift, Absätze, Schritte, Hinweis. */
+    const texte = (a: Artikel) =>
+      [a.title, a.summary, a.prerequisite, ...a.sections.flatMap((s) => [s.title, ...s.paragraphs, ...(s.steps ?? []), s.note])]
+        .filter((t): t is string => Boolean(t));
+    const artikelFehler = (a: Artikel) => {
+      const saetze = texte(a);
+      return [
+        ...[...saetze, ...a.keywords].flatMap((t) => [
+          ...verstoesse(t).map((re) => `SP2 ${re} in „${t}“`),
+          ...normNummern(t).map((re) => `Norm-Nummer ${re} in „${t}“`),
+          ...doppelt(t).map((re) => `SP3 ${re} in „${t}“`),
+          ...RECHTSAUSSAGEN.filter((re) => re.test(t)).map((re) => `PB2 ${re} in „${t}“`),
+          ...(ABSCHNITTSNUMMER.test(t) ? [`PB3 Abschnittsnummer in „${t}“`] : []),
+        ]),
+        ...(saetze.includes(NEUTRALE_ISO_NENNUNG) ? ['die ISO-Nennung steht nur in der Übersicht für Prüfende (PB3)'] : []),
+        ...(saetze.includes(UEMS_VERANTWORTUNG) ? [] : ['ohne Verantwortungs-Satz (E8, W8)']),
+        ...(saetze.includes(UEMS_NORMGRENZE) ? [] : ['ohne Grenz-Satz (E8)']),
+      ];
+    };
+    const mitSatz = (satz: string): Artikel => ({
+      ...ARTIKEL,
+      sections: ARTIKEL.sections.map((s, i) => (i === 0 ? { ...s, paragraphs: [...s.paragraphs, satz] } : s)),
+    });
+    const ohneSatz = (satz: string): Artikel => ({
+      ...ARTIKEL,
+      sections: ARTIKEL.sections.map((s) => ({ ...s, paragraphs: s.paragraphs.filter((p) => p !== satz) })),
+    });
+
+    it('trägt Titel und Sätze aus §5.8 Wort für Wort und besteht die Wortliste', () => {
+      expect(texte(ARTIKEL)).toEqual([
+        'Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt',
+        'Was außerhalb von VoltPilot bei Ihnen bleibt, steht bei jeder Funktion dabei.',
+        'Was VoltPilot festhält',
+        'VoltPilot misst, rechnet Kennzahlen und vergleicht mit Ihrer Bezugsbasis; was die Zahlen bedeuten, entscheiden Sie.',
+        'Warum ein Monat anders war und ob eine Maßnahme gewirkt hat, sagen Sie selbst, mit Begründung. VoltPilot schlägt vor und zeigt die Messwerte.',
+        'Was bei Ihnen bleibt',
+        // Alle neun Kundenaufgaben wie in der Beschreibung: der Satz aus §5.8, sonst der Text der Kundenaufgabe.
+        'Ihr Energiemanagement als Ganzes einführen, mit Mitteln ausstatten, aufrechterhalten und verbessern.',
+        'Festlegen, welche Kompetenz nötig ist, und sie nachweisen, tun Sie selbst. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.',
+        'Ob Sie rechtliche Anforderungen einhalten, bewerten Sie selbst. VoltPilot bewertet das nicht.',
+        'Warum ein Monat anders war und ob eine Maßnahme gewirkt hat, sagen Sie selbst, mit Begründung. VoltPilot schlägt vor und zeigt die Messwerte.',
+        'Ob der Klimawandel für Ihr Energiemanagement eine Rolle spielt, beurteilen Sie. VoltPilot führt dazu keine Angaben.',
+        'Vor dem Ende Ihres Vertrags laden Sie den Gesamtabzug und bewahren ihn selbst auf.',
+        'Messmittel und Zähler prüfen lassen, die Messplanung verantworten, eine Einstufung fachlich tragen.',
+        'Interne Audits durchführen (Gespräche, Begehung), Auditorinnen und Auditoren auswählen und ihre Unabhängigkeit sichern.',
+        'Entscheidungen der Leitung treffen und verantworten; Originale in Ihren Systemen führen, wo VoltPilot nur verweist.',
+        'Grenze',
+        UEMS_VERANTWORTUNG,
+        UEMS_NORMGRENZE,
+      ]);
+      expect(artikelFehler(ARTIKEL)).toEqual([]);
+      // Der Artikel zeigt auf nichts in der Bewertung: kein Pfad, kein Kennzeichen einer Zusage, Kundenaufgabe oder Lücke.
+      const quelle = readFileSync(join(SRC, 'help/content/energiemanagement.ts'), 'utf8');
+      expect(quelle).not.toMatch(/docs\/bewertung|BWB-\d|(?<![\p{L}\p{N}])(?:Z-\d{3}|KA-\d{2}|L-\d{3})(?![\p{N}])/u);
+    });
+
+    it('wird rot an einem verbotenen Wort — auch an den Wörtern von AP-14 S1, einer Rechtsaussage und einer Nummer (NW-4)', () => {
+      for (const probe of [
+        'VoltPilot ist ISO-konform.', 'VoltPilot ist zertifiziert nach einer Energiemanagement-Norm.',
+        'VoltPilot arbeitet normkonform.', 'VoltPilot erfüllt ISO 50001.', 'Ihr Energiemanagement ist auditfest.',
+        'Ihr Energiemanagement ist vollständig dokumentiert.', 'Die Ablage ist revisionssicher.',
+        'VoltPilot ist DSGVO-konform.', 'VoltPilot is GDPR compliant.', 'Ihre Nachweise sind rechtssicher abgelegt.',
+        'VoltPilot garantiert Ihre Einsparung.', 'Abschnitt 6.3 bleibt bei Ihnen.', 'Zu 9.1 hält VoltPilot die Kennzahlen fest.',
+        NEUTRALE_ISO_NENNUNG,
+      ]) {
+        expect(artikelFehler(mitSatz(probe)), probe).not.toEqual([]);
+      }
+      expect(artikelFehler({ ...ARTIKEL, keywords: [...ARTIKEL.keywords, 'ISO 50001'] })).not.toEqual([]);
+      // Die Wortgrenzen bleiben heil: Datum, Uhrzeit und ein Satz über das interne Audit sind keine Verstöße.
+      expect(artikelFehler(mitSatz('Stand vom 12.02.2029, 14:10; das interne Audit halten Sie selbst.'))).toEqual([]);
+    });
+
+    it('wird rot an einem Artikel ohne Grenz-Satz, ohne Verantwortungs-Satz oder mit verändertem Grenz-Satz (E8, NW-4)', () => {
+      expect(artikelFehler(ohneSatz(UEMS_NORMGRENZE))).toEqual(['ohne Grenz-Satz (E8)']);
+      expect(artikelFehler(ohneSatz(UEMS_VERANTWORTUNG))).toEqual(['ohne Verantwortungs-Satz (E8, W8)']);
+      // Wort für Wort: ein veränderter Grenz-Satz ist kein Grenz-Satz mehr, und sein Norm-Wort ist dann verboten.
+      const verbogen: Artikel = {
+        ...ARTIKEL,
+        sections: ARTIKEL.sections.map((s) => ({
+          ...s, paragraphs: s.paragraphs.map((p) => (p === UEMS_NORMGRENZE ? p.replace('nicht verbunden', 'verbunden') : p)),
+        })),
+      };
+      expect(artikelFehler(verbogen)).toContain('ohne Grenz-Satz (E8)');
+      expect(artikelFehler(verbogen).some((f) => f.startsWith('SP2 /konform/iu'))).toBe(true);
+    });
   });
 });
 

@@ -17,14 +17,21 @@ PB3) und gegen die Bindung: ein Satz an einer Zusage ohne positives Urteil fäll
 Wort (PB1, RF-09). Eine Beschreibung gilt nur mit ihrer Bewertung (PB5): ist sie abgelöst, geändert
 oder nicht freigegeben, sagt der Wächter das.
 
+Mit `--check` liest der Wächter auch den Hilfe-Artikel im Portal
+(`frontend/portal/src/help/content/energiemanagement.ts`, AP-20 IP-22) und vergleicht ihn mit Satz-Quelle und
+Bewertung: jeder Text ist ein Rahmen-Satz, eine Überschrift der Beschreibung oder ein Satz der Quelle an einer
+positiven Zeile; Kundenaufgaben, Verantwortungs- und Grenz-Satz und jeder angenommene Restpunkt stehen darin (PB1,
+PB4, E8). Das Werkzeug liest den Artikel, der Artikel verweist auf nichts hier.
+
     python3 tools/bewertung/produktbeschreibung.py [--check] [--vor-ausgabe] [--aus <ordner>]
-        [--bewertung <BWB-JJJJ-nn.json>] [--quelle <datei>]
+        [--bewertung <BWB-JJJJ-nn.json>] [--quelle <datei>] [--hilfe <artikel.ts>]
     python3 tools/bewertung/produktbeschreibung.py --entwurf <datei> [--bewertung <BWB-JJJJ-nn.json>]
 
 Exit 0: geschrieben, bzw. mit `--check` die Dateien im Repo sind der Bau aus der jüngsten Bewertung;
 ein Entwurf wird dabei als Entwurf gemeldet. Mit `--entwurf`: jeder Satz ist zugelassen.
 Exit 1: ein Satz mit verbotenem Wort, ein Restpunkt ohne Satz, eine abgelöste oder geänderte Bewertung,
-eine Abweichung vom Bau, ein Verweis aus Portal oder Bericht; mit `--vor-ausgabe` zusätzlich jede nicht
+eine Abweichung vom Bau, ein Verweis aus Portal oder Bericht, ein Satz im Hilfe-Artikel an einer offenen Zeile
+oder ohne Quelle, ein Hilfe-Artikel ohne Grenz-Satz; mit `--vor-ausgabe` zusätzlich jede nicht
 freigegebene Bewertung; mit `--entwurf` jeder abgelehnte Satz.
 Exit 2: Aufruffehler, unlesbare Datei, `jsonschema` fehlt.
 """
@@ -47,6 +54,7 @@ DATEIEN = ('beschreibung.md', 'uebersicht-fuer-pruefende.md', 'produktbeschreibu
 SUMME = 'produktbeschreibung.sha256'
 # PB3: kein Verweis aus einer Kundenfläche oder einem Bericht auf die Beschreibung.
 KUNDENFLAECHEN = (REPO / 'frontend' / 'portal' / 'src', REPO / 'services' / 'api' / 'src' / 'main')
+HILFE_ARTIKEL = REPO / 'frontend' / 'portal' / 'src' / 'help' / 'content' / 'energiemanagement.ts'
 VERWEIS = re.compile(r'produktbeschreibung/|uebersicht-fuer-pruefende|beschreibung-saetze')
 
 POSITIV = ('belegt', 'nicht_maschinell_pruefbar')
@@ -183,6 +191,14 @@ class Bewertungsstand:
                    {l['kennzeichen']: l for l in bwb['luecken'] if l['zustand'] == 'restpunkt'})
 
 
+def kundenaufgabe_satz(quelle, ka):
+    """Der Kundensatz einer Kundenaufgabe der Bewertung: aus §5.8, sonst ihr Text in der Bewertung."""
+    for k in quelle['kundenaufgaben']:
+        if k['kundenaufgabe'] == ka['kennzeichen']:
+            return k
+    return {'satz': ka['text'], 'kundenaufgabe': ka['kennzeichen']}
+
+
 def bindung_von(eintrag):
     for feld in ('zusage', 'kundenaufgabe', 'luecke'):
         if eintrag.get(feld):
@@ -294,11 +310,7 @@ class Bau:
         return e['zugelassen']
 
     def ka_satz(self, kz):
-        """Der Kundensatz einer Kundenaufgabe: aus §5.8, sonst der Text der Bewertung."""
-        for k in self.quelle['kundenaufgaben']:
-            if k['kundenaufgabe'] == kz:
-                return k
-        return {'satz': self.ka[kz]['text'], 'kundenaufgabe': kz}
+        return kundenaufgabe_satz(self.quelle, self.ka[kz])
 
     def ka_der_zusage(self, kz):
         return list(dict.fromkeys(self.norm[a]['kundenaufgabe'] for a in self.zusagen[kz]['norm'] if a in self.norm))
@@ -354,7 +366,7 @@ class Bau:
                 self.fehler.append(f'beschreibung/restpunkt: {kz} ist Restpunkt in {b["kennung"]} und hat keinen '
                                    f'Satz in der Quelle (PB4)')
                 continue
-            grenze = f'Grenze: {l.get("grenze")}, bis {_tag(l["bis"])}.' if l.get('bis') else f'Grenze: {l.get("grenze")}.'
+            grenze = restpunkt_grenze(l)
             self.pruefe('beschreibung/restpunkt_grenze', {'satz': grenze, 'luecke': kz}, pflicht=True)
             a(f'- {satz_der[kz]["satz"]} {grenze} *({kz})*')
             genannt += 1
@@ -507,6 +519,123 @@ def verweise(wurzeln=KUNDENFLAECHEN):
     return treffer
 
 
+# --------------------------------------------------------------------------- #
+# Hilfe-Artikel im Portal (AP-20 IP-22, E7 = A, PB1, PB4): das Werkzeug liest den Artikel, nie umgekehrt
+# --------------------------------------------------------------------------- #
+
+# Was der Artikel ohne Bindung tragen darf: Titel, Kurztext und Grenz-Satz aus §5.8, dazu die Überschriften der
+# Beschreibung. Die ISO-Nennung und die Sätze der Übersicht stehen nie im Portal (PB3). Die Kundenaufgaben stehen wie
+# in der Beschreibung: alle der Bewertung, im Satz aus §5.8, sonst im Text der Bewertung (PB4; KA-01 … KA-09).
+HILFE_RAHMEN = (TITEL, KUNDENAUFGABEN_SATZ, NORMGRENZE)
+HILFE_UEBERSCHRIFTEN = ('Was VoltPilot festhält', 'Was bei Ihnen bleibt', 'Restpunkte', 'Grenze')
+_KOMMENTAR = re.compile(r'/\*.*?\*/|^\s*//[^\n]*$', re.DOTALL | re.MULTILINE)
+_LITERAL = re.compile(r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"|`(?:[^`\\]|\\.)*`")
+_SATZFELD = re.compile(r'\b(title|summary|prerequisite|note)\s*:\s*$')
+_LISTENFELD = re.compile(r'\b(paragraphs|steps|keywords)\s*:\s*\[[^\]]*$')
+_KENNUNGSFELD = re.compile(r'(?:\b(?:id|category|figure|diagram)\s*:|\brelated\s*:\s*\[[^\]]*|\bfrom)\s*$')
+_KENNUNG = re.compile(r'^[a-z0-9./-]+$')
+
+
+def restpunkt_grenze(l):
+    """Die Grenze eines Restpunkts, die Beschreibung und Hilfe-Artikel hinter seinen Satz stellen (PB4, LU4)."""
+    return f'Grenze: {l.get("grenze")}, bis {_tag(l["bis"])}.' if l.get('bis') else f'Grenze: {l.get("grenze")}.'
+
+
+def hilfe_texte(quelltext):
+    """Die Texte des Artikels als [(feld, text)] in Lesefolge; eine Stelle, die kein Wortlaut ist, als ('?', …).
+
+    Gelesen werden nur Zeichenketten-Literale; ein Text über einen Namen oder mit `${…}` ist kein Wortlaut, den das
+    Werkzeug prüfen kann, und damit rot (fail-closed)."""
+    code = _KOMMENTAR.sub(' ', quelltext)
+    aus = []
+    for m in _LITERAL.finditer(code):
+        vor, roh = code[:m.start()], m.group(0)
+        text = roh[1:-1].replace("\\'", "'").replace('\\"', '"')
+        if roh[0] == '`' and '${' in text:
+            aus.append(('?', f'Vorlage statt Wortlaut: {text}'))
+        elif _SATZFELD.search(vor):
+            aus.append((_SATZFELD.search(vor).group(1), text))
+        elif _LISTENFELD.search(vor):
+            aus.append((_LISTENFELD.search(vor).group(1), text))
+        elif _KENNUNGSFELD.search(vor) and _KENNUNG.match(text):
+            aus.append(('kennung', text))
+        else:
+            aus.append(('?', text))
+    for feld in ('paragraphs', 'steps', 'keywords'):
+        for liste in re.finditer(rf'\b{feld}\s*:\s*\[([^\]]*)\]', code):
+            if _LITERAL.sub('', liste.group(1)).strip(' \n,'):
+                aus.append(('?', f'{feld} mit einem Eintrag, der kein Wortlaut ist'))
+    for feld in ('title', 'summary', 'prerequisite', 'note'):
+        for m in re.finditer(rf'\b{feld}\s*:\s*(?![\s\'"`])(\S+)', code):
+            aus.append(('?', f'{feld}: {m.group(1)} ist kein Wortlaut'))
+    return aus
+
+
+def pruefe_hilfe(quelle, bwb, quelltext):
+    """Der Hilfe-Artikel gegen Satz-Quelle und Bewertung. Liefert (rote Stellen, Befund)."""
+    stand = Bewertungsstand.aus(bwb)
+    kundenaufgaben = [kundenaufgabe_satz(quelle, k) for k in bwb['kundenaufgaben']]
+    eintrag_zu = {e['satz']: e for e in (*quelle['funktionen'], quelle['verantwortung'], *quelle['kundenaufgaben'],
+                                         *kundenaufgaben)}
+    restpunkte = {f'{r["satz"]} {restpunkt_grenze(stand.restpunkte[r["luecke"]])}': r
+                  for r in quelle['restpunkte'] if r['luecke'] in stand.restpunkte}
+    rot, saetze, titel = [], [], 0
+    for feld, text in hilfe_texte(quelltext):
+        if feld == 'kennung':
+            continue
+        if feld == '?':
+            rot.append(f'„{text}“ ist keine Stelle, die der Artikel tragen darf')
+            continue
+        rot += [f'„{text}“: {w} ({r}) — verboten' for w, r in funde(text)]
+        if ABSCHNITTSNUMMER.search(text):
+            rot.append(f'„{text}“: eine Abschnittsnummer steht nur in der Übersicht (PB3)')
+        if feld == 'keywords':
+            continue
+        if feld == 'title':
+            titel += text == TITEL
+            if text != TITEL and text not in HILFE_UEBERSCHRIFTEN:
+                rot.append(f'„{text}“ ist weder der Titel noch eine Überschrift der Beschreibung')
+            continue
+        saetze.append(text)
+        if text in HILFE_RAHMEN:
+            continue
+        if text in restpunkte:
+            eintrag = restpunkte[text]
+        elif text in eintrag_zu:
+            eintrag = eintrag_zu[text]
+        else:
+            rot.append(f'„{text}“ steht nicht in der Satz-Quelle und ist kein Rahmen-Satz (PB1)')
+            continue
+        e = pruefe_satz(eintrag, stand)
+        if not e['gebunden_an_positive_zeile']:
+            rot.append(f'„{text}“: {e["grund"]} (PB1)')
+    if titel != 1:
+        rot.append(f'der Titel „{TITEL}“ steht {titel}-mal im Artikel, verlangt ist genau einmal')
+    pflicht = [(NORMGRENZE, 'den Grenz-Satz (E8)'),
+               (quelle['verantwortung']['satz'], f'den Verantwortungs-Satz ({quelle["verantwortung"]["zusage"]}, E8)')]
+    pflicht += [(k['satz'], f'die Kundenaufgabe {k["kundenaufgabe"]} (PB4)') for k in kundenaufgaben]
+    pflicht += [(satz, f'den Restpunkt {r["luecke"]} mit seiner Grenze (PB4)') for satz, r in restpunkte.items()]
+    rot += [f'ohne {was}' for satz, was in pflicht if satz not in saetze]
+    zurueck = [grund for e in (*quelle['funktionen'], *quelle['restpunkte'])
+               for grund in [pruefe_satz(e, stand)['grund']] if grund]
+    befund = {'saetze': len(saetze), 'funktionen': sum(s in {f['satz'] for f in quelle['funktionen']} for s in saetze),
+              'zurueckgehalten': zurueck}
+    return rot, befund
+
+
+def _hilfe(pfad, quelle_pfad, bewertung_pfad):
+    """Rote Stellen des Hilfe-Artikels und die Zeile für die Ausgabe."""
+    if not pfad.is_file():
+        return [f'{_anzeige(pfad)} fehlt: der Hilfe-Artikel zum Energiemanagement (AP-20 IP-22)'], None
+    bwb = json.loads((bewertung_pfad or juengste_bewertung()).read_bytes())
+    rot, befund = pruefe_hilfe(json.loads(quelle_pfad.read_bytes()), bwb, pfad.read_text(encoding='utf-8'))
+    zeile = (f'Hilfe-Artikel hält: {_anzeige(pfad)} gegen {bwb["kennung"]} ({bwb["zustand"]}), '
+             f'{befund["saetze"]} Sätze, davon {befund["funktionen"]} an einer Funktion')
+    if befund['zurueckgehalten']:
+        zeile += '; zurückgehalten: ' + ' · '.join(befund['zurueckgehalten'])
+    return [f'{_anzeige(pfad)}: {r}' for r in rot], zeile
+
+
 def pb5(aus, bewertung_pfad):
     """Gilt die Beschreibung im Ordner noch mit ihrer Bewertung? Liefert (rote Stellen, gelesener Datensatz)."""
     pfad = aus / 'produktbeschreibung.json'
@@ -563,6 +692,8 @@ def main(argv):
     p.add_argument('--quelle', type=pathlib.Path, default=QUELLE)
     p.add_argument('--bewertung', type=pathlib.Path)
     p.add_argument('--entwurf', type=pathlib.Path, help='einen Entwurf {"saetze": [...]} gegen den Wächter prüfen')
+    p.add_argument('--hilfe', type=pathlib.Path, default=HILFE_ARTIKEL,
+                   help='der Hilfe-Artikel, den --check gegen Quelle und Bewertung liest (AP-20 IP-22)')
     try:
         args = p.parse_args(argv)
     except SystemExit:
@@ -600,10 +731,15 @@ def main(argv):
             for q in sorted(args.aus.glob('*')) if q.name not in dateien] if args.aus.is_dir() else []
     rot += [f'{s} verweist auf die Beschreibung; sie steht nie im Portal oder in einem Bericht (PB3)'
             for s in verweise()]
-    for f in rot:
+    hilfe_rot, hilfe_zeile = _hilfe(args.hilfe, args.quelle, args.bewertung)
+    for f in rot + hilfe_rot:
         print(f'rot: {f}')
     if rot:
         print('neu erzeugen: python3 tools/bewertung/produktbeschreibung.py')
+    if hilfe_rot:
+        print('Hilfe-Artikel: nur Sätze der Satz-Quelle an einer positiven Zeile, dazu Kundenaufgaben, '
+              'Verantwortungs- und Grenz-Satz (AP-20 IP-22)')
+    if rot or hilfe_rot:
         return 1
     if args.vor_ausgabe and not freigegeben(json.loads((args.bewertung or juengste_bewertung()).read_bytes())):
         print(f'rot: {daten["hinweis"]}: keine Ausgabe, keine positive Aussage im Vertrieb (PB5)')
@@ -611,6 +747,7 @@ def main(argv):
     print(f'Beschreibung hält: {daten["kennung"]} beruht auf {daten["bewertung"]["kennung"]} '
           f'({daten["bewertung"]["art"]}, {daten["bewertung"]["zustand"]}) · {daten["hinweis"]}')
     print(_waechter_zeile(daten))
+    print(hilfe_zeile)
     return 0
 
 

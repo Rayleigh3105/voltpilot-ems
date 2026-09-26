@@ -90,6 +90,26 @@ test('nested screenshot viewing closes independently and keeps the form behind h
   await expect(form).toBeVisible();
 });
 
+test('der Artikel zum Energiemanagement: über die Suche erreichbar, mit Verantwortungs- und Grenz-Satz, ohne Querlauf (AP-20 IP-22)', async ({ page }) => {
+  const titel = 'Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt';
+  await page.goto('/e2e/help.html#/hilfe');
+  await page.getByRole('searchbox').fill('Gesamtabzug');
+  await page.getByRole('link', { name: new RegExp(titel) }).first().click();
+  await expect(page.getByRole('heading', { name: titel, exact: true })).toBeVisible();
+  for (const abschnitt of ['Was VoltPilot festhält', 'Was bei Ihnen bleibt', 'Grenze']) {
+    await expect(page.getByRole('heading', { name: abschnitt, exact: true })).toBeVisible();
+  }
+  const artikel = page.locator('main');
+  await expect(artikel.getByText('Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen.')).toBeVisible();
+  await expect(artikel.getByText('Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.')).toBeVisible();
+  await expect(artikel.getByText('Interne Audits durchführen (Gespräche, Begehung)')).toBeVisible();
+  await expect(artikel.getByText('Energiepolitik')).toHaveCount(0);
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+});
+
 test('help fits phone, tablet and desktop and the menu reaches the center', async ({ page }) => {
   await page.goto('/e2e/help.html#/hilfe');
   for (const width of [320, 390, 834, 1440]) {
