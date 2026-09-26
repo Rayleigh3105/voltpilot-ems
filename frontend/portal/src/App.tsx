@@ -7,6 +7,7 @@ import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
 import { AuthScreen, TrustRow } from './components/AuthScreen';
 import { currentRoles, isPlatformAdmin, login, loginWithCredentials } from './auth';
+import { PASSWORT_MIN_ZEICHEN, passwortFehler } from './passwortRegel';
 import {
   api,
   ApiError,
@@ -392,7 +393,7 @@ function LoginScreen({
   );
 }
 
-function RegisterForm({ onBack }: { onBack: () => void }) {
+export function RegisterForm({ onBack }: { onBack: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -407,7 +408,8 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
 
   const nameOk = name.trim().length > 0;
   const emailOk = /\S+@\S+\.\S+/.test(email.trim());
-  const passwordOk = password.length >= 8;
+  const passwordFehler = passwortFehler(password, email, name);
+  const passwordOk = passwordFehler === null;
   const valid = nameOk && emailOk && passwordOk;
 
   function touch(field: keyof typeof touched) {
@@ -441,7 +443,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
         e instanceof ApiError && e.status === 409
           ? 'Mit dieser E-Mail-Adresse gibt es bereits ein Konto. Melden Sie sich stattdessen an.'
           : e instanceof ApiError && e.status === 400
-            ? 'Bitte prüfen Sie Ihre Eingaben: gültige E-Mail-Adresse und ein Passwort mit mindestens 8 Zeichen.'
+            ? `Bitte prüfen Sie Ihre Eingaben: gültige E-Mail-Adresse und ein Passwort mit mindestens ${PASSWORT_MIN_ZEICHEN} Zeichen, das nicht Ihr Name oder Ihre E-Mail-Adresse ist.`
             : e instanceof ApiError && e.status === 429
               ? 'Zu viele Registrierungsversuche von Ihrem Anschluss. Bitte versuchen Sie es in etwa einer Stunde erneut.'
               : e instanceof ApiError && (e.status === 502 || e.status === 503)
@@ -537,11 +539,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
             onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
             onBlur={() => touch('password')}
             error={
-              touched.password && !passwordOk
-                ? password.length === 0
-                  ? 'Bitte wählen Sie ein Passwort mit mindestens 8 Zeichen.'
-                  : `Noch ${8 - password.length} Zeichen – mindestens 8 sind nötig.`
-                : null
+              touched.password && !passwordOk ? passwordFehler : null
             }
             hint={
               passwordOk ? (
@@ -552,10 +550,10 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
                     strokeWidth={3}
                     style={{ verticalAlign: '-1px', marginRight: 4 }}
                   />
-                  Passwort ist lang genug.
+                  Passwort erfüllt die Vorgabe.
                 </span>
               ) : (
-                'Mindestens 8 Zeichen.'
+                `Mindestens ${PASSWORT_MIN_ZEICHEN} Zeichen, nicht Ihr Name oder Ihre E-Mail-Adresse.`
               )
             }
           />

@@ -1357,6 +1357,13 @@
       "nachher": "206c81b91252c7ccc0c9b325406ad004f3a34a8f831029fa9247459de492da51",
       "commit": "35303a45ab431af96607b22dc0efb738d7709203",
       "grund": "UEMS AP-17 IP-9 (Basis origin/uems 35303a45): die Register-Karte trägt additiv das Kennzeichen „Energieleistungskennzahl — Bezugsbasis seit …“ (optionaler `zusatz`, nur im Register und nur bei freigegebener Bezugsbasis). Typ, Klasse, Test-Kennung, Handler und alle bisherigen Inhalte der Karte bleiben erhalten."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "8f1f2cb5fc471743695a7def4442e37cf157b3354ad9d327988be79b9da396d9",
+      "nachher": "9a995467c4d9ab9c6fca5564b9ac673ebee114e48df6e3bf5a8ba19e531659d2",
+      "commit": "2fcb67a7803a276e1f38badf527dfa155b16de25",
+      "grund": "AP-20 E12, PR 1268 (Registrierung: Passwort mindestens 12 Zeichen, nicht E-Mail oder Name), im Nachzug main → uems gemergt: das Passwortfeld der Selbstregistrierung zeigt als Fehler den Satz aus passwortRegel.passwortFehler und als Hinweis die neue Vorgabe. Typ, Kennung, Handler, Autovervollständigung und Sichtbar-Schalter bleiben; nur Fehler- und Hinweistext folgen der Regel."
     }
   ],
   "assistentZusammenfuehrung": {
