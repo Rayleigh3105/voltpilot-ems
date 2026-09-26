@@ -87,10 +87,12 @@ describe('AuthScreen (die Buehne)', () => {
 });
 
 describe('TrustRow', () => {
-  it('carries the three German trust claims', () => {
-    render(<TrustRow />);
+  it('says only „Verschlüsselt · Server in Deutschland“ — no legal claim (AP-20 E9)', () => {
+    const { container } = render(<TrustRow />);
     expect(screen.getByText(/Verschlüsselt/)).toBeInTheDocument();
     expect(screen.getByText('Server in Deutschland')).toBeInTheDocument();
-    expect(screen.getByText('DSGVO-konform')).toBeInTheDocument();
+    const row = container.querySelector('.vp-auth-trust');
+    expect(row?.children).toHaveLength(2);
+    expect(row?.textContent).not.toMatch(/DSGVO|GDPR|konform/i);
   });
 });
