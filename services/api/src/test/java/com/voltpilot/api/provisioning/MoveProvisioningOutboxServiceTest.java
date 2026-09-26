@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.tenant.TenantContext;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -54,8 +53,9 @@ class MoveProvisioningOutboxServiceTest {
         verify(publisher).publishConfig(move.externalRef(), move.tenantId(), move.toSiteId(),
                 move.deviceId());
         verify(registry).pushRegistryBestEffort(move.toSiteId());
+        // main a64e23298 bindet java.sql.Timestamp statt Instant (pgJDBC kann Instant nicht typisieren).
         verify(admin).update(contains("SET status = ?"), eq("applied"), isNull(),
-                any(Instant.class), eq("applied"), any(Instant.class), eq(move.id()));
+                any(java.sql.Timestamp.class), eq("applied"), any(java.sql.Timestamp.class), eq(move.id()));
         assertThat(TenantContext.get()).isEqualTo(previousTenant);
     }
 
@@ -71,7 +71,7 @@ class MoveProvisioningOutboxServiceTest {
         service().retryPending();
 
         verify(admin).update(contains("SET status = ?"), eq("pending"), eq("publish_failed"),
-                any(Instant.class), eq("pending"), any(Instant.class), eq(move.id()));
+                any(java.sql.Timestamp.class), eq("pending"), any(java.sql.Timestamp.class), eq(move.id()));
         assertThat(TenantContext.get()).isNull();
     }
 

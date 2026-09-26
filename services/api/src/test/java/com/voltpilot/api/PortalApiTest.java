@@ -627,7 +627,8 @@ class PortalApiTest {
                 + "now() - interval '1 minute', '00000000-0000-0000-0000-000000000001', '"
                 + BERLIN_SITE + "', '" + id + "', gen_random_uuid(), 'do_1', 1)");
 
-        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+        // Auf uems ist die Geräteliste eine sichtbare Liste (AP-03 IP-12) — derselbe Leser wie im Fall darüber.
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()

@@ -137,7 +137,10 @@ class SiteScopeBestandTest {
 
     private static long richtlinien() throws Exception {
         try (Connection c = root(); Statement s = c.createStatement();
-                ResultSet rs = s.executeQuery("SELECT count(*) FROM pg_policies WHERE policyname = 'site_scope'")) {
+                ResultSet rs = s.executeQuery("SELECT count(*) FROM pg_policies WHERE policyname = 'site_scope' "
+                        // Nur die sechs Tabellen dieses Pakets: AP-18/AP-19 (V20260924223000 ff.) setzen denselben
+                        // Policy-Namen auf ihre eigenen Tabellen.
+                        + "AND tablename IN ('" + String.join("', '", TABELLEN) + "')")) {
             rs.next();
             return rs.getLong(1);
         }
