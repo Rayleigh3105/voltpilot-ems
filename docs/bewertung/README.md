@@ -539,7 +539,14 @@ python3 tools/bewertung/produktbeschreibung.py [--check]       # Beschreibung + 
 python3 tools/bewertung/produktbeschreibung.py --vor-ausgabe   # PB5: Exit 1, solange die Bewertung nicht freigegeben ist
 python3 tools/bewertung/produktbeschreibung.py --entwurf <datei>  # Wächter über einen fremden Text: Exit 1 = ein Satz abgelehnt
 python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1, AP-20 NW-2 und die Wachen
+python3 -m unittest discover -s tools/bewertung -p 'test_abnahme.py'  # Abnahme AP-20 NW-6: RF-01 … RF-12, je mit Gegenprobe
 ```
+
+**Abnahme-Test (AP-20 IP-23, AP-20 NW-6).** `tools/bewertung/test_abnahme.py` fährt die zwölf Referenzfälle
+des Konzepts an einer Fixture-Welt unter `tools/bewertung/fixtures/abnahme/` durch die Werkzeuge oben; jeder
+Fall hat eine Gegenprobe, die rot werden muss. Was dort ein Mensch liefert (Lesart der Fachperson, Übung,
+Pilot-Durchlauf, Annahme eines Restpunkts), ist als FIXTURE gekennzeichnet und ersetzt nichts davon; was
+die Fixture nicht abdeckt, steht in ihrer [README](../../tools/bewertung/fixtures/abnahme/README.md).
 
 Der Test braucht `jsonschema`, wie die Vertragstests von `services/optimization`. Fehlt es,
 bricht der Lauf ab, statt übersprungen zu werden.

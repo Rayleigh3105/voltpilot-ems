@@ -1,0 +1,25 @@
+{
+ "fixture": "FIXTURE AP-20 IP-23 (RF-09): Entwurf PB-01 aus dem Konzept, wörtlich. Geprüft gegen die Bewertung, die der Matrix-Prüfer aus der Fixture-Matrix schreibt (Annahme des Konzepts: Z-004 belegt, Z-010 offen).",
+ "saetze": [
+  {
+   "satz": "VoltPilot macht Ihr Energiemanagement auditfest und ISO 50001-konform.",
+   "zusage": null
+  },
+  {
+   "satz": "Ihre Daten liegen DSGVO-konform in Deutschland.",
+   "zusage": "Z-012"
+  },
+  {
+   "satz": "VoltPilot hält Ihre Energiepolitik, Ihre Aufgaben, Ihre internen Audits und Ihre Managementbewertung mit Datum, Person und Prüfsumme fest und zeigt, wo jedes Original liegt.",
+   "zusage": "Z-004"
+  },
+  {
+   "satz": "An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich nichts.",
+   "zusage": "Z-010"
+  },
+  {
+   "satz": "Eine Zertifizierung nach ISO 50001 wird nicht versprochen.",
+   "zusage": null
+  }
+ ]
+}

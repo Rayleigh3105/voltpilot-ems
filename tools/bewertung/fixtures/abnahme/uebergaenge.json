@@ -1,0 +1,85 @@
+{
+ "fixture": "FIXTURE AP-20 IP-23: spätere Übergänge der Lückenliste, je Referenzfall. Personen, Daten, Annahme des Captains und Nachweise sind erfunden; die Fälle spielen sie ab, um die Wache und den Prüfer daran zu fahren.",
+ "RF-06": {
+  "L-003": [
+   {
+    "am": "2026-10-01",
+    "nach": "in_arbeit",
+    "person": "Crew (AP-20 IP-19, Fixture)",
+    "begruendung": "FIXTURE AP-20 IP-23: Export und Regel als gitops-Vorschlag begonnen"
+   },
+   {
+    "am": "2026-11-02",
+    "nach": "behoben",
+    "person": "Crew (AP-20 IP-19, Fixture)",
+    "begruendung": "FIXTURE AP-20 IP-23: gitops-Regel gemergt und Alarm-Übung ausgelöst (NR8)",
+    "nachweis": {
+     "art": "protokoll",
+     "fundstelle": "Alarm-Übung VoltPilotSicherungZuAlt, Protokoll; gitops-Regel gemergt",
+     "stand": "dcd7db4092511b00a1c39b8cd7d358a1362cc6cb",
+     "datum": "2026-11-02",
+     "gefahren_von": "Betreiber (A. Muster, Fixture)"
+    }
+   }
+  ],
+  "L-004": [
+   {
+    "am": "2026-10-05",
+    "nach": "restpunkt",
+    "person": "Captain (Fixture)",
+    "begruendung": "FIXTURE AP-20 IP-23: Kopie außer Haus später; Restpunkt mit Grenze angenommen",
+    "angenommen_von": "Captain",
+    "grenze": "Ein Verlust der Daten-VM verliert auch die Sicherung.",
+    "bis": "2027-03-31"
+   }
+  ]
+ },
+ "RF-08": {
+  "L-001": [
+   {
+    "am": "2026-09-25",
+    "nach": "in_arbeit",
+    "person": "Crew (AP-20 IP-16, Fixture)",
+    "begruendung": "FIXTURE AP-20 IP-23: Vertragsende nach E10 = A im Bau (AP-20 IP-16 bis IP-18)"
+   },
+   {
+    "am": "2026-09-28",
+    "nach": "behoben",
+    "person": "Crew (AP-20 IP-18, Fixture)",
+    "begruendung": "FIXTURE AP-20 IP-23: Löschen erst nach der Frist, mit Löschnachweis",
+    "nachweis": {
+     "art": "test_lauf",
+     "fundstelle": "KundenbereichLoeschenApiTest#rf08VorDerFrist409DanachGeloeschtMitLoeschnachweisOhnePersonendaten",
+     "stand": "dcd7db4092511b00a1c39b8cd7d358a1362cc6cb",
+     "lauf": "tools/bewertung/fixtures/abnahme/laeufe/gebaut/TEST-com.voltpilot.api.uems.KundenbereichLoeschenApiTest.xml",
+     "lauf_sha256": "ba0632b69886d775b5e4df68d5b94a7a1cce862fb721ec4a91ad524a23149db0",
+     "datum": "2026-09-28",
+     "gefahren_von": "Crew (Lauf AP-20 IP-10, Fixture AP-20 IP-23)"
+    }
+   }
+  ]
+ },
+ "RF-09": {
+  "L-009": [
+   {
+    "am": "2026-12-01",
+    "nach": "in_arbeit",
+    "person": "Crew (Fixture)",
+    "begruendung": "FIXTURE AP-20 IP-23: Berichtigung eines freigegebenen Beschlusses im Bau (aus Befund B-1 von PA-2026-01)"
+   },
+   {
+    "am": "2027-01-15",
+    "nach": "behoben",
+    "person": "Crew (Fixture)",
+    "begruendung": "FIXTURE AP-20 IP-23: Annahme der Bewertung BWB-2027-01 im Konzept: Z-004 belegt",
+    "nachweis": {
+     "art": "protokoll",
+     "fundstelle": "Fixture: Berichtigung gebaut und abgenommen",
+     "stand": "dcd7db4092511b00a1c39b8cd7d358a1362cc6cb",
+     "datum": "2027-01-15",
+     "gefahren_von": "Crew (Fixture)"
+    }
+   }
+  ]
+ }
+}
