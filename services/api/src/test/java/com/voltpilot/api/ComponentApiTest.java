@@ -356,6 +356,46 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * Das Ebyte-I/O-Modul wird als EIN Gerät der Verbraucher-Seite angelegt,
+     * aber als Entitätstyp {@code io-module}: es liest Zustände und wird selbst
+     * nie gesteuert (kein {@code generic-load}, das die Steuerart anböte). Sein
+     * Treiber reist mit der Verbindung zur Box, die daraus ihre Quelle ableitet.
+     */
+    @Test
+    void anIoModuleTemplateBecomesAnIoModuleEntityNotAConsumer() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "I/O-Modul-Anlage");
+        try {
+            String ebyte = "builtin:ebyte:m31_axax8080g_u";
+            Map<String, Object> conn = Map.of("ip", "192.168.3.50", "port", 502, "unit_id", 1);
+            receipts.record(site, ebyte, 1, conn);
+            ResponseEntity<String> created = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(ebyte, "consumer", conn));
+            assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode row = byRole(json.readTree(created.getBody()), "consumer");
+            assertThat(row.get("communication").asText()).isEqualTo("ebyte_modbus_tcp");
+            UUID id = UUID.fromString(row.get("id").asText());
+
+            TenantContext.set(UUID.fromString(TENANT_A));
+            EntityRegistryRepository.EntityRow stored;
+            try {
+                stored = entityRepo.entityForSite(site, id);
+            } finally {
+                TenantContext.clear();
+            }
+            assertThat(stored.entityType()).isEqualTo("io-module");
+            assertThat(json.readTree(stored.capabilitiesJson()).path("actuate").size())
+                    .as("ein I/O-Modul nimmt selbst keine Befehle an").isZero();
+            assertThat(json.readTree(stored.guardConfigJson()).path("failsafe").path("behavior")
+                    .asText()).isEqualTo("measure-only");
+            assertThat(json.readTree(stored.connectionJson()).path("ip").asText())
+                    .isEqualTo("192.168.3.50");
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     /** Eine unbekannte Vorlage / Rolle wird abgelehnt, bevor irgendetwas entsteht. */
     @Test
     void anUnknownTemplateOrRoleIsRefusedBeforeAnythingIsWritten() throws Exception {

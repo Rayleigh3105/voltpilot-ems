@@ -295,6 +295,78 @@
             </button>
           </div>
 
+          <!-- Group 3b: Führungsgerät am Netzpunkt (K6, sources.js). Nur EIN
+               Speicher-Wechselrichter darf auf den Netzpunkt-Zähler regeln, und
+               „Gerät regelt" nur mit einem Zähler am Netzpunkt
+               (guards/leader.go). Gespeichert über POST /api/balance; die Box
+               schreibt nichts davon in ein Kundengerät. -->
+          <div class="grp" id="leadGroup">
+            <div class="grp-head">
+              <span class="grp-title">Führungsgerät am Netzpunkt</span>
+              <span class="grp-note" id="leadNote">· Pflichtangabe</span>
+            </div>
+            <fieldset class="ocpp-choice">
+              <legend>Wo sitzt der Zähler (Messwandler) des Wechselrichters?</legend>
+              <p class="field-help">Selbst regeln darf der Wechselrichter nur mit einem Zähler am Netzpunkt – nur
+                dort sieht er weitere PV-Anlagen und alle Verbraucher. Ohne Angabe regelt VoltPilot nach.</p>
+              <label class="mirror-toggle-row" for="leadMeterNetz">
+                <input type="radio" name="leadMeter" id="leadMeterNetz" value="netzpunkt">
+                <span><strong>Am Netzpunkt</strong> (Hausanschluss) – er misst den ganzen Bezug und die ganze
+                  Einspeisung, auch die weiterer PV-Anlagen.</span>
+              </label>
+              <label class="mirror-toggle-row" for="leadMeterWoanders">
+                <input type="radio" name="leadMeter" id="leadMeterWoanders" value="woanders">
+                <span><strong>Woanders</strong> – z. B. nur im Zweig des Wechselrichters.</span>
+              </label>
+              <label class="mirror-toggle-row" for="leadMeterUnbekannt">
+                <input type="radio" name="leadMeter" id="leadMeterUnbekannt" value="unbekannt">
+                <span><strong>Unbekannt</strong> – VoltPilot regelt nach, bis es geklärt ist.</span>
+              </label>
+            </fieldset>
+            <fieldset class="ocpp-choice">
+              <legend>Weitere Speicher am selben Netzpunkt</legend>
+              <p class="field-help">Nur ein Speicher darf auf den Netzpunkt-Zähler regeln – zwei Regler auf einem
+                Zähler schaukeln sich auf.</p>
+              <label class="mirror-toggle-row" for="leadFurtherKeine">
+                <input type="radio" name="leadFurther" id="leadFurtherKeine" value="keine">
+                <span><strong>Keine</strong></span>
+              </label>
+              <label class="mirror-toggle-row" for="leadFurtherFolger">
+                <input type="radio" name="leadFurther" id="leadFurtherFolger" value="folger">
+                <span><strong>Folgen diesem Wechselrichter</strong> (Master/Slave-Betrieb des Herstellers)</span>
+              </label>
+              <label class="mirror-toggle-row" for="leadFurtherHalten">
+                <input type="radio" name="leadFurther" id="leadFurtherHalten" value="halten">
+                <span><strong>Halten oder fahren einen festen Sollwert</strong> – ihre eigene Regelung ist aus.</span>
+              </label>
+              <label class="mirror-toggle-row" for="leadFurtherSelbst">
+                <input type="radio" name="leadFurther" id="leadFurtherSelbst" value="regelt_selbst">
+                <span><strong>Regeln selbst auf den Netzpunkt</strong> – dann regelt dieser Wechselrichter nicht
+                  selbst, VoltPilot regelt nach.</span>
+              </label>
+            </fieldset>
+            <fieldset class="ocpp-choice">
+              <legend>Hält die Anlage die Einspeisegrenze auch ohne Box?</legend>
+              <p class="field-help">Fällt die Box aus, geben abgeregelte Wechselrichter nach ihrer Rückfallzeit
+                (Fronius: 60 s) die volle Leistung frei. Ein geräteseitiger Rückhalt – z. B. die eigene
+                dynamische Leistungsreduzierung mit Zähler am Einspeisepunkt – hält die Grenze dann weiter.
+                VoltPilot stellt ihn nicht ein.</p>
+              <label class="mirror-toggle-row" for="leadBackstopJa">
+                <input type="radio" name="leadBackstop" id="leadBackstopJa" value="vorhanden">
+                <span><strong>Ja</strong> – ein geräteseitiger Rückhalt ist eingerichtet.</span>
+              </label>
+              <label class="mirror-toggle-row" for="leadBackstopNein">
+                <input type="radio" name="leadBackstop" id="leadBackstopNein" value="keiner">
+                <span><strong>Nein</strong></span>
+              </label>
+              <label class="mirror-toggle-row" for="leadBackstopOffen">
+                <input type="radio" name="leadBackstop" id="leadBackstopOffen" value="">
+                <span><strong>Nicht angegeben</strong></span>
+              </label>
+            </fieldset>
+            <p class="form-error" id="leadError" hidden></p>
+          </div>
+
           <!-- Group 4: Verbraucher (sources.js) -->
           <div class="grp" id="verbGroup">
             <div class="grp-head">

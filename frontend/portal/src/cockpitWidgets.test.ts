@@ -541,17 +541,26 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung des Cockpits', () => {
   });
 
   describe('stickyHead', () => {
-    it('trägt die zwei Anker: Geld und Zustand', () => {
+    it('trägt die zwei Anker: Geld und ein MELDENDER Zustand', () => {
       const head = stickyHead({
         money: { label: 'Verdient · Heute', value: '10,60 €', attribution: null },
-        status: { text: 'Alles läuft.', tone: 'ok' },
+        status: { text: 'Gerät meldet sich nicht.', tone: 'warn' },
       });
       expect(head).toEqual({
         value: '10,60 €',
         label: 'Verdient · Heute',
-        status: 'Alles läuft.',
-        tone: 'ok',
+        status: 'Gerät meldet sich nicht.',
+        tone: 'warn',
       });
+    });
+
+    it('wiederholt einen guten Zustand nicht - er steht schon in der Kopfleiste (V-04)', () => {
+      const head = stickyHead({
+        money: { label: 'Verdient · Heute', value: '10,60 €', attribution: null },
+        status: { text: 'Alles läuft. Ihre Anlage arbeitet wie geplant.', tone: 'ok' },
+      });
+      expect(head).toEqual({ value: '10,60 €', label: 'Verdient · Heute', status: null, tone: 'off' });
+      expect(stickyHead({ money: null, status: { text: 'Alles läuft.', tone: 'ok' } })).toBeNull();
     });
 
     it('ohne beide Anker gibt es keinen Kopf', () => {

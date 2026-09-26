@@ -53,6 +53,18 @@ public class RegisterWriteTargets {
     private static final Set<String> HTTP_TRANSPORTS = Set.of(
             "fronius_solar_api", "goe_http_api", "shelly_http");
 
+    /**
+     * Transporte, deren Geräte-Socket der Box-KERN allein besitzt und deren
+     * Ausgänge nur über die Verbrauchersteuerung geschaltet werden (Ebyte-
+     * I/O-Modul): ein freier Registerzugriff schaltete ein Relais an Arbiter,
+     * Schutzgrenzen und Geräte-Watchdog vorbei - über einen zweiten Socket.
+     */
+    private static final Set<String> CORE_OWNED_TRANSPORTS = Set.of("ebyte_modbus_tcp");
+
+    static final String NUR_VERBRAUCHERSTEUERUNG =
+            "Die Ausgänge dieses I/O-Moduls schaltet VoltPilot nur über die "
+            + "Verbrauchersteuerung, nicht über einen freien Registerzugriff.";
+
     /** Der Transport, der auf die PRIMÄRE Lane gehört (ein Socket, ein Besitzer). */
     private static final String SOLARMAN = "solarman_v5";
 
@@ -192,6 +204,9 @@ public class RegisterWriteTargets {
         } else if (communication != null && HTTP_TRANSPORTS.contains(communication)) {
             writable = false;
             reason = HTTP_KEIN_MODBUS;
+        } else if (communication != null && CORE_OWNED_TRANSPORTS.contains(communication)) {
+            writable = false;
+            reason = NUR_VERBRAUCHERSTEUERUNG;
         }
         // ⚠ Die FAMILIE der Quelle wird NICHT übernommen: die freie Lane nennt
         // einen Endpunkt, kein eingerichtetes Gerät, und die Box kann dort nicht
@@ -314,6 +329,9 @@ public class RegisterWriteTargets {
         if (communication != null && HTTP_TRANSPORTS.contains(communication)) {
             writable = false;
             reason = HTTP_KEIN_MODBUS;
+        } else if (communication != null && CORE_OWNED_TRANSPORTS.contains(communication)) {
+            writable = false;
+            reason = NUR_VERBRAUCHERSTEUERUNG;
         } else if (host == null) {
             writable = false;
             reason = "Für dieses Gerät ist keine IP-Adresse hinterlegt.";

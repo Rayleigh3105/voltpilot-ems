@@ -933,12 +933,14 @@ const CHART_FILES = [
   'PriceHistoryChart.tsx',
   'ForecastQualityChart.tsx',
   'components/VerlaufChart.tsx',
-  'components/ErloeseVerlaufChart.tsx',
   'components/PeakHistoryChart.tsx',
-  // Das Tagesbild (Stufe 3) - seine Beschriftungen leben in der reinen Regel,
-  // also steht die Regel-Datei hier gleichberechtigt neben dem Render.
-  'components/Tagesbild.tsx',
-  'tagesbild.ts',
+  // Das Erlöse-Diagramm des Verlauf-Reworks (P2) — seine Beschriftungen leben
+  // in der reinen Ableitung, also steht sie hier neben dem Render.
+  'components/erloese/ErloeseChart.tsx',
+  'components/energie/EnergieCharts.tsx',
+  'energieSeite.ts',
+  'erloeseSeite.ts',
+  'verlaufRaster.ts',
 ];
 
 const CHART_FORBIDDEN: Array<{ re: RegExp; why: string }> = [
@@ -1908,6 +1910,7 @@ const KENNZAHL_BESTAND: string[] = [
   'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
   'bezugsgroesseListe.ts', // neu: AP-09 erklärt Zweck und Archivfolgen
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
+  'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
   'components/PortfolioCockpit.tsx', // alt
@@ -3749,5 +3752,89 @@ describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)',
     expect(vorlage).toMatch(/historischen\s+Prozentwerte\s+für\s+Autarkie\s+und\s+Eigenverbrauch/u);
     expect(vorlage).toContain('Software-Aktualisierung Ihrer Box');
     expect(vorlage.match(/Jede Box liest ihre Quellen\./g)).toHaveLength(3);
+  });
+});
+
+/**
+ * Anmeldung (AP-20 E9, W2, PB2): die Anmeldung trägt keine Rechts- oder Konformitätsaussage.
+ * Die Vertrauenszeile heißt nur „Verschlüsselt · Server in Deutschland“ — zwei Tatsachen, die der
+ * Betreiber mit Datum bestätigt. Ein belegter Satz darf erst nach einer Datenschutz-Prüfung
+ * zurückkommen (PB1), und dann über einen ausdrücklichen Eintrag hier, nie durch Lockern der Liste.
+ * Geprüft werden die Portal-Quelle der Anmeldung und jede Textdatei des Keycloak-Themas
+ * (Vorlagen, Meldungen deutsch und englisch, Skripte, CSS) — ohne Kommentare.
+ */
+describe('Anmeldung: keine Rechts- und Konformitätswörter', () => {
+  const REPO = join(process.cwd(), '../..');
+  const THEMA = join(REPO, 'deploy/keycloak/themes/voltpilot/login');
+  const PORTAL_QUELLEN = ['frontend/portal/src/components/AuthScreen.tsx'];
+
+  // PB2: Rechtsaussagen plus die Norm-/Zertifizierungswörter (AP-14 S1, AP-19 SP2), deutsch und englisch.
+  const ANMELDUNG_VERBOTEN =
+    /DSGVO|GDPR|konform|Konformität|complian|zertifiz|Zertifikat|certif|rechtssicher|rechtskonform|legally|garantiert|Garantie|guarante|ISO\s*\d|TÜV|auditfest|audit-?proof|revisionssicher/iu;
+
+  function themaDateien(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) return name === 'fonts' || name === 'img' ? [] : themaDateien(p);
+      return /\.(ftl|properties|js|css)$/.test(name) ? [p] : [];
+    });
+  }
+
+  // Kommentare werden geleert, die Zeilenumbrüche bleiben — so zeigt ein Fund seine echte Zeile.
+  const leeren = (kommentar: string) => kommentar.replace(/[^\n]/g, ' ');
+  function ohneKommentare(datei: string, text: string): string {
+    if (datei.endsWith('.ftl')) return text.replace(/<#--[\s\S]*?-->/g, leeren);
+    if (datei.endsWith('.properties')) return text.replace(/^\s*[#!][^\n]*/gm, '');
+    return text.replace(/\/\*[\s\S]*?\*\//g, leeren).replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  }
+
+  function funde(datei: string, text: string): string[] {
+    return ohneKommentare(datei, text)
+      .split('\n')
+      .map((zeile, i) => ({ zeile, i }))
+      .filter(({ zeile }) => ANMELDUNG_VERBOTEN.test(zeile))
+      .map(({ zeile, i }) => `${datei.replace(`${REPO}/`, '')}:${i + 1}: ${zeile.trim().slice(0, 100)}`);
+  }
+
+  const dateien = () => [...PORTAL_QUELLEN.map((rel) => join(REPO, rel)), ...themaDateien(THEMA)];
+
+  it('prüft die Portal-Anmeldung und beide Sprachen des Keycloak-Themas', () => {
+    const rel = dateien().map((d) => d.replace(`${REPO}/`, ''));
+    expect(rel).toEqual(
+      expect.arrayContaining([
+        'frontend/portal/src/components/AuthScreen.tsx',
+        'deploy/keycloak/themes/voltpilot/login/login.ftl',
+        'deploy/keycloak/themes/voltpilot/login/messages/messages_de.properties',
+        'deploy/keycloak/themes/voltpilot/login/messages/messages_en.properties',
+      ]),
+    );
+  });
+
+  it('findet an der Anmeldung kein Rechts- oder Konformitätswort', () => {
+    expect(dateien().flatMap((d) => funde(d, readFileSync(d, 'utf8')))).toEqual([]);
+  });
+
+  it('die Vertrauenszeile heißt in beiden Sprachen nur „Verschlüsselt · Server in Deutschland“', () => {
+    const de = readFileSync(join(THEMA, 'messages/messages_de.properties'), 'utf8');
+    const en = readFileSync(join(THEMA, 'messages/messages_en.properties'), 'utf8');
+    const trust = (t: string) => t.split('\n').filter((z) => z.startsWith('vpTrust'));
+    expect(trust(de)).toEqual(['vpTrustEncrypted=Verschlüsselt', 'vpTrustServers=Server in Deutschland']);
+    expect(trust(en)).toEqual(['vpTrustEncrypted=Encrypted', 'vpTrustServers=Servers in Germany']);
+    const ftl = readFileSync(join(THEMA, 'login.ftl'), 'utf8');
+    expect(ftl.match(/msg\("vpTrust\w+"\)/g)).toEqual(['msg("vpTrustEncrypted")', 'msg("vpTrustServers")']);
+  });
+
+  it('der Wächter schlägt an den Proben an — und nicht an der erlaubten Zeile', () => {
+    for (const [datei, probe] of [
+      ['messages_de.properties', 'vpTrustDsgvo=DSGVO-konform'],
+      ['messages_en.properties', 'vpTrustDsgvo=GDPR compliant'],
+      ['AuthScreen.tsx', '<span>Rechtssicher und zertifiziert</span>'],
+      ['login.ftl', '<li>ISO 50001 · garantiert</li>'],
+    ]) {
+      expect(funde(datei, probe), probe).toHaveLength(1);
+    }
+    expect(funde('messages_de.properties', '# DSGVO-konform stand hier bis AP-20 E9')).toEqual([]);
+    expect(funde('AuthScreen.tsx', '<span>Verschlüsselt</span> <span>Server in Deutschland</span>')).toEqual([]);
+    expect(funde('messages_en.properties', 'vpTrustEncrypted=Encrypted\nvpTrustServers=Servers in Germany')).toEqual([]);
   });
 });

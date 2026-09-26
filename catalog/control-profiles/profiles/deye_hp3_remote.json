@@ -1,0 +1,977 @@
+{
+  "absichten": {
+    "A": {
+      "adapter_folge": "sollwert",
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "sollwert",
+      "quellen": [
+        "h4",
+        "t5"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S, je Anlage remote_watchdog_s)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Batterieseite",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "Strategie Leistung (5 nur mit remote_battery_strategy = 5)",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "hinweis": "0,1 % der Nennleistung, Register: − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "B",
+      "wie": "1109 positiv (Entladen/Einspeisen), live mit −30 kW-Slots gefahren."
+    },
+    "E": {
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 999,
+          "ziel": {
+            "register": 1115
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "netzziel",
+      "quellen": [
+        "k2",
+        "akku38182",
+        "repo_deye"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S; ein anderer remote_watchdog_s passt nicht zum Zertifikat)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Netz-Sollwert 0 VOR dem Seitenwechsel: batterieseitig neutral, netzseitig das Ziel",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Netzseite",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "eigene PV-Kappe 999 (1000 regelt die PV im Netzmodus auf 0)",
+          "speicher": "ram",
+          "wert": 999,
+          "ziel": {
+            "register": 1115
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt; danach Herzschlag 1101/1109/1100 je Takt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "Zwei Übergabe-Kandidaten, gebaut (K5, deye-charge-side.js), aber NICHT freigegeben: Kandidat 1 „netzseitig Ziel 0“ (diese Folge; drosselt bei vollem Speicher die eigene PV → Rücknahme pv_abgeregelt) und Kandidat 2 „Eigenkonfiguration“ (Folge ladeseite_eigenkonfiguration, 1100 ← 0 mit erweiterter, nur lesender Vorbedingung; an Herzogau wird E wegen „Selling First“ verweigert). Jeder braucht seinen eigenen Zertifikat-Eintrag nach einem Pilotfenster (edge-app/nodered/DEYE-LADESEITE-PILOT.md); bis dahin regelt die Box gedämpft.",
+      "adapter_folge": "ladeseite_netz_null"
+    },
+    "E_decken": {
+      "adapter_folge": "uebergabe",
+      "beleg": [
+        {
+          "erwartet": 0,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "geraet",
+      "quellen": [
+        "repo_native",
+        "deye_hb"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Fernsteuerung aus → Eigenkonfiguration",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "B",
+      "wie": "1100 ← 0 (zertifiziert 26.08.2026, Bytes unverändert) mit Vorbedingung aus dem Blocklesen 0x008D..0x00B1 (vp-wr-deye-tou-schreibbudget, Zeile E der Eigenkonfigurations-Tabelle): Arbeitsmodus nicht „Selling First“ (darf mit aktivem ToU laut Handbuch Speicherenergie verkaufen, Herzogau heute), Energiemuster Load First, das gerade gültige ToU-Programm mit Entladeleistung, Ziel-SoC ≤ Reserve, Laden = Disabled. Sonst Verweigerung mit Grund, die Box deckt gedämpft; Aufsicht speicher_einspeisung. An EEG-Anlagen nach Code-Lesart blockiert (Befund §2.3)."
+    },
+    "E_gedrosselt": {
+      "adapter_folge": "sollwert",
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "box",
+      "quellen": [
+        "g3",
+        "repo_deye"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S, je Anlage remote_watchdog_s)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Batterieseite",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "Strategie Leistung (5 nur mit remote_battery_strategy = 5)",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "hinweis": "0,1 % der Nennleistung, Register: − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "Kein flüchtiger Ladegrenzen-Hebel im Eigenmodus (Batterie-Ströme 0x006C sind EEPROM). Box gedämpft mit Obergrenze."
+    },
+    "E_laden": {
+      "adapter_folge": "sollwert",
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "box",
+      "quellen": [
+        "h4",
+        "k2"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S, je Anlage remote_watchdog_s)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Batterieseite",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "Strategie Leistung (5 nur mit remote_battery_strategy = 5)",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "hinweis": "0,1 % der Nennleistung, Register: − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "B",
+      "wie": "Heute bester belegter Weg: Box gedämpft über 1109 (Batterieseite). Netz-Sollwert 0 würde bei Defizit entladen → nur mit Aufsicht (Rücknahme bei Entladung > 0,5 kW länger als 60 s)."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "abregeln",
+      "quellen": [
+        "k2",
+        "live",
+        "m6"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Eigene Deye-PV: netzseitig 1104 = 2 + 1115 (nur 1..999) – Testpfad gebaut, Live-Lauf nicht belegt; 0x00E7 ist EEPROM (Installateur). Fronius separat."
+    },
+    "H": {
+      "adapter_folge": "halten",
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "erwartet": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "sollwert",
+      "quellen": [
+        "g3"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S, je Anlage remote_watchdog_s)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Batterieseite",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "Strategie Leistung (5 nur mit remote_battery_strategy = 5)",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "hinweis": "0,1 % der Nennleistung, Register: − = laden",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "B",
+      "wie": "1109 = 0 hält die Entladung an, gibt aber eigenen DC-Überschuss zum Laden frei („0 = Freigabe, nicht Zwang“)."
+    },
+    "N": {
+      "adapter_folge": "sollwert",
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "sollwert",
+      "quellen": [
+        "t5",
+        "repo_deye"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S, je Anlage remote_watchdog_s)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Batterieseite",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "Strategie Leistung (5 nur mit remote_battery_strategy = 5)",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1105
+          }
+        },
+        {
+          "hinweis": "0,1 % der Nennleistung, Register: − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "B",
+      "wie": "1109 (0,1 % der Nennleistung, − = laden) im Batterie-Modus 1104 = 1, Strategie 1105 = 2; nur mit Netzladeerlaubnis."
+    }
+  },
+  "adapter": {
+    "abweichungen": [],
+    "ausfuehrbar": true,
+    "datei": "edge-app/nodered/inverter-control-routing.js",
+    "folgen": {
+      "halten": {
+        "beleg": [
+          {
+            "erwartet": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "erwartet": 2,
+            "ziel": {
+              "register": 1105
+            }
+          },
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S, je Anlage remote_watchdog_s)",
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "hinweis": "Batterieseite",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "hinweis": "Strategie Leistung (5 nur mit remote_battery_strategy = 5)",
+            "speicher": "ram",
+            "wert": 2,
+            "ziel": {
+              "register": 1105
+            }
+          },
+          {
+            "hinweis": "0,1 % der Nennleistung, Register: − = laden",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "hinweis": "Fernsteuerung an - zuletzt",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
+      "ladeseite_eigenkonfiguration": {
+        "beleg": [
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Fernsteuerung aus → Eigenkonfiguration; erweiterte Vorbedingung liest 0x008D..0x00B1 (Arbeitsmodus, Energiemuster, Solar Sell, gültiges ToU-Programm), schreibt nichts davon",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
+      "ladeseite_netz_null": {
+        "beleg": [
+          {
+            "erwartet": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "erwartet": 2,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "erwartet": 999,
+            "ziel": {
+              "register": 1115
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S; ein anderer remote_watchdog_s passt nicht zum Zertifikat)",
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "hinweis": "Netz-Sollwert 0 VOR dem Seitenwechsel: batterieseitig neutral, netzseitig das Ziel",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "hinweis": "Netzseite",
+            "speicher": "ram",
+            "wert": 2,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "hinweis": "eigene PV-Kappe 999 (1000 regelt die PV im Netzmodus auf 0)",
+            "speicher": "ram",
+            "wert": 999,
+            "ziel": {
+              "register": 1115
+            }
+          },
+          {
+            "hinweis": "Fernsteuerung an - zuletzt; danach Herzschlag 1101/1109/1100 je Takt",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
+      "rueckgabe": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
+      "sollwert": {
+        "beleg": [
+          {
+            "erwartet": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "erwartet": 2,
+            "ziel": {
+              "register": 1105
+            }
+          },
+          {
+            "erwartet": "planwert",
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S, je Anlage remote_watchdog_s)",
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "hinweis": "Batterieseite",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "hinweis": "Strategie Leistung (5 nur mit remote_battery_strategy = 5)",
+            "speicher": "ram",
+            "wert": 2,
+            "ziel": {
+              "register": 1105
+            }
+          },
+          {
+            "hinweis": "0,1 % der Nennleistung, Register: − = laden",
+            "speicher": "ram",
+            "wert": "planwert",
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "hinweis": "Fernsteuerung an - zuletzt",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
+      "uebergabe": {
+        "beleg": [
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Fernsteuerung aus → Eigenkonfiguration",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      }
+    },
+    "planer": "controlRoute → deyeRemoteControl",
+    "schreibabstand_s": 0
+  },
+  "bindung": [
+    {
+      "marke": "deye",
+      "modelle": null,
+      "registerfamilie": "hybrid_3p",
+      "steuerpfad": "remote"
+    },
+    {
+      "marke": "deye",
+      "modelle": null,
+      "registerfamilie": "hybrid_1p",
+      "steuerpfad": "remote"
+    }
+  ],
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": 15,
+    "messtakt_s": 25,
+    "quellen": [
+      "h4",
+      "m5"
+    ],
+    "sicherheit": "B",
+    "text": "Aus Box-Sicht folgt der Deye einem Befehl nach 15–20 s; Messwerte über den Solarman-Logger alle 5–25 s (Herzogau 24.09.2026)."
+  },
+  "eigenmodus": {
+    "sicherheit": "D",
+    "text": "Ja: Fernsteuerung aus (1100 ← 0) → eigene Konfiguration (Work Mode, Energy Pattern, Solar Sell, ToU). Entlädt in die Hauslast nur mit aktivem ToU-Programm (A, Handbuch). Ob er im Eigenmodus Fremd-PV (Fronius) in den Speicher nimmt: unbelegt (D). Zusätzlich netzseitiger Fernsteuermodus 1104 = 2: regelt den Netzpunkt auf einen Sollwert (C, Feldbericht)."
+  },
+  "empfehlung": "Pilot zuerst: beide Übergabe-Kandidaten an Herzogau messen (Fall F11: nimmt er den Fronius-Überschuss?). Bis dahin Box gedämpft.",
+  "fallen": [
+    "Messwerte über den Solarman-Logger nur alle 5–25 s, ein TCP-Client teilt Lesen, Schreiben und Rücklesen (B, h4/m5).",
+    "Aus Box-Sicht folgt der Deye einem Befehl nach 15–20 s; der Wechselrichter selbst ist schnell (≥ 1,9 kW/s, B, m5).",
+    "1109 = 0 ist Freigabe an die Eigenlogik, kein Halten (B, g3).",
+    "Firmware-Update kann den Fernsteuer-Block entfernen (C, pvf247695) – die Freigabe hängt deshalb an der vom Gerät gelesenen Registerlage.",
+    "Geräteeigene SoC-Grenzen gelten im Fernsteuermodus evtl. nicht (C, openems2541) – guards.Clamp bleibt SoC-Autorität.",
+    "1115 = 1000 regelt die eigene PV im Netz-/AC-Modus auf 0 (C) – der Pilot liest 1000.",
+    "Herzogau steht auf Work Mode 0 („Selling First“), Energy Pattern „Load First“, Solar Sell an, ToU aktiv (B, m6) – ob diese Grundeinstellung im Eigenmodus Fronius-Überschuss aufnimmt, ist offen (D)."
+  ],
+  "familie": "SUN-*-SG01HP3 / SG04LP3 / SG02HP3 (hybrid_3p) mit Fernsteuer-Block 1100–1121 (PR-978-Lage)",
+  "firmware_bedingung": {
+    "gelesen": true,
+    "quellen": [
+      "t5",
+      "repo_deye",
+      "pvf247695"
+    ],
+    "sicherheit": "B",
+    "wert": "remote-pr978",
+    "wie": "Die Box liest den Fernsteuer-Block 1100–1121 (FC03, classifyDeyeCapability) und erkennt die PR-978-Lage (1104 Modus, 1105 Strategie, 1109 vorzeichenbehafteter Sollwert). Nur dieses Urteil ergibt den Schlüssel; ein Firmware-Update ohne Block passt von selbst nicht mehr."
+  },
+  "freigabe": "keine",
+  "hersteller": "Deye",
+  "id": "deye_hp3_remote",
+  "im_repo": "angebunden, Pilot Herzogau (SUN-30K-SG01HP3-EU) fährt den Fahrplan über 1109; Selbstregel-Zertifikat nur für Decken (26.08.2026)",
+  "modelle": [
+    "SUN-*-SG01HP3",
+    "SUN-*-SG04LP3",
+    "SUN-*-SG02HP3"
+  ],
+  "quellen": [
+    "h4",
+    "m5",
+    "g3",
+    "m6",
+    "t5",
+    "k2",
+    "repo_deye",
+    "repo_native",
+    "deye_hb",
+    "deye_mb",
+    "akku38182",
+    "openems2541",
+    "pvf247695",
+    "live"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "C",
+    "speicher": "gemischt",
+    "text": "Fernsteuer-Register RAM (unkritisch). Installateur-Register (0x006C/0x006D Ströme, 0x00E7, Work Mode, ToU) sind EEPROM – nie je Slot schreiben (A/C)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 1,
+  "totmann": {
+    "sekunden": 60,
+    "sicherheit": "B",
+    "text": "1101 = 60 s: bei Stille verlässt der Deye den Fernsteuermodus von selbst und fällt auf seine Eigenkonfiguration (B).",
+    "vorhanden": true,
+    "ziel": {
+      "register": 1101
+    }
+  },
+  "uebergabe": {
+    "beleg": [
+      {
+        "erwartet": 0,
+        "ziel": {
+          "register": 1100
+        }
+      }
+    ],
+    "ruecknahme": [
+      {
+        "hinweis": "der gewöhnliche Fernsteuer-Plan, 1100 zuletzt",
+        "speicher": "ram",
+        "wert": 1,
+        "ziel": {
+          "register": 1100
+        }
+      }
+    ],
+    "schreibfolge": [
+      {
+        "hinweis": "Fernsteuerung aus → Eigenkonfiguration",
+        "speicher": "ram",
+        "wert": 0,
+        "ziel": {
+          "register": 1100
+        }
+      }
+    ],
+    "sicherheit": "B",
+    "speicher": "ram",
+    "text": "RAM, ein Schreibvorgang (1100 ← 0 bzw. 1104 ← 2 mit Neutralschritt); zurück über den gewöhnlichen Fernsteuer-Plan, 1100 ← 1 zuletzt (B)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "B",
+    "text": "Externer CT am Netzverknüpfungspunkt; in Herzogau sieht er die Fronius-Einspeisung mit (B, m6)."
+  }
+}

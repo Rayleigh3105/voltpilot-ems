@@ -427,7 +427,7 @@ describe('A13 · Geld-Regel: „Die Messdatenkunden brauchen keine Geldanzeige."
     const k = portfolioKennzahlen({ sites: AHRENBERG } as never, geldFuerAlle(), JETZT, geld);
     expect(k.erloesHeuteEur).toBeCloseTo(12.5, 5);
     expect(k.vermiedeneSpitzeEur).toBe(4800);
-    expect(vorteilUnterzeile(k, 3)).toBe('gegenüber Speicher ohne Steuerung · 1 von 3 Anlagen · nur Werk Ahrenberg – Halle 1');
+    expect(vorteilUnterzeile(k.erloesHeuteAnlagen, 3, k.geldNamen)).toBe('gegenüber Speicher ohne Steuerung · 1 von 3 Anlagen · nur Werk Ahrenberg – Halle 1');
     const z = anlagenZeilen({ overview: { sites: AHRENBERG } as never, earnings: geldFuerAlle(), dichte: 'komfortabel', now: JETZT, geld });
     expect(Object.fromEntries(z.map((r) => [r.id, r.heuteEur]))).toEqual({ [an1]: 12.5, [an2]: null, [an3]: null });
     // Ohne Regel (jede andere Flotte) zählt wie bisher jede Anlage.
@@ -441,7 +441,7 @@ describe('A13 · Geld-Regel: „Die Messdatenkunden brauchen keine Geldanzeige."
     expect([...geld].sort()).toEqual([an1, an2].sort());
     const k = portfolioKennzahlen({ sites: AHRENBERG } as never, geldFuerAlle(), JETZT, geld);
     expect(k.erloesHeuteEur).toBeCloseTo(25, 5);
-    expect(vorteilUnterzeile(k, 3)).toBe(
+    expect(vorteilUnterzeile(k.erloesHeuteAnlagen, 3, k.geldNamen)).toBe(
       'gegenüber Speicher ohne Steuerung · 2 von 3 Anlagen · nur Werk Ahrenberg – Halle 1 und Werk Ahrenberg – Halle 2',
     );
   });

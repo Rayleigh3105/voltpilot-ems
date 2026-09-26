@@ -70,6 +70,13 @@ const (
 	// It is what lets the wizard show WHAT answers under that base address
 	// before a single card has been assigned to anything.
 	OpWagoKopf = "wago_kopf"
+	// OpSwitchSet is the ON/OFF switch of a FREE I/O-module output on the
+	// portal's device page: set_value stays until someone switches again - no
+	// auto-off. That is only acceptable for TransportEbyte: the module's own
+	// watchdog drops every output when the box falls silent, and the core
+	// driver re-checks identity, stack and ownership. A free Modbus register
+	// has no such net and never gets this op.
+	OpSwitchSet = "switch_set"
 )
 
 // The finding vocabulary this package adds to the testconn rules. A finding is
@@ -89,6 +96,12 @@ const (
 
 // TransportModbusTCP is the only transport V1 executes.
 const TransportModbusTCP = "modbus_tcp"
+
+// TransportEbyte is the Ebyte I/O module's output: a WRITE-only transport of
+// the switch ops (switch_test / switch_cancel) that the CORE executes through
+// its own module driver (internal/ebyte - the one socket owner, MAC and stack
+// checks included). The coil address is the 0-based output (DO1 = 0).
+const TransportEbyte = "ebyte_modbus_tcp"
 
 // Modbus function codes a switch op may use. FC16 is the DEFAULT for a holding
 // register, not FC6: a single-register write is ACCEPTED but not ADOPTED by
@@ -194,12 +207,16 @@ type Op struct {
 	OffValue        *int `json:"off_value,omitempty"`
 	TTLSeconds      *int `json:"ttl_s,omitempty"`
 	ReadbackAddress *int `json:"readback_address,omitempty"`
+	// switch_set only: 1 = on, 0 = off.
+	SetValue *int `json:"set_value,omitempty"`
 }
 
 // Writes reports whether this op type WRITES to the device. It is the one
 // place that answers that question, so a new op type cannot silently slip past
 // a caller that only meant to allow reads.
-func (o Op) Writes() bool { return o.Op == OpSwitchTest || o.Op == OpSwitchCancel }
+func (o Op) Writes() bool {
+	return o.Op == OpSwitchTest || o.Op == OpSwitchCancel || o.Op == OpSwitchSet
+}
 
 // EffectiveWriteFC returns the function code this switch op writes with, with
 // the contract default applied (coil -> 5, holding -> 16). ValidateOp has
@@ -270,6 +287,10 @@ type OpResult struct {
 	// Finding names WHICH channel violated WHICH plausibility rule. Machine
 	// readable next to the German sentence, so no surface parses prose.
 	Finding *Finding `json:"finding,omitempty"`
+	// Samples are the NAMED channels a test_connection read (contract
+	// op_result.samples): one row per channel for a device whose readings are
+	// not the closed four-channel Reading - an I/O module's di_k/do_k states.
+	Samples []Sample `json:"samples,omitempty"`
 }
 
 // WagoKopf is the decoded head of a "VoltPilot-Registerbild WAGO v1". Every
@@ -298,6 +319,18 @@ type WagoKopf struct {
 	// not answered or empty - never a fabricated empty string.
 	Typenschild string `json:"typenschild,omitempty"`
 }
+
+// Sample is one named channel of a test_connection read. Count 0 carries no
+// value (never a fabricated 0).
+type Sample struct {
+	Channel string   `json:"channel"`
+	Raw     *float64 `json:"raw,omitempty"`
+	Value   *float64 `json:"value,omitempty"`
+	Count   int      `json:"count"`
+}
+
+// MaxSamples is the contract bound of op_result.samples.
+const MaxSamples = 16
 
 // Finding is the plausibility verdict about one channel of a test_connection
 // read (contract op_result.finding). Raw is the register word, Value the
@@ -447,6 +480,8 @@ func ValidateOp(op Op) (code string, message string) {
 		return validateSwitch(op)
 	case OpWagoKopf:
 		return validateWagoKopf(op)
+	case OpSwitchSet:
+		return validateSwitchSet(op)
 	default:
 		return ErrNotSupported, "Diesen Prüfschritt kennt diese VoltPilot-Box nicht."
 	}
@@ -642,8 +677,13 @@ func FailedWagoKopf(id, code, message string, kopf *WagoKopf, finding *Finding) 
 //   - a switch_test must carry a bounded ttl_s: the auto-off is the safety net,
 //     and a test without one would be a switch-on with no way back.
 func validateSwitch(op Op) (string, string) {
-	if op.Transport != TransportModbusTCP {
+	if op.Transport != TransportModbusTCP && op.Transport != TransportEbyte {
 		return ErrNotSupported, "Diese Verbindungsart kann diese VoltPilot-Box nicht schalten."
+	}
+	// An I/O-module output is a relay coil and nothing else: FC5, values 0/1.
+	if op.Transport == TransportEbyte && (op.RegisterKind != RegisterKindCoil ||
+		(op.WriteFC != nil && *op.WriteFC != WriteFCCoil) || op.ReadbackAddress != nil) {
+		return ErrInvalidRequest, "Ein Ausgang des I/O-Moduls ist eine Relais-Spule (Funktionscode 5)."
 	}
 	host := strings.TrimSpace(op.Host)
 	if host == "" {
@@ -713,6 +753,43 @@ func validateSwitch(op Op) (string, string) {
 	return "", ""
 }
 
+// validateSwitchSet admits the persistent ON/OFF of an I/O-module output:
+// the Ebyte transport only, a relay coil only (FC5, 0/1), and none of the
+// switch-test fields - a set that carried a ttl_s would promise an auto-off
+// it does not have.
+func validateSwitchSet(op Op) (string, string) {
+	if op.Transport != TransportEbyte {
+		return ErrInvalidRequest, "Dauerhaft schalten lassen sich nur die Ausgänge eines I/O-Moduls."
+	}
+	if op.RegisterKind != RegisterKindCoil || (op.WriteFC != nil && *op.WriteFC != WriteFCCoil) {
+		return ErrInvalidRequest, "Ein Ausgang des I/O-Moduls ist eine Relais-Spule (Funktionscode 5)."
+	}
+	if op.OnValue != nil || op.OffValue != nil || op.TTLSeconds != nil || op.ReadbackAddress != nil {
+		return ErrInvalidRequest, "Dauerhaftes Schalten kennt nur den Zielwert - keine Testwerte und keine Testdauer."
+	}
+	host := strings.TrimSpace(op.Host)
+	if host == "" {
+		return ErrInvalidRequest, "Es fehlt die Adresse des Geräts."
+	}
+	if !IsPrivateHost(host) {
+		return ErrInvalidRequest,
+			"Die Adresse liegt nicht im eigenen Netz. VoltPilot schaltet nur Geräte im Heim- oder Firmennetz."
+	}
+	if op.Port != nil && (*op.Port < 1 || *op.Port > 65535) {
+		return ErrInvalidRequest, "Der Port liegt außerhalb des gültigen Bereichs."
+	}
+	if op.UnitID != nil && (*op.UnitID < 0 || *op.UnitID > 255) {
+		return ErrInvalidRequest, "Die Unit-ID liegt außerhalb des gültigen Bereichs."
+	}
+	if op.Address == nil || *op.Address < 0 || *op.Address > 255 {
+		return ErrInvalidRequest, "Den Ausgang gibt es nicht."
+	}
+	if op.SetValue == nil || (*op.SetValue != 0 && *op.SetValue != 1) {
+		return ErrInvalidRequest, "Ein Ausgang kennt nur ein (1) und aus (0)."
+	}
+	return "", ""
+}
+
 // ConnectionHost extracts the address from an opaque connection block. ok=false
 // when the block names none - never an empty string that a caller could treat
 // as "no restriction".
@@ -743,6 +820,15 @@ func SucceededSwitch(id string, written int, offAfter *int, readback *int) OpRes
 // SucceededReading builds an answered test_connection line.
 func SucceededReading(id string, reading *Reading) OpResult {
 	return OpResult{ID: id, OK: true, Reading: reading}
+}
+
+// SucceededSamples builds an answered test_connection line whose readings are
+// named channels (an I/O module's states) instead of the four-channel Reading.
+func SucceededSamples(id string, samples []Sample) OpResult {
+	if len(samples) > MaxSamples {
+		samples = samples[:MaxSamples]
+	}
+	return OpResult{ID: id, OK: true, Samples: samples}
 }
 
 // FailedReading builds a REFUSED test_connection line that still shows what the

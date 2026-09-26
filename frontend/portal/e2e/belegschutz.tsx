@@ -1,8 +1,9 @@
 import './rollen-fixture';
-import React from 'react';
+import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ApiError, type SiteEntity } from '../src/api';
-import { GeraetGefahrenzone } from '../src/components/GeraetGefahrenzone';
+import { GeraetGefahrenzone, gefahrMenueLabel } from '../src/components/GeraetGefahrenzone';
+import { RowMenu } from '../src/components/RowMenu';
 import { entitiesApi } from '../src/entitiesApi';
 import { gefahrenzone } from '../src/geraetLoeschen';
 import { plantModel } from '../src/komponenten';
@@ -57,13 +58,33 @@ Object.assign(entitiesApi, {
   },
 });
 
+/**
+ * Seit der Geräteseite „ein Blick, eine Antwort“ (main d1b97ac39) öffnet die Rückfrage über das Menü „⋯“ (Weitere
+ * Aktionen) im Kopf — die Bühne trägt denselben Eintrag wie `GeraetSeiteSection` (Label aus `gefahrMenueLabel`, Recht
+ * `komponente.loeschen`).
+ */
 function Fixture() {
+  const [offen, setOffen] = useState(false);
   const model = plantModel([K83], null, []);
   const zustand = gefahrenzone(model.components, (id) => (id === K83.id ? K83 : undefined));
+  const label = gefahrMenueLabel(zustand);
   return (
     <main className="vp-main" style={{ padding: 'var(--vp-space-4)', maxWidth: 960, margin: '0 auto' }}>
       {zustand == null && <p data-testid="kein-zustand">Die Bühne hat keinen Gefahrenzonen-Zustand.</p>}
-      <GeraetGefahrenzone siteId="an-2" zustand={zustand} name={K83.label ?? ''} onDone={() => {}} />
+      {label && (
+        <RowMenu
+          label="Weitere Aktionen"
+          items={[{ label, icon: 'trash', danger: true, onClick: () => setOffen(true), recht: 'komponente.loeschen' }]}
+        />
+      )}
+      <GeraetGefahrenzone
+        siteId="an-2"
+        zustand={zustand}
+        name={K83.label ?? ''}
+        offen={offen}
+        onSchliessen={() => setOffen(false)}
+        onDone={() => {}}
+      />
     </main>
   );
 }

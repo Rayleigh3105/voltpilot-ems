@@ -87,13 +87,33 @@ public class ConsumerService {
             boolean enabled, long version, String connection, String edgeSourceId,
             String controlActivation, boolean hasDraftPolicy, Integer draftPolicyVersion,
             Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay,
-            String confirmationChannel) {}
+            String confirmationChannel, UUID ioEntityId, Integer ioChannel) {}
 
+    /**
+     * {@code ioEntityId}/{@code ioChannel} binden den neuen Verbraucher an
+     * einen Relais-Ausgang eines I/O-Moduls (Alternative zu
+     * {@code edgeSourceId}: ein Modul ist EINE Quelle für N Verbraucher).
+     */
     public record CreateConsumerRequest(String type, String name, BigDecimal ratedPowerKw,
             String controlKind, JsonNode levelsKw, BigDecimal minPowerKw, BigDecimal resolutionKw,
             JsonNode powerRangesKw, String storageRelation, String defaultGridEnergyPolicy,
             Boolean allowStorageDischarge, String failsafe, String edgeSourceId,
-            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {}
+            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay,
+            UUID ioEntityId, Integer ioChannel) {
+
+        /** The pre-binding request shape (no I/O-module channel). */
+        public CreateConsumerRequest(String type, String name, BigDecimal ratedPowerKw,
+                String controlKind, JsonNode levelsKw, BigDecimal minPowerKw,
+                BigDecimal resolutionKw, JsonNode powerRangesKw, String storageRelation,
+                String defaultGridEnergyPolicy, Boolean allowStorageDischarge, String failsafe,
+                String edgeSourceId, Integer minOnSeconds, Integer minOffSeconds,
+                Integer maxStartsPerDay) {
+            this(type, name, ratedPowerKw, controlKind, levelsKw, minPowerKw, resolutionKw,
+                    powerRangesKw, storageRelation, defaultGridEnergyPolicy, allowStorageDischarge,
+                    failsafe, edgeSourceId, minOnSeconds, minOffSeconds, maxStartsPerDay, null,
+                    null);
+        }
+    }
 
     public record PatchConsumerRequest(String name, BigDecimal ratedPowerKw, String controlKind,
             JsonNode levelsKw, BigDecimal minPowerKw, BigDecimal resolutionKw, JsonNode powerRangesKw,
@@ -122,7 +142,33 @@ public class ConsumerService {
     public record ConsumerOptionsDto(List<TypeOption> types, List<SignalOption> signals,
             List<IntentOption> intents, boolean hasStorage, List<ReportedSourceDto> reportedSources,
             String defaultStorageRelation, String defaultGridEnergyPolicy,
-            boolean policyActivationEnabled) {}
+            boolean policyActivationEnabled, List<IoModuleOption> ioModules) {}
+
+    /**
+     * Ein I/O-Modul der Anlage als Schaltweg-Angebot. {@code outputs} ist die
+     * Zahl der Relais-Ausgänge, die das Modul zuletzt GEMELDET hat - {@code null},
+     * solange es nichts gemeldet hat (nie eine geratene 8). {@code used} nennt
+     * die schon vergebenen Ausgänge samt Verbraucher.
+     */
+    public record IoModuleOption(UUID entityId, String label, Integer outputs,
+            List<IoChannelUse> used) {}
+
+    public record IoChannelUse(int channel, UUID consumerId, String consumerName) {}
+
+    /**
+     * Ein Kanal eines I/O-Moduls: {@code on} ist der zuletzt GEMELDETE Zustand
+     * ({@code null} = im Fenster nicht gemeldet), bei einem Ausgang samt dem
+     * Verbraucher, der ihn schaltet.
+     */
+    public record IoChannelState(int channel, Boolean on, UUID consumerId, String consumerName) {}
+
+    /**
+     * Der Zustand eines I/O-Moduls. {@code receivedAt} ist die jüngste Meldung
+     * ({@code null} = seit zehn Minuten keine) - die Fläche nennt das Alter,
+     * statt einen alten Zustand als aktuell zu zeigen.
+     */
+    public record IoModuleStateDto(UUID entityId, String label, List<IoChannelState> inputs,
+            List<IoChannelState> outputs, java.time.Instant receivedAt) {}
 
     public record PolicyDto(UUID entityId, int version, String lifecycle, JsonNode document,
             String contentHash, String createdBy) {}
@@ -166,8 +212,15 @@ public class ConsumerService {
                 .map(s -> new ReportedSourceDto(s.sourceId(), s.label(), s.brand(), s.role(),
                         s.measuresPower(), s.health()))
                 .toList();
+        List<IoModuleOption> ioModules = new ArrayList<>();
+        for (ConsumerRepository.IoModule m : repo.ioModules(siteId)) {
+            List<IoChannelUse> used = repo.ioChannelUses(siteId, m.entityId()).stream()
+                    .map(u -> new IoChannelUse(u.channel(), u.consumerId(), u.consumerName()))
+                    .toList();
+            ioModules.add(new IoModuleOption(m.entityId(), m.label(), m.reportedOutputs(), used));
+        }
         return new ConsumerOptionsDto(types, sig, INTENTS, siteHasStorage(siteId), reported,
-                "consumer_first", "allow", activation.activationAvailable());
+                "consumer_first", "allow", activation.activationAvailable(), ioModules);
     }
 
     // --- create --------------------------------------------------------------
@@ -226,6 +279,7 @@ public class ConsumerService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Dieses Gerät ist bereits einem Verbraucher zugeordnet.");
         }
+        boolean ioBound = requireFreeIoChannel(siteId, req);
 
         Integer minOn = validatedCycleSeconds(req.minOnSeconds(), "Mindestlaufzeit");
         Integer minOff = validatedCycleSeconds(req.minOffSeconds(), "Mindestpause");
@@ -239,6 +293,12 @@ public class ConsumerService {
             repo.bindEdgeSource(siteId, entityId, req.edgeSourceId().trim());
             confirmationChannel =
                     confirmationChannelFor(siteId, req.type(), req.edgeSourceId().trim());
+        } else if (ioBound) {
+            // Ein Relais-Ausgang misst keine Leistung: die Laufzeit bestätigt
+            // der Rücklese-Zustand des Ausgangs (Stufe 3), die Energie bleibt
+            // angenommen - und ein SG-Ready-Kontakt behält seine eigene Stufe.
+            String typeChannel = SgReady.confirmationChannel(req.type());
+            confirmationChannel = typeChannel != null ? typeChannel : "relay_state";
         }
 
         repo.insertProfile(entityId, TenantContext.get(), siteId, controlKind, rated,
@@ -246,15 +306,107 @@ public class ConsumerService {
                 toJsonText(req.powerRangesKw()), storageRelation, gridPolicy,
                 Boolean.TRUE.equals(req.allowStorageDischarge()), failsafe,
                 minOn, minOff, maxStarts, confirmationChannel);
+        if (ioBound) {
+            repo.bindIoChannel(siteId, entityId, req.ioEntityId(), req.ioChannel());
+        }
 
         // createEntity pushed the registry BEFORE the profile existed; the
-        // cycle-guard limits ride the push (D-9), so push again when they are
-        // set - the edge's temporal guard must know them from the start.
-        if (minOn != null || minOff != null || maxStarts != null) {
+        // cycle-guard limits ride the push (D-9), and a channel binding IS the
+        // consumer's driver - push again so the edge knows both from the start.
+        if (minOn != null || minOff != null || maxStarts != null || ioBound) {
             entities.pushRegistryBestEffort(siteId);
         }
 
         return get(siteId, entityId);
+    }
+
+    /**
+     * Prüft die Kanal-Bindung eines neuen Verbrauchers: das Ziel ist ein
+     * I/O-Modul DIESER Anlage, der Ausgang liegt im Bereich und gehört noch
+     * keinem anderen Verbraucher. Eine Bindung schließt die Quellen-Nadel aus
+     * (ein Verbraucher hat genau EINEN Schaltweg).
+     *
+     * @return ob der Verbraucher an einen Ausgang gebunden wird
+     */
+    private boolean requireFreeIoChannel(UUID siteId, CreateConsumerRequest req) {
+        if (req.ioEntityId() == null && req.ioChannel() == null) {
+            return false;
+        }
+        if (req.ioEntityId() == null || req.ioChannel() == null) {
+            throw badRequest("Für einen Ausgang des I/O-Moduls werden Modul und Ausgang benötigt.");
+        }
+        if (req.edgeSourceId() != null && !req.edgeSourceId().isBlank()) {
+            throw badRequest("Ein Verbraucher wird entweder über ein eigenes Gerät oder über "
+                    + "einen Ausgang des I/O-Moduls geschaltet, nicht über beides.");
+        }
+        if (req.ioChannel() < 1 || req.ioChannel() > 256) {
+            throw badRequest("Den Ausgang " + req.ioChannel() + " gibt es nicht.");
+        }
+        List<String> type = jdbc.queryForList(
+                "SELECT entity_type FROM measurement_point WHERE site_id = ? AND id = ?",
+                String.class, siteId, req.ioEntityId());
+        if (type.isEmpty() || !IO_MODULE_TYPE.equals(type.get(0))) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Das gewählte Gerät ist kein I/O-Modul dieser Anlage.");
+        }
+        if (repo.ioChannelOwner(siteId, req.ioEntityId(), req.ioChannel()) != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ausgang " + req.ioChannel() + " ist bereits einem Verbraucher zugeordnet.");
+        }
+        return true;
+    }
+
+    /** Der Entitätstyp eines I/O-Moduls (entitytypes/catalog.json). */
+    static final String IO_MODULE_TYPE = "io-module";
+
+    /** Die zuletzt gemeldeten Ein-/Ausgänge eines I/O-Moduls samt Zuordnung. */
+    public IoModuleStateDto ioModuleState(UUID siteId, UUID ioEntityId) {
+        String label = repo.ioModuleLabel(siteId, ioEntityId);
+        if (label == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "I/O-Modul nicht gefunden.");
+        }
+        java.util.Map<Integer, Boolean> in = new java.util.TreeMap<>();
+        java.util.Map<Integer, Boolean> out = new java.util.TreeMap<>();
+        java.time.Instant latest = null;
+        for (ConsumerRepository.IoChannelSample s : repo.ioModuleSamples(siteId, ioEntityId)) {
+            Integer k = channelIndex(s.channel());
+            if (k == null) {
+                continue;
+            }
+            (s.channel().startsWith("di_") ? in : out).put(k, s.value() >= 0.5);
+            if (latest == null || s.receivedAt().isAfter(latest)) {
+                latest = s.receivedAt();
+            }
+        }
+        java.util.Map<Integer, ConsumerRepository.IoChannelUse> used = new java.util.HashMap<>();
+        for (ConsumerRepository.IoChannelUse u : repo.ioChannelUses(siteId, ioEntityId)) {
+            used.put(u.channel(), u);
+            out.putIfAbsent(u.channel(), null);
+        }
+        List<IoChannelState> inputs = new ArrayList<>();
+        in.forEach((k, v) -> inputs.add(new IoChannelState(k, v, null, null)));
+        List<IoChannelState> outputs = new ArrayList<>();
+        out.forEach((k, v) -> {
+            ConsumerRepository.IoChannelUse u = used.get(k);
+            outputs.add(new IoChannelState(k, v, u == null ? null : u.consumerId(),
+                    u == null ? null : u.consumerName()));
+        });
+        return new IoModuleStateDto(ioEntityId, label.isBlank() ? null : label, inputs, outputs,
+                latest);
+    }
+
+    /** {@code di_12} -> 12; {@code null} für alles andere. */
+    private static Integer channelIndex(String channel) {
+        int u = channel == null ? -1 : channel.indexOf('_');
+        if (u < 0) {
+            return null;
+        }
+        try {
+            int k = Integer.parseInt(channel.substring(u + 1));
+            return k >= 1 && k <= 256 ? k : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
@@ -558,8 +710,8 @@ public class ConsumerService {
 
     private ConsumerDto toDto(UUID siteId, ConsumerRow row) {
         int maxPolicy = repo.maxPolicyVersion(siteId, row.entityId());
-        String connection = (row.deviceId() != null || row.edgeSourceId() != null)
-                ? "connected" : "disconnected";
+        String connection = (row.deviceId() != null || row.edgeSourceId() != null
+                || row.ioBound()) ? "connected" : "disconnected";
         // Derived, never stored: an ACTIVE policy while enabled = "active",
         // while disabled = "paused" (the pause failsafe), else "not_activated".
         // Without this the row would keep claiming "Steuerung noch nicht
@@ -574,7 +726,7 @@ public class ConsumerService {
                 row.failsafe(), row.enabled(), row.version(), connection, row.edgeSourceId(),
                 activation, maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null,
                 row.minOnSeconds(), row.minOffSeconds(), row.maxStartsPerDay(),
-                row.confirmationChannel());
+                row.confirmationChannel(), row.ioEntityId(), row.ioChannel());
     }
 
     /** control kind => the actuate commands that back it (the §16 capability map). */

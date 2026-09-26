@@ -195,6 +195,17 @@ public class ScheduleRepository {
      * reading.
      */
     public SchedulePlanDto dayAsPlanned(UUID siteId, Instant dayStart) {
+        return dayAsPlanned(siteId, dayStart, null);
+    }
+
+    /**
+     * The splice of ONE calendar day: {@code dayEnd} (exclusive, the next
+     * Europe/Berlin midnight) bounds it. The Tagesschalter asks for yesterday
+     * and tomorrow this way - nobody reads their neighbours there, and the
+     * bound keeps both the scan and the measured window to that day. {@code
+     * null} is the open end of {@link #dayAsPlanned(UUID, Instant)}.
+     */
+    public SchedulePlanDto dayAsPlanned(UUID siteId, Instant dayStart, Instant dayEnd) {
         // The newest contributing run - captured while mapping, so the splice
         // stays ONE query.
         Instant[] newestRun = {null};
@@ -208,6 +219,7 @@ public class ScheduleRepository {
                 "SELECT DISTINCT ON (s.time) s.generated_at, s.device_id, " + SLOT_COLUMNS
                         + " FROM schedule s "
                         + "WHERE s.site_id = ? AND s.time >= ? "
+                        + (dayEnd != null ? "  AND s.time < ? " : "")
                         + "  AND s.generated_at <= s.time + interval '"
                         + RUN_STAMP_TOLERANCE + "' "
                         + "ORDER BY s.time, s.generated_at DESC",
@@ -219,7 +231,9 @@ public class ScheduleRepository {
                     }
                     return mapSlot(rs);
                 },
-                siteId, Timestamp.from(dayStart));
+                dayEnd != null
+                        ? new Object[] {siteId, Timestamp.from(dayStart), Timestamp.from(dayEnd)}
+                        : new Object[] {siteId, Timestamp.from(dayStart)});
         if (slots.isEmpty()) {
             return null;
         }

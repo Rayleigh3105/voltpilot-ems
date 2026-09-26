@@ -4,7 +4,7 @@
     "HistoryChart.tsx": "155e2f26c482e2ece8609f3f03486b392c8188036c984ef98bb4e1dc8a954746",
     "PriceHistoryChart.tsx": "031acedb021b39612616fc0eaefc2ea0f2fea72819d4923d8e8af112a2d13ca0",
     "ForecastQualityChart.tsx": "c8b976504ddcb8394abedc59d5744cf25e08a361848a538bd0dca83aca40470d",
-    "ScheduleChart.tsx": "40dd45dcbbf0d87c85e4c169b1682b46c233f6ad71d988e77eee2a09fda112f2",
-    "components/Tagesbild.tsx": "c806d338b83dfdbc6ea22fee76cde2b4471fb01992fbc03306eacab89a8bf166"
-  }
+    "ScheduleChart.tsx": "6c6d5bafbe5298dbe253ba81d2961f5c265b5602fd4288086c5b9c367a858291"
+  },
+  "nachzug": "main 8b8b6a03b (26.09.2026): ScheduleChart.tsx trägt den Hash der ausgelieferten main-Datei (39f074e04 ff.), components/Tagesbild.tsx hat main gelöscht (a32805fc8)"
 }

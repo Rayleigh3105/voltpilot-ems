@@ -1,0 +1,485 @@
+{
+  "absichten": {
+    "A": {
+      "adapter_folge": "entladen",
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "repo_kaco"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "kundendefiniert - nur dort gilt der Sollwert",
+          "speicher": "ram",
+          "wert": 4,
+          "ziel": {
+            "register": 41104
+          }
+        },
+        {
+          "hinweis": "1 Stopp · 2 Laden · 3 Entladen",
+          "speicher": "ram",
+          "wert": 3,
+          "ziel": {
+            "register": 41152
+          }
+        },
+        {
+          "hinweis": "S16 in W, − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 41153
+          }
+        },
+        {
+          "hinweis": "SoC-Obergrenze ×100",
+          "speicher": "ram",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 41154
+          }
+        },
+        {
+          "hinweis": "SoC-Untergrenze ×100",
+          "speicher": "ram",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 41155
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "41104 = 4 + Leistung."
+    },
+    "E": {
+      "adapter_folge": "uebergabe",
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "repo_kaco"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Eigenverbrauch",
+          "speicher": "unbelegt",
+          "wert": 2,
+          "ziel": {
+            "register": 41104
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "41104 = 2."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [
+        "repo_kaco"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Model 123 (gesperrt)."
+    },
+    "H": {
+      "adapter_folge": "halten",
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "repo_kaco"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "kundendefiniert - nur dort gilt der Sollwert",
+          "speicher": "ram",
+          "wert": 4,
+          "ziel": {
+            "register": 41104
+          }
+        },
+        {
+          "hinweis": "1 Stopp · 2 Laden · 3 Entladen",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 41152
+          }
+        },
+        {
+          "hinweis": "S16 in W, − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 41153
+          }
+        },
+        {
+          "hinweis": "SoC-Obergrenze ×100",
+          "speicher": "ram",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 41154
+          }
+        },
+        {
+          "hinweis": "SoC-Untergrenze ×100",
+          "speicher": "ram",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 41155
+          }
+        }
+      ],
+      "sicherheit": "D",
+      "wie": "41104 = 4 + 0."
+    },
+    "N": {
+      "adapter_folge": "laden",
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "repo_kaco"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "kundendefiniert - nur dort gilt der Sollwert",
+          "speicher": "ram",
+          "wert": 4,
+          "ziel": {
+            "register": 41104
+          }
+        },
+        {
+          "hinweis": "1 Stopp · 2 Laden · 3 Entladen",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 41152
+          }
+        },
+        {
+          "hinweis": "S16 in W, − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 41153
+          }
+        },
+        {
+          "hinweis": "SoC-Obergrenze ×100",
+          "speicher": "ram",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 41154
+          }
+        },
+        {
+          "hinweis": "SoC-Untergrenze ×100",
+          "speicher": "ram",
+          "wert": "planabhängig",
+          "ziel": {
+            "register": 41155
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "41104 = 4 + Leistung (gesperrt bis Prüfstand)."
+    }
+  },
+  "adapter": {
+    "abweichungen": [
+      "Schreiben ist im Adapter hart gesperrt (KACO_NOT_CERTIFIED_REASON): writes bleibt leer, auch mit Zertifikat."
+    ],
+    "ausfuehrbar": false,
+    "datei": "edge-app/nodered/inverter-control-routing.js",
+    "folgen": {
+      "entladen": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "kundendefiniert - nur dort gilt der Sollwert",
+            "speicher": "ram",
+            "wert": 4,
+            "ziel": {
+              "register": 41104
+            }
+          },
+          {
+            "hinweis": "1 Stopp · 2 Laden · 3 Entladen",
+            "speicher": "ram",
+            "wert": 3,
+            "ziel": {
+              "register": 41152
+            }
+          },
+          {
+            "hinweis": "S16 in W, − = laden",
+            "speicher": "ram",
+            "wert": "planwert",
+            "ziel": {
+              "register": 41153
+            }
+          },
+          {
+            "hinweis": "SoC-Obergrenze ×100",
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 41154
+            }
+          },
+          {
+            "hinweis": "SoC-Untergrenze ×100",
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 41155
+            }
+          }
+        ]
+      },
+      "halten": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "kundendefiniert - nur dort gilt der Sollwert",
+            "speicher": "ram",
+            "wert": 4,
+            "ziel": {
+              "register": 41104
+            }
+          },
+          {
+            "hinweis": "1 Stopp · 2 Laden · 3 Entladen",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 41152
+            }
+          },
+          {
+            "hinweis": "S16 in W, − = laden",
+            "speicher": "ram",
+            "wert": "planwert",
+            "ziel": {
+              "register": 41153
+            }
+          },
+          {
+            "hinweis": "SoC-Obergrenze ×100",
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 41154
+            }
+          },
+          {
+            "hinweis": "SoC-Untergrenze ×100",
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 41155
+            }
+          }
+        ]
+      },
+      "laden": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "kundendefiniert - nur dort gilt der Sollwert",
+            "speicher": "ram",
+            "wert": 4,
+            "ziel": {
+              "register": 41104
+            }
+          },
+          {
+            "hinweis": "1 Stopp · 2 Laden · 3 Entladen",
+            "speicher": "ram",
+            "wert": 2,
+            "ziel": {
+              "register": 41152
+            }
+          },
+          {
+            "hinweis": "S16 in W, − = laden",
+            "speicher": "ram",
+            "wert": "planwert",
+            "ziel": {
+              "register": 41153
+            }
+          },
+          {
+            "hinweis": "SoC-Obergrenze ×100",
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 41154
+            }
+          },
+          {
+            "hinweis": "SoC-Untergrenze ×100",
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "register": 41155
+            }
+          }
+        ]
+      },
+      "rueckgabe": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "unbelegt",
+            "wert": 2,
+            "ziel": {
+              "register": 41104
+            }
+          },
+          {
+            "hinweis": "Stopp",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 41152
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 41153
+            }
+          }
+        ]
+      },
+      "uebergabe": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "Eigenverbrauch",
+            "speicher": "unbelegt",
+            "wert": 2,
+            "ziel": {
+              "register": 41104
+            }
+          }
+        ]
+      }
+    },
+    "planer": "controlRoute → kacoNh3Control",
+    "schreibabstand_s": 0
+  },
+  "bindung": [
+    {
+      "marke": "kaco",
+      "modelle": null,
+      "registerfamilie": "kaco_nh3",
+      "steuerpfad": null
+    }
+  ],
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "repo_kaco"
+    ],
+    "sicherheit": "D",
+    "text": "Nie an einem KACO gemessen - Vorgabe der Box."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: 41104 = 2 „Eigenverbrauch“ (C, AISWEI-Doku im Repo zitiert)."
+  },
+  "empfehlung": "Stufe 3, nach Bedarf.",
+  "fallen": [
+    "Nichts je an einem KACO gemessen."
+  ],
+  "familie": "blueplanet hybrid NH3 (AISWEI-Karte)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "KACO",
+  "id": "kaco_nh3",
+  "im_repo": "Adapter gebaut, Schreiben hart gesperrt; Selbstregel-Primitive 41104 ← 2 geplant",
+  "modelle": [
+    "blueplanet hybrid NH3"
+  ],
+  "quellen": [
+    "repo_kaco",
+    "sr"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "D",
+    "text": "Keiner dokumentiert – Eigenverbrauch ist zugleich der sichere Zustand (Repo).",
+    "vorhanden": false,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": [
+      {
+        "hinweis": "Eigenverbrauch",
+        "speicher": "unbelegt",
+        "wert": 2,
+        "ziel": {
+          "register": 41104
+        }
+      }
+    ],
+    "sicherheit": "C",
+    "speicher": "unbelegt",
+    "text": "41104 = 4 kundendefiniert (nur dort gilt der Sollwert) (C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Zähler am Netzpunkt."
+  }
+}

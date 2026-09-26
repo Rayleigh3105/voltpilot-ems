@@ -25,12 +25,14 @@ import { api, type History, type Site, type SiteEarnings } from '../api';
  */
 
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
-vi.mock('../components/Tagesbild', () => ({
-  Tagesbild: () => <div data-testid="day-chart" />,
-}));
-vi.mock('../HistoryChart', () => ({
-  HistoryEnergieChart: () => <div data-testid="energie-chart" />,
-}));
+vi.mock('../components/energie/EnergieCharts', () => {
+  const Chart = (p: { vergleich?: { name: string } | null }) => (
+    <div data-testid="energie-chart" data-vergleich={p.vergleich ? 'ja' : 'nein'}>
+      {p.vergleich ? `Vergleich: ${p.vergleich.name}` : ''}
+    </div>
+  );
+  return { EnergieTagChart: Chart, EnergieBilanzChart: Chart };
+});
 
 const site: Site = {
   id: 's-1',
@@ -234,48 +236,14 @@ async function renderErloese() {
   stubHistory();
   vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
   render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-  await screen.findByText('+ 9,84 €', { selector: '.vp-c-stm-zahl' });
+  return screen.findByRole('group', { name: /^Erlöse · / });
 }
 
-describe('Mobil · Messwerte führt mit dem DIAGRAMM (P3)', () => {
-  it('stellt das Diagramm VOR die kWh-Summen — am Schreibtisch bleibt es umgekehrt', async () => {
-    await renderMesswerte();
-    const chart = screen.getByTestId('energie-chart');
-    const summen = screen.getByLabelText('Energiemengen im Zeitraum');
-    // `compareDocumentPosition` liest die echte DOM-Reihenfolge, nicht nur die
-    // optische: ein Screenreader muss dieselbe Seite lesen wie das Auge.
-    expect(
-      chart.compareDocumentPosition(summen) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('zeigt alle sechs Summen — nur enger, nichts fällt weg', async () => {
-    await renderMesswerte();
-    const liste = screen.getByLabelText('Energiemengen im Zeitraum');
-    for (const label of ['Erzeugt', 'Verbraucht', 'Bezogen', 'Eingespeist', 'Geladen', 'Entladen']) {
-      expect(within(liste).getByText(label)).toBeInTheDocument();
-    }
-  });
-
-  /**
-   * ⚠ **P3 hat die Telefon-Eindampfung ERSETZT, nicht verloren.** Bis dahin
-   * standen am Telefon sechs Kacheln OHNE Δ und darunter EINE zusammengefasste
-   * Zeile — die Ledger-Zeile trägt ihre Sekundärzeile ohnehin unter dem Namen,
-   * also steht der Vergleich jetzt AN SEINER Zahl, auf jeder Breite.
-   */
-  it('trägt das Δ in der ZEILE, zu der es gehört — auf jeder Breite', async () => {
-    await renderMesswerte();
-    // Die Vorperiode erzeugte 3 kWh, dieser Tag 4 → +33 % auf „Erzeugt".
-    expect(HEUTE).not.toEqual(GESTERN);
-    const delta = await screen.findByText(/33 % mehr als am Vortag/);
-    // Es steht in der Sekundärzeile der Ledger-Zeile, nicht in einer Meta-Zeile.
-    expect(delta.closest('.vp-c-led-sek')).toBeTruthy();
-    const zeile = delta.closest('.vp-c-led-row') as HTMLElement;
-    expect(within(zeile).getByText('Erzeugt')).toBeInTheDocument();
-    // Die zusammengefasste Telefon-Zeile ist ersatzlos entfallen.
-    expect(document.querySelector('.vp-esum-meta')).toBeNull();
-  });
-});
+/** Der Text einer Kennzahl-Kachel, Leerzeichen vereinheitlicht. */
+function kachel(gruppe: HTMLElement, label: string): string {
+  const k = within(gruppe).getByText(label).closest('.vp-vr-kpi') as HTMLElement;
+  return (k.textContent ?? '').replace(/\u00a0/g, ' ');
+}
 
 describe('Mobil · die klebende Bedienzeile hat GENAU ZWEI Zeilen (P4)', () => {
   it('trägt Perioden + ⋯ oben und ‹ Zeitraum › Heute darunter', async () => {
@@ -306,8 +274,9 @@ describe('Mobil · die klebende Bedienzeile hat GENAU ZWEI Zeilen (P4)', () => {
     const blatt = await screen.findByRole('dialog', { name: 'Zeitraum & Vergleich' });
     expect(within(blatt).getByLabelText('Tag wählen')).toBeInTheDocument();
     expect(within(blatt).getByText('Vergleichen')).toBeInTheDocument();
-    // F4 · die Datenlage-Zeile reist mit (94 % von 2000 Viertelstunden).
-    expect(within(blatt).getByText(/94 %/)).toBeInTheDocument();
+    // F4 · die Datenlage steht seit dem Verlauf-Rework in der Statuszeile.
+    expect(within(blatt).queryByText(/94 %/)).toBeNull();
+    expect(screen.getByText(/94 % der Viertelstunden gemessen/)).toBeInTheDocument();
   });
 
   it('schließt das Blatt mit Escape', async () => {
@@ -367,102 +336,57 @@ function aufklapper(name: RegExp): HTMLElement {
   return treffer[0] as HTMLElement;
 }
 
-describe('Mobil · der Welt-Kopf ist ganz entfallen, das Abzeichen bleibt', () => {
-  it('rendert weder Kartenpaar noch Kopfzeile — und behält „Gemessen" an der Karte', async () => {
-    await renderMesswerte();
-    expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
-    // E3: auch die eine Kopf-ZEILE des Telefons ist weg (Bar-Slot + Reiter
-    // sagen dasselbe). Übrig bleibt die unsichtbare Überschrift.
-    expect(document.querySelector('.vp-welt-zeile')).toBeNull();
-    const h1 = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
-    expect(h1).toHaveClass('vp-sr-only');
-    // Das Ehrlichkeits-Abzeichen sitzt an den Karten, nicht am Kopf — seit P3
-    // in der EINEN Chip-Form des Bereichs, im Label der Karte.
-    const abzeichen = screen.getAllByText('Gemessen', { selector: '.vp-c-label .vp-chip' });
-    expect(abzeichen.length).toBeGreaterThan(0);
-  });
-
-  it('macht die Fußkarte zum Aufklapper — der Wortlaut bleibt erreichbar', async () => {
-    await renderMesswerte();
-    const knopf = aufklapper(/Was diese Zahlen sind/);
-    expect(knopf).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(knopf);
-    expect(await screen.findByText(/nicht geeignet/)).toBeInTheDocument();
-  });
-});
+/** Die Kachel „VoltPilot-Steuerung" und ihr geöffnetes ⓘ (Maßstab + Rechnung). */
+async function steuerErklaerung(): Promise<HTMLElement> {
+  const kachel = screen.getByText('VoltPilot-Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+  const knopf = within(kachel).getByRole('button', { name: 'Erklärung: Mehrwert durch VoltPilot' });
+  // Die Telefon-Attrappe beantwortet auch `(hover: hover)` mit ja — dann öffnet
+  // das ⓘ beim Überfahren, sonst beim Tippen.
+  if (window.matchMedia?.('(hover: hover)').matches) fireEvent.mouseEnter(knopf);
+  else fireEvent.click(knopf);
+  await screen.findAllByText(/Verglichen wird mit/);
+  return document.querySelector('.vp-vr-mw-info') as HTMLElement;
+}
 
 describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
-  it('zeigt Zahl, Zurechnung und die drei Zeilen, die sie ERGEBEN', async () => {
-    await renderErloese();
-    // Die EINE grosse Zahl - und derselbe Betrag ein zweites Mal als letzter
-    // Balken des Wasserfalls (die Zeile „Ergebnis"), der die Addition beweist.
-    expect(screen.getByText('+ 9,84 €', { selector: '.vp-c-stm-zahl' })).toBeInTheDocument();
-    const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    // Seit Revision 2 tragen die Zeilen 1-3-Wort-Namen (Konzept §3.12).
-    // Die NAMEN der Zeilen - gezielt adressiert, weil dieselben Wörter seit
-    // Ebene 1 auch in den Rechenzeilen darunter vorkommen.
-    expect(
-      [...komposition.querySelectorAll('.vp-c-led-name')].map((n) => n.textContent),
-    ).toEqual(['Einspeise-Erlös', 'Eigenverbrauch', 'Netzbezug', 'Ergebnis']);
-    // Der Speicher-Block (Erlöse-Konzept §3.5) haengt im Speicher-Slot der
-    // Karte und steht damit NACH den vier Zeilen: der Falz zeigt zuerst, was
-    // die Zahl ERGIBT.
-    expect(screen.getAllByText(/^Steuerung (heute|an diesem Tag|bisher|im Zeitraum)$/).length)
-      .toBeGreaterThan(0);
-    // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG (Captain
-    //   04.09.2026): der Betrag ist `savedSteuerungEur`; die Gesamtzahl
-    //   (`savedEur` = 2,07 €) steht auf keiner Kundenfläche mehr.
-    expect(screen.getByText('+ 1,07 €', { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
-    expect(screen.queryByText(/^Speicher (heute|an diesem Tag|bisher|im Zeitraum)$/)).toBeNull();
+  it('zeigt zuerst die Zahl, darunter die Posten als Liste und die VoltPilot-Steuerung', async () => {
+    const kpis = await renderErloese();
+    const kacheln = [...kpis.querySelectorAll('.vp-vr-kpi-l > span:first-of-type, .vp-vr-kpi-l > span:not(.vp-vr-key)')]
+      .map((n) => n.textContent)
+      .filter((t, i, a) => t && a.indexOf(t) === i);
+    expect(kacheln).toEqual(['Ergebnis', 'Eigenverbrauch', 'Einspeisung', 'Netzbezug', 'VoltPilot-Steuerung']);
+    expect(kachel(kpis, 'Ergebnis')).toMatch(/\+ 9,84 €/);
+    // ⚠ DIE MESSLATTE IST DERSELBE SPEICHER OHNE SMARTE STEUERUNG: der Betrag
+    //   ist `savedSteuerungEur`; die Gesamtzahl (`savedEur` = 2,07 €) steht auf
+    //   keiner Kundenfläche.
+    expect(kachel(kpis, 'VoltPilot-Steuerung')).toMatch(/\+ 1,07 €/);
+    expect(document.body.textContent).not.toMatch(/2,07/);
   });
 
-  it('faltet Erklärendes in BENANNTE Aufklapper — zugeklappt, aber nie versteckt', async () => {
+  it('versteckt nichts hinter Aufklappern — Verlauf, Abrechnung und Kontext stehen offen', async () => {
     await renderErloese();
-    // P6/E5: „Was den Preis gemacht hat" ist ENTFALLEN — die Preise wohnen in
-    // Ebene 2 der Ergebnis-Karte, also auch am Telefon.
-    for (const titel of [
-      'So verdient Ihre Anlage · der Markt-Vergleich',
-      'Der Tag im Bild · Preis, Speicher, Ertrag',
-      'Tagesprotokoll',
-    ]) {
-      expect(aufklapper(new RegExp(titel.replace(/[·&]/g, '.')))).toHaveAttribute(
-        'aria-expanded',
-        'false',
-      );
-    }
-    // Der Tagesnachweis ist zugeklappt — sein Diagramm wird nicht gerendert.
-    expect(screen.queryByTestId('day-chart')).toBeNull();
+    expect(document.querySelector('details.vp-c-aufk')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Abrechnung' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Preise im Zeitraum' })).toBeInTheDocument();
+    // Tagesbild und Tagesprotokoll sind entfallen (E3): der Tag steht als
+    // Stundensäulen im Verlauf, Auffälliges in der Energie-Seite.
+    expect(screen.queryByText('Tagesprotokoll')).toBeNull();
+    expect(screen.queryByText(/Der Tag im Bild/)).toBeNull();
   });
 
-  it('öffnet einen Aufklapper mit VOLLEM Inhalt und seinem eigenen Abzeichen', async () => {
+  // Die geplante Ersparnis steht in den SCHRITTEN der Steuerungs-Rechnung —
+  // direkt hinter der Rechnung, mit der sie sich vergleicht, nie neben lauter
+  // gemessenen Zahlen.
+  it('stellt die GEPLANTE Ersparnis in die Schritte der Steuerung', async () => {
     await renderErloese();
-    fireEvent.click(aufklapper(/Der Tag im Bild/));
-    expect(await screen.findByTestId('day-chart')).toBeInTheDocument();
-    // ⚠ Der Körper existiert seit P2b an JEDEM Aufklapper (natives `details`).
-    //   Gemeint ist der des GEÖFFNETEN — sonst greift man den ersten der Seite.
-    const koerper = document.querySelector('details.vp-c-aufk[open] .vp-c-aufk-body');
-    expect(within(koerper as HTMLElement).getByText('Gemessen')).toBeInTheDocument();
-  });
-
-  // E6 (Runde 1, in u3 §3.2 (6) wiederhergestellt): die geplante Ersparnis
-  // steht in den SCHRITTEN der Speicher-Karte — direkt hinter der Rechnung,
-  // mit der sie sich vergleicht. Weder Karte noch gerahmte Fußnotiz, und
-  // NICHT auf Ebene 0: eine Plan-Zahl neben lauter gemessenen hat sich mit
-  // ihnen verwechselt.
-  it('stellt die GEPLANTE Ersparnis in die Schritte der Speicher-Karte', async () => {
-    await renderErloese();
-    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
-    expect(speicher).toBeTruthy();
-    const zeile = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
+    const karte = await steuerErklaerung();
+    const zeile = within(karte).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     // ⚠ `steuerungPlannedEur`, nie `batterySavingsPlannedEur` (4,12 € misst
     //   gegen „ohne Speicher").
     expect(zeile.textContent).toMatch(/1,40/);
     expect(zeile.textContent).not.toMatch(/4,12/);
     expect(zeile.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
-    expect(zeile.closest('details.vp-formel')).toBeTruthy();
-    // Weder Karte noch Fußnotiz — die Zahl steht genau einmal.
     expect(screen.queryByText(/Geplante Speicher-Ersparnis ·/)).toBeNull();
-    expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
   });
 
   it('lässt die Plan-Zeile ohne Fahrplan WEG statt eine Null zu erfinden', async () => {
@@ -473,11 +397,9 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     });
     vi.spyOn(api, 'siteEarnings').mockResolvedValue(money);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('+ 9,84 €', { selector: '.vp-c-stm-zahl' });
-    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
-    expect(speicher).toBeTruthy();
-    expect(within(speicher).queryByText(/^Fahrplan:/)).toBeNull();
-    expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
+    await screen.findByRole('group', { name: /^Erlöse · / });
+    const karte = await steuerErklaerung();
+    expect(within(karte).queryByText(/^Fahrplan:/)).toBeNull();
   });
 });
 
@@ -492,22 +414,22 @@ describe('Der Schreibtisch bleibt, was er war', () => {
     expect(document.querySelector('.vp-zeitleiste-mobil')).toBeNull();
     // P3: am Rechner steht DIESELBE Ledger-Liste wie am Telefon — die frühere
     // Gabelung (dort ein `dl`-Raster, hier sechs Kacheln) ist entfallen.
-    const liste = screen.getByLabelText('Energiemengen im Zeitraum');
-    expect(within(liste).getAllByText(/^(Erzeugt|Verbraucht|Bezogen|Eingespeist|Geladen|Entladen)$/))
-      .toHaveLength(6);
+    const liste = screen.getByRole('group', { name: /^Energie · / });
+    expect(
+      within(liste).getAllByText(
+        /^(Erzeugung|Verbrauch|Netzbezug|Einspeisung|Speicher geladen|Speicher entladen)$/,
+      ),
+    ).toHaveLength(6);
     expect(document.querySelector('.vp-esum')).toBeNull();
     expect(document.querySelector('.vp-esum-kompakt')).toBeNull();
   });
 
-  it('behält in der Geld-Welt die vollen Karten statt der Aufklapper', async () => {
+  it('zeigt in der Geld-Welt dieselben Karten in derselben Reihenfolge', async () => {
     stubPhone(false);
     await renderErloese();
-    // Am Schreibtisch steht die Plan-Zeile an DERSELBEN Stelle wie am Telefon
-    // (E6: die Reihenfolge der Ergebnis-Fläche ist auf jeder Breite gleich).
-    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
-    expect(within(speicher).getByText(/^Fahrplan:/)).toBeInTheDocument();
-    expect(document.querySelector('.vp-geplant-notiz')).toBeNull();
-    // Der Tagesnachweis steht offen da, nicht hinter einem Aufklapper.
-    expect(screen.getByTestId('day-chart')).toBeInTheDocument();
+    // Die Plan-Zeile steht an DERSELBEN Stelle wie am Telefon.
+    const karte = await steuerErklaerung();
+    expect(within(karte).getByText(/^Fahrplan:/)).toBeInTheDocument();
+    expect(document.querySelector('details.vp-c-aufk')).toBeNull();
   });
 });

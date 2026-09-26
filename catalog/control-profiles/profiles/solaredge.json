@@ -1,0 +1,162 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "0xE00D = 4 „Maximize export“ + 0xE010 = x W."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet_modus",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "0xE004 = 1 oder Fernsteuerung 0xE00D = 7."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "geraet_modus",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "0xE00D = 5 „Discharge to meet loads consumption“ (nie ins Netz)."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "geraet_modus",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "0xE00D = 7 + 0xE00E = x W (Zusammenspiel am Gerät prüfen)."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "geraet_modus",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "0xE00D = 1 „Charge excess PV power only“ – exakt „nur aus Überschuss laden“."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "abregeln",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "Export-Steuerblock 0xE000 – aber im Fernsteuermodus laut Hersteller abzuschalten → dann hält die Box die Grenze."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "geraet_modus",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "0xE00D = 0 „Off“."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "se_pcp"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "0xE00D = 3 + 0xE00E = x W; 0xE005 AC-Ladeerlaubnis."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "se_pcp"
+    ],
+    "sicherheit": "D",
+    "text": "Eigene Befehle je Absicht; Einschwingzeit und Messtakt am Gerät messen."
+  },
+  "eigenmodus": {
+    "sicherheit": "A",
+    "text": "Ja: 0xE004 = 1 „Maximize Self Consumption“ (A). Fernsteuerung 0xE004 = 4 mit eigenen Befehlen genau für unsere Absichten (A)."
+  },
+  "empfehlung": "Stufe 2, bester Kandidat nach Deye: die Absichten gibt es beim Hersteller als eigene Befehle.",
+  "fallen": [
+    "Fernsteuer-Werte fallen auch bei langem Timeout zurück – regelmäßig neu setzen (C).",
+    "Erweiterte Leistungssteuerung (Grenzen, Gradienten) läuft parallel und hat Vorrang (A).",
+    "Freischaltung 0xF142 = 1 + Commit 0xF100 nötig (A).",
+    "Protokoll-Stand 2017; neuere Firmware/Home Hub am Gerät prüfen (D)."
+  ],
+  "familie": "StorEdge / Home Hub mit Home Battery",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "SolarEdge",
+  "id": "solaredge",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "StorEdge",
+    "Home Hub mit Home Battery"
+  ],
+  "quellen": [
+    "se_pcp",
+    "se_app",
+    "se_binsentsu",
+    "dd"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "A",
+    "text": "0xE00B Timeout (s, bis 24 h) → Standardmodus 0xE00A (Empfehlung Hersteller: 1 „Charge excess PV“) (A).",
+    "vorhanden": true,
+    "ziel": {
+      "register": 57355
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "A",
+    "speicher": "unbelegt",
+    "text": "0xE00D Befehl: 0 aus · 1 nur PV-Überschuss laden (keine Entladung) · 2 PV zuerst laden · 3 PV+AC laden · 4 max. Export · 5 Last decken (keine Netz-Entladung) · 7 max. Eigenverbrauch; Grenzen 0xE00E (Laden) / 0xE010 (Entladen) in W (A)."
+  },
+  "zaehler": {
+    "ort": "netz_oder_last",
+    "sicherheit": "A",
+    "text": "SolarEdge Energy Meter am Netz- oder Lastanschlusspunkt (Pflicht für Modi 1/2/5/7) (A)."
+  }
+}

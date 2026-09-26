@@ -199,6 +199,8 @@ Drei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000), `-xmb 024B007A` (0x0
 
 > **Warum der externe CT und nicht "Grid Power" (`0x0271`)?** `deye_p3.yaml` führt DREI Netz-Messungen: **Internal Power** `0x025F`/`0x02BF` (wechselrichterseitig), **External Power** `0x026B`/`0x02C4` (der externe CT am Netzverknüpfungspunkt) und **Grid Power** `0x0271`/`0x02B2` unter dem Kommentar *"The following three (four) registers change according to the built-in and external settings"* - ein **konfigurationsabhängiger Alias**. Live am Captain-`SUN-30K-SG01HP3` falsifiziert (2026-07-17): der Alias las **−23,7 kW** (exakt die eigene Deye-PV = der wechselrichterseitige Wert), während der wahre Export am Hausanschluss **54,2 kW** betrug (ganze Anlage inkl. ~49 kW AC-gekoppelter Fronius; das eigene Last-Register −30,5 = 23,7 − 54,2 beweist, dass der Deye intern selbst den externen CT nutzt). Der Decoder liest daher den externen CT als `power_kw`; der Alias bleibt **Rückfall** für Lesungen, die das externe Highword nicht abdecken (alter, schmalerer Block). **VERIFY-on-device bleibt:** eine Installation **ohne** externe CT-Klemmen liest hier 0 - Import/Export bei bekanntem Zustand prüfen (Vorzeichen-Kalibrierung wie gehabt).
 
+> **Netz und Batterie: ein Block, ein Stempel – der Versatz kommt aus dem Gerät.** Netz (`0x026B`/`0x02C4`), Batterie (`0x024E`), Last und PV stehen im selben FC03-Umlauf `0x024B..0x02C4`. Sie gehen in derselben `edge/telemetry`-Nachricht mit einem `ts` an den Core; `flows-sync.test.js` („ONE block … one ts") hält das fest. Trotzdem kam an Herzogau (24.09.2026, Verlaufsring 14:14–15:31Z) in **47 von 522** Aktualisierungen der neue Netzwert eine Abfrage (~5 s) vor der Batterie. Umgekehrt geschah das nur 4-mal. Deye-Last und -PV springen immer zusammen mit dem Netz, nur `0x024E` hängt nach. Der Versatz steckt also im Registerabbild des Deye; ein anderer Leseplan ändert ihn nicht. Auch ein Zeitstempel je Block wäre nur der heutige `ts`, denn der Deye hat kein Messzeit-Register. Das Alter einer Hälfte sieht die Box nur an der Wertänderung (`guards.FollowDamper`: Halbpaar wartet).
+
 Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein nicht bestücktes PV3/PV4 liest `0` und stört die Summe nicht.
 
 > **HV/LV-Skalierung wird AUTOMATISCH erkannt** (wie ha-solarman). In `deye_p3.yaml` tragen **PV Power** und **Battery Power** eine doppelte `scale: [1, 10]` (LV = 1 W, HV = 10 W/Dekawatt); **Grid Power** und **Load Consumption Power** haben **keine** Skala (immer Watt). ha-solarman wählt LV vs. HV über das Geräteregister `0x0000` (`const.py` `AUTODETECTION_DEYE`: LV-Codes `0x0005`/`0x0500` → `mod 0` → Skala 1; HV-Codes `0x0006`/`0x0007`/`0x0600`/`0x0008`/`0x0601` → `mod 1` → Skala 10; `0x0008`/`0x0601` = "HV 3-Phase Inverter 20-50kw", genau die Klasse des `SUN-30K-SG01HP3-EU`). Der Decoder liest `0x0000`, mappt es auf die LV/HV-Skala und wendet sie **nur** auf PV + Batterie an - Netz/Last/SoC nie. Das Feld `power_scale` ist nur noch eine **manuelle Übersteuerung** (`1` oder `10` gewinnt gegen die Auto-Erkennung) bzw. der **Rückfall** auf `1`, wenn `0x0000` nicht lesbar ist (nie eine Klasse erfinden).
@@ -567,6 +569,27 @@ ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EI
 
 Der Solarman-V5-Executor schreibt über die konfigurierte FC16-/FC6-Folge und liest per FC3 zurück. `deye-control.e2e.test.js` prüft Reihenfolge, Rücklesen, Write-on-Change und Release am Stub. Reguläre Schreibaufträge benötigen `control_enabled` und entweder die passende Familien- oder Gerätefreigabe (`device_certified`). Die Familien-Allowlist enthält weiterhin nur `sunspec`; einzelne Deye-Geräte können über First-Light freigegeben sein. [Prüfstand](CONTROL-BENCH.md).
 
+### Tagesbudget der Planwechsel (vp-wr-deye-tou-schreibbudget)
+
+Jeder Registerwechsel des ToU-Pfads ist ein EEPROM-Schreibvorgang. Der Schreibabstand
+(`dwell_s = 900`) allein erlaubt 96 Wechsel je Register und Tag; das Budget eines
+Dauerspeicher-Hebels ist **20 Planwechsel je Tag** (Konzept §6.6, F12; Profil `deye_tou`,
+vom Core als `persistent_write_budget` auf `edge/setpoint` mitgegeben, nie über 20).
+
+- **Einheit:** ein Executor-Takt, der mindestens ein Register des ToU-Plans schreibt. Die
+  Rückgabe (Release) zählt mit, eine Kalibrierung ebenfalls. Gezählt wird je Logger und
+  lokalem Kalendertag im dauerhaften Flow-Kontext `deye_tou_budget:<host:port>`.
+- **Regel:** ein Planwechsel braucht Platz für sich **und** für den Rückweg. Der letzte
+  Platz des Tages gehört also der Rückgabe: 19 Planwechsel, der 20. gewünschte wird
+  **zurückgehalten** (nichts geschrieben, Readback `blocked` mit Grund und `tou_budget`),
+  im nächsten Takt gibt der Plan-Knoten das Gerät **einmal** zurück – der Snapshot der
+  Installateurs-Werte bzw. ToU aus: der Eigenmodus des Geräts ist der Rückfall. Danach
+  bis Mitternacht keine weiteren Planwechsel; der Grund steht am Knoten, im Log und im
+  Readback („Tagesbudget der Zeitfenster-Steuerung erreicht …“).
+- Not-Aus/verstummter Core und eine Kalibrierung behalten ihre eigenen Wege.
+- Eine Quelle, zwei Laufzeiten: [`deye-tou-budget.js`](deye-tou-budget.js) ist in Executor
+  und Plan-Knoten wörtlich eingebettet; `deye-control.e2e.test.js` fährt einen ganzen Tag.
+
 ### Korrigierter ENTLADE-Schreibplan (report `vp-deye-tou-dir-q5` §8, `bench_pending`)
 
 **Strategie A (Ziel-SoC-Boden + Leistungskappe + Netzladen aus) ist RICHTIG fürs LADEN, aber grundlegend UNVOLLSTÄNDIG fürs ENTLADEN.** Der ToU-Ziel-SoC ist ein Entlade-**Boden** (eine Erlaubnis), **kein Entladebefehl**, und in *Export/Selling First* lädt der Deye einen PV-Überschuss **erst in die Batterie**, bevor er einspeist - ein „Entlade auf den Boden"-Programm *erlaubt* eine Entladung, *erzwingt* sie aber nie, während der Wechselrichter stattdessen lädt (das Live-Symptom: befohlen −0,3 kW, Batterie lud +12 kW). `invert_control_sign` ist dabei ein **Ablenkungsmanöver** (§5): die Richtung wird über den Ziel-SoC kodiert, nicht über einen Vorzeichenwert; umgedreht schreibt „Entladen" ein „Laden auf 100 %", was bei voller Batterie ein stiller No-Op ist und einen Fix *vortäuschen* kann.
@@ -755,14 +778,26 @@ der Familie und nicht an einem getippten Firmware-String. Jedes andere Deye-Mode
 und dieselbe Baureihe ohne Fernsteuer-Firmware behalten die 10-Sekunden-Nachführung.
 
 **⚠ Auch mit der Freigabe verweigert die Box, wenn die eigene Konfiguration des
-Wechselrichters die Deckung nicht hergibt** (`deyeNativePrecondition`, vor der
-Übergabe gelesen): Zeitfenster-Programm nicht aktiv (`0x0092` Bit 0 – ohne ToU
-entlädt der Wechselrichter laut Handbuch nicht in die Hausanschlüsse),
-Ziel-Ladeniveau (`0x00A6`) über der Reserve-Untergrenze der Anlage, oder auf einer
-EEG-Anlage eine Program-1-Charging-Enum (`0x00AC`) ungleich `Disabled`. Unbekannt
-zählt als Verweigerung.
+Wechselrichters die Deckung nicht hergibt – oder Speicherenergie verkaufen darf**
+(`deyeNativePrecondition`, vor der Übergabe gelesen). Seit
+vp-wr-deye-tou-schreibbudget urteilt E↓ mit **Zeile E der Eigenkonfigurations-Tabelle**
+aus `deye-charge-side.js` (`deyeCoverLoadPrecondition`) über das Blocklesen
+`0x008D..0x00B1` und das **gerade gültige** Programm, nicht mehr über Programm 1 allein:
+Arbeitsmodus „Selling First“ (0) mit aktivem ToU – laut Handbuch darf das Gerät dann
+Speicherenergie ins Netz verkaufen, das bricht „nur Verbrauch decken“ (Herzogau heute:
+Work Mode 0, Load First, Solar Sell an, ToU aktiv → **E↓ verweigert, die Box deckt gedämpft**),
+„Zero Export To Load“ oder ein unbekannter Arbeitsmodus, Energiemuster „Battery First“,
+Nulleinspeisung ohne Solar Sell, Zeitfenster-Programm nicht aktiv (`0x0092` Bit 0 – ohne
+ToU entlädt der Wechselrichter laut Handbuch nicht in die Hausanschlüsse), das gültige
+Programm ohne Entladeleistung, sein Ziel-Ladeniveau über der Reserve-Untergrenze der
+Anlage, oder auf einer EEG-Anlage seine Charging-Enum ungleich `Disabled`. Unbekannt zählt
+als Verweigerung. Die Box liest nur (E5 A); der Schreibvorgang `1100 ← 0` ist byte-gleich.
+Passt die Einstellung und speist der Speicher im belegten E↓ trotzdem länger als 60 s mehr
+als 0,5 kW ins Netz (Entladung über dem Hausverbrauch), nimmt der Core zurück
+(`speicher_einspeisung`, gerastet bis Slotende).
 
-**Wer die drei Register liest, und wann** (der Ausführungspfad, seit 26.08.2026):
+**Wer die Register liest, und wann** (der Ausführungspfad, seit 26.08.2026; seit
+vp-wr-deye-tou-schreibbudget die drei Programm-1-Register plus der Block):
 der Plan-Knoten kann nicht lesen, also liest sie der **Deye-Executor** auf jedem
 Takt, an dem eine Absicht auf Selbstregelung steht — **vor jedem Schreibvorgang
 dieses Zyklus** — und legt sie je Logger im flüchtigen Flow-Kontext
@@ -779,8 +814,33 @@ alles andere ist kein Beleg, wird als gewöhnlicher Zyklus gemeldet, und der Ker
 holt die Batterie nach seiner Frist zurück (`nachweis_fehlt`). Nur ein belegter
 Takt liest zusätzlich `0x00AC` als EEG-Beleg und veröffentlicht ihn als
 `native.grid_charge_blocked`; sein Fehlen heißt „das Gerät hat nichts gesagt".
+Der Takt davor, der die Vorbedingungen liest und noch nicht übergibt, meldet
+dieselbe Antwort als `native_precondition.grid_charge_blocked`: an einer
+EEG-Anlage hält der Kern die Absicht damit bis zur Übergabe offen (bei `false`
+nimmt er sie für den Slot zurück); den Beleg im Eigenmodus ersetzt sie nie.
 
 **Was der Prüfstand noch beweisen muss:** die Latenz beider Übergänge (Kriterium 8),
 dass `1100` in beiden Zuständen wirklich unterscheidet (9) und der EEG-Beleg (10) –
 am PILOTEN, im ersten Decken-Slot. Die Beobachtungs-Checkliste dafür steht in
 [`UNPLANNED-LOAD-BENCH.md`](UNPLANNED-LOAD-BENCH.md) „Pilot-Freigabe 2026-08-26".
+
+### Die Ladeseite (K5, 24.09.2026) – vorbereitet, nicht freigegeben
+
+Für nur Überschuss laden (E↑) und Eigenverbrauch (E) gibt es zwei Übergabe-Kandidaten in
+[`deye-charge-side.js`](deye-charge-side.js). Das Modul ist genau einmal vorhanden: Der Plan-Knoten
+bettet es wörtlich ein. Jeder Kandidat braucht seinen **eigenen** Zertifikat-Eintrag.
+
+- **`grid_zero`** („netzseitig Ziel 0“): `1101 ← 60`, `1109 ← 0` (Neutralschritt vor dem
+  Seitenwechsel), `1104 ← 2`, `1115 ← 999`, `1100 ← 1` zuletzt. Danach hält der Herzschlag
+  (`1101`/`1109`/`1100` je Takt) die Fernsteuerung wach. Die Box stirbt → Totmann 60 s.
+  Nebenwirkung: Bei vollem Speicher drosselt der Deye seine eigene PV. Die Box meldet das als
+  `native.curtails_own_pv`, der Core nimmt zurück (`pv_abgeregelt`).
+- **`own_config`** („Eigenkonfiguration“): `1100 ← 0` wie E↓, aber mit **erweiterter
+  Vorbedingung**. Ein Blocklesen `0x008D..0x00B1` liefert Arbeitsmodus, Energiemuster, Solar Sell
+  und das **gerade gültige** Zeitfenster-Programm. Die Box schreibt davon nichts. Passt die
+  Einstellung nicht, verweigert sie mit deutschem Grund. An Herzogau („Selling First“) wird E
+  verweigert.
+
+Bis ein Pilotfenster einen Kandidaten belegt, meldet der Deye-Executor nur `cover_load` und die
+Ladeseite bleibt gedämpft. Drehbuch für die betreuten Fenster (höchstens 15 min, der Captain löst
+jedes aus): [`DEYE-LADESEITE-PILOT.md`](DEYE-LADESEITE-PILOT.md).

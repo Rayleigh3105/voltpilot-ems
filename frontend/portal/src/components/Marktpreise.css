@@ -83,6 +83,34 @@
   outline-offset: -2px;
 }
 
+/* Mit Datum (Fahrplan: Gestern · Heute · Morgen) — zwei Zeilen im selben
+   44-px-Knopf; die Farbe erbt, damit der aktive Knopf weiß auf Blau bleibt. */
+.vp-mp-tagseg > button.has-datum {
+  /* B12 · auch mit zwei Zeilen 44 px Trefferfläche. */
+  min-height: 44px;
+  display: inline-grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  line-height: 1.2;
+}
+
+.vp-mp-tagseg > button > small {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-500, 500);
+  white-space: nowrap;
+}
+
+/* `voll` (Telefon): die Schiene über die ganze Breite, gleiche Teile. */
+.vp-mp-tag.is-voll .vp-mp-tagseg {
+  display: grid;
+  flex: 1 1 100%;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
 /* ===========================================================================
  * 3 · KENNZAHLEN + PROFI-DETAIL
  * ========================================================================= */

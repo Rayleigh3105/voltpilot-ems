@@ -148,7 +148,9 @@ public class ConsumerPolicyActivationService {
         // Saeule NIE eine Regel aktiviert werden - „Guenstige Stunden" und
         // „Bis Uhrzeit fertig" waeren fuer sie strukturell unmoeglich, genau
         // der Zustand, den P5 behebt.
-        if (row.deviceId() == null && row.edgeSourceId() == null
+        // Ein Verbraucher an einem Ausgang eines I/O-Moduls ist ebenfalls
+        // verbunden: sein Treiber ist der Modul-Kanal.
+        if (row.deviceId() == null && row.edgeSourceId() == null && !row.ioBound()
                 && !registry.istGebundenerLadepunkt(siteId, entityId)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Dieser Verbraucher ist noch nicht verbunden - die Regel bleibt gespeichert "

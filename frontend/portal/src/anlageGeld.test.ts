@@ -181,12 +181,17 @@ describe('Verlauf: keine Erlöse, keine Marktpreise, keine Lastspitzen', () => {
   });
 
   it('eine geldfreie Anlage trägt keinen Geld-Reiter — jede andere wie vorher', () => {
-    expect(reiter(alles)).toEqual(expect.arrayContaining(['Erlöse', 'Marktpreise', 'Lastspitzen']));
-    const ohne = reiter(ohneGeld(alles));
+    // Seit dem Verlauf-Rework (main 763b87f39) stehen die Preise beim Fahrplan, die Lastspitze hat keinen
+    // Reiter mehr: geprüft wird deshalb über ALLE Bereiche, nicht nur über den Verlauf.
+    const alleReiter = (s: typeof alles) => anlageBereiche(s).flatMap((b) => b.tabs.map((t) => t.sub));
+    expect(reiter(alles)).toEqual(['Energie', 'Erlöse', 'Messwerte']);
+    expect(alleReiter(alles)).toEqual(expect.arrayContaining(['erloese', 'marktpreise']));
+    const ohne = ohneGeld(alles);
+    for (const sub of GELD_UNTERSEITEN) expect(alleReiter(ohne), `Reiter ${sub}`).not.toContain(sub);
     for (const t of VERLAUF_TABS) {
-      if (t.view && GELD_ANSICHT[t.view]) expect(ohne, `Reiter ${t.label}`).not.toContain(t.label);
+      if (t.view && GELD_ANSICHT[t.view]) expect(reiter(ohne), `Reiter ${t.label}`).not.toContain(t.label);
     }
-    expect(ohne).toEqual(['Messwerte', 'Prognose', 'Wetter']);
+    expect(reiter(ohne)).toEqual(['Energie', 'Messwerte']);
   });
 
   it('ein Lesezeichen auf eine Geld-Seite landet auf den Messwerten — nur bei einer geldfreien Anlage', () => {

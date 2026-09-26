@@ -490,20 +490,47 @@ public class SiteController {
      * morning phases. Both are RLS-scoped (foreign site 404) and both run
      * through the SAME price recomposition, so a past phase explains itself
      * with the price the optimizer decided with.
+     *
+     * <p>{@code mode=day&date=YYYY-MM-DD} names the day of the Tagesschalter
+     * "Gestern · Heute · Morgen" (E2 = A): yesterday or tomorrow come as the
+     * splice of exactly that day; today stays the open-ended reading above
+     * (it carries the plan's tomorrow for the film). Any other date - or a
+     * date without {@code mode=day} - is a 400, never a silent "today".
      */
     @GetMapping("/{siteId}/schedule")
     public SchedulePlanDto schedule(
             @PathVariable UUID siteId,
-            @RequestParam(defaultValue = "latest") String mode) {
+            @RequestParam(defaultValue = "latest") String mode,
+            @RequestParam(required = false) String date) {
         ScheduleMode parsed = ScheduleMode.parse(mode);
         if (parsed == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "mode must be one of latest|day");
         }
+        Instant now = Instant.now();
+        LocalDate today = LocalDate.ofInstant(now, HistoryRange.ZONE);
+        LocalDate day = null;
+        if (date != null) {
+            if (parsed != ScheduleMode.DAY) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "date is only valid with mode=day");
+            }
+            day = ScheduleMode.day(date, today);
+            if (day == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "date must be yesterday, today or tomorrow (YYYY-MM-DD, Europe/Berlin)");
+            }
+        }
         geltungsbereich.requireSite(siteId);
-        SchedulePlanDto plan = parsed == ScheduleMode.DAY
-                ? schedules.dayAsPlanned(siteId, ScheduleMode.dayStart(Instant.now()))
-                : schedules.latestForSite(siteId);
+        SchedulePlanDto plan;
+        if (parsed != ScheduleMode.DAY) {
+            plan = schedules.latestForSite(siteId);
+        } else if (day == null || day.equals(today)) {
+            plan = schedules.dayAsPlanned(siteId, ScheduleMode.dayStart(now));
+        } else {
+            plan = schedules.dayAsPlanned(siteId, ScheduleMode.dayStart(day),
+                    ScheduleMode.dayStart(day.plusDays(1)));
+        }
         // P0 Textwahrheit: the persisted price is bare SPOT - fill in the price
         // the optimizer actually decided with, so the portal's why-sentence can
         // name it instead of contradicting itself (report vp-netzbezug-nacht-s3

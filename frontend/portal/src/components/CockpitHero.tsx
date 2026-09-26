@@ -63,6 +63,7 @@ export function CockpitHero({
   footer,
   periodSeg = null,
   controlConfirmed = false,
+  ladenHinweis = null,
   charging = null,
   chargingOwn = null,
   showRail = true,
@@ -104,6 +105,11 @@ export function CockpitHero({
   periodSeg?: ReactNode;
   /** Der Wechselrichter bestätigt den Sollwert → Haken am Speicher-Knoten. */
   controlConfirmed?: boolean;
+  /**
+   * Der Satz „Laden bei Bezug" (K8/B2, `ladenBeiBezug.ts`) - steht unter dem
+   * Fluss, solange der Speicher lädt, während das Netz liefert. null = nichts.
+   */
+  ladenHinweis?: string | null;
   /**
    * Der fünfte Kreis „Laden" (Konzept `vp-verbraucher-cockpit-k1` §6, E3) —
    * ein Abzweig VOM Haus. Er wird durchgereicht, nie hier abgeleitet: die
@@ -209,6 +215,12 @@ export function CockpitHero({
         {hasFlow && !topology && !pvRolleAktiv && <PvBreakdownLine sources={sources} />}
         {/* vp-agg §2.4/B: die kanonische PV-Rolle - „berechnet" + Aufschlüsselung
             je Gerät auf Tipp. Ohne Zuordnung rendert sie nichts. */}
+        {hasFlow && ladenHinweis && (
+          <p className="vp-hero-hinweis" role="status">
+            <Icon name="info" size={14} />
+            <span>{ladenHinweis}</span>
+          </p>
+        )}
         <RollenBreakdown wert={pvRollen} />
         <RollenBreakdown wert={verbrauchRollen} />
         <RollenBreakdown wert={netzRollen} />

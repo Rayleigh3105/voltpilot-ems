@@ -12,10 +12,19 @@ export function eurAmount(v: number): string {
   return `${eur(v)}${NBSP}€`;
 }
 
-/** "vor 4 Sek." / "vor 12 Min." / "vor 3 Std." / date - or "noch nie". */
+/**
+ * Unter dieser Dauer heißt es „gerade eben": „Stand vor 0 Sek." las sich wie
+ * ein Messfehler, und eine Sekundenzahl ist in diesem Bereich ohnehin Rauschen
+ * der Abrufzeit, keine Aussage.
+ */
+export const GERADE_EBEN_S = 5;
+export const GERADE_EBEN = 'gerade eben';
+
+/** "gerade eben" / "vor 12 Sek." / "vor 12 Min." / "vor 3 Std." / date - or "noch nie". */
 export function fmtRelative(iso: string | null | undefined, now: Date = new Date()): string {
   if (!iso) return 'noch nie';
   const diffS = Math.max(0, (now.getTime() - new Date(iso).getTime()) / 1000);
+  if (diffS < GERADE_EBEN_S) return GERADE_EBEN;
   if (diffS < 60) return `vor ${Math.round(diffS)}${NBSP}Sek.`;
   if (diffS < 3600) return `vor ${Math.round(diffS / 60)}${NBSP}Min.`;
   if (diffS < 86400) return `vor ${Math.round(diffS / 3600)}${NBSP}Std.`;
@@ -36,6 +45,7 @@ export function fmtRelative(iso: string | null | undefined, now: Date = new Date
 export function seitDauer(iso: string | null | undefined, now: Date = new Date()): string | null {
   if (!iso) return null;
   const rel = fmtRelative(iso, now);
+  if (rel === GERADE_EBEN) return 'seit wenigen Sekunden';
   return rel.startsWith('vor ') ? `seit ${rel.slice(4)}` : `seit dem ${rel}`;
 }
 

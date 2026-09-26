@@ -1,64 +1,9 @@
 /*
- * Die Gefahrenzone der Geräteseite (vp-loeschen-konzept-l3, E4). Ein ruhiger,
- * rot getönter Kasten am Seitenende - dieselbe destruktive Tinte, die das Haus
- * schon führt (`--vp-industry-end`, `.vp-btn-danger`), nie eine zweite Palette.
- * Die weichen Flächen sind aus dieser einen Farbe gemischt, damit sie mit dem
- * Token wandern.
+ * Die Rückfrage beim ENTFERNEN eines Geräts (vp-loeschen-konzept-l3, E4) -
+ * seit V7 aus dem Menü „⋯" geöffnet, nicht mehr aus einem Kasten am
+ * Seitenende. Dieselbe destruktive Tinte, die das Haus schon führt
+ * (`--vp-industry-end`), nie eine zweite Palette.
  */
-.vp-gz {
-  margin-top: var(--vp-space-6);
-  padding: var(--vp-space-5);
-  border: 1px solid color-mix(in srgb, var(--vp-industry-end) 24%, var(--vp-surface));
-  border-radius: var(--vp-radius-md);
-  background: color-mix(in srgb, var(--vp-industry-end) 5%, var(--vp-surface));
-}
-
-.vp-gz-head {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-2);
-  color: var(--vp-industry-end);
-  font-weight: 700;
-}
-
-.vp-gz-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--vp-space-4);
-  margin-top: var(--vp-space-3);
-  flex-wrap: wrap;
-}
-
-.vp-gz-row p,
-.vp-gz-blocked p {
-  margin: 0;
-  color: var(--vp-text-gray);
-  font-size: var(--vp-text-sm);
-  max-width: 60ch;
-}
-
-/* Grund UND Weg für den geschützten Speicher - nie ein toter Knopf. */
-.vp-gz-blocked {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--vp-space-3);
-  margin-top: var(--vp-space-3);
-  padding: var(--vp-space-4);
-  border: 1px solid color-mix(in srgb, var(--vp-industry-end) 18%, var(--vp-surface));
-  border-radius: var(--vp-radius-sm);
-  background: var(--vp-surface);
-  color: var(--vp-industry-end);
-}
-
-.vp-gz-blocked > svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.vp-gz-blocked .vp-btn {
-  margin-top: var(--vp-space-3);
-}
 
 /* ---- Die Rückfrage (Modal am Rechner, Bottom-Sheet am Telefon) ---- */
 .vp-gz-intro {
@@ -151,7 +96,52 @@
   }
 }
 
-/* Beleg freigegebener Berichtsstände (UEMS AP-12 IP-12): je zitierter Messstelle der Weg dorthin. */
+/*
+ * Beleg freigegebener Berichtsstände (UEMS AP-12 IP-12): lehnt der Server das
+ * Entfernen ab (409 berichts_belege), schließt die Rückfrage und am Seitenende
+ * steht Grund UND Weg - je zitierter Messstelle der Sprung dorthin. Der Kasten
+ * trägt die Form der früheren Gefahrenzone; seit V7 ist er ihr einziger Rest.
+ */
+.vp-gz {
+  margin-top: var(--vp-space-6);
+  padding: var(--vp-space-5);
+  border: 1px solid color-mix(in srgb, var(--vp-industry-end) 24%, var(--vp-surface));
+  border-radius: var(--vp-radius-md);
+  background: color-mix(in srgb, var(--vp-industry-end) 5%, var(--vp-surface));
+}
+
+.vp-gz-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  color: var(--vp-industry-end);
+  font-weight: 700;
+}
+
+.vp-gz-blocked {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-3);
+  padding: var(--vp-space-4);
+  border: 1px solid color-mix(in srgb, var(--vp-industry-end) 18%, var(--vp-surface));
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  color: var(--vp-industry-end);
+}
+
+.vp-gz-blocked p {
+  margin: 0;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-sm);
+  max-width: 60ch;
+}
+
+.vp-gz-blocked > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
 .vp-gz-blocked > div {
   min-width: 0;
 }

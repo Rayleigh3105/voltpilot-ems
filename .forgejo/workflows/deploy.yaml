@@ -134,6 +134,13 @@ jobs:
           python3 catalog/measurement-points/tools/validate.py
           python3 -m unittest discover -s catalog/measurement-points/tests -p 'test_*.py'
 
+      - name: Control-profile catalog checks
+        if: matrix.type == 'catalog'
+        run: |
+          python3 catalog/control-profiles/tools/validate.py
+          python3 -m unittest discover -s catalog/control-profiles/tests -p 'test_*.py'
+          python3 catalog/control-profiles/tools/package_edge_runtime.py --check
+
       # ---- Frontend (tsc type-check + Vite build) --------------------------
       - name: Set up Node
         if: matrix.type == 'frontend'
@@ -178,6 +185,17 @@ jobs:
         if: matrix.type == 'frontend'
         working-directory: ${{ matrix.path }}
         run: npm run test:bundle
+
+      # Layout-Waechter (UX-Review V-07): vermisst Cockpit und Fahrplan in
+      # einem echten Browser - Chromium und WebKit, 1440 und 375 px. Die
+      # aufgeblasenen Energiefluss-Symbole hingen an der Browser-Version und
+      # kein Test sah sie. Geometrie statt Pixelvergleich; startet auf dem
+      # Runner kein Browser, ueberspringt der Schritt mit Warnung (wie der
+      # Browser-Teil von test:csp).
+      - name: Layout smoke (Cockpit + Fahrplan im Browser)
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run test:layout
 
       # ---- Repo-Werkzeuge (Shell) -----------------------------------------
       # PyYAML, weil test-gitops-bump-workflow.sh den echten `run:`-Text des

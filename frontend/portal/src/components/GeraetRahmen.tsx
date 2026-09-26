@@ -1,285 +1,478 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
-  useMemo,
+  useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
-import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { GeraetBrotkrume } from './GeraetBrotkrume';
+import { InfoTip } from './InfoTip';
+import { RowMenu, type RowMenuItem } from './RowMenu';
+import { runPageTransition } from '../pageTransition';
+import { mitStaffel, useStaffel } from '../staffel';
+import { useIsPhone } from '../useIsPhone';
 import {
   ankerId,
-  initialSektionOffen,
-  parseAbschnitt,
-  sektionKey,
+  BAUSTEIN_TITEL,
+  ohneTechnikHash,
+  sprungZiel,
+  technikHash,
+  TECHNIK_ANSICHT_TITEL,
+  TECHNIK_TITEL,
+  zielTitel,
+  type BausteinId,
   type KopfHinweis,
-  type RahmenSektionId,
-  type RahmenView,
-  type SektionEintrag,
+  type TechnikId,
+  type Ziel,
 } from '../geraetRahmen';
 import type { GeraetTon } from '../geraetSeite';
 import './GeraetRahmen.css';
 
 /**
- * DER RAHMEN einer Geräteseite - Brotkrume, Kopf, Sprungnavigation und die
- * klappbaren Sektionen (Konzept `data/vp-geraeteseite-rahmen-r2` §4,
- * Geräteseiten Stufe 1).
+ * DER KERN einer Geräteseite (Konzept „Geräteseiten: Ein Blick, eine
+ * Antwort") - Kopf, fünf Bausteine und die Unteransicht „Technik & Diagnose".
  *
- * <p>Diese Datei RENDERT nur. Welche Sektionen es gibt, in welcher Reihenfolge
- * sie stehen, welche offen beginnt und was mit einer leeren passiert, entscheidet
- * die reine `src/geraetRahmen.ts` - deshalb können Wechselrichter-, Box- und
- * Ladesäulen-Seite über dieselbe Sektion nichts Verschiedenes behaupten.
+ * <p>Diese Datei RENDERT nur. Welche Bausteine es gibt und in welcher
+ * Reihenfolge sie stehen, entscheidet die reine `src/geraetRahmen.ts`; was IN
+ * einem Baustein steht, bringt der Gerätetyp mit (die Seiten).
  *
- * <p><b>Drei Bewegungs-Regeln</b>, alle drei aus dem Bestand übernommen:
+ * <p><b>Drei Regeln</b>:
  * <ol>
- *   <li>⚠ Gesprungen wird über <code>id</code> + <code>scrollIntoView</code> +
- *       <code>focus({preventScroll:true})</code> - <b>NIE über einen
- *       <code>#anker</code></b>: die App ist hash-geroutet, ein zweites
- *       <code>#</code> läse der Router als Route (der OCPP-Präzedenzfall).</li>
- *   <li>Der Klapp-Zustand lebt je GERÄT und je Tab-Sitzung in
- *       <code>sessionStorage</code> (das <code>useChartDetail</code>-Muster);
- *       <code>localStorage</code> bleibt portalweit verboten.</li>
- *   <li>Ein Klick in der Sprungnavigation und ein Deep-Link
- *       (<code>?abschnitt=register</code>) KLAPPEN AUF und springen dann -
- *       ein Sprung in eine geschlossene Klappe landete auf ihrem Deckel.</li>
+ *   <li>Am Telefon stehen die Bausteine in der kanonischen Reihenfolge
+ *       untereinander, am Rechner in zwei Spalten: links, was das Gerät TUT
+ *       (Jetzt, Heute), rechts, was man TUN kann (Steuerung, Aktivität) -
+ *       „Gerät &amp; Verbindung" und „Technik &amp; Diagnose" darunter über die
+ *       volle Breite. Entschieden wird an der Breite des KERNS
+ *       (Container-Abfrage), nicht des Fensters - die Seitenleiste des Portals
+ *       frisst Platz.</li>
+ *   <li>„Technik &amp; Diagnose" ist eine eigene Ansicht mit eigener Adresse
+ *       (`?ansicht=technik`, E1 a): am Telefon schiebt sie wie eine App-Seite,
+ *       am Rechner blendet sie - der Seitenwechsel des Portals
+ *       (`pageTransition.runPageTransition`), keine zweite Mechanik.</li>
+ *   <li>⚠ Gesprungen wird über <code>id</code> + <code>scrollIntoView</code> -
+ *       <b>NIE über einen <code>#anker</code></b>: die App ist hash-geroutet,
+ *       ein zweites <code>#</code> läse der Router als Route.</li>
  * </ol>
  */
 
-interface RahmenCtx {
-  eintraege: ReadonlyMap<RahmenSektionId, SektionEintrag>;
-  istOffen: (id: RahmenSektionId) => boolean;
-  umschalten: (id: RahmenSektionId, offen: boolean) => void;
+/** Das Symbol im Kopf - Zeichen und Farbe aus der Energiefluss-Familie. */
+export interface KernSymbol {
+  icon: IconName;
+  farbe: 'batt' | 'pv' | 'grid' | 'load' | 'ev' | 'box' | 'io' | 'neutral';
 }
 
-const Ctx = createContext<RahmenCtx | null>(null);
-
-/** Der Kopf einer Geräteseite (§4.1) - drei Zeilen, für jedes Gerät gleich. */
+/** Der Kopf einer Geräteseite - für jedes Gerät gleich gebaut. */
 export interface RahmenKopf {
-  /** Der TECHNISCHE Gerätename - nie ein Kundenalias (die Haus-Regel). */
+  /** Der Name, wie der Kunde ihn kennt. */
   titel: string;
-  /** Das Gattungswort daneben („Hybrid-Wechselrichter · Hauptgerät …"). */
-  gattungWort?: string | null;
-  /** Die Kennung, wie sie auf der Box heißt (mono). */
+  /** Der Typ in Kundenworten („Hybrid-Wechselrichter"). */
+  typ: string;
+  /**
+   * Hersteller und Modell - null, wenn der Titel schon genau das ist. Am
+   * Ausgang eines Moduls steht hier, WO das Gerät hängt (K4).
+   */
+  modell?: string | null;
+  symbol: KernSymbol;
+  /**
+   * Die Kennung - NUR an der Box (V1): sie steht auf ihrem Aufkleber. Jedes
+   * andere Gerät führt seine Kennung in Technik › Rohdaten.
+   */
   kennung?: string | null;
-  /** Zustands-Pill mit Zeitbezug aus dem Frische-Anker DIESES Geräts. */
+  /** Der Live-Punkt: Zustand und Datenalter aus dem Frische-Anker DIESES Geräts. */
   zustand?: { wort: string; ton: GeraetTon; detail: string | null } | null;
-  /** Ruhige Abzeichen rechts der Pill („⚡ VoltPilot steuert …", Pflege-Ort). */
-  abzeichen?: React.ReactNode;
-  /** Höchstens EINER (§4.1 Zeile 3) - nichts, wenn nichts ansteht. */
+  /**
+   * Die Bezugszeit des jüngsten Werts. Wechselt sie, pulsiert der Live-Punkt
+   * EINMAL - man sieht ohne Uhrzeit-Lesen, dass die Seite lebt.
+   */
+  frische?: string | null;
+  /** Ruhige Abzeichen neben dem Live-Punkt („VoltPilot steuert", „nur Messung"). */
+  abzeichen?: ReactNode;
+  /** Höchstens EIN Befund - nichts, wenn nichts ansteht. */
   hinweis?: KopfHinweis | null;
 }
 
+/** Ein Eintrag im Menü „⋯". */
+export interface MenueEintrag {
+  key: string;
+  label: string;
+  icon?: IconName;
+  onClick: () => void;
+  /** Destruktiv - steht abgesetzt am Ende. */
+  danger?: boolean;
+  /** Die Rechte-Weiche (AP-03 IP-12) wie am `RowMenu`: ohne das Recht fehlt der Eintrag. */
+  recht?: string;
+  standort?: string | null;
+}
+
+/** Was ein Baustein mitbringt. */
+export interface BausteinInhalt {
+  /** Abweichender Titel („Einspeise-Begrenzung", „Geräte an dieser Box"). */
+  titel?: string | null;
+  /** Rechts im Kartenkopf: ein Weg („Verlauf ›") oder ein ruhiger Zustand. */
+  kopfRechts?: ReactNode;
+  /** Das ⓘ neben dem Titel - die Fußnoten, die früher unter der Liste standen (V8). */
+  info?: ReactNode;
+  inhalt: ReactNode;
+}
+
+/** Ein Teil der Technik-Ansicht. */
+export interface TechnikTeil {
+  id: TechnikId;
+  /** Abweichender Titel („Messwerte" an einem Gerät ohne Register). */
+  titel?: string | null;
+  /**
+   * Ein BELEGTER Befund dieses Teils („1 Lücke"), der schon an der
+   * geschlossenen Zeile stehen muss - eine Tür, die nicht sagt, was hinter ihr
+   * liegt, wäre die Wand, die der Kern beenden soll.
+   */
+  hinweis?: string | null;
+  inhalt: ReactNode;
+}
+
+type KernBausteine = Partial<Record<Exclude<BausteinId, 'details'> | 'modul', BausteinInhalt | null>>;
+
 export function GeraetRahmen({
+  testId,
+  geraetKey,
   brotkrume,
   kopf,
-  aktionen,
+  menue = [],
+  kopfAktion,
   unterKopf,
-  view,
-  geraetKey,
-  testId,
-  children,
+  bausteine,
+  modulSpalte = 'rechts',
+  details,
+  technik = [],
+  veraltet = false,
 }: {
+  testId?: string;
+  /**
+   * Der Schlüssel DIESES Geräts - die Karten erscheinen nur beim ersten Besuch
+   * je Sitzung gestaffelt (`useStaffel`), nie bei jeder Rückkehr.
+   */
+  geraetKey: string;
   brotkrume: { anlageHref: string; komponentenHref: string };
   kopf: RahmenKopf;
-  /** Kontextuelle Aktionen wie „Bearbeiten" - rechts im Kopf. */
-  aktionen?: React.ReactNode;
-  /** Was unmittelbar unter dem Kopf steht (Fassungs-Aufklapper, Warnungen). */
-  unterKopf?: React.ReactNode;
-  view: RahmenView;
-  /** Der Schlüssel, unter dem der Klapp-Zustand dieses GERÄTS lebt. */
-  geraetKey: string;
-  testId?: string;
-  children: React.ReactNode;
+  /** Das Menü „⋯" - „Technik & Diagnose" ergänzt der Kern selbst. */
+  menue?: MenueEintrag[];
+  /** Eine sichtbare Handlung neben „⋯" - nur am Rechner (V9: „Name ändern"). */
+  kopfAktion?: ReactNode;
+  /** Meldungen direkt unter dem Kopf (gespeichert, Fehler). */
+  unterKopf?: ReactNode;
+  /** Die Bausteine der Hauptansicht - `null`/fehlend fällt still weg. */
+  bausteine: KernBausteine;
+  /** Wo das Zusatz-Modul am Rechner steht (die Box: links unter der Bühne). */
+  modulSpalte?: 'links' | 'rechts';
+  /** „Gerät & Verbindung": zugeklappt am Telefon, offen am Rechner. */
+  details?: { kurz: string | null; inhalt: ReactNode } | null;
+  /** Die Teile der Technik-Ansicht; leer = die Seite hat keine. */
+  technik?: TechnikTeil[];
+  /** Veraltete Daten: die Bühne steht still und grau (nie „live" behaupten). */
+  veraltet?: boolean;
 }) {
-  const { sektionen } = view;
-  const ids = useMemo(() => sektionen.map((s) => s.id), [sektionen]);
-  const eintraege = useMemo(
-    () => new Map(sektionen.map((s) => [s.id, s] as const)),
-    [sektionen],
+  const hatTechnik = technik.length > 0;
+  const [inTechnik, setInTechnik] = useState<boolean>(
+    () => hatTechnik && typeof window !== 'undefined' && sprungZiel(window.location.hash)?.ansicht === 'technik',
   );
-
-  // Der Klapp-Zustand: gespeicherte Wahl > Standard. Ein nicht verfügbarer
-  // Speicher (privater Modus) ist kein Fehler - dann gilt der Standard.
-  const [offen, setOffen] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    const next: Record<string, boolean> = {};
-    for (const id of ids) {
-      let stored: string | null = null;
-      try {
-        stored = sessionStorage.getItem(sektionKey(geraetKey, id));
-      } catch {
-        stored = null;
-      }
-      next[id] = initialSektionOffen(stored, id);
-    }
-    setOffen(next);
-  }, [geraetKey, ids]);
-
-  const istOffen = useCallback(
-    (id: RahmenSektionId) => offen[id] ?? initialSektionOffen(null, id),
-    [offen],
-  );
-
-  const umschalten = useCallback(
-    (id: RahmenSektionId, wert: boolean) => {
-      setOffen((prev) => (prev[id] === wert ? prev : { ...prev, [id]: wert }));
-      try {
-        sessionStorage.setItem(sektionKey(geraetKey, id), wert ? '1' : '0');
-      } catch {
-        /* Kein Speicher - der Zustand lebt dann nur in dieser Ansicht. */
-      }
-    },
-    [geraetKey],
-  );
-
-  /** Aufklappen UND hinspringen - die eine Bewegung der Sprungnavigation. */
-  const springen = useCallback(
-    (id: RahmenSektionId) => {
-      umschalten(id, true);
-      // Erst im nächsten Bild ist die aufgeklappte Sektion gemessen; ohne das
-      // spränge der Browser auf ihre noch geschlossene Höhe.
-      const ziel = () => {
-        const el = document.getElementById(ankerId(id));
-        el?.focus({ preventScroll: true });
-        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      };
-      if (typeof window !== 'undefined' && window.requestAnimationFrame) {
-        window.requestAnimationFrame(ziel);
-      } else {
-        ziel();
-      }
-    },
-    [umschalten],
-  );
-
-  // Deep-Link `?abschnitt=`: beim Aufbau UND bei jedem Hash-Wechsel, damit ein
-  // Klick aus einer bereits offenen Seite heraus ebenfalls wirkt (das
-  // `useSettingsAnchor`-Muster). Je Adresse GENAU EINMAL - sonst risse der
-  // Sprung dem Kunden bei jedem Zustands-Takt die Ansicht weg.
+  const [detailsOffen, setDetailsOffen] = useState<boolean | null>(null);
+  const isPhone = useIsPhone();
+  const staffel = useStaffel(`geraet:${geraetKey}`);
+  const scrollVorTechnik = useRef<number | null>(null);
+  const geoeffnetVonHier = useRef(false);
   const gesprungen = useRef<string | null>(null);
+  const ansichtGewechselt = useRef(false);
+  const inTechnikRef = useRef(inTechnik);
+
+  const springeZu = useCallback((id: BausteinId | TechnikId) => {
+    if (id === 'details') setDetailsOffen(true);
+    // Das Ziel steht erst nach dem Seitenwechsel im Baum - ein paar Bilder
+    // lang nachsehen, nie endlos.
+    let versuche = 0;
+    const ziel = () => {
+      const el = document.getElementById(ankerId(id));
+      if (!el) {
+        versuche += 1;
+        if (versuche < 20 && typeof window !== 'undefined' && window.requestAnimationFrame) {
+          window.requestAnimationFrame(ziel);
+        }
+        return;
+      }
+      el.focus({ preventScroll: true });
+      el.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    };
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(ziel);
+    } else {
+      ziel();
+    }
+  }, []);
+
+  // Die Adresse ist die EINE Wahrheit über die Ansicht: beim Aufbau und bei
+  // jedem Hash-Wechsel (Zurück-Taste, Deep-Link aus einer offenen Seite).
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return undefined;
     const pruefen = () => {
-      const ziel = parseAbschnitt(window.location.hash);
-      if (!ziel || !ids.includes(ziel)) return;
-      const marke = `${window.location.hash}#${ziel}`;
-      if (gesprungen.current === marke) return;
+      const ziel = sprungZiel(window.location.hash);
+      const technikJetzt = hatTechnik && ziel?.ansicht === 'technik';
+      if (technikJetzt !== inTechnikRef.current) {
+        inTechnikRef.current = technikJetzt;
+        ansichtGewechselt.current = true;
+        // Telefon schiebt, Rechner blendet - der Seitenwechsel des Portals.
+        runPageTransition(technikJetzt ? 'push' : 'pop', () => setInTechnik(technikJetzt));
+      }
+      // Je Adresse GENAU EINMAL springen - sonst risse der Sprung dem Kunden
+      // bei jedem Zustands-Takt die Ansicht weg.
+      const marke = window.location.hash;
+      if (!ziel || gesprungen.current === marke) return;
       gesprungen.current = marke;
-      springen(ziel);
+      if (ziel.ansicht === 'geraet') springeZu(ziel.baustein);
+      else if (ziel.teil) springeZu(ziel.teil);
     };
     pruefen();
     window.addEventListener('hashchange', pruefen);
     return () => window.removeEventListener('hashchange', pruefen);
-  }, [ids, springen]);
+  }, [hatTechnik, springeZu]);
 
-  const aktiv = useScrollSpy(ids);
-  const ctx = useMemo<RahmenCtx>(
-    () => ({ eintraege, istOffen, umschalten }),
-    [eintraege, istOffen, umschalten],
+  // Ein Wechsel der Ansicht beginnt oben - und der Rückweg kehrt dorthin
+  // zurück, wo der Kunde war. Im Layout-Effekt, damit das neue Bild des
+  // Seitenwechsels schon an der richtigen Stelle steht.
+  useLayoutEffect(() => {
+    if (!ansichtGewechselt.current) return;
+    ansichtGewechselt.current = false;
+    if (typeof window === 'undefined' || typeof window.scrollTo !== 'function') return;
+    const ziel = sprungZiel(window.location.hash);
+    if (inTechnik && !(ziel?.ansicht === 'technik' && ziel.teil)) {
+      try { window.scrollTo({ top: 0 }); } catch { /* jsdom */ }
+    } else if (!inTechnik && scrollVorTechnik.current != null && !(ziel?.ansicht === 'geraet')) {
+      const y = scrollVorTechnik.current;
+      scrollVorTechnik.current = null;
+      try { window.scrollTo({ top: y }); } catch { /* jsdom */ }
+    }
+  }, [inTechnik]);
+
+  const technikOeffnen = useCallback((teil: TechnikId | null = null) => {
+    if (typeof window === 'undefined') return;
+    scrollVorTechnik.current = window.scrollY;
+    geoeffnetVonHier.current = true;
+    window.location.hash = technikHash(window.location.hash, teil);
+  }, []);
+
+  const technikSchliessen = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    // Wer die Ansicht von hier geöffnet hat, geht einen Schritt zurück - die
+    // Zurück-Taste des Telefons und dieser Knopf tun dann dasselbe.
+    if (geoeffnetVonHier.current) {
+      geoeffnetVonHier.current = false;
+      window.history.back();
+      return;
+    }
+    window.location.hash = ohneTechnikHash(window.location.hash);
+  }, []);
+
+  const zuZiel = useCallback((ziel: Ziel) => {
+    if (ziel.ansicht === 'technik') {
+      technikOeffnen(ziel.teil);
+      return;
+    }
+    springeZu(ziel.baustein);
+  }, [springeZu, technikOeffnen]);
+
+  const menueEintraege: RowMenuItem[] = [
+    ...menue.filter((m) => !m.danger).map((m) => ({
+      label: m.label, icon: m.icon, onClick: m.onClick, recht: m.recht, standort: m.standort,
+    })),
+    ...(hatTechnik
+      ? [{ label: TECHNIK_ANSICHT_TITEL, icon: 'sliders' as IconName, onClick: () => technikOeffnen() }]
+      : []),
+    ...menue.filter((m) => m.danger).map((m) => ({
+      label: m.label, icon: m.icon, onClick: m.onClick, danger: true, recht: m.recht, standort: m.standort,
+    })),
+  ];
+
+  const kopfBlock = (
+    <header className="vp-kern-kopf" data-testid="geraet-kopf">
+      <span className={`vp-kern-symbol is-${kopf.symbol.farbe}`} aria-hidden="true">
+        <Icon name={kopf.symbol.icon} size={22} />
+      </span>
+      <div className="vp-kern-name">
+        <h1>{kopf.titel}</h1>
+        <p className="vp-kern-typ" data-testid="geraet-typ">
+          {[kopf.typ, kopf.modell].filter(Boolean).join(' · ')}
+          {kopf.kennung && (
+            <>
+              {' · '}
+              <span className="vp-mono">{kopf.kennung}</span>
+            </>
+          )}
+        </p>
+      </div>
+      {(kopfAktion || menueEintraege.length > 0) && (
+        <div className="vp-kern-kopfaktion">
+          {kopfAktion && <span className="vp-kern-kopfaktion-rechner">{kopfAktion}</span>}
+          {menueEintraege.length > 0 && (
+            <RowMenu items={menueEintraege} label="Weitere Aktionen" />
+          )}
+        </div>
+      )}
+      {(kopf.zustand || kopf.abzeichen) && (
+        <div className="vp-kern-meta">
+          {kopf.zustand && <LivePunkt zustand={kopf.zustand} frische={kopf.frische ?? null} />}
+          {kopf.abzeichen}
+        </div>
+      )}
+      {kopf.hinweis && (
+        <p className={`vp-kern-hinweis is-${kopf.hinweis.ton}`} data-testid="geraet-kopfhinweis">
+          <Icon name="alert-triangle" size={15} />
+          <span>{kopf.hinweis.satz}</span>
+          {kopf.hinweis.ziel && (
+            <button
+              type="button"
+              className="vp-linkbtn"
+              onClick={() => zuZiel(kopf.hinweis!.ziel as Ziel)}
+            >
+              {zielTitel(kopf.hinweis.ziel)} ansehen
+            </button>
+          )}
+        </p>
+      )}
+    </header>
   );
 
+  if (inTechnik && hatTechnik) {
+    return (
+      <div className="vp-geraet vp-kern vp-kern-technik" data-testid={testId}>
+        <GeraetBrotkrume
+          anlageHref={brotkrume.anlageHref}
+          komponentenHref={brotkrume.komponentenHref}
+          titel={kopf.titel}
+        />
+        <div className="vp-kern-technik-kopf">
+          <button type="button" className="vp-kern-zurueck" onClick={technikSchliessen}>
+            <Icon name="chevron-left" size={16} /> {kopf.titel}
+          </button>
+          <h1>{TECHNIK_ANSICHT_TITEL}</h1>
+          <p className="vp-kern-typ">{[kopf.typ, kopf.modell].filter(Boolean).join(' · ')}</p>
+        </div>
+        {unterKopf}
+        <div className="vp-kern-technik-teile" data-testid="geraet-technik">
+          {technik.map((t) => (
+            <section
+              key={t.id}
+              id={ankerId(t.id)}
+              tabIndex={-1}
+              className="vp-kern-karte vp-kern-technikteil"
+              data-technik={t.id}
+              aria-labelledby={`${ankerId(t.id)}-titel`}
+            >
+              <h2 id={`${ankerId(t.id)}-titel`}>{t.titel?.trim() || TECHNIK_TITEL[t.id]}</h2>
+              {t.inhalt}
+            </section>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const karte = (id: Exclude<BausteinId, 'details'> | 'modul', b: BausteinInhalt | null | undefined) => {
+    if (!b) return null;
+    const titel = b.titel?.trim() || (id === 'modul' ? '' : BAUSTEIN_TITEL[id]);
+    const titelId = `geraet-baustein-${id}-titel`;
+    return (
+      <section
+        key={id}
+        id={id === 'modul' ? undefined : ankerId(id)}
+        tabIndex={-1}
+        className={`vp-kern-karte is-${id}`}
+        data-baustein={id}
+        data-testid={`baustein-${id}`}
+        aria-labelledby={titel ? titelId : undefined}
+        aria-label={titel ? undefined : BAUSTEIN_TITEL.buehne}
+      >
+        {titel && (
+          <div className={`vp-kern-karte-kopf${id === 'buehne' ? ' vp-sr-only' : ''}`}>
+            <h2 id={titelId}>
+              {titel}
+              {b.info && (
+                <InfoTip label={`Hinweise zu „${titel}"`}>{b.info}</InfoTip>
+              )}
+            </h2>
+            {b.kopfRechts && <span className="vp-kern-karte-rechts">{b.kopfRechts}</span>}
+          </div>
+        )}
+        {b.inhalt}
+      </section>
+    );
+  };
+
+  const offen = detailsOffen ?? !isPhone;
+  const technikKurz = technik.map((t) => t.titel?.trim() || TECHNIK_TITEL[t.id]).join(' · ');
+  const technikHinweis = technik.map((t) => t.hinweis?.trim()).filter(Boolean).join(' · ');
+
   return (
-    <div className="vp-geraet vp-rahmen" data-testid={testId}>
+    <div className={`vp-geraet vp-kern${veraltet ? ' is-veraltet' : ''}`} data-testid={testId}>
       <GeraetBrotkrume
         anlageHref={brotkrume.anlageHref}
         komponentenHref={brotkrume.komponentenHref}
         titel={kopf.titel}
       />
-
-      <Card padding="lg" radius="lg" className="vp-geraet-kopf vp-rahmen-kopf">
-        <div className="vp-geraet-titleline">
-          <div className="vp-rahmen-titel">
-            <h1>{kopf.titel}</h1>
-            {kopf.gattungWort && <p className="vp-rahmen-gattung">{kopf.gattungWort}</p>}
-          </div>
-          {aktionen}
+      {kopfBlock}
+      {unterKopf}
+      <div className="vp-kern-raster">
+        <div className={mitStaffel('vp-kern-spalte is-links', staffel)}>
+          {karte('buehne', bausteine.buehne)}
+          {modulSpalte === 'links' && karte('modul', bausteine.modul)}
+          {karte('heute', bausteine.heute)}
         </div>
-        <div className="vp-geraet-meta">
-          {kopf.kennung && <span className="vp-mono vp-geraet-kennung">{kopf.kennung}</span>}
-          {kopf.zustand && (
-            <span
-              className={`vp-pill vp-pill-${kopf.zustand.ton}`}
-              data-testid="geraet-zustand"
-            >
-              <span className={`vp-health-dot vp-health-${kopf.zustand.ton}`} />
-              {kopf.zustand.wort}
-              {kopf.zustand.detail && <small> · {kopf.zustand.detail}</small>}
-            </span>
-          )}
-          {kopf.abzeichen}
+        <div className={mitStaffel('vp-kern-spalte is-rechts', staffel)}>
+          {karte('steuerung', bausteine.steuerung)}
+          {modulSpalte === 'rechts' && karte('modul', bausteine.modul)}
+          {karte('aktivitaet', bausteine.aktivitaet)}
         </div>
-        {/* Höchstens EINER (§4.1): der schlimmste anstehende Befund, mit dem
-            Weg in die Sektion, die ihn erklärt. Ohne diese Sektion steht der
-            Satz allein - nie ein Knopf ins Leere. */}
-        {kopf.hinweis && (
-          <p
-            className={`vp-rahmen-hinweis is-${kopf.hinweis.ton}`}
-            data-testid="geraet-kopfhinweis"
-          >
-            <Icon name="alert-triangle" size={15} />
-            <span>{kopf.hinweis.satz}</span>
-            {kopf.hinweis.sektion && (
-              <button
-                type="button"
-                className="vp-linkbtn"
-                onClick={() => springen(kopf.hinweis!.sektion as RahmenSektionId)}
-              >
-                {eintraege.get(kopf.hinweis.sektion)?.titel ?? 'Dazu'} ansehen
-              </button>
-            )}
-          </p>
-        )}
-        {unterKopf}
-      </Card>
-
-      {/* Telefon: eine klebende, waagerecht scrollende Chip-Leiste UNTER dem
-          Kopf (der Ort, an dem die Historie ihre Zeit-Leiste klebt). */}
-      <nav className="vp-rahmen-chips" aria-label="Abschnitte dieser Seite">
-        <div className="vp-seg">
-          {sektionen.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-pressed={aktiv === s.id}
-              className={aktiv === s.id ? 'is-an' : undefined}
-              onClick={() => springen(s.id)}
+        {/* Die zwei ruhigen Zeilen stehen am Rechner UNTER beiden Spalten, über
+            die volle Breite - in der rechten Spalte machten sie sie doppelt so
+            lang wie die linke. */}
+        <div className={mitStaffel('vp-kern-unten', staffel)}>
+          {details && (
+            <details
+              id={ankerId('details')}
+              tabIndex={-1}
+              className="vp-kern-zeile is-details"
+              data-baustein="details"
+              data-testid="baustein-details"
+              open={offen}
+              onToggle={(e) => setDetailsOffen((e.currentTarget as HTMLDetailsElement).open)}
             >
-              {s.titel}
-              {s.ton && <span className={`vp-health-dot vp-health-${s.ton}`} />}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      <div className="vp-rahmen-body">
-        {/* Rechner: die schmale, klebende Anker-Spalte mit Scroll-Spy - genau
-            das Muster der Einstellungs-Seite. */}
-        <nav className="vp-rahmen-nav" aria-label="Abschnitte dieser Seite">
-          {sektionen.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className={aktiv === s.id ? 'on' : undefined}
-              aria-current={aktiv === s.id ? 'true' : undefined}
-              onClick={() => springen(s.id)}
-            >
-              <Icon name={s.icon as IconName} size={16} />
-              <span className="nm">{s.titel}</span>
-              {s.ton && <span className={`vp-health-dot vp-health-${s.ton}`} />}
-              {s.klappbar && !istOffen(s.id) && (
-                <span className="zu" title="eingeklappt" aria-label="eingeklappt">
-                  <Icon name="chevron-down" size={13} />
+              <summary>
+                <Icon name="cpu" size={18} />
+                <span>
+                  <span className="t">{BAUSTEIN_TITEL.details}</span>
+                  {details.kurz && <span className="k">{details.kurz}</span>}
                 </span>
-              )}
+                <Icon name="chevron-right" size={16} />
+              </summary>
+              <div className="vp-kern-zeile-inhalt">{details.inhalt}</div>
+            </details>
+          )}
+          {hatTechnik && (
+            <button
+              type="button"
+              className="vp-kern-zeile is-knopf"
+              data-testid="geraet-technik-oeffnen"
+              onClick={() => technikOeffnen()}
+            >
+              <Icon name="sliders" size={18} />
+              <span>
+                <span className="t">{TECHNIK_ANSICHT_TITEL}</span>
+                <span className="k">
+                  {technikKurz}
+                  {technikHinweis && <b className="h">{` · ${technikHinweis}`}</b>}
+                </span>
+              </span>
+              <Icon name="chevron-right" size={16} />
             </button>
-          ))}
-        </nav>
-
-        <div className="vp-rahmen-sektionen">
-          <Ctx.Provider value={ctx}>{children}</Ctx.Provider>
+          )}
         </div>
       </div>
     </div>
@@ -287,122 +480,33 @@ export function GeraetRahmen({
 }
 
 /**
- * EINE Sektion des Rahmens.
+ * Der Live-Punkt im Kopf: Zustand und Datenalter in EINEM Element (S6 - er
+ * ersetzt „Stand 12:00:00", „Letzte Messung" und „Zustand").
  *
- * <p>Sie rendert nichts, wenn der Rahmen sie nicht anbietet - so entscheidet
- * die reine Ableitung, was existiert, und der Wirt darf seine Bausteine
- * bedingungslos hinschreiben.
- *
- * <p>„Jetzt" hat keinen Klapp-Kopf (§4.5); jede andere ist ein `<details>` mit
- * Name · Zustands-Punkt · Kurzfassung im geschlossenen Zustand.
+ * ⚠ Er pulsiert EINMAL, wenn ein neuer Wert ankommt - und nur, solange die
+ * Daten frisch sind. Veraltete Daten stehen still: eine Bewegung darf nie
+ * „live" behaupten, wenn es nicht stimmt.
  */
-export function RahmenSektion({
-  id,
-  children,
+function LivePunkt({
+  zustand,
+  frische,
 }: {
-  id: RahmenSektionId;
-  children: React.ReactNode;
+  zustand: { wort: string; ton: GeraetTon; detail: string | null };
+  frische: string | null;
 }) {
-  const ctx = useContext(Ctx);
-  const eintrag = ctx?.eintraege.get(id);
-  if (!ctx || !eintrag) return null;
-  const offen = ctx.istOffen(id);
-
-  if (!eintrag.klappbar) {
-    return (
-      <section
-        id={ankerId(id)}
-        tabIndex={-1}
-        className="vp-rahmen-sek is-offen"
-        data-testid={`sektion-${id}`}
-        aria-label={eintrag.titel}
-      >
-        {children}
-      </section>
-    );
-  }
-
-  return (
-    <details
-      id={ankerId(id)}
-      tabIndex={-1}
-      className="vp-rahmen-sek"
-      data-testid={`sektion-${id}`}
-      open={offen}
-      onToggle={(e) => ctx.umschalten(id, (e.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary>
-        <Icon name="chevron-right" size={14} />
-        <Icon name={eintrag.icon as IconName} size={16} />
-        <span className="nm">{eintrag.titel}</span>
-        {eintrag.ton && <span className={`vp-health-dot vp-health-${eintrag.ton}`} />}
-        {/* Die Kurzfassung trägt die geschlossene Zeile: eine Klappe, die nicht
-            sagt, was hinter ihr liegt, ist die Wand, die dieser Rahmen beendet.
-            Ohne belegten Teil steht die Frage da, nie ein „—". */}
-        <small className="kf">{eintrag.kurzfassung ?? eintrag.frage ?? ''}</small>
-      </summary>
-      <div className="vp-rahmen-sek-body">{children}</div>
-    </details>
-  );
-}
-
-/**
- * Zu einer Sektion springen, OHNE den Rahmen-Kontext zu halten - für einen
- * Aufrufer, der außerhalb von `RahmenSektion` sitzt (die Hauptaktion einer
- * Ladesäule zeigt in ihren Befehls-Abschnitt).
- *
- * ⚠ Sie setzt `details.open` DIREKT: der native `toggle`-Event feuert auch bei
- * einer programmatischen Änderung, also übernimmt der Rahmen den Zustand über
- * sein `onToggle` - es gibt keine zweite Zustands-Wahrheit. Und wie überall
- * hier wird über `id` gesprungen, nie über einen `#anker`.
- */
-export function springeZuAbschnitt(id: RahmenSektionId): void {
-  if (typeof document === 'undefined') return;
-  const el = document.getElementById(ankerId(id));
-  if (!el) return;
-  if (el instanceof HTMLDetailsElement) el.open = true;
-  const ziel = () => {
-    el.focus({ preventScroll: true });
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  if (typeof window !== 'undefined' && window.requestAnimationFrame) {
-    window.requestAnimationFrame(ziel);
-  } else {
-    ziel();
-  }
-}
-
-/**
- * Hebt den Eintrag der gerade sichtbaren Sektion hervor (Rechner + Telefon).
- *
- * <p>Wörtlich das `useScrollSpy` der Einstellungs-Seite: ohne
- * `IntersectionObserver` (jsdom) bleibt schlicht die erste Sektion aktiv - der
- * Rahmen bleibt bedienbar, nur die Hervorhebung wandert nicht mit.
- */
-function useScrollSpy(ids: readonly RahmenSektionId[]): RahmenSektionId | null {
-  const [aktiv, setAktiv] = useState<RahmenSektionId | null>(ids[0] ?? null);
+  const [puls, setPuls] = useState(0);
+  const vorher = useRef(frische);
   useEffect(() => {
-    setAktiv((prev) => (prev && ids.includes(prev) ? prev : ids[0] ?? null));
-    if (typeof IntersectionObserver === 'undefined') return;
-    const beobachtet = ids
-      .map((id) => document.getElementById(ankerId(id)))
-      .filter((el): el is HTMLElement => el != null);
-    if (beobachtet.length === 0) return;
-    const gesehen = new Map<string, number>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) gesehen.set(e.target.id, e.intersectionRatio);
-        let beste: { id: RahmenSektionId; ratio: number } | null = null;
-        for (const id of ids) {
-          const ratio = gesehen.get(ankerId(id)) ?? 0;
-          if (ratio > 0 && (beste == null || ratio > beste.ratio)) beste = { id, ratio };
-        }
-        if (beste) setAktiv(beste.id);
-      },
-      { rootMargin: '-96px 0px -55% 0px', threshold: [0, 0.2, 0.5, 1] },
-    );
-    beobachtet.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [ids]);
-  return aktiv;
+    if (frische && vorher.current && frische !== vorher.current && zustand.ton === 'ok') {
+      setPuls((n) => n + 1);
+    }
+    vorher.current = frische;
+  }, [frische, zustand.ton]);
+  return (
+    <span className={`vp-kern-live is-${zustand.ton}`} data-testid="geraet-zustand">
+      <i key={puls} className={puls > 0 ? 'is-puls' : undefined} aria-hidden="true" />
+      {zustand.wort}
+      {zustand.detail && <small> · {zustand.detail}</small>}
+    </span>
+  );
 }

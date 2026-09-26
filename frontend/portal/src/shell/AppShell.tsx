@@ -1,7 +1,7 @@
 import { KundenbereichEndeHinweis } from '../components/KundenbereichEndeHinweis';
 import { UnterstuetzungBanner } from '../components/UnterstuetzungBanner';
 import { useRollen } from '../rollen';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -42,7 +42,11 @@ import type { AnlagenSub, Route } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
 import './Shell.css';
 import { HelpProvider, HelpLink } from '../help/HelpProvider';
+import { APP_GROUP_LABEL, installSnapshot, subscribeInstallApp } from '../installApp';
 import type { HelpArticleId } from '../help/model';
+
+// Das App-Blatt lädt erst beim ersten Öffnen - das Menü selbst bleibt leicht.
+const KontoAppDialog = lazy(() => import('../components/KontoAppDialog'));
 
 /**
  * Die Anlagen-Navigation der Schale — seit der Navigations-Runde „zwei Ebenen"
@@ -210,6 +214,11 @@ export function AppShell({
   const user = currentUser();
   const { benutzerLesen, selbst } = useRollen();
   const [menuOpen, setMenuOpen] = useState(false);
+  // „Als App auf dem Handy" (E5): gilt dem Gerät, darum im Konto-Menü. Die
+  // installierte App braucht den Eintrag nicht mehr.
+  const installState = useSyncExternalStore(subscribeInstallApp, installSnapshot);
+  const [appOffen, setAppOffen] = useState(false);
+  const [appGeladen, setAppGeladen] = useState(false);
   /**
    * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
    * Admin ist dann in der Rolle des Kunden unterwegs. Ohne Mandant bleibt sie
@@ -538,7 +547,11 @@ export function AppShell({
                 </span>
               </>
             ) : (
-              <span className="here">{pageLabel(page, counts.sites)}</span>
+              // Die Flotten-Landung heißt wie im Menü („Meine Anlagen" beim
+              // Endkunden, „Portfolio" beim Betreiber) — nie zwei Namen.
+              <span className="here">
+                {page === PORTFOLIO_PAGE.id ? fleetLabel : pageLabel(page, counts.sites)}
+              </span>
             )}
             {anlage?.health && (
               // ONE aggregated plant state, always in sight (concept tab 2) —
@@ -593,6 +606,14 @@ export function AppShell({
             </span>
           )}
 
+          {/* V-03: am Telefon wohnt die Kontexthilfe als „?" hier oben statt
+              als eigene Zeile über jeder Seite (CSS blendet sie nur dort ein
+              und die Zeile in <main> dort aus). */}
+          {helpArticle && (
+            <span className="vp-topbar-help">
+              <HelpLink article={helpArticle} iconOnly />
+            </span>
+          )}
           <div className="vp-usermenu" ref={menuRef}>
             <div className="meta">
               <div className="n">
@@ -648,6 +669,21 @@ export function AppShell({
                   <Icon name="help-circle" size={18} />
                   Hilfe &amp; Kontakt
                 </button>
+                {installState !== 'installiert' && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="vp-avatarmenu-item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setAppGeladen(true);
+                      setAppOffen(true);
+                    }}
+                  >
+                    <Icon name="smartphone" size={18} />
+                    {APP_GROUP_LABEL}
+                  </button>
+                )}
                 {isAdmin && (
                   // Nur am Telefon eingeblendet (CSS): am Rechner steht die
                   // Plattform-Gruppe in der Seitenleiste, ein zweiter Ort für
@@ -728,6 +764,24 @@ export function AppShell({
         </nav>
       )}
 
+      {/* Einmal geladen, bleibt das Blatt stehen - so blendet es beim
+          Schließen aus, statt abrupt zu verschwinden. */}
+      {appGeladen && (
+        <Suspense fallback={null}>
+          <KontoAppDialog
+            open={appOffen}
+            onClose={() => {
+              setAppOffen(false);
+              // Der Auslöser (der Menüeintrag) ist mit dem Menü verschwunden:
+              // der Fokus kehrt zum Avatar zurück, der das Menü geöffnet hat.
+              window.setTimeout(
+                () => menuRef.current?.querySelector<HTMLElement>('.vp-avatar-btn')?.focus(),
+                0,
+              );
+            }}
+          />
+        </Suspense>
+      )}
     </div></HelpProvider>
   );
 }

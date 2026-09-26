@@ -3,13 +3,11 @@ import { ALL_SETTINGS, SETTING_DEFS } from './modeSettings';
 import { PROVENIENZ } from './historieWelten';
 import {
   AUTHORITY,
-  AUTHORITY_ORDER,
   aktuellerPreisSlot,
   authorityOf,
   bezugspreisLeerText,
   bezugspreisSatz,
   bezugspreisVorschau,
-  BOX_ADDRESS_NOTE,
   effectChips,
   effectsOf,
   hasVoltpilotValue,
@@ -17,11 +15,12 @@ import {
   honestyOf,
   voltpilotGroupFor,
   voltpilotRows,
-  ZUSTAENDIG_BOX,
-  ZUSTAENDIG_PORTAL,
   type PreisSlot,
 } from './settingsSurface';
 import { settingsGroupFor } from './settingsNav';
+
+/** Die drei Stufen ① Sie · ② VoltPilot · ③ automatisch. */
+const STUFEN = [1, 2, 3] as const;
 
 describe('E4 · die drei Autoritäts-Stufen', () => {
   it('leitet die Stufe aus `editability` ab — nie aus einer zweiten Liste', () => {
@@ -39,8 +38,7 @@ describe('E4 · die drei Autoritäts-Stufen', () => {
   });
 
   it('jede Stufe hat Zeichen, Kurzform, Namen und einen erklärenden Satz', () => {
-    expect(AUTHORITY_ORDER).toEqual([1, 2, 3]);
-    for (const level of AUTHORITY_ORDER) {
+    for (const level of STUFEN) {
       const info = AUTHORITY[level];
       expect(info.mark.length).toBeGreaterThan(0);
       expect(info.badge.length).toBeGreaterThan(0);
@@ -48,12 +46,12 @@ describe('E4 · die drei Autoritäts-Stufen', () => {
       expect(info.note.length).toBeGreaterThan(10);
     }
     // Die drei Zeichen sind unterscheidbar (sonst wäre die Legende sinnlos).
-    expect(new Set(AUTHORITY_ORDER.map((l) => AUTHORITY[l].mark)).size).toBe(3);
+    expect(new Set(STUFEN.map((l) => AUTHORITY[l].mark)).size).toBe(3);
   });
 
   it('sagt NIE „VoltPilot richtet ein" — der Copy-Wächter verbietet die Gegenwartsform', () => {
     // M3 hat die Anfragewand abgeschafft; ② ist ein Zustand, keine Aufforderung.
-    for (const level of AUTHORITY_ORDER) {
+    for (const level of STUFEN) {
       const info = AUTHORITY[level];
       expect(`${info.label} ${info.note} ${info.badge}`).not.toMatch(/VoltPilot richtet ein/);
     }
@@ -219,15 +217,5 @@ describe('E5 · die lebende Bezugspreis-Vorschau', () => {
     expect(bezugspreisLeerText('ohne')).toContain('nicht in Euro');
     expect(bezugspreisLeerText(null)).toContain('nicht in Euro');
     expect(bezugspreisLeerText('dynamisch')).toContain('Fahrplan');
-  });
-});
-
-describe('E7 · die Grenze zur Box wird beidseitig ausgesprochen (D5)', () => {
-  it('sagt WOFÜR (Portal) und WOMIT (Gerät) — und behauptet keinen Link ins Heimnetz', () => {
-    expect(ZUSTAENDIG_PORTAL).toContain('WOFÜR');
-    expect(ZUSTAENDIG_BOX).toContain('WOMIT');
-    expect(BOX_ADDRESS_NOTE).toContain('8484');
-    // Kein http(s)-Link: das Portal kennt die Adresse der Box nicht.
-    expect(`${ZUSTAENDIG_BOX} ${BOX_ADDRESS_NOTE}`).not.toMatch(/https?:\/\//);
   });
 });

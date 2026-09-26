@@ -1,0 +1,103 @@
+{
+  "$comment": "Die Vertragsvektoren von 'Absicht + Fenster' (Konzept vp-wechselrichter-eigenregelung-k1 §3/§6.1, Paket K4b, 24.09.2026). Der Go-Test edge-app/core/internal/guards/intent_test.go liest diese Datei PER PFAD und faehrt jeden Fall durch die ECHTEN Funktionen guards.IntentFor (Flaggen -> Absicht + Plan-Fenster) und guards.ClipWindow (dieselbe Guard-Kette wie ein Sollwert, auf beide Grenzen). Die Flaggen sind die eingefrorenen des mqtt-schedule-Vertrags; kein Vertragsfeld der Wolke aendert sich. Wer die Abbildung aendert, aendert die Funktion UND diese Datei zusammen.",
+
+  "$regel": "Beide Lade-Flaggen -> Ladeseite [0 ; max]; nur charge_from_surplus_only -> [0 ; Planwert]; nur charge_surplus_to_battery -> [Planwert ; max]; cover_load_from_battery, unplanned_load_discharge und die Box-Regel deficit_cover oeffnen die Entladeseite ganz; limit_discharge_to_load nur bis zum Planwert; ohne Flagge ist das Fenster der Planwert selbst (Punkt). Die Lade-Flaggen wirken nur auf einen nicht-negativen Befehl (wie Trim und Aufnahme heute). Ein Fenster schmaler als 0,1 kW ist ein Punkt = fester Sollwert.",
+
+  "$guards": "ClipWindow: ein Punkt und jede Grenze, die einen Fluss ERZWINGT (min > 0, max < 0), laufen durch die volle Kette guards.Clamp (Nennband, SoC-Fenster, BMS, EEG 'Laden <= gemessene PV', §14a). Eine offene Grenze (Ladedeckel >= 0, Entladedeckel <= 0) laeuft durch die geraeteseitigen Stufen (Nennband, SoC-Fenster, BMS): das Geraet erreicht sie nur aus dem Ueberschuss selbst, die beiden netzseitigen Stufen koennen durch sie nicht verletzt werden; die EEG-Regel eines offenen Fensters traegt der BELEGTE Netzlade-Riegel des Geraets plus die Aufsicht 'Laden bei Bezug'. Am Plattform-Boden (effective_floor_soc_pct) schliesst die Entladeseite.",
+
+  "$einheiten": "kW, + Laden / - Entladen (Vorzeichen von edge/setpoint battery_setpoint_kw). soc_pct/pv_kw/load_kw sind die Messung, null = unbekannt. kind: E / E_up / E_down / E_tilde / N / H / A (Tabelle §3). word: das Wort auf dem lokalen Bus (battery_native_intent), leer fuer einen Punkt.",
+
+  "limits": { "max_charge_kw": 30.0, "max_discharge_kw": 30.0, "soc_min_pct": 5.0, "soc_max_pct": 95.0 },
+
+  "faelle": [
+    { "name": "E-alle-drei-flaggen", "why": "Eigenverbrauch: Ueberschuss laden, Defizit decken, Netz -> 0",
+      "planned_kw": 4.0, "flags": ["charge_from_surplus_only", "charge_surplus_to_battery", "cover_load_from_battery"],
+      "kind": "E", "word": "self_consumption", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": 30.0,
+      "reading": { "soc_pct": 50.0, "pv_kw": 12.0, "load_kw": 3.0 }, "window_min_kw": -30.0, "window_max_kw": 30.0 },
+
+    { "name": "E-up-herzogau", "why": "der Herzogau-Fall: jeden Ueberschuss einlagern, nie aus dem Netz, nicht entladen",
+      "planned_kw": 13.9, "flags": ["charge_from_surplus_only", "charge_surplus_to_battery"],
+      "kind": "E_up", "word": "surplus_charge", "needs_window": false, "plan_min_kw": 0.0, "plan_max_kw": 30.0,
+      "reading": { "soc_pct": 40.0, "pv_kw": 20.0, "load_kw": 6.0 }, "window_min_kw": 0.0, "window_max_kw": 30.0 },
+
+    { "name": "E-up-eeg-offene-grenze", "why": "EEG-Anlage: der Ladedeckel bleibt offen (das Geraet laedt nur aus dem Ueberschuss); die Kette wuerde einen SOLLWERT auf die gemessene PV 8 kW kappen",
+      "planned_kw": 5.0, "flags": ["charge_from_surplus_only", "charge_surplus_to_battery"], "solar_only_charge": true,
+      "kind": "E_up", "word": "surplus_charge", "needs_window": false, "plan_min_kw": 0.0, "plan_max_kw": 30.0,
+      "reading": { "soc_pct": 40.0, "pv_kw": 8.0, "load_kw": 2.0 }, "window_min_kw": 0.0, "window_max_kw": 30.0 },
+
+    { "name": "E-up-speicher-voll", "why": "SoC an der Obergrenze: die Ladeseite schliesst, das Fenster wird der Punkt 0 (Halten)",
+      "planned_kw": 5.0, "flags": ["charge_from_surplus_only", "charge_surplus_to_battery"],
+      "kind": "E_up", "word": "surplus_charge", "needs_window": false, "plan_min_kw": 0.0, "plan_max_kw": 30.0,
+      "reading": { "soc_pct": 95.0, "pv_kw": 20.0, "load_kw": 2.0 }, "window_min_kw": 0.0, "window_max_kw": 0.0 },
+
+    { "name": "E-tilde-nur-senken", "why": "nur charge_from_surplus_only: Laden auf den Planwert gedeckelt, bis 0 absenkbar",
+      "planned_kw": 3.0, "flags": ["charge_from_surplus_only"],
+      "kind": "E_tilde", "word": "self_consumption", "needs_window": true, "plan_min_kw": 0.0, "plan_max_kw": 3.0,
+      "reading": { "soc_pct": 50.0, "pv_kw": 10.0, "load_kw": 2.0 }, "window_min_kw": 0.0, "window_max_kw": 3.0 },
+
+    { "name": "E-tilde-mit-deckung", "why": "gedrosselt laden plus Verbrauch decken: [-max ; +x]",
+      "planned_kw": 2.5, "flags": ["charge_from_surplus_only", "cover_load_from_battery"],
+      "kind": "E_tilde", "word": "self_consumption", "needs_window": true, "plan_min_kw": -30.0, "plan_max_kw": 2.5,
+      "reading": { "soc_pct": 50.0, "pv_kw": 10.0, "load_kw": 2.0 }, "window_min_kw": -30.0, "window_max_kw": 2.5 },
+
+    { "name": "E-up-mit-boden", "why": "nur charge_surplus_to_battery: [Planwert ; max] - ein Ladeboden erzwingt einen Fluss und laeuft durch die volle Kette (EEG kappt ihn auf die PV)",
+      "planned_kw": 6.0, "flags": ["charge_surplus_to_battery"], "solar_only_charge": true,
+      "kind": "E_up", "word": "surplus_charge", "needs_window": true, "plan_min_kw": 6.0, "plan_max_kw": 30.0,
+      "reading": { "soc_pct": 50.0, "pv_kw": 4.0, "load_kw": 1.0 }, "window_min_kw": 4.0, "window_max_kw": 30.0 },
+
+    { "name": "E-down-deckung", "why": "cover_load_from_battery: Haus aus dem Speicher, kein Netzladen, kein Verkauf",
+      "planned_kw": -4.3, "flags": ["cover_load_from_battery"],
+      "kind": "E_down", "word": "cover_load", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": 0.0,
+      "reading": { "soc_pct": 77.0, "pv_kw": 0.03, "load_kw": 7.117 }, "window_min_kw": -30.0, "window_max_kw": 0.0 },
+
+    { "name": "E-down-ungeplant", "why": "Ruhe-Slot mit unplanned_load_discharge",
+      "planned_kw": 0.0, "flags": ["unplanned_load_discharge"],
+      "kind": "E_down", "word": "cover_load", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": 0.0,
+      "reading": { "soc_pct": 60.0, "pv_kw": 0.0, "load_kw": 3.0 }, "window_min_kw": -30.0, "window_max_kw": 0.0 },
+
+    { "name": "E-down-box-regel", "why": "die Box-Regel deficit_cover oeffnet die Entladeseite wie §3",
+      "planned_kw": 0.0, "flags": ["deficit_cover"],
+      "kind": "E_down", "word": "cover_load", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": 0.0,
+      "reading": { "soc_pct": 60.0, "pv_kw": 0.0, "load_kw": 3.0 }, "window_min_kw": -30.0, "window_max_kw": 0.0 },
+
+    { "name": "E-down-nur-begrenzen", "why": "limit_discharge_to_load oeffnet nur bis zum Planwert: [Planwert ; 0]",
+      "planned_kw": -6.0, "flags": ["limit_discharge_to_load"],
+      "kind": "E_down", "word": "cover_load", "needs_window": true, "plan_min_kw": -6.0, "plan_max_kw": 0.0,
+      "reading": { "soc_pct": 60.0, "pv_kw": 0.0, "load_kw": 3.0 }, "window_min_kw": -6.0, "window_max_kw": 0.0 },
+
+    { "name": "E-down-am-boden", "why": "SoC am Plattform-Boden (effective_floor_soc_pct 20): die Entladeseite schliesst",
+      "planned_kw": -4.0, "flags": ["cover_load_from_battery"], "effective_floor_soc_pct": 20.0,
+      "kind": "E_down", "word": "cover_load", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": 0.0,
+      "reading": { "soc_pct": 19.5, "pv_kw": 0.0, "load_kw": 5.0 }, "window_min_kw": 0.0, "window_max_kw": 0.0 },
+
+    { "name": "N-netzladen", "why": "Planwert > 0 ohne Ueberschuss-Flaggen: Punkt, fester Sollwert",
+      "planned_kw": 10.0, "flags": [],
+      "kind": "N", "word": "", "needs_window": false, "plan_min_kw": 10.0, "plan_max_kw": 10.0,
+      "reading": { "soc_pct": 30.0, "pv_kw": 0.0, "load_kw": 2.0 }, "window_min_kw": 10.0, "window_max_kw": 10.0 },
+
+    { "name": "N-an-eeg-anlage", "why": "derselbe Punkt an einer EEG-Anlage: die volle Kette kappt ihn auf die gemessene PV (nie aus dem Netz)",
+      "planned_kw": 10.0, "flags": [], "solar_only_charge": true,
+      "kind": "N", "word": "", "needs_window": false, "plan_min_kw": 10.0, "plan_max_kw": 10.0,
+      "reading": { "soc_pct": 30.0, "pv_kw": 1.5, "load_kw": 2.0 }, "window_min_kw": 1.5, "window_max_kw": 1.5 },
+
+    { "name": "H-halten", "why": "Planwert 0 ohne Flaggen",
+      "planned_kw": 0.0, "flags": [],
+      "kind": "H", "word": "", "needs_window": false, "plan_min_kw": 0.0, "plan_max_kw": 0.0,
+      "reading": { "soc_pct": 50.0, "pv_kw": 5.0, "load_kw": 2.0 }, "window_min_kw": 0.0, "window_max_kw": 0.0 },
+
+    { "name": "A-verkaufen", "why": "Herzogau 19:45: gezielt -30 kW einspeisen",
+      "planned_kw": -30.0, "flags": [],
+      "kind": "A", "word": "", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": -30.0,
+      "reading": { "soc_pct": 80.0, "pv_kw": 0.0, "load_kw": 2.0 }, "window_min_kw": -30.0, "window_max_kw": -30.0 },
+
+    { "name": "A-mit-lade-flaggen", "why": "Lade-Flaggen wirken nur auf einen nicht-negativen Befehl: ein Verkaufs-Slot bleibt ein Punkt",
+      "planned_kw": -5.0, "flags": ["charge_from_surplus_only", "charge_surplus_to_battery"],
+      "kind": "A", "word": "", "needs_window": false, "plan_min_kw": -5.0, "plan_max_kw": -5.0,
+      "reading": { "soc_pct": 80.0, "pv_kw": 0.0, "load_kw": 2.0 }, "window_min_kw": -5.0, "window_max_kw": -5.0 },
+
+    { "name": "A-14a-bindet", "why": "ein Punkt laeuft durch die volle Kette: die beobachtete §14a-Grenze 20 kW kappt die Einspeisung",
+      "planned_kw": -30.0, "flags": [],
+      "kind": "A", "word": "", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": -30.0,
+      "reading": { "soc_pct": 80.0, "pv_kw": 0.0, "load_kw": 2.0, "grid_limit_kw": 20.0 }, "window_min_kw": -22.0, "window_max_kw": -22.0 }
+  ]
+}

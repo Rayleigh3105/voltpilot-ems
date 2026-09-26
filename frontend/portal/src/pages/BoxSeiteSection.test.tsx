@@ -2,7 +2,7 @@ import { sichtbareListe } from '../test/rollenFixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BoxSeiteSection } from './BoxSeiteSection';
-import { SEKTIONS_ORDNUNG } from '../geraetRahmen';
+import { BAUSTEIN_ORDNUNG } from '../geraetRahmen';
 import * as auth from '../auth';
 import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
@@ -281,28 +281,33 @@ describe('BoxSeiteSection', () => {
   afterEach(() => vi.restoreAllMocks());
 
   /**
-   * Der HELD: die drei Fragen, die eine Box beantwortet - verbunden? welche
-   * Software? unter welcher Adresse? Und darunter die GERÄTE, die die Seite
-   * ausmachen.
+   * Die BÜHNE: verbunden? wie viele Geräte liefern? Darunter die GERÄTE, die
+   * die Seite ausmachen - und Software und Adresse in „Gerät & Verbindung".
    */
-  it('führt mit den drei Kacheln und den Geräten AN der Box', async () => {
+  it('führt mit dem Zustand der Kette und den Geräten AN der Box', async () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
 
     expect(await screen.findByRole('heading', { name: 'VoltPilot-Box Pilsting' }))
       .toBeInTheDocument();
-    const kacheln = screen.getByTestId('box-kacheln');
-    expect(within(kacheln).getByText('Verbindung')).toBeInTheDocument();
-    expect(within(kacheln).getByText('Software')).toBeInTheDocument();
-    expect(within(kacheln).getByText('Im Netzwerk')).toBeInTheDocument();
+    const buehne = screen.getByTestId('geraet-held');
+    expect(within(buehne).getByTestId('geraet-heldsatz')).toHaveTextContent(/Geräten liefern Daten/);
 
-    expect(screen.getByTestId('sektion-komponenten')).toBeInTheDocument();
+    // Die drei Fragen von früher stehen als Zeilen in „Gerät & Verbindung".
+    const details = screen.getByTestId('baustein-details');
+    expect(within(details).getByText('Verbindung')).toBeInTheDocument();
+    expect(within(details).getByText('Software')).toBeInTheDocument();
+    expect(within(details).getByText('Im Netzwerk')).toBeInTheDocument();
+
+    const geraete = screen.getByTestId('box-geraete');
     // Beide gemeldeten Geräte führen auf ihre EIGENE Seite.
-    const links = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
+    const links = within(geraete).getAllByRole('link').map((a) => a.getAttribute('href'));
     expect(links).toContain('#/anlage/s-1/geraet/edge-45gz7da/inverter');
     expect(links).toContain('#/anlage/s-1/geraet/edge-45gz7da/src-7c1e9a2b');
-    // Die Gefahrenzone gibt es NUR auf der Box.
-    expect(screen.getByRole('button', { name: /Gerät entfernen/ })).toBeInTheDocument();
+    // V7: das Unumkehrbare wohnt im Menü „⋯" - kein roter Kasten mehr.
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(screen.getByRole('menuitem', { name: /Gerät entfernen/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Datenaufzeichnungen löschen/ })).toBeInTheDocument();
   });
 
   /**
@@ -356,12 +361,15 @@ describe('BoxSeiteSection', () => {
   it('zeigt, was die Box überbringt, und führt auf die ganze Anlage', async () => {
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    expect(await screen.findByTestId('sektion-befehle')).toBeInTheDocument();
+    const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
     expect(api.commandHistory).toHaveBeenCalledWith('s-1', expect.objectContaining({
       device: 'edge-45gz7da',
     }));
+    // Der Hinweis „die Befehle eines Geräts stehen auf seiner Seite" steht
+    // hinter dem ⓘ der Karte - nicht als Dauertext.
+    fireEvent.click(within(aktivitaet).getByRole('button', { name: /Hinweise zu „Aktivität"/ }));
     expect(screen.getByText(/stehen auf der\s+Seite dieses Geräts/)).toBeInTheDocument();
-    const alle = screen.getByRole('link', { name: /Alle Befehle dieser Anlage/ });
+    const alle = within(aktivitaet).getByRole('link', { name: /Alle/ });
     expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle');
   });
 
@@ -392,7 +400,7 @@ describe('BoxSeiteSection', () => {
     const pfad = await screen.findByRole('navigation', { name: 'Pfad zur Geräteseite' });
     expect(within(pfad).getByRole('link', { name: 'Anlage' }).getAttribute('href'))
       .toBe('#/anlage/s-1');
-    expect(within(pfad).getByRole('link', { name: 'Komponenten' }).getAttribute('href'))
+    expect(within(pfad).getByRole('link', { name: 'Aufbau' }).getAttribute('href'))
       .toBe('#/anlage/s-1/modell');
     expect(screen.queryByRole('link', { name: /Zurück zu den Komponenten/ })).toBeNull();
   });
@@ -404,7 +412,11 @@ describe('BoxSeiteSection', () => {
 // ---------------------------------------------------------------------------
 
 describe('BoxSeiteSection · Plattform-Sicht', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // Die Technik-Ansicht ist eine ADRESSE - sie bliebe sonst für den nächsten Test offen.
+    window.location.hash = '';
+  });
 
   function stubAdmin() {
     vi.spyOn(adminApi, 'listDevices').mockResolvedValue([
@@ -464,12 +476,15 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
     stub();
     stubAdmin();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
-    // Seit Stufe 1 ist sie die LETZTE Sektion des Rahmens - ihr Name steht auf
-    // der Klappe, ihr Inhalt dahinter.
-    const sektion = await screen.findByTestId('sektion-plattform');
-    expect(within(sektion).getByText('Plattform-Sicht (Admin)')).toBeTruthy();
-    expect(within(sektion).getByTestId('box-admin')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
+    await screen.findByRole('heading', { level: 1 });
+    // Sie ist der LETZTE Teil von „Technik & Diagnose" (E1 a) - eine eigene
+    // Ansicht, nie ein Kasten auf der Kunden-Seite.
+    await waitFor(() => expect(screen.getByTestId('geraet-technik-oeffnen')).toHaveTextContent(/Plattform-Sicht/));
+    fireEvent.click(screen.getByTestId('geraet-technik-oeffnen'));
+    const technik = await screen.findByTestId('geraet-technik');
+    const teil = within(technik).getByText('Plattform-Sicht (Admin)').closest('[data-technik]') as HTMLElement;
+    expect(teil.getAttribute('data-technik')).toBe('plattform');
+    expect(within(teil).getByTestId('box-admin')).toBeTruthy();
   });
 
   it('bleibt ohne Admin-Daten stehen - eine gescheiterte Plattform-Sicht kippt die Seite nicht', async () => {
@@ -488,28 +503,31 @@ describe('BoxSeiteSection · Plattform-Sicht', () => {
 // Geräteseiten Stufe 1: DER RAHMEN - dieselbe Ordnung wie an jedem Gerät
 // ---------------------------------------------------------------------------
 
-describe('BoxSeiteSection · Rahmen', () => {
+describe('BoxSeiteSection · Kern', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('lässt AUS, was eine Box nicht hat - und sortiert nie um', async () => {
+    window.location.hash = '#/anlage/s-1/box/edge-45gz7da';
     stub();
     render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     const rahmen = await screen.findByTestId('box-rahmen');
-    const ids = Array.from(rahmen.querySelectorAll('[data-testid^="sektion-"]'))
-      .map((el) => el.getAttribute('data-testid')!.slice(8));
+    const ids = Array.from(rahmen.querySelectorAll('[data-baustein]'))
+      .map((el) => el.getAttribute('data-baustein')!)
+      .filter((id) => id !== 'modul');
 
-    // §4.4: die kanonische Reihenfolge, auch wenn Sektionen fehlen.
+    // Dieselbe Ordnung wie an jedem Gerät, auch wenn Bausteine fehlen.
     expect(ids).toEqual([...ids].sort(
-      (a, b) => SEKTIONS_ORDNUNG.indexOf(a as never) - SEKTIONS_ORDNUNG.indexOf(b as never),
+      (a, b) => BAUSTEIN_ORDNUNG.indexOf(a as never) - BAUSTEIN_ORDNUNG.indexOf(b as never),
     ));
-    // Ein Rechner hat keine Register, und „Verbindung"/„Software" SIND hier
-    // der Held - sie ein zweites Mal zu führen wäre dieselbe Aussage zweimal.
-    expect(ids).not.toContain('register');
-    expect(ids).not.toContain('verbindung');
-    expect(ids).not.toContain('software');
-    expect(ids).toContain('jetzt');
-    expect(ids).toContain('komponenten');
-
-    // D2a: Standard offen = Jetzt + Befehle.
-    expect(screen.getByTestId('sektion-befehle')).toHaveAttribute('open');
-    expect(screen.getByTestId('sektion-komponenten')).not.toHaveAttribute('open');
+    // Eine Box hat keine Knöpfe und keine Hauptgröße über den Tag.
+    expect(ids).not.toContain('steuerung');
+    expect(ids).not.toContain('heute');
+    expect(ids).toEqual(['buehne', 'aktivitaet', 'details']);
+    // Die Quellen und Geräte an der Box stehen als eigener Baustein direkt neben
+    // der Bühne (UEMS AP-06 IP-16: „Datenquellen und Geräte").
+    expect(screen.getByTestId('baustein-modul')).toHaveTextContent('Datenquellen und Geräte');
+    // Register hat ein Rechner nicht - Technik & Diagnose führt nur Rohdaten.
+    expect(screen.getByTestId('geraet-technik-oeffnen')).toHaveTextContent('Rohdaten');
+    expect(screen.getByTestId('geraet-technik-oeffnen')).not.toHaveTextContent('Register');
   });
 });

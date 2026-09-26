@@ -52,7 +52,7 @@ import {
   initialPriceMode,
   type PriceMode,
 } from '../tariffInput';
-import { PROVENIENZ } from '../historieWelten';
+import { PROVENIENZ } from '../provenienz';
 import {
   AUTHORITY,
   authorityOf,

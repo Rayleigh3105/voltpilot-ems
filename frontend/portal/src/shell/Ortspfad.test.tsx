@@ -112,6 +112,7 @@ describe('UEMS AP-01 IP-5 · der Pfad im Seitenkopf', () => {
     );
     const crumbs = kopf().querySelector('.crumbs');
     expect(crumbs?.className).toBe('crumbs');
-    expect(crumbs?.textContent).toBe('Portfolio');
+    // Die Flotten-Landung heißt im Kopf wie im Menü (main 3e95cc604) — hier „Meine Anlagen“.
+    expect(crumbs?.textContent).toBe('Meine Anlagen');
   });
 });

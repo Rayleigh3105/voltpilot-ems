@@ -40,32 +40,26 @@ async function mock(page: Page, stale = false) {
   await page.route('**/api/v1/sites/*/component-test', (route) => route.fulfill({ json: { results: [{ ok: true, reading: { value: 1, unit: 'kW' } }] } }));
 }
 
-test('prefills the existing wizard, masks secrets and saves a stable revisioned delta', async ({ page }) => {
+test('prefills the inline editor, masks secrets and saves a stable revisioned delta', async ({ page }) => {
   await mock(page);
   await page.goto('/e2e/edit-flow.html');
-  await expect(page.getByRole('heading', { name: 'Gerät bearbeiten' })).toBeVisible();
-  await expect(page.getByText('Speicher Scheune', { exact: true })).toBeVisible();
-  await expect(page.getByText('Deye SUN-12K', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Speicher Scheune bearbeiten' })).toBeVisible();
+  await expect(page.getByLabel('Anzeigename')).toHaveValue('Speicher Scheune');
+  await page.getByRole('button', { name: 'Technische Daten ändern' }).click();
   await expect(page.getByLabel('Kennwort')).toHaveValue('');
   await expect(page.getByLabel('Kennwort')).toHaveAttribute('placeholder', /unverändert/);
-  await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-  await page.getByLabel('Name').fill('Batterie Scheune');
-  await expect(page.getByText('Nur diese Änderungen')).toBeVisible();
-  await expect(page.getByText('Geräte-ID, Messhistorie, Transaktionen, Befehle und Audit bleiben erhalten.')).toBeVisible();
+  await page.getByLabel('Anzeigename').fill('Batterie Scheune');
   await page.getByRole('button', { name: 'Änderungen speichern' }).click();
   await expect(page.getByText('E2E gespeichert', { exact: true })).toBeVisible();
 });
 
-test('keeps the dialog usable on mobile and exposes a stale-revision error', async ({ page }) => {
+test('keeps the editor usable on mobile and exposes a stale-revision error', async ({ page }) => {
   await mock(page, true);
   await page.goto('/e2e/edit-flow.html');
-  await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-  await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-  await page.getByLabel('Name').fill('Neuer Name');
+  await page.getByLabel('Anzeigename').fill('Neuer Name');
   await page.getByRole('button', { name: 'Änderungen speichern' }).click();
   await expect(page.getByRole('alert')).toContainText('inzwischen geändert');
-  const box = await page.locator('.vp-anlegen-dialog').boundingBox();
+  const box = await page.locator('.vp-geraet-edit').boundingBox();
   expect(box?.x).toBeGreaterThanOrEqual(0);
   expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
@@ -73,13 +67,11 @@ test('keeps the dialog usable on mobile and exposes a stale-revision error', asy
 test('keeps the entered delta when the connection drops before save', async ({ page, context }) => {
   await mock(page);
   await page.goto('/e2e/edit-flow.html');
-  await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-  await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-  await page.getByLabel('Name').fill('Bleibt bei mir');
+  await page.getByLabel('Anzeigename').fill('Bleibt bei mir');
   await page.route('**/api/v1/sites/*/components/*', (route) => route.abort('failed'));
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Änderungen speichern' }).click();
   await expect(page.getByRole('alert')).toContainText('Keine Verbindung');
-  await expect(page.getByLabel('Name')).toHaveValue('Bleibt bei mir');
+  await expect(page.getByLabel('Anzeigename')).toHaveValue('Bleibt bei mir');
   await context.setOffline(false);
 });

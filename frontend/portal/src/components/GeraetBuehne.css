@@ -1,0 +1,244 @@
+/* ===========================================================================
+   Die BÜHNE einer Geräteseite: die EINE große Zahl, ein Satz, eine Grafik.
+
+   Telefon: Zahl und Satz oben, darunter die Grafik, dann die ruhigen Chips.
+   Rechner (breiter Kern): Grafik links, Zahl und Satz rechts daneben.
+
+   ⚠ Jede Dauer kommt aus der Bewegungs-Familie - der EINE Schalter am Ende
+   von `index.css` nullt sie unter reduzierter Bewegung. Die Fluss-Punkte sind
+   die Energiefluss-Linien (`.vp-flow-on`) und stehen dort schon im Halte-Block.
+   =========================================================================== */
+
+.vp-buehne {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'text'
+    'grafik'
+    'fuss';
+  gap: 10px;
+  min-width: 0;
+}
+.vp-buehne.is-inhalt {
+  grid-template-areas:
+    'text'
+    'inhalt'
+    'fuss';
+}
+
+.vp-buehne-text {
+  grid-area: text;
+  min-width: 0;
+}
+.vp-buehne-grafik {
+  grid-area: grafik;
+  min-width: 0;
+}
+.vp-buehne-inhalt {
+  grid-area: inhalt;
+  min-width: 0;
+}
+.vp-buehne-fuss {
+  grid-area: fuss;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Das direkte Kind, nie ein Nachfahre: im Diagramm stecken verschachtelte
+   Symbol-SVGs, die ihre eigene Größe behalten müssen. */
+.vp-buehne-grafik > .vp-buehne-svg {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+/* --- Die große Zahl --------------------------------------------------------- */
+
+.vp-buehne-zahlzeile {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.vp-buehne-zahl {
+  display: inline-flex;
+  align-items: baseline;
+  color: var(--vp-c-fg);
+  font-family: var(--vp-font-heading);
+  font-size: var(--vp-c-fs-hero-phone);
+  font-weight: var(--vp-c-fw-800);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--vp-c-lh-tight);
+  letter-spacing: -0.02em;
+}
+.vp-buehne-zahl small {
+  margin-left: 4px;
+  font-size: 0.55em;
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0;
+}
+.vp-buehne-zahl.ist-wort {
+  font-size: var(--vp-c-fs-24);
+}
+.vp-buehne-wort {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-buehne-wort.is-ok {
+  color: var(--vp-flow-batt-ink);
+}
+.vp-buehne.is-speicher .vp-buehne-wort,
+.vp-buehne.is-wallbox .vp-buehne-wort {
+  color: var(--vp-flow-batt-ink);
+}
+.vp-buehne.is-netz .vp-buehne-wort {
+  color: var(--vp-chart-grid-line);
+}
+
+.vp-buehne-satz {
+  margin: 6px 0 0;
+  color: var(--vp-c-fg);
+  font-size: var(--vp-c-fs-16);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-buehne-satz.is-warn {
+  color: var(--vp-c-warn-fg);
+}
+.vp-buehne-satz.is-off {
+  color: var(--vp-c-muted-fg);
+}
+
+/* --- Chips, Zeilen, Hinweis -------------------------------------------------- */
+
+.vp-buehne-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-buehne-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-bg-light, #f8f9fa);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+.vp-buehne-chip b {
+  color: var(--vp-c-fg);
+  font-weight: var(--vp-c-fw-700);
+  font-variant-numeric: tabular-nums;
+}
+.vp-buehne-chip.is-markiert,
+.vp-buehne-zahlzeile.is-markiert {
+  outline: 2px solid var(--vp-flow-batt);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+.vp-buehne-zeilen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  list-style: none;
+}
+.vp-buehne-hinweis {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-buehne-aktion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- Beschriftungen in den Grafiken ------------------------------------------ */
+
+.vp-buehne-wert {
+  fill: var(--vp-c-fg);
+  font: 700 13px var(--vp-font-body, inherit);
+  font-variant-numeric: tabular-nums;
+}
+.vp-buehne-klein {
+  fill: var(--vp-c-muted-fg);
+  font: 600 11.5px var(--vp-font-body, inherit);
+}
+.vp-buehne-gross {
+  fill: var(--vp-c-fg);
+  font: 800 22px var(--vp-font-heading);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Füllstände gleiten NUR zwischen zwei echten Messungen - beim ersten Bild
+   stehen sie sofort auf dem wahren Wert (ein Element startet ohne Übergang). */
+.vp-buehne-morph {
+  transition:
+    y var(--vp-motion-chart-update) var(--vp-ease-inout),
+    height var(--vp-motion-chart-update) var(--vp-ease-inout),
+    width var(--vp-motion-chart-update) var(--vp-ease-inout),
+    x var(--vp-motion-chart-update) var(--vp-ease-inout),
+    y1 var(--vp-motion-chart-update) var(--vp-ease-inout),
+    y2 var(--vp-motion-chart-update) var(--vp-ease-inout),
+    stroke-dashoffset var(--vp-motion-chart-update) var(--vp-ease-inout);
+}
+
+/* --- Veraltet: der letzte Stand bleibt, aber grau und still ----------------- */
+
+.vp-kern.is-veraltet .vp-buehne-grafik,
+.vp-kern.is-veraltet .vp-buehne-zahlzeile,
+.vp-kern.is-veraltet .vp-buehne-chips {
+  opacity: 0.55;
+  filter: grayscale(0.35);
+  transition: opacity var(--vp-motion-base) var(--vp-ease-inout);
+}
+/* Eine Bewegung darf nie „live" behaupten, wenn es nicht stimmt. */
+.vp-kern.is-veraltet .vp-buehne .vp-flow-line {
+  animation: none;
+  opacity: 0;
+}
+
+/* --- Rechner: Grafik links, Text rechts ------------------------------------ */
+
+@container geraet-kern (min-width: 860px) {
+  .vp-buehne:not(.is-inhalt) {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'grafik text'
+      'grafik fuss';
+    align-items: center;
+    column-gap: 20px;
+  }
+  .vp-buehne:not(.is-inhalt) .vp-buehne-fuss {
+    align-self: start;
+  }
+  .vp-buehne-zahl {
+    font-size: var(--vp-c-fs-48);
+  }
+  .vp-buehne-zahl.ist-wort {
+    font-size: var(--vp-c-fs-24);
+  }
+  .vp-buehne-satz {
+    font-size: var(--vp-c-fs-16);
+  }
+}

@@ -51,6 +51,9 @@ export type AnlagenSub =
   // UEMS AP-13 IP-8: die Energiebilanz je Anlage — ein Reiter des Verlaufs, nur mit Hauptzähler in der Stellung.
   | 'energiebilanz'
   | 'erloese'
+  // Die einzelnen Messwerte und Summenwerte (Verlauf-Rework P3): der frühere
+  // Aufklapper der Energie-Seite als eigener Reiter „Messwerte".
+  | 'einzelwerte'
   // Marktpreise und Prognose sind seit der Navigations-Runde „zwei Ebenen"
   // (r2 §5.5, E3) Unterseiten DER ANLAGE statt Seiten daneben: sie beantworten
   // eine Frage ÜBER diese Anlage (ihr Börsentarif, ihr Prognosemodell) und
@@ -69,7 +72,7 @@ export type AnlagenSub =
   | 'box';
 
 const SUBS = new Set<string>([
-  'fahrplan', 'messwerte', 'erloese', 'marktpreise', 'prognose', 'wetter',
+  'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'wetter',
   'technik', 'modell', 'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle',
   'geraet', 'box', 'energiebilanz',
 ]);
@@ -293,7 +296,9 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // `…/energiemanagement/dokumente/{id}`). Der Reiter steht nur mit `energiemanagement.ansehen`
   // (`PortfolioTabs.showEnergiemanagement`).
   { id: 'portfolio-energiemanagement', label: 'Energiemanagement', icon: 'file-text' },
-  { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
+  // „Energie" wie der Reiter der Anlage (Verlauf-Rework P4); die Adresse
+  // bleibt `#/portfolio/messwerte`, damit Lesezeichen weiter tragen.
+  { id: 'portfolio-messwerte', label: 'Energie', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
 
@@ -772,8 +777,15 @@ export function canonicalAnlageHash(hash: string): string | null {
   if (raw === 'geraet' && segments[3] && !segments[4]) {
     return `${boxSeiteHash(segments[1], decodeURIComponent(segments[3]))}${query}`;
   }
+  // Ein Lesezeichen auf EINZELNE Messwerte (`…/messwerte?m=…`) meint seit dem
+  // Verlauf-Rework den Reiter „Messwerte" (`einzelwerte`); ohne `m=` bleibt
+  // `messwerte` die Energie-Seite. Die Parameter reisen mit.
+  if (raw === 'messwerte' && !segments[3] && /(?:^|[?&])m=/.test(query)) {
+    return `#/anlage/${segments[1]}/einzelwerte${query}`;
+  }
   if (!raw || !(raw in LEGACY_SUBS)) return null;
-  const sub = LEGACY_SUBS[raw];
+  const alt = LEGACY_SUBS[raw];
+  const sub = alt === 'messwerte' && /(?:^|[?&])m=/.test(query) ? 'einzelwerte' : alt;
   const path = sub ? `#/anlage/${segments[1]}/${sub}` : `#/anlage/${segments[1]}`;
   return `${path}${query}`;
 }
@@ -1104,37 +1116,6 @@ function befehleParam(hash: string, name: string): string | null {
 }
 
 /**
- * Welche ANSICHT der Anlagen-Zentrale gemeint ist (Anlagen-Zentrale Stufe 2,
- * Konzept `data/vp-anlagen-zentrale-konzept-h6` §13.2): die Liste „Ihre
- * Geräte" oder das Struktur-Schaltbild.
- */
-export type ZentraleAnsicht = 'geraete' | 'schaltbild';
-
-/**
- * Die Adresse einer ANSICHT der Zentrale (`…/modell?ansicht=schaltbild`).
- *
- * Das Muster ist das von {@link befehleHash} - ein HASH-PARAMETER, keine
- * eigene Unterseite: `parseRoute` schneidet den Query-Teil ohnehin ab, die
- * Route bleibt also die Zentrale, und ein Lesezeichen öffnet exakt dieselbe
- * Ansicht wieder. Seit Geräte-Erlebnis Slice 1 trägt das ANLAGENBILD als
- * Vorgabe keinen Parameter; die Liste ist die explizite Zweitsicht.
- */
-export function zentraleAnsichtHash(siteId: string, ansicht: ZentraleAnsicht): string {
-  const base = `#/anlage/${siteId}/modell`;
-  return ansicht === 'geraete' ? `${base}?ansicht=geraete` : base;
-}
-
-/**
- * Die Ansicht aus einem `?ansicht=`-Hash. Ein Komponenten-Deep-Link öffnet
- * weiterhin die Liste, weil dort seine Pflegezeile wohnt; alles andere fällt
- * auf den neuen Standardeinstieg Anlagenbild zurück.
- */
-export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
-  if (befehleParam(hash, 'komponente')) return 'geraete';
-  return befehleParam(hash, 'ansicht') === 'geraete' ? 'geraete' : 'schaltbild';
-}
-
-/**
  * Der Weg ZURÜCK auf EINE Komponente (Anlagen-Zentrale Stufe 3, PR 3c):
  * `…/modell?komponente=<entityId>`.
  *
@@ -1144,9 +1125,9 @@ export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
  * Kartenkopf mit „Geräteseite ›" weiter; ein zweiter Weg direkt auf die
  * Geräteseite würde die Zeile überspringen, an der die Handlungen hängen.
  *
- * Wie {@link zentraleAnsichtHash} ein HASH-PARAMETER, keine eigene Unterseite -
- * die Route bleibt die Zentrale, und ein Lesezeichen öffnet exakt dieselbe
- * Komponente wieder.
+ * Ein HASH-PARAMETER, keine eigene Unterseite (das Muster von
+ * {@link befehleHash}) - die Route bleibt der Aufbau, und ein Lesezeichen
+ * öffnet exakt dieselbe Komponente wieder.
  */
 export function komponenteHash(siteId: string, entityId: string): string {
   return `#/anlage/${siteId}/modell?komponente=${encodeURIComponent(entityId)}`;

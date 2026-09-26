@@ -1,6 +1,6 @@
 import { useRollen } from '../rollen';
 import { Recht } from '../components/Recht';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -20,7 +20,16 @@ import {
 import { fokussierbare } from '../components/VpPanel';
 import { VpPicker } from '../components/VpPicker';
 import { OcppControlPanel } from '../components/OcppControlPanel';
-import type { ChargePoint } from '../ladepunkte';
+import {
+  boostEndeKarte,
+  boostFolgenKarte,
+  LADEPUNKT_DAUER_VORGABE,
+  LADEPUNKT_DAUERN,
+  pauseFolgenKarte,
+  type ChargePoint,
+  type ChargingBudget,
+  type LadepunktAktion,
+} from '../ladepunkte';
 import {
   ACTION_GROUP_LABEL,
   OCPP_ACTIONS,
@@ -45,8 +54,18 @@ import {
 } from '../ocppWallbox';
 import './GeraetSeite.css';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
-import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
-import { kurz, rahmen, type SektionAngebot } from '../geraetRahmen';
+import {
+  GeraetRahmen,
+  type BausteinInhalt,
+  type MenueEintrag,
+  type TechnikTeil,
+} from '../components/GeraetRahmen';
+import { GeraetBuehne } from '../components/GeraetBuehne';
+import { GeraetSteuerung } from '../components/GeraetSteuerung';
+import { HandeingriffDialog } from '../components/HandeingriffDialog';
+import { ladepunktZeilen, type JetztZeile, type LadepunktAdresse } from '../steuerungJetzt';
+import { ladepunktSteuerung, type SegmentAktion } from '../geraetSteuerung';
+import type { Zeile } from '../geraetSeite';
 import './OcppWallboxPage.css';
 // Uhr: nie seltener als der Live-Takt (sonst behauptet sie ein altes Alter).
 import { LIVE_POLL_MS } from '../pollCadence';
@@ -77,8 +96,12 @@ export function OcppWallboxPage({
   siteHref = backHref,
   settingsHref,
   charger = null,
+  budget = null,
   onRename,
   messwerte = null,
+  heute = null,
+  ladeparkZeilen = [],
+  onDatenGeaendert,
 }: {
   siteId: string;
   chargePointId: string;
@@ -89,12 +112,20 @@ export function OcppWallboxPage({
   charger?: ChargePoint | null;
   /** A charge point has no portal driver config; its one editable field is its alias. */
   onRename?: () => void;
+  /** Das Lade-Budget der Anlage - es entscheidet, ob „Sofort laden" etwas bewirken kann. */
+  budget?: ChargingBudget | null;
   /**
    * Die Messbibliothek DIESER Säule - sie hängt am Transport der Box, gehört
-   * aber in die Messwert-Sektion des Geräts (Rahmen §4.4 Zeile 5). Der Wirt
-   * reicht sie durch, damit es nur EINE Montage gibt.
+   * aber zu den Messwerten in Technik › Messwerte. Der Wirt reicht sie durch,
+   * damit es nur EINE Montage gibt.
    */
-  messwerte?: React.ReactNode;
+  messwerte?: ReactNode;
+  /** Der Baustein „Heute" - der Wirt kennt die Komponente dieser Säule. */
+  heute?: BausteinInhalt | null;
+  /** „Diese Säule im Ladepark" und der Ausfall-Schutz - für „Gerät & Verbindung". */
+  ladeparkZeilen?: Zeile[];
+  /** Nach einem Eingriff (Sofort laden, Pausieren) - der Wirt lädt neu. */
+  onDatenGeaendert?: () => void;
 }) {
   const [data, setData] = useState<OcppData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +140,65 @@ export function OcppWallboxPage({
   const [eventFilter, setEventFilter] = useState('alle');
   const [pollError, setPollError] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  /** Der Ladepunkt-Eingriff (Sofort laden · Pausieren · Automatik) - derselbe wie in der Steuerung. */
+  const [lade, setLade] = useState<{ adresse: LadepunktAdresse; aktion: LadepunktAktion } | null>(null);
+  const [ladeDauer, setLadeDauer] = useState(LADEPUNKT_DAUER_VORGABE);
+  const [ladeBusy, setLadeBusy] = useState(false);
+
+  /**
+   * Die Zeile dieser Säule in der Jetzt-Zone der Steuerung - Zustand, Quelle,
+   * Grund und die Eingriffe WÖRTLICH aus `steuerungJetzt.ladepunktZeilen`.
+   */
+  // Je Anschluss EINE Zeile der Jetzt-Zone - welche davon gilt, entscheidet
+  // weiter unten derselbe Beleg wie für Freigabe und Grund.
+  const ladeZeilen = useMemo(
+    () => (charger ? ladepunktZeilen({ chargers: [charger], budget }, undefined, now).zeilen : []),
+    [charger, budget, now],
+  );
+
+  const ladeFolgen = useMemo(() => {
+    if (!lade) return null;
+    // ⚠ Die RÜCKNAHME beschreibt, was gerade LÄUFT - die zwei Richtungen enden
+    // verschieden (dieselbe Regel wie in der Jetzt-Zone).
+    if (lade.aktion === 'resume') return boostEndeKarte(lade.adresse.eingriff ?? 'voll_laden');
+    const d = LADEPUNKT_DAUERN.find((x) => x.key === ladeDauer) ?? LADEPUNKT_DAUERN[2];
+    if (lade.aktion === 'laden_pausieren') return pauseFolgenKarte(d);
+    return boostFolgenKarte(budget, d);
+  }, [lade, ladeDauer, budget]);
+
+  const ladeBestaetigen = useCallback(async () => {
+    if (!lade) return;
+    setLadeBusy(true);
+    try {
+      const d = LADEPUNKT_DAUERN.find((x) => x.key === ladeDauer) ?? LADEPUNKT_DAUERN[2];
+      await api.chargingBoost(siteId, {
+        chargePointId: lade.adresse.chargePointId,
+        connectorId: lade.adresse.connectorId,
+        // ⚠ „bis Abstecken" reist als FEHLENDE Dauer - dann gilt der
+        // Vertrags-Deckel der Box (dieselbe Regel wie in der Jetzt-Zone).
+        ...(lade.aktion !== 'resume' && d.minutes != null ? { minutes: d.minutes } : {}),
+        cancel: lade.aktion === 'resume',
+        action:
+          lade.aktion === 'laden_pausieren'
+            || (lade.aktion === 'resume' && lade.adresse.eingriff === 'pausiert')
+            ? 'pause'
+            : 'voll',
+      });
+    } catch {
+      // Ein abgelehnter Eingriff lässt die Seite stehen, wie sie war - nie ein
+      // Schein-Erfolg.
+    } finally {
+      setLade(null);
+      setLadeBusy(false);
+      onDatenGeaendert?.();
+    }
+  }, [lade, ladeDauer, siteId, onDatenGeaendert]);
+
+  const segmentAusloesen = useCallback((a: SegmentAktion, zeile: JetztZeile | null) => {
+    if (a.art !== 'ladepunkt' || !zeile?.ladepunkt) return;
+    setLadeDauer(LADEPUNKT_DAUER_VORGABE);
+    setLade({ adresse: zeile.ladepunkt, aktion: a.wert });
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), LIVE_POLL_MS);
@@ -194,6 +284,13 @@ export function OcppWallboxPage({
   const chargerConnector = connectorEvidenceCurrent
     ? charger?.connectors?.find((item) => item.connectorId === state.connectorId) ?? null
     : null;
+  // ⚠ DIESELBE Beleg-Regel wie Freigabe und Grund: der Box-Herzschlag eines
+  // Anschlusses gilt nur, solange sein Zustand aktuell ist und es DERSELBE
+  // Anschluss ist, über den die Seite spricht. Sonst behauptete die Steuerung
+  // „lädt 11 kW" über einen Stecker, dessen Stand niemand kennt.
+  const ladeZeile = chargerConnector
+    ? ladeZeilen.find((z) => z.ladepunkt?.connectorId === chargerConnector.connectorId) ?? null
+    : null;
   const edgeConnectors: OcppConnectorState[] = (charger?.connectors ?? []).map((item) => ({
     connectorId: item.connectorId,
     status: item.status ?? (item.charging ? 'Charging' : 'Unknown'),
@@ -226,204 +323,239 @@ export function OcppWallboxPage({
   const shownEvents = events.filter((row) => eventFilter === 'alle'
     || (eventFilter === 'fehler' ? row.messageType === 'CallError' || Boolean(row.errorCode) : row.action === eventFilter));
 
-  /** Der Rahmen dieser Säule (§4.4) - dieselbe Ordnung wie an jedem Gerät. */
-  const rahmenView = rahmen([
-    { id: 'jetzt', ton: state.tone === 'error' ? 'warn' : state.tone },
-    showCommandCenter ? {
-      id: 'befehle',
-      kurzfassung: kurz(
-        `${allowedActions.length} Aktionen`,
-        data.actions.length > 0 ? `${data.actions.length} im Journal` : null,
-      ),
-    } : null,
-    {
-        id: 'steuerung',
-        kurzfassung: charger?.priority ? 'hat Vorrang' : 'Einrichtung, Grenzen und Regelprüfung',
-    },
-    {
-      id: 'komponenten',
-      titel: 'Anschlüsse',
-      kurzfassung: displayConnectors.length
-        ? `${displayConnectors.length} ${displayConnectors.length === 1 ? 'Anschluss' : 'Anschlüsse'}`
-        : 'noch keine gemeldet',
-    },
-    // D3: eine Säule hat keine Modbus-„Register", ihre Messwerte sehr wohl.
-    { id: 'register', titel: 'Messwerte', kurzfassung: `${meter.length} Messwerte` },
-    {
-      id: 'verbindung',
-      ton: connection.online ? 'ok' : 'warn',
-      kurzfassung: kurz(connection.label, connection.lastSeen ? shortTime(connection.lastSeen) : null),
-    },
-    { id: 'software', kurzfassung: station?.firmwareVersion ?? charger?.firmware ?? 'nicht gemeldet' },
-    {
-      id: 'diagnose',
-      kurzfassung: kurz(
-        `${events.length} Ereignisse`,
-        gaps.length > 0 ? `${gaps.length} Lücken` : null,
-      ),
-    },
-  ] as (SektionAngebot | null)[]);
+  // --- Kopf ------------------------------------------------------------------
+  const modell = technicalName ? redactSensitiveText(technicalName) : null;
+  const anschlussSatz = state.connectorId != null && state.connectorStatus
+    ? `Anschluss ${state.connectorId}${connectorCurrent || connection.source === 'edge' ? '' : ' zuletzt'}: ${connectorStatus(state.connectorStatus)}`
+    : state.connectorId == null
+      ? 'Anschlusszustand nicht gemeldet'
+      : `Anschluss ${state.connectorId}: kein aktueller Zustand`;
+  const anschlussVorbehalt = state.connectorId == null || !state.connectorStatus
+    || !(connectorCurrent || connection.source === 'edge');
+  const menue: MenueEintrag[] = onRename
+    ? [{ key: 'umbenennen', label: 'Anzeigename ändern', icon: 'pencil', onClick: onRename, recht: 'geraet.einrichten' }]
+    : [];
 
-  return (
-    <div className="vp-ocpp" data-testid="ocpp-wallbox-page">
-      <GeraetRahmen
-        testId="ocpp-rahmen"
-        geraetKey={`${siteId}:cp-${chargePointId}`}
-        view={rahmenView}
-        brotkrume={{ anlageHref: siteHref, komponentenHref: backHref }}
-        kopf={{
-          titel: fallbackTitle,
-          gattungWort: `OCPP-Wallbox${technicalName ? ` · ${redactSensitiveText(technicalName)}` : ''}`,
-          kennung: redactSensitiveText(chargePointId),
-          zustand: {
-            wort: connection.label,
-            ton: connection.online ? 'ok' : state.tone === 'error' ? 'warn' : state.tone,
-            detail: connection.lastSeen ? `zuletzt gesehen ${shortTime(connection.lastSeen)}` : 'noch nicht gesehen',
-          },
-          abzeichen: (
-            <span className="vp-ocpp-connector-note">{state.connectorId != null && state.connectorStatus
-              ? `Anschluss ${state.connectorId}${connectorCurrent || connection.source === 'edge' ? '' : ' zuletzt'}: ${connectorStatus(state.connectorStatus)}`
-              : state.connectorId == null
-                ? 'Anschlusszustand nicht gemeldet'
-                : `Anschluss ${state.connectorId}: kein aktueller Zustand`}</span>
-          ),
-        }}
-        aktionen={onRename ? (
-          <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onRename}>
-            <Icon name="pencil" size={15} /> Anzeigename ändern
-          </button></Recht>
-        ) : null}
-        unterKopf={(
-          <>
-            {error && (
-              <div className={`vp-alert ${station == null && transactions.length === 0 ? 'vp-alert-err' : 'vp-alert-warn'}`} role="status">
-                {error} <button type="button" className="vp-linkbtn" onClick={() => setReload((value) => value + 1)}>Erneut laden</button>
-              </div>
-            )}
-            {pollError && <div className="vp-alert vp-alert-warn" role="status">Der Aktionsstatus konnte gerade nicht aktualisiert werden. Der letzte belegte Stand bleibt sichtbar; VoltPilot versucht es erneut.</div>}
-          </>
-        )}
+  // --- Jetzt: EIN Zustand, EINE Hauptaktion --------------------------------
+  const laedt = state.kind === 'charging';
+  const leistungKw = hero.power ? Number(hero.power.replace(/[^\d,.-]/g, '').replace(',', '.')) : null;
+  const hauptaktion = remoteAction && state.actionLabel ? (
+    <div className="vp-ocpp-primary-action">
+      {actionAllowed && <button
+        type="button"
+        className={`vp-btn ${remoteAction === 'RemoteStopTransaction' ? 'vp-btn--outline' : 'vp-btn--primary'} vp-btn--md`}
+        disabled={!connection.sendable || !actionAllowed}
+        aria-describedby={!actionAllowed ? 'ocpp-primary-action-help' : undefined}
+        onClick={() => setActionOpen(findAction(remoteAction))}
       >
-        {/* 1 · Jetzt - EIN Zustand, EINE Hauptaktion. */}
-        <RahmenSektion id="jetzt">
-          <section className={`vp-ocpp-now is-${state.tone}`} aria-labelledby="ocpp-jetzt-title" aria-live="polite" data-state={state.kind}>
-            <div className="vp-ocpp-now-main">
-              <span className={`vp-ocpp-state-mark is-${state.tone}`}><i /> {state.badge}</span>
-              <h2 id="ocpp-jetzt-title">{state.sentence}</h2>
-              <p>{connectorEvidenceCurrent ? chargerConnector?.reasonText?.trim() || state.detail : state.detail}</p>
-              {state.kind === 'charging' && !hero.power && (
-                <p className="vp-ocpp-data-note">
-                  {hero.transaction
-                    ? 'Die Wallbox liefert aktuell keinen Leistungswert.'
-                    : 'Ladeleistung und Sitzungsdaten werden noch nicht übertragen.'}
+        {state.actionLabel}
+      </button>}
+      {!actionAllowed && (
+        <small id="ocpp-primary-action-help">{rollen.grund}</small>
+      )}
+    </div>
+  ) : null;
+  const detailSatz = connectorEvidenceCurrent
+    ? chargerConnector?.reasonText?.trim() || state.detail
+    : state.detail;
+  const buehne: BausteinInhalt = {
+    inhalt: (
+      <div className="vp-ocpp-jetzt" aria-live="polite" data-state={state.kind}>
+        <GeraetBuehne
+          zahl={laedt && hero.power
+            ? { zahl: hero.power.replace(/\s*kW$/, ''), einheit: 'kW', wort: 'lädt', ton: 'ok', key: 'leistung' }
+            : { zahl: state.badge, einheit: null, wort: null, ton: null, key: 'zustand' }}
+          satz={state.sentence}
+          satzTon={state.tone === 'error' || state.tone === 'warn' ? 'warn' : state.tone === 'off' ? 'off' : 'ok'}
+          grafik={{ art: 'wallbox', kw: Number.isFinite(leistungKw) ? leistungKw : null, laedt }}
+          chips={[
+            ...(laedt && hero.energy
+              ? [{ key: 'geladen', label: 'Geladen', wert: hero.energy, wort: 'seit Start' }]
+              : []),
+            ...(laedt && hero.transaction
+              ? [{ key: 'beginn', label: 'Beginn', wert: shortTime(hero.transaction.startedAt), wort: null }]
+              : []),
+          ]}
+          zeilen={laedt && !hero.power ? [hero.transaction
+            ? 'Die Wallbox liefert aktuell keinen Leistungswert.'
+            : 'Ladeleistung und Sitzungsdaten werden noch nicht übertragen.'] : []}
+          // ⚠ Den Grund sagt die Steuerung darunter - derselbe Satz zweimal
+          // auf einem Bildschirm war der Befund („Ladevorgang läuft.").
+          hinweis={detailSatz && detailSatz !== ladeZeile?.grund ? detailSatz : null}
+          aktion={ladeZeile ? null : hauptaktion}
+        />
+      </div>
+    ),
+  };
+
+  // --- Steuerung: Automatik · Sofort laden · Pausieren ---------------------
+  const steuerungView = ladeZeile ? ladepunktSteuerung(ladeZeile) : null;
+  const steuerung: BausteinInhalt | null = steuerungView
+    ? {
+      kopfRechts: steuerungView.zeile.quelle === 'handeingriff' ? 'Handeingriff' : null,
+      inhalt: (
+        <GeraetSteuerung
+          view={steuerungView}
+          busy={ladeBusy}
+          onAktion={(a) => segmentAusloesen(a, ladeZeile)}
+          zusatz={(
+            <>
+              {hauptaktion}
+              {settingsHref && (
+                <p className="vp-steuer-leise">
+                  <a href={settingsHref}>Ladeeinstellungen der Anlage öffnen →</a>
                 </p>
               )}
-              {remoteAction && state.actionLabel && (
-                <div className="vp-ocpp-primary-action">
-                  {actionAllowed && <button
-                    type="button"
-                    className="vp-btn vp-btn--primary vp-btn--md"
-                    disabled={!connection.sendable || !actionAllowed}
-                    aria-describedby={!actionAllowed ? 'ocpp-primary-action-help' : undefined}
-                    onClick={() => setActionOpen(findAction(remoteAction))}
-                  >
-                    {state.actionLabel}
-                  </button>}
-                  {!actionAllowed && (
-                    <small id="ocpp-primary-action-help">{rollen.grund}</small>
-                  )}
-                </div>
-              )}
-            </div>
-            {state.kind === 'charging' && (hero.power || hero.energy || hero.transaction) && (
-              <dl className="vp-ocpp-now-facts">
-                {hero.power && <Fact label="Ladeleistung" value={hero.power} />}
-                {hero.energy && <Fact label="Geladen" value={hero.energy} detail="gemessene Differenz seit Start" />}
-                {hero.transaction && <Fact label="Beginn" value={shortTime(hero.transaction.startedAt)} />}
-              </dl>
-            )}
-          </section>
-          <Card padding="lg" radius="lg" className="vp-ocpp-summary-card">
-            <h2>Letzte Sitzungen</h2>
-            {completedTransactions.length ? (
-              <ol className="vp-ocpp-session-list">
-                {completedTransactions.map((transaction) => (
-                  <li key={transaction.transactionId}>
-                    <span>{shortDateTime(transaction.startedAt)}</span>
-                    <strong>{completedEnergy(transaction) ?? 'Energie nicht verfügbar'}</strong>
-                  </li>
-                ))}
-              </ol>
-            ) : <p className="vp-note">Noch keine abgeschlossene Sitzung aufgezeichnet.</p>}
-          </Card>
-        </RahmenSektion>
-
-        {/* 2 · Befehle - nur für Support/Admin; Kunden handeln im Jetzt-Kontext. */}
-        <RahmenSektion id="befehle">
-          <OcppSection id="aktionen" label="Support & Administration" title="Für dieses Konto freigegebene OCPP-Aktionen">
-            <p className="vp-ocpp-intro">Hier erscheinen ausschließlich Aktionen, die serverseitig für dieses Support- oder Administrationskonto freigegeben sind.</p>
-            {hero.transaction && (
-              <div className="vp-ocpp-current-control">
-                <h3>Aktiver OCPP-Ladestand</h3>
-                <dl className="vp-ocpp-facts">
-                  <Fact label="Gewünschte Freigabe" value={hero.release} />
-                  <Fact label="Von der Wallbox zurückgelesen" value={hero.applied} />
-                  <Fact label="Bisherige Laufzeit" value={hero.duration} />
-                </dl>
-              </div>
-            )}
-            <div className="vp-ocpp-action-groups">
-              {(['alltag', 'betrieb', 'protokoll'] as OcppActionGroup[]).filter((group) => (
-                allowedActions.some((item) => item.group === group)
-              )).map((group) => (
-                <details key={group} className="vp-ocpp-action-group" open={group === 'alltag'}>
-                  <summary><span>{ACTION_GROUP_LABEL[group]}</span><small>{allowedActions.filter((item) => item.group === group).length} Aktionen</small></summary>
-                  <div className="vp-ocpp-action-list">
-                    {allowedActions.filter((item) => item.group === group).map((definition) => {
-                      const capabilityUnknown = definition.capability && !station?.supportedFeatureProfiles?.includes(definition.capability);
-                      return (
-                        <button key={definition.action} type="button" className="vp-ocpp-action"
-                          onClick={() => setActionOpen(definition)}
-                          aria-describedby={`action-help-${definition.action}`}>
-                          <span className="vp-ocpp-action-name">{definition.label}</span>
-                          <span id={`action-help-${definition.action}`} className="vp-ocpp-action-help">
-                            {definition.impact}
-                          </span>
-                          {capabilityUnknown && <span className="vp-ocpp-capability">Fähigkeit nicht gemeldet · NotSupported möglich</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </details>
-              ))}
-            </div>
-            <ActionJournal siteId={siteId} actions={data.actions} onChanged={(changed) => {
-              setData((old) => old ? { ...old, actions: old.actions.map((row) => row.id === changed.id ? changed : row) } : old);
-            }} />
-          </OcppSection>
-        </RahmenSektion>
-
-        {/* 3 · Steuerung & Grenzen - was diese Säule darf. */}
-        <RahmenSektion id="steuerung">
-          <OcppControlPanel siteId={siteId} stationId={chargePointId} deviceId={station?.deviceId}
-            canEdit={data.permissions.actions.ChangeConfiguration === true && rollen.darf('ladepunkt.betrieb')} />
-          {charger && (
-            <>
-              <dl className="vp-ocpp-compact-kv">
-                <Fact label="Vorrang" value={charger.priority ? 'hat Vorrang' : 'normal eingeordnet'} />
-                <Fact label="Aktuelle Freigabe" value={chargerConnector?.allocatedKw != null ? `${chargerConnector.allocatedKw.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW` : 'nicht gemeldet'} />
-                {chargerConnector?.nextTurn && <Fact label="Nächster Start" value={shortTime(chargerConnector.nextTurn)} />}
-                <Fact label="Sofort laden" value={chargerConnector == null
-                  ? 'nicht verfügbar'
-                  : chargerConnector.boost ? 'aktiv' : 'nicht aktiv'} />
-              </dl>
-              {settingsHref && <a className="vp-ocpp-card-link" href={settingsHref}>Ladeeinstellungen der Anlage öffnen <Icon name="chevron-right" size={14} /></a>}
             </>
           )}
-        </RahmenSektion>
+        />
+      ),
+    }
+    : null;
 
-        {/* 4 · Komponenten - die Anschlüsse dieser Säule. */}
-        <RahmenSektion id="komponenten">
+  // --- Aktivität: die letzten Ladevorgänge ----------------------------------
+  const aktivitaet: BausteinInhalt = {
+    titel: 'Letzte Ladevorgänge',
+    inhalt: (
+      <>
+        {hero.transaction && (
+          <ol className="vp-ocpp-session-list">
+            <li>
+              <span>{`seit ${shortTime(hero.transaction.startedAt)} · Stecker ${hero.transaction.connectorId}`}</span>
+              <strong>{hero.energy ?? 'läuft'}</strong>
+            </li>
+          </ol>
+        )}
+        {completedTransactions.length ? (
+          <ol className="vp-ocpp-session-list">
+            {completedTransactions.map((transaction) => (
+              <li key={transaction.transactionId}>
+                <span>{shortDateTime(transaction.startedAt)}</span>
+                <strong>{completedEnergy(transaction) ?? 'Energie nicht verfügbar'}</strong>
+              </li>
+            ))}
+          </ol>
+        ) : <p className="vp-note">Noch keine abgeschlossene Sitzung aufgezeichnet.</p>}
+      </>
+    ),
+  };
+
+  // --- Gerät & Verbindung ---------------------------------------------------
+  const details = {
+    kurz: [
+      'OCPP 1.6J',
+      station?.firmwareVersion || charger?.firmware
+        ? `Firmware ${redactSensitiveText((station?.firmwareVersion || charger?.firmware) as string)}`
+        : null,
+    ].filter(Boolean).join(' · ') || null,
+    // ⚠ DIESELBE Liste wie auf jeder anderen Geräteseite - eine eigene
+    // Kachel-Optik nur für die Wallbox wäre ein zweites Muster für dieselbe Frage.
+    inhalt: (
+      <dl className="vp-geraet-kv" data-testid="ocpp-geraet-fakten">
+        {[
+          ...(modell ? [{ label: 'Modell', wert: modell }] : []),
+          ...(station?.firmwareVersion || charger?.firmware
+            ? [{ label: 'Firmware', wert: (station?.firmwareVersion ?? charger?.firmware) as string, detail: 'von der Wallbox gemeldet' }]
+            : []),
+          { label: 'Anbindung', wert: 'OCPP 1.6J — die Säule wählt VoltPilot an', detail: connection.detail },
+          {
+            label: 'Anschlüsse',
+            wert: displayConnectors.length
+              ? displayConnectors.map((c) => `Stecker ${c.connectorId}: ${connectorStatus(c.status)}`).join(' · ')
+              : null,
+          },
+          ...(charger
+            ? [{
+              label: 'Aktuelle Freigabe',
+              wert: chargerConnector?.allocatedKw != null
+                ? `${chargerConnector.allocatedKw.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW`
+                : null,
+            }]
+            : []),
+          ...(charger && chargerConnector?.nextTurn
+            ? [{ label: 'Nächster Start', wert: shortTime(chargerConnector.nextTurn) }]
+            : []),
+          // Ohne Steuerungs-Karte (kein aktueller Beleg) sagt diese Zeile, dass
+          // „Sofort laden" gerade nicht geht - mit Karte zeigt es ihr Schalter.
+          ...(charger && !ladeZeile
+            ? [{
+              label: 'Sofort laden',
+              wert: chargerConnector == null ? 'nicht verfügbar' : chargerConnector.boost ? 'aktiv' : 'nicht aktiv',
+            }]
+            : []),
+        ].map((z: { label: string; wert: string | null; detail?: string | null }) => (
+          <div key={z.label}>
+            <dt>{z.label}</dt>
+            <dd>
+              <span>{z.wert ? redactSensitiveText(z.wert) : 'nicht gemeldet'}</span>
+              {z.detail && <small>{redactSensitiveText(z.detail)}</small>}
+            </dd>
+          </div>
+        ))}
+        {ladeparkZeilen.map((z) => (
+          <div key={z.label}>
+            <dt>{z.label}</dt>
+            <dd><span>{z.wert}</span>{z.detail && <small>{z.detail}</small>}</dd>
+          </div>
+        ))}
+      </dl>
+    ),
+  };
+
+  // --- Technik & Diagnose: OCPP für Support und Installateur (V6) ------------
+  const technik: TechnikTeil[] = [
+    {
+      id: 'ocpp',
+      hinweis: gaps.length > 0 ? `${gaps.length} ${gaps.length === 1 ? 'Lücke' : 'Lücken'}` : null,
+      inhalt: (
+        <div className="vp-ocpp-technik">
+          {showCommandCenter && (
+            <OcppSection id="aktionen" label="Support & Administration" title="Für dieses Konto freigegebene OCPP-Aktionen">
+              <p className="vp-ocpp-intro">Hier erscheinen ausschließlich Aktionen, die serverseitig für dieses Support- oder Administrationskonto freigegeben sind.</p>
+              {hero.transaction && (
+                <div className="vp-ocpp-current-control">
+                  <h3>Aktiver OCPP-Ladestand</h3>
+                  <dl className="vp-ocpp-facts">
+                    <Fact label="Gewünschte Freigabe" value={hero.release} />
+                    <Fact label="Von der Wallbox zurückgelesen" value={hero.applied} />
+                    <Fact label="Bisherige Laufzeit" value={hero.duration} />
+                  </dl>
+                </div>
+              )}
+              <div className="vp-ocpp-action-groups">
+                {(['alltag', 'betrieb', 'protokoll'] as OcppActionGroup[]).filter((group) => (
+                  allowedActions.some((item) => item.group === group)
+                )).map((group) => (
+                  <details key={group} className="vp-ocpp-action-group" open={group === 'alltag'}>
+                    <summary><span>{ACTION_GROUP_LABEL[group]}</span><small>{allowedActions.filter((item) => item.group === group).length} Aktionen</small></summary>
+                    <div className="vp-ocpp-action-list">
+                      {allowedActions.filter((item) => item.group === group).map((definition) => {
+                        const capabilityUnknown = definition.capability && !station?.supportedFeatureProfiles?.includes(definition.capability);
+                        return (
+                          <button key={definition.action} type="button" className="vp-ocpp-action"
+                            onClick={() => setActionOpen(definition)}
+                            aria-describedby={`action-help-${definition.action}`}>
+                            <span className="vp-ocpp-action-name">{definition.label}</span>
+                            <span id={`action-help-${definition.action}`} className="vp-ocpp-action-help">
+                              {definition.impact}
+                            </span>
+                            {capabilityUnknown && <span className="vp-ocpp-capability">Fähigkeit nicht gemeldet · NotSupported möglich</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </details>
+                ))}
+              </div>
+              <ActionJournal siteId={siteId} actions={data.actions} onChanged={(changed) => {
+                setData((old) => old ? { ...old, actions: old.actions.map((row) => row.id === changed.id ? changed : row) } : old);
+              }} />
+            </OcppSection>
+          )}
+          <OcppSection id="einrichtung" label="Einrichtung" title="Einrichtung, Grenzen und Regelprüfung">
+            <OcppControlPanel siteId={siteId} stationId={chargePointId} deviceId={station?.deviceId}
+              canEdit={data.permissions.actions.ChangeConfiguration === true && rollen.darf('ladepunkt.betrieb')} />
+          </OcppSection>
           <OcppSection id="stecker" label="Stecker" title="Jeder Anschluss für sich">
             {displayConnectors.length ? (
               <div className="vp-ocpp-connectors">
@@ -444,51 +576,6 @@ export function OcppWallboxPage({
               </div>
             ) : <Empty text="Die Station hat noch keine Anschlusszustände gemeldet." />}
           </OcppSection>
-        </RahmenSektion>
-
-        {/* 5 · Messwerte - D3: die Fähigkeit ist da, das Wort „Register" nicht. */}
-        <RahmenSektion id="register">
-          <OcppSection id="messwerte" label="Messwerte" title="Gemeldete Messwerte">
-            <Search value={meterSearch} onChange={setMeterSearch} label="Messwerte durchsuchen" placeholder="Measurand, Phase, Einheit oder Rohwert" />
-            {searchedMeter.length ? <MeterTable rows={searchedMeter} /> : <Empty text={meter.length ? 'Kein Messwert passt zur Suche.' : 'Diese Station hat noch keine Messwerte geliefert.'} />}
-          </OcppSection>
-          {messwerte}
-        </RahmenSektion>
-
-        {/* 6 · Verbindung */}
-        <RahmenSektion id="verbindung">
-          <dl className="vp-ocpp-device-facts">
-            <Fact label="OCPP-Kennung" value={chargePointId} mono />
-            <Fact label="Zustand" value={connection.label} detail={connection.detail} />
-            <Fact label="Letzter Kontakt" value={connection.lastSeen ? shortTime(connection.lastSeen) : null} />
-            <Fact label="Anschlüsse" value={displayConnectors.length ? String(displayConnectors.length) : null} />
-          </dl>
-        </RahmenSektion>
-
-        {/* 7 · Software */}
-        <RahmenSektion id="software">
-          <dl className="vp-ocpp-device-facts">
-            <Fact label="Hersteller / Modell" value={technicalName || null} />
-            <Fact label="Seriennummer" value={station?.chargePointSerialNumber} mono />
-          </dl>
-          <OcppSection id="software" label="Software & Diagnose" title="Was die Station über sich meldet">
-            <dl className="vp-ocpp-facts">
-              <Fact label="Hersteller" value={station?.chargePointVendor} /> <Fact label="Modell" value={station?.chargePointModel} />
-              <Fact label="Stations-Serial" value={station?.chargePointSerialNumber} mono /> <Fact label="Box-Serial" value={station?.chargeBoxSerialNumber} mono />
-              <Fact label="Firmware" value={station?.firmwareVersion} /> <Fact label="Letzter Boot" value={station?.bootedAt ? time(station.bootedAt) : null} />
-              <Fact label="Diagnose" value={station?.diagnosticsStatus} detail={station?.diagnosticsStatusAt ? time(station.diagnosticsStatusAt) : null} />
-              <Fact label="Firmware-Choreografie" value={station?.firmwareStatus} detail={station?.firmwareStatusAt ? time(station.firmwareStatusAt) : null} />
-              <Fact label="Zähler" value={[station?.meterType, station?.meterSerialNumber].filter(Boolean).join(' · ') || null} />
-              <Fact label="Mobilfunk" value={[maskReference(station?.iccid ?? null), maskReference(station?.imsi ?? null)].filter((v) => v !== '—').join(' · ') || null} mono />
-            </dl>
-            <details className="vp-ocpp-unknown" open><summary>Gemeldete Fähigkeiten</summary>
-              {(station?.supportedFeatureProfiles ?? []).length ? <ul>{station!.supportedFeatureProfiles.map((profile) => <li key={profile}>{redactSensitiveText(profile)}</li>)}</ul> : <p>Die Station hat keine Feature Profiles gemeldet. Das ist nicht gleichbedeutend mit „nicht unterstützt“.</p>}
-            </details>
-          </OcppSection>
-        </RahmenSektion>
-
-        {/* 8 · Diagnose (technisch) - für den Support. */}
-        <RahmenSektion id="diagnose">
           <OcppSection id="konfiguration" label="Konfiguration" title="Gemeldet, änderbar und unbekannt">
             <Search value={configSearch} onChange={setConfigSearch} label="Konfiguration durchsuchen" placeholder="Schlüssel oder Wert" />
             {searchedConfig.length ? (
@@ -520,8 +607,94 @@ export function OcppWallboxPage({
           <OcppSection id="ladevorgaenge" label="Ladevorgänge" title="Transaktionen ohne Identitätsleck">
             {transactions.length ? <TransactionList rows={transactions} /> : <Empty text="Noch keine Ladevorgänge aufgezeichnet." />}
           </OcppSection>
-        </RahmenSektion>
-      </GeraetRahmen>
+          <OcppSection id="software" label="Software & Diagnose" title="Was die Station über sich meldet">
+            <dl className="vp-ocpp-facts">
+              <Fact label="Hersteller" value={station?.chargePointVendor} /> <Fact label="Modell" value={station?.chargePointModel} />
+              <Fact label="Stations-Serial" value={station?.chargePointSerialNumber} mono /> <Fact label="Box-Serial" value={station?.chargeBoxSerialNumber} mono />
+              <Fact label="Firmware" value={station?.firmwareVersion} /> <Fact label="Letzter Boot" value={station?.bootedAt ? time(station.bootedAt) : null} />
+              <Fact label="Diagnose" value={station?.diagnosticsStatus} detail={station?.diagnosticsStatusAt ? time(station.diagnosticsStatusAt) : null} />
+              <Fact label="Firmware-Choreografie" value={station?.firmwareStatus} detail={station?.firmwareStatusAt ? time(station.firmwareStatusAt) : null} />
+              <Fact label="Zähler" value={[station?.meterType, station?.meterSerialNumber].filter(Boolean).join(' · ') || null} />
+              <Fact label="Mobilfunk" value={[maskReference(station?.iccid ?? null), maskReference(station?.imsi ?? null)].filter((v) => v !== '—').join(' · ') || null} mono />
+            </dl>
+            <details className="vp-ocpp-unknown" open><summary>Gemeldete Fähigkeiten</summary>
+              {(station?.supportedFeatureProfiles ?? []).length ? <ul>{station!.supportedFeatureProfiles.map((profile) => <li key={profile}>{redactSensitiveText(profile)}</li>)}</ul> : <p>Die Station hat keine Feature Profiles gemeldet. Das ist nicht gleichbedeutend mit „nicht unterstützt“.</p>}
+            </details>
+          </OcppSection>
+        </div>
+      ),
+    },
+    {
+      id: 'register',
+      // D3: eine Säule hat keine Modbus-„Register", ihre Messwerte sehr wohl.
+      titel: 'Messwerte',
+      inhalt: (
+        <>
+          <OcppSection id="messwerte" label="Messwerte" title="Gemeldete Messwerte">
+            <Search value={meterSearch} onChange={setMeterSearch} label="Messwerte durchsuchen" placeholder="Measurand, Phase, Einheit oder Rohwert" />
+            {searchedMeter.length ? <MeterTable rows={searchedMeter} /> : <Empty text={meter.length ? 'Kein Messwert passt zur Suche.' : 'Diese Station hat noch keine Messwerte geliefert.'} />}
+          </OcppSection>
+          {messwerte}
+        </>
+      ),
+    },
+    {
+      id: 'rohdaten',
+      inhalt: (
+        <dl className="vp-ocpp-device-facts">
+          <Fact label="OCPP-Kennung" value={chargePointId} mono />
+          <Fact label="Seriennummer" value={station?.chargePointSerialNumber} mono />
+          <Fact label="Letzter Kontakt" value={connection.lastSeen ? shortTime(connection.lastSeen) : null} />
+        </dl>
+      ),
+    },
+  ];
+
+  return (
+    <div className="vp-ocpp" data-testid="ocpp-wallbox-page">
+      <GeraetRahmen
+        testId="ocpp-rahmen"
+        geraetKey={`${siteId}:cp-${chargePointId}`}
+        brotkrume={{ anlageHref: siteHref, komponentenHref: backHref }}
+        kopf={{
+          titel: fallbackTitle,
+          typ: 'Wallbox',
+          modell,
+          symbol: { icon: 'zap', farbe: 'ev' },
+          zustand: {
+            wort: connection.label,
+            ton: connection.online ? 'ok' : state.tone === 'error' ? 'warn' : state.tone,
+            detail: connection.lastSeen ? `zuletzt gesehen ${shortTime(connection.lastSeen)}` : 'noch nicht gesehen',
+          },
+          frische: connection.lastSeen,
+          // Der AKTUELLE Anschluss-Zustand ist der Satz der Bühne - das
+          // Abzeichen steht nur, wenn es einen Vorbehalt trägt („zuletzt",
+          // „nicht gemeldet"), nie als Wiederholung.
+          abzeichen: anschlussVorbehalt
+            ? <span className="vp-kern-abzeichen vp-ocpp-connector-note">{anschlussSatz}</span>
+            : null,
+        }}
+        menue={menue}
+        kopfAktion={onRename ? (
+          <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onRename}>
+            <Icon name="pencil" size={15} /> Anzeigename ändern
+          </button></Recht>
+        ) : null}
+        unterKopf={(
+          <>
+            {error && (
+              <div className={`vp-alert ${station == null && transactions.length === 0 ? 'vp-alert-err' : 'vp-alert-warn'}`} role="status">
+                {error} <button type="button" className="vp-linkbtn" onClick={() => setReload((value) => value + 1)}>Erneut laden</button>
+              </div>
+            )}
+            {pollError && <div className="vp-alert vp-alert-warn" role="status">Der Aktionsstatus konnte gerade nicht aktualisiert werden. Der letzte belegte Stand bleibt sichtbar; VoltPilot versucht es erneut.</div>}
+          </>
+        )}
+        veraltet={!connection.online}
+        bausteine={{ buehne, steuerung, heute, aktivitaet }}
+        details={details}
+        technik={technik}
+      />
 
       {actionOpen && (
         <ActionDialog definition={actionOpen} siteId={siteId} chargePointId={chargePointId}
@@ -531,6 +704,18 @@ export function OcppWallboxPage({
             setData((old) => old ? { ...old, actions: [action, ...old.actions.filter((row) => row.id !== action.id)] } : old);
           }} />
       )}
+      {/* Derselbe Folgen-Karten-Dialog wie in der Jetzt-Zone der Steuerung -
+          eine Grammatik für jeden Handeingriff, mit den Dauern des Boosts. */}
+      <HandeingriffDialog
+        folgen={ladeFolgen}
+        busy={ladeBusy}
+        withDuration={lade?.aktion !== 'resume'}
+        dauern={LADEPUNKT_DAUERN}
+        dauerKey={ladeDauer}
+        onDauer={setLadeDauer}
+        onConfirm={() => void ladeBestaetigen()}
+        onCancel={() => !ladeBusy && setLade(null)}
+      />
     </div>
   );
 }

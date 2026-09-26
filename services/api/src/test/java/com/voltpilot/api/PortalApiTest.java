@@ -607,6 +607,38 @@ class PortalApiTest {
         assertThat((String) seeded.get("lastSeenAt")).isNotNull();
     }
 
+    /**
+     * A box without an inverter (only an I/O module) never writes v1 telemetry;
+     * its v2 entity telemetry alone must make it „verbunden".
+     */
+    @Test
+    void aBoxWithOnlyEntityTelemetryIsSeenToo() {
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-v2only-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String id = (String) claimed.getBody().get("id");
+
+        exec("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                + "entity_id, channel, value) VALUES (now() - interval '1 minute', "
+                + "now() - interval '1 minute', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', '" + id + "', gen_random_uuid(), 'do_1', 1)");
+
+        // Auf uems ist die Geräteliste eine sichtbare Liste (AP-03 IP-12) — derselbe Leser wie im Fall darüber.
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        Map<String, Object> mine = res.getBody().stream()
+                .filter(d -> "edge-v2only-01".equals(d.get("externalRef")))
+                .findFirst().orElseThrow();
+        assertThat((String) mine.get("lastSeenAt")).isNotNull();
+        assertThat(java.time.Instant.parse((String) mine.get("lastSeenAt")))
+                .isBetween(java.time.Instant.now().minusSeconds(600), java.time.Instant.now());
+    }
+
     @Test
     void deviceReplayingBackloggedTelemetryReadsLiveNotStale() {
         String demo = token("demo", "demo");
@@ -1723,6 +1755,80 @@ class PortalApiTest {
                     .getBody().get("slots");
             assertThat(((Number) ((Map<?, ?>) after.get(0)).get("batteryKw")).doubleValue())
                     .isEqualTo(17.07);
+        } finally {
+            exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
+    /**
+     * The Tagesschalter "Gestern · Heute · Morgen" (Konzept "Tagesuhr und
+     * Bildfahrplan", E2 = A): {@code mode=day&date=} splices EXACTLY the named
+     * Berlin day - yesterday with the run that was in force back then, tomorrow
+     * with the newest run - while {@code date=<today>} stays byte-identical to
+     * the open-ended {@code mode=day} (it carries the plan's tomorrow). Any
+     * other day, a malformed date, or a date without {@code mode=day} is a 400,
+     * never a silent "today"; RLS fences it like every schedule read.
+     *
+     * <p>Own site + cleanup, like its siblings above.
+     */
+    @Test
+    void scheduleDayModeReadsYesterdayAndTomorrowAsTheirOwnDay() {
+        final String site = "0000000a-0000-0000-0000-0000000000fb";
+        final String device = "0000000a-0000-0000-0000-0000000000eb";
+        final String tenant = "00000000-0000-0000-0000-000000000001";
+        final String planOld = "aaaaaaaa-0000-0000-0000-0000000000fb";
+        final String planNew = "aaaaaaaa-0000-0000-0000-0000000000fc";
+        ZoneId berlin = ZoneId.of("Europe/Berlin");
+        LocalDate today = LocalDate.now(berlin);
+        ZonedDateTime day0 = today.atStartOfDay(berlin);
+        ZonedDateTime yesterday = today.minusDays(1).atStartOfDay(berlin);
+        ZonedDateTime tomorrow = today.plusDays(1).atStartOfDay(berlin);
+        // Planned two days ago for yesterday; the newest run (just before today)
+        // covers today and tomorrow.
+        String genOld = iso(yesterday.minusHours(12));
+        String genNew = iso(day0.minusMinutes(15));
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES ('" + site + "', '"
+                + tenant + "', 'E2 Tagesschalter', 'DE-LU') ON CONFLICT DO NOTHING");
+        try {
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                    + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
+                    + "baseline_cost_eur, peak_target_kw, terminal_value_eur_per_kwh, fallback_14a) VALUES "
+                    + spliceRow(iso(yesterday.plusHours(6)), genOld, planOld, site, tenant, device, 1.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(yesterday.plusHours(20)), genOld, planOld, site, tenant, device, -2.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(day0.plusHours(10)), genNew, planNew, site, tenant, device, 3.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(tomorrow.plusHours(11)), genNew, planNew, site, tenant, device, 4.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(tomorrow.plusDays(1).plusHours(1)), genNew, planNew, site, tenant, device, 5.0, 0.01, 0.03)
+                    + " ON CONFLICT DO NOTHING");
+            java.util.function.Function<String, List<Double>> kw = (query) -> {
+                ResponseEntity<Map<String, Object>> r = rest.exchange(
+                        url("/api/v1/sites/" + site + "/schedule" + query), HttpMethod.GET,
+                        new HttpEntity<>(bearer(token("demo", "demo"))),
+                        new ParameterizedTypeReference<>() {});
+                assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+                return ((List<?>) r.getBody().get("slots")).stream()
+                        .map(x -> ((Number) ((Map<?, ?>) x).get("batteryKw")).doubleValue()).toList();
+            };
+
+            // Yesterday: exactly its two slots, from the run in force back then.
+            assertThat(kw.apply("?mode=day&date=" + today.minusDays(1))).containsExactly(1.0, -2.0);
+            // Tomorrow: exactly its one slot - not the day after.
+            assertThat(kw.apply("?mode=day&date=" + today.plusDays(1))).containsExactly(4.0);
+            // Today by date = the open-ended reading, tomorrow included.
+            assertThat(kw.apply("?mode=day&date=" + today)).isEqualTo(kw.apply("?mode=day"));
+            assertThat(kw.apply("?mode=day")).containsExactly(3.0, 4.0, 5.0);
+
+            for (String bad : List.of("?mode=day&date=" + today.minusDays(2),
+                    "?mode=day&date=" + today.plusDays(2), "?mode=day&date=gestern",
+                    "?date=" + today.minusDays(1))) {
+                assertThat(rest.exchange(url("/api/v1/sites/" + site + "/schedule" + bad),
+                        HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))), String.class)
+                        .getStatusCode()).as(bad).isEqualTo(HttpStatus.BAD_REQUEST);
+            }
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/schedule?mode=day&date="
+                            + today.minusDays(1)),
+                    HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         } finally {
             exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
             exec("DELETE FROM site WHERE id = '" + site + "'");
@@ -7415,8 +7521,10 @@ class PortalApiTest {
      * Dreiteilung bleibt ehrlich null mit {@code steuerungSplitReason
      * no_battery_data} - nie eine geratene Referenz-Batterie.
      *
-     * <p><b>Site V</b> = ein Eimer VOR dem Fenster mit soc_last_pct 65 (=
-     * 1,95 kWh): der Walk startet am GEMESSENEN Stand, nicht am Boden -
+     * <p><b>Site V</b> = ein Eimer VOR dem MONATSBEGINN (31.03. 23:45 Berlin)
+     * mit soc_last_pct 65 (= 1,95 kWh): der Walk startet am GEMESSENEN
+     * Monatsanker, nicht am Boden (Definition A, Captain 24.09.2026: der
+     * Vergleichsspeicher läuft ab dem 1. durch, ein Tag ist sein Zuwachs) -
      * charge = min(2,5, 2,0, (2,85−1,95)/0,9) = 1,0 statt 2,0, also
      * savedSpeicher = −0,10 (Boden-Start ergäbe −0,20). Die Batterie war
      * gemessen untätig (Export 2,5) → saved = 0, savedSteuerung = +0,10: die
@@ -7484,10 +7592,12 @@ class PortalApiTest {
                         + "('2026-04-07T10:45:00Z', '" + tenantA + "', '" + siteId
                         + "', 0.0, 4.0, 0.0, 0.0, 0.0, 4.0, 90) ON CONFLICT DO NOTHING");
             }
-            // The anchor site: one measured soc_last_pct bucket BEFORE the window
-            // (inside the 7-day lookback) + one idle-battery slot inside it.
+            // The anchor site: one measured soc_last_pct bucket BEFORE the Berlin
+            // month start (inside the 7-day lookback) + one idle-battery slot in
+            // the window; nothing covered in between, so the reference arrives at
+            // 07.04. with the measured month anchor.
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct, n_samples) "
-                    + "VALUES ('2026-04-06T10:00:00Z', '" + tenantA + "', '" + anchorSite
+                    + "VALUES ('2026-03-31T21:45:00Z', '" + tenantA + "', '" + anchorSite
                     + "', 65.0, 90) ON CONFLICT DO NOTHING");
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                     + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
@@ -7520,7 +7630,7 @@ class PortalApiTest {
                     .containsEntry("savedSteuerungEur", null)
                     .containsEntry("steuerungSplitReason", "no_battery_data");
 
-            // Site V: the walk anchors at the MEASURED window-begin SoC (65% =
+            // Site V: the walk anchors at the MEASURED month-begin SoC (65% =
             // 1,95 kWh), not the floor - headroom-clamped charge 1,0 instead of
             // 2,0, so speicher = -0,10 (a floor start would read -0,20).
             Map<String, Object> anchor = siteEarningsDay(demo, anchorSite, "2026-04-07");
@@ -7665,6 +7775,40 @@ class PortalApiTest {
             // stillschweigend wieder „ohne Speicher".
             assertThat(num(entry, "savedSteuerungEur"))
                     .isNotCloseTo(num(entry, "savedEur"), eps);
+
+            // EINE Tageszahl (Definition A, Captain 24.09.2026): die Anlage
+            // selbst sagt fuer denselben Tag dieselbe Zahl wie die Reihe, und
+            // ihre Dreiteilung geht weiter exakt auf.
+            Map<String, Object> anlage = siteEarningsDay(demo, site, today);
+            assertThat(num(anlage, "savedSteuerungEur"))
+                    .isCloseTo(num(entry, "savedSteuerungEur"), eps);
+            assertThat(num(anlage, "savedSpeicherEur") + num(anlage, "savedSteuerungEur"))
+                    .isCloseTo(num(anlage, "savedEur"), eps);
+            // Die Einordnung des Tages (Konzept vp-erloese-minus-winter-k1 P0):
+            // der Vergleichsspeicher startet am Boden (0,5 kWh, kein Anker),
+            // laedt 1,25 und entlaedt 1,25; ohne gemessenen Ladestand kein
+            // Vorsprung, ohne Vortag keine Vortageszahl; ein Plus-Tag hat
+            // keinen Grund, aber eine berechnete (leere) Liste.
+            for (Map<String, Object> zeile : List.of(anlage, row)) {
+                assertThat(num(zeile, "vergleichSocStartKwh")).isCloseTo(0.5, eps);
+                assertThat(num(zeile, "vergleichSocEndKwh")).isCloseTo(0.5, eps);
+                assertThat(zeile).containsEntry("speicherVorsprungKwh", null)
+                        .containsEntry("steuerungVortagEur", null)
+                        .containsEntry("steuerungPlannedEur", null)
+                        .containsEntry("steuerungGruende", List.of());
+                assertThat(num(zeile, "steuerungMonatBisherEur")).isCloseTo(0.075, eps);
+            }
+            assertThat(anlage).containsEntry("speicherVorsprungEur", null);
+            // Monat und Jahr tragen keine Einordnung (Konzept §6, §7.1).
+            Map<String, Object> monat = rest.exchange(
+                    url("/api/v1/sites/" + site + "/earnings?range=month"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            assertThat(monat).containsEntry("steuerungGruende", null)
+                    .containsEntry("vergleichSocStartKwh", null)
+                    .containsEntry("steuerungMonatBisherEur", null);
+            assertThat(num(monat, "savedSteuerungEur"))
+                    .isCloseTo(num(anlage, "steuerungMonatBisherEur"), eps);
         } finally {
             exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + site + "'");
             exec("DELETE FROM asset WHERE site_id = '" + site + "'");

@@ -2,9 +2,11 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EarningsRepository;
+import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.SpeicherBank;
+import com.voltpilot.api.repo.SteuerungGrund;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto.SiteEarningsBucketDto;
@@ -62,15 +64,17 @@ public class SiteEarningsController {
     private final SiteRepository sites;
     private final EarningsRepository earnings;
     private final PeakShavingRepository peaks;
+    private final HistoryRepository history;
     private final String activePvModel;
 
     public SiteEarningsController(SiteRepository sites, EarningsRepository earnings,
-            PeakShavingRepository peaks,
+            PeakShavingRepository peaks, HistoryRepository history,
             @org.springframework.beans.factory.annotation.Value(
                     "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
         this.peaks = peaks;
+        this.history = history;
         this.activePvModel = activePvModel;
     }
 
@@ -119,9 +123,19 @@ public class SiteEarningsController {
         // computable; steuerung is the EXACT remainder (BigDecimal subtract),
         // so the reconciliation holds by construction. A site without
         // maintained battery master data gets null + the honest reason.
-        BigDecimal savedSpeicher = saved != null
-                ? earnings.savedSpeicherForSite(siteId, from, to)
+        //
+        // On the DAY the Einordnung (Konzept vp-erloese-minus-winter-k1 §10
+        // P0) carries the day's speicher share out of the SAME month-anchored
+        // walk savedSpeicherForSite would run - bit-identical, so the day pays
+        // for one walk, not two. Monat und Jahr tragen weder Vorsprung noch
+        // Grund (§6, §7.1).
+        boolean tag = !all && parsed == HistoryRange.DAY;
+        EarningsRepository.Tageseinordnung einordnung = tag && saved != null
+                ? earnings.tageseinordnungForSite(siteId, from, to)
                 : null;
+        BigDecimal savedSpeicher = saved == null ? null
+                : tag ? (einordnung == null ? null : einordnung.speicherEur())
+                : earnings.savedSpeicherForSite(siteId, from, to);
         BigDecimal savedSteuerung = savedSpeicher != null
                 ? saved.subtract(savedSpeicher)
                 : null;
@@ -184,6 +198,17 @@ public class SiteEarningsController {
         // Speicher kostet der Aufruf genau eine Abfrage.
         SpeicherBank.Bestand bank = earnings.storageBank(siteId, from, to, Instant.now());
 
+        // Die EINORDNUNG des Tages (Captain 24.09.2026 E1-E7 = A): ein Minus
+        // steht nie allein - Vorsprung vor dem Vergleichsspeicher, bewertet mit
+        // demselben λ wie das Bestandskonto, Vortag, Monat bisher, Grund.
+        BigDecimal geplant = einordnung != null
+                ? history.plannedSavings(siteId, from, to).steuerungEur()
+                : null;
+        BigDecimal vorsprungKwh = einordnung == null ? null : einordnung.speicherVorsprungKwh();
+        BigDecimal vorsprungEur = vorsprungKwh == null || bank.wertCtKwh() == null ? null
+                : vorsprungKwh.multiply(bank.wertCtKwh())
+                        .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+
         // The peak-shaving proof is range-INDEPENDENT (always the running
         // billing period) and only exists for a module-active site, so the
         // query only runs when the module flag is set.
@@ -236,6 +261,14 @@ public class SiteEarningsController {
                 bank.wertCtKwh(),
                 bank.wertEur(),
                 bank.basis(),
+                einordnung == null ? null : einordnung.vergleichSocStartKwh(),
+                einordnung == null ? null : einordnung.vergleichSocEndKwh(),
+                vorsprungKwh,
+                vorsprungEur,
+                einordnung == null ? null : einordnung.steuerungVortagEur(),
+                einordnung == null ? null : einordnung.steuerungMonatBisherEur(),
+                geplant,
+                SteuerungGrund.fuer(savedSteuerung, einordnung, geplant),
                 series,
                 EarningsController.peakShaving(site, today, peakRows));
     }

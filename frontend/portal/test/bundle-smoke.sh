@@ -49,6 +49,16 @@ cd "$(dirname "$0")/.."
 #   229,84  nach P1/P3/P4/P6  — der Kopfraum von 1,85 kB war damit aufgebraucht
 #   230,99  P5 (Grenze 232)   — Captain-Entscheid 04.09.2026, Option (A)
 #   225,74  P7 (Grenze 230)   — die Ratsche geht ZURÜCK, wie eine Ratsche soll
+#   246,22  main am 24.09.2026 — der Wächter war rot (UX-Review V-01)
+#   224,57  V-01 (Grenze 230)  — vier Hilfs-Module statt ganzer Fach-Module
+#
+# WAS V-01 HERAUSGENOMMEN HAT (−21,65 kB gz, ohne eine Funktion zu ändern):
+#   Der Einstieg zog vier große Fach-Module für je eine kleine Hilfe mit.
+#   Die Hilfen wohnen jetzt in eigenen Modulen, die alten Module reichen sie
+#   unverändert weiter:
+#   `ladestandVon.ts` (statt `batterieAnschluss`/`selbstbau`),
+#   `geraetAdresse.ts` (statt `geraetSeite`), `provenienz.ts` (statt
+#   `historieWelten`), `geldWelt.ts` (statt `portfolioHistorie`).
 #
 # WAS P7 HERAUSGENOMMEN HAT (−5,20 kB gz, ohne eine Funktion zu ändern):
 #   −4,77  `components/DeviceDrawers.tsx` — der Einrichtungspfad renderte die
@@ -130,6 +140,9 @@ echo "ok"
 
 echo "== 4/4 · Chart-Bündel unter 210 kB gz =="
 # Nur benötigte ECharts-Module: 344,50 -> 203,28 kB gz (09.09.2026).
+# AP-01 registrierte `Graphic`+`VisualMap` für REPLACE_MERGE: 219,92 kB gz,
+# rot. V-01 (24.09.2026) nimmt `VisualMap` wieder heraus (kein Diagramm setzt
+# ihn; Wächter `src/chartRegistrierung.test.ts`): 208,5 kB gz.
 # Ein erneuter Vollimport muss am ausgelieferten Artefakt auffallen.
 chart_line=$(grep -E 'assets/useEChart-[^ ]+\.js[[:space:]]' /tmp/vp-bundle-build.log | tail -1)
 chart_gz_kb=$(printf '%s' "$chart_line" | sed -nE 's/.*gzip:[[:space:]]*([0-9.,]+) kB.*/\1/p' | tr -d ',')

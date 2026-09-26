@@ -154,14 +154,16 @@ public class RollenQuellen {
     private Stand wert(UUID site, RollenZuordnungRepository.Zuordnung z) {
         if (z.capability() != null) {
             if (registry.entityForSite(site, z.entityId()) == null) return new Stand(null, null, "kein_geraet");
-            var vals = topology.latestValues(site,
+            // Dieselbe Zeitbasis wie die Kreise der Topologie (K8/B1): ein Rollen-Wert ersetzt im
+            // Cockpit einen Knoten und muss deshalb dasselbe 30-s-Mittel tragen.
+            var vals = topology.liveValues(site,
                     List.of(new TopologyRepository.ChannelKey(z.entityId().toString(), z.capability())));
             if (vals.isEmpty()) return new Stand(null, null, "kein_wert");
             var v = vals.getFirst();
             if (!leistungsKanal(site, z.entityId(), z.capability())) return new Stand(null, null, "kein_wert");
             var punkt = katalog.resolve(z.capability());
             double faktor = punkt != null && "W".equals(punkt.unit()) ? 0.001 : 1;
-            return new Stand(v.value() * faktor, zeit(v.receivedAt()), null);
+            return new Stand(v.mean() * faktor, zeit(v.receivedAt()), null);
         }
         var m = messstellen.finde(z.quellMessstelleId());
         if (m.isEmpty()) return new Stand(null, null, "kein_geraet");

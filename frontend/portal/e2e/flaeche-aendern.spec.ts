@@ -234,10 +234,17 @@ test.describe('T6a · Meine Anlage mit beiden Standort-Zeilen (AP-02 IP-8, W4)',
         if (await aufklappen.count()) await aufklappen.first().click();
         if (fall !== 'ohne') await expect(karte.getByText('(ST-1)', { exact: false })).toBeVisible();
         else await page.waitForLoadState('networkidle');
-        await expect(karte.locator('dt').first()).toHaveText('Name');
+        // Seit den kurzen Einstellungen (main 41ed67c26) ist „Meine Anlage“ eine Liste: das Wort steht in `.vp-einst-lab > b`,
+        // die UEMS-Standort-Zeile (AP-02 IP-8) behält ihr `dt` — beide in Dokument-Reihenfolge.
+        const beschriftung = karte.locator('.vp-einst-lab > b, dt');
+        await expect(beschriftung.first()).toHaveText('Name');
         if (k.labels && !VARIANTE) {
-          const labels = await karte.locator('dt').allTextContents();
-          expect(labels.slice(0, k.labels.length)).toEqual(k.labels);
+          const labels = await beschriftung.allTextContents();
+          // main's Liste (E5 = A) ordnet „Anlage“ als Name · Veräußerungsform · Profil · Einspeisegrenze · Standort-Zeilen;
+          // W4 bleibt: beide Standort-Zeilen stehen direkt nacheinander.
+          expect(labels[0]).toBe(k.labels[0]);
+          const ab = labels.indexOf('Standort');
+          expect(labels.slice(ab, ab + k.labels.length - 1)).toEqual(k.labels.slice(1));
         }
         await karte.scrollIntoViewIfNeeded();
         await messeUndFotografiere(page, breite, `t6a-${fall}`, karte);

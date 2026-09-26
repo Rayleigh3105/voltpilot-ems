@@ -3,7 +3,7 @@ import { rechteSeed, sichtbareListe } from '../src/test/rollenFixtures';
  * Fictional, frozen teaching data. Imported ONLY by /e2e/help.tsx.
  * No production API/auth fallback: the application bundle never imports this.
  */
-import { api, type Funktionen, type StandorteAmStichtag, type Unternehmen } from '../src/api';
+import { api, type Funktionen, type Unternehmen } from '../src/api';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
@@ -123,6 +123,42 @@ const charging = { budget: { deviceId: 'help-box', enabled: true, controlEnabled
   })),
 };
 
+/**
+ * Ein kleiner Gerätekatalog für die Hilfe-Aufnahmen des „Gerät hinzufügen"-Wegs.
+ * Marken, Modelle und Felder wie im echten Katalog; die Adressen der Anlage
+ * bleiben fiktiv (192.0.2.x).
+ */
+const feld = (key: string, label: string, help: string) => ({ key, label, type: 'text', required: true, help });
+const port = (n: number) => ({ key: 'port', label: 'Port', type: 'number', default: n });
+const solarman = {
+  communication: 'solarman_v5', communicationLabel: 'Solarman-V5 (WiFi-Datenlogger, TCP 8899)',
+  transportSchema: [
+    feld('ip', 'IP-Adresse des Datenloggers', 'Die IP des WiFi-Sticks (LSW3) im lokalen Netz, z. B. 192.168.0.28.'),
+    feld('serial', 'Datenlogger-Seriennummer', 'Die Seriennummer des Datenloggers (nicht des Wechselrichters!) - z. B. aus dem WLAN-Namen AP_<Seriennummer> oder der Logger-Statusseite.'),
+    port(8899), { key: 'unit_id', label: 'Modbus-Slave-ID', type: 'number', default: 1 },
+  ],
+};
+const kaco = {
+  communication: 'kaco_http', communicationLabel: 'App-Schnittstelle der Kommunikationseinheit (HTTP 8484)',
+  transportSchema: [feld('ip', 'IP-Adresse der Kommunikationseinheit', 'Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst).'), port(8484)],
+};
+const vorlage = (o: Record<string, unknown>) => ({ kind: 'builtin', version: 1, deviceType: 'inverter', ...o });
+const katalog = [
+  ...['SUN-5K-SG04LP3-EU', 'SUN-8K-SG04LP3-EU', 'SUN-12K-SG04LP3-EU'].map((m) => vorlage({ templateRef: `builtin:deye:${m.toLowerCase()}`, brand: 'deye', brandLabel: 'Deye',
+    model: m.toLowerCase(), modelLabel: m, family: 'deye-sg04lp3', familyLabel: 'Hybrid, 3-phasig', ratedKw: Number(m.split('-')[1].replace('K', '')), ...solarman })),
+  ...['blueplanet hybrid 10.0 NH3 M3', 'blueplanet 15.0 NX3 M2'].map((m) => vorlage({ templateRef: `builtin:kaco:${m.toLowerCase().replace(/ /g, '-')}`, brand: 'kaco', brandLabel: 'KACO',
+    model: m.toLowerCase(), modelLabel: m, ...kaco })),
+  vorlage({ templateRef: 'builtin:fronius:gen24', brand: 'fronius', brandLabel: 'Fronius', model: 'gen24', modelLabel: 'Fronius GEN24 / Symo / Primo',
+    communication: 'fronius_solar_api', communicationLabel: 'Solar API (HTTP)',
+    transportSchema: [feld('ip', 'IP-Adresse des Wechselrichters', 'Die IP des Fronius-Wechselrichters im lokalen Netz. Die Solar API muss in der Weboberfläche des Wechselrichters aktiviert sein.'), port(80)] }),
+  vorlage({ templateRef: 'builtin:go-e:charger', brand: 'go-e', brandLabel: 'go-e', model: 'charger', modelLabel: 'go-e Charger', deviceType: 'wallbox',
+    communication: 'goe_http_api', communicationLabel: 'go-e HTTP API v2 (HTTP/JSON)',
+    transportSchema: [feld('ip', 'IP-Adresse der Wallbox', 'Die IP der go-e-Wallbox im lokalen Netz. Die lokale HTTP-API (v2) muss in der go-e-App aktiviert sein.'), port(80)] }),
+  vorlage({ templateRef: 'builtin:shelly:relais', brand: 'shelly', brandLabel: 'Shelly', model: 'relais', modelLabel: 'Shelly Relais / Schaltaktor', deviceType: 'switch',
+    communication: 'shelly_http', communicationLabel: 'Shelly HTTP API (lokal)',
+    transportSchema: [feld('ip', 'IP-Adresse des Shelly', 'Die IP des Shelly im lokalen Netz; der Passwortschutz der Shelly-Weboberfläche muss AUS sein.'), port(80)] }),
+];
+
 export function installHelpFixtures() {
   const params = new URLSearchParams(location.search);
   const empty = params.get('state') === 'empty';
@@ -143,12 +179,6 @@ export function installHelpFixtures() {
       },
       standorte: [],
     } satisfies Funktionen),
-    standorte: result({
-      stichtag: '2026-09-10',
-      standorte: [],
-      nichtGezeigt: [],
-      nochNichtZugeordnet: null,
-    } satisfies StandorteAmStichtag),
     unternehmen: result({
       zustand: 'nicht_angelegt',
       id: null,
@@ -170,7 +200,23 @@ export function installHelpFixtures() {
       signals: { hasStorage: true, hasPv: true, hasControllableConsumer: true, hasEvCharger: true, activeStrategyNodeTypes: ['strategy_peak_shaving'], plantKind: site.plantKind, hasLeistungspreis: true } }),
     entityStrategies: result({}), cockpitLayout: result({ vorgabe: null, eigen: null }), tenantCockpitLayout: result({ vorgabe: null, eigen: null }),
     siteInterventions: result({ batteryOverride: null, automationPaused: false, interventions: [] }), suggestionStates: result({ states: {} }),
-    siteRuleEvents: result([]), commandHistory: result({ entries: [], commands: [], total: 0 }), measurementPoints: result([]), componentTemplates: result([]), siteComponentTemplates: result([]),
+    siteRuleEvents: result([]),
+    // Der Verlauf ist GERÄTEBEZOGEN wie am Server: Box und Hybrid tragen den laufenden Speicher-Befehl,
+    // jedes andere Gerät wird nur gelesen.
+    commandHistory: async (_siteId: string, opts: { device?: string | null; entity?: string | null } = {}) => {
+      const device = opts.device ?? null;
+      const speicher = (device == null && !opts.entity) || device === 'VP-DEMO-0001' || device === 'inverter';
+      return structuredClone({ recordingSince: '2026-08-01T00:00:00Z', accuracySeconds: 15, from: DAY, to: NOW, entityId: null, entityLabel: null,
+        deviceRef: device, deviceIsBox: device == null ? null : device === 'VP-DEMO-0001', writes: speicher, truncated: false,
+        total: speicher ? 1 : 0, matched: speicher ? 1 : 0, control: null, curtailment: null, commands: [], entries: speicher ? [{
+          id: 1, stream: 'batterie', kind: 'periode', eventKind: null, startedAt: '2026-09-10T08:00:00Z', endedAt: null, mode: 'plan', path: 'remote',
+          whyKind: 'fahrplan', whyRef: null, commandedKwFirst: 2.2, commandedKwLast: 2.2, commandedKwMin: 2.2, commandedKwMax: 2.2, verdict: 'bestaetigt',
+          cycles: null, cyclesConfirmed: null, cyclesNoAnswer: null, cyclesMismatch: null, controlEnabled: true, released: true, foreignInfluence: false,
+          entityId: null, source: 'cloud_abgeleitet', detail: null }] : [] });
+    }, measurementPoints: result([]), componentTemplates: result(katalog), siteComponentTemplates: result([]),
+    // Der Verbindungstest der Einrichten-Seite: die Box liest echte Werte (fiktiv).
+    testComponentConnection: result({ results: [{ id: 'verbindung', ok: true, reading: { pvKw: 3.1, socPct: 58, gridKw: 1.2 } }] }),
+    matchComponent: result(null),
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
     siteSources: result([]), edgeVersions: result(sichtbareListe([])), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
@@ -209,6 +255,13 @@ export function installHelpFixtures() {
     ].map(([id,label,active]) => ({ id,label,active, state: active ? 'an' : 'aus', derivedActive: active,
       unlocks: { views: [], widgets: [], moneyStream: null }, requirements: [], blockedReason: null, origin: 'masterdata',
       flowRef: null, gatedNodeTypes: [], gatedNodesEnabled: true, exklusivGruppe: id === 'lastmanagement' ? null : 'speicher', seit: '2026-08-01T10:00:00Z' })), weitere: [] }),
+    // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort (main 41ed67c26, Wurzel des Aufbau-Baums;
+    // die leere uems-Fassung derselben Route stand doppelt im Objekt und galt nie — die spätere gewinnt).
+    standorte: result({ stichtag: '2026-09-10', nichtGezeigt: [], nochNichtZugeordnet: null, standorte: [{
+      id: 'help-standort', kurzzeichen: 'ST-1', name: 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
+      adresse: { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,
+      anlagen: sites.map((s) => ({ id: s.id, name: s.name, gueltigAb: '2026-08-01', gueltigBis: null })),
+      anlagenZahl: 2, gebaeudeZahl: 0, bereichZahl: 0, flaecheM2: null, flaecheQuelle: null }] }),
     createSite: async (input: object) => ({ ...site, ...input }), claimDevice: result(devices[0]),
   });
   Object.assign(entitiesApi, { typeCatalog: result({ catalog_version: '1.0', types: definitions.map((d) => ({ type: d.entityType, label: d.typeLabel, category: d.category, controllable: d.control, composed: false, default_failsafe: 'release' })) }) });

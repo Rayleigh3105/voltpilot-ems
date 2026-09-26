@@ -91,6 +91,10 @@ export function isControllableConsumerType(entityType: string): boolean {
  * (Wallbox vs. Heizstab vs. generic load); the other roles use the role icon.
  */
 export function iconFor(entityType: string, role: Role | null): IconName {
+  // Eine Rolle ausser Verbraucher spricht mit IHREM Symbol - auch wenn ein
+  // Hybrid-Wechselrichter sie liefert. Vorher schlug der Gerätetyp zuerst zu,
+  // und der Kreis „PV-Erzeugung" trug das Batterie-Symbol des Hybrids.
+  if (role != null && role !== 'consumer') return ROLE_META[role].icon;
   switch (entityType) {
     case 'wallbox':
       return 'battery-charging';
@@ -101,7 +105,8 @@ export function iconFor(entityType: string, role: Role | null): IconName {
     case 'producer':
       return 'sun';
     case 'battery-hybrid':
-      return 'battery';
+      // Als Verbraucher IST der Hybrid seine Hausverbrauchs-Messung.
+      return role === 'consumer' ? 'home' : 'battery';
     case 'generic-load':
     case 'house-load':
       return 'home';

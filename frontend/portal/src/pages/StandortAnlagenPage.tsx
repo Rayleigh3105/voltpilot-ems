@@ -1,5 +1,5 @@
 import type { Betriebsart, Site, StandortAmStichtag } from '../api';
-import { PortfolioCockpit } from '../components/PortfolioCockpit';
+import { EbenenCockpit } from '../components/EbenenCockpit';
 import type { Route } from '../nav';
 
 /** Der Titel von „Standort › Anlagen“ — dasselbe Wort wie die Kachel des Bereichs. */
@@ -7,7 +7,7 @@ export const TITEL_ANLAGEN = 'Anlagen';
 
 /**
  * „Standort › Anlagen“ (UEMS AP-13 IP-2, Ü7): `#/standort/{id}/anlagen` — die heutige Anlagen-Tabelle der
- * Standort-Übersicht, gefiltert auf den Standort, ohne die Bausteine der Übersicht (`PortfolioCockpit` mit
+ * Standort-Übersicht, gefiltert auf den Standort, ohne die Bausteine der Übersicht (`EbenenCockpit` mit
  * `nurAnlagen`). Kein neuer Baustein und keine zweite Tabelle: Zeilen, Spalten und Vorschau sind dieselben.
  *
  * ⚠ Der Weg „Energiebilanz“ je Zeile steht seit IP-8 — nur an einer Anlage mit Hauptzähler in der Stellung (dieselbe Frage
@@ -32,7 +32,7 @@ export function StandortAnlagenPage({
 }) {
   return (
     <div className="vp-standort-anlagen" data-testid="standort-anlagen">
-      <PortfolioCockpit
+      <EbenenCockpit
         sites={sites}
         onNavigate={onNavigate}
         onReload={onReload}

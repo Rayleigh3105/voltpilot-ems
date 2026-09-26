@@ -321,9 +321,10 @@ test('Q5 · „Als Messstelle verwenden“ an der Komponente — derselbe Dialog
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await page.goto('/e2e/geraet-herkunft.html?fall=gr4');
 
-  // Die Sektion „Komponenten“ ist zugeklappt — wie auf der echten Geräteseite.
-  const sektion = page.getByTestId('sektion-komponenten');
-  await sektion.locator(':scope > summary').click();
+  // Die Herkunftskette steht seit main d1b97ac39 im zugeklappten Baustein „Gerät & Verbindung“ (baustein-details).
+  const sektion = page.getByTestId('baustein-details');
+  // Am Rechner steht der Baustein offen, am Telefon zu — nur aufklappen, was zu ist.
+  if (!(await sektion.evaluate((el) => (el as HTMLDetailsElement).open))) await sektion.locator(':scope > summary').click();
   const kanaele = sektion.getByTestId('geraet-messkanaele');
   await expect(kanaele).toBeVisible();
   // Nur der Messwert, den noch keine Messstelle FÜHREND liest, trägt den Einstieg.

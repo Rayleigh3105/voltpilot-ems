@@ -58,6 +58,9 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Erlöse', datei: 'components/erloese/ErgebnisKarte.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Erlöse', datei: 'components/SteuerungFormel.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Erlöse', datei: 'components/PortfolioWelt.css', fs: 0, ff: 0, fw: 0 },
+  // Der Anlagen-Vergleich der Portfolio-Seiten (Energie · Erlöse) — streng.
+  { reiter: 'Portfolio', datei: 'components/portfolio/PortfolioSeite.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Portfolio', datei: 'components/portfolio/KundenUebersicht.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', fs: 0, ff: 0, fw: 0 },
   // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an streng.
   { reiter: 'Bausteine', datei: 'components/Aufklapper.css', fs: 0, ff: 0, fw: 0 },
@@ -67,6 +70,13 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Messwerte', datei: 'components/Ereignisse.css', fs: 0, ff: 0, fw: 0 },
   // Die neuen Bausteine des Rumpfes (P3) — von Anfang an streng.
   { reiter: 'Messwerte', datei: 'components/VerlaufLedger.css', fs: 0, ff: 0, fw: 0 },
+  // Der Rahmen des Verlauf-Reworks (Energie · Erlöse · Messwerte) und die
+  // Bausteine der neuen Erlöse-Seite — von Anfang an streng.
+  { reiter: 'Rahmen', datei: 'components/VerlaufRahmen.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Erlöse', datei: 'components/erloese/ErloeseSeite.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Erlöse', datei: 'components/erloese/Balkenliste.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Erlöse', datei: 'components/SoVerdient.css', fs: 0, ff: 0, fw: 0 },
+  { reiter: 'Energie', datei: 'components/energie/EnergieSeite.css', fs: 0, ff: 0, fw: 0 },
   // --- noch nicht umgestellt — Ratsche auf dem IST-Stand vom 03.09.2026 --
   // P2b hat die Aufklapp-ZEILE aus diesem Blatt in den geteilten Baustein
   // gehoben; ihre drei Telefon-Ausnahmen (1,05 rem · 0,875 rem · 0,72 rem)

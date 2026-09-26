@@ -86,8 +86,30 @@
   font-size: 0.78rem;
 }
 
-.vp-at td.dim {
+.vp-at td.dim,
+.vp-at td .dim {
   color: var(--vp-text-muted, #6c757d);
+}
+
+/*
+ * Das Kurzwort des Grundes unter einem Minus-Tag (Konzept k1 E5 = A):
+ * Sekundärtext unter dem Betrag, kein Chip, keine Farbe.
+ */
+.vp-at-grund {
+  display: block;
+  font-weight: 400;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--vp-text-muted, #6c757d);
+  white-space: normal;
+}
+
+.vp-at-karte-heute .vp-at-grund {
+  display: inline;
+}
+
+.vp-at-karte-heute .vp-at-grund::before {
+  content: ' · ';
 }
 
 .vp-at tbody tr.is-offen td {

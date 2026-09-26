@@ -6278,6 +6278,11 @@ export interface EdgeVersion {
  *   trim     - preisbewusste Begrenzung: die Ladung hält beim gemessenen
  *              PV-Überschuss
  *   fallback - kein aktueller Fahrplan: die eingebaute Eigenverbrauchs-Regel
+ *   autonomous_discharge / autonomous_charge / autonomous_selfconsumption -
+ *              der WECHSELRICHTER regelt selbst im Fenster, das die Box
+ *              gesetzt hat: nur Verbrauch decken (E↓), nur Solar-Überschuss
+ *              laden (E↑) bzw. beides (E/E~); gemeldet erst nach bestätigtem
+ *              Rücklesen
  */
 export type ExecutionMode =
   | 'plan'
@@ -6291,7 +6296,9 @@ export type ExecutionMode =
   | 'high_soc_follow'
   | 'high_soc_charge'
   | 'surplus_store'
-  | 'autonomous_discharge';
+  | 'autonomous_discharge'
+  | 'autonomous_charge'
+  | 'autonomous_selfconsumption';
 
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
 export type ExecutionDirection = 'deepen' | 'reduce';
@@ -6968,6 +6975,33 @@ export interface CockpitMoney {
   speicherWertCtKwh?: number | null;
   speicherWertEur?: number | null;
   speicherWertBasis?: string | null;
+  /**
+   * Die EINORDNUNG eines Tages (z2, Definition A: EIN durchlaufender
+   * Vergleichsspeicher je Anlage, Tage ergeben den Monat). Nur `range=day`,
+   * sonst null; OPTIONAL, weil ein älteres Backend sie nicht sendet. Gelesen
+   * werden sie nur in `speicherAussage()`/`bestandZeile()`.
+   *
+   * - `vergleichSocStartKwh`/`vergleichSocEndKwh`: der Vergleichsspeicher um
+   *   00:00 bzw. nach dem letzten gemessenen Eimer — sein EIGENER Stand.
+   * - `speicherVorsprungKwh`: gemessener Ladestand minus
+   *   `vergleichSocEndKwh`; null ohne gemessenen Stand (nie eine 0).
+   * - `speicherVorsprungEur`: derselbe Planpreis wie das Bestandskonto —
+   *   ausdrücklich KEIN Summand; nur die Anlagen-Antwort trägt ihn.
+   * - `steuerungVortagEur`, `steuerungMonatBisherEur`: Vortag bzw. Σ vom
+   *   Monatsersten bis einschließlich dieses Tages (= `range=month`).
+   * - `steuerungPlannedEur`: der Fahrplan-Planwert des Tages (ex ante).
+   * - `steuerungGruende`: höchstens zwei Kennungen der geschlossenen Liste
+   *   (`STEUERUNG_GRUENDE`); `[]` = berechnet, kein Grund; `null` = nicht
+   *   berechnet.
+   */
+  vergleichSocStartKwh?: number | null;
+  vergleichSocEndKwh?: number | null;
+  speicherVorsprungKwh?: number | null;
+  speicherVorsprungEur?: number | null;
+  steuerungVortagEur?: number | null;
+  steuerungMonatBisherEur?: number | null;
+  steuerungPlannedEur?: number | null;
+  steuerungGruende?: string[] | null;
   /**
    * Die EINE grosse Zahl aller Flaechen: das Ergebnis „unterm Strich"
    * (Erloese-Konzept E9, Paket P9). Beide Endpunkte tragen genau EINEN der
@@ -10038,10 +10072,18 @@ export const api = {
    * den Tages-Splice — siehe {@link ScheduleMode}. Ein Backend ohne den
    * Parameter beantwortet `mode=day` mit einem 400, der Aufrufer fällt dann
    * fail-soft auf die Standard-Lesart zurück.
+   *
+   * `date` (YYYY-MM-DD, Berliner Kalender, nur mit `mode: 'day'`) nennt den Tag
+   * des Tagesschalters: gestern, heute oder morgen — der Server lehnt jeden
+   * anderen Tag mit 400 ab. Ein älteres Backend überginge den Parameter und
+   * schickte HEUTE; der Aufrufer schneidet deshalb selbst nach dem Kalendertag
+   * (`tagModell`), ein falscher Tag bleibt dann leer statt fremd.
    */
-  schedule: (siteId: string, mode?: ScheduleMode) =>
+  schedule: (siteId: string, mode?: ScheduleMode, date?: string) =>
     request<SchedulePlan>(
-      `/api/v1/sites/${siteId}/schedule${mode && mode !== 'latest' ? `?mode=${mode}` : ''}`,
+      `/api/v1/sites/${siteId}/schedule${
+        mode && mode !== 'latest' ? `?mode=${mode}${date ? `&date=${date}` : ''}` : ''
+      }`,
     ),
   forecastQuality: (siteId: string, days = 30) =>
     request<ForecastQuality>(`/api/v1/sites/${siteId}/forecast-quality?days=${days}`),
@@ -10517,7 +10559,10 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
     ),
 
-  /** Die Standorte zum Stichtag (ohne: heute) samt der Gruppe „Noch nicht zugeordnet“. */
+  /**
+   * Die Standorte zum Stichtag (ohne: heute) samt der Gruppe „Noch nicht zugeordnet“ — auch die Wurzel des
+   * Aufbau-Baums (main 41ed67c26 hatte dieselbe Funktion ein zweites Mal angelegt).
+   */
   standorte: (stichtag?: string) =>
     request<StandorteAmStichtag>(
       `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,

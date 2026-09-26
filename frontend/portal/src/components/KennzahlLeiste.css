@@ -77,6 +77,17 @@
   margin-left: 3px;
 }
 
+/*
+ * Die EINORDNUNG unter einer Geld-Zahl (Konzept k1 E5 = A): Grund und
+ * Monatszeile als Sekundärtext in Tinte-gedämpft — kein Chip, keine Farbe.
+ */
+.vp-leiste-einordnung {
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #6c757d);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .vp-leiste-sub {
   font-size: 0.72rem;
   color: var(--vp-text-muted, #6c757d);

@@ -122,6 +122,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   messwerte: SUB_CHUNK.messwerte,
   energiebilanz: SUB_CHUNK.energiebilanz,
   erloese: SUB_CHUNK.erloese,
+  einzelwerte: SUB_CHUNK.einzelwerte,
   modell: SUB_CHUNK.modell,
   geraet: SUB_CHUNK.geraet,
   box: SUB_CHUNK.box,

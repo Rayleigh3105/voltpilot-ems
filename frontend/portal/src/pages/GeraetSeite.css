@@ -135,6 +135,11 @@
   min-width: 0;
 }
 
+.vp-geraet-einrichtung {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
 .vp-geraet-sec-sub {
   margin-left: auto;
   font-size: 0.8rem;
@@ -861,4 +866,11 @@
   .vp-geraet-lesen > button {
     flex: 1 1 100%;
   }
+}
+
+/* I/O-Modul: der Test-Schalter je Ausgang sitzt unter Zustand und Zuordnung. */
+.vp-io-ausgaenge .vp-io-schalter {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
 }

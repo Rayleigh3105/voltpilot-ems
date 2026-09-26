@@ -33,7 +33,7 @@ Das Profil ergänzt den SunSpec-Simulator. Cloud-Anbindung erfolgt an die konfig
 |---|---|
 | Installieren / verbinden | [DEPLOY](DEPLOY.md), [Enrollment](../docs/connect-a-device.md) |
 | Konfiguration und eigener Adapter | [Inverter-Konfiguration](INVERTER-CONFIG.md), [Custom-Inverter](nodered/CUSTOM-INVERTER.md) |
-| Unterstützte Gerätepfade | [Deye](nodered/DEYE.md), [Fronius](nodered/FRONIUS.md), [KACO](nodered/KACO.md), [KOSTAL](nodered/KOSTAL.md), [go-e](nodered/GOE.md), [Shelly](nodered/SHELLY.md) |
+| Unterstützte Gerätepfade | [Deye](nodered/DEYE.md), [Fronius](nodered/FRONIUS.md), [KACO](nodered/KACO.md), [KOSTAL](nodered/KOSTAL.md), [go-e](nodered/GOE.md), [Shelly](nodered/SHELLY.md), [Ebyte I/O-Modul](nodered/EBYTE.md) |
 | Physische Steuerung prüfen | [Prüfstand](nodered/CONTROL-BENCH.md), [native Selbstregelung](nodered/UNPLANNED-LOAD-BENCH.md) |
 | Messpunkte / Gebäudeautomation | [Messwertruntime](nodered/measurements/README.md), [Modbus-Spiegel](MODBUS-SPIEGEL.md) |
 | Updates | [Bedienung](../docs/ota-autonomie.md), [Signaturen](../docs/ota-signing.md) |

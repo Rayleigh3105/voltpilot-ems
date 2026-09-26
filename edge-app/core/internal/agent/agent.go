@@ -29,9 +29,11 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlcert"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ebyte"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
@@ -44,6 +46,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
@@ -136,6 +139,16 @@ type Agent struct {
 	// the charge-side counterpart of trim, which only ever lowers; the edge
 	// enforces, the cloud priced).
 	absorb *guards.SurplusCharger
+	// damp is the DAMPED FOLLOWER behind the measured corrections above
+	// (guards.FollowDamper, concept vp-wechselrichter-eigenregelung-k1 §6.5):
+	// they act only on a device measurement pair taken after the last write
+	// had settled, retreat from the expensive side at once and approach it in
+	// ramps with a reserve - the fallback for every device that cannot regulate
+	// itself (Herzogau 2026-09-24: the box swung behind the clouds).
+	damp *guards.FollowDamper
+	// dampProfileFor overrides guards.DampProfileFor (nil = that); a field only
+	// so a replay test can run the same box with and without the damper.
+	dampProfileFor func(dev controlprofile.Device) guards.DampProfile
 	// native carries the per-slot supervision of the NATIVE SELF-REGULATION: in
 	// a covering slot the setpoint itself is handed back to the inverter, which
 	// then decides its own watts - and this type is what takes it back at the
@@ -158,6 +171,22 @@ type Agent struct {
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
 	lastDriftLog   time.Time // rate-limits the battery cross-check drift log
 	lastCertDivLog time.Time // rate-limits the control-gate-divergence warning
+
+	// meterCheck compares the selection's own grid reading with the box's Netz
+	// meter (K6, guards/leader.go): a measured veto on a declared "am
+	// Netzpunkt". Fed at onLocalTelemetry, judged at applySetpoint.
+	meterCheck guards.MeterCheck
+	// exportZero is the second feed-in watchdog of a negative-price slot in
+	// which the leader stores the surplus itself (K6, composeCurtailment): the
+	// slot's "Einspeisegrenze 0 kW", kept apart from the site's compliance
+	// limiter so that one keeps meaning the registered limit.
+	exportZero guards.ExportLimiter
+	// lastBackstop is the last logged backstop sentence (log on change).
+	lastBackstop string
+	// leaderSuspectAt is when the K4b hint einspeisung_trotz_ladeleistung last
+	// fired - the measured symptom of a leader meter that does not see a second
+	// PV system (zero = never). Guarded by mu.
+	leaderSuspectAt time.Time
 
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
@@ -196,11 +225,14 @@ type Agent struct {
 	// des PRIMAERgeraets - fuer eine Aussage ueber den Netzpunkt taugt keines
 	// von beiden. nil = nie gemessen, nie eine erfundene 0. Unter a.mu wie
 	// lastReading/lastBattKw.
-	lastGridKw  *float64
-	calMu       sync.Mutex
-	cal         *calibration.Session
-	calWatchdog *time.Timer
-	calCert     map[string]bool
+	lastGridKw *float64
+	// nativeLastReason is the last native supervision verdict, so a CHANGED
+	// cause is logged once (noteNativeReason). Under a.mu.
+	nativeLastReason string
+	calMu            sync.Mutex
+	cal              *calibration.Session
+	calWatchdog      *time.Timer
+	calCert          map[string]bool
 
 	// pcMu guards platformDoc, the retained PLATFORM control-certification
 	// document (agent/controlcert.go). ⚠ Lock order: invMu (the inverter
@@ -242,6 +274,13 @@ type Agent struct {
 	gridCal      *curtailcal.GridSession
 	gridWatchdog *time.Timer
 	gridPv       curtailcal.GridPvTracker
+
+	// K5 Pilotfenster der Deye-Ladeseite (agent/nativepilot.go): von Hand
+	// armiert, hoechstens 15 Minuten, danach uebernimmt der Plan. Unter pilotMu
+	// (nie mit gridMu verschachtelt gehalten).
+	pilotMu       sync.Mutex
+	pilot         *nativepilot.Session
+	pilotWatchdog *time.Timer
 
 	// OCPP charge points (agent/ocpp.go). nil while VP_OCPP_ENABLED is off,
 	// which is the default - the box then behaves byte-for-byte as it did
@@ -463,6 +502,14 @@ type Agent struct {
 	shellyDoer    shelly.Doer
 	shellyStoreMu sync.Mutex
 	shellyStore   *shelly.Store
+	// ebyteDial opens the Ebyte I/O module's Modbus TCP connection (nil = the
+	// default dialer; injectable for tests). ebyteStore pins MAC + module
+	// layout per address (data_dir/ebyte-devices.json); ebyteRun is the
+	// executor's per-channel memory. Both lazily opened under ebyteStoreMu.
+	ebyteDial    ebyte.Dialer
+	ebyteStoreMu sync.Mutex
+	ebyteStore   *ebyte.Store
+	ebyteRun     *ebyteState
 
 	// flowDep consumes the retained flow deployment set (agent/flows.go).
 	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
@@ -665,6 +712,7 @@ func New(cfg config.Config) (*Agent, error) {
 		trim:         guards.NewPriceTrimmer(),
 		follow:       guards.NewLoadFollower(),
 		absorb:       guards.NewSurplusCharger(),
+		damp:         guards.NewFollowDamper(),
 		export:       guards.NewExportLimiter(),
 		curtailTrack: guards.NewCurtailTracker(),
 		despikeStore: ds,
@@ -674,6 +722,7 @@ func New(cfg config.Config) (*Agent, error) {
 		curtailCal:   curtailcal.New(0),
 		curtailCert:  map[string]bool{},
 		gridCal:      curtailcal.NewGrid(),
+		pilot:        nativepilot.New(),
 		curtailUnits: map[string]state.CurtailUnit{},
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
@@ -930,6 +979,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	// (Node-RED has no shelly reader). Independent of the control flags, like
 	// every other source read path; idles cheaply without shelly sources.
 	a.startShellySourcePoll(ctx)
+	a.startEbyteSourcePoll(ctx)
 	// OCPP charge points: the CSMS the stations dial + the load-management
 	// executor. A no-op while VP_OCPP_ENABLED is off (the default), so a box
 	// without charge points pays nothing for it.
@@ -1506,6 +1556,14 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	if g != nil {
 		measurements["power_kw"] = *g
 	}
+	// K6: the selection's OWN grid reading against the box's Netz meter - the
+	// plausibility half of "Zähler am Netzpunkt" (guards.MeterCheck). Only a
+	// real pair counts: both readings present, close enough in time.
+	if dev, ok := primary["power_kw"]; ok {
+		if mk, mat, ok := a.netzMeterReading(); ok {
+			a.meterCheck.Observe(ts, dev, mk, time.Now().UTC().Sub(mat))
+		}
+	}
 	siteGrid := g
 	if siteGrid == nil && !a.primaryGridNotSiteTotal() {
 		if grid, ok := measurements["power_kw"]; ok {
@@ -1612,6 +1670,17 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		GridLimitKw: pick("grid_limit_kw"),
 	}
 	a.lastReadingAt = ts
+	// The device clock of the damped follower: the two halves of the surplus
+	// pair exactly as the device reported them (before the despiker holds a
+	// channel), so a refresh is a refresh.
+	pairGrid, pairBatt := guards.Unknown(), guards.Unknown()
+	if siteGrid != nil {
+		pairGrid = *siteGrid
+	}
+	if battKw != nil {
+		pairBatt = *battKw
+	}
+	a.damp.Observe(ts, pairGrid, pairBatt)
 	// Keep the last-good raw SoC for the status heartbeat when this sample had
 	// no (or a despiked) SoC - mirrors the tile's last-good behaviour rather
 	// than reporting a hole to the cloud.
@@ -1674,7 +1743,11 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		}
 	} else if g, ok := measurements["power_kw"]; ok {
 		if pv, okPv := measurements["pv_power_kw"]; okPv {
-			if a.export.Observe(ts, g, pv) {
+			urgent := a.export.Observe(ts, g, pv)
+			if a.exportZero.Observe(ts, g, pv) {
+				urgent = true
+			}
+			if urgent {
 				a.nudgeSetpoint()
 			}
 		}
@@ -1694,6 +1767,8 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// Armieren beantwortbar sein), der Zustandsautomat nur waehrend eines
 	// Laufs. Ohne Test kostet das eine Zuweisung.
 	a.gridObserve(ts, measurements, battKw)
+	// K5 Pilotfenster: dieselbe Messung speist Huelle und Messgroessen.
+	a.nativePilotObserve(ts, measurements, battKw)
 
 	// While the device is removed (unclaimed) in the cloud, the local dashboard
 	// stays fully alive (guard reading, history ring, KPIs below) but the
@@ -1995,6 +2070,13 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 		}
 	}
 	sum.Execution = executionSummary(snap)
+	// In every autonomous_* mode the box WRITES no battery value: commanded_kw
+	// and confirmed_kw are null there by contract (a register that happens to
+	// read 0 on the device is not a command of 0 kW). The reference the box
+	// would take back to is execution.planned_kw.
+	if e := sum.Execution; e != nil && isAutonomousMode(e.Mode) {
+		sum.CommandedKw, sum.ConfirmedKw = nil, nil
+	}
 	// WHICH source granted the certification, and what the PLATFORM register
 	// says about the selected model. Both come from the CORE snapshot for the
 	// same reason `certified` does (see above): a Layer-1 readback stamp cannot
@@ -2049,6 +2131,20 @@ const (
 	execModeFallback            = "fallback"
 )
 
+// K4b: the device regulates the CHARGE side itself - E↑ (store the surplus,
+// never from the grid, never discharge) and E/E~ (both sides; E~ with a charge
+// cap). The words are shared with the cloud listener (K4a, PR #1217).
+const (
+	execModeAutonomousCharge          = "autonomous_charge"
+	execModeAutonomousSelfConsumption = "autonomous_selfconsumption"
+)
+
+// isAutonomousMode reports whether the device, not the box, decides the watts.
+func isAutonomousMode(mode string) bool {
+	return mode == execModeAutonomousDischarge || mode == execModeAutonomousCharge ||
+		mode == execModeAutonomousSelfConsumption
+}
+
 // executionSummary folds the in-slot corrections (snap.Follow / snap.Trim) plus
 // the plan-vs-fallback mode into the additive heartbeat block, so the cloud can
 // name WHY the commanded value deviates from the plan's watt value instead of
@@ -2069,13 +2165,28 @@ func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
 	// nobody executed. Only a PROVEN mode makes the claim - while the device has
 	// not confirmed it, the reference value IS what the executor writes, so the
 	// honest report is the correction that produced it.
+	//
+	// The word falls in the SAME tick as any take-back: snap.Native is rewritten
+	// by every setpoint tick and is nil the moment the supervision lets go, so
+	// "we stopped writing" can never outlive the device's proof.
 	if n := snap.Native; n != nil && n.Active && n.Proven {
-		return &cloud.ExecutionSummary{
+		sum := &cloud.ExecutionSummary{
 			Mode:                 execModeAutonomousDischarge,
 			PlannedKw:            copyFloat(&n.ReferenceKw),
 			EffectiveFloorSocPct: copyFloat(snap.EffectiveFloorSocPct),
 			MeasurementsFresh:    true,
 		}
+		switch n.Intent {
+		case guards.NativeIntentSurplusCharge:
+			sum.Mode = execModeAutonomousCharge
+		case guards.NativeIntentSelfConsumption:
+			sum.Mode = execModeAutonomousSelfConsumption
+		}
+		if sum.Mode != execModeAutonomousDischarge {
+			sum.WindowMinKw = copyFloat(&n.WindowMinKw)
+			sum.WindowMaxKw = copyFloat(&n.WindowMaxKw)
+		}
+		return sum
 	}
 	if a := snap.Absorb; a != nil && a.Active {
 		mode := execModeAbsorb
@@ -2302,7 +2413,27 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		// every other cycle and for an older Layer-1 build.
 		Native struct {
 			GridChargeBlocked *bool `json:"grid_charge_blocked"`
+			// Intent (K4b) is the intent word the executed primitive realises.
+			Intent string `json:"intent"`
+			// CurtailsOwnPv / Candidate (K5): the proven primitive's PV side
+			// effect and which hand-over candidate ran.
+			CurtailsOwnPv bool   `json:"curtails_own_pv"`
+			Candidate     string `json:"candidate"`
 		} `json:"native"`
+		// NativeRefusal (K5) is Layer 1's reason why a wanted native mode did
+		// not engage (absent on an older Layer 1 and on every native cycle).
+		NativeRefusal string `json:"native_refusal"`
+		// Wrote (Deye executor) - did this cycle write a register (K5 pilot).
+		Wrote bool `json:"wrote"`
+		// NativeCapabilities (K4b) is Layer 1's report of the CERTIFIED levers
+		// of the current selection; absent on a pre-K4b Layer 1.
+		NativeCapabilities *state.NativeCapabilities `json:"native_capabilities"`
+		// NativePrecondition is the same device answer read BEFORE the hand-over
+		// (the executor's precondition read on a cycle the follower still
+		// carried). Absent on every other cycle and on an older Layer-1 build.
+		NativePrecondition struct {
+			GridChargeBlocked *bool `json:"grid_charge_blocked"`
+		} `json:"native_precondition"`
 		Registers []struct {
 			Role         string   `json:"role"`
 			Fc           int      `json:"fc"`
@@ -2359,6 +2490,20 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	if m.Native.GridChargeBlocked != nil {
 		v := *m.Native.GridChargeBlocked
 		info.NativeGridChargeBlocked = &v
+	}
+	if m.NativePrecondition.GridChargeBlocked != nil {
+		v := *m.NativePrecondition.GridChargeBlocked
+		info.NativePreconditionGridChargeBlocked = &v
+	}
+	info.NativeIntent = m.Native.Intent
+	info.NativeCurtailsOwnPv = m.Native.CurtailsOwnPv
+	info.NativeCandidate = m.Native.Candidate
+	info.NativeRefusal = m.NativeRefusal
+	info.Wrote = m.Wrote
+	if c := m.NativeCapabilities; c != nil {
+		info.NativeCapabilities = &state.NativeCapabilities{
+			Intents: append([]string{}, c.Intents...), Window: c.Window, Persistent: c.Persistent,
+		}
 	}
 	for _, r := range m.Registers {
 		info.Registers = append(info.Registers, state.ControlRegister{
@@ -2420,6 +2565,11 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	if !m.Blocked && cycle != controlCycleUnconfirmed &&
 		strings.EqualFold(strings.TrimSpace(m.Source), gridTestSource) {
 		a.gridNoteReadback(cycle == controlCycleHeld, checkedAt)
+	}
+	// K5 Pilotfenster: nur ein Zyklus DIESER Quelle zaehlt, ein blockierter hat
+	// nichts geschrieben.
+	if !m.Blocked {
+		a.nativePilotNoteReadback(info, cycle == controlCycleUnconfirmed, checkedAt)
 	}
 	// Sticky-path backfill (2026-07-28): a NORMAL driving readback names the surface
 	// a device-granted family is actually controlled on. For a grant certified before
@@ -2560,6 +2710,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// A bounded First-Light write owns the inverter for its TTL, so no
 		// economic execution mode may carry an armed state across it.
 		a.native.Release()
+		a.damp.Release()
 		return
 	}
 
@@ -2575,6 +2726,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// Voraussetzungen des Armierens (curtailcal.GridSession.Start), nicht
 	// Dinge, die er beiseiteschiebt.
 	if a.gridTestOverride(now, p) {
+		return
+	}
+	// K5 Pilotfenster der Deye-Ladeseite: derselbe Gedanke - von Hand armiert,
+	// begrenzt, und es umgeht nur das Zertifikat des Kandidaten.
+	if a.nativePilotOverride(now, p) {
 		return
 	}
 
@@ -2666,6 +2822,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			// so a previous claim is cleared rather than left standing - the
 			// same rule the three corrections above follow.
 			s.Native = nil
+			s.NativeWithheld = nil
 			s.CarsFirstCapKw = nil
 			s.ExportGuard = exportGuard
 			// Without a reading the tracker has no evaluation point at all, so a
@@ -2677,6 +2834,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		a.follow.Release()
 		a.absorb.Release()
 		a.native.Release()
+		a.damp.Release()
 		return
 	}
 
@@ -2738,8 +2896,21 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// registry transition even before its first holder command is available.
 	// Hard export/compliance/watchdog and device write gates remain downstream.
 	marketCorrectionsAllowed := !paused && !nonPlanHolder && !a.batteryOwnerClaimed()
+	// MEASURE, THEN SET (guards/followdamper.go, concept
+	// vp-wechselrichter-eigenregelung-k1 §6.5, Captain E2 A): every measured
+	// in-slot correction below - trim, load follower, deficit cover, surplus
+	// store and absorption - acts on the CONTROL READING rc, whose pv/load only
+	// advance on a device measurement pair taken after the last write had
+	// settled. The live reading r keeps every compliance and watchdog stage.
+	profileFor := guards.DampProfileFor
+	if a.dampProfileFor != nil {
+		profileFor = a.dampProfileFor
+	}
+	dampProfile := profileFor(a.controlProfileDevice())
+	rc, dampPair := a.damp.Gate(now, dampProfile, r, readingAt)
+	preCorrectionKw := kw
 	trimmed := a.trim.Apply(now, kw,
-		marketCorrectionsAllowed && p.ActiveChargeFromSurplusOnly(now), r)
+		marketCorrectionsAllowed && p.ActiveChargeFromSurplusOnly(now), rc)
 	kw = trimmed.Kw
 
 	// In-slot LOAD FOLLOWING (2026-07-30, the discharge-side mirror of the trim
@@ -2843,13 +3014,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 		CommandKw:         kw,
 		SocPct:            r.SocPct,
 		EffectiveFloorPct: floor,
-		PvKw:              r.PvKw,
-		LoadKw:            r.LoadKw,
+		PvKw:              rc.PvKw,
+		LoadKw:            rc.LoadKw,
 	})
 	preFollowKw := kw
 	followed := a.follow.ApplyAuthorized(now, kw,
 		coverLoad,
-		unplanned, deficitCover.Active, limitToLoad, floor, measurementFresh, limits, r)
+		unplanned, deficitCover.Active, limitToLoad, floor, measurementFresh, limits, rc)
 	kw = followed.Kw
 
 	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that
@@ -2914,11 +3085,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 		CommandKw:         kw,
 		SocPct:            r.SocPct,
 		SocMaxPct:         limits.SocMaxPct,
-		PvKw:              r.PvKw,
-		LoadKw:            r.LoadKw,
+		PvKw:              rc.PvKw,
+		LoadKw:            rc.LoadKw,
 	})
 	absorbed := a.absorb.Apply(now, kw,
-		absorbAuthorized || surplusStore.Active, limits, r)
+		absorbAuthorized || surplusStore.Active, limits, rc)
 	surplusStored := surplusStore.Active && absorbed.Active
 	if surplusStored {
 		absorbed.Path = execModeSurplusStore
@@ -2932,6 +3103,24 @@ func (a *Agent) applySetpoint(now time.Time) {
 		}
 	}
 	kw = absorbed.Kw
+
+	// THE EXPENSIVE DIRECTION AT ONCE, THE CHEAP ONE DAMPED (guards/
+	// followdamper.go): while a measured correction is engaged, a new target
+	// is taken only on the settled pair Gate consumed above; retreating from the
+	// side the correction is bounded against (a charge beyond the surplus is
+	// bought, a discharge beyond the house is sold) happens in one step,
+	// approaching it in ramps of RampKw onto surplus/deficit minus ReserveKw.
+	// The damped value lies between the command and what the corrections
+	// accepted, and it is re-clamped with the LIVE reading, so rated band, SoC
+	// window, EEG solar-only charge and §14a bind on every tick while the
+	// economic target waits. Off (byte-identical) without a selected inverter
+	// and on a persistent-lever surface (Deye ToU).
+	correctionEngaged := trimmed.Active || followed.Active || absorbed.Active ||
+		a.trim.Engaged() || a.follow.Engaged() || a.absorb.Engaged()
+	if damped, shaped := a.damp.Shape(dampProfile, preCorrectionKw, kw,
+		correctionEngaged, dampPair, rc); shaped {
+		kw = guards.Clamp(damped, limits, r)
+	}
 
 	// „AUTO VOR SPEICHER" (OCPP-Lastmanagement Stufe 4, internal/lastmgmt/
 	// surplus.go): the customer decided their VEHICLES get the PV surplus
@@ -3061,16 +3250,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// with `now` would keep re-stamping a stale reading and the staged fallback
 	// below could never fire. Without a reading at all nothing is observed - a
 	// zero-valued Reading is not a measured house.
-	if !readingAt.IsZero() {
-		a.curtailTrack.Observe(readingAt, r.LoadKw, kw)
-	}
-	curtailCap := a.curtailTrack.Cap(now, pvLimit)
-	if curtailCap.Active {
-		v := curtailCap.CapKw
-		pvLimit = &v
-	}
-	curtailTrack := a.curtailTrackInfo(curtailCap)
-
+	//
+	// K6: the composition itself runs BEHIND the Wegwahl below
+	// (composeCurtailment), because the cascade needs to know whether the
+	// leader regulates itself.
 	//
 	// GEMEINSAME STEUERUNG (AP-15 IP-18, V1-V6): with a share document the
 	// watchdog holds the box's own share (guards/exportanteil.go) - the leading
@@ -3083,10 +3266,18 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// battery discharge too - blind to the share, with a fresh measurement only
 	// once the producers are at 0 - and never charges or raises anything.
 	// Without a document this is exactly the single-box watchdog, and the
-	// static cap below holds as argued for EVERY house load - but only for the
+	// static cap holds as argued for EVERY house load - but only for the
 	// generation THIS box controls (a producer another box reads is not in
 	// pv_total, W11).
-	var exportCap guards.ExportCap
+	//
+	// Nachzug main (26.09.2026): the share half stays HERE, in front of the
+	// Wegwahl, because it may lower `kw` and the Wegwahl, the setpoint and the
+	// curtailment tracker must all see the lowered value. It has no K6 inner
+	// loop (the cascade belongs to a single box's own leader);
+	// composeCurtailment takes its verdict as the watchdog's instead of running
+	// CapCascade. Without a document composeCurtailment runs the single-box
+	// watchdog with the cascade, exactly as K6 built it.
+	var anteilCap *guards.ExportCap
 	entladungGesenkt := false
 	if an := a.exportAnteil(); an != nil {
 		// B2 (AP-15 IP-20): a frozen value counts as blind - its age from its
@@ -3099,24 +3290,15 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// V6 in every evaluation: the charge counts too - a battery that goes
 		// from charging to discharging lowers the producers at once
 		an.LadenKw = math.Max(kw, 0)
-		exportCap = a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
-		a.einfrierGeprueft(now, exportCap.Pruefung)
+		c := a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
+		a.einfrierGeprueft(now, c.Pruefung)
 		vorEntladeKappe := kw
-		kw = lowerDischarge(kw, exportCap.DischargeCapKw)
+		kw = lowerDischarge(kw, c.DischargeCapKw)
 		entladungGesenkt = kw != vorEntladeKappe
 		// AP-15 IP-22: count what the share holds back (anteil_verlust.go)
-		a.verlust.Zaehle(now, exportCap, an.Fuehrt, exportCap.PvKw)
-	} else {
-		exportCap = a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, kw))
+		a.verlust.Zaehle(now, c, an.Fuehrt, c.PvKw)
+		anteilCap = &c
 	}
-	if exportCap.Active {
-		if pvLimit == nil || exportCap.CapKw < *pvLimit {
-			v := exportCap.CapKw
-			pvLimit = &v
-		}
-	}
-	exportGuard := a.exportGuardInfo(exportCap)
-	a.logExportGuard(exportGuard)
 
 	// Control gate (report §6.6/§6.7): the setpoint carries the core's kill-switch
 	// AND per-model certification verdict as control_enabled. Layer 1 writes only
@@ -3138,14 +3320,6 @@ func (a *Agent) applySetpoint(now time.Time) {
 	certSource := a.certSource(family)
 	controlEnabled := a.Cfg.ControlEnabled && certified
 
-	// SPRUNGPROBE, second half (AP-15 IP-21): the feed-in watchdog that holds
-	// the producers back, regulates blind or lowers the discharge on this tick,
-	// or control off, abort the probe - its PV ceiling then never reaches the
-	// setpoint. Otherwise the ceiling composes into the plant's PV cap as a
-	// minimum (sprungprobe.Kappe), never a widening, AFTER the watchdog.
-	sprung = a.sprungNachher(now, sprung, exportCap, entladungGesenkt, controlEnabled)
-	pvLimit = sprungprobe.Kappe(pvLimit, sprung)
-
 	// NATIVE SELF-REGULATION (Selbstregel-Modus, guards/nativemode.go): in a slot
 	// the CLOUD marked worth covering from the battery, hand the SETPOINT itself
 	// back to the inverter's own self-consumption loop instead of writing a
@@ -3161,9 +3335,30 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// grace and the proven follower carries the slot. `kw` is published either
 	// way - unchanged for the executor to write in setpoint mode, and as the
 	// display/take-back reference in native mode.
-	nativeDec, nativeInfo := a.nativeDecide(now, p, r, kw,
+	//
+	// K6: only the connection point's Führungsgerät may regulate itself
+	// (guards/leader.go) - a standing condition of the Wegwahl.
+	leader, leaderInfo := a.leaderVerdict(now)
+	nativeDec, nativeInfo, nativeWithheldInfo := a.nativeDecide(now, p, r, kw,
 		marketCorrectionsAllowed && !surplusStored, controlEnabled, measurementFresh, freshWindow,
-		effectiveFloor, peakTarget, solarOnly)
+		effectiveFloor, peakTarget, solarOnly, limits, leader.Reason)
+	a.noteLeaderSymptom(now, nativeDec)
+
+	// PV curtailment and the feed-in watchdog, with the leader as the inner
+	// loop of the cascade (K6, agent/leader.go). `kw` is final here.
+	_, nativeSlot, _ := p.ActiveSetpoint(now)
+	pvLimit, curtailTrack, exportGuard, exportCap := a.composeCurtailment(now, readingAt, r, kw, pvLimit, exportLimit,
+		a.innerLoop(nativeDec, r, limits, nativeSlot), anteilCap)
+
+	// SPRUNGPROBE, second half (AP-15 IP-21): the feed-in watchdog that holds
+	// the producers back, regulates blind or lowers the discharge on this tick,
+	// or control off, abort the probe - its PV ceiling then never reaches the
+	// setpoint. Otherwise the ceiling composes into the plant's PV cap as a
+	// minimum (sprungprobe.Kappe), never a widening, AFTER the watchdog - since
+	// the Nachzug of K6 (26.09.2026) that is after composeCurtailment. The
+	// Wegwahl above reads neither the PV cap nor the probe's ceiling.
+	sprung = a.sprungNachher(now, sprung, exportCap, entladungGesenkt, controlEnabled)
+	pvLimit = sprungprobe.Kappe(pvLimit, sprung)
 
 	msg := map[string]any{
 		"battery_setpoint_kw": kw,
@@ -3203,11 +3398,35 @@ func (a *Agent) applySetpoint(now time.Time) {
 		"battery_mode": batteryModeSetpoint,
 	}
 	if nativeDec.Native {
-		msg["battery_mode"] = batteryModeNative
-		msg["battery_native_duty"] = nativeDec.Duty
+		// "native" = the pre-existing E↓ primitive, byte-identical for every
+		// Layer 1; "native_window" = a window intent (K4b), which a Layer 1 that
+		// predates it treats as the ordinary setpoint path and never confirms.
+		// The intent word and the guard-clipped window ride along additively.
+		msg["battery_mode"] = nativeDec.Mode
+		if nativeDec.Mode == batteryModeNative {
+			msg["battery_native_duty"] = nativeDec.Duty
+		}
+		msg["battery_native_intent"] = nativeDec.Intent
+		msg["battery_window_min_kw"] = nativeDec.Window.MinKw
+		msg["battery_window_max_kw"] = nativeDec.Window.MaxKw
+		// The reference for "narrower than the device's own mode": the battery's
+		// rated band Box ① classified the plan against (guards.NaturalWindow).
+		// Layer 1 compares the window with it, not with the inverter's nameplate.
+		if nat, ok := guards.NaturalWindow(limits.MaxChargeKw, limits.MaxDischargeKw); ok {
+			msg["battery_window_natural_min_kw"] = nat.MinKw
+			msg["battery_window_natural_max_kw"] = nat.MaxKw
+		}
 	}
 	if effectiveFloor != nil {
 		msg["effective_floor_soc_pct"] = *effectiveFloor
+	}
+	// persistent_write_budget is the day budget of plan changes the selected
+	// device's control profile states for a persistent (EEPROM) lever (K7,
+	// concept §6.6 F12). Layer 1's Deye ToU path counts its own plan changes
+	// against it (vp-wr-deye-tou-schreibbudget) and keeps the Vorgabe of 20 when
+	// it is absent; a larger value never loosens it there either.
+	if n := a.persistentWriteBudget(); n > 0 {
+		msg["persistent_write_budget"] = n
 	}
 	// device_certified_path names the control surface the grant's First-Light
 	// evidence was produced on ("remote"/"tou") - Layer 1's plan node seeds its
@@ -3245,6 +3464,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// AP-15 IP-20: what this setpoint MUST change at the meter goes to the
 	// probe for a frozen value (no-op without a share document).
 	a.einfrierSollwert(now, controlEnabled, pvLimit, r.PvKw, kw, nativeDec.Native)
+	// The damper's settle clock runs from the value Layer 1 now writes.
+	a.damp.Commit(now, kw)
 	// The per-entity retained command is owned by the ARBITER since E2 (the
 	// plan executor injects the plan as market desires, the failsafe is the
 	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is
@@ -3270,7 +3491,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.CarsFirstCapKw = carsFirstCap
 		s.ExportGuard = exportGuard
 		s.CurtailTrack = curtailTrack
+		s.Leader = leaderInfo
 		s.Native = nativeInfo
+		s.NativeWithheld = nativeWithheldInfo
 	})
 }
 
@@ -3627,6 +3850,10 @@ type sourceReading struct {
 	// non-metering class it is the ONLY per-reading fact, so it carries the
 	// freshness/liveness of that source (a fabricated load would not).
 	relayOn *bool
+	// inputs/outputs are the states of an I/O module source (ebyte): real
+	// facts that carry its liveness, never energy.
+	inputs  []bool
+	outputs []bool
 	recv    time.Time
 	// period is the ACHIEVED read cadence: the wall-clock spacing between this
 	// reading and the previous one (0 until a second reading arrived). The
@@ -3671,6 +3898,8 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		PowerKw   *float64 `json:"power_kw"`
 		LoadKw    *float64 `json:"load_kw"`
 		RelayOn   *bool    `json:"relay_on"`
+		Inputs    []bool   `json:"inputs"`
+		Outputs   []bool   `json:"outputs"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("source telemetry malformed; skipped", "id", id, "err", err)
@@ -3683,7 +3912,8 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		return v
 	}
 	pv, grid, load := usable(m.PvPowerKw), usable(m.PowerKw), usable(m.LoadKw)
-	if pv == nil && grid == nil && load == nil && m.RelayOn == nil {
+	if pv == nil && grid == nil && load == nil && m.RelayOn == nil &&
+		m.Inputs == nil && m.Outputs == nil {
 		return // nothing usable in this reading
 	}
 	now := time.Now().UTC()
@@ -3693,7 +3923,7 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		period = now.Sub(prev.recv) // the ACHIEVED cadence, feeds the freshness window
 	}
 	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, load: load, relayOn: m.RelayOn,
-		recv: now, period: period}
+		inputs: m.Inputs, outputs: m.Outputs, recv: now, period: period}
 	a.srcMu.Unlock()
 	// Feed a running curtailment First-Light test with the unit's measured
 	// output (the enforcement half of the evidence) - a no-op without a test.
@@ -3797,6 +4027,32 @@ func (a *Agent) authoritativeGrid() (*float64, string) {
 		return nil, ""
 	}
 	return best.grid, bestID
+}
+
+// netzMeterReading is authoritativeGrid with the reading's receive time, for
+// the K6 meter comparison (a pair is only a pair when both halves are recent).
+func (a *Agent) netzMeterReading() (float64, time.Time, bool) {
+	now := time.Now().UTC()
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	var best *sourceReading
+	for _, s := range a.srcs {
+		if s.Role != sources.RoleNetz {
+			continue
+		}
+		r, ok := a.sourceFresh(s, now)
+		if !ok || r.grid == nil {
+			continue
+		}
+		if best == nil || r.recv.After(best.recv) {
+			rr := r
+			best = &rr
+		}
+	}
+	if best == nil {
+		return 0, time.Time{}, false
+	}
+	return *best.grid, best.recv, true
 }
 
 // noteSourceMix compares the fold's source-composition signatures with the last
@@ -3992,13 +4248,25 @@ func (a *Agent) GetBalance() sources.BalanceSettings {
 // SetBalance persists the site power-balance settings and applies them live
 // (the next telemetry sample already uses them; no restart needed).
 func (a *Agent) SetBalance(cfg sources.BalanceSettings) (sources.BalanceSettings, error) {
+	cfg, err := cfg.Normalize()
+	if err != nil {
+		return sources.BalanceSettings{}, err
+	}
 	if err := a.balStore.Save(cfg); err != nil {
 		return sources.BalanceSettings{}, err
 	}
 	a.srcMu.Lock()
+	moved := a.bal.MeterLocation() != cfg.MeterLocation()
 	a.bal = cfg
 	a.srcMu.Unlock()
-	slog.Info("balance settings updated", "primary_grid_not_site_total", cfg.PrimaryGridNotSiteTotal)
+	if moved {
+		// A changed meter statement starts the comparison over: pairs measured
+		// under the old topology prove nothing about the new one.
+		a.meterCheck.Reset()
+	}
+	slog.Info("balance settings updated", "primary_grid_not_site_total", cfg.PrimaryGridNotSiteTotal,
+		"primary_meter_location", cfg.MeterLocation(), "further_storage", cfg.FurtherStorage,
+		"export_backstop", cfg.ExportBackstop)
 	return cfg, nil
 }
 
@@ -4059,6 +4327,8 @@ func (a *Agent) SourceLastReadings() map[string]sources.LastReading {
 			PowerKw:  r.grid,
 			LoadKw:   r.load,
 			RelayOn:  r.relayOn,
+			Inputs:   r.inputs,
+			Outputs:  r.outputs,
 			ReadAtMs: r.recv.UnixMilli(),
 		}
 	}
@@ -4104,6 +4374,11 @@ func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 		// persisted identity store) and read the relay state. Node-RED has no
 		// shelly reader, so the flow round-trip would only time out.
 		return a.shellyTest(req)
+	}
+	if sel.Communication == inverter.CommEbyteModbusTCP {
+		// The Ebyte I/O module is CORE-owned like Shelly: identify + read
+		// in-process (Node-RED has no reader for it) and pin the device.
+		return a.ebyteTest(req)
 	}
 	res := a.testReadExchange(sel, req.Role, false, testReadTimeout)
 	if res.OK && req.ControlTest && sel.Communication == inverter.CommGoeHTTP {

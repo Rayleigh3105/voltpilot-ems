@@ -34,6 +34,12 @@ export interface KennzahlZelle {
   wert: string;
   /** Die leise Einheit; null = der Wert trägt keine (z. B. eine Stückzahl). */
   einheit: string | null;
+  /**
+   * Die EINORDNUNG direkt unter einer Geld-Zahl (Konzept k1 E5 = A): Grund-
+   * Wort und Monatszeile („gestern verkauft + 12,78 € · September
+   * + 116,94 €"). Sekundärtext — nie ein Chip, nie eine Farbe.
+   */
+  einordnung?: string | null;
   /** Die Unterzeile, die die Grundlage NENNT; null = es gibt nichts zu sagen. */
   unterzeile: string | null;
   /**

@@ -120,6 +120,24 @@ class ProbePublisherTest {
         assertThat(ops.get(1).get("register_kind").asText()).isEqualTo("input");
     }
 
+    /** The persistent ON/OFF names only its target value - no test values, no auto-off. */
+    @Test
+    void anIoModuleSetCarriesOnlyItsTargetValue() throws Exception {
+        byte[] raw = ProbePublisher.switchEnvelope(TENANT, SITE, DEVICE, "9f2c41ab77d0e315",
+                Instant.parse("2026-08-11T09:12:00Z"), null,
+                ProbePublisher.SwitchOp.ioSet("192.168.3.50", 502, 1, 5, false));
+        JsonNode op = json.readTree(new String(raw, StandardCharsets.UTF_8)).get("ops").get(0);
+        assertThat(op.get("op").asText()).isEqualTo("switch_set");
+        assertThat(op.get("transport").asText()).isEqualTo("ebyte_modbus_tcp");
+        assertThat(op.get("register_kind").asText()).isEqualTo("coil");
+        assertThat(op.get("address").asInt()).isEqualTo(4);
+        assertThat(op.get("write_fc").asInt()).isEqualTo(5);
+        assertThat(op.get("set_value").asInt()).isZero();
+        assertThat(op.has("off_value")).isFalse();
+        assertThat(op.has("on_value")).isFalse();
+        assertThat(op.has("ttl_s")).isFalse();
+    }
+
     /** Both topics live in the v2/# subtree the per-device ACL already covers. */
     @Test
     void bothTopicsLiveInTheAlreadyGrantedSubtree() {

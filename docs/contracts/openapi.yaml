@@ -394,7 +394,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RegistrationResponse" }
-        "400": { description: Invalid input (blank name, invalid email, password shorter than 8 chars). }
+        "400": { description: Invalid input (blank name, invalid email, password shorter than 12 chars or equal to the email or name). }
         "409": { description: An account with this email already exists. }
         "429": { description: Too many registration attempts (sliding-window rate limit per client address plus a global cap; nothing was created). }
   /api/v1/enrollment/{ref}/csr:
@@ -2468,6 +2468,13 @@ paths:
 
         Both modes are RLS-scoped by tenant and carry the recomposed decision
         prices (importPriceCtKwh / exportValueCtKwh / importPriceSource).
+
+
+        `mode=day&date=YYYY-MM-DD` (the portal's Tagesschalter "Gestern · Heute
+        · Morgen") splices EXACTLY that Europe/Berlin day - bounded at the next
+        midnight, so yesterday carries no today and tomorrow no day after.
+        Only yesterday, today and tomorrow are accepted; `date=<today>` is the
+        open-ended `mode=day` reading above (it keeps the plan's tomorrow).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - name: mode
@@ -2475,13 +2482,21 @@ paths:
           required: false
           description: Which reading of the plan; unknown values are rejected (400).
           schema: { type: string, enum: [latest, day], default: latest }
+        - name: date
+          in: query
+          required: false
+          description: >
+            Only with `mode=day`: the Europe/Berlin calendar day to splice -
+            yesterday, today or tomorrow. Any other day, a malformed date or a
+            date without `mode=day` is rejected (400), never read as today.
+          schema: { type: string, format: date }
       responses:
         "200":
           description: The site's current plan (empty slots array if none yet).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Schedule" }
-        "400": { description: Unknown mode. }
+        "400": { description: Unknown mode, or a date outside yesterday..tomorrow / without mode=day. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/control-status:
@@ -8373,8 +8388,67 @@ paths:
         "400": { description: Unknown type / invalid master data. Body carries a German `message`. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
-        "409": { description: The chosen reported source is already assigned to a consumer. }
-        "422": { description: The device type cannot execute the requested control kind. }
+        "409": { description: The chosen reported source (or I/O output) is already assigned to a consumer. }
+        "422": { description: The device type cannot execute the requested control kind, or ioEntityId is not an I/O module of this site. }
+  /api/v1/sites/{siteId}/io-modules/{entityId}/zustand:
+    get:
+      tags: [consumer]
+      summary: The last reported inputs/outputs of one I/O module (Ebyte M31) with their consumers.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The module state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IoModuleState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant, or the entity is not an I/O module. }
+  /api/v1/sites/{siteId}/io-modules/{entityId}/outputs/{channel}:
+    put:
+      tags: [consumer]
+      summary: Switch ONE free output of an I/O module on or off from its device page.
+      description: >
+        The ON/OFF switch of the device page (probe `switch_set`, transport
+        `ebyte_modbus_tcp`): the state stays until switched again - there is no
+        automatic off. The safety net is the module's own watchdog, which drops
+        every output when the box falls silent. An output bound to a consumer is
+        switched ON through that consumer's manual override (409); switching OFF
+        always works. `state` is the value READ BACK from the device, never the
+        command.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: channel, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [on]
+              properties:
+                on: { type: boolean }
+      responses:
+        "200":
+          description: >
+            The outcome in customer words; `ok=false` carries the box's reason
+            (unreachable, wrong device, timeout).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, channel, message]
+                properties:
+                  ok: { type: boolean }
+                  channel: { type: integer }
+                  state: { type: boolean, nullable: true }
+                  message: { type: string }
+        "400": { description: Missing `on` or an impossible channel. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant, or the entity is not an I/O module. }
+        "409": { description: The output belongs to a consumer (switch it there), or the module has no address. }
   /api/v1/sites/{siteId}/consumers/{id}:
     get:
       tags: [consumer]
@@ -22281,6 +22355,45 @@ components:
             "relay_state" = relay readback only (Stufe 3, energy
             "angenommen"), null = unbound draft or created before this field
             existed.
+        ioEntityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            The I/O module (entity type io-module, e.g. Ebyte M31) whose relay
+            output switches this consumer. Null = not bound to an output.
+        ioChannel:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 256
+          description: The 1-based relay output across the whole module stack (DO1 = 1).
+    IoChannelState:
+      type: object
+      properties:
+        channel: { type: integer, minimum: 1 }
+        on:
+          type: boolean
+          nullable: true
+          description: The last REPORTED state; null = not reported in the last ten minutes.
+        consumerId: { type: string, format: uuid, nullable: true }
+        consumerName: { type: string, nullable: true }
+    IoModuleState:
+      type: object
+      description: >
+        The last reported digital inputs and relay outputs of one I/O module
+        (the box publishes di_k/do_k on change and at least every minute), each
+        output with the consumer that switches it.
+      properties:
+        entityId: { type: string, format: uuid }
+        label: { type: string, nullable: true }
+        inputs: { type: array, items: { $ref: "#/components/schemas/IoChannelState" } }
+        outputs: { type: array, items: { $ref: "#/components/schemas/IoChannelState" } }
+        receivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The newest report; null = nothing reported in the last ten minutes.
     ProbeRequest:
       type: object
       required: [ops]
@@ -22712,6 +22825,17 @@ components:
         edgeSourceId:
           type: string
           description: An edge-reported source id to bind ("verbunden"); omit for a draft.
+        ioEntityId:
+          type: string
+          format: uuid
+          description: >
+            Bind to a relay output of an I/O module of this site instead of a
+            reported source (together with ioChannel; excludes edgeSourceId).
+        ioChannel:
+          type: integer
+          minimum: 1
+          maximum: 256
+          description: The 1-based relay output; 409 when another consumer already owns it.
     PatchConsumerRequest:
       type: object
       description: All fields optional; send `expectedVersion` for optimistic concurrency.
@@ -22788,6 +22912,27 @@ components:
                   relay, or not reported yet) - the wizard then names the
                   honest Stufe-3 consequence (energy "angenommen").
               health: { type: string, enum: [ok, stale, never] }
+        ioModules:
+          type: array
+          description: >
+            The site's I/O modules as switching paths. outputs = the relay
+            output count the module last REPORTED (null until it reported -
+            never a guessed count); used = the outputs already owned by a
+            consumer.
+          items:
+            type: object
+            properties:
+              entityId: { type: string, format: uuid }
+              label: { type: string, nullable: true }
+              outputs: { type: integer, nullable: true }
+              used:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    channel: { type: integer }
+                    consumerId: { type: string, format: uuid }
+                    consumerName: { type: string, nullable: true }
         defaultStorageRelation: { type: string }
         defaultGridEnergyPolicy: { type: string }
     ConsumerPolicyVersion:
@@ -22937,8 +23082,9 @@ components:
           description: Login email (doubles as the username; lowercased).
         password:
           type: string
-          minLength: 8
+          minLength: 12
           maxLength: 128
+          description: At least 12 characters; must not equal the email or the name (case-insensitive).
     RegistrationResponse:
       type: object
       properties:
@@ -24078,6 +24224,12 @@ components:
             Null when savedEur itself is null OR the plant has no maintained
             battery master data (steuerungSplitReason says so) - never a
             guessed reference battery.
+            Definition A (Captain 24.09.2026): EIN durchlaufender sturer
+            Vergleichsspeicher je Anlage - er behaelt seinen eigenen Ladestand
+            ueber Mitternacht, verankert am gemessenen Ladestand zum
+            Berliner Monatsbeginn und an jeder Monatsgrenze neu. Damit ist
+            range=day&at=D dieselbe Zahl wie dailySaved[D], die Tage eines
+            Monats ergeben range=month und die Monate range=year.
         savedSteuerungEur:
           type: number
           nullable: true
@@ -24261,6 +24413,59 @@ components:
             site's peak-shaving module is active (non-null
             site.leistungspreis_eur_kw); null otherwise. Range-independent:
             always describes the RUNNING Europe/Berlin billing period.
+        vergleichSocStartKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day, sonst null: Ladestand des durchlaufenden
+            Vergleichsspeichers ("Speicher ohne Steuerung", Definition A) um
+            00:00 - sein eigener Stand, nicht der der gesteuerten Anlage.
+        vergleichSocEndKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: sein Stand nach dem letzten gemessenen Eimer des Tages.
+        speicherVorsprungKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: gemessener Ladestand am Ende desselben Eimers minus
+            vergleichSocEndKwh - was der gesteuerte Speicher gerade mehr (+)
+            oder weniger (-) hat als der sture. Null ohne gemessenen Ladestand
+            (nie eine 0). Geht in keine gemessene Zahl ein.
+        steuerungVortagEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: savedSteuerungEur des Vortags nach derselben
+            Definition (auch ueber eine Monatsgrenze).
+        steuerungMonatBisherEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: Summe savedSteuerungEur vom Monatsersten bis
+            einschliesslich dieses Tages - dieselbe Zahl wie range=month zum
+            selben Stand.
+        steuerungPlannedEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: der Fahrplan-Planwert desselben Tages
+            (history.totals.steuerungPlannedEur) - EX-ANTE geplant, eine Flaeche
+            nennt ihn "geplant". Null ohne vollstaendige Messlatte.
+        steuerungGruende:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant]
+          description: >
+            Nur range=day mit Dreiteilung: warum der Tag unter Null liegt -
+            hoechstens zwei Kennungen der geschlossenen Liste in Rangfolge
+            (Regeln und Schwellen: docs/contracts/steuerung-tag-vectors.json,
+            Block grund). [] bei einem Tag ab Null oder wenn keine Regel
+            greift (nie geraten); null, wenn nicht berechnet (anderes range,
+            keine Dreiteilung).
     SiteEarnings:
       type: object
       description: >
@@ -24350,6 +24555,12 @@ components:
             speicherlosen Anlage erwirtschaftet hätte - same semantics as the
             fleet endpoint's field. Null when savedEur is null or the battery
             master data is missing (steuerungSplitReason).
+            Definition A (Captain 24.09.2026): EIN durchlaufender sturer
+            Vergleichsspeicher je Anlage - er behaelt seinen eigenen Ladestand
+            ueber Mitternacht, verankert am gemessenen Ladestand zum
+            Berliner Monatsbeginn und an jeder Monatsgrenze neu. Damit ist
+            range=day&at=D dieselbe Zahl wie dailySaved[D], die Tage eines
+            Monats ergeben range=month und die Monate range=year.
         savedSteuerungEur:
           type: number
           nullable: true
@@ -24441,6 +24652,66 @@ components:
           description: >
             Womit bewertet wurde: "plan" = Lambda des massgeblichen Slots,
             "terminal" = der Terminalwert des Laufs (der FK2-Rueckfall).
+        vergleichSocStartKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day, sonst null: Ladestand des durchlaufenden
+            Vergleichsspeichers ("Speicher ohne Steuerung", Definition A) um
+            00:00 - sein eigener Stand, nicht der der gesteuerten Anlage.
+        vergleichSocEndKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: sein Stand nach dem letzten gemessenen Eimer des Tages.
+        speicherVorsprungKwh:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: gemessener Ladestand am Ende desselben Eimers minus
+            vergleichSocEndKwh - was der gesteuerte Speicher gerade mehr (+)
+            oder weniger (-) hat als der sture. Null ohne gemessenen Ladestand
+            (nie eine 0). Geht in keine gemessene Zahl ein.
+        speicherVorsprungEur:
+          type: number
+          nullable: true
+          description: >
+            speicherVorsprungKwh x speicherWertCtKwh / 100 - derselbe Planpreis
+            wie das Bestandskonto; ausdruecklich KEIN Summand einer gemessenen
+            Zahl.
+        steuerungVortagEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: savedSteuerungEur des Vortags nach derselben
+            Definition (auch ueber eine Monatsgrenze).
+        steuerungMonatBisherEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: Summe savedSteuerungEur vom Monatsersten bis
+            einschliesslich dieses Tages - dieselbe Zahl wie range=month zum
+            selben Stand.
+        steuerungPlannedEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: der Fahrplan-Planwert desselben Tages
+            (history.totals.steuerungPlannedEur) - EX-ANTE geplant, eine Flaeche
+            nennt ihn "geplant". Null ohne vollstaendige Messlatte.
+        steuerungGruende:
+          type: array
+          nullable: true
+          items:
+            type: string
+            enum: [gestern_verkauft, haelt_energie_fuer_morgen, so_geplant, wenig_sonne, anders_als_geplant]
+          description: >
+            Nur range=day mit Dreiteilung: warum der Tag unter Null liegt -
+            hoechstens zwei Kennungen der geschlossenen Liste in Rangfolge
+            (Regeln und Schwellen: docs/contracts/steuerung-tag-vectors.json,
+            Block grund). [] bei einem Tag ab Null oder wenn keine Regel
+            greift (nie geraten); null, wenn nicht berechnet (anderes range,
+            keine Dreiteilung).
         series:
           type: array
           description: >
@@ -25208,7 +25479,7 @@ components:
         slotStart: { type: string, format: date-time, nullable: true }
         checkedAt: { type: string, format: date-time, description: "When the readback was taken (\"geprüft vor X\")." }
         controlSource: { type: string, nullable: true, enum: [schedule, default], description: "The device's COARSE truth: is a fresh plan driving it at all. It collapses every non-schedule mode (self-consumption fallback, a v2 desired holding the battery, calibration) into `default`, so it must never be rendered as \"the built-in safety rule is running\" - executionMode is the precise signal. Null for a pre-PR-3 row." }
-        executionMode: { type: string, nullable: true, enum: [plan, follow, trim, absorb, fallback, idle_follow, high_soc_follow, high_soc_charge, autonomous_discharge], description: "Diagnostic execution path. idle_follow is the economically authorized portable exact-setpoint correction; high_soc_follow and high_soc_charge are the bounded discharge/refill halves of the full-battery top band; autonomous_discharge is the separately exact-model/firmware-certified native charge-block path. Customer UI translates these to German and never exposes the codes." }
+        executionMode: { type: string, nullable: true, enum: [plan, follow, limit, trim, absorb, fallback, idle_follow, deficit_cover, high_soc_follow, high_soc_charge, surplus_store, autonomous_discharge, autonomous_charge, autonomous_selfconsumption], description: "Diagnostic execution path. idle_follow is the economically authorized portable exact-setpoint correction; deficit_cover and surplus_store are the general measured-deficit/measured-surplus corrections that superseded the retired high_soc_follow and high_soc_charge; limit is the REDUCE-only right limit_discharge_to_load. autonomous_discharge (intent E-down, cover the house only), autonomous_charge (E-up, store only the PV surplus, never from the grid) and autonomous_selfconsumption (E and E~, both directions) mean the inverter regulates by itself inside the window the edge set; each is reported only once the device confirmed the mode on its readback, and executionPlannedKw is then the reference the edge would write if it took the battery back. Customer UI translates these to German and never exposes the codes." }
         executionDirection: { type: string, nullable: true, enum: [deepen, reduce], description: "Only for executionMode `follow`: the discharge was RAISED to cover the house (`deepen`) or LIMITED to what it needs (`reduce`). The idle path is already unambiguous and does not expose this detail. Null otherwise." }
         executionPlannedKw: { type: number, nullable: true, description: "The setpoint BEFORE an in-slot correction, so plan and execution can stand side by side instead of being two contradicting numbers under one word." }
         executionTargetKw: { type: number, nullable: true, description: "The MEASURED value the correction tracks - the house deficit for follower modes, the PV surplus for trim/absorb; which one follows unambiguously from executionMode. Null when the device could not measure it (it never regulates blind, and never reports blind either) - never a fabricated 0." }

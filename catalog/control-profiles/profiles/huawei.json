@@ -1,0 +1,300 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "speicher": "ram",
+          "wert": "W",
+          "ziel": {
+            "register": 47249
+          }
+        },
+        {
+          "hinweis": "Dauer-Modus",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 47100
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "47249 = W, 47100 = 2 (Dauer-Modus)."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "huawei_if",
+        "dd"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "unbelegt",
+          "wert": 2,
+          "ziel": {
+            "register": 47086
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "47086 = 2."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "unbelegt",
+          "wert": 2,
+          "ziel": {
+            "register": 47086
+          }
+        },
+        {
+          "hinweis": "max. Laden",
+          "speicher": "dauerspeicher",
+          "wert": 0,
+          "ziel": {
+            "register": 47075
+          }
+        }
+      ],
+      "sicherheit": "D",
+      "wie": "47086 = 2 + 47075 = 0."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "dauerspeicher",
+          "wert": "x W",
+          "ziel": {
+            "register": 47075
+          }
+        }
+      ],
+      "sicherheit": "D",
+      "wie": "47075 = x W."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "dd",
+        "evcc"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "unbelegt",
+          "wert": 2,
+          "ziel": {
+            "register": 47086
+          }
+        },
+        {
+          "hinweis": "max. Entladen",
+          "speicher": "dauerspeicher",
+          "wert": 0,
+          "ziel": {
+            "register": 47077
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "47086 = 2 + 47077 = 0 (evcc nutzt 47077 = 0 als „Halten“)."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Einspeisebegrenzung am Gerät über den Smart Power Sensor (Einstellung); per Modbus unbelegt."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "dauerspeicher",
+          "wert": 0,
+          "ziel": {
+            "register": 47075
+          }
+        },
+        {
+          "speicher": "dauerspeicher",
+          "wert": 0,
+          "ziel": {
+            "register": 47077
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "47075 = 47077 = 0."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "dd",
+        "huawei_lib"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Netzladen",
+          "speicher": "unbelegt",
+          "wert": 1,
+          "ziel": {
+            "register": 47087
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": "W",
+          "ziel": {
+            "register": 47247
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": "Minuten",
+          "ziel": {
+            "register": 47083
+          }
+        },
+        {
+          "hinweis": "Dauer-Modus",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 47246
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 47100
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "47247 = W, 47083 = Minuten, 47246 = 0, 47100 = 1; Netzladen 47087 = 1."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "huawei_if"
+    ],
+    "sicherheit": "D",
+    "text": "Grenzen-Hebel vorhanden; Einschwingzeit und Messtakt am Gerät messen (K9)."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: Arbeitsmodus 47086 = 2 „Maximise self consumption“ (C)."
+  },
+  "empfehlung": "Stufe 2; Grenzen-Hebel vorhanden, Verschleiß vorab beim Hersteller/Gerät klären.",
+  "fallen": [
+    "Nur eine Modbus-Verbindung; die FusionSolar-App unterbricht; Installateur-Konto nötig.",
+    "Hängende Zwangsentladung (evcc #26917) – Rücklesen und neu setzen.",
+    "SoC-Modus (47246 = 1) hat keinen Zeit-Rückfall.",
+    "Big-Endian, High-Word zuerst."
+  ],
+  "familie": "SUN2000 (L1/M1/MB0/MAP0) + LUNA2000",
+  "firmware_bedingung": {
+    "gelesen": true,
+    "quellen": [
+      "huawei_if"
+    ],
+    "sicherheit": "D",
+    "wert": null,
+    "wie": "Firmware-Stand am Gerät lesen; welche Stände 47086/47075/47077 mit der beschriebenen Wirkung tragen, ist unbelegt - am Gerät prüfen (K9)."
+  },
+  "freigabe": "keine",
+  "hersteller": "Huawei",
+  "id": "huawei",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "SUN2000-L1",
+    "SUN2000-M1",
+    "SUN2000-MB0",
+    "SUN2000-MAP0",
+    "LUNA2000"
+  ],
+  "quellen": [
+    "huawei_if",
+    "huawei_lib",
+    "dd",
+    "evcc"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "gemischt",
+    "text": "47075/47077 als Einstellungen vermutlich dauerhaft – Schreibhäufigkeit am Gerät klären (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "C",
+    "text": "Nur Zwangsladen/-entladen im Dauer-Modus (47246 = 0) endet nach 47083 Minuten (flüchtig) (C).",
+    "vorhanden": false,
+    "ziel": {
+      "register": 47083
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": [
+      {
+        "hinweis": "Maximise self consumption",
+        "speicher": "unbelegt",
+        "wert": 2,
+        "ziel": {
+          "register": 47086
+        }
+      }
+    ],
+    "sicherheit": "C",
+    "speicher": "gemischt",
+    "text": "Modus 47086; Grenzen 47075 (max. Laden) / 47077 (max. Entladen) in W (C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Smart Power Sensor (DTSU666-H/DDSU666-H) am Netzpunkt."
+  }
+}

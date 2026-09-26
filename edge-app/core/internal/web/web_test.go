@@ -18,6 +18,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
@@ -169,6 +170,13 @@ func (f *fakeActiveControl) ActiveControl() cloud.ActiveControl {
 // fakeCalibration is an in-memory CalibrationController for the HTTP-layer test:
 // it records the calls the routes make and returns a configurable snapshot/error.
 type fakeCalibration struct {
+	// K5 Pilotfenster der Deye-Ladeseite.
+	pilotView   nativepilot.View
+	pilotErr    error
+	pilotStarts int
+	pilotAborts int
+	lastPilot   nativepilot.Request
+
 	snap    calibration.Snapshot
 	armErr  error
 	testErr error
@@ -230,6 +238,16 @@ func (f *fakeCalibration) GridTestStart(mode string) (curtailcal.GridView, error
 func (f *fakeCalibration) GridTestAbort() curtailcal.GridView {
 	f.gridAborts++
 	return f.gridView
+}
+func (f *fakeCalibration) NativePilotSnapshot() nativepilot.View { return f.pilotView }
+func (f *fakeCalibration) NativePilotStart(req nativepilot.Request) (nativepilot.View, error) {
+	f.lastPilot = req
+	f.pilotStarts++
+	return f.pilotView, f.pilotErr
+}
+func (f *fakeCalibration) NativePilotAbort() nativepilot.View {
+	f.pilotAborts++
+	return f.pilotView
 }
 func (f *fakeCalibration) CalibrationAdminSecret() string { return f.adminSecret }
 func (f *fakeCalibration) CalibrationArm(armed bool) (calibration.Snapshot, error) {
@@ -2433,6 +2451,75 @@ func TestBalanceToggleRoundTrip(t *testing.T) {
 	}
 }
 
+// K6 (Führungsgerät am Netzpunkt): each radio group posts only its own key and
+// the handler applies it ONTO the stored settings - a page that knows only the
+// expert opt-out must not erase the Zählerort. The Zählerort and the opt-out are
+// one fact; a word outside the closed vocabulary is a 400, never stored.
+func TestBalanceLeaderStatementsMergeAndStayInStep(t *testing.T) {
+	fs := &fakeSources{}
+	srv := sourcesServer(t, fs)
+	post := func(body string) (int, sources.BalanceSettings) {
+		t.Helper()
+		resp, err := http.Post(srv.URL+"/api/balance", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out struct {
+			Balance sources.BalanceSettings `json:"balance"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out.Balance
+	}
+
+	if code, b := post(`{"primary_meter_location":"netzpunkt"}`); code != 200 || b.MeterLocation() != "netzpunkt" {
+		t.Fatalf("meter location: %d %+v", code, b)
+	}
+	if code, b := post(`{"further_storage":"folger"}`); code != 200 || b.FurtherStorage != "folger" ||
+		b.PrimaryMeterLocation != "netzpunkt" {
+		t.Fatalf("a second key must not erase the first: %d %+v", code, b)
+	}
+	if code, b := post(`{"export_backstop":"vorhanden"}`); code != 200 || b.ExportBackstop != "vorhanden" ||
+		b.FurtherStorage != "folger" {
+		t.Fatalf("backstop: %d %+v", code, b)
+	}
+	// The expert checkbox is the same fact as "woanders" - both directions.
+	if code, b := post(`{"primary_grid_not_site_total": true}`); code != 200 || b.MeterLocation() != "woanders" ||
+		b.ExportBackstop != "vorhanden" {
+		t.Fatalf("the opt-out must move the Zählerort: %d %+v", code, b)
+	}
+	if code, b := post(`{"primary_grid_not_site_total": false}`); code != 200 || b.MeterLocation() != "unbekannt" {
+		t.Fatalf("clearing the opt-out clears the location it implied: %d %+v", code, b)
+	}
+	if code, b := post(`{"primary_meter_location":"woanders"}`); code != 200 || !b.PrimaryGridNotSiteTotal {
+		t.Fatalf("\"woanders\" is the opt-out: %d %+v", code, b)
+	}
+	if code, b := post(`{"primary_meter_location":"netzpunkt"}`); code != 200 || b.PrimaryGridNotSiteTotal {
+		t.Fatalf("\"netzpunkt\" withdraws the opt-out: %d %+v", code, b)
+	}
+	for _, bad := range []string{`{"primary_meter_location":"dach"}`, `{"further_storage":"zwei"}`,
+		`{"export_backstop":"ja"}`} {
+		if code, _ := post(bad); code != 400 {
+			t.Fatalf("%s: status %d, want 400", bad, code)
+		}
+	}
+	if fs.bal.PrimaryMeterLocation != "netzpunkt" || fs.bal.FurtherStorage != "folger" {
+		t.Fatalf("a refused word must not be stored: %+v", fs.bal)
+	}
+	page, _ := staticFS.ReadFile("static/einrichten.html")
+	js, _ := staticFS.ReadFile("static/sources.js")
+	for _, name := range []string{`name="leadMeter"`, `name="leadFurther"`, `name="leadBackstop"`} {
+		if !strings.Contains(string(page), name) {
+			t.Fatalf("the Einrichten page must offer %s", name)
+		}
+	}
+	for _, key := range []string{"primary_meter_location", "further_storage", "export_backstop"} {
+		if !strings.Contains(string(js), key) {
+			t.Fatalf("sources.js must post %s", key)
+		}
+	}
+}
+
 func TestSourcesAddAndDelete(t *testing.T) {
 	fs := &fakeSources{}
 	srv := sourcesServer(t, fs)
@@ -4378,5 +4465,76 @@ func TestGridTestCardIsServedAndWired(t *testing.T) {
 				t.Fatalf("%s traegt %q nicht", tc.path, n)
 			}
 		}
+	}
+}
+
+// K5: das Pilotfenster der Deye-Ladeseite - offen zu lesen, jede Handlung am
+// Betreiber-Kennwort, eine abgewiesene Anfrage erreicht den Controller nie, und
+// eine Verweigerung des Automaten ist ein 400 mit deutschem Satz.
+func TestNativePilotRoutesAreOpenToReadAndGuardedToAct(t *testing.T) {
+	const secret = "geheim-123"
+	fc := &fakeCalibration{adminSecret: secret, pilotView: nativepilot.View{Available: true, MaxMinutes: 15}}
+	srv := gridTestServer(t, fc)
+	r, err := http.Get(srv.URL + "/api/native/pilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Pilot nativepilot.View `json:"native_pilot"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&got); err != nil || r.StatusCode != http.StatusOK || got.Pilot.MaxMinutes != 15 {
+		t.Fatalf("GET muss offen sein und die Sicht durchreichen: %d %v %+v", r.StatusCode, err, got)
+	}
+	r.Body.Close()
+	post := func(path, tok, body string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set("X-VP-Calibration-Token", tok)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	for _, path := range []string{"/api/native/pilot", "/api/native/pilot/abort"} {
+		resp := post(path, "", `{"candidate":"grid_zero"}`)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("POST %s ohne Kennwort: %d", path, resp.StatusCode)
+		}
+	}
+	if fc.pilotStarts != 0 || fc.pilotAborts != 0 {
+		t.Fatal("eine abgewiesene Anfrage darf den Controller nie erreichen")
+	}
+	resp := post("/api/native/pilot", secret, `{"candidate":"grid_zero","intent":"self_consumption","case":"F11","minutes":12}`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fc.pilotStarts != 1 {
+		t.Fatalf("armieren: %d", resp.StatusCode)
+	}
+	if fc.lastPilot != (nativepilot.Request{Candidate: "grid_zero", Intent: "self_consumption", Case: "F11", Minutes: 12}) {
+		t.Fatalf("die Anfrage wird durchgereicht: %+v", fc.lastPilot)
+	}
+	fc.pilotErr = nativepilot.ValidationError{Msg: "Die Steuerung ist per Sicherheitsvorgabe deaktiviert (Not-Aus)."}
+	resp = post("/api/native/pilot", secret, `{"candidate":"grid_zero"}`)
+	var bad struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&bad)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(bad.Error, "Not-Aus") {
+		t.Fatalf("eine Verweigerung ist ein 400 mit Grund: %d %+v", resp.StatusCode, bad)
+	}
+	resp = post("/api/native/pilot", secret, `kein json`)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("kaputtes JSON: %d", resp.StatusCode)
+	}
+	resp = post("/api/native/pilot/abort", secret, ``)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fc.pilotAborts != 1 {
+		t.Fatalf("abbrechen: %d", resp.StatusCode)
 	}
 }

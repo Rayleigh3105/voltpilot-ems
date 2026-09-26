@@ -6,7 +6,7 @@ import { eigenverbrauchBlock } from './cockpit';
 import { cockpitHero } from './cockpitWidgets';
 import { energieBilanz, messwerteKernaussage } from './energieBilanz';
 import { NBSP } from './format';
-import { messwerteQuoten } from './messwerteZeilen';
+import { energieQuoten } from './energieSeite';
 import { quoteSatz, quoteUnplausibel, quoteZahl } from './quoteUnplausibel';
 
 /**
@@ -125,29 +125,38 @@ describe('Hero-Ring', () => {
   });
 });
 
-describe('Messwerte-Zeilen', () => {
-  it('Normalfall unverändert: Zahl und erklärender Satz wie vorher', () => {
-    const [autarkie, ev] = messwerteQuoten(energieBilanz(history(TOTALS)));
-    expect(autarkie).toEqual({
+// Die Quoten der Energie-Seite (main 763b87f39, Verlauf-Rework P3) ersetzen die
+// Messwerte-Zeilen (`messwerteZeilen.ts`, dort entfernt) — die Regel wandert mit.
+describe('Energie-Seite: Quoten', () => {
+  it('Normalfall unverändert: Zahl, Balken und erklärender Satz', () => {
+    const [autarkie, ev] = energieQuoten(history(TOTALS));
+    expect(autarkie).toMatchObject({
       key: 'autarkie',
       name: 'Autarkie',
       wert: `82${NBSP}%`,
-      satz: 'Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben — der Rest kam aus dem Netz.',
+      pct: 82,
+      info: 'Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben — der Rest kam aus dem Netz.',
       unplausibel: false,
     });
+    expect(autarkie.teile.map((t) => t.label)).toEqual(['aus eigener Anlage', 'aus dem Netz']);
     expect(ev.wert).toBe(`64${NBSP}%`);
-    expect(ev.satz).toBe('Anteil Ihrer Erzeugung, den Sie selbst genutzt statt eingespeist haben.');
+    expect(ev.info).toBe('Anteil Ihrer Erzeugung, den Sie selbst genutzt statt eingespeist haben.');
   });
 
   it('unplausibel: die Zahl ungeklemmt, der Satz statt der Erklärung', () => {
-    const [autarkie] = messwerteQuoten(
-      energieBilanz(history({ ...TOTALS, autarkiePct: -20, autarkieUnplausibel: true })),
-    );
+    // Seit der Energie-Seite auch: kein Balken (eine Füllung bräuchte wieder eine Klemme).
+    const [autarkie] = energieQuoten(history({ ...TOTALS, autarkiePct: -20, autarkieUnplausibel: true }));
     expect(autarkie).toMatchObject({
       wert: `${MINUS}20${NBSP}%`,
-      satz: `Messwerte passen nicht zusammen (${MINUS}20${NBSP}%)`,
+      info: `Messwerte passen nicht zusammen (${MINUS}20${NBSP}%)`,
       unplausibel: true,
+      teile: [],
     });
+  });
+
+  it('Vorgabe AN auch hier: 105 % ohne Kennzeichen ist unplausibel', () => {
+    const [, ev] = energieQuoten(history({ ...TOTALS, eigenverbrauchPct: 105, eigenverbrauchUnplausibel: undefined }));
+    expect(ev).toMatchObject({ wert: `105${NBSP}%`, unplausibel: true, teile: [] });
   });
 });
 

@@ -6,6 +6,7 @@ const {
   DEYE_REMOTE_PR978_FIRMWARE,
   CERTIFIED_NATIVE_CAPABILITIES, SIMULATOR_NATIVE_CAPABILITIES,
   exactCapability, certificateMatchesPlan, nativeWritePlan,
+  NATIVE_INTENTS, capabilityForIntent, nativeLevers,
 } = require('./unplanned-load-native');
 
 const safe = {
@@ -130,15 +131,62 @@ test('a certificate that no longer describes the shipped plan is refused', () =>
 });
 
 test('the simulator catalog certifies SOFTWARE and can match nothing else', () => {
-  assert.equal(SIMULATOR_NATIVE_CAPABILITIES.length, 1);
-  const e = SIMULATOR_NATIVE_CAPABILITIES[0];
-  assert.equal(e.simulatorOnly, true);
-  assert.equal(e.brand, 'generic_modbus');
-  assert.equal(e.model, 'sunspec-sim');
-  // It is NOT in the production catalog - a piece of software must never be able
-  // to release a customer's inverter.
+  // K4b: one entry per capability word - the E-down pair plus the two charge-side
+  // levers - and every one of them is the same piece of software.
+  assert.deepEqual(SIMULATOR_NATIVE_CAPABILITIES.map((c) => c.capability),
+    ['native_charge_block_discharge_auto', 'native_surplus_charge', 'native_self_consumption']);
+  for (const e of SIMULATOR_NATIVE_CAPABILITIES) {
+    assert.equal(e.simulatorOnly, true);
+    assert.equal(e.brand, 'generic_modbus');
+    assert.equal(e.model, 'sunspec-sim');
+    assert.equal(e.windowLimits, true);
+    assert.equal(e.persistent, false);
+    // It is NOT in the production catalog - a piece of software must never be able
+    // to release a customer's inverter.
+    assert.ok(!CERTIFIED_NATIVE_CAPABILITIES.some((c) => c.brand === e.brand && c.model === e.model));
+  }
   assert.ok(!CERTIFIED_NATIVE_CAPABILITIES.some((c) => c.simulatorOnly === true));
-  assert.ok(!CERTIFIED_NATIVE_CAPABILITIES.some((c) => c.brand === e.brand && c.model === e.model));
+});
+
+// --- K4b: the capability vocabulary -------------------------------------------
+
+test('K4b: every intent maps to exactly one capability word, unknown words to none', () => {
+  assert.deepEqual(NATIVE_INTENTS, ['cover_load', 'surplus_charge', 'self_consumption']);
+  assert.equal(capabilityForIntent('cover_load'), 'native_charge_block_discharge_auto');
+  assert.equal(capabilityForIntent('surplus_charge'), 'native_surplus_charge');
+  assert.equal(capabilityForIntent('self_consumption'), 'native_self_consumption');
+  assert.equal(capabilityForIntent('grid_charge'), '');
+  assert.equal(capabilityForIntent('constructor'), '', 'no prototype word is an intent');
+});
+
+test('K4b: the default capability word keeps every existing caller byte-identical', () => {
+  const pilot = exactCapability(PILOT_KEY);
+  assert.equal(pilot.capability, 'native_charge_block_discharge_auto');
+  assert.equal(exactCapability(PILOT_KEY, CERTIFIED_NATIVE_CAPABILITIES, 'native_charge_block_discharge_auto'), pilot);
+  // No charge-side lever for any real device - the Deye charge side is K5.
+  assert.equal(exactCapability(PILOT_KEY, CERTIFIED_NATIVE_CAPABILITIES, 'native_surplus_charge'), null);
+  assert.equal(exactCapability(PILOT_KEY, CERTIFIED_NATIVE_CAPABILITIES, 'native_self_consumption'), null);
+  assert.ok(CERTIFIED_NATIVE_CAPABILITIES.every((c) => c.capability === 'native_charge_block_discharge_auto'));
+});
+
+test('K4b: nativeLevers reports only certified levers whose bytes still match', () => {
+  const sim = { brand: 'generic_modbus', model: 'sunspec-sim', firmware: 'sim' };
+  const plan = () => ({ planned: [{ addr: 41, value: 0 }, { addr: 40, value: 0 }],
+    readbacks: [{ addr: 41, expect: 0 }, { addr: 40, expect: 0 }] });
+  assert.deepEqual(nativeLevers(sim, SIMULATOR_NATIVE_CAPABILITIES, plan),
+    { intents: ['cover_load', 'surplus_charge', 'self_consumption'], window: true, persistent: false });
+  assert.deepEqual(nativeLevers(sim, SIMULATOR_NATIVE_CAPABILITIES, () => null),
+    { intents: [], window: false, persistent: false }, 'a tier without a primitive reports nothing');
+  const drift = () => ({ planned: [{ addr: 41, value: 0 }], readbacks: [{ addr: 41, expect: 0 }] });
+  assert.deepEqual(nativeLevers(sim, SIMULATOR_NATIVE_CAPABILITIES, drift).intents, []);
+  // One lever without window limits makes the whole report window:false.
+  const mixed = SIMULATOR_NATIVE_CAPABILITIES.map((c) =>
+    (c.capability === 'native_surplus_charge' ? { ...c, windowLimits: false } : c));
+  assert.equal(nativeLevers(sim, mixed, plan).window, false);
+  // Production: the pilot keeps exactly its E-down lever.
+  const pilotPlan = () => ({ planned: [{ addr: 0x044c, value: 0 }], readbacks: [{ addr: 0x044c, expect: 0 }] });
+  assert.deepEqual(nativeLevers(PILOT_KEY, CERTIFIED_NATIVE_CAPABILITIES, pilotPlan),
+    { intents: ['cover_load'], window: false, persistent: false });
 });
 
 // --- THE PILOT RELEASE (2026-08-26) ------------------------------------------

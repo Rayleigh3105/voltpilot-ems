@@ -590,12 +590,33 @@ public final class SlotEconomics {
                                     + "Verlusten und Verschleiß).",
                             batteryKw, importCt, storedCt)
                     : String.format(Locale.GERMANY, "Lädt %.1f kW aus dem Netz.", batteryKw);
-            case "solarladen" -> storedCt != null && exportCt != null
-                    ? String.format(Locale.GERMANY,
-                            "Speichert %.1f kW PV-Überschuss: spätere Nutzung (≈ %.1f ct/kWh) ist "
-                                    + "mehr wert als sofortige Einspeisung zu %.1f ct/kWh.",
-                            batteryKw, storedCt, exportCt)
-                    : String.format(Locale.GERMANY, "Speichert %.1f kW PV-Überschuss.", batteryKw);
+            case "solarladen" -> {
+                // PV-Bus (FK3): der Slot lädt PV, während das Haus aus dem
+                // Netz bezieht - es gibt keinen Überschuss, und die Alternative
+                // zur gespeicherten kWh ist der Netzbezug, nicht die Einspeisung
+                // (K0 vp-wr-k0-plandaten, Herzogau 22.09. 16:30Z: „Überschuss"
+                // bei Last 17,75 > PV 7,72 und „26,6 mehr wert als 41,8").
+                if (gridKw != null && gridKw > SLOT_DEADBAND_KW) {
+                    String head = String.format(Locale.GERMANY,
+                            "Lädt %.1f kW PV in den Speicher, während das Haus %.1f kW aus dem "
+                                    + "Netz bezieht",
+                            batteryKw, gridKw);
+                    // Der Vergleich wird nur behauptet, wenn er stimmt.
+                    yield storedCt != null && importCt != null && storedCt > importCt
+                            ? head + String.format(Locale.GERMANY,
+                                    ": spätere Nutzung (≈ %.1f ct/kWh) ist mehr wert als der "
+                                            + "Netzbezug zu %.1f ct/kWh.",
+                                    storedCt, importCt)
+                            : head + ".";
+                }
+                yield storedCt != null && exportCt != null && storedCt > exportCt
+                        ? String.format(Locale.GERMANY,
+                                "Speichert %.1f kW PV-Überschuss: spätere Nutzung (≈ %.1f ct/kWh) ist "
+                                        + "mehr wert als sofortige Einspeisung zu %.1f ct/kWh.",
+                                batteryKw, storedCt, exportCt)
+                        : String.format(Locale.GERMANY, "Speichert %.1f kW PV-Überschuss.",
+                                batteryKw);
+            }
             // BEOBACHTEND, nicht kausal (Erklärbarkeit Stufe 0, Konzept
             // vp-warum-erklaerbar-e2 §3.2/§4.1 - der Betreiber-Blick übernimmt
             // dieselbe Entschärfung wie die Kundenfläche): Ruhe hat strukturell

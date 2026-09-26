@@ -355,14 +355,14 @@ export function planKopplung(
         next.role === 'eigenverbrauch' &&
         ph.some((p, i) => i > nextIdx && p.role === 'verkaufen');
       return {
-        pre: `Ruhe — ab ${hm(next.from)} `,
+        pre: `Warten — ab ${hm(next.from)} `,
         action: usesThenSells
           ? 'Speicher nutzen: Verbrauch decken und Überschuss verkaufen'
           : filmLabel(next.role as SlotRole, kind, flagsOf(nextIdx)),
         post: null,
       };
     }
-    return { pre: 'Jetzt ', action: 'Ruhe', post: ` — noch bis ${hm(active.to)}` };
+    return { pre: 'Jetzt ', action: 'Warten', post: ` — noch bis ${hm(active.to)}` };
   }
 
   const post =

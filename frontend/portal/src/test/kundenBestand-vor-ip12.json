@@ -1357,6 +1357,13 @@
       "nachher": "206c81b91252c7ccc0c9b325406ad004f3a34a8f831029fa9247459de492da51",
       "commit": "35303a45ab431af96607b22dc0efb738d7709203",
       "grund": "UEMS AP-17 IP-9 (Basis origin/uems 35303a45): die Register-Karte trägt additiv das Kennzeichen „Energieleistungskennzahl — Bezugsbasis seit …“ (optionaler `zusatz`, nur im Register und nur bei freigegebener Bezugsbasis). Typ, Klasse, Test-Kennung, Handler und alle bisherigen Inhalte der Karte bleiben erhalten."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "8f1f2cb5fc471743695a7def4442e37cf157b3354ad9d327988be79b9da396d9",
+      "nachher": "9a995467c4d9ab9c6fca5564b9ac673ebee114e48df6e3bf5a8ba19e531659d2",
+      "commit": "2fcb67a7803a276e1f38badf527dfa155b16de25",
+      "grund": "AP-20 E12, PR 1268 (Registrierung: Passwort mindestens 12 Zeichen, nicht E-Mail oder Name), im Nachzug main → uems gemergt: das Passwortfeld der Selbstregistrierung zeigt als Fehler den Satz aus passwortRegel.passwortFehler und als Hinweis die neue Vorgabe. Typ, Kennung, Handler, Autovervollständigung und Sichtbar-Schalter bleiben; nur Fehler- und Hinweistext folgen der Regel."
     }
   ],
   "assistentZusammenfuehrung": {
@@ -1379,5 +1386,705 @@
       ]
     },
     "wrapper": "5bab80e17aa4e03eceb8ccfb6326402e267a34b008cf46437004a38910ed5bc1"
+  },
+  "mainNachzug": {
+    "main": "8b8b6a03bcf757a241d60567080259ccb2163422",
+    "basis": "4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3",
+    "paket": "vp-uems-nachzug-main-0926",
+    "regel": "Nachzug main → uems (26.09.2026): main hat Kundenflächen ausgeliefert neu gebaut. Ein Bedienelement des Ausgangsstands entfällt hier NUR, wenn es schon auf der main-Basis stand und ein benannter main-Commit es entfernt hat; es steht in keiner main-Fassung der Datei (Feld main = alle Fingerabdrücke von main 8b8b6a03b) und nicht im Merge. Umgekehrt steht JEDES Bedienelement der ausgelieferten main-Fassung einer solchen Datei unverändert im Merge — der Neubau ist damit ab jetzt geschützt. Eine von main gelöschte Datei darf nicht still zurückkehren. Kein Element, das nur auf uems stand, fällt über diesen Block.",
+    "dateien": {
+      "components/AnlagenBild.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht (Anlage neu gedacht, E1 = A: Baum statt Bild). Der Aufbau zeigt dieselben Knoten als Tabelle (pages/AufbauSection.tsx, components/AufbauTabelle.tsx); das Übernehmen einer gemeldeten Quelle steht in FundZeile und Kurzblick des Aufbaus, mit demselben Recht.",
+        "entfallen": [
+          {
+            "vorher": "d184239021931dcce33a8f49f96bbf82eba1a2a77ffade70282d63b22b9f4cdb",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className={cls} style={style} data-anlagen-knoten={knoten.karteId} aria-label="
+          }
+        ]
+      },
+      "components/AnlegenFlow.tsx": {
+        "main": [
+          "1f3dc4393416562c06ee1aa29b0a65d7c6a5e06faf2d3421214fb4d032849525",
+          "3c091c9e62284b59753fb1663219b99d5fc4b831fac29480825f0861e1a9d2d5",
+          "ac5e79dfc23c95fc0ed5768361cfd48dbd315ca51da55220e41ab3a863cc22b4",
+          "7a03dbbb5a4c6de9ad36557b028e8ae9bc2bc633f0ec17b832bc134354325d3f",
+          "8ade250cd10d902ea3b2e4ffd10d104ba857a20b5d4836fd3394e3bfe4540708",
+          "e0a0b06e1756b8221f03ed6b6abaac98037c71b8574cdb69dcdd3f008b4d1293",
+          "e5d99cdd6edaa0de97d247c85f7209ccff4156b333cf861b0b573252d4678ae3",
+          "68478c133997f53546073480819fc2f3eb5ae2a79925c24600f836f76160824c",
+          "d7206599bc93ba4a39453b75fdc819cb0da591db2ccf152b43eb0afd40bca4c7",
+          "3eab5656b17e9e05cd5245b2aa08d2cba38b09024c620434d9677f88e2a47786",
+          "0e735847a67e34cbbc9f6810a45d6dec5bf91a59bce44c291b8dc2d413d46d5e",
+          "2b4d7c450b25ecd2c1d3ff67e2d28b38f8ff34453dd645baf58eee20f1aecdd9",
+          "f2fed42ce08c60ed9b1f82e51e4bc4f1e9fd0f64a7930b866395838108821578",
+          "a7375b44b224837358647ba51e20eccd02efaf6ed693739717b25395047fa806",
+          "076c3a30ad21453230576a0331b861161875b8ccd81dc70b4bf8c86d188a5d8f",
+          "ee4472fdc3348197e08c23a39b3340e265ab27d591076f00a6ec1795614c4473",
+          "52426087ed8d0f93cd8ce26657c3154863fe4597389b396e24ec3c6a570e5829",
+          "7e33a008136d79886074b0a84c478cde7eb0d646d7ad03e49345904ee5dd0a3c",
+          "0afab24a0cb6fb487e79d74c3443585858d7b0051a47b82e300e0b78eae468fb"
+        ],
+        "wohin": "Typwahl, Rollen-Kacheln, Schritt-Knöpfe und Formularfelder sind auf main in den Gerätekatalog (components/GeraeteKatalog.tsx) und die Einrichten-Seite (components/Einrichten.tsx, EinrichtenFuss) gewandert: Katalog-Gerät, Modbus-Gerät, Batterie und Ladesäule auf einer Seite.",
+        "entfallen": [
+          {
+            "vorher": "6e1ddde7c79dc4c9742fc421fb5a02fa2a57bbe23bdbf22142e8e55237935b99",
+            "commit": "e70b57b765d8f2a9d2b9724bc52e3a0a9a5d2208",
+            "element": "<Button variant=\"ghost\" onClick={nochEins}> {WEITERES_LABEL} </Button>"
+          },
+          {
+            "vorher": "90456a1d83d76b491bde533f49238aaacf3076d70c21ee50ede3c4a6093d4741",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={() => { window.location.hash = komponenteHash(siteId, neueId); onClose(); }}> {ABSP"
+          },
+          {
+            "vorher": "58559ee161599feb61552a83468a3f12f3bbda0033f88fe45c8de94938777bab",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={onClose}>Schließen</Button>"
+          },
+          {
+            "vorher": "35b79f66e391393fb8b7ca3d0148afcb5641976bfd54009942b5f266c2ab9444",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={zurueck}> Zurück </Button>"
+          },
+          {
+            "vorher": "c34bee95f805e5a42a8358d61213f729900e5dcdc4f877a85983dfd8fd01b4e3",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={onClose}>Fertig</Button>"
+          },
+          {
+            "vorher": "35b79f66e391393fb8b7ca3d0148afcb5641976bfd54009942b5f266c2ab9444",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={zurueck}> Zurück </Button>"
+          },
+          {
+            "vorher": "77b3f49cc29e58082614174edd304cec9159fdb2ef5dc8b0f348c207cae13aff",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={() => setSchritt(3)} disabled={!template}> Weiter </Button>"
+          },
+          {
+            "vorher": "35b79f66e391393fb8b7ca3d0148afcb5641976bfd54009942b5f266c2ab9444",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={zurueck}> Zurück </Button>"
+          },
+          {
+            "vorher": "1c641d53fabfdbc71f464136f4b13a0b081bda06e56e2a3737da90db6dd909e9",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Button onClick={() => setSchritt(4)} disabled={fehlend.length > 0}> Weiter </Button>"
+          },
+          {
+            "vorher": "35b79f66e391393fb8b7ca3d0148afcb5641976bfd54009942b5f266c2ab9444",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={zurueck}> Zurück </Button>"
+          },
+          {
+            "vorher": "049611af6e222715cf2a2fad781ac4f560c0d105a580276ddb7dfd41302a3a9c",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={anlegen} disabled={speichern || (testNoetig && testZustand !== 'bestanden' && !ohne"
+          },
+          {
+            "vorher": "119130fc172d616d078c885f6c71c297ca91fe8a69b381b107ccc83a32661e43",
+            "commit": "e70b57b765d8f2a9d2b9724bc52e3a0a9a5d2208",
+            "element": "<button type=\"button\" className=\"vp-anlegen-typ\" data-testid={`typ-${k.id}`} onClick={() => waehleTy"
+          },
+          {
+            "vorher": "aed42d11cf62a7ea6d10d15edc07a36750fbe75ad7a73b562d580104199515b4",
+            "commit": "e70b57b765d8f2a9d2b9724bc52e3a0a9a5d2208",
+            "element": "<button type=\"button\" className={`vp-assist-role${rolle === r.rolle ? ' is-on' : ''}${r.verfuegbar ?"
+          },
+          {
+            "vorher": "7b3c4b0d108b92f5c9ddf9338fb957cdf80256a56253ff241ee285fdc04ea8a0",
+            "commit": "e70b57b765d8f2a9d2b9724bc52e3a0a9a5d2208",
+            "element": "<Button variant=\"outline\" className=\"vp-anlegen-nochmal\" onClick={testen}> Erneut testen </Button>"
+          },
+          {
+            "vorher": "077a6985ffd18a43e0a4e198099ecdd91337f2466c03dfa11b6a87528ab684af",
+            "commit": "e70b57b765d8f2a9d2b9724bc52e3a0a9a5d2208",
+            "element": "<Input id=\"anlegen-name\" value={name} placeholder={uebernahme?.label?.trim() || template.modelLabel}"
+          },
+          {
+            "vorher": "8301cbf40c8160e62e931cc87cde576f679c81573b1a14ab7563e6e461e4bbb1",
+            "commit": "e70b57b765d8f2a9d2b9724bc52e3a0a9a5d2208",
+            "element": "<Input id=\"anlegen-kwp\" type=\"number\" value={kwp} onChange={(e) => setKwp(e.target.value)}/>"
+          },
+          {
+            "vorher": "179a62bae51725d13de4edb4c779df5ca0200c5b3e6e10ae8919d37e484eb0a2",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<input id={`anlegen-${feld.key}`} type=\"checkbox\" checked={Boolean(wert)} onChange={(e) => onChange("
+          },
+          {
+            "vorher": "b5b6a6c3609a1faee85f9b2b79e3de5731714c42d2359087ce3a63e43276f690",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Input id={`anlegen-${feld.key}`} type={istSecret(feld) ? 'password' : feld.type === 'number' ? 'num"
+          }
+        ]
+      },
+      "components/CockpitBlocks.tsx": {
+        "main": [
+          "bfd60d3180590140abe91cfebfc167a722dcc4cc74d5162709a1062a8528e39a",
+          "904da3d94f27ad653cb782dc716709a788ef5d118f4047b803879555f22f5406",
+          "8d77a43790adbff6c6d58eb0ef9ec7f6fa573759b4e8d10d3b1f964879cc7c2c"
+        ],
+        "wohin": "Am Telefon steht die Steuerung im Normalfall in der Fahrplan-Zeile (UX-Review V-04); die eigene Zeile entfällt.",
+        "entfallen": [
+          {
+            "vorher": "92e8c13d5c5de52733a2f828cda334ff7e2e1fcb732101d793515562716d7dc3",
+            "commit": "5f55368ccea6b73963ac79179fb5f97e78117253",
+            "element": "<button type=\"button\" className=\"vp-mob-row-btn\" onClick={onOpen}> <Icon name={icon} size={16}/> <sp"
+          }
+        ]
+      },
+      "components/DeviceDrawers.tsx": {
+        "main": [
+          "a21e4638c23353d8cfa26a6cf90727bd6d9c917e1ee803022cb088f152ddf4e7",
+          "009fb4e8ff5365f1b398e5f2b8e11eecd3561be66721b194a2ce4ba2f9b5cb77",
+          "bbd9720f59aee26af45c1635742704de9b72b895dd812f84283d7ac86898034e",
+          "2d5ec8650dd88aac39505656c950d03e4a5ef043e437a8050e94390eebb1238e",
+          "6ab078e9c946f6e0cd127edc91968e56f60ad36ed26961c54907f6a6ea045f3b",
+          "8c7add56cdccefec8781b7f8adbc6d92d045b8785810ace08581734166b8e37a",
+          "f46a25b17a84111f028ef419ad4cf27e284099d62370049070210bbef0a6f270",
+          "159cceb402595ac5212b573e46d0c81fdb3e1143374a4fe7d7bbc8fd8e6162a0",
+          "49903675a1a8e5d321dca96be1586ff5c8221904b1771c735a9041f9da55c44e",
+          "618f3acbaab0ddc3c5337bbd34534dd105a9be94def92a213165c3a18a3d3a08"
+        ],
+        "wohin": "Derselbe Knopf mit derselben Handlung (claim) trägt den Titel des Blatts statt des festen Worts „Gerät hinzufügen“.",
+        "entfallen": [
+          {
+            "vorher": "6bd6e29332b95954920940cdede14180f9512a5bb0f1aff408413240599e618f",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Button variant=\"primary\" onClick={claim} disabled={busy || !siteId}> {busy ? 'Wird hinzugefügt…' : "
+          }
+        ]
+      },
+      "components/FahrplanJetzt.tsx": {
+        "main": [
+          "3f291ee3527e17fe3bb88282e188b813b5b190522534e611641fcbe17c6094ca",
+          "05c180611e8e61637c57b8960d0e9d1a4a9b307a0114f152afca2141df07016e",
+          "cbe4d4f0b70916c72ad9f22db2620a5e0d381be645d27f3103046d86af821ff6",
+          "7dcd7657c09d6b912b42390ff34853007f9bcc3cc0398944d56a269e20f56e91"
+        ],
+        "wohin": "Die Phasen-Zeilen ersetzt das Tagesbild (Tagesuhr am Telefon, Bildfahrplan am Rechner).",
+        "entfallen": [
+          {
+            "vorher": "cca782619bbff45661c8d0fc8cc3d702b26e3206d71e6402e3f7bd6d7111a69e",
+            "commit": "39f074e046f97bb74a582066110d84406efb58e7",
+            "element": "<button type=\"button\" className=\"vp-film-row\" aria-pressed={selected === row.phaseIndex} onClick={()"
+          }
+        ]
+      },
+      "components/GeraetGefahrenzone.tsx": {
+        "main": [
+          "6366c0d9e3706161f23ec8198f30bdf6d59ecdaf4d5998660b3fe28556a68cce",
+          "d5cc41b3e918fdf9ef8a9aded9e19505c1ada0afe2311a6bd988b54576249d3a",
+          "010cc4ccf46960fcc2af209398aa30c9421125a06472c91801dabca504352d0a"
+        ],
+        "wohin": "Löschen steht auf der Geräteseite „ein Blick, eine Antwort“ im Menü „Weitere Aktionen“ des Kopfs; der Bestätigungsdialog bleibt (dort auch der UEMS-Block „berichts_belege“).",
+        "entfallen": [
+          {
+            "vorher": "255cd9274e782805a35ce3e819ec1fcc7cf29d920cfaece1dbfdbc81438d8cbf",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<Button variant=\"outline\" size=\"sm\" className=\"vp-btn-danger\" iconLeft={<Icon name=\"trash\" size={16}"
+          },
+          {
+            "vorher": "255cd9274e782805a35ce3e819ec1fcc7cf29d920cfaece1dbfdbc81438d8cbf",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<Button variant=\"outline\" size=\"sm\" className=\"vp-btn-danger\" iconLeft={<Icon name=\"trash\" size={16}"
+          }
+        ]
+      },
+      "components/GeraetRahmen.tsx": {
+        "main": [
+          "65974e67d6f0757927b7b1c54ec3620c5502916ad5c969a456bbbb928ea878b4",
+          "6b69f9402a2172a9002960b9b7a8c8537f42faff146298f5a010edd884a9f8b9",
+          "5d057f30348a60bfc89294f08c7c41bbd88adac869521cf5216ee52abf2ae309"
+        ],
+        "wohin": "Die Sprungleiste des Rahmens entfällt: die Geräteseite ist der Kern mit fünf Bausteinen, Technik als eigene Ansicht.",
+        "entfallen": [
+          {
+            "vorher": "bc29cdef27344efd27b04b80cca5fd96a8a6e079b45aa4a152bd362f281b0af8",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<button type=\"button\" className=\"vp-linkbtn\" onClick={() => springen(kopf.hinweis!.sektion as Rahmen"
+          },
+          {
+            "vorher": "a4f83a3ecedc66d99644f3a167fb84353272a1032ed5f36f9bdcc8b7804ca0d9",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<button type=\"button\" aria-pressed={aktiv === s.id} className={aktiv === s.id ? 'is-an' : undefined}"
+          },
+          {
+            "vorher": "a03e895f9ec9d56a2be01543f0ef7ec44256c00c12d46f16a4bb1e453f86f7eb",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<button type=\"button\" className={aktiv === s.id ? 'on' : undefined} aria-current={aktiv === s.id ? '"
+          }
+        ]
+      },
+      "components/LivePuls.tsx": {
+        "main": [
+          "4cc68f6e572e958ddb6b99cf8dce19eeca66428d0541ff954f869365bd4ac998",
+          "47d0d5731ae88ef2167c78d9715ca6b9343dab0ef2e4448174aee4842cbe7106"
+        ],
+        "wohin": "Dieselbe Netz-Zeile nennt die Richtung in Worten (vp-puls-row--worte); gleiche Handlung.",
+        "entfallen": [
+          {
+            "vorher": "4528aab1ef581b035bbd369502f40ac07efcb8dbd1a5c4acda805999e8069844",
+            "commit": "1512e5e751de40152c8908769bf3cf27701d3fb3",
+            "element": "<button type=\"button\" className={`vp-puls-row${row.stateTone === 'muted' ? ' muted' : ''}`} disabled"
+          }
+        ]
+      },
+      "components/MarktpreiseMobil.tsx": {
+        "main": [
+          "c4a8c2e70c737b4f15b44ae6273237106e97b9fc27e3db9f965b57fe41b88223"
+        ],
+        "wohin": "Der Tagesschalter Gestern · Heute · Morgen ersetzt die Reiter.",
+        "entfallen": [
+          {
+            "vorher": "ce8c9fe41201daaeb6d21361cb56326d5e67d202b44a1af4758efdcd2e8c1ae9",
+            "commit": "cddcc4bfe1a0aa608e95901100a1db0c62a543e6",
+            "element": "<button type=\"button\" role=\"tab\" aria-selected={wert === o.id} className={wert === o.id ? 'is-on' : "
+          }
+        ]
+      },
+      "components/PortfolioCockpit.tsx": {
+        "main": [
+          "4f38abc50c2ada65dea4358089458d5c456138b4c8954b632e666c9b1e6a95d3",
+          "fe0047a17fa73aa1fa48efba6b0fd7d70d3372b51c0c4abb5414264987ce94e2"
+        ],
+        "wohin": "Die Flotte zeigt die Übersicht in vier Blöcken für jede Betriebsart; „Anlage anlegen“ und „Gerät hinzufügen“ stehen dort im ⋯-Menü und unverändert als Knöpfe in components/EbenenCockpit.tsx (Unternehmens- und Standort-Ebene).",
+        "entfallen": [
+          {
+            "vorher": "12d155eab113bbe6429c0c5ca1d681319edd635e9a80ddfb5d6f6e899380a956",
+            "commit": "d1d67b97ebb42da5cafb4fed0a1047cc2909e070",
+            "element": "<Button variant=\"outline\" iconLeft={<Icon name=\"plus\" size={18}/>} onClick={() => setSiteDrawer(true"
+          },
+          {
+            "vorher": "162c008034aa1838905b19d7dbfad51f22b01bc21d69dea874b077105d640569",
+            "commit": "d1d67b97ebb42da5cafb4fed0a1047cc2909e070",
+            "element": "<Button variant=\"primary\" iconLeft={<Icon name=\"plus\" size={18}/>} onClick={() => setDeviceDrawer(tr"
+          }
+        ]
+      },
+      "components/PortfolioWelt.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht: Zeitraum, Blättern und „Heute“ trägt der gemeinsame Verlauf-Rahmen der Anlagen-Seiten (components/VerlaufRahmen).",
+        "entfallen": [
+          {
+            "vorher": "94806911b55476364ecea9f1c53b22f5ca62776debc73babfafe26901348e784",
+            "commit": "3e95cc604b1e3e4b9bcca6029c2eebdb2c6bf9d0",
+            "element": "<button type=\"button\" className=\"vp-zl-more\" aria-label=\"Zeitraum & Monat\" aria-expanded={blattOffen"
+          },
+          {
+            "vorher": "842d62d98e96be9afb2900efab3ef339a85e085154094274552e4225071ef333",
+            "commit": "3e95cc604b1e3e4b9bcca6029c2eebdb2c6bf9d0",
+            "element": "<button role=\"tab\" aria-selected={range === r.id} className={range === r.id ? 'active' : ''} onClick"
+          },
+          {
+            "vorher": "5544707558f035da7ffe641b5dc42ac65af914316f4c379ce5a403622e4ef434",
+            "commit": "3e95cc604b1e3e4b9bcca6029c2eebdb2c6bf9d0",
+            "element": "<button type=\"button\" className=\"step\" aria-label=\"Vorheriger Zeitraum\" onClick={() => onAnchor(shif"
+          },
+          {
+            "vorher": "c0ff844f95fd6882f260c5d9f637afe1fde696f5c254c4809792f15b52e2a5cd",
+            "commit": "3e95cc604b1e3e4b9bcca6029c2eebdb2c6bf9d0",
+            "element": "<button type=\"button\" className=\"step\" aria-label=\"Nächster Zeitraum\" disabled={nextDisabled} onClic"
+          },
+          {
+            "vorher": "59e0a20d61d1b988e9bed8177489bd76f0181a9f92beb3c95679e03e4ba749d4",
+            "commit": "3e95cc604b1e3e4b9bcca6029c2eebdb2c6bf9d0",
+            "element": "<button type=\"button\" className=\"step\" onClick={() => onAnchor(new Date())}> Heute </button>"
+          }
+        ]
+      },
+      "components/RowMenu.tsx": {
+        "main": [
+          "c337d0d7a4d9b41de30658e2b59f47a7209fcdb6fdbe70bd45ce5ee578c77daa",
+          "e672f844877af663d97834540bf10b94e00b73d57e2c8af5414a3e70f06a19cd",
+          "bf85f09f03404888c72d1f3aa6121d8fdf3f3313902d5a8fc5a828387dfa3cb7"
+        ],
+        "wohin": "Derselbe Menü-Auslöser mit geänderten Attributen seit der Aufbau-Tabelle; gleiche Handlung.",
+        "entfallen": [
+          {
+            "vorher": "27b63315aecb1ce15a1a542c9920695ac78e169d9ebc9412f6d2b59735fe406e",
+            "commit": "83e322a7f561e5bfc1ce4652b89d572ac07bfd45",
+            "element": "<button ref={btnRef} type=\"button\" className=\"vp-rowmenu-btn\" aria-haspopup=\"menu\" aria-expanded={op"
+          }
+        ]
+      },
+      "components/SelbstbauAssistent.tsx": {
+        "main": [
+          "8af4b764fa11cbf5af2159b310ac2aebc2d130ceda744e7041f9acf36b71ec7d",
+          "485d7f7b825ad4c7b3b8eafa4637a585406c465eaecbca0c810a5e1483ebdd9c",
+          "0ecb8de576981eb03bcda560e91d53e3d7ea3a35b5f81e8b9385a8e53d97a550",
+          "66f6ebf0e23799e9d2f11fad625507d81eab17ad6a94e1496eda780cdc4c7589",
+          "36241b55ea1183716b342e0bccdfa5e09cda0ec5aae969326399a11ea93c6f27",
+          "edff5abf3a76d630da813cbfdc72eaa58d58494434e7b78603f3f9d375b1961c",
+          "8d91bf02ff8e4a7200778ff0a8a3d45e7dac7f92eac2bb7c06132e4b5d0b68fd",
+          "e0fbf91beb3c30128769577c252e954f66d2601dfca931db7c1c6c5a5107ce08",
+          "45f708ac14a7b2b151e8c6f02525883d345f47eb68cf39baaee524d60212db6d",
+          "76f6e665edaa703b29318b778dc340fdf646bb88267d7f35c8f197fb29b17d00",
+          "a44b01b1bccf76671e3f2c536a29a47ba57d064de178be2b204655c206f78261",
+          "087f963a115a5cbedbdbb6cc616ef836d36fe2e6b114a127101e4cf1dcefa298",
+          "c57d80ccfc6bfd743d407ad352fa2d864068f744688babed51a9dd3022ac075c",
+          "fd2e112c50968ad91d8baa7484fb1141974447ce05454b86ed23dffa95e7e04f"
+        ],
+        "wohin": "Der Selbstbau eines Modbus-Geräts läuft auf der Einrichten-Seite (components/Einrichten.tsx): Verbindung, Messwerte, Rolle und Name auf einer Seite.",
+        "entfallen": [
+          {
+            "vorher": "75cd3a2c49e9a05eab82fe8d77649b4d778884055ec1d1874c614030ee7c3d25",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id=\"sb-host\" value={verbindung.host} placeholder=\"192.168.1.50\" onChange={(e) => setVerbindun"
+          },
+          {
+            "vorher": "24a9ba1634ea3db3377ef85f537af5fed76610e72d89aa9eb0f633f8b050bbb0",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id=\"sb-port\" type=\"number\" value={verbindung.port} onChange={(e) => setVerbindung((v) => ({ ."
+          },
+          {
+            "vorher": "04557248d2eec685741290cb164706400fc24d7cdbc8cd073a22cbbece5be1e3",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id=\"sb-unit\" type=\"number\" value={verbindung.unitId} onChange={(e) => setVerbindung((v) => ({"
+          },
+          {
+            "vorher": "5ae487a7f0ff991cd65948b5c0222279a2099df383fe193fb4e96fd9bfc8323f",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={onBack}> Zurück </Button>"
+          },
+          {
+            "vorher": "c59b67bf869e3a65726083bb3871b23fa40b9b7c525c694a7af2527873a732a8",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={() => setSchritt(2)} disabled={geraetMangel.length > 0}> Weiter </Button>"
+          },
+          {
+            "vorher": "3f79e9e47a69527a2f650f79a0f27c799792543c22f040a88990f79876fc7494",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<button type=\"button\" className=\"vp-sb-del\" aria-label={`Messwert ${i + 1} entfernen`} onClick={() ="
+          },
+          {
+            "vorher": "25936c3748aaba397f9cabd7091ac41ceeb9bd2a4bb4b0c6b5c2880035e4acc6",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id={`sb-label-${z.key}`} value={z.label} placeholder=\"Wassertemperatur Speicher oben\" onChang"
+          },
+          {
+            "vorher": "8524df97ad616da49a164bc326faf04be87ee356f4de35dd7fa859c90282a285",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id={`sb-iv-${z.key}`} type=\"number\" value={z.minReadIntervalS} onChange={(e) => setzeZeile(z."
+          },
+          {
+            "vorher": "f29fed8c2049c8e71cbadf400c5dbad8c7c37b80a1c9fe98bb6c2e73ebc7c6a8",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id={`sb-addr-${z.key}`} type=\"number\" value={z.address} onChange={(e) => setzeZeile(z.key, { "
+          },
+          {
+            "vorher": "db6a284a02a4566d5e7189dc1fb3617013b8cb10e3759a48ba9c37942eb62320",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id={`sb-scale-${z.key}`} value={z.scale} onChange={(e) => setzeZeile(z.key, { scale: e.target"
+          },
+          {
+            "vorher": "5ce758f8bfbf7a9e9a6f375fddfdb8c612b9e04607caeb1f96b46bcc3f075a8e",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id={`sb-offset-${z.key}`} value={z.offset} onChange={(e) => setzeZeile(z.key, { offset: e.tar"
+          },
+          {
+            "vorher": "7a82dbf85c10c1f51fe0dacd0dd28424c78b97d05a471453c836862135b8f48d",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"outline\" onClick={() => lesen(z)} disabled={mangel.length > 0 || laufend !== null}>"
+          },
+          {
+            "vorher": "e496df9b8e18699a6cd7ba74c7d930c9508709a158ecbb3e8c1f7d7d91558384",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={() => setZeilen((zs) => [...zs, neueZeile()])} disabled={zeilen.len"
+          },
+          {
+            "vorher": "63ce4c3f2e13ff09ad474da8ef830b06b40f5267b71a269c57b0e613cc5054d6",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={() => setSchritt(1)}> Zurück </Button>"
+          },
+          {
+            "vorher": "2a4ef0ed8e66cd52c7e0a2ba65c77c1ee69030543f9725f23f94e7d424a55c38",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={() => setSchritt(3)} disabled={!beleg || listenMangel.length > 0 || zeilenMangel.le"
+          },
+          {
+            "vorher": "969ad3aaecf2a49674e4a8f86c779be929aabf41bd8ccb5ac597cbf97b70f177",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<button type=\"button\" className={`vp-assist-role${rolle === r.id ? ' is-on' : ''}${r.verfuegbar ? ''"
+          },
+          {
+            "vorher": "6344d48d8d2a48d7022be2bedf50a4b10e17753ac5eaccb8a78b979a7cdc8950",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Input id=\"sb-name\" value={name} placeholder=\"Wärmepumpe Keller\" onChange={(e) => setName(e.target.v"
+          },
+          {
+            "vorher": "43c7c249fa67ef77420175b93cbf8de923195059338a6c51a0af2f6428fedb90",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={() => setSchritt(2)}> Zurück </Button>"
+          },
+          {
+            "vorher": "908fc4b5bb02faaf9d27ac32b02357030c0a7561cceb6e8409a43d7c79da75b7",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={() => setSchritt(4)}>Weiter</Button>"
+          },
+          {
+            "vorher": "ecaa7ace2d2b7e86bd5c5aa3d6c6041e1d1b6a896368d424cfd420f7ccd8e82a",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button variant=\"ghost\" onClick={() => setSchritt(3)}> Zurück </Button>"
+          },
+          {
+            "vorher": "a56954e716c771aef9aa0aad73e77761fdd9f0b5df7e72fa75b277731dc8f209",
+            "commit": "de9e6557bb6e8553b52be9d5386b0bed8ddb658a",
+            "element": "<Button onClick={anlegen} disabled={speichern}> {speichern ? 'Speichere …' : 'Komponente anlegen'} <"
+          }
+        ]
+      },
+      "components/SettingsSearch.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht: die kurzen Einstellungen in vier Gruppen brauchen keine Suche (Anlage neu gedacht, E5 = A).",
+        "entfallen": [
+          {
+            "vorher": "c3d73fbcdb2f8be3f1bff92d382fc770fae62442c6fb387be3037bca5abff7a7",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<input id={inputId} type=\"search\" className=\"vp-set-search-input\" placeholder={SEARCH_PLACEHOLDER} v"
+          },
+          {
+            "vorher": "d2baa9c0eb1db15682994ebc1a5a00a81dc7f998ef906628dd89ffa8d33a3d39",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-set-search-hit\" onClick={() => jump(hit.group)}> <span className"
+          }
+        ]
+      },
+      "pages/AnlageTechnik.tsx": {
+        "main": [
+          "42f9f6f8a36986371dc044b3fa345639ff294d16f323bd339b0e7695e134ef15",
+          "c41838b497150a59b0adfc881463dd789d07699c5f53d661e501402163416e50",
+          "82ba1b6d73cbe36827209f60cf19f56f984fb818ba395ca6b7725c6305014f31",
+          "abba053b7b11494f54932b8b3b7ad2ccbebf28428a119cbc8a78691fa145c37f",
+          "89b389f4236b8f43d56c3916bd45fadd4eab61243073afb1e46af41b2b074329",
+          "42399951e9ff032baf89ff235423129479d8b89accb1e539499665b5edf72137",
+          "9f87a0d001b8e5bd88d7ffac006a8c4f573ebd1f3f095d4f657d1d98bbdedd54",
+          "9966d7c4fa3c2297896663b500e78876d9207c1ad092a55117de4f9b337c407d",
+          "49903675a1a8e5d321dca96be1586ff5c8221904b1771c735a9041f9da55c44e",
+          "0773946f678ee504a47ad03d7544c55e9944dee40ddc45030d5276ca40b13176",
+          "ac07e710adee4125360546da289624e86e5b18cd51a46aa4bafb88aadafde964",
+          "40e6c0bcfb1d1caaf999b4fc8e3a30243f8f059e48f9b177617bcaa4827a97ae",
+          "097d0814939c818313fc2c4798816c20d1a323f5a85379a61869f4570bcbea8b",
+          "2a166f19405d8e6a3bd9a6768fd7c579fd2999a712b60331b6c663bc2f730f5a",
+          "132f19f446de2f1868a1e9b938df0f9bce68c8c927084fc970f809aa6d3dd699",
+          "5792564295fa3237814e85775c9d77404d4aac1d03783576c202c367e3849bbe",
+          "49903675a1a8e5d321dca96be1586ff5c8221904b1771c735a9041f9da55c44e",
+          "5816b4e199b46054ffd3fb9ca45f75652042ccd45ac2045d2430de7c517bbdf1"
+        ],
+        "wohin": "Die Karten der Einstellungen sind auf main eine kurze Liste in vier Gruppen mit einem Blatt je Zeile; Geräte kommen über den Aufbau hinzu. Jede ändernde Zeile trägt auf uems ihr recht= (Rechte-Hebel).",
+        "entfallen": [
+          {
+            "vorher": "099aa353654d479da865446edfc5ac34c0c9b5be6b805ef5fd7c14dad76321d8",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-tech-card-h toggle\" aria-expanded={open} onClick={() => setOpen("
+          },
+          {
+            "vorher": "d03336596efe42ad5de91448a155f4d2f2d09cf2e85eb091d04d66365fa4d616",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className={`vp-tech-disc${open ? ' open' : ''}`} aria-expanded={open} onClick="
+          },
+          {
+            "vorher": "9fb38ad1e2a993a8b9f35a46cb6df37d604aa8b47f2a114f848f86f43a0f87cd",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-tech-edit\" onClick={onClick}> <Icon name=\"pencil\" size={15}/> {l"
+          },
+          {
+            "vorher": "5b99e53a37b09247965f811bdacb9837d25f5d71ca11935e1a5ddc978eea0ed8",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Button variant=\"outline\" iconLeft={<Icon name=\"plus\" size={16}/>} onClick={() => setAddDeviceOpen(t"
+          },
+          {
+            "vorher": "01e8b87b4fd00794cc094f8791ff6056af1835d6082d91c46b9ce658b05f4c73",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-tech-device\" onClick={() => setDeviceDetailId(d.id)}> <span clas"
+          },
+          {
+            "vorher": "8513e1a50f94470f6a878aa5798ae4961adab62706e66cc7915c2349d28a5aba",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Button variant=\"outline\" size=\"sm\" iconLeft={<Icon name=\"plus\" size={16}/>} onClick={() => setAddDe"
+          },
+          {
+            "vorher": "a779ff1b559cfd703b4b84ec181414f1162ecaed7612360b22d4e9a30baa76ee",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Button variant=\"outline\" iconLeft={<Icon name=\"sun\" size={16}/>} onClick={() => setMastrOpen(true)}"
+          },
+          {
+            "vorher": "55082a04126b725b792cfdd45b71afcb1a78481bcc452db6765a19960cb3cb65",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Button variant=\"ghost\" size=\"sm\" iconLeft={<Icon name=\"refresh-cw\" size={16}/>} onClick={() => setM"
+          },
+          {
+            "vorher": "2451669ce0a40b87910d4d8dbee78f5ac863ae231f4d458b33f1c85924a0cde8",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-linklike\" onClick={() => { setWahl(site.profil ?? null); setErr("
+          },
+          {
+            "vorher": "bc9e8f14c6198762caef33ec83c175f28477b6c939256ec33f916fe6d49fd31b",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<Button variant=\"ghost\" size=\"sm\" iconLeft={<Icon name=\"pencil\" size={16}/>} onClick={() => setEditi"
+          }
+        ]
+      },
+      "pages/AnlagenModellSection.tsx": {
+        "entfallen_datei": true,
+        "wohin": "Datei von main gelöscht; Nachfolger ist der Aufbau als Tabelle (pages/AufbauSection.tsx, components/AufbauTabelle.tsx): Hinzufügen über den Gerätekatalog, Übernehmen in FundZeile und Kurzblick, Zuordnung ändern, Löschen und Freigaben im Zeilen-Menü (RowMenu-Einträge mit recht).",
+        "entfallen": [
+          {
+            "vorher": "65f4f3b7fbd19c4119d0fbb1b9587f5f36c5bc4163f661fd8710cffeb9f3fbb8",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-btn vp-btn--primary vp-btn--sm vp-am-global-add\" onClick={() => "
+          },
+          {
+            "vorher": "f6a5f81fd1c886f1ed5054ac2bb11c1b9214ac0cdd8010877e7292c07ef06e1b",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-add is-technisch\" onClick={() => setTechnikDrawer({ mode: 'cr"
+          },
+          {
+            "vorher": "d1efa16f55884e4703d3bbf485d0a5453c4f3d0a6d80f6d96bdf70bef2894adc",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button id=\"vp-anlagenbild-tab\" type=\"button\" role=\"tab\" aria-selected={ansicht === 'schaltbild'} ar"
+          },
+          {
+            "vorher": "2644679249064fb4dfd0bb392ddf4075f4a200c4d04263a1b0822035045f00d4",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button id=\"vp-anlagenliste-tab\" type=\"button\" role=\"tab\" aria-selected={ansicht === 'geraete'} aria"
+          },
+          {
+            "vorher": "e29cffb2c8d254154dca6259c4a31bcd168b42b1382332556265979bc85da164",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-karte-go\" onClick={() => onAssign(k.quelle as AdoptableSource"
+          },
+          {
+            "vorher": "a9cd8bb8df1821324b8ced49daeac4857ca890acd58892511754dd9ffdda8268",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-karte-go is-technisch\" onClick={() => technik.onAdopt(k.quell"
+          },
+          {
+            "vorher": "a492bdceb5c0c434c78b968103121177fb51e03b119eb35c8c2b905f86cd6b3b",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-orphan-btn\" onClick={() => onRepin(c)}> wieder verbinden </bu"
+          },
+          {
+            "vorher": "500a33d60a9f20619ca4bb5671ea4b3531a6718d86e401d2a19bb7a1bb7e1818",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-orphan-btn danger\" onClick={() => onRemove(c)}> löschen </but"
+          },
+          {
+            "vorher": "936787200b0db98d1c4abf3b6d93530bf61348d0836154670f2fb7ce8f911cff",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-action\" onClick={() => onSofort(sofort, a)}> <Icon name=\"zap\""
+          },
+          {
+            "vorher": "ecc0e0776b5d9f7de302f414a8e7084f2c766a12aac7b7be534637ed6790f650",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-action\" onClick={() => onFreigabe(c)}> <Icon name=\"zap\" size="
+          },
+          {
+            "vorher": "b9df20d9f7620c8308675e06b43c7de920815883d06a20352aa74197e06ddd53",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-action\" onClick={() => onRegelBruecke(c)}> <Icon name=\"zap\" s"
+          },
+          {
+            "vorher": "84eb4ea2b74005e6e564693f2d7f7998717f2812c06263f70d87f3caa8b876f5",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-action\" onClick={() => onRepin(c)}> <Icon name=\"link\" size={1"
+          },
+          {
+            "vorher": "bf20d673eb370654562a7381a1b366ff03a64a1a7dc45a58856fd6169a381115",
+            "commit": "41ed67c26749f2cf57ea89e8585a1eae95b134f6",
+            "element": "<button type=\"button\" className=\"vp-am-action danger\" onClick={() => onRemove(c)}> <Icon name=\"trash"
+          }
+        ]
+      },
+      "pages/AnlagenPage.tsx": {
+        "main": [
+          "acf31d26f735c6a09aea84e44d8e4f3262e1a516fedaa4911b8991e3636bf722",
+          "c403702f92b7bb8f7ff92d34d765e6d6802d5936ac5a2e4067b27085233946cf",
+          "0dfa3bb6237d43c81a5377b00ea568ae264c077e2e5922db6b1ae93c1228995a",
+          "5f74b6e5fde857c021fbb02d62d8436fb6ec98f60994caddd2223b2a195c2386",
+          "7520c980c76a153cb047ecc4ff04258e3f46f41526432af57a82d7a2ead0e9e0",
+          "e6e95d30d1a6722ea77a2e222917176bf8027255a1b01bfe93ff9ac7c1df45a4",
+          "cf68fea89925b22565220008fb3bd679b8c86f8c2a124fc6d1857c6cab2b62e4",
+          "061e7532aacd526fb682f5392109d5458034f93caaba65017880c8fa2255187c"
+        ],
+        "wohin": "Kompakter Kopf am Telefon: der Rückweg steht nur noch in der Schale, kein zweiter Rückweg.",
+        "entfallen": [
+          {
+            "vorher": "2ad9168858a8363d4abc262b5b19d7b2d6cbac2d326ebb4da05601838a9bab37",
+            "commit": "7521a907b2ee35f870a0db91494b97ee9e8102a0",
+            "element": "<button type=\"button\" className=\"vp-fleet-back\" onClick={onBack}> <Icon name=\"chevron-left\" size={18"
+          }
+        ]
+      },
+      "pages/GeraetSeiteSection.tsx": {
+        "main": [
+          "543e465885c835bc1ddfaa1109305d70b59b11611c360900e22141a4240edfb5",
+          "0cbd11f79c2a0478a22e7be48dedd653162f22efa3c9067d5b116c04757a9203",
+          "74085e05c943a35dff12ad1d1b46d355a5fa50d1201adc11575277edb11f17d7",
+          "bd008f7d4f26c6c5b86fd63a584af925cf24945dc38ab1edf784bde4a2e1715f",
+          "f0ccc325420cd496d1d1971c6e20464ff059f0d557e240a28a245986276a7905",
+          "23a94e7d9dc74920b891d8f7ebe6fb81e69a203069846ec96ed6e24791494eea"
+        ],
+        "wohin": "Bearbeiten und die Aktionen stehen im Kopf des Geräte-Kerns (Knopf „Bearbeiten“, Menü „Weitere Aktionen“).",
+        "entfallen": [
+          {
+            "vorher": "b008621d48338ec937d9118c7a13de8ad9b56b0d63aa2323bfa61e30867210ec",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<button type=\"button\" className=\"vp-btn vp-btn--outline vp-btn--md\" onClick={() => { setEditNotice(n"
+          },
+          {
+            "vorher": "416a709870c67d8d369b224b25fb586d47f50c42f216fd4dce34b5d4bfc7e25e",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<Button variant=\"outline\" size=\"sm\" onClick={aktion.onClick}> {aktion.text} </Button>"
+          }
+        ]
+      },
+      "pages/MesswerteSection.tsx": {
+        "main": [
+          "4c511c4c7d33af3dcc7a139ea74bfc589e209bf5f0cd4c2d065326390b2d2c53"
+        ],
+        "wohin": "Über die Fortschreibung d2c8692c auf den Knopf „+ Summenwert“; er steht seit dem Verlauf-Rework auf dem Reiter „Messwerte“ (pages/EinzelwerteSection.tsx) mit Recht messstelle.formel.",
+        "entfallen": [
+          {
+            "vorher": "e39bdcffda2c2340f6bec399d99af1f14dcb6f1424162950726b113617c2241a",
+            "commit": "763b87f39aed2773fe98965b1b7e0a73fd56ed3e",
+            "element": "<button type=\"button\" className=\"vp-gwk-neu\" onClick={() => setGwOffen(true)}> <Icon name=\"plus\" siz"
+          }
+        ]
+      },
+      "pages/OcppWallboxPage.tsx": {
+        "main": [
+          "dcb2d016f9401b1f25290cc80396edbb55510942252f5a33149bd9f97d0f2b27",
+          "4a83b56dfdca3ccafa9984b3d7e5b149cdb0e868fadb38baaa0ae5a06432f0f3",
+          "1229873d1b72d1dd5fcba27f0d9f53cc0d6d8314c09ebaf73a2a5c521b6d9405",
+          "1978ca24ca15cd33e4a343973b2cfc24ad64ca6bb3ab1217566d44a9d1959281",
+          "22dee1235cbb3dd5860a95dd115c141681a356b6c00dd72530638e4f7c9e21f8",
+          "06bdd4153224c54a88aa674419d1f66928f2775d901beb0e3e8894c785bb3c87",
+          "26b918afc16ae68a04f6e96d6ad03b27e770c15bbbc9de8602d69175396bd937",
+          "9ce102eb941a76d61fe759eb0885fb7cd018df030272523ba38654fe0839c1cd",
+          "8469f2d9f6f09d7d4fe40a3e9f4f04ad7bf5314e9294a8648fa6765b02df9b21",
+          "3fb70ffe7c7bb30ed1a8b5af83c146247e0daa8594d01107fd927352ac7571dd",
+          "b7ec03581ba2ff36f88af23d4e68daf57d9ecefc16aaacf05d06a2842cd84aba",
+          "45d8a2b6034fb740a2e873f6a967437e5c970aa1ee91d506e09a845a0edb729c",
+          "25bbe4aa223a1fcd5e67a293118d5a86c1dd532843a8c94d0a83eceea0e15ce2",
+          "3e44854872a13ebecc7f0dc675182cc27c22b2bc64fdc52bda1508d7b5789a18",
+          "91a89e20b9e7ef763b302a259dc63404527c7e4911412602067a8601f482e18a",
+          "7334f118612d29ec4bad81bc88071c478c9444718a09ffd3dd7f27112eb62f94",
+          "bd2dbfda6e101347c4662f035910d99e8c7973e928d4b20585366d7c7562bbe4",
+          "3fbbddc906b635ecc6015850d16cab138cdd88f2bdc03ca43828b487a453d855",
+          "db42ef580d15086d7ac9fe9285fb46869f45d570c094f296e0d8bc5c12c6377c"
+        ],
+        "wohin": "Start und Stopp sind ein Knopf je Zustand (RemoteStart/RemoteStop) auf der Geräteseite; gleiche Handlung.",
+        "entfallen": [
+          {
+            "vorher": "78b90dd529728630e2e6a23fa8aee2889ba1dadbb85463f530d0ec3669f7653b",
+            "commit": "d1b97ac3911f14fdc3dea3e2d0d42df34c6e4f15",
+            "element": "<button type=\"button\" className=\"vp-btn vp-btn--primary vp-btn--md\" disabled={!connection.sendable |"
+          }
+        ]
+      }
+    }
   }
 }

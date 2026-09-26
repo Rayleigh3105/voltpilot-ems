@@ -395,9 +395,13 @@ export function layoutFlow(
   // Mit Laden-Knoten wächst die viewBox um genau eine Zeile - die Geometrie
   // der vier Rollen-Kreise bleibt dabei unverändert (der Hub sitzt weiter in
   // der Mitte der URSPRÜNGLICHEN Höhe).
-  const chargingH = H + CHARGING_DY;
   const hubX = W / 2;
   const hubY = H / 2;
+  // …und zwar nur um das, was der Lade-Kreis samt Beschriftung wirklich unter
+  // die vier Rollen braucht. Beide Anker (Haus rechts, Hub) liegen auf
+  // `hubY`. Die frühere Pauschale `H + CHARGING_DY` rechnete den Abstand ein
+  // zweites Mal ein: am Telefon blieben ~100 px leere Karte unter „Laden".
+  const chargingH = Math.max(H, hubY + CHARGING_DY + NODE_R + labelBlock + 6);
   const leftX = leftInset;
   const rightX = W - leftInset;
   const topY = topInset;

@@ -104,21 +104,6 @@ export const SETTING_HINT: Partial<Record<ModeSettingId, string>> = {
     'Wie oft Ihr Speicher bewegt wird - schonend spart Ladezyklen, aggressiv holt mehr heraus.',
 };
 
-/**
- * Die Zusammenfassungszeile der Geld-Gruppe im zugeklappten Zustand (die Form
- * der Edge-Box). Sie nennt NUR, was wirklich hinterlegt ist — nie einen
- * erfundenen Preis.
- */
-export function geldGroupSummary(input: {
-  tarifLabel: string;
-  netzladenLabel: string;
-  anzulegenderWertLabel?: string | null;
-}): string {
-  return [input.tarifLabel, input.anzulegenderWertLabel, input.netzladenLabel]
-    .filter((p): p is string => p != null && p !== '')
-    .join(' · ');
-}
-
 /** Die Beschriftung des Spiegel-Links im Modus-Container. */
 export const SETTINGS_DEEPLINK_LABEL = 'In den Einstellungen ändern';
 

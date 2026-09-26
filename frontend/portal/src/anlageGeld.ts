@@ -23,7 +23,7 @@
  * Reines Modul: keine React-Importe, kein Netzwerk.
  */
 import type { Funktionen, OverviewSite } from './api';
-import { VERLAUF_TABS } from './ebenenNav';
+import { PLAN_KONTEXT_TABS, VERLAUF_TABS } from './ebenenNav';
 import type { BausteinId } from './cockpitLayout';
 import type { AnlagenSub } from './nav';
 import type { AnlageSurface, CockpitBlockId, DeepViewId } from './surface';
@@ -82,10 +82,21 @@ export const GELD_ANSICHT: Readonly<Record<DeepViewId, boolean>> = {
   'flow-editor': false,
 };
 
-/** Die Verlauf-Reiter mit Geld — aus den Reitern selbst gelesen, keine zweite Liste. */
-export const GELD_UNTERSEITEN: readonly AnlagenSub[] = VERLAUF_TABS.filter(
-  (t) => t.view != null && GELD_ANSICHT[t.view],
-).map((t) => t.sub);
+/**
+ * Unterseiten mit Ansicht, aber ohne eigenen Reiter: die Lastspitze ist seit dem Verlauf-Rework (main 763b87f39)
+ * nur noch über die Erlöse-Karte erreichbar — ihr Lesezeichen braucht die Geld-Regel trotzdem.
+ */
+const UNTERSEITEN_OHNE_REITER: readonly { sub: AnlagenSub; view: DeepViewId }[] = [
+  { sub: 'lastspitzen', view: 'lastspitzen' },
+];
+
+/**
+ * Die Unterseiten mit Geld — aus den Reitern selbst gelesen (Verlauf und die Preise, die seit dem Verlauf-Rework im
+ * Fahrplan stehen), keine zweite Liste.
+ */
+export const GELD_UNTERSEITEN: readonly AnlagenSub[] = [...VERLAUF_TABS, ...PLAN_KONTEXT_TABS, ...UNTERSEITEN_OHNE_REITER]
+  .filter((t) => t.view != null && GELD_ANSICHT[t.view])
+  .map((t) => t.sub);
 
 /** Steht die Anlage auf einer Ebene — also in `GET /funktionen`? */
 export function anlageAufEbene(siteId: string, funktionen: Funktionen | null): boolean {

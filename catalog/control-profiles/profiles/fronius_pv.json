@@ -1,0 +1,300 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "kein Speicher"
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "kein Speicher"
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "kein Speicher"
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "kein Speicher"
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "kein Speicher"
+    },
+    "G": {
+      "adapter_folge": "abregeln",
+      "beleg": [
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "sunspec": "123.WMaxLimPct"
+          }
+        },
+        {
+          "erwartet": 60,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_RvrtTms"
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "sunspec": "123.WMaxLim_Ena"
+          }
+        }
+      ],
+      "hebel": "abregeln",
+      "quellen": [
+        "g3",
+        "repo_fronius"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "% der Nennleistung, SF des Geräts",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "sunspec": "123.WMaxLimPct"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_WinTms"
+          }
+        },
+        {
+          "hinweis": "Rückfall-Timer: bei Stille läuft die PV wieder voll",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_RvrtTms"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_RmpTms"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "sunspec": "123.WMaxLim_Ena"
+          }
+        }
+      ],
+      "sicherheit": "B",
+      "wie": "Model 123 WMaxLimPct je Einheit; Box-Einspeisewächter regelt gegen den Netzpunkt (Außenkreis)."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "kein Speicher"
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "kein Speicher"
+    }
+  },
+  "adapter": {
+    "abweichungen": [],
+    "ausfuehrbar": true,
+    "datei": "edge-app/nodered/sunspec/model-discovery.js",
+    "folgen": {
+      "abregeln": {
+        "beleg": [
+          {
+            "erwartet": "planwert",
+            "ziel": {
+              "sunspec": "123.WMaxLimPct"
+            }
+          },
+          {
+            "erwartet": 60,
+            "ziel": {
+              "sunspec": "123.WMaxLimPct_RvrtTms"
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "sunspec": "123.WMaxLim_Ena"
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "% der Nennleistung, SF des Geräts",
+            "speicher": "ram",
+            "wert": "planwert",
+            "ziel": {
+              "sunspec": "123.WMaxLimPct"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "sunspec": "123.WMaxLimPct_WinTms"
+            }
+          },
+          {
+            "hinweis": "Rückfall-Timer: bei Stille läuft die PV wieder voll",
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "sunspec": "123.WMaxLimPct_RvrtTms"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "sunspec": "123.WMaxLimPct_RmpTms"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "sunspec": "123.WMaxLim_Ena"
+            }
+          }
+        ]
+      }
+    },
+    "planer": "planCurtailment (sunspec/curtail.js)",
+    "schreibabstand_s": 0
+  },
+  "bindung": [
+    {
+      "marke": "fronius",
+      "modelle": [
+        "fronius-eco-27-3-s",
+        "fronius-eco-25-3-s"
+      ],
+      "registerfamilie": "sunspec_live",
+      "steuerpfad": null
+    },
+    {
+      "marke": "fronius",
+      "modelle": [
+        "fronius-eco-27-3-s",
+        "fronius-eco-25-3-s"
+      ],
+      "registerfamilie": "fronius_solar_api",
+      "steuerpfad": null
+    },
+    {
+      "marke": "fronius_sunspec",
+      "modelle": [
+        "fronius-eco-27-3-s",
+        "fronius-eco-25-3-s"
+      ],
+      "registerfamilie": "sunspec_live",
+      "steuerpfad": null
+    }
+  ],
+  "daempfung": {
+    "box_regelt": null,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": null,
+    "text": "Kein Speicher: an diesem Gerät gibt es keine Batterie-Regelung der Box."
+  },
+  "eigenmodus": {
+    "sicherheit": "B",
+    "text": "Kein Speicher. Abregelung über SunSpec Model 123 (WMaxLimPct, Revert-Timer 60 s gesetzt) (B)."
+  },
+  "empfehlung": "Bleibt Stellglied des Einspeisewächters; nicht Teil der Speicher-Absicht.",
+  "fallen": [
+    "Nach Box-Ausfall hält niemand die 30-kW-Einspeisegrenze am Netzpunkt (Timer gibt frei); braucht einen geräteseitigen Rückhalt."
+  ],
+  "familie": "Reine PV-Wechselrichter (Eco, Symo, Tauro, Primo) – Herzogau: 2 × Eco 27",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Fronius",
+  "id": "fronius_pv",
+  "im_repo": "Abregelung live, je Einheit First-Light-zertifiziert (Herzogau seit 24.08.2026)",
+  "modelle": [
+    "Fronius Eco",
+    "Fronius Symo",
+    "Fronius Tauro",
+    "Fronius Primo"
+  ],
+  "quellen": [
+    "g3",
+    "h3",
+    "repo_fronius"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": null,
+    "sicherheit": "B",
+    "speicher": "ram",
+    "text": "flüchtig (B)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 1,
+  "totmann": {
+    "sekunden": 60,
+    "sicherheit": "B",
+    "text": "WMaxLimPct_RvrtTms = 60 s: bei Stille der Box läuft die PV wieder voll (B).",
+    "vorhanden": true,
+    "ziel": {
+      "sunspec": "123.WMaxLimPct_RvrtTms"
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": null,
+    "speicher": "keiner",
+    "text": "–"
+  },
+  "zaehler": {
+    "ort": "keiner",
+    "sicherheit": null,
+    "text": "–"
+  }
+}

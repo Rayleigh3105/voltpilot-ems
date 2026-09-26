@@ -1,0 +1,146 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "growatt_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Grid-First-Fenster + Entladerate."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "growatt_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Alle Zeitfenster aus → Load First."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Laderate % im Battery-First-Fenster."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Export-Limit-Einstellung."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "growatt_ha"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Battery-First-Fenster + AC-Laden."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": false,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "growatt_ha"
+    ],
+    "sicherheit": "D",
+    "text": "Zeitfenster vermutlich EEPROM: keine Box-Regelung (Konzept §6.5)."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: Priorität „Load First“, wenn kein Zeitfenster greift (C)."
+  },
+  "empfehlung": "Stufe 3: Eigenverbrauch = Gerät, sonst grobe Zeitfenster.",
+  "fallen": [
+    "Registerkarten je Baureihe verschieden.",
+    "Nur Zeitfenster – grob."
+  ],
+  "familie": "SPH / MOD-XH / MIN-XH",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Growatt",
+  "id": "growatt",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "SPH",
+    "MOD-XH",
+    "MIN-XH"
+  ],
+  "quellen": [
+    "growatt_ha"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "dauerspeicher",
+    "text": "Zeitfenster vermutlich EEPROM (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "D",
+    "text": "unbelegt (D).",
+    "vorhanden": null,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "dauerspeicher",
+    "text": "Zeitfenster für Battery First / Grid First (SPH 1080–1108), Lade-/Entladerate in % (C); MOD-XH andere Register (C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Zähler am Netzpunkt (Eastron/Chint)."
+  }
+}

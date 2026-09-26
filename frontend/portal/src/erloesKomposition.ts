@@ -34,11 +34,9 @@ import type {
   PeakShaving,
   PlantKind,
   SiteEarnings,
-  SiteEarningsBucket,
   TarifArt,
 } from './api';
 import { coveredSinceLabel, periodLabel } from './anlage';
-import type { Kernaussage } from './chartKopf';
 import { NBSP, eurAmount, fmtNum } from './format';
 import type { MoneyStream, MoneyStreamId, StreamPeriod } from './surface';
 
@@ -669,16 +667,37 @@ export interface BestandEingabe {
   speicherWertCtKwh?: number | null;
   speicherWertEur?: number | null;
   speicherWertBasis?: string | null;
+  /**
+   * Nur `range=day` (Definition A, z2): gemessener Ladestand am Ende des
+   * letzten Eimers minus Ladestand des durchlaufenden Vergleichsspeichers;
+   * null ohne gemessenen Stand (nie eine 0). Fehlt das Feld (älteres Backend),
+   * bleibt die Zeile bei der Änderung seit Mitternacht.
+   */
+  speicherVorsprungKwh?: number | null;
+  /** `speicherVorsprungKwh × speicherWertCtKwh` — derselbe Planpreis; nur die Anlage. */
+  speicherVorsprungEur?: number | null;
+  /** Der Vergleichsspeicher nach dem letzten gemessenen Eimer (für den Titel). */
+  vergleichSocEndKwh?: number | null;
   /** Fensterende des Zeitraums (ISO) — entscheidet über „läuft noch". */
   to?: string | null;
   /** Die Perioden-Art — nur der TAG kennt „Folgetag"/„Vortag". */
   range?: string | null;
 }
 
+/** Das Wort des Vergleichsspeichers in der Bestandszeile (Konzept k1 §6, E2 = A). */
+export const VERGLEICHSSPEICHER = 'Vergleichsspeicher';
+
 /**
  * Die eine Ableitung der Bestandszeile — von der Tagesbild-Überschrift UND von
  * der Ergebnis-Karte gelesen, damit beide Flächen über denselben Bestand nie
  * Verschiedenes behaupten können.
+ *
+ * ⚠ **DEFINITION A (Captain 24.09.2026, Konzept k1 §6, E2 = A):** Auf dem TAG
+ * nennt die Zeile den VORSPRUNG vor dem Vergleichsspeicher
+ * („5,0 kWh Vorsprung vor dem Vergleichsspeicher · Planwert 1,31 €"), nicht
+ * mehr die Änderung seit Mitternacht — die hätte zu drei Vierteln auch der
+ * sture Speicher gehabt. Auf Woche, Monat und Jahr ENTFÄLLT die Zeile. Nur ein
+ * älteres Backend ohne das Feld bekommt am Tag die alte Formulierung.
  *
  * `null` heißt: es gibt nichts zu sagen — kein Speicher, kein gemessener
  * Ladestand, ein älteres Backend, oder eine Bestandsänderung im Rauschen.
@@ -688,6 +707,11 @@ export function bestandZeile(
   now: Date,
 ): BestandZeile | null {
   if (!m) return null;
+  // Eine Anlagen-Antwort trägt IMMER ihr `range`; nur dort, wo keins mitkommt
+  // (Test-Attrappen, ältere Aufrufer), bleibt die Zeitraum-Formulierung.
+  if (m.range != null && m.range !== 'day') return null;
+  const vorsprung = num(m.speicherVorsprungKwh ?? null);
+  if (m.range === 'day' && vorsprung != null) return vorsprungZeile(m, vorsprung, now);
   const delta = num(m.speicherDeltaKwh ?? null);
   if (delta == null || Math.abs(delta) < BESTAND_KWH_TOTBAND) return null;
 
@@ -735,6 +759,42 @@ export function bestandZeile(
     badge: BESTAND_BADGE,
     titel: bestandTitel(m.speicherWertBasis ?? null, num(m.speicherWertCtKwh ?? null)),
     deltaKwh: delta,
+    wertEur: wert,
+  };
+}
+
+/**
+ * Die Tages-Bestandszeile nach Definition A: was der gesteuerte Speicher am
+ * Stichtag MEHR (Vorsprung) oder WENIGER (Rückstand) hat als der
+ * Vergleichsspeicher. Die Richtung steht im Wort, der Planwert bleibt ohne
+ * Vorzeichen und mit „Kein Abzug" — er geht in keine gemessene Zahl ein.
+ */
+function vorsprungZeile(m: BestandEingabe, kwh: number, now: Date): BestandZeile | null {
+  if (Math.abs(kwh) < BESTAND_KWH_TOTBAND) return null;
+  const menge = fmtNum(Math.abs(kwh), 'kWh');
+  const laeuft = zeitraumLaeuft(m.to, now);
+  const satz =
+    kwh > 0
+      ? `${menge} Vorsprung vor dem ${VERGLEICHSSPEICHER}`
+      : `${menge} Rückstand auf den ${VERGLEICHSSPEICHER}`;
+  const vergleich = num(m.vergleichSocEndKwh ?? null);
+  const erklaerung =
+    `${laeuft ? 'Gerade' : 'Am Tagesende'} ${menge} ${kwh > 0 ? 'mehr' : 'weniger'} im Speicher als beim ${VERGLEICHSSPEICHER}` +
+    (vergleich != null ? ` (dort ${fmtNum(vergleich, 'kWh')})` : '') +
+    ' — derselbe Speicher ohne smarte Steuerung, über Mitternacht weitergerechnet.';
+  const wert = num(m.speicherVorsprungEur ?? null);
+  if (wert == null) {
+    return { text: satz, badge: null, titel: erklaerung, deltaKwh: kwh, wertEur: null };
+  }
+  const absolut = Math.abs(wert);
+  const betrag =
+    absolut > 0 && absolut < BESTAND_EUR_TOTBAND ? `< 0,01${NBSP}€` : eurAmount(absolut);
+  const bewertung = bestandTitel(m.speicherWertBasis ?? null, num(m.speicherWertCtKwh ?? null));
+  return {
+    text: `${satz} · Planwert ${betrag}`,
+    badge: BESTAND_BADGE,
+    titel: [erklaerung, bewertung].filter(Boolean).join(' '),
+    deltaKwh: kwh,
     wertEur: wert,
   };
 }
@@ -1261,10 +1321,10 @@ function steeringTitel(money: SiteEarnings | null): string | null {
 //   Ebene 2 der Ergebnis-Karte („Preise & Vergütung", `erloesEbenen.ebene2`).
 //   Dieselbe Preiswahrheit stand zweimal auf der Seite.
 //
-//   Der TYP bleibt, weil `soVerdient()` ihn für seine eigene Zeilen-Form (S8)
-//   benutzt — die Rückfall-Darstellung des Kombinations-Bilds, wenn es kein
-//   Bild zu zeichnen gibt. Er ist also nicht der Rest einer toten Karte,
-//   sondern das Zeilen-Format der Karte „So verdient Ihre Anlage".
+//   ⚠ Seit dem Balken-Umbau von „So verdient Ihre Anlage" (25.09.2026) hat
+//   der TYP keinen Verwender mehr: auch die Mehrmonats-Form (S8) zeigt ihre
+//   zwei Werte als Balken (`balkenliste.ts`). Er bleibt vorerst stehen —
+//   entfernt wird er erst nach Rückfrage.
 // ---------------------------------------------------------------------------
 
 export type PreisZeileId =
@@ -1309,276 +1369,6 @@ export function marktVergleich(erzielt: number, markt: number): string {
   return diff > 0
     ? `${betrag} ct über dem Monatsdurchschnitt`
     : `${betrag} ct unter dem Monatsdurchschnitt`;
-}
-
-// ---------------------------------------------------------------------------
-// Karte 2 · „Geld im Verlauf"
-// ---------------------------------------------------------------------------
-
-/** Eine Reihe des Geld-Verlaufs (gestapelter Balken). */
-export interface GeldReihe {
-  id: 'einspeisung' | 'eigenverbrauchswert' | 'stromkosten';
-  label: string;
-  /** Der Anteil je Balken; Kosten stehen NEGATIV, also unter der Nulllinie. */
-  data: number[];
-}
-
-/** Die fertige Datengrundlage des Geld-Verlaufs. */
-export interface GeldVerlaufView {
-  /** true = es gibt nichts zu zeichnen (dann rendert die Karte einen Satz). */
-  leer: boolean;
-  /** Die Zeitpunkte der Balken (ISO), für Achsen- und Tooltip-Beschriftung. */
-  starts: string[];
-  reihen: GeldReihe[];
-  /** Die kumulierte Linie — laufende Summe der Netto-Beträge. */
-  kumuliert: number[];
-  /** „kumuliert 999,26 €" — der Endstand der Linie; null ohne Balken. */
-  kumuliertText: string | null;
-  /** Der „Was zeigt das?"-Satz, passend zur Balkenbreite. */
-  untertitel: string;
-}
-
-const VERLAUF_LABEL: Record<GeldReihe['id'], string> = {
-  einspeisung: 'Einspeise-Erlös',
-  eigenverbrauchswert: 'Wert des Eigenverbrauchs',
-  stromkosten: 'Stromkosten',
-};
-
-/** Wie breit ein Balken ist — die Skala folgt dem Zeitraum (P6). */
-export function verlaufSchritt(range: SiteEarnings['range']): string {
-  switch (range) {
-    case 'day':
-      return 'Stunde';
-    case 'week':
-    case 'month':
-      return 'Tag';
-    default:
-      return 'Monat';
-  }
-}
-
-/**
- * Karte 2: dieselben drei Teile wie in der Ergebnis-Karte, nur über die Zeit —
- * gestapelte Balken (Erlöse nach oben, Kosten nach unten) plus die kumulierte
- * Linie, die am Ende genau auf dem Netto-Ergebnis des Zeitraums landet.
- *
- * **Ein fehlender Teil wird zu 0 im BALKEN, nicht zu einer erfundenen Zahl:**
- * ein Balken existiert nur, wenn der Zeitraum-Eimer überhaupt berechenbar war
- * (der Endpunkt listet nur solche), und ein dort fehlender Strom (z. B. kein
- * Tarif → kein Wert des Eigenverbrauchs) trägt schlicht nichts zum Stapel bei.
- */
-export function geldVerlauf(
-  series: SiteEarningsBucket[] | null | undefined,
-  range: SiteEarnings['range'],
-): GeldVerlaufView {
-  const buckets = series ?? [];
-  const schritt = verlaufSchritt(range);
-  const untertitel =
-    `Was zeigt das? Je ${schritt} die Erlöse nach oben und die Stromkosten nach unten; ` +
-    'die Linie summiert beides auf und endet auf dem Ergebnis des Zeitraums.';
-  if (buckets.length === 0) {
-    return {
-      leer: true,
-      starts: [],
-      reihen: [],
-      kumuliert: [],
-      kumuliertText: null,
-      untertitel,
-    };
-  }
-
-  const wert = (v: number | null | undefined) => (num(v ?? null) ?? 0);
-  const alle: GeldReihe[] = [
-    {
-      id: 'einspeisung',
-      label: VERLAUF_LABEL.einspeisung,
-      data: buckets.map((b) => wert(b.einspeiseErloesEur)),
-    },
-    {
-      id: 'eigenverbrauchswert',
-      label: VERLAUF_LABEL.eigenverbrauchswert,
-      data: buckets.map((b) => wert(b.eigenverbrauchsWertEur)),
-    },
-    {
-      id: 'stromkosten',
-      label: VERLAUF_LABEL.stromkosten,
-      // Kosten zeigen nach UNTEN - das ist die Aussage des Diagramms.
-      data: buckets.map((b) => -wert(b.stromkostenEur)),
-    },
-  ];
-  // ⚠ K3 „die Legende bewirbt nur, was gezeichnet wird" (Befund B8, P6): eine
-  //   Reihe, die über den GANZEN Zeitraum bei null liegt, zeichnet keinen
-  //   einzigen Balken — sie stand trotzdem in der Legende. Auf einer Anlage
-  //   ohne hinterlegten Tarif las sich „Wert des Eigenverbrauchs" dort wie ein
-  //   Versprechen, das das Bild nicht einlöst. Der Filter gilt für Legende UND
-  //   Serien, weil beide dieselbe Liste lesen — sie können nicht auseinanderlaufen.
-  //
-  //   Ein durchgehend leerer Stapel behält BEWUSST alle drei Reihen: dann ist
-  //   die Karte ohnehin ihr eigener Leer-Zustand, und ein Diagramm ganz ohne
-  //   Legende wäre die schlechtere Auskunft.
-  const gezeichnet = alle.filter((r) => r.data.some((v) => Math.abs(v) >= BESTAND_EUR_TOTBAND));
-  const reihen: GeldReihe[] = gezeichnet.length > 0 ? gezeichnet : alle;
-
-  let lauf = 0;
-  const kumuliert = buckets.map((b) => {
-    lauf += wert(b.nettoEur);
-    return lauf;
-  });
-
-  return {
-    leer: false,
-    starts: buckets.map((b) => b.start),
-    reihen,
-    kumuliert,
-    kumuliertText: `kumuliert ${signedEuro(lauf)}`,
-    untertitel,
-  };
-}
-
-/**
- * **K1 · die Kernaussage des Geld-Verlaufs** (Konzept §3.1 Position 3, P6).
- *
- * Die Karte beantwortet „WANN kam das Geld?" — der Kopf muss also den Zeitpunkt
- * nennen, nicht die Summe: die steht eine Karte darüber, und sie hier zu
- * wiederholen wäre die vierfache Geld-Aussage, die der Mobil-Umbau abgeschafft
- * hat. Der Satz nennt deshalb den STÄRKSTEN Eimer und was ihn getragen hat.
- *
- * **Ohne belegbare Aussage steht der ehrliche GRUND, ohne Grund gar nichts**
- * (die Haus-Regel des Kernaussage-Kopfs, `AGENTS.md` K1/M11):
- *   - kein Eimer  → gar keine Aussage (die Karte rendert ihren eigenen Leer-Satz),
- *   - alle Eimer unter dem Totband → der Grund („In diesem Zeitraum ist noch
- *     nichts zusammengekommen."), nie ein erfundener Spitzen-Eimer,
- *   - ein Eimer ohne benennbaren Träger → nur Zeitpunkt und Betrag.
- *
- * Der TRÄGER ist die größte positive Reihe des Spitzen-Eimers; Stromkosten
- * können ihn nie stellen (sie tragen kein Geld herbei, sie nehmen welches weg).
- */
-export function verlaufKern(view: GeldVerlaufView, range: SiteEarnings['range']): Kernaussage | null {
-  if (view.leer || view.starts.length === 0) return null;
-  // Der stärkste Eimer nach dem, was NETTO in ihm zusammenkam — dieselbe
-  // Größe, die die kumulierte Linie aufsummiert.
-  const netto = view.starts.map((_, i) =>
-    view.reihen.reduce((acc, r) => acc + (r.data[i] ?? 0), 0),
-  );
-  let best = 0;
-  for (let i = 1; i < netto.length; i += 1) if (netto[i] > netto[best]) best = i;
-  if (!(netto[best] >= BESTAND_EUR_TOTBAND)) {
-    return {
-      wert: null,
-      satz: null,
-      grund: 'In diesem Zeitraum ist noch nichts zusammengekommen.',
-      ton: 'calm',
-    };
-  }
-  const traeger = view.reihen
-    .filter((r) => r.id !== 'stromkosten' && (r.data[best] ?? 0) >= BESTAND_EUR_TOTBAND)
-    .sort((a, b) => (b.data[best] ?? 0) - (a.data[best] ?? 0))[0];
-  const wann = verlaufKernZeit(view.starts[best], range);
-  return {
-    wert: eurAmount(netto[best]),
-    satz: traeger
-      ? `kamen ${wann} zusammen — vor allem aus ${TRAEGER_WORT[traeger.id]}.`
-      : `kamen ${wann} zusammen — der stärkste ${verlaufSchritt(range)} des Zeitraums.`,
-    grund: null,
-    ton: 'ok',
-  };
-}
-
-/** Wie der Träger-Strom im Satz heißt (der Reihen-Name im Genitiv/Dativ). */
-const TRAEGER_WORT: Record<GeldReihe['id'], string> = {
-  einspeisung: 'der Einspeisung',
-  eigenverbrauchswert: 'dem Eigenverbrauch',
-  stromkosten: 'den Stromkosten',
-};
-
-/**
- * „um 12 Uhr" · „am 14." · „im Juli" — der Zeitpunkt in der Auflösung des
- * Zeitraums. Berlin ist die Plattform-Zeitzone (`HistoryRange.ZONE`).
- */
-function verlaufKernZeit(iso: string, range: SiteEarnings['range']): string {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return 'in diesem Zeitraum';
-  const tz = 'Europe/Berlin';
-  if (range === 'day') {
-    // ⚠ `hour: 'numeric'` hängt im deutschen Gebietsschema das Wort „Uhr"
-    //   SELBST an („11 Uhr") — ein eigenes Suffix ergäbe „11 Uhr Uhr"
-    //   (im Browser-Beweis genau so aufgefallen).
-    return `um ${d.toLocaleString('de-DE', { hour: 'numeric', timeZone: tz })}`;
-  }
-  if (range === 'week' || range === 'month') {
-    return `am ${d.toLocaleString('de-DE', { day: 'numeric', month: 'long', timeZone: tz })}`;
-  }
-  return `im ${d.toLocaleString('de-DE', { month: 'long', year: 'numeric', timeZone: tz })}`;
-}
-
-// --- Mobil: die Erlöse-Welt als Ergebnis + benannte Aufklapper ---------------
-
-/**
- * **Die Mobil-Fassung der Erlöse-Welt** (Konzept `data/vp-mobile-views-x1` §6,
- * Captain-Abnahme 09.08.2026). Gemessen waren es **5 932 px** = acht Karten in
- * identischem Gewicht: nichts sagte, was die Hauptsache ist, und die reine
- * Gelegenheits-Lektüre („Speicher & Preis" samt drei Absätzen, das
- * Tagesprotokoll) lag bei 4 867 px täglich im Scrollweg.
- *
- * Umgeordnet wird, NICHT gekürzt: der Falz trägt das Ergebnis (Zahl + die drei
- * Kompositionszeilen, die sie ERGEBEN + die Steuerungs-Zurechnung), danach ein
- * kompakter Verlauf — und alles Erklärende wird ein BENANNTER Aufklapper, der
- * beim Öffnen seinen vollen Inhalt und sein eigenes Abzeichen behält.
- *
- * Diese Funktion entscheidet nur, WELCHE Aufklapper es gibt und wie sie heißen.
- * Ein Aufklapper, dessen Karte auf dieser Anlage bzw. in diesem Zeitraum gar
- * nicht existiert (kein Markt-Vergleich ohne Direktvermarktung, kein
- * Tagesnachweis außerhalb des Tages), erscheint nicht — ein leerer Aufklapper
- * wäre ein Versprechen ins Leere.
- */
-export type ErloesAufklapperId = 'so-verdient' | 'speicher-preis' | 'tagesprotokoll';
-
-export interface ErloesAufklapper {
-  id: ErloesAufklapperId;
-  /** Die Zeile, die zugeklappt sichtbar ist. */
-  titel: string;
-  /** Die ruhige Unterzeile — was drinsteckt. */
-  sub: string;
-}
-
-const AUFKLAPPER: Record<ErloesAufklapperId, ErloesAufklapper> = {
-  'so-verdient': {
-    id: 'so-verdient',
-    titel: 'So verdient Ihre Anlage · der Markt-Vergleich',
-    sub: 'Ihr Erlös gegen den Monatsdurchschnitt',
-  },
-  'speicher-preis': {
-    id: 'speicher-preis',
-    // Seit dem Chart-Redesign Stufe 3 ist der Tagesnachweis das TAGESBILD -
-    // drei Flächen über einer Zeitachse statt „Speicher & Preis" allein. Die
-    // ID bleibt, damit ein geöffneter Aufklapper seine Sitzung behält.
-    titel: 'Der Tag im Bild · Preis, Speicher, Ertrag',
-    sub: 'Was Ihre Anlage an diesem Tag getan hat',
-  },
-  tagesprotokoll: {
-    id: 'tagesprotokoll',
-    titel: 'Tagesprotokoll',
-    sub: 'Der Tag in Sätzen',
-  },
-};
-
-export interface ErloesAufklapperInput {
-  /** Gibt es das Kombinations-Ertragsbild? (nur direkt vermarktete Anlagen) */
-  hatSoVerdient: boolean;
-  /** Der Tagesnachweis + das Protokoll gibt es nur im Tages-Zeitraum. */
-  istTag: boolean;
-  /** Liegt für diesen Tag überhaupt eine Historie-Antwort vor? */
-  hatTagesdaten: boolean;
-}
-
-export function erloesAufklapper(input: ErloesAufklapperInput): ErloesAufklapper[] {
-  const out: ErloesAufklapper[] = [];
-  if (input.hatSoVerdient) out.push(AUFKLAPPER['so-verdient']);
-  if (input.istTag && input.hatTagesdaten) {
-    out.push(AUFKLAPPER['speicher-preis']);
-    out.push(AUFKLAPPER.tagesprotokoll);
-  }
-  return out;
 }
 
 /**

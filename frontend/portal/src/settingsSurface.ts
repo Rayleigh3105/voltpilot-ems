@@ -1,8 +1,9 @@
 /**
- * Die Einstellungs-Seite als OBERFLÄCHE — Autoritäts-Stufen (E4), Wirkung &
- * Ehrlichkeit (E5) und die Zuständigkeits-Grenze zur Box (E7). Rein, ohne
- * React; die Seite (`pages/AnlageTechnik.tsx`) und die Zeile
- * (`components/SettingEditors.tsx`) rendern daraus.
+ * Die Einstellungs-Seite als OBERFLÄCHE — Autoritäts-Stufen (E4) und Wirkung &
+ * Ehrlichkeit (E5). Rein, ohne React; die Seite (`pages/AnlageTechnik.tsx`) und
+ * die Zeile (`components/SettingEditors.tsx`) rendern daraus. Seit „Anlage – neu
+ * gedacht" (E5 = A) trägt die Seite ② als Schloss am Wert statt einer Legende,
+ * und die Box wohnt im Aufbau - die frühere Zuständigkeits-Grenze (E7) entfällt.
  *
  * Konzept: `data/vp-settings-ux-konzept/report.md` §7 P3/P5 + §7.2, Mockups in
  * `concept.html`; Captain-Entscheide **D4** (Stufe-②-Werte werden für Kunden
@@ -80,9 +81,6 @@ export const AUTHORITY: Record<AuthorityLevel, AuthorityInfo> = {
     note: 'Schutzfunktionen, die immer mitlaufen — ganz ohne Einstellung.',
   },
 };
-
-/** Kanonische Reihenfolge der Stufen (Legende). */
-export const AUTHORITY_ORDER: readonly AuthorityLevel[] = [1, 2, 3];
 
 /**
  * Die Stufen, die eine ZEILE tragen kann. Stufe ③ ist bewusst nicht dabei: sie
@@ -372,30 +370,3 @@ export function bezugspreisLeerText(tarifArt: string | null | undefined): string
     ? 'Ohne Tarifangabe rechnen wir Ihren Netzbezug nicht in Euro um.'
     : 'Ihr Bezugspreis erscheint hier, sobald der nächste Fahrplan gerechnet ist.';
 }
-
-// ---------------------------------------------------------------------------
-// 6 · E7 — die Grenze zur Box (D5: die Box bleibt eine eigene Seite)
-// ---------------------------------------------------------------------------
-
-/**
- * Die Zuständigkeit wird BEIDSEITIG ausgesprochen (Report §7.2). Bis E7 sagte
- * sie nur die Box („… Die Anlagensteuerung planen Sie im VoltPilot-Portal.");
- * das Portal schwieg in die Gegenrichtung.
- */
-export const ZUSTAENDIG_PORTAL =
-  'Hier stellen Sie ein, WOFÜR Ihre Anlage arbeitet — Verträge, Preise und das Verhalten Ihres Speichers.';
-
-export const ZUSTAENDIG_BOX =
-  'Direkt am Gerät stellen Sie ein, WOMIT gemessen wird — Wechselrichter, Erzeuger, Zähler, Vorzeichen und die Freigabe der Steuerung.';
-
-/**
- * Wie die Box erreichbar ist. Bewusst KEIN Link: die Box steht im Heimnetz des
- * Kunden, ihre Adresse kennt das Portal nicht — ein geratener Link führte ins
- * Leere. Dieselbe Ehrlichkeit wie im Anlagen-Modell.
- */
-export const BOX_ADDRESS_NOTE =
-  'Die Geräteseite öffnen Sie in Ihrem Heimnetz unter der Adresse Ihres VoltPilot-Geräts, Port 8484.';
-
-/** Die Faustregel für alles, was künftig dazukommt. */
-export const BOX_RULE =
-  'Faustregel: Braucht es ein Kabel oder ein Messgerät, gehört es an das Gerät. Braucht es einen Vertrag oder Geld, gehört es hierher.';

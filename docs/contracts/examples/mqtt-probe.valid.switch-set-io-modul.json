@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "a1b2c3d4e5f60718",
+  "requested_at": "2026-09-24T14:30:00Z",
+  "ops": [
+    {
+      "op": "switch_set",
+      "id": "ausgang",
+      "transport": "ebyte_modbus_tcp",
+      "host": "192.168.3.50",
+      "port": 502,
+      "unit_id": 1,
+      "register_kind": "coil",
+      "address": 4,
+      "write_fc": 5,
+      "set_value": 1
+    }
+  ]
+}

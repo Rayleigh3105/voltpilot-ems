@@ -1,5 +1,5 @@
 import { Recht } from './Recht';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -8,6 +8,8 @@ import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import { VpTimePicker } from './VpTimePicker';
 import { api, ApiError, type SiteComponents } from '../api';
+import { AUTO_TEST_MS } from '../anlegenFlow';
+import { Abschnitt, Abschnitte, EinrichtenFuss, EinrichtenKopf, EinrichtenSeite } from './Einrichten';
 import {
   AGGREGATE,
   ANMELDE_ARTEN,
@@ -79,19 +81,26 @@ import {
  */
 export function BatterieAssistent({
   siteId,
-  onBack,
+  onBack = () => {},
   onSaved,
-  schritt,
-  onSchritt,
-  navPortal,
+  schritt = 1,
+  onSchritt = () => {},
+  navPortal = null,
+  seite = null,
   bearbeiten,
 }: {
   siteId: string;
-  onBack: () => void;
+  onBack?: () => void;
   onSaved: (result: SiteComponents) => void;
-  schritt: 1 | 2 | 3 | 4;
-  onSchritt: (schritt: 1 | 2 | 3 | 4) => void;
-  navPortal: HTMLElement | null;
+  /** Schritt-Modus (Bearbeiten auf der Geräteseite): der Schritt von außen. */
+  schritt?: 1 | 2 | 3 | 4;
+  onSchritt?: (schritt: 1 | 2 | 3 | 4) => void;
+  navPortal?: HTMLElement | null;
+  /**
+   * Seiten-Modus (Anlegen aus dem Gerätekatalog): alle vier Teile als
+   * Abschnitte EINER Einrichten-Seite, die Vorschau läuft von selbst.
+   */
+  seite?: { onZurueck?: (() => void) | null; onClose: () => void } | null;
   /**
    * Eine BESTEHENDE Batterie ändern. Die gespeicherte Form füllt das Formular
    * vor - die geprüfte und normalisierte Fassung, nicht die einst getippte:
@@ -199,7 +208,22 @@ export function BatterieAssistent({
   const bindungMangel = bindungFehler(bindung, zeilen, soc);
   const gewaehlteVorlage = vorlagen.find((v) => v.id === soc.template) ?? null;
 
+  /*
+    Jede Vorschau gilt GENAU den Angaben, zu denen sie lief: eine Antwort zu
+    einem älteren Stand verfällt, und ein geänderter Anschluss entwertet die
+    Zahlen - sie kämen sonst aus einer Quelle, die nicht mehr gilt.
+  */
+  const vorschauStand = useRef(0);
+  const letzteEingabe = useRef(0);
+  useEffect(() => {
+    vorschauStand.current += 1;
+    letzteEingabe.current = Date.now();
+    setVorschau(null);
+  }, [art, broker, endpunkt, anmeldung]);
+
   function setzeZeile(key: string, patch: Partial<ZuordnungZeile>) {
+    vorschauStand.current += 1;
+    letzteEingabe.current = Date.now();
     setZeilen((zs) => zs.map((z) => (z.key === key ? { ...z, ...patch } : z)));
     // Eine geänderte Zuordnung entwertet die Vorschau: stehengebliebene Zahlen
     // neben geänderten Angaben wären eine Behauptung über einen Empfang, den
@@ -208,6 +232,8 @@ export function BatterieAssistent({
   }
 
   function setzeKanal(key: string, channel: string) {
+    vorschauStand.current += 1;
+    letzteEingabe.current = Date.now();
     setZeilen((zs) => zs.map((z) => (z.key === key ? kanalGewaehlt(z, channel) : z)));
     setVorschau(null);
   }
@@ -223,6 +249,7 @@ export function BatterieAssistent({
   }
 
   async function vorschauen() {
+    const stand = vorschauStand.current;
     setLaeuft(true);
     try {
       const antwort = await api.previewBattery(
@@ -230,8 +257,10 @@ export function BatterieAssistent({
         vorschauRumpf(broker, zeilen, art, endpunkt, anmeldung),
         bearbeiten?.entityId ?? null,
       );
+      if (stand !== vorschauStand.current) return;
       setVorschau(vorschauErgebnis(antwort, zeilen, art));
     } catch (e) {
+      if (stand !== vorschauStand.current) return;
       setVorschau({
         zustand: 'fehlgeschlagen',
         text: e instanceof ApiError ? e.message : 'Die Vorschau ist fehlgeschlagen.',
@@ -261,258 +290,967 @@ export function BatterieAssistent({
   const vorschauZeile = (channel: string) =>
     vorschau?.zeilen.find((v) => v.channel === channel) ?? null;
 
+  /*
+    Die VIER TEILE des Formulars. Auf der Geräteseite (Bearbeiten) steht jeder
+    als eigener Schritt, beim Anlegen stehen sie als Abschnitte auf EINER
+    Einrichten-Seite. Ein Formular, zwei Flächen - nie zwei Wahrheiten.
+  */
+  /** Wie ist die Batterie erreichbar? */
+  const teilAnschluss = () => (
+    <>
+      <p className="vp-assist-sub">
+        VoltPilot liest Ihr Batteriemanagement direkt - unabhängig davon, welches es ist.
+      </p>
+      <div className="vp-assist-roles">
+        {ANSCHLUSSARTEN.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            data-testid={`anschlussart-${a.id}`}
+            className={`vp-assist-role${art === a.id ? ' is-on' : ''}${
+              a.verfuegbar ? '' : ' is-soon'
+            }`}
+            disabled={!a.verfuegbar}
+            aria-disabled={!a.verfuegbar}
+            onClick={() => {
+              // Eine gewechselte Anschlussart entwertet die Vorschau: die
+              // Zahlen kämen sonst aus einer Quelle, die nicht mehr gilt.
+              setArt(a.id);
+              setVorschau(null);
+            }}
+          >
+            <strong>{a.label}</strong>
+            <span>{a.hint}</span>
+            {!a.verfuegbar && a.bald && <em className="vp-assist-soon">{a.bald}</em>}
+          </button>
+        ))}
+      </div>
+
+      {!http && (
+        <>
+          <div className="vp-assist-field">
+            <label htmlFor="bat-host">Adresse des MQTT-Servers</label>
+            <Input
+              id="bat-host"
+              value={broker.host}
+              placeholder="192.168.1.50"
+              onChange={(e) => setBroker((b) => ({ ...b, host: e.target.value }))}
+            />
+            <p className="vp-assist-help">
+              Die IP-Adresse des Rechners, auf dem Ihr MQTT-Server läuft - meist Ihr
+              Home-Assistant- oder Node-RED-Host.
+            </p>
+          </div>
+          <div className="vp-sb-pair">
+            <div className="vp-assist-field">
+              <label htmlFor="bat-port">Port</label>
+              <Input
+                id="bat-port"
+                type="number"
+                value={broker.port}
+                onChange={(e) => setBroker((b) => ({ ...b, port: e.target.value }))}
+              />
+            </div>
+            <div className="vp-assist-field">
+              <label htmlFor="bat-iv">Sende-Abstand (s)</label>
+              <Input
+                id="bat-iv"
+                type="number"
+                value={broker.publishIntervalS}
+                onChange={(e) => setBroker((b) => ({ ...b, publishIntervalS: e.target.value }))}
+              />
+              <p className="vp-assist-help">
+                So oft schickt Ihre Box die gesammelten Werte an VoltPilot.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {http && (
+        <>
+          {/*
+            Die VORLAGE zuerst: „DIYBMS v4 - /ha" füllt Pfad, Anmelde-Art und
+            die ganze Feld-Zuordnung. Sie ist ein Vorschlag, kein Vertrag -
+            eine andere Firmware kann andere Feldnamen haben, deshalb steht
+            die Live-Vorschau daneben. Und sie nimmt niemandem eine schon
+            getippte Zuordnung weg.
+          */}
+          <div className="vp-sb-add">
+            {HTTP_VORLAGEN.map((v) => (
+              <Button
+                key={v.id}
+                variant="ghost"
+                data-testid={`http-vorlage-${v.id}`}
+                onClick={() => {
+                  const next = vorlageAnwenden(v, endpunkt, anmeldung, zeilen);
+                  setEndpunkt(next.endpunkt);
+                  setAnmeldung(next.anmeldung);
+                  setZeilen(next.zeilen);
+                  setVorschau(null);
+                }}
+              >
+                Vorlage „{v.label}" übernehmen
+              </Button>
+            ))}
+          </div>
+
+          <div className="vp-assist-field">
+            <label htmlFor="bat-http-host">Adresse des BMS</label>
+            <Input
+              id="bat-http-host"
+              value={endpunkt.host}
+              placeholder="192.168.1.60"
+              onChange={(e) => setEndpunkt((x) => ({ ...x, host: e.target.value }))}
+            />
+            <p className="vp-assist-help">
+              Die IP-Adresse Ihres BMS-Controllers im Heimnetz. VoltPilot ruft dort nur ab -
+              es schreibt nie.
+            </p>
+          </div>
+          <div className="vp-assist-field">
+            <label htmlFor="bat-http-path">Pfad der JSON-Auskunft</label>
+            <Input
+              id="bat-http-path"
+              value={endpunkt.path}
+              placeholder="/ha"
+              onChange={(e) => setEndpunkt((x) => ({ ...x, path: e.target.value }))}
+            />
+            <p className="vp-assist-help">
+              Steht in der Anleitung Ihres BMS - beim DIYBMS v4 ist es /ha.
+            </p>
+          </div>
+          <div className="vp-sb-pair">
+            <div className="vp-assist-field">
+              <label htmlFor="bat-http-port">Port</label>
+              <Input
+                id="bat-http-port"
+                type="number"
+                value={endpunkt.port}
+                onChange={(e) => setEndpunkt((x) => ({ ...x, port: e.target.value }))}
+              />
+            </div>
+            <div className="vp-assist-field">
+              <label htmlFor="bat-http-iv">Abruf-Abstand (s)</label>
+              <Input
+                id="bat-http-iv"
+                type="number"
+                value={endpunkt.publishIntervalS}
+                onChange={(e) => setEndpunkt((x) => ({
+                  ...x, publishIntervalS: e.target.value,
+                }))}
+              />
+              <p className="vp-assist-help">
+                So oft ruft Ihre Box die Auskunft ab. Es läuft immer nur ein Abruf.
+              </p>
+            </div>
+          </div>
+
+          <div className="vp-assist-field">
+            <VpPicker
+              id="bat-http-auth"
+              label="Anmeldung"
+              options={ANMELDE_ARTEN.map((a) => ({ value: a.id, label: a.label }))}
+              value={anmeldung.art}
+              onChange={(v) => setAnmeldung((x) => ({
+                ...x, art: v as AnmeldungForm['art'],
+              }))}
+            />
+            <p className="vp-assist-help">
+              {ANMELDE_ARTEN.find((a) => a.id === anmeldung.art)?.hint}
+            </p>
+          </div>
+          {anmeldung.art === 'header' && (
+            <div className="vp-assist-field">
+              <label htmlFor="bat-http-header">Name der Kopfzeile</label>
+              <Input
+                id="bat-http-header"
+                value={anmeldung.header}
+                placeholder="ApiKey"
+                onChange={(e) => setAnmeldung((x) => ({ ...x, header: e.target.value }))}
+              />
+            </div>
+          )}
+          {anmeldung.art === 'basic' && (
+            <div className="vp-assist-field">
+              <label htmlFor="bat-http-user">Benutzername</label>
+              <Input
+                id="bat-http-user"
+                value={anmeldung.username}
+                onChange={(e) => setAnmeldung((x) => ({ ...x, username: e.target.value }))}
+              />
+            </div>
+          )}
+          {anmeldung.art !== 'none' && (
+            <div className="vp-assist-field">
+              <label htmlFor="bat-http-secret">
+                {anmeldung.art === 'basic' ? 'Kennwort' : 'Schlüssel'}
+              </label>
+              <Input
+                id="bat-http-secret"
+                type="password"
+                value={anmeldung.secret}
+                placeholder={geheimnisBesteht ? GEHEIMNIS_MASKE : ''}
+                onChange={(e) => setAnmeldung((x) => ({ ...x, secret: e.target.value }))}
+              />
+              <p className="vp-assist-help">
+                {geheimnisBesteht
+                  ? 'Bleibt das Feld leer, gilt der gespeicherte Schlüssel weiter - er '
+                    + 'verlässt den Server nie.'
+                  : 'Er wird verschlüsselt übertragen, an Ihre Box weitergegeben und nie '
+                    + 'wieder angezeigt.'}
+              </p>
+            </div>
+          )}
+
+          <details className="vp-sb-profi">
+            <summary>Weitere Angaben</summary>
+            <div className="vp-sb-pair">
+              <div className="vp-assist-field">
+                <label htmlFor="bat-http-timeout">Zeitgrenze (ms)</label>
+                <Input
+                  id="bat-http-timeout"
+                  type="number"
+                  value={endpunkt.timeoutMs}
+                  onChange={(e) => setEndpunkt((x) => ({ ...x, timeoutMs: e.target.value }))}
+                />
+                <p className="vp-assist-help">
+                  So lange wartet Ihre Box auf die Antwort, bevor sie den Abruf als
+                  „keine Antwort" abbricht.
+                </p>
+              </div>
+              <div className="vp-assist-field">
+                <label htmlFor="bat-http-tls">HTTPS</label>
+                <input
+                  id="bat-http-tls"
+                  type="checkbox"
+                  checked={endpunkt.tls}
+                  onChange={(e) => setEndpunkt((x) => ({
+                    ...x,
+                    tls: e.target.checked,
+                    port: String(e.target.checked ? 443 : 80),
+                  }))}
+                />
+                <p className="vp-assist-help">
+                  Nur, wenn Ihr BMS wirklich HTTPS spricht - die meisten im Heimnetz tun es
+                  nicht.
+                </p>
+              </div>
+            </div>
+          </details>
+        </>
+      )}
+      {brokerMangel.length > 0 && (
+        <p className="vp-assist-error" role="status">
+          {brokerMangel[0]}
+        </p>
+      )}
+    </>
+  );
+
+  /** Was kommt wo an? (Feld-Zuordnung mit Live-Vorschau) */
+  const teilZuordnung = () => (
+    <>
+      <p className="vp-assist-sub">
+        Ordnen Sie die Felder Ihres BMS den Standard-Messwerten zu. Mit „Werte ansehen"
+        zeigt Ihre Box, was {http ? 'die Auskunft wirklich liefert' : 'auf diesen Topics wirklich hereinkommt'}.
+      </p>
+
+      {zeilen.map((z, i) => {
+        const mangel = zuordnungFehler(z, art);
+        const ziel = zielKanal(z.channel);
+        const probe = vorschauZeile(z.channel);
+        const aggregate = AGGREGATE.filter(
+          (a) => z.valueType !== 'bool' || BOOL_AGGREGATE.includes(a.value),
+        );
+        return (
+          <div className="vp-sb-row" key={z.key}>
+            <div className="vp-sb-row-head">
+              <strong>Zuordnung {i + 1}</strong>
+              {zeilen.length > 1 && (
+                <button
+                  type="button"
+                  className="vp-sb-del"
+                  aria-label={`Zuordnung ${i + 1} entfernen`}
+                  onClick={() => {
+                    setZeilen((zs) => zs.filter((x) => x.key !== z.key));
+                    setVorschau(null);
+                  }}
+                >
+                  <Icon name="trash" />
+                </button>
+              )}
+            </div>
+
+            <div className="vp-assist-field">
+              <VpPicker
+                id={`bat-ch-${z.key}`}
+                label="Welcher Messwert ist das?"
+                options={ZIEL_KANAELE.map((k) => ({
+                  value: k.channel,
+                  label: k.unit === '' ? k.label : `${k.label} (${k.unit})`,
+                }))}
+                value={z.channel}
+                onChange={(v) => setzeKanal(z.key, v)}
+                searchPlaceholder="Messwert suchen …"
+              />
+              {ziel && <p className="vp-assist-help">{ziel.hint}</p>}
+            </div>
+
+            {!http && (
+              <div className="vp-assist-field">
+                <label htmlFor={`bat-topic-${z.key}`}>Topic</label>
+                <Input
+                  id={`bat-topic-${z.key}`}
+                  value={z.topic}
+                  placeholder="diybms/bank/+/cell/+"
+                  onChange={(e) => setzeZeile(z.key, { topic: e.target.value })}
+                />
+                <p className="vp-assist-help">
+                  „+" steht für genau eine Ebene, „#" für alles darunter (nur ganz am Ende).
+                  Über viele Topics fasst die Zusammenfassung unten zusammen.
+                </p>
+              </div>
+            )}
+            <div className="vp-sb-pair">
+              <div className="vp-assist-field">
+                <label htmlFor={`bat-path-${z.key}`}>Wert im JSON</label>
+                <Input
+                  id={`bat-path-${z.key}`}
+                  value={z.path}
+                  placeholder={http ? 'soc' : 'voltage'}
+                  onChange={(e) => setzeZeile(z.key, { path: e.target.value })}
+                />
+                <p className="vp-assist-help">
+                  {http
+                    ? 'Punkt-getrennt, zum Beispiel soc oder bms.soc. „*" steht für jede '
+                      + 'Ebene: cells.*.v trifft jede Zelle der Liste.'
+                    : 'Leer lassen, wenn die Nachricht selbst die Zahl ist.'}
+                </p>
+              </div>
+              <div className="vp-assist-field">
+                <VpPicker
+                  id={`bat-agg-${z.key}`}
+                  label="Zusammenfassung"
+                  options={aggregate.map((a) => ({ value: a.value, label: a.label }))}
+                  value={z.aggregate}
+                  onChange={(v) => setzeZeile(z.key, { aggregate: v })}
+                />
+              </div>
+            </div>
+
+            <details className="vp-sb-profi">
+              <summary>Weitere Angaben</summary>
+              <div className="vp-sb-pair">
+                <div className="vp-assist-field">
+                  <VpPicker
+                    id={`bat-type-${z.key}`}
+                    label="Wert-Art"
+                    options={WERT_TYPEN.map((t) => ({ value: t.value, label: t.label }))}
+                    value={z.valueType}
+                    onChange={(v) => setzeZeile(z.key, { valueType: v })}
+                  />
+                </div>
+                {/*
+                  Die Haltbarkeit gehört dem MQTT-Weg: dort kommen Nachrichten
+                  einzeln an. Eine HTTP-Antwort ist EIN Zeitpunkt - was sie
+                  nicht enthält, fehlt, und eine vorige Antwort wird nie mit
+                  frischer Zeit wiederholt.
+                */}
+                {!http && (
+                  <div className="vp-assist-field">
+                    <label htmlFor={`bat-stale-${z.key}`}>Haltbarkeit (s)</label>
+                    <Input
+                      id={`bat-stale-${z.key}`}
+                      type="number"
+                      value={z.staleS}
+                      onChange={(e) => setzeZeile(z.key, { staleS: e.target.value })}
+                    />
+                    <p className="vp-assist-help">
+                      Danach gilt der Wert als veraltet und fehlt - er wird nie zu 0.
+                    </p>
+                  </div>
+                )}
+              </div>
+              {z.valueType === 'number' ? (
+                <>
+                  <div className="vp-sb-pair">
+                    <div className="vp-assist-field">
+                      <label htmlFor={`bat-scale-${z.key}`}>Umrechnung (×)</label>
+                      <Input
+                        id={`bat-scale-${z.key}`}
+                        value={z.scale}
+                        onChange={(e) => setzeZeile(z.key, { scale: e.target.value })}
+                      />
+                      <p className="vp-assist-help">
+                        Sendet Ihr BMS Volt, die Zielgröße will aber mV? Dann 1000.
+                      </p>
+                    </div>
+                    <div className="vp-assist-field">
+                      <label htmlFor={`bat-offset-${z.key}`}>Offset (+)</label>
+                      <Input
+                        id={`bat-offset-${z.key}`}
+                        value={z.offset}
+                        onChange={(e) => setzeZeile(z.key, { offset: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="vp-assist-field">
+                    <label htmlFor={`bat-sent-${z.key}`}>Wert für „nicht gemessen"</label>
+                    <Input
+                      id={`bat-sent-${z.key}`}
+                      value={z.sentinel}
+                      placeholder="z. B. -999"
+                      onChange={(e) => setzeZeile(z.key, { sentinel: e.target.value })}
+                    />
+                    <p className="vp-assist-help">
+                      Manche Geräte senden eine feste Zahl statt zu schweigen. VoltPilot
+                      lässt den Messwert dann weg, statt sie zu zeigen.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="vp-sb-pair">
+                  <div className="vp-assist-field">
+                    <label htmlFor={`bat-true-${z.key}`}>Wörter für „ja"</label>
+                    <Input
+                      id={`bat-true-${z.key}`}
+                      value={z.trueValues}
+                      placeholder="true, on, 1"
+                      onChange={(e) => setzeZeile(z.key, { trueValues: e.target.value })}
+                    />
+                  </div>
+                  <div className="vp-assist-field">
+                    <label htmlFor={`bat-false-${z.key}`}>Wörter für „nein"</label>
+                    <Input
+                      id={`bat-false-${z.key}`}
+                      value={z.falseValues}
+                      placeholder="false, off, 0"
+                      onChange={(e) => setzeZeile(z.key, { falseValues: e.target.value })}
+                    />
+                    <p className="vp-assist-help">
+                      Ein Wort außerhalb dieser Listen wird verworfen, nie geraten.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </details>
+
+            {mangel.length > 0 && <p className="vp-assist-error">{mangel[0]}</p>}
+
+            {probe && probe.zustand === 'empfangen' && (
+              <div className="vp-sb-result" role="status">
+                <dl>
+                  <div>
+                    <dt>Roh-Wert</dt>
+                    <dd>{probe.roh}</dd>
+                  </div>
+                  <div>
+                    <dt>Umgerechnet</dt>
+                    <dd className="vp-sb-scaled">{probe.wert}</dd>
+                  </div>
+                </dl>
+                <p className="vp-assist-help">
+                  {probe.count} {probe.count === 1 ? 'Nachricht' : 'Nachrichten'}
+                  {probe.topic ? ` · zuletzt ${probe.topic}` : ''}
+                </p>
+              </div>
+            )}
+            {probe && probe.zustand === 'leer' && (
+              <p className="vp-bat-leer" role="status">
+                {http ? 'Nichts gefunden. Stimmt der Wertepfad?' : 'Nichts empfangen. Stimmt das Topic?'}
+              </p>
+            )}
+            {probe && probe.zustand === 'unklar' && (
+              <p className="vp-bat-leer" role="status">
+                {probe.count} Nachrichten empfangen, aber unter „{z.path || 'der Nutzlast'}"
+                stand keine Zahl.
+              </p>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="vp-sb-add">
+        <Button
+          variant="ghost"
+          onClick={() => setZeilen((zs) => [...zs, neueZuordnung()])}
+          disabled={zeilen.length >= MAX_ZUORDNUNGEN}
+        >
+          ＋ Zuordnung hinzufügen
+        </Button>
+      </div>
+
+      <div className="vp-sb-read">
+        <Button
+          variant="outline"
+          onClick={vorschauen}
+          disabled={laeuft || zeilenMangel.length > 0 || listenMangel.length > 0}
+        >
+          {laeuft ? (http ? 'Rufe ab …' : 'Höre zu …') : 'Werte ansehen'}
+        </Button>
+        <p className="vp-assist-help">
+          {http
+            ? 'Ihre Box ruft die Auskunft EINMAL ab und zeigt, was darin steht. Sie ist '
+              + 'keine Voraussetzung fürs Speichern.'
+            : 'Ihre Box hört einige Sekunden mit und zeigt, was ankommt. Sie ist keine '
+              + 'Voraussetzung fürs Speichern.'}
+        </p>
+      </div>
+      {vorschau && vorschau.zustand !== 'bestanden' && (
+        <p className="vp-assist-error" role="status" data-testid="vorschau-hinweis">
+          {vorschau.text}
+        </p>
+      )}
+      {vorschau && vorschau.zustand === 'bestanden' && (
+        <p className="vp-assist-help" role="status" data-testid="vorschau-hinweis">
+          {vorschau.text}
+        </p>
+      )}
+      {listenMangel.length > 0 && <p className="vp-assist-error">{listenMangel[0]}</p>}
+    </>
+  );
+
+  /** Wie entsteht der Ladestand - und wozu gehört die Batterie? */
+  const teilLadestand = () => (
+    <>
+      <p className="vp-assist-sub">
+        Ein gemessener Ladestand schlägt jede Rechnung. Was VoltPilot rechnet, wird überall
+        als „berechnet" gekennzeichnet.
+      </p>
+      <div className="vp-assist-roles">
+        {SOC_METHODEN.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            data-testid={`soc-methode-${m.id}`}
+            className={`vp-assist-role${soc.methode === m.id ? ' is-on' : ''}`}
+            onClick={() => setSoc((s) => ({ ...s, methode: m.id as SocMethode }))}
+          >
+            <strong>{m.label}</strong>
+            <span>{m.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      {soc.methode === 'ocv_curve' && (
+        <>
+          <div className="vp-assist-field">
+            <VpPicker
+              id="bat-vorlage"
+              label="Kennlinien-Vorlage"
+              options={[
+                { value: '', label: 'Eigene Stützpunkte' },
+                ...vorlagen.map((v) => ({ value: v.id, label: v.label })),
+              ]}
+              value={soc.template}
+              onChange={(v) => {
+                const t = vorlagen.find((x) => x.id === v);
+                setSoc((s) => (t ? { ...s, ...ausVorlage(t) } : { ...s, template: '' }));
+              }}
+              searchPlaceholder="Vorlage suchen …"
+            />
+            {gewaehlteVorlage && (
+              <p className="vp-bat-warn" role="note">
+                {vorlageWarnung(gewaehlteVorlage)}
+              </p>
+            )}
+            {vorlagen.length === 0 && (
+              <p className="vp-assist-help">
+                Zu Ihrer Zelle liegt noch keine gemessene Tabelle vor - tragen Sie die
+                Stützpunkte aus dem Datenblatt ein.
+              </p>
+            )}
+          </div>
+
+          {(['kurveLaden', 'kurveEntladen'] as const).map((feld) => {
+            const titel = feld === 'kurveLaden' ? 'Ladekurve' : 'Entladekurve';
+            const punkte = soc[feld];
+            const mangel = kurveFehler(punkte, titel);
+            return (
+              <div className="vp-bat-kurve" key={feld}>
+                <div className="vp-sb-row-head">
+                  <strong>{titel}</strong>
+                  <span className="vp-assist-help">
+                    {feld === 'kurveLaden'
+                      ? 'wird auf die HÖCHSTE Zelle angewandt'
+                      : 'wird auf die NIEDRIGSTE Zelle angewandt'}
+                  </span>
+                </div>
+                <div className="vp-bat-punkte">
+                  {punkte.map((p, i) => (
+                    <div className="vp-bat-punkt" key={p.key}>
+                      <Input
+                        aria-label={`${titel} Punkt ${i + 1} Zellspannung in Volt`}
+                        value={p.v}
+                        placeholder="3,26"
+                        onChange={(e) => setzePunkt(feld, p.key, { v: e.target.value })}
+                      />
+                      <span aria-hidden="true">V →</span>
+                      <Input
+                        aria-label={`${titel} Punkt ${i + 1} Ladestand in Prozent`}
+                        value={p.soc}
+                        placeholder="0"
+                        onChange={(e) => setzePunkt(feld, p.key, { soc: e.target.value })}
+                      />
+                      <span aria-hidden="true">%</span>
+                      <button
+                        type="button"
+                        className="vp-sb-del"
+                        aria-label={`${titel} Punkt ${i + 1} entfernen`}
+                        onClick={() =>
+                          setSoc((s) => ({
+                            ...s,
+                            template: '',
+                            [feld]: s[feld].filter((x) => x.key !== p.key),
+                          }))
+                        }
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    setSoc((s) => ({ ...s, template: '', [feld]: [...s[feld], neuerPunkt()] }))
+                  }
+                >
+                  ＋ Stützpunkt
+                </Button>
+                {mangel.length > 0 && <p className="vp-assist-error">{mangel[0]}</p>}
+              </div>
+            );
+          })}
+
+          <div className="vp-sb-pair">
+            <div className="vp-assist-field">
+              <label htmlFor="bat-cells">Zellen in Reihe</label>
+              <Input
+                id="bat-cells"
+                type="number"
+                value={soc.cellsInSeries}
+                onChange={(e) => setSoc((s) => ({ ...s, cellsInSeries: e.target.value }))}
+              />
+              <p className="vp-assist-help">
+                Nur nötig, wenn VoltPilot aus der PACKspannung rechnen soll.
+              </p>
+            </div>
+            <div className="vp-assist-field">
+              <label htmlFor="bat-ref">Referenztemperatur (°C)</label>
+              <Input
+                id="bat-ref"
+                value={soc.refTempC}
+                placeholder="25"
+                onChange={(e) => setSoc((s) => ({ ...s, refTempC: e.target.value }))}
+              />
+              <p className="vp-assist-help">Bei welcher Temperatur die Tabelle gemessen wurde.</p>
+            </div>
+          </div>
+
+          <label className="vp-bat-check">
+            <input
+              type="checkbox"
+              checked={soc.conservativeMin}
+              onChange={(e) => setSoc((s) => ({ ...s, conservativeMin: e.target.checked }))}
+            />
+            <span>
+              Das konservative Minimum aus beiden Kurven gewinnt - der niedrigere der beiden
+              Werte. Empfohlen: er schützt die schwächste Zelle.
+            </span>
+          </label>
+        </>
+      )}
+
+      {soc.methode === 'coulomb' && (
+        <>
+          <div className="vp-sb-pair">
+            <div className="vp-assist-field">
+              <label htmlFor="bat-kwh">Nutzbare Kapazität (kWh)</label>
+              <Input
+                id="bat-kwh"
+                value={soc.capacityKwh}
+                placeholder="80"
+                onChange={(e) => setSoc((s) => ({ ...s, capacityKwh: e.target.value }))}
+              />
+            </div>
+            <div className="vp-assist-field">
+              <label htmlFor="bat-eff">Wirkungsgrad (%)</label>
+              <Input
+                id="bat-eff"
+                value={soc.efficiencyPct}
+                placeholder="95"
+                onChange={(e) => setSoc((s) => ({ ...s, efficiencyPct: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="vp-sb-pair">
+            <div className="vp-assist-field">
+              <label htmlFor="bat-anchor">Anker: Ladestand (%)</label>
+              <Input
+                id="bat-anchor"
+                value={soc.anchorSocPct}
+                placeholder="50"
+                onChange={(e) => setSoc((s) => ({ ...s, anchorSocPct: e.target.value }))}
+              />
+              <p className="vp-assist-help">
+                Der Startpunkt der Zählung. Ohne ihn zählt niemand - es sei denn, ein
+                gemessener Ladestand ist zugeordnet.
+              </p>
+            </div>
+            <div className="vp-assist-field">
+              <VpDatePicker
+                id="bat-anchor-at"
+                label="Anker: Datum"
+                value={soc.anchorAt.split('T')[0] ?? ''}
+                onChange={(wert) => setAnkerTeil('datum', wert)}
+              />
+              <VpTimePicker
+                label="Anker: Uhrzeit"
+                value={soc.anchorAt.split('T')[1] ?? ''}
+                onChange={(wert) => setAnkerTeil('zeit', wert)}
+              />
+              <p className="vp-assist-help">
+                Wann dieser Ladestand galt. Leer lassen heißt „ab jetzt".
+              </p>
+            </div>
+          </div>
+          <div className="vp-assist-field">
+            <label htmlFor="bat-nenn">Nennspannung (V)</label>
+            <Input
+              id="bat-nenn"
+              value={soc.nominalVoltageV}
+              placeholder="614"
+              onChange={(e) => setSoc((s) => ({ ...s, nominalVoltageV: e.target.value }))}
+            />
+            <p className="vp-assist-help">
+              Nur nötig, wenn VoltPilot aus dem STROM rechnen soll und keine Packspannung
+              zugeordnet ist.
+            </p>
+          </div>
+        </>
+      )}
+
+      {soc.methode !== 'direct' && (
+        <label className="vp-bat-check">
+          <input
+            type="checkbox"
+            checked={soc.preferDirect}
+            onChange={(e) => setSoc((s) => ({ ...s, preferDirect: e.target.checked }))}
+          />
+          <span>
+            Eine FRISCHE Messung schlägt die Rechnung. Empfohlen - abschalten nur, um beides
+            zu vergleichen.
+          </span>
+        </label>
+      )}
+
+      {socMangel.length > 0 && (
+        <p className="vp-assist-error" role="status">
+          {socMangel[0]}
+        </p>
+      )}
+
+      {/* P6 Speiser-Bindung (Captain-Entscheid E6 (a)): die AUSDRÜCKLICHE
+          Antwort auf „wozu gehört diese Batterie?". Sie steht hier, direkt
+          unter dem Ladestand, weil sie genau darüber entscheidet - wessen
+          Ladestand das ist. Nichts davon geschieht von selbst. */}
+      <div className="vp-bat-bindung" data-testid="bindung-block">
+        <h4 className="vp-assist-h4">Wozu gehört diese Batterie?</h4>
+        <p className="vp-assist-sub">
+          VoltPilot ordnet sie NICHT von selbst zu - nur Sie wissen, ob dieser Ladestand
+          der Ihres Anlagen-Speichers ist.
+        </p>
+        <div className="vp-assist-roles">
+          {BINDUNGEN.map((b) => {
+            const gesperrt = b.id === 'feeds_inverter' && ziele.length === 0;
+            return (
+              <button
+                key={b.id}
+                type="button"
+                data-testid={`bindung-${b.id}`}
+                className={`vp-assist-role${bindung.modus === b.id ? ' is-on' : ''}${
+                  gesperrt ? ' is-soon' : ''
+                }`}
+                disabled={gesperrt}
+                aria-disabled={gesperrt}
+                onClick={() => setBindung((v) => ({ ...v, modus: b.id }))}
+              >
+                <strong>{b.label}</strong>
+                <span>{b.hint}</span>
+                {gesperrt && (
+                  <em className="vp-assist-soon">
+                    Diese Anlage hat noch keinen Speicher-Wechselrichter
+                  </em>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {bindung.modus === 'feeds_inverter' && ziele.length > 0 && (
+          <div className="vp-assist-field">
+            <VpPicker
+              id="bat-inverter"
+              label="An welchem Wechselrichter hängt sie?"
+              value={bindung.inverterEntityId}
+              onChange={(v) => setBindung((b) => ({ ...b, inverterEntityId: v }))}
+              placeholder="Wechselrichter wählen"
+              options={ziele.map((z) => ({ value: z.id, label: z.label }))}
+            />
+            <p className="vp-assist-help">
+              Seine Speicher-Kachel zeigt danach den Ladestand dieser Batterie - die
+              Batterieleistung bleibt beim Wechselrichter, wo sie gemessen wird.
+            </p>
+          </div>
+        )}
+
+        {bindung.modus !== 'unbound' && bindungMangel.length === 0 && (
+          <p className="vp-assist-help" data-testid="bindung-kanaele">
+            Eingespeist werden:{' '}
+            {bindungsKanaele(bindung, zeilen, soc)
+              .map((c) => zielKanal(c)?.label ?? c)
+              .join(', ')}
+            .
+          </p>
+        )}
+        {bindungMangel.length > 0 && (
+          <p className="vp-assist-error" role="status">
+            {bindungMangel[0]}
+          </p>
+        )}
+      </div>
+    </>
+  );
+
+  /** Der Name der Batterie. */
+  const teilName = () => (
+    <>
+      <div className="vp-assist-field">
+        <label htmlFor="bat-name">Name</label>
+        <Input
+          id="bat-name"
+          value={name}
+          placeholder="Speicher Keller"
+          onChange={(e) => setName(e.target.value)}
+        />
+        <p className="vp-assist-help">So heißt die Batterie in Ihrer Anlage.</p>
+      </div>
+    </>
+  );
+
+  /** Die Zusammenfassung (nur im Schritt-Modus - auf der Seite steht alles schon da). */
+  const teilPruefen = () => (
+    <>
+      <dl className="vp-assist-check">
+        {pruefen(name, broker, zeilen, soc, bindung, ziele, art, endpunkt, anmeldung).map((row) => (
+          <div key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.wert}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="vp-assist-balance">{BATTERIE_HINWEIS}</p>
+      {fehler && <p className="vp-assist-error">{fehler}</p>}
+    </>
+  );
+
+  /*
+    Auf der Einrichten-Seite läuft die Vorschau VON SELBST, sobald Anschluss und
+    Zuordnung vollständig sind und die Eingabe ruht. Sie bleibt, was sie war:
+    keine Voraussetzung fürs Speichern - sie zeigt nur, was wirklich ankommt.
+  */
+  useEffect(() => {
+    if (!seite || laeuft || vorschau || speichern) return;
+    if (brokerMangel.length > 0 || zeilenMangel.length > 0 || listenMangel.length > 0) return;
+    const warten = Math.max(0, AUTO_TEST_MS - (Date.now() - letzteEingabe.current));
+    const t = window.setTimeout(() => void vorschauen(), warten);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seite, laeuft, vorschau, speichern, art, broker, endpunkt, anmeldung, zeilen]);
+
+  /** Die Einrichten-Seite (Anlegen aus dem Katalog). */
+  function seiteRendern() {
+    if (!seite) return null;
+    const anschlussOk = brokerMangel.length === 0;
+    const zuordnungOk = anschlussOk && zeilenMangel.length === 0 && listenMangel.length === 0;
+    const ladestandOk = zuordnungOk && socMangel.length === 0 && bindungMangel.length === 0;
+    const grund = speichern
+      ? null
+      : (brokerMangel[0] ?? zeilenMangel[0] ?? listenMangel[0] ?? socMangel[0] ?? bindungMangel[0] ?? null);
+    return (
+      <EinrichtenSeite
+        titel="Gerät einrichten"
+        onClose={seite.onClose}
+        onZurueck={seite.onZurueck}
+        kopf={
+          <EinrichtenKopf
+            titel="Batterie mit eigenem BMS"
+            unterzeile="Batterie · über MQTT oder HTTP/JSON"
+            kategorie="battery"
+            icon="battery"
+            brauchen={http ? ['Adresse des BMS', 'Pfad der JSON-Auskunft'] : ['Adresse des MQTT-Servers', 'Topics Ihres BMS']}
+          />
+        }
+        fuss={
+          <EinrichtenFuss
+            grund={grund}
+            onAbbrechen={seite.onClose}
+            primaer={{
+              label: speichern ? 'Speichere …' : 'Speichern',
+              onClick: () => void anlegen(),
+              disabled: speichern || grund !== null,
+              testId: 'einrichten-speichern',
+              aktion: 'geraet.einrichten',
+            }}
+          />
+        }
+      >
+        <section className="vp-batterie">
+          <Abschnitte>
+            <Abschnitt nummer={1} zustand={anschlussOk ? 'fertig' : 'aktiv'} titel="Anschluss" stand={anschlussOk ? 'vollständig' : null}>
+              {teilAnschluss()}
+            </Abschnitt>
+            <Abschnitt
+              nummer={2}
+              zustand={!anschlussOk ? 'spaeter' : zuordnungOk ? 'fertig' : 'aktiv'}
+              titel="Was kommt wo an?"
+              stand={laeuft ? (http ? 'ruft ab …' : 'hört zu …') : vorschau?.zustand === 'bestanden' ? 'Werte empfangen' : null}
+              spaeter="Nach dem Anschluss - dann zeigt Ihre Box von selbst, was ankommt."
+            >
+              {teilZuordnung()}
+            </Abschnitt>
+            <Abschnitt
+              nummer={3}
+              zustand={!zuordnungOk ? 'spaeter' : ladestandOk ? 'fertig' : 'aktiv'}
+              titel="Ladestand"
+              spaeter="Nach der Zuordnung."
+            >
+              {teilLadestand()}
+            </Abschnitt>
+            <Abschnitt nummer={4} zustand={ladestandOk ? 'aktiv' : 'spaeter'} titel="Name" spaeter="Zum Schluss.">
+              {teilName()}
+              <p className="vp-assist-balance">{BATTERIE_HINWEIS}</p>
+            </Abschnitt>
+          </Abschnitte>
+          {fehler && (
+            <p className="vp-assist-error" role="alert">
+              {fehler}
+            </p>
+          )}
+        </section>
+      </EinrichtenSeite>
+    );
+  }
+  if (seite) return seiteRendern();
+
   return (
     <section className="vp-batterie">
       {schritt === 1 && (
         <>
           <h3 className="vp-assist-h">Wie ist die Batterie erreichbar?</h3>
-          <p className="vp-assist-sub">
-            VoltPilot liest Ihr Batteriemanagement direkt - unabhängig davon, welches es ist.
-          </p>
-          <div className="vp-assist-roles">
-            {ANSCHLUSSARTEN.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                data-testid={`anschlussart-${a.id}`}
-                className={`vp-assist-role${art === a.id ? ' is-on' : ''}${
-                  a.verfuegbar ? '' : ' is-soon'
-                }`}
-                disabled={!a.verfuegbar}
-                aria-disabled={!a.verfuegbar}
-                onClick={() => {
-                  // Eine gewechselte Anschlussart entwertet die Vorschau: die
-                  // Zahlen kämen sonst aus einer Quelle, die nicht mehr gilt.
-                  setArt(a.id);
-                  setVorschau(null);
-                }}
-              >
-                <strong>{a.label}</strong>
-                <span>{a.hint}</span>
-                {!a.verfuegbar && a.bald && <em className="vp-assist-soon">{a.bald}</em>}
-              </button>
-            ))}
-          </div>
-
-          {!http && (
-            <>
-              <div className="vp-assist-field">
-                <label htmlFor="bat-host">Adresse des MQTT-Servers</label>
-                <Input
-                  id="bat-host"
-                  value={broker.host}
-                  placeholder="192.168.1.50"
-                  onChange={(e) => setBroker((b) => ({ ...b, host: e.target.value }))}
-                />
-                <p className="vp-assist-help">
-                  Die IP-Adresse des Rechners, auf dem Ihr MQTT-Server läuft - meist Ihr
-                  Home-Assistant- oder Node-RED-Host.
-                </p>
-              </div>
-              <div className="vp-sb-pair">
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-port">Port</label>
-                  <Input
-                    id="bat-port"
-                    type="number"
-                    value={broker.port}
-                    onChange={(e) => setBroker((b) => ({ ...b, port: e.target.value }))}
-                  />
-                </div>
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-iv">Sende-Abstand (s)</label>
-                  <Input
-                    id="bat-iv"
-                    type="number"
-                    value={broker.publishIntervalS}
-                    onChange={(e) => setBroker((b) => ({ ...b, publishIntervalS: e.target.value }))}
-                  />
-                  <p className="vp-assist-help">
-                    So oft schickt Ihre Box die gesammelten Werte an VoltPilot.
-                  </p>
-                </div>
-              </div>
-            </>
-          )}
-
-          {http && (
-            <>
-              {/*
-                Die VORLAGE zuerst: „DIYBMS v4 - /ha" füllt Pfad, Anmelde-Art und
-                die ganze Feld-Zuordnung. Sie ist ein Vorschlag, kein Vertrag -
-                eine andere Firmware kann andere Feldnamen haben, deshalb steht
-                die Live-Vorschau daneben. Und sie nimmt niemandem eine schon
-                getippte Zuordnung weg.
-              */}
-              <div className="vp-sb-add">
-                {HTTP_VORLAGEN.map((v) => (
-                  <Button
-                    key={v.id}
-                    variant="ghost"
-                    data-testid={`http-vorlage-${v.id}`}
-                    onClick={() => {
-                      const next = vorlageAnwenden(v, endpunkt, anmeldung, zeilen);
-                      setEndpunkt(next.endpunkt);
-                      setAnmeldung(next.anmeldung);
-                      setZeilen(next.zeilen);
-                      setVorschau(null);
-                    }}
-                  >
-                    Vorlage „{v.label}" übernehmen
-                  </Button>
-                ))}
-              </div>
-
-              <div className="vp-assist-field">
-                <label htmlFor="bat-http-host">Adresse des BMS</label>
-                <Input
-                  id="bat-http-host"
-                  value={endpunkt.host}
-                  placeholder="192.168.1.60"
-                  onChange={(e) => setEndpunkt((x) => ({ ...x, host: e.target.value }))}
-                />
-                <p className="vp-assist-help">
-                  Die IP-Adresse Ihres BMS-Controllers im Heimnetz. VoltPilot ruft dort nur ab -
-                  es schreibt nie.
-                </p>
-              </div>
-              <div className="vp-assist-field">
-                <label htmlFor="bat-http-path">Pfad der JSON-Auskunft</label>
-                <Input
-                  id="bat-http-path"
-                  value={endpunkt.path}
-                  placeholder="/ha"
-                  onChange={(e) => setEndpunkt((x) => ({ ...x, path: e.target.value }))}
-                />
-                <p className="vp-assist-help">
-                  Steht in der Anleitung Ihres BMS - beim DIYBMS v4 ist es /ha.
-                </p>
-              </div>
-              <div className="vp-sb-pair">
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-http-port">Port</label>
-                  <Input
-                    id="bat-http-port"
-                    type="number"
-                    value={endpunkt.port}
-                    onChange={(e) => setEndpunkt((x) => ({ ...x, port: e.target.value }))}
-                  />
-                </div>
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-http-iv">Abruf-Abstand (s)</label>
-                  <Input
-                    id="bat-http-iv"
-                    type="number"
-                    value={endpunkt.publishIntervalS}
-                    onChange={(e) => setEndpunkt((x) => ({
-                      ...x, publishIntervalS: e.target.value,
-                    }))}
-                  />
-                  <p className="vp-assist-help">
-                    So oft ruft Ihre Box die Auskunft ab. Es läuft immer nur ein Abruf.
-                  </p>
-                </div>
-              </div>
-
-              <div className="vp-assist-field">
-                <VpPicker
-                  id="bat-http-auth"
-                  label="Anmeldung"
-                  options={ANMELDE_ARTEN.map((a) => ({ value: a.id, label: a.label }))}
-                  value={anmeldung.art}
-                  onChange={(v) => setAnmeldung((x) => ({
-                    ...x, art: v as AnmeldungForm['art'],
-                  }))}
-                />
-                <p className="vp-assist-help">
-                  {ANMELDE_ARTEN.find((a) => a.id === anmeldung.art)?.hint}
-                </p>
-              </div>
-              {anmeldung.art === 'header' && (
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-http-header">Name der Kopfzeile</label>
-                  <Input
-                    id="bat-http-header"
-                    value={anmeldung.header}
-                    placeholder="ApiKey"
-                    onChange={(e) => setAnmeldung((x) => ({ ...x, header: e.target.value }))}
-                  />
-                </div>
-              )}
-              {anmeldung.art === 'basic' && (
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-http-user">Benutzername</label>
-                  <Input
-                    id="bat-http-user"
-                    value={anmeldung.username}
-                    onChange={(e) => setAnmeldung((x) => ({ ...x, username: e.target.value }))}
-                  />
-                </div>
-              )}
-              {anmeldung.art !== 'none' && (
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-http-secret">
-                    {anmeldung.art === 'basic' ? 'Kennwort' : 'Schlüssel'}
-                  </label>
-                  <Input
-                    id="bat-http-secret"
-                    type="password"
-                    value={anmeldung.secret}
-                    placeholder={geheimnisBesteht ? GEHEIMNIS_MASKE : ''}
-                    onChange={(e) => setAnmeldung((x) => ({ ...x, secret: e.target.value }))}
-                  />
-                  <p className="vp-assist-help">
-                    {geheimnisBesteht
-                      ? 'Bleibt das Feld leer, gilt der gespeicherte Schlüssel weiter - er '
-                        + 'verlässt den Server nie.'
-                      : 'Er wird verschlüsselt übertragen, an Ihre Box weitergegeben und nie '
-                        + 'wieder angezeigt.'}
-                  </p>
-                </div>
-              )}
-
-              <details className="vp-sb-profi">
-                <summary>Weitere Angaben</summary>
-                <div className="vp-sb-pair">
-                  <div className="vp-assist-field">
-                    <label htmlFor="bat-http-timeout">Zeitgrenze (ms)</label>
-                    <Input
-                      id="bat-http-timeout"
-                      type="number"
-                      value={endpunkt.timeoutMs}
-                      onChange={(e) => setEndpunkt((x) => ({ ...x, timeoutMs: e.target.value }))}
-                    />
-                    <p className="vp-assist-help">
-                      So lange wartet Ihre Box auf die Antwort, bevor sie den Abruf als
-                      „keine Antwort" abbricht.
-                    </p>
-                  </div>
-                  <div className="vp-assist-field">
-                    <label htmlFor="bat-http-tls">HTTPS</label>
-                    <input
-                      id="bat-http-tls"
-                      type="checkbox"
-                      checked={endpunkt.tls}
-                      onChange={(e) => setEndpunkt((x) => ({
-                        ...x,
-                        tls: e.target.checked,
-                        port: String(e.target.checked ? 443 : 80),
-                      }))}
-                    />
-                    <p className="vp-assist-help">
-                      Nur, wenn Ihr BMS wirklich HTTPS spricht - die meisten im Heimnetz tun es
-                      nicht.
-                    </p>
-                  </div>
-                </div>
-              </details>
-            </>
-          )}
-          {brokerMangel.length > 0 && (
-            <p className="vp-assist-error" role="status">
-              {brokerMangel[0]}
-            </p>
-          )}
+          {teilAnschluss()}
           <Nav>
             <Button variant="ghost" onClick={onBack}>
               Zurück
@@ -527,264 +1265,7 @@ export function BatterieAssistent({
       {schritt === 2 && (
         <>
           <h3 className="vp-assist-h">Was kommt wo an?</h3>
-          <p className="vp-assist-sub">
-            Ordnen Sie die Felder Ihres BMS den Standard-Messwerten zu. Mit „Werte ansehen"
-            zeigt Ihre Box, was {http ? 'die Auskunft wirklich liefert' : 'auf diesen Topics wirklich hereinkommt'}.
-          </p>
-
-          {zeilen.map((z, i) => {
-            const mangel = zuordnungFehler(z, art);
-            const ziel = zielKanal(z.channel);
-            const probe = vorschauZeile(z.channel);
-            const aggregate = AGGREGATE.filter(
-              (a) => z.valueType !== 'bool' || BOOL_AGGREGATE.includes(a.value),
-            );
-            return (
-              <div className="vp-sb-row" key={z.key}>
-                <div className="vp-sb-row-head">
-                  <strong>Zuordnung {i + 1}</strong>
-                  {zeilen.length > 1 && (
-                    <button
-                      type="button"
-                      className="vp-sb-del"
-                      aria-label={`Zuordnung ${i + 1} entfernen`}
-                      onClick={() => {
-                        setZeilen((zs) => zs.filter((x) => x.key !== z.key));
-                        setVorschau(null);
-                      }}
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="vp-assist-field">
-                  <VpPicker
-                    id={`bat-ch-${z.key}`}
-                    label="Welcher Messwert ist das?"
-                    options={ZIEL_KANAELE.map((k) => ({
-                      value: k.channel,
-                      label: k.unit === '' ? k.label : `${k.label} (${k.unit})`,
-                    }))}
-                    value={z.channel}
-                    onChange={(v) => setzeKanal(z.key, v)}
-                    searchPlaceholder="Messwert suchen …"
-                  />
-                  {ziel && <p className="vp-assist-help">{ziel.hint}</p>}
-                </div>
-
-                {!http && (
-                  <div className="vp-assist-field">
-                    <label htmlFor={`bat-topic-${z.key}`}>Topic</label>
-                    <Input
-                      id={`bat-topic-${z.key}`}
-                      value={z.topic}
-                      placeholder="diybms/bank/+/cell/+"
-                      onChange={(e) => setzeZeile(z.key, { topic: e.target.value })}
-                    />
-                    <p className="vp-assist-help">
-                      „+" steht für genau eine Ebene, „#" für alles darunter (nur ganz am Ende).
-                      Über viele Topics fasst die Zusammenfassung unten zusammen.
-                    </p>
-                  </div>
-                )}
-                <div className="vp-sb-pair">
-                  <div className="vp-assist-field">
-                    <label htmlFor={`bat-path-${z.key}`}>Wert im JSON</label>
-                    <Input
-                      id={`bat-path-${z.key}`}
-                      value={z.path}
-                      placeholder={http ? 'soc' : 'voltage'}
-                      onChange={(e) => setzeZeile(z.key, { path: e.target.value })}
-                    />
-                    <p className="vp-assist-help">
-                      {http
-                        ? 'Punkt-getrennt, zum Beispiel soc oder bms.soc. „*" steht für jede '
-                          + 'Ebene: cells.*.v trifft jede Zelle der Liste.'
-                        : 'Leer lassen, wenn die Nachricht selbst die Zahl ist.'}
-                    </p>
-                  </div>
-                  <div className="vp-assist-field">
-                    <VpPicker
-                      id={`bat-agg-${z.key}`}
-                      label="Zusammenfassung"
-                      options={aggregate.map((a) => ({ value: a.value, label: a.label }))}
-                      value={z.aggregate}
-                      onChange={(v) => setzeZeile(z.key, { aggregate: v })}
-                    />
-                  </div>
-                </div>
-
-                <details className="vp-sb-profi">
-                  <summary>Weitere Angaben</summary>
-                  <div className="vp-sb-pair">
-                    <div className="vp-assist-field">
-                      <VpPicker
-                        id={`bat-type-${z.key}`}
-                        label="Wert-Art"
-                        options={WERT_TYPEN.map((t) => ({ value: t.value, label: t.label }))}
-                        value={z.valueType}
-                        onChange={(v) => setzeZeile(z.key, { valueType: v })}
-                      />
-                    </div>
-                    {/*
-                      Die Haltbarkeit gehört dem MQTT-Weg: dort kommen Nachrichten
-                      einzeln an. Eine HTTP-Antwort ist EIN Zeitpunkt - was sie
-                      nicht enthält, fehlt, und eine vorige Antwort wird nie mit
-                      frischer Zeit wiederholt.
-                    */}
-                    {!http && (
-                      <div className="vp-assist-field">
-                        <label htmlFor={`bat-stale-${z.key}`}>Haltbarkeit (s)</label>
-                        <Input
-                          id={`bat-stale-${z.key}`}
-                          type="number"
-                          value={z.staleS}
-                          onChange={(e) => setzeZeile(z.key, { staleS: e.target.value })}
-                        />
-                        <p className="vp-assist-help">
-                          Danach gilt der Wert als veraltet und fehlt - er wird nie zu 0.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  {z.valueType === 'number' ? (
-                    <>
-                      <div className="vp-sb-pair">
-                        <div className="vp-assist-field">
-                          <label htmlFor={`bat-scale-${z.key}`}>Umrechnung (×)</label>
-                          <Input
-                            id={`bat-scale-${z.key}`}
-                            value={z.scale}
-                            onChange={(e) => setzeZeile(z.key, { scale: e.target.value })}
-                          />
-                          <p className="vp-assist-help">
-                            Sendet Ihr BMS Volt, die Zielgröße will aber mV? Dann 1000.
-                          </p>
-                        </div>
-                        <div className="vp-assist-field">
-                          <label htmlFor={`bat-offset-${z.key}`}>Offset (+)</label>
-                          <Input
-                            id={`bat-offset-${z.key}`}
-                            value={z.offset}
-                            onChange={(e) => setzeZeile(z.key, { offset: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                      <div className="vp-assist-field">
-                        <label htmlFor={`bat-sent-${z.key}`}>Wert für „nicht gemessen"</label>
-                        <Input
-                          id={`bat-sent-${z.key}`}
-                          value={z.sentinel}
-                          placeholder="z. B. -999"
-                          onChange={(e) => setzeZeile(z.key, { sentinel: e.target.value })}
-                        />
-                        <p className="vp-assist-help">
-                          Manche Geräte senden eine feste Zahl statt zu schweigen. VoltPilot
-                          lässt den Messwert dann weg, statt sie zu zeigen.
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="vp-sb-pair">
-                      <div className="vp-assist-field">
-                        <label htmlFor={`bat-true-${z.key}`}>Wörter für „ja"</label>
-                        <Input
-                          id={`bat-true-${z.key}`}
-                          value={z.trueValues}
-                          placeholder="true, on, 1"
-                          onChange={(e) => setzeZeile(z.key, { trueValues: e.target.value })}
-                        />
-                      </div>
-                      <div className="vp-assist-field">
-                        <label htmlFor={`bat-false-${z.key}`}>Wörter für „nein"</label>
-                        <Input
-                          id={`bat-false-${z.key}`}
-                          value={z.falseValues}
-                          placeholder="false, off, 0"
-                          onChange={(e) => setzeZeile(z.key, { falseValues: e.target.value })}
-                        />
-                        <p className="vp-assist-help">
-                          Ein Wort außerhalb dieser Listen wird verworfen, nie geraten.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </details>
-
-                {mangel.length > 0 && <p className="vp-assist-error">{mangel[0]}</p>}
-
-                {probe && probe.zustand === 'empfangen' && (
-                  <div className="vp-sb-result" role="status">
-                    <dl>
-                      <div>
-                        <dt>Roh-Wert</dt>
-                        <dd>{probe.roh}</dd>
-                      </div>
-                      <div>
-                        <dt>Umgerechnet</dt>
-                        <dd className="vp-sb-scaled">{probe.wert}</dd>
-                      </div>
-                    </dl>
-                    <p className="vp-assist-help">
-                      {probe.count} {probe.count === 1 ? 'Nachricht' : 'Nachrichten'}
-                      {probe.topic ? ` · zuletzt ${probe.topic}` : ''}
-                    </p>
-                  </div>
-                )}
-                {probe && probe.zustand === 'leer' && (
-                  <p className="vp-bat-leer" role="status">
-                    {http ? 'Nichts gefunden. Stimmt der Wertepfad?' : 'Nichts empfangen. Stimmt das Topic?'}
-                  </p>
-                )}
-                {probe && probe.zustand === 'unklar' && (
-                  <p className="vp-bat-leer" role="status">
-                    {probe.count} Nachrichten empfangen, aber unter „{z.path || 'der Nutzlast'}"
-                    stand keine Zahl.
-                  </p>
-                )}
-              </div>
-            );
-          })}
-
-          <div className="vp-sb-add">
-            <Button
-              variant="ghost"
-              onClick={() => setZeilen((zs) => [...zs, neueZuordnung()])}
-              disabled={zeilen.length >= MAX_ZUORDNUNGEN}
-            >
-              ＋ Zuordnung hinzufügen
-            </Button>
-          </div>
-
-          <div className="vp-sb-read">
-            <Button
-              variant="outline"
-              onClick={vorschauen}
-              disabled={laeuft || zeilenMangel.length > 0 || listenMangel.length > 0}
-            >
-              {laeuft ? (http ? 'Rufe ab …' : 'Höre zu …') : 'Werte ansehen'}
-            </Button>
-            <p className="vp-assist-help">
-              {http
-                ? 'Ihre Box ruft die Auskunft EINMAL ab und zeigt, was darin steht. Sie ist '
-                  + 'keine Voraussetzung fürs Speichern.'
-                : 'Ihre Box hört einige Sekunden mit und zeigt, was ankommt. Sie ist keine '
-                  + 'Voraussetzung fürs Speichern.'}
-            </p>
-          </div>
-          {vorschau && vorschau.zustand !== 'bestanden' && (
-            <p className="vp-assist-error" role="status" data-testid="vorschau-hinweis">
-              {vorschau.text}
-            </p>
-          )}
-          {vorschau && vorschau.zustand === 'bestanden' && (
-            <p className="vp-assist-help" role="status" data-testid="vorschau-hinweis">
-              {vorschau.text}
-            </p>
-          )}
-          {listenMangel.length > 0 && <p className="vp-assist-error">{listenMangel[0]}</p>}
-
+          {teilZuordnung()}
           <Nav>
             <Button variant="ghost" onClick={() => setSchritt(1)}>
               Zurück
@@ -802,325 +1283,8 @@ export function BatterieAssistent({
       {schritt === 3 && (
         <>
           <h3 className="vp-assist-h">Wie entsteht der Ladestand?</h3>
-          <p className="vp-assist-sub">
-            Ein gemessener Ladestand schlägt jede Rechnung. Was VoltPilot rechnet, wird überall
-            als „berechnet" gekennzeichnet.
-          </p>
-          <div className="vp-assist-roles">
-            {SOC_METHODEN.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                data-testid={`soc-methode-${m.id}`}
-                className={`vp-assist-role${soc.methode === m.id ? ' is-on' : ''}`}
-                onClick={() => setSoc((s) => ({ ...s, methode: m.id as SocMethode }))}
-              >
-                <strong>{m.label}</strong>
-                <span>{m.hint}</span>
-              </button>
-            ))}
-          </div>
-
-          {soc.methode === 'ocv_curve' && (
-            <>
-              <div className="vp-assist-field">
-                <VpPicker
-                  id="bat-vorlage"
-                  label="Kennlinien-Vorlage"
-                  options={[
-                    { value: '', label: 'Eigene Stützpunkte' },
-                    ...vorlagen.map((v) => ({ value: v.id, label: v.label })),
-                  ]}
-                  value={soc.template}
-                  onChange={(v) => {
-                    const t = vorlagen.find((x) => x.id === v);
-                    setSoc((s) => (t ? { ...s, ...ausVorlage(t) } : { ...s, template: '' }));
-                  }}
-                  searchPlaceholder="Vorlage suchen …"
-                />
-                {gewaehlteVorlage && (
-                  <p className="vp-bat-warn" role="note">
-                    {vorlageWarnung(gewaehlteVorlage)}
-                  </p>
-                )}
-                {vorlagen.length === 0 && (
-                  <p className="vp-assist-help">
-                    Zu Ihrer Zelle liegt noch keine gemessene Tabelle vor - tragen Sie die
-                    Stützpunkte aus dem Datenblatt ein.
-                  </p>
-                )}
-              </div>
-
-              {(['kurveLaden', 'kurveEntladen'] as const).map((feld) => {
-                const titel = feld === 'kurveLaden' ? 'Ladekurve' : 'Entladekurve';
-                const punkte = soc[feld];
-                const mangel = kurveFehler(punkte, titel);
-                return (
-                  <div className="vp-bat-kurve" key={feld}>
-                    <div className="vp-sb-row-head">
-                      <strong>{titel}</strong>
-                      <span className="vp-assist-help">
-                        {feld === 'kurveLaden'
-                          ? 'wird auf die HÖCHSTE Zelle angewandt'
-                          : 'wird auf die NIEDRIGSTE Zelle angewandt'}
-                      </span>
-                    </div>
-                    <div className="vp-bat-punkte">
-                      {punkte.map((p, i) => (
-                        <div className="vp-bat-punkt" key={p.key}>
-                          <Input
-                            aria-label={`${titel} Punkt ${i + 1} Zellspannung in Volt`}
-                            value={p.v}
-                            placeholder="3,26"
-                            onChange={(e) => setzePunkt(feld, p.key, { v: e.target.value })}
-                          />
-                          <span aria-hidden="true">V →</span>
-                          <Input
-                            aria-label={`${titel} Punkt ${i + 1} Ladestand in Prozent`}
-                            value={p.soc}
-                            placeholder="0"
-                            onChange={(e) => setzePunkt(feld, p.key, { soc: e.target.value })}
-                          />
-                          <span aria-hidden="true">%</span>
-                          <button
-                            type="button"
-                            className="vp-sb-del"
-                            aria-label={`${titel} Punkt ${i + 1} entfernen`}
-                            onClick={() =>
-                              setSoc((s) => ({
-                                ...s,
-                                template: '',
-                                [feld]: s[feld].filter((x) => x.key !== p.key),
-                              }))
-                            }
-                          >
-                            <Icon name="trash" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        setSoc((s) => ({ ...s, template: '', [feld]: [...s[feld], neuerPunkt()] }))
-                      }
-                    >
-                      ＋ Stützpunkt
-                    </Button>
-                    {mangel.length > 0 && <p className="vp-assist-error">{mangel[0]}</p>}
-                  </div>
-                );
-              })}
-
-              <div className="vp-sb-pair">
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-cells">Zellen in Reihe</label>
-                  <Input
-                    id="bat-cells"
-                    type="number"
-                    value={soc.cellsInSeries}
-                    onChange={(e) => setSoc((s) => ({ ...s, cellsInSeries: e.target.value }))}
-                  />
-                  <p className="vp-assist-help">
-                    Nur nötig, wenn VoltPilot aus der PACKspannung rechnen soll.
-                  </p>
-                </div>
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-ref">Referenztemperatur (°C)</label>
-                  <Input
-                    id="bat-ref"
-                    value={soc.refTempC}
-                    placeholder="25"
-                    onChange={(e) => setSoc((s) => ({ ...s, refTempC: e.target.value }))}
-                  />
-                  <p className="vp-assist-help">Bei welcher Temperatur die Tabelle gemessen wurde.</p>
-                </div>
-              </div>
-
-              <label className="vp-bat-check">
-                <input
-                  type="checkbox"
-                  checked={soc.conservativeMin}
-                  onChange={(e) => setSoc((s) => ({ ...s, conservativeMin: e.target.checked }))}
-                />
-                <span>
-                  Das konservative Minimum aus beiden Kurven gewinnt - der niedrigere der beiden
-                  Werte. Empfohlen: er schützt die schwächste Zelle.
-                </span>
-              </label>
-            </>
-          )}
-
-          {soc.methode === 'coulomb' && (
-            <>
-              <div className="vp-sb-pair">
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-kwh">Nutzbare Kapazität (kWh)</label>
-                  <Input
-                    id="bat-kwh"
-                    value={soc.capacityKwh}
-                    placeholder="80"
-                    onChange={(e) => setSoc((s) => ({ ...s, capacityKwh: e.target.value }))}
-                  />
-                </div>
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-eff">Wirkungsgrad (%)</label>
-                  <Input
-                    id="bat-eff"
-                    value={soc.efficiencyPct}
-                    placeholder="95"
-                    onChange={(e) => setSoc((s) => ({ ...s, efficiencyPct: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="vp-sb-pair">
-                <div className="vp-assist-field">
-                  <label htmlFor="bat-anchor">Anker: Ladestand (%)</label>
-                  <Input
-                    id="bat-anchor"
-                    value={soc.anchorSocPct}
-                    placeholder="50"
-                    onChange={(e) => setSoc((s) => ({ ...s, anchorSocPct: e.target.value }))}
-                  />
-                  <p className="vp-assist-help">
-                    Der Startpunkt der Zählung. Ohne ihn zählt niemand - es sei denn, ein
-                    gemessener Ladestand ist zugeordnet.
-                  </p>
-                </div>
-                <div className="vp-assist-field">
-                  <VpDatePicker
-                    id="bat-anchor-at"
-                    label="Anker: Datum"
-                    value={soc.anchorAt.split('T')[0] ?? ''}
-                    onChange={(wert) => setAnkerTeil('datum', wert)}
-                  />
-                  <VpTimePicker
-                    label="Anker: Uhrzeit"
-                    value={soc.anchorAt.split('T')[1] ?? ''}
-                    onChange={(wert) => setAnkerTeil('zeit', wert)}
-                  />
-                  <p className="vp-assist-help">
-                    Wann dieser Ladestand galt. Leer lassen heißt „ab jetzt".
-                  </p>
-                </div>
-              </div>
-              <div className="vp-assist-field">
-                <label htmlFor="bat-nenn">Nennspannung (V)</label>
-                <Input
-                  id="bat-nenn"
-                  value={soc.nominalVoltageV}
-                  placeholder="614"
-                  onChange={(e) => setSoc((s) => ({ ...s, nominalVoltageV: e.target.value }))}
-                />
-                <p className="vp-assist-help">
-                  Nur nötig, wenn VoltPilot aus dem STROM rechnen soll und keine Packspannung
-                  zugeordnet ist.
-                </p>
-              </div>
-            </>
-          )}
-
-          {soc.methode !== 'direct' && (
-            <label className="vp-bat-check">
-              <input
-                type="checkbox"
-                checked={soc.preferDirect}
-                onChange={(e) => setSoc((s) => ({ ...s, preferDirect: e.target.checked }))}
-              />
-              <span>
-                Eine FRISCHE Messung schlägt die Rechnung. Empfohlen - abschalten nur, um beides
-                zu vergleichen.
-              </span>
-            </label>
-          )}
-
-          {socMangel.length > 0 && (
-            <p className="vp-assist-error" role="status">
-              {socMangel[0]}
-            </p>
-          )}
-
-          {/* P6 Speiser-Bindung (Captain-Entscheid E6 (a)): die AUSDRÜCKLICHE
-              Antwort auf „wozu gehört diese Batterie?". Sie steht hier, direkt
-              unter dem Ladestand, weil sie genau darüber entscheidet - wessen
-              Ladestand das ist. Nichts davon geschieht von selbst. */}
-          <div className="vp-bat-bindung" data-testid="bindung-block">
-            <h4 className="vp-assist-h4">Wozu gehört diese Batterie?</h4>
-            <p className="vp-assist-sub">
-              VoltPilot ordnet sie NICHT von selbst zu - nur Sie wissen, ob dieser Ladestand
-              der Ihres Anlagen-Speichers ist.
-            </p>
-            <div className="vp-assist-roles">
-              {BINDUNGEN.map((b) => {
-                const gesperrt = b.id === 'feeds_inverter' && ziele.length === 0;
-                return (
-                  <button
-                    key={b.id}
-                    type="button"
-                    data-testid={`bindung-${b.id}`}
-                    className={`vp-assist-role${bindung.modus === b.id ? ' is-on' : ''}${
-                      gesperrt ? ' is-soon' : ''
-                    }`}
-                    disabled={gesperrt}
-                    aria-disabled={gesperrt}
-                    onClick={() => setBindung((v) => ({ ...v, modus: b.id }))}
-                  >
-                    <strong>{b.label}</strong>
-                    <span>{b.hint}</span>
-                    {gesperrt && (
-                      <em className="vp-assist-soon">
-                        Diese Anlage hat noch keinen Speicher-Wechselrichter
-                      </em>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {bindung.modus === 'feeds_inverter' && ziele.length > 0 && (
-              <div className="vp-assist-field">
-                <VpPicker
-                  id="bat-inverter"
-                  label="An welchem Wechselrichter hängt sie?"
-                  value={bindung.inverterEntityId}
-                  onChange={(v) => setBindung((b) => ({ ...b, inverterEntityId: v }))}
-                  placeholder="Wechselrichter wählen"
-                  options={ziele.map((z) => ({ value: z.id, label: z.label }))}
-                />
-                <p className="vp-assist-help">
-                  Seine Speicher-Kachel zeigt danach den Ladestand dieser Batterie - die
-                  Batterieleistung bleibt beim Wechselrichter, wo sie gemessen wird.
-                </p>
-              </div>
-            )}
-
-            {bindung.modus !== 'unbound' && bindungMangel.length === 0 && (
-              <p className="vp-assist-help" data-testid="bindung-kanaele">
-                Eingespeist werden:{' '}
-                {bindungsKanaele(bindung, zeilen, soc)
-                  .map((c) => zielKanal(c)?.label ?? c)
-                  .join(', ')}
-                .
-              </p>
-            )}
-            {bindungMangel.length > 0 && (
-              <p className="vp-assist-error" role="status">
-                {bindungMangel[0]}
-              </p>
-            )}
-          </div>
-
-          <div className="vp-assist-field">
-            <label htmlFor="bat-name">Name</label>
-            <Input
-              id="bat-name"
-              value={name}
-              placeholder="Speicher Keller"
-              onChange={(e) => setName(e.target.value)}
-            />
-            <p className="vp-assist-help">So heißt die Batterie in Ihrer Anlage.</p>
-          </div>
-
+          {teilLadestand()}
+          {teilName()}
           <Nav>
             <Button variant="ghost" onClick={() => setSchritt(2)}>
               Zurück
@@ -1138,16 +1302,7 @@ export function BatterieAssistent({
       {schritt === 4 && (
         <>
           <h3 className="vp-assist-h">Prüfen &amp; anlegen</h3>
-          <dl className="vp-assist-check">
-            {pruefen(name, broker, zeilen, soc, bindung, ziele, art, endpunkt, anmeldung).map((row) => (
-              <div key={row.label}>
-                <dt>{row.label}</dt>
-                <dd>{row.wert}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="vp-assist-balance">{BATTERIE_HINWEIS}</p>
-          {fehler && <p className="vp-assist-error">{fehler}</p>}
+          {teilPruefen()}
           <Nav>
             <Button variant="ghost" onClick={() => setSchritt(3)}>
               Zurück

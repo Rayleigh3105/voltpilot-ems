@@ -123,14 +123,6 @@ export const APP_GROUP_LABEL = 'Als App auf dem Handy';
 export const APP_GROUP_EXPLAIN =
   'VoltPilot lässt sich wie eine App auf den Startbildschirm legen - mit eigenem Symbol und im Vollbild, ohne Browser-Leiste.';
 
-/** Die Zusammenfassung der zugeklappten Karte am Telefon. */
-export const APP_GROUP_SUMMARY: Record<InstallState, string> = {
-  installiert: 'Bereits eingerichtet',
-  installierbar: 'Kann eingerichtet werden',
-  'ios-anleitung': 'In zwei Schritten',
-  'nicht-verfuegbar': 'Hier nicht möglich',
-};
-
 export interface InstallView {
   state: InstallState;
   /** Der Satz, der immer steht. */

@@ -17,18 +17,39 @@ public class DeviceRepository {
         this.jdbc = jdbc;
     }
 
+    /**
+     * last_seen = newest status-heartbeat ARRIVAL ({@code device_status_seen_at},
+     * UEMS AP-06 IP-15, one per box). Until an existing box has sent its first
+     * heartbeat, telemetry arrival remains the compatibility fallback:
+     * newest telemetry ARRIVAL of this box (received_at, not the
+     * observation time: a reconnecting edge replays buffered samples with old
+     * observation timestamps, so arrival is the only correct liveness signal -
+     * see migration V20260703000000). RLS-scoped like the device rows; null
+     * until the first sample arrives.
+     *
+     * <p>BOTH pipes count: the v1 inverter telemetry AND the v2 entity
+     * telemetry. A box without an inverter (e.g. only an I/O module that
+     * switches consumers) never writes a v1 row - taking only v1 left such a
+     * box „wartet auf die ersten Daten" forever while it was reading and
+     * reporting just fine. The v2 lookup is bounded to 7 days so it stays on
+     * the (site_id, time) index and a few recent chunks; a box silent for
+     * longer than that and without v1 rows reads as not yet reported.
+     */
+    static String lastSeen(String alias) {
+        return "coalesce(" + alias + ".device_status_seen_at, GREATEST("
+                + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = " + alias + ".id), "
+                + "(SELECT max(v.received_at) FROM telemetry_v2 v WHERE v.site_id = " + alias
+                + ".site_id AND v.device_id = " + alias + ".id AND v.time >= now() - interval '7 days')))";
+    }
+
     public List<DeviceDto> findAll() {
         // Only boxes that take part in operation: an ausgebaut box (UEMS AP-07
         // IP-11) keeps its row and its recordings, but is no device of the
         // tenant anymore - no list, no scope, no route reaches it.
-        // last_seen = newest status-heartbeat ARRIVAL. Until an existing box has
-        // sent its first heartbeat after AP-06 IP-15, telemetry arrival remains
-        // the compatibility fallback, preserving the former one-box result.
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + "coalesce(d.device_status_seen_at, (SELECT max(t.received_at) FROM telemetry t "
-                        + "WHERE t.device_id = d.id)) AS last_seen "
+                        + lastSeen("d") + " AS last_seen "
                         + "FROM device d WHERE d.ausgebaut_am IS NULL ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
@@ -38,8 +59,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + "coalesce(d.device_status_seen_at, (SELECT max(t.received_at) FROM telemetry t "
-                        + "WHERE t.device_id = d.id)) AS last_seen "
+                        + lastSeen("d") + " AS last_seen "
                         + "FROM device d WHERE d.id = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
     }
@@ -52,11 +72,8 @@ public class DeviceRepository {
     public Optional<DeviceDto> findByExternalRef(String externalRef) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
-                        + "d.lan_host, d.lan_seen_at, d.lan_source, "
-                        + "coalesce(d.device_status_seen_at, t.last_seen) AS last_seen "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, " + lastSeen("d") + " AS last_seen "
                         + "FROM device d "
-                        + "LEFT JOIN LATERAL (SELECT received_at AS last_seen FROM telemetry "
-                        + "  WHERE device_id = d.id ORDER BY received_at DESC LIMIT 1) t ON true "
                         + "WHERE d.external_ref = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice,
                 externalRef).stream().findFirst();
@@ -92,8 +109,7 @@ public class DeviceRepository {
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? AND ausgebaut_am IS NULL "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
-                        + "coalesce(device.device_status_seen_at, (SELECT max(t.received_at) FROM telemetry t "
-                        + "WHERE t.device_id = device.id)) AS last_seen",
+                        + lastSeen("device") + " AS last_seen",
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
 

@@ -1,0 +1,159 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sungrow_pr"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "13049 = 3, 13050 = 0xBB, 13051 = W."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sungrow_pr"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "13049 = 0."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sungrow_pr"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "13049 = 0 + 33046 = 0."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sungrow_pr"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "33046 = x."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sungrow_pr"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "13049 = 0 + 33047 = 0 (max. Entladeleistung)."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Export-Begrenzung als Geräteeinstellung; per Modbus unbelegt."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sungrow_pr"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "13049 = 3, 13050 = 0xCC."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sungrow_pr"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "13049 = 3, 13050 = 0xAA, 13051 = W, Heartbeat 13079."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "sungrow_pr"
+    ],
+    "sicherheit": "D",
+    "text": "Am Gerät messen."
+  },
+  "eigenmodus": {
+    "sicherheit": "A",
+    "text": "Ja: EMS-Modus 13049 (Leitung) = 0 Eigenverbrauch (A)."
+  },
+  "empfehlung": "Stufe 2; External-EMS-Modus statt Forced.",
+  "fallen": [
+    "Leitungsadresse = Protokollnummer − 1.",
+    "Forced-Modus 2 rastet ohne Rückfall ein.",
+    "Modbus-Exception 4 bei manchen Firmwares – wiederholen und rücklesen."
+  ],
+  "familie": "SH-RT / SH-RS / SH-T Hybride",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Sungrow",
+  "id": "sungrow",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "SH-RT",
+    "SH-RS",
+    "SH-T"
+  ],
+  "quellen": [
+    "sungrow_pr",
+    "dd",
+    "evcc"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "gemischt",
+    "text": "13049–13051 flüchtig (C); 33046/33047 unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": 20,
+    "sicherheit": "C",
+    "text": "Nur im External-EMS-Modus: Heartbeat 13079 (Vorgabe 20 s) → zurück in Eigenverbrauch; der oft genutzte Forced-Modus 2 hat keinen (A/C).",
+    "vorhanden": true,
+    "ziel": {
+      "register": 13079
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "A",
+    "speicher": "ram",
+    "text": "13049 = 3 „External EMS“ + Befehl 13050 (0xAA laden / 0xBB entladen / 0xCC stopp) + Leistung 13051 W; Grenzen 33046/33047 (0,01 kW) (A)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Sungrow-Zähler (DTSU666) am Netzpunkt."
+  }
+}

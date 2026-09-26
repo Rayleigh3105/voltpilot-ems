@@ -8,14 +8,10 @@ import {
   BESTAND_BADGE,
   bestandZeile,
   billingPeriodLabel,
-  erloesAufklapper,
   erloesErgebnis,
   geplanteErsparnisNotiz,
   steeringChip,
   erloesKomposition,
-  geldVerlauf,
-  verlaufKern,
-  verlaufSchritt,
 } from './erloesKomposition';
 import { NBSP } from './format';
 import { ebene2 } from './erloesEbenen';
@@ -701,173 +697,6 @@ describe('E5 · die Preise sind in Ebene 2 umgezogen', () => {
   });
 });
 
-describe('geldVerlauf · Karte 2 „Geld im Verlauf"', () => {
-  const buckets = [
-    {
-      start: '2026-07-01T00:00:00Z',
-      einspeiseErloesEur: 30,
-      eigenverbrauchsWertEur: 5,
-      stromkostenEur: 10,
-      nettoEur: 25,
-    },
-    {
-      start: '2026-07-02T00:00:00Z',
-      einspeiseErloesEur: 20,
-      eigenverbrauchsWertEur: null,
-      stromkostenEur: 4,
-      nettoEur: 16,
-    },
-  ];
-
-  it('stapelt Erlöse nach oben, Kosten nach unten - und summiert die Linie auf', () => {
-    const view = geldVerlauf(buckets, 'month');
-    expect(view.leer).toBe(false);
-    expect(view.reihen.map((r) => r.id)).toEqual([
-      'einspeisung',
-      'eigenverbrauchswert',
-      'stromkosten',
-    ]);
-    expect(view.reihen[0].data).toEqual([30, 20]);
-    // Ein fehlender Teil trägt 0 zum STAPEL bei (der Balken existiert), er wird
-    // nie erfunden - die Zeile in Karte 1 sagt „—".
-    expect(view.reihen[1].data).toEqual([5, 0]);
-    // Kosten zeigen nach unten.
-    expect(view.reihen[2].data).toEqual([-10, -4]);
-    expect(view.kumuliert).toEqual([25, 41]);
-    expect(view.kumuliertText).toBe(`kumuliert + 41,00${NBSP}€`);
-  });
-
-  // --- B8 · die Legende bewirbt nur, was gezeichnet wird ------------------
-  it('lässt eine durchgehend leere Reihe WEG (Befund B8)', () => {
-    // Eine Anlage ohne hinterlegten Tarif: der Wert des Eigenverbrauchs ist in
-    // JEDEM Eimer null — er zeichnet keinen Balken und stand trotzdem in der
-    // Legende.
-    const ohneTarif = buckets.map((b) => ({ ...b, eigenverbrauchsWertEur: null }));
-    expect(geldVerlauf(ohneTarif, 'month').reihen.map((r) => r.id)).toEqual([
-      'einspeisung',
-      'stromkosten',
-    ]);
-    // Eine Reihe, die auch nur EINMAL etwas trägt, bleibt.
-    expect(geldVerlauf(buckets, 'month').reihen.map((r) => r.id)).toContain(
-      'eigenverbrauchswert',
-    );
-  });
-
-  it('behält bei einem durchgehend leeren Stapel alle drei Reihen', () => {
-    // Sonst stünde ein Diagramm ganz ohne Legende da — die schlechtere Auskunft.
-    const leer = buckets.map((b) => ({
-      ...b,
-      einspeiseErloesEur: 0,
-      eigenverbrauchsWertEur: 0,
-      stromkostenEur: 0,
-    }));
-    expect(geldVerlauf(leer, 'month').reihen).toHaveLength(3);
-  });
-
-  // --- K1 · die Kernaussage des Verlaufs ---------------------------------
-  it('nennt den stärksten Eimer und seinen Träger — nicht die Summe (K1)', () => {
-    const k = verlaufKern(geldVerlauf(buckets, 'month'), 'month')!;
-    // Der 1. Juli trägt netto 25 € (30 + 5 − 10), der 2. nur 16 €.
-    expect(k.wert).toBe(`25,00${NBSP}€`);
-    expect(k.satz).toContain('am 1. Juli');
-    expect(k.satz).toContain('der Einspeisung');
-    // Die SUMME des Zeitraums steht eine Karte höher — nie hier.
-    expect(k.satz).not.toContain('41,00');
-  });
-
-  it('sagt den GRUND statt einen Spitzen-Eimer zu erfinden', () => {
-    const leer = buckets.map((b) => ({
-      ...b,
-      einspeiseErloesEur: 0,
-      eigenverbrauchsWertEur: 0,
-      stromkostenEur: 0,
-    }));
-    const k = verlaufKern(geldVerlauf(leer, 'month'), 'month')!;
-    expect(k.wert).toBeNull();
-    expect(k.satz).toBeNull();
-    expect(k.grund).toContain('noch nichts zusammengekommen');
-  });
-
-  it('rendert ohne Eimer GAR NICHTS — die Karte hat ihren eigenen Leer-Satz', () => {
-    expect(verlaufKern(geldVerlauf([], 'month'), 'month')).toBeNull();
-  });
-
-  it('nennt Stunden am Tag und Monate im Jahr', () => {
-    const tag = [
-      { start: '2026-07-01T09:00:00Z', einspeiseErloesEur: 1, eigenverbrauchsWertEur: 0, stromkostenEur: 0, nettoEur: 1 },
-      { start: '2026-07-01T10:00:00Z', einspeiseErloesEur: 8, eigenverbrauchsWertEur: 0, stromkostenEur: 0, nettoEur: 8 },
-    ];
-    // 10:00 UTC = 12 Uhr Berlin. Das Wort „Uhr" kommt aus dem Gebietsschema —
-    // ein eigenes Suffix ergäbe „12 Uhr Uhr" (Browser-Befund).
-    const satz = verlaufKern(geldVerlauf(tag, 'day'), 'day')!.satz!;
-    expect(satz).toContain('um 12 Uhr');
-    expect(satz).not.toContain('Uhr Uhr');
-    expect(verlaufKern(geldVerlauf(tag, 'year'), 'year')!.satz).toContain('im Juli 2026');
-  });
-
-  it('bindet den Maßstab an den Zeitraum (P6) - das Jahr zeigt Monate', () => {
-    expect(verlaufSchritt('day')).toBe('Stunde');
-    expect(verlaufSchritt('week')).toBe('Tag');
-    expect(verlaufSchritt('month')).toBe('Tag');
-    expect(verlaufSchritt('year')).toBe('Monat');
-    expect(verlaufSchritt('all')).toBe('Monat');
-    expect(geldVerlauf(buckets, 'year').untertitel).toContain('Je Monat');
-  });
-
-  it('bleibt bei einem leeren Zeitraum ehrlich leer', () => {
-    const view = geldVerlauf([], 'month');
-    expect(view.leer).toBe(true);
-    expect(view.kumuliert).toEqual([]);
-    expect(view.kumuliertText).toBeNull();
-  });
-});
-
-/**
- * **Die Mobil-Fassung der Geld-Welt** (Konzept `data/vp-mobile-views-x1` §6):
- * acht gleichrangige Karten über 7,3 Bildschirme werden ein Ergebnis-Falz plus
- * benannte Aufklapper. Umgeordnet, nicht gekürzt.
- */
-describe('erloesAufklapper', () => {
-  const voll = {
-    hatSoVerdient: true,
-    istTag: true,
-    hatTagesdaten: true,
-  };
-
-  // P6/E5: „preis-treiber" ist ENTFALLEN — die Preise wohnen in Ebene 2 der
-  // Ergebnis-Karte, also auch am Telefon (ein Aufklapper im Aufklapper wäre
-  // dieselbe Wahrheit zweimal).
-  it('nennt am Tag alle drei - in der Reihenfolge des Konzepts', () => {
-    expect(erloesAufklapper(voll).map((a) => a.id)).toEqual([
-      'so-verdient',
-      'speicher-preis',
-      'tagesprotokoll',
-    ]);
-    expect(erloesAufklapper(voll)[0].titel).toBe('So verdient Ihre Anlage · der Markt-Vergleich');
-  });
-
-  it('lässt weg, was es auf dieser Anlage gar nicht gibt', () => {
-    // Keine Direktvermarktung: kein Markt-Vergleich (S9).
-    expect(erloesAufklapper({ ...voll, hatSoVerdient: false }).map((a) => a.id)).not.toContain(
-      'so-verdient',
-    );
-    // Woche/Monat/Jahr: der Tagesnachweis und das Protokoll existieren nicht.
-    expect(erloesAufklapper({ ...voll, istTag: false }).map((a) => a.id)).toEqual([
-      'so-verdient',
-    ]);
-  });
-
-  it('verspricht nichts, wofür die Antwort fehlt', () => {
-    // Ein Tag OHNE Historie-Antwort: die zwei Tages-Aufklapper wären leer.
-    expect(erloesAufklapper({ ...voll, hatTagesdaten: false }).map((a) => a.id)).toEqual([
-      'so-verdient',
-    ]);
-    expect(
-      erloesAufklapper({ hatSoVerdient: false, istTag: false, hatTagesdaten: false }),
-    ).toEqual([]);
-  });
-});
-
 describe('geplanteErsparnisNotiz', () => {
   it('behält das Abzeichen „Geplant" und sagt, dass sie NICHT gemessen ist', () => {
     const n = geplanteErsparnisNotiz(4.12, 'Fr., 24.07.2026');
@@ -960,11 +789,30 @@ describe('bestandZeile', () => {
     );
   });
 
-  it('spricht über einen längeren Zeitraum ZEITRAUM-neutral', () => {
-    const monat = { ...laufenderTag, range: 'month', to: '2026-08-01T00:00:00Z' };
-    expect(bestandZeile(monat, new Date('2026-08-15T00:00:00Z'))?.text).toContain(
-      '44,2\u00a0kWh Speicherenergie im Zeitraum gespeichert',
-    );
+  it('entfällt auf einem längeren Zeitraum (Konzept k1 E2 = A: nur der Tag kennt den Vorsprung)', () => {
+    for (const range of ['week', 'month', 'year', 'all']) {
+      const z = { ...laufenderTag, range, to: '2026-08-01T00:00:00Z' };
+      expect(bestandZeile(z, new Date('2026-08-15T00:00:00Z'))).toBeNull();
+    }
+  });
+
+  it('nennt am Tag den VORSPRUNG vor dem Vergleichsspeicher, sobald der Server ihn liefert (E2 = A)', () => {
+    const tag = {
+      ...laufenderTag,
+      speicherVorsprungKwh: 5.0,
+      speicherVorsprungEur: 1.31,
+      vergleichSocEndKwh: 13.8,
+    };
+    const z = bestandZeile(tag, JETZT)!;
+    expect(z.text).toBe(`5,0${NBSP}kWh Vorsprung vor dem Vergleichsspeicher · Planwert 1,31${NBSP}€`);
+    expect(z.badge).toBe('Kein Abzug');
+    expect(z.titel).toContain(`dort 13,8${NBSP}kWh`);
+    // Rückstand: die Richtung im Wort, der Planwert ohne Vorzeichen.
+    const r = bestandZeile({ ...tag, speicherVorsprungKwh: -35.4, speicherVorsprungEur: -11.32 }, JETZT)!;
+    expect(r.text).toBe(`35,4${NBSP}kWh Rückstand auf den Vergleichsspeicher · Planwert 11,32${NBSP}€`);
+    // Im Rauschen keine Zeile — und null heißt NICHT Vorsprung 0: die alte Zeile bleibt.
+    expect(bestandZeile({ ...tag, speicherVorsprungKwh: 0.3 }, JETZT)).toBeNull();
+    expect(bestandZeile({ ...tag, speicherVorsprungKwh: null }, JETZT)?.text).toContain('seit Tagesbeginn');
   });
 
   it('nennt am laufenden Zeitraum die Nutzung seit Tagesbeginn, nie den Vortag', () => {

@@ -9,6 +9,7 @@ import {
   promptInstall,
   subscribeInstallApp,
 } from '../installApp';
+import './InstallApp.css';
 
 /**
  * Die Fläche der Gruppe „Als App auf dem Handy" - reines Rendern.

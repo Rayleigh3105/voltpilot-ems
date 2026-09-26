@@ -54,14 +54,17 @@ describe('AP-13 Bestandsschutz · Navigation und Start-Ebene', () => {
       expect(createHash('sha256').update(readFileSync(resolve('src', datei))).digest('hex'), datei).toBe(hash);
     }
   });
-  it('sechs Verlauf-Reiter ohne neue Energiebilanz', () => {
+  // Nachzug main 8b8b6a03b (26.09.2026): das Verlauf-Rework (763b87f39) hat die Reiter ausgeliefert auf
+  // Energie · Erlöse · Messwerte gebracht; Preise und Wetter stehen beim Fahrplan. Die Aufnahme stammt aus einem
+  // `git archive origin/main` (siehe test/bestandsschutz/README.md), nicht aus diesem Baum.
+  it('Verlauf-Reiter wie ausgeliefert (main 8b8b6a03b) ohne neue Energiebilanz', () => {
     const surface = anlageSurface({
       signals: { hasStorage: true, hasPv: true, hasControllableConsumer: true, activeStrategyNodeTypes: [], plantKind: 'eigenverbrauch', hasLeistungspreis: true },
       config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch', netzladenErlaubt: true, leistungspreisEurKw: 95 },
       entities: [{ id: 'speicher', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }],
     });
     const verlauf = anlageBereiche(surface).find((b) => b.key === 'verlauf');
-    expect(verlauf?.tabs).toHaveLength(6);
+    expect(verlauf?.tabs).toHaveLength(3);
     expect(verlauf).toMatchSnapshot();
   });
 

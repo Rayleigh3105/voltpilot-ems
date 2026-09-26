@@ -1,0 +1,76 @@
+/* ===========================================================================
+   Der Baustein „Heute": der Tagesverlauf der Hauptgröße als Streifen des
+   Mini-Chart-Systems (`MiniChart.css`).
+
+   ⚠ Keine zweite Chart-Palette: die Farben sind die des Energieflusses
+   (`--vp-flow-*`), gesetzt über die zwei lokalen Variablen, die das
+   Mini-Chart-System dafür vorsieht (`--mini-pos` / `--mini-neg`).
+   =========================================================================== */
+
+.vp-heute {
+  min-width: 0;
+}
+
+/* Ein Tag ist EINE Aussage - keine Säule ist „betont", also keine gedimmt. */
+.vp-heute .vp-mini {
+  --mini-dim: 0.9;
+  gap: 1px;
+}
+.vp-heute.is-batt .vp-mini {
+  --mini-pos: var(--vp-flow-batt);
+  --mini-neg: var(--vp-flow-batt-ink);
+}
+/* Eine Reihe OHNE Richtung (Erzeugung, Verbraucher) kennt kein „darunter" -
+   ein negativer Messwert bleibt unter der Linie sichtbar, aber in der Farbe
+   der Reihe: die Entlade-Farbe des Systems wäre dort eine erfundene Warnung. */
+.vp-heute.is-pv .vp-mini {
+  --mini-pos: var(--vp-flow-pv);
+  --mini-neg: var(--vp-flow-pv);
+}
+.vp-heute.is-grid .vp-mini {
+  --mini-pos: var(--vp-chart-grid-line);
+  --mini-neg: var(--vp-flow-grid);
+}
+.vp-heute.is-load .vp-mini {
+  --mini-pos: var(--vp-flow-load);
+  --mini-neg: var(--vp-flow-load);
+}
+
+/* Die Achse steht an den WAHREN Stellen der Stunden (`HeuteView.achse`) -
+   Anfang und Ende bündig mit dem Streifen, nichts ragt über die Karte. */
+.vp-heute-achse {
+  position: relative;
+  height: 1.4em;
+  margin-top: 4px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-variant-numeric: tabular-nums;
+}
+.vp-heute-achse > span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.vp-heute-achse > span.is-anfang {
+  transform: none;
+}
+.vp-heute-achse > span.is-ende {
+  transform: translateX(-100%);
+}
+
+.vp-heute .vp-mini-cap,
+.vp-heute-legende,
+.vp-heute-leer {
+  margin: 6px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+/* Solange der Tag lädt, hält ein ruhiger Platz die Höhe - nichts springt. */
+.vp-heute-platz {
+  height: 64px;
+  border-radius: 8px;
+  background: var(--vp-bg-light, #f8f9fa);
+}

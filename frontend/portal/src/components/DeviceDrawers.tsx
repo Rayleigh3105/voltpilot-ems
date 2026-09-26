@@ -62,6 +62,7 @@ export function AddDeviceDrawer({
   onClaimed,
   nachfolgerVon = null,
   datenquellen = [],
+  title = 'Gerät hinzufügen',
 }: {
   open: boolean;
   onClose: () => void;
@@ -70,6 +71,8 @@ export function AddDeviceDrawer({
   /** Auf der Box-Seite: dieselbe Claim-Strecke, danach eine getrennte Bestätigung des Tauschs. */
   nachfolgerVon?: Device | null;
   datenquellen?: UemsDatenquelle[];
+  /** Titel und Knopf; der Aufbau nennt die Box beim Namen („VoltPilot-Box hinzufügen"). */
+  title?: string;
 }) {
   const [externalRef, setExternalRef] = useState('');
   const [siteId, setSiteId] = useState('');
@@ -140,7 +143,7 @@ export function AddDeviceDrawer({
     <Modal
       open={open}
       onClose={close}
-      title={nachfolgerVon ? 'Box tauschen' : 'Gerät hinzufügen'}
+      title={nachfolgerVon ? 'Box tauschen' : title}
       icon={
         <IconTile category="battery" size={40}>
           <Icon name="zap" size={20} />
@@ -164,7 +167,7 @@ export function AddDeviceDrawer({
               Abbrechen
             </Button>
             <Recht aktion="geraet.einrichten"><Button variant="primary" onClick={claim} disabled={busy || !siteId}>
-              {busy ? 'Wird hinzugefügt…' : 'Gerät hinzufügen'}
+              {busy ? 'Wird hinzugefügt…' : title}
             </Button></Recht>
           </>
         )

@@ -63,7 +63,8 @@ describe('help search', () => {
   it('prioritizes the task title and searches paragraphs, not just metadata', () => {
     expect(searchHelp(HELP_ARTICLES, 'Fahrplan')[0].id).toBe('fahrplan');
     expect(searchHelp(HELP_ARTICLES, 'Ausschaltbare Phantomfunktion')).toEqual([]);
-    expect(searchHelp(HELP_ARTICLES, 'Schattenbetrieb').some((a) => a.id === 'prognosen')).toBe(true);
+    // Nur im Absatz, nicht in Titel oder Stichworten: die Suche liest den Text.
+    expect(searchHelp(HELP_ARTICLES, 'Viertelstunde').some((a) => a.id === 'prognosen')).toBe(true);
     expect(searchHelp(HELP_ARTICLES, 'Seriennummer des Wechselrichters').some((a) => a.id === 'box-verbinden')).toBe(true);
     // AP-20 IP-22: über den Titel, die Suchwörter und einen Satz im Absatz.
     expect(searchHelp(HELP_ARTICLES, 'Energiemanagement festhält')[0].id).toBe('energiemanagement');

@@ -405,6 +405,9 @@ func TestControlTierPerBrand(t *testing.T) {
 		BrandFroniusSunSpec: ControlTierSunSpec,
 		BrandGoe:            ControlTierReadOnly,
 		BrandShelly:         ControlTierReadOnly,
+		// The M31 relay outputs switch CONSUMERS through the core executor
+		// (internal/ebyte), never the battery controlRoute.
+		BrandEbyte: ControlTierReadOnly,
 		// The PLENTICORE's external battery management is a true forced-watts RAM
 		// setpoint behind the inverter's own watchdog = the vendor external-EMS
 		// primitive. Until the Tier-2 adapter ships, controlRoute's stub refuses

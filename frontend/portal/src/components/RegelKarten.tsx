@@ -20,6 +20,7 @@ import { komponenteHash } from '../nav';
 // Karte nicht darauf angewiesen ist, dass ein Geschwister sie importiert.
 import './Profile.css';
 import './Regeln.css';
+import { AUFBAU_REITER } from '../ebenenNav';
 
 export function RegelKarteView({
   karte,
@@ -68,7 +69,7 @@ export function RegelKarteView({
                   key={c.key}
                   className={`vp-regel-chip ton-${c.ton} is-link`}
                   href={komponenteHash(siteId, c.key)}
-                  title={`„${c.label}" unter „Komponenten" zeigen`}
+                  title={`„${c.label}" unter „${AUFBAU_REITER}" zeigen`}
                 >
                   {c.label}
                 </a>

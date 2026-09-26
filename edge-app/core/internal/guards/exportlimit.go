@@ -221,6 +221,12 @@ type ExportCap struct {
 	// IP-27 A7 (CapAnteil only): the caller reports it to the Einfrierprobe
 	// (Geprueft), whose answer window starts now.
 	Pruefung bool
+	// Cascade names the watchdog's role next to the leader's own regulation
+	// (K6, CapCascade): "" without an inner loop, else one of the Cascade*
+	// words. Box-local on purpose - the State vocabulary is closed at cloud
+	// ingest, so the cascade never invents a new State word.
+	Cascade     string
+	CascadeText string
 }
 
 // ExportLimiter holds the watchdog's measurement + hysteresis state across ticks.
@@ -298,6 +304,13 @@ type ExportLimiter struct {
 	// ladungVorDemSprung). Written by ObserveMitSpeicher only.
 	vergangenheit bool
 	sprungBis     time.Time
+	// K6 cascade state (CapCascade): the inner loop of the last call, when an
+	// export above the limit was first seen while the storage still had
+	// headroom, and whether this slot's inner loop already failed to absorb.
+	inner       InnerLoop
+	innerSlot   time.Time
+	overSince   time.Time
+	innerFailed bool
 }
 
 // NewExportLimiter returns an idle watchdog (no measurement, no cap).
@@ -328,7 +341,13 @@ func (l *ExportLimiter) Observe(ts time.Time, gridKw, pvKw float64) (urgent bool
 	if !l.limitValid || !l.capValid {
 		return false
 	}
-	target := closedLoopCap(l.limit, l.gridKw, l.pvKw)
+	if l.yielding() {
+		// The storage still takes the surplus: the next tick decides whether
+		// the inner loop had its grace (CascadeInnerGrace) - a republish now
+		// would only repeat the held cap.
+		return false
+	}
+	target := l.outerTarget(l.limit, l.gridKw, l.pvKw)
 	return target < l.cap-ExportStepKw
 }
 
@@ -358,6 +377,13 @@ func exportMargin(limitKw float64) float64 {
 // The returned cap is the caller's to compose most-restrictive-wins with the
 // plan's own curtailment; this guard never widens anything.
 func (l *ExportLimiter) Cap(now time.Time, limitKw *float64, safeStaticCapKw float64) ExportCap {
+	return l.CapCascade(now, limitKw, safeStaticCapKw, InnerLoop{})
+}
+
+// CapCascade is Cap with the leader's own regulation as the inner loop of a
+// cascade (K6, concept §6.3). Without an active inner loop it IS Cap, byte for
+// byte; see exportcascade.go for the law.
+func (l *ExportLimiter) CapCascade(now time.Time, limitKw *float64, safeStaticCapKw float64, inner InnerLoop) ExportCap {
 	if limitKw == nil || !finite(*limitKw) || *limitKw < 0 {
 		l.forget()
 		return ExportCap{State: ExportOff}
@@ -372,6 +398,7 @@ func (l *ExportLimiter) Cap(now time.Time, limitKw *float64, safeStaticCapKw flo
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.armInner(inner)
 	return l.capLocked(now, limit, safeStaticCapKw)
 }
 
@@ -451,7 +478,19 @@ func (l *ExportLimiter) freshCap(now time.Time, limit float64, res *ExportCap) {
 	pv := l.pvKw
 	res.ExportKw, res.PvKw = &exportKw, &pv
 
-	target := closedLoopCap(limit, l.gridKw, l.pvKw)
+	if l.inner.Active {
+		if l.innerCap(now, limit, exportKw, res) {
+			l.describe(limit, exportKw, pv, res)
+			return
+		}
+	}
+	l.follow(now, l.outerTarget(limit, l.gridKw, l.pvKw), releaseRate(l.releaseBase(limit)))
+	l.describe(limit, exportKw, pv, res)
+}
+
+// follow moves the commanded cap toward target: tightening at once, releasing
+// rate-limited (rateKwPerSec). Caller holds l.mu.
+func (l *ExportLimiter) follow(now time.Time, target, rateKwPerSec float64) {
 	switch {
 	case !l.capValid:
 		// First evaluation: adopt the target outright. It is derived from a real
@@ -481,12 +520,16 @@ func (l *ExportLimiter) freshCap(now time.Time, limit float64, res *ExportCap) {
 		if elapsed < 0 {
 			elapsed = 0
 		}
-		step := releaseRate(limit) * elapsed.Seconds()
+		step := rateKwPerSec * elapsed.Seconds()
 		next := math.Min(target, l.cap+step)
 		if next-l.cap >= ExportStepKw || next >= target {
 			l.cap, l.capAt = next, now
 		}
 	}
+}
+
+// describe fills the verdict for the commanded cap. Caller holds l.mu.
+func (l *ExportLimiter) describe(limit, exportKw, pv float64, res *ExportCap) {
 	res.CapKw = round3(l.cap)
 	res.Limiting = pv >= l.cap-exportLimitingMarginKw
 	if res.Limiting {
@@ -571,6 +614,7 @@ func (l *ExportLimiter) forget() {
 	l.capValid, l.cap, l.capAt = false, 0, time.Time{}
 	l.limitValid, l.limit = false, 0
 	l.dcapValid, l.dcap, l.dcapAt, l.rampValid = false, 0, time.Time{}, false
+	l.inner, l.innerSlot, l.overSince, l.innerFailed = InnerLoop{}, time.Time{}, time.Time{}, false
 	l.mu.Unlock()
 }
 

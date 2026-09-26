@@ -10,10 +10,15 @@ import {
   ghostBar,
   ghostItem,
   ghostLine,
+  hourAxisLabels,
+  hourLabelStep,
+  HOUR_LABEL_MIN_GAP_PX,
   NARROW_PX,
   NOW,
   nowLabel,
   nowLineStyle,
+  seamlessBar,
+  seamlessBarWidthPx,
   SMOOTH,
   storageItemStyle,
   storageMark,
@@ -89,6 +94,53 @@ describe('BAR (F9 · Säulenstäbe statt Farb-Block)', () => {
   it('deckelt die Breite und lässt eine Fuge', () => {
     expect(BAR.maxWidth).toBeLessThanOrEqual(16);
     expect(Number.parseInt(BAR.categoryGap, 10)).toBeGreaterThanOrEqual(30);
+  });
+});
+
+describe('Nahtlose Blöcke (Fahrplan, Phasen-Band)', () => {
+  it('überlappt Nachbarn um ein Pixel - keine Haarlinie zwischen zwei Slots', () => {
+    expect(seamlessBarWidthPx(240, 96)).toBeCloseTo(3.5, 5);
+    expect(seamlessBarWidthPx(0, 96)).toBe(1);
+  });
+
+  it('zeichnet nahtlose Balken ohne Rand und Kappe (ECharts zöge den Rand ein)', () => {
+    expect(seamlessBar('#2E9E5B')).toEqual({ color: '#2E9E5B', borderWidth: 0, borderRadius: 0 });
+  });
+});
+
+describe('Zeitachse in vollen Stunden', () => {
+  /** 96 Viertelstunden ab lokaler Mitternacht (zeitzonenunabhängig gebaut). */
+  const tag = (von = new Date(2026, 8, 10, 0, 0), n = 96) =>
+    Array.from({ length: n }, (_v, i) => new Date(von.getTime() + i * 900_000).toISOString());
+
+  it('wählt den feinsten Takt mit genug Luft', () => {
+    expect(hourLabelStep(990, 24)).toBe(2); // ~41 px je Stunde
+    expect(hourLabelStep(240, 24)).toBe(6); // ~10 px je Stunde
+    expect(hourLabelStep(990, 48)).toBe(3);
+    expect(hourLabelStep(0, 24)).toBe(24);
+    for (const [w, h] of [[990, 24], [240, 24], [600, 48]] as const) {
+      expect(hourLabelStep(w, h) * (w / h)).toBeGreaterThanOrEqual(HOUR_LABEL_MIN_GAP_PX);
+    }
+  });
+
+  it('beschriftet nur volle Stunden im Takt - nie 01:15 oder 04:30', () => {
+    const times = tag();
+    const { shown, stepHours } = hourAxisLabels(times, 240);
+    expect(stepHours).toBe(6);
+    const uhr = [...shown].map((i) => new Date(times[i]).getHours());
+    expect(uhr).toEqual([0, 6, 12, 18]);
+    for (const i of shown) expect(new Date(times[i]).getMinutes()).toBe(0);
+  });
+
+  it('setzt das Datum an die erste gezeigte Beschriftung JEDES Tages', () => {
+    // Plan beginnt 13:15 und reicht in den nächsten Tag.
+    const times = tag(new Date(2026, 8, 10, 13, 15), 96 + 43);
+    const { shown, dated } = hourAxisLabels(times, 990);
+    const erste = Math.min(...shown);
+    expect(dated.has(erste)).toBe(true);
+    expect(dated.size).toBe(2);
+    const zweiterTag = [...dated].find((i) => i !== erste)!;
+    expect(new Date(times[zweiterTag]).getHours()).toBe(0);
   });
 });
 

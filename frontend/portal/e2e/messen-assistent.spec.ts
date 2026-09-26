@@ -389,6 +389,9 @@ async function ueberlauf(page: Page, breite: number) {
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
       // Kacheln der Karte im Anlege-Fluss liegen über den Rand, die Karte schneidet sie ab (wie `anlage-umziehen.spec.ts`).
       .filter(({ el }) => !el.closest('.leaflet-container'))
+      // Die Art-Chips des Gerätekatalogs (main e70b57b76) sind eine gewollt quer scrollende Leiste; geprüft bleibt die
+      // Leiste selbst (sie muss im Bild liegen), nicht ihre hinausgescrollten Chips.
+      .filter(({ el }) => !el.parentElement?.closest('.vp-kat-arten'))
       .filter(({ r }) => r.width > 0 && (r.right > b + 0.5 || r.left < -0.5))
       .map(({ el }) => `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className)}`);
     const rumpf = [...document.querySelectorAll('.vp-anlegen-rumpf, .vp-modal .dbody')] as HTMLElement[];
@@ -538,8 +541,10 @@ for (const breite of BREITEN) {
       await expect(geraet).toHaveCount(0);
       await zaehlerIst(page, breite, 2, 'Datenquelle');
 
+      // Seit dem Gerätekatalog (main e70b57b76) beginnt „Gerät anbinden" im Katalog.
       await page.getByRole('button', { name: 'Gerät anbinden für Werk Lindach', exact: true }).click();
-      await expect(page.getByRole('dialog', { name: 'Gerät anbinden' })).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Gerät hinzufügen' })
+        .getByRole('searchbox', { name: 'Katalog durchsuchen' })).toBeVisible();
       await messeUndFotografiere(page, breite, 'geraet-anbinden');
     });
 

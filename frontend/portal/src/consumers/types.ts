@@ -115,6 +115,31 @@ export interface Consumer {
    * behavior).
    */
   confirmationChannel?: string | null;
+  /**
+   * Die Bindung an einen Relais-Ausgang eines I/O-Moduls (Ebyte M31): die
+   * Modul-Komponente und der 1-basierte Ausgang. Absent/null = kein Ausgang.
+   */
+  ioEntityId?: string | null;
+  ioChannel?: number | null;
+}
+
+/** Ein vergebener Ausgang eines I/O-Moduls. */
+export interface IoChannelUse {
+  channel: number;
+  consumerId: string;
+  consumerName: string | null;
+}
+
+/**
+ * Ein I/O-Modul der Anlage als Schaltweg-Angebot. `outputs` ist die Zahl der
+ * zuletzt GEMELDETEN Relais-Ausgänge - `null`, solange das Modul nichts
+ * gemeldet hat (nie eine geratene Zahl).
+ */
+export interface IoModuleOption {
+  entityId: string;
+  label: string | null;
+  outputs: number | null;
+  used: IoChannelUse[];
 }
 
 export interface ConsumerTypeOption {
@@ -176,6 +201,8 @@ export interface ConsumerOptions {
    * noch nicht aktiviert"), never a button that dead-ends.
    */
   policyActivationEnabled?: boolean;
+  /** Die I/O-Module der Anlage (absent = älteres Backend: keine). */
+  ioModules?: IoModuleOption[];
 }
 
 export interface ConsumerPolicyVersion {

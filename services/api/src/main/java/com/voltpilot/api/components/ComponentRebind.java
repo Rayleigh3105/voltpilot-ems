@@ -113,10 +113,15 @@ public final class ComponentRebind {
             }
         }
 
-        // Verwaiste Komponenten (ihr Pin zeigt ins Leere) je Fingerabdruck.
+        // Verwaiste Komponenten (ihr Pin zeigt ins Leere) je Fingerabdruck - und
+        // die ERSTBINDUNG: eine im Portal angelegte Komponente trägt noch gar
+        // keinen Pin, bis die Box die daraus abgeleitete Quelle meldet. Ohne
+        // diesen Fall stand genau diese Quelle als „Neues Gerät gefunden" neben
+        // der eigenen Komponente (Live-Fall Ebyte M31, 24.09.2026). Dieselben
+        // Zäune gelten: identischer Fingerabdruck, nur ein eindeutiges 1:1.
         Map<String, List<PinnedComponent>> orphans = new TreeMap<>();
         for (PinnedComponent c : pinned) {
-            if (c.edgeSourceId() == null || reportedIds.contains(c.edgeSourceId())) {
+            if (c.edgeSourceId() != null && reportedIds.contains(c.edgeSourceId())) {
                 continue; // lebende Bindung - nie anfassen
             }
             String fp = fingerprint(c.role(), c.communication(), c.connectionJson(), mapper);

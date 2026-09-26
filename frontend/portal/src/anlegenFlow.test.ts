@@ -6,11 +6,9 @@ import {
   fortschrittAnteil,
   geraeteFuerTyp,
   keineVorlageHinweis,
-  legtAn,
   neueKomponente,
   rollenWahl,
-  schritte,
-  typKarten,
+  typFuerTemplate,
   vorschlagRolle,
 } from './anlegenFlow';
 import type { ComponentTemplate } from './komponentenAssistent';
@@ -47,58 +45,14 @@ const unbekannt = tpl({ templateRef: 'certified:acme:x', kind: 'certified', devi
 
 const alle = [wechselrichter, wallbox, schalter, unbekannt];
 
-describe('typKarten', () => {
-  it('bietet die sieben Karten des Konzepts an', () => {
-    expect(typKarten(alle).map((k) => k.id)).toEqual([
-      'wechselrichter',
-      'wallbox',
-      'ladesaeule',
-      'verbraucher',
-      'zaehler',
-      'batterie',
-      'eigenbau',
-    ]);
+describe('keineVorlageHinweis', () => {
+  it('nennt den GRUND, wenn es für eine Art keine eigene Vorlage gibt', () => {
+    expect(keineVorlageHinweis('zaehler')).toMatch(/Für Zähler gibt es noch keine eigene Vorlage/);
+    expect(keineVorlageHinweis('zaehler')).toMatch(/Netz-Zähler/);
   });
 
-  /**
-   * P5d: die eigene Batterie ist eine EIGENE Karte, keine Unter-Tür des
-   * Eigenbaus - der Weg fragt andere Dinge und mündet in einen anderen
-   * Entitätstyp. Und sie behauptet nie eine Vorlage: es gibt keine.
-   */
-  it('fuehrt die Batterie-Karte ohne Vorlagen und ohne Vorlagen-Satz', () => {
-    const batterie = typKarten(alle).find((k) => k.id === 'batterie');
-    expect(batterie?.treffer).toBe(0);
-    expect(batterie?.hinweis).toBeNull();
+  it('führt die Batterie ohne Vorlagen - sie hat ihren eigenen Weg', () => {
     expect(geraeteFuerTyp(alle, 'batterie')).toEqual({ templates: [], erweitert: false });
-  });
-
-  /** Die Schrittleiste des Batterie-Wegs stellt SEINE Fragen, nicht die des Katalogs. */
-  it('gibt dem Batterie-Weg seine eigene Schrittleiste', () => {
-    expect(schritte('batterie')).toEqual([
-      'Was anbinden',
-      'Erreichbar',
-      'Zuordnung',
-      'Ladestand',
-      'Prüfen',
-      'Fertig',
-    ]);
-  });
-
-  it('zaehlt nur die EIGENEN Vorlagen einer Karte', () => {
-    const k = typKarten(alle);
-    expect(k.find((x) => x.id === 'wechselrichter')?.treffer).toBe(1);
-    expect(k.find((x) => x.id === 'wallbox')?.treffer).toBe(1);
-    expect(k.find((x) => x.id === 'zaehler')?.treffer).toBe(0);
-  });
-
-  it('nennt den GRUND, wenn es fuer einen Typ keine eigene Vorlage gibt', () => {
-    const zaehler = typKarten(alle).find((k) => k.id === 'zaehler');
-    expect(zaehler?.hinweis).toBe(keineVorlageHinweis('zaehler'));
-    expect(typKarten(alle).find((k) => k.id === 'wechselrichter')?.hinweis).toBeNull();
-  });
-
-  it('behauptet ohne jede Vorlage gar nichts', () => {
-    for (const k of typKarten([])) expect(k.hinweis).toBeNull();
   });
 });
 
@@ -113,6 +67,19 @@ describe('geraeteFuerTyp', () => {
       'certified:acme:x',
     ]);
     expect(geraeteFuerTyp(alle, 'wechselrichter').erweitert).toBe(false);
+  });
+
+  it('fuehrt das I/O-Modul unter den schaltbaren Verbrauchern', () => {
+    const io = tpl({
+      templateRef: 'builtin:ebyte:m31_axax8080g_u',
+      brand: 'ebyte',
+      brandLabel: 'Ebyte',
+      deviceType: 'io_module',
+      communication: 'ebyte_modbus_tcp',
+    });
+    expect(geraeteFuerTyp([...alle, io], 'verbraucher').templates).toContain(io);
+    expect(geraeteFuerTyp([...alle, io], 'wechselrichter').templates).not.toContain(io);
+    expect(typFuerTemplate(io)).toBe('verbraucher');
   });
 
   it('versteckt eine Vorlage OHNE Typ nirgends - unbekannt ist kein Ausschluss', () => {
@@ -172,33 +139,15 @@ describe('rollenWahl / vorschlagRolle', () => {
   });
 });
 
-describe('Schritte', () => {
-  it('gibt jedem Weg seine eigene Leiste', () => {
-    expect(schritte('wechselrichter')).toEqual([
-      'Was anbinden',
-      'Gerät wählen',
-      'Verbinden',
-      'Testen',
-      'Fertig',
-    ]);
-    expect(schritte('eigenbau')).toHaveLength(6);
-    expect(schritte('ladesaeule')).toEqual(['Was anbinden', 'Anbinden']);
-    expect(schritte(null)[0]).toBe('Was anbinden');
-  });
-
+describe('Fortschritt (Schale des Steuerart-Dialogs)', () => {
   it('zaehlt den Fortschritt, ohne ueber den Rand zu laufen', () => {
-    const s = schritte('wechselrichter');
-    expect(fortschritt(s, 2)).toBe('Schritt 2 von 5');
-    expect(fortschritt(s, 99)).toBe('Schritt 5 von 5');
-    expect(fortschritt(s, 0)).toBe('Schritt 1 von 5');
+    const s = ['A', 'B', 'C', 'D'];
+    expect(fortschritt(s, 2)).toBe('Schritt 2 von 4');
+    expect(fortschritt(s, 0)).toBe('Schritt 1 von 4');
+    // Hinter dem letzten Schritt steht das Ergebnis - kein „Schritt 5 von 4".
+    expect(fortschritt(s, 5)).toBe('Fertig');
     expect(fortschrittAnteil(s, 5)).toBe(1);
     expect(fortschrittAnteil([], 1)).toBe(0);
-  });
-
-  it('weiss, dass die Ladesaeulen-Karte nichts anlegt', () => {
-    expect(legtAn('ladesaeule')).toBe(false);
-    expect(legtAn('wechselrichter')).toBe(true);
-    expect(legtAn('eigenbau')).toBe(true);
   });
 });
 

@@ -59,7 +59,8 @@ export const SUB_CHUNK = {
   messwerte: () => import('./pages/MesswerteSection'),
   energiebilanz: () => import('./pages/EnergiebilanzSection'),
   erloese: () => import('./pages/ErloeseSection'),
-  modell: () => import('./pages/AnlagenModellSection'),
+  einzelwerte: () => import('./pages/EinzelwerteSection'),
+  modell: () => import('./pages/AufbauSection'),
   geraet: () => import('./pages/GeraetSeiteSection'),
   box: () => import('./pages/BoxSeiteSection'),
   ladevorgaenge: () => import('./pages/LadevorgaengeSection'),
@@ -68,4 +69,15 @@ export const SUB_CHUNK = {
   technik: () => import('./pages/AnlageTechnik'),
   befehle: () => import('./pages/BefehleSection'),
   prognose: () => import('./pages/PrognosePage'),
+} as const;
+
+/**
+ * Die DIAGRAMME der Verlaufsseiten (Abnehmer: `ErloeseSection`,
+ * `MesswerteSection` und das Vorladen in `AnlagenPage`). Sie tragen die
+ * Diagramm-Bibliothek; als eigenes Stück stehen Kennzahlen, Abrechnung und
+ * Tabellen sofort, und das Diagramm füllt danach seinen freigehaltenen Platz.
+ */
+export const CHART_CHUNK = {
+  erloese: () => import('./components/erloese/ErloeseChart'),
+  energie: () => import('./components/energie/EnergieCharts'),
 } as const;

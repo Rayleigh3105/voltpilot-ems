@@ -243,7 +243,6 @@ type GridObservation struct {
 	FroniusPvKw *float64
 	BatteryKw   *float64
 	SocPct      *float64
-	Age         time.Duration
 }
 
 // --- Der laufende Test -------------------------------------------------------
@@ -284,6 +283,11 @@ type GridTest struct {
 	registerConfirmed bool
 	registerHeldAt    time.Time
 	badCycles         int
+
+	// lastObsAt ist die Zeit des juengsten Messwerts MIT Netzpunkt - die Uhr
+	// der Frische (§3.5). Sie wird in Observe fortgeschrieben und auf dem
+	// Sollwert-Takt in CheckFresh gelesen.
+	lastObsAt time.Time
 
 	// Der Beweis: das laengste Plateau je Schritt, und ob ueberhaupt eines
 	// zustande kam. plateauRun laeuft, plateauBest merkt sich.
@@ -433,6 +437,10 @@ func (s *GridSession) Start(cond GridConditions, now time.Time) (*GridTest, erro
 		BaseFroniusKw: *cond.FroniusPvKw,
 		BaseSocPct:    *cond.SocPct,
 		plateauBest:   map[string]int{},
+		// Die Frische beginnt bei der Messung, mit der Start die Lage
+		// beurteilt hat - nicht beim Armieren: eine 14 s alte Messung ist
+		// eine Sekunde spaeter schon zu alt.
+		lastObsAt: now.Add(-cond.MeasurementAge),
 		// Der Test uebernimmt einen Wechselrichter, der batterieseitig faehrt -
 		// das ist die Ausgangsseite, und daraus folgt, wann der Neutralschritt
 		// emittiert wird.
@@ -616,6 +624,27 @@ func (s *GridSession) NoteRegister(held bool, now time.Time) {
 	}
 }
 
+// CheckFresh ist die Frische-Pruefung auf der TAKT-Uhr (§3.5) - dieselbe Regel
+// wie im K5-Pilotfenster (nativepilot.Session.Publish). Sie gehoert NICHT in
+// Observe: eine Beobachtung ist die Messung selbst, und bleibt die Telemetrie
+// aus, wird Observe gar nicht erst gerufen - eine Altersgrenze dort saehe genau
+// den gefaehrlichen Fall nie. Der Kern ruft sie deshalb in jedem Sollwert-Takt
+// VOR Publish; Publish selbst bleibt die reine Schrittfolge.
+//
+// Meldet true, wenn DIESER Aufruf den Lauf beendet hat.
+func (s *GridSession) CheckFresh(now time.Time) bool {
+	t := s.test
+	if t == nil || !s.Active(now) {
+		return false
+	}
+	age := now.Sub(t.lastObsAt)
+	if age <= GridMeasurementMaxAge {
+		return false
+	}
+	s.Abort(fmt.Sprintf("Die Messwerte sind %d s alt - ohne frische Messung wird nicht weiter kommandiert.", int(age/time.Second)), now)
+	return true
+}
+
 // Observe fuettert einen Messtakt. Er tut DREI Dinge, in dieser Reihenfolge:
 // die Ausgangslage fortschreiben (Extrema, Umgebung), die Abbruch-Huelle
 // pruefen, und - nur wenn alles steht - Plateau-Beweis sammeln.
@@ -624,9 +653,11 @@ func (s *GridSession) Observe(o GridObservation, now time.Time) {
 	if t == nil || !s.Active(now) {
 		return
 	}
-	if o.Age > GridMeasurementMaxAge {
-		s.Abort(fmt.Sprintf("Die Messwerte sind %d s alt - ohne frische Messung wird nicht weiter kommandiert.", int(o.Age/time.Second)), now)
-		return
+	// Nur ein Messwert MIT Netzpunkt ist frisch: an ihm haengen Huelle,
+	// Vorzeichen-Test und Beweis. Ein aelterer Messwert macht den Lauf nicht
+	// frischer, als er schon ist.
+	if o.GridKw != nil && now.After(t.lastObsAt) {
+		t.lastObsAt = now
 	}
 
 	step := t.stepAt(now)

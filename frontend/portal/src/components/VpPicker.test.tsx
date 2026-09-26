@@ -307,6 +307,23 @@ describe('Mehrfachauswahl', () => {
   });
 });
 
+describe('Mehrfachauswahl als Filter-Knopf (`zaehler`)', () => {
+  it('zeigt Namen und Zahl statt Chips - die Werte stehen woanders', () => {
+    const { rerender } = render(
+      <VpPicker ariaLabel="Art filtern" placeholder="Art" zaehler options={ANLAGEN} values={[]} onChangeMany={() => {}} />,
+    );
+    const b = screen.getByRole('combobox', { name: 'Art filtern' });
+    expect(b).toHaveTextContent('Art');
+    expect(within(b).queryByLabelText(/gewählt/)).toBeNull();
+    rerender(
+      <VpPicker ariaLabel="Art filtern" placeholder="Art" zaehler options={ANLAGEN} values={['a', 'c']} onChangeMany={() => {}} />,
+    );
+    expect(b).toHaveTextContent('Art2');
+    expect(within(b).getByLabelText('2 gewählt')).toBeInTheDocument();
+    expect(b).not.toHaveTextContent('Auernheim');
+  });
+});
+
 describe('async: jeder Zustand wird BENANNT, nie als leere Liste gezeigt', () => {
   it('sagt, dass geladen wird', () => {
     render(<VpPicker ariaLabel="Gerät" options={[]} loading onChange={() => {}} />);

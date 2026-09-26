@@ -473,3 +473,37 @@ func TestDeterministicIDShellyChannelIsIdentity(t *testing.T) {
 		t.Fatalf("not deterministic")
 	}
 }
+
+// K6: the leader statements round-trip, and a word this build does not know
+// (a newer image wrote it, then a rollback) falls back to "not stated" - which
+// refuses "Gerät regelt" - instead of becoming permission.
+func TestBalanceLeaderStatementsPersistAndUnknownWordsFailClosed(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := NewBalanceStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := BalanceSettings{PrimaryMeterLocation: "netzpunkt", FurtherStorage: "halten", ExportBackstop: "keiner"}
+	if err := bs.Save(want); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := bs.Load()
+	if err != nil || !ok || got != want {
+		t.Fatalf("round trip: %+v ok=%v err=%v", got, ok, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "balance.json"),
+		[]byte(`{"primary_meter_location":"dach","further_storage":"halten"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err = bs.Load()
+	if err != nil || got.MeterLocation() != "unbekannt" || got.FurtherStorage != "" {
+		t.Fatalf("an unknown word must fail closed: %+v err=%v", got, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "balance.json"),
+		[]byte(`{"primary_grid_not_site_total":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ = bs.Load(); got.MeterLocation() != "woanders" {
+		t.Fatalf("a legacy opt-out is the location \"woanders\": %+v", got)
+	}
+}

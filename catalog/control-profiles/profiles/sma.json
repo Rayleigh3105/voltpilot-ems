@@ -1,0 +1,260 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sma_list"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "speicher": "unbelegt",
+          "wert": "+x (%×100)",
+          "ziel": {
+            "register": 44039
+          }
+        },
+        {
+          "speicher": "unbelegt",
+          "wert": "+x (%×100)",
+          "ziel": {
+            "register": 44041
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "44039 = 44041 = +x."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sma_list",
+        "evcc"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Externe Vorgabe inaktiv (SI: 40151 = 803)."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [
+        "sma_list"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Fenster min",
+          "speicher": "unbelegt",
+          "wert": "−100 % (Entladen)",
+          "ziel": {
+            "register": 44041
+          }
+        },
+        {
+          "hinweis": "Fenster max",
+          "speicher": "unbelegt",
+          "wert": "0 %",
+          "ziel": {
+            "register": 44039
+          }
+        }
+      ],
+      "sicherheit": "D",
+      "wie": "Fenster [Entladen 100 %; 0]."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [
+        "sma_list"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Fenster max",
+          "speicher": "unbelegt",
+          "wert": "x % (Ladegrenze)",
+          "ziel": {
+            "register": 44039
+          }
+        }
+      ],
+      "sicherheit": "D",
+      "wie": "Fenster mit Ladegrenze x %."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [
+        "sma_list"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Fenster min",
+          "speicher": "unbelegt",
+          "wert": "0 %",
+          "ziel": {
+            "register": 44041
+          }
+        },
+        {
+          "hinweis": "Fenster max",
+          "speicher": "unbelegt",
+          "wert": "+100 % Laden",
+          "ziel": {
+            "register": 44039
+          }
+        }
+      ],
+      "sicherheit": "D",
+      "wie": "Fenster [0 %; +100 % Laden] über 44041/44039 – ob die Eigenregelung im Fenster weiterläuft: am Gerät prüfen."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "abregeln",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Dynamische Einspeisebegrenzung über Home Manager (Einstellung); Wirkleistungsgrenze per Modbus je Gerät."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sma_list",
+        "evcc"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "speicher": "unbelegt",
+          "wert": 0,
+          "ziel": {
+            "register": 44039
+          }
+        },
+        {
+          "speicher": "unbelegt",
+          "wert": 0,
+          "ziel": {
+            "register": 44041
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "Fenster 0/0."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sma_list"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "speicher": "unbelegt",
+          "wert": "−x (%×100, Laden negativ)",
+          "ziel": {
+            "register": 44039
+          }
+        },
+        {
+          "speicher": "unbelegt",
+          "wert": "−x (%×100, Laden negativ)",
+          "ziel": {
+            "register": 44041
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "44039 = 44041 = −x (Laden negativ, %×100); SI: 40151 = 802, 40149 = W."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "sma_list"
+    ],
+    "sicherheit": "D",
+    "text": "Fenster-Hebel vorhanden; Einschwingzeit und Messtakt am Gerät messen (K9)."
+  },
+  "eigenmodus": {
+    "sicherheit": "A",
+    "text": "Ja (A). Extern: 40210 = 1079 „External“, Leistungsfenster 44039 (max) / 44041 (min) in %×100 (A)."
+  },
+  "empfehlung": "Stufe 2; bester Totmann – Fenster-Semantik zuerst am Gerät klären.",
+  "fallen": [
+    "Registernummern sind geräteabhängig – eigene Parameterliste exportieren.",
+    "FIX2 (%×100) statt W ist der größte stille Faktor-100-Fehler.",
+    "Laden ist negativ.",
+    "Prognosebasiertes Laden / Home Manager muss aus sein, sonst kämpfen zwei Regler."
+  ],
+  "familie": "Sunny Boy Storage, Sunny Tripower Smart Energy, Sunny Island",
+  "firmware_bedingung": {
+    "gelesen": true,
+    "quellen": [
+      "sma_list"
+    ],
+    "sicherheit": "D",
+    "wert": null,
+    "wie": "Die Registernummern sind geräteabhängig: die Parameterliste des Geräts wird gelesen bzw. exportiert, nie aus einer Tabelle übernommen. Welche Firmware-Stände das externe Leistungsfenster (44039/44041) und den Totmann 41195 tragen, ist unbelegt - am Gerät prüfen (K9)."
+  },
+  "freigabe": "keine",
+  "hersteller": "SMA",
+  "id": "sma",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "Sunny Boy Storage",
+    "Sunny Tripower Smart Energy",
+    "Sunny Island"
+  ],
+  "quellen": [
+    "sma_list",
+    "dd",
+    "evcc"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": 600,
+    "sicherheit": "A",
+    "text": "41195 (Vorgabe 600 s) → Rückfall-Fenster 44035/44037 (A) – der vollständigste Rückfall der Recherche.",
+    "vorhanden": true,
+    "ziel": {
+      "register": 41195
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "A",
+    "speicher": "unbelegt",
+    "text": "Extern aus → Eigenverbrauch; Fenster je Befehl, innerhalb 41195 neu schreiben (A)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "SMA Energy Meter / Sunny Home Manager 2.0 am Netzpunkt."
+  }
+}

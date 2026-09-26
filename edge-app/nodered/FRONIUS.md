@@ -528,6 +528,16 @@ Seit dieser Runde regelt die Box selbst:
   `internal/agent/export_limit_test.go` (Verdrahtung + Komposition +
   Wirksamkeits-Aussage), `curtail-lease.e2e.test.js` EINSPEISE-WACHE
   (Zustellung an echte SunSpec-Register).
+- **Kaskade mit dem Führungsgerät (K6, 24.09.2026).** Regelt der Speicher-
+  Wechselrichter selbst (Eigenmodus mit offener Ladeseite), ist er der
+  Innenkreis und der Wächter der Außenkreis (`guards/exportcascade.go`): die
+  Fronius werden erst abgeregelt, wenn der Speicher nichts mehr aufnimmt; im
+  Negativpreis-Slot regelt ein zweiter Wächter auf Einspeisung 0.
+- **Box tot = keine Grenze.** Nach `WMaxLimPct_RvrtTms` (60 s) läuft jede
+  Einheit wieder voll. Den geräteseitigen Rückhalt (eigene dynamische
+  Leistungsreduzierung mit Fronius-Zähler am Einspeisepunkt) richtet der
+  Installateur ein; die Box warnt, bis er gemeldet ist –
+  [Rückhalt der Einspeisegrenze](../../docs/edge-runtime.md#rückhalt-der-einspeisegrenze-bei-box-ausfall-k6).
 
 ## Ausgeklammert (bewusst)
 

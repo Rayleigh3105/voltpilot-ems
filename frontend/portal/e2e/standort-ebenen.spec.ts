@@ -24,7 +24,10 @@ async function oeffne(page: Page, query: string, breite: number, jetzt = JETZT) 
   await expect(page.locator('.vp-topbar').first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await page.waitForLoadState('networkidle');
-  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+  // Endlose Animationen (der Live-Punkt im Kopf der Geräte-/Box-Seite seit main d1b97ac39) enden nie — gewartet wird
+  // auf alle endlichen.
+  await page.waitForFunction(() => document.getAnimations()
+    .every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity));
 }
 
 async function messe(page: Page) {
@@ -160,10 +163,13 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
       await expect(page.getByRole('heading', { name: 'Box Halle 1', level: 1 })).toBeVisible();
-      await page.getByRole('button', { name: 'Datenquellen und Geräte' }).click();
+      await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
       await expect(page.locator('.vp-box-quellen')).toContainText('DQ-1');
       await expect(page.locator('.vp-box-quellen')).toContainText('Liefert Daten');
       await expect(page.locator('.vp-box-quellen')).toContainText('Budget-Anteil');
+      // „Update planen“ steht seit main d1b97ac39 in „Gerät & Verbindung“ — am Telefon zugeklappt.
+      const details = page.getByTestId('baustein-details');
+      if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) await details.locator(':scope > summary').click();
       await expect(page.getByRole('link', { name: 'Update planen' })).toHaveAttribute('href', '#/edge-updates');
       const m = await messe(page);
       expect(m.dokument, `box-seite-${breite}: Querlauf des Dokuments`).toBe(0);
@@ -175,7 +181,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
   test('AP-06 IP-12 · Quellenübergabe: Prüfung, Folgen, geplanter Wechsel und Rücknahme bei 375/1440', async ({ page }) => {
     for (const breite of [375, 1440]) {
       await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
-      await page.getByRole('button', { name: 'Datenquellen und Geräte' }).click();
+      await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
       await page.getByRole('button', { name: 'Zuständige Box wechseln' }).first().click();
       const dialog = page.getByRole('dialog', { name: 'Zuständige Box wechseln' });
       await expect(dialog).toBeVisible();
@@ -204,7 +210,9 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 
   test('AP-06 IP-12 · Box-Tausch beim Claim bleibt bei ausstehender Zustellung ehrlich (375)', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', 375);
-    await page.getByRole('button', { name: 'Box tauschen' }).click();
+    // „Box tauschen“ steht seit main d1b97ac39 im Menü „⋯“ (Weitere Aktionen) des Box-Kopfs.
+    await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+    await page.getByRole('menuitem', { name: 'Box tauschen' }).click();
     const dialog = page.getByRole('dialog', { name: 'Box tauschen' });
     await dialog.getByLabel('Geräte-ID *').fill('VP-BOX-2027-0090');
     await dialog.getByRole('button', { name: 'Gerät hinzufügen' }).click();

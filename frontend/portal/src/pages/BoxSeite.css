@@ -1,57 +1,14 @@
 /*
- * Die BOX-Seite (Geräteseiten Stufe 1, Gattung A).
- *
- * Sie teilt sich das Sektions-Kleid mit der Geräteseite (`GeraetSeite.css`);
- * eigen ist nur der HELD - die drei Kacheln, die die drei Fragen einer Box
- * beantworten. Sie sind bewusst grösser als die Live-Kacheln eines Geräts:
- * hier gibt es keine Zahlenreihe, sondern drei Aussagen.
+ * Die BOX-Seite auf dem gemeinsamen Kern der Geräteseiten. Eigen ist hier nur
+ * der Weg zur lokalen Oberfläche und die Zwischen-Überschrift der Grenzen, die
+ * der GANZEN Anlage gelten - nicht dem Rechner.
  */
 
-.vp-box-kacheln {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
-  gap: var(--vp-space-3, 12px);
-}
-
-.vp-box-kachel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  /* Der Ton trägt eine schmale Kante - die AUSSAGE steht im Wort daneben. */
-  border-left: 3px solid var(--vp-border, #e5e7eb);
-}
-
-.vp-box-kachel.is-ok {
-  border-left-color: var(--vp-flow-batt, #16a34a);
-}
-
-.vp-box-kachel.is-warn {
-  border-left-color: var(--vp-chart-price, #d97706);
-}
-
-.vp-box-kachel .l {
-  font-size: 0.78rem;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--vp-text-muted, #6b7280);
-}
-
-.vp-box-kachel .v {
-  font-size: 1.35rem;
-  font-weight: 650;
-  line-height: 1.2;
-  color: var(--vp-stat-ink, #111827);
-  /* Eine Adresse oder ein Versions-Stempel darf umbrechen, nie überlaufen. */
-  overflow-wrap: anywhere;
-}
-
-.vp-box-kachel .s,
-.vp-box-kachel .z {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.45;
-  color: var(--vp-text-muted, #6b7280);
+.vp-box-zwischen {
+  margin: var(--vp-space-4, 16px) 0 8px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  font-weight: 700;
 }
 
 .vp-box-oberflaeche {
@@ -80,10 +37,27 @@
   text-decoration: underline;
 }
 
-@media (max-width: 720px) {
-  .vp-box-kacheln {
-    grid-template-columns: 1fr;
-  }
+
+/* Die Geräte an der Box: Punkt · Name, Art und Zustand · Pfeil - in EINER
+   Zeile auch am Telefon; nur der Text darf umbrechen, nie der Pfeil. */
+.vp-box-geraet {
+  flex-wrap: nowrap;
+}
+.vp-box-geraet > .tx {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+.vp-box-geraet > .tx > .st {
+  flex-basis: 100%;
+  margin-left: 0;
+}
+.vp-box-geraet > svg {
+  flex: none;
+  color: var(--vp-c-muted-fg);
 }
 .vp-box-auswahl { display: grid; gap: 8px; max-width: 420px; margin: 18px auto 0; }
 .vp-box-auswahl a, .vp-box-faehigkeiten a { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; color: var(--vp-link); font-weight: 700; }

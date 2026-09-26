@@ -33,7 +33,7 @@
  *     lösen ihn aus (die `applyControlConfirm`-Lektion).
  *   - **Eine gemeldete Nachführung ist die REGEL, kein Widerspruch:** in den
  *     Ausführungs-Modi follow/limit/trim/absorb/deficit_cover/high_soc_charge/surplus_store folgt das Gerät bewusst dem
- *     gemessenen Wert — dort wird nichts behauptet.
+ *     gemessenen Wert, in den drei `autonomous_*`-Modi regelt der Wechselrichter selbst — dort wird nichts behauptet.
  *
  * **Der PAUSEN-Fall** (Live-Vorfall Pilsting/Herzogau 24.08.2026): commanded
  * ≈ 0 (Ruhe/Pause), aber die Physik lädt/entlädt deutlich. Der Deye schiebt den
@@ -95,7 +95,8 @@ export const FEED_IN_FULL_MARGIN_KW = 1;
 /** Die Ausführungs-Modi, in denen das Gerät bewusst dem MESSWERT folgt. */
 const FOLLOWING_MODES: ReadonlySet<string> = new Set([
   'follow', 'limit', 'trim', 'absorb', 'idle_follow', 'deficit_cover', 'high_soc_follow',
-  'high_soc_charge', 'surplus_store', 'autonomous_discharge',
+  'high_soc_charge', 'surplus_store', 'autonomous_discharge', 'autonomous_charge',
+  'autonomous_selfconsumption',
 ]);
 
 /** Der Trailing-Satz jeder Konflikt-Aussage: ein Hinweis, kein Alarm. */

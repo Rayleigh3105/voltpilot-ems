@@ -40,6 +40,11 @@ const BLAETTER = [
   //   die Anlagen-Tabelle und ihre Abdeckungs-Zeile — und die sollen die
   //   Skala nicht unterlaufen (E12 = a: der Pilot zieht jede Fläche nach).
   'PortfolioWelt.css',
+  // Die Balkenliste von „Preise im Zeitraum" und „So verdient Ihre Anlage"
+  // (Konzept „Erlöse · Preise und Verdienst", 25.09.2026) — und das Blatt der
+  // Karte selbst, das bis dahin kein Wächter las.
+  'erloese/Balkenliste.css',
+  'SoVerdient.css',
 ] as const;
 
 const blatt = Object.fromEntries(

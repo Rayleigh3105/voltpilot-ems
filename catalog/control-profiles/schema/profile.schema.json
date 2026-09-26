@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/control-profile/1.0",
+  "title": "VoltPilot Steuerprofil je Gerätefamilie",
+  "description": "Wissen über die Hebel eines Wechselrichters je Absicht (Konzept vp-wechselrichter-eigenregelung-k1 §4). Ein Profil ist KEINE Freigabe: freigegeben wird je Modell + Firmware + Prüfnachweis über das Zertifikat (unplanned-load-native.js CERTIFIED_NATIVE_CAPABILITIES).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "id", "hersteller", "familie", "modelle", "stand", "stufe", "freigabe", "im_repo",
+    "bindung", "firmware_bedingung", "zaehler", "eigenmodus", "uebergabe", "totmann", "schreibbudget",
+    "daempfung", "absichten", "adapter", "fallen", "empfehlung", "quellen"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+    "hersteller": {"type": "string", "minLength": 1},
+    "familie": {"type": "string", "minLength": 1},
+    "modelle": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "stand": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "stufe": {"enum": [1, 2, 3]},
+    "freigabe": {
+      "const": "keine",
+      "description": "Ein Profil schaltet nie etwas frei."
+    },
+    "im_repo": {"type": "string", "minLength": 1},
+    "bindung": {
+      "description": "Wie die Box das Profil zur gewählten Anlage findet (Marke, Registerfamilie und Modelle aus edge-app/core/internal/inverter, Steuerpfad aus der Rückmeldung von Layer 1). null = in der Box nicht angebunden.",
+      "oneOf": [
+        {"type": "null"},
+        {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/bindung"}}
+      ]
+    },
+    "firmware_bedingung": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["gelesen", "wie", "wert", "sicherheit", "quellen"],
+          "properties": {
+            "gelesen": {"const": true, "description": "Die Bedingung liest die Box vom Gerät; nie ein getippter Wert."},
+            "wie": {"type": "string", "minLength": 1},
+            "wert": {"type": ["string", "null"]},
+            "sicherheit": {"$ref": "#/$defs/sicherheit"},
+            "quellen": {"$ref": "#/$defs/quellen"}
+          }
+        }
+      ]
+    },
+    "zaehler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ort", "text", "sicherheit"],
+      "properties": {
+        "ort": {"enum": ["netzpunkt", "netz_oder_last", "system", "herstellerabhaengig", "keiner"]},
+        "text": {"type": "string", "minLength": 1},
+        "sicherheit": {"$ref": "#/$defs/sicherheit_oder_null"}
+      }
+    },
+    "eigenmodus": {"$ref": "#/$defs/textblock"},
+    "uebergabe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "sicherheit", "speicher", "schreibfolge", "beleg", "ruecknahme"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "sicherheit": {"$ref": "#/$defs/sicherheit_oder_null"},
+        "speicher": {"enum": ["ram", "dauerspeicher", "gemischt", "cloud", "unbelegt", "keiner"]},
+        "schreibfolge": {"$ref": "#/$defs/schreibfolge"},
+        "beleg": {"$ref": "#/$defs/beleg"},
+        "ruecknahme": {"$ref": "#/$defs/schreibfolge"}
+      }
+    },
+    "totmann": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vorhanden", "sekunden", "ziel", "text", "sicherheit"],
+      "properties": {
+        "vorhanden": {"type": ["boolean", "null"]},
+        "sekunden": {"type": ["number", "null"], "minimum": 1},
+        "ziel": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/ziel"}]},
+        "text": {"type": "string", "minLength": 1},
+        "sicherheit": {"$ref": "#/$defs/sicherheit_oder_null"}
+      }
+    },
+    "schreibbudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speicher", "dauerspeicher_je_tag", "text", "sicherheit"],
+      "properties": {
+        "speicher": {"enum": ["ram", "dauerspeicher", "gemischt", "unbelegt", "keiner"]},
+        "dauerspeicher_je_tag": {
+          "description": "Höchstzahl der Übergaben/Rücknahmen je Tag, wenn der Hebel Dauerspeicher schreibt (Konzept §6.6, Prüffall F12: höchstens 20).",
+          "type": ["integer", "null"], "minimum": 2, "maximum": 20
+        },
+        "text": {"type": "string", "minLength": 1},
+        "sicherheit": {"$ref": "#/$defs/sicherheit_oder_null"}
+      }
+    },
+    "daempfung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["box_regelt", "einschwingzeit_s", "messtakt_s", "text", "sicherheit", "quellen"],
+      "properties": {
+        "box_regelt": {
+          "description": "Darf die Box der Messung gedämpft nachregeln (Konzept §6.5)? false = nie (Dauerspeicher-Hebel), null = keine Aussage (Vorgabe der Box).",
+          "type": ["boolean", "null"]
+        },
+        "einschwingzeit_s": {"type": ["number", "null"], "minimum": 1, "maximum": 300},
+        "messtakt_s": {"type": ["number", "null"], "minimum": 1, "maximum": 300},
+        "text": {"type": "string", "minLength": 1},
+        "sicherheit": {"$ref": "#/$defs/sicherheit_oder_null"},
+        "quellen": {"$ref": "#/$defs/quellen"}
+      }
+    },
+    "absichten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["E", "E_laden", "E_decken", "E_gedrosselt", "N", "H", "A", "G"],
+      "properties": {
+        "E": {"$ref": "#/$defs/zelle"},
+        "E_laden": {"$ref": "#/$defs/zelle"},
+        "E_decken": {"$ref": "#/$defs/zelle"},
+        "E_gedrosselt": {"$ref": "#/$defs/zelle"},
+        "N": {"$ref": "#/$defs/zelle"},
+        "H": {"$ref": "#/$defs/zelle"},
+        "A": {"$ref": "#/$defs/zelle"},
+        "G": {"$ref": "#/$defs/zelle"}
+      }
+    },
+    "adapter": {
+      "description": "Der heutige Code-Stand des Adapters: Schreibfolgen, wie der Planer sie heute baut. Ein Test (edge-app/nodered/control-profiles.test.js) hält sie mit dem Code zusammen. null = kein Adapter im Repo.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["datei", "planer", "ausfuehrbar", "schreibabstand_s", "folgen", "abweichungen"],
+          "properties": {
+            "datei": {"type": "string", "minLength": 1},
+            "planer": {"type": "string", "minLength": 1},
+            "ausfuehrbar": {"type": "boolean", "description": "false = nur geplant oder im Adapter hart gesperrt."},
+            "schreibabstand_s": {"type": "integer", "minimum": 0},
+            "vorbedingung": {"$ref": "#/$defs/beleg"},
+            "folgen": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["schreibfolge", "beleg"],
+                "properties": {
+                  "schreibfolge": {"$ref": "#/$defs/schreibfolge"},
+                  "beleg": {"$ref": "#/$defs/beleg"}
+                }
+              }
+            },
+            "abweichungen": {"type": "array", "items": {"type": "string", "minLength": 1}}
+          }
+        }
+      ]
+    },
+    "fallen": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "empfehlung": {"type": "string", "minLength": 1},
+    "quellen": {"$ref": "#/$defs/quellen"}
+  },
+  "$defs": {
+    "sicherheit": {
+      "description": "A Herstellerdokument · B an unserem Gerät gemessen oder gelesen · C Feldquelle · D unbelegt, am Gerät prüfen",
+      "enum": ["A", "B", "C", "D"]
+    },
+    "sicherheit_oder_null": {
+      "description": "null nur für einen Text „–“ (trifft nicht zu).",
+      "enum": ["A", "B", "C", "D", null]
+    },
+    "quellen": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9_]+$"}
+    },
+    "textblock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "sicherheit"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "sicherheit": {"$ref": "#/$defs/sicherheit_oder_null"}
+      }
+    },
+    "bindung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["marke", "registerfamilie", "modelle", "steuerpfad"],
+      "properties": {
+        "marke": {"type": "string", "minLength": 1},
+        "registerfamilie": {"type": "string", "minLength": 1},
+        "modelle": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+          ]
+        },
+        "steuerpfad": {"type": ["string", "null"]}
+      }
+    },
+    "ziel": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["register"],
+          "properties": {"register": {"type": "integer", "minimum": 0, "maximum": 65535}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sunspec"],
+          "properties": {"sunspec": {"type": "string", "pattern": "^[0-9]+\\.[A-Za-z][A-Za-z0-9_]*$"}}
+        }
+      ]
+    },
+    "wert": {
+      "description": "Zahl = fester Wert; Text = vom Plan abhängig (z. B. „planwert“).",
+      "type": ["integer", "number", "string"]
+    },
+    "schreibfolge": {
+      "description": "null = unbelegt; [] = nichts zu schreiben (z. B. „Schreiben einstellen“).",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ziel", "wert", "speicher"],
+            "properties": {
+              "ziel": {"$ref": "#/$defs/ziel"},
+              "wert": {"$ref": "#/$defs/wert"},
+              "speicher": {"enum": ["ram", "dauerspeicher", "unbelegt"]},
+              "hinweis": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      ]
+    },
+    "beleg": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ziel", "erwartet"],
+            "properties": {
+              "ziel": {"$ref": "#/$defs/ziel"},
+              "erwartet": {"$ref": "#/$defs/wert"}
+            }
+          }
+        }
+      ]
+    },
+    "zelle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hebel", "wie", "sicherheit", "rueckfall", "quellen", "schreibfolge", "beleg"],
+      "properties": {
+        "hebel": {"enum": ["geraet", "geraet_modus", "netzziel", "sollwert", "box", "zeitplan", "abregeln", "offen", "keiner"]},
+        "wie": {"type": "string", "minLength": 1},
+        "sicherheit": {"$ref": "#/$defs/sicherheit"},
+        "rueckfall": {"enum": ["box", "keiner"]},
+        "quellen": {"$ref": "#/$defs/quellen"},
+        "schreibfolge": {"$ref": "#/$defs/schreibfolge"},
+        "beleg": {"$ref": "#/$defs/beleg"},
+        "adapter_folge": {
+          "description": "Name einer Folge in adapter.folgen; dann muss die Schreibfolge der Zelle genau diese sein.",
+          "type": "string", "minLength": 1
+        }
+      }
+    }
+  }
+}

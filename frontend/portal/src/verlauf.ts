@@ -567,7 +567,7 @@ export function verlaufHash(
     .map((t) => `m=${t.entityId}:${t.channel}`)
     .concat(`z=${rangeWord(range)}`);
   if (at) parts.push(`at=${at}`);
-  return `#/anlage/${siteId}/messwerte?${parts.join('&')}`;
+  return `#/anlage/${siteId}/einzelwerte?${parts.join('&')}`;
 }
 
 // --- Chart series + stats ----------------------------------------------------

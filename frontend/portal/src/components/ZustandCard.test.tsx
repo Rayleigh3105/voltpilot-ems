@@ -62,7 +62,7 @@ describe('ZustandCard', () => {
     // Die gesunden Reste als EINE gedämpfte Zeile.
     expect(container.textContent).toContain('Fahrplan, Steuerung und Speicher: in Ordnung.');
     // Der Hebel führt zur Unterseite.
-    fireEvent.click(getByRole('button', { name: /Komponenten/ }));
+    fireEvent.click(getByRole('button', { name: /Aufbau/ }));
     expect(onOpenSub).toHaveBeenCalledWith('modell');
   });
 

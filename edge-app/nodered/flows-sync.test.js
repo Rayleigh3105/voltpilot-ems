@@ -406,6 +406,58 @@ test('flow Deye decoder reads the External CT grid, alias only as fallback, like
   assert.strictEqual(deyeDecode.decode(narrow, cfg).reading.power_kw, -23.7, 'module agrees on the fallback');
 });
 
+// Halbpaare (vp-wr-deye-blocklesen, DEYE.md „Netz und Batterie: ein Block, ein
+// Stempel"): the grid pair 0x026B/0x02C4 and the battery 0x024E come from ONE
+// fn-0x03 read of the flow's own plan and leave in ONE message under ONE ts.
+// The Herzogau lag (grid ~5 s before battery) is therefore in the Deye's
+// register image - replayed below from the ring at 15:20:10Z/15:20:15Z: the
+// same block shows the new grid beside the old battery register, and the next
+// poll brings the battery with the grid unchanged.
+test('hybrid_3p: grid and battery come from ONE block of the flow plan and ONE message with one ts', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'deye', label: 'Deye', family: 'hybrid_3p',
+    communication: 'solarman_v5',
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const reads = ret[0].deye.reads;
+  const covers = (r, addr) => addr >= r.start && addr < r.start + r.count;
+  const pairAddrs = [0x024e, 0x026b, 0x02c4];
+  const holding = reads.filter((r) => pairAddrs.some((a) => covers(r, a)));
+  assert.strictEqual(holding.length, 1, 'battery and grid words live in exactly one read block');
+  const m = holding[0];
+  for (const a of pairAddrs) assert.ok(covers(m, a), '0x' + a.toString(16) + ' inside the one block');
+  assert.deepStrictEqual({ start: m.start, count: m.count }, { start: 0x024b, count: 0x007a });
+  assert.ok(!m.optional, 'the measurement block is mandatory - no poll without both halves');
+
+  const cfg = { family: 'hybrid_3p', power_scale: 1 };
+  const poll = (gridW, battW) => {
+    const regs = new Array(m.count).fill(0);
+    const put = (addr, val) => { regs[addr - m.start] = val & 0xffff; };
+    put(0x024c, 40); // SoC
+    put(0x024e, battW);
+    put(0x026b, gridW); put(0x02c4, gridW < 0 ? 0xffff : 0);
+    put(0x02a0, 7900);
+    const { ret: out } = runDeyeDecode(cfg, [{ start: m.start, regs }]);
+    assert.ok(Array.isArray(out) && out[0] && out[0].payload, 'one telemetry message per poll');
+    return out[0].payload;
+  };
+  // 15:20:05Z: both halves old. 15:20:10Z: new grid, the register still holds
+  // the old battery. 15:20:15Z: the battery follows, grid unchanged.
+  const before = poll(-5356, 2021);
+  const halfPair = poll(12170, 2021);
+  const after = poll(12170, 2605);
+  for (const p of [before, halfPair, after]) {
+    assert.ok(!isNaN(Date.parse(p.ts)), 'one ts stamps the whole message');
+    assert.ok('power_kw' in p && 'battery_power_kw' in p, 'both halves in the same message');
+    assert.ok(!Object.keys(p).some((k) => k !== 'ts' && /(^|_)(ts|at|at_ms)$/.test(k)),
+      'no per-channel stamp: grid and battery share the message ts');
+  }
+  assert.deepStrictEqual([halfPair.power_kw, halfPair.battery_power_kw], [12.17, 2.021],
+    'the half pair is what the device registers held at that read');
+  assert.deepStrictEqual([after.power_kw, after.battery_power_kw], [12.17, 2.605]);
+});
+
 test('flow Deye decoder DROPS an all-zero (unanswered) hybrid_3p read, like the module', () => {
   const cfg = { family: 'hybrid_3p' };
   const blocks = [{ start: 0x024c, regs: new Array(0x58).fill(0) }];
@@ -1769,6 +1821,121 @@ test('the inline native planner agrees with the module on the generic tier', () 
     'and the same proof registers');
 });
 
+// K4b: the charge-side intents ride the SAME inline planner ("native_window" +
+// intent + window). Inline and module must agree on the bytes (window registers
+// first), on the German reason of every refusal, and on the lever REPORT.
+function k4bInlineGeneric(sp, sel) {
+  const body = byId['auto-control-plan'].func
+    .replace('__NATIVE.CERTIFIED_NATIVE_CAPABILITIES', '__NATIVE.SIMULATOR_NATIVE_CAPABILITIES');
+  assert.ok(body !== byId['auto-control-plan'].func, 'the catalog expression changed - update this guard');
+  return runFunctionNode(body, { msg: { setpoint: sp }, flow: { inverter_config: sel } }).msg;
+}
+const K4B_SEL = {
+  schema_version: '1.0', brand: 'generic_modbus', model: 'sunspec-sim', family: 'sunspec',
+  communication: 'modbus_tcp', control_tier: 1, rated_kw: 50,
+  connection: { ip: '10.0.0.9', port: 502, unit_id: 1, firmware: 'sim' },
+};
+function k4bSp(extra) {
+  return { battery_setpoint_kw: 3.2, control_enabled: true, device_certified: true,
+    grid_charge_allowed: true, battery_mode: 'native_window', ts: new Date().toISOString(),
+    source: 'schedule', ...extra };
+}
+
+test('K4b: the inline planner agrees with the module for every window intent and refusal', () => {
+  const { nativeSelfConsumption } = require('./inverter-control-routing');
+  const nat = require('./unplanned-load-native');
+  const cases = [
+    { battery_native_intent: 'surplus_charge', battery_window_min_kw: 0, battery_window_max_kw: 50 },
+    { battery_native_intent: 'self_consumption', battery_window_min_kw: -50, battery_window_max_kw: 50, pv_limit_kw: 7 },
+    { battery_native_intent: 'self_consumption', battery_window_min_kw: -50, battery_window_max_kw: 4.2 },
+    { battery_native_intent: 'self_consumption', battery_window_min_kw: 1, battery_window_max_kw: 4.2 },
+    { battery_native_intent: 'grid_charge', battery_window_min_kw: -1, battery_window_max_kw: 1 },
+    { battery_native_intent: 'surplus_charge' },
+  ];
+  for (const extra of cases) {
+    const sp = k4bSp(extra);
+    const inline = k4bInlineGeneric(sp, K4B_SEL).control;
+    const module_ = nativeSelfConsumption(K4B_SEL, {
+      controlEnabled: true, deviceCertified: true, solarOnlyCharge: false,
+      catalog: nat.SIMULATOR_NATIVE_CAPABILITIES, pvLimitKw: sp.pv_limit_kw,
+      nativeMode: 'native_window', intent: sp.battery_native_intent,
+      windowMinKw: sp.battery_window_min_kw, windowMaxKw: sp.battery_window_max_kw,
+    });
+    const label = JSON.stringify(extra);
+    if (module_.writes.length === 0) {
+      assert.notStrictEqual(inline.mode, 'native', `inline must refuse too: ${label}`);
+      continue;
+    }
+    assert.strictEqual(inline.mode, 'native', label);
+    assert.strictEqual(inline.nativeIntent, module_.nativeIntent, label);
+    assert.deepStrictEqual(inline.writes.map((w) => ({ addr: w.addr, value: w.value })),
+      module_.writes.map((w) => ({ addr: w.addr, value: w.value })), label);
+    assert.deepStrictEqual(inline.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })),
+      module_.readbacks.map((r) => ({ addr: r.addr, expect: r.expect })), label);
+  }
+  // The refusal reasons are the same sentences (read directly, not via the flow).
+  const vm2 = require('node:vm');
+  const box = { __out: null };
+  vm2.createContext(box);
+  const src = byId['auto-control-plan'].func;
+  const start = src.indexOf('function nativeWindowCheckInline');
+  const end = src.indexOf('function nativeWindowOpsGeneric');
+  vm2.runInContext(src.slice(start, end) + '; __out = nativeWindowCheckInline;', box);
+  const { nativeWindowCheck } = require('./inverter-control-routing');
+  for (const [m, i, lo, hi, sel] of [
+    ['native_window', 'self_consumption', 1, 4, K4B_SEL],
+    ['native_window', 'surplus_charge', 0, 50, K4B_SEL],
+    ['native_window', 'surplus_charge', 0, 20, K4B_SEL],
+    ['native_window', 'self_consumption', -50, 50, { ...K4B_SEL, rated_kw: undefined }],
+    ['native', 'cover_load', undefined, undefined, K4B_SEL],
+  ]) {
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(box.__out(m, i, lo, hi, sel))),
+      nativeWindowCheck(m, i, lo, hi, sel), `${m}/${i} [${lo};${hi}]`);
+  }
+  // vp-wr-deye-tou-schreibbudget: with the core's reference both judge the same
+  // band - a 25-kW battery on a 30-kW inverter, full, just below, capped, one side.
+  for (const [i, lo, hi, nat] of [
+    ['surplus_charge', 0, 25, { minKw: -25, maxKw: 25 }],
+    ['surplus_charge', 0, 24.96, { minKw: -25, maxKw: 25 }],
+    ['surplus_charge', 0, 24.9, { minKw: -25, maxKw: 25 }],
+    ['self_consumption', -20, 25, { minKw: -25, maxKw: 25 }],
+    ['self_consumption', -25, 25, { maxKw: 25 }],
+    ['cover_load', -25, 0, { minKw: -25, maxKw: 25 }],
+  ]) {
+    const sel = { ...K4B_SEL, rated_kw: 30 };
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(box.__out('native_window', i, lo, hi, sel, nat))),
+      nativeWindowCheck('native_window', i, lo, hi, sel, nat), `${i} [${lo};${hi}] ref ${JSON.stringify(nat)}`);
+  }
+});
+
+test('K4b: the inline lever report equals the module report and rides beside msg.control', () => {
+  const { nativeCapabilityReport } = require('./inverter-control-routing');
+  const nat = require('./unplanned-load-native');
+  for (const extra of [{}, { grid_charge_allowed: false }, { battery_mode: 'setpoint' }]) {
+    const sp = k4bSp({ battery_native_intent: 'surplus_charge', battery_window_min_kw: 0, battery_window_max_kw: 50, ...extra });
+    const out = k4bInlineGeneric(sp, K4B_SEL);
+    const module_ = nativeCapabilityReport(K4B_SEL, {
+      deviceCertified: true, catalog: nat.SIMULATOR_NATIVE_CAPABILITIES,
+      solarOnlyCharge: sp.grid_charge_allowed !== true,
+    });
+    assert.deepStrictEqual(out.nativeCapabilities, module_, JSON.stringify(extra));
+    assert.strictEqual(out.control.nativeCapabilities, undefined, 'never inside the plan');
+  }
+  // Production catalog: the generic tier reports an EMPTY list (known: no lever).
+  const prod = runFunctionNode(byId['auto-control-plan'].func,
+    { msg: { setpoint: k4bSp({ battery_mode: 'setpoint' }) }, flow: { inverter_config: K4B_SEL } }).msg;
+  assert.deepStrictEqual(prod.nativeCapabilities, { intents: [], window: false, persistent: false });
+});
+
+test('K4b: a charge-side intent is never handed to the Deye remote tier', () => {
+  const sp = deyeNativeSetpoint({ battery_mode: 'native_window', battery_native_intent: 'surplus_charge',
+    battery_window_min_kw: 0, battery_window_max_kw: 30 });
+  const out = deyeNativePlan(sp);
+  assert.notStrictEqual(out && out.mode, 'native', 'the pilot has exactly ONE lever: E-down');
+  const legacy = deyeNativePlan(deyeNativeSetpoint());
+  assert.strictEqual(legacy.mode, 'native', 'and the E-down hand-over is untouched');
+});
+
 // The DEYE REMOTE tier is the SECOND one the flow covers (the released pilot).
 // Same two guards as the generic tier: the inline copy must agree with the module
 // on the bytes it plans, and on the German reason of every refusal - the reasons
@@ -1778,11 +1945,20 @@ const DEYE_NATIVE_SEL = {
   communication: 'solarman_v5', control_tier: 3, rated_kw: 30,
   connection: { ip: '10.0.0.8', port: 8899, serial: 2985159064, mb_slave_id: 1, power_scale: 10 },
 };
-// The device's own Time-of-Use configuration, as the executor caches it: armed,
-// discharging down to 5 % - i.e. past a 10 % reserve floor - and not grid-charging.
-// `at` is the executor's read timestamp: the plan node treats an OLD cache as
-// "not read" (see the freshness note there), so every fixture carries a live one.
-const DEYE_NATIVE_CFG = { at: Date.now(), tou_enable: 0x00ff, program_target_soc: 5, grid_charge_enable: 0 };
+// The device's own configuration, as the executor caches it: armed, discharging
+// down to 5 % - i.e. past a 10 % reserve floor - and not grid-charging; since
+// vp-wr-deye-tou-schreibbudget with the own-config block (Zero Export To CT, Load
+// First, Solar Sell) E-down judges. `at` is the executor's read timestamp: the
+// plan node treats an OLD cache as "not read" (see the freshness note there), so
+// every fixture carries a live one.
+function deyeNativeCfg({ workMode = 2, tou = 0x00ff, charge = 0 } = {}) {
+  const b = k5OwnBlock(workMode);
+  b[5] = tou;
+  for (let i = 0; i < 6; i++) b[31 + i] = charge; // Program 1..6 Charging
+  return { at: Date.now(), tou_enable: tou, program_target_soc: 5, grid_charge_enable: charge,
+    own_config: b, now_min: 600 };
+}
+const DEYE_NATIVE_CFG = deyeNativeCfg();
 // The remote-mode capability the executor's probe classifies (PR-978 layout).
 function deyeNativeSticky() {
   return { path: 'remote', since: Date.now(), contrary: 0, everRemote: true, seededFromGrant: true };
@@ -1859,7 +2035,7 @@ test('the inline native planner refuses like the module, with the same German re
 
   // 1. The inverter's own Time-of-Use program is not armed: without it the manual
   //    is unambiguous - it will not discharge to the loads.
-  let r = both({}, {}, { cfg: { ...DEYE_NATIVE_CFG, tou_enable: 0x00fe } });
+  let r = both({}, {}, { cfg: deyeNativeCfg({ tou: 0x00fe }) });
   assert.match(r.module_.reason, /Time of Use/);
   assert.strictEqual(r.module_.writes.length, 0);
   // The plan node falls back to the follower, so the reason travels as the WARN;
@@ -1872,9 +2048,25 @@ test('the inline native planner refuses like the module, with the same German re
   assert.notStrictEqual(r.inline.mode, 'native');
 
   // 3. An EEG site whose program still permits grid charging.
-  r = both({ grid_charge_allowed: false }, {}, { cfg: { ...DEYE_NATIVE_CFG, grid_charge_enable: 1 } });
+  r = both({ grid_charge_allowed: false }, {}, { cfg: deyeNativeCfg({ charge: 1 }) });
   assert.match(r.module_.reason, /EEG-Anlage/);
   assert.notStrictEqual(r.inline.mode, 'native');
+
+  // 3b. The SAME EEG site whose program blocks grid charging IS handed over by
+  //     both - the key the executor caches (the precondition ROLE) is the key
+  //     both gates judge. (K3: the module once read a different key and refused
+  //     here while the shipped copy handed over.)
+  r = both({ grid_charge_allowed: false }, {}, { cfg: deyeNativeCfg({ charge: 0 }) });
+  assert.strictEqual(r.module_.writes.length, 1, 'module: ' + r.module_.reason);
+  assert.strictEqual(r.inline.mode, 'native', 'inline: the EEG site with grid charging disabled goes native');
+
+  // 3c. vp-wr-deye-tou-schreibbudget: the Herzogau setting (Work Mode 0 "Selling
+  //     First", ToU active) may sell storage energy - both refuse E-down with the
+  //     same German reason, and nothing is written.
+  r = both({ grid_charge_allowed: false }, {}, { cfg: deyeNativeCfg({ workMode: 0 }) });
+  assert.match(r.module_.reason, /Selling First/);
+  assert.strictEqual(r.module_.writes.length, 0);
+  assert.notStrictEqual(r.inline.mode, 'native', 'inline: Selling First hands nothing over');
 
   // 4. Nothing read at all - the honest "not known", never an assumed zero.
   r = both({}, {}, { cfg: undefined });
@@ -1897,6 +2089,84 @@ test('the inline native planner refuses like the module, with the same German re
   const undated = deyeNativePlan(deyeNativeSetpoint(),
     { cfg: { tou_enable: 0x00ff, program_target_soc: 5, grid_charge_enable: 0 } });
   assert.notStrictEqual(undated.mode, 'native', 'and neither does an undated one');
+});
+
+// K5: the Deye CHARGE side. The candidates are ONE module embedded verbatim
+// (deye-charge-side.js), so the pin is (1) the embed itself and (2) the
+// surrounding glue - which candidate, which reads, which refusal - agreeing with
+// inverter-control-routing.js deyeChargeSideHandOver.
+test('K5: the control plan node embeds the current deye-charge-side.js verbatim', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'deye-charge-side.js'), 'utf8');
+  assert.ok(byId['auto-control-plan'].func.includes(src),
+    'flows.json auto-control-plan is out of sync with deye-charge-side.js - re-run build-flows.js');
+  const facts = JSON.stringify(require('./inverter-control-routing').DEYE_CHARGE_SIDE_FACTS);
+  assert.ok(byId['auto-control-plan'].func.includes('var __DCSF = ' + facts + ';'),
+    'the register facts come straight from the routing module');
+});
+
+// vp-wr-deye-tou-schreibbudget: the ToU day budget is ONE module the executor
+// (counts, holds) and the plan node (hands back once, then plans nothing) embed.
+test('ToU-Schreibbudget: executor and plan node embed the current deye-tou-budget.js verbatim', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'deye-tou-budget.js'), 'utf8');
+  assert.ok(byId['auto-control-exec-deye'].func.includes(src),
+    'the Deye executor is out of sync with deye-tou-budget.js - re-run build-flows.js');
+  assert.ok(byId['auto-control-plan'].func.includes(src),
+    'the control plan node is out of sync with deye-tou-budget.js - re-run build-flows.js');
+});
+
+function k5OwnBlock(workMode) {
+  const spec = require('./deye-charge-side').deyeOwnConfigBlockSpec(
+    require('./inverter-control-routing').DEYE_CONTROL_REG.hybrid_3p);
+  const b = new Array(spec.count).fill(0);
+  b[0] = 1; b[1] = workMode; b[4] = 1; b[5] = 0x00ff; // Load First, Solar Sell, ToU on
+  for (let i = 0; i < 6; i++) { b[13 + i] = 3000; b[25 + i] = 5; } // power, target SoC
+  return b;
+}
+
+test('K5: inline and module agree on the Deye charge side - pilot bytes, reads, refusals, report', () => {
+  const { nativeSelfConsumption, nativeCapabilityReport } = require('./inverter-control-routing');
+  const cfg = { ...DEYE_NATIVE_CFG, own_config: k5OwnBlock(0), now_min: 600 };
+  const both = (spExtra, cfgIn = cfg) => {
+    const sp = deyeNativeSetpoint({ battery_mode: 'native_window', battery_native_duty: undefined,
+      battery_window_min_kw: -30, battery_window_max_kw: 30, grid_charge_allowed: false, ...spExtra });
+    const inline = deyeNativePlan(sp, { cfg: cfgIn });
+    const module_ = nativeSelfConsumption(DEYE_NATIVE_SEL, {
+      controlEnabled: true, deviceCertified: true, solarOnlyCharge: true,
+      deyeSticky: deyeNativeSticky(), deyeOwnConfig: cfgIn, effectiveFloorSocPct: 10,
+      nativeMode: 'native_window', intent: sp.battery_native_intent,
+      windowMinKw: sp.battery_window_min_kw, windowMaxKw: sp.battery_window_max_kw,
+      pilot: sp.native_pilot,
+    });
+    return { inline, module_ };
+  };
+  const bytes = (p) => (p.writes || []).map((w) => [w.addr, w.value]);
+  // 1. Pilot grid_zero: the same five writes, the same proofs, the same reads.
+  let r = both({ battery_native_intent: 'self_consumption', native_pilot: { candidate: 'grid_zero', intent: 'self_consumption' } });
+  assert.strictEqual(r.module_.writes.length, 5, 'module: ' + r.module_.reason);
+  assert.strictEqual(r.inline.mode, 'native');
+  assert.deepStrictEqual(bytes(r.inline), bytes(r.module_));
+  assert.deepStrictEqual(r.inline.readbacks.map((x) => [x.addr, x.expect]), r.module_.readbacks.map((x) => [x.addr, x.expect]));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r.inline.nativePreconditions)), JSON.parse(JSON.stringify(r.module_.preconditions)));
+  assert.strictEqual(r.inline.heartbeat, true); assert.strictEqual(r.module_.heartbeat, true);
+  assert.strictEqual(r.inline.curtailsOwnPv, true); assert.strictEqual(r.module_.curtailsOwnPv, true);
+  // 2. Pilot own_config on the Herzogau configuration: the same German refusal.
+  r = both({ battery_native_intent: 'self_consumption', native_pilot: { candidate: 'own_config', intent: 'self_consumption' } });
+  assert.match(r.module_.reason, /Selling First/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+  assert.ok(r.inline.nativePreconditions.some((p) => p.role === 'own_config' && p.count === 37),
+    'the refused plan still carries the block read (it is what fills the cache)');
+  // 3. No pilot, production catalog: nothing released, both say so.
+  r = both({ battery_native_intent: 'surplus_charge', battery_window_min_kw: 0 });
+  assert.match(r.module_.reason, /Prüfstand/);
+  assert.notStrictEqual(r.inline.mode, 'native');
+  // 4. The report: E-down only, on both sides.
+  const inlineCaps = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: deyeNativeSetpoint({ battery_mode: 'setpoint' }) },
+    flow: { inverter_config: DEYE_NATIVE_SEL, ['deye_path:10.0.0.8:8899']: deyeNativeSticky() },
+  }).msg.nativeCapabilities;
+  const moduleCaps = nativeCapabilityReport(DEYE_NATIVE_SEL, { deviceCertified: true, solarOnlyCharge: false, deyeSticky: deyeNativeSticky() });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(inlineCaps)), moduleCaps);
+  assert.deepStrictEqual(moduleCaps, { intents: ['cover_load'], window: false, persistent: false });
 });
 
 test('the inline native planner refuses every tier it does not cover', () => {

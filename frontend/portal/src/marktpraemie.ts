@@ -103,6 +103,13 @@ export interface MarktpraemieView {
   vorhanden: boolean;
   /** Die eine Hauptaussage mit den ECHTEN Zahlen. */
   note: string;
+  /**
+   * Die nachrechenbare Aufstockungs-Rechnung für sich — gesetzt NUR in der
+   * Lage `aufstockung` und nur, wenn sie aufgeht (dann ist sie zugleich
+   * `note`). Die Karte „So verdient Ihre Anlage" legt sie in einen
+   * Aufklapper, statt sie als Kleingedrucktes im Weg zu haben.
+   */
+  rechnung: string | null;
   /** Ruhige Zusatzzeilen (Vorläufigkeit, „bereits enthalten", Weg dorthin). */
   hinweise: string[];
   /** true, solange ein vorläufiger Monatswert die Aussage noch drehen kann. */
@@ -226,7 +233,21 @@ export function aufstockungsRechnung(input: MarktpraemieInput): string | null {
 
   const menge = num(input.eingespeistKwh);
   const rechnung = `${ct(aw)} − ${ct(mw)} = ${ct(satz)}${NBSP}ct/kWh`;
-  return menge == null ? rechnung : `${rechnung} × ${kwh(menge)} eingespeist`;
+  if (menge == null) return rechnung;
+  // ⚠ Die Prämie gilt nur in Viertelstunden mit Börsenpreis ab 0 ct (§ 51 EEG,
+  //   `EarningsRepository.PREMIUM_ELIGIBLE`). Kam um mehr als einen Cent
+  //   WENIGER an, als „Satz × eingespeiste Menge" ergibt, lag ein Teil der
+  //   Einspeisung bei negativem Preis — dann nennt die Rechnung die Menge, für
+  //   die sie galt. (Mehr als rechnerisch möglich kann nicht ankommen; dort
+  //   bleibt die gewohnte Zeile.)
+  //   Vorher stand dort „× 345,4 kWh eingespeist" neben „+ 4,79 €", obwohl die
+  //   Formel 7,98 € ergab.
+  const eur = num(input.marktpraemieEur);
+  if (eur != null && eur > 0 && (satz * menge) / 100 - eur > 0.01) {
+    const berechtigt = (eur / satz) * 100;
+    return `${rechnung} × ${kwh(berechtigt)} bei Börsenpreis ab 0${NBSP}ct (von ${kwh(menge)} eingespeist)`;
+  }
+  return `${rechnung} × ${kwh(menge)} eingespeist`;
 }
 
 /**
@@ -280,6 +301,7 @@ export function marktpraemie(input: MarktpraemieInput): MarktpraemieView {
           wert: DASH,
           vorhanden: false,
           note: 'Kein anzulegender Wert hinterlegt — ohne ihn lässt sich keine Marktprämie berechnen.',
+          rechnung: null,
           hinweise: ['Sie können ihn unter „Einstellungen · Strompreis & Vergütung" nachtragen.'],
           href,
         })
@@ -295,6 +317,7 @@ export function marktpraemie(input: MarktpraemieInput): MarktpraemieView {
           wert: DASH,
           vorhanden: false,
           note: 'Ihre Anlage wird nicht direkt vermarktet — eine Marktprämie fällt hier nicht an.',
+          rechnung: null,
           hinweise: [],
           vorlaeufigKnapp: false,
           href: null,
@@ -312,6 +335,7 @@ export function marktpraemie(input: MarktpraemieInput): MarktpraemieView {
         mw == null
           ? 'Für diesen Zeitraum ist noch kein Monatsmarktwert Solar veröffentlicht — die Prämie steht damit noch nicht fest.'
           : 'In diesem Zeitraum ist keine Prämie angefallen.',
+      rechnung: null,
       hinweise: [],
       href: null,
     });
@@ -333,6 +357,7 @@ export function marktpraemie(input: MarktpraemieInput): MarktpraemieView {
       wert: euro(0),
       vorhanden: true,
       note,
+      rechnung: null,
       hinweise: knapp ? [VORLAEUFIG_HINWEIS] : [],
       href: null,
     });
@@ -345,6 +370,7 @@ export function marktpraemie(input: MarktpraemieInput): MarktpraemieView {
     wert: euro(eur),
     vorhanden: true,
     note: rechnung ?? ENTHALTEN_HINWEIS,
+    rechnung,
     hinweise: [...(rechnung ? [ENTHALTEN_HINWEIS] : []), ...(knapp ? [VORLAEUFIG_HINWEIS] : [])],
     href: null,
   });

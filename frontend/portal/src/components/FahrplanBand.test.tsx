@@ -89,7 +89,7 @@ describe('FahrplanBand — die kurze Speicher-Fahrplan-Karte', () => {
     expect(container.textContent).toContain('Speicher-Fahrplan');
     // Die Erzählzeile ist die Film-Kurzfassung wörtlich (12:20 läuft laden).
     expect(container.textContent).toMatch(
-      /Jetzt Sonne speichern bis \d{2}:\d{2} Uhr · danach Ruhe · dann Zum Spitzenpreis verkaufen\./,
+      /Jetzt Sonne speichern bis \d{2}:\d{2} Uhr · danach Warten · dann Zum Spitzenpreis verkaufen\./,
     );
     const pill = getByText(PROVENIENZ.geplant.label);
     expect(pill).toHaveAttribute('title', PROVENIENZ.geplant.satz);
@@ -178,5 +178,32 @@ describe('FahrplanBand — die kurze Speicher-Fahrplan-Karte', () => {
     const { getByRole } = renderBand({ onOpen });
     fireEvent.click(getByRole('button', { name: /Fahrplan/ }));
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('FahrplanBand · kompakte Zeile trägt die Bestätigung (UX-Review V-04)', () => {
+  const props = {
+    plantKind: 'eigenverbrauch' as const,
+    now: NOW,
+    loading: false,
+    failed: false,
+    onOpen: () => {},
+    compact: true,
+  };
+
+  it('zeigt den Halbsatz mit Haken als eigene Zeile', () => {
+    const { container } = render(
+      <FahrplanBand {...props} plan={plan()} bestaetigung="Vom Wechselrichter bestätigt · geprüft gerade eben" />,
+    );
+    const status = container.querySelector('.vp-mob-row-status');
+    expect(status?.textContent).toBe('Vom Wechselrichter bestätigt · geprüft gerade eben');
+    expect(status?.querySelector('svg')).not.toBeNull();
+  });
+
+  it('ohne Plan behauptet sie keine Bestätigung', () => {
+    const leer = { ...plan(), slots: [] };
+    const { container } = render(<FahrplanBand {...props} plan={leer} bestaetigung="Vom Wechselrichter bestätigt" />);
+    expect(container.querySelector('.vp-mob-row-status')).toBeNull();
+    expect(container.textContent).toContain(KEIN_PLAN_TEXT);
   });
 });

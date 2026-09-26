@@ -37,13 +37,15 @@ public class ControlStatusRepository {
      *                  older image still reports), the REDUCE-only
      *                  {@code limit} (the cloud's unpriced
      *                  {@code limit_discharge_to_load} right) and the separately
-     *                  certified {@code autonomous_discharge}.
+     *                  certified inverter self-regulation
+     *                  {@code autonomous_discharge|autonomous_charge|autonomous_selfconsumption}.
      * @param direction {@code deepen|reduce}, only for {@code follow} and
      *                  {@code limit} (where it is always {@code reduce}).
      * @param plannedKw the setpoint BEFORE the correction.
      * @param targetKw  the MEASURED value the correction tracks (house deficit
      *                  for follower modes, PV surplus for {@code trim}/{@code absorb}/
-     *                  {@code high_soc_charge}).
+     *                  {@code high_soc_charge}/{@code surplus_store}/{@code autonomous_charge};
+     *                  always null for the two-way {@code autonomous_selfconsumption}).
      */
     public record Execution(String source, String mode, String direction,
             Double plannedKw, Double targetKw, Double effectiveFloorSocPct,

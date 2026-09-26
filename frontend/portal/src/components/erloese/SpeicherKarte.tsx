@@ -17,7 +17,9 @@ import type { SpeicherAussage } from '../../speicherAussage';
  *
  *   „Steuerung heute"    · Betrag            (`savedSteuerungEur`)
  *                        · bzw. „—" + Grund  (ohne Batterie-Stammdaten)
- *   Bestand              · Chip „Kein Abzug"
+ *     Grund in Worten mit Zahl (nur unter einem Minus-Tag, Konzept k1 E3)
+ *   Anker                · „September bisher + 116,94 €" (E4)
+ *   Bestand (Vorsprung)  · Chip „Kein Abzug" (E2)
  *   „Wie wird das berechnet?" (Aufklapper, `children`)
  *
  * ⚠ **REINE ANZEIGE.** Jede Zahl, jedes Wort und jeder Ton kommt aus
@@ -86,7 +88,18 @@ export function SpeicherKarte({
             {nachtrag ? <a href={nachtragHref}>{aussage.hinweis}</a> : aussage.hinweis}
           </span>
         )}
+        {/* Kein nacktes Minus (k1 E1): der Grund des Servers in Worten mit
+            Zahl — Sekundärtext, kein Chip. Ohne Grund steht nur der Chip. */}
+        {aussage.grundZeile && <span className="vp-c-sp-sek vp-c-sp-grund">{aussage.grundZeile}</span>}
       </p>
+
+      {/* Der Anker des größeren Zeitraums (k1 E4) — dieselbe Zahl wie der Reiter. */}
+      {aussage.anker && (
+        <p className="vp-c-sp-anker">
+          <span className="vp-c-sp-anker-label">{aussage.anker.label}</span>
+          <span className="vp-c-sp-anker-wert">{aussage.anker.wert}</span>
+        </p>
+      )}
 
       {/* Ohne Vergleich: der Grund im Klartext, nie eine Ersatzzahl. */}
       {aussage.ohneVergleich && (

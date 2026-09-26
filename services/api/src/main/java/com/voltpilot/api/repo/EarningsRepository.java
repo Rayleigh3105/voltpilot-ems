@@ -4,10 +4,12 @@ import com.voltpilot.api.optimizer.EegRates;
 import com.voltpilot.api.optimizer.OptimizerProperties;
 import com.voltpilot.api.optimizer.SlotEconomics;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -856,15 +858,31 @@ public class EarningsRepository {
      *
      * <p><b>On-the-fly statt persistiert</b> (Skizzen-Option (a), bewusst):
      * der Walk kostet einen zusätzlichen sortierten Scan über die covered
-     * Slots × Batterie-Anlagen - dieselbe Größenordnung wie der
-     * {@code arbitrageSplit}, der auf jedem Request läuft -, braucht weder
-     * Migration noch nightly Job, und die Start-SoC-Verankerung am gemessenen
-     * Fensterbeginn macht ihn fenster-agnostisch.
+     * Slots × Batterie-Anlagen - höchstens einen Monat Vorlauf plus das
+     * Fenster, dieselbe Größenordnung wie {@code range=month} -, braucht weder
+     * Migration noch nightly Job.
      *
-     * <p><b>Start-SoC</b>: der letzte gemessene {@code soc_last_pct}-Eimer
-     * VOR dem Fenster (7-Tage-Rückschau, {@link #SOC_START_LOOKBACK}), sonst
+     * <p><b>EIN durchlaufender Vergleichsspeicher je Anlage (Definition A,
+     * Captain 24.09.2026, Diagnose vp-erloes-zahlen-widerspruch-z1 §5).</b>
+     * Der sture Speicher behält seinen EIGENEN Ladestand über jede
+     * Mitternacht; verankert wird er am gemessenen Ladestand zum
+     * MONATSBEGINN (1., 00:00 Berlin) und an jeder Berliner Monatsgrenze im
+     * Fenster neu. Der Lauf beginnt deshalb immer bei {@code monthStart(from)}:
+     * die Eimer vor {@code from} bringen nur den Vergleichsspeicher auf Stand,
+     * gezählt wird ab {@code from}. Damit ist die Zahl eines Zeitraums die
+     * Summe seiner Tage - Tag(D) ist derselbe Zuwachs wie
+     * {@code dailySaved[D]}, Σ Tage = Monat, Σ Monate = Jahr/Gesamt -, egal
+     * aus welchem Fenster man fragt. Ein Tagesfenster, das am gemessenen
+     * Stand der ECHTEN Anlage um Mitternacht neu startete, schenkte der
+     * Steuerung jeden Übertrag über Mitternacht: die Nachtkosten eines
+     * abends geleerten Speichers stünden dann in keinem Tag (Live-Anlage
+     * September: Summe der Tage 184,19 € gegen Monat 116,94 €).
+     *
+     * <p><b>Anker</b>: der letzte gemessene {@code soc_last_pct}-Eimer VOR
+     * dem Monatsbeginn (7-Tage-Rückschau, {@link #SOC_START_LOOKBACK}), sonst
      * der SoC-Boden wie in der Simulation - Regel + Begründung in
-     * {@link StandardSpeicher.Walk}.
+     * {@link StandardSpeicher.Walk}; gebündelt je (Anlage, Monat) in
+     * {@link #monthAnchorSocPct}.
      *
      * <p><b>Der sture Speicher lädt nie aus dem Netz</b> - auch auf einer
      * {@code netzladen_erlaubt}-Anlage: die Netzladen-Arbitrage ist per
@@ -872,9 +890,10 @@ public class EarningsRepository {
      * Rest-Trick des Aufrufers in {@code saved_steuerung}, wo sie hingehört).
      *
      * <p>Anlagen ohne gepflegte Batterie-Stammdaten fehlen in der Map (siehe
-     * {@link #BATTERY_ASSET_JOIN}); eine Anlage mit Stammdaten, deren sture
-     * Referenz im Fenster schlicht nichts bewegt hat, steht ehrlich mit 0
-     * darin (eine gemessene 0, keine erfundene).
+     * {@link #BATTERY_ASSET_JOIN}), ebenso Anlagen ohne einen covered Slot im
+     * Fenster; eine Anlage mit Stammdaten, deren sture Referenz im Fenster
+     * schlicht nichts bewegt hat, steht ehrlich mit 0 darin (eine gemessene
+     * 0, keine erfundene).
      */
     public Map<UUID, BigDecimal> savedSpeicher(Instant from, Instant to) {
         return savedSpeicher(from, to, null);
@@ -893,63 +912,119 @@ public class EarningsRepository {
      * kann.
      *
      * <p><b>EIN Lauf, zwei Ausgaben.</b> Es ist derselbe Walk wie
-     * {@link #savedSpeicher} - der Ladestand des Referenz-Speichers laeuft
-     * UEBER die Tagesgrenzen hinweg weiter, und ein Tag ist die DIFFERENZ
-     * seines laufenden Gesamtstands an dessen Rand. Ein zweiter, je Tag neu
-     * gestarteter Walk waere eine andere Referenz (jeder Tag begaenne am
-     * Boden), also eine zweite Geldwahrheit ueber dieselbe Anlage.
+     * {@link #savedSpeicher}, und ein Tag ist der Zuwachs seines laufenden
+     * Stands an den Tagesrändern. Weil jeder Walk am Monatsbeginn verankert
+     * ist, liefert die Reihe für einen Tag EXAKT die Zahl, die ein
+     * Tagesfenster für denselben Tag liefert - auch am Reihenanfang, der
+     * früher am gemessenen Stand neu begann (Konzept vp-erloese-minus-winter-k1
+     * §3.3, die Abweichung am 11.09.). Eine zweite Referenz je Fenster gibt es
+     * nicht mehr.
      */
     private Map<UUID, Map<LocalDate, BigDecimal>> savedSpeicherPerDay(Instant from, Instant to) {
         return speicherWalk(from, to, null).perDay();
     }
 
-    /** Was ein Walk hergibt: die Fenster-Summe je Anlage und ihre Tages-Zuwaechse. */
+    /**
+     * Ein Berliner Tag des durchlaufenden Vergleichsspeichers einer Anlage -
+     * der Stand, den die Einordnung eines Tages braucht (Konzept
+     * vp-erloese-minus-winter-k1 §6, §7.2). Alle Energien in kWh über die
+     * covered Slots des Tages.
+     *
+     * @param capacityKwh Nennkapazität des Referenz-Speichers (= des primären)
+     * @param vergleichSocStartKwh Vergleichsspeicher vor dem ersten Slot des Tages
+     * @param vergleichSocEndKwh Vergleichsspeicher nach dem letzten Slot des Tages
+     * @param echtSocEndKwh GEMESSENER Ladestand am Ende DESSELBEN letzten Eimers
+     *     ({@code soc_last_pct}), null wenn dieser Eimer keinen trägt - beide
+     *     Stände beschreiben so denselben Moment
+     * @param pvKwh Erzeugung über die covered Slots des Tages
+     * @param loadKwh Verbrauch über dieselben Slots
+     */
+    public record VergleichTag(
+            LocalDate day,
+            double capacityKwh,
+            double vergleichSocStartKwh,
+            double vergleichSocEndKwh,
+            Double echtSocEndKwh,
+            double pvKwh,
+            double loadKwh) {
+    }
+
+    /** Was ein Walk hergibt: die Fenster-Summe je Anlage, ihre Tages-Zuwaechse und Tages-Staende. */
     private record SpeicherWalk(
             Map<UUID, BigDecimal> total,
-            Map<UUID, Map<LocalDate, BigDecimal>> perDay) {
+            Map<UUID, Map<LocalDate, BigDecimal>> perDay,
+            Map<UUID, Map<LocalDate, VergleichTag>> tage) {
     }
 
     private Map<UUID, BigDecimal> savedSpeicher(Instant from, Instant to, UUID site) {
         return speicherWalk(from, to, site).total();
     }
 
+    /** Der Berliner Monatsbeginn (1., 00:00) des Monats, in dem {@code instant} liegt. */
+    static Instant monthStart(Instant instant) {
+        return instant.atZone(ZONE).toLocalDate().withDayOfMonth(1).atStartOfDay(ZONE).toInstant();
+    }
+
     private SpeicherWalk speicherWalk(Instant from, Instant to, UUID site) {
-        Map<UUID, BigDecimal> startSocPct = startSocPct(from, site);
+        // Der Lauf beginnt am Monatsbeginn des Fensters (Definition A): die
+        // Eimer davor bringen den Vergleichsspeicher nur auf Stand.
+        Instant walkFrom = monthStart(from);
+        Map<UUID, Map<LocalDate, BigDecimal>> anchors = monthAnchorSocPct(walkFrom, to, site);
         Map<UUID, BigDecimal> result = new HashMap<>();
         Map<UUID, Map<LocalDate, BigDecimal>> perDay = new HashMap<>();
+        Map<UUID, Map<LocalDate, VergleichTag>> tage = new HashMap<>();
         // One mutable walk state; rows arrive ordered by (site_id, bucket), so
         // a site change closes the previous site's walk (the arbitrageSplit
-        // shape). walk == null cannot happen for a joined row unless the
+        // shape). batterie == null cannot happen for a joined row unless the
         // asset's values are non-positive - then the master data is broken and
         // nothing is claimed (StandardSpeicher.batterie returns null).
         //
         // The day checkpoint rides the SAME loop: `day`/`dayStartEur` hold the
         // Berlin day currently accumulating and the walk's running total when
-        // it began, so a day's share is the increment - never a restarted walk.
+        // it began, so a day's share is the increment - never a restarted
+        // walk. A new Berlin MONTH starts a new walk at that month's measured
+        // anchor; the window total is the sum of its closed days.
         var state = new Object() {
             UUID site;
+            StandardSpeicher.Batterie batterie;
             StandardSpeicher.Walk walk;
+            YearMonth month;
+            boolean counted;
+            double totalEur;
             LocalDate day;
             double dayStartEur;
+            double daySocStartKwh;
+            double dayPvKwh;
+            double dayLoadKwh;
+            BigDecimal dayEchtSocPct;
 
             void closeDay() {
-                if (site != null && walk != null && day != null) {
+                if (day != null) {
+                    double eur = walk.speicherEur() - dayStartEur;
+                    totalEur += eur;
                     perDay.computeIfAbsent(site, k -> new HashMap<>())
-                            .put(day, BigDecimal.valueOf(walk.speicherEur() - dayStartEur));
+                            .put(day, BigDecimal.valueOf(eur));
+                    double capacity = batterie.capacityKwh();
+                    tage.computeIfAbsent(site, k -> new HashMap<>())
+                            .put(day, new VergleichTag(day, capacity, daySocStartKwh,
+                                    walk.socKwh(),
+                                    dayEchtSocPct == null ? null
+                                            : dayEchtSocPct.doubleValue() / 100.0 * capacity,
+                                    dayPvKwh, dayLoadKwh));
                 }
                 day = null;
             }
 
             void finish() {
                 closeDay();
-                if (site != null && walk != null) {
-                    result.put(site, BigDecimal.valueOf(walk.speicherEur()));
+                if (site != null && counted) {
+                    result.put(site, BigDecimal.valueOf(totalEur));
                 }
             }
         };
         jdbc.query(
                 "WITH " + PRICE_SLOT_CTE
-                        + "SELECT r.site_id, r.pv_kwh, r.load_kwh,"
+                        + "SELECT r.site_id, r.bucket, r.pv_kwh, r.load_kwh, r.soc_last_pct,"
                         + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
                         + " " + importPriceEurKwh + " AS import_price_eur_kwh,"
                         + " " + exportValueEurKwh + " AS export_value_eur_kwh,"
@@ -971,7 +1046,7 @@ public class EarningsRepository {
                     if (!siteId.equals(state.site)) {
                         state.finish();
                         state.site = siteId;
-                        StandardSpeicher.Batterie batterie = StandardSpeicher.batterie(
+                        state.batterie = StandardSpeicher.batterie(
                                 rs.getBigDecimal("capacity_kwh"),
                                 rs.getBigDecimal("max_charge_kw"),
                                 rs.getBigDecimal("max_discharge_kw"),
@@ -980,40 +1055,105 @@ public class EarningsRepository {
                                 rs.getBigDecimal("soc_max_pct"),
                                 rs.getBigDecimal("backup_reserve_soc_pct"),
                                 rs.getBigDecimal("peak_reserve_soc_pct"));
-                        BigDecimal socPct = startSocPct.get(siteId);
-                        state.walk = batterie == null ? null
-                                : new StandardSpeicher.Walk(batterie, socPct == null
-                                        ? null
-                                        : socPct.doubleValue() / 100.0
-                                                * batterie.capacityKwh());
+                        state.walk = null;
+                        state.month = null;
+                        state.counted = false;
+                        state.totalEur = 0;
                     }
-                    if (state.walk != null) {
-                        LocalDate day = rs.getTimestamp("day").toInstant()
-                                .atZone(ZONE).toLocalDate();
-                        if (!day.equals(state.day)) {
-                            state.closeDay();
-                            state.day = day;
-                            state.dayStartEur = state.walk.speicherEur();
-                        }
-                        state.walk.slot(
-                                rs.getDouble("pv_kwh"),
-                                rs.getDouble("load_kwh"),
-                                rs.getDouble("import_price_eur_kwh"),
-                                rs.getDouble("export_value_eur_kwh"));
+                    if (state.batterie == null) {
+                        return;
+                    }
+                    LocalDate day = rs.getTimestamp("day").toInstant()
+                            .atZone(ZONE).toLocalDate();
+                    YearMonth month = YearMonth.from(day);
+                    if (!month.equals(state.month)) {
+                        // Neuverankerung an der Berliner Monatsgrenze: der
+                        // laufende Tag endet hier ohnehin, dann startet der
+                        // Vergleichsspeicher am gemessenen Stand des 1.
+                        state.closeDay();
+                        state.month = month;
+                        BigDecimal socPct = anchors.getOrDefault(siteId, Map.of())
+                                .get(month.atDay(1));
+                        state.walk = new StandardSpeicher.Walk(state.batterie, socPct == null
+                                ? null
+                                : socPct.doubleValue() / 100.0 * state.batterie.capacityKwh());
+                    }
+                    boolean zaehlt = !rs.getTimestamp("bucket").toInstant().isBefore(from);
+                    if (zaehlt && !day.equals(state.day)) {
+                        state.closeDay();
+                        state.day = day;
+                        state.dayStartEur = state.walk.speicherEur();
+                        state.daySocStartKwh = state.walk.socKwh();
+                        state.dayPvKwh = 0;
+                        state.dayLoadKwh = 0;
+                        state.dayEchtSocPct = null;
+                        state.counted = true;
+                    }
+                    double pv = rs.getDouble("pv_kwh");
+                    double load = rs.getDouble("load_kwh");
+                    state.walk.slot(pv, load,
+                            rs.getDouble("import_price_eur_kwh"),
+                            rs.getDouble("export_value_eur_kwh"));
+                    if (zaehlt) {
+                        state.dayPvKwh += pv;
+                        state.dayLoadKwh += load;
+                        state.dayEchtSocPct = rs.getBigDecimal("soc_last_pct");
                     }
                 },
-                args(from, to, site));
+                args(walkFrom, to, site));
         state.finish();
-        return new SpeicherWalk(result, perDay);
+        return new SpeicherWalk(result, perDay, tage);
+    }
+
+    /**
+     * Der Monatsanker des Vergleichsspeichers, gebündelt je (Anlage,
+     * Berliner Monat) für jeden Monat, in dem die Anlage in
+     * {@code [walkFrom, to)} überhaupt Eimer hat: der jüngste
+     * {@code soc_last_pct}-Rollup-Eimer in {@code [Monatsbeginn − 7d,
+     * Monatsbeginn)} (die {@link #rollupSocLast}-Regel). Fehlt er, fehlt der
+     * Eintrag, und der Walk startet am Boden. Die Monatsliste kommt aus den
+     * Daten selbst, damit {@code range=all} (ab EPOCH) keine leeren Jahrzehnte
+     * abfragt.
+     */
+    private Map<UUID, Map<LocalDate, BigDecimal>> monthAnchorSocPct(
+            Instant walkFrom, Instant to, UUID site) {
+        Map<UUID, Map<LocalDate, BigDecimal>> result = new HashMap<>();
+        jdbc.query(
+                "SELECT m.site_id, m.month_start,"
+                        + " (SELECT x.soc_last_pct FROM telemetry_rollup_15m x"
+                        + "   WHERE x.site_id = m.site_id AND x.soc_last_pct IS NOT NULL"
+                        + "     AND x.bucket >= m.month_start - interval '"
+                        + SOC_START_LOOKBACK.toDays() + " days'"
+                        + "     AND x.bucket < m.month_start"
+                        + "   ORDER BY x.bucket DESC LIMIT 1) AS soc_last_pct "
+                        + "FROM (SELECT DISTINCT r.site_id,"
+                        + "   date_trunc('month', r.bucket AT TIME ZONE 'Europe/Berlin')"
+                        + "     AT TIME ZONE 'Europe/Berlin' AS month_start"
+                        + "   FROM telemetry_rollup_15m r"
+                        + "   WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site) + ") m",
+                rs -> {
+                    BigDecimal soc = rs.getBigDecimal("soc_last_pct");
+                    if (soc != null) {
+                        result.computeIfAbsent(rs.getObject("site_id", UUID.class),
+                                        k -> new HashMap<>())
+                                .put(rs.getTimestamp("month_start").toInstant()
+                                        .atZone(ZONE).toLocalDate(), soc);
+                    }
+                },
+                site == null
+                        ? new Object[] {Timestamp.from(walkFrom), Timestamp.from(to)}
+                        : new Object[] {Timestamp.from(walkFrom), Timestamp.from(to), site});
+        return result;
     }
 
     /**
      * Der gemessene Ladestand am Fensterbeginn je Anlage: der jüngste
      * {@code soc_last_pct}-Rollup-Eimer in {@code [from − 7d, from)} (die
      * {@link #rollupSocLast}-Regel, als EINE gebatchte Abfrage für den
-     * Flotten-Pfad). Das Fenster ist auf der Partitionsspalte begrenzt, der
-     * Scan also chunk-klein; für {@code range=all} (from = EPOCH) ist es leer
-     * und jede Anlage startet am Boden.
+     * Flotten-Pfad). Seit Definition A verankert er NICHT mehr den
+     * Vergleichsspeicher (das tut {@link #monthAnchorSocPct}), sondern ist der
+     * echte Stand um 00:00, den die Einordnung eines Tages neben den
+     * Vergleichsspeicher stellt.
      */
     private Map<UUID, BigDecimal> startSocPct(Instant from, UUID site) {
         Map<UUID, BigDecimal> result = new HashMap<>();
@@ -1041,12 +1181,16 @@ public class EarningsRepository {
      * days without one are absent - never a fake zero.
      */
     public Map<UUID, List<DailySaved>> dailySavedPerSite(Instant from, Instant to) {
+        return dailySaved(from, to, null, savedSpeicherPerDay(from, to));
+    }
+
+    private Map<UUID, List<DailySaved>> dailySaved(Instant from, Instant to, UUID site,
+            Map<UUID, Map<LocalDate, BigDecimal>> speicherPerDay) {
         Map<UUID, List<DailySaved>> result = new HashMap<>();
         // Die MESSLATTE der Kundenansicht (Captain 04.09.2026): der Anteil des
         // sturen Speichers je Tag, aus dem der Steuerungs-Anteil als exakter
         // Rest entsteht - derselbe Rest-Trick wie im Fenster-Aggregat, damit
         // Reihe und Summe nie Verschiedenes behaupten.
-        Map<UUID, Map<LocalDate, BigDecimal>> speicherPerDay = savedSpeicherPerDay(from, to);
         jdbc.query(
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id,"
@@ -1061,7 +1205,8 @@ public class EarningsRepository {
                         + PV_ASSET_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
-                        + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
+                        + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
+                        + " AND " + COVERED + " "
                         + "GROUP BY 1, 2 ORDER BY 1, 2",
                 rs -> {
                     BigDecimal saved = rs.getBigDecimal("saved_eur");
@@ -1079,9 +1224,116 @@ public class EarningsRepository {
                                         speicher == null ? null : saved.subtract(speicher)));
                     }
                 },
-                Timestamp.from(from), Timestamp.from(to),
-                Timestamp.from(from), Timestamp.from(to));
+                args(from, to, site));
         return result;
+    }
+
+    /**
+     * Die EINORDNUNG eines Berliner Tages (Konzept vp-erloese-minus-winter-k1
+     * §10 P0): alles, was die Fläche braucht, damit ein Minus der Steuerung
+     * nie allein steht - aus DEMSELBEN durchlaufenden Vergleichsspeicher wie
+     * die Tageszahl selbst, also ohne zweite Wahrheit.
+     *
+     * @param speicherEur der Speicher-Anteil des Tages - bitgleich mit
+     *     {@link #savedSpeicherForSite} für dasselbe Tagesfenster (derselbe
+     *     Walk ab demselben Monatsanker), sodass ein Tages-Aufrufer keinen
+     *     zweiten Walk braucht
+     * @param steuerungEur der Tag selbst ({@code = dailySaved[D].savedSteuerungEur})
+     * @param steuerungVortagEur der Vortag nach derselben Definition (auch über
+     *     eine Monatsgrenze); null ohne covered Slot am Vortag
+     * @param steuerungMonatBisherEur Σ der Tage vom Monatsersten bis einschließlich D
+     * @param vergleichSocStartKwh Vergleichsspeicher um 00:00 (vor dem ersten Slot)
+     * @param vergleichSocEndKwh Vergleichsspeicher nach dem letzten Slot des Tages
+     * @param echtSocStartKwh gemessener Stand vor dem Tag (letzter Eimer, 7-Tage-Rückschau)
+     * @param echtSocEndKwh gemessener Stand am Ende desselben letzten Eimers
+     * @param speicherVorsprungKwh {@code echtSocEndKwh − vergleichSocEndKwh}:
+     *     wie viel MEHR der gesteuerte Speicher gerade hat als der sture
+     * @param pvKwh Erzeugung über die covered Slots des Tages
+     * @param loadKwh Verbrauch über dieselben Slots
+     */
+    public record Tageseinordnung(
+            BigDecimal speicherEur,
+            BigDecimal steuerungEur,
+            BigDecimal steuerungVortagEur,
+            BigDecimal steuerungMonatBisherEur,
+            BigDecimal vergleichSocStartKwh,
+            BigDecimal vergleichSocEndKwh,
+            BigDecimal echtSocStartKwh,
+            BigDecimal echtSocEndKwh,
+            BigDecimal speicherVorsprungKwh,
+            BigDecimal pvKwh,
+            BigDecimal loadKwh) {
+    }
+
+    /**
+     * Die {@link Tageseinordnung} je Anlage für den Berliner Tag
+     * {@code [from, to)} - flottenweit. Anlagen ohne Speicher-Anteil an diesem
+     * Tag (keine Batterie-Stammdaten oder kein covered Slot) fehlen.
+     */
+    public Map<UUID, Tageseinordnung> tageseinordnung(Instant from, Instant to) {
+        return tageseinordnung(from, to, null);
+    }
+
+    /** Die {@link Tageseinordnung} EINER Anlage, oder null. */
+    public Tageseinordnung tageseinordnungForSite(UUID site, Instant from, Instant to) {
+        return tageseinordnung(from, to, site).get(site);
+    }
+
+    private Map<UUID, Tageseinordnung> tageseinordnung(Instant from, Instant to, UUID site) {
+        LocalDate tag = from.atZone(ZONE).toLocalDate();
+        LocalDate vortag = tag.minusDays(1);
+        LocalDate monatsbeginn = tag.withDayOfMonth(1);
+        // EIN Walk und EIN Tagesscan über [min(Vortag, Monatsbeginn), to): der
+        // Walk verankert am Monatsbeginn des Vortags und neu am Monatsersten,
+        // also ist jeder Tag darin dieselbe Zahl wie in jedem anderen Fenster.
+        Instant scanFrom = (vortag.isBefore(monatsbeginn) ? vortag : monatsbeginn)
+                .atStartOfDay(ZONE).toInstant();
+        SpeicherWalk walk = speicherWalk(scanFrom, to, site);
+        Map<UUID, List<DailySaved>> tage = dailySaved(scanFrom, to, site, walk.perDay());
+        Map<UUID, BigDecimal> echtStartPct = startSocPct(from, site);
+        Map<UUID, Tageseinordnung> result = new HashMap<>();
+        tage.forEach((siteId, reihe) -> {
+            VergleichTag stand = walk.tage().getOrDefault(siteId, Map.of()).get(tag);
+            DailySaved heute = null;
+            DailySaved gestern = null;
+            BigDecimal monat = BigDecimal.ZERO;
+            for (DailySaved d : reihe) {
+                if (d.day().equals(tag)) {
+                    heute = d;
+                } else if (d.day().equals(vortag)) {
+                    gestern = d;
+                }
+                if (monat != null && !d.day().isBefore(monatsbeginn) && !d.day().isAfter(tag)) {
+                    monat = d.savedSteuerungEur() == null ? null : monat.add(d.savedSteuerungEur());
+                }
+            }
+            if (heute == null || heute.savedSteuerungEur() == null || stand == null) {
+                return;
+            }
+            BigDecimal startPct = echtStartPct.get(siteId);
+            BigDecimal echtStart = startPct == null ? null
+                    : kwh(startPct.doubleValue() / 100.0 * stand.capacityKwh());
+            BigDecimal echtEnd = stand.echtSocEndKwh() == null ? null : kwh(stand.echtSocEndKwh());
+            BigDecimal vergleichEnd = kwh(stand.vergleichSocEndKwh());
+            result.put(siteId, new Tageseinordnung(
+                    walk.perDay().get(siteId).get(tag),
+                    heute.savedSteuerungEur(),
+                    gestern == null ? null : gestern.savedSteuerungEur(),
+                    monat,
+                    kwh(stand.vergleichSocStartKwh()),
+                    vergleichEnd,
+                    echtStart,
+                    echtEnd,
+                    echtEnd == null ? null : echtEnd.subtract(vergleichEnd),
+                    kwh(stand.pvKwh()),
+                    kwh(stand.loadKwh())));
+        });
+        return result;
+    }
+
+    /** Energie auf drei Nachkommastellen (Wh) - dieselbe Skala wie {@code speicherDeltaKwh}. */
+    private static BigDecimal kwh(double value) {
+        return BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP);
     }
 
     /**

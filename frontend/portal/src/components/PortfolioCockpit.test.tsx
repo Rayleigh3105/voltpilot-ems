@@ -1,19 +1,17 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PortfolioCockpit } from './PortfolioCockpit';
 import { api, type Earnings, type Overview, type OverviewSite, type Site } from '../api';
-import type { Route } from '../nav';
-import { setSelbstauskunft } from '../rollen';
-import { rechteSeed } from '../test/rollenFixtures';
 
 /**
- * Das Portfolio-Cockpit — Stufe 4 (E5) in der **Revision 2** vom 25.08.2026.
+ * Die Übersicht der Flotten-Ebene — Stufe 4 (E5), seit „Meine Anlagen neu"
+ * (Ü1–Ü5 = A) vier Blöcke: Statuszeile, Heute, Jetzt, Ihre Anlagen. Seit dem
+ * Entscheid vom 25.09.2026 gilt das für JEDE Betriebsart; Kennzahlen-Leiste
+ * und Anlagen-Tabelle sind aus dieser Fläche entfallen.
  *
  * Der Leitfall bleibt §4.3 C („Gewerbe, reines Monitoring, 3 Filialen"): bis
- * Stufe 3 standen dort drei von vier Kacheln auf „—". Revision 2 legt darüber
- * die Grammatik des Cockpits — Kopf mit EINER Flotten-Aussage,
- * Kennzahlen-LEISTE statt Icon-Kacheln, EINE Anlagen-Tabelle in zwei Dichten.
+ * Stufe 3 standen dort drei von vier Kacheln auf „—".
  */
 
 const JETZT = new Date();
@@ -103,6 +101,9 @@ const LEERE_ERLOESE = {
   totals: { savedEur: null },
 } as unknown as Earnings;
 
+/** Textinhalt mit normalen statt geschützten Leerzeichen. */
+const nb = (t: string | null | undefined) => (t ?? '').replace(/ /g, ' ');
+
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, 'overview').mockResolvedValue(MONITORING_OVERVIEW);
@@ -111,26 +112,14 @@ beforeEach(() => {
     vorgabe: null,
     eigen: null,
   } as never);
-  // Die Vorschau der aufgeklappten Zeile lädt LAZY; ohne diese zwei Attrappen
-  // liefe sie in einen echten Abruf.
-  vi.spyOn(api, 'schedule').mockResolvedValue({ slots: [], deviceId: null } as never);
-  vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
-  vi.spyOn(api, 'standortZuordnungVorschlag').mockResolvedValue({ gruppen: [], anlagenZahl: 0 });
+  // Die Tageskurven lesen die Tages-Historie; ohne sie entfallen die Kurven,
+  // die Fläche bleibt.
+  vi.spyOn(api, 'history').mockRejectedValue(new Error('keine Historie im Test'));
 });
 
-function renderCockpit(
-  props: Partial<Parameters<typeof PortfolioCockpit>[0]> = {},
-  onNavigate: (r: Route) => void = () => {},
-) {
+function renderCockpit(props: Partial<Parameters<typeof PortfolioCockpit>[0]> = {}) {
   return render(
-    <PortfolioCockpit
-      sites={FILIALEN}
-      onNavigate={onNavigate}
-      onReload={() => {}}
-      betriebsart="endkunde"
-      titel="Portfolio"
-      {...props}
-    />,
+    <PortfolioCockpit sites={FILIALEN} onReload={() => {}} titel="Portfolio" {...props} />,
   );
 }
 
@@ -139,167 +128,69 @@ it('AP-13 Bestandsschutz · Portfolio Übersicht ohne Messfunktion', async () =>
   const fest = <T,>(daten: T): T => JSON.parse(JSON.stringify(daten).replaceAll(JETZT.toISOString(), '2026-09-02T10:19:00Z'));
   vi.spyOn(api, 'overview').mockResolvedValue(fest(MONITORING_OVERVIEW));
   const view = renderCockpit();
-  await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
+  await screen.findByRole('region', { name: 'Ihre Anlagen' });
   expect(view.container.querySelector('[data-testid="uebersicht-bausteine"]')).toBeNull();
   await bestandSnapshot('portfolio-uebersicht', view);
 });
 
-it('AP-02 A6/A15 · Vorschläge ergänzen Karte und Chips, Bestätigen räumt beides ab', async () => {
-  vi.spyOn(api, 'funktionen').mockResolvedValue({
-    unternehmen: {
-      messen: { laeuft_an: 0, standorte: 0, text: null },
-      steuern: { laeuft_an: 0, standorte: 0, text: null },
-    },
-    standorte: [],
-  } as never);
-  vi.spyOn(api, 'standortZuordnungVorschlag').mockResolvedValueOnce({
-    anlagenZahl: 2,
-    gruppen: [
-      { name: 'Werk Ahrenberg – Halle 1', zeitzone: 'Europe/Berlin', adresse: null,
-        anlagen: [{ vorschlagId: 'v1', anlageId: 'f1', anlageName: 'Filiale Nord', gueltigAb: '2025-01-03' }] },
-      { name: 'Werk Ahrenberg – Halle 2', zeitzone: 'Europe/Berlin', adresse: null,
-        anlagen: [{ vorschlagId: 'v2', anlageId: 'f2', anlageName: 'Filiale Süd', gueltigAb: '2025-06-04' }] },
-    ],
-  }).mockResolvedValue({ gruppen: [], anlagenZahl: 0 });
-  const bestaetigen = vi.spyOn(api, 'standortZuordnungBestaetigen').mockResolvedValue({ standortIds: ['st1'], zuordnungen: 2 });
-  const reload = vi.fn();
-  renderCockpit({
-    onReload: reload,
-    ebene: { art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH', standorte: [] },
+/** Öffnet „Anpassen" über das ⋯-Menü und liefert die Anpassen-Leiste. */
+async function anpassenOeffnen(): Promise<HTMLElement> {
+  await screen.findByRole('region', { name: 'Ihre Anlagen' });
+  fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: /Anpassen/ }));
+  return screen.findByRole('region', { name: 'Cockpit anpassen' });
+}
+
+describe('EINE Übersicht für jede Betriebsart (Entscheid 25.09.2026)', () => {
+  it('zeigt die vier Blöcke - keine Kennzahlen-Leiste, keine Anlagen-Tabelle', async () => {
+    renderCockpit();
+    expect(await screen.findByRole('region', { name: 'Ihre Anlagen' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Heute' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Jetzt' })).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Kennzahlen Ihrer Anlagen' })).toBeNull();
   });
-
-  expect(await screen.findByText('Noch nicht zugeordnet')).toBeTruthy();
-  expect(screen.getAllByText('noch nicht zugeordnet')).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button', { name: 'Standorte einrichten' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Alle Anlagen zusammenlegen' }));
-  const felder = screen.getAllByRole('textbox');
-  fireEvent.change(felder[0], { target: { value: 'Werk Ahrenberg' } });
-  fireEvent.change(felder[1], { target: { value: 'Gewerbering 7' } });
-  fireEvent.change(felder[2], { target: { value: '84123' } });
-  fireEvent.change(felder[3], { target: { value: 'Ahrenberg' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Zuordnung bestätigen' }));
-
-  await waitFor(() => expect(bestaetigen).toHaveBeenCalledWith({ gruppen: [{
-    name: 'Werk Ahrenberg', zeitzone: 'Europe/Berlin',
-    adresse: { strasse: 'Gewerbering 7', plz: '84123', ort: 'Ahrenberg', land: 'DE' },
-    vorschlagIds: ['v1', 'v2'],
-  }] }));
-  await waitFor(() => expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull());
-  expect(reload).toHaveBeenCalled();
-}, 20_000);
-
-it('AP-02 O18 · ein reiner Betriebskunde lädt und sieht die Vorschlagsfläche nicht', async () => {
-  setSelbstauskunft(rechteSeed('CB').me);
-  const holen = vi.mocked(api.standortZuordnungVorschlag);
-  renderCockpit({ ebene: { art: 'unternehmen', name: 'Kunststoffwerk Ahrenberg GmbH', standorte: [] } });
-
-  await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-  expect(holen).not.toHaveBeenCalled();
-  expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Standorte einrichten' })).toBeNull();
 });
 
 describe('§4.3 C: der Nur-Monitoring-Kunde sieht ECHTE Zahlen statt „—, —, —"', () => {
-  it('zeigt PV jetzt, Erzeugung, Verbrauch und Netz - summiert über die Filialen', async () => {
+  it('sagt „Jetzt" in Worten - summiert nur über frische Messwerte', async () => {
     renderCockpit();
-    const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    // Σ 13,7 + 13,7 + 13,8 = 41,2 kW - und die Einheit steht als EIGENES,
-    // leises Feld neben der Zahl, nie in ihr.
-    expect(within(leiste).getByText('PV jetzt')).toBeTruthy();
-    expect(within(leiste).getByText('41,2')).toBeTruthy();
+    const jetzt = await screen.findByRole('region', { name: 'Jetzt' });
+    // Σ 13,7 + 13,7 + 13,8 = 41,2 kW.
+    expect(nb(jetzt.textContent)).toMatch(/Sonne\s*41,2 kW\s*alle 3 Anlagen/);
+    expect(nb(jetzt.textContent)).toMatch(/Netz\s*18,8 kW\s*Bezug/);
+    // Kein Speicher in der Flotte → kein Speicher-Wert, nie „—".
+    expect(jetzt.textContent).not.toMatch(/Speicher/);
+  });
+
+  it('summiert Erzeugung und Verbrauch des Tages im Block „Heute"', async () => {
+    renderCockpit();
+    const heute = await screen.findByRole('region', { name: 'Heute' });
     // Σ Energie des Tages - Energie darf man summieren.
-    expect(within(leiste).getByText('Erzeugung heute')).toBeTruthy();
-    expect(within(leiste).getByText('312')).toBeTruthy();
-    expect(within(leiste).getByText('Verbrauch heute')).toBeTruthy();
-    expect(within(leiste).getByText('540')).toBeTruthy();
-    // Bezug und Einspeisung stehen in EINER Zelle und werden nie saldiert.
-    const netz = within(leiste).getByText('Netz heute').closest('div')!;
-    expect(netz.textContent).toContain('360');
-    expect(netz.textContent).toContain('24');
-    expect(within(netz).getByText('Bezug: 3 von 3 Anlagen · Einspeisung: 3 von 3 Anlagen')).toBeTruthy();
+    expect(nb(heute.textContent)).toMatch(/Erzeugt 312,0 kWh/);
+    expect(nb(heute.textContent)).toMatch(/Verbraucht 540,0 kWh/);
   });
 
-  it('lässt die Speicher- und Lastspitzen-Zellen WEG statt sie auf „—" zu stellen', async () => {
+  it('zeigt jede Filiale als Karte mit Satz und Zahlen und verlinkt genau ihre Anlage', async () => {
     renderCockpit();
-    const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    // Genau das war der Befund: eine feste KPI-Zeile mit drei Gedankenstrichen.
-    expect(within(leiste).queryByText('Vermiedene Spitze')).toBeNull();
-    expect(within(leiste).queryByText('Ladepunkte')).toBeNull();
-    // Und der kumulierte Ladestand gibt es seit Revision 2 gar nicht mehr.
-    expect(within(leiste).queryByText(/Ladestand/)).toBeNull();
-  });
-
-  it('nennt jede Filiale und springt in genau ihre Anlage', async () => {
-    const onNavigate = vi.fn();
-    renderCockpit({}, onNavigate);
-    // Der Name ist wie die ganze Zeile der direkte Absprung in die Anlage.
-    fireEvent.click(await screen.findByRole('button', { name: 'Anlage Filiale Süd öffnen' }));
-    await waitFor(() => expect(onNavigate).toHaveBeenCalled());
-    expect(JSON.stringify(onNavigate.mock.calls[0][0])).toContain('f2');
-  });
-
-  it('klappt die Vorschau der Zeile auf - und sagt beim Laden, dass sie lädt', async () => {
-    renderCockpit();
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Details zu Filiale Nord anzeigen' }),
-    );
-    // Laden und „nichts da" sind zwei verschiedene Auskünfte.
-    expect(screen.getByText('Wird geladen …')).toBeTruthy();
-    expect(await screen.findByText('Heute geplant')).toBeTruthy();
-    expect(screen.getByText('Für heute liegt noch kein Fahrplan vor.')).toBeTruthy();
-  });
-});
-
-describe('die Betriebsart steuert NUR die Dichte (E5, Revision 2)', () => {
-  it('beide Rahmen rendern DIESELBE Tabelle - nur die Zeilenhöhe unterscheidet sie', async () => {
-    // Das war der Befund K4: die Betriebsart änderte nicht die Dichte, sondern
-    // den INHALT (Karten gegen Tabelle).
-    const endkunde = renderCockpit({ betriebsart: 'endkunde' });
-    let tabelle = await screen.findByRole('table');
-    expect(tabelle.getAttribute('data-dichte')).toBe('komfortabel');
-    expect(within(tabelle).getByText('Filiale Nord')).toBeTruthy();
-    endkunde.unmount();
-
-    renderCockpit({ betriebsart: 'betreiber' });
-    tabelle = await screen.findByRole('table');
-    expect(tabelle.getAttribute('data-dichte')).toBe('kompakt');
-    expect(within(tabelle).getByText('Filiale Nord')).toBeTruthy();
-    expect(within(tabelle).getByText('Filiale West')).toBeTruthy();
-  });
-
-  it('die KENNZAHLEN sind in beiden Dichten dieselben', async () => {
-    renderCockpit({ betriebsart: 'betreiber' });
-    const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    expect(within(leiste).getByText('41,2')).toBeTruthy();
-    expect(within(leiste).getByText('312')).toBeTruthy();
-  });
-
-  it('die Tabelle lässt eine Spalte WEG, die keine Anlage füllen kann', async () => {
-    // Der §4.3-C-Befund eine Ebene tiefer: eine „Speicher"-Spalte aus lauter
-    // „—" ist genau das Bild, gegen das diese Stufe gebaut ist.
-    renderCockpit({ betriebsart: 'betreiber' });
-    const tabelle = await screen.findByRole('table');
-    expect(within(tabelle).queryByRole('columnheader', { name: /Speicher/ })).toBeNull();
-    // Die Pflicht-Spalten stehen weiter.
-    expect(within(tabelle).getByRole('columnheader', { name: /PV jetzt/ })).toBeTruthy();
-    expect(within(tabelle).getByRole('columnheader', { name: 'Zustand' })).toBeTruthy();
-  });
-
-  it('ein UNBEKANNTER Rahmen rendert die komfortable Dichte (Bestandsneutralität)', async () => {
-    renderCockpit({ betriebsart: null });
-    const tabelle = await screen.findByRole('table');
-    expect(tabelle.getAttribute('data-dichte')).toBe('komfortabel');
+    const anlagen = await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    const nord = within(anlagen).getByText('Filiale Nord').closest('a') as HTMLAnchorElement;
+    expect(nord.getAttribute('href')).toBe('#/anlage/f1');
+    expect(nb(nord.textContent)).toMatch(/Bezieht Strom aus dem Netz/);
+    expect(nb(nord.textContent)).toMatch(/Sonne\s*13,7 kW/);
+    const sued = within(anlagen).getByText('Filiale Süd').closest('a') as HTMLAnchorElement;
+    expect(sued.getAttribute('href')).toBe('#/anlage/f2');
   });
 });
 
 describe('der KOPF: EINE Zeile statt einer Karte', () => {
-  it('sagt die Flotten-Aussage als Unterzeile unter dem Titel', async () => {
+  it('sagt den Zustand der Flotte als Statuszeile unter dem Titel', async () => {
     renderCockpit();
-    expect(await screen.findByText('Alle 3 Anlagen online')).toBeTruthy();
+    expect(await screen.findByText('Alles in Ordnung · 3 Anlagen')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Portfolio', level: 1 })).toBeTruthy();
   });
 
-  it('NENNT die stumme Anlage - und tönt nur dann', async () => {
+  it('NENNT die stumme Anlage - mit Weg dorthin, und tönt nur dann', async () => {
     const alt = new Date(Date.now() - 3 * 60 * 60 * 1000);
     vi.spyOn(api, 'overview').mockResolvedValue({
       ...MONITORING_OVERVIEW,
@@ -316,8 +207,11 @@ describe('der KOPF: EINE Zeile statt einer Karte', () => {
       ],
     } as unknown as Overview);
     renderCockpit({ sites: FILIALEN.slice(0, 2) });
-    const satz = await screen.findByText(/Hof Lindenberg meldet sich/);
-    expect(satz.className).toContain('is-warn');
+    const zeile = (await screen.findByText(/Hof Lindenberg meldet sich/)).closest('p') as HTMLElement;
+    expect(zeile.className).toContain('is-warn');
+    expect(within(zeile).getByRole('link', { name: 'Zur Anlage ›' }).getAttribute('href')).toBe(
+      '#/anlage/f2',
+    );
   });
 
   it('trägt keine Begrüßung mehr - der Titel kommt von der Route', async () => {
@@ -326,18 +220,19 @@ describe('der KOPF: EINE Zeile statt einer Karte', () => {
     expect(screen.queryByText(/Guten Tag/)).toBeNull();
   });
 
-  it('legt die zwei Anlege-Aktionen ins „···"-Menü', async () => {
+  it('legt Anpassen, Anlage anlegen und Gerät hinzufügen ins „···"-Menü - keine großen Knöpfe', async () => {
     renderCockpit();
-    await screen.findByRole('table');
-    // Sie sind erreichbar, aber sie führen den Kopf nicht mehr an.
+    await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    expect(screen.queryByRole('button', { name: 'Anpassen' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(screen.getByText('Anpassen')).toBeTruthy();
     expect(screen.getByText('Anlage anlegen')).toBeTruthy();
     expect(screen.getByText('Gerät hinzufügen')).toBeTruthy();
   });
 });
 
-describe('eine Anwendung mehr bringt ihren Baustein mit', () => {
-  it('mit laufendem Speicher-Fahrplan erscheint der Ladestand - JE ANLAGE, nie kumuliert', async () => {
+describe('eine Anwendung mehr bringt ihren Wert mit', () => {
+  it('mit laufendem Speicher-Fahrplan steht der Ladestand JE ANLAGE, nie gemittelt', async () => {
     vi.spyOn(api, 'overview').mockResolvedValue({
       ...MONITORING_OVERVIEW,
       sites: [
@@ -364,24 +259,22 @@ describe('eine Anwendung mehr bringt ihren Baustein mit', () => {
       },
     } as unknown as Overview);
     renderCockpit({ sites: FILIALEN.slice(0, 2) });
-    const tabelle = await screen.findByRole('table');
-    expect(within(tabelle).getByRole('columnheader', { name: /Speicher/ })).toBeTruthy();
+    const anlagen = await screen.findByRole('region', { name: 'Ihre Anlagen' });
     // Der Ladestand steht bei SEINER Anlage - 100 % beim Haus, 20 % beim
-    // Betrieb. Es gibt keinen Flotten-Wert mehr, weder das ungewichtete
-    // Mittel 60 % noch das gewichtete 26 % (Captain 25.08.2026).
-    const zeilen = within(tabelle).getAllByRole('row');
-    const haus = zeilen.find((r) => r.textContent?.includes('Haus'))!;
-    const betrieb = zeilen.find((r) => r.textContent?.includes('Betrieb'))!;
-    expect(haus.textContent).toContain('100');
-    expect(betrieb.textContent).toContain('20');
-    const leiste = screen.getByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
-    expect(within(leiste).queryByText(/Ladestand|Speicher/)).toBeNull();
+    // Betrieb. Es gibt keinen Flotten-Wert, weder das ungewichtete Mittel
+    // 60 % noch das gewichtete 26 % (Captain 25.08.2026).
+    const haus = within(anlagen).getByText('Haus').closest('a') as HTMLElement;
+    const betrieb = within(anlagen).getByText('Betrieb').closest('a') as HTMLElement;
+    expect(nb(haus.textContent)).toMatch(/Speicher\s*100 %/);
+    expect(nb(betrieb.textContent)).toMatch(/Speicher\s*20 %/);
+    const jetzt = screen.getByRole('region', { name: 'Jetzt' });
+    expect(nb(jetzt.textContent)).not.toMatch(/60 %|26 %/);
     expect(screen.queryByText('nach Speichergröße gewichtet')).toBeNull();
   });
 });
 
 describe('die Ehrlichkeit der leeren Flotte', () => {
-  it('sagt EINEN ruhigen Satz, statt Kacheln mit „—" aufzureihen', async () => {
+  it('stellt ohne Messwerte keinen „Jetzt"-Block mit „—" auf - die Anlagen stehen trotzdem da', async () => {
     vi.spyOn(api, 'overview').mockResolvedValue({
       ...MONITORING_OVERVIEW,
       sites: [
@@ -391,18 +284,17 @@ describe('die Ehrlichkeit der leeren Flotte', () => {
       totals: { ...MONITORING_OVERVIEW.totals, sites: 2 },
     } as unknown as Overview);
     renderCockpit({ sites: FILIALEN.slice(0, 2) });
-    expect(
-      await screen.findByText(/Sobald Ihre Anlagen Messwerte liefern/),
-    ).toBeTruthy();
-    expect(screen.queryByRole('group', { name: 'Kennzahlen Ihrer Anlagen' })).toBeNull();
-    // Die Anlagen selbst stehen trotzdem da - sie sind Pflicht-Baustein.
-    expect(screen.getByText('Neu 1')).toBeTruthy();
+    const anlagen = await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    expect(within(anlagen).getByText('Neu 1')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Jetzt' })).toBeNull();
+    // Fehlend ist keine Null.
+    expect(nb(screen.getByRole('region', { name: 'Heute' }).textContent)).not.toMatch(/0,00 €/);
   });
 
-  it('ein Kunde ohne Anlage bekommt den Einstieg, nie eine leere Tabelle', async () => {
+  it('ein Kunde ohne Anlage bekommt den Einstieg, nie eine leere Übersicht', async () => {
     renderCockpit({ sites: [] });
     expect(await screen.findByText('Noch keine Anlage')).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Ihre Anlagen' })).toBeNull();
   });
 });
 
@@ -410,14 +302,8 @@ describe('Anpassen im Scope KUNDE (Stufe 3, wiederverwendet)', () => {
   it('lädt und speichert das Layout der KUNDEN-Fläche, nie das einer Anlage', async () => {
     const laden = vi.spyOn(api, 'tenantCockpitLayout');
     renderCockpit();
-    await screen.findByRole('table');
+    await screen.findByRole('region', { name: 'Ihre Anlagen' });
     expect(laden).toHaveBeenCalledWith('portfolio');
-  });
-
-  it('bietet „Anpassen" an, sobald die Fläche steht', async () => {
-    renderCockpit();
-    await screen.findByRole('table');
-    expect(screen.getByRole('button', { name: 'Anpassen' })).toBeTruthy();
   });
 
   it('verspricht KEINEN Stern - das Portfolio hat keine Bühne', async () => {
@@ -425,19 +311,13 @@ describe('Anpassen im Scope KUNDE (Stufe 3, wiederverwendet)', () => {
     // den Kunden auf die Suche; der Server lehnt auf dieser Fläche jeden
     // `lead` ohnehin ab.
     renderCockpit();
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Anpassen' }));
-    const leiste = await screen.findByRole('region', { name: 'Cockpit anpassen' });
+    const leiste = await anpassenOeffnen();
     expect(within(leiste).getByText(/Ordnen Sie die Bausteine/).textContent).not.toContain('Stern');
   });
 
-  it('ordnet ZELLEN und SPALTEN, nie Kachel-Hüllen', async () => {
-    // Revision 2: die Bausteine sind Zellen einer Leiste und Spalten einer
-    // Tabelle - eine Hülle um eine Tabellenspalte gibt es nicht.
+  it('ordnet die Bausteine in EINER Liste, nie in Kachel-Hüllen', async () => {
     renderCockpit();
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Anpassen' }));
-    await screen.findByRole('region', { name: 'Cockpit anpassen' });
+    await anpassenOeffnen();
     expect(document.querySelector('.vp-anpassen-liste')).toBeTruthy();
     expect(document.querySelector('.vp-anpassen-huelle')).toBeNull();
   });
@@ -445,17 +325,14 @@ describe('Anpassen im Scope KUNDE (Stufe 3, wiederverwendet)', () => {
   it('sagt an einem UNBEWEGLICHEN Baustein, WO er steht', async () => {
     // Ein „fest" ohne Begründung ist eine Sperre ohne Grund.
     renderCockpit();
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Anpassen' }));
-    await screen.findByRole('region', { name: 'Cockpit anpassen' });
-    expect(screen.getByText('Die Anlagen-Tabelle steht immer zuletzt.')).toBeTruthy();
+    await anpassenOeffnen();
+    expect(screen.getByText('Der Block „Ihre Anlagen" steht immer zuletzt.')).toBeTruthy();
+    expect(screen.queryByText(/Anlagen-Tabelle/)).toBeNull();
   });
 
   it('der Reset SAGT sein Ziel - ohne mit dem Verlust zu drohen', async () => {
     renderCockpit();
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Anpassen' }));
-    const leiste = await screen.findByRole('region', { name: 'Cockpit anpassen' });
+    const leiste = await anpassenOeffnen();
     expect(leiste.textContent).toContain('Danach gilt wieder der VoltPilot-Standard');
     expect(leiste.textContent).not.toContain('wird verworfen');
   });
@@ -471,13 +348,48 @@ describe('Der Kopf und die Reiter der Ebene (#503)', () => {
   });
 
   it('macht sie zum reinen Sprungziel, wenn die Reiter sie schon nennen', async () => {
-    // Seit #503 steht über der Betreiber-Ebene die Krume „Portfolio" UND ein
-    // Reiter „Übersicht" — eine sichtbare dritte Nennung wäre die Dopplung,
-    // die dieses Haus nicht macht. Die Überschrift BLEIBT (Sprungziel), die
-    // Flotten-Aussage führt sichtbar.
+    // Seit #503 steht über der Flotten-Ebene die Krume UND ein Reiter
+    // „Übersicht" — eine sichtbare dritte Nennung wäre die Dopplung, die
+    // dieses Haus nicht macht. Die Überschrift BLEIBT (Sprungziel), die
+    // Statuszeile führt sichtbar.
     renderCockpit({ titelBereitsGenannt: true });
     const h1 = await screen.findByRole('heading', { level: 1, name: 'Portfolio' });
     expect(h1.className).toContain('vp-sr-only');
-    expect(document.querySelector('.vp-portfolio-satz')).not.toBeNull();
+    expect(screen.getByText('Alles in Ordnung · 3 Anlagen')).toBeTruthy();
+  });
+});
+
+describe('Heute: Ergebnis und VoltPilot-Steuerung (Ü1–Ü5 = A)', () => {
+  const ERLOESE_HEUTE = {
+    range: 'day',
+    from: '',
+    to: '',
+    sites: [
+      { id: 'f1', name: 'Filiale Nord', einspeiseErloesEur: 2, eigenverbrauchsWertEur: 4, actualEur: -1.5, savedEur: 0.9, savedSteuerungEur: 0.4, reason: null, series: [], dailySaved: [], coveredSlots: 48 },
+      { id: 'f2', name: 'Filiale Süd', einspeiseErloesEur: 1, eigenverbrauchsWertEur: 2, actualEur: -0.5, savedEur: 0.3, savedSteuerungEur: 0.1, reason: null, series: [], dailySaved: [], coveredSlots: 48 },
+      { id: 'f3', name: 'Filiale West', einspeiseErloesEur: null, eigenverbrauchsWertEur: null, actualEur: null, reason: 'no_prices', series: [], dailySaved: [], coveredSlots: 0 },
+    ],
+    totals: { savedEur: null },
+  } as unknown as Earnings;
+
+  it('führt mit Ergebnis heute und der Kachel VoltPilot-Steuerung', async () => {
+    vi.spyOn(api, 'earnings').mockResolvedValue(ERLOESE_HEUTE);
+    renderCockpit({ titel: 'Meine Anlagen' });
+    const heute = await screen.findByRole('region', { name: 'Heute' });
+    await within(heute).findByText(/VoltPilot-Steuerung/);
+    // (2 + 4 − 0,5) + (1 + 2 − 0,5) = 8,00 € — die Anlage ohne Preise fehlt, zählt nie als 0.
+    expect(nb(heute.textContent)).toMatch(/\+ 8,00 €/);
+    expect(nb(heute.textContent)).toMatch(/\+ 0,50 €/);
+    // Nie die Admin-Zahl gegen „ohne Speicher".
+    expect(nb(heute.textContent)).not.toMatch(/1,20/);
+  });
+
+  it('eine Anlage ohne Tageszahl zeigt „—" in ihrer Karte, nie 0', async () => {
+    vi.spyOn(api, 'earnings').mockResolvedValue(ERLOESE_HEUTE);
+    renderCockpit();
+    const anlagen = await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    await within(screen.getByRole('region', { name: 'Heute' })).findByText(/VoltPilot-Steuerung/);
+    const west = within(anlagen).getByText('Filiale West').closest('a') as HTMLElement;
+    expect(nb(west.textContent)).toMatch(/Heute\s*—/);
   });
 });

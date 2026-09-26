@@ -206,6 +206,37 @@ public class HistoryRepository {
     }
 
     /**
+     * {@link PlannedSavings#steuerungEur} JE ANLAGE in einer Abfrage - der
+     * Flotten-Pfad der Tages-Einordnung ({@code steuerungGruende} auf
+     * {@code /api/v1/earnings?range=day}). Dieselbe Slot-Menge
+     * ({@code DISTINCT ON … generated_at DESC}) und dieselbe Null-Regel wie
+     * {@link #plannedSavings}, nur je {@code site_id} gruppiert; RLS zäunt den
+     * Mandanten. Anlagen ohne vollständige Messlatte fehlen.
+     */
+    public Map<UUID, BigDecimal> plannedSteuerungPerSite(Instant from, Instant to) {
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        jdbc.query(
+                "SELECT site_id,"
+                        + " CASE WHEN count(*) = count(stur_cost_eur)"
+                        + "      THEN sum(stur_cost_eur - cost_eur) END AS steuerung"
+                        + " FROM ("
+                        + "  SELECT DISTINCT ON (site_id, time) site_id, baseline_cost_eur,"
+                        + "    cost_eur, stur_cost_eur"
+                        + "  FROM schedule WHERE time >= ? AND time < ?"
+                        + "  ORDER BY site_id, time, generated_at DESC) s "
+                        + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL "
+                        + "GROUP BY site_id",
+                rs -> {
+                    BigDecimal steuerung = rs.getBigDecimal("steuerung");
+                    if (steuerung != null) {
+                        result.put(rs.getObject("site_id", UUID.class), steuerung);
+                    }
+                },
+                Timestamp.from(from), Timestamp.from(to));
+        return result;
+    }
+
+    /**
      * The labeling context of {@code gridCostEur}: the site's configured
      * tariff kind ({@code dynamisch|fest|ohne}, audit H8) plus whether the
      * import valuation actually engaged a tariff/Preisblatt beyond bare spot

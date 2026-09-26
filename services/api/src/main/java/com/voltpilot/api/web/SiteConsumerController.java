@@ -75,13 +75,16 @@ public class SiteConsumerController {
     private final ConsumerDeviationReader deviation;
     private final ConsumerOverrideService overrideService;
     private final ConsumerOverrideRepository overrides;
+    private final com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch;
 
     public SiteConsumerController(Geltungsbereich geltungsbereich, ConsumerService consumers,
             ConsumerScheduleRepository consumerSchedules,
             ConsumerRuntimeStatusRepository runtimeStatus,
             ConsumerPolicyActivationService activation, ConsumerFulfillmentReader fulfillment,
             ConsumerDeviationReader deviation, ConsumerOverrideService overrideService,
-            ConsumerOverrideRepository overrides) {
+            ConsumerOverrideRepository overrides,
+            com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch) {
+        this.ioSwitch = ioSwitch;
         this.geltungsbereich = geltungsbereich;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
@@ -101,6 +104,30 @@ public class SiteConsumerController {
     public ConsumerOptionsDto options(@PathVariable UUID siteId) {
         requireSite(siteId);
         return consumers.options(siteId);
+    }
+
+    /**
+     * Ein/Aus EINES freien Ausgangs eines I/O-Moduls von der Geräteseite - wie
+     * ein Schalter in Home Assistant: der Zustand bleibt, bis erneut geschaltet
+     * wird. Einen Ausgang, der einem Verbraucher gehört, schaltet dessen
+     * Handeingriff ein (409 mit Hinweis); Ausschalten geht immer.
+     */
+    @PutMapping("/io-modules/{entityId}/outputs/{channel}")
+    @Recht(value = "schalttest.durchfuehren", ziel = RechtZiel.ANLAGE)
+    public com.voltpilot.api.consumers.IoModuleSwitchService.Outcome switchOutput(
+            @PathVariable UUID siteId, @PathVariable UUID entityId, @PathVariable int channel,
+            @RequestBody com.voltpilot.api.consumers.IoModuleSwitchService.Request request,
+            @AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt) {
+        requireSite(siteId);
+        return ioSwitch.set(siteId, entityId, channel, request, jwt == null ? null : jwt.getSubject());
+    }
+
+    /** Die zuletzt gemeldeten Ein-/Ausgänge eines I/O-Moduls (Ebyte M31) samt Zuordnung. */
+    @GetMapping("/io-modules/{entityId}/zustand")
+    public com.voltpilot.api.consumers.ConsumerService.IoModuleStateDto ioModuleState(
+            @PathVariable UUID siteId, @PathVariable UUID entityId) {
+        requireSite(siteId);
+        return consumers.ioModuleState(siteId, entityId);
     }
 
     @GetMapping("/consumers")

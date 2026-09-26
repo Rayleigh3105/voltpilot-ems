@@ -14,14 +14,14 @@ import {
   type SiteComponentTemplate,
   type SiteComponentRow,
 } from '../api';
-import { AnlegenDialog } from './AnlegenDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CenteredConfirmDialog } from './CenteredConfirmDialog';
 import { BatterieAssistent } from './BatterieAssistent';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 import { HEBEL_HINWEIS, HEBEL_INTRO, SKALIERUNG_X10, hebel } from '../testHebel';
-import { komponenteHash } from '../nav';
+import { KATEGORIE_SYMBOL, einrichtenUnterzeile, kategorieVon, modellTitel } from '../geraeteKatalog';
+import { Abschnitt, Abschnitte, EinrichtenFuss, EinrichtenKopf, EinrichtenSeite, type AbschnittZustand } from './Einrichten';
 // Das Bauteil bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
 // auf den Import des Wirts zu verlassen liefert einem zweiten Wirt einen
 // ungestylten Fluss.
@@ -29,14 +29,12 @@ import './KomponenteAssistent.css';
 import './AnlegenFlow.css';
 import * as socSchaetzung from '../socSchaetzung';
 import {
-  ABSCHLUSS_HINWEIS,
   bilanzHinweis,
   fehlendeFelder,
   felder,
   initialeVerbindung,
   modellZusatz,
   nameHilfe,
-  pruefen,
   testErgebnis,
   uebernahmeHinweis,
   type ComponentMatch,
@@ -47,22 +45,16 @@ import {
   type TestZustand,
 } from '../komponentenAssistent';
 import {
-  ABSPRUNG_LABEL,
-  DIALOG_TITEL,
-  WEITERES_LABEL,
-  abschlussTitel,
+  AUTO_TEST_MS,
   feldGruppen,
   geraeteFuerTyp,
-  legtAn,
   neueKomponente,
   rollenWahl,
-  schritte as schritteFuer,
-  typKarten,
+  typFuerTemplate,
   vorschlagRolle,
   type TypId,
 } from '../anlegenFlow';
 import {
-  GESPERRTE_FELDER,
   auswirkungen,
   brauchtVerbindungstest,
   delta,
@@ -96,13 +88,19 @@ function typFuerZeile(row: SiteComponentRow): TypId {
 const UDB_TYP = 'user-defined-battery';
 
 /**
- * Der NEUE ANLEGE-FLUSS (Anlegen-Rework Stufe 2, Konzept
- * `data/vp-anlegen-rework/konzept.md`).
+ * Der ANLEGE-FLUSS nach dem Gerätekatalog (Konzept „Aufbau und
+ * Gerätekatalog", Runde 2, K1–K6 = A).
  *
- * Fünf Schritte im zentrierten Dialog (Rechner) bzw. als Vollbild-Schrittfolge
- * (Telefon): **Was anbinden** (Typ-Karten) → **Gerät wählen** (VpPicker-Suche)
- * → **Verbinden** (Felder je Anbindung, Experten-Angaben unter „Erweitert") →
- * **Testen** (ehrlicher Befund + Hebel + „Trotzdem fortfahren") → **Fertig**.
+ * Art und Modell wählt der Kunde im Katalog (`GeraeteKatalog`); hier steht die
+ * EINRICHTEN-SEITE: EINE Seite im zentrierten Dialog (am Telefon Vollbild) mit
+ * den Abschnitten **Aufgabe** (nur, wo es eine Frage gibt) → **Anschluss**
+ * (Pflichtfelder, Experten-Angaben unter „Weitere Angaben") → **Test mit echten
+ * Werten** (er läuft VON SELBST, sobald der Anschluss vollständig ist: ehrlicher
+ * Befund + Hebel + „Trotzdem fortfahren") → **Name**. Nach dem Speichern sagt
+ * der Wirt, was entstanden ist, und springt darauf (`onFertig`).
+ *
+ * Die Wege ohne Vorlage (Ladesäule, Batterie mit eigenem BMS, Modbus-Gerät)
+ * und die Bearbeitung auf der Geräteseite laufen durch dieselbe Datei.
  *
  * <b>⚠ Die Anlege-SEMANTIK ist unverändert.</b> Dieselben Aufrufe mit denselben
  * Rümpfen (`testComponentConnection` → `matchComponent` → `createComponent`),
@@ -118,11 +116,14 @@ export function AnlegenFlow({
   boxes,
   vorlage,
   initialTyp,
-  initialRolle,
   bearbeiten,
   inlineBearbeitung = false,
   siteName,
   geraetKennung,
+  startTemplate = null,
+  startRolle = null,
+  onZurueck = null,
+  onFertig,
   onClose,
   onSaved,
 }: {
@@ -142,17 +143,11 @@ export function AnlegenFlow({
    */
   vorlage?: SiteComponentTemplate | null;
   /**
-   * Ein freier elektrischer Platz hat die Typfrage bereits beantwortet. Der
-   * Assistent beginnt dann in Schritt 2; „Zurück" führt weiterhin in die
-   * vollständige Typauswahl. Keine Anlege-Semantik ändert sich dadurch.
+   * Ein Weg ohne Vorlage aus dem Gerätekatalog: Ladesäule (`ladesaeule`),
+   * Batterie mit eigenem BMS (`batterie`) oder Modbus-Gerät (`eigenbau`).
+   * Keine Anlege-Semantik ändert sich dadurch.
    */
   initialTyp?: TypId | null;
-  /**
-   * Elektrische Absicht eines konkreten Anlagenbild-Slots. Sie bleibt eine
-   * vorhandene Backend-Rolle (z. B. `inverter` für den Speicherpfad), keine
-   * neue Topologiebehauptung.
-   */
-  initialRolle?: KomponentenRolle | null;
   /** Bestehende stabile Komponente: derselbe Assistent, mit ihren Sollwerten. */
   bearbeiten?: SiteComponentRow | null;
   /**
@@ -164,25 +159,42 @@ export function AnlegenFlow({
   /** Lesbarer Standort und stabile Gerätekennung für die Inline-Identität. */
   siteName?: string;
   geraetKennung?: string | null;
+  /**
+   * Das im Gerätekatalog gewählte Modell (Konzept „Aufbau und Gerätekatalog"):
+   * die Einrichten-Seite öffnet direkt mit ihm - Art und Modell sind beantwortet.
+   */
+  startTemplate?: ComponentTemplate | null;
+  /** Über „Zähler" gewählt: das Gerät misst den Hausanschluss (Netz-Zähler). */
+  startRolle?: KomponentenRolle | null;
+  /** Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). */
+  onZurueck?: (() => void) | null;
+  /** Nach dem Anlegen: was entstanden ist - der Wirt springt darauf und sagt es. */
+  onFertig?: (info: { id: string | null; titel: string; uebernommen: boolean; hinweis?: string | null }) => void;
   onClose: () => void;
   onSaved: (result: SiteComponents) => void;
 }) {
   const [templates, setTemplates] = useState<ComponentTemplate[] | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const edit = bearbeiten ?? null;
-  const [typ, setTyp] = useState<TypId | null>(
-    vorlage ? 'eigenbau' : (edit ? typFuerZeile(edit) : (initialTyp ?? null)),
+  // Aus dem Katalog: die Art folgt aus dem Modell - über „Zähler" misst es den Hausanschluss.
+  const startTyp: TypId | null = startTemplate
+    ? startRolle === 'grid-meter' ? 'zaehler' : typFuerTemplate(startTemplate)
+    : null;
+  // Die Art steht fest, sobald der Fluss öffnet (Katalog, Weg, Vorlage oder Bearbeiten).
+  const [typ] = useState<TypId | null>(
+    vorlage ? 'eigenbau' : (edit ? typFuerZeile(edit) : (startTyp ?? initialTyp ?? null)),
   );
-  const [schritt, setSchritt] = useState(vorlage || initialTyp || edit ? 2 : 1);
+  // Nur die Batterie-Bearbeitung auf der Geräteseite hat noch Schritte.
+  const [batterieSchritt, setBatterieSchritt] = useState<1 | 2 | 3 | 4>(1);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(() =>
-    edit ? kundenRolle(edit) : initialTyp ? vorschlagRolle(initialTyp, [], initialRolle) : null,
+    edit ? kundenRolle(edit) : startTyp ? vorschlagRolle(startTyp, [], startRolle) : null,
   );
-  const [template, setTemplate] = useState<ComponentTemplate | null>(null);
+  const [template, setTemplate] = useState<ComponentTemplate | null>(startTemplate);
   const [templateVersion, setTemplateVersion] = useState<number | null>(
-    edit?.templateVersion ?? null,
+    edit?.templateVersion ?? startTemplate?.version ?? null,
   );
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>(
-    () => ({ ...(edit?.connection ?? {}) }),
+    () => (edit ? { ...(edit.connection ?? {}) } : startTemplate ? initialeVerbindung(startTemplate) : {}),
   );
   const [erweitertOffen, setErweitertOffen] = useState(false);
   const [technikOffen, setTechnikOffen] = useState(false);
@@ -218,9 +230,6 @@ export function AnlegenFlow({
   const [vorhandene, setVorhandene] = useState<string[]>([]);
   const [vorherigeIds, setVorherigeIds] = useState<{ id: string }[]>([]);
   /** Die Komponente, die gerade entstanden ist - BELEGT, nie geraten. */
-  const [neueId, setNeueId] = useState<string | null>(null);
-  const [uebernommen, setUebernommen] = useState(false);
-  const [gespeichert, setGespeichert] = useState<SiteComponents | null>(null);
   /**
    * Die vorhandene Komponente, die dieses Gerät übernimmt - VOM SERVER, nie
    * hier abgeleitet (Alias-Kontinuität). `null` = es entsteht eine neue.
@@ -229,8 +238,6 @@ export function AnlegenFlow({
   const [fragVerwerfen, setFragVerwerfen] = useState(false);
   const [fragRollenwechsel, setFragRollenwechsel] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<BlockedNavigation | null>(null);
-  /** Der Fuß-Platz, in den der Selbstbau-Assistent seine Bedienzeile rendert. */
-  const [fussEl, setFussEl] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -256,14 +263,15 @@ export function AnlegenFlow({
         if (!alive) return;
         const rollen = c.components.filter((r) => r.id !== edit?.id).map((r) => r.role ?? '');
         setVorhandene(rollen);
-        if (initialTyp) {
+        if (startTyp && !edit) {
           setRolle((aktuell) => {
-            const bleibtGueltig = rollenWahl(initialTyp, rollen).some(
-              (wahl) => wahl.rolle === aktuell && wahl.verfuegbar,
-            );
-            return bleibtGueltig
-              ? aktuell
-              : vorschlagRolle(initialTyp, rollen, initialRolle);
+            const wahlen = rollenWahl(startTyp, rollen);
+            const bleibtGueltig = wahlen.some((wahl) => wahl.rolle === aktuell && wahl.verfuegbar);
+            // ⚠ Nur ein AUTOMATISCHER Vorschlag wird nachgeführt: hat die Anlage
+            // schon einen Hauptwechselrichter, meint der Kunde fast immer einen
+            // weiteren Erzeuger (`vorschlagRolle`).
+            const vorschlag = vorschlagRolle(startTyp, rollen, startRolle);
+            return bleibtGueltig && (aktuell === startRolle || wahlen.length === 1) ? aktuell : vorschlag;
           });
         }
         setVorherigeIds(c.components.map((r) => ({ id: r.id })));
@@ -274,7 +282,8 @@ export function AnlegenFlow({
     return () => {
       alive = false;
     };
-  }, [edit?.id, initialRolle, initialTyp, siteId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit?.id, siteId]);
 
   useEffect(() => {
     if (!edit || !templates || template) return;
@@ -288,13 +297,11 @@ export function AnlegenFlow({
   }, [edit, template, templates]);
 
   const alle = useMemo(() => templates ?? [], [templates]);
-  const karten = useMemo(() => typKarten(alle), [alle]);
   const auswahl = useMemo(
     () => (typ ? geraeteFuerTyp(alle, typ) : { templates: [], erweitert: false }),
     [alle, typ],
   );
   const rollen = typ ? rollenWahl(typ, vorhandene) : [];
-  const schritte = schritteFuer(typ);
 
   /**
    * Die Picker-Zeilen: EINE Zeile je Modell, gruppiert nach Marke. Die
@@ -381,25 +388,35 @@ export function AnlegenFlow({
   }, [hatAenderungen, inlineBearbeitung, speichern]);
 
   /**
-   * Der Test läuft beim BETRETEN des Schritts „Testen" von selbst an - der
-   * Schritt heißt so, weil er testet. Ein Knopf davor wäre eine zweite Hürde
-   * vor derselben Handlung; „Erneut testen" steht danebe für den zweiten Anlauf.
+   * Der Test läuft im Schritt „Verbinden" VON SELBST, sobald alle Pflichtfelder
+   * stehen (E4) - ohne einen Knopf davor, der nur eine zweite Hürde vor
+   * derselben Handlung wäre. Während getippt wird, wartet er, bis die Eingabe
+   * ruht (`AUTO_TEST_MS`); wer das Feld verlässt, stößt ihn sofort an. So
+   * prüft nicht jeder Tastendruck die Box. „Erneut testen" bleibt für den
+   * zweiten Anlauf.
    */
   const laeuft = useRef(false);
+  /** Jeder Lauf trägt eine Nummer; ein Ergebnis zu einer ÄLTEREN Eingabe verfällt. */
+  const testLauf = useRef(0);
+  const letzteEingabe = useRef(0);
+  const [anstoss, setAnstoss] = useState(0);
   useEffect(() => {
-    if (schritt !== 4 || typ === 'eigenbau' || typ === 'batterie' || typ === 'ladesaeule')
+    // Auf der Einrichten-Seite läuft er, sobald alles dasteht; die Bearbeitung
+    // auf der Geräteseite prüft ausdrücklich per Knopf.
+    if (inlineBearbeitung || typ === 'eigenbau' || typ === 'batterie' || typ === 'ladesaeule')
       return;
     if (!template || !testNoetig || testZustand !== 'ungeprueft' || laeuft.current) return;
-    void testen();
+    if (fehlend.length > 0) return;
+    const seitEingabe = Date.now() - letzteEingabe.current;
+    const t = window.setTimeout(() => void testen(), Math.max(0, AUTO_TEST_MS - seitEingabe));
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schritt, template, testNoetig, testZustand, typ]);
+  }, [template, testNoetig, testZustand, typ, fehlend.length, verbindung, anstoss]);
 
-  function waehleTyp(id: TypId) {
-    setTyp(id);
-    setRolle(vorschlagRolle(id, vorhandene));
-    setTemplate(null);
-    setTemplateVersion(null);
-    setSchritt(2);
+  /** Ein Feld verlassen = fertig getippt: der Test darf sofort laufen. */
+  function feldVerlassen() {
+    letzteEingabe.current = 0;
+    setAnstoss((n) => n + 1);
   }
 
   function waehleTemplate(ref: string) {
@@ -437,6 +454,9 @@ export function AnlegenFlow({
       else delete out[socSchaetzung.SOC_VOLTAGE_KEY];
       return out;
     });
+    letzteEingabe.current = Date.now();
+    testLauf.current += 1;
+    laeuft.current = false;
     setTestZustand('ungeprueft');
     setTestText(null);
     setOhneKanal(null);
@@ -450,6 +470,10 @@ export function AnlegenFlow({
     );
     setVerbindung((v) => ({ ...v, [field.key]: normalized }));
     // Jede Änderung entwertet den Beleg - genau das ist der Sinn der Pflicht.
+    // Auch ein Lauf, der gerade noch unterwegs ist, gilt der ALTEN Eingabe.
+    letzteEingabe.current = Date.now();
+    testLauf.current += 1;
+    laeuft.current = false;
     setTestZustand('ungeprueft');
     setTestText(null);
     // ... und damit auch die Ausnahme: sie galt GENAU dieser Verbindung.
@@ -471,9 +495,8 @@ export function AnlegenFlow({
         window.setTimeout(() => document.getElementById('anlegen-modell')?.focus(), 0);
         return;
       }
-      // Zurück zur Modellwahl. Der Picker öffnet auf dem GEWÄHLTEN Modell,
-      // seine Marken-Gruppe steht damit im Bild.
-      setSchritt(2);
+      // Zurück in den Katalog: dort steht die Modellwahl.
+      onZurueck?.();
       return;
     }
     if (!h.feld) return;
@@ -484,7 +507,6 @@ export function AnlegenFlow({
     // ⚠ Das Feld liegt eine Ebene zurück - und womöglich unter „Erweitert".
     // Ein Sprung ins Eingeklappte wäre ein Klick ins Unsichtbare.
     if (inlineBearbeitung) setTechnikOffen(true);
-    else setSchritt(3);
     if (gruppen.erweitert.some((f) => f.key === h.feld)) setErweitertOffen(true);
     window.setTimeout(() => {
       const el = document.getElementById(`anlegen-${h.feld}`);
@@ -497,6 +519,7 @@ export function AnlegenFlow({
 
   async function testen() {
     if (!template) return;
+    const lauf = ++testLauf.current;
     laeuft.current = true;
     setTestZustand('laeuft');
     setTestText(null);
@@ -512,12 +535,14 @@ export function AnlegenFlow({
         connection: verbindungFuerSpeichern(template, verbindung),
         entityId: edit?.id,
       });
+      if (lauf !== testLauf.current) return;
       const ergebnis = testErgebnis(antwort);
       setTestText(ergebnis);
       setTestZustand(ergebnis.zustand);
       if (ergebnis.override?.channel === 'soc_pct') setSocAngeboten(true);
       if (ergebnis.zustand === 'bestanden') void frageUebernahme();
     } catch (e) {
+      if (lauf !== testLauf.current) return;
       setTestZustand('fehlgeschlagen');
       setTestText({
         zustand: 'fehlgeschlagen',
@@ -525,7 +550,7 @@ export function AnlegenFlow({
         messwerte: [],
       });
     } finally {
-      laeuft.current = false;
+      if (lauf === testLauf.current) laeuft.current = false;
     }
   }
 
@@ -573,12 +598,19 @@ export function AnlegenFlow({
       const result = edit
         ? await api.updateComponent(siteId, edit.id, body)
         : await api.createComponent(siteId, body);
-      setNeueId(edit?.id ?? neueKomponente(vorherigeIds, result.components, uebernahme?.entityId));
-      setUebernommen(Boolean(uebernahme) || Boolean(edit));
+      const neu = edit?.id ?? neueKomponente(vorherigeIds, result.components, uebernahme?.entityId);
+      if (!edit) {
+        onSaved(result);
+        onFertig?.({
+          id: neu,
+          titel: name.trim() || uebernahme?.label?.trim() || template.modelLabel,
+          uebernommen: Boolean(uebernahme),
+        });
+        onClose();
+        return;
+      }
       setVorherigeIds(result.components.map((r) => ({ id: r.id })));
       setVorhandene(result.components.map((r) => r.role ?? ''));
-      setSchritt(5);
-      setGespeichert(result);
       onSaved(result);
     } catch (e) {
       setFehler(e instanceof ApiError
@@ -647,125 +679,6 @@ export function AnlegenFlow({
     if (navigation) window.setTimeout(navigation.resume, 0);
   }
 
-  /** Ein zweiter Durchlauf, ohne den Dialog zu schließen. */
-  function nochEins() {
-    setTyp(null);
-    setSchritt(1);
-    setRolle(null);
-    setTemplate(null);
-    setTemplateVersion(null);
-    setVerbindung({});
-    setSocVolt(socSchaetzung.leereEingabe());
-    setSocAngeboten(false);
-    setErweitertOffen(false);
-    setTestZustand('ungeprueft');
-    setTestText(null);
-    setOhneKanal(null);
-    setName('');
-    setKwp('');
-    setFehler(null);
-    setNeueId(null);
-    setUebernommen(false);
-    setUebernahme(null);
-  }
-
-  function zurueck() {
-    if (schritt <= 1) return;
-    setSchritt(schritt - 1);
-  }
-
-  const selbstbauSchritt = Math.min(Math.max(schritt - 1, 1), 4) as 1 | 2 | 3 | 4;
-
-  /** Die Bedienzeile am Fuß - je Schritt genau die zwei Wege, die es gibt. */
-  // Die Ladesäulen-Karte legt nichts an - sie hat deshalb keinen „Fertig".
-  const istFertig =
-    typ !== null
-    && legtAn(typ)
-    && schritt === (typ === 'eigenbau' || typ === 'batterie' ? 6 : 5);
-
-  function fuss() {
-    if (istFertig) {
-      return (
-        <>
-          <Button variant="ghost" onClick={nochEins}>
-            {WEITERES_LABEL}
-          </Button>
-          {neueId ? (
-            <Button
-              onClick={() => {
-                window.location.hash = komponenteHash(siteId, neueId);
-                onClose();
-              }}
-            >
-              {ABSPRUNG_LABEL}
-            </Button>
-          ) : (
-            <Button onClick={onClose}>Schließen</Button>
-          )}
-        </>
-      );
-    }
-    if (typ === 'eigenbau' || typ === 'batterie') {
-      /*
-        Der Selbstbau- bzw. Batterie-Assistent BEHÄLT seine Bedienzeile (nur er
-        weiß, wann „Weiter" freigibt) - sie wird hier nur hineingerendert, damit
-        auch diese Wege am Telefon eine klebende Fußzeile haben.
-      */
-      return <div className="vp-anlegen-navslot" ref={setFussEl} />;
-    }
-    if (typ === 'ladesaeule') {
-      return (
-        <>
-          <Button variant="ghost" onClick={zurueck}>
-            Zurück
-          </Button>
-          <Button onClick={onClose}>Fertig</Button>
-        </>
-      );
-    }
-    if (schritt === 2) {
-      return (
-        <>
-          <Button variant="ghost" onClick={zurueck}>
-            Zurück
-          </Button>
-          <Button onClick={() => setSchritt(3)} disabled={!template}>
-            Weiter
-          </Button>
-        </>
-      );
-    }
-    if (schritt === 3) {
-      return (
-        <>
-          <Button variant="ghost" onClick={zurueck}>
-            Zurück
-          </Button>
-          <Button onClick={() => setSchritt(4)} disabled={fehlend.length > 0}>
-            Weiter
-          </Button>
-        </>
-      );
-    }
-    if (schritt === 4) {
-      return (
-        <>
-          <Button variant="ghost" onClick={zurueck}>
-            Zurück
-          </Button>
-          <Recht aktion="geraet.einrichten"><Button
-            onClick={anlegen}
-            disabled={speichern || (testNoetig && testZustand !== 'bestanden' && !ohneKanal)
-              || !rolle || (Boolean(edit) && aenderungen.length === 0)}
-          >
-            {speichern ? 'Speichere …' : edit ? 'Änderungen speichern' : 'Komponente anlegen'}
-          </Button></Recht>
-        </>
-      );
-    }
-    return null;
-  }
-
   /*
    * BESTEHENDES Gerät auf seiner EIGENEN Seite: kein Portal, kein Scrim, keine
    * künstliche Schrittzahl. Die seltene Technik bleibt vollständig erhalten,
@@ -796,8 +709,8 @@ export function AnlegenFlow({
         </header>
         <BatterieAssistent
           siteId={siteId}
-          schritt={selbstbauSchritt}
-          onSchritt={(st) => setSchritt(st + 1)}
+          schritt={batterieSchritt}
+          onSchritt={setBatterieSchritt}
           navPortal={null}
           bearbeiten={{
             entityId: edit.id,
@@ -1132,224 +1045,161 @@ export function AnlegenFlow({
     );
   }
 
-  return (
-    <AnlegenDialog
-      titel={edit ? 'Gerät bearbeiten' : DIALOG_TITEL}
-      schritte={schritte}
-      aktiv={schritt}
-      onClose={onClose}
-      onBack={schritt > 1 && !istFertig ? zurueck : null}
-      footer={fuss()}
-    >
-      {ladeFehler && <p className="vp-assist-error" role="alert">{ladeFehler}</p>}
+  /*
+   * Die EINRICHTEN-SEITE eines Katalog-Geräts (Konzept „Aufbau und
+   * Gerätekatalog", Runde 2): Art und Modell sind im Katalog beantwortet. EINE
+   * Seite statt Schritten - die Aufgabe (nur wo es eine Frage gibt), der
+   * Anschluss, der Test mit echten Werten (er läuft von selbst) und der Name.
+   * Gespeichert wird erst mit Beleg: bestandener Test oder die abgenickte
+   * Ausnahme. Aufrufe und Rümpfe sind dieselben wie zuvor im Assistenten.
+   */
+  if (!edit && template && typ && typ !== 'eigenbau' && typ !== 'batterie' && typ !== 'ladesaeule') {
+    const symbol = KATEGORIE_SYMBOL[typ === 'zaehler' ? 'zaehler' : kategorieVon(template)];
+    const vorschlag = vorschlagRolle(typ, vorhandene, startRolle);
+    const rolleOk = rollen.some((r) => r.rolle === rolle && r.verfuegbar);
+    const rollenFrage = rollen.length > 1 || typ === 'zaehler' || !rolleOk;
+    const belegt = testZustand === 'bestanden' || Boolean(ohneKanal);
+    const nr = { anschluss: rollenFrage ? 2 : 1, test: rollenFrage ? 3 : 2, name: rollenFrage ? 4 : 3 };
+    // Kurz: welche Angaben es sind, steht im Kopf („Sie brauchen") und an den Feldern.
+    const fehlendText = fehlend.length === 1 ? `es fehlt: ${fehlend[0].label}` : `${fehlend.length} Angaben fehlen`;
+    const testStand: { zustand: AbschnittZustand; stand: string | null } =
+      fehlend.length > 0
+        ? { zustand: 'spaeter', stand: null }
+        : testZustand === 'bestanden'
+          ? { zustand: 'fertig', stand: 'bestanden' }
+          : testZustand === 'fehlgeschlagen'
+            ? ohneKanal
+              ? { zustand: 'fertig', stand: 'mit Ausnahme' }
+              : { zustand: 'fehler', stand: 'nicht bestanden' }
+            : { zustand: 'aktiv', stand: 'läuft von selbst' };
+    const grund = speichern
+      ? null
+      : !rolleOk
+        ? rollen.find((r) => !r.verfuegbar)?.grund ?? 'Wählen Sie die Aufgabe in Ihrer Anlage.'
+        : fehlend.length > 0
+          ? 'Speichern geht, sobald der Test echte Werte zeigt.'
+          : testZustand === 'fehlgeschlagen' && !ohneKanal
+            ? 'Ohne gültige Werte des Geräts wird nicht gespeichert.'
+            : !belegt
+              ? 'Der Test läuft …'
+              : kwpUngueltig
+                ? 'Geben Sie eine gültige Leistung größer als 0 kWp ein.'
+                : null;
 
-      {/* 1 · Was möchten Sie anbinden? Die Typ-Karten aus der Katalog-Typ-
-          Dimension (Captain-Entscheidung 2: Gerätetyp zuerst). */}
-      {schritt === 1 && (
-        <section>
-          <h3 className="vp-assist-h">Was möchten Sie anbinden?</h3>
-          <div className="vp-anlegen-typen">
-            {karten.map((k) => (
-              <button
-                key={k.id}
-                type="button"
-                className="vp-anlegen-typ"
-                data-testid={`typ-${k.id}`}
-                onClick={() => waehleTyp(k.id)}
-              >
-                <span className="vp-anlegen-typ-i">
-                  <Icon name={k.icon} size={20} />
-                </span>
-                <strong>{k.label}</strong>
-                <span className="vp-anlegen-typ-h">{k.hint}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Die Ladesäulen-Karte legt weiterhin NICHTS an (§13.4) - die Säule
-          verbindet sich selbst. Hier steht der ANBINDE-ASSISTENT, derselbe
-          Körper wie im Drawer der Ladevorgänge-Seite: eine zweite Kopie wären
-          zwei Wahrheiten über denselben Weg. */}
-      {schritt >= 2 && typ === 'ladesaeule' && (
-        <section data-testid="typ-ladesaeule">
-          <LadesaeuleAnbinden siteId={siteId} device={box} devices={boxes} />
-        </section>
-      )}
-
-      {/* Der Eigenbau-Weg: die Schritte des Selbstbau-Baukastens SIND die
-          Schritte 2-5 dieses Flusses (Konzept Stufe 2). */}
-      {schritt >= 2 && schritt <= 5 && typ === 'eigenbau' && (
-        <SelbstbauAssistent
-          siteId={siteId}
-          vorlage={vorlage}
-          schritt={selbstbauSchritt}
-          onSchritt={(s) => setSchritt(s + 1)}
-          navPortal={fussEl}
-          onBack={() => (vorlage ? onClose() : setSchritt(1))}
-          onSaved={(result) => {
-            setNeueId(neueKomponente(vorherigeIds, result.components));
-            setUebernommen(false);
-            setVorherigeIds(result.components.map((r) => ({ id: r.id })));
-            setSchritt(6);
-            onSaved(result);
-          }}
-        />
-      )}
-
-      {/* Der Batterie-Weg (P5d): der EIGENE Anschluss eines Batteriemanagements.
-          Seine vier Fragen SIND die Schritte 2-5 dieses Flusses - dieselbe
-          Bauform wie der Selbstbau-Weg darüber. */}
-      {schritt >= 2 && schritt <= 5 && typ === 'batterie' && (
-        <BatterieAssistent
-          siteId={siteId}
-          schritt={selbstbauSchritt}
-          onSchritt={(s) => setSchritt(s + 1)}
-          navPortal={fussEl}
-          bearbeiten={
-            edit && edit.entityType === UDB_TYP
-              ? { entityId: edit.id, label: edit.label ?? null, connection: edit.connection ?? null }
-              : null
-          }
-          onBack={() => (edit ? onClose() : setSchritt(1))}
-          onSaved={(result) => {
-            setNeueId(neueKomponente(vorherigeIds, result.components));
-            setUebernommen(false);
-            setVorherigeIds(result.components.map((r) => ({ id: r.id })));
-            setSchritt(6);
-            onSaved(result);
-          }}
-        />
-      )}
-
-      {/* 2 · Gerät wählen - EIN Picker mit den Marken als Gruppen. */}
-      {schritt === 2 && typ && typ !== 'eigenbau' && typ !== 'batterie' && typ !== 'ladesaeule' && (
-        <section>
-          <h3 className="vp-assist-h">{edit ? 'Gerät und Aufgabe' : 'Welches Gerät ist es?'}</h3>
-          {edit && (
-            <div className="vp-edit-identity" role="note">
-              <strong>{edit.label?.trim() || 'Gerät ohne Anzeigenamen'}</strong>
-              <span>{[
-                template?.brandLabel ?? edit.brand,
-                template?.modelLabel ?? edit.model,
-              ].filter(Boolean).join(' ') || 'Technische Angaben unbekannt'}</span>
-              <p>Die Geräte-ID bleibt unverändert. Messhistorie, Transaktionen, Befehle und Audit werden fortgeführt.</p>
-            </div>
-          )}
-          {/* Die einzige echte Rest-Frage der Typ-Karten: ein Wechselrichter
-              kann das Herz der Anlage ODER ein weiterer Erzeuger sein. Jede
-              andere Karte beantwortet sie selbst - dann steht hier nichts. */}
-          {rollen.length > 1 && (
-            <div className="vp-assist-roles" data-testid="rollen-wahl">
-              {rollen.map((r) => (
-                <button
-                  key={r.rolle}
-                  type="button"
-                  className={`vp-assist-role${rolle === r.rolle ? ' is-on' : ''}${
-                    r.verfuegbar ? '' : ' is-soon'
-                  }`}
-                  disabled={!r.verfuegbar}
-                  aria-disabled={!r.verfuegbar}
-                  onClick={() => setRolle(r.rolle)}
-                >
-                  <strong>{r.label}</strong>
-                  <span>{r.hint}</span>
-                  {!r.verfuegbar && r.grund && <em className="vp-assist-soon">{r.grund}</em>}
-                </button>
-              ))}
-            </div>
-          )}
-          {rollen.length === 1 && !rollen[0].verfuegbar && (
-            <p className="vp-assist-error">{rollen[0].grund}</p>
-          )}
-          {/* ⚠ Der ehrliche Satz, wenn der Katalog für diesen Typ (noch) keine
-              eigene Vorlage hat und die Liste sich deshalb WEITET. */}
-          {auswahl.erweitert && (
-            <p className="vp-assist-help" data-testid="typ-erweitert">
-              {karten.find((k) => k.id === typ)?.hinweis}
-            </p>
-          )}
-          <div className="vp-assist-pick">
-            <VpPicker
-              id="anlegen-modell"
-              label="Gerät"
-              options={modellOptionen}
-              groups={modellGruppen}
-              value={template?.templateRef ?? null}
-              onChange={waehleTemplate}
-              placeholder="Marke und Modell wählen …"
-              searchPlaceholder="z. B. SUN-30K, SG02 oder Fronius"
-              search="immer"
-              emptyText={(q) =>
-                `Keine Vorlage passt zu „${q}“. Oft reicht ein Teil des Namens, `
-                + 'zum Beispiel nur „30K“.'
-              }
-              hint="Der Name steht auf dem Typenschild - Marke oder Modell genügt."
-            />
-          </div>
-          {template && (
-            <p className="vp-anlegen-gewaehlt" data-testid="gewaehlt">
-              <Icon name="check" size={14} /> {template.brandLabel} {template.modelLabel}
-              {modellZusatz(template) ? ` · ${modellZusatz(template)}` : ''}
-            </p>
-          )}
-          {edit && (
-            <details className="vp-edit-locked">
-              <summary>Gesperrte Angaben und Gründe</summary>
-              <dl>
-                {GESPERRTE_FELDER.map((item) => (
-                  <div key={item.feld}>
-                    <dt>{item.feld}</dt>
-                    <dd>{item.grund}</dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          )}
-        </section>
-      )}
-
-      {/* 3 · Verbinden - Pflichtfelder oben, Experten-Angaben unter „Erweitert". */}
-      {schritt === 3 && template && (
-        <section>
-          <h3 className="vp-assist-h">Verbindung zu {template.modelLabel}</h3>
-          <p className="vp-assist-sub">{template.communicationLabel}</p>
-          {gruppen.pflicht.map((f) => (
-            <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} />
-          ))}
-          {gruppen.erweitert.length > 0 && (
-            <details
-              className="vp-anlegen-erweitert"
-              open={erweitertOffen}
-              onToggle={(e) => setErweitertOffen((e.currentTarget as HTMLDetailsElement).open)}
+    return (
+      <EinrichtenSeite
+        titel="Gerät einrichten"
+        onClose={onClose}
+        onZurueck={onZurueck}
+        kopf={
+          <EinrichtenKopf
+            titel={modellTitel(template)}
+            unterzeile={einrichtenUnterzeile(template)}
+            kategorie={symbol.kategorie}
+            icon={symbol.icon}
+            brauchen={gruppen.pflicht.map((f) => f.label)}
+          />
+        }
+        fuss={
+          <EinrichtenFuss
+            grund={grund}
+            onAbbrechen={onClose}
+            primaer={{
+              label: speichern ? 'Speichere …' : 'Speichern',
+              onClick: () => void anlegen(),
+              disabled: speichern || !rolleOk || fehlend.length > 0 || !belegt || kwpUngueltig,
+              testId: 'einrichten-speichern',
+              aktion: 'geraet.einrichten',
+            }}
+          />
+        }
+      >
+        <Abschnitte>
+          {rollenFrage && (
+            <Abschnitt
+              nummer={1}
+              zustand={rolleOk ? 'fertig' : rollen.some((r) => r.verfuegbar) ? 'aktiv' : 'fehler'}
+              titel="Aufgabe in Ihrer Anlage"
             >
-              <summary>Erweitert</summary>
-              <p className="vp-assist-help">
-                Vorgaben, die fast immer passen - ändern Sie sie nur, wenn Ihr Gerät es verlangt.
-              </p>
-              {gruppen.erweitert.map((f) => (
-                <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} />
-              ))}
-            </details>
+              {rollen.length > 1 ? (
+                <>
+                  <div className="vp-assist-roles" role="radiogroup" aria-label="Aufgabe in Ihrer Anlage" data-testid="rollen-wahl">
+                    {rollen.map((r) => (
+                      <button
+                        key={r.rolle}
+                        type="button"
+                        role="radio"
+                        aria-checked={rolle === r.rolle}
+                        className={`vp-assist-role${rolle === r.rolle ? ' is-on' : ''}${r.verfuegbar ? '' : ' is-soon'}`}
+                        disabled={!r.verfuegbar || speichern}
+                        onClick={() => setRolle(r.rolle)}
+                      >
+                        <strong>
+                          {r.label}
+                          {r.rolle === vorschlag && <span className="vp-ein-vorschlag">Vorschlag</span>}
+                        </strong>
+                        <span>{r.hint}</span>
+                        {!r.verfuegbar && r.grund && <em className="vp-assist-soon">{r.grund}</em>}
+                      </button>
+                    ))}
+                  </div>
+                  {vorschlag === 'pv-generation' && vorhandene.includes('inverter') && (
+                    <p className="vp-assist-help">Vorschlag, weil Ihre Anlage schon einen Hauptwechselrichter hat.</p>
+                  )}
+                </>
+              ) : rollen[0]?.verfuegbar ? (
+                <p className="vp-ein-notiz">
+                  <Icon name="info" size={15} />
+                  <span>
+                    <b>{rollen[0].label}:</b> {rollen[0].hint}
+                  </span>
+                </p>
+              ) : (
+                <p className="vp-assist-error">{rollen[0]?.grund}</p>
+              )}
+            </Abschnitt>
           )}
-          {fehlend.length > 0 && (
-            <p className="vp-assist-help">Es fehlt noch: {fehlend.map((f) => f.label).join(', ')}</p>
-          )}
-        </section>
-      )}
 
-      {/* 4 · Testen - der Befund, die Hebel, der Ausweg, und was gleich entsteht. */}
-      {schritt === 4 && template && (
-        <section>
-          <h3 className="vp-assist-h">{edit ? 'Änderungen prüfen' : 'Verbindung testen'}</h3>
+          <Abschnitt
+            nummer={nr.anschluss}
+            zustand={fehlend.length > 0 ? 'aktiv' : 'fertig'}
+            titel="Anschluss"
+            stand={fehlend.length > 0 ? fehlendText : 'vollständig'}
+          >
+            {gruppen.pflicht.map((f) => (
+              <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} onBlur={feldVerlassen} disabled={speichern} />
+            ))}
+            {gruppen.erweitert.length > 0 && (
+              <details
+                className="vp-anlegen-erweitert"
+                open={erweitertOffen}
+                onToggle={(e) => setErweitertOffen((e.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary>Weitere Angaben ({gruppen.erweitert.length})</summary>
+                <p className="vp-assist-help">
+                  Vorgaben, die fast immer passen. Nur ändern, wenn Ihr Gerät es verlangt.
+                </p>
+                {gruppen.erweitert.map((f) => (
+                  <Feld key={f.key} feld={f} wert={verbindung[f.key]} onChange={setzeFeld} onBlur={feldVerlassen} disabled={speichern} />
+                ))}
+              </details>
+            )}
+          </Abschnitt>
+
+          <Abschnitt
+            nummer={nr.test}
+            zustand={testStand.zustand}
+            titel="Test mit echten Werten"
+            stand={testStand.stand}
+            spaeter="Startet von selbst, sobald der Anschluss vollständig ist."
+          >
           <div className="vp-assist-test">
-            {!testNoetig && (
-              <p className="vp-assist-ok" role="status">
-                Verbindung und Vorlage sind unverändert — kein neuer Verbindungstest nötig.
+            {(testZustand === 'laeuft' || testZustand === 'ungeprueft') && (
+              <p className="vp-ein-laeuft" role="status">
+                <span className="vp-spinner vp-ein-spin" aria-hidden="true" />
+                Ihre Box fragt das Gerät ab …
               </p>
             )}
-            {testNoetig && testZustand === 'laeuft' && <p role="status">Prüfe …</p>}
             {testText && (
               <div
                 className={testText.zustand === 'bestanden' ? 'vp-assist-ok' : 'vp-assist-error'}
@@ -1371,8 +1221,8 @@ export function AnlegenFlow({
                 )}
               </div>
             )}
-            {testNoetig && testZustand !== 'laeuft' && (
-              <Recht aktion="geraet.einrichten"><Button variant="outline" className="vp-anlegen-nochmal" onClick={testen}>
+            {(testZustand === 'bestanden' || testZustand === 'fehlgeschlagen') && (
+              <Recht aktion="geraet.einrichten"><Button variant="outline" className="vp-anlegen-nochmal" onClick={testen} disabled={speichern}>
                 Erneut testen
               </Button></Recht>
             )}
@@ -1466,119 +1316,147 @@ export function AnlegenFlow({
               </p>
             )}
           </div>
+          </Abschnitt>
 
-          {/* Was gleich entsteht - erst nach einem Ja (oder der abgenickten
-              Ausnahme). Vorher gibt es nichts anzulegen. */}
-          {rolle && (!testNoetig || testZustand === 'bestanden' || ohneKanal) && (
-            <div className="vp-anlegen-fertigmachen" data-testid="fertigmachen">
-              <h4 className="vp-assist-h">{edit ? 'Nur diese Änderungen' : 'Fast fertig'}</h4>
-              {uebernahmeHinweis(uebernahme, template) && (
-                <p className="vp-assist-uebernahme">{uebernahmeHinweis(uebernahme, template)}</p>
-              )}
-              <div className="vp-assist-field">
-                <label htmlFor="anlegen-name">Name</label>
-                <Input
-                  id="anlegen-name"
-                  value={name}
-                  placeholder={uebernahme?.label?.trim() || template.modelLabel}
-                  onChange={(e) => setName(e.target.value)}
-                />
-                <p className="vp-assist-help">{nameHilfe(uebernahme)}</p>
-              </div>
-              {rolle === 'pv-generation' && (
-                <div className="vp-assist-field">
-                  <label htmlFor="anlegen-kwp">Leistung (kWp)</label>
-                  <Input
-                    id="anlegen-kwp"
-                    type="number"
-                    value={kwp}
-                    onChange={(e) => setKwp(e.target.value)}
-                  />
-                  <p className="vp-assist-help">
-                    Optional - sie zählt zur Gesamtleistung Ihrer Anlage.
-                  </p>
-                </div>
-              )}
-              {edit ? (
-                <>
-                  {aenderungen.length > 0 ? (
-                    <dl className="vp-edit-delta" aria-label="Änderungen">
-                      {aenderungen.map((row) => (
-                        <div key={row.feld}>
-                          <dt>{row.feld}</dt>
-                          <dd><del>{row.vorher}</del><span aria-hidden="true">→</span><ins>{row.nachher}</ins></dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : (
-                    <p className="vp-assist-help" role="status">Noch keine Änderung.</p>
-                  )}
-                  <div className="vp-edit-effects">
-                    <strong>Auswirkungen</strong>
-                    <ul>{auswirkungen(aenderungen).map((satz) => <li key={satz}>{satz}</li>)}</ul>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <dl className="vp-assist-check">
-                    {pruefen(template, rolle, name, verbindung, uebernahme).map((row) => (
-                      <div key={row.label}>
-                        <dt>{row.label}</dt>
-                        <dd>{row.wert}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <p className="vp-assist-balance">{bilanzHinweis(rolle)}</p>
-                </>
-              )}
+          <Abschnitt
+            nummer={nr.name}
+            zustand={belegt ? 'aktiv' : 'spaeter'}
+            titel="Name"
+            spaeter="Nach dem Test."
+          >
+            {uebernahmeHinweis(uebernahme, template) && (
+              <p className="vp-assist-uebernahme">{uebernahmeHinweis(uebernahme, template)}</p>
+            )}
+            <div className="vp-assist-field">
+              <label htmlFor="anlegen-name">So erscheint es im Aufbau</label>
+              <Input
+                id="anlegen-name"
+                value={name}
+                placeholder={uebernahme?.label?.trim() || template.modelLabel}
+                onChange={(e) => setName(e.target.value)}
+                disabled={speichern}
+              />
+              <p className="vp-assist-help">{nameHilfe(uebernahme)}</p>
             </div>
-          )}
-          {fehler && <p className="vp-assist-error" role="alert">{fehler}</p>}
-        </section>
-      )}
+            {rolle === 'pv-generation' && (
+              <div className="vp-assist-field">
+                <label htmlFor="anlegen-kwp">Leistung (kWp)</label>
+                <Input
+                  id="anlegen-kwp"
+                  type="number"
+                  inputMode="decimal"
+                  value={kwp}
+                  onChange={(e) => setKwp(e.target.value)}
+                  disabled={speichern}
+                />
+                <p className="vp-assist-help">Optional - sie zählt zur Gesamtleistung Ihrer Anlage.</p>
+              </div>
+            )}
+            {rolle && <p className="vp-assist-balance">{bilanzHinweis(rolle)}</p>}
+          </Abschnitt>
+        </Abschnitte>
 
-      {/* 5 · Fertig - was entstanden ist, und der Weg dorthin. */}
-      {istFertig && (
-        <section className="vp-anlegen-fertig" data-testid="schritt-fertig">
-          <p className="vp-assist-ok">
-            <Icon name="check" />{' '}
-            {edit
-              ? `„${name.trim() || template?.modelLabel || 'Gerät'}“ wurde als neue Fassung gespeichert.`
-              : abschlussTitel(
-                name.trim() || uebernahme?.label?.trim() || template?.modelLabel || '',
-                uebernommen,
-              )}
+        {fehler && (
+          <p className="vp-assist-error" role="alert">
+            {fehler}
           </p>
-          <p className="vp-assist-help">
-            {edit
-              ? gespeichert?.components.find((row) => row.id === edit.id)?.syncStatus === 'in_sync'
-                ? 'Die Box hat diese Fassung bereits vollständig aktiviert.'
-                : 'Die bisherige Fassung bleibt aktiv, bis die Box die neue vollständig bestätigt. Bei Ablehnung können Sie in der Gerätehistorie zurückrollen.'
-              : ABSCHLUSS_HINWEIS}
-          </p>
-        </section>
-      )}
+        )}
 
-      {/* Die Rückfrage im HAUS-MUSTER (Folgenliste statt window.confirm): sie
-          nennt ausdrücklich auch, was GLEICH bleibt. */}
-      <ConfirmDialog
-        open={fragOhneKanal && !!testText?.override}
-        title="Ohne Ladestand fortfahren?"
-        intro={
-          'Ihr Gerät antwortet, meldet aber keinen Ladestand. Diese Komponente wird dann nur '
-          + 'ausgelesen.'
-        }
-        consequences={testText?.override?.folgen ?? []}
-        confirmLabel="Trotzdem fortfahren"
-        onCancel={() => setFragOhneKanal(false)}
-        onConfirm={() => {
-          setOhneKanal(testText?.override ?? null);
-          setFragOhneKanal(false);
-          void frageUebernahme();
+        {/* Die Rückfrage im HAUS-MUSTER (Folgenliste statt window.confirm): sie
+            nennt ausdrücklich auch, was GLEICH bleibt. */}
+        <ConfirmDialog
+          open={fragOhneKanal && !!testText?.override}
+          title="Ohne Ladestand fortfahren?"
+          intro={
+            'Ihr Gerät antwortet, meldet aber keinen Ladestand. Diese Komponente wird dann nur '
+            + 'ausgelesen.'
+          }
+          consequences={testText?.override?.folgen ?? []}
+          confirmLabel="Trotzdem fortfahren"
+          onCancel={() => setFragOhneKanal(false)}
+          onConfirm={() => {
+            setOhneKanal(testText?.override ?? null);
+            setFragOhneKanal(false);
+            void frageUebernahme();
+          }}
+        />
+      </EinrichtenSeite>
+    );
+  }
+
+  /** Nach dem Anlegen über einen Weg ohne Vorlage: melden, was entstanden ist, und schließen. */
+  function fertigMelden(result: SiteComponents, fallback: string) {
+    const id = neueKomponente(vorherigeIds, result.components);
+    const titel = result.components.find((r) => r.id === id)?.label?.trim() || fallback;
+    onSaved(result);
+    onFertig?.({ id, titel, uebernommen: false });
+    onClose();
+  }
+
+  /*
+   * Das MODBUS-GERÄT (auch aus einer eigenen Vorlage): Anschluss, Messwerte und
+   * Name auf einer Seite - der Assistent zeichnet sie selbst, denn nur er weiß,
+   * wann „Speichern" freigibt.
+   */
+  if (typ === 'eigenbau') {
+    return (
+      <SelbstbauAssistent
+        siteId={siteId}
+        vorlage={vorlage}
+        vorher={vorherigeIds}
+        onZurueck={onZurueck}
+        onClose={onClose}
+        onGespeichert={(result, info) => {
+          onSaved(result);
+          onFertig?.({ id: info.id, titel: info.titel, uebernommen: false, hinweis: info.hinweis });
+          onClose();
         }}
       />
-    </AnlegenDialog>
-  );
+    );
+  }
+
+  /* Die BATTERIE mit eigenem BMS (P5d): derselbe Assistent wie beim Bearbeiten, als eine Seite. */
+  if (typ === 'batterie') {
+    return (
+      <BatterieAssistent
+        siteId={siteId}
+        seite={{ onZurueck, onClose }}
+        onSaved={(result) => fertigMelden(result, 'Batterie')}
+      />
+    );
+  }
+
+  /*
+   * Die LADESÄULE mit OCPP legt weiterhin NICHTS an (§13.4) - sie meldet sich
+   * selbst bei der Box. Hier steht der ANBINDE-ASSISTENT, derselbe Körper wie im
+   * Drawer der Ladevorgänge-Seite: eine zweite Kopie wären zwei Wahrheiten über
+   * denselben Weg.
+   */
+  if (typ === 'ladesaeule') {
+    return (
+      <EinrichtenSeite
+        titel="Gerät einrichten"
+        onClose={onClose}
+        onZurueck={onZurueck}
+        kopf={
+          <EinrichtenKopf
+            titel="Ladesäule mit OCPP 1.6"
+            unterzeile="Laden · meldet sich selbst bei Ihrer Box"
+            kategorie="ev"
+            icon="link"
+            brauchen={['Zugang zur App oder Weboberfläche der Säule']}
+          />
+        }
+        fuss={<EinrichtenFuss grund={null} primaer={{ label: 'Fertig', onClick: onClose }} />}
+      >
+        <section data-testid="typ-ladesaeule">
+          <LadesaeuleAnbinden siteId={siteId} device={box} devices={boxes} />
+        </section>
+      </EinrichtenSeite>
+    );
+  }
+
+  return null;
 }
 
 /** EIN Verbindungsfeld, GENERISCH aus dem `transport_schema` der Vorlage. */
@@ -1586,11 +1464,14 @@ function Feld({
   feld,
   wert,
   onChange,
+  onBlur,
   disabled = false,
 }: {
   feld: TemplateField;
   wert: unknown;
   onChange: (feld: TemplateField, value: unknown) => void;
+  /** Das Feld verlassen - der Anlege-Weg stößt damit den Test sofort an. */
+  onBlur?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -1605,6 +1486,7 @@ function Feld({
           type="checkbox"
           checked={Boolean(wert)}
           onChange={(e) => onChange(feld, e.target.checked)}
+          onBlur={onBlur}
           disabled={disabled}
         />
       ) : feld.options ? (
@@ -1624,6 +1506,7 @@ function Feld({
           placeholder={istSecret(feld) && wert ? '•••••••• (unverändert)' : undefined}
           autoComplete={istSecret(feld) ? 'new-password' : undefined}
           onChange={(e) => onChange(feld, e.target.value)}
+          onBlur={onBlur}
           disabled={disabled}
         />
       )}

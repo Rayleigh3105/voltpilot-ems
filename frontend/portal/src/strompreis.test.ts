@@ -222,10 +222,10 @@ describe('planKopplung (die Fahrplan-Zeile des Streifens)', () => {
     );
   });
 
-  it('Ruhe mit späterer Aktion: „Ruhe — ab HH:MM {Label}" (worauf er wartet)', () => {
+  it('Warten mit späterer Aktion: „Warten — ab HH:MM {Label}" (worauf er wartet)', () => {
     const slots = planOf(DAY(12), ['warten', 'warten', 'warten', 'verkaufen', 'verkaufen', 'verkaufen']);
     const k = planKopplung(slots, now, 15, 'direktvermarktung', false);
-    expect(k?.pre).toMatch(/^Ruhe — ab \d{2}:\d{2} $/);
+    expect(k?.pre).toMatch(/^Warten — ab \d{2}:\d{2} $/);
     expect(k?.action).toBe('Zum Spitzenpreis verkaufen');
     expect(k?.post).toBeNull();
   });
@@ -244,11 +244,11 @@ describe('planKopplung (die Fahrplan-Zeile des Streifens)', () => {
     expect(k?.action).toBe('Speicher nutzen: Verbrauch decken und Überschuss verkaufen');
   });
 
-  it('Ruhe ohne spätere Aktion: „Jetzt Ruhe — noch bis HH:MM"', () => {
+  it('Warten ohne spätere Aktion: „Jetzt Warten — noch bis HH:MM"', () => {
     const slots = planOf(DAY(12), ['warten', 'warten', 'warten']);
     const k = planKopplung(slots, now, 15, 'direktvermarktung', false);
     expect(k?.pre).toBe('Jetzt ');
-    expect(k?.action).toBe('Ruhe');
+    expect(k?.action).toBe('Warten');
     expect(k?.post).toMatch(/^ — noch bis \d{2}:\d{2}$/);
   });
 

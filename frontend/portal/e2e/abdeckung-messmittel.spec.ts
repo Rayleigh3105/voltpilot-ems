@@ -104,8 +104,9 @@ test('IP-18 · Messmittel-Blatt: nicht erhoben → Angaben mit Datei eintragen �
     if (r.method() !== 'GET') gesendet.push(`${r.method()} ${r.url()} ${r.postData() ?? ''}`);
   });
   await page.goto('/e2e/geraet-herkunft.html?fall=ek2&messmittel=1');
-  const sektion = page.getByTestId('sektion-komponenten');
-  await sektion.locator(':scope > summary').click();
+  const sektion = page.getByTestId('baustein-details');
+  // Am Rechner steht der Baustein offen, am Telefon zu — nur aufklappen, was zu ist.
+  if (!(await sektion.evaluate((el) => (el as HTMLDetailsElement).open))) await sektion.locator(':scope > summary').click();
   const blatt = page.getByTestId('messmittel-blatt');
   await expect(blatt).toBeVisible();
   await expect(blatt.getByTestId('messmittel-klasse')).toContainText('nicht erhoben');

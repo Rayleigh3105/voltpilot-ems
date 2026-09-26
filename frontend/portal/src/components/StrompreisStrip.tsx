@@ -3,7 +3,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type PricePoint, type ScheduleSlot, type TarifArt } from '../api';
 import { chartTheme } from '../chartTheme';
-import { PROVENIENZ } from '../historieWelten';
+import { PROVENIENZ } from '../provenienz';
 import type { PlanWordingKind } from '../schedule';
 import {
   bezugspreisKontext,

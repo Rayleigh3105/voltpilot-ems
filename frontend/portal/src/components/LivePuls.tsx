@@ -34,15 +34,24 @@ const HEALTH: Record<string, { cls: string; title: string }> = {
   unknown: { cls: 'vp-health-off', title: 'Noch keine Rückmeldung' },
 };
 
-/** Eine Zeile der Heute-Spalte: das WORT trägt die Richtung (aria/title). */
+/**
+ * Eine Zeile der Heute-Spalte: das WORT trägt die Richtung - SICHTBAR. Nur als
+ * `title` war es am Telefon unerreichbar, und „↓ 5,2 kWh · ↑ 8,7 kWh" ließ
+ * offen, was Bezug und was Einspeisung ist (Symbol nie allein). Der Pfeil
+ * bleibt nur, wo es kein Wort gibt.
+ */
 function Today({ line }: { line: TodayLine }) {
   const label = line.word ? `${line.word} ${line.text}` : line.text;
   return (
-    <span className="vp-puls-today-line" aria-label={label} title={line.word ?? undefined}>
-      {line.arrow && (
-        <Icon name={line.arrow === 'up' ? 'arrow-up' : 'arrow-down'} size={12} />
+    <span className="vp-puls-today-line" aria-label={label}>
+      {line.word ? (
+        <span className="vp-puls-today-word" aria-hidden="true">
+          {line.word}
+        </span>
+      ) : (
+        line.arrow && <Icon name={line.arrow === 'up' ? 'arrow-up' : 'arrow-down'} size={12} />
       )}
-      {line.text}
+      <span aria-hidden="true">{line.text}</span>
     </span>
   );
 }
@@ -57,10 +66,13 @@ function Row({
   fold?: FoldProps;
 }) {
   const dot = HEALTH[row.health] ?? HEALTH.unknown;
+  // Benannte Heute-Zeilen („Einspeisung 5,2 kWh") brauchen am Telefon eine
+  // eigene Zeile - neben „0,0 kW ausgeglichen" stießen sie sonst an den Wert.
+  const worte = row.today?.some((l) => l.word) === true;
   return (
     <button
       type="button"
-      className={`vp-puls-row${row.stateTone === 'muted' ? ' muted' : ''}`}
+      className={`vp-puls-row${row.stateTone === 'muted' ? ' muted' : ''}${worte ? ' vp-puls-row--worte' : ''}`}
       disabled={row.target == null}
       onClick={() => row.target && onOpen(row.target)}
       title={row.fullTitle ?? row.title}

@@ -95,9 +95,15 @@ import { wagoAssistentSichtbar } from '../wagoAssistent';
 import { AnlageAnlegenDrawerLazy } from './AnlageAnlegenDrawerLazy';
 import { AnlegenDialog } from './AnlegenDialog';
 import { AnlegenFlow } from './AnlegenFlow';
+import type { TypId } from '../anlegenFlow';
 import { AddDeviceDrawer } from './DeviceDrawers';
 import { DatenquelleAnlegen } from './DatenquelleAnlegen';
 import { DatenquelleVorschlagListe } from './DatenquelleVorschlagListe';
+import { GeraeteKatalog } from './GeraeteKatalog';
+import { fuehrendeBoxOf } from '../geraetAdresse';
+import type { KatalogWahl, KatalogWeg } from '../geraeteKatalog';
+import type { ComponentTemplate } from '../komponentenAssistent';
+import type { SiteComponents, SiteComponentTemplate } from '../api';
 import { StandortDialog } from './StandortDialog';
 import { VpPicker } from './VpPicker';
 import { WagoAssistent } from './WagoAssistent';
@@ -1017,8 +1023,9 @@ export function MessenAssistent({
         />
       )}
       {unterfluss?.art === 'komponente' && (
-        <AnlegenFlow
+        <KomponenteAnbinden
           siteId={unterfluss.siteId}
+          geraete={geraete ?? []}
           onClose={zurueckAusUnterfluss}
           onSaved={(r) => setKomponenten((k) => ({ ...k, [unterfluss.siteId]: r.components.length }))}
         />
@@ -1057,5 +1064,51 @@ export function MessenAssistent({
         />
       )}
     </>
+  );
+}
+
+const WEG_TYP: Record<KatalogWeg, TypId> = { ocpp: 'ladesaeule', bms: 'batterie', modbus: 'eigenbau' };
+
+/**
+ * „Gerät anbinden" beginnt wie überall im GERÄTEKATALOG (main e70b57b76,
+ * Konzept „Aufbau und Gerätekatalog"): der Anlege-Fluss fragt die Art nicht
+ * mehr selbst, er öffnet nach der Wahl im Katalog. Derselbe Weg wie im Aufbau
+ * (`AufbauSection`), nur ohne Funde - Quellen übernimmt Schritt 2 über
+ * „Datenquelle anlegen".
+ */
+function KomponenteAnbinden({ siteId, geraete, onClose, onSaved }: {
+  siteId: string;
+  geraete: Device[];
+  onClose: () => void;
+  onSaved: (r: SiteComponents) => void;
+}) {
+  const [wahl, setWahl] = useState<
+    | { typ: TypId | null; start: { template: ComponentTemplate; rolle: 'grid-meter' | null } | null; vorlage: SiteComponentTemplate | null }
+    | null
+  >(null);
+  const [lauf, setLauf] = useState(0);
+  const katalogWahl = (w: KatalogWahl) => {
+    setLauf((n) => n + 1);
+    if (w.art === 'modell') setWahl({ typ: null, start: { template: w.template, rolle: w.rolle }, vorlage: null });
+    else if (w.art === 'weg') setWahl({ typ: WEG_TYP[w.weg], start: null, vorlage: null });
+    else if (w.art === 'vorlage') setWahl({ typ: null, start: null, vorlage: w.vorlage });
+  };
+  if (!wahl) {
+    return <GeraeteKatalog open siteId={siteId} funde={[]} onClose={onClose} onWahl={katalogWahl} />;
+  }
+  return (
+    <AnlegenFlow
+      key={lauf}
+      siteId={siteId}
+      box={fuehrendeBoxOf(geraete, siteId) ?? undefined}
+      boxes={geraete.filter((d) => d.siteId === siteId)}
+      vorlage={wahl.vorlage}
+      initialTyp={wahl.typ}
+      startTemplate={wahl.start?.template ?? null}
+      startRolle={wahl.start?.rolle ?? null}
+      onZurueck={() => setWahl(null)}
+      onClose={onClose}
+      onSaved={onSaved}
+    />
   );
 }

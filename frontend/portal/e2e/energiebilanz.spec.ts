@@ -98,7 +98,7 @@ for (const breite of BREITEN) {
     await expect(page.getByTestId('zeile-zugeordnet').locator('.vp-share')).toHaveCount(4);
     await expect(page.getByTestId('energiebilanz-live')).toHaveText(/^jetzt: 1,6.kW nicht zugeordnet · Stand \d\d:\d\d$/);
     const m = await pruefeRahmen(page, 'b1-halle2-oktober', breite, fehler);
-    expect(m.reiter.slice(0, 2), `${breite}: Reiter des Verlaufs`).toEqual(['Messwerte', 'Energiebilanz']);
+    expect(m.reiter.slice(0, 2), `${breite}: Reiter des Verlaufs`).toEqual(['Energie', 'Energiebilanz']); // erster Reiter heißt seit main 763b87f39 „Energie“
     await ablegen(page, 'b1-halle2-oktober', breite, m);
 
     // Die Herkunfts-Karte des Rests (AP-10 §5.6).

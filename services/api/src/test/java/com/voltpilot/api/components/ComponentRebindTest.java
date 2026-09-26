@@ -154,6 +154,40 @@ class ComponentRebindTest {
     }
 
     @Test
+    @DisplayName("Erstbindung: eine im Portal angelegte Komponente findet ihre gemeldete Quelle")
+    void aPortalCreatedComponentIsBoundToItsReportedSource() {
+        String m31 = "{\"ip\":\"192.168.3.50\",\"port\":502,\"unit_id\":1,\"interval_s\":5}";
+        String reportedM31 = "{\"ip\":\"192.168.3.50\",\"port\":502,\"unit_id\":1}";
+        List<ComponentRebind.Rebind> plan = ComponentRebind.decide(
+                List.of(new ComponentRebind.PinnedComponent(WR1, null, "consumer",
+                        "ebyte_modbus_tcp", m31, "I/O-Modul")),
+                List.of(new ComponentRebind.ReportedDevice("src-jnn9hwp6", "consumer",
+                        "ebyte_modbus_tcp", reportedM31, "I/O-Modul")),
+                MAPPER);
+        assertThat(plan).singleElement().satisfies(r -> {
+            assertThat(r.pointId()).isEqualTo(WR1);
+            assertThat(r.fromSourceId()).isNull();
+            assertThat(r.toSourceId()).isEqualTo("src-jnn9hwp6");
+        });
+    }
+
+    @Test
+    @DisplayName("Erstbindung rät nie: zwei unbekannte Komponenten auf ein Gerät bleiben offen")
+    void aFirstBindingIsNeverGuessedEither() {
+        assertThat(ComponentRebind.decide(
+                List.of(pinned(WR1, null, CONN_UNIT_1, "Fronius A"),
+                        pinned(WR2, null, CONN_UNIT_1, "Fronius B")),
+                List.of(reported("src-neu00001", CONN_UNIT_1, "WR")),
+                MAPPER)).isEmpty();
+        // Eine Quelle, die schon eine Komponente trägt, wird keiner zweiten gegeben.
+        assertThat(ComponentRebind.decide(
+                List.of(pinned(WR1, "src-lebt0001", CONN_UNIT_1, "Fronius A"),
+                        pinned(WR2, null, CONN_UNIT_1, "Fronius B")),
+                List.of(reported("src-lebt0001", CONN_UNIT_1, "WR")),
+                MAPPER)).isEmpty();
+    }
+
+    @Test
     @DisplayName("Ohne Meldung und ohne Pin passiert nichts")
     void nothingHappensWithoutBothSides() {
         assertThat(ComponentRebind.decide(List.of(),

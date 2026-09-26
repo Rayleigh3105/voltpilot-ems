@@ -24,6 +24,8 @@
  * Hülle selbst (dass `setOption(opt, true)` zu `replaceMerge` wird) prüft
  * `chartFamilien.test.ts` — hier geht es allein um das Register.
  */
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ComponentModel from 'echarts/lib/model/Component.js';
 import './echarts';
@@ -50,5 +52,30 @@ describe('ECharts-Bauteile: registriert ist, was benutzt wird', () => {
     ]) {
       expect(registriert(t), `${t} ist nicht registriert`).toBe(true);
     }
+  });
+
+  it('kein Diagramm setzt ein Bauteil, das `echarts.ts` nicht registriert (V-01)', () => {
+    // Die Gegenrichtung zum ersten Fall: `visualMap` ist seit dem UX-Review
+    // V-01 (24.09.2026) nicht mehr registriert, weil ihn kein Diagramm setzt -
+    // er kostete das Chart-Bündel 11,4 kB gz. Ein Options-Schlüssel ohne
+    // Registrierung wird im gebauten Bündel still übergangen; die Ampel wäre
+    // dann einfach nicht da. Wer ihn zurückbringt, registriert ihn in
+    // `echarts.ts` und nennt ihn wieder in REPLACE_MERGE.
+    const nichtRegistriert = ['visualMap'].filter((t) => !registriert(t));
+    const SRC = join(process.cwd(), 'src');
+    const quellen = (dir: string): string[] =>
+      readdirSync(dir).flatMap((name) => {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) return quellen(full);
+        return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : [];
+      });
+    const treffer: string[] = [];
+    for (const file of quellen(SRC)) {
+      const text = readFileSync(file, 'utf8');
+      for (const t of nichtRegistriert) {
+        if (new RegExp(`\\b${t}\\s*:`).test(text)) treffer.push(`${file.slice(SRC.length + 1)}: ${t}`);
+      }
+    }
+    expect(treffer).toEqual([]);
   });
 });

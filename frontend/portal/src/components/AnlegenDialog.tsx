@@ -177,9 +177,11 @@ export function AnlegenDialog({
         )}
 
         <p className="vp-anlegen-sr" role="status" aria-live="polite">
-          {`${fortschritt(schrittListe, aktiv)}: ${
-            schrittListe[Math.min(Math.max(aktiv, 1), schrittListe.length) - 1] ?? ''
-          }`}
+          {fortschritt(schrittListe, aktiv) === 'Fertig'
+            ? 'Fertig'
+            : `${fortschritt(schrittListe, aktiv)}: ${
+                schrittListe[Math.min(Math.max(aktiv, 1), schrittListe.length) - 1] ?? ''
+              }`}
         </p>
         <div className="vp-anlegen-rumpf" ref={rumpfRef}>
           {children}
