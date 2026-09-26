@@ -1,0 +1,92 @@
+/*
+ * Der Anlagen-Vergleich der Portfolio-Seiten („Meine Anlagen" · Energie und
+ * Erlöse): eine Liste statt einer breiten Tabelle — am Telefon ohne
+ * Querscrollen lesbar. Schrift, Maßstab und Farben sind die Token des
+ * Verlauf-Rahmens (Wächter: `verlaufSkala.test.ts`, `verlaufMobil.test.ts`).
+ */
+.vp-vr-anl {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-vr-anl > li + li {
+  border-top: 1px solid var(--vp-chart-grid);
+}
+.vp-vr-anl-zeile {
+  display: grid;
+  gap: 6px;
+  min-height: 44px;
+  padding: var(--vp-c-space-3) 0;
+  color: inherit;
+  text-decoration: none;
+}
+.vp-vr-anl-zeile:hover .vp-vr-anl-name {
+  color: var(--vp-action);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vp-vr-anl-zeile:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+  border-radius: var(--vp-c-radius-sm);
+}
+.vp-vr-anl-kopf {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+.vp-vr-anl-kopf > svg {
+  flex: none;
+  align-self: center;
+  color: var(--vp-text-gray);
+}
+.vp-vr-anl-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--vp-text-dark);
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+.vp-vr-anl-wert {
+  flex: none;
+  color: var(--vp-navy);
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-vr-anl-wert.minus {
+  color: var(--vp-c-destructive);
+}
+.vp-vr-anl-wert.leer {
+  color: var(--vp-text-gray);
+}
+.vp-vr-anl-spur {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vp-chart-grid);
+  overflow: hidden;
+}
+.vp-vr-anl-spur > i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+.vp-vr-anl-spur > i.minus {
+  opacity: 0.55;
+}
+.vp-vr-anl-unter {
+  color: var(--vp-text-gray);
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
+}
+.vp-vr-anl-unter.hinweis {
+  color: var(--vp-c-warn-fg);
+}

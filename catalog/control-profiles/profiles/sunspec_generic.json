@@ -1,0 +1,162 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "herstellerabhängig."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "StorCtl_Mod = 0."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Ladegrenze 0."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Ladegrenze x %."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Entladegrenze 0."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "abregeln",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "A",
+      "wie": "Model 123/704 WMaxLimPct."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Grenzen 0/0."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "sunspec"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "herstellerabhängig."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [],
+    "sicherheit": "D",
+    "text": "Unbelegt - Vorgabe der Box, bis am Gerät gemessen."
+  },
+  "eigenmodus": {
+    "sicherheit": "D",
+    "text": "StorCtl_Mod = 0 gibt die Regelung frei (A); Verhalten innerhalb der Grenzen herstellerabhängig (D)."
+  },
+  "empfehlung": "Als Schablone für das Profil-Schema, nicht als Freigabe.",
+  "fallen": [
+    "„SunSpec“ heißt nicht „gleiches Verhalten“: Grenzen vs. Sollwert (limit vs. force) ist herstellerabhängig."
+  ],
+  "familie": "Geräte mit Model 124 (Storage), 704 (DER-Steuerung), 802 (Batterie)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "SunSpec (herstellerneutral)",
+  "id": "sunspec_generic",
+  "im_repo": "„Anderes Modell“ = Simulator-Profil, kein echtes SunSpec; Discovery für Fronius gebaut",
+  "modelle": [
+    "Geräte mit SunSpec Model 124 / 704 / 802"
+  ],
+  "quellen": [
+    "sunspec",
+    "dd"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "herstellerabhängig (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "D",
+    "text": "InOutWRte_RvrtTms optional – je Hersteller prüfen (A/D).",
+    "vorhanden": null,
+    "ziel": {
+      "sunspec": "124.InOutWRte_RvrtTms"
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": [
+      {
+        "speicher": "ram",
+        "wert": 0,
+        "ziel": {
+          "sunspec": "124.StorCtl_Mod"
+        }
+      }
+    ],
+    "sicherheit": "A",
+    "speicher": "unbelegt",
+    "text": "InWRte/OutWRte (% von WChaMax) + StorCtl_Mod-Bits; 704: WMaxLimPct/WSet mit Revert (A)."
+  },
+  "zaehler": {
+    "ort": "herstellerabhaengig",
+    "sicherheit": "D",
+    "text": "herstellerabhängig"
+  }
+}

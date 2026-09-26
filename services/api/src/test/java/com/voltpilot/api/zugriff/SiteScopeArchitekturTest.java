@@ -122,9 +122,17 @@ class SiteScopeArchitekturTest {
                     "web/SiteEarningsController.java", "SiteDto site = sites.findById(siteId);"),
             new Erlaubt("repo/EarningsRepository.java", "telemetry_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/SiteEarningsController.java", "SiteDto site = sites.findById(siteId);"),
+            // I/O-Modul (main #1202/8edb7c6da): Ausgangszahl und Ein-/Ausgangszustände je Modul DIESER Anlage;
+            // beide Routen (consumer-options, io-modules/{id}/zustand) rufen vorher requireSite.
+            new Erlaubt("consumers/ConsumerRepository.java", "telemetry_v2", 2, Grund.ANLAGE_GEPRUEFT,
+                    "web/SiteConsumerController.java", "geltungsbereich.requireSite(siteId);"),
 
             // --- über Gerät oder Messkomponente, die selbst site_scope tragen
-            new Erlaubt("repo/DeviceRepository.java", "telemetry", 4, Grund.UEBER_GERAET, ZAUN_GERAET,
+            // last_seen EINER Box: eine Hilfe lastSeen(alias) für alle vier Lesewege (main da0b6129f), v1- und
+            // v2-Ankunft je device.id; das Gerät selbst trägt site_scope.
+            new Erlaubt("repo/DeviceRepository.java", "telemetry", 1, Grund.UEBER_GERAET, ZAUN_GERAET,
+                    "CREATE POLICY site_scope ON device"),
+            new Erlaubt("repo/DeviceRepository.java", "telemetry_v2", 1, Grund.UEBER_GERAET, ZAUN_GERAET,
                     "CREATE POLICY site_scope ON device"),
             new Erlaubt("repo/OverviewRepository.java", "telemetry", 1, Grund.UEBER_GERAET, ZAUN_GERAET,
                     "CREATE POLICY site_scope ON device"),
@@ -151,9 +159,12 @@ class SiteScopeArchitekturTest {
             // --- liest je Anlage, zeigt nur sichtbare (Teilansicht der Summen: IP-10)
             new Erlaubt("repo/OverviewRepository.java", "telemetry_rollup_15m", 1, Grund.ZEIGT_NUR_SICHTBARE,
                     "web/OverviewController.java", "sites.findAll()"),
-            new Erlaubt("repo/EarningsRepository.java", "telemetry_rollup_15m", 1, Grund.ZEIGT_NUR_SICHTBARE,
+            // Zwei: Start-SoC und der Monatsanker des Vergleichsspeichers (main caf807de9, Tages-Einordnung) - je
+            // Anlage gerechnet, die Antwort nimmt nur die Zeilen aus sites.findAll().
+            new Erlaubt("repo/EarningsRepository.java", "telemetry_rollup_15m", 2, Grund.ZEIGT_NUR_SICHTBARE,
                     "web/EarningsController.java", "sites.findAll()"),
-            new Erlaubt("topology/TopologyRepository.java", "telemetry_v2", 1, Grund.ZEIGT_NUR_SICHTBARE,
+            // Zwei: latestValues (Bestand) und liveValues mit 30-s-Mittel (main 5f155b124, K8) - dieselben Aufrufer.
+            new Erlaubt("topology/TopologyRepository.java", "telemetry_v2", 2, Grund.ZEIGT_NUR_SICHTBARE,
                     "web/OverviewController.java", "sites.findAll()"),
 
             // --- ohne Anfrage

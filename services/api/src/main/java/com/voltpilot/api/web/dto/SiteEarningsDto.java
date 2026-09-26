@@ -102,6 +102,35 @@ import java.util.UUID;
  * @param speicherWertBasis {@code plan} (λ des Slots) oder {@code terminal}
  *     (der Terminalwert des Laufs, der FK2-Rückfall) - damit die Fläche sagen
  *     kann, WOMIT bewertet wurde
+ * @param vergleichSocStartKwh nur {@code range=day}: der Ladestand des
+ *     durchlaufenden Vergleichsspeichers („Speicher ohne Steuerung“, Definition
+ *     A) um 00:00 - er trägt seinen eigenen Stand über Mitternacht und ist
+ *     am gemessenen Stand zum Monatsbeginn verankert; null sonst
+ * @param vergleichSocEndKwh nur {@code range=day}: sein Stand nach dem letzten
+ *     gemessenen Eimer des Tages
+ * @param speicherVorsprungKwh nur {@code range=day}: der GEMESSENE Ladestand
+ *     am Ende desselben Eimers minus {@code vergleichSocEndKwh} - was der
+ *     gesteuerte Speicher gerade mehr hat als der sture (+) oder weniger (−);
+ *     null ohne gemessenen Ladestand. Er ersetzt auf dem Tag die Änderung seit
+ *     Mitternacht ({@code speicherDeltaKwh}) als Speicher-Zeile
+ * @param speicherVorsprungEur {@code speicherVorsprungKwh × speicherWertCtKwh /
+ *     100} - derselbe Planpreis wie das Bestandskonto, ausdrücklich KEIN
+ *     Summand irgendeiner gemessenen Zahl
+ * @param steuerungVortagEur nur {@code range=day}: {@code savedSteuerungEur}
+ *     des Vortags nach derselben Definition (auch über eine Monatsgrenze)
+ * @param steuerungMonatBisherEur nur {@code range=day}: Σ
+ *     {@code savedSteuerungEur} vom Monatsersten bis einschließlich dieses
+ *     Tages - dieselbe Zahl wie {@code range=month} zum selben Stand
+ * @param steuerungPlannedEur nur {@code range=day}: der Fahrplan-Planwert
+ *     desselben Tages ({@code history.totals.steuerungPlannedEur}, EX-ANTE
+ *     geplant - eine Fläche nennt ihn „geplant“)
+ * @param steuerungGruende nur {@code range=day} mit Dreiteilung: warum der Tag
+ *     unter Null liegt, höchstens zwei Kennungen der geschlossenen Liste
+ *     ({@code gestern_verkauft}, {@code haelt_energie_fuer_morgen},
+ *     {@code so_geplant}, {@code wenig_sonne}, {@code anders_als_geplant}; Regeln
+ *     in {@code docs/contracts/steuerung-tag-vectors.json}) - leer bei einem
+ *     Tag ab Null oder wenn keine Regel greift (nie geraten), null wenn nicht
+ *     berechnet
  * @param series the money per Berlin bucket (hour for a day, day for week and
  *     month, month for year/all) - the stacked bars + the cumulative line
  */
@@ -150,6 +179,14 @@ public record SiteEarningsDto(
         BigDecimal speicherWertCtKwh,
         BigDecimal speicherWertEur,
         String speicherWertBasis,
+        BigDecimal vergleichSocStartKwh,
+        BigDecimal vergleichSocEndKwh,
+        BigDecimal speicherVorsprungKwh,
+        BigDecimal speicherVorsprungEur,
+        BigDecimal steuerungVortagEur,
+        BigDecimal steuerungMonatBisherEur,
+        BigDecimal steuerungPlannedEur,
+        List<String> steuerungGruende,
         List<SiteEarningsBucketDto> series,
         PeakShavingDto peakShaving) {
 

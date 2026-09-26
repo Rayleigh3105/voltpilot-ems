@@ -58,6 +58,8 @@ for (const width of [375, 1440]) {
       return route.fulfill({ status: 204 });
     });
     await page.goto('/e2e/summenwert-geraet-kontext.html');
+    // Summenwerte wohnen in „Technik & Diagnose" › Auswertung (E1 a).
+    await page.getByTestId('geraet-technik-oeffnen').click();
     await page.getByRole('button', { name: 'Summenwert anlegen', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: /Summenwert/ });
     await expect(dialog.locator('summary')).toHaveText('Alle Register des Geräts · 624 weitere');

@@ -213,6 +213,16 @@
      und liest sich als das, was es ist: die Bezugsgröße, nicht die zweite
      Hauptreihe. */
   --vp-c-chart-price-2: #475569; /* = --vp-c-muted-fg · 7,58:1 */
+  /* Die KOSTEN-Reihe der Geld-Charts (Verlauf-Rework P2, E6): Netzbezug in
+     Euro, unter der Nulllinie.
+     ⚠ Bewusst NICHT `--vp-c-destructive` (#B91C1C): neben dem Eigenverbrauch
+     in Erzeugungs-Orange misst es nur ΔE 13,3 bei Normalsicht — unter der
+     Grenze 15 des dataviz-Validators, und nachts liegen beide Säulen direkt
+     an der Nulllinie aneinander. Das Weinrot des Hauses trennt mit ΔE 22,5
+     (Normalsicht) und ΔE ≥ 8,2 (Farbfehlsichtigkeit) von Orange UND Petrol.
+     Der Betrag im Text bleibt `--vp-c-destructive` — Text trägt Text-Token,
+     nie die Reihenfarbe. */
+  --vp-c-chart-kosten: #8b1e3f; /* = --vp-chart-battdischarge · 9,00:1 */
 }
 
 * {
@@ -793,7 +803,12 @@ svg [tabindex]:focus-visible {
   display: flex;
   justify-content: center;
 }
-.vp-flow-wrap svg {
+/* ⚠ Nur das DIAGRAMM selbst (`>`): die Knoten-Symbole sind verschachtelte
+   <svg> (`Icon`). Ein Nachfahren-Selektor gab ihnen width/height 100 % - in
+   Chromium/WebKit schlägt CSS die width/height-Attribute, und jedes 16-px-
+   Symbol wurde auf die ganze Diagrammfläche aufgeblasen (dicke Bänder quer
+   über das Bild). Wächter: `energieflussIcons.test.ts`. */
+.vp-flow-wrap > svg {
   width: 100%;
   height: 100%;
   display: block;
@@ -2501,6 +2516,15 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-fleet-back:hover {
   background: var(--vp-tint, #eef3ff);
 }
+/* V-03 (UX-Review 24.09.2026): am Telefon führen die Leiste unten („Cockpit")
+   und der Anlagenname oben denselben Weg - der Bereichs-Rückweg „‹ Anlage …"
+   war dort eine zweite Zeile ohne neue Möglichkeit. Tiefere Rückwege (Modus-
+   Container, Geräte-Brotkrume) bleiben. */
+@media (max-width: 720px) {
+  .vp-fleet-back.vp-bereich-back {
+    display: none;
+  }
+}
 
 /* --- Der Zustands-PUNKT: er lebt weiter an der Anlagen-Karte (#/anlagen) und
    am Cockpit. Der Geld-HELD, das Zeitraum-Segment und die Flotten-Status-KARTE
@@ -2927,179 +2951,6 @@ button.vp-cl-item.is-off .vp-cl-label {
   outline-offset: 1px;
 }
 
-/* Technik sub-headings: calmer than section h2, clearly above table rows. */
-.vp-tech-h {
-  margin: 0;
-  font-size: 1.02rem;
-  font-weight: 700;
-  color: var(--vp-text-dark);
-}
-
-/* === Technik & Einstellungen (erklärbar) ================================== */
-/* An editorial page: a slim left jump-nav + six explained sections. Desktop is
-   airy and borderless (hairline header + generous whitespace); the phone turns
-   each section into a bordered, collapsible card. One restrained navy accent. */
-.vp-technik {
-  --vp-tech-hair: color-mix(in srgb, var(--vp-border) 60%, #ffffff);
-  --vp-tech-faint: #9aa0a6;
-  display: grid;
-  grid-template-columns: 196px minmax(0, 1fr);
-  gap: var(--vp-space-7);
-  align-items: start;
-}
-@media (max-width: 980px) {
-  .vp-technik {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Left jump-navigation (desktop only) */
-.vp-technik-nav {
-  position: sticky;
-  top: 84px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-left: 1px solid var(--vp-border);
-}
-@media (max-width: 980px) {
-  .vp-technik-nav {
-    display: none;
-  }
-}
-.vp-technik-nav a {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 0.86rem;
-  font-weight: 500;
-  color: var(--vp-text-gray);
-  padding: 8px 14px;
-  margin-left: -1px;
-  border-left: 2px solid transparent;
-  border-radius: 0 var(--vp-radius-sm) var(--vp-radius-sm) 0;
-  text-decoration: none;
-  transition: var(--vp-motion-chrome);
-}
-.vp-technik-nav a svg {
-  color: var(--vp-tech-faint);
-}
-.vp-technik-nav a:hover {
-  color: var(--vp-text-dark);
-  background: var(--vp-bg-light);
-}
-.vp-technik-nav a.on {
-  color: var(--vp-text-dark);
-  font-weight: 600;
-  border-left-color: var(--vp-action);
-}
-.vp-technik-nav a.on svg {
-  color: var(--vp-action);
-}
-.vp-technik-nav a.danger:hover,
-.vp-technik-nav a.danger.on {
-  color: var(--vp-industry-end);
-}
-.vp-technik-nav a.danger.on {
-  border-left-color: var(--vp-industry-end);
-}
-.vp-technik-nav a.danger.on svg {
-  color: var(--vp-industry-end);
-}
-.vp-technik-nav a:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color);
-  outline-offset: -2px;
-}
-
-/* Sections column */
-.vp-technik-sections {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-6);
-  min-width: 0;
-}
-
-.vp-tech-card {
-  min-width: 0;
-  scroll-margin-top: 90px;
-}
-.vp-tech-card-h {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  width: 100%;
-  padding: 0 0 var(--vp-space-4);
-  border-bottom: 1px solid var(--vp-border);
-}
-button.vp-tech-card-h.toggle {
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--vp-border);
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-.vp-tech-cico {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--vp-border);
-  border-radius: var(--vp-radius-sm);
-  background: var(--vp-surface);
-  color: var(--vp-action);
-}
-.vp-tech-ct {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.vp-tech-title {
-  font-size: 1.06rem;
-  font-weight: 600;
-  color: var(--vp-text-dark);
-  letter-spacing: -0.01em;
-}
-.vp-tech-exp {
-  font-size: 0.85rem;
-  color: var(--vp-text-gray);
-  line-height: 1.45;
-}
-.vp-tech-action {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-.vp-tech-action-phone {
-  margin-bottom: var(--vp-space-3);
-}
-.vp-tech-chev {
-  margin-left: auto;
-  flex: 0 0 auto;
-  color: var(--vp-tech-faint);
-  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
-}
-.vp-tech-card.open .vp-tech-chev {
-  transform: rotate(180deg);
-}
-.vp-tech-card-body {
-  padding-top: var(--vp-space-4);
-  min-width: 0;
-}
-
-/* Danger section (Anlage löschen) */
-.vp-tech-card.danger .vp-tech-cico {
-  color: var(--vp-industry-end);
-  border-color: color-mix(in srgb, var(--vp-industry-end) 35%, var(--vp-border));
-}
-.vp-tech-card.danger .vp-tech-title {
-  color: var(--vp-industry-end);
-}
-
 /* Read-first key/value rows */
 .vp-kv {
   display: flex;
@@ -3134,154 +2985,6 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text-dark);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
-}
-
-/* "Technische Details" disclosure */
-.vp-tech-disc-wrap {
-  margin-top: var(--vp-space-4);
-}
-.vp-tech-disc {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 0;
-  font-size: 0.83rem;
-  font-weight: 600;
-  color: var(--vp-action);
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-}
-.vp-tech-disc .lbl {
-  color: var(--vp-text-gray);
-  font-weight: 500;
-}
-.vp-tech-disc .cv {
-  margin-left: auto;
-  color: var(--vp-tech-faint);
-  font-weight: 500;
-  white-space: nowrap;
-}
-.vp-tech-disc-chev {
-  flex: 0 0 auto;
-  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
-}
-.vp-tech-disc.open .vp-tech-disc-chev {
-  transform: rotate(180deg);
-}
-.vp-tech-disc-body {
-  padding-top: var(--vp-space-2);
-}
-@media (max-width: 560px) {
-  .vp-tech-disc .lbl {
-    display: none;
-  }
-}
-
-/* Amber summary hint on a collapsed phone card (a real failure, e.g. battery
-   without a controlling device) - the full warning shows in the always-visible
-   slot below the header. */
-.vp-tech-warn-summary {
-  color: var(--vp-warn-ink, #b45309);
-  font-weight: 600;
-}
-
-/* Explaining sentence with a left accent */
-.vp-tech-miniexp {
-  margin: var(--vp-space-4) 0 0;
-  padding: 2px 0 2px 12px;
-  border-left: 2px solid var(--vp-border);
-  font-size: 0.85rem;
-  color: var(--vp-text-gray);
-  line-height: 1.5;
-}
-
-/* Read-first map preview (shorter than the interactive editor) */
-.vp-tech-map {
-  margin-top: var(--vp-space-4);
-}
-.vp-tech-map .vp-map {
-  height: clamp(140px, 30vw, 180px);
-}
-
-/* Device rows */
-.vp-tech-devices {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2);
-}
-.vp-tech-device {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 14px;
-  text-align: left;
-  background: var(--vp-surface);
-  border: 1px solid var(--vp-border);
-  border-radius: var(--vp-radius-sm);
-  cursor: pointer;
-  transition: var(--vp-motion-chrome);
-}
-.vp-tech-device:hover {
-  border-color: var(--vp-action);
-  background: var(--vp-bg-light);
-}
-.vp-tech-device-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.vp-tech-device-name {
-  font-weight: 600;
-  color: var(--vp-text-dark);
-  overflow-wrap: anywhere;
-}
-.vp-tech-device-status {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-  text-align: right;
-}
-.vp-tech-device-chev {
-  flex: 0 0 auto;
-  color: var(--vp-tech-faint);
-}
-
-/* Registration status line */
-.vp-tech-reg-status {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-3);
-  flex-wrap: wrap;
-  margin-bottom: var(--vp-space-2);
-}
-
-/* Outlined edit affordance (mockup pencil) */
-.vp-tech-edit {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 13px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--vp-action);
-  background: var(--vp-surface);
-  border: 1px solid var(--vp-border);
-  border-radius: var(--vp-radius-sm);
-  cursor: pointer;
-  transition: var(--vp-motion-chrome);
-}
-.vp-tech-edit:hover {
-  border-color: var(--vp-action);
-  background: var(--vp-bg-light);
 }
 
 /* Inline edit forms */
@@ -3406,43 +3109,6 @@ button.vp-tech-card-h.toggle {
   justify-content: flex-end;
   flex-wrap: wrap;
   margin-top: var(--vp-space-4);
-}
-
-.vp-tech-card-h.toggle:focus-visible,
-.vp-tech-disc:focus-visible,
-.vp-tech-edit:focus-visible,
-.vp-tech-device:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color);
-  outline-offset: 2px;
-  border-radius: var(--vp-radius-sm);
-}
-
-/* Phone: bordered, collapsible cards */
-@media (max-width: 720px) {
-  .vp-tech-card {
-    border: 1px solid var(--vp-border);
-    border-radius: var(--vp-radius-md);
-    background: var(--vp-surface);
-    padding: var(--vp-space-4);
-    box-shadow: var(--vp-shadow-sm);
-  }
-  .vp-tech-card-h,
-  button.vp-tech-card-h.toggle {
-    padding-bottom: 0;
-    border-bottom: none;
-  }
-  .vp-tech-card.open > .vp-tech-card-h,
-  .vp-tech-card.open > button.vp-tech-card-h.toggle {
-    padding-bottom: var(--vp-space-3);
-    border-bottom: 1px solid var(--vp-border);
-  }
-  .vp-tech-cico {
-    width: 34px;
-    height: 34px;
-  }
-  .vp-tech-card-body {
-    padding-top: var(--vp-space-3);
-  }
 }
 
 /* --- Anlagen-Seite "Steuerung" strip (control confirmation) --------------- */
@@ -3613,8 +3279,6 @@ button.vp-tech-card-h.toggle {
 }
 
 /* --- Weitere Erzeuger (additional read-only PV sources, multi-source Anlage) --- */
-.vp-tech-sub { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--vp-border, #E6E9F0); }
-.vp-tech-sub-title { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--vp-ink, #1A2332); }
 .vp-erzeuger { min-width: 0; }
 .vp-erzeuger-list { list-style: none; margin: 12px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .vp-erzeuger-item {
@@ -5303,15 +4967,6 @@ button.vp-tech-card-h.toggle {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
-  }
-  /* Technik: „Bearbeiten" und die „Technische Details"-Aufklapper. */
-  .vp-tech-edit {
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-  }
-  .vp-tech-disc {
-    min-height: 44px;
   }
   /* Zeilenmenüs sind im Desktop bewusst kompakt, werden am Telefon aber als
      eigenständige Aktion getroffen. */

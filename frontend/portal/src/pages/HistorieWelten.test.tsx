@@ -21,12 +21,14 @@ import {
 
 // The explorer chart uses useEChart (canvas); jsdom has neither, so stub it.
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
-vi.mock('../components/Tagesbild', () => ({
-  Tagesbild: () => <div data-testid="day-chart" />,
-}));
-vi.mock('../HistoryChart', () => ({
-  HistoryEnergieChart: () => <div data-testid="energie-chart" />,
-}));
+vi.mock('../components/energie/EnergieCharts', () => {
+  const Chart = (p: { vergleich?: { name: string } | null }) => (
+    <div data-testid="energie-chart" data-vergleich={p.vergleich ? 'ja' : 'nein'}>
+      {p.vergleich ? `Vergleich: ${p.vergleich.name}` : ''}
+    </div>
+  );
+  return { EnergieTagChart: Chart, EnergieBilanzChart: Chart };
+});
 
 const site: Site = {
   id: 's-1',
@@ -320,134 +322,6 @@ beforeEach(() => {
 });
 
 /**
- * Die Historie ist ZWEI WELTEN (Konzept `data/vp-historie-konzept-t4`,
- * Captain-Struktur H1): zwei Routen, ein Skelett, ein Ehrlichkeits-Abzeichen je
- * Karte - und der frühere dritte Umschalter ist ersatzlos weg.
- */
-it('AP-13 Bestandsschutz · Verlauf Messwerte ohne Messfunktion', async () => {
-  bestandsZeit();
-  window.location.hash = '#/anlage/s-1/messwerte?z=monat&at=2026-07-15';
-  vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-  const view = render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-  await screen.findByLabelText('Energiemengen im Zeitraum');
-  await screen.findByText('Vergleich: Juni 2026');
-  await bestandSnapshot('verlauf-messwerte', view);
-});
-
-describe('Welt A · Messwerte', () => {
-  it('führt mit ihrem Welt-Kopf statt mit drei gestapelten Umschaltern', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    // E3: die Überschrift beantwortet „wo bin ich?" für Screenreader und die
-    // Dokumentstruktur — SICHTBAR sagen es die Bereichs-Reiter der Schale.
-    const h1 = screen.getByRole('heading', { level: 1, name: /Messwerte/ });
-    expect(h1).toHaveClass('vp-sr-only');
-    // Die früheren Umschalter „Energie | Erlöse" und „Übersicht | Messwerte"
-    // existieren nicht mehr.
-    expect(screen.queryByRole('tab', { name: 'Energie' })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Übersicht' })).toBeNull();
-    // Und das Welt-Kartenpaar auch nicht: es war der Bereichs-Reiter ein
-    // zweites Mal und kostete 189 px vor der ersten Zahl (Befund B4).
-    expect(screen.queryByRole('group', { name: 'Ansicht wechseln' })).toBeNull();
-    expect(document.querySelector('.vp-welt-kopf')).toBeNull();
-    // Übrig bleibt EINE Bedienzeile: die Zeit-Leiste.
-    expect(screen.getByRole('tablist', { name: 'Zeitraum' })).toBeInTheDocument();
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-  });
-
-  it('nennt das Raster in der EINEN Chip-Form statt im getönten Abzeichen', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    // B7: `Badge variant="tint"` mass 1,66:1 (im echten Browser bei 1440
-    // nachgemessen). Seit E9 trägt das Raster-Wort die EINE Haus-Chip-Form.
-    const raster = await screen.findByText('15-Minuten-Mittel');
-    expect(raster).toHaveClass('vp-chip');
-    expect(raster.className).not.toMatch(/tint/);
-  });
-
-  it('zeigt die sechs Energiemengen des Zeitraums, mit dem Abzeichen „Gemessen"', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    const row = await screen.findByLabelText('Energiemengen im Zeitraum');
-    for (const label of ['Erzeugt', 'Verbraucht', 'Bezogen', 'Eingespeist', 'Geladen', 'Entladen']) {
-      expect(row).toHaveTextContent(label);
-    }
-    // Laden/entladen kommen NICHT aus totals - sie werden über die Buckets
-    // gebildet (2,0 + 1,0 kWh geladen, 0 + 3,0 kWh entladen).
-    expect(row).toHaveTextContent('3 kWh');
-    expect(screen.getByRole('heading', { level: 2, name: /Energie im Zeitraum · / })).toBeInTheDocument();
-    expect(screen.getByTestId('energie-chart')).toBeInTheDocument();
-    // Jede Karte dieser Welt trägt „Gemessen" - und keine „Bewertet".
-    expect(screen.getAllByText('Gemessen').length).toBeGreaterThan(1);
-    expect(screen.queryByText('Bewertet')).toBeNull();
-  });
-
-  it('trägt die STROMKOSTEN nicht mehr — eine bewertete Zahl in einer gemessenen Karte', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    expect(screen.queryByText(/Stromkosten/)).toBeNull();
-    expect(screen.queryByText(/zu Börsenpreisen/)).toBeNull();
-    // Autarkie/Eigenverbrauch (gemessene Quoten) bleiben.
-    expect(screen.getByText('Autarkie')).toBeInTheDocument();
-  });
-
-  it('nennt beim VERGANGENEN Zeitraum ausdrücklich sein Etikett', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    fireEvent.click(screen.getByLabelText('Vorheriger Zeitraum'));
-    await waitFor(() => expect(screen.getByText(/nicht für heute/)).toBeInTheDocument());
-  });
-
-  it('schließt die Fußkarte „Was diese Zahlen sind" an', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    expect(screen.getByText('Was diese Zahlen sind')).toBeInTheDocument();
-    expect(screen.getByText(/für eine Abrechnung/)).toBeInTheDocument();
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-  });
-
-  /**
-   * §4.1 · der Leer-Zustand nennt den ZEITRAUM und bietet den einen Weg, den es
-   * WIRKLICH gibt. Ohne je gemessene Viertelstunde bleibt er weg — ein toter
-   * Link ist schlimmer als keiner (P3).
-   */
-  it('nennt im Leer-Zustand den Zeitraum und führt zum letzten Tag mit Daten', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue({
-      ...historyEmpty,
-      coverage: {
-        firstDataAt: '2026-08-01T00:00:00Z',
-        lastDataAt: '2026-08-28T21:45:00Z',
-        expectedFrom: '2026-09-03T00:00:00Z',
-        expectedTo: '2026-09-04T00:00:00Z',
-        expectedBuckets: 96,
-        measuredBuckets: 0,
-        gaps: 1,
-        resolutionMinutes: 15,
-      },
-    } as History);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-    expect(screen.getByText(/liegen keine Messwerte vor/)).toBeInTheDocument();
-    const weg = screen.getByRole('button', { name: /Zum letzten Tag mit Daten/ });
-    fireEvent.click(weg);
-    // Der Weg führt auf GENAU diesen Tag — er ist nicht dekorativ.
-    await waitFor(() => expect(window.location.hash).toContain('at=2026-08-28'));
-  });
-
-  it('bietet ohne je gemessene Viertelstunde GAR KEINEN Weg an', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-    expect(screen.queryByRole('button', { name: /Zum letzten Tag mit Daten/ })).toBeNull();
-  });
-});
-
-/**
  * ⚠ Die Aufklapper des Verlaufs sind seit P2b ein natives `<details>`/`<summary>`
  * (der geteilte `Aufklapper`, Konzept §3.2 V8) — kein `<button>` mehr, und
  * `getByRole('button')` findet ein `summary` nicht. `aria-expanded` steht
@@ -463,79 +337,61 @@ function aufklapper(name: RegExp): HTMLElement {
   return treffer[0] as HTMLElement;
 }
 
-describe('Der Explorer ist ein Abschnitt DIESER Welt (der dritte Umschalter entfällt)', () => {
-  it('ist zugeklappt und öffnet auf Klick die Messwert-Auswahl', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
-    vi.spyOn(api, 'topology').mockResolvedValue(topology);
-    const eh = vi.spyOn(api, 'entityHistory').mockResolvedValue(entityHistory(true));
+/**
+ * Welt B · Erlöse — seit dem Verlauf-Rework (P2) eine Abrechnung:
+ * Kennzahlen, Verlauf, Abrechnung, Kontext. Die Aufbau-Tests stehen in
+ * `ErloeseSeite.test.tsx`; hier bleiben die Zusagen, die über die Seite
+ * hinaus gelten.
+ */
+/** Die Kachel „VoltPilot-Steuerung" und ihr geöffnetes ⓘ (Maßstab + Rechnung). */
+async function steuerErklaerung(): Promise<HTMLElement> {
+  const kachel = screen.getByText('VoltPilot-Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+  fireEvent.click(within(kachel).getByRole('button', { name: 'Erklärung: Mehrwert durch VoltPilot' }));
+  await screen.findAllByText(/Verglichen wird mit/);
+  return document.querySelector('.vp-vr-mw-info') as HTMLElement;
+}
 
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    const toggle = aufklapper(/Einzelne Messwerte vergleichen/);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('Batteriespeicher')).toBeNull();
-
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-
-    // Die Leiste gruppiert nach Komponente, mit deutschen Messwert-Namen.
-    await screen.findByText('Batteriespeicher');
-    expect(screen.getByText('Netzanschluss')).toBeInTheDocument();
-    expect(screen.getAllByText('Ladestand').length).toBeGreaterThan(0);
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)));
-  });
-
-  it('öffnet ein Deep-Link (?m=…) direkt aufgeklappt - alte Lesezeichen bleiben gültig', async () => {
-    window.location.hash = '#/anlage/s-1/messwerte?m=grid:power_kw&z=woche';
-    vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
-    vi.spyOn(api, 'topology').mockResolvedValue(topology);
-    const eh = vi.spyOn(api, 'entityHistory').mockResolvedValue({
-      ...entityHistory(true),
-      range: 'week',
-    });
-
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    expect(aufklapper(/Einzelne Messwerte vergleichen/)).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('tab', { name: 'Woche' })).toHaveAttribute('aria-selected', 'true');
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'grid', 'week', expect.any(String)));
-  });
+/**
+ * AP-13 Bestandsschutz · Verlauf Messwerte ohne Messfunktion — seit dem
+ * Verlauf-Rework von main (763b87f39) ist die Fläche „Energie“; die Aufnahme
+ * folgt der ausgelieferten Fläche (`test/bestandsschutz/README.md`).
+ */
+it('AP-13 Bestandsschutz · Verlauf Messwerte ohne Messfunktion', async () => {
+  bestandsZeit();
+  window.location.hash = '#/anlage/s-1/messwerte?z=monat&at=2026-07-15';
+  vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+  const view = render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+  await screen.findByRole('group', { name: /^Energie · / });
+  await bestandSnapshot('verlauf-messwerte', view);
 });
 
 describe('Welt B · Erlöse', () => {
-  it('führt mit dem GEMESSENEN Ergebnis und macht es nachrechenbar (F1)', async () => {
+  const geladen = () => screen.findByRole('group', { name: /^Erlöse · / });
+  const nb = (s: string | null | undefined) => (s ?? '').replace(/ /g, ' ');
+
+  it('führt mit dem GEMESSENEN Ergebnis und zeigt die Steuerung — nie die Zahl gegen „ohne Speicher"', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    const kpis = await geladen();
 
-    // Die eine große Zahl - Vorzeichen als eigenes Zeichen. Sie steht ein
-    // zweites Mal als letzter Balken des Wasserfalls (die Zeile „Ergebnis"),
-    // der die Addition beweist - deshalb wird der Hero gezielt adressiert.
-    expect(
-      await screen.findByText('+ 999,26 €', { selector: '.vp-c-stm-zahl' }),
-    ).toBeInTheDocument();
-    // ... und die Zeilen, aus denen sie entsteht (seit Revision 2 mit
-    // 1-3-Wort-Namen, Konzept §3.12).
-    const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(komposition).toHaveTextContent('Einspeise-Erlös');
-    expect(komposition).toHaveTextContent('1.059,40 €');
-    expect(komposition).toHaveTextContent('Netzbezug');
-    expect(komposition).toHaveTextContent('60,14 €');
-    // Die STEUERUNGS-KARTE ist eine UNTERZEILE, kein weiterer Summand — und
-    // sie trägt seit dem 04.09.2026 `savedSteuerungEur`, nie mehr `savedEur`.
-    expect(screen.getByText('Steuerung an diesem Tag')).toBeInTheDocument();
-    // Der Betrag steht ein zweites Mal in Schritt 3 der Rechenzeilen darunter
-    // (dieselbe Rechnung, zweite Lesehöhe) - deshalb gezielt die Block-Zeile.
-    expect(screen.getByText(/\+ 61,44/, { selector: '.vp-c-sp-wert' })).toBeInTheDocument();
-    expect(komposition).not.toHaveTextContent('61,44');
-    // ⚠ Die Gesamtzahl gegen „ohne Speicher" steht NIRGENDS mehr.
+    // Die eine große Zahl — Vorzeichen als eigenes Zeichen.
+    const haupt = within(kpis).getByText('Ergebnis').closest('.vp-vr-kpi') as HTMLElement;
+    expect(nb(haupt.textContent)).toMatch(/\+ 999,26 €/);
+    // … und die Posten, aus denen sie entsteht (1.059,40 − 60,14 = 999,26).
+    const abrechnung = screen.getByRole('region', { name: 'Abrechnung' });
+    expect(nb(abrechnung.textContent)).toMatch(/\+ 1\.059,40 €/);
+    expect(nb(abrechnung.textContent)).toMatch(/− 60,14 €/);
+    // Die Steuerung trägt `savedSteuerungEur`, nie `savedEur`.
+    const steuerung = within(kpis).getByText('VoltPilot-Steuerung').closest('.vp-vr-kpi') as HTMLElement;
+    expect(nb(steuerung.textContent)).toMatch(/\+ 61,44 €/);
     expect(screen.queryByText(/161,44/)).toBeNull();
   });
 
   // Diagnose vp-tagesbild-minus-f3: die gemessene Kasse kennt eingelagerte
-  // Energie nur als entgangenen Erlös. Ohne den zweiten Posten stand über
-  // einem einwandfreien Plan „−4,69 €".
-  it('stellt das BESTANDSKONTO neben die Kasse - und nie in die grosse Zahl', async () => {
+  // Energie nur als entgangenen Erlös — der Bestand steht als eigener Posten
+  // neben der Steuerung, nie in der großen Zahl.
+  it('stellt das BESTANDSKONTO neben die Steuerung — und nie in die Abrechnung', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({
       ...moneyWithData,
@@ -548,63 +404,41 @@ describe('Welt B · Erlöse', () => {
       speicherWertBasis: 'plan',
     });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await geladen();
 
-    // Die Bestandszeile selbst - die Zahl steht seit Ebene 1 auch in der
-    // Planwert-Rechnung der Speicher-Schritte, deshalb gezielt adressiert.
-    const satz = await screen.findByText(/44,2 kWh/, { selector: '.vp-c-sp-bestand span' });
-    expect(satz).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
-    expect(satz).toHaveTextContent('Planwert 8,35 €');
-    // Der Betrag bleibt sichtbar von der gemessenen Kasse getrennt.
-    expect(satz.closest('p')).toHaveTextContent('Kein Abzug');
-    // Die grosse Zahl bleibt die gemessene Kasse.
-    expect(screen.getByText('+ 999,26 €', { selector: '.vp-c-stm-zahl' })).toBeInTheDocument();
-    const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(komposition).not.toHaveTextContent('8,35');
+    const karte = await steuerErklaerung();
+    const zeile = within(karte).getAllByText(/44,2 kWh/)[0].closest('p') as HTMLElement;
+    expect(zeile).toHaveTextContent('Speicherenergie für den Folgetag gespeichert');
+    expect(nb(zeile.textContent)).toMatch(/Planwert 8,35 €/);
+    expect(nb(screen.getByRole('region', { name: 'Abrechnung' }).textContent)).not.toMatch(/8,35/);
   });
 
-  it('bleibt ohne die Bestandsfelder zeichengleich zu vorher', async () => {
+  it('lässt die Bestandszeile ohne die Bestandsfelder weg', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    // Die BESTANDSZEILE fehlt - der Satz „was jetzt im Speicher liegt" der
-    // Speicher-Schritte (Ebene 1) ist eine andere Aussage und bleibt.
-    // ⚠ Seit P1+P5 wohnt sie als Zeile 3 IM SpeicherBlock; ein Wächter auf dem
-    //   abgelösten Wirt `.vp-erg-bestand` wäre stillschweigend wahr geworden.
-    // ⚠ In Anatomie C hat der Bestand eine EIGENE Zeile in der Speicher-Karte
-    //   (§3.10 (3)); der Planwert wohnt seit E6 in den Schritten und kann sie
-    //   deshalb nicht mehr vortäuschen.
-    expect(document.querySelector('.vp-c-sp-bestand')).toBeNull();
+    await geladen();
     expect(screen.queryByText(BESTAND_BADGE)).not.toBeInTheDocument();
     expect(screen.queryByText(/Folgetag gespeichert/)).not.toBeInTheDocument();
   });
 
-  // P6/E5: die Karte „Was den Preis gemacht hat" ist ENTFALLEN — ihre Zeilen
-  // wohnen in Ebene 2 der Ergebnis-Karte („Preise & Vergütung"). Dieselbe
-  // Preiswahrheit stand zweimal auf der Seite.
-  it('zeigt Geld im Verlauf — und die Preise eine Ebene tiefer statt als Karte', async () => {
+  it('zeigt die Preise im Zeitraum und die Markt-Einordnung', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({ ...moneyWithData, range: 'month' });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await geladen();
 
-    expect(screen.getByRole('heading', { level: 2, name: /Geld im Verlauf/ })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 2, name: 'Was den Preis gemacht hat' })).toBeNull();
-
-    // Der Bezugspreis steht in der Tabelle hinter „Preise & Vergütung".
-    const ebene2 = document.querySelector('details.vp-c-preise') as HTMLDetailsElement;
-    expect(ebene2).toBeTruthy();
-    expect(within(ebene2).getByText('Bezugspreis')).toBeInTheDocument();
-    expect(ebene2.textContent).toMatch(/4,9.ct/);
-
-    // Die EXPORT-Zeilen leben unverändert im Kombinations-Bild eine Karte
-    // höher; die Einordnung trägt dort der Verdikt-Chip.
+    const preise = screen.getByRole('region', { name: 'Preise im Zeitraum' });
+    // Seit dem Balken-Umbau (25.09.2026) heißt die Zeile wie der Posten der
+    // Abrechnung: „Netzbezug" — ihr Wert ist derselbe Ø-Bezugspreis.
+    expect(within(preise).getByText('Netzbezug')).toBeInTheDocument();
+    expect(nb(preise.textContent)).toMatch(/4,9.ct/);
     expect(screen.getByText('+ 3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
   });
 
   // Der reale Kundenfall vom 05.08.2026: „+ 0,00 € · Marktprämie" ohne ein Wort
   // dazu. Die Zustände selbst sind in `marktpraemie.test.ts` festgenagelt.
-  it('erklärt die Marktprämie-Null - statt sie nackt stehen zu lassen', async () => {
+  it('erklärt die Marktprämie-Null — statt sie nackt stehen zu lassen', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({
       ...moneyWithData,
@@ -614,22 +448,18 @@ describe('Welt B · Erlöse', () => {
       marketValueProvisional: true,
     });
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await geladen();
     expect(screen.getByText(/Ihre Vergütung kommt diesen Monat voll aus dem Markt/)).toBeInTheDocument();
     expect(screen.getByText(/die Prämie kann sich noch ändern/)).toBeInTheDocument();
-    // Der Monat ist die Abrechnungseinheit und steht in der Überschrift; die
-    // Tagesansicht sagt zusätzlich, dass die Zahl eine Zurechnung ist.
     expect(screen.getByText('Marktprämie · Juli 2026')).toBeInTheDocument();
     expect(screen.getByText('anteilig — abgerechnet je Monat')).toBeInTheDocument();
   });
 
-  it('zeigt ohne anzulegenden Wert „—" MIT Weg - nie eine erfundene Null', async () => {
+  it('zeigt ohne anzulegenden Wert „—" MIT Weg — nie eine erfundene Null', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await geladen();
     expect(screen.getByText(/Kein anzulegender Wert hinterlegt/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Zu den Einstellungen' })).toHaveAttribute(
       'href',
@@ -637,43 +467,31 @@ describe('Welt B · Erlöse', () => {
     );
   });
 
-  // E6: die Karte „Geplante Speicher-Ersparnis" ist ENTFALLEN — die Zahl
-  // steht als SCHRITT der Speicher-Rechnung, direkt hinter der Rechnung, mit
-  // der sie sich vergleicht. Die TRENNUNG der zwei Abzeichen bleibt.
-  it('trennt die BEWERTETE Zahl von der GEPLANTEN — Fläche gegen Schritt', async () => {
+  it('trennt die BEWERTETE Zahl von der GEPLANTEN — der Planwert steht nur in der Rechnung', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await geladen();
 
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
-    expect(screen.queryByRole('heading', { level: 2, name: /Geplante Speicher-Ersparnis/ })).toBeNull();
-    const speicher = document.querySelector('.vp-c-speicher') as HTMLElement;
-    expect(speicher).toBeTruthy();
-    const plan = within(speicher).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
-    // Beide Abzeichen existieren - und zwar an verschiedenen Flächen.
-    expect(screen.getAllByText('Bewertet').length).toBeGreaterThan(0);
+    const karte = await steuerErklaerung();
+    const plan = within(karte).getByText(/^Fahrplan:/).closest('li') as HTMLElement;
     expect(plan.textContent).toMatch(/eine Plan-Zahl, keine Messung/);
-    // Die geplante Zahl kommt weiterhin aus der Historie-Antwort — seit dem
-    // 04.09.2026 aus `steuerungPlannedEur`, nie mehr aus
-    // `batterySavingsPlannedEur` (0,42 misst gegen „ohne Speicher").
     expect(plan.textContent).toMatch(/0,18/);
     expect(plan.textContent).not.toMatch(/0,42/);
-    expect(plan.textContent).toMatch(/Mehrwert der Steuerung/);
-    // Der Tages-Nachweis + das Tagesprotokoll bleiben hier.
-    expect(screen.getByTestId('day-chart')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: 'Tagesprotokoll' })).toBeInTheDocument();
     // Die Energiemengen führen NICHT in der Geld-Welt.
     expect(screen.queryByLabelText('Energiemengen im Zeitraum')).toBeNull();
   });
 
-  it('sagt in der Fußkarte, dass sie bewertet und nicht abgerechnet ist', async () => {
+  it('sagt in der Statuszeile, dass sie bewertet und nicht abgerechnet ist', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
     stubMoney(moneyEmpty);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    expect(screen.getByText(/Bewertet, nicht abgerechnet/)).toBeInTheDocument();
+    expect(screen.getByText('Bewertet')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Erklärung: So entstehen die Beträge' }));
+    expect(await screen.findByText(/Bewertet, nicht abgerechnet/)).toBeInTheDocument();
     // Ein leerer Zeitraum nennt seinen Grund, statt eine Null zu zeigen.
     await screen.findByText('Noch kein Ergebnis für diesen Zeitraum');
-    expect(screen.getByText(/noch keine Messwerte/)).toBeInTheDocument();
+    expect(screen.getAllByText(/noch keine Messwerte/).length).toBeGreaterThan(0);
     expect(screen.queryByText('0,00 €')).toBeNull();
   });
 });
@@ -682,7 +500,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
   it('hat KEINEN eigenen Welt-Link mehr — der Wechsel wohnt in den Reitern', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // E3: die Fläche bietet den Wechsel nicht ein zweites Mal an.
     expect(screen.queryByRole('link', { name: /Erlöse/ })).toBeNull();
@@ -699,7 +517,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     const mess = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
     const nachErstemAufbau = hist.mock.calls.length;
     expect(nachErstemAufbau).toBeGreaterThan(0);
 
@@ -707,12 +525,12 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     // identischer Abruf derselben Periode.
     mess.unmount();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await screen.findByRole('group', { name: /^Erlöse · / });
     expect(hist.mock.calls.length).toBe(nachErstemAufbau);
 
     // Und zurück - ebenfalls ohne Abruf.
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findAllByLabelText('Energiemengen im Zeitraum');
+    await screen.findAllByRole('group', { name: /^Energie · / });
     expect(hist.mock.calls.length).toBe(nachErstemAufbau);
   });
 
@@ -730,16 +548,16 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    expect(container.querySelector('.vp-welt-stale')).toBeNull();
+    await screen.findByRole('group', { name: /^Energie · / });
+    expect(container.querySelector('.vp-vr-body.alt')).toBeNull();
 
     fireEvent.click(screen.getByLabelText('Vorheriger Zeitraum'));
     // Die Zahlen der vorherigen Periode stehen noch da, nur gedimmt.
-    await waitFor(() => expect(container.querySelector('.vp-welt-stale')).toBeTruthy());
-    expect(screen.getByLabelText('Energiemengen im Zeitraum')).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector('.vp-vr-body.alt')).toBeTruthy());
+    expect(screen.getByRole('group', { name: /^Energie · / })).toBeInTheDocument();
 
     offen.forEach((r) => r(historyEmpty));
-    await waitFor(() => expect(container.querySelector('.vp-welt-stale')).toBeNull());
+    await waitFor(() => expect(container.querySelector('.vp-vr-body.alt')).toBeNull());
   });
 
   it('sagt es, wenn eine Periode NICHT geladen werden konnte (P5) - statt still stehenzubleiben', async () => {
@@ -749,12 +567,12 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     );
 
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
     fireEvent.click(screen.getByLabelText('Vorheriger Zeitraum'));
 
     await screen.findByText(/konnte nicht geladen werden/);
     // Die zuletzt geladenen Zahlen bleiben stehen - nur eben beschriftet.
-    expect(screen.getByLabelText('Energiemengen im Zeitraum')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /^Energie · / })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
   });
 });
@@ -770,7 +588,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // Seit dem Picker-System ist es der Haus-Kalender (Wochenstart Montag),
     // kein natives Feld - der Wert bleibt derselbe ISO-Wert.
@@ -799,7 +617,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
   it('wechselt mit dem Zeitraum auch die Art des Sprungfelds', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // Die ANZEIGE ist deutsch, der Wert bleibt ISO - je Zeitraum eine andere
     // Art desselben Kalenders.
@@ -819,7 +637,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
     // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
     // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
@@ -842,7 +660,7 @@ describe('F2 · In der Vergangenheit navigieren', () => {
   it('zeigt den Streifen nur dort, wo Blättern wirklich weh tut', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
     // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
     // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
     // noch, was man ständig braucht.
@@ -867,15 +685,13 @@ describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
   it('sagt ab wann es Daten gibt, wie viel gemessen ist und wie viele Lücken', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
+    await screen.findByRole('group', { name: /^Energie · / });
 
-    // E3: Monatsstreifen, „Vergleichen" und Datenlage liegen seit dem
-    // Chrome-Umbau HINTER dem Datum-Feld (⋯) — eine klebende Leiste trägt nur
-    // noch, was man ständig braucht.
-    fireEvent.click(screen.getByRole('button', { name: 'Monat, Vergleich & Datenlage' }));
-    expect(screen.getByText('Daten ab 19.06.2026')).toBeInTheDocument();
-    expect(screen.getByText('94 % der Viertelstunden gemessen')).toBeInTheDocument();
-    expect(screen.getByText('· 6 Lücken')).toBeInTheDocument();
+    // Seit dem Verlauf-Rework steht die Datenlage in der EINEN Statuszeile
+    // unter der Zeit-Leiste; „Daten ab …" steht in ihrem ⓘ.
+    expect(screen.getByText('94 % der Viertelstunden gemessen · 6 Lücken')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Erklärung: So entstehen die Werte' }));
+    expect(await screen.findByText(/Daten ab 19\.06\.2026/)).toBeInTheDocument();
   });
 
   it('behauptet ohne Abdeckungsdaten GAR KEINE - auch in der Geld-Welt', async () => {
@@ -883,81 +699,9 @@ describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
     vi.spyOn(api, 'history').mockResolvedValue(ohne);
     stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    await screen.findByRole('group', { name: /^Erlöse · / });
     expect(screen.queryByText(/Daten ab/)).toBeNull();
     expect(screen.queryByText(/gemessen$/)).toBeNull();
-  });
-});
-
-/**
- * PR D · F3 — Δ zur Vorperiode: die billigste Form von „nachschauen".
- */
-describe('F3 · Vergleich mit der Vorperiode', () => {
-  /** Eine Antwort mit frei gesetzten Summen (die Buckets tragen die Wahrheit). */
-  function tag(pv: number, bezug: number | null): History {
-    return {
-      ...historyWithData,
-      buckets: [
-        {
-          ...historyWithData.buckets[0],
-          pvKwh: pv,
-          gridImportKwh: bezug,
-          batteryChargeKwh: null,
-          batteryDischargeKwh: null,
-        },
-      ],
-    };
-  }
-
-  it('zeigt je Kennzahl das Δ und wertet nur, wo die Richtung eindeutig ist', async () => {
-    const heute = isoDate(new Date());
-    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
-      Promise.resolve(at === heute ? tag(118, 91) : tag(100, 100)),
-    );
-    const { container } = render(
-      <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
-    );
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-
-    // +18 % Erzeugung ist eindeutig gut, −9 % Netzbezug ebenfalls.
-    await screen.findByText('18 % mehr als am Vortag');
-    expect(screen.getByText('9 % weniger als am Vortag')).toBeInTheDocument();
-    expect(container.querySelectorAll('.vp-delta-gut').length).toBe(2);
-    // Die Karte nennt, womit verglichen wird.
-    expect(screen.getByText(/^Vergleich: /)).toBeInTheDocument();
-  });
-
-  it('vergleicht NIE gegen eine erfundene Null', async () => {
-    const heute = isoDate(new Date());
-    // Die Vorperiode trug den Netzbezug gar nicht.
-    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
-      Promise.resolve(at === heute ? tag(118, 91) : tag(100, null)),
-    );
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('18 % mehr als am Vortag');
-    expect(screen.queryByText(/als am Vortag/)).not.toBeNull();
-    // Kein Δ auf der Bezogen-Kachel - lieber keine Aussage als eine falsche.
-    expect(screen.queryByText(/% weniger als am Vortag/)).toBeNull();
-  });
-
-  it('beschriftet eine LAUFENDE Periode als solche', async () => {
-    vi.spyOn(api, 'history').mockResolvedValue(tag(118, 91));
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Energiemengen im Zeitraum');
-    // Der laufende Tag gegen einen vollen Vortag - das muss dastehen.
-    await waitFor(() =>
-      expect(screen.getByText(/läuft noch — verglichen wird mit dem vollständigen/))
-        .toBeInTheDocument(),
-    );
-  });
-
-  it('holt die Vorperiode gar nicht erst, wenn der Zeitraum leer ist', async () => {
-    const hist = vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
-    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByText('Keine Messwerte in diesem Zeitraum');
-    // Nur der EINE Abruf der gezeigten Periode (im StrictMode-freien Test).
-    const anker = new Set(hist.mock.calls.map((c) => c[2]));
-    expect(anker.size).toBe(1);
   });
 });
 

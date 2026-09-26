@@ -1,10 +1,10 @@
 /*
  * DAS PORTFOLIO-COCKPIT (Revision 2, Scout `vp-portfolio-konzept-r2` §5.2).
  *
- * Der Kopf ist eine ZEILE, nicht ein Block: Titel plus die EINE Flotten-Aussage
- * als Unterzeile, die Aktionen im „···"-Menü rechts. Der frühere Geld-Held im
- * Marken-Verlauf ist ersatzlos entfallen - der Verlauf gehoert Login und
- * Marketing, im Betriebs-Portal ist Geld eine Zelle der Leiste.
+ * Nur noch der Kopf der Zustände Laden, Fehler und „keine Anlage": eine ZEILE,
+ * nicht ein Block - Titel plus die EINE Flotten-Aussage als Unterzeile, die
+ * Aktionen im „···"-Menü rechts. Die geladene Übersicht bringt ihren eigenen
+ * Kopf mit (`portfolio/KundenUebersicht.css`).
  *
  * Komponenten-lokal, damit `index.css` unangetastet bleibt.
  */
@@ -99,45 +99,4 @@
   content: '';
   position: absolute;
   inset: -4px;
-}
-
-/* Die ruhige Zeile statt einer leeren Kennzahlen-Leiste. */
-.vp-portfolio-ruhe {
-  margin: var(--vp-space-3, 12px) 0 0;
-  font-size: 0.85rem;
-  color: var(--vp-text-muted, #6c757d);
-  overflow-wrap: anywhere;
-}
-
-.vp-portfolio-anlagen {
-  margin-top: var(--vp-space-5, 20px);
-  min-width: 0;
-}
-
-/* Am Telefon wandern die zwei Aktionen unter die Anlagen (die Bar-Regel). */
-.vp-portfolio-fuss {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-space-2, 8px);
-  margin-top: var(--vp-space-5, 20px);
-}
-
-.vp-portfolio-fuss > * {
-  flex: 1 1 160px;
-}
-
-/*
- * UEMS AP-01 IP-6 — die Zahlen-Zeile der Unternehmens- und Standort-Übersicht
- * („2 Standorte · 3 Anlagen · 1 steuert"), über der Datenlage.
- */
-.vp-portfolio-zahlen {
-  margin: 4px 0 0;
-  font-size: 0.95rem;
-  line-height: 1.4;
-  color: var(--vp-text, #212529);
-  overflow-wrap: anywhere;
-}
-
-.vp-portfolio-funktionen {
-  margin-top: var(--vp-space-3, 12px);
 }

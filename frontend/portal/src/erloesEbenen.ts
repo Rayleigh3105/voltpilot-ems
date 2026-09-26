@@ -27,6 +27,8 @@ import {
   MESSLATTE_DATIV,
   MESSLATTE_DATIV_UNBESTIMMT,
   MESSLATTE_KURZ,
+  grundKennungen,
+  paarEur,
 } from './speicherAussage';
 
 /** Eine Rechenzeile: „345,4 kWh × 6,18 ct = 21,34 €" plus ein Halbsatz Herkunft. */
@@ -366,12 +368,50 @@ const GLOSSAR: Record<string, GlossarEintrag> = {
   },
 };
 
+/**
+ * Ein Begriff des Glossars — für die ⓘ der Verlauf-Seiten, damit die
+ * Erklärung eines Wortes an JEDER Stelle derselbe Satz ist.
+ */
+export function erloesBegriff(
+  key: 'boerse' | 'praemie' | 'monatsmarktwert' | 'anzulegender' | 'feste' | 'eigenverbrauch' | 'netzbezug' | 'ergebnis' | 'planwert' | 'zwischenstand',
+): GlossarEintrag {
+  return GLOSSAR[key];
+}
+
 /** Der E12-Satz: warum Einspeisen bei 0,0 ct richtig sein kann. */
 export function nullCtSatz(satzCt: number): string {
   return (
     `Prämie gilt noch (${ct(satzCt)}) — erst unter 0,0${NBSP}ct ruht sie. ` +
     'Deshalb kann Einspeisen richtig sein, obwohl der Speicher Platz hat.'
   );
+}
+
+/** Worauf die Beträge beruhen — der Wert der Zeile „Bewertung". */
+export const BEWERTUNG_WERT = 'heutige Tarif- und Vergütungsangaben — nicht Ihre Abrechnung';
+
+/**
+ * Was der Speicher darf — und, wo der Endpunkt es liefert, was das Netzladen
+ * gebracht hat. `null` = die Anlage sagt es nicht (`site.netzladenErlaubt`).
+ *
+ * P6/E5: die Preis-Karte „Was den Preis gemacht hat" ist ENTFALLEN, ihre
+ * Zeilen wohnen in Ebene 2 bzw. in der Preis-Karte. Ihre Netzladen-Zeile trug
+ * neben dem Hinweis auch die ZAHL („davon durch Netzladen + 12,40 €") — sie
+ * steht deshalb im selben Satz wie der Hinweis.
+ *
+ * ⚠ Die Zahl wird NUR genannt, wenn der Endpunkt sie liefert UND sie etwas
+ *   bewegt hat — eine „+ 0,00 €"-Zeile behauptete einen Netzlade-Handel, den
+ *   es nicht gab. Fehlt sie auf einer Anlage, die netzladen DARF, bleibt es
+ *   beim Hinweis: „nicht geladen" wäre eine Aussage über einen Zeitraum, für
+ *   den der Endpunkt keine Zurechnung hat.
+ */
+export function speicherWert(money: SiteEarnings, netzladenErlaubt: boolean | null | undefined): string | null {
+  if (netzladenErlaubt == null) return null;
+  const arb = num(money.arbitrageEur);
+  const handel =
+    netzladenErlaubt && arb != null && Math.abs(arb) >= 0.005
+      ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}`
+      : '';
+  return `${netzladenErlaubt ? 'darf aus dem Netz laden' : 'lädt nur Sonnenstrom'}${handel}`;
 }
 
 export interface Ebene2Input {
@@ -470,34 +510,10 @@ export function ebene2(input: Ebene2Input): Ebene2 {
     if (!glossar.includes(GLOSSAR.boerse)) glossar.push(GLOSSAR.boerse);
   }
 
-  // --- Speicher + Bewertung ---------------------------------------------
-  //
-  // P6/E5: die Preis-Karte „Was den Preis gemacht hat" ist ENTFALLEN, ihre
-  // Zeilen wohnen hier. Ihre Netzladen-Zeile trug neben dem Hinweis auch die
-  // ZAHL („davon durch Netzladen + 12,40 €") — sie steht deshalb im selben
-  // Satz wie der Hinweis, statt eine eigene Zeile zu bekommen: das
-  // Textbudget der Tabelle (§3.4: höchstens acht Zeilen) gehört den Preisen.
-  //
-  // ⚠ Die Zahl wird NUR genannt, wenn der Endpunkt sie liefert UND sie etwas
-  //   bewegt hat — eine „+ 0,00 €"-Zeile behauptete einen Netzlade-Handel, den
-  //   es nicht gab. Fehlt sie auf einer Anlage, die netzladen DARF, bleibt es
-  //   beim Hinweis: „nicht geladen" wäre eine Aussage über einen Zeitraum, für
-  //   den der Endpunkt keine Zurechnung hat.
-  if (input.netzladenErlaubt != null) {
-    const arb = num(money.arbitrageEur);
-    const handel =
-      input.netzladenErlaubt && arb != null && Math.abs(arb) >= 0.005
-        ? ` · davon durch Netzladen ${vorzeichen(rundeKaufmaennisch(arb, 2))}`
-        : '';
-    zeilen.push({
-      label: 'Speicher',
-      wert: `${input.netzladenErlaubt ? 'darf aus dem Netz laden' : 'lädt nur Sonnenstrom'}${handel}`,
-    });
-  }
-  zeilen.push({
-    label: 'Bewertung',
-    wert: 'heutige Tarif- und Vergütungsangaben — nicht Ihre Abrechnung',
-  });
+  // --- Speicher + Bewertung (dieselben Sätze wie in `preisVergleich.ts`) --
+  const speicher = speicherWert(money, input.netzladenErlaubt);
+  if (speicher != null) zeilen.push({ label: 'Speicher', wert: speicher });
+  zeilen.push({ label: 'Bewertung', wert: BEWERTUNG_WERT });
 
   glossar.push(GLOSSAR.eigenverbrauch, GLOSSAR.netzbezug, GLOSSAR.ergebnis);
   if (num(money.speicherWertEur) != null) glossar.push(GLOSSAR.planwert);
@@ -532,6 +548,11 @@ export interface SpeicherSchritteInput {
    * neue Zahl liefert, bleibt die Zeile weg.
    */
   steuerungGeplantEur?: number | null;
+  /** Ob der Tag noch läuft — „Warum heute weniger" statt „an diesem Tag". */
+  laeuft?: boolean;
+  /** Erzeugung und Verbrauch des Tages (`history.totals`) — nur für „wenig Sonne". */
+  pvKwh?: number | null;
+  verbrauchKwh?: number | null;
 }
 
 /** „24,55 € Gutschrift" / „3,12 € Kosten" — das Vorzeichen wird zum Wort. */
@@ -546,6 +567,78 @@ function differenz(a: number, b: number): string {
 
 function vorzeichen(v: number): string {
   return `${v < 0 ? '−' : '+'} ${eurAmount(Math.abs(v))}`;
+}
+
+/**
+ * „Warum heute weniger" (Konzept k1 §10 P3): je Grund des Servers EINE Zeile
+ * mit den eingesetzten Zahlen — nur unter einem Minus-Tag, nur Kennungen der
+ * geschlossenen Liste (`speicherAussage` filtert sie), nie ein geratener Grund.
+ */
+function warumWeniger(input: SpeicherSchritteInput, steuerung: number | null): RechenZeile[] {
+  if (steuerung == null || rundeKaufmaennisch(steuerung, 2) >= 0) return [];
+  const money = input.money;
+  if (money.range !== 'day') return [];
+  const gruende = grundKennungen(money.steuerungGruende) ?? [];
+  const kopf = input.laeuft ? 'Warum heute weniger' : 'Warum an diesem Tag weniger';
+  const heute = input.laeuft ? 'heute' : 'dieser Tag';
+  const gestern = input.laeuft ? 'gestern' : 'Vortag';
+  const plan = num(money.steuerungPlannedEur ?? null);
+  const out: RechenZeile[] = [];
+  for (const k of gruende) {
+    switch (k) {
+      case 'gestern_verkauft': {
+        const vortag = num(money.steuerungVortagEur ?? null);
+        const start = num(money.vergleichSocStartKwh ?? null);
+        if (vortag == null) break;
+        const paar = paarEur(steuerung, vortag);
+        out.push({
+          formel: `${kopf} · ${gestern} ${vorzeichen(rundeKaufmaennisch(vortag, 2))}, ${heute} ${vorzeichen(rundeKaufmaennisch(steuerung, 2))}, beide Tage ${vorzeichen(paar)}`,
+          herkunft:
+            `am Abend davor verkauft, was ${MESSLATTE_KURZ} für die Nacht behalten hätte` +
+            (start != null ? ` (er ging mit ${fmtNum(start, 'kWh')} in den Tag)` : '') +
+            ' — der Erlös steht am Verkaufstag, der Nachtbezug an diesem',
+          probe: { ist: rundeKaufmaennisch(vortag, 2) + rundeKaufmaennisch(steuerung, 2), soll: paar },
+        });
+        break;
+      }
+      case 'haelt_energie_fuer_morgen': {
+        const kwh = num(money.speicherVorsprungKwh ?? null);
+        if (kwh == null) break;
+        out.push({
+          formel: `${kopf} · ${fmtNum(kwh, 'kWh')} mehr im Speicher als beim Vergleichsspeicher`,
+          herkunft: 'ihr Wert zählt erst, wenn der Speicher später den Netzbezug ersetzt — Planwert unten',
+        });
+        break;
+      }
+      case 'so_geplant':
+        if (plan == null) break;
+        out.push({
+          formel: `${kopf} · Fahrplan ${vorzeichen(rundeKaufmaennisch(plan, 2))}, gemessen ${vorzeichen(rundeKaufmaennisch(steuerung, 2))}`,
+          herkunft: 'der Fahrplan hatte den Tag schon vorab unter Null — er rechnet über Tagesgrenzen hinweg',
+        });
+        break;
+      case 'wenig_sonne': {
+        const pv = num(input.pvKwh ?? null);
+        const last = num(input.verbrauchKwh ?? null);
+        out.push({
+          formel:
+            pv != null && last != null
+              ? `${kopf} · ${fmtNum(pv, 'kWh', 0)} Sonne bei ${fmtNum(last, 'kWh', 0)} Verbrauch`
+              : `${kopf} · wenig Sonne`,
+          herkunft: 'unter 60 % des Verbrauchs bleibt kaum Überschuss, den die Steuerung verschieben könnte',
+        });
+        break;
+      }
+      case 'anders_als_geplant':
+        if (plan == null) break;
+        out.push({
+          formel: `${kopf} · geplant ${vorzeichen(rundeKaufmaennisch(plan, 2))}, gemessen ${vorzeichen(rundeKaufmaennisch(steuerung, 2))}`,
+          herkunft: 'Prognose und Wirklichkeit gingen auseinander — Wolken, Verbrauch oder Preise',
+        });
+        break;
+    }
+  }
+  return out;
 }
 
 export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
@@ -593,10 +686,29 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
     });
   }
 
-  const delta = num(money.speicherDeltaKwh);
+  out.push(...warumWeniger(input, steuerung));
+
+  // Der Planwert folgt der Bestandszeile (`bestandZeile`, Konzept k1 E2 = A):
+  // am Tag der VORSPRUNG vor dem Vergleichsspeicher, auf längeren Zeiträumen
+  // nichts; nur ein älteres Backend ohne das Feld behält die Änderung seit
+  // Mitternacht.
+  const tag = money.range === 'day';
   const lambda = num(money.speicherWertCtKwh);
+  const vorsprung = tag ? num(money.speicherVorsprungKwh ?? null) : null;
+  const vorsprungEur = num(money.speicherVorsprungEur ?? null);
+  const delta = tag && vorsprung == null ? num(money.speicherDeltaKwh) : null;
   const wert = num(money.speicherWertEur);
-  if (delta != null && lambda != null && wert != null) {
+  if (vorsprung != null && lambda != null && vorsprungEur != null && Math.abs(vorsprung) >= 0.5) {
+    const vergleich = num(money.vergleichSocEndKwh ?? null);
+    out.push({
+      formel: `Planwert: ${fmtNum(Math.abs(vorsprung), 'kWh')} × ${ct(lambda)} = ${eurAmount(Math.abs(rundeKaufmaennisch(vorsprungEur, 2)))}`,
+      herkunft:
+        `${vorsprung > 0 ? 'Vorsprung vor dem' : 'Rückstand auf den'} Vergleichsspeicher` +
+        (vergleich != null ? ` (dort ${fmtNum(vergleich, 'kWh')})` : '') +
+        ' × Wert einer gespeicherten Kilowattstunde laut Fahrplan — Einordnung, kein Abzug',
+      probe: { ist: (Math.abs(vorsprung) * lambda) / 100, soll: Math.abs(vorsprungEur) },
+    });
+  } else if (delta != null && lambda != null && wert != null) {
     out.push({
       formel: `Planwert: ${fmtNum(Math.abs(delta), 'kWh')} × ${ct(lambda)} = ${eurAmount(Math.abs(rundeKaufmaennisch(wert, 2)))}`,
       herkunft:

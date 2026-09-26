@@ -660,7 +660,11 @@ export function anpassenDokument<T extends string = BausteinId>(input: {
  * hervorheben könnte — und der Kunde suchte einen Knopf, den es nur am Telefon
  * gibt. `null` = dieser Baustein rendert sich selbst.
  */
-export function ortsHinweis(id: string): string | null {
+export function ortsHinweis(
+  id: string,
+  /** UEMS: Unternehmens- oder Standort-Übersicht (Kopfzeile + Anlagen-Tabelle). */
+  ebene = false,
+): string | null {
   if (istEigen(id)) return null;
   switch (id) {
     case 'status':
@@ -672,9 +676,11 @@ export function ortsHinweis(id: string): string | null {
     // beide sind Pflicht, beide haben ihren festen Ort — ohne diese Sätze
     // wäre ihr „fest" im Anpassen-Modus eine Sperre ohne Begründung.
     case 'flotten-status':
-      return 'Der Kopf Ihres Portfolios — er steht immer oben.';
+      return ebene ? 'Der Kopf Ihres Portfolios — er steht immer oben.' : 'Die Statuszeile — sie steht immer oben.';
     case 'anlagen':
-      return 'Die Anlagen-Tabelle steht immer zuletzt.';
+      // Die Flotte zeigt seit dem 25.09.2026 die vier Blöcke; die UEMS-Ebenen
+      // (Unternehmens-/Standort-Übersicht) tragen weiter die Anlagen-Tabelle.
+      return ebene ? 'Die Anlagen-Tabelle steht immer zuletzt.' : 'Der Block „Ihre Anlagen" steht immer zuletzt.';
     // UEMS AP-01 IP-6: die Datenlage hat ihren festen Ort in der Kopfzeile der
     // Unternehmens- und Standort-Übersicht; ausblenden darf man sie.
     case 'datenlage':

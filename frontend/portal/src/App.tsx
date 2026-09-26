@@ -73,7 +73,7 @@ import { darfAnsehen as darfEnergieeinsaetzeSehen } from './bewertung';
 import { darfAnsehen as darfVerbesserungSehen } from './energieziele';
 import { darfAnsehen as darfEnergiemanagementSehen } from './energiemanagementPortal';
 import { transitionToRoute } from './pageTransition';
-import { hatGeldWelt } from './portfolioHistorie';
+import { hatGeldWelt } from './geldWelt';
 import { geldAnlagen, type UebersichtEbene } from './uebersicht';
 import { showAddAnlageButton } from './addAnlage';
 import {
@@ -1171,11 +1171,17 @@ function UnifiedPortal() {
         // AUFMERKSAMKEIT brauchen (§3.1) - nicht mehr die aktiven Anwendungen.
         // Der ORT ist derselbe geblieben, also ist das hier genau der
         // Argument-Wechsel, den `ebenenNav.ts` vorgesehen hatte.
-        sidebar: anlageSidebar(surface, aufmerksam.anzahl, aufmerksamkeitTitel(aufmerksam)),
+        sidebar: anlageSidebar(
+          surface,
+          aufmerksam.anzahl,
+          aufmerksamkeitTitel(aufmerksam),
+          // Das EINE Tor (`rollen.showTechnicalLayer` = Plattform-Admin).
+          isAdmin,
+        ),
         // Hervorgehoben wird der BEREICH, in dem die offene Unterseite wohnt
         // (`activeAreaKey`) - ein Reiter darf die Leiste nie ins Nichts zeigen
         // lassen.
-        activeKey: activeAreaKey(route.sub),
+        activeKey: activeAreaKey(route.sub, anlageSidebar(surface)),
         onOpenSub: (sub: Parameters<typeof anlageRoute>[1]) =>
           navigate(anlageRoute(shellSite.id, sub ?? null)),
         onOpenPage: (target: PageId) => navigate(target),

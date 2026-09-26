@@ -573,3 +573,77 @@ describe('Bearbeiten', () => {
     expect(entityId).toBe('e1');
   });
 });
+
+describe('Einrichten-Seite (Anlegen aus dem Gerätekatalog)', () => {
+  async function seite() {
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    const onZurueck = vi.fn();
+    render(<BatterieAssistent siteId="s1" seite={{ onZurueck, onClose }} onSaved={onSaved} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    return { onSaved, onClose, onZurueck };
+  }
+
+  function fuelle() {
+    fireEvent.change(screen.getByLabelText('Adresse des MQTT-Servers'), { target: { value: '192.168.0.44' } });
+    fireEvent.change(screen.getByLabelText('Topic'), { target: { value: 'diybms/status' } });
+    fireEvent.change(screen.getByLabelText('Wert im JSON'), { target: { value: 'soc' } });
+  }
+
+  it('stellt alle Teile auf EINE Seite - spätere nur mit ihrem Satz, kein „Weiter"', async () => {
+    await seite();
+    const dialog = screen.getByRole('dialog', { name: 'Gerät einrichten' });
+    expect(within(dialog).getByText('Batterie mit eigenem BMS')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Nach dem Anschluss - dann zeigt Ihre Box von selbst/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Weiter' })).toBeNull();
+    expect(screen.getByTestId('einrichten-speichern')).toBeDisabled();
+  });
+
+  it('zeigt nach Anschluss und Zuordnung von selbst, was ankommt', async () => {
+    previewBattery.mockResolvedValue({
+      results: [
+        {
+          id: 'batterie',
+          ok: true,
+          samples: [{ channel: 'soc_pct', topic: 'diybms/status', raw: 41.5, value: 41.5, count: 12 }],
+        },
+      ],
+    });
+    await seite();
+    fuelle();
+    await waitFor(() => expect(previewBattery).toHaveBeenCalledTimes(1), { timeout: 2500 });
+    expect(await screen.findByText('41,5 %')).toBeInTheDocument();
+    expect(screen.getByText('Werte empfangen')).toBeInTheDocument();
+  });
+
+  it('entwertet die Vorschau, sobald sich der Anschluss ändert', async () => {
+    previewBattery.mockResolvedValue({
+      results: [{ id: 'batterie', ok: true, samples: [{ channel: 'soc_pct', raw: 41.5, value: 41.5, count: 3 }] }],
+    });
+    await seite();
+    fuelle();
+    await screen.findByText('41,5 %', {}, { timeout: 2500 });
+    fireEvent.change(screen.getByLabelText('Adresse des MQTT-Servers'), { target: { value: '192.168.0.45' } });
+    expect(screen.queryByText('41,5 %')).toBeNull();
+  });
+
+  it('speichert mit denselben Aufrufen wie zuvor - die Vorschau ist keine Pflicht', async () => {
+    previewBattery.mockRejectedValue(new Error('offline'));
+    createBattery.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    const { onSaved } = await seite();
+    fuelle();
+    await waitFor(() => expect(screen.getByTestId('einrichten-speichern')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('einrichten-speichern'));
+    await waitFor(() => expect(createBattery).toHaveBeenCalled());
+    expect(createBattery.mock.calls[0][1]).toMatchObject({ binding: { mode: 'unbound' } });
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('führt mit dem Pfeil zurück in den Katalog', async () => {
+    const { onZurueck } = await seite();
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück zum Katalog' }));
+    expect(onZurueck).toHaveBeenCalled();
+  });
+});

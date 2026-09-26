@@ -230,37 +230,90 @@ func TestARefusedPushLeavesTheRunningConfigurationCOMPLETELYAlone(t *testing.T) 
 	}
 }
 
-func TestAPortalManagedPushWithoutDevicesClearsNothing(t *testing.T) {
+func TestAnEmptySollBeforeTheTakeoverClearsNothing(t *testing.T) {
 	a := newGateTestAgent(t)
-	a.applyEntityRegistry(portalPush("r1", applyEntity("5f0d2c9e-0000-0000-0000-000000000001",
-		entities.TypeBatteryHybrid, applyDeyeDriver)))
+	// Eine lokal auf :8484 eingerichtete Anlage ...
+	if _, err := a.AddSource(sources.Request{
+		Role: sources.RoleErzeuger, Brand: inverter.BrandGenericModbus, Model: inverter.FamSunSpec,
+		Connection: inverter.Connection{IP: "10.0.0.9", UnitID: 2},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	before := snapshotLocal(a)
 
-	// Der Onboarding-Normalfall: die Anlage ist portal-verwaltet, aber im
-	// Portal steht (noch) kein Geraet. Das ist KEINE Anweisung zu loeschen.
+	// ... und der Onboarding-Normalfall: die Anlage ist portal-verwaltet, aber
+	// im Portal steht NOCH kein Geraet. Das ist KEINE Anweisung zu loeschen.
+	a.applyEntityRegistry(portalPush("r1",
+		applyEntity("cccc0000-0000-0000-0000-000000000003", entities.TypeGridMeter, "")))
+
+	after := snapshotLocal(a)
+	if len(after.sourceIDs) != len(before.sourceIDs) {
+		t.Fatalf("ein leeres Soll vor der Uebernahme hat etwas geloescht: %+v -> %+v", before, after)
+	}
+	rec := a.componentRecord()
+	if rec.Revision != "" || rec.Refused != "" {
+		t.Fatalf("weder angewandt noch abgelehnt: %+v", rec)
+	}
+	// ...aber es wird QUITTIERT (Befund L1): die Box hat r1 GESEHEN und
+	// bewusst nichts angewandt. Ohne diesen Halt sagt das Portal dauerhaft
+	// „Aenderung unterwegs zur Box".
+	if rec.Held != "r1" || rec.HeldReason == "" {
+		t.Fatalf("der Halt muss mit Grund quittiert sein: %+v", rec)
+	}
+	sum := a.componentApplySummary()
+	if sum == nil || sum.HeldRevision != "r1" || sum.HeldReason == "" || sum.RefusedRevision != "" {
+		t.Fatalf("der Herzschlag traegt den Halt, keine Ablehnung: %+v", sum)
+	}
+	if a.PortalManagedComponents() {
+		t.Fatal("ein Halt ist keine Uebernahme")
+	}
+}
+
+// TestAnEmptySollAfterTheTakeoverRemovesTheLastPortalDevice: der Kunde loescht
+// im Portal das letzte angebundene Geraet. Vorher hielt die Box es fest - sie
+// las ein geloeschtes Geraet weiter, meldete es an die Box-Seite, und weil die
+// lokale Bearbeitung nach der Uebernahme gesperrt ist, war es nirgends mehr zu
+// entfernen.
+func TestAnEmptySollAfterTheTakeoverRemovesTheLastPortalDevice(t *testing.T) {
+	a := newGateTestAgent(t)
+	a.applyEntityRegistry(portalPush("r1",
+		applyEntity("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid,
+			applyDeyeDriver),
+		applyEntity("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer,
+			applyFroniusDriver),
+	))
+	before := snapshotLocal(a)
+	if len(before.sourceIDs) != 1 || !a.PortalManagedComponents() {
+		t.Fatalf("Ausgangslage: %+v", before)
+	}
+
 	a.applyEntityRegistry(portalPush("r2",
 		applyEntity("cccc0000-0000-0000-0000-000000000003", entities.TypeGridMeter, "")))
 
 	after := snapshotLocal(a)
-	if after.inverterIP != before.inverterIP || len(after.sourceIDs) != len(before.sourceIDs) {
-		t.Fatalf("ein leeres Soll hat etwas geloescht: %+v -> %+v", before, after)
+	if len(after.sourceIDs) != 0 {
+		t.Fatalf("das geloeschte Geraet laeuft weiter: %v", after.sourceIDs)
 	}
-	if rec := a.componentRecord(); rec.Revision != "r1" || rec.Refused != "" {
-		t.Fatalf("weder angewandt noch abgelehnt: %+v", rec)
+	if list, _, err := a.srcStore.Load(); err != nil || len(list) != 0 {
+		t.Fatalf("sources.json traegt es weiter: %v err=%v", list, err)
 	}
-	// ...aber es wird QUITTIERT (Befund L1): die Box hat r2 GESEHEN und
-	// bewusst nichts angewandt. Ohne diesen Halt rechnet das Portal Soll r2 !=
-	// Ist r1 und sagt dauerhaft „Aenderung unterwegs zur Box".
+	if len(a.localSetupSummary()) != 1 {
+		t.Fatalf("die Box meldet noch Quellen: %+v", a.localSetupSummary())
+	}
+	// Wie jeder Plan ohne Wechselrichter laesst auch dieser ihn unberuehrt.
+	if !after.inverterSet || after.inverterIP != before.inverterIP {
+		t.Fatalf("der Wechselrichter wurde veraendert: %+v -> %+v", before, after)
+	}
 	rec := a.componentRecord()
-	if rec.Held != "r2" || rec.HeldReason == "" {
-		t.Fatalf("der Halt muss mit Grund quittiert sein: %+v", rec)
+	if rec.Revision != "r2" || rec.Held != "" || rec.Refused != "" {
+		t.Fatalf("r2 ist angewandt, weder gehalten noch abgelehnt: %+v", rec)
 	}
-	sum := a.componentApplySummary()
-	if sum == nil || sum.Revision != "r1" || sum.HeldRevision != "r2" || sum.HeldReason == "" {
-		t.Fatalf("der Herzschlag traegt den Halt NEBEN dem laufenden Stand: %+v", sum)
-	}
-	if sum.RefusedRevision != "" {
-		t.Fatalf("ein Halt ist keine Ablehnung: %+v", sum)
+
+	// Ein weiteres leeres Soll schreibt nichts mehr - und bleibt angewandt.
+	a.applyEntityRegistry(portalPush("r3",
+		applyEntity("cccc0000-0000-0000-0000-000000000003", entities.TypeGridMeter, "")))
+	if rec := a.componentRecord(); rec.Revision != "r3" || rec.Held != "" {
+		t.Fatalf("leeres Soll nach dem Leeren: %+v", rec)
 	}
 }
 
@@ -271,8 +324,7 @@ func TestAPortalManagedPushWithoutDevicesClearsNothing(t *testing.T) {
 // den Ablehnungsgrund der Revision davor).
 func TestAHeldRevisionClearsAStaleRefusalAndYieldsToARealOne(t *testing.T) {
 	a := newGateTestAgent(t)
-	a.applyEntityRegistry(portalPush("r1", applyEntity("5f0d2c9e-0000-0000-0000-000000000001",
-		entities.TypeBatteryHybrid, applyDeyeDriver)))
+	// Noch VOR der Uebernahme - nur dort haelt ein leeres Soll (danach leert es).
 
 	// (a) Eine echte Ablehnung: zwei Wechselrichter.
 	a.applyEntityRegistry(portalPush("r2",
@@ -289,8 +341,8 @@ func TestAHeldRevisionClearsAStaleRefusalAndYieldsToARealOne(t *testing.T) {
 	if rec.Held != "r3" || rec.Refused != "" || rec.RefusedReason != "" {
 		t.Fatalf("der Halt haelt einen veralteten Ablehnungsgrund fest: %+v", rec)
 	}
-	if rec.Revision != "r1" {
-		t.Fatalf("es laeuft weiter r1: %+v", rec)
+	if rec.Revision != "" {
+		t.Fatalf("angewandt ist weiterhin nichts: %+v", rec)
 	}
 
 	// (c) Und eine echte Ablehnung raeumt umgekehrt den Halt weg.

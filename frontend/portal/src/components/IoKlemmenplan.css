@@ -1,0 +1,159 @@
+/* ===========================================================================
+   Der KLEMMENPLAN eines I/O-Moduls: je Ausgang und Eingang eine Kachel mit
+   Nummer, Leuchtpunkt, Belegung und Zustand.
+   =========================================================================== */
+
+.vp-io {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vp-io-kopf {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vp-io-raster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-io-raster.is-ein {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.vp-io-kachel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--vp-surface, #fff);
+}
+.vp-io-kachel.is-frei {
+  border-style: dashed;
+  background: var(--vp-bg-light, #f8f9fa);
+}
+.vp-io-kachel.is-belegt.is-an {
+  border-color: var(--vp-flow-load);
+  background: var(--vp-flow-load-soft);
+}
+.vp-io-kachel.is-eingang.is-an {
+  border-color: var(--vp-action);
+}
+
+.vp-io-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'nr pfeil'
+    'name pfeil'
+    'unter pfeil';
+  align-items: center;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.vp-io-link > svg {
+  grid-area: pfeil;
+  color: var(--vp-c-muted-fg);
+}
+a.vp-io-link:hover .vp-io-name {
+  color: var(--vp-action);
+}
+
+.vp-io-nr {
+  grid-area: nr;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  font-variant-numeric: tabular-nums;
+}
+.vp-io-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-flow-base);
+  box-shadow: inset 0 0 0 1px var(--vp-border, #e2e8f0);
+}
+.vp-io-led.is-an {
+  background: var(--vp-flow-batt);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-flow-batt) 25%, transparent);
+}
+.vp-io-led.is-alt {
+  background: var(--vp-flow-pv);
+  box-shadow: none;
+}
+.vp-io-name {
+  grid-area: name;
+  min-width: 0;
+  color: var(--vp-c-fg);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  overflow-wrap: anywhere;
+}
+.vp-io-unter {
+  grid-area: unter;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+}
+.vp-io-kachel.is-eingang .vp-io-link {
+  grid-template-areas:
+    'nr pfeil'
+    'unter pfeil';
+}
+
+.vp-io-schalter {
+  display: flex;
+  gap: 4px;
+}
+.vp-io-schalter button {
+  flex: 1 1 0;
+  min-height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-action);
+  font: inherit;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  cursor: pointer;
+}
+.vp-io-schalter button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.vp-io-satz {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-io-satz.is-warn {
+  color: var(--vp-c-warn-fg);
+}
+
+@container geraet-kern (min-width: 560px) {
+  .vp-io-raster {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

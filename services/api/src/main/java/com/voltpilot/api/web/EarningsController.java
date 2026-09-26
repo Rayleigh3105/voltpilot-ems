@@ -2,8 +2,10 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EarningsRepository;
+import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.repo.SteuerungGrund;
 import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.web.dto.EarningsDto;
@@ -25,6 +27,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -71,19 +74,22 @@ public class EarningsController {
     private final SiteRepository sites;
     private final EarningsRepository earnings;
     private final PeakShavingRepository peaks;
+    private final HistoryRepository history;
     private final StandortLesemodellService standortLesemodell;
     private final Geltungsbereich geltungsbereich;
     private final TeilansichtDienst teilansicht;
     private final String activePvModel;
 
     public EarningsController(SiteRepository sites, EarningsRepository earnings,
-            PeakShavingRepository peaks, StandortLesemodellService standortLesemodell,
+            PeakShavingRepository peaks, HistoryRepository history,
+            StandortLesemodellService standortLesemodell,
             Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht,
             @org.springframework.beans.factory.annotation.Value(
                     "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
         this.peaks = peaks;
+        this.history = history;
         this.standortLesemodell = standortLesemodell;
         this.geltungsbereich = geltungsbereich;
         this.teilansicht = teilansicht;
@@ -125,7 +131,24 @@ public class EarningsController {
         // Die Dreiteilung saved = speicher + steuerung (audit x7 §2.5): the
         // greedy standard-battery walk over the same covered slots; absent =
         // no maintained battery master data (honest null + reason downstream).
-        Map<UUID, BigDecimal> speicherSplits = earnings.savedSpeicher(from, to);
+        //
+        // On the DAY the Tages-Einordnung (Konzept vp-erloese-minus-winter-k1
+        // §10 P0: Vortag, Monat bisher, Vergleichsspeicher-Stände, Gründe)
+        // carries each site's speicher share out of the SAME month-anchored
+        // walk - bit-identical to savedSpeicher, so the day runs one walk.
+        boolean tag = !all && parsed == HistoryRange.DAY;
+        Map<UUID, EarningsRepository.Tageseinordnung> einordnungen = tag
+                ? earnings.tageseinordnung(from, to)
+                : Map.of();
+        Map<UUID, BigDecimal> speicherSplits = new HashMap<>();
+        if (tag) {
+            einordnungen.forEach((id, e) -> speicherSplits.put(id, e.speicherEur()));
+        } else {
+            speicherSplits.putAll(earnings.savedSpeicher(from, to));
+        }
+        Map<UUID, BigDecimal> geplant = tag && !einordnungen.isEmpty()
+                ? history.plannedSteuerungPerSite(from, to)
+                : Map.of();
         // Whether each site's import valuation engages a tariff/Preisblatt
         // beyond bare spot - the provenance copy's honesty switch - and its
         // export-side sibling (feste EEG-Vergütung vs bare spot, B2 fix).
@@ -218,6 +241,10 @@ public class EarningsController {
             String steuerungSplitReason = saved != null && savedSpeicher == null
                     ? "no_battery_data"
                     : null;
+            EarningsRepository.Tageseinordnung einordnung = savedSteuerung != null
+                    ? einordnungen.get(site.id())
+                    : null;
+            BigDecimal siteGeplant = einordnung != null ? geplant.get(site.id()) : null;
             // Forward expected Marktwert Solar (range-independent); absent when
             // the site has no forward PV forecast or price coverage.
             EarningsRepository.ExpectedMarketValue exp = expected.get(site.id());
@@ -299,7 +326,14 @@ public class EarningsController {
                     exp == null ? null : exp.slots(),
                     siteSeries,
                     siteStrip,
-                    peakShaving(site, today, peakPeriods.get(site.id()))));
+                    peakShaving(site, today, peakPeriods.get(site.id())),
+                    einordnung == null ? null : einordnung.vergleichSocStartKwh(),
+                    einordnung == null ? null : einordnung.vergleichSocEndKwh(),
+                    einordnung == null ? null : einordnung.speicherVorsprungKwh(),
+                    einordnung == null ? null : einordnung.steuerungVortagEur(),
+                    einordnung == null ? null : einordnung.steuerungMonatBisherEur(),
+                    siteGeplant,
+                    SteuerungGrund.fuer(savedSteuerung, einordnung, siteGeplant)));
         }
 
         // "Gesamt" honestly starts at the first covered slot, not at the epoch.

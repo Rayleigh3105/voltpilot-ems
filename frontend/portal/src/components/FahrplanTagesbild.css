@@ -1,0 +1,1608 @@
+/*
+ * Das Fahrplan-Tagesbild im AUFBAU DES PROTOTYPS „Tagesuhr und Bildfahrplan"
+ * (E1–E11): Kopfsatz; am Telefon die Tagesuhr, ab 900 px Inhaltsbreite das
+ * Jetzt-Band und der Bildfahrplan; die Antworten als EINE Gruppe; darunter
+ * Waage, Stationen und „Worauf Ihr Plan achtet" als Karten. Komponenten-lokal
+ * wie `Fahrplan.css`.
+ *
+ * MOBILE-FIRST. Jeder Flex-/Grid-Kasten trägt `min-width: 0`, lange Sätze
+ * brechen um. Bewegung nur über die Familie (`--vp-motion-*`), damit der eine
+ * Schalter `--vp-motion-scale` sie unter `prefers-reduced-motion` nullt.
+ *
+ * LUFT (Rückmeldung 25.09.2026 „schaut gequetscht aus"): Karten tragen
+ * mindestens 16 px Polster (am Rechner 24 px), Karten stehen 16–24 px
+ * auseinander, Fließtext ist nie kleiner als 0,8 rem. Eng bleibt nur der
+ * erste Bildschirm am Telefon — dort ist jede Zeile Teil des E9-Budgets.
+ */
+
+.vp-tb {
+  display: grid;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  margin-bottom: var(--vp-space-6);
+}
+
+/* Band, Bild und Antworten stehen wie im Prototyp dicht als EIN Tagesbild —
+   die Antworten beginnen auch am Rechner im ersten Bildschirm (E9, Wächter
+   bei 1440 × 1000). Die Karten darunter setzen sich deutlich ab. */
+.vp-tb.is-bild {
+  gap: var(--vp-space-3);
+}
+
+/* Am Telefon zählt im ersten Bildschirm jede Zeile (E9). */
+.vp-tb.is-uhr:not(.is-zweispaltig) {
+  gap: var(--vp-space-2);
+}
+
+/* Unter den Antworten darf es atmen: dort ist das Budget nicht mehr berührt. */
+.vp-tb.is-uhr:not(.is-zweispaltig) > .vp-tb-warumsatz {
+  margin-top: var(--vp-space-1);
+}
+
+.vp-tb.is-uhr:not(.is-zweispaltig) > .vp-tb-karte2 {
+  margin-top: var(--vp-space-2);
+}
+
+.vp-tb-spalte,
+.vp-tb-bildspalte,
+.vp-tb-textspalte {
+  display: grid;
+  gap: var(--vp-space-4);
+  align-content: start;
+  min-width: 0;
+}
+
+.vp-tb-spalte {
+  gap: var(--vp-space-5);
+}
+
+/* 640–899 px: Uhr, Werte, Moment und Waage links, Antworten und Karten rechts. */
+.vp-tb-spalten {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: var(--vp-space-5);
+  align-items: start;
+}
+
+/* Ab 900 px: Waage links, Stationen und Annahmen rechts — abgesetzt vom Bild. */
+.vp-tb-unten {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-5);
+  align-items: start;
+  margin-top: var(--vp-space-3);
+}
+
+/* ---- Kopfsatz und Stand ------------------------------------------------------------ */
+
+.vp-tb-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px var(--vp-space-5);
+  min-width: 0;
+}
+
+/* Am Telefon: drei Zeilen Kopfsatz passen mit der Uhr und dem Beginn der
+   Antworten in den ersten Bildschirm (E9, gemessen mit drei Phasen). */
+.vp-tb-titel {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.97rem;
+  font-weight: 700;
+  line-height: 1.28;
+  color: var(--vp-text);
+  text-wrap: pretty;
+}
+
+.vp-tb.is-zweispaltig .vp-tb-titel {
+  font-size: 1.06rem;
+  line-height: 1.32;
+}
+
+.vp-tb.is-bild .vp-tb-titel {
+  font-size: 1.19rem;
+  line-height: 1.3;
+}
+
+.vp-tb-stand {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-stand b {
+  font-weight: 600;
+  color: var(--vp-text);
+}
+
+/* Am Telefon: der Stand am Ende des Kopfsatzes. */
+.vp-tb-stand-mit {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+  white-space: nowrap;
+}
+
+/* ---- Karten ------------------------------------------------------------------------- */
+
+.vp-tb-band,
+.vp-tb-bildkarte,
+.vp-tb-karte2 {
+  min-width: 0;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+}
+
+.vp-tb-karte2 {
+  display: grid;
+  gap: var(--vp-space-3);
+  align-content: start;
+  padding: var(--vp-space-4) var(--vp-space-4) var(--vp-space-5);
+}
+
+.vp-tb.is-bild .vp-tb-karte2 {
+  gap: var(--vp-space-4);
+  padding: var(--vp-space-5);
+}
+
+.vp-tb-karte2-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-tb-karte2-titel {
+  margin: 0;
+  font-size: 1.06rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.vp-tb.is-bild .vp-tb-karte2-titel,
+.vp-tb.is-zweispaltig .vp-tb-karte2-titel {
+  font-size: 1.125rem;
+}
+
+.vp-tb-kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-fein {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-fein a {
+  color: var(--vp-link);
+}
+
+/* ---- Das Jetzt-Band (ab 900 px) ------------------------------------------------------ */
+
+/* Links der Moment, in der Mitte „Warum?", rechts Zustand und Eingreifen —
+   feste Anteile, damit kein langer Satz den anderen zusammendrückt. */
+.vp-tb-band {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vp-space-4) var(--vp-space-5);
+  padding: 14px var(--vp-space-5);
+}
+
+.vp-tb-band-l {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+
+.vp-tb-band > .vp-tb-warumsatz {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* Schmaler (Bauteil `BAND_DREISPALTIG_AB_PX`): „Warum?" als eigene Zeile. */
+.vp-tb-band.is-gestapelt {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.vp-tb-band.is-gestapelt > .vp-tb-warumsatz {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.vp-tb-band-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-top: 2px;
+  border-radius: var(--vp-radius-btn);
+}
+
+.vp-tb-band-t {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-tb-band-was {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.vp-tb-band .vp-tb-moment-zahl {
+  font-size: 0.85rem;
+}
+
+/* Mit der Maus braucht der Aufklapper keine Fingerfläche von 44 px. */
+@media (pointer: fine) {
+  .vp-tb-band .vp-kompakt-fold {
+    min-height: 30px;
+  }
+}
+
+.vp-tb-band .vp-tb-warumsatz {
+  padding: var(--vp-space-3) var(--vp-space-4);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* Der Zustand darf umbrechen, damit „Warum?" nicht auf vier Zeilen wächst. */
+.vp-tb-band-r {
+  grid-column: -2 / -1;
+  grid-row: 1;
+  display: grid;
+  justify-items: end;
+  gap: var(--vp-space-2);
+  max-width: 220px;
+}
+
+.vp-tb-band-r .vp-kompakt-status,
+.vp-tb-todo .vp-kompakt-status {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* ---- Der Moment am Zeiger (Telefon, Tablet) ----------------------------------------- */
+
+.vp-tb-moment {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  min-width: 0;
+  text-align: center;
+}
+
+.vp-tb-moment-kopf {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-band .vp-tb-moment-kopf {
+  justify-content: flex-start;
+}
+
+.vp-tb-moment-was {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.vp-tb-moment-zahl {
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--vp-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* „Warum?" — ein Satz, der Weg zur Waage. */
+.vp-tb-warumsatz {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: var(--vp-space-3) 14px;
+  border: 0;
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-bg-light);
+  color: var(--vp-text);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+.vp-tb-warumsatz:hover {
+  background: var(--vp-tint);
+}
+
+.vp-tb-warumsatz:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-tb-mehr {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--vp-link);
+  white-space: nowrap;
+}
+
+/* Der Zustand und der Weg zum Eingreifen (Telefon, Tablet). */
+.vp-tb-todo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2) var(--vp-space-3);
+  min-width: 0;
+  padding: 2px 2px 0;
+}
+
+.vp-tb-messwerte {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vp-tb-messwerte .vp-jetzt-confirm {
+  margin: 0;
+}
+
+/* ---- Die Uhr ------------------------------------------------------------------ */
+
+.vp-uhr {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  min-width: 0;
+}
+
+/* Am Telefon so GROSS WIE MÖGLICH (Kundenwunsch 25.09.2026) — und doch mit
+   dem Beginn aller Antworten im ersten Bildschirm (E9): über der Uhr stehen
+   Kopfleiste, Reiter, Tagesschalter und bis zu drei Zeilen Kopfsatz, darunter
+   Werte, Moment-Zeile und die untere Leiste — zusammen 486 px, dazu die
+   sicheren Ränder, die Kopf- und Fußleiste der Schale einrücken (Statusleiste,
+   Gestenleiste). Was die Höhe darüber hinaus hergibt, bekommt die Uhr: bei
+   375 × 812 ohne Ränder sind das 326 px, auf höheren Telefonen die ganze
+   Breite; nie weniger als 264 px. */
+.vp-tb.is-uhr:not(.is-zweispaltig) .vp-uhr {
+  max-width: clamp(
+    264px,
+    calc(100vh - 486px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)),
+    100%
+  );
+}
+
+.vp-uhr-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Senkrechtes Rollen bleibt möglich; auf den Ringen hält `touchstart` es an. */
+  touch-action: pan-y;
+  font-family: inherit;
+}
+
+.vp-uhr-svg:focus {
+  outline: none;
+}
+
+.vp-uhr-svg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 4px;
+  border-radius: 50%;
+}
+
+.vp-uhr-ebene,
+.vp-bf-spur {
+  transition: opacity var(--vp-motion-base) var(--vp-ease-inout);
+}
+
+.vp-uhr-ebene.is-leise,
+.vp-bf-spur.is-leise {
+  opacity: 0.16;
+}
+
+.vp-uhr-grund {
+  fill: var(--vp-bg-light);
+}
+
+.vp-uhr-hilfslinie {
+  stroke: var(--vp-border);
+  stroke-width: 1;
+}
+
+.vp-uhr-hilfslinie.is-mitte {
+  stroke-dasharray: 3 4;
+}
+
+.vp-uhr-halo,
+.vp-uhr-preismarke {
+  font-size: 11.5px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--vp-surface);
+  stroke-width: 3.2px;
+  stroke-linejoin: round;
+}
+
+.vp-uhr-halo {
+  fill: var(--vp-text-muted);
+  font-weight: 600;
+}
+
+.vp-uhr-stunden path {
+  stroke: var(--vp-text-muted);
+  stroke-width: 1;
+}
+
+.vp-uhr-stunden path.is-gross {
+  stroke: var(--vp-text);
+  stroke-width: 1.6;
+}
+
+.vp-uhr-stunden text {
+  font-size: 12.5px;
+  font-weight: 600;
+  fill: var(--vp-text-muted);
+}
+
+.vp-uhr-stunden text.is-gross {
+  font-size: 14.5px;
+  font-weight: 700;
+  fill: var(--vp-text);
+}
+
+.vp-uhr-markierung {
+  fill: var(--vp-tint);
+  stroke-width: 2.4;
+  stroke-dasharray: 5 3;
+}
+
+.vp-uhr-markpunkt {
+  fill: var(--vp-surface);
+  stroke-width: 2.8;
+}
+
+.vp-uhr-m1 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  fill: var(--vp-text-muted);
+}
+
+.vp-uhr-m2 {
+  font-size: 33px;
+  font-weight: 700;
+  fill: var(--vp-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-uhr-m3 {
+  font-size: 10.5px;
+  fill: var(--vp-text-muted);
+}
+
+/* Die zwei Ecken unten: abspielen und erklären — je 44 px Tippfläche. */
+.vp-uhr-ecke {
+  position: absolute;
+  bottom: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-full);
+  background: var(--vp-surface);
+  color: var(--vp-text);
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout),
+    border-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+.vp-uhr-ecke.is-links {
+  left: 0;
+}
+
+.vp-uhr-ecke.is-rechts {
+  right: 0;
+}
+
+.vp-uhr-ecke:hover {
+  border-color: var(--vp-gray);
+}
+
+.vp-uhr-ecke:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* ---- Werte am Zeiger: die Legende, die zugleich ablesbar ist ----------------------- */
+
+.vp-tb-werte {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-tb-wert {
+  display: grid;
+  align-content: center;
+  gap: 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 3px 7px 4px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  color: var(--vp-text);
+  font: inherit;
+  text-align: left;
+}
+
+button.vp-tb-wert {
+  cursor: pointer;
+  transition: border-color var(--vp-motion-fast) var(--vp-ease-inout),
+    background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+button.vp-tb-wert:hover {
+  background: var(--vp-bg-light);
+}
+
+button.vp-tb-wert[aria-pressed='true'] {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+  box-shadow: inset 0 0 0 1px var(--vp-action);
+}
+
+button.vp-tb-wert:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-tb-werte-k,
+.vp-tb-werte-v,
+.vp-tb-werte-h {
+  /* Je Zelle drei kurze Angaben, bei 375 px je EINE Zeile (E9). Auf noch
+     schmaleren Geräten bricht ein Wort lieber um, als abgeschnitten zu
+     werden — „war geplant" ist eine Aussage. Der volle Satz steht im
+     Screenreader-Namen der Zelle. */
+  overflow-wrap: break-word;
+  line-height: 1.2;
+}
+
+.vp-tb-werte-k {
+  font-size: 0.69rem;
+  font-weight: 700;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-werte-v {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-tb-werte-farbe {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.vp-tb-werte-h {
+  font-size: 0.66rem;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-notiz {
+  margin: 0;
+  padding: 10px var(--vp-space-3);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-bg-light);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--vp-text);
+}
+
+/* ---- Die Bildkarte (ab 900 px) ----------------------------------------------------- */
+
+/* 24 px Polster + 1 px Rand = `BILDKARTE_RAND` im Bauteil (das Bild zeichnet 1 : 1). */
+.vp-tb-bildkarte {
+  display: grid;
+  gap: var(--vp-space-2);
+  padding: 14px var(--vp-space-5) var(--vp-space-3);
+}
+
+.vp-tb-bildleiste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2) var(--vp-space-4);
+  min-width: 0;
+}
+
+.vp-tb-hinweis {
+  font-size: 0.8rem;
+  color: var(--vp-text-muted);
+}
+
+/* Am Rechner stehen die Werte am Zeiger als ruhige Zeile über dem Bild. */
+.vp-tb-bildleiste .vp-tb-werte {
+  grid-auto-columns: auto;
+  justify-content: end;
+  gap: var(--vp-space-2);
+}
+
+.vp-tb-bildleiste .vp-tb-wert {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 0;
+  padding: 5px 10px;
+  border-radius: var(--vp-radius-pill);
+  line-height: 1.2;
+}
+
+.vp-tb-bildleiste .vp-tb-werte-k {
+  font-size: 0.74rem;
+}
+
+.vp-tb-bildleiste .vp-tb-werte-v {
+  font-size: 0.88rem;
+}
+
+.vp-tb-bildleiste .vp-tb-werte-h {
+  font-size: 0.72rem;
+}
+
+.vp-tb-antwort-zeit {
+  font-weight: 600;
+}
+
+.vp-tb-antwort-notiz {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted);
+}
+
+a.vp-tb-antwort-zusatz {
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--vp-link);
+}
+
+/* ---- Antwort-Banner, Einführung ---------------------------------------------------- */
+
+.vp-tb-antwort,
+.vp-tb-tour {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+}
+
+.vp-tb.is-bild .vp-tb-antwort {
+  padding: var(--vp-space-4) var(--vp-space-5);
+}
+
+.vp-tb-antwort p,
+.vp-tb-tour p {
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-tb-reihe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.vp-tb-reihe.is-mitte {
+  justify-content: center;
+  margin-top: 0;
+}
+
+/* Der Weg am Fuß einer Karte fluchtet mit ihrem Text. */
+.vp-tb-karte2 > .vp-tb-reihe {
+  margin-top: -4px;
+}
+
+.vp-tb-karte2 > .vp-tb-reihe > :first-child {
+  padding-left: 0;
+}
+
+.vp-tb-warum,
+.vp-tb-zurueck,
+.vp-tb-link,
+.vp-tb-knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--vp-link);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vp-tb-warum[aria-expanded='true'] {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.vp-tb-zurueck {
+  color: var(--vp-text);
+}
+
+.vp-tb-knopf {
+  padding: 0 14px;
+  border: 1px solid var(--vp-gray);
+  border-radius: var(--vp-radius-btn);
+  color: var(--vp-link);
+  text-decoration: none;
+  min-height: 40px;
+}
+
+.vp-tb-knopf.is-primaer {
+  border-color: var(--vp-action);
+  background: var(--vp-action);
+  color: #fff;
+}
+
+.vp-tb-warum:focus-visible,
+.vp-tb-zurueck:focus-visible,
+.vp-tb-link:focus-visible,
+.vp-tb-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-tb-antwort {
+  border-color: var(--vp-action);
+  box-shadow: inset 3px 0 0 var(--vp-action);
+}
+
+.vp-tb-antwort-frage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--vp-action);
+}
+
+.vp-tb-antwort-text {
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.vp-tb-antwort-zusatz {
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.vp-tb-tour {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+
+/* Am Telefon: ein Blatt am unteren Rand wie das Erklär-Panel — die Uhr, die
+   es erklärt, bleibt ganz sichtbar, und die Antworten verrutschen nicht. */
+.vp-tb-tour.is-blatt {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  margin: 0;
+  border-radius: 16px 16px 0 0;
+  border-bottom: none;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+  background: var(--vp-surface);
+  padding: var(--vp-space-4) var(--vp-space-4) calc(var(--vp-space-4) + env(safe-area-inset-bottom, 0px));
+}
+
+.vp-tb-tour-k {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-tour p {
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.vp-tb-tour-reihe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 4px;
+}
+
+.vp-tb-tour-punkte {
+  display: inline-flex;
+  gap: 5px;
+  margin-right: auto;
+}
+
+.vp-tb-tour-punkte i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vp-gray);
+}
+
+.vp-tb-tour-punkte i.is-an {
+  background: var(--vp-action);
+}
+
+/* ---- Antworten: EINE Gruppe, Kachel an Kachel (Prototyp) ---------------------------- */
+
+/* In der Reihe stehen alle nebeneinander (E9: alle beginnen im ersten
+   Bildschirm); die ganze Kachel ist der Knopf. */
+.vp-antw {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-border);
+  overflow: hidden;
+}
+
+.vp-antw.is-reihe,
+.vp-antw.is-reihe-schmal {
+  grid-template-columns: repeat(var(--vp-antw-n, 3), minmax(0, 1fr));
+}
+
+.vp-antw-kachel {
+  display: flex;
+  min-width: 0;
+  background: var(--vp-surface);
+}
+
+.vp-antw-knopf {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 14px var(--vp-space-4) var(--vp-space-4);
+  border: 0;
+  border-radius: 0;
+  background: var(--vp-surface);
+  color: var(--vp-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+.vp-antw.is-reihe .vp-antw-knopf {
+  gap: 6px;
+  padding: var(--vp-space-4) var(--vp-space-5) 18px;
+}
+
+/* Drei Kacheln auf 343 px: kurze Zeilen, darum Silbentrennung statt Flatterrand. */
+.vp-antw.is-reihe-schmal .vp-antw-knopf {
+  gap: 4px;
+  padding: 10px 10px 12px;
+}
+
+.vp-antw-knopf:hover {
+  background: var(--vp-bg-light);
+}
+
+.vp-antw-knopf[aria-pressed='true'] {
+  background: var(--vp-tint);
+  box-shadow: inset 0 0 0 2px var(--vp-action);
+}
+
+.vp-antw-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -3px;
+}
+
+.vp-antw-frage {
+  padding-right: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--vp-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.vp-antw.is-reihe-schmal .vp-antw-frage {
+  padding-right: 0;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  hyphens: auto;
+}
+
+.vp-antw-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+/* In der schmalen Reihe fluchten die Abzeichen am Fuß der Kacheln. */
+.vp-antw.is-reihe-schmal .vp-antw-kopf {
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.vp-antw-zeit {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-antw-text {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.vp-antw.is-reihe-schmal .vp-antw-text {
+  font-size: 0.86rem;
+  line-height: 1.3;
+  hyphens: auto;
+}
+
+.vp-antw-zusatz {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted);
+}
+
+.vp-antw-ort {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  color: var(--vp-text-muted);
+}
+
+.vp-antw.is-reihe .vp-antw-ort {
+  right: var(--vp-space-4);
+  top: var(--vp-space-4);
+}
+
+.vp-antw-knopf:hover .vp-antw-ort,
+.vp-antw-knopf:focus-visible .vp-antw-ort {
+  color: var(--vp-action);
+}
+
+.vp-antw.is-reihe-schmal .vp-antw-ort {
+  display: none;
+}
+
+/* ---- Die Waage (E5) — in ihrer Karte ohne eigenen Rahmen -------------------------- */
+
+.vp-waage {
+  display: grid;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-bg-light);
+}
+
+.vp-waage p {
+  margin: 0;
+}
+
+.vp-waage-frage {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.vp-waage-zeit {
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-waage-seiten {
+  display: grid;
+  gap: 14px;
+}
+
+/* Wie im Prototyp: Satz und Wert in einer Zeile, der Balken darunter über die
+   volle Breite — so sind beide Seiten auf derselben Strecke vergleichbar. Der
+   Hinweis steht unter dem Wert, ohne die Spalte des Satzes zu verengen. Die
+   Reihenfolge im DOM (Satz, Balken, Wert, Hinweis) bleibt die des Vorlesens. */
+.vp-waage-seite {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label wert'
+    'hinweis hinweis'
+    'balken balken';
+  align-items: end;
+  gap: 6px var(--vp-space-3);
+  min-width: 0;
+  font-size: 0.9rem;
+  color: var(--vp-text-muted);
+}
+
+.vp-waage-seite.is-gewaehlt {
+  color: var(--vp-text);
+  font-weight: 700;
+}
+
+.vp-waage-label {
+  grid-area: label;
+  align-self: center;
+  overflow-wrap: anywhere;
+}
+
+.vp-waage-balken {
+  grid-area: balken;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--vp-surface);
+  box-shadow: inset 0 0 0 1px var(--vp-border);
+  overflow: hidden;
+}
+
+.vp-waage-balken i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--vp-chart-soc);
+  opacity: 0.55;
+}
+
+.vp-waage-seite.is-gewaehlt .vp-waage-balken i {
+  opacity: 1;
+}
+
+/* Ein Preis, den man zahlt, ist gestreift — die Form sagt es, nicht nur die Farbe. */
+.vp-waage-balken i.is-kosten {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--vp-chart-price) 0 4px,
+    color-mix(in srgb, var(--vp-chart-price) 55%, var(--vp-surface)) 4px 7px
+  );
+}
+
+.vp-waage-wert {
+  grid-area: wert;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-waage-hinweis {
+  grid-area: hinweis;
+  justify-self: end;
+  margin-top: -5px;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--vp-text-muted);
+  text-align: right;
+}
+
+.vp-waage-urteil {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.vp-tb-waagekarte .vp-waage {
+  gap: var(--vp-space-4);
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.vp-tb-waagekarte .vp-waage-frage {
+  font-size: 1.06rem;
+  line-height: 1.3;
+}
+
+.vp-tb.is-bild .vp-tb-waagekarte .vp-waage-frage,
+.vp-tb.is-zweispaltig .vp-tb-waagekarte .vp-waage-frage {
+  font-size: 1.125rem;
+}
+
+/* ---- Der Tag in Stationen ----------------------------------------------------------- */
+
+.vp-st {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-st-halt {
+  position: relative;
+  padding: 0 0 2px 36px;
+  min-width: 0;
+}
+
+/* Die Linie des Tages in der Farbe der Tätigkeit — der Punkt trägt ihr Symbol. */
+.vp-st-halt::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--vp-st-farbe, var(--vp-border));
+}
+
+.vp-st-halt:first-child::before {
+  top: 20px;
+}
+
+.vp-st-halt:last-child::before {
+  bottom: calc(100% - 20px);
+}
+
+.vp-st-halt.is-ruhe::before {
+  background: var(--vp-border);
+}
+
+.vp-st-halt.is-vorbei::before {
+  opacity: 0.45;
+}
+
+/* Der Punkt steht auf der Zeitzeile der Station. */
+.vp-st-punkt {
+  position: absolute;
+  left: 3px;
+  top: 8px;
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--vp-st-farbe);
+  box-shadow: 0 0 0 3px var(--vp-surface);
+}
+
+.vp-st-halt.is-ruhe .vp-st-punkt {
+  box-shadow: 0 0 0 3px var(--vp-surface), inset 0 0 0 1.5px var(--vp-gray);
+}
+
+.vp-st-halt.is-vorbei .vp-st-punkt {
+  opacity: 0.6;
+}
+
+/* Eine Station liest sich in festem Takt: Zeit und Ladestand, der Name über
+   die volle Breite, darunter der Grund. Die Reihenfolge im DOM (Zeit, Name,
+   Ladestand, Grund) bleibt die des Vorlesens. */
+.vp-st-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'zeit soc'
+    'name name'
+    'grund grund';
+  gap: 2px var(--vp-space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px var(--vp-space-3) 11px;
+  border: 0;
+  border-radius: var(--vp-radius-sm);
+  background: transparent;
+  color: var(--vp-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+
+.vp-st-zeile:hover {
+  background: var(--vp-bg-light);
+}
+
+.vp-st-zeile[aria-expanded='true'],
+.vp-st-halt.is-jetzt .vp-st-zeile {
+  background: var(--vp-tint);
+}
+
+.vp-st-zeile:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -2px;
+}
+
+.vp-st-haupt {
+  display: contents;
+}
+
+.vp-st-zeit {
+  grid-area: zeit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-st-name {
+  grid-area: name;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.vp-st-jetzt {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--vp-text);
+  color: var(--vp-surface);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.vp-st-soc {
+  grid-area: soc;
+  align-self: center;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.vp-st-grund {
+  grid-area: grund;
+  margin-top: 2px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted);
+}
+
+.vp-st-detail {
+  padding: 4px var(--vp-space-3) var(--vp-space-4);
+  min-width: 0;
+}
+
+/* ---- Worauf Ihr Plan achtet --------------------------------------------------------- */
+
+.vp-annahmen {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-annahmen li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  padding: 11px 0;
+  border-top: 1px solid var(--vp-border);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted);
+}
+
+.vp-annahmen li:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+
+.vp-annahmen li:last-child {
+  padding-bottom: 0;
+}
+
+.vp-annahmen li svg {
+  margin-top: 3px;
+}
+
+.vp-annahmen b {
+  font-weight: 600;
+  color: var(--vp-text);
+}
+
+.vp-annahmen a {
+  font-weight: 600;
+  color: var(--vp-link);
+}
+
+/* ---- Der Bildfahrplan (E10) -------------------------------------------------------- */
+
+.vp-bf {
+  position: relative;
+  min-width: 0;
+}
+
+.vp-bf-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: inherit;
+}
+
+.vp-bf-svg:focus {
+  outline: none;
+}
+
+.vp-bf-svg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 4px;
+}
+
+.vp-bf-namen text {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--vp-text);
+}
+
+.vp-bf-namen text.is-klein {
+  font-size: 11.5px;
+  font-weight: 400;
+  fill: var(--vp-text-muted);
+}
+
+.vp-bf-grund {
+  fill: var(--vp-bg-light);
+}
+
+.vp-bf-marke {
+  font-size: 11.5px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--vp-surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.vp-bf-grenze {
+  stroke: var(--vp-gray);
+  stroke-width: 1.2;
+  stroke-dasharray: 6 4;
+}
+
+.vp-bf-band {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.vp-bf-achse line {
+  stroke: var(--vp-text-muted);
+  stroke-width: 1;
+}
+
+.vp-bf-achse text {
+  font-size: 11px;
+  fill: var(--vp-text-muted);
+}
+
+.vp-bf-markierung {
+  fill: var(--vp-tint);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+
+.vp-bf-wahl {
+  fill: rgba(26, 26, 26, 0.04);
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+
+.vp-bf-schwebt {
+  fill: rgba(26, 26, 26, 0.06);
+  pointer-events: none;
+}
+
+.vp-bf-jetzt text {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vp-bf-lupe {
+  position: absolute;
+  z-index: 5;
+  width: 300px;
+  max-width: calc(100% - 8px);
+  display: grid;
+  gap: 6px;
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  pointer-events: none;
+  font-size: 0.82rem;
+}
+
+.vp-bf-lupe p {
+  margin: 0;
+}
+
+.vp-bf-lupe-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vp-bf-lupe-was {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.vp-bf-lupe-was i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.vp-bf-lupe-fluss {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-bg-light);
+}
+
+.vp-bf-lupe-fluss b {
+  float: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-bf-lupe-zeilen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  margin: 0;
+}
+
+.vp-bf-lupe-zeilen dt {
+  color: var(--vp-text-muted);
+}
+
+.vp-bf-lupe-zeilen dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---- Der Tagesschalter (E2 = A) ------------------------------------------------------ */
+
+/* Die Form ist das Tag-Segment der Preise (`TagSegment`, Marktpreise.css):
+   EIN Tages-Segment im Fahrplan-Bereich. Hier nur sein Platz über dem Bild. */
+.vp-tb-tage {
+  margin-bottom: var(--vp-space-3);
+}
+
+.vp-tb-tage .vp-mp-tag {
+  margin-top: 0;
+}
+
+/* ---- Ein Tag ohne Tagesbild: der Grund an der Stelle des Bildes ---------------------- */
+
+.vp-tb-leer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-4);
+  min-width: 0;
+  margin-bottom: var(--vp-space-6);
+  padding: var(--vp-space-5);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+}
+
+.vp-tb-leer-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-bg-light);
+  color: var(--vp-text-muted);
+}
+
+.vp-tb-leer-t {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-tb-leer-titel {
+  margin: 0;
+  font-size: 1.06rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.vp-tb-leer-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted);
+}

@@ -163,21 +163,31 @@ export function BefehleVerlauf({
   /** Das Strom-Etikett je Zeile - ohne gewählte Komponente mischen sich Wege. */
   zeigeStrom = true,
   onRetry,
+  max,
 }: {
   state: VerlaufState;
   zeigeStrom?: boolean;
   onRetry?: () => void;
+  /**
+   * Die KURZFORM (Baustein „Aktivität" der Geräteseite): nur die jüngsten
+   * `max` Befehle, ohne Bilanz und ohne „Ältere laden" - der ganze Verlauf
+   * steht einen Klick weiter auf der Befehle-Seite. Dieselben Zeilen, dieselbe
+   * Grammatik (Befehl · Antwort · Wirkung), nur weniger davon.
+   */
+  max?: number;
 }) {
   const { view, error, laedtMehr, ladeMehr, history } = state;
+  const kurz = max != null;
+  const eintraege = kurz ? kuerzen(view.eintraege, max) : view.eintraege;
   return (
     <>
-      {view.bilanz && <p className="vp-note vp-verlauf-bilanz">{view.bilanz}</p>}
+      {!kurz && view.bilanz && <p className="vp-note vp-verlauf-bilanz">{view.bilanz}</p>}
       {error && <ErrorState message={error} onRetry={onRetry ?? state.reload} />}
-      {!error && !history && <Skeleton height={120} />}
+      {!error && !history && <Skeleton height={kurz ? 64 : 120} />}
       {!error && history && view.leer && <p className="vp-muted">{view.leer}</p>}
       {!error && view.zeilen > 0 && (
-        <ol className="vp-befehle-film">
-          {view.eintraege.map((e) =>
+        <ol className={`vp-befehle-film${kurz ? ' is-kurz' : ''}`}>
+          {eintraege.map((e) =>
             e.art === 'tag' ? (
               <li key={e.key} className="vp-verlauf-tag" aria-hidden="true">
                 {e.text}
@@ -220,15 +230,39 @@ export function BefehleVerlauf({
       )}
       {/* „Ältere laden" wird NIE angeboten, wo es nichts mehr gibt - der Server
           sagt mit `nextBefore`, ob eine Seite dahinter liegt. */}
-      {!error && view.mehrMoeglich && (
+      {!kurz && !error && view.mehrMoeglich && (
         <button type="button" className="vp-befehle-mehr" onClick={ladeMehr} disabled={laedtMehr}>
           <Icon name="chevron-down" size={14} />
           {laedtMehr ? 'Wird geladen …' : 'Ältere laden'}
         </button>
       )}
-      {view.deckel && <p className="vp-note">{view.deckel}</p>}
+      {!kurz && view.deckel && <p className="vp-note">{view.deckel}</p>}
     </>
   );
+}
+
+/**
+ * Die ersten `max` BEFEHLS-Zeilen samt ihren Datumszeilen - eine Datumszeile
+ * ohne Befehl darunter fällt weg.
+ */
+function kuerzen(eintraege: VerlaufView['eintraege'], max: number): VerlaufView['eintraege'] {
+  const out: VerlaufView['eintraege'] = [];
+  let zeilen = 0;
+  let tag: VerlaufView['eintraege'][number] | null = null;
+  for (const e of eintraege) {
+    if (e.art === 'tag') {
+      tag = e;
+      continue;
+    }
+    if (zeilen >= max) break;
+    if (tag) {
+      out.push(tag);
+      tag = null;
+    }
+    out.push(e);
+    zeilen += 1;
+  }
+  return out;
 }
 
 /**

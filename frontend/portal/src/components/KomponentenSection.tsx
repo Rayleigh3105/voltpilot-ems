@@ -20,7 +20,7 @@ import {
   withVerbrauch,
   type LivePulsRow,
 } from '../livePuls';
-import { chargerGeraetId } from '../geraetSeite';
+import { chargerGeraetId } from '../geraetAdresse';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import type { SiteCharging } from '../ladepunkte';
 import { verbrauchKomposition } from '../verbrauchKomposition';

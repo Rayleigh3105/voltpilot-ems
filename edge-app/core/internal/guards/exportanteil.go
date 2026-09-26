@@ -179,6 +179,10 @@ func (l *ExportLimiter) CapAnteil(now time.Time, limitKw *float64, an ExportAnte
 	if uhrsprung {
 		at = now.Add(-(ExportFreshWindow + ExportAnteilWindow + time.Second))
 	}
+	// K6's cascade (CapCascade) belongs to the single box's own leader: a
+	// share document runs without an inner loop, so a loop armed by an earlier
+	// CapCascade never survives into the share (Nachzug main 26.09.2026).
+	l.armInner(InnerLoop{})
 	res := l.capLockedAb(now, at, loop, safePv)
 	res.AnteilKw = &anteil
 	res.Eingefroren = eingefroren && res.Blind

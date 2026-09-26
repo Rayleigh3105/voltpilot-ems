@@ -538,8 +538,10 @@ for (const breite of BREITEN) {
       await expect(geraet).toHaveCount(0);
       await zaehlerIst(page, breite, 2, 'Datenquelle');
 
+      // Seit dem Gerätekatalog (main e70b57b76) beginnt „Gerät anbinden" im Katalog.
       await page.getByRole('button', { name: 'Gerät anbinden für Werk Lindach', exact: true }).click();
-      await expect(page.getByRole('dialog', { name: 'Gerät anbinden' })).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Gerät hinzufügen' })
+        .getByRole('searchbox', { name: 'Katalog durchsuchen' })).toBeVisible();
       await messeUndFotografiere(page, breite, 'geraet-anbinden');
     });
 

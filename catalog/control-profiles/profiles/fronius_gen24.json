@@ -1,0 +1,534 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "fronius_mb"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "speicher": "ram",
+          "wert": "−x % (Zwangsentladen)",
+          "ziel": {
+            "sunspec": "124.InWRte"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "InWRte negativ = Zwangsentladen."
+    },
+    "E": {
+      "beleg": [
+        {
+          "erwartet": 0,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "hebel": "geraet",
+      "quellen": [
+        "fronius_mb",
+        "repo_fronius"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "StorCtl_Mod = 0 (keine Grenze)."
+    },
+    "E_decken": {
+      "beleg": [
+        {
+          "erwartet": 1,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "hebel": "geraet",
+      "quellen": [
+        "fronius_mb"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "124.InWRte"
+          }
+        },
+        {
+          "hinweis": "Ladegrenze aktiv",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "StorCtl_Mod = 1 (Ladegrenze aktiv), InWRte = 0 %."
+    },
+    "E_gedrosselt": {
+      "beleg": [
+        {
+          "erwartet": 1,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "hebel": "geraet",
+      "quellen": [
+        "fronius_mb"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "ram",
+          "wert": "x % von WChaMax",
+          "ziel": {
+            "sunspec": "124.InWRte"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "StorCtl_Mod = 1, InWRte = x % von WChaMax."
+    },
+    "E_laden": {
+      "beleg": [
+        {
+          "erwartet": 2,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "hebel": "geraet",
+      "quellen": [
+        "fronius_mb"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "124.OutWRte"
+          }
+        },
+        {
+          "hinweis": "Entladegrenze aktiv",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "StorCtl_Mod = 2 (Entladegrenze aktiv), OutWRte = 0 %."
+    },
+    "G": {
+      "beleg": [
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "sunspec": "123.WMaxLimPct"
+          }
+        },
+        {
+          "erwartet": 60,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_RvrtTms"
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "sunspec": "123.WMaxLim_Ena"
+          }
+        }
+      ],
+      "hebel": "abregeln",
+      "quellen": [
+        "fronius_mb",
+        "repo_fronius"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "% der Nennleistung, SF des Geräts",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "sunspec": "123.WMaxLimPct"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_WinTms"
+          }
+        },
+        {
+          "hinweis": "Rückfall-Timer: bei Stille läuft die PV wieder voll",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_RvrtTms"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "123.WMaxLimPct_RmpTms"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "sunspec": "123.WMaxLim_Ena"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "Model 123 WMaxLimPct mit Revert-Timer bzw. 704; geräteeigene dynamische Einspeisebegrenzung über Smart Meter (Einstellung)."
+    },
+    "H": {
+      "beleg": [
+        {
+          "erwartet": 3,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "hebel": "geraet",
+      "quellen": [
+        "fronius_mb",
+        "evcc"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "124.InWRte"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "sunspec": "124.OutWRte"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": 3,
+          "ziel": {
+            "sunspec": "124.StorCtl_Mod"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "StorCtl_Mod = 3, InWRte = OutWRte = 0 (evcc „hold“)."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "sollwert",
+      "quellen": [
+        "fronius_mb",
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "Netz",
+          "speicher": "dauerspeicher",
+          "wert": 1,
+          "ziel": {
+            "sunspec": "124.ChaGriSet"
+          }
+        },
+        {
+          "speicher": "ram",
+          "wert": "−x % (Zwangsladen)",
+          "ziel": {
+            "sunspec": "124.OutWRte"
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "OutWRte negativ = Zwangsladen (Fenster), ChaGriSet = Netz; UND-Verknüpfung mit Web-UI-Einstellung."
+    }
+  },
+  "adapter": {
+    "abweichungen": [
+      "planStorage setzt StorCtl_Mod = 1/2 als Richtung und InWRte/OutWRte als Sollwert. Nach der Fronius-Anleitung (A) aktivieren die Bits nur GRENZEN; Zwangsladen ist OutWRte negativ, Zwangsentladen InWRte negativ.",
+      "planStorage schreibt für 0 kW StorCtl_Mod = 0 - das gibt beide Grenzen frei (Eigenverbrauch E), Halten wäre StorCtl_Mod = 3 mit InWRte = OutWRte = 0 (evcc „hold“).",
+      "Vor einer Freigabe (K9) am Gerät klären; der Code selbst verlangt diese Prüfung („VERIFY the bit semantics“)."
+    ],
+    "ausfuehrbar": false,
+    "datei": "edge-app/nodered/sunspec/model-discovery.js",
+    "folgen": {
+      "entladen": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.InWRte"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.OutWRte"
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.MinRsvPct"
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.ChaGriSet"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "sunspec": "124.InOutWRte_RvrtTms"
+            }
+          },
+          {
+            "hinweis": "zuletzt",
+            "speicher": "ram",
+            "wert": 2,
+            "ziel": {
+              "sunspec": "124.StorCtl_Mod"
+            }
+          }
+        ]
+      },
+      "halten": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.InWRte"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.OutWRte"
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.MinRsvPct"
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.ChaGriSet"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "sunspec": "124.InOutWRte_RvrtTms"
+            }
+          },
+          {
+            "hinweis": "zuletzt",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "sunspec": "124.StorCtl_Mod"
+            }
+          }
+        ]
+      },
+      "laden": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.InWRte"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.OutWRte"
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.MinRsvPct"
+            }
+          },
+          {
+            "speicher": "dauerspeicher",
+            "wert": "planabhängig",
+            "ziel": {
+              "sunspec": "124.ChaGriSet"
+            }
+          },
+          {
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "sunspec": "124.InOutWRte_RvrtTms"
+            }
+          },
+          {
+            "hinweis": "zuletzt",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "sunspec": "124.StorCtl_Mod"
+            }
+          }
+        ]
+      }
+    },
+    "planer": "planStorage (fronius_sunspec, nur geplant)",
+    "schreibabstand_s": 0
+  },
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "fronius_mb"
+    ],
+    "sicherheit": "D",
+    "text": "Fenster-Hebel vorhanden; Einschwingzeit und Messtakt am Gerät messen (K9)."
+  },
+  "eigenmodus": {
+    "sicherheit": "A",
+    "text": "Ja: Eigenverbrauchsoptimierung; innerhalb der Model-124-Grenzen optimiert der Wechselrichter weiter selbst (A, Fronius-Anleitung)."
+  },
+  "empfehlung": "Sauberster Fenster-Hebel im DACH-Markt; zweiter Hersteller nach Deye, sobald eine Anlage/ein Prüfgerät da ist.",
+  "fallen": [
+    "Kein Revert-Timer für Model 124: eine gesetzte Grenze bleibt, wenn die Box stirbt (A/C).",
+    "Die eingebaute Optimierung läuft parallel und kann sich mit Modbus-Befehlen streiten; Status „Forced Recharge“ möglich (C).",
+    "Adressen immer per SunSpec-Discovery, nie fest (Repo-Regel).",
+    "Ob der GEN24 Überschuss eines zweiten, AC-gekoppelten Wechselrichters lädt: am Gerät prüfen (D)."
+  ],
+  "familie": "Symo/Primo GEN24 Plus (Hybrid) mit BYD HVS/HVM oder Fronius Reserva",
+  "firmware_bedingung": {
+    "gelesen": true,
+    "quellen": [
+      "fronius_mb",
+      "sunspec"
+    ],
+    "sicherheit": "D",
+    "wert": null,
+    "wie": "Die SunSpec-Discovery liest Model 1 (Common, Firmware-Version Vr) und ob Model 124 vorhanden ist; „Inverter control via Modbus“ muss im Webinterface an sein (A). Welche Firmware-Stände die Model-124-Grenzen wie beschrieben umsetzen, ist unbelegt - am Gerät prüfen (K9)."
+  },
+  "freigabe": "keine",
+  "hersteller": "Fronius",
+  "id": "fronius_gen24",
+  "im_repo": "SunSpec-Discovery + planStorage gebaut (planned-only, kein Executor für fronius_sunspec); Selbstregel-Primitive geplant",
+  "modelle": [
+    "Symo GEN24 Plus",
+    "Primo GEN24 Plus"
+  ],
+  "quellen": [
+    "fronius_mb",
+    "repo_fronius",
+    "dd",
+    "evcc",
+    "sunspec"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "gemischt",
+    "text": "Raten/Modus flüchtig (C); MinRsvPct/ChaGriSet vermutlich dauerhaft (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "D",
+    "text": "Die Fronius-Anleitung nennt für Model 124 keinen Rückfall-Timer (A: nicht erwähnt); eine gesetzte Grenze bleibt, wenn die Box stirbt. Model 123/704 haben Timer (A). planStorage schreibt trotzdem InOutWRte_RvrtTms = 60 - ob der GEN24 ihn beachtet, ist am Gerät zu prüfen (D).",
+    "vorhanden": null,
+    "ziel": {
+      "sunspec": "124.InOutWRte_RvrtTms"
+    }
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": [
+      {
+        "hinweis": "keine Grenze aktiv",
+        "speicher": "ram",
+        "wert": 0,
+        "ziel": {
+          "sunspec": "124.StorCtl_Mod"
+        }
+      }
+    ],
+    "sicherheit": "A",
+    "speicher": "ram",
+    "text": "StorCtl_Mod = 0 gibt frei; Bit 0/1 aktivieren Lade-/Entladegrenze InWRte/OutWRte (% von WChaMax). „Inverter control via Modbus“ muss im Webinterface an sein (A)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "Fronius Smart Meter am Einspeisepunkt (Standard-Installation)."
+  }
+}

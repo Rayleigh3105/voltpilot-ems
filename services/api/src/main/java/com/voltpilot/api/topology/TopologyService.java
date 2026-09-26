@@ -7,7 +7,7 @@ import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.topology.TopologyRepository.LatestValue;
+import com.voltpilot.api.topology.TopologyRepository.LiveValue;
 import com.voltpilot.api.topology.TopologyRepository.RoleOverride;
 import com.voltpilot.api.tenant.TenantContext;
 import java.time.Duration;
@@ -31,7 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Composes the Anlagen-Topologie-Read-Model (AE1) for one site: the v2 entities
  * with each capability's resolved role (stored override else
- * {@link TopologyDeriver#defaultRole}) + maßgeblich flag + latest live value,
+ * {@link TopologyDeriver#defaultRole}) + maßgeblich flag + live value (power channels: the
+ * 30-s mean, {@link TopologyRepository#DISPLAY_MEAN_WINDOW}),
  * plus the server-derived hub topology. RLS-scoped (the repositories carry no
  * tenant predicate; the caller's session tenant fences every read). A fresh
  * site yields empty {@code entities} + empty {@code topology}.
@@ -205,7 +206,7 @@ public class TopologyService {
 
     public TopologyResponse topology(UUID siteId) {
         List<EntityRow> rows = registry.entitiesForSite(siteId);
-        Map<String, LatestValue> latest = indexLatest(repo.latestValues(siteId, channelKeys(rows)));
+        Map<String, LiveValue> latest = indexLatest(repo.liveValues(siteId, channelKeys(rows)));
         Map<String, RoleOverride> overrides = indexOverrides(repo.overrides(siteId));
         Set<String> rolesWithExplicitPrimary = new HashSet<>();
         for (RoleOverride ov : overrides.values()) {
@@ -249,8 +250,8 @@ public class TopologyService {
                 if (!role.isEmpty()) {
                     firstSeen.add(role);
                 }
-                LatestValue lv = latest.get(valueKey(row.id().toString(), channel));
-                Double value = lv == null ? null : lv.value();
+                LiveValue lv = latest.get(valueKey(row.id().toString(), channel));
+                Double value = lv == null ? null : displayValue(lv, channel, unit);
                 if (lv != null && (newest == null || lv.receivedAt().isAfter(newest))) {
                     newest = lv.receivedAt();
                 }
@@ -274,7 +275,7 @@ public class TopologyService {
      * The (entity, channel) pairs this read-model will actually read - the exact
      * set the loop below looks up, so the repository can probe them one by one
      * instead of scanning the site's whole telemetry_v2 history (see
-     * {@link TopologyRepository#latestValues(UUID, java.util.List)}). The channel
+     * {@link TopologyRepository#liveValues(UUID, java.util.List)}). The channel
      * filter MUST stay identical to the loop's ({@code null}/blank skipped),
      * otherwise a channel would silently lose its value. Deduplicated: a
      * capabilities document listing a channel twice must not double the probes.
@@ -321,9 +322,22 @@ public class TopologyService {
         return Duration.between(newest, now).compareTo(LIVENESS_WINDOW) <= 0 ? "ok" : "stale";
     }
 
-    private static Map<String, LatestValue> indexLatest(List<LatestValue> values) {
-        Map<String, LatestValue> m = new LinkedHashMap<>();
-        for (LatestValue v : values) {
+    /**
+     * Was ein Kreis zeigt (K8/B1): ein LEISTUNGS-Kanal das Mittel über
+     * {@link TopologyRepository#DISPLAY_MEAN_WINDOW}, damit PV, Netz, Speicher
+     * und Haus auf derselben Zeitbasis stehen und ihre Bilanz stimmt. Ladestand,
+     * Grenzen/Freigaben (Zahlen mit Ja/Nein-Bedeutung) und alles ohne kW/W
+     * bleiben der letzte Wert - ein gemitteltes „erlaubt" oder ein gemittelter
+     * Zählerstand wäre eine erfundene Zahl.
+     */
+    static double displayValue(LiveValue lv, String channel, String unit) {
+        boolean leistung = "kW".equals(unit) || "W".equals(unit);
+        return leistung && !TopologyDeriver.isStorageAttribute(channel) ? lv.mean() : lv.latest();
+    }
+
+    private static Map<String, LiveValue> indexLatest(List<LiveValue> values) {
+        Map<String, LiveValue> m = new LinkedHashMap<>();
+        for (LiveValue v : values) {
             m.put(valueKey(v.entityId(), v.channel()), v);
         }
         return m;

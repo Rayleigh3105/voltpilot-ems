@@ -69,6 +69,57 @@ public class TopologyRepository {
                     + "    AND t.channel = k.channel AND t.time >= ?"
                     + "  ORDER BY t.time DESC LIMIT 1) x";
 
+    /**
+     * Die EINE Zeitbasis der Cockpit-Kreise (Paket K8 „Anzeige ehrlich", Diagnose
+     * Herzogau 24.09.2026 {@code vp-herzogau-laden-bei-bezug-h4} §7 B1): ein
+     * Leistungswert wird als Mittel über dieses Fenster gezeigt, nicht als letzte
+     * Einzelprobe.
+     *
+     * <p>Warum: die Box bildet das Haus aus PV (Fronius, ~5 s frisch) und Netz/
+     * Batterie (Deye, 10-20 s alt, untereinander versetzt). Nach einer Wolkenkante
+     * trägt EINE Probe dann PV von jetzt neben Netz/Batterie von vor 15 s - am
+     * Fall 17:08:00 „Haus 26,2 kW" und „8,5 Bezug bei 16,6 Laden", beides nie
+     * geflossen. Alle vier Kreise kommen aus DERSELBEN Box-Probe (der Writer
+     * fächert sie mit einem {@code time} auf), und das Mittel ist linear: über
+     * dieselben Proben gemittelt bleibt {@code Haus = PV + Netz - Batterie}
+     * exakt erhalten. 30 s decken zwei bis drei Deye-Messtakte plus die
+     * Folgezeit ab und sind kurz genug, dass ein echter Zustandswechsel binnen
+     * eines Portal-Abrufs sichtbar wird.
+     */
+    public static final Duration DISPLAY_MEAN_WINDOW = Duration.ofSeconds(30);
+
+    /**
+     * Newest sample of one entity channel PLUS the mean over the
+     * {@link #DISPLAY_MEAN_WINDOW} that ends at it. {@code mean} is never absent
+     * when the row exists: the window always contains the newest sample itself.
+     */
+    public record LiveValue(String entityId, String channel, double latest, double mean,
+            Instant receivedAt) {}
+
+    /**
+     * {@link #LATEST_VALUES} plus a second, window-bounded probe per pair. The
+     * window is anchored at the PAIR's newest {@code time} (not the wall clock):
+     * a quiet or delayed pair still shows its last value instead of an empty
+     * window, and the composed entities of one box sample share that anchor, so
+     * their means run over the same samples. Both probes carry the
+     * {@code t.time >= ?} floor on the partition column (the 2026-09-09 lesson);
+     * the second is additionally bounded to the window at run time.
+     */
+    static final String LIVE_VALUES =
+            "SELECT k.entity_id, k.channel, n.value, x.mean, n.received_at "
+                    + "FROM unnest(?::text[], ?::text[]) AS k(entity_id, channel) "
+                    + "CROSS JOIN LATERAL ("
+                    + "  SELECT t.value, t.time, t.received_at FROM telemetry_v2 t"
+                    + "  WHERE t.site_id = ? AND t.entity_id = k.entity_id"
+                    + "    AND t.channel = k.channel AND t.time >= ?"
+                    + "  ORDER BY t.time DESC LIMIT 1) n "
+                    + "CROSS JOIN LATERAL ("
+                    + "  SELECT avg(w.value) AS mean FROM telemetry_v2 w"
+                    + "  WHERE w.site_id = ? AND w.entity_id = k.entity_id"
+                    + "    AND w.channel = k.channel AND w.time >= ?"
+                    + "    AND w.time > n.time - make_interval(secs => ?::double precision)"
+                    + "    AND w.time <= n.time) x";
+
     private final JdbcTemplate jdbc;
 
     public TopologyRepository(JdbcTemplate jdbc) {
@@ -173,6 +224,43 @@ public class TopologyRepository {
                         rs.getString("entity_id"),
                         rs.getString("channel"),
                         rs.getDouble("value"),
+                        rs.getTimestamp("received_at").toInstant()));
+    }
+
+    /**
+     * The live read of the topology read-model: newest value and
+     * {@link #DISPLAY_MEAN_WINDOW} mean per pair, floored like
+     * {@link #latestValues(UUID, List)}.
+     */
+    public List<LiveValue> liveValues(UUID siteId, List<ChannelKey> keys) {
+        return liveValues(siteId, keys, Instant.now().minus(LATEST_VALUE_LOOKBACK));
+    }
+
+    /** {@link #liveValues(UUID, List)} with the floor spelled out (the tests' seam). */
+    public List<LiveValue> liveValues(UUID siteId, List<ChannelKey> keys, Instant notBefore) {
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        String[] entityIds = keys.stream().map(ChannelKey::entityId).toArray(String[]::new);
+        String[] channels = keys.stream().map(ChannelKey::channel).toArray(String[]::new);
+        Timestamp floor = Timestamp.from(notBefore);
+        return jdbc.query(
+                con -> {
+                    PreparedStatement ps = con.prepareStatement(LIVE_VALUES);
+                    ps.setArray(1, con.createArrayOf("text", entityIds));
+                    ps.setArray(2, con.createArrayOf("text", channels));
+                    ps.setObject(3, siteId);
+                    ps.setTimestamp(4, floor);
+                    ps.setObject(5, siteId);
+                    ps.setTimestamp(6, floor);
+                    ps.setDouble(7, DISPLAY_MEAN_WINDOW.toMillis() / 1000.0);
+                    return ps;
+                },
+                (rs, n) -> new LiveValue(
+                        rs.getString("entity_id"),
+                        rs.getString("channel"),
+                        rs.getDouble("value"),
+                        rs.getDouble("mean"),
                         rs.getTimestamp("received_at").toInstant()));
     }
 

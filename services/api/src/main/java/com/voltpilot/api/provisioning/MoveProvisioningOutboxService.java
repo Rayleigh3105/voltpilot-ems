@@ -3,6 +3,7 @@ package com.voltpilot.api.provisioning;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -65,7 +66,7 @@ public class MoveProvisioningOutboxService {
                 admin.update("UPDATE move_provisioning_operation SET status = 'refused', "
                                 + "attempts = attempts + 1, last_error = ?, updated_at = ? "
                                 + "WHERE id = ?",
-                        "mqtt_not_configured", Instant.now(), move.id());
+                        "mqtt_not_configured", Timestamp.from(Instant.now()), move.id());
                 return;
             }
             boolean clear = publisher.clearRetained(move.externalRef(), move.tenantId(),
@@ -81,7 +82,9 @@ public class MoveProvisioningOutboxService {
             String error = "applied".equals(status) ? null
                     : (registryOutcome.reason() == null
                             ? "broker_publish_failed" : registryOutcome.reason());
-            Instant now = Instant.now();
+            // java.sql.Timestamp, never java.time.Instant: pgJDBC cannot infer
+            // a SQL type for an Instant (see ComponentActivationOutboxService).
+            Timestamp now = Timestamp.from(Instant.now());
             admin.update("UPDATE move_provisioning_operation SET status = ?, "
                             + "attempts = attempts + 1, last_error = ?, updated_at = ?, "
                             + "applied_at = CASE WHEN ? = 'applied' THEN ? ELSE applied_at END "
@@ -90,7 +93,7 @@ public class MoveProvisioningOutboxService {
         } catch (RuntimeException ex) {
             admin.update("UPDATE move_provisioning_operation SET attempts = attempts + 1, "
                             + "last_error = ?, updated_at = ? WHERE id = ?",
-                    ex.getMessage(), Instant.now(), move.id());
+                    ex.getMessage(), Timestamp.from(Instant.now()), move.id());
         } finally {
             if (previous == null) {
                 TenantContext.clear();

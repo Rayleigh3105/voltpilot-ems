@@ -67,8 +67,10 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
   was läuft, ist weiterhin die zuletzt wirklich angewandte Fassung.
   - **⚠ `held` ist die DRITTE Antwort der Box auf „was ist mit der neuesten Revision passiert?"** (Scout
     `vp-portal-box-spiegel-s2` L1): sie hat die Fassung GESEHEN und bewusst nichts angewandt — heute, weil das
-    Portal kein verbundenes Gerät mehr nennt (`componentapply.ErrNoConfiguration`), und ein leeres Soll ist
-    ausdrücklich KEINE Anweisung, eine laufende Anlage leerzuräumen. Sie reist als EIGENES Feldpaar
+    Portal VOR dem ersten angewandten Plan noch kein verbundenes Gerät nennt (`componentapply.ErrNoConfiguration`),
+    und ein solches leeres Soll ist ausdrücklich KEINE Anweisung, eine laufende Anlage leerzuräumen. Nach der
+    Übernahme ist es dagegen „letztes Gerät gelöscht": die Box leert ihre Quellen (`EmptiedPlan`) und quittiert
+    die Revision als angewandt. Sie reist als EIGENES Feldpaar
     `held_revision`/`held_reason` durch die ganze Kette (`componentapply.Record` → `cloud.ComponentApplySummary`
     im Herzschlag → `device_component_apply` → `SiteComponentsDto`), NIE in `revision` (das wäre ein Stand, den
     niemand fährt) und nie in `refused_*` (das wäre ein Fehler, den es nicht gibt). Bis dahin wurde der Halt nur
@@ -120,7 +122,7 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
   ist das reine `ComponentActivationOperationsTest`.
 - **Beweise:** Go `internal/componentapply` (19, inkl. der Kontrakt-Fixture per PFAD) + `agent/component_apply_test.go`
   (8, u. a. `TestABoxManagedPlantIsByteIdenticalUnderEveryPush` — die Captain-Auflage —, Ablehnung behält alles,
-  leeres Soll löscht nichts, Neustart, lokale Bearbeitung auf einer portal-verwalteten Anlage abgelehnt) ·
+  leeres Soll löscht vor der Übernahme nichts und leert danach die Quellen, Neustart, lokale Bearbeitung auf einer portal-verwalteten Anlage abgelehnt) ·
   api `ComponentApiTest` (6, echte DB + Keycloak: die Reise Vorlage→Test→Anlegen mit Fassung 1, ohne Beleg 422,
   zweiter Netz-Zähler 409, Rollback schreibt eine neue Fassung, RLS 404) · Portal `komponentenAssistent.test.ts` (26)
   + `AnlegenFlow.test.tsx` (9). Portal-Seite in `frontend/portal/AGENTS.md`.

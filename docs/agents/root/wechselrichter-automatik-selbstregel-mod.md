@@ -17,7 +17,13 @@ Test festgenagelt.
   10-s-Follower oder die Automatik des Geräts — war immer eine Entscheidung der
   EDGE. Der frozen `mqtt-schedule`-Vertrag ist unberührt, die Cloud und das
   Portal kennen das Wort `autonomous_discharge` seit PR #514 und brauchten
-  KEINE Änderung.
+  KEINE Änderung. Seit K4a (24.09.2026) kennen sie auch `autonomous_charge`
+  (Absicht E↑) und `autonomous_selfconsumption` (E/E~); die Box sendet sie erst
+  mit K4b. Ein neues Wort braucht alle Listen zugleich:
+  `ControlStatusListener.EXECUTION_MODES` (+ Ziel-Messung), das
+  `executionMode`-Enum in `docs/contracts/openapi.yaml`, Portal `ExecutionMode`,
+  `EXECUTION_MODE_LABEL`/`executionNote`, `fahrplanJetzt.resolveState` und
+  `flowConflict.FOLLOWING_MODES`.
 - **Die Arbeitsteilung steht in `docs/contracts/v2/plan-execution-ownership.md`**
   („Native self-regulation"): Wolke = der Preis, Layer 1 = die Register + das
   Zertifikat, Kern = die AUFSICHT und die Rücknahme, Rücklesen = der BELEG.
@@ -70,9 +76,25 @@ Test festgenagelt.
   weit innerhalb der Nachweisfrist des Kerns. **`mode: "native"` wird nur
   gemeldet, wenn `1100` wirklich 0 zurückliest**; nur ein belegter Takt liest
   zusätzlich den `gridChargeProof` (`native.grid_charge_blocked`, dreiwertig).
+  Der Lese-Takt VOR der Übergabe meldet dieselbe Frage aus der
+  Vorbedingungs-Lesung als `native_precondition.grid_charge_blocked` — damit die
+  Absicht an EEG-Anlagen überhaupt stehen bleibt (K3, 24.09.2026; vorher nahm der
+  Kern im ersten Takt zurück, die Automatik war an EEG-Anlagen tot).
   Details + die Beobachtungs-Checkliste: `edge-app/AGENTS.md` und
   `edge-app/nodered/UNPLANNED-LOAD-BENCH.md`.
 - **Ops:** keine neue Pflicht-Variable, keine Migration, keine Cloud-Änderung.
   `VP_NATIVE_SELF_REGULATION_ENABLED` (Vorgabe AN, Opt-out) ist der Not-Aus je
   Box. Die Edge-Hälfte reist mit dem nächsten Edge-Release.
 
+- **Seit K4b (24.09.2026) auch die Ladeseite – „Absicht + Fenster“**
+  (Konzept `vp-wechselrichter-eigenregelung-k1`, E1 A): Flaggen → Absicht +
+  Fenster (`guards.IntentFor`, Vektoren
+  `docs/contracts/v2/native-intent-window-vectors.json`), neues
+  `battery_mode: "native_window"` für E↑/E/E~ (ein alter Layer 1 bestätigt es
+  nie → Rücknahme nach der Frist). **⚠ Eine Fenster-Absicht braucht einen von
+  Layer 1 GEMELDETEN Hebel** (`native_capabilities`); ohne Meldung gibt es nur
+  den alten E↓-Weg, byte-gleich. Zertifiziert sind die neuen Fähigkeiten
+  (`native_surplus_charge`, `native_self_consumption`) nur für den Simulator;
+  Deye-Ladeseite = K5, weitere Hersteller = K9. Cloud-Wörter
+  `autonomous_charge` / `autonomous_selfconsumption`, `commanded_kw` dort null.
+  Vertrag: `docs/contracts/v2/plan-execution-ownership.md` „Absicht + Fenster“.

@@ -19,26 +19,28 @@ import { hashForRoute, messstelleRoute } from '../nav';
 import './GeraetGefahrenzone.css';
 
 /**
- * Die GEFAHRENZONE der Geräteseite (Konzept `vp-loeschen-konzept-l3`, E4):
- * genau EIN Ort für das Entfernen, am Seitenende, parallel zu „Anlage löschen"
- * ({@code AnlageTechnik} DangerZone) - nie im eingeklappten „Details"-Block.
+ * Das ENTFERNEN eines Geräts (Konzept `vp-loeschen-konzept-l3`, E4) - seit den
+ * Geräteseiten „Ein Blick, eine Antwort" (V7) kein roter Kasten am Seitenende
+ * mehr, sondern ein Eintrag im Menü „⋯" mit DERSELBEN Rückfrage und DENSELBEN
+ * Folgen.
  *
- * <p>Drei Formen, nie ein toter Knopf:
+ * <p>Drei Formen, nie ein toter Knopf ({@link gefahrMenueLabel}):
  * <ul>
- *   <li>eine löschbare Kunden-Komponente → „Komponente entfernen" mit ehrlicher
- *       Folgenliste (was bleibt / was geht) und Namen-Bestätigung;</li>
- *   <li>der geschützte {@code battery-hybrid} → Grund UND Weg: „Batterie am
- *       Standort abmelden" (E1), das Nennwerte, Entität und Live-Sicht zusammen
+ *   <li>eine löschbare Kunden-Komponente → „Komponente entfernen …" mit
+ *       ehrlicher Folgenliste (was bleibt / was geht) und Namen-Bestätigung;</li>
+ *   <li>der geschützte {@code battery-hybrid} → „Batterie am Standort
+ *       abmelden …" (E1), das Nennwerte, Entität und Live-Sicht zusammen
  *       entfernt und den Optimierer aufhören lässt, einen Phantom-Speicher zu
  *       planen;</li>
- *   <li>eine plattform-eigene Grundausstattung ohne neuen Weg → nur der Grund.</li>
+ *   <li>eine plattform-eigene Grundausstattung ohne Weg → KEIN Menü-Eintrag;
+ *       ihr Grund steht in Technik › Einrichtung.</li>
  * </ul>
  *
  * <p>Lehnt der Server das Entfernen ab, weil freigegebene Berichtsstände die
  * Komponente zitieren (UEMS AP-12 IP-12, 409 {@code berichts_belege}), schließt
- * die Rückfrage und die Gefahrenzone nennt Grund UND Weg: den Satz mit der
- * Liste der Stände und je zitierter Messstelle den Sprung dorthin, wo die
- * Bindung endet. Geschrieben ist in dem Fall nichts.
+ * die Rückfrage und am Seitenende stehen Grund UND Weg: der Satz mit der Liste
+ * der Stände und je zitierter Messstelle der Sprung dorthin, wo die Bindung
+ * endet. Geschrieben ist in dem Fall nichts.
  *
  * <p>Die Rückfrage ist am Rechner das zentrierte {@code Modal}, am Telefon ein
  * {@code BottomSheet} (E4-Mobil) - dieselbe Folgenliste, derselbe Zwei-Stufen-
@@ -49,21 +51,25 @@ export function GeraetGefahrenzone({
   siteId,
   zustand,
   name,
+  offen,
+  onSchliessen,
   onDone,
 }: {
   siteId: string;
   zustand: GefahrenzoneZustand;
   /** Der Anzeigename des Geräts - Titel der Rückfrage und das Wort zum Tippen. */
   name: string;
+  /** Ob die Rückfrage offen ist - geöffnet wird sie über das Menü „⋯". */
+  offen: boolean;
+  onSchliessen: () => void;
   /** Neu laden, nachdem etwas entfernt wurde. */
   onDone: () => void;
 }) {
-  const [offen, setOffen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [beleg, setBeleg] = useState<BerichtsBeleg | null>(null);
 
-  if (zustand == null) return null;
+  if (zustand == null || zustand.kind === 'geschuetzt') return null;
 
   async function entfernen() {
     if (zustand == null) return;
@@ -75,14 +81,15 @@ export function GeraetGefahrenzone({
       } else if (zustand.kind === 'entfernen') {
         await entitiesApi.removeComponent(siteId, zustand.entity.id);
       }
+      setBusy(false);
       onDone();
     } catch (e) {
       const b = e instanceof ApiError ? berichtsBelegAus(e.status, e.body) : null;
       if (b) {
         // Ein Beleg: nichts ist geschrieben - die Rückfrage hat ihre Frage verloren.
         setBeleg(b);
-        setOffen(false);
         setBusy(false);
+        onSchliessen();
         return;
       }
       setFehler(fehlerText(e));
@@ -92,15 +99,14 @@ export function GeraetGefahrenzone({
 
   const schliessen = () => {
     if (busy) return;
-    setOffen(false);
     setFehler(null);
+    onSchliessen();
   };
 
   // Beleg freigegebener Berichtsstände: Grund UND Weg, kein Knopf mehr.
   if (beleg) {
     return (
-      <section className="vp-gz" aria-label="Gefahrenzone">
-        <GzKopf />
+      <section className="vp-gz" aria-label="Entfernen nicht möglich">
         <div className="vp-gz-blocked" data-testid="gz-berichts-belege">
           <Icon name="lock" size={16} aria-hidden />
           <div>
@@ -122,94 +128,43 @@ export function GeraetGefahrenzone({
     );
   }
 
-  // A platform base row with no new way: only the reason, never a button.
-  if (zustand.kind === 'geschuetzt') {
-    return (
-      <section className="vp-gz" aria-label="Gefahrenzone">
-        <GzKopf />
-        <div className="vp-gz-blocked">
-          <Icon name="lock" size={16} aria-hidden />
-          <p>{zustand.grund}</p>
-        </div>
-      </section>
-    );
-  }
-
   const istBatterie = zustand.kind === 'batterie';
-  const aktionLabel = istBatterie ? 'Batterie am Standort abmelden' : 'Komponente entfernen';
   const titel = istBatterie ? 'Batterie am Standort abmelden?' : `„${name}“ entfernen?`;
+  // ⚠ Die Sätze sind die der bisherigen Gefahrenzone - der Grund des
+  // geschützten Speichers zieht aus dem Kasten in die Rückfrage.
   const intro = istBatterie
-    ? 'VoltPilot hört auf, diesen Speicher zu lesen und zu steuern. Das lässt sich nicht '
-      + 'rückgängig machen.'
+    ? 'Dieser Speicher gehört zur Grundausstattung Ihrer Anlage - die Optimierung braucht ihn. '
+      + 'Deshalb lässt er sich nicht einzeln entfernen, nur am Standort abmelden. VoltPilot hört '
+      + 'auf, diesen Speicher zu lesen und zu steuern. Das lässt sich nicht rückgängig machen.'
     : 'VoltPilot hört auf, dieses Gerät zu lesen und zu steuern. Das lässt sich nicht '
       + 'rückgängig machen.';
   const bestaetigen = istBatterie ? 'Batterie endgültig abmelden' : 'Endgültig entfernen';
 
   return (
-    <section className="vp-gz" aria-label="Gefahrenzone">
-      <GzKopf />
-      {istBatterie ? (
-        // Der geschützte Speicher: kein toter Knopf, sondern Grund UND Weg.
-        <div className="vp-gz-blocked">
-          <Icon name="lock" size={16} aria-hidden />
-          <div>
-            <p>
-              Dieser Speicher gehört zur Grundausstattung Ihrer Anlage - die Optimierung braucht
-              ihn. Deshalb lässt er sich nicht einzeln entfernen. Um ihn wirklich loszuwerden,
-              melden Sie die Batterie am Standort ab.
-            </p>
-            <Recht aktion="komponente.loeschen"><Button
-              variant="outline"
-              size="sm"
-              className="vp-btn-danger"
-              iconLeft={<Icon name="trash" size={16} />}
-              onClick={() => setOffen(true)}
-            >
-              {aktionLabel}
-            </Button></Recht>
-          </div>
-        </div>
-      ) : (
-        <div className="vp-gz-row">
-          <p>
-            Diese Komponente aus Ihrer Anlage entfernen. Ihre aufgezeichneten Messwerte und Erlöse
-            bleiben in der Historie erhalten.
-          </p>
-          <Recht aktion="komponente.loeschen"><Button
-            variant="outline"
-            size="sm"
-            className="vp-btn-danger"
-            iconLeft={<Icon name="trash" size={16} />}
-            onClick={() => setOffen(true)}
-          >
-            {aktionLabel}
-          </Button></Recht>
-        </div>
-      )}
-
-      <GefahrBestaetigung
-        open={offen}
-        title={titel}
-        intro={intro}
-        folgen={zustand.folgen}
-        confirmName={name}
-        confirmLabel={bestaetigen}
-        busy={busy}
-        error={fehler}
-        onConfirm={() => void entfernen()}
-        onCancel={schliessen}
-      />
-    </section>
+    <GefahrBestaetigung
+      open={offen}
+      title={titel}
+      intro={intro}
+      folgen={zustand.folgen}
+      confirmName={name}
+      confirmLabel={bestaetigen}
+      busy={busy}
+      error={fehler}
+      onConfirm={() => void entfernen()}
+      onCancel={schliessen}
+    />
   );
 }
 
-function GzKopf() {
-  return (
-    <div className="vp-gz-head">
-      <Icon name="alert-triangle" size={18} aria-hidden />
-      Gefahrenzone
-    </div>
-  );
+/**
+ * Der Eintrag im Menü „⋯" - oder null, wenn es keinen Weg gibt (dann steht
+ * der Grund in Technik › Einrichtung, nie ein Knopf ins Leere).
+ */
+export function gefahrMenueLabel(zustand: GefahrenzoneZustand | null | undefined): string | null {
+  if (!zustand) return null;
+  if (zustand.kind === 'batterie') return 'Batterie am Standort abmelden …';
+  if (zustand.kind === 'entfernen') return 'Komponente entfernen …';
+  return null;
 }
 
 /** 401/403/404 = die Kundenroute fehlt (älteres Backend) → ehrlicher Hinweis. */

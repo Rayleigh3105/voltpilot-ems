@@ -26,6 +26,7 @@ func TestEveryBrandDeclaresAKnownDeviceType(t *testing.T) {
 	known := map[string]bool{
 		DeviceTypeInverter: true, DeviceTypeWallbox: true, DeviceTypeSwitch: true,
 		DeviceTypeMeter: true, DeviceTypeChargePoint: true, DeviceTypeCustom: true,
+		DeviceTypeIOModule: true,
 	}
 	for _, b := range DefaultCatalog().Brands {
 		if !known[b.DeviceType] {
@@ -44,6 +45,7 @@ func TestTheConsumerDriversAreTypedNotBrandedAsCategories(t *testing.T) {
 	for _, tc := range []struct{ brand, label, deviceType string }{
 		{BrandGoe, "go-e", DeviceTypeWallbox},
 		{BrandShelly, "Shelly", DeviceTypeSwitch},
+		{BrandEbyte, "Ebyte", DeviceTypeIOModule},
 	} {
 		b, ok := cat.brand(tc.brand)
 		if !ok {
@@ -554,4 +556,53 @@ func sortedKeys(m map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// --- Ebyte M31 I/O-Modul ------------------------------------------------------
+
+func TestTheEbyteConnectionNormalizesAndPinsTheMAC(t *testing.T) {
+	cat := DefaultCatalog()
+	now := time.Now()
+	sel, err := cat.Normalize(SelectionRequest{Brand: BrandEbyte, Model: "m31_axax8080g_u",
+		Connection: Connection{IP: "192.168.3.50", MAC: "00-54-2C-84-9B-90", Channel: 2}}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := sel.Connection
+	if sel.Communication != CommEbyteModbusTCP || sel.Family != FamEbyteM31 {
+		t.Fatalf("selection %+v", sel)
+	}
+	if c.Port != 502 || c.UnitID != 1 || c.MAC != "00:54:2c:84:9b:90" || c.Channel != 0 {
+		t.Fatalf("connection %+v (defaults, normalized MAC, no shelly channel)", c)
+	}
+	for _, bad := range []Connection{
+		{IP: "192.168.3.50", MAC: "00:54:2c"},
+		{IP: "192.168.3.50", UnitID: 300},
+	} {
+		if _, err := cat.Normalize(SelectionRequest{Brand: BrandEbyte, Model: "m31_axax8080g_u", Connection: bad}, now); err == nil {
+			t.Fatalf("%+v must be refused", bad)
+		}
+	}
+	// The MAC belongs to the Ebyte transport only.
+	sh, err := cat.Normalize(SelectionRequest{Brand: BrandShelly, Model: FamShellyHTTP,
+		Connection: Connection{IP: "192.168.3.60", MAC: "00:54:2c:84:9b:90"}}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sh.Connection.MAC != "" {
+		t.Fatal("a shelly connection must not carry the ebyte MAC pin")
+	}
+}
+
+func TestCoreOwnedCommunicationsAreShellyAndEbyte(t *testing.T) {
+	for _, c := range []string{CommShellyHTTP, CommEbyteModbusTCP} {
+		if !IsCoreOwned(c) {
+			t.Errorf("%s must be core-owned", c)
+		}
+	}
+	for _, c := range []string{CommModbusTCP, CommSolarmanV5, CommGoeHTTP, CommSunSpecTCP} {
+		if IsCoreOwned(c) {
+			t.Errorf("%s must not be core-owned", c)
+		}
+	}
 }

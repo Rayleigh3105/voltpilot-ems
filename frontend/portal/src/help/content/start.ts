@@ -13,7 +13,7 @@ export const startArticles: HelpArticle[] = [
         "Im Portal verwalten Sie die Anlage. Die Planung berücksichtigt Messwerte, Vorhersagen, Preise und Grenzen. Die Box verbindet die Geräte vor Ort und führt freigegebene Vorgaben aus.",
       ], diagram: 'system' },
       { id: 'einstieg', title: 'So finden Sie sich zurecht', paragraphs: [
-        "Cockpit: aktueller Zustand. Fahrplan: nächste Speicheraktionen. Verlauf: Messwerte und verfügbare Erlöse. Steuerung: Betriebsmodelle und Regeln. Anlage: Geräte und Einstellungen. Voraussetzungen für optionale Funktionen stehen am Artikelanfang.",
+        "Cockpit: aktueller Zustand. Fahrplan: nächste Speicheraktionen. Verlauf: Energie, Erlöse und einzelne Messwerte. Steuerung: Betriebsmodelle und Regeln. Anlage: Geräte und Einstellungen. Voraussetzungen für optionale Funktionen stehen am Artikelanfang.",
       ] },
     ],
     related: ['energiefluesse', 'beispieltag', 'orientierung'],
@@ -65,7 +65,7 @@ export const startArticles: HelpArticle[] = [
         "Am Rechner stehen die Bereiche in der Seitenleiste, innerhalb einer Anlage am Telefon unten. Über den Anlagennamen wechseln Sie den Standort. Je nach Ausstattung erscheinen weitere Reiter oder Ladevorgänge anstelle eines Speicher-Fahrplans.",
       ], figure: 'orientierung' },
       { id: 'mobil', title: 'Hilfe auf dem Telefon', paragraphs: [
-        "Hilfe & Kontakt und Abmelden stehen im Konto-Menü hinter dem Avatar. Ein Hilfelink öffnet die passende Erklärung; beim Schließen bleibt Ihre Eingabe erhalten. Bei vergessenem Passwort hilft Ihr VoltPilot-Ansprechpartner.",
+        "Hilfe & Kontakt, „Als App auf dem Handy“ und Abmelden stehen im Konto-Menü hinter dem Avatar. Ein Hilfelink öffnet die passende Erklärung; beim Schließen bleibt Ihre Eingabe erhalten. Bei vergessenem Passwort hilft Ihr VoltPilot-Ansprechpartner.",
       ], figure: 'orientierung-mobil' },
     ],
     related: ['anlage-anlegen', 'portfolio', 'kontakt'],

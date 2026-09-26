@@ -25,13 +25,14 @@ Gewerbekunde mit drei Filialen und reinem Monitoring sah dort **„—, —, —
   seiner Anwendungen und den zwei Portfolio-Welten. Sein altes Lesezeichen `#/uebersicht` gilt
   weiter (`redirectToPortfolio` leitet es). **Ein EINZEL-Anlagen-Kunde ist zeichengleich unberührt**
   — er hat keine Flotten-Ebene, seine Übersicht IST seine Anlagen-Seite wie seit je.
-- **Die Betriebsart entscheidet nur noch zweierlei:** die DICHTE (`portfolioDichte` — seit
-  Revision 2 `kompakt` für den Betreiber und `komfortabel` für jeden anderen; **beide rendern
-  DIESELBE Tabelle**, sie unterscheiden sich in Zeilenhöhe und Unterzeile. Die frühere Lesart
-  „Tabelle vs. Karten" war der Grund, warum die Betriebsart nicht die Dichte, sondern den INHALT
-  änderte) und die TONALITÄT (`fleetTonalitaet`). Ihr dritter, unveränderter Nutzen ist
-  die Frage, AB WANN es eine Flotten-Ebene gibt (Betreiber ab der ersten Anlage, Endkunde ab der
-  zweiten).
+- **⚠ Seit dem 25.09.2026 entscheidet die Betriebsart NICHTS mehr am Inhalt der Übersicht:**
+  jede Betriebsart (Endkunde, Automatisch, Betreiber) sieht dieselben vier Blöcke von „Meine
+  Anlagen neu" (`KundenUebersicht`); `PortfolioCockpit` kennt die Betriebsart nicht mehr (Wächter
+  in `migration.test.ts`). Sie entscheidet nur noch die NAVIGATION: AB WANN es eine Flotten-Ebene
+  gibt (Betreiber ab der ersten Anlage, Endkunde und Automatisch ab der zweiten) und ihren Namen
+  („Portfolio" nur beim Betreiber, sonst „Meine Anlagen"). Die frühere Wirkung auf DICHTE
+  (`portfolioDichte`) und TONALITÄT (`fleetTonalitaet`) gehört zur Tabelle, die die Übersicht
+  nicht mehr rendert.
 - **⚠ DIE AGGREGATIONSREGEL WOHNT AM BAUSTEIN, im EINEN Katalog** (`anwendungen/catalog.json`,
   Portal-Kopie byte-gleich): je Portfolio-Baustein `aggregation` aus dem GESCHLOSSENEN Vokabular
   `summe | gewichtet | je_anlage` plus `aggregation_regel`, dem deutschen Satz, der auch sagt, was

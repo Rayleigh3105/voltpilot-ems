@@ -170,6 +170,41 @@ describe('marktpraemie · (4) eine echte Aufstockung zeigt ihre Rechnung', () =>
     expect(v.hinweise).toEqual([STATUS_AMTLICH]);
   });
 
+  it('gibt die Rechnung als eigenes Feld — nur in der Aufstockung und nur, wenn sie aufgeht', () => {
+    expect(marktpraemie(echt).rechnung).toBe(marktpraemie(echt).note);
+    expect(marktpraemie(fall()).rechnung).toBeNull();
+    expect(marktpraemie({ ...echt, marketValueSolarCtKwh: null }).rechnung).toBeNull();
+    expect(marktpraemie(fall({ anzulegenderWertCtKwh: null })).rechnung).toBeNull();
+  });
+
+  it('nennt an Tagen mit negativem Börsenpreis die Menge, für die die Prämie galt', () => {
+    // Die Konzept-Fixture `dv-tag-laufend`: 8,11 − 5,8 = 2,31 ct, aber nur
+    // 4,79 € für 345,37 kWh — die Formel mit der ganzen Menge ergäbe 7,98 €.
+    // Die Prämie gilt nur bei Börsenpreis ab 0 ct (`PREMIUM_ELIGIBLE`).
+    const v = marktpraemie(
+      fall({
+        marktpraemieEur: 4.79,
+        anzulegenderWertCtKwh: 8.11,
+        marketValueSolarCtKwh: 5.8,
+        eingespeistKwh: 345.37,
+        range: 'day',
+        from: '2026-09-01T22:00:00Z',
+        to: '2026-09-02T22:00:00Z',
+      }),
+    );
+    expect(v.note).toBe(
+      `8,11 − 5,8 = 2,31${NBSP}ct/kWh × 207,4${NBSP}kWh bei Börsenpreis ab 0${NBSP}ct (von 345,4${NBSP}kWh eingespeist)`,
+    );
+    expect(v.rechnung).toBe(v.note);
+    // Und sie geht auf den Cent auf: 2,31 ct × 207,4 kWh = 4,79 €.
+    expect(Math.round(2.31 * 207.4) / 100).toBe(4.79);
+  });
+
+  it('bleibt bei einem Rundungs-Cent bei der eingespeisten Menge', () => {
+    // 1,1 ct × 9.573,8 kWh = 105,3118 € — der Server meldet 105,31 €.
+    expect(marktpraemie(echt).note).toContain(`× 9.573,8${NBSP}kWh eingespeist`);
+  });
+
   it('bringt bei knapper, vorläufiger Lage BEIDE ruhigen Zeilen', () => {
     const v = marktpraemie(
       fall({

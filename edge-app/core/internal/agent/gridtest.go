@@ -215,10 +215,10 @@ func (a *Agent) gridConditions(mode string, now time.Time) curtailcal.GridCondit
 // gridObserve fuettert den PV-Stabilitaets-Beobachter (immer) und, waehrend ein
 // Test laeuft, den Zustandsautomaten. Sie haengt am Telemetrie-Pfad, nicht am
 // Sollwert-Takt: der Beweis braucht den ~5-10-s-Takt der Messung, nicht den
-// ~10-s-Takt des Schreibens.
+// ~10-s-Takt des Schreibens. Die FRISCHE prueft sie nicht - bleibt die
+// Messung aus, wird sie gar nicht gerufen; das tut gridTestOverride auf dem
+// Takt (curtailcal.GridSession.CheckFresh).
 func (a *Agent) gridObserve(now time.Time, measurements map[string]float64, battKw *float64) {
-	pv, hasPv := measurements["power_kw"]
-	_ = pv
 	sitePv, hasSitePv := measurements["pv_power_kw"]
 	a.gridMu.Lock()
 	if hasSitePv {
@@ -250,7 +250,6 @@ func (a *Agent) gridObserve(now time.Time, measurements map[string]float64, batt
 			obs.DeyePvKw = &d
 		}
 	}
-	_ = hasPv
 
 	a.gridMu.Lock()
 	a.gridCal.Observe(obs, now)
@@ -290,8 +289,15 @@ func (a *Agent) gridNoteReadback(held bool, now time.Time) {
 // Konjunktion wie im Normalbetrieb.
 func (a *Agent) gridTestOverride(now time.Time, p *plan.Plan) bool {
 	a.gridMu.Lock()
+	// Erst die Frische auf der Takt-Uhr (§3.5): steht die Telemetrie, bricht
+	// der Lauf HIER ab, und derselbe Takt veroeffentlicht schon die Rueckkehr.
+	stale := a.gridCal.CheckFresh(now)
 	cmd, engaged := a.gridCal.Publish(now)
 	a.gridMu.Unlock()
+	if stale {
+		slog.Warn("Netz-Sollwert-Test abgebrochen: Messwerte veraltet - Rueckkehr zur Batterieseite",
+			"max_age_s", int(curtailcal.GridMeasurementMaxAge/time.Second))
+	}
 	if !engaged {
 		return false
 	}

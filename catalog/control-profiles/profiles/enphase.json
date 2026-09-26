@@ -1,0 +1,152 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [
+        "enphase_comm"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "offiziell kein Weg."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "enphase_comm"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Profil Self-Consumption (App)."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [
+        "enphase_comm"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "offiziell kein Weg."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [
+        "enphase_comm"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "offiziell kein Weg."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [
+        "enphase_comm"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "offiziell kein Weg."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "unbelegt."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [
+        "enphase_comm"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "offiziell kein Weg."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "keiner",
+      "quellen": [
+        "enphase_comm"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "offiziell kein Weg."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": false,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "enphase_comm"
+    ],
+    "sicherheit": "C",
+    "text": "Nur messen: keine Box-Regelung."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja: Profil „Self-Consumption“ (C)."
+  },
+  "empfehlung": "Nur messen.",
+  "fallen": [
+    "Nur lesen; Steuerung inoffiziell über lokale Endpunkte (nicht empfohlen)."
+  ],
+  "familie": "IQ Battery (mit IQ Gateway)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Enphase",
+  "id": "enphase",
+  "im_repo": "nicht angebunden",
+  "modelle": [
+    "IQ Battery (mit IQ Gateway)"
+  ],
+  "quellen": [
+    "enphase_tok",
+    "enphase_comm"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": null,
+    "sicherheit": null,
+    "speicher": "keiner",
+    "text": "–"
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": null,
+    "text": "–",
+    "vorhanden": null,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "C",
+    "speicher": "cloud",
+    "text": "Profile nur über App/Cloud; lokale Gateway-API tokengeschützt und für Steuerung nicht offiziell (A/C)."
+  },
+  "zaehler": {
+    "ort": "system",
+    "sicherheit": "D",
+    "text": "CTs am IQ Gateway."
+  }
+}

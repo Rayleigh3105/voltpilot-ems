@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { EbenenCockpit } from './EbenenCockpit';
 import { PortfolioCockpit } from './PortfolioCockpit';
 import { StandortUebersichtPage } from '../pages/StandortUebersichtPage';
 import { api, type Earnings, type Funktionen, type Overview, type OverviewSite, type Site } from '../api';
@@ -135,7 +136,7 @@ function funktionenImKopf(): HTMLElement {
 
 function renderUnternehmen(onNavigate = vi.fn()) {
   render(
-    <PortfolioCockpit
+    <EbenenCockpit
       sites={SITES}
       onNavigate={onNavigate}
       onReload={() => {}}
@@ -401,10 +402,9 @@ describe('AP-01 IP-8 · die Karte „Funktionen" und der Leerzustand der Standor
 
   it('ohne Ebene (das Portfolio eines Betreibers) gibt es die Karte nicht', async () => {
     mocks({ overview: ahrenbergOverview() });
-    render(
-      <PortfolioCockpit sites={SITES} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" titel="Portfolio" titelBereitsGenannt />,
-    );
-    await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
+    // Seit main d1d67b97e ist die Flotte die Übersicht in vier Blöcken (ohne Leiste/Tabelle).
+    render(<PortfolioCockpit sites={SITES} onReload={() => {}} titel="Portfolio" titelBereitsGenannt />);
+    await screen.findByRole('region', { name: 'Ihre Anlagen' });
     expect(screen.queryByTestId('funktionen-karte')).toBeNull();
   });
 });

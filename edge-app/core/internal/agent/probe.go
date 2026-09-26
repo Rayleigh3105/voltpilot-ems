@@ -457,6 +457,18 @@ func (a *Agent) runProbeTestConnection(op probe.Op) probe.OpResult {
 		}
 		return probe.Failed(op.ID, code, msg)
 	}
+	if len(res.States) > 0 {
+		// An I/O module: its readings are its channel states. They travel as
+		// the contract's named samples (the first probe.MaxSamples), so the
+		// cloud sees what was really read instead of an empty four-channel
+		// reading that it would rightly treat as "not read".
+		samples := make([]probe.Sample, 0, len(res.States))
+		for _, s := range res.States {
+			v := s.Value
+			samples = append(samples, probe.Sample{Channel: s.Channel, Raw: &v, Value: &v, Count: 1})
+		}
+		return probe.SucceededSamples(op.ID, samples)
+	}
 	return probe.SucceededReading(op.ID, probeReading(res.Reading))
 }
 

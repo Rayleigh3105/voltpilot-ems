@@ -364,6 +364,15 @@ func (a *Agent) entityWriteTarget(entityID string) (installerwrite.Target, regis
 			Message: "Diese Komponente wird über den Solarman-Logger gelesen. Bitte den " +
 				"primären Wechselrichter als Ziel wählen."}
 	}
+	// A channel consumer of an I/O module (and the module itself) is written
+	// only by the core executor, behind the arbiter, the guards and the device
+	// watchdog. A free register write there would switch a relay past all of
+	// them over a second socket.
+	if d.Communication == inverter.CommEbyteModbusTCP {
+		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrNotSupported,
+			Message: "Die Ausgänge des I/O-Moduls schaltet VoltPilot nur über die Verbrauchersteuerung, " +
+				"nicht über einen freien Registerzugriff."}
+	}
 	host := strings.TrimSpace(d.Connection.IP)
 	if host == "" {
 		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrNotSupported,

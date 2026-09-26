@@ -22,6 +22,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
@@ -201,6 +202,13 @@ type CalibrationController interface {
 	GridTestSnapshot() curtailcal.GridView
 	GridTestStart(mode string) (curtailcal.GridView, error)
 	GridTestAbort() curtailcal.GridView
+	// K5 Pilotfenster der Deye-Ladeseite (agent/nativepilot.go): dasselbe Tor,
+	// derselbe Charakter - von Hand armiert, hoechstens 15 Minuten, und es gibt
+	// keinen anderen Eintritt als NativePilotStart. Ein
+	// nativepilot.ValidationError ist ein 400.
+	NativePilotSnapshot() nativepilot.View
+	NativePilotStart(req nativepilot.Request) (nativepilot.View, error)
+	NativePilotAbort() nativepilot.View
 }
 
 // OtaController is the supervised half of OTA Stufe 2 „Verteilen": the box
@@ -605,13 +613,35 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	// and applied live; a dedicated Netz meter always takes precedence, so
 	// flipping it can never override a working meter.
 	mux.HandleFunc("POST /api/balance", func(w http.ResponseWriter, r *http.Request) {
-		var req sources.BalanceSettings
+		// The body is applied ONTO the stored settings: a page that knows only
+		// the expert opt-out (an older cached sources.js) posts just that key and
+		// must not erase the K6 statements (Zählerort, weitere Speicher, Rückhalt).
+		req := src.GetBalance()
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
 		if err := json.Unmarshal(body, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
 			return
 		}
-		cfg, err := src.SetBalance(req)
+		// A stated meter location replaces a legacy opt-out-derived one: a page
+		// that sends only the location means the location.
+		var sent struct {
+			Location *string `json:"primary_meter_location"`
+			NotSite  *bool   `json:"primary_grid_not_site_total"`
+		}
+		_ = json.Unmarshal(body, &sent)
+		if sent.Location != nil && sent.NotSite == nil {
+			req.PrimaryGridNotSiteTotal = *sent.Location == "woanders"
+		}
+		if sent.NotSite != nil && !*sent.NotSite && sent.Location == nil && req.PrimaryMeterLocation == "woanders" {
+			// Clearing the opt-out clears the location it implied.
+			req.PrimaryMeterLocation = ""
+		}
+		norm, err := req.Normalize()
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Angabe: " + err.Error()})
+			return
+		}
+		cfg, err := src.SetBalance(norm)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Einstellung konnte nicht gespeichert werden."})
 			return
@@ -980,6 +1010,40 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		v, err := cal.GridTestStart(req.Mode)
 		gridResult(w, v, err)
 	}))
+	// K5 PILOTFENSTER der Deye-Ladeseite. Der Blick ist offen, jede Mutation
+	// liegt hinter dem Betreiber-Kennwort. Drehbuch:
+	// edge-app/nodered/DEYE-LADESEITE-PILOT.md.
+	pilotResult := func(w http.ResponseWriter, v nativepilot.View, err error) {
+		if err != nil {
+			var ve nativepilot.ValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg, "native_pilot": v})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Die Aktion konnte nicht ausgeführt werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"native_pilot": v})
+	}
+	// GET /api/native/pilot - der laufende (oder juengste) Lauf mit Messgroessen.
+	mux.HandleFunc("GET /api/native/pilot", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"native_pilot": cal.NativePilotSnapshot()})
+	})
+	// POST /api/native/pilot {candidate, intent?, case?, minutes?} - armieren.
+	mux.HandleFunc("POST /api/native/pilot", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req nativepilot.Request
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Die Anfrage ist kein gültiges JSON."})
+			return
+		}
+		v, err := cal.NativePilotStart(req)
+		pilotResult(w, v, err)
+	}))
+	// POST /api/native/pilot/abort - sofort beenden; der Plan uebernimmt.
+	mux.HandleFunc("POST /api/native/pilot/abort", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"native_pilot": cal.NativePilotAbort()})
+	}))
+
 	// POST /api/curtail/grid-test/abort - sofort zuruecknehmen (1109 ← 0,
 	// dann 1104 ← 1). Der Totmann im Wechselrichter bleibt der Rueckhalt
 	// letzter Instanz.

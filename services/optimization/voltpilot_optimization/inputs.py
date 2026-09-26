@@ -89,6 +89,7 @@ from voltpilot_optimization.pricing import (
     SupplyPriceComponents,
     berlin_month,
     export_values,
+    grid_charge_hurdle_ct_kwh,
     import_prices,
     needs_market_values,
 )
@@ -968,6 +969,9 @@ def gather_inputs(
         # AP-15 IP-14 (P4): die Anteile der mitsteuernden Boxen - nur in einer
         # Anlage in `anteile_aktiv`, sonst () und der Eingang von heute.
         verbund=verbund.fuer_lauf(site.verbund, pv_kw),
+        # E6 A: die ehrliche Marge fuer Netzanteil beim Laden - nur am
+        # Festpreis-Tarif, Spot-Anlagen bleiben bei 0 (kein Term).
+        grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
     )
 
 

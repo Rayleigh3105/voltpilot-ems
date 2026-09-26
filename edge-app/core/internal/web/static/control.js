@@ -565,11 +565,18 @@
     if (!g || typeof g.limit_kw !== "number") return null;
     var text = "Einspeisegrenze " + nf1.format(g.limit_kw) + " kW. " + (g.reason || "");
     if (g.reach) text += " " + g.reach;
+    // K6: the cascade with the leader's own regulation, and whether the limit
+    // survives the box (the core writes both sentences).
+    if (g.cascade_text) text += " " + g.cascade_text;
+    var backstopMissing = !!g.backstop && !g.backstop_covered;
+    if (backstopMissing) text += " " + g.backstop;
     return {
       // Not effective outranks everything (a plant that believes it is
       // protected and is not); running blind is a warning too - "the
-      // measurement went away" must never look like "everything is fine".
-      tone: (!g.effective || g.blind) ? "warn" : "ok",
+      // measurement went away" must never look like "everything is fine" -
+      // and so is a limit that only holds while the box lives.
+      tone: (!g.effective || g.blind || backstopMissing) ? "warn" : "ok",
+      backstopMissing: backstopMissing,
       title: g.effective
         ? "Einspeisegrenze wird überwacht."
         : "Einspeisegrenze NICHT wirksam.",

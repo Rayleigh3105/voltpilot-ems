@@ -180,6 +180,11 @@ export function shortEntityLabel(input: ShortLabelInput): string {
   const type = (input.entityType ?? '').trim();
   const role = input.role ?? null;
 
+  // Per ASPECT like the pv/storage side: the consumer side of a hybrid is its
+  // house-load measurement. By TYPE it read "Batteriespeicher 4,0 kW aktiv" in
+  // the component board - and lost the house row's day total with it
+  // (`livePuls.istHausZeile` looks for "Hausverbrauch").
+  if (role === 'consumer' && type === 'battery-hybrid') return TYPE_SHORT['house-load'];
   // A consumer's TYPE carries the meaning; every other role's word does.
   if (role === 'consumer' && TYPE_SHORT[type]) return TYPE_SHORT[type];
   if (role && ROLE_SHORT[role]) return ROLE_SHORT[role];

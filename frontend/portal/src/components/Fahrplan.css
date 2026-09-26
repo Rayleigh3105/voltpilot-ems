@@ -204,6 +204,9 @@
  */
 .vp-kompakt {
   min-width: 0;
+  /* Derselbe Takt wie die Karten darunter (`marginBottom: space-4`): ohne ihn
+     stieß die Jetzt-Karte kantengleich an die nächste Karte. */
+  margin-bottom: var(--vp-space-4, 16px);
 }
 
 .vp-kompakt-head {
@@ -886,4 +889,21 @@
   .vp-lage-satz {
     font-size: 0.9rem;
   }
+}
+/* V-02: die Zeile in der Diagramm-Karte - leiser als der Kopfsatz darunter. */
+.vp-lage-zeile {
+  gap: 2px;
+  margin: 0 0 var(--vp-space-3);
+}
+.vp-lage-zeile .vp-lage-satz {
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-muted, #6c757d);
+}
+/* V-02: „Ihr Vorteil" wohnt in „Mehr erklären" - als Abschnitt, nicht Karte. */
+.vp-fp-vorteil {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  margin: var(--vp-space-3) 0 var(--vp-space-4);
+  min-width: 0;
 }

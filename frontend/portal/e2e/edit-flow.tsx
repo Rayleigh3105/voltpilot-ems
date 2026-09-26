@@ -31,9 +31,12 @@ const row: SiteComponentRow = {
 function Harness() {
   const [saved, setSaved] = React.useState(false);
   return saved ? <p role="status">E2E gespeichert</p> : (
+    // Bearbeitet wird seit dem Gerätekatalog nur noch AUF der Geräteseite (inline).
     <AnlegenFlow
       siteId="10000000-0000-0000-0000-000000000001"
       bearbeiten={row}
+      inlineBearbeitung
+      siteName="Sonnenhof"
       onClose={() => undefined}
       onSaved={() => setSaved(true)}
     />

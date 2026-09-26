@@ -29,6 +29,15 @@ const late = { id: 'late-1', deviceId: 'device-1', chargePointId: 'CP-CARPORT', 
 
 const timedOut = { ...late, effect: null, effectAt: null, reason: null, updatedAt: ago(60_000) };
 
+/** „Technik & Diagnose" ist eine eigene Ansicht (E1 a) - OCPP, Messwerte, Rohdaten. */
+async function technikOeffnen(page: Page) {
+  // Die Ansicht ist eine Adresse: nach einem Neuladen kann sie schon offen stehen.
+  await expect(page.getByTestId('geraet-technik').or(page.getByTestId('geraet-technik-oeffnen'))).toBeVisible();
+  if (await page.getByTestId('geraet-technik').isVisible()) return;
+  await page.getByTestId('geraet-technik-oeffnen').click();
+  await expect(page.getByTestId('geraet-technik')).toBeVisible();
+}
+
 async function mock(page: Page, options: { failFirstAction?: boolean; slowAction?: boolean; lateAfterPoll?: boolean; fourEyes?: boolean; edgeOnly?: boolean } = {}) {
   let actions = [late];
   let actionPosts = 0;
@@ -91,30 +100,31 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   page.on('pageerror', (error) => consoleErrors.push(error.message));
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
-  await expect(page.getByRole('heading', { name: 'Anschluss 1 lädt.' })).toBeVisible();
-  await expect(page.getByText('11 kW', { exact: true })).toBeVisible();
-  await expect(page.getByText('6,4 kWh')).toBeVisible();
-  // Der Harness bildet die echte, durch die Portal-Navigation verengte
-  // Inhaltsspalte ab. In ihr muss der Rahmen auf die kompakte Navigation
-  // wechseln und Kopf/Status auf derselben Achse halten.
-  await expect(page.locator('.vp-rahmen-nav')).toBeHidden();
-  await expect(page.locator('.vp-rahmen-chips')).toBeVisible();
-  const leftEdges = await page.locator('.vp-geraet-kopf, [data-state="charging"]')
+  await expect(page.getByTestId('geraet-heldsatz')).toHaveText('Anschluss 1 lädt.');
+  const held = page.getByTestId('geraet-held');
+  await expect(held.locator('[data-kachel="leistung"]')).toContainText('11');
+  await expect(held.getByText('6,4 kWh')).toBeVisible();
+  // Keine Sprungleiste mehr (S4) - und Kopf und Bühne stehen auf derselben Achse.
+  await expect(page.locator('.vp-rahmen-nav, .vp-rahmen-chips')).toHaveCount(0);
+  const leftEdges = await page.locator('.vp-kern-kopf, [data-baustein="buehne"]')
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().left));
   expect(Math.abs(leftEdges[0] - leftEdges[1])).toBeLessThanOrEqual(1);
-  const diagnose = page.getByTestId('sektion-diagnose');
-  await expect(diagnose).not.toHaveAttribute('open', '');
-  await diagnose.locator('summary').first().click();
+  // Eine belegte Lücke steht schon an der geschlossenen Zeile „Technik & Diagnose".
+  await expect(page.getByTestId('geraet-technik-oeffnen')).toContainText('1 Lücke');
+  const hashVorher = await page.evaluate(() => window.location.hash);
+  await technikOeffnen(page);
+  // Die Ansicht ist ein PARAMETER im Hash - nie eine zweite Raute.
+  const hashTechnik = await page.evaluate(() => window.location.hash);
+  expect(hashTechnik).toContain('ansicht=technik');
+  expect(hashTechnik.slice(1)).not.toContain('#');
   await expect(page.getByText(/1 belegte Datenlücke/)).toBeVisible();
   await page.getByRole('button', { name: 'Unveränderliche Auditspur laden' }).click();
   await expect(page.getByRole('list', { name: 'Unveränderliche Auditspur' })).toBeVisible();
-  const hashBeforeServiceNavigation = await page.evaluate(() => window.location.hash);
-  const frameNavigation = page.locator('.vp-rahmen-nav:visible, .vp-rahmen-chips:visible');
-  await frameNavigation.getByRole('button', { name: /^Messwerte/ }).focus();
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#geraet-abschnitt-register')).toBeFocused();
-  expect(await page.evaluate(() => window.location.hash)).toBe(hashBeforeServiceNavigation);
+  await expect(page.getByRole('heading', { name: 'Messwerte', level: 2, exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  await page.getByRole('button', { name: /Wallbox Carport/ }).click();
+  await expect(page.getByTestId('geraet-held')).toBeVisible();
+  expect(await page.evaluate(() => window.location.hash)).toBe(hashVorher);
 
   await page.getByRole('button', { name: 'Laden stoppen', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('Auswirkung');
@@ -123,6 +133,8 @@ test('complete wallbox home stays responsive and exposes response/effect choreog
   await expect(page.getByRole('dialog')).toContainText('Befehl angenommen');
   await expect(page.getByRole('dialog')).toContainText('Wirkung noch nicht bestätigt');
   await page.getByRole('button', { name: 'Zum Journal' }).click();
+  // Das Aktionsjournal der Betreiber wohnt in „Technik & Diagnose".
+  await technikOeffnen(page);
   await expect(page.getByText('Wirkung verspätet beobachtet')).toBeVisible();
   const body = await page.locator('body').innerText();
   for (const leak of ['CONNECTOR-LEAK', 'connector.internal', 'METER-LEAK', 'meter.internal', 'EVENT-CORRELATION',
@@ -170,8 +182,8 @@ test('OCPP setup saves a bounded limit and shows independent evidence', async ({
   if (testInfo.project.name === 'desktop-chromium') await page.setViewportSize({ width: 1440, height: 1000 });
   if (testInfo.project.name === 'mobile-chromium') await page.setViewportSize({ width: 375, height: 900 });
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
-  const section = page.getByTestId('sektion-steuerung');
-  if (await section.getAttribute('open') === null) await section.locator('summary').first().click();
+  // Einrichtung und Grenzen der Säule wohnen in „Technik & Diagnose" › OCPP.
+  await technikOeffnen(page);
   await expect(page.getByRole('heading', { name: 'OCPP einrichten und prüfen' })).toBeVisible();
   await expect(page.getByText('von der Säule angenommen', { exact: true })).toBeVisible();
   await page.getByLabel('Ladegrenze in kW', { exact: true }).fill('7.4');
@@ -204,20 +216,19 @@ test('edge-only charging stays compact when no power or transaction has arrived'
   await page.goto('/e2e/ocpp-wallbox.html?edge-only');
 
   const hero = page.locator('[data-state="charging"]');
-  await expect(page.getByRole('heading', { name: 'Anschluss 1 lädt.' })).toBeVisible();
+  await expect(page.getByTestId('geraet-heldsatz')).toHaveText('Anschluss 1 lädt.');
   await expect(hero).toContainText('Ladeleistung und Sitzungsdaten werden noch nicht übertragen.');
   await expect(hero.getByText('Nicht verfügbar')).toHaveCount(0);
   await expect(hero.locator('.vp-ocpp-now-facts')).toHaveCount(0);
   await expect(hero.locator('.vp-ocpp-primary-action')).toHaveCount(0);
-
-  const height = await hero.evaluate((element) => element.getBoundingClientRect().height);
-  expect(height).toBeLessThan(230);
+  // Ohne Leistung keine große Zahl aus dem Nichts: das Wort des Zustands führt.
+  await expect(hero.locator('[data-kachel="leistung"]')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
 
 test('hard action requires the server phrase and never overflows its sheet', async ({ page }) => {
   await mock(page); await page.goto('/e2e/ocpp-wallbox.html');
-  await expect(page.getByTestId('sektion-befehle')).toHaveAttribute('open', '');
+  await technikOeffnen(page);
   await page.locator('.vp-ocpp-action-group').filter({ hasText: 'Betrieb' }).locator('summary').click();
   await page.getByRole('button', { name: /Hart neu starten/ }).click();
   await page.getByRole('button', { name: 'Starke Bestätigung vorbereiten' }).click();
@@ -260,7 +271,7 @@ test('transport retry is idempotent and the modal traps focus while every close 
 test('timed-out actions keep polling until late effect evidence arrives', async ({ page }) => {
   await mock(page, { lateAfterPoll: true });
   await page.goto('/e2e/ocpp-wallbox.html');
-  await expect(page.getByTestId('sektion-befehle')).toHaveAttribute('open', '');
+  await technikOeffnen(page);
   await expect(page.getByText('Wirkung nicht innerhalb der Frist beobachtet')).toBeVisible();
   await expect(page.getByText('Wirkung verspätet beobachtet')).toBeVisible({ timeout: 7_000 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
@@ -269,7 +280,7 @@ test('timed-out actions keep polling until late effect evidence arrives', async 
 test('foreign firmware has an executable bound handoff to a second operator', async ({ page }) => {
   await mock(page, { fourEyes: true });
   await page.goto('/e2e/ocpp-wallbox.html');
-  await expect(page.getByTestId('sektion-befehle')).toHaveAttribute('open', '');
+  await technikOeffnen(page);
   await page.locator('.vp-ocpp-action-group').filter({ hasText: 'Betrieb' }).locator('summary').click();
   const firmware = page.getByRole('button', { name: /Firmware aktualisieren/ });
   await firmware.click();
@@ -327,8 +338,9 @@ test('customer configures OCPP and follows requested accepted and measured state
             readback: charging ? 'ok' : undefined, readback_at: charging ? at : undefined }] }] } }] } });
   });
   const openControl = async () => {
-    const section = page.getByTestId('sektion-steuerung');
-    if (await section.getAttribute('open') === null) await section.locator('summary').first().click();
+    // Einrichtung und Grenzen wohnen in „Technik & Diagnose" › OCPP - nach einem
+    // Neuladen steht die Ansicht schon offen (sie ist eine Adresse).
+    await technikOeffnen(page);
     await expect(page.getByRole('heading', { name: 'OCPP einrichten und prüfen' })).toBeVisible();
   };
   const capture = async (step: string, selector?: string) => {

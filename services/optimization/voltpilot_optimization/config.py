@@ -321,6 +321,23 @@ def explain_enabled(env=None) -> bool:
 #: any real import/value gap (the Pilsting case had ~13 ct of headroom).
 SLOT_TRIM_MARGIN_CT_PER_KWH = 0.5
 
+#: Ehrliche Marge (Captain-Entscheid E6 A, 24.09.2026; Befund K0
+#: vp-wr-k0-plandaten): on a FIXED-tariff site (``tarif_art='fest'``) a kWh
+#: the battery takes from the grid - directly, or over the PV bus while the
+#: house imports in parallel (FK3) - must earn at least this much in ct per AC
+#: kWh AFTER the full round trip (losses both ways + wear) before the plan
+#: buys it. ONE constant, two readers: the LP prices it on the grid-sourced
+#: part of every charge (``solver.build_model``, constraint
+#: ``grid_charge_hurdle``), and the in-slot trim flips its margin to it
+#: (``slot_trim.grid_charge_uneconomic``: flag as soon as
+#: ``import + hurdle > eta*lambda - wear``). Only the one side would have
+#: changed nothing: K0 showed Herzogau 24.09. buying at 25 ct for a sale worth
+#: 25,5-25,8 ct after the round trip, and the trim's consistency guard never
+#: undoes a purchase the plan intends. Spot sites keep 0 (E6 is about the
+#: flat retail price only). A planning hurdle, never a cash flow - no
+#: persisted cost, saving or earnings figure contains it.
+FEST_GRID_CHARGE_HURDLE_CT_PER_KWH = 2.0
+
 #: Instant off-switch for publishing the per-slot ``charge_from_surplus_only``
 #: flag. Default ON. With the flag off the payload is byte-identical to before
 #: 2026-07-30 and every edge behaves exactly as it did (the field is FAIL-OPEN

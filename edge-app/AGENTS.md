@@ -27,6 +27,7 @@ Go-Core, Node-RED-I/O und OTA-Updater bilden die Kunden-Box. [Laufzeitregeln](..
 - Batterieleistung nicht aus der Hausbilanz als Messung erfinden. Bei nachweislichem Hybrid ohne Batteriemessung ist die Hauslast unbekannt; nur nachweislich batterielose Geräte erlauben physisch null.
 - Sonnenstrom-Ladegrenze ist die gemessene PV-Leistung am PV-Bus; die Hauslast kann parallel Netzstrom beziehen. Fehlende PV darf Solar-only-Laden nicht freigeben.
 - Der Go-Core bleibt Ausführer und Schutzinstanz. Adapter dürfen Freigaben/Grenzen nicht erweitern.
+- „Gerät regelt“ nur für das Führungsgerät: Zählerort „am Netzpunkt“ angegeben (`balance.json`), kein zweiter selbst regelnder Speicher, kein Widerspruch zum Netz-Zähler; Eigenmodus-Tests müssen den Zählerort setzen. Der Einspeisewächter ist Außenkreis dieser Kaskade. [Details](../docs/contracts/v2/plan-execution-ownership.md#mehrere-wechselrichter-an-einem-netzpunkt-k6-24092026).
 - Zertifizierung ist modell-/gerätebezogen; globales Steuerungsflag und lokale Freigaben wirken gemeinsam. Simulatorbelege sind keine Hardwarezertifizierung.
 - Deye-ToU mit unbekannter HV/LV-Skalierung vollständig verweigern. Remote-Modus nutzt seine eigene Leistungsbasis.
 - Readback unterscheidet `held`, `mismatch`, `unread`/`unconfirmed`; Füllwerte, Watchdog-Countdown und 16-Bit-Ringsemantik beachten. Nullantwort niemals als Registerwert 0 ausgeben.

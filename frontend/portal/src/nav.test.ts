@@ -24,8 +24,6 @@ import {
   modellBearbeitenKomponente,
   ohneModellBearbeiten,
   ohneGeraetBearbeiten,
-  parseZentraleAnsicht,
-  zentraleAnsichtHash,
   PLATFORM_GROUPS,
   PLATFORM_PAGES,
   PLATFORM_TAB_PAGES,
@@ -401,9 +399,15 @@ describe('zwei Welten: die Historie-Route leitet MIT Parametern weiter', () => {
   });
 
   it('schreibt die Adresse kanonisch um und behält ?m=/z=/at=', () => {
+    // Einzelne Messwerte (`m=`) wohnen seit dem Verlauf-Rework im Reiter
+    // „Messwerte" (`einzelwerte`) — aus der alten und der heutigen Adresse.
     expect(canonicalAnlageHash('#/anlage/s-1/historie?m=e:c&z=woche&at=2026-05-01')).toBe(
-      '#/anlage/s-1/messwerte?m=e:c&z=woche&at=2026-05-01',
+      '#/anlage/s-1/einzelwerte?m=e:c&z=woche&at=2026-05-01',
     );
+    expect(canonicalAnlageHash('#/anlage/s-1/messwerte?m=e:c&z=woche')).toBe(
+      '#/anlage/s-1/einzelwerte?m=e:c&z=woche',
+    );
+    expect(canonicalAnlageHash('#/anlage/s-1/historie?z=woche')).toBe('#/anlage/s-1/messwerte?z=woche');
     // Auch ohne Parameter, und für die anderen stillgelegten Unterseiten.
     expect(canonicalAnlageHash('#/anlage/s-1/historie')).toBe('#/anlage/s-1/messwerte');
     expect(canonicalAnlageHash('#/anlage/s-1/entitaeten')).toBe('#/anlage/s-1/modell');
@@ -630,25 +634,6 @@ describe('befehleGeraetHash - das Gerät als Hash-Parameter', () => {
     expect(parseBefehleKomponente(befehleGeraetHash('s-1', 'inverter'))).toBeNull();
     expect(parseBefehleGeraet('#/anlage/s-1/befehle')).toBeNull();
     expect(parseBefehleGeraet('#/anlage/s-1/befehle?geraet=%20%20')).toBeNull();
-  });
-});
-
-describe('zentraleAnsichtHash / parseZentraleAnsicht', () => {
-  it('trägt die Listen-Zweitsicht als Hash-Parameter und lässt die Route unberührt', () => {
-    const h = zentraleAnsichtHash('s-1', 'geraete');
-    expect(h).toBe('#/anlage/s-1/modell?ansicht=geraete');
-    expect(parseRoute(h)).toEqual({ page: 'anlagen', siteId: 's-1', sub: 'modell' });
-    expect(parseZentraleAnsicht(h)).toBe('geraete');
-  });
-
-  it('schreibt für die VORGABE keinen Parameter - der Einstieg ist das Anlagenbild', () => {
-    expect(zentraleAnsichtHash('s-1', 'schaltbild')).toBe('#/anlage/s-1/modell');
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell')).toBe('schaltbild');
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell?ansicht=phantasie')).toBe('schaltbild');
-  });
-
-  it('öffnet einen Komponenten-Deep-Link weiterhin in der Liste', () => {
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell?komponente=grid')).toBe('geraete');
   });
 });
 

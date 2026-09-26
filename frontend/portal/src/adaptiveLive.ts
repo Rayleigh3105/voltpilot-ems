@@ -28,7 +28,7 @@ import {
 import { shortEntityLabel, shortLabelsForRole } from './entityLabel';
 import { fmtNum } from './format';
 import { NO_DATA, numOrNoData } from './nodata';
-import { ladestandVon } from './batterieAnschluss';
+import { ladestandVon } from './ladestandVon';
 import { herkunftUeberEntitaeten } from './socHerkunft';
 import type { FlowNode, Role } from './topology';
 

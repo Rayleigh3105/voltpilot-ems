@@ -32,6 +32,7 @@ import {
   type GrenzenSlot,
 } from './grenzenWarum';
 import type { PlanWordingKind } from './schedule';
+import { FAHRPLAN_TAETIGKEIT } from './glossar';
 
 // ---- The slot-role vocabulary (report §6) ---------------------------------
 
@@ -738,11 +739,11 @@ export function roleLabel(
       return 'Reserve halten';
     }
     case 'warten':
-      return 'Warten';
+      return FAHRPLAN_TAETIGKEIT.warten;
     case 'pv_speichern':
       return 'PV-Überschuss speichern';
     case 'guenstig_laden':
-      return 'Günstig aus dem Netz laden';
+      return FAHRPLAN_TAETIGKEIT.guenstigLaden;
     case 'spitze_kappen':
       return 'Lastspitze kappen';
     case 'verkaufen':
@@ -914,6 +915,14 @@ function importCt(slot: WhySlot): number | null {
 const PRICE_PART_DEADBAND_CT = 0.05;
 
 /**
+ * Ab diesem Netzbezug (kW) lädt ein `pv_speichern`-Slot über den PV-Bus statt
+ * aus Überschuss - dieselbe Totzone wie `schedule.ts SLOT_DEADBAND_KW` /
+ * `SlotEconomics.SLOT_DEADBAND_KW`, mit der auch `chargeKind` den Netzbezug
+ * eines Slots erkennt.
+ */
+const PV_BUS_IMPORT_DEADBAND_KW = 0.05;
+
+/**
  * The parenthetical that makes the grid price VERIFIABLE - only ever from
  * what the run really carries:
  *   preisblatt/sammelaufschlag/default-flag → "(Börsenpreis 21,2 +
@@ -1009,10 +1018,24 @@ export function slotWhy(
   const flags = slot.slotFlags ?? [];
 
   switch (role as SlotRole) {
-    case 'pv_speichern':
+    case 'pv_speichern': {
+      // PV-Bus (FK3): der Slot lädt Solarstrom, WÄHREND das Haus aus dem Netz
+      // bezieht - dann gibt es keinen Überschuss, und die Alternative zur
+      // gespeicherten kWh ist der Netzbezug, nicht die Einspeisung (K0
+      // vp-wr-k0-plandaten, Herzogau 22.09.; Betreiber-Zwilling
+      // SlotEconomics.whyText). Der Vergleich steht nur, wenn er stimmt.
+      const grid = slot.gridKw == null ? null : Number(slot.gridKw);
+      if (grid != null && grid > PV_BUS_IMPORT_DEADBAND_KW) {
+        const head = 'Solarstrom lädt den Speicher, während das Haus Strom aus dem Netz bezieht';
+        const imp = importCt(slot);
+        return lam != null && imp != null && lam > imp
+          ? `${head} – gespeicherte Energie ist später ≈ ${ctFmt(lam)} wert, Netzstrom kostet Sie jetzt ${importPricePhrase(slot, imp)}.`
+          : `${head}.`;
+      }
       return lam != null
         ? `Überschüssiger Solarstrom wird gespeichert statt eingespeist – gespeicherte Energie ist später ≈ ${ctFmt(lam)} wert.`
         : 'Überschüssiger Solarstrom wird für die teuren Stunden gespeichert.';
+    }
     // The two grid-price roles name the BEZUGSPREIS, never the bare spot
     // (P0 Textwahrheit): the comparison against the stored-energy value is
     // only made when it actually holds - otherwise the number is stated

@@ -218,7 +218,9 @@
    vorher nicht, die Warnung konnte ihre Ursache also nirgends nennen. */
 .vp-cockpit-health {
   min-width: 0;
-  max-width: 32rem;
+  /* Kein Breitendeckel mehr: als einzige Karte des Stapels endete sie bei
+     32 rem und ließ am Rechner die halbe Zeile leer - der Stapel schloss mit
+     einem Stummel statt einer Kante. „Leise" bleibt sie durch EINE Zeile. */
   margin-top: var(--vp-space-4, 16px);
 }
 
@@ -416,6 +418,27 @@
   margin: var(--vp-space-2, 8px) 0 0;
 }
 
+/* K8/B2: der Satz „Laden bei Bezug" direkt unter dem Fluss - ein Hinweis,
+   kein Alarm (gedämpfte Schrift, bricht auf dem Telefon um). */
+.vp-hero-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--vp-text-muted);
+}
+.vp-hero-hinweis svg {
+  flex: none;
+  margin-top: 2px;
+}
+.vp-hero-hinweis span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* V14 (Audit): der Weg nach vorn bekommt den Platz des leeren Diagramms. */
 .vp-hero-noflow {
   display: flex;
@@ -499,6 +522,12 @@
 @media (min-width: 1100px) {
   .vp-widgets {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* Drei Spalten nur, wo sie sich füllen: zwei Kacheln ließen sonst ein
+     leeres Drittel stehen, vier eine einzelne Kachel in der zweiten Reihe. */
+  .vp-widgets[data-count='2'],
+  .vp-widgets[data-count='4'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -723,6 +752,22 @@
   line-height: 1.4;
   color: var(--vp-text-muted, #64748b);
   overflow-wrap: anywhere;
+}
+/* V-04: die bestätigte Ausführung in der Fahrplan-Zeile (statt eigener
+   Steuerungs-Karte im Normalfall) - Haken + Wort, Farbe nie allein. */
+.vp-mob-row-status {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--vp-flow-batt-ink, #166534);
+  overflow-wrap: anywhere;
+}
+.vp-mob-row-status svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
 }
 .vp-mob-row-badge {
   margin-left: 6px;

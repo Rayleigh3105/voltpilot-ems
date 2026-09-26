@@ -93,6 +93,12 @@ type Snapshot struct {
 	// "proven by the device", because "we stopped writing" and "we died" must
 	// never look the same on a surface.
 	Native *NativeInfo `json:"native,omitempty"`
+	// NativeWithheld (K4b, additive) names why a slot that opens a window is
+	// NOT regulated by the device right now - see NativeWithheldInfo.
+	NativeWithheld *NativeWithheldInfo `json:"native_withheld,omitempty"`
+	// Leader (K6, additive, box-local) says whether the selection is the
+	// connection point's Führungsgerät and may regulate itself - see LeaderInfo.
+	Leader *LeaderInfo `json:"leader,omitempty"`
 
 	// ExportGuard is the live feed-in watchdog at the grid connection point
 	// (dynamische Einspeisebegrenzung), non-nil whenever the site HAS a feed-in
@@ -311,6 +317,18 @@ type AbsorbInfo struct {
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
+// NativeWithheldInfo says why the device does NOT regulate itself right now
+// although this slot opens a window (K4b): a take-back (latched until the slot
+// ends) or a refusal (no lever, window closed, budget ...). Closed vocabulary +
+// German sentence, both from guards/nativemode.go. nil when the slot opens no
+// window or the operator switched the mode off.
+type NativeWithheldInfo struct {
+	Reason string `json:"reason"`
+	Text   string `json:"text"`
+	// Intent is the plan intent that was withheld ("" = the pre-existing duty).
+	Intent string `json:"intent,omitempty"`
+}
+
 // NativeInfo is the UI-facing state of the native self-regulation: the cloud
 // marked this slot worth covering from the battery, and instead of writing a
 // recomputed watt value every 10 s the edge handed the setpoint back to the
@@ -334,6 +352,22 @@ type NativeInfo struct {
 	// Reason is the closed-vocabulary code, Text its German sentence.
 	Reason string `json:"reason"`
 	Text   string `json:"text"`
+
+	// K4b (Absicht + Fenster), all additive. Intent is the wire word the device
+	// regulates (cover_load | surplus_charge | self_consumption), Kind the
+	// concept letter (E, E_up, E_down, E_tilde), Mode the battery_mode word.
+	Intent string `json:"intent,omitempty"`
+	Kind   string `json:"kind,omitempty"`
+	Mode   string `json:"mode,omitempty"`
+	// WindowMinKw / WindowMaxKw is the window the device regulates in
+	// (+ charge, - discharge), after the guards.
+	WindowMinKw float64 `json:"window_min_kw"`
+	WindowMaxKw float64 `json:"window_max_kw"`
+	// Hint is an observation without take-back, HintText its sentence.
+	Hint     string `json:"hint,omitempty"`
+	HintText string `json:"hint_text,omitempty"`
+	// WritesToday counts the device's mode changes of this day (§6.6).
+	WritesToday int `json:"writes_today"`
 }
 
 // ExportGuardInfo is the UI-facing state of the dynamic feed-in limitation: the
@@ -381,6 +415,44 @@ type ExportGuardInfo struct {
 	// PARTIAL case, where the watchdog works but cannot pull back every inverter.
 	Effective bool   `json:"effective"`
 	Reach     string `json:"reach,omitempty"`
+
+	// --- K6, box-local (never on the heartbeat: its State vocabulary is closed
+	// at cloud ingest) ---
+
+	// Cascade is the watchdog's role next to the leader's own regulation
+	// (guards.Cascade*: innen | aussen | innen_versagt; absent without an
+	// inner loop), CascadeText its German sentence.
+	Cascade     string `json:"cascade,omitempty"`
+	CascadeText string `json:"cascade_text,omitempty"`
+	// BackstopCovered says whether the limit is held DEVICE-SIDE when the box
+	// fails (guards.ExportBackstopFor); BackstopSource names why (gemeldet |
+	// geraet), Backstop the German sentence - a warning when not covered.
+	BackstopCovered bool   `json:"backstop_covered"`
+	BackstopSource  string `json:"backstop_source,omitempty"`
+	Backstop        string `json:"backstop,omitempty"`
+}
+
+// LeaderInfo is the K6 verdict "Genau ein Führungsgerät je Netzpunkt"
+// (guards.LeaderFor) with the facts it was formed from.
+type LeaderInfo struct {
+	// Leads: the selection may regulate itself ("Gerät regelt"). Reason /
+	// Text: the refusal code and sentence otherwise.
+	Leads  bool   `json:"leads"`
+	Reason string `json:"reason,omitempty"`
+	Text   string `json:"text,omitempty"`
+	// MeterLocation / FurtherStorage: what the operator declared
+	// (netzpunkt | woanders | unbekannt; keine | folger | halten | regelt_selbst).
+	MeterLocation  string `json:"meter_location"`
+	FurtherStorage string `json:"further_storage"`
+	// Plausibility is the measured comparison with the box's Netz meter
+	// (passt | passt_nicht | ungeprueft), DeviationKw its median difference and
+	// Pairs how many reading pairs it rests on.
+	Plausibility string   `json:"plausibility"`
+	DeviationKw  *float64 `json:"deviation_kw,omitempty"`
+	Pairs        int      `json:"pairs"`
+	// Hint / HintText: an observation without a refusal (guards.LeaderHint*).
+	Hint     string `json:"hint,omitempty"`
+	HintText string `json:"hint_text,omitempty"`
 }
 
 // CurtailTrackInfo is the UI-facing state of the LIVE curtailment: the plan
@@ -507,6 +579,33 @@ type ControlInfo struct {
 	// primitive. TRI-STATE on purpose: nil = the device did not say, which on an
 	// EEG site counts as NOT proven - a compliance rule may not rest on silence.
 	NativeGridChargeBlocked *bool `json:"native_grid_charge_blocked,omitempty"`
+	// NativePreconditionGridChargeBlocked is the SAME question answered BEFORE the
+	// hand-over: the executor reads the device's own grid-charge register while
+	// a native intent stands and the device is not yet handed over (Deye:
+	// Program-1 charging 0x00AC, deyeNativePrecondition). Kept apart from the
+	// in-mode answer on purpose - it lets the intent stand on an EEG site, it
+	// never stands in for the proof a device in its own mode owes. TRI-STATE
+	// like its sibling.
+	NativePreconditionGridChargeBlocked *bool `json:"native_precondition_grid_charge_blocked,omitempty"`
+	// NativeIntent is the intent word a native cycle says its primitive
+	// realises (readback native.intent, K4b); "" = not said (pre-K4b Layer 1).
+	NativeIntent string `json:"native_intent,omitempty"`
+	// NativeCurtailsOwnPv (K5) says the proven primitive throttles the device's
+	// OWN PV when the storage cannot take more (Deye grid_zero, concept §6.3) -
+	// the core then supervises it (guards.NativeOwnPvCurtailed).
+	NativeCurtailsOwnPv bool `json:"native_curtails_own_pv,omitempty"`
+	// NativeCandidate (K5) names the executed hand-over candidate (Deye:
+	// grid_zero | own_config); "" on every other tier.
+	NativeCandidate string `json:"native_candidate,omitempty"`
+	// NativeRefusal (K5) is Layer 1's German reason why a wanted native mode did
+	// not engage on this cycle ("" = none stated).
+	NativeRefusal string `json:"native_refusal,omitempty"`
+	// Wrote (K5) says this cycle wrote at least one register (the Deye
+	// executor's `wrote`); the pilot window counts write cycles with it.
+	Wrote bool `json:"wrote,omitempty"`
+	// NativeCapabilities is Layer 1's report of its CERTIFIED levers for the
+	// current selection (readback native_capabilities, K4b); nil = not reported.
+	NativeCapabilities *NativeCapabilities `json:"native_capabilities,omitempty"`
 	// ControlPath names WHICH surface drove the write on a Deye: "remote" = the
 	// Tier-2 register block 1100-1121 (a true signed watt setpoint, armed behind the
 	// inverter's own watchdog, touching no installer setting), "tou" = the legacy
@@ -864,4 +963,13 @@ type OcppConnector struct {
 	// things, and one flag for „an override runs" would let a surface put
 	// „lädt voll" over a charge it just stopped.
 	HandPaused bool `json:"hand_paused,omitempty"`
+}
+
+// NativeCapabilities is what Layer 1 can hand to the device itself: the intents
+// it holds a certified lever for, whether that lever honours window bounds, and
+// whether it writes persistent memory (the §6.6 write budget).
+type NativeCapabilities struct {
+	Intents    []string `json:"intents"`
+	Window     bool     `json:"window"`
+	Persistent bool     `json:"persistent"`
 }

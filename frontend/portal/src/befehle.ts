@@ -170,7 +170,24 @@ const MODUS: Record<string, string> = {
   trim: 'begrenzt auf den gemessenen Solarüberschuss',
   absorb: 'angehoben auf den gemessenen Solarüberschuss',
   fallback: 'Eigenverbrauchs-Sicherung',
+  idle_follow: 'unerwarteter Verbrauch live aus dem Speicher gedeckt',
+  deficit_cover: 'Verbrauch live aus dem Speicher gedeckt statt eingekauft',
+  surplus_store: 'gemessener Solarüberschuss eingespeichert statt eingespeist',
+  high_soc_follow: 'fast voller Speicher deckt den Verbrauch live',
+  high_soc_charge: 'fast voller Speicher lädt den Solarüberschuss nach',
+  // Wechselrichter-Eigenregelung: die Box schreibt KEINEN Leistungswert, der
+  // Wechselrichter entscheidet die Watt selbst - der Satz nennt nur die Absicht.
+  autonomous_discharge: 'Automatik: Verbrauch aus dem Speicher decken',
+  autonomous_charge: 'Automatik: nur Solarüberschuss laden',
+  autonomous_selfconsumption: 'Automatik: Eigenverbrauch',
 };
+
+/**
+ * Die Modi, in denen der WECHSELRICHTER die Batterie-Leistung selbst regelt.
+ * Die Box schreibt dort keinen Sollwert, `commanded_kw` ist null - eine
+ * kW-Zahl wäre erfunden (null ist kein 0 kW).
+ */
+const WR_AUTOMATIK = new Set(['autonomous_discharge', 'autonomous_charge', 'autonomous_selfconsumption']);
 
 /** Die Rollen-Namen des Roh-Blicks. Unbekanntes bleibt der Rohname. */
 const ROLLE: Record<string, string> = {
@@ -498,7 +515,13 @@ function handlung(e: CommandEntry): string {
     // Gerät TAT, steht im Regel-Protokoll und wird hier nicht zweimal gesagt.
     return 'VoltPilot hat dieses Gerät gesteuert';
   }
-  const dir = batteryDirection(e.commandedKwLast ?? e.commandedKwFirst);
+  if (e.mode != null && WR_AUTOMATIK.has(e.mode)) {
+    return 'Vom Wechselrichter selbst geregelt (ohne Leistungs-Sollwert von VoltPilot)';
+  }
+  const letzter = e.commandedKwLast ?? e.commandedKwFirst;
+  // Kein gemeldeter Wert ist kein Stillstand - nie eine erfundene 0.
+  if (letzter == null) return 'Speicher-Sollwert nicht gemeldet';
+  const dir = batteryDirection(letzter);
   if (dir === 'pausieren') return 'Speicher angehalten (Sollwert 0,0 kW)';
   const kw = spanneKw(e);
   const wort = dir === 'laden' ? 'Laden' : 'Entladen';

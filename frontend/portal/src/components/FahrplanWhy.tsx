@@ -164,6 +164,7 @@ export function PhaseCard({
   curtail = CURTAIL_PLAN,
   grenzen = null,
   siteId = null,
+  ohneGeld = false,
   onClose,
 }: {
   phase: PlanPhase;
@@ -179,10 +180,12 @@ export function PhaseCard({
   grenzen?: GrenzenKontext | null;
   /** Für den Querverweis auf die Befehle-Seite; ohne ihn kein Link. */
   siteId?: string | null;
+  /** Ohne den Phasen-Betrag gegen „ohne Speicher" (siehe {@link FahrplanWhyPanel}). */
+  ohneGeld?: boolean;
   onClose: () => void;
 }) {
   const t = chartTheme();
-  const eur = phaseEurAmount(phase);
+  const eur = ohneGeld ? null : phaseEurAmount(phase);
   const eurNote = phaseEurNote(phase);
   const mode = driverLabel(phase.driver);
   return (
@@ -237,6 +240,7 @@ export function SlotCard({
   planFacts = null,
   grenzen = null,
   siteId = null,
+  ohneGeld = false,
   onClose,
 }: {
   slot: WhySlot;
@@ -261,6 +265,8 @@ export function SlotCard({
   grenzen?: GrenzenKontext | null;
   /** Für den Querverweis auf die Befehle-Seite; ohne ihn kein Link. */
   siteId?: string | null;
+  /** Ohne den Phasen-Betrag gegen „ohne Speicher" (siehe {@link FahrplanWhyPanel}). */
+  ohneGeld?: boolean;
   onClose: () => void;
 }) {
   const t = chartTheme();
@@ -272,7 +278,7 @@ export function SlotCard({
   const technik = technikRows(slot, planFacts, plantKind);
   const chips = bindingChips(slot.slotFlags, curtail);
   const phase = phases.find((p) => index >= p.startIdx && index <= p.endIdx) ?? null;
-  const phaseEur = phase ? phaseEurLine(phase) : null;
+  const phaseEur = phase && !ohneGeld ? phaseEurLine(phase) : null;
   const from = new Date(slot.start);
   const to = new Date(from.getTime() + slotMinutes * 60_000);
   const hm = (d: Date) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -376,6 +382,7 @@ export function FahrplanWhyPanel({
   grenzen = null,
   siteId = null,
   currentSlotIndex = -1,
+  ohneGeld = false,
   onClose,
 }: {
   phases: PlanPhase[];
@@ -398,6 +405,13 @@ export function FahrplanWhyPanel({
    * Vormittag darf nicht mit dem bestätigen, was das Gerät gerade tut.
    */
   currentSlotIndex?: number;
+  /**
+   * Ohne die Phasen-Beträge: sie rechnen gegen einen Betrieb OHNE Speicher.
+   * Das Tagesbild nennt seine Geldzahl gegen DENSELBEN Speicher ohne smarte
+   * Steuerung (E6); ein Betrag gegen die alte Messlatte daneben wäre eine
+   * zweite Wahrheit. Ohne die Prop unverändert.
+   */
+  ohneGeld?: boolean;
   onClose: () => void;
 }) {
   if (selectedPhase != null && selectedPhase >= 0 && selectedPhase < phases.length) {
@@ -410,6 +424,7 @@ export function FahrplanWhyPanel({
         curtail={curtailTruthForSlot(curtail, phase.role, isCurrent)}
         grenzen={grenzen}
         siteId={siteId}
+        ohneGeld={ohneGeld}
         onClose={onClose}
       />
     );
@@ -428,6 +443,7 @@ export function FahrplanWhyPanel({
         planFacts={planFacts}
         grenzen={grenzen}
         siteId={siteId}
+        ohneGeld={ohneGeld}
         onClose={onClose}
       />
     );

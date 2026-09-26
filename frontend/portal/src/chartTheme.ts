@@ -136,6 +136,8 @@ export interface ChartTheme {
   cPrice: string;
   /** Verlauf · die ZWEITE Preis-Reihe (Vergleich) — nie ein zweites Blau. */
   cPrice2: string;
+  /** Verlauf · Geld: die Kosten-Reihe (Netzbezug in Euro, unter null). */
+  cGeldKosten: string;
 }
 
 let cache: ChartTheme | null = null;
@@ -194,6 +196,7 @@ export function chartTheme(): ChartTheme {
     cSoc: read('--vp-c-chart-soc', '#166534'),
     cPrice: read('--vp-c-chart-price', '#2563eb'),
     cPrice2: read('--vp-c-chart-price-2', '#475569'),
+    cGeldKosten: read('--vp-c-chart-kosten', '#8b1e3f'),
   };
   return cache;
 }

@@ -33,6 +33,7 @@ Ausgabe: `schema_version: "1.0"`, `nodes` in Reihenfolge PV, Speicher, Verbrauch
 - Anzeigebetrag ist nicht negativ; Mitglieder behalten ihre vorzeichenbehafteten Beiträge.
 - kW werden auf drei Dezimalstellen gerundet. Totband: 0,05 kW.
 - Unbekannte optionale Werte werden ausgelassen, nicht durch Null ersetzt. `soc_pct` ist kein zusätzlicher Leistungsbeitrag.
+- Die Cloud (`GET /sites/{id}/topology`, ebenso der kanonische Rollen-Wert über einen Kanal) liefert für einen Leistungskanal (kW/W, kein SoC, keine Grenze/Freigabe) das Mittel der letzten 30 s bis zur neuesten Probe DIESES Kanals (`TopologyRepository.DISPLAY_MEAN_WINDOW`, Paket K8): alle Kreise stehen auf einer Zeitbasis, und weil sie aus denselben Box-Proben stammen, bleibt `Haus = PV + Netz − Speicher` erhalten. Ladestand und Grenzen bleiben der letzte Wert.
 
 Die exakte Serialisierung und Sonderfälle stehen in den Vektoren und Ableitungen, nicht in einem zweiten parallel gepflegten JSON-Beispiel.
 

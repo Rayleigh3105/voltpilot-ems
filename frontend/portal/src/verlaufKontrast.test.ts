@@ -116,10 +116,11 @@ const REIHEN = [...index.matchAll(/--vp-c-chart-([a-z0-9-]+):\s*#[0-9a-fA-F]{6}/
 );
 
 describe('Verlauf P0 · E3.2: die Zuordnungstabelle ist vollständig', () => {
-  it('sieben Reihen, jede mit ihrem eigenen Namen', () => {
+  it('acht Reihen, jede mit ihrem eigenen Namen', () => {
     expect(REIHEN.sort()).toEqual([
       'c-chart-batt',
       'c-chart-grid',
+      'c-chart-kosten',
       'c-chart-load',
       'c-chart-price',
       'c-chart-price-2',

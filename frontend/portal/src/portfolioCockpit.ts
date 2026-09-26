@@ -36,6 +36,7 @@ import { bausteineFuer, type BausteinDef } from './cockpitLayout';
 import { berlinDay, savedOnDay, siteLiveFresh, type FleetKind, type FleetSentence } from './fleet';
 import { eur, fmtNum, seitDauer } from './format';
 import type { KennzahlZelle } from './kennzahl';
+import { geldWort, speicherAussage, type SpeicherAussage } from './speicherAussage';
 import { batteryState, deriveBatteryKw, gridState } from './live';
 import { activeModes } from './surface';
 import { portfolioSurfaceInput, siteSoc, siteStatus } from './portfolio';
@@ -284,7 +285,18 @@ export interface PortfolioKennzahlen {
   ladestandAnlagen: number;
   /** Σ realisierter Erlös HEUTE (Berliner Tag). */
   erloesHeuteEur: number | null;
+  /**
+   * Wie viele Anlagen zu `erloesHeuteEur` BEITRAGEN (eine Tageszahl haben).
+   * Die Unterzeile zählt nur sie („1 von 2 Anlagen") — eine Anlage, die seit
+   * Wochen schweigt, steckt nicht in der Summe (z1-Nebenkorrektur).
+   */
   erloesHeuteAnlagen: number;
+  /**
+   * Die Einordnung der Kachel (Konzept k1 E5 = A): Grund-Wort mit Zahl (nur
+   * bei EINER beitragenden Anlage — ein Grund gehört zu einer Anlage) und die
+   * Monatszeile „September + 116,94 €". null = nichts einzuordnen.
+   */
+  erloesHeuteEinordnung: string | null;
   /** Σ vermiedene Spitze (EUR) über die Anlagen mit Lastspitzenkappung. */
   vermiedeneSpitzeEur: number | null;
   /** Σ vermiedene Spitze (kW). */
@@ -343,6 +355,40 @@ function anzahl(werte: (number | null | undefined)[]): number {
   return werte.filter((v) => v != null && Number.isFinite(v)).length;
 }
 
+/**
+ * Die Tages-Einordnung EINER Flotten-Zeile — dieselbe Ableitung wie auf der
+ * Anlage (`speicherAussage`), damit Kachel, Tabellenzelle, Cockpit und
+ * Erlöse-Seite über denselben Tag nie Verschiedenes sagen. Die Flotte fragt
+ * nur `range=day` und immer „heute" ab; die Zeile trägt kein `range`.
+ */
+export function flottenTagesAussage(
+  s: EarningsSite,
+  to: string | null,
+  now: Date,
+): SpeicherAussage | null {
+  return speicherAussage({ ...s, range: 'day', to }, { now, laeuft: true });
+}
+
+/** „gestern verkauft + 12,78 € · September + 116,94 €" — die Zeile unter der Kachel. */
+function kachelEinordnung(beitragend: EarningsSite[], to: string | null, now: Date): string | null {
+  if (beitragend.length === 0) return null;
+  const aussagen = beitragend.map((s) => flottenTagesAussage(s, to, now));
+  const grund = aussagen.length === 1 ? (aussagen[0]?.grundErster ?? null) : null;
+  // Der Monat nur, wenn JEDE beitragende Anlage ihn trägt — sonst wäre die
+  // Summe still unvollständig.
+  const anker = aussagen.map((a) => a?.anker ?? null);
+  const monat =
+    anker.length > 0 && anker.every((a) => a != null)
+      ? summe(anker.map((a) => a!.eur))
+      : null;
+  const monatName = now.toLocaleDateString('de-DE', { month: 'long', timeZone: 'Europe/Berlin' });
+  const teile = [
+    grund,
+    monat == null ? null : `${monatName} ${geldWort(monat)}`,
+  ].filter((t): t is string => !!t);
+  return teile.length > 0 ? teile.join(' · ') : null;
+}
+
 export function portfolioKennzahlen(
   overview: Overview | null,
   earnings: Earnings | null,
@@ -357,11 +403,14 @@ export function portfolioKennzahlen(
   const pvFrisch = sites.filter((s) => siteLiveFresh(s, now) && s.live?.pvKw != null);
 
   const heute = berlinDay(now);
-  // Geld-Regel: eine Anlage, die weder steuert noch Erzeuger/Speicher hat, trägt
-  // kein Geld bei — auch wenn der Server für sie eine Zahl liefert.
+  // Geld-Regel (UEMS A13): eine Anlage, die weder steuert noch Erzeuger/Speicher hat,
+  // trägt kein Geld bei — auch wenn der Server für sie eine Zahl liefert.
   const geldSites = (earnings?.sites ?? []).filter((s) => geld == null || geld.has(s.id));
-  const erloesWerte = geldSites.map((s: EarningsSite) => savedOnDay(s.dailySaved, heute));
-  const erloesHeute = summe(erloesWerte);
+  // z1: nur BEITRAGENDE Anlagen (mit Tageszahl) zählen in Summe und Unterzeile.
+  const beitragend = geldSites.filter(
+    (s: EarningsSite) => savedOnDay(s.dailySaved, heute) != null,
+  );
+  const erloesHeute = summe(beitragend.map((s) => savedOnDay(s.dailySaved, heute)));
 
   const peakSites = geldSites.filter((s) => s.peakShaving?.avoidedEur != null);
 
@@ -379,7 +428,8 @@ export function portfolioKennzahlen(
   return {
     ladestandAnlagen: sites.filter((s) => siteSoc(s) != null).length,
     erloesHeuteEur: erloesHeute,
-    erloesHeuteAnlagen: anzahl(erloesWerte),
+    erloesHeuteAnlagen: beitragend.length,
+    erloesHeuteEinordnung: kachelEinordnung(beitragend, earnings?.to ?? null, now),
     vermiedeneSpitzeEur: summe(peakSites.map((s) => s.peakShaving?.avoidedEur ?? null)),
     vermiedeneSpitzeKw: summe(peakSites.map((s) => s.peakShaving?.avoidedKw ?? null)),
     vermiedeneSpitzeAnlagen: peakSites.length,
@@ -619,18 +669,26 @@ export function signiertesGeld(v: number): string {
 }
 
 /**
- * Die Unterzeile des Vorteils. Zählt die Zelle wegen der Geld-Regel nur einen
- * Teil der Anlagen, sagt sie, welchen (A13: „nur Werk Ahrenberg – Halle 1").
+ * Die Unterzeile des Vorteils. Sie zählt nur BEITRAGENDE Anlagen (z1, k1 E5 = A):
+ * „1 von 2 Anlagen", wenn eine schweigt; „2 Anlagen", wenn alle beitragen; bei
+ * einer Anlage nichts. Zählt die Zelle auf einer UEMS-Ebene wegen der Geld-Regel
+ * nur einen Teil der Anlagen (`geldNamen`), sagt sie, welchen (A13: „nur Werk
+ * Ahrenberg – Halle 1"), und nennt die Deckung immer (AP-10 E16).
  */
-export function vorteilUnterzeile(k: PortfolioKennzahlen, anlagen: number): string {
-  const geld = k.geldNamen;
-  const deckung = anlagenText(k.erloesHeuteAnlagen, anlagen);
-  if (geld != null && geld.length > 0 && geld.length < anlagen) {
-    return geld.length <= 2
-      ? `${VORTEIL_BEZUG} · ${deckung} · nur ${namenListe(geld)}`
-      : `${VORTEIL_BEZUG} · ${deckung}`;
+export function vorteilUnterzeile(
+  beitragend: number,
+  anlagen: number,
+  geldNamen: readonly string[] | null = null,
+): string {
+  if (geldNamen != null) {
+    const deckung = anlagenText(beitragend, anlagen);
+    if (geldNamen.length > 0 && geldNamen.length < anlagen && geldNamen.length <= 2) {
+      return `${VORTEIL_BEZUG} · ${deckung} · nur ${namenListe(geldNamen)}`;
+    }
+    return `${VORTEIL_BEZUG} · ${deckung}`;
   }
-  return `${VORTEIL_BEZUG} · ${deckung}`;
+  if (beitragend < anlagen && anlagen > 1) return `${VORTEIL_BEZUG} · ${beitragend} von ${anlagen} Anlagen`;
+  return anlagen > 1 ? `${VORTEIL_BEZUG} · ${anlagen} Anlagen` : VORTEIL_BEZUG;
 }
 
 /** Die Fussnote des Netzbezugs — die Summe nennt, über wie viele Anlagen sie geht. */
@@ -683,7 +741,8 @@ export function leistenZellen(input: {
           label: vorteilLabel(input.tonalitaet),
           wert: signiertesGeld(k.erloesHeuteEur),
           einheit: '€',
-          unterzeile: vorteilUnterzeile(k, anlagen),
+          einordnung: k.erloesHeuteEinordnung,
+          unterzeile: vorteilUnterzeile(k.erloesHeuteAnlagen, anlagen, k.geldNamen),
           lead: true,
         });
         break;
@@ -864,10 +923,32 @@ export interface AnlagenZeile {
   ladestandPct: number | null;
   /** „lädt" · „entlädt" · „voll" · „zuletzt" — das Wort neben dem Balken. */
   ladestandWort: string | null;
+  /**
+   * „am 12.08." — der Ladestand ist älter als {@link LADESTAND_ALT_MS} und
+   * darf nicht als aktuelle Zahl stehen (Mienbach: „6 %" vom 12.08.). Dann
+   * steht er datiert und ohne Balken; null = er ist jünger.
+   */
+  ladestandStand: string | null;
   /** Netz JETZT: Richtung + Betrag; null = kein frischer Messwert. */
   netz: { richtung: 'bezug' | 'einspeisung' | 'ausgeglichen'; kw: number } | null;
   heuteEur: number | null;
+  /** Das Kurzwort des Grundes unter einem Minus-Tag („gestern verkauft"); null = keiner. */
+  heuteGrund: string | null;
   zustand: ZeilenZustand;
+}
+
+/** Ab diesem Alter ist ein Ladestand kein Stand mehr, sondern Geschichte. */
+export const LADESTAND_ALT_MS = 24 * 60 * 60 * 1000;
+
+function ladestandStand(site: OverviewSite, now: Date): string | null {
+  const ts = site.live?.ts ? new Date(site.live.ts).getTime() : NaN;
+  if (!Number.isFinite(ts) || now.getTime() - ts <= LADESTAND_ALT_MS) return null;
+  const tag = new Date(ts).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'Europe/Berlin',
+  });
+  return `am ${tag}`;
 }
 
 /** Reihenfolge des Zustands: was Aufmerksamkeit braucht, steht oben. */
@@ -901,6 +982,7 @@ export function anlagenZeilen(input: {
   const heute = berlinDay(now);
   const zeilen = (input.overview?.sites ?? []).map((s) => zeileVon(s, {
     earnings: geld != null && !geld.has(s.id) ? null : (erloesBySite.get(s.id) ?? null),
+    to: input.earnings?.to ?? null,
     config: input.configById?.get(s.id) ?? null,
     heute,
     dichte,
@@ -918,6 +1000,7 @@ function zeileVon(
   site: OverviewSite,
   ctx: {
     earnings: EarningsSite | null;
+    to: string | null;
     config: Pick<Site, 'tarifArt' | 'leistungspreisEurKw'> | null;
     heute: string;
     dichte: Dichte;
@@ -947,11 +1030,15 @@ function zeileVon(
     verbrauchKwh: site.energyToday?.loadKwh ?? null,
     ladestandPct: soc,
     ladestandWort: soc == null ? null : ladestandWort(batt, frisch),
+    ladestandStand: soc == null ? null : ladestandStand(site, ctx.now),
     netz:
       netzWort === 'unbekannt' || live?.gridKw == null
         ? null
         : { richtung: netzWort, kw: Math.abs(live.gridKw) },
     heuteEur: ctx.earnings ? savedOnDay(ctx.earnings.dailySaved, ctx.heute) : null,
+    heuteGrund: ctx.earnings
+      ? (flottenTagesAussage(ctx.earnings, ctx.to, ctx.now)?.grundKurz ?? null)
+      : null,
     zustand: {
       wort: status.label,
       alter: status.tone === 'ok' ? null : seitDauer(site.lastSeenAt, ctx.now),

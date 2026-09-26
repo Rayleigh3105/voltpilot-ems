@@ -12,7 +12,9 @@
  * eine Ablehnung zu laufen. Wer eine Regel ändert, ändert beide Seiten.
  *
  * WORTSCHATZ: Set A („Komponente", „Gerät", „Messwert"). Kein „Entität", kein
- * „Kanal", kein „Register" außerhalb der Profi-Angaben.
+ * „Kanal". Das „Register" steht seit der Einrichten-Seite sichtbar in der Zeile -
+ * ohne es wird nichts gelesen; Datentyp, Skalierung und Co. bleiben unter
+ * „Weitere Angaben".
  */
 
 /** Höchstens so viele Messwerte je Gerät (§2.6 Poll-Budget). */
@@ -45,9 +47,9 @@ export const WORD_ORDERS = [
   { value: 'little', label: 'Low-Word zuerst (CD AB)' },
 ] as const;
 
-/** Der Hilfetext zur 0-basierten Adresse - die häufigste Handbuch-Falle. */
-export const ADDRESS_HELP =
-  'Protokoll-Adresse, 0-basiert. Steht im Handbuch 40001, ist es hier die 0.';
+/** Was „Als eigene Vorlage speichern" mitnimmt - und was nicht. */
+export const VORLAGE_HINWEIS =
+  'Für ein zweites gleiches Gerät: Messwerte, Port und Unit-ID reisen mit, die Adresse nicht.';
 
 /**
  * Der Bilanz-Hinweis (§2.6): ein selbst gebautes Gerät ist ein Messgerät, kein
@@ -64,42 +66,6 @@ export const BILANZ_HINWEIS =
 export const HOST_NOT_PRIVATE =
   'Diese Adresse liegt nicht nachweisbar in Ihrem eigenen Netzwerk. VoltPilot liest nur '
   + 'Geräte im Heimnetz - bitte tragen Sie die IP-Adresse des Geräts ein (z. B. 192.168.1.50).';
-
-/** Die Rollen-Auswahl aus Schritt 3. */
-export type SelbstbauRolle = 'sensor' | 'verbraucher';
-
-export type RolleOption = {
-  id: SelbstbauRolle;
-  label: string;
-  hint: string;
-  /** false = sichtbar, aber (noch) nicht wählbar. */
-  verfuegbar: boolean;
-  bald?: string;
-};
-
-/**
- * Beide Rollen sind seit Einheitsmodell Stufe 4 wählbar. Der schaltbare
- * Verbraucher entsteht dabei in ZWEI Schritten, und das ist Absicht: hier wird
- * er ANGELEGT (und ist zunächst ein Sensor), das Schalten gibt danach der
- * eigene Freigabe-Schritt an der fertigen Komponente frei. Ein Gerät anlegen
- * und ihm Schreibrechte auf ein fremdes Register geben sind zwei Entscheidungen
- * und sollen sich nicht wie eine anfühlen.
- */
-export const ROLLEN: RolleOption[] = [
-  {
-    id: 'sensor',
-    label: 'Nur messen (Sensor)',
-    hint: 'Das Gerät liefert Messwerte - Diagramm, Historie und Regeln können sie nutzen.',
-    verfuegbar: true,
-  },
-  {
-    id: 'verbraucher',
-    label: 'Schaltbarer Verbraucher',
-    hint: 'Ein Gerät, das VoltPilot ein- und ausschalten darf. Zuerst wird es angelegt und liest '
-      + 'nur; das Schalten geben Sie danach in einem eigenen Schritt frei.',
-    verfuegbar: true,
-  },
-];
 
 // -- Die Formularzeile eines Messwerts ---------------------------------------
 
@@ -179,7 +145,46 @@ export function zeilenFehler(z: MesswertZeile): string[] {
   return out;
 }
 
-/** Was am GERÄT fehlt (Schritt 1). */
+/**
+ * Ob eine Zeile GELESEN werden kann - alles außer dem Namen muss stimmen (die
+ * Probe heißt ohne Namen „Probe"). Die Einrichten-Seite liest damit von selbst,
+ * sobald Register, Skalierung und Offset dastehen.
+ */
+export function lesbar(z: MesswertZeile): boolean {
+  const addr = zahl(z.address);
+  if (addr === null || !Number.isInteger(addr) || addr < 0 || addr > 65535) return false;
+  const scale = zahl(z.scale);
+  if (scale === null || scale === 0) return false;
+  return zahl(z.offset) !== null;
+}
+
+/**
+ * Die MODICON-Lesart einer fünfstelligen Handbuch-Nummer (30001–39999 =
+ * Input-Register, 40001–49999 = Holding-Register, jeweils ab 0).
+ *
+ * ⚠ Sie wird NIE still angewandt: manche Hersteller nennen in ihren Tabellen
+ * die Protokoll-Adresse selbst fünfstellig, und dann ist die Zahl richtig, wie
+ * sie ist. Die Fläche nennt deshalb beide Lesarten und bietet die zweite als
+ * Knopf an - das Lesen zeigt, welche stimmt.
+ */
+export function modiconDeutung(
+  address: string,
+): { kind: 'input' | 'holding'; address: number; text: string; knopf: string } | null {
+  const n = zahl(address);
+  if (n === null || !Number.isInteger(n)) return null;
+  const art = n >= 30001 && n <= 39999 ? 'input' : n >= 40001 && n <= 49999 ? 'holding' : null;
+  if (!art) return null;
+  const adresse = n - (art === 'input' ? 30001 : 40001);
+  const register = art === 'input' ? 'Input-Register' : 'Holding-Register';
+  return {
+    kind: art,
+    address: adresse,
+    text: `Nach Modicon-Zählung wäre ${n} das ${register} ${adresse}. Der gelesene Wert zeigt, welche Zahl stimmt.`,
+    knopf: `Als ${register} ${adresse} lesen`,
+  };
+}
+
+/** Was am GERÄT fehlt (Abschnitt „Anschluss"). */
 export function geraetFehler(v: VerbindungForm): string[] {
   const out: string[] = [];
   if (v.host.trim() === '') out.push('Bitte tragen Sie die Adresse des Geräts ein.');
@@ -311,41 +316,6 @@ export function leseErgebnis(antwort: LeseAntwort | null | undefined): LeseErgeb
         : null,
     hinweis: antwort.hint && antwort.hint.trim() !== '' ? antwort.hint : null,
   };
-}
-
-// -- Die Zusammenfassung (Schritt 4) -----------------------------------------
-
-export type PruefZeile = { label: string; wert: string };
-
-export function pruefen(
-  name: string,
-  verbindung: VerbindungForm,
-  zeilen: MesswertZeile[],
-  rolle: SelbstbauRolle = 'sensor',
-): PruefZeile[] {
-  const rows: PruefZeile[] = [
-    { label: 'Name', wert: name.trim() === '' ? 'Eigenes Modbus-Gerät' : name.trim() },
-    // ⚠ Auch ein „schaltbarer Verbraucher" entsteht ZUNAECHST nur lesend - die
-    // Zusammenfassung darf kein Schalten versprechen, das erst der eigene
-    // Freigabe-Schritt erteilt.
-    {
-      label: 'Art',
-      wert: rolle === 'verbraucher'
-        ? 'Schaltbarer Verbraucher - liest zunächst nur; Schalten geben Sie danach frei'
-        : 'Nur messen (Sensor)',
-    },
-    {
-      label: 'Adresse',
-      wert: `${verbindung.host.trim()}:${verbindung.port.trim() || '502'} · Unit ${
-        verbindung.unitId.trim() || '1'
-      }`,
-    },
-    {
-      label: 'Messwerte',
-      wert: zeilen.map((z) => z.label.trim()).filter((l) => l !== '').join(', ') || '—',
-    },
-  ];
-  return rows;
 }
 
 /** Der Rumpf, den `POST .../components/custom` erwartet. */

@@ -70,6 +70,16 @@ type Result struct {
 	// request asked for it AND the read succeeded). A failed check never flips
 	// OK - the READ succeeded; the check reports its own honest outcome.
 	ControlCheck *ControlCheck `json:"control_check,omitempty"`
+
+	// States are the named 0/1 channel states of an I/O module (di_k/do_k) the
+	// test read - its readings, which the four-channel Reading cannot carry.
+	States []ChannelState `json:"states,omitempty"`
+}
+
+// ChannelState is one named channel state read by a connection test.
+type ChannelState struct {
+	Channel string  `json:"channel"`
+	Value   float64 `json:"value"`
 }
 
 // Finding is the plausibility verdict about ONE channel of an otherwise

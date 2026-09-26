@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import {
   api,
   ApiError,
@@ -13,9 +14,13 @@ import {
   type SchedulePlan,
   type ScheduleSlot,
   type Site,
+  type SiteEarnings,
   type TelemetryPoint,
   type WeatherForecast,
+  type ForecastQuality,
 } from '../api';
+import { mittlereMae } from '../prognose';
+import { showTechnicalLayer } from '../rollen';
 import { eurAmount, fmtNum } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
@@ -62,8 +67,14 @@ import { FahrplanWhyPanel } from '../components/FahrplanWhy';
 import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
 import { lageView } from '../fahrplanLage';
-import { JetztKompakt, TagesFilm } from '../components/FahrplanJetzt';
+import { JetztKompakt, JetztWarnungen, TagesFilm } from '../components/FahrplanJetzt';
 import { FahrplanLage } from '../components/FahrplanLage';
+import { FahrplanTagesbild, TagOhneBildKarte } from '../components/FahrplanTagesbild';
+import { minuteDesTages, tagModell } from '../fahrplanTag';
+import { indexImLauf, tagDatum, tagesSchalter, tagOhneBild, type TagArt } from '../fahrplanTagesbild';
+import { haptik } from '../haptik';
+import { speicherAussage } from '../speicherAussage';
+import { planAnnahmen } from '../fahrplanAnnahmen';
 import { flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import { controlReasonSlot } from '../control';
 import { curtailTruth } from '../curtailment';
@@ -673,30 +684,52 @@ export function WetterSection({ site }: { site: Site }) {
 /** Wie weit zurück die Live-Messwerte des Helden geholt werden. */
 const LIVE_WINDOW_MS = 15 * 60 * 1000;
 
+/** Wie oft die Tages-Aussage „Was bringt es heute?" neu geholt wird. */
+const GELD_TAKT_MS = 5 * 60 * 1000;
+
+/** Wie der Fahrplan entsteht — als Info-Knopf über dem Diagramm bzw. in „Mehr erklären". */
+const FAHRPLAN_BERECHNUNG =
+  'Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet - ' +
+  'für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell ' +
+  'plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden: ' +
+  'laden bei günstigem Strom oder PV-Überschuss, entladen wenn Strom teuer ist, ' +
+  'Eigenverbrauch maximieren. Eingaben je Anlage sind die Börsen-Day-Ahead-Preise, ' +
+  'die Last- und PV-Prognose, der aktuelle Ladestand, die Batteriegrenzen und die ' +
+  '§14a-Netzgrenze. Weil jede Anlage eigene Eingaben hat, erhält sie ihren eigenen ' +
+  'Fahrplan.';
+
 /**
- * Die Fahrplan-Seite einer Anlage — das DIAGRAMM ist der Held (Konzept
- * `vp-fahrplan-ux-r7`, Captain-Feedback „zu viel Text · das Diagramm viel
- * weiter oben"). Von oben nach unten:
+ * Die Fahrplan-Seite einer Anlage (Konzept „Tagesuhr und Bildfahrplan",
+ * Entscheide E1–E11 vom 24.09.2026) im AUFBAU DES PROTOTYPS:
  *
- *   1 Status-Zeile     `JetztKompakt` — Zustands-Punkt + EIN Satz + kompakter
- *                      Plan/Ist-Chip; das Warum & die Messwerte im eigenen Fold
- *   2 Warnungen        ein Plan älter als ~2 h steht als Banner (nie kondensiert)
- *   3 Lage-Zeile       EINE kompakte „Heute und morgen"-Zeile, dauerhaft sichtbar
- *   4 Diagramm         der HELD: das ScheduleChart, Desktop UND Mobil offen,
- *                      mit dem Phasen-Band als dritter Chart-Spur (Variante A+C):
- *                      ein Tipp auf eine Band-/Preis-/Leistungs-Spalte öffnet
- *                      dasselbe Warum-Panel
- *   5 Euro-Zeile       EINE kompakte Zeile mit dem Abzeichen „Geplant"
- *   6 „Mehr erklären"  Aufklapper (Standard ZU): die volle Lage, der Film des
- *                      Tages und alle Diagramm-Fußnoten
+ *   0 Tagesschalter    Gestern · Heute · Morgen (E2 = A) direkt unter den
+ *                      Reitern; gestern der Tages-Splice des Vortags, morgen
+ *                      der jüngste Lauf. Nur heute spricht das Gerät.
+ *   1 Warnungen        ein Plan älter als ~2 h, dazu die Warnungen der
+ *                      Jetzt-Aussage (K10) und die P7-Hinweise - über dem Bild
+ *   2 Tagesbild        `FahrplanTagesbild` trägt alles Weitere selbst: Kopfsatz
+ *                      und Stand; am Telefon die Tagesuhr, Werte, Moment-Zeile
+ *                      und die Antworten (E1, alle im ersten Bildschirm, E9);
+ *                      ab 900 px Inhaltsbreite (E10) das Jetzt-Band und der
+ *                      Bildfahrplan; darunter „Warum?", Zustand mit
+ *                      „Eingreifen …", die Waage (E5), die Stationen des Tages
+ *                      und „Worauf Ihr Plan achtet" (`fahrplanAnnahmen`)
+ *   3 „Alle Werte"     das bisherige Diagramm (`ScheduleChart`) als Dialog -
+ *                      zum Nachschlagen, kein zweites Bild auf der Seite
  *
- * Vorher begann die Seite mit drei Planungs-KPIs, einem 12-Zeilen-Absatz und
- * einem unbeschrifteten Farbstreifen; das Diagramm lag hinter einem Fold.
+ * Die Geldzahl der Seite ist die Antwort „Was bringt es heute?" gegen
+ * DENSELBEN Speicher ohne smarte Steuerung (E6, `speicherAussage`) — das
+ * Diagramm nennt dann keinen eigenen Betrag gegen „ohne Speicher".
  *
- * Alle Ableitung ist rein und getestet (`fahrplanJetzt.ts`, `fahrplanFilm.ts`,
- * `fahrplanLage.ts`, `fahrplanWhy.ts`, `schedule.ts`) — hier steht nur das
- * Gerüst und das Holen der Daten. Ein Plan OHNE die persistierten Warum-Fakten
- * degradiert wie bisher: kein Film, kein Held-Grund, nur Diagramm + Euro-Zeile.
+ * Ein Plan OHNE die persistierten Warum-Fakten hat kein Tagesbild (es müsste
+ * Tätigkeiten erfinden) und degradiert zur bisherigen Seite: das Diagramm als
+ * Held, „Ihr Vorteil", der Film und die Fußnoten in „Mehr erklären".
+ *
+ * Alle Ableitung ist rein und getestet (`fahrplanTag.ts`, `fahrplanUhr.ts`,
+ * `fahrplanBildfahrplan.ts`, `fahrplanAntworten.ts`, `fahrplanWaage.ts`,
+ * `fahrplanTagesbild.ts`, `fahrplanAnnahmen.ts`, `fahrplanJetzt.ts`,
+ * `fahrplanFilm.ts`, `fahrplanLage.ts`, `fahrplanWhy.ts`, `schedule.ts`) —
+ * hier stehen nur das Gerüst und das Holen der Daten.
  */
 /**
  * §14.11 slot card: the tapped slot's consumers with Ziel + Grund (the ONE
@@ -729,7 +762,56 @@ function VerbraucherSlotCard({
   );
 }
 
+/** Der Vortag des Tagesschalters, wie er geholt wurde — je Kalendertag. */
+interface GesternStand {
+  iso: string;
+  plan: SchedulePlan | null;
+  fehler: boolean;
+}
+
+/** Stabile leere Listen (Memo-Abhängigkeiten ändern sich nicht bei jedem Rendern). */
+const KEINE_SLOTS: SchedulePlan['slots'] = [];
+const KEINE_ANNAHMEN: ReturnType<typeof planAnnahmen> = [];
+
+/**
+ * Der Fahrplan-Reiter trägt wie seine Nachbarn Preise und Wetter nur eine
+ * unsichtbare `h1` (`VerlaufKopf`, Befund B1): ein sichtbarer Kopf ließ die
+ * Reiterleiste springen und nahm am Telefon der Tagesuhr 140 px.
+ */
+
+/** Über wie viele Tage die Vorhersage-Zeile des Fahrplans mittelt. */
+const VORHERSAGE_TAGE = 7;
+
+/**
+ * Die gemessene mittlere Abweichung der AKTIVEN Modelle über die letzten
+ * {@link VORHERSAGE_TAGE} bewerteten Tage - dieselbe Rechnung wie die
+ * Prognose-Seite (`prognose.mittlereMae`). Ohne Bewertung: null, keine Zeile.
+ */
+function vorhersageZeile(
+  q: ForecastQuality | null,
+): { verbrauchKw: number | null; pvKw: number | null; tage: number; fenster: number } | null {
+  if (!q) return null;
+  const verbrauch = mittlereMae(q.accuracy, q.activeLoadModel, VORHERSAGE_TAGE);
+  const pv = mittlereMae(q.accuracy, q.activePvModel, VORHERSAGE_TAGE);
+  if (!verbrauch && !pv) return null;
+  return {
+    verbrauchKw: verbrauch?.mae ?? null,
+    pvKw: pv?.mae ?? null,
+    tage: Math.max(verbrauch?.tage ?? 0, pv?.tage ?? 0),
+    fenster: VORHERSAGE_TAGE,
+  };
+}
+
 export function FahrplanSection({ site }: { site: Site }) {
+  return (
+    <>
+      <VerlaufKopf titel="Fahrplan" />
+      <FahrplanInhalt site={site} />
+    </>
+  );
+}
+
+function FahrplanInhalt({ site }: { site: Site }) {
   const { data: plan, loading, err, reload } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
   const [selSlot, setSelSlot] = useState<number | null>(null);
   const [selPhase, setSelPhase] = useState<number | null>(null);
@@ -757,6 +839,10 @@ export function FahrplanSection({ site }: { site: Site }) {
   // morgen (`weatherWhyTomorrow`); jede kWh-Zahl kommt aus den Plan-Eingaben.
   // Ohne sie fehlt der Himmels-Satz, sonst ändert sich nichts.
   const [wetter, setWetter] = useState<WeatherForecast | null>(null);
+  // „Anlage – neu gedacht" (E6 = A): die Treffsicherheit der Vorhersagen steht
+  // als EINE Zeile in „Worauf Ihr Plan achtet" statt auf einer eigenen Seite.
+  // FAIL-SOFT: ohne Bewertung fehlt nur diese Zeile.
+  const [vorhersage, setVorhersage] = useState<ForecastQuality | null>(null);
 
   const siteId = site.id;
   const loadLive = useCallback(() => {
@@ -823,6 +909,66 @@ export function FahrplanSection({ site }: { site: Site }) {
     } catch {
       // Dieselbe Fail-soft-Disziplin wie oben: eine api-Attrappe ohne die
       // Methode darf die Seite nicht mitreißen.
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+
+  // ---- Der TAGESSCHALTER (Konzept „Tagesuhr und Bildfahrplan", E2 = A) ----
+  // Gestern · Heute · Morgen. Heute bleibt alles wie bisher; morgen kommt aus
+  // dem jüngsten Lauf (er trägt den Folgetag, sobald dessen Preise da sind);
+  // gestern ist der Tages-Splice des Vortags („wie der Tag geplant war") —
+  // erst beim ersten Blick geholt und FAIL-SOFT wie alles hier.
+  const isPhone = useIsPhone();
+  const [tagArt, setTagArt] = useState<TagArt>('heute');
+  const gesternIso = isoDate(tagDatum(now, 'gestern'));
+  const [gestern, setGestern] = useState<GesternStand | null>(null);
+  const [gesternVersuch, setGesternVersuch] = useState(0);
+  const [gesternGeld, setGesternGeld] = useState<SiteEarnings | null>(null);
+  useEffect(() => {
+    setTagArt('heute');
+    setGestern(null);
+    setGesternGeld(null);
+  }, [siteId]);
+  useEffect(() => {
+    if (tagArt !== 'gestern') return;
+    let active = true;
+    setGestern((g: GesternStand | null) => (g?.iso === gesternIso && !g.fehler ? g : null));
+    api
+      .schedule(siteId, 'day', gesternIso)
+      .then((p) => active && setGestern({ iso: gesternIso, plan: p, fehler: false }))
+      .catch(() => active && setGestern({ iso: gesternIso, plan: null, fehler: true }));
+    // „Was hat es gebracht?": die Aussage des VOLLEN Vortags, dieselbe Quelle
+    // wie „Was bringt es heute?" (E6) - ohne Antwort entfällt nur sie.
+    try {
+      api
+        .siteEarnings(siteId, 'day', gesternIso)
+        .then((m) => active && setGesternGeld(m))
+        .catch(() => active && setGesternGeld(null));
+    } catch {
+      if (active) setGesternGeld(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [tagArt, siteId, gesternIso, gesternVersuch]);
+  const waehleTag = (art: TagArt) => {
+    if (art === tagArt) return;
+    haptik('tick');
+    setTagArt(art);
+  };
+
+  useEffect(() => {
+    let active = true;
+    setVorhersage(null);
+    try {
+      api
+        .forecastQuality(siteId, VORHERSAGE_TAGE)
+        .then((q) => active && setVorhersage(q))
+        .catch(() => active && setVorhersage(null));
+    } catch {
+      // Eine api-Attrappe ohne die Methode reißt die Seite nicht mit.
     }
     return () => {
       active = false;
@@ -984,6 +1130,170 @@ export function FahrplanSection({ site }: { site: Site }) {
     ],
   );
 
+  // ---- Das Tagesbild (Konzept „Tagesuhr und Bildfahrplan", E1–E11) ----
+  // EIN Tagesmodell für Uhr und Bildfahrplan, aus derselben Liste wie der Film
+  // (Tages-Splice, sonst der jüngste Lauf). Ohne vollständige Warum-Ebene gibt
+  // es kein Tagesbild - dann bleibt die Seite beim bisherigen Diagramm.
+  // Im Bild steht der Preis, der den Plan treibt (`bildPreisArt`): ändert sich
+  // der Bezugspreis über den Tag, er; ist er flach, bei Direktvermarktung die
+  // Börse, sonst keiner (ein flacher Preis erklärt nichts, vgl. D1).
+  const tagHeute = useMemo(
+    () => tagModell({ slots: filmSlots, slotMinutes, now, plantKind: site.plantKind, tarifArt: site.tarifArt ?? null }),
+    [filmSlots, slotMinutes, now, site.plantKind, site.tarifArt],
+  );
+  // Der AUFBAU der Seite hängt an heute: ohne Warum-Ebene heute gibt es kein
+  // Tagesbild und damit auch keinen Tagesschalter.
+  const hasTagesbild = tagHeute.hatWarum && tagHeute.slots.length > 0;
+  const morgenMs = tagDatum(now, 'morgen').getTime();
+  const tagMorgen = useMemo(
+    () =>
+      tagModell({
+        slots,
+        slotMinutes,
+        now,
+        plantKind: site.plantKind,
+        tarifArt: site.tarifArt ?? null,
+        tag: new Date(morgenMs),
+      }),
+    [slots, slotMinutes, now, site.plantKind, site.tarifArt, morgenMs],
+  );
+  const morgenGeplant = tagMorgen.hatWarum && tagMorgen.slots.length > 0;
+  const gesternSlots = gestern?.iso === gesternIso ? (gestern.plan?.slots ?? KEINE_SLOTS) : KEINE_SLOTS;
+  const tagGestern = useMemo(
+    () =>
+      tagModell({
+        slots: gesternSlots,
+        slotMinutes,
+        now,
+        plantKind: site.plantKind,
+        tarifArt: site.tarifArt ?? null,
+        tag: tagDatum(now, 'gestern'),
+      }),
+    [gesternSlots, slotMinutes, now, site.plantKind, site.tarifArt],
+  );
+  const gesternPhasen = useMemo(() => phases(gesternSlots, slotMinutes), [gesternSlots, slotMinutes]);
+  const tag = tagArt === 'gestern' ? tagGestern : tagArt === 'morgen' ? tagMorgen : tagHeute;
+  const tagHatBild = tag.hatWarum && tag.slots.length > 0;
+  // „Was bringt es heute?" (E6): die Steuerungs-Aussage der Erlöse-Welt aus
+  // `GET /sites/{id}/earnings?range=day`, FAIL-SOFT wie Wetter und Verbraucher
+  // (auch gegen eine api-Attrappe ohne die Methode) - ohne Antwort entfällt
+  // nur diese eine Antwort. Der laufende Tag ist ein Zwischenstand; er wird
+  // alle fünf Minuten neu geholt, nicht bei jedem Live-Takt.
+  const [tagesGeld, setTagesGeld] = useState<SiteEarnings | null>(null);
+  const heuteIso = isoDate(now);
+  const geldTakt = Math.floor(now.getTime() / GELD_TAKT_MS);
+  // Eine andere Anlage oder ein neuer Tag: die alte Aussage gilt nicht mehr.
+  // Die Auffrischung alle fünf Minuten leert dagegen nicht (kein Flackern).
+  useEffect(() => {
+    setTagesGeld(null);
+  }, [siteId, heuteIso]);
+  useEffect(() => {
+    if (!hasTagesbild) return;
+    let active = true;
+    try {
+      api
+        .siteEarnings(siteId, 'day', heuteIso)
+        .then((m) => active && setTagesGeld(m))
+        .catch(() => active && setTagesGeld(null));
+    } catch {
+      if (active) setTagesGeld(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId, heuteIso, geldTakt, hasTagesbild]);
+  const speicher = useMemo(
+    () => (tagesGeld ? speicherAussage(tagesGeld, { now }) : null),
+    [tagesGeld, now],
+  );
+  const speicherGestern = useMemo(
+    () => (gesternGeld ? speicherAussage(gesternGeld, { now }) : null),
+    [gesternGeld, now],
+  );
+  // „Alle Werte": das bisherige Diagramm als Dialog - zum Nachschlagen, nicht
+  // als zweites Bild desselben Tages auf der Seite.
+  const [alleWerteOpen, setAlleWerteOpen] = useState<boolean>(false);
+  // „Worauf Ihr Plan achtet": gepflegte Werte der Anlage und Felder des Laufs,
+  // dazu die Hinweise, die früher in „Mehr erklären" standen.
+  const annahmen = useMemo(
+    () =>
+      planAnnahmen({
+        planVon: plan?.generatedAt ? new Date(plan.generatedAt) : null,
+        slotMinutes,
+        plantKind: site.plantKind,
+        tarifArt: site.tarifArt ?? null,
+        tarifParamCtKwh: site.tarifParamCtKwh ?? null,
+        netzladenErlaubt: site.netzladenErlaubt ?? null,
+        untergrenzePct: plan?.effectiveFloorSocPct ?? null,
+        einspeisegrenzeKw: site.maxFeedInKw ?? null,
+        lastspitzeZielKw: plan?.peakTargetKw ?? null,
+        fallback14a: hasWhy && plan?.fallback14a === true,
+        lage,
+        horizont: horizonNote,
+        vorhersage: vorhersageZeile(vorhersage),
+        prognoseSeite: showTechnicalLayer() ? `#/anlage/${site.id}/prognose` : null,
+      }),
+    [plan, slotMinutes, site.id, site.plantKind, site.tarifArt, site.tarifParamCtKwh, site.netzladenErlaubt, site.maxFeedInKw, hasWhy, lage, horizonNote, vorhersage],
+  );
+  const planVon = plan?.generatedAt
+    ? new Date(plan.generatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  // Das Warum einer Viertelstunde des Tagesbilds liest den JÜNGSTEN Lauf, wenn
+  // er sie trägt (dieselben Zahlen wie das Gerät, mit den Lauf-Fakten), sonst
+  // den Tages-Splice, der sie damals geplant hat.
+  const tagesSlotImLauf = (i: number) => {
+    const s = tag.slots[i];
+    return s && hasWhy ? indexImLauf(s.start, slots) : -1;
+  };
+  const slotFuerWarum = (i: number) => {
+    const li = tagesSlotImLauf(i);
+    return li >= 0 ? slots[li] : (tag.slots[i] ?? null);
+  };
+  const warumPanel = (i: number, schliessen: () => void) => {
+    const li = tagesSlotImLauf(i);
+    if (li >= 0) {
+      return (
+        <FahrplanWhyPanel
+          phases={whyPhases}
+          slots={slots}
+          plantKind={site.plantKind}
+          slotMinutes={slotMinutes}
+          selectedPhase={null}
+          selectedSlot={li}
+          curtail={curtail}
+          planFacts={plan}
+          grenzen={grenzen}
+          siteId={site.id}
+          currentSlotIndex={activeSlotIdx}
+          ohneGeld
+          onClose={schliessen}
+        />
+      );
+    }
+    // Nicht im jüngsten Lauf: der Splice, der die Viertelstunde geplant hat -
+    // heute der des Tages, gestern der des Vortags.
+    const s = tag.slots[i];
+    const quelle = tagArt === 'gestern' ? gesternSlots : filmSlots;
+    const fi = s ? indexImLauf(s.start, quelle) : -1;
+    if (fi < 0) return null;
+    return (
+      <FahrplanWhyPanel
+        phases={tagArt === 'gestern' ? gesternPhasen : filmPhases}
+        slots={quelle}
+        plantKind={site.plantKind}
+        slotMinutes={slotMinutes}
+        selectedPhase={null}
+        selectedSlot={fi}
+        curtail={curtail}
+        grenzen={grenzen}
+        siteId={site.id}
+        currentSlotIndex={tagArt === 'heute' ? activeFilmIdx : -1}
+        ohneGeld
+        onClose={schliessen}
+      />
+    );
+  };
+
   const closePanel = () => {
     setSelPhase(null);
     setSelSlot(null);
@@ -1004,6 +1314,7 @@ export function FahrplanSection({ site }: { site: Site }) {
       grenzen={grenzen}
       siteId={site.id}
       currentSlotIndex={activeFilmIdx}
+      ohneGeld={hasTagesbild}
       onClose={closePanel}
     />
   ) : null;
@@ -1020,6 +1331,7 @@ export function FahrplanSection({ site }: { site: Site }) {
       grenzen={grenzen}
       siteId={site.id}
       currentSlotIndex={activeSlotIdx}
+      ohneGeld={hasTagesbild}
       onClose={closePanel}
     />
   ) : null;
@@ -1051,127 +1363,232 @@ export function FahrplanSection({ site }: { site: Site }) {
     );
   }
 
-  return (
-    <>
-      {/* ---- Block 1: die Status-Zeile (kompakt) ---- */}
-      <JetztKompakt view={held} />
+  const staleBlock = staleNote ? (
+    <div className="vp-alert vp-alert-warn" role="status" style={{ margin: '0 0 var(--vp-space-4)' }}>
+      {staleNote}
+    </div>
+  ) : null;
 
-      {/* ---- Block 2: Warnungen ---- Ein Plan älter als ~2 h ist nicht der Plan
-          von heute; das steht direkt unter dem Status, nie kondensiert. */}
-      {staleNote && (
+  // Die Diagramm-Karte der bisherigen Seite: ohne Warum-Ebene der Held, mit
+  // Tagesbild der Inhalt von „Alle Werte" (dann ohne eigene Geldzahl - die
+  // Seite nennt sie in der Antwort „Was bringt es heute?", Messlatte E6).
+  const diagramm = (
+    <>
+      <ScheduleChart
+        plan={plan!}
+        showPhaseBand
+        onSlotClick={
+          hasWhy
+            ? (i) => {
+                setSelSlot((cur) => (cur === i ? null : i));
+                setSelPhase(null);
+              }
+            : undefined
+        }
+        selectedIndex={hasWhy ? selSlot : undefined}
+        consumers={verbraucherAktiv ? verbraucher : undefined}
+        plantKind={site.plantKind}
+        // Der Zielwert der Lastspitzen-Kappung gehört zum Plan, den er
+        // begrenzt (Verlauf-Rework E1) — ohne Modul bleibt er null, nie 0.
+        peakTargetKw={plan?.peakTargetKw ?? null}
+        ohneGeld={hasTagesbild}
+      />
+      {selSlot != null && slotPanel}
+      {/* §14.11: die Verbraucher des angetippten Slots - Ziel + Grund aus
+          der EINEN getesteten reason_code-Tabelle, Pflicht als Wort +
+          Schloss-Icon, nie nur Farbe. Ohne Verbraucher rendert nichts. */}
+      {selSlot != null && verbraucherAktiv && (
+        <VerbraucherSlotCard infos={consumerSlotInfos(verbraucher, selSlot)} />
+      )}
+    </>
+  );
+
+  const fahrplanKopf = (
+    <div className="vp-jetzt-kick">
+      <span className="vp-card-label">Der Fahrplan Ihres Speichers</span>
+      <InfoTip title="Wie der Fahrplan berechnet wird">{FAHRPLAN_BERECHNUNG}</InfoTip>
+    </div>
+  );
+
+  // P7: direkt über dem Bild, weil genau dort die leeren Speicher-Balken bzw.
+  // die fehlende Ladestandsfläche stehen.
+  const ladestandHinweise = (
+    <>
+      {ohneLadestand && (
         <div className="vp-alert vp-alert-warn" role="status" style={{ margin: '0 0 var(--vp-space-4)' }}>
-          {staleNote}
+          {KEIN_LADESTAND_NOTE}
         </div>
       )}
+      {herkunftNote && (
+        <p className="vp-note" style={{ margin: '0 0 var(--vp-space-3)' }}>{herkunftNote}</p>
+      )}
+    </>
+  );
 
-      {/* ---- Block 3: die Lage-Zeile (kompakt) ---- EINE „Heute und morgen"-Zeile,
-          dauerhaft sichtbar; die volle Lage wohnt in „Mehr erklären". */}
-      {lage && <FahrplanLage view={lage} variant="kompakt" />}
+  // Der Film des Tages (F3) - mit Tagesbild die STATIONEN unter den
+  // Antworten, sonst in „Mehr erklären".
+  const stationen = hasFilm ? (
+    <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
+      <div className="vp-jetzt-kick">
+        {/* „Der ganze Tag", sobald der Splice die Vormittags-Phasen trägt -
+            sonst die bisherige Beschriftung. EIN Abzeichen für die ganze
+            Karte: hier stehen nur geplante Zahlen, auch in der Vergangenheit. */}
+        <span className="vp-card-label">{filmKicker(film)}</span>
+        <ProvBadge art="geplant" />
+      </div>
+      <TagesFilm
+        view={film}
+        selected={selPhase}
+        onSelect={(i) => {
+          setSelPhase((cur) => (cur === i ? null : i));
+          setSelSlot(null);
+        }}
+        panel={selPhase != null ? phasePanel : null}
+        ohneGeld={hasTagesbild}
+      />
+      <p className="vp-note" style={{ margin: 'var(--vp-space-3) 0 0' }}>
+        Phase antippen: warum der Speicher das tut, mit den Zahlen dahinter.
+        Was heute wirklich passiert ist, steht unter{' '}
+        <a href={`#/anlage/${site.id}/messwerte`}>Messwerte</a>.
+      </p>
+    </Card>
+  ) : null;
 
-      {/* ---- Block 4: das Diagramm als HELD (Variante A+C) ---- Desktop UND Mobil
-          offen, mit dem Phasen-Band als dritter Chart-Spur. Ein Tipp auf eine
-          Band-/Preis-/Leistungs-Spalte öffnet dasselbe Warum-Panel (das
-          Klick-Modell mappt jede Spalte auf ihren Slot). */}
-      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <div className="vp-jetzt-kick">
-          <span className="vp-card-label">Der Fahrplan Ihres Speichers</span>
-          <InfoTip title="Wie der Fahrplan berechnet wird">
-            Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet -
-            für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell
-            plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden:
-            laden bei günstigem Strom oder PV-Überschuss, entladen wenn Strom teuer ist,
-            Eigenverbrauch maximieren. Eingaben je Anlage sind die Börsen-Day-Ahead-Preise,
-            die Last- und PV-Prognose, der aktuelle Ladestand, die Batteriegrenzen und die
-            §14a-Netzgrenze. Weil jede Anlage eigene Eingaben hat, erhält sie ihren eigenen
-            Fahrplan.
-          </InfoTip>
-        </div>
-        <ChartSubtitle>
-          Oben der Preis, unten Ihr Speicher, darunter das Phasen-Band -
-          tippen Sie eine Spalte fürs Warum.
-        </ChartSubtitle>
-        {/* P7: direkt über dem Diagramm, weil genau dort die leeren
-            Speicher-Balken und die fehlende Ladestandslinie stehen. */}
-        {ohneLadestand && (
-          <div
-            className="vp-alert vp-alert-warn"
-            role="status"
-            style={{ margin: '0 0 var(--vp-space-4)' }}
-          >
-            {KEIN_LADESTAND_NOTE}
+  return (
+    <>
+      {/* ---- Block 1: die Status-Zeile (kompakt) ---- Mit Tagesbild steht sie
+          unter den Antworten, sobald der Zeiger auf „jetzt" steht (E1/E9: die
+          Uhr ganz oben, alle Antworten im ersten Bildschirm). */}
+      {!hasTagesbild && <JetztKompakt view={held} />}
+
+      {/* ---- Block 2: Warnungen ---- Ein Plan älter als ~2 h ist nicht der Plan
+          von heute; das steht ganz oben, nie kondensiert. Mit Tagesbild unter
+          dem Tagesschalter - und nur für heute und morgen (beide kommen aus
+          diesem Lauf; gestern ist der Plan, wie er damals galt). */}
+      {!hasTagesbild && staleBlock}
+
+      {hasTagesbild ? (
+        <>
+          {/* ---- Der TAGESSCHALTER (E2 = A) ---- direkt unter den Reitern, in
+              der Form des Tag-Segments der Preise: EIN Muster im Bereich. */}
+          <div className="vp-tb-tage">
+            <TagSegment
+              wahl={tagesSchalter(now, morgenGeplant)}
+              wert={tagArt}
+              onWert={waehleTag}
+              voll={isPhone}
+            />
           </div>
-        )}
-        {herkunftNote && (
-          <p className="vp-note" style={{ margin: '0 0 var(--vp-space-3)' }}>{herkunftNote}</p>
-        )}
-        <ScheduleChart
-          plan={plan!}
-          showPhaseBand
-          onSlotClick={
-            hasWhy
-              ? (i) => {
-                  setSelSlot((cur) => (cur === i ? null : i));
-                  setSelPhase(null);
-                }
-              : undefined
-          }
-          selectedIndex={hasWhy ? selSlot : undefined}
-          consumers={verbraucherAktiv ? verbraucher : undefined}
-          plantKind={site.plantKind}
-        />
-        {selSlot != null && slotPanel}
-        {/* §14.11: die Verbraucher des angetippten Slots - Ziel + Grund aus
-            der EINEN getesteten reason_code-Tabelle, Pflicht als Wort +
-            Schloss-Icon, nie nur Farbe. Ohne Verbraucher rendert nichts. */}
-        {selSlot != null && verbraucherAktiv && (
-          <VerbraucherSlotCard infos={consumerSlotInfos(verbraucher, selSlot)} />
-        )}
-      </Card>
+          {tagArt !== 'gestern' && staleBlock}
+          {/* ---- Block 3: das TAGESBILD im Aufbau des Prototyps (E1/E10) ----
+              Warnungen der Jetzt-Aussage stehen ÜBER dem Bild (K10) - sie
+              gelten nur heute. Das Tagesbild trägt Kopfsatz, Jetzt-Band bzw.
+              Uhr, Antworten, Waage, Stationen und „Worauf Ihr Plan achtet". */}
+          {tagArt === 'heute' && <JetztWarnungen view={held} />}
+          {tagArt !== 'gestern' && ladestandHinweise}
+          {tagHatBild ? (
+            <FahrplanTagesbild
+              tag={tag}
+              plantKind={site.plantKind}
+              speicher={tagArt === 'heute' ? speicher : tagArt === 'gestern' ? speicherGestern : null}
+              siteId={site.id}
+              slotFuerWarum={slotFuerWarum}
+              warumPanel={warumPanel}
+              phasenPanel={(phaseIndex, schliessen) => (
+                <FahrplanWhyPanel
+                  phases={tag.phasenRoh}
+                  slots={tag.slots}
+                  plantKind={site.plantKind}
+                  slotMinutes={slotMinutes}
+                  selectedPhase={phaseIndex}
+                  selectedSlot={null}
+                  curtail={curtail}
+                  grenzen={grenzen}
+                  siteId={site.id}
+                  currentSlotIndex={tag.jetztIndex}
+                  ohneGeld
+                  onClose={schliessen}
+                />
+              )}
+              nachtragHref={einstellungenHash(site.id, 'speicher')}
+              // Die Ausführung spricht nur über jetzt; „Plan von …", die
+              // Annahmen und „Alle Werte" beschreiben den jüngsten Lauf - er
+              // trägt heute und morgen, nicht gestern.
+              held={tagArt === 'heute' ? held : null}
+              planVon={tagArt === 'gestern' ? null : planVon}
+              annahmen={tagArt === 'gestern' ? KEINE_ANNAHMEN : annahmen}
+              berechnung={FAHRPLAN_BERECHNUNG}
+              onAlleWerte={tagArt === 'gestern' ? null : () => setAlleWerteOpen(true)}
+              morgen={tagArt === 'heute' ? film.tomorrowSummary : null}
+              art={tagArt}
+              zeigerStart={tagArt === 'heute' ? null : minuteDesTages(now)}
+              autoEinfuehrung={tagArt === 'heute'}
+            />
+          ) : (
+            <TagOhneBildKarte
+              zustand={
+                tagOhneBild(
+                  tagArt,
+                  gestern?.iso === gesternIso ? { laedt: false, fehler: gestern.fehler } : { laedt: true, fehler: false },
+                  now,
+                ) ?? { titel: '', text: null, laedt: false, erneut: false, mitMesswerte: false }
+              }
+              siteId={site.id}
+              onErneut={() => setGesternVersuch((v) => v + 1)}
+            />
+          )}
 
-      {/* ---- Block 5: die Euro-Zeile (kompakt) ---- */}
-      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <div className="vp-jetzt-kick">
-          <span className="vp-card-label">Ihr Vorteil</span>
-          <ProvBadge art="geplant" />
-        </div>
-        {ohneLadestand ? (
-          /* P7: „kein Fahrplan" wäre hier falsch - es GIBT einen Fahrplan, er
-             plant nur den Speicher nicht. Der Grund steht an der Stelle, an der
-             sonst die Euro-Zahl stünde, damit die fehlende Zahl erklärt ist und
-             nicht als Fehler gelesen wird. */
-          <p className="vp-note" style={{ margin: 0 }}>{KEIN_LADESTAND_NOTE}</p>
-        ) : savingsToday == null ? (
-          <p className="vp-note" style={{ margin: 0 }}>
-            Für heute liegt noch kein Fahrplan vor.
-          </p>
-        ) : (
-          <p className="vp-fp-euro">
-            {/* Sign-honest wie überall im Portal: ein Plus wird ausgeschrieben,
-                ein Minus trägt sein eigenes Zeichen (`eurAmount`). */}
-            <b>
-              Heute geplant:{' '}
-              {savingsToday > 0 ? `+${eurAmount(savingsToday)}` : eurAmount(savingsToday)}
-            </b>
-            <span className="sub">
-              gegenüber einem Betrieb ohne Speicher
-              <InfoTip title="Wie diese Zahl zu lesen ist">
-                Verglichen wird mit einem Betrieb ganz ohne Batteriespeicher.
-                Energie, die der Fahrplan über den Tag hinaus im Speicher lässt,
-                ist hier noch nicht mitgezählt: sie wird mit ihrem erwarteten
-                Nutzen am Folgetag bewertet und als eigene Zeile ausgewiesen. An
-                Tagen, an denen viel Energie für den Folgetag gespeichert wird,
-                kann die Zahl deshalb klein oder sogar negativ sein – der
-                gespeicherte Wert kommt morgen zurück.
-              </InfoTip>
-            </span>
-          </p>
-        )}
-        {banked && <p className="vp-fp-euro-note">{banked}</p>}
-      </Card>
+          {/* ---- „Alle Werte" ---- das bisherige Diagramm mit allen Spuren als
+              Dialog zum Nachschlagen. Es entsteht ERST beim Öffnen: ein
+              ECharts-Canvas in einem geschlossenen Kasten misst 0 × 0. */}
+          <Modal
+            open={alleWerteOpen}
+            onClose={() => setAlleWerteOpen(false)}
+            title={verbraucherAktiv ? 'Alle Werte im Diagramm, mit Verbrauchern' : 'Alle Werte im Diagramm'}
+          >
+            {alleWerteOpen && (
+              <>
+                <ChartSubtitle>
+                  Oben der Preis, unten Ihr Speicher, darunter das Phasen-Band -
+                  tippen Sie eine Spalte fürs Warum.
+                </ChartSubtitle>
+                {diagramm}
+                {/* Die Energiesummen sind Diagramm-KONTEXT, kein Seiten-Einstieg. */}
+                <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+                  Über den ganzen Planungszeitraum: {fmtNum(chargeKwh, 'kWh')} geplantes Laden,{' '}
+                  {fmtNum(dischargeKwh, 'kWh')} geplantes Entladen.
+                </p>
+                <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+                  Kostenoptimaler Batterie-Fahrplan in 15-Minuten-Schritten aus Börsenpreisen
+                  und Last-/PV-Prognose{generatedAt ? `, erstellt am ${generatedAt} Uhr` : ''}.
+                  Ihr Gerät begrenzt jeden Sollwert zusätzlich lokal (u. a. §14a EnWG).
+                </p>
+              </>
+            )}
+          </Modal>
+        </>
+      ) : (
+        /* ---- Ohne Warum-Ebene: das Diagramm als HELD (Variante A+C) ----
+           Desktop UND Mobil offen, mit dem Phasen-Band als dritter Spur. */
+        <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
+          {fahrplanKopf}
+          <ChartSubtitle>
+            Oben der Preis, unten Ihr Speicher, darunter das Phasen-Band -
+            tippen Sie eine Spalte fürs Warum.
+          </ChartSubtitle>
+          {/* Die Lage-Zeile - V-02 (UX-Review 24.09.2026): als ruhige Zeile
+              IN der Diagramm-Karte; die volle Lage wohnt in „Mehr erklären". */}
+          {lage && <FahrplanLage view={lage} variant="zeile" />}
+          {ladestandHinweise}
+          {diagramm}
+        </Card>
+      )}
 
-      {/* ---- Block 6: „Mehr erklären" (Standard ZU) ---- die volle Lage, der
-          Film des Tages und alle Diagramm-Fußnoten. Nichts gelöscht, nur
-          umsortiert. */}
+      {/* ---- „Mehr erklären" (Standard ZU) ---- NUR ohne Tagesbild: die volle
+          Lage, „Ihr Vorteil", der Film und alle Fußnoten. Mit Tagesbild stehen
+          Lage und Hinweise in „Worauf Ihr Plan achtet", das Diagramm unter
+          „Alle Werte" - eine zweite Fassung darunter wäre doppelt. */}
+      {!hasTagesbild && (
       <Card padding="lg" radius="lg">
         <div className="vp-fp-fold-head">
           <button
@@ -1187,37 +1604,58 @@ export function FahrplanSection({ site }: { site: Site }) {
 
         {mehrOpen && (
           <>
+            {/* ---- Ihr Vorteil ---- nur OHNE Tagesbild (der Aufklapper steht
+                nur dort): mit Tagesbild ist die Geldzahl der Seite die Antwort
+                „Was bringt es heute?" gegen DENSELBEN Speicher ohne smarte
+                Steuerung (E6). Eine zweite Zahl gegen „ohne Speicher" wäre
+                eine zweite Wahrheit. */}
+            {(
+              <section className="vp-fp-vorteil" aria-label="Ihr Vorteil">
+                <div className="vp-jetzt-kick">
+                  <span className="vp-card-label">Ihr Vorteil</span>
+                  <ProvBadge art="geplant" />
+                </div>
+                {ohneLadestand ? (
+                  /* P7: „kein Fahrplan" wäre hier falsch - es GIBT einen Fahrplan, er
+                     plant nur den Speicher nicht. Der Grund steht an der Stelle, an der
+                     sonst die Euro-Zahl stünde, damit die fehlende Zahl erklärt ist und
+                     nicht als Fehler gelesen wird. */
+                  <p className="vp-note" style={{ margin: 0 }}>{KEIN_LADESTAND_NOTE}</p>
+                ) : savingsToday == null ? (
+                  <p className="vp-note" style={{ margin: 0 }}>
+                    Für heute liegt noch kein Fahrplan vor.
+                  </p>
+                ) : (
+                  <p className="vp-fp-euro">
+                    {/* Sign-honest wie überall im Portal: ein Plus wird ausgeschrieben,
+                        ein Minus trägt sein eigenes Zeichen (`eurAmount`). */}
+                    <b>
+                      Heute geplant:{' '}
+                      {savingsToday > 0 ? `+${eurAmount(savingsToday)}` : eurAmount(savingsToday)}
+                    </b>
+                    <span className="sub">
+                      gegenüber einem Betrieb ohne Speicher
+                      <InfoTip title="Wie diese Zahl zu lesen ist">
+                        Verglichen wird mit einem Betrieb ganz ohne Batteriespeicher.
+                        Energie, die der Fahrplan über den Tag hinaus im Speicher lässt,
+                        ist hier noch nicht mitgezählt: sie wird mit ihrem erwarteten
+                        Nutzen am Folgetag bewertet und als eigene Zeile ausgewiesen. An
+                        Tagen, an denen viel Energie für den Folgetag gespeichert wird,
+                        kann die Zahl deshalb klein oder sogar negativ sein – der
+                        gespeicherte Wert kommt morgen zurück.
+                      </InfoTip>
+                    </span>
+                  </p>
+                )}
+                {banked && <p className="vp-fp-euro-note">{banked}</p>}
+              </section>
+            )}
+
             {/* Die vollständige Lage heute & morgen (Bedingung + Quelle). */}
             {lage && <FahrplanLage view={lage} variant="voll" />}
 
-            {/* Der Film des Tages (F3): der GANZE Tag, die gelaufenen Phasen
-                abgehakt. */}
-            {hasFilm && (
-              <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                <div className="vp-jetzt-kick">
-                  {/* „Der ganze Tag", sobald der Splice die Vormittags-Phasen
-                      trägt - sonst die bisherige Beschriftung. EIN Abzeichen für
-                      die ganze Karte: hier stehen nur geplante Zahlen, auch in der
-                      Vergangenheit. */}
-                  <span className="vp-card-label">{filmKicker(film)}</span>
-                  <ProvBadge art="geplant" />
-                </div>
-                <TagesFilm
-                  view={film}
-                  selected={selPhase}
-                  onSelect={(i) => {
-                    setSelPhase((cur) => (cur === i ? null : i));
-                    setSelSlot(null);
-                  }}
-                  panel={selPhase != null ? phasePanel : null}
-                />
-                <p className="vp-note" style={{ margin: 'var(--vp-space-3) 0 0' }}>
-                  Phase antippen: warum der Speicher das tut, mit den Zahlen dahinter.
-                  Was heute wirklich passiert ist, steht unter{' '}
-                  <a href={`#/anlage/${site.id}/messwerte`}>Messwerte</a>.
-                </p>
-              </Card>
-            )}
+            {/* Der Film des Tages - ohne Tagesbild hier, sonst als Stationen im Tagesbild. */}
+            {stationen}
 
             {/* Die Diagramm-Fußnoten. */}
             {/* Die Energiesummen sind Diagramm-KONTEXT, kein Seiten-Einstieg. */}
@@ -1260,6 +1698,7 @@ export function FahrplanSection({ site }: { site: Site }) {
           </>
         )}
       </Card>
+      )}
     </>
   );
 }

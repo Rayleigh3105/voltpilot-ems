@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"log/slog"
 	"math"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -71,18 +73,61 @@ func nativeDutyFor(p *plan.Plan, now time.Time) string {
 //
 // It demands the SAME freshness window the idle-slot authorization uses plus a
 // held readback - a native mode nobody can currently observe is not one.
-func nativeEvidence(control *state.ControlInfo, now time.Time, window time.Duration) (proven bool, gridChargeBlocked *bool) {
+//
+// The grid-charge answer has two sources and the MODE picks one, never both:
+// a cycle that ran the native primitive counts only the answer read back in
+// the device's own mode; any other cycle may carry the executor's read from
+// BEFORE the hand-over (native_precondition). That second source is what lets
+// the intent stand on an EEG site until the device can be handed over at all -
+// guards/nativemode.go step 8 says what it may and may not open.
+func nativeEvidence(control *state.ControlInfo, now time.Time, window time.Duration) (proven bool, provenIntent string, gridChargeBlocked *bool) {
 	if !idleReadbackHealthy(control, now, window) {
-		return false, nil
+		return false, "", nil
 	}
-	if control.Mode != batteryModeNative {
-		return false, nil
+	answer := control.NativePreconditionGridChargeBlocked
+	if control.Mode == batteryModeNative {
+		proven, answer = true, control.NativeGridChargeBlocked
+		provenIntent = control.NativeIntent
 	}
-	if control.NativeGridChargeBlocked != nil {
-		v := *control.NativeGridChargeBlocked
+	if answer != nil {
+		v := *answer
 		gridChargeBlocked = &v
 	}
-	return true, gridChargeBlocked
+	return proven, provenIntent, gridChargeBlocked
+}
+
+// nativeLevers converts Layer 1's report; nil stays nil ("not reported" is a
+// different sentence than "reported: nothing certified").
+func nativeLevers(control *state.ControlInfo) *guards.NativeLevers {
+	if control == nil || control.NativeCapabilities == nil {
+		return nil
+	}
+	c := control.NativeCapabilities
+	return &guards.NativeLevers{
+		Intents: append([]string{}, c.Intents...), Window: c.Window, Persistent: c.Persistent,
+	}
+}
+
+// nativePlanIntent is Box ① (guards/intent.go) on this slot: the cloud flags
+// through the SAME accessors the box's own in-slot rules key on, so the device
+// path and the box path can never disagree about what the slot asks for.
+//
+// The box rule deficit_cover is deliberately NOT handed to the device in K4b:
+// it is armed by a MEASUREMENT, so it would switch the device inside a slot,
+// while §6.6 switches only at slot boundaries where the intent changes. It
+// stays the box's (damped) rule; the flags alone are slot-stable.
+func nativePlanIntent(p *plan.Plan, now time.Time, l guards.Limits) guards.Intent {
+	planned, _, active := p.ActiveSetpoint(now)
+	if !active {
+		return guards.Intent{}
+	}
+	return guards.IntentFor(planned, guards.IntentFlags{
+		ChargeFromSurplusOnly:  p.ActiveChargeFromSurplusOnly(now),
+		ChargeSurplusToBattery: p.ActiveChargeSurplusToBattery(now),
+		CoverLoadFromBattery:   p.ActiveCoverLoadFromBattery(now),
+		LimitDischargeToLoad:   p.ActiveLimitDischargeToLoad(now),
+		UnplannedLoadDischarge: p.ActiveUnplannedLoadDischarge(now),
+	}, l.MaxChargeKw, l.MaxDischargeKw)
 }
 
 // nativeDecide runs the supervision for this tick and returns the decision plus
@@ -104,12 +149,33 @@ func (a *Agent) nativeDecide(
 	effectiveFloor *float64,
 	peakTarget *float64,
 	solarOnly bool,
-) (guards.NativeDecision, *state.NativeInfo) {
+	limits guards.Limits,
+	leaderRefusal string,
+) (guards.NativeDecision, *state.NativeInfo, *state.NativeWithheldInfo) {
 	control := a.State.Get().Control
-	proven, gridChargeBlocked := nativeEvidence(control, now, freshWindow)
+	proven, provenIntent, gridChargeBlocked := nativeEvidence(control, now, freshWindow)
+	// K5 (§6.3): the proven primitive's PV side effect, and whether this slot
+	// asks for curtailment anyway (then the side effect is the point).
+	curtailsOwnPv := proven && control != nil && control.NativeCurtailsOwnPv
+	lim := p.ActivePvLimit(now)
+	curtailWanted := lim != nil && *lim >= 0
+	intent := nativePlanIntent(p, now, limits)
+	var window guards.Window
+	if intent.Open() {
+		window = guards.ClipWindow(intent, limits, r, effectiveFloor)
+	}
+	a.mu.Lock()
+	gridKw, battKw := math.NaN(), math.NaN()
+	if a.lastGridKw != nil {
+		gridKw = *a.lastGridKw
+	}
+	if a.lastBattKw != nil {
+		battKw = *a.lastBattKw
+	}
+	a.mu.Unlock()
 
 	_, slotStart, _ := p.ActiveSetpoint(now)
-	dec := a.native.Decide(now, guards.NativeInput{
+	in := guards.NativeInput{
 		Enabled:           a.Cfg.NativeSelfRegulationEnabled,
 		Duty:              nativeDutyFor(p, now),
 		SlotStart:         slotStart,
@@ -124,9 +190,24 @@ func (a *Agent) nativeDecide(
 		SolarOnlyCharge:   solarOnly,
 		GridChargeBlocked: gridChargeBlocked,
 		Proven:            proven,
-	})
+		Intent:            intent.Word,
+		NeedsWindow:       intent.NeedsWindow,
+		Window:            window,
+		Levers:            nativeLevers(control),
+		ProvenIntent:      provenIntent,
+		GridKw:            gridKw,
+		BatteryKw:         battKw,
+		SocMaxPct:         limits.SocMaxPct,
+		// K5 (§6.3): the PV side effect of the proven primitive.
+		ProvenCurtailsOwnPv: curtailsOwnPv,
+		CurtailmentWanted:   curtailWanted,
+		LeaderRefusal:       leaderRefusal,
+	}
+	in.PersistentWriteBudget = a.persistentWriteBudget()
+	dec := a.native.Decide(now, in)
+	a.noteNativeReason(intent.Word, dec)
 	if !dec.Native {
-		return dec, nil
+		return dec, nil, nativeWithheld(dec, intent.Word)
 	}
 	kw := referenceKw
 	if math.IsNaN(kw) || math.IsInf(kw, 0) {
@@ -139,5 +220,75 @@ func (a *Agent) nativeDecide(
 		ReferenceKw: kw,
 		Reason:      dec.Reason,
 		Text:        dec.Text,
+		Intent:      dec.Intent,
+		Kind:        nativeKind(dec.Intent, intent),
+		Mode:        dec.Mode,
+		WindowMinKw: dec.Window.MinKw,
+		WindowMaxKw: dec.Window.MaxKw,
+		Hint:        dec.Hint,
+		HintText:    dec.HintText,
+		WritesToday: dec.WritesToday,
+	}, nil
+}
+
+// nativeKind is the concept letter of what the device executes: the plan's
+// kind where the device carries the plan intent, E_down for the pre-existing
+// cover primitive a Layer 1 without a report hands over.
+func nativeKind(executed string, plan guards.Intent) string {
+	if executed == plan.Word {
+		return plan.Kind
 	}
+	if executed == guards.NativeIntentCoverLoad {
+		return guards.IntentKindCoverLoad
+	}
+	return ""
+}
+
+// nativeWithheld is the snapshot block for a slot that opens a window (or
+// carries the pre-existing duty) which the device does NOT regulate right now.
+// A take-back must name its cause where the operator looks - not only in a log.
+func nativeWithheld(dec guards.NativeDecision, planIntent string) *state.NativeWithheldInfo {
+	if dec.Native || dec.Reason == "" || dec.Reason == guards.NativeNoDuty || dec.Reason == guards.NativeOff {
+		return nil
+	}
+	return &state.NativeWithheldInfo{Reason: dec.Reason, Text: dec.Text, Intent: planIntent}
+}
+
+// noteNativeReason logs a CHANGED supervision verdict once (the refusal-once
+// rule of the flow side: a standing cause is news only when it changes).
+func (a *Agent) noteNativeReason(planIntent string, dec guards.NativeDecision) {
+	a.mu.Lock()
+	changed := a.nativeLastReason != dec.Reason
+	a.nativeLastReason = dec.Reason
+	a.mu.Unlock()
+	if !changed || dec.Reason == guards.NativeNoDuty {
+		return
+	}
+	slog.Info("wechselrichter-automatik", "reason", dec.Reason, "intent", dec.Intent,
+		"plan_intent", planIntent, "text", dec.Text)
+}
+
+// controlProfileDevice is the selected inverter as the control profiles bind
+// it (catalog/control-profiles, K7): catalog brand, model and register-map
+// family plus the control surface Layer 1 reports driving.
+func (a *Agent) controlProfileDevice() controlprofile.Device {
+	var d controlprofile.Device
+	a.invMu.Lock()
+	if a.inv != nil {
+		d.Brand, d.Model, d.Family = a.inv.Brand, a.inv.Model, a.inv.Family
+	}
+	a.invMu.Unlock()
+	if c := a.State.Get().Control; c != nil {
+		d.ControlPath = c.ControlPath
+	}
+	return d
+}
+
+// persistentWriteBudget is the day budget of a persistent lever the selected
+// device's control profile states (0 = none; guards.NativeMode then keeps its
+// Vorgabe of 20, concept §6.6 F12). The profile only sizes the budget: whether
+// the lever writes persistent memory at all is Layer 1's certified report.
+func (a *Agent) persistentWriteBudget() int {
+	n, _ := controlprofile.PersistentWritesPerDay(a.controlProfileDevice())
+	return n
 }

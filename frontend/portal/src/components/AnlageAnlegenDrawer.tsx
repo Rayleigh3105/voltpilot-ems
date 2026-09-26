@@ -37,7 +37,11 @@ export function AnlageAnlegenDrawer({
    * step 1; these are location suggestions only).
    */
   existingSites?: Site[];
-  /** Vorbelegter Standort (Knopf „Messanlage anlegen“ im Assistenten „Messen & Auswerten“). */
+  /**
+   * Vorbelegter Standort der neuen Anlage: Knopf „Messanlage anlegen“ im Assistenten
+   * „Messen & Auswerten“ oder „Hinzufügen › Anlage“ im Aufbau eines Standorts.
+   * Ohne ihn entscheidet der Server (bei genau einem Standort belegt er selbst vor).
+   */
   standortId?: string | null;
   /** Das Ende im Modus „nur messen“: ein Knopf zurück zum Wirt statt „Zu den Messstellen“. */
   rueckkehr?: AnlegeRueckkehr | null;

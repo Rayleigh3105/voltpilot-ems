@@ -483,6 +483,37 @@
   text-decoration: underline;
 }
 
+/*
+ * Der Anker des größeren Zeitraums (Konzept k1 E4): Label · Betrag in Tinte,
+ * eine Stufe leiser als die Zahl-Zeile — er ordnet ein, er ist nicht die Zahl.
+ */
+.vp-c-sp-anker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 12px;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  min-width: 0;
+}
+
+.vp-c-sp-anker-label {
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-c-sp-anker-wert {
+  justify-self: end;
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: var(--vp-erl-fw-600, 600);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* Bestand: ein Satz + Chip „Kein Abzug" — kein Betrag in Prosa. */
 .vp-c-sp-bestand {
   display: flex;

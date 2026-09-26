@@ -237,6 +237,10 @@ export function mergeMotion<T extends Record<string, unknown>>(
  * Anlage ohne Ladestand hat eine y-Achse weniger, ein Zeitraum ohne Vergleich
  * eine Legende weniger. Wuerden die MISCHEN, blieben Geister stehen — genau
  * der Grund, aus dem die Flaechen einst `notMerge` gesetzt haben.
+ *
+ * `visualMap` steht NICHT mehr darin (UX-Review V-01): kein Diagramm setzt ihn,
+ * und `echarts.ts` registriert das Bauteil deshalb nicht mehr. Ein Name hier
+ * ohne Registrierung wäre ein Absturz (`chartRegistrierung.test.ts`).
  */
 export const REPLACE_MERGE = [
   'series',
@@ -246,7 +250,6 @@ export const REPLACE_MERGE = [
   'legend',
   'graphic',
   'dataZoom',
-  'visualMap',
   'title',
 ] as const;
 

@@ -85,6 +85,7 @@ public final class BestandAnschluss {
             Map.entry("fronius_solar_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("goe_http_api", new Transport("http", 80, null, Weg.HTTP)),
             Map.entry("shelly_http", new Transport("http", 80, null, Weg.HTTP)),
+            Map.entry("ebyte_modbus_tcp", new Transport("modbus_tcp", 502, 1, Weg.MODBUS)),
             Map.entry("http_local", new Transport("http", null, null, Weg.HTTP_LOCAL)),
             Map.entry("mqtt_local", new Transport("mqtt", null, null, Weg.MQTT_LOCAL)));
 

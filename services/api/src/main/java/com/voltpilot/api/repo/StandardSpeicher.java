@@ -162,15 +162,18 @@ public final class StandardSpeicher {
      * Speicher geführt).
      *
      * <p><b>Start-SoC (Eckpunkt 3, dokumentierte Näherung):</b> am GEMESSENEN
-     * Ladestand des Fensterbeginns, wenn einer vorliegt (der letzte
-     * {@code soc_last_pct}-Rollup-Eimer VOR dem Fenster, 7-Tage-Rückschau -
+     * Ladestand zum Berliner MONATSBEGINN, wenn einer vorliegt (der letzte
+     * {@code soc_last_pct}-Rollup-Eimer VOR dem 1., 00:00, 7-Tage-Rückschau -
      * die {@code storageBank}-Anker-Disziplin), sonst am SoC-Boden wie in der
-     * Simulation. Für lange Fenster ({@code range=all}, Jahr) wäscht sich der
-     * Start heraus und der Boden entspricht exakt dem Simulations-Modell; für
-     * TAGES-Fenster ist der gemessene Stand der ehrliche Anker - beide
-     * Strategien treten aus derselben gemessenen Vergangenheit an, statt dem
-     * sturen Speicher einen leeren Morgen anzudichten, den die echte Anlage
-     * nicht hatte. Der Start wird wie in {@code greedy_dispatch} in das Band
+     * Simulation. Beide Strategien treten so einmal im Monat aus derselben
+     * gemessenen Vergangenheit an, statt dem sturen Speicher einen leeren
+     * Morgen anzudichten, den die echte Anlage nicht hatte. Danach führt der
+     * sture Speicher seinen EIGENEN Ladestand über jede Mitternacht (Definition
+     * A, Captain 24.09.2026): ein Tag, der am Stand der gesteuerten Anlage neu
+     * begänne, schenkte der Steuerung jeden Übertrag über Mitternacht. Wo der
+     * Walk anfängt und neu verankert, entscheidet
+     * {@code EarningsRepository.speicherWalk}; diese Klasse kennt nur einen
+     * Start. Der Start wird wie in {@code greedy_dispatch} in das Band
      * {@code [floor, max]} geklemmt.
      */
     public static final class Walk {
@@ -219,7 +222,7 @@ public final class StandardSpeicher {
             return speicherEur;
         }
 
-        /** The reference battery's SoC after the last slot (kWh; for tests). */
+        /** The reference battery's SoC after the last slot (kWh) - the Vergleichsspeicher-Stand. */
         public double socKwh() {
             return socKwh;
         }

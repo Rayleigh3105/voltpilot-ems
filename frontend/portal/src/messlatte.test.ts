@@ -182,7 +182,8 @@ const KUNDEN_ABLEITUNGEN = [
   'src/portfolioCockpit.ts',
   'src/portfolioHistorie.ts',
   'src/steuerungArea.ts',
-  'src/tagesbild.ts',
+  'src/erloeseSeite.ts',
+  'src/components/erloese/ErloeseKarten.tsx',
   'src/components/erloese/SpeicherKarte.tsx',
   'src/pages/PortfolioErloese.tsx',
 ];

@@ -142,6 +142,9 @@ describe('shortEntityLabel', () => {
     };
     expect(shortEntityLabel({ ...hybrid, role: 'pv' })).toBe('Erzeuger');
     expect(shortEntityLabel({ ...hybrid, role: 'storage' })).toBe('Batteriespeicher');
+    // Its consumer side is the house load it measures - never a second
+    // "Batteriespeicher" row in the component board.
+    expect(shortEntityLabel({ ...hybrid, role: 'consumer' })).toBe('Hausverbrauch');
   });
 
   it('uses the TYPE word for consumers', () => {

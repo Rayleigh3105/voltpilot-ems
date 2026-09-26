@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -52,6 +53,13 @@ const (
 	// test AND the consumer-control executor, internal/shelly) - single
 	// writer, no Node-RED read path. See nodered/SHELLY.md.
 	CommShellyHTTP = "shelly_http"
+	// CommEbyteModbusTCP is an Ebyte M31-U distributed I/O host (digital
+	// inputs + relay outputs, expandable by U-series modules) over Modbus TCP.
+	// Like Shelly the CORE owns the whole socket (source poll, connection test
+	// and the per-channel consumer executor, internal/ebyte) - no Node-RED
+	// read path. The module stack is DISCOVERED from the device, never
+	// configured. See nodered/EBYTE.md.
+	CommEbyteModbusTCP = "ebyte_modbus_tcp"
 	// CommKostalModbus reads a KOSTAL PLENTICORE battery inverter over the
 	// vendor's own Modbus-TCP server (TCP 1502, Unit-ID 71 - NOT the generic 502/1
 	// defaults, which is why this is its own communication like fronius_sunspec):
@@ -96,6 +104,17 @@ func IsSunSpecTCP(comm string) bool {
 	return comm == CommFroniusSunSpec || comm == CommSunSpecTCP
 }
 
+// macPattern is the normalized MAC form an ebyte connection pins.
+var macPattern = regexp.MustCompile(`^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)
+
+// IsCoreOwned reports whether the CORE owns the whole device socket for a
+// communication (reads, connection test and control): such a source never
+// reaches the Node-RED readers, the generic register tools or the measurement
+// runtime - a second path to the same device would break single-writer.
+func IsCoreOwned(comm string) bool {
+	return comm == CommShellyHTTP || comm == CommEbyteModbusTCP
+}
+
 // Brand ids.
 const (
 	BrandDeye          = "deye"
@@ -114,6 +133,11 @@ const (
 	// never as a primary inverter; the control path is the core executor
 	// (internal/shelly).
 	BrandShelly = "shelly"
+	// BrandEbyte is Chengdu Ebyte's M31-U distributed I/O host: an I/O module
+	// whose relay outputs switch consumers channel by channel and whose digital
+	// inputs are read as device states. Never a primary inverter; the control
+	// path is the core executor (internal/ebyte).
+	BrandEbyte = "ebyte"
 	// BrandKostal is the KOSTAL PLENTICORE BI battery inverter (AC-coupled,
 	// battery-only - the DC side IS the battery, no MPPTs). It is a PRIMARY
 	// inverter: it measures battery power + SoC and, via an attached KOSTAL
@@ -140,6 +164,8 @@ const (
 	defaultFroniusSunSpecPort = 502
 	defaultGoePort            = 80   // go-e Charger local HTTP API v2
 	defaultShellyPort         = 80   // Shelly local HTTP API (both generations)
+	defaultEbytePort          = 502  // Ebyte M31 Modbus TCP server
+	defaultEbyteUnitID        = 1    // Ebyte M31 factory Modbus address
 	defaultKostalPort         = 1502 // KOSTAL PLENTICORE Modbus-TCP server
 	defaultKostalUnitID       = 71   // KOSTAL default Modbus Unit-ID (changeable on the device)
 	defaultSunSpecTCPPort     = 502  // neutral SunSpec Modbus TCP (KACO and every later SunSpec brand)
@@ -187,6 +213,7 @@ const (
 	DeviceTypeInverter    = "inverter"     // Wechselrichter / Speicher
 	DeviceTypeWallbox     = "wallbox"      // Wallbox mit eigener lokaler Schnittstelle
 	DeviceTypeSwitch      = "switch"       // schaltbarer Verbraucher (Relais/Schaltaktor)
+	DeviceTypeIOModule    = "io_module"    // I/O-Modul: Eingaenge lesen, Ausgaenge je Kanal einem Verbraucher zuordnen
 	DeviceTypeMeter       = "meter"        // Zaehler (reserviert, siehe oben)
 	DeviceTypeChargePoint = "charge_point" // OCPP-Ladesaeule (reserviert, siehe oben)
 	DeviceTypeCustom      = "custom"       // Eigenbau/Baukasten (reserviert, siehe oben)
@@ -498,6 +525,10 @@ const (
 	// core detects it per device and persists it (internal/shelly Store), so
 	// one family covers every Shelly relay/plug model.
 	FamShellyHTTP = "shelly_http"
+	// FamEbyteM31 is the single profile of the Ebyte M31-U host: the register
+	// map is documented and identical across the host line, and the module
+	// stack (how many inputs/outputs) is discovered from the device.
+	FamEbyteM31 = "ebyte_m31"
 	// FamKostalPlenticore is the register profile of the KOSTAL PLENTICORE BI
 	// battery-inverter line (official Modbus map, G1/G2 identical for the read
 	// registers used) - nodered/kostal/kostal-decode.js owns the map + decode.
@@ -785,6 +816,36 @@ func shellyModels() []Model {
 	return []Model{
 		{ID: FamShellyHTTP, Label: "Shelly Relais / Schaltaktor", Family: FamShellyHTTP,
 			Note: "Shelly 1/1PM, Plus 1/1PM, Plug S u. a., alle Generationen · Generation und Leistungsmessung werden automatisch erkannt"},
+	}
+}
+
+// ebyteFields describes the M31 connection: host, Modbus-TCP port and unit id.
+// No channel field: the DEVICE is one component, its outputs are assigned to
+// consumers channel by channel afterwards; the stack is discovered.
+func ebyteFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des I/O-Moduls", Type: "text", Required: true,
+			Help: "Die IP des M31 im lokalen Netz (z. B. 192.168.0.70). Werkseinstellung ohne DHCP: 192.168.3.7. Bei DHCP eine Reservierung im Router empfohlen; die Box erkennt das Gerät zusätzlich an seiner MAC-Adresse."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultEbytePort,
+			Help: "Modbus-TCP-Port, werkseitig 502."},
+		{Key: "unit_id", Label: "Modbus-Adresse", Type: "number", Default: defaultEbyteUnitID,
+			Help: "Geräteadresse (DIP-Schalter + Software-Adresse), werkseitig 1."},
+	}
+}
+
+// ebyteFamilies is the single documented M31-U register profile.
+func ebyteFamilies() []Family {
+	return []Family{
+		{ID: FamEbyteM31, Label: "Ebyte M31 Modbus TCP", Note: "Dokumentierte Registerkarte; Erweiterungsmodule werden automatisch erkannt"},
+	}
+}
+
+// ebyteModels offers the bench-proven host. Other M31-U hosts share the
+// register map, but only this one was switched on a real device.
+func ebyteModels() []Model {
+	return []Model{
+		{ID: "m31_axax8080g_u", Label: "M31-AXAX8080G-U (8 Eingänge, 8 Relais)", Family: FamEbyteM31,
+			Note: "Erweiterbar mit U-Serien-Modulen · Eingänge und Ausgänge der Module werden automatisch erkannt"},
 	}
 }
 
@@ -1294,6 +1355,22 @@ func DefaultCatalog() Catalog {
 				// the Node-RED battery controlRoute.
 				ControlTier: ControlTierReadOnly,
 			},
+			{
+				ID:         BrandEbyte,
+				Label:      "Ebyte",
+				DeviceType: DeviceTypeIOModule,
+				Note:       "Ebyte-M31-I/O-Modul: digitale Eingänge lesen, Relais-Ausgänge einzeln Verbrauchern zuordnen. Erweiterungsmodule werden automatisch erkannt.",
+				Models:     ebyteModels(),
+				Families:   ebyteFamilies(),
+				Transports: []Transport{{
+					Communication: CommEbyteModbusTCP,
+					Label:         "Modbus TCP (lokal)",
+					Fields:        ebyteFields(),
+				}},
+				// Tier 0 for the inverter control-path: the outputs switch
+				// CONSUMERS through the core executor (internal/ebyte).
+				ControlTier: ControlTierReadOnly,
+			},
 		},
 	}
 	return resolveCatalog(cat)
@@ -1648,6 +1725,12 @@ type Connection struct {
 	// never configured.
 	Channel int `json:"channel,omitempty"`
 
+	// ebyte_modbus_tcp: the MAC the device answered with at setup
+	// ("00:54:2c:84:9b:90"). With DHCP an address proves no device identity;
+	// the core refuses to read or switch when another MAC answers. Empty =
+	// pinned by the box on first contact (internal/ebyte store).
+	MAC string `json:"mac,omitempty"`
+
 	// fronius_solar_api (InvertGridSign above is shared as the sign escape hatch)
 	InsecureTLS bool `json:"insecure_tls,omitempty"`
 
@@ -1814,6 +1897,10 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// once instead of per-case; the shelly case validates it below).
 	if transport.Communication != CommShellyHTTP {
 		conn.Channel = 0
+	}
+	// The pinned MAC belongs to the Ebyte I/O module only (validated below).
+	if transport.Communication != CommEbyteModbusTCP {
+		conn.MAC = ""
 	}
 
 	// The Deye SoC-gate opt-in belongs to the Solarman read path and nowhere else:
@@ -2042,6 +2129,33 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		}
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.InvertControlSign, conn.InvertBattSign = false, false
+		conn.ControlWriteFc = 0
+		conn.CurtailWriteFc = 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+	case CommEbyteModbusTCP:
+		// Ebyte M31 Modbus TCP: host + port + unit id (+ the pinned MAC). The
+		// module stack is DISCOVERED by the core (internal/ebyte), never
+		// configured; no serial/profile/sign hatch.
+		if conn.Port == 0 {
+			conn.Port = defaultEbytePort
+		}
+		if conn.UnitID == 0 {
+			conn.UnitID = defaultEbyteUnitID
+		}
+		if conn.UnitID < 1 || conn.UnitID > 247 {
+			return Selection{}, invalid("Die Modbus-Adresse muss zwischen 1 und 247 liegen.")
+		}
+		if conn.MAC != "" {
+			mac := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(conn.MAC)), "-", ":")
+			if !macPattern.MatchString(mac) {
+				return Selection{}, invalid("Die MAC-Adresse hat nicht die Form 00:54:2c:84:9b:90.")
+			}
+			conn.MAC = mac
+		}
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
+		conn.Profile, conn.InsecureTLS, conn.ModelType = "", false, ""
 		conn.InvertControlSign, conn.InvertBattSign = false, false
 		conn.ControlWriteFc = 0
 		conn.CurtailWriteFc = 0

@@ -1,0 +1,134 @@
+{
+  "generated_by": "catalog/control-profiles/tools/package_edge_runtime.py - nicht von Hand ändern",
+  "profile": [
+    {
+      "bindung": [
+        {
+          "marke": "deye",
+          "modelle": null,
+          "registerfamilie": "hybrid_3p",
+          "steuerpfad": "remote"
+        },
+        {
+          "marke": "deye",
+          "modelle": null,
+          "registerfamilie": "hybrid_1p",
+          "steuerpfad": "remote"
+        }
+      ],
+      "daempfung": {
+        "box_regelt": true,
+        "einschwingzeit_s": 15,
+        "messtakt_s": 25
+      },
+      "id": "deye_hp3_remote",
+      "schreibbudget": {
+        "dauerspeicher_je_tag": 20
+      }
+    },
+    {
+      "bindung": [
+        {
+          "marke": "deye",
+          "modelle": null,
+          "registerfamilie": "hybrid_3p",
+          "steuerpfad": "tou"
+        },
+        {
+          "marke": "deye",
+          "modelle": null,
+          "registerfamilie": "hybrid_1p",
+          "steuerpfad": "tou"
+        }
+      ],
+      "daempfung": {
+        "box_regelt": false,
+        "einschwingzeit_s": null,
+        "messtakt_s": null
+      },
+      "id": "deye_tou",
+      "schreibbudget": {
+        "dauerspeicher_je_tag": 20
+      }
+    },
+    {
+      "bindung": [
+        {
+          "marke": "fronius",
+          "modelle": [
+            "fronius-eco-27-3-s",
+            "fronius-eco-25-3-s"
+          ],
+          "registerfamilie": "sunspec_live",
+          "steuerpfad": null
+        },
+        {
+          "marke": "fronius",
+          "modelle": [
+            "fronius-eco-27-3-s",
+            "fronius-eco-25-3-s"
+          ],
+          "registerfamilie": "fronius_solar_api",
+          "steuerpfad": null
+        },
+        {
+          "marke": "fronius_sunspec",
+          "modelle": [
+            "fronius-eco-27-3-s",
+            "fronius-eco-25-3-s"
+          ],
+          "registerfamilie": "sunspec_live",
+          "steuerpfad": null
+        }
+      ],
+      "daempfung": {
+        "box_regelt": null,
+        "einschwingzeit_s": null,
+        "messtakt_s": null
+      },
+      "id": "fronius_pv",
+      "schreibbudget": {
+        "dauerspeicher_je_tag": null
+      }
+    },
+    {
+      "bindung": [
+        {
+          "marke": "kaco",
+          "modelle": null,
+          "registerfamilie": "kaco_nh3",
+          "steuerpfad": null
+        }
+      ],
+      "daempfung": {
+        "box_regelt": true,
+        "einschwingzeit_s": null,
+        "messtakt_s": null
+      },
+      "id": "kaco_nh3",
+      "schreibbudget": {
+        "dauerspeicher_je_tag": 20
+      }
+    },
+    {
+      "bindung": [
+        {
+          "marke": "kostal",
+          "modelle": null,
+          "registerfamilie": "kostal_plenticore",
+          "steuerpfad": null
+        }
+      ],
+      "daempfung": {
+        "box_regelt": true,
+        "einschwingzeit_s": null,
+        "messtakt_s": null
+      },
+      "id": "kostal",
+      "schreibbudget": {
+        "dauerspeicher_je_tag": 20
+      }
+    }
+  ],
+  "schema_version": "1.0"
+}

@@ -1,0 +1,242 @@
+/*
+ * Die BALKENLISTE der Erlöse-Karten — „Preise im Zeitraum" und „So verdient
+ * Ihre Anlage" (Konzept „Erlöse · Preise und Verdienst", 25.09.2026).
+ *
+ * Komponenten-LOKAL wie `ErgebnisKarte.css`: hier steht ausschließlich Neues
+ * (`.vp-bl-*`). Schrift, Größen und Gewichte liegen auf der Skala der
+ * Variante C (`--vp-c-fs/fw-*`), Farben sind die Chart-Token der Seite, jede
+ * Dauer kommt aus der Bewegungs-Familie (`--vp-motion-*`).
+ *
+ * TELEFON zuerst: Name und Zahl in EINER Zeile, der Balken darunter über die
+ * volle Breite, die Grundlage als Unterzeile. Ab 440 px Kartenbreite
+ * (Container-Abfrage, nicht Fenster) wird daraus ein Balkendiagramm: Name
+ * links, Balken in der Mitte, Zahl rechts — alle Balken beginnen an derselben
+ * Kante.
+ */
+
+.vp-bl-rahmen {
+  container: vp-bl / inline-size;
+  min-width: 0;
+}
+
+/* Die Antwort über den Balken („Selbst genutzter Strom war mehr wert …") —
+   ein Satz in Textgröße, keine dritte Schriftgröße. */
+.vp-bl-merksatz {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-bl {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-bl-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name wert'
+    'spur spur'
+    'unter unter';
+  column-gap: var(--vp-c-space-3);
+  row-gap: 6px;
+  min-width: 0;
+}
+
+.vp-bl-name {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-title);
+  color: var(--vp-text-dark);
+}
+.vp-bl-name-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-bl-wert {
+  grid-area: wert;
+  align-self: baseline;
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-20);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-title);
+  color: var(--vp-navy);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* „—" ist nie eine Null: gedämpft, damit es als Nicht-Zahl liest. */
+.vp-bl-wert.leer {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-c-fw-600);
+}
+/* Das Vorzeichen steht im Text — die Farbe ist nur die zweite Kodierung. */
+.vp-bl-wert.minus {
+  color: var(--vp-c-destructive);
+}
+.vp-bl-zeile.summe .vp-bl-wert {
+  font-size: var(--vp-c-fs-24);
+}
+
+/* --- Die Spur: ein Rohr fester Größe, die Breite IST der Wert ------------- */
+.vp-bl-spur {
+  grid-area: spur;
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--vp-neutral-soft);
+  overflow: hidden;
+}
+.vp-bl-zeile.summe .vp-bl-spur {
+  height: 16px;
+  border-radius: 8px;
+}
+/* Kein Wert: eine gestrichelte, leere Spur — nie ein Balken der Länge 0. */
+.vp-bl-spur.leer {
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--vp-border) 5px 6px);
+  box-shadow: inset 0 0 0 1px var(--vp-field-border);
+}
+
+/* Die Breite gleitet zwischen zwei ECHTEN Zuständen (Zeitraumwechsel) — das
+   Rohr hat eine feste Größe, also verschiebt die Bewegung nichts (P7). */
+.vp-bl-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transition:
+    left var(--vp-motion-chart-update) var(--vp-ease-inout),
+    width var(--vp-motion-chart-update) var(--vp-ease-inout);
+}
+.vp-bl-seg.anfang {
+  border-top-left-radius: inherit;
+  border-bottom-left-radius: inherit;
+}
+.vp-bl-seg.ende {
+  border-top-right-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+/* Die 2-px-Fuge liegt MITTIG über der Grenze zweier Segmente — sie ist Optik,
+   kein Messwert, und nimmt keinem der beiden Länge. */
+.vp-bl-seg + .vp-bl-seg::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--vp-surface);
+}
+/* Vorläufig: schraffiert, ruhig — ein Stand, kein Alarm. */
+.vp-bl-seg.vorlaeufig {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--vp-surface) 55%, transparent) 0 2px,
+    transparent 2px 6px
+  );
+}
+/* Die Nulllinie — nur, wenn ein Wert unter 0 liegt. */
+.vp-bl-null {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--vp-c-muted-fg);
+}
+
+/* --- Rollen = Farben (dieselben Token wie `chartTheme()`) ----------------- */
+.vp-bl-key {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.vp-bl-key.klein {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.vp-bl-key[data-rolle='eigenverbrauch'],
+.vp-bl-seg[data-rolle='eigenverbrauch'] {
+  background-color: var(--vp-c-chart-pv);
+}
+.vp-bl-key[data-rolle='einspeisung'],
+.vp-bl-seg[data-rolle='einspeisung'] {
+  background-color: var(--vp-c-chart-grid);
+}
+.vp-bl-key[data-rolle='netzbezug'],
+.vp-bl-seg[data-rolle='netzbezug'] {
+  background-color: var(--vp-c-chart-kosten);
+}
+/* Der Durchschnitt aller Solaranlagen ist Kontext, keine Serie: Haus-Neutral
+   (3,9:1 auf der Spur — das hellere Wolken-Grau hielt dort keine 3:1). */
+.vp-bl-key[data-rolle='markt'],
+.vp-bl-seg[data-rolle='markt'] {
+  background-color: var(--vp-chart-neutral);
+}
+.vp-bl-key[data-rolle='praemie'],
+.vp-bl-seg[data-rolle='praemie'] {
+  background-color: var(--vp-c-chart-price);
+}
+
+.vp-bl-unter {
+  grid-area: unter;
+  min-width: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+
+/* --- Breite Karte: ein echtes Balkendiagramm ----------------------------- */
+@container vp-bl (min-width: 440px) {
+  .vp-bl-zeile {
+    grid-template-columns: minmax(0, 13.5em) minmax(0, 1fr) minmax(4.75em, auto);
+    grid-template-areas:
+      'name spur wert'
+      'unter unter unter';
+    align-items: center;
+    row-gap: var(--vp-c-space-1);
+  }
+  .vp-bl-wert {
+    align-self: center;
+    text-align: right;
+  }
+  /* Unter dem Namen, nicht unter dem Farbschlüssel. */
+  .vp-bl-unter {
+    padding-left: 18px;
+  }
+  .vp-bl-zeile.summe .vp-bl-unter {
+    padding-left: 0;
+  }
+}
+
+/* --- Bewegung: aufdecken, nie wachsen (P1/P3) ----------------------------
+   Das Keyframe `vp-reveal-x` wohnt in `index.css` (P3-Block). `backwards`
+   hält die Maske während der Staffel-Verzögerung geschlossen; danach steht
+   der Balken ohne Rest. Der Schalter `--vp-motion-scale` nullt alle Dauern,
+   und ohne Beobachter setzt `Balkenliste.tsx` die Klasse gar nicht. */
+.vp-bl-rahmen[data-aufdecken='laeuft'] .vp-bl-spur {
+  animation: vp-reveal-x var(--vp-motion-chart) var(--vp-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--vp-motion-stagger));
+}
+/* Der Prämien-Block kommt NACH dem Börsen-Teil — er liegt obendrauf. */
+.vp-bl-rahmen[data-aufdecken='laeuft'] .vp-bl-seg.danach {
+  animation: vp-reveal-x var(--vp-motion-enter) var(--vp-ease-out) backwards;
+  animation-delay: calc(var(--vp-motion-chart) + var(--i, 0) * var(--vp-motion-stagger));
+}

@@ -34,6 +34,13 @@ describe('WidgetGrid', () => {
     expect(container.querySelector('.vp-widget-grid')).toBeTruthy();
   });
 
+  it('nennt dem Raster die Kachelzahl - zwei Kacheln füllen die Reihe statt ein Drittel frei zu lassen', () => {
+    const { container } = render(
+      <WidgetGrid widgets={[widget(), widget({ id: 'wetter', label: 'Wetter' })]} onSelect={() => {}} />,
+    );
+    expect(container.querySelector('.vp-widgets')?.getAttribute('data-count')).toBe('2');
+  });
+
   it('rendert gar nichts ohne Kacheln (keine leere Karte)', () => {
     const { container } = render(<WidgetGrid widgets={[]} onSelect={() => {}} />);
     expect(container.querySelector('.vp-widgets')).toBeNull();

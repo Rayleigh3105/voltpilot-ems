@@ -326,8 +326,10 @@ describe('MessenAssistent — die bestehenden Dialoge', () => {
     await schritt2();
     expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
 
+    // „Gerät anbinden" beginnt seit dem Gerätekatalog (main e70b57b76) im Katalog.
     klick('Gerät anbinden für Werk Lindach');
-    const anbinden = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
+    const anbinden = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    expect(within(anbinden).getByRole('searchbox', { name: 'Katalog durchsuchen' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toBeNull();
     fireEvent.click(within(anbinden).getByRole('button', { name: 'Schließen' }));
     await schritt2();

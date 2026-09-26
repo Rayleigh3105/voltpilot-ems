@@ -115,7 +115,7 @@ describe('Die Flotten-Ebene in der Schale: EIN Eintrag, keine Gruppe', () => {
 });
 
 /**
- * Die zwei Welten, jetzt als REITER: Übersicht · Messwerte · Erlöse. Sie
+ * Die zwei Welten, jetzt als REITER: Übersicht · Energie · Erlöse. Sie
  * navigieren zwischen Seiten DERSELBEN Ebene. Seit UEMS AP-02 IP-6 steht
  * „Standorte“ dazwischen (bis die Ebenen-Navigation aus AP-01 kommt).
  */
@@ -133,7 +133,7 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     expect([...reiter().querySelectorAll('[role=tab]')].map((n) => n.textContent)).toEqual([
       'Übersicht',
       'Standorte',
-      'Messwerte',
+      'Energie',
       'Erlöse',
     ]);
     expect(reiter().getAttribute('aria-label')).toBe('Reiter der Ebene Portfolio');
@@ -141,7 +141,7 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     expect(onNavigate).toHaveBeenCalledWith('portfolio-standorte');
     // Vier Reiter: am Telefon das dichtere Polster (375 px, gemessen in e2e/standorte.spec.ts).
     expect(reiter().classList.contains('vp-bereich-tabs-dicht')).toBe(true);
-    fireEvent.click(screen.getByRole('tab', { name: 'Messwerte' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Energie' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio-messwerte');
     fireEvent.click(screen.getByRole('tab', { name: 'Erlöse' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio-erloese');
@@ -156,7 +156,7 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
         onNavigate={vi.fn()}
       />,
     );
-    expect(screen.getByRole('tab', { name: 'Messwerte' }).getAttribute('aria-selected')).toBe(
+    expect(screen.getByRole('tab', { name: 'Energie' }).getAttribute('aria-selected')).toBe(
       'true',
     );
     expect(screen.getByRole('tab', { name: 'Übersicht' }).getAttribute('aria-selected')).toBe(
@@ -184,7 +184,7 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
         onNavigate={vi.fn()}
       />,
     );
-    expect(screen.getByRole('tab', { name: 'Messwerte' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Energie' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Erlöse' })).toBeNull();
     // Drei Reiter passen mit dem gewohnten Polster — die Leiste bleibt, wie sie war.
     expect(reiter().classList.contains('vp-bereich-tabs-dicht')).toBe(false);
@@ -229,7 +229,7 @@ describe('PortfolioTabs: der Bereich „Messstellen“ und die Leiste am Telefon
       'Übersicht',
       'Standorte',
       'Messstellen',
-      'Messwerte',
+      'Energie',
     ]);
     fireEvent.click(screen.getByRole('tab', { name: 'Messstellen' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio-messstellen');

@@ -26,7 +26,19 @@ export type RowMenuItem = {
  * `overflow: hidden` - the last/only row's actions stay fully visible and
  * clickable. It flips upward when there is no room below.
  */
-export function RowMenu({ items, label = 'Aktionen' }: { items: RowMenuItem[]; label?: string }) {
+export function RowMenu({
+  items,
+  label = 'Aktionen',
+  icon = 'more-horizontal',
+  buttonClassName,
+}: {
+  items: RowMenuItem[];
+  label?: string;
+  /** Das Zeichen des Auslösers - „⋯" in Zeilen, „▾" an einem geteilten Knopf. */
+  icon?: IconName;
+  /** Eigene Optik des Auslösers (z. B. die rechte Hälfte eines geteilten Knopfs). */
+  buttonClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -87,7 +99,7 @@ export function RowMenu({ items, label = 'Aktionen' }: { items: RowMenuItem[]; l
       <button
         ref={btnRef}
         type="button"
-        className="vp-rowmenu-btn"
+        className={buttonClassName ?? 'vp-rowmenu-btn'}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={label}
@@ -96,7 +108,7 @@ export function RowMenu({ items, label = 'Aktionen' }: { items: RowMenuItem[]; l
           setOpen((v) => !v);
         }}
       >
-        <Icon name="more-horizontal" size={18} />
+        <Icon name={icon} size={18} />
       </button>
       {open &&
         createPortal(

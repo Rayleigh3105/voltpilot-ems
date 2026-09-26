@@ -3,6 +3,7 @@ package com.voltpilot.api.components;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.Optional;
@@ -70,12 +71,18 @@ public class ComponentActivationOutboxService {
             String status = outcome.published() ? "applied"
                     : (!outcome.attempted() && "no_gateway_device".equals(outcome.reason())
                         ? "refused" : "pending");
+            // ⚠ The timestamps are bound as java.sql.Timestamp, never as
+            // java.time.Instant: pgJDBC cannot infer a SQL type for an Instant
+            // ("Can't infer the SQL type"), the UPDATE failed, the row stayed
+            // 'pending' forever - every 2 s the same site was re-pushed, and
+            // with 20 such rows the LIMIT starved every newer activation.
+            Timestamp now = Timestamp.from(Instant.now());
             admin.update("UPDATE component_activation_outbox SET status = ?, attempts = attempts + 1, "
                             + "last_error = ?, updated_at = ?, applied_at = CASE WHEN ? = 'applied' THEN ? ELSE applied_at END WHERE id = ?",
-                    status, outcome.reason(), Instant.now(), status, Instant.now(), id);
+                    status, outcome.reason(), now, status, now, id);
         } catch (RuntimeException ex) {
             admin.update("UPDATE component_activation_outbox SET attempts = attempts + 1, last_error = ?, updated_at = ? WHERE id = ?",
-                    ex.getMessage(), Instant.now(), id);
+                    ex.getMessage(), Timestamp.from(Instant.now()), id);
         } finally {
             if (previous == null) TenantContext.clear(); else TenantContext.set(previous);
         }

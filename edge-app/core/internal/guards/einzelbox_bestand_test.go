@@ -1,6 +1,7 @@
 package guards_test
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -34,7 +35,7 @@ func TestEinzelboxBestandsFingerabdruecke(t *testing.T) {
 			set := lastmgmt.Settings{GridLimitKw: 277, HouseReserveKw: 167, MarginPct: 10, MaxHouseLoadKw: 180}
 			start := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 			eHash, bHash := sha256.New(), sha256.New()
-			eJSON, bJSON := json.NewEncoder(eHash), json.NewEncoder(bHash)
+			bJSON := json.NewEncoder(bHash)
 			pv := 148.0
 			for s := 0; s <= 1200; s++ {
 				now := start.Add(time.Duration(s) * time.Second)
@@ -57,12 +58,22 @@ func TestEinzelboxBestandsFingerabdruecke(t *testing.T) {
 				}
 				ec, bc := e.Cap(now, &limit, 100), b.Budget(now, set)
 				pv = ec.CapKw
-				if err := eJSON.Encode(struct {
+				var eBuf bytes.Buffer
+				if err := json.NewEncoder(&eBuf).Encode(struct {
 					Urgent  bool
 					Verdict guards.ExportCap
 				}{eUrgent, ec}); err != nil {
 					t.Fatal(err)
 				}
+				// K6 (main #1222, nachgezogen 26.09.2026) appended Cascade and
+				// CascadeText to the verdict. Without an inner loop Cap is
+				// CapCascade "byte for byte" and leaves both empty - asserted
+				// here, then cut, so the pins still prove every other byte
+				// against origin/uems 8c4350704.
+				if ec.Cascade != "" || ec.CascadeText != "" {
+					t.Fatalf("tick %d: Cap without an inner loop names a cascade: %q", s, ec.Cascade)
+				}
+				eHash.Write(bytes.Replace(eBuf.Bytes(), []byte(`,"Cascade":"","CascadeText":""}`), []byte("}"), 1))
 				if err := bJSON.Encode(struct {
 					Urgent                   bool
 					Verdict                  lastmgmt.BudgetVerdict

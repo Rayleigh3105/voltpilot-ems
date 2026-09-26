@@ -95,6 +95,7 @@ import {
   type Vorschlag,
 } from '../vorschlaege';
 import './Regeln.css';
+import { AUFBAU_REITER } from '../ebenenNav';
 
 type CondKind = 'entity' | 'price' | 'schedule';
 
@@ -104,7 +105,7 @@ export function loeschFolgen(karte: RegelKarte): string[] {
     return [
       'Die Regel wird abgeschaltet — VoltPilot sendet dafür keine Befehle mehr.',
       'Ihr Gerät fällt auf seine sichere Grundeinstellung zurück.',
-      'Das Gerät selbst bleibt bestehen; Sie finden es unter „Komponenten".',
+      `Das Gerät selbst bleibt bestehen; Sie finden es unter „${AUFBAU_REITER}".`,
     ];
   }
   return [

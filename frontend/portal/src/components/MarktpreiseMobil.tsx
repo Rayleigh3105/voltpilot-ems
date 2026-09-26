@@ -39,35 +39,51 @@ export function MarktStatement({ preis, bezug }: { preis: JetztPreis; bezug: str
   );
 }
 
+/** Ein Eintrag des Tag-Segments; `datum` ist eine ruhige zweite Zeile („Mi 24.09."). */
+export interface TagSegmentEintrag<T extends string> {
+  id: T;
+  label: string;
+  datum?: string;
+}
+
 /**
  * V3 · Heute/Morgen als Segment (44 px), nicht als Sprung-Chip.
  *
  * Es rendert GAR NICHT, wo es nichts zu sagen gibt — ein Segment mit einem
  * einzigen Eintrag und ohne Grund schaltet nichts (`tagWahl` gibt dort `null`).
+ *
+ * Seit dem Tagesschalter des Fahrplans (Konzept „Tagesuhr und Bildfahrplan",
+ * E2 = A) trägt es auch „Gestern · Heute · Morgen": EIN Tages-Segment im
+ * Fahrplan-Bereich, nicht zwei Muster nebeneinander. `datum` setzt die zweite
+ * Zeile, `voll` streckt die Schiene auf die ganze Breite (Telefon).
  */
-export function TagSegment({
+export function TagSegment<T extends string = TagFokus>({
   wahl,
   wert,
   onWert,
+  voll = false,
 }: {
-  wahl: TagWahl | null;
-  wert: TagFokus;
-  onWert: (w: TagFokus) => void;
+  wahl: { optionen: readonly TagSegmentEintrag<T>[]; chip: string | null } | TagWahl | null;
+  wert: T;
+  onWert: (w: T) => void;
+  voll?: boolean;
 }) {
   if (!wahl) return null;
+  const optionen = wahl.optionen as readonly TagSegmentEintrag<T>[];
   return (
-    <div className="vp-mp-tag">
+    <div className={`vp-mp-tag${voll ? ' is-voll' : ''}`}>
       <div className="vp-mp-tagseg" role="tablist" aria-label="Tag">
-        {wahl.optionen.map((o) => (
+        {optionen.map((o) => (
           <button
             key={o.id}
             type="button"
             role="tab"
             aria-selected={wert === o.id}
-            className={wert === o.id ? 'is-on' : ''}
+            className={[wert === o.id ? 'is-on' : '', o.datum ? 'has-datum' : ''].filter(Boolean).join(' ')}
             onClick={() => onWert(o.id)}
           >
             {o.label}
+            {o.datum && <small>{o.datum}</small>}
           </button>
         ))}
       </div>

@@ -400,8 +400,8 @@ func TestASelfBuiltDeviceIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
 }
 
 // Eine Anlage, die AUSSCHLIESSLICH Selbstbau-Geräte hat, nennt kein einziges
-// Katalog-Gerät - das ist der dokumentierte „leeres Soll löscht nichts"-Fall,
-// nicht ein Fehler des Kunden.
+// Katalog-Gerät - das ist der dokumentierte Fall des leeren Solls (vor der
+// Übernahme ein Halt, danach EmptiedPlan), nicht ein Fehler des Kunden.
 func TestAPlantWithOnlySelfBuiltDevicesDerivesNoConfigurationAtAll(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-00000000000f", "modbus-generic", selfBuiltDriver))
 	_, err := Derive(reg, cat(), nil, now)
@@ -584,5 +584,35 @@ func TestARoleAssignmentNeverTouchesTheDerivedPlan(t *testing.T) {
 	}
 	if string(gotJSON) != string(wantJSON) {
 		t.Fatalf("Plan-Bytes abgewichen:\n got %s\nwant %s", gotJSON, wantJSON)
+	}
+}
+
+// --- Ebyte-I/O-Modul: ein Geraet, Kanaele als Verbraucher --------------------
+
+const ebyteDeviceDriver = `{"brand":"ebyte","model":"m31_axax8080g_u","communication":"ebyte_modbus_tcp",
+  "connection":{"ip":"192.168.3.50","port":502,"unit_id":1,"mac":"00:54:2c:84:9b:90"}}`
+
+func TestAnIOModuleBecomesOneConsumerSideSourceAndItsChannelsNone(t *testing.T) {
+	dev := ent("e0000000-0000-0000-0000-00000000000a", "io-module", ebyteDeviceDriver)
+	dev.Guards.Failsafe.Behavior = "measure-only"
+	rod := ent("e0000000-0000-0000-0000-00000000000b", entities.TypeHeatingRod,
+		`{"communication":"ebyte_modbus_tcp","io_entity_id":"e0000000-0000-0000-0000-00000000000a","channel":3}`)
+	rod.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	pump := ent("e0000000-0000-0000-0000-00000000000c", entities.TypeGenericLoad,
+		`{"communication":"ebyte_modbus_tcp","io_entity_id":"e0000000-0000-0000-0000-00000000000a","channel":4}`)
+	pump.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
+	plan, err := Derive(portal(
+		ent("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+		dev, rod, pump), cat(), nil, now)
+	if err != nil {
+		t.Fatalf("Derive: %v", err)
+	}
+	if plan.Inverter == nil || len(plan.Sources) != 1 {
+		t.Fatalf("expected the inverter plus ONE module source, got %+v", plan)
+	}
+	s := plan.Sources[0]
+	if s.Role != sources.RoleConsumer || s.Communication != inverter.CommEbyteModbusTCP ||
+		s.Connection.MAC != "00:54:2c:84:9b:90" || s.Connection.UnitID != 1 {
+		t.Fatalf("module source %+v", s)
 	}
 }

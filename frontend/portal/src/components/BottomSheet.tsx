@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { fokussierbare } from './VpPanel';
 import { useAusblenden } from '../../designsystem/components/shell/ausblenden';
+// Die Sheet-Stile (`.vp-bs*`) wohnen in `Verlauf.css`; ohne diesen Import stand
+// das Blatt auf jeder Seite ohne Explorer ungestylt da.
+import './Verlauf.css';
 
 /**
  * **Das Bottom-Sheet des Verlaufs** (Konzept `data/vp-verlauf-sprache-konzept-v5`

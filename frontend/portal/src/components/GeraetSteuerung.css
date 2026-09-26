@@ -1,0 +1,116 @@
+/* ===========================================================================
+   Der Baustein „Steuerung": wer entscheidet, und ein Schalter mit dem echten
+   Zustand (Automatik · Laden · Halten, Automatik · Ein · Aus, …).
+
+   ⚠ Der Daumen gleitet über `transform` - eine Compositor-Eigenschaft, im
+   Tempo der Familie; unter reduzierter Bewegung springt er.
+   =========================================================================== */
+
+.vp-steuer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-steuer-zustand {
+  margin: 0;
+  color: var(--vp-c-fg);
+  font-size: var(--vp-c-fs-16);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+.vp-steuer-zustand .z {
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-steuer-zustand .q {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-steuer-grund {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-steuer-seg {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  margin-top: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--vp-neutral-soft, #eef1f5);
+}
+.vp-steuer-seg .daumen {
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--n, 3));
+  border-radius: 10px;
+  background: var(--vp-surface, #fff);
+  box-shadow: var(--vp-shadow-sm);
+  transform: translateX(calc(100% * var(--wahl, 0)));
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-steuer-seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vp-c-muted-fg);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.vp-steuer-seg button.is-aktiv {
+  color: var(--vp-c-fg);
+  cursor: default;
+}
+.vp-steuer-seg button[aria-disabled='true']:not(.is-aktiv) {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.vp-steuer-seg button:not(.is-aktiv):not([aria-disabled='true']):hover {
+  color: var(--vp-action);
+}
+.vp-steuer-seg button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 1px;
+}
+
+/* Ein ruhiger Hinweis unter dem Schalter (Not-Aus an, Freigabe). */
+.vp-steuer-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-steuer-hinweis svg {
+  flex: none;
+  margin-top: 2px;
+}
+.vp-steuer-leise {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}

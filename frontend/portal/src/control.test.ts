@@ -12,6 +12,10 @@ import {
   nextChargeStart,
   nextEngagement,
   planOutlook,
+  steuerungKurz,
+  isWrAutomatik,
+  VOM_WR_BESTAETIGT,
+  WR_AUTOMATIK_SATZ,
 } from './control';
 import { CURTAIL_PLAN, curtailTruth } from './curtailment';
 import { slotWhy } from './fahrplanWhy';
@@ -577,6 +581,45 @@ describe('executionNote', () => {
     expect(EXECUTION_MODE_LABEL.surplus_store).toBe('Live-Überschussladung');
   });
 
+  it('says the INVERTER stores the surplus itself on the charge-side automation (E↑)', () => {
+    // Wechselrichter-Eigenregelung (24.09.2026): die Box schreibt nichts, der
+    // Wechselrichter entscheidet die Watt. Der Referenzwert (was die Box beim
+    // Zurücknehmen schreiben WÜRDE) darf nicht als Fahrplan-Wert erscheinen.
+    const note = executionNote(
+      status({ executionMode: 'autonomous_charge', executionPlannedKw: 12.5, executionTargetKw: 14.2 }),
+    )!;
+    expect(note).toContain('Ihr Wechselrichter lädt den Solar-Überschuss gerade selbst in den Speicher');
+    expect(note).toContain('Laden aus dem Netz ist dabei nicht vorgesehen');
+    expect(note).not.toContain('12,5');
+    expect(note).not.toContain('Fahrplan sah');
+    // Die Box regelt hier NICHT nach - kein Satz darf das behaupten.
+    expect(note).not.toMatch(/Nachführung|nachgeführt|VoltPilot/);
+    expect(EXECUTION_MODE_LABEL.autonomous_charge).toBe('Wechselrichter-Automatik · Überschuss laden');
+  });
+
+  it('says the inverter regulates both ways on the self-consumption automation (E/E~)', () => {
+    const note = executionNote(
+      status({ executionMode: 'autonomous_selfconsumption', executionPlannedKw: -3 }),
+    )!;
+    expect(note).toBe(
+      'Ihr Wechselrichter regelt gerade selbst auf Eigenverbrauch: Überschuss geht in den ' +
+        'Speicher, Verbrauch wird aus dem Speicher gedeckt.',
+    );
+    expect(EXECUTION_MODE_LABEL.autonomous_selfconsumption).toBe('Wechselrichter-Automatik · Eigenverbrauch');
+    expect(EXECUTION_MODE_LABEL.autonomous_discharge).toBe('Wechselrichter-Automatik');
+  });
+
+  it('E↓: nennt den Referenzwert nie als Fahrplan-Wert und den Verbrauch nie „unerwartet"', () => {
+    // `executionPlannedKw` ist in jedem autonomous_*-Modus nur der Wert, den
+    // die Box beim Zurücknehmen schreiben WÜRDE (K4b) - kein „Der Fahrplan sah
+    // X vor". Und die Deckung ist in dieser Viertelstunde geplant.
+    const note = executionNote(status({
+      executionMode: 'autonomous_discharge', executionPlannedKw: -3, commandedKw: null, confirmedKw: null,
+    }))!;
+    expect(note).toBe('Ihr Wechselrichter deckt Ihren Verbrauch gerade selbst aus dem Speicher.');
+    expect(note).not.toMatch(/Fahrplan|Unerwartet|kW/);
+  });
+
   it('claims nothing for an uncorrected slot or an older edge', () => {
     expect(executionNote(status({ executionMode: 'plan' }))).toBeNull();
     expect(executionNote(status({}))).toBeNull();
@@ -801,5 +844,80 @@ describe('controlStrip: der Flussabgleich versöhnt „pausiert" mit dem Flussbi
     )!;
     expect(v.state).toBe('off');
     expect(v.sentence).not.toBe('WARN-TEXT');
+  });
+});
+
+
+/**
+ * UX-Review V-04 (24.09.2026): die Steuerungs-Karte darf am Telefon nur im
+ * reinen Normalfall der Fahrplan-Zeile weichen - jeder Befund behält sie.
+ */
+describe('steuerungKurz', () => {
+  it('fasst den bestätigten Lade-/Entladefall in einen Halbsatz', () => {
+    const v = controlStrip(status({}), NOW)!;
+    expect(steuerungKurz(v, false)).toBe(`Vom Wechselrichter bestätigt · ${v.agoNote}`);
+  });
+
+  it('behält die Karte bei Abweichung, Aus, Geräte- oder Einspeise-Befund', () => {
+    const abweichung = controlStrip(status({ allMatch: false, confirmedKw: -1.2 }), NOW)!;
+    expect(steuerungKurz(abweichung, false)).toBeNull();
+    const gesund = controlStrip(status({}), NOW)!;
+    expect(steuerungKurz(gesund, true)).toBeNull(); // Einspeise-Grenze (Guard) aktiv
+    expect(steuerungKurz({ ...gesund, execution: 'Das Gerät folgt dem Verbrauch.' }, false)).toBeNull();
+    expect(steuerungKurz({ ...gesund, curtailment: 'Die Einspeisung ist begrenzt.' }, false)).toBeNull();
+    expect(steuerungKurz({ ...gesund, tone: 'warn' }, false)).toBeNull();
+    expect(steuerungKurz(null, false)).toBeNull();
+  });
+
+  it('behält die Karte in der Ruhe - dort erklärt sie Ausblick und Grund', () => {
+    const ruhe = controlStrip(status({ commandedKw: 0, confirmedKw: 0 }), NOW)!;
+    expect(ruhe.sentence).toContain('pausiert');
+    expect(steuerungKurz(ruhe, false)).toBeNull();
+  });
+
+  it('behält die Karte, wenn der Flussabgleich den Satz ersetzt hat', () => {
+    const gesund = controlStrip(status({}), NOW)!;
+    expect(steuerungKurz({ ...gesund, sentence: 'Der Speicher lädt mehr als geplant.' }, false)).toBeNull();
+  });
+});
+
+describe('controlStrip · Wechselrichter-Automatik ohne Sollwert (K4b)', () => {
+  // In jedem autonomous_*-Modus schreibt die Box keinen Batteriewert:
+  // commandedKw/confirmedKw sind null. Null ist kein „pausiert" und kein 0 kW.
+  const MODI = ['autonomous_discharge', 'autonomous_charge', 'autonomous_selfconsumption'] as const;
+  const RAW = /autonomous_|pausiert|0,0 kW|Stillstand/;
+
+  it.each(MODI)('%s: gesund sagt „regelt selbst", ohne Zahl und ohne Ruhe-Ausblick', (mode) => {
+    const v = controlStrip(
+      status({ commandedKw: null, confirmedKw: null, executionMode: mode, executionPlannedKw: -2 }),
+      NOW,
+      false,
+      'Warum-Satz',
+      undefined,
+      'Ausblick',
+    )!;
+    expect(v.state).toBe('healthy');
+    expect(v.tone).toBe('ok');
+    expect(v.sentence).toBe(`${WR_AUTOMATIK_SATZ} – ${VOM_WR_BESTAETIGT}`);
+    expect(v.outlook).toBeNull();
+    expect(v.reason).toBe('Warum-Satz');
+    expect(JSON.stringify(v)).not.toMatch(RAW);
+  });
+
+  it('veraltet und abweichend: kein erfundener Sollwert', () => {
+    const base = { commandedKw: null, confirmedKw: null, executionMode: 'autonomous_charge' as const };
+    const alt = controlStrip(status({ ...base, checkedAt: '2026-07-08T11:00:00Z' }), NOW)!;
+    expect(alt.state).toBe('stale');
+    expect(alt.sentence).toBe('Zuletzt: Ihr Wechselrichter regelte den Speicher selbst – bestätigt');
+    const ab = controlStrip(status({ ...base, allMatch: false, mismatchRoles: 'battery_strategy' }), NOW)!;
+    expect(ab.state).toBe('mismatch');
+    expect(ab.sentence).toBe('Ihr Wechselrichter soll den Speicher selbst regeln – eine Einstellung weicht ab');
+    expect(JSON.stringify([alt, ab])).not.toMatch(RAW);
+  });
+
+  it('ein null-Sollwert OHNE Automatik bleibt beim bisherigen Satz', () => {
+    expect(isWrAutomatik('follow')).toBe(false);
+    expect(isWrAutomatik(null)).toBe(false);
+    expect(MODI.every((m) => isWrAutomatik(m))).toBe(true);
   });
 });

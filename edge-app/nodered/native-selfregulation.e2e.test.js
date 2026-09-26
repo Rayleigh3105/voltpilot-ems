@@ -29,10 +29,12 @@ const sharedBus = require('./measurements/shared-bus-arbiter');
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
 
-const R = { GRID: 0, PV: 1, LOAD: 2, BATT: 3, SOC: 4, SETPOINT: 40, ENABLE: 41, PVLIMIT: 42 };
+const R = { GRID: 0, PV: 1, LOAD: 2, BATT: 3, SOC: 4, SETPOINT: 40, ENABLE: 41, PVLIMIT: 42,
+  CH_LIMIT: 43, DIS_LIMIT: 44 };
 const PV_KW = 0.03;
 const LOAD_KW = 7.117; // the Pilsting night reading the whole feature was built for
 const MAX_KW = 30;
+const NO_LIMIT = 0xffff;
 
 // A SunSpec-sim-shaped Modbus-TCP server that carries the sim's own battery
 // model: `enabled` (register 41) decides WHO regulates. It records every write
@@ -42,18 +44,26 @@ function startSelfConsumingInverter() {
   const writes = [];
   let commandedKw = 0;
   let enabled = 1; // the plant arrives under EMS control, like a running site
+  let pvKw = PV_KW;
+  let loadKw = LOAD_KW;
   const s16 = (v) => (v > 32767 ? v - 65536 : v);
   const u16 = (v) => v & 0xffff;
+  regs.set(R.CH_LIMIT, NO_LIMIT);
+  regs.set(R.DIS_LIMIT, NO_LIMIT);
+  const limitKw = (addr) => (regs.get(addr) === NO_LIMIT ? MAX_KW : regs.get(addr) / 100);
 
   const recompute = () => {
-    // The sim's model, verbatim: the EMS while it asserts control, the inverter
-    // itself otherwise.
-    const wanted = enabled ? commandedKw : PV_KW - LOAD_KW;
-    const batt = Math.max(-MAX_KW, Math.min(MAX_KW, wanted));
-    regs.set(R.PV, u16(Math.round(PV_KW * 100)));
-    regs.set(R.LOAD, u16(Math.round(LOAD_KW * 100)));
+    // The sim's model (edge/sim/sim-model.js), without its dead times: the EMS
+    // while it asserts control, the inverter itself otherwise - and in its own
+    // mode inside the K4b window (registers 43/44).
+    const wanted = enabled ? commandedKw : pvKw - loadKw;
+    const hi = enabled ? MAX_KW : Math.min(MAX_KW, limitKw(R.CH_LIMIT));
+    const lo = enabled ? MAX_KW : Math.min(MAX_KW, limitKw(R.DIS_LIMIT));
+    const batt = Math.max(-lo, Math.min(hi, wanted));
+    regs.set(R.PV, u16(Math.round(pvKw * 100)));
+    regs.set(R.LOAD, u16(Math.round(loadKw * 100)));
     regs.set(R.BATT, u16(Math.round(batt * 100)));
-    regs.set(R.GRID, u16(Math.round((LOAD_KW + batt - PV_KW) * 100)));
+    regs.set(R.GRID, u16(Math.round((loadKw + batt - pvKw) * 100)));
     regs.set(R.SOC, u16(770));
     regs.set(R.ENABLE, enabled);
     regs.set(R.SETPOINT, u16(Math.round(commandedKw * 100)));
@@ -107,6 +117,8 @@ function startSelfConsumingInverter() {
       gridKw: () => s16(regs.get(R.GRID)) / 100,
       isEnabled: () => enabled === 1,
       setpointWrites: () => writes.filter((w) => w.addr === R.SETPOINT),
+      reg: (addr) => regs.get(addr),
+      setHouse: (pv, load) => { pvKw = pv; loadKw = load; recompute(); },
     }));
   });
 }
@@ -171,14 +183,22 @@ function simSelection(port) {
 }
 
 // The core's published command. `mode` is the additive battery_mode field.
-function setpoint(mode, kw) {
+function setpoint(mode, kw, extra = {}) {
   return {
     battery_setpoint_kw: kw, source: 'schedule', ts: new Date().toISOString(),
     control_enabled: true, device_certified: true,
     grid_charge_allowed: true, // merchant posture; the EEG case is its own test
     battery_mode: mode,
     battery_native_duty: mode === 'native' ? 'cover_load' : undefined,
+    ...extra,
   };
+}
+
+// K4b: a charge-side intent with its guard-clipped window.
+function windowSetpoint(intent, min, max, kw = 0, extra = {}) {
+  return setpoint('native_window', kw, {
+    battery_native_intent: intent, battery_window_min_kw: min, battery_window_max_kw: max, ...extra,
+  });
 }
 
 test('a covering slot goes native: ONE write, then only reads, and the inverter covers the house itself', async () => {
@@ -204,11 +224,17 @@ test('a covering slot goes native: ONE write, then only reads, and the inverter 
       // The documented sequence: clear the control flag, zero the setpoint - plus
       // the slot's PV cap, which is NOT part of the hand-over (the mode concerns
       // the battery; freezing curtailment would let it outlive its slot).
-      [{ addr: R.ENABLE, value: 0 }, { addr: R.SETPOINT, value: 0 }, { addr: R.PVLIMIT, value: 0xffff }],
-      'the documented native sequence + the untouched curtailment command');
+      [{ addr: R.CH_LIMIT, value: NO_LIMIT }, { addr: R.DIS_LIMIT, value: NO_LIMIT },
+        { addr: R.ENABLE, value: 0 }, { addr: R.SETPOINT, value: 0 }, { addr: R.PVLIMIT, value: 0xffff }],
+      'K4b: both window limits CLEARED first (an earlier charge-side slot may have left one), '
+      + 'then the documented native sequence + the untouched curtailment command');
     assert.strictEqual(nat.out.payload.mode, 'native', 'the readback is the EVIDENCE');
+    assert.strictEqual(nat.out.payload.native.intent, 'cover_load', 'and it names the intent it realises');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(nat.out.payload.native_capabilities)),
+      { intents: ['cover_load', 'surplus_charge', 'self_consumption'], window: true, persistent: false },
+      'the lever report rides on every generic cycle');
     assert.ok(nat.out.payload.registers.every((r) => r.match), 'the device confirms its own state');
-    assert.strictEqual(dev.writes.length - before, 3, 'exactly the native pair plus the PV cap');
+    assert.strictEqual(dev.writes.length - before, 5, 'exactly the two limits, the native pair and the PV cap');
     assert.ok(!dev.isEnabled(), 'the inverter now regulates itself');
 
     // The device really covers the house on its own - grid ~ 0 with NO setpoint
@@ -250,7 +276,7 @@ test('the take-back resumes the setpoint path on the very next tick', async () =
     // per native episode, not per process).
     const before = dev.writes.length;
     await tick(setpoint('native', -7.087));
-    assert.strictEqual(dev.writes.length - before, 3);
+    assert.strictEqual(dev.writes.length - before, 5, 'the two cleared limits, the native pair and the PV cap');
     assert.ok(!dev.isEnabled());
   } finally {
     dev.server.close();
@@ -341,6 +367,157 @@ test('a SILENT core runs the ONE controller-owned hand-back, not a second way of
     off.control_enabled = false;
     const out2 = await tick(off);
     assert.notStrictEqual(out2.plan && out2.plan.mode, 'native');
+  } finally {
+    dev.server.close();
+  }
+});
+
+// --- K4b: Absicht + Fenster, the charge-side intents on the simulator ------------
+//
+// "native_window" carries surplus_charge (E-up) or self_consumption (E / E~) plus
+// the guard-clipped window. The same write-once discipline: ENTRY writes the window
+// FIRST and then hands over; a CHANGED window re-writes; the same window in the next
+// quarter hour costs nothing; EXIT is the ordinary setpoint plan.
+
+test('K4b E-up: entry writes the window first, the device charges ONLY the surplus and never discharges', async () => {
+  const dev = await startSelfConsumingInverter();
+  try {
+    const tick = makeRig(dev.port);
+    dev.setHouse(12, 5); // 7 kW surplus
+    await tick(setpoint('setpoint', 3));
+    const before = dev.writes.length;
+    const up = await tick(windowSetpoint('surplus_charge', 0, 30, 3));
+    assert.strictEqual(up.plan.mode, 'native');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(up.plan.writes.map((w) => [w.addr, w.value]))),
+      [[R.CH_LIMIT, 3000], [R.DIS_LIMIT, 0], [R.ENABLE, 0], [R.SETPOINT, 0], [R.PVLIMIT, 0xffff]]);
+    assert.strictEqual(dev.writes.length - before, 5);
+    assert.strictEqual(up.out.payload.mode, 'native');
+    assert.strictEqual(up.out.payload.native.intent, 'surplus_charge', 'the readback names the intent');
+    assert.ok(up.out.payload.registers.every((r) => r.match), 'window + hand-over read back');
+    assert.ok(Math.abs(dev.battKw() - 7) < 0.02, 'charges exactly the surplus');
+    assert.ok(Math.abs(dev.gridKw()) < 0.02, 'grid ~ 0');
+
+    // Wolkenkante: the house now has a DEFICIT. E-up must not discharge.
+    dev.setHouse(1, 5);
+    assert.ok(Math.abs(dev.battKw()) < 0.02, 'no discharge in E-up (discharge limit 0)');
+    assert.ok(Math.abs(dev.gridKw() - 4) < 0.02, 'the deficit is imported, not taken from the battery');
+  } finally {
+    dev.server.close();
+  }
+});
+
+test('K4b window change re-writes, the same window in the next slot costs nothing, exit is the setpoint plan', async () => {
+  const dev = await startSelfConsumingInverter();
+  try {
+    const tick = makeRig(dev.port);
+    dev.setHouse(20, 5); // 15 kW surplus
+    await tick(windowSetpoint('self_consumption', -30, 30, 0, { slot_start: '2026-09-24T12:00:00Z' }));
+    assert.ok(Math.abs(dev.battKw() - 15) < 0.02, 'E: the whole surplus is stored');
+
+    // Next quarter hour, SAME intent and window: not one register write.
+    const w1 = dev.writes.length;
+    const same = await tick(windowSetpoint('self_consumption', -30, 30, 0, { slot_start: '2026-09-24T12:15:00Z' }));
+    assert.strictEqual(same.plan.writes.length, 0, 'slot_start is not part of the write-once signature');
+    assert.strictEqual(dev.writes.length, w1);
+    assert.strictEqual(same.out.payload.native.intent, 'self_consumption', 'still proven by the readback');
+
+    // E~: the cloud throttles the charge to 4.2 kW -> ONE re-write, the rest is exported.
+    const thr = await tick(windowSetpoint('self_consumption', -30, 4.2, 0));
+    assert.ok(thr.plan.writes.length > 0, 'a changed window is re-written');
+    assert.strictEqual(dev.reg(R.CH_LIMIT), 420);
+    assert.ok(Math.abs(dev.battKw() - 4.2) < 0.02, 'E~ holds its charge cap');
+    assert.ok(Math.abs(dev.gridKw() + 10.8) < 0.02, 'the rest is exported');
+
+    // Deficit in E~: the discharge side is open.
+    dev.setHouse(0, 6);
+    assert.ok(Math.abs(dev.battKw() + 6) < 0.02, 'E~ still covers the house');
+
+    // Exit: the core withdraws -> the ordinary setpoint plan asserts EMS control.
+    const back = await tick(setpoint('setpoint', -2));
+    assert.notStrictEqual(back.plan.mode, 'native');
+    assert.ok(dev.isEnabled(), 'EMS control again');
+    assert.ok(Math.abs(dev.battKw() + 2) < 0.02, 'the window registers do not bind a commanded value');
+    assert.strictEqual(back.out.payload.native, undefined, 'no intent is claimed on a setpoint cycle');
+  } finally {
+    dev.server.close();
+  }
+});
+
+test('K4b E-up -> E-down: the covering slot CLEARS the charge-side window', async () => {
+  const dev = await startSelfConsumingInverter();
+  try {
+    const tick = makeRig(dev.port);
+    await tick(windowSetpoint('surplus_charge', 0, 30));
+    assert.strictEqual(dev.reg(R.DIS_LIMIT), 0, 'setup: E-up blocks discharge');
+    dev.setHouse(0, 7);
+    const down = await tick(setpoint('native', -7));
+    assert.strictEqual(down.out.payload.native.intent, 'cover_load');
+    assert.strictEqual(dev.reg(R.DIS_LIMIT), NO_LIMIT, 'the E-up limit does not survive into E-down');
+    assert.ok(Math.abs(dev.battKw() + 7) < 0.02, 'the house is covered');
+  } finally {
+    dev.server.close();
+  }
+});
+
+test('K4b without a charge-side certificate: the follower keeps writing and nothing is confirmed', async () => {
+  const dev = await startSelfConsumingInverter();
+  try {
+    // The AUTO tab carries the PRODUCTION catalog: no charge-side lever anywhere.
+    const src = byId['auto-control-plan'].func;
+    const planCtx = {};
+    const execCtx = {};
+    const run = async (sp) => {
+      const msg = { setpoint: sp };
+      const sandbox = (store) => ({
+        msg, node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
+        context: { get: (k) => store[k], set: (k, v) => { store[k] = v; } },
+        flow: { get: (k, st) => (st === 'file' ? undefined : (k === 'inverter_config' ? simSelection(dev.port) : undefined)), set() {} },
+        global: { get: (k) => (k === 'net' ? net : (k === 'vpSharedBusArbiter' ? sharedBus : undefined)) },
+        Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map, Set,
+        setTimeout, clearTimeout, String, Error,
+      });
+      const pb = sandbox(planCtx); vm.createContext(pb);
+      const planned = vm.runInContext('(function () {\n' + src + '\n})()', pb);
+      if (!planned) return { plan: null, out: null };
+      const eb = sandbox(execCtx); vm.createContext(eb);
+      const out = await vm.runInContext('(function () {\n' + byId['auto-control-exec'].func + '\n})()', eb);
+      return { plan: msg.control, out, msg };
+    };
+    dev.setHouse(12, 5);
+    const r = await run(windowSetpoint('surplus_charge', 0, 30, 6.5));
+    assert.notStrictEqual(r.plan.mode, 'native', 'no certificate -> no hand-over');
+    assert.ok(dev.isEnabled(), 'EMS control stays asserted');
+    assert.ok(Math.abs(dev.battKw() - 6.5) < 0.02, 'the (damped) reference setpoint is executed');
+    assert.strictEqual(r.out.payload.mode, 'normal');
+    assert.strictEqual(r.out.payload.native, undefined, 'nothing to confirm');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.out.payload.native_capabilities)),
+      { intents: [], window: false, persistent: false }, 'and the report SAYS there is no lever');
+  } finally {
+    dev.server.close();
+  }
+});
+
+test('K4b a Layer 1 that predates native_window runs the ordinary plan (never confirms)', async () => {
+  // The pre-K4b plan node compared battery_mode against 'native' ONLY. Simulate it
+  // by feeding the new word to a body where that comparison is the old one.
+  const dev = await startSelfConsumingInverter();
+  try {
+    const old = bodyPointedAt('sim-control-plan', dev.port)
+      .replace("var nativeWanted = sp.battery_mode === 'native' || sp.battery_mode === 'native_window';",
+        "var nativeWanted = sp.battery_mode === 'native';");
+    assert.ok(old.includes("var nativeWanted = sp.battery_mode === 'native';"), 'rig: the dispatch line changed');
+    const msg = { setpoint: windowSetpoint('surplus_charge', 0, 30, 2.5) };
+    const box = {
+      msg, node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
+      context: { get: () => undefined, set() {} },
+      flow: { get: () => undefined, set() {} },
+      global: { get: () => undefined },
+      Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map, Set, String, Error,
+    };
+    vm.createContext(box);
+    vm.runInContext('(function () {\n' + old + '\n})()', box);
+    assert.notStrictEqual(msg.control.mode, 'native', 'the unknown word falls through to the setpoint plan');
+    assert.ok(msg.control.writes.some((w) => w.addr === R.SETPOINT && w.value === 250), 'writes the reference 2.5 kW');
   } finally {
     dev.server.close();
   }

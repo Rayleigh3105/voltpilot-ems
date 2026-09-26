@@ -1,0 +1,145 @@
+{
+  "absichten": {
+    "A": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "ToU (EEPROM)."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "Nicht schreiben, Installateur-Eigenverbrauch."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Wie Deye."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Wie Deye."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Wie Deye; Fernsteuer-Block erst per Lese-Sonde feststellen."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Export-Limit-Einstellung (EEPROM)."
+    },
+    "H": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "ToU (EEPROM)."
+    },
+    "N": {
+      "beleg": null,
+      "hebel": "zeitplan",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": null,
+      "sicherheit": "C",
+      "wie": "ToU (EEPROM)."
+    }
+  },
+  "adapter": null,
+  "bindung": null,
+  "daempfung": {
+    "box_regelt": false,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "dd"
+    ],
+    "sicherheit": "C",
+    "text": "ToU-Register im EEPROM: keine Box-Regelung (Konzept §6.5)."
+  },
+  "eigenmodus": {
+    "sicherheit": "C",
+    "text": "Ja, wie Deye (Work Mode + ToU) (C)."
+  },
+  "empfehlung": "Erst Lese-Sonde des Fernsteuer-Blocks; dann wie Deye-Zeile 1 oder 2.",
+  "fallen": [
+    "Gleiche Plattform, andere Firmware-Stände – nichts von Deye ungeprüft übernehmen."
+  ],
+  "familie": "Sunsynk-Hybride (Deye-Plattform)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "Sunsynk",
+  "id": "sunsynk",
+  "im_repo": "nicht im Katalog",
+  "modelle": [
+    "Sunsynk-Hybride (Deye-Plattform)"
+  ],
+  "quellen": [
+    "dd"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "C",
+    "speicher": "dauerspeicher",
+    "text": "ToU-Register EEPROM (C)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 3,
+  "totmann": {
+    "sekunden": null,
+    "sicherheit": "D",
+    "text": "unbelegt (D).",
+    "vorhanden": null,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": null,
+    "sicherheit": "D",
+    "speicher": "dauerspeicher",
+    "text": "Wie Deye ToU; Fernsteuer-Block je Firmware unbelegt (D)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "CT am Netzpunkt (wie Deye)."
+  }
+}

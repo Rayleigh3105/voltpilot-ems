@@ -65,6 +65,8 @@ const BLAETTER: ReadonlyArray<{
   },
   { reiter: 'Erlöse', datei: 'components/SteuerungFormel.css', offen: 0, bekannt: [] },
   { reiter: 'Erlöse', datei: 'components/PortfolioWelt.css', offen: 0, bekannt: [] },
+  { reiter: 'Portfolio', datei: 'components/portfolio/PortfolioSeite.css', offen: 0, bekannt: [] },
+  { reiter: 'Portfolio', datei: 'components/portfolio/KundenUebersicht.css', offen: 0, bekannt: [] },
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', offen: 0, bekannt: [] },
   // Die geteilten Bausteine des Bereichs (P2b) — von Anfang an auf 0.
   { reiter: 'Bausteine', datei: 'components/Aufklapper.css', offen: 0, bekannt: [] },
@@ -103,6 +105,15 @@ const BLAETTER: ReadonlyArray<{
   { reiter: 'Messstellen', datei: 'components/MessstellenVerlauf.css', offen: 0, bekannt: [] },
   // UEMS AP-13 IP-5: der Vergleich — das × einer Reihe trägt 44 px, auch wenn der Chip schmaler aussieht.
   { reiter: 'Messstellen', datei: 'components/WerteVergleich.css', offen: 0, bekannt: [] },
+  // Der Rahmen des Verlauf-Reworks und die neue Erlöse-Seite — von Anfang an 0.
+  { reiter: 'Rahmen', datei: 'components/VerlaufRahmen.css', offen: 0, bekannt: [] },
+  { reiter: 'Erlöse', datei: 'components/erloese/ErloeseSeite.css', offen: 0, bekannt: [] },
+  // Die Balkenliste und die Karte „So verdient" (25.09.2026) — von Anfang an 0:
+  // ihre Tippziele sind das ⓘ, der Aufklapper und `.vp-vr-link` aus den
+  // geteilten Bausteinen.
+  { reiter: 'Erlöse', datei: 'components/erloese/Balkenliste.css', offen: 0, bekannt: [] },
+  { reiter: 'Erlöse', datei: 'components/SoVerdient.css', offen: 0, bekannt: [] },
+  { reiter: 'Energie', datei: 'components/energie/EnergieSeite.css', offen: 0, bekannt: [] },
   // P4 hat den Profi-Aufklapper auf den geteilten `Aufklapper` (48 px)
   // umgestellt und `preisFenster.css` ersatzlos aufgelöst — die Ratsche geht
   // damit auf 0 und nie wieder hoch.

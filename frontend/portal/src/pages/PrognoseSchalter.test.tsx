@@ -11,8 +11,8 @@ import type { ModellWahlZustand } from '../prognose';
  * erschöpfend geprüft - hier geht es um die fünf Dinge, die nur die Fläche
  * beantworten kann:
  *
- *  1. ein KUNDE sieht den Knopf auf seiner eigenen Anlage (das Rollen-Gate ist
- *     für diesen Knopf gefallen),
+ *  1. ein KUNDE sieht KEINEN Knopf - ein Modell umzustellen ist seit der
+ *     Entscheidung E6 = A Sache von VoltPilot; Erklärung und Beleg bleiben,
  *  2. der Dialog nennt die Folgen - inklusive „nur für diese Anlage" und dem
  *     Rückweg -, und NIE „alle Anlagen der Plattform",
  *  3. der Klick ruft genau EINEN Endpunkt, mit der ANLAGE + Art + Modell,
@@ -158,9 +158,9 @@ describe('Prognosequalität - der Schalter', () => {
     forecastQualityMock.mockResolvedValue(QUALITY);
     forecastModelsMock.mockResolvedValue(WAHL);
     promoteMock.mockResolvedValue(WAHL);
-    // Der Normalfall dieser Datei ist ein KUNDE - der Knopf hängt nicht mehr
-    // an der Rolle.
-    technicalLayer.mockReturnValue(false);
+    // Der Normalfall dieser Datei ist VoltPilot - nur dort gibt es den Knopf
+    // (E6 = A). Die Kundensicht setzt ihre Tests ausdrücklich.
+    technicalLayer.mockReturnValue(true);
   });
   afterEach(() => {
     vi.clearAllMocks();
@@ -186,16 +186,14 @@ describe('Prognosequalität - der Schalter', () => {
     expect(screen.getByText(/Ø Abweichung je Tag \(kW\)/)).toBeInTheDocument();
   });
 
-  it('zeigt einem KUNDEN den Knopf auf SEINER Anlage', async () => {
+  it('zeigt einem KUNDEN keinen Knopf - Erklärung und Beleg bleiben', async () => {
     technicalLayer.mockReturnValue(false);
     rendere();
     await screen.findByText('Lernende Kandidaten');
 
-    // Das Gate ist für DIESEN Knopf gefallen - die Wahl gilt nur für diese
-    // Anlage, und die gehört ihm.
-    expect(screen.getAllByRole('button', { name: 'Kandidat übernehmen' })).toHaveLength(2);
+    // E6 = A: ein Modell umzustellen ist Sache von VoltPilot.
+    expect(screen.queryByRole('button', { name: 'Kandidat übernehmen' })).not.toBeInTheDocument();
     expect(forecastModelsMock).toHaveBeenCalledWith('site-1');
-    // Die Erklärung und der Beleg bleiben ihm ebenfalls.
     expect(screen.getByText(/beeinflusst dabei keinen einzigen Fahrplan/)).toBeInTheDocument();
     expect(screen.getByText(/Die letzten 2 Bewertungen ansehen/)).toBeInTheDocument();
   });
@@ -300,6 +298,7 @@ describe('Prognosequalität - der Schalter', () => {
 
   it('zeigt die Plattform-Vorgabe nur dem Betreiber, und nur bei Abweichung', async () => {
     forecastModelsMock.mockResolvedValue(UMGESTELLT);
+    technicalLayer.mockReturnValue(false);
     rendere();
     await screen.findByText('Aktive Modelle');
     // Der Kunde braucht sie nicht - sie ist eine Betreiber-Auskunft.

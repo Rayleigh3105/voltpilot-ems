@@ -64,6 +64,7 @@ const updateComponent = vi.fn();
 const readCustomComponent = vi.fn();
 const createCustomComponent = vi.fn();
 const matchComponent = vi.fn();
+const duplicateCustomComponent = vi.fn();
 // P5d: der Batterie-Weg holt seine Kurven-Vorlagen selbst.
 const socCurveTemplates = vi.fn();
 // Der Anbinde-Assistent hinter der Ladesäulen-Karte holt sich seine zwei Listen
@@ -89,6 +90,7 @@ vi.mock('../api', async () => {
       readCustomComponent: (...a: unknown[]) => readCustomComponent(...a),
       createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
       matchComponent: (...a: unknown[]) => matchComponent(...a),
+      duplicateCustomComponent: (...a: unknown[]) => duplicateCustomComponent(...a),
       socCurveTemplates: () => socCurveTemplates(),
     },
   };
@@ -98,33 +100,55 @@ function knopf(name: string | RegExp) {
   return screen.getByRole('button', { name });
 }
 
-/** Schritt 1 → 2: die Typ-Karte „Wechselrichter". */
-async function bisZurGeraetewahl() {
-  render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-  fireEvent.click(await screen.findByTestId('typ-wechselrichter'));
-  return screen.findByRole('combobox', { name: 'Gerät' });
+type FlowProps = Parameters<typeof AnlegenFlow>[0];
+
+/**
+ * Die EINRICHTEN-SEITE eines Katalog-Modells (Konzept „Aufbau und
+ * Gerätekatalog"): Art und Modell sind im Katalog gewählt, die Seite öffnet mit
+ * ihnen - kein Typ-Schritt, kein „Weiter".
+ */
+function oeffne(over: Partial<FlowProps> = {}) {
+  return render(
+    <AnlegenFlow
+      siteId="s1"
+      startTemplate={template as never}
+      onClose={() => {}}
+      onSaved={() => {}}
+      {...over}
+    />,
+  );
 }
 
-/** Schritt 1 → 3: Typ, Modell, Weiter. */
-async function bisZurVerbindung(modell = template.modelLabel) {
-  await bisZurGeraetewahl();
-  fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
-  fireEvent.click(screen.getByRole('option', { name: new RegExp(modell) }));
-  fireEvent.click(knopf('Weiter'));
+/** Die Seite ist da, der Anschluss wartet auf seine Pflichtangaben. */
+async function bisZurVerbindung(over: Partial<FlowProps> = {}) {
+  oeffne(over);
   await screen.findByLabelText(/IP-Adresse/);
 }
 
 function fuelleFormular() {
   fireEvent.change(screen.getByLabelText(/IP-Adresse/), { target: { value: '192.168.0.28' } });
   fireEvent.change(screen.getByLabelText(/Seriennummer/), { target: { value: '2985159064' } });
+  // Das Feld verlassen = fertig getippt: der Test läuft sofort (E4).
+  fireEvent.blur(screen.getByLabelText(/Seriennummer/));
 }
 
-/** Schritt 1 → 4: bis der Test gelaufen ist. */
-async function bisZumTest(modell = template.modelLabel) {
-  await bisZurVerbindung(modell);
+/** Bis der Test gelaufen ist - er läuft von selbst, sobald der Anschluss vollständig ist. */
+async function bisZumTest(over: Partial<FlowProps> = {}) {
+  await bisZurVerbindung(over);
   fuelleFormular();
-  fireEvent.click(knopf('Weiter'));
-  await screen.findByText('Verbindung testen');
+  await waitFor(() => expect(testComponentConnection).toHaveBeenCalled());
+}
+
+/** „Speichern" im Fuß der Seite. */
+function speichernKnopf() {
+  return screen.getByTestId('einrichten-speichern');
+}
+
+/** Mit Beleg: der Abschnitt „Name" ist offen, „Speichern" frei. */
+async function bisZumNamen(over: Partial<FlowProps> = {}) {
+  await bisZumTest(over);
+  await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+  return screen.findByLabelText('So erscheint es im Aufbau');
 }
 
 function standardMocks() {
@@ -153,38 +177,30 @@ function standardMocks() {
   matchComponent.mockResolvedValue(undefined);
 }
 
-describe('der neue Anlege-Fluss', () => {
+describe('die Einrichten-Seite eines Katalog-Geräts', () => {
   beforeEach(standardMocks);
 
-  it('fragt ZUERST nach dem Gerätetyp - sechs Karten, keine Vorlagen-Herkunft', async () => {
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    await screen.findByText('Was möchten Sie anbinden?');
-    for (const id of [
-      'wechselrichter',
-      'wallbox',
-      'ladesaeule',
-      'verbraucher',
-      'zaehler',
-      'eigenbau',
-    ]) {
-      expect(screen.getByTestId(`typ-${id}`)).toBeInTheDocument();
+  it('öffnet mit dem gewählten Modell - Kopf mit „Sie brauchen", Abschnitte statt Schritten', async () => {
+    oeffne();
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    // Das Modell steht im Kopf der Seite - einmal, nicht zweimal.
+    expect(within(seite).getAllByText('Deye SUN-30K-SG01HP3-EU')).toHaveLength(1);
+    expect(within(seite).getByText('Sie brauchen:').closest('p')).toHaveTextContent(
+      /IP-Adresse des Datenloggers.*Datenlogger-Seriennummer/,
+    );
+    for (const titel of ['Aufgabe in Ihrer Anlage', 'Anschluss', 'Test mit echten Werten', 'Name']) {
+      expect(within(seite).getByRole('heading', { name: new RegExp(titel) })).toBeInTheDocument();
     }
-    // Die alte Frage nach der HERKUNFT der Vorlage gibt es nicht mehr.
-    expect(screen.queryByText('Gerät aus dem VoltPilot-Katalog')).toBeNull();
-    expect(screen.queryByText('Geprüfte Vorlage')).toBeNull();
+    // Die alte Typ-Frage und das „Weiter" gibt es nicht mehr.
+    expect(screen.queryByText('Was möchten Sie anbinden?')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Weiter' })).toBeNull();
   });
 
-  it('zeigt die benannten Schritte des gewählten Weges', async () => {
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    const leiste = await screen.findByLabelText('Schritte');
-    expect(leiste.textContent).toContain('Was anbinden');
-    expect(leiste.textContent).toContain('Gerät wählen');
-    expect(leiste.textContent).toContain('Verbinden');
-    expect(leiste.textContent).toContain('Testen');
-    expect(leiste.textContent).toContain('Fertig');
-    // Der Eigenbau-Weg stellt andere Fragen - und sagt das.
-    fireEvent.click(screen.getByTestId('typ-eigenbau'));
-    expect((await screen.findByLabelText('Schritte')).textContent).toContain('Messwerte');
+  it('zeigt spätere Abschnitte nur mit ihrem Satz - kein Formular, das noch nichts tun kann', async () => {
+    await bisZurVerbindung();
+    expect(screen.getByText('Startet von selbst, sobald der Anschluss vollständig ist.')).toBeInTheDocument();
+    expect(screen.getByText('Nach dem Test.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('So erscheint es im Aufbau')).toBeNull();
   });
 
   it('rendert die Verbindungsfelder AUS dem transport_schema der Vorlage', async () => {
@@ -193,10 +209,10 @@ describe('der neue Anlege-Fluss', () => {
     expect(screen.getByLabelText(/Seriennummer/)).toBeInTheDocument();
   });
 
-  it('räumt die Experten-Angaben unter „Erweitert" - erreichbar, aber nicht im Weg', async () => {
+  it('räumt die Experten-Angaben unter „Weitere Angaben" - erreichbar, aber nicht im Weg', async () => {
     await bisZurVerbindung();
     // Der Port ist KEIN Pflichtfeld - er steht im Aufklapper, mit seiner Vorgabe.
-    const details = screen.getByText('Erweitert').closest('details') as HTMLDetailsElement;
+    const details = screen.getByText('Weitere Angaben (1)').closest('details') as HTMLDetailsElement;
     expect(details).toBeTruthy();
     expect(details.contains(screen.getByLabelText('Port'))).toBe(true);
     expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('8899');
@@ -204,15 +220,19 @@ describe('der neue Anlege-Fluss', () => {
     expect(details.contains(screen.getByLabelText(/IP-Adresse/))).toBe(false);
   });
 
-  it('hält „Weiter" zu, solange Pflichtfelder fehlen', async () => {
+  it('hält „Speichern" zu, solange Pflichtfelder fehlen - und sagt, warum', async () => {
     await bisZurVerbindung();
-    expect(knopf('Weiter')).toBeDisabled();
-    expect(screen.getByText(/Es fehlt noch/)).toBeInTheDocument();
+    expect(speichernKnopf()).toBeDisabled();
+    expect(screen.getByText('Speichern geht, sobald der Test echte Werte zeigt.')).toBeInTheDocument();
+    expect(screen.getByText('2 Angaben fehlen')).toBeInTheDocument();
+    // Ohne vollständige Angaben wird nichts getestet.
+    expect(testComponentConnection).not.toHaveBeenCalled();
     fuelleFormular();
-    expect(knopf('Weiter')).toBeEnabled();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    expect(screen.getByText('vollständig')).toBeInTheDocument();
   });
 
-  it('testet beim Betreten des Schritts „Testen" von selbst', async () => {
+  it('testet von selbst, sobald alles Nötige dasteht', async () => {
     await bisZumTest();
     await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1));
     await screen.findByText(/Diese Messwerte kommen gerade an/);
@@ -220,45 +240,63 @@ describe('der neue Anlege-Fluss', () => {
     expect(screen.getByText('Ladestand')).toBeInTheDocument();
     // Verbrauch/Netz hat dieses Gerät nicht gemeldet - sie erscheinen NICHT als 0.
     expect(screen.queryByText('Verbrauch')).toBeNull();
+    expect(screen.getByText('bestanden')).toBeInTheDocument();
   });
 
-  it('hält „Komponente anlegen" zu, bis das Gerät wirklich geantwortet hat', async () => {
+  it('wartet beim Tippen, bis die Eingabe ruht - nicht jeder Tastendruck prüft die Box', async () => {
+    await bisZurVerbindung();
+    fireEvent.change(screen.getByLabelText(/IP-Adresse/), { target: { value: '192.168.0.28' } });
+    fireEvent.change(screen.getByLabelText(/Seriennummer/), { target: { value: '2985159064' } });
+    expect(testComponentConnection).not.toHaveBeenCalled();
+    await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(1), { timeout: 2500 });
+  });
+
+  it('hält „Speichern" zu, bis das Gerät wirklich geantwortet hat', async () => {
     testComponentConnection.mockResolvedValue({
       results: [{ id: 'verbindung', ok: false, errorCode: 'no_answer' }],
     });
     await bisZumTest();
     await screen.findByText(/antwortet aber nicht wie erwartet/);
-    expect(knopf('Komponente anlegen')).toBeDisabled();
-    expect(screen.queryByTestId('fertigmachen')).toBeNull();
+    expect(speichernKnopf()).toBeDisabled();
+    expect(screen.getByText('Ohne gültige Werte des Geräts wird nicht gespeichert.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('So erscheint es im Aufbau')).toBeNull();
   });
 
-  it('entwertet den Beleg, sobald ein Feld geändert wird', async () => {
-    await bisZumTest();
-    await waitFor(() => expect(knopf('Komponente anlegen')).toBeEnabled());
-    fireEvent.click(knopf('Zurück'));
-    fireEvent.change(await screen.findByLabelText(/IP-Adresse/), {
-      target: { value: '192.168.0.99' },
-    });
-    fireEvent.click(knopf('Weiter'));
-    // Genau das ist der Sinn der Pflicht: eine andere Adresse ist ein anderes
-    // Gerät - es wird ERNEUT getestet.
+  it('entwertet den Beleg, sobald ein Feld geändert wird - und prüft neu', async () => {
+    await bisZumNamen();
+    fireEvent.change(screen.getByLabelText(/IP-Adresse/), { target: { value: '192.168.0.99' } });
+    // Genau das ist der Sinn der Pflicht: eine andere Adresse ist ein anderes Gerät.
+    expect(speichernKnopf()).toBeDisabled();
+    fireEvent.blur(screen.getByLabelText(/IP-Adresse/));
     await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(2));
+    expect(testComponentConnection.mock.calls[1][1].connection.ip).toBe('192.168.0.99');
   });
 
-  it('führt vom Typ bis zum Anlegen - mit denselben Aufrufen wie zuvor', async () => {
-    const onSaved = vi.fn();
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={onSaved} />);
-    fireEvent.click(await screen.findByTestId('typ-wechselrichter'));
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Gerät' }));
-    fireEvent.click(screen.getByRole('option', { name: new RegExp(template.modelLabel) }));
-    fireEvent.click(knopf('Weiter'));
-    await screen.findByLabelText(/IP-Adresse/);
-    fuelleFormular();
-    fireEvent.click(knopf('Weiter'));
+  it('verwirft ein Ergebnis, das noch zur ALTEN Eingabe unterwegs war', async () => {
+    let antworte: (v: unknown) => void = () => {};
+    testComponentConnection.mockImplementationOnce(() => new Promise((r) => (antworte = r)));
+    testComponentConnection.mockResolvedValueOnce({
+      results: [{ id: 'verbindung', ok: false, errorCode: 'no_answer' }],
+    });
+    await bisZumTest();
+    // Während der erste Lauf noch unterwegs ist, ändert sich die Adresse …
+    fireEvent.change(screen.getByLabelText(/IP-Adresse/), { target: { value: '192.168.0.99' } });
+    fireEvent.blur(screen.getByLabelText(/IP-Adresse/));
+    await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(2));
+    await screen.findByText(/antwortet aber nicht wie erwartet/);
+    // … und sein spätes „bestanden" gilt NICHT für die neue Adresse.
+    await act(async () => antworte({ results: [{ id: 'verbindung', ok: true, reading: { pvKw: 1 } }] }));
+    expect(speichernKnopf()).toBeDisabled();
+    expect(screen.getByText(/antwortet aber nicht wie erwartet/)).toBeInTheDocument();
+  });
 
-    await screen.findByTestId('fertigmachen');
+  it('führt vom Modell bis zum Anlegen - mit denselben Aufrufen wie zuvor', async () => {
+    const onSaved = vi.fn();
+    const onFertig = vi.fn();
+    const onClose = vi.fn();
+    await bisZumNamen({ onSaved, onFertig, onClose });
     expect(screen.getByText(/trägt die Energiebilanz/)).toBeInTheDocument();
-    fireEvent.click(knopf('Komponente anlegen'));
+    fireEvent.click(speichernKnopf());
 
     await waitFor(() => expect(createComponent).toHaveBeenCalled());
     expect(createComponent.mock.calls[0][1]).toMatchObject({
@@ -267,199 +305,116 @@ describe('der neue Anlege-Fluss', () => {
       connection: { ip: '192.168.0.28', serial: '2985159064' },
     });
     expect(onSaved).toHaveBeenCalled();
-    // Schritt 5: was entstanden ist - und der Abschluss behauptet KEINE Zustellung.
-    await screen.findByTestId('schritt-fertig');
-    expect(screen.getByText(/ist angelegt\./)).toBeInTheDocument();
-    expect(screen.getByText(/sobald sie das nächste Mal/)).toBeInTheDocument();
-    expect(knopf('Zur Komponente')).toBeInTheDocument();
-  });
-
-  it('springt aus „Fertig" auf die angelegte Komponente', async () => {
-    const onClose = vi.fn();
-    render(<AnlegenFlow siteId="s1" onClose={onClose} onSaved={() => {}} />);
-    fireEvent.click(await screen.findByTestId('typ-wechselrichter'));
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Gerät' }));
-    fireEvent.click(screen.getByRole('option', { name: new RegExp(template.modelLabel) }));
-    fireEvent.click(knopf('Weiter'));
-    await screen.findByLabelText(/IP-Adresse/);
-    fuelleFormular();
-    fireEvent.click(knopf('Weiter'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
-    await screen.findByTestId('schritt-fertig');
-
-    fireEvent.click(knopf('Zur Komponente'));
-    expect(window.location.hash).toBe('#/anlage/s1/modell?komponente=neu-1');
+    // Was entstanden ist, sagt der Wirt - und springt auf die belegte Komponente.
+    expect(onFertig).toHaveBeenCalledWith({ id: 'neu-1', titel: template.modelLabel, uebernommen: false });
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('verlinkt NICHTS, wenn die neue Komponente nicht belegt ist', async () => {
+  it('behauptet KEINE Komponente, wenn die neue nicht belegt ist', async () => {
     // Ein Server, der die Liste nicht zurückgibt (oder ein Nebenlauf): dann
-    // wird keine Komponente behauptet, sondern nur geschlossen.
+    // wird keine Komponente behauptet - der Wirt springt nirgendwohin.
     createComponent.mockResolvedValue({ componentAuthority: 'portal', components: [] });
-    await bisZumTest();
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
-    await screen.findByTestId('schritt-fertig');
-    expect(screen.queryByRole('button', { name: 'Zur Komponente' })).toBeNull();
-    // ⚠ Im FUSS, nicht das Kreuz im Kopf - beide heißen „Schließen".
-    expect(
-      within(screen.getByTestId('anlegen-fuss')).getByRole('button', { name: 'Schließen' }),
-    ).toBeInTheDocument();
-  });
-
-  /*
-    „Weiteres Gerät anbinden" ohne den Dialog zu schließen. Geprüft wird das
-    BEOBACHTBARE: der zweite Durchlauf beginnt wirklich von vorn - nichts
-    vorgewählt, kein Name des ersten Geräts, und ein NEUER Verbindungstest.
-    (Ein stehengebliebenes „bestanden" liesse das zweite Gerät ohne eine
-    einzige Prüfung anlegen - genau davor schützt die Testpflicht.)
-  */
-  it('setzt für ein zweites Gerät wirklich alles zurück', async () => {
-    await bisZumTest();
-    fireEvent.change(await screen.findByLabelText('Name'), {
-      target: { value: 'Erstes Gerät' },
-    });
-    fireEvent.click(knopf('Komponente anlegen'));
-    await screen.findByTestId('schritt-fertig');
-    expect(screen.getByText(/„Erstes Gerät" ist angelegt\./)).toBeInTheDocument();
-
-    fireEvent.click(knopf('Weiteres Gerät anbinden'));
-    await screen.findByText('Was möchten Sie anbinden?');
-    fireEvent.click(screen.getByTestId('typ-wechselrichter'));
-    // Nichts ist vorgewählt - der zweite Durchlauf beginnt wirklich von vorn.
-    expect((await screen.findByRole('combobox', { name: 'Gerät' })).textContent).toContain(
-      'Marke und Modell wählen',
-    );
-    expect(knopf('Weiter')).toBeDisabled();
-    fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
-    fireEvent.click(screen.getByRole('option', { name: new RegExp(template.modelLabel) }));
-    fireEvent.click(knopf('Weiter'));
-    await screen.findByLabelText(/IP-Adresse/);
-    fuelleFormular();
-    fireEvent.click(knopf('Weiter'));
-
-    // Der NAME des ersten Geräts reist nicht mit - er würde beim Speichern
-    // mitgeschickt und die zweite Komponente falsch benennen.
-    expect(((await screen.findByLabelText('Name')) as HTMLInputElement).value).toBe('');
-    // Und getestet wird wirklich neu - kein stehengebliebener Beleg.
-    await waitFor(() => expect(testComponentConnection).toHaveBeenCalledTimes(2));
-    fireEvent.click(knopf('Komponente anlegen'));
-    await waitFor(() => expect(createComponent).toHaveBeenCalledTimes(2));
-    expect(createComponent.mock.calls[1][1].label).toBeUndefined();
+    const onFertig = vi.fn();
+    await bisZumNamen({ onFertig });
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(onFertig).toHaveBeenCalled());
+    expect(onFertig.mock.calls[0][0].id).toBeNull();
   });
 
   it('nennt eine Ablehnung des Servers im Klartext', async () => {
     createComponent.mockRejectedValue(
       new ApiError(422, 'Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät.'),
     );
-    await bisZumTest();
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
+    const onClose = vi.fn();
+    await bisZumNamen({ onClose });
+    fireEvent.click(speichernKnopf());
     await screen.findByText('Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät.');
-    // Und der Fluss bleibt stehen, wo er war - kein „Fertig" ohne Ergebnis.
-    expect(screen.queryByTestId('schritt-fertig')).toBeNull();
+    // Und die Seite bleibt stehen, mit allen Eingaben - kein Schließen ohne Ergebnis.
+    expect(onClose).not.toHaveBeenCalled();
+    expect((screen.getByLabelText(/IP-Adresse/) as HTMLInputElement).value).toBe('192.168.0.28');
+  });
+
+  it('führt mit dem Pfeil zurück in den Katalog', async () => {
+    const onZurueck = vi.fn();
+    oeffne({ onZurueck });
+    fireEvent.click(await screen.findByRole('button', { name: 'Zurück zum Katalog' }));
+    expect(onZurueck).toHaveBeenCalled();
   });
 });
 
-describe('die Rolle folgt der Typ-Karte', () => {
+describe('die Aufgabe folgt dem Modell', () => {
   beforeEach(standardMocks);
 
-  it('stellt nur beim Wechselrichter die Rest-Frage - und schlägt die erste vor', async () => {
-    await bisZurGeraetewahl();
+  it('stellt nur beim Wechselrichter die Rest-Frage - und markiert den Vorschlag', async () => {
+    oeffne();
     const wahl = await screen.findByTestId('rollen-wahl');
     expect(wahl.textContent).toContain('Wechselrichter / Speicher');
     expect(wahl.textContent).toContain('Weiterer Erzeuger');
     expect(wahl.querySelector('.is-on')?.textContent).toContain('Wechselrichter / Speicher');
+    expect(wahl.querySelector('.is-on')?.textContent).toContain('Vorschlag');
   });
 
-  it('schlägt auf einer Anlage MIT Wechselrichter den weiteren Erzeuger vor', async () => {
+  it('schlägt auf einer Anlage MIT Wechselrichter den weiteren Erzeuger vor - und sagt warum', async () => {
     siteComponents.mockResolvedValue({
       componentAuthority: 'portal',
       components: [{ id: 'wr', role: 'inverter', definitionVersion: 1 }],
     });
-    await bisZurGeraetewahl();
+    oeffne();
     const wahl = await screen.findByTestId('rollen-wahl');
-    expect(wahl.querySelector('.is-on')?.textContent).toContain('Weiterer Erzeuger');
+    await waitFor(() => expect(wahl.querySelector('.is-on')?.textContent).toContain('Weiterer Erzeuger'));
+    expect(screen.getByText('Vorschlag, weil Ihre Anlage schon einen Hauptwechselrichter hat.')).toBeInTheDocument();
     // ⚠ Blockiert wird nichts: der Server übernimmt eine komponierte Zeile.
     for (const b of wahl.querySelectorAll('button')) expect(b).toBeEnabled();
   });
 
-  it('legt vom Speicher-Slot trotz vorhandenem Wechselrichter den kompatiblen Speicherpfad an', async () => {
-    siteComponents.mockResolvedValue({
-      componentAuthority: 'portal',
-      components: [{ id: 'wr', role: 'inverter', definitionVersion: 1 }],
-    });
-    render(
-      <AnlegenFlow
-        siteId="s1"
-        initialTyp="wechselrichter"
-        initialRolle="inverter"
-        onClose={() => {}}
-        onSaved={() => {}}
-      />,
-    );
-
-    const wahl = await screen.findByTestId('rollen-wahl');
-    expect(wahl.querySelector('.is-on')?.textContent).toContain('Wechselrichter / Speicher');
-    fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
-    fireEvent.click(screen.getByRole('option', { name: new RegExp(template.modelLabel) }));
-    fireEvent.click(knopf('Weiter'));
-    await screen.findByLabelText(/IP-Adresse/);
-    fuelleFormular();
-    fireEvent.click(knopf('Weiter'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
-
-    await waitFor(() => expect(createComponent).toHaveBeenCalled());
-    expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'inverter' });
-  });
-
   it('stellt bei der Wallbox gar keine Frage und legt sie als Verbraucher an', async () => {
-    componentTemplates.mockResolvedValue([
-      { ...template, templateRef: 'builtin:go-e:charger', brand: 'go-e', brandLabel: 'go-e',
-        model: 'charger', modelLabel: 'go-e Charger', deviceType: 'wallbox' },
-    ]);
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    fireEvent.click(await screen.findByTestId('typ-wallbox'));
-    await screen.findByRole('combobox', { name: 'Gerät' });
+    const wallbox = {
+      ...template,
+      templateRef: 'builtin:go-e:charger',
+      brand: 'go-e',
+      brandLabel: 'go-e',
+      model: 'charger',
+      modelLabel: 'go-e Charger',
+      deviceType: 'wallbox',
+    };
+    componentTemplates.mockResolvedValue([wallbox]);
+    await bisZurVerbindung({ startTemplate: wallbox as never });
     expect(screen.queryByTestId('rollen-wahl')).toBeNull();
-
-    fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
-    fireEvent.click(screen.getByRole('option', { name: /go-e Charger/ }));
-    fireEvent.click(knopf('Weiter'));
+    expect(screen.queryByRole('heading', { name: /Aufgabe in Ihrer Anlage/ })).toBeNull();
     fuelleFormular();
-    fireEvent.click(knopf('Weiter'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
     await waitFor(() => expect(createComponent).toHaveBeenCalled());
     expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'consumer' });
   });
 
-  it('nennt an der Zähler-Karte den GRUND der weiten Liste, statt sie leer zu lassen', async () => {
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    fireEvent.click(await screen.findByTestId('typ-zaehler'));
-    // Der Katalog kennt (noch) keine Zähler-Vorlage - die Liste weitet sich
-    // SICHTBAR, statt den alten Weg ersatzlos zu streichen.
-    expect(await screen.findByTestId('typ-erweitert')).toHaveTextContent(
-      /noch keine eigene Vorlage/,
-    );
-    fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
-    expect(screen.getAllByRole('option')).toHaveLength(1);
+  it('macht über „Zähler" aus dem Gerät den Netz-Zähler - mit einem Satz statt einer Frage', async () => {
+    await bisZurVerbindung({ startRolle: 'grid-meter' });
+    expect(screen.queryByTestId('rollen-wahl')).toBeNull();
+    expect(screen.getByText(/Netz-Zähler:/)).toBeInTheDocument();
+    fuelleFormular();
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1]).toMatchObject({ role: 'grid-meter' });
   });
 
-  it('sperrt den zweiten Netz-Zähler mit seinem Grund', async () => {
+  it('sperrt den zweiten Netz-Zähler mit seinem Grund - auch im Fuß', async () => {
     siteComponents.mockResolvedValue({
       componentAuthority: 'portal',
       components: [{ id: 'z', role: 'grid-meter', definitionVersion: 1 }],
     });
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    fireEvent.click(await screen.findByTestId('typ-zaehler'));
-    expect(await screen.findByText(/bereits einen Netz-Zähler/)).toBeInTheDocument();
+    oeffne({ startRolle: 'grid-meter' });
+    expect((await screen.findAllByText(/bereits einen Netz-Zähler/)).length).toBeGreaterThan(0);
+    expect(speichernKnopf()).toBeDisabled();
   });
 });
 
 describe('die anderen Türen desselben Flusses', () => {
   beforeEach(standardMocks);
 
-  it('führt hinter der Ladesäulen-Karte den ANBINDE-Assistenten, ohne etwas anzulegen', async () => {
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    fireEvent.click(await screen.findByTestId('typ-ladesaeule'));
+  it('führt hinter der Ladesäule den ANBINDE-Assistenten, ohne etwas anzulegen', async () => {
+    render(<AnlegenFlow siteId="s1" initialTyp="ladesaeule" onClose={() => {}} onSaved={() => {}} />);
 
     const block = await screen.findByTestId('typ-ladesaeule');
     expect(block).toHaveTextContent(/verbinden sich selbst/);
@@ -467,23 +422,23 @@ describe('die anderen Türen desselben Flusses', () => {
     expect(await screen.findByTestId('ladesaeule-anbinden')).toBeTruthy();
     expect(screen.getByLabelText('Kennung')).toBeTruthy();
     // Weiterhin KEIN Gerät-Anlegen.
-    expect(screen.queryByRole('combobox', { name: 'Gerät' })).toBeNull();
+    expect(screen.queryByTestId('einrichten-speichern')).toBeNull();
     expect(screen.queryByText('Verbindung testen')).toBeNull();
   });
 
   /*
     Einheitsmodell Stufe 6: „Gerät daraus anlegen" an einer EIGENEN Vorlage.
-    Die Typ-Frage ist damit schon beantwortet - der Fluss startet vorbefüllt im
-    Eigenbau-Weg, und „Zurück" schließt, statt in eine Frage zu führen, die es
-    hier nicht gibt.
+    Die Seite öffnet vorbefüllt - nur die Adresse fehlt, denn eine Vorlage
+    beschreibt einen Gerätetyp, kein Exemplar.
   */
-  it('startet mit einer eigenen Vorlage direkt im Eigenbau-Weg, vorbefüllt', async () => {
-    const onClose = vi.fn();
+  it('öffnet mit einer eigenen Vorlage vorbefüllt - nur die Adresse fehlt', async () => {
+    const onZurueck = vi.fn();
     render(
       <AnlegenFlow
         siteId="s1"
-        onClose={onClose}
+        onClose={() => {}}
         onSaved={() => {}}
+        onZurueck={onZurueck}
         vorlage={{
           templateRef: 'custom:s1:waermepumpe',
           label: 'Wärmepumpe Keller',
@@ -500,16 +455,17 @@ describe('die anderen Türen desselben Flusses', () => {
         } as never}
       />,
     );
-    await screen.findByText('Wo steht das Gerät?');
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    expect(within(seite).getByText('Wärmepumpe Keller')).toBeInTheDocument();
     expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('5020');
-    // ⚠ Die ADRESSE bleibt leer - eine Vorlage beschreibt einen Gerätetyp,
-    // kein Exemplar.
-    expect((screen.getByLabelText('Adresse im Netzwerk') as HTMLInputElement).value).toBe('');
-    fireEvent.click(knopf('Zurück'));
-    expect(onClose).toHaveBeenCalled();
+    expect((screen.getByLabelText('IP-Adresse des Geräts') as HTMLInputElement).value).toBe('');
+    // Die Vorlage gibt es schon - die Seite bietet sie nicht noch einmal an.
+    expect(screen.queryByLabelText(/Als eigene Vorlage speichern/)).toBeNull();
+    fireEvent.click(within(seite).getByRole('button', { name: 'Zurück zum Katalog' }));
+    expect(onZurueck).toHaveBeenCalled();
   });
 
-  it('führt die Eigenbau-Schritte IM selben Fluss bis zum Anlegen', async () => {
+  it('beschreibt ein Modbus-Gerät auf EINER Seite - gelesen wird von selbst, gespeichert erst mit Beleg', async () => {
     readCustomComponent.mockResolvedValue({
       ok: true,
       raw: 13750,
@@ -520,46 +476,78 @@ describe('die anderen Türen desselben Flusses', () => {
       receipt: true,
     });
     createCustomComponent.mockResolvedValue({ components: [{ id: 'sb-1' }] });
+    duplicateCustomComponent.mockResolvedValue([]);
+    const onFertig = vi.fn();
+    const onClose = vi.fn();
+    render(<AnlegenFlow siteId="s1" initialTyp="eigenbau" onClose={onClose} onSaved={() => {}} onFertig={onFertig} />);
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
 
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    fireEvent.click(await screen.findByTestId('typ-eigenbau'));
-    await screen.findByText('Wo steht das Gerät?');
+    // Ein öffentliches Ziel wird SOFORT benannt - und nichts wird gelesen.
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '8.8.8.8' } });
+    expect(screen.getAllByRole('status').map((e) => e.textContent).join(' ')).toMatch(/nicht nachweisbar/);
+    expect(screen.getByText('Erst die Adresse, dann liest die Box die Messwerte.')).toBeInTheDocument();
+    expect(screen.getByTestId('einrichten-speichern')).toBeDisabled();
 
-    // Ein öffentliches Ziel wird SOFORT benannt und lässt nicht weiter.
-    fireEvent.change(screen.getByLabelText('Adresse im Netzwerk'), {
-      target: { value: '8.8.8.8' },
-    });
-    expect(
-      screen.getAllByRole('status').map((e) => e.textContent).join(' '),
-    ).toMatch(/nicht nachweisbar/);
-    expect(knopf('Weiter')).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('Adresse im Netzwerk'), {
-      target: { value: '192.168.1.50' },
-    });
-    fireEvent.click(knopf('Weiter'));
-
-    await screen.findByText('Welche Messwerte liefert das Gerät?');
-    // Die Schrittleiste des Wirts ist mitgewandert.
-    expect(screen.getByLabelText('Schritte').querySelector('.is-active')?.textContent)
-      .toContain('Messwerte');
-
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '192.168.1.50' } });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Vorlauf' } });
-    fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: '100' } });
-    fireEvent.click(knopf('Jetzt lesen'));
-    await screen.findByText('13.750');
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '100' } });
+    // Kein „Jetzt lesen" nötig: die Box liest, sobald die Eingabe ruht.
+    await screen.findByText('13.750', {}, { timeout: 2500 });
     expect(screen.getByText('1.375 °C')).toBeInTheDocument();
+    expect(readCustomComponent).toHaveBeenCalledTimes(1);
 
-    await waitFor(() => expect(knopf('Weiter')).toBeEnabled());
-    fireEvent.click(knopf('Weiter'));
-    await screen.findByText('Was ist dieses Gerät?');
-    fireEvent.click(knopf('Weiter'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
+    await waitFor(() => expect(screen.getByTestId('einrichten-speichern')).toBeEnabled());
+    fireEvent.click(screen.getByLabelText(/Als eigene Vorlage speichern/));
+    fireEvent.click(screen.getByTestId('einrichten-speichern'));
 
     await waitFor(() => expect(createCustomComponent).toHaveBeenCalled());
-    // Der GEMEINSAME Abschluss-Schritt - der Selbstbau-Weg hat keinen eigenen.
-    await screen.findByTestId('schritt-fertig');
-    expect(knopf('Zur Komponente')).toBeInTheDocument();
+    expect(createCustomComponent.mock.calls[0][1]).toMatchObject({
+      connection: { host: '192.168.1.50', port: 502, unitId: 1 },
+      channels: [{ label: 'Vorlauf', address: 100 }],
+    });
+    // Die Vorlage entsteht aus dem NEUEN Gerät - ohne Adresse.
+    await waitFor(() => expect(duplicateCustomComponent).toHaveBeenCalledWith('s1', 'sb-1', 'Eigenes Modbus-Gerät'));
+    expect(onFertig).toHaveBeenCalledWith({
+      id: 'sb-1',
+      titel: 'Eigenes Modbus-Gerät',
+      uebernommen: false,
+      hinweis: 'Die Vorlage steht im Katalog unter „Selbst beschreiben".',
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('rechnet eine Handbuch-Nummer nie still um - die Modicon-Lesart ist ein Knopf', async () => {
+    readCustomComponent.mockResolvedValue({ ok: true, raw: 1, value: 1, receipt: true });
+    render(<AnlegenFlow siteId="s1" initialTyp="eigenbau" onClose={() => {}} onSaved={() => {}} />);
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    // Die Messwerte kommen erst nach dem Anschluss dran.
+    expect(screen.queryByLabelText('Register')).toBeNull();
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '192.168.1.50' } });
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '40011' } });
+    const hinweis = screen.getByTestId('modicon-hinweis');
+    expect(hinweis).toHaveTextContent('Holding-Register 10');
+    expect((screen.getByLabelText('Register') as HTMLInputElement).value).toBe('40011');
+    fireEvent.click(within(hinweis).getByRole('button', { name: 'Als Holding-Register 10 lesen' }));
+    expect((screen.getByLabelText('Register') as HTMLInputElement).value).toBe('10');
+  });
+
+  it('sagt es, wenn die Vorlage nicht gespeichert werden konnte - das Gerät ist trotzdem angelegt', async () => {
+    readCustomComponent.mockResolvedValue({ ok: true, raw: 1, value: 1, receipt: true });
+    createCustomComponent.mockResolvedValue({ components: [{ id: 'sb-2' }] });
+    duplicateCustomComponent.mockRejectedValue(new ApiError(500, 'kaputt'));
+    const onFertig = vi.fn();
+    render(<AnlegenFlow siteId="s1" initialTyp="eigenbau" onClose={() => {}} onSaved={() => {}} onFertig={onFertig} />);
+    await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    fireEvent.change(screen.getByLabelText('IP-Adresse des Geräts'), { target: { value: '192.168.1.50' } });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Puffer' } });
+    fireEvent.change(screen.getByLabelText('Register'), { target: { value: '5' } });
+    await waitFor(() => expect(screen.getByTestId('einrichten-speichern')).toBeEnabled(), { timeout: 2500 });
+    fireEvent.change(screen.getByLabelText('So erscheint es im Aufbau'), { target: { value: 'Pufferspeicher' } });
+    fireEvent.click(screen.getByLabelText(/Als eigene Vorlage speichern/));
+    fireEvent.click(screen.getByTestId('einrichten-speichern'));
+    await waitFor(() => expect(onFertig).toHaveBeenCalled());
+    expect(onFertig.mock.calls[0][0]).toMatchObject({ id: 'sb-2', titel: 'Pufferspeicher' });
+    expect(onFertig.mock.calls[0][0].hinweis).toMatch(/Vorlage konnte nicht gespeichert werden/);
   });
 });
 
@@ -593,8 +581,8 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
   it('führt über die Rückfrage bis zum Speichern - MIT der genannten Zustimmung', async () => {
     await bisZumTest();
     const anbieten = await screen.findByTestId('override-anbieten');
-    // Ohne den Klick bleibt das Anlegen zu - die Pflicht gilt unverändert.
-    expect(knopf('Komponente anlegen')).toBeDisabled();
+    // Ohne den Klick bleibt „Speichern" zu - die Pflicht gilt unverändert.
+    expect(speichernKnopf()).toBeDisabled();
 
     fireEvent.click(anbieten);
     await screen.findByText('Ohne Ladestand fortfahren?');
@@ -602,7 +590,8 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
     fireEvent.click(screen.getByText('Trotzdem fortfahren'));
 
     await screen.findByTestId('override-aktiv');
-    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
+    await waitFor(() => expect(speichernKnopf()).toBeEnabled());
+    fireEvent.click(speichernKnopf());
     await waitFor(() => expect(createComponent).toHaveBeenCalled());
     expect(createComponent.mock.calls[0][1]).toMatchObject({
       role: 'inverter',
@@ -628,10 +617,11 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
     fireEvent.change(screen.getByLabelText(/Spannung bei 100 %/), { target: { value: '700' } });
     // Die Eingabe ENTWERTET den Beleg - genau das ist die Verbindungstest-Pflicht.
     expect(screen.queryByTestId('override-anbieten')).toBeNull();
-    // Und der erneute Test trägt sie zur Box.
-    fireEvent.click(knopf('Erneut testen'));
-    await waitFor(() =>
-      expect(testComponentConnection.mock.calls.length).toBeGreaterThan(rufeVorher));
+    // Und der erneute Test - er läuft von selbst, sobald die Eingabe ruht - trägt sie zur Box.
+    await waitFor(
+      () => expect(testComponentConnection.mock.calls.length).toBeGreaterThan(rufeVorher),
+      { timeout: 2500 },
+    );
     const letzter = testComponentConnection.mock.calls.at(-1)[1];
     expect(letzter.connection.soc_from_voltage).toEqual({ v_empty: 600, v_full: 700 });
   });
@@ -656,14 +646,13 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
     });
     fireEvent.change(screen.getByLabelText(/Spannung bei 0 %/), { target: { value: '600' } });
     fireEvent.change(screen.getByLabelText(/Spannung bei 100 %/), { target: { value: '700' } });
-    fireEvent.click(knopf('Erneut testen'));
 
-    await screen.findByTestId('soc-schaetzung-beleg');
+    await screen.findByTestId('soc-schaetzung-beleg', {}, { timeout: 2500 });
     expect(screen.getByText(/636 V/)).toBeTruthy();
     expect(screen.getByText(/36 % Ladestand/)).toBeTruthy();
     // Der Ausweg bleibt NÖTIG: eine Schätzung ist keine Messung.
     expect(await screen.findByTestId('override-anbieten')).toBeTruthy();
-    expect(knopf('Komponente anlegen')).toBeDisabled();
+    expect(speichernKnopf()).toBeDisabled();
   });
 
   it('nennt eine unsinnige Eingabe beim Namen und speichert sie nie', async () => {
@@ -673,8 +662,11 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
     fireEvent.change(screen.getByLabelText(/Spannung bei 100 %/), { target: { value: '600' } });
     expect(await screen.findByTestId('soc-schaetzung-fehler')).toBeTruthy();
 
-    fireEvent.click(knopf('Erneut testen'));
-    await waitFor(() => expect(testComponentConnection).toHaveBeenCalled());
+    const rufeVorher = testComponentConnection.mock.calls.length;
+    await waitFor(
+      () => expect(testComponentConnection.mock.calls.length).toBeGreaterThan(rufeVorher),
+      { timeout: 2500 },
+    );
     const letzter = testComponentConnection.mock.calls.at(-1)[1];
     expect(letzter.connection.soc_from_voltage).toBeUndefined();
   });
@@ -694,7 +686,7 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
     await bisZumTest();
     await screen.findByText(/Modellauswahl/);
     expect(screen.queryByTestId('override-anbieten')).toBeNull();
-    expect(knopf('Komponente anlegen')).toBeDisabled();
+    expect(speichernKnopf()).toBeDisabled();
   });
 });
 
@@ -702,11 +694,10 @@ describe('Alias-Kontinuität im neuen Fluss', () => {
   beforeEach(standardMocks);
 
   it('füllt das Namensfeld NICHT mit dem Modellnamen vor', async () => {
-    await bisZumTest();
-    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
+    const name = (await bisZumNamen()) as HTMLInputElement;
     expect(name.value).toBe('');
     expect(name.placeholder).toBe(template.modelLabel);
-    fireEvent.click(knopf('Komponente anlegen'));
+    fireEvent.click(speichernKnopf());
     await waitFor(() => expect(createComponent).toHaveBeenCalled());
     expect(createComponent.mock.calls[0][1].label).toBeUndefined();
   });
@@ -718,26 +709,27 @@ describe('Alias-Kontinuität im neuen Fluss', () => {
       role: 'pv-generation',
       orphaned: true,
     });
-    await bisZumTest();
+    const onFertig = vi.fn();
+    await bisZumNamen({ onFertig });
     const hinweis = await screen.findByText(/statt eine zweite anzulegen/);
     expect(hinweis).toHaveTextContent('Fronius Anlage WR1');
     expect(screen.getByText(/Leer lassen behält den bisherigen Namen/)).toHaveTextContent(
       'Fronius Anlage WR1',
     );
-    expect(screen.getByText('Vorhandene Komponente wird wieder verbunden')).toBeInTheDocument();
 
-    // Und der Abschluss sagt „wieder verbunden", nicht „angelegt".
-    fireEvent.click(knopf('Komponente anlegen'));
-    await screen.findByTestId('schritt-fertig');
-    expect(screen.getByText(/ist wieder verbunden\./)).toBeInTheDocument();
+    // Und der Wirt erfährt „wieder verbunden", nicht „angelegt" - mit der übernommenen Zeile.
+    fireEvent.click(speichernKnopf());
+    await waitFor(() =>
+      expect(onFertig).toHaveBeenCalledWith({ id: 'wr1', titel: 'Fronius Anlage WR1', uebernommen: true }),
+    );
   });
 
   it('entwertet den Übernahme-Vorschlag, sobald die Verbindung sich ändert', async () => {
     matchComponent.mockResolvedValue({ entityId: 'wr1', label: 'Fronius Anlage WR1' });
-    await bisZumTest();
+    await bisZumNamen();
     await screen.findByText(/statt eine zweite anzulegen/);
-    fireEvent.click(knopf('Zurück'));
-    fireEvent.change(await screen.findByLabelText(/IP-Adresse/), {
+    // Alles steht auf EINER Seite: die Adresse ändern, ohne zurückzublättern.
+    fireEvent.change(screen.getByLabelText(/IP-Adresse/), {
       target: { value: '192.168.0.99' },
     });
     expect(screen.queryByText(/statt eine zweite anzulegen/)).toBeNull();
@@ -745,10 +737,9 @@ describe('Alias-Kontinuität im neuen Fluss', () => {
 
   it('bleibt ohne die Vorschlags-Route unverändert (älteres Backend)', async () => {
     matchComponent.mockRejectedValue(new ApiError(404, 'nicht gefunden'));
-    await bisZumTest();
-    await screen.findByLabelText('Name');
+    await bisZumNamen();
     expect(screen.queryByText(/statt eine zweite anzulegen/)).toBeNull();
-    expect(knopf('Komponente anlegen')).toBeEnabled();
+    expect(speichernKnopf()).toBeEnabled();
   });
 });
 
@@ -758,7 +749,7 @@ describe('die Hebel des Verbindungstests', () => {
     componentTemplates.mockResolvedValue([templateMitSkala, geschwisterTemplate]);
   });
 
-  it('führt beim unmöglichen Messwert zurück in die Modellwahl', async () => {
+  it('führt beim unmöglichen Messwert zurück in den Katalog - dort steht die Modellwahl', async () => {
     testComponentConnection.mockResolvedValue({
       results: [
         {
@@ -770,14 +761,10 @@ describe('die Hebel des Verbindungstests', () => {
         },
       ],
     });
-    await bisZumTest();
+    const onZurueck = vi.fn();
+    await bisZumTest({ onZurueck });
     fireEvent.click(await screen.findByTestId('hebel-modell'));
-    const picker = await screen.findByRole('combobox', { name: 'Gerät' });
-    expect(picker.textContent).toContain('SUN-30K-SG01HP3-EU');
-    fireEvent.click(picker);
-    expect(screen.getAllByRole('option').map((o) => o.textContent).join(' ')).toContain(
-      'SUN-25K-SG02HP3-EU-AM3',
-    );
+    expect(onZurueck).toHaveBeenCalled();
   });
 
   it('springt bei „nichts antwortet" die Seriennummer an, ohne sie zu ändern', async () => {
@@ -793,10 +780,10 @@ describe('die Hebel des Verbindungstests', () => {
     testComponentConnection.mockResolvedValue({
       results: [{ id: 'verbindung', ok: true, reading: { pvKw: 300, socPct: 87 } }],
     });
-    await bisZumTest();
+    await bisZumTest({ startTemplate: templateMitSkala as never });
     fireEvent.click(await screen.findByTestId('hebel-skalierung'));
     // ⚠ Ein Sprung ins Eingeklappte wäre ein Klick ins Unsichtbare.
-    const details = (await screen.findByText('Erweitert')).closest(
+    const details = (await screen.findByText('Weitere Angaben (2)')).closest(
       'details',
     ) as HTMLDetailsElement;
     expect(details.open).toBe(true);
@@ -1269,12 +1256,12 @@ describe('AnlegenFlow · der Batterie-Weg (P5d)', () => {
     standardMocks();
   });
 
-  it('führt von der Batterie-Karte in den Batterie-Assistenten', async () => {
-    render(<AnlegenFlow siteId="s1" onClose={() => {}} onSaved={() => {}} />);
-    fireEvent.click(await screen.findByTestId('typ-batterie'));
+  it('führt vom Batterie-Weg des Katalogs in den Batterie-Assistenten', async () => {
+    render(<AnlegenFlow siteId="s1" initialTyp="batterie" onClose={() => {}} onSaved={() => {}} />);
     expect(await screen.findByTestId('anschlussart-mqtt')).toBeVisible();
-    // NICHT der Katalog-Weg: dort stünde jetzt die Geräte-Auswahl.
-    expect(screen.queryByRole('combobox', { name: 'Gerät' })).toBeNull();
+    // NICHT der Katalog-Weg: kein Anschluss einer Vorlage, sondern der des BMS.
+    expect(screen.getByText('Batterie mit eigenem BMS')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/IP-Adresse des Datenloggers/)).toBeNull();
   });
 
   /**

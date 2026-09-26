@@ -124,6 +124,7 @@ describe('flowConflictCandidate · Vorzeichen und die zwei Auslöser', () => {
   it('schweigt in einem NACHFÜHRUNGS-Modus (inkl. Vollakku-Entlastung)', () => {
     for (const mode of [
       'follow', 'trim', 'absorb', 'idle_follow', 'high_soc_follow', 'high_soc_charge', 'autonomous_discharge',
+      'autonomous_charge', 'autonomous_selfconsumption',
     ] as const) {
       expect(flowConflictCandidate(pilsting({ executionMode: mode }))).toBeNull();
     }
@@ -176,6 +177,7 @@ describe('flowConflictCandidate · der PAUSEN-Fall (commanded ≈ 0, fließt abe
   it('schweigt in einem NACHFÜHRUNGS-Modus auch bei Pause', () => {
     for (const mode of [
       'follow', 'trim', 'absorb', 'idle_follow', 'high_soc_follow', 'high_soc_charge', 'autonomous_discharge',
+      'autonomous_charge', 'autonomous_selfconsumption',
     ] as const) {
       expect(flowConflictCandidate(pause({ executionMode: mode }))).toBeNull();
     }

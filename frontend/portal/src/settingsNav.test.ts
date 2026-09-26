@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { parseRoute } from './nav';
 import {
   einstellungenHash,
-  geldGroupSummary,
   parseSettingsAnchor,
   SETTING_HINT,
   settingsGroupFor,
@@ -79,26 +78,5 @@ describe('Copy der Gruppe', () => {
     for (const text of Object.values(SETTING_HINT)) {
       expect(text).not.toMatch(/Optimizer|MILP|Broker|Entität|Messpunkt|RLS/i);
     }
-  });
-
-  it('die Zusammenfassung nennt nur, was hinterlegt ist', () => {
-    expect(
-      geldGroupSummary({ tarifLabel: 'Ohne Angabe', netzladenLabel: 'Nur Solarladen (EEG)' }),
-    ).toBe('Ohne Angabe · Nur Solarladen (EEG)');
-    expect(
-      geldGroupSummary({
-        tarifLabel: 'Dynamisch',
-        anzulegenderWertLabel: '8,11 ct/kWh',
-        netzladenLabel: 'Netzladen aktiv',
-      }),
-    ).toBe('Dynamisch · 8,11 ct/kWh · Netzladen aktiv');
-    // Ein fehlender anzulegender Wert erzeugt keinen leeren Trenner.
-    expect(
-      geldGroupSummary({
-        tarifLabel: 'Fest: 32,5 ct/kWh',
-        anzulegenderWertLabel: null,
-        netzladenLabel: 'Nur Solarladen (EEG)',
-      }),
-    ).toBe('Fest: 32,5 ct/kWh · Nur Solarladen (EEG)');
   });
 });

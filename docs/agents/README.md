@@ -194,7 +194,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 ## `portal/` — aus `frontend/portal/AGENTS.md` (47 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
-- [Build & test](portal/build-test/README.md) *(Sammlung, 94 Punkte)*
+- [Build & test](portal/build-test/README.md) *(Sammlung, 95 Punkte)*
 - [Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)](portal/die-speicher-kachel-nennt-ihre-quelle-p6.md)
 - [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
 - [Cockpit anpassen: die Fläche des Layout-Speichers (Anwendungs-Programm Stufe 3)](portal/cockpit-anpassen-die-flaeche-des-layout.md)
@@ -218,7 +218,8 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Erlöse „Neu modern" (Variante C) · P6 — Portfolio › Erlöse in derselben Grammatik](portal/erloese-neu-modern-variante-c-p6-portfol.md)
 - [Erlöse „Neu modern" (Variante C) · P7 — die ABNAHME, und was sie gelehrt hat](portal/erloese-neu-modern-variante-c-p7-die-abn.md)
 - [Geräteseiten Stufe 0: EIN Rückweg, und der Katalog gehört dem GERÄT](portal/geraeteseiten-stufe-0-ein-rueckweg-und-d.md)
-- [Geräteseiten Stufe 1: DER RAHMEN, durch den JEDE Geräteseite fährt](portal/geraeteseiten-stufe-1-der-rahmen-durch-d.md)
+- [Geräteseiten: der KERN — ein Blick, eine Antwort (löst den Rahmen ab)](portal/geraeteseiten-kern-ein-blick-eine-antwort.md)
+- [Geräteseiten Stufe 1: DER RAHMEN, durch den JEDE Geräteseite fährt](portal/geraeteseiten-stufe-1-der-rahmen-durch-d.md) — ⚠ abgelöst
 - [Geräteseiten Stufe 3a: „Beobachtete Register" — die Messbibliothek, richtig herum](portal/geraeteseiten-stufe-3a-beobachtete-regis.md)
 - [Geräteseiten Stufe 4: DIE NEUN BLÄTTER — je Gerätetyp genau das, was er braucht](portal/geraeteseiten-stufe-4-die-neun-blaetter.md)
 - [Bewegung — das Motion-Programm P0–P7 im Detail](portal/bewegung.md)
@@ -318,6 +319,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [PV-Abregelung (Fronius Increment 3): Quellen-Schreibpfad, Freigabe JE EINHEIT, Wirkung > Register](edge/pv-abregelung-fronius-increment-3-quelle.md)
 - [Quellen-Identität ist DETERMINISTISCH; Umbenennen ist label-only (vp-vier-erzeuger-p9)](edge/quellen-identitaet-ist-deterministisch-u.md)
 - [Shelly relay CONTROL driver (consumer, core-owned socket, dead-man timer)](edge/shelly-relay-control-driver-consumer-cor.md)
+- [Ebyte-I/O-Modul: EIN Gerät, N Kanäle, der Core besitzt den Socket](edge/ebyte-io-modul-ein-geraet-n-kanaele.md)
 - [Stufe 2: das Ladebudget FOLGT dem gemessenen Netzanschluss (`lastmgmt/budget.go`)](edge/stufe-2-das-ladebudget-folgt-dem-gemesse.md)
 - [Stufe 2 „Freie Register": die Allowlist wird durch LANE-Regeln abgeloest](edge/stufe-2-freie-register-die-allowlist-wir.md)
 - [Stufe 3: der Herzschlag trägt die Ladepunkte, und das Tor kennt sie](edge/stufe-3-der-herzschlag-traegt-die-ladepu.md)

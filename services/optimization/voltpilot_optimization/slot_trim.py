@@ -50,6 +50,24 @@ i.e. Pilsting keeps doing exactly what it did. In a slot whose stored energy is
 only worth the forgone feed-in, WTP collapses to the export value and any grid
 purchase for the battery is correctly refused.
 
+THE EHRLICHE MARGE at a fixed tariff (Captain-Entscheid E6 A, 24.09.2026)
+------------------------------------------------------------------------
+Herzogau 24.09. 16:00-16:30 (K0 vp-wr-k0-plandaten): the plan charged
+7,1/5,4/4,0 kW over the EEG PV bus while the house imported at 25 ct - a grid
+purchase in economic terms, for a sale worth +0,5 to +0,8 ct after the round
+trip. Nothing above could mark it: the plan intended the purchase (condition 3
+below), and lambda had settled at (25 + 0,5)/eta = 26,6, so WTP sat exactly
+on the import price and ``import > WTP + 0,5`` could never hold. At a
+fixed-tariff site the margin therefore turns around and becomes a HURDLE the
+purchase must earn:
+
+    grid-charging in t is UNECONOMIC  <=>  import_price_t + hurdle > WTP_t
+
+with ``hurdle`` = :data:`~voltpilot_optimization.config.FEST_GRID_CHARGE_HURDLE_CT_PER_KWH`
+(2 ct), the SAME constant the LP prices on the grid-sourced part of every
+charge - so the plan no longer intends the hairline purchase, and the flag
+lands on the slot. Spot sites keep the margin rule unchanged.
+
 lambda comes from the explain layer, so the flag exists only where the why-layer
 exists. That is deliberate: with ``OPTIMIZER_EXPLAIN_ENABLED=false`` (or a
 failed LP re-solve) no flag is published and every edge behaves exactly as
@@ -190,6 +208,7 @@ def grid_charge_uneconomic(
     one_way_efficiency: float,
     wear_ct_per_kwh_each_way: float,
     margin_ct_per_kwh: float = SLOT_TRIM_MARGIN_CT_PER_KWH,
+    hurdle_ct_per_kwh: float = 0.0,
 ) -> bool:
     """Whether buying grid energy for the battery in this slot costs more than
     the resulting stored kWh earns over the rest of the horizon.
@@ -198,6 +217,17 @@ def grid_charge_uneconomic(
     yields ``False`` - no claim, no restriction. Non-finite inputs likewise
     yield ``False``: a guard the edge enforces against measured values must
     never rest on a NaN.
+
+    ``hurdle_ct_per_kwh`` > 0 (a fixed-tariff site, Captain-Entscheid E6 A)
+    TURNS THE MARGIN AROUND: instead of sparing a hairline case
+    (``import > WTP + margin``) the purchase must EARN the hurdle after the
+    full round trip, so the slot is uneconomic as soon as
+    ``import + hurdle > WTP``. It is the same constant the LP prices on the
+    grid-sourced charge (``solver.build_model``), so the plan and the flag
+    draw the line at the same place - which the old rule could not: where the
+    plan charges over the PV bus, lambda settles at ``(import + wear)/eta``
+    and WTP equals the import price exactly (K0 vp-wr-k0-plandaten, Herzogau
+    24.09.: WTP 25,014 against 25,0 ct). ``margin_ct_per_kwh`` is then unused.
     """
     if stored_value_ct_kwh is None:
         return False
@@ -207,6 +237,7 @@ def grid_charge_uneconomic(
         one_way_efficiency,
         wear_ct_per_kwh_each_way,
         margin_ct_per_kwh,
+        hurdle_ct_per_kwh,
     )
     if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
         return False
@@ -215,6 +246,8 @@ def grid_charge_uneconomic(
         one_way_efficiency=one_way_efficiency,
         wear_ct_per_kwh_each_way=wear_ct_per_kwh_each_way,
     )
+    if hurdle_ct_per_kwh > 0.0:
+        return import_price_ct_kwh + hurdle_ct_per_kwh > wtp
     return import_price_ct_kwh > wtp + margin_ct_per_kwh
 
 
@@ -246,6 +279,7 @@ def charge_from_surplus_only(
     one_way_efficiency: float,
     wear_ct_per_kwh_each_way: float,
     margin_ct_per_kwh: float = SLOT_TRIM_MARGIN_CT_PER_KWH,
+    hurdle_ct_per_kwh: float = 0.0,
 ) -> bool:
     """The per-slot contract flag: must the edge clamp commanded CHARGE to the
     measured surplus in this slot?
@@ -257,7 +291,8 @@ def charge_from_surplus_only(
        nothing to trim. Emitting it only where it matters also keeps every other
        payload byte-identical to before the feature (the ``pv_limit_kw``
        discipline).
-    2. **Buying is uneconomic** per :func:`grid_charge_uneconomic`.
+    2. **Buying is uneconomic** per :func:`grid_charge_uneconomic` (at a
+       fixed-tariff site with the ehrliche Marge ``hurdle_ct_per_kwh``).
     3. **The plan does not itself intend to buy.** By LP optimality a planned
        grid purchase implies the purchase is worth it, so (2) and (3) cannot
        genuinely disagree - but a solver-tolerance artefact must never produce a
@@ -272,6 +307,7 @@ def charge_from_surplus_only(
         one_way_efficiency=one_way_efficiency,
         wear_ct_per_kwh_each_way=wear_ct_per_kwh_each_way,
         margin_ct_per_kwh=margin_ct_per_kwh,
+        hurdle_ct_per_kwh=hurdle_ct_per_kwh,
     ):
         return False
     intended = planned_grid_charge_kw(

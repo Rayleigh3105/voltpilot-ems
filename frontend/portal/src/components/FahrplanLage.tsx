@@ -20,31 +20,28 @@ import type { LageView } from '../fahrplanLage';
 import './Fahrplan.css';
 
 /**
- * `kompakt` = die Block-3-Zeile im Standard-Scroll: nur der Tages-Bogen und der
- * Morgen-Ausblick, ohne den konstanten Bedingungs-Satz und die Quelle - die zwei
- * gehören in den „Mehr erklären"-Aufklapper (`voll`). `voll` (Vorgabe) ist die
- * bisherige, vollständige Karte.
+ * `zeile` = die Block-3-Zeile im Standard-Scroll, IN der Diagramm-Karte (V-02):
+ * nur der Tages-Bogen und der Morgen-Ausblick, ohne den konstanten Bedingungs-
+ * Satz und die Quelle - die zwei gehören in den „Mehr erklären"-Aufklapper
+ * (`voll`). `voll` (Vorgabe) ist die vollständige Karte.
  */
 export function FahrplanLage({
   view,
   variant = 'voll',
 }: {
   view: LageView;
-  variant?: 'kompakt' | 'voll';
+  variant?: 'zeile' | 'voll';
 }) {
-  if (variant === 'kompakt') {
+  // V-02 (UX-Review 24.09.2026): die Lage als ruhige ZEILE in der Diagramm-
+  // Karte statt als eigene Karte „Heute und morgen" - dieselben Sätze, ein
+  // Kasten weniger. Sie steht weiter zwischen Status und Diagramm.
+  if (variant === 'zeile') {
     return (
-      <Card padding="md" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <div className="vp-jetzt-kick">
-          <span className="vp-card-label">Heute und morgen</span>
-          <ProvBadge art="geplant" />
-        </div>
-        <div className="vp-lage">
-          {view.bogen && <p className="vp-lage-satz">{view.bogen}</p>}
-          {view.ausblick && <p className="vp-lage-satz">{view.ausblick}</p>}
-          {view.nachtreserve && <p className="vp-lage-satz">{view.nachtreserve}</p>}
-        </div>
-      </Card>
+      <div className="vp-lage vp-lage-zeile" aria-label="Heute und morgen">
+        {view.bogen && <p className="vp-lage-satz">{view.bogen}</p>}
+        {view.ausblick && <p className="vp-lage-satz">{view.ausblick}</p>}
+        {view.nachtreserve && <p className="vp-lage-satz">{view.nachtreserve}</p>}
+      </div>
     );
   }
   return (

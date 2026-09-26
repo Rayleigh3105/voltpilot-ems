@@ -3,7 +3,7 @@ import { rechteSeed } from '../test/rollenFixtures';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
 import { anlageSidebar, ebenenLeiste } from '../ebenenNav';
 import { pageRoute, standortBereichRoute } from '../nav';
@@ -11,6 +11,7 @@ import { anlageSurface } from '../surface';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
 import { werkAhrenberg, werkLindach } from '../test/standorteFixtures';
+import { initInstallApp, resetInstallApp } from '../installApp';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
 vi.mock('../auth', () => ({
@@ -459,6 +460,43 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(screen.getByRole('menu', { name: 'Konto-Menü' }).textContent).not.toContain('Plattform');
   });
 
+  it('trägt „Als App auf dem Handy" - die Einrichtung gilt dem Gerät, nicht der Anlage (E5)', async () => {
+    resetInstallApp();
+    initInstallApp({
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      matchMedia: () => ({ matches: false }),
+      navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari' },
+    });
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Als App auf dem Handy' }));
+    // Das Menü schließt, das Blatt öffnet (lazy geladen).
+    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
+    // Lazy geladen: der erste Aufruf darf länger dauern als eine Sekunde.
+    expect(
+      await screen.findByRole('dialog', { name: 'Als App auf dem Handy' }, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    // Schließen gibt den Fokus an den Avatar zurück - der Menüeintrag ist fort.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Als App auf dem Handy' })).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /Konto-Menü/ })));
+  });
+
+  it('lässt den Eintrag in der installierten App weg', () => {
+    resetInstallApp();
+    initInstallApp({
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      matchMedia: () => ({ matches: true }),
+      navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/151' },
+    });
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Als App auf dem Handy' })).toBeNull();
+    resetInstallApp();
+  });
+
   it('das Avatar-Menü schließt mit Escape', () => {
     renderShell();
     fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
@@ -867,5 +905,37 @@ describe('IP-15: Kundenbereich-Wechsel des Partners', () => {
     expect(optionen).toHaveLength(1); fireEvent.click(optionen[0]);
     expect(wechsel).toHaveBeenCalledWith('a'); expect(screen.getByText('Unveränderter Inhalt')).toBeVisible();
     setSelbstauskunft(null);
+  });
+});
+
+describe('AppShell · Kontexthilfe am Telefon in der Kopfleiste (UX-Review V-03)', () => {
+  it('führt die Hilfe zusätzlich als „?" in der Kopfleiste - mit zugänglichem Namen', () => {
+    const { container } = render(
+      <AppShell {...baseProps} helpArticle="fahrplan">
+        <div>content</div>
+      </AppShell>,
+    );
+    const oben = container.querySelector('header .vp-topbar-help a')!;
+    expect(oben).not.toBeNull();
+    expect(oben.textContent).toBe('Diese Ansicht verstehen');
+    expect(oben.querySelector('.vp-visually-hidden')).not.toBeNull();
+    // Die Zeile in <main> bleibt für breite Bildschirme; CSS wählt je Breite eine.
+    expect(container.querySelector('main > .vp-context-help a')).not.toBeNull();
+  });
+
+  it('das Stylesheet zeigt am Telefon nur die Kopfleisten-Hilfe', () => {
+    const css = readFileSync(join(process.cwd(), 'src/help/HelpLink.css'), 'utf8');
+    const telefon = css.slice(css.indexOf('@media (max-width: 720px)'));
+    expect(telefon).toMatch(/\.vp-topbar-help\s*\{\s*display:\s*inline-flex/);
+    expect(telefon).toMatch(/\.vp-main > \.vp-context-help\s*\{\s*display:\s*none/);
+  });
+
+  it('ohne Hilfe-Artikel gibt es auch kein „?"', () => {
+    const { container } = render(
+      <AppShell {...baseProps}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(container.querySelector('.vp-topbar-help')).toBeNull();
   });
 });

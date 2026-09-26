@@ -67,7 +67,8 @@ import { fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
 import { quoteSatz, quoteUnplausibel, quoteZahl } from './quoteUnplausibel';
 import { planSentence, type PlanWordingKind } from './schedule';
-import { speicherAussage, type SpeicherAussage } from './speicherAussage';
+import { speicherAussage, type SpeicherAussage, type SpeicherKontext } from './speicherAussage';
+import { winterSatz } from './winterSatz';
 import type { ActiveMode, CockpitBlock, CockpitBlockId, MoneyStream } from './surface';
 import type { SiteCharging } from './ladepunkte';
 import { widgetTarget, type WidgetTarget } from './verlaufTarget';
@@ -341,6 +342,11 @@ export interface HeroMoney {
   /** Measured battery inventory, valued by the plan and NEVER added to cash. */
   bestand?: BestandZeile | null;
   /**
+   * Der Winter-Satz unter „Unterm Strich" (`winterSatz()`, Konzept k1 E6 = A):
+   * was die Sonne an einem dunklen Zeitraum gedeckt hat. null = keiner.
+   */
+  winterSatz?: string | null;
+  /**
    * Die Eingabe fuer den Aufklapper „Wie wird das berechnet?" unter dem
    * Zurechnungs-Chip (Captain 01.09.2026). Null = es gibt keine Zurechnung,
    * also auch nichts zu erklaeren — ein Aufklapper ohne Bezugszahl waere ein
@@ -416,13 +422,19 @@ export function cockpitHero(input: {
    * durch — deshalb sind die Tarif-Felder OPTIONAL angehängt: fehlen sie, sagt
    * die Erklärung die vorsichtigere Fassung („Börsenpreis").
    */
-  money?: (CockpitMoney & Partial<SteuerungFormelInput>) | null;
+  money?: (CockpitMoney & Partial<SteuerungFormelInput> & { selbstverbrauchKwh?: number | null }) | null;
   range: EarningsRange;
   at?: Date;
   now: Date;
   slots?: CockpitSlot[] | null;
   slotMinutes?: number;
   plantKind?: PlanWordingKind;
+  /**
+   * Der Anker einer MONATSZAHL (Konzept k1 E4 = A): die Jahreszahl der
+   * Steuerung aus `range=year` — die Seite holt sie, die Ableitung rechnet
+   * nichts. Ohne sie steht unter der Monatszahl kein Anker.
+   */
+  jahrAnker?: SpeicherKontext['jahrAnker'];
 }): CockpitHeroView {
   const label = periodLabel(input.range, input.at ?? input.now, input.now);
   const rings: HeroRing[] = [];
@@ -460,7 +472,7 @@ export function cockpitHero(input: {
   // GANZEN Speicher (§2.2), und die Erlöse-Seite nennt ihn seither so. Ohne
   // die gemeinsame Ableitung sagte das Cockpit „Steuerung −2,67 €" und die
   // Erlöse-Seite „Steuerung +1,45 €" über dieselbe Stunde.
-  const speicher = speicherAussage(input.money, { now: input.now });
+  const speicher = speicherAussage(input.money, { now: input.now, jahrAnker: input.jahrAnker ?? null });
   const attribution = speicher?.hatAussage ? speicher.kurz : null;
   const money: HeroMoney | null =
     total == null
@@ -477,6 +489,12 @@ export function cockpitHero(input: {
           attributionTitel: speicher?.kurzTitel ?? null,
           attributionInterim: running && attribution != null,
           bestand: bestandZeile(input.money, input.now),
+          winterSatz: winterSatz({
+            pvKwh: input.totals?.pvGenerationKwh,
+            verbrauchKwh: input.totals?.consumptionKwh,
+            selbstGenutztKwh: input.money?.selbstverbrauchKwh,
+            laeuft: running,
+          }),
           // Der Aufklapper haengt am CHIP: ohne Zurechnung gibt es ihn nicht.
           formel:
             attribution == null
@@ -574,6 +592,11 @@ export interface MobileRow {
   head: string;
   /** Die ruhige zweite Zeile; null = keine. */
   sub: string | null;
+  /**
+   * Die bestätigte Ausführung als eigene Zeile mit Haken (V-04:
+   * `control.steuerungKurz`); absent = keine.
+   */
+  status?: string | null;
 }
 
 /**
@@ -675,12 +698,16 @@ export function stickyHead(input: {
 }): StickyHead | null {
   const money = input.money;
   const status = input.status;
-  if (!money && !status) return null;
+  // V-04: ein GUTER Zustand steht am Telefon schon in der Kopfleiste
+  // („● Alles in Ordnung"); hier gekürzt („Alles läuft. Ihre Anlage …") war er
+  // nur Rauschen. Die Leiste nennt ihn deshalb nur, wenn er etwas meldet.
+  const meldet = status != null && status.tone !== 'ok' ? status : null;
+  if (!money && !meldet) return null;
   return {
     value: money?.value ?? null,
     label: money?.label ?? null,
-    status: status?.text ?? null,
-    tone: status?.tone ?? 'off',
+    status: meldet?.text ?? null,
+    tone: meldet?.tone ?? 'off',
   };
 }
 

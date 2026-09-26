@@ -182,6 +182,47 @@
 .vp-puls-today-line svg {
   color: var(--vp-text-muted, #667);
 }
+/* Das Richtungswort („Bezug"/„Einspeisung") in der ruhigen Stufe der
+   „heute"-Marke - es benennt, die Zahl bleibt die Aussage. */
+.vp-puls-today-word {
+  margin-right: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--vp-text-muted, #667);
+}
+/* Am Telefon passen „0,0 kW ausgeglichen" und „Einspeisung 5,2 kWh" nicht
+   nebeneinander: die benannte Heute-Spalte rückt dann als eigene Zeile unter
+   den Jetzt-Wert, bündig mit dem Namen (Punkt 10 + Icon 26 + zwei Fugen). */
+@media (max-width: 520px) {
+  .vp-puls-row--worte {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  /* Ein kleines Raster: „heute" links, die benannten Zeilen bündig darunter
+     (Wort | Zahl), damit „Bezug" nicht unter „heute" zurückspringt. */
+  .vp-puls-row--worte .vp-puls-today {
+    order: 10;
+    flex: 1 0 100%;
+    max-width: none;
+    display: grid;
+    grid-template-columns: max-content max-content;
+    justify-content: start;
+    align-items: baseline;
+    column-gap: 12px;
+    row-gap: 2px;
+    padding-left: 56px;
+  }
+  .vp-puls-row--worte .vp-puls-today-cap {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .vp-puls-row--worte .vp-puls-today-line {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: 5.2rem max-content;
+    align-items: baseline;
+  }
+}
 .vp-puls-today-none {
   color: var(--vp-text-muted, #667);
   font-weight: 500;

@@ -77,6 +77,10 @@ export function CockpitErgebnis({
         {periodSeg && <div className="vp-c-ck-seg">{periodSeg}</div>}
       </Statement>
 
+      {/* Wenig Sonne (Konzept k1 E6 = A): was die Sonne trotzdem gedeckt hat —
+          „Unterm Strich" bleibt rot, wenn es Kosten sind. */}
+      {money.winterSatz && <p className="vp-c-note vp-c-ck-winter">{money.winterSatz}</p>}
+
       {speicher?.hatAussage && (
         <SpeicherKarte aussage={speicher} nachtragHref={nachtragHref} variant="sektion">
           {/* Dieselbe Rechnung wie auf der Erlöse-Seite und am Rechner — der

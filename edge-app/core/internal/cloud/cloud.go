@@ -1303,8 +1303,10 @@ type ExecutionSummary struct {
 	// asked for, so the portal can show plan and execution side by side instead
 	// of two contradicting numbers under one word. Set for follow/trim/absorb
 	// and surplus_store;
-	// for autonomous_discharge it is the REFERENCE the edge would command if it
-	// took the battery back on the next tick (nothing is written in that mode).
+	// for autonomous_discharge / autonomous_charge / autonomous_selfconsumption
+	// it is the REFERENCE the edge would command if it took the battery back on
+	// the next tick (nothing is written in those modes - and ControlSummary's
+	// commanded_kw/confirmed_kw are null there, see executionSummary).
 	PlannedKw *float64 `json:"planned_kw,omitempty"`
 	// DeficitKw is the measured house deficit max(load - pv, 0) a "follow"
 	// discharge tracks; absent when unknown (the correction is inactive then -
@@ -1319,6 +1321,13 @@ type ExecutionSummary struct {
 	// not inferred by the portal from a command timestamp.
 	EffectiveFloorSocPct *float64 `json:"effective_floor_soc_pct,omitempty"`
 	MeasurementsFresh    bool     `json:"measurements_fresh,omitempty"`
+	// WindowMinKw / WindowMaxKw (K4b, additive) are the power window the device
+	// regulates in by itself (+ charge, - discharge, after the box's guards) -
+	// only for autonomous_charge and autonomous_selfconsumption, where E~ caps
+	// the charge side below the rated power. Absent everywhere else, including
+	// autonomous_discharge (unchanged).
+	WindowMinKw *float64 `json:"window_min_kw,omitempty"`
+	WindowMaxKw *float64 `json:"window_max_kw,omitempty"`
 }
 
 // CurtailmentSummary is the additive `curtailment` heartbeat block: the

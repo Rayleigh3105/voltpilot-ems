@@ -2,14 +2,16 @@ import { useMemo, useState } from 'react';
 import type { SchedulePlan } from './api';
 import {
   AXIS,
-  BAR,
   dayBoundaryStyle,
   FILL,
   FORECAST,
+  hourAxisLabels,
   NARROW_PX,
   nowLabel,
   nowLineStyle,
   PANELS,
+  seamlessBar,
+  seamlessBarWidthPx,
   SMOOTH_SERIES,
   storageBar,
   STROKE,
@@ -47,6 +49,7 @@ import {
   needsPointMarkers,
   planInsightParts,
   planKernaussage,
+  planSentence,
   powerAxisMax,
   priceSpread,
   PV_FORECAST_LABEL,
@@ -84,7 +87,7 @@ import './components/Fahrplan.css';
  * nackte Börsenpreis; fehlt auch der, entfällt das Panel ganz statt eine leere
  * Fläche zu behaupten.
  *
- * UNTEN das LEISTUNGS-Panel: der Speicher als gefüllte Säulenstäbe (K5 - grün
+ * UNTEN das LEISTUNGS-Panel: der Speicher als gefüllte, nahtlose Blöcke (K5 - grün
  * lädt, beere gibt ab, Wort in der Legende; türkis nur, wenn der Plan wirklich
  * aus dem Netz lädt, sodass „kein Türkis" der sichtbare
  * EEG-Beweis bleibt), die Sonne als Kontextkurve, der Verbraucher-Stapel, der
@@ -146,6 +149,7 @@ export function ScheduleChart({
   plantKind,
   verlauf = false,
   showPhaseBand = false,
+  ohneGeld = false,
 }: {
   plan: SchedulePlan;
   /**
@@ -203,6 +207,15 @@ export function ScheduleChart({
    * Zwei-Panel-Fassung (jede andere Nutzung von `ScheduleChart` ist unberührt).
    */
   showPhaseBand?: boolean;
+  /**
+   * Die Geldzahl der Seite steht ANDERSWO (Fahrplan-Tagesbild, Entscheid E6:
+   * Messlatte „derselbe Speicher ohne smarte Steuerung"). Dann nennt dieses
+   * Bild keinen eigenen Betrag gegen „ohne Speicher" — weder im Kopfsatz noch
+   * im Satz unter dem Bild; der Kopfsatz sagt nur, was der Speicher tut. Zwei
+   * Beträge gegen zwei Messlatten auf einer Seite wären zwei Wahrheiten.
+   * Absent/false = unverändert.
+   */
+  ohneGeld?: boolean;
 }) {
   const t = chartTheme();
   // D4: DREI Gruppen-Schalter statt neun Einzel-Pills, und der Default ist
@@ -311,8 +324,11 @@ export function ScheduleChart({
      * im Band (`markPoint`), jede vorkommende Phase steht mit Wort + Farbe in
      * der Legende darunter. */
     const bandOn = showPhaseBand && slots.length > 0;
+    // Nahtlos (`seamlessBarWidthPx` an der Serie): sonst zeichnete jede
+    // Slot-Kante eine helle Haarlinie, und das Band las sich als Schraffur
+    // statt als Phasen-Blöcke.
     const bandData = bandOn
-      ? bandRoles(slots).map((role) => ({ value: 1, itemStyle: { color: bandRoleColor(role, t) } }))
+      ? bandRoles(slots).map((role) => ({ value: 1, itemStyle: seamlessBar(bandRoleColor(role, t)) }))
       : [];
     // Ein Lauf trägt sein Wort nur, wenn sein Segment bei DIESER Chartbreite
     // breit genug ist - sonst überschreiben sich die Marken (bei 375 px zu
@@ -388,13 +404,23 @@ export function ScheduleChart({
         seenDay = day;
       }
     });
+    // Beschriftet werden nur VOLLE Stunden im gröbsten Takt, der bei dieser
+    // Plotbreite Luft lässt (00:00 · 03:00 · 06:00 … statt 01:15 · 02:30); das
+    // Datum trägt die erste gezeigte Beschriftung je Tag (`hourAxisLabels`).
+    // Hat ein sehr kurzer Plan keine volle Stunde im Takt, bleibt es bei der
+    // Ausdünnung durch ECharts und dem Datum am Tagesanfang.
+    const plotWidthPx = width - bandLeftPx - bandRightPx;
+    const hourLabels = hourAxisLabels(times, plotWidthPx, plan.slotMinutes || 15);
+    const hourTakt = hourLabels.shown.size > 0;
+    const datedIdx = hourTakt ? hourLabels.dated : dayStarts;
     // Die Zeit-Beschriftung der Zeitachse - genau EINMAL im Bild, an der
     // untersten Spur (mit Band ist das die Band-Achse, sonst das Leistungs-Panel).
     const dateAxisLabel = {
+      interval: hourTakt ? (index: number) => hourLabels.shown.has(index) : ('auto' as const),
       formatter: (v: string, index: number) => {
         const d = new Date(v);
         const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-        if (!dayStarts.has(index)) return time;
+        if (!datedIdx.has(index)) return time;
         return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}\n${time}`;
       },
       lineHeight: 15,
@@ -812,7 +838,13 @@ export function ScheduleChart({
             // unterste Spur), das Leistungs-Panel zeigt sie dann nicht.
             axisLabel: bandOn ? { show: false } : dateAxisLabel,
             // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
-            axisTick: { show: false },
+            // ⚠ Die (unsichtbaren) Ticks bleiben trotzdem wirksam: ECharts
+            // setzt die markArea einer BALKEN-Reihe auf Tick-Koordinaten, und
+            // die folgten der ausgedünnten Beschriftung - die Vergangenheits-
+            // Tönung endete deshalb je nach Breite Viertelstunden VOR oder
+            // HINTER der Jetzt-Linie. Ein Tick je Slot, mittig wie die
+            // Beschriftung, legt sie exakt auf die Linie (wie im Preis-Panel).
+            axisTick: { show: false, interval: 0, alignWithLabel: true },
             axisLine: { show: false },
           },
           // Die Zeitachse des Bands (nur mit Band): sie trägt die Beschriftung
@@ -921,11 +953,21 @@ export function ScheduleChart({
                 : (v ?? 0) >= 0
                   ? ('solarladen' as const)
                   : ('entladen' as const);
-              return storageBar(v, slotBarMark(kind, t), t.surface);
+              const mark = slotBarMark(kind, t);
+              const bar = storageBar(v, mark, t.surface);
+              // Geschlossene Blöcke - nur für gefüllte Marken, ein Umriss bleibt.
+              return bar && mark.form === 'filled'
+                ? { ...bar, itemStyle: seamlessBar(mark.color) }
+                : bar;
             }),
-            // F9: aus dem 96-Slot-Farbblock werden ablesbare Viertelstunden-Stäbe.
-            barCategoryGap: BAR.categoryGap,
-            barMaxWidth: BAR.maxWidth,
+            // ⚠ Im Fahrplan ist F9 („Säulenstäbe statt Farb-Block", `BAR`)
+            // bewusst aufgehoben (UX-Review V-05, Entscheid 24.09.2026): der
+            // Speicher zeichnet NAHTLOSE Blöcke wie das Phasen-Band direkt
+            // darunter. Stäbe mit Fuge wurden am Telefon zur Subpixel-
+            // Schraffur und standen am Rechner als Kamm neben dem glatten
+            // Band. Die einzelne Viertelstunde liest man per Tipp/Tooltip.
+            // Andere Balkenflächen des Portals behalten `BAR`.
+            barWidth: seamlessBarWidthPx(plotWidthPx, slots.length),
             z: 3,
             markArea: pastArea,
             markLine: powerMarks.length
@@ -1207,8 +1249,7 @@ export function ScheduleChart({
                   xAxisIndex: 2,
                   yAxisIndex: 3,
                   data: bandData,
-                  barWidth: '100%',
-                  barCategoryGap: '0%',
+                  barWidth: seamlessBarWidthPx(plotWidthPx, slots.length),
                   z: 1,
                   markLine: bandMarks.length
                     ? { silent: true, symbol: 'none', data: bandMarks }
@@ -1230,7 +1271,28 @@ export function ScheduleChart({
   // Insight: charge cheap, discharge expensive, and today's saving - composed
   // by the pure builder so the "flat curve" clause can never contradict a
   // visibly cycling plan (audit F3).
-  const insight = planInsightParts(plan.slots, new Date());
+  // K1/M11: die Kernaussage als SATZ über dem Bild. Sie ist ABGELEITET
+  // (planSentence + savingsTodayEur + die persistierte Baseline als
+  // Vergleichsanker) - ohne belegbare Aussage steht dort der ehrliche Grund.
+  const kernRoh = plantKind
+    ? planKernaussage(plan.slots, plantKind, new Date(), plan.slotMinutes || 15)
+    : null;
+  const kern =
+    ohneGeld && kernRoh?.wert != null && plantKind
+      ? {
+          wert: null,
+          satz: planSentence(plan.slots, plantKind, new Date(), plan.slotMinutes || 15),
+          grund: null,
+          ton: 'calm' as const,
+          anker: null,
+        }
+      : kernRoh;
+  const insight = planInsightParts(plan.slots, new Date(), {
+    // Steht die Ersparnis schon als Zahl in der Kopfzeile, erklärt der Satz
+    // unter dem Bild nur noch das WARUM (sonst: dreimal derselbe Betrag).
+    // `ohneGeld`: die Zahl steht auf der Seite, nur nicht hier.
+    ersparnisImKopf: ohneGeld || kern?.wert != null,
+  });
   // The planned SoC band in words - the readable fallback wherever the SoC
   // axis has no room (phones) and the touch-friendly answer to "how full?".
   const socLine = socRangeLine(plan.slots);
@@ -1243,7 +1305,7 @@ export function ScheduleChart({
   // zeichnet bis zu zwölf (`useDirectLabels`). Nichts hier ist ein Umschalter -
   // die Balkenfarben sind per-Slot-ZUSTÄNDE einer Serie, und die Schichten
   // schalten die drei Gruppen-Knöpfe darüber (D4).
-  const legend: LegendItem[] = [
+  const preisLegende: LegendItem[] = [
     // Zuerst das Preis-Panel, in der Lesereihenfolge des Bildes.
     ...(showSpread
       ? ([
@@ -1275,6 +1337,8 @@ export function ScheduleChart({
           } as LegendItem,
         ]
       : []),
+  ];
+  const speicherLegende: LegendItem[] = [
     { color: t.charge, label: 'Laden aus Solarstrom', unit: 'kW', shape: 'bar', toggleable: false },
     ...(gridCharging
       ? [
@@ -1296,6 +1360,8 @@ export function ScheduleChart({
       shape: 'bar',
       toggleable: false,
     },
+  ];
+  const weitereLegende: LegendItem[] = [
     // Orange steht am Canvas als BAND + Sockel-Tick (und in der
     // Prognosen-Ebene als Fläche), also trägt die Legende die Flächen-Form.
     // Gate = dasselbe `curtailing` wie das Canvas.
@@ -1405,6 +1471,21 @@ export function ScheduleChart({
         ]
       : []),
   ];
+  // V-06 (UX-Review 24.09.2026): EINE Legende. Mit Phasen-Band nennen dessen
+  // Phasen die Speicherfarben - vorher standen dieselben Farben zweimal mit
+  // zwei Wortlauten da („Laden aus Solarstrom" über dem Bild, „Solar laden"
+  // darunter). Die eine Legende steht dann UNTER dem Bild, wo der Blick nach
+  // dem Band ankommt. Der Verlauf-Rahmen (`verlauf`) bleibt, wie er ist.
+  const phasenLegende: LegendItem[] = bandLegend.map((b) => ({
+    color: bandRoleColor(b.role, t),
+    label: b.label,
+    shape: 'bar',
+    toggleable: false,
+  }));
+  const eineLegende = !verlauf && phasenLegende.length > 0;
+  const legend: LegendItem[] = eineLegende
+    ? [...preisLegende, ...phasenLegende, ...weitereLegende]
+    : [...preisLegende, ...speicherLegende, ...weitereLegende];
 
   // The three layer switches. A group whose series the plan does not carry is
   // NOT offered - a switch that can only ever show nothing is worse than none.
@@ -1427,12 +1508,6 @@ export function ScheduleChart({
       ? null
       : measuredNote(plan.slots, new Date(), plan.slotMinutes || 15);
 
-  // K1/M11: die Kernaussage als SATZ über dem Bild. Sie ist ABGELEITET
-  // (planSentence + savingsTodayEur + die persistierte Baseline als
-  // Vergleichsanker) - ohne belegbare Aussage steht dort der ehrliche Grund.
-  const kern = plantKind
-    ? planKernaussage(plan.slots, plantKind, new Date(), plan.slotMinutes || 15)
-    : null;
 
   // ⚠ Die vier Bausteine werden EINMAL gebaut und in ZWEI Reihenfolgen
   //   ausgegeben — so kann der Verlauf-Rahmen nie einen anderen Inhalt zeigen
@@ -1477,8 +1552,9 @@ export function ScheduleChart({
         ref={ref}
         className={`vp-chart ${twoPanel ? 'panels' : 'tall'}${showPhaseBand ? ' band' : ''}`}
       />
-      {/* K10: Farbe nie allein - jede vorkommende Phase mit Wort UND Farbe. */}
-      {showPhaseBand && bandLegend.length > 0 && (
+      {/* K10: Farbe nie allein - jede vorkommende Phase mit Wort UND Farbe.
+          Außerhalb des Verlauf-Rahmens trägt sie die EINE Legende (V-06). */}
+      {showPhaseBand && bandLegend.length > 0 && !eineLegende && (
         <ul className="vp-sched-bandlegend" aria-label="Phasen des Tages">
           {bandLegend.map((b) => (
             <li key={b.role}>
@@ -1541,8 +1617,9 @@ export function ScheduleChart({
     <div>
       <ChartHeadline kern={kern} />
       {schalter}
-      <ChartLegend items={legend} />
+      {!eineLegende && <ChartLegend items={legend} />}
       {bild}
+      {eineLegende && <ChartLegend items={legend} />}
       {hinweise}
       {insight && (
         <ChartInsight>

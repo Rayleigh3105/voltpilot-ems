@@ -1,6 +1,5 @@
 import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { VpPicker } from '../components/VpPicker';
@@ -16,7 +15,6 @@ import {
   type ControlStatus,
   type CurtailmentStatus,
   type Device,
-  type EdgeVersion,
   type EntityStrategy,
   type Site,
   type SiteComponents,
@@ -31,6 +29,10 @@ import { ausfallSchutz, type SiteCharging } from '../ladepunkte';
 import {
   chargePointIdOf,
   geraetSeite,
+  istIoModul,
+  ioVerbraucherGeraetId,
+  ioVerbraucherIdOf,
+  NOT_AUS_LABEL,
   pvEinstiegEntityId,
   summenwertEinstieg,
   type GeraetArt,
@@ -41,26 +43,25 @@ import {
   abregelungDiesesGeraets,
   blattHinweis,
   gesicht,
+  typWort,
   type Gesicht,
-  type Held,
-  type HeldKachel,
-  type SektionId,
 } from '../geraetGesicht';
-import { plantModel, type PlantComponent } from '../komponenten';
+import { ioBindungenAus, plantModel, type PlantComponent } from '../komponenten';
 import { fmtNum } from '../format';
 import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment';
-import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { GeraetProtokoll } from '../components/GeraetProtokoll';
 import { GeraetHerkunft } from '../components/GeraetHerkunft';
-import { GeraetGefahrenzone } from '../components/GeraetGefahrenzone';
+import { GeraetGefahrenzone, gefahrMenueLabel } from '../components/GeraetGefahrenzone';
 import { GeraetSummenwerte } from '../components/GeraetSummenwerte';
 import { gefahrenzone } from '../geraetLoeschen';
 import {
   anlageRoute,
   befehleGeraetHash,
+  befehleHash,
   geraetBearbeitenKomponente,
+  geraetSeiteHash,
   hashForRoute,
   istGeraetBearbeitenHash,
   ohneGeraetBearbeiten,
@@ -92,35 +93,24 @@ import { RegisterWriteDrawer } from '../components/RegisterWriteDrawer';
 import {
   ANLAGENWEITE_BEFEHLE,
   aufzeichnungSeit,
-  GERAETE_BEFEHLE,
   genauigkeitsSatz,
   NUR_LESEN,
 } from '../befehle';
-import {
-  aktionsZeile,
-  neuesteZeile,
-  type VerlaufAktion,
-} from '../befehleVerlauf';
-import {
-  BefehleAktionszeile,
-  BefehleVerlauf,
-  useBefehleVerlauf,
-  type VerlaufState,
-} from '../components/BefehleVerlauf';
+import { BefehleVerlauf, useBefehleVerlauf } from '../components/BefehleVerlauf';
 import {
   DAUERN,
   endeVon,
   handeingriffFolgen,
   planVerzicht,
-  speicherAktionen,
   type HandeingriffAktion,
 } from '../handeingriff';
 import { HandeingriffDialog } from '../components/HandeingriffDialog';
 import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
 import { consumersApi } from '../consumers/consumersApi';
+import { ioBelegung, ioBelegungSatz, VERALTET_MS } from '../consumers/ioZustand';
+import type { ConsumerRuntimeStatus } from '../consumers/status';
 import type { Consumer } from '../consumers/types';
 import {
-  sofortAktionen,
   fulfilmentSummary,
   type ConsumerFulfilment,
   type ManualOverride,
@@ -128,6 +118,15 @@ import {
 } from '../consumers/fulfillment';
 import { consumerHasMeasurement, consumerNachweis } from '../consumers/questions';
 import { controlStrip } from '../control';
+import { geraetZeile, speicherZeile } from '../steuerungJetzt';
+import {
+  speicherSteuerung,
+  verbraucherSteuerung,
+  type SegmentAktion,
+  type SteuerungView,
+} from '../geraetSteuerung';
+import { heuteKanal } from '../geraetHeute';
+import { verlaufHash } from '../verlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
 import { LIVE_POLL_MS } from '../pollCadence';
@@ -143,17 +142,18 @@ import { NO_DATA } from '../nodata';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { OcppWallboxPage } from './OcppWallboxPage';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
-import { GeraetRahmen, RahmenSektion } from '../components/GeraetRahmen';
 import {
-  GESICHT_ZU_RAHMEN,
-  kopfHinweis,
-  kurz,
-  rahmen,
-  parseKachel,
-  type Befund,
-  type RahmenSektionId,
-  type SektionAngebot,
-} from '../geraetRahmen';
+  GeraetRahmen,
+  type BausteinInhalt,
+  type KernSymbol,
+  type MenueEintrag,
+  type TechnikTeil,
+} from '../components/GeraetRahmen';
+import { GeraetBuehne, grosseZahl, nebenKacheln, type BuehneGrafik } from '../components/GeraetBuehne';
+import { GeraetSteuerung } from '../components/GeraetSteuerung';
+import { GeraetHeute } from '../components/GeraetHeute';
+import { IoKlemmenplan, useIoModulZustand } from '../components/IoKlemmenplan';
+import { kopfHinweis, parseKachel, type Befund } from '../geraetRahmen';
 import { BeobachteteRegister } from '../components/BeobachteteRegister';
 import {
   BRUECKE_LABEL,
@@ -164,31 +164,34 @@ import {
 import { beobachtenMoeglich, geraetFamilien } from '../registerFamilie';
 import '../components/AnlagenModell.css';
 // ⚠ Ein Bauteil bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): die
-// Befehls-Sektion rendert den VERLAUF, dessen Regeln in `Befehle.css` wohnen -
-// ohne diesen Import stünde er ungestylt da, sobald ein Kunde direkt auf einer
+// Aktivität rendert den VERLAUF, dessen Regeln in `Befehle.css` wohnen - ohne
+// diesen Import stünde er ungestylt da, sobald ein Kunde direkt auf einer
 // Geräteseite ankommt (im Browser gefunden).
 import './Befehle.css';
 import './GeraetSeite.css';
+import { AUFBAU_REITER } from '../ebenenNav';
 
 /**
  * Die GERÄTE-DETAILSEITE der Anlagen-Zentrale
- * (`#/anlage/{siteId}/geraet/{ref}[/{geraetId}]`, Konzept
- * `vp-anlagen-zentrale-konzept-h6` §7, Stufe 1 PR 1a).
+ * (`#/anlage/{siteId}/geraet/{ref}[/{geraetId}]`).
  *
- * Sie ist der eine ORT, den ein Gerät bis hierher nicht hatte: Anbindung,
- * Messwerte, seine Komponenten, seine Steuerungs-Bezüge, sein Software-Stand
- * und - auf der Box - die Gefahrenzone. **Kunde und Plattform-Admin sehen
- * DIESELBE Seite**; der Admin bekommt in einer späteren Stufe additive Karten
- * hinter dem EINEN Tor `rollen.showTechnicalLayer()`, nie eine zweite Fläche.
+ * Seit dem Konzept „Geräteseiten: Ein Blick, eine Antwort" (25.09.2026) steht
+ * sie auf dem gemeinsamen KERN (`components/GeraetRahmen`): Kopf, Jetzt,
+ * Steuerung, Heute, Aktivität, Gerät &amp; Verbindung - und „Technik &amp;
+ * Diagnose" als eigene Ansicht (`?ansicht=technik`). Jeder Typ bringt nur
+ * seine Grafik und seine Knöpfe mit.
+ *
+ * **Kunde und Plattform-Admin sehen DIESELBE Seite**; der Admin bekommt
+ * additiv die Plattform-Sicht hinter dem EINEN Tor `rollen.showTechnicalLayer()`.
  *
  * Diese Datei RENDERT nur. Jede Regel, jeder Satz und jedes Urteil liegt in
- * der reinen `src/geraetSeite.ts`, und die Komponenten-Zeilen kommen aus
- * `plantModel` - dieselbe Ableitung, die die Zentrale rendert, damit die zwei
- * Flächen über dasselbe Gerät nie Verschiedenes behaupten können.
+ * den reinen Ableitungen (`geraetSeite`, `geraetGesicht`, `geraetRahmen`,
+ * `geraetSteuerung`, `geraetHeute`); die Komponenten kommen aus `plantModel` -
+ * dieselbe Ableitung, die die Zentrale rendert.
  *
- * **Jeder Nebenabruf ist fail-soft.** Fällt einer aus, wird seine Sektion
- * ehrlich leer (mit Grund) statt die Seite unbenutzbar zu machen - nur der
- * Entitäts-Abruf trägt die Seite.
+ * **Jeder Nebenabruf ist fail-soft.** Fällt einer aus, fällt sein Baustein
+ * still weg, statt die Seite unbenutzbar zu machen - nur der Entitäts-Abruf
+ * trägt die Seite.
  */
 export function GeraetSeiteSection({
   site,
@@ -231,17 +234,15 @@ export function GeraetSeiteSection({
   const [editError, setEditError] = useState<string | null>(null);
   const [control, setControl] = useState<ControlStatus | null>(null);
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
-  const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [chargingLoadedRequest, setChargingLoadedRequest] = useState<string | null>(null);
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]> | null>(null);
-  // Geräteseiten Stufe 2: der VERLAUF lädt sich selbst (Fenster, Cursor,
-  // stiller Takt) - dieselbe Mechanik wie auf der Befehle-Seite.
   const [interventions, setInterventions] = useState<SiteInterventions | null>(null);
   const [consumers, setConsumers] = useState<Consumer[]>([]);
+  const [consumerStatus, setConsumerStatus] = useState<ConsumerRuntimeStatus[]>([]);
   const [overrides, setOverrides] = useState<ManualOverride[]>([]);
-  // §5.4: die Erfüllungs-Kopfzeile des Helden. Sie wird NUR geholt, wenn es
-  // wirklich einen Verbraucher gibt - sonst gäbe es nichts zu erfüllen.
+  // Die Erfüllungs-Zeile der Bühne. Sie wird NUR geholt, wenn es wirklich
+  // einen Verbraucher gibt - sonst gäbe es nichts zu erfüllen.
   const [fulfilment, setFulfilment] = useState<ConsumerFulfilment | null>(null);
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [regOffen, setRegOffen] = useState(false);
@@ -249,23 +250,23 @@ export function GeraetSeiteSection({
   const [handDauer, setHandDauer] = useState('2h');
   const [eingriff, setEingriff] = useState<{ consumer: Consumer; aktion: SofortAktion } | null>(null);
   const [aktionBusy, setAktionBusy] = useState(false);
+  const [entfernenOffen, setEntfernenOffen] = useState(false);
+  const [heuteAusfall, setHeuteAusfall] = useState(false);
   const [targets, setTargets] = useState<RegisterWriteTarget[] | null>(null);
   const [writes, setWrites] = useState<RegisterWriteEvent[] | null>(null);
   const [knowledge, setKnowledge] = useState<RegisterKnowledgeFamily[] | null>(null);
   /**
    * Die BRÜCKE (Stufe 3a §7.2 Teil 3): eine gelesene Zeile wird zur
-   * Beobachtung. Sie reist als ZUSTAND durch den Wirt, weil Lesung (Teil 3)
-   * und Beobachtungs-Liste (Teil 1) zwei Bauteile sind - und wird nach dem
-   * Öffnen des Formulars wieder abgeräumt, damit derselbe Vorschlag nicht bei
-   * jedem Render erneut aufspringt.
+   * Beobachtung. Sie reist als ZUSTAND durch den Wirt, weil Lesung und
+   * Beobachtungs-Liste zwei Bauteile sind - und wird nach dem Öffnen des
+   * Formulars wieder abgeräumt, damit derselbe Vorschlag nicht bei jedem
+   * Render erneut aufspringt.
    */
   const [bruecke, setBruecke] = useState<BrueckeVorschlag | null>(null);
   const brueckeVerbraucht = useCallback(() => setBruecke(null), []);
-  /** Die Kurzfassung der Register-Sektion - sie kommt aus der Beobachtungs-Fläche. */
-  const [beobKurz, setBeobKurz] = useState<string | null>(null);
   /**
    * Trägt dieses Gerät die PV-Produktion der Anlage (eine Rollen-Zuordnung,
-   * vp-agg-konzept3-r8)? Nur für die ehrliche Gefahrenzonen-Folge; der Zähler
+   * vp-agg-konzept3-r8)? Nur für die ehrliche Entfernen-Folge; der Zähler
    * frischt sie nach, wenn der Assistent die Zuordnung ändert.
    */
   const [pvZugeordnet, setPvZugeordnet] = useState(false);
@@ -287,6 +288,8 @@ export function GeraetSeiteSection({
     setEditOpen(false);
     setEditNotice(null);
     setEditError(null);
+    setEntfernenOffen(false);
+    setHeuteAusfall(false);
   }, [site.id, geraeteRef, geraetId]);
 
   useEffect(() => {
@@ -310,7 +313,7 @@ export function GeraetSeiteSection({
         setEntitiesLoadedRequest(pageRequest);
       },
     );
-    // Alles Übrige fail-soft: ein Ausfall macht seine Sektion ehrlich leer.
+    // Alles Übrige fail-soft: ein Ausfall nimmt nur seinen Baustein weg.
     const soft = <T,>(p: Promise<T | null>, set: (v: T | null) => void) => {
       // `Promise<T | null>`, weil zwei dieser Antworten selbst schon `null`
       // sein dürfen (204: „das Gerät hat sich dazu nie geäußert") - ein
@@ -340,7 +343,6 @@ export function GeraetSeiteSection({
     );
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
-    soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     void api.siteChargers(site.id).then(
       (value) => {
         if (!active) return;
@@ -354,19 +356,21 @@ export function GeraetSeiteSection({
       },
     );
     soft(api.entityStrategies(site.id), setStrategies);
-    // Sektion E: die Ziele des Register-Werkzeugs. Ohne sie gibt es keinen
-    // Knopf - nie einen, der ins Leere führt.
-    //
-    // ⚠ Bewusst NICHT über `soft`: dort fallen „lädt noch" und „Abruf
-    // gescheitert" in denselben Zustand, und die Sektion müsste einen Satz
-    // sagen, der in einem der beiden Fälle falsch ist. Ein Fehlschlag ist hier
-    // eine LEERE Ziel-Liste - dann sagt sie ehrlich, dass kein Schreibweg
-    // bekannt ist.
-    // Sektion D: die gelesenen Register kommen AUS DEM BESTAND - das Journal
-    // trägt die einzigen Rohwörter, die es heute gibt, das Register-Wissen den
-    // Namen (nie einen ohne bekannte Familie).
+    // K4: die Verbraucher der Anlage - auch für die BINDUNG an I/O-Ausgänge,
+    // ohne die `plantModel` einen Verbraucher am Ausgang dem Wechselrichter
+    // zuschlüge. Fail-soft: ohne sie gilt die bisherige Zuordnung.
+    void consumersApi.list(site.id).then(
+      (v) => { if (active) setConsumers(v ?? []); },
+      () => { if (active) setConsumers([]); },
+    );
+    // Die gelesenen Register kommen AUS DEM BESTAND - das Journal trägt die
+    // einzigen Rohwörter, die es heute gibt, das Register-Wissen den Namen.
     soft(api.registerWriteHistory(site.id, boxDevice?.id), setWrites);
     soft(api.registerKnowledge(site.id), setKnowledge);
+    // ⚠ Die Ziele des Register-Werkzeugs bewusst NICHT über `soft`: dort
+    // fallen „lädt noch" und „Abruf gescheitert" in denselben Zustand. Ein
+    // Fehlschlag ist hier eine LEERE Ziel-Liste - dann sagt die Technik
+    // ehrlich, dass kein Schreibweg bekannt ist.
     void api.registerWriteTargets(site.id).then(
       (rows) => {
         if (active) setTargets(rows);
@@ -378,8 +382,8 @@ export function GeraetSeiteSection({
     setNow(Date.now());
     if (showTechnicalLayer()) {
       // Fail-soft und ALLES-ODER-NICHTS: ohne die Geräte-Zeile gibt es keine
-      // Admin-Sicht - die Ableitung braucht sie, und eine halbe Sicht wäre
-      // eine Aussage über ein Gerät, das wir nicht vollständig kennen.
+      // Admin-Sicht - eine halbe Sicht wäre eine Aussage über ein Gerät, das
+      // wir nicht vollständig kennen.
       void Promise.all([
         adminApi.listDevices(),
         fleetApi.fleet(),
@@ -433,18 +437,23 @@ export function GeraetSeiteSection({
       api.controlStatus(site.id).catch(() => null),
       api.curtailmentStatus(site.id).catch(() => null),
       api.siteChargers(site.id).catch(() => null),
-    ]).then(([s, c, cu, ch]) => {
+      api.topology(site.id).catch(() => null),
+    ]).then(([s, c, cu, ch, t]) => {
       if (s !== null) setSources(s);
       setControl(c);
       setCurtailment(cu);
       if (ch !== null) setCharging(ch);
+      if (t !== null) setTopology(t);
       setNow(Date.now());
     });
   }, LIVE_POLL_MS);
 
+  /** K4: welche Verbraucher an welchem I/O-Ausgang hängen - aus ihren Profilen. */
+  const ioBindungen = useMemo(() => ioBindungenAus(consumers), [consumers]);
+
   const model = useMemo(
-    () => (data ? plantModel(data.entities, topology, data.localSetup, sources) : null),
-    [data, topology, sources],
+    () => (data ? plantModel(data.entities, topology, data.localSetup, sources, ioBindungen) : null),
+    [data, topology, sources, ioBindungen],
   );
 
   const view: GeraetSeiteView | null = useMemo(() => {
@@ -461,7 +470,6 @@ export function GeraetSeiteSection({
       components,
       control,
       curtailment,
-      edgeVersions,
       charging,
       strategies,
       model,
@@ -469,12 +477,25 @@ export function GeraetSeiteSection({
     });
   }, [
     data, geraeteRef, geraetId, site.name, site.id, devices, devicesFetchedAt,
-    sources, components, control, curtailment, edgeVersions, charging, strategies, model, now,
+    sources, components, control, curtailment, charging, strategies, model, now,
   ]);
 
   const box = boxDevice;
+  /** K4: diese Seite ist die eines Verbrauchers am Ausgang eines I/O-Moduls. */
+  const ioVerbraucherSeite = ioVerbraucherIdOf(geraetId) != null;
+  /**
+   * Die Komponenten, die diesem Gerät SELBST gehören. Am Modul hängen seit K4
+   * auch die Verbraucher an seinen Ausgängen - sie haben ihre eigene Seite und
+   * werden dort gesteuert und entfernt, nicht hier.
+   */
+  const eigeneKomponenten = useMemo(
+    () => (view?.komponenten ?? []).filter((c) => !c.io || ioVerbraucherSeite),
+    [view, ioVerbraucherSeite],
+  );
   const editRow: SiteComponentRow | null = useMemo(() => {
-    if (!view || !geraetId) return null;
+    // Ein Verbraucher am Ausgang hat keine eigene Verbindung - bearbeitet wird
+    // sein Profil in der Steuerung, nicht eine Geräte-Einrichtung.
+    if (!view || !geraetId || ioVerbraucherSeite) return null;
     return (components?.components ?? []).find(
       (row) => Boolean(row.templateRef) && (row.edgeSourceId === geraetId
         || view.komponenten.some((component) => component.entityId === row.id)),
@@ -571,39 +592,60 @@ export function GeraetSeiteSection({
   }
 
   /**
-   * Der Verbraucher DIESES Geräts - die Grundlage der §5.4-Zeilen (Erfüllung,
-   * D3-Messfähigkeit) UND der Sofortaktion.
+   * Der Verbraucher DIESES Geräts - die Grundlage von Bühne (Erfüllung,
+   * Nachweis) UND Steuerung.
    *
-   * ⚠ Er steht VOR dem Gesicht, obwohl `consumers` erst geladen wird, wenn das
-   * Gesicht die Gattung `verbraucher` gesagt hat: die Gattung hängt an Rolle
-   * und Entitätstyp, nie an dieser Liste, also konvergiert es in zwei Läufen -
-   * eine Schleife gibt es nicht. Umgekehrt wäre es ein TDZ-Fehler.
+   * ⚠ Er steht VOR dem Gesicht: die Gattung hängt an Rolle und Entitätstyp,
+   * nie an dieser Liste, also konvergiert es in zwei Läufen - eine Schleife
+   * gibt es nicht. Umgekehrt wäre es ein TDZ-Fehler.
    */
   const eigenerVerbraucher = useMemo(() => {
-    const ids = new Set((view?.komponenten ?? []).map((c) => c.entityId));
+    const ids = new Set(eigeneKomponenten.map((c) => c.entityId));
     return consumers.find((c) => ids.has(c.id)) ?? null;
-  }, [consumers, view]);
+  }, [consumers, eigeneKomponenten]);
+
+  // Das I/O-Modul: Bühnen-Zahl und Klemmenplan aus DERSELBEN Meldung - und am
+  // Verbraucher eines Ausgangs der gemeldete Zustand seines Relais (K4).
+  const setupHier = (data?.localSetup ?? []).find((l) => l.id === geraetId);
+  const rowHier = (components?.components ?? []).find(
+    (r) => r.edgeSourceId === geraetId
+      || (view?.komponenten ?? []).some((c) => !c.io && c.entityId === r.id),
+  );
+  const kommunikation = ioVerbraucherSeite
+    ? null
+    : rowHier?.communication ?? setupHier?.communication ?? null;
+  const istModul = istIoModul(kommunikation);
+  // Die Entität des Moduls: die gepflegte Zeile, sonst seine eigene Komponente
+  // (die Box meldet es auch an einer box-verwalteten Anlage) - nie geraten.
+  const modulEntityId = istModul
+    ? editRow?.id ?? eigeneKomponenten.find((c) => !c.io)?.entityId ?? null
+    : null;
+  const io = useIoModulZustand(
+    site.id,
+    istModul ? modulEntityId : ioVerbraucherSeite ? eigenerVerbraucher?.ioEntityId ?? null : null,
+  );
+  /** Der gemeldete Zustand DIESES Ausgangs - nur, solange die Meldung aktuell ist. */
+  const ioAusgangAn = useMemo(() => {
+    if (!ioVerbraucherSeite || !eigenerVerbraucher || !io.dto) return null;
+    const at = io.dto.receivedAt ? Date.parse(io.dto.receivedAt) : Number.NaN;
+    if (!Number.isFinite(at) || now - at > VERALTET_MS) return null;
+    const k = io.dto.outputs.find((o) => o.consumerId === eigenerVerbraucher.id);
+    return k?.on ?? null;
+  }, [ioVerbraucherSeite, eigenerVerbraucher, io.dto, now]);
 
   // ------------------------------------------------------------------
-  // Das GESICHT dieser Seite - was oben steht und welche Sektionen folgen.
-  // Es entscheidet NUR die Auswahl; jede Sektion bleibt das geteilte Bauteil.
+  // Das GESICHT dieser Seite - was die Bühne zeigt und welche Fächer es gibt.
   // ------------------------------------------------------------------
   const gesichtView: Gesicht | null = useMemo(() => {
     if (!view || !view.gefunden) return null;
-    const setup = (data?.localSetup ?? []).find((l) => l.id === geraetId);
-    const row = (components?.components ?? []).find(
-      (r) => r.edgeSourceId === geraetId
-        || view.komponenten.some((c) => c.entityId === r.id),
-    );
     return gesicht({
       art: view.art,
       geraetId: geraetId ?? geraeteRef,
-      rolle: setup?.role ?? null,
+      rolle: setupHier?.role ?? null,
       // Das gepflegte SOLL führt, sonst das gemeldete Ist - dieselbe Reihenfolge
-      // wie `geraetSeite.verbindungsWeg`, damit die zwei nichts Verschiedenes
-      // über denselben Weg annehmen.
-      communication: row?.communication ?? setup?.communication ?? null,
-      komponenten: view.komponenten,
+      // wie `geraetSeite.verbindungsWeg`.
+      communication: kommunikation,
+      komponenten: eigeneKomponenten,
       entities: data?.entities ?? null,
       src: (sources ?? []).find((s) => s.sourceId === geraetId) ?? null,
       charger: chargePointIdOf(geraetId)
@@ -615,30 +657,25 @@ export function GeraetSeiteSection({
       // ihn GEMELDET hat - sonst wäre die Zuschreibung erfunden.
       control: control && box?.id && control.deviceId === box.id ? control : null,
       curtailment,
-      regeln: regelNamenOf(strategies, view.komponenten),
-      // §5.1/§5.3/§5.8: die EINZIGE Quelle mit einem Wert JE KANAL - die
-      // Batterieleistung des Hybriden, der Relais-Zustand eines Schalters und
-      // die selbst definierten Kanäle des Eigenbaus.
+      regeln: regelNamenOf(strategies, eigeneKomponenten),
       topologie: topology?.entities ?? null,
-      // P6: der SPEICHER-KNOTEN trägt als einziger, WOHER der Ladestand kommt
-      // und was das BMS zulässt - beides muss nicht von diesem Gerät stammen.
       speicherKnoten: topology?.topology.nodes.find((n) => n.role === 'storage') ?? null,
-      // §5.4: WÖRTLICH die geteilte Erfüllungs-Kopfzeile bzw. die geteilte
+      // WÖRTLICH die geteilte Erfüllungs-Kopfzeile bzw. die geteilte
       // D3-Regel - ein zweites Urteil hier wäre eine zweite Wahrheit.
       erfuellung: fulfilment ? fulfilmentSummary(fulfilment).headline : null,
       gemessen: eigenerVerbraucher ? consumerHasMeasurement(eigenerVerbraucher) : null,
-      // P8: die dritte Nachweisart, die ein Boolean nicht kennt - eine
-      // SG-Ready-Wärmepumpe wird FREIGEGEBEN, nicht gemessen.
       nachweis: eigenerVerbraucher ? consumerNachweis(eigenerVerbraucher) : null,
+      ioAusgangAn,
       now,
     });
-  }, [view, data, components, sources, charging, control, curtailment, strategies,
-    topology, fulfilment, eigenerVerbraucher, geraetId, geraeteRef, box?.id, now]);
+  }, [view, data, sources, charging, control, curtailment, strategies, topology, fulfilment,
+    eigenerVerbraucher, geraetId, geraeteRef, box?.id, now, setupHier, kommunikation,
+    eigeneKomponenten, ioAusgangAn]);
 
   /**
-   * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek
-   * (Stufe 0, §7.3). Dieselbe Soll-vor-Ist-Reihenfolge wie `communication`
-   * oben; ein Ladepunkt spricht per Konstruktion OCPP.
+   * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek.
+   * Dieselbe Soll-vor-Ist-Reihenfolge wie `communication` oben; ein Ladepunkt
+   * spricht per Konstruktion OCPP.
    */
   const messFamilien = useMemo<string[] | null>(() => {
     if (!view || !view.gefunden) return [];
@@ -653,16 +690,14 @@ export function GeraetSeiteSection({
       ladepunkt: gesichtView?.gattung === 'ladepunkt',
     });
     // ⚠ Kennt niemand die Familie des PRIMÄREN Wechselrichters, fällt die
-    // Fläche auf die Box-Semantik zurück (`null`) statt die Sektion zu
-    // verstecken: die Familien-Vereinigung der Box IST auf dieser einen Seite
-    // die richtige Antwort - genau deshalb sah der Fehler dort ja korrekt aus.
-    // Auf jedem anderen Gerät bleibt es bei der Ausblende-Regel.
+    // Fläche auf die Box-Semantik zurück (`null`) statt die Messbibliothek zu
+    // verstecken. Auf jedem anderen Gerät bleibt es bei der Ausblende-Regel.
     if (familien.length === 0 && geraetId === 'inverter') return null;
     return familien;
   }, [view, data, components, geraetId, gesichtView]);
 
-  // Die drei Gattungs-eigenen Sektionen - abgeleitet aus dem, was schon
-  // geladen ist; jede Zeile nennt ihren Grund, keine wird erfunden.
+  // Die Grenzen-Zeilen - abgeleitet aus dem, was schon geladen ist; jede
+  // Zeile nennt ihren Grund, keine wird erfunden.
   const grenzen: Zeile[] = useMemo(
     () => grenzenZeilen(view, curtailment, data?.entities ?? null),
     [view, curtailment, data],
@@ -679,23 +714,10 @@ export function GeraetSeiteSection({
     () => ladeparkZeilen(charging, geraetId),
     [charging, geraetId],
   );
-  // ------------------------------------------------------------------
-  // DER RAHMEN (Geräteseiten Stufe 1, Konzept §4)
-  //
-  // Das GESICHT entscheidet weiterhin, WELCHE Sektion es gibt; der Rahmen,
-  // WO sie steht - die Ordnung ist auf jeder Geräteseite dieselbe. Vier
-  // Gattungs-Sektionen gehen dabei in „Steuerung & Grenzen" auf, und der
-  // Technik-Aufklapper des Software-Kastens wird eine eigene Sektion.
-  // ------------------------------------------------------------------
 
-  /** Ohne Kachel UND ohne Satz gibt es keinen Helden (die `HeldKarte`-Regel). */
-  const heldTraegt = Boolean(
-    gesichtView && (gesichtView.held.kacheln.length > 0 || gesichtView.held.satz),
-  );
   /**
    * Ein Gerät ohne Modbus-Register kann trotzdem MESSWERTE beobachten (D3):
-   * dann gibt es die Sektion, sie heißt nur anders. Ist auch das nichts, ist
-   * sie strukturell leer und ihr Grund zieht in die Diagnose (§4.6).
+   * dann gibt es Technik › Register, sie heißt nur „Messwerte".
    */
   const hatMessbibliothek = Boolean(
     view?.gefunden && (messFamilien == null || messFamilien.length > 0),
@@ -703,9 +725,8 @@ export function GeraetSeiteSection({
   const registerSektion = Boolean(gesichtView?.sektionen.includes('register'));
   /**
    * Die Messbibliothek hängt am TRANSPORT der Box (dort wohnt die Selektion),
-   * zeigt aber den Katalog DIESES Geräts (Stufe 0, §7.4 3a). Sie ist seit dem
-   * Rahmen ein KNOTEN, weil sie in die Register-Sektion gehört (§4.4 Zeile 5)
-   * - und auf dem Ladepunkt-Pfad in dessen eigene Messwert-Sektion.
+   * zeigt aber den Katalog DIESES Geräts - und auf dem Ladepunkt-Pfad in
+   * dessen OCPP-Technik.
    */
   const beobachtung = view?.gefunden ? (
     <BeobachteteRegister
@@ -720,31 +741,26 @@ export function GeraetSeiteSection({
       lesbar={beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })}
       bruecke={bruecke}
       onBrueckeVerbraucht={brueckeVerbraucht}
-      onKurzfassung={setBeobKurz}
     />
   ) : null;
 
   // ------------------------------------------------------------------
-  // Sektion 2 · Befehle (Geräteseiten Stufe 2, Konzept §6)
-  //
-  // Der Server entscheidet, was zu diesem Gerät gehört (`?device=`) - die
-  // Fläche schneidet nichts selbst zurecht. Der Haken lädt dieselbe Liste wie
-  // die Befehle-Seite; gepollt wird hier NICHT (die Seite hat ihren eigenen
-  // 30-s-Takt, ein zweiter daneben wäre doppelte Last).
+  // Aktivität: der Server entscheidet, was zu diesem Gerät gehört
+  // (`?device=`) - die Fläche schneidet nichts selbst zurecht.
   // ------------------------------------------------------------------
+  // K4: ein Verbraucher am Relais eines Moduls ist KEINE Quelle der Box - der
+  // Server kennt `io-…` nicht als Gerät. Seine Befehle hängen an seiner
+  // Komponente, also fragt die Seite nach ihr.
+  const ioVerbraucherEntity = ioVerbraucherIdOf(geraetId);
   const verlauf = useBefehleVerlauf({
-    siteId: site.id, geraetRef: geraetId ?? geraeteRef,
+    siteId: site.id,
+    entityId: ioVerbraucherEntity,
+    geraetRef: geraetId ?? geraeteRef,
   });
-  const letzteZeile = useMemo(() => neuesteZeile(verlauf.view), [verlauf.view]);
 
   /**
-   * Was dieses Blatt ABSETZEN kann (§6.2) - fail-soft und GATTUNGS-GETAKTET:
-   * ein Zähler oder ein PV-Melder bezahlt die drei Abrufe nie, weil seine
-   * Aktionszeile ohnehin leer bliebe.
-   *
-   * ⚠ Er hängt an der GATTUNG, nicht am Gerät: sie steht erst fest, wenn der
-   * eine tragende Abruf zurück ist - deshalb ein EIGENER Effekt neben dem
-   * Haupt-Abruf, kein zweiter Zweig darin.
+   * Was die STEUERUNG braucht - fail-soft und GATTUNGS-GETAKTET: ein Zähler
+   * oder ein PV-Melder bezahlt die Abrufe nie, weil er keinen Schalter hat.
    */
   const gattung = gesichtView?.gattung ?? null;
   const brauchtSpeicher = gattung === 'wechselrichter-speicher';
@@ -760,19 +776,20 @@ export function GeraetSeiteSection({
     };
     if (brauchtSpeicher) {
       soft(api.siteInterventions(site.id), setInterventions, null);
-      // Der Fahrplan trägt den PLAN-VERZICHT der Folgen-Karte. Ohne ihn sagt
-      // sie ehrlich „nicht abschätzbar" - eine Zahl wird nie erfunden.
+      // Der Fahrplan trägt Quelle und Grund der Speicher-Zeile UND den
+      // Plan-Verzicht der Folgen-Karte. Ohne ihn sagt sie ehrlich „nicht
+      // abschätzbar" - eine Zahl wird nie erfunden.
       soft(api.schedule(site.id), setPlan, null);
     }
     if (brauchtVerbraucher) {
-      soft(consumersApi.list(site.id), setConsumers, []);
       soft(consumersApi.overrides(site.id), setOverrides, []);
+      soft(consumersApi.status(site.id), setConsumerStatus, []);
     }
     return () => { active = false; };
   }, [site.id, brauchtSpeicher, brauchtVerbraucher, reloadKey]);
 
   /**
-   * Die Erfüllung DIESES Verbrauchers (§5.4). Eigener Effekt, weil sie an der
+   * Die Erfüllung DIESES Verbrauchers. Eigener Effekt, weil sie an der
    * Verbraucher-KENNUNG hängt, nicht an der Anlage - und fail-soft wie jeder
    * Neben-Abruf: ohne sie fehlt die Zeile, die Seite bleibt.
    */
@@ -788,13 +805,9 @@ export function GeraetSeiteSection({
   }, [site.id, eigenerVerbraucher?.id, reloadKey]);
 
   /**
-   * Der Register-Zugang DIESES Geräts - er entscheidet, ob die Aktionszeile
-   * „Register schreiben" anbietet UND ob die Register-Sektion ihren Knopf
-   * zeigt. Er wird EINMAL hier gerechnet: zwei Ableitungen könnten über
-   * denselben Schreibweg Verschiedenes behaupten.
-   *
-   * ⚠ `targets == null` heisst „lädt noch" - dann wird NICHTS behauptet, weder
-   * ein Weg noch sein Fehlen.
+   * Der Register-Zugang DIESES Geräts - er entscheidet, ob Technik › Register
+   * „Schreiben vorbereiten" anbietet. `targets == null` heisst „lädt noch" -
+   * dann wird NICHTS behauptet, weder ein Weg noch sein Fehlen.
    */
   const zugang: GeraetRegisterZugang = useMemo(() => {
     if (!view?.gefunden) return { moeglich: false, grund: null, vorwahl: null, weg: null };
@@ -807,54 +820,60 @@ export function GeraetSeiteSection({
     });
   }, [view, targets, box?.id]);
 
-  /**
-   * Die AKTIONSZEILE über dem Verlauf (§6.2). Sie LÖST nur aus - geöffnet wird
-   * jeweils der BESTEHENDE Dialog, es entsteht kein zweiter Auslöse-Pfad.
-   *
-   * ⚠ Was der Zustand nicht hergibt, wird nicht angeboten: die
-   * Speicher-Handlungen kommen aus `speicherAktionen`, die Geräte-Handlungen
-   * aus `sofortAktionen`, der Register-Weg aus dem Zugang oben.
-   */
-  const aktionen = useMemo(() => {
-    if (!gesichtView) return [];
-    const strip = control && box?.id && control.deviceId === box.id
-      ? controlStrip(control, new Date(now))
-      : null;
-    return aktionsZeile({
-      gattung: gesichtView.gattung,
-      speicher: speicherAktionen({
-        laufend: (interventions?.interventions ?? []).some((i) => i.entityId != null),
-        // Steuerbar heisst: das Rücklesen dieses Geräts trägt wirklich - genau
-        // die Bedingung, mit der auch die Jetzt-Zone der Steuerung urteilt.
-        steuerbar: strip?.state === 'healthy' || strip?.state === 'mismatch',
-        pausiert: interventions?.automationPaused === true,
-      }),
-      verbraucher: eigenerVerbraucher
-        ? sofortAktionen({
-            connected: eigenerVerbraucher.connection === 'connected',
-            hasOverride: overrides.some((o) => o.entityId === eigenerVerbraucher.id),
-          })
-        : [],
-      registerMoeglich: zugang.moeglich,
-    });
-  }, [gesichtView, control, box?.id, now, interventions, eigenerVerbraucher, overrides, zugang]);
+  /** Der Beleg der Speicher-Steuerung - nur der, den DIESE Box gemeldet hat. */
+  const eigenerBeleg = control && box?.id && control.deviceId === box.id ? control : null;
 
   /**
-   * Der EINE Auslöser der Aktionszeile. Er ÖFFNET nur - gehandelt wird in dem
-   * Dialog, den die jeweilige Handlung schon hat (kein zweiter Auslöse-Pfad).
+   * Der Baustein „Steuerung" (K1): Zustand, Quelle, Grund und die Handlungen
+   * WÖRTLICH aus `steuerungJetzt` - dieselbe Zeile wie in der Jetzt-Zone der
+   * Steuerungs-Seite.
    */
-  const aktionAusloesen = useCallback((a: VerlaufAktion) => {
-    if (a.art === 'register') setRegOffen(true);
-    else if (a.art === 'speicher') setHand(a.wert as HandeingriffAktion);
+  const steuerung: SteuerungView | null = useMemo(() => {
+    if (!view?.gefunden || !gesichtView) return null;
+    if (gesichtView.gattung === 'wechselrichter-speicher') {
+      const speicher = view.komponenten.find((c) => c.role === 'storage');
+      const eingriffJetzt = interventions?.interventions.find((i) => i.entityId != null) ?? null;
+      const zeile = speicherZeile({
+        name: speicher?.alias ?? null,
+        control: eigenerBeleg,
+        // Ein Plan MIT Gerät heißt: diese Anlage wird wirklich gesteuert.
+        expectControl: plan?.deviceId != null || Boolean(speicher?.control),
+        slots: plan?.slots ?? null,
+        curtail: curtailment,
+        plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+        // `entity-strategies` nennt die AKTIVEN Regeln je Komponente - ein
+        // Server-Fakt, nie geraten.
+        regelHaeltAn: Boolean(speicher && (strategies?.[speicher.entityId] ?? []).length > 0),
+        eingriff: eingriffJetzt,
+        pausiert: interventions?.automationPaused === true,
+        now: new Date(now),
+      });
+      return zeile ? speicherSteuerung(zeile, eingriffJetzt) : null;
+    }
+    if (eigenerVerbraucher && (gesichtView.gattung === 'verbraucher' || gesichtView.gattung === 'geraet')) {
+      const override = overrides.find((o) => o.entityId === eigenerVerbraucher.id) ?? null;
+      const zeile = geraetZeile({
+        consumer: eigenerVerbraucher,
+        status: consumerStatus.find((s) => s.entityId === eigenerVerbraucher.id) ?? null,
+        override,
+        anyStatusReported: consumerStatus.length > 0,
+      }, new Date(now));
+      return verbraucherSteuerung(zeile, override);
+    }
+    return null;
+  }, [view, gesichtView, interventions, eigenerBeleg, plan, curtailment, site.plantKind,
+    strategies, now, eigenerVerbraucher, overrides, consumerStatus]);
+
+  const segmentAusloesen = useCallback((a: SegmentAktion) => {
+    if (a.art === 'speicher') setHand(a.wert);
     else if (a.art === 'verbraucher' && eigenerVerbraucher) {
-      setEingriff({ consumer: eigenerVerbraucher, aktion: a.wert as SofortAktion });
+      setEingriff({ consumer: eigenerVerbraucher, aktion: a.wert });
     }
   }, [eigenerVerbraucher]);
 
   /**
    * Die Folgen-Karte des Speicher-Eingriffs - dieselbe Komposition wie in der
-   * Jetzt-Zone der Steuerung (`handeingriffFolgen`), damit die zwei Flächen
-   * über dieselbe Handlung nichts Verschiedenes versprechen.
+   * Jetzt-Zone der Steuerung (`handeingriffFolgen`).
    */
   const handEnde = useCallback((key: string) => {
     const gewaehlt = DAUERN.find((d) => d.key === key) ?? DAUERN[2];
@@ -921,105 +940,29 @@ export function GeraetSeiteSection({
     }
   }, [eingriff, site.id]);
 
-  const rahmenView = useMemo(() => {
-    if (!view?.gefunden || !gesichtView) return rahmen([]);
-    const hat = (id: SektionId) => gesichtView.sektionen.includes(id);
-    // ⚠ Der Grund einer entfallenen Sektion wird NICHT hier formuliert - das
-    // Gesicht hat ihn schon gesagt (§4.6: er verschwindet nie, er zieht um).
-    const entfallGrund = (id: RahmenSektionId) =>
-      gesichtView.entfallen.find((e) => e.id === id)?.grund ?? null;
-    const letzte = letzteZeile;
-    const angebote: (SektionAngebot | null)[] = [
-      heldTraegt ? { id: GESICHT_ZU_RAHMEN.jetzt, ton: view.kopf.zustand.ton } : null,
-      hat('befehle')
-        ? {
-          id: GESICHT_ZU_RAHMEN.befehle,
-          ton: letzte?.ton === 'warn' ? 'warn' : null,
-          // ⚠ Ohne Zeile steht der Grund im KÖRPER - ihn hier zu wiederholen
-          // wäre dieselbe Aussage zweimal auf einer Karte (die Haus-Regel).
-          kurzfassung: letzte ? kurz(`zuletzt ${letzte.zeit}`, letzte.urteil) : null,
-        }
-        : { id: 'befehle', entfaellt: true, grund: entfallGrund('befehle') },
-      // ⚠ „Steuerung & Grenzen" gibt es seit Stufe 4 NICHT mehr immer: ein
-      // Zähler wird von niemandem gesteuert und trägt keine Grenze, die Sektion
-      // erklärte dort nur ihre eigene Nicht-Zuständigkeit (§4.6). Entschieden
-      // wird das im Gesicht - der Grund zieht mit in die Diagnose.
-      gesichtView.steuerung
-        ? {
-          id: 'steuerung',
-          kurzfassung: kurz(
-            view.kopf.steuerAbzeichen,
-            grenzen.length > 0 ? `${grenzen.length} Grenzen` : null,
-          ),
-        }
-        : { id: 'steuerung', entfaellt: true, grund: entfallGrund('steuerung') },
-      hat('komponenten')
-        ? {
-          id: GESICHT_ZU_RAHMEN.komponenten,
-          kurzfassung: view.komponenten.length > 0
-            ? `${view.komponenten.length} Komponente${view.komponenten.length === 1 ? '' : 'n'}`
-            : null,
-        }
-        : null,
-      registerSektion || hatMessbibliothek
-        ? {
-          id: 'register',
-          // D3: „Register" wäre an einem HTTP-Gerät das falsche Wort, die
-          // Fähigkeit ist es nicht.
-          titel: registerSektion ? null : 'Messwerte',
-          // ⚠ Die Beobachtungs-Kurzfassung kommt aus der Fläche, die sie kennt
-          // (Stufe 3a); ohne eine einzige Beobachtung bleibt es beim Angebot.
-          kurzfassung: beobKurz
-            ?? (registerSektion ? 'lesen · beobachten · schreiben' : 'beobachten'),
-        }
-        : { id: 'register', entfaellt: true, grund: entfallGrund('register') },
-      hat('verbindung')
-        ? {
-          id: GESICHT_ZU_RAHMEN.verbindung,
-          ton: view.kopf.zustand.ton,
-          kurzfassung: view.verbindung.length > 0
-            ? kurz(...view.verbindung.slice(0, 2).map((z) => z.wert))
-            : null,
-        }
-        : null,
-      hat('software')
-        ? {
-          id: GESICHT_ZU_RAHMEN.software,
-          kurzfassung: view.software.length > 0 ? view.software[0].wert : null,
-        }
-        : { id: 'software', entfaellt: true, grund: entfallGrund('software') },
-      view.diagnose.length > 0
-        ? { id: 'diagnose', kurzfassung: `${view.diagnose.length} Angaben` }
-        : null,
-      showTechnicalLayer() && adminView ? { id: 'plattform' } : null,
-    ];
-    return rahmen(angebote);
-  }, [
-    view, gesichtView, heldTraegt, letzteZeile, grenzen, registerSektion,
-    hatMessbibliothek, adminView, beobKurz,
-  ]);
-
   /**
-   * Der EINE Kopf-Hinweis (§4.1 Zeile 3): der schlimmste anstehende Befund.
+   * Der EINE Kopf-Hinweis: der schlimmste anstehende Befund.
    *
-   * ⚠ Jeder Satz kommt WÖRTLICH aus seiner geteilten Ableitung - der Rahmen
-   * formuliert keinen, er WÄHLT nur den schlimmsten und verlinkt seine Sektion.
+   * ⚠ Jeder Satz kommt WÖRTLICH aus seiner geteilten Ableitung - der Kern
+   * formuliert keinen, er WÄHLT nur den schlimmsten und verlinkt seinen Ort.
    */
+  const istWechselrichter = gattung === 'wechselrichter-speicher' || gattung === 'wechselrichter';
+  const erzeugt = Boolean(view?.komponenten.some((c) => c.role === 'pv'));
   const hinweis = useMemo(() => {
     const waechter = exportGuardView(curtailment, new Date(now));
     const befunde: (Befund | null)[] = [
-      // ⚠ Der Rücklese-Satz kommt WÖRTLICH aus `control.controlStrip` - der
-      // Ableitung, die auch die Cockpit-Karte rendert; ein zweiter wäre ein
-      // Zwilling, der abdriftet. Und der Beleg gehört dem Gerät, das ihn
-      // GEMELDET hat (die `eigenerBeleg`-Regel).
+      // K3: das Rücklesen gilt der SPEICHER-Steuerung des Wechselrichters -
+      // über einen Heizstab sagt es nichts.
       (() => {
-        if (!control || !box?.id || control.deviceId !== box.id) return null;
-        const strip = controlStrip(control, new Date(now));
+        if (!istWechselrichter || !eigenerBeleg) return null;
+        const strip = controlStrip(eigenerBeleg, new Date(now));
         return strip?.state === 'mismatch'
           ? { art: 'ruecklesen' as const, satz: strip.sentence, ton: 'warn' as const }
           : null;
       })(),
-      waechter?.tone === 'warn' ? { art: 'waechter', satz: waechter.line, ton: 'warn' } : null,
+      // Der Einspeise-Wächter nur an einem ERZEUGENDEN Gerät - an einem Zähler
+      // wäre er eine Aussage über ein fremdes Gerät.
+      erzeugt && waechter?.tone === 'warn' ? { art: 'waechter', satz: waechter.line, ton: 'warn' } : null,
       view?.art === 'hauptgeraet'
         ? (() => {
           const satz = deviceLimitLine(curtailment);
@@ -1027,14 +970,16 @@ export function GeraetSeiteSection({
         })()
         : null,
     ];
-    return kopfHinweis(befunde, rahmenView.sektionen.map((s) => s.id));
-  }, [control, curtailment, box?.id, view?.art, now, rahmenView]);
+    return kopfHinweis(befunde, {
+      bausteine: ['buehne', 'steuerung', 'heute', 'aktivitaet', 'details'],
+      technik: registerSektion || hatMessbibliothek ? ['register'] : [],
+    });
+  }, [curtailment, eigenerBeleg, istWechselrichter, erzeugt, view?.art, now, registerSektion,
+    hatMessbibliothek]);
 
   /**
-   * Die angesprungene Kachel (§5.3) - sie kommt als PARAMETER im Hash, nie als
-   * zweites `#` (der HashRouter läse es als Route). Gelesen wird beim Aufbau
-   * UND bei jedem Hash-Wechsel, wie der Abschnitts-Sprung des Rahmens: ein
-   * Klick aus einer schon offenen Seite muss ebenfalls wirken.
+   * Die angesprungene Kachel - sie kommt als PARAMETER im Hash, nie als zweites
+   * `#`. Gelesen beim Aufbau UND bei jedem Hash-Wechsel.
    */
   const [angesprungeneKachel, setAngesprungeneKachel] = useState<string | null>(
     () => (typeof window === 'undefined' ? null : parseKachel(window.location.hash)),
@@ -1047,10 +992,7 @@ export function GeraetSeiteSection({
     return () => window.removeEventListener('hashchange', lesen);
   }, []);
 
-  /**
-   * Der HILFETEXT dieses Blatts (§5.4): eine Wärmepumpe ist ein schaltbarer
-   * Verbraucher - das steht als Satz da, nie als Titel (Captain-Entscheid).
-   */
+  /** Der Hilfetext dieses Blatts: eine Wärmepumpe ist ein schaltbarer Verbraucher. */
   const hinweisSatz = useMemo(() => {
     if (!view?.gefunden || !gesichtView) return null;
     return blattHinweis(gesichtView, {
@@ -1060,46 +1002,26 @@ export function GeraetSeiteSection({
   }, [view, gesichtView, data]);
 
   /**
-   * Die PRIMÄRE Handlung des Verbraucher-Blatts (§5.4). Sie steht im JETZT,
-   * damit sie nicht erst hinter der Aktionszeile auftaucht - und sie ist
-   * dieselbe, die die Zeile darunter anbietet (kein zweiter Auslöse-Pfad).
-   */
-  const heldAktion = useMemo(() => {
-    if (gesichtView?.gattung !== 'verbraucher') return null;
-    const erste = aktionen.find((a) => a.art === 'verbraucher');
-    if (!erste) return null;
-    return { text: erste.label, onClick: () => aktionAusloesen(erste) };
-  }, [gesichtView, aktionen, aktionAusloesen]);
-
-  /**
-   * Die GEFAHRENZONE dieses Geräts (vp-loeschen-konzept-l3, E4): ihr Zustand ist
-   * eine reine Ableitung aus den Komponenten des Geräts und ihren Entitäten -
-   * löschbar, geschützter Speicher (mit Weg) oder Grundausstattung ohne Weg.
-   * Nie für die Box selbst oder eine Ladesäule (die haben hier keine eine
-   * Aktion). Der Name zum Bestätigen ist der der Komponente, sonst des Geräts.
+   * Das ENTFERNEN dieses Geräts (vp-loeschen-konzept-l3, E4) - seit V7 im Menü
+   * „⋯", mit derselben Rückfrage und denselben Folgen. Nie für eine Ladesäule.
    */
   const gefahr = useMemo(() => {
     if (!view || !view.gefunden || view.art === 'ladepunkt') return null;
-    return gefahrenzone(view.komponenten, (id) => data?.entities.find((e) => e.id === id), pvZugeordnet);
-  }, [view, data, pvZugeordnet]);
+    return gefahrenzone(eigeneKomponenten, (id) => data?.entities.find((e) => e.id === id), pvZugeordnet);
+  }, [view, eigeneKomponenten, data, pvZugeordnet]);
   const gefahrName =
     gefahr?.kind === 'entfernen' ? gefahr.component.label : view?.kopf.titel ?? '';
 
   /**
    * Die Entität, mit der der Summenwert-Assistent „PV-Produktion dieses Geräts"
-   * startet (Konzept vp-agg-konzept3-r8, Fix (b)): bevorzugt der PV-Aspekt, sonst
-   * - wenn das Gerät nachweislich Erzeugung meldet - die Träger-Entität (Speicher
-   * des Hybriden, sonst die eindeutige Haupt-Komponente). `null` heißt: kein Knopf,
-   * weil das Gerät nichts erzeugt (das „nie ein toter Knopf"-Prinzip, aber auch
-   * nie „gar kein Knopf" für genau ein erzeugendes Gerät ohne PV-Komponente).
+   * startet (vp-agg-konzept3-r8, Fix (b)) - null heißt: das Gerät erzeugt nichts.
    */
   const erzeugungEntityId = useMemo(
     () => (view?.gefunden ? pvEinstiegEntityId(view) : null),
     [view],
   );
 
-  // Die PV-Rollen-Zuordnung dieses Geräts - für die Gefahrenzonen-Folge und den
-  // Karten-Zustand; sie hängt an genau der Entität, mit der die Karte startet.
+  // Die PV-Rollen-Zuordnung dieses Geräts - für die Entfernen-Folge.
   useEffect(() => {
     let aktiv = true;
     if (!erzeugungEntityId) {
@@ -1115,16 +1037,19 @@ export function GeraetSeiteSection({
     };
   }, [erzeugungEntityId, site.id, pvReload]);
 
+
+  const anlageHref = hashForRoute(anlageRoute(site.id));
+  const komponentenHref = hashForRoute(anlageRoute(site.id, 'modell'));
+
   return (
     <div className="vp-geraet">
-      {/* GENAU EIN Rückweg (Stufe 0, §2.1/§4.2): der Knopf „Anlage {Name}" und
-          die Bereichs-Reiter stehen über einer Geräteseite nicht mehr. Der
-          RAHMEN trägt sie im gefundenen Fall selbst - hier steht sie nur über
-          den Lade-/Fehler-/Leer-Zuständen, damit auch die einen Rückweg haben. */}
+      {/* GENAU EIN Rückweg: im gefundenen Fall trägt ihn der Kern selbst -
+          hier steht die Brotkrume nur über den Lade-/Fehler-/Leer-Zuständen,
+          damit auch die einen Rückweg haben. */}
       {gesichtView?.gattung !== 'ladepunkt' && !(view && view.gefunden) && (
         <GeraetBrotkrume
-          anlageHref={hashForRoute(anlageRoute(site.id))}
-          komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+          anlageHref={anlageHref}
+          komponentenHref={komponentenHref}
           titel={view?.gefunden ? view.kopf.titel : 'Gerät'}
         />
       )}
@@ -1169,26 +1094,30 @@ export function GeraetSeiteSection({
           siteId={site.id}
           chargePointId={chargePointIdOf(geraetId) as string}
           fallbackTitle={view.kopf.titel}
-          backHref={hashForRoute(anlageRoute(site.id, 'modell'))}
-          siteHref={hashForRoute(anlageRoute(site.id))}
+          backHref={komponentenHref}
+          siteHref={anlageHref}
           settingsHref={hashForRoute(anlageRoute(site.id, 'ladevorgaenge'))}
           charger={(charging?.chargers ?? []).find(
             (item) => item.chargePointId === chargePointIdOf(geraetId),
           ) ?? null}
+          budget={charging?.budget ?? null}
           onRename={chargerRenameTarget ? () => {
             setEditNotice(null);
             setEditError(null);
             setRenameTarget(chargerRenameTarget);
           } : undefined}
           messwerte={beobachtung}
+          heute={heuteBaustein(site.id, gesichtView, view, setHeuteAusfall, heuteAusfall)}
+          ladeparkZeilen={[...ladepark, ...ausfallschutz.map((z) => ({ ...z, label: `Ausfall-Schutz · ${z.label}` }))]}
+          onDatenGeaendert={() => setReloadKey((k) => k + 1)}
         />
       )}
 
       {view && view.gefunden && renameTarget && (
         <>
           <GeraetBrotkrume
-            anlageHref={hashForRoute(anlageRoute(site.id))}
-            komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+            anlageHref={anlageHref}
+            komponentenHref={komponentenHref}
             titel={`${view.kopf.titel} bearbeiten`}
           />
           <UmbenennenDialog
@@ -1212,8 +1141,8 @@ export function GeraetSeiteSection({
       {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && editOpen && !renameTarget && editRow && (
         <>
           <GeraetBrotkrume
-            anlageHref={hashForRoute(anlageRoute(site.id))}
-            komponentenHref={hashForRoute(anlageRoute(site.id, 'modell'))}
+            anlageHref={anlageHref}
+            komponentenHref={komponentenHref}
             titel={`${view.kopf.titel} bearbeiten`}
           />
           <AnlegenFlow
@@ -1240,250 +1169,336 @@ export function GeraetSeiteSection({
         </>
       )}
 
-      {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && !editOpen && !renameTarget && (
-        <GeraetRahmen
-          testId="geraet-rahmen"
-          geraetKey={`${site.id}:${geraetId ?? geraeteRef}`}
-          view={rahmenView}
-          brotkrume={{
-            anlageHref: hashForRoute(anlageRoute(site.id)),
-            komponentenHref: hashForRoute(anlageRoute(site.id, 'modell')),
-          }}
-          kopf={{
-            titel: view.kopf.titel,
-            gattungWort: view.kopf.unterzeile,
-            kennung: view.kopf.kennung,
-            zustand: view.kopf.zustand,
-            hinweis,
-            abzeichen: (
+      {view && view.gefunden && gesichtView && gesichtView.gattung !== 'ladepunkt' && !editOpen && !renameTarget && (() => {
+        const held = gesichtView.held;
+        const zahl = grosseZahl(held);
+        const src = (sources ?? []).find((s) => s.sourceId === geraetId) ?? null;
+        const bearbeitbar = components?.componentAuthority === 'portal' && Boolean(editRow);
+        const bearbeiten = () => {
+          setEditNotice(null);
+          setEditError(null);
+          setEditOpen(true);
+        };
+        const menue: MenueEintrag[] = [];
+        if (bearbeitbar) {
+          menue.push({ key: 'bearbeiten', label: 'Bearbeiten', icon: 'pencil', onClick: bearbeiten, recht: 'geraet.einrichten' });
+        }
+        const gefahrLabel = gefahrMenueLabel(gefahr);
+        if (gefahrLabel) {
+          menue.push({
+            key: 'entfernen', label: gefahrLabel, icon: 'trash', danger: true,
+            onClick: () => setEntfernenOffen(true), recht: 'komponente.loeschen',
+          });
+        }
+
+        const massgeblich = held.werte.massgeblich;
+        const grafik: BuehneGrafik | null = gesichtView.ioModul
+          ? null
+          : gesichtView.gattung === 'wechselrichter-speicher'
+            ? { art: 'speicher', werte: held.werte }
+            : gesichtView.gattung === 'wechselrichter' || gesichtView.gattung === 'pv-melder'
+              ? { art: 'sonne', werte: held.werte }
+              : gesichtView.gattung === 'zaehler' && !gesichtView.eigenbau
+                ? { art: 'netz', werte: held.werte }
+                : gesichtView.gattung === 'verbraucher'
+                  ? {
+                    art: 'verbraucher',
+                    werte: held.werte,
+                    freigabe: eigenerVerbraucher ? consumerNachweis(eigenerVerbraucher) === 'freigabe' : false,
+                  }
+                  : null;
+        const belegung = gesichtView.ioModul ? ioBelegung(io.dto) : null;
+
+        const buehne: BausteinInhalt = {
+          inhalt: gesichtView.ioModul ? (
+            <GeraetBuehne
+              zahl={belegung ? {
+                zahl: String(belegung.verbraucher),
+                einheit: belegung.verbraucher === 1 ? 'Verbraucher' : 'Verbraucher',
+                wort: null,
+                ton: null,
+                key: 'belegung',
+              } : null}
+              satz={ioBelegungSatz(io.dto, now)}
+              inhalt={modulEntityId ? (
+                <IoKlemmenplan
+                  siteId={site.id}
+                  entityId={modulEntityId}
+                  dto={io.dto}
+                  fehler={io.fehler}
+                  now={now}
+                  onNeuLaden={io.neuLaden}
+                  verbraucherHref={(consumerId) => geraetSeiteHash(site.id, geraeteRef, ioVerbraucherGeraetId(consumerId))}
+                />
+              ) : null}
+              hinweis={modulEntityId ? null : held.hinweis}
+            />
+          ) : (
+            <GeraetBuehne
+              zahl={zahl}
+              satz={held.satz}
+              satzTon={held.satzTon}
+              grafik={grafik}
+              chips={nebenKacheln(held, zahl, grafik)}
+              zeilen={held.zeilen}
+              hinweis={held.hinweis}
+              markiert={angesprungeneKachel}
+            />
+          ),
+        };
+
+        // --- Steuerung ------------------------------------------------------
+        const notAus = view.steuerung.find((z) => z.label === NOT_AUS_LABEL) ?? null;
+        const eigenEinspeisung = abregelungDiesesGeraets(curtailment, geraetId ?? '');
+        const steuerungBaustein: BausteinInhalt | null = steuerung
+          ? {
+            inhalt: (
+              <GeraetSteuerung
+                view={steuerung}
+                busy={aktionBusy}
+                onAktion={segmentAusloesen}
+                zusatz={notAus ? (
+                  <p className="vp-steuer-hinweis" role="status">
+                    <Icon name="alert-triangle" size={15} />
+                    <span>{`${notAus.label}: ${notAus.wert}`}</span>
+                  </p>
+                ) : null}
+              />
+            ),
+            kopfRechts: steuerung.zeile.quelle === 'handeingriff' ? 'Handeingriff' : null,
+          }
+          : gesichtView.gattung === 'pv-melder' && eigenEinspeisung
+            ? {
+              titel: 'Einspeise-Begrenzung',
+              kopfRechts: 'automatisch',
+              inhalt: <ZeilenListe zeilen={einspeiseZeilen} />,
+            }
+            : null;
+
+        // --- Heute ----------------------------------------------------------
+        const heute = heuteBaustein(site.id, gesichtView, view, setHeuteAusfall, heuteAusfall);
+
+        // --- Aktivität ------------------------------------------------------
+        const history = verlauf.history;
+        const aktivitaet: BausteinInhalt | null = gesichtView.sektionen.includes('befehle')
+          ? {
+            info: (
               <>
-                {view.kopf.steuerAbzeichen && (
-                  <span className="vp-geraet-ctrl">
-                    <Icon name="zap" size={13} /> {view.kopf.steuerAbzeichen}
-                  </span>
+                <p>
+                  {aufzeichnungSeit(history?.recordingSince ?? null)}
+                  {' · '}
+                  {genauigkeitsSatz(history?.accuracySeconds ?? 15)}
+                </p>
+                {history?.deviceIsBox === false && <p>{ANLAGENWEITE_BEFEHLE}</p>}
+              </>
+            ),
+            kopfRechts: (
+              <a href={ioVerbraucherEntity
+                ? befehleHash(site.id, ioVerbraucherEntity)
+                : befehleGeraetHash(site.id, geraetId ?? geraeteRef)}
+              >
+                Alle <Icon name="chevron-right" size={14} />
+              </a>
+            ),
+            inhalt: (
+              <>
+                {history && !history.writes && (
+                  <p className="vp-geraet-readonly">
+                    <Icon name="shield" size={15} /> {NUR_LESEN}
+                  </p>
                 )}
-                {view.kopf.pflegeOrt && (
-                  <span className="vp-pill vp-pill-info">{view.kopf.pflegeOrt}</span>
+                <BefehleVerlauf state={verlauf} max={3} />
+              </>
+            ),
+          }
+          : null;
+
+        // --- Gerät & Verbindung --------------------------------------------
+        const bezuege = view.steuerung.filter(
+          (z) => z.label !== NOT_AUS_LABEL
+            // ⚠ Der Einspeise-Wächter steht dort, wo die Gattung ihn führt -
+            // nie zweimal auf einem Bildschirm.
+            && !(steuerungBaustein?.titel === 'Einspeise-Begrenzung' && z.label === WAECHTER_LABEL),
+        );
+        // Ein I/O-Modul misst keine Größe - seine Zustände stehen im
+        // Klemmenplan, und „Misst: I/O-Modul Keller" nennte nur sich selbst.
+        const misst = gesichtView.ioModul ? [] : eigeneKomponenten
+          .filter((c) => (c.aspect === 'main' || c.role === 'pv') && !c.io)
+          .map((c) => (c.primary ? `${c.label} (maßgeblich)` : c.label));
+        // K4: was an den Ausgängen dieses Moduls hängt - geschaltet, nicht gemessen.
+        const schaltet = view.komponenten
+          .filter((c) => c.io && !ioVerbraucherSeite)
+          .map((c) => `${c.label} (DO${c.io?.kanal})`);
+        const detailZeilen: Zeile[] = [
+          ...(view.kopf.modell ? [{ label: 'Modell', wert: view.kopf.modell }] : []),
+          ...view.verbindung,
+          ...(misst.length > 0
+            ? [{ label: 'Misst', wert: Array.from(new Set(misst)).join(' · ') }]
+            : []),
+          ...(schaltet.length > 0 ? [{ label: 'Schaltet', wert: schaltet.join(' · ') }] : []),
+          ...(gesichtView.sektionen.includes('grenzen') ? grenzen : []),
+          ...bezuege,
+        ];
+        const details = {
+          kurz: [view.verbindung.find((z) => z.label === 'Anbindung')?.wert,
+            view.verbindung.find((z) => z.label === 'Lesetakt')?.wert]
+            .filter(Boolean).join(' · ') || null,
+          inhalt: (
+            <>
+              {hinweisSatz && <p className="vp-note">{hinweisSatz}</p>}
+              {view.verbindungLeer && <p className="vp-note">{view.verbindungLeer}</p>}
+              {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
+              <ZeilenListe zeilen={detailZeilen} />
+              {/* Gerät, Einstellungen und Messkanäle (UEMS AP-04 IP-12): die
+                  Herkunftskette von der Technik-Seite — welches Gerät eingebaut
+                  ist, womit es misst und welche Messstelle ein Kanal speist. Ohne
+                  auflösbares UEMS-Gerät rendert es gar nichts (wie das Protokoll). */}
+              <GeraetHerkunft
+                siteId={site.id}
+                komponenten={view.komponenten.map((c) => ({ entityId: c.entityId, label: c.label }))}
+              />
+              {view.bms.length > 0 && (
+                <Block titel="BMS" icon="battery">
+                  <p className="vp-note">
+                    Diese Werte meldet der Wechselrichter über die Batterie, die per CAN an ihm
+                    angemeldet ist - er misst sie nicht selbst.
+                  </p>
+                  <ZeilenListe zeilen={view.bms} />
+                </Block>
+              )}
+              <p className="vp-geraet-sec-sub">
+                <a href={komponentenHref}>In der Zentrale ansehen →</a>
+                {/* Der Wohnort der Regeln bleibt die Steuerung (PR 3c) - der Weg
+                    steht an jedem Gerät, das VoltPilot steuert oder eine Regel nutzt. */}
+                {(view.kopf.steuerAbzeichen || steuerung
+                  || bezuege.some((z) => z.label === 'Regeln, die dieses Gerät nutzen')) && (
+                  <>
+                    {' · '}
+                    <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>Regeln dieser Anlage →</a>
+                  </>
+                )}
+              </p>
+            </>
+          ),
+        };
+
+        // --- Technik & Diagnose -------------------------------------------
+        const technik: TechnikTeil[] = [];
+        if (registerSektion || hatMessbibliothek) {
+          technik.push({
+            id: 'register',
+            // D3: „Register" wäre an einem HTTP-Gerät das falsche Wort, die
+            // Fähigkeit ist es nicht.
+            titel: registerSektion ? null : 'Messwerte',
+            inhalt: (
+              <>
+                {beobachtung}
+                {registerSektion && (
+                  <RegisterSektion
+                    onBeobachten={setBruecke}
+                    siteId={site.id}
+                    boxDeviceId={box?.id ?? null}
+                    geraetName={view.kopf.titel}
+                    art={view.art}
+                    entityIds={view.komponenten.map((c) => c.entityId)}
+                    targets={targets}
+                    zugang={zugang}
+                    offen={regOffen}
+                    setOffen={setRegOffen}
+                    exportLimit={view.art === 'hauptgeraet'
+                      ? curtailment?.deviceExportLimit ?? null
+                      : null}
+                    writes={writes}
+                    source={src}
+                    familie={(targets ?? []).find((t) => (geraetId
+                      ? t.entityId != null
+                        && view.komponenten.some((c) => c.entityId === t.entityId)
+                      : t.lane === 'primary'))?.family ?? null}
+                    knowledge={knowledge}
+                    now={now}
+                  />
                 )}
               </>
             ),
-          }}
-          aktionen={(
-            <>
-              {components?.componentAuthority === 'portal' && editRow && (
-                <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={() => {
-                  setEditNotice(null);
-                  setEditError(null);
-                  setEditOpen(true);
-                }}>
-                  <Icon name="pencil" size={15} /> Bearbeiten
-                </button></Recht>
-              )}
-            </>
-          )}
-          unterKopf={editRow ? (
-            <details className="vp-geraet-versionen">
-              <summary>
-                Fassung {editRow.definitionVersion} · {
-                  editRow.syncStatus === 'in_sync' ? 'auf der Box aktiv'
-                    : editRow.syncStatus === 'pending' ? 'Aktivierung läuft'
-                      : 'Bestätigung der Box ausstehend'
-                }
-              </summary>
-              {components?.refusedReason && (
-                <p className="vp-assist-error" role="alert">
-                  Die Box hat die neue Fassung abgelehnt: {components.refusedReason}. Die vorige Fassung läuft weiter.
-                </p>
-              )}
-              <p>Jede Änderung ist eine neue Fassung. Eine Rückkehr schreibt wiederum eine neue Fassung; nichts wird gelöscht.</p>
-              <div className="vp-geraet-version-list">
-                {versions.filter((version) => version.version < editRow.definitionVersion).slice(0, 4).map((version) => (
-                  <Recht aktion="geraet.einrichten" key={version.version}><button key={version.version} type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => setRollbackTarget(version)}>
-                    Fassung {version.version} zurückholen
-                  </button></Recht>
+          });
+        }
+        const summenwert = summenwertEinstieg(view);
+        if (summenwert && boxDevice?.id && geraetId) {
+          technik.push({
+            id: 'auswertung',
+            inhalt: (
+              <>
+                <GeraetSummenwerte
+                  siteId={site.id}
+                  deviceId={boxDevice.id}
+                  entityId={summenwert}
+                  entityIds={[...new Set(view.komponenten.map((k) => k.entityId))]}
+                  geraetName={view.kopf.titel}
+                  geraetId={geraetId}
+                  onZuordnungGeaendert={() => setPvReload((x) => x + 1)}
+                />
+                {/* Das ÄNDERUNGSPROTOKOLL (UEMS AP-04 IP-21): was sich an Quellen,
+                    Einstellungen und Ein-/Ausbau dieses Geräts geändert hat. */}
+                <GeraetProtokoll
+                  siteId={site.id}
+                  entityIds={view.komponenten.map((c) => c.entityId)}
+                />
+              </>
+            ),
+          });
+        }
+        if (editRow || view.einrichtung.length > 0 || gefahr?.kind === 'geschuetzt') {
+          technik.push({
+            id: 'einrichtung',
+            inhalt: (
+              <>
+                {/* Die Karte HEISST schon „Einrichtung" - ihr Stand steht als Satz,
+                    nicht noch einmal unter derselben Überschrift. */}
+                {view.einrichtung.map((z) => (
+                  <p key={z.label} className="vp-geraet-einrichtung">
+                    {`${z.wert.charAt(0).toUpperCase()}${z.wert.slice(1)}.`}
+                  </p>
                 ))}
-              </div>
-              {editError && <p className="vp-assist-error" role="alert">{editError}</p>}
-            </details>
-          ) : null}
-        >
-          {/* 1 · Jetzt - ohne Klapp-Kopf (§4.5). */}
-          <RahmenSektion id="jetzt">
-            {gesichtView && (
-              <HeldKarte
-                held={gesichtView.held}
-                stand={view.liveStand}
-                markiert={angesprungeneKachel}
-                aktion={heldAktion}
-              />
-            )}
-          </RahmenSektion>
-
-          {/* Alle Summenwerte, deren aktuelle Formel dieses physische Gerät liest. */}
-          {summenwertEinstieg(view) && boxDevice?.id && geraetId && (
-            <GeraetSummenwerte
-              siteId={site.id}
-              deviceId={boxDevice.id}
-              entityId={summenwertEinstieg(view)!}
-              entityIds={[...new Set(view.komponenten.map(k => k.entityId))]}
-              geraetName={view.kopf.titel}
-              geraetId={geraetId}
-              onZuordnungGeaendert={() => setPvReload((x) => x + 1)}
-            />
-          )}
-
-          {/* 2 · Befehle */}
-          <RahmenSektion id="befehle">
-            <BefehleSektion
-              siteId={site.id}
-              geraetRef={geraetId ?? geraeteRef}
-              state={verlauf}
-              aktionen={aktionen}
-              onAktion={aktionAusloesen}
-            />
-          </RahmenSektion>
-
-          {/* 3 · Steuerung & Grenzen - VIER frühere Sektionen gehen hier auf. */}
-          <RahmenSektion id="steuerung">
-            {gesichtView?.sektionen.includes('grenzen') && (
-              <Block titel="Grenzen dieses Geräts" icon="shield">
-                <ZeilenListe zeilen={grenzen} />
-              </Block>
-            )}
-            {gesichtView?.sektionen.includes('einspeise') && (
-              <Block titel="Einspeise-Begrenzung" icon="shield">
-                <ZeilenListe zeilen={einspeiseZeilen} />
-              </Block>
-            )}
-            {gesichtView?.sektionen.includes('ausfallschutz') && (
-              <Block titel="Ausfall-Schutz" icon="shield">
-                <ZeilenListe zeilen={ausfallschutz} />
-              </Block>
-            )}
-            {gesichtView?.sektionen.includes('ladepark') && (
-              <Block titel="Diese Säule im Ladepark" icon="zap">
-                <ZeilenListe zeilen={ladepark} />
-                <p className="vp-geraet-sec-sub">
-                  <a href={hashForRoute(anlageRoute(site.id, 'ladevorgaenge'))}>
-                    Ladevorgänge dieser Anlage ansehen →
-                  </a>
-                </p>
-              </Block>
-            )}
-            <Block titel="Steuerungs-Bezüge" icon="shield">
-              {/* ⚠ Der Einspeise-Wächter steht dort, wo die Gattung ihn führt -
-                  nie zweimal auf einem Bildschirm (im Browser aufgefallen). */}
-              <ZeilenListe zeilen={view.steuerung.filter(
-                (z) => !(gesichtView?.sektionen.includes('einspeise')
-                  && z.label === WAECHTER_LABEL),
-              )} />
-              {hinweisSatz && <p className="vp-note">{hinweisSatz}</p>}
-              <p className="vp-geraet-sec-sub">
-                <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>
-                  Regeln und Betriebsmodelle dieser Anlage ansehen →
-                </a>
-              </p>
-            </Block>
-          </RahmenSektion>
-
-          {/* 4 · Komponenten */}
-          <RahmenSektion id="komponenten">
-            {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
-            {view.komponenten.length > 0 && (
-              <ul className="vp-geraet-komps">
-                {view.komponenten.map((c) => (
-                  <KomponentenZeile key={c.id} komponente={c} siteId={site.id} />
-                ))}
-              </ul>
-            )}
-            {/* Gerät, Einstellungen und Messkanäle (UEMS AP-04 IP-12): die
-                Herkunftskette von der Technik-Seite — welches Gerät eingebaut
-                ist, womit es misst und welche Messstelle ein Kanal speist. Ohne
-                auflösbares UEMS-Gerät rendert es gar nichts (wie das Protokoll). */}
-            <GeraetHerkunft
-              siteId={site.id}
-              komponenten={view.komponenten.map((c) => ({ entityId: c.entityId, label: c.label }))}
-            />
-            {/* ⚠ Der BMS-Block steht NUR da, wenn eine Batterie per CAN an
-                diesem Gerät hängt (P4) - sonst gar nicht. Ein Kasten, der
-                erklärt, dass er nichts weiß, ist genau die Wand, die dieser
-                Rahmen beendet; und eine 0 wäre eine Messung, die niemand
-                gemacht hat. */}
-            {view.bms.length > 0 && (
-              <Block titel="BMS" icon="battery">
-                <p className="vp-note">
-                  Diese Werte meldet der Wechselrichter über die Batterie, die per CAN an ihm
-                  angemeldet ist - er misst sie nicht selbst.
-                </p>
-                <ZeilenListe zeilen={view.bms} />
-              </Block>
-            )}
-            {/* Das ÄNDERUNGSPROTOKOLL dieses Geräts (UEMS AP-04 IP-21): was sich
-                an seinen Quellen, seinen Einstellungen und seinem Ein- und Ausbau
-                geändert hat. Es steht HIER, weil genau diese Sektion sagt, was das
-                Gerät misst und steuert. Ohne auflösbares UEMS-Gerät rendert es
-                gar nichts - dieselbe Regel wie der BMS-Block darüber. */}
-            <GeraetProtokoll
-              siteId={site.id}
-              entityIds={view.komponenten.map((c) => c.entityId)}
-            />
-          </RahmenSektion>
-
-          {/* 5 · Register - Lesen, Beobachten und Schreiben an EINEM Ort. */}
-          <RahmenSektion id="register">
-            {/* 1+2 · Beobachtete Register und der Katalog DIESES Geräts. */}
-            {beobachtung}
-            {/* 3 · Lesen und Schreiben - mit der Brücke „Beobachten" je Lesung. */}
-            {registerSektion && (
-              <RegisterSektion
-                onBeobachten={setBruecke}
-                siteId={site.id}
-                boxDeviceId={box?.id ?? null}
-                geraetName={view.kopf.titel}
-                art={view.art}
-                entityIds={view.komponenten.map((c) => c.entityId)}
-                targets={targets}
-                zugang={zugang}
-                offen={regOffen}
-                setOffen={setRegOffen}
-                exportLimit={view.art === 'hauptgeraet'
-                  ? curtailment?.deviceExportLimit ?? null
-                  : null}
-                writes={writes}
-                source={(sources ?? []).find((s) => s.sourceId === geraetId) ?? null}
-                familie={(targets ?? []).find((t) => (geraetId
-                  ? t.entityId != null
-                    && view.komponenten.some((c) => c.entityId === t.entityId)
-                  : t.lane === 'primary'))?.family ?? null}
-                knowledge={knowledge}
-                now={now}
-              />
-            )}
-          </RahmenSektion>
-
-          {/* 6 · Verbindung */}
-          <RahmenSektion id="verbindung">
-            {view.verbindungLeer && <p className="vp-note">{view.verbindungLeer}</p>}
-            <ZeilenListe zeilen={view.verbindung} />
-          </RahmenSektion>
-
-          {/* 7 · Software */}
-          <RahmenSektion id="software">
-            <ZeilenListe zeilen={view.software} />
-          </RahmenSektion>
-
-          {/* 8 · Diagnose - hier landen auch die Gründe der entfallenen
-                 Sektionen (§4.6), damit keine still verschwindet. */}
-          <RahmenSektion id="diagnose">
-            {rahmenView.entfallen.map((grund) => (
-              <p className="vp-note" key={grund}>{grund}</p>
-            ))}
-            <ZeilenListe zeilen={view.diagnose} />
-          </RahmenSektion>
-
-          {/* 9 · Plattform-Sicht - additiv, hinter dem EINEN Tor (M7). */}
-          <RahmenSektion id="plattform">
-            {adminView && (
+                {editRow && (
+                  <div className="vp-geraet-versionen" data-testid="geraet-fassungen">
+                    <p className="vp-geraet-sec-sub">
+                      {(() => {
+                        const stand = editRow.syncStatus === 'in_sync' ? 'auf der Box aktiv'
+                          : editRow.syncStatus === 'pending' ? 'Aktivierung läuft'
+                            : 'Bestätigung der Box ausstehend';
+                        return view.einrichtung.length > 0
+                          ? `${stand.charAt(0).toUpperCase()}${stand.slice(1)}`
+                          : `Fassung ${editRow.definitionVersion} · ${stand}`;
+                      })()}
+                    </p>
+                    {components?.refusedReason && (
+                      <p className="vp-assist-error" role="alert">
+                        Die Box hat die neue Fassung abgelehnt: {components.refusedReason}. Die vorige Fassung läuft weiter.
+                      </p>
+                    )}
+                    <p>Jede Änderung ist eine neue Fassung. Eine Rückkehr schreibt wiederum eine neue Fassung; nichts wird gelöscht.</p>
+                    <div className="vp-geraet-version-list">
+                      {versions.filter((version) => version.version < editRow.definitionVersion).slice(0, 4).map((version) => (
+                        <Recht aktion="geraet.einrichten" key={version.version}><button key={version.version} type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => setRollbackTarget(version)}>
+                          Fassung {version.version} zurückholen
+                        </button></Recht>
+                      ))}
+                    </div>
+                    {editError && <p className="vp-assist-error" role="alert">{editError}</p>}
+                  </div>
+                )}
+                {gefahr?.kind === 'geschuetzt' && <p className="vp-note">{gefahr.grund}</p>}
+              </>
+            ),
+          });
+        }
+        if (view.diagnose.length > 0) {
+          technik.push({ id: 'rohdaten', inhalt: <ZeilenListe zeilen={view.diagnose} /> });
+        }
+        if (showTechnicalLayer() && adminView) {
+          technik.push({
+            id: 'plattform',
+            inhalt: (
               <div data-testid="geraet-admin">
                 <AdminGeraetKarten
                   view={adminView}
@@ -1502,26 +1517,63 @@ export function GeraetSeiteSection({
                 />
                 {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
               </div>
-            )}
-          </RahmenSektion>
-        </GeraetRahmen>
-      )}
+            ),
+          });
+        }
 
-      {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && !editOpen
-        && !renameTarget && gefahr && (
-        <GeraetGefahrenzone
-          siteId={site.id}
-          zustand={gefahr}
-          name={gefahrName}
-          onDone={() => {
-            setEditNotice(gefahr.kind === 'batterie'
-              ? 'Die Batterie wurde am Standort abgemeldet.'
-              : 'Die Komponente wurde entfernt.');
-            setData(null);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      )}
+        return (
+          <GeraetRahmen
+            testId="geraet-rahmen"
+            geraetKey={`${site.id}:${geraetId ?? geraeteRef}`}
+            brotkrume={{ anlageHref, komponentenHref }}
+            kopf={{
+              titel: view.kopf.titel,
+              typ: typWort(gesichtView),
+              modell: view.kopf.anschluss ?? view.kopf.modell,
+              symbol: kopfSymbol(gesichtView),
+              zustand: view.kopf.zustand,
+              frische: src?.readAt ?? null,
+              hinweis,
+              abzeichen: (
+                <>
+                  {view.kopf.steuerAbzeichen && (
+                    <span className="vp-kern-abzeichen is-steuert">
+                      <Icon name="zap" size={13} /> {view.kopf.steuerAbzeichen}
+                    </span>
+                  )}
+                  {/* „nur Messung" steht NUR hier - die Bühne wiederholt es nicht. */}
+                  {!view.kopf.steuerAbzeichen && !gesichtView.ioModul
+                    && (gesichtView.gattung === 'zaehler' || gesichtView.gattung === 'pv-melder'
+                      || gesichtView.gattung === 'wechselrichter'
+                      || gesichtView.gattung === 'wechselrichter-speicher') && (
+                    <span className="vp-kern-abzeichen" title={NUR_LESEN}>
+                      <Icon name="activity" size={13} /> nur Messung
+                    </span>
+                  )}
+                  {gesichtView.gattung === 'zaehler' && massgeblich && (
+                    <span className="vp-kern-abzeichen">maßgeblich für die Bilanz</span>
+                  )}
+                </>
+              ),
+            }}
+            menue={menue}
+            kopfAktion={bearbeitbar ? (
+              <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={bearbeiten}>
+                <Icon name="pencil" size={15} /> Bearbeiten
+              </button></Recht>
+            ) : null}
+            veraltet={view.kopf.zustand.ton === 'warn'}
+            bausteine={{
+              buehne,
+              steuerung: steuerungBaustein,
+              heute,
+              aktivitaet,
+            }}
+            details={details}
+            technik={technik}
+          />
+        );
+      })()}
 
       <ConfirmDialog
         open={Boolean(rollbackTarget)}
@@ -1536,8 +1588,25 @@ export function GeraetSeiteSection({
         onCancel={() => !rollbackBusy && setRollbackTarget(null)}
         onConfirm={() => void rollback()}
       />
-      {/* Die zwei BESTEHENDEN Dialoge der Aktionszeile - kein neuer Weg, nur
-          ein weiterer Wirt (§6.2). */}
+      {gefahr && (
+        <GeraetGefahrenzone
+          siteId={site.id}
+          zustand={gefahr}
+          name={gefahrName}
+          offen={entfernenOffen}
+          onSchliessen={() => setEntfernenOffen(false)}
+          onDone={() => {
+            setEntfernenOffen(false);
+            setEditNotice(gefahr.kind === 'batterie'
+              ? 'Die Batterie wurde am Standort abgemeldet.'
+              : 'Die Komponente wurde entfernt.');
+            setData(null);
+            setReloadKey((key) => key + 1);
+          }}
+        />
+      )}
+      {/* Die zwei BESTEHENDEN Dialoge der Steuerung - kein neuer Weg, nur ein
+          weiterer Wirt. */}
       <HandeingriffDialog
         folgen={handFolgen}
         busy={aktionBusy}
@@ -1559,12 +1628,52 @@ export function GeraetSeiteSection({
   );
 }
 
+/** Symbol und Farbe im Kopf - aus der Energiefluss-Familie. */
+function kopfSymbol(g: Gesicht): KernSymbol {
+  if (g.ioModul) return { icon: 'sliders', farbe: 'io' };
+  if (g.eigenbau) return { icon: 'code', farbe: 'neutral' };
+  switch (g.gattung) {
+    case 'wechselrichter-speicher':
+      return { icon: 'battery-charging', farbe: 'batt' };
+    case 'wechselrichter':
+    case 'pv-melder':
+      return { icon: 'sun', farbe: 'pv' };
+    case 'zaehler':
+      return { icon: 'activity', farbe: 'grid' };
+    case 'verbraucher':
+      return { icon: 'zap', farbe: 'load' };
+    case 'ladepunkt':
+      return { icon: 'zap', farbe: 'ev' };
+    default:
+      return { icon: 'cpu', farbe: 'neutral' };
+  }
+}
+
 /**
- * Ein Unter-Block INNERHALB einer Rahmen-Sektion (§4.4).
- *
- * <p>„Steuerung &amp; Grenzen" fasst vier frühere Sektionen zusammen - die
- * Zwischen-Überschrift hält die vier Auskünfte trotzdem auseinander.
+ * Der Baustein „Heute" - oder null, wenn dieses Gerät keine Hauptgröße hat
+ * oder ihr Abruf ausgefallen ist (dann fällt er still weg).
  */
+function heuteBaustein(
+  siteId: string,
+  g: Gesicht | null,
+  view: GeraetSeiteView,
+  setAusfall: (v: boolean) => void,
+  ausfall: boolean,
+): BausteinInhalt | null {
+  if (!g || ausfall) return null;
+  const kanal = heuteKanal(g, view.komponenten, g.held.werte.massgeblich);
+  if (!kanal) return null;
+  return {
+    titel: `Heute · ${kanal.titel}`,
+    kopfRechts: (
+      <a href={verlaufHash(siteId, { entityId: kanal.entityId, channel: kanal.channel }, 'day')}>
+        Verlauf <Icon name="chevron-right" size={14} />
+      </a>
+    ),
+    inhalt: <GeraetHeute siteId={siteId} kanal={kanal} onAusfall={setAusfall} />,
+  };
+}
+
 function Block({
   titel,
   icon,
@@ -1582,88 +1691,6 @@ function Block({
   );
 }
 
-/**
- * Der HELD einer Gattung - das Erste, was die Seite zeigt.
- *
- * <p>Er RENDERT nur: Kacheln, Satz, Hinweis und der ruhige Auslastungs-Balken
- * kommen aus `geraetGesicht.ts`. Ohne Kachel UND ohne Satz entsteht gar keine
- * Karte - ein leerer Held wäre die Box-Lehre in klein.
- */
-function HeldKarte({
-  held, stand, markiert, aktion,
-}: {
-  held: Held;
-  stand: string | null;
-  /**
-   * Die angesprungene Kachel (§5.3): die Batterie hat keine eigene Seite, ihre
-   * Komponenten-Karte führt auf `?abschnitt=jetzt&kachel=speicher`. Markiert
-   * wird über den STABILEN Schlüssel, nie über das Label - der Kunde darf eine
-   * Komponente umbenennen.
-   */
-  markiert?: string | null;
-  /**
-   * Die primäre Handlung dieses Blatts (§5.4): am Verbraucher steht die
-   * Sofortaktion im JETZT, nicht erst in der Aktionszeile darunter. Sie LÖST
-   * nur aus - gehandelt wird im bestehenden Dialog.
-   */
-  aktion?: { text: string; onClick: () => void } | null;
-}) {
-  if (held.kacheln.length === 0 && !held.satz) return null;
-  return (
-    <Card padding="lg" radius="lg" className="vp-geraet-held" data-testid="geraet-held">
-      <div className="vp-geraet-held-kopf">
-        <h2>
-          <Icon name="activity" size={16} /> {held.titel}
-        </h2>
-        {stand && <span className="vp-muted vp-text-sm">Stand {stand}</span>}
-      </div>
-      {held.kacheln.length > 0 && (
-        <div className="vp-geraet-heldkacheln">
-          {held.kacheln.map((k: HeldKachel) => (
-            <div
-              className={`vp-geraet-kachel${k.gross ? ' is-gross' : ''}${
-                k.ton ? ` is-${k.ton}` : ''}${
-                markiert && k.key === markiert ? ' is-markiert' : ''}`}
-              key={k.key}
-              data-kachel={k.key}
-            >
-              <span className="l">{k.label}</span>
-              <span className="v">{k.wert}</span>
-              {k.wort && <span className="w">{k.wort}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-      {held.balken && (
-        <div className="vp-geraet-balken" title={`${held.balken.label} ${Math.round(held.balken.pct)} %`}>
-          <span className="l">{held.balken.label}</span>
-          <span className="bar">
-            <i style={{ width: `${held.balken.pct}%` }} />
-          </span>
-          <span className="v">{Math.round(held.balken.pct)} %</span>
-        </div>
-      )}
-      {held.satz && (
-        <p className={`vp-geraet-heldsatz is-${held.satzTon}`} data-testid="geraet-heldsatz">
-          {held.satz}
-        </p>
-      )}
-      {held.zeilen.length > 0 && (
-        <ul className="vp-geraet-heldzeilen">
-          {held.zeilen.map((z) => <li key={z}>{z}</li>)}
-        </ul>
-      )}
-      {aktion && (
-        <div className="vp-geraet-heldaktion">
-          <Button variant="outline" size="sm" onClick={aktion.onClick}>
-            {aktion.text}
-          </Button>
-        </div>
-      )}
-      {held.hinweis && <p className="vp-note">{held.hinweis}</p>}
-    </Card>
-  );
-}
 
 /** Die Namen der Regeln, die eine Komponente dieses Geräts anfassen. */
 function regelNamenOf(
@@ -2146,7 +2173,7 @@ function RegisterSektion({
               {zugang.weg === 'anlagen-modell' && (
                 <>
                   {' '}
-                  <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zu den Komponenten →</a>
+                  <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zum {AUFBAU_REITER} →</a>
                 </>
               )}
             </p>
@@ -2168,76 +2195,6 @@ function RegisterSektion({
   );
 }
 
-/**
- * F · Befehle an dieses Gerät (Geräteseiten Stufe 2, Konzept §6).
- *
- * <p>Der VERLAUF: neueste Zeile oben, {@link SEITE} Zeilen, „Ältere laden" bis
- * zur Aufbewahrungsgrenze - <b>keine Filter, keine Suche, kein Treffer-Zähler</b>
- * (Captain-Entscheid D4a). Die Liste ist DASSELBE Bauteil wie auf der
- * Befehle-Seite; zwei Verlaufs-Formen wären zwei Wahrheiten.
- *
- * <p><b>Absetzen steht OBEN</b> (§6.2): die Aktionszeile löst nur aus - geöffnet
- * wird jeweils der BESTEHENDE Dialog, es entsteht kein zweiter Auslöse-Pfad.
- * Die Antwort erscheint als neue oberste Zeile, sobald der Verlauf sie trägt.
- *
- * <p><b>Sie erfindet keinen Satz:</b> Zeilen, Leer-Satz und Aufzeichnungs-Beginn
- * kommen aus der reinen `src/befehle.ts` bzw. `src/befehleVerlauf.ts`.
- * Was zu diesem Gerät gehört, entscheidet der SERVER (`?device=`).
- */
-function BefehleSektion({
-  siteId,
-  geraetRef,
-  state,
-  aktionen,
-  onAktion,
-}: {
-  siteId: string;
-  geraetRef: string;
-  /** Der Verlauf kommt FERTIG vom Wirt - er baut daraus auch die Kurzfassung. */
-  state: VerlaufState;
-  /** Was dieses Blatt absetzen kann; leer ⇒ gar keine Zeile (§6.2). */
-  aktionen: VerlaufAktion[];
-  onAktion: (a: VerlaufAktion) => void;
-}) {
-  const { history } = state;
-  return (
-    <>
-      {/* Absetzen steht OBEN - die Antwort erscheint darunter als neue Zeile. */}
-      <BefehleAktionszeile aktionen={aktionen} onAktion={onAktion} />
-      {/* Die F4-Antwort: an dieses Gerät geht gar kein Befehl. Sie steht VOR
-          der Liste, damit ein leerer Verlauf nicht als Zufall gelesen wird. */}
-      {history && !history.writes && (
-        <p className="vp-geraet-readonly">
-          <Icon name="shield" size={15} /> {NUR_LESEN}
-        </p>
-      )}
-      <BefehleVerlauf state={state} />
-      <p className="vp-note">
-        {aufzeichnungSeit(history?.recordingSince ?? null)}
-        {' · '}
-        {genauigkeitsSatz(history?.accuracySeconds ?? 15)}
-      </p>
-      {/* Die Grenze wird ERKLÄRT, nicht nur gezogen (§7.4): eine anlagenweite
-          Abregelung liest EIN Rücklesen über ALLE Einheiten zurück - sie einem
-          von mehreren Geräten zuzuschreiben wäre eine erfundene Zuordnung. */}
-      {history?.deviceIsBox === false && <p className="vp-note">{ANLAGENWEITE_BEFEHLE}</p>}
-      {/* Die Gegenrichtung auf der Box: sie zeigt, was sie ÜBERBRINGT - was ein
-          Gerät AUSFÜHRT, steht auf dessen Seite (Ziel-Attribution). */}
-      {history?.deviceIsBox === true && <p className="vp-note">{GERAETE_BEFEHLE}</p>}
-      {/* ⚠ „Alles" ist auf der Box die ganze ANLAGE, nicht ihr eigener,
-          engerer Ausschnitt - sonst führte der Weg zurück auf dieselbe Liste. */}
-      <a
-        className="vp-geraet-komp-link"
-        href={history?.deviceIsBox === true
-          ? hashForRoute(anlageRoute(siteId, 'befehle'))
-          : befehleGeraetHash(siteId, geraetRef)}
-      >
-        {history?.deviceIsBox === true ? 'Alle Befehle dieser Anlage' : 'Auf der Befehle-Seite'}
-        <Icon name="chevron-right" size={14} />
-      </a>
-    </>
-  );
-}
 
 /** Die Label/Wert-Liste einer Sektion. Am Telefon stapeln die zwei Spalten. */
 function ZeilenListe({ zeilen }: { zeilen: Zeile[] }) {
@@ -2257,45 +2214,3 @@ function ZeilenListe({ zeilen }: { zeilen: Zeile[] }) {
   );
 }
 
-/**
- * Eine Komponente dieses Geräts - WÖRTLICH die Zeile aus dem Anlagen-Modell,
- * nur ohne ihr Menü: die Handlungen (Umbenennen, Zuordnung, Löschen) wohnen
- * dort, wo die Komponente verwaltet wird. „In der Zentrale ›" ist der Weg.
- */
-function KomponentenZeile({
-  komponente,
-  siteId,
-}: {
-  komponente: PlantComponent;
-  siteId: string;
-}) {
-  const c = komponente;
-  return (
-    <li className="vp-geraet-komp">
-      <span className={`vp-geraet-rolle vp-am-${c.role}`} aria-hidden="true">
-        <Icon name={COMPONENT_ROLE_ICONS[c.role] as IconName} size={14} />
-      </span>
-      <div className="tx">
-        <span className="nm">
-          {c.label}
-          {c.primary && <span className="vp-pill vp-pill-info">maßgeblich</span>}
-          {c.control && (
-            <span className="vp-geraet-ctrl">
-              <Icon name="zap" size={12} /> VoltPilot steuert
-            </span>
-          )}
-        </span>
-        <span className="s">
-          {c.provenance ? `${c.provenance} · ${c.summary}` : c.summary}
-        </span>
-      </div>
-      <span className="val">
-        {c.reading ? `${c.reading.value.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${c.reading.unit}` : NO_DATA}
-      </span>
-      <a className="vp-geraet-komp-link" href={hashForRoute(anlageRoute(siteId, 'modell'))}>
-        In der Zentrale
-        <Icon name="chevron-right" size={14} />
-      </a>
-    </li>
-  );
-}

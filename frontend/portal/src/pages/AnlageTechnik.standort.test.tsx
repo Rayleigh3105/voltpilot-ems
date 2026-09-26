@@ -6,11 +6,14 @@ import { DIALOG_TITEL } from '../standorte';
 import { ahrenbergHeute, ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS } from '../test/standorteFixtures';
 
 /**
- * UEMS AP-02 IP-8 — Bestandsschutz der Karte „Meine Anlage“: ein Kunde, dessen
- * Anlage KEIN Standort-Objekt hat, sieht die Karte Zeichen für Zeichen wie vor
- * dem Paket. Die Dateien unter `__snapshots__/` wurden auf dem Stand VOR IP-8
- * aufgenommen (eigener Commit) — ändert sich hier ein Byte, ist das kein neuer
- * Snapshot, sondern ein Bruch.
+ * UEMS AP-02 IP-8 — Bestandsschutz der Gruppe „Anlage“: ein Kunde, dessen Anlage
+ * KEIN Standort-Objekt hat, sieht sie Zeichen für Zeichen wie ohne UEMS. Die
+ * Dateien unter `__snapshots__/` wurden zuerst auf dem Stand VOR IP-8 aufgenommen
+ * (eigener Commit); mit dem Nachzug von `main` (Konzept „Anlage – neu gedacht“,
+ * 41ed67c26, live seit 25.09.2026) ist der Bestand die kurze Liste — die Dateien
+ * sind darum im Nachzug-Merge aus der REINEN main-Fassung von `AnlageTechnik.tsx`
+ * neu aufgenommen, nicht aus der vereinigten. Ändert sich hier ein Byte, ist das
+ * kein neuer Snapshot, sondern ein Bruch.
  */
 
 vi.mock('leaflet', () => {
@@ -135,9 +138,13 @@ describe('Meine Anlage mit Standort-Objekt — beide Zeilen benannt (AP-02 IP-8,
     const halle2: Site = { ...hof, id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' };
     await karte(halle2, async () => ahrenbergHeute());
     const el = document.getElementById('technik-anlage')!;
-    const labels = [...el.querySelectorAll('dt')].map((dt) => dt.textContent);
-    expect(labels.slice(0, 3)).toEqual(['Name', 'Standort', 'Standort auf der Karte']);
-    const objekt = el.querySelectorAll('.vp-kv-row')[1] as HTMLElement;
+    // Seit der kurzen Liste (E5): jede Zeile ein Eintrag; das Objekt steht als eigene Zeile
+    // direkt über den Koordinaten, die dann „Standort auf der Karte“ heißen.
+    const labels = [...el.querySelectorAll('.vp-einst-liste > li')].map(
+      (li) => li.querySelector('.vp-einst-lab > b, dt')?.textContent,
+    );
+    expect(labels.slice(-2)).toEqual(['Standort', 'Standort auf der Karte']);
+    const objekt = el.querySelector('.vp-einst-standort') as HTMLElement;
     expect(within(objekt).getByText('Werk Ahrenberg (ST-1)')).toBeInTheDocument();
     expect(within(objekt).getByText('Gewerbering 7, Ahrenberg · seit 01.10.2026')).toBeInTheDocument();
     expect(within(el).queryByRole('button', { name: /Adresse nachtragen/ })).toBeNull();

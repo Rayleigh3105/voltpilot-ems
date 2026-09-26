@@ -256,6 +256,12 @@ export function MobileRowCard({
             )}
           </span>
           {row.sub && <span className="vp-mob-row-sub">{row.sub}</span>}
+          {row.status && (
+            <span className="vp-mob-row-status">
+              <Icon name="check" size={13} />
+              {row.status}
+            </span>
+          )}
         </span>
         <span className="vp-mob-row-link">
           {linkLabel}

@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Recht } from './components/Recht';
 import { darf, setSelbstauskunft } from './rollen';
 import { rechteSeed, RECHTE_MATRIX } from './test/rollenFixtures';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createElement } from 'react';
 import { cleanup, render } from '@testing-library/react';
@@ -288,6 +288,7 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
       // folgerichtig - der Reiter-Streifen rendert damit gar nicht.
       expect(sidebar.bereiche.find((b) => b.key === 'verlauf')?.tabs.map((t) => t.key)).toEqual([
         'messwerte',
+        'einzelwerte',
       ]);
       // Kein „0"-Badge, das die Anlage schlechter aussehen lässt, als sie ist.
       expect(sidebar.bereiche.every((b) => b.badge === null)).toBe(true);
@@ -329,19 +330,20 @@ describe('Verlauf-Sprache P1 · das Chrome der sechs Reiter', () => {
    * bräche das still wieder: er sieht wie eine Verbesserung aus und ist die
    * teuerste Verletzung der stabilen Bühne (App-Kriterien A5/A8).
    *
-   * Die Bereiche AUSSERHALB des Verlaufs behalten ihren Kopf — sie sind nicht
-   * Teil von P1, und ein halb umgestelltes Portal wäre ein zweiter Sprung
-   * statt keinem.
+   * Seit Preise und Wetter Reiter des FAHRPLANS sind, gilt dasselbe für ihn
+   * (25.09.2026): ein Kopf nur über „Fahrplan" ließ genau diese Leiste
+   * springen. Die übrigen Bereiche (Einstellungen, Komponenten, Steuerung)
+   * behalten ihren Kopf — dort trägt jeder Reiter einen, nichts springt.
    */
-  it('kein Verlauf-Reiter trägt einen sichtbaren Seitenkopf', () => {
+  it('kein Verlauf- oder Fahrplan-Reiter trägt einen sichtbaren Seitenkopf', () => {
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/AnlagenPage.tsx'), 'utf8'));
     const block = code.slice(code.indexOf('const SUB_PAGES'));
     const gedeckelt = block.slice(0, block.indexOf('\n};'));
-    for (const reiter of ['marktpreise', 'lastspitzen', 'prognose', 'wetter']) {
+    for (const reiter of ['marktpreise', 'lastspitzen', 'prognose', 'wetter', 'fahrplan']) {
       expect(gedeckelt, reiter).not.toMatch(new RegExp(`\\n\\s*${reiter}\\s*:`));
     }
-    // Nicht-vakuum: die Bereiche außerhalb des Verlaufs stehen weiterhin drin.
-    expect(gedeckelt).toMatch(/\n\s*fahrplan\s*:/);
+    // Nicht-vakuum: die übrigen Bereiche stehen weiterhin drin.
+    expect(gedeckelt).toMatch(/\n\s*technik\s*:/);
     expect(gedeckelt).toMatch(/\n\s*steuerung\s*:/);
   });
 
@@ -1051,9 +1053,14 @@ describe('Portfolio Revision 2 — Abbau-Invarianten', () => {
     }
   });
 
-  it('es gibt nur EINE Anlagen-Fläche: die Tabelle - Karten erst am Telefon', () => {
+  it('es gibt nur EINE Übersicht: die vier Blöcke - für jede Betriebsart', () => {
+    // Entscheid 25.09.2026: Endkunde, Automatisch und Betreiber sehen dieselbe
+    // Übersicht. Kehren Leiste und Tabelle oder eine Weiche nach Betriebsart
+    // zurück, sieht ein Konto ohne gesetzte Betriebsart wieder eine andere
+    // Fläche als eines mit „Endkunde".
     const code = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
-    expect(code).toContain('AnlagenTabelle');
+    expect(code).toContain('KundenUebersicht');
+    expect(code).not.toMatch(/\bAnlagenTabelle\b|\bKennzahlLeiste\b|\bbetriebsart\b/i);
     // Die Flotten-Karte lebt weiter - aber als Karte der Anlagen-LISTE
     // (`#/anlagen`), nicht als zweite Flotten-Fassung des Portfolios.
     expect(code).not.toContain('FleetSiteCard');
@@ -1511,10 +1518,24 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
     const drucker = ts.createPrinter({ removeComments: true });
     const tags = new Set(['Button', 'button', 'Switch', 'Input', 'input', 'select', 'textarea']);
     const verwendeteFortschreibungen = new Set<(typeof kundenBestand.fortschreibungen)[number]>();
+    // Nachzug main → uems (26.09.2026): ausgelieferte Neubauten von main, je Bedienelement mit Commit und Nachfolger.
+    const nachzug = kundenBestand.mainNachzug;
+    type NachzugDatei = { main?: string[]; entfallen_datei?: boolean; wohin: string; entfallen: { vorher: string; commit: string }[] };
+    const nachzugDateien = nachzug.dateien as Record<string, NachzugDatei>;
+    const verwendeteEntfallene = new Set<string>();
     let zahl = 0;
     for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
       const nachfolger = kundenBestand.fortschreibungen.find(f => f.datei === pfad && 'nachher_datei' in f);
       const quellpfad = nachfolger && 'nachher_datei' in nachfolger ? String(nachfolger.nachher_datei) : pfad;
+      const nz = nachzugDateien[pfad];
+      if (nz?.entfallen_datei) {
+        // main hat die Datei gelöscht: sie kehrt nicht still zurück, und jedes ihrer Bedienelemente ist einzeln belegt.
+        expect(existsSync(join(SRC, quellpfad)), `${pfad}: von main ${nachzug.main} gelöscht`).toBe(false);
+        expect(nz.entfallen.map(e => e.vorher).sort(), `${pfad}: ${nz.wohin}`).toEqual([...vorher].sort());
+        nz.entfallen.forEach((_, i) => verwendeteEntfallene.add(`${pfad}#${i}`));
+        zahl += vorher.length;
+        continue;
+      }
       const datei = ts.createSourceFile(quellpfad, readFileSync(join(SRC, quellpfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const jetzt: string[] = [];
       const besuche = (knoten: ts.Node) => {
@@ -1541,12 +1562,31 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         zahl += vorher.length;
         continue;
       }
+      if (nz?.main) {
+        // Der ausgelieferte Neubau ist geschützt: jedes Bedienelement der main-Fassung steht unverändert im Merge.
+        const rest = [...jetzt];
+        for (const fingerabdruck of nz.main) {
+          const stelle = rest.indexOf(fingerabdruck);
+          expect(stelle, `${pfad}: Bedienelement von main ${nachzug.main}`).toBeGreaterThanOrEqual(0);
+          rest.splice(stelle, 1);
+        }
+      }
       for (const fingerabdruck of vorher) {
         // Der ursprüngliche Bestand bleibt erhalten. Nur ein ausdrücklich belegter Nachfolger
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
         const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
         if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
-        const stelle = jetzt.indexOf(fortschreibung?.nachher ?? fingerabdruck);
+        const soll = fortschreibung?.nachher ?? fingerabdruck;
+        const stelle = jetzt.indexOf(soll);
+        if (stelle < 0 && nz) {
+          // Nur was main selbst entfernt hat, darf fehlen — einzeln belegt und auf main wirklich nicht mehr da.
+          const i = nz.entfallen.findIndex((e, j) => e.vorher === fingerabdruck && !verwendeteEntfallene.has(`${pfad}#${j}`));
+          expect(i, `${pfad}: Bedienelement aus ${kundenBestand.basis} ohne Beleg im Nachzug`).toBeGreaterThanOrEqual(0);
+          expect(nz.main ?? [], `${pfad}: steht auf main ${nachzug.main} noch`).not.toContain(soll);
+          verwendeteEntfallene.add(`${pfad}#${i}`);
+          zahl++;
+          continue;
+        }
         expect(stelle, `${pfad}: Bedienelement aus ${kundenBestand.basis}`).toBeGreaterThanOrEqual(0);
         jetzt.splice(stelle, 1);
         zahl++;
@@ -1554,6 +1594,8 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
     }
     expect(zahl).toBe(922);
     expect(verwendeteFortschreibungen).toEqual(new Set(kundenBestand.fortschreibungen));
+    // Kein Nachzug-Eintrag ohne Wirkung: jeder belegt genau ein fehlendes Bedienelement.
+    expect(verwendeteEntfallene.size).toBe(Object.values(nachzugDateien).reduce((n, d) => n + d.entfallen.length, 0));
   });
   it('jeder Rechte-Hebel aller Kundenflächen erhält das bisherige Markup ohne zusätzliche Hülle', () => {
     setSelbstauskunft(rechteSeed('JW').me);
@@ -1623,9 +1665,13 @@ describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () =>
 // tatsächlich offenen Vorschlagsmenge. Ohne sie bleibt der O18-Bestand zeichengleich.
 describe('AP-02 IP-10 · Vorschau-Zuordnung bleibt additiv', () => {
   it('lädt und rendert die Fläche nur mit Unternehmensrecht und offenen Anlagen', () => {
-    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
-    expect(quelle).toContain("rollen.darf('standort.verwalten', null)");
-    expect(quelle).toContain('v.anlagenZahl > 0 ? v : null');
-    expect(quelle).toContain('{standortVorschlag &&');
+    // Seit dem Nachzug von main d1d67b97e (eine Übersicht für jede Betriebsart) trägt die Flotte die Karte über
+    // `StandortVorschlagHinweis`, die Unternehmens-Ebene über `EbenenCockpit` — beide mit derselben Regel.
+    for (const datei of ['components/StandortVorschlagHinweis.tsx', 'components/EbenenCockpit.tsx']) {
+      const quelle = ohneKommentare(readFileSync(join(SRC, datei), 'utf8'));
+      expect(quelle, datei).toContain("rollen.darf('standort.verwalten', null)");
+      expect(quelle, datei).toContain('v.anlagenZahl > 0 ? v : null');
+      expect(quelle, datei).toContain('{standortVorschlag &&');
+    }
   });
 });

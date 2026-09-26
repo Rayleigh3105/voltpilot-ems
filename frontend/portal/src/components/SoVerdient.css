@@ -1,6 +1,8 @@
 /*
- * „So verdient Ihre Anlage" — das Kombinations-Ertragsbild
- * (Konzept `vp-ertrag-kombi-konzept-t7`, Variante A).
+ * „So verdient Ihre Anlage" — das Ertragsbild der Direktvermarktung.
+ * Die Balken selbst wohnen in `erloese/Balkenliste.css` (Konzept „Erlöse ·
+ * Preise und Verdienst", 25.09.2026); hier stehen Verdikt, Kernsatz und die
+ * Prämien-Zeile.
  *
  * Komponenten-LOKAL (das `Erloese.css`/`CockpitBlocks.css`-Muster): `index.css`
  * bleibt unangetastet. Hier steht ausschließlich Neues (`.vp-sv-*`) — nichts
@@ -11,6 +13,9 @@
 /* --- Das Verdikt: die Antwort, bevor der Beweis kommt --------------------- */
 
 .vp-sv-verdict {
+  /* Links bündig: in einer Grid-Karte zog der Chip sonst über die volle
+     Breite (bei 1440 px ein 1 100 px breiter Balken um einen Halbsatz). */
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -53,28 +58,15 @@
   color: #8a5300;
 }
 
-/* --- Das Bild ------------------------------------------------------------ */
-
-.vp-sv-chartbox {
-  /* min-width: 0 gehört zu jedem Flex-/Grid-Kind mit Inhalt (Telefon-Überlauf). */
-  min-width: 0;
-  margin: 2px 0 4px;
-}
-
-.vp-sv-chartbox svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  /* Die Bühne skaliert über die viewBox — sie kann ihren Container nie sprengen.
-     ⚠ Und sie darf ihn auch nicht AUSFÜLLEN: bei 1440 px ist die Karte 1 136 px
-     breit, die Bühne 520 Einheiten — Faktor 2,18, aus dem 12,5-Label wurde ein
-     30-px-Label direkt unter der Antwort (Befund B5). Der Deckel hält die
-     Skalierung bei ≤ 1, also jede Beschriftung bei ihrer gemeinten Größe
-     (§3.6: „Chart ≤ 240 px hoch und ≤ 520 px breit"). */
-  max-width: min(100%, 520px);
-}
-
 /* --- Kernsatz + der ehrliche Ersatz für ein fehlendes Bild ---------------- */
+
+/* Der Rundungs-Satz steht direkt unter den Balken, deren Zahlen er erklärt. */
+.vp-sv-rundung {
+  margin: 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: 1.5;
+  color: var(--vp-text-muted, #6c757d);
+}
 
 .vp-sv-kernsatz {
   margin: var(--vp-space-2, 8px) 0 0;
@@ -162,57 +154,8 @@
   font-size: var(--vp-erl-fs-14, 14px);
 }
 
-/* --------------------------------------------------------------------------
-   E10 · die Marktwert-Zeilen (`vp-preistreiber`) waren OHNE jede Regel — die
-   drei Spans einer Zeile klebten aneinander („6,4 ct/kWhIhr erzielter
-   Marktwert0,6 ct über dem Monatsdurchschnitt", im echten Browser bei 1440
-   gelesen). Sie sind der Rückfall der Karte, wenn kein Bild getragen wird, und
-   müssen deshalb genauso lesbar sein wie das Bild (§3.6, Befund B5).
-   -------------------------------------------------------------------------- */
-
-.vp-preistreiber {
-  margin: var(--vp-space-3) 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2);
-}
-
-.vp-preistreiber > li {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  min-width: 0;
-}
-
-/* Die Zahl führt (K1): sie ist das Erste, was die Zeile sagt. */
-.vp-pt-wert {
-  font-size: var(--vp-erl-fs-16, 16px);
-  font-weight: var(--vp-erl-fw-700, 700);
-  color: var(--vp-c-fg, #1e293b);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.vp-pt-label {
-  font-size: var(--vp-erl-fs-16, 16px);
-  color: var(--vp-c-fg, #1e293b);
-  min-width: 0;
-}
-
-.vp-pt-note,
-.vp-pt-hint {
-  flex: 1 1 100%;
-  font-size: var(--vp-erl-fs-14, 14px);
-  line-height: 1.45;
-  color: var(--vp-c-muted-fg, #475569);
-  overflow-wrap: anywhere;
-}
-
-/* Eine Zeile ohne Wert ist eine ehrliche Leerstelle, kein Fehler. */
-.vp-preistreiber > li.vp-pt-off .vp-pt-wert {
-  color: var(--vp-c-muted-fg, #475569);
-  font-weight: var(--vp-erl-fw-600, 600);
+/* Die Rechnung der Prämie liegt im geteilten Aufklapper — mit etwas Luft zur
+   Zeile darüber. */
+.vp-sv-rechnung {
+  margin-top: var(--vp-space-1, 4px);
 }

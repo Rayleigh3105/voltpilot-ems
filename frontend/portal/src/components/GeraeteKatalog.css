@@ -1,0 +1,273 @@
+/*
+ * Der Gerätekatalog (Konzept „Aufbau und Gerätekatalog", Runde 2) im zentrierten
+ * Haus-`Modal`: Suche und Arten bleiben beim Scrollen oben stehen, darunter die
+ * Gruppen. Dieselbe ruhige Sprache wie die Aufbau-Tabelle: einfarbige Symbole,
+ * dünne Linien, Farbe nur für Handlung und Treffer.
+ *
+ * Bewegung nur über `--vp-motion-*`: ein Wechsel der Art blendet den Inhalt
+ * kurz ein (`vp-kat-ein`), sonst bewegt sich nichts.
+ */
+
+.vp-kat {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+  container: vp-kat / inline-size;
+}
+
+/* Suche + Arten kleben oben - der Rumpf des Modals ist der Scroll-Behälter. */
+.vp-kat-kopf {
+  position: sticky;
+  top: calc(var(--vp-space-6) * -1);
+  z-index: 2;
+  display: grid;
+  gap: var(--vp-space-3);
+  margin: calc(var(--vp-space-6) * -1) calc(var(--vp-space-6) * -1) 0;
+  padding: var(--vp-space-5) var(--vp-space-6) var(--vp-space-3);
+  background: var(--vp-surface);
+  border-bottom: 1px solid var(--vp-border);
+}
+.vp-kat-suche {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  height: 44px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  color: var(--vp-text-gray);
+  transition: var(--vp-motion-chrome);
+}
+.vp-kat-suche:focus-within {
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-kat-suche input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--vp-text-dark);
+}
+.vp-kat-suche input::placeholder {
+  color: var(--vp-text-gray);
+}
+.vp-kat-leeren {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vp-text-gray);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.vp-kat-leeren:hover {
+  background: var(--vp-bg-light);
+  color: var(--vp-text-dark);
+}
+.vp-kat-arten {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 calc(var(--vp-space-6) * -1);
+  padding: 0 var(--vp-space-6) 2px;
+}
+.vp-kat-arten::-webkit-scrollbar {
+  display: none;
+}
+.vp-kat-art {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: var(--vp-radius-pill);
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  background: var(--vp-surface);
+  font: inherit;
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  cursor: pointer;
+  transition:
+    background-color var(--vp-motion-fast) var(--vp-ease-inout),
+    color var(--vp-motion-fast) var(--vp-ease-inout),
+    border-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+.vp-kat-art .n {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+.vp-kat-art[aria-pressed='true'] {
+  background: var(--vp-action);
+  border-color: var(--vp-action);
+  color: #fff;
+}
+.vp-kat-art[aria-pressed='true'] .n {
+  color: color-mix(in srgb, #fff 78%, transparent);
+}
+
+.vp-kat-inhalt {
+  display: grid;
+  gap: var(--vp-space-4);
+  min-width: 0;
+  animation: vp-kat-ein var(--vp-motion-enter) var(--vp-ease-out) both;
+}
+@keyframes vp-kat-ein {
+  from {
+    opacity: 0;
+    transform: translateY(var(--vp-motion-distance));
+  }
+}
+.vp-kat-zurueck {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 2px 4px 2px 0;
+  font: inherit;
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+.vp-kat-hinweis {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-2);
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-paleblue-start);
+  border: 1px solid var(--vp-paleblue-end);
+  color: var(--vp-navy-2);
+  font-size: var(--vp-text-sm);
+}
+.vp-kat-hinweis svg {
+  margin-top: 2px;
+}
+.vp-kat-leer,
+.vp-kat-zaehler,
+.vp-kat-nicht {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+.vp-kat-nicht button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.vp-kat-gruppe {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-kat-gruppe h3 {
+  margin: 0 2px;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  font-family: var(--vp-font-body);
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+.vp-kat-gruppe h3 small {
+  font-size: inherit;
+  font-weight: var(--vp-weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.vp-kat-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  border-radius: var(--vp-radius-sm);
+  overflow: hidden;
+  background: var(--vp-surface);
+}
+.vp-kat-liste > li + li {
+  border-top: 1px solid var(--vp-border);
+}
+.vp-kat-eintrag {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--vp-space-3);
+  align-items: center;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+.vp-kat-eintrag:hover {
+  background: var(--vp-bg-light);
+}
+.vp-kat-eintrag:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -2px;
+}
+.vp-kat-eintrag.is-fund {
+  background: var(--vp-mint-start);
+}
+.vp-kat-eintrag.is-fund:hover {
+  background: color-mix(in srgb, var(--vp-mint-end) 50%, var(--vp-mint-start));
+}
+.vp-kat-text {
+  display: grid;
+  min-width: 0;
+}
+.vp-kat-text b {
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-kat-text small {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-kat-ende {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vp-text-gray);
+}
+.vp-kat-wort {
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-bold);
+  color: var(--vp-ok-ink);
+}
+.vp-kat mark {
+  background: color-mix(in srgb, var(--vp-solar) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}

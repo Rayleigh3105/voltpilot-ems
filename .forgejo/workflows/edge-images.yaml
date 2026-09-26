@@ -232,6 +232,14 @@ jobs:
           python3 -m unittest discover -s catalog/measurement-points/tests -p 'test_*.py'
           python3 catalog/measurement-points/tools/package_edge_runtime.py --check
 
+      - name: Control profiles + packaged Edge runtime
+        # Steuerprofile (K7): schema + invariants, tool tests, and the copy the Go
+        # core embeds (internal/controlprofile/profiles.json) must be current.
+        run: |
+          python3 catalog/control-profiles/tools/validate.py
+          python3 -m unittest discover -s catalog/control-profiles/tests -p 'test_*.py'
+          python3 catalog/control-profiles/tools/package_edge_runtime.py --check
+
       - name: Go core (race)
         working-directory: edge-app/core
         # Integration packages briefly reserve ephemeral listeners before the

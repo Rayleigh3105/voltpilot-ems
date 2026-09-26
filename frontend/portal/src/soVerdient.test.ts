@@ -1,24 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SiteEarnings } from './api';
+import type { BalkenZeile } from './balkenliste';
+import { NBSP } from './format';
 import {
-  CHIP_MIN_ABSTAND,
-  CHIP_SPREIZUNG,
   KERNSATZ,
   MEHRERE_MONATE_HINWEIS,
   NICHTS_EINGESPEIST_HINWEIS,
+  RUNDUNG_HINWEIS,
   UNTER_DURCHSCHNITT_ZUSATZ,
-  capTextLength,
-  chartLayout,
-  gesamtMarke,
   soVerdient,
-  spreadChips,
   verdictChip,
 } from './soVerdient';
 
 /**
  * Die ECHTEN Zahlen des Konzepts (`vp-ertrag-kombi-konzept-t7` §2), damit die
- * Tests dieselbe Geschichte prüfen, die das Bild erzählt:
+ * Tests dieselbe Geschichte prüfen, die die Karte erzählt:
  *
  *  - **August 2026 (real):** AW 6,9 · Ø 7,0 **vorläufig** · erzielt 9,9
  *    ⇒ Prämie 0,00 €, und die 0,1-ct-Lage kann sich noch drehen (S3).
@@ -82,62 +79,109 @@ function praemienMonat(over: Partial<SiteEarnings> = {}): SiteEarnings {
   });
 }
 
+function zeile(v: ReturnType<typeof soVerdient>, id: string): BalkenZeile {
+  const z = v!.balken!.zeilen.find((x) => x.id === id);
+  if (!z) throw new Error(`Zeile ${id} fehlt`);
+  return z;
+}
+
+const n = (s: string) => s.replace(new RegExp(NBSP, 'g'), ' ');
+
 // ---------------------------------------------------------------------------
-// S1 — der Prämien-Monat: der Beweis steckt in der Geometrie
+// S1 — der Prämien-Monat: das Plus ist eine Länge, die Prämie liegt obendrauf
 // ---------------------------------------------------------------------------
 
 describe('soVerdient · S1 Prämien-Monat', () => {
-  it('zeigt beide Säulen, den Prämien-Block und die Aufstockungs-Rechnung', () => {
+  it('zeigt Ø, eigene Anlage und den Erlös je kWh — in dieser Reihenfolge', () => {
     const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    expect(v.form).toBe('chart');
+    expect(v.form).toBe('balken');
     expect(v.state).toBe('praemien_monat');
     expect(v.titel).toBe('So verdient Ihre Anlage · August 2026');
-    expect(v.chart).toMatchObject({ oeCt: 5.8, erCt: 7.4, awCt: 6.9, vorlaeufig: false });
-    // Der Satz IST `AW − Ø` — dieselbe Größe wie in der Prämien-Rechnung.
-    expect(v.chart!.satzCt).toBeCloseTo(1.1, 10);
+    expect(v.monatLabel).toBe('August 2026');
+    expect(v.balken!.zeilen.map((z) => z.id)).toEqual(['markt', 'anlage', 'erloes']);
+    expect(v.balken!.zeilen.map((z) => n(z.wert))).toEqual(['5,8 ct', '7,4 ct', '8,5 ct']);
+    expect(v.verdict!.text).toBe('+ 1,6 ct über dem Monatsdurchschnitt');
+  });
+
+  it('der Erlös je kWh ist Einspeise-Erlös ÷ Menge — dieselbe Zahl wie in der Abrechnung', () => {
+    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
+    const erloes = zeile(v, 'erloes');
+    const ende = erloes.segmente[erloes.segmente.length - 1].bis;
+    expect(ende).toBeCloseTo((813.77 / 9573.8) * 100, 10);
+    expect(erloes.summe).toBe(true);
+  });
+
+  it('legt den Prämien-Block auf den Börsen-Teil — und deckt ihn danach auf', () => {
+    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
+    const [boerse, praemie] = zeile(v, 'erloes').segmente;
+    expect(boerse).toMatchObject({ rolle: 'einspeisung', von: 0, bis: 7.4 });
+    expect(praemie).toMatchObject({ rolle: 'praemie', von: 7.4, danach: true });
+    // Die Länge des Blocks IST der Satz: Garantiewert − Ø (1,1 ct).
+    expect(praemie.bis - praemie.von).toBeCloseTo(1.1, 3);
+  });
+
+  it('sagt in der Unterzeile, woher der Block kommt — und benennt ihn mit seiner Farbe', () => {
+    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
+    const unter = zeile(v, 'erloes').unter!;
+    expect(n(unter.text)).toBe('+ 1,1 ct Marktprämie · Garantiewert 6,9 − Ø 5,8');
+    expect(unter.schluessel).toBe('praemie');
+    expect(v.rundung).toBeNull();
+  });
+
+  it('der Vergleich ist fair: Börse gegen Börse, beide auf derselben Skala', () => {
+    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
+    expect(zeile(v, 'markt').segmente).toEqual([{ rolle: 'markt', von: 0, bis: 5.8, vorlaeufig: false }]);
+    expect(zeile(v, 'anlage').segmente).toEqual([{ rolle: 'einspeisung', von: 0, bis: 7.4 }]);
+    expect(v.balken!.skala.min).toBe(0);
+    expect(v.balken!.skala.max).toBeCloseTo(8.5, 3);
+  });
+
+  it('zeigt die Prämien-Rechnung auf Abruf, nicht als Kleingedrucktes', () => {
+    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
     expect(v.praemie.state).toBe('aufstockung');
-    expect(v.praemie.note).toContain('6,9 − 5,8 = 1,1');
+    expect(v.praemie.rechnung).toContain('6,9 − 5,8 = 1,1');
+    expect(v.praemie.rechnung).toContain('9.573,8');
   });
+});
 
-  it('ist der SICHTBARE Beweis: die Blockhöhe IST der Abstand der beiden Linien', () => {
-    // Genau das ist die Pointe — die Prämie hängt am Ø, nicht an der eigenen
-    // Säule. Also muss der grüne Block EXAKT von Ø auf AW reichen: keine
-    // Fuge, keine Rundung, kein Pixel Abzug (im Browser nachgemessen, PR-Fund).
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    const linienAbstand = l.oeLine!.y1 - l.awLine!.y1;
-    expect(l.praemieBar!.height).toBeCloseTo(linienAbstand, 6);
-  });
+// ---------------------------------------------------------------------------
+// § 51: an Tagen mit negativem Börsenpreis ruht die Prämie zeitweise
+// ---------------------------------------------------------------------------
 
-  it('legt die Weißfuge ÜBER die Grenze, statt sie einem Segment abzuziehen', () => {
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    // Beide Segmente stoßen exakt aneinander …
-    expect(l.praemieBar!.y + l.praemieBar!.height).toBeCloseTo(l.erBar.y, 6);
-    // … und die Fuge sitzt mittig auf dieser Grenze.
-    expect(l.fuge!.y + l.fuge!.height / 2).toBeCloseTo(l.erBar.y, 6);
-    expect(l.fuge!.height).toBe(2);
-  });
-
-  it('hat ohne Prämie weder Block noch Fuge', () => {
-    const l = chartLayout(soVerdient({ money: anlage(), siteId: 's1' })!.chart!);
-    expect(l.praemieBar).toBeNull();
-    expect(l.fuge).toBeNull();
-  });
-
-  it('trägt die Gesamtmarke nur, weil die Rechnung mit dem Server aufgeht', () => {
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    expect(v.chart!.topLabel).toBe('7,4 + 1,1 = 8,5 ct je kWh');
-  });
-
-  it('verschweigt die Gesamtmarke, sobald §51 Satz und Erlös auseinandertreibt', () => {
-    // Negativpreis-Viertelstunden setzen die Prämie aus: der Monats-SATZ bleibt
-    // 1,1 ct, effektiv kommt weniger an. Dann behauptet das Bild keine Summe.
-    const v = soVerdient({
-      money: praemienMonat({ einspeiseErloesEur: 760 }),
+describe('soVerdient · die Prämie ruht zeitweise (§ 51)', () => {
+  // Nur 60 € statt 105,31 € kamen an: ein Teil der Einspeisung lag bei
+  // negativem Börsenpreis. Der Erlös je kWh wird damit kleiner.
+  const teil = () =>
+    soVerdient({
+      money: praemienMonat({ marktpraemieEur: 60, einspeiseErloesEur: (9573.8 * 7.4) / 100 + 60 }),
       siteId: 's1',
     })!;
-    expect(v.chart!.topLabel).toBe('7,4 + 1,1 ct');
+
+  it('zeichnet die ANGEKOMMENE Prämie als Block, nicht den Satz', () => {
+    const [, praemie] = zeile(teil(), 'erloes').segmente;
+    expect(praemie.bis - praemie.von).toBeCloseTo((60 / 9573.8) * 100, 6);
+  });
+
+  it('nennt den Satz und den Grund in der Unterzeile', () => {
+    expect(n(zeile(teil(), 'erloes').unter!.text)).toBe(
+      '+ 0,6 ct Marktprämie · Satz 1,1 ct, ruht bei negativem Börsenpreis',
+    );
+  });
+
+  it('liest einen auf Cent gerundeten Betrag bei kleiner Menge nicht als „ruht"', () => {
+    // 7 kWh × 1,1 ct = 0,077 € — gemeldet gerundet 0,08 €: das ist voll, nicht zeitweise.
+    const v = soVerdient({
+      money: praemienMonat({ eingespeistKwh: 7, marktpraemieEur: 0.08, einspeiseErloesEur: 0.598 }),
+      siteId: 's1',
+    })!;
+    expect(n(zeile(v, 'erloes').unter!.text)).toBe('+ 1,1 ct Marktprämie · Garantiewert 6,9 − Ø 5,8');
+    expect(n(v.praemie.rechnung!)).toContain('× 7,0 kWh eingespeist');
+  });
+
+  it('und die Prämien-Rechnung nennt die Menge, für die die Prämie galt', () => {
+    const rechnung = n(teil().praemie.rechnung!);
+    expect(rechnung).toContain('1,1 ct/kWh × 5.454,5 kWh bei Börsenpreis ab 0 ct');
+    expect(rechnung).toContain('(von 9.573,8 kWh eingespeist)');
   });
 });
 
@@ -152,39 +196,37 @@ describe('soVerdient · S2 starker Monat (amtlich)', () => {
       siteId: 's1',
     })!;
     expect(v.state).toBe('voll_aus_dem_markt');
-    expect(v.chart!.satzCt).toBe(0);
-    expect(v.chart!.vorlaeufig).toBe(false);
     expect(v.verdict!.ton).toBe('vorteil');
+    expect(zeile(v, 'erloes').segmente).toHaveLength(1);
+    expect(zeile(v, 'erloes').unter!.text).toBe('Marktprämie ruht — Monatsmarktwert über Ihrem Garantiewert');
     expect(v.praemie.state).toBe('voll_aus_dem_markt');
     expect(v.praemie.wert).toContain('0,00');
-    // Kein Prämien-Block ⇒ genau EIN Chip (der Garantiewert).
-    expect(chartLayout(v.chart!).chips).toHaveLength(1);
+  });
+
+  it('sagt „auf Höhe", wenn der Monatswert genau auf dem Garantiewert liegt', () => {
+    const v = soVerdient({
+      money: anlage({ marketValueSolarCtKwh: 6.9, marketValueProvisional: false }),
+      siteId: 's1',
+    })!;
+    expect(zeile(v, 'erloes').unter!.text).toBe('Marktprämie ruht — Monatsmarktwert auf Höhe Ihres Garantiewerts');
   });
 });
 
 describe('soVerdient · S3 der reale August: knapp + vorläufig', () => {
-  it('markiert den vorläufigen Stand und lässt die Prämien-Zeile warnen', () => {
+  it('schraffiert den vorläufigen Ø und lässt die Prämien-Zeile warnen', () => {
     const v = soVerdient({ money: anlage(), siteId: 's1' })!;
     expect(v.state).toBe('voll_aus_dem_markt');
-    expect(v.chart!.vorlaeufig).toBe(true);
+    expect(zeile(v, 'markt').segmente[0].vorlaeufig).toBe(true);
+    expect(zeile(v, 'markt').unter!.text).toBe('Monatsmarktwert Solar · an der Börse · vorläufig');
     expect(v.verdict!.text).toBe('+ 2,9 ct über dem Monatsdurchschnitt');
     // Die 0,1-ct-Lage kann kippen — das sagt die Zeile, nicht das Bild.
     expect(v.praemie.vorlaeufigKnapp).toBe(true);
     expect(v.praemie.hinweise.some((h) => h.includes('kann sich noch ändern'))).toBe(true);
   });
 
-  it('bleibt bei 0,1 ct ehrlich winzig, statt den Abstand aufzublasen', () => {
-    // Der Grenzfall des Konzepts: Ø 7,0 gegen Garantiewert 6,9. Beide Linien
-    // müssen existieren und dürfen NICHT künstlich getrennt werden — die
-    // Aussage trägt dort der `marktpraemie`-Satz, nicht die Geometrie.
-    const v = soVerdient({ money: anlage(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    const abstand = l.awLine!.y1 - l.oeLine!.y1;
-    expect(abstand).toBeGreaterThan(0);
-    expect(abstand).toBeLessThan(4);
-    // Und der eine Chip hängt trotzdem per Leader-Linie an seiner echten Höhe.
-    expect(l.chips[0].anchorY).toBeCloseTo(l.awLine!.y1, 6);
-    expect(l.chips[0].leader.y1).toBeCloseTo(l.awLine!.y1, 6);
+  it('behauptet ohne Stand weder „vorläufig" noch „amtlich"', () => {
+    const v = soVerdient({ money: anlage({ marketValueProvisional: null }), siteId: 's1' })!;
+    expect(zeile(v, 'markt').unter!.text).toBe('Monatsmarktwert Solar · an der Börse');
   });
 });
 
@@ -204,9 +246,7 @@ describe('soVerdient · S4 unter dem Durchschnitt (Captain-Override)', () => {
 
   it('nennt den Grund im Wortlaut des Captains, nicht nur in der Farbe', () => {
     const v = unten();
-    expect(v.verdict!.text).toBe(
-      `0,9 ct unter dem Monatsdurchschnitt — ${UNTER_DURCHSCHNITT_ZUSATZ}`,
-    );
+    expect(v.verdict!.text).toBe(`0,9 ct unter dem Monatsdurchschnitt — ${UNTER_DURCHSCHNITT_ZUSATZ}`);
     expect(v.verdict!.text).toContain('prüfenswert');
     expect(v.verdict!.text).toContain('verkauft normalerweise über dem Durchschnitt');
   });
@@ -214,13 +254,9 @@ describe('soVerdient · S4 unter dem Durchschnitt (Captain-Override)', () => {
   it('darf sich nie wie ein hinnehmbarer Normaltag lesen', () => {
     const v = unten();
     const t = v.verdict!.text.toLowerCase();
-    // Die ENTSCHULDIGUNGEN, die der Captain ausdrücklich verworfen hat — der
-    // Vorgänger-Entwurf las sich als „ein trüber Tag ist kein Fehler".
     for (const entschuldigung of ['kein fehler', 'trüber tag', 'in ordnung', 'keine sorge']) {
       expect(t).not.toContain(entschuldigung);
     }
-    // Und der Chip ist NIE nur die nackte Einordnung: der Prüf-Zusatz gehört
-    // dazu, sonst läse er sich wie jede andere Lage.
     expect(v.verdict!.text).not.toBe(v.verdict!.vergleich);
     expect(v.verdict!.text.length).toBeGreaterThan(v.verdict!.vergleich.length);
   });
@@ -229,14 +265,11 @@ describe('soVerdient · S4 unter dem Durchschnitt (Captain-Override)', () => {
     const v = unten();
     expect(v.praemie.anteiligText).toBe('anteilig — abgerechnet je Monat');
     expect(v.praemie.hinweise).toContain('anteilig — abgerechnet je Monat');
-    // Und die eigene Säule sagt, dass sie einen Tag zeigt.
-    expect(v.chart!.eigenCaption).toBe('Ihre Anlage · Tag');
   });
 
-  it('lässt das Bild ehrlich: die eigene Säule endet UNTER der Ø-Linie', () => {
-    const l = chartLayout(unten().chart!);
-    // Kleineres y = höher. Die eigene Säule muss tiefer beginnen als der Ø.
-    expect(l.erBar.y).toBeGreaterThan(l.oeLine!.y1);
+  it('lässt das Bild ehrlich: der eigene Balken ist KÜRZER als der Ø', () => {
+    const v = unten();
+    expect(zeile(v, 'anlage').segmente[0].bis).toBeLessThan(zeile(v, 'markt').segmente[0].bis);
   });
 
   it('bleibt neutral, solange die Lage wirklich auf Höhe des Ø liegt', () => {
@@ -247,32 +280,85 @@ describe('soVerdient · S4 unter dem Durchschnitt (Captain-Override)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// S5 — AW fehlt: gleiche Bild-Familie, nur ohne Garantie (Captain bestätigt)
+// Negativer Börsenpreis: der Balken geht nach links, eine Nulllinie trennt
+// ---------------------------------------------------------------------------
+
+describe('soVerdient · ein Tag mit negativem Börsenpreis', () => {
+  // Die Konzept-Fixture `dv-praemie-ruht`: −1,42 € für 580 kWh, Prämie 0,61 €.
+  const minus = () =>
+    soVerdient({
+      money: anlage({
+        range: 'day',
+        from: '2026-08-23T22:00:00Z',
+        to: '2026-08-24T22:00:00Z',
+        realizedExportCtKwh: -0.35,
+        marketValueSolarCtKwh: 6.2,
+        marketValueProvisional: false,
+        anzulegenderWertCtKwh: 8.11,
+        marktpraemieEur: 0.61,
+        einspeiseErloesEur: -1.42,
+        eingespeistKwh: 580,
+      }),
+      siteId: 's1',
+    })!;
+
+  it('zieht die Skala unter null und nennt die Werte mit Vorzeichen und Minus-Ton', () => {
+    const v = minus();
+    expect(v.balken!.skala.min).toBeLessThan(0);
+    expect(n(zeile(v, 'anlage').wert)).toBe('− 0,4 ct');
+    expect(zeile(v, 'anlage').minus).toBe(true);
+    expect(n(zeile(v, 'erloes').wert)).toBe('− 0,2 ct');
+  });
+
+  it('stapelt keinen Block auf einen negativen Börsen-Teil — die Prämie steht im Text', () => {
+    const v = minus();
+    expect(zeile(v, 'erloes').segmente).toHaveLength(1);
+    expect(zeile(v, 'erloes').unter!.schluessel).toBeNull();
+    expect(n(zeile(v, 'erloes').unter!.text)).toBe(
+      '+ 0,1 ct Marktprämie · Satz 1,91 ct, ruht bei negativem Börsenpreis',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Die Rundung wird gesagt, nicht versteckt
+// ---------------------------------------------------------------------------
+
+describe('soVerdient · Rundung', () => {
+  it('sagt es, wenn die gerundeten Teile nicht auf den gerundeten Erlös aufgehen', () => {
+    // 7,46 + 1,86 = 9,32 ⇒ angezeigt 7,5 + 1,9 ≠ 9,3.
+    const v = soVerdient({
+      money: praemienMonat({
+        realizedExportCtKwh: 7.46,
+        marktpraemieEur: 18.6,
+        einspeiseErloesEur: 93.2,
+        eingespeistKwh: 1000,
+      }),
+      siteId: 's1',
+    })!;
+    expect(v.rundung).toBe(RUNDUNG_HINWEIS);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S5 — AW fehlt: der Börsen-Vergleich lebt, die Prämie hat einen Grund
 // ---------------------------------------------------------------------------
 
 describe('soVerdient · S5 kein anzulegender Wert', () => {
   const ohneAw = () =>
-    soVerdient({ money: anlage({ anzulegenderWertCtKwh: null }), siteId: 's1' })!;
+    soVerdient({ money: anlage({ anzulegenderWertCtKwh: null, marktpraemieEur: null }), siteId: 's1' })!;
 
-  it('bleibt dieselbe Bild-Familie wie S2/S3 — beide Säulen, Vergleich lebendig', () => {
+  it('vergleicht weiter Börse gegen Börse', () => {
     const v = ohneAw();
-    expect(v.form).toBe('chart');
+    expect(v.form).toBe('balken');
     expect(v.state).toBe('ohne_garantiewert');
-    expect(v.chart!.oeCt).toBe(7.0);
-    expect(v.chart!.erCt).toBe(9.9);
-    // Der Timing-Vergleich funktioniert WEITER — das ist der ganze Punkt.
     expect(v.verdict!.text).toBe('+ 2,9 ct über dem Monatsdurchschnitt');
   });
 
-  it('lässt Garantie-Linie und Prämien-Block ehrlich weg', () => {
+  it('erfindet keinen Prämien-Block und nennt den Grund', () => {
     const v = ohneAw();
-    expect(v.chart!.awCt).toBeNull();
-    expect(v.chart!.satzCt).toBe(0);
-    const l = chartLayout(v.chart!);
-    expect(l.awLine).toBeNull();
-    expect(l.chips).toHaveLength(0);
-    // An der Stelle der fehlenden Linie steht der GRUND.
-    expect(l.awFehltNote!.map((n) => n.text)).toEqual(['Garantiewert', 'nicht hinterlegt']);
+    expect(zeile(v, 'erloes').segmente).toHaveLength(1);
+    expect(zeile(v, 'erloes').unter!.text).toBe('ohne Marktprämie — kein Garantiewert hinterlegt');
   });
 
   it('zeigt „—" mit Grund und dem Weg dorthin — nie „0,00 €"', () => {
@@ -293,7 +379,7 @@ describe('soVerdient · S5 kein anzulegender Wert', () => {
 });
 
 // ---------------------------------------------------------------------------
-// S6 — Ø fehlt: ein leerer Platz MIT Grund, nie eine erfundene Säule
+// S6 — Ø fehlt: eine leere Spur MIT Grund, nie ein erfundener Balken
 // ---------------------------------------------------------------------------
 
 describe('soVerdient · S6 kein Monatsmarktwert', () => {
@@ -308,32 +394,30 @@ describe('soVerdient · S6 kein Monatsmarktwert', () => {
       siteId: 's1',
     })!;
 
-  it('zeigt einen gestrichelten Leer-Platzhalter statt eines Werts', () => {
+  it('zeigt „—" und eine leere Spur statt eines Werts', () => {
     const v = ohneOe();
     expect(v.state).toBe('ohne_monatswert');
-    expect(v.chart!.oeCt).toBeNull();
-    const l = chartLayout(v.chart!);
-    expect(l.oeBar).toBeNull();
-    expect(l.oeLine).toBeNull();
-    expect(l.oePlaceholder!.dash.text).toBe('—');
-    expect(l.oePlaceholder!.grund.map((g) => g.text)).toEqual(['noch nicht', 'veröffentlicht']);
+    const markt = zeile(v, 'markt');
+    expect(markt.vorhanden).toBe(false);
+    expect(markt.wert).toBe('—');
+    expect(markt.segmente).toEqual([]);
+    expect(markt.unter!.text).toBe('Monatsmarktwert Solar · noch nicht veröffentlicht');
   });
 
   it('lässt den Verdikt-Chip weg — ohne Maßstab wird nichts behauptet', () => {
     expect(ohneOe().verdict).toBeNull();
   });
 
-  it('zeigt erzielt gegen Garantie weiter und nennt den Grund in der Zeile', () => {
+  it('zeigt die eigene Anlage weiter und nennt den Grund der fehlenden Prämie', () => {
     const v = ohneOe();
-    expect(v.chart!.erCt).toBe(9.1);
-    expect(v.chart!.awCt).toBe(6.9);
+    expect(n(zeile(v, 'anlage').wert)).toBe('9,1 ct');
+    expect(zeile(v, 'erloes').unter!.text).toBe('ohne Marktprämie — sie steht erst mit dem Monatsmarktwert fest');
     expect(v.praemie.state).toBe('nicht_berechenbar');
-    expect(v.praemie.note).toContain('noch kein Monatsmarktwert Solar veröffentlicht');
   });
 });
 
 // ---------------------------------------------------------------------------
-// S7 — nichts eingespeist: kein Bild ohne eigene Säule
+// S7 — nichts eingespeist: kein Bild ohne eigene Einspeisung
 // ---------------------------------------------------------------------------
 
 describe('soVerdient · S7 nichts eingespeist', () => {
@@ -348,28 +432,20 @@ describe('soVerdient · S7 nichts eingespeist', () => {
       siteId: 's1',
     })!;
 
-  it('fällt auf den Satz zurück, statt eine Säule zu erfinden', () => {
+  it('fällt auf den Satz zurück, statt einen Balken zu erfinden', () => {
     const v = leer();
     expect(v.form).toBe('fallback');
     expect(v.state).toBe('nichts_eingespeist');
-    expect(v.chart).toBeNull();
+    expect(v.balken).toBeNull();
     expect(v.verdict).toBeNull();
     expect(v.hinweis).toBe(NICHTS_EINGESPEIST_HINWEIS);
     expect(v.kernsatz).toBeNull();
-  });
-
-  it('zeigt in dieser Lage keine Kacheln — nur den Grund und die Prämie', () => {
-    // P6/E5: die frühere „Absorptions"-Aussage ist mit der Preis-Karte
-    // entfallen (es gibt keine zweite Karte mehr, der etwas zu überlassen
-    // wäre). Was BLEIBT, ist die Ehrlichkeit dieser Lage: ohne Einspeisung
-    // gibt es keine Kacheln, aber sehr wohl die Prämien-Fußzeile.
-    expect(leer().zeilen).toEqual([]);
-    expect(leer().praemie.label).toContain('Marktprämie');
+    expect(v.praemie.label).toContain('Marktprämie');
   });
 });
 
 // ---------------------------------------------------------------------------
-// S8 — mehrere Monate: lieber kein Monat als der falsche
+// S8 — mehrere Monate: Börse gegen Ø ja, EIN Prämien-Satz nein
 // ---------------------------------------------------------------------------
 
 describe('soVerdient · S8 Mehrmonats-Zeitraum', () => {
@@ -386,14 +462,20 @@ describe('soVerdient · S8 Mehrmonats-Zeitraum', () => {
       siteId: 's1',
     })!;
 
-  it('zeigt KEIN Bild — ein Ø über zwölf Monatswerte wäre eine Behauptung', () => {
+  it('zeigt nur den Börsen-Vergleich — der Erlös mit Prämie wird je Monat abgerechnet', () => {
     const v = jahr();
-    expect(v.form).toBe('rows');
+    expect(v.form).toBe('balken');
     expect(v.state).toBe('mehrere_monate');
-    expect(v.chart).toBeNull();
-    expect(v.verdict).toBeNull();
+    expect(v.balken!.zeilen.map((z) => z.id)).toEqual(['markt', 'anlage']);
     expect(v.hinweis).toBe(MEHRERE_MONATE_HINWEIS);
     expect(v.hinweis).toContain('wählen Sie einen Monat');
+  });
+
+  it('ordnet ohne Chip ein — die Einordnung steht an der eigenen Anlage', () => {
+    const v = jahr();
+    expect(v.verdict).toBeNull();
+    expect(zeile(v, 'anlage').unter!.text).toContain('1,4 ct über dem Monatsdurchschnitt');
+    expect(v.kernsatz).toBeNull();
   });
 
   it('nennt keinen Monat in der Überschrift, statt einen zu wählen', () => {
@@ -403,18 +485,9 @@ describe('soVerdient · S8 Mehrmonats-Zeitraum', () => {
     expect(v.praemie.label).toBe('Marktprämie');
   });
 
-  it('trägt die absorbierten Kacheln WÖRTLICH weiter', () => {
+  it('zeigt die Prämie NUR in ihrer Fußzeile', () => {
     const v = jahr();
-    expect(v.zeilen[0].wert).toBe('8,2 ct/kWh');
-    expect(v.zeilen[0].note).toBe('1,4 ct über dem Monatsdurchschnitt');
-    expect(v.zeilen[1].label).toBe('Monatsmarktwert Solar');
-  });
-
-  it('zeigt die Prämie NUR in ihrer Fußzeile — nicht zusätzlich als Kachel', () => {
-    // Im Browser aufgefallen: derselbe Betrag samt Rechnung stand zweimal auf
-    // EINER Karte.
-    const v = jahr();
-    expect(v.zeilen.map((z) => z.id)).toEqual(['marktwert', 'monatsmarktwert']);
+    expect(v.balken!.zeilen.some((z) => z.wert.includes('512') || z.unter?.text.includes('512'))).toBe(false);
     expect(v.praemie.wert).toContain('512,40');
   });
 });
@@ -428,33 +501,23 @@ describe('soVerdient · S9 nicht direkt vermarktet', () => {
     expect(soVerdient({ money: anlage({ plantKind: 'eigenverbrauch' }), siteId: 's1' })).toBeNull();
   });
 
-  it('rendert auch ohne Antwort nicht, statt ein leeres Bild zu bauen', () => {
+  it('rendert auch ohne Antwort nicht', () => {
     expect(soVerdient({ money: null })).toBeNull();
     expect(soVerdient({ money: undefined })).toBeNull();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Der Rahmen: Kernsatz, Absorption und die eine Wahrheit
+// Der Rahmen: Kernsatz, Verdikt, Link
 // ---------------------------------------------------------------------------
 
 describe('soVerdient · der Rahmen', () => {
-  it('trägt den Kernsatz unter JEDEM Bild — er ist in beiden Prämien-Lagen wahr', () => {
+  it('trägt den Kernsatz in jeder Monats-Lage — er ist in beiden Prämien-Lagen wahr', () => {
     for (const m of [anlage(), praemienMonat(), anlage({ anzulegenderWertCtKwh: null })]) {
       expect(soVerdient({ money: m, siteId: 's1' })!.kernsatz).toBe(KERNSATZ);
     }
     expect(KERNSATZ).toContain('richtet sich nach dem Durchschnitt');
     expect(KERNSATZ).toContain('ungeschmälert');
-  });
-
-  // P6/E5: `absorbiert` ist ERSATZLOS entfallen — sein einziger Abnehmer war
-  // die Karte „Was den Preis gemacht hat", die es nicht mehr gibt (die Preise
-  // wohnen in Ebene 2 der Ergebnis-Karte). Im BILD-Fall stehen die Kacheln
-  // ohnehin nicht als Zeilen, sondern im Diagramm.
-  it('zeichnet im Bild-Fall statt Kacheln zu listen', () => {
-    const v = soVerdient({ money: anlage(), siteId: 's1' })!;
-    expect(v.form).toBe('chart');
-    expect(v.zeilen).toEqual([]);
   });
 
   it('baut ohne bekannte Anlage keinen Link ins Leere', () => {
@@ -463,194 +526,15 @@ describe('soVerdient · der Rahmen', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Die reinen Geometrie-Helfer — Kollision, Kappung, ehrliche Skala
-// ---------------------------------------------------------------------------
-
-describe('spreadChips · kollidierende Chips werden entzerrt, nicht verschoben', () => {
-  it('spreizt zwei zu nahe Chips symmetrisch um ihre Mitte', () => {
-    const chips = [{ y: 100 }, { y: 110 }];
-    spreadChips(chips);
-    expect(chips[0].y).toBe(105 - CHIP_SPREIZUNG);
-    expect(chips[1].y).toBe(105 + CHIP_SPREIZUNG);
-    expect(chips[1].y - chips[0].y).toBe(2 * CHIP_SPREIZUNG);
-  });
-
-  it('lässt weit auseinanderliegende Chips unangetastet', () => {
-    const chips = [{ y: 40 }, { y: 40 + CHIP_MIN_ABSTAND }];
-    spreadChips(chips);
-    expect(chips.map((c) => c.y)).toEqual([40, 40 + CHIP_MIN_ABSTAND]);
-  });
-
-  it('spreizt auch, wenn der tiefere Chip zuerst kommt', () => {
-    const chips = [{ y: 120 }, { y: 112 }];
-    spreadChips(chips);
-    expect(chips[0].y).toBe(116 + CHIP_SPREIZUNG); // war unten, bleibt unten
-    expect(chips[1].y).toBe(116 - CHIP_SPREIZUNG);
-  });
-
-  it('fasst einen einzelnen Chip nicht an', () => {
-    const chips = [{ y: 77 }];
-    expect(spreadChips(chips)[0].y).toBe(77);
-  });
-
-  it('greift im echten Prämien-Monat: die beiden Chips liegen sonst übereinander', () => {
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    expect(l.chips).toHaveLength(2);
-    // Entzerrt dargestellt …
-    expect(Math.abs(l.chips[0].y - l.chips[1].y)).toBe(2 * CHIP_SPREIZUNG);
-    // … aber die Leader-Linien zeigen weiterhin auf die ECHTEN Höhen.
-    expect(l.chips[0].leader.y1).toBeCloseTo(l.chips[0].anchorY, 6);
-    expect(l.chips[1].leader.y1).toBeCloseTo(l.chips[1].anchorY, 6);
-    expect(Math.abs(l.chips[0].anchorY - l.chips[1].anchorY)).toBeLessThan(CHIP_MIN_ABSTAND);
-  });
-});
-
-describe('capTextLength · eine Zeile läuft nie über ihr Fenster', () => {
-  it('kappt eine zu breite Zeile hart', () => {
-    expect(capTextLength('Ein sehr langer Chip-Titel', 10, 60)).toBe(60);
-  });
-
-  it('lässt eine bequem passende Zeile in Ruhe', () => {
-    expect(capTextLength('1,1 ct', 10, 200)).toBeUndefined();
-  });
-
-  it('kappt auch dann, wenn nur die ERSATZ-Schrift breiter ausfällt', () => {
-    // Die Schätzung ist absichtlich großzügig: lieber einmal zu oft stauchen
-    // als eine Zeile still über den Rand laufen lassen.
-    expect(capTextLength('Marktprämie', 10, 60)).toBe(60);
-  });
-});
-
-describe('chartLayout · die Skala ist ehrlich ab 0', () => {
-  it('setzt die Nulllinie auf die Basis und misst jede Höhe dagegen', () => {
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    // Doppelter Wert ⇒ doppelte Höhe: nur bei einer 0-Basis gilt das.
-    const halb = chartLayout({ ...v.chart!, oeCt: 2.9, erCt: 7.4, satzCt: 0, awCt: null });
-    const voll = chartLayout({ ...v.chart!, oeCt: 5.8, erCt: 7.4, satzCt: 0, awCt: null });
-    expect(voll.oeBar!.height / halb.oeBar!.height).toBeCloseTo(2, 6);
-    // Und jede Säule sitzt wirklich auf der Nulllinie auf.
-    expect(l.oeBar!.y + l.oeBar!.height).toBeCloseTo(l.baseline.y1, 6);
-    expect(l.erBar.y + l.erBar.height).toBeCloseTo(l.baseline.y1, 6);
-  });
-
-  it('lässt Kopfraum, ohne die Skala zu stauchen', () => {
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    // Die höchste Marke (Säule + Block) darf die Beschriftung nicht überlaufen.
-    expect(l.praemieBar!.y).toBeGreaterThan(l.erLabel.y);
-  });
-
-  it('hält die Beschriftung der eigenen Säule innerhalb der Bühne', () => {
-    // Die längste Form ist die Gesamtmarke — sie darf weder links heraus- noch
-    // in die Chip-Zone laufen.
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    const halbeBreite = (l.erLabel.text.length * l.erLabel.fontSize * 0.34) / 1;
-    expect(l.erLabel.x - halbeBreite).toBeGreaterThanOrEqual(0);
-    expect(l.erLabel.x + halbeBreite).toBeLessThanOrEqual(l.width);
-  });
-
-  it('gibt der breiten Bühne mehr Chip-Zone, ohne die Aussage zu ändern', () => {
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const schmal = chartLayout(v.chart!);
-    const breit = chartLayout(v.chart!, { wide: true });
-    expect(breit.width).toBeGreaterThan(schmal.width);
-    // Dieselbe Ordnung: Prämien-Block über der eigenen Säule, beide über 0.
-    expect(breit.praemieBar!.y).toBeLessThan(breit.erBar.y);
-    expect(breit.erBar.y + breit.erBar.height).toBeCloseTo(breit.baseline.y1, 6);
-  });
-
-  it('beschriftet jedes Element direkt — eine Legende wäre nicht nötig', () => {
-    const v = soVerdient({ money: praemienMonat(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    const texte = l.captions.map((c) => c.text);
-    expect(texte).toContain('Ø Monatsmarktwert');
-    expect(texte).toContain('Solar (alle Anlagen)');
-    expect(texte).toContain('Ihre Anlage');
-    expect(texte).toContain('erzielt + Prämie');
-    expect(l.oeWert!.text).toBe('5,8 ct');
-  });
-
-  it('taggt eine vorläufige Ø-Säule ruhig statt als Alarm', () => {
-    const v = soVerdient({ money: anlage(), siteId: 's1' })!;
-    const l = chartLayout(v.chart!);
-    expect(l.oeStand!.text).toBe('vorläufig');
-    // Der Tag sitzt ÜBER dem Wert, nicht auf der Säule.
-    expect(l.oeStand!.y).toBeLessThan(l.oeWert!.y);
-  });
-});
-
-describe('gesamtMarke · sie erscheint nur, wenn sie wirklich aufgeht', () => {
-  it('rechnet den effektiven Erlös aus Server-Summen gegen', () => {
-    expect(gesamtMarke(7.4, 1.1, 813.77, 9573.8)).toBeCloseTo(8.5, 10);
-  });
-
-  it('schweigt bei einer Abweichung, statt eine falsche Summe zu behaupten', () => {
-    expect(gesamtMarke(7.4, 1.1, 760, 9573.8)).toBeNull();
-  });
-
-  it('schweigt ohne Satz und ohne Menge', () => {
-    expect(gesamtMarke(9.9, 0, 947.8, 9573.8)).toBeNull();
-    expect(gesamtMarke(7.4, 1.1, 813.77, null)).toBeNull();
-    expect(gesamtMarke(7.4, 1.1, null, 9573.8)).toBeNull();
-    expect(gesamtMarke(7.4, 1.1, 813.77, 0)).toBeNull();
-  });
-});
-
 describe('verdictChip · ohne Maßstab wird nichts behauptet', () => {
   it('bleibt null, sobald eine der beiden Größen fehlt', () => {
-    expect(verdictChip(null, 7.0)).toBeNull();
-    expect(verdictChip(9.9, null)).toBeNull();
+    expect(verdictChip(null, 7)).toBeNull();
+    expect(verdictChip(7, null)).toBeNull();
   });
 
   it('setzt das „+" nur in der Über-Lage', () => {
-    expect(verdictChip(9.9, 7.0)!.text.startsWith('+ ')).toBe(true);
+    expect(verdictChip(9.9, 7.0)!.text).toBe('+ 2,9 ct über dem Monatsdurchschnitt');
     expect(verdictChip(6.1, 7.0)!.text.startsWith('+')).toBe(false);
-    expect(verdictChip(7.0, 7.0)!.text.startsWith('+')).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Barrierefreiheit: derselbe Satz für Auge und Screenreader
-// ---------------------------------------------------------------------------
-
-describe('soVerdient · der zugängliche Name erzählt den Zustand', () => {
-  it('nennt im Prämien-Monat beide Säulen und die Aufstockung', () => {
-    const a = soVerdient({ money: praemienMonat(), siteId: 's1' })!.chart!.ariaLabel;
-    expect(a).toContain('Ihre Anlage erzielte 7,4 ct');
-    expect(a).toContain('Monatsdurchschnitt aller Solaranlagen liegt bei 5,8 ct');
-    expect(a).toContain('stockt um 1,1 ct auf den Garantiewert 6,9 ct auf');
-  });
-
-  it('sagt im starken Monat, dass die Prämie RUHT — nicht, dass sie fehlt', () => {
-    const a = soVerdient({ money: anlage(), siteId: 's1' })!.chart!.ariaLabel;
-    expect(a).toContain('(vorläufig)');
-    expect(a).toContain('2,9 ct über dem Monatsdurchschnitt');
-    expect(a).toContain('Marktprämie ruht');
-  });
-
-  it('benennt die Aufmerksamkeits-Lage auch ohne Farbe', () => {
-    const a = soVerdient({
-      money: anlage({ realizedExportCtKwh: 6.1 }),
-      siteId: 's1',
-    })!.chart!.ariaLabel;
-    expect(a).toContain('0,9 ct unter dem Monatsdurchschnitt');
-  });
-
-  it('nennt die fehlenden Größen beim Namen', () => {
-    const ohneAw = soVerdient({
-      money: anlage({ anzulegenderWertCtKwh: null }),
-      siteId: 's1',
-    })!.chart!.ariaLabel;
-    expect(ohneAw).toContain('Garantiewert ist nicht hinterlegt');
-
-    const ohneOe = soVerdient({
-      money: anlage({ marketValueSolarCtKwh: null, marktpraemieEur: null }),
-      siteId: 's1',
-    })!.chart!.ariaLabel;
-    expect(ohneOe).toContain('noch kein Monatsdurchschnitt veröffentlicht');
+    expect(verdictChip(7.02, 7.0)!.text.startsWith('+')).toBe(false);
   });
 });

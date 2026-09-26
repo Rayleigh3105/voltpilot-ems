@@ -6,17 +6,17 @@ import {
   DEFAULT_INTERVAL_S,
   HOST_NOT_PRIVATE,
   MAX_CHANNELS,
-  ROLLEN,
   geraetFehler,
   isPrivateHost,
   istBreit,
+  lesbar,
   leseErgebnis,
   leselastHinweis,
   leseRumpf,
   messwerteFehler,
+  modiconDeutung,
   neueVerbindung,
   neueZeile,
-  pruefen,
   speicherRumpf,
   zeilenFehler,
   type MesswertZeile,
@@ -170,45 +170,37 @@ describe('„Jetzt lesen"', () => {
   });
 });
 
-describe('Rolle + Zusammenfassung', () => {
-  it('bietet seit Stufe 4 BEIDE Rollen an - und verspricht dabei kein Schalten', () => {
-    const sensor = ROLLEN.find((r) => r.id === 'sensor')!;
-    const verbraucher = ROLLEN.find((r) => r.id === 'verbraucher')!;
-    expect(sensor.verfuegbar).toBe(true);
-    expect(verbraucher.verfuegbar).toBe(true);
-    expect(verbraucher.bald).toBeUndefined();
-    // Der Hinweis sagt die Zwei-Schritt-Wahrheit: hier wird ANGELEGT, das
-    // Schalten erteilt danach der eigene Freigabe-Schritt.
-    expect(verbraucher.hint).toContain('eigenen Schritt frei');
-  });
-
-  it('behauptet in der Zusammenfassung nie ein Schalten, das noch nicht freigegeben ist', () => {
-    const zeile = pruefen('Heizstab', { host: '192.168.0.5', port: '502', unitId: '1' }, [],
-      'verbraucher').find((r) => r.label === 'Art')!;
-    expect(zeile.wert).toContain('liest zunächst nur');
-  });
-
+describe('Name, Bilanz und Lesen von selbst', () => {
   it('nennt in der Bilanz-Zusage, was sich NICHT ändert', () => {
     expect(BILANZ_HINWEIS).toContain('Energiebilanz');
     expect(BILANZ_HINWEIS).toContain('Wechselrichter');
   });
 
-  it('fasst zusammen, was gleich passiert', () => {
-    const rows = pruefen('Wärmepumpe', lan(), [zeile({ label: 'Vorlauf' })]);
-    expect(rows).toEqual([
-      { label: 'Name', wert: 'Wärmepumpe' },
-      { label: 'Art', wert: 'Nur messen (Sensor)' },
-      { label: 'Adresse', wert: '192.168.1.50:502 · Unit 1' },
-      { label: 'Messwerte', wert: 'Vorlauf' },
-    ]);
-  });
-
-  it('fällt ohne Namen auf eine ehrliche Bezeichnung zurück', () => {
-    expect(pruefen('  ', lan(), [])[0].wert).toBe('Eigenes Modbus-Gerät');
+  it('schickt ohne Namen keinen - der Server nennt es dann „Eigenes Modbus-Gerät"', () => {
     expect(speicherRumpf('  ', lan(), []).label).toBeUndefined();
   });
 
   it('setzt den Mindestabstand einer neuen Zeile auf die Vorgabe', () => {
     expect(neueZeile().minReadIntervalS).toBe(String(DEFAULT_INTERVAL_S));
+  });
+
+  it('liest eine Zeile, sobald Register, Skalierung und Offset stimmen - ein Name ist dafür nicht nötig', () => {
+    expect(lesbar(zeile({ label: '' }))).toBe(true);
+    expect(lesbar(zeile({ address: '' }))).toBe(false);
+    expect(lesbar(zeile({ address: '70000' }))).toBe(false);
+    expect(lesbar(zeile({ scale: '0' }))).toBe(false);
+    expect(lesbar(zeile({ offset: 'x' }))).toBe(false);
+  });
+});
+
+describe('Modicon-Lesart', () => {
+  it('nennt die zweite Lesart einer fünfstelligen Nummer - und rechnet nie still um', () => {
+    expect(modiconDeutung('40011')).toMatchObject({ kind: 'holding', address: 10, knopf: 'Als Holding-Register 10 lesen' });
+    expect(modiconDeutung('30775')).toMatchObject({ kind: 'input', address: 774 });
+    expect(modiconDeutung('40011')?.text).toMatch(/Der gelesene Wert zeigt, welche Zahl stimmt/);
+  });
+
+  it('schweigt bei allem, was keine Modicon-Nummer sein kann', () => {
+    for (const a of ['', '10', '30000', '40000', '50001', '4001.5']) expect(modiconDeutung(a)).toBeNull();
   });
 });

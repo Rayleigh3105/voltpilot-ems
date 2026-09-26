@@ -932,12 +932,14 @@ const CHART_FILES = [
   'PriceHistoryChart.tsx',
   'ForecastQualityChart.tsx',
   'components/VerlaufChart.tsx',
-  'components/ErloeseVerlaufChart.tsx',
   'components/PeakHistoryChart.tsx',
-  // Das Tagesbild (Stufe 3) - seine Beschriftungen leben in der reinen Regel,
-  // also steht die Regel-Datei hier gleichberechtigt neben dem Render.
-  'components/Tagesbild.tsx',
-  'tagesbild.ts',
+  // Das Erlöse-Diagramm des Verlauf-Reworks (P2) — seine Beschriftungen leben
+  // in der reinen Ableitung, also steht sie hier neben dem Render.
+  'components/erloese/ErloeseChart.tsx',
+  'components/energie/EnergieCharts.tsx',
+  'energieSeite.ts',
+  'erloeseSeite.ts',
+  'verlaufRaster.ts',
 ];
 
 const CHART_FORBIDDEN: Array<{ re: RegExp; why: string }> = [
@@ -1907,6 +1909,7 @@ const KENNZAHL_BESTAND: string[] = [
   'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
   'bezugsgroesseListe.ts', // neu: AP-09 erklärt Zweck und Archivfolgen
   'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
+  'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
   'components/MarktpreiseMobil.tsx', // alt
   'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
   'components/PortfolioCockpit.tsx', // alt

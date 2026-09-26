@@ -65,7 +65,8 @@ func TestContractExamplesAreParsedAsSpecified(t *testing.T) {
 	// The two WRITING ops parse and are ADMITTED (Einheitsmodell Stufe 4), and
 	// the defaults the contract states are the ones the box would really use.
 	for _, name := range []string{"mqtt-probe.valid.switch-test.json",
-		"mqtt-probe.valid.switch-setpoint.json", "mqtt-probe.valid.switch-cancel.json"} {
+		"mqtt-probe.valid.switch-setpoint.json", "mqtt-probe.valid.switch-cancel.json",
+		"mqtt-probe.valid.switch-test-io-modul.json", "mqtt-probe.valid.switch-set-io-modul.json"} {
 		raw, err = os.ReadFile(contractPath(name))
 		if err != nil {
 			t.Fatalf("read fixture %s: %v", name, err)
@@ -98,6 +99,14 @@ func TestContractExamplesAreParsedAsSpecified(t *testing.T) {
 	noTTL := mustParse(t, raw)
 	if code, _ := ValidateOp(noTTL.Ops[0]); code != ErrInvalidRequest {
 		t.Fatalf("a switch test without ttl must be invalid_request, got %q", code)
+	}
+	// A persistent set is for I/O-module outputs only - never a free register.
+	raw, err = os.ReadFile(contractPath("mqtt-probe.invalid.switch-set-free-register.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if code, _ := ValidateOp(mustParse(t, raw).Ops[0]); code != ErrInvalidRequest {
+		t.Fatalf("a set of a free register must be invalid_request, got %q", code)
 	}
 
 	// The RESULT fixture is the answer shape the cloud consumes; parsing it

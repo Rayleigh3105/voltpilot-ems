@@ -1,0 +1,286 @@
+{
+  "absichten": {
+    "A": {
+      "adapter_folge": "sollwert",
+      "beleg": [
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "register": 1034
+          }
+        }
+      ],
+      "hebel": "sollwert",
+      "quellen": [
+        "kostal_if"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "float32 W, − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 1034
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "1034 = +x W."
+    },
+    "E": {
+      "beleg": null,
+      "hebel": "geraet",
+      "quellen": [
+        "kostal_if",
+        "repo_kostal"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": [],
+      "sicherheit": "A",
+      "wie": "Schreiben einstellen (Rückkehr nach Timeout T)."
+    },
+    "E_decken": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [
+        "kostal_if"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "1038 = 0 (wie oben)."
+    },
+    "E_gedrosselt": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [
+        "kostal_if"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "1038 = x."
+    },
+    "E_laden": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [
+        "kostal_if",
+        "evcc"
+      ],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "1040 = 0 neben interner Regelung? – ob Grenzen ohne 1034 wirken: am Gerät prüfen."
+    },
+    "G": {
+      "beleg": null,
+      "hebel": "offen",
+      "quellen": [],
+      "rueckfall": "box",
+      "schreibfolge": null,
+      "sicherheit": "D",
+      "wie": "Einspeisebegrenzung über KSEM (Einstellung); per Modbus unbelegt."
+    },
+    "H": {
+      "adapter_folge": "halten",
+      "beleg": [
+        {
+          "erwartet": 0,
+          "ziel": {
+            "register": 1034
+          }
+        }
+      ],
+      "hebel": "sollwert",
+      "quellen": [
+        "dd"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "float32 W",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 1034
+          }
+        }
+      ],
+      "sicherheit": "C",
+      "wie": "1034 = 0 hält fest (solange geschrieben wird)."
+    },
+    "N": {
+      "adapter_folge": "sollwert",
+      "beleg": [
+        {
+          "erwartet": "planwert",
+          "ziel": {
+            "register": 1034
+          }
+        }
+      ],
+      "hebel": "sollwert",
+      "quellen": [
+        "kostal_if",
+        "repo_kostal"
+      ],
+      "rueckfall": "keiner",
+      "schreibfolge": [
+        {
+          "hinweis": "float32 W, − = laden",
+          "speicher": "ram",
+          "wert": "planwert",
+          "ziel": {
+            "register": 1034
+          }
+        }
+      ],
+      "sicherheit": "A",
+      "wie": "1034 = −x W, innerhalb T neu schreiben."
+    }
+  },
+  "adapter": {
+    "abweichungen": [],
+    "ausfuehrbar": true,
+    "datei": "edge-app/nodered/inverter-control-routing.js",
+    "folgen": {
+      "halten": {
+        "beleg": [
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1034
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "float32 W",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1034
+            }
+          }
+        ]
+      },
+      "rueckgabe": {
+        "beleg": null,
+        "schreibfolge": [
+          {
+            "hinweis": "einmal, danach Schreiben einstellen",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1034
+            }
+          }
+        ]
+      },
+      "sollwert": {
+        "beleg": [
+          {
+            "erwartet": "planwert",
+            "ziel": {
+              "register": 1034
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "float32 W, − = laden",
+            "speicher": "ram",
+            "wert": "planwert",
+            "ziel": {
+              "register": 1034
+            }
+          }
+        ]
+      }
+    },
+    "planer": "controlRoute → kostalControl",
+    "schreibabstand_s": 0,
+    "vorbedingung": [
+      {
+        "erwartet": 2,
+        "ziel": {
+          "register": 1080
+        }
+      }
+    ]
+  },
+  "bindung": [
+    {
+      "marke": "kostal",
+      "modelle": null,
+      "registerfamilie": "kostal_plenticore",
+      "steuerpfad": null
+    }
+  ],
+  "daempfung": {
+    "box_regelt": true,
+    "einschwingzeit_s": null,
+    "messtakt_s": null,
+    "quellen": [
+      "repo_kostal"
+    ],
+    "sicherheit": "D",
+    "text": "Am Gerät nicht gemessen - Vorgabe der Box (Deye-Werte)."
+  },
+  "eigenmodus": {
+    "sicherheit": "A",
+    "text": "Ja: interne Batteriesteuerung; nach Ausfall externer Signale kehrt der WR nach der im Webserver eingestellten Zeit dorthin zurück (A)."
+  },
+  "empfehlung": "Stufe 2; Eigenverbrauch = Stille ist einfach, Fenster offen.",
+  "fallen": [
+    "Klebender Wert: wer 1034 = 0 weiter schreibt, hält die Batterie fest – Rückgabe nur durch Stille (C, widersprüchlich belegt).",
+    "float32-Wortreihenfolge; Port 1502, Unit 71; ein Master."
+  ],
+  "familie": "PLENTICORE plus / BI (G2, G3)",
+  "firmware_bedingung": null,
+  "freigabe": "keine",
+  "hersteller": "KOSTAL",
+  "id": "kostal",
+  "im_repo": "Adapter + Executor gebaut, unzertifiziert; Selbstregel-Primitive „Schreiben einstellen“ geplant",
+  "modelle": [
+    "PLENTICORE plus (G2, G3)",
+    "PLENTICORE BI (G2, G3)"
+  ],
+  "quellen": [
+    "kostal_if",
+    "repo_kostal",
+    "dd",
+    "evcc"
+  ],
+  "schema_version": "1.0",
+  "schreibbudget": {
+    "dauerspeicher_je_tag": 20,
+    "sicherheit": "D",
+    "speicher": "unbelegt",
+    "text": "unbelegt (D)."
+  },
+  "stand": "2026-09-24",
+  "stufe": 2,
+  "totmann": {
+    "sekunden": 60,
+    "sicherheit": "A",
+    "text": "Einstellbar (~60 s, Webserver) → interne Steuerung (A); 1080 unterscheidet die Zustände nicht, Beleg nur über das Verhalten (Repo).",
+    "vorhanden": true,
+    "ziel": null
+  },
+  "uebergabe": {
+    "beleg": null,
+    "ruecknahme": null,
+    "schreibfolge": [],
+    "sicherheit": "C",
+    "speicher": "keiner",
+    "text": "Freigabe „Extern über Modbus“ im Webserver (keine Modbus-Schreibung); 1034 float32 W (− = laden), 1038/1040 Lade-/Entladegrenze, 1042/1044 SoC (A/C)."
+  },
+  "zaehler": {
+    "ort": "netzpunkt",
+    "sicherheit": "D",
+    "text": "KOSTAL Smart Energy Meter (KSEM) am Netzpunkt."
+  }
+}

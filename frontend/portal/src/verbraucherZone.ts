@@ -15,6 +15,7 @@
  */
 import { POLICY_LABEL, kwText } from './ladepunkte';
 import type { SteuerartOptionen } from './steuerartDialog';
+import { AUFBAU_REITER } from './ebenenNav';
 
 // ---------------------------------------------------------------------------
 // Der Vertrag (die Form der Antwort)
@@ -159,7 +160,7 @@ export const RANGLISTE_TITEL = 'Reihenfolge bei knapper Leistung';
 
 /** Der Leer-Zustand: EIN Satz mit dem Weg (§6.3). */
 export const ZONE_LEER =
-  'Noch kein steuerbares Gerät. Legen Sie eines im Anlagen-Modell an — die '
+  `Noch kein steuerbares Gerät. Legen Sie eines im ${AUFBAU_REITER} an — die `
   + 'Steuerart wählen Sie dann hier.';
 
 /** Eine Zeile ohne Regel sagt das ruhig — sie ist KEIN Link (§6.2). */

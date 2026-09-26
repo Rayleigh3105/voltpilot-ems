@@ -1,0 +1,351 @@
+{
+  "schema_version": "1.0",
+  "quellen": [
+    {
+      "id": "h4",
+      "titel": "Scout vp-herzogau-laden-bei-bezug-h4 (Live-Box, nur GET)",
+      "art": "eigen",
+      "stand": "24.09.2026",
+      "ort": "firstmate/data/vp-herzogau-laden-bei-bezug-h4/report.md"
+    },
+    {
+      "id": "m5",
+      "titel": "Scout vp-herzogau-bezug-trotz-batterie-m5 (Totzeit-Kreuzkorrelation)",
+      "art": "eigen",
+      "stand": "29.08.2026",
+      "ort": "firstmate/data/vp-herzogau-bezug-trotz-batterie-m5/report.md"
+    },
+    {
+      "id": "h3",
+      "titel": "Scout vp-herzogau-einspeisung-statt-laden-h3 (Eigenverbrauchs-Sicherung lädt 100 % des Überschusses)",
+      "art": "eigen",
+      "stand": "29.08.2026",
+      "ort": "firstmate/data/vp-herzogau-einspeisung-statt-laden-h3/report.md"
+    },
+    {
+      "id": "m6",
+      "titel": "Scout vp-herzogau-runde2-m6 (Deye-Register 0x008D–0x0092, 0x00E7, CT am Netzpunkt)",
+      "art": "eigen",
+      "stand": "18.08.2026",
+      "ort": "firstmate/data/vp-herzogau-runde2-m6/report.md"
+    },
+    {
+      "id": "t5",
+      "titel": "Scout vp-herzogau-30kw-cap-t5 (Fernsteuer-Register 1100–1109 live)",
+      "art": "eigen",
+      "stand": "08.2026",
+      "ort": "firstmate/data/vp-herzogau-30kw-cap-t5/report.md"
+    },
+    {
+      "id": "g3",
+      "titel": "Scout vp-negativpreis-herzogau-g3 (1109 = 0 gibt an Deye-Eigenlogik frei; Fronius-Abregelung zertifiziert)",
+      "art": "eigen",
+      "stand": "24.08.2026",
+      "ort": "firstmate/data/vp-negativpreis-herzogau-g3/report.md"
+    },
+    {
+      "id": "k2",
+      "titel": "Konzept vp-deye-netzseitig-drossel-k2 (netzseitiger Fernsteuermodus 1104 = 2)",
+      "art": "eigen",
+      "stand": "01.09.2026",
+      "ort": "firstmate/data/vp-deye-netzseitig-drossel-k2/report.md"
+    },
+    {
+      "id": "sr",
+      "titel": "Scout vp-verbrauch-decken-selbstregel (Katalog-Prüfung Selbstregel-Modus)",
+      "art": "eigen",
+      "stand": "26.08.2026",
+      "ort": "firstmate/data/vp-verbrauch-decken-selbstregel/report.md"
+    },
+    {
+      "id": "dd",
+      "titel": "Scout vp-battery-control-deepdive + vendor-register-reference.md (Primärquellen je Hersteller verlinkt)",
+      "art": "eigen",
+      "stand": "20.07.2026",
+      "ort": "firstmate/data/vp-battery-control-deepdive/"
+    },
+    {
+      "id": "live",
+      "titel": "Live-Box Herzogau, GET /api/state, /api/plan, /api/curtail/grid-test",
+      "art": "eigen",
+      "stand": "24.09.2026 18:28 MESZ",
+      "ort": "http://10.10.1.23:8484 (Wartungstunnel)"
+    },
+    {
+      "id": "repo_native",
+      "titel": "Selbstregel-Modus: guards/nativemode.go, agent/native.go, nodered/unplanned-load-native.js, inverter-control-routing.js nativeSelfConsumption",
+      "art": "repo",
+      "stand": "24.09.2026",
+      "ort": "voltpilot-ems @ da0b6129f",
+      "pfade": [
+        "edge-app/core/internal/guards/nativemode.go",
+        "edge-app/core/internal/agent/native.go",
+        "edge-app/nodered/unplanned-load-native.js"
+      ]
+    },
+    {
+      "id": "repo_deye",
+      "titel": "Deye-Adapter: DEYE_REMOTE_REG, deyeNativePrecondition, DEYE.md, UNPLANNED-LOAD-BENCH.md, CONTROL-BENCH.md",
+      "art": "repo",
+      "stand": "24.09.2026",
+      "ort": "edge-app/nodered/",
+      "pfade": [
+        "edge-app/nodered/inverter-control-routing.js",
+        "edge-app/nodered/DEYE.md"
+      ]
+    },
+    {
+      "id": "repo_contract",
+      "titel": "mqtt-schedule.schema.json (Slot-Flaggen charge_from_surplus_only, charge_surplus_to_battery, cover_load_from_battery, limit_discharge_to_load, unplanned_load_discharge)",
+      "art": "repo",
+      "stand": "24.09.2026",
+      "ort": "docs/contracts/mqtt-schedule.schema.json",
+      "pfade": [
+        "docs/contracts/mqtt-schedule.schema.json"
+      ]
+    },
+    {
+      "id": "repo_kostal",
+      "titel": "KOSTAL-Adapter + KOSTAL.md",
+      "art": "repo",
+      "stand": "24.09.2026",
+      "ort": "edge-app/nodered/KOSTAL.md",
+      "pfade": [
+        "edge-app/nodered/inverter-control-routing.js",
+        "edge-app/nodered/KOSTAL.md"
+      ]
+    },
+    {
+      "id": "repo_kaco",
+      "titel": "KACO-NH3-Adapter (AISWEI-Karte) + KACO.md",
+      "art": "repo",
+      "stand": "24.09.2026",
+      "ort": "edge-app/nodered/KACO.md",
+      "pfade": [
+        "edge-app/nodered/inverter-control-routing.js",
+        "edge-app/nodered/KACO.md"
+      ]
+    },
+    {
+      "id": "repo_fronius",
+      "titel": "Fronius SunSpec: sunspec/model-discovery.js planStorage, FRONIUS.md, Abregel-Freigabe je Einheit",
+      "art": "repo",
+      "stand": "24.09.2026",
+      "ort": "edge-app/nodered/",
+      "pfade": [
+        "edge-app/nodered/sunspec/model-discovery.js",
+        "edge-app/nodered/FRONIUS.md"
+      ]
+    },
+    {
+      "id": "deye_hb",
+      "titel": "Deye-Handbuch SUN-29.9…50K-SG01HP3-EU-BM3/BM4 (ToU-Zitat, über Scout vp-deye-approach-w8)",
+      "art": "hersteller",
+      "stand": "19.08.2025",
+      "ort": "firstmate/data/vp-deye-approach-w8/report.md §2.2"
+    },
+    {
+      "id": "deye_mb",
+      "titel": "Deye MODBUS-RTU-Protokoll V105.1, Block „Customized register“ 1100–1121 (über PR-#978-Wiki, Beleg in k2/evidence)",
+      "art": "hersteller",
+      "stand": "06.10.2023",
+      "ort": "firstmate/data/vp-deye-netzseitig-drossel-k2/evidence/"
+    },
+    {
+      "id": "fronius_mb",
+      "titel": "Fronius GEN24 – Modbus TCP and RTU, Operating instructions (Model 124: StorCtl_Mod, InWRte/OutWRte als Grenzen)",
+      "art": "hersteller",
+      "stand": "Dok.-Stand 033-24022026",
+      "ort": "https://manuals.fronius.com/html/4204102649/en-US.html"
+    },
+    {
+      "id": "se_pcp",
+      "titel": "SolarEdge Power Control Protocol, StorEdge Control Block 0xE004–0xE010",
+      "art": "hersteller",
+      "stand": "Version 1.3, Nov. 2017",
+      "ort": "https://community.symcon.de/uploads/short-url/aoAU2uHIM0j31NazUuXbUHxi9tE.pdf"
+    },
+    {
+      "id": "se_app",
+      "titel": "SolarEdge Application Note „Set Battery Mode Control in mySolarEdge“ (nicht gelesen, 403)",
+      "art": "hersteller",
+      "stand": "Version 1.5, Juni 2025",
+      "ort": "https://knowledge-center.solaredge.com/sites/kc/files/se-battery-mode-control-application-note.pdf"
+    },
+    {
+      "id": "victron_ess",
+      "titel": "Victron „ESS mode 2 and 3“ (Grid-Setpoint 2716/2717, 2704–2708, 400 W/s, Mode-3-Watchdog 60 s)",
+      "art": "hersteller",
+      "stand": "zuletzt geändert 14.10.2024",
+      "ort": "https://www.victronenergy.com/live/ess:ess_mode_2_and_3"
+    },
+    {
+      "id": "sungrow_pr",
+      "titel": "Sungrow Communication Protocol of Residential Hybrid Inverter (EMS-Modus 13050, Heartbeat 13080; über dd)",
+      "art": "hersteller",
+      "stand": "V1.1.9 / V1.1.11 (2025-11-19)",
+      "ort": "firstmate/data/vp-battery-control-deepdive/vendor-register-reference.md §1"
+    },
+    {
+      "id": "sma_list",
+      "titel": "SMA Modbus-Parameterliste + Handbuch „Configuring the Active Power Mode“ (40210, 44039/44041, 41195; über dd)",
+      "art": "hersteller",
+      "stand": "Abruf 07.2026",
+      "ort": "firstmate/data/vp-battery-control-deepdive/vendor-register-reference.md §2"
+    },
+    {
+      "id": "kostal_if",
+      "titel": "KOSTAL Interface MODBUS-TCP/SunSpec with Control (1034, 1038/1040, Timeout; über dd)",
+      "art": "hersteller",
+      "stand": "Abruf 07.2026",
+      "ort": "https://www.kostal-solar-electric.com/fileadmin/downloadcenter/kse/BA/Protokollbeschreibung/BA_KOSTAL_Interface_MODBUS-TCP_SunSpec_with_Control.pdf"
+    },
+    {
+      "id": "huawei_if",
+      "titel": "Huawei SUN2000MA Modbus Interface Definitions (Issue 08) – 47086, 47087, 47075/47077, 47100, 47083",
+      "art": "hersteller",
+      "stand": "Issue 08, 04.07.2024",
+      "ort": "https://devicelib.my-gekko.com/download_docu.php?id_pk=236&ext=pdf&fname=Solar+Inverter+Modbus+Interface+Definitions.pdf"
+    },
+    {
+      "id": "tesla_fleet",
+      "titel": "Tesla Fleet API – Energy Endpoints (operation mode, backup reserve, grid charging, export rule)",
+      "art": "hersteller",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://developer.tesla.com/docs/fleet-api/endpoints/energy"
+    },
+    {
+      "id": "enphase_tok",
+      "titel": "Enphase Technical Brief „IQ Gateway local APIs … using token“",
+      "art": "hersteller",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://enphase.com/download/iq-gateway-local-apis-or-ui-access-using-token"
+    },
+    {
+      "id": "solis_sc",
+      "titel": "Solis Service Center: Modbus-Tabellen nur über Ticket für EMS-Partner",
+      "art": "hersteller",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://solis-service.solisinverters.com/en/support/solutions/articles/44002663852-how-to-obtain-the-modus-table-for-grid-and-hybrid-inverters"
+    },
+    {
+      "id": "solax_pr",
+      "titel": "SolaX Hybrid X1/X3 G4 Modbus TCP&RTU V3.21 (existiert, nicht ausgewertet)",
+      "art": "hersteller",
+      "stand": "V3.21",
+      "ort": "https://www.gbc-solino.cz/files/uploads/FAQ%20SolaX/Hybrid-X1X3-G4-ModbusTCPRTU-V3.21-English_0622-public-version.pdf"
+    },
+    {
+      "id": "sunspec",
+      "titel": "SunSpec Information Models 124 (Storage), 704 (DER AC Controls), 802 (Battery)",
+      "art": "hersteller",
+      "stand": "Abruf 07.2026 (über dd)",
+      "ort": "https://sunspec.org/specifications/"
+    },
+    {
+      "id": "akku38182",
+      "titel": "Akkudoktor-Forum #38182 (Deye netzseitig: lädt zuerst, drosselt eigene PV, AC-Kopplung läuft weiter; 1 Gerät LV 12 kW)",
+      "art": "feld",
+      "stand": "2025/2026",
+      "ort": "firstmate/data/vp-deye-netzseitig-drossel-k2/evidence/akkudoktor-38182-posts.md"
+    },
+    {
+      "id": "openems2541",
+      "titel": "openEMS-Community #2541 (Deye: Totmann, ToU-Latenz ~20 s, SoC-Grenzen im Remote-Modus)",
+      "art": "feld",
+      "stand": "2024/2025",
+      "ort": "https://community.openems.io (Thread 2541)"
+    },
+    {
+      "id": "pvf247695",
+      "titel": "Photovoltaikforum #247695 (Firmware-Update entfernt Remote-Block)",
+      "art": "feld",
+      "stand": "2025",
+      "ort": "https://www.photovoltaikforum.com (Thread 247695)"
+    },
+    {
+      "id": "evcc",
+      "titel": "evcc-Vorlagen und Diskussionen (Batteriemodi normal/hold/charge je Hersteller)",
+      "art": "feld",
+      "stand": "Abruf 07.2026 (über dd)",
+      "ort": "https://github.com/evcc-io/evcc/tree/master/templates/definition/meter"
+    },
+    {
+      "id": "se_binsentsu",
+      "titel": "binsentsu/home-assistant-solaredge-modbus #130/#132 (Remote-Werte fallen trotz langem Timeout zurück)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/binsentsu/home-assistant-solaredge-modbus/issues/132"
+    },
+    {
+      "id": "goodwe_lib",
+      "titel": "marcelblijleven/goodwe (ems_mode 47511, ems_power_limit 47512) + evcc #12752 (kein Watchdog, Werte überdauern Stromausfall)",
+      "art": "feld",
+      "stand": "Abruf 07.2026 (über dd)",
+      "ort": "https://github.com/evcc-io/evcc/discussions/12752"
+    },
+    {
+      "id": "huawei_lib",
+      "titel": "wlcrs/huawei-solar-lib + evcc #26917 (hängende Zwangsentladung)",
+      "art": "feld",
+      "stand": "Abruf 07.2026 (über dd)",
+      "ort": "https://github.com/wlcrs/huawei-solar-lib"
+    },
+    {
+      "id": "growatt_ha",
+      "titel": "bobbesnl/ModbusGrowatt_HomeAssistant + evcc #6819 (SPH-Zeitfenster 1080–1108, MOD-XH andere Register)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/bobbesnl/ModbusGrowatt_HomeAssistant"
+    },
+    {
+      "id": "solis_ha",
+      "titel": "ha-spark #78 / wills106 #410 (Solis 43110 Bitfeld, 43135/43136 Batterie-Fernsteuerung)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/Kylevdm/ha-spark/issues/78"
+    },
+    {
+      "id": "solax_ha",
+      "titel": "wills106/homeassistant-solax-modbus (Remote Control / Modbus Power Control, Register 0x7C)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/wills106/homeassistant-solax-modbus/discussions/833"
+    },
+    {
+      "id": "fox_ha",
+      "titel": "nathanmarlor/foxess_modbus (44000 Freigabe, 44001 Timeout, 44002 Leistung; Vorzeichen widersprüchlich beschrieben)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/nathanmarlor/foxess_modbus/discussions/498"
+    },
+    {
+      "id": "alpha_ha",
+      "titel": "ha-alphaess-modbus (Dispatch-Block 0x0880–0x088A, Leistung mit Versatz 32000, Dauer in s)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/ramonvanraaij/ha-alphaess-modbus"
+    },
+    {
+      "id": "e3dc_rscp",
+      "titel": "ioBroker.e3dc-rscp + evcc PR #33721 (EMS_REQ_SET_POWER Normal/Idle/Charge/Discharge/Grid_Charge; MAX_CHARGE/DISCHARGE_POWER)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/git-kick/ioBroker.e3dc-rscp"
+    },
+    {
+      "id": "sonnen_api",
+      "titel": "sonnen API v2 (EM_OperatingMode 1 manuell / 2 Eigenverbrauch / 10 ToU; /api/v2/setpoint/charge|discharge)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://github.com/Udhold/SonnenBatteryAPI"
+    },
+    {
+      "id": "enphase_comm",
+      "titel": "Enphase-Community: Batteriesteuerung nur über App/Cloud, lokal inoffiziell (Matthew1471/Enphase-API)",
+      "art": "feld",
+      "stand": "Abruf 24.09.2026",
+      "ort": "https://support.enphase.com/s/question/0D5Ps00001WffbBKAR/homeowner-local-api-for-battery-control-settings"
+    }
+  ]
+}

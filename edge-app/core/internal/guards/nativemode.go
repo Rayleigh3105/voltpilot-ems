@@ -111,7 +111,99 @@ const (
 	NativeGridChargeUnproven = "netzladen_am_geraet"
 	// NativeUnproven: the grace window closed without device-side evidence.
 	NativeUnproven = "nachweis_fehlt"
+
+	// --- K4b (Absicht + Fenster, concept vp-wechselrichter-eigenregelung-k1) ---
+
+	// NativeNoLever: the slot opens a window, but Layer 1 reported no CERTIFIED
+	// lever for exactly this intent (or none that honours its window) - the box
+	// keeps regulating, damped (guards.FollowDamper, E2 A). Not a take-back.
+	NativeNoLever = "kein_hebel"
+	// NativeWindowClosed: after the guards the window is a point - nothing left
+	// to regulate, the setpoint path holds it.
+	NativeWindowClosed = "fenster_geschlossen"
+	// NativeWindowForcesFlow: the window excludes 0 (a charge floor / discharge
+	// floor): that is a command, not a regulation - the box keeps it.
+	NativeWindowForcesFlow = "fenster_erzwingt_fluss"
+	// NativeChargeFromGrid: the battery charged while the grid point imported,
+	// both above NativeChargeSideLimitKw for longer than NativeChargeSideHold.
+	NativeChargeFromGrid = "laden_bei_bezug"
+	// NativeDischargeAgainstIntent: in E↑ (charge only) the battery discharged
+	// above NativeChargeSideLimitKw for longer than NativeChargeSideHold.
+	NativeDischargeAgainstIntent = "entladen_gegen_absicht"
+	// NativeStorageFull: E↑ reached the upper SoC bound - nothing left to store.
+	NativeStorageFull = "speicher_voll"
+	// NativeWriteBudget: the device's lever writes persistent memory and today's
+	// budget of mode changes is spent (§6.6, F12).
+	NativeWriteBudget = "schreibbudget"
+	// NativeOwnPvCurtailed (K5, concept §6.3): the proven primitive throttles the
+	// device's OWN PV once the storage cannot take more (Deye "netzseitig Ziel
+	// 0"), and the plan does not ask for curtailment in this slot - so at the SoC
+	// ceiling (minus NativeCeilingMarginPct), or charging at the window's limit
+	// while exporting for longer than NativeChargeSideHold, the battery goes back
+	// to the setpoint path (battery side), where the PV feeds in freely.
+	NativeOwnPvCurtailed = "pv_abgeregelt"
+	// NativeStorageExport (vp-wr-deye-tou-schreibbudget): while the device
+	// regulates an intent that may discharge (E↓, E, E~), the storage fed into
+	// the grid - battery discharging AND the grid point exporting, the smaller of
+	// the two above NativeChargeSideLimitKw - for longer than
+	// NativeChargeSideHold. None of these intents may sell storage energy (E↓:
+	// "kein Verkauf"); a device configuration that does (Deye "Selling First"
+	// with ToU) is refused by Layer 1 before the hand-over, this is the watch on
+	// the effect.
+	NativeStorageExport = "speicher_einspeisung"
+
+	// NativeHintExportWithHeadroom is a HINT, never a take-back: the grid point
+	// exports while the battery could still take more. The device's own meter
+	// most likely does not see a second PV system (Herzogau: the Fronius) - which
+	// the device cannot fix by itself and a take-back would not fix either.
+	NativeHintExportWithHeadroom = "einspeisung_trotz_ladeleistung"
+
+	// --- K6 (Führungsgerät je Netzpunkt, guards/leader.go) - refusals, never
+	// take-backs of their own: a standing configuration fact. A verdict that
+	// turns bad while the device regulates takes the lever back (latched for
+	// the slot like every other take-back).
+
+	// NativeMeterLocationMissing: the operator has not declared where the
+	// device's meter sits - "Gerät regelt" needs "am Netzpunkt".
+	NativeMeterLocationMissing = "zaehlerort_fehlt"
+	// NativeMeterElsewhere: the device's meter sits somewhere else and does not
+	// see the whole connection point.
+	NativeMeterElsewhere = "zaehler_nicht_am_netzpunkt"
+	// NativeMeterImplausible: the box's own Netz meter disagrees with the
+	// device's meter (guards.MeterCheck).
+	NativeMeterImplausible = "zaehler_unplausibel"
+	// NativeSecondRegulator: a further storage at the same connection point
+	// regulates itself on the same meter - two regulators swing up.
+	NativeSecondRegulator = "zweiter_regler"
 )
+
+// The charge-side supervision thresholds of §6.1 step 5: a sustained 0.5 kW for
+// longer than a minute - above measurement noise, far below a meaningful cost,
+// and long enough that one slow device cycle (Deye: 5-25 s) cannot trip it.
+const (
+	NativeChargeSideLimitKw = 0.5
+	NativeChargeSideHold    = 60 * time.Second
+)
+
+// NativeCeilingMarginPct is how far below the upper SoC bound a primitive that
+// throttles its own PV (NativeOwnPvCurtailed) is taken back: the same headroom
+// as the reserve floor, for the same reason (the take-back is not instant).
+const NativeCeilingMarginPct = 3.0
+
+// NativeWriteBudgetPerDay bounds the mode changes of a lever that writes
+// PERSISTENT memory (§6.6, F12). A RAM lever is counted, never bounded. It is
+// the Vorgabe: the device's control profile may state a tighter day budget
+// (NativeInput.PersistentWriteBudget), never a looser one.
+const NativeWriteBudgetPerDay = 20
+
+// persistentWriteBudget is the day budget in force: the profile's statement
+// when it has one inside (0, NativeWriteBudgetPerDay], else the Vorgabe.
+func persistentWriteBudget(stated int) int {
+	if stated <= 0 || stated > NativeWriteBudgetPerDay {
+		return NativeWriteBudgetPerDay
+	}
+	return stated
+}
 
 var nativeReasonText = map[string]string{
 	NativeEngaged:            "Der Wechselrichter regelt den Verbrauch gerade selbst.",
@@ -128,11 +220,65 @@ var nativeReasonText = map[string]string{
 	NativePeakThreatened:     "Die Lastspitze dieser Viertelstunde ist bedroht - VoltPilot übernimmt wieder.",
 	NativeGridChargeUnproven: "Der Wechselrichter hat nicht belegt, dass er nicht aus dem Netz lädt.",
 	NativeUnproven:           "Der Wechselrichter hat die Selbstregelung nicht bestätigt - VoltPilot übernimmt wieder.",
+
+	NativeNoLever:                "Für diese Absicht hat der Wechselrichter keinen freigegebenen Eigenmodus - VoltPilot regelt gedämpft nach.",
+	NativeWindowClosed:           "In diesem Zeitabschnitt bleibt nichts zu regeln - VoltPilot gibt den Sollwert vor.",
+	NativeWindowForcesFlow:       "Der Fahrplan verlangt hier eine feste Mindestleistung - VoltPilot regelt selbst nach.",
+	NativeChargeFromGrid:         "Der Speicher hat über eine Minute aus dem Netz geladen - VoltPilot übernimmt wieder.",
+	NativeDischargeAgainstIntent: "Der Speicher hat über eine Minute entladen, obwohl er nur Überschuss laden sollte - VoltPilot übernimmt wieder.",
+	NativeStorageFull:            "Der Speicher ist voll - VoltPilot übernimmt für den Rest des Zeitabschnitts.",
+	NativeWriteBudget:            "Die Umschaltungen dieses Wechselrichters für heute sind aufgebraucht - VoltPilot regelt selbst nach.",
+	NativeOwnPvCurtailed:         "Der Speicher nimmt nichts mehr auf und der Wechselrichter würde seine eigene PV abregeln, obwohl Einspeisen sich lohnt - VoltPilot übernimmt wieder.",
+	NativeStorageExport:          "Der Speicher hat über eine Minute ins Netz eingespeist, obwohl er nur den Verbrauch decken sollte - VoltPilot übernimmt wieder.",
+	NativeHintExportWithHeadroom: "Die Anlage speist ein, obwohl der Speicher noch laden könnte - der Zähler des Wechselrichters sieht vermutlich die zweite PV-Anlage nicht.",
+
+	NativeMeterLocationMissing: "Der Zählerort des Wechselrichters ist nicht angegeben - selbst regeln darf er nur mit einem Zähler am Netzpunkt. VoltPilot regelt nach.",
+	NativeMeterElsewhere:       "Der Zähler des Wechselrichters sitzt nicht am Netzpunkt - er sieht nicht die ganze Anlage. VoltPilot regelt nach.",
+	NativeMeterImplausible:     "Der Zähler des Wechselrichters passt nicht zum Netz-Zähler der Box - VoltPilot regelt nach, bis der Zählerort geklärt ist.",
+	NativeSecondRegulator:      "Am selben Netzpunkt regelt ein weiterer Speicher selbst - zwei Regler auf einem Zähler schaukeln sich auf. VoltPilot regelt nach.",
 }
 
 // NativeReasonText is the German sentence for a reason code ("" for an unknown
 // code - a word we do not understand must not become a sentence).
 func NativeReasonText(code string) string { return nativeReasonText[code] }
+
+// nativeEngagedText names WHAT the device does by itself - "regelt den
+// Verbrauch" would be a false sentence while it stores a surplus.
+func nativeEngagedText(intent string) string {
+	switch intent {
+	case NativeIntentSurplusCharge:
+		return "Der Wechselrichter lädt den Überschuss gerade selbst in den Speicher."
+	case NativeIntentSelfConsumption:
+		return "Der Wechselrichter regelt Laden und Entladen gerade selbst."
+	default:
+		return NativeReasonText(NativeEngaged)
+	}
+}
+
+// IntentOpensCharge reports whether an intent lets the device CHARGE by itself
+// (E↑, E, E~) - the leader is then the inner loop of the feed-in cascade (K6).
+func IntentOpensCharge(intent string) bool { return opensCharge(intent) }
+
+// NativeModeFor is the battery_mode word on edge/setpoint for an intent:
+// "native" for the pre-existing E↓ primitive (byte-identical for every Layer 1
+// that predates K4b), "native_window" for the window intents. A Layer 1 that
+// does not know "native_window" treats it as the ordinary setpoint path - it
+// writes the reference setpoint and never confirms, so the core withdraws the
+// intent after its grace. That is the additive contract's safety argument.
+func NativeModeFor(intent string) string {
+	if intent == NativeIntentCoverLoad {
+		return "native"
+	}
+	return "native_window"
+}
+
+// opensDischarge / opensCharge: which sides an executable intent opens.
+func opensDischarge(intent string) bool {
+	return intent == NativeIntentCoverLoad || intent == NativeIntentSelfConsumption
+}
+func opensCharge(intent string) bool {
+	return intent == NativeIntentSurplusCharge || intent == NativeIntentSelfConsumption
+}
 
 // NativeFloorMarginPct is the headroom above the full reserve floor at which the
 // supervision takes the battery back. It exists because the take-back is not
@@ -194,13 +340,62 @@ type NativeInput struct {
 	// (grid_charge_allowed == false / absent). When true the device must PROVE
 	// it cannot charge from the grid in its own configuration.
 	SolarOnlyCharge bool
-	// GridChargeBlocked is that proof, from Layer 1's readback. nil = the device
-	// did not say - which counts as NOT proven, never as "fine".
+	// GridChargeBlocked is that proof, from Layer 1's readback: read back in the
+	// device's own mode once Proven, or - before the hand-over - from the
+	// executor's pre-hand-over read of the same register. nil = the device did
+	// not say - which counts as NOT proven, never as "fine" (see step 8 of
+	// Decide for WHEN it is owed).
 	GridChargeBlocked *bool
 	// Proven is Layer 1's evidence that the device really is in its own
 	// regulation right now (a fresh readback whose mode is "native" and whose
 	// state registers held).
 	Proven bool
+
+	// --- K4b: Absicht + Fenster ---
+
+	// Intent is the plan intent's wire word (IntentFor) for an OPEN plan window,
+	// "" for a point. NeedsWindow is Intent.NeedsWindow.
+	Intent      string
+	NeedsWindow bool
+	// Window is the plan window after ClipWindow.
+	Window Window
+	// Levers is Layer 1's report of its certified levers; nil = not reported.
+	// Without a report only the pre-existing E↓ path exists (Duty), exactly as
+	// before K4b - a window intent needs a lever Layer 1 NAMED.
+	Levers *NativeLevers
+	// PersistentWriteBudget is the day budget of a persistent lever the
+	// device's control profile states (catalog/control-profiles
+	// schreibbudget.dauerspeicher_je_tag); 0 = no statement, the Vorgabe
+	// NativeWriteBudgetPerDay applies. Whether the lever IS persistent stays
+	// Layer 1's report (Levers.Persistent) - the profile never releases a lever.
+	PersistentWriteBudget int
+	// ProvenIntent is the intent the proving readback says the primitive
+	// realises (native.intent). A window intent is only proven by its own word;
+	// E↓ also by silence (a pre-K4b Layer 1 never says it).
+	ProvenIntent string
+	// GridKw (+ import) / BatteryKw (+ charge) are the measured grid point and
+	// battery; SocMaxPct the configured upper SoC bound. NaN = unknown.
+	GridKw, BatteryKw float64
+	SocMaxPct         float64
+
+	// --- K5: Deye Überschuss-Übergabe ---
+
+	// ProvenCurtailsOwnPv is Layer 1's statement on the proving readback that the
+	// executed primitive throttles the device's own PV when the storage cannot
+	// take more (native.curtails_own_pv).
+	ProvenCurtailsOwnPv bool
+	// CurtailmentWanted: the plan caps the PV in this slot (negative price,
+	// §51) - then that side effect is exactly what the slot asks for.
+	CurtailmentWanted bool
+
+	// --- K6: Führungsgerät ---
+
+	// LeaderRefusal is guards.LeaderFor's refusal code ("" = the selection is
+	// the connection point's leader and may regulate itself). It gates EVERY
+	// device-regulated intent, the pre-existing E↓ path included: a device that
+	// cannot see the whole connection point regulates the wrong quantity no
+	// matter which side of the window it covers.
+	LeaderRefusal string
 }
 
 // NativeDecision is one evaluation.
@@ -219,6 +414,21 @@ type NativeDecision struct {
 	// always filled - including for the two native states.
 	Reason string
 	Text   string
+
+	// Intent is the executable intent word while Native (cover_load for the
+	// pre-existing mode), Mode its battery_mode word (NativeModeFor).
+	Intent string
+	Mode   string
+	// Window is the window published with the intent: the clipped window,
+	// narrowed only within a slot (never re-widened before the next slot, so a
+	// SoC hovering at a bound cannot toggle the device's limits).
+	Window Window
+	// Hint is an observation without take-back (NativeHintExportWithHeadroom),
+	// HintText its sentence; both "" when nothing is to be said.
+	Hint     string
+	HintText string
+	// WritesToday counts the mode changes (enter, change, leave) of this day.
+	WritesToday int
 }
 
 // NativeMode carries the per-slot supervision state across setpoint ticks.
@@ -246,6 +456,23 @@ type NativeMode struct {
 	latched string
 	// engaged mirrors the last decision, for Engaged().
 	engaged bool
+
+	// K4b per-slot state: the narrowed window, and the first-seen times of the
+	// charge-side conditions (zero = not currently seen).
+	win                         Window
+	winSet                      bool
+	gridChargeSince, dischSince time.Time
+	exportSince                 time.Time
+	// K5: first-seen time of "charging at the limit while exporting" on a
+	// primitive that throttles its own PV.
+	atLimitSince time.Time
+	// First-seen time of "the storage feeds into the grid" (NativeStorageExport).
+	storageExportSince time.Time
+	// The day's write counter (§6.6): published = the battery_mode/intent the
+	// last tick published ("" = setpoint), day = the counter's day.
+	published string
+	day       time.Time
+	writes    int
 }
 
 // NewNativeMode returns a released supervision with the given proof grace.
@@ -272,7 +499,60 @@ const nativeDefaultGrace = 60 * time.Second
 func (n *NativeMode) Decide(now time.Time, in NativeInput) NativeDecision {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	d := n.decide(now, in)
+	// The day's write counter (§6.6): every change of what the setpoint topic
+	// asks of the device - enter, change, leave - is one write on the device.
+	pub := ""
+	if d.Native {
+		pub = d.Mode + "/" + d.Intent
+	}
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if !day.Equal(n.day) {
+		n.day, n.writes = day, 0
+	}
+	if pub != n.published {
+		n.writes++
+		n.published = pub
+	}
+	d.WritesToday = n.writes
+	return d
+}
 
+// executable is Box ② (concept §6.1 step 3): which intent the DEVICE is asked
+// to regulate. Without a Layer-1 report only the pre-existing E↓ path exists,
+// keyed on the cloud duty exactly as before K4b - a Layer 1 that predates the
+// report behaves byte-for-byte as it did. With a report, the plan intent needs
+// a lever Layer 1 NAMED for exactly that intent (and a window lever for a
+// policy bound narrower than the intent's natural window).
+func executable(in NativeInput) (intent, reason string) {
+	legacy := in.Duty == NativeDutyCoverLoad || in.Duty == NativeDutyUnplanned
+	if in.Levers == nil {
+		switch {
+		case legacy:
+			return NativeIntentCoverLoad, ""
+		case in.Intent != "":
+			return "", NativeNoLever
+		default:
+			return "", NativeNoDuty
+		}
+	}
+	want := in.Intent
+	if want == "" && legacy {
+		want = NativeIntentCoverLoad
+	}
+	switch {
+	case want == "":
+		return "", NativeNoDuty
+	case !in.Levers.Has(want):
+		return "", NativeNoLever
+	case in.NeedsWindow && (want == NativeIntentCoverLoad || !in.Levers.Window):
+		// E↓'s certified primitive has no window; a narrower one is the box's.
+		return "", NativeNoLever
+	}
+	return want, ""
+}
+
+func (n *NativeMode) decide(now time.Time, in NativeInput) NativeDecision {
 	refuse := func(code string) NativeDecision {
 		n.engaged = false
 		return NativeDecision{Reason: code, Text: NativeReasonText(code)}
@@ -291,11 +571,13 @@ func (n *NativeMode) Decide(now time.Time, in NativeInput) NativeDecision {
 		n.reset()
 		return refuse(NativeOff)
 	}
-	// 2. No covering duty in this slot -> the ordinary setpoint path, and the
-	//    slot latch is cleared (a new slot may be native again).
-	if in.Duty != NativeDutyCoverLoad && in.Duty != NativeDutyUnplanned {
+	// 2. No open window in this slot (or no lever for it) -> the ordinary
+	//    setpoint path, and the slot latch is cleared (a new slot may be native
+	//    again). Box ②: see executable.
+	intent, why := executable(in)
+	if intent == "" {
 		n.reset()
-		return refuse(NativeNoDuty)
+		return refuse(why)
 	}
 	if !in.PlanFresh {
 		n.reset()
@@ -306,6 +588,18 @@ func (n *NativeMode) Decide(now time.Time, in NativeInput) NativeDecision {
 		n.slot = in.SlotStart
 		n.latched = ""
 		n.since = time.Time{}
+		n.clearSlotState()
+	}
+	// 3b. K6: only the connection point's leader may regulate itself. A
+	//     refusal while nothing is handed over; a take-back (latched for the
+	//     slot) when the verdict turns while the device regulates - e.g. the
+	//     meter comparison flips to "passt nicht" mid-slot.
+	if in.LeaderRefusal != "" {
+		if n.engaged {
+			return takeBack(in.LeaderRefusal)
+		}
+		n.since = time.Time{}
+		return refuse(in.LeaderRefusal)
 	}
 	// 4. Somebody else owns the battery (plant rest, a rule, a handhold, an
 	//    owner claim). Not a take-back - there is nothing of ours to take back.
@@ -331,34 +625,168 @@ func (n *NativeMode) Decide(now time.Time, in NativeInput) NativeDecision {
 	if !in.ReadbackHealthy {
 		return takeBack(NativeNoReadback)
 	}
+	// The proof is the intent's OWN: a readback that proves some other primitive
+	// is not a proof of this one. E↓ is also proven by silence, because a Layer 1
+	// that predates K4b never names it.
+	proven := in.Proven && (in.ProvenIntent == intent ||
+		(intent == NativeIntentCoverLoad && in.ProvenIntent == ""))
 	// 7. The reserve floor. The device's own floor is not ours, so an unknown
-	//    platform floor means no native mode at all - never a guessed one.
+	//    platform floor means no native mode at all - never a guessed one. The
+	//    take-back only concerns an intent that may discharge.
 	if in.FloorPct == nil {
 		n.since = time.Time{}
 		return refuse(NativeNoFloor)
 	}
-	if math.IsNaN(in.SocPct) || in.SocPct <= *in.FloorPct+NativeFloorMarginPct {
+	if opensDischarge(intent) &&
+		(math.IsNaN(in.SocPct) || in.SocPct <= *in.FloorPct+NativeFloorMarginPct) {
 		return takeBack(NativeFloorReached)
 	}
 	// 8. EEG: the ONE compliance rule that moves into the device's own
 	//    configuration when we stop commanding. Unknown is not proven.
-	if in.SolarOnlyCharge && (in.GridChargeBlocked == nil || !*in.GridChargeBlocked) {
-		return takeBack(NativeGridChargeUnproven)
+	//
+	//    ⚠ WHEN the proof is owed decides whether the mode can exist at all. The
+	//    proof is a READ of the device, and the executor only reads it once our
+	//    intent stands - so demanding it before the intent was ever published
+	//    made the mode unreachable on every EEG site (the first tick latched
+	//    this take-back, no intent reached the wire, the device never went
+	//    native, the proof never came). The order is therefore:
+	//      - the device SAID it may charge from the grid (before or after the
+	//        hand-over): take back at once;
+	//      - the device regulates itself (Proven) without saying it cannot:
+	//        take back at once - the hand-over is only as good as this answer;
+	//      - not handed over yet and not answered yet: the intent may stand
+	//        PENDING, because it is a request, not a hand-over. Layer 1 hands an
+	//        EEG site over only after its own pre-hand-over read found the
+	//        device's grid charging disabled (deyeNativePrecondition, 0x00AC),
+	//        and a tier that cannot read such a register refuses EEG sites
+	//        outright. The grace below bounds the wait, and names THIS reason
+	//        if it closes without an answer.
+	if in.SolarOnlyCharge {
+		if in.GridChargeBlocked != nil && !*in.GridChargeBlocked {
+			return takeBack(NativeGridChargeUnproven)
+		}
+		if in.GridChargeBlocked == nil && proven {
+			return takeBack(NativeGridChargeUnproven)
+		}
 	}
 	// 9. The billing peak. In native mode there is no lever left, so a threatened
 	//    quarter hour is answered by taking the lever back.
 	if in.PeakThreatened {
 		return takeBack(NativePeakThreatened)
 	}
+	// 10. E↑ has nothing left to store at the upper SoC bound.
+	if intent == NativeIntentSurplusCharge && !math.IsNaN(in.SocPct) && in.SocMaxPct > 0 &&
+		in.SocPct >= in.SocMaxPct {
+		return takeBack(NativeStorageFull)
+	}
+	// 11. The window (only where Layer 1 reports levers: a pre-K4b Layer 1 never
+	//     sees one). It is narrowed within the slot, never re-widened, so a
+	//     bound that toggles (SoC at its edge, a BMS limit) costs at most one
+	//     device write per side and slot.
+	win := in.Window
+	if in.Levers != nil {
+		if n.winSet {
+			win.MinKw = math.Max(win.MinKw, n.win.MinKw)
+			win.MaxKw = math.Min(win.MaxKw, n.win.MaxKw)
+			if win.MinKw > win.MaxKw {
+				win.MinKw = win.MaxKw
+			}
+		}
+		if win.Point() {
+			n.since = time.Time{}
+			return refuse(NativeWindowClosed)
+		}
+		if !win.ContainsZero() {
+			n.since = time.Time{}
+			return refuse(NativeWindowForcesFlow)
+		}
+	}
+	// 12. The write budget of a persistent lever (§6.6, F12): a hand-over costs
+	//     the entry AND its exit, so it needs room for both.
+	if in.Levers != nil && in.Levers.Persistent && !n.engaged &&
+		n.writes+2 > persistentWriteBudget(in.PersistentWriteBudget) {
+		n.since = time.Time{}
+		return refuse(NativeWriteBudget)
+	}
+	// 13. The charge side (only while the device regulates, and only for an
+	//     intent that may charge): what the device does with the surplus is now
+	//     ITS decision, so the supervision watches the effect.
+	// 13a. The discharge side (vp-wr-deye-tou-schreibbudget): no intent the
+	//      device regulates may sell storage energy. Storage export is the part
+	//      of the export the battery supplies - min(discharge, export) - so PV
+	//      feeding in beside a covering battery never counts.
+	if proven && opensDischarge(intent) {
+		grid, batt := in.GridKw, in.BatteryKw
+		exporting := !math.IsNaN(grid) && !math.IsNaN(batt) && math.Max(batt, grid) < -NativeChargeSideLimitKw
+		if !exporting {
+			n.storageExportSince = time.Time{}
+		} else {
+			if n.storageExportSince.IsZero() {
+				n.storageExportSince = now
+			}
+			if now.Sub(n.storageExportSince) > NativeChargeSideHold {
+				return takeBack(NativeStorageExport)
+			}
+		}
+	} else {
+		n.storageExportSince = time.Time{}
+	}
+	var hint string
+	if proven && opensCharge(intent) {
+		held := func(cond bool, since *time.Time) bool {
+			if !cond {
+				*since = time.Time{}
+				return false
+			}
+			if since.IsZero() {
+				*since = now
+			}
+			return now.Sub(*since) > NativeChargeSideHold
+		}
+		grid, batt := in.GridKw, in.BatteryKw
+		known := !math.IsNaN(grid) && !math.IsNaN(batt)
+		if held(known && math.Min(batt, grid) > NativeChargeSideLimitKw, &n.gridChargeSince) {
+			return takeBack(NativeChargeFromGrid)
+		}
+		if held(known && intent == NativeIntentSurplusCharge && batt < -NativeChargeSideLimitKw,
+			&n.dischSince) {
+			return takeBack(NativeDischargeAgainstIntent)
+		}
+		// K5 (§6.3): a primitive that regulates the grid to 0 throttles its OWN
+		// PV once the storage cannot take more - at a positive price that is
+		// feed-in given away, so the battery goes back to the setpoint path.
+		if in.ProvenCurtailsOwnPv && !in.CurtailmentWanted {
+			if !math.IsNaN(in.SocPct) && in.SocMaxPct > 0 && in.SocPct >= in.SocMaxPct-NativeCeilingMarginPct {
+				return takeBack(NativeOwnPvCurtailed)
+			}
+			if held(known && grid < -NativeChargeSideLimitKw && batt >= win.MaxKw-NativeChargeSideLimitKw,
+				&n.atLimitSince) {
+				return takeBack(NativeOwnPvCurtailed)
+			}
+		} else {
+			n.atLimitSince = time.Time{}
+		}
+		headroom := !math.IsNaN(in.SocPct) && (in.SocMaxPct <= 0 || in.SocPct < in.SocMaxPct)
+		if held(known && headroom && grid < -NativeChargeSideLimitKw &&
+			batt < win.MaxKw-NativeChargeSideLimitKw, &n.exportSince) {
+			hint = NativeHintExportWithHeadroom
+		}
+	} else {
+		n.gridChargeSince, n.dischSince, n.exportSince = time.Time{}, time.Time{}, time.Time{}
+		n.atLimitSince = time.Time{}
+	}
+	if in.Levers != nil {
+		n.win, n.winSet = win, true
+	}
 
-	// 10. Native. Proven by Layer 1, or pending inside the grace window.
-	if in.Proven {
+	// 14. Native. Proven by Layer 1, or pending inside the grace window.
+	d := NativeDecision{Native: true, Duty: in.Duty, Intent: intent, Mode: NativeModeFor(intent),
+		Window: win, Hint: hint, HintText: NativeReasonText(hint)}
+	if proven {
 		n.since = now
 		n.engaged = true
-		return NativeDecision{
-			Native: true, Proven: true, Duty: in.Duty,
-			Reason: NativeEngaged, Text: NativeReasonText(NativeEngaged),
-		}
+		d.Proven, d.Reason, d.Text = true, NativeEngaged, nativeEngagedText(intent)
+		return d
 	}
 	if n.since.IsZero() {
 		n.since = now
@@ -366,14 +794,16 @@ func (n *NativeMode) Decide(now time.Time, in NativeInput) NativeDecision {
 	if now.Sub(n.since) > n.grace {
 		// The intent stood, the device never confirmed it. That is not a native
 		// mode, it is an unanswered request - and "we stopped writing" must never
-		// be allowed to look like "the inverter took over".
+		// be allowed to look like "the inverter took over". On an EEG site that
+		// never even answered the grid-charge question, THAT is the cause to name.
+		if in.SolarOnlyCharge && in.GridChargeBlocked == nil {
+			return takeBack(NativeGridChargeUnproven)
+		}
 		return takeBack(NativeUnproven)
 	}
 	n.engaged = true
-	return NativeDecision{
-		Native: true, Duty: in.Duty,
-		Reason: NativePending, Text: NativeReasonText(NativePending),
-	}
+	d.Reason, d.Text = NativePending, NativeReasonText(NativePending)
+	return d
 }
 
 // Engaged reports whether the last decision published a native intent.
@@ -397,6 +827,14 @@ func (n *NativeMode) reset() {
 	n.slot = time.Time{}
 	n.since = time.Time{}
 	n.latched = ""
+	n.clearSlotState()
+}
+
+func (n *NativeMode) clearSlotState() {
+	n.win, n.winSet = Window{}, false
+	n.gridChargeSince, n.dischSince, n.exportSince = time.Time{}, time.Time{}, time.Time{}
+	n.atLimitSince = time.Time{}
+	n.storageExportSince = time.Time{}
 }
 
 // NativePeakThreat answers "is the running quarter hour's billing peak threatened

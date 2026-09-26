@@ -97,3 +97,4 @@ Sammlung: je Aufzaehlungspunkt eine Datei, Text byte-verbatim.
 - [Die BRÜCKE ist VERDRAHTET (Anforderung 9) — selbstbauBruecke.ts hat seit Stufe 4 echte Aufrufer.](092-die-bruecke-ist-verdrahtet-anforderung-9.md)
 - [Die BRÜCKE zur Regel-Welt (Anforderung 9): selbstbauBruecke.vorbefuellteAktion.](093-die-bruecke-zur-regel-welt-anforderung-9.md)
 - [Der EINSPEISEWÄCHTER ist eine STEHENDE Aussage und hängt an keinem fremden Tor („Grenzen & Wächter" Stufe 0; Backend + F](094-der-einspeisewaechter-ist-eine-stehende.md)
+- [Die Fahrplan-Seite ist ein TAGESBILD: Tagesuhr am Telefon, Bildfahrplan am Rechner (Konzept „Tagesuhr und Bildfahrplan", E1–E11)](095-die-fahrplan-seite-ist-ein-tagesbild.md)

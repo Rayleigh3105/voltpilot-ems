@@ -8,13 +8,13 @@ exports[`AP-13 Bestandsschutz · Betriebskunde ohne Messfunktion > Q2 · zwei An
 
 exports[`AP-13 Bestandsschutz · Betriebskunde ohne Messfunktion > Q2 · zwei Anlagen, 3 Gebäude: Standort-Reiter zeichengleich 1`] = `""`;
 
-exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Übersicht<span class="vp-welt-strich" aria-hidden="true"></span></button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Messwerte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Erlöse</button></div>"`;
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Übersicht<span class="vp-welt-strich" aria-hidden="true"></span></button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Energie</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Erlöse</button></div>"`;
 
-exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio-erloese ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Übersicht</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Messwerte</button><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Erlöse<span class="vp-welt-strich" aria-hidden="true"></span></button></div>"`;
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio-erloese ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Übersicht</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Energie</button><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Erlöse<span class="vp-welt-strich" aria-hidden="true"></span></button></div>"`;
 
-exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio-messwerte ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Übersicht</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Messwerte<span class="vp-welt-strich" aria-hidden="true"></span></button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Erlöse</button></div>"`;
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Portfolio-Reiter portfolio-messwerte ohne Messfunktion 1`] = `"<div class="vp-bereich-tabs vp-bereich-tabs-dicht" role="tablist" aria-label="Reiter der Ebene Meine Anlagen"><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Übersicht</button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Standorte</button><button type="button" role="tab" aria-selected="true" class="vp-bereich-tab active">Energie<span class="vp-welt-strich" aria-hidden="true"></span></button><button type="button" role="tab" aria-selected="false" class="vp-bereich-tab">Erlöse</button></div>"`;
 
-exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > sechs Verlauf-Reiter ohne neue Energiebilanz 1`] = `
+exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > Verlauf-Reiter wie ausgeliefert (main 8b8b6a03b) ohne neue Energiebilanz 1`] = `
 {
   "badge": null,
   "badgeTitel": null,
@@ -24,7 +24,7 @@ exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > sechs Verlauf-Reit
   "tabs": [
     {
       "key": "messwerte",
-      "label": "Messwerte",
+      "label": "Energie",
       "sub": "messwerte",
     },
     {
@@ -33,24 +33,9 @@ exports[`AP-13 Bestandsschutz · Navigation und Start-Ebene > sechs Verlauf-Reit
       "sub": "erloese",
     },
     {
-      "key": "marktpreise",
-      "label": "Marktpreise",
-      "sub": "marktpreise",
-    },
-    {
-      "key": "lastspitzen",
-      "label": "Lastspitzen",
-      "sub": "lastspitzen",
-    },
-    {
-      "key": "prognose",
-      "label": "Prognose",
-      "sub": "prognose",
-    },
-    {
-      "key": "wetter",
-      "label": "Wetter",
-      "sub": "wetter",
+      "key": "einzelwerte",
+      "label": "Messwerte",
+      "sub": "einzelwerte",
     },
   ],
   "target": {

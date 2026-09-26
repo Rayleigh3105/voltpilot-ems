@@ -148,12 +148,38 @@ export function batteryDirection(kw: number | null | undefined): BatteryDir {
  * Wechselrichter bestätigt" bzw. „Der Speicher pausiert gerade – vom
  * Wechselrichter bestätigt". Nie ein Vorzeichen, nie „regelt auf X".
  */
+/** Der Bestätigungs-Halbsatz des gesunden Zustands (auch für kompakte Flächen). */
+export const VOM_WR_BESTAETIGT = 'vom Wechselrichter bestätigt';
+
 function directionSentence(cmd: number | null): string {
   const n = num(cmd);
   const dir = batteryDirection(n);
-  if (dir === 'pausieren') return 'Der Speicher pausiert gerade – vom Wechselrichter bestätigt';
+  if (dir === 'pausieren') return `Der Speicher pausiert gerade – ${VOM_WR_BESTAETIGT}`;
   const verb = dir === 'laden' ? 'lädt' : 'entlädt';
-  return `Der Speicher ${verb} gerade mit ${absKw(n as number)} – vom Wechselrichter bestätigt`;
+  return `Der Speicher ${verb} gerade mit ${absKw(n as number)} – ${VOM_WR_BESTAETIGT}`;
+}
+
+/**
+ * UX-Review V-04 (24.09.2026): die Steuerungs-KARTE darf am Telefon entfallen,
+ * wenn sie nur wiederholt, was Fluss (Haken am Speicher) und Fahrplan-Zeile
+ * („Jetzt Sonne speichern …") schon sagen. Dann trägt die Fahrplan-Zeile
+ * diesen Halbsatz. Das gilt NUR im reinen Normalfall: der Speicher lädt oder
+ * entlädt, der Wechselrichter bestätigt, und die Karte hat nichts Eigenes zu
+ * sagen - keine Geräte-Abweichung, keine Abregelung, kein Ruhe-Ausblick, kein
+ * Flussabgleich (sein Satz ersetzt den Richtungssatz), keine Einspeise-Grenze.
+ * Jeder Befund und jede Ruhe mit Begründung behalten die Karte.
+ */
+export function steuerungKurz(
+  view: ControlStripView | null,
+  guardVorhanden: boolean,
+): string | null {
+  if (!view || guardVorhanden) return null;
+  if (view.state !== 'healthy' || view.tone !== 'ok') return null;
+  if (view.execution || view.curtailment || view.outlook) return null;
+  if (!view.sentence.endsWith(`– ${VOM_WR_BESTAETIGT}`)) return null;
+  if (view.sentence.startsWith('Der Speicher pausiert')) return null;
+  const satz = VOM_WR_BESTAETIGT.charAt(0).toUpperCase() + VOM_WR_BESTAETIGT.slice(1);
+  return view.agoNote ? `${satz} · ${view.agoNote}` : satz;
 }
 
 /**
@@ -227,7 +253,24 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   high_soc_charge: 'PV-Puffer-Nachladung',
   surplus_store: 'Live-Überschussladung',
   autonomous_discharge: 'Wechselrichter-Automatik',
+  autonomous_charge: 'Wechselrichter-Automatik · Überschuss laden',
+  autonomous_selfconsumption: 'Wechselrichter-Automatik · Eigenverbrauch',
 };
+
+/**
+ * Die Modi der Wechselrichter-Eigenregelung: der WECHSELRICHTER entscheidet
+ * die Batterie-Leistung selbst, die Box schreibt keinen Sollwert - darum sind
+ * `commandedKw`/`confirmedKw` dort null (K4b). Jede Fläche, die sonst aus dem
+ * Sollwert eine Richtung liest, muss diesen Fall vorher abfangen: null ist
+ * kein „pausiert".
+ */
+export function isWrAutomatik(mode: ExecutionMode | string | null | undefined): boolean {
+  return mode === 'autonomous_discharge' || mode === 'autonomous_charge' ||
+    mode === 'autonomous_selfconsumption';
+}
+
+/** Der gesunde Satz der Wechselrichter-Automatik - ohne erfundene kW-Zahl. */
+export const WR_AUTOMATIK_SATZ = 'Ihr Wechselrichter regelt den Speicher gerade selbst';
 
 /**
  * executionNote - der EINE deutsche Satz, der die bewusste Abweichung des
@@ -269,9 +312,33 @@ export function executionNote(status: ControlStatus | null): string | null {
   if (mode === 'absorb') {
     return `${plannedPart}Ihr Gerät nimmt gerade den gemessenen Solar-Überschuss auf.`;
   }
-  if (mode === 'idle_follow' || mode === 'autonomous_discharge') {
-    const path = mode === 'idle_follow' ? 'der 10-Sekunden-Nachführung' : 'der Wechselrichter-Automatik';
-    return `${plannedPart}Unerwarteter Verbrauch wird live mit ${path}${measured} gedeckt.`;
+  // Wechselrichter-Eigenregelung (Lade- und Beide-Richtungen-Seite): der
+  // WECHSELRICHTER entscheidet die Watt selbst. Darum nennt der Satz keine
+  // Zahl - `executionPlannedKw` ist hier nur der Wert, den die Box schreiben
+  // WÜRDE, wenn sie den Speicher zurücknimmt, nicht der, den das Gerät fährt.
+  // Eine Ladegrenze (Absicht E~) behauptet er nicht: die Fenstergrenzen
+  // reisen im Herzschlag nicht mit.
+  if (mode === 'autonomous_charge') {
+    return (
+      'Ihr Wechselrichter lädt den Solar-Überschuss gerade selbst in den Speicher. ' +
+      'Laden aus dem Netz ist dabei nicht vorgesehen.'
+    );
+  }
+  if (mode === 'autonomous_selfconsumption') {
+    return (
+      'Ihr Wechselrichter regelt gerade selbst auf Eigenverbrauch: Überschuss geht in den ' +
+      'Speicher, Verbrauch wird aus dem Speicher gedeckt.'
+    );
+  }
+  // Die Entlade-Seite (Absicht E↓): auch hier ist `executionPlannedKw` nur der
+  // Wert, den die Box beim Zurücknehmen schreiben WÜRDE - kein „Der Fahrplan
+  // sah X vor". Der Verbrauch ist in einer solchen Viertelstunde auch nicht
+  // „unerwartet": die Deckung aus dem Speicher ist der Plan.
+  if (mode === 'autonomous_discharge') {
+    return 'Ihr Wechselrichter deckt Ihren Verbrauch gerade selbst aus dem Speicher.';
+  }
+  if (mode === 'idle_follow') {
+    return `${plannedPart}Unerwarteter Verbrauch wird live mit der 10-Sekunden-Nachführung${measured} gedeckt.`;
   }
   if (mode === 'limit') {
     // Netz-null-Reduzieren: die Box hat die geplante Entladung auf den
@@ -500,6 +567,8 @@ export function controlStrip(
   const ago = fmtRelative(status.checkedAt, now);
   const ageMs = now.getTime() - new Date(status.checkedAt).getTime();
   const stale = !isNaN(ageMs) && ageMs > CONTROL_STALE_MS;
+  // Wechselrichter-Automatik: kein Sollwert, also auch keine Richtung daraus.
+  const automatik = isWrAutomatik(status.executionMode);
 
   // Control switched off (Not-Aus): honest, calm, not an error.
   if (!status.controlEnabled) {
@@ -519,7 +588,9 @@ export function controlStrip(
     return {
       state: 'stale',
       tone: 'off',
-      sentence: staleSentence(status.commandedKw),
+      sentence: automatik
+        ? 'Zuletzt: Ihr Wechselrichter regelte den Speicher selbst – bestätigt'
+        : staleSentence(status.commandedKw),
       agoNote: `zuletzt geprüft ${ago}`,
       reason,
       execution: note,
@@ -532,7 +603,9 @@ export function controlStrip(
     return {
       state: 'mismatch',
       tone: 'warn',
-      sentence: mismatchSentence(status.commandedKw, status.confirmedKw),
+      sentence: automatik
+        ? 'Ihr Wechselrichter soll den Speicher selbst regeln – eine Einstellung weicht ab'
+        : mismatchSentence(status.commandedKw, status.confirmedKw),
       agoNote: `Abweichung · geprüft ${ago}`,
       reason,
       execution: note,
@@ -547,7 +620,7 @@ export function controlStrip(
   // explains the feed-in itself (`surplusActive`) - it names the export (and,
   // in the "waits to charge later" case, the charge time), so appending the
   // clarification or a second outlook line would only repeat it.
-  const isRuhe = batteryDirection(status.commandedKw) === 'pausieren';
+  const isRuhe = !automatik && batteryDirection(status.commandedKw) === 'pausieren';
   const ruheReason =
     isRuhe && reason && !surplusActive ? `${reason} ${PV_CLARIFICATION}` : reason;
   const ruheOutlook = isRuhe && !surplusActive ? outlook : null;
@@ -577,7 +650,9 @@ export function controlStrip(
   return {
     state: 'healthy',
     tone: 'ok',
-    sentence: directionSentence(status.commandedKw),
+    sentence: automatik
+      ? `${WR_AUTOMATIK_SATZ} – ${VOM_WR_BESTAETIGT}`
+      : directionSentence(status.commandedKw),
     agoNote: `geprüft ${ago}`,
     reason: ruheReason,
     execution: note,

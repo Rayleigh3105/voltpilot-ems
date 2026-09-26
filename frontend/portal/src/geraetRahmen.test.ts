@@ -1,204 +1,191 @@
 import { describe, expect, it } from 'vitest';
 import {
   abschnittHash,
+  ALTER_ABSCHNITT,
   ankerId,
-  GESICHT_ZU_RAHMEN,
-  initialSektionOffen,
-  istKlappbar,
+  BAUSTEIN_ORDNUNG,
+  BAUSTEIN_TITEL,
+  bausteine,
+  istTechnikAnsicht,
   kopfHinweis,
-  kurz,
-  parseAbschnitt,
+  ohneTechnikHash,
   parseKachel,
-  rahmen,
-  SEKTION_FRAGE,
-  SEKTION_ICON,
-  SEKTION_TITEL,
-  SEKTIONS_ORDNUNG,
-  sektionKey,
-  standardOffen,
-  type RahmenSektionId,
+  sprungZiel,
+  TECHNIK_ANSICHT_TITEL,
+  TECHNIK_ORDNUNG,
+  TECHNIK_TITEL,
+  technikHash,
+  technikTeile,
+  zielHash,
+  zielTitel,
+  type AlterAbschnitt,
+  type BausteinId,
+  type TechnikId,
 } from './geraetRahmen';
 
 /**
- * Der RAHMEN aller Geräteseiten (Konzept `data/vp-geraeteseite-rahmen-r2` §4).
- *
- * Geprüft wird, was den Rahmen ausmacht: die kanonische ORDNUNG, der
- * Standard-Offen-Entscheid D2a, die zwei Leerzustands-Arten, der EINE
- * Kopf-Hinweis, der Deep-Link und der Klapp-Speicher.
+ * Der KERN aller Geräteseiten (Konzept „Geräteseiten: Ein Blick, eine
+ * Antwort"). Geprüft wird, was den Kern ausmacht: die feste Ordnung der fünf
+ * Bausteine, die eigene Technik-Ansicht (E1 a), die alten Lesezeichen, der
+ * EINE Kopf-Hinweis und die Deep-Links ohne zweite Raute.
  */
-describe('SEKTIONS_ORDNUNG — die feste Reihenfolge (§4.4)', () => {
-  it('ist genau die neun Sektionen des Konzepts, in seiner Reihenfolge', () => {
-    expect(SEKTIONS_ORDNUNG).toEqual([
+describe('BAUSTEIN_ORDNUNG - fünf Bausteine, immer in derselben Reihenfolge', () => {
+  it('ist Jetzt · Steuerung · Heute · Aktivität · Gerät & Verbindung', () => {
+    expect(BAUSTEIN_ORDNUNG).toEqual(['buehne', 'steuerung', 'heute', 'aktivitaet', 'details']);
+    expect(BAUSTEIN_ORDNUNG.map((id) => BAUSTEIN_TITEL[id])).toEqual([
+      'Jetzt', 'Steuerung', 'Heute', 'Aktivität', 'Gerät & Verbindung',
+    ]);
+  });
+
+  it('gibt jedem Technik-Teil einen Namen', () => {
+    for (const id of TECHNIK_ORDNUNG) expect(TECHNIK_TITEL[id]?.trim()).toBeTruthy();
+    expect(TECHNIK_ANSICHT_TITEL).toBe('Technik & Diagnose');
+  });
+});
+
+describe('bausteine / technikTeile - die Ordnung gehört dem Kern', () => {
+  it('sortiert kanonisch, egal in welcher Reihenfolge der Wirt anbietet', () => {
+    expect(bausteine(['details', 'buehne', 'aktivitaet', 'steuerung'])).toEqual([
+      'buehne', 'steuerung', 'aktivitaet', 'details',
+    ]);
+    expect(technikTeile(['rohdaten', 'register', 'plattform'])).toEqual([
+      'register', 'rohdaten', 'plattform',
+    ]);
+  });
+
+  it('lässt Fehlendes STILL weg - kein Kasten, der erklärt, dass er leer ist (S5)', () => {
+    expect(bausteine(['buehne', null, false, undefined, 'details'])).toEqual(['buehne', 'details']);
+    expect(technikTeile([null, 'rohdaten'])).toEqual(['rohdaten']);
+  });
+
+  it('nennt doppelt Angebotenes einmal und ignoriert Unbekanntes', () => {
+    expect(bausteine(['buehne', 'buehne', 'erfunden' as BausteinId])).toEqual(['buehne']);
+    expect(technikTeile(['register', 'register', 'erfunden' as TechnikId])).toEqual(['register']);
+  });
+});
+
+describe('sprungZiel - wohin eine Adresse springt', () => {
+  const basis = '#/anlage/s1/geraet/vp-1/inverter';
+
+  it('liest einen Baustein der Hauptansicht', () => {
+    expect(sprungZiel(`${basis}?abschnitt=steuerung`)).toEqual({ ansicht: 'geraet', baustein: 'steuerung' });
+    expect(sprungZiel(`${basis}?x=1&abschnitt=heute`)).toEqual({ ansicht: 'geraet', baustein: 'heute' });
+  });
+
+  it('öffnet die Technik-Ansicht über `?ansicht=technik` - mit oder ohne Teil', () => {
+    expect(sprungZiel(`${basis}?ansicht=technik`)).toEqual({ ansicht: 'technik', teil: null });
+    expect(sprungZiel(`${basis}?ansicht=technik&abschnitt=rohdaten`))
+      .toEqual({ ansicht: 'technik', teil: 'rohdaten' });
+    expect(istTechnikAnsicht(`${basis}?ansicht=technik`)).toBe(true);
+    expect(istTechnikAnsicht(`${basis}?abschnitt=details`)).toBe(false);
+  });
+
+  it('lässt `?ansicht=technik` gewinnen - ein Baustein daneben wäre dort unsichtbar', () => {
+    expect(sprungZiel(`${basis}?ansicht=technik&abschnitt=steuerung`))
+      .toEqual({ ansicht: 'technik', teil: null });
+  });
+
+  it('rät NIE: ein unbekanntes Wort öffnet nichts', () => {
+    expect(sprungZiel(`${basis}?abschnitt=erfunden`)).toBeNull();
+    expect(sprungZiel(basis)).toBeNull();
+    expect(sprungZiel('')).toBeNull();
+  });
+});
+
+describe('Alte Lesezeichen `?abschnitt=` bleiben gültig (E1 a)', () => {
+  const basis = '#/anlage/s1/geraet/vp-1/inverter';
+
+  it('führt jeden alten Abschnitt dorthin, wo sein Inhalt heute wohnt', () => {
+    expect(sprungZiel(`${basis}?abschnitt=jetzt`)).toEqual({ ansicht: 'geraet', baustein: 'buehne' });
+    expect(sprungZiel(`${basis}?abschnitt=befehle`)).toEqual({ ansicht: 'geraet', baustein: 'aktivitaet' });
+    expect(sprungZiel(`${basis}?abschnitt=verbindung`)).toEqual({ ansicht: 'geraet', baustein: 'details' });
+    expect(sprungZiel(`${basis}?abschnitt=register`)).toEqual({ ansicht: 'technik', teil: 'register' });
+    expect(sprungZiel(`${basis}?abschnitt=diagnose`)).toEqual({ ansicht: 'technik', teil: 'rohdaten' });
+    expect(sprungZiel(`${basis}?abschnitt=plattform`)).toEqual({ ansicht: 'technik', teil: 'plattform' });
+  });
+
+  it('kennt alle neun Abschnitte des früheren Rahmens', () => {
+    const alt: AlterAbschnitt[] = [
       'jetzt', 'befehle', 'steuerung', 'komponenten', 'register',
       'verbindung', 'software', 'diagnose', 'plattform',
-    ]);
-  });
-
-  it('gibt jeder Sektion einen Namen und ein Sinnbild', () => {
-    for (const id of SEKTIONS_ORDNUNG) {
-      expect(SEKTION_TITEL[id]?.trim()).toBeTruthy();
-      expect(SEKTION_ICON[id]?.trim()).toBeTruthy();
-    }
-  });
-
-  it('nennt für jede Kunden-Sektion ihre Frage — nur die Plattform-Sicht hat keine', () => {
-    for (const id of SEKTIONS_ORDNUNG) {
-      if (id === 'plattform') expect(SEKTION_FRAGE[id]).toBeNull();
-      else expect(SEKTION_FRAGE[id]?.trim()).toBeTruthy();
-    }
-  });
-
-  it('lässt VIER Gesicht-Sektionen in „Steuerung & Grenzen" aufgehen', () => {
-    expect(GESICHT_ZU_RAHMEN.grenzen).toBe('steuerung');
-    expect(GESICHT_ZU_RAHMEN.einspeise).toBe('steuerung');
-    expect(GESICHT_ZU_RAHMEN.ausfallschutz).toBe('steuerung');
-    expect(GESICHT_ZU_RAHMEN.ladepark).toBe('steuerung');
-  });
-
-  it('bildet jede andere Gesicht-Sektion auf ihren gleichnamigen Platz ab', () => {
-    for (const id of ['jetzt', 'befehle', 'komponenten', 'register', 'verbindung', 'software'] as const) {
-      expect(GESICHT_ZU_RAHMEN[id]).toBe(id);
+    ];
+    for (const a of alt) {
+      expect(ALTER_ABSCHNITT[a]).toBeTruthy();
+      expect(sprungZiel(`${basis}?abschnitt=${a}`)).toEqual(ALTER_ABSCHNITT[a]);
     }
   });
 });
 
-describe('rahmen — die Ordnung gehört dem Rahmen, nicht dem Aufrufer', () => {
-  it('sortiert kanonisch, egal in welcher Reihenfolge der Wirt anbietet', () => {
-    const v = rahmen([
-      { id: 'software' }, { id: 'jetzt' }, { id: 'register' }, { id: 'befehle' },
-    ]);
-    expect(v.sektionen.map((s) => s.id)).toEqual(['jetzt', 'befehle', 'register', 'software']);
+describe('Adressen schreiben - Parameter, nie eine zweite Raute', () => {
+  const basis = '#/anlage/s1/geraet/vp-1/inverter';
+
+  it('schreibt die Technik-Ansicht und nimmt sie wieder heraus', () => {
+    const h = technikHash(basis, 'register');
+    expect(h).toBe(`${basis}?ansicht=technik&abschnitt=register`);
+    expect(h.slice(1)).not.toContain('#');
+    expect(ohneTechnikHash(h)).toBe(basis);
+    expect(technikHash(basis)).toBe(`${basis}?ansicht=technik`);
   });
 
-  it('lässt aus, was der Wirt nicht anbietet — nie eine leere Behauptung', () => {
-    const v = rahmen([{ id: 'jetzt' }, { id: 'verbindung' }]);
-    expect(v.sektionen.map((s) => s.id)).toEqual(['jetzt', 'verbindung']);
+  it('erhält fremde Parameter beim Hin- und Rückweg', () => {
+    const h = technikHash(`${basis}?f=1`, 'rohdaten');
+    expect(h).toBe(`${basis}?f=1&ansicht=technik&abschnitt=rohdaten`);
+    expect(ohneTechnikHash(h)).toBe(`${basis}?f=1`);
   });
 
-  it('ignoriert ein unbekanntes Fach', () => {
-    const v = rahmen([{ id: 'jetzt' }, { id: 'erfunden' as RahmenSektionId }]);
-    expect(v.sektionen.map((s) => s.id)).toEqual(['jetzt']);
-  });
-
-  it('zeigt eine doppelt genannte Sektion einmal — der erste Eintrag gewinnt', () => {
-    const v = rahmen([
-      { id: 'befehle', kurzfassung: 'zuletzt 14:02' },
-      { id: 'befehle', kurzfassung: 'etwas anderes' },
-    ]);
-    expect(v.sektionen).toHaveLength(1);
-    expect(v.sektionen[0].kurzfassung).toBe('zuletzt 14:02');
-  });
-
-  it('überschreibt den Namen nur, wenn ein Blatt ausdrücklich einen nennt', () => {
-    const v = rahmen([{ id: 'register', titel: 'Messwerte' }, { id: 'verbindung' }]);
-    expect(v.sektionen[0].titel).toBe('Messwerte');
-    expect(v.sektionen[1].titel).toBe(SEKTION_TITEL.verbindung);
-  });
-
-  it('nimmt einen leeren Namen NICHT als Namen', () => {
-    const v = rahmen([{ id: 'register', titel: '   ' }]);
-    expect(v.sektionen[0].titel).toBe(SEKTION_TITEL.register);
-  });
-});
-
-describe('Standard offen — Captain-Entscheid D2a', () => {
-  it('öffnet Jetzt und Befehle, alles Übrige bleibt zu', () => {
-    expect(standardOffen('jetzt')).toBe(true);
-    expect(standardOffen('befehle')).toBe(true);
-    for (const id of SEKTIONS_ORDNUNG) {
-      if (id === 'jetzt' || id === 'befehle') continue;
-      expect(standardOffen(id)).toBe(false);
+  it('ist mit `sprungZiel` rundlauffähig', () => {
+    for (const id of BAUSTEIN_ORDNUNG) {
+      expect(sprungZiel(abschnittHash(basis, id))).toEqual({ ansicht: 'geraet', baustein: id });
+    }
+    for (const teil of TECHNIK_ORDNUNG) {
+      expect(sprungZiel(technikHash(basis, teil))).toEqual({ ansicht: 'technik', teil });
     }
   });
 
-  it('trägt die Vorgabe an jedem Eintrag', () => {
-    const v = rahmen(SEKTIONS_ORDNUNG.map((id) => ({ id })));
-    const offen = v.sektionen.filter((s) => s.offenAlsVorgabe).map((s) => s.id);
-    expect(offen).toEqual(['jetzt', 'befehle']);
+  // ⚠ Die Batterie hat KEINE eigene Seite - ihre Komponenten-Karte führt auf die
+  // Hybrid-Seite und markiert dort GENAU ihre Kachel.
+  it('nennt zusätzlich die angesprungene KACHEL als eigenen Parameter', () => {
+    const h = abschnittHash(basis, 'buehne', 'speicher');
+    expect(h).toBe(`${basis}?abschnitt=buehne&kachel=speicher`);
+    expect(parseKachel(h)).toBe('speicher');
+    expect(sprungZiel(h)).toEqual({ ansicht: 'geraet', baustein: 'buehne' });
   });
 
-  it('gibt „Jetzt" als EINZIGE keinen Klapp-Kopf (§4.5)', () => {
-    expect(istKlappbar('jetzt')).toBe(false);
-    for (const id of SEKTIONS_ORDNUNG) {
-      if (id === 'jetzt') continue;
-      expect(istKlappbar(id)).toBe(true);
-    }
-  });
-});
-
-describe('Leerzustände — zwei Arten, zwei Behandlungen (§4.6)', () => {
-  it('STRUKTURELL leer: die Sektion entfällt, ihr Grund zieht in die Diagnose', () => {
-    const v = rahmen([
-      { id: 'jetzt' },
-      { id: 'register', entfaellt: true, grund: 'Dieses Gerät wird über seine Web-Schnittstelle gelesen.' },
-      { id: 'verbindung' },
-    ]);
-    expect(v.sektionen.map((s) => s.id)).toEqual(['jetzt', 'verbindung']);
-    expect(v.entfallen).toEqual(['Dieses Gerät wird über seine Web-Schnittstelle gelesen.']);
+  it('lässt eine gesetzte Kachel unangetastet, wenn keine genannt wird - `null` nimmt sie heraus', () => {
+    expect(abschnittHash(`${basis}?kachel=speicher`, 'aktivitaet'))
+      .toBe(`${basis}?kachel=speicher&abschnitt=aktivitaet`);
+    expect(zielHash(`${basis}?abschnitt=buehne&kachel=speicher`, { ansicht: 'geraet', baustein: 'buehne' }, null))
+      .toBe(`${basis}?abschnitt=buehne`);
   });
 
-  it('SITUATIV leer: die Sektion bleibt und trägt ihren Grund in der Kurzfassung', () => {
-    const v = rahmen([
-      { id: 'befehle', kurzfassung: 'Die Aufzeichnung hat noch nicht begonnen.' },
-    ]);
-    expect(v.sektionen.map((s) => s.id)).toEqual(['befehle']);
-    expect(v.sektionen[0].kurzfassung).toBe('Die Aufzeichnung hat noch nicht begonnen.');
-    expect(v.entfallen).toEqual([]);
+  it('behauptet ohne Parameter KEINE Kachel', () => {
+    expect(parseKachel(basis)).toBeNull();
+    expect(parseKachel(`${basis}?kachel=`)).toBeNull();
+    expect(parseKachel(`${basis}?kachel=%20`)).toBeNull();
+    expect(parseKachel('')).toBeNull();
   });
 
-  it('sammelt die Gründe in kanonischer Ordnung, nie in Aufruf-Ordnung', () => {
-    const v = rahmen([
-      { id: 'software', entfaellt: true, grund: 'kein Firmware-Stand' },
-      { id: 'register', entfaellt: true, grund: 'keine Register' },
-    ]);
-    expect(v.entfallen).toEqual(['keine Register', 'kein Firmware-Stand']);
-  });
-
-  it('behauptet ohne Grund nichts — eine entfallene Sektion ohne Satz bleibt still', () => {
-    const v = rahmen([{ id: 'register', entfaellt: true }]);
-    expect(v.sektionen).toEqual([]);
-    expect(v.entfallen).toEqual([]);
-  });
-
-  it('macht aus einer leeren Kurzfassung `null`, nie ein „—"', () => {
-    const v = rahmen([{ id: 'befehle', kurzfassung: '  ' }]);
-    expect(v.sektionen[0].kurzfassung).toBeNull();
+  it('gibt jedem Baustein und Technik-Teil einen eigenen Sprungpunkt', () => {
+    const ids = new Set([...BAUSTEIN_ORDNUNG, ...TECHNIK_ORDNUNG].map((id) => ankerId(id)));
+    expect(ids.size).toBe(BAUSTEIN_ORDNUNG.length + TECHNIK_ORDNUNG.length);
   });
 });
 
-describe('kurz — die Kurzfassung erfindet nichts', () => {
-  it('verbindet die belegten Teile mit „ · "', () => {
-    expect(kurz('zuletzt 14:02', 'bestätigt')).toBe('zuletzt 14:02 · bestätigt');
-  });
-
-  it('lässt leere Teile weg', () => {
-    expect(kurz('Solarman', null, '192.168.20.14', undefined, '  ', 'vor 12 s'))
-      .toBe('Solarman · 192.168.20.14 · vor 12 s');
-  });
-
-  it('gibt ohne einen einzigen belegten Teil `null` zurück', () => {
-    expect(kurz(null, undefined, '')).toBeNull();
-    expect(kurz()).toBeNull();
-  });
-});
-
-describe('kopfHinweis — höchstens EINER, der schlimmste (§4.1 Zeile 3)', () => {
-  const alle = SEKTIONS_ORDNUNG;
-
+describe('kopfHinweis - höchstens EINER, der schlimmste', () => {
   it('gibt ohne Befund nichts zurück', () => {
-    expect(kopfHinweis([], alle)).toBeNull();
-    expect(kopfHinweis([null, undefined], alle)).toBeNull();
+    expect(kopfHinweis([])).toBeNull();
+    expect(kopfHinweis([null, undefined])).toBeNull();
   });
 
-  it('zeigt den EINEN Befund samt der Sektion, die ihn erklärt', () => {
+  it('zeigt den EINEN Befund samt dem Ort, der ihn erklärt', () => {
     const h = kopfHinweis([
       { art: 'grenze', satz: 'Ihr Wechselrichter begrenzt auf 33,0 kW — hinterlegt sind 70,0 kW.', ton: 'warn' },
-    ], alle);
+    ]);
     expect(h).toEqual({
       satz: 'Ihr Wechselrichter begrenzt auf 33,0 kW — hinterlegt sind 70,0 kW.',
       ton: 'warn',
       art: 'grenze',
-      sektion: 'register',
+      ziel: { ansicht: 'technik', teil: 'register' },
     });
   });
 
@@ -208,153 +195,40 @@ describe('kopfHinweis — höchstens EINER, der schlimmste (§4.1 Zeile 3)', () 
       { art: 'verbindung' as const, satz: 'Tot', ton: 'off' as const },
       { art: 'waechter' as const, satz: 'Wächter', ton: 'warn' as const },
     ];
-    expect(kopfHinweis(befunde, alle)?.art).toBe('verbindung');
-    expect(kopfHinweis([...befunde].reverse(), alle)?.art).toBe('verbindung');
+    expect(kopfHinweis(befunde)?.art).toBe('verbindung');
+    expect(kopfHinweis([...befunde].reverse())?.art).toBe('verbindung');
   });
 
   it('ordnet die vier Arten: Verbindung > Rücklesen > Wächter > Grenze', () => {
     const satz = (art: 'verbindung' | 'ruecklesen' | 'waechter' | 'grenze') =>
       ({ art, satz: art, ton: 'warn' as const });
-    expect(kopfHinweis([satz('ruecklesen'), satz('waechter'), satz('grenze')], alle)?.art)
-      .toBe('ruecklesen');
-    expect(kopfHinweis([satz('waechter'), satz('grenze')], alle)?.art).toBe('waechter');
-    expect(kopfHinweis([satz('grenze')], alle)?.art).toBe('grenze');
+    expect(kopfHinweis([satz('ruecklesen'), satz('waechter'), satz('grenze')])?.art).toBe('ruecklesen');
+    expect(kopfHinweis([satz('waechter'), satz('grenze')])?.art).toBe('waechter');
+    expect(kopfHinweis([satz('grenze')])?.art).toBe('grenze');
   });
 
-  it('verwirft einen Befund ohne Satz — der Rahmen formuliert keinen', () => {
-    expect(kopfHinweis([{ art: 'waechter', satz: '   ', ton: 'warn' }], alle)).toBeNull();
+  it('verwirft einen Befund ohne Satz oder mit unbekannter Art - der Kern formuliert keinen', () => {
+    expect(kopfHinweis([{ art: 'waechter', satz: '   ', ton: 'warn' }])).toBeNull();
+    expect(kopfHinweis([{ art: 'erfunden' as 'grenze', satz: 'irgendwas', ton: 'warn' }])).toBeNull();
   });
 
-  it('verwirft eine unbekannte Befund-Art, statt sie zu zeigen', () => {
-    expect(kopfHinweis(
-      [{ art: 'erfunden' as 'grenze', satz: 'irgendwas', ton: 'warn' }],
-      alle,
-    )).toBeNull();
-  });
-
-  it('bietet KEINEN Weg an, wo die Seite die Sektion gar nicht hat', () => {
+  it('bietet KEINEN Sprung an, wo die Seite den Ort gar nicht hat', () => {
     const h = kopfHinweis(
       [{ art: 'grenze', satz: 'Grenze', ton: 'warn' }],
-      ['jetzt', 'verbindung'],
+      { bausteine: ['buehne', 'details'], technik: ['rohdaten'] },
     );
     expect(h?.satz).toBe('Grenze');
-    expect(h?.sektion).toBeNull();
-  });
-});
-
-describe('Klapp-Zustand — je Gerät, je Tab-Sitzung (§4.5)', () => {
-  it('schlüsselt je Gerät UND je Sektion', () => {
-    expect(sektionKey('site-1:inverter', 'register'))
-      .toBe('vp.geraet.sektion.site-1:inverter.register');
-    expect(sektionKey('site-1:inverter', 'register'))
-      .not.toBe(sektionKey('site-1:cp-A', 'register'));
+    expect(h?.ziel).toBeNull();
+    const r = kopfHinweis(
+      [{ art: 'ruecklesen', satz: 'Rücklesen', ton: 'warn' }],
+      { bausteine: ['buehne'], technik: [] },
+    );
+    expect(r?.ziel).toBeNull();
   });
 
-  it('lässt die gespeicherte Wahl über den Standard gewinnen — in BEIDE Richtungen', () => {
-    expect(initialSektionOffen('1', 'register')).toBe(true);
-    expect(initialSektionOffen('0', 'befehle')).toBe(false);
-  });
-
-  it('fällt ohne Wahl auf den Standard zurück', () => {
-    expect(initialSektionOffen(null, 'befehle')).toBe(true);
-    expect(initialSektionOffen(null, 'register')).toBe(false);
-    expect(initialSektionOffen(undefined, 'jetzt')).toBe(true);
-  });
-
-  it('nimmt alles außer den zwei bekannten Wörtern NICHT als Wahl', () => {
-    expect(initialSektionOffen('ja', 'register')).toBe(false);
-    expect(initialSektionOffen('', 'befehle')).toBe(true);
-  });
-});
-
-describe('Deep-Link `?abschnitt=` — ein Parameter, keine zweite Raute (§4.3)', () => {
-  it('liest die genannte Sektion', () => {
-    expect(parseAbschnitt('#/anlage/s1/geraet/vp-1?abschnitt=register')).toBe('register');
-  });
-
-  it('liest sie auch neben anderen Parametern', () => {
-    expect(parseAbschnitt('#/anlage/s1/geraet/vp-1?z=1&abschnitt=steuerung')).toBe('steuerung');
-  });
-
-  it('rät NIE: eine unbekannte Sektion öffnet nichts', () => {
-    expect(parseAbschnitt('#/anlage/s1/geraet/vp-1?abschnitt=erfunden')).toBeNull();
-    expect(parseAbschnitt('#/anlage/s1/geraet/vp-1')).toBeNull();
-    expect(parseAbschnitt('')).toBeNull();
-  });
-
-  it('schreibt die Sektion als Parameter, nie als zweite Raute', () => {
-    const h = abschnittHash('#/anlage/s1/geraet/vp-1', 'register');
-    expect(h).toBe('#/anlage/s1/geraet/vp-1?abschnitt=register');
-    expect(h.slice(1)).not.toContain('#');
-  });
-
-  it('erhält einen bestehenden Query-Teil und ersetzt nur den Abschnitt', () => {
-    expect(abschnittHash('#/anlage/s1/geraet/vp-1?abschnitt=jetzt&f=1', 'software'))
-      .toBe('#/anlage/s1/geraet/vp-1?abschnitt=software&f=1');
-  });
-
-  it('nimmt den Abschnitt wieder heraus', () => {
-    expect(abschnittHash('#/anlage/s1/geraet/vp-1?abschnitt=jetzt', null))
-      .toBe('#/anlage/s1/geraet/vp-1');
-  });
-
-  it('ist mit `parseAbschnitt` rundlauffähig', () => {
-    for (const id of SEKTIONS_ORDNUNG) {
-      expect(parseAbschnitt(abschnittHash('#/anlage/s1/box/vp-1', id))).toBe(id);
-    }
-  });
-
-  // ⚠ §5.3: die Batterie hat KEINE eigene Seite - ihre Komponenten-Zeile führt
-  // auf das Hybrid-Blatt und markiert dort GENAU ihre Kachel.
-  it('nennt zusätzlich die angesprungene KACHEL - als zweiter Parameter', () => {
-    const h = abschnittHash('#/anlage/s1/geraet/vp-1/inverter', 'jetzt', 'speicher');
-    expect(h).toBe('#/anlage/s1/geraet/vp-1/inverter?abschnitt=jetzt&kachel=speicher');
-    expect(h.slice(1)).not.toContain('#');
-    expect(parseKachel(h)).toBe('speicher');
-    expect(parseAbschnitt(h)).toBe('jetzt');
-  });
-
-  it('lässt die Kachel unangetastet, wenn keine genannt wird', () => {
-    // Ein Aufrufer, der nur die Sektion setzt, darf eine gesetzte Kachel nicht
-    // stillschweigend verlieren - `undefined` heisst „nichts ändern".
-    expect(abschnittHash('#/anlage/s1/geraet/vp-1?kachel=speicher', 'befehle'))
-      .toBe('#/anlage/s1/geraet/vp-1?kachel=speicher&abschnitt=befehle');
-    // Ausdrückliches `null` nimmt sie heraus.
-    expect(abschnittHash('#/anlage/s1/geraet/vp-1?abschnitt=jetzt&kachel=speicher', 'jetzt', null))
-      .toBe('#/anlage/s1/geraet/vp-1?abschnitt=jetzt');
-  });
-
-  it('behauptet ohne Parameter KEINE Kachel', () => {
-    expect(parseKachel('#/anlage/s1/geraet/vp-1')).toBeNull();
-    expect(parseKachel('#/anlage/s1/geraet/vp-1?abschnitt=jetzt')).toBeNull();
-    // Ein leerer Wert ist keine Kachel - nie ein Sprung ins Nichts.
-    expect(parseKachel('#/anlage/s1/geraet/vp-1?kachel=')).toBeNull();
-    expect(parseKachel('#/anlage/s1/geraet/vp-1?kachel=%20')).toBeNull();
-    expect(parseKachel('')).toBeNull();
-  });
-
-  it('gibt jeder Sektion einen eigenen Sprungpunkt', () => {
-    const ids = new Set(SEKTIONS_ORDNUNG.map((id) => ankerId(id)));
-    expect(ids.size).toBe(SEKTIONS_ORDNUNG.length);
-  });
-});
-
-describe('Rollen-Tor — die Plattform-Sicht ist eine Sektion wie jede andere (§4.7)', () => {
-  it('erscheint nur, wenn der Wirt sie anbietet — es gibt keine zweite Sektionsliste', () => {
-    const kunde = rahmen([{ id: 'jetzt' }, { id: 'verbindung' }]);
-    expect(kunde.sektionen.map((s) => s.id)).not.toContain('plattform');
-
-    const admin = rahmen([{ id: 'jetzt' }, { id: 'verbindung' }, { id: 'plattform' }]);
-    expect(admin.sektionen.map((s) => s.id)).toEqual(['jetzt', 'verbindung', 'plattform']);
-  });
-
-  it('setzt sie ans ENDE, egal wo der Wirt sie nennt', () => {
-    const v = rahmen([{ id: 'plattform' }, { id: 'jetzt' }, { id: 'diagnose' }]);
-    expect(v.sektionen.map((s) => s.id)).toEqual(['jetzt', 'diagnose', 'plattform']);
-  });
-
-  it('beginnt zu — die Betreiber-Sicht drängt sich einem Kunden-Blick nie auf', () => {
-    expect(standardOffen('plattform')).toBe(false);
-    expect(standardOffen('diagnose')).toBe(false);
+  it('beschriftet den Sprung mit dem Namen seines Ziels', () => {
+    expect(zielTitel({ ansicht: 'geraet', baustein: 'aktivitaet' })).toBe('Aktivität');
+    expect(zielTitel({ ansicht: 'technik', teil: 'register' })).toBe('Register');
+    expect(zielTitel({ ansicht: 'technik', teil: null })).toBe('Technik & Diagnose');
   });
 });

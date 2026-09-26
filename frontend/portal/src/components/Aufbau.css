@@ -1,0 +1,1182 @@
+/*
+ * Der Reiter „Aufbau" als TABELLE mit Gruppen (Konzept „Aufbau und
+ * Gerätekatalog", Runde 2, K1–K6 = A): Anlage → Box → Gerät → Messwert, mit
+ * Suche und Filtern. Bauteil-lokal; `index.css` bleibt unberührt.
+ *
+ * Ruhige Optik mit Absicht: einfarbige Symbole statt Verlaufs-Kacheln, dünne
+ * Linien, Zahlen mit fester Breite. Farbe trägt nur Zustand und Handlung.
+ *
+ * Layout über CONTAINER-Queries (das `GeraetRahmen.css`-Muster): unter 720 px
+ * Breite werden die Spalten zu zwei Zeilen - am Telefon genauso wie in einem
+ * schmalen Fenster neben der Seitenleiste.
+ *
+ * Bewegung NUR über die Familie `--vp-motion-*`: neue Zeilen staffeln über
+ * `.vp-stagger` (`useStaffel`), der Aufklapp-Pfeil dreht mit
+ * `--vp-motion-base`. Unter `prefers-reduced-motion` stehen die Dauern auf 0.
+ */
+
+.vp-auf {
+  container: vp-auf / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  --vp-auf-haar: color-mix(in srgb, var(--vp-border) 55%, var(--vp-gray));
+  --vp-auf-einzug: 22px;
+}
+
+/* --- Kleine Bausteine ------------------------------------------------------- */
+
+.vp-auf-sym {
+  --c: var(--vp-text-gray);
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 9%, var(--vp-surface));
+  border: 1px solid color-mix(in srgb, var(--c) 20%, var(--vp-surface));
+}
+.vp-auf-sym.is-solar { --c: var(--vp-chart-pv-line); }
+.vp-auf-sym.is-battery { --c: var(--vp-battery-end); }
+.vp-auf-sym.is-ev { --c: var(--vp-ev-end); }
+.vp-auf-sym.is-home { --c: var(--vp-home-end); }
+.vp-auf-sym.is-grid { --c: var(--vp-grid); }
+.vp-auf-sym.is-navy,
+.vp-auf-sym.is-anlage { --c: var(--vp-action); }
+.vp-auf-sym.is-warn { --c: var(--vp-warn-ink); }
+.vp-auf-sym.is-fund { --c: var(--vp-text-gray); background: var(--vp-surface); border-style: dashed; }
+
+.vp-auf-tag {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: var(--vp-radius-pill);
+  font-family: var(--vp-font-body);
+  font-size: 0.68rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: 0;
+  white-space: nowrap;
+  background: var(--vp-neutral-soft);
+  color: var(--vp-text-gray);
+}
+.vp-auf-tag.is-hier,
+.vp-auf-tag.is-fuehrend {
+  background: var(--vp-tint);
+  color: var(--vp-action);
+}
+.vp-auf-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  white-space: nowrap;
+}
+.vp-auf-linkbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* --- Ort und Werkzeugleiste ------------------------------------------------- */
+
+.vp-auf-ort {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--vp-space-3);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+.vp-auf-ort > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-auf-ort b {
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-weight-semibold);
+}
+
+/* Werkzeugleiste: die Suche hat die ganze Breite, die Filter stehen darunter
+   (am breiten Fenster daneben). „Gerät hinzufügen" steht NICHT hier, sondern
+   in der Zeile mit der Anzahl direkt über der Tabelle (`.vp-auf-leiste`) -
+   so drückt kein Knopf das Suchfeld zusammen. */
+.vp-auf-werkzeug {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'suche'
+    'filter';
+  gap: var(--vp-space-2);
+  align-items: center;
+}
+@container vp-auf (min-width: 900px) {
+  .vp-auf-werkzeug {
+    grid-template-columns: minmax(14rem, 1fr) auto;
+    grid-template-areas: 'suche filter';
+  }
+}
+.vp-auf-leiste {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2) var(--vp-space-3);
+}
+.vp-auf-leiste > .vp-auf-zahlen {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.vp-auf-leiste > .vp-auf-neu {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.vp-auf-suche {
+  grid-area: suche;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  height: 40px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  color: var(--vp-text-gray);
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-suche:focus-within {
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-auf-suche input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+}
+.vp-auf-suche input::placeholder {
+  color: var(--vp-text-gray);
+}
+.vp-auf-suche-leeren {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vp-text-gray);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.vp-auf-suche-leeren:hover {
+  background: var(--vp-bg-light);
+  color: var(--vp-text-dark);
+}
+.vp-auf-filter {
+  grid-area: filter;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vp-auf-filter::-webkit-scrollbar {
+  display: none;
+}
+.vp-auf-filterfeld {
+  flex: 0 0 auto;
+}
+.vp-picker-ausloeser.vp-auf-filterknopf {
+  width: auto;
+  min-height: 36px;
+  padding: 0.3rem 0.55rem 0.3rem 0.75rem;
+  gap: 0.35rem;
+  font-size: var(--vp-text-sm);
+  border-color: var(--vp-auf-haar);
+  border-radius: var(--vp-radius-sm);
+}
+.vp-picker-ausloeser.vp-auf-filterknopf:not(.is-leer) {
+  border-color: var(--vp-action);
+  background: var(--vp-paleblue-start);
+}
+.vp-auf-neu {
+  display: inline-flex;
+  align-items: stretch;
+}
+.vp-auf-neu .vp-auf-neu-haupt {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  white-space: nowrap;
+}
+.vp-auf-neu .vp-rowmenu {
+  display: inline-flex;
+}
+.vp-auf-neu .vp-auf-neu-mehr {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid color-mix(in srgb, var(--vp-surface) 30%, transparent);
+  padding-inline: 0.55rem;
+  height: 100%;
+}
+.vp-auf-neu-kurz {
+  display: none;
+}
+@container vp-auf (max-width: 519px) {
+  .vp-auf-neu-lang {
+    display: none;
+  }
+  .vp-auf-neu-kurz {
+    display: inline;
+  }
+}
+
+/* Zahlen + Kurzfilter, aktive Filter als Chips */
+.vp-auf-zahlen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--vp-space-4);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+.vp-auf-zahlen b {
+  color: var(--vp-text-dark);
+  font-variant-numeric: tabular-nums;
+}
+.vp-auf-kurz {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.vp-auf-kurz.is-warn {
+  color: var(--vp-warn-ink);
+}
+.vp-auf-kurz:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vp-auf-aktiv {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: calc(var(--vp-space-2) * -1);
+}
+.vp-auf-aktiv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px 2px 10px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-paleblue-start);
+  border: 1px solid var(--vp-paleblue-end);
+  color: var(--vp-navy-2);
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-semibold);
+}
+.vp-auf-aktiv-chip button {
+  border: 0;
+  background: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: inherit;
+  cursor: pointer;
+}
+.vp-auf-aktiv-chip button:hover {
+  background: color-mix(in srgb, var(--vp-navy-2) 12%, transparent);
+}
+
+/* Der Filter-Knopf am Ende des Suchfelds - nur am Telefon (unten). */
+.vp-auf-filter-auf {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--vp-text-dark);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-bold);
+  cursor: pointer;
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+.vp-auf-filter-auf:hover,
+.vp-auf-filter-auf[aria-expanded='true'] {
+  background: var(--vp-bg-light);
+}
+.vp-auf-filter-auf.is-aktiv {
+  color: var(--vp-action);
+}
+.vp-auf-filter-auf span {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--vp-action);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * AM TELEFON steht über der Tabelle nur, was man zum Finden braucht: die Suche
+ * (mit dem Filter-Knopf darin), die Zahl der Geräte und „+ Gerät". Der Standort
+ * steht schon oben im Seitenkopf und als Anlage in der Tabelle, die vier Filter
+ * klappen erst auf Wunsch auf, und die Kurzfilter zeigen nur Symbol und Zahl -
+ * ihre Wörter bleiben für Screenreader lesbar.
+ */
+@container vp-auf (max-width: 719px) {
+  .vp-auf-ort,
+  .vp-auf-breit {
+    display: none;
+  }
+  .vp-auf-filter-auf {
+    display: inline-flex;
+  }
+  .vp-auf-filter {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    animation: vp-auf-ein var(--vp-motion-enter) var(--vp-ease-out) both;
+  }
+  .vp-auf-werkzeug:not(.is-filter-offen) .vp-auf-filter {
+    display: none;
+  }
+  .vp-auf-filter .vp-picker-ausloeser.vp-auf-filterknopf {
+    width: 100%;
+  }
+  .vp-auf-schmal-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .vp-auf-zahlen {
+    gap: 2px var(--vp-space-2);
+  }
+  .vp-auf-kurz {
+    padding: 2px 8px;
+    border-radius: var(--vp-radius-pill);
+    background: var(--vp-paleblue-start);
+  }
+  .vp-auf-kurz.is-warn {
+    background: color-mix(in srgb, var(--vp-warn-ink) 12%, transparent);
+  }
+}
+@keyframes vp-auf-ein {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--vp-motion-distance) * -1));
+  }
+}
+
+.vp-auf-technik-add {
+  border: 1px dashed var(--vp-field-border);
+  background: transparent;
+  color: var(--vp-text-gray);
+  border-radius: var(--vp-radius-sm);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-technik-add:hover {
+  color: var(--vp-action);
+  border-color: var(--vp-action);
+}
+
+/* --- Hinweise (nur, wenn es etwas zu sagen gibt) ---------------------------- */
+
+.vp-auf-hinweise {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-auf-hinweise li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-sm);
+  font-size: var(--vp-text-sm);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  color: var(--vp-text);
+  min-width: 0;
+}
+.vp-auf-hinweise li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-auf-hinweise li.is-warn {
+  background: #fff7e6;
+  border-color: #f6d9a6;
+  color: var(--vp-warn-ink);
+}
+.vp-auf-hinweise svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+/* Der eine Satz nach dem Speichern („„PV Dach" ist angelegt.") - er verschwindet
+   von selbst wieder (AufbauSection), die neue Zeile leuchtet kurz auf. */
+.vp-auf-erfolg {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-mint-start);
+  border: 1px solid var(--vp-mint-end);
+  color: var(--vp-ok-ink);
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  animation: vp-auf-ein var(--vp-motion-enter) var(--vp-ease-out) both;
+}
+.vp-auf-erfolg > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-auf-erfolg button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.vp-auf-erfolg button:hover {
+  background: color-mix(in srgb, var(--vp-ok-ink) 10%, transparent);
+}
+
+/* --- Die Tabelle -------------------------------------------------------------- */
+
+.vp-auf-t {
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-auf-haar);
+  border-radius: var(--vp-radius-sm);
+  overflow: hidden;
+  min-width: 0;
+}
+.vp-auf-t-kopf,
+.vp-auf-t-zeile {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 2.6fr) minmax(0, 1.35fr) minmax(0, 1.45fr) minmax(0, 1.05fr)
+    2.25rem;
+  column-gap: var(--vp-space-3);
+  align-items: center;
+  padding: 0 var(--vp-space-2) 0 var(--vp-space-3);
+  min-width: 0;
+}
+.vp-auf-t-kopf {
+  min-height: 34px;
+  background: var(--vp-bg-light);
+  border-bottom: 1px solid var(--vp-auf-haar);
+  font-size: 0.68rem;
+  font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+.vp-auf-t-kopf .is-rechts {
+  text-align: right;
+}
+.vp-auf-t-zeile {
+  min-height: 52px;
+  border-top: 1px solid var(--vp-border);
+  font-size: var(--vp-text-sm);
+  transition: background-color var(--vp-motion-fast) var(--vp-ease-inout);
+}
+.vp-auf-t-rumpf > .vp-auf-t-zeile:first-child {
+  border-top: 0;
+}
+.vp-auf-t-zeile.is-anlage {
+  min-height: 48px;
+  background: color-mix(in srgb, var(--vp-paleblue-start) 70%, var(--vp-surface));
+}
+.vp-auf-t-zeile.is-box {
+  min-height: 46px;
+  background: var(--vp-bg-light);
+}
+.vp-auf-t-zeile.is-teil {
+  min-height: 38px;
+  color: var(--vp-text-gray);
+}
+.vp-auf-t-zeile.is-geraet:not(.is-lesend) {
+  cursor: pointer;
+}
+.vp-auf-t-zeile.is-geraet:not(.is-lesend):hover {
+  background: color-mix(in srgb, var(--vp-bg-light) 70%, var(--vp-surface));
+}
+.vp-auf-t-zeile.is-fund {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--vp-surface) 0 9px,
+    color-mix(in srgb, var(--vp-bg-light) 80%, var(--vp-surface)) 9px 18px
+  );
+}
+.vp-auf-t-zeile.is-leer {
+  min-height: 42px;
+}
+/* Die Antwort auf einen Sprung (`?komponente=`): kurz hervorgehoben. */
+.vp-auf-t-zeile.is-angesprungen {
+  background: color-mix(in srgb, var(--vp-primary) 18%, var(--vp-surface));
+}
+
+/* Name: Einrückung je Ebene + dünne Führungslinien, gezeichnet, nicht erzählt. */
+.vp-auf-t-name {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  padding: 7px 0 7px calc(var(--ebene, 0) * var(--vp-auf-einzug));
+  background-repeat: no-repeat;
+}
+.vp-auf-t-zeile.is-leer > .vp-auf-t-name {
+  grid-column: 1 / -1;
+}
+.vp-auf-t-zeile.is-e1 > .vp-auf-t-name {
+  background-image: linear-gradient(var(--vp-auf-haar), var(--vp-auf-haar));
+  background-size: 1px 100%;
+  background-position: 11px 0;
+}
+.vp-auf-t-zeile.is-e2 > .vp-auf-t-name {
+  background-image:
+    linear-gradient(var(--vp-auf-haar), var(--vp-auf-haar)),
+    linear-gradient(var(--vp-auf-haar), var(--vp-auf-haar));
+  background-size: 1px 100%, 1px 100%;
+  background-position: 11px 0, calc(var(--vp-auf-einzug) + 11px) 0;
+}
+.vp-auf-t-zeile.is-e3 > .vp-auf-t-name {
+  background-image:
+    linear-gradient(var(--vp-auf-haar), var(--vp-auf-haar)),
+    linear-gradient(var(--vp-auf-haar), var(--vp-auf-haar)),
+    linear-gradient(var(--vp-auf-haar), var(--vp-auf-haar));
+  background-size: 1px 100%, 1px 100%, 1px 100%;
+  background-position: 11px 0, calc(var(--vp-auf-einzug) + 11px) 0,
+    calc(var(--vp-auf-einzug) * 2 + 11px) 0;
+}
+.vp-auf-t-auf,
+.vp-auf-t-auf-platz {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.vp-auf-t-auf {
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--vp-surface);
+  color: var(--vp-text-gray);
+  box-shadow: 0 0 0 1px var(--vp-auf-haar);
+  cursor: pointer;
+  position: relative;
+}
+.vp-auf-t-auf:hover {
+  color: var(--vp-action);
+  box-shadow: 0 0 0 1px var(--vp-action);
+}
+.vp-auf-t-auf svg {
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-auf-t-auf[aria-expanded='false'] svg,
+.vp-auf-t-gruppe[aria-expanded='false'] .vp-auf-t-auf svg {
+  transform: rotate(-90deg);
+}
+/* Die Anlage klappt über ihre ganze Namens-Fläche - ein großes Ziel. */
+.vp-auf-t-gruppe {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--vp-radius-sm);
+}
+.vp-auf-t-gruppe:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-auf-t-text {
+  display: grid;
+  min-width: 0;
+}
+.vp-auf-t-titel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  text-align: left;
+  text-decoration: none;
+}
+button.vp-auf-t-titel,
+a.vp-auf-t-titel,
+.vp-auf-t-titel a {
+  cursor: pointer;
+  color: var(--vp-text-dark);
+  text-decoration: none;
+}
+button.vp-auf-t-titel:hover .vp-auf-t-kuerze,
+a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
+.vp-auf-t-titel a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vp-auf-t-zeile.is-anlage .vp-auf-t-titel,
+.vp-auf-t-zeile.is-box .vp-auf-t-titel {
+  font-family: var(--vp-font-heading);
+  font-weight: var(--vp-weight-bold);
+}
+.vp-auf-t-titel.is-ruhig {
+  font-weight: var(--vp-weight-medium);
+  color: var(--vp-text);
+}
+.vp-auf-t-kuerze {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-auf-t-text small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+}
+.vp-auf-t-text small .is-warn,
+.vp-auf-t-name .is-warn {
+  color: var(--vp-warn-ink);
+  font-weight: var(--vp-weight-semibold);
+  white-space: nowrap;
+}
+.vp-auf-t-art {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vp-text-gray);
+}
+.vp-auf-t-zustand {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 7px;
+  align-items: center;
+  min-width: 0;
+}
+.vp-auf-t-zustand .w {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-weight-semibold);
+}
+.vp-auf-t-zustand small {
+  grid-column: 2;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  white-space: nowrap;
+}
+.vp-auf-t-zeile.is-warn .vp-auf-t-zustand .w {
+  color: var(--vp-warn-ink);
+}
+.vp-auf-t-zeile.is-off .vp-auf-t-zustand .w,
+.vp-auf-t-zeile.is-fund .vp-auf-t-zustand .w,
+.vp-auf-t-zeile.is-teil .vp-auf-t-zustand .w {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-weight-medium);
+}
+.vp-auf-t-wert {
+  justify-self: end;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+}
+.vp-auf-t-zeile.is-teil .vp-auf-t-wert {
+  font-weight: var(--vp-weight-medium);
+}
+.vp-auf-t-wert .is-leer {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-weight-regular);
+}
+.vp-auf-t-pfeil {
+  justify-self: end;
+  color: var(--vp-text-gray);
+  display: inline-flex;
+}
+.vp-auf-t-summe {
+  grid-column: 2 / 5;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 2px var(--vp-space-4);
+  min-width: 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  font-variant-numeric: tabular-nums;
+}
+.vp-auf-t-summe b {
+  color: var(--vp-text-dark);
+  font-weight: var(--vp-weight-semibold);
+}
+.vp-auf-t-aktion {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vp-auf-t-aktion.is-breit {
+  grid-column: 4 / 6;
+}
+/* Eine Nachbar-Anlage trägt „Wechseln": die Werte rücken eine Spalte ab. */
+.vp-auf-t-zeile.is-anlage.hat-wechsel > .vp-auf-t-summe {
+  grid-column: 2 / 4;
+}
+.vp-auf-t-zeile.is-anlage.hat-wechsel > .vp-auf-t-aktion {
+  grid-column: 4 / 6;
+}
+.vp-auf-t-plus,
+.vp-auf-t-mehr {
+  border: 1px solid var(--vp-auf-haar);
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  border-radius: 8px;
+  height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-bold);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-t-mehr {
+  color: var(--vp-text-gray);
+  padding: 0 6px;
+}
+.vp-auf-t-plus:hover,
+.vp-auf-t-mehr:hover {
+  border-color: var(--vp-action);
+  background: var(--vp-paleblue-start);
+  color: var(--vp-action);
+}
+.vp-auf-t-wechsel {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vp-auf-t-leer {
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vp-auf-t-leer.is-aktion {
+  border: 1px dashed var(--vp-field-border);
+  background: var(--vp-surface);
+  border-radius: var(--vp-radius-sm);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-action);
+  cursor: pointer;
+}
+.vp-auf-t-nichts > span {
+  display: grid;
+  justify-items: center;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-6) var(--vp-space-4);
+  text-align: center;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-sm);
+}
+.vp-auf-t mark {
+  background: color-mix(in srgb, var(--vp-solar) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.vp-auf-nur-mobil {
+  display: none;
+}
+
+/* Handy und schmale Fenster: zwei Zeilen statt fünf Spalten. */
+@container vp-auf (max-width: 719px) {
+  /* ⚠ Eine Container-Abfrage erreicht nur NACHKOMMEN - die Variable sitzt
+     deshalb an der Tabelle, nicht am Behälter `.vp-auf`. */
+  .vp-auf-t {
+    --vp-auf-einzug: 0px;
+  }
+  .vp-auf-t-titel .vp-auf-t-kuerze {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .vp-auf-t-auf-platz {
+    display: none;
+  }
+  .vp-auf-t-kopf {
+    display: none;
+  }
+  .vp-auf-t-zeile {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name wert'
+      'name zustand';
+    column-gap: var(--vp-space-2);
+    padding: 0 10px 0 8px;
+  }
+  .vp-auf-t-zeile > .vp-auf-t-name {
+    grid-area: name;
+    background-image: none !important;
+  }
+  .vp-auf-t-zeile > .vp-auf-t-wert {
+    grid-area: wert;
+    align-self: end;
+    padding-top: 8px;
+  }
+  .vp-auf-t-zeile > .vp-auf-t-zustand {
+    grid-area: zustand;
+    justify-self: end;
+    align-self: start;
+    display: flex;
+    gap: 6px;
+    padding-bottom: 8px;
+  }
+  .vp-auf-t-zeile > .vp-auf-t-zustand small,
+  .vp-auf-t-zeile > .vp-auf-t-art,
+  .vp-auf-t-zeile > .vp-auf-t-pfeil,
+  .vp-auf-t-zeile > [role='cell']:empty {
+    display: none;
+  }
+  .vp-auf-t-zeile.is-ok > .vp-auf-t-zustand .w {
+    color: var(--vp-text-gray);
+    font-weight: var(--vp-weight-medium);
+  }
+  .vp-auf-t-zeile.is-teil {
+    grid-template-areas: 'name wert';
+  }
+  .vp-auf-t-zeile.is-teil > .vp-auf-t-name {
+    padding-left: 30px;
+  }
+  .vp-auf-t-zeile.is-teil > .vp-auf-t-wert {
+    align-self: center;
+    padding: 0;
+  }
+  .vp-auf-t-zeile.is-anlage,
+  .vp-auf-t-zeile.is-box,
+  .vp-auf-t-zeile.is-fund {
+    grid-template-areas: 'name aktion';
+  }
+  .vp-auf-t-zeile.is-anlage > .vp-auf-t-summe,
+  .vp-auf-t-zeile.is-box > .vp-auf-t-zustand,
+  .vp-auf-t-zeile.is-fund > .vp-auf-t-zustand {
+    display: none;
+  }
+  .vp-auf-t-zeile > .vp-auf-t-aktion,
+  .vp-auf-t-zeile > .vp-auf-t-aktion.is-breit {
+    grid-area: aktion;
+    grid-column: auto;
+  }
+  .vp-auf-t-plus .lbl {
+    display: none;
+  }
+  .vp-auf-t-plus {
+    padding: 0 7px;
+  }
+  .vp-auf-nur-mobil {
+    display: inline-block;
+  }
+}
+
+/* --- Kurzblick --------------------------------------------------------------- */
+
+.vp-auf-kb {
+  container: vp-auf-modal / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-auf-kb-sub {
+  margin: 0;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-sm);
+  overflow-wrap: anywhere;
+}
+.vp-auf-kb-zustand {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text);
+}
+.vp-auf-kb-notiz {
+  margin: 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-auf-kb-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  overflow: hidden;
+}
+.vp-auf-kb-zeile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--vp-surface);
+  min-width: 0;
+}
+.vp-auf-kb-zeile + .vp-auf-kb-zeile {
+  border-top: 1px solid var(--vp-border);
+}
+.vp-auf-kb-kopf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-auf-kb-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: var(--vp-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.vp-auf-kb-wert {
+  flex: 0 0 auto;
+  display: grid;
+  justify-items: end;
+  font-weight: var(--vp-weight-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-auf-kb-wert small {
+  font-weight: var(--vp-weight-regular);
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-badge);
+}
+.vp-auf-kb-wert.is-leer {
+  color: var(--vp-text-gray);
+  font-weight: var(--vp-weight-regular);
+}
+.vp-auf-stift {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--vp-radius-sm);
+  color: var(--vp-text-gray);
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-stift:hover {
+  color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-auf-kb-marken {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-auf-marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-neutral-soft);
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-badge);
+  font-weight: var(--vp-weight-semibold);
+}
+.vp-auf-marke.is-ok {
+  background: var(--vp-mint-start);
+  color: var(--vp-ok-ink);
+}
+.vp-auf-marke.is-warn {
+  background: #fff7e6;
+  color: var(--vp-warn-ink);
+}
+.vp-auf-kb-verwaist {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--vp-warn-ink);
+  font-size: var(--vp-text-sm);
+}
+.vp-auf-gefahr {
+  color: var(--vp-chart-discharge);
+  border-color: color-mix(in srgb, var(--vp-chart-discharge) 45%, transparent);
+  background: transparent;
+}
+.vp-auf-kb-mehr summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-meta);
+  list-style: none;
+}
+.vp-auf-kb-mehr summary::-webkit-details-marker {
+  display: none;
+}
+.vp-auf-kb-mehr summary svg {
+  transition: transform var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-auf-kb-mehr[open] summary svg {
+  transform: rotate(90deg);
+}
+.vp-auf-kb-mehr[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vp-auf-kb-kanaele {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vp-auf-kb-kanaele span {
+  padding: 2px 8px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  font-size: var(--vp-text-badge);
+  color: var(--vp-text-gray);
+}
+.vp-auf-kb-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.vp-auf-aktion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: var(--vp-radius-sm);
+  border: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-semibold);
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--vp-motion-chrome);
+}
+.vp-auf-aktion:hover {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+.vp-auf-aktion.is-gefahr {
+  color: var(--vp-chart-discharge);
+}
+.vp-auf-kb-fuss {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  width: 100%;
+}
+.vp-auf-kb-register {
+  margin: 0;
+  font-size: var(--vp-text-badge);
+  color: var(--vp-text-gray);
+}
+.vp-auf-kb-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--vp-space-2);
+}

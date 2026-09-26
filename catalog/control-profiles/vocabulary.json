@@ -1,0 +1,154 @@
+{
+  "schema_version": "1.0",
+  "sicherheit": {
+    "A": "Herstellerdokument (Stand genannt)",
+    "B": "An unserem Gerät gemessen oder gelesen",
+    "C": "Feldquelle: Integration, Forum, frühere Scout-Recherche",
+    "D": "Unbelegt – am Gerät prüfen"
+  },
+  "absichten": [
+    {
+      "id": "E",
+      "kurz": "Eigenverbrauch",
+      "name": "Eigenverbrauch – Speicher gleicht aus",
+      "fenster": "[−P_ent,max ; +P_lad,max]",
+      "netzziel": "0",
+      "bedeutung": "Überschuss laden, Defizit decken, Netz → 0. Einspeisen erst, wenn der Speicher nichts mehr aufnimmt.",
+      "heute": "charge_from_surplus_only + charge_surplus_to_battery + cover_load_from_battery (oder unplanned_load_discharge)",
+      "wer": "Gerät"
+    },
+    {
+      "id": "E_laden",
+      "kurz": "Nur Überschuss laden",
+      "name": "Nur aus Überschuss laden, nicht entladen",
+      "fenster": "[0 ; +P_lad,max]",
+      "netzziel": "0 (nur Bezugsseite)",
+      "bedeutung": "Der Herzogau-Fall: jeden Überschuss einlagern, nie aus dem Netz laden, Speicher für später aufheben.",
+      "heute": "charge_from_surplus_only + charge_surplus_to_battery (ohne Deckungs-Flagge)",
+      "wer": "Gerät"
+    },
+    {
+      "id": "E_decken",
+      "kurz": "Nur decken",
+      "name": "Nur Verbrauch decken, nicht laden",
+      "fenster": "[−P_ent,max ; 0]",
+      "netzziel": "0 (nur Bezugsseite)",
+      "bedeutung": "Abends/nachts das Haus aus dem Speicher versorgen, kein Netzladen, kein Verkauf.",
+      "heute": "cover_load_from_battery, unplanned_load_discharge, limit_discharge_to_load, Box-Regel deficit_cover",
+      "wer": "Gerät"
+    },
+    {
+      "id": "E_gedrosselt",
+      "kurz": "Gedrosselt laden",
+      "name": "Eigenverbrauch mit Ladegrenze x kW",
+      "fenster": "[−P_ent,max ; +x]",
+      "netzziel": "0",
+      "bedeutung": "Laden über den Tag strecken, damit für die Mittagsspitze, eine Abregel- oder Negativpreis-Zeit Platz bleibt.",
+      "heute": "charge_from_surplus_only mit kleinem Planwert (nur Absenken)",
+      "wer": "Gerät, wenn es Grenzen kann"
+    },
+    {
+      "id": "N",
+      "kurz": "Netzladen x",
+      "name": "Aus dem Netz laden mit x kW",
+      "fenster": "[x ; x]",
+      "netzziel": "–",
+      "bedeutung": "Billiger/negativer Strompreis, nur wo Netzladen erlaubt ist (nicht an EEG-Anlagen).",
+      "heute": "battery_setpoint_kw > 0 ohne Überschuss-Flaggen, grid_charge_allowed = true",
+      "wer": "Sollwert"
+    },
+    {
+      "id": "H",
+      "kurz": "Halten",
+      "name": "Speicher halten",
+      "fenster": "[0 ; 0]",
+      "netzziel": "–",
+      "bedeutung": "Weder laden noch entladen, z. B. vor einer teuren Abendstunde.",
+      "heute": "battery_setpoint_kw = 0 ohne Flaggen",
+      "wer": "Sollwert oder Grenzen 0/0"
+    },
+    {
+      "id": "A",
+      "kurz": "Verkaufen x",
+      "name": "Gezielt entladen / einspeisen mit x kW",
+      "fenster": "[−x ; −x]",
+      "netzziel": "–",
+      "bedeutung": "Verkauf zur Preisspitze (Herzogau: −30 kW um 19:45).",
+      "heute": "battery_setpoint_kw < 0 ohne Deckungs-Flaggen",
+      "wer": "Sollwert"
+    }
+  ],
+  "ueberlagerungen": [
+    {
+      "id": "G",
+      "kurz": "Einspeisegrenze / Abregeln",
+      "name": "Einspeisegrenze am Netzpunkt, Abregelung",
+      "bedeutung": "Statische Grenze (Herzogau 30 kW), 0 kW bei Negativpreis, Planwert pv_limit_kw. Wirkt auf PV-Wechselrichter; der Speicher nimmt zuerst auf.",
+      "heute": "grid_export_limit_kw (Einspeisewächter), pv_limit_kw (Abregelung, curtailtrack)"
+    },
+    {
+      "id": "P",
+      "kurz": "Bezugsgrenze",
+      "name": "Bezugsgrenze (Lastspitze)",
+      "bedeutung": "Viertelstunden-Bezug unter z kW halten. Im Gerätemodus nur als Aufsicht mit Rücknahme.",
+      "heute": "grid_import_limit_kw (PeakTracker, NativePeakThreat)"
+    },
+    {
+      "id": "R",
+      "kurz": "Reserve",
+      "name": "SoC-Reserve und -Obergrenze",
+      "bedeutung": "Plattform-Boden (effective_floor_soc_pct) gilt immer; das Gerät kennt ihn oft nicht → Aufsicht nimmt zurück.",
+      "heute": "effective_floor_soc_pct, guards.Clamp"
+    }
+  ],
+  "hebel": {
+    "geraet": {
+      "kurz": "Gerät regelt",
+      "text": "Eigener Eigenverbrauchsmodus des Geräts, ggf. mit Lade-/Entladegrenzen (Fenster)."
+    },
+    "geraet_modus": {
+      "kurz": "Gerät, eigener Befehl",
+      "text": "Der Hersteller hat genau diese Absicht als eigenen Befehl (z. B. SolarEdge „nur PV-Überschuss laden“)."
+    },
+    "netzziel": {
+      "kurz": "Gerät, Netz-Sollwert",
+      "text": "Das Gerät regelt seinen Netzpunkt-Zähler auf einen vorgegebenen Wert (Victron, Deye netzseitig)."
+    },
+    "sollwert": {
+      "kurz": "Fester Sollwert",
+      "text": "Die Box gibt einen Leistungswert vor, das Gerät hält ihn. Richtig für Netzladen, Halten, Verkaufen."
+    },
+    "box": {
+      "kurz": "Box gedämpft",
+      "text": "Rückfall: die Box regelt der Messung nach – erst nach frischer Messung, Absenken sofort, Anheben gedämpft."
+    },
+    "zeitplan": {
+      "kurz": "Zeitplan (EEPROM)",
+      "text": "Nur über gespeicherte Zeitfenster des Geräts – wenige Wechsel je Tag, sonst Verschleiß."
+    },
+    "abregeln": {
+      "kurz": "Abregeln",
+      "text": "PV-Leistungsgrenze oder Einspeisegrenze."
+    },
+    "offen": {
+      "kurz": "offen",
+      "text": "Weg unbelegt – am Gerät oder beim Hersteller prüfen."
+    },
+    "keiner": {
+      "kurz": "–",
+      "text": "Nicht möglich oder nicht vorgesehen."
+    }
+  },
+  "rueckfall": {
+    "box": "Box regelt gedämpft (A1 verallgemeinert)",
+    "keiner": "kein Rückfall nötig oder möglich"
+  },
+  "nicht_aufgenommen": [
+    "SENEC: keine offizielle lokale Steuerschnittstelle gefunden (D).",
+    "RCT Power: proprietäres Protokoll, nicht recherchiert (D).",
+    "Solarwatt, LG, Qcells, Hoymiles-Speicher: nicht recherchiert (D)."
+  ],
+  "quellen": [
+    "repo_contract"
+  ]
+}

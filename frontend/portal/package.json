@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "test:csp": "test/csp-smoke.sh",
     "test:cache": "test/cache-smoke.sh",
-    "test:bundle": "test/bundle-smoke.sh"
+    "test:bundle": "test/bundle-smoke.sh",
+    "test:layout": "test/layout-smoke.sh"
   },
   "dependencies": {
     "echarts": "^5.5.1",

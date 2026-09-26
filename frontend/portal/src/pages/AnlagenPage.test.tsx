@@ -371,6 +371,52 @@ describe('Stufe 0 · eine Geraeteseite traegt weder Bereichs-Reiter noch den Anl
   });
 });
 
+/**
+ * E6 = A („Anlage – neu gedacht"): die Prognosen-Seite ist ein Werkzeug für
+ * VoltPilot. Ein Kunde mit altem Lesezeichen landet dort, wo die
+ * Treffsicherheit jetzt steht - im Fahrplan -, und nie auf einer leeren Seite.
+ */
+describe('E6 = A · die Prognosen-Seite ist ein Werkzeug für VoltPilot', () => {
+  const MIT_SPEICHER = anlageSurface({
+    entities: [
+      { id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } },
+    ] as never,
+    config: { plantKind: 'eigenverbrauch' },
+  });
+
+  function renderPrognose(surface: ReturnType<typeof anlageSurface> | null) {
+    return render(
+      <AnlagenPage
+        sites={[site]}
+        devices={[]}
+        devicesFetchedAt={null}
+        route={{ page: 'anlagen', siteId: 's-1', sub: 'prognose' as never, geraet: null as never }}
+        onNavigate={() => {}}
+        onReload={() => {}}
+        surface={surface}
+      />,
+    );
+  }
+
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  it('führt einen Kunden mit altem Lesezeichen in den Fahrplan', async () => {
+    expect(MIT_SPEICHER.deepViews).toContain('fahrplan');
+    window.location.hash = '#/anlage/s-1/prognose';
+    renderPrognose(MIT_SPEICHER);
+    await waitFor(() => expect(window.location.hash).toBe('#/anlage/s-1/fahrplan'));
+  });
+
+  it('wartet, solange die Anlage lädt - und nennt bis dahin den Weg', () => {
+    window.location.hash = '#/anlage/s-1/prognose';
+    renderPrognose(null);
+    expect(window.location.hash).toBe('#/anlage/s-1/prognose');
+    expect(screen.getByRole('link', { name: 'Fahrplan' })).toHaveAttribute('href', '#/anlage/s-1/fahrplan');
+  });
+});
+
 describe('Endzustand „nicht zugeordnet": Anlage MIT Daten, ohne v2-Komponenten (Captain-Nachtrag 06.08.2026)', () => {
   it('rendert die ruhige Zeile + den Hebel, und KEINEN M3-Knoten', async () => {
     mockAdaptive(false);
@@ -577,7 +623,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     ) as HTMLButtonElement;
     fireEvent.click(netzRow);
     // Der Hash trägt den Verlauf-Deeplink (Messwert + übernommener Zeitraum).
-    expect(window.location.hash).toContain('/anlage/s-1/messwerte');
+    expect(window.location.hash).toContain('/anlage/s-1/einzelwerte');
     expect(window.location.hash).toContain('m=e-grid:power_kw');
     expect(window.location.hash).toContain('z=tag'); // Default „Heute" → Tag
     // NIE ein Modal — weder am body noch im Container.
@@ -924,7 +970,7 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     expect(card?.querySelector('.vp-zustand.befund')).not.toBeNull();
     expect(card?.textContent).toContain('Zustand der Anlage');
     expect(card?.textContent).toContain('Gerät: meldet sich nicht');
-    expect(card?.textContent).toContain('Komponenten');
+    expect(card?.textContent).toContain('Aufbau');
   });
 
   it('alles grün: EINE ruhige Zeile mit dem Modus-Fuß in der Fläche (D5/D6)', async () => {
@@ -1067,8 +1113,10 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     // gemessene Befund des Konzepts war „dreimal untereinander". Der
     // Sticky-Kopf trägt sie ebenfalls, ist aber `aria-hidden`, solange er
     // nicht ausgelöst wurde.
+    // Seit V-04 (UX-Review) entfällt der Sticky-Kopf ganz, wenn er nur einen
+    // guten Zustand wiederholen würde - dann gibt es erst recht keine Dopplung.
     const sticky = container.querySelector('.vp-mob-sticky');
-    expect(sticky?.getAttribute('aria-hidden')).toBe('true');
+    expect(sticky == null || sticky.getAttribute('aria-hidden') === 'true').toBe(true);
     // Die Karte trägt das Zeitraum-Segment UND die Ringe - beide Blöcke der
     // abgelösten Leiste, in EINER Karte direkt unterm Fluss. Seit P5 sind die
     // Ringe echte Ringe (kein zweites Chip-Vokabular über derselben Zahl).
@@ -1806,7 +1854,10 @@ describe('UEMS AP-01 IP-8 · eine Anlage ohne Steuerung, Erzeuger und Speicher z
         />,
       );
       const reiter = [...container.querySelectorAll('.vp-bereich-tab')].map((t) => t.textContent);
-      expect(reiter, sub).toEqual(['Messwerte', 'Prognose', 'Wetter']);
+      // Seit dem Verlauf-Rework von main (763b87f39) heißt der Verlauf „Energie · Erlöse · Messwerte“;
+      // Preise und Wetter stehen im Fahrplan (MULTI hat einen), Prognosen nur für VoltPilot (41ed67c26, E6).
+      // Ohne Geld bleibt davon: kein Reiter „Erlöse“.
+      expect(reiter, sub).toEqual(['Energie', 'Messwerte']);
       await new Promise((r) => setTimeout(r, 0));
       expect(container.textContent, sub).not.toMatch(GELD);
       unmount();

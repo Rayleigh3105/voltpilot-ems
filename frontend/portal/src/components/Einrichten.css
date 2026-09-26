@@ -1,0 +1,319 @@
+/*
+ * Die Einrichten-Seite (Konzept „Aufbau und Gerätekatalog", Runde 2): Kopf mit
+ * Gerät und „Sie brauchen", darunter die Abschnitte an einer Leiste. Die Leiste
+ * ist die Prüfstrecke: grau = später, blau = jetzt dran, grün = fertig.
+ *
+ * Bewegung nur über `--vp-motion-*`: die Marke eines fertigen Abschnitts
+ * springt kurz auf (`--vp-ease-feder`), die Leiste färbt sich mit
+ * `--vp-motion-base`. Unter `prefers-reduced-motion` stehen die Dauern auf 0.
+ */
+
+.vp-ein {
+  display: grid;
+  gap: var(--vp-space-5);
+  min-width: 0;
+  container: vp-ein / inline-size;
+}
+.vp-ein-zurueck {
+  width: 36px;
+  height: 36px;
+  margin: -4px 0 -4px -8px;
+  border: 0;
+  border-radius: var(--vp-radius-sm);
+  background: transparent;
+  color: var(--vp-action);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.vp-ein-zurueck:hover {
+  background: var(--vp-bg-light);
+}
+
+/* --- Kopf -------------------------------------------------------------------- */
+.vp-ein-kopf {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-2) var(--vp-space-3);
+  align-items: center;
+  padding-bottom: var(--vp-space-4);
+  border-bottom: 1px solid var(--vp-border);
+}
+.vp-ein-kopf .vp-auf-sym {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+}
+.vp-ein-kopf-text {
+  display: grid;
+  min-width: 0;
+}
+.vp-ein-kopf-text b {
+  font-family: var(--vp-font-heading);
+  font-size: 1.02rem;
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-ein-kopf-text small {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+.vp-ein-brauchen,
+.vp-ein-kopf-hinweis {
+  grid-column: 1 / -1;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+}
+.vp-ein-brauchen span {
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  color: var(--vp-text-dark);
+}
+
+/* --- Abschnitte an der Leiste ------------------------------------------------- */
+.vp-ein-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.vp-ein-abschnitt {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  column-gap: var(--vp-space-3);
+  padding-bottom: var(--vp-space-5);
+  min-width: 0;
+}
+.vp-ein-abschnitt:last-child {
+  padding-bottom: 0;
+}
+.vp-ein-abschnitt::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 28px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--vp-border);
+  transition: background-color var(--vp-motion-base) var(--vp-ease-inout);
+}
+.vp-ein-abschnitt:last-child::before {
+  display: none;
+}
+.vp-ein-abschnitt.is-fertig::before {
+  background: color-mix(in srgb, var(--vp-ok-ink) 45%, var(--vp-border));
+}
+.vp-ein-marke {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: var(--vp-weight-bold);
+  font-variant-numeric: tabular-nums;
+  border: 2px solid var(--vp-gray);
+  color: var(--vp-text-gray);
+  background: var(--vp-surface);
+}
+.vp-ein-abschnitt.is-aktiv .vp-ein-marke {
+  border-color: var(--vp-action);
+  color: var(--vp-action);
+  box-shadow: 0 0 0 4px var(--vp-tint);
+}
+.vp-ein-abschnitt.is-fertig .vp-ein-marke {
+  border-color: var(--vp-ok-ink);
+  background: var(--vp-ok-ink);
+  color: #fff;
+  animation: vp-ein-marke var(--vp-motion-enter) var(--vp-ease-feder) both;
+}
+.vp-ein-abschnitt.is-fehler .vp-ein-marke {
+  border-color: var(--vp-chart-discharge);
+  color: var(--vp-chart-discharge);
+}
+@keyframes vp-ein-marke {
+  from {
+    transform: scale(0.6);
+  }
+}
+.vp-ein-rumpf {
+  display: grid;
+  gap: var(--vp-space-3);
+  align-content: start;
+  min-width: 0;
+}
+.vp-ein-rumpf > h3 {
+  margin: 0;
+  padding-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px var(--vp-space-2);
+  font-size: 1rem;
+  color: var(--vp-text-dark);
+}
+.vp-ein-rumpf > h3 small {
+  font-family: var(--vp-font-body);
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-medium);
+  color: var(--vp-text-gray);
+}
+.vp-ein-abschnitt.is-spaeter .vp-ein-rumpf > h3 {
+  color: var(--vp-text-gray);
+}
+.vp-ein-spaeter {
+  margin: 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+}
+
+/* --- Kleine Bausteine in den Abschnitten ---------------------------------------- */
+.vp-ein-vorschlag {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-paleblue-start);
+  border: 1px solid var(--vp-paleblue-end);
+  color: var(--vp-navy-2);
+  font-size: 0.7rem;
+  font-weight: var(--vp-weight-semibold);
+  vertical-align: 1px;
+}
+.vp-ein-notiz {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-2);
+  align-items: start;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+}
+.vp-ein-notiz svg {
+  margin-top: 2px;
+  color: var(--vp-action);
+}
+.vp-ein-laeuft {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+/* Der Haus-Kreisel (`.vp-spinner`, index.css) in Zeilengröße. */
+.vp-spinner.vp-ein-spin {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-width: 2px;
+}
+
+/* Drei Felder in einer Reihe (Adresse · Port · Unit-ID; Name · Register · Einheit),
+   am schmalen Fenster untereinander. Die erste Spalte ist die breite. */
+.vp-ein-drei {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--vp-space-3);
+  align-items: start;
+}
+@container vp-ein (max-width: 520px) {
+  .vp-ein-drei {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .vp-ein-drei > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+.vp-ein-drei .vp-assist-field {
+  margin-bottom: 0;
+}
+.vp-ein-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-action);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+/* Ein Häkchen mit Satz darunter („Als eigene Vorlage speichern"). */
+.vp-ein-cb {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--vp-space-2);
+  align-items: start;
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+  cursor: pointer;
+}
+.vp-ein-cb input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--vp-action);
+}
+.vp-ein-cb small {
+  display: block;
+  font-size: var(--vp-text-meta);
+  font-weight: var(--vp-weight-medium);
+  color: var(--vp-text-gray);
+}
+
+/* --- Fuß ------------------------------------------------------------------------ */
+.vp-ein-fuss {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--vp-space-2) var(--vp-space-3);
+}
+.vp-ein-grund {
+  flex: 1 1 14rem;
+  margin: 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-gray);
+}
+.vp-ein-knoepfe {
+  display: flex;
+  gap: var(--vp-space-3);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+/* Am Telefon: der Grund als eine kurze Zeile, darunter EINE Knopfzeile -
+   „Speichern" breit, „Abbrechen" daneben. Der Fuß klebt unten und soll so
+   wenig Platz nehmen wie möglich. */
+@media (max-width: 720px) {
+  .vp-ein-fuss {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--vp-space-2);
+  }
+  .vp-ein-grund {
+    flex: 0 0 auto;
+  }
+  .vp-ein-knoepfe {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .vp-ein-knoepfe > * {
+    width: 100%;
+  }
+}

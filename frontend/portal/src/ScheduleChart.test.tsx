@@ -12,7 +12,7 @@ import {
 } from './schedule';
 import { BEZUGSPREIS, BOERSENPREIS, EINSPEISEWERT, SPANNE } from './chartCopy';
 import type { SchedulePlan, ScheduleSlot } from './api';
-import { BAR, FILL, NOW, PANELS, STROKE } from './chartStyle';
+import { FILL, NOW, PANELS, STROKE } from './chartStyle';
 import { chartTheme } from './chartTheme';
 
 /**
@@ -654,11 +654,17 @@ describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
     expect(lastOption.yAxis[1].axisLine.show).toBe(false);
   });
 
-  it('deckelt die Balkenbreite und lässt eine Fuge (F9)', () => {
+  it('zeichnet den Speicher als nahtlose Blöcke - V-05 hebt F9 im Fahrplan auf', () => {
+    // Stäbe mit Fuge wurden am Telefon zur Subpixel-Schraffur und standen am
+    // Rechner als Kamm neben dem glatten Phasen-Band (UX-Review 24.09.2026).
     render(<ScheduleChart plan={plan(tag)} />);
     const bars = series('Batterie');
-    expect(bars.barMaxWidth).toBe(BAR.maxWidth);
-    expect(bars.barCategoryGap).toBe(BAR.categoryGap);
+    expect(bars.barCategoryGap).toBeUndefined();
+    expect(bars.barMaxWidth).toBeUndefined();
+    expect(typeof bars.barWidth).toBe('number');
+    const gefuellt = bars.data.filter((d: any) => d?.itemStyle);
+    expect(gefuellt.length).toBeGreaterThan(0);
+    for (const d of gefuellt) expect(d.itemStyle).toMatchObject({ borderWidth: 0, borderRadius: 0 });
   });
 
   it('zieht die Preislinie auf die LEIT-Stufe ihres Panels (F1-Hierarchie)', () => {
@@ -920,5 +926,45 @@ describe('ScheduleChart · das WORT nur, wo das Band-Segment es fasst (Pixel-Gat
     mockChartWidth = 375;
     render(<ScheduleChart plan={bandSlots()} showPhaseBand />);
     expect(series('Phase').markPoint).toBeUndefined();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * V-06 (UX-Review 24.09.2026) · EINE Legende
+ *
+ * Mit Phasen-Band standen dieselben Speicherfarben zweimal mit zwei Wortlauten
+ * da: „Laden aus Solarstrom" über dem Bild, „Solar laden" darunter. Jetzt
+ * nennt die eine Legende UNTER dem Bild die Phasen des Bands.
+ * ------------------------------------------------------------------------- */
+describe('ScheduleChart · eine Legende mit Phasen-Band (V-06)', () => {
+  const tagMitPhasen = () =>
+    plan(
+      Array.from({ length: 96 }, (_, i) =>
+        slot({ batteryKw: i >= 40 && i < 60 ? 2 : i >= 72 && i < 88 ? -2 : 0, gridKw: -1, socPct: 50 }),
+      ),
+    );
+
+  it('zeigt genau eine Legende - unter dem Bild, mit den Wörtern des Bands', () => {
+    const { container } = render(<ScheduleChart plan={tagMitPhasen()} showPhaseBand />);
+    const legenden = container.querySelectorAll('.vp-chart-legend');
+    expect(legenden).toHaveLength(1);
+    expect(container.querySelector('.vp-sched-bandlegend')).toBeNull();
+    const text = legenden[0].textContent ?? '';
+    expect(text).toContain('Solar laden');
+    expect(text).toContain('Entladen');
+    expect(text).toContain('Warten');
+    expect(text).not.toContain('Laden aus Solarstrom');
+    // Unter dem Bild: das Diagramm steht im Dokument VOR der Legende.
+    const bild = container.querySelector('.vp-chart')!;
+    expect(bild.compareDocumentPosition(legenden[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('ohne Band bleibt die Speicher-Legende über dem Bild', () => {
+    const { container } = render(<ScheduleChart plan={tagMitPhasen()} />);
+    const text = container.querySelector('.vp-chart-legend')?.textContent ?? '';
+    expect(text).toContain('Laden aus Solarstrom');
+    const bild = container.querySelector('.vp-chart')!;
+    const legende = container.querySelector('.vp-chart-legend')!;
+    expect(legende.compareDocumentPosition(bild) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

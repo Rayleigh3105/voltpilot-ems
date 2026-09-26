@@ -3,9 +3,12 @@ import {
   chargePointIdOf,
   chargerGeraetId,
   geraetSeite,
-  KEIN_VERBINDUNGS_VERLAUF,
+  ioVerbraucherGeraetId,
+  ioVerbraucherIdOf,
+  istIoModul,
   LAN_UNBEKANNT,
-  NUR_GELESEN,
+  NOT_AUS_AN,
+  NOT_AUS_LABEL,
   pvEinstiegEntityId,
   summenwertEinstieg,
   type GeraetSeiteInput,
@@ -15,7 +18,6 @@ import type {
   ControlStatus,
   CurtailmentStatus,
   Device,
-  EdgeVersion,
   EntityLocalSetup,
   SiteComponents,
   SiteEntity,
@@ -209,16 +211,6 @@ const CONTROL: ControlStatus = {
   checkedAt: FRISCH,
 };
 
-const EDGE: EdgeVersion[] = [
-  {
-    deviceId: 'dev-box',
-    siteId: 'site-1',
-    coreVersion: 'edge-2026.08.10',
-    paletteVersion: '0.9.0',
-    reportedAt: FRISCH,
-  },
-];
-
 function input(over: Partial<GeraetSeiteInput> = {}): GeraetSeiteInput {
   const entities = over.entities ?? [HYBRID, PRODUCER];
   const localSetup = over.localSetup ?? LOCAL_SETUP;
@@ -238,7 +230,6 @@ function input(over: Partial<GeraetSeiteInput> = {}): GeraetSeiteInput {
     components: COMPONENTS,
     control: CONTROL,
     curtailment: null,
-    edgeVersions: EDGE,
     charging: null,
     strategies: null,
     model: plantModel(entities, topology, localSetup, sources),
@@ -290,7 +281,7 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
     expect(zeile(v.verbindung, 'Anbindung')?.wert).toBe('SunSpec über das Netzwerk');
     expect(zeile(v.verbindung, 'Adresse')?.wert).toBe('192.168.254.30 : 502');
     expect(zeile(v.verbindung, 'Adresse')?.detail).toBe('Modbus-Adresse 1');
-    expect(zeile(v.verbindung, 'Lesetakt')?.wert).toBe('alle 5 s');
+    expect(zeile(v.verbindung, 'Lesetakt')?.wert).toBe('alle 5\u00a0s');
     expect(v.verbindungLeer).toBeNull();
   });
 
@@ -304,7 +295,7 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
     expect(zeile(v.verbindung, 'Anbindung')?.wert).toBe('Solarman-Logger (WLAN-Stick)');
     expect(zeile(v.verbindung, 'Adresse')?.wert).toBe('192.168.254.210 : 8899');
     expect(zeile(v.verbindung, 'Adresse')?.detail).toBe('Logger-Nr. 2985159064');
-    expect(zeile(v.verbindung, 'Lesetakt')?.wert).toBe('alle 5 s');
+    expect(zeile(v.verbindung, 'Lesetakt')?.wert).toBe('alle 5\u00a0s');
   });
 
   it('lässt das gespeicherte SOLL führen, wo es vorliegt', () => {
@@ -331,19 +322,25 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
     );
     const v = geraetSeite(input({ geraetId: 'inverter', localSetup: alt }));
     expect(v.verbindungLeer).toMatch(/meldet keine Verbindungsdaten/);
-    // aber der Zustand steht trotzdem da - eine leere Sektion gibt es nicht.
-    expect(zeile(v.verbindung, 'Zustand')).toBeTruthy();
+    // aber der Zustand steht trotzdem da - im Live-Punkt des Kopfs.
+    expect(v.kopf.zustand.wort).toBeTruthy();
   });
 
-  it('erfindet keinen Verbindungs-Verlauf', () => {
+  it('wiederholt den Live-Punkt nicht als Zeile (S6, V1)', () => {
     const v = geraetSeite(input({ geraetId: 'inverter' }));
-    expect(zeile(v.verbindung, 'Zustand')?.detail).toBe(KEIN_VERBINDUNGS_VERLAUF);
+    // Zustand und Datenalter stehen EINMAL - im Live-Punkt; die Kennung in
+    // Technik › Rohdaten.
+    expect(zeile(v.verbindung, 'Zustand')).toBeUndefined();
+    expect(zeile(v.verbindung, 'Letzte Messung')).toBeUndefined();
+    expect(zeile(v.verbindung, 'Kennung')).toBeUndefined();
+    expect(zeile(v.verbindung, 'Gelesen über')?.wert).toMatch(/^VoltPilot-Box /);
   });
 
-  it('nennt den Pflege-Ort samt Fassung', () => {
+  it('nennt den Pflege-Ort samt Fassung - in der Einrichtung, nicht im Kopf (S1)', () => {
     const v = geraetSeite(input({ geraetId: 'src-7c1e9a2b' }));
-    expect(zeile(v.verbindung, 'Einrichtung')?.wert).toBe('wird im Portal gepflegt (Fassung 3)');
-    expect(v.kopf.pflegeOrt).toBe('Einrichtung: im Portal');
+    expect(zeile(v.einrichtung, 'Einrichtung')?.wert).toBe('wird im Portal gepflegt (Fassung 3)');
+    expect(zeile(v.verbindung, 'Einrichtung')).toBeUndefined();
+    expect(v.kopf).not.toHaveProperty('pflegeOrt');
   });
 
   it('sagt bei einer box-verwalteten Anlage, dass an der Box gepflegt wird', () => {
@@ -353,7 +350,7 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
         components: { ...COMPONENTS, componentAuthority: 'box' },
       }),
     );
-    expect(v.kopf.pflegeOrt).toBe('Einrichtung: an Ihrer Box');
+    expect(zeile(v.einrichtung, 'Einrichtung')?.wert).toMatch(/^wird an Ihrer Box gepflegt/);
   });
 });
 
@@ -500,16 +497,24 @@ describe('geraetSeite · C Misst & steuert', () => {
 });
 
 describe('geraetSeite · G Steuerungs-Bezüge', () => {
-  it('sagt die k3-F4-Zeile an einem nur gelesenen Gerät', () => {
+  it('trägt „nur gelesen" als Abzeichen im Kopf - nie als eigene Zeile', () => {
     const v = geraetSeite(input({ geraetId: 'src-7c1e9a2b' }));
-    expect(zeile(v.steuerung, 'Steuerung')?.wert).toBe(NUR_GELESEN);
+    expect(v.kopf.steuerAbzeichen).toBeNull();
+    expect(zeile(v.steuerung, 'Steuerung')).toBeUndefined();
   });
 
-  it('nennt am steuernden Gerät die Freigabe und den Not-Aus', () => {
+  it('nennt am steuernden Gerät die Freigabe - „VoltPilot steuert" steht im Kopf', () => {
     const v = geraetSeite(input({ geraetId: 'inverter' }));
-    expect(zeile(v.steuerung, 'VoltPilot steuert')?.wert).toContain('Wechselrichter Scheune');
+    expect(v.kopf.steuerAbzeichen).toMatch(/^VoltPilot steuert /);
+    expect(zeile(v.steuerung, 'VoltPilot steuert')).toBeUndefined();
     expect(zeile(v.steuerung, 'Freigabe')?.wert).toBe('freigegeben');
-    expect(zeile(v.steuerung, 'Not-Aus an der Box')?.wert).toMatch(/^aus/);
+    // K3: ein Not-Aus, der AUS ist, ist keine Auskunft - die Zeile fehlt.
+    expect(zeile(v.steuerung, NOT_AUS_LABEL)).toBeUndefined();
+  });
+
+  it('nennt den Not-Aus, sobald er AN ist', () => {
+    const v = geraetSeite(input({ geraetId: 'inverter', control: { ...CONTROL, controlEnabled: false } }));
+    expect(zeile(v.steuerung, NOT_AUS_LABEL)?.wert).toBe(NOT_AUS_AN);
   });
 
   it('schreibt einen Steuerungs-Beleg NIE einem fremden Gerät zu', () => {
@@ -578,9 +583,9 @@ describe('geraetSeite · G Steuerungs-Bezüge', () => {
 });
 
 describe('geraetSeite · H Software und I Diagnose', () => {
-  it('sagt ehrlich, dass ein Modbus-Gerät seine Firmware nicht meldet', () => {
+  it('zeigt für ein Modbus-Gerät keine Firmware-Zeile - „liest Ihre Box nicht aus" war keine Auskunft (S3)', () => {
     const v = geraetSeite(input({ geraetId: 'inverter' }));
-    expect(zeile(v.software, 'Firmware des Geräts')?.wert).toBe('liest Ihre Box nicht aus');
+    expect(v.software).toEqual([]);
   });
 
   it('führt in der Diagnose die Rohkanäle und die Kennung auf der Box', () => {
@@ -637,7 +642,7 @@ describe('geraetSeite · die Ladesäule', () => {
     expect(v.kopf.kennung).toBe('CARPORT-1');
     // Eine Säule trägt keine Komponenten-Konfiguration - also behauptet die
     // Seite auch keinen Pflege-Ort für sie.
-    expect(v.kopf.pflegeOrt).toBeNull();
+    expect(v.einrichtung).toEqual([]);
   });
 
 });
@@ -708,5 +713,142 @@ describe('geraetSeite · BMS (P4)', () => {
       sources: mitBms({ bms_charge_limit_a: 270 }),
     }));
     expect(zeile(v.bms, 'Erlaubt gerade')?.wert).toMatch(/270.*laden.*—.*abgeben/);
+  });
+});
+
+// ============================================================================
+// K4 · ein Verbraucher am Relais-Ausgang eines I/O-Moduls
+// ============================================================================
+
+describe('geraetSeite · K4 Verbraucher am Ausgang eines I/O-Moduls', () => {
+  const MODUL: SiteEntity = {
+    id: 'ent-modul',
+    entityType: 'io-module',
+    typeLabel: 'I/O-Modul',
+    role: 'consumer',
+    label: 'I/O-Modul Keller',
+    control: false,
+    deviceId: 'dev-box',
+    capabilities: { measure: [] },
+    guards: null,
+    syncStatus: 'in_sync',
+    observed: null,
+    edgeSourceId: 'src-ebyte',
+  };
+  const HEIZSTAB: SiteEntity = {
+    id: 'ent-heiz',
+    entityType: 'heating-rod',
+    typeLabel: 'Heizstab',
+    role: 'consumer',
+    label: 'Heizstab Keller',
+    control: true,
+    deviceId: 'dev-box',
+    capabilities: { measure: [], actuate: [{ command: 'on_off' }] },
+    guards: null,
+    syncStatus: 'in_sync',
+    observed: null,
+    edgeSourceId: null,
+  };
+  const MODUL_SETUP: EntityLocalSetup = {
+    id: 'src-ebyte',
+    kind: 'source',
+    role: 'consumer',
+    brand: 'ebyte',
+    model: 'M31-AXAX8080G',
+    label: 'I/O-Modul Keller',
+    reportedAt: FRISCH,
+    adoptedEntityId: 'ent-modul',
+    communication: 'ebyte_modbus_tcp',
+    family: 'ebyte-m31',
+    host: '192.168.254.40',
+    port: 502,
+    unitId: 1,
+    serial: null,
+    intervalS: 5,
+  };
+  const MODUL_SRC: SiteSource = {
+    ...SOURCES[1],
+    sourceId: 'src-ebyte',
+    role: 'consumer',
+    brand: 'ebyte',
+    model: 'M31-AXAX8080G',
+    pvKw: null,
+  };
+
+  function k4(over: Partial<GeraetSeiteInput> = {}): GeraetSeiteInput {
+    const entities = [HYBRID, PRODUCER, MODUL, HEIZSTAB];
+    const localSetup = [...LOCAL_SETUP, MODUL_SETUP];
+    const sources = [...SOURCES, MODUL_SRC];
+    return input({
+      entities,
+      localSetup,
+      sources,
+      model: plantModel(entities, null, localSetup, sources, [
+        { entityId: 'ent-heiz', ioEntityId: 'ent-modul', ioChannel: 1 },
+      ]),
+      ...over,
+    });
+  }
+
+  it('adressiert den Verbraucher über `io-<Entität>` - rundlauffähig', () => {
+    expect(ioVerbraucherGeraetId('ent-heiz')).toBe('io-ent-heiz');
+    expect(ioVerbraucherIdOf('io-ent-heiz')).toBe('ent-heiz');
+    expect(ioVerbraucherIdOf('io-')).toBeNull();
+    expect(ioVerbraucherIdOf('src-ebyte')).toBeNull();
+    expect(ioVerbraucherIdOf(null)).toBeNull();
+  });
+
+  it('gibt ihm eine eigene Seite mit seinem Namen - nie dem des Moduls', () => {
+    const v = geraetSeite(k4({ geraetId: 'io-ent-heiz' }));
+    expect(v.gefunden).toBe(true);
+    expect(v.kopf.titel).toBe('Heizstab Keller');
+    expect(v.kopf.anschluss).toBe('Ausgang DO1 · I/O-Modul Keller');
+    // Er hat kein eigenes Modell - „Modell: Ebyte M31" wäre das des Moduls.
+    expect(v.kopf.modell).toBeNull();
+    expect(v.kopf.unterzeile).toMatch(/am Ausgang DO1 von I\/O-Modul Keller/);
+    expect(zeile(v.verbindung, 'Geschaltet über')?.wert).toBe('I/O-Modul Keller · Ausgang DO1');
+    // Gesteuert wird ER - der Kopf sagt es.
+    expect(v.kopf.steuerAbzeichen).toBe('VoltPilot steuert Heizstab Keller');
+  });
+
+  it('zählt ihn auf der Seite des MODULS nicht als gesteuert - das Modul bekommt keinen Befehl', () => {
+    const v = geraetSeite(k4({ geraetId: 'src-ebyte' }));
+    expect(v.komponenten.some((c) => c.entityId === 'ent-heiz' && c.io?.kanal === 1)).toBe(true);
+    expect(v.kopf.steuerAbzeichen).toBeNull();
+    expect(zeile(v.verbindung, 'Anbindung')?.wert).toBe('Modbus über das Netzwerk');
+  });
+
+  it('rät nichts, wenn die Bindung fehlt', () => {
+    const entities = [HYBRID, PRODUCER, MODUL, HEIZSTAB];
+    const localSetup = [...LOCAL_SETUP, MODUL_SETUP];
+    const v = geraetSeite(input({
+      geraetId: 'io-ent-heiz',
+      entities,
+      localSetup,
+      model: plantModel(entities, null, localSetup, SOURCES),
+    }));
+    expect(v.gefunden).toBe(false);
+    expect(v.grund).toMatch(/an keinem Ausgang eines I\/O-Moduls/);
+  });
+
+  it('erkennt ein I/O-Modul an seiner Kommunikation - EINE Regel', () => {
+    expect(istIoModul('ebyte_modbus_tcp')).toBe(true);
+    expect(istIoModul(' ebyte_modbus_tcp ')).toBe(true);
+    expect(istIoModul('modbus_tcp')).toBe(false);
+    expect(istIoModul(null)).toBe(false);
+  });
+});
+
+describe('geraetSeite · die Modell-Zeile des Kopfs', () => {
+  it('nennt Hersteller und Modell, auch wenn der Titel der Box-Name ist', () => {
+    const benannt = LOCAL_SETUP.map((l) => (l.id === 'inverter' ? { ...l, label: 'Speicher Scheune' } : l));
+    const v = geraetSeite(input({ geraetId: 'inverter', localSetup: benannt }));
+    expect(v.kopf.titel).toBe('Speicher Scheune');
+    expect(v.kopf.modell).toMatch(/^Deye /);
+  });
+
+  it('wiederholt den Titel nicht', () => {
+    const v = geraetSeite(input({ geraetId: 'inverter' }));
+    expect(v.kopf.modell).not.toBe(v.kopf.titel);
   });
 });

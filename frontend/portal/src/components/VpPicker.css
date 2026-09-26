@@ -134,6 +134,29 @@
   color: var(--vp-text-gray);
 }
 
+/* Filter-Knopf (`zaehler`): Name + Zahl statt Chips. */
+.vp-picker-zaehler {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--vp-text-dark);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.vp-picker-anzahl {
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-action);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-grid;
+  place-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .vp-picker-chips {
   display: flex;
   flex-wrap: wrap;

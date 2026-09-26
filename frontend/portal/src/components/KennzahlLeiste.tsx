@@ -54,6 +54,7 @@ export function KennzahlLeiste({
             <SwapNumber value={z.wert} />
             {z.einheit && <span className="vp-leiste-einheit">{z.einheit}</span>}
           </span>
+          {z.einordnung && <span className="vp-leiste-einordnung">{z.einordnung}</span>}
           {z.unterzeile && (
             <span className={`vp-leiste-sub${z.ton === 'warn' ? ' is-warn' : ''}`}>
               {z.unterzeile}

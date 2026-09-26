@@ -9,6 +9,7 @@ import { isFleetShell } from '../betriebsart';
 import { anlageRoute, type Route } from '../nav';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
+import { StandortVorschlagHinweis } from '../components/StandortVorschlagHinweis';
 import { AnlageSeite } from './AnlagenPage';
 import { anlageLeertext } from '../anlegeNurMessen';
 import { useAnlegeArt } from '../useAnlegeArt';
@@ -60,8 +61,9 @@ export function UebersichtPage(props: UebersichtProps) {
   }
   // Anwendungs-Programm Stufe 4 (E5): die Flotten-Ebene ist EINE Fläche. Die
   // frühere `FleetUebersicht` ist ersatzlos in das {@link PortfolioCockpit}
-  // übergegangen; seit Revision 2 unterscheidet die Betriebsart dort nur noch
-  // die DICHTE derselben Tabelle, nicht mehr Karten gegen Tabelle.
+  // übergegangen; seit dem 25.09.2026 zeigt es für jede Betriebsart dieselben
+  // vier Blöcke - die Betriebsart entscheidet hier nur, OB die Flotten-Ebene
+  // gilt (`isFleetShell`).
   //
   // ⚠ Ein KUNDE landet hier seit Stufe 4 gar nicht mehr: `showPortfolioNav`
   // hängt an der Flotten-Ebene, also leitet `redirectToPortfolio` ihn auf
@@ -72,11 +74,22 @@ export function UebersichtPage(props: UebersichtProps) {
   return (
     <PortfolioCockpit
       sites={props.sites}
-      onNavigate={props.onNavigate}
       onReload={props.onReload}
       isAdmin={props.isAdmin}
-      betriebsart={props.betriebsart ?? null}
       titel="Meine Anlagen"
+      // UEMS AP-02 IP-10/O18: die Vorschlagskarte der Standorte, nur mit Recht und offenen Vorschlägen.
+      hinweis={({ anwendungen, neuLaden }) => (
+        <StandortVorschlagHinweis
+          sites={props.sites}
+          isAdmin={props.isAdmin ?? false}
+          betriebsart={props.betriebsart ?? null}
+          anwendungen={anwendungen}
+          onBestaetigt={() => {
+            neuLaden();
+            props.onReload();
+          }}
+        />
+      )}
     />
   );
 }

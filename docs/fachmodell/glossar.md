@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 55 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 56 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -88,6 +88,7 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Feststellung · Wirksamkeit](#feststellung--wirksamkeit) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.7 (FS1–FS7, E4)
 - [Managementbewertung](#managementbewertung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG1–MG7, E6)
 - [Sitzung · Beschluss · Folge](#sitzung--beschluss--folge) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)
+- [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
 
 ## Kundenbereich
 
@@ -1359,3 +1360,17 @@ Eine Managementbewertung wird nur mit Sitzung (Tag, Leitung, Teilnehmende), Leit
 **Heute im Code.** Tabellen `managementbewertung_sitzung`, `managementbewertung_beschluss`, `managementbewertung_folge` (MIG/V20260925093000__uems_managementbewertung_beschluesse.sql:30, :57, :89; RLS + FORCE); Routen `/api/v1/energiemanagement/managementbewertungen/{kennung}` (services/api/src/main/java/com/voltpilot/api/web/ManagementbewertungController.java:43, AP-19 IP-23); Kundenwörter `UEMS_SITZUNG`, `UEMS_BESCHLUSS`, `UEMS_FOLGE` (PORTAL/glossar.ts:704). Wegweiser: `docs/agents/root/uems-managementbewertung-beschluesse.md`.
 
 **Abgrenzung.** Nicht eine Aufgabe des Systems und nicht selbst eine Maßnahme; kein Protokoll-Upload.
+
+## Tätigkeit des Speichers
+
+*Sicht: Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)*
+
+**Was der Speicher in einer Phase des Fahrplans tun soll — in fünf Wörtern: Sonne speichern · Günstig aus dem Netz laden · Verbrauch decken · Warten · Einspeisung pausieren.**
+
+Die Tätigkeit ist eine Aussage des PLANS über eine Phase, nie eine Messung: was der Speicher wirklich getan hat, sagen Geräteantwort und Messwerte. Dieselben Wörter stehen auf der Tagesuhr, im Bildfahrplan, in den Stationen, in den Antworten, im Erklär-Panel und in der Hilfe; eine Phase trägt nie zwei Namen. Seltene Tätigkeiten behalten ihren Namen aus dem Erklär-Panel (Verkaufen bzw. Einspeisen, Lastspitze kappen, Reserve halten). „Warten“ meint eine Phase ohne Laden und Abgeben — nicht den Ruhe-Zustand einer Anlage (AP-01 E7/E8).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** AN-1 am 24.09.2026: 00:00 Warten · 05:45 Verbrauch decken · 13:30 Günstig aus dem Netz laden · 14:30 Sonne speichern · 17:30 Verbrauch decken.
+
+**Heute im Code.** Die Wörter stehen als Konstanten `FAHRPLAN_TAETIGKEIT` in PORTAL/glossar.ts:187; die Zuordnung Rolle → Wort macht `filmLabel` (PORTAL/fahrplanFilm.ts:120), für die übrigen Rollen `roleLabel` (PORTAL/fahrplanWhy.ts:718). Die Rolle je Viertelstunde (`slot_role`) schreibt der Optimierer; das Tagesbild legt die Phasen auf die Uhrzeit (PORTAL/fahrplanTag.ts:165).
+
+**Abgrenzung.** Nicht das Betriebsmodell (die Betriebsweise der Anlage), nicht die Regel (eine Ausnahme obendrauf), nicht der Zustand „steuert“ (eine Beobachtung).

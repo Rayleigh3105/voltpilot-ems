@@ -283,7 +283,8 @@ export function AnlageFlow({
   kopf?: (schritte: readonly string[] | null) => ReactNode;
   /**
    * Der Standort, an dem die Anlage entstehen soll — vorbelegt vom Assistenten
-   * „Messen & Auswerten“ (Knopf „Messanlage anlegen“). Kein Schalter: der Modus folgt
+   * „Messen & Auswerten“ (Knopf „Messanlage anlegen“) oder von „Hinzufügen › Anlage“
+   * im Aufbau eines Standorts (UEMS AP-02 IP-9). Kein Schalter: der Modus folgt
    * weiter dem Fakt dieses Standorts (`anlegeArt`), und der Kunde kann ihn in Schritt 1
    * ändern. Ohne Angabe wie heute.
    */

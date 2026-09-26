@@ -7,6 +7,7 @@
  */
 import type { PlatformCertVerdict } from './api';
 import type { ControlState } from './control';
+import { AUFBAU_REITER } from './ebenenNav';
 
 export type HealthState = 'ok' | 'warn' | 'off';
 
@@ -125,7 +126,7 @@ export const ZUSTAND_LEVER: Record<
   HealthItem['key'],
   { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik'; label: string }
 > = {
-  device: { sub: 'modell', label: 'Komponenten' },
+  device: { sub: 'modell', label: AUFBAU_REITER },
   plan: { sub: 'fahrplan', label: 'Fahrplan' },
   control: { sub: 'steuerung', label: 'Steuerung' },
   battery: { sub: 'technik', label: 'Einstellungen' },

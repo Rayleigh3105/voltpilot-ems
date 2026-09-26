@@ -178,7 +178,10 @@ public class ConsumerOverrideService {
 
     private ConsumerRow requireConnected(UUID siteId, UUID entityId) {
         ConsumerRow row = requireConsumer(siteId, entityId);
-        if (row.deviceId() == null && row.edgeSourceId() == null && !ziel.hatQuelle(siteId, entityId)) {
+        // An I/O-module output IS a connection: the consumer's driver is the
+        // module channel, switched by the box that reads the module.
+        if (row.deviceId() == null && row.edgeSourceId() == null && !row.ioBound()
+                && !ziel.hatQuelle(siteId, entityId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Dieser Verbraucher ist noch nicht verbunden.");
         }
