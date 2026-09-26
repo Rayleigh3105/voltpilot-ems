@@ -87,6 +87,8 @@ class Buehne:
             self.surefire(klasse, SUREFIRE_GRUEN.format(name=klasse, tests=11))
 
         (wurzel / 'docs/rollout').mkdir(parents=True)
+        (wurzel / 'tools/nw3-box-image').mkdir(parents=True)
+        self.paare_schreiben(['edge-2026.09.4'])
         self.nw3(NW3_GRUEN)
         # GA verlangt ein Protokoll fuer ein ANDERES Paar als das ausgelieferte.
         neu = json.loads(json.dumps(NW3_GRUEN))
@@ -110,6 +112,15 @@ class Buehne:
     def nw3(self, inhalt, paar='edge-2026.09.4'):
         (self.wurzel / f'docs/rollout/nw3-protokoll-{paar}.json').write_text(
             json.dumps(inhalt), encoding='utf-8')
+
+    def paare_schreiben(self, namen):
+        paare = [{'name': n, 'core_ref': n, 'palette_ref': n} for n in namen]
+        (self.wurzel / 'tools/nw3-box-image/paare.json').write_text(
+            json.dumps({'paare': paare}), encoding='utf-8')
+
+    def commit_mit_baum(self, baum_von):
+        """Ein neuer Commit mit dem Baum von `baum_von` - wie der Merge-Commit auf main."""
+        return git(self.wurzel, 'commit-tree', f'{baum_von}^{{tree}}', '-p', self.kopf, '-m', 'Merge uems')
 
     def probe_json(self, inhalt):
         (self.probe / 'probe.json').write_text(json.dumps(inhalt), encoding='utf-8')
@@ -207,6 +218,30 @@ class TorPrueferTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn('stammt laut stand.txt von 0123456789abcdef', text)
 
+    def test_gleicher_commit_wird_als_solcher_benannt(self):
+        code, text = self.b.fahre('G0')
+        self.assertEqual(0, code, text)
+        self.assertIn(f'Stand {self.b.kopf[:8]} laut stand.txt, derselbe Commit', text)
+
+    def test_anderer_commit_mit_gleichem_baum_ist_belegt(self):
+        # Nach dem Merge nach main: anderer SHA, derselbe Baum wie der eingefrorene uems-Stand.
+        merge = self.b.commit_mit_baum(self.b.kopf)
+        git(self.b.wurzel, 'checkout', '-q', merge)
+        code, text = self.b.fahre('G0')
+        self.assertEqual(0, code, text)
+        self.assertIn(f'Stand {self.b.kopf[:8]} laut stand.txt, anderer Commit als {merge[:8]} '
+                      f'mit demselben Baum', text)
+        self.assertNotIn('derselbe Commit', text)
+
+    def test_anderer_commit_mit_anderem_baum_ist_offen(self):
+        (self.b.wurzel / 'geaendert.txt').write_text('x', encoding='utf-8')
+        git(self.b.wurzel, 'add', 'geaendert.txt')
+        git(self.b.wurzel, 'commit', '-q', '-m', 'anderer Baum')
+        code, text = self.b.fahre('G0')
+        self.assertEqual(1, code)
+        self.assertIn(f'stammt laut stand.txt von {self.b.kopf}', text)
+        self.assertIn('die Baeume sind verschieden', text)
+
     def test_bericht_aelter_als_der_stand_ist_offen(self):
         (self.b.laeufe / 'stand.txt').unlink()
         alt = time.time() - 86_400 * 30
@@ -284,6 +319,64 @@ class TorPrueferTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn('[offen] NW-3', text)
         self.assertIn('4 samples 2.0 im writer', text)
+
+    def test_nw3_nennt_jedes_paar_und_ist_erst_mit_allen_belegt(self):
+        self.b.paare_schreiben(['edge-2026.09.4', 'edge-2026.09.6'])
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('[offen] NW-3 ', text)
+        self.assertIn('2 Paar(e) aus paare.json', text)
+        self.assertIn('Paar edge-2026.09.4: 7 gruen', text)
+        self.assertIn('Paar edge-2026.09.6: kein NW-3-Protokoll', text)
+
+        zweites = json.loads(json.dumps(NW3_GRUEN))
+        zweites['paar'] = {'name': 'edge-2026.09.6'}
+        self.b.nw3(zweites, 'edge-2026.09.6')
+        code, text = self.b.fahre('G1')
+        self.assertEqual(0, code, text)
+        self.assertIn('[belegt] NW-3 ', text)
+        self.assertIn('Paar edge-2026.09.6: 7 gruen', text)
+
+    def test_ein_paar_mit_befund_haelt_nw3_offen(self):
+        self.b.paare_schreiben(['edge-2026.09.4', 'edge-2026.09.6'])
+        zweites = json.loads(json.dumps(NW3_GRUEN))
+        zweites['paar'] = {'name': 'edge-2026.09.6'}
+        zweites['punkte'][5] = {'punkt': '6c nach trennung', 'urteil': 'befund'}
+        self.b.nw3(zweites, 'edge-2026.09.6')
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('[offen] NW-3 ', text)
+        self.assertIn('6c nach trennung', text)
+
+    def test_protokoll_fuer_ein_anderes_core_palette_paar_zaehlt_nicht(self):
+        protokoll = json.loads(json.dumps(NW3_GRUEN))
+        protokoll['paar'] = {'name': 'edge-2026.09.4', 'core_ref': 'edge-2026.09.4', 'palette_ref': 'edge-2026.09.3'}
+        self.b.nw3(protokoll)
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('palette_ref edge-2026.09.3 statt edge-2026.09.4', text)
+
+    def test_ohne_paar_liste_ist_nw3_offen(self):
+        (self.b.wurzel / 'tools/nw3-box-image/paare.json').unlink()
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code)
+        self.assertIn('keine Paar-Liste unter', text)
+
+    def test_paar_liste_ueber_parameter(self):
+        eigene = self.b.wurzel / 'q07-paare.json'
+        eigene.write_text(json.dumps({'paare': [{'name': 'edge-2026.09.6'}]}), encoding='utf-8')
+        code, text = self.b.fahre('G1', paare=eigene)
+        self.assertEqual(1, code)
+        self.assertIn('1 Paar(e) aus q07-paare.json', text)
+        self.assertIn('Paar edge-2026.09.6: kein NW-3-Protokoll', text)
+
+    def test_ausgelieferte_paare_zaehlen_nicht_als_neues_image(self):
+        # edge-2026.10.1 steht jetzt im Feld: fuer GA bleibt kein neues Paar uebrig.
+        self.b.paare_schreiben(['edge-2026.09.4', 'edge-2026.10.1'])
+        code, text = self.b.fahre('GA')
+        self.assertEqual(1, code)
+        self.assertIn('[offen] NW-3neu', text)
+        self.assertIn('edge-2026.09.4, edge-2026.10.1', text)
 
     def test_ga_ohne_neues_image_ist_offen(self):
         (self.b.wurzel / 'docs/rollout/nw3-protokoll-edge-2026.10.1.json').unlink()

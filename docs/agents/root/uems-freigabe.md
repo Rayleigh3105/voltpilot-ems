@@ -30,8 +30,10 @@ die Generalprobe in [uems-generalprobe.md](uems-generalprobe.md), NW-3 in
 Die **gemessenen Suiten-Summen** des Zweiges, auf die der Tor-Prüfer mit `--laeufe` zeigt,
 stehen je Gesamtlauf unter `docs/rollout/gesamtlauf-<datum>.md` — zuletzt
 [gesamtlauf-2026-09-19.md](../../rollout/gesamtlauf-2026-09-19.md) (Stand `957217b6`,
-G0 = 9 von 9 belegt). Ein Bericht belegt **nur seinen** Commit: der Prüfer hält `stand.txt`
-gegen `HEAD` und lehnt einen Bericht eines anderen Standes ab.
+G0 = 9 von 9 belegt). Ein Bericht belegt **nur seinen** Stand: der Prüfer hält `stand.txt`
+gegen `HEAD` und nimmt nur denselben Commit oder einen Commit mit demselben Baum an (der
+Merge-Commit auf `main`); die Belegzeile nennt den Fall. NW-3 verlangt ein grünes Protokoll
+**je Paar** aus `tools/nw3-box-image/paare.json` (Q07, `--paare`).
 
 ## Termine des Betreibers — keine Tore
 
@@ -93,4 +95,5 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   Messnachweis liest: die Quittung ist nicht der Beleg, die Sample-Umschläge sind es.
 - **Ein Testlauf belegt nur den Stand, auf dem er lief.** Der Tor-Prüfer nimmt einen
   Surefire-Bericht nur an, wenn er nicht älter ist als der geprüfte Commit — oder wenn
-  `stand.txt` im Lauf-Verzeichnis denselben Commit nennt. Übersprungen ist nicht grün.
+  `stand.txt` im Lauf-Verzeichnis denselben Commit oder einen Commit mit demselben Baum
+  nennt. Übersprungen ist nicht grün.

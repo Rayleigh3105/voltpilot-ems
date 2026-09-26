@@ -12,7 +12,8 @@ bash tools/freigabe/pruefe-tor.sh G1 \
   --stand        /BETREIBER/freigabe-stand.yaml \
   --laeufe       /LAEUFE/surefire-reports \
   --blatt        /BETREIBER/bestandsblatt-2026-10-01.txt \
-  --generalprobe /BETREIBER/generalprobe
+  --generalprobe /BETREIBER/generalprobe \
+  --paare        /BETREIBER/q07-paare.json   # wahlfrei; Vorgabe tools/nw3-box-image/paare.json
 ```
 
 | Exit | Bedeutung |
@@ -37,7 +38,10 @@ Ein Beleg ist **nie** „die Datei existiert“. Was das Werkzeug tatsächlich p
   dieses Standes**. Das Werkzeug **fährt die Klassen nicht** — es liest
   `services/api/target/surefire-reports` (oder `--laeufe <verzeichnis>`) und sagt, von
   wann der Bericht ist. Liegt dort `stand.txt` mit einem Commit, wird er gegen den
-  geprüften Stand gehalten; ohne die Datei trägt ein Surefire-Bericht **keinen Commit**,
+  geprüften Stand gehalten: er gilt, wenn er **derselbe Commit** ist oder ein anderer Commit
+  mit **demselben Baum** (`git rev-parse <sha>^{tree}`) — so trägt der Merge-Commit auf `main`
+  den eingefrorenen `uems`-Stand unter anderem SHA. Die Belegzeile nennt, welcher Fall griff;
+  ein anderer Baum ist offen. Ohne die Datei trägt ein Surefire-Bericht **keinen Commit**,
   dann gilt: ein Bericht, der älter ist als der geprüfte Commit, ist kein Beleg.
   **Übersprungen ist nicht grün**, rot ist nicht grün.
 - **Bestandsblatt** (M-1): eine datierte Ergebnisdatei des Betreibers, **jünger als sieben
@@ -52,10 +56,13 @@ Ein Beleg ist **nie** „die Datei existiert“. Was das Werkzeug tatsächlich p
   Punkt offen. Mit so einer Zahl lässt sich kein Fenster planen.
 - **Rückweg** (NW-8): `rueckweg.json` mit `exit_code` 0, bekannter `wiederherstellung_ms`
   und bytegleichem Flyway-Stand samt Q01.
-- **NW-3**: das Protokoll unter `docs/rollout/nw3-protokoll-*.json`; jeder Punkt muss
-  `gruen` sein. Ist das Paar **aus dem Tag gebaut statt das Release-Artefakt**, sagt das
-  Werkzeug das dazu. Für **GA** zählt nur ein Protokoll für ein anderes Paar als das
-  ausgelieferte `edge-2026.09.4`.
+- **NW-3**: **jedes** (core, palette)-Paar im Feld braucht ein Protokoll unter
+  `docs/rollout/nw3-protokoll-*.json`, in dem jeder Punkt `gruen` ist; die Zeile nennt jedes
+  Paar einzeln. Welche Paare im Feld laufen, sagt Q07 des Betreibers — die Liste ist ein
+  Parameter: `tools/nw3-box-image/paare.json` oder `--paare <datei>`. Fehlt sie, ist NW-3
+  offen. Nennt das Protokoll `core_ref`/`palette_ref` anders als die Liste, zählt es nicht.
+  Ist ein Paar **aus dem Tag gebaut statt das Release-Artefakt**, sagt das Werkzeug das
+  dazu. Für **GA** zählt nur ein Protokoll für ein Paar, das **nicht** in der Liste steht.
 - **Gemergte Pakete** (G0): der PR-Commit muss vom geprüften Stand aus erreichbar sein.
   M-2 verlangt zusätzlich, dass `main` ein **Vorfahre** des geprüften Standes ist.
 
@@ -99,6 +106,7 @@ fährt auch `python3 -m unittest discover -s tools/bewertung -p 'test_*.py'`.
 Die Tests bauen ein Wegwerf-Repo mit genau der Geschichte, die G0 verlangt, und prüfen die
 Fälle, an denen das Werkzeug scheitern könnte: alles belegt → Exit 0 · ein Beleg fehlt →
 Exit 1 und die Zeile nennt ihn · roter oder übersprungener Surefire-Bericht → offen ·
-Bericht von einem anderen oder älteren Stand → offen · Blatt älter als sieben Tage → offen ·
+Bericht von einem anderen Baum oder älteren Stand → offen, gleicher Baum unter anderem
+Commit → belegt mit Nennung · NW-3 je Paar, ein fehlendes oder rotes Paar → offen · Blatt älter als sieben Tage → offen ·
 Wegwerf-Generalprobe → „kein Produktions-Beleg“ · Stand-Blatt kann einen maschinellen Punkt
 nicht grün machen · unbekanntes Tor → Hilfe.

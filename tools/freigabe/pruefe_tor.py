@@ -99,11 +99,19 @@ class Kontext:
         self.generalprobe = pathlib.Path(args.generalprobe) if args.generalprobe else None
         self.stand_pfad = pathlib.Path(args.stand) if args.stand else None
         self.stand = lies_stand(self.stand_pfad) if self.stand_pfad else {}
+        self.paare_pfad = (pathlib.Path(args.paare) if getattr(args, 'paare', None)
+                           else wurzel / 'tools/nw3-box-image/paare.json')
         self.kopf, self.kopf_zeit = self._kopf()
 
     def git(self, *argv) -> str:
         return subprocess.run(['git', '-C', str(self.wurzel), *argv],
                               capture_output=True, text=True, check=False).stdout.strip()
+
+    def baum(self, rev: str) -> str:
+        """Der Baum eines Commits, '' wenn das Repo den Commit nicht kennt."""
+        if not rev:
+            return ''
+        return self.git('rev-parse', '--verify', '--quiet', f'{rev}^{{tree}}')
 
     def _kopf(self):
         sha = self.git('rev-parse', 'HEAD')
@@ -153,6 +161,20 @@ def gleicher_stand(sha: str, kopf: str) -> bool:
     return len(sha) >= 7 and (kopf.startswith(sha) or sha.startswith(kopf))
 
 
+def stand_des_laufs(ctx: 'Kontext', sha: str):
+    """Traegt der Lauf-Commit aus stand.txt den geprueften Stand? '' = nein.
+
+    'commit': derselbe Commit. 'baum': ein anderer Commit mit demselben Baum - so traegt der
+    Merge-Commit auf main genau den eingefrorenen uems-Stand, nur unter einem anderen SHA."""
+    if gleicher_stand(sha, ctx.kopf):
+        return 'commit'
+    if len(sha) >= 7:
+        baum = ctx.baum(sha)
+        if baum and baum == ctx.baum(ctx.kopf):
+            return 'baum'
+    return ''
+
+
 # --------------------------------------------------------------------------- #
 # Pruefer
 # --------------------------------------------------------------------------- #
@@ -188,10 +210,16 @@ def surefire(klasse: str, landete_mit: str = '', wer: str = 'Crew'):
         stand_txt = lies_stand_txt(ctx.laeufe)
         if stand_txt is not None:
             sha = stand_txt['stand']
-            if not gleicher_stand(sha, ctx.kopf):
+            fall = stand_des_laufs(ctx, sha)
+            if not fall:
                 return OFFEN, (f'{kurz} ist gruen, aber der Bericht stammt laut stand.txt von {sha or "?"}, '
-                               f'geprueft wird {ctx.kopf[:8]}; Lauf auf diesem Stand wiederholen ({wer})')
-            woher = f'Stand {sha[:8]} laut stand.txt'
+                               f'geprueft wird {ctx.kopf[:8]}, und die Baeume sind verschieden; '
+                               f'Lauf auf diesem Stand wiederholen ({wer})')
+            if fall == 'commit':
+                woher = f'Stand {sha[:8]} laut stand.txt, derselbe Commit'
+            else:
+                woher = (f'Stand {sha[:8]} laut stand.txt, anderer Commit als {ctx.kopf[:8]} '
+                         f'mit demselben Baum {ctx.baum(ctx.kopf)[:8]}')
         else:
             if ctx.kopf_zeit and ctx.mtime(datei) < ctx.kopf_zeit:
                 return OFFEN, (f'{kurz} ist gruen, aber der Bericht vom {tag(ctx.mtime(datei))} ist AELTER '
@@ -313,7 +341,20 @@ def nw8_rueckweg(ctx: Kontext):
     return BELEGT, f'rueckweg.json: Wiederherstellung {dauer} ms, Flyway-Stand und Q01 bytegleich'
 
 
-AUSGELIEFERTES_PAAR = 'edge-2026.09.4'
+def ausgelieferte_paare(ctx: Kontext):
+    """Die (core, palette)-Paare im Feld aus paare.json (Q07 des Betreibers) - Liste der Eintraege.
+
+    Wirft ValueError mit einem Satz fuer den Bericht, wenn die Liste fehlt, kaputt oder leer ist."""
+    try:
+        daten = json.loads(ctx.paare_pfad.read_text(encoding='utf-8'))
+    except OSError:
+        raise ValueError(f'keine Paar-Liste unter {ctx.paare_pfad}')
+    except ValueError as fehler:
+        raise ValueError(f'Paar-Liste {ctx.paare_pfad} ist nicht lesbar ({fehler})')
+    paare = daten.get('paare') if isinstance(daten, dict) else None
+    if not isinstance(paare, list) or not paare or not all(isinstance(p, dict) and p.get('name') for p in paare):
+        raise ValueError(f'Paar-Liste {ctx.paare_pfad} nennt kein Paar mit Namen')
+    return paare
 
 
 def _nw3_protokolle(ctx: Kontext):
@@ -340,22 +381,56 @@ def _nw3_urteil(ctx: Kontext, datei, protokoll):
     return BELEGT, f'{quelle}: {protokoll.get("zusammenfassung")}{warnung}'
 
 
+def _nw3_protokoll_fuer(ctx: Kontext, paar: dict):
+    """Das juengste Protokoll mit dem Namen des Paares, sonst None."""
+    treffer = [(d, p) for d, p in _nw3_protokolle(ctx) if p.get('paar', {}).get('name') == paar['name']]
+    if not treffer:
+        return None
+    return max(treffer, key=lambda dp: str(dp[1].get('gefahren_am') or ''))
+
+
 def nw3_ausgeliefert(ctx: Kontext):
-    """G1: das AUSGELIEFERTE Image gegen die neue Cloud."""
-    for datei, protokoll in _nw3_protokolle(ctx):
-        if protokoll.get('paar', {}).get('name') == AUSGELIEFERTES_PAAR:
-            return _nw3_urteil(ctx, datei, protokoll)
-    return OFFEN, (f'kein NW-3-Protokoll fuer das ausgelieferte Paar {AUSGELIEFERTES_PAAR} unter '
-                   f'docs/rollout/; tools/nw3-box-image/nw3.sh einmal fahren (Crew)')
+    """G1: JEDES ausgelieferte Paar (paare.json, aus Q07) gegen die neue Cloud."""
+    try:
+        paare = ausgelieferte_paare(ctx)
+    except ValueError as fehler:
+        return OFFEN, f'{fehler}; der Betreiber traegt die Paare aus Q07 ein oder gibt --paare <datei> an'
+    urteile = []
+    for paar in paare:
+        name = paar['name']
+        gefunden = _nw3_protokoll_fuer(ctx, paar)
+        if gefunden is None:
+            urteile.append((OFFEN, f'Paar {name}: kein NW-3-Protokoll unter docs/rollout/; '
+                                   f'tools/nw3-box-image/nw3.sh fuer dieses Paar fahren (Crew)'))
+            continue
+        datei, protokoll = gefunden
+        im_protokoll = protokoll.get('paar', {})
+        abweichend = [f'{feld} {im_protokoll.get(feld)} statt {paar.get(feld)}'
+                      for feld in ('core_ref', 'palette_ref')
+                      if paar.get(feld) and im_protokoll.get(feld) and paar.get(feld) != im_protokoll.get(feld)]
+        if abweichend:
+            urteile.append((OFFEN, f'Paar {name}: {datei.relative_to(ctx.wurzel)} prueft ein anderes Paar '
+                                   f'({", ".join(abweichend)}); NW-3 fuer das Paar aus Q07 fahren (Crew)'))
+            continue
+        urteil, text = _nw3_urteil(ctx, datei, protokoll)
+        urteile.append((urteil, text))  # der Text nennt das Paar schon
+    kopf = f'{len(paare)} Paar(e) aus {ctx.paare_pfad.name}, jedes braucht ein gruenes Protokoll'
+    zeilen = '\n      '.join(t for _, t in urteile)
+    urteil = OFFEN if any(u == OFFEN for u, _ in urteile) else BELEGT
+    return urteil, f'{kopf}\n      {zeilen}'
 
 
 def nw3_neues_image(ctx: Kontext):
-    """GA: NW-3 gegen das NEUE Image - das ausgelieferte Paar zaehlt hier nicht."""
+    """GA: NW-3 gegen das NEUE Image - kein ausgeliefertes Paar zaehlt hier."""
+    try:
+        ausgeliefert = {p['name'] for p in ausgelieferte_paare(ctx)}
+    except ValueError as fehler:
+        return OFFEN, f'{fehler}; ohne die Liste ist nicht zu sagen, welches Image neu ist (Betreiber)'
     kandidaten = [(d, p) for d, p in _nw3_protokolle(ctx)
-                  if p.get('paar', {}).get('name') != AUSGELIEFERTES_PAAR]
+                  if p.get('paar', {}).get('name') not in ausgeliefert]
     if not kandidaten:
-        return OFFEN, (f'es gibt kein NW-3-Protokoll fuer ein anderes Paar als das ausgelieferte '
-                       f'{AUSGELIEFERTES_PAAR}; Edge-Release A ist nicht gebaut (Crew)')
+        return OFFEN, (f'es gibt kein NW-3-Protokoll fuer ein anderes Paar als die ausgelieferten '
+                       f'{", ".join(sorted(ausgeliefert))}; Edge-Release A ist nicht gebaut (Crew)')
     urteile = [_nw3_urteil(ctx, d, p) for d, p in kandidaten]
     offene = [t for u, t in urteile if u == OFFEN]
     if offene:
@@ -439,7 +514,7 @@ def punkte(tor: str):
                             ('q15_wal_archiv', 'Q15 WAL-Archiv laeuft (AP-20 IP-19)'))),
             ('NW-1', 'Generalprobe an einer wiederhergestellten Kopie', '§3.4 / §4.13', nw1_generalprobe),
             ('NW-8', 'Rueckweg geuebt, Dauer bekannt', '§3.4 / §4.13', nw8_rueckweg),
-            ('NW-3', 'Das ausgelieferte Box-Image gegen die neue Cloud', '§3.4 / §4.13', nw3_ausgeliefert),
+            ('NW-3', 'Jedes ausgelieferte Box-Paar gegen die neue Cloud', '§3.4 / §4.13', nw3_ausgeliefert),
             ('NW-4', 'Durchgehender Messkunden-Lauf', '§3.4 / §4.13',
              surefire('com.voltpilot.api.uems.UemsMesskundenLaufAbnahmeTest', 'PR 973, Kennzahl-Glied PR 975')),
             ('NW-5', 'Last "100 Messstellen" als 24-h-Messung', '§3.4 / §3.3',
@@ -557,6 +632,7 @@ def main(argv=None) -> int:
     p.add_argument('--laeufe', help='Verzeichnis mit Surefire-Berichten; Vorgabe services/api/target/surefire-reports')
     p.add_argument('--blatt', help='datierte Ergebnisdatei des Bestandsblatts (M-1)')
     p.add_argument('--generalprobe', help='Verzeichnis mit probe.json und rueckweg.json')
+    p.add_argument('--paare', help='Paar-Liste im Feld (Q07); Vorgabe tools/nw3-box-image/paare.json')
     p.add_argument('--wurzel', help='Repo-Wurzel; Vorgabe: zwei Ebenen ueber diesem Skript')
     try:
         args = p.parse_args(argv)
