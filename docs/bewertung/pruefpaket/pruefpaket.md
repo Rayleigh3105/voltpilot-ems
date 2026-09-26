@@ -422,7 +422,14 @@ Keine Zusage von VoltPilot an dieser Zeile.
 
 ## 2 Übersicht für Prüfende und Produktbeschreibung
 
-**Noch nicht vorhanden.** Beide entstehen in AP-20 IP-21 aus der freigegebenen Bewertung, also nach Ihrer Lesart (AP-20 IP-12), unter `docs/bewertung/produktbeschreibung/`. Sie lesen sie in einer eigenen Runde (½ Tag, E4). Ein neuer Bau dieses Pakets nimmt sie dann auf.
+Im Entwurf, gelesen aus `docs/bewertung/produktbeschreibung/`:
+
+| Datei | SHA-256 |
+|---|---|
+| beschreibung.md | `385e97e26aa255c4c13e0a410bfab0fe043ae5b2b1867767ac13acd13081d1ad` |
+| produktbeschreibung.json | `3c05821eea231e8657fa2e5919b7cf9f7cc9d2cb98dd46cc36e2ff6a192556ea` |
+| produktbeschreibung.sha256 | `e57401c946e41a561fb0551578601930ca1d38885aa30322d16350ccd9e474d5` |
+| uebersicht-fuer-pruefende.md | `d8fabecb0b6d742730c29f5ef8cde99e165a458a7025e656a3f7ad5f2b8f0056` |
 
 ## 3 Frageliste
 
