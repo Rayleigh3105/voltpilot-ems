@@ -1,0 +1,509 @@
+{
+ "kennung": "PB-01",
+ "zustand": "entwurf",
+ "hinweis": "Entwurf — Bewertung BWB-2026-01, gebauter Stand, nicht freigegeben",
+ "erzeugt_von": "tools/bewertung/produktbeschreibung.py (AP-20 IP-21)",
+ "freigegeben_von": null,
+ "bewertung": {
+  "kennung": "BWB-2026-01",
+  "art": "gebauter Stand",
+  "zustand": "entwurf",
+  "stand": "09862815f0d7a78e8a1d0e73160b74abd346bcf3",
+  "datum": "2026-09-25",
+  "pfad": "docs/bewertung/bewertungen/BWB-2026-01.json",
+  "sha256": "5450ec7d3f8b90f395eaa5588b5cb8ecc3cec8030902250099163159b724fbe4"
+ },
+ "quelle": {
+  "pfad": "docs/bewertung/beschreibung-saetze.json",
+  "sha256": "9763953d8a3e5d81d17d0a72080c10cdd0e729af538f9c91649c30cbff20a226"
+ },
+ "waechter": {
+  "zugelassen": 31,
+  "zurueckgehalten": 2,
+  "saetze": [
+   {
+    "teile": [
+     "beschreibung/titel"
+    ],
+    "bindung": null,
+    "satz": "Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/erster_satz"
+    ],
+    "bindung": null,
+    "satz": "VoltPilot zeigt für jede Fähigkeit, die es zusagt, womit sie geprüft ist, an welchem Stand und wann.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgaben_satz"
+    ],
+    "bindung": null,
+    "satz": "Was außerhalb von VoltPilot bei Ihnen bleibt, steht bei jeder Funktion dabei.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/funktion"
+    ],
+    "bindung": {
+     "zusage": "Z-004"
+    },
+    "satz": "VoltPilot hält Ihre Energiepolitik, Ihre Aufgaben, Ihre internen Audits und Ihre Managementbewertung mit Datum, Person und Prüfsumme fest und zeigt, wo jedes Original liegt.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": false,
+    "zugelassen": false,
+    "grund": "an Z-004 gebunden, Z-004 ist offen"
+   },
+   {
+    "teile": [
+     "beschreibung/funktion",
+     "uebersicht/6.4",
+     "uebersicht/6.5",
+     "uebersicht/9.1.1"
+    ],
+    "bindung": {
+     "zusage": "Z-002"
+    },
+    "satz": "VoltPilot misst, rechnet Kennzahlen und vergleicht mit Ihrer Bezugsbasis; was die Zahlen bedeuten, entscheiden Sie.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/6.2",
+     "uebersicht/6.4",
+     "uebersicht/6.5",
+     "uebersicht/9.1.1",
+     "uebersicht/10.1",
+     "uebersicht/10.2"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-04"
+    },
+    "satz": "Warum ein Monat anders war und ob eine Maßnahme gewirkt hat, sagen Sie selbst, mit Begründung. VoltPilot schlägt vor und zeigt die Messwerte.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/4.4",
+     "uebersicht/7.1"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-01"
+    },
+    "satz": "Ihr Energiemanagement als Ganzes einführen, mit Mitteln ausstatten, aufrechterhalten und verbessern.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/7.2",
+     "uebersicht/7.3"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-02"
+    },
+    "satz": "Festlegen, welche Kompetenz nötig ist, und sie nachweisen, tun Sie selbst. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/9.1.2"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-03"
+    },
+    "satz": "Ob Sie rechtliche Anforderungen einhalten, bewerten Sie selbst. VoltPilot bewertet das nicht.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/4.1",
+     "uebersicht/4.2"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-05"
+    },
+    "satz": "Ob der Klimawandel für Ihr Energiemanagement eine Rolle spielt, beurteilen Sie. VoltPilot führt dazu keine Angaben.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/7.5.3"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-06"
+    },
+    "satz": "Vor dem Ende Ihres Vertrags laden Sie den Gesamtabzug und bewahren ihn selbst auf.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/6.3",
+     "uebersicht/6.6"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-07"
+    },
+    "satz": "Messmittel und Zähler prüfen lassen, die Messplanung verantworten, eine Einstufung fachlich tragen.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/9.2.1",
+     "uebersicht/9.2.2"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-08"
+    },
+    "satz": "Interne Audits durchführen (Gespräche, Begehung), Auditorinnen und Auditoren auswählen und ihre Unabhängigkeit sichern.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/kundenaufgabe",
+     "uebersicht/4.3",
+     "uebersicht/5.1",
+     "uebersicht/5.2",
+     "uebersicht/5.3",
+     "uebersicht/6.1",
+     "uebersicht/7.4",
+     "uebersicht/7.5.1",
+     "uebersicht/7.5.2",
+     "uebersicht/8.1",
+     "uebersicht/8.2",
+     "uebersicht/8.3",
+     "uebersicht/9.3"
+    ],
+    "bindung": {
+     "kundenaufgabe": "KA-09"
+    },
+    "satz": "Entscheidungen der Leitung treffen und verantworten; Originale in Ihren Systemen führen, wo VoltPilot nur verweist.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/restpunkt"
+    ],
+    "bindung": {
+     "luecke": "L-004"
+    },
+    "satz": "Eine Kopie der Sicherung außerhalb des Rechenzentrums gibt es derzeit nicht.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": false,
+    "zugelassen": false,
+    "grund": "an L-004 gebunden, L-004 ist kein angenommener Restpunkt"
+   },
+   {
+    "teile": [
+     "beschreibung/verantwortung"
+    ],
+    "bindung": {
+     "zusage": "Z-075"
+    },
+    "satz": "Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "beschreibung/grenze",
+     "uebersicht/grenze"
+    ],
+    "bindung": null,
+    "satz": "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/titel"
+    ],
+    "bindung": null,
+    "satz": "Übersicht für Ihre Prüfenden",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/kopf"
+    ],
+    "bindung": null,
+    "satz": "Diese Übersicht ordnet die Abschnitte der Norm, nach der Sie Ihr Energiemanagement ausrichten, den Funktionen von VoltPilot zu und nennt, was bei Ihnen bleibt. Sie beruht auf der freigegebenen Bewertung; Datum und Stand stehen im Kopf.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/traeger"
+    ],
+    "bindung": null,
+    "satz": "VoltPilot hält nur den Verweis auf Ihr Original.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/traeger"
+    ],
+    "bindung": null,
+    "satz": "VoltPilot hält fest.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/4.3",
+     "uebersicht/5.2",
+     "uebersicht/5.3",
+     "uebersicht/7.5.2",
+     "uebersicht/9.2.1",
+     "uebersicht/9.3",
+     "uebersicht/10.1"
+    ],
+    "bindung": {
+     "zusage": "Z-056"
+    },
+    "satz": "Unter „Energiemanagement“ halten Sie Energiepolitik, Anwendungsbereich und weitere Dokumente mit Fassung und Freigabe fest, dazu Aufgaben, interne Audits, Feststellungen und die Managementbewertung mit den Beschlüssen Ihrer Leitung.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/traeger"
+    ],
+    "bindung": null,
+    "satz": "Nichts; das bleibt bei Ihnen.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/6.2"
+    ],
+    "bindung": {
+     "zusage": "Z-053"
+    },
+    "satz": "Unter „Ziele und Maßnahmen“ setzen Sie an einer Energieleistungskennzahl Energieziele und planen Maßnahmen mit Verantwortlichen und Terminen.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/6.3"
+    ],
+    "bindung": {
+     "zusage": "Z-047"
+    },
+    "satz": "Unter „Bewertung“ legen Sie fest, welche Prozesse Energie einsetzen.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/6.3"
+    ],
+    "bindung": {
+     "zusage": "Z-048"
+    },
+    "satz": "Die Messwerte schlagen eine Rangliste vor; einstufen, mit Begründung, tun Sie selbst.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/traeger"
+    ],
+    "bindung": null,
+    "satz": "VoltPilot misst und rechnet.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/6.4",
+     "uebersicht/6.5",
+     "uebersicht/9.1.1"
+    ],
+    "bindung": {
+     "zusage": "Z-051"
+    },
+    "satz": "Nach der Freigabe heißt die Kennzahl Energieleistungskennzahl; der Vergleich mit der Bezugsbasis und der Bericht „Leistungsvergleich“ zeigen je Monat, was gemessen und was erwartet war, ein Urteil nur bereinigt und mit seinem Rahmen.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/6.5"
+    ],
+    "bindung": {
+     "zusage": "Z-050"
+    },
+    "satz": "Mit einer Bezugsbasis legen Sie an einer Kennzahl fest, gegen welchen Zeitraum spätere Monate verglichen werden.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/7.5.3"
+    ],
+    "bindung": {
+     "zusage": "Z-057"
+    },
+    "satz": "Ihre Dateien bleiben in Ihren Systemen; das Portal zeigt, wo das Original liegt, und nennt die Fristen in der Wiedervorlage.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/7.5.3"
+    ],
+    "bindung": {
+     "zusage": "Z-058"
+    },
+    "satz": "Die Rolle „Einsicht“ erlaubt nur das Ansehen.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/9.1.1",
+     "uebersicht/10.2"
+    ],
+    "bindung": {
+     "zusage": "Z-054"
+    },
+    "satz": "Ist ein abgeschlossener Monat schlechter, als die Bezugsbasis erwarten lässt, vermerkt das Portal eine Auffälligkeit; ob daraus eine Abweichung oder eine Maßnahme wird und ob die Wirkung einer Maßnahme belegt ist, entscheiden Sie selbst, mit Begründung.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   },
+   {
+    "teile": [
+     "uebersicht/fuss"
+    ],
+    "bindung": null,
+    "satz": "Eine Zertifizierung nach ISO 50001 wird nicht versprochen.",
+    "funde": [],
+    "regeln": [],
+    "gebunden_an_positive_zeile": true,
+    "zugelassen": true,
+    "grund": null
+   }
+  ]
+ }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "kennzeichen": "U-2026-01",
+  "art": "wiederherstellung",
+  "betrifft": [
+    "Z-015"
+  ],
+  "datum": "2026-10-05",
+  "stand": "dcd7db409",
+  "person": "Betreiber (A. Muster, Fixture)",
+  "zustand": "durchgefuehrt",
+  "ergebnis": {
+    "dauer_ms": 1260000,
+    "flyway_bytegleich": true,
+    "q01_zaehlungen_gleich": true
+  },
+  "artefakt": {
+    "pfad": "U-2026-01/rueckweg.json",
+    "sha256": "12b37e36747439026a27dfd698b323535a6178446ef06507763199060e8ae7ba"
+  },
+  "bemerkung": "FIXTURE AP-20 IP-23 (RF-07): keine stattgefundene Übung. Dauer, Datum und Person sind die Annahmen des Konzepts; die echte Übung liefert der Betreiber (AP-20 IP-19, AP-14 NW-8)."
+}

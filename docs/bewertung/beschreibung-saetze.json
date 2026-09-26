@@ -1,0 +1,55 @@
+{
+ "kennung": "PB-01",
+ "lesehilfe": "Quelle der Produktbeschreibung (AP-20 IP-21, E7 = A): jeder Satz mit seiner Bindung, Wortlaut aus FM/vp-uems-ap20-fundament/report.md §5.8. Gelesen von tools/bewertung/produktbeschreibung.py; die Dateien unter produktbeschreibung/ entstehen nur daraus und aus der Bewertung, nie von Hand. Ein Satz an einer Zusage ohne positives Urteil wird zurückgehalten (PB1), ein Satz mit verbotenem Wort ist rot (PB2). Rahmen-Sätze (Titel, erster Satz, Grenz-Satz, Kopf und Fuß der Übersicht) stehen im Werkzeug, nicht hier.",
+ "funktionen": [
+  {
+   "satz": "VoltPilot hält Ihre Energiepolitik, Ihre Aufgaben, Ihre internen Audits und Ihre Managementbewertung mit Datum, Person und Prüfsumme fest und zeigt, wo jedes Original liegt.",
+   "zusage": "Z-004",
+   "herkunft": "§5.8 Hilfe-Artikel, VoltPilot-Teil (PB1, Z-004)"
+  },
+  {
+   "satz": "VoltPilot misst, rechnet Kennzahlen und vergleicht mit Ihrer Bezugsbasis; was die Zahlen bedeuten, entscheiden Sie.",
+   "zusage": "Z-002",
+   "herkunft": "§5.8 Hilfe-Artikel, VoltPilot-Teil (PB1, Z-002)"
+  }
+ ],
+ "verantwortung": {
+  "satz": "Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.",
+  "zusage": "Z-075",
+  "herkunft": "§5.8 Hilfe-Artikel, Verantwortung (G6); Wort für Wort UEMS_VERANTWORTUNG in frontend/portal/src/glossar.ts"
+ },
+ "kundenaufgaben": [
+  {
+   "satz": "Festlegen, welche Kompetenz nötig ist, und sie nachweisen, tun Sie selbst. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.",
+   "kundenaufgabe": "KA-02",
+   "herkunft": "§5.8 Hilfe-Artikel, KA-02 (NR5)"
+  },
+  {
+   "satz": "Ob Sie rechtliche Anforderungen einhalten, bewerten Sie selbst. VoltPilot bewertet das nicht.",
+   "kundenaufgabe": "KA-03",
+   "herkunft": "§5.8 Hilfe-Artikel, KA-03 (NR5)"
+  },
+  {
+   "satz": "Warum ein Monat anders war und ob eine Maßnahme gewirkt hat, sagen Sie selbst, mit Begründung. VoltPilot schlägt vor und zeigt die Messwerte.",
+   "kundenaufgabe": "KA-04",
+   "herkunft": "§5.8 Hilfe-Artikel, KA-04 (NR5)"
+  },
+  {
+   "satz": "Ob der Klimawandel für Ihr Energiemanagement eine Rolle spielt, beurteilen Sie. VoltPilot führt dazu keine Angaben.",
+   "kundenaufgabe": "KA-05",
+   "herkunft": "§5.8 Hilfe-Artikel, KA-05 (NR5)"
+  },
+  {
+   "satz": "Vor dem Ende Ihres Vertrags laden Sie den Gesamtabzug und bewahren ihn selbst auf.",
+   "kundenaufgabe": "KA-06",
+   "herkunft": "§5.8 Hilfe-Artikel, KA-06 (NR5)"
+  }
+ ],
+ "restpunkte": [
+  {
+   "satz": "Eine Kopie der Sicherung außerhalb des Rechenzentrums gibt es derzeit nicht.",
+   "luecke": "L-004",
+   "herkunft": "§5.8 Hilfe-Artikel, Restpunkt, nur wenn L-004 als Restpunkt angenommen ist (PB4, LU4)"
+  }
+ ]
+}

@@ -20,7 +20,8 @@ Gezählt wird nur je Urteil und je Träger, nie in Prozent.
 | [`vorschlaege/gitops/`](vorschlaege/gitops/README.md) | Regel `VoltPilotSicherungZuAlt` mit promtool-Test als Vorschlag; als Zweig nach gitops, gemergt vom Captain | AP-20 IP-19 |
 | [`bewertungen/`](bewertungen/) | Entwürfe des Matrix-Prüfers (`BWB-JJJJ-nn.json`, `.md`, `.sha256`), je Lauf ein Laufprotokoll: Befehle, übersprungene Fälle, nicht gefahrene Klassen | AP-20 IP-10 |
 | [`pruefpaket/`](pruefpaket/pruefpaket.md) | Prüfpaket für die Fachperson: Norm-Teil ohne Normtext, Frageliste, Protokoll-Vorlage, `.sha256`; gebaut von `tools/bewertung/pruefpaket.py` | AP-20 IP-11 |
-| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3), Matrix-Prüfer (`pruefe_matrix.py`, AP-20 NW-2) | AP-20 IP-2, IP-3, IP-5, IP-4 |
+| [`beschreibung-saetze.json`](beschreibung-saetze.json), [`produktbeschreibung/`](produktbeschreibung/beschreibung.md) | Satz-Quelle mit Bindung je Satz (§5.8 wörtlich); daraus erzeugt: Beschreibung, Übersicht für Prüfende, Wächter-Lauf, `.sha256`; heute **Entwurf** an BWB-2026-01 | AP-20 IP-21 |
+| [`../../tools/bewertung/`](../../tools/bewertung/) | Vertragstest (AP-20 NW-1), Wachen des Zusagen-Inventars (`zusagen.py`) und der Lückenliste (`luecken.py`, AP-20 NW-3), Matrix-Prüfer (`pruefe_matrix.py`, AP-20 NW-2), Beschreibung mit Wächter (`produktbeschreibung.py`, AP-20 NW-4) | AP-20 IP-2, IP-3, IP-5, IP-4, IP-21 |
 
 ## Aufbau (MX1, MX2)
 
@@ -462,7 +463,7 @@ braucht einen neuen Lauf. Ein Bericht eines älteren Standes trägt ihn nicht (N
 Die externe Auditorin (oder der Auditor) für Energiemanagementsysteme liest den Norm-Teil an ihrer
 lizenzierten Ausgabe. Was sie dafür bekommt, liegt unter [`pruefpaket/`](pruefpaket/pruefpaket.md) und
 entsteht nur aus den Quellen, nie von Hand: `tools/bewertung/pruefpaket.py` liest Matrix, jüngsten
-BWB-Entwurf und, sobald es ihn gibt, `produktbeschreibung/` (AP-20 IP-21).
+BWB-Entwurf und `produktbeschreibung/` (AP-20 IP-21, dort nur mit Prüfsumme je Datei).
 
 - **`pruefpaket.md`**: jede der 30 Zeilen mit Abschnittsnummer, eigener Umschreibung, Träger,
   Kundenaufgabe, Herkunft und den Zusagen mit ihrem Urteil im Entwurf; Stand von Übersicht und
@@ -474,9 +475,45 @@ BWB-Entwurf und, sobald es ihn gibt, `produktbeschreibung/` (AP-20 IP-21).
 - **`pruefpaket.sha256`**: `cd docs/bewertung/pruefpaket && shasum -a 256 -c pruefpaket.sha256`.
 - **Kein Normtext (MX2).** Das Werkzeug baut kein Paket, wenn eine Umschreibung länger als 160 Zeichen
   ist, die Pflichtform der Norm trägt („Organisation muss“, „shall“) oder ein Zitat enthält.
-- **Wer Matrix oder Bewertung ändert, baut das Paket neu** (`python3 tools/bewertung/pruefpaket.py`).
+- **Wer Matrix oder Bewertung ändert, baut das Paket neu** (`python3 tools/bewertung/pruefpaket.py`), nach der
+  Beschreibung (`produktbeschreibung.py`), denn das Paket trägt deren Prüfsummen.
   Der Test `test_pruefpaket.py` ist rot, solange das Paket im Repo nicht der Bau aus den Quellen ist.
   Ein zweiter Bau ist byte-gleich; der Tag im Kopf ist der Stichtag der Normfassung.
+
+## Produktbeschreibung und Übersicht für Prüfende (AP-20 IP-21, E7 = A)
+
+Was VoltPilot über sich sagen darf, entsteht nur aus einer Bewertung: `tools/bewertung/produktbeschreibung.py`
+liest die jüngste `bewertungen/BWB-*.json` und die Satz-Quelle [`beschreibung-saetze.json`](beschreibung-saetze.json)
+(Wortlaut aus dem Konzept §5.8, je Satz eine Bindung an `zusage`, `kundenaufgabe` oder `luecke`) und schreibt
+[`produktbeschreibung/`](produktbeschreibung/beschreibung.md). Nie von Hand; ein zweiter Bau ist byte-gleich.
+
+- **`beschreibung.md`**: Funktionen in Kundenwörtern, unter jedem Satz die Zusage und ihr Urteil, daneben die
+  Kundenaufgaben ihrer Norm-Zeilen, alle Kundenaufgaben, Restpunkte mit Grenze und Frist (PB4), Verantwortungs- und
+  Grenz-Satz. **Keine Abschnittsnummer** (PB3).
+- **`uebersicht-fuer-pruefende.md`**: Abschnitt → was VoltPilot festhält → was bei Ihnen bleibt → Stand der Prüfung,
+  mit Bewertung, Stand und Datum im Kopf und dem Grenz-Satz Wort für Wort (E8). Das einzige Dokument mit
+  Abschnittsnummern; auf Anfrage, **nie im Portal, nie in einem Bericht** (PB3). „Was VoltPilot festhält“ nennt nur
+  Zusagen mit positivem Urteil: ihren Satz aus der Quelle, sonst den Wortlaut, den der Kunde schon liest
+  (Release-Notiz, Fläche, Anmeldung, Box-Notiz), sonst nur das Kennzeichen.
+- **`produktbeschreibung.json`**: Kennung `PB-01`, Zustand, Bewertung mit Prüfsumme, Wächter-Lauf je Satz
+  (Funde, Bindung, zugelassen, Grund). **`produktbeschreibung.sha256`**: `shasum -a 256 -c`.
+
+**Wächter (PB1, PB2, NW-4, RF-09).** Jeder Satz geht gegen die Wortliste: AP-14 S1 und AP-19 SP2 (Muster aus
+`frontend/portal/src/copy.test.ts`), Rechtsaussagen („DSGVO-konform“, „GDPR compliant“, „rechtssicher“,
+„garantiert“) und Norm-Nummern; nur Grenz-Satz und neutrale Nennung dürfen Konformität und ISO nennen. Und gegen
+die Bindung: ein Satz an einer Zusage ohne positives Urteil fällt auch ohne verbotenes Wort. Ein Wort-Fund ist rot
+und baut nichts; ein Satz an einer offenen Zeile wird **zurückgehalten** und erscheint im Wächter-Lauf mit Grund,
+bis seine Zeile positiv ist. Ohne Bindung gehen nur die Rahmen-Sätze des Werkzeugs (Titel, erster Satz, Kopf und
+Fuß der Übersicht, Grenz-Satz, Träger). Ein Restpunkt der Bewertung ohne Satz in der Quelle ist rot (PB4). Texte
+außerhalb des Repos (Website, Angebot) prüft `--entwurf <datei>` in derselben Form wie RF-09.
+
+**Gilt nur mit ihrer Bewertung (PB5).** `--check` ist rot, wenn eine jüngere Bewertung die eigene ablöst, wenn sich
+die Bewertung seit dem Bau geändert hat (etwa durch ihre Freigabe), wenn eine Datei nicht der Bau ist oder wenn
+Portal oder API auf die Beschreibung verweisen. Ein Entwurf bleibt grün und sagt, dass er einer ist:
+„Entwurf — Bewertung BWB-2026-01, gebauter Stand, nicht freigegeben“ steht sichtbar in beiden Dokumenten.
+`--vor-ausgabe` ist zusätzlich rot, solange die Bewertung nicht freigegeben ist: **vor jeder positiven Aussage im
+Vertrieb**. Nach der Lesart der Fachperson (AP-20 IP-12) und der Freigabe (AP-20 IP-24) wird die Beschreibung neu
+erzeugt; freigeben kann sie nur der Captain.
 
 ## Wer was tut
 
@@ -498,8 +535,18 @@ python3 tools/bewertung/klammer.py                             # Klammer AP-20 N
 python3 tools/bewertung/luecken.py [--heute JJJJ-MM-TT]        # Wache AP-20 NW-3: Exit 0 = Liste hält, zeigt Zustand und Frist
 python3 tools/bewertung/pruefe_matrix.py --laeufe <ordner> …    # Urteil je Zeile, BWB-Entwurf mit SHA-256 (AP-20 NW-2)
 python3 tools/bewertung/pruefpaket.py [--check]                # Prüfpaket für die Fachperson (AP-20 IP-11): Exit 0 = gebaut bzw. hält
+python3 tools/bewertung/produktbeschreibung.py [--check]       # Beschreibung + Übersicht (AP-20 IP-21, NW-4): Exit 0 = gebaut bzw. hält, meldet Entwurf
+python3 tools/bewertung/produktbeschreibung.py --vor-ausgabe   # PB5: Exit 1, solange die Bewertung nicht freigegeben ist
+python3 tools/bewertung/produktbeschreibung.py --entwurf <datei>  # Wächter über einen fremden Text: Exit 1 = ein Satz abgelehnt
 python3 -m unittest discover -s tools/bewertung -p 'test_*.py'  # AP-20 NW-1, AP-20 NW-2 und die Wachen
+python3 -m unittest discover -s tools/bewertung -p 'test_abnahme.py'  # Abnahme AP-20 NW-6: RF-01 … RF-12, je mit Gegenprobe
 ```
+
+**Abnahme-Test (AP-20 IP-23, AP-20 NW-6).** `tools/bewertung/test_abnahme.py` fährt die zwölf Referenzfälle
+des Konzepts an einer Fixture-Welt unter `tools/bewertung/fixtures/abnahme/` durch die Werkzeuge oben; jeder
+Fall hat eine Gegenprobe, die rot werden muss. Was dort ein Mensch liefert (Lesart der Fachperson, Übung,
+Pilot-Durchlauf, Annahme eines Restpunkts), ist als FIXTURE gekennzeichnet und ersetzt nichts davon; was
+die Fixture nicht abdeckt, steht in ihrer [README](../../tools/bewertung/fixtures/abnahme/README.md).
 
 Der Test braucht `jsonschema`, wie die Vertragstests von `services/optimization`. Fehlt es,
 bricht der Lauf ab, statt übersprungen zu werden.

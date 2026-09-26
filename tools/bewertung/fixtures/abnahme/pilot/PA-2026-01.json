@@ -1,0 +1,50 @@
+{
+ "fixture": "FIXTURE AP-20 IP-23 (RF-10): kein stattgefundener Durchlauf. Welt, Auditorin, Umfang und Befunde sind die Annahmen des Konzepts; den echten Durchlauf PA-1 liefert AP-20 IP-14 mit der Fachperson.",
+ "kennzeichen": "PA-2026-01",
+ "welt": "Ahrenberg 1.10 in der Prüfumgebung",
+ "auditorin": "Fachperson F. (Auditorin für Energiemanagementsysteme, extern; Name im Bau)",
+ "rolle": "einsicht (befristet, wie CB in zugriffe_1_10)",
+ "datum": "2026-11-20",
+ "umfang_norm": [
+  "5.2",
+  "5.3",
+  "7.5.1",
+  "7.5.2",
+  "7.5.3",
+  "9.2.1",
+  "9.2.2",
+  "9.3",
+  "10.1"
+ ],
+ "umfang_zusagen": [
+  "Z-004",
+  "Z-005"
+ ],
+ "zustaende": [
+  {
+   "nach": "vorbereitet",
+   "am": "2026-11-13"
+  },
+  {
+   "nach": "durchgefuehrt",
+   "am": "2026-11-20"
+  },
+  {
+   "nach": "protokolliert",
+   "am": "2026-11-20"
+  }
+ ],
+ "befunde": [
+  {
+   "kennung": "B-1",
+   "text": "Ein freigegebener Beschluss lässt sich nicht berichtigen.",
+   "ziel": "L-009"
+  },
+  {
+   "kennung": "B-2",
+   "text": "Die Qualifikation der Auditorin ist nur als Verweis da.",
+   "ziel": "KA-08"
+  }
+ ],
+ "aussage": "Zwei Befunde: B-1 → L-009 (VoltPilot), B-2 → KA-08 (bleibt beim Kunden)."
+}
