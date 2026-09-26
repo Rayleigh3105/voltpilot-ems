@@ -6,18 +6,25 @@
     "ein PARAMETER des Werkzeugs, kein eingebauter Wert: der Betreiber traegt die",
     "Paare aus seiner Q07-Ausgabe hier ein (oder gibt eine eigene Datei mit --paare).",
     "",
-    "Heute steht hier genau das eine Paar, das ohne Q07 belegbar ist: das letzte",
-    "Release-Tag edge-2026.09.4. Core und Palette werden GEMEINSAM ausgeliefert (X6),",
-    "darum tragen beide dasselbe Tag - ein Paar mit zwei verschiedenen Staenden waere",
-    "moeglich und das Werkzeug wuerde es fahren, aber es entstuende nie aus einem",
-    "regulaeren Release."
+    "Heute stehen hier die Paare, die ohne Q07 belegbar sind: die letzten beiden",
+    "Release-Tags edge-2026.09.4 und edge-2026.09.5 (beide aus main, je mit eigenem",
+    "Protokoll unter docs/rollout/nw3-protokoll-<name>.json). Core und Palette werden",
+    "GEMEINSAM ausgeliefert (X6), darum tragen beide dasselbe Tag - ein Paar mit zwei",
+    "verschiedenen Staenden waere moeglich und das Werkzeug wuerde es fahren, aber es",
+    "entstuende nie aus einem regulaeren Release."
   ],
   "paare": [
     {
       "name": "edge-2026.09.4",
       "core_ref": "edge-2026.09.4",
       "palette_ref": "edge-2026.09.4",
-      "herkunft": "letztes Release-Tag auf main; Q07 nicht gefahren"
+      "herkunft": "Release-Tag auf main (19.09.); Q07 nicht gefahren"
+    },
+    {
+      "name": "edge-2026.09.5",
+      "core_ref": "edge-2026.09.5",
+      "palette_ref": "edge-2026.09.5",
+      "herkunft": "letztes Release-Tag auf main (24.09., 1b6b79175); Q07 nicht gefahren"
     }
   ]
 }

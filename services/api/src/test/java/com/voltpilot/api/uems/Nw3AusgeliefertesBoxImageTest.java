@@ -47,6 +47,14 @@ class Nw3AusgeliefertesBoxImageTest {
     private static final String SATZ = "Software " + GEMELDETER_STAND
             + " · Update nötig für: Rückmeldung je Datenquelle";
 
+    /**
+     * Der Stand, den die Box im NW-3-Lauf des jüngeren Tags meldete
+     * ({@code docs/rollout/nw3-protokoll-edge-2026.09.5.json}).
+     */
+    private static final String GEMELDETER_STAND_095 = "edge-2026.09.5-1b6b7917527b";
+
+    private static final String RELEASE_095 = "edge-2026.09.5";
+
     @Test
     void dieAusgelieferteBoxOhneReleaseImRegisterBrauchtDasUpdateJeDatenquelle() throws Exception {
         // Ein Stand, der zu keinem Release des Registers gehört, beweist keine Fähigkeit
@@ -81,6 +89,22 @@ class Nw3AusgeliefertesBoxImageTest {
                 new Stand(GEMELDETER_STAND, null, List.of()), tabelle(), List.of());
 
         assertThat(e.text()).isEqualTo(SATZ);
+    }
+
+    @Test
+    void auchDasJuengereReleaseTraegtDieFaehigkeitNicht() throws Exception {
+        // edge-2026.09.5 (24.09.2026) ist die neueste ausgelieferte Box: ohne und mit
+        // Release im Register sagt die Fläche denselben Satz wie für 09.4.
+        FaehigkeitenErgebnis ohne = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_095, null, null), tabelle(), List.of());
+        FaehigkeitenErgebnis mit = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_095, RELEASE_095, null), tabelle(), List.of(RELEASE_095));
+
+        assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_095
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.text()).isEqualTo("Software " + RELEASE_095
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
     }
 
     private static List<TabellenEintrag> tabelle() throws Exception {

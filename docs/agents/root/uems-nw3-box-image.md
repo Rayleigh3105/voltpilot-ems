@@ -97,7 +97,19 @@ Protokoll des Laufs vom 19.09.2026 gegen `origin/uems` `2edc6e1d`, mit
 [`docs/rollout/nw3-protokoll-edge-2026.09.4.json`](../../rollout/nw3-protokoll-edge-2026.09.4.json)
 — **12 grün, 0 rot, 1 Befund, 0 nicht gefahren**. Jeder Punkt trägt seinen Beleg
 (die Nachricht, die die Box wirklich gesendet hat). Die Naht zur api-Antwort für
-Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (3 Fälle).
+Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (4 Fälle, beide Stände).
+
+Protokoll des Laufs vom 26.09.2026 gegen `origin/uems` `f694b525` (PR 1287), mit
+`--strecke`:
+[`docs/rollout/nw3-protokoll-edge-2026.09.5.json`](../../rollout/nw3-protokoll-edge-2026.09.5.json)
+— **9 grün, 3 rot, 1 Befund, 0 nicht gefahren**. Rot sind 3, 4a und 4b, alle mit
+`rejected: unsupported_catalog`: seit AP-05 IP-6b (PR 1135) tragen die festgenagelten
+Konfig-Beispiele den Stand `2026.09.23.3`, die Palette des Tags hat `2026.08.26.3`, und der
+Planer verlangt exakte Gleichheit. Das ist die dokumentierte Kopplung api-Deploy ↔ Box-Release
+(`docs/rollout/uems-erste-freigabe.md` §2.8), kein Feld- oder Schemafehler; die Bytes der
+Auswahl unterscheiden sich vom 09.4-Lauf nur im `catalog_version`. Ein neuer Lauf von 09.4
+(gleicher Palettenstand) träfe dasselbe; gefahren ist er nicht. Grün wird der Punkt erst mit dem Box-Release, das den Stand der api trägt
+(Tor GA). Der Befund 6c (X7) steht wie bei 09.4.
 
 ## X2 ist kein Fehlerbild
 
