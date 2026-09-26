@@ -6,7 +6,7 @@ Referenzdateien dürfen nicht aus dem UEMS-Lauf neu geschrieben werden.
 
 ## Herkunft der Referenz
 
-- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3`.
+- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, siehe unten).
 - Schema: genau dessen 168 Produktionsmigrationen, ohne Dev-Seeds.
 - Saat: `main-seed.sql`, direkt auf diesem Schema, keine UEMS-Route. Der alte
   V2-Startmarker ist vorhanden, wie bei einer auf main schon gestarteten Anlage.
@@ -33,6 +33,18 @@ zufällige Hex-Korrelation durch `0000000000000000` ersetzt; vorher werden ihr
 Vertragsformat und die Antwortkorrelation geprüft. Die einzige fachliche
 HTTP-Ausnahme steht in der folgenden Tabelle. Registry-Bytes werden überhaupt nicht normalisiert, insbesondere
 nicht `driver.data_source_id`.
+
+## Nachgemessen beim Nachzug main 8b8b6a03b (26.09.2026)
+
+Die Referenzdatei ist **unverändert**. Beim Nachzug von `main` `8b8b6a03bcf757a241d60567080259ccb2163422`
+(62 Commits, `main-migrations.txt` jetzt 169 Migrationen) wurde die Aufnahme auf diesem Commit
+wiederholt — dieselbe Testklasse unversioniert in einem frischen Klon von main, `MAIN` auf den neuen
+Commit, `-Dnw2.capture=…` — und mit `main-reference.json` verglichen: **bytegleich** (12 005 Bytes,
+alle 13 Einträge). Die 62 main-Commits ändern also keine der acht geschützten Ausgaben; die Referenz
+gilt für main 8b8b6a03b wie für 4aa1e7fb, `MAIN` nennt seither den jüngeren Commit. Für eine spätere
+Aufnahme: auf main fehlen die UEMS-Sender `VerbundAnteilePublisher` und `SprungprobePublisher`; ihre
+zwei `@MockBean`-Zeilen und ihre Namen in `senders()` müssen in der Kopie entfallen (die Klasse
+übersetzt sonst nicht).
 
 ## Bewusste Differenzen main → uems
 
