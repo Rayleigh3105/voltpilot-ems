@@ -49,12 +49,13 @@ for (const breite of BREITEN) {
     });
     await page.goto('/e2e/belegschutz.html');
     await expect(page.getByTestId('kein-zustand')).toHaveCount(0);
-    const zone = page.getByLabel('Gefahrenzone');
-    const entfernen = zone.getByRole('button', { name: /Komponente entfernen/ });
-    await expect(entfernen).toBeVisible();
+    // Seit main d1b97ac39 steht „Komponente entfernen …“ im Menü „⋯“ (Weitere Aktionen) des Geräte-Kopfs.
+    const menue = page.getByRole('button', { name: 'Weitere Aktionen' });
+    await expect(menue).toBeVisible();
     await messeUndFotografiere(page, breite, 'vorher', fehler);
 
-    await entfernen.click();
+    await menue.click();
+    await page.getByRole('menuitem', { name: /Komponente entfernen/ }).click();
     const rueckfrage = page.getByRole('dialog');
     await expect(rueckfrage).toBeVisible();
     await rueckfrage.getByRole('textbox').fill(NAME);
@@ -68,7 +69,7 @@ for (const breite of BREITEN) {
       + 'BR-2026-0001 Nr. 2, BR-2026-0002 Nr. 1, BR-2026-0004 Nr. 1). Löschen ist nicht möglich — beenden Sie die '
       + 'Bindung stattdessen.');
     await expect(beleg.getByRole('link', { name: 'Zur Messstelle MS-12 Montage Linie M1' })).toBeVisible();
-    await expect(zone.getByRole('button')).toHaveCount(0);
+    await expect(page.getByLabel('Entfernen nicht möglich').getByRole('button')).toHaveCount(0);
     await messeUndFotografiere(page, breite, 'beleg', fehler);
   });
 }

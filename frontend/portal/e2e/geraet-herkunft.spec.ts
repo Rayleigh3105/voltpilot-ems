@@ -35,8 +35,10 @@ async function oeffne(page: Page, breite: number, fall: keyof typeof FAELLE) {
     if (m.type() === 'error') fehler.push(m.text());
   });
   await page.goto(`/e2e/geraet-herkunft.html?${FAELLE[fall].frage}`);
-  const sektion = page.getByTestId('sektion-komponenten');
-  await sektion.locator(':scope > summary').click();
+  // Seit main d1b97ac39 steht die Herkunftskette im Baustein „Gerät & Verbindung“ (baustein-details).
+  const sektion = page.getByTestId('baustein-details');
+  // Am Rechner steht der Baustein offen, am Telefon zu — nur aufklappen, was zu ist.
+  if (!(await sektion.evaluate((el) => (el as HTMLDetailsElement).open))) await sektion.locator(':scope > summary').click();
   await expect(sektion.getByTestId('geraet-karte')).toBeVisible();
   await expect(sektion.getByTestId('geraet-messkanaele')).toBeVisible();
   await expect(sektion.getByTestId('geraet-einstellungen').getByRole('status')).toHaveCount(0);
@@ -92,7 +94,7 @@ async function messeUndFotografiere(page: Page, breite: number, name: string, fe
   } else {
     // Die Sektion aus dem Bild der ganzen Seite geschnitten: ein Element-Bild
     // wartet auf „stabil“, und die klebende Chip-Leiste stünde darüber.
-    const box = await page.getByTestId('sektion-komponenten').evaluate((el) => {
+    const box = await page.getByTestId('baustein-details').evaluate((el) => {
       const r = el.getBoundingClientRect();
       return { x: r.left + window.scrollX, y: r.top + window.scrollY, width: r.width, height: r.height };
     });
@@ -109,7 +111,7 @@ for (const breite of BREITEN) {
 
     test('GR-4 nach dem Zählerwechsel: Z-5b, Vorgänger Z-5a, Kanäle „speist MS-06 (führend)“', async ({ page }) => {
       const fehler = await oeffne(page, breite, 'gr4');
-      const sektion = page.getByTestId('sektion-komponenten');
+      const sektion = page.getByTestId('baustein-details');
       await expect(sektion.getByText('Zähler Z-5b')).toBeVisible();
       await expect(sektion.getByTestId('geraet-vorgaenger').getByText('ausgebaut am 18.11.2026, 10:40 Uhr')).toBeVisible();
       await expect(sektion.getByText('speist MS-06 (führend)')).toHaveCount(2);

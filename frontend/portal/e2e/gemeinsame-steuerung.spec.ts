@@ -23,11 +23,13 @@ async function oeffne(page: Page, breite: number, query: string) {
   await page.evaluate(() => document.fonts.ready);
 }
 
-/** Die Karte; am Telefon ist sie zugeklappt und wird aufgeklappt. */
+/**
+ * Die Karte. Seit den kurzen Einstellungen (main 41ed67c26) steht die Gruppe auch am Telefon offen — der erste Knopf
+ * „Gemeinsame Steuerung …“ öffnet dort den Änderungs-Dialog, darum kein Aufklappen mehr.
+ */
 async function karte(page: Page, breite: number): Promise<Locator> {
   const abschnitt = page.locator('#technik-gemeinsam');
   await expect(abschnitt).toBeVisible();
-  if (breite < 720) await abschnitt.getByRole('button', { name: /Gemeinsame Steuerung/ }).first().click();
   const k = page.getByTestId('gemeinsame-steuerung');
   await expect(k).toBeVisible();
   return k;

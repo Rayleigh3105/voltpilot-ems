@@ -389,6 +389,9 @@ async function ueberlauf(page: Page, breite: number) {
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
       // Kacheln der Karte im Anlege-Fluss liegen über den Rand, die Karte schneidet sie ab (wie `anlage-umziehen.spec.ts`).
       .filter(({ el }) => !el.closest('.leaflet-container'))
+      // Die Art-Chips des Gerätekatalogs (main e70b57b76) sind eine gewollt quer scrollende Leiste; geprüft bleibt die
+      // Leiste selbst (sie muss im Bild liegen), nicht ihre hinausgescrollten Chips.
+      .filter(({ el }) => !el.parentElement?.closest('.vp-kat-arten'))
       .filter(({ r }) => r.width > 0 && (r.right > b + 0.5 || r.left < -0.5))
       .map(({ el }) => `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className)}`);
     const rumpf = [...document.querySelectorAll('.vp-anlegen-rumpf, .vp-modal .dbody')] as HTMLElement[];

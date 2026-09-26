@@ -3,7 +3,7 @@ import { rechteSeed, sichtbareListe } from '../src/test/rollenFixtures';
  * Fictional, frozen teaching data. Imported ONLY by /e2e/help.tsx.
  * No production API/auth fallback: the application bundle never imports this.
  */
-import { api, type Funktionen, type StandorteAmStichtag, type Unternehmen } from '../src/api';
+import { api, type Funktionen, type Unternehmen } from '../src/api';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
@@ -179,12 +179,6 @@ export function installHelpFixtures() {
       },
       standorte: [],
     } satisfies Funktionen),
-    standorte: result({
-      stichtag: '2026-09-10',
-      standorte: [],
-      nichtGezeigt: [],
-      nochNichtZugeordnet: null,
-    } satisfies StandorteAmStichtag),
     unternehmen: result({
       zustand: 'nicht_angelegt',
       id: null,
@@ -261,7 +255,8 @@ export function installHelpFixtures() {
     ].map(([id,label,active]) => ({ id,label,active, state: active ? 'an' : 'aus', derivedActive: active,
       unlocks: { views: [], widgets: [], moneyStream: null }, requirements: [], blockedReason: null, origin: 'masterdata',
       flowRef: null, gatedNodeTypes: [], gatedNodesEnabled: true, exklusivGruppe: id === 'lastmanagement' ? null : 'speicher', seit: '2026-08-01T10:00:00Z' })), weitere: [] }),
-    // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort.
+    // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort (main 41ed67c26, Wurzel des Aufbau-Baums;
+    // die leere uems-Fassung derselben Route stand doppelt im Objekt und galt nie — die spätere gewinnt).
     standorte: result({ stichtag: '2026-09-10', nichtGezeigt: [], nochNichtZugeordnet: null, standorte: [{
       id: 'help-standort', kurzzeichen: 'ST-1', name: 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
       adresse: { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,

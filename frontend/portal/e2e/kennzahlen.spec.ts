@@ -130,7 +130,7 @@ test.describe('Kennzahlen — die Liste', () => {
     await warteAufListe(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
     expect(m.reiterAktiv).toEqual(['Kennzahlen']);
     expect(m.leiste).toBeNull();
     expect(m.karten[0]).toContain(`0,15${NB}kWh je Stück`);

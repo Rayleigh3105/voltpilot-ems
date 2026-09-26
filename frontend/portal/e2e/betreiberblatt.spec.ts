@@ -19,10 +19,10 @@ async function oeffne(page: Page, breite: number, query: string): Promise<Locato
   await page.setViewportSize({ width: breite, height: BILDER ? (breite < 720 ? 5200 : 2600) : breite < 720 ? 812 : 900 });
   await page.goto(`/e2e/betreiberblatt.html?${query}`);
   await page.evaluate(() => document.fonts.ready);
-  // Am Telefon ist die Karte zugeklappt (wie IP-23) und wird aufgeklappt; das Blatt steht darin.
+  // Seit den kurzen Einstellungen (main 41ed67c26) steht die Gruppe auch am Telefon offen; das Blatt steht darin.
+  // (Der erste Knopf „Gemeinsame Steuerung …“ öffnet dort den Änderungs-Dialog — nicht mehr klicken.)
   const abschnitt = page.locator('#technik-gemeinsam');
   await expect(abschnitt).toBeVisible();
-  if (breite < 720) await abschnitt.getByRole('button', { name: /Gemeinsame Steuerung/ }).first().click();
   const blatt = page.getByTestId('betreiber-blatt');
   await expect(blatt).toBeVisible();
   await expect(blatt.getByTestId('gsb-spalten')).toBeVisible();

@@ -130,7 +130,7 @@ test.describe('Berichte — die Liste', () => {
     await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
     expect(m.reiterAktiv).toEqual(['Berichte']);
     expect(m.stand).toEqual(['Berichtsstand Nr. 2']);
     await ablegen(page, 'liste-1440', m);

@@ -19,7 +19,7 @@ const BILDER = process.env.BEWERTUNG_BILDER;
 const AM_04_11 = new Date('2026-11-04T09:00:00Z');
 const AM_20_11 = new Date('2026-11-20T09:00:00Z');
 const LEISTE = ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Bewertung'];
-const REITER = ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Bewertung', 'Messwerte'];
+const REITER = ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Bewertung', 'Energie']; // „Energie“ seit main 3e95cc604
 const GRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
 const LEER = 'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.';

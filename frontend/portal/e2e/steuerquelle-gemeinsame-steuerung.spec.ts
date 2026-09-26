@@ -28,7 +28,7 @@ async function oeffne(page: Page, breite: number, zustand: string | null) {
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
   await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=box-halle1');
   await expect(page.getByRole('heading', { name: 'Box Halle 1', level: 1 })).toBeVisible();
-  await page.getByRole('button', { name: 'Datenquellen und Geräte' }).click();
+  await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
   await expect(page.locator('.vp-box-quellen')).toContainText('DQ-1');
   await page.evaluate(() => document.fonts.ready);
   await page.waitForLoadState('networkidle');

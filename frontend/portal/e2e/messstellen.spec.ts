@@ -105,7 +105,7 @@ test.describe('Messstellen-Register', () => {
       'Aktionen',
     ]);
     // AP-11 IP-13: „Kennzahlen“ steht als Reiter neben „Messstellen“ (Ahrenberg misst und hat Kennzahlen).
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
     expect(m.reiterAktiv).toEqual(['Messstellen']);
     expect(m.leiste).toBeNull();
     expect(m.kopf).toBe('21 von 22 Messstellen liefern Daten');
@@ -323,7 +323,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     expect(m.route).toBe('#/portfolio');
     expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
     expect(m.leisteAktiv).toBe('Übersicht');
-    expect(m.reiter).toEqual(['Übersicht', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Energie']);
     await ablegen(page, 'leiste-uebersicht-375', m);
     await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
@@ -335,7 +335,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375-alle-reiter');
     expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
     await ablegen(page, 'leiste-uebersicht-375-alle-reiter', m);
   });
 

@@ -60,7 +60,7 @@ for (const px of [375, 1440] as const) {
   test(`zweiter Einstieg, normaler Umzug und Hilfe (${px} px)`, async ({ page }) => {
     await breite(page, px);
     await page.goto('/e2e/startansicht.html?bild=korrektur&ansicht=korrektur-anlage');
-    if (px === 375) await page.getByRole('button', { name: 'Meine Anlage Werk Lindach' }).click();
+    // Seit den kurzen Einstellungen (main 41ed67c26) ist „Meine Anlage“ auch am Telefon offen — kein Aufklappen mehr.
     const korrektur = page.getByRole('button', { name: 'Zuordnung korrigieren: Werk Lindach' });
     await expect(korrektur).toBeVisible();
     await bild(page, `zuordnung-korrigieren-anlagen-dialog-${px}.png`);
