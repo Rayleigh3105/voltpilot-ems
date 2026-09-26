@@ -373,5 +373,117 @@ class PB5UndGegenproben(unittest.TestCase):
         self.assertEqual(len(pb.verweise([portal])), 1)
 
 
+class HilfeArtikel(unittest.TestCase):
+    """AP-20 IP-22: das Werkzeug liest den Hilfe-Artikel und vergleicht ihn mit Satz-Quelle und Bewertung (PB1, PB4)."""
+
+    def setUp(self):
+        self.text = pb.HILFE_ARTIKEL.read_text(encoding='utf-8')
+        self.quelle = json.loads(pb.QUELLE.read_text(encoding='utf-8'))
+        self.bwb = json.loads(pb.juengste_bewertung().read_text(encoding='utf-8'))
+        self.z004 = next(f['satz'] for f in self.quelle['funktionen'] if f['zusage'] == 'Z-004')
+        self.l004 = self.quelle['restpunkte'][0]['satz']
+
+    def rot(self, text=None, bwb=None):
+        return pb.pruefe_hilfe(self.quelle, bwb or self.bwb, self.text if text is None else text)[0]
+
+    def mit_satz(self, satz):
+        return self.mit_zeile(f"'{satz}'")
+
+    def mit_zeile(self, eintrag):
+        anker = "title: 'Was VoltPilot festhält', paragraphs: [\n"
+        self.assertIn(anker, self.text)
+        return self.text.replace(anker, anker + f"        {eintrag},\n")
+
+    def ohne_satz(self, satz):
+        zeile = f"        '{satz}',\n"
+        self.assertIn(zeile, self.text)
+        return self.text.replace(zeile, '')
+
+    def test_der_artikel_im_repo_haelt_und_der_check_meldet_ihn(self):
+        self.assertEqual(self.rot(), [])
+        code, out = still(pb.main, ['--check'])
+        self.assertEqual(code, 0, out)
+        self.assertIn('Hilfe-Artikel hält: frontend/portal/src/help/content/energiemanagement.ts gegen BWB-2026-01 '
+                      '(entwurf), 14 Sätze, davon 1 an einer Funktion; zurückgehalten: an Z-004 gebunden, Z-004 ist '
+                      'offen · an L-004 gebunden, L-004 ist kein angenommener Restpunkt', out)
+
+    def test_er_liest_jeden_text_und_nur_texte(self):
+        felder = [f for f, _ in pb.hilfe_texte(self.text)]
+        self.assertNotIn('?', felder)
+        texte = [t for f, t in pb.hilfe_texte(self.text) if f not in ('kennung', 'keywords')]
+        self.assertEqual(texte[:2], [pb.TITEL, pb.KUNDENAUFGABEN_SATZ])
+        self.assertEqual(texte[-2:], [self.quelle['verantwortung']['satz'], pb.NORMGRENZE])
+        for u in pb.HILFE_UEBERSCHRIFTEN:   # dieselben Überschriften wie die Beschreibung
+            self.assertIn(f'## {u}\n', (pb.AUS_PFAD / 'beschreibung.md').read_text(encoding='utf-8'))
+
+    def test_gegenprobe_der_z004_satz_im_artikel_ist_rot(self):
+        code, out = self._check(self.mit_satz(self.z004))
+        self.assertEqual(code, 1, out)
+        self.assertIn(f'„{self.z004}“: an Z-004 gebunden, Z-004 ist offen (PB1)', out)
+
+    def test_wird_z004_belegt_darf_sein_satz_stehen_wird_z002_offen_muss_seiner_heraus(self):
+        b = copy.deepcopy(self.bwb)
+        next(z for z in b['zusagen'] if z['kennzeichen'] == 'Z-004')['urteil'] = 'belegt'
+        self.assertEqual(self.rot(self.mit_satz(self.z004), b), [])
+        next(z for z in b['zusagen'] if z['kennzeichen'] == 'Z-002')['urteil'] = 'offen'
+        z002 = next(f['satz'] for f in self.quelle['funktionen'] if f['zusage'] == 'Z-002')
+        self.assertEqual(self.rot(bwb=b), [f'„{z002}“: an Z-002 gebunden, Z-002 ist offen (PB1)'])
+
+    def test_gegenprobe_ohne_grenz_satz_ohne_verantwortung_ohne_kundenaufgabe(self):
+        self.assertEqual(self.rot(self.ohne_satz(pb.NORMGRENZE)), ['ohne den Grenz-Satz (E8)'])
+        self.assertEqual(self.rot(self.ohne_satz(self.quelle['verantwortung']['satz'])),
+                         ['ohne den Verantwortungs-Satz (Z-075, E8)'])
+        ka = next(k['satz'] for k in self.quelle['kundenaufgaben'] if k['kundenaufgabe'] == 'KA-05')
+        self.assertEqual(self.rot(self.ohne_satz(ka)), ['ohne die Kundenaufgabe KA-05 (PB4)'])
+        # KA-08 hat keinen eigenen Satz in §5.8: es gilt ihr Text in der Bewertung, wie in der Beschreibung.
+        ka08 = next(k['text'] for k in self.bwb['kundenaufgaben'] if k['kennzeichen'] == 'KA-08')
+        self.assertEqual(self.rot(self.ohne_satz(ka08)), ['ohne die Kundenaufgabe KA-08 (PB4)'])
+        self.assertIn(f'- {ka08} *(KA-08)*', (pb.AUS_PFAD / 'beschreibung.md').read_text(encoding='utf-8'))
+
+    def test_gegenprobe_verbotenes_wort_satz_ohne_quelle_und_iso_nennung(self):
+        rot = self.rot(self.mit_satz('Damit ist Ihr Energiemanagement auditfest.'))
+        self.assertIn('„Damit ist Ihr Energiemanagement auditfest.“: auditfest (SP2) — verboten', rot)
+        self.assertIn('„Damit ist Ihr Energiemanagement auditfest.“ steht nicht in der Satz-Quelle und ist kein '
+                      'Rahmen-Satz (PB1)', rot)
+        self.assertEqual(self.rot(self.mit_satz(pb.NEUTRALE_ISO_NENNUNG)),
+                         [f'„{pb.NEUTRALE_ISO_NENNUNG}“ steht nicht in der Satz-Quelle und ist kein Rahmen-Satz (PB1)'])
+        self.assertIn('„Zu 9.1 hält VoltPilot fest.“: eine Abschnittsnummer steht nur in der Übersicht (PB3)',
+                      self.rot(self.mit_satz('Zu 9.1 hält VoltPilot fest.')))
+        suchwort = self.text.replace("keywords: ['Energiemanagement',", "keywords: ['ISO 50001', 'Energiemanagement',")
+        self.assertNotEqual(self.rot(suchwort), [])
+
+    def test_gegenprobe_restpunkt_nur_als_angenommener_und_dann_pflicht(self):
+        self.assertIn(f'„{self.l004}“ steht nicht in der Satz-Quelle und ist kein Rahmen-Satz (PB1)',
+                      self.rot(self.mit_satz(self.l004)))
+        b = copy.deepcopy(self.bwb)
+        next(l for l in b['luecken'] if l['kennzeichen'] == 'L-004').update(
+            zustand='restpunkt', grenze='Kopie im selben Rechenzentrum', bis='2027-03-31')
+        self.assertEqual(self.rot(bwb=b), ['ohne den Restpunkt L-004 mit seiner Grenze (PB4)'])
+        mit_grenze = f'{self.l004} Grenze: Kopie im selben Rechenzentrum, bis 31.03.2027.'
+        self.assertEqual(self.rot(self.mit_satz(mit_grenze), b), [])
+
+    def test_gegenprobe_ein_name_eine_vorlage_oder_ein_zweiter_titel_ist_rot(self):
+        name = self.text.replace(f"        '{pb.NORMGRENZE}',\n", '        UEMS_NORMGRENZE,\n')
+        self.assertIn('paragraphs mit einem Eintrag, der kein Wortlaut ist', ' '.join(self.rot(name)))
+        self.assertIn('ohne den Grenz-Satz (E8)', self.rot(name))
+        vorlage = self.rot(self.mit_zeile('`VoltPilot misst ${anzahl} Kennzahlen.`'))
+        self.assertIn('„Vorlage statt Wortlaut: VoltPilot misst ${anzahl} Kennzahlen.“ ist keine Stelle, die der Artikel '
+                      'tragen darf', vorlage)
+        zweiter = self.text.replace("title: 'Grenze'", f"title: '{pb.TITEL}'")
+        self.assertIn(f'der Titel „{pb.TITEL}“ steht 2-mal im Artikel, verlangt ist genau einmal', self.rot(zweiter))
+
+    def test_gegenprobe_der_artikel_fehlt(self):
+        code, out = self._check(None)
+        self.assertEqual(code, 1, out)
+        self.assertIn('fehlt: der Hilfe-Artikel zum Energiemanagement (AP-20 IP-22)', out)
+
+    def _check(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = pathlib.Path(tmp) / 'energiemanagement.ts'
+            if text is not None:
+                pfad.write_text(text, encoding='utf-8')
+            return still(pb.main, ['--check', '--hilfe', str(pfad)])
+
+
 if __name__ == '__main__':
     unittest.main()

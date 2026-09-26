@@ -1337,63 +1337,63 @@
       "text": "Ihr Energiemanagement als Ganzes einführen, mit Mitteln ausstatten, aufrechterhalten und verbessern.",
       "norm": ["4.4", "7.1"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 17 (beim Kunden: Budget, Personal, Mittel); 4.4 zugeordnet in AP-20 IP-7 (L-012)",
-      "wo_gesagt": "Als eigene Aufgabe noch nirgends kundenlesbar (L-010); heute nur als Ganzes im Verantwortungs-Satz jeder Energiemanagement-Fläche (Z-075). Folgt im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21). Als Ganzes auch im Verantwortungs-Satz jeder Energiemanagement-Fläche (Z-075)."
     },
     {
       "kennzeichen": "KA-02",
       "text": "Festlegen, welche Kompetenz nötig ist, sie sicherstellen und nachweisen; Bewusstsein schaffen. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.",
       "norm": ["7.2", "7.3"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 7 (beim Kunden: Schulungsplanung, Qualifikation, die Nachweise selbst) und Z. 18 (Unterweisung, Kultur)",
-      "wo_gesagt": "Noch nirgends kundenlesbar (L-010). Folgt im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21)."
     },
     {
       "kennzeichen": "KA-03",
       "text": "Bewerten, ob Sie rechtliche und andere Anforderungen einhalten. VoltPilot bewertet das nicht.",
       "norm": ["9.1.2"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 19 (beim Kunden: die Bewertung selbst) und Z. 3 (Rechtskataster und Bewertung der Einhaltung)",
-      "wo_gesagt": "Noch nirgends kundenlesbar (L-010). Folgt im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21)."
     },
     {
       "kennzeichen": "KA-04",
       "text": "Ursachen benennen und die Wirkung einer Maßnahme belegen — als Aussage einer Person mit Begründung. VoltPilot schlägt vor und zeigt Messwerte.",
       "norm": ["6.2", "6.4", "6.5", "9.1.1", "10.1", "10.2"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 15 (beim Kunden: die Ursachenanalyse als Handlung); für den Leistungsteil ergänzt aus AP-18 „die Ursache benennen, die Wirkung belegen“ (FM/vp-uems-ap18-fundament/report.md:417; AP-20 ist/C C2)",
-      "wo_gesagt": "Heute in der Release-Notiz zur Auffälligkeit (Z-054). Als Liste folgt sie im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21). Dazu in der Release-Notiz zur Auffälligkeit (Z-054)."
     },
     {
       "kennzeichen": "KA-05",
       "text": "Beurteilen, ob der Klimawandel und klimabezogene Anforderungen für Ihr Energiemanagement relevant sind. VoltPilot führt dazu keine Angaben.",
       "norm": ["4.1", "4.2"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 2 (beim Kunden: die Analyse der Themen und Parteien); ergänzt um die Klimafrage der Änderung 1 (AP-20 E1, ist/D D1)",
-      "wo_gesagt": "Noch nirgends kundenlesbar (L-010). Folgt im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21)."
     },
     {
       "kennzeichen": "KA-06",
       "text": "Ihre eigenen Aufbewahrungspflichten erfüllen: vor dem Ende Ihres Vertrags den Gesamtabzug laden und selbst aufbewahren.",
       "norm": ["7.5.3"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 9 (beim Kunden: Dateien und Ablage); für den Betrieb ergänzt: eigene Aufbewahrung und Mitnahme vor Vertragsende (AP-20 ist/C C5)",
-      "wo_gesagt": "Noch nirgends kundenlesbar (L-010). Folgt im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21)."
     },
     {
       "kennzeichen": "KA-07",
       "text": "Messmittel und Zähler prüfen lassen, die Messplanung verantworten, eine Einstufung fachlich tragen.",
       "norm": ["6.3", "6.6"],
       "herkunft": "für den Leistungs- und Messteil ergänzt (AP-20 ist/C C2), den FM/vp-uems-ap19-fundament/zuschnitt.json nicht hat; zu Messmitteln speichert AP-16 für „nicht erhoben“ weder Person noch Tag (FM/vp-uems-ap19-fundament/bau-befunde.md:1)",
-      "wo_gesagt": "Heute für die Einstufung in der Release-Notiz (Z-048). Als Liste folgt sie im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21). Für die Einstufung auch in der Release-Notiz (Z-048)."
     },
     {
       "kennzeichen": "KA-08",
       "text": "Interne Audits durchführen (Gespräche, Begehung), Auditorinnen und Auditoren auswählen und ihre Unabhängigkeit sichern.",
       "norm": ["9.2.1", "9.2.2"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 13 (beim Kunden: die Durchführung mit Gesprächen und Begehung, die Qualifikation)",
-      "wo_gesagt": "Noch nirgends kundenlesbar (L-010). Folgt im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21)."
     },
     {
       "kennzeichen": "KA-09",
       "text": "Entscheidungen der Leitung treffen und verantworten; Originale in Ihren Systemen führen, wo VoltPilot nur verweist.",
       "norm": ["4.3", "5.1", "5.2", "5.3", "6.1", "7.4", "7.5.1", "7.5.2", "8.1", "8.2", "8.3", "9.3"],
       "herkunft": "FM/vp-uems-ap19-fundament/zuschnitt.json Z. 1, 4, 5, 6, 8, 9, 10, 11, 12 und 14 (beim Kunden: Entscheidungen der Leitung; Originale, Kanäle und Unterlagen in den Systemen des Kunden)",
-      "wo_gesagt": "Heute im Verantwortungs-Satz jeder Energiemanagement-Fläche (Z-075) und in der Release-Notiz (Z-059). Als Liste folgt sie im Hilfe-Artikel (AP-20 IP-22) und in der Übersicht für Prüfende (AP-20 IP-21)."
+      "wo_gesagt": "Im Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt“ (AP-20 IP-22) und in der Übersicht für Prüfende auf Anfrage (AP-20 IP-21). Dazu im Verantwortungs-Satz jeder Energiemanagement-Fläche (Z-075) und in der Release-Notiz (Z-059)."
     }
   ]
 }

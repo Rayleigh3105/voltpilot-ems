@@ -109,9 +109,11 @@
       "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A1.5); FM/vp-uems-ap20-fundament/ist/C-luecken.md (C2)",
       "betrifft": [],
       "wer_liefert": [{"wer": "Crew", "was": "Hilfe-Artikel „Was VoltPilot für Ihr Energiemanagement festhält – und was bei Ihnen bleibt“ (AP-20 IP-22)"}],
-      "zustand": "offen",
+      "zustand": "behoben",
       "verlauf": [
-        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"},
+        {"am": "2026-09-26", "nach": "in_arbeit", "person": "Crew (AP-20 IP-22)", "begruendung": "AP-20 IP-22 schreibt den Hilfe-Artikel zum Energiemanagement mit den Sätzen aus §5.8 und allen neun Kundenaufgaben"},
+        {"am": "2026-09-26", "nach": "behoben", "person": "Crew (AP-20 IP-22)", "begruendung": "Hilfe-Artikel im Portal (Hilfe-Suche, Kategorie „VoltPilot verstehen“, Einstieg aus dem Bereich Energiemanagement) mit dem Z-002-Satz, KA-01 … KA-09 kundenlesbar, Verantwortungs- und Grenz-Satz; Wortliste in copy.test.ts (Block AP-20 IP-22), Bindung an die Bewertung in tools/bewertung/produktbeschreibung.py --check; wo_gesagt der neun Kundenaufgaben nennt den Artikel", "nachweis": {"art": "stand_mit_pruefsumme", "fundstelle": "frontend/portal/src/help/content/energiemanagement.ts (Artikel „energiemanagement“); geprüft von frontend/portal/src/copy.test.ts, Block „UEMS AP-20 IP-22“, und tools/bewertung/produktbeschreibung.py --check („Hilfe-Artikel hält“ gegen BWB-2026-01)", "stand": "f114d6dce6a0d875d64faaa41e2db70bb6e4013c", "lauf": "frontend/portal/src/help/content/energiemanagement.ts", "lauf_sha256": "0f7dbdcfa42e032ae7764db63a525204c34ce36955908a92d292bd7de903bb52", "datum": "2026-09-26", "gefahren_von": "Crew (AP-20 IP-22)"}}
       ]
     },
     {

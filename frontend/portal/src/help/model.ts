@@ -9,7 +9,7 @@ export const HELP_CATEGORIES = [
 
 export type HelpCategory = typeof HELP_CATEGORIES[number]['id'];
 export type HelpArticleId =
-  | 'voltpilot' | 'energiefluesse' | 'beispieltag'
+  | 'voltpilot' | 'energiefluesse' | 'beispieltag' | 'energiemanagement'
   | 'orientierung' | 'anlage-anlegen' | 'box-verbinden'
   | 'summenwerte' | 'cockpit' | 'fahrplan' | 'messwerte' | 'erloese' | 'marktpreise' | 'prognosen' | 'portfolio'
   | 'betriebsmodelle' | 'regeln' | 'speicher' | 'lastspitzen' | 'ladepark' | 'ladevorgaenge'

@@ -6,12 +6,12 @@ import { HELP_CATEGORIES, helpHref } from './model';
 import { HELP_FOR_SUB, helpForRoute, helpForSetupStep } from './context';
 import { HELP_FIGURES, figureUrl } from './figures';
 import { searchHelp } from './search';
-import { anlageRoute, hashForRoute, pageRoute, parseRoute } from '../nav';
+import { anlageRoute, auditRoute, dokumentRoute, energiemanagementRoute, hashForRoute, managementbewertungRoute, pageRoute, parseRoute, personRoute } from '../nav';
 import { canonicalShellRoute } from '../betriebsart';
 
 describe('help handbook integrity', () => {
   it('ships the full handbook with unique slugs, sections and valid related articles', () => {
-    expect(HELP_ARTICLES).toHaveLength(27);
+    expect(HELP_ARTICLES).toHaveLength(28);
     expect(new Set(HELP_ARTICLES.map((a) => a.id)).size).toBe(HELP_ARTICLES.length);
     for (const article of HELP_ARTICLES) {
       expect(HELP_CATEGORIES.some((c) => c.id === article.category)).toBe(true);
@@ -47,6 +47,16 @@ describe('help handbook integrity', () => {
     expect(helpForRoute(anlageRoute('example'))).toBe('cockpit');
     expect(helpForRoute(pageRoute('mandanten'))).toBeNull();
   });
+
+  it('der Energiemanagement-Bereich führt auf seinen Artikel, auf jedem Reiter und jeder Seite darin (AP-20 IP-22)', () => {
+    for (const route of [
+      energiemanagementRoute(), energiemanagementRoute('aufgaben'), energiemanagementRoute('managementbewertung'),
+      personRoute('p-1'), auditRoute('a-1'), managementbewertungRoute('MB-2028'), dokumentRoute('d-1'),
+    ]) {
+      expect(helpForRoute(route), hashForRoute(route)).toBe('energiemanagement');
+    }
+    expect(findArticle('energiemanagement')?.category).toBe('verstehen');
+  });
 });
 
 describe('help search', () => {
@@ -55,6 +65,10 @@ describe('help search', () => {
     expect(searchHelp(HELP_ARTICLES, 'Ausschaltbare Phantomfunktion')).toEqual([]);
     expect(searchHelp(HELP_ARTICLES, 'Schattenbetrieb').some((a) => a.id === 'prognosen')).toBe(true);
     expect(searchHelp(HELP_ARTICLES, 'Seriennummer des Wechselrichters').some((a) => a.id === 'box-verbinden')).toBe(true);
+    // AP-20 IP-22: über den Titel, die Suchwörter und einen Satz im Absatz.
+    expect(searchHelp(HELP_ARTICLES, 'Energiemanagement festhält')[0].id).toBe('energiemanagement');
+    expect(searchHelp(HELP_ARTICLES, 'Gesamtabzug')[0].id).toBe('energiemanagement');
+    expect(searchHelp(HELP_ARTICLES, 'rechtliche Anforderungen').some((a) => a.id === 'energiemanagement')).toBe(true);
   });
   it('supports German alternatives and requires every query word', () => {
     expect(searchHelp(HELP_ARTICLES, 'Erlöse')).toEqual(searchHelp(HELP_ARTICLES, 'Erloese'));
