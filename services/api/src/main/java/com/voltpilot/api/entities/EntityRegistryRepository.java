@@ -316,10 +316,28 @@ public class EntityRegistryRepository {
 
     public record AuftragsQuelle(UUID dataSourceId) {}
 
-    /** Includes legacy measurement points; null means absent, not merely unconfigured for v2. */
+    /**
+     * Die Quelle, der Push je Box und Einmal-Auftrag einer Komponente folgen: ihre eigene
+     * {@code data_source_id} - außer bei einem Verbraucher an einem Ausgang eines I/O-Moduls
+     * ({@code consumer_profile.io_entity_id}). Der hat keinen eigenen Transport; sein Treiber ist der
+     * Modul-Kanal, und den schaltet nur die Box, die das Modul liest. Er folgt darum der Quelle SEINES
+     * MODULS, auch keiner (dann der führenden Box, wie das Modul) - so wie {@code switch_set} es über
+     * die Modul-Komponente schon tut. Das Modul liegt durch Fremdschlüssel in derselben Anlage.
+     */
+    private static final String FOLGE_QUELLE = "CASE WHEN cp.io_entity_id IS NULL THEN mp.data_source_id "
+            + "ELSE io.data_source_id END";
+    private static final String FOLGE_QUELLE_JOINS =
+            " LEFT JOIN consumer_profile cp ON cp.entity_id = mp.id AND cp.site_id = mp.site_id"
+                    + " LEFT JOIN measurement_point io ON io.id = cp.io_entity_id AND io.site_id = mp.site_id";
+
+    /**
+     * Includes legacy measurement points; null means absent, not merely unconfigured for v2. Ein
+     * Kanal-Verbraucher trägt die Quelle seines I/O-Moduls ({@link #FOLGE_QUELLE}).
+     */
     public AuftragsQuelle auftragsQuelle(UUID siteId, UUID pointId) {
         List<AuftragsQuelle> rows = jdbc.query(
-                "SELECT data_source_id FROM measurement_point WHERE site_id = ? AND id = ?",
+                "SELECT " + FOLGE_QUELLE + " AS data_source_id FROM measurement_point mp" + FOLGE_QUELLE_JOINS
+                        + " WHERE mp.site_id = ? AND mp.id = ?",
                 (rs, n) -> new AuftragsQuelle(rs.getObject("data_source_id", UUID.class)),
                 siteId, pointId);
         return rows.isEmpty() ? null : rows.get(0);
@@ -521,12 +539,14 @@ public class EntityRegistryRepository {
     /**
      * Die Datenquelle je v2-Entität der Anlage ({@code measurement_point.data_source_id}), nur die
      * gesetzten, in Push-Reihenfolge. Leer ist der Stand jeder Bestandsanlage (UEMS AP-06 IP-6: dann
-     * bleibt der Registry-Push der eine Push an die führende Box).
+     * bleibt der Registry-Push der eine Push an die führende Box). Ein Kanal-Verbraucher trägt die
+     * Quelle seines I/O-Moduls ({@link #FOLGE_QUELLE}) und steht so im Push derselben Box wie das Modul.
      */
     public java.util.Map<UUID, UUID> datenquelleJeEntitaet(UUID siteId) {
         java.util.Map<UUID, UUID> out = new java.util.LinkedHashMap<>();
-        jdbc.query("SELECT id, data_source_id FROM measurement_point WHERE site_id = ? "
-                        + "AND entity_type IS NOT NULL AND data_source_id IS NOT NULL ORDER BY created_at, id",
+        jdbc.query("SELECT mp.id, " + FOLGE_QUELLE + " AS data_source_id FROM measurement_point mp"
+                        + FOLGE_QUELLE_JOINS + " WHERE mp.site_id = ? AND mp.entity_type IS NOT NULL AND "
+                        + FOLGE_QUELLE + " IS NOT NULL ORDER BY mp.created_at, mp.id",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(
                         rs.getObject("id", UUID.class), rs.getObject("data_source_id", UUID.class)),
                 siteId);

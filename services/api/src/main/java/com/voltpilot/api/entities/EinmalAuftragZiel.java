@@ -11,7 +11,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Gemeinsame Adresse für Einmal-Aufträge: Ausführung der Quelle, sonst führende Box. */
+/**
+ * Gemeinsame Adresse für Einmal-Aufträge: Ausführung der Quelle, sonst führende Box. Ein Verbraucher an
+ * einem Ausgang eines I/O-Moduls folgt der Quelle seines Moduls ({@code EntityRegistryRepository#auftragsQuelle}),
+ * sein Handeingriff also derselben Box wie {@code switch_set} am Modul.
+ */
 @Service
 public class EinmalAuftragZiel {
     private final EntityRegistryRepository entities;

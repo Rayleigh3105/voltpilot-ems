@@ -13,12 +13,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.components.ComponentAdoptionRunner;
 import com.voltpilot.api.components.ComponentApplyRepository;
+import com.voltpilot.api.consumers.ConsumerAuditRepository;
+import com.voltpilot.api.consumers.ConsumerOverridePublisher;
+import com.voltpilot.api.consumers.ConsumerOverrideService;
+import com.voltpilot.api.consumers.ConsumerPolicyActivationService;
+import com.voltpilot.api.consumers.ConsumerRepository;
+import com.voltpilot.api.entities.EinmalAuftragZiel;
 import com.voltpilot.api.entities.EntityObservedRepository;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityRegistryService.PushOutcome;
 import com.voltpilot.api.entities.EntityRegistryService.PushOutcome.BoxZustellung;
 import com.voltpilot.api.entities.EntityStatusListener;
+import com.voltpilot.api.repo.ConsumerOverrideRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.io.IOException;
@@ -44,6 +51,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -161,6 +169,18 @@ class RegistryPushJeBoxApiTest {
 
     @Autowired
     ComponentApplyRepository applyRepo;
+
+    @Autowired
+    EinmalAuftragZiel einmalZiel;
+
+    @Autowired
+    ConsumerRepository consumerRepository;
+
+    @Autowired
+    ConsumerOverrideRepository consumerOverrides;
+
+    @Autowired
+    ConsumerAuditRepository consumerAudit;
 
     private static JsonNode referenz;
     private static JdbcTemplate root;
@@ -419,6 +439,83 @@ class RegistryPushJeBoxApiTest {
         assertThat(nachher.get(lese)).as("nie überschrieben, auch die Revision nicht").isEqualTo(vorher.get(lese));
         assertThat(soll(an)).containsOnlyKeys(e1, lese)
                 .containsEntry(e1, nachher.get(e1).get("revision").asText());
+    }
+
+    // ================================================================ Kanal-Verbraucher (Folge N2)
+
+    /**
+     * Ein Verbraucher an einem Ausgang eines I/O-Moduls hat keine eigene Quelle: sein Treiber ist der
+     * Modul-Kanal ({@code io_entity_id}, {@code channel}), und den schaltet nur die Box, die das Modul
+     * liest. Liest die Lese-Box das Modul, stehen Modul UND Verbraucher in ihrem Push — nie bekommt
+     * Box Halle 1 einen Treiber mit einer {@code io_entity_id}, die sie nicht kennt.
+     */
+    @Test
+    void kanalVerbraucherStehtImPushDerBoxDieSeinModulLiest() throws Exception {
+        Kanal k = kanalWelt("N2-Push");
+
+        push(k.w(), "AN-1");
+        Map<UUID, JsonNode> amBroker = amBroker(k.w(), "AN-1", 2);
+        assertThat(entitaeten(amBroker.get(k.fuehrend()))).containsExactly(k.speicher());
+        assertThat(entitaeten(amBroker.get(k.lese()))).containsExactlyInAnyOrder(k.modul(), k.heizstab());
+        JsonNode treiber = null;
+        for (JsonNode e : amBroker.get(k.lese()).get("entities")) {
+            if (k.heizstab().toString().equals(e.get("entity_id").asText())) {
+                treiber = e.get("driver");
+            }
+        }
+        assertThat(treiber).as("Kanal-Treiber des Heizstabs an der Lese-Box").isNotNull();
+        assertThat(treiber.get("io_entity_id").asText()).isEqualTo(k.modul().toString());
+        assertThat(treiber.get("channel").asInt()).isEqualTo(3);
+    }
+
+    /** Der Handeingriff am Kanal-Verbraucher geht an dieselbe Box wie {@code switch_set} am Modul. */
+    @Test
+    void handeingriffAmKanalVerbraucherGehtAnDieBoxDieSeinModulLiest() {
+        Kanal k = kanalWelt("N2-Eingriff");
+        ConsumerPolicyActivationService freigabe = Mockito.mock(ConsumerPolicyActivationService.class);
+        Mockito.when(freigabe.activationAvailable()).thenReturn(true);
+        ConsumerOverridePublisher eingriffe = Mockito.mock(ConsumerOverridePublisher.class);
+        Mockito.when(eingriffe.publishOverride(any(), any(), any(), any(), any(), any(), Mockito.anyInt(), any()))
+                .thenReturn(true);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ConsumerOverridePublisher> zustellung = Mockito.mock(ObjectProvider.class);
+        Mockito.when(zustellung.getIfAvailable()).thenReturn(eingriffe);
+        ConsumerOverrideService handeingriff = new ConsumerOverrideService(consumerRepository,
+                consumerOverrides, consumerAudit, freigabe, zustellung, einmalZiel);
+
+        TenantContext.set(k.w().mandant);
+        try {
+            assertThat(einmalZiel.komponente(k.anlage(), k.modul()).id()).as("switch_set am Modul")
+                    .isEqualTo(k.lese());
+            assertThat(einmalZiel.komponente(k.anlage(), k.heizstab()).id()).isEqualTo(k.lese());
+            assertThat(handeingriff.start(k.anlage(), k.heizstab(),
+                    new ConsumerOverrideService.OverrideRequest("start", 30, null, null), "n2-probe").pushed())
+                    .isTrue();
+        } finally {
+            TenantContext.clear();
+        }
+        verify(eingriffe).publishOverride(eq(k.w().mandant), eq(k.anlage()), eq(k.lese()), eq(k.heizstab()),
+                eq(Boolean.TRUE), any(), Mockito.anyInt(), any());
+    }
+
+    private record Kanal(Welt w, UUID anlage, UUID fuehrend, UUID lese, UUID speicher, UUID modul, UUID heizstab) {}
+
+    /** AN-1: Box Halle 1 führend mit dem Speicher, Modul M31 hinter DQ-97 an der Lese-Box, Heizstab an DO3. */
+    private static Kanal kanalWelt(String name) {
+        Welt w = new Welt(name);
+        UUID an = w.anlage("AN-1");
+        UUID e1 = w.box("E-1", "AN-1");
+        UUID lese = w.boxErfunden("Lese", "Lese-Box Halle 1", "AN-1", "2026-08-03T10:15:30+02:00");
+        w.speicherAn("AN-1", "E-1");
+        UUID speicher = w.komponente("K-1", "AN-1", "battery-hybrid", "E-1", null, 0);
+        UUID modul = w.komponente("M31", "AN-1", "io-module", null, "192.168.10.60:502", 1);
+        w.quelleErfunden("DQ-97", "AN-1", "192.168.10.60:502", 60);
+        w.liest("DQ-97", "Lese", VOR_30_TAGEN);
+        w.gehoertZu("M31", "DQ-97");
+        UUID heizstab = w.komponente("Heizstab", "AN-1", "heating-rod", null, null, 0);
+        root.update("INSERT INTO consumer_profile (entity_id, tenant_id, site_id, control_kind, rated_power_kw, "
+                + "io_entity_id, io_channel) VALUES (?, ?, ?, 'on_off', 3.0, ?, 3)", heizstab, w.mandant, an, modul);
+        return new Kanal(w, an, e1, lese, speicher, modul, heizstab);
     }
 
     // ================================================================ Gerüst

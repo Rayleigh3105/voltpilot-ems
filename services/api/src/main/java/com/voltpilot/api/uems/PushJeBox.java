@@ -79,7 +79,11 @@ public final class PushJeBox {
         }
     }
 
-    /** Eine v2-Entität der Anlage: Kennung, Typ und ihre Datenquelle ({@code null} = keine). */
+    /**
+     * Eine v2-Entität der Anlage: Kennung, Typ und ihre Datenquelle ({@code null} = keine). Ein
+     * Verbraucher an einem I/O-Modul-Ausgang trägt die Quelle seines Moduls
+     * ({@code EntityRegistryRepository#datenquelleJeEntitaet}) und steht so bei derselben Box.
+     */
     public record Entitaet(UUID id, String entityType, UUID quelle) {}
 
     /** Eine Entität, die in keinem Push steht, und warum. */

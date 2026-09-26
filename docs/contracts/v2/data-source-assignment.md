@@ -262,6 +262,13 @@ Zeitpunkt des Pushs liest (§4, halboffen); die Anlagen-Rollen — Netz-Summe `g
    führende Box ist: `box_ausserhalb_der_anlage` — der Anlagen-übergreifende Fall wartet auf IP-7
    (A3, 10.04.2027 07:30: K-4 … K-7 stehen dann in keinem Push, nie bei Box Halle 1).
 
+Ein Verbraucher an einem Ausgang eines I/O-Moduls (`consumer_profile.io_entity_id`) hat keinen
+eigenen Transport; sein Treiber ist der Modul-Kanal (`io_entity_id`, `channel`). Für Regel 4 und 5
+trägt er darum die Datenquelle SEINES MODULS (auch keine) und steht im Push derselben Box wie das
+Modul; eine eigene `data_source_id` zählt für ihn nicht. Dieselbe Quelle adressiert seine
+Einmal-Aufträge (Handeingriff, `EinmalAuftragZiel`), wie `switch_set` am Modul
+(`EntityRegistryRepository.datenquelleJeEntitaet`/`auftragsQuelle`).
+
 Einen Push bekommen die führende Box, jede Box mit mindestens einer Komponente und jede Box der
 Anlage, für die schon ein Soll aufgezeichnet ist — auch mit leerer Menge, damit sie eine Quelle, die
 sie nicht mehr liest, sicher vergisst. Die Mengen sind disjunkt durch Bau: jede Komponente wird genau
