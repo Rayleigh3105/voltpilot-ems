@@ -143,7 +143,8 @@ describe('Energie-Seite: Quoten', () => {
     expect(ev.info).toBe('Anteil Ihrer Erzeugung, den Sie selbst genutzt statt eingespeist haben.');
   });
 
-  it('unplausibel: die Zahl ungeklemmt, der Satz statt der Erklärung, kein Balken', () => {
+  it('unplausibel: die Zahl ungeklemmt, der Satz statt der Erklärung', () => {
+    // Seit der Energie-Seite auch: kein Balken (eine Füllung bräuchte wieder eine Klemme).
     const [autarkie] = energieQuoten(history({ ...TOTALS, autarkiePct: -20, autarkieUnplausibel: true }));
     expect(autarkie).toMatchObject({
       wert: `${MINUS}20${NBSP}%`,

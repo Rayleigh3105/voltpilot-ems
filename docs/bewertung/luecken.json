@@ -19,9 +19,10 @@
       "quelle": "FM/vp-uems-ap20-fundament/ist/A-bestand.md (A1.4); AP-20 W2",
       "betrifft": ["Z-012"],
       "wer_liefert": [{"wer": "Crew", "was": "die Zeile entfällt auf main, ein Wächter verbietet Rechts- und Konformitätswörter an der Anmeldung (AP-20 IP-1, E9 = A)"}, {"wer": "Captain", "was": "Merge-Wort für AP-20 IP-1 gegen main"}],
-      "zustand": "offen",
+      "zustand": "in_arbeit",
       "verlauf": [
-        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"}
+        {"am": "2026-09-25", "nach": "offen", "person": "Crew (AP-20 Fundament, Phase 2)", "begruendung": "Startbestand des Fundaments AP-20 (report.md §3.3); die Liste gilt mit E6 = A, entschieden am 25.09.2026"},
+        {"am": "2026-09-26", "nach": "in_arbeit", "person": "Crew (vp-uems-nachzug-main-0926)", "begruendung": "Crew-Teil geliefert: AP-20 IP-1 (PR 1258, Kopf 312766112) ist im Sammelzweig gemergt (Merge 6ff377929); AuthScreen.tsx, login.ftl und messages_de/en.properties ohne „DSGVO-konform“/„GDPR compliant“, Wächter-Block „Anmeldung“ in copy.test.ts grün. Behoben erst mit dem Merge-Wort des Captains für PR 1258 gegen main und der Auslieferung von Portal und Keycloak-Thema, dann mit Nachweis am main-Stand (LU2); bis dahin sagt das ausgelieferte Produkt die Zeile weiter"}
       ]
     },
     {
