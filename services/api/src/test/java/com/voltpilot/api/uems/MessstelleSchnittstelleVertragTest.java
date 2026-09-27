@@ -263,8 +263,8 @@ class MessstelleSchnittstelleVertragTest {
                     .containsExactlyInAnyOrderElementsOf(pflicht);
         }
         assertThat(liste(map(map(schema("MessstelleRegisterQuelle"), "properties"), "stand"), "enum"))
-                .containsExactly(MessstelleRegisterService.GEBUNDEN, MessstelleRegisterService.BERECHNET,
-                        MessstelleRegisterService.KEINE_DATENQUELLE);
+                .containsExactly(MessstelleRegisterService.GEBUNDEN, MessstelleRegisterService.ABLESUNG,
+                        MessstelleRegisterService.BERECHNET, MessstelleRegisterService.KEINE_DATENQUELLE);
         // Der Grund der Verortung und der Lebenszyklus sind dieselben Vokabulare wie anderswo.
         assertThat(liste(map(map(schema("MessstelleRegisterOrt"), "properties"), "grund"), "enum"))
                 .containsExactlyElementsOf(liste(map(map(schema("MessstelleStandortAm"), "properties"), "grund"),

@@ -198,6 +198,55 @@ class AblesungApiTest {
         assertThat(berichtigen(w,Map.of("stand","49.500")).status()).isEqualTo(422);
     }
 
+    /** Demo-Befund 27.09.2026: „1250000“ bekam „nicht negativ“ — der Satz nennt jetzt den wahren Grund (U4). */
+    @Test
+    void ungruppierteZahlNenntTausenderpunkteNegativeZahlBleibtNichtNegativ() throws Exception {
+        Welt w=welt();
+        Antwort ungruppiert=ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","1250000"));
+        assertThat(ungruppiert.status()).isEqualTo(422);
+        assertThat(ungruppiert.body().path("code").asText()).isEqualTo("zahl_unlesbar");
+        assertThat(ungruppiert.body().path("feld").asText()).isEqualTo("stand");
+        assertThat(ungruppiert.body().path("message").asText()).contains("Tausenderpunkten", "1.250.000")
+                .doesNotContain("nicht negativ");
+        Antwort negativ=ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","-1.250"));
+        assertThat(negativ.status()).isEqualTo(422);
+        assertThat(negativ.body().path("code").asText()).isEqualTo("wert_ungueltig");
+        assertThat(negativ.body().path("message").asText()).isEqualTo("Einen nicht negativen Zählerstand eingeben.");
+        ok(ruf(w.jonas(),HttpMethod.POST,PFAD,Map.of("zeitpunkt",ERSTE,"stand","1.250.000")),200);
+    }
+
+    /**
+     * Demo-Befund 27.09.2026: MS-20 rechnete aus 24 Ablesungen und hieß im Register „Keine Datenquelle“ — die Bindungen
+     * des Registers kamen nur über Gerät und Messpunkt. Die Ablesung ist die Quelle, mit dem letzten Tag und Stand;
+     * nach der Frist der überfälligen Ablesung „liefert nicht seit“, nie ein neues Zustandswort.
+     */
+    @Test
+    void registerNenntAblesungenAlsQuelleMitLetzterAblesung() throws Exception {
+        Welt w=welt(); anfang(w);
+        JsonNode z=registerZeile(w,"2026-11-20");
+        assertThat(z.path("quelle").path("stand").asText()).isEqualTo("ablesung");
+        assertThat(z.path("quelle").path("ablesung").path("zuletzt").asText()).startsWith("2026-11-02T07:40");
+        assertThat(z.path("quelle").path("ablesung").path("seit").asText()).startsWith("2026-10-01T07:15");
+        assertThat(z.path("beobachtung").path("zustand").asText()).isEqualTo("liefert");
+        assertThat(z.path("beobachtung").path("text").asText()).isEqualTo("Abgelesen am 02.11.2026");
+        assertThat(z.path("letzter_wert").path("wert").decimalValue()).isEqualByComparingTo("49451");
+        assertThat(z.path("letzter_wert").path("einheit").asText()).isEqualTo("m³");
+        JsonNode spaeter=registerZeile(w,"2027-01-10");
+        assertThat(spaeter.path("beobachtung").path("zustand").asText()).isEqualTo("liefert_nicht_seit");
+        assertThat(spaeter.path("beobachtung").path("text").asText()).isEqualTo("Ablesung überfällig seit 02.01.2027");
+        JsonNode vorher=registerZeile(w,"2026-09-20");
+        assertThat(vorher.path("quelle").path("stand").asText()).isEqualTo("keine_datenquelle");
+        assertThat(vorher.path("quelle").has("ablesung")).isFalse();
+        JsonNode ohne=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?ohneQuelle=true&stichtag=2026-11-20",null),200).body();
+        assertThat(ohne.path("register").size()).isZero();
+    }
+
+    private JsonNode registerZeile(Welt w,String stichtag) throws Exception {
+        JsonNode r=ok(ruf(w.jonas(),HttpMethod.GET,"/api/v1/messstellen?stichtag="+stichtag,null),200).body().path("register");
+        assertThat(r.size()).isEqualTo(1);
+        return r.get(0);
+    }
+
     @Test
     void ueberfaelligeAblesungIstCloudLueckeUndWirdBeiNeuerAblesungGeschlossen() throws Exception {
         Welt w=welt(); anfang(w);

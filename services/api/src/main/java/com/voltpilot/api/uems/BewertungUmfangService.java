@@ -4,6 +4,7 @@ import com.voltpilot.api.web.dto.BewertungUmfangDto.*;
 import com.voltpilot.api.uems.BewertungUmfangRepository.Fassung;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
@@ -21,8 +22,13 @@ public class BewertungUmfangService {
     private final BewertungUmfangRepository repo;
     private final UnternehmenRepository unternehmen;
     private final RechtPruefung rechte;
+    /** „Heute“ der Umfangsfassung; die Bühne der Prüfumgebung stellt sie wie die Uhren der Abnahme. */
+    private volatile Clock uhr = Clock.systemUTC();
     public BewertungUmfangService(BewertungUmfangRepository repo, UnternehmenRepository unternehmen, RechtPruefung rechte) {
         this.repo=repo; this.unternehmen=unternehmen; this.rechte=rechte;
+    }
+    public void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
     }
     @Transactional(readOnly = true)
     public Umfang lesen(LocalDate am) {
@@ -32,7 +38,7 @@ public class BewertungUmfangService {
     @Transactional(readOnly = true)
     public Umfang lesen(LocalDate fassungAm, LocalDate anlagenAm) {
         var u = unternehmen.desKundenbereichs().orElseThrow(BewertungUmfangAbgelehnt::fehlt);
-        LocalDate tag = fassungAm == null ? LocalDate.now(ZoneId.of(u.zeitzone())) : fassungAm;
+        LocalDate tag = fassungAm == null ? LocalDate.now(uhr.withZone(ZoneId.of(u.zeitzone()))) : fassungAm;
         var f = repo.fassungen(u.id()).stream().filter(x -> !x.inhalt().gueltigAb().isAfter(tag)).findFirst().orElse(null);
         return darstellen(u.id(), f, anlagenAm == null ? tag : anlagenAm);
     }

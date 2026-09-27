@@ -161,6 +161,16 @@ describe('Prüfnachweis 1 · aus einer Registerzeile werden die Kundenwörter', 
     });
   });
 
+  it('Demo-Befund 27.09.2026: eine Messstelle aus Ablesungen nennt „Ablesungen · zuletzt am …“, nie „Keine Datenquelle“', () => {
+    const a = ahrenbergRegister();
+    const z = structuredClone(zeile(a, 'MS-21'));
+    z.quelle = { stand: 'ablesung', fuehrend: null, davor: null, vergleichsquellen: 0,
+      ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-09-01T00:00:00+02:00' } };
+    expect(zeileWoerter(z, kontext(a)).quelle).toEqual({ art: 'ablesung', text: 'Ablesungen · zuletzt am 01.09.2026' });
+    z.quelle = { ...z.quelle, ablesung: { seit: '2024-10-01T00:00:00+02:00', zuletzt: null } };
+    expect(zeileWoerter(z, kontext(a)).quelle).toEqual({ art: 'ablesung', text: 'Ablesungen' });
+  });
+
   it('der Zustand: Entwurf mit dem, was fehlt · angehalten seit · Archiviert am — und „liefert nicht seit“ ist ein Hinweis, kein Fehler', () => {
     const a = ahrenbergRegister();
     const basis = zeile(a, 'MS-21');

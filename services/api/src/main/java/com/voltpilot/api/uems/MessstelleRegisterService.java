@@ -73,6 +73,7 @@ public class MessstelleRegisterService {
     /** Die Wörter von {@code quelle.stand}. */
     public static final String GEBUNDEN = "gebunden";
     public static final String BERECHNET = "berechnet";
+    public static final String ABLESUNG = "ablesung";
     public static final String KEINE_DATENQUELLE = "keine_datenquelle";
 
     private static final String FUEHREND = "fuehrend";
@@ -167,12 +168,13 @@ public class MessstelleRegisterService {
         Map<UUID, Integer> fassungen = kadenzen.jeBindung(bindungen(bestand, zeitpunkt), zeitpunkt);
         Auswahl auswahl = Auswahl.aus(filter, baum);
         Map<UUID, List<MessbedarfRepository.Planung>> planungen = messbedarfe.planungenJeMessstelle();
+        Map<UUID, MessstelleRegisterRepository.Ablesung> ablesungen = register.ablesungen(zeitpunkt);
         List<MessstelleDto.Messstelle> messstellenListe = new ArrayList<>();
         List<MessstelleDto.RegisterZeile> zeilen = new ArrayList<>();
         Map<UUID, MessstelleDto.RegisterZeile> alle = new LinkedHashMap<>();
         for (int i = 0; i < bestand.size(); i++) {
             MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag,
-                    zeitpunkt, werte, fassungen);
+                    zeitpunkt, werte, fassungen, ablesungen.get(bestand.get(i).messstelle().id()));
             alle.put(bestand.get(i).messstelle().id(), mitPlanungen(z,
                     planungen.getOrDefault(z.id(), List.of())));
         }
@@ -212,14 +214,18 @@ public class MessstelleRegisterService {
 
     private MessstelleDto.RegisterZeile zeile(Bestand b, MessstelleDto.Messstelle voll, StandortService.Baum baum,
             Map<UUID, String> anlagen, LocalDate tag, Instant zeitpunkt, Map<Messwert, Werte> werte,
-            Map<UUID, Integer> fassungen) {
+            Map<UUID, Integer> fassungen, MessstelleRegisterRepository.Ablesung ablesung) {
         MessstelleRepository.Messstelle m = b.messstelle();
         Groesse h = m.hauptgroesse();
         MessstelleDto.RegisterOrt ort = ort(b, baum, tag);
         ZoneId zone = OrtsbaumAbleitung.zeitzoneVon(baum.baum(), ort.standort());
         boolean gemessen = !MessstelleRegeln.BERECHNET.equals(m.art());
-        MessstelleBeobachtung.Ergebnis haupt = gemessen
-                ? beobachtung(fuehrend(b, h, zeitpunkt), werte, fassungen, zeitpunkt, zone) : null;
+        QuelleZeile gebunden = gemessen ? fuehrend(b, h, zeitpunkt) : null;
+        // Eine Ablesungs-Quelle führt nur, wo keine gebundene führt (AP-09 IP-8: Ablesung und Kanal schließen sich aus).
+        boolean abgelesen = gemessen && gebunden == null && ablesung != null;
+        MessstelleBeobachtung.Ergebnis haupt = !gemessen ? null
+                : abgelesen ? MessstelleBeobachtung.ausAblesungen(ablesung, h.einheit(), zeitpunkt, zone)
+                : beobachtung(gebunden, werte, fassungen, zeitpunkt, zone);
         List<MessstelleDto.RegisterNebengroesse> neben = new ArrayList<>();
         for (MessstelleRepository.Nebengroesse n : b.nebengroessen()) {
             Groesse g = n.groesse();
@@ -231,7 +237,7 @@ public class MessstelleRegisterService {
         }
         return new MessstelleDto.RegisterZeile(m.id(), m.kennzeichen(), m.name(), m.art(), m.medium(),
                 new MessstelleDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt),
+                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt, abgelesen ? ablesung : null),
                 voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
                 haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
                 List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null, List.of());
@@ -408,7 +414,8 @@ public class MessstelleRegisterService {
      * Die Quelle der Hauptgröße zum Zeitpunkt: die führende, die dann läuft; davor die führende, die
      * zuletzt VOR ihr (bzw. vor dem Zeitpunkt) endete; die Zahl der laufenden Vergleichsquellen.
      */
-    private MessstelleDto.RegisterQuelle quelle(Bestand b, Instant zeitpunkt) {
+    private MessstelleDto.RegisterQuelle quelle(Bestand b, Instant zeitpunkt,
+            MessstelleRegisterRepository.Ablesung ablesung) {
         Groesse h = b.messstelle().hauptgroesse();
         List<QuelleZeile> derHaupt = b.quellen().stream()
                 .filter(z -> z.quelle().groesse().equals(h.groesse()) && z.quelle().richtung().equals(h.richtung()))
@@ -424,8 +431,10 @@ public class MessstelleRegisterService {
         int vergleich = (int) derHaupt.stream().filter(z -> VERGLEICH.equals(z.quelle().rolle())
                 && MessstelleQuelleService.gilt(z.quelle(), zeitpunkt)).count();
         String stand = MessstelleRegeln.BERECHNET.equals(b.messstelle().art()) ? BERECHNET
-                : gilt != null ? GEBUNDEN : KEINE_DATENQUELLE;
-        return new MessstelleDto.RegisterQuelle(stand, bindung(gilt), bindung(davor), vergleich);
+                : gilt != null ? GEBUNDEN : ablesung != null ? ABLESUNG : KEINE_DATENQUELLE;
+        return new MessstelleDto.RegisterQuelle(stand, bindung(gilt), bindung(davor), vergleich,
+                ablesung == null ? null : new MessstelleDto.RegisterAblesung(MessstelleService.zeit(ablesung.seit()),
+                        MessstelleService.zeit(ablesung.zuletzt())));
     }
 
     private MessstelleDto.RegisterBindung bindung(QuelleZeile z) {

@@ -666,6 +666,7 @@ function Ort({ w }: { w: ZeileWoerter }) {
 
 function Quelle({ w }: { w: ZeileWoerter }) {
   const q = w.quelle;
+  if (q.art === 'ablesung') return <span className="vp-ms-block">{q.text}</span>;
   if (q.art !== 'gebunden') return <span className="vp-ms-block vp-ms-ohne">{q.text}</span>;
   return (
     <>

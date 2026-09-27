@@ -43,7 +43,7 @@ import type {
   MessstelleWerteWert,
 } from './api';
 import { UEMS_FASSUNG, UEMS_LUECKE, UEMS_MESSSTELLE, UEMS_NOCH_NICHT_GERECHNET, UEMS_VERSION } from './glossar';
-import { KEINE_DATENQUELLE, zeitpunktText, type ZeileWoerter } from './messstellen';
+import { KEINE_DATENQUELLE, ablesungenText, zeitpunktText, type ZeileWoerter } from './messstellen';
 import { MONATE, WOCHENTAGE, datumVon, isoWoche } from './picker/datum';
 import { BERECHNET_DIFFERENZ, BERECHNET_SALDO, BERECHNET_SUMME } from './uemsBilanz';
 import { zahlText } from './uemsEreignis';
@@ -443,6 +443,20 @@ export const ohneQuelle = (antwort: MessstelleWerte | null): OhneQuelle | null =
   const satz = grundDes(antwort, antwort.werte[0]);
   return satz === null ? null : { titel: KEINE_DATENQUELLE, satz };
 };
+
+/** Der Satz, wenn eine Messstelle aus Ablesungen im gewählten Zeitraum keinen Wert hat (Tag, Woche, laufender Monat). */
+export const ABLESUNG_OHNE_WERT =
+  'Die Werte kommen aus Ablesungen. Ein Monat summiert ganze Ablesezeiträume; kürzere Zeiträume haben keinen eigenen Wert.';
+
+/**
+ * Demo-Befund 27.09.2026: eine Messstelle aus Ablesungen hat eine Quelle — der leere Zeitraum sagt „Ablesungen · zuletzt am
+ * …“ und warum hier nichts steht, nie „Keine Datenquelle“ und nie den Weg zum Zuordnen einer Quelle.
+ */
+export const ausAblesungen = (
+  quelle: { stand: string; ablesung?: { zuletzt: string | null } } | null | undefined,
+  antwort: MessstelleWerte,
+): OhneQuelle | null =>
+  quelle?.stand === 'ablesung' ? { titel: ablesungenText(quelle.ablesung, antwort.zeitzone), satz: ABLESUNG_OHNE_WERT } : null;
 
 export const QUELLE_GILT_SEIT = '{quelle} gilt seit {datum} — ab dann stehen hier Werte.';
 export const QUELLE_GILT_AB = '{quelle} gilt ab {datum} — ab dann stehen hier Werte.';

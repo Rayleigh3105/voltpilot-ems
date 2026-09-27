@@ -65,6 +65,36 @@ final class MessstelleBeobachtung {
         return new Ergebnis(b, letzterWert(werte, einheit, fuehrend == null ? null : fuehrend.quelle().anteil()));
     }
 
+    /**
+     * Die Beobachtung einer Größe, deren führende Quelle Ablesungen sind (AP-09 IP-8): kein Kanal, keine Kadenz — die
+     * Frist ist die der überfälligen Ablesung ({@link AblesungRegeln#ueberfaelligAb}, derselbe Maßstab wie die Lücke des
+     * {@code AblesungLueckenLauf}). Bis dahin „liefert“ mit „Abgelesen am …“, danach „liefert nicht seit“ der Frist;
+     * kein neues Zustandswort. Der letzte Wert ist der zuletzt abgelesene Stand in der Einheit der Messstelle.
+     */
+    static Ergebnis ausAblesungen(MessstelleRegisterRepository.Ablesung a, String einheit, Instant zeitpunkt,
+            ZoneId zeitzone) {
+        if (a.zuletzt() == null) {
+            return new Ergebnis(new MessstelleDto.RegisterBeobachtung(
+                    ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT.code(), SATZ_KEINE_ABLESUNG,
+                    MessstelleService.zeit(a.seit()), null, null, null, null), null);
+        }
+        Instant faellig = AblesungRegeln.ueberfaelligAb(a.zuletzt(), zeitzone);
+        boolean liefert = zeitpunkt.isBefore(faellig);
+        String tag = TAG.format(a.zuletzt().atZone(zeitzone));
+        MessstelleDto.RegisterBeobachtung b = new MessstelleDto.RegisterBeobachtung(
+                (liefert ? ZustandAbleitung.LiefertDaten.LIEFERT : ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT).code(),
+                liefert ? SATZ_ABGELESEN.replace("{tag}", tag)
+                        : SATZ_UEBERFAELLIG.replace("{tag}", TAG.format(faellig.atZone(zeitzone))),
+                MessstelleService.zeit(liefert ? a.zuletzt() : faellig), null, null, null, null);
+        return new Ergebnis(b, a.stand() == null ? null : new MessstelleDto.RegisterWert(a.stand().doubleValue(), null,
+                einheit, MessstelleService.zeit(a.zuletzt())));
+    }
+
+    private static final java.time.format.DateTimeFormatter TAG = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    static final String SATZ_ABGELESEN = "Abgelesen am {tag}";
+    static final String SATZ_UEBERFAELLIG = "Ablesung überfällig seit {tag}";
+    static final String SATZ_KEINE_ABLESUNG = "Noch keine Ablesung";
+
     /** Das Wort von {@code beobachtung.zuordnung}: Werte kommen an der Box an, gehören aber zu keiner Reihe. */
     static final String NICHT_ZUGEORDNET = "nicht_zugeordnet";
 

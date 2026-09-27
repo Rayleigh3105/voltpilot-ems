@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.web.dto.BewertungKriterienDto.*;
 import com.voltpilot.api.zugriff.RechtPruefung;
 import com.voltpilot.api.zugriff.RechtZiel;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -76,8 +77,14 @@ public class BewertungKriterienService {
             throw BewertungKriterienAbgelehnt.fehlt();
         return u;
     }
+    /** „Heute“ der wirksamen Kriterien; die Bühne der Prüfumgebung stellt sie wie die Uhren der Abnahme. */
+    private volatile Clock uhr = Clock.systemUTC();
+    public void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
+    }
     private LocalDate heute() {
-        return LocalDate.now(ZoneId.of(unternehmen.desKundenbereichs().orElseThrow(BewertungKriterienAbgelehnt::fehlt).zeitzone()));
+        return LocalDate.now(uhr.withZone(ZoneId.of(unternehmen.desKundenbereichs()
+                .orElseThrow(BewertungKriterienAbgelehnt::fehlt).zeitzone())));
     }
     private Fassung wirksam(List<Fassung> alle) {
         return alle.stream().filter(f -> f.freigabeStatus().equals("freigegeben") && f.aufgehobenAm() == null)

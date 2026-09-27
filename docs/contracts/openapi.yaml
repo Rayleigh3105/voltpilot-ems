@@ -16583,7 +16583,7 @@ paths:
               required: [zeitpunkt, stand]
               properties:
                 zeitpunkt: { type: string, format: date-time, example: '2026-11-02T07:40:00+01:00' }
-                stand: { type: string, example: '49.451', description: Nicht negativer deutscher Zahltext. }
+                stand: { type: string, example: '49.451', description: 'Nicht negativer deutscher Zahltext, ab vier Stellen mit Tausenderpunkten (1.250.000) - sonst 422 `zahl_unlesbar`; negativ ist 422 `wert_ungueltig`.' }
                 zuordnung_monat: { type: [string, 'null'], pattern: '^[0-9]{4}-[0-9]{2}$', description: 'Weggelassen = Vorgabe; null = keinem Monat zuordnen.' }
       responses:
         '200':
@@ -28790,11 +28790,19 @@ components:
       type: object
       description: >
         Die Quelle der Hauptgröße zum Zeitpunkt. `stand`: gebunden (eine führende Quelle
-        gilt), berechnet (eine berechnete Messstelle hat keine - ihre Formel kommt mit
+        gilt), ablesung (eine führende Ablesungs-Quelle gilt - `ablesung` nennt die letzte
+        Ablesung), berechnet (eine berechnete Messstelle hat keine - ihre Formel kommt mit
         AP-10) oder keine_datenquelle (gemessen, aber keine führende Quelle - nie eine 0).
       required: [stand, fuehrend, davor, vergleichsquellen]
       properties:
-        stand: { type: string, enum: [gebunden, berechnet, keine_datenquelle] }
+        stand: { type: string, enum: [gebunden, ablesung, berechnet, keine_datenquelle] }
+        ablesung:
+          type: object
+          description: "Nur bei stand = ablesung: seit wann die Ablesungs-Quelle führt und wann zuletzt abgelesen wurde (null = noch nie). Die Beobachtung sagt dann „Abgelesen am …“ bzw. nach der Frist der überfälligen Ablesung „Ablesung überfällig seit …“."
+          required: [seit, zuletzt]
+          properties:
+            seit: { type: string, format: date-time }
+            zuletzt: { type: string, format: date-time, nullable: true }
         fuehrend:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBindung" }]

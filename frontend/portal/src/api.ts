@@ -5815,14 +5815,16 @@ export interface MessstelleRegisterBindung {
 
 /**
  * Die Quelle der Hauptgröße zum Zeitpunkt. `berechnet` heißt: eine berechnete Messstelle hat
- * keine Quelle (ihre Formel kommt mit AP-10); `keine_datenquelle`: gemessen, aber keine
+ * keine Quelle (ihre Formel kommt mit AP-10); `ablesung`: die Werte kommen aus Ablesungen; `keine_datenquelle`: gemessen, aber keine
  * führende Quelle — nie eine 0. `davor` ist die führende Quelle, die zuletzt davor endete.
  */
 export interface MessstelleRegisterQuelle {
-  stand: 'gebunden' | 'berechnet' | 'keine_datenquelle';
+  stand: 'gebunden' | 'berechnet' | 'ablesung' | 'keine_datenquelle';
   fuehrend: MessstelleRegisterBindung | null;
   davor: MessstelleRegisterBindung | null;
   vergleichsquellen: number;
+  /** Nur bei `stand = ablesung`: die Werte kommen aus Ablesungen — seit wann und wann zuletzt (`null` = noch nie). */
+  ablesung?: { seit: string; zuletzt: string | null };
 }
 
 /**

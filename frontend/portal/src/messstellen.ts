@@ -60,6 +60,11 @@ export const ZUSTAND_HEUTE = 'Zustand (heute)';
 export const OHNE_ANGABE = '—';
 export const VERGLEICHSQUELLE = `${UEMS_VERGLEICH}squelle`;
 export const KEINE_DATENQUELLE = 'Keine Datenquelle';
+/** Die Quelle einer Messstelle, deren Werte aus Ablesungen kommen (Demo-Befund 27.09.2026: nie „Keine Datenquelle“). */
+export const ABLESUNGEN = 'Ablesungen';
+/** „Ablesungen · zuletzt am 01.09.2026“ — ohne Ablesung bis zum Zeitpunkt nur „Ablesungen“. */
+export const ablesungenText = (a: { zuletzt: string | null } | undefined, zone: string): string =>
+  a?.zuletzt ? `${ABLESUNGEN} · zuletzt am ${zeitpunktText(a.zuletzt, zone).slice(0, 10)}` : ABLESUNGEN;
 export const BERECHNET_AUS = `Berechnet aus anderen ${TITEL}`;
 export const KEIN_ORT = 'Kein Ort zugeordnet';
 export const EINSTELLUNG_GEAENDERT = 'Einstellung geändert ab';
@@ -140,6 +145,7 @@ export interface ZeileWoerter {
         sprung: Sprung | null;
       }
     | { art: 'berechnet'; text: string }
+    | { art: 'ablesung'; text: string }
     | { art: 'keine_datenquelle'; text: string };
   zustand: string;
   /** Der Satz des Servers (Beobachtung bzw. bei einer berechneten Messstelle ihre Vollständigkeit); `null` = keiner. */
@@ -317,7 +323,9 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
             ),
             sprung: komponenteSprung(z, q.fuehrend),
           }
-        : { art: 'keine_datenquelle', text: KEINE_DATENQUELLE };
+        : q.stand === 'ablesung'
+          ? { art: 'ablesung', text: ablesungenText(q.ablesung, k.zone) }
+          : { art: 'keine_datenquelle', text: KEINE_DATENQUELLE };
   const w = z.letzter_wert;
   const text = w ? wertText(w) : null;
   return {

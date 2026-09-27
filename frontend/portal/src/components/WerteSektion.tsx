@@ -58,6 +58,7 @@ import {
   karte,
   liste,
   ohneQuelle,
+  ausAblesungen,
   ohneQuelleWeg,
   quellenNamen,
   versionHinweis,
@@ -260,8 +261,11 @@ export function WerteSektion({
   const namen = quellenNamen(quelle);
   const k = aktuell?.karte ? karte(aktuell.karte, namen) : null;
   // Z4: der ganze Zeitraum ohne Datenquelle — Karte (falls der Zeitraum eine hat) UND Liste.
-  const leer = aktuell && (aktuell.karte === null || ohneQuelle(aktuell.karte)) ? ohneQuelle(aktuell.liste) : null;
-  const weg = leer ? ohneQuelleWeg(quelle, anfragen.liste.bis, heute, onQuelleZuordnen !== undefined, medium) : null;
+  const ohne = aktuell && (aktuell.karte === null || ohneQuelle(aktuell.karte)) ? ohneQuelle(aktuell.liste) : null;
+  // Eine Messstelle aus Ablesungen HAT eine Quelle: ihr leerer Zeitraum nennt sie, ohne Weg zum Zuordnen.
+  const abgelesen = ohne && aktuell ? ausAblesungen(quelle, aktuell.liste) : null;
+  const leer = abgelesen ?? ohne;
+  const weg = ohne && !abgelesen ? ohneQuelleWeg(quelle, anfragen.liste.bis, heute, onQuelleZuordnen !== undefined, medium) : null;
   const e = aktuell?.karte ? einstieg(aktuell.karte) : null;
   const hinweis = aktuell?.karte ? versionHinweis(aktuell.karte, gewaehlt) : null;
   // Werte kommen an der Box an, gehören aber zu keiner Reihe: gesagt statt als „keine Werte“ gedeutet.

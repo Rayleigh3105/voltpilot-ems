@@ -76,8 +76,9 @@ public class AblesungService {
             if (!zeit.equals(zeit.truncatedTo(ChronoUnit.MINUTES)) || zeit.isAfter(jetzt))
                 throw new AblesungAbgelehnt(ZEITPUNKT_UNGUELTIG);
             var zahl=BezugsdatenRegeln.zahl(standText,"de",false);
-            if (zahl.betrag()==null || zahl.betrag().signum()<0 || !Double.isFinite(zahl.betrag().doubleValue()))
-                throw new AblesungAbgelehnt(WERT_UNGUELTIG);
+            if (zahl.betrag()==null) throw new AblesungAbgelehnt(ZAHL_UNLESBAR,Map.of("feld","stand"));
+            if (zahl.betrag().signum()<0 || !Double.isFinite(zahl.betrag().doubleValue()))
+                throw new AblesungAbgelehnt(WERT_UNGUELTIG,Map.of("feld","stand"));
             MesswertHerkunft.ablesung(tenant.toString(),m.kennzeichen(),m.hauptgroesse().groesse(),zeit,jetzt,
                     zahl.betrag(),m.hauptgroesse().einheit(),"eingabe",Map.of("sub",wer.sub(),"name",wer.name(),
                             "rolle",wer.rolle(),"art",wer.art()));

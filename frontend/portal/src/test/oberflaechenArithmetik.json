@@ -39,6 +39,7 @@
         "./glossar:UEMS_NOCH_NICHT_GERECHNET",
         "./glossar:UEMS_VERSION",
         "./messstellen:KEINE_DATENQUELLE",
+        "./messstellen:ablesungenText",
         "./messstellen:zeitpunktText",
         "./picker/datum:MONATE",
         "./picker/datum:WOCHENTAGE",

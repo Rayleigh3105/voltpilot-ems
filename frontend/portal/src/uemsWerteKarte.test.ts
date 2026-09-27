@@ -52,6 +52,8 @@ import {
   quellenNamen,
   zeitenKopf,
   berechneteHerkunft,
+  ausAblesungen,
+  ABLESUNG_OHNE_WERT,
 } from './uemsWerteKarte';
 import { f21Tag, f21TagWert } from './test/wertVersionenFixtures';
 
@@ -456,6 +458,17 @@ describe('uemsWerteKarte — die Anzahl der Lücken an der Karte (Captain 15.09.
 
   it('„Lücke“ ist der Name der Ereignis-Art im Vokabular', () => {
     expect(UEMS_LUECKE.singular).toBe(EREIGNIS_TEXTE.data_gap.name);
+  });
+});
+
+describe('uemsWerteKarte — eine Messstelle aus Ablesungen (Demo-Befund 27.09.2026)', () => {
+  it('der leere Tag nennt die Ablesungen mit dem letzten Tag, nie „Keine Datenquelle“', () => {
+    const tag = ohneQuelleTag();
+    expect(ohneQuelle(tag)?.titel).toBe('Keine Datenquelle');
+    const quelle = { stand: 'ablesung', ablesung: { zuletzt: '2026-09-01T00:00:00+02:00' } };
+    expect(ausAblesungen(quelle, tag)).toEqual({ titel: 'Ablesungen · zuletzt am 01.09.2026', satz: ABLESUNG_OHNE_WERT });
+    expect(ausAblesungen({ stand: 'keine_datenquelle' }, tag)).toBeNull();
+    expect(ausAblesungen(null, tag)).toBeNull();
   });
 });
 

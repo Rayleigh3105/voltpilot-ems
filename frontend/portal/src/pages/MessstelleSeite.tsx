@@ -372,6 +372,7 @@ function MessstelleSeiteMitId({
               Quelle: {[w.quelle.geraet, w.quelle.messwert, w.quelle.seit].join(' · ')}
             </p>
           )}
+          {w?.quelle.art === 'ablesung' && <p className="vp-mss-quelle">Quelle: {w.quelle.text}</p>}
         </div>
         {darfAendern && (
           <Recht aktion="messstelle.bearbeiten"><Button variant="outline" onClick={() => oeffneBearbeiten(1)}>

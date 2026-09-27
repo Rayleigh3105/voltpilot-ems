@@ -125,6 +125,8 @@ class UemsEnergiemanagementAbnahmeTest {
     @Autowired BerichtService berichte;
     @Autowired EnergiemanagementVerzeichnisService verzeichnis;
     @Autowired EnergiemanagementWiedervorlageService wiedervorlage;
+    @Autowired BewertungUmfangService umfang;
+    @Autowired BewertungKriterienService kriterien;
 
     JdbcTemplate root;
     /** Die Welt (seit AP-20 IP-13 eine eigene Klasse, auch der Seed-Weg der Prüfumgebung); ihre Stände hier gespiegelt. */
@@ -274,6 +276,35 @@ class UemsEnergiemanagementAbnahmeTest {
         assertThat(rf).hasSize(11).allSatisfy(z -> assertThat(z.path("entschieden_von").asText())
                 .isEqualTo("Robert Falk"));
         assertThat(rf.stream().filter(z -> z.path("art").asText().equals("aufgabe"))).hasSize(9);
+    }
+
+    /**
+     * Demo-Befund 27.09.2026: die Welt schrieb ihre Berichtsstände als Stummel {@code {bericht, nr}} direkt in
+     * {@code bericht_stand}, und das Portal fiel an {@code kopf.zeitraum} in die Fehlergrenze. Jeder Stand der Welt ist
+     * jetzt der Abzug der Bildung über Anlegen, Entwurf und Freigabe — mit Kopf, Zeitraum und Datenstand am Tag der
+     * Freigabe; Nr. 2 ersetzt Nr. 1.
+     */
+    @Test
+    void jederBerichtsstandDerWeltTraegtDenVollstaendigenAbzug() throws Exception {
+        record S(String kennung, int nr, String vorlage, String tag) { }
+        for (S s : List.of(new S("BR-2026-0001", 1, "monatsbericht_standort", "2026-11-05"),
+                new S("BR-2026-0001", 2, "monatsbericht_standort", "2026-12-20"),
+                new S("BR-2026-0002", 1, "energetische_bewertung", "2026-12-01"),
+                new S("BR-2026-0002", 2, "energetische_bewertung", "2027-02-10"),
+                new S("BR-2027-0001", 1, "energetische_bewertung", "2027-11-24"),
+                new S("BR-2028-0001", 1, "leistungsvergleich", "2028-01-20"))) {
+            JsonNode stand = ruf("/api/v1/berichte/" + s.kennung() + "/staende/" + s.nr(), "IK", 200);
+            JsonNode kopf = stand.path("abzug").path("kopf");
+            assertThat(kopf.path("zeitraum").path("art").isTextual()).as(s + " kopf.zeitraum").isTrue();
+            assertThat(kopf.path("zeitraum").path("schluessel").isTextual()).as(s + " Schlüssel").isTrue();
+            assertThat(kopf.path("datenstand").asText()).as(s + " Datenstand").startsWith(s.tag());
+            assertThat(stand.path("abzug").has("nr")).as(s + " kein Stummel").isFalse();
+            assertThat(ruf("/api/v1/berichte/" + s.kennung(), "IK", 200).path("bericht").path("vorlage").asText())
+                    .as(s + " Vorlage").isEqualTo(s.vorlage());
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
+                + "WHERE b.tenant_id = ? AND b.kennung LIKE 'BR-202_-000_' AND s.ersetzt_durch_nr IS NOT NULL", Integer.class,
+                tenant)).as("Nr. 1 von BR-2026-0001 und BR-2026-0002 ersetzt").isEqualTo(2);
     }
 
     /**
@@ -748,6 +779,8 @@ class UemsEnergiemanagementAbnahmeTest {
         berichte.uhrStellen(c);
         verzeichnis.uhrStellen(c);
         wiedervorlage.uhrStellen(c);
+        umfang.uhrStellen(c);
+        kriterien.uhrStellen(c);
     }
 
     private JsonNode ruf(String path, String sub, int status) throws Exception {

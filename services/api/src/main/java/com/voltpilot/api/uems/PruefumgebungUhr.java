@@ -41,12 +41,14 @@ class PruefumgebungUhr {
     private final EnergiemanagementVerzeichnisService verzeichnis;
     private final EnergiemanagementWiedervorlageService wiedervorlage;
     private final ZugriffBuehnenUhr zugriffe;
+    private final BewertungUmfangService umfang;
+    private final BewertungKriterienService kriterien;
 
     PruefumgebungUhr(@Value("${voltpilot.pruefumgebung.buehnen-uhr}") String buehne,
             EnergiemanagementDokumentService dokumente, InternesAuditService audits,
             FeststellungService feststellungen, KennzahlService kennzahlen, BerichtService berichte,
             EnergiemanagementVerzeichnisService verzeichnis, EnergiemanagementWiedervorlageService wiedervorlage,
-            ZugriffBuehnenUhr zugriffe) {
+            ZugriffBuehnenUhr zugriffe, BewertungUmfangService umfang, BewertungKriterienService kriterien) {
         this.buehne = Instant.parse(buehne);
         this.dokumente = dokumente;
         this.audits = audits;
@@ -56,6 +58,8 @@ class PruefumgebungUhr {
         this.verzeichnis = verzeichnis;
         this.wiedervorlage = wiedervorlage;
         this.zugriffe = zugriffe;
+        this.umfang = umfang;
+        this.kriterien = kriterien;
     }
 
     /**
@@ -77,6 +81,10 @@ class PruefumgebungUhr {
         berichte.uhrStellen(uhr);
         verzeichnis.uhrStellen(uhr);
         wiedervorlage.uhrStellen(uhr);
+        // Umfang und Kriterien der energetischen Bewertung lesen ihre heutige Fassung — sonst kennt die Bühne
+        // (ab 01.10.2026) in echter Zeit davor keinen Umfang, und die Rangliste bleibt leer (Demo-Befund 27.09.2026).
+        umfang.uhrStellen(uhr);
+        kriterien.uhrStellen(uhr);
         zugriffe.stellen(uhr);
     }
 }

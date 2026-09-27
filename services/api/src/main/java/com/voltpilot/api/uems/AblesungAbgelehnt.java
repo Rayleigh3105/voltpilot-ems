@@ -10,6 +10,8 @@ public class AblesungAbgelehnt extends RuntimeException {
         QUELLE_PASST_NICHT(422, "Diese Messstelle wird nicht manuell abgelesen."),
         ZEITPUNKT_UNGUELTIG(422, "Datum und Uhrzeit prüfen."),
         WERT_UNGUELTIG(422, "Einen nicht negativen Zählerstand eingeben."),
+        /** Die Zahl-Regel (U4) liest ab vier Stellen nur mit Tausenderpunkten — der Satz nennt genau das. */
+        ZAHL_UNLESBAR(422, "Den Zählerstand ab vier Stellen mit Tausenderpunkten eingeben, zum Beispiel 1.250.000 oder 49.451,5."),
         RUECKSPRUNG(422, "Rücksprung — Zählerwechsel eintragen?"),
         KONFLIKT(409, "Für diesen Zeitpunkt gibt es bereits eine Ablesung — berichtigen?"),
         BEGRUENDUNG_FEHLT(422, "Die Berichtigung braucht eine Begründung mit 10 bis 500 Zeichen."),

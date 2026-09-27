@@ -32,3 +32,10 @@ Einstieg: `docs/contracts/v2/messwert-herkunft.md` → Ablesungen; Code `Ablesun
 - Vertragsleser: Herkunft in API/Writer, Ereignisse auch Ingest und Portal, unveränderte
   `verbrauch-vectors.json` für F17. Migrationen mit TenantRepository gegen alte Stände
   sowie die sechs Bestandsschutz-Nachbarn mitlaufen lassen.
+- Register und Werte (Demo-Befund 27.09.2026): die Ablesungs-Quelle hat weder Gerät noch Messpunkt und fehlt in den
+  Bindungen des Registers (`MessstelleRegisterRepository.alle`, INNER JOIN). Sie kommt über
+  `MessstelleRegisterRepository.ablesungen` dazu: `quelle.stand = ablesung` mit `quelle.ablesung {seit, zuletzt}`,
+  Beobachtung „Abgelesen am …“ bzw. nach Z7 „Ablesung überfällig seit …“ (kein neues Zustandswort), letzter Wert =
+  letzter Stand. Der leere Tag im Abschnitt „Werte“ sagt „Ablesungen · zuletzt am …“ (`uemsWerteKarte.ausAblesungen`).
+- Zahltext: ohne Tausenderpunkte ab vier Stellen ist 422 `zahl_unlesbar` mit Beispiel „1.250.000“, negativ bleibt
+  `wert_ungueltig` („nicht negativ“); beide mit `feld: stand`.

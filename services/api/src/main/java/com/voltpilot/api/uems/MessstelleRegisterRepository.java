@@ -209,6 +209,35 @@ public class MessstelleRegisterRepository {
     }
 
     /**
+     * Eine führende Ablesungs-Quelle (AP-09 IP-8) zum Zeitpunkt: seit wann sie gilt und wann zuletzt abgelesen wurde
+     * ({@code null} = noch nie). Sie hat weder Gerät noch Komponente — darum fehlt sie in {@link #alle()}, das die
+     * Bindungen über Gerät und Messpunkt liest (Demo-Befund 27.09.2026: MS-20 rechnete aus 24 Ablesungen und hieß im
+     * Register „Keine Datenquelle“).
+     */
+    public record Ablesung(Instant seit, Instant zuletzt, java.math.BigDecimal stand) {}
+
+    /** Je Messstelle die Ablesungs-Quelle, die zum {@code zeitpunkt} führt, mit der letzten Ablesung bis dahin. */
+    public Map<UUID, Ablesung> ablesungen(Instant zeitpunkt) {
+        Map<UUID, Ablesung> out = new HashMap<>();
+        Timestamp t = Timestamp.from(zeitpunkt);
+        jdbc.query("""
+                SELECT q.messstelle_id, q.gueltig_ab, l.zeitpunkt AS zuletzt, l.stand
+                  FROM messstelle_quelle q
+                  LEFT JOIN LATERAL (SELECT f.zeitpunkt, f.stand FROM messstelle_ablesung_fassung f
+                                      WHERE f.quelle_id = q.id AND f.zeitpunkt <= ?
+                                      ORDER BY f.zeitpunkt DESC, f.fassung DESC LIMIT 1) l ON true
+                 WHERE q.art = 'ablesung' AND q.rolle = 'fuehrend'
+                   AND q.gueltig_ab <= ? AND (q.gueltig_bis IS NULL OR q.gueltig_bis > ?)
+                """, rs -> {
+                    Timestamp zuletzt = rs.getTimestamp("zuletzt");
+                    out.put(rs.getObject("messstelle_id", UUID.class), new Ablesung(
+                            rs.getTimestamp("gueltig_ab").toInstant(), zuletzt == null ? null : zuletzt.toInstant(),
+                            rs.getBigDecimal("stand")));
+                }, t, t, t);
+        return out;
+    }
+
+    /**
      * Der EINE zusätzliche Lesezug der Beobachtung (IP-15): je Messwert (Komponente + Kanal +
      * Beginn der Bindung) die Kadenz seiner Mess-Selektion, sein letzter GUTER Wert SEIT dem
      * Beginn und bis {@code bis} und ob überhaupt je einer ankam. Die drei Felder kommen als

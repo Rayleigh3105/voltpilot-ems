@@ -375,23 +375,27 @@ final class AhrenbergWelt {
 
         // AP-12: BR-2026-0001 (Monatsbericht, Nr. 1 und Nr. 2); AP-16 S5: zwei energetische Bewertungen mit drei
         // Ständen; AP-17: der Leistungsvergleich mit seinem Stand (Code-Kennung BR-, Datei-Kennung BW-/VB-, W11).
-        root.update("INSERT INTO bericht (tenant_id, kennung, vorlage, vorlage_fassung, geltung_art, standort_id, "
-                + "zeitraum_art, zeitraum_schluessel, zeitzone, angelegt_von_name) VALUES (?, 'BR-2026-0001', "
-                + "'monatsbericht_standort', 1, 'standort', ?, 'monat', '2026-10', 'Europe/Berlin', 'Ines Kaltenbach')",
-                tenant, s1);
-        UUID monat = root.queryForObject("SELECT id FROM bericht WHERE tenant_id = ? AND kennung = 'BR-2026-0001'",
-                UUID.class, tenant);
-        stand(monat, 1, "2026-11-05T10:00:00Z", null);
-        stand(monat, 2, "2026-12-20T10:00:00Z", null);
-        UUID bw1 = bericht("BR-2026-0002", "energetische_bewertung", "datengrundlage", "2026-10", null);
-        stand(bw1, 1, "2026-11-24T10:00:00Z", null);
-        stand(bw1, 2, "2027-02-10T10:00:00Z", null);
-        UUID bw2 = bericht("BR-2027-0001", "energetische_bewertung", "datengrundlage", "2027-10", null);
-        stand(bw2, 1, "2027-11-24T10:00:00Z", null);
-        UUID vb = bericht("BR-2028-0001", "leistungsvergleich", "monat", "2027-12", kennzahl.get("KZ-0004"));
-        JsonNode urteil = referenz.at("/massnahmen/0/ausgangslage/kopie");
-        stand(vb, 1, "2028-01-20T10:00:00Z", "{\"kopf\":{\"bericht\":\"BR-2028-0001\"},\"urteil\":{\"delta_prozent\":"
-                + urteil.path("delta_prozent").asText() + ",\"urteil\":\"" + urteil.path("urteil").asText() + "\"}}");
+        // Über die Routen des Portals — Anlegen, Entwurf, Freigabe an ihren Tagen: jeder Stand trägt den vollständigen
+        // Abzug der Bildung (Demo-Befund 27.09.2026: ein direkt geschriebener Stummel {bericht, nr} brachte die Seiten
+        // in die Fehlergrenze). Nr. 2 folgt einer Neubildung am Tag (wie die Kaskade nach einer Korrektur), weil die Welt
+        // die Korrektur K-2026-0007 selbst nicht trägt. Der Leistungsvergleich urteilt aus den Werten der Welt — sie hat
+        // für Dezember 2027 keine; die Zahlen der Referenzdatei sind Annahmen (VB-2028-0001 „annahme“).
+        // ⚠ Die erste Bewertung am 01.12.2026 statt 24.11.2026: ihre Datengrundlage (die letzten zwölf Monate) liest den
+        // Betrachtungsumfang an ihrem letzten Tag, und der gilt erst ab 04.11.2026 — am 24.11. endete sie am 31.10.
+        berichtAnlegen("2026-11-05T09:50:00Z", "BR-2026-0001", Map.of("vorlage", "monatsbericht_standort",
+                "geltung_id", s1.toString(), "zeitraum", "2026-10"));
+        berichtFreigeben("BR-2026-0001", "2026-11-05T10:00:00Z", false);
+        berichtAnlegen("2026-12-01T09:50:00Z", "BR-2026-0002", Map.of("vorlage", "energetische_bewertung",
+                "geltung_id", unternehmen.toString()));
+        berichtFreigeben("BR-2026-0002", "2026-12-01T10:00:00Z", false);
+        berichtFreigeben("BR-2026-0001", "2026-12-20T10:00:00Z", true);
+        berichtFreigeben("BR-2026-0002", "2027-02-10T10:00:00Z", true);
+        berichtAnlegen("2027-11-24T09:50:00Z", "BR-2027-0001", Map.of("vorlage", "energetische_bewertung",
+                "geltung_id", unternehmen.toString()));
+        berichtFreigeben("BR-2027-0001", "2027-11-24T10:00:00Z", false);
+        berichtAnlegen("2028-01-20T09:50:00Z", "BR-2028-0001", Map.of("vorlage", "leistungsvergleich",
+                "geltung_id", unternehmen.toString(), "zeitraum", "2027-12", "kennzahl", kennzahl.get("KZ-0004").toString()));
+        berichtFreigeben("BR-2028-0001", "2028-01-20T10:00:00Z", false);
 
         // AP-18 (Muster IP-22): EZ-2028-0001 verfehlt, M-2028-0001 belegt, M-2028-0002 nicht messbar, AW-2026-0001
         // und AW-2028-0001 abgeschlossen.
@@ -699,20 +703,34 @@ final class AhrenbergWelt {
                 + "bezugsgroesse_fassung) VALUES (?, ?, 1, ?, 1)", tenant, f, bz1);
     }
 
-    private UUID bericht(String kennung, String vorlage, String zeitraumArt, String schluessel, UUID kennzahl) {
-        return root.queryForObject("INSERT INTO bericht (tenant_id, kennung, vorlage, vorlage_fassung, geltung_art, "
-                + "unternehmen_id, zeitraum_art, zeitraum_schluessel, zeitzone, angelegt_von_name, kennzahl_id) "
-                + "VALUES (?, ?, ?, 1, 'unternehmen', ?, ?, ?, 'Europe/Berlin', 'Ines Kaltenbach', ?) RETURNING id",
-                UUID.class, tenant, kennung, vorlage, unternehmen, zeitraumArt, schluessel, kennzahl);
+    /** Ein Bericht über {@code POST /api/v1/berichte} am Tag {@code am} — die Kennung vergibt das Produkt. */
+    private void berichtAnlegen(String am, String kennung, Map<String, Object> anfrage) throws Exception {
+        uhr(am);
+        assertThat(ruf("POST", "/api/v1/berichte", "IK", anfrage, 201).path("kennung").asText()).isEqualTo(kennung);
     }
 
-    private void stand(UUID bericht, int nr, String am, String abzug) {
-        String a = abzug == null ? "{\"bericht\":\"" + bericht + "\",\"nr\":" + nr + "}" : abzug;
-        Timestamp t = Timestamp.from(Instant.parse(am));
-        root.update("INSERT INTO bericht_stand (tenant_id, bericht_id, nr, abzug, pruefsumme, datenstand, "
-                + "freigegeben_am, freigeber_sub, freigeber_name, freigeber_rolle, darstellung, regelwerk, "
-                + "vorlage_fassung) VALUES (?, ?, ?, ?, ?, ?, ?, '" + ik + "', 'Ines Kaltenbach', 'energiemanager', "
-                + "'{}'::jsonb, '{}'::jsonb, 1)", tenant, bericht, nr, a, BerichtRegeln.pruefsumme(a), t, t);
+    /**
+     * Ein Berichtsstand über Entwurf und {@code POST …/freigeben} am Tag {@code am}. {@code neuBilden}: vorher den
+     * Entwurf zum Tag neu bilden ({@link BerichtAbzugBildung#bilden}, wie die Kaskade nach einer Korrektur) — ohne
+     * geänderte Quelle bliebe der Entwurf der von Nr. 1, und die Freigabe gäbe Nr. 1 zurück statt Nr. 2.
+     */
+    private void berichtFreigeben(String kennung, String am, boolean neuBilden) throws Exception {
+        uhr(am);
+        if (neuBilden) {
+            UUID bericht = root.queryForObject("SELECT id FROM bericht WHERE tenant_id = ? AND kennung = ?", UUID.class,
+                    tenant, kennung);
+            BerichtAbzugBildung bildung = mvc.getDispatcherServlet().getWebApplicationContext()
+                    .getBean(BerichtAbzugBildung.class);
+            // Wie ein Lauf der Kaskade: der Kundenbereich im Kontext, die Bildung auf einer eigenen Verbindung.
+            com.voltpilot.api.tenant.TenantContext.set(tenant);
+            try (java.sql.Connection con = root.getDataSource().getConnection()) {
+                bildung.bilden(con, bericht, Instant.parse(am), "kaskade");
+            } finally {
+                com.voltpilot.api.tenant.TenantContext.clear();
+            }
+        }
+        String datenstand = ruf("/api/v1/berichte/" + kennung + "/entwurf", "IK", 200).path("datenstand").asText();
+        ruf("POST", "/api/v1/berichte/" + kennung + "/freigeben", "IK", Map.of("entwurf_datenstand", datenstand), 201);
     }
 
     private UUID massnahmeDirekt(String kennzeichen, JsonNode m, String herkunft, String herkunftKennung, UUID kennzahl,

@@ -261,7 +261,7 @@ public final class MessstelleDto {
 
     /**
      * Die Quelle der Hauptgröße zum Zeitpunkt. {@code stand}: {@code gebunden} (eine führende Quelle
-     * gilt), {@code berechnet} (eine berechnete Messstelle hat keine Quelle — ihre Formel kommt mit
+     * gilt), {@code ablesung} (eine führende Ablesungs-Quelle gilt, {@code ablesung} nennt die letzte), {@code berechnet} (eine berechnete Messstelle hat keine Quelle — ihre Formel kommt mit
      * AP-10) oder {@code keine_datenquelle} (gemessen, aber zu dem Zeitpunkt keine führende Quelle —
      * nie eine 0). {@code davor}: die führende Quelle, die vor der geltenden (bzw. vor dem Zeitpunkt)
      * zuletzt endete — „seit 18.11.2026 10:40 · davor Z-5a“. {@code vergleichsquellen}: wie viele
@@ -269,7 +269,14 @@ public final class MessstelleDto {
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegisterQuelle(String stand, RegisterBindung fuehrend, RegisterBindung davor,
-            int vergleichsquellen) {}
+            int vergleichsquellen, @JsonInclude(JsonInclude.Include.NON_NULL) RegisterAblesung ablesung) {}
+
+    /**
+     * {@code stand = ablesung}: die Werte kommen aus Ablesungen (AP-09 IP-8) — seit wann die Ablesungs-Quelle führt und
+     * wann zuletzt abgelesen wurde ({@code null} = noch nie). Bei jedem anderen Stand fehlt das Feld.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterAblesung(OffsetDateTime seit, OffsetDateTime zuletzt) {}
 
     /**
      * Eine führende Bindung, wie das Register sie nennt: Komponente, Messwert (Kanal und sein
