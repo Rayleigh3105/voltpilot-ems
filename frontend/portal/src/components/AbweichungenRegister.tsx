@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import * as A from '../abweichungen';
 import { api, type Abweichung } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
+import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import { ErrorState, Skeleton } from './States';
 import { VpPicker } from './VpPicker';
 import '../pages/Verbesserung.css';
@@ -123,7 +124,7 @@ export function AbweichungenRegister({
           )}
         </>
       )}
-      {grenze && <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>}
+      {grenze && <GrenzSatz className="vp-ez-grenze" />}
     </section>
   );
 }

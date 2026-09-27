@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { api, type Energieziel, type EnergiezielStand } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
+import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import { ErrorState, Skeleton } from './States';
 import '../pages/Verbesserung.css';
 
@@ -97,7 +98,7 @@ export function EnergiezieleRegister({ onOeffnen }: { onOeffnen: (id: string) =>
           </table>
         </div>
       )}
-      <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-ez-grenze" />
     </section>
   );
 }

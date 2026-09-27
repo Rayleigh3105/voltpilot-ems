@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -77,7 +78,7 @@ export function RanglisteBereich({ rangliste, zeitraum, historien, darfEinstufen
     <div className="vp-bw-rest-anlagen">{rangliste.anlagen.map((a) => <span key={a.id}>{a.name}: nicht zugeordnet {zahlMitEinheit(a.rest, 'kWh')}</span>)}</div>
     {rangliste.weitere_traeger.length > 0 && <div className="vp-bw-weitere" data-testid="weitere-traeger"><h3>Weitere Träger</h3>{rangliste.weitere_traeger.map((e) => <p key={e.id}><strong>{e.kennzeichen} {e.name}</strong>: {zahlMitEinheit(e.menge, e.einheit)} · ohne Anteil — {e.traeger} hat keinen gemeinsamen Nenner mit Strom.</p>)}</div>}
     {!darfEinstufen && <p className="vp-bw-leise">Sie sehen Rangliste, Vorschläge und Einstufungen. Einstufen können Kundenadministratoren und Energiemanager.</p>}
-    <p className="vp-bw-grenze">{UEMS_NORMGRENZE}</p>
+    <GrenzSatz className="vp-bw-grenze" />
     {einstufen && <EinstufungDialog einsatz={einstufen} onClose={() => setEinstufen(null)} onGespeichert={(f) => { onEinstufung(einstufen.id, f); setEinstufen(null); }} />}
     {kriterien && <KriterienDialog onClose={() => setKriterien(false)} onGespeichert={(f) => { onKriterien(f); setKriterien(false); }} />}
   </section>;
@@ -233,6 +234,6 @@ export function EinstufungHistorie({ einsatzId, fassungen, darfBestaetigen, onBe
       setFehler(null); api.energieeinsatzEinstufungBestaetigen(einsatzId).then(onBestaetigt, (e) => setFehler(fehlerText(e)));
     }}>Einstufung bestätigen</Button>}
     {fehler && <p className="vp-alert vp-alert-err" role="alert">{fehler}</p>}
-    <p className="vp-bw-grenze">{UEMS_NORMGRENZE}</p>
+    <GrenzSatz className="vp-bw-grenze" />
   </section>;
 }

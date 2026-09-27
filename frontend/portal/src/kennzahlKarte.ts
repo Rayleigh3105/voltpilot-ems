@@ -490,13 +490,17 @@ const klartextVon = (
   ];
 };
 
-/** Die Namen der Eingänge aus allen Fassungen (Kennzeichen → Name); die jüngere Fassung gewinnt. */
-export const eingangsNamen = (fassungen: readonly KennzahlFassung[]): Map<string, string> =>
-  new Map(
-    [...fassungen]
-      .sort((a, b) => a.nummer - b.nummer)
-      .flatMap((f) => f.eingaenge.filter((e) => e.name).map((e) => [e.kennzeichen, e.name as string] as const)),
-  );
+/** Die Namen der Eingänge aus allen Fassungen (Kennzeichen → Name); die jüngere Fassung gewinnt (nur verglichen, nie gerechnet). */
+export const eingangsNamen = (fassungen: readonly KennzahlFassung[]): Map<string, string> => {
+  const juengste = new Map<string, { nummer: number; name: string }>();
+  for (const f of fassungen) {
+    for (const e of f.eingaenge) {
+      const bisher = juengste.get(e.kennzeichen);
+      if (e.name && (!bisher || bisher.nummer < f.nummer)) juengste.set(e.kennzeichen, { nummer: f.nummer, name: e.name });
+    }
+  }
+  return new Map([...juengste].map(([kennzeichen, { name }]) => [kennzeichen, name]));
+};
 
 /** Die Herkunfts-Karte eines Schritts; `null` ohne Version (K8: noch nie eine Zahl — dort sagt der Grund das Warum). */
 export const herkunftAnzeige = (

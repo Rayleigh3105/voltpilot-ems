@@ -44,6 +44,7 @@ import { anlagenOptionen } from '../src/anlagenWahl';
 import {
   canonicalShellRoute,
   flottenLandung,
+  flottenName,
   kopfPfad,
   orteAus,
   pfadWert,
@@ -1271,13 +1272,13 @@ function surfaceVon(id: string) {
   return mitEnergiebilanz(s, bilanzDerBuehne(id, 'tag'));
 }
 
-const FLOTTE = 'Meine Anlagen';
-
 function Vorschau() {
   const [, setRevision] = useState(0);
   const rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde' as const };
   const orte = orteAus(szene.liste, szene.unternehmen);
   const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit });
+  // D6 wie `App.tsx`: mit mehreren Standorten heißt die Flotten-Ebene wie das Unternehmen.
+  const FLOTTE = flottenName(rahmen.betriebsart, ebene);
   const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };
   const kanonisch = (r: Route) => canonicalShellRoute({ shell, route: r, siteIds }) ?? r;
   /**

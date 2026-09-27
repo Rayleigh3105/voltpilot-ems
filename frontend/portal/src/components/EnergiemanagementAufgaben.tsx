@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type EnergiemanagementAufgaben, type EnergiemanagementPerson, type EnergiemanagementZuordnung } from '../api';
 import { heute } from '../bewertung';
 import * as E from '../energiemanagementPortal';
-import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT } from '../glossar';
 import { useRollen } from '../rollen';
 import { AufgabeZuordnenDialog, ZuordnungBeendenDialog } from './EnergiemanagementAufgabeDialoge';
 import { EinsichtGruppe } from './EinsichtRecht';
@@ -182,8 +183,7 @@ export function EnergiemanagementAufgaben({
       </section>
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
       {zuordnen && <AufgabeZuordnenDialog aufgabe={zuordnen.aufgabe} ab={tag} onClose={() => setZuordnen(null)} onZugeordnet={gespeichert} />}

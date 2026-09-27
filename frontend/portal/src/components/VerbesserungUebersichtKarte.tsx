@@ -1,5 +1,5 @@
 import { Icon } from '../../designsystem/components/core/Icon';
-import { UEMS_NORMGRENZE } from '../glossar';
+import { GrenzSatz } from './GrenzSatz';
 import {
   ZIELE_MASSNAHMEN_OEFFNEN,
   ZIELE_MASSNAHMEN_TITEL,
@@ -70,7 +70,7 @@ export function VerbesserungUebersichtKarte({
           })}
         </ul>
       )}
-      <p className="vp-ub-hinweis">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-ub-hinweis" />
     </section>
   );
 }

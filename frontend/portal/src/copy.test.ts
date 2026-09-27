@@ -222,6 +222,17 @@ import {
 const SRC = join(process.cwd(), 'src');
 
 /**
+ * K7 (Konzept „Energiemanagement ohne Fachsprache“, D5): eine Fläche trägt die Sätze wörtlich, als JSX-Kind aus
+ * `glossar.ts` ODER über `components/GrenzSatz.tsx` — `<GrenzSatz …/>` (spricht allein, schweigt in einem Bereich) oder
+ * den Kopf-Hinweis `<GrenzHinweis />` (beide Sätze im vollen Wortlaut). `grenze={false}` trägt den Grenz-Satz nicht.
+ */
+const GRENZ_BAUSTEIN = /<GrenzSatz(?![\w])(?![^>]*\sgrenze=\{false\})[^>]*\/>/;
+const VERANTWORTUNG_BAUSTEIN = /<GrenzSatz(?![\w])[^>]*\sverantwortung[\s/>]/;
+const GRENZ_HINWEIS = /<GrenzHinweis[\s/>]/;
+const traegtGrenzBaustein = (text: string) => GRENZ_HINWEIS.test(text) || GRENZ_BAUSTEIN.test(text);
+const traegtVerantwortungBaustein = (text: string) => GRENZ_HINWEIS.test(text) || VERANTWORTUNG_BAUSTEIN.test(text);
+
+/**
  * Path fragments that are NOT the plain-customer surface, so they are allowed
  * to use operator vocabulary:
  *  - `pages/admin/` — the Portal-Admin console (DO-NOT-TOUCH).
@@ -2479,7 +2490,8 @@ describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1�
     return VERBOTEN.filter((re) => re.test(ohneGrenze));
   };
   // Der Satz steht wörtlich ODER als JSX-Kind aus seiner einen Quelle (`glossar.ts`) — nie nur als Import.
-  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
 
   it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
     for (const probe of ['SEU', 'seu', 'EnPI', 'enpi', 'ISO-wesentlich', 'wesentlich nach ISO', 'automatisch eingestuft', 'ISO']) {
@@ -2594,7 +2606,8 @@ describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1
     const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
     return VERBOTEN.filter((re) => re.test(ohneGrenze));
   };
-  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
   /**
    * IP-14: Teil-Komponenten, die nur INNERHALB einer Fläche mit Grenz-Satz stehen (die Modell-Ansicht im Reiter und im
    * Assistenten) — der Satz stünde sonst doppelt auf derselben Fläche. Sie gelten weiter als Fläche für Wörter und
@@ -2854,7 +2867,8 @@ describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwö
     const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
     return VERBOTEN.filter((re) => re.test(ohneGrenze));
   };
-  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
 
   /**
    * U1–U3: eine Ursache ist die Aussage einer Person. „Ursache“ steht nur in der Nähe von „Aussage von“ (auch als
@@ -3197,9 +3211,10 @@ describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, 
   const doppelt = (text: string) => DOPPELT.filter((re) => re.test(text));
 
   // Der Satz steht wörtlich ODER als JSX-Kind aus seiner einen Quelle (`glossar.ts`) — nie nur als Import.
-  const traegtGrenze = (text: string) => text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text);
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
   const traegtVerantwortung = (text: string) =>
-    text.includes(UEMS_VERANTWORTUNG) || />\s*\{\s*UEMS_VERANTWORTUNG\s*\}\s*</.test(text);
+    text.includes(UEMS_VERANTWORTUNG) || />\s*\{\s*UEMS_VERANTWORTUNG\s*\}\s*</.test(text) || traegtVerantwortungBaustein(text);
   /** Wie in den Blöcken „Bezugsbasis“ und „Ziele und Maßnahmen“: `visibleTexts` plus jeder `>Text<`-Lauf, jeder einmal. */
   const kundenTexte = (code: string) => [
     ...new Set(
@@ -3836,5 +3851,48 @@ describe('Anmeldung: keine Rechts- und Konformitätswörter', () => {
     expect(funde('messages_de.properties', '# DSGVO-konform stand hier bis AP-20 E9')).toEqual([]);
     expect(funde('AuthScreen.tsx', '<span>Verschlüsselt</span> <span>Server in Deutschland</span>')).toEqual([]);
     expect(funde('messages_en.properties', 'vpTrustEncrypted=Encrypted\nvpTrustServers=Servers in Germany')).toEqual([]);
+  });
+});
+
+describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
+  const alle = walk().filter((datei) => datei.endsWith('.tsx') && !datei.endsWith('.test.tsx'));
+  const rel = (datei: string) => datei.slice(SRC.length + 1);
+
+  it('der Hinweis im Kopf trägt beide Sätze im vollen Wortlaut aus ihrer einen Quelle', () => {
+    const code = readFileSync(join(SRC, 'components/GrenzSatz.tsx'), 'utf8');
+    const hinweis = code.slice(code.indexOf('export function GrenzHinweis'));
+    expect(/>\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(hinweis)).toBe(true);
+    expect(/>\s*\{\s*UEMS_VERANTWORTUNG\s*\}\s*</.test(hinweis)).toBe(true);
+    // Keine Bedingung vor den Sätzen: der Hinweis öffnet immer beide.
+    expect(hinweis.slice(0, hinweis.indexOf('</details>'))).not.toMatch(/&&\s*<p>/);
+  });
+
+  it('jeder Bereich, der die Sätze seiner Teile schweigen lässt, zeigt den Hinweis', () => {
+    const ohne = alle
+      .map((datei) => [rel(datei), stripComments(readFileSync(datei, 'utf8'))] as const)
+      .filter(([, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code))
+      .map(([datei]) => datei);
+    expect(ohne).toEqual([]);
+  });
+
+  it('Berichte und Dialoge tragen die Sätze selbst — kein Bericht schweigt in einem Bereich', () => {
+    const berichte = alle
+      .map(rel)
+      .filter((datei) => /Bericht/.test(datei.split('/').pop() ?? ''))
+      .filter((datei) => /<GrenzSatz(?![\w])|<GrenzSatzBereich>/.test(readFileSync(join(SRC, datei), 'utf8')));
+    expect(berichte).toEqual([]);
+  });
+
+  it('prüft die Mechanik am Prüfling', () => {
+    expect(traegtGrenzBaustein('<GrenzSatz className="x" />')).toBe(true);
+    expect(traegtGrenzBaustein('<GrenzSatz className="x" testId="y" />')).toBe(true);
+    expect(traegtGrenzBaustein('<GrenzSatz className="x" verantwortung grenze={false} />')).toBe(false);
+    expect(traegtVerantwortungBaustein('<GrenzSatz className="x" verantwortung grenze={false} />')).toBe(true);
+    expect(traegtVerantwortungBaustein('<GrenzSatz className="x" />')).toBe(false);
+    expect(traegtGrenzBaustein('<GrenzSatzBereich>')).toBe(false);
+    expect(traegtVerantwortungBaustein('<GrenzSatzBereich>')).toBe(false);
+    expect(traegtGrenzBaustein('<GrenzHinweis />')).toBe(true);
+    expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
+    expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
   });
 });

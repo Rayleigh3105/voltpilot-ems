@@ -60,7 +60,10 @@ describe('e2e/bezugsbasis.spec.ts — jeder Locator trifft genau ein Element', (
     await screen.findByTestId('bezugsbasis-leer');
     eins(screen.getAllByText(teil(LEER)), 'getByText(LEER)');
     eins(screen.getAllByRole('button', { name: 'Bezugsbasis anlegen' }), 'button Bezugsbasis anlegen (exact)');
-    eins(within(screen.getByTestId('bezugsbasis-reiter')).getAllByText(teil(UEMS_NORMGRENZE)), 'reiter getByText(GRENZE)');
+    // K7 (`grenzHinweisZeigt`): der Grenz-Satz steht einmal im Kopf der Kennzahl-Seite, nicht im Reiter.
+    eins(screen.getAllByTestId('grenzhinweis'), 'getByTestId(grenzhinweis)');
+    eins(within(screen.getByTestId('grenzhinweis')).getAllByText(teil(UEMS_NORMGRENZE)), 'grenzhinweis getByText(GRENZE)');
+    expect(within(screen.getByTestId('bezugsbasis-reiter')).queryAllByText(teil(UEMS_NORMGRENZE))).toHaveLength(0);
   });
 
   it('leerer Zustand für die Leserin: Satz ja, Knopf 0', async () => {

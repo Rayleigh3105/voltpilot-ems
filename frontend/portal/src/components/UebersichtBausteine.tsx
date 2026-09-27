@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GrenzHinweis, GrenzSatzBereich } from './GrenzSatz';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Bericht, type Funktionen, type MessstellenRegister } from '../api';
 import { darfAnsehen } from '../bewertung';
@@ -351,179 +352,183 @@ export function UebersichtBausteine({
   }
 
   return (
-    <div className="vp-ub" data-testid="uebersicht-bausteine">
-      {messstellen && (
-        <section className="vp-ub-baustein" aria-labelledby="vp-ub-messstellen" data-testid="baustein-messstellen">
-          <h2 id="vp-ub-messstellen" className="vp-ub-titel">
-            {MESSSTELLEN_TITEL}
-          </h2>
-          <ul className="vp-ub-zeilen">
-            {messstellen.map((z) => (
-              <li key={z.key}>
-                <button type="button" className={`vp-ub-zeile is-${z.ton}`} onClick={() => onNavigate(z.ziel)} data-testid={`datenlage-${z.key}`}>
-                  <span className="vp-ub-punkt" aria-hidden="true" />
-                  <span className="vp-ub-text">
-                    {z.name && <span className="vp-ub-name">{z.name}</span>}
-                    <span className="vp-ub-satz">{z.text}</span>
-                  </span>
-                  <Icon name="chevron-right" size={16} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {(energie || gebaeude.length > 0) && (
-        <section className="vp-ub-baustein" aria-labelledby="vp-ub-energiebilanz" data-testid="baustein-energiebilanz">
-          <div className="vp-ub-kopf">
-            <h2 id="vp-ub-energiebilanz" className="vp-ub-titel">
-              {UEMS_ENERGIEBILANZ}
+    <GrenzSatzBereich>
+      <div className="vp-ub" data-testid="uebersicht-bausteine">
+        {messstellen && (
+          <section className="vp-ub-baustein" aria-labelledby="vp-ub-messstellen" data-testid="baustein-messstellen">
+            <h2 id="vp-ub-messstellen" className="vp-ub-titel">
+              {MESSSTELLEN_TITEL}
             </h2>
-            <div className="vp-ub-zeitwahl" role="group" aria-label="Zeitraum">
-              <ZeitSegment label="Zeitraum" optionen={BILANZ_PERIODEN} wert={periode} onWert={(p) => daten.waehle(p, letzterGebildeter(p, heute))} />
-              <div className="vp-ub-datumzeile">
-                <button type="button" className="vp-ub-schritt" aria-label="Vorheriger Zeitraum" onClick={() => daten.waehle(periode, blaettere(periode, am, -1))}>
-                  <Icon name="chevron-left" size={18} />
-                </button>
-                <span className="vp-ub-zeitraum" aria-live="polite" data-testid="energiebilanz-zeitraum">
-                  {zeitraumText(periode, am)}
-                </span>
-                <button
-                  type="button"
-                  className="vp-ub-schritt"
-                  aria-label="Nächster Zeitraum"
-                  disabled={laeuftNoch(periode, am, heute)}
-                  onClick={() => daten.waehle(periode, blaettere(periode, am, 1))}
-                >
-                  <Icon name="chevron-right" size={18} />
-                </button>
+            <ul className="vp-ub-zeilen">
+              {messstellen.map((z) => (
+                <li key={z.key}>
+                  <button type="button" className={`vp-ub-zeile is-${z.ton}`} onClick={() => onNavigate(z.ziel)} data-testid={`datenlage-${z.key}`}>
+                    <span className="vp-ub-punkt" aria-hidden="true" />
+                    <span className="vp-ub-text">
+                      {z.name && <span className="vp-ub-name">{z.name}</span>}
+                      <span className="vp-ub-satz">{z.text}</span>
+                    </span>
+                    <Icon name="chevron-right" size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {(energie || gebaeude.length > 0) && (
+          <section className="vp-ub-baustein" aria-labelledby="vp-ub-energiebilanz" data-testid="baustein-energiebilanz">
+            <div className="vp-ub-kopf">
+              <h2 id="vp-ub-energiebilanz" className="vp-ub-titel">
+                {UEMS_ENERGIEBILANZ}
+              </h2>
+              <div className="vp-ub-zeitwahl" role="group" aria-label="Zeitraum">
+                <ZeitSegment label="Zeitraum" optionen={BILANZ_PERIODEN} wert={periode} onWert={(p) => daten.waehle(p, letzterGebildeter(p, heute))} />
+                <div className="vp-ub-datumzeile">
+                  <button type="button" className="vp-ub-schritt" aria-label="Vorheriger Zeitraum" onClick={() => daten.waehle(periode, blaettere(periode, am, -1))}>
+                    <Icon name="chevron-left" size={18} />
+                  </button>
+                  <span className="vp-ub-zeitraum" aria-live="polite" data-testid="energiebilanz-zeitraum">
+                    {zeitraumText(periode, am)}
+                  </span>
+                  <button
+                    type="button"
+                    className="vp-ub-schritt"
+                    aria-label="Nächster Zeitraum"
+                    disabled={laeuftNoch(periode, am, heute)}
+                    onClick={() => daten.waehle(periode, blaettere(periode, am, 1))}
+                  >
+                    <Icon name="chevron-right" size={18} />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-          {laedt ? (
-            <p className="vp-ub-hinweis">Wird geladen …</p>
-          ) : energie?.hinweis ? (
-            <p className="vp-ub-hinweis" data-testid="energiebilanz-hinweis">
-              {energie.hinweis}
-            </p>
-          ) : (
-            energie && (
-              <>
-                {energie.summe && (
-                  <p className={`vp-ub-summe is-${energie.summe.ton}`} data-testid="energiebilanz-summe">
-                    <strong>{NETZBEZUG}</strong> {energie.summe.text}
-                  </p>
-                )}
-                {energie.gruppen.map((g) => (
-                  <div key={g.key} className="vp-ub-gruppe" data-testid={`energiebilanz-gruppe-${g.key}`}>
-                    {g.name && (
-                      <p className={`vp-ub-gruppe-kopf is-${g.summe?.ton ?? 'off'}`}>
-                        <span className="vp-ub-name">{g.name}</span>
-                        {g.summe && <span className="vp-ub-satz">{g.summe.text}</span>}
-                      </p>
-                    )}
-                    <ul className="vp-ub-zeilen">
-                      {g.systeme.map((s) => (
-                        <li key={s.key}>
-                          <button type="button" className={`vp-ub-zeile is-${s.ton}`} onClick={() => onNavigate(s.ziel)} data-testid={`system-${s.key}`}>
-                            <span className="vp-ub-punkt" aria-hidden="true" />
-                            <span className="vp-ub-text">
-                              <span className="vp-ub-name">{s.name}</span>
-                              {s.zusatz && <span className="vp-ub-satz">{s.zusatz}</span>}
-                            </span>
-                            <span className="vp-ub-zahl">{s.zahl}</span>
-                            <Icon name="chevron-right" size={16} />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </>
-            )
-          )}
-          {gebaeude.length > 0 && (
-            <div className="vp-ub-gruppe" data-testid="gebaeude-zeilen">
-              <h3 className="vp-ub-unter">{UEMS_GEBAEUDE}</h3>
-              <ul className="vp-ub-zeilen">
-                {gebaeude.map((g) => (
-                  <li key={g.key}>
-                    <button type="button" className={`vp-ub-zeile is-${g.ton}`} onClick={() => onNavigate(g.ziel)} data-testid={`gebaeude-${g.key}`}>
-                      <span className="vp-ub-punkt" aria-hidden="true" />
-                      <span className="vp-ub-text">
-                        <span className="vp-ub-name">{g.name}</span>
-                        {g.gemessen && <span className="vp-ub-satz">{g.gemessen}</span>}
-                        {g.datenlage && <span className="vp-ub-satz">{g.datenlage}</span>}
-                      </span>
-                      <Icon name="chevron-right" size={16} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            {laedt ? (
+              <p className="vp-ub-hinweis">Wird geladen …</p>
+            ) : energie?.hinweis ? (
+              <p className="vp-ub-hinweis" data-testid="energiebilanz-hinweis">
+                {energie.hinweis}
+              </p>
+            ) : (
+              energie && (
+                <>
+                  {energie.summe && (
+                    <p className={`vp-ub-summe is-${energie.summe.ton}`} data-testid="energiebilanz-summe">
+                      <strong>{NETZBEZUG}</strong> {energie.summe.text}
+                    </p>
+                  )}
+                  {energie.gruppen.map((g) => (
+                    <div key={g.key} className="vp-ub-gruppe" data-testid={`energiebilanz-gruppe-${g.key}`}>
+                      {g.name && (
+                        <p className={`vp-ub-gruppe-kopf is-${g.summe?.ton ?? 'off'}`}>
+                          <span className="vp-ub-name">{g.name}</span>
+                          {g.summe && <span className="vp-ub-satz">{g.summe.text}</span>}
+                        </p>
+                      )}
+                      <ul className="vp-ub-zeilen">
+                        {g.systeme.map((s) => (
+                          <li key={s.key}>
+                            <button type="button" className={`vp-ub-zeile is-${s.ton}`} onClick={() => onNavigate(s.ziel)} data-testid={`system-${s.key}`}>
+                              <span className="vp-ub-punkt" aria-hidden="true" />
+                              <span className="vp-ub-text">
+                                <span className="vp-ub-name">{s.name}</span>
+                                {s.zusatz && <span className="vp-ub-satz">{s.zusatz}</span>}
+                              </span>
+                              <span className="vp-ub-zahl">{s.zahl}</span>
+                              <Icon name="chevron-right" size={16} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </>
+              )
+            )}
+            {gebaeude.length > 0 && (
+              <div className="vp-ub-gruppe" data-testid="gebaeude-zeilen">
+                <h3 className="vp-ub-unter">{UEMS_GEBAEUDE}</h3>
+                <ul className="vp-ub-zeilen">
+                  {gebaeude.map((g) => (
+                    <li key={g.key}>
+                      <button type="button" className={`vp-ub-zeile is-${g.ton}`} onClick={() => onNavigate(g.ziel)} data-testid={`gebaeude-${g.key}`}>
+                        <span className="vp-ub-punkt" aria-hidden="true" />
+                        <span className="vp-ub-text">
+                          <span className="vp-ub-name">{g.name}</span>
+                          {g.gemessen && <span className="vp-ub-satz">{g.gemessen}</span>}
+                          {g.datenlage && <span className="vp-ub-satz">{g.datenlage}</span>}
+                        </span>
+                        <Icon name="chevron-right" size={16} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
+
+        {kennzahlen && (
+          <section className="vp-ub-baustein" aria-labelledby="vp-ub-kennzahlen" data-testid="baustein-kennzahlen">
+            <div className="vp-ub-kopf">
+              <h2 id="vp-ub-kennzahlen" className="vp-ub-titel">
+                {UEMS_KENNZAHLEN}
+              </h2>
+              <button
+                type="button"
+                className="vp-ub-alle"
+                onClick={() => onNavigate(standortId ? standortBereichRoute(standortId, 'kennzahlen') : pageRoute('portfolio-kennzahlen'))}
+              >
+                {ZUR_LISTE}
+                <Icon name="chevron-right" size={16} />
+              </button>
             </div>
-          )}
-        </section>
-      )}
+            <ul className="vp-kz-liste">
+              {kennzahlen.map((k) => (
+                <li key={k.id}>
+                  <KennzahlKarte
+                    karte={listenKarte(k, daten.kennzahlen.werte[k.id] ?? { art: 'laedt' })}
+                    onOeffnen={() => onNavigate(kennzahlRoute(k.id, standortId))}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
-      {kennzahlen && (
-        <section className="vp-ub-baustein" aria-labelledby="vp-ub-kennzahlen" data-testid="baustein-kennzahlen">
-          <div className="vp-ub-kopf">
-            <h2 id="vp-ub-kennzahlen" className="vp-ub-titel">
-              {UEMS_KENNZAHLEN}
-            </h2>
-            <button
-              type="button"
-              className="vp-ub-alle"
-              onClick={() => onNavigate(standortId ? standortBereichRoute(standortId, 'kennzahlen') : pageRoute('portfolio-kennzahlen'))}
-            >
-              {ZUR_LISTE}
-              <Icon name="chevron-right" size={16} />
-            </button>
-          </div>
-          <ul className="vp-kz-liste">
-            {kennzahlen.map((k) => (
-              <li key={k.id}>
-                <KennzahlKarte
-                  karte={listenKarte(k, daten.kennzahlen.werte[k.id] ?? { art: 'laedt' })}
-                  onOeffnen={() => onNavigate(kennzahlRoute(k.id, standortId))}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        {bewertung && <BewertungBaustein bild={bewertung} onOeffnen={() => onNavigate(pageRoute('portfolio-bewertung'))} />}
 
-      {bewertung && <BewertungBaustein bild={bewertung} onOeffnen={() => onNavigate(pageRoute('portfolio-bewertung'))} />}
+        {bezugsbasen && (
+          <BezugsbasisUebersichtKarte
+            bild={bezugsbasen}
+            onOeffnen={() => onNavigate(pageRoute('portfolio-kennzahlen'))}
+            onKennzahl={(id) => onNavigate(kennzahlRoute(id, null))}
+          />
+        )}
 
-      {bezugsbasen && (
-        <BezugsbasisUebersichtKarte
-          bild={bezugsbasen}
-          onOeffnen={() => onNavigate(pageRoute('portfolio-kennzahlen'))}
-          onKennzahl={(id) => onNavigate(kennzahlRoute(id, null))}
-        />
-      )}
+        {zieleMassnahmen && (
+          <VerbesserungUebersichtKarte
+            bild={zieleMassnahmen}
+            onOeffnen={() => onNavigate(verbesserungRoute())}
+            onSprung={(s) =>
+              onNavigate(
+                s.art === 'energieziel'
+                  ? energiezielRoute(s.id)
+                  : s.art === 'massnahme'
+                    ? massnahmeRoute(s.id)
+                    : abweichungRoute(s.id),
+              )
+            }
+          />
+        )}
 
-      {zieleMassnahmen && (
-        <VerbesserungUebersichtKarte
-          bild={zieleMassnahmen}
-          onOeffnen={() => onNavigate(verbesserungRoute())}
-          onSprung={(s) =>
-            onNavigate(
-              s.art === 'energieziel'
-                ? energiezielRoute(s.id)
-                : s.art === 'massnahme'
-                  ? massnahmeRoute(s.id)
-                  : abweichungRoute(s.id),
-            )
-          }
-        />
-      )}
-
-      {energiemanagement && (
-        <EnergiemanagementKachel bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute('wiedervorlage'))} />
-      )}
-    </div>
+        {energiemanagement && (
+          <EnergiemanagementKachel bild={energiemanagement} onOeffnen={() => onNavigate(energiemanagementRoute('wiedervorlage'))} />
+        )}
+        {/* K7: die Sätze der UEMS-Bausteine einmal für alle, statt unter jedem Baustein. */}
+        {(bewertung || bezugsbasen || zieleMassnahmen || energiemanagement) && <GrenzHinweis />}
+      </div>
+    </GrenzSatzBereich>
   );
 }
 

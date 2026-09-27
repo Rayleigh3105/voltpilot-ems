@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { api, type EnergiemanagementVerantwortung as Verantwortung } from '../api';
 import { heute } from '../bewertung';
 import * as E from '../energiemanagementPortal';
-import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_WER_IST_WOFUER_VERANTWORTLICH } from '../glossar';
+import { UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_WER_IST_WOFUER_VERANTWORTLICH } from '../glossar';
 import { VpDatePicker } from './VpDatePicker';
 
 /**
@@ -139,8 +140,7 @@ export function EnergiemanagementVerantwortung({ onPerson, onZurueck, saetze = f
       )}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </section>

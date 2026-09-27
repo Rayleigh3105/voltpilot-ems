@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Nachweise“ am Energieeinsatz und an der Person (UEMS AP-19 IP-15, §5.3, R7, R8) bei 375 px und 1440 px.
@@ -118,10 +119,10 @@ for (const breite of [375, 1440]) {
       const abschnitt = page.getByTestId('einsatz-nachweise');
       await expect(abschnitt.getByRole('heading', { level: 2 })).toHaveText('Nachweise');
       await expect(abschnitt.getByTestId('nachweise-leer')).toHaveText(LEER);
-      await expect(abschnitt.getByText(VERANTWORTUNG)).toBeVisible();
-      // Den Grenz-Satz trägt die Einsatz-Seite selbst (am Fuß, dazu Einstufung und Messplanung) — der Abschnitt nicht noch einmal.
-      await expect(seite.locator('.vp-bw-grenze').last()).toHaveText(GRENZE);
+      // K7: beide Sätze stehen einmal im Kopf der Einsatz-Seite („Was VoltPilot leistet“) — der Abschnitt trägt keinen davon.
+      await grenzHinweisZeigt(seite, GRENZE, VERANTWORTUNG);
       await expect(abschnitt.getByText(GRENZE)).toHaveCount(0);
+      await expect(abschnitt.getByText(VERANTWORTUNG)).toHaveCount(0);
       ohneQuerlauf(await messe(page), 'Einsatz leer');
       await abschnittBild(page, abschnitt, `a-einsatz-leer-${breite}`);
 
@@ -243,8 +244,7 @@ for (const breite of [375, 1440]) {
       await expect(zeile.getByTestId('nachweis-ort')).toHaveText('Geführt in Ihrem System: Personalsystem, Unterweisungen (UW-2028-014).');
       await expect(zeile.getByTestId('nachweis-ueberpruefung')).toHaveText('Ein Nachweis — ohne Überprüfung.');
       await expect(zeile.getByTestId('nachweis-pruefsumme')).toHaveCount(0);
-      await expect(seite.getByText(VERANTWORTUNG)).toBeVisible();
-      await expect(seite.getByText(GRENZE)).toBeVisible();
+      await grenzHinweisZeigt(seite, VERANTWORTUNG, GRENZE);
       ohneQuerlauf(await messe(page), 'Person mit Nachweis');
       await abschnittBild(page, abschnitt, `h-person-nachweis-${breite}`);
       await seitenBild(page, `i-person-seite-${breite}`);

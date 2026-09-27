@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
+import { BegriffeZeile } from '../components/BegriffeZeile';
 import { useReiterRand } from '../reiterRand';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type EnergiemanagementDokumentKurz } from '../api';
@@ -15,7 +17,7 @@ import { ZuschnittHilfe } from '../components/ZuschnittHilfe';
 import '../components/BereichTabs.css';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_DOKUMENTE, UEMS_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_DOKUMENTE, UEMS_ENERGIEMANAGEMENT } from '../glossar';
 import type { EnergiemanagementReiter, Route } from '../nav';
 import { useRollen } from '../rollen';
 import { AuditSeite } from './AuditSeite';
@@ -85,55 +87,55 @@ export function EnergiemanagementBereich({
   // „Wer ist wofür verantwortlich“ steht unter dem Reiter „Aufgaben“ (§6.3 nennt sieben Reiter, diese Ansicht ist keiner).
   const aktiv = reiter === 'verantwortung' ? 'aufgaben' : reiter;
   return (
-    <div className="vp-ez" data-testid="energiemanagement-bereich">
-      <div className="vp-em-kopf">
-        <h1>{UEMS_ENERGIEMANAGEMENT}</h1>
-        <button type="button" className="vp-em-hilfe" onClick={() => onReiter('zuschnitt')} data-testid="energiemanagement-zuschnitt-link">
-          {SAETZE.zuschnitt_titel}
-        </button>
-      </div>
-      {E.mitEinsicht(rollen.selbst) && (
-        <p className="vp-ez-satz" data-testid="einsicht-rolle">
-          {SAETZE.einsicht_rolle}
-        </p>
-      )}
-      <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
-        {E.REITER.map((r) => (
-          <button
-            key={r.key}
-            type="button"
-            role="tab"
-            aria-selected={aktiv === r.key}
-            className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
-            data-testid={`energiemanagement-reiter-${r.key}`}
-            onClick={() => onReiter(r.key)}
-          >
-            {r.label}
+    <GrenzSatzBereich>
+      <div className="vp-ez" data-testid="energiemanagement-bereich">
+        <div className="vp-em-kopf">
+          <h1>{UEMS_ENERGIEMANAGEMENT}</h1>
+          <button type="button" className="vp-em-hilfe" onClick={() => onReiter('zuschnitt')} data-testid="energiemanagement-zuschnitt-link">
+            {SAETZE.zuschnitt_titel}
           </button>
-        ))}
+        </div>
+        <BegriffeZeile begriffe={['verzeichnis', 'wiedervorlage', 'audit', 'feststellung', 'managementbewertung']} />
+        <GrenzHinweis />
+        {E.mitEinsicht(rollen.selbst) && (
+          <p className="vp-ez-satz" data-testid="einsicht-rolle">
+            {SAETZE.einsicht_rolle}
+          </p>
+        )}
+        <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
+          {E.REITER.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              role="tab"
+              aria-selected={aktiv === r.key}
+              className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
+              data-testid={`energiemanagement-reiter-${r.key}`}
+              onClick={() => onReiter(r.key)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        {reiter === 'dokumente' ? (
+          <DokumenteRegister onOeffnen={onDokument} />
+        ) : reiter === 'aufgaben' ? (
+          <EnergiemanagementAufgaben onPerson={onPerson} onVerantwortung={() => onReiter('verantwortung')} />
+        ) : reiter === 'verantwortung' ? (
+          <EnergiemanagementVerantwortung onPerson={onPerson} onZurueck={() => onReiter('aufgaben')} />
+        ) : reiter === 'audits' ? (
+          <EnergiemanagementAudits onAudit={zumAudit} />
+        ) : reiter === 'feststellungen' ? (
+          <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
+        ) : reiter === 'wiedervorlage' ? (
+          <EnergiemanagementWiedervorlage onSprung={onSprung} />
+        ) : reiter === 'managementbewertung' ? (
+          <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
+        ) : (
+          <VerzeichnisTabelle onDokument={onDokument} onSprung={onSprung} />
+        )}
       </div>
-      {reiter === 'dokumente' ? (
-        <DokumenteRegister onOeffnen={onDokument} />
-      ) : reiter === 'aufgaben' ? (
-        <EnergiemanagementAufgaben onPerson={onPerson} onVerantwortung={() => onReiter('verantwortung')} />
-      ) : reiter === 'verantwortung' ? (
-        <EnergiemanagementVerantwortung onPerson={onPerson} onZurueck={() => onReiter('aufgaben')} />
-      ) : reiter === 'audits' ? (
-        <EnergiemanagementAudits onAudit={zumAudit} />
-      ) : reiter === 'feststellungen' ? (
-        <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
-      ) : reiter === 'wiedervorlage' ? (
-        <EnergiemanagementWiedervorlage onSprung={onSprung} />
-      ) : reiter === 'managementbewertung' ? (
-        <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
-      ) : (
-        <VerzeichnisTabelle onDokument={onDokument} onSprung={onSprung} />
-      )}
-      <div className="vp-em-saetze" data-testid="energiemanagement-saetze">
-        <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
-      </div>
-    </div>
+    </GrenzSatzBereich>
   );
 }
 

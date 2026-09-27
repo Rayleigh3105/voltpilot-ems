@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import {
   api,
@@ -9,7 +10,7 @@ import {
 } from '../api';
 import { SAETZE, VOKABULARE, WOERTER } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_ENTSCHIEDEN_VON, UEMS_EINGETRAGEN_VON, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_VERZEICHNIS } from '../glossar';
+import { UEMS_ENTSCHIEDEN_VON, UEMS_EINGETRAGEN_VON, UEMS_VERZEICHNIS } from '../glossar';
 import type { Route } from '../nav';
 import { useRollen } from '../rollen';
 import { VpDatePicker } from './VpDatePicker';
@@ -204,8 +205,7 @@ export function VerzeichnisTabelle({
       })}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </section>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type BerichtDetail, type BerichtEntwurf, type BerichtStand, type Managementbewertung, type ManagementbewertungBeschluss } from '../api';
@@ -8,7 +9,7 @@ import { ManagementbewertungEingaben } from '../components/ManagementbewertungEi
 import { BeschlussDialog, FolgeDialog, SitzungDialog } from '../components/ManagementbewertungDialoge';
 import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import * as E from '../energiemanagementPortal';
-import { UEMS_MANAGEMENTBEWERTUNG, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_MANAGEMENTBEWERTUNG } from '../glossar';
 import * as M from '../managementbewertung';
 
 type Dialog = { art: 'sitzung' } | { art: 'beschluss'; beschluss: ManagementbewertungBeschluss | null } | { art: 'folge'; beschluss: ManagementbewertungBeschluss } | { art: 'freigeben' };
@@ -183,126 +184,125 @@ export function ManagementbewertungSeite({
   );
 
   return (
-    <div className="vp-ez" data-testid="managementbewertung-seite">
-      <button type="button" className="vp-em-hilfe" onClick={onListe} data-testid="mb-zur-liste">
-        ← {M.ZUR_LISTE}
-      </button>
-      {fehler ? (
-        <p className="vp-ez-fehler" role="alert">{fehler}</p>
-      ) : !detail || !b ? (
-        <p className="vp-ez-leise">Wird geladen …</p>
-      ) : (
-        <>
-          <div className="vp-em-kopf">
-            <h1>{`${UEMS_MANAGEMENTBEWERTUNG} ${b.zeitraum}`}</h1>
-            <span className="vp-wv-kz">{b.kennung}</span>
-          </div>
-          <p className="vp-ez-satz" data-testid="mb-kopf">
-            {M.kopfSatz(b.zeitraum, sitzung ? { tag: sitzung.tag, leitung: sitzung.leitung.name ?? '—' } : null, gueltig, zone)}
-          </p>
-
-          {gueltig && stand ? (
-            <p className="vp-ez-satz" data-testid="mb-stand-seines-tages">
-              {M.standSeinesTages(stand.datenstand, zone)}
+    <GrenzSatzBereich>
+      <div className="vp-ez" data-testid="managementbewertung-seite">
+        <button type="button" className="vp-em-hilfe" onClick={onListe} data-testid="mb-zur-liste">
+          ← {M.ZUR_LISTE}
+        </button>
+        {fehler ? (
+          <p className="vp-ez-fehler" role="alert">{fehler}</p>
+        ) : !detail || !b ? (
+          <p className="vp-ez-leise">Wird geladen …</p>
+        ) : (
+          <>
+            <div className="vp-em-kopf">
+              <h1>{`${UEMS_MANAGEMENTBEWERTUNG} ${b.zeitraum}`}</h1>
+              <span className="vp-wv-kz">{b.kennung}</span>
+            </div>
+            <GrenzHinweis />
+            <p className="vp-ez-satz" data-testid="mb-kopf">
+              {M.kopfSatz(b.zeitraum, sitzung ? { tag: sitzung.tag, leitung: sitzung.leitung.name ?? '—' } : null, gueltig, zone)}
             </p>
-          ) : (
-            <section className="vp-ez-karte vp-mb-entwurf" aria-label={M.ENTWURF} data-testid="mb-entwurf">
-              <div className="vp-em-kopf">
-                <p>{entwurf ? M.entwurfZeile(entwurf.datenstand, zone) : M.KEIN_STAND}</p>
-                {entwurf && (
-                  <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
-                    <Button onClick={() => setDialog({ art: 'freigeben' })} disabled={!M.freigabeBereit(mb)} data-testid="mb-freigeben">
-                      {M.KNOPF_FREIGEBEN}
-                    </Button>
-                  </EinsichtRecht>
+
+            {gueltig && stand ? (
+              <p className="vp-ez-satz" data-testid="mb-stand-seines-tages">
+                {M.standSeinesTages(stand.datenstand, zone)}
+              </p>
+            ) : (
+              <section className="vp-ez-karte vp-mb-entwurf" aria-label={M.ENTWURF} data-testid="mb-entwurf">
+                <div className="vp-em-kopf">
+                  <p>{entwurf ? M.entwurfZeile(entwurf.datenstand, zone) : M.KEIN_STAND}</p>
+                  {entwurf && (
+                    <EinsichtRecht aktion={E.RECHT_FREIGEBEN} standort={null}>
+                      <Button onClick={() => setDialog({ art: 'freigeben' })} disabled={!M.freigabeBereit(mb)} data-testid="mb-freigeben">
+                        {M.KNOPF_FREIGEBEN}
+                      </Button>
+                    </EinsichtRecht>
+                  )}
+                </div>
+                {!M.freigabeBereit(mb) && (
+                  <p className="vp-ez-leise" data-testid="mb-freigabe-voraussetzung">{M.FREIGABE_VORAUSSETZUNG}</p>
                 )}
-              </div>
-              {!M.freigabeBereit(mb) && (
-                <p className="vp-ez-leise" data-testid="mb-freigabe-voraussetzung">{M.FREIGABE_VORAUSSETZUNG}</p>
+              </section>
+            )}
+
+            {/* Variante A (PR-Ansicht): was die Leitung entschieden hat, steht über den Eingaben — dort wird gehandelt;
+                die Eingaben folgen in der Reihenfolge der Vorlage (das PDF behält alle zwölf Abschnitte in ihrer Reihenfolge). */}
+            <section className="vp-ez-karte" aria-label={M.SITZUNG_UND_BESCHLUESSE} data-testid="mb-sitzung-beschluesse">
+              <h2>{M.SITZUNG_UND_BESCHLUESSE}</h2>
+              <h3 className="vp-wv-titel">{M.SITZUNG}</h3>
+              {sitzungTeil}
+              <h3 className="vp-wv-titel">{M.BESCHLUESSE}</h3>
+              {beschluesseTeil}
+            </section>
+
+            <section className="vp-ez-karte" aria-label={M.EINGABEN}>
+              <h2>{M.EINGABEN}</h2>
+              {zeigt ? (
+                <ManagementbewertungEingaben abzug={zeigt} ohne={['beschluesse', 'sitzung']} />
+              ) : (
+                <p className="vp-ez-leise">Wird geladen …</p>
               )}
             </section>
-          )}
 
-          {/* Variante A (PR-Ansicht): was die Leitung entschieden hat, steht über den Eingaben — dort wird gehandelt;
-              die Eingaben folgen in der Reihenfolge der Vorlage (das PDF behält alle zwölf Abschnitte in ihrer Reihenfolge). */}
-          <section className="vp-ez-karte" aria-label={M.SITZUNG_UND_BESCHLUESSE} data-testid="mb-sitzung-beschluesse">
-            <h2>{M.SITZUNG_UND_BESCHLUESSE}</h2>
-            <h3 className="vp-wv-titel">{M.SITZUNG}</h3>
-            {sitzungTeil}
-            <h3 className="vp-wv-titel">{M.BESCHLUESSE}</h3>
-            {beschluesseTeil}
-          </section>
-
-          <section className="vp-ez-karte" aria-label={M.EINGABEN}>
-            <h2>{M.EINGABEN}</h2>
-            {zeigt ? (
-              <ManagementbewertungEingaben abzug={zeigt} ohne={['beschluesse', 'sitzung']} />
-            ) : (
-              <p className="vp-ez-leise">Wird geladen …</p>
-            )}
-          </section>
-
-          <section className="vp-ez-karte" aria-label={M.STAENDE} data-testid="mb-staende">
-            <h2>{M.STAENDE}</h2>
-            {detail.staende.length === 0 ? (
-              <p className="vp-ez-leise">{M.KEIN_STAND}</p>
-            ) : (
-              <ul className="vp-mb-zeilen">
-                {[...detail.staende].sort((x, y) => y.nr - x.nr).map((s) => (
-                  <li key={s.nr} data-testid={`mb-stand-${s.nr}`}>
-                    <span className="vp-mb-gegenstand">{M.standZeile(s, zone)}</span>
-                    <span className="vp-mb-pruef" title={s.pruefsumme}>
-                      Prüfsumme {M.pruefsummeKurz(s.pruefsumme)}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      iconLeft={<Icon name="file-text" size={16} />}
-                      disabled={laeuft !== null}
-                      onClick={() => void pdf(s.nr)}
-                      aria-label={`PDF von Stand Nr. ${s.nr}`}
-                      data-testid={`mb-pdf-${s.nr}`}
-                    >
-                      {M.KNOPF_PDF}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {abruf && (
-              <p className={`vp-alert ${abruf.fehler ? 'vp-alert-err' : 'vp-alert-ok'}`} role="status" data-testid="mb-abruf">
-                {abruf.satz}
-              </p>
-            )}
-          </section>
-        </>
-      )}
-      <div className="vp-em-saetze">
-        <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+            <section className="vp-ez-karte" aria-label={M.STAENDE} data-testid="mb-staende">
+              <h2>{M.STAENDE}</h2>
+              {detail.staende.length === 0 ? (
+                <p className="vp-ez-leise">{M.KEIN_STAND}</p>
+              ) : (
+                <ul className="vp-mb-zeilen">
+                  {[...detail.staende].sort((x, y) => y.nr - x.nr).map((s) => (
+                    <li key={s.nr} data-testid={`mb-stand-${s.nr}`}>
+                      <span className="vp-mb-gegenstand">{M.standZeile(s, zone)}</span>
+                      <span className="vp-mb-pruef" title={s.pruefsumme}>
+                        Prüfsumme {M.pruefsummeKurz(s.pruefsumme)}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        iconLeft={<Icon name="file-text" size={16} />}
+                        disabled={laeuft !== null}
+                        onClick={() => void pdf(s.nr)}
+                        aria-label={`PDF von Stand Nr. ${s.nr}`}
+                        data-testid={`mb-pdf-${s.nr}`}
+                      >
+                        {M.KNOPF_PDF}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {abruf && (
+                <p className={`vp-alert ${abruf.fehler ? 'vp-alert-err' : 'vp-alert-ok'}`} role="status" data-testid="mb-abruf">
+                  {abruf.satz}
+                </p>
+              )}
+            </section>
+          </>
+        )}
+        {dialog?.art === 'sitzung' && (
+          <SitzungDialog kennung={kennung} heute={heute()} vorher={sitzung} onClose={() => setDialog(null)} onFertig={neu} />
+        )}
+        {dialog?.art === 'beschluss' && mb && (
+          <BeschlussDialog kennung={kennung} mb={mb} beschluss={dialog.beschluss} onClose={() => setDialog(null)} onFertig={neu} />
+        )}
+        {dialog?.art === 'folge' && (
+          <FolgeDialog kennung={kennung} beschluss={dialog.beschluss} onClose={() => setDialog(null)} onFertig={neu} />
+        )}
+        {dialog?.art === 'freigeben' && detail && entwurf && (
+          <BerichtFreigebenDialog
+            open
+            onClose={() => setDialog(null)}
+            detail={detail}
+            entwurf={entwurf}
+            onEntwurf={setEntwurf}
+            onFreigegeben={() => {
+              setDialog(null);
+              setVersuch((v) => v + 1);
+            }}
+          />
+        )}
       </div>
-      {dialog?.art === 'sitzung' && (
-        <SitzungDialog kennung={kennung} heute={heute()} vorher={sitzung} onClose={() => setDialog(null)} onFertig={neu} />
-      )}
-      {dialog?.art === 'beschluss' && mb && (
-        <BeschlussDialog kennung={kennung} mb={mb} beschluss={dialog.beschluss} onClose={() => setDialog(null)} onFertig={neu} />
-      )}
-      {dialog?.art === 'folge' && (
-        <FolgeDialog kennung={kennung} beschluss={dialog.beschluss} onClose={() => setDialog(null)} onFertig={neu} />
-      )}
-      {dialog?.art === 'freigeben' && detail && entwurf && (
-        <BerichtFreigebenDialog
-          open
-          onClose={() => setDialog(null)}
-          detail={detail}
-          entwurf={entwurf}
-          onEntwurf={setEntwurf}
-          onFreigegeben={() => {
-            setDialog(null);
-            setVersuch((v) => v + 1);
-          }}
-        />
-      )}
-    </div>
+    </GrenzSatzBereich>
   );
 }

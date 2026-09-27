@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * UEMS AP-16 IP-18 (M3 „Messabdeckung sichtbar“) bei 375 und 1440 px auf den ECHTEN Flächen:
@@ -71,7 +72,9 @@ test('IP-18 · Abdeckungs-Tabelle je Einsatz und Ort: vier Spalten, Rest-Zeilen,
   await expect(page.getByTestId('messabdeckung-zeile-EE-1')).toContainText('MS-06 (B-1 Halle 1 Nord): 55.100 kWh');
   await expect(einsaetze.locator('tr.is-rest')).toHaveCount(3);
   await expect(page.getByTestId('messabdeckung-orte')).toContainText('Gas — ohne Anteil');
-  await expect(karte).toContainText('Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.');
+  // K7: der Grenz-Satz steht einmal im Kopf der Bewertung („Was VoltPilot leistet“), nicht unter jeder Karte.
+  await expect(karte).not.toContainText('Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.');
+  await grenzHinweisZeigt(page, 'Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.');
 
   // Prüfaufgaben-Zeile (G3, R8): EE-3 Druckluft ist wesentlich, GR-5 trägt keine Angabe.
   await expect(page.getByTestId('pruefaufgaben')).toHaveText(

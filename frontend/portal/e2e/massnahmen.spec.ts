@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Unternehmen › Ziele und Maßnahmen › Maßnahmen“ (UEMS AP-18 IP-13) bei 375 px und 1440 px auf der eigenen Bühne
@@ -105,7 +106,7 @@ for (const breite of [375, 1440]) {
       await expect(zeilen.nth(0).getByTestId('termin')).toContainText('überfällig seit 15 Tagen');
       await expect(zeilen.nth(0).getByTestId('messgrundlage')).toHaveText(OHNE);
       await expect(zeilen.nth(1).getByTestId('messgrundlage')).toHaveText('KZ-0004 Stromeinsatz Spritzguss je kg');
-      await expect(page.getByTestId('massnahmen-register').getByText(GRENZE)).toBeVisible();
+      await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
       ohneQuerlauf(await messe(page), 'Register');
       await ablegen(page, `register-${breite}`, true);
       await page.getByTestId('massnahmen-filter-ueberfaellig').check();

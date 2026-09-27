@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type Feststellung } from '../api';
 import * as A from '../auditFeststellung';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_FESTSTELLUNGEN, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_FESTSTELLUNGEN } from '../glossar';
 import { EinsichtRecht } from './EinsichtRecht';
 import { FeststellungErfassenDialog } from './FeststellungDialoge';
 import { ablehnung } from './InternesAuditDialoge';
@@ -91,8 +92,7 @@ export function EnergiemanagementFeststellungen({ onFeststellung, saetze = false
       )}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </section>

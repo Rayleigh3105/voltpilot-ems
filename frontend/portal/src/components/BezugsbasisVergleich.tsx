@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { vermerkeJeMonat } from '../abweichungen';
 import { api, type Auffaelligkeit } from '../api';
 import {
@@ -21,7 +22,6 @@ import {
   type MonatBild,
   type ZeitraumBild,
 } from '../bezugsbasisVergleich';
-import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
 import { AbweichungVonHand, VermerkZeile } from './AuffaelligkeitZeile';
 import { ErrorState, Skeleton } from './States';
@@ -176,7 +176,7 @@ export function BezugsbasisVergleich({ kennzahlId, standort }: { kennzahlId: str
           {bild.standSatz}
         </p>
       )}
-      <p className="vp-bbv-grenze" data-testid="vergleich-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-bbv-grenze" testId="vergleich-grenze" />
     </section>
   );
 }

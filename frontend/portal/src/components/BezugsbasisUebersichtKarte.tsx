@@ -1,10 +1,10 @@
 import { Icon } from '../../designsystem/components/core/Icon';
+import { GrenzSatz } from './GrenzSatz';
 import {
   BEZUGSBASIS_BAUSTEIN_OEFFNEN,
   BEZUGSBASIS_BAUSTEIN_TITEL,
   type BezugsbasisUebersichtBild,
 } from '../bezugsbasisUebersicht';
-import { UEMS_NORMGRENZE } from '../glossar';
 import './UebersichtBausteine.css';
 
 /**
@@ -54,7 +54,7 @@ export function BezugsbasisUebersichtKarte({
           ))}
         </ul>
       )}
-      <p className="vp-ub-hinweis">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-ub-hinweis" />
     </section>
   );
 }

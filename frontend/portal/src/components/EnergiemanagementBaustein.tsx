@@ -1,5 +1,5 @@
 import { Icon } from '../../designsystem/components/core/Icon';
-import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { GrenzSatz } from './GrenzSatz';
 import {
   ENERGIEMANAGEMENT_OEFFNEN,
   ENERGIEMANAGEMENT_TITEL,
@@ -59,8 +59,7 @@ export function EnergiemanagementBaustein({
         </p>
       )}
       <p className="vp-ub-hinweis">{KALENDER_ABZUG_HINWEIS}</p>
-      <p className="vp-ub-hinweis">{UEMS_VERANTWORTUNG}</p>
-      <p className="vp-ub-hinweis">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-ub-hinweis" verantwortung />
     </section>
   );
 }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { api, type EnergiemanagementStandortKurz, type EnergiemanagementVergleich } from '../api';
 import * as E from '../energiemanagementPortal';
-import { UEMS_ANWENDUNGSBEREICH, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_ANWENDUNGSBEREICH } from '../glossar';
 
 const orte = (liste: EnergiemanagementStandortKurz[]) => liste.map((s) => s.name ?? s.kurzzeichen ?? '').join(', ') || '—';
 
@@ -48,8 +49,7 @@ export function AnwendungsbereichVergleich({ dokumentId, stand, saetze = false }
       )}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </section>

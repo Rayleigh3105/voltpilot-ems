@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type EnergiemanagementDokument, type EnergiemanagementNachweis } from '../api';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import { dokumentRoute, hashForRoute } from '../nav';
 import { useRollen } from '../rollen';
 import { DokumentAnlegenDialog, FassungDialog, FreigabeDialog } from './DokumentDialoge';
@@ -136,8 +136,7 @@ function NachweiseAbschnitt({
       )}
       {(verantwortung || saetze) && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          {saetze && <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>}
+          <GrenzSatz className="vp-ez-grenze" verantwortung grenze={saetze} />
         </div>
       )}
 

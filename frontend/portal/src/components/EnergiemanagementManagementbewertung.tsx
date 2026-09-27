@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type Bericht } from '../api';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_MANAGEMENTBEWERTUNG, UEMS_MANAGEMENTBEWERTUNG_WOZU, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_MANAGEMENTBEWERTUNG, UEMS_MANAGEMENTBEWERTUNG_WOZU } from '../glossar';
 import * as M from '../managementbewertung';
 import type { Wiedervorlage } from '../wiedervorlage';
 import { EinsichtRecht } from './EinsichtRecht';
@@ -92,8 +93,7 @@ export function EnergiemanagementManagementbewertung({
       )}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </section>

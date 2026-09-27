@@ -86,6 +86,17 @@ export function fleetLabel(betriebsart: Betriebsart | null): string {
 }
 
 /**
+ * D6 (Konzept „Energiemanagement ohne Fachsprache“): führt ein Kunde mehrere Standorte (Ebene `unternehmen`), heißt die
+ * Flotten-Ebene in der Seitenleiste wie sein Unternehmen — so wie das erste Glied des Pfads (`unternehmenGlied`). Ohne
+ * Standorte, mit nur einem Standort oder ohne Namen bleibt {@link fleetLabel}: ein Kunde mit einer Box sieht nichts
+ * Neues, ein Betreiber behält „Portfolio“.
+ */
+export function flottenName(betriebsart: Betriebsart | null, ebene: Ebene | null | undefined): string {
+  if (betriebsart !== 'betreiber' && ebene?.art === 'unternehmen' && ebene.name?.trim()) return ebene.name.trim();
+  return fleetLabel(betriebsart);
+}
+
+/**
  * Zeigt die Schale den Punkt `Portfolio` — und ist die Landung damit das
  * Portfolio-Cockpit?
  *

@@ -1,10 +1,12 @@
 import { AbweichungenRegister } from '../components/AbweichungenRegister';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
+import { BegriffeZeile } from '../components/BegriffeZeile';
 import { useReiterRand } from '../reiterRand';
 import { EnergiezieleRegister } from '../components/EnergiezieleRegister';
 import { MassnahmenRegister } from '../components/MassnahmenRegister';
 import '../components/BereichTabs.css';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE, UEMS_ZIELE_UND_MASSNAHMEN } from '../glossar';
+import { UEMS_ZIELE_UND_MASSNAHMEN } from '../glossar';
 import type { VerbesserungReiter } from '../nav';
 import { AbweichungSeite } from './AbweichungSeite';
 import { EnergiezielSeite } from './EnergiezielSeite';
@@ -50,33 +52,36 @@ export function VerbesserungBereich({
     return <MassnahmeSeite id={massnahmeId} onListe={() => onReiter('massnahmen')} onKennzahl={onKennzahl} onEnergieziel={onOeffnen} />;
   }
   return (
-    <div className="vp-ez" data-testid="verbesserung-bereich">
-      <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>
-      <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
-        {Z.REITER.map((r) => (
-          <button
-            key={r.key}
-            type="button"
-            role="tab"
-            aria-selected={reiter === r.key}
-            className={`vp-bereich-tab${reiter === r.key ? ' active' : ''}`}
-            data-testid={`verbesserung-reiter-${r.key}`}
-            onClick={() => onReiter(r.key)}
-          >
-            {r.label}
-          </button>
-        ))}
+    <GrenzSatzBereich>
+      <div className="vp-ez" data-testid="verbesserung-bereich">
+        <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>
+        <BegriffeZeile begriffe={['energieziel', 'massnahme', 'abweichung']} />
+        <GrenzHinweis />
+        <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
+          {Z.REITER.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              role="tab"
+              aria-selected={reiter === r.key}
+              className={`vp-bereich-tab${reiter === r.key ? ' active' : ''}`}
+              data-testid={`verbesserung-reiter-${r.key}`}
+              onClick={() => onReiter(r.key)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        {reiter === 'energieziele' ? (
+          <EnergiezieleRegister onOeffnen={onOeffnen} />
+        ) : reiter === 'massnahmen' ? (
+          <MassnahmenRegister onOeffnen={(id) => onMassnahme?.(id)} />
+        ) : (
+          <>
+            <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} grenze={false} />
+          </>
+        )}
       </div>
-      {reiter === 'energieziele' ? (
-        <EnergiezieleRegister onOeffnen={onOeffnen} />
-      ) : reiter === 'massnahmen' ? (
-        <MassnahmenRegister onOeffnen={(id) => onMassnahme?.(id)} />
-      ) : (
-        <>
-          <AbweichungenRegister onOeffnen={(id) => onAbweichung?.(id)} grenze={false} />
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
-        </>
-      )}
-    </div>
+    </GrenzSatzBereich>
   );
 }

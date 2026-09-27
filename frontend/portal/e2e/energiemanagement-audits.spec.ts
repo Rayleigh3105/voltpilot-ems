@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Energiemanagement › Audits“ und „› Feststellungen“ (UEMS AP-19 IP-20, §5.4, R9–R11, SP5, W3) bei 375 px und 1440 px
@@ -104,8 +105,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('energiemanagement-reiter-audits')).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByTestId('audits-leer')).toHaveText('Hier ist noch nichts festgehalten.');
       await expect(page.getByTestId('audit-naechstes')).toHaveText('Noch kein internes Audit durchgeführt — ohne Durchführung nennt VoltPilot keine Frist.');
-      await expect(page.getByText(GRENZE)).toBeVisible();
-      await expect(page.getByText(VERANTWORTUNG)).toBeVisible();
+      await grenzHinweisZeigt(page, GRENZE, VERANTWORTUNG);
 
       // IA1: planen — Auditorin ohne Schreibrecht, Unabhängigkeit als Wortlaut.
       await page.getByTestId('audit-planen').click();

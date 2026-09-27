@@ -34,6 +34,10 @@
   padding-top: var(--vp-c-space-3);
   border-top: 1px solid var(--vp-c-border);
 }
+/* K7: im Bereich stehen die Sätze im Kopf — ein leerer Satz-Block nimmt keinen Platz. */
+.vp-em-saetze:empty {
+  display: none;
+}
 
 .vp-em-filter {
   display: grid;

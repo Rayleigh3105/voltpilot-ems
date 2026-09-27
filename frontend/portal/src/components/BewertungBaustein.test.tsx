@@ -136,7 +136,9 @@ describe('Übersichts-Baustein „Energetische Bewertung“ am Unternehmen', () 
     );
     expect(screen.getByTestId('bewertung-zahlen').textContent).toBe('6 wesentliche Energieeinsätze · 1 offener Messbedarf');
     expect(screen.getByTestId('bewertung-verantwortliche').textContent).toContain('Peter Hahn (EE-2, EE-5)');
-    expect(screen.getByTestId('baustein-bewertung').textContent).toContain(UEMS_NORMGRENZE);
+    // K7: in der Übersicht steht der Grenz-Satz einmal für alle Bausteine im Hinweis „Was VoltPilot leistet“.
+    expect(screen.getByTestId('baustein-bewertung').textContent).not.toContain(UEMS_NORMGRENZE);
+    expect(screen.getByTestId('grenzhinweis').textContent).toContain(UEMS_NORMGRENZE);
     const text = screen.getByTestId('baustein-bewertung').textContent ?? '';
     for (const wort of ['SEU', 'ISO-wesentlich', 'automatisch eingestuft']) expect(text).not.toContain(wort);
   });

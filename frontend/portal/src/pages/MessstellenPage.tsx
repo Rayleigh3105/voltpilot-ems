@@ -1,4 +1,5 @@
 import { KorrekturenDialog } from '../components/KorrekturenDialog';
+import { BegriffeZeile } from '../components/BegriffeZeile';
 import { useReiterRand } from '../reiterRand';
 import { MESSEN_EINRICHTEN } from '../messenEinstieg';
 import { Recht } from '../components/Recht';
@@ -349,6 +350,7 @@ function RegisterFlaeche({
         <div className="vp-ms-kopf-text">
           <h1>{TITEL}</h1>
           {unterzeile && <p>{unterzeile}</p>}
+          <BegriffeZeile begriffe={['messstelle']} />
         </div>
         {aktuell && !ohneRegister && ebene.art === 'standort' && bereichDa !== false && <Button variant="outline" onClick={e => { korrekturAusloeser.current = e.currentTarget; e.currentTarget.focus(); setKorrekturen(true); }}>Korrekturen</Button>}
         {anlegbar && leer?.art !== 'keine_messstelle' && (

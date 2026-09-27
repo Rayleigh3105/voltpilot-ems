@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * Auffälligkeiten und Abweichungen (UEMS AP-18 IP-18) bei 375 px und 1440 px auf der eigenen Bühne
@@ -219,7 +220,7 @@ for (const breite of [375, 1440]) {
       await expect(zeilen.nth(0)).toHaveAttribute('data-testid', 'abweichung-zeile-AW-2028-0001');
       await expect(zeilen.nth(0).getByTestId('frist')).toContainText('überfällig seit 10 Tagen');
       await expect(zeilen.nth(1).getByTestId('ergebnis')).toHaveText('erklärt');
-      await expect(page.getByTestId('verbesserung-bereich').getByText(GRENZE)).toBeVisible();
+      await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
       ohneQuerlauf(await messe(page), 'Register');
       await ablegen(page, `register-${breite}`, true);
       await page.getByTestId('abweichungen-filter-ueberfaellig').check();

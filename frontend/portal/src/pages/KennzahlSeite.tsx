@@ -1,4 +1,6 @@
 import { Recht } from '../components/Recht';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
+import { BegriffeZeile } from '../components/BegriffeZeile';
 import { useReiterRand } from '../reiterRand';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
@@ -231,301 +233,305 @@ export function KennzahlSeite({
   const aenderbar = k.archiviert_am === null;
 
   return (
-    <div className="vp-kz" data-testid="kennzahl-seite">
-      {zurueck}
-      <header className="vp-kz-kopf">
-        {/* K5: der Name zuerst, das Kennzeichen klein dahinter. */}
-        <h1>
-          {kp.name} <span className="vp-kz-kennzeichen">{kp.kennzeichen}</span>
-        </h1>
-        <p>
-          <span>{kp.unter}</span>
-          {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
-        </p>
-        {bbAn && <BezugsbasisZeile lage={bbLage} einheit={k.einheit_anzeige} />}
-        {/* UEMS AP-18 IP-8 (§5.1): „Energieziel setzen“ nur an einer Energieleistungskennzahl (freigegebene Basis). */}
-        {bbAn && <EnergiezielSetzen kennzahl={k} lage={bbLage} />}
-        {archiviertSatz && (
-          <p className="vp-kz-leise" data-testid="kennzahl-archiviert">
-            {archiviertSatz}
+    <GrenzSatzBereich>
+      <div className="vp-kz" data-testid="kennzahl-seite">
+        {zurueck}
+        <header className="vp-kz-kopf">
+          {/* K5: der Name zuerst, das Kennzeichen klein dahinter. */}
+          <h1>
+            {kp.name} <span className="vp-kz-kennzeichen">{kp.kennzeichen}</span>
+          </h1>
+          <p>
+            <span>{kp.unter}</span>
+            {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
           </p>
-        )}
-        {onKopieren && (
-          <div className="vp-kz-aktionen">
-            <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" onClick={() => onKopieren({ kennzahl: k, fassungen: stamm.fassungen })}>
-              {KNOPF_KOPIEREN}
-            </Button></Recht>
+          <BegriffeZeile begriffe={bbAn ? ['kennzahl', 'bezugsbasis', 'bereinigt'] : ['kennzahl']} />
+          {bbAn && <BezugsbasisZeile lage={bbLage} einheit={k.einheit_anzeige} />}
+          {/* UEMS AP-18 IP-8 (§5.1): „Energieziel setzen“ nur an einer Energieleistungskennzahl (freigegebene Basis). */}
+          {bbAn && <EnergiezielSetzen kennzahl={k} lage={bbLage} />}
+          {archiviertSatz && (
+            <p className="vp-kz-leise" data-testid="kennzahl-archiviert">
+              {archiviertSatz}
+            </p>
+          )}
+          {onKopieren && (
+            <div className="vp-kz-aktionen">
+              <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" onClick={() => onKopieren({ kennzahl: k, fassungen: stamm.fassungen })}>
+                {KNOPF_KOPIEREN}
+              </Button></Recht>
+            </div>
+          )}
+          {bbAn && <GrenzHinweis />}
+        </header>
+        {bbAn && (
+          <div ref={reiterRand} className="vp-bereich-tabs vp-kz-reiter" role="tablist" aria-label={`Reiter der Kennzahl ${k.kennzeichen}`}>
+            {([['kennzahl', REITER_KENNZAHL], ['bezugsbasis', REITER_BEZUGSBASIS], ['vergleich', VERGLEICH_REITER]] as const).map(([r, wort]) => (
+              <button
+                key={r}
+                type="button"
+                role="tab"
+                aria-selected={reiter === r}
+                className={`vp-bereich-tab${reiter === r ? ' active' : ''}`}
+                data-testid={`kennzahl-reiter-${r}`}
+                onClick={() => setReiter(r)}
+              >
+                {wort}
+              </button>
+            ))}
           </div>
         )}
-      </header>
-      {bbAn && (
-        <div ref={reiterRand} className="vp-bereich-tabs vp-kz-reiter" role="tablist" aria-label={`Reiter der Kennzahl ${k.kennzeichen}`}>
-          {([['kennzahl', REITER_KENNZAHL], ['bezugsbasis', REITER_BEZUGSBASIS], ['vergleich', VERGLEICH_REITER]] as const).map(([r, wort]) => (
-            <button
-              key={r}
-              type="button"
-              role="tab"
-              aria-selected={reiter === r}
-              className={`vp-bereich-tab${reiter === r ? ' active' : ''}`}
-              data-testid={`kennzahl-reiter-${r}`}
-              onClick={() => setReiter(r)}
-            >
-              {wort}
-            </button>
-          ))}
-        </div>
-      )}
-      {/* Ein Fehler in einem Reiter bleibt in diesem Reiter — die anderen bleiben erreichbar. */}
-      {bbAn && reiter === 'bezugsbasis' ? (
-        <Fehlergrenze key="bezugsbasis">
-          <BezugsbasisReiter kennzahl={k} lage={bbLage} zone={zone} onNeu={() => setBbVersuch((v) => v + 1)} />
-        </Fehlergrenze>
-      ) : bbAn && reiter === 'vergleich' ? (
-        <Fehlergrenze key="vergleich">
-          <BezugsbasisVergleich kennzahlId={k.id} standort={k.standort_id} />
-        </Fehlergrenze>
-      ) : (
-      <>
-      {wahl.optionen.length > 0 && art && (
-        <div className="vp-kz-perioden">
-          <ZeitSegment
-            label={PERIODE_WAHL}
-            optionen={wahl.optionen}
-            wert={art}
-            onWert={(a) => {
-              setArt(a);
-              setGewaehlt(null);
-            }}
-          />
-        </div>
-      )}
-      <div className="vp-kz-raster">
-        <div className="vp-kz-spalte">
-          {werteFehler ? (
-            <ErrorState message={WERTE_FEHLER} onRetry={() => setVersuch((v) => v + 1)} />
-          ) : art && !aktuell ? (
-            <div aria-busy="true">
-              <Skeleton height={148} />
-            </div>
-          ) : (
-            <>
-              {wk && (
-                <WerteKarte
-                  karte={wk.karte}
-                  grund={wk.grund}
-                  versionen={einstieg && <VersionenEinstieg einstieg={einstieg} onOeffnen={() => setVersionenOffen(true)} />}
-                />
-              )}
-              {aktuell && (
-                <GeteiltesRegisterHinweis
-                  saetze={(aktuell.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen))}
-                />
-              )}
-              {aktuell && (
-                <Verlauf
-                  balken={verlauf(aktuell)}
-                  dicht={aktuell.periode === 'tag' || aktuell.periode === 'woche'}
-                  gewaehlt={schritt?.schluessel ?? null}
-                  onWahl={setGewaehlt}
-                />
-              )}
-            </>
-          )}
-        </div>
-        <div className="vp-kz-spalte">
-          {herkunft && (
-            <section className="vp-kz-block" aria-label={KARTE_HERKUNFT} data-testid="kennzahl-herkunft">
-              <h2>{KARTE_HERKUNFT}</h2>
-              {herkunft.klartext ? (
-                <>
-                  {/* K5: der Rechenweg in Worten; der Name springt wie sein Kennzeichen (AP-13 IP-11, D1/D2). */}
-                  <p className="vp-kz-klartext" data-testid="kennzahl-klartext">
-                    <HerkunftsZeile stuecke={herkunft.klartextStuecke} />
-                  </p>
-                  <details className="vp-kz-rechenweg" data-testid="kennzahl-rechenweg">
-                    <summary>{RECHENWEG_TITEL}</summary>
-                    {herkunft.eingaenge && <p>{herkunft.eingaenge}</p>}
-                    {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
-                    <p className="vp-kz-leise">{UEMS_FASSUNG_SATZ}</p>
-                    <p className="vp-kz-leise">{UEMS_VERSION_SATZ}</p>
-                  </details>
-                </>
-              ) : (
-                <>
-                  {/* AP-13 IP-11 (D1/D2): derselbe Satz — die Kennzeichen mit Seite sind Sprünge MIT Periode und Version. */}
-                  {herkunft.eingaenge && (
-                    <p>
-                      <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
-                    </p>
-                  )}
-                  {herkunft.paare.length > 0 && (
-                    <ul className="vp-kz-paare">
-                      {herkunft.paare.map((p, i) => (
-                        <li key={p}>
-                          <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
-                </>
-              )}
-              {herkunft.fehlt && <p className="vp-kz-ehrlich">{herkunft.fehlt}</p>}
-            </section>
-          )}
-          {b && (
-            <section className="vp-kz-block" aria-label={KARTE_BERECHNUNG} data-testid="kennzahl-berechnung">
-              <h2>{KARTE_BERECHNUNG}</h2>
-              <p>
-                {b.satz}
-                {b.abzeichen && (
+        {/* Ein Fehler in einem Reiter bleibt in diesem Reiter — die anderen bleiben erreichbar. */}
+        {bbAn && reiter === 'bezugsbasis' ? (
+          <Fehlergrenze key="bezugsbasis">
+            <BezugsbasisReiter kennzahl={k} lage={bbLage} zone={zone} onNeu={() => setBbVersuch((v) => v + 1)} />
+          </Fehlergrenze>
+        ) : bbAn && reiter === 'vergleich' ? (
+          <Fehlergrenze key="vergleich">
+            <BezugsbasisVergleich kennzahlId={k.id} standort={k.standort_id} />
+          </Fehlergrenze>
+        ) : (
+        <>
+        {wahl.optionen.length > 0 && art && (
+          <div className="vp-kz-perioden">
+            <ZeitSegment
+              label={PERIODE_WAHL}
+              optionen={wahl.optionen}
+              wert={art}
+              onWert={(a) => {
+                setArt(a);
+                setGewaehlt(null);
+              }}
+            />
+          </div>
+        )}
+        <div className="vp-kz-raster">
+          <div className="vp-kz-spalte">
+            {werteFehler ? (
+              <ErrorState message={WERTE_FEHLER} onRetry={() => setVersuch((v) => v + 1)} />
+            ) : art && !aktuell ? (
+              <div aria-busy="true">
+                <Skeleton height={148} />
+              </div>
+            ) : (
+              <>
+                {wk && (
+                  <WerteKarte
+                    karte={wk.karte}
+                    grund={wk.grund}
+                    versionen={einstieg && <VersionenEinstieg einstieg={einstieg} onOeffnen={() => setVersionenOffen(true)} />}
+                  />
+                )}
+                {aktuell && (
+                  <GeteiltesRegisterHinweis
+                    saetze={(aktuell.geteilte_register ?? []).map((g) => uemsGeteiltSatz(g.messstellen))}
+                  />
+                )}
+                {aktuell && (
+                  <Verlauf
+                    balken={verlauf(aktuell)}
+                    dicht={aktuell.periode === 'tag' || aktuell.periode === 'woche'}
+                    gewaehlt={schritt?.schluessel ?? null}
+                    onWahl={setGewaehlt}
+                  />
+                )}
+              </>
+            )}
+          </div>
+          <div className="vp-kz-spalte">
+            {herkunft && (
+              <section className="vp-kz-block" aria-label={KARTE_HERKUNFT} data-testid="kennzahl-herkunft">
+                <h2>{KARTE_HERKUNFT}</h2>
+                {herkunft.klartext ? (
                   <>
-                    {' '}
-                    <Badge variant="warn">{b.abzeichen}</Badge>
+                    {/* K5: der Rechenweg in Worten; der Name springt wie sein Kennzeichen (AP-13 IP-11, D1/D2). */}
+                    <p className="vp-kz-klartext" data-testid="kennzahl-klartext">
+                      <HerkunftsZeile stuecke={herkunft.klartextStuecke} />
+                    </p>
+                    <details className="vp-kz-rechenweg" data-testid="kennzahl-rechenweg">
+                      <summary>{RECHENWEG_TITEL}</summary>
+                      {herkunft.eingaenge && <p>{herkunft.eingaenge}</p>}
+                      {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
+                      <p className="vp-kz-leise">{UEMS_FASSUNG_SATZ}</p>
+                      <p className="vp-kz-leise">{UEMS_VERSION_SATZ}</p>
+                    </details>
+                  </>
+                ) : (
+                  <>
+                    {/* AP-13 IP-11 (D1/D2): derselbe Satz — die Kennzeichen mit Seite sind Sprünge MIT Periode und Version. */}
+                    {herkunft.eingaenge && (
+                      <p>
+                        <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
+                      </p>
+                    )}
+                    {herkunft.paare.length > 0 && (
+                      <ul className="vp-kz-paare">
+                        {herkunft.paare.map((p, i) => (
+                          <li key={p}>
+                            <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
                   </>
                 )}
-              </p>
-              <p className="vp-kz-leise">{b.wer}</p>
-              {eingaengeArchiviert.length > 0 && (
-                <p className="vp-kz-zeichen" data-testid="kennzahl-eingang-archiviert">
-                  {eingaengeArchiviert.map((t) => (
-                    <Badge key={t} variant="warn">
-                      {t}
-                    </Badge>
-                  ))}
+                {herkunft.fehlt && <p className="vp-kz-ehrlich">{herkunft.fehlt}</p>}
+              </section>
+            )}
+            {b && (
+              <section className="vp-kz-block" aria-label={KARTE_BERECHNUNG} data-testid="kennzahl-berechnung">
+                <h2>{KARTE_BERECHNUNG}</h2>
+                <p>
+                  {b.satz}
+                  {b.abzeichen && (
+                    <>
+                      {' '}
+                      <Badge variant="warn">{b.abzeichen}</Badge>
+                    </>
+                  )}
                 </p>
-              )}
-              {onBerechnungAendern && aenderbar && (
+                <p className="vp-kz-leise">{b.wer}</p>
+                {eingaengeArchiviert.length > 0 && (
+                  <p className="vp-kz-zeichen" data-testid="kennzahl-eingang-archiviert">
+                    {eingaengeArchiviert.map((t) => (
+                      <Badge key={t} variant="warn">
+                        {t}
+                      </Badge>
+                    ))}
+                  </p>
+                )}
+                {onBerechnungAendern && aenderbar && (
+                  <div className="vp-kz-aktionen">
+                    <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="berechnung-aendern-knopf"
+                      onClick={() => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen })}
+                    >
+                      {E.KNOPF_BERECHNUNG_AENDERN}
+                    </Button></Recht>
+                  </div>
+                )}
+                {b.fassungen.length > 0 && (
+                  <>
+                    <h3>{FASSUNGEN_TITEL}</h3>
+                    <ol className="vp-kz-fassungen">
+                      {b.fassungen.map((f) => (
+                        <li key={f.schluessel} className={`vp-kz-fassung${f.gilt ? ' is-gilt' : ''}`}>
+                          <p>
+                            <strong>{f.titel}</strong> · {f.zeitraum}
+                            {f.abzeichen && (
+                              <>
+                                {' '}
+                                <Badge variant="warn">{f.abzeichen}</Badge>
+                              </>
+                            )}
+                          </p>
+                          <p>{f.berechnung}</p>
+                          <p className="vp-kz-leise">{f.wer}</p>
+                          {f.warum && <p>{f.warum}</p>}
+                          {f.aufgehoben && <p className="vp-kz-ehrlich">{f.aufgehoben}</p>}
+                        </li>
+                      ))}
+                    </ol>
+                  </>
+                )}
+              </section>
+            )}
+            <section className="vp-kz-block" aria-label={KARTE_STAMMDATEN} data-testid="kennzahl-stammdaten">
+              <h2>{KARTE_STAMMDATEN}</h2>
+              <dl className="vp-kz-stamm">
+                {stammdaten(k).map((s) => (
+                  <div key={s.name}>
+                    <dt>{s.name}</dt>
+                    <dd>{s.wert}</dd>
+                  </div>
+                ))}
+              </dl>
+              {aenderbar && (
                 <div className="vp-kz-aktionen">
-                  <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="berechnung-aendern-knopf"
-                    onClick={() => onBerechnungAendern({ kennzahl: k, fassungen: stamm.fassungen })}
-                  >
-                    {E.KNOPF_BERECHNUNG_AENDERN}
+                  <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" data-testid="stammdaten-aendern-knopf" onClick={() => setStammdatenOffen(true)}>
+                    {E.KNOPF_STAMMDATEN}
                   </Button></Recht>
                 </div>
-              )}
-              {b.fassungen.length > 0 && (
-                <>
-                  <h3>{FASSUNGEN_TITEL}</h3>
-                  <ol className="vp-kz-fassungen">
-                    {b.fassungen.map((f) => (
-                      <li key={f.schluessel} className={`vp-kz-fassung${f.gilt ? ' is-gilt' : ''}`}>
-                        <p>
-                          <strong>{f.titel}</strong> · {f.zeitraum}
-                          {f.abzeichen && (
-                            <>
-                              {' '}
-                              <Badge variant="warn">{f.abzeichen}</Badge>
-                            </>
-                          )}
-                        </p>
-                        <p>{f.berechnung}</p>
-                        <p className="vp-kz-leise">{f.wer}</p>
-                        {f.warum && <p>{f.warum}</p>}
-                        {f.aufgehoben && <p className="vp-kz-ehrlich">{f.aufgehoben}</p>}
-                      </li>
-                    ))}
-                  </ol>
-                </>
               )}
             </section>
-          )}
-          <section className="vp-kz-block" aria-label={KARTE_STAMMDATEN} data-testid="kennzahl-stammdaten">
-            <h2>{KARTE_STAMMDATEN}</h2>
-            <dl className="vp-kz-stamm">
-              {stammdaten(k).map((s) => (
-                <div key={s.name}>
-                  <dt>{s.name}</dt>
-                  <dd>{s.wert}</dd>
-                </div>
-              ))}
-            </dl>
-            {aenderbar && (
-              <div className="vp-kz-aktionen">
-                <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button variant="outline" size="sm" data-testid="stammdaten-aendern-knopf" onClick={() => setStammdatenOffen(true)}>
-                  {E.KNOPF_STAMMDATEN}
-                </Button></Recht>
-              </div>
-            )}
-          </section>
-          <section className="vp-kz-block" aria-label={E.KARTE_LEBENSZYKLUS} data-testid="kennzahl-lebenszyklus">
-            <h2>{E.KARTE_LEBENSZYKLUS}</h2>
-            {aenderbar ? (
-              <>
-                <p>{E.ARCHIVIEREN_SATZ}</p>
-                <div className="vp-kz-aktionen">
-                  <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="archivieren-knopf"
-                    onClick={() => {
-                      setArchiv({ laeuft: false, fehler: null });
-                      setArchivierenOffen(true);
-                    }}
-                  >
-                    {E.KNOPF_ARCHIVIEREN}
-                  </Button></Recht>
-                </div>
-              </>
-            ) : (
-              <p className="vp-kz-leise">{archiviertSatz}</p>
-            )}
-            <DangerZone recht={k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren'} standort={k.standort_id}
-              actionLabel={E.KNOPF_LOESCHEN}
-              description={E.LOESCHEN_SATZ}
-              consequences={E.loeschenFolgen(k)}
-              confirmLabel={E.LOESCHEN_BESTAETIGEN}
-              disabledReason={sperre}
-              busy={loeschen.laeuft}
-              error={loeschen.fehler}
-              onConfirm={endgueltigLoeschen}
-            />
-          </section>
+            <section className="vp-kz-block" aria-label={E.KARTE_LEBENSZYKLUS} data-testid="kennzahl-lebenszyklus">
+              <h2>{E.KARTE_LEBENSZYKLUS}</h2>
+              {aenderbar ? (
+                <>
+                  <p>{E.ARCHIVIEREN_SATZ}</p>
+                  <div className="vp-kz-aktionen">
+                    <Recht aktion={k.standort_id ? "kennzahl.standort_definieren" : "kennzahl.unternehmen_definieren"} standort={k.standort_id}><Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="archivieren-knopf"
+                      onClick={() => {
+                        setArchiv({ laeuft: false, fehler: null });
+                        setArchivierenOffen(true);
+                      }}
+                    >
+                      {E.KNOPF_ARCHIVIEREN}
+                    </Button></Recht>
+                  </div>
+                </>
+              ) : (
+                <p className="vp-kz-leise">{archiviertSatz}</p>
+              )}
+              <DangerZone recht={k.standort_id ? 'kennzahl.standort_definieren' : 'kennzahl.unternehmen_definieren'} standort={k.standort_id}
+                actionLabel={E.KNOPF_LOESCHEN}
+                description={E.LOESCHEN_SATZ}
+                consequences={E.loeschenFolgen(k)}
+                confirmLabel={E.LOESCHEN_BESTAETIGEN}
+                disabledReason={sperre}
+                busy={loeschen.laeuft}
+                error={loeschen.fehler}
+                onConfirm={endgueltigLoeschen}
+              />
+            </section>
+          </div>
         </div>
-      </div>
-      </>
-      )}
-      {/* Neben der Seite, nicht in der Karte: der Dialog ist ein eigenes Portal (wie an der Tageskarte). */}
-      {art && schritt && einstieg && (
-        <VersionenModal
-          open={versionenOffen}
-          objekt={kp.titel}
-          periode={schritt.beschriftung}
-          schluessel={`${id}|${art}|${schritt.von}`}
-          laden={() => api.kennzahlWertVersionen(id, art, schritt.von).then(kennzahlHistorie)}
-          onClose={() => setVersionenOffen(false)}
+        </>
+        )}
+        {/* Neben der Seite, nicht in der Karte: der Dialog ist ein eigenes Portal (wie an der Tageskarte). */}
+        {art && schritt && einstieg && (
+          <VersionenModal
+            open={versionenOffen}
+            objekt={kp.titel}
+            periode={schritt.beschriftung}
+            schluessel={`${id}|${art}|${schritt.von}`}
+            laden={() => api.kennzahlWertVersionen(id, art, schritt.von).then(kennzahlHistorie)}
+            onClose={() => setVersionenOffen(false)}
+          />
+        )}
+        <KennzahlStammdatenDialog
+          open={stammdatenOffen}
+          kennzahl={k}
+          onClose={() => setStammdatenOffen(false)}
+          onGespeichert={(neu) => {
+            setStamm((s) => (s ? { ...s, kennzahl: neu } : s));
+            setStammdatenOffen(false);
+          }}
         />
-      )}
-      <KennzahlStammdatenDialog
-        open={stammdatenOffen}
-        kennzahl={k}
-        onClose={() => setStammdatenOffen(false)}
-        onGespeichert={(neu) => {
-          setStamm((s) => (s ? { ...s, kennzahl: neu } : s));
-          setStammdatenOffen(false);
-        }}
-      />
-      <ConfirmDialog
-        open={archivierenOffen}
-        title={E.ARCHIVIEREN_TITEL}
-        intro={E.archivierenIntro(k)}
-        consequences={E.archivierenFolgen(k, umfeld ? E.heutigeLeser(k, umfeld.liste, umfeld.fassungen) : [])}
-        confirmLabel={E.KNOPF_ARCHIVIEREN}
-        busy={archiv.laeuft}
-        onConfirm={archivieren}
-        onCancel={() => setArchivierenOffen(false)}
-        extra={
-          archiv.fehler ? (
-            <p className="vp-gw-error" role="alert">
-              {archiv.fehler}
-            </p>
-          ) : undefined
-        }
-      />
-    </div>
+        <ConfirmDialog
+          open={archivierenOffen}
+          title={E.ARCHIVIEREN_TITEL}
+          intro={E.archivierenIntro(k)}
+          consequences={E.archivierenFolgen(k, umfeld ? E.heutigeLeser(k, umfeld.liste, umfeld.fassungen) : [])}
+          confirmLabel={E.KNOPF_ARCHIVIEREN}
+          busy={archiv.laeuft}
+          onConfirm={archivieren}
+          onCancel={() => setArchivierenOffen(false)}
+          extra={
+            archiv.fehler ? (
+              <p className="vp-gw-error" role="alert">
+                {archiv.fehler}
+              </p>
+            ) : undefined
+          }
+        />
+      </div>
+    </GrenzSatzBereich>
   );
 }
 

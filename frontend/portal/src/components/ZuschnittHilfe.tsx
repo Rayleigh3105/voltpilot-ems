@@ -1,6 +1,7 @@
 import { Icon } from '../../designsystem/components/core/Icon';
+import { GrenzSatz } from './GrenzSatz';
 import { SAETZE } from '../energiemanagement';
-import { UEMS_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_ENERGIEMANAGEMENT } from '../glossar';
 
 const GEFUEHRT = 'in VoltPilot geführt';
 const WORTLAUT = 'Wortlaut in VoltPilot, Original bei Ihnen';
@@ -121,8 +122,7 @@ export function ZuschnittHilfe({ onZurueck }: { onZurueck?: () => void }) {
         <Tafel teile={NACHBARN} testid="zuschnitt-nachbarn" />
       </section>
       <div className="vp-em-saetze">
-        <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+        <GrenzSatz className="vp-ez-grenze" verantwortung />
       </div>
     </div>
   );

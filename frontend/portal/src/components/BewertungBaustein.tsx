@@ -1,6 +1,6 @@
 import { Icon } from '../../designsystem/components/core/Icon';
+import { GrenzSatz } from './GrenzSatz';
 import type { BewertungFristBild } from '../bewertungFrist';
-import { UEMS_NORMGRENZE } from '../glossar';
 import './UebersichtBausteine.css';
 
 /** Titel und Sprung des Bausteins — Wörter aus dem Katalog-Eintrag `bewertung`. */
@@ -40,7 +40,7 @@ export function BewertungBaustein({ bild, onOeffnen }: { bild: BewertungFristBil
           {bild.ohneVerantwortliche}
         </p>
       )}
-      <p className="vp-ub-hinweis">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-ub-hinweis" />
     </section>
   );
 }

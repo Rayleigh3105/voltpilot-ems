@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Bewertung › Bewertungsstand“ (UEMS AP-16 IP-25, §5.5, R7/R10) bei 375 px und 1440 px auf der Bühne
@@ -75,7 +76,7 @@ for (const breite of [375, 1440]) {
       const stand = page.getByTestId('bewertung-stand');
       await expect(stand.getByTestId('bewertung-entwurf')).toContainText('Entwurf · Datenstand 09.11.2026 10:05 · Datengrundlage November 2025 bis Oktober 2026');
       await expect(stand.getByTestId('bewertung-stand-satz')).toHaveText('Noch kein Berichtsstand — der Entwurf ist noch nicht freigegeben.');
-      await expect(stand).toContainText(GRENZE);
+      await grenzHinweisZeigt(page, GRENZE);
       await expect(page.getByTestId('bewertung-frist-kopf')).toHaveCount(0);
       await ohneQuerlauf(page, 'Entwurf');
       await ablegen(page, `entwurf-${breite}`, 'stand');

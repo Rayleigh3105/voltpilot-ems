@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Unternehmen › Ziele und Maßnahmen › Energieziele“ (UEMS AP-18 IP-8) bei 375 px und 1440 px auf der eigenen Bühne
@@ -86,7 +87,7 @@ for (const breite of [375, 1440]) {
     test('leerer Zustand (R13): Satz und Grenz-Satz; das Register Abweichungen leer', async ({ page }) => {
       await oeffne(page, 'lage=leer', breite, AM_20_12_2027);
       await expect(page.getByTestId('energieziele-leer')).toHaveText(LEER);
-      await expect(page.getByTestId('verbesserung-bereich').getByText(GRENZE)).toBeVisible();
+      await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
       const m = await messe(page);
       expect(m.reiter).toEqual(expect.arrayContaining(['Energieziele', 'Maßnahmen', 'Abweichungen']));
       if (breite >= 720) expect(m.reiter).toContain('Ziele und Maßnahmen');
@@ -140,7 +141,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('energieziel-summe')).toContainText('410 400 kWh');
       await expect(page.getByTestId('energieziel-vorschlag')).toHaveCount(0);
       await expect(page.getByTestId('energieziel-bewerten')).toHaveCount(0);
-      await expect(page.getByTestId('energieziel-seite').getByText(GRENZE)).toBeVisible();
+      await grenzHinweisZeigt(page.getByTestId('energieziel-seite'), GRENZE);
       ohneQuerlauf(await messe(page), 'Seite');
       await ablegen(page, `seite-stand-${breite}`, true);
     });

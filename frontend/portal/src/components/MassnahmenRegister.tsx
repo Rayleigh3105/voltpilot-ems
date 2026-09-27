@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { api, type Massnahme } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
+import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import * as M from '../massnahmen';
 import { MassnahmeAnlegen } from './MassnahmeDialoge';
 import { ErrorState, Skeleton } from './States';
@@ -124,7 +125,7 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
           )}
         </>
       )}
-      <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-ez-grenze" />
     </section>
   );
 }

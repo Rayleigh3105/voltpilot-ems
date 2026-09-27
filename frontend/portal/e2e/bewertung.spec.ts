@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Unternehmen › Bewertung“ (UEMS AP-16 IP-6, Meilenstein M1) bei 375 px und 1440 px auf der eigenen Bühne
@@ -102,7 +103,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('bewertung-leer')).toHaveText(LEER);
       await expect(page.getByTestId('umfang-fassung')).toHaveText('Noch nicht festgelegt — Vorschlag: alle Standorte, Träger Strom.');
       await expect(page.getByTestId('umfang-anlagen')).toHaveText('am 04.11.2026 im Umfang: 3 Anlagen');
-      await expect(page.getByTestId('bewertung-grenze')).toHaveText(GRENZE);
+      await grenzHinweisZeigt(page, GRENZE);
       await expect(page.getByTestId('einsatz-karte')).toHaveCount(0);
       const m = await messe(page);
       ohneQuerlauf(m, `leer-${breite}`);

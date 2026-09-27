@@ -1,4 +1,5 @@
 import { BezugsKanalbindung } from '../components/BezugsKanalbindung';
+import { BegriffeZeile } from '../components/BegriffeZeile';
 import { BezugsWetter } from '../components/BezugsWetter';
 import { BezugswertListe } from '../components/BezugswertListe';
 import { useEffect, useRef, useState } from 'react';
@@ -65,7 +66,7 @@ export function BezugsgroessenPage() {
   const zeilen = B.filtern(alle, filter);
   return <section className="vp-bz" aria-label={B.TITEL}>
     <header className="vp-bz-kopf">
-      <div><h1 tabIndex={-1} ref={kopf}>{B.TITEL}</h1><p>Die Grundlage für Kennzahlen je Kilogramm, Stunde oder Quadratmeter.</p></div>
+      <div><h1 tabIndex={-1} ref={kopf}>{B.TITEL}</h1><p>Die Grundlage für Kennzahlen je Kilogramm, Stunde oder Quadratmeter.</p><BegriffeZeile begriffe={['bezugsgroesse']} /></div>
       {stand && <div className="vp-bz-aktionen">
         {darfImportieren && <Button variant="ghost" onClick={e => { ausloeser.current = e.currentTarget; setProtokoll(null); setErfolg(null); }}>Import-Protokoll</Button>}
         {darfImportieren && <Button variant="outline" onClick={e => { ausloeser.current = e.currentTarget; setImportOffen(true); setErfolg(null); }}>Werte importieren</Button>}

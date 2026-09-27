@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Energiemanagement › Wiedervorlage“ und „› Managementbewertung“ (UEMS AP-19 IP-24, §5.5, WV1–WV4, MG1–MG7, R12, R13)
@@ -110,8 +111,7 @@ for (const breite of [375, 1440]) {
       await expect(vorschau.first()).toContainText('fällig in 16 Tagen');
       await expect(vorschau.first()).toContainText('Verantwortlich Jonas Wendlinger');
       await expect(w.getByTestId('wiedervorlage-vermerk')).toContainText(KALENDER);
-      await expect(page.getByTestId('energiemanagement-saetze')).toContainText(VERANTWORTUNG);
-      await expect(page.getByTestId('energiemanagement-saetze')).toContainText(GRENZE);
+      await grenzHinweisZeigt(page, VERANTWORTUNG, GRENZE);
       await ohneQuerlauf(page, 'Wiedervorlage');
       await ablegen(page, `w1-wiedervorlage-${breite}`);
 
@@ -165,8 +165,7 @@ for (const breite of [375, 1440]) {
         'Aufgaben im Energiemanagement: 10 laufende Zuordnungen; keine Person festgelegt für Bezugsbasen pflegen und freigeben.',
       );
       await expect(seite.getByTestId('mb-abschnitt-wiedervorlage')).toContainText('Stichtag 12.02.2029: 8 fällig · 1 in den nächsten 30 Tagen');
-      await expect(seite).toContainText(VERANTWORTUNG);
-      await expect(seite).toContainText(GRENZE);
+      await grenzHinweisZeigt(seite, VERANTWORTUNG, GRENZE);
       await ohneQuerlauf(page, 'Entwurf');
       await ablegen(page, `m3-entwurf-${breite}`);
 

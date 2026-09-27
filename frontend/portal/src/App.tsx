@@ -24,7 +24,7 @@ import { type Tenant } from './admin/adminApi';
 import {
   canonicalShellHash,
   canonicalShellRoute,
-  fleetLabel,
+  flottenName,
   flottenLandung,
   kopfPfad,
   orteAus,
@@ -1104,13 +1104,16 @@ function UnifiedPortal() {
   const portfolioNav = showPortfolioNav(shellFrame);
   const overviewNav = showOverviewNav(shellFrame);
   const fleetLevel = portfolioNav || overviewNav;
+  // D6: mit mehreren Standorten heißt die Flotten-Ebene wie das Unternehmen — Seitenleiste, Pfad und
+  // Anlagen-Umschalter tragen DASSELBE Wort.
+  const flotte = flottenName(betriebsart, ebene);
   // UEMS AP-01 IP-5: der Pfad der Kopfzeile „Unternehmen › Standort › Anlage".
   // Jedes Glied navigiert und ist am Telefon eine Zeile des Umschalters.
   const pfad = kopfPfad({
     shell: shellFrame,
     route,
     anlageId: shellSite?.id ?? null,
-    fleetLabel: fleetLabel(betriebsart),
+    fleetLabel: flotte,
   });
   const pfadEintrag = (glied: PfadGlied) => ({
     wert: pfadWert(glied),
@@ -1162,7 +1165,7 @@ function UnifiedPortal() {
           mitFlotte: sites.length > 1,
           // Der Pfad der Kopfzeile und diese Zeile führen an denselben Ort,
           // also tragen sie DASSELBE Wort.
-          flottenLabel: fleetLabel(betriebsart),
+          flottenLabel: flotte,
           rueckwege,
         }),
         onSelectSite: (id: string) => navigate(anlageRoute(id)),
@@ -1330,7 +1333,7 @@ function UnifiedPortal() {
       showOverview={!leer && overviewNav}
       // U5: a betreiber frame swaps "Übersicht" for the "Portfolio" landing.
       showPortfolio={!leer && portfolioNav}
-      fleetLabel={fleetLabel(betriebsart)}
+      fleetLabel={flotte}
       showAddAnlage={showAddAnlage}
       onAddAnlage={() => {
         // EIN Ort: die neue Anlage entsteht im Aufbau — dort stehen Standort und Nachbarn schon fest.
@@ -1458,7 +1461,7 @@ function UnifiedPortal() {
             showEnergiemanagement={energiemanagementDa === true}
             leiste={leisteHier}
             telefonReiter={telefonReiterHier}
-            fleetLabel={fleetLabel(betriebsart)}
+            fleetLabel={flotte}
             onNavigate={navigateSchale}
             standortBereiche={standortObenReiter}
             standortAktiv={ebenenAktiv(page, standortBereich)}

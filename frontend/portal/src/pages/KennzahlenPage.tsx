@@ -1,4 +1,5 @@
 import { Recht } from '../components/Recht';
+import { BegriffeZeile } from '../components/BegriffeZeile';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -138,6 +139,7 @@ function KennzahlenListe({
           {KNOPF_ANLEGEN}
         </Button></Recht>
       </header>
+      <BegriffeZeile begriffe={['kennzahl', 'bezugsgroesse', 'bezugsbasis']} />
       {ausserhalb && <p className="vp-kz-hinweis" role="note">{ausserhalb}</p>}
       {mitElk && (
         <label className="vp-kz-filter">
