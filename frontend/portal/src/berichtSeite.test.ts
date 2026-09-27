@@ -15,6 +15,7 @@ import {
   KEINE_KENNZAHLEN,
   KEIN_TAGESVERLAUF,
   LADEFEHLER,
+  OHNE_DARSTELLUNG,
   listenFehler,
   listenKarte,
   seitenKopf,
@@ -38,6 +39,7 @@ import {
   ZEIT,
 } from './test/berichtFixtures';
 import abzuegeKopie from './test/berichtAbzuege.json';
+import { r13Abzug } from './test/managementbewertungFixtures';
 import * as B from './uemsBericht';
 
 /**
@@ -476,5 +478,37 @@ describe('PDF und CSV — abgeleitet, sichtbar erst mit ihrem Ziel (IP-10, IP-11
     expect(darf('export.standort')).toBeNull();
     expect(ausgabeKnoepfe(b, stand(2, AM_20_11), darf, alle).map((k) => k.text)).toEqual(['PDF']);
     expect(ausgabeKnoepfe(b, stand(2, AM_20_11), () => false, alle)).toEqual([]);
+  });
+});
+
+describe('ein Abzug ohne Werte (Managementbewertung BR-2029-0001, Demo 27.09.2026)', () => {
+  /** Wie die Route ihn bildet (`BerichtManagementbewertung`): Kennzeichen im Kopf, die Einträge mit Namen daneben. */
+  const mbAbzug = () => {
+    const roh = r13Abzug('2029-02-12T10:00:00Z') as { kopf: Record<string, unknown>; quellenverzeichnis: Array<{ kennzeichen: string }> };
+    return { ...roh, kopf: { ...roh.kopf, quellenverzeichnis: roh.quellenverzeichnis.map((q) => q.kennzeichen) } };
+  };
+
+  it('stürzt nicht ab: das Quellenverzeichnis nennt die Einträge des Abzugs mit Namen und Stand', () => {
+    const { abschnitte: liste } = abschnitte(abzugAus(mbAbzug()));
+    const quellen = liste.find((x) => x.art === 'quellen');
+    expect(quellen?.art === 'quellen' && quellen.zeilen.map((z) => [z.kennzeichen, z.name, z.stand])).toEqual([
+      ['D-0001', 'Energiepolitik', 'Fassung 1'],
+      ['EZ-2028-0001', 'Energieziel 2028', 'Version 1'],
+      ['BR-2028-0001', 'Leistungsvergleich 2027', 'Version 1'],
+      ['M-2028-0001', 'Zeitschaltung der Trocknerlüfter in Halle 1', 'Version 1'],
+      ['AU-2029-0001', 'Internes Audit 2029', null],
+      ['F-2029-0001', 'Feststellung F-2029-0001', null],
+    ]);
+  });
+
+  it('sagt, dass die Seite die Abschnitte nicht zeigt, statt sie still wegzulassen — auch ohne Kennzeichen im Kopf', () => {
+    const ergebnis = abschnitte(abzugAus(r13Abzug('2029-02-12T10:00:00Z')));
+    expect(ergebnis.ohneInhalt).toContain('beschluesse');
+    expect(ergebnis.hinweis).toBe(OHNE_DARSTELLUNG('Managementbewertung', true));
+    expect(ergebnis.hinweis).toContain('Energiemanagement › Managementbewertung');
+  });
+
+  it('ein Energiebericht trägt Werte — dort kein Hinweis', () => {
+    expect(abschnitte(abzugAus(ABZUG_NR1)).hinweis).toBeNull();
   });
 });

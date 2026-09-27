@@ -200,7 +200,7 @@ export function BezugsbasisAssistent({
   );
 
   function SchrittPeriode() {
-    const zustaende = vorschauPasst ? B.monatsZustaende(vorschau.grundlage.perioden) : [];
+    const zustaende = vorschauPasst ? B.monatsZustaende(vorschau.grundlage?.perioden) : [];
     const vorl = vorschauPasst ? B.vorlaeufigText(vorschau.monate, vorschau.mindest_monate) : null;
     return (
       <div className="vp-gw-step-body">
@@ -391,7 +391,7 @@ export function BezugsbasisAssistent({
             <div>
               <dt>Basiswert</dt>
               <dd data-testid="bezugsbasis-basiswert">
-                {B.dezimal(f.basiswert)} {B.einheitJe(kennzahl.einheit_anzeige)}
+                {f.basiswert === null ? B.OHNE_BASISWERT : `${B.dezimal(f.basiswert)} ${B.einheitJe(kennzahl.einheit_anzeige)}`}
               </dd>
             </div>
           )}
@@ -421,7 +421,7 @@ export function BezugsbasisAssistent({
           )}
           <div>
             <dt>Prüfsumme</dt>
-            <dd title={f.pruefsumme}>{B.pruefsummeKurz(f.pruefsumme)}</dd>
+            <dd title={f.pruefsumme ?? undefined}>{B.pruefsummeKurz(f.pruefsumme)}</dd>
           </div>
         </dl>
         {!gespeichert && (

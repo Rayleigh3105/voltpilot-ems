@@ -149,3 +149,23 @@ describe('die Ansicht', () => {
     }
   });
 });
+
+describe('ohne Grundlage (Welt 1.10, Demo 27.09.2026)', () => {
+  it('ein Modell ohne Grundlage: Kopfsatz und Spannweite aus der Fassung, kein Toleranzband, keine Grafik, der Satz', () => {
+    const f = bb1Modell('freigegeben', { grundlage: null, pruefsumme: null, monate: 0 });
+    expect(M.monatspaare(f)).toEqual([]);
+    expect(M.grafik(f)).toBeNull();
+    expect(M.spannweiten(f, 'kWh/kg')[0]).toMatchObject({ toleriertVon: null, toleriertBis: null });
+    render(<BezugsbasisModell fassung={f} einheit="kWh/kg" />);
+    expect(screen.getByTestId('bezugsbasis-modell-kopf').textContent).toBe(KOPF_R4);
+    expect(screen.getByTestId('bezugsbasis-modell-spannweite-1').textContent).not.toContain('das Modell gilt');
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(screen.queryByTestId('bezugsbasis-modell-monate')).toBeNull();
+    expect(screen.getByTestId('bezugsbasis-ohne-grundlage').textContent).toBe(M.OHNE_GRUNDLAGE);
+  });
+
+  it('mit Grundlage kein Satz', () => {
+    render(<BezugsbasisModell fassung={bb1Fassung('freigegeben')} einheit="kWh/kg" />);
+    expect(screen.queryByTestId('bezugsbasis-ohne-grundlage')).toBeNull();
+  });
+});

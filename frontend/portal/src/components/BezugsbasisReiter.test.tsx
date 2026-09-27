@@ -1,7 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError, type Kennzahl } from '../api';
-import { LEER_SATZ } from '../bezugsbasisAnlegen';
+import { LEER_SATZ, OHNE_BASISWERT } from '../bezugsbasisAnlegen';
+import { OHNE_GRUNDLAGE } from '../bezugsbasisModell';
+import { FEHLER_IM_BEREICH } from './Fehlergrenze';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { KennzahlenPage } from '../pages/KennzahlenPage';
 import { KennzahlSeite } from '../pages/KennzahlSeite';
@@ -276,5 +278,67 @@ describe('Register: Kennzeichen „Energieleistungskennzahl“ und Filter (B3, R
     fireEvent.click(screen.getByLabelText('nur Energieleistungskennzahlen'));
     expect(screen.getAllByTestId('kennzahl-karte')).toHaveLength(1);
     expect(screen.getByText('Spritzguss je kg')).toBeTruthy();
+  });
+});
+
+/**
+ * Demo 27.09.2026 (Welt 1.10): alle acht Fassungen tragen `grundlage` NULL, die Route reicht `null` durch — der Reiter
+ * brachte das GANZE Portal auf die Boot-Karte (`null.variablen` in `spannweiten`). Die Antworten hier sind die der Route
+ * für so eine Fassung: `monate` 0 (unbekannt), keine Gründe, keine Prüfsumme.
+ */
+describe('eine Fassung ohne Grundlage (Welt 1.10, Referenzdatei BB-0003 Fassung 2)', () => {
+  const ohneGrundlage = { grundlage: null, pruefsumme: null, monate: 0, datenlage_gruende: [], vorbehalte: [] };
+  const seite = (fassung: ReturnType<typeof bb1Fassung>) => {
+    const k = kz4();
+    vi.spyOn(api, 'kennzahl').mockResolvedValue(k);
+    vi.spyOn(api, 'kennzahlen').mockResolvedValue({ kennzahlen: [k] });
+    vi.spyOn(api, 'kennzahlFassungen').mockResolvedValue({ kennzahl_id: k.id, kennzeichen: k.kennzeichen, fassungen: [] });
+    vi.spyOn(api, 'kennzahlWerte').mockRejectedValue(new ApiError(500, 'x'));
+    vi.spyOn(api, 'kennzahlBezugsbasen').mockResolvedValue({ bezugsbasen: [bb1('freigegeben')] });
+    vi.spyOn(api, 'bezugsbasisFassung').mockResolvedValue(fassung);
+    render(<KennzahlSeite id={k.id} zone={ZONE} onListe={() => undefined} />);
+  };
+  const zumReiter = async () => {
+    await screen.findByTestId('bezugsbasis-zeile');
+    fireEvent.click(within(screen.getByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' })).getAllByRole('tab')[1]);
+    return screen.getByTestId('bezugsbasis-reiter');
+  };
+
+  it('der Reiter zeichnet: Basiswert und Datenlage der Fassung, dazu der Satz — keine Monate, keine erfundene 0', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    seite(bb1Fassung('freigegeben', ohneGrundlage));
+    expect((await screen.findByTestId('bezugsbasis-zeile')).textContent).toBe(
+      'Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig · freigegeben von Ines Kaltenbach am 12.11.2026.',
+    );
+    const r = await zumReiter();
+    expect(within(r).getByTestId('bezugsbasis-ohne-grundlage').textContent).toBe(OHNE_GRUNDLAGE);
+    expect(within(r).getByTestId('bezugsbasis-modell-basiswert').textContent).toBe('Verhältnis 0,2837 kWh je kg.');
+    expect(within(r).getByTestId('bezugsbasis-modell-datenlage').textContent).toBe('vorläufig');
+    expect(within(r).queryByTestId('bezugsbasis-modell-monate')).toBeNull();
+    expect(r.textContent).not.toMatch(/\b0 (von 12 )?Monat/);
+    expect(screen.queryByTestId('fehlergrenze')).toBeNull();
+  });
+
+  it('ohne Basiswert (Referenzdatei: „leer, nie 0“) steht das Wort statt einer Zahl', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    seite(bb1Fassung('freigegeben', { ...ohneGrundlage, basiswert: null }));
+    expect((await screen.findByTestId('bezugsbasis-zeile')).textContent).toBe(
+      `Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis ${OHNE_BASISWERT} · vorläufig · freigegeben von Ines Kaltenbach am 12.11.2026.`,
+    );
+    const r = await zumReiter();
+    expect(within(r).getByTestId('bezugsbasis-modell-basiswert').textContent).toBe(`Verhältnis ${OHNE_BASISWERT}.`);
+  });
+
+  it('scheitert ein Reiter trotzdem, bleibt der Fehler im Reiter: Kopf und Reiter „Kennzahl“ bleiben erreichbar', async () => {
+    setSelbstauskunft(rechteSeed('IK').me);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // Eine kaputte Antwort (keine Variablen-Liste) — steht für jeden künftigen Fehler dieser Art.
+    seite(bb1Fassung('freigegeben', { variablen: null as never }));
+    await zumReiter().catch(() => undefined);
+    expect((await screen.findByTestId('fehlergrenze')).textContent).toBe(FEHLER_IM_BEREICH);
+    const tabs = within(screen.getByRole('tablist', { name: 'Reiter der Kennzahl KZ-0004' })).getAllByRole('tab');
+    fireEvent.click(tabs[0]);
+    expect(await screen.findByTestId('kennzahl-stammdaten')).toBeTruthy();
+    expect(screen.queryByTestId('fehlergrenze')).toBeNull();
   });
 });

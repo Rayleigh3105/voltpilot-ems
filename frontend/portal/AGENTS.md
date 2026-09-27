@@ -14,6 +14,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 ## Darstellung und Verhalten
 
 - Fehlend ist keine Null. Veraltete Daten nicht als aktuell zeigen; Datenalter, Einheit und Mess-/Planstatus erhalten.
+- Portal-Typen folgen der Route: eine nullable Spalte ist im Typ `| null`, nie still nicht-null. Ein Zeichenfehler bleibt in `components/Fehlergrenze.tsx` (steckt in `LazyBoundary` und um die Kennzahl-Reiter) statt das Portal durch die Boot-Karte zu ersetzen.
 - Annahme, Geräteantwort und Wirkung eines Befehls nicht gleichsetzen. Erlös-/Ersparnisangaben brauchen den tatsächlichen Datenbezug.
 - Wirkliche Abhängigkeiten und Folgen einer Änderung erklären. Kein Formular darf durch unsichtbare Voraussetzungen ohne Ausweg bleiben.
 - Gemeinsamen `VpPicker` statt paralleler Auswahlmuster verwenden. Bei ungültigem Submit Fehler zeigen und erstes Feld fokussieren.

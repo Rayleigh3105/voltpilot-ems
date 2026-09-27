@@ -123,8 +123,14 @@ export function vorlaeufigText(monate: number, mindest: number): string | null {
   return monate < mindest ? `vorläufig (${monate} von ${mindest} Monaten)` : null;
 }
 
-/** Die Gründe der Datenlage (P2/P3) als Kundensatz. */
-export function datenlageSaetze(f: Pick<BezugsbasisFassung, 'datenlage' | 'datenlage_gruende' | 'monate' | 'mindest_monate'>): string[] {
+/**
+ * Die Gründe der Datenlage (P2/P3) als Kundensatz. Ohne Grundlage (`grundlage: null`) sind Monate und Gründe unbekannt —
+ * die Route schickt dann `monate: 0`; der Satz nennt nur die Datenlage der Fassung, nie „0 Monate“.
+ */
+export function datenlageSaetze(
+  f: Pick<BezugsbasisFassung, 'datenlage' | 'datenlage_gruende' | 'monate' | 'mindest_monate'> & Partial<Pick<BezugsbasisFassung, 'grundlage'>>,
+): string[] {
+  if (f.grundlage === null) return [f.datenlage === 'vollstaendig' ? 'vollständig' : 'vorläufig'];
   if (f.datenlage === 'vollstaendig') return [`vollständig (${f.monate} Monate)`];
   return f.datenlage_gruende.map((g) => {
     if (g.grund === 'monate') {
@@ -235,6 +241,15 @@ export function zeilenFassung(b: Bezugsbasis): BezugsbasisFassungKurz | null {
   return nach.find((f) => f.freigabe_status === 'freigegeben') ?? nach[0] ?? null;
 }
 
+/** Ohne Basiswert (Referenzdatei BB-0003 Fassung 2: die Monatswerte fehlen) steht das Wort, nie eine 0. */
+export const OHNE_BASISWERT = 'ohne Basiswert';
+
+/** „Verhältnis 0,2837 kWh je kg“ — ohne Basiswert „Verhältnis ohne Basiswert“. */
+export const basiswertText = (f: Pick<BezugsbasisFassung, 'methode' | 'basiswert'>, einheit: string | null): string =>
+  f.basiswert === null
+    ? `${methodeWort(f.methode)} ${OHNE_BASISWERT}`
+    : `${methodeWort(f.methode)} ${dezimal(f.basiswert)}${einheit ? ` ${einheitJe(einheit)}` : ''}`;
+
 /**
  * Die Basis-Zeile (§5.8): „Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig (1 von 12
  * Monaten) · freigegeben von Ines Kaltenbach am 12.11.2026.“ — Entwurf und Antrag stehen als Zustand am Ende.
@@ -242,15 +257,16 @@ export function zeilenFassung(b: Bezugsbasis): BezugsbasisFassungKurz | null {
 export function basisZeile(
   b: Pick<Bezugsbasis, 'kennzeichen'>,
   f: Pick<BezugsbasisFassung, 'referenzperiode' | 'methode' | 'basiswert' | 'monate' | 'mindest_monate' | 'freigabe_status' | 'variablen'> &
-    Partial<Pick<BezugsbasisFassung, 'freigabe' | 'entscheidung' | 'freigegeben_am' | 'fassung' | 'koeffizienten' | 'streuung_prozent'>>,
+    Partial<Pick<BezugsbasisFassung, 'freigabe' | 'entscheidung' | 'freigegeben_am' | 'fassung' | 'koeffizienten' | 'streuung_prozent' | 'grundlage' | 'datenlage'>>,
   einheit: string | null,
 ): string {
   const teile = [
     `${UEMS_BEZUGSBASIS} ${b.kennzeichen}${f.fassung && f.fassung > 1 ? ` · Fassung ${f.fassung}` : ''}`,
     referenzperiodeText(f.referenzperiode),
-    modellText(f, einheit) ?? `${methodeWort(f.methode)} ${dezimal(f.basiswert)}${einheit ? ` ${einheitJe(einheit)}` : ''}`,
+    modellText(f, einheit) ?? basiswertText(f, einheit),
   ];
-  const vorl = vorlaeufigText(f.monate, f.mindest_monate);
+  // Ohne Grundlage ist die Zahl der Monate unbekannt (die Route schickt 0) — dann nur die Datenlage der Fassung.
+  const vorl = f.grundlage === null ? (f.datenlage === 'vorlaeufig' ? 'vorläufig' : null) : vorlaeufigText(f.monate, f.mindest_monate);
   if (vorl) teile.push(vorl);
   if (f.freigabe_status === 'freigegeben') {
     // Bei Vier-Augen gibt die zweite Person frei (`entscheidung`), sonst die, die freigab (`freigabe`).

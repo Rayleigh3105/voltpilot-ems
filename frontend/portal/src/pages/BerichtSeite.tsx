@@ -332,9 +332,16 @@ export function BerichtSeite({
               rechte={rechteJetzt}
             />
           ) : (
-            inhalt?.abschnitte.map((a) => (
-              <AbschnittBlock key={`${wahl}-${a.schluessel}`} abschnitt={a} heuteLaden={a.art === 'messstellen' ? heuteLaden : null} />
-            ))
+            <>
+              {inhalt?.hinweis && (
+                <p className="vp-note" data-testid="bericht-ohne-darstellung">
+                  {inhalt.hinweis}
+                </p>
+              )}
+              {inhalt?.abschnitte.map((a) => (
+                <AbschnittBlock key={`${wahl}-${a.schluessel}`} abschnitt={a} heuteLaden={a.art === 'messstellen' ? heuteLaden : null} />
+              ))}
+            </>
           )}
         </>
       )}

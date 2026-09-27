@@ -449,8 +449,8 @@ const BELEG_KENNUNG = /^((?:K|EW)-\d{4}-\d{4})/;
 export const vergleichZeilen = (abweichungen: readonly BerichtAbweichung[], entwurf: Abzug, stand: Abzug | null = null): VergleichZeile[] =>
   abweichungen.map((x) => {
     const suche = (a: Abzug | null) => ({
-      kennzahl: a?.kennzahlen.find((k) => k.quelle === x.quelle) ?? null,
-      wert: a?.werte.find((w) => w.quelle === x.quelle && (w.menge_art ?? null) === x.menge_art) ?? null,
+      kennzahl: a?.kennzahlen?.find((k) => k.quelle === x.quelle) ?? null,
+      wert: a?.werte?.find((w) => w.quelle === x.quelle && (w.menge_art ?? null) === x.menge_art) ?? null,
     });
     const hier = suche(entwurf);
     const dort = suche(stand);
@@ -483,7 +483,7 @@ export const abweichungenAnzahl = (n: number): string => (n === 1 ? '1 Abweichun
 
 /** „15 Werte unverändert“ — jede Zahl des Entwurfs, die keine Abweichung ist. */
 export const unveraendert = (entwurf: Abzug, abweichungen: number): string => {
-  const n = Math.max(0, entwurf.werte.length + entwurf.kennzahlen.length - abweichungen);
+  const n = Math.max(0, (entwurf.werte?.length ?? 0) + (entwurf.kennzahlen?.length ?? 0) - abweichungen);
   return n === 1 ? '1 Wert unverändert' : `${n} Werte unverändert`;
 };
 

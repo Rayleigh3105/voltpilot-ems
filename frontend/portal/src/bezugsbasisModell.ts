@@ -1,5 +1,5 @@
 import type { BezugsbasisFassung, VariablenVorschlag } from './api';
-import { dezimal, einheitJe, methodeWort, monatText } from './bezugsbasisAnlegen';
+import { OHNE_BASISWERT, dezimal, einheitJe, methodeWort, monatText } from './bezugsbasisAnlegen';
 import { UEMS_EINFLUSSGROESSE, UEMS_GRUNDLAST } from './glossar';
 
 /**
@@ -24,6 +24,8 @@ export const LEGENDE_PUNKT = 'ein Monat der Referenzperiode';
 export const LEGENDE_GERADE = 'die Gerade der Fassung (erwartet)';
 export const LEGENDE_BAND = 'Spannweite der Referenzperiode';
 export const WITTERUNGSUNABHAENGIG = 'witterungsunabhängiger Anteil';
+/** Die Grundlage ist wahlfrei (Spalte ohne NOT NULL, Referenzdatei BB-0003 Fassung 2): dann weder Monate noch Grafik. */
+export const OHNE_GRUNDLAGE = 'Für diese Fassung ist keine Grundlage hinterlegt.';
 
 // ------------------------------------------------------------------------------------------------ Zahlen als Text
 
@@ -71,6 +73,12 @@ export function groessenAusVorschlag(v: VariablenVorschlag | null | undefined): 
 export const istModell = (f: Pick<BezugsbasisFassung, 'koeffizienten'>): boolean =>
   !!f.koeffizienten && f.koeffizienten.a !== undefined && f.koeffizienten.b !== undefined;
 
+/** Ob die Fassung eine eingefrorene Grundlage trägt — ohne sie sind `monate` und die Monatspaare unbekannt, nicht leer. */
+export const hatGrundlage = (f: Pick<BezugsbasisFassung, 'grundlage'>): boolean => f.grundlage !== null;
+
+/** Die Monate der Grundlage; ohne Grundlage keine. */
+const perioden = (f: Pick<BezugsbasisFassung, 'grundlage'>) => f.grundlage?.perioden ?? [];
+
 // ------------------------------------------------------------------------------------------------ Spannweite
 
 export interface Spannweite {
@@ -91,7 +99,7 @@ const text = (v: unknown): string | null => (v === null || v === undefined ? nul
 
 /** Die Einheit der zweiten Einflussgröße steht nur an den Monaten der Grundlage (je Monat `variablen[]`). */
 function einheitZwei(f: Pick<BezugsbasisFassung, 'grundlage'>, kennzeichen: string): string {
-  for (const p of f.grundlage.perioden ?? []) {
+  for (const p of perioden(f)) {
     const vs = (p as { variablen?: GrundlagePeriodeVariable[] }).variablen ?? [];
     const v = vs.find((x) => x.objekt === kennzeichen);
     if (v?.einheit) return v.einheit;
@@ -105,7 +113,7 @@ export function spannweiten(
   einheit: string | null,
   groessen: Groessen = {},
 ): Spannweite[] {
-  const ausGrundlage = (f.grundlage.variablen as GrundlageVariable[] | undefined) ?? [];
+  const ausGrundlage = (f.grundlage?.variablen as GrundlageVariable[] | undefined) ?? [];
   return f.variablen
     .filter((v) => v.spannweite_von !== null && v.spannweite_bis !== null)
     .map((v) => {
@@ -187,9 +195,15 @@ export function abgelehntSatz(a: Record<string, unknown>, variable1: string | nu
 }
 
 /** Beim Verhältnis (§4): „Verhältnis 0,2837 kWh je kg aus 1 Monat der Referenzperiode.“ */
-export function basiswertSatz(f: Pick<BezugsbasisFassung, 'methode' | 'basiswert' | 'monate'>, einheit: string | null): string {
+export function basiswertSatz(
+  f: Pick<BezugsbasisFassung, 'methode' | 'basiswert' | 'monate'> & Partial<Pick<BezugsbasisFassung, 'grundlage'>>,
+  einheit: string | null,
+): string {
   const je = einheitJe(einheit);
-  return `${methodeWort(f.methode)} ${dezimal(f.basiswert)}${je ? ` ${je}` : ''} aus ${f.monate} ${f.monate === 1 ? 'Monat' : 'Monaten'} der Referenzperiode.`;
+  const wert = f.basiswert === null ? OHNE_BASISWERT : `${dezimal(f.basiswert)}${je ? ` ${je}` : ''}`;
+  // Ohne Grundlage ist die Zahl der Monate unbekannt (die Route schickt 0) — der Satz nennt sie dann nicht.
+  if (f.grundlage === null) return `${methodeWort(f.methode)} ${wert}.`;
+  return `${methodeWort(f.methode)} ${wert} aus ${f.monate} ${f.monate === 1 ? 'Monat' : 'Monaten'} der Referenzperiode.`;
 }
 
 /** Kennzeichen der Fassung (M3 „ohne Grundlast“) und ihre Vorbehalte (P2/P3), ohne Doppel. */
@@ -208,7 +222,7 @@ export interface Monatspaar {
 
 /** Die Monatspaare der Grundlage (F3) — Energie und Einflussgröße 1 (und 2) je Monat mit Zahl; Monate mit Grund fehlen. */
 export function monatspaare(f: Pick<BezugsbasisFassung, 'grundlage'>): Monatspaar[] {
-  return (f.grundlage.perioden ?? [])
+  return perioden(f)
     .filter((p) => !p.grund && p.zaehler !== undefined && p.nenner !== undefined)
     .map((p) => {
       const zweite = ((p as { variablen?: GrundlagePeriodeVariable[] }).variablen ?? []).find((v) => v.position === 2);
@@ -219,7 +233,7 @@ export function monatspaare(f: Pick<BezugsbasisFassung, 'grundlage'>): Monatspaa
 /** Die Monatsliste: „Oktober 2026: 88 630 kWh bei 312 400 kg“; ein Monat ohne Zahl nennt seinen Grund. */
 export function monatsZeilen(f: Pick<BezugsbasisFassung, 'grundlage'>, einheit: string | null, einheitZweite = ''): string[] {
   const { energie, bezug } = einheiten(einheit);
-  return (f.grundlage.perioden ?? []).map((p) => {
+  return perioden(f).map((p) => {
     if (p.grund || p.zaehler === undefined || p.nenner === undefined) return `${monatText(p.periode)}: ohne Wert`;
     const paar = monatspaare({ grundlage: { perioden: [p] } })[0];
     const zwei = paar.zwei !== null ? ` und ${mitEinheit(dezimal(paar.zwei), einheitZweite)}` : '';

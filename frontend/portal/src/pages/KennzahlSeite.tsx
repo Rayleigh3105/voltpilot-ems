@@ -16,6 +16,7 @@ import { uemsGeteiltSatz } from '../glossar';
 import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
+import { Fehlergrenze } from '../components/Fehlergrenze';
 import { ErrorState, Skeleton } from '../components/States';
 import { kannBezugsbasis, REITER_BEZUGSBASIS, REITER_KENNZAHL } from '../bezugsbasisAnlegen';
 import { VERGLEICH_REITER } from '../bezugsbasisVergleich';
@@ -267,10 +268,15 @@ export function KennzahlSeite({
           ))}
         </div>
       )}
+      {/* Ein Fehler in einem Reiter bleibt in diesem Reiter — die anderen bleiben erreichbar. */}
       {bbAn && reiter === 'bezugsbasis' ? (
-        <BezugsbasisReiter kennzahl={k} lage={bbLage} zone={zone} onNeu={() => setBbVersuch((v) => v + 1)} />
+        <Fehlergrenze key="bezugsbasis">
+          <BezugsbasisReiter kennzahl={k} lage={bbLage} zone={zone} onNeu={() => setBbVersuch((v) => v + 1)} />
+        </Fehlergrenze>
       ) : bbAn && reiter === 'vergleich' ? (
-        <BezugsbasisVergleich kennzahlId={k.id} standort={k.standort_id} />
+        <Fehlergrenze key="vergleich">
+          <BezugsbasisVergleich kennzahlId={k.id} standort={k.standort_id} />
+        </Fehlergrenze>
       ) : (
       <>
       {wahl.optionen.length > 0 && art && (

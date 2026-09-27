@@ -93,6 +93,11 @@ export const KEINE_KENNZAHLEN = 'Keine Kennzahlen definiert';
 export const KEIN_TAGESVERLAUF = 'In diesem Berichtsstand sind keine Tageswerte gespeichert.';
 export const RICHTUNGSPAAR_FEHLT =
   'Laden und Entladen sind für diesen Zeitraum nicht vollständig getrennt gespeichert. Fehlende Mengen bleiben leer und werden nicht als 0 gezeigt.';
+/** Ein Abzug, dessen Abschnitte diese Seite nicht zeichnet (heute die Managementbewertung). */
+export const OHNE_DARSTELLUNG = (art: string, managementbewertung: boolean): string =>
+  `Die Abschnitte eines Berichts der Art „${art}“ zeigt diese Seite nicht; sie stehen unverändert im Stand.${
+    managementbewertung ? ' Vollständig lesen Sie ihn unter Energiemanagement › Managementbewertung.' : ''
+  }`;
 export const QUELLEN_ANZAHL = (n: number): string => (n === 1 ? '1 Quelle' : `${n} Quellen`);
 /** Der zugeklappte Kopf-Abschnitt (Variante B): „8 Angaben“ — Datenstand, Stand und Prüfsumme stehen schon im Seitenkopf. */
 export const ANGABEN_ANZAHL = (n: number): string => (n === 1 ? '1 Angabe' : `${n} Angaben`);
@@ -195,16 +200,30 @@ export interface AbzugKopf {
   datenstand: string;
   regelwerk: { software: string; vertraege: Record<string, string> };
   darstellung: { zeitzone: string; zahlenformat: string; dezimal: string; rundung: string; sommerzeit: string };
-  quellenverzeichnis: string[];
+  /** Nur der Energiebericht; die Managementbewertung trägt ihr Verzeichnis neben dem Kopf (`Abzug.quellenverzeichnis`). */
+  quellenverzeichnis?: string[];
 }
 
+/** Ein Eintrag im Quellenverzeichnis der Managementbewertung (Vertrag energiemanagement, R13). */
+export interface AbzugQuelle {
+  kennzeichen: string;
+  name_zum_datenstand: string | null;
+  version: number | null;
+  fassung: number | null;
+}
+
+/**
+ * Der Abzug eines Stands. `abzugAus` wandelt nicht um: ein Abzug anderer Art (Managementbewertung) trägt weder
+ * `werte` noch `kennzahlen` — fehlend heißt „nicht Teil dieses Abzugs“, nie „keine“ (Absturz im Demo 27.09.2026).
+ */
 export interface Abzug {
   kopf: AbzugKopf;
   zusammenfassung: Record<string, number>;
-  werte: AbzugWert[];
+  werte?: AbzugWert[];
+  quellenverzeichnis?: AbzugQuelle[];
   /** 1.2, nur in der Monatsvorlage; ein Abzug nach 1.0/1.1 traegt den Abschnitt nicht. */
   tagesverlauf?: AbzugTagesverlauf[];
-  kennzahlen: AbzugKennzahl[];
+  kennzahlen?: AbzugKennzahl[];
   qualitaet: {
     abdeckung_min_prozent: number;
     luecken: number;
@@ -614,7 +633,7 @@ const zustandTon = (zustand: string): string => {
 
 const tagesverlaufZeilen = (a: Abzug): TagesverlaufZeile[] => (a.tagesverlauf ?? []).map((reihe) => {
   const schluessel = wertSchluessel(reihe);
-  const wert = a.werte.find((w) => wertSchluessel(w) === schluessel);
+  const wert = a.werte?.find((w) => wertSchluessel(w) === schluessel);
   const richtung = reihe.menge_art ? MENGE_ART_WORT[reihe.menge_art] : null;
   const einheit = wert?.einheit ?? '';
   return {
@@ -664,8 +683,14 @@ const kopfZeilen = (kopf: AbzugKopf): Zeile[] => {
  * Die Abschnitte in der Reihenfolge der Vorlage (V2). `heuteName` liefert den heutigen Namen einer Quelle (A5);
  * ohne ihn gibt es keinen Hinweis.
  */
-export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { abschnitte: Abschnitt[]; ohneInhalt: string[] } => {
+export const abschnitte = (
+  a: Abzug,
+  heuteName: HeuteName = () => null,
+): { abschnitte: Abschnitt[]; ohneInhalt: string[]; hinweis: string | null } => {
   const kopf = a.kopf;
+  // Ein Abzug anderer Art (Managementbewertung) trägt keine Werte und Kennzahlen — nicht „keine“, sondern nicht dabei.
+  const alleWerte = a.werte ?? [];
+  const kennzahlen = a.kennzahlen ?? [];
   const ebene = kopf.zeitraum.art;
   const vorlage = VORLAGEN.find((v) => v.schluessel === kopf.vorlage);
   const out: Abschnitt[] = [];
@@ -688,7 +713,7 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
           : null;
       out.push({ art: 'zusammenfassung', schluessel, titel, kacheln, zaehlung });
     } else if (schluessel === 'verbrauch_je_messstelle') {
-      const zeilen = a.werte.map((w) => mitHeute(wertZahl(w, kopf), w.name_zum_datenstand));
+      const zeilen = alleWerte.map((w) => mitHeute(wertZahl(w, kopf), w.name_zum_datenstand));
       out.push({
         art: 'messstellen',
         schluessel,
@@ -697,7 +722,7 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
           (v) => `${VERGLEICH_WORT[v.art] ?? v.art} ${periodeText(v.art === 'vorjahr' ? 'jahr' : 'monat', v.schluessel)}: ${v.ergebnis}`,
         ),
         zeilen,
-        gruppen: gruppiereZahlen(a.werte, zeilen),
+        gruppen: gruppiereZahlen(alleWerte, zeilen),
       });
     } else if (schluessel === 'tagesverlauf' && a.tagesverlauf !== undefined) {
       const zeilen = tagesverlaufZeilen(a);
@@ -707,8 +732,8 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
         art: 'kennzahlen',
         schluessel,
         titel,
-        leer: a.kennzahlen.length === 0 ? KEINE_KENNZAHLEN : null,
-        zeilen: a.kennzahlen.map((k) => mitHeute(kennzahlZahl(k, kopf), k.name_zum_datenstand)),
+        leer: kennzahlen.length === 0 ? KEINE_KENNZAHLEN : null,
+        zeilen: kennzahlen.map((k) => mitHeute(kennzahlZahl(k, kopf), k.name_zum_datenstand)),
       });
     } else if (schluessel === 'qualitaet') {
       const q = a.qualitaet;
@@ -728,17 +753,22 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
         ),
       });
     } else if (schluessel === 'quellenverzeichnis') {
-      const zeilen = kopf.quellenverzeichnis.map((kennzeichen): QuellenEintrag => {
-        const werte = a.werte.filter((w) => w.quelle === kennzeichen);
-        const kz = a.kennzahlen.find((k) => k.quelle === kennzeichen);
-        const eingang = a.kennzahlen.flatMap((k) => k.eingaenge).find((e) => e.kennzeichen.split(' ')[0] === kennzeichen);
-        const name = werte[0]?.name_zum_datenstand ?? kz?.name_zum_datenstand ?? null;
-        const version = werte.length > 0 ? Math.max(...werte.map((w) => w.version)) : (kz?.version ?? null);
+      // Der Energiebericht nennt die Kennzeichen im Kopf, die Managementbewertung ihre Einträge daneben (mit Namen).
+      const verzeichnis = a.quellenverzeichnis ?? [];
+      const kennzeichenListe = kopf.quellenverzeichnis ?? verzeichnis.map((q) => q.kennzeichen);
+      const zeilen = kennzeichenListe.map((kennzeichen): QuellenEintrag => {
+        const werte = alleWerte.filter((w) => w.quelle === kennzeichen);
+        const kz = kennzahlen.find((k) => k.quelle === kennzeichen);
+        const eingang = kennzahlen.flatMap((k) => k.eingaenge).find((e) => e.kennzeichen.split(' ')[0] === kennzeichen);
+        const eintrag = verzeichnis.find((q) => q.kennzeichen === kennzeichen);
+        const name = werte[0]?.name_zum_datenstand ?? kz?.name_zum_datenstand ?? eintrag?.name_zum_datenstand ?? null;
+        const version = werte.length > 0 ? Math.max(...werte.map((w) => w.version)) : (kz?.version ?? eintrag?.version ?? null);
+        const fassung = eingang?.fassung ?? eintrag?.fassung ?? undefined;
         const stand =
           version !== null
             ? `${UEMS_VERSION} ${version}`
-            : eingang?.fassung !== undefined
-              ? `${UEMS_FASSUNG} ${eingang.fassung}`
+            : fassung !== undefined && fassung !== null
+              ? `${UEMS_FASSUNG} ${fassung}`
               : eingang?.stichtag !== undefined
                 ? `Stichtag ${datumText(eingang.stichtag)}`
                 : null;
@@ -756,7 +786,9 @@ export const abschnitte = (a: Abzug, heuteName: HeuteName = () => null): { absch
       ohneInhalt.push(schluessel);
     }
   }
-  return { abschnitte: out, ohneInhalt };
+  // Ohne Werte ist es kein Energiebericht-Abzug: seine Abschnitte zeigt diese Seite nicht — das sagt sie, statt zu schweigen.
+  const hinweis = a.werte === undefined && ohneInhalt.length > 0 ? OHNE_DARSTELLUNG(vorlage?.name ?? kopf.vorlage, kopf.vorlage === 'managementbewertung') : null;
+  return { abschnitte: out, ohneInhalt, hinweis };
 };
 
 // ------------------------------------------------------------------ Verlauf der Stände

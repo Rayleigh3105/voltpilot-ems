@@ -37,7 +37,7 @@ export function BezugsbasisModell({
   const kennzeichen = M.kennzeichenListe(f);
   const zeilen = M.monatsZeilen(f, einheit, zwei?.einheit ?? '');
   const paare = M.monatspaare(f);
-  const titel = Object.fromEntries(zeilen.map((z, i) => [f.grundlage.perioden?.[i]?.periode ?? String(i), z]));
+  const titel = Object.fromEntries(zeilen.map((z, i) => [f.grundlage?.perioden?.[i]?.periode ?? String(i), z]));
   const energien = paare.map((p) => p.energie);
   const yMarken =
     energien.length > 0
@@ -148,6 +148,11 @@ export function BezugsbasisModell({
             </div>
           )}
         </dl>
+      )}
+      {!M.hatGrundlage(f) && (
+        <p className="vp-bbm-hinweis" data-testid="bezugsbasis-ohne-grundlage">
+          {M.OHNE_GRUNDLAGE}
+        </p>
       )}
       {abgelehnt.map((a) => (
         <p key={String(a.objekt)} className="vp-bbm-abgelehnt" data-testid="bezugsbasis-abgelehnt">

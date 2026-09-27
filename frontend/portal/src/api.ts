@@ -3324,7 +3324,8 @@ export interface BezugsbasisFassung {
   datenlage: 'vollstaendig' | 'vorlaeufig';
   datenlage_gruende: Array<Record<string, unknown> & { grund: string }>;
   vorbehalte: string[];
-  basiswert: string;
+  /** Wie an der Kurzform wahlfrei — die Referenzdatei (BB-0003 Fassung 2) lässt ihn ohne Monatswerte leer, nie 0. */
+  basiswert: string | null;
   /** IP-10 (M2/M4): a, b und beim Modell mit zwei Einflussgrößen c — beim Verhältnis null. */
   koeffizienten?: Record<string, string> | null;
   r2?: string | null;
@@ -3339,8 +3340,12 @@ export interface BezugsbasisFassung {
   freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
   gebildet_am: string;
   gebildet_von: string;
-  grundlage: { perioden?: BezugsbasisGrundlagePeriode[] } & Record<string, unknown>;
-  pruefsumme: string;
+  /**
+   * Die eingefrorene Grundlage — die Spalte ist wahlfrei, die Route reicht `null` durch (dann auch `pruefsumme`; `monate`
+   * ist dann 0 und heißt „unbekannt“, nie „kein Monat“). Die Referenzdatei kennt so eine Fassung: BB-0003 Fassung 2.
+   */
+  grundlage: ({ perioden?: BezugsbasisGrundlagePeriode[] } & Record<string, unknown>) | null;
+  pruefsumme: string | null;
   /** IP-8 (F1/F2/F4): Freigabe und Vier-Augen — `freigabe` hat freigegeben bzw. beantragt, `entscheidung` ist die zweite Person. */
   gilt_bis?: string | null;
   anpassungsgruende?: string[];

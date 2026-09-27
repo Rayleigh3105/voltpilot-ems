@@ -66,7 +66,7 @@ export function wertText(
   f: Pick<BezugsbasisFassung, 'methode' | 'basiswert' | 'koeffizienten' | 'streuung_prozent' | 'variablen'>,
   einheit: string | null,
 ): string {
-  return B.modellText(f, einheit) ?? `${B.methodeWort(f.methode)} ${B.dezimal(f.basiswert)}${einheit ? ` ${B.einheitJe(einheit)}` : ''}`;
+  return B.modellText(f, einheit) ?? B.basiswertText(f, einheit);
 }
 
 /** Wer entschieden hat: „freigegeben von Ines Kaltenbach am 12.11.2026“; bei Vier-Augen die zweite Person. */
