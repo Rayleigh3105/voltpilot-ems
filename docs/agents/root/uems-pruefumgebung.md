@@ -57,3 +57,7 @@ und das gebaute Portal auf `http://localhost:5173` dazu · [README](../../../inf
   keine Verbindung mehr; das Overlay setzt 200 über die Kommandozeile (gilt auch für ein bestehendes Volume).
 - ⚠ Alle Bezugsbasis-Fassungen der Welt 1.10 tragen `grundlage = NULL`; der Reiter „Bezugsbasis“ einer Kennzahl und der
   Bericht BR-2029-0001 (Managementbewertung) brachten am 27.09.2026 das ganze Portal auf die Fehlerseite (gemeldet).
+- Rundgang (`demo.sh rundgang`, `DemoRundgangAufbau`): Login `rundgang` sieht jede UEMS-Fläche. ⚠ Ohne „Messen &
+  Auswerten“ an einem Standort blendet das Portal alle UEMS-Reiter aus, und die Welt 1.10 legt die Funktion nicht an.
+- ⚠ Der Welt-Aufbau schreibt Berichtsstände mit Stummel-Abzug (`{bericht, nr}`); BR-2026-0001/-0002, BR-2027-0001 und
+  BR-2028-0001 landen im Portal in der Fehlergrenze (27.09.2026 gemeldet).

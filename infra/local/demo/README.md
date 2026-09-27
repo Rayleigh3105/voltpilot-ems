@@ -6,6 +6,7 @@ Anlage mit Speicher. Nie gegen Produktion, nie gegen eine echte Box, keine echte
 ```bash
 infra/local/demo/demo.sh start          # einmal ~15 min (Images, Flyway, Welt 1.10), danach idempotent
 infra/local/demo/demo.sh status         # Dienste, Datenfrische, Speicher; Exit ≠ 0, wenn etwas fehlt
+infra/local/demo/demo.sh rundgang       # Login `rundgang`: jede UEMS-Fläche mit Daten (Teil von start, idempotent)
 infra/local/demo/demo.sh stop           # anhalten, Daten bleiben
 infra/local/demo/demo.sh zuruecksetzen  # Container UND Volumes weg, dann neu aufbauen
 ```
@@ -26,6 +27,19 @@ Die Logins des lokalen Realms (`jonas`, `support-voss`, `demo`, …) stehen in
 `infra/local/keycloak/voltpilot-realm.json`. Die Passwörter der hier angelegten Konten erzeugt das Skript zufällig und
 schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DEMO_ZUGANG`).
 
+## Rundgang: ein Login für alles aus dem UEMS-Programm
+
+`demo.sh rundgang` (auch am Ende von `start`) legt den Kundenadministrator `rundgang` bei Ahrenberg an (über
+`POST /api/v1/benutzer`, Passwort nach `$DEMO_ZUGANG`) und fährt `DemoRundgangAufbau` (Testquelle, nur mit
+`-Drundgang.jdbc`):
+
+- „Messen & Auswerten“ an ST-1 und ST-2, eingerichtet nach der Zeitachse der Referenz (01.10./15.10.2026). Die Welt legt
+  die Funktion nie an, und ohne einen messenden Standort blendet das Portal Messstellen, Bezugsgrößen, Kennzahlen,
+  Berichte, Bewertung, Ziele und Energiemanagement aus (`ebenenNav.ts`, `ebenenBereiche`). `eingerichtet_am` ist ein
+  direkter Stand: keine Route setzt ihn für „Messen“.
+- Ablesungen an MS-20 und Monatswerte an BZ-1 ab 10/2024 über die Routen des Portals, bis zum letzten abgeschlossenen
+  Monat der echten Zeit; danach ein Kennzahl-Lauf. Alle sechs Kennzahlen der Welt lesen MS-20 ÷ BZ-1.
+
 ## Was die Datei `docker-compose.demo.yml` ändert
 
 - Init-SQL, Realm und Login-Theme stecken im Image statt als Bind-Mount: die Demo läuft weiter, wenn der
@@ -41,5 +55,8 @@ schreibt sie nur nach `~/.voltpilot-demo/zugang.txt` (Rechte 600, Pfad über `DE
   30.04.2029.
 - `demo.sh start --neu` baut das Portal aus dem aktuellen Arbeitsbaum; `start` ohne `--neu` behält das gebaute Portal.
   Plattform-Konten sehen die Plattform-Seiten erst mit #1294 (seit 27.09.2026 im Sammelzweig).
+- Bezugswerte gibt es nur für Monate, die in echter Zeit vorbei sind: `bezugsgroesse_wert_abgeschlossen_chk` verlangt
+  Periodenende ≤ `created_at`. Die Kennzahl-Werte liegen darum auf der echten Zeitachse, das Energiemanagement auf der
+  Bühne. Ablesungen verlangen ab vier Stellen Tausenderpunkte („1.250.000“), sonst 422 „nicht negativer Zählerstand“.
 - Die Container tragen die festen Namen `voltpilot-*`: ein Entwicklungs-Stapel oder die Prüfumgebung daneben geht
   nicht; `demo.sh start` bricht dann ab und fasst nichts an.

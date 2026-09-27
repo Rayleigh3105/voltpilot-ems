@@ -9,6 +9,10 @@
 #       das gebaute Portal auf http://localhost:5173. Legt einmal die Demo-Zugänge
 #       an (Einsicht bei Ahrenberg, zwei Demo-Kundenbereiche für das Vertragsende).
 #       Idempotent; `--neu` baut Portal und Images neu.
+#   demo.sh rundgang        EIN Login `rundgang` (Kundenadministrator bei Ahrenberg), der jede UEMS-Fläche
+#                           mit Daten sieht: richtet „Messen & Auswerten“ an beiden Standorten ein und legt
+#                           Ablesungen (MS-20) und Monatswerte (BZ-1) ab 10/2024 an (DemoRundgangAufbau).
+#                           Teil von `start`; einzeln für eine laufende Demo, idempotent.
 #   demo.sh stop            hält alle Container an, Daten bleiben.
 #   demo.sh status          Zustand je Dienst, Datenfrische, Speicher; Exit ≠ 0, wenn etwas fehlt.
 #   demo.sh zuruecksetzen   Container UND Volumes des Projekts weg, danach `start`.
@@ -125,6 +129,24 @@ einsicht_anlegen() {
   passwort_setzen pruefer "Einsicht (Fachperson, befristet)" "Kunststoffwerk Ahrenberg"
 }
 
+# Der Rundgang (Captain 27.09.2026): die Welt 1.10 legt „Messen & Auswerten“ nie an - ohne messenden Standort blendet
+# das Portal alle UEMS-Bereiche aus (ebenenNav.ts, ebenenBereiche). Dazu Messwerte und Bezugsgrößen ab 10/2024.
+rundgang_anlegen() {
+  local admin t body
+  jdk21
+  (cd "$WURZEL/services/api" && ./mvnw -q test -Dtest=DemoRundgangAufbau -Dsurefire.failIfNoSpecifiedTests=false \
+    -Drundgang.jdbc="jdbc:postgresql://localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-voltpilot}")
+  admin="$(kc_admin_token)"
+  if [ -n "$(kc_user_id "$admin" rundgang)" ]; then
+    return
+  fi
+  t="$(token jonas jonas)"
+  body='{"username":"rundgang","email":"rundgang@ahrenberg-demo.example","vorname":"Rundgang","nachname":"Vorführung",
+    "rolle":"kundenadministrator","standorte":[],"gueltig_bis":null}'
+  curl -fsS -o /dev/null -H "Authorization: Bearer $t" -H 'Content-Type: application/json' -d "$body" "$API/api/v1/benutzer"
+  passwort_setzen rundgang "Kundenadministrator (Rundgang: alle UEMS-Flächen)" "Kunststoffwerk Ahrenberg"
+}
+
 admin_api() { # admin_api <methode> <pfad> [json]
   local t
   t="$(token admin admin)"
@@ -195,6 +217,7 @@ start() {
   fi
   einsicht_anlegen
   vertragsende_anlegen
+  rundgang_anlegen
   echo
   echo "Demo läuft: $PORTAL  (Zugänge: $DEMO_ZUGANG und die Logins des lokalen Realms)"
   echo "Prognose und Fahrplan brauchen nach dem ersten Start bis zu 15 Minuten; Stand: $0 status"
@@ -254,6 +277,7 @@ case "${1:-}" in
   start) shift; start "$@" ;;
   stop) stop ;;
   status) status ;;
+  rundgang) rundgang_anlegen ;;
   zuruecksetzen) zuruecksetzen ;;
-  *) sed -n '2,22p' "$0"; exit 2 ;;
+  *) sed -n '2,26p' "$0"; exit 2 ;;
 esac
