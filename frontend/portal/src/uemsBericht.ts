@@ -188,6 +188,7 @@ export const SAETZE: Record<string, string> = {
   entwurf_veraltet_pruefen_eine: ' und prüfen Sie die Abweichung',
   keine_quellen: 'Für {geltung} gibt es {zeitraum} keine Messstellen.',
   keine_quellen_seit: 'Für {geltung} gibt es {zeitraum} keine Messstellen — der Standort besteht seit dem {datum}.',
+  keine_quellen_umfang: 'Am {datum} gilt kein Betrachtungsumfang — erst den Umfang festlegen.',
   im_monat: 'im {name}',
   im_jahr: 'im Jahr {name}',
   bericht_gibt_es_schon: 'Diesen Bericht gibt es schon: {kennung} ({vorlage} {geltung}, {zeitraum}).',
@@ -816,6 +817,9 @@ export const keineQuellen = (geltung: string, z: Periode, bestehtSeit: string | 
   return bestehtSeit === null ? fuelle(SAETZE.keine_quellen, { geltung, zeitraum: zeitraumText })
     : fuelle(SAETZE.keine_quellen_seit, { geltung, zeitraum: zeitraumText, datum: datumText(bestehtSeit) });
 };
+
+/** Zwilling von `BerichtRegeln.keineQuellenUmfang`: die energetische Bewertung ohne Betrachtungsumfang am Tag (422). */
+export const keineQuellenUmfang = (tag: string): string => fuelle(SAETZE.keine_quellen_umfang, { datum: datumText(tag) });
 
 export const berichtGibtEsSchon = (kennungText: string, geltung: string, z: Periode): string =>
   fuelle(SAETZE.bericht_gibt_es_schon, { kennung: kennungText, vorlage: SAETZE[`vorlage_${z.art}`], geltung, zeitraum: periodeText(z.art, z.schluessel) });

@@ -75,6 +75,7 @@ class BewertungRanglisteApiTest {
     @Autowired BilanzService bilanz;
     @Autowired BewertungMengenRepository mengen;
     @Autowired BerichtService berichte;
+    @Autowired BewertungUmfangService umfang;
     static JdbcTemplate root;
     static JsonNode ref;
     UUID tenant,unternehmen;
@@ -299,6 +300,29 @@ class BewertungRanglisteApiTest {
      * Stand vom 17.11.2026 macht die Bewertung am 17.11.2027 fällig, am 18.11.2027 „seit 1 Tag“; der Hinweis nennt die
      * Verantwortlichen der wesentlichen Einsätze; 24 Monate Wiedervorlage (mit Begründung) schieben die Frist sofort.
      */
+    /**
+     * Demo-Befund 27.09.2026: gilt am Tag keine Fassung des Betrachtungsumfangs, liest die Rangliste die ungespeicherte
+     * Vorgabe ohne id, und die Bildung der Bewertung endete mit 500 (NPE). Jetzt 422 {@code keine_quellen} mit Satz —
+     * und Anlegen legt nichts an (auch keine Kennung).
+     */
+    @Test void ohneBetrachtungsumfangAmTagIst422MitSatzUndLegtNichtsAn() throws Exception {
+        // Nur der Tag des Umfangs vor dessen erste Fassung (01.01.2024) — die Zuweisungen der Welt beginnen später, und
+        // im Betrieb ist er derselbe Tag wie der der Bildung (10.12.2026), den der Satz nennt.
+        umfang.uhrStellen(Clock.fixed(Instant.parse("2023-12-20T12:00:00Z"),ZoneOffset.UTC));
+        try {
+            JsonNode abgelehnt=ruf("POST","/api/v1/berichte","IK",Map.of("vorlage","energetische_bewertung",
+                    "geltung_id",unternehmen.toString()),422);
+            assertThat(abgelehnt.path("code").asText()).isEqualTo("keine_quellen");
+            assertThat(abgelehnt.path("message").asText())
+                    .isEqualTo("Am 10.12.2026 gilt kein Betrachtungsumfang — erst den Umfang festlegen.");
+            assertThat(root.queryForObject("SELECT count(*) FROM bericht WHERE tenant_id=?",Integer.class,tenant)).isZero();
+        } finally {
+            umfang.uhrStellen(Clock.systemUTC());
+        }
+        assertThat(ruf("POST","/api/v1/berichte","IK",Map.of("vorlage","energetische_bewertung",
+                "geltung_id",unternehmen.toString()),201).path("kennung").asText()).isEqualTo("BR-2026-0001");
+    }
+
     @Test void r10UeberpruefungWirdBeimAbrufAbgeleitetUndNenntDieVerantwortlichen() throws Exception {
         uhr("2026-11-17T08:30:00Z");
         for (String s:List.of("MD","PH","JW")) benutzer(s,"leser",ids.get("ST-1"));

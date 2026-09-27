@@ -380,8 +380,8 @@ final class AhrenbergWelt {
         // in die Fehlergrenze). Nr. 2 folgt einer Neubildung am Tag (wie die Kaskade nach einer Korrektur), weil die Welt
         // die Korrektur K-2026-0007 selbst nicht trägt. Der Leistungsvergleich urteilt aus den Werten der Welt — sie hat
         // für Dezember 2027 keine; die Zahlen der Referenzdatei sind Annahmen (VB-2028-0001 „annahme“).
-        // ⚠ Die erste Bewertung am 01.12.2026 statt 24.11.2026: ihre Datengrundlage (die letzten zwölf Monate) liest den
-        // Betrachtungsumfang an ihrem letzten Tag, und der gilt erst ab 04.11.2026 — am 24.11. endete sie am 31.10.
+        // Die erste Bewertung am 01.12.2026 (alte Welt 24.11.2026, Referenz 09.11.2026). Die Rangliste liest die Fassung
+        // des Betrachtungsumfangs, die „heute“ gilt (ab 04.11.2026) — auf der Bühne über die Uhr des Umfangs.
         berichtAnlegen("2026-11-05T09:50:00Z", "BR-2026-0001", Map.of("vorlage", "monatsbericht_standort",
                 "geltung_id", s1.toString(), "zeitraum", "2026-10"));
         berichtFreigeben("BR-2026-0001", "2026-11-05T10:00:00Z", false);

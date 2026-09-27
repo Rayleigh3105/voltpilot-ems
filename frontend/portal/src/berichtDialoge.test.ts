@@ -347,6 +347,11 @@ describe('Bericht anlegen (§5.1, V1–V5, Q4)', () => {
     expect(anlegenFehler(new ApiError(409, satz, { code: 'bericht_gibt_es_schon', message: satz, kennung: BR }))).toEqual({ satz, kennung: BR });
     const leer = B.keineQuellen('Werk Lindach', { art: 'monat', schluessel: '2026-09' }, '2026-10-15');
     expect(anlegenFehler(new ApiError(422, leer, { code: 'keine_quellen', message: leer }))).toEqual({ satz: leer, kennung: null });
+    // Demo-Befund 27.09.2026: die energetische Bewertung ohne Betrachtungsumfang am Tag — vorher 500, jetzt der Satz.
+    const ohneUmfang = B.keineQuellenUmfang('2026-12-10');
+    expect(ohneUmfang).toBe('Am 10.12.2026 gilt kein Betrachtungsumfang — erst den Umfang festlegen.');
+    expect(anlegenFehler(new ApiError(422, ohneUmfang, { code: 'keine_quellen', message: ohneUmfang, feld: 'vorlage' })))
+      .toEqual({ satz: ohneUmfang, kennung: null });
     expect(anlegenFehler(new TypeError('Netz'))).toEqual({ satz: 'Der Bericht konnte nicht angelegt werden.', kennung: null });
   });
 });

@@ -61,7 +61,7 @@ und das gebaute Portal auf `http://localhost:5173` dazu · [README](../../../inf
   Auswerten“ an einem Standort blendet das Portal alle UEMS-Reiter aus, und die Welt 1.10 legt die Funktion nicht an.
 - Berichtsstände der Welt entstehen über Anlegen, Entwurf und Freigabe an ihren Tagen (früher Stummel `{bericht, nr}`
   direkt in `bericht_stand` → Fehlergrenze im Portal). Nr. 2 folgt einer Neubildung wie nach der Kaskade
-  (`BerichtAbzugBildung.bilden` mit `TenantContext`). ⚠ Die erste Bewertung erst am 01.12.2026: ihre Datengrundlage
-  liest den Betrachtungsumfang am letzten Tag, und der gilt ab 04.11.2026. ⚠ Umfang und Kriterien der Bewertung lasen
-  „heute“ in echter Zeit — `PruefumgebungUhr` stellt sie jetzt mit. Befund: ohne Umfang am Ende der Datengrundlage
-  endet `POST /berichte` (energetische Bewertung) mit 500 (`BerichtUnternehmen.bewertung`, `umfangId() == null`).
+  (`BerichtAbzugBildung.bilden` mit `TenantContext`). Die erste Bewertung steht am 01.12.2026. ⚠ Die Rangliste liest
+  die Fassung des Betrachtungsumfangs, die „heute“ gilt; Umfang und Kriterien lasen das in echter Zeit —
+  `PruefumgebungUhr` stellt sie jetzt mit. Gilt am Tag keine Fassung, ist `POST /berichte` (energetische Bewertung)
+  422 `keine_quellen` „Am … gilt kein Betrachtungsumfang — erst den Umfang festlegen.“ (vorher 500).

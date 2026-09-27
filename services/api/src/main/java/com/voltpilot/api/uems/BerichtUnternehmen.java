@@ -79,6 +79,13 @@ final class BerichtUnternehmen {
             UUID unternehmen, BerichtRegeln.Zeitraum z, ZoneId zone, Instant jetzt, BerichtRegelwerk regelwerk,
             BewertungRanglisteService ranglisten, BewertungMessabdeckungService abdeckungen) {
         BewertungRanglisteDto.Rangliste rangliste = ranglisten.lesen(z.ersterTag(), z.letzterTag());
+        // Ohne Fassung des Betrachtungsumfangs am Tag liest die Rangliste die ungespeicherte Vorgabe (ohne id): die
+        // Bewertung hat keine Quelle — 422 keine_quellen mit Satz statt 500 (Demo-Befund 27.09.2026), wie basis_fehlt
+        // beim Leistungsvergleich. Anlegen legt dann nichts an.
+        if (rangliste.umfangId() == null) {
+            throw BerichtAbgelehnt.regel(BerichtAbgelehnt.Ablehnung.KEINE_QUELLEN,
+                    BerichtRegeln.keineQuellenUmfang(LocalDate.ofInstant(jetzt, zone)), Map.of("feld", "vorlage"));
+        }
         BewertungMessabdeckungDto.Messabdeckung abdeckung = abdeckungen.lesen(z.ersterTag(), z.letzterTag());
         BerichtAbzugBildung.Geltung g = geltung(j, tenant, unternehmen);
         List<BerichtAbzugBildung.Quelle> quellen = new ArrayList<>();

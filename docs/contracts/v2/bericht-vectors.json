@@ -193,6 +193,7 @@
     "entwurf_veraltet_pruefen_eine": " und prüfen Sie die Abweichung",
     "keine_quellen": "Für {geltung} gibt es {zeitraum} keine Messstellen.",
     "keine_quellen_seit": "Für {geltung} gibt es {zeitraum} keine Messstellen — der Standort besteht seit dem {datum}.",
+    "keine_quellen_umfang": "Am {datum} gilt kein Betrachtungsumfang — erst den Umfang festlegen.",
     "im_monat": "im {name}",
     "im_jahr": "im Jahr {name}",
     "bericht_gibt_es_schon": "Diesen Bericht gibt es schon: {kennung} ({vorlage} {geltung}, {zeitraum}).",

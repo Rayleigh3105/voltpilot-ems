@@ -245,6 +245,7 @@ public final class BerichtRegeln {
             "entwurf_veraltet_pruefen_eine", " und prüfen Sie die Abweichung",
             "keine_quellen", "Für {geltung} gibt es {zeitraum} keine Messstellen.",
             "keine_quellen_seit", "Für {geltung} gibt es {zeitraum} keine Messstellen — der Standort besteht seit dem {datum}.",
+            "keine_quellen_umfang", "Am {datum} gilt kein Betrachtungsumfang — erst den Umfang festlegen.",
             "im_monat", "im {name}",
             "im_jahr", "im Jahr {name}",
             "bericht_gibt_es_schon", "Diesen Bericht gibt es schon: {kennung} ({vorlage} {geltung}, {zeitraum}).",
@@ -1115,6 +1116,14 @@ public final class BerichtRegeln {
     }
 
     // ============================================================== Sätze (§5.8) und Anzeige (DA1)
+
+    /**
+     * {@code keine_quellen} der energetischen Bewertung (Demo-Befund 27.09.2026): an diesem Tag gilt keine Fassung des
+     * Betrachtungsumfangs — ohne Umfang hat die Bewertung keine Quelle (vorher 500 aus der Bildung).
+     */
+    public static String keineQuellenUmfang(LocalDate heute) {
+        return fuelle(SAETZE.get("keine_quellen_umfang"), Map.of("datum", OrtsbaumAbleitung.datumText(heute)));
+    }
 
     public static String keineQuellen(String geltung, String zeitraumArt, String schluessel, LocalDate bestehtSeit) {
         String zeitraum = fuelle(SAETZE.get("im_" + zeitraumArt), Map.of("name", KennzahlRegeln.periodeText(zeitraumArt, schluessel)));
