@@ -646,14 +646,23 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE, ALLE_SEITEN)).toEqual([]);
   });
 
-  it('2 · ein Messkunde bekommt am Unternehmen GRUPPEN-Kacheln — sechs Bereiche, drei Kacheln, keine über fünf', () => {
+  it('2 · ein Messkunde bekommt am Unternehmen GRUPPEN-Kacheln — sechs Bereiche, vier Kacheln, keine über fünf', () => {
     const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE, ALLE_SEITEN);
-    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten']);
-    expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'activity', 'trending-up']);
+    // K1/D2: die Berichte sind Belege — sie stehen in „Nachweisen“, nicht mehr in „Auswerten“.
+    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'activity', 'trending-up', 'file-text']);
     expect(leiste.map((k) => k.bereiche)).toEqual([
       ['uebersicht', 'standorte'],
       ['messstellen', 'bezugsgroessen'],
-      ['kennzahlen', 'berichte'],
+      ['kennzahlen'],
+      ['berichte'],
+    ]);
+    // Jede Gruppe trägt ihre Arbeitsfrage (am Rechner zwischen den zwei Reihen).
+    expect(leiste.map((k) => k.frage)).toEqual([
+      'Läuft alles? Was steht an?',
+      'Wird alles erfasst?',
+      'Wo geht die Energie hin, wird es besser?',
+      'Können wir es belegen?',
     ]);
   });
 
@@ -661,13 +670,16 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     const alle: EbenenLesemodell = { ...MESSKUNDE, bewertung: true, verbesserung: true, energiemanagement: true };
     expect(ebenenBereiche(UNTERNEHMEN, alle)).toHaveLength(9);
     const leiste = ebenenLeiste(UNTERNEHMEN, alle);
-    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Verbessern', 'Management']);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Verbessern', 'Nachweisen']);
     expect(leiste.length).toBeLessThanOrEqual(LEISTE_HOECHSTENS);
-    expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toEqual(['kennzahlen', 'berichte', 'bewertung']);
+    expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toEqual(['kennzahlen', 'bewertung']);
     expect(leiste.find((k) => k.key === 'verbessern')?.ziel).toEqual(pageRoute('portfolio-verbesserung'));
-    expect(leiste.find((k) => k.key === 'management')?.ziel).toEqual(pageRoute('portfolio-energiemanagement'));
+    // „Nachweisen“ öffnet das Verzeichnis des Energiemanagements, die Berichte stehen daneben.
+    expect(leiste.find((k) => k.key === 'nachweisen')?.bereiche).toEqual(['energiemanagement', 'berichte']);
+    expect(leiste.find((k) => k.key === 'nachweisen')?.ziel).toEqual(pageRoute('portfolio-energiemanagement'));
     // Am Telefon stehen über der Seite nur die Reiter der offenen Gruppe.
-    expect(telefonReiterBereiche(leiste, 'kennzahlen')).toEqual(['kennzahlen', 'berichte', 'bewertung']);
+    expect(telefonReiterBereiche(leiste, 'kennzahlen')).toEqual(['kennzahlen', 'bewertung']);
+    expect(telefonReiterBereiche(leiste, 'berichte')).toEqual(['energiemanagement', 'berichte']);
     expect(telefonReiterBereiche(leiste, 'standorte')).toEqual(['uebersicht', 'standorte']);
     expect(telefonReiterBereiche(leiste, null)).toBeNull();
   });
@@ -676,13 +688,14 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(6);
     // Jeder Bereich des Unternehmens hat seine Seite; die Kachel einer Gruppe führt auf die Seite ihres ersten Bereichs.
     const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE);
-    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(leiste[0].ziel).toEqual(pageRoute('portfolio'));
     expect(leiste[1].ziel).toEqual(pageRoute('portfolio-messstellen'));
     expect(leiste[2].ziel).toEqual(pageRoute('portfolio-kennzahlen'));
-    // Ohne eine lebende Kennzahl führt „Auswerten“ auf die Berichte (ein Standort misst).
+    expect(leiste[3].ziel).toEqual(pageRoute('portfolio-berichte'));
+    // Ohne eine lebende Kennzahl gibt es „Auswerten“ nicht (Gesetz 1) — die Berichte stehen weiter in „Nachweisen“.
     const ohneKennzahl = ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] });
-    expect(labels(ohneKennzahl)).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(labels(ohneKennzahl)).toEqual(['Übersicht', 'Messen', 'Nachweisen']);
     expect(ohneKennzahl[2].ziel).toEqual(pageRoute('portfolio-berichte'));
     // Am Standort: jeder Bereich eine Kachel, höchstens fünf, „Netzanschlüsse“ kurz als „Anschlüsse“.
     expect(labels(ebenenLeiste(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse']);
@@ -744,6 +757,10 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(ebenenAktiv('portfolio-messstellen')).toBe('messstellen');
     expect(ebenenAktiv('standort')).toBe('uebersicht');
     expect(ebenenAktiv('portfolio-messwerte')).toBe('uebersicht');
+    // K1: die Wiedervorlage beantwortet „Was steht an?“ und wohnt in der Übersicht; die übrigen Reiter bleiben im Bereich.
+    expect(ebenenAktiv('portfolio-energiemanagement', undefined, 'wiedervorlage')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-energiemanagement', undefined, 'dokumente')).toBe('energiemanagement');
+    expect(ebenenAktiv('portfolio-energiemanagement')).toBe('energiemanagement');
   });
 
   it('3 · die Anlagen-Ebene ist unverändert: Cockpit · Fahrplan · Verlauf · Steuerung · Anlage', () => {

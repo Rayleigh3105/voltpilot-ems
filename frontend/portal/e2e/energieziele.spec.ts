@@ -90,7 +90,8 @@ for (const breite of [375, 1440]) {
       await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
       const m = await messe(page);
       expect(m.reiter).toEqual(expect.arrayContaining(['Energieziele', 'Maßnahmen', 'Abweichungen']));
-      if (breite >= 720) expect(m.reiter).toContain('Ziele und Maßnahmen');
+      // K1: am Rechner steht die Gruppe „Verbessern“; mit nur einem Bereich ohne zweite Reihe.
+      if (breite >= 720) expect(m.reiter).toContain('Verbessern');
       ohneQuerlauf(m, 'leer');
       await ablegen(page, `leer-${breite}`, true);
       await page.getByTestId('verbesserung-reiter-abweichungen').click();

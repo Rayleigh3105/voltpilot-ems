@@ -126,7 +126,9 @@ for (const breite of [375, 1440]) {
       const m0 = await messe(page);
       expect(m0.reiter).toEqual(expect.arrayContaining(['Verzeichnis', 'Dokumente']));
       expect(m0.reiter.indexOf('Verzeichnis')).toBeLessThan(m0.reiter.indexOf('Dokumente'));
-      if (breite >= 720) expect(m0.reiter).toContain('Energiemanagement');
+      // K1/D2: am Rechner steht die Gruppe „Nachweisen“; ihre Reiter sind die des Energiemanagements und die Berichte.
+      if (breite >= 720) expect(m0.reiter).toContain('Nachweisen');
+      expect(m0.reiter).not.toContain('Energiemanagement');
       ohneQuerlauf(m0, 'Verzeichnis leer');
       await ablegen(page, `a-verzeichnis-leer-${breite}`);
 

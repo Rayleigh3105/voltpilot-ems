@@ -1,6 +1,15 @@
-import { ebenenAktiv, type EbenenBereichId, type EbenenKachel } from '../ebenenNav';
+import { ebenenAktiv, type EbenenBereichId, type EbenenKachel, type EbenenLeistenKachel } from '../ebenenNav';
+import { REITER as ENERGIEMANAGEMENT_REITER } from '../energiemanagementPortal';
+import { UEMS_WIEDERVORLAGE } from '../glossar';
 import { useReiterRand } from '../reiterRand';
-import { isPortfolioPage, PORTFOLIO_WELT_PAGES, type PageId, type Route } from '../nav';
+import {
+  energiemanagementRoute,
+  isPortfolioPage,
+  PORTFOLIO_WELT_PAGES,
+  type EnergiemanagementReiter,
+  type PageId,
+  type Route,
+} from '../nav';
 import './BereichTabs.css';
 
 const PORTFOLIO_TAB_HASH: Partial<Record<PageId, string>> = {
@@ -72,6 +81,8 @@ export function PortfolioTabs({
   standortBereiche = [],
   standortAktiv = null,
   onOpenBereich,
+  gruppen = [],
+  energiemanagementReiter = null,
 }: {
   page: PageId;
   showErloese: boolean;
@@ -109,6 +120,14 @@ export function PortfolioTabs({
   /** Der offene Bereich (`ebenenAktiv`) — ist es einer der `standortBereiche`, ist „Übersicht“ nicht gewählt. */
   standortAktiv?: EbenenBereichId | null;
   onOpenBereich?: (ziel: Route) => void;
+  /**
+   * K1 (Konzept „Energiemanagement ohne Fachsprache“, D1): die GRUPPEN des Unternehmens (`ebenenNav.ebenenLeiste`).
+   * Mit ihnen steht am Rechner eine Reihe der Gruppen über der Seite, darunter die Frage der offenen Gruppe und nur
+   * deren Reiter — am Telefon trägt die Leiste die Gruppen. Ohne sie bleibt die flache Reihe von vorher.
+   */
+  gruppen?: readonly EbenenLeistenKachel[];
+  /** K1 (D2): der offene Reiter des Energiemanagements — seine Reiter stehen in „Nachweisen“, die Wiedervorlage in der Übersicht. */
+  energiemanagementReiter?: EnergiemanagementReiter | null;
 }) {
   const reiterRand = useReiterRand<HTMLDivElement>();
   if (!isPortfolioPage(page)) return null;
@@ -151,6 +170,64 @@ export function PortfolioTabs({
     }
     onNavigate(target);
   };
+  // K1: mit Gruppen (am Unternehmen) die Reihe der Gruppen und darunter nur die Reiter der offenen Gruppe.
+  const offeneGruppe =
+    telefonReiter !== null && gruppen.length > 0 ? (gruppen.find((g) => g.bereiche.some((b) => telefonReiter.includes(b))) ?? null) : null;
+  if (offeneGruppe) {
+    const inGruppe = (bereich: EbenenBereichId | null) => bereich !== null && offeneGruppe.bereiche.includes(bereich);
+    const emOffen = page === 'portfolio-energiemanagement';
+    // Die Detailseiten tragen ihren Reiter in der Route; „Wer ist wofür verantwortlich“ gehört zu den Aufgaben.
+    const emReiter: EnergiemanagementReiter =
+      energiemanagementReiter === 'verantwortung' ? 'aufgaben' : energiemanagementReiter === 'zuschnitt' ? 'verzeichnis' : (energiemanagementReiter ?? 'verzeichnis');
+    const emDa = welten.some((p) => p.id === 'portfolio-energiemanagement');
+    const emReiterEintrag = (r: { key: EnergiemanagementReiter; label: string }): GruppenEintrag => ({
+      key: `energiemanagement-${r.key}`,
+      label: r.label,
+      aktiv: emOffen && emReiter === r.key,
+      testId: `energiemanagement-reiter-${r.key}`,
+      onOpen: () => onOpenBereich?.(energiemanagementRoute(r.key)),
+    });
+    const weltEintrag = (p: { id: PageId; label: string }): GruppenEintrag => ({
+      key: p.id,
+      label: p.label,
+      aktiv: page === p.id,
+      testId: null,
+      onOpen: () => open(p.id),
+    });
+    const eintraege: GruppenEintrag[] = [];
+    if (inGruppe('uebersicht')) {
+      eintraege.push({ key: 'portfolio', label: 'Übersicht', aktiv: page === 'portfolio', testId: null, onOpen: () => open('portfolio') });
+    }
+    for (const p of welten) {
+      if (p.id === 'portfolio-energiemanagement') {
+        // „Nachweisen“: die Reiter des Energiemanagements statt eines Reiters „Energiemanagement“ — das Verzeichnis zuerst.
+        if (inGruppe('energiemanagement')) {
+          for (const r of ENERGIEMANAGEMENT_REITER) if (r.key !== 'wiedervorlage') eintraege.push(emReiterEintrag(r));
+        }
+        continue;
+      }
+      if (inGruppe(ebenenAktiv(p.id))) eintraege.push(weltEintrag(p));
+    }
+    // Die Berichte stehen in „Nachweisen“ gleich hinter dem Verzeichnis.
+    const bericht = eintraege.findIndex((e) => e.key === 'portfolio-berichte');
+    if (bericht >= 0 && eintraege.some((e) => e.key === 'energiemanagement-verzeichnis')) {
+      const [b] = eintraege.splice(bericht, 1);
+      eintraege.splice(eintraege.findIndex((e) => e.key === 'energiemanagement-verzeichnis') + 1, 0, b);
+    }
+    // Die Wiedervorlage beantwortet „Was steht an?“ — sie steht in der Übersicht, ihre Adresse bleibt.
+    if (inGruppe('uebersicht') && (emDa || (emOffen && emReiter === 'wiedervorlage'))) {
+      eintraege.push(emReiterEintrag({ key: 'wiedervorlage', label: UEMS_WIEDERVORLAGE }));
+    }
+    return (
+      <GruppenReiter
+        gruppen={gruppen}
+        offen={offeneGruppe}
+        eintraege={eintraege}
+        fleetLabel={fleetLabel}
+        onOpenBereich={onOpenBereich}
+      />
+    );
+  }
   return (
     <div ref={reiterRand}
       // Vier Reiter passen am Telefon nur mit schmalerem Polster (BereichTabs.css).
@@ -199,6 +276,85 @@ export function PortfolioTabs({
           {page === p.id && <span className="vp-welt-strich" aria-hidden="true" />}
         </button>
       ))}
+    </div>
+  );
+}
+
+interface GruppenEintrag {
+  key: string;
+  label: string;
+  aktiv: boolean;
+  testId: string | null;
+  onOpen: () => void;
+}
+
+/**
+ * K1: die Gruppen des Unternehmens am Rechner als obere Reihe (am Telefon trägt sie die Leiste), darunter die Frage
+ * der offenen Gruppe und ihre Reiter — ab zwei; ein einzelner Reiter behauptete eine Wahl, die es nicht gibt.
+ */
+function GruppenReiter({
+  gruppen,
+  offen,
+  eintraege,
+  fleetLabel,
+  onOpenBereich,
+}: {
+  gruppen: readonly EbenenLeistenKachel[];
+  offen: EbenenLeistenKachel;
+  eintraege: readonly GruppenEintrag[];
+  fleetLabel: string;
+  onOpenBereich?: (ziel: Route) => void;
+}) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
+  return (
+    <div className="vp-gruppen" data-testid="gruppen-navigation">
+      <div className="vp-bereich-tabs vp-gruppen-reihe vp-nur-rechner" role="tablist" aria-label={`Gruppen der Ebene ${fleetLabel}`}>
+        {gruppen.map((g) => {
+          const an = g.key === offen.key;
+          return (
+            <button
+              key={g.key}
+              type="button"
+              role="tab"
+              aria-selected={an}
+              className={`vp-bereich-tab${an ? ' active' : ''}`}
+              data-testid={`gruppe-${g.key}`}
+              onClick={() => onOpenBereich?.(g.ziel)}
+            >
+              {g.label}
+              {an && <span className="vp-gruppe-strich" aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+      {offen.frage && (
+        <p className="vp-gruppen-frage vp-nur-rechner" data-testid="gruppen-frage">
+          {offen.frage}
+        </p>
+      )}
+      {eintraege.length >= 2 && (
+        <div
+          ref={reiterRand}
+          className="vp-bereich-tabs vp-bereich-tabs-dicht vp-gruppen-reiter"
+          role="tablist"
+          aria-label={`Reiter der Gruppe ${offen.label}`}
+        >
+          {eintraege.map((e) => (
+            <button
+              key={e.key}
+              type="button"
+              role="tab"
+              aria-selected={e.aktiv}
+              className={`vp-bereich-tab${e.aktiv ? ' active' : ''}`}
+              {...(e.testId ? { 'data-testid': e.testId } : {})}
+              onClick={e.onOpen}
+            >
+              {e.label}
+              {e.aktiv && <span className="vp-welt-strich" aria-hidden="true" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -792,8 +792,8 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
   it('trägt die Kacheln der Ebene — am Unternehmen Gruppen; `--vp-bar-slots` folgt ihrer Zahl, die offene ist markiert', () => {
     renderEbene();
     const bar = screen.getByLabelText(titel);
-    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual(['Übersicht', 'Messen', 'Auswerten']);
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 3');
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 4');
     expect(bar.querySelector('[aria-current="page"]')?.textContent).toBe('Übersicht');
     expect(bar.textContent).not.toMatch(/Steuer/);
   });
@@ -801,7 +801,8 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
   it.each([
     ['standorte', 'Übersicht'],
     ['bezugsgroessen', 'Messen'],
-    ['berichte', 'Auswerten'],
+    ['kennzahlen', 'Auswerten'],
+    ['berichte', 'Nachweisen'],
   ] as const)('ein offener Bereich markiert die Kachel seiner Gruppe: %s → %s', (aktiv, kachel) => {
     renderEbene({ aktiv });
     const bar = screen.getByLabelText(titel);

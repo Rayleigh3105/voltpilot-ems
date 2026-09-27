@@ -225,3 +225,37 @@ html.vp-vt-fade .vp-welt-strich {
     display: none;
   }
 }
+
+/* K1 (Konzept „Energiemanagement ohne Fachsprache“, D1): am Unternehmen stehen die GRUPPEN als obere Reihe,
+   darunter ihre Arbeitsfrage und nur die Reiter der offenen Gruppe. Am Telefon trägt die Leiste die Gruppen —
+   Reihe und Frage entfallen dort (dieselbe Grenze wie die Leiste). */
+.vp-gruppen {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vp-gruppen .vp-gruppen-reihe {
+  margin-bottom: var(--vp-space-1, 0.25rem);
+}
+.vp-gruppen-reihe .vp-bereich-tab {
+  font-size: var(--vp-c-fs-16, 16px);
+}
+.vp-gruppe-strich {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--vp-c-primary, #2563eb);
+}
+.vp-gruppen-frage {
+  margin: 0 0 var(--vp-space-2, 0.5rem);
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: var(--vp-c-fs-14, 14px);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .vp-gruppen-frage.vp-nur-rechner {
+    display: none;
+  }
+}

@@ -34,19 +34,21 @@ export const darfAnsehen = (s: Rechte | null | undefined) => hat(s, 'energiemana
 /**
  * Der erste Schritt einer leeren Gruppe des Verzeichnisses (Konzept „Energiemanagement ohne Fachsprache“ K4): der Weg
  * dorthin, wo ihr Inhalt entsteht. Kein Urteil und keine Zahl über das Ganze (G4) — nur der Weg, und nur, wenn die
- * Person die Zielseite sehen darf. `null` = kein eigener Weg.
+ * Person die Zielseite sehen darf. Ein Schritt, der etwas anlegt, steht nur mit `energiemanagement.verwalten` da: wer
+ * nur liest (etwa mit „Einsicht“), bekommt keinen Knopf, der Schreiben verspricht. `null` = kein eigener Weg.
  */
 export function verzeichnisWeg(gruppe: string, s: Rechte | null | undefined): { text: string; ziel: Route } | null {
-  const dokumente = { text: 'Dokument anlegen', ziel: energiemanagementRoute('dokumente') };
+  const schreiben = hat(s, RECHT_VERWALTEN);
+  const dokumente = schreiben ? { text: 'Dokument anlegen', ziel: energiemanagementRoute('dokumente') } : null;
   switch (gruppe) {
     case 'grundlagen':
-      return { text: 'Energiepolitik und Anwendungsbereich festhalten', ziel: energiemanagementRoute('dokumente') };
+      return schreiben ? { text: 'Energiepolitik und Anwendungsbereich festhalten', ziel: energiemanagementRoute('dokumente') } : null;
     case 'risiken_chancen':
     case 'kompetenz_kommunikation':
     case 'betrieb_auslegung_beschaffung':
       return dokumente;
     case 'verantwortung':
-      return { text: 'Aufgaben verteilen', ziel: energiemanagementRoute('aufgaben') };
+      return schreiben ? { text: 'Aufgaben verteilen', ziel: energiemanagementRoute('aufgaben') } : null;
     case 'bewertung_messplanung':
       return hat(s, 'energieeinsatz.ansehen') ? { text: 'Zur energetischen Bewertung', ziel: pageRoute('portfolio-bewertung') } : null;
     case 'kennzahlen_bezugsbasen':

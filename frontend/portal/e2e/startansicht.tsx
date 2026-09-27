@@ -1434,6 +1434,8 @@ function Vorschau() {
       standortBereiche={standortObenReiter}
       standortAktiv={ebenenAktiv(route.page, standortBereich)}
       onOpenBereich={navigate}
+      // K1 wie `App.tsx`: am Unternehmen die Gruppen auch am Rechner.
+      gruppen={telefonReiter !== null ? kacheln : []}
     />
   );
   const messstellenEbene =

@@ -532,6 +532,8 @@ export interface EbenenLeistenKachel {
   icon: IconName;
   ziel: Route;
   bereiche: readonly EbenenBereichId[];
+  /** K1: die Arbeitsfrage einer Unternehmens-Gruppe („Können wir es belegen?“); am Standort keine. */
+  frage?: string;
 }
 
 /** Die Ebene, deren Bereiche gemeint sind. */
@@ -776,22 +778,31 @@ export function ebenenReiter(
 export const LEISTE_HOECHSTENS = 5;
 
 /**
- * Die GRUPPEN der Unternehmens-Leiste am Telefon. Mit allen Rechten hat das
- * Unternehmen neun Bereiche; neun Kacheln auf 375 px sind je gut 40 px breit,
- * und „Messstellen“ brach dort mitten im Wort. Die Leiste trägt deshalb
- * höchstens fünf GRUPPEN in der Reihenfolge der Arbeit — sehen, messen,
- * auswerten, verbessern, nachweisen; die Reiter über der Seite zeigen am
- * Telefon nur die Bereiche der offenen Gruppe. Am Rechner bleiben alle Reiter.
+ * Die GRUPPEN des Unternehmens — nach Arbeitsfragen statt nach Bereichen (Konzept „Energiemanagement ohne
+ * Fachsprache“ K1, Entscheide D1/D2). Mit allen Rechten hat das Unternehmen neun Bereiche; neun Kacheln auf 375 px
+ * sind je gut 40 px breit, und „Messstellen“ brach dort mitten im Wort. Die Telefon-Leiste trägt deshalb höchstens
+ * fünf GRUPPEN in der Reihenfolge der Arbeit — sehen, messen, auswerten, verbessern, nachweisen. Am Rechner stehen
+ * dieselben Gruppen als obere Reihe (`PortfolioTabs`), darunter ihre Frage und nur die Reiter der offenen Gruppe.
+ *
+ * „Nachweisen“ trägt die Berichte und die Reiter des Energiemanagements (ohne zweite Reiterreihe); dessen
+ * Wiedervorlage steht in der Übersicht, weil sie „Was steht an?“ beantwortet ({@link ebenenAktiv}). Adressen und
+ * Rechte je Bereich bleiben, wie sie sind.
  *
  * Eine Gruppe ohne einen Bereich mit Seite gibt es nicht (Gesetz 1: nie eine
- * leere Kachel); ihr Ziel ist die Seite ihres ersten Bereichs.
+ * leere Kachel); ihr Ziel ist die Seite ihres ersten Bereichs in der Reihenfolge der Gruppe.
  */
-export const UNTERNEHMEN_GRUPPEN: readonly { key: string; label: string; icon: IconName; bereiche: readonly EbenenBereichId[] }[] = [
-  { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', bereiche: ['uebersicht', 'standorte'] },
-  { key: 'messen', label: 'Messen', icon: 'activity', bereiche: ['messstellen', 'bezugsgroessen'] },
-  { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', bereiche: ['kennzahlen', 'berichte', 'bewertung'] },
-  { key: 'verbessern', label: 'Verbessern', icon: 'list', bereiche: ['verbesserung'] },
-  { key: 'management', label: 'Management', icon: 'file-text', bereiche: ['energiemanagement'] },
+export const UNTERNEHMEN_GRUPPEN: readonly {
+  key: string;
+  label: string;
+  icon: IconName;
+  frage: string;
+  bereiche: readonly EbenenBereichId[];
+}[] = [
+  { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', frage: 'Läuft alles? Was steht an?', bereiche: ['uebersicht', 'standorte'] },
+  { key: 'messen', label: 'Messen', icon: 'activity', frage: 'Wird alles erfasst?', bereiche: ['messstellen', 'bezugsgroessen'] },
+  { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', frage: 'Wo geht die Energie hin, wird es besser?', bereiche: ['kennzahlen', 'bewertung'] },
+  { key: 'verbessern', label: 'Verbessern', icon: 'list', frage: 'Was tun wir dagegen?', bereiche: ['verbesserung'] },
+  { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', frage: 'Können wir es belegen?', bereiche: ['energiemanagement', 'berichte'] },
 ];
 
 /** Kürzere Telefon-Beschriftungen am Standort; Reiter und Überschriften behalten die vollen Wörter. */
@@ -818,9 +829,10 @@ export function ebenenLeiste(
   const kacheln: EbenenLeistenKachel[] =
     ort.art === 'unternehmen'
       ? UNTERNEHMEN_GRUPPEN.flatMap((g) => {
-          const drin = mitSeite.filter((b) => g.bereiche.includes(b.key));
+          // In der Reihenfolge der Gruppe: „Nachweisen“ öffnet das Verzeichnis, ohne Energiemanagement die Berichte.
+          const drin = g.bereiche.flatMap((key) => mitSeite.filter((b) => b.key === key));
           return drin.length > 0
-            ? [{ key: g.key, label: g.label, icon: g.icon, ziel: drin[0].ziel, bereiche: drin.map((b) => b.key) }]
+            ? [{ key: g.key, label: g.label, icon: g.icon, ziel: drin[0].ziel, bereiche: drin.map((b) => b.key), frage: g.frage }]
             : [];
         })
       : mitSeite.map((b) => ({ key: b.key, label: LEISTE_KURZ[b.key] ?? b.label, icon: b.icon, ziel: b.ziel, bereiche: [b.key] }));
@@ -864,9 +876,15 @@ export function ebenenOrt(
  * Kennzahlen und Berichte des Standorts wohnen in seiner Übersicht — dort ist
  * ihr Einstieg ({@link standortEinstiege}).
  */
-export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBereich']): EbenenBereichId | null {
+export function ebenenAktiv(
+  page: PageId,
+  standortBereich?: Route['standortBereich'],
+  energiemanagementReiter?: Route['energiemanagementReiter'],
+): EbenenBereichId | null {
   // Unternehmenseinstellungen werden über das Avatar-Menü geöffnet, ohne fachlichen Reiter.
   if (page === 'kunden-benutzer') return null;
+  // K1: die Wiedervorlage beantwortet „Was steht an?“ — sie wohnt in der Übersicht, ihre Adresse bleibt.
+  if (page === 'portfolio-energiemanagement' && energiemanagementReiter === 'wiedervorlage') return 'uebersicht';
   if (page === 'portfolio-standorte') return 'standorte';
   if (page === 'standort' && (standortBereich === 'aufbau' || standortBereich === 'gebaeude' || standortBereich === 'netzanschluesse')) return standortBereich;
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';

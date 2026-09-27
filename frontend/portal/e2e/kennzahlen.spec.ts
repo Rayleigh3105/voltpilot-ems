@@ -107,7 +107,7 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 }
 
 test.describe('Kennzahlen — die Liste', () => {
-  test('bei 375 px am 03.12.2026: fünf Karten, die Leiste mit „Auswerten“ offen, darüber nur deren Reiter', async ({ page }) => {
+  test('bei 375 px am 03.12.2026: fünf Karten, die Leiste mit „Auswerten“ offen', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen', 375, DEZEMBER);
     await warteAufListe(page);
     const m = await messe(page);
@@ -116,9 +116,10 @@ test.describe('Kennzahlen — die Liste', () => {
     expect(m.titel).toBe('Kennzahlen');
     // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); über der Seite stehen am Telefon
     // nur die Reiter der offenen Gruppe.
-    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.leisteAktiv).toBe('Auswerten');
-    expect(m.reiter).toEqual(['Kennzahlen', 'Berichte']);
+    // K1/D2: „Auswerten“ trägt hier nur die Kennzahlen (die Berichte stehen in „Nachweisen“) — keine zweite Reihe.
+    expect(m.reiter).toEqual([]);
     expect(m.karten).toHaveLength(5);
     expect(m.karten[0]).toContain('keine Werte');
     expect(m.karten[3]).toContain(`mindestens 30,83${NB}kWh je Person`);
@@ -127,13 +128,14 @@ test.describe('Kennzahlen — die Liste', () => {
     await ablegen(page, 'liste-375-ganz', m, true);
   });
 
-  test('bei 1440 px: Reiter „Kennzahlen“ neben „Messstellen“, Karten im Raster; ein Klick öffnet die Kennzahl', async ({ page }) => {
+  test('bei 1440 px: Gruppe „Auswerten“ offen, Karten im Raster; ein Klick öffnet die Kennzahl', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen', 1440, NOVEMBER);
     await warteAufListe(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
-    expect(m.reiterAktiv).toEqual(['Kennzahlen']);
+    // K1 (D1): am Rechner die Gruppen; „Auswerten“ ist offen und trägt hier nur die Kennzahlen.
+    expect(m.reiter).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(m.reiterAktiv).toEqual(['Auswerten']);
     expect(m.leiste).toBeNull();
     expect(m.karten[0]).toContain(`0,15${NB}kWh je Stück`);
     expect(m.karten[0]).toContain('Oktober 2026 · endgültig');
@@ -197,7 +199,7 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     await warteAufKarte(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'k1-1440');
-    expect(m.reiterAktiv).toEqual(['Kennzahlen']);
+    expect(m.reiterAktiv).toEqual(['Auswerten']);
     // AP-17 IP-9/IP-20 (§5.1, §6.3): an einer Quotient-Kennzahl stehen „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ —
     // vorgewählt bleibt „Kennzahl“ mit dem Inhalt von vorher.
     expect(m.kennzahlReiter).toEqual(['Kennzahl (gewählt)', 'Bezugsbasis', 'Vergleich mit Bezugsbasis']);
@@ -225,7 +227,8 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     const k7 = await messe(page);
     ohneQuerlauf(k7, 'k7-375');
     expect(k7.kennzeichen).toEqual(['berechnet (Kennzahl)', 'korrigiert (Version 2)']);
-    expect(k7.herkunft[1]).toBe('Berechnung Fassung 1 · gerechnet 12.11.2026 10:05:33 · Anlass K-2026-0007 (freigegeben 12.11.2026)');
+    // K5: vor der Berechnungs-Fassung stehen der Rechenweg in Worten und der Satz in Kennzeichen.
+    expect(k7.herkunft[2]).toBe('Berechnung Fassung 1 · gerechnet 12.11.2026 10:05:33 · Anlass K-2026-0007 (freigegeben 12.11.2026)');
     await ablegen(page, 'k7-375', k7);
     await page.getByTestId('werte-versionen').click();
     const dialog = page.getByTestId('versionen-dialog');

@@ -1228,7 +1228,7 @@ function UnifiedPortal() {
       ? {
           titel: ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen'),
           kacheln: ebenenKacheln,
-          aktiv: ebenenAktiv(page, standortBereich),
+          aktiv: ebenenAktiv(page, standortBereich, route.energiemanagementReiter),
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
@@ -1253,7 +1253,11 @@ function UnifiedPortal() {
   // offenen Seite bleiben: die Bereiche der Gruppe, in der sie wohnt.
   const leisteHier = ebenenKacheln.flatMap((k) => k.bereiche);
   const telefonReiterHier =
-    ebenenOrtHier?.art === 'unternehmen' ? telefonReiterBereiche(ebenenKacheln, ebenenAktiv(page, standortBereich)) : null;
+    ebenenOrtHier?.art === 'unternehmen'
+      ? telefonReiterBereiche(ebenenKacheln, ebenenAktiv(page, standortBereich, route.energiemanagementReiter))
+      : null;
+  // K1 (D1): am Unternehmen stehen die Gruppen auch am Rechner über der Seite, darunter nur die Reiter der offenen.
+  const gruppenHier = ebenenOrtHier?.art === 'unternehmen' && telefonReiterHier !== null ? ebenenKacheln : [];
   // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
   const standortReiter =
@@ -1466,6 +1470,8 @@ function UnifiedPortal() {
             standortBereiche={standortObenReiter}
             standortAktiv={ebenenAktiv(page, standortBereich)}
             onOpenBereich={navigate}
+            gruppen={gruppenHier}
+            energiemanagementReiter={route.energiemanagementReiter ?? null}
           />
           {standortReiter.length > 0 && ebenenOrtHier && (
             <EbenenTabs
@@ -1548,6 +1554,7 @@ function UnifiedPortal() {
               auditId={route.auditId ?? null}
               feststellungId={route.feststellungId ?? null}
               managementbewertungKennung={route.managementbewertungKennung ?? null}
+              reiterOben={gruppenHier.length > 0}
               onReiter={(r) => navigate(energiemanagementRoute(r))}
               onDokument={(id) => navigate(dokumentRoute(id))}
               onPerson={(id) => navigate(personRoute(id))}

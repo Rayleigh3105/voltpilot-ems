@@ -27,7 +27,8 @@ const AM_2036 = new Date('2036-11-02T09:00:00Z');
 const NB = String.fromCharCode(160);
 // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); die Berichte wohnen in „Auswerten“,
 // über der Seite stehen am Telefon nur deren Reiter.
-const LEISTE = ['Übersicht', 'Messen', 'Auswerten'];
+// K1/D2: die Berichte sind Belege — sie stehen in der Gruppe „Nachweisen“.
+const LEISTE = ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen'];
 
 async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
   await page.clock.setFixedTime(jetzt);
@@ -112,29 +113,31 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 }
 
 test.describe('Berichte — die Liste', () => {
-  test('bei 375 px am 13.11.2026: BR-2026-0001 mit „Revision nötig — Korrektur K-2026-0007“, die Leiste mit „Auswerten“ offen', async ({ page }) => {
+  test('bei 375 px am 13.11.2026: BR-2026-0001 mit „Revision nötig — Korrektur K-2026-0007“, die Leiste mit „Nachweisen“ offen', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte', 375, AM_13_11);
     await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-375');
     expect(m.route).toBe('#/portfolio/berichte');
     expect(m.leiste).toEqual(LEISTE);
-    expect(m.leisteAktiv).toBe('Auswerten');
-    expect(m.reiter).toEqual(['Kennzahlen', 'Berichte']);
-    expect(m.reiterAktiv).toEqual(['Berichte']);
+    expect(m.leisteAktiv).toBe('Nachweisen');
+    // Ohne Energiemanagement trägt „Nachweisen“ nur die Berichte — eine zweite Reihe mit einem Reiter gibt es nicht.
+    expect(m.reiter).toEqual([]);
+    expect(m.reiterAktiv).toEqual([]);
     expect(m.stand).toEqual(['Revision nötig — Korrektur K-2026-0007']);
     expect(m.karten[0]).toContain('Monatsbericht Werk Ahrenberg Oktober 2026');
     expect(m.karten[0]).toContain('Monatsbericht Standort · Fassung 1');
     await ablegen(page, 'liste-375', m);
   });
 
-  test('bei 1440 px am 20.11.2026: Reiter „Berichte“ neben „Kennzahlen“; ein Klick öffnet den Bericht', async ({ page }) => {
+  test('bei 1440 px am 20.11.2026: Gruppe „Nachweisen“ offen; ein Klick öffnet den Bericht', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte', 1440, AM_20_11);
     await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
-    expect(m.reiterAktiv).toEqual(['Berichte']);
+    // K1 (D1): am Rechner die Gruppen, die offene ist „Nachweisen“ — mit nur einem Bereich ohne zweite Reihe.
+    expect(m.reiter).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(m.reiterAktiv).toEqual(['Nachweisen']);
     expect(m.stand).toEqual(['Berichtsstand Nr. 2']);
     await ablegen(page, 'liste-1440', m);
     await page.getByTestId('bericht-karte').click();
@@ -149,7 +152,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await warteAufSeite(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'seite-375');
-    expect(m.leisteAktiv).toBe('Auswerten');
+    expect(m.leisteAktiv).toBe('Nachweisen');
     expect(m.titel).toBe('Monatsbericht Werk Ahrenberg Oktober 2026');
     expect(m.stände).toEqual(['Nr. 1', 'Nr. 2', 'Entwurf']);
     expect(m.standAktiv).toBe('Nr. 2');
@@ -221,7 +224,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await expect(page.locator('.vp-br-zeile-kopf')).toContainText('Berichtsstand Nr. 1');
     const m = await messe(page);
     ohneQuerlauf(m, 'nr1-1440');
-    expect(m.reiterAktiv).toEqual(['Berichte']);
+    expect(m.reiterAktiv).toEqual(['Nachweisen']);
     expect(m.kopfZeile).toBe('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(m.abzeichen).toEqual(['ersetzt durch Nr. 2 (16.11.2026)']);
     expect(m.pruefsumme).toBe('sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03');

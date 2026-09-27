@@ -89,7 +89,7 @@ function Ansicht() {
       ebenen={{
         titel: ebenenTitel(UNTERNEHMEN, lesemodell, 'Kunststoffwerk Ahrenberg GmbH'),
         kacheln,
-        aktiv: ebenenAktiv(route.page),
+        aktiv: ebenenAktiv(route.page, undefined, route.energiemanagementReiter),
         onOpen: navigate,
       }}
       page={route.page}
@@ -116,7 +116,11 @@ function Ansicht() {
         // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
         // über der Seite stehen dort nur die Reiter der offenen Gruppe.
         leiste={kacheln.flatMap((k) => k.bereiche)}
-        telefonReiter={telefonReiterBereiche(kacheln, ebenenAktiv(route.page))}
+        telefonReiter={telefonReiterBereiche(kacheln, ebenenAktiv(route.page, undefined, route.energiemanagementReiter))}
+        // K1 wie `App.tsx`: die Gruppen auch am Rechner, das Energiemanagement in „Nachweisen“.
+        gruppen={kacheln}
+        energiemanagementReiter={route.energiemanagementReiter ?? null}
+        onOpenBereich={navigate}
         fleetLabel="Unternehmen"
         onNavigate={(p) => navigate(pageRoute(p))}
       />

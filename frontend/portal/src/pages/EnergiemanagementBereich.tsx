@@ -57,6 +57,7 @@ export function EnergiemanagementBereich({
   onFeststellung,
   onManagementbewertung,
   onSprung,
+  reiterOben = false,
 }: {
   reiter: EnergiemanagementReiter;
   dokumentId: string | null;
@@ -72,6 +73,11 @@ export function EnergiemanagementBereich({
   onManagementbewertung?: (kennung: string) => void;
   /** Der Sprung einer Wiedervorlage-Zeile (WV3) — auch auf Seiten außerhalb des Bereichs; ohne ihn springt keine Zeile. */
   onSprung?: (ziel: Route) => void;
+  /**
+   * K1 (D2): die Reiter stehen schon über der Seite — in der Gruppe „Nachweisen“, die Wiedervorlage in der Übersicht
+   * (`PortfolioTabs` mit Gruppen). Dann entfällt die zweite Reiterreihe hier.
+   */
+  reiterOben?: boolean;
 }) {
   const reiterRand = useReiterRand<HTMLDivElement>();
   const rollen = useRollen();
@@ -102,21 +108,23 @@ export function EnergiemanagementBereich({
             {SAETZE.einsicht_rolle}
           </p>
         )}
-        <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
-          {E.REITER.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              role="tab"
-              aria-selected={aktiv === r.key}
-              className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
-              data-testid={`energiemanagement-reiter-${r.key}`}
-              onClick={() => onReiter(r.key)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        {!reiterOben && (
+          <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
+            {E.REITER.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                role="tab"
+                aria-selected={aktiv === r.key}
+                className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
+                data-testid={`energiemanagement-reiter-${r.key}`}
+                onClick={() => onReiter(r.key)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
         {reiter === 'dokumente' ? (
           <DokumenteRegister onOeffnen={onDokument} />
         ) : reiter === 'aufgaben' ? (

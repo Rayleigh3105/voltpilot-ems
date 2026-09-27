@@ -241,6 +241,16 @@ describe('K4 · der erste Schritt einer leeren Gruppe des Verzeichnisses', () =>
     }
   });
 
+  it('ein Schritt, der etwas anlegt, nur mit `energiemanagement.verwalten` — wer nur liest, bekommt keinen Schreib-Knopf', () => {
+    const lesen = { standorte: [], unternehmen_rechte: ['energiemanagement.ansehen'] };
+    for (const g of ['grundlagen', 'risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung', 'verantwortung']) {
+      expect(E.verzeichnisWeg(g, lesen), g).toBeNull();
+    }
+    // Ein Weg, der nur hinführt, bleibt.
+    expect(E.verzeichnisWeg('audits_feststellungen', lesen)?.text).toBe('Zum Auditprogramm');
+    expect(E.verzeichnisWeg('berichte', lesen)?.text).toBe('Zu den Berichten');
+  });
+
   it('führt nur auf eine Seite, die die Person sehen darf', () => {
     const ohne = { standorte: [], unternehmen_rechte: [] };
     expect(E.verzeichnisWeg('bewertung_messplanung', ohne)).toBeNull();

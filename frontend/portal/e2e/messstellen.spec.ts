@@ -61,7 +61,8 @@ async function messe(page: Page) {
       zeilen: document.querySelectorAll('.vp-ms-tabelle tbody tr').length,
       karten: document.querySelectorAll('.vp-ms-karte').length,
       still: [...document.querySelectorAll('.vp-ms-still')].map((e) => e.querySelector('.vp-ms-kz')?.textContent ?? ''),
-      kopf: document.querySelector('.vp-ms-kopf p')?.textContent ?? null,
+      // K3: die Zeile „Begriffe“ steht auch im Kopf — gemeint ist der Satz der Datenlage.
+      kopf: document.querySelector('.vp-ms-kopf p:not(.vp-begriffe)')?.textContent ?? null,
       spalten: [...document.querySelectorAll('.vp-ms-tabelle th')].map((t) => t.textContent ?? ''),
       tabelleScrollt: (() => {
         const r = document.querySelector<HTMLElement>('.vp-ms-rahmen');
@@ -105,8 +106,9 @@ test.describe('Messstellen-Register', () => {
       'Aktionen',
     ]);
     // AP-11 IP-13: „Kennzahlen“ steht als Reiter neben „Messstellen“ (Ahrenberg misst und hat Kennzahlen).
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
-    expect(m.reiterAktiv).toEqual(['Messstellen']);
+    // K1 (D1): am Rechner die Gruppen, darunter die Reiter der offenen Gruppe „Messen“.
+    expect(m.reiter).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen', 'Messstellen', 'Bezugsgrößen']);
+    expect(m.reiterAktiv).toEqual(['Messen', 'Messstellen']);
     expect(m.leiste).toBeNull();
     expect(m.kopf).toBe('21 von 22 Messstellen liefern Daten');
     await ablegen(page, 'unternehmen-1440', m);
@@ -122,7 +124,7 @@ test.describe('Messstellen-Register', () => {
     expect(m.zeilen).toBe(0);
     // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`, höchstens fünf); am Telefon stehen über
     // der Seite nur die Reiter der offenen Gruppe.
-    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.leisteAktiv).toBe('Messen');
     expect(m.reiter).toEqual(['Messstellen', 'Bezugsgrößen']);
     expect(m.reiterAktiv).toEqual(['Messstellen']);
@@ -318,12 +320,12 @@ test.describe('Messstellen-Register', () => {
 });
 
 test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich die Leiste des Unternehmens zu', () => {
-  test('Übersicht bei 375 px — gebaut: Leiste Übersicht · Messen · Auswerten, Reiter nur die der Gruppe „Übersicht“', async ({ page }) => {
+  test('Übersicht bei 375 px — gebaut: Leiste Übersicht · Messen · Auswerten · Nachweisen, Reiter nur die der Gruppe „Übersicht“', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375');
     expect(m.route).toBe('#/portfolio');
-    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.leisteAktiv).toBe('Übersicht');
     expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Energie']);
     await ablegen(page, 'leiste-uebersicht-375', m);
@@ -336,14 +338,15 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await oeffne(page, 'bild=unternehmen&reiter=alle', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375-alle-reiter');
-    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
     await ablegen(page, 'leiste-uebersicht-375-alle-reiter', m);
   });
 
   test('am Rechner bleibt der Weg über die Reiter — Unternehmen und Standort', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen', 1440);
-    await page.getByRole('tab', { name: 'Messstellen' }).click();
+    // K1 (D1): am Unternehmen öffnet die Gruppe „Messen“ ihren ersten Bereich, die Messstellen.
+    await page.getByRole('tab', { name: 'Messen', exact: true }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
     await warteAufRegister(page);
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440);

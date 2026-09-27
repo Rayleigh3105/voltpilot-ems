@@ -33,8 +33,8 @@ wie an der Karte „Funktionen" (PR 771): ein Knopf ohne Ziel ist die Sackgasse,
 1. **Seit AP-13 IP-2 hat jeder Bereich beider Ebenen seine Seite — die Leiste steht auf beiden** (`uems-oberflaechen-ebenen.md`).
    Höchstens fünf Kacheln (`LEISTE_HOECHSTENS`): am Standort Übersicht · Aufbau · Gebäude · Messstellen · Anschlüsse
    (Kurzwort `LEISTE_KURZ`), am Unternehmen GRUPPEN (`UNTERNEHMEN_GRUPPEN`: Übersicht · Messen · Auswerten · Verbessern ·
-   Management) — am Telefon stehen über der Seite nur die Reiter der offenen Gruppe (`telefonReiterBereiche`,
-   `PortfolioTabs.telefonReiter`). Kennzahlen und Berichte des STANDORTS sind Seiten ohne Bereich — keine
+   Nachweisen) — über der Seite stehen nur die Reiter der offenen Gruppe (`telefonReiterBereiche`,
+   `PortfolioTabs.telefonReiter`); am Rechner stehen die Gruppen als obere Reihe (`PortfolioTabs.gruppen`, K1). Kennzahlen und Berichte des STANDORTS sind Seiten ohne Bereich — keine
    Kachel, ihr Einstieg steht auf der Standort-Übersicht. Wer einen neuen Bereich einhängt, trägt die Route in
    `EBENEN_SEITEN` ein und passt den Test „jede Seite, die es heute gibt" und `telefonleiste.spec.ts` an.
 2. **Nie eine Kachel ohne Seite**, auch nicht „zum Reservieren": E4 hat „immer fünf Kacheln, auch leere" verworfen,
