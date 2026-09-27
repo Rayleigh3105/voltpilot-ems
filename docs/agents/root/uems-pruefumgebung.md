@@ -47,3 +47,13 @@ Stapel die festen `container_name` belegt. `einsicht` vergibt als Jonas Wendling
 Nachweise mit „entschieden von“ und den Prüfsummen der Abnahme, Verzeichnis gleich dem des Kundenadministrators,
 jeder schreibende Weg abgelehnt und der Kundenbereich byte-gleich, Zugang nach dem letzten Tag (Bühne) weg.
 `PruefumgebungAhrenbergAufbau` ist ein Werkzeug (nur mit `-Dpruefumgebung.jdbc`, sonst übersprungen).
+
+## Demo-Umgebung (dasselbe Aufbauen, das ganze Produkt)
+
+`infra/local/demo/demo.sh start|stop|status|zuruecksetzen` fährt `ahrenberg.sh aufbauen` im eigenen Projekt
+`voltpilot-demo` (`PRUEFUMGEBUNG_PROJEKT`, `PRUEFUMGEBUNG_COMPOSE_ZUSATZ`) und legt Live-Strecke, Sammler, Optimierer
+und das gebaute Portal auf `http://localhost:5173` dazu · [README](../../../infra/local/demo/README.md).
+- ⚠ Das Tuning von `TS_TUNE_MEMORY=1GB` setzt `max_connections = 25` — neben der Live-Strecke bekam der Welt-Aufbau
+  keine Verbindung mehr; das Overlay setzt 200 über die Kommandozeile (gilt auch für ein bestehendes Volume).
+- ⚠ Alle Bezugsbasis-Fassungen der Welt 1.10 tragen `grundlage = NULL`; der Reiter „Bezugsbasis“ einer Kennzahl und der
+  Bericht BR-2029-0001 (Managementbewertung) brachten am 27.09.2026 das ganze Portal auf die Fehlerseite (gemeldet).

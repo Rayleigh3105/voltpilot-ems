@@ -16,6 +16,10 @@
 #   ahrenberg.sh abraeumen
 #       Container UND Volumes des Projekts `voltpilot-pruefumgebung`.
 #
+# Die Demo-Umgebung (`infra/local/demo/demo.sh`) fährt denselben Aufbau in ihrem
+# eigenen Projekt: PRUEFUMGEBUNG_PROJEKT (Vorgabe `voltpilot-pruefumgebung`) und
+# PRUEFUMGEBUNG_COMPOSE_ZUSATZ (eine weitere Compose-Datei, Vorgabe keine).
+#
 # Voraussetzungen: Docker, JDK 21 (JAVA_HOME) für den Maven-Wrapper, curl,
 # python3. Die Umgebung für die Fachperson erreichbar machen (Adresse,
 # Portal, Zugangsweg) ist Hand des Betreibers - dieses Skript bindet nur an
@@ -23,13 +27,14 @@
 set -euo pipefail
 
 WURZEL="$(cd "$(dirname "$0")/../../.." && pwd)"
-PROJEKT=voltpilot-pruefumgebung
+PROJEKT="${PRUEFUMGEBUNG_PROJEKT:-voltpilot-pruefumgebung}"
 API="http://localhost:${API_PORT:-8090}"
 KEYCLOAK="http://localhost:${KEYCLOAK_PORT:-8081}"
 JDBC="jdbc:postgresql://localhost:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-voltpilot}"
 compose() {
   docker compose -p "$PROJEKT" --project-directory "$WURZEL" -f "$WURZEL/docker-compose.yml" \
-    -f "$WURZEL/infra/local/pruefumgebung/docker-compose.pruefumgebung.yml" "$@"
+    -f "$WURZEL/infra/local/pruefumgebung/docker-compose.pruefumgebung.yml" \
+    ${PRUEFUMGEBUNG_COMPOSE_ZUSATZ:+-f "$PRUEFUMGEBUNG_COMPOSE_ZUSATZ"} "$@"
 }
 
 aufbauen() {
