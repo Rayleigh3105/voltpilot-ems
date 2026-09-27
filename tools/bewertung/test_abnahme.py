@@ -48,7 +48,7 @@ REPO = nachweismatrix.REPO
 
 # Die zwei Stände der Fixture-Welt: leere Commits, fester Autor, festes Datum - also feste Kennungen.
 ALT = '513f6b35ae408611c6e12ff6824e5f4c265185ed'   # Tor-Beleg G1 vom 19.09.2026 (RF-11)
-NEU = 'dcd7db4092511b00a1c39b8cd7d358a1362cc6cb'   # gebauter Stand, Lauf AP-20 IP-10 am 28.09.2026
+NEU = '01a8edcfdc2c87ad947826a1d324fe6eed1e9917'   # gebauter Stand, Lauf AP-20 IP-10 am 28.09.2026
 STAENDE = (('2026-09-19T12:00:00+00:00', 'Fixture: Stand des Tor-Belegs (19.09.2026)', ALT),
            ('2026-09-28T08:00:00+00:00', 'Fixture: gebauter Stand (28.09.2026)', NEU))
 GEBAUT_VON = 'Crew (Lauf AP-20 IP-10, Fixture AP-20 IP-23)'   # Konzept: „Crew (Lauf IP-10)“
@@ -121,6 +121,10 @@ class Welt:
         self.repo.mkdir()
         self._git('init', '-q')
         for datum, text, erwartet in STAENDE:
+            if erwartet == NEU:
+                # Eigener Baum: ein Commit mit demselben Baum trüge den Stand (pruefe_tor.stand_fall).
+                (self.repo / 'stand').write_text('gebauter Stand\n', encoding='utf-8')
+                self._git('add', 'stand')
             self._git('-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', text, datum=datum)
             sha = self._git('rev-parse', 'HEAD')
             if sha != erwartet:
@@ -471,7 +475,7 @@ class RF07WiederherstellungsUebung(Fall):
                          {'uebung_zustand': 'durchgefuehrt', 'dauer_min': 21, 'teil_wiederherstellung': 'belegt',
                           'q15': 'nicht_maschinell_pruefbar', 'naechste_faellig': '2027-04-05'})
         self.assertEqual(uebungen.zeile(e), 'U-2026-01 · Wiederherstellung · 21 min · Zählungen gleich · '
-                                            'Stand dcd7db409 · 05.10.2026 · Betreiber (A. Muster, Fixture) · '
+                                            'Stand 01a8edcfd · 05.10.2026 · Betreiber (A. Muster, Fixture) · '
                                             'nächste fällig 05.04.2027')
         # Im Prüfer ist der Teil „Wiederherstellung geübt“ belegt; offen halten Z-015 nur die Lücken (NR6).
         z = zeile(self.w.bewertung('2026-10-05', blatt='nach-der-uebung.yaml', uebung=True)[0], 'Z-015')

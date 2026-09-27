@@ -76,17 +76,22 @@ def gruende(z):
 
 
 class Buehne:
-    """Wegwerf-Repo mit den Ständen alt → neu, Lauf-Ordner, Artefakte, Stand-Blatt."""
+    """Wegwerf-Repo mit den Ständen alt → neu (je eigener Baum) und dem Zwilling von neu (anderer Commit,
+    derselbe Baum - wie der Merge-Commit auf main), Lauf-Ordner, Artefakte, Stand-Blatt."""
 
     def __init__(self, wurzel: pathlib.Path):
         self.wurzel = wurzel
         self.repo = wurzel / 'repo'
         self.repo.mkdir()
         git(self.repo, 'init', '-q', '-b', 'main')
-        git(self.repo, 'commit', '-q', '--allow-empty', '-m', 'alter Stand')
-        self.alt = git(self.repo, 'rev-parse', 'HEAD')
-        git(self.repo, 'commit', '-q', '--allow-empty', '-m', 'gebauter Stand')
+        for text in ('alter Stand', 'gebauter Stand'):
+            (self.repo / 'stand').write_text(text + '\n', encoding='utf-8')
+            git(self.repo, 'add', 'stand')
+            git(self.repo, 'commit', '-q', '-m', text)
+            if text == 'alter Stand':
+                self.alt = git(self.repo, 'rev-parse', 'HEAD')
         self.neu = git(self.repo, 'rev-parse', 'HEAD')
+        self.zwilling = git(self.repo, 'commit-tree', f'{self.neu}^{{tree}}', '-p', self.alt, '-m', 'Merge-Zwilling')
         self.laeufe = wurzel / 'laeufe'
         shutil.copytree(FIXTURE / 'berichte', self.laeufe)
         self.stand_txt(self.laeufe, self.neu)
@@ -211,6 +216,43 @@ class FallInJederTestwelt(MitBuehne):
     def test_ein_go_unterfall_ist_nicht_der_test_selbst(self):
         self.b.bericht_aendern('go-junit.xml', 'name="TestFixtureGruen" ', 'name="TestAnders" ')
         self.assertEqual(gruende(zeile(self.b.bericht(), 'Z-017')), ['fall_fehlt'])
+
+
+class StandUeberDenBaum(MitBuehne):
+    """NR3 wie der Tor-Prüfer (PR 1288): ein Lauf trägt den Stand als derselbe Commit oder als anderer Commit
+    mit demselben Baum; die Belegzeile nennt, welcher Fall griff."""
+
+    def texte(self, bericht, kennung):
+        return [b['text'] for b in zeile(bericht, kennung)['pruefung']['befunde'] if b['ergebnis'] == 'belegt']
+
+    def test_derselbe_commit_traegt_und_die_belegzeile_sagt_es(self):
+        texte = self.texte(self.b.bericht(), 'Z-002')
+        self.assertTrue(texte)
+        for text in texte:
+            self.assertIn(f'Stand {self.b.neu[:9]} laut stand.txt, derselbe Commit', text)
+
+    def test_ein_anderer_commit_mit_demselben_baum_traegt_und_die_belegzeile_nennt_den_baum(self):
+        self.b.stand_txt(self.b.laeufe, self.b.zwilling)
+        self.b.stand_txt(self.b.artefakte, self.b.zwilling, gefahren_von='Betreiber (A. Muster)')
+        b = self.b.bericht()
+        self.assertEqual(zeile(b, 'Z-002')['urteil'], 'belegt')
+        self.assertEqual({n['stand'] for n in zeile(b, 'Z-001')['nachweise']}, {self.b.zwilling})
+        baum = git(self.b.repo, 'rev-parse', f'{self.b.neu}^{{tree}}')
+        erwartet = (f'Stand {self.b.zwilling[:9]} laut stand.txt, anderer Commit als {self.b.neu[:9]} '
+                    f'mit demselben Baum {baum[:9]}')
+        for kennung in ('Z-001', 'Z-002'):
+            for text in self.texte(b, kennung):
+                self.assertIn(erwartet, text)
+        # Z-004: auch ein Artefakt-Ordner trägt den Stand über den Baum.
+        self.assertTrue(any(erwartet in t for t in self.texte(b, 'Z-004')), self.texte(b, 'Z-004'))
+
+    def test_gegenprobe_ein_anderer_commit_mit_anderem_baum_traegt_nicht(self):
+        anders = git(self.b.repo, 'commit-tree', f'{self.b.alt}^{{tree}}', '-p', self.b.neu, '-m', 'anderer Baum')
+        self.b.stand_txt(self.b.laeufe, anders)
+        z = zeile(self.b.bericht(), 'Z-002')
+        self.assertEqual(z['urteil'], 'offen')
+        self.assertIn('anderer_stand', gruende(z))
+        self.assertIn('die Bäume sind verschieden', z['wer_liefert'][0]['was'])
 
 
 class TestMitUntertestenAusNodeTest(MitBuehne):

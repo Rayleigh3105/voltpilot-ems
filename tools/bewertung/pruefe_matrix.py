@@ -137,12 +137,13 @@ class Ordner:
                                       f'keinen Stand (NR3)')
         if not COMMIT.match(self.sha):
             return 'ohne_stand_txt', f'die stand.txt in {anzeige(self.pfad)} nennt keinen Commit (NR3)'
-        if not pruefe_tor.gleicher_stand(self.sha, ctx.stand):
+        self.fall = pruefe_tor.stand_fall(self.sha, ctx.stand, ctx.baum)
+        if not self.fall:
             if ctx.ist_vorfahre(self.sha):
                 return 'aelterer_stand', (f'älterer Stand: der Bericht stammt laut stand.txt von {self.sha[:9]}, '
                                           f'geprüft wird {kurz} - ein älterer Lauf trägt den neueren Stand nicht (NR3)')
             return 'anderer_stand', (f'anderer Stand: der Bericht stammt laut stand.txt von {self.sha[:9]}, '
-                                     f'geprüft wird {kurz} (NR3)')
+                                     f'geprüft wird {kurz}, und die Bäume sind verschieden (NR3)')
         if not self.gefahren_von:
             return 'ohne_gefahren_von', (f'die stand.txt in {anzeige(self.pfad)} nennt nicht, wer gefahren hat '
                                          f'(Zeile „gefahren_von:“)')
@@ -154,6 +155,13 @@ class Ordner:
             if tag > ctx.heute:
                 return 'datum_in_zukunft', f'„datum: {self.datum}“ in der stand.txt liegt nach dem Prüftag'
         return None
+
+    def stand_satz(self, ctx):
+        """Welcher Fall den Stand trägt - für die Belegzeile; nur nach grund(ctx) is None."""
+        if self.fall == 'commit':
+            return f'Stand {self.sha[:9]} laut stand.txt, derselbe Commit'
+        return (f'Stand {self.sha[:9]} laut stand.txt, anderer Commit als {ctx.stand[:9]} '
+                f'mit demselben Baum {ctx.baum(ctx.stand)[:9]}')
 
     def datum_fuer(self, datei):
         """Tag des Laufs: `datum:` der stand.txt, sonst der Zeitpunkt der Berichtsdatei."""
@@ -236,6 +244,11 @@ class Kontext:
         if not COMMIT.match(voll):
             raise EingabeFehler(f'--stand {stand}: kein Commit (7 bis 40 Zeichen hex)')
         return voll
+
+    def baum(self, rev):
+        """Der Baum eines Commits, '' wenn das Repo den Commit nicht kennt."""
+        lauf = self.git('rev-parse', '--verify', '--quiet', f'{rev}^{{tree}}') if rev else None
+        return lauf.stdout.strip() if lauf and lauf.returncode == 0 else ''
 
     def ist_vorfahre(self, sha):
         return self.git('merge-base', '--is-ancestor', sha, self.stand).returncode == 0
@@ -365,7 +378,8 @@ def _test(ctx, fundstelle, suite_passt, fall_gehoert, fall):
     lauf, _, text, datei = befunde[0]
     nachweis = {'art': 'test_lauf', 'fundstelle': fundstelle, 'stand': lauf.sha, 'lauf': anzeige(datei),
                 'lauf_sha256': sha256(datei), 'datum': lauf.datum_fuer(datei), 'gefahren_von': lauf.gefahren_von}
-    return {'ergebnis': 'belegt', 'grund': 'gruen', 'text': f'{fundstelle}: {text}', 'wer': None, 'nachweis': nachweis}
+    return {'ergebnis': 'belegt', 'grund': 'gruen', 'text': f'{fundstelle}: {text} ({lauf.stand_satz(ctx)})',
+            'wer': None, 'nachweis': nachweis}
 
 
 def _klasse(klasse):
@@ -438,7 +452,8 @@ def _artefakt(ctx, name):
     datei = ordner.pfad / name
     nachweis = {'art': 'werkzeug_artefakt', 'fundstelle': name, 'stand': ordner.sha, 'lauf': anzeige(datei),
                 'lauf_sha256': sha256(datei), 'datum': ordner.datum_fuer(datei), 'gefahren_von': ordner.gefahren_von}
-    return {'ergebnis': 'belegt', 'grund': 'gruen', 'text': text, 'wer': None, 'nachweis': nachweis}
+    return {'ergebnis': 'belegt', 'grund': 'gruen', 'text': f'{text} ({ordner.stand_satz(ctx)})', 'wer': None,
+            'nachweis': nachweis}
 
 
 def _uebung(ctx, kennung):

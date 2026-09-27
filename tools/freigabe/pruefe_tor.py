@@ -161,18 +161,25 @@ def gleicher_stand(sha: str, kopf: str) -> bool:
     return len(sha) >= 7 and (kopf.startswith(sha) or sha.startswith(kopf))
 
 
-def stand_des_laufs(ctx: 'Kontext', sha: str):
-    """Traegt der Lauf-Commit aus stand.txt den geprueften Stand? '' = nein.
+def stand_fall(sha: str, kopf: str, baum) -> str:
+    """Traegt der Lauf-Commit `sha` den geprueften Stand `kopf`? '' = nein.
 
     'commit': derselbe Commit. 'baum': ein anderer Commit mit demselben Baum - so traegt der
-    Merge-Commit auf main genau den eingefrorenen uems-Stand, nur unter einem anderen SHA."""
-    if gleicher_stand(sha, ctx.kopf):
+    Merge-Commit auf main genau den eingefrorenen uems-Stand, nur unter einem anderen SHA.
+    `baum(rev)` liefert den Baum eines Commits, '' wenn das Repo ihn nicht kennt. Auch der
+    Matrix-Pruefer (tools/bewertung/pruefe_matrix.py) urteilt damit."""
+    if gleicher_stand(sha, kopf):
         return 'commit'
     if len(sha) >= 7:
-        baum = ctx.baum(sha)
-        if baum and baum == ctx.baum(ctx.kopf):
+        eigener = baum(sha)
+        if eigener and eigener == baum(kopf):
             return 'baum'
     return ''
+
+
+def stand_des_laufs(ctx: 'Kontext', sha: str):
+    """Traegt der Lauf-Commit aus stand.txt den geprueften Stand? Siehe stand_fall."""
+    return stand_fall(sha, ctx.kopf, ctx.baum)
 
 
 # --------------------------------------------------------------------------- #

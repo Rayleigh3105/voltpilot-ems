@@ -18,6 +18,9 @@ weder das Netzwerk noch eine Datenbank auf. `--ref <commit>` erlaubt die reprodu
 gegen einen bestimmten Stand. Der Kommentar der Liste enthält dessen Commit. Das Skript prüft,
 dass alle Dateien dieses Satzes im Arbeitsbaum vorhanden und bytegleich sind. Eine Liste enthält
 Dateinamen und damit Versionen, keinen Versionshöchstwert: `main` hat Lücken, die erst UEMS füllt.
+`V…__….sql.conf` (Flyway-Konfiguration zu einer Migration) überspringt es mit Hinweis auf stderr.
+`--stdout` gibt die Liste nur aus, ohne zu schreiben — Trockenlauf etwa mit `--ref HEAD`. Nach der Zusammenführung
+`uems` → `main` hebt erst der Rollout die Liste (Drehbuch `docs/rollout/uems-erste-freigabe.md` §2.9).
 
 Der Test selbst benötigt weder Git noch Netzwerkzugriff auf das Repository. Er kopiert die
 aufgelisteten Klassenpfad-Ressourcen in eine temporäre Flyway-Location, prüft den exakt angewandten

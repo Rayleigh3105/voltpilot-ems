@@ -16,7 +16,7 @@
     "nachweis": {
      "art": "protokoll",
      "fundstelle": "Alarm-Übung VoltPilotSicherungZuAlt, Protokoll; gitops-Regel gemergt",
-     "stand": "dcd7db4092511b00a1c39b8cd7d358a1362cc6cb",
+     "stand": "01a8edcfdc2c87ad947826a1d324fe6eed1e9917",
      "datum": "2026-11-02",
      "gefahren_von": "Betreiber (A. Muster, Fixture)"
     }
@@ -50,7 +50,7 @@
     "nachweis": {
      "art": "test_lauf",
      "fundstelle": "KundenbereichLoeschenApiTest#rf08VorDerFrist409DanachGeloeschtMitLoeschnachweisOhnePersonendaten",
-     "stand": "dcd7db4092511b00a1c39b8cd7d358a1362cc6cb",
+     "stand": "01a8edcfdc2c87ad947826a1d324fe6eed1e9917",
      "lauf": "tools/bewertung/fixtures/abnahme/laeufe/gebaut/TEST-com.voltpilot.api.uems.KundenbereichLoeschenApiTest.xml",
      "lauf_sha256": "ba0632b69886d775b5e4df68d5b94a7a1cce862fb721ec4a91ad524a23149db0",
      "datum": "2026-09-28",
@@ -75,7 +75,7 @@
     "nachweis": {
      "art": "protokoll",
      "fundstelle": "Fixture: Berichtigung gebaut und abgenommen",
-     "stand": "dcd7db4092511b00a1c39b8cd7d358a1362cc6cb",
+     "stand": "01a8edcfdc2c87ad947826a1d324fe6eed1e9917",
      "datum": "2027-01-15",
      "gefahren_von": "Crew (Fixture)"
     }

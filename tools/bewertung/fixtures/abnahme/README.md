@@ -15,7 +15,7 @@ sie und bricht ab, wenn git andere Kennungen bildet):
 | Stand | Kennung | trägt |
 |---|---|---|
 | Tor-Beleg G1, 19.09.2026 | `513f6b35a…` | `laeufe/tor-g1/` (RF-11) |
-| gebauter Stand, 28.09.2026 | `dcd7db409…` | `laeufe/gebaut/`, Übung, Nachweise der Übergänge |
+| gebauter Stand, 28.09.2026 | `01a8edcfd…` | `laeufe/gebaut/`, Übung, Nachweise der Übergänge |
 
 ## Dateien
 
