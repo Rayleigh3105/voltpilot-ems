@@ -3,7 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { api, type Bericht } from '../api';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_MANAGEMENTBEWERTUNG, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_MANAGEMENTBEWERTUNG, UEMS_MANAGEMENTBEWERTUNG_WOZU, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
 import * as M from '../managementbewertung';
 import type { Wiedervorlage } from '../wiedervorlage';
 import { EinsichtRecht } from './EinsichtRecht';
@@ -63,7 +63,10 @@ export function EnergiemanagementManagementbewertung({
       ) : liste === null ? (
         <p className="vp-ez-leise">Wird geladen …</p>
       ) : liste.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="managementbewertung-leer">{SAETZE.verzeichnis_leer}</p>
+        <>
+          <p className="vp-ez-wozu" data-testid="managementbewertung-wozu">{UEMS_MANAGEMENTBEWERTUNG_WOZU}</p>
+          <p className="vp-ez-satz" data-testid="managementbewertung-leer">{SAETZE.verzeichnis_leer}</p>
+        </>
       ) : (
         <ul className="vp-mb-liste" data-testid="managementbewertung-liste">
           {liste.map((b) => (

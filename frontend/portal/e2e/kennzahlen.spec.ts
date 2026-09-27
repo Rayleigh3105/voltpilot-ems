@@ -161,7 +161,8 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     const m = await messe(page);
     ohneQuerlauf(m, 'k1-375');
     expect(m.route).toBe(`#/portfolio/kennzahlen/${KZ.kz1}`);
-    expect(`${m.titel} · ${m.unter}`).toBe('KZ-0001 · Stromeinsatz Montage je Stück — Halle 2 · Gebäude Halle 2 · verantwortlich Ines Kaltenbach');
+    // K5: der Name zuerst, das Kennzeichen klein dahinter.
+    expect(`${m.titel} · ${m.unter}`).toBe('Stromeinsatz Montage je Stück — Halle 2 KZ-0001 · Gebäude Halle 2 · verantwortlich Ines Kaltenbach');
     expect(m.leisteAktiv).toBe('Auswerten');
     expect(m.perioden).toEqual(['Monat', 'Jahr']);
     expect(m.zahl).toBe(`0,15${NB}kWh je Stück`);
@@ -169,11 +170,15 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     expect(m.kartenKopf).toBe('Oktober 2026endgültig');
     expect(m.kennzeichen).toEqual(['berechnet (Kennzahl)']);
     expect(m.versionen).toBe('');
+    // K5: der Rechenweg in Worten zuerst; der Satz in Kennzeichen und die zwei Erklärsätze stehen im Aufklapper.
     expect(m.herkunft).toEqual([
+      `Gerechnet aus 6.100${NB}kWh (Montage Linie M1) geteilt durch 41.000${NB}Stück (Gutteile Montage Halle 2).`,
       `Menge 6.100${NB}kWh (MS-12, vollständig, Version 1) je 41.000${NB}Stück (BZ-6, Fassung 1)`,
       'Berechnung Fassung 1 · gerechnet 01.11.2026 00:20',
+      'Fassung: ein festgehaltener Stand einer Eintragung — einer Berechnung ab einem Tag oder eines eingegebenen Werts. Eine Änderung ergibt eine neue Fassung, die alte bleibt lesbar.',
+      'Version: ein Rechenstand des Werts einer Periode. Er wird neu gebildet, wenn sich ein Eingang ändert, etwa nach einer Korrektur.',
     ]);
-    expect(m.berechnung[0]).toBe('Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn');
+    expect(m.berechnung[0]).toBe('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn');
     expect(m.stammdaten).toEqual([
       'Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.',
       'Ines Kaltenbach',
@@ -247,14 +252,16 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     const herkunft = page.getByTestId('kennzahl-herkunft');
     const spruenge = herkunft.locator('a');
     await expect(spruenge).toHaveCount(1);
-    await expect(spruenge).toHaveText('MS-12');
+    // K5: der Name der Messstelle ist der Sprung — dasselbe Ziel wie vorher ihr Kennzeichen.
+    await expect(spruenge).toHaveText('Montage Linie M1');
     await expect(spruenge).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=2');
     // Die Bezugsgröße steht im selben Satz und ist KEIN Link — AP-09 hat keine Kundenfläche.
     await expect(herkunft).toContainText('BZ-6');
     const m = await messe(page);
     ohneQuerlauf(m, 'o10-375');
-    // Der Satz ist zeichengleich der von vorher: die Zeile bekam Kanten, keinen neuen Wortlaut.
-    expect(m.herkunft[0]).toBe(`Menge 6.040${NB}kWh (MS-12, vollständig, Version 2, korrigiert (Version 2)) je 41.000${NB}Stück (BZ-6, Fassung 1)`);
+    expect(m.herkunft[0]).toBe(`Gerechnet aus 6.040${NB}kWh (Montage Linie M1) geteilt durch 41.000${NB}Stück (Gutteile Montage Halle 2).`);
+    // Der Satz in Kennzeichen ist zeichengleich der von vorher — er steht im Aufklapper „Wie wird gerechnet?“.
+    expect(m.herkunft[1]).toBe(`Menge 6.040${NB}kWh (MS-12, vollständig, Version 2, korrigiert (Version 2)) je 41.000${NB}Stück (BZ-6, Fassung 1)`);
     await page.getByTestId('kennzahl-herkunft').evaluate((e) => e.scrollIntoView({ block: 'center' }));
     await ablegen(page, 'o10-375', m);
   });

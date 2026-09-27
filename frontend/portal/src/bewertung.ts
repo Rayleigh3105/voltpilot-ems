@@ -39,6 +39,10 @@ import { UEMS_BEWERTUNG, UEMS_BEWERTUNG_SAETZE, UEMS_BEWERTUNG_URTEILE, UEMS_EIN
 export const TITEL = UEMS_BEWERTUNG;
 export const EINSAETZE_TITEL = UEMS_ENERGIEEINSAETZE;
 export const LEER = UEMS_BEWERTUNG_SAETZE.leer();
+/** K4 (Konzept „Energiemanagement ohne Fachsprache“): vor dem Leer-Satz steht, wozu die Seite da ist. */
+export const LEER_WOZU = 'Die Bewertung zeigt, wo in Ihrem Betrieb die meiste Energie eingesetzt wird.';
+/** Der erste Schritt im leeren Zustand — derselbe Dialog wie „Energieeinsatz anlegen“ im Kopf. */
+export const ERSTER_EINSATZ_KNOPF = 'Ersten Energieeinsatz anlegen';
 export const LADEN = 'Energieeinsätze werden geladen …';
 export const ANLEGEN_KNOPF = 'Energieeinsatz anlegen';
 export const ANLEGEN_TITEL = 'Energieeinsatz anlegen';

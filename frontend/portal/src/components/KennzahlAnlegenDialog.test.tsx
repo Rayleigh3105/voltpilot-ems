@@ -299,7 +299,7 @@ describe('KennzahlAnlegenDialog · „Berechnung ändern ab …“ (IP-15)', () 
     );
 
     expect(screen.getByText('Schritt 1 von 4 · Gilt ab')).toBeTruthy();
-    expect(screen.getByTestId('kennzahl-heute-gilt').textContent).toBe('Heute gilt: Menge je Bezugsgröße · MS-20 je BZ-1 · Fassung 1 gilt seit Beginn');
+    expect(screen.getByTestId('kennzahl-heute-gilt').textContent).toBe('Heute gilt: Menge je Bezugsgröße · Prozess Spritzguss gesamt (MS-20) je Produktionsmenge Spritzguss (BZ-1) · Fassung 1 gilt seit Beginn');
     expect(screen.getByTestId('kennzahl-gilt-ab').textContent).toBe('Fassung 2 gilt ab heute — Fassung 1 endet am 31.03.2027.');
     fireEvent.click(screen.getByRole('combobox', { name: 'Gilt ab' }));
     fireEvent.click(screen.getByRole('button', { name: 'Voriger Monat' }));

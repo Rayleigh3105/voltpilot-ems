@@ -1652,7 +1652,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
   it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
     const alle = laufzeit();
     expect(alle.length).toBeGreaterThan(150);
-    expect(alle).toContain('Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn');
+    expect(alle).toContain('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn');
     expect(alle).toContain('Für November 2026 fehlt der Wert der Bezugsgröße BZ-6 Gutteile Montage Halle 2.');
     expect(flaechenTexte().length).toBeGreaterThan(5);
   });

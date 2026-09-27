@@ -42,9 +42,12 @@ export function EnergiezieleRegister({ onOeffnen }: { onOeffnen: (id: string) =>
   return (
     <section className="vp-ez" data-testid="energieziele-register">
       {lage.ziele.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="energieziele-leer">
-          {UEMS_VERBESSERUNG_SAETZE.leer()}
-        </p>
+        <>
+          <p className="vp-ez-wozu" data-testid="energieziele-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>
+          <p className="vp-ez-satz" data-testid="energieziele-leer">
+            {UEMS_VERBESSERUNG_SAETZE.leer()}
+          </p>
+        </>
       ) : (
         <div className="vp-ez-tafel-rahmen">
           <table className="vp-ez-tafel" data-testid="energieziele-tafel">

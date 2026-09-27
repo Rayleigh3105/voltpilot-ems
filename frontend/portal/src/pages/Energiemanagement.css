@@ -61,6 +61,38 @@
   font-size: var(--vp-c-fs-14);
 }
 
+/* K4: der Stand je Gruppe als Zeichen — gefüllt = etwas festgehalten, Ring = noch nichts. Keine Zahl über das Ganze (G4). */
+.vp-em-gruppe-kopf {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+.vp-em-marke {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--vp-gray, #ced4da);
+}
+.vp-em-marke.is-voll {
+  border-color: var(--vp-ok-ink, #2e7d32);
+  background: var(--vp-ok-ink, #2e7d32);
+}
+.vp-em-weg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+}
+.vp-em-zuschnitt-auf > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-600, 600);
+  font-size: var(--vp-c-fs-14);
+}
+
 .vp-em-stufe {
   display: inline-block;
   padding: 2px 8px;

@@ -43,9 +43,12 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
     <section className="vp-ez" data-testid="massnahmen-register">
       {anlegen}
       {lage.liste.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="massnahmen-leer">
-          {UEMS_VERBESSERUNG_SAETZE.leer()}
-        </p>
+        <>
+          <p className="vp-ez-wozu" data-testid="massnahmen-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>
+          <p className="vp-ez-satz" data-testid="massnahmen-leer">
+            {UEMS_VERBESSERUNG_SAETZE.leer()}
+          </p>
+        </>
       ) : (
         <>
           <div className="vp-ez-filter" data-testid="massnahmen-filter">

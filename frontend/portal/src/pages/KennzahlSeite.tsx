@@ -13,7 +13,7 @@ import '../components/BereichTabs.css';
 import { DangerZone } from '../components/DangerZone';
 import { GeteiltesRegisterHinweis } from '../components/GeteiltesRegisterHinweis';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
-import { uemsGeteiltSatz } from '../glossar';
+import { UEMS_FASSUNG_SATZ, UEMS_VERSION_SATZ, uemsGeteiltSatz } from '../glossar';
 import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
@@ -30,6 +30,7 @@ import {
   anfrage,
   berechnung,
   eingaengeDer,
+  eingangsNamen,
   FASSUNGEN_TITEL,
   heuteIn,
   herkunftAnzeige,
@@ -43,6 +44,7 @@ import {
   NICHT_GEFUNDEN,
   PERIODE_WAHL,
   periodenWahl,
+  RECHENWEG_TITEL,
   stammdaten,
   verlauf,
   versionenEinstieg,
@@ -221,7 +223,7 @@ export function KennzahlSeite({
   const zoneDerWerte = aktuell?.zeitzone ?? zone;
   const wk = aktuell && schritt ? wertKarte(aktuell, schritt, eingaengeDer(stamm.fassungen, schritt)) : null;
   const einstieg = versionenEinstieg(schritt);
-  const herkunft = aktuell && schritt ? herkunftAnzeige(aktuell, schritt) : null;
+  const herkunft = aktuell && schritt ? herkunftAnzeige(aktuell, schritt, eingangsNamen(stamm.fassungen)) : null;
   const b = berechnung(k, stamm.fassungen, zoneDerWerte);
   const archiviertSatz = E.archiviertSatz(k);
   const eingaengeArchiviert = umfeld ? E.archivierteEingaenge(E.aktuelleFassung(k, stamm.fassungen), umfeld.liste) : [];
@@ -232,7 +234,10 @@ export function KennzahlSeite({
     <div className="vp-kz" data-testid="kennzahl-seite">
       {zurueck}
       <header className="vp-kz-kopf">
-        <h1>{kp.titel}</h1>
+        {/* K5: der Name zuerst, das Kennzeichen klein dahinter. */}
+        <h1>
+          {kp.name} <span className="vp-kz-kennzeichen">{kp.kennzeichen}</span>
+        </h1>
         <p>
           <span>{kp.unter}</span>
           {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
@@ -331,22 +336,40 @@ export function KennzahlSeite({
           {herkunft && (
             <section className="vp-kz-block" aria-label={KARTE_HERKUNFT} data-testid="kennzahl-herkunft">
               <h2>{KARTE_HERKUNFT}</h2>
-              {/* AP-13 IP-11 (D1/D2): derselbe Satz — die Kennzeichen mit Seite sind Sprünge MIT Periode und Version. */}
-              {herkunft.eingaenge && (
-                <p>
-                  <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
-                </p>
+              {herkunft.klartext ? (
+                <>
+                  {/* K5: der Rechenweg in Worten; der Name springt wie sein Kennzeichen (AP-13 IP-11, D1/D2). */}
+                  <p className="vp-kz-klartext" data-testid="kennzahl-klartext">
+                    <HerkunftsZeile stuecke={herkunft.klartextStuecke} />
+                  </p>
+                  <details className="vp-kz-rechenweg" data-testid="kennzahl-rechenweg">
+                    <summary>{RECHENWEG_TITEL}</summary>
+                    {herkunft.eingaenge && <p>{herkunft.eingaenge}</p>}
+                    {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
+                    <p className="vp-kz-leise">{UEMS_FASSUNG_SATZ}</p>
+                    <p className="vp-kz-leise">{UEMS_VERSION_SATZ}</p>
+                  </details>
+                </>
+              ) : (
+                <>
+                  {/* AP-13 IP-11 (D1/D2): derselbe Satz — die Kennzeichen mit Seite sind Sprünge MIT Periode und Version. */}
+                  {herkunft.eingaenge && (
+                    <p>
+                      <HerkunftsZeile stuecke={herkunft.eingaengeStuecke} />
+                    </p>
+                  )}
+                  {herkunft.paare.length > 0 && (
+                    <ul className="vp-kz-paare">
+                      {herkunft.paare.map((p, i) => (
+                        <li key={p}>
+                          <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
+                </>
               )}
-              {herkunft.paare.length > 0 && (
-                <ul className="vp-kz-paare">
-                  {herkunft.paare.map((p, i) => (
-                    <li key={p}>
-                      <HerkunftsZeile stuecke={herkunft.paareStuecke[i] ?? [{ text: p, sprung: null }]} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {herkunft.gebildet && <p className="vp-kz-leise">{herkunft.gebildet}</p>}
               {herkunft.fehlt && <p className="vp-kz-ehrlich">{herkunft.fehlt}</p>}
             </section>
           )}

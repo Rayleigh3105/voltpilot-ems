@@ -269,6 +269,14 @@ export const UEMS_KENNZAHLEN = 'Kennzahlen';
 export const UEMS_BERECHNUNG = 'Berechnung';
 export const UEMS_FASSUNG = 'Fassung';
 export const UEMS_VERSION = 'Version';
+/**
+ * Die zwei Wörter, die auf der Kennzahl nebeneinander stehen, je in einem Satz (Konzept „Energiemanagement ohne
+ * Fachsprache“ K5; Fachmodell-Glossar „Fassung“). Sie stehen im Aufklapper „Wie wird gerechnet?“.
+ */
+export const UEMS_FASSUNG_SATZ =
+  'Fassung: ein festgehaltener Stand einer Eintragung — einer Berechnung ab einem Tag oder eines eingegebenen Werts. Eine Änderung ergibt eine neue Fassung, die alte bleibt lesbar.';
+export const UEMS_VERSION_SATZ =
+  'Version: ein Rechenstand des Werts einer Periode. Er wird neu gebildet, wenn sich ein Eingang ändert, etwa nach einer Korrektur.';
 export const UEMS_VORLAGE = 'Vorlage';
 
 /** Die Rollen der Eingänge in der Kundensicht (Vertrag `zaehler`/`nenner`/`paar`) — nie Zähler und Nenner: ein Zähler ist ein Messgerät. */
@@ -663,6 +671,8 @@ export const UEMS_VERBESSERUNG_SAETZE = {
     `${kennung} · ${zustand} · ${UEMS_TERMIN} ${termin} · ${UEMS_UEBERFAELLIG_SEIT(tage)} · ${verantwortlich}.`,
   leer: () =>
     'Noch keine Energieziele, Maßnahmen oder Abweichungen. Sie entstehen aus Ihren Energieleistungskennzahlen: aus einer Auffälligkeit, aus einem Energieziel oder von Hand.',
+  /** Konzept „Energiemanagement ohne Fachsprache“ K4: vor dem Leer-Satz steht, wozu der Bereich da ist. */
+  wozu: () => 'Energieziele sagen, was Sie erreichen wollen, Maßnahmen, was Sie dafür tun, und Abweichungen, wo es anders lief als erwartet.',
   grenze: () => UEMS_NORMGRENZE,
 } as const;
 
@@ -703,6 +713,9 @@ export const UEMS_AEHNLICHE_FAELLE = 'ähnliche Fälle';
 /** Ein Stand Nr. n einer Person an der Feststellung — nicht die Wirkung einer Maßnahme (AP-18). */
 export const UEMS_WIRKSAMKEIT = 'Wirksamkeit';
 export const UEMS_MANAGEMENTBEWERTUNG = 'Managementbewertung';
+/** Konzept „Energiemanagement ohne Fachsprache“ K4: wozu die Managementbewertung da ist — vor ihrem Leer-Satz. */
+export const UEMS_MANAGEMENTBEWERTUNG_WOZU =
+  'Die Managementbewertung ist der Rückblick der Leitung: Sie sieht sich die Ergebnisse an und hält fest, was sie beschließt.';
 export const UEMS_SITZUNG = 'Sitzung';
 export const UEMS_BESCHLUSS = 'Beschluss';
 export const UEMS_FOLGE = 'Folge';

@@ -217,8 +217,12 @@ export const geltungText = (k: Pick<Kennzahl, 'geltung_art' | 'geltung_name'>): 
   k.geltung_name ? `${GELTUNG_WORT[k.geltung_art]} ${k.geltung_name}` : GELTUNG_WORT[k.geltung_art];
 
 export interface Kopf {
-  /** „KZ-0001 · Stromeinsatz Montage je Stück — Halle 2“. */
+  /** „KZ-0001 · Stromeinsatz Montage je Stück — Halle 2“ — der Satz des Reports; die Seite zeigt Name und Kennzeichen getrennt (K5). */
   titel: string;
+  /** „Stromeinsatz Montage je Stück — Halle 2“: steht vorn. */
+  name: string;
+  /** „KZ-0001“: steht klein dahinter. */
+  kennzeichen: string;
   /** „Gebäude Halle 2 · verantwortlich Ines Kaltenbach“. */
   unter: string;
   /** „archiviert“ oder `null`. */
@@ -228,6 +232,8 @@ export interface Kopf {
 /** Der Kopf der Kennzahl-Seite (§5.3); `titel · unter` ist Zeichen für Zeichen der Satz des Reports. */
 export const kopf = (k: Kennzahl): Kopf => ({
   titel: `${k.kennzeichen}${TRENNER}${k.name}`,
+  name: k.name,
+  kennzeichen: k.kennzeichen,
   unter: [geltungText(k), `${UEMS_VERANTWORTLICH.toLowerCase()} ${k.verantwortlich_name}`].join(TRENNER),
   archiviert: k.archiviert_am ? ARCHIVIERT : null,
 });
@@ -398,7 +404,18 @@ export const verlauf = (antwort: KennzahlWerte): Balken[] => {
 
 // ------------------------------------------------------------------ Herkunft
 
+/** Der Aufklapper mit dem Rechenweg in Kennzeichen (K5: Namen zuerst, Kennzeichen dahinter). */
+export const RECHENWEG_TITEL = 'Wie wird gerechnet?';
+
 export interface HerkunftAnzeige {
+  /**
+   * K5: der Rechenweg in Worten, Namen statt Kennzeichen — „Gerechnet aus 6.100 kWh (Montage Linie M1) geteilt durch
+   * 41.000 Stück (Gutteile Montage Halle 2).“ `null` bei einer Zusammenfassung oder ohne beide Beträge; dann steht der
+   * Satz in Kennzeichen allein.
+   */
+  klartext: string | null;
+  /** Derselbe Satz in Stücken: der Name einer Messstelle oder Kennzahl springt wie ihr Kennzeichen (D2). */
+  klartextStuecke: Stueck[];
   /** „Menge 6.100 kWh (MS-12, vollständig, Version 1) je 41.000 Stück (BZ-6, Fassung 1)“ — bei einer Zusammenfassung leer. */
   eingaenge: string | null;
   /** Bei einer Zusammenfassung die Paare als Zeilen (K3). */
@@ -450,12 +467,49 @@ const herkunftsZiel = (s: NonNullable<KennzahlwertHerkunft['satz']>) => {
   return (kennzeichen: string) => kennzeichenSprung(kennzeichen, rahmen.get(kennzeichen) ?? { periode: s.periode.schluessel });
 };
 
+/**
+ * K5: „Gerechnet aus 6.100 kWh (Montage Linie M1) geteilt durch 41.000 Stück (Gutteile Montage Halle 2).“ Die Namen
+ * kommen aus den Fassungen der Kennzahl (`namen`: Kennzeichen → Name); ohne Namen steht das Kennzeichen.
+ */
+const klartextVon = (
+  s: NonNullable<KennzahlwertHerkunft['satz']>,
+  namen: ReadonlyMap<string, string>,
+  ziel: (kennzeichen: string) => Stueck['sprung'],
+): Stueck[] => {
+  if (s.rechenform === 'zusammenfassung') return [];
+  const zaehler = s.eingaenge.find((e) => e.rolle === 'zaehler');
+  const nenner = s.eingaenge.find((e) => e.rolle === 'nenner');
+  if (!zaehler || !nenner || zaehler.wert === null || nenner.wert === null) return [];
+  const verb = s.rechenform === 'anteil' ? 'als Anteil an' : 'geteilt durch';
+  return [
+    { text: `Gerechnet aus ${betragText(zaehler.wert, zaehler.einheit)} (`, sprung: null },
+    { text: namen.get(zaehler.objekt) ?? zaehler.objekt, sprung: ziel(zaehler.objekt) },
+    { text: `) ${verb} ${betragText(nenner.wert, nenner.einheit)} (`, sprung: null },
+    { text: namen.get(nenner.objekt) ?? nenner.objekt, sprung: ziel(nenner.objekt) },
+    { text: ').', sprung: null },
+  ];
+};
+
+/** Die Namen der Eingänge aus allen Fassungen (Kennzeichen → Name); die jüngere Fassung gewinnt. */
+export const eingangsNamen = (fassungen: readonly KennzahlFassung[]): Map<string, string> =>
+  new Map(
+    [...fassungen]
+      .sort((a, b) => a.nummer - b.nummer)
+      .flatMap((f) => f.eingaenge.filter((e) => e.name).map((e) => [e.kennzeichen, e.name as string] as const)),
+  );
+
 /** Die Herkunfts-Karte eines Schritts; `null` ohne Version (K8: noch nie eine Zahl — dort sagt der Grund das Warum). */
-export const herkunftAnzeige = (antwort: KennzahlWerte, w: KennzahlWert): HerkunftAnzeige | null => {
+export const herkunftAnzeige = (
+  antwort: KennzahlWerte,
+  w: KennzahlWert,
+  namen: ReadonlyMap<string, string> = new Map(),
+): HerkunftAnzeige | null => {
   const h = w.herkunft;
   if (h === null) return null;
   if (h.satz === null) {
     return {
+      klartext: null,
+      klartextStuecke: [],
       eingaenge: null,
       paare: [],
       eingaengeStuecke: [],
@@ -480,7 +534,10 @@ export const herkunftAnzeige = (antwort: KennzahlWerte, w: KennzahlWert): Herkun
   ].join(TRENNER);
   const paare = s.eingaenge.filter((e) => e.rolle === 'paar').map(paarText);
   const ziel = herkunftsZiel(s);
+  const klartextStuecke = klartextVon(s, namen, ziel);
   return {
+    klartext: klartextStuecke.length ? klartextStuecke.map((t) => t.text).join('') : null,
+    klartextStuecke,
     eingaenge,
     paare,
     eingaengeStuecke: eingaenge === null ? [] : herkunftsZeile(eingaenge, ziel),
@@ -519,11 +576,16 @@ export interface BerechnungAnzeige {
   fassungen: FassungZeile[];
 }
 
+/** K5: der Name zuerst, das Kennzeichen dahinter — „Montage Linie M1 (MS-12)“; ohne Namen das Kennzeichen. */
+const eingangWort = (e: KennzahlFassung['eingaenge'][number]): string => (e.name ? `${e.name} (${e.kennzeichen})` : e.kennzeichen);
+
 const eingaengeText = (f: KennzahlFassung): string => {
   const zaehler = f.eingaenge.find((e) => e.rolle === 'zaehler');
   const nenner = f.eingaenge.find((e) => e.rolle === 'nenner');
-  if (f.rechenform === 'zusammenfassung' || !zaehler || !nenner) return f.eingaenge.map((e) => e.kennzeichen).join(', ');
-  return f.rechenform === 'anteil' ? `${zaehler.kennzeichen} an ${nenner.kennzeichen}` : `${zaehler.kennzeichen} je ${nenner.kennzeichen}`;
+  if (f.rechenform === 'zusammenfassung' || !zaehler || !nenner) return f.eingaenge.map(eingangWort).join(', ');
+  return f.rechenform === 'anteil'
+    ? `${eingangWort(zaehler)} an ${eingangWort(nenner)}`
+    : `${eingangWort(zaehler)} je ${eingangWort(nenner)}`;
 };
 
 const zeitraumVon = (f: KennzahlFassung): string => {

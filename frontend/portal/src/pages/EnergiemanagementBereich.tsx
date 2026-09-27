@@ -127,7 +127,7 @@ export function EnergiemanagementBereich({
       ) : reiter === 'managementbewertung' ? (
         <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
       ) : (
-        <VerzeichnisTabelle onDokument={onDokument} />
+        <VerzeichnisTabelle onDokument={onDokument} onSprung={onSprung} />
       )}
       <div className="vp-em-saetze" data-testid="energiemanagement-saetze">
         <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>

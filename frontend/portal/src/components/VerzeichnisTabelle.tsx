@@ -10,6 +10,7 @@ import {
 import { SAETZE, VOKABULARE, WOERTER } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
 import { UEMS_ENTSCHIEDEN_VON, UEMS_EINGETRAGEN_VON, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_VERZEICHNIS } from '../glossar';
+import type { Route } from '../nav';
 import { useRollen } from '../rollen';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
@@ -22,8 +23,22 @@ const ALLE = '';
  * je leerer Gruppe „Hier ist noch nichts festgehalten.“ mit ihren Zeilen des Zuschnitts. Keine Zahl über das Ganze,
  * kein „fehlt“ (G4). Filter nach Gruppe, Tag und Person; „Als CSV abrufen“ holt dieselben Zeilen als Datei (KS2).
  * Eine Dokument-Zeile öffnet ihr Dokument. `saetze` zeigt Grenz- und Verantwortungs-Satz, wo die Tabelle allein steht.
+ *
+ * K4 (Konzept „Energiemanagement ohne Fachsprache“): jede Gruppe zeigt ihren Stand als Zeichen (gefüllt = festgehalten),
+ * eine leere Gruppe ihren ersten Schritt (`verzeichnisWeg`, mit `onSprung`) und die Zeilen des Zuschnitts im
+ * Aufklapper „Was gehört hierher?“. Filter und CSV erscheinen erst, wenn es etwas zu filtern gibt. Weiter ohne Zahl über
+ * das Ganze und ohne „fehlt“ (G4).
  */
-export function VerzeichnisTabelle({ onDokument, saetze = false }: { onDokument?: (id: string) => void; saetze?: boolean }) {
+export function VerzeichnisTabelle({
+  onDokument,
+  onSprung,
+  saetze = false,
+}: {
+  onDokument?: (id: string) => void;
+  /** Der erste Schritt einer leeren Gruppe führt hierhin; ohne ihn steht nur der Satz. */
+  onSprung?: (ziel: Route) => void;
+  saetze?: boolean;
+}) {
   const { selbst } = useRollen();
   const [filter, setFilter] = useState<Required<EnergiemanagementVerzeichnisFilter>>({ gruppe: ALLE, von: ALLE, bis: ALLE, person: ALLE });
   const [daten, setDaten] = useState<EnergiemanagementVerzeichnis | null>(null);
@@ -62,6 +77,9 @@ export function VerzeichnisTabelle({ onDokument, saetze = false }: { onDokument?
   ];
   const setze = (teil: Partial<EnergiemanagementVerzeichnisFilter>) => setFilter((alt) => ({ ...alt, ...teil }) as typeof alt);
   const zeilenZahl = daten ? daten.gruppen.reduce((n, g) => n + g.zeilen.length, 0) : 0;
+  const filterAktiv = filter.gruppe !== ALLE || filter.von !== ALLE || filter.bis !== ALLE || filter.person !== ALLE;
+  // Über dem Nichts stehen keine Filter: erst mit einem Eintrag (oder einem gesetzten Filter, der sich lösen lassen muss).
+  const mitFilter = filterAktiv || zeilenZahl > 0;
 
   async function csv() {
     setCsvLaeuft(true);
@@ -82,15 +100,17 @@ export function VerzeichnisTabelle({ onDokument, saetze = false }: { onDokument?
 
   return (
     <section className="vp-ez-kopf" aria-label={UEMS_VERZEICHNIS} data-testid="verzeichnis">
-      <div className="vp-em-filter">
-        <VpPicker id="vz-gruppe" label="Gruppe" options={gruppenOptionen} value={filter.gruppe} onChange={(v) => setze({ gruppe: v })} />
-        <VpDatePicker label="Tag von" value={filter.von || null} onChange={(v) => setze({ von: v })} max={filter.bis || undefined} />
-        <VpDatePicker label="Tag bis" value={filter.bis || null} onChange={(v) => setze({ bis: v })} min={filter.von || undefined} />
-        <VpPicker id="vz-person" label="Festgehalten im Namen von" options={personOptionen} value={filter.person} onChange={(v) => setze({ person: v })} />
-        <Button variant="ghost" onClick={() => void csv()} disabled={csvLaeuft || !daten} data-testid="verzeichnis-csv">
-          {E.KNOPF_CSV}
-        </Button>
-      </div>
+      {mitFilter && (
+        <div className="vp-em-filter">
+          <VpPicker id="vz-gruppe" label="Gruppe" options={gruppenOptionen} value={filter.gruppe} onChange={(v) => setze({ gruppe: v })} />
+          <VpDatePicker label="Tag von" value={filter.von || null} onChange={(v) => setze({ von: v })} max={filter.bis || undefined} />
+          <VpDatePicker label="Tag bis" value={filter.bis || null} onChange={(v) => setze({ bis: v })} min={filter.von || undefined} />
+          <VpPicker id="vz-person" label="Festgehalten im Namen von" options={personOptionen} value={filter.person} onChange={(v) => setze({ person: v })} />
+          <Button variant="ghost" onClick={() => void csv()} disabled={csvLaeuft || !daten} data-testid="verzeichnis-csv">
+            {E.KNOPF_CSV}
+          </Button>
+        </div>
+      )}
       {daten && (
         <p className="vp-ez-leise" data-testid="verzeichnis-stichtag">
           Stand vom {E.tagText(daten.stichtag)}, {daten.stichtag.slice(11, 16)} Uhr
@@ -103,19 +123,36 @@ export function VerzeichnisTabelle({ onDokument, saetze = false }: { onDokument?
         </p>
       )}
       {!daten && !fehler && <p className="vp-ez-leise">Wird geladen …</p>}
-      {daten?.gruppen.map((g) => (
+      {daten?.gruppen.map((g) => {
+        const weg = g.zeilen.length === 0 && onSprung ? E.verzeichnisWeg(g.gruppe, selbst) : null;
+        return (
         <section key={g.gruppe} className="vp-ez-karte vp-em-gruppe" data-testid={`verzeichnis-gruppe-${g.gruppe}`}>
-          <h2>{g.gruppe_wort}</h2>
+          <h2 className="vp-em-gruppe-kopf">
+            <span className={`vp-em-marke${g.zeilen.length > 0 ? ' is-voll' : ''}`} aria-hidden="true" />
+            {g.gruppe_wort}
+          </h2>
           {g.zeilen.length === 0 ? (
             <>
               <p className="vp-ez-satz">{g.satz ?? SAETZE.verzeichnis_leer}</p>
-              <ul className="vp-em-zuschnitt">
-                {g.zuschnitt.map((z) => (
-                  <li key={z.teil}>
-                    {z.teil} — {z.stufe}
-                  </li>
-                ))}
-              </ul>
+              {weg && onSprung && (
+                <div className="vp-em-weg">
+                  <Button variant="outline" size="sm" onClick={() => onSprung(weg.ziel)} data-testid={`verzeichnis-weg-${g.gruppe}`}>
+                    {weg.text}
+                  </Button>
+                </div>
+              )}
+              {g.zuschnitt.length > 0 && (
+                <details className="vp-em-zuschnitt-auf">
+                  <summary>{E.ZUSCHNITT_FRAGE}</summary>
+                  <ul className="vp-em-zuschnitt">
+                    {g.zuschnitt.map((z) => (
+                      <li key={z.teil}>
+                        {z.teil} — {z.stufe}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </>
           ) : (
             <div className="vp-ez-tafel-rahmen">
@@ -163,7 +200,8 @@ export function VerzeichnisTabelle({ onDokument, saetze = false }: { onDokument?
             </div>
           )}
         </section>
-      ))}
+        );
+      })}
       {saetze && (
         <div className="vp-em-saetze">
           <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>

@@ -112,6 +112,15 @@
   overflow-wrap: anywhere;
 }
 
+/* K4 (Konzept „Energiemanagement ohne Fachsprache“): im leeren Zustand steht zuerst, wozu die Fläche da ist. */
+.vp-ez-wozu {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600, 600);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
 .vp-ez-vorschlag,
 .vp-ez-frist {
   margin: 0;

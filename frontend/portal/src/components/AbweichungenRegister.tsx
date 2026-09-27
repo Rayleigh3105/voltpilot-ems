@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import * as A from '../abweichungen';
 import { api, type Abweichung } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_NORMGRENZE, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import { ErrorState, Skeleton } from './States';
 import { VpPicker } from './VpPicker';
 import '../pages/Verbesserung.css';
@@ -46,9 +46,12 @@ export function AbweichungenRegister({
   return (
     <section className="vp-ez" data-testid="abweichungen-register">
       {lage.liste.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="abweichungen-leer">
-          {A.LEER}
-        </p>
+        <>
+          <p className="vp-ez-wozu" data-testid="abweichungen-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>
+          <p className="vp-ez-satz" data-testid="abweichungen-leer">
+            {A.LEER}
+          </p>
+        </>
       ) : (
         <>
           <div className="vp-ez-filter" data-testid="abweichungen-filter">

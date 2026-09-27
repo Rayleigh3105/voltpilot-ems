@@ -11,11 +11,13 @@ import {
   bewertungZeitraum,
   EINSAETZE_TITEL,
   einsatzZeile,
+  ERSTER_EINSATZ_KNOPF,
   KEINE_WERTE,
   LADEN,
   ladeFehler,
   laeuft,
   LEER,
+  LEER_WOZU,
   NUR_LESEN,
   TITEL,
   UMFANG_AENDERN,
@@ -242,9 +244,19 @@ function BewertungUebersicht({ onOeffnen }: { onOeffnen: (id: string) => void })
           <section className="vp-bw-einsaetze" aria-labelledby="bw-einsaetze">
             <h2 id="bw-einsaetze">{EINSAETZE_TITEL}</h2>
             {liste.length === 0 ? (
-              <p className="vp-bw-leer" data-testid="bewertung-leer">
-                {LEER}
-              </p>
+              <div className="vp-bw-leer-block">
+                <p className="vp-bw-wozu" data-testid="bewertung-wozu">{LEER_WOZU}</p>
+                <p className="vp-bw-leer" data-testid="bewertung-leer">
+                  {LEER}
+                </p>
+                {verwalten && (
+                  <div>
+                    <Button variant="primary" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setDialog('anlegen')} data-testid="einsatz-anlegen-leer">
+                      {ERSTER_EINSATZ_KNOPF}
+                    </Button>
+                  </div>
+                )}
+              </div>
             ) : (
               <ul className="vp-bw-liste">
                 {liste.map((e) => (

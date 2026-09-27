@@ -19,7 +19,7 @@ import {
 } from './api';
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
 import { UEMS_DOKUMENTE, UEMS_FESTSTELLUNGEN, UEMS_MANAGEMENTBEWERTUNG, UEMS_VERZEICHNIS, UEMS_WIEDERVORLAGE } from './glossar';
-import type { EnergiemanagementReiter } from './nav';
+import { energiemanagementRoute, pageRoute, type EnergiemanagementReiter, type Route } from './nav';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
 
@@ -30,6 +30,42 @@ const hat = (s: Rechte | null | undefined, recht: string) =>
 
 /** `energiemanagement.ansehen` am Unternehmen oder an einem Standort — sonst gibt es den Bereich nicht. */
 export const darfAnsehen = (s: Rechte | null | undefined) => hat(s, 'energiemanagement.ansehen');
+
+/**
+ * Der erste Schritt einer leeren Gruppe des Verzeichnisses (Konzept „Energiemanagement ohne Fachsprache“ K4): der Weg
+ * dorthin, wo ihr Inhalt entsteht. Kein Urteil und keine Zahl über das Ganze (G4) — nur der Weg, und nur, wenn die
+ * Person die Zielseite sehen darf. `null` = kein eigener Weg.
+ */
+export function verzeichnisWeg(gruppe: string, s: Rechte | null | undefined): { text: string; ziel: Route } | null {
+  const dokumente = { text: 'Dokument anlegen', ziel: energiemanagementRoute('dokumente') };
+  switch (gruppe) {
+    case 'grundlagen':
+      return { text: 'Energiepolitik und Anwendungsbereich festhalten', ziel: energiemanagementRoute('dokumente') };
+    case 'risiken_chancen':
+    case 'kompetenz_kommunikation':
+    case 'betrieb_auslegung_beschaffung':
+      return dokumente;
+    case 'verantwortung':
+      return { text: 'Aufgaben verteilen', ziel: energiemanagementRoute('aufgaben') };
+    case 'bewertung_messplanung':
+      return hat(s, 'energieeinsatz.ansehen') ? { text: 'Zur energetischen Bewertung', ziel: pageRoute('portfolio-bewertung') } : null;
+    case 'kennzahlen_bezugsbasen':
+      return { text: 'Zu den Kennzahlen', ziel: pageRoute('portfolio-kennzahlen') };
+    case 'ziele_massnahmen_abweichungen':
+      return hat(s, 'verbesserung.ansehen') ? { text: 'Zu Zielen und Maßnahmen', ziel: pageRoute('portfolio-verbesserung') } : null;
+    case 'audits_feststellungen':
+      return { text: 'Zum Auditprogramm', ziel: energiemanagementRoute('audits') };
+    case 'managementbewertung':
+      return { text: 'Zur Managementbewertung', ziel: energiemanagementRoute('managementbewertung') };
+    case 'berichte':
+      return { text: 'Zu den Berichten', ziel: pageRoute('portfolio-berichte') };
+    default:
+      return null;
+  }
+}
+
+/** Die Frage über den Zeilen des Zuschnitts einer leeren Gruppe. */
+export const ZUSCHNITT_FRAGE = 'Was gehört hierher?';
 export const RECHT_VERWALTEN = 'energiemanagement.verwalten';
 export const RECHT_FREIGEBEN = 'energiemanagement.freigeben';
 
