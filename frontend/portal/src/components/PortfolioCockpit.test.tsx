@@ -220,14 +220,16 @@ describe('der KOPF: EINE Zeile statt einer Karte', () => {
     expect(screen.queryByText(/Guten Tag/)).toBeNull();
   });
 
-  it('legt Anpassen, Anlage anlegen und Gerät hinzufügen ins „···"-Menü - keine großen Knöpfe', async () => {
+  it('legt Anpassen und Anlage anlegen ins „···"-Menü - keine großen Knöpfe; Boxen kommen im Aufbau hinzu', async () => {
     renderCockpit();
     await screen.findByRole('region', { name: 'Ihre Anlagen' });
     expect(screen.queryByRole('button', { name: 'Anpassen' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
     expect(screen.getByText('Anpassen')).toBeTruthy();
     expect(screen.getByText('Anlage anlegen')).toBeTruthy();
-    expect(screen.getByText('Gerät hinzufügen')).toBeTruthy();
+    // EIN Ort für Boxen: der Aufbau der Anlage — die Flotte meldet keine Box mehr an.
+    expect(screen.queryByText('Gerät hinzufügen')).toBeNull();
+    expect(screen.queryByText('VoltPilot-Box hinzufügen')).toBeNull();
   });
 });
 

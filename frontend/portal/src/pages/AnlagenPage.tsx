@@ -744,7 +744,6 @@ export function AnlageSeite({
   sites,
   devices,
   onOpenSub,
-  onReload,
   onHealthFacts,
   misstHier = false,
   standortId = null,
@@ -2060,7 +2059,6 @@ export function AnlageSeite({
           deviceCount={ovSite?.deviceCount ?? 0}
           onOpenSteuerung={() => onOpenSub('steuerung')}
           onOpenGeraete={() => onOpenSub('modell')}
-          onReload={onReload}
           onStay={setSetupPinned}
         />
       ) : showStack ? (

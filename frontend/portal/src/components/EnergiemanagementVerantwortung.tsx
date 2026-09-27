@@ -72,24 +72,26 @@ export function EnergiemanagementVerantwortung({ onPerson, onZurueck, saetze = f
           {E.objekteNachArt(v.objekte).map((g) => (
             <div key={g.art} className="vp-em-gruppe" data-testid={`verantwortung-art-${g.art}`}>
               <h3>{g.wort}</h3>
-              <table className="vp-ez-tafel">
-                <thead>
-                  <tr>
-                    <th scope="col">Kennzeichen</th>
-                    <th scope="col">Titel</th>
-                    <th scope="col">Verantwortlich</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {g.objekte.map((o) => (
-                    <tr key={o.id} data-testid={`verantwortung-objekt-${o.kennzeichen}`}>
-                      <td>{o.kennzeichen}</td>
-                      <td data-label="Titel">{o.titel}</td>
-                      <td data-label="Verantwortlich">{o.verantwortlich?.name ?? 'niemand eingetragen'}</td>
+              <div className="vp-ez-tafel-rahmen">
+                <table className="vp-ez-tafel">
+                  <thead>
+                    <tr>
+                      <th scope="col">Kennzeichen</th>
+                      <th scope="col">Titel</th>
+                      <th scope="col">Verantwortlich</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {g.objekte.map((o) => (
+                      <tr key={o.id} data-testid={`verantwortung-objekt-${o.kennzeichen}`}>
+                        <td>{o.kennzeichen}</td>
+                        <td data-label="Titel">{o.titel}</td>
+                        <td data-label="Verantwortlich">{o.verantwortlich?.name ?? 'niemand eingetragen'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {g.art === 'bezugsbasis' && (
                 <p className="vp-ez-leise">Verantwortlich an den Bezugsbasen: die Verantwortlichen der Kennzahlen.</p>
               )}
@@ -103,32 +105,34 @@ export function EnergiemanagementVerantwortung({ onPerson, onZurueck, saetze = f
                   {freigaben}
                 </p>
               )}
-              <table className="vp-ez-tafel">
-                <thead>
-                  <tr>
-                    <th scope="col">Bezugsbasis</th>
-                    <th scope="col">Fassung</th>
-                    <th scope="col">Freigegeben von</th>
-                    <th scope="col">Am</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {v.bezugsbasen_freigaben.map((f) => (
-                    <tr key={`${f.bezugsbasis_id}-${f.fassung}`} data-testid={`verantwortung-freigabe-${f.bezugsbasis}-${f.fassung}`}>
-                      <td>
-                        {f.bezugsbasis}
-                        <span className="vp-ez-unter">{f.kennzahl}</span>
-                      </td>
-                      <td data-label="Fassung">{f.fassung}</td>
-                      <td data-label="Freigegeben von">
-                        {f.freigegeben_von ?? '—'}
-                        {f.vieraugen && f.zweite_person ? ` · zweite Person ${f.zweite_person}` : ''}
-                      </td>
-                      <td data-label="Am">{E.tagText(f.freigegeben_am) || '—'}</td>
+              <div className="vp-ez-tafel-rahmen">
+                <table className="vp-ez-tafel">
+                  <thead>
+                    <tr>
+                      <th scope="col">Bezugsbasis</th>
+                      <th scope="col">Fassung</th>
+                      <th scope="col">Freigegeben von</th>
+                      <th scope="col">Am</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {v.bezugsbasen_freigaben.map((f) => (
+                      <tr key={`${f.bezugsbasis_id}-${f.fassung}`} data-testid={`verantwortung-freigabe-${f.bezugsbasis}-${f.fassung}`}>
+                        <td>
+                          {f.bezugsbasis}
+                          <span className="vp-ez-unter">{f.kennzahl}</span>
+                        </td>
+                        <td data-label="Fassung">{f.fassung}</td>
+                        <td data-label="Freigegeben von">
+                          {f.freigegeben_von ?? '—'}
+                          {f.vieraugen && f.zweite_person ? ` · zweite Person ${f.zweite_person}` : ''}
+                        </td>
+                        <td data-label="Am">{E.tagText(f.freigegeben_am) || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>

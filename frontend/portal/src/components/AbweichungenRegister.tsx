@@ -78,43 +78,45 @@ export function AbweichungenRegister({
           {zeilen.length === 0 ? (
             <p className="vp-ez-satz">{A.LEER_GEFILTERT}</p>
           ) : (
-            <table className="vp-ez-tafel" data-testid="abweichungen-tafel">
-              <thead>
-                <tr>
-                  <th scope="col">{A.SPALTEN.kennzeichen}</th>
-                  <th scope="col">{A.SPALTEN.zustand}</th>
-                  <th scope="col">{A.SPALTEN.frist}</th>
-                  <th scope="col">{A.SPALTEN.verantwortlich}</th>
-                  <th scope="col">{A.SPALTEN.ergebnis}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {zeilen.map((a) => {
-                  const ueberfaellig = A.ueberfaelligText(a);
-                  return (
-                    <tr key={a.id} data-testid={`abweichung-zeile-${a.kennzeichen}`}>
-                      <th scope="row">
-                        <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(a.id)}>
-                          {a.kennzeichen}
-                        </button>
-                        <span className="vp-ez-unter">{`${A.kennzahlText(a.kennzahl)} · ${A.monateDerAbweichung(a.monate)}`}</span>
-                      </th>
-                      <td data-label={A.SPALTEN.zustand} data-testid="zustand">
-                        {A.ZUSTAND_WORT[a.zustand]}
-                      </td>
-                      <td data-label={A.SPALTEN.frist} data-testid="frist">
-                        {Z.tag(a.frist.termin)}
-                        {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
-                      </td>
-                      <td data-label={A.SPALTEN.verantwortlich}>{a.verantwortlich.name}</td>
-                      <td data-label={A.SPALTEN.ergebnis} data-testid="ergebnis">
-                        {A.ergebnisText(a) ?? '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="vp-ez-tafel-rahmen">
+              <table className="vp-ez-tafel" data-testid="abweichungen-tafel">
+                <thead>
+                  <tr>
+                    <th scope="col">{A.SPALTEN.kennzeichen}</th>
+                    <th scope="col">{A.SPALTEN.zustand}</th>
+                    <th scope="col">{A.SPALTEN.frist}</th>
+                    <th scope="col">{A.SPALTEN.verantwortlich}</th>
+                    <th scope="col">{A.SPALTEN.ergebnis}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeilen.map((a) => {
+                    const ueberfaellig = A.ueberfaelligText(a);
+                    return (
+                      <tr key={a.id} data-testid={`abweichung-zeile-${a.kennzeichen}`}>
+                        <th scope="row">
+                          <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(a.id)}>
+                            {a.kennzeichen}
+                          </button>
+                          <span className="vp-ez-unter">{`${A.kennzahlText(a.kennzahl)} · ${A.monateDerAbweichung(a.monate)}`}</span>
+                        </th>
+                        <td data-label={A.SPALTEN.zustand} data-testid="zustand">
+                          {A.ZUSTAND_WORT[a.zustand]}
+                        </td>
+                        <td data-label={A.SPALTEN.frist} data-testid="frist">
+                          {Z.tag(a.frist.termin)}
+                          {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
+                        </td>
+                        <td data-label={A.SPALTEN.verantwortlich}>{a.verantwortlich.name}</td>
+                        <td data-label={A.SPALTEN.ergebnis} data-testid="ergebnis">
+                          {A.ergebnisText(a) ?? '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}

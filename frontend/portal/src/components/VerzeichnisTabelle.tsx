@@ -118,47 +118,49 @@ export function VerzeichnisTabelle({ onDokument, saetze = false }: { onDokument?
               </ul>
             </>
           ) : (
-            <table className="vp-ez-tafel">
-              <thead>
-                <tr>
-                  <th scope="col" className="vp-em-eintrag">Eintrag</th>
-                  <th scope="col">Fassung oder Nr.</th>
-                  <th scope="col">{UEMS_ENTSCHIEDEN_VON}</th>
-                  <th scope="col">{UEMS_EINGETRAGEN_VON}</th>
-                  <th scope="col">Tag</th>
-                  <th scope="col">Prüfsumme</th>
-                  <th scope="col">Ort</th>
-                </tr>
-              </thead>
-              <tbody>
-                {g.zeilen.map((z, i) => {
-                  const id = z.kennzeichen.startsWith('D-') ? dokumentId.get(z.kennzeichen) : undefined;
-                  // Eine Aufgaben-Zeile trägt ihr Wort als Kennzeichen und im Titel („Leitung des Unternehmens: …“) — einmal genügt.
-                  const text = z.titel.startsWith(z.kennzeichen) ? z.titel : `${z.kennzeichen} · ${z.titel}`;
-                  return (
-                    <tr key={`${z.kennzeichen}-${z.nr ?? ''}-${i}`} data-testid={`verzeichnis-zeile-${z.kennzeichen}`}>
-                      <td className="vp-em-eintrag">
-                        {id && onDokument ? (
-                          <button type="button" className="vp-ez-zeile-knopf" onClick={() => onDokument(id)}>
-                            {text}
-                          </button>
-                        ) : (
-                          text
-                        )}
-                      </td>
-                      <td data-label="Fassung oder Nr.">{z.nr ?? '—'}</td>
-                      <td data-label={UEMS_ENTSCHIEDEN_VON}>{z.entschieden_von ?? '—'}</td>
-                      <td data-label={UEMS_EINGETRAGEN_VON}>{z.eingetragen_von ?? '—'}</td>
-                      <td data-label="Tag" className="vp-em-tag">{z.tag ? E.tagText(z.tag) : '—'}</td>
-                      <td data-label="Prüfsumme" className="vp-ez-pruefsumme" title={z.pruefsumme ?? undefined}>
-                        {z.pruefsumme ? E.kurz(z.pruefsumme) : '—'}
-                      </td>
-                      <td data-label="Ort">{z.ort_satz}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="vp-ez-tafel-rahmen">
+              <table className="vp-ez-tafel">
+                <thead>
+                  <tr>
+                    <th scope="col" className="vp-em-eintrag">Eintrag</th>
+                    <th scope="col">Fassung oder Nr.</th>
+                    <th scope="col">{UEMS_ENTSCHIEDEN_VON}</th>
+                    <th scope="col">{UEMS_EINGETRAGEN_VON}</th>
+                    <th scope="col">Tag</th>
+                    <th scope="col">Prüfsumme</th>
+                    <th scope="col">Ort</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.zeilen.map((z, i) => {
+                    const id = z.kennzeichen.startsWith('D-') ? dokumentId.get(z.kennzeichen) : undefined;
+                    // Eine Aufgaben-Zeile trägt ihr Wort als Kennzeichen und im Titel („Leitung des Unternehmens: …“) — einmal genügt.
+                    const text = z.titel.startsWith(z.kennzeichen) ? z.titel : `${z.kennzeichen} · ${z.titel}`;
+                    return (
+                      <tr key={`${z.kennzeichen}-${z.nr ?? ''}-${i}`} data-testid={`verzeichnis-zeile-${z.kennzeichen}`}>
+                        <td className="vp-em-eintrag">
+                          {id && onDokument ? (
+                            <button type="button" className="vp-ez-zeile-knopf" onClick={() => onDokument(id)}>
+                              {text}
+                            </button>
+                          ) : (
+                            text
+                          )}
+                        </td>
+                        <td data-label="Fassung oder Nr.">{z.nr ?? '—'}</td>
+                        <td data-label={UEMS_ENTSCHIEDEN_VON}>{z.entschieden_von ?? '—'}</td>
+                        <td data-label={UEMS_EINGETRAGEN_VON}>{z.eingetragen_von ?? '—'}</td>
+                        <td data-label="Tag" className="vp-em-tag">{z.tag ? E.tagText(z.tag) : '—'}</td>
+                        <td data-label="Prüfsumme" className="vp-ez-pruefsumme" title={z.pruefsumme ?? undefined}>
+                          {z.pruefsumme ? E.kurz(z.pruefsumme) : '—'}
+                        </td>
+                        <td data-label="Ort">{z.ort_satz}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       ))}

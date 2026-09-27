@@ -22,7 +22,7 @@ function Fixture() {
   const [open, setOpen] = useState(false);
   if (new URLSearchParams(location.search).has('register')) return <App initialAuth={false} initialView="register" />;
   return <main>
-    <button onClick={() => setOpen(true)}>Gerät hinzufügen</button>
+    <button onClick={() => setOpen(true)}>VoltPilot-Box hinzufügen</button>
     <a href="#background">Link im Hintergrund</a>
     <AddDeviceDrawer open={open} onClose={() => setOpen(false)} sites={sites} onClaimed={() => {}} />
   </main>;

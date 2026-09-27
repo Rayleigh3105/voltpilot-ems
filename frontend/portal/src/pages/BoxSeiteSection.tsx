@@ -11,6 +11,7 @@ import {
   type Site,
   type SiteEntities,
   type SiteSource,
+  type StandorteAmStichtag,
   type UemsDatenquelle,
   type UemsGemeinsameSteuerungZustand,
 } from '../api';
@@ -35,6 +36,7 @@ import { GeraetBuehne } from '../components/GeraetBuehne';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { AddDeviceDrawer, unclaimConsequences } from '../components/DeviceDrawers';
 import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
+import { DatenquelleAnlegen } from '../components/DatenquelleAnlegen';
 import { Recht } from '../components/Recht';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
@@ -116,6 +118,9 @@ export function BoxSeiteSection({
   const [now, setNow] = useState(() => Date.now());
   const [loeschen, setLoeschen] = useState<'purge' | 'entfernen' | null>(null);
   const [wechselQuelle, setWechselQuelle] = useState<UemsDatenquelle | null>(null);
+  // „Datenquelle anlegen“ braucht den Standort der Anlage (Box-Wahl und Netzlage gelten je Standort).
+  const [standorte, setStandorte] = useState<StandorteAmStichtag | null>(null);
+  const [quelleAnlegen, setQuelleAnlegen] = useState(false);
   const [tauschOffen, setTauschOffen] = useState(false);
 
   useEffect(() => {
@@ -144,6 +149,7 @@ export function BoxSeiteSection({
     soft(api.siteChargers(site.id), setCharging);
     soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
     soft(api.gemeinsameSteuerung(site.id), setGemeinsameSteuerung);
+    soft(api.standorte(), setStandorte);
     setNow(Date.now());
     if (showTechnicalLayer() && boxDevice) {
       void Promise.all([
@@ -203,6 +209,7 @@ export function BoxSeiteSection({
     });
   }, LIVE_POLL_MS);
 
+  const standortDerAnlage = standorte?.standorte.find((st) => st.anlagen.some((a) => a.id === site.id)) ?? null;
   const view: BoxSeiteView | null = useMemo(() => {
     if (!data) return null;
     return boxSeite({
@@ -298,7 +305,9 @@ export function BoxSeiteSection({
               }}
               satz={view.geraete.length > 0
                 ? `${liefern} von ${view.geraete.length} ${view.geraete.length === 1 ? 'Gerät liefert' : 'Geräten liefern'} Daten.`
-                : view.geraeteLeer}
+                : view.quellen.length > 0 && view.quellenSatz
+                  ? `${view.quellenSatz}.`
+                  : view.geraeteLeer}
               satzTon={view.zustand.ton}
               grafik={{ art: 'box', verbunden, geraete: view.geraete.length }}
               // Die Software-Version steht in „Gerät & Verbindung" (auch im
@@ -323,13 +332,14 @@ export function BoxSeiteSection({
                     <h3>{view.quellenSatz}</h3>
                     {view.budgetSumme && <span>{view.budgetSumme}</span>}
                   </div>
-                  {view.quellen.length === 0 ? <p className="vp-note">Datenquelle anlegen</p> : (
+                  {view.quellen.length === 0 ? <p className="vp-note">Diese Box liest noch keine Datenquelle.</p> : (
                     <ul>
                       {view.quellen.map((q) => (
                         <li key={q.id}>
                           <span className={`vp-health-dot vp-health-${q.ton}`} />
                           <div>
-                            <b>{q.kennzeichen} · {q.name}</b>
+                            <b>{q.titel}</b>
+                            <span>{q.weg}</span>
                             <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
                             <small>{q.budget}</small>
                             {/* AP-15 IP-26: der Weg zu einem Mitglied — vor dem Scharfschalten bleibt der Knopf, der Server
@@ -352,9 +362,17 @@ export function BoxSeiteSection({
                       ))}
                     </ul>
                   )}
+                  {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten. */}
+                  {standortDerAnlage && (
+                    <Recht aktion="datenquelle.bearbeiten"><button type="button" className="vp-box-quellen-aktion" onClick={() => setQuelleAnlegen(true)}>
+                      <Icon name="plus" size={14} /> Datenquelle anlegen
+                    </button></Recht>
+                  )}
                 </div>
               )}
-              {view.geraeteLeer && <p className="vp-note">{view.geraeteLeer}</p>}
+              {view.geraeteLeer && (
+                <p className="vp-note">{view.quellen.length > 0 ? KEINE_GERAETE_ABER_QUELLEN : view.geraeteLeer}</p>
+              )}
               {view.geraete.length > 0 && (
                 <>
                   <ul className="vp-geraet-liste" data-testid="box-geraete">
@@ -507,11 +525,25 @@ export function BoxSeiteSection({
           setDatenquellen((alt) => alt?.map((q) => q.id === neu.id ? neu : q) ?? [neu]);
           setWechselQuelle(neu);
         }} />}
+      {quelleAnlegen && standortDerAnlage && (
+        <DatenquelleAnlegen
+          anlage={{ id: site.id, name: site.name }}
+          standortId={standortDerAnlage.id}
+          anlagenAmStandort={standortDerAnlage.anlagen.map((a) => a.id)}
+          onClose={() => {
+            setQuelleAnlegen(false);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
       {tauschOffen && boxDevice && <AddDeviceDrawer open onClose={() => setTauschOffen(false)}
         sites={[site]} onClaimed={() => {}} nachfolgerVon={boxDevice} datenquellen={datenquellen ?? []} />}
     </div>
   );
 }
+
+/** Eine Box, die über Datenquellen liest, ist nicht „ohne Gerät“ — sie hat nur keine angelegten Geräte-Karten. */
+const KEINE_GERAETE_ABER_QUELLEN = 'Keine Geräte angelegt — die Box liest über die Datenquellen oben.';
 
 /** Ein Gerät AN der Box - eine Zeile mit dem Weg auf seine eigene Seite. */
 function BoxGeraetZeile({

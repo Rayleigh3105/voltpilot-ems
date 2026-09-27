@@ -25,10 +25,11 @@ async function breite(page: Page, px: 375 | 1440) {
 for (const px of [375, 1440] as const) {
   test(`U7a: Zuordnung rückwirkend korrigieren und leeren Standort archivieren (${px} px)`, async ({ page }) => {
     await breite(page, px);
-    await page.goto('/e2e/startansicht.html?bild=korrektur&ansicht=werk-anlagen');
+    // Die Anlagen des Standorts stehen auf seiner Übersicht (die frühere Seite „Anlagen“ ist im Aufbau aufgegangen).
+    await page.goto('/e2e/startansicht.html?bild=korrektur&ansicht=werk');
     const einstieg = page.getByRole('button', { name: 'Zuordnung korrigieren' });
     await expect(einstieg).toBeVisible();
-    await bild(page, `zuordnung-korrigieren-standort-anlagen-${px}.png`);
+    await bild(page, `zuordnung-korrigieren-standort-${px}.png`);
 
     await einstieg.click();
     const dialog = page.getByRole('dialog', { name: 'Anlage zuordnen' });

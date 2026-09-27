@@ -118,7 +118,7 @@ async function anlegenUndRegisterUeberspringen(name = 'Halle 3') {
   fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: name } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-  expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+  expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
 }
 
 afterEach(() => {
@@ -173,7 +173,7 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     fireEvent.click(screen.getByRole('button', { name: 'Übernehmen & weiter' }));
 
     // Schritt 3: Gerät — auch der Fehlersatz.
-    expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+    expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
     claimDevice.mockRejectedValueOnce(new ApiError(422, 'unbekannt'));
     fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
     fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
@@ -228,7 +228,7 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     await ruhe();
     expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
     fireEvent.click(screen.getByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
     expect(await screen.findByText(/„Werk Lindach“ ist da/)).toBeInTheDocument();
     schweigt('Fertig nach dem Wiedereinstieg');
     fireEvent.click(screen.getByRole('button', { name: ZU_DEN_MESSSTELLEN }));
@@ -384,7 +384,7 @@ describe('„Anlage anlegen" als Drawer: nach „Zu den Messstellen" dorthin, so
   async function bisFertig() {
     await ruhe();
     await anlegenUndRegisterUeberspringen();
-    fireEvent.click(screen.getByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Box habe ich noch nicht - später' }));
     expect(await screen.findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
   }
 

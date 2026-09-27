@@ -75,47 +75,49 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
           {zeilen.length === 0 ? (
             <p className="vp-ez-satz">{M.LEER_GEFILTERT}</p>
           ) : (
-            <table className="vp-ez-tafel" data-testid="massnahmen-tafel">
-              <thead>
-                <tr>
-                  <th scope="col">{M.SPALTEN.kennzeichen}</th>
-                  <th scope="col">{M.SPALTEN.zustand}</th>
-                  <th scope="col">{M.SPALTEN.termin}</th>
-                  <th scope="col">{M.SPALTEN.verantwortlich}</th>
-                  <th scope="col">{M.SPALTEN.messgrundlage}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {zeilen.map((m) => {
-                  const ueberfaellig = M.ueberfaelligText(m);
-                  return (
-                    <tr key={m.id} data-testid={`massnahme-zeile-${m.kennzeichen}`}>
-                      <th scope="row">
-                        <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(m.id)}>
-                          {m.kennzeichen}
-                        </button>
-                        <span className="vp-ez-unter">{m.titel}</span>
-                      </th>
-                      <td data-label={M.SPALTEN.zustand} data-testid="zustand">
-                        {M.ZUSTAND_WORT[m.zustand]}
-                      </td>
-                      <td data-label={M.SPALTEN.termin} data-testid="termin">
-                        {Z.tag(m.termin)}
-                        {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
-                      </td>
-                      <td data-label={M.SPALTEN.verantwortlich}>{m.verantwortlich.name}</td>
-                      <td data-label={M.SPALTEN.messgrundlage} data-testid="messgrundlage">
-                        {m.messgrundlage ? (
-                          `${m.messgrundlage.kennzahl.kennzeichen} ${m.messgrundlage.kennzahl.name ?? ''}`.trim()
-                        ) : (
-                          <span className="vp-ez-ohne">{m.ohne_messgrundlage?.kennzeichen}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="vp-ez-tafel-rahmen">
+              <table className="vp-ez-tafel" data-testid="massnahmen-tafel">
+                <thead>
+                  <tr>
+                    <th scope="col">{M.SPALTEN.kennzeichen}</th>
+                    <th scope="col">{M.SPALTEN.zustand}</th>
+                    <th scope="col">{M.SPALTEN.termin}</th>
+                    <th scope="col">{M.SPALTEN.verantwortlich}</th>
+                    <th scope="col">{M.SPALTEN.messgrundlage}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeilen.map((m) => {
+                    const ueberfaellig = M.ueberfaelligText(m);
+                    return (
+                      <tr key={m.id} data-testid={`massnahme-zeile-${m.kennzeichen}`}>
+                        <th scope="row">
+                          <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(m.id)}>
+                            {m.kennzeichen}
+                          </button>
+                          <span className="vp-ez-unter">{m.titel}</span>
+                        </th>
+                        <td data-label={M.SPALTEN.zustand} data-testid="zustand">
+                          {M.ZUSTAND_WORT[m.zustand]}
+                        </td>
+                        <td data-label={M.SPALTEN.termin} data-testid="termin">
+                          {Z.tag(m.termin)}
+                          {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
+                        </td>
+                        <td data-label={M.SPALTEN.verantwortlich}>{m.verantwortlich.name}</td>
+                        <td data-label={M.SPALTEN.messgrundlage} data-testid="messgrundlage">
+                          {m.messgrundlage ? (
+                            `${m.messgrundlage.kennzahl.kennzeichen} ${m.messgrundlage.kennzahl.name ?? ''}`.trim()
+                          ) : (
+                            <span className="vp-ez-ohne">{m.ohne_messgrundlage?.kennzeichen}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}

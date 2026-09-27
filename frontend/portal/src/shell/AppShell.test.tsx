@@ -789,51 +789,45 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
       </AppShell>,
     );
 
-  it('trägt die Kacheln der Ebene; `--vp-bar-slots` folgt ihrer Zahl, die offene ist markiert', () => {
+  it('trägt die Kacheln der Ebene — am Unternehmen Gruppen; `--vp-bar-slots` folgt ihrer Zahl, die offene ist markiert', () => {
     renderEbene();
     const bar = screen.getByLabelText(titel);
-    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
-      'Übersicht',
-      'Standorte',
-      'Messstellen',
-      'Bezugsgrößen',
-      'Kennzahlen',
-      'Berichte',
-    ]);
-    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 6');
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 3');
     expect(bar.querySelector('[aria-current="page"]')?.textContent).toBe('Übersicht');
     expect(bar.textContent).not.toMatch(/Steuer/);
   });
 
-  it.each(['uebersicht', 'netzanschluesse'] as const)(
-    'die Netzanschlüsse-Kachel lässt bestehende Buttons bytegleich, aktiv: %s', (aktiv) => {
-      const vorher = renderEbene({ aktiv });
-      const bestehendeButtons = within(screen.getByLabelText(titel)).getAllByRole('button')
-        .map(button => ({ name: button.textContent!, html: button.outerHTML }));
-      vorher.unmount();
+  it.each([
+    ['standorte', 'Übersicht'],
+    ['bezugsgroessen', 'Messen'],
+    ['berichte', 'Auswerten'],
+  ] as const)('ein offener Bereich markiert die Kachel seiner Gruppe: %s → %s', (aktiv, kachel) => {
+    renderEbene({ aktiv });
+    const bar = screen.getByLabelText(titel);
+    expect(bar.querySelector('[aria-current="page"]')?.textContent).toBe(kachel);
+    expect(bar.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+  });
 
-      const ziel = standortBereichRoute(werkAhrenberg().id, 'netzanschluesse');
-      const onOpen = vi.fn();
-      renderEbene({ aktiv, onOpen, kacheln: [...kacheln, { key: 'netzanschluesse', label: 'Netzanschlüsse', icon: 'zap', ziel }] });
-      const bar = screen.getByLabelText(titel);
-      for (const { name, html } of bestehendeButtons) {
-        expect(within(bar).getByRole('button', { name }).outerHTML).toBe(html);
-      }
-      const netzanschluesse = within(bar).getByRole('button', { name: 'Netzanschlüsse' });
-      expect(bar.querySelectorAll('.vp-bottombar-netzanschluesse')).toHaveLength(1);
-      expect(netzanschluesse.className).toBe(`vp-bottombar-item vp-bottombar-netzanschluesse${aktiv === 'netzanschluesse' ? ' active' : ''}`);
-      expect(netzanschluesse.getAttribute('aria-current')).toBe(aktiv === 'netzanschluesse' ? 'page' : null);
-      fireEvent.click(netzanschluesse);
-      expect(onOpen).toHaveBeenCalledTimes(1);
-      expect(onOpen).toHaveBeenCalledWith(ziel);
-    },
-  );
-
-  it('eine Kachel navigiert auf ihre Seite', () => {
+  it('eine Kachel navigiert auf die Seite des ersten Bereichs ihrer Gruppe', () => {
     const onOpen = vi.fn();
     renderEbene({ onOpen });
-    fireEvent.click(within(screen.getByLabelText(titel)).getByRole('button', { name: 'Standorte' }));
-    expect(onOpen).toHaveBeenCalledWith(pageRoute('portfolio-standorte'));
+    fireEvent.click(within(screen.getByLabelText(titel)).getByRole('button', { name: 'Messen' }));
+    expect(onOpen).toHaveBeenCalledWith(pageRoute('portfolio'));
+    fireEvent.click(within(screen.getByLabelText(titel)).getByRole('button', { name: 'Übersicht' }));
+    expect(onOpen).toHaveBeenLastCalledWith(pageRoute('portfolio'));
+  });
+
+  it('am Standort: jeder Bereich eine Kachel, „Anschlüsse“ statt „Netzanschlüsse“, kein Umbruch-Pflaster', () => {
+    const lm = { standorte: [werkAhrenberg(), werkLindach()], funktionen: ahrenbergFunktionen(), kennzahlen: ahrenbergKennzahlen() };
+    const standort = ebenenLeiste({ art: 'standort', standortId: werkAhrenberg().id }, lm);
+    renderEbene({ kacheln: standort, aktiv: 'netzanschluesse', titel: 'Bereiche des Standorts Werk Ahrenberg' });
+    const bar = screen.getByLabelText('Bereiche des Standorts Werk Ahrenberg');
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse']);
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 5');
+    const aktiv = within(bar).getByRole('button', { name: 'Anschlüsse' });
+    expect(aktiv.className).toBe('vp-bottombar-item active');
+    expect(aktiv.getAttribute('aria-current')).toBe('page');
   });
 
   it('ohne Kacheln — unter drei Bereichen mit Seite — gibt es keine Leiste, wie heute', () => {

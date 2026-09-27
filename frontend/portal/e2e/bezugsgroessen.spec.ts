@@ -211,8 +211,9 @@ for (const breite of [375, 1440]) {
     await page.clock.setFixedTime(new Date('2026-10-20T10:00:00Z'));
     await page.setViewportSize({ width: breite, height: 900 });
     await page.goto('/e2e/startansicht.html?bild=unternehmen&rechte=1&person=JW');
-    const weg = breite === 375 ? page.locator('.vp-bottombar').getByRole('button', { name: 'Bezugsgrößen', exact: true }) : page.getByRole('tab', { name: 'Bezugsgrößen', exact: true });
-    await weg.click();
+    // Am Telefon trägt die Leiste Gruppen: „Messen“ öffnet die Gruppe, darüber steht der Reiter „Bezugsgrößen“.
+    if (breite === 375) await page.locator('.vp-bottombar').getByRole('button', { name: 'Messen', exact: true }).click();
+    await page.getByRole('tab', { name: 'Bezugsgrößen', exact: true }).click();
     await expect(page).toHaveURL(/#\/portfolio\/bezugsgroessen$/);
     await expect(page.getByTestId('bezugsgroesse-karte')).toHaveCount(11);
     await expect(page.getByText('Art nicht angegeben', { exact: true })).toHaveCount(6);

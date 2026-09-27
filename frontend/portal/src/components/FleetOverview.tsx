@@ -182,7 +182,7 @@ export function FleetSiteCard({
       >
         <span>
           {site.deviceCount === 0
-            ? 'Gerät hinzufügen'
+            ? 'VoltPilot-Box hinzufügen'
             : notComputable
               ? 'Für diese Anlage nicht berechenbar'
               : earn ??

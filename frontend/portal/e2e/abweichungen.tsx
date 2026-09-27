@@ -5,7 +5,7 @@ import { keycloak } from '../src/auth';
 import { benutzerApi } from '../src/benutzer';
 import { heute } from '../src/bewertung';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
-import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell } from '../src/ebenenNav';
+import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche } from '../src/ebenenNav';
 import { darfAnsehen } from '../src/energieziele';
 import {
   abweichungRoute,
@@ -138,7 +138,10 @@ function Ansicht() {
         showKennzahlen={bereiche.includes('kennzahlen')}
         showBerichte={bereiche.includes('berichte')}
         showVerbesserung={bereiche.includes('verbesserung')}
-        leiste={kacheln.map((k) => k.key)}
+        // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
+        // über der Seite stehen dort nur die Reiter der offenen Gruppe.
+        leiste={kacheln.flatMap((k) => k.bereiche)}
+        telefonReiter={telefonReiterBereiche(kacheln, ebenenAktiv(route.page))}
         fleetLabel="Unternehmen"
         onNavigate={(p) => navigate(pageRoute(p))}
       />

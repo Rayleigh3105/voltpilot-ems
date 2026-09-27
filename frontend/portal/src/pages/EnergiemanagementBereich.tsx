@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useReiterRand } from '../reiterRand';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type EnergiemanagementDokumentKurz } from '../api';
 import { DokumentAnlegenDialog } from '../components/DokumentDialoge';
@@ -70,6 +71,7 @@ export function EnergiemanagementBereich({
   /** Der Sprung einer Wiedervorlage-Zeile (WV3) — auch auf Seiten außerhalb des Bereichs; ohne ihn springt keine Zeile. */
   onSprung?: (ziel: Route) => void;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   const rollen = useRollen();
   if (dokumentId) return <DokumentSeite id={dokumentId} onListe={() => onReiter('dokumente')} />;
   if (personId) return <EnergiemanagementPersonSeite id={personId} onListe={() => onReiter('aufgaben')} />;
@@ -95,7 +97,7 @@ export function EnergiemanagementBereich({
           {SAETZE.einsicht_rolle}
         </p>
       )}
-      <div className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
+      <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
         {E.REITER.map((r) => (
           <button
             key={r.key}
@@ -167,37 +169,39 @@ function DokumenteRegister({ onOeffnen }: { onOeffnen: (id: string) => void }) {
       ) : liste.length === 0 ? (
         <p className="vp-ez-satz" data-testid="dokumente-leer">{SAETZE.verzeichnis_leer}</p>
       ) : (
-        <table className="vp-ez-tafel">
-          <thead>
-            <tr>
-              <th scope="col">Dokument</th>
-              <th scope="col">Art</th>
-              <th scope="col">Bezug</th>
-              <th scope="col">Zustand</th>
-              <th scope="col">Überprüfung</th>
-            </tr>
-          </thead>
-          <tbody>
-            {liste.map((d) => (
-              <tr key={d.id} data-testid={`dokument-zeile-${d.kennzeichen}`}>
-                <td>
-                  <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(d.id)}>
-                    {d.kennzeichen} {d.titel}
-                  </button>
-                </td>
-                <td data-label="Art">{d.art_wort}</td>
-                <td data-label="Bezug">{E.bezugWort(d.bezug)}</td>
-                <td data-label="Zustand">
-                  {E.ZUSTAND_WORT[d.zustand]}
-                  {d.gueltige_fassung ? ` · Fassung ${d.gueltige_fassung}` : ''}
-                </td>
-                <td data-label="Überprüfung">
-                  {d.ueberpruefung?.satz ?? (d.ueberpruefung?.faellig_am ? `fällig am ${E.tagText(d.ueberpruefung.faellig_am)}` : '—')}
-                </td>
+        <div className="vp-ez-tafel-rahmen">
+          <table className="vp-ez-tafel">
+            <thead>
+              <tr>
+                <th scope="col">Dokument</th>
+                <th scope="col">Art</th>
+                <th scope="col">Bezug</th>
+                <th scope="col">Zustand</th>
+                <th scope="col">Überprüfung</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {liste.map((d) => (
+                <tr key={d.id} data-testid={`dokument-zeile-${d.kennzeichen}`}>
+                  <td>
+                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(d.id)}>
+                      {d.kennzeichen} {d.titel}
+                    </button>
+                  </td>
+                  <td data-label="Art">{d.art_wort}</td>
+                  <td data-label="Bezug">{E.bezugWort(d.bezug)}</td>
+                  <td data-label="Zustand">
+                    {E.ZUSTAND_WORT[d.zustand]}
+                    {d.gueltige_fassung ? ` · Fassung ${d.gueltige_fassung}` : ''}
+                  </td>
+                  <td data-label="Überprüfung">
+                    {d.ueberpruefung?.satz ?? (d.ueberpruefung?.faellig_am ? `fällig am ${E.tagText(d.ueberpruefung.faellig_am)}` : '—')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {anlegen && (
         <DokumentAnlegenDialog

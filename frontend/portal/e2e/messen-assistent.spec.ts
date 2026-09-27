@@ -503,7 +503,7 @@ for (const breite of BREITEN) {
       await expect(fluss.getByText('PV & Speicher aus dem Register')).toBeVisible();
       expect(await woerter(), 'Register').toEqual([]);
       await fluss.getByRole('button', { name: 'Überspringen - später nachtragen', exact: true }).click();
-      await expect(fluss.getByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeVisible();
+      await expect(fluss.getByText('Verbinden Sie Ihre VoltPilot-Box')).toBeVisible();
       expect(await woerter(), 'Gerät').toEqual([]);
       await fluss.getByLabel('Geräte-ID').fill('vp-demo-0001');
       await fluss.getByRole('button', { name: 'Anlage anlegen', exact: true }).click();
@@ -526,26 +526,19 @@ for (const breite of BREITEN) {
       await messeUndFotografiere(page, breite, 'messanlage-zurueck');
     });
 
-    test('die bestehenden Dialoge liegen über dem Assistenten — ohne Querlauf', async ({ page }) => {
+    test('Box und Gerät entstehen im Aufbau der Anlage — der Assistent führt hin, statt einen zweiten Dialog zu öffnen', async ({ page }) => {
       await verdrahte(page, lindachImEntwurf());
-      await oeffne(page, breite, `?standort=${LINDACH}`);
-      await schritt2(page);
-
-      await page.getByRole('button', { name: 'Gerät verbinden für Werk Lindach', exact: true }).click();
-      const geraet = page.getByRole('dialog', { name: /Gerät hinzufügen/ });
-      await expect(geraet).toBeVisible();
-      // Der Unterablauf ersetzt die Schale — nichts liegt über ihm (das Haus-Modal läge sonst darunter).
-      await expect(page.getByRole('dialog', { name: /^Messen & Auswerten/ })).toHaveCount(0);
-      await messeUndFotografiere(page, breite, 'geraet-verbinden');
-      await geraet.getByRole('button', { name: 'Abbrechen', exact: true }).click();
-      await expect(geraet).toHaveCount(0);
-      await zaehlerIst(page, breite, 2, 'Datenquelle');
-
-      // Seit dem Gerätekatalog (main e70b57b76) beginnt „Gerät anbinden" im Katalog.
-      await page.getByRole('button', { name: 'Gerät anbinden für Werk Lindach', exact: true }).click();
-      await expect(page.getByRole('dialog', { name: 'Gerät hinzufügen' })
-        .getByRole('searchbox', { name: 'Katalog durchsuchen' })).toBeVisible();
-      await messeUndFotografiere(page, breite, 'geraet-anbinden');
+      for (const [knopf, neu] of [['VoltPilot-Box hinzufügen', 'box'], ['Gerät hinzufügen', 'geraet']] as const) {
+        await oeffne(page, breite, `?standort=${LINDACH}`);
+        await schritt2(page);
+        const weg = page.getByRole('button', { name: `${knopf} für Werk Lindach`, exact: true });
+        await expect(weg).toContainText('im Aufbau der Anlage');
+        if (neu === 'box') await messeUndFotografiere(page, breite, 'wege-in-den-aufbau');
+        await weg.click();
+        // Der Assistent schließt; die Adresse ist der Aufbau der Anlage mit der offenen Handlung.
+        await expect(page.getByRole('dialog', { name: /^Messen & Auswerten/ })).toHaveCount(0);
+        await expect.poll(() => page.evaluate(() => window.location.hash)).toBe(`#/anlage/${FIXTURE_IDS.an3}/modell?neu=${neu}`);
+      }
     });
 
     test('Datenquelle anlegen: Box-Wahl, Prüfung und Budget-Ablehnung mit zwei Auswegen', async ({ page }) => {

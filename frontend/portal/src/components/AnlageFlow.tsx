@@ -1863,14 +1863,14 @@ function GeraetStep({
 
   return (
     <div className="vp-onboarding-step">
-      <h3>Verbinden Sie Ihr VoltPilot-Gerät</h3>
+      <h3>Verbinden Sie Ihre VoltPilot-Box</h3>
       <p className="vp-muted">
         {DEVICE_ID_FIELD.help}
-        {!multiSite && ` Das Gerät wird mit der Anlage „${site.name}“ verbunden.`}
+        {!multiSite && ` Die Box wird mit der Anlage „${site.name}“ verbunden.`}
       </p>
       <p className="vp-note">
-        Wechselrichter, Erzeuger und Verbraucher richten Sie direkt am Gerät ein – auf der
-        Geräteseite „Meine Anlage". Hier im Portal verbinden Sie das Gerät nur mit Ihrem Konto.
+        Hier verbinden Sie nur die Box mit Ihrem Konto. Wechselrichter, Zähler und Verbraucher
+        kommen danach im Aufbau der Anlage dazu.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         {multiSite && (
@@ -1917,7 +1917,7 @@ function GeraetStep({
       </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
-          Gerät habe ich noch nicht - später
+          Box habe ich noch nicht - später
         </button>
       </p>
       {err && <div className="vp-alert vp-alert-err">{err}</div>}

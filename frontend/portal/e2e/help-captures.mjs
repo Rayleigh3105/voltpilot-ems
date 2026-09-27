@@ -25,12 +25,12 @@ export const captures = [
   { id: 'box-verbinden', title: 'Die Geräte-ID zuordnen', query: 'scene=claim', root: '.vp-modal', points: [
     point('input', 'Übertragen Sie die vollständige VoltPilot-Geräte-ID.'),
     point('[role="combobox"]', 'Prüfen Sie die Anlage, der die Box zugeordnet werden soll.'),
-    point('.dfoot button:has-text("Gerät hinzufügen")', 'Das Hinzufügen ordnet die Box zu; die Datenverbindung prüfen Sie anschließend.'),
+    point('.dfoot button:has-text("VoltPilot-Box hinzufügen")', 'Das Hinzufügen ordnet die Box zu; die Datenverbindung prüfen Sie anschließend.'),
   ] },
   { id: 'box-verbinden-mobil', title: 'Geräte-ID auf dem Telefon eingeben', query: 'scene=claim', mobile: true, root: '.vp-modal', points: [
     point('input', 'Die Geräte-ID bleibt während der Eingabe sichtbar.'),
     point('[role="combobox"]', 'Die gewählte Anlage bestimmt den Standort der Zuordnung.'),
-    point('.dfoot button:has-text("Gerät hinzufügen")', 'Die Abschlussaktion bleibt am unteren Rand erreichbar.'),
+    point('.dfoot button:has-text("VoltPilot-Box hinzufügen")', 'Die Abschlussaktion bleibt am unteren Rand erreichbar.'),
   ] },
   { id: 'fahrplan', title: 'Fahrplan: der Tag im Bild', hash: plant('fahrplan'), root: 'main', maxHeight: 1500, points: [
     point('.vp-tb-tage', 'Gestern, heute, morgen: der Plan, wie er gestern galt, der von heute und, sobald die Börsenpreise da sind, der für morgen.'),

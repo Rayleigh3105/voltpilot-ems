@@ -102,7 +102,7 @@ export const startArticles: HelpArticle[] = [
         "Die VoltPilot-Geräte-ID steht auf dem Aufkleber oder in der lokalen Web-App der Box. Verwenden Sie diese ID, nicht die Seriennummer des Wechselrichters. Schließen Sie zuerst die lokale Einrichtung ab.",
       ], figure: 'box-verbinden' },
       { id: 'verbinden', title: 'Verbinden und den Eingang kontrollieren', paragraphs: [], steps: [
-        'Im Assistenten oder beim Hinzufügen eines VoltPilot-Geräts die gewünschte Anlage prüfen.',
+        'Im Aufbau der Anlage „VoltPilot-Box hinzufügen“ wählen (beim Anlegen einer Anlage fragt der Assistent danach) und die gewünschte Anlage prüfen.',
         'Die Geräte-ID vollständig übertragen und verbinden. Beachten Sie die Hinweise direkt am Eingabefeld.',
         'Auf die Rückmeldung warten. Anschließend Geräteverbindung, Zeitpunkt des letzten Kontakts und erste Messwerte prüfen.',
       ], figure: 'box-verbinden-mobil', note: 'Eine bestätigte Zuordnung und eine aktive Datenverbindung sind zwei verschiedene Schritte. „Wartet auf Daten“ ist noch kein gemessener Betriebszustand.' },

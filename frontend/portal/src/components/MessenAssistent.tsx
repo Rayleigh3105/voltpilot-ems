@@ -89,21 +89,13 @@ import {
   type MessenWegZiel,
 } from '../messenAssistent';
 import { ortOptionen } from '../messstelleDialog';
-import { hashForRoute, standortMessstellenRoute } from '../nav';
+import { aufbauHash, hashForRoute, standortMessstellenRoute, type AufbauNeu } from '../nav';
 import { useIsPhone } from '../useIsPhone';
 import { wagoAssistentSichtbar } from '../wagoAssistent';
 import { AnlageAnlegenDrawerLazy } from './AnlageAnlegenDrawerLazy';
 import { AnlegenDialog } from './AnlegenDialog';
-import { AnlegenFlow } from './AnlegenFlow';
-import type { TypId } from '../anlegenFlow';
-import { AddDeviceDrawer } from './DeviceDrawers';
 import { DatenquelleAnlegen } from './DatenquelleAnlegen';
 import { DatenquelleVorschlagListe } from './DatenquelleVorschlagListe';
-import { GeraeteKatalog } from './GeraeteKatalog';
-import { fuehrendeBoxOf } from '../geraetAdresse';
-import type { KatalogWahl, KatalogWeg } from '../geraeteKatalog';
-import type { ComponentTemplate } from '../komponentenAssistent';
-import type { SiteComponents, SiteComponentTemplate } from '../api';
 import { StandortDialog } from './StandortDialog';
 import { VpPicker } from './VpPicker';
 import { WagoAssistent } from './WagoAssistent';
@@ -123,9 +115,10 @@ import './MessenAssistent.css';
  * Telefon, Fokusfalle, klebender Fuß). Schritt 1 wählt über `VpPicker` und legt
  * über den Standort-Dialog aus AP-02 an; „Weiter" erzeugt die Standort-Funktion
  * (`PUT …/funktionen/messen`). Schritt 2 öffnet je Anlage „Datenquelle anlegen"
- * (`DatenquelleAnlegen`) sowie die bestehenden Wege „Gerät verbinden"
- * (`AddDeviceDrawer`) und „Gerät anbinden" (der Komponenten-Assistent
- * `AnlegenFlow`). Solange ein Unterablauf offen ist,
+ * (`DatenquelleAnlegen`); „VoltPilot-Box hinzufügen" und „Gerät hinzufügen" führen
+ * in den EINEN Ort dafür, den Aufbau der Anlage (`?neu=box|geraet`) — dort derselbe
+ * Dialog, hier kein zweiter; der Entwurf bleibt, und der Aufbau bietet „Einrichtung
+ * fortsetzen" an. Solange ein Unterablauf offen ist,
  * ERSETZT er die Schale: das Haus-`Modal` liegt mit seinem Schleier auf Ebene 60,
  * die Schale auf 61 — gestapelt stünde „Gerät hinzufügen" UNTER dem Assistenten
  * (im Browser-Durchstich bei 1440 px gefunden). Zustand, Wahl und Schritt leben
@@ -151,15 +144,12 @@ import './MessenAssistent.css';
 
 type Unterfluss =
   | { art: 'standort'; standort: StandortAmStichtag | null }
-  | { art: 'geraet'; site: Site }
-  | { art: 'komponente'; siteId: string }
   | { art: 'datenquelle'; anlage: { id: string; name: string } }
   | { art: 'wago'; anlage: { id: string; name: string } }
   | { art: 'anlage'; standortId: string };
 
 const LADEFEHLER = 'Die Standorte konnten nicht geladen werden.';
 const EINRICHTEN_FEHLER = 'Messen & Auswerten konnte nicht angelegt werden. Bitte versuchen Sie es erneut.';
-const ANLAGE_FEHLER = 'Die Anlage konnte nicht geladen werden. Bitte versuchen Sie es erneut.';
 const ORT_FEHLER = 'Der Ort konnte nicht gespeichert werden.';
 const PRUEF_LADEFEHLER = 'Die Prüfliste konnte nicht geladen werden. Bitte versuchen Sie es erneut.';
 
@@ -259,7 +249,7 @@ export function MessenAssistent({
   const anlagen = anlagenAmStandort(st);
   const anlagenKennung = anlagen.map((a) => a.id).join(',');
 
-  // Schritt 2: die Anlagen für „Gerät verbinden" und je Anlage die Zahl ihrer Komponenten.
+  // Schritt 2: die Anlagen für „VoltPilot-Box hinzufügen" und je Anlage die Zahl ihrer Komponenten.
   useEffect(() => {
     if (schritt !== 2 || !anlagenKennung) return;
     let aktiv = true;
@@ -392,15 +382,14 @@ export function MessenAssistent({
     }
   }
 
-  function oeffneGeraet(siteId: string) {
-    const site = sites?.find((s) => s.id === siteId);
-    if (!site) {
-      setFehler(ANLAGE_FEHLER);
-      setRunde((n) => n + 1);
-      return;
-    }
-    setFehler(null);
-    setUnterfluss({ art: 'geraet', site });
+  /**
+   * VoltPilot-Box und Geräte entstehen im EINEN Ort, dem Aufbau der Anlage — derselbe Dialog wie dort, kein
+   * zweiter hier. Der Assistent führt hin: Schließen ist Abbrechen, der Entwurf (Standort + Schritt 2) bleibt,
+   * und der Aufbau bietet „Einrichtung fortsetzen“ an.
+   */
+  function imAufbau(siteId: string, neu: AufbauNeu) {
+    onClose();
+    window.location.hash = aufbauHash(siteId, neu);
   }
 
   function zurueckAusUnterfluss() {
@@ -605,7 +594,7 @@ export function MessenAssistent({
                         type="button"
                         className="vp-ma-weg"
                         aria-label={`${GERAET_VERBINDEN} für ${a.name}`}
-                        onClick={() => oeffneGeraet(a.id)}
+                        onClick={() => imAufbau(a.id, 'box')}
                       >
                         <span className="vp-ma-weg-titel">{GERAET_VERBINDEN}</span>
                         <span className="vp-ma-weg-satz">{GERAET_VERBINDEN_SATZ}</span>
@@ -614,10 +603,7 @@ export function MessenAssistent({
                         type="button"
                         className="vp-ma-weg"
                         aria-label={`${GERAET_ANBINDEN} für ${a.name}`}
-                        onClick={() => {
-                          setFehler(null);
-                          setUnterfluss({ art: 'komponente', siteId: a.id });
-                        }}
+                        onClick={() => imAufbau(a.id, 'geraet')}
                       >
                         <span className="vp-ma-weg-titel">{GERAET_ANBINDEN}</span>
                         <span className="vp-ma-weg-satz">{GERAET_ANBINDEN_SATZ}</span>
@@ -1014,22 +1000,6 @@ export function MessenAssistent({
           }}
         />
       )}
-      {unterfluss?.art === 'geraet' && (
-        <AddDeviceDrawer
-          open
-          sites={[unterfluss.site]}
-          onClose={zurueckAusUnterfluss}
-          onClaimed={() => setRunde((n) => n + 1)}
-        />
-      )}
-      {unterfluss?.art === 'komponente' && (
-        <KomponenteAnbinden
-          siteId={unterfluss.siteId}
-          geraete={geraete ?? []}
-          onClose={zurueckAusUnterfluss}
-          onSaved={(r) => setKomponenten((k) => ({ ...k, [unterfluss.siteId]: r.components.length }))}
-        />
-      )}
       {unterfluss?.art === 'datenquelle' && standortId && (
         <DatenquelleAnlegen
           anlage={unterfluss.anlage}
@@ -1067,48 +1037,3 @@ export function MessenAssistent({
   );
 }
 
-const WEG_TYP: Record<KatalogWeg, TypId> = { ocpp: 'ladesaeule', bms: 'batterie', modbus: 'eigenbau' };
-
-/**
- * „Gerät anbinden" beginnt wie überall im GERÄTEKATALOG (main e70b57b76,
- * Konzept „Aufbau und Gerätekatalog"): der Anlege-Fluss fragt die Art nicht
- * mehr selbst, er öffnet nach der Wahl im Katalog. Derselbe Weg wie im Aufbau
- * (`AufbauSection`), nur ohne Funde - Quellen übernimmt Schritt 2 über
- * „Datenquelle anlegen".
- */
-function KomponenteAnbinden({ siteId, geraete, onClose, onSaved }: {
-  siteId: string;
-  geraete: Device[];
-  onClose: () => void;
-  onSaved: (r: SiteComponents) => void;
-}) {
-  const [wahl, setWahl] = useState<
-    | { typ: TypId | null; start: { template: ComponentTemplate; rolle: 'grid-meter' | null } | null; vorlage: SiteComponentTemplate | null }
-    | null
-  >(null);
-  const [lauf, setLauf] = useState(0);
-  const katalogWahl = (w: KatalogWahl) => {
-    setLauf((n) => n + 1);
-    if (w.art === 'modell') setWahl({ typ: null, start: { template: w.template, rolle: w.rolle }, vorlage: null });
-    else if (w.art === 'weg') setWahl({ typ: WEG_TYP[w.weg], start: null, vorlage: null });
-    else if (w.art === 'vorlage') setWahl({ typ: null, start: null, vorlage: w.vorlage });
-  };
-  if (!wahl) {
-    return <GeraeteKatalog open siteId={siteId} funde={[]} onClose={onClose} onWahl={katalogWahl} />;
-  }
-  return (
-    <AnlegenFlow
-      key={lauf}
-      siteId={siteId}
-      box={fuehrendeBoxOf(geraete, siteId) ?? undefined}
-      boxes={geraete.filter((d) => d.siteId === siteId)}
-      vorlage={wahl.vorlage}
-      initialTyp={wahl.typ}
-      startTemplate={wahl.start?.template ?? null}
-      startRolle={wahl.start?.rolle ?? null}
-      onZurueck={() => setWahl(null)}
-      onClose={onClose}
-      onSaved={onSaved}
-    />
-  );
-}

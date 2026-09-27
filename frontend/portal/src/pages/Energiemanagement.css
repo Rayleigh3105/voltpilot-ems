@@ -343,14 +343,17 @@
   font-weight: 600;
 }
 
-@media (min-width: 720px) {
+/* Vier Spalten erst ab 960 px: darunter blieben dem Gegenstand zwischen 11 + 13 + 12 rem kaum Zeichen. */
+@media (min-width: 960px) {
   .vp-wv-zeile {
     display: grid;
-    grid-template-columns: 11rem minmax(0, 1fr) 13rem 12rem;
+    grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr) minmax(9rem, 13rem) minmax(8rem, 12rem);
     gap: var(--vp-c-space-4);
     align-items: baseline;
   }
+}
 
+@media (min-width: 720px) {
   .vp-mb-zeile {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 9rem 12rem;

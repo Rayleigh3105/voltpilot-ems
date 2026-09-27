@@ -18,7 +18,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 const BILDER = process.env.BEWERTUNG_BILDER;
 const AM_04_11 = new Date('2026-11-04T09:00:00Z');
 const AM_20_11 = new Date('2026-11-20T09:00:00Z');
-const LEISTE = ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Bewertung'];
+// Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); die Bewertung wohnt in „Auswerten“.
+const LEISTE = ['Übersicht', 'Messen', 'Auswerten'];
 const REITER = ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Bewertung', 'Energie']; // „Energie“ seit main 3e95cc604
 const GRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
@@ -108,7 +109,7 @@ for (const breite of [375, 1440]) {
       expect(m.route).toBe('#/portfolio/bewertung');
       if (breite < 720) {
         expect(m.leiste).toEqual(LEISTE);
-        expect(m.leisteAktiv).toBe('Bewertung');
+        expect(m.leisteAktiv).toBe('Auswerten');
       } else {
         expect(m.reiter).toEqual(REITER);
         expect(m.reiterAktiv).toEqual(['Bewertung']);

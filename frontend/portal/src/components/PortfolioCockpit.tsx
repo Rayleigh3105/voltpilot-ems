@@ -31,7 +31,6 @@ import { KundenUebersicht } from './portfolio/KundenUebersicht';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
 import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
-import { AddDeviceDrawer } from './DeviceDrawers';
 import { RowMenu } from './RowMenu';
 import { ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
@@ -115,7 +114,6 @@ export function PortfolioCockpit({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
-  const [deviceDrawer, setDeviceDrawer] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -214,16 +212,13 @@ export function PortfolioCockpit({
     sites.length > 0 && sites.length <= KURVEN_BIS_ANLAGEN,
   );
 
+  // Eine VoltPilot-Box kommt im Aufbau der Anlage hinzu, in die sie gehört — dem EINEN Ort für Boxen und
+  // Geräte. Die Flotte selbst legt nur neue Anlagen an.
   const aktionen = [
     {
       label: 'Anlage anlegen', recht: 'anlage.verwalten',
       icon: 'plus' as const,
       onClick: () => setSiteDrawer(true),
-    },
-    {
-      label: 'Gerät hinzufügen', recht: 'geraet.einrichten',
-      icon: 'cpu' as const,
-      onClick: () => setDeviceDrawer(true),
     },
   ];
 
@@ -263,15 +258,6 @@ export function PortfolioCockpit({
         existingSites={sites}
         onChanged={(createdSiteId) => {
           onReload(createdSiteId);
-          setReloadKey((k) => k + 1);
-        }}
-      />
-      <AddDeviceDrawer
-        open={deviceDrawer}
-        onClose={() => setDeviceDrawer(false)}
-        sites={sites}
-        onClaimed={() => {
-          onReload();
           setReloadKey((k) => k + 1);
         }}
       />

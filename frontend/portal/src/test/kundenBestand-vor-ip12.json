@@ -1292,13 +1292,6 @@
       "grund": "Dieselbe additive Chip-Fortschreibung am Telefon; Anlage, Zustand, Öffnen-Handler und alle bisherigen Attribute bleiben erhalten."
     },
     {
-      "datei": "shell/AppShell.tsx",
-      "vorher": "74df2d1b0d2202fe3a6cb16f0ad991f81a9df25b4b796e45cf6ba076b0c07595",
-      "nachher": "0289724397148b719bc555a44596e9d7c5a362e989985663745bdb4e2068b83f",
-      "commit": "97762c3ddd13da59a96941a37ed70b67ba6e49b1",
-      "grund": "AP-10 IP-13 ergänzt nur für die neue Netzanschlüsse-Kachel die CSS-Klasse vp-bottombar-netzanschluesse. Bestehende Kacheln rendern unverändert; Anlegen und Binden/Wechseln prüfen netzanschluss.verwalten am Standort über rollen.ts."
-    },
-    {
       "datei": "components/PvRollenBreakdown.tsx",
       "vorher": "0f4c7c6ff44db6afd1f6904f202de92349dfca880e1c826f6342fd87903f10ba",
       "nachher": "eb1bc42f3a1b395443ed7e9efb22dc0fc6f5fe175532b6d075f6e58fea6d566f",
@@ -1364,6 +1357,34 @@
       "nachher": "9a995467c4d9ab9c6fca5564b9ac673ebee114e48df6e3bf5a8ba19e531659d2",
       "commit": "2fcb67a7803a276e1f38badf527dfa155b16de25",
       "grund": "AP-20 E12, PR 1268 (Registrierung: Passwort mindestens 12 Zeichen, nicht E-Mail oder Name), im Nachzug main → uems gemergt: das Passwortfeld der Selbstregistrierung zeigt als Fehler den Satz aus passwortRegel.passwortFehler und als Hinweis die neue Vorgabe. Typ, Kennung, Handler, Autovervollständigung und Sichtbar-Schalter bleiben; nur Fehler- und Hinweistext folgen der Regel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "f0186284df056e9e98f797a28ee4a9da4b1317432fbb7d8f8eda9017ea36e013",
+      "nachher": "6ea6d22ecac7d517ea52442046e776a9d6af1036cfcf44fac30f544a65ad01f9",
+      "commit": "uems · Ein Ort für Boxen und Geräte (Aufbau)",
+      "grund": "Ein Name je Sache: die Hardware heißt überall „VoltPilot-Box“ (Glossar UEMS_BOX). Der Überspringen-Link sagt „Box habe ich noch nicht - später“; Ziel und Handler (onSkip) unverändert."
+    },
+    {
+      "datei": "components/MessenAssistent.tsx",
+      "vorher": "d8d444cc2200441d247d72cc252c796e5c2a21473193778ea37c71237a4adb6d",
+      "nachher": "dc41ded7dbf040dcc0b3c342de44c7675e4b210a7c28101eb8d7749bf7123b0d",
+      "commit": "uems · Ein Ort für Boxen und Geräte (Aufbau)",
+      "grund": "EIN Ort für Boxen: „VoltPilot-Box hinzufügen“ (vorher „Gerät verbinden“) führt in den Aufbau der Anlage (?neu=box) und öffnet dort denselben Dialog, statt einen zweiten im Assistenten zu stapeln. Der Entwurf bleibt auf Schritt 2; der Aufbau bietet „Einrichtung fortsetzen“. Recht geraet.einrichten unverändert."
+    },
+    {
+      "datei": "components/MessenAssistent.tsx",
+      "vorher": "d442261169e94434f07818454b280de3943915a3d2866b1dbcb4c53a02939071",
+      "nachher": "7072e0e4ecafb411782e60fc9ed113bf6cf8849251b877ee02d94a352c345f35",
+      "commit": "uems · Ein Ort für Boxen und Geräte (Aufbau)",
+      "grund": "EIN Ort für Geräte: „Gerät hinzufügen“ (vorher „Gerät anbinden“) führt in den Aufbau der Anlage (?neu=geraet) — dort derselbe Gerätekatalog und derselbe Anlege-Fluss wie bisher im Assistenten. Recht geraet.einrichten unverändert."
+    },
+    {
+      "datei": "components/PortfolioTabs.tsx",
+      "vorher": "25dbf686224bcfb121bb7e86724e0b5cec79b7b30708191de067dd6dc168c275",
+      "nachher": "8d25d76422cf3297e49706209eee42e054b177350e3adefa53aafb550637b79c",
+      "commit": "uems · Ein Ort für Boxen und Geräte (Aufbau)",
+      "grund": "Telefon-Leiste des Unternehmens in Gruppen (höchstens fünf Kacheln): am Telefon stehen nur die Reiter der offenen Gruppe, darum trägt auch „Übersicht“ vp-nur-rechner, wenn ihre Gruppe nicht offen ist. Wortlaut, Ziel und Rechner-Darstellung unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

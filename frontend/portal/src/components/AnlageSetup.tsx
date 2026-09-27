@@ -1,11 +1,12 @@
 import { Recht } from './Recht';
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
 import { api, ApiError, type Site, type SiteEntities } from '../api';
+import { aufbauHash } from '../nav';
 import { entitiesApi } from '../entitiesApi';
 import { adoptableSources } from '../rollen';
 import {
@@ -21,35 +22,19 @@ import {
 } from '../setupPath';
 import { TextSkeleton } from './States';
 
-/**
- * **Der Geräte-Schub wird NACHGELADEN** (Bewegung · P7, Bündel-Kopfraum).
- *
- * `DeviceDrawers.tsx` lag bis hierher STATISCH im Einstiegs-Bündel — nur weil
- * dieser Pfad die geschlossene Fläche vorsorglich mitrenderte. Gemessen kostete
- * das 4,77 kB gz im ersten Bild, für eine Fläche, die erst nach einem Klick
- * überhaupt erscheint (Haus-Regel `test/bundle-smoke.sh`: der Einstieg trägt
- * nur das erste Bild).
- *
- * ⚠ EINMAL GELADEN, BLEIBT SIE IM BAUM. Das Modal blendet beim Schließen aus
- *   (P6, `Modal.jsx`); würde es beim Schließen ausgehängt, wäre das Ausblenden
- *   ein Schnitt. Deshalb steuert `claimOpen` nur noch das `open`-Merkmal, und
- *   `claimGeladen` bleibt stehen, sobald es einmal `true` war.
- */
-const AddDeviceDrawer = lazy(() =>
-  import('./DeviceDrawers').then((m) => ({ default: m.AddDeviceDrawer })),
-);
 import './AnlageSetup.css';
 
 /**
  * M5 (#533) — **das Cockpit einer leeren Anlage IST der Einrichtungspfad**
  * (report `data/vp-anlagen-face-k9/report.md` §3 „Neu / leer" + §4):
- * 1 Gerät verbinden ✓ → 2 Geräte übernehmen → 3 Steuerung wählen.
+ * 1 VoltPilot-Box verbinden ✓ → 2 Geräte übernehmen → 3 Steuerung wählen.
  * Keine Platzhalter-Karten, keine leeren Diagramme — es gibt nichts zu zeigen,
  * also wird der Weg gezeigt.
  *
  * Jede Ableitung liegt im reinen, unit-getesteten `src/setupPath.ts`; hier wird
  * gerendert und mit den BESTEHENDEN Endpunkten gesprochen:
- *  - Schritt 1 = der unveränderte `AddDeviceDrawer` (Geräte-ID beanspruchen),
+ *  - Schritt 1 führt in den Aufbau (`?neu=box`): Boxen kommen an EINEM Ort hinzu,
+ *    dort öffnet derselbe Dialog (Geräte-ID beanspruchen),
  *  - Schritt 2 = die U2-Adoptionsbrücke (`api.siteEntities` → `entitiesApi.adopt`),
  *    hier **kundenseitig und katalog-geführt** (F6): der Typ wird aus Rolle +
  *    Marke vorgeschlagen, gefragt wird nur, was NUR der Kunde weiß (kWp, MaStR,
@@ -66,22 +51,18 @@ export function AnlageSetup({
   deviceCount,
   onOpenSteuerung,
   onOpenGeraete,
-  onReload,
   onStay,
 }: {
   site: Site;
   deviceCount: number;
   onOpenSteuerung: () => void;
   onOpenGeraete: () => void;
-  onReload: (selectSiteId?: string) => void;
   /** Den Pfad sichtbar halten, während der Kunde mitten in der Kette steht. */
   onStay: (stay: boolean) => void;
 }) {
   const [data, setData] = useState<SiteEntities | null>(null);
   const [loading, setLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
-  const [claimOpen, setClaimOpen] = useState(false);
-  const [claimGeladen, setClaimGeladen] = useState(false);
   const [adopting, setAdopting] = useState<AdoptionPlan | null>(null);
   const [bridge, setBridge] = useState<AdoptedBridge | null>(null);
 
@@ -119,8 +100,7 @@ export function AnlageSetup({
   function runAction(step: SetupStep) {
     switch (step.action?.kind) {
       case 'claim':
-        setClaimGeladen(true);
-        setClaimOpen(true);
+        window.location.hash = aufbauHash(site.id, 'box');
         break;
       case 'adopt':
         if (plans[0]) setAdopting(plans[0]);
@@ -223,24 +203,6 @@ export function AnlageSetup({
         </button>
       </p>
 
-      {claimGeladen && (
-        // Kein Platzhalter: bis das Stück da ist, gibt es die Fläche noch
-        // nicht — ein Skelett würde eine Fläche ankündigen, die der Kunde noch
-        // gar nicht sieht (Ehrlichkeits-Regel, `Lazy.tsx`).
-        <Suspense fallback={null}>
-          <AddDeviceDrawer
-            open={claimOpen}
-            onClose={() => setClaimOpen(false)}
-            sites={[site]}
-            onClaimed={() => {
-              // Die Anlagen-Seite lädt ihren Status neu (Gerätezahl), der Pfad
-              // seine gemeldeten Quellen.
-              onReload(site.id);
-              reload();
-            }}
-          />
-        </Suspense>
-      )}
 
       {adopting && (
         <GuidedAdoptDrawer

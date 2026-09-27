@@ -487,16 +487,20 @@ export function resolveAnlage<T extends { id: string }>(
 /**
  * Die Bereiche einer Ebene über der Anlage (AP-01 §4.6). Unternehmen:
  * Übersicht · Standorte · Messstellen · Kennzahlen · Berichte. Standort:
- * Übersicht · Gebäude · Anlagen · Messstellen. Die Anlage oben behält ihre fünf
- * Bereiche — dieselbe Regel, eine Ebene tiefer, unverändert.
+ * Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse. Die Anlage oben
+ * behält ihre fünf Bereiche — dieselbe Regel, eine Ebene tiefer, unverändert.
+ *
+ * ⚠ „Aufbau“ ist am Standort der EINE Ort für Anlagen, VoltPilot-Boxen und
+ * Geräte (derselbe Baum wie „Anlage › Aufbau“). Die früheren Bereiche „Boxen“
+ * und „Anlagen“ sind darin aufgegangen — sie zeigten dieselben Dinge ein
+ * zweites und drittes Mal, und hinzufügen ließ sich dort nichts.
  */
 export type EbenenBereichId =
   | 'uebersicht'
   | 'standorte'
-  | 'boxen'
+  | 'aufbau'
   | 'netzanschluesse'
   | 'gebaeude'
-  | 'anlagen'
   | 'messstellen'
   | 'bezugsgroessen'
   | 'kennzahlen'
@@ -511,9 +515,23 @@ export interface EbenenBereich {
   icon: IconName;
 }
 
-/** Eine Kachel der Telefon-Leiste einer Ebene: ein Bereich MIT seiner Seite. */
+/** Ein Reiter einer Ebene: ein Bereich MIT seiner Seite. */
 export interface EbenenKachel extends EbenenBereich {
   ziel: Route;
+}
+
+/**
+ * Eine Kachel der TELEFON-LEISTE einer Ebene. Am Standort ist sie genau ein
+ * Bereich; am Unternehmen eine GRUPPE von Bereichen ({@link UNTERNEHMEN_GRUPPEN}),
+ * damit die Leiste nie mehr als fünf Kacheln trägt. `bereiche` nennt, welche
+ * Bereiche sie hervorhebt; `ziel` ist die Seite des ersten davon.
+ */
+export interface EbenenLeistenKachel {
+  key: string;
+  label: string;
+  icon: IconName;
+  ziel: Route;
+  bereiche: readonly EbenenBereichId[];
 }
 
 /** Die Ebene, deren Bereiche gemeint sind. */
@@ -551,10 +569,9 @@ export interface EbenenLesemodell {
 const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
   uebersicht: { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard' },
   standorte: { key: 'standorte', label: 'Standorte', icon: 'map-pin' },
-  boxen: { key: 'boxen', label: 'Boxen', icon: 'cpu' },
+  aufbau: { key: 'aufbau', label: AUFBAU_REITER, icon: 'layers' },
   netzanschluesse: { key: 'netzanschluesse', label: 'Netzanschlüsse', icon: 'zap' },
   gebaeude: { key: 'gebaeude', label: 'Gebäude', icon: 'building' },
-  anlagen: { key: 'anlagen', label: 'Anlagen', icon: 'layers' },
   messstellen: { key: 'messstellen', label: 'Messstellen', icon: 'activity' },
   bezugsgroessen: { key: 'bezugsgroessen', label: 'Bezugsgrößen', icon: 'layers' },
   kennzahlen: { key: 'kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
@@ -595,8 +612,8 @@ const lebenderStandort = (lm: EbenenLesemodell, standortId: string) =>
  *   UND es eine Kennzahl gibt · Bewertung, sobald ein Standort misst UND die Person
  *   Energieeinsätze sehen darf (AP-16 IP-6) · Ziele und Maßnahmen nach derselben Regel mit
  *   `verbesserung.ansehen` (AP-18 IP-8).
- * - Standort: Übersicht immer · Boxen und Messstellen, wenn DIESER Standort
- *   misst · Gebäude ab 1 Gebäude · Anlagen ab 2 Anlagen.
+ * - Standort: Übersicht immer · Aufbau, Messstellen und Netzanschlüsse, wenn
+ *   DIESER Standort misst · Gebäude ab 1 Gebäude.
  *
  * ⚠ Einen Bereich „Steuerung" gibt es auf keiner der beiden Ebenen (Steuern-Regel
  * vom 15.09.2026): gesteuert wird je Anlage, und dort bleibt der Bereich
@@ -621,9 +638,8 @@ export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBere
   } else {
     const standort = lebenderStandort(lm, ort.standortId);
     if (standort) {
-      if (misst(lm, standort.id)) out.push('boxen');
+      if (misst(lm, standort.id)) out.push('aufbau');
       if ((standort.gebaeudeZahl ?? 0) >= 1) out.push('gebaeude');
-      if (standort.anlagen.length >= 2) out.push('anlagen');
       if (misst(lm, standort.id)) out.push('messstellen', 'netzanschluesse');
     }
   }
@@ -646,9 +662,8 @@ export type EbenenSeiten = (ort: EbenenOrt, lm?: EbenenLesemodell) => Partial<Re
  * Seite (`#/portfolio/kennzahlen`), seit AP-12 IP-13 die Berichte
  * (`#/portfolio/berichte`). AP-09 IP-9 ergänzt Bezugsgrößen als sechste Unternehmenswelt.
  *
- * Seit AP-13 IP-2 hat auch der Standort jede Seite: Gebäude und Anlagen
- * (`#/standort/{id}/gebaeude`, `…/anlagen`) — Werk Ahrenberg bekommt damit VIER
- * Kacheln und die Leiste, Werk Lindach (eine Anlage) DREI (O17). Kennzahlen und
+ * Seit AP-13 IP-2 hat auch der Standort jede Seite: Gebäude (`#/standort/{id}/gebaeude`)
+ * und — seit Boxen und Anlagen dort aufgegangen sind — den Aufbau (`…/aufbau`). Kennzahlen und
  * Berichte des Standorts (`…/kennzahlen`, `…/berichte`, Ü8) stehen hier als
  * Seiten, sind aber kein Bereich der Ebene (AP-01 §4.6) und werden darum nie
  * eine Kachel — ihr Einstieg ist {@link standortEinstiege}.
@@ -668,14 +683,15 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort, lm) =>
       }
     : {
         uebersicht: standortRoute(ort.standortId),
-        boxen: standortBereichRoute(ort.standortId, 'boxen'),
         messstellen: standortMessstellenRoute(ort.standortId),
         // AP-13 E2/Q2/O18 und AP-10 IP-13: diese Seiten nur mit Messfunktion.
         // Auch vorhandene Gebäude und Anlagen ändern den Betriebskunden nicht.
         ...(lm && misst(lm, ort.standortId) ? {
+          // Der Aufbau des Standorts (früher „Boxen“ und „Anlagen“). Ein Betriebskunde baut im Aufbau seiner
+          // Anlage — derselbe Baum; alte Lesezeichen landen bei ihm auf der Übersicht (O18).
+          aufbau: standortBereichRoute(ort.standortId, 'aufbau'),
           netzanschluesse: standortBereichRoute(ort.standortId, 'netzanschluesse'),
           gebaeude: standortBereichRoute(ort.standortId, 'gebaeude'),
-          anlagen: standortBereichRoute(ort.standortId, 'anlagen'),
           kennzahlen: standortBereichRoute(ort.standortId, 'kennzahlen'),
           berichte: standortBereichRoute(ort.standortId, 'berichte'),
         } : {}),
@@ -756,22 +772,72 @@ export function ebenenReiter(
   return reiter.length >= 2 ? reiter : [];
 }
 
+/** Höchstens so viele Kacheln trägt eine Telefon-Leiste — wie die Anlage mit ihren fünf Bereichen. */
+export const LEISTE_HOECHSTENS = 5;
+
 /**
- * Die Telefon-Leiste einer Ebene: ihre Bereiche MIT Seite, in der Reihenfolge
- * der Tabelle — oder keine (leer), wenn es weniger als drei sind.
- * `--vp-bar-slots` folgt der Zahl wie in der Anlage.
+ * Die GRUPPEN der Unternehmens-Leiste am Telefon. Mit allen Rechten hat das
+ * Unternehmen neun Bereiche; neun Kacheln auf 375 px sind je gut 40 px breit,
+ * und „Messstellen“ brach dort mitten im Wort. Die Leiste trägt deshalb
+ * höchstens fünf GRUPPEN in der Reihenfolge der Arbeit — sehen, messen,
+ * auswerten, verbessern, nachweisen; die Reiter über der Seite zeigen am
+ * Telefon nur die Bereiche der offenen Gruppe. Am Rechner bleiben alle Reiter.
+ *
+ * Eine Gruppe ohne einen Bereich mit Seite gibt es nicht (Gesetz 1: nie eine
+ * leere Kachel); ihr Ziel ist die Seite ihres ersten Bereichs.
+ */
+export const UNTERNEHMEN_GRUPPEN: readonly { key: string; label: string; icon: IconName; bereiche: readonly EbenenBereichId[] }[] = [
+  { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', bereiche: ['uebersicht', 'standorte'] },
+  { key: 'messen', label: 'Messen', icon: 'activity', bereiche: ['messstellen', 'bezugsgroessen'] },
+  { key: 'auswerten', label: 'Auswerten', icon: 'trending-up', bereiche: ['kennzahlen', 'berichte', 'bewertung'] },
+  { key: 'verbessern', label: 'Verbessern', icon: 'list', bereiche: ['verbesserung'] },
+  { key: 'management', label: 'Management', icon: 'file-text', bereiche: ['energiemanagement'] },
+];
+
+/** Kürzere Telefon-Beschriftungen am Standort; Reiter und Überschriften behalten die vollen Wörter. */
+const LEISTE_KURZ: Partial<Record<EbenenBereichId, string>> = {
+  netzanschluesse: 'Anschlüsse',
+};
+
+/**
+ * Die Telefon-Leiste einer Ebene: am Standort ihre Bereiche MIT Seite (höchstens
+ * fünf), am Unternehmen deren Gruppen ({@link UNTERNEHMEN_GRUPPEN}) — oder keine
+ * (leer), wenn es weniger als drei Kacheln sind. `--vp-bar-slots` folgt der Zahl
+ * wie in der Anlage.
  */
 export function ebenenLeiste(
   ort: EbenenOrt,
   lm: EbenenLesemodell,
   seiten: EbenenSeiten = EBENEN_SEITEN,
-): EbenenKachel[] {
+): EbenenLeistenKachel[] {
   const ziele = seiten(ort, lm);
-  const kacheln = ebenenBereiche(ort, lm).flatMap((b) => {
+  const mitSeite = ebenenBereiche(ort, lm).flatMap((b) => {
     const ziel = ziele[b.key];
     return ziel ? [{ ...b, ziel }] : [];
   });
-  return kacheln.length >= EBENEN_LEISTE_AB ? kacheln : [];
+  const kacheln: EbenenLeistenKachel[] =
+    ort.art === 'unternehmen'
+      ? UNTERNEHMEN_GRUPPEN.flatMap((g) => {
+          const drin = mitSeite.filter((b) => g.bereiche.includes(b.key));
+          return drin.length > 0
+            ? [{ key: g.key, label: g.label, icon: g.icon, ziel: drin[0].ziel, bereiche: drin.map((b) => b.key) }]
+            : [];
+        })
+      : mitSeite.map((b) => ({ key: b.key, label: LEISTE_KURZ[b.key] ?? b.label, icon: b.icon, ziel: b.ziel, bereiche: [b.key] }));
+  return kacheln.length >= EBENEN_LEISTE_AB ? kacheln.slice(0, LEISTE_HOECHSTENS) : [];
+}
+
+/**
+ * Die Bereiche, deren Reiter am TELEFON über der Seite stehen: die der Kachel,
+ * die den offenen Bereich trägt (ihre Gruppe). Ohne Leiste oder ohne passende
+ * Kachel `null` — dann gilt die Regel von vorher.
+ */
+export function telefonReiterBereiche(
+  kacheln: readonly EbenenLeistenKachel[],
+  aktiv: EbenenBereichId | null,
+): readonly EbenenBereichId[] | null {
+  if (!aktiv) return null;
+  return kacheln.find((k) => k.bereiche.includes(aktiv))?.bereiche ?? null;
 }
 
 /**
@@ -802,7 +868,7 @@ export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBerei
   // Unternehmenseinstellungen werden über das Avatar-Menü geöffnet, ohne fachlichen Reiter.
   if (page === 'kunden-benutzer') return null;
   if (page === 'portfolio-standorte') return 'standorte';
-  if (page === 'standort' && (standortBereich === 'boxen' || standortBereich === 'gebaeude' || standortBereich === 'anlagen' || standortBereich === 'netzanschluesse')) return standortBereich;
+  if (page === 'standort' && (standortBereich === 'aufbau' || standortBereich === 'gebaeude' || standortBereich === 'netzanschluesse')) return standortBereich;
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
   if (page === 'portfolio-bezugsgroessen') return 'bezugsgroessen';
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';

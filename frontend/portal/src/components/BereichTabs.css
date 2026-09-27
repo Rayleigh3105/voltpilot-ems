@@ -184,6 +184,37 @@ html.vp-vt-fade .vp-welt-strich {
   }
 }
 
+/* Die Kante, hinter der noch Reiter liegen, blendet weich aus — sonst wüsste niemand, dass rechts
+   noch „Managementbewertung“ wartet (`reiterRand.ts` setzt `data-rand`). Keine `mask-image`: am
+   Telefon verlängert ein Schatten die klebende Leiste in die Seitenrinnen, eine Maske schnitte ihn
+   ab. Stattdessen zwei klebende Verläufe im Seitengrund (jede Leiste steht auf ihm), durch die jeder
+   Tipp hindurchgeht; die Linie darunter bleibt durchgehend. */
+.vp-bereich-tabs[data-rand]::before,
+.vp-bereich-tabs[data-rand]::after {
+  content: '';
+  position: sticky;
+  z-index: 1;
+  flex: 0 0 32px;
+  pointer-events: none;
+  visibility: hidden;
+}
+.vp-bereich-tabs[data-rand]::before {
+  left: 0;
+  margin-right: -32px;
+  background: linear-gradient(to right, var(--vp-c-bg, #f8fafc) 20%, transparent);
+}
+.vp-bereich-tabs[data-rand]::after {
+  right: 0;
+  margin-left: -32px;
+  background: linear-gradient(to left, var(--vp-c-bg, #f8fafc) 20%, transparent);
+}
+.vp-bereich-tabs[data-rand='links']::before,
+.vp-bereich-tabs[data-rand='beide']::before,
+.vp-bereich-tabs[data-rand='rechts']::after,
+.vp-bereich-tabs[data-rand='beide']::after {
+  visibility: visible;
+}
+
 /* UEMS AP-04 IP-5: am Telefon trägt die Leiste der Ebene (ab drei Kacheln) die
    BEREICHE — ein Reiter, der dort schon Kachel ist, entfällt hier (`vp-nur-rechner`
    aus `PortfolioTabs`/`EbenenTabs`). Die Leiste selbst blendet oberhalb von 720 px

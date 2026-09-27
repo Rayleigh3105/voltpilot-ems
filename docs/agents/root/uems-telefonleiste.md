@@ -22,17 +22,19 @@ wie an der Karte „Funktionen" (PR 771): ein Knopf ohne Ziel ist die Sackgasse,
 | | Messstellen · Berichte | sobald ein Standort misst |
 | | Kennzahlen | sobald ein Standort misst UND es eine nicht archivierte Kennzahl gibt |
 | Standort | Übersicht | immer |
+| | Aufbau | wenn DIESER Standort misst (der EINE Ort für Anlagen, Boxen und Geräte; früher „Boxen“ und „Anlagen“) |
 | | Gebäude | ab 1 Gebäude (`gebaeudeZahl`) |
-| | Anlagen | ab 2 Anlagen, die ihm heute zugeordnet sind |
-| | Messstellen | wenn DIESER Standort misst |
+| | Messstellen · Netzanschlüsse | wenn DIESER Standort misst |
 
 „Misst" = „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv; ein Entwurf misst noch nicht.
 
 ## Die Fallen
 
 1. **Seit AP-13 IP-2 hat jeder Bereich beider Ebenen seine Seite — die Leiste steht auf beiden** (`uems-oberflaechen-ebenen.md`).
-   Unternehmen Ahrenberg fünf Kacheln, Werk Ahrenberg vier (Übersicht · Gebäude · Anlagen · Messstellen), Werk Lindach
-   drei (eine Anlage, kein Bereich „Anlagen“). Kennzahlen und Berichte des STANDORTS sind Seiten ohne Bereich — keine
+   Höchstens fünf Kacheln (`LEISTE_HOECHSTENS`): am Standort Übersicht · Aufbau · Gebäude · Messstellen · Anschlüsse
+   (Kurzwort `LEISTE_KURZ`), am Unternehmen GRUPPEN (`UNTERNEHMEN_GRUPPEN`: Übersicht · Messen · Auswerten · Verbessern ·
+   Management) — am Telefon stehen über der Seite nur die Reiter der offenen Gruppe (`telefonReiterBereiche`,
+   `PortfolioTabs.telefonReiter`). Kennzahlen und Berichte des STANDORTS sind Seiten ohne Bereich — keine
    Kachel, ihr Einstieg steht auf der Standort-Übersicht. Wer einen neuen Bereich einhängt, trägt die Route in
    `EBENEN_SEITEN` ein und passt den Test „jede Seite, die es heute gibt" und `telefonleiste.spec.ts` an.
 2. **Nie eine Kachel ohne Seite**, auch nicht „zum Reservieren": E4 hat „immer fünf Kacheln, auch leere" verworfen,

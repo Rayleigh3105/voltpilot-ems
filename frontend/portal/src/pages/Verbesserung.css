@@ -148,6 +148,14 @@
 
 /* ------------------------------------------------------------------ Tabellen (Register, Monate) */
 
+/* Ein breites Register scrollt in SEINEM Rahmen, statt die Seite zu verbreitern (gemessen: das Verzeichnis
+   ragte bei 800 px 146 px über den Rand). Am Telefon werden die Zeilen ohnehin zu Blöcken (unten). */
+.vp-ez-tafel-rahmen {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
 .vp-ez-tafel {
   width: 100%;
   border-collapse: collapse;
@@ -173,6 +181,15 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Als Tabelle bricht eine Zelle zwischen Wörtern, nie mitten im Wort („in VoltPilo|t“ bei 1440 px): der Rahmen
+   oben fängt die Breite. Nur die Block-Darstellung am Telefon darf überall brechen. */
+@media (min-width: 720px) {
+  .vp-ez-tafel th,
+  .vp-ez-tafel td {
+    overflow-wrap: break-word;
+  }
 }
 
 .vp-ez-tafel tr.vp-ez-summe th,

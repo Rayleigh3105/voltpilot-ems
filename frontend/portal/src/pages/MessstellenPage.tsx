@@ -1,4 +1,5 @@
 import { KorrekturenDialog } from '../components/KorrekturenDialog';
+import { useReiterRand } from '../reiterRand';
 import { MESSEN_EINRICHTEN } from '../messenEinstieg';
 import { Recht } from '../components/Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -195,8 +196,9 @@ function ReiterLeiste({
   aktiv: MessstellenReiter;
   onWahl: (r: MessstellenReiter) => void;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   return (
-    <div className="vp-bereich-tabs vp-ms-reiter" role="tablist" aria-label={REITER_LABEL}>
+    <div ref={reiterRand} className="vp-bereich-tabs vp-ms-reiter" role="tablist" aria-label={REITER_LABEL}>
       {reiter.map((r) => {
         const ist = r === aktiv;
         return (

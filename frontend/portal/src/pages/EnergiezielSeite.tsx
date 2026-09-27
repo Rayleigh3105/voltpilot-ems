@@ -145,81 +145,83 @@ export function EnergiezielSeite({
             <p className="vp-ez-satz" data-testid="energieziel-stand-satz">
               {stand.satz ?? `${Z.STAND_OHNE_MONAT} (${stand.monate_text}).`}
             </p>
-            <table className="vp-ez-tafel" data-testid="energieziel-monate">
-              <thead>
-                <tr>
-                  <th scope="col">{Z.MONAT_SPALTEN.monat}</th>
-                  <th scope="col" className="vp-ez-zahl">
-                    {Z.MONAT_SPALTEN.gemessen}
-                  </th>
-                  <th scope="col" className="vp-ez-zahl">
-                    {Z.MONAT_SPALTEN.erwartet}
-                  </th>
-                  <th scope="col" className="vp-ez-zahl">
-                    {Z.MONAT_SPALTEN.delta}
-                  </th>
-                  <th scope="col">{Z.MONAT_SPALTEN.urteil}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {zeilen.map((m) =>
-                  m.art === 'gezaehlt' ? (
-                    <tr key={m.periode} data-testid={`monat-${m.periode}`}>
-                      <th scope="row">{m.beschriftung}</th>
+            <div className="vp-ez-tafel-rahmen">
+              <table className="vp-ez-tafel" data-testid="energieziel-monate">
+                <thead>
+                  <tr>
+                    <th scope="col">{Z.MONAT_SPALTEN.monat}</th>
+                    <th scope="col" className="vp-ez-zahl">
+                      {Z.MONAT_SPALTEN.gemessen}
+                    </th>
+                    <th scope="col" className="vp-ez-zahl">
+                      {Z.MONAT_SPALTEN.erwartet}
+                    </th>
+                    <th scope="col" className="vp-ez-zahl">
+                      {Z.MONAT_SPALTEN.delta}
+                    </th>
+                    <th scope="col">{Z.MONAT_SPALTEN.urteil}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeilen.map((m) =>
+                    m.art === 'gezaehlt' ? (
+                      <tr key={m.periode} data-testid={`monat-${m.periode}`}>
+                        <th scope="row">{m.beschriftung}</th>
+                        <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
+                          {m.gemessen}
+                        </td>
+                        <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.erwartet}>
+                          {m.erwartet}
+                        </td>
+                        <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.delta}>
+                          {m.delta ?? '—'}
+                        </td>
+                        <td data-label={Z.MONAT_SPALTEN.urteil} data-testid="urteil">
+                          {m.urteil}
+                          {m.band && ` (${m.band})`}
+                        </td>
+                      </tr>
+                    ) : m.art === 'ausgeschlossen' ? (
+                      <tr key={m.periode} className="vp-ez-aus" data-testid={`monat-${m.periode}`}>
+                        <th scope="row">{m.beschriftung}</th>
+                        <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
+                          {m.gemessen}
+                        </td>
+                        <td colSpan={3} data-label={Z.MONAT_SPALTEN.grund} data-testid="grund">
+                          {m.satz}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={m.periode} className="vp-ez-offen" data-testid={`monat-${m.periode}`}>
+                        <th scope="row">{m.beschriftung}</th>
+                        <td colSpan={4}>{Z.NOCH_NICHT_ENDGUELTIG}</td>
+                      </tr>
+                    ),
+                  )}
+                  {summe && (
+                    <tr className="vp-ez-summe" data-testid="energieziel-summe">
+                      <th scope="row">
+                        {Z.SUMME}
+                        <span className="vp-ez-unter">{summe.monate}</span>
+                      </th>
                       <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
-                        {m.gemessen}
+                        {summe.gemessen}
                       </td>
                       <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.erwartet}>
-                        {m.erwartet}
+                        {summe.erwartet}
                       </td>
                       <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.delta}>
-                        {m.delta ?? '—'}
+                        {summe.delta ?? '—'}
                       </td>
-                      <td data-label={Z.MONAT_SPALTEN.urteil} data-testid="urteil">
-                        {m.urteil}
-                        {m.band && ` (${m.band})`}
-                      </td>
-                    </tr>
-                  ) : m.art === 'ausgeschlossen' ? (
-                    <tr key={m.periode} className="vp-ez-aus" data-testid={`monat-${m.periode}`}>
-                      <th scope="row">{m.beschriftung}</th>
-                      <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
-                        {m.gemessen}
-                      </td>
-                      <td colSpan={3} data-label={Z.MONAT_SPALTEN.grund} data-testid="grund">
-                        {m.satz}
+                      <td data-label={Z.MONAT_SPALTEN.urteil}>
+                        {summe.urteil}
+                        {summe.band && ` (${summe.band})`}
                       </td>
                     </tr>
-                  ) : (
-                    <tr key={m.periode} className="vp-ez-offen" data-testid={`monat-${m.periode}`}>
-                      <th scope="row">{m.beschriftung}</th>
-                      <td colSpan={4}>{Z.NOCH_NICHT_ENDGUELTIG}</td>
-                    </tr>
-                  ),
-                )}
-                {summe && (
-                  <tr className="vp-ez-summe" data-testid="energieziel-summe">
-                    <th scope="row">
-                      {Z.SUMME}
-                      <span className="vp-ez-unter">{summe.monate}</span>
-                    </th>
-                    <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.gemessen}>
-                      {summe.gemessen}
-                    </td>
-                    <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.erwartet}>
-                      {summe.erwartet}
-                    </td>
-                    <td className="vp-ez-zahl" data-label={Z.MONAT_SPALTEN.delta}>
-                      {summe.delta ?? '—'}
-                    </td>
-                    <td data-label={Z.MONAT_SPALTEN.urteil}>
-                      {summe.urteil}
-                      {summe.band && ` (${summe.band})`}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
             {vorschlag && (
               <p className="vp-ez-vorschlag" data-testid="energieziel-vorschlag">
                 <strong>{Z.VORSCHLAG}: </strong>

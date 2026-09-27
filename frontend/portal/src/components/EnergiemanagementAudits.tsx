@@ -53,38 +53,40 @@ export function EnergiemanagementAudits({ onAudit, saetze = false }: { onAudit: 
       ) : programm.audits.length === 0 ? (
         <p className="vp-ez-satz" data-testid="audits-leer">{SAETZE.verzeichnis_leer}</p>
       ) : (
-        <table className="vp-ez-tafel">
-          <thead>
-            <tr>
-              <th scope="col">Internes Audit</th>
-              <th scope="col">Termin</th>
-              <th scope="col">Wer prüft</th>
-              <th scope="col">Zustand</th>
-              <th scope="col">Ergebnisse</th>
-            </tr>
-          </thead>
-          <tbody>
-            {programm.audits.map((a) => (
-              <tr key={a.id} data-testid={`audit-zeile-${a.kennzeichen}`}>
-                <td>
-                  <button type="button" className="vp-ez-zeile-knopf" onClick={() => onAudit(a.id)}>
-                    {a.kennzeichen} {a.titel}
-                  </button>
-                </td>
-                <td data-label="Termin" className="vp-em-tag">
-                  {E.tagText(a.durchgefuehrt_am ?? a.termin)}
-                </td>
-                <td data-label="Wer prüft">{a.auditoren.map((p) => p.name).join(', ')}</td>
-                <td data-label="Zustand">{A.AUDIT_ZUSTAND_WORT[a.zustand]}</td>
-                <td data-label="Ergebnisse">
-                  {a.zustand === 'geplant' || a.zustand === 'abgesagt'
-                    ? '—'
-                    : `${a.hinweise === 1 ? '1 Hinweis' : `${a.hinweise} Hinweise`} · ${a.feststellungen.length ? a.feststellungen.join(', ') : 'keine Feststellung'}`}
-                </td>
+        <div className="vp-ez-tafel-rahmen">
+          <table className="vp-ez-tafel">
+            <thead>
+              <tr>
+                <th scope="col">Internes Audit</th>
+                <th scope="col">Termin</th>
+                <th scope="col">Wer prüft</th>
+                <th scope="col">Zustand</th>
+                <th scope="col">Ergebnisse</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {programm.audits.map((a) => (
+                <tr key={a.id} data-testid={`audit-zeile-${a.kennzeichen}`}>
+                  <td>
+                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onAudit(a.id)}>
+                      {a.kennzeichen} {a.titel}
+                    </button>
+                  </td>
+                  <td data-label="Termin" className="vp-em-tag">
+                    {E.tagText(a.durchgefuehrt_am ?? a.termin)}
+                  </td>
+                  <td data-label="Wer prüft">{a.auditoren.map((p) => p.name).join(', ')}</td>
+                  <td data-label="Zustand">{A.AUDIT_ZUSTAND_WORT[a.zustand]}</td>
+                  <td data-label="Ergebnisse">
+                    {a.zustand === 'geplant' || a.zustand === 'abgesagt'
+                      ? '—'
+                      : `${a.hinweise === 1 ? '1 Hinweis' : `${a.hinweise} Hinweise`} · ${a.feststellungen.length ? a.feststellungen.join(', ') : 'keine Feststellung'}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {planen && (
         <AuditPlanenDialog

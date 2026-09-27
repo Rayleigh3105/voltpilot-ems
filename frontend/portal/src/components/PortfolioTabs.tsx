@@ -1,4 +1,5 @@
 import { ebenenAktiv, type EbenenBereichId, type EbenenKachel } from '../ebenenNav';
+import { useReiterRand } from '../reiterRand';
 import { isPortfolioPage, PORTFOLIO_WELT_PAGES, type PageId, type Route } from '../nav';
 import './BereichTabs.css';
 
@@ -65,6 +66,7 @@ export function PortfolioTabs({
   showVerbesserung = false,
   showEnergiemanagement = false,
   leiste = [],
+  telefonReiter = null,
   fleetLabel,
   onNavigate,
   standortBereiche = [],
@@ -89,6 +91,11 @@ export function PortfolioTabs({
   showEnergiemanagement?: boolean;
   /** Die Bereiche, die die Telefon-Leiste dieser Ebene gerade trägt (leer = keine Leiste). */
   leiste?: readonly EbenenBereichId[];
+  /**
+   * Trägt die Leiste GRUPPEN (Unternehmen, `ebenenNav.UNTERNEHMEN_GRUPPEN`): die Bereiche der Gruppe, in der die
+   * offene Seite wohnt. Am Telefon stehen dann nur deren Reiter über der Seite — die Leiste wechselt die Gruppe.
+   */
+  telefonReiter?: readonly EbenenBereichId[] | null;
   /** „Portfolio" beim Betreiber, „Meine Anlagen" beim Endkunden. */
   fleetLabel: string;
   onNavigate: (page: PageId) => void;
@@ -103,6 +110,7 @@ export function PortfolioTabs({
   standortAktiv?: EbenenBereichId | null;
   onOpenBereich?: (ziel: Route) => void;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   if (!isPortfolioPage(page)) return null;
   const welten = PORTFOLIO_WELT_PAGES.filter(
     (p) =>
@@ -117,12 +125,23 @@ export function PortfolioTabs({
   );
   const bereichOffen = standortBereiche.some((b) => b.key === standortAktiv);
   const uebersichtOffen = page === 'portfolio' && !bereichOffen;
+  // Mit Gruppen-Leiste: am Telefon nur die Reiter der offenen Gruppe (und was die Leiste nicht trägt).
+  const gruppeNurRechner = (bereich: EbenenBereichId | null) =>
+    telefonReiter !== null && bereich !== null && leiste.includes(bereich) && !telefonReiter.includes(bereich);
   // Ein Bereich außer der Übersicht, den die Leiste trägt: am Telefon kein Reiter.
   const kachel = (id: PageId) => {
     const bereich = ebenenAktiv(id);
+    if (telefonReiter !== null) return gruppeNurRechner(bereich);
     return bereich !== null && bereich !== 'uebersicht' && leiste.includes(bereich);
   };
-  const offenIstKachel = bereichOffen ? standortAktiv !== null && leiste.includes(standortAktiv) : kachel(page);
+  const telefonSichtbar =
+    telefonReiter !== null
+      ? ['portfolio' as PageId, ...welten.map((p) => p.id)].filter((id) => !kachel(id)).length
+      : null;
+  const offenIstKachel =
+    telefonSichtbar !== null
+      ? telefonSichtbar < 2
+      : bereichOffen ? standortAktiv !== null && leiste.includes(standortAktiv) : kachel(page);
   const open = (target: PageId) => {
     const hash = portfolioTabHash(target, page, window.location.hash);
     if (hash) {
@@ -133,7 +152,7 @@ export function PortfolioTabs({
     onNavigate(target);
   };
   return (
-    <div
+    <div ref={reiterRand}
       // Vier Reiter passen am Telefon nur mit schmalerem Polster (BereichTabs.css).
       className={`${welten.length + standortBereiche.length >= 3 ? 'vp-bereich-tabs vp-bereich-tabs-dicht' : 'vp-bereich-tabs'}${
         offenIstKachel ? ' vp-nur-rechner' : ''
@@ -145,7 +164,7 @@ export function PortfolioTabs({
         type="button"
         role="tab"
         aria-selected={uebersichtOffen}
-        className={`vp-bereich-tab${uebersichtOffen ? ' active' : ''}`}
+        className={`vp-bereich-tab${uebersichtOffen ? ' active' : ''}${kachel('portfolio') ? ' vp-nur-rechner' : ''}`}
         onClick={() => open('portfolio')}
       >
         Übersicht

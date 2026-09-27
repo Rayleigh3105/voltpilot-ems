@@ -268,7 +268,7 @@ for (const breite of BREITEN) {
     await messeUndFotografiere(page, breite, 'messen-2-register');
 
     await dialog.getByRole('button', { name: 'Überspringen - später nachtragen' }).click();
-    await expect(dialog.getByRole('heading', { name: 'Verbinden Sie Ihr VoltPilot-Gerät' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Verbinden Sie Ihre VoltPilot-Box' })).toBeVisible();
     await schweigt(page, 'Schritt 3 · Gerät');
     await messeUndFotografiere(page, breite, 'messen-3-geraet');
 
@@ -310,7 +310,7 @@ for (const breite of BREITEN) {
     await dialog.getByLabel('Name der Anlage').fill('Halle 3');
     await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
     await dialog.getByRole('button', { name: 'Überspringen - später nachtragen' }).click();
-    await expect(dialog.getByRole('heading', { name: 'Verbinden Sie Ihr VoltPilot-Gerät' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Verbinden Sie Ihre VoltPilot-Box' })).toBeVisible();
     await messeUndFotografiere(page, breite, 'steuern-3-geraet');
 
     await dialog.getByLabel('Geräte-ID').fill('vp-demo-0001');

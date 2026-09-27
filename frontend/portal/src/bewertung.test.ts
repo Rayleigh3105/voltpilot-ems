@@ -115,8 +115,9 @@ describe('der Bereich „Bewertung“ erscheint nach der Berichte-Regel und nur 
   it('ein Standort misst UND die Person darf sehen → siebter Bereich hinter „Berichte“ mit Seite', () => {
     const keys = ebenenBereiche(UNTERNEHMEN, lm(true)).map((b) => b.key);
     expect(keys.slice(-2)).toEqual(['berichte', 'bewertung']);
+    // Am Telefon trägt die Gruppe „Auswerten“ die Bewertung (neben Kennzahlen und Berichten).
     const leiste = ebenenLeiste(UNTERNEHMEN, lm(true));
-    expect(leiste.at(-1)).toMatchObject({ key: 'bewertung', label: 'Bewertung', ziel: pageRoute('portfolio-bewertung') });
+    expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toContain('bewertung');
     expect(EBENEN_SEITEN(UNTERNEHMEN).bewertung).toEqual(pageRoute('portfolio-bewertung'));
   });
 

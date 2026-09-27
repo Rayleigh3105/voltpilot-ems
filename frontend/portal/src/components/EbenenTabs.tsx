@@ -1,4 +1,5 @@
 import type { EbenenBereichId, EbenenKachel } from '../ebenenNav';
+import { useReiterRand } from '../reiterRand';
 import type { Route } from '../nav';
 import './BereichTabs.css';
 
@@ -28,10 +29,11 @@ export function EbenenTabs({
   label: string;
   onOpen: (ziel: Route) => void;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   if (reiter.length < 2) return null;
   const alleInLeiste = reiter.every((r) => leiste.includes(r.key));
   return (
-    <div className={`vp-bereich-tabs${alleInLeiste ? ' vp-nur-rechner' : ''}`} role="tablist" aria-label={label}>
+    <div ref={reiterRand} className={`vp-bereich-tabs${alleInLeiste ? ' vp-nur-rechner' : ''}`} role="tablist" aria-label={label}>
       {reiter.map((r) => {
         const ist = r.key === aktiv;
         return (

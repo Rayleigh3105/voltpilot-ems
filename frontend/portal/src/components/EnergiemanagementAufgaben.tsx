@@ -148,34 +148,36 @@ export function EnergiemanagementAufgaben({
         <h2>Personen im Energiemanagement</h2>
         <p className="vp-ez-leise">Wer im System handelt, hat ein Konto; wer außerhalb entscheidet, prüft oder teilnimmt, ist eine Person — auch ohne Konto.</p>
         {personen && personen.length > 0 && (
-          <table className="vp-ez-tafel">
-            <thead>
-              <tr>
-                <th scope="col">Person</th>
-                <th scope="col">Funktion</th>
-                <th scope="col">Konto</th>
-                <th scope="col">Seit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {personen.map((p) => (
-                <tr key={p.id} data-testid={`person-zeile-${p.kuerzel ?? p.id}`}>
-                  <td>
-                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onPerson(p.id)}>
-                      {p.name}
-                    </button>
-                    {p.organisation && <span className="vp-ez-unter">{p.organisation}</span>}
-                  </td>
-                  <td data-label="Funktion">{p.funktion}</td>
-                  <td data-label="Konto">{p.konto ? 'mit Konto' : 'ohne Konto'}</td>
-                  <td data-label="Seit">
-                    {E.tagText(p.seit) || '—'}
-                    {p.zustand === 'beendet' ? ` · beendet${p.bis ? ` am ${E.tagText(p.bis)}` : ''}` : ''}
-                  </td>
+          <div className="vp-ez-tafel-rahmen">
+            <table className="vp-ez-tafel">
+              <thead>
+                <tr>
+                  <th scope="col">Person</th>
+                  <th scope="col">Funktion</th>
+                  <th scope="col">Konto</th>
+                  <th scope="col">Seit</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {personen.map((p) => (
+                  <tr key={p.id} data-testid={`person-zeile-${p.kuerzel ?? p.id}`}>
+                    <td>
+                      <button type="button" className="vp-ez-zeile-knopf" onClick={() => onPerson(p.id)}>
+                        {p.name}
+                      </button>
+                      {p.organisation && <span className="vp-ez-unter">{p.organisation}</span>}
+                    </td>
+                    <td data-label="Funktion">{p.funktion}</td>
+                    <td data-label="Konto">{p.konto ? 'mit Konto' : 'ohne Konto'}</td>
+                    <td data-label="Seit">
+                      {E.tagText(p.seit) || '—'}
+                      {p.zustand === 'beendet' ? ` · beendet${p.bis ? ` am ${E.tagText(p.bis)}` : ''}` : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
       {saetze && (

@@ -34,9 +34,14 @@ for (const breite of [375, 1440]) {
         { id: 'fassung2', entity_id: 'maschine', kanal: 'Wirkleistung', wertart: 'gauge', von: '2026-10-16T00:00:00Z', bis: null, regel: annahmen[1], fassung: 2, begruendung: 'Standby erneut geprüft und Schwelle angepasst' },
       ];
     });
-    await page.getByRole(breite === 375 ? 'button' : 'tab', { name: 'Kennzahlen', exact: true }).first().click();
+    // Am Telefon trägt die Leiste Gruppen („Auswerten“ öffnet die Kennzahlen, „Messen“ die Messstellen); die Reiter
+    // der offenen Gruppe stehen über der Seite.
+    const leiste = page.locator('.vp-bottombar');
+    if (breite === 375) await leiste.getByRole('button', { name: 'Auswerten', exact: true }).click();
+    else await page.getByRole('tab', { name: 'Kennzahlen', exact: true }).first().click();
     await expect(page.getByRole('heading', { name: 'Kennzahlen', exact: true })).toBeVisible();
-    await page.getByRole(breite === 375 ? 'button' : 'tab', { name: 'Bezugsgrößen', exact: true }).first().click();
+    if (breite === 375) await leiste.getByRole('button', { name: 'Messen', exact: true }).click();
+    await page.getByRole('tab', { name: 'Bezugsgrößen', exact: true }).first().click();
     const karte = page.getByTestId('bezugsgroesse-karte');
     await expect(karte).toHaveCount(1);
     await karte.getByText('Werte und Fassungen', { exact: true }).click();

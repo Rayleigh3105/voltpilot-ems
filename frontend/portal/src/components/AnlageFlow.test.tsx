@@ -233,7 +233,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(applied.storage?.mastrNummer).toBe('SEE900000067890');
 
     // Step 3: Gerät (AE5: the device now comes BEFORE the adaptive step).
-    expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+    expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
     fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledWith('s-1', 'VP-DEMO-0001'));
@@ -280,7 +280,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(mastrLookup).not.toHaveBeenCalled();
 
     // Step 3 (Gerät) then step 4 (Nutzung) - skip both, honest summary.
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
     await skipNutzung();
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(screen.getByText('manuell hinterlegt')).toBeInTheDocument();
@@ -301,7 +301,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
     // Skip the Register step, the Gerät step, then the Nutzung step.
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
     await skipNutzung();
 
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
@@ -406,7 +406,7 @@ describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', ()
   /** Bis zum vierten Schritt durchklicken (Register + Gerät überspringen). */
   async function bisZumSchritt() {
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
     expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
   }
 

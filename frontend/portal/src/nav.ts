@@ -726,8 +726,12 @@ export function parseRoute(hash: string): Route {
         ? berichtRoute(decodeURIComponent(segments[3]), segments[1])
         : standortBereichRoute(segments[1], 'berichte');
     }
-    if (segments[1] && (segments[2] === 'boxen' || segments[2] === 'gebaeude' || segments[2] === 'anlagen' || segments[2] === 'netzanschluesse')) {
+    if (segments[1] && (segments[2] === 'aufbau' || segments[2] === 'gebaeude' || segments[2] === 'netzanschluesse')) {
       return standortBereichRoute(segments[1], segments[2]);
+    }
+    // Die früheren Seiten „Boxen“ und „Anlagen“ sind im Aufbau aufgegangen — jedes Lesezeichen gilt weiter.
+    if (segments[1] && (segments[2] === 'boxen' || segments[2] === 'anlagen')) {
+      return standortBereichRoute(segments[1], 'aufbau');
     }
     return segments[1]
       ? { page: 'standort', siteId: null, sub: null, standortId: segments[1] }
@@ -879,8 +883,71 @@ export function standortRoute(standortId: string): Route {
  * Die Seiten eines Standorts mit eigener Adresse, ohne seine Übersicht (UEMS AP-04 IP-5, AP-13 IP-2).
  * ⚠ Kennzahlen und Berichte sind hier SEITEN, aber keine Bereiche der Ebene (AP-01 §4.6, O17): sie haben keine
  * Kachel, man erreicht sie von der Standort-Übersicht (`ebenenNav.standortEinstiege`).
+ *
+ * „Aufbau“ ist der EINE Ort für Anlagen, VoltPilot-Boxen und Geräte des Standorts (derselbe Baum wie
+ * „Anlage › Aufbau“). Die früheren Seiten `…/boxen` und `…/anlagen` sind darin aufgegangen; ihre Adressen
+ * leiten auf `…/aufbau` ({@link canonicalStandortHash}).
  */
-export type StandortBereich = 'boxen' | 'netzanschluesse' | 'gebaeude' | 'anlagen' | 'messstellen' | 'kennzahlen' | 'berichte';
+export type StandortBereich = 'aufbau' | 'netzanschluesse' | 'gebaeude' | 'messstellen' | 'kennzahlen' | 'berichte';
+
+/** Was der Aufbau beim Öffnen gleich anbietet (`?neu=`): der Weg aus Cockpit, Kopf und Assistent in den EINEN Ort. */
+export type AufbauNeu = 'box' | 'geraet' | 'anlage';
+
+const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'anlage']);
+
+/**
+ * Der Aufbau einer Anlage, optional mit einer Handlung, die er beim Öffnen gleich anbietet:
+ * `#/anlage/{id}/modell?neu=box|geraet|anlage`.
+ */
+export function aufbauHash(siteId: string, neu?: AufbauNeu | null): string {
+  return `#/anlage/${siteId}/modell${neu ? `?neu=${neu}` : ''}`;
+}
+
+/**
+ * Der Aufbau eines Standorts: `#/standort/{id}/aufbau[?anlage=…][&neu=…]`. `anlage` wählt, welche Anlage des
+ * Standorts aufgeklappt und bearbeitbar ist (ohne: die erste).
+ */
+export function standortAufbauHash(standortId: string, opts: { anlage?: string | null; neu?: AufbauNeu | null } = {}): string {
+  const params = new URLSearchParams();
+  if (opts.anlage) params.set('anlage', opts.anlage);
+  if (opts.neu) params.set('neu', opts.neu);
+  const q = params.toString();
+  return `#/standort/${standortId}/aufbau${q ? `?${q}` : ''}`;
+}
+
+/** Die Handlung aus `?neu=` (nur die drei bekannten), sonst null. */
+export function parseAufbauNeu(hash: string): AufbauNeu | null {
+  const wert = befehleParam(hash, 'neu');
+  return wert && AUFBAU_NEU.has(wert) ? (wert as AufbauNeu) : null;
+}
+
+/** Die Anlage aus `?anlage=` des Standort-Aufbaus, sonst null. */
+export function parseAufbauAnlage(hash: string): string | null {
+  return befehleParam(hash, 'anlage');
+}
+
+/** Dieselbe Adresse ohne `?neu=` — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
+export function ohneAufbauNeu(hash: string): string {
+  const [path, ...rest] = hash.split('?');
+  if (rest.length === 0) return hash;
+  const params = new URLSearchParams(rest.join('?'));
+  params.delete('neu');
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ''}`;
+}
+
+/**
+ * Die kanonische Adresse einer STILLGELEGTEN Standort-Seite: `…/boxen` und `…/anlagen` sind im Aufbau
+ * aufgegangen. Die Parameter reisen mit; sonst null.
+ */
+export function canonicalStandortHash(hash: string): string | null {
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const segments = pathPart.split('/').filter((s) => s.length > 0);
+  if (segments[0] !== 'standort' || !segments[1] || segments.length !== 3) return null;
+  if (segments[2] !== 'boxen' && segments[2] !== 'anlagen') return null;
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  return `#/standort/${segments[1]}/aufbau${query}`;
+}
 
 /** Route einer Seite des Standorts (UEMS AP-13 IP-2): `#/standort/{id}/{bereich}`. */
 export function standortBereichRoute(standortId: string, standortBereich: StandortBereich): Route {

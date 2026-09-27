@@ -39,7 +39,9 @@ import {
 import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
+  aufbauHash,
   canonicalAnlageHash,
+  canonicalStandortHash,
   canonicalPlatformHash,
   isGeraeteBereich,
   hashForRoute,
@@ -89,6 +91,7 @@ import {
   misstAnlage,
   resolveAnlage,
   standortEinstiege,
+  telefonReiterBereiche,
   standortBereichFuer,
   type EbenenLesemodell,
 } from './ebenenNav';
@@ -148,13 +151,10 @@ const PortfolioPage = lazy(() =>
 const StandortGebaeudePage = lazy(() =>
   PAGE_CHUNK.standort().then((m) => ({ default: m.StandortGebaeudePage })),
 );
-const StandortBoxenPage = lazy(() =>
-  PAGE_CHUNK.standort().then((m) => ({ default: m.StandortBoxenPage })),
+const StandortAufbauPage = lazy(() =>
+  PAGE_CHUNK.standort().then((m) => ({ default: m.StandortAufbauPage })),
 );
 const StandortNetzanschluessePage = lazy(() => import('./pages/StandortNetzanschluessePage').then(m => ({ default: m.StandortNetzanschluessePage })));
-const StandortAnlagenPage = lazy(() =>
-  PAGE_CHUNK.standort().then((m) => ({ default: m.StandortAnlagenPage })),
-);
 const StandortUebersichtPage = lazy(() =>
   PAGE_CHUNK.standort().then((m) => ({ default: m.StandortUebersichtPage })),
 );
@@ -734,6 +734,7 @@ function UnifiedPortal() {
   useEffect(() => {
     const canonical =
       canonicalAnlageHash(window.location.hash)
+      ?? canonicalStandortHash(window.location.hash)
       ?? canonicalPlatformHash(window.location.hash);
     if (canonical) {
       replaceCurrentNavigation(canonical);
@@ -1245,18 +1246,23 @@ function UnifiedPortal() {
   const verbesserungDa = ebenenFakten ? bereicheHier.includes('verbesserung') : null;
   // AP-19 IP-9: der Reiter „Energiemanagement“ nach derselben Regel mit `energiemanagement.ansehen`.
   const energiemanagementDa = ebenenFakten ? bereicheHier.includes('energiemanagement') : null;
-  const leisteHier = ebenenKacheln.map((k) => k.key);
-  // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Gebäude · Anlagen · Messstellen);
+  // Die Bereiche, die die Telefon-Leiste trägt (am Unternehmen in Gruppen), und die Reiter, die am Telefon über der
+  // offenen Seite bleiben: die Bereiche der Gruppe, in der sie wohnt.
+  const leisteHier = ebenenKacheln.flatMap((k) => k.bereiche);
+  const telefonReiterHier =
+    ebenenOrtHier?.art === 'unternehmen' ? telefonReiterBereiche(ebenenKacheln, ebenenAktiv(page, standortBereich)) : null;
+  // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
   const standortReiter =
     page === 'standort' && ebene.art !== 'standort' && ebenenOrtHier?.art === 'standort'
       ? ebenenReiter(ebenenOrtHier, ebenenLesemodell)
       : [];
-  // AP-13 IP-2: als oberste Ebene bringt der Standort Gebäude · Anlagen in `PortfolioTabs` mit.
+  // AP-13 IP-2: als oberste Ebene bringt der Standort Aufbau · Gebäude · Netzanschlüsse in `PortfolioTabs` mit
+  // (Messstellen trägt dort die Welt der Ebene).
   const standortObenReiter =
     ebene.art === 'standort' && ebenenOrtHier?.art === 'standort'
       ? ebenenReiter(ebenenOrtHier, ebenenLesemodell)
-          .filter((r) => r.key === 'boxen' || r.key === 'gebaeude' || r.key === 'anlagen')
+          .filter((r) => r.key === 'aufbau' || r.key === 'gebaeude' || r.key === 'netzanschluesse')
       : [];
   // AP-13 IP-2 (Ü8): die Einstiege der Standort-Übersicht in „Kennzahlen/Berichte dieses Standorts“.
   const einstiegeHier = ebenenOrtHier?.art === 'standort' ? standortEinstiege(ebenenOrtHier, ebenenLesemodell) : [];
@@ -1326,7 +1332,11 @@ function UnifiedPortal() {
       showPortfolio={!leer && portfolioNav}
       fleetLabel={fleetLabel(betriebsart)}
       showAddAnlage={showAddAnlage}
-      onAddAnlage={() => setAddAnlageOpen(true)}
+      onAddAnlage={() => {
+        // EIN Ort: die neue Anlage entsteht im Aufbau — dort stehen Standort und Nachbarn schon fest.
+        if (sites.length === 1) window.location.hash = aufbauHash(sites[0].id, 'anlage');
+        else setAddAnlageOpen(true);
+      }}
       onFunktionen={funktionenZiel ? () => {
         navigate(funktionenZiel);
         setKarteGezeigtAm(Date.now());
@@ -1447,6 +1457,7 @@ function UnifiedPortal() {
             showVerbesserung={verbesserungDa === true}
             showEnergiemanagement={energiemanagementDa === true}
             leiste={leisteHier}
+            telefonReiter={telefonReiterHier}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
             standortBereiche={standortObenReiter}
@@ -1626,13 +1637,16 @@ function UnifiedPortal() {
               einstiege={einstiegeHier}
             />
           )}
-          {/* UEMS AP-13 IP-2: „Standort › Gebäude“ (Ortsbaum + Stand am) und „Standort › Anlagen“ (die Tabelle). */}
-          {page === 'standort' && standortOffen && standortBereich === 'boxen' && (
-            <StandortBoxenPage
+          {/* „Standort › Aufbau“: der EINE Ort für Anlagen, VoltPilot-Boxen und Geräte (Boxen und Anlagen sind darin
+              aufgegangen); UEMS AP-13 IP-2: „Standort › Gebäude“ (Ortsbaum + Stand am). */}
+          {page === 'standort' && standortOffen && standortBereich === 'aufbau' && (
+            <StandortAufbauPage
               key={standortOffen.id}
               standort={standortOffen}
               sites={sites}
               devices={devices}
+              devicesFetchedAt={devicesAt}
+              onReload={(selectSiteId?: string) => void reload(selectSiteId)}
             />
           )}
           {page === 'standort' && standortOffen && standortBereich === 'gebaeude' && (
@@ -1646,16 +1660,6 @@ function UnifiedPortal() {
           )}
           {page === 'standort' && standortOffen && standortBereich === 'netzanschluesse' && (
             <StandortNetzanschluessePage key={standortOffen.id} standort={standortOffen} onGeaendert={() => void reload()} />
-          )}
-          {page === 'standort' && standortOffen && standortBereich === 'anlagen' && (
-            <StandortAnlagenPage
-              standort={standortOffen}
-              sites={sites}
-              onNavigate={navigate}
-              onReload={(selectSiteId?: string) => void reload(selectSiteId)}
-              isAdmin={isAdmin}
-              betriebsart={betriebsart}
-            />
           )}
           {/* UEMS AP-13 IP-2 (Ü8): „Kennzahlen dieses Standorts“ und „Berichte dieses Standorts“ — Seite und Rückweg bleiben im Standort. */}
           {page === 'standort' && standortOffen && standortBereich === 'kennzahlen' && (

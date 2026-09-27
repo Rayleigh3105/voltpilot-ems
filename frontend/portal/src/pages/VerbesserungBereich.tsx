@@ -1,4 +1,5 @@
 import { AbweichungenRegister } from '../components/AbweichungenRegister';
+import { useReiterRand } from '../reiterRand';
 import { EnergiezieleRegister } from '../components/EnergiezieleRegister';
 import { MassnahmenRegister } from '../components/MassnahmenRegister';
 import '../components/BereichTabs.css';
@@ -40,6 +41,7 @@ export function VerbesserungBereich({
   /** Öffnet die Seite einer Abweichung (IP-18); ohne bleibt das Register ohne Sprung. */
   onAbweichung?: (id: string) => void;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   if (energiezielId) return <EnergiezielSeite id={energiezielId} onListe={onListe} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
   if (abweichungId) {
     return <AbweichungSeite id={abweichungId} onListe={() => onReiter('abweichungen')} onKennzahl={onKennzahl} onMassnahme={onMassnahme} />;
@@ -50,7 +52,7 @@ export function VerbesserungBereich({
   return (
     <div className="vp-ez" data-testid="verbesserung-bereich">
       <h1>{UEMS_ZIELE_UND_MASSNAHMEN}</h1>
-      <div className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
+      <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ZIELE_UND_MASSNAHMEN}>
         {Z.REITER.map((r) => (
           <button
             key={r.key}

@@ -46,51 +46,53 @@ export function EnergiezieleRegister({ onOeffnen }: { onOeffnen: (id: string) =>
           {UEMS_VERBESSERUNG_SAETZE.leer()}
         </p>
       ) : (
-        <table className="vp-ez-tafel" data-testid="energieziele-tafel">
-          <thead>
-            <tr>
-              <th scope="col">{Z.SPALTEN.kennzeichen}</th>
-              <th scope="col">{Z.SPALTEN.kennzahl}</th>
-              <th scope="col">{Z.SPALTEN.zielwert}</th>
-              <th scope="col">{Z.SPALTEN.zielperiode}</th>
-              <th scope="col">{Z.SPALTEN.stand}</th>
-              <th scope="col">{Z.SPALTEN.verantwortlich}</th>
-              <th scope="col">{Z.SPALTEN.zustand}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lage.ziele.map((ez) => {
-              const stand = lage.staende[ez.id];
-              const frist = Z.fristText(ez);
-              return (
-                <tr key={ez.id} data-testid={`energieziel-zeile-${ez.kennzeichen}`}>
-                  <th scope="row">
-                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(ez.id)}>
-                      {ez.kennzeichen}
-                    </button>
-                    <span className="vp-ez-unter">{ez.wortlaut}</span>
-                  </th>
-                  <td data-label={Z.SPALTEN.kennzahl}>
-                    {ez.kennzahl.kennzeichen} {ez.kennzahl.name}
-                  </td>
-                  <td data-label={Z.SPALTEN.zielwert} className="vp-ez-zahl">
-                    {Z.zielwertText(ez.zielwert_prozent)}
-                  </td>
-                  <td data-label={Z.SPALTEN.zielperiode}>{Z.zielperiodeText(ez.zielperiode)}</td>
-                  <td data-label={Z.SPALTEN.stand} data-testid="stand">
-                    {stand === undefined || stand === 'fehler' ? '—' : Z.standSpalte(stand)}
-                  </td>
-                  <td data-label={Z.SPALTEN.verantwortlich}>{ez.verantwortlich.name}</td>
-                  <td data-label={Z.SPALTEN.zustand} data-testid="zustand">
-                    {Z.ZUSTAND_WORT[ez.zustand]}
-                    {ez.ergebnis && `: ${Z.ERGEBNIS_WORT[ez.ergebnis]}`}
-                    {frist && <span className="vp-ez-unter">{frist}</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="vp-ez-tafel-rahmen">
+          <table className="vp-ez-tafel" data-testid="energieziele-tafel">
+            <thead>
+              <tr>
+                <th scope="col">{Z.SPALTEN.kennzeichen}</th>
+                <th scope="col">{Z.SPALTEN.kennzahl}</th>
+                <th scope="col">{Z.SPALTEN.zielwert}</th>
+                <th scope="col">{Z.SPALTEN.zielperiode}</th>
+                <th scope="col">{Z.SPALTEN.stand}</th>
+                <th scope="col">{Z.SPALTEN.verantwortlich}</th>
+                <th scope="col">{Z.SPALTEN.zustand}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lage.ziele.map((ez) => {
+                const stand = lage.staende[ez.id];
+                const frist = Z.fristText(ez);
+                return (
+                  <tr key={ez.id} data-testid={`energieziel-zeile-${ez.kennzeichen}`}>
+                    <th scope="row">
+                      <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(ez.id)}>
+                        {ez.kennzeichen}
+                      </button>
+                      <span className="vp-ez-unter">{ez.wortlaut}</span>
+                    </th>
+                    <td data-label={Z.SPALTEN.kennzahl}>
+                      {ez.kennzahl.kennzeichen} {ez.kennzahl.name}
+                    </td>
+                    <td data-label={Z.SPALTEN.zielwert} className="vp-ez-zahl">
+                      {Z.zielwertText(ez.zielwert_prozent)}
+                    </td>
+                    <td data-label={Z.SPALTEN.zielperiode}>{Z.zielperiodeText(ez.zielperiode)}</td>
+                    <td data-label={Z.SPALTEN.stand} data-testid="stand">
+                      {stand === undefined || stand === 'fehler' ? '—' : Z.standSpalte(stand)}
+                    </td>
+                    <td data-label={Z.SPALTEN.verantwortlich}>{ez.verantwortlich.name}</td>
+                    <td data-label={Z.SPALTEN.zustand} data-testid="zustand">
+                      {Z.ZUSTAND_WORT[ez.zustand]}
+                      {ez.ergebnis && `: ${Z.ERGEBNIS_WORT[ez.ergebnis]}`}
+                      {frist && <span className="vp-ez-unter">{frist}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
       <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
     </section>

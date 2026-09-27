@@ -140,7 +140,7 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
     // Schritt 2: Register.
     fireEvent.click(await within(fluss).findByRole('button', { name: 'Überspringen - später nachtragen' }));
     // Schritt 3: Gerät.
-    expect(await within(fluss).findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+    expect(await within(fluss).findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
     schweigt('Schritt 3 · Gerät');
     fireEvent.change(within(fluss).getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
     fireEvent.click(within(fluss).getByRole('button', { name: 'Anlage anlegen' }));

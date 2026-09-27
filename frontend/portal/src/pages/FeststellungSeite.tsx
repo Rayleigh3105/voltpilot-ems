@@ -150,31 +150,33 @@ export function FeststellungSeite({ id, onListe, onAudit }: { id: string; onList
         {massnahmen.length === 0 ? (
           <p className="vp-ez-leise">Noch keine Maßnahme zu dieser Feststellung.</p>
         ) : (
-          <table className="vp-ez-tafel">
-            <thead>
-              <tr>
-                <th scope="col">Maßnahme</th>
-                <th scope="col">Verantwortlich</th>
-                <th scope="col">Termin</th>
-                <th scope="col">Zustand</th>
-              </tr>
-            </thead>
-            <tbody>
-              {massnahmen.map((m) => (
-                <tr key={m.id} data-testid={`feststellung-massnahme-${m.kennzeichen}`}>
-                  <td>
-                    <a href={hashForRoute(massnahmeRoute(m.id))}>{`${m.kennzeichen} ${m.titel}`}</a>
-                  </td>
-                  <td data-label="Verantwortlich">{m.verantwortlich.name}</td>
-                  <td data-label="Termin" className="vp-em-tag">{E.tagText(m.termin)}</td>
-                  <td data-label="Zustand">
-                    {MASSNAHME_ZUSTAND_WORT[m.zustand]}
-                    {m.umgesetzt_am ? ` am ${E.tagText(m.umgesetzt_am)}` : ''}
-                  </td>
+          <div className="vp-ez-tafel-rahmen">
+            <table className="vp-ez-tafel">
+              <thead>
+                <tr>
+                  <th scope="col">Maßnahme</th>
+                  <th scope="col">Verantwortlich</th>
+                  <th scope="col">Termin</th>
+                  <th scope="col">Zustand</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {massnahmen.map((m) => (
+                  <tr key={m.id} data-testid={`feststellung-massnahme-${m.kennzeichen}`}>
+                    <td>
+                      <a href={hashForRoute(massnahmeRoute(m.id))}>{`${m.kennzeichen} ${m.titel}`}</a>
+                    </td>
+                    <td data-label="Verantwortlich">{m.verantwortlich.name}</td>
+                    <td data-label="Termin" className="vp-em-tag">{E.tagText(m.termin)}</td>
+                    <td data-label="Zustand">
+                      {MASSNAHME_ZUSTAND_WORT[m.zustand]}
+                      {m.umgesetzt_am ? ` am ${E.tagText(m.umgesetzt_am)}` : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         {offen && (
           <MassnahmeAnlegen

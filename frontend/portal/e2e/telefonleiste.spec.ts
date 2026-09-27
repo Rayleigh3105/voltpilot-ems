@@ -6,10 +6,11 @@ import { expect, test, type Page } from '@playwright/test';
  * Die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A) bei 375 px, auf der
  * Bühne `startansicht` mit denselben reinen Funktionen wie `App.tsx`:
  *
- * - HEUTE: das Unternehmen Ahrenberg hat FÜNF Bereiche mit Seite (Übersicht ·
- *   Standorte · Messstellen · Kennzahlen · Berichte). Seit AP-13 IP-2 haben auch
- *   Gebäude und Anlagen des Standorts ihre Seite: Werk Ahrenberg VIER Kacheln,
- *   Werk Lindach (eine Anlage, kein Bereich „Anlagen“) DREI — beide mit Leiste (O17).
+ * - HEUTE: das Unternehmen Ahrenberg hat sechs Bereiche mit Seite; die Leiste trägt
+ *   ihre GRUPPEN (`ebenenNav.UNTERNEHMEN_GRUPPEN`: Übersicht · Messen · Auswerten),
+ *   höchstens fünf Kacheln. Am Standort: Übersicht · Aufbau · Gebäude · Messstellen ·
+ *   Anschlüsse — „Aufbau“ ist der EINE Ort für Anlagen, Boxen und Geräte (früher
+ *   „Boxen“ und „Anlagen“).
  * - Die Anlage: ihre Leiste, unverändert.
  * - KÜNFTIG (`&seiten=kuenftig`): das Bild, sobald jeder Bereich eine Seite hat
  *   (AP-04 IP-5, AP-13) — nur für die Vorschau.
@@ -32,19 +33,19 @@ interface Fall {
 
 const FAELLE: Fall[] = [
   { name: 'betriebskunde-standort', query: 'bild=unternehmen&messen=bestand&ansicht=werk', leiste: null },
-  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'], aktiv: 'Übersicht' },
-  { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
-  { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
+  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Messen', 'Auswerten'], aktiv: 'Übersicht' },
+  { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
+  { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
   { name: 'anlage-lindach-steuerung', query: 'bild=unternehmen&ansicht=steuerung-lindach', leiste: ['Cockpit', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Steuerung' },
   {
     name: 'unternehmen-kuenftig',
     query: 'bild=unternehmen&seiten=kuenftig',
-    leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'],
+    leiste: ['Übersicht', 'Messen', 'Auswerten'],
     aktiv: 'Übersicht',
   },
-  { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
-  { name: 'lindach-kuenftig', query: 'bild=unternehmen&ansicht=lindach&seiten=kuenftig', leiste: ['Übersicht', 'Gebäude', 'Messstellen', 'Netzanschlüsse'], aktiv: 'Übersicht' },
+  { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
+  { name: 'lindach-kuenftig', query: 'bild=unternehmen&ansicht=lindach&seiten=kuenftig', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   // Der Betriebskunde ohne „Messen": auch mit allen Seiten nur Übersicht · Standorte — keine Leiste.
   { name: 'betriebskunde-kuenftig', query: 'bild=unternehmen&messen=bestand&seiten=kuenftig', leiste: null },
 ];
@@ -104,27 +105,38 @@ for (const fall of FAELLE) {
   });
 }
 
-test('Telefon, künftig: die Kachel „Standorte" führt auf die Liste der Standorte', async ({ page }) => {
+/** Die Reiter der Ebene über der Seite, die am Telefon SICHTBAR sind (die Leiste trägt die übrigen). */
+const sichtbareReiter = (page: Page) =>
+  page.locator('.vp-bereich-tabs[aria-label^="Reiter der Ebene"] [role="tab"]').evaluateAll((tabs) =>
+    tabs.filter((t) => (t as HTMLElement).offsetParent !== null).map((t) => t.textContent?.trim() ?? ''));
+
+test('Telefon, künftig: „Standorte" steht als Reiter in der Gruppe „Übersicht" und führt auf die Liste', async ({ page }) => {
   await oeffne(page, 'bild=unternehmen&seiten=kuenftig');
-  await page.locator('.vp-bottombar').getByRole('button', { name: 'Standorte' }).click();
+  // „Energie“ (die Messwerte des Unternehmens, main 3e95cc604) gehört zur Übersicht.
+  expect(await sichtbareReiter(page)).toEqual(['Übersicht', 'Standorte', 'Energie']);
+  await page.locator('.vp-bereich-tabs').getByRole('tab', { name: 'Standorte' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/standorte');
+  // Die Kachel bleibt die der Gruppe.
+  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Übersicht');
 });
 
-test('Telefon, heute (AP-04 IP-5): die Kachel „Messstellen" führt auf „Unternehmen › Messstellen"', async ({ page }) => {
+test('Telefon, heute: die Kachel „Messen" führt auf „Unternehmen › Messstellen", ihre Reiter nennen die Gruppe', async ({ page }) => {
   await oeffne(page, 'bild=unternehmen');
-  await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
+  await page.locator('.vp-bottombar').getByRole('button', { name: 'Messen' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
-  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Messstellen');
+  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Messen');
   await expect(page.locator('[data-testid="messstellen"] .vp-ms-karte')).toHaveCount(22);
+  expect(await sichtbareReiter(page)).toEqual(['Messstellen', 'Bezugsgrößen']);
 });
 
-test('Telefon, heute (AP-13 IP-2): die Kacheln „Gebäude" und „Anlagen" führen auf die Seiten des Standorts', async ({ page }) => {
+test('Telefon, heute: die Kacheln „Gebäude" und „Aufbau" führen auf die Seiten des Standorts', async ({ page }) => {
   await oeffne(page, 'bild=unternehmen&ansicht=werk');
   await page.locator('.vp-bottombar').getByRole('button', { name: 'Gebäude' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/gebaeude$/);
   await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Gebäude');
   await expect(page.locator('[data-testid="ortsbaum"]')).toBeVisible();
-  await page.locator('.vp-bottombar').getByRole('button', { name: 'Anlagen' }).click();
-  await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/anlagen$/);
-  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Anlagen');
+  await page.locator('.vp-bottombar').getByRole('button', { name: 'Aufbau' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/aufbau$/);
+  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Aufbau');
+  await expect(page.getByTestId('standort-aufbau')).toBeVisible();
 });

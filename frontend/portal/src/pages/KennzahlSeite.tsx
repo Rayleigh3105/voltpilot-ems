@@ -1,4 +1,5 @@
 import { Recht } from '../components/Recht';
+import { useReiterRand } from '../reiterRand';
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -85,6 +86,7 @@ export function KennzahlSeite({
   /** AP-11 IP-15 (§5.4): „Berechnung ändern ab …“ — derselbe Assistent im Modus „ändern“, er gehört der Welt. */
   onBerechnungAendern?: (quelle: KopieVon) => void;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   const [stamm, setStamm] = useState<{ kennzahl: Kennzahl; fassungen: KennzahlFassung[] } | null>(null);
   const [stammFehler, setStammFehler] = useState<'fehlt' | 'fehler' | null>(null);
   const [art, setArt] = useState<KennzahlPeriodeArt | null>(null);
@@ -252,7 +254,7 @@ export function KennzahlSeite({
         )}
       </header>
       {bbAn && (
-        <div className="vp-bereich-tabs vp-kz-reiter" role="tablist" aria-label={`Reiter der Kennzahl ${k.kennzeichen}`}>
+        <div ref={reiterRand} className="vp-bereich-tabs vp-kz-reiter" role="tablist" aria-label={`Reiter der Kennzahl ${k.kennzeichen}`}>
           {([['kennzahl', REITER_KENNZAHL], ['bezugsbasis', REITER_BEZUGSBASIS], ['vergleich', VERGLEICH_REITER]] as const).map(([r, wort]) => (
             <button
               key={r}

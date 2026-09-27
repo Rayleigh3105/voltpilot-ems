@@ -2,11 +2,11 @@ import { expect, test } from '@playwright/test';
 
 test('device claiming keeps focus while typing and returns focus after closing', async ({ page }) => {
   await page.goto('/e2e/mobile-ui.html');
-  const trigger = page.getByRole('button', { name: 'Gerät hinzufügen', exact: true });
+  const trigger = page.getByRole('button', { name: 'VoltPilot-Box hinzufügen', exact: true });
   // Keyboard launch: Safari intentionally does not focus buttons on a tap.
   await trigger.focus();
   await trigger.press('Enter');
-  const dialog = page.getByRole('dialog', { name: 'Gerät hinzufügen' });
+  const dialog = page.getByRole('dialog', { name: 'VoltPilot-Box hinzufügen' });
   const ref = dialog.locator('input').first();
   await ref.click();
   await ref.pressSequentially('edge-abcdefj');
@@ -19,11 +19,11 @@ test('device claiming keeps focus while typing and returns focus after closing',
 
 test('modal contains keyboard focus and Escape closes only its nested picker', async ({ page }) => {
   await page.goto('/e2e/mobile-ui.html');
-  await page.getByRole('button', { name: 'Gerät hinzufügen', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Gerät hinzufügen' });
+  await page.getByRole('button', { name: 'VoltPilot-Box hinzufügen', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'VoltPilot-Box hinzufügen' });
   await dialog.getByRole('button', { name: 'Schließen', exact: true }).focus();
   await page.keyboard.press('Shift+Tab');
-  await expect(dialog.getByRole('button', { name: 'Gerät hinzufügen', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('button', { name: 'VoltPilot-Box hinzufügen', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: 'Schließen', exact: true })).toBeFocused();
   await dialog.getByRole('combobox').click();
@@ -34,12 +34,12 @@ test('modal contains keyboard focus and Escape closes only its nested picker', a
 
 test('claim sheet keeps its actions reachable on small phones and in landscape', async ({ page }) => {
   await page.goto('/e2e/mobile-ui.html');
-  await page.getByRole('button', { name: 'Gerät hinzufügen', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Gerät hinzufügen' });
+  await page.getByRole('button', { name: 'VoltPilot-Box hinzufügen', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'VoltPilot-Box hinzufügen' });
   for (const [width, height] of [[320,568], [375,812], [390,844], [430,932], [812,375]]) {
     await page.setViewportSize({ width, height });
     await expect(dialog.getByRole('button', { name: 'Schließen', exact: true })).toBeInViewport();
-    await expect(dialog.getByRole('button', { name: 'Gerät hinzufügen', exact: true })).toBeInViewport();
+    await expect(dialog.getByRole('button', { name: 'VoltPilot-Box hinzufügen', exact: true })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     const input = dialog.locator('input').first();
     await input.scrollIntoViewIfNeeded();

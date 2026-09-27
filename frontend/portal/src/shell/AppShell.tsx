@@ -31,7 +31,7 @@ import {
   HELP_ITEM,
   type AnlageSidebar,
   type EbenenBereichId,
-  type EbenenKachel,
+  type EbenenLeistenKachel,
   type NavTarget,
   type SidebarItem,
 } from '../ebenenNav';
@@ -105,8 +105,9 @@ export interface AnlageNav {
 export interface EbenenLeisteNav {
   /** Der Name der Leiste („Bereiche des Unternehmens Kunststoffwerk Ahrenberg GmbH"). */
   titel: string;
-  kacheln: EbenenKachel[];
-  /** Welcher Bereich gerade offen ist (`ebenenAktiv`). */
+  /** Die Kacheln: am Standort je ein Bereich, am Unternehmen je eine Gruppe (`ebenenNav.ebenenLeiste`). */
+  kacheln: EbenenLeistenKachel[];
+  /** Welcher Bereich gerade offen ist (`ebenenAktiv`) — hervorgehoben ist die Kachel, die ihn trägt. */
   aktiv: EbenenBereichId | null;
   onOpen: (ziel: Route) => void;
 }
@@ -323,7 +324,7 @@ export function AppShell({
           label: kachel.label,
           icon: kachel.icon,
           badge: null,
-          aktiv: ebenen?.aktiv === kachel.key,
+          aktiv: ebenen?.aktiv != null && kachel.bereiche.includes(ebenen.aktiv),
           oeffnen: () => ebenen?.onOpen(kachel.ziel),
         }));
   const barName = anlage ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim() : ebenen?.titel ?? '';
@@ -749,7 +750,7 @@ export function AppShell({
               <button
                 key={item.key}
                 type="button"
-                className={`vp-bottombar-item${item.key === 'netzanschluesse' ? ' vp-bottombar-netzanschluesse' : ''}${active ? ' active' : ''}`}
+                className={`vp-bottombar-item${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
                 onClick={item.oeffnen}
               >

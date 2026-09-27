@@ -268,10 +268,14 @@ export function adresseFehlt(st: StandortAmStichtag | null): boolean {
 export const SCHRITT2_FRAGE = 'Womit wird gemessen?';
 export const SCHRITT2_SATZ =
   'Verbinden Sie die VoltPilot-Box der Anlage und binden Sie Zähler oder Controller an. Beides können Sie jederzeit ergänzen.';
-export const GERAET_VERBINDEN = 'Gerät verbinden';
-export const GERAET_VERBINDEN_SATZ = 'Die VoltPilot-Box mit ihrer Geräte-ID';
-export const GERAET_ANBINDEN = 'Gerät anbinden';
-export const GERAET_ANBINDEN_SATZ = 'Zähler oder Controller an der Box';
+/**
+ * Box und Geräte entstehen im EINEN Ort, dem Aufbau — dieselben Namen wie dort, derselbe Dialog. Der Assistent
+ * führt hin; sein Entwurf bleibt, und der Aufbau bietet „Einrichtung fortsetzen“ an.
+ */
+export const GERAET_VERBINDEN = 'VoltPilot-Box hinzufügen';
+export const GERAET_VERBINDEN_SATZ = 'Mit ihrer Geräte-ID — im Aufbau der Anlage';
+export const GERAET_ANBINDEN = 'Gerät hinzufügen';
+export const GERAET_ANBINDEN_SATZ = 'Zähler oder Controller an der Box — im Aufbau der Anlage';
 export const SPAETER_FORTSETZEN = 'Später fortsetzen';
 export const SPAETER_SATZ = 'Ihre Angaben bleiben erhalten. Sie setzen die Einrichtung dort fort, wo Sie aufgehört haben.';
 export const ANDEREN_STANDORT = 'Anderen Standort wählen';

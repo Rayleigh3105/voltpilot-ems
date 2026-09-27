@@ -67,7 +67,7 @@ test('contextual help preserves the actual first onboarding step and focus', asy
 
 test('nested screenshot viewing closes independently and keeps the form behind help', async ({ page }) => {
   await page.goto('/e2e/help.html?scene=claim');
-  const form = page.getByRole('dialog', { name: 'Gerät hinzufügen', exact: true });
+  const form = page.getByRole('dialog', { name: 'VoltPilot-Box hinzufügen', exact: true });
   await form.locator('input').fill('edge-abcdefj');
   await form.getByRole('link', { name: 'Hilfe beim Verbinden' }).click();
   const help = page.getByRole('dialog', { name: 'Hilfe zur Ansicht', exact: true });

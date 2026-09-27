@@ -16,6 +16,7 @@ import {
   type SiteSource,
   type SiteTopology,
   type StandorteAmStichtag,
+  type UemsDatenquelle,
 } from '../api';
 import {
   CONTROL_BADGE,
@@ -68,8 +69,11 @@ import {
   geraetKomponenteBearbeitenHash,
   komponenteBearbeitenHash,
   modellBearbeitenKomponente,
+  ohneAufbauNeu,
   ohneModellBearbeiten,
+  parseAufbauNeu,
   parseKomponente,
+  type AufbauNeu,
 } from '../nav';
 import { abschlussTitel, type TypId } from '../anlegenFlow';
 import { katalogFunde, type KatalogWahl, type KatalogWeg } from '../geraeteKatalog';
@@ -87,6 +91,8 @@ import { AnlegenFlow } from '../components/AnlegenFlow';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
 import { AnlageAnlegenDrawerLazy } from '../components/AnlageAnlegenDrawerLazy';
 import { replaceCurrentNavigation } from '../navigationBlocker';
+import { useMessenEinstieg } from '../messenEinstieg';
+import { browserSpeicher, entwurfLesen, messenEinstieg } from '../messenAssistent';
 import { ablehnungText, haltGrund, ohneMesswertHinweis, sollIstText, sollIstTon, verwaltungsHinweis } from '../komponentenAssistent';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { LIST_POLL_MS } from '../pollCadence';
@@ -121,6 +127,7 @@ export function AufbauSection({
   devices,
   devicesFetchedAt = null,
   onReload,
+  standortSicht = null,
 }: {
   site: Site;
   /** Alle Anlagen des Kunden - für neue Anlagen am Standort. */
@@ -131,6 +138,11 @@ export function AufbauSection({
   devicesFetchedAt?: number | null;
   /** Nach „Box hinzufügen"/„Anlage anlegen": die Schale lädt neu (optional mit Auswahl). */
   onReload?: (selectSiteId?: string) => void;
+  /**
+   * Der Aufbau im STANDORT (`#/standort/{id}/aufbau`): derselbe Baum, aber „hier“ ist der Standort — die
+   * geöffnete Anlage trägt kein „Sie sind hier“, und „Öffnen ›“ an einer anderen bleibt im Standort.
+   */
+  standortSicht?: { wechselHref: (anlageId: string) => string } | null;
 }) {
   const showTechnical = showTechnicalLayer();
   const [data, setData] = useState<SiteEntities | null>(null);
@@ -139,8 +151,12 @@ export function AufbauSection({
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [components, setComponents] = useState<SiteComponents | null>(null);
+  const [componentsDa, setComponentsDa] = useState(false);
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [standorte, setStandorte] = useState<StandorteAmStichtag | null>(null);
+  // Die Datenquellen der Anlagen im Baum (UEMS AP-06): WAS jede Box liest. Fail-soft — ohne sie fehlen genau
+  // diese Zeilen, nie der Baum.
+  const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -205,7 +221,11 @@ export function AufbauSection({
     api.topology(site.id).then((t) => active && setTopology(t), () => active && setTopology(null));
     api.siteSources(site.id).then((s) => active && setSources(s), () => active && setSources(null));
     api.siteChargers(site.id).then((c) => active && setCharging(c), () => active && setCharging(null));
-    api.siteComponents(site.id).then((c) => active && setComponents(c), () => active && setComponents(null));
+    setComponentsDa(false);
+    api.siteComponents(site.id).then(
+      (c) => { if (active) { setComponents(c); setComponentsDa(true); } },
+      () => { if (active) { setComponents(null); setComponentsDa(true); } },
+    );
     consumersApi.list(site.id).then((l) => active && setConsumers(l ?? []), () => active && setConsumers([]));
     api.standorte().then((s) => active && setStandorte(s), () => active && setStandorte(null));
     api.overview().then((o) => active && setOverview(o), () => active && setOverview(null));
@@ -213,6 +233,22 @@ export function AufbauSection({
       active = false;
     };
   }, [site.id, reloadKey]);
+
+  const anlagenIdsDesStandorts = useMemo(() => {
+    const st = standorte?.standorte.find((x) => x.anlagen.some((a) => a.id === site.id));
+    return (st ? st.anlagen.map((a) => a.id) : [site.id]).join(',');
+  }, [standorte, site.id]);
+  useEffect(() => {
+    let active = true;
+    const ids = anlagenIdsDesStandorts.split(',').filter(Boolean);
+    Promise.all(ids.map((id) => api.datenquellen(id).then((a) => a.datenquellen, () => [] as UemsDatenquelle[]))).then(
+      (listen) => active && setDatenquellen(listen.flat()),
+      () => active && setDatenquellen(null),
+    );
+    return () => {
+      active = false;
+    };
+  }, [anlagenIdsDesStandorts, reloadKey]);
 
   useEffect(() => {
     if (!showTechnical) return;
@@ -275,12 +311,39 @@ export function AufbauSection({
         registryBoxId: data?.registry?.deviceId ?? null,
         overview: overview?.sites ?? null,
         nachbarKarten,
+        datenquellen,
         now,
       }),
-    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, now],
+    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, now],
   );
 
   const satz = useMemo(() => (karten ? zentraleSatz(karten) : null), [karten]);
+
+  // Der Rückweg in den Assistenten „Messen & Auswerten“: er führt für Box und Geräte hierher (EIN Ort) und
+  // lässt seinen Entwurf liegen. Solange die Funktion an diesem Standort ein Entwurf ist, steht hier sein Knopf.
+  const messen = useMessenEinstieg();
+  const standortDesBaums = baum.wurzel?.art === 'standort' ? baum.wurzel.id : null;
+  const [fortsetzen, setFortsetzen] = useState<{ text: string; standortId: string } | null>(null);
+  useEffect(() => {
+    const entwurf = entwurfLesen(browserSpeicher());
+    if (!messen || !standortDesBaums || entwurf?.standortId !== standortDesBaums) {
+      setFortsetzen(null);
+      return;
+    }
+    let aktiv = true;
+    api.funktionen().then(
+      (f) => {
+        if (!aktiv) return;
+        const fs = f.standorte.find((x) => x.id === standortDesBaums);
+        const e = fs && fs.messen.zustand === 'entwurf' ? messenEinstieg(fs, entwurf) : null;
+        setFortsetzen(e ? { text: e.text, standortId: standortDesBaums } : null);
+      },
+      () => aktiv && setFortsetzen(null),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [messen?.runde, standortDesBaums, reloadKey]);
 
   // Der Namens-Einstieg per Adresse (`…/modell?bearbeiten=1&komponente=…`).
   useEffect(() => {
@@ -413,6 +476,10 @@ export function AufbauSection({
   }, [components]);
 
   const aktuelleAnlage = baum.anlagen[0];
+  const anlagenDesBaums: Site[] = [
+    site,
+    ...baum.anlagen.slice(1).flatMap((a) => (sites ?? []).filter((s) => s.id === a.id)),
+  ];
   const alleGeraete: { geraet: AufbauGeraet; box: AufbauBox | null }[] = [
     ...aktuelleAnlage.boxen.flatMap((b) => b.geraete.map((g) => ({ geraet: g, box: b }))),
     ...aktuelleAnlage.ohneBox.map((g) => ({ geraet: g, box: null })),
@@ -468,6 +535,38 @@ export function AufbauSection({
     return () => window.clearTimeout(t);
   }, [erfolg]);
 
+  // Der Weg aus Cockpit, Kopf und Assistent in den EINEN Ort (`…?neu=box|geraet|anlage`): die Handlung
+  // öffnet hier, genau einmal je Adresse — danach verschwindet der Parameter, damit ein Neuladen sie nicht
+  // wiederholt. „Gerät“ wartet, bis feststeht, ob das Portal die Geräte dieser Anlage verwaltet.
+  const [neu, setNeu] = useState<AufbauNeu | null>(() =>
+    typeof window === 'undefined' ? null : parseAufbauNeu(window.location.hash),
+  );
+  const [neuHinweis, setNeuHinweis] = useState<string | null>(null);
+  useEffect(() => {
+    const onHash = () => {
+      const n = parseAufbauNeu(window.location.hash);
+      if (n) setNeu(n);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => {
+    if (!neu) return;
+    if (neu === 'geraet' && (!data || !componentsDa)) return;
+    replaceCurrentNavigation(ohneAufbauNeu(window.location.hash));
+    setNeu(null);
+    if (neu === 'box') setBoxAnmelden(true);
+    else if (neu === 'anlage') setAnlageAnlegen(true);
+    else if (portalManaged) oeffneAnlegen(fuehrendeBoxOf(devices, site.id));
+    else
+      setNeuHinweis(
+        components?.componentAuthority === 'box'
+          ? 'Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.'
+          : 'Für diese Anlage ist keine Gerätebearbeitung im Portal freigegeben.',
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- genau einmal je `neu`, sobald die Voraussetzung feststeht
+  }, [neu, data, componentsDa]);
+
   /** Eine Handlung aus dem Kurzblick: erst schließen, dann die Aufgabe öffnen. */
   const ausKurzblick = (tu: () => void) => {
     setKurzblickId(null);
@@ -518,6 +617,24 @@ export function AufbauSection({
           {renameError}
         </div>
       )}
+      {neuHinweis && (
+        <div className="vp-alert vp-alert-info" role="status">
+          {neuHinweis}
+        </div>
+      )}
+      {fortsetzen && messen && (
+        <div className="vp-auf-einrichtung" role="status">
+          <Icon name="list" size={16} />
+          <span>„Messen &amp; Auswerten“ ist an diesem Standort noch nicht fertig eingerichtet.</span>
+          <button
+            type="button"
+            className="vp-btn vp-btn--primary vp-btn--sm"
+            onClick={() => messen.oeffnen({ standortId: fortsetzen.standortId })}
+          >
+            {fortsetzen.text}
+          </button>
+        </div>
+      )}
 
       {erfolg && (
         <p className="vp-auf-erfolg" role="status">
@@ -545,6 +662,7 @@ export function AufbauSection({
 
       {data && (
         <AufbauTabelle
+          standortSicht={standortSicht ? { ...standortSicht, anlageName: site.name } : null}
           wurzel={baum.wurzel}
           anlagenZahl={baum.anlagen.length}
           boxZahl={baum.boxZahl}
@@ -707,7 +825,8 @@ export function AufbauSection({
       <AddDeviceDrawer
         open={boxAnmelden}
         title="VoltPilot-Box hinzufügen"
-        sites={[site]}
+        // Eine Box gehört genau EINER Anlage; hier stehen alle Anlagen dieses Standorts zur Wahl, die offene zuerst.
+        sites={anlagenDesBaums}
         onClose={() => setBoxAnmelden(false)}
         onClaimed={() => onReload?.(site.id)}
       />

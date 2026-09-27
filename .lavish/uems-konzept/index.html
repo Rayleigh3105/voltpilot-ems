@@ -1,0 +1,1098 @@
+<title>Energiemanagement ohne Fachsprache</title>
+<meta name="description" content="Konzept: wie das VoltPilot-Portal das Energiemanagement nach ISO 50001 für Menschen ohne Normwissen nutzbar macht.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@600;700&display=swap">
+<style>
+  /* VoltPilot-Designsystem (frontend/portal/designsystem/tokens): Cornflower-Blau, Navy als Handlungsfarbe,
+     helle Flächen, Inter / Inter Tight, Radien 10/12/16/24. Die dunkle Fassung ist daraus abgeleitet. */
+  :root {
+    --bg: #F8F9FA;
+    --surface: #FFFFFF;
+    --surface-2: #F4F6F9;
+    --ink: #1A1A1A;
+    --muted: #66717C;
+    --line: #E9ECEF;
+    --line-strong: #CED4DA;
+    --action: #2C5282;
+    --action-ink: #FFFFFF;
+    --brand: #95B9FF;
+    --brand-deep: #5A8DE8;
+    --tint: rgba(149, 185, 255, 0.16);
+    --tint-strong: rgba(149, 185, 255, 0.32);
+    --navy: #1E3A5F;
+    --ok: #2E7D32;
+    --ok-dot: #4CAF50;
+    --ok-soft: #E8F5E9;
+    --warn: #B45309;
+    --warn-soft: #FFF7ED;
+    --crit: #C62828;
+    --crit-soft: #FDECEC;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.07);
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-head: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --r-sm: 10px;
+    --r-btn: 12px;
+    --r-md: 16px;
+    --r-lg: 24px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0F1620;
+      --surface: #16202C;
+      --surface-2: #1B2735;
+      --ink: #E8EDF3;
+      --muted: #9DA9B7;
+      --line: #263345;
+      --line-strong: #34465E;
+      --action: #A9C6FF;
+      --action-ink: #0F1620;
+      --brand: #95B9FF;
+      --brand-deep: #B8D4FF;
+      --tint: rgba(149, 185, 255, 0.12);
+      --tint-strong: rgba(149, 185, 255, 0.24);
+      --navy: #DCE7FF;
+      --ok: #86D993;
+      --ok-dot: #5CC46C;
+      --ok-soft: rgba(92, 196, 108, 0.14);
+      --warn: #F3B56B;
+      --warn-soft: rgba(243, 181, 107, 0.14);
+      --crit: #FF8F87;
+      --crit-soft: rgba(255, 143, 135, 0.14);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0F1620;
+    --surface: #16202C;
+    --surface-2: #1B2735;
+    --ink: #E8EDF3;
+    --muted: #9DA9B7;
+    --line: #263345;
+    --line-strong: #34465E;
+    --action: #A9C6FF;
+    --action-ink: #0F1620;
+    --brand: #95B9FF;
+    --brand-deep: #B8D4FF;
+    --tint: rgba(149, 185, 255, 0.12);
+    --tint-strong: rgba(149, 185, 255, 0.24);
+    --navy: #DCE7FF;
+    --ok: #86D993;
+    --ok-dot: #5CC46C;
+    --ok-soft: rgba(92, 196, 108, 0.14);
+    --warn: #F3B56B;
+    --warn-soft: rgba(243, 181, 107, 0.14);
+    --crit: #FF8F87;
+    --crit-soft: rgba(255, 143, 135, 0.14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    padding-inline: 16px;
+    padding-block: 0 64px;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--action); text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 4px; }
+  h1, h2, h3, h4 { font-family: var(--font-head); color: var(--ink); text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.08; letter-spacing: -0.02em; font-weight: 700; }
+  h2 { font-size: clamp(23px, 2.6vw, 29px); line-height: 1.2; letter-spacing: -0.01em; font-weight: 700; }
+  h3 { font-size: 19px; line-height: 1.3; font-weight: 700; }
+  h4 { font-size: 15px; line-height: 1.35; font-weight: 700; }
+  p { margin: 0; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.88em; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  .seite { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  @media (min-width: 1100px) {
+    .seite { grid-template-columns: 200px minmax(0, 1fr); gap: 56px; }
+  }
+
+  /* ---------- Inhaltsverzeichnis ---------- */
+  .toc { display: none; }
+  @media (min-width: 1100px) {
+    .toc { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 32px); align-self: start; padding-top: 48px; }
+    .toc ol { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 2px; }
+    .toc a { display: block; padding: 6px 10px; border-radius: var(--r-sm); color: var(--muted); text-decoration: none; font-size: 14px; line-height: 1.35; }
+    .toc a:hover { background: var(--tint); color: var(--ink); }
+  }
+
+  main { min-width: 0; display: grid; gap: 72px; }
+  section { min-width: 0; display: grid; gap: 22px; scroll-margin-top: 24px; }
+  .abschnittkopf { display: grid; gap: 8px; max-width: 70ch; }
+  .abschnittkopf p { color: var(--muted); }
+  .prosa { max-width: 68ch; display: grid; gap: 12px; }
+  .schmal { max-width: 68ch; }
+  /* Tabellen mit langen Texten scrollen am Telefon in ihrem Rahmen, statt in schmale Spalten zu zerfallen. */
+  table.breit { min-width: 620px; }
+
+  /* ---------- Kopf ---------- */
+  .kopf { padding-top: 48px; display: grid; gap: 18px; }
+  .kopf .lead { font-size: 19px; line-height: 1.55; max-width: 64ch; color: var(--ink); }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-block; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; color: var(--muted); line-height: 1.4; }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Karten ---------- */
+  .karte { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px; min-width: 0; }
+  .raster { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+  .vorschlag-kurz { display: grid; gap: 8px; align-content: start; }
+  .vorschlag-kurz .id { font-family: var(--font-mono); font-size: 12px; color: var(--action); font-weight: 600; }
+  .vorschlag-kurz p { color: var(--muted); font-size: 15px; }
+  .erledigt { display: flex; gap: 16px; align-items: flex-start; background: var(--ok-soft); border: 1px solid transparent; border-radius: var(--r-md); padding: 18px 20px; }
+  .erledigt .haken { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--ok-dot); color: #fff; font-weight: 700; }
+  .erledigt p { color: var(--ink); }
+
+  /* ---------- Befunde ---------- */
+  .befund { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); align-items: start; padding-block: 22px; border-top: 1px solid var(--line); }
+  .befund:first-of-type { border-top: 0; padding-top: 0; }
+  @media (min-width: 900px) {
+    .befund { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; }
+  }
+  .befund .text { display: grid; gap: 10px; }
+  .befund .id { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--warn); }
+  .zitat { border-left: 3px solid var(--line-strong); padding: 2px 0 2px 12px; color: var(--muted); font-size: 15px; }
+  figure { margin: 0; display: grid; gap: 8px; min-width: 0; }
+  figure img { display: block; width: 100%; height: auto; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface); }
+  figcaption { font-size: 13px; color: var(--muted); line-height: 1.45; }
+  .telefon-bild img { max-width: 300px; }
+
+  /* ---------- Diagramme ---------- */
+  .diagramm { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; min-width: 0; }
+  .diagramm-scroll { overflow-x: auto; }
+  .diagramm svg { display: block; width: 100%; min-width: 560px; height: auto; color: var(--ink); }
+  .d-box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.5; }
+  .d-hub { fill: var(--tint-strong); stroke: var(--brand-deep); stroke-width: 1.5; }
+  .d-titel { font-family: var(--font-head); font-weight: 700; font-size: 20px; fill: var(--action); }
+  .d-frage { font-family: var(--font-body); font-weight: 600; font-size: 15px; fill: var(--ink); }
+  .d-klein { font-family: var(--font-body); font-size: 13px; fill: var(--muted); }
+  .d-norm { font-family: var(--font-mono); font-size: 12px; fill: var(--action); }
+  .d-pfeil { stroke: var(--brand-deep); stroke-width: 2.5; fill: none; }
+  .d-spitze { fill: var(--brand-deep); }
+  .d-linie { stroke: var(--line-strong); stroke-width: 1.5; fill: none; }
+  .d-klammer { stroke: var(--ok-dot); stroke-width: 3; fill: none; }
+  .d-plus { fill: var(--ok-dot); }
+  .d-plus-text { font-family: var(--font-head); font-weight: 700; font-size: 15px; fill: var(--ok); }
+
+  /* ---------- Tabellen ---------- */
+  .tabelle-rahmen { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.klar { font-weight: 600; min-width: 190px; }
+  td.norm { min-width: 190px; }
+  td.abs { font-family: var(--font-mono); font-size: 13px; color: var(--action); white-space: nowrap; }
+
+  /* ---------- Vorschläge ---------- */
+  .vorschlag { display: grid; gap: 18px; padding: 24px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); min-width: 0; scroll-margin-top: 24px; }
+  .vorschlag-kopf { display: grid; gap: 6px; }
+  .vorschlag-kopf .id { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--action); }
+  .zweispaltig { display: grid; gap: 22px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 900px) { .zweispaltig { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+  .liste { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .aufwand { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); }
+  .groesse { font-family: var(--font-mono); font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--tint); color: var(--action); }
+  .kasten { background: var(--surface-2); border-radius: var(--r-md); padding: 14px 16px; display: grid; gap: 6px; font-size: 14.5px; }
+  .kasten b { font-weight: 600; }
+
+  /* ---------- Portal-Mockups ---------- */
+  .mock { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg); overflow: hidden; min-width: 0; box-shadow: var(--shadow); }
+  .mock-leiste { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .mock-leiste i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); display: inline-block; }
+  .mock-inhalt { padding: 16px; display: grid; gap: 14px; }
+  .mock-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .reiter { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .reiter span { flex: none; padding: 9px 12px; font-size: 14px; font-weight: 600; color: var(--muted); white-space: nowrap; position: relative; }
+  .reiter span.an { color: var(--action); }
+  .reiter span.an::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--action); }
+  .reiter.klein span { font-size: 13px; padding: 7px 10px; font-weight: 500; }
+  .gruppe-frage { font-size: 13px; color: var(--muted); }
+
+  .fahrplan { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; display: grid; gap: 4px; }
+  .fahrplan-kopf { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
+  .schritt { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .schritt:first-of-type { border-top: 0; }
+  .nr { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+  .schritt.fertig .nr { background: var(--ok-dot); color: #fff; border-color: transparent; }
+  .schritt.jetzt .nr { background: var(--action); color: var(--action-ink); border-color: transparent; }
+  .schritt-titel { font-weight: 600; font-size: 15px; line-height: 1.35; }
+  .schritt-fakt { font-size: 13px; color: var(--muted); line-height: 1.4; }
+  .knopf { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: var(--r-btn); font: 600 13.5px/1 var(--font-body); white-space: nowrap; border: 1px solid transparent; }
+  .knopf.primaer { background: var(--action); color: var(--action-ink); }
+  .knopf.zweit { background: var(--surface); color: var(--action); border-color: var(--action); }
+  .knopf.leise { background: none; color: var(--action); padding: 0 6px; }
+  .zustand { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .zustand::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .zustand.ok { color: var(--ok); }
+  .zustand.warn { color: var(--warn); }
+  .zustand.leer { color: var(--muted); }
+  @media (max-width: 520px) {
+    .schritt { grid-template-columns: 28px minmax(0, 1fr); }
+    .schritt > :last-child { grid-column: 2; justify-self: start; }
+  }
+
+  .begriff { border-bottom: 2px dotted var(--brand-deep); cursor: help; }
+  .popover { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow); padding: 16px; display: grid; gap: 10px; max-width: 420px; position: relative; }
+  .popover::before { content: ''; position: absolute; top: -7px; left: 36px; width: 12px; height: 12px; background: var(--surface); border-left: 1px solid var(--line); border-top: 1px solid var(--line); transform: rotate(45deg); }
+  .popover .norm-zeile { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+  .beispiel { background: var(--tint); border-radius: var(--r-sm); padding: 10px 12px; font-size: 14px; }
+
+  .vorher-nachher { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 760px) { .vorher-nachher { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  .vn { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .vn-marke { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .vn.vorher .vn-marke { color: var(--warn); }
+  .vn.nachher .vn-marke { color: var(--ok); }
+  .vn .zahl { font-family: var(--font-head); font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .vn .klein { font-size: 13.5px; color: var(--muted); }
+  details.aufklapper { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
+  details.aufklapper summary { cursor: pointer; padding: 9px 12px; font-size: 13.5px; font-weight: 600; color: var(--action); }
+  details.aufklapper div { padding: 0 12px 12px; font-size: 13.5px; color: var(--muted); display: grid; gap: 4px; }
+
+  .check { display: grid; gap: 0; }
+  .check-zeile { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .check-zeile:first-child { border-top: 0; }
+  .kreis { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line-strong); }
+  .kreis.voll { background: var(--ok-dot); border-color: var(--ok-dot); }
+  .balken { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line); }
+  .balken span { display: block; height: 100%; width: 18%; background: var(--ok-dot); }
+  @media (max-width: 520px) {
+    .check-zeile { grid-template-columns: 22px minmax(0, 1fr); }
+    .check-zeile > :last-child { grid-column: 2; justify-self: start; }
+  }
+
+  .infochip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--action); font-weight: 600; border: 1px solid var(--line); background: var(--surface); padding: 5px 10px; border-radius: 999px; }
+  .infotext { font-size: 13.5px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 12px; display: grid; gap: 6px; }
+
+  .telefon { width: 100%; max-width: 300px; border: 1px solid var(--line-strong); border-radius: 28px; background: var(--bg); padding: 14px 12px 0; overflow: hidden; box-shadow: var(--shadow); display: grid; gap: 10px; justify-self: center; }
+  .telefon-kopf { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; padding: 0 4px; }
+  .t-karte { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 6px; font-size: 13px; }
+  .t-karte h4 { font-size: 14px; }
+  .t-zeile { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+  .t-zeile b { color: var(--ink); font-weight: 600; }
+  .t-leiste { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); background: var(--surface); margin: 0 -12px; }
+  .t-leiste span { font-size: 10px; text-align: center; padding: 10px 0 12px; color: var(--muted); font-weight: 600; }
+  .t-leiste span.an { color: var(--action); }
+
+  /* ---------- Entscheidungen ---------- */
+  .entscheidung { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 18px 20px; display: grid; gap: 12px; min-width: 0; }
+  .entscheidung legend { padding: 0; font-family: var(--font-head); font-weight: 700; font-size: 17px; }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 8px; }
+  .option { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; }
+  .option:hover { border-color: var(--line-strong); }
+  .option:has(input:checked) { border-color: var(--action); background: var(--tint); }
+  .option input { margin: 3px 0 0; accent-color: var(--action); width: 16px; height: 16px; }
+  .option span { font-size: 14.5px; }
+  .option small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .empfohlen { font-size: 11px; font-weight: 700; color: var(--ok); letter-spacing: 0.04em; text-transform: uppercase; margin-left: 6px; }
+  .entscheidung .zeile { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .vorgemerkt { font-size: 13px; color: var(--ok); font-weight: 600; }
+  textarea { width: 100%; min-height: 96px; font: inherit; font-size: 15px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 10px 12px; resize: vertical; }
+  button { font: inherit; cursor: pointer; }
+  button.knopf { font: 600 14px/1 var(--font-body); min-height: 40px; }
+  .kopieren { display: grid; gap: 10px; justify-items: start; }
+  [data-lavish-copy-all-status] { font-size: 14px; color: var(--muted); }
+
+  .fuss { font-size: 13.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 6px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .option, .toc a { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+  }
+</style>
+
+<div class="seite">
+  <nav class="toc" aria-label="Inhalt">
+    <div class="eyebrow">Inhalt</div>
+    <ol>
+      <li><a href="#kurzfassung">Kurzfassung</a></li>
+      <li><a href="#befunde">Was man heute sieht</a></li>
+      <li><a href="#leitidee">Leitidee: fünf Fragen</a></li>
+      <li><a href="#vorschlaege">Vorschläge K1–K8</a></li>
+      <li><a href="#begriffe">Begriffe: Klartext und Norm</a></li>
+      <li><a href="#umgesetzt">Schon umgesetzt</a></li>
+      <li><a href="#reihenfolge">Reihenfolge und Aufwand</a></li>
+      <li><a href="#entscheidungen">Ihre Entscheidungen</a></li>
+      <li><a href="#grenzen">Nicht enthalten</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="kopf" id="kopf">
+      <div class="eyebrow">Konzept · VoltPilot EMS · Branch uems</div>
+      <h1>Energiemanagement ohne Fachsprache</h1>
+      <p class="lead">Das Portal kann fast alles, was ein Energiemanagement nach ISO&nbsp;50001 braucht. Wer die Norm nicht kennt, findet aber schwer hinein: zehn gleichrangige Reiter, Normwörter, Kennzeichen wie <span class="mono">MS-12</span> und leere Seiten ohne ersten Schritt. Dieses Konzept sortiert das Portal nach den Fragen, die sich ein Betrieb stellt, und stellt die Norm in die zweite Reihe.</p>
+      <div class="meta">
+        <span class="chip"><b>Stand</b> 27.09.2026</span>
+        <span class="chip"><b>Grundlage</b> Code auf <span class="mono">uems</span> und Bildschirmfotos der Test-Bühnen (fiktives Kunststoffwerk Ahrenberg)</span>
+        <span class="chip"><b>Normbezug</b> Abschnitte nach ISO 50001:2018</span>
+      </div>
+    </header>
+
+    <section id="kurzfassung" aria-labelledby="h-kurz">
+      <div class="abschnittkopf">
+        <h2 id="h-kurz">Kurzfassung</h2>
+        <p>Acht Vorschläge. Die ersten fünf tragen den größten Teil der Wirkung; die Kennungen K1–K8 finden Sie unten und in den Entscheidungen wieder.</p>
+      </div>
+      <div class="raster">
+        <a class="karte vorschlag-kurz" href="#k1" style="text-decoration:none;color:inherit"><span class="id">K1</span><h3>Arbeitsfragen statt Normkapitel</h3><p>Fünf Gruppen – Übersicht, Messen, Auswerten, Verbessern, Nachweisen – auch am Rechner. Keine zweite Reiterreihe mehr.</p></a>
+        <a class="karte vorschlag-kurz" href="#k2" style="text-decoration:none;color:inherit"><span class="id">K2</span><h3>Ein Fahrplan mit dem nächsten Schritt</h3><p>Sechs Schritte auf der Übersicht, Stand aus echten Daten, je Schritt genau eine Handlung.</p></a>
+        <a class="karte vorschlag-kurz" href="#k3" style="text-decoration:none;color:inherit"><span class="id">K3</span><h3>Klartext zuerst, Normbegriff dahinter</h3><p>Ein Begriffs-Hinweis an jedem Fachwort: ein Satz, ein Beispiel mit eigenen Zahlen, der Normbegriff.</p></a>
+        <a class="karte vorschlag-kurz" href="#k4" style="text-decoration:none;color:inherit"><span class="id">K4</span><h3>Leere Seiten, die erklären</h3><p>Was ist das, wozu brauche ich es, womit fange ich an – mit einem Hauptknopf statt Filtern über dem Nichts.</p></a>
+        <a class="karte vorschlag-kurz" href="#k5" style="text-decoration:none;color:inherit"><span class="id">K5</span><h3>Namen vor Kennzeichen</h3><p>„Montage Linie M1 je Gutteil“ statt „MS-12 je BZ-6 · Fassung 1“. Der Rechenweg bleibt, aber im Aufklapper.</p></a>
+        <a class="karte vorschlag-kurz" href="#k6" style="text-decoration:none;color:inherit"><span class="id">K6 · K7 · K8</span><h3>Rolle, Norm-Satz, Telefon</h3><p>Startansicht je Rolle, der Norm-Satz einmal je Bereich statt zweimal je Seite, am Telefon zuerst „Was steht an“.</p></a>
+      </div>
+      <div class="erledigt">
+        <span class="haken" aria-hidden="true">✓</span>
+        <div class="prosa">
+          <p><b>Schon in diesem Branch umgesetzt:</b> ein Ort für Anlagen, VoltPilot-Boxen und Geräte – <em>Standort › Aufbau</em>. Die Seiten „Boxen“ und „Anlagen“ am Standort sind darin aufgegangen, jeder andere Einstieg führt dorthin, und am Telefon trägt die Leiste höchstens fünf Kacheln. <a href="#umgesetzt">Details und Bilder</a></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="befunde" aria-labelledby="h-befunde">
+      <div class="abschnittkopf">
+        <h2 id="h-befunde">Was jemand ohne Normwissen heute sieht</h2>
+        <p>Sechs Befunde aus den Test-Bühnen, jeweils mit dem Bild, an dem man ihn sieht.</p>
+      </div>
+
+      <article class="befund" id="b1">
+        <div class="text">
+          <span class="id">B1</span>
+          <h3>Zehn gleichrangige Reiter am Unternehmen</h3>
+          <p>Am Rechner stehen nebeneinander: Übersicht · Standorte · Messstellen · Bezugsgrößen · Kennzahlen · Berichte · Bewertung · Ziele und Maßnahmen · Energiemanagement · Energie. Die Reihenfolge folgt keiner Aufgabe. „Energie“ und „Energiemanagement“ stehen nebeneinander und meinen Verschiedenes.</p>
+          <p class="muted">Am Telefon ist das in diesem Branch gelöst (Gruppen, siehe <a href="#umgesetzt">Schon umgesetzt</a>), am Rechner noch nicht.</p>
+        </div>
+        <figure>
+          <img src="unternehmen-1440.jpg" alt="Unternehmensübersicht am Rechner mit zehn Reitern in einer Reihe">
+          <figcaption>Unternehmen › Übersicht bei 1440 px, alle Rechte.</figcaption>
+        </figure>
+      </article>
+
+      <article class="befund" id="b2">
+        <div class="text">
+          <span class="id">B2</span>
+          <h3>Fünfzehn Reiter auf einer Seite</h3>
+          <p>Das Energiemanagement zeigt zwei Reiterreihen: acht für das Unternehmen, sieben für den Bereich. Die zweite Reihe spricht Norm: Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertung.</p>
+        </div>
+        <figure>
+          <img src="energiemanagement-1440.jpg" alt="Seite Energiemanagement mit zwei Reiterreihen und dem leeren Verzeichnis">
+          <figcaption>Unternehmen › Energiemanagement › Verzeichnis, leerer Stand.</figcaption>
+        </figure>
+      </article>
+
+      <article class="befund" id="b3">
+        <div class="text">
+          <span class="id">B3</span>
+          <h3>Leere Seiten ohne ersten Schritt</h3>
+          <p>Das leere Verzeichnis zeigt zuerst vier Filter und „Als CSV abrufen“, darunter elf Bereiche mit demselben Satz:</p>
+          <p class="zitat">Hier ist noch nichts festgehalten.</p>
+          <p>Womit man anfängt und warum, steht dort nicht. Die leere Managementbewertung sagt denselben Satz. Ziele und Maßnahmen erklären sich mit einem Normwort, obwohl der Reiter daneben „Kennzahlen“ heißt:</p>
+          <p class="zitat">Sie entstehen aus Ihren Energieleistungskennzahlen: aus einer Auffälligkeit, aus einem Energieziel oder von Hand.</p>
+        </div>
+        <figure>
+          <img src="energiemanagement-1440.jpg" alt="Leeres Verzeichnis mit Filtern und dem Satz Hier ist noch nichts festgehalten">
+          <figcaption>Dasselbe Bild wie B2: Filter über leeren Gruppen.</figcaption>
+        </figure>
+      </article>
+
+      <article class="befund" id="b4">
+        <div class="text">
+          <span class="id">B4</span>
+          <h3>Kennzeichen statt Namen</h3>
+          <p>Die Kennzahl erklärt ihre Herkunft so:</p>
+          <p class="zitat">Menge 6.100 kWh (MS-12, vollständig, Version 1) je 41.000 Stück (BZ-6, Fassung 1)</p>
+          <p class="zitat">Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn</p>
+          <p>Wer nicht weiß, was MS-12 und BZ-6 sind, liest hier nichts. „Version“ und „Fassung“ stehen nebeneinander und meinen Verschiedenes; die Seite sagt nicht, was.</p>
+        </div>
+        <figure>
+          <img src="kennzahl-1440.jpg" alt="Kennzahl-Seite mit Herkunft und Berechnung in Kennzeichen">
+          <figcaption>Kennzahlen › KZ-0001 Stromeinsatz Montage je Stück — Halle 2.</figcaption>
+        </figure>
+      </article>
+
+      <article class="befund" id="b5">
+        <div class="text">
+          <span class="id">B5</span>
+          <h3>Derselbe Norm-Satz mehrfach auf einer Seite</h3>
+          <p>Die Bewertung zeigt zweimal untereinander:</p>
+          <p class="zitat">VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.</p>
+          <p>Jede UEMS-Fläche trägt diesen Satz, das Energiemanagement zusätzlich den Verantwortungs-Satz. Ein Wächter (<code>copy.test.ts</code>) verlangt ihn je Datei. Beim dritten Lesen überliest man ihn, und der eigentliche Inhalt rutscht nach unten.</p>
+        </div>
+        <figure>
+          <img src="bewertung-1440.jpg" alt="Bewertungsseite, der Norm-Satz steht zweimal">
+          <figcaption>Unternehmen › Bewertung, leerer Umfang.</figcaption>
+        </figure>
+      </article>
+
+      <article class="befund" id="b6">
+        <div class="text">
+          <span class="id">B6</span>
+          <h3>Zwei Welten in einem Kopf</h3>
+          <p>Die Seitenleiste heißt „Meine Anlagen“ – das Wort stammt aus der Zeit, als ein Kunde eine Box hatte (<code>betriebsart.ts</code>: „Portfolio“ für Betreiber, sonst „Meine Anlagen“). Oben steht der Pfad „Ahrenberg › Werk Ahrenberg“, die Seiten sprechen vom Unternehmen. Drei Namen für denselben Einstieg.</p>
+        </div>
+        <figure>
+          <img src="aufbau-1440.jpg" alt="Standort-Aufbau, links steht Meine Anlagen, oben Ahrenberg und Werk Ahrenberg">
+          <figcaption>Standort › Aufbau: links „Meine Anlagen“, oben der Unternehmenspfad.</figcaption>
+        </figure>
+      </article>
+    </section>
+
+    <section id="leitidee" aria-labelledby="h-leitidee">
+      <div class="abschnittkopf">
+        <h2 id="h-leitidee">Leitidee: fünf Fragen statt zehn Reiter</h2>
+        <p>Die Norm ist nach Kapiteln gebaut, ein Betrieb nach Arbeit. Das Portal ordnet sich nach den Fragen, die sich jemand ohne Normwissen stellt. Der Normbegriff bleibt sichtbar, aber als zweite Zeile.</p>
+      </div>
+      <div class="diagramm">
+        <div class="diagramm-scroll">
+          <svg viewBox="0 0 760 430" role="img" aria-labelledby="d1-titel d1-text">
+            <title id="d1-titel">Vier Arbeitsfragen im Kreis um die Übersicht</title>
+            <desc id="d1-text">Messen, Auswerten, Verbessern und Nachweisen bilden im Uhrzeigersinn einen Kreislauf. In der Mitte steht die Übersicht mit den Fragen Läuft alles und Was steht an.</desc>
+            <defs>
+              <marker id="spitze" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" class="d-spitze"/>
+              </marker>
+            </defs>
+            <g id="d1-messen">
+              <title>Messen</title>
+              <rect class="d-box" x="20" y="20" width="270" height="130" rx="16"/>
+              <text class="d-titel" x="40" y="54">Messen</text>
+              <text class="d-frage" x="40" y="80">Wird alles erfasst?</text>
+              <text class="d-klein" x="40" y="104">Aufbau · Messstellen · Bezugsgrößen</text>
+              <text class="d-norm" x="40" y="130">ISO 6.6</text>
+            </g>
+            <g id="d1-auswerten">
+              <title>Auswerten</title>
+              <rect class="d-box" x="470" y="20" width="270" height="130" rx="16"/>
+              <text class="d-titel" x="490" y="54">Auswerten</text>
+              <text class="d-frage" x="490" y="80">Wo geht die Energie hin?</text>
+              <text class="d-klein" x="490" y="104">Bewertung · Kennzahlen · Bezugsbasis</text>
+              <text class="d-norm" x="490" y="130">ISO 6.3 · 6.4 · 6.5 · 9.1</text>
+            </g>
+            <g id="d1-verbessern">
+              <title>Verbessern</title>
+              <rect class="d-box" x="470" y="280" width="270" height="130" rx="16"/>
+              <text class="d-titel" x="490" y="314">Verbessern</text>
+              <text class="d-frage" x="490" y="340">Was tun wir dagegen?</text>
+              <text class="d-klein" x="490" y="364">Ziele · Maßnahmen · Abweichungen</text>
+              <text class="d-norm" x="490" y="390">ISO 6.2 · 10</text>
+            </g>
+            <g id="d1-nachweisen">
+              <title>Nachweisen</title>
+              <rect class="d-box" x="20" y="280" width="270" height="130" rx="16"/>
+              <text class="d-titel" x="40" y="314">Nachweisen</text>
+              <text class="d-frage" x="40" y="340">Können wir es belegen?</text>
+              <text class="d-klein" x="40" y="364">Berichte · Dokumente · Audits</text>
+              <text class="d-norm" x="40" y="390">ISO 5.2 · 7.5 · 9.2 · 9.3</text>
+            </g>
+            <g id="d1-uebersicht">
+              <title>Übersicht</title>
+              <rect class="d-hub" x="295" y="170" width="170" height="90" rx="20"/>
+              <text class="d-titel" x="380" y="204" text-anchor="middle">Übersicht</text>
+              <text class="d-klein" x="380" y="228" text-anchor="middle">Läuft alles?</text>
+              <text class="d-klein" x="380" y="247" text-anchor="middle">Was steht an?</text>
+            </g>
+            <path id="d1-p1" class="d-pfeil" d="M292,85 L466,85" marker-end="url(#spitze)"><title>Zahlen fließen in die Auswertung</title></path>
+            <path id="d1-p2" class="d-pfeil" d="M605,152 L605,276" marker-end="url(#spitze)"><title>Befunde werden zu Zielen und Maßnahmen</title></path>
+            <path id="d1-p3" class="d-pfeil" d="M468,345 L294,345" marker-end="url(#spitze)"><title>Wirkung wird belegt</title></path>
+            <path id="d1-p4" class="d-pfeil" d="M155,278 L155,154" marker-end="url(#spitze)"><title>Neuer Messbedarf entsteht</title></path>
+            <text class="d-klein" x="380" y="76" text-anchor="middle">Zahlen</text>
+            <text class="d-klein" x="616" y="219">Befunde</text>
+            <text class="d-klein" x="380" y="370" text-anchor="middle">Wirkung</text>
+            <text class="d-klein" x="72" y="219">Messbedarf</text>
+          </svg>
+        </div>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead><tr><th>Frage</th><th>Gruppe</th><th>Bereiche heute</th><th>Normbezug</th></tr></thead>
+          <tbody>
+            <tr><td class="klar">Läuft alles? Was steht an?</td><td>Übersicht</td><td>Übersicht, Standorte, Energie, Wiedervorlage (heute im Energiemanagement)</td><td class="abs">–</td></tr>
+            <tr><td class="klar">Wird alles erfasst?</td><td>Messen</td><td>Standort › Aufbau, Messstellen, Bezugsgrößen</td><td class="abs">6.6</td></tr>
+            <tr><td class="klar">Wo geht die Energie hin, wird es besser?</td><td>Auswerten</td><td>Bewertung (mit Messplanung), Kennzahlen mit Bezugsbasis und Vergleich</td><td class="abs">6.3 · 6.4 · 6.5 · 9.1</td></tr>
+            <tr><td class="klar">Was tun wir dagegen?</td><td>Verbessern</td><td>Energieziele, Maßnahmen, Abweichungen</td><td class="abs">6.2 · 10</td></tr>
+            <tr><td class="klar">Können wir es belegen?</td><td>Nachweisen</td><td>Berichte, Verzeichnis, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertung</td><td class="abs">5.2 · 5.3 · 7.5 · 9.2 · 9.3 · 10.1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted schmal">Im Uhrzeigersinn ist das der Kreislauf der ständigen Verbesserung, den die Norm verlangt. Die Adressen der Seiten (<code>#/portfolio/…</code>) ändern sich dabei nicht: Die Gruppen ordnen nur die Navigation.</p>
+    </section>
+
+    <section id="vorschlaege" aria-labelledby="h-vorschlaege">
+      <div class="abschnittkopf">
+        <h2 id="h-vorschlaege">Vorschläge</h2>
+        <p>Je Vorschlag: was sich ändert, warum, wie es aussieht und was es kostet. Die Mockups nutzen das Designsystem des Portals; Zahlen und Einträge darin sind Beispielwerte.</p>
+      </div>
+
+      <article class="vorschlag" id="k1">
+        <div class="vorschlag-kopf">
+          <span class="id">K1 · löst B1, B2</span>
+          <h3>Navigation nach Arbeitsfragen – am Rechner wie am Telefon</h3>
+        </div>
+        <div class="zweispaltig">
+          <div class="prosa">
+            <p>Oben fünf Gruppen, darunter nur die Reiter der offenen Gruppe. Die sieben Reiter des Energiemanagements werden Teil von „Nachweisen“; die zweite Reiterreihe entfällt. Die Wiedervorlage wandert in die Übersicht, weil sie die Frage „Was steht an?“ beantwortet.</p>
+            <p>Am Telefon gibt es die Gruppen seit diesem Branch (<code>ebenenNav.UNTERNEHMEN_GRUPPEN</code>). K1 nutzt dieselbe Liste für den Rechner.</p>
+            <div class="kasten">
+              <span><b>Bleibt:</b> jede Adresse und jedes Lesezeichen, die Rechte je Bereich.</span>
+              <span><b>Ändert sich:</b> <code>PortfolioTabs</code>, <code>EnergiemanagementBereich</code>, die Reiterlisten in den e2e-Specs.</span>
+            </div>
+            <div class="aufwand"><span class="groesse">M</span> etwa ein Paket; Entscheidung <a href="#d1">D1</a> und <a href="#d2">D2</a></div>
+          </div>
+          <div class="mock" aria-label="Mockup: Navigation mit Gruppen am Rechner">
+            <div class="mock-leiste"><i></i><i></i><i></i><span>Kunststoffwerk Ahrenberg GmbH</span></div>
+            <div class="mock-inhalt">
+              <div class="reiter"><span>Übersicht</span><span>Messen</span><span>Auswerten</span><span>Verbessern</span><span class="an">Nachweisen</span></div>
+              <div class="gruppe-frage">Können wir es belegen?</div>
+              <div class="reiter klein"><span class="an">Checkliste</span><span>Berichte</span><span>Dokumente</span><span>Aufgaben</span><span>Audits</span><span>Feststellungen</span><span>Managementbewertung</span></div>
+              <div class="mock-label">Vorher: 8 + 7 Reiter in zwei Reihen · nachher: 5 + 7, eine Frage dazwischen</div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="vorschlag" id="k2">
+        <div class="vorschlag-kopf">
+          <span class="id">K2 · löst B3</span>
+          <h3>Ein Fahrplan, der den nächsten Schritt nennt</h3>
+        </div>
+        <div class="zweispaltig">
+          <div class="prosa">
+            <p>Auf der Unternehmens-Übersicht steht eine Karte „Ihr Energiemanagement“ mit sechs Schritten, in der Reihenfolge, in der ein Betrieb es aufbaut. Jeder Schritt zeigt seinen Stand aus gespeicherten Daten und genau eine nächste Handlung. Steht alles, schrumpft die Karte auf „Was steht an“.</p>
+            <div class="kasten">
+              <span><b>Regel 1:</b> Was nicht abrufbar ist, heißt „nicht abrufbar“ – nie „0“ und nie „erledigt“.</span>
+              <span><b>Regel 2:</b> Kein Schritt sagt „normkonform“. Der Fahrplan beschreibt, was im Portal festgehalten ist.</span>
+            </div>
+            <div class="tabelle-rahmen">
+              <table>
+                <thead><tr><th>Schritt</th><th>Stand aus</th><th>Daten</th></tr></thead>
+                <tbody>
+                  <tr><td>1 Messen einrichten</td><td>Funktion „Messen &amp; Auswerten“ je Standort, Datenlage</td><td>vorhanden</td></tr>
+                  <tr><td>2 Energieeinsätze bewerten</td><td>Umfang, Energieeinsätze, Einstufung</td><td>vorhanden</td></tr>
+                  <tr><td>3 Kennzahlen mit Vergleichsjahr</td><td>Kennzahlen, Bezugsbasen</td><td>vorhanden</td></tr>
+                  <tr><td>4 Ziele und Maßnahmen</td><td>Energieziele, Maßnahmen</td><td>vorhanden</td></tr>
+                  <tr><td>5 Nachweise führen</td><td>Verzeichnis (11 Bereiche), Auditprogramm</td><td>vorhanden</td></tr>
+                  <tr><td>6 Jährlicher Rückblick</td><td>Managementbewertung je Jahr</td><td>vorhanden</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="aufwand"><span class="groesse">M</span> aus den vorhandenen Abfragen · <span class="groesse">L</span> mit eigenem Sammel-Endpunkt, damit die Übersicht nicht sechs Bereiche einzeln fragt; Entscheidung <a href="#d4">D4</a></div>
+          </div>
+          <div class="fahrplan" aria-label="Mockup: Fahrplan-Karte">
+            <div class="fahrplan-kopf">
+              <h4>Ihr Energiemanagement</h4>
+              <span class="muted" style="font-size:13px">2 von 6 Schritten stehen</span>
+            </div>
+            <div class="schritt fertig"><span class="nr">1</span><div><div class="schritt-titel">Messen einrichten</div><div class="schritt-fakt">2 von 2 Standorten messen · 21 von 22 Messstellen liefern Daten</div></div><span class="zustand ok">steht</span></div>
+            <div class="schritt jetzt"><span class="nr">2</span><div><div class="schritt-titel">Energieeinsätze bewerten</div><div class="schritt-fakt">Umfang noch nicht festgelegt</div></div><span class="knopf primaer">Umfang festlegen</span></div>
+            <div class="schritt fertig"><span class="nr">3</span><div><div class="schritt-titel">Kennzahlen mit Vergleichsjahr</div><div class="schritt-fakt">Beispiel: 2 Kennzahlen, beide mit Bezugsbasis</div></div><span class="zustand ok">steht</span></div>
+            <div class="schritt"><span class="nr">4</span><div><div class="schritt-titel">Ziele und Maßnahmen</div><div class="schritt-fakt">Noch kein Energieziel</div></div><span class="knopf leise">Ziel setzen ›</span></div>
+            <div class="schritt"><span class="nr">5</span><div><div class="schritt-titel">Nachweise führen</div><div class="schritt-fakt">Checkliste: 2 von 11 Bereichen festgehalten</div></div><span class="knopf leise">Weiter ›</span></div>
+            <div class="schritt"><span class="nr">6</span><div><div class="schritt-titel">Jährlicher Rückblick</div><div class="schritt-fakt">Managementbewertung 2026: noch nicht angelegt</div></div><span class="zustand leer">später</span></div>
+            <p class="muted" style="font-size:12.5px;margin-top:6px">Beispielwerte</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="vorschlag" id="k3">
+        <div class="vorschlag-kopf">
+          <span class="id">K3 · löst B4</span>
+          <h3>Klartext zuerst, Normbegriff dahinter</h3>
+        </div>
+        <div class="zweispaltig">
+          <div class="prosa">
+            <p>Ein Baustein „Begriff“ markiert jedes Fachwort mit einer gepunkteten Linie. Antippen öffnet vier Dinge: einen Satz in Alltagssprache, ein Beispiel mit den eigenen Zahlen, den Normbegriff mit Abschnitt und den Weg in die Hilfe. Knöpfe sagen, was passiert („Vergleichsjahr festlegen“); der Fachbegriff steht darunter.</p>
+            <p>Die Texte kommen aus dem Fachmodell-Glossar (<code>docs/fachmodell/glossar.md</code> → <code>src/glossar.ts</code>), dem Weg, den das Portal heute schon für Kundenwörter nutzt. Die Tabelle <a href="#begriffe">Begriffe</a> zeigt den ersten Satz Einträge.</p>
+            <div class="aufwand"><span class="groesse">S</span> Baustein · <span class="groesse">M</span> Texte für etwa 15 Kernbegriffe; Entscheidung <a href="#d3">D3</a></div>
+          </div>
+          <div style="display:grid;gap:12px">
+            <div class="karte" style="display:grid;gap:6px">
+              <div class="mock-label">Stromeinsatz Montage je Stück — Halle 2</div>
+              <p style="font-size:15px">Oktober 2026 liegt <b>12&nbsp;% unter</b> der <span class="begriff" tabindex="0">Bezugsbasis</span>.</p>
+            </div>
+            <div class="popover" role="note" aria-label="Mockup: Begriffs-Hinweis Bezugsbasis">
+              <h4>Bezugsbasis – Ihr Vergleichszeitraum</h4>
+              <p style="font-size:14.5px">Der Zeitraum, mit dem Sie später vergleichen. Erst mit ihm sehen Sie, ob Sie wirklich weniger Energie brauchen – auch wenn mehr produziert wurde.</p>
+              <div class="beispiel">Beispiel: Mit 2025 als Bezugsbasis vergleicht VoltPilot jeden Monat mit dem Verbrauch, der nach dem Muster von 2025 bei der Stückzahl dieses Monats zu erwarten wäre.</div>
+              <p class="norm-zeile">Normbegriff: energetische Ausgangsbasis (EnB), ISO 50001 Abschnitt 6.5 · <a href="#begriffe">Mehr in der Hilfe</a></p>
+            </div>
+            <p class="muted" style="font-size:13px">Die 12&nbsp;% sind ein erfundener Beispielwert.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="vorschlag" id="k4">
+        <div class="vorschlag-kopf">
+          <span class="id">K4 · löst B3</span>
+          <h3>Leere Seiten, die erklären</h3>
+        </div>
+        <div class="prosa">
+          <p>Jede leere Fläche beantwortet drei Fragen: Was ist das? Wozu brauche ich es? Womit fange ich an? Dazu kommt genau ein Hauptknopf. Filter und CSV erscheinen erst, wenn es etwas zu filtern gibt. Beim Verzeichnis heißt das: Es wird zur Checkliste.</p>
+        </div>
+        <div class="vorher-nachher">
+          <div class="vn vorher">
+            <span class="vn-marke">Heute</span>
+            <div class="reiter klein"><span>Gruppe ▾</span><span>Tag von ▾</span><span>Tag bis ▾</span><span>Festgehalten im Namen von ▾</span><span>Als CSV abrufen</span></div>
+            <h4>Anwendungsbereich, Kontext und Energiepolitik</h4>
+            <p class="klein">Hier ist noch nichts festgehalten.</p>
+            <h4>Aufgaben und Verantwortliche</h4>
+            <p class="klein">Hier ist noch nichts festgehalten.</p>
+            <h4>Risiken und Chancen</h4>
+            <p class="klein">Hier ist noch nichts festgehalten.</p>
+            <p class="klein">… acht weitere Bereiche mit demselben Satz</p>
+          </div>
+          <div class="vn nachher">
+            <span class="vn-marke">Vorschlag</span>
+            <h4>Checkliste Ihres Energiemanagements</h4>
+            <p class="klein">Was Ihr Energiemanagement festhalten sollte. Haken setzt VoltPilot, sobald etwas eingetragen ist.</p>
+            <div class="balken" aria-hidden="true"><span></span></div>
+            <p class="klein tabular">2 von 11 Bereichen festgehalten</p>
+            <div class="check">
+              <div class="check-zeile"><span class="kreis voll" aria-label="festgehalten"></span><span>Aufgaben und Verantwortliche</span><span class="knopf leise">Ansehen ›</span></div>
+              <div class="check-zeile"><span class="kreis voll" aria-label="festgehalten"></span><span>Energetische Bewertung und Messplanung</span><span class="knopf leise">Ansehen ›</span></div>
+              <div class="check-zeile"><span class="kreis" aria-label="offen"></span><span><b>Energiepolitik</b> · Ihre Grundsätze in wenigen Sätzen</span><span class="knopf zweit">Festhalten</span></div>
+              <div class="check-zeile"><span class="kreis" aria-label="offen"></span><span>Risiken und Chancen</span><span class="knopf leise">Was gehört hierher?</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabelle-rahmen">
+          <table class="breit">
+            <thead><tr><th>Fläche</th><th>Heute</th><th>Vorschlag</th></tr></thead>
+            <tbody>
+              <tr><td>Bewertung, keine Energieeinsätze</td><td>„Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.“</td><td>Davor ein Satz zum Wozu: „Die Bewertung zeigt, wo in Ihrem Betrieb die meiste Energie verbraucht wird.“ Knopf: „Ersten Energieeinsatz anlegen“.</td></tr>
+              <tr><td>Verzeichnis, leer</td><td>Filter, CSV und elfmal „Hier ist noch nichts festgehalten.“</td><td>Checkliste wie oben, Filter erst ab dem ersten Eintrag.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="aufwand"><span class="groesse">S–M</span> Texte und Anordnung. Sätze aus <code>SAETZE</code> sind Vertragswortlaute mit Vektoren; sie ändern sich nur zusammen mit ihnen.</div>
+      </article>
+
+      <article class="vorschlag" id="k5">
+        <div class="vorschlag-kopf">
+          <span class="id">K5 · löst B4</span>
+          <h3>Namen vor Kennzeichen</h3>
+        </div>
+        <div class="prosa">
+          <p>Überall zuerst der Name, das Kennzeichen klein dahinter. Rechenweg, Fassung und Version wandern in einen Aufklapper „Wie wird gerechnet?“. Fassung und Version bekommen je einen Erklärsatz aus dem Glossar: <b>Fassung</b> ist ein erfasster Stand eines eingetragenen Werts (jede Berichtigung ist eine neue), <b>Version</b> der Rechenstand einer Zahl (sie wird neu gebildet, wenn sich eine Eingabe ändert). Berichte und CSV behalten die Kennzeichen, dort sind sie Nachweis.</p>
+        </div>
+        <div class="vorher-nachher">
+          <div class="vn vorher">
+            <span class="vn-marke">Heute</span>
+            <h4>KZ-0001 · Stromeinsatz Montage je Stück — Halle 2</h4>
+            <p class="klein">Menge 6.100 kWh (MS-12, vollständig, Version 1) je 41.000 Stück (BZ-6, Fassung 1)</p>
+            <p class="klein">Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn</p>
+          </div>
+          <div class="vn nachher">
+            <span class="vn-marke">Vorschlag</span>
+            <h4>Stromeinsatz Montage je Stück — Halle 2 <span class="muted mono" style="font-weight:500">KZ-0001</span></h4>
+            <div class="zahl tabular">0,15 kWh je Stück</div>
+            <p class="klein">Oktober 2026: 6.100 kWh an der Messstelle „Montage Linie M1“ geteilt durch 41.000 Gutteile (Bezugsgröße „Gutteile Montage Halle 2“).</p>
+            <details class="aufklapper">
+              <summary>Wie wird gerechnet?</summary>
+              <div>
+                <span>Strom: Montage Linie M1 (MS-12), vollständig, Version 1</span>
+                <span>Stückzahl: Gutteile Montage Halle 2 (BZ-6), Fassung 1</span>
+                <span>Regel: Menge je Bezugsgröße, gilt seit Beginn</span>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div class="aufwand"><span class="groesse">S–M</span> Kennzahl, Messstelle, Bericht-Kopf. Kennzeichen bleiben für Suche, Berichte und CSV.</div>
+      </article>
+
+      <article class="vorschlag" id="k6">
+        <div class="vorschlag-kopf">
+          <span class="id">K6</span>
+          <h3>Einstieg je Rolle</h3>
+        </div>
+        <div class="prosa">
+          <p>Dieselben Seiten, aber eine andere erste Ansicht je Rolle. Die Rollen sind die, die das Portal heute kennt (<code>rechte.ts</code>); an den Rechten ändert sich nichts.</p>
+        </div>
+        <div class="tabelle-rahmen">
+          <table class="breit">
+            <thead><tr><th>Rolle</th><th>Erste Frage</th><th>Erste Ansicht</th></tr></thead>
+            <tbody>
+              <tr><td>Energiemanager</td><td>Was fehlt noch, was ist fällig?</td><td>Fahrplan (K2) und „Was steht an“</td></tr>
+              <tr><td>Kundenadministrator</td><td>Wer darf was an welchem Standort?</td><td>Übersicht, Benutzer im Konto-Menü (wie heute)</td></tr>
+              <tr><td>Bearbeiter (Standort)</td><td>Ist mein Standort vollständig angeschlossen?</td><td>eigener Standort: Aufbau, Messstellen, Abweichungen</td></tr>
+              <tr><td>Leser, Einsicht</td><td>Wo finde ich die Belege?</td><td>Nachweisen: Berichte, Dokumente, Managementbewertung – nur lesend</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="aufwand"><span class="groesse">M</span> nach K1 und K2; ohne neue Rechte.</div>
+      </article>
+
+      <article class="vorschlag" id="k7">
+        <div class="vorschlag-kopf">
+          <span class="id">K7 · löst B5</span>
+          <h3>Der Norm-Satz einmal je Bereich statt mehrfach je Seite</h3>
+        </div>
+        <div class="zweispaltig">
+          <div class="prosa">
+            <p>Im Kopf jedes UEMS-Bereichs steht ein Hinweis „Was VoltPilot leistet“. Er öffnet beide Sätze, Grenz-Satz und Verantwortungs-Satz, im vollen Wortlaut. Jeder Bericht behält die Sätze vollständig, denn er ist ein Dokument. Der Wächter in <code>copy.test.ts</code> prüft dann den Hinweis statt jedes Vorkommens.</p>
+            <div class="aufwand"><span class="groesse">S</span> technisch · braucht eine Freigabe, ob das rechtlich genügt; Entscheidung <a href="#d5">D5</a></div>
+          </div>
+          <div style="display:grid;gap:10px;align-content:start">
+            <div class="zeile" style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+              <h3>Bewertung</h3>
+              <span class="infochip">ⓘ Was VoltPilot leistet</span>
+            </div>
+            <div class="infotext">
+              <span>VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.</span>
+              <span>Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="vorschlag" id="k8">
+        <div class="vorschlag-kopf">
+          <span class="id">K8</span>
+          <h3>Am Telefon zuerst: Was steht an?</h3>
+        </div>
+        <div class="zweispaltig">
+          <div class="prosa">
+            <p>Am Telefon beginnt die Unternehmens-Übersicht mit dem, was man unterwegs prüft: fällige Punkte aus der Wiedervorlage, Abweichungen, Datenlage. Alles andere bleibt erreichbar; lange Formulare wie das Bezugsbasis-Modell oder Berichtsvorlagen bleiben bedienbar, stehen aber nicht vorn.</p>
+            <p>Die Leiste mit fünf Gruppen gibt es schon (siehe <a href="#umgesetzt">Schon umgesetzt</a>).</p>
+            <div class="aufwand"><span class="groesse">M</span> nutzt die vorhandene Wiedervorlage (<code>EnergiemanagementWiedervorlage</code>).</div>
+          </div>
+          <div class="telefon" aria-label="Mockup: Übersicht am Telefon">
+            <div class="telefon-kopf"><span>Ahrenberg</span><span class="muted">JW</span></div>
+            <div class="t-karte">
+              <h4>Was steht an</h4>
+              <div class="t-zeile"><span>Audit Werk Lindach</span><b>in 5 Tagen</b></div>
+              <div class="t-zeile"><span>Energiepolitik prüfen</span><b>fällig</b></div>
+              <div class="t-zeile"><span>Maßnahme Druckluft</span><b>Termin 30.10.</b></div>
+            </div>
+            <div class="t-karte">
+              <h4>Auffällig</h4>
+              <div class="t-zeile"><span>Abweichungen</span><b>1 neu</b></div>
+              <div class="t-zeile"><span>Messstellen</span><b>21 von 22 liefern</b></div>
+            </div>
+            <div class="t-leiste"><span class="an">Übersicht</span><span>Messen</span><span>Auswerten</span><span>Verbessern</span><span>Nachweisen</span></div>
+          </div>
+          <p class="muted" style="font-size:12.5px;grid-column:1/-1;justify-self:center">Beispielinhalte</p>
+        </div>
+      </article>
+    </section>
+
+    <section id="begriffe" aria-labelledby="h-begriffe">
+      <div class="abschnittkopf">
+        <h2 id="h-begriffe">Begriffe: Klartext, Portalwort, Norm</h2>
+        <p>Der erste Satz Einträge für den Begriffs-Hinweis (K3). Die mittlere Spalte sind die Wörter, die das Portal heute zeigt (<code>src/glossar.ts</code>).</p>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead><tr><th>Klartext</th><th>Im Portal</th><th>Normbegriff</th><th>ISO 50001</th></tr></thead>
+          <tbody>
+            <tr><td class="klar">Wo geht die Energie hin?</td><td>Bewertung · Energieeinsatz · Rangliste</td><td class="norm">energetische Bewertung</td><td class="abs">6.3</td></tr>
+            <tr><td class="klar">Die großen Verbraucher</td><td>wesentlicher Energieeinsatz</td><td class="norm">wesentlicher Energieeinsatz (SEU)</td><td class="abs">6.3</td></tr>
+            <tr><td class="klar">Wovon der Verbrauch abhängt</td><td>Bezugsgröße · Einflussgröße</td><td class="norm">relevante Variable</td><td class="abs">6.3 · 6.5</td></tr>
+            <tr><td class="klar">Energie je Stück, je m², je Stunde</td><td>Kennzahl</td><td class="norm">Energieleistungskennzahl (EnPI)</td><td class="abs">6.4</td></tr>
+            <tr><td class="klar">Unser Vergleichszeitraum</td><td>Bezugsbasis · Referenzperiode</td><td class="norm">energetische Ausgangsbasis (EnB)</td><td class="abs">6.5</td></tr>
+            <tr><td class="klar">Fair verglichen, trotz mehr Produktion oder kälterem Winter</td><td>bereinigt · erwartet</td><td class="norm">Normalisierung</td><td class="abs">6.5</td></tr>
+            <tr><td class="klar">Was wollen wir erreichen?</td><td>Energieziel · Zielwert · Zielperiode</td><td class="norm">Ziel, Energieziel</td><td class="abs">6.2</td></tr>
+            <tr><td class="klar">Was tun wir dafür?</td><td>Maßnahme · erwartete Wirkung</td><td class="norm">Aktionsplan</td><td class="abs">6.2</td></tr>
+            <tr><td class="klar">Was lief anders als erwartet?</td><td>Abweichung · Auffälligkeit</td><td class="norm">wesentliche Abweichung der energiebezogenen Leistung</td><td class="abs">9.1</td></tr>
+            <tr><td class="klar">Was wird wie gemessen?</td><td>Messplanung · Messbedarf · Messmittel</td><td class="norm">Planung der Energiedatensammlung</td><td class="abs">6.6</td></tr>
+            <tr><td class="klar">Wer macht was?</td><td>Aufgaben · Wer ist wofür verantwortlich</td><td class="norm">Rollen, Verantwortlichkeiten, Energieteam</td><td class="abs">5.3</td></tr>
+            <tr><td class="klar">Wo stehen unsere Regeln?</td><td>Verzeichnis · Dokumente · Energiepolitik</td><td class="norm">Energiepolitik, dokumentierte Information</td><td class="abs">5.2 · 7.5</td></tr>
+            <tr><td class="klar">Prüfen wir uns selbst?</td><td>Audits · Feststellungen</td><td class="norm">internes Audit, Nichtkonformität und Korrekturmaßnahme</td><td class="abs">9.2 · 10.1</td></tr>
+            <tr><td class="klar">Was entscheidet die Leitung?</td><td>Managementbewertung · Beschluss</td><td class="norm">Managementbewertung</td><td class="abs">9.3</td></tr>
+            <tr><td class="klar">Was steht an?</td><td>Wiedervorlage</td><td class="norm">– (Arbeitsliste im Portal)</td><td class="abs">–</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted schmal">Die Normbegriffe folgen der deutschen Fassung der ISO 50001:2018. Vor dem Einbau prüft sie jemand mit der Norm in der Hand; das Glossar im Fachmodell bleibt die eine Quelle.</p>
+    </section>
+
+    <section id="umgesetzt" aria-labelledby="h-umgesetzt">
+      <div class="abschnittkopf">
+        <h2 id="h-umgesetzt">Schon umgesetzt: ein Ort für Anlagen, Boxen und Geräte</h2>
+        <p>Vorher standen Boxen am Standort unter „Boxen“, in der Anlage unter „Aufbau“ und auf der Box-Seite, Anlagen unter „Anlagen“ und in der Übersicht. Eine Box ließ sich an neun Stellen anmelden, unter fünf verschiedenen Namen.</p>
+      </div>
+      <div class="diagramm">
+        <div class="diagramm-scroll">
+          <svg viewBox="0 0 760 400" role="img" aria-labelledby="d2-titel d2-text">
+            <title id="d2-titel">Wer gehört zu wem</title>
+            <desc id="d2-text">Unternehmen, Standort, Anlage, VoltPilot-Box, Datenquelle und Gerät untereinander. Eine Klammer von Anlage bis Gerät zeigt, dass all das im Aufbau hinzukommt.</desc>
+            <g id="d2-unternehmen"><title>Unternehmen</title>
+              <rect class="d-box" x="20" y="14" width="210" height="46" rx="12"/>
+              <text class="d-frage" x="40" y="43">Unternehmen</text>
+              <text class="d-klein" x="250" y="43">Ihr Konto bei VoltPilot, alle Standorte</text>
+            </g>
+            <g id="d2-standort"><title>Standort</title>
+              <rect class="d-box" x="50" y="76" width="210" height="46" rx="12"/>
+              <text class="d-frage" x="70" y="105">Standort</text>
+              <text class="d-klein" x="280" y="105">ein Werk, eine Adresse</text>
+            </g>
+            <g id="d2-anlage"><title>Anlage</title>
+              <rect class="d-box" x="80" y="138" width="210" height="46" rx="12"/>
+              <text class="d-frage" x="100" y="167">Anlage</text>
+              <text class="d-klein" x="310" y="167">alles hinter einem Netzanschluss</text>
+            </g>
+            <g id="d2-box"><title>VoltPilot-Box</title>
+              <rect class="d-box" x="110" y="200" width="210" height="46" rx="12"/>
+              <text class="d-frage" x="130" y="229">VoltPilot-Box</text>
+              <text class="d-klein" x="340" y="229">gehört zu einer Anlage, liest am Standort</text>
+            </g>
+            <g id="d2-quelle"><title>Datenquelle</title>
+              <rect class="d-box" x="140" y="262" width="210" height="46" rx="12"/>
+              <text class="d-frage" x="160" y="291">Datenquelle</text>
+              <text class="d-klein" x="370" y="291">Adresse und Protokoll, eine Box zuständig</text>
+            </g>
+            <g id="d2-geraet"><title>Gerät und Messstelle</title>
+              <rect class="d-box" x="170" y="324" width="210" height="46" rx="12"/>
+              <text class="d-frage" x="190" y="353">Gerät, Messstelle</text>
+              <text class="d-klein" x="400" y="353">Zähler, Wechselrichter, Ladepunkt</text>
+            </g>
+            <path class="d-linie" d="M40,60 L40,99 L50,99"/>
+            <path class="d-linie" d="M70,122 L70,161 L80,161"/>
+            <path class="d-linie" d="M100,184 L100,223 L110,223"/>
+            <path class="d-linie" d="M130,246 L130,285 L140,285"/>
+            <path class="d-linie" d="M160,308 L160,347 L170,347"/>
+            <g id="d2-klammer"><title>Hier kommt alles hinzu: Standort › Aufbau</title>
+              <path class="d-klammer" d="M700,140 L716,140 L716,370 L700,370"/>
+              <circle class="d-plus" cx="716" cy="255" r="14"/>
+              <path d="M709,255 L723,255 M716,248 L716,262" stroke="#fff" stroke-width="2.5"/>
+              <text class="d-plus-text" x="700" y="395" text-anchor="end">Aufbau: hier kommt alles hinzu</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead><tr><th>Was</th><th>Wo es hinzukommt</th><th>Von woanders</th></tr></thead>
+          <tbody>
+            <tr><td class="klar">Anlage</td><td>Aufbau, Menü neben „Gerät hinzufügen“; die erste Anlage im Leerzustand des Standorts</td><td>Standort-Übersicht ⋯ führt in den Aufbau (<code>?neu=anlage</code>); die Kopfzeile auch, solange es eine Anlage gibt – bei mehreren öffnet sie denselben Dialog mit Standortwahl</td></tr>
+            <tr><td class="klar">VoltPilot-Box</td><td>Aufbau › „VoltPilot-Box hinzufügen“ (mit Geräte-ID)</td><td>Standort-Übersicht, Messen-Assistent Schritt 2, Anlage einrichten → Aufbau (<code>?neu=box</code>)</td></tr>
+            <tr><td class="klar">Gerät</td><td>Aufbau › „Gerät hinzufügen“ (Gerätekatalog)</td><td>Messen-Assistent Schritt 2 → Aufbau (<code>?neu=geraet</code>)</td></tr>
+            <tr><td class="klar">Datenquelle</td><td>Seite ihrer Box › „Datenquelle anlegen“</td><td>Der Messen-Assistent nutzt denselben Dialog</td></tr>
+            <tr><td class="klar">Box tauschen</td><td>Seite der Box › ⋯ › „Box tauschen“</td><td>–</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="raster">
+        <figure>
+          <img src="aufbau-1440.jpg" alt="Standort Aufbau am Rechner: Baum mit Anlagen, Box und drei Datenquellen">
+          <figcaption>Standort › Aufbau bei 1440 px: Anlage Halle 1 offen, Box Halle 1 liest DQ-1 bis DQ-3, Halle 2 öffnet sich im Standort.</figcaption>
+        </figure>
+        <figure class="telefon-bild">
+          <img src="aufbau-375.jpg" alt="Standort Aufbau am Telefon mit Leiste Übersicht, Aufbau, Gebäude, Messstellen, Anschlüsse">
+          <figcaption>Dasselbe bei 375 px, Leiste mit fünf Kacheln.</figcaption>
+        </figure>
+        <figure class="telefon-bild">
+          <img src="unternehmen-375.jpg" alt="Unternehmensübersicht am Telefon mit Gruppen in der Leiste">
+          <figcaption>Unternehmen am Telefon: fünf Gruppen, darüber nur die Reiter der offenen Gruppe.</figcaption>
+        </figure>
+      </div>
+      <div class="kasten">
+        <span><b>Außerdem in diesem Branch:</b></span>
+        <ul class="liste">
+          <li>Ein Name je Handlung: „VoltPilot-Box hinzufügen“ meldet eine Box mit Geräte-ID an, „Gerät hinzufügen“ öffnet den Gerätekatalog.</li>
+          <li>Jede Box zeigt im Aufbau ihre Datenquellen mit Protokoll, Adresse, Geräte-IDs und Zustand; bei zwei Boxen an einer Anlage ist die führende markiert.</li>
+          <li>Kunden ohne Messfunktion sehen keine neue Standort-Seite; ihr Aufbau bleibt an der Anlage.</li>
+          <li>Reiterleisten blenden am Rand weich aus, wo noch Reiter liegen, und holen den gewählten Reiter in die Mitte.</li>
+          <li>Breite Tabellen scrollen in ihrem eigenen Rahmen statt die Seite zu verbreitern (13 Flächen). Die Wiedervorlage stellt ihre vier Spalten erst ab 960 px nebeneinander; schmaler steht alles untereinander, statt den Gegenstand auf wenige Zeichen zu drücken.</li>
+          <li>Hilfe-Texte und die zwei Hilfe-Bilder zum Box-Verbinden zeigen die neuen Namen.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="reihenfolge" aria-labelledby="h-reihenfolge">
+      <div class="abschnittkopf">
+        <h2 id="h-reihenfolge">Reihenfolge und Aufwand</h2>
+        <p>Drei Stufen, jede für sich auslieferbar. S, M und L sind grobe Größen, keine Termine.</p>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead><tr><th>Stufe</th><th>Inhalt</th><th>Größe</th><th>Voraussetzung</th></tr></thead>
+          <tbody>
+            <tr><td class="klar">1 · ohne neue Daten</td><td>K5 Namen vor Kennzeichen · K4 Leere Seiten · K3 Begriffs-Baustein mit 10 Kernbegriffen · K7 Norm-Satz · Seitenleiste (D6)</td><td><span class="groesse">S–M</span></td><td>Freigabe zu D5; Glossar-Einträge</td></tr>
+            <tr><td class="klar">2 · Navigation und Fahrplan</td><td>K1 Gruppen am Rechner · K2 Fahrplan aus vorhandenen Abfragen · K8 „Was steht an“ am Telefon</td><td><span class="groesse">M</span></td><td>D1, D2, D4</td></tr>
+            <tr><td class="klar">3 · Führung</td><td>K6 Einstieg je Rolle · Sammel-Endpunkt für den Fahrplan · geführte Kennzahl in drei Fragen · Hilfe-Artikel nach Aufgaben</td><td><span class="groesse">L</span></td><td>Stufe 2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="kasten">
+        <span><b>Was dabei mitgeändert werden muss</b></span>
+        <ul class="liste">
+          <li><code>copy.test.ts</code>: Wortlisten und die Pflicht zum Norm-Satz je Datei (bei K7).</li>
+          <li>Fachmodell-Glossar zuerst, dann <code>src/glossar.ts</code>; geschlossene Vokabulare nur zusammen mit ihren Vertragsvektoren.</li>
+          <li>Migrations-Fingerabdrücke (AP-03 IP-12) bei Änderungen an Kopf und Pfad, etwa der Seitenleiste (D6).</li>
+          <li>Hilfe-Bilder neu aufnehmen, wenn sich sichtbare Namen ändern; e2e-Specs mit festen Reiterlisten.</li>
+          <li>Hash-Adressen und Lesezeichen bleiben stabil: Gruppen und Checkliste sind Navigation, keine neuen Routen.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="entscheidungen" aria-labelledby="h-entscheidungen">
+      <div class="abschnittkopf">
+        <h2 id="h-entscheidungen">Ihre Entscheidungen</h2>
+        <p>Sechs Fragen, je eine Empfehlung. Wählen Sie aus und kopieren Sie am Ende alle Antworten in den Chat. In einer Lavish-Sitzung werden die Antworten zusätzlich dort vorgemerkt.</p>
+      </div>
+
+      <form class="entscheidung" id="d1" data-lavish-question="D1 Navigation am Rechner">
+        <fieldset>
+          <legend>D1 · Navigation am Rechner</legend>
+          <label class="option"><input type="radio" name="D1" value="Gruppen wie am Telefon, darunter die Reiter der Gruppe" checked><span>Gruppen wie am Telefon, darunter die Reiter der offenen Gruppe <span class="empfohlen">empfohlen</span><small>Eine Reiterreihe weniger; alle Adressen bleiben.</small></span></label>
+          <label class="option"><input type="radio" name="D1" value="Flache Reiter, nur nach Gruppen sortiert"><span>Flache Reiter wie heute, aber nach Gruppen sortiert<small>Kleinster Eingriff, löst B2 nicht.</small></span></label>
+          <label class="option"><input type="radio" name="D1" value="So lassen wie heute"><span>So lassen wie heute</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" id="d2" data-lavish-question="D2 Fünfte Gruppe">
+        <fieldset>
+          <legend>D2 · Die fünfte Gruppe</legend>
+          <label class="option"><input type="radio" name="D2" value="Nachweisen: Berichte und Energiemanagement" checked><span>„Nachweisen“ mit Berichten und dem Energiemanagement <span class="empfohlen">empfohlen</span><small>Berichte sind Belege; „Auswerten“ bleibt bei Bewertung und Kennzahlen.</small></span></label>
+          <label class="option"><input type="radio" name="D2" value="Management wie jetzt am Telefon, Berichte bleiben in Auswerten"><span>„Management“ wie jetzt am Telefon, Berichte bleiben in „Auswerten“<small>Der Stand dieses Branches.</small></span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" id="d3" data-lavish-question="D3 Begriffe">
+        <fieldset>
+          <legend>D3 · Welches Wort steht vorn?</legend>
+          <label class="option"><input type="radio" name="D3" value="Klartext vorn, Normbegriff im Hinweis" checked><span>Klartext vorn, Normbegriff im Begriffs-Hinweis <span class="empfohlen">empfohlen</span><small>Portalwörter wie „Kennzahl“ bleiben, Knöpfe sagen, was passiert.</small></span></label>
+          <label class="option"><input type="radio" name="D3" value="Normbegriff vorn, Erklärung im Hinweis"><span>Normbegriff vorn, Erklärung im Hinweis<small>Näher an Auditoren, schwerer für Einsteiger.</small></span></label>
+          <label class="option"><input type="radio" name="D3" value="Umschalter Einfach oder Fachlich je Person"><span>Umschalter „Einfach / Fachlich“ je Person<small>Zwei Textsätze zu pflegen und zu prüfen.</small></span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" id="d4" data-lavish-question="D4 Fahrplan">
+        <fieldset>
+          <legend>D4 · Fahrplan auf der Übersicht</legend>
+          <label class="option"><input type="radio" name="D4" value="Immer, bis alle Schritte stehen, dann klein" checked><span>Immer, bis alle Schritte stehen; danach nur „Was steht an“ <span class="empfohlen">empfohlen</span></span></label>
+          <label class="option"><input type="radio" name="D4" value="Nur in den ersten Wochen nach dem Einrichten"><span>Nur in den ersten Wochen nach dem Einrichten</span></label>
+          <label class="option"><input type="radio" name="D4" value="Kein Fahrplan"><span>Kein Fahrplan</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" id="d5" data-lavish-question="D5 Norm-Satz">
+        <fieldset>
+          <legend>D5 · Norm- und Verantwortungs-Satz</legend>
+          <label class="option"><input type="radio" name="D5" value="Einmal je Bereich im Kopf, voll in jedem Bericht" checked><span>Einmal je Bereich im Kopf, voll in jedem Bericht <span class="empfohlen">empfohlen</span><small>Braucht eine rechtliche Freigabe.</small></span></label>
+          <label class="option"><input type="radio" name="D5" value="Wie heute auf jeder Fläche"><span>Wie heute auf jeder Fläche</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" id="d6" data-lavish-question="D6 Seitenleiste">
+        <fieldset>
+          <legend>D6 · „Meine Anlagen“ in der Seitenleiste</legend>
+          <label class="option"><input type="radio" name="D6" value="Mit Standorten der Firmenname, sonst Meine Anlagen" checked><span>Sobald es Standorte gibt, der Firmenname; sonst „Meine Anlagen“ <span class="empfohlen">empfohlen</span><small>Ein Kunde mit einer Box sieht nichts Neues.</small></span></label>
+          <label class="option"><input type="radio" name="D6" value="Immer Unternehmen"><span>Immer „Unternehmen“</span></label>
+          <label class="option"><input type="radio" name="D6" value="Bleibt Meine Anlagen"><span>Bleibt „Meine Anlagen“</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" id="anmerkung" data-lavish-question="Anmerkungen">
+        <label for="anmerkung-text"><b>Anmerkungen</b> <span class="muted">(optional)</span></label>
+        <textarea id="anmerkung-text" name="Anmerkungen" placeholder="Was fehlt, was stimmt nicht, was ist wichtiger?"></textarea>
+        <div class="zeile"><button type="submit" class="knopf zweit">Anmerkung vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <div class="kopieren">
+        <button type="button" class="knopf primaer" id="alle-kopieren">Alle Antworten kopieren</button>
+        <span data-lavish-copy-all-status role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <section id="grenzen" aria-labelledby="h-grenzen">
+      <div class="abschnittkopf">
+        <h2 id="h-grenzen">Nicht enthalten</h2>
+      </div>
+      <ul class="liste prosa">
+        <li>Keine Aussage zur Normkonformität, auch dieses Konzept macht keine.</li>
+        <li>Keine Änderungen an Verträgen, Schnittstellen oder Rechten; alle Vorschläge arbeiten mit vorhandenen Daten, außer dem optionalen Sammel-Endpunkt in Stufe 3.</li>
+        <li>Die Seiten-Dateien „Boxen“ und „Anlagen“ am Standort sind nicht mehr eingehängt, aber noch vorhanden. Ob sie gelöscht werden, entscheiden Sie.</li>
+        <li>Die Bilder zeigen Test-Bühnen mit fiktiven Daten. Einzelheiten wie „keine aktuellen Daten“ gehören zur Bühne, nicht zum Produkt.</li>
+      </ul>
+      <div class="fuss">
+        <span>Quelle dieser Seite: <code>.lavish/uems-konzept/index.html</code> im Branch <code>uems</code>. Lokal zum Kommentieren: <code>lavish-axi .lavish/uems-konzept/index.html</code></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  (function () {
+    // Eine Antwort je Frage: lokal auswählen, beim Vormerken genau einmal senden (Lavish-Playbook „input“).
+    document.querySelectorAll('form[data-lavish-question]').forEach(function (form) {
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var frage = form.getAttribute('data-lavish-question');
+        var daten = new FormData(form);
+        var antwort = '';
+        daten.forEach(function (wert) { if (String(wert).trim()) antwort = String(wert).trim(); });
+        if (!antwort) return;
+        if (window.lavish && typeof window.lavish.queuePrompt === 'function') {
+          window.lavish.queuePrompt('Entscheidung ' + frage + ': ' + antwort, {
+            tag: 'choice', text: frage + ': ' + antwort, element: form, queueKey: frage,
+            data: { question: frage, answer: antwort },
+          });
+        }
+        var marke = form.querySelector('.vorgemerkt');
+        if (marke) marke.hidden = false;
+      });
+      form.addEventListener('change', function () {
+        var marke = form.querySelector('.vorgemerkt');
+        if (marke) marke.hidden = true;
+      });
+    });
+
+    // Alle Antworten als Text in die Zwischenablage; ohne Zwischenablage zum Markieren anzeigen.
+    var knopf = document.getElementById('alle-kopieren');
+    knopf.addEventListener('click', function () {
+      var status = document.querySelector('[data-lavish-copy-all-status]');
+      var zeilen = [];
+      document.querySelectorAll('form[data-lavish-question]').forEach(function (form) {
+        var frage = form.getAttribute('data-lavish-question');
+        var gewaehlt = form.querySelector('input:checked');
+        var text = form.querySelector('textarea');
+        if (gewaehlt) zeilen.push(frage + ': ' + gewaehlt.value);
+        if (text && text.value.trim()) zeilen.push(frage + ': ' + text.value.trim());
+      });
+      var inhalt = zeilen.join('\n');
+      var alt = document.getElementById('antworten-manuell');
+      if (alt) alt.remove();
+      var zeigen = function () {
+        var feld = document.createElement('textarea');
+        feld.id = 'antworten-manuell';
+        feld.readOnly = true;
+        feld.value = inhalt;
+        feld.rows = Math.min(10, zeilen.length + 1);
+        feld.setAttribute('aria-label', 'Antworten zum Kopieren');
+        knopf.insertAdjacentElement('afterend', feld);
+        feld.focus();
+        feld.select();
+        status.textContent = 'Kopieren ging nicht automatisch – markiert, bitte selbst kopieren.';
+      };
+      try {
+        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('keine Zwischenablage');
+        navigator.clipboard.writeText(inhalt).then(function () {
+          status.textContent = 'Antworten kopiert – bitte in den Chat einfügen.';
+        }, zeigen);
+      } catch (e) {
+        zeigen();
+      }
+    });
+  })();
+</script>

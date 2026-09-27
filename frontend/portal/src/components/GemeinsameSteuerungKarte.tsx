@@ -142,7 +142,7 @@ export function GemeinsameSteuerungKarte({
       return <a className="vp-gs-weg" href={hashForRoute(standortBereichRoute(standortId, 'netzanschluesse'))}>Netzanschluss eintragen</a>;
     }
     if (w === 'datenquelle' && standortId) {
-      return <a className="vp-gs-weg" href={hashForRoute(standortBereichRoute(standortId, 'boxen'))}>Datenquelle an einer Box anlegen</a>;
+      return <a className="vp-gs-weg" href={hashForRoute(standortBereichRoute(standortId, 'aufbau'))}>Datenquelle an einer Box anlegen</a>;
     }
     return null;
   };

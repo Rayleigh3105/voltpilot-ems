@@ -818,14 +818,6 @@
   }
 }
 
-/* AP-09: sechs Unternehmenswelten; AP-10: langer Netzanschluss-Reiter. Andere Bestandsleisten bleiben unverändert. */
-.vp-bottombar:has(> .vp-bottombar-item:nth-child(6)) .lbl,
-.vp-bottombar:has(> .vp-bottombar-netzanschluesse) .lbl {
-  white-space: normal;
-  overflow: visible;
-  overflow-wrap: anywhere;
-  hyphens: auto;
-  text-align: center;
-  line-height: 1.2;
-  min-height: 2.4em;
-}
+/* Die Leiste trägt höchstens fünf Kacheln (`ebenenNav.LEISTE_HOECHSTENS`): am Unternehmen Gruppen, am
+   Standort „Anschlüsse“ statt „Netzanschlüsse“. Das frühere Umbruch-Pflaster für sechs und mehr Kacheln brach
+   „Messstell|en“ mitten im Wort und ist entfallen; eine Beschriftung bleibt einzeilig. */

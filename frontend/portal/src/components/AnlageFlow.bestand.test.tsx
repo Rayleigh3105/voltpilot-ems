@@ -65,7 +65,7 @@ async function bisZumGeraet() {
   await ruhe();
   const register = flussHtml();
   fireEvent.click(screen.getByRole('button', { name: 'Überspringen - später nachtragen' }));
-  expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+  expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
   const geraet = flussHtml();
   fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
   fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));

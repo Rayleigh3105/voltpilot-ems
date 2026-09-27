@@ -4,7 +4,7 @@ Konzept: AP-13 §4.4 (Ü1–Ü5), Kästen E3 = A und E13 = A, Referenzfälle O2/
 
 ## Was wo steht
 
-- **Ort (Ü1):** Unternehmens- und Standort-Übersicht (`PortfolioCockpit` mit `ebene`), unter der Anlagen-Tabelle, vor der Karte „Funktionen“. Nicht auf „Standort › Anlagen“ (`nurAnlagen`), nie auf der Flotte eines Betreibers.
+- **Ort (Ü1):** Unternehmens- und Standort-Übersicht (`PortfolioCockpit` mit `ebene`), unter der Anlagen-Tabelle, vor der Karte „Funktionen“. Nie auf der Flotte eines Betreibers. (Die frühere Seite „Standort › Anlagen“ mit `nurAnlagen` ist im Aufbau aufgegangen.)
 - **Rein:** `frontend/portal/src/uebersichtBausteine.ts` — `messstellenBaustein`, `energiebilanzBaustein`, `gebaeudeZeilen`, `kennzahlenDerEbene`, `bausteineMitInhalt`, Zeitraum-Helfer (`letzterGebildeter`, `blaettere`, `laeuftNoch`). Tests: `uebersichtBausteine.test.ts` (O2, O3, O4-Gegenprobe).
 - **Laden + Render:** `components/UebersichtBausteine.tsx` (`useUebersichtBausteine`). Die Listen-Karte der Kennzahlen und ihr Lade-Hook sind nach `components/KennzahlListe.tsx` gezogen (dieselbe Karte wie „Unternehmens › Kennzahlen“).
 - **Katalog:** `anwendungen/catalog.json` (Portal UND `services/api/src/main/resources`, byte-gleich) Bausteine `messstellen` · `energiebilanz` · `kennzahlen`, beigesteuert von `monitoring`; `portfolioCockpit.ts` `UEMS_UEBERSICHT_BAUSTEINE` — angeboten nur mit Ebene UND Inhalt (`verfuegbareBausteine({ uebersicht: { uems } })`), „Anpassen“ darf sie ausblenden.

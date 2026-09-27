@@ -1,6 +1,6 @@
 # UEMS: Datenquelle im Mess-Assistenten anlegen (AP-06 IP-11)
 
-Der zweite Schritt von „Messen & Auswerten“ öffnet je Anlage `DatenquelleAnlegen`. Die Fläche verwendet nur gebaute Routen: `/devices` und `/edge-versions` für Box-Zustand und Software, die Datenquellen-Routen für Entwurf, Prüfung und Zuständigkeit. Eine eigene Seite unter Standort › Boxen bleibt AP-06 IP-16.
+Der zweite Schritt von „Messen & Auswerten“ öffnet je Anlage `DatenquelleAnlegen`. Die Fläche verwendet nur gebaute Routen: `/devices` und `/edge-versions` für Box-Zustand und Software, die Datenquellen-Routen für Entwurf, Prüfung und Zuständigkeit. Angelegte Datenquellen stehen im Standort › Aufbau unter ihrer zuständigen Box; die Box-Seite legt über denselben Dialog weitere an.
 
 ## Grenzen und Wörter
 

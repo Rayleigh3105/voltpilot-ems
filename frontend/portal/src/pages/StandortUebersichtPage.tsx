@@ -9,9 +9,9 @@ import type { Route } from '../nav';
 import './StandortUebersichtPage.css';
 
 // UEMS AP-13 IP-2: die Seiten des Standorts reisen im Chunk seiner Übersicht (`PAGE_CHUNK.standort`).
-export { StandortAnlagenPage } from './StandortAnlagenPage';
+// „Aufbau“ ersetzt die früheren Seiten „Boxen“ und „Anlagen“ des Standorts.
+export { StandortAufbauPage } from './StandortAufbauPage';
 export { StandortGebaeudePage } from './StandortGebaeudePage';
-export { StandortBoxenPage } from './StandortBoxenPage';
 
 /**
  * Die Standort-Übersicht (UEMS AP-01 IP-5, E1): `#/standort/{id}` — der Kopf

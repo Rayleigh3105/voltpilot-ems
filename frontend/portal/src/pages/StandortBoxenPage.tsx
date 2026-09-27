@@ -114,7 +114,7 @@ export function StandortBoxenPage({
                     <li key={q.id}>
                       <span className={`vp-health-dot vp-health-${q.ton}`} />
                       <div>
-                        <b>{q.kennzeichen} · {q.name}</b>
+                        <b>{q.titel}</b>
                         <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
                         <small>{q.budget}</small>
                       </div>

@@ -18,7 +18,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 - Annahme, Geräteantwort und Wirkung eines Befehls nicht gleichsetzen. Erlös-/Ersparnisangaben brauchen den tatsächlichen Datenbezug.
 - Wirkliche Abhängigkeiten und Folgen einer Änderung erklären. Kein Formular darf durch unsichtbare Voraussetzungen ohne Ausweg bleiben.
 - Gemeinsamen `VpPicker` statt paralleler Auswahlmuster verwenden. Bei ungültigem Submit Fehler zeigen und erstes Feld fokussieren.
-- Ein primärer Geräte-Anlegeweg; Stammdaten, Geräteverbindung und Betriebsregel nicht miteinander vermischen.
+- Ein Ort zum Anlegen: Anlagen, VoltPilot-Boxen und Geräte entstehen im Aufbau (`Standort › Aufbau` ist derselbe Baum wie `Anlage › Aufbau`); andere Einstiege führen mit `aufbauHash`/`standortAufbauHash` (`?neu=`) dorthin statt eigene Dialoge zu öffnen. Stammdaten, Geräteverbindung und Betriebsregel nicht vermischen.
 - Geräteverwaltung öffnet auf Updates; Registrierung bleibt eigener Reiter. Laufende, Ziel- und neueste Version getrennt bewerten.
 - Betriebsmodellwahl und aktive Regeln aus dem tatsächlichen Zustand ableiten. Bedingte Ansichten folgen den verfügbaren Fähigkeiten.
 

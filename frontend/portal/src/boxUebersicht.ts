@@ -5,7 +5,7 @@ import {
   type UemsDatenquelle,
 } from './api';
 import { fmtRelative } from './format';
-import { faehigkeiten, fehlerklasse, type TabellenEintrag } from './uemsDatenquelle';
+import { faehigkeiten, fehlerklasse, PROTOKOLLE, type TabellenEintrag } from './uemsDatenquelle';
 
 const ANFRAGEN_GRENZE = 30;
 const MESSWERTE_GRENZE = 600;
@@ -19,6 +19,13 @@ export interface BoxQuelleZeile {
   id: string;
   kennzeichen: string;
   name: string;
+  /**
+   * Die Zeile, wie sie dasteht: „DQ-3 · Unterzähler Halle 1“ — ohne eigenen Namen nur das Kennzeichen („DQ-3“;
+   * der Weg steht darunter), nie „DQ-3 · DQ-3“.
+   */
+  titel: string;
+  /** Protokoll und Adresse, dazu die Geräte-IDs dahinter („Modbus TCP · 192.168.10.31 · Geräte-IDs 1–5“). */
+  weg: string;
   zustand: string;
   fehlerklasse: string | null;
   seit: string | null;
@@ -68,19 +75,42 @@ export function budgetAnteil(q: UemsDatenquelle): string {
   return `Budget-Anteil ${zahl(anteil)} % · ${teile.join(' · ')}`;
 }
 
+/** „Modbus TCP“ statt `modbus_tcp`; ein Protokoll außerhalb des Vokabulars bleibt, wie es kam. */
+export function protokollName(code: string): string {
+  return PROTOKOLLE.find((p) => p.code === code)?.name ?? code;
+}
+
+/** Die Geräte-IDs hinter einer Adresse: „Geräte-ID 1“, „Geräte-IDs 1–5“ (lückenlos) oder „Geräte-IDs 1, 3, 7“. */
+function geraeteIds(ids: readonly number[]): string | null {
+  if (ids.length === 0) return null;
+  if (ids.length === 1) return `Geräte-ID ${ids[0]}`;
+  const sortiert = [...ids].sort((a, b) => a - b);
+  const lueckenlos = sortiert.every((n, i) => i === 0 || n === sortiert[i - 1] + 1);
+  return `Geräte-IDs ${lueckenlos ? `${sortiert[0]}–${sortiert[sortiert.length - 1]}` : sortiert.join(', ')}`;
+}
+
+export function quellWeg(q: UemsDatenquelle): string {
+  return [protokollName(q.protokoll), q.adresse, geraeteIds(q.geraete_ids ?? [])].filter(Boolean).join(' · ');
+}
+
 export function quellZeile(q: UemsDatenquelle): BoxQuelleZeile {
   const r = q.rueckmeldung;
-  const name = q.name?.trim() || q.kennzeichen;
+  const eigenerName = q.name?.trim() && q.name.trim() !== q.kennzeichen ? q.name.trim() : null;
+  const name = eigenerName ?? q.kennzeichen;
+  const kopf = {
+    titel: eigenerName ? `${q.kennzeichen} · ${eigenerName}` : q.kennzeichen,
+    weg: quellWeg(q),
+  };
   if (!r || r.zustand === 'meldet_noch_nicht_je_quelle') {
     return {
-      id: q.id, kennzeichen: q.kennzeichen, name,
+      id: q.id, kennzeichen: q.kennzeichen, name, ...kopf,
       zustand: 'Box meldet noch nicht je Quelle', fehlerklasse: null, seit: null,
       budget: budgetAnteil(q), ton: 'off',
     };
   }
   if (r.zustand === 'liefert') {
     return {
-      id: q.id, kennzeichen: q.kennzeichen, name,
+      id: q.id, kennzeichen: q.kennzeichen, name, ...kopf,
       zustand: 'Liefert Daten', fehlerklasse: null,
       seit: r.gelesen_am ? `Zuletzt gelesen ${zeitpunkt(r.gelesen_am)}` : null,
       budget: budgetAnteil(q), ton: 'ok',
@@ -88,7 +118,7 @@ export function quellZeile(q: UemsDatenquelle): BoxQuelleZeile {
   }
   const klasse = r.fehlerklasse ? fehlerklasse(r.fehlerklasse, 'box') : null;
   return {
-    id: q.id, kennzeichen: q.kennzeichen, name,
+    id: q.id, kennzeichen: q.kennzeichen, name, ...kopf,
     zustand: 'Liefert keine Daten',
     fehlerklasse: klasse?.name ?? null,
     seit: r.seit ? `Seit ${zeitpunkt(r.seit)}` : null,

@@ -113,17 +113,19 @@ test.describe('Messstellen-Register', () => {
     await ablegen(page, 'unternehmen-1440-ganz', m, true);
   });
 
-  test('Unternehmen › Messstellen bei 375 px: Karten, Leiste mit „Messstellen“ offen, keine doppelten Reiter', async ({ page }) => {
+  test('Unternehmen › Messstellen bei 375 px: Karten, Leiste mit „Messen“ offen, darüber nur deren Reiter', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 375);
     await warteAufRegister(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'unternehmen-375');
     expect(m.karten).toBe(22);
     expect(m.zeilen).toBe(0);
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
-    expect(m.leisteAktiv).toBe('Messstellen');
-    // Variante B: was die Leiste trägt, ist am Telefon kein zweites Mal Reiter.
-    expect(m.reiter).toEqual([]);
+    // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`, höchstens fünf); am Telefon stehen über
+    // der Seite nur die Reiter der offenen Gruppe.
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(m.leisteAktiv).toBe('Messen');
+    expect(m.reiter).toEqual(['Messstellen', 'Bezugsgrößen']);
+    expect(m.reiterAktiv).toEqual(['Messstellen']);
     await ablegen(page, 'unternehmen-375', m);
   });
 
@@ -143,7 +145,7 @@ test.describe('Messstellen-Register', () => {
     }
   });
 
-  test('Standort › Messstellen (Werk Ahrenberg) bei 1440 und 375 px: Übersicht · Gebäude · Anlagen · Messstellen, 16 Messstellen', async ({ page }) => {
+  test('Standort › Messstellen (Werk Ahrenberg) bei 1440 und 375 px: Übersicht · Aufbau · Gebäude · Messstellen, 16 Messstellen', async ({ page }) => {
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);
       await warteAufRegister(page);
@@ -151,11 +153,11 @@ test.describe('Messstellen-Register', () => {
       ohneQuerlauf(m, `werk-${breite}`);
       expect(m.route).toBe(`#/standort/${FIXTURE_IDS.st1}/messstellen`);
       expect(breite === 375 ? m.karten : m.zeilen).toBe(16);
-      // AP-13 IP-2: Gebäude und Anlagen haben ihre Seite — vier Bereiche (O17). Am Rechner die Reiter, am
-      // Telefon die Leiste; was die Leiste trägt, ist dort kein zweites Mal Reiter.
-      expect(m.reiter).toEqual(breite === 375 ? [] : ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+      // AP-13 IP-2: die Bereiche des Standorts (O17; „Aufbau“ trägt Anlagen, Boxen und Geräte). Am Rechner die
+      // Reiter, am Telefon die Leiste; was die Leiste trägt, ist dort kein zweites Mal Reiter.
+      expect(m.reiter).toEqual(breite === 375 ? [] : ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
       expect(m.reiterAktiv).toEqual(breite === 375 ? [] : ['Messstellen']);
-      expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse'] : null);
+      expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'] : null);
       if (breite === 375) expect(m.leisteAktiv).toBe('Messstellen');
       expect(m.kopf).toBe('Werk Ahrenberg · 15 von 16 Messstellen liefern Daten');
       await ablegen(page, `werk-${breite}`, m);
@@ -316,16 +318,16 @@ test.describe('Messstellen-Register', () => {
 });
 
 test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich die Leiste des Unternehmens zu', () => {
-  test('Übersicht bei 375 px — Variante B (gebaut): Leiste Übersicht · Standorte · Messstellen · Kennzahlen · Berichte, Reiter nur Übersicht · Messwerte', async ({ page }) => {
+  test('Übersicht bei 375 px — gebaut: Leiste Übersicht · Messen · Auswerten, Reiter nur die der Gruppe „Übersicht“', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375');
     expect(m.route).toBe('#/portfolio');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
     expect(m.leisteAktiv).toBe('Übersicht');
-    expect(m.reiter).toEqual(['Übersicht', 'Energie']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Energie']);
     await ablegen(page, 'leiste-uebersicht-375', m);
-    await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
+    await page.locator('.vp-bottombar').getByRole('button', { name: 'Messen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
     await warteAufRegister(page);
   });
@@ -334,7 +336,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await oeffne(page, 'bild=unternehmen&reiter=alle', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375-alle-reiter');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
     expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
     await ablegen(page, 'leiste-uebersicht-375-alle-reiter', m);
   });
@@ -346,7 +348,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await warteAufRegister(page);
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440);
     const m = await messe(page);
-    expect(m.reiter).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Anlagen', 'Messstellen', 'Netzanschlüsse']);
+    expect(m.reiter).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     await ablegen(page, 'werk-uebersicht-1440', m);
     await page.getByRole('tab', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st1}/messstellen`);
@@ -357,9 +359,10 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await oeffne(page, 'bild=messkunde', 1440);
     const r = await messe(page);
     ohneQuerlauf(r, 'messkunde-1440');
-    // AP-13 IP-2: als oberste Ebene trägt die Reiter-Reihe auch „Gebäude“; Lindach hat eine Anlage — kein „Anlagen“ (Z4).
-    expect(r.reiter).toEqual(expect.arrayContaining(['Übersicht', 'Gebäude', 'Messstellen']));
+    // AP-13 IP-2: als oberste Ebene trägt die Reiter-Reihe auch „Aufbau“ und „Gebäude“ — „Boxen“ und „Anlagen“ gibt es nicht mehr.
+    expect(r.reiter).toEqual(expect.arrayContaining(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen']));
     expect(r.reiter).not.toContain('Anlagen');
+    expect(r.reiter).not.toContain('Boxen');
     await page.getByRole('tab', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
     await warteAufRegister(page);
@@ -367,8 +370,8 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await oeffne(page, 'bild=messkunde', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'messkunde-375');
-    // Drei Bereiche mit Seite — seit AP-13 IP-2 die Leiste (O17: Werk Lindach drei Kacheln).
-    expect(m.leiste).toEqual(['Übersicht', 'Boxen', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    // Die Bereiche mit Seite — die Leiste (O17), höchstens fünf Kacheln.
+    expect(m.leiste).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse']);
     await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
     await warteAufRegister(page);

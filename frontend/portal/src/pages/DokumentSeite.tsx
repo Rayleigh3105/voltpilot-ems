@@ -166,34 +166,36 @@ export function DokumentSeite({ id, onListe }: { id: string; onListe: () => void
       {d.fassungen.length > 0 && (
         <section className="vp-ez-karte" aria-label="Fassungen">
           <h2>Fassungen</h2>
-          <table className="vp-ez-tafel" data-testid="dokument-fassungen">
-            <thead>
-              <tr>
-                <th scope="col">Fassung</th>
-                <th scope="col">Stand</th>
-                <th scope="col">{UEMS_ENTSCHIEDEN_VON}</th>
-                <th scope="col">{UEMS_EINGETRAGEN_VON}</th>
-                <th scope="col">entschieden am</th>
-                <th scope="col">Prüfsumme</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...d.fassungen].reverse().map((f) => (
-                <tr key={f.nr} data-testid={`dokument-fassung-${f.nr}`}>
-                  <td>
-                    {f.nr} · {E.FORM_WORT[f.form]}
-                  </td>
-                  <td data-label="Stand">{E.FASSUNG_STATUS_WORT[f.status]}</td>
-                  <td data-label={UEMS_ENTSCHIEDEN_VON}>{f.entschieden_von ? E.personWort(f.entschieden_von) : '—'}</td>
-                  <td data-label={UEMS_EINGETRAGEN_VON}>{f.freigabe?.akteur.name ?? f.eingetragen.akteur.name}</td>
-                  <td data-label="entschieden am" className="vp-em-tag">{f.entschieden_am ? E.tagText(f.entschieden_am) : '—'}</td>
-                  <td data-label="Prüfsumme" className="vp-ez-pruefsumme" title={f.pruefsumme ?? undefined}>
-                    {f.pruefsumme ? E.kurz(f.pruefsumme) : '—'}
-                  </td>
+          <div className="vp-ez-tafel-rahmen">
+            <table className="vp-ez-tafel" data-testid="dokument-fassungen">
+              <thead>
+                <tr>
+                  <th scope="col">Fassung</th>
+                  <th scope="col">Stand</th>
+                  <th scope="col">{UEMS_ENTSCHIEDEN_VON}</th>
+                  <th scope="col">{UEMS_EINGETRAGEN_VON}</th>
+                  <th scope="col">entschieden am</th>
+                  <th scope="col">Prüfsumme</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {[...d.fassungen].reverse().map((f) => (
+                  <tr key={f.nr} data-testid={`dokument-fassung-${f.nr}`}>
+                    <td>
+                      {f.nr} · {E.FORM_WORT[f.form]}
+                    </td>
+                    <td data-label="Stand">{E.FASSUNG_STATUS_WORT[f.status]}</td>
+                    <td data-label={UEMS_ENTSCHIEDEN_VON}>{f.entschieden_von ? E.personWort(f.entschieden_von) : '—'}</td>
+                    <td data-label={UEMS_EINGETRAGEN_VON}>{f.freigabe?.akteur.name ?? f.eingetragen.akteur.name}</td>
+                    <td data-label="entschieden am" className="vp-em-tag">{f.entschieden_am ? E.tagText(f.entschieden_am) : '—'}</td>
+                    <td data-label="Prüfsumme" className="vp-ez-pruefsumme" title={f.pruefsumme ?? undefined}>
+                      {f.pruefsumme ? E.kurz(f.pruefsumme) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
       {d.eintraege.length > 0 && (

@@ -38,6 +38,7 @@ import {
   type EbenenSeiten,
   standortEinstiege,
   standortBereichFuer,
+  telefonReiterBereiche,
 } from '../src/ebenenNav';
 import { anlagenOptionen } from '../src/anlagenWahl';
 import {
@@ -110,10 +111,9 @@ import { mitEnergiebilanz } from '../src/anlageEnergiebilanz';
 import { ahrenbergBilanz } from '../src/test/bilanzFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from '../src/test/ortsbaumFixtures';
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
-import { StandortAnlagenPage } from '../src/pages/StandortAnlagenPage';
 import { StandortGebaeudePage } from '../src/pages/StandortGebaeudePage';
 import { StandortePage } from '../src/pages/StandortePage';
-import { StandortBoxenPage } from '../src/pages/StandortBoxenPage';
+import { StandortAufbauPage } from '../src/pages/StandortAufbauPage';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSurface } from '../src/surface';
 import {
@@ -459,9 +459,9 @@ const ALLE_SEITEN_KUENFTIG: EbenenSeiten = (ort) => {
   return {
     uebersicht: hier,
     standorte: pageRoute('portfolio-standorte'),
+    aufbau: hier,
     netzanschluesse: hier,
     gebaeude: hier,
-    anlagen: hier,
     messstellen: hier,
     bezugsgroessen: hier,
     kennzahlen: hier,
@@ -1122,6 +1122,9 @@ Object.assign(api, {
   // Der Einstieg mit nur einer Anlage kann deren Cockpit vor der E1-Weiche laden.
   // Die Standort-Bühne liefert diese Zusatzdaten nicht; auch dieser Pfad bleibt isoliert.
   topology: nichtGestellt,
+  // Der Aufbau des Standorts: die Anlagen der Bühne verwaltet das Portal (wie eine neu angelegte Anlage) — so steht
+  // „Gerät hinzufügen“ bereit wie in der App.
+  siteComponents: async () => ({ componentAuthority: 'portal', components: [] }),
   siteEarnings: nichtGestellt,
   controlStatus: nichtGestellt,
   siteSources: nichtGestellt,
@@ -1309,20 +1312,21 @@ function Vorschau() {
             // AP-13 IP-2: die Seiten des Standorts.
             : ansicht === 'werk-gebaeude'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude')
-            : ansicht === 'werk-boxen'
-              ? standortBereichRoute(FIXTURE_IDS.st1, 'boxen')
+            // „Boxen“ und „Anlagen“ sind im Aufbau aufgegangen; die alten Namen der Bühne führen dorthin.
+            : ansicht === 'werk-aufbau' || ansicht === 'werk-boxen'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'aufbau')
             : ansicht === 'werk-netzanschluesse'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'netzanschluesse')
             : ansicht === 'werk-anlagen'
-              ? standortBereichRoute(FIXTURE_IDS.st1, 'anlagen')
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'aufbau')
             : ansicht === 'werk-kennzahlen'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'kennzahlen')
             : ansicht === 'werk-berichte'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'berichte')
             : ansicht === 'lindach-gebaeude'
               ? standortBereichRoute(st2, 'gebaeude')
-            : ansicht === 'lindach-anlagen'
-              ? standortBereichRoute(st2, 'anlagen')
+            : ansicht === 'lindach-anlagen' || ansicht === 'lindach-aufbau'
+              ? standortBereichRoute(st2, 'aufbau')
             // AP-13 IP-13: die Stationen Zahl · Verlauf · Vergleich stehen auf der Messstellen-Seite.
             : WEG_ANSICHT
               ? messstelleRoute(wegMessstelleId())
@@ -1398,7 +1402,12 @@ function Vorschau() {
   // AP-04 IP-5, wie `App.tsx`: der Reiter „Messstellen" nur, wo gemessen wird; am Telefon
   // entfallen die Reiter, die die Leiste trägt. `&reiter=alle` = Variante A der Vorschau (alle bleiben).
   const bereiche = ort ? ebenenBereiche(ort, lesemodell).map((b) => b.key) : [];
-  const leiste = params.get('reiter') === 'alle' ? [] : kacheln.map((k) => k.key);
+  const leiste = params.get('reiter') === 'alle' ? [] : kacheln.flatMap((k) => k.bereiche);
+  // Wie `App.tsx`: mit der Gruppen-Leiste des Unternehmens zeigen die Reiter am Telefon nur die offene Gruppe.
+  const telefonReiter =
+    ort?.art === 'unternehmen' && params.get('reiter') !== 'alle'
+      ? telefonReiterBereiche(kacheln, ebenenAktiv(route.page, standortBereich))
+      : null;
   const standortReiter =
     route.page === 'standort' && ebene.art !== 'standort' && ort?.art === 'standort' ? ebenenReiter(ort, lesemodell) : [];
   // AP-13 IP-2, wie `App.tsx`: als oberste Ebene bringt der Standort Gebäude · Anlagen in die Reiter mit;
@@ -1406,7 +1415,7 @@ function Vorschau() {
   const standortObenReiter =
     ebene.art === 'standort' && ort?.art === 'standort'
       ? ebenenReiter(ort, lesemodell)
-          .filter((r) => r.key === 'boxen' || r.key === 'gebaeude' || r.key === 'anlagen')
+          .filter((r) => r.key === 'aufbau' || r.key === 'gebaeude' || r.key === 'netzanschluesse')
       : [];
   const einstiege = ort?.art === 'standort' ? standortEinstiege(ort, lesemodell) : [];
   const portfolioReiter = (page: PageId) => (
@@ -1418,6 +1427,7 @@ function Vorschau() {
       showKennzahlen={bereiche.includes('kennzahlen')}
       showBerichte={bereiche.includes('berichte')}
       leiste={leiste}
+      telefonReiter={telefonReiter}
       fleetLabel={FLOTTE}
       onNavigate={navigateSchale}
       standortBereiche={standortObenReiter}
@@ -1520,12 +1530,14 @@ function Vorschau() {
               einstiege={einstiege}
             />
           )}
-          {standortBereich === 'boxen' && (
-            <StandortBoxenPage
+          {standortBereich === 'aufbau' && (
+            <StandortAufbauPage
               key={standort.id}
               standort={standort}
               sites={sites}
               devices={geraeteAhrenberg(new Date(Date.now()))}
+              devicesFetchedAt={Date.now()}
+              onReload={() => undefined}
             />
           )}
           {standortBereich === 'gebaeude' && (
@@ -1543,9 +1555,6 @@ function Vorschau() {
             />
           )}
           {standortBereich === 'netzanschluesse' && <StandortNetzanschluessePage key={standort.id} standort={standort} onGeaendert={() => undefined} />}
-          {standortBereich === 'anlagen' && (
-            <StandortAnlagenPage standort={standort} sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
-          )}
           {standortBereich === 'kennzahlen' && (
             <KennzahlenPage
               key={standort.id}

@@ -107,16 +107,18 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 }
 
 test.describe('Kennzahlen — die Liste', () => {
-  test('bei 375 px am 03.12.2026: fünf Karten, die Leiste mit „Kennzahlen“ offen, keine doppelten Reiter', async ({ page }) => {
+  test('bei 375 px am 03.12.2026: fünf Karten, die Leiste mit „Auswerten“ offen, darüber nur deren Reiter', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen', 375, DEZEMBER);
     await warteAufListe(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-375');
     expect(m.route).toBe('#/portfolio/kennzahlen');
     expect(m.titel).toBe('Kennzahlen');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
-    expect(m.leisteAktiv).toBe('Kennzahlen');
-    expect(m.reiter).toEqual([]);
+    // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); über der Seite stehen am Telefon
+    // nur die Reiter der offenen Gruppe.
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten']);
+    expect(m.leisteAktiv).toBe('Auswerten');
+    expect(m.reiter).toEqual(['Kennzahlen', 'Berichte']);
     expect(m.karten).toHaveLength(5);
     expect(m.karten[0]).toContain('keine Werte');
     expect(m.karten[3]).toContain(`mindestens 30,83${NB}kWh je Person`);
@@ -160,7 +162,7 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     ohneQuerlauf(m, 'k1-375');
     expect(m.route).toBe(`#/portfolio/kennzahlen/${KZ.kz1}`);
     expect(`${m.titel} · ${m.unter}`).toBe('KZ-0001 · Stromeinsatz Montage je Stück — Halle 2 · Gebäude Halle 2 · verantwortlich Ines Kaltenbach');
-    expect(m.leisteAktiv).toBe('Kennzahlen');
+    expect(m.leisteAktiv).toBe('Auswerten');
     expect(m.perioden).toEqual(['Monat', 'Jahr']);
     expect(m.zahl).toBe(`0,15${NB}kWh je Stück`);
     expect(m.abzeichen).toEqual(['vollständig', `Verlauf 100${NB}%`]);

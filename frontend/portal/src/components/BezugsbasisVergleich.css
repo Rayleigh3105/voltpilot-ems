@@ -159,6 +159,13 @@
 
 /* ---------------------------------------------------------------- ab 960 px: die Tafel */
 
+/* Elf Spalten brauchen mehr als 960 px minus Seitenleiste: die Tafel scrollt in ihrem Rahmen, nie die Seite. */
+.vp-bbv-rahmen {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
 @media (min-width: 960px) {
   .vp-bbv-tafel {
     display: table;
