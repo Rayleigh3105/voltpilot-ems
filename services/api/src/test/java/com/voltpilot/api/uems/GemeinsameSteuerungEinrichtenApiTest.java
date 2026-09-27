@@ -156,6 +156,7 @@ class GemeinsameSteuerungEinrichtenApiTest {
         assertThat(vorschlag.path("netzzaehler_box_id").asText()).isEqualTo(w.e1().toString());
         assertThat(vorschlag.path("grenzen").path("einspeisung_kw").decimalValue()).isEqualByComparingTo("100");
         assertThat(vorschlag.path("grenzen").path("bezug_kw").decimalValue()).isEqualByComparingTo("550");
+        assertThat(vorschlag.path("grenzen").path("einspeisung_keine").asBoolean()).isFalse();
         JsonNode e4 = box(vorschlag, w.e4());
         assertThat(e4.path("komponenten")).hasSize(7);
         assertThat(komponente(e4, w.k12()).path("schreibfreigabe").asBoolean()).isTrue();
@@ -391,6 +392,38 @@ class GemeinsameSteuerungEinrichtenApiTest {
         assertThat(kunde(w, put(w.pfad() + "/komponenten/" + w.k1() + "/rueckfall").content(
                 "{\"richtung\":\"einspeisung\",\"rueckfall\":\"faellt_auf_wert\"}")).status())
                 .as("faellt_auf_wert ohne kW").isEqualTo(400);
+    }
+
+    // ============================================================================ Frage 3: keine Einspeisegrenze (AP-15 Folge)
+
+    /**
+     * Die drei Zustände der Einspeisegrenze an Frage 3 (PR 1149, Portal-Satz): Wert gesetzt, ausdrücklich keine
+     * ({@code einspeisung_keine}, Einspeisung unbegrenzt — nur der Bezug wird aufgeteilt) und nicht eingetragen
+     * (unbekannt, kein {@code einspeisung_keine}). Erst das Feld unterscheidet die beiden leeren Fälle.
+     */
+    @Test
+    void frage3UnterscheidetKeineEinspeisegrenzeVonUnbekannt() throws Exception {
+        Welt w = welt();
+        rueckfaelleAmGeraet(w);
+        ok(kunde(w, put(w.pfad()).content(erklaerung(w, w.k13(), "\"keine\"", "473"))));
+        JsonNode gesetzt = ok(kunde(w, get(w.pfad() + "/einrichten")));
+        assertThat(gesetzt.path("grenzen").path("einspeisung_kw").decimalValue()).isEqualByComparingTo("100");
+        assertThat(gesetzt.path("grenzen").path("einspeisung_keine").asBoolean()).isFalse();
+
+        root.update("UPDATE netzanschluss_grenze SET einspeisegrenze_kw = NULL, einspeisegrenze_keine = true "
+                + "WHERE tenant_id = ?", w.mandant());
+        JsonNode keine = ok(kunde(w, get(w.pfad() + "/einrichten")));
+        assertThat(keine.path("grenzen").path("einspeisung_kw").isNull()).isTrue();
+        assertThat(keine.path("grenzen").path("einspeisung_keine").asBoolean()).isTrue();
+        assertThat(keine.path("grenzen").path("bezug_kw").decimalValue()).isEqualByComparingTo("550");
+        assertThat(keine.path("ergebnis").path("einspeisung").isMissingNode()
+                || keine.path("ergebnis").path("einspeisung").isNull()).as("unbegrenzt: keine Auslegung").isTrue();
+        assertThat(keine.path("ergebnis").path("bezug").path("urteil").asText()).isEqualTo("passt");
+
+        root.update("UPDATE netzanschluss_grenze SET einspeisegrenze_keine = false WHERE tenant_id = ?", w.mandant());
+        JsonNode unbekannt = ok(kunde(w, get(w.pfad() + "/einrichten")));
+        assertThat(unbekannt.path("grenzen").path("einspeisung_kw").isNull()).isTrue();
+        assertThat(unbekannt.path("grenzen").path("einspeisung_keine").asBoolean()).isFalse();
     }
 
     // ============================================================================ Frage 6 vor dem Absenden (§5.2 Nr. 6/7)

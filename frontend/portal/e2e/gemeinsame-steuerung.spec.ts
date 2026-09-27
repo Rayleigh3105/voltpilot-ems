@@ -254,6 +254,65 @@ for (const breite of [375, 1440]) {
     await bild(page.locator('#technik-gemeinsam'), `karte-eingerichtet-${breite}`);
   });
 
+  test(`AP-15 Folge (PR 1149) · ${breite} px: ausdrücklich keine Einspeisegrenze — Einspeisung unbegrenzt, nur der Bezug wird aufgeteilt`, async ({ page }) => {
+    const UNBEGRENZT = 'Einspeisung unbegrenzt — nur der Bezug wird aufgeteilt.';
+    await oeffne(page, breite, 'lage=nicht_eingerichtet&einspeisegrenze=keine');
+    const k = await karte(page, breite);
+    await k.getByRole('button', { name: 'Gemeinsame Steuerung einrichten' }).click();
+    const m = modal(page);
+    const weiter = m.getByRole('button', { name: 'Weiter' });
+    await expect(m.getByText('Frage 1 von 6 · Welche Boxen steuern mit?')).toBeVisible();
+    await weiter.click();
+    await waehle(page, m.getByRole('combobox', { name: 'Datenquelle des Netzzählers', exact: true }), /^DQ-2/);
+    await weiter.click();
+    await expect(m.getByText('Frage 3 von 6 · Grenzen am Netzanschluss')).toBeVisible();
+    await expect(m.getByTestId('gs-grenze-einspeisung')).toHaveText('unbegrenzt');
+    await expect(m.locator('.vp-gs-grenzen')).toContainText('550 kW');
+    await expect(m.getByTestId('gs-einspeisung-unbegrenzt')).toHaveText(UNBEGRENZT);
+    await bild(m, `unbegrenzt-frage-3-${breite}`);
+    await weiter.click();
+    await waehle(page, m.getByRole('combobox', { name: 'Gibt es solche Erzeuger?', exact: true }), /^Keine/);
+    await weiter.click();
+    await expect(m.getByText(/^Frage 5 von 6/)).toBeVisible();
+    const halle1 = m.getByTestId('gs-box-frage').filter({ hasText: 'Box Halle 1' });
+    const verwaltung = m.getByTestId('gs-box-frage').filter({ hasText: 'Box Verwaltung' });
+    await halle1.getByLabel(/Batteriespeicher 200 kWh · Bezug/).fill('100');
+    await waehle(page, halle1.getByRole('combobox', { name: 'Bekommt diese Box das Signal des Netzbetreibers?', exact: true }), /^Ja/);
+    await waehle(page, verwaltung.getByRole('combobox', { name: 'Zähler dieser Box', exact: true }), /^DQ-10/);
+    await waehle(page, verwaltung.getByRole('combobox', { name: 'Bekommt diese Box das Signal des Netzbetreibers?', exact: true }), /^Nein/);
+    await weiter.click();
+    await expect(m.getByText('Frage 6 von 6 · Ergebnis')).toBeVisible();
+    const ein = m.getByTestId('gs-richtung-einspeisung');
+    await expect(ein).toContainText(`Passt die Anlage zur Grenze? ${UNBEGRENZT}`);
+    await expect(ein).not.toContainText('Noch nicht zu rechnen');
+    await expect(m.getByTestId('gs-richtung-bezug')).toContainText('Box Verwaltung: 77 kW');
+    await bild(m, `unbegrenzt-frage-6-${breite}`);
+
+    // in Kraft: die Karte nennt die unbegrenzte Einspeisung, die mitsteuernde Box hält nur ihren Bezugs-Anteil
+    await oeffne(page, breite, 'lage=anteile_aktiv&einspeisegrenze=keine');
+    const aktiv = await karte(page, breite);
+    await expect(aktiv.getByTestId('gs-zustand')).toContainText('Gemeinsame Steuerung aktiv · 2 Boxen · Einspeisung unbegrenzt · Bezug höchstens 550 kW');
+    await expect(aktiv.getByTestId('gs-box').nth(1)).toHaveText(/^Box Verwaltung steuert mit · hält ihren Anteil: Bezug 77 kW · Einspeisung unbegrenzt/);
+    await bild(page.locator('#technik-gemeinsam'), `unbegrenzt-karte-aktiv-${breite}`);
+  });
+
+  test(`AP-15 Folge (PR 1149) · ${breite} px: nicht eingetragene Einspeisegrenze bleibt unbekannt, nicht unbegrenzt`, async ({ page }) => {
+    await oeffne(page, breite, 'lage=nicht_eingerichtet&einspeisegrenze=fehlt');
+    const k = await karte(page, breite);
+    await k.getByRole('button', { name: 'Gemeinsame Steuerung einrichten' }).click();
+    const m = modal(page);
+    const weiter = m.getByRole('button', { name: 'Weiter' });
+    await expect(m.getByText('Frage 1 von 6 · Welche Boxen steuern mit?')).toBeVisible();
+    await weiter.click();
+    await waehle(page, m.getByRole('combobox', { name: 'Datenquelle des Netzzählers', exact: true }), /^DQ-2/);
+    await weiter.click();
+    await expect(m.getByTestId('gs-grenze-einspeisung')).toHaveText('nicht eingetragen');
+    await expect(m.getByTestId('gs-einspeisung-unbegrenzt')).toHaveCount(0);
+    await bild(m, `fehlt-frage-3-${breite}`);
+    await oeffne(page, breite, 'lage=anteile_aktiv&einspeisegrenze=fehlt');
+    await expect((await karte(page, breite)).getByTestId('gs-zustand')).not.toContainText('unbegrenzt');
+  });
+
   test(`AP-15 IP-23 · ${breite} px: der Betreiber weicht beim Scharfschalten ab — die Karte zeigt die wirksamen Anteile`, async ({ page }) => {
     await oeffne(page, breite, 'lage=anteile_aktiv&wirksam=abweichend');
     const k = await karte(page, breite);

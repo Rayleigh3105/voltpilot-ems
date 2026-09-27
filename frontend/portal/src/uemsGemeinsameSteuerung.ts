@@ -105,6 +105,15 @@ export const FLAECHE = {
   auslegung_passt_nicht: 'Die Anlage passt noch nicht zur Grenze am Netzanschluss.',
   /** §5.2 Nr. 2, wörtlich */
   netzzaehler_fehlt: 'Für die gemeinsame Steuerung muss eine Box den Zähler am Netzanschluss lesen.',
+  /**
+   * Das Grenzblatt erklärt ausdrücklich keine Einspeisegrenze (AP-15 Folge, PR 1149, Captain 23.09.2026) — anders als
+   * eine nur fehlende Grenze, die unbekannt bleibt: Frage 3, Frage 6 und die Karte sagen es mit diesen Sätzen.
+   */
+  einspeisung_unbegrenzt: 'Einspeisung unbegrenzt — nur der Bezug wird aufgeteilt.',
+  einspeisung_unbegrenzt_wert: 'unbegrenzt',
+  karte_aktiv_einspeisung_unbegrenzt: 'Gemeinsame Steuerung aktiv · {boxen} Boxen · Einspeisung unbegrenzt · Bezug höchstens {bezug_kw} kW',
+  box_mitsteuernd_einspeisung_unbegrenzt: 'Box {box} steuert mit · hält ihren Anteil: Bezug {bezug_kw} kW · Einspeisung unbegrenzt',
+  box_mitsteuernd_geplant_einspeisung_unbegrenzt: 'Box {box} steuert mit, sobald VoltPilot freischaltet · vorgesehener Anteil: Bezug {bezug_kw} kW · Einspeisung unbegrenzt',
   /** §5.2 Nr. 3, wörtlich */
   netzanschluss_fehlt: 'Bitte zuerst den Netzanschluss dieser Anlage eintragen.',
   /** Netzanschluss ohne Einspeise- oder Bezugsgrenze */

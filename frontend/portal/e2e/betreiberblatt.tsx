@@ -48,6 +48,7 @@ function gsBetreiberZustand(l: Lage): ReturnType<typeof grundZustand> {
   };
 }
 
+const keineEinspeisegrenze = p.get('einspeisegrenze') === 'keine';
 const proben: UemsSprungprobeProtokoll[] = p.get('proben') === '1' ? [gsProbe(GS_IDS.e1, jetzt)] : [];
 (window as unknown as Record<string, unknown>).__quittung = () => { blattLage = 'aktiv'; };
 
@@ -63,6 +64,12 @@ window.fetch = async (input, init) => {
     const rest = admin[1] ?? '';
     if (rest === '' && methode === 'GET') {
       const blatt = gsBlatt(blattLage, jetzt, [...proben].reverse());
+      // ohne Einspeisegrenze trägt das Dokument keine Einspeiseseite: kein Wächter, kein wirksamer Einspeise-Anteil
+      if (keineEinspeisegrenze) {
+        blatt.boxen = blatt.boxen.map((b) => ({ ...b,
+          waechter: b.waechter ? { ...b.waechter, einspeisung: 'aus' } : b.waechter,
+          anteile: { ...b.anteile, wirksam_kw: b.anteile.wirksam_kw ? { bezug: b.anteile.wirksam_kw.bezug } : b.anteile.wirksam_kw } }));
+      }
       // `ungeregelt=<kW>`: erklärtes Ungeregeltes hinter dem Abgang von E-4 (AP-15 Folge von IP-19)
       if (p.has('ungeregelt')) {
         blatt.boxen = blatt.boxen.map((b) => b.box_id === GS_IDS.e4
@@ -95,7 +102,13 @@ window.fetch = async (input, init) => {
   if (gs) {
     const rest = gs[1] ?? '';
     if (rest === '' && methode === 'GET') return Response.json(gsBetreiberZustand(lage));
-    if (rest === '/einrichten') return Response.json(gsEingerichtet());
+    if (rest === '/einrichten') {
+      // `einspeisegrenze=keine` (AP-15 Folge, PR 1149): ausdrücklich keine Einspeisegrenze — keine Auslegung dieser Richtung
+      const e = gsEingerichtet();
+      if (!keineEinspeisegrenze) return Response.json(e);
+      return Response.json({ ...e, grenzen: { einspeisung_kw: null, bezug_kw: 550, einspeisung_keine: true },
+        ergebnis: { einspeisung: null, bezug: e.ergebnis!.bezug } });
+    }
     if (rest === '/anhalten' && methode === 'POST') { lage = 'angehalten_betreiber'; return Response.json(gsBetreiberZustand(lage)); }
   }
   return echtesFetch(input, init);

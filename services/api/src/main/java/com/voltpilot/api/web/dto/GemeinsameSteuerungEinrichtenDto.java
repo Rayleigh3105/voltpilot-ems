@@ -43,9 +43,12 @@ public final class GemeinsameSteuerungEinrichtenDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Vorschau(Einrichten einrichten, GemeinsameSteuerungDto.Zustand zustand) {}
 
-    /** Die wirksamen Grenzen am Netzanschluss; eine leere Richtung ist unbekannt. */
+    /**
+     * Die wirksamen Grenzen am Netzanschluss; eine leere Richtung ist unbekannt. {@code einspeisungKeine}: das Grenzblatt
+     * erklärt ausdrücklich keine Einspeisegrenze (I1) — Einspeisung unbegrenzt, nur der Bezug wird aufgeteilt.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Grenzen(BigDecimal einspeisungKw, BigDecimal bezugKw) {}
+    public record Grenzen(BigDecimal einspeisungKw, BigDecimal bezugKw, boolean einspeisungKeine) {}
 
     /**
      * Eine Box der Anlage. {@code rolle}/{@code messpunktId} nur als wirksames Mitglied; {@code komponenten} = was sie

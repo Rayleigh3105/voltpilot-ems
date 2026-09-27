@@ -7991,7 +7991,8 @@ export interface UemsErzeuger {
 export interface UemsGemeinsameSteuerungEinrichten {
   eingerichtet: boolean;
   netzzaehler_box_id: string | null;
-  grenzen: { einspeisung_kw: number | null; bezug_kw: number | null } | null;
+  /** `einspeisung_keine`: das Grenzblatt erklärt ausdrücklich keine Einspeisegrenze — nie aus einem nur fehlenden Wert. */
+  grenzen: { einspeisung_kw: number | null; bezug_kw: number | null; einspeisung_keine?: boolean } | null;
   boxen: UemsEinrichtenBox[];
   ungesteuerte_erzeuger?: 'keine' | UemsErzeuger[] | null;
   vorbehalt?: {

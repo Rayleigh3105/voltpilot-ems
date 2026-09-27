@@ -126,6 +126,10 @@ export function zustandsZeile(
   if (l === 'wird_geprueft') return satz('pruefung_laeuft');
   if (l === 'angehalten') return satz('angehalten', { box: nameVon(namen, fuehrendeBox(z)) });
   const g = einrichten?.grenzen;
+  if (g?.bezug_kw != null && einspeisungUnbegrenzt(einrichten)) return flaechenSatz('karte_aktiv_einspeisung_unbegrenzt', {
+    boxen: String(z?.mitglieder?.length ?? 0),
+    bezug_kw: kw(g.bezug_kw),
+  });
   if (g?.einspeisung_kw == null || g.bezug_kw == null) return `${KUNDENWORT} ${ZUSTAENDE.aktiv}`;
   return satz('karte_aktiv', {
     boxen: String(z?.mitglieder?.length ?? 0),
@@ -173,7 +177,10 @@ export function boxZeilen(
     } else {
       const ein = inKraft ? m.wirksame_anteile?.einspeisung_kw ?? null : anteilVon(einrichten?.ergebnis ?? null, 'einspeisung', m.box_id);
       const bez = inKraft ? m.wirksame_anteile?.bezug_kw ?? null : anteilVon(einrichten?.ergebnis ?? null, 'bezug', m.box_id);
-      if (ein == null || bez == null) text = flaechenSatz(inKraft ? 'box_mitsteuernd_kurz' : 'box_mitsteuernd_geplant_kurz', { box });
+      if (ein == null && bez != null && einspeisungUnbegrenzt(einrichten)) {
+        text = flaechenSatz(inKraft ? 'box_mitsteuernd_einspeisung_unbegrenzt' : 'box_mitsteuernd_geplant_einspeisung_unbegrenzt',
+          { box, bezug_kw: kw(bez) });
+      } else if (ein == null || bez == null) text = flaechenSatz(inKraft ? 'box_mitsteuernd_kurz' : 'box_mitsteuernd_geplant_kurz', { box });
       else {
         const werte = { box, einspeisung_kw: kw(ein), bezug_kw: kw(bez) };
         text = inKraft ? satz('box_mitsteuernd', werte) : flaechenSatz('box_mitsteuernd_geplant', werte);
@@ -516,8 +523,21 @@ export function lueckenAusAntwort(body: unknown): EntwurfLuecke[] {
 
 // ───────────────────────────────────────────────────────────── Frage 6: Ergebnis
 
-/** „Passt die Anlage zur Grenze?“ — je Richtung. */
-export function urteilSatz(a: UemsGemeinsameSteuerungAuslegung | null | undefined): string {
+/**
+ * Das Grenzblatt erklärt ausdrücklich keine Einspeisegrenze (AP-15 Folge, PR 1149): die Einspeisung ist unbegrenzt, nur
+ * der Bezug wird aufgeteilt — sie hat keine Auslegung, keinen Anteil und keinen Wächter. Ein nur fehlender Wert ist
+ * unbekannt, nicht unbegrenzt; ein Wert (auch an der Anlage) gewinnt.
+ */
+export function einspeisungUnbegrenzt(e: UemsGemeinsameSteuerungEinrichten | null | undefined): boolean {
+  return e?.grenzen?.einspeisung_keine === true && e.grenzen.einspeisung_kw == null;
+}
+
+/**
+ * „Passt die Anlage zur Grenze?“ — je Richtung. `unbegrenzt`: die Einspeisung ohne Grenze (`einspeisungUnbegrenzt`)
+ * hat keine Auslegung und ist darum nicht „noch nicht zu rechnen“.
+ */
+export function urteilSatz(a: UemsGemeinsameSteuerungAuslegung | null | undefined, unbegrenzt = false): string {
+  if (!a && unbegrenzt) return flaechenSatz('einspeisung_unbegrenzt');
   if (!a) return flaechenSatz('urteil_offen');
   if (a.urteil === 'passt') return flaechenSatz('urteil_passt');
   if (a.urteil === 'vorbehalt_ueber_grenze') return flaechenSatz('urteil_vorbehalt_ueber_grenze');

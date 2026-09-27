@@ -205,3 +205,62 @@ describe('AP-15 IP-23 · Einrichten: Frage 6 vor dem Schreiben (§5.2 Nr. 6/7)',
     await waitFor(() => expect(feld.closest('.vp-gs-geraet')).toHaveTextContent('Dieses Gerät fehlt noch in der Liste dieser Box.'));
   });
 });
+
+describe('AP-15 Folge (PR 1149) · Einrichten: ausdrücklich keine Einspeisegrenze', () => {
+  const UNBEGRENZT = 'Einspeisung unbegrenzt — nur der Bezug wird aufgeteilt.';
+  async function frage3(grenzen: NonNullable<ReturnType<typeof gsVorschlag>['grenzen']>) {
+    stelle('nicht_eingerichtet');
+    vi.mocked(api.gemeinsameSteuerungEinrichten).mockResolvedValue({ ...gsVorschlag(), grenzen });
+    render(<Karte boxen={gsBoxen(JETZT)} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Gemeinsame Steuerung einrichten' }));
+    const folge = await screen.findByTestId('gs-folge');
+    await within(folge).findByText('Frage 1 von 6 · Welche Boxen steuern mit?');
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(screen.getByRole('combobox', { name: /Datenquelle des Netzzählers/ }));
+    fireEvent.click(screen.getByRole('option', { name: /DQ-2/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await within(folge).findByText('Frage 3 von 6 · Grenzen am Netzanschluss');
+    return folge;
+  }
+
+  it('Frage 3: Grenze gesetzt nennt den Wert', async () => {
+    const folge = await frage3({ einspeisung_kw: 100, bezug_kw: 550 });
+    expect(within(folge).getByTestId('gs-grenze-einspeisung')).toHaveTextContent('100 kW');
+    expect(within(folge).queryByTestId('gs-einspeisung-unbegrenzt')).toBeNull();
+  });
+
+  it('Frage 3: ausdrücklich keine Grenze heißt „unbegrenzt“ — nur der Bezug wird aufgeteilt', async () => {
+    const folge = await frage3({ einspeisung_kw: null, bezug_kw: 550, einspeisung_keine: true });
+    expect(within(folge).getByTestId('gs-grenze-einspeisung')).toHaveTextContent('unbegrenzt');
+    expect(within(folge).getByTestId('gs-einspeisung-unbegrenzt')).toHaveTextContent(UNBEGRENZT);
+  });
+
+  it('Frage 3: ohne jede Grenze, aber ausdrücklich keine Einspeisegrenze, fehlt nicht der Netzanschluss', async () => {
+    const folge = await frage3({ einspeisung_kw: null, bezug_kw: null, einspeisung_keine: true });
+    expect(within(folge).getByTestId('gs-grenze-einspeisung')).toHaveTextContent('unbegrenzt');
+    expect(folge).not.toHaveTextContent('Bitte zuerst den Netzanschluss dieser Anlage eintragen.');
+  });
+
+  it('Frage 3: nicht eingetragen bleibt „nicht eingetragen“ — unbekannt ist nicht unbegrenzt', async () => {
+    const folge = await frage3({ einspeisung_kw: null, bezug_kw: 550 });
+    expect(within(folge).getByTestId('gs-grenze-einspeisung')).toHaveTextContent('nicht eingetragen');
+    expect(within(folge).queryByTestId('gs-einspeisung-unbegrenzt')).toBeNull();
+  });
+
+  it('Frage 6: die Einspeisung ohne Auslegung sagt „unbegrenzt“ statt „noch nicht zu rechnen“', async () => {
+    stelle('nicht_eingerichtet');
+    const e = gsEingerichtet();
+    const keine = { ...e, grenzen: { einspeisung_kw: null, bezug_kw: 550, einspeisung_keine: true }, ergebnis: { einspeisung: null, bezug: e.ergebnis!.bezug } };
+    vi.spyOn(api, 'gemeinsameSteuerungVorschau').mockResolvedValue({ einrichten: keine, zustand: gsZustand('beobachtet') });
+    render(<Karte boxen={gsBoxen(JETZT)} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Gemeinsame Steuerung einrichten' }));
+    const folge = await screen.findByTestId('gs-folge');
+    await bisFrage5(folge);
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await within(folge).findByText('Frage 6 von 6 · Ergebnis');
+    const ein = within(folge).getByTestId('gs-richtung-einspeisung');
+    expect(ein).toHaveTextContent(UNBEGRENZT);
+    expect(ein).not.toHaveTextContent('Noch nicht zu rechnen');
+    expect(within(folge).getByTestId('gs-richtung-bezug')).toHaveTextContent('Box Verwaltung: 77 kW');
+  });
+});

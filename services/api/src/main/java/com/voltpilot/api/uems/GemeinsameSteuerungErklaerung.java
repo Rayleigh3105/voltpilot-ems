@@ -311,7 +311,7 @@ public class GemeinsameSteuerungErklaerung {
         GrenzeAufloesung.Grenzen anlage = verbuende.grenzenDerAnlage(siteId);
         GrenzeAufloesung.Wirksam wirksam = grenzen.wirksam(siteId, heute, anlage.einspeisungKw(), anlage.bezugKw());
         GemeinsameSteuerungEinrichtenDto.Grenzen g = new GemeinsameSteuerungEinrichtenDto.Grenzen(
-                wirksam.einspeisungKw(), wirksam.bezugKw());
+                wirksam.einspeisungKw(), wirksam.bezugKw(), wirksam.einspeisungKeine());
         List<GemeinsameSteuerungEinrichtenDto.Hinweis> hinweise = new ArrayList<>();
         if (netzBox == null) {
             hinweise.add(hinweis(NETZZAEHLER_NICHT_GELESEN, null, null, null, null, null));

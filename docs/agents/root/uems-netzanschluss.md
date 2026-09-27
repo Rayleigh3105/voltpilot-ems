@@ -65,7 +65,9 @@ KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsp
   unbegrenzt (`SteuerungsverbundAbleitung.unbegrenzt`, nur Bezug im Anteils-Dokument, Planer
   `einspeisung_unbegrenzt`); ⚠ „nur fehlend“ bleibt `auslegung_passt_nicht`; ⚠ gespeichert als
   `verteilbar_einspeisung_kw` NULL + kein Schlüssel `einspeisung` (V20260924061500, CHECK), nie 0; wirksam
-  auf der Box erst mit dem Box-Release (heutige Boxen verwerfen das Dokument als unlesbar).
+  auf der Box erst mit dem Box-Release (heutige Boxen verwerfen das Dokument als unlesbar). Portal: `…/einrichten`
+  trägt `grenzen.einspeisung_keine`; `einspeisungUnbegrenzt` (`gemeinsameSteuerungFlaeche.ts`) spricht „Einspeisung
+  unbegrenzt — nur der Bezug wird aufgeteilt“ an Frage 3/6, Karte, Box-Zeile und Betreiber-Blatt; ⚠ nur fehlend bleibt dort „nicht eingetragen“.
 - **Engerer Wert, ohne Eintrag dasselbe Objekt:** Byte-Gleichheit hängt an `isSameAs`, nicht an `equals` —
   `AnlageGrenzen.bezugKw` gibt das `Double` des Rahmens zurück, der Python-Zwilling den `float` der Anlage.
 - **Wer liest:** Einspeisung = Optimierer-Eingang (`load_grenzblaetter` + Zwilling, eigener Verbindungsaufbau;

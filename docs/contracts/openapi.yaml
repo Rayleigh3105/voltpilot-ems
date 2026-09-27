@@ -20290,6 +20290,7 @@ components:
           properties:
             einspeisung_kw: { type: number, nullable: true }
             bezug_kw: { type: number, nullable: true }
+            einspeisung_keine: { type: boolean, description: "Das Grenzblatt erklärt ausdrücklich keine Einspeisegrenze (nur ohne `einspeisung_kw`): Einspeisung unbegrenzt, nur der Bezug wird aufgeteilt." }
         boxen:
           type: array
           items: { $ref: "#/components/schemas/GemeinsameSteuerungEinrichtenBox" }

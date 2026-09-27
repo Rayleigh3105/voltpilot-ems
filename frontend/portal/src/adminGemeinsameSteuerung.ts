@@ -18,7 +18,7 @@ import type {
   UemsSprungprobe,
   UemsVerlustTag,
 } from './api';
-import { pufferSatz } from './gemeinsameSteuerungFlaeche';
+import { einspeisungUnbegrenzt, pufferSatz } from './gemeinsameSteuerungFlaeche';
 import { flaechenSatz } from './uemsGemeinsameSteuerung';
 import { zahl as deutscheZahl } from './zahl';
 
@@ -87,6 +87,7 @@ export const WOERTER: Record<string, string> = {
 };
 
 const RICHTUNG: Record<string, string> = { einspeisung: 'Einspeisung', bezug: 'Bezug' };
+const UNBEGRENZT = `Einspeisung ${flaechenSatz('einspeisung_unbegrenzt_wert')}`;
 
 export function wortSatz(
   wort: string,
@@ -330,6 +331,8 @@ export function boxSpalten(
   jetzt: Date,
 ): BoxSpalte[] {
   const boxen = [...(blatt?.boxen ?? [])].sort((a, b) => (a.rolle === b.rolle ? 0 : a.rolle === 'fuehrt' ? -1 : 1));
+  // ausdrücklich keine Einspeisegrenze: kein Anteil und kein Wächter in dieser Richtung — „aus“ ist dann richtig
+  const unbegrenzt = einspeisungUnbegrenzt(einrichten);
   return boxen.map((b: UemsBoxStand) => {
     const v = b.plan.veroeffentlicht?.plan_id ?? null;
     const a = b.plan.angenommen?.plan_id ?? null;
@@ -356,7 +359,9 @@ export function boxSpalten(
           ? { text: NICHT_GEMELDET, unbekannt: true }
           : { text: `${mp.zustand} · ${alter(mp.gelesen_am, jetzt)}`, warnung: mp.zustand !== 'ok' },
       waechter: {
-        einspeisung: waechterZelle(b.waechter?.einspeisung, b.waechter != null),
+        einspeisung: unbegrenzt && b.waechter?.einspeisung === 'aus'
+          ? { text: `${WAECHTER.aus} · ${UNBEGRENZT}` }
+          : waechterZelle(b.waechter?.einspeisung, b.waechter != null),
         bezug: waechterZelle(b.waechter?.bezug, b.waechter != null),
       },
       plan: {
@@ -370,7 +375,9 @@ export function boxSpalten(
         ungleich: revUngleich,
       },
       wirksam: {
-        einspeisung: kwZelle(b.anteile.wirksam_kw?.einspeisung),
+        einspeisung: unbegrenzt && b.anteile.wirksam_kw?.einspeisung == null && b.anteile.wirksam_kw?.bezug != null
+          ? { text: flaechenSatz('einspeisung_unbegrenzt_wert') }
+          : kwZelle(b.anteile.wirksam_kw?.einspeisung),
         bezug: kwZelle(b.anteile.wirksam_kw?.bezug),
         // nicht gemeldet = die Box hält keine Reserve (altes Dokument, alte Box)
         reserve: b.anteile.reserve_verbraucher_kw == null ? { text: 'keine', unbekannt: true } : kwZelle(b.anteile.reserve_verbraucher_kw),
@@ -389,6 +396,7 @@ export function auslegungSaetze(einrichten: UemsGemeinsameSteuerungEinrichten | 
   const out: string[] = [];
   for (const r of ['einspeisung', 'bezug'] as const) {
     const a = e?.[r];
+    if (!a && r === 'einspeisung' && einspeisungUnbegrenzt(einrichten)) { out.push(flaechenSatz('einspeisung_unbegrenzt')); continue; }
     if (!a) { out.push(`${RICHTUNG[r]}: nicht rechenbar — unbekannt ist nicht „passt“.`); continue; }
     const kopf = `${RICHTUNG[r]}: Grenze ${zahl(a.grenze_kw)} kW − Vorbehalt ${zahl(a.vorbehalt_kw)} kW = ${zahl(a.verteilbar_kw)} kW verteilbar, Rückfälle ${zahl(a.summe_rueckfall_kw)} kW`;
     if (a.urteil === 'passt') out.push(`${kopf} — passt.`);

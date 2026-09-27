@@ -79,6 +79,21 @@ for (const breite of [375, 1440]) {
       await bild(blatt.locator('table').first(), `ungeregelt-${breite}`);
     });
 
+    test('AP-15 Folge (PR 1149): ausdrücklich keine Einspeisegrenze — Auslegung, Wächter und wirksamer Anteil sagen „unbegrenzt“', async ({ page }) => {
+      const mit = await oeffne(page, breite, 'lage=anteile_aktiv');
+      await expect(mit.getByTestId('gsb-auslegung').locator('li').first()).toContainText('Einspeisung: Grenze 100 kW');
+      const blatt = await oeffne(page, breite, 'lage=anteile_aktiv&einspeisegrenze=keine');
+      const auslegung = blatt.getByTestId('gsb-auslegung');
+      await expect(auslegung.locator('li').first()).toHaveText('Einspeisung unbegrenzt — nur der Bezug wird aufgeteilt.');
+      await expect(auslegung).not.toContainText('nicht rechenbar');
+      await expect(auslegung).toContainText('Bezug: Grenze 550 kW');
+      await expect(zelle(blatt, 'waechter-einspeisung', 1)).toHaveText('aus · Einspeisung unbegrenzt');
+      await expect(zelle(blatt, 'wirksam-einspeisung', 1)).toHaveText('unbegrenzt');
+      await expect(zelle(blatt, 'wirksam-bezug', 1)).toHaveText('77 kW');
+      await keinUeberlauf(page);
+      await bild(blatt, `unbegrenzt-${breite}`);
+    });
+
     test('Sprungprobe auslösen → das Protokoll erscheint', async ({ page }) => {
       const blatt = await oeffne(page, breite, 'lage=beobachtet&proben=1');
       await expect(blatt.getByTestId('gsb-protokoll').locator('tbody tr')).toHaveCount(1);

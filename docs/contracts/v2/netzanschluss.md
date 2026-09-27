@@ -115,7 +115,9 @@ wird aufgeteilt“): ohne numerischen Einspeisewert, aber mit `einspeisung_keine
 Einspeiseseite (kein Anteil, kein Wächter), der Planer plant sie unbegrenzt statt stumm
 ([Anteils-Dokument](mqtt-verbund-anteile.md) §2). Eine nur FEHLENDE (nicht erklärte) Einspeisegrenze bleibt
 `auslegung_passt_nicht` und unbekannt. Wirksam auf der Box erst mit dem Box-Release dieser Regel. Steht ein engerer
-Wert an der Anlage, bleibt die bisherige Verteilung mit diesem Wert erhalten.
+Wert an der Anlage, bleibt die bisherige Verteilung mit diesem Wert erhalten. `GET …/gemeinsame-steuerung/einrichten`
+meldet den Zustand additiv als `grenzen.einspeisung_keine` (nur ohne `einspeisung_kw`); das Portal sagt dann „Einspeisung
+unbegrenzt — nur der Bezug wird aufgeteilt“ statt „nicht eingetragen“.
 
 | Richtung | Wert der Anlage | wer liest über die Regel |
 |---|---|---|

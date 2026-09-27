@@ -15,6 +15,7 @@ import {
   anteilVon,
   befundSaetze,
   boxNamen,
+  einspeisungUnbegrenzt,
   entwurfAus,
   entwurfLuecken,
   ergebnisHinweise,
@@ -269,16 +270,18 @@ export function GemeinsameSteuerungEinrichten({
 
         {entwurf && vorschlag && frage === 3 && (
           <section className="vp-gs-feld" aria-label={FRAGEN[2]}>
-            {vorschlag.grenzen?.einspeisung_kw == null && vorschlag.grenzen?.bezug_kw == null ? (
+            {vorschlag.grenzen?.einspeisung_kw == null && vorschlag.grenzen?.bezug_kw == null && !einspeisungUnbegrenzt(vorschlag) ? (
               <p className="vp-gs-hinweis" role="note">
                 {FLAECHE.netzanschluss_fehlt} {netzWeg && <a className="vp-gs-weg" href={netzWeg}>Netzanschluss eintragen</a>}
               </p>
             ) : (
               <>
                 <dl className="vp-gs-grenzen">
-                  <div><dt>Einspeisung höchstens</dt><dd>{vorschlag.grenzen?.einspeisung_kw == null ? 'nicht eingetragen' : `${kw(vorschlag.grenzen.einspeisung_kw)} kW`}</dd></div>
+                  <div><dt>Einspeisung höchstens</dt><dd data-testid="gs-grenze-einspeisung">{einspeisungUnbegrenzt(vorschlag) ? FLAECHE.einspeisung_unbegrenzt_wert
+                    : vorschlag.grenzen?.einspeisung_kw == null ? 'nicht eingetragen' : `${kw(vorschlag.grenzen.einspeisung_kw)} kW`}</dd></div>
                   <div><dt>Bezug höchstens</dt><dd>{vorschlag.grenzen?.bezug_kw == null ? 'nicht eingetragen' : `${kw(vorschlag.grenzen.bezug_kw)} kW`}</dd></div>
                 </dl>
+                {einspeisungUnbegrenzt(vorschlag) && <p data-testid="gs-einspeisung-unbegrenzt">{FLAECHE.einspeisung_unbegrenzt}</p>}
                 <p className="vp-gs-klein">
                   Diese Grenzen gelten heute am Netzanschluss. {netzWeg && <a className="vp-gs-weg" href={netzWeg}>Am Netzanschluss ändern</a>}
                 </p>
@@ -399,7 +402,7 @@ export function GemeinsameSteuerungEinrichten({
                       ))}
                     </ul>
                   )}
-                  <p><b>Passt die Anlage zur Grenze?</b> {urteilSatz(a)}</p>
+                  <p><b>Passt die Anlage zur Grenze?</b> {urteilSatz(a, r === 'einspeisung' && einspeisungUnbegrenzt(bild.einrichten))}</p>
                   {pufferSatz(bild.einrichten, r) && <p data-testid={`gs-puffer-${r}`}>{pufferSatz(bild.einrichten, r)}</p>}
                 </div>
               );

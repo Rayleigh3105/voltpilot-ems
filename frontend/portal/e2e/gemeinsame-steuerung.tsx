@@ -37,8 +37,20 @@ const ausfall = p.get('ausfall');
 const verlust = p.has('gebunden') ? { kwh: Number(p.get('kwh') ?? 0), gebunden_s: Number(p.get('gebunden')), tage: 1 } : null;
 const variante = (p.get('variante') ?? undefined) as VerlustVariante | undefined;
 
+/**
+ * AP-15 Folge (PR 1149): `einspeisegrenze=keine` — das Grenzblatt erklärt ausdrücklich keine Einspeisegrenze (Einspeisung
+ * unbegrenzt, keine Auslegung, kein Anteil); `=fehlt` — nicht eingetragen (unbekannt). Ohne Parameter wie bisher.
+ */
+const einspeisegrenze = p.get('einspeisegrenze');
+const ohneEinspeisegrenze = (e: UemsGemeinsameSteuerungEinrichten): UemsGemeinsameSteuerungEinrichten =>
+  einspeisegrenze !== 'keine' && einspeisegrenze !== 'fehlt' ? e : {
+    ...e,
+    grenzen: { einspeisung_kw: null, bezug_kw: e.grenzen?.bezug_kw ?? null, einspeisung_keine: einspeisegrenze === 'keine' },
+    ergebnis: e.ergebnis ? { ...e.ergebnis, einspeisung: null } : e.ergebnis,
+  };
+
 let lage = (p.get('lage') ?? 'nicht_eingerichtet') as GsLage;
-let einrichten: UemsGemeinsameSteuerungEinrichten = lage === 'nicht_eingerichtet' ? gsVorschlag() : gsEingerichtet();
+let einrichten: UemsGemeinsameSteuerungEinrichten = ohneEinspeisegrenze(lage === 'nicht_eingerichtet' ? gsVorschlag() : gsEingerichtet());
 if (p.has('ungeregelt')) {
   const hoechstwert = Number(p.get('ungeregelt'));
   einrichten = { ...einrichten, boxen: einrichten.boxen.map((b) =>
@@ -55,7 +67,8 @@ const seit = {
   halle1Seit: ausfall === 'halle1' || ausfall === 'beide' ? 25 * 60 : 40,
   verwaltungSeit: ausfall === 'verwaltung' || ausfall === 'beide' ? 30 * 60 : 35,
 };
-const wirksam = p.get('wirksam') === 'abweichend' ? GS_ABWEICHEND : undefined;
+const wirksam = p.get('wirksam') === 'abweichend' ? GS_ABWEICHEND
+  : einspeisegrenze === 'keine' ? { e1: { einspeisung_kw: null, bezug_kw: 0 }, e4: { einspeisung_kw: null, bezug_kw: 77 } } : undefined;
 const zustand = (l: GsLage = lage): UemsGemeinsameSteuerungZustand => {
   const z = gsZustand(l, verlust, { jetzt, wirksam, ...seit });
   if (!p.has('aufloesen')) return z;
@@ -68,7 +81,7 @@ const zustand = (l: GsLage = lage): UemsGemeinsameSteuerungZustand => {
 };
 /** Die Auslegung mit dem am Gerät hinterlegten Rückfall von K-12 (eine gespeicherte Tatsache am Gerät). */
 const ausgelegt = (): UemsGemeinsameSteuerungEinrichten => {
-  const e = gsEingerichtet();
+  const e = ohneEinspeisegrenze(gsEingerichtet());
   if (k12Rueckfall == null) return e;
   return { ...e, boxen: e.boxen.map((b) => ({ ...b, geraete: (b.geraete ?? []).map((g) =>
     g.komponente_id === GS_IDS.k12 ? { ...g, rueckfall: 'faellt_auf_wert', rueckfall_kw: k12Rueckfall, rueckfall_herkunft: 'am_geraet' as const } : g) })) };
