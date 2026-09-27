@@ -44,10 +44,12 @@ for (const breite of [375, 1440]) {
     // Am Telefon trägt die Leiste Gruppen („Auswerten“ öffnet die Kennzahlen, „Messen“ die Messstellen); die Reiter
     // der offenen Gruppe stehen über der Seite.
     const leiste = page.locator('.vp-bottombar');
+    // K1 (D1): am Rechner stehen dieselben Gruppen als obere Reihe.
     if (breite === 375) await leiste.getByRole('button', { name: 'Auswerten', exact: true }).click();
-    else await page.getByRole('tab', { name: 'Kennzahlen', exact: true }).first().click();
+    else await page.getByRole('tab', { name: 'Auswerten', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Kennzahlen', exact: true })).toBeVisible();
     if (breite === 375) await leiste.getByRole('button', { name: 'Messen', exact: true }).click();
+    else await page.getByRole('tab', { name: 'Messen', exact: true }).click();
     await page.getByRole('tab', { name: 'Bezugsgrößen', exact: true }).first().click();
     const karten = page.getByTestId('bezugsgroesse-karte');
     await expect(karten).toHaveCount(2);

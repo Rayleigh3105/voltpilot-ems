@@ -211,21 +211,31 @@ for (const fall of BAUSTEIN_FAELLE) {
       if (fall.gebaeude > 0) await expect(page.getByTestId('gebaeude-zeilen').getByText('gemessen im Gebäude').first()).toBeVisible();
       if (fall.kennzahlen > 0) await expect(page.getByTestId('kennzahl-zahl').first()).toBeVisible();
 
-      const text = await bausteine.evaluate((el) => (el.textContent ?? '').split(String.fromCharCode(160)).join(' '));
+      // K8: am Telefon steht am Unternehmen die Datenlage oben (`uebersicht-oben`) — gelesen wird beides.
+      const text = await page.evaluate(() =>
+        ['uebersicht-oben', 'uebersicht-bausteine']
+          .map((id) => document.querySelector(`[data-testid="${id}"]`)?.textContent ?? '')
+          .join(' ')
+          .split(String.fromCharCode(160))
+          .join(' '),
+      );
       for (const s of fall.sichtbar) expect(text, `${fall.name} ${breite}: „${s}“`).toContain(s);
       expect(text, `${fall.name} ${breite}: kein Rest und kein Geld auf der Ebene`).not.toMatch(/€|\bEUR\b|nicht zugeordnet/);
       await expect(page.getByTestId('baustein-kennzahlen')).toHaveCount(fall.kennzahlen > 0 ? 1 : 0);
       await expect(page.getByTestId('baustein-kennzahlen').getByTestId('kennzahl-karte')).toHaveCount(fall.kennzahlen);
       await expect(page.getByTestId('gebaeude-zeilen').locator('li')).toHaveCount(fall.gebaeude);
 
-      // Ü1: unter der Anlagen-Tabelle, vor der Karte „Funktionen“.
+      // Ü1: unter der Anlagen-Tabelle, vor der Karte „Funktionen“ — K8: was oben steht, steht vor der Tabelle.
       const ordnung = await page.evaluate(() => {
-        const [tabelle, mitte, funktionen] = ['.vp-portfolio-anlagen', '[data-testid="uebersicht-bausteine"]', '[data-testid="funktionen-karte"]'].map((q) =>
-          document.querySelector(q),
-        );
+        const [tabelle, mitte, funktionen, oben] = [
+          '.vp-portfolio-anlagen',
+          '[data-testid="uebersicht-bausteine"]',
+          '[data-testid="funktionen-karte"]',
+          '[data-testid="uebersicht-oben"]',
+        ].map((q) => document.querySelector(q));
         if (!tabelle || !mitte || !funktionen) return false;
         const folgt = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-        return folgt(tabelle, mitte) && folgt(mitte, funktionen);
+        return folgt(tabelle, mitte) && folgt(mitte, funktionen) && (!oben || folgt(oben, tabelle));
       });
       expect(ordnung, `${fall.name} ${breite}: Reihenfolge Tabelle → Bausteine → Funktionen`).toBe(true);
 

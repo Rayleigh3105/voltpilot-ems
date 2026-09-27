@@ -1,0 +1,91 @@
+/* K2: der Fahrplan „Ihr Energiemanagement“ — sechs Schritte, je Satz und eine Handlung. Die Marke ist neutral (keine
+   Ampel, G4): ein Haken, wo etwas festgehalten ist, ein leerer Kreis, wo noch nichts steht, ein Strich, wo es unbekannt
+   ist. Die Nummer zählt CSS, nicht das Portal. */
+.vp-fp-schritte {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  counter-reset: vp-fp;
+}
+
+.vp-fp-schritt {
+  counter-increment: vp-fp;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.vp-fp-schritt + .vp-fp-schritt {
+  border-top: 1px solid #f1f5f9;
+}
+
+.vp-fp-marke {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid #cbd5e1;
+  color: var(--vp-navy-1, #1e3a5f);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vp-fp-schritt.is-offen .vp-fp-marke::before {
+  content: counter(vp-fp);
+  color: #64748b;
+}
+
+.vp-fp-schritt.is-unbekannt .vp-fp-marke::before {
+  content: '–';
+  color: #94a3b8;
+}
+
+.vp-fp-schritt.is-fest .vp-fp-marke {
+  border-color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-fp-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vp-fp-titel {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-fp-stand {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.vp-fp-handlung {
+  justify-self: end;
+  white-space: normal;
+  text-align: right;
+}
+
+/* Am Telefon rutscht die Handlung unter den Satz — nichts läuft über den Rand. */
+@media (max-width: 720px) {
+  .vp-fp-schritt {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .vp-fp-handlung {
+    grid-column: 2;
+    justify-self: start;
+    text-align: left;
+  }
+}

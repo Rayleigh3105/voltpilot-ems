@@ -47,6 +47,13 @@ Quellen: [Navigation](../frontend/portal/src/ebenenNav.ts), [Router](../frontend
 
 Die vollständige, paketweise Übersicht steht im [UEMS-Wegweiser](agents/root/uems-uebersicht.md).
 
+**Energiemanagement ohne Fachsprache** (Konzept unter `.lavish/uems-konzept/`, Entscheide D1–D6):
+
+- Begriffe: unter dem Seitenkopf der UEMS-Bereiche erklärt `BegriffeZeile` die Wörter in einem Satz, mit Beispiel und dem Fachwort (ohne Normnummer, ohne Kürzel; `begriffe.ts`). Die Wörter selbst bleiben die des Glossars.
+- Grenz- und Verantwortungs-Satz stehen einmal je Bereich im Hinweis „Was VoltPilot leistet“ (`GrenzSatz.tsx`: `GrenzSatzBereich` lässt die Sätze der Teile schweigen, `GrenzHinweis` trägt beide im vollen Wortlaut). Dialoge, Entscheidungsformulare und Berichte tragen die Sätze weiter selbst; `copy.test.ts` erkennt Baustein und Hinweis.
+- Übersicht des Unternehmens: oben steht, was die Rolle zuerst fragt (`einstieg.ts`, ohne neue Rechte) — Energiemanager: Fahrplan „Ihr Energiemanagement“ (`fahrplan.ts`, `EnergiemanagementFahrplan.tsx`: sechs Schritte, je ein Satz aus gespeicherten Daten und eine Handlung; „Nicht abrufbar.“ statt 0; keine Zahl über das Ganze, keine Ampel, G4; stehen alle Schritte, entfällt er) und „Was steht an“ (die ersten Punkte der Wiedervorlage); Leser und „Einsicht“: „Belege finden“; Kundenadministrator wie bisher. Am Telefon stehen „Was steht an“, Abweichungen und Datenlage zuerst (`obenBausteine`, `UebersichtBausteine.nur/ohne`).
+- Seitenleiste: mit mehreren Standorten heißt die Flotten-Ebene wie das Unternehmen (`flottenName`), sonst „Meine Anlagen“ bzw. „Portfolio“.
+
 ## Fachliche Grenzen
 
 | Anzeige | Bedeutung |

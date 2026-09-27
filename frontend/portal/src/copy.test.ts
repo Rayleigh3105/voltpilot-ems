@@ -1931,6 +1931,7 @@ const KENNZAHL_BESTAND: string[] = [
   'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
   'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
   'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
+  'fahrplan.ts', // neu: der Fahrplan „Ihr Energiemanagement“ nennt den Schritt „Kennzahlen mit Vergleichszeitraum“ (Konzept K2)
   'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
   'help/content/alltag.ts', // alt
   'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)

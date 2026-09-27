@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
  * Bühne `startansicht` mit denselben reinen Funktionen wie `App.tsx`:
  *
  * - HEUTE: das Unternehmen Ahrenberg hat sechs Bereiche mit Seite; die Leiste trägt
- *   ihre GRUPPEN (`ebenenNav.UNTERNEHMEN_GRUPPEN`: Übersicht · Messen · Auswerten),
+ *   ihre GRUPPEN (`ebenenNav.UNTERNEHMEN_GRUPPEN`: Übersicht · Messen · Auswerten · Nachweisen),
  *   höchstens fünf Kacheln. Am Standort: Übersicht · Aufbau · Gebäude · Messstellen ·
  *   Anschlüsse — „Aufbau“ ist der EINE Ort für Anlagen, Boxen und Geräte (früher
  *   „Boxen“ und „Anlagen“).
@@ -33,7 +33,8 @@ interface Fall {
 
 const FAELLE: Fall[] = [
   { name: 'betriebskunde-standort', query: 'bild=unternehmen&messen=bestand&ansicht=werk', leiste: null },
-  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Messen', 'Auswerten'], aktiv: 'Übersicht' },
+  // K1/D2: die Berichte stehen in „Nachweisen“.
+  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen'], aktiv: 'Übersicht' },
   { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
@@ -41,7 +42,7 @@ const FAELLE: Fall[] = [
   {
     name: 'unternehmen-kuenftig',
     query: 'bild=unternehmen&seiten=kuenftig',
-    leiste: ['Übersicht', 'Messen', 'Auswerten'],
+    leiste: ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen'],
     aktiv: 'Übersicht',
   },
   { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
@@ -105,9 +106,9 @@ for (const fall of FAELLE) {
   });
 }
 
-/** Die Reiter der Ebene über der Seite, die am Telefon SICHTBAR sind (die Leiste trägt die übrigen). */
+/** Die Reiter der Ebene über der Seite, die am Telefon SICHTBAR sind (die Leiste trägt die übrigen; K1: die der Gruppe). */
 const sichtbareReiter = (page: Page) =>
-  page.locator('.vp-bereich-tabs[aria-label^="Reiter der Ebene"] [role="tab"]').evaluateAll((tabs) =>
+  page.locator('.vp-bereich-tabs[aria-label^="Reiter der Ebene"] [role="tab"], .vp-bereich-tabs[aria-label^="Reiter der Gruppe"] [role="tab"]').evaluateAll((tabs) =>
     tabs.filter((t) => (t as HTMLElement).offsetParent !== null).map((t) => t.textContent?.trim() ?? ''));
 
 test('Telefon, künftig: „Standorte" steht als Reiter in der Gruppe „Übersicht" und führt auf die Liste', async ({ page }) => {

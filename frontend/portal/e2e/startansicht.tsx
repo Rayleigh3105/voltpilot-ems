@@ -93,6 +93,8 @@ import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { ahrenbergUmfangVorgabe } from '../src/test/bewertungFixtures';
+import { energiemanagementBuehne } from '../src/test/energiemanagementFixtures';
 import { quellenDerMessstellenBuehne } from '../src/test/messstelleQuellenFixtures';
 import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte } from '../src/test/kostenstellenFixtures';
 import {
@@ -867,6 +869,12 @@ Object.assign(api, {
     },
     faellig: [],
   }),
+  // K2: der Fahrplan fragt Umfang, Energieeinsätze und Verzeichnis — die Bühne hat noch keinen Umfang, keinen
+  // Energieeinsatz und ein leeres Verzeichnis; kein Abruf geht an den (nicht laufenden) Server.
+  bewertungUmfang: async () => ahrenbergUmfangVorgabe('2026-10-20'),
+  energieeinsaetze: async () => ({ energieeinsaetze: [] }),
+  energiemanagementVerzeichnis: energiemanagementBuehne('start', { kennung: 'IK', name: 'Ines Kaltenbach' }, () => '2026-10-20T10:00:00+02:00')
+    .routen.energiemanagementVerzeichnis,
   // AP-19 IP-21: keine Frist im Energiemanagement — der Baustein „Energiemanagement“ bleibt weg (WV5), und kein Abruf
   // geht an den (nicht laufenden) Server.
   energiemanagementWiedervorlage: async () => ({

@@ -56,7 +56,15 @@ import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { FunktionenKarte } from './FunktionenKarte';
 import { SteuernAssistent } from './SteuernAssistent';
-import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
+import {
+  bausteinBilder,
+  bausteinDa,
+  traegtSaetze,
+  UEBERSICHT_REIHENFOLGE,
+  UebersichtBausteine,
+  useUebersichtBausteine,
+} from './UebersichtBausteine';
+import { einstiegFuer, obenBausteine } from '../einstieg';
 import { useRollen } from '../rollen';
 import { browserSpeicher, entwurfLesen, messenEinstiegeDerKarte } from '../messenAssistent';
 import { useMessenEinstieg } from '../messenEinstieg';
@@ -535,6 +543,14 @@ export function EbenenCockpit({
       : null;
   const spalten = tabellenSpalten(zeilen, layout.resolved.order);
   const ruhe = ruheSatz(layout.resolved.order);
+  // K6/K8 (Konzept „Energiemanagement ohne Fachsprache“): am Unternehmen steht oben, was die Rolle zuerst fragt — am
+  // Telefon zuerst „Was steht an“, Abweichungen und Datenlage. Was oben steht, steht unten nicht noch einmal. Der
+  // Hinweis „Was VoltPilot leistet“ (K7) steht einmal auf der Seite: unter den Bausteinen, ohne sie oben.
+  const obenWunsch = uems && ebene?.art === 'unternehmen' ? obenBausteine(einstiegFuer(rollen.selbst), isPhone) : [];
+  const bilder = uems ? bausteinBilder(uems, layout.resolved.order) : null;
+  const oben = bilder ? obenWunsch.filter((id) => bausteinDa(bilder, id)) : [];
+  const saetze = bilder ? traegtSaetze(bilder, oben) : false;
+  const untenDa = bilder ? UEBERSICHT_REIHENFOLGE.some((id) => !oben.includes(id) && bausteinDa(bilder, id)) : false;
   // AP-01 IP-8: ein Standort ohne Anlage zeigt Grund und nächsten Schritt statt
   // einer leeren Tabelle.
   const leerStandort = ebene?.art === 'standort' ? standortLeerzustand(ebene.standort) : null;
@@ -542,6 +558,9 @@ export function EbenenCockpit({
   return (
     <>
       {head}
+      {uems && oben.length > 0 && (
+        <UebersichtBausteine daten={uems} zeigen={layout.resolved.order} nur={oben} grenzHinweis={saetze && !untenDa} onNavigate={onNavigate} />
+      )}
       {standortVorschlag && (
         <NochNichtZugeordnetKarte vorschau={standortVorschlag} onOeffnen={() => setStandortVorschauOffen(true)} />
       )}
@@ -629,7 +648,15 @@ export function EbenenCockpit({
       </section>
 
       {/* UEMS AP-13 IP-7 (Ü1): die Bausteine der Messstellen-Welt — unter der Tabelle, vor der Karte „Funktionen“. */}
-      {uems && <UebersichtBausteine daten={uems} zeigen={layout.resolved.order} onNavigate={onNavigate} />}
+      {uems && (
+        <UebersichtBausteine
+          daten={uems}
+          zeigen={layout.resolved.order}
+          ohne={oben}
+          grenzHinweis={oben.length > 0 ? saetze : undefined}
+          onNavigate={onNavigate}
+        />
+      )}
 
       {/* AP-01 IP-8: die Karte „Funktionen" — nur auf einer Ebene; das Portfolio
           eines Betreibers bleibt zeichengleich. */}

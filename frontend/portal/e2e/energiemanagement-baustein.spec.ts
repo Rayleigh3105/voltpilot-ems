@@ -15,7 +15,9 @@ for (const breite of [375, 1440]) {
     test(`Baustein Energiemanagement ${fall} bei ${breite} px`, async ({ page }) => {
       await page.setViewportSize({ width: breite, height: 800 });
       await page.goto(`/e2e/energiemanagement-baustein.html?fall=${fall}`);
-      await expect(page.getByRole('heading', { name: 'Energiemanagement' })).toBeVisible();
+      // K8: der Titel ist die Frage „Was steht an“; darunter die ersten Punkte der Wiedervorlage.
+      await expect(page.getByRole('heading', { name: 'Was steht an' })).toBeVisible();
+      await expect(page.getByTestId('was-steht-an').locator('li')).toHaveCount(fall === 'vorschau' ? 1 : 3);
       const summe = page.getByTestId('energiemanagement-summe');
       if (fall === 'vorschau') {
         await expect(summe).toHaveText('0 fällig · 1 in den nächsten 30 Tagen.');
