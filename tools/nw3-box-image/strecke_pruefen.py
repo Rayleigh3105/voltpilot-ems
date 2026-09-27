@@ -50,7 +50,10 @@ for zeile in open(a.mitschnitt, encoding="utf-8", errors="replace"):
     if not proben:
         continue
     umschlaege.append(d)
-    if d.get("schema_version") != "2.0":
+    # Genau die zwei bindenden Fassungen: die ausgelieferte Palette sendet 2.0, die
+    # neue (Edge-Release A) den additiven Vertrag 2.1
+    # (docs/contracts/v2/mqtt-measurement-samples-2.1.md). Jede andere ist ein Befund.
+    if d.get("schema_version") not in ("2.0", "2.1"):
         fehler.append("Umschlag mit schema_version %r" % d.get("schema_version"))
     if (d.get("tenant_id"), d.get("site_id"), d.get("device_id")) != (tenant, site, device):
         fehler.append("Topic-Identitaet != Umschlag-Identitaet")

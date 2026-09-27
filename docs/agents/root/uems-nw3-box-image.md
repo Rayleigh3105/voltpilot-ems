@@ -111,6 +111,21 @@ Auswahl unterscheiden sich vom 09.4-Lauf nur im `catalog_version`. Ein neuer Lau
 (gleicher Palettenstand) träfe dasselbe; gefahren ist er nicht. Grün wird der Punkt erst mit dem Box-Release, das den Stand der api trägt
 (Tor GA). Der Befund 6c (X7) steht wie bei 09.4.
 
+Das **neue** Image (Tor GA, NW-3neu), gefahren am 27.09.2026 mit `--strecke` gegen den
+eingefrorenen Stand G0 `585c4c4f` plus die Prüfstand-Zeile unten (`repo_stand` im Protokoll):
+[`docs/rollout/nw3-protokoll-edge-release-a.json`](../../rollout/nw3-protokoll-edge-release-a.json)
+— **13 grün, 0 rot, 0 Befund, 0 nicht gefahren**. Das Paar `edge-release-a` ist aus dem Commit
+gebaut, nicht getaggt (`core_ref` = kurze SHA, darum der Stempel `585c4c4fa7fb-585c4c4fa7fb`), und
+steht bewusst NICHT in `paare.json`: dort stehen nur ausgelieferte Paare. 3/4a sind grün
+(Katalogstand `2026.09.23.3` auf beiden Seiten), 6c ist grün: die neue Box ruht nach der Trennung
+weiter (X7 behoben). **4b war im ersten Lauf rot, am Prüfstand:** `strecke_pruefen.py` verlangte
+`schema_version "2.0"`, die neue Palette sendet den bindenden Vertrag 2.1
+(`docs/contracts/v2/mqtt-measurement-samples-2.1.md`). Seitdem nimmt er genau 2.0 und 2.1 an
+(`test_strecke_pruefen.py`); der Satz „Vertrag 2.0“ in `nw3.sh` ist fester Wortlaut, am Draht
+standen 2.1-Umschläge. Punkt 7 liest nur die Tabelle, nicht den Herzschlag-Block `supports[]`, den
+die neue Box mit `data_sources` meldet — sein „grün“ ist für das neue Image die Erwartung an eine
+alte Box, kein Beleg für X2.
+
 ## X2 ist kein Fehlerbild
 
 Die Fähigkeit der Tabelle `docs/contracts/v2/edge-capabilities.json` trägt
