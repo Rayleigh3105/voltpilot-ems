@@ -1301,7 +1301,9 @@ function UnifiedPortal() {
     if (ziel) navigate(ziel);
   }
 
-  const leer = ohneStandort(selbst);
+  // Ein Plattform-Konto hat keinen Standort (/me: konto „plattform“, standorte leer) - die Plattform-Seiten
+  // brauchen keinen und bleiben erreichbar, wie schon im Lade-Zweig unten.
+  const leer = ohneStandort(selbst) && !(isAdmin && PLATFORM_PAGES.some((p) => p.id === page));
   const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
   // Avatar-Menü „Funktionen“ (AP-01 E5 = A): nur, wo die Landung eine Ebene mit der Karte ist. Die Anlage- und die
   // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war.
