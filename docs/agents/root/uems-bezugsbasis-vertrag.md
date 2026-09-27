@@ -41,11 +41,11 @@ Wegweiser `uems-bezugsbasis-datenhaltung.md`, `-grundlage.md`, `-freigabe.md`, `
 - **Rundung kaufmännisch, vom Nullpunkt weg** — nicht `Math.round` (−2,05 → −2,0) und nicht Pythons `round`
   (81 984,5 → 81 984). Die Vektoren „M5 …“ legen es fest; `k_faelle.py` wich bei negativen ,5-Werten ab.
 - **Nie auf das Band gerundet:** Δ 2,04 % zeigt „2,0“ und ist `schlechter`; Band und Spannweite per Kreuzprodukt.
-- **Die Koeffizienten der Referenzdatei 1.8 sind gröber gerundet** (a = 10 523 / 119, b = 3,8) als der Vertrag
-  einfriert (vier Stellen: 10 522,6206 / 118,9104 / 3,8041). `erwartet` rechnet immer mit der eingefrorenen Kopie —
-  deshalb zitieren die Vergleichsvektoren die Datei und treffen 69 098 kWh und −0,7 % wie das Konzept. Ein Paket, das
-  Fassungen freigibt (IP-5 ff.), friert vier Stellen ein; die Datei-Zahlen bleiben dann ein gröber gerundetes Beispiel.
-- **BB-0004 Fassung 1 hat in 1.8 `spannweite: null`**, obwohl M2 sie speichert (Rechnung: 0–605 Kd, toleriert 0–665,5).
+- **Koeffizienten der Referenzdatei = vier Stellen (M5)**, seit 27.09.2026 auch BB-0004 (118,9104 / 3,8041, Spannweite
+  0–605 Kd, toleriert ungerundet 0–665,5). `erwartet` rechnet mit der eingefrorenen Kopie: Januar 2028 Gas 1 945 m³ /
+  −0,8 % — das Konzept R3 sagt 1 943 / −0,7 % (mit 119 / 3,8 gerechnet; gegeben-Block bleibt wörtlich, Zwillinge vergleichen
+  ihn gerundet). **Benannte Ausnahme:** BB-0001 Fassung 2 bleibt a = 10 523 (`M5_AUSNAHME` in allen drei Zwillingen) — die
+  AP-18-Daten rechnen damit; vier Stellen verschöben dort ganze kWh in Kopien mit Prüfsumme.
 - **Die Fassungen der Vektoren sind wörtlich die der Datei** — `test_bezugsbasis.py` prüft Basiswert, Koeffizienten,
   Streuung, Toleranz, Monate und Spannweite gegen `bezugsbasen[]`. Wer 1.8 ändert, fährt alle drei Zwillinge und
   `UemsReferenzunternehmenVectorsTest`/`uemsReferenzunternehmen.test.ts`.

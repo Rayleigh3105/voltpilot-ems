@@ -1177,8 +1177,31 @@ const ohneFassung19 = (d: Record<string, any>): void => {
 const KOMMENTAR_ZEILEN_1_9 = 164;
 const BLOECKE_1_10 = ['energiemanagement', 'zugriffe_1_10', 'dokumente', 'audits', 'feststellungen', 'managementbewertungen',
   'massnahmen_1_10', 'energieziele_1_10', 'abnahmefaelle_ap19'];
+/**
+ * Nimmt GENAU die Folge vom 27.09.2026 heraus (AP-17/AP-18-Nachlese, ohne neue Fassung): BB-0004 Fassung 1 auf M5-Stellen
+ * mit Spannweite, MS-09 als Folge von K-2028-0001 und die drei Sätze dazu — danach ist die Datei wieder die 1.10 davor.
+ */
+const ohneFolge20260927 = (d: Record<string, any>): void => {
+  const bb4 = d.bezugsbasen.find((b: any) => b.kennzeichen === 'BB-0004').fassungen[0];
+  expect([bb4.koeffizienten, bb4.spannweite?.bis]).toEqual([{ a: 118.9104, b: 3.8041 }, 605]);
+  bb4.koeffizienten = { a: 119, b: 3.8 };
+  bb4.spannweite = null;
+  const k = d.korrekturen.find((x: any) => x.kennung === 'K-2028-0001');
+  const vorher = k.folgen.length;
+  k.folgen = k.folgen.filter((f: any) => f.objekt !== 'MS-09');
+  expect(vorher - k.folgen.length).toBe(1);
+  const ohne = (text: string, ab: string) => {
+    expect(text).toContain(ab);
+    return text.slice(0, text.indexOf(ab));
+  };
+  k.hinweis = ohne(k.hinweis, ' Folge 27.09.2026:');
+  d._herkunft.fassung_1_8 = ohne(d._herkunft.fassung_1_8, '. Folge 27.09.2026:');
+  d._herkunft.fassung_1_9 = ohne(d._herkunft.fassung_1_9, '. Folge 27.09.2026:');
+};
+
 /** Nimmt GENAU die Zusätze der Fassung 1.10 heraus — neun Blöcke, zwanzig Zeilen der Zeitachse, Kommentar und Herkunft. */
 const ohneFassung110 = (d: Record<string, any>): void => {
+  ohneFolge20260927(d);
   expect(d.version).toBe('1.10');
   d.version = '1.9';
   d.beschreibung = d.beschreibung.replace('Messplanung, Bezugsbasen, Ziele, Maßnahmen und Abweichungen sowie die Abläufe des Energiemanagements',
@@ -1843,6 +1866,11 @@ describe('UEMS-Referenzunternehmen — Fassung 1.8 (AP-17 E12, Bezugsbasen)', ()
   };
   const sha256 = (x: unknown) => createHash('sha256').update(kanonisch(x), 'utf8').digest('hex');
   const nach = (liste: any[]): Record<string, any> => Object.fromEntries(liste.map((o) => [o.kennzeichen, o]));
+  /**
+   * Benannte Ausnahme von M5 (Entscheid 27.09.2026): BB-0001 Fassung 2 bleibt a = 10 523 (Rechnung 10 522,6206) — die
+   * AP-18-Daten (Monatsreihe, Kopien mit Prüfsumme, R5/R10) rechnen damit; vier Stellen verschöben dort ganze kWh.
+   */
+  const M5_AUSNAHME: Record<string, number> = { 'BB-0001 Fassung 2/a': 0 };
   /** Auf die Stellen der Zahl in der Datei gerundet (halb auf) — wie `setScale(…, HALF_UP)` im Java-Zwilling. */
   const gerundet = (x: number, wie: number): number => {
     const stellen = (String(wie).split('.')[1] ?? '').length;
@@ -1922,13 +1950,15 @@ describe('UEMS-Referenzunternehmen — Fassung 1.8 (AP-17 E12, Bezugsbasen)', ()
         const xs = g.map((x) => x.nenner.wert), ys = g.map((x) => x.zaehler.wert);
         if (f.koeffizienten != null) {
           const m = modell(xs, ys);
-          expect([gerundet(m.a, f.koeffizienten.a), gerundet(m.b, f.koeffizienten.b), auf(m.r2, 3), auf(m.streuung, 1)], wo)
+          // M5: Koeffizienten vier Stellen — außer der benannten Ausnahme BB-0001 Fassung 2 a = 10 523
+          expect([auf(m.a, M5_AUSNAHME[`${wo}/a`] ?? 4), auf(m.b, M5_AUSNAHME[`${wo}/b`] ?? 4), auf(m.r2, 3), auf(m.streuung, 1)], `${wo}: vier Stellen (M5)`)
             .toEqual([f.koeffizienten.a, f.koeffizienten.b, f.r2, f.streuung_prozent]);
+          expect(f.spannweite, `${wo}: M2 speichert die Spannweite jedes Modells`).not.toBeNull();
         }
         if (f.spannweite != null) {
           const x = [...xs].sort((p, q) => p - q);
           expect([f.spannweite.von, f.spannweite.bis, f.spannweite.toleriert_von, f.spannweite.toleriert_bis], wo)
-            .toEqual([x[0], x[x.length - 1], Math.round(x[0] * 0.9), Math.round(x[x.length - 1] * 1.1)]);
+            .toEqual([x[0], x[x.length - 1], auf(x[0] * 0.9, 4), auf(x[x.length - 1] * 1.1, 4)]); // toleriert ungerundet
         }
         for (const v of f.abgelehnte_variablen) {
           const r = pearson(xs, v.werte.map((w: any) => w.wert));
@@ -2009,8 +2039,10 @@ describe('UEMS-Referenzunternehmen — Fassung 1.8 (AP-17 E12, Bezugsbasen)', ()
 
     const bb4 = bb['BB-0004'].fassungen[0];
     expect(bb4.grundlage.map((x: any) => [x.periode, { kd: x.nenner.wert, m3: x.zaehler.wert }])).toEqual(Object.entries(g.R3.referenzperiode));
+    // R3 zeigt die Koeffizienten auf die Stellen des Konzepts (119 / 3,8), die Datei trägt vier (M5)
     expect([g.R3.modell.a_m3, g.R3.modell.b_m3_je_kd, g.R3.modell.r2, g.R3.modell.streuung_prozent, g.R3.verhaeltnis_zur_probe.basiswert_m3_je_kd])
-      .toEqual([bb4.koeffizienten.a, bb4.koeffizienten.b, bb4.r2, bb4.streuung_prozent, bb4.basiswert]);
+      .toEqual([gerundet(bb4.koeffizienten.a, g.R3.modell.a_m3), gerundet(bb4.koeffizienten.b, g.R3.modell.b_m3_je_kd), bb4.r2, bb4.streuung_prozent, bb4.basiswert]);
+    expect([bb4.koeffizienten.a, bb4.koeffizienten.b], 'BB-0004: vier Stellen (M5)').toEqual([118.9104, 3.8041]);
     expect(g.R3.bezugsgroesse.art).toBe(daten.bezugsgroessen_1_8[0].art);
 
     const bb3 = bb['BB-0003'];
@@ -2298,7 +2330,66 @@ describe('UEMS-Referenzunternehmen — Fassung 1.9 (AP-18, Ziele, Maßnahmen, Ab
     expect(berichtigungsFehler(daten)).toEqual([]);
     const d = structuredClone(daten);
     d.korrekturen.find((k: any) => k.kennung === 'K-2028-0001').reihe = 'MS-20';
-    expect(berichtigungsFehler(d)).toEqual(['K-2028-0001: MS-20 ist nicht gemessen', 'K-2028-0001: MS-20 folgt nicht aus MS-20']);
+    expect(berichtigungsFehler(d)).toEqual(['K-2028-0001: MS-20 ist nicht gemessen', 'K-2028-0001: MS-09 folgt nicht aus MS-20',
+      'K-2028-0001: MS-20 folgt nicht aus MS-20']);
+  });
+
+  /** Der Anteil einer Messstelle an einer Formel: Σ Vorzeichen × Faktor ihrer Terme („− MS-06“ = −1, „70 % × MS-07“ = 0,7). */
+  const anteil = (formel: string, messstelle: string): number => {
+    let summe = 0;
+    let vorzeichen = 1;
+    for (const t of formel.split(/ (?=[+−] )|(?<= [+−]) /).map((x) => x.trim())) {
+      if (t === '+' || t === '−') { vorzeichen = t === '+' ? 1 : -1; continue; }
+      const teile = t.split(' ');
+      if (teile.includes(messstelle)) summe += vorzeichen * (teile.includes('%') ? Number(teile[0].replace(',', '.')) / 100 : 1);
+    }
+    return summe;
+  };
+  /**
+   * Die Folgen einer Korrektur sind vollständig: jede berechnete Messstelle, deren Formel die berichtigte Reihe (oder eine
+   * berechnete Folge) liest, steht mit Version 2 in `folgen[]` — auch die Rest-Messstelle (MS-09 = … − MS-06 − …). Die
+   * Differenz ergibt die Formel; ohne absoluten Wert (`wert: null`) trägt die Folge `differenz_kwh`.
+   */
+  const folgenFehler = (d: any): string[] => {
+    const ms = nach(d.messstellen);
+    const fehler: string[] = [];
+    for (const k of d.korrekturen as any[]) {
+      const differenz = new Map<string, number>([[k.reihe, k.neu_kwh - k.alt_kwh]]);
+      for (let weiter = true; weiter;) {
+        weiter = false;
+        for (const m of Object.values(ms) as any[]) {
+          if (m.art !== 'berechnet' || differenz.has(m.kennzeichen)) continue;
+          const teile = [...differenz].filter(([o]) => anteil(m.formel, o) !== 0);
+          if (teile.length > 0) {
+            differenz.set(m.kennzeichen, Math.round(teile.reduce((s, [o, x]) => s + anteil(m.formel, o) * x, 0) * 1e4) / 1e4);
+            weiter = true;
+          }
+        }
+      }
+      const folgen = nach((k.folgen as any[]).map((f) => ({ ...f, kennzeichen: f.objekt })));
+      for (const [objekt, diff] of differenz) {
+        const f = folgen[objekt];
+        if (f == null || f.version !== 2) fehler.push(`${k.kennung}: ${objekt} folgt aus ${k.reihe}, fehlt in den Folgen`);
+        else if (f.differenz_kwh != null && f.differenz_kwh !== diff) fehler.push(`${k.kennung}: ${objekt} Differenz ${f.differenz_kwh} statt ${diff}`);
+        else if (f.wert == null && f.differenz_kwh == null) fehler.push(`${k.kennung}: ${objekt} ohne Wert und ohne Differenz`);
+      }
+      for (const f of k.folgen as any[]) {
+        if (f.wert == null && ms[f.objekt]?.art !== 'berechnet') fehler.push(`${k.kennung}: ${f.objekt} ist nicht berechnet und hat keinen Wert`);
+      }
+    }
+    return fehler;
+  };
+  it('die Folgen einer Korrektur sind vollständig (MS-09 v2 +600 kWh) — Rot-Probe: falsche Differenz, fehlende Folge', () => {
+    expect(folgenFehler(daten)).toEqual([]);
+    expect(anteil('MS-06 + MS-11 + 70 % × MS-07', 'MS-07')).toBe(0.7);
+    const k = daten.korrekturen.find((x: any) => x.kennung === 'K-2028-0001');
+    expect(k.folgen.find((f: any) => f.objekt === 'MS-09')).toEqual({ objekt: 'MS-09', version: 2, wert: null, differenz_kwh: 600 });
+    const d = structuredClone(daten);
+    const kd = d.korrekturen.find((x: any) => x.kennung === 'K-2028-0001');
+    kd.folgen.find((f: any) => f.objekt === 'MS-09').differenz_kwh = -600;
+    expect(folgenFehler(d)).toEqual(['K-2028-0001: MS-09 Differenz -600 statt 600']);
+    kd.folgen = kd.folgen.filter((f: any) => f.objekt !== 'MS-09');
+    expect(folgenFehler(d)).toEqual(['K-2028-0001: MS-09 folgt aus MS-06, fehlt in den Folgen']);
   });
 
   it('die Kennzeichen-Zähler sind je Jahr und Art lückenlos — Rot-Probe: Lücke, falsches Jahr', () => {

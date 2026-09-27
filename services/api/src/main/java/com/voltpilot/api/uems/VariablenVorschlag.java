@@ -20,14 +20,17 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 /**
  * Der Variablen-Vorschlag einer Kennzahl aus dem Energieeinsatz (UEMS AP-17 IP-11a, V4, E3 = A, W1). Gelesen werden die
- * Einflussgrößen der laufenden Energieeinsätze, deren Prozess die Geltung der Kennzahl ist — sonst derer, deren Prozess
- * eine Zähler-Messstelle der heute geltenden Fassung zugeordnet ist. Verweise (BZ-…) werden Kandidaten mit ihrer
- * Bezugsgröße, Wortlaute Zeilen „ohne Zahl — erst als Bezugsgröße erfassen“.
+ * Einflussgrößen der laufenden Energieeinsätze, deren Prozess die Geltung der Kennzahl ist, und derer, deren Prozess
+ * eine Messstelle zugeordnet ist, die in den Zähler der heute geltenden Fassung eingeht — die Zähler-Messstelle selbst
+ * oder ein Baustein ihrer Formel (R9: die Leckagerate an EE-3 Druckluft kommt über MS-07 im Zähler MS-20 an KZ-0004).
+ * Verweise (BZ-…) werden Kandidaten mit ihrer Bezugsgröße, Wortlaute Zeilen „ohne Zahl — erst als Bezugsgröße
+ * erfassen“.
  *
  * <p><b>Nur lesen</b> (AP-16 B5 wörtlich: benannt, nie gerechnet): nichts wird übernommen, nichts am Einsatz, an der
  * Kennzahl oder an einer Bezugsgröße verändert. Die Abhängigkeit eines Kandidaten von Variable 1 (G4,
@@ -96,19 +99,14 @@ public class VariablenVorschlag {
         KennzahlService.Katalog kat = kennzahlen.katalog();
         List<EingangZeile> eingaenge = kat.fassungAm(id, tag).map(FassungZeile::id).map(kat::eingaenge).orElse(List.of());
 
-        String bezug = BEZUG_KEINER;
-        List<EnergieeinsatzRepository.Zeile> gelesen = List.of();
-        if (BEZUG_PROZESS.equals(k.geltungArt())) {
-            gelesen = laufende(einsaetze.jeProzess(k.geltungId()));
-            bezug = gelesen.isEmpty() ? BEZUG_KEINER : BEZUG_PROZESS;
-        }
-        if (gelesen.isEmpty()) {
-            List<UUID> zaehler = eingaenge.stream().filter(e -> "zaehler".equals(e.rolle())
-                    && KennzahlRegeln.MESSSTELLE.equals(e.art())).map(EingangZeile::objektId).toList();
-            gelesen = laufende(prozesseDerMessstellen(zaehler, tag).stream()
-                    .flatMap(p -> einsaetze.jeProzess(p).stream()).toList());
-            bezug = gelesen.isEmpty() ? BEZUG_KEINER : BEZUG_ZAEHLER;
-        }
+        List<EnergieeinsatzRepository.Zeile> eigene = BEZUG_PROZESS.equals(k.geltungArt())
+                ? laufende(einsaetze.jeProzess(k.geltungId())) : List.of();
+        List<UUID> zaehler = eingaenge.stream().filter(e -> "zaehler".equals(e.rolle())
+                && KennzahlRegeln.MESSSTELLE.equals(e.art())).map(EingangZeile::objektId).toList();
+        List<EnergieeinsatzRepository.Zeile> gelesen = laufende(Stream.concat(eigene.stream(),
+                prozesseDerMessstellen(mitBausteinen(zaehler, tag), tag).stream()
+                        .flatMap(p -> einsaetze.jeProzess(p).stream())).toList());
+        String bezug = !eigene.isEmpty() ? BEZUG_PROZESS : gelesen.isEmpty() ? BEZUG_KEINER : BEZUG_ZAEHLER;
 
         Optional<KennzahlRepository.BezugsgroesseZeile> nenner = eingaenge.stream()
                 .filter(e -> "nenner".equals(e.rolle()) && KennzahlRegeln.BEZUGSGROESSE.equals(e.art()))
@@ -194,6 +192,24 @@ public class VariablenVorschlag {
                 "SELECT EXISTS (SELECT 1 FROM bezugsgroesse_kanalbindung WHERE bezugsgroesse_id = ?)", Boolean.class, id);
         return new VariablenVorschlagDto.Variable(b.id(), b.kennzeichen(), b.name(), b.art(), b.wertart(), b.einheit(),
                 b.periodeArt(), b.hatWerte(), Boolean.TRUE.equals(kanal));
+    }
+
+    /**
+     * Die Zähler-Messstellen und alles, was ihre am Tag wirksame Formel-Fassung als Baustein liest (Messstelle oder
+     * Anteil, über Bausteine hinweg, höchstens acht Stufen) — bei KZ-0004 MS-20 = MS-06 + MS-11 + 70 % × MS-07.
+     */
+    private List<UUID> mitBausteinen(List<UUID> zaehler, LocalDate tag) {
+        if (zaehler.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.queryForList("WITH RECURSIVE baustein (id, tiefe) AS ("
+                + "SELECT m, 0 FROM unnest(?::uuid[]) AS m "
+                + "UNION SELECT t.quell_messstelle_id, b.tiefe + 1 FROM messstelle_formel_term t "
+                + "JOIN messstelle_formel_fassung f ON f.id = t.fassung_id AND f.tenant_id = t.tenant_id "
+                + "JOIN baustein b ON t.messstelle_id = b.id WHERE t.quell_messstelle_id IS NOT NULL AND b.tiefe < 8 "
+                + "AND f.aufgehoben_am IS NULL AND (f.gueltig_ab IS NULL OR f.gueltig_ab <= ?) "
+                + "AND (f.gueltig_bis IS NULL OR f.gueltig_bis >= ?)) SELECT DISTINCT id FROM baustein ORDER BY id",
+                UUID.class, zaehler.stream().map(UUID::toString).toArray(String[]::new), tag, tag);
     }
 
     /** Die Prozesse, denen eine der Messstellen am Tag direkt zugeordnet ist (unter der RLS der Anwendungsrolle). */

@@ -2322,6 +2322,16 @@ class UemsReferenzunternehmenVectorsTest {
      * NW-3 und die Invarianten der Bezugsbasis: Basiswert = Σ Zähler ÷ Σ Nenner der Grundlage (nie ein Mittel), die
      * Prüfsumme deckt die Grundlage, ein Modell rechnet sich aus seiner Grundlage nach, je Kennzahl genau eine laufende Basis.
      */
+    /**
+     * Benannte Ausnahme von M5 (Entscheid 27.09.2026): BB-0001 Fassung 2 bleibt a = 10 523 (Rechnung 10 522,6206) — die
+     * AP-18-Daten (Monatsreihe, Kopien mit Prüfsumme, R5/R10) rechnen damit; vier Stellen verschöben dort ganze kWh.
+     */
+    static final Map<String, Integer> M5_AUSNAHME = Map.of("BB-0001 Fassung 2/a", 0);
+
+    static int m5Stellen(String fassung, String koeffizient) {
+        return M5_AUSNAHME.getOrDefault(fassung + "/" + koeffizient, 4);
+    }
+
     @Test
     void jedeBezugsbasisRechnetAusIhrerGrundlage() throws Exception {
         JsonNode d = daten();
@@ -2374,10 +2384,12 @@ class UemsReferenzunternehmenVectorsTest {
                 if (f.hasNonNull("koeffizienten")) {
                     double[] m = modell(grundlage);
                     JsonNode ko = f.get("koeffizienten");
-                    assertThat(BigDecimal.valueOf(m[0]).setScale(ko.get("a").decimalValue().scale(), RoundingMode.HALF_UP))
-                            .as(wo + ": a").isEqualByComparingTo(ko.get("a").decimalValue());
-                    assertThat(BigDecimal.valueOf(m[1]).setScale(ko.get("b").decimalValue().scale(), RoundingMode.HALF_UP))
-                            .as(wo + ": b").isEqualByComparingTo(ko.get("b").decimalValue());
+                    // M5: Koeffizienten vier Stellen — außer der benannten Ausnahme BB-0001 Fassung 2 a = 10 523
+                    assertThat(BigDecimal.valueOf(m[0]).setScale(m5Stellen(wo, "a"), RoundingMode.HALF_UP))
+                            .as(wo + ": a auf vier Stellen (M5)").isEqualByComparingTo(ko.get("a").decimalValue());
+                    assertThat(BigDecimal.valueOf(m[1]).setScale(m5Stellen(wo, "b"), RoundingMode.HALF_UP))
+                            .as(wo + ": b auf vier Stellen (M5)").isEqualByComparingTo(ko.get("b").decimalValue());
+                    assertThat(f.hasNonNull("spannweite")).as(wo + ": M2 speichert die Spannweite jedes Modells").isTrue();
                     assertThat(BigDecimal.valueOf(m[2]).setScale(3, RoundingMode.HALF_UP)).as(wo + ": R²")
                             .isEqualByComparingTo(f.get("r2").decimalValue());
                     assertThat(BigDecimal.valueOf(m[3]).setScale(1, RoundingMode.HALF_UP)).as(wo + ": Streuung")
@@ -2388,10 +2400,10 @@ class UemsReferenzunternehmenVectorsTest {
                     JsonNode s = f.get("spannweite");
                     assertThat(List.of(s.get("von").decimalValue(), s.get("bis").decimalValue())).as(wo)
                             .containsExactly(x.get(0), x.get(x.size() - 1));
-                    assertThat(s.get("toleriert_von").decimalValue()).isEqualByComparingTo(
-                            x.get(0).multiply(new BigDecimal("0.9")).setScale(0, RoundingMode.HALF_UP));
-                    assertThat(s.get("toleriert_bis").decimalValue()).isEqualByComparingTo(
-                            x.get(x.size() - 1).multiply(new BigDecimal("1.1")).setScale(0, RoundingMode.HALF_UP));
+                    assertThat(s.get("toleriert_von").decimalValue()).as(wo + ": toleriert ungerundet")
+                            .isEqualByComparingTo(x.get(0).multiply(new BigDecimal("0.9")));
+                    assertThat(s.get("toleriert_bis").decimalValue()).as(wo + ": toleriert ungerundet")
+                            .isEqualByComparingTo(x.get(x.size() - 1).multiply(new BigDecimal("1.1")));
                 }
                 for (JsonNode v : kinder(f.get("abgelehnte_variablen"))) {
                     double[] xs = grundlage.stream().mapToDouble(g -> g.at("/nenner/wert").asDouble()).toArray();
@@ -2510,12 +2522,16 @@ class UemsReferenzunternehmenVectorsTest {
                 r3.add(e.getKey() + " " + e.getValue().get("kd").asText() + " Kd " + e.getValue().get("m3").asText() + " m³"));
         assertThat(kinder(bb4.get("grundlage")).stream().map(x -> text(x, "periode") + " " + x.at("/nenner/wert").asText()
                 + " Kd " + x.at("/zaehler/wert").asText() + " m³")).containsExactlyElementsOf(r3);
-        assertThat(List.of(g.get("R3").at("/modell/a_m3").decimalValue(), g.get("R3").at("/modell/b_m3_je_kd").decimalValue(),
-                g.get("R3").at("/modell/r2").decimalValue(), g.get("R3").at("/modell/streuung_prozent").decimalValue(),
+        // R3 zeigt die Koeffizienten auf die Stellen des Konzepts (119 / 3,8), die Datei trägt vier (M5)
+        BigDecimal r3a = g.get("R3").at("/modell/a_m3").decimalValue();
+        BigDecimal r3b = g.get("R3").at("/modell/b_m3_je_kd").decimalValue();
+        assertThat(List.of(r3a, r3b, g.get("R3").at("/modell/r2").decimalValue(), g.get("R3").at("/modell/streuung_prozent").decimalValue(),
                 g.get("R3").at("/verhaeltnis_zur_probe/basiswert_m3_je_kd").decimalValue()))
                 .usingElementComparator(BigDecimal::compareTo)
-                .containsExactly(bb4.at("/koeffizienten/a").decimalValue(), bb4.at("/koeffizienten/b").decimalValue(),
+                .containsExactly(bb4.at("/koeffizienten/a").decimalValue().setScale(r3a.scale(), RoundingMode.HALF_UP),
+                        bb4.at("/koeffizienten/b").decimalValue().setScale(r3b.scale(), RoundingMode.HALF_UP),
                         bb4.get("r2").decimalValue(), bb4.get("streuung_prozent").decimalValue(), bb4.get("basiswert").decimalValue());
+        assertThat(bb4.at("/koeffizienten/a").decimalValue().scale()).as("BB-0004: vier Stellen (M5), nicht die des Konzepts").isEqualTo(4);
         assertThat(g.get("R3").at("/bezugsgroesse/art").asText()).isEqualTo(d.at("/bezugsgroessen_1_8/0/art").asText());
 
         JsonNode bb3 = bb.get("BB-0003");
@@ -2861,6 +2877,101 @@ class UemsReferenzunternehmenVectorsTest {
         return fehler;
     }
 
+    /**
+     * Die Folgen einer Korrektur sind vollständig: jede berechnete Messstelle, deren Formel die berichtigte Reihe (oder eine
+     * berechnete Folge) liest, steht mit Version 2 in {@code folgen[]} — auch die Rest-Messstelle (MS-09 = … − MS-06 − …).
+     * Die Differenz einer Folge ergibt ihre Formel; ohne absoluten Wert ({@code wert: null}) trägt sie {@code differenz_kwh}.
+     */
+    static List<String> folgenFehler(JsonNode d) {
+        Map<String, JsonNode> ms = nachKennzeichen(d.get("messstellen"));
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode k : kinder(d.get("korrekturen"))) {
+            Map<String, BigDecimal> differenz = new LinkedHashMap<>();
+            differenz.put(text(k, "reihe"), k.get("neu_kwh").decimalValue().subtract(k.get("alt_kwh").decimalValue()));
+            for (boolean weiter = true; weiter; ) {
+                weiter = false;
+                for (JsonNode m : ms.values()) {
+                    String kz = text(m, "kennzeichen");
+                    if (!"berechnet".equals(text(m, "art")) || differenz.containsKey(kz)) {
+                        continue;
+                    }
+                    BigDecimal d2 = BigDecimal.ZERO;
+                    boolean liest = false;
+                    for (Map.Entry<String, BigDecimal> e : differenz.entrySet()) {
+                        BigDecimal anteil = anteil(text(m, "formel"), e.getKey());
+                        if (anteil.signum() != 0) {
+                            liest = true;
+                            d2 = d2.add(anteil.multiply(e.getValue()));
+                        }
+                    }
+                    if (liest) {
+                        differenz.put(kz, d2);
+                        weiter = true;
+                    }
+                }
+            }
+            Map<String, JsonNode> folgen = new LinkedHashMap<>();
+            kinder(k.get("folgen")).forEach(f -> folgen.put(text(f, "objekt"), f));
+            differenz.forEach((objekt, diff) -> {
+                JsonNode f = folgen.get(objekt);
+                if (f == null || f.get("version").asInt() != 2) {
+                    fehler.add(text(k, "kennung") + ": " + objekt + " folgt aus " + text(k, "reihe") + ", fehlt in den Folgen");
+                } else if (f.hasNonNull("differenz_kwh") && f.get("differenz_kwh").decimalValue().compareTo(diff) != 0) {
+                    fehler.add(text(k, "kennung") + ": " + objekt + " Differenz " + f.get("differenz_kwh").asText() + " statt " + diff.toPlainString());
+                } else if (!f.hasNonNull("wert") && !f.hasNonNull("differenz_kwh")) {
+                    fehler.add(text(k, "kennung") + ": " + objekt + " ohne Wert und ohne Differenz");
+                }
+            });
+            folgen.values().stream().filter(f -> !f.hasNonNull("wert") && !"berechnet".equals(text(ms.get(text(f, "objekt")), "art")))
+                    .forEach(f -> fehler.add(text(k, "kennung") + ": " + text(f, "objekt") + " ist nicht berechnet und hat keinen Wert"));
+        }
+        return fehler;
+    }
+
+    /** Der Anteil einer Messstelle an einer Formel: Σ Vorzeichen × Faktor ihrer Terme („− MS-06“ = −1, „70 % × MS-07“ = 0,7). */
+    static BigDecimal anteil(String formel, String messstelle) {
+        BigDecimal summe = BigDecimal.ZERO;
+        int vorzeichen = 1;
+        for (String term : formel.split(" (?=[+−] )|(?<= [+−]) ")) {
+            String t = term.strip();
+            if (t.equals("+") || t.equals("−")) {
+                vorzeichen = t.equals("+") ? 1 : -1;
+                continue;
+            }
+            List<String> teile = List.of(t.split(" "));
+            if (teile.contains(messstelle)) {
+                BigDecimal faktor = teile.contains("%") ? new BigDecimal(teile.get(0).replace(',', '.')).movePointLeft(2) : BigDecimal.ONE;
+                summe = summe.add(vorzeichen > 0 ? faktor : faktor.negate());
+            }
+        }
+        return summe;
+    }
+
+    @Test
+    void dieFolgenEinerKorrekturSindVollstaendig() throws Exception {
+        JsonNode d = daten();
+        assertThat(folgenFehler(d)).isEmpty();
+        assertThat(anteil("MS-06 + MS-11 + 70 % × MS-07", "MS-07")).isEqualByComparingTo("0.7");
+        JsonNode k = kinder(d.get("korrekturen")).stream().filter(x -> "K-2028-0001".equals(text(x, "kennung"))).findFirst().orElseThrow();
+        assertThat(folge(k, "MS-09").get("differenz_kwh").decimalValue()).as("MS-09 = … − MS-06 − …: +600 kWh").isEqualByComparingTo("600");
+        assertThat(folge(k, "MS-09").get("wert").isNull()).as("der absolute Dezember-Wert von MS-09 steht nirgends").isTrue();
+    }
+
+    @Test
+    void rotProbeFolgen() throws Exception {
+        JsonNode d = daten();
+        JsonNode k = kinder(d.get("korrekturen")).stream().filter(x -> "K-2028-0001".equals(text(x, "kennung"))).findFirst().orElseThrow();
+        ((ObjectNode) folge(k, "MS-09")).put("differenz_kwh", -600);
+        assertThat(folgenFehler(d)).containsExactly("K-2028-0001: MS-09 Differenz -600 statt 600");
+        ArrayNode liste = (ArrayNode) k.get("folgen");
+        for (int i = liste.size() - 1; i >= 0; i--) {
+            if ("MS-09".equals(text(liste.get(i), "objekt"))) {
+                liste.remove(i);
+            }
+        }
+        assertThat(folgenFehler(d)).containsExactly("K-2028-0001: MS-09 folgt aus MS-06, fehlt in den Folgen");
+    }
+
     @Test
     void eineBerechneteMessstelleWirdNieDirektBerichtigt() throws Exception {
         assertThat(berichtigungsFehler(daten())).isEmpty();
@@ -2870,7 +2981,8 @@ class UemsReferenzunternehmenVectorsTest {
     void rotProbeBerichtigung() throws Exception {
         ObjectNode d = daten().deepCopy();
         kinder(d.get("korrekturen")).stream().filter(k -> "K-2028-0001".equals(text(k, "kennung"))).forEach(k -> ((ObjectNode) k).put("reihe", "MS-20"));
-        assertThat(berichtigungsFehler(d)).containsExactly("K-2028-0001: MS-20 ist nicht gemessen", "K-2028-0001: MS-20 folgt nicht aus MS-20");
+        assertThat(berichtigungsFehler(d)).containsExactly("K-2028-0001: MS-20 ist nicht gemessen", "K-2028-0001: MS-09 folgt nicht aus MS-20",
+                "K-2028-0001: MS-20 folgt nicht aus MS-20");
     }
 
     /** Kennzeichen EZ-/M-/AW-JJJJ-NNNN: je Art und Jahr lückenlos ab 1; das Jahr ist das des Anlegens (EZ: der Zielperiode). */
@@ -3410,7 +3522,41 @@ class UemsReferenzunternehmenVectorsTest {
     private static final Pattern TAG_IM_TEXT = Pattern.compile("([0-9]{2})\\.([0-9]{2})\\.([0-9]{4})");
 
     /** Nimmt GENAU die Zusätze der Fassung 1.10 heraus — neun Blöcke, zwanzig Zeilen der Zeitachse, Kommentar und Herkunft. */
+    /**
+     * Nimmt GENAU die Folge vom 27.09.2026 heraus (AP-17/AP-18-Nachlese, ohne neue Fassung): BB-0004 Fassung 1 auf M5-Stellen
+     * mit Spannweite, MS-09 als Folge von K-2028-0001 und die drei Sätze dazu — danach ist die Datei wieder die 1.10 davor.
+     */
+    static void ohneFolge20260927(ObjectNode d) {
+        ObjectNode bb4 = (ObjectNode) nachKennzeichen(d.get("bezugsbasen")).get("BB-0004").at("/fassungen/0");
+        assertThat(List.of(bb4.at("/koeffizienten/a").decimalValue(), bb4.at("/koeffizienten/b").decimalValue(),
+                bb4.at("/spannweite/bis").decimalValue())).usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("118.9104"), new BigDecimal("3.8041"), new BigDecimal("605"));
+        ((ObjectNode) bb4.get("koeffizienten")).put("a", 119).put("b", 3.8);
+        bb4.putNull("spannweite");
+        ObjectNode k = (ObjectNode) kinder(d.get("korrekturen")).stream()
+                .filter(x -> "K-2028-0001".equals(text(x, "kennung"))).findFirst().orElseThrow();
+        ArrayNode folgen = (ArrayNode) k.get("folgen");
+        int vorher = folgen.size();
+        for (int i = folgen.size() - 1; i >= 0; i--) {
+            if ("MS-09".equals(text(folgen.get(i), "objekt"))) {
+                folgen.remove(i);
+            }
+        }
+        assertThat(vorher - folgen.size()).isOne();
+        k.put("hinweis", ohneAb(text(k, "hinweis"), " Folge 27.09.2026:"));
+        ObjectNode herkunft = (ObjectNode) d.get("_herkunft");
+        for (String fassung : List.of("fassung_1_8", "fassung_1_9")) {
+            herkunft.put(fassung, ohneAb(text(herkunft, fassung), ". Folge 27.09.2026:"));
+        }
+    }
+
+    private static String ohneAb(String text, String ab) {
+        assertThat(text).contains(ab);
+        return text.substring(0, text.indexOf(ab));
+    }
+
     static void ohneFassung110(ObjectNode d) {
+        ohneFolge20260927(d);
         assertThat(d.path("version").asText()).isEqualTo("1.10");
         d.put("version", "1.9");
         d.put("beschreibung", d.get("beschreibung").asText().replace(

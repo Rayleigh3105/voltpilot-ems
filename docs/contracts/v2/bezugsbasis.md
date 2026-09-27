@@ -80,10 +80,15 @@ und nennt einen oder mehrere Anpassungsgründe (Vokabular `anpassungsgrund`; `so
   (81 984,5), die Anzeige rundet sie auf ganze Einheiten.
 - **Nie auf eine Schwelle oder ein Band gerundet:** Band, Spannweite und Abhängigkeit werden per Kreuzprodukt auf den
   ungerundeten Zahlen geprüft. Δ = 2,04 % zeigt „2,0“ und ist trotzdem `schlechter` (Band 2,0); genau 2,00 % ist `im_rahmen`.
-- Die Referenzdatei 1.8 trägt die Koeffizienten des Konzepts auf **weniger** Stellen (BB-0001: a = 10 523, b = 0,2343;
-  BB-0004: a = 119, b = 3,8). Die Rechnung aus den Reihen liefert 10 522,6206 / 0,2343 und 118,9104 / 3,8041 — auf die
-  Stellen der Datei gerundet dieselben Zahlen (Python-Test `test_modell_rechnet_die_referenzdatei_auf_ihre_stellen_nach`).
-  Die Vergleichsvektoren rechnen mit der Kopie der Datei; so entstehen 69 098 kWh und −0,7 % wie im Konzept.
+- Die Referenzdatei trägt die Koeffizienten auf den vier Stellen von M5, aus den Reihen gerechnet — seit 27.09.2026 auch
+  BB-0004 Fassung 1: a = 118,9104, b = 3,8041 (1.8 trug die Anzeige-Werte des Konzepts 119 / 3,8). Die Vergleichsvektoren
+  rechnen mit der Kopie der Datei: **Januar 2028 Gas ist 1 945 m³ und −0,8 %** (Konzept R3: 1 943 m³ und −0,7 %, gerechnet
+  mit 119 / 3,8 — das Urteil „im Rahmen“ bleibt; der gegeben-Block R3 zitiert das Konzept wörtlich).
+- **Benannte Ausnahme: BB-0001 Fassung 2 bleibt a = 10 523** (Rechnung 10 522,6206, b = 0,2343 hat schon vier Stellen). Die
+  AP-18-Daten der Referenzdatei rechnen damit (Monatsreihe ab 04/2028, Kopien mit Prüfsumme an M-2028-0001 und
+  EZ-2028-0001, R5/R10); vier Stellen verschöben dort nur ganze kWh (z. B. Februar 2028 81 985 → 81 984, Σ 663 139 →
+  663 136), keine Prozente und kein Urteil (Entscheid 27.09.2026). Dezember 2027 bleibt 69 098 kWh und 12,9 %
+  (Python-Test `test_modell_rechnet_die_referenzdatei_auf_ihre_stellen_nach` prüft beides).
 
 ## 6. Freigabe und Grundlage (E5, F1–F5)
 
@@ -174,7 +179,7 @@ SP1, nie „EnPI“, „EnB“, „Baseline“, „Normalisierung“, „KPI“ 
 Jeder Fall trägt `name`, `regel`, `operation`, `quelle`, `rechnung` (die Handrechnung), `eingang` und `erwartet`.
 Operationen: `referenzperiode · basiswert · modell · abhaengigkeit · vergleich · roh · roh_und_bereinigt · methoden_paar ·
 zeitraum · runden`. Pflichtfälle aus §8 IP-2: „Dezember 2027: roh ohne Urteil, bereinigt schlechter“ und „Verhältnis
-über Gradtage sagt besser, Modell im Rahmen“ (Januar 2028: −5,3 % gegen −0,7 %) sind eigene Vektoren. Fassungen mit
+über Gradtage sagt besser, Modell im Rahmen“ (Januar 2028: −5,3 % gegen −0,8 %) sind eigene Vektoren. Fassungen mit
 `BB-0001 … BB-0005` sind wörtlich die der Referenzdatei 1.8 (geprüft in `test_bezugsbasis.py`); `BB-9001` ist eine
 konstruierte Rundungsprobe, ebenso der Fall „zwei unabhängige Einflussgrößen“ (Spritzguss-Reihe mit der Gradtagzahl).
 
@@ -182,8 +187,8 @@ konstruierte Rundungsprobe, ebenso der Fall „zwei unabhängige Einflussgröße
 
 - **Rundung anders als `k_faelle.py`:** dort rundete `r1(x) = round(x + 1e-9, 1)` negative ,5-Werte zum Nullpunkt hin
   (−2,05 → −2,0). Der Vertrag sagt kaufmännisch (M5) und legt −2,1 fest; keine Zahl der Referenzfälle ändert sich dadurch.
-- **BB-0004 Fassung 1 hat in der Referenzdatei 1.8 keine Spannweite** (`spannweite: null`), obwohl M2 sie für jedes Modell
-  speichert; die Rechnung liefert 0–605 Kd (toleriert 0–665,5). Die Vektoren zitieren die Datei, G3 greift dort deshalb nicht.
+- **BB-0004 Fassung 1 trägt seit 27.09.2026 ihre Spannweite** 0–605 Kd (toleriert 0–665,5, ungerundet) — M2 speichert sie
+  für jedes Modell; bis dahin stand in der Referenzdatei 1.8 `spannweite: null`. Die Vektoren zitieren die Datei.
 - Nicht in diesem Vertrag: P3 (vorläufige Werte in der Grundlage), Anstoß (A1–A5), Frist-Ableitung, Faktor-Änderung und
   Prüfsummen-Bildung als Operation — sie gehören zu den Paketen mit Tabelle und Lauf (IP-5 ff.).
 

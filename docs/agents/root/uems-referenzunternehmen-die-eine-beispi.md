@@ -121,8 +121,8 @@ bleibt (Nachtrag AP-18 IP-3, 24.09.2026).
   W12-Nachträge ändern Bestandswerte: die Eingänge der Einstufungen von EE-5/EE-6 nennen jetzt
   die Einzelwerte der Messstellen (Summen gleich). `null` sind Monatswerte MS-10 Jan./Feb. 2027 und
   die Prüfsumme von VB-2028-0001/1; die `sha256:…`-Kürzel in den gegeben-Blöcken sind Platzhalter
-  des Konzepts, nachrechenbar ist nur die Prüfsumme in `bezugsbasen[]`. Die Koeffizienten sind
-  gröber gerundet als der Vertrag einfriert (siehe `uems-bezugsbasis-vertrag.md`).
+  des Konzepts, nachrechenbar ist nur die Prüfsumme in `bezugsbasen[]`. Die Koeffizienten tragen
+  vier Stellen (M5) bis auf die benannte Ausnahme BB-0001 a = 10 523 (siehe `uems-bezugsbasis-vertrag.md`).
 
 **Falle für die nächste Fassung:** `UemsReferenzunternehmenVectorsTest` hält je Fassung einen
 Fingerabdruck (`FASSUNG_1_x_SHA256`) und die Zahl der `_comment`-Zeilen (`KOMMENTAR_ZEILEN_1_x`)
@@ -190,8 +190,10 @@ Rein ADDITIV: `ohneFassung19` nimmt die Zusätze heraus, dann ist die Datei Zeic
   Kriterien-Fassung 2 K1 `ueber_schwelle` (6,2 % ≥ 5 %), Vorschlag `ueber_schwelle`, Einstufung
   der Person `nicht_wesentlich` — die Abweichung vom Vorschlag ist `vorschlag` ≠ `einstufung`,
   wie bei EE-3 Fassung 1; ein eigenes Feld gibt es nicht. ⚠ **Eine berechnete Messstelle wird nie
-  direkt berichtigt:** K-2028-0001 trifft MS-06 (−600 kWh), MS-20 und KZ-0004 stehen in `folgen[]`;
-  `berichtigungsFehler` in beiden Zwillingen prüft das. Werte ohne Konzept-Beleg nennt
+  direkt berichtigt:** K-2028-0001 trifft MS-06 (−600 kWh), MS-09, MS-20 und KZ-0004 stehen in `folgen[]`;
+  `berichtigungsFehler` in beiden Zwillingen prüft das. **Die Folgen sind vollständig** (`folgenFehler`): jede berechnete
+  Messstelle, deren Formel die Reihe liest, steht darin — auch die Rest-Messstelle MS-09 (+600 kWh); ohne absoluten Wert
+  `wert: null` + `differenz_kwh` aus der Formel. Die Rückweg-Prüfung nimmt diese Folge als `ohneFolge20260927` heraus. Werte ohne Konzept-Beleg nennt
   `korrekturen[].annahme.felder`. Die Oktober-Rechnung der Zwillinge liest nur Korrekturen der
   Periode 2026-10.
 - **Ein Muster für jeden Vorgang:** Verantwortlicher aus `personen[]`, Termin bzw. Frist, `zustand`

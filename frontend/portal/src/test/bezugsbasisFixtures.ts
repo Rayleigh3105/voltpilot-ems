@@ -107,14 +107,20 @@ export function bb1(status: BezugsbasisFassung['freigabe_status'] | null = 'frei
   };
 }
 
-/** R9: BZ-1 ist Variable 1, BZ-3 Betriebsstunden hängt an ihr (r = 0,997); die Leckagerate hat keine Zahl. */
+/**
+ * R9: BZ-1 ist Variable 1, BZ-3 Betriebsstunden hängt an ihr (r = 0,997); die Leckagerate an EE-3 Druckluft hat keine
+ * Zahl — EE-3 steht da, weil MS-07 (P-3) Baustein des Zählers MS-20 ist (V4).
+ */
 export function variablenVorschlag(): VariablenVorschlag {
   const bz1 = { id: BB_IDS.bz1, kennzeichen: 'BZ-1', name: 'Produktionsmenge', art: 'produktionsmenge', wertart: 'periodenwert' as const, einheit: 'kg', periode_art: 'monat', hat_werte: true, hat_kanal: false };
   return {
     geltung_art: 'prozess',
     bezug: 'prozess',
     referenzperiode: '2026-10/2026-10',
-    einsaetze: [{ id: 'ee000000-0000-4000-8000-000000000001', kennzeichen: 'EE-1', name: 'Spritzguss', traeger: 'strom' }],
+    einsaetze: [
+      { id: 'ee000000-0000-4000-8000-000000000001', kennzeichen: 'EE-1', name: 'Spritzguss', traeger: 'strom' },
+      { id: 'ee000000-0000-4000-8000-000000000003', kennzeichen: 'EE-3', name: 'Druckluft', traeger: 'strom' },
+    ],
     variable_1: bz1,
     kandidaten: [
       { bezugsgroesse: bz1, einfluss_art: 'produktion', vorschlag: 'variable_1', einsaetze: ['EE-1'], abhaengigkeit: null, satz: null },
@@ -122,12 +128,12 @@ export function variablenVorschlag(): VariablenVorschlag {
         bezugsgroesse: { id: BB_IDS.bz3, kennzeichen: 'BZ-3', name: 'Betriebsstunden', art: 'betriebszeit', wertart: 'periodenwert', einheit: 'h', periode_art: 'monat', hat_werte: true, hat_kanal: false },
         einfluss_art: 'betriebszeit',
         vorschlag: 'variable',
-        einsaetze: ['EE-1'],
+        einsaetze: ['EE-1', 'EE-3'],
         abhaengigkeit: { ergebnis: 'variablen_abhaengig', r: 0.9971, paare: 12, grund: null, gegen: 'BZ-1', schwelle: 0.9 },
         satz: 'Betriebsstunden hängt an Produktionsmenge (r = 0,997). Ein Modell mit zwei Einflussgrößen braucht unabhängige Größen.',
       },
     ],
-    ohne_zahl: [{ wortlaut: 'Leckagerate', einfluss_art: 'sonstige', einsatz: 'EE-1', satz: 'ohne Zahl — erst als Bezugsgröße erfassen' }],
+    ohne_zahl: [{ wortlaut: 'Leckagerate', einfluss_art: 'sonstige', einsatz: 'EE-3', satz: 'ohne Zahl — erst als Bezugsgröße erfassen' }],
     satz: null,
   };
 }

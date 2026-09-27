@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "herkunft": "AP-17 entschieden 23.09.2026 (E1–E8, E10–E12 = A, E9 = C), §4.3–4.9, §5.8, §7 R1–R12; Python-Referenz aus k_faelle.py; Referenzunternehmen 1.8 (bezugsbasen[], leistungsvergleiche[], abnahmefaelle_ap17). Ab November 2026 sind alle Zahlen Annahmen der Erweiterung 1.8; „konstruiert“ markiert reine Rechenproben.",
+  "herkunft": "AP-17 entschieden 23.09.2026 (E1–E8, E10–E12 = A, E9 = C), §4.3–4.9, §5.8, §7 R1–R12; Python-Referenz aus k_faelle.py; Referenzunternehmen 1.8 (bezugsbasen[], leistungsvergleiche[], abnahmefaelle_ap17). Die Koeffizienten von BB-0004 Fassung 1 tragen seit 27.09.2026 die vier Stellen von M5 (wie die Referenzdatei) und ihre Spannweite 0–605 Kd; BB-0001 Fassung 2 bleibt als benannte Ausnahme auf den Stellen des Konzepts (a = 10 523). Ab November 2026 sind alle Zahlen Annahmen der Erweiterung 1.8; „konstruiert“ markiert reine Rechenproben.",
   "startwerte": {
     "mindest_monate": 12,
     "toleranz_prozent": "2",
@@ -400,7 +400,7 @@
       "regel": "M3",
       "operation": "modell",
       "quelle": "Referenzdatei 1.8 BB-0004 Fassung 1",
-      "rechnung": "a = 118,91… → 118,9104, b = 3,80405… → 3,8041 (Referenzdatei: 119 und 3,8 = dieselben Zahlen auf ihre Stellen); R² 0,99664… → 0,997; Streuung 4,607 % → 4,6; Basiswert 13 695 ÷ 3 225 = 4,2465",
+      "rechnung": "a = 118,91… → 118,9104, b = 3,80405… → 3,8041 (die Referenzdatei trägt dieselben Zahlen, M5; das Konzept R3 zeigt 119 und 3,8); R² 0,99664… → 0,997; Streuung 4,607 % → 4,6; Basiswert 13 695 ÷ 3 225 = 4,2465",
       "eingang": {
         "methode": "gradtage",
         "reihe": [
@@ -1408,7 +1408,7 @@
       "regel": "M3",
       "operation": "methoden_paar",
       "quelle": "R3 Ahrenberg Januar 2028 (Referenzdatei 1.8 abnahmefaelle_ap17 R3)",
-      "rechnung": "Modell: 119 + 3,8 × 480 = 1 943; Δ = −13 ÷ 1 943 = −0,67 % → −0,7; Band max(2,0; 4,6) = 4,6 → im_rahmen. Verhältnis: 4,2465 × 480 = 2 038,32; Δ = −108,32 ÷ 2 038,32 = −5,31 % → −5,3 → besser, „ohne Grundlast“",
+      "rechnung": "Modell: 118,9104 + 3,8041 × 480 = 1 944,8784 (angezeigt 1 945); Δ = −14,8784 ÷ 1 944,8784 = −0,765 % → −0,8; Band max(2,0; 4,6) = 4,6 → im_rahmen. Verhältnis: 4,2465 × 480 = 2 038,32; Δ = −108,32 ÷ 2 038,32 = −5,31 % → −5,3 → besser, „ohne Grundlast“. (Das Konzept R3 nennt 1 943 / −0,7 % — gerechnet mit den Anzeige-Koeffizienten 119 / 3,8; die Datei friert vier Stellen ein, M5.)",
       "eingang": {
         "modell": {
           "fassung": {
@@ -1418,12 +1418,19 @@
             "monate": 12,
             "basiswert": "4.2465",
             "koeffizienten": {
-              "a": "119",
-              "b": "3.8"
+              "a": "118.9104",
+              "b": "3.8041"
             },
             "streuung_prozent": "4.6",
             "toleranz_prozent": "2.0",
-            "spannweite": null,
+            "spannweite": [
+              {
+                "von": "0",
+                "bis": "605",
+                "toleriert_von": "0",
+                "toleriert_bis": "665.5"
+              }
+            ],
             "variablen": [
               {
                 "name": "Gradtagzahl",
@@ -1491,8 +1498,8 @@
           "urteil": "im_rahmen",
           "grund": null,
           "gemessen": "1930",
-          "erwartet": "1943",
-          "delta_prozent": "-0.7",
+          "erwartet": "1944.8784",
+          "delta_prozent": "-0.8",
           "band_prozent": "4.6",
           "richtung": "weniger",
           "kennzeichen": [

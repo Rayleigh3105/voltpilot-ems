@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,9 +43,8 @@ import org.testcontainers.utility.DockerImageName;
  * Variable 1 (der Nenner), BZ-3 ein Kandidat mit r = 0,997 → Hinweis {@code variablen_abhaengig} gegen BZ-1, die
  * Leckagerate eine Zeile „ohne Zahl“. Danach sind Einsatz, Kennzahl und Bezugsgrößen byte-gleich (AP-16 B5).
  *
- * <p>Abweichung vom Referenzfall, bewusst: dort steht die Leckagerate an EE-3 Druckluft (P-3), und V4 liest nur die
- * Einsätze der Geltung. Damit die Zeile „ohne Zahl“ an KZ-0004 erscheint, trägt hier ein zweiter Einsatz von P-1
- * (Träger Druckluft) die Leckagerate und — wie EE-3 — BZ-3.
+ * <p>Die Leckagerate steht wie im Referenzfall als Freitext an EE-3 Druckluft (P-3): sie kommt an KZ-0004, weil der
+ * Zähler MS-20 = MS-1 + 70 % × MS-3 die Druckluft-Messstelle von P-3 als Baustein liest (V4, Folge aus IP-11a).
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest
@@ -114,11 +114,14 @@ class VariablenVorschlagApiTest {
 
     @Test
     void r9Bz1IstVariable1Bz3HaengtDaranLeckagerateOhneZahlUndNichtsVeraendert() throws Exception {
+        UUID p3 = prozess("P-3", "Druckluft", s1);
+        summe("MS-20", p1, s1, Map.of("MS-1", "1", "MS-3", "0.7"));
         JsonNode ee1 = einsatz(p1, "Strom", "Spritzguss",
                 List.of(verweis(bz1, "produktion"), verweis(bz3, "betriebszeit")));
-        JsonNode ee2 = einsatz(p1, "Druckluft", "Druckluft",
+        JsonNode ee2 = einsatz(p2, "Strom", "Montage", List.of(Map.of("wortlaut", "Schichten", "art", "betriebszeit")));
+        JsonNode ee3 = einsatz(p3, "Strom", "Druckluft",
                 List.of(verweis(bz3, "betriebszeit"), Map.of("wortlaut", "Leckagerate", "art", "sonstige")));
-        UUID kz4 = kennzahl("KZ-0004", "prozess", p1, "MS-1", "BZ-1");
+        UUID kz4 = kennzahl("KZ-0004", "prozess", p1, "MS-20", "BZ-1");
         String vorher = bestand();
 
         JsonNode v = ruf("GET", pfad(kz4) + "?referenzperiode=" + REFERENZ, 200);
@@ -129,8 +132,9 @@ class VariablenVorschlagApiTest {
         assertThat(v.path("bezug").asText()).isEqualTo("prozess");
         assertThat(v.path("referenzperiode").asText()).isEqualTo(REFERENZ);
         assertThat(v.path("satz").isNull()).isTrue();
-        assertThat(v.path("einsaetze").findValuesAsText("kennzeichen"))
-                .containsExactly(ee1.path("kennzeichen").asText(), ee2.path("kennzeichen").asText());
+        assertThat(v.path("einsaetze").findValuesAsText("kennzeichen")).as("P-2 geht nicht in den Zähler ein")
+                .containsExactly(ee1.path("kennzeichen").asText(), ee3.path("kennzeichen").asText())
+                .doesNotContain(ee2.path("kennzeichen").asText());
         assertThat(v.at("/variable_1/kennzeichen").asText()).isEqualTo("BZ-1");
         assertThat(v.at("/variable_1/hat_werte").asBoolean()).isTrue();
         assertThat(v.at("/variable_1/hat_kanal").asBoolean()).isFalse();
@@ -147,7 +151,7 @@ class VariablenVorschlagApiTest {
         assertThat(k3.at("/bezugsgroesse/einheit").asText()).isEqualTo("h");
         assertThat(k3.path("vorschlag").asText()).isEqualTo("variable");
         assertThat(texte(k3.path("einsaetze")))
-                .containsExactly(ee1.path("kennzeichen").asText(), ee2.path("kennzeichen").asText());
+                .containsExactly(ee1.path("kennzeichen").asText(), ee3.path("kennzeichen").asText());
         JsonNode g4 = k3.path("abhaengigkeit");
         assertThat(g4.path("ergebnis").asText()).isEqualTo("variablen_abhaengig");
         assertThat(g4.path("gegen").asText()).isEqualTo("BZ-1");
@@ -161,7 +165,7 @@ class VariablenVorschlagApiTest {
         assertThat(ohne).hasSize(1);
         assertThat(ohne.get(0).path("wortlaut").asText()).isEqualTo("Leckagerate");
         assertThat(ohne.get(0).path("einfluss_art").asText()).isEqualTo("sonstige");
-        assertThat(ohne.get(0).path("einsatz").asText()).isEqualTo(ee2.path("kennzeichen").asText());
+        assertThat(ohne.get(0).path("einsatz").asText()).isEqualTo(ee3.path("kennzeichen").asText());
         assertThat(ohne.get(0).path("satz").asText()).isEqualTo("ohne Zahl — erst als Bezugsgröße erfassen");
 
         // Zu wenig Monatspaare: nicht prüfbar, ohne r — und ohne Parameter die zwölf Monate vor dem laufenden.
@@ -308,6 +312,28 @@ class VariablenVorschlagApiTest {
         root.update("INSERT INTO messstelle_prozess(tenant_id,messstelle_id,prozess_id,gueltig_ab) "
                 + "VALUES (?,?,?,'2024-01-01')", tenant, m, p);
         return p;
+    }
+
+    /** Eine berechnete Strom-Messstelle des Prozesses: gewichtete Summe der Bausteine (Kennzeichen → Faktor). */
+    private void summe(String kennzeichen, UUID prozess, UUID standort, Map<String, String> bausteine) {
+        UUID m = root.queryForObject("INSERT INTO messstelle(tenant_id,kennzeichen,name,art,medium,groesse,richtung,"
+                + "einheit,wertart) VALUES (?,?,?,'berechnet','Strom','Wirkenergie','Bezug','kWh','Intervallmenge') "
+                + "RETURNING id", UUID.class, tenant, kennzeichen, kennzeichen + " gesamt");
+        root.update("INSERT INTO messstelle_ort(tenant_id,messstelle_id,standort_id,gueltig_ab) VALUES (?,?,?,'2024-01-01')",
+                tenant, m, standort);
+        root.update("INSERT INTO messstelle_prozess(tenant_id,messstelle_id,prozess_id,gueltig_ab) "
+                + "VALUES (?,?,?,'2024-01-01')", tenant, m, prozess);
+        UUID fassung = root.queryForObject("INSERT INTO messstelle_formel_fassung (tenant_id, messstelle_id, nummer, "
+                + "formel_typ, herkunft, actor_sub, actor_name, actor_art) VALUES (?, ?, 1, 'gewichtete_summe', 'anlage', "
+                + "'IK', 'Ines Kaltenbach', 'kunde') RETURNING id", UUID.class, tenant, m);
+        int position = 0;
+        for (Map.Entry<String, String> b : new TreeMap<>(bausteine).entrySet()) {
+            UUID quelle = root.queryForObject("SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = ?",
+                    UUID.class, tenant, b.getKey());
+            root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, eingang_art, "
+                    + "quell_messstelle_id, vorzeichen, faktor) VALUES (?, ?, ?, ?, 'messstelle', ?, '+', ?)", tenant, m,
+                    fassung, position++, quelle, new BigDecimal(b.getValue()));
+        }
     }
 
     private UUID bezugsgroesse(String kennzeichen, String name, String einheit, UUID prozess) {

@@ -85,29 +85,43 @@ def test_fassungen_der_vektoren_sind_die_der_referenzdatei():
     assert gesehen == {('BB-0001', 1), ('BB-0001', 2), ('BB-0002', 2), ('BB-0003', 1), ('BB-0004', 1)}
 
 
+# Benannte Ausnahme von M5 (Entscheid 27.09.2026): BB-0001 Fassung 2 bleibt a = 10 523 — die AP-18-Daten rechnen damit.
+M5_AUSNAHME = {('BB-0001', 'a'): 0}
+
+
 def test_modell_rechnet_die_referenzdatei_auf_ihre_stellen_nach():
-    """Der Vertrag friert vier Stellen ein; die Datei 1.8 trägt dieselben Modelle auf weniger Stellen (a ganzzahlig, 3,8)."""
+    """M5: die Datei friert die Koeffizienten auf vier Stellen ein, wie die Rechnung sie liefert (BB-0004 seit 27.09.2026;
+    1.8 trug die Anzeige-Werte des Konzepts 119 / 3,8) — außer der benannten Ausnahme; M2: jedes Modell trägt seine Spannweite."""
     cases = {x['name']: x for x in DATA['cases']}
     for name, kz in (('R12 Modell mit einer Einflussgröße über zwölf Monate', 'BB-0001'), ('R3 Gradtage: Modell mit Konstante', 'BB-0004')):
         datei = _fassung(kz, 2 if kz == 'BB-0001' else 1)
         aus = cases[name]['erwartet']
         for k, v in datei['koeffizienten'].items():
-            stellen = len(str(v).partition('.')[2]) if isinstance(v, float) else 0
-            assert b.fest(b.q(aus['koeffizienten'][k]), stellen) == (f'{v:.{stellen}f}'), (kz, k)
+            stellen = M5_AUSNAHME.get((kz, k), 4)
+            assert b.fest(b.q(aus['koeffizienten'][k]), stellen) == f'{v:.{stellen}f}', (kz, k)
+            assert stellen == 0 or f'{v:.4f}' == f'{float(aus["koeffizienten"][k]):.4f}', (kz, k, 'vier Stellen')
         assert (float(aus['r2']), float(aus['streuung_prozent']), float(aus['basiswert'])) == (datei['r2'], datei['streuung_prozent'], datei['basiswert'])
+        assert {k: float(x) for k, x in aus['spannweite'][0].items()} == {k: datei['spannweite'][k] for k in aus['spannweite'][0]}, kz
 
 
 def test_abnahmefaelle_der_referenzdatei():
     cases = {x['name']: x['erwartet'] for x in DATA['cases']}
     g = {x['fall']: x['gegeben'] for x in REF['abnahmefaelle_ap17']['faelle']}
     jan = cases['Verhältnis über Gradtage sagt besser, Modell im Rahmen']
-    for seite in ('modell', 'verhaeltnis'):
+    assert jan['modell']['urteil'] == g['R3']['januar_2028']['modell']['urteil']
+    assert (jan['modell']['erwartet'], jan['modell']['delta_prozent']) == ('1944.8784', '-0.8'), 'M5: vier Stellen'
+    # Konzept R3 rechnet mit den Anzeige-Koeffizienten 119 / 3,8: dieselbe Operation liefert dann 1 943 und −0,7 %
+    konzept = copy.deepcopy(next(x for x in DATA['cases'] if x['name'] == 'Verhältnis über Gradtage sagt besser, Modell im Rahmen'))
+    konzept['eingang']['modell']['fassung']['koeffizienten'] = {
+        'a': str(g['R3']['modell']['a_m3']), 'b': str(g['R3']['modell']['b_m3_je_kd'])}
+    alt = rechnen(konzept)
+    for seite, zahlen in (('modell', alt), ('verhaeltnis', jan)):
         soll = g['R3']['januar_2028'][seite]
-        assert (round(float(jan[seite]['erwartet'])), float(jan[seite]['delta_prozent']), jan[seite]['urteil']) == (
-            soll['erwartet_m3'], soll['delta_prozent'], soll['urteil'])
+        assert (b.runden(zahlen[seite]['erwartet'], 0), float(zahlen[seite]['delta_prozent']), zahlen[seite]['urteil']) == (
+            str(soll['erwartet_m3']), soll['delta_prozent'], soll['urteil']), seite
     vb = REF['leistungsvergleiche'][0]['vergleich']
     dez = cases['R2 Dezember 2027 bereinigt: 12,9 % über dem Modell, schlechter']
-    assert (float(dez['erwartet']), float(dez['delta_prozent']), float(dez['band_prozent']), dez['urteil']) == (
+    assert (float(b.runden(dez['erwartet'], 0)), float(dez['delta_prozent']), float(dez['band_prozent']), dez['urteil']) == (
         vb['erwartet'], vb['delta_prozent'], vb['band_prozent'], vb['urteil'])
     r5 = cases['R5 November 2026 Netzbezug je m²: 4,1 % mehr, schlechter']
     assert (float(r5['delta_prozent']), r5['urteil']) == (g['R5']['november_2026']['delta_prozent'], g['R5']['november_2026']['urteil'])

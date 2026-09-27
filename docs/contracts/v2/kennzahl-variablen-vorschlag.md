@@ -2,7 +2,8 @@
 
 Stand 23.09.2026 · Vertrag 1.0 · Konzept `data/vp-uems-ap17-fundament` §4.4 V4/V5, §4.8 G4, Referenzfall R9, Entscheide
 E3 = A und W1 vom 23.09.2026 · Bau-Paket IP-11a (der Lese-Teil; die Übernahme in eine Fassung der Bezugsbasis mit der
-Ablehnung `variablen_abhaengig` ist IP-11b, nach IP-8/IP-9).
+Ablehnung `variablen_abhaengig` ist IP-11b, nach IP-8/IP-9). **Stand 27.09.2026:** V4 liest die Nachbarn über den
+Zähler mit (§1, Folge aus IP-11a, damit R9 hält); die Form der Antwort ist unverändert.
 
 Eine Kennzahl hat genau einen Nenner, ein Energieeinsatz nennt seine Einflussgrößen — als Verweis auf eine Bezugsgröße
 (BZ-…) oder als Wortlaut (AP-16, `energieeinsatz_einflussgroesse`). Die beiden Objekte kennen einander nicht, und das
@@ -20,13 +21,20 @@ gerechnet. Der Vorschlag ist die Brücke zum Ansehen — er übernimmt nichts un
 
 ## 1. Welche Einsätze gelesen werden (V4)
 
-1. Ist die Geltung der Kennzahl ein **Prozess**: die laufenden Energieeinsätze dieses Prozesses (jeder Träger) —
-   `bezug` = `prozess`.
-2. Sonst, oder wenn der Prozess keinen laufenden Einsatz hat: die laufenden Einsätze der Prozesse, denen eine
-   **Zähler-Messstelle** der heute geltenden Fassung heute direkt zugeordnet ist (`messstelle_prozess`) —
-   `bezug` = `zaehler_messstellen`.
-3. Sonst `bezug` = `keiner`: leere Listen und der Satz „Zu dieser Kennzahl gehört kein Energieeinsatz: weder ihr Prozess
-   noch die Messstellen ihres Zählers sind einem Energieeinsatz zugeordnet. Es gibt keine Einflussgrößen vorzuschlagen.“
+Gelesen werden immer beide Wege zusammen, jeder Einsatz einmal:
+
+- Ist die Geltung der Kennzahl ein **Prozess**: die laufenden Energieeinsätze dieses Prozesses (jeder Träger).
+- Die laufenden Einsätze der Prozesse, denen heute direkt (`messstelle_prozess`) eine Messstelle zugeordnet ist, die in
+  den **Zähler** der heute geltenden Fassung eingeht: die Zähler-Messstelle selbst und jede Messstelle, die ihre heute
+  wirksame Formel-Fassung als Baustein liest (Term mit Quell-Messstelle — Messstelle oder Anteil —, über Bausteine
+  hinweg, höchstens acht Stufen). Das sind die Nachbarn der Geltung (R9, §5).
+
+`bezug` sagt, woher die Einsätze kommen:
+
+1. `prozess` — der Prozess der Geltung hat einen laufenden Einsatz (die Nachbarn stehen daneben).
+2. `zaehler_messstellen` — nur über den Zähler (Geltung kein Prozess, oder ihr Prozess hat keinen laufenden Einsatz).
+3. `keiner`: leere Listen und der Satz „Zu dieser Kennzahl gehört kein Energieeinsatz: weder ihr Prozess noch die
+   Messstellen ihres Zählers sind einem Energieeinsatz zugeordnet. Es gibt keine Einflussgrößen vorzuschlagen.“
 
 Beendete Einsätze schlagen nichts vor. Einsätze stehen nach der Nummer ihres Kennzeichens.
 
@@ -78,6 +86,7 @@ der Zaun ist `KennzahlService.eine` — eine unbekannte, fremde oder außerhalb 
 
 KZ-0004 (Geltung P-1 Spritzguss), EE-1 Spritzguss nennt BZ-1 Produktionsmenge (`produktion`) und BZ-3 Betriebsstunden
 (`betriebszeit`): BZ-1 ist `variable_1`, BZ-3 ein Kandidat mit r = 0,997 über November 2026 bis Oktober 2027 →
-`variablen_abhaengig` gegen BZ-1. Die Leckagerate steht im Referenzunternehmen als Freitext an EE-3 Druckluft (P-3) —
-V4 liest nur die Einsätze der Geltung, sie erscheint an KZ-0004 also nur, wenn ein Einsatz von P-1 sie nennt
-(`VariablenVorschlagApiTest` legt dafür einen zweiten Einsatz von P-1 mit Träger Druckluft an).
+`variablen_abhaengig` gegen BZ-1. Die Leckagerate steht als Freitext an EE-3 Druckluft (P-3): der Zähler von KZ-0004
+ist MS-20 = MS-06 + MS-11 + 70 % × MS-07, und MS-07 gehört zu P-3 — EE-3 ist ein Nachbar (§1), die Leckagerate
+erscheint als einzige Zeile `ohne_zahl` (R9: `ohne_zahl` = 1), BZ-3 nennen EE-1 und EE-3. Ein Einsatz eines Prozesses,
+dessen Messstellen nicht in den Zähler eingehen (EE-2 Montage), erscheint nicht (`VariablenVorschlagApiTest`).
