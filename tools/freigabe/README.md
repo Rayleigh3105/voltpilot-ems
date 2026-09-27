@@ -14,7 +14,12 @@ bash tools/freigabe/pruefe-tor.sh G1 \
   --blatt        /BETREIBER/bestandsblatt-2026-10-01.txt \
   --generalprobe /BETREIBER/generalprobe \
   --paare        /BETREIBER/q07-paare.json   # wahlfrei; Vorgabe tools/nw3-box-image/paare.json
+bash tools/freigabe/pruefe-tor.sh M6 --stand /BETREIBER/freigabe-stand.yaml
 ```
+
+**Tor `M6`** führt, was erst **nach Schritt 10** gehen kann: heute IP-18, den
+Dauerläufer-Kundenbereich (Drehbuch §14). Er gehört nach dem Entscheid B4 vom 27.09.2026 nicht
+mehr zu G1, sondern auf den Rollout-Tag nach dem api-Deploy bzw. in die Nachbeobachtung M-6.
 
 | Exit | Bedeutung |
 |---|---|
@@ -22,13 +27,14 @@ bash tools/freigabe/pruefe-tor.sh G1 \
 | 1 | mindestens ein Punkt offen; die Zeilen nennen ihn und wer ihn liefert |
 | 2 | Aufruffehler oder unlesbares Stand-Blatt (dann die Hilfe lesen) |
 
-## Ein Urteil je Punkt, aus genau drei
+## Ein Urteil je Punkt, aus genau vier
 
 | Urteil | Heißt | Blockiert |
 |---|---|---|
 | `belegt` | es gibt einen nachprüfbaren Beleg; die **Fundstelle** steht dabei (Datei, Commit, Datum) | nein |
 | `offen: …` | was fehlt **und wer es liefert** — Crew oder Betreiber | ja |
 | `nicht maschinell prüfbar: …` | was nur der Betreiber wissen kann; er hat es im Stand-Blatt mit Datum bestätigt, **das Werkzeug hat es nicht nachgeprüft** | nein |
+| `hingenommen` | nur NW-3 (G1): das Protokoll trägt allein Befunde, die der Captain am 27.09.2026 hingenommen hat (siehe NW-3 unten); die Zeile nennt jeden | nein |
 
 ## Ehrlichkeit vor Bequemlichkeit
 
@@ -63,6 +69,11 @@ Ein Beleg ist **nie** „die Datei existiert“. Was das Werkzeug tatsächlich p
   offen. Nennt das Protokoll `core_ref`/`palette_ref` anders als die Liste, zählt es nicht.
   Ist ein Paar **aus dem Tag gebaut statt das Release-Artefakt**, sagt das Werkzeug das
   dazu. Für **GA** zählt nur ein Protokoll für ein Paar, das **nicht** in der Liste steht.
+  **Hingenommen am 27.09.2026** (Bereitschaftsbericht B5/B10, `NW3_HINGENOMMEN`) sind für die
+  ausgelieferten Paare genau vier Punkte: `6c` mit Urteil `befund` (X7) sowie `3` und `4a` rot mit
+  `unsupported_catalog` im Beleg und `4b` rot (Katalogkopplung api-Deploy ↔ Box-Release, Drehbuch
+  §2.8). Jeder andere nicht grüne Punkt — auch einer dieser vier mit anderem Urteil oder Grund —
+  bleibt offen. Für das **neue** Image (GA) ist nichts hingenommen.
 - **Gemergte Pakete** (G0): der PR-Commit muss vom geprüften Stand aus erreichbar sein.
   M-2 verlangt zusätzlich, dass `main` ein **Vorfahre** des geprüften Standes ist.
 
@@ -107,6 +118,7 @@ Die Tests bauen ein Wegwerf-Repo mit genau der Geschichte, die G0 verlangt, und 
 Fälle, an denen das Werkzeug scheitern könnte: alles belegt → Exit 0 · ein Beleg fehlt →
 Exit 1 und die Zeile nennt ihn · roter oder übersprungener Surefire-Bericht → offen ·
 Bericht von einem anderen Baum oder älteren Stand → offen, gleicher Baum unter anderem
-Commit → belegt mit Nennung · NW-3 je Paar, ein fehlendes oder rotes Paar → offen · Blatt älter als sieben Tage → offen ·
+Commit → belegt mit Nennung · NW-3 je Paar, ein fehlendes oder rotes Paar → offen · nur die
+hingenommenen Punkte → `hingenommen`, jeder weitere rote Punkt → offen · IP-18 nur in M6 · Blatt älter als sieben Tage → offen ·
 Wegwerf-Generalprobe → „kein Produktions-Beleg“ · Stand-Blatt kann einen maschinellen Punkt
 nicht grün machen · unbekanntes Tor → Hilfe.

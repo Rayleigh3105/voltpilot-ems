@@ -154,7 +154,7 @@ class TorPrueferTest(unittest.TestCase):
     # -- alles belegt --------------------------------------------------------
 
     def test_alles_belegt_exit_0(self):
-        for tor in ('G0', 'G1', 'GA', 'GB'):
+        for tor in ('G0', 'G1', 'GA', 'GB', 'M6'):
             with self.subTest(tor=tor):
                 code, text = self.b.fahre(tor)
                 self.assertEqual(0, code, text)
@@ -341,12 +341,71 @@ class TorPrueferTest(unittest.TestCase):
         self.b.paare_schreiben(['edge-2026.09.4', 'edge-2026.09.6'])
         zweites = json.loads(json.dumps(NW3_GRUEN))
         zweites['paar'] = {'name': 'edge-2026.09.6'}
-        zweites['punkte'][5] = {'punkt': '6c nach trennung', 'urteil': 'befund'}
+        # 6b gehoert nicht zu den am 27.09.2026 hingenommenen Punkten (B5/B10).
+        zweites['punkte'][5] = {'punkt': '6b ruhe haelt', 'urteil': 'befund'}
         self.b.nw3(zweites, 'edge-2026.09.6')
         code, text = self.b.fahre('G1')
         self.assertEqual(1, code)
         self.assertIn('[offen] NW-3 ', text)
-        self.assertIn('6c nach trennung', text)
+        self.assertIn('6b ruhe haelt', text)
+
+    # -- NW-3: am 27.09.2026 hingenommen (B5 X7, B10 Katalogkopplung) ----------
+
+    def _nw3_wie_0925(self, **ersatz):
+        """Ein Protokoll wie das von edge-2026.09.5: 3/4a/4b rot an der Katalogkopplung, 6c Befund X7."""
+        abgelehnt = '{"accepted":[],"rejected":[{"point_key":"x","reason":"unsupported_catalog"}]}'
+        punkte = {
+            '1a': {'punkt': '1a registry-push', 'urteil': 'gruen'},
+            '3': {'punkt': '3 mess-auswahl', 'urteil': 'rot', 'beleg': abgelehnt},
+            '4a': {'punkt': '4a mess-quittung nennt die auswahl angewandt', 'urteil': 'rot', 'beleg': abgelehnt},
+            '4b': {'punkt': '4b samples der box landen als rohzeilen', 'urteil': 'rot', 'beleg': '{"ok": false}'},
+            '6c': {'punkt': '6c nach trennung laenger als das ende', 'urteil': 'befund'},
+            '7': {'punkt': '7 update noetig', 'urteil': 'gruen'},
+        }
+        punkte.update(ersatz)
+        return {'nachweis': 'NW-3', 'gefahren_am': '2026-09-26T12:36:21Z',
+                'paar': {'name': 'edge-2026.09.4'}, 'punkte': list(punkte.values()),
+                'zusammenfassung': '2 gruen, 3 rot, 1 Befund'}
+
+    def test_x7_und_katalogkopplung_sind_hingenommen(self):
+        self.b.nw3(self._nw3_wie_0925())
+        code, text = self.b.fahre('G1')
+        self.assertEqual(0, code, text)
+        self.assertIn('[hingenommen] NW-3 ', text)
+        self.assertIn('hingenommen am 27.09.2026 (B5/B10)', text)
+        for punkt in ('3 mess-auswahl', '4a mess-quittung', '4b samples', '6c nach trennung'):
+            self.assertIn(punkt, text)
+        self.assertIn('1 mit hingenommenem Befund', text)
+
+    def test_ein_anderer_roter_punkt_neben_den_hingenommenen_bleibt_offen(self):
+        self.b.nw3(self._nw3_wie_0925(**{'7': {'punkt': '7 update noetig', 'urteil': 'rot'}}))
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code, text)
+        self.assertIn('[offen] NW-3 ', text)
+        self.assertIn('offen bzw. mit Befund: 7 update noetig (Crew)', text)
+
+    def test_nicht_gefahrener_hingenommener_punkt_bleibt_offen(self):
+        # Hingenommen ist ein gemessener Befund, kein ausgelassener Lauf.
+        self.b.nw3(self._nw3_wie_0925(**{'6c': {'punkt': '6c nach trennung', 'urteil': 'nicht_gefahren'}}))
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code, text)
+        self.assertIn('offen bzw. mit Befund: 6c nach trennung (Crew)', text)
+
+    def test_mess_auswahl_rot_aus_anderem_grund_bleibt_offen(self):
+        anders = {'punkt': '3 mess-auswahl', 'urteil': 'rot', 'beleg': '{"rejected":[{"reason":"invalid_point"}]}'}
+        self.b.nw3(self._nw3_wie_0925(**{'3': anders}))
+        code, text = self.b.fahre('G1')
+        self.assertEqual(1, code, text)
+        self.assertIn('offen bzw. mit Befund: 3 mess-auswahl (Crew)', text)
+
+    def test_fuer_das_neue_image_ist_nichts_hingenommen(self):
+        neu = self._nw3_wie_0925()
+        neu['paar'] = {'name': 'edge-2026.10.1'}
+        self.b.nw3(neu, 'edge-2026.10.1')
+        code, text = self.b.fahre('GA')
+        self.assertEqual(1, code, text)
+        self.assertIn('[offen] NW-3neu', text)
+        self.assertNotIn('hingenommen', text)
 
     def test_protokoll_fuer_ein_anderes_core_palette_paar_zaehlt_nicht(self):
         protokoll = json.loads(json.dumps(NW3_GRUEN))
@@ -486,6 +545,19 @@ class TorPrueferTest(unittest.TestCase):
             self.assertEqual('nein', eintrag['bestaetigt'], name)
             self.assertTrue(eintrag['beleg'], name)
 
+    # -- IP-18 nach B4 ------------------------------------------------------
+
+    def test_ip18_steht_nicht_mehr_in_g1_sondern_in_m6(self):
+        ohne_ip18 = {p: ('ja', '2026-09-20') for p in STAND_PUNKTE if p != 'ip18_dauerlaeufer'}
+        self.b.stand_schreiben(ohne_ip18)
+        code, text = self.b.fahre('G1')
+        self.assertEqual(0, code, text)
+        self.assertNotIn('] IP-18 ', text)
+        code, text = self.b.fahre('M6')
+        self.assertEqual(1, code, text)
+        self.assertIn('[offen] IP-18 ', text)
+        self.assertIn('Entscheid B4 vom 27.09.2026', text)
+
     # -- Aufruf --------------------------------------------------------------
 
     def test_unbekanntes_tor_zeigt_die_hilfe(self):
@@ -493,7 +565,7 @@ class TorPrueferTest(unittest.TestCase):
         with contextlib.redirect_stderr(fehler):
             code = pruefe_tor.main(['G7'])
         self.assertEqual(2, code)
-        self.assertIn('G0, G1, GA oder GB', fehler.getvalue())
+        self.assertIn('G0, G1, GA, GB oder M6', fehler.getvalue())
 
     def test_hilfe_ist_kein_fehler(self):
         aus = io.StringIO()

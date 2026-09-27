@@ -64,7 +64,7 @@ gitops_pr37:
 
 gitops_platzhalter:
   bestaetigt: nein
-  beleg: uems_datenbank_warnschwelle_bytes (Q14) und der Dauerlaeufer-Tenant stehen auf CHANGE-ME
+  beleg: uems_datenbank_warnschwelle_bytes (Q14) steht auf CHANGE-ME, der Dauerlaeufer-Tenant kommt erst mit M6
 
 supportweg:
   bestaetigt: nein
@@ -73,10 +73,6 @@ supportweg:
 kundennachricht:
   bestaetigt: nein
   beleg: Fenstertermin steht noch nicht fest
-
-ip18_dauerlaeufer:
-  bestaetigt: nein
-  beleg: Dauerlaeufer-Kundenbereich nicht angelegt
 
 startwaechter_main:
   bestaetigt: nein
@@ -109,3 +105,12 @@ q10_pending_edge:
 wago_hardware_pilot:
   bestaetigt: nein
   beleg: WAGO-Pruefstand steht aus; Simulatornachweise ersetzen ihn nicht
+
+# ---------------------------------------------------------------------------
+# M6 - Rollout-Tag nach Schritt 10 und Nachbeobachtung M-6
+# (B4 vom 27.09.2026: den Dauerlaeufer gibt es erst mit der neuen api)
+# ---------------------------------------------------------------------------
+
+ip18_dauerlaeufer:
+  bestaetigt: nein
+  beleg: Dauerlaeufer-Kundenbereich nicht angelegt

@@ -84,6 +84,11 @@ derselbe Neustart genau der Fehlstart, den Änderung **a** verhindern soll.
 > vollständig beobachtet. **Danach geht bis Schritt 2 kein weiterer Commit nach
 > `apps/voltpilot/` oder `clusters/prod/`.**
 
+**Entschieden am 27.09.2026 (Bereitschaftsbericht B9):** Der ingest bekommt das DB-Passwort
+(gitops PR 42). PR 42 geht zusammen mit PR 37 am Vortag hinaus, im selben beobachteten Sync. Vorher
+lesend prüfen: `kubectl -n voltpilot-prod logs deploy/ingest | grep -i 'authentication failed'`.
+Nach dem Sync meldet der ingest kein `authentication failed` mehr.
+
 ### 2.3 Die zwei Platzhalter aus PR 37
 
 Beide stehen in `apps/voltpilot/overlays/prod/prometheusrule.yaml` und sind als
@@ -332,10 +337,27 @@ liefert **einmal** Revision + 1 im heutigen Stand nach (Akteur `system:katalogst
 Auswahlzeile ändert sich). Lehnt die Box auch den heutigen Stand ab, folgt nichts mehr. Regel und
 Grenzen: `docs/agents/root/uems-messplan-nach-box-update.md`.
 
-> **Regel:** Das Box-Release geht **nach** dem api-Deploy (nach Schritt 10) an die Boxen. Nur die
-> neue api kann nachliefern. Eine Box, die ihr Update vorher bekommt, misst bis zum api-Deploy
+> **Regel:** Das Box-Release geht **nach** dem api-Deploy (nach Schritt 10) an die Boxen, und
+> zwar **direkt danach, am Rollout-Tag** (entschieden am 27.09.2026, Bereitschaftsbericht B10). Nur
+> die neue api kann nachliefern. Eine Box, die ihr Update vorher bekommt, misst bis zum api-Deploy
 > nicht; die neue api liefert beim Start nach. Tor GA, Punkt `NW-3u`, verlangt dafür den grünen
 > Bericht von `MessplanNachBoxUpdateApiTest`.
+
+**NW-3 an den ausgelieferten Paaren: hingenommen am 27.09.2026.** Zwei Befunde bleiben bis zum
+Box-Release stehen. Der Captain hat beide hingenommen; der Tor-Prüfer führt sie unter G1 als
+„hingenommen“, nicht als offen:
+
+- **B10, Punkte 3/4a/4b (Katalogkopplung):** Die ausgelieferte Box lehnt die Mess-Auswahl der neuen
+  api mit `unsupported_catalog` ab und sendet keine Samples. Das ist die Kopplung oben, kein Feld-
+  oder Schemafehler ([NW-3-Wegweiser](../agents/root/uems-nw3-box-image.md)). Sie endet mit dem
+  Box-Release direkt nach dem api-Deploy.
+- **B5, Punkt 6c (X7):** Nach einer Trennung, die länger dauert als das rollierende Ende, läuft an
+  der alten Box die Ruhe ab und die Automatik setzt wieder ein. Die Cloud hält dagegen „bis auf
+  Widerruf“. Beheben kann das nur ein Box-Release (Tor GA). Der Support kennt es als bekannte Grenze
+  (F6.7, §11). **Q07 wird gefahren**; welche Paare im Feld laufen, trägt der Betreiber in
+  `tools/nw3-box-image/paare.json` ein. Für jedes Paar braucht NW-3 ein Protokoll.
+
+Jeder andere rote Punkt eines NW-3-Protokolls bleibt offen.
 
 **Der Name des nächsten Box-Release.** Er darf **nicht** `edge-2026.09.5` heißen, auch wenn der
 Generalprobe-Bericht (§6.4) genau diesen Namen vorschlägt. Den Tag hat `main` am 24.09.2026 schon
@@ -355,12 +377,15 @@ nur per `workflow_dispatch` (`deploy.yaml:23-24`, `deploy-fast.yaml:20-21`). Jed
 um. Das wäre das UEMS-Rollout ohne Nullstand, ohne Wiederherstellungspunkt und ohne
 Kundennachricht. Allein am 24. und 25.09.2026 gab es 14 solcher Produktions-Deploys.
 
-- **Vorgesehen, Entscheid des Captains offen (Bereitschaftsbericht B1):** G0 früh einfrieren, den
-  Merge-Akt spät legen (am Vortag oder am Tag des Fensters), Merge-Commit baumgleich zum G0-Stand
-  (§2.6), und **vom Merge bis Schritt 2 kein Dispatch auf `main`**. Ein dringender `main`-Fix in
-  dieser Zeit fährt mit dem Rollout mit oder verschiebt das Fenster.
-- **Die Alternative:** sofort mergen; dann gilt derselbe Deploy-Stopp vom Merge bis zum Fenster,
-  entsprechend länger.
+- **Entschieden am 27.09.2026 (Bereitschaftsbericht B1):** erst den Fenster-Termin festlegen
+  (Fenster in der Woche vom 28.09. bis 04.10.2026, der Tag steht noch aus). G0 früh einfrieren, vor
+  der Generalprobe; danach nimmt `uems` nichts mehr auf. Den Merge-Akt spät legen (am Vortag oder
+  am Tag des Fensters), Merge-Commit baumgleich zum G0-Stand (§2.6), und **vom Merge bis Schritt 2
+  kein Dispatch auf `main`**. Ein dringender `main`-Fix in dieser Zeit fährt mit dem Rollout mit
+  oder verschiebt das Fenster.
+- **Entschieden am 27.09.2026 (Bereitschaftsbericht B7):** PR 1258 (Anmelde-Zeile) und PR 1268
+  (Passwort 12 Zeichen) werden nicht allein nach `main` gemergt. Sie fahren mit `uems` mit, das
+  ihre Köpfe schon trägt, und werden nach dem Merge geschlossen.
 
 **`main-migrations.txt` nicht fortschreiben.** Die Datei
 (`services/api/src/test/resources/migration/main-migrations.txt`) beschreibt den Stand der
@@ -378,14 +403,11 @@ die übrigen erst mit C3. Der Bau-Workflow tut das Gegenteil. Sein Job „Bump g
 `GITOPS_PUSH_TOKEN` fehlt (`deploy-fast.yaml:184-194`: „der gitops-Tag-Bump wird UEBERSPRUNGEN“,
 nichts geklont, committet oder gepusht).
 
-- **Vorgesehen, Entscheid des Captains offen (Bereitschaftsbericht B2):** vor dem Bau-Dispatch das
+- **Entschieden am 27.09.2026 (Bereitschaftsbericht B2):** vor dem Bau-Dispatch das
   Secret `GITOPS_PUSH_TOKEN` entziehen oder umbenennen (Forgejo › voltpilot-ems › Settings ›
   Actions › Secrets). Dann `deploy.yaml` auf `main` dispatchen; er fährt vor dem Bau die
   Test-Matrix, `deploy-fast.yaml` hat kein Test-Gate. Alle neun Images grün abwarten. C1–C3 laufen
   danach von Hand wie in §4. Das Secret kommt **nach Schritt 10** zurück.
-- **Die Alternative:** die Klammer F1 (§3) vorher setzen, den Bump-Commit laufen lassen und C1 als
-  dessen Korrektur schreiben. Das ist fehleranfälliger: alle Tags außer dem der api müssten bis C3
-  wieder auf `${ALT_SHA}` zurück.
 
 **Beleg:** Die Zusammenfassung des Laufs meldet „gitops-Tag-Bump uebersprungen“;
 `git -C "$GITOPS" log -1 --format=%s origin/main` zeigt keinen neuen `ci(images)`-Commit; die neun
@@ -862,9 +884,9 @@ läuft (in `live-realm-import.md` steht `<namespace>`).
 | 9 | Rauchprobe (4 Proben) | alle vier grün | → R |
 | 9b | **Z08 erneut** | 0 Marker, Zeilenzahl unverändert | → R · bei Markern: §8 |
 | 10 | **Go:** Portal öffnen, Klammer auf (F2), `GITOPS_PUSH_TOKEN` zurück | — | ab hier nur vorwärts |
+| danach | **Box-Release** an die Boxen, direkt nach Schritt 10 (§2.8, B10), Tag ≠ `edge-2026.09.5` | Boxen quittieren den heutigen Katalogstand | Release anhalten |
 | danach | **Live-Realm härten** und SMTP/Reset (§5, nach Schritt 10) | `pruefen` Exit 0, Bestätigungszeile | Rückweg aus `live-realm-import.md` |
 | danach | Dauerläufer einrichten, Platzhalter setzen (§14) | Kundenbereich angelegt, UUID in gitops | Kundenbereich bleibt intern |
-| danach | **Box-Release** an die Boxen, erst jetzt (§2.8), Tag ≠ `edge-2026.09.5` | Boxen quittieren den heutigen Katalogstand | Release anhalten |
 
 ---
 
@@ -1163,6 +1185,7 @@ und er darf dabei nicht auf einen Zugriff angewiesen sein, den es nicht gibt.
 | F6.4 | **Notfall-Zugriff** einmal gegangen | er gewährt sich selbst, geht **nicht** durch den Rechte-Prüfpunkt (E8) und hinterlässt eine Protokollzeile | ☐ |
 | F6.5 | Der Weg ist **ohne Vollzugriff** gangbar | zu keinem Zeitpunkt war ein Plattform-Administrator nötig | ☐ |
 | F6.6 | Der Support kennt §12 | „anhalten" heißt: Läufer aus — die Flächen bleiben | ☐ |
+| F6.7 | Der Support kennt X7 als bekannte Grenze (B5, §2.8) | an einer Box mit altem Image setzt die Automatik nach langer Trennung von selbst wieder ein, obwohl die Cloud „bis auf Widerruf“ hält; behoben erst mit dem Box-Release | ☐ |
 
 Die Probe für die erste Bezugsbasis eines Kunden steht als F7 in §15.3.
 
@@ -1296,9 +1319,9 @@ beim Anlegen vergibt.
 die gibt es in Produktion erst mit der neuen api. Vor dem Rollout kann der Tor-Punkt IP-18 darum
 nicht grün werden.
 
-- **Vorgesehen, Entscheid des Captains offen (Bereitschaftsbericht B4):** IP-18 wandert aus G1
-  auf den Rollout-Tag nach Schritt 10 bzw. in die Nachbeobachtung M-6.
-- **Die Alternative:** IP-18 bleibt ein G1-Punkt; dann bleibt G1 bis nach dem Rollout offen.
+- **Entschieden am 27.09.2026 (Bereitschaftsbericht B4):** IP-18 wandert aus G1
+  auf den Rollout-Tag nach Schritt 10 bzw. in die Nachbeobachtung M-6. Der Tor-Prüfer führt ihn
+  darum unter `pruefe-tor.sh M6`, nicht mehr unter G1.
 
 ### 14.1 Kundenbereich anlegen
 

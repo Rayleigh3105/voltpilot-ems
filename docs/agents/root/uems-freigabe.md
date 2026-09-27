@@ -4,8 +4,9 @@ Entschieden am 18.09.2026 (Konzept „Erste Produktfreigabe“, AP-14). **E1 = B
 Freigabe-Tor je Kundenbereich** — am Rollout-Tag bekommen alle alles; „Pilot“ heißt eine
 Handvoll betreuter Kunden, nicht eine freigeschaltete Gruppe.
 
-Werkzeug: `bash tools/freigabe/pruefe-tor.sh G0|G1|GA|GB` — es legt je Tor vor, was belegt
-ist und was fehlt, und **öffnet kein Tor**. Aufruf, Belegregeln und Stand-Blatt des
+Werkzeug: `bash tools/freigabe/pruefe-tor.sh G0|G1|GA|GB|M6` — es legt je Tor vor, was belegt
+ist und was fehlt, und **öffnet kein Tor**. `M6` ist kein Tor, sondern die Prüfliste nach
+Schritt 10 (Rollout-Tag bzw. Nachbeobachtung M-6); heute steht dort nur IP-18. Aufruf, Belegregeln und Stand-Blatt des
 Betreibers: [`tools/freigabe/README.md`](../../../tools/freigabe/README.md).
 
 ## Die vier Tore
@@ -18,7 +19,7 @@ ein Nachweis noch jemanden schützen könnte.
 | Tor | Öffnet | Nachweise |
 |---|---|---|
 | **G0** Zusammenführen | `uems` → `main` in einem Stück | V0 · NW-2 · M-2 · IP-3, IP-4, IP-14, IP-15, IP-9, IP-19 gemergt |
-| **G1** Ausrollen | Rollout-Tag; zugleich Beginn des Piloten | M-1 · NW-1 · NW-8 · NW-3 · NW-4 · NW-5 · NW-6 · Kapazität nach L6 · Pilotkunden eingewilligt · M-4 als gitops-PR · Support-Weg geprobt · Kundennachricht samt Release-Notiz |
+| **G1** Ausrollen | Rollout-Tag; zugleich Beginn des Piloten | M-1 · NW-1 · NW-8 · NW-3 (X7 und Katalogkopplung hingenommen, B5/B10) · NW-4 · NW-5 · NW-6 · Kapazität nach L6 · Pilotkunden eingewilligt · M-4 als gitops-PR · Support-Weg geprobt · Kundennachricht samt Release-Notiz |
 | **GA** Edge-Release A | additive Box-Pakete, je Box zugewiesen | NW-3 gegen das NEUE Image · Q08/IP-17 · Core und Palette gemeinsam · `automation_paused_until_revoked` im Herzschlag gemeldet |
 | **GB** Edge-Release B | `RUNTIME_VERSION`, WAGO | ganze Flotte auf Release A · Q10 `pending_edge` · AP-05-Hardware-Pilot |
 
@@ -26,6 +27,11 @@ Die acht Nachweise NW-1…NW-8 und wer sie trägt: Konzept §4.13. Das Drehbuch 
 Rollout-Tags steht in [`docs/rollout/uems-erste-freigabe.md`](../../rollout/uems-erste-freigabe.md),
 die Generalprobe in [uems-generalprobe.md](uems-generalprobe.md), NW-3 in
 [uems-nw3-box-image.md](uems-nw3-box-image.md).
+
+**Entschieden am 27.09.2026** (Bereitschaftsbericht B1–B10, alle auf der Empfehlung; Fenster in
+der Woche vom 28.09. bis 04.10.2026): IP-18 (Dauerläufer) steht nicht mehr in G1, sondern nach
+Schritt 10 bzw. in M-6 (B4, `pruefe-tor.sh M6`). Das Box-Release geht direkt nach dem api-Deploy
+hinaus (B10, [Drehbuch §2.8](../../rollout/uems-erste-freigabe.md)).
 
 Die **gemessenen Suiten-Summen** des Zweiges, auf die der Tor-Prüfer mit `--laeufe` zeigt,
 stehen je Gesamtlauf unter `docs/rollout/gesamtlauf-<datum>.md` — zuletzt
@@ -71,9 +77,12 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   Nachweis-Läufe am G0-Commit trägt er über den gleichen Baum (siehe oben)
   ([Drehbuch §2.6](../../rollout/uems-erste-freigabe.md)).
 - **Nach dem Merge ist jeder Dispatch auf `main` ein Rollout ohne Fenster**, und der Tag-Bump
-  schreibt alle neun Image-Tags in einem Commit. Vorgesehen sind Deploy-Stopp bis Schritt 2
-  und Bau ohne `GITOPS_PUSH_TOKEN`; beides entscheidet der Captain noch (B1, B2 des
-  Bereitschaftsberichts vom 26.09.2026; [Drehbuch §2.9, §2.10](../../rollout/uems-erste-freigabe.md)).
+  schreibt alle neun Image-Tags in einem Commit. Entschieden am 27.09.2026 (B1, B2 des
+  Bereitschaftsberichts vom 26.09.2026): G0 früh einfrieren, Merge spät (Vortag oder Tag des
+  Fensters), Deploy-Stopp vom Merge bis Schritt 2, Bau ohne `GITOPS_PUSH_TOKEN`, das Secret kommt
+  nach Schritt 10 zurück. PR 1258 und PR 1268 fahren mit `uems` mit und werden nach dem Merge
+  geschlossen (B7). Gitops PR 42 (DB-Passwort für den ingest) geht mit PR 37 am Vortag hinaus (B9)
+  ([Drehbuch §2.2, §2.9, §2.10](../../rollout/uems-erste-freigabe.md)).
   `main-migrations.txt` bleibt bis nach dem Rollout der Produktionsstand.
 - **Der Live-Realm wird nach Schritt 10 von Hand gehärtet**: `--import-realm` ändert keinen
   bestehenden Realm. Erst Portal/API mit 12 Zeichen, dann die Keycloak-Vorgabe
@@ -83,7 +92,8 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   vergeben ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md)).
 - **Ein Platzhalter in PR 37 steht noch auf `CHANGE-ME`**: der Tenant des Dauerläufers
   (IP-18, Einrichtung Drehbuch §14, [Wegweiser](uems-dauerlaeufer.md)). Ihn gibt es erst
-  nach Schritt 10; ob IP-18 darum aus G1 wandert, entscheidet der Captain (B4). Die
+  nach Schritt 10; darum ist IP-18 seit dem Entscheid B4 vom 27.09.2026 kein G1-Punkt mehr,
+  sondern steht in `pruefe-tor.sh M6`. Die
   DB-Warnschwelle ist seit dem 21.09.2026 gesetzt (8 GiB aus **Q14**). Ungesetzt alarmiert
   die Überwachung am Rollout-Tag falsch oder gar nicht.
 - **Wegwerf-Zahlen sind keine Fensterplanung.** Eine Migrationssumme aus einer leeren
@@ -108,7 +118,9 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   nicht die Identität mit dem ausgelieferten Image.
 - **NW-3 Punkt 4 ist gefahren** (`--strecke`, Samples 2.0 der echten Box bis in den
   Writer und in `device_measurement_sample`, beide Verwurf-Familien 0). Der **Befund** zu
-  X7 steht weiter, und er allein hält NW-3 beim Tor-Prüfer offen: nach einer Trennung
+  X7 steht weiter; am 27.09.2026 hingenommen (B5), ebenso die Katalogkopplung 3/4a/4b an
+  `edge-2026.09.5` (B10). Der Tor-Prüfer führt NW-3 darum als „hingenommen“; jeder andere
+  rote Punkt bleibt offen (`NW3_HINGENOMMEN`). Der Befund: nach einer Trennung
   länger als das rollierende Ende läuft die Ruhe an der alten Box ab und die Automatik
   setzt von selbst wieder ein, während die Cloud weiter „bis auf Widerruf“ hält.
 - **Eine angenommene Mess-Auswahl ist keine gelesene.** Die Box quittiert `accepted`,

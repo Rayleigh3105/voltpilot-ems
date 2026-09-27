@@ -28,6 +28,7 @@ import xml.etree.ElementTree as ET
 
 BELEGT = 'belegt'
 OFFEN = 'offen'
+HINGENOMMEN = 'hingenommen'
 BETREIBER_WORT = 'nicht maschinell pruefbar'
 
 BLATT_TAGE = 7
@@ -44,7 +45,19 @@ TORE = {
     'G1': 'Ausrollen - der Rollout-Tag; danach haben alle alles (E1 = B)',
     'GA': 'Edge-Release A - additive Box-Pakete, je Box zugewiesen',
     'GB': 'Edge-Release B - RUNTIME_VERSION, WAGO',
+    'M6': 'kein Tor - Rollout-Tag nach Schritt 10 und Nachbeobachtung M-6: was erst mit der neuen api geht (B4)',
 }
+
+# NW-3-Punkte, die der Captain am 27.09.2026 fuer die AUSGELIEFERTEN Paare hingenommen hat
+# (Bereitschaftsbericht B5/B10). Nur diese Punkte mit genau diesem Urteil; jeder andere
+# nicht gruene Punkt bleibt offen. Fuer das NEUE Image (GA) gilt nichts davon.
+NW3_HINGENOMMEN = {
+    '6c': ('befund', None, 'X7, B5: Ruhe laeuft nach langer Trennung an der alten Box ab'),
+    '3': ('rot', 'unsupported_catalog', 'Katalogkopplung, B10: api-Deploy vor Box-Release, Drehbuch §2.8'),
+    '4a': ('rot', 'unsupported_catalog', 'Katalogkopplung, B10: api-Deploy vor Box-Release, Drehbuch §2.8'),
+    '4b': ('rot', None, 'Katalogkopplung, B10: api-Deploy vor Box-Release, Drehbuch §2.8'),
+}
+NW3_HINGENOMMEN_AM = '27.09.2026'
 
 
 # --------------------------------------------------------------------------- #
@@ -373,8 +386,25 @@ def _nw3_protokolle(ctx: Kontext):
             continue
 
 
-def _nw3_urteil(ctx: Kontext, datei, protokoll):
-    schlecht = [p['punkt'] for p in protokoll.get('punkte', []) if p.get('urteil') != 'gruen']
+def _nw3_hingenommen(punkt: dict):
+    """Der Grund, wenn der Punkt zu den am 27.09.2026 hingenommenen gehoert, sonst None."""
+    kennung = str(punkt.get('punkt', '')).split(' ', 1)[0]
+    eintrag = NW3_HINGENOMMEN.get(kennung)
+    if eintrag is None:
+        return None
+    urteil, im_beleg, grund = eintrag
+    if punkt.get('urteil') != urteil:
+        return None
+    if im_beleg and im_beleg not in str(punkt.get('beleg', '')):
+        return None
+    return grund
+
+
+def _nw3_urteil(ctx: Kontext, datei, protokoll, hinnehmen=False):
+    nicht_gruen = [p for p in protokoll.get('punkte', []) if p.get('urteil') != 'gruen']
+    hingenommen = [(p['punkt'], _nw3_hingenommen(p)) for p in nicht_gruen] if hinnehmen else []
+    hingenommen = [(punkt, grund) for punkt, grund in hingenommen if grund]
+    schlecht = [p['punkt'] for p in nicht_gruen if p['punkt'] not in {punkt for punkt, _ in hingenommen}]
     paar = protokoll.get('paar', {})
     quelle = (f'{datei.relative_to(ctx.wurzel)} vom {protokoll.get("gefahren_am")}, '
               f'Paar {paar.get("name")}')
@@ -385,6 +415,10 @@ def _nw3_urteil(ctx: Kontext, datei, protokoll):
     if 'Tag gebaut' in str(paar.get('herkunft', '')):
         warnung = ('. ACHTUNG: das Paar ist AUS DEM TAG GEBAUT, nicht das Release-Artefakt der '
                    'privaten Registry - der Betreiber muss wissen, was er da vor sich hat')
+    if hingenommen:
+        gruende = '; '.join(f'{punkt} ({grund})' for punkt, grund in hingenommen)
+        return HINGENOMMEN, (f'{quelle}: {protokoll.get("zusammenfassung")} - hingenommen am '
+                             f'{NW3_HINGENOMMEN_AM} (B5/B10): {gruende}{warnung}')
     return BELEGT, f'{quelle}: {protokoll.get("zusammenfassung")}{warnung}'
 
 
@@ -419,11 +453,16 @@ def nw3_ausgeliefert(ctx: Kontext):
             urteile.append((OFFEN, f'Paar {name}: {datei.relative_to(ctx.wurzel)} prueft ein anderes Paar '
                                    f'({", ".join(abweichend)}); NW-3 fuer das Paar aus Q07 fahren (Crew)'))
             continue
-        urteil, text = _nw3_urteil(ctx, datei, protokoll)
+        urteil, text = _nw3_urteil(ctx, datei, protokoll, hinnehmen=True)
         urteile.append((urteil, text))  # der Text nennt das Paar schon
     kopf = f'{len(paare)} Paar(e) aus {ctx.paare_pfad.name}, jedes braucht ein gruenes Protokoll'
     zeilen = '\n      '.join(t for _, t in urteile)
-    urteil = OFFEN if any(u == OFFEN for u, _ in urteile) else BELEGT
+    if any(u == OFFEN for u, _ in urteile):
+        urteil = OFFEN
+    elif any(u == HINGENOMMEN for u, _ in urteile):
+        urteil = HINGENOMMEN
+    else:
+        urteil = BELEGT
     return urteil, f'{kopf}\n      {zeilen}'
 
 
@@ -544,21 +583,16 @@ def punkte(tor: str):
             ('M-4', 'gitops-PR 37 gemergt und ausgerollt - mindestens einen Tag VOR dem Fenster', '§3.4 / Drehbuch §2.2',
              betreiber('gitops_pr37',
                        'PR 37 gemergt, ein Sync und ein api-Neustart auf dem ALTEN Schema beobachtet')),
-            ('M-4b', 'Die zwei Platzhalter aus PR 37 gesetzt', 'Drehbuch §2.3 / §9.3',
+            ('M-4b', 'Die Warnschwelle aus PR 37 gesetzt', 'Drehbuch §2.3 / §9.3',
              betreiber('gitops_platzhalter',
-                       'uems_datenbank_warnschwelle_bytes aus Q14 und der Tenant des Dauerlaeufers (IP-18) gesetzt')),
+                       'uems_datenbank_warnschwelle_bytes aus Q14 gesetzt; der Tenant des Dauerlaeufers '
+                       'kommt erst nach Schritt 10 (Tor M6, IP-18)')),
             ('F6', 'Support-Weg einmal gegangen', '§3.4 / Drehbuch §11',
              betreiber('supportweg', 'der Support-Weg ist einmal von aussen gegangen worden')),
             ('B9', 'Kundennachricht zum Fenster samt Release-Notiz raus', '§3.4 / Drehbuch §10',
              betreiber('kundennachricht',
                        'Nachricht 48 h vorher raus, Release-Notiz mit den sichtbaren Aenderungen dabei; '
                        'docs/rollout/release-notiz-vorlage.md ist die VORLAGE, keine versendete Nachricht')),
-            ('IP-18', 'Dauerlaeufer-Kundenbereich steht', 'Drehbuch §14',
-             betreiber('ip18_dauerlaeufer',
-                       'Kundenbereich "VoltPilot Dauerlaeufer (intern)" angelegt, zwei Boxen angemeldet, '
-                       'VOLTPILOT_UEMS_DAUERLAEUFER_TENANT und voltpilot:uems_dauerlaeufer gesetzt, '
-                       'Uebung Simulator anhalten -> VoltPilotDauerlaeuferStumm nach 15 min gesehen',
-                       'Betreiber, das Werkzeug liegt bereit')),
             ('W1', 'Entscheidung ueber den Start-Waechter auf main', 'Drehbuch §9.1',
              betreiber('startwaechter_main',
                        'die alte api schreibt beim Neustart 18 DELETE-Marker, danach startet die neue nicht; '
@@ -595,6 +629,17 @@ def punkte(tor: str):
                        'WAGO-Pilot an echter Hardware gefahren; Simulatornachweise ersetzen keinen Pruefstand',
                        'Crew faehrt, Betreiber stellt die Hardware')),
         ]
+    if tor == 'M6':
+        # B4 vom 27.09.2026: den Dauerlaeufer gibt es erst mit der neuen api (Drehbuch §14),
+        # darum steht IP-18 nicht in G1, sondern hier - am Rollout-Tag nach Schritt 10 bzw. in M-6.
+        return [
+            ('IP-18', 'Dauerlaeufer-Kundenbereich steht', 'Drehbuch §14 / Entscheid B4 vom 27.09.2026',
+             betreiber('ip18_dauerlaeufer',
+                       'Kundenbereich "VoltPilot Dauerlaeufer (intern)" angelegt, zwei Boxen angemeldet, '
+                       'VOLTPILOT_UEMS_DAUERLAEUFER_TENANT und voltpilot:uems_dauerlaeufer gesetzt, '
+                       'Uebung Simulator anhalten -> VoltPilotDauerlaeuferStumm nach 15 min gesehen',
+                       'Betreiber, das Werkzeug liegt bereit')),
+        ]
     raise KeyError(tor)
 
 
@@ -611,7 +656,7 @@ def berichte(tor: str, ctx: Kontext, aus=None) -> int:
     print(f'Stand-Blatt des Betreibers: {ctx.stand_pfad if ctx.stand_pfad else "keines angegeben (--stand)"}', file=aus)
     print('', file=aus)
 
-    zaehler = {BELEGT: 0, OFFEN: 0, BETREIBER_WORT: 0}
+    zaehler = {BELEGT: 0, OFFEN: 0, BETREIBER_WORT: 0, HINGENOMMEN: 0}
     for kennung, titel, quelle, pruefer in punkte(tor):
         urteil, text = pruefer(ctx)
         zaehler[urteil] += 1
@@ -619,11 +664,13 @@ def berichte(tor: str, ctx: Kontext, aus=None) -> int:
         print(f'      {text}', file=aus)
     print('', file=aus)
     print(f'{zaehler[BELEGT]} belegt · {zaehler[OFFEN]} offen · '
-          f'{zaehler[BETREIBER_WORT]} nicht maschinell pruefbar, vom Betreiber bestaetigt', file=aus)
+          f'{zaehler[BETREIBER_WORT]} nicht maschinell pruefbar, vom Betreiber bestaetigt'
+          f'{f" · {zaehler[HINGENOMMEN]} mit hingenommenem Befund" if zaehler[HINGENOMMEN] else ""}', file=aus)
     if zaehler[OFFEN]:
         print(f'Tor {tor}: NICHT vollstaendig belegt. Die offenen Punkte stehen oben.', file=aus)
         return 1
-    print(f'Tor {tor}: jeder Pruefpunkt hat einen Beleg oder das Wort des Betreibers.', file=aus)
+    print(f'Tor {tor}: jeder Pruefpunkt hat einen Beleg oder das Wort des Betreibers'
+          f'{" oder einen hingenommenen Befund" if zaehler[HINGENOMMEN] else ""}.', file=aus)
     print('Das Werkzeug oeffnet kein Tor - das tut der Betreiber selbst.', file=aus)
     return 0
 
@@ -634,7 +681,7 @@ def main(argv=None) -> int:
         description='Legt je Tor der ersten UEMS-Produktfreigabe vor, was belegt ist und was fehlt. '
                     'Das Werkzeug urteilt nicht darueber, ob ein Tor oeffnet - das tut der Betreiber selbst.',
         epilog='Exit 0 = kein Punkt offen · 1 = mindestens ein Punkt offen · 2 = Aufruffehler.')
-    p.add_argument('tor', choices=sorted(TORE), metavar='TOR', help='G0, G1, GA oder GB')
+    p.add_argument('tor', choices=sorted(TORE), metavar='TOR', help='G0, G1, GA, GB oder M6')
     p.add_argument('--stand', help='Stand-Blatt des Betreibers (Vorlage: tools/freigabe/freigabe-stand.example.yaml)')
     p.add_argument('--laeufe', help='Verzeichnis mit Surefire-Berichten; Vorgabe services/api/target/surefire-reports')
     p.add_argument('--blatt', help='datierte Ergebnisdatei des Bestandsblatts (M-1)')
