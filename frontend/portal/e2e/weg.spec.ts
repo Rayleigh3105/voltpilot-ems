@@ -37,7 +37,8 @@ const JETZT = new Date('2026-11-21T08:20:00Z');
 /** Der Tag, dessen Zahl der Weg liest: der Ausfall der Box Halle 2 (O1/F21). Er wird über „Stand am …“ erreicht. */
 const GESUCHTER_TAG = '2026-11-03';
 const STANDORT_LEISTE = ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'];
-const STANDORT_REITER = ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen'];
+// N1: am Rechner stehen dieselben Bereiche in der Seitenleiste.
+const STANDORT_SEITE = ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen'];
 
 /** Jede Station des Wegs: was gemessen wurde. Wird je Breite gesammelt und am Ende als eine Datei abgelegt. */
 interface Station {
@@ -130,6 +131,10 @@ async function messe(page: Page, tippflaechen: string) {
       reiter: [...document.querySelectorAll('[role="tablist"]:not(.vp-seg) [role="tab"]')]
         .filter(sichtbar)
         .map((e) => e.textContent?.trim() ?? ''),
+      // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen).
+      seite: [...document.querySelectorAll('.vp-ebenennav .vp-navitem .vp-nav-lbl')]
+        .filter(sichtbar)
+        .map((e) => e.textContent?.trim() ?? ''),
       text: main?.textContent ?? '',
     };
   }, tippflaechen);
@@ -191,9 +196,9 @@ test.describe('AP-13 IP-13 · der gemessene Weg (O17)', () => {
       await oeffne(page, `bild=standort&stand=${HEUTE}`, breite);
       await expect(page.locator('.vp-main')).toContainText('Werk Ahrenberg');
       const ebene = await station(page, breite, '01-ebene', gesammelt);
-      // Die Bereiche des Standorts — am Telefon als Leiste, am Rechner als Reiter (M3).
+      // Die Bereiche des Standorts — am Telefon als Leiste, am Rechner in der Seitenleiste (M3, N1).
       if (breite === 375) expect(ebene.leiste).toEqual(STANDORT_LEISTE);
-      else expect(ebene.reiter, `Reiter am Rechner: ${ebene.reiter.join(' · ')}`).toEqual(expect.arrayContaining(STANDORT_REITER));
+      else expect(ebene.seite, `Seitenleiste am Rechner: ${ebene.seite.join(' · ')}`).toEqual(expect.arrayContaining(STANDORT_SEITE));
 
       // ---------------------------------------------------------------- 2 · EBENE: Gebäude, Halle 2 aufgeklappt
       await zu(page, breite, 'Gebäude');
@@ -342,7 +347,8 @@ async function standAm(page: Page, iso: string) {
 /** Der Wechsel in einen Bereich der Ebene: am Telefon die Leiste, am Rechner der Reiter (M1/M3). */
 async function zu(page: Page, breite: number, bereich: string) {
   if (breite === 375) await page.locator('.vp-bottombar-item', { hasText: bereich }).first().click();
-  else await page.getByRole('tab', { name: bereich, exact: true }).first().click();
+  // N1: am Rechner trägt die Seitenleiste die Bereiche der Ebene.
+  else await page.locator('.vp-ebenennav .vp-navitem', { hasText: bereich }).first().click();
 }
 
 /**

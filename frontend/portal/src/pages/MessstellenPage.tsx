@@ -3,10 +3,10 @@ import { BegriffeZeile } from '../components/BegriffeZeile';
 import { useReiterRand } from '../reiterRand';
 import { MESSEN_EINRICHTEN } from '../messenEinstieg';
 import { Recht } from '../components/Recht';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { zeitraumAus } from '../anlageEnergiebilanz';
-import { api, type Kostenstelle, type KostenstelleEnergiePeriode, type MessstellenRegister, type Prozess, type StandortAusfall } from '../api';
+import { api, type KostenstelleEnergiePeriode, type MessstellenRegister, type StandortAusfall } from '../api';
 import '../components/BereichTabs.css';
 import { MessstelleDialog } from '../components/MessstelleDialog';
 import { SummenwertRegisterEinstieg } from '../components/SummenwertRegisterEinstieg';
@@ -15,7 +15,8 @@ import { StandAm } from '../components/StandAm';
 import { VpPicker } from '../components/VpPicker';
 import { UEMS_WERTE } from '../glossar';
 import { heuteIn } from '../kennzahlKarte';
-import { REITER_LABEL, REITER_WORT, hervorAus, reiterAus, reiterDa, reiterHash, type MessstellenReiter } from '../kostenstellenUebersicht';
+import { REITER_LABEL, REITER_WORT, hervorAus, reiterAus, reiterHash, type MessstellenReiter } from '../kostenstellenUebersicht';
+import { flaecheMelden, organisationReiter, useOrganisation } from '../messstellenOrganisation';
 import {
   ERNEUT,
   FILTER,
@@ -80,6 +81,7 @@ export function MessstellenPage({
   onWerteVergleich,
   onListe,
   organisation = false,
+  reiterOben = false,
   ...register
 }: RegisterProps & {
   /** Die Messstelle der Adresse (AP-04 IP-8) — dann steht ihre Seite statt des Registers. */
@@ -98,6 +100,11 @@ export function MessstellenPage({
    * Kataloge gar nicht.
    */
   organisation?: boolean;
+  /**
+   * N5 (Konzept „Navigation aus einem Guss“): stehen „Kostenstellen“ und „Prozesse“ in der Reihe der Gruppe „Messen“
+   * über der Seite, zeigt die Fläche ihre eigene Reihe nicht — es gibt höchstens eine.
+   */
+  reiterOben?: boolean;
 }) {
   if (messstelleId && onListe) {
     return (
@@ -112,11 +119,9 @@ export function MessstellenPage({
       />
     );
   }
-  if (organisation) return <MessstellenWelt {...register} onOeffnen={onOeffnen} />;
+  if (organisation) return <MessstellenWelt {...register} onOeffnen={onOeffnen} reiterOben={reiterOben} />;
   return <RegisterFlaeche {...register} onOeffnen={onOeffnen} />;
 }
-
-type Organisation = { kostenstellen: Kostenstelle[]; prozesse: Prozess[] };
 
 /**
  * Die Welt Messstellen am Unternehmen mit ihren Reitern Liste · Kostenstellen · Prozesse (AP-13 IP-9). Reiter und
@@ -124,47 +129,44 @@ type Organisation = { kostenstellen: Kostenstelle[]; prozesse: Prozess[] };
  * ersetzt, nicht gestapelt — wie die Zeit-Leiste der Energiebilanz. Ohne Kostenstelle und ohne Prozess ist die Fläche das
  * Register von heute, ohne Leiste.
  */
-function MessstellenWelt(register: RegisterProps) {
-  const [katalog, setKatalog] = useState<Organisation | null>(null);
+function MessstellenWelt({ reiterOben = false, ...register }: RegisterProps & { reiterOben?: boolean }) {
+  // Die Kataloge teilt die Fläche mit der Reihe der Gruppe „Messen“ (N5); beim Öffnen fragt sie sie neu.
+  const katalog = useOrganisation(true, true);
   const [reiter, setReiter] = useState<MessstellenReiter>(() => reiterAus(window.location.hash));
   const [heute] = useState(() => heuteIn(VORGABE_ZEITZONE, Date.now()));
   const [wahl, setWahl] = useState(() => zeitraumAus(window.location.hash, heute));
   const [hervor] = useState(() => hervorAus(window.location.hash));
 
+  // Ändert sich die Adresse von außen (Zurück, ein Verweis), folgt die Fläche ihr; die Reihe von „Messen“ wählt über
+  // `flaecheMelden` wie früher die eigene Reihe.
   useEffect(() => {
-    let aktiv = true;
-    // Ein Katalog, der nicht antwortet, bringt keinen Reiter — das Register bleibt, wie es war.
-    Promise.all([
-      api.kostenstellen().then(
-        (k) => k.kostenstellen,
-        () => [] as Kostenstelle[],
-      ),
-      api.prozesse().then(
-        (p) => p.prozesse,
-        () => [] as Prozess[],
-      ),
-    ]).then(([kostenstellen, prozesse]) => {
-      if (aktiv) setKatalog({ kostenstellen, prozesse });
-    });
-    return () => {
-      aktiv = false;
+    const folgen = () => {
+      setReiter(reiterAus(window.location.hash));
+      setWahl(zeitraumAus(window.location.hash, heute));
     };
-  }, []);
+    window.addEventListener('hashchange', folgen);
+    return () => window.removeEventListener('hashchange', folgen);
+  }, [heute]);
 
-  const da = katalog ? reiterDa(katalog.kostenstellen.length, katalog.prozesse.length) : [];
+  const da = organisationReiter(katalog) ?? [];
   // Solange die Kataloge unterwegs sind, gilt der Reiter der Adresse; danach nur einer, den es gibt.
   const offen: MessstellenReiter = katalog === null || da.includes(reiter) ? reiter : 'liste';
 
-  const waehleReiter = (r: MessstellenReiter) => {
-    setReiter(r);
-    replaceCurrentNavigation(reiterHash(r, wahl));
-  };
+  const waehleReiter = useCallback(
+    (r: MessstellenReiter) => {
+      setReiter(r);
+      replaceCurrentNavigation(reiterHash(r, wahl));
+    },
+    [wahl],
+  );
+  // N5: die Reihe von „Messen“ zeigt den offenen Reiter der Fläche und wählt über sie — mit ihrem Zeitraum.
+  useEffect(() => flaecheMelden({ offen, waehlen: waehleReiter }), [offen, waehleReiter]);
   const waehleZeitraum = (periode: KostenstelleEnergiePeriode, am: string) => {
     setWahl({ periode, am });
     replaceCurrentNavigation(reiterHash(offen, { periode, am }));
   };
 
-  const leiste = da.length > 0 ? <ReiterLeiste reiter={da} aktiv={offen} onWahl={waehleReiter} /> : null;
+  const leiste = da.length > 0 && !reiterOben ? <ReiterLeiste reiter={da} aktiv={offen} onWahl={waehleReiter} /> : null;
   if (offen === 'liste') return <RegisterFlaeche {...register} leiste={leiste} />;
   return (
     <div className="vp-ms" data-testid="messstellen-organisation">

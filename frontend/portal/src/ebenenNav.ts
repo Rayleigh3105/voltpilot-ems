@@ -521,19 +521,26 @@ export interface EbenenKachel extends EbenenBereich {
 }
 
 /**
- * Eine Kachel der TELEFON-LEISTE einer Ebene. Am Standort ist sie genau ein
- * Bereich; am Unternehmen eine GRUPPE von Bereichen ({@link UNTERNEHMEN_GRUPPEN}),
- * damit die Leiste nie mehr als fünf Kacheln trägt. `bereiche` nennt, welche
- * Bereiche sie hervorhebt; `ziel` ist die Seite des ersten davon.
+ * Ein EINTRAG einer Ebene — derselbe in der Seitenleiste am Rechner und als Kachel der Telefon-Leiste (Konzept
+ * „Navigation aus einem Guss“, R1/R2). Am Standort ist er genau ein Bereich; am Unternehmen eine GRUPPE von Bereichen
+ * ({@link UNTERNEHMEN_GRUPPEN}), ohne Messfunktion eine Seite der Flotte ({@link flottenEintraege}) — nie mehr als
+ * fünf. `bereiche` nennt, welche Bereiche er hervorhebt; `ziel` ist die Seite des ersten davon.
  */
 export interface EbenenLeistenKachel {
   key: string;
   label: string;
+  /** Die kürzere Beschriftung der Telefon-Leiste („Anschlüsse“); die Seitenleiste behält das volle Wort. */
+  kurz?: string;
   icon: IconName;
   ziel: Route;
   bereiche: readonly EbenenBereichId[];
   /** K1: die Arbeitsfrage einer Unternehmens-Gruppe („Können wir es belegen?“); am Standort keine. */
   frage?: string;
+  /**
+   * N3: Einträge der Flotte meinen SEITEN — „Energie“ und „Erlöse“ wohnen im Bereich „Übersicht“. Sie leuchten nach
+   * der offenen Seite ({@link aktiverEintrag}), und die Reiter der Seite zeigen sie kein zweites Mal.
+   */
+  seiten?: readonly PageId[];
 }
 
 /** Die Ebene, deren Bereiche gemeint sind. */
@@ -566,6 +573,10 @@ export interface EbenenLesemodell {
    * Unternehmen oder an einem Standort)? Fehlt der Wert, gibt es den Bereich „Energiemanagement“ nicht.
    */
   energiemanagement?: boolean | null;
+  /**
+   * N3: trägt die Flotte Geld (`geldWelt.hatGeldWelt`)? Nur dann hat sie den Eintrag „Erlöse“ — wie der Reiter bisher.
+   */
+  geldWelt?: boolean | null;
 }
 
 const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
@@ -780,9 +791,10 @@ export const LEISTE_HOECHSTENS = 5;
 /**
  * Die GRUPPEN des Unternehmens — nach Arbeitsfragen statt nach Bereichen (Konzept „Energiemanagement ohne
  * Fachsprache“ K1, Entscheide D1/D2). Mit allen Rechten hat das Unternehmen neun Bereiche; neun Kacheln auf 375 px
- * sind je gut 40 px breit, und „Messstellen“ brach dort mitten im Wort. Die Telefon-Leiste trägt deshalb höchstens
- * fünf GRUPPEN in der Reihenfolge der Arbeit — sehen, messen, auswerten, verbessern, nachweisen. Am Rechner stehen
- * dieselben Gruppen als obere Reihe (`PortfolioTabs`), darunter ihre Frage und nur die Reiter der offenen Gruppe.
+ * sind je gut 40 px breit, und „Messstellen“ brach dort mitten im Wort. Seitenleiste und Telefon-Leiste tragen deshalb
+ * höchstens fünf GRUPPEN in der Reihenfolge der Arbeit — sehen, messen, auswerten, verbessern, nachweisen (Konzept
+ * „Navigation aus einem Guss“, N1); über der Seite stehen nur die Reiter der offenen Gruppe, ihre Frage steht unter dem
+ * offenen Eintrag der Seitenleiste (N4).
  *
  * „Nachweisen“ trägt die Berichte und die Reiter des Energiemanagements (ohne zweite Reiterreihe); dessen
  * Wiedervorlage steht in der Übersicht, weil sie „Was steht an?“ beantwortet ({@link ebenenAktiv}). Adressen und
@@ -805,38 +817,119 @@ export const UNTERNEHMEN_GRUPPEN: readonly {
   { key: 'nachweisen', label: 'Nachweisen', icon: 'file-text', frage: 'Können wir es belegen?', bereiche: ['energiemanagement', 'berichte'] },
 ];
 
-/** Kürzere Telefon-Beschriftungen am Standort; Reiter und Überschriften behalten die vollen Wörter. */
+/** Kürzere Telefon-Beschriftungen am Standort; Seitenleiste, Reiter und Überschriften behalten die vollen Wörter. */
 const LEISTE_KURZ: Partial<Record<EbenenBereichId, string>> = {
   netzanschluesse: 'Anschlüsse',
 };
 
+/** Die Bereiche einer Ebene MIT Seite, in der Reihenfolge von {@link ebenenBereiche}. */
+function bereicheMitSeite(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeiten): EbenenKachel[] {
+  const ziele = seiten(ort, lm);
+  return ebenenBereiche(ort, lm).flatMap((b) => {
+    const ziel = ziele[b.key];
+    return ziel ? [{ ...b, ziel }] : [];
+  });
+}
+
 /**
- * Die Telefon-Leiste einer Ebene: am Standort ihre Bereiche MIT Seite (höchstens
- * fünf), am Unternehmen deren Gruppen ({@link UNTERNEHMEN_GRUPPEN}) — oder keine
- * (leer), wenn es weniger als drei Kacheln sind. `--vp-bar-slots` folgt der Zahl
- * wie in der Anlage.
+ * Die GRUPPEN des Unternehmens mit Seite ({@link UNTERNEHMEN_GRUPPEN}) — erst ab drei, wie die Leiste. Darunter misst
+ * noch kein Standort; dann gelten die Einträge der Flotte ({@link flottenEintraege}), und `[]` heißt: keine Gruppen.
+ */
+export function unternehmensGruppen(lm: EbenenLesemodell, seiten: EbenenSeiten = EBENEN_SEITEN): EbenenLeistenKachel[] {
+  const mitSeite = bereicheMitSeite({ art: 'unternehmen' }, lm, seiten);
+  const gruppen = UNTERNEHMEN_GRUPPEN.flatMap((g) => {
+    // In der Reihenfolge der Gruppe: „Nachweisen“ öffnet das Verzeichnis, ohne Energiemanagement die Berichte.
+    const drin = g.bereiche.flatMap((key) => mitSeite.filter((b) => b.key === key));
+    return drin.length > 0
+      ? [{ key: g.key, label: g.label, icon: g.icon, ziel: drin[0].ziel, bereiche: drin.map((b) => b.key), frage: g.frage }]
+      : [];
+  });
+  return gruppen.length >= EBENEN_LEISTE_AB ? gruppen.slice(0, LEISTE_HOECHSTENS) : [];
+}
+
+/**
+ * N3 (Konzept „Navigation aus einem Guss“): die Einträge der FLOTTE — „Meine Anlagen“, „Portfolio“ und ein Unternehmen,
+ * an dem noch kein Standort misst. Es sind die Seiten, die bisher Reiter der Flotte waren: Übersicht · Standorte ·
+ * Energie · Erlöse. „Erlöse“ nur mit Geld (wie der Reiter bisher) oder wenn die Seite gerade offen ist — eine offene
+ * Seite ohne Eintrag wäre eine Sackgasse.
+ */
+export function flottenEintraege(i: { standorte: boolean; geldWelt: boolean; offen?: PageId | null }): EbenenLeistenKachel[] {
+  const out: EbenenLeistenKachel[] = [
+    { key: 'uebersicht', label: 'Übersicht', icon: 'dashboard', ziel: pageRoute('portfolio'), bereiche: ['uebersicht'], seiten: ['portfolio'] },
+  ];
+  if (i.standorte) {
+    out.push({ key: 'standorte', label: 'Standorte', icon: 'map-pin', ziel: pageRoute('portfolio-standorte'), bereiche: ['standorte'], seiten: ['portfolio-standorte'] });
+  }
+  out.push({ key: 'energie', label: 'Energie', icon: 'activity', ziel: pageRoute('portfolio-messwerte'), bereiche: [], seiten: ['portfolio-messwerte'] });
+  if (i.geldWelt || i.offen === 'portfolio-erloese') {
+    out.push({ key: 'erloese', label: 'Erlöse', icon: 'euro', ziel: pageRoute('portfolio-erloese'), bereiche: [], seiten: ['portfolio-erloese'] });
+  }
+  return out;
+}
+
+/**
+ * Die EINTRÄGE einer Ebene (Konzept „Navigation aus einem Guss“, R1/R2) — dieselben in der Seitenleiste am Rechner
+ * und in der Telefon-Leiste, damit beide nie auseinanderlaufen: am Standort seine Bereiche mit Seite, am Unternehmen
+ * seine Gruppen, ohne Messfunktion die Seiten der Flotte (N3). Höchstens fünf.
+ */
+export function ebenenEintraege(
+  ort: EbenenOrt,
+  lm: EbenenLesemodell,
+  seiten: EbenenSeiten = EBENEN_SEITEN,
+  offen: PageId | null = null,
+): EbenenLeistenKachel[] {
+  if (ort.art === 'unternehmen') {
+    const gruppen = unternehmensGruppen(lm, seiten);
+    if (gruppen.length > 0) return gruppen;
+    const standorte = ebenenBereiche(ort, lm).some((b) => b.key === 'standorte');
+    return flottenEintraege({ standorte, geldWelt: lm.geldWelt === true, offen });
+  }
+  return bereicheMitSeite(ort, lm, seiten)
+    .map((b) => ({ key: b.key, label: b.label, kurz: LEISTE_KURZ[b.key], icon: b.icon, ziel: b.ziel, bereiche: [b.key] }))
+    .slice(0, LEISTE_HOECHSTENS);
+}
+
+/**
+ * Die Leiste einer Ebene — Telefon-Leiste und Seitenleiste zugleich: die Einträge ({@link ebenenEintraege}), erst ab
+ * drei (E4 = A); darunter keine, und die Reiter der Seite navigieren wie bisher. `--vp-bar-slots` folgt der Zahl wie
+ * in der Anlage.
  */
 export function ebenenLeiste(
   ort: EbenenOrt,
   lm: EbenenLesemodell,
   seiten: EbenenSeiten = EBENEN_SEITEN,
+  offen: PageId | null = null,
 ): EbenenLeistenKachel[] {
-  const ziele = seiten(ort, lm);
-  const mitSeite = ebenenBereiche(ort, lm).flatMap((b) => {
-    const ziel = ziele[b.key];
-    return ziel ? [{ ...b, ziel }] : [];
-  });
-  const kacheln: EbenenLeistenKachel[] =
-    ort.art === 'unternehmen'
-      ? UNTERNEHMEN_GRUPPEN.flatMap((g) => {
-          // In der Reihenfolge der Gruppe: „Nachweisen“ öffnet das Verzeichnis, ohne Energiemanagement die Berichte.
-          const drin = g.bereiche.flatMap((key) => mitSeite.filter((b) => b.key === key));
-          return drin.length > 0
-            ? [{ key: g.key, label: g.label, icon: g.icon, ziel: drin[0].ziel, bereiche: drin.map((b) => b.key), frage: g.frage }]
-            : [];
-        })
-      : mitSeite.map((b) => ({ key: b.key, label: LEISTE_KURZ[b.key] ?? b.label, icon: b.icon, ziel: b.ziel, bereiche: [b.key] }));
-  return kacheln.length >= EBENEN_LEISTE_AB ? kacheln.slice(0, LEISTE_HOECHSTENS) : [];
+  const eintraege = ebenenEintraege(ort, lm, seiten, offen);
+  return eintraege.length >= EBENEN_LEISTE_AB ? eintraege : [];
+}
+
+/**
+ * Welcher Eintrag leuchtet: der, dessen Seiten die offene Seite nennen (Einträge der Flotte), sonst der, der den
+ * offenen Bereich trägt (`ebenenAktiv`). `null` = keiner — dann leuchtet auch nichts.
+ */
+export function aktiverEintrag(
+  eintraege: readonly EbenenLeistenKachel[],
+  page: PageId,
+  aktiv: EbenenBereichId | null,
+): string | null {
+  const nachSeite = eintraege.find((e) => e.seiten?.includes(page));
+  if (nachSeite) return nachSeite.key;
+  if (!aktiv) return null;
+  return eintraege.find((e) => e.bereiche.includes(aktiv))?.key ?? null;
+}
+
+/**
+ * R4 (Konzept „Navigation aus einem Guss“): eine DETAILSEITE — eine Kennzahl, ein Bericht, ein Energieeinsatz, ein
+ * Energieziel, eine Maßnahme, eine Abweichung, ein Eintrag des Energiemanagements, eine Messstelle. Sie zeigt ihren
+ * Rückweg („‹ Alle Kennzahlen“) statt der Reiter des Bereichs.
+ */
+export function istDetailseite(route: Route): boolean {
+  return Boolean(
+    route.kennzahlId || route.berichtKennung || route.energieeinsatzId || route.energiezielId || route.massnahmeId ||
+      route.abweichungId || route.dokumentId || route.personId || route.auditId || route.feststellungId ||
+      route.managementbewertungKennung || route.messstelleId,
+  );
 }
 
 /**

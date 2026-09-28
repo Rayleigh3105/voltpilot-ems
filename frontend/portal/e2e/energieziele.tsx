@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { api } from '../src/api';
 import { keycloak } from '../src/auth';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
-import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche } from '../src/ebenenNav';
+import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche, istDetailseite } from '../src/ebenenNav';
 import { darfAnsehen } from '../src/energieziele';
 import { energiezielRoute, hashForRoute, kennzahlRoute, pageRoute, parseRoute, verbesserungRoute, type Route } from '../src/nav';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
@@ -120,12 +120,16 @@ function Ansicht() {
         // K1 wie `App.tsx`: die Gruppen auch am Rechner, das Energiemanagement in „Nachweisen“.
         gruppen={kacheln}
         energiemanagementReiter={route.energiemanagementReiter ?? null}
+        // Wie `App.tsx`: „Verbessern“ trägt die Reiter von „Ziele und Maßnahmen“; Detailseiten zeigen ihren Rückweg.
+        verbesserungReiter={route.verbesserungReiter ?? null}
+        detail={istDetailseite(route)}
         onOpenBereich={navigate}
         fleetLabel="Unternehmen"
         onNavigate={(p) => navigate(pageRoute(p))}
       />
       {route.page === 'portfolio-verbesserung' ? (
         <VerbesserungBereich
+          reiterOben={kacheln.length > 0}
           reiter={route.verbesserungReiter ?? 'energieziele'}
           energiezielId={route.energiezielId ?? null}
           onReiter={(r) => navigate(verbesserungRoute(r))}

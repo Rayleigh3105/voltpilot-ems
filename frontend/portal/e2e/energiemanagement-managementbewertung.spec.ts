@@ -93,15 +93,16 @@ for (const breite of [375, 1440]) {
       await oeffne(page, 'lage=ahrenberg&mb=r13', breite, AM_12_02_2029_MORGEN);
       // K1/D2: die Reiter des Energiemanagements stehen in der Gruppe „Nachweisen“, neben den Berichten — ohne zweite
       // Reihe im Bereich. Die Wiedervorlage beantwortet „Was steht an?“ und steht in der Übersicht; ihre Adresse bleibt.
+      // N1: die Gruppen stehen am Rechner in der Seitenleiste, am Telefon in der Leiste.
       await expect(page.getByTestId('energiemanagement-bereich').locator('.vp-bereich-tabs')).toHaveCount(0);
       const reiter = page.getByRole('tablist', { name: 'Reiter der Gruppe Nachweisen' }).getByRole('tab');
       await expect(reiter).toHaveText(['Verzeichnis', 'Berichte', 'Dokumente', 'Aufgaben', 'Audits', 'Feststellungen', 'Managementbewertung']);
       if (breite < 720) await page.locator('.vp-bottombar').getByRole('button', { name: 'Übersicht', exact: true }).click();
-      else await page.getByTestId('gruppe-uebersicht').click();
+      else await page.getByTestId('seitenleiste-uebersicht').click();
       await page.getByTestId('energiemanagement-reiter-wiedervorlage').click();
       await expect(page).toHaveURL(/#\/portfolio\/energiemanagement\/wiedervorlage$/);
       await expect(page.getByTestId('energiemanagement-reiter-wiedervorlage')).toHaveAttribute('aria-selected', 'true');
-      if (breite >= 720) await expect(page.getByTestId('gruppe-uebersicht')).toHaveAttribute('aria-selected', 'true');
+      if (breite >= 720) await expect(page.getByTestId('seitenleiste-uebersicht')).toHaveAttribute('aria-current', 'page');
       const w = page.getByTestId('wiedervorlage');
       await expect(w.getByTestId('wiedervorlage-summe')).toHaveText('Stand 12.02.2029: 8 fällig · 1 in den nächsten 30 Tagen.');
       const faellig = w.getByTestId('wiedervorlage-faellig').locator('li');

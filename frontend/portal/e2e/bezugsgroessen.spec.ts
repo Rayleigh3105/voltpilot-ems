@@ -212,9 +212,9 @@ for (const breite of [375, 1440]) {
     await page.setViewportSize({ width: breite, height: 900 });
     await page.goto('/e2e/startansicht.html?bild=unternehmen&rechte=1&person=JW');
     // Am Telefon trägt die Leiste Gruppen: „Messen“ öffnet die Gruppe, darüber steht der Reiter „Bezugsgrößen“.
-    // K1 (D1): am Rechner stehen dieselben Gruppen als obere Reihe.
+    // N1: am Rechner stehen dieselben Gruppen in der Seitenleiste.
     if (breite === 375) await page.locator('.vp-bottombar').getByRole('button', { name: 'Messen', exact: true }).click();
-    else await page.getByRole('tab', { name: 'Messen', exact: true }).click();
+    else await page.getByTestId('seitenleiste-messen').click();
     await page.getByRole('tab', { name: 'Bezugsgrößen', exact: true }).click();
     await expect(page).toHaveURL(/#\/portfolio\/bezugsgroessen$/);
     await expect(page.getByTestId('bezugsgroesse-karte')).toHaveCount(11);

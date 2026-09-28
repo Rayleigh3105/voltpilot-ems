@@ -1380,11 +1380,25 @@
       "grund": "EIN Ort für Geräte: „Gerät hinzufügen“ (vorher „Gerät anbinden“) führt in den Aufbau der Anlage (?neu=geraet) — dort derselbe Gerätekatalog und derselbe Anlege-Fluss wie bisher im Assistenten. Recht geraet.einrichten unverändert."
     },
     {
+      "datei": "components/EbenenTabs.tsx",
+      "vorher": "00998a0a610e793a6748a922942fdb0f21764c599b0273a44e786d1c8c10a5cf",
+      "nachher": "9be87d8301945d0ec093a5efb18f138c1d5fba0a10d10cdd777933bf18cb2a20",
+      "commit": "uems · Navigation aus einem Guss (N1–N6)",
+      "grund": "N1/R2: Seitenleiste und Telefon-Leiste tragen dieselben Bereiche der Ebene. Ein Reiter, den sie tragen, wird über der Seite gar nicht mehr gezeigt (statt nur am Telefon ausgeblendet), darum entfällt die Klasse vp-nur-rechner. Wortlaut, Ziel und Handler unverändert."
+    },
+    {
       "datei": "components/PortfolioTabs.tsx",
-      "vorher": "25dbf686224bcfb121bb7e86724e0b5cec79b7b30708191de067dd6dc168c275",
-      "nachher": "8d25d76422cf3297e49706209eee42e054b177350e3adefa53aafb550637b79c",
-      "commit": "uems · Ein Ort für Boxen und Geräte (Aufbau)",
-      "grund": "Telefon-Leiste des Unternehmens in Gruppen (höchstens fünf Kacheln): am Telefon stehen nur die Reiter der offenen Gruppe, darum trägt auch „Übersicht“ vp-nur-rechner, wenn ihre Gruppe nicht offen ist. Wortlaut, Ziel und Rechner-Darstellung unverändert."
+      "vorher": "b4f0ce487488f6cb1b88d0e62bfb251d7ee7907c9ff1fc5625206b85b4ca16dc",
+      "nachher": "34786781eebc6f6ff2316d542cfde6b5f5779623e44939faefcd19be1d75e9af",
+      "commit": "uems · Navigation aus einem Guss (N1–N6)",
+      "grund": "N1/R2: ein Bereich des Standorts, den Seitenleiste und Telefon-Leiste tragen, steht nicht mehr zusätzlich als Reiter über der Seite, darum entfällt die Klasse vp-nur-rechner. Wortlaut, Ziel und Handler unverändert. (Der „Übersicht“-Knopf steht wieder im Ausgangsstand; die Fortschreibung aus „Ein Ort für Boxen und Geräte“ ist damit gegenstandslos.)"
+    },
+    {
+      "datei": "components/PortfolioTabs.tsx",
+      "vorher": "d232bd4991e3a78831bb4df16ae8e34bb87be61e92de8be73f002058e2007d0c",
+      "nachher": "17c89de5836d4e18107ab6ba2b11c3e998ea9560fb74dae41755e678f3832074",
+      "commit": "uems · Navigation aus einem Guss (N1–N6)",
+      "grund": "N1/R2: eine Seite der Ebene, die Seitenleiste und Telefon-Leiste tragen, steht nicht mehr zusätzlich als Reiter über der Seite, darum entfällt die Klasse vp-nur-rechner. Wortlaut, Ziel und Handler unverändert."
     }
   ],
   "assistentZusammenfuehrung": {

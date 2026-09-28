@@ -16,7 +16,8 @@ import { expect, test, type Page } from '@playwright/test';
 const BILDER = process.env.STANDORT_EBENEN_BILDER;
 const JETZT = new Date('2026-10-20T08:15:30Z');
 const AM_20_11 = new Date('2026-11-20T08:00:00Z');
-const STANDORT_REITER = ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse'];
+// N1: dieselben Bereiche stehen am Rechner in der Seitenleiste (volle Wörter).
+const STANDORT_SEITE = ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse'];
 // Die Leiste trägt höchstens fünf Kacheln und kürzt „Netzanschlüsse“ (`ebenenNav.LEISTE_KURZ`).
 const STANDORT_LEISTE = ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'];
 
@@ -56,6 +57,9 @@ async function messe(page: Page) {
       // Ein Zeitraum-Segment (`ZeitSegment`, `.vp-seg`) ist kein Reiter — die Übersicht trägt eines seit AP-13 IP-7.
       reiter: texte('[role="tablist"]:not(.vp-seg) [role="tab"]'),
       reiterAktiv: texte('[role="tablist"]:not(.vp-seg) [role="tab"][aria-selected="true"]'),
+      // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen).
+      seite: texte('.vp-ebenennav .vp-navitem .vp-nav-lbl'),
+      seiteAktiv: texte('.vp-ebenennav .vp-navitem[aria-current="page"] .vp-nav-lbl')[0] ?? null,
       gebaeude: texte('.vp-ob-knoten[data-art="gebaeude"] > .vp-ob-zeile .vp-st-name-text'),
       aufklapper: document.querySelectorAll('.vp-ob-aufklapper').length,
       anlagen: texte('.vp-at-name-text, .vp-at-karte-name'),
@@ -83,7 +87,7 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
   expect(m.ueberstehend, `${fall}: überstehende Elemente`).toEqual([]);
 }
 
-function leisteOderReiter(m: Awaited<ReturnType<typeof messe>>, breite: number, aktiv: string, fall: string) {
+function leisteOderSeite(m: Awaited<ReturnType<typeof messe>>, breite: number, aktiv: string, fall: string) {
   if (breite === 375) {
     // Am Telefon trägt die Leiste die Bereiche — was sie trägt, ist kein zweites Mal Reiter.
     expect(m.leiste, `${fall}: Kacheln`).toEqual(STANDORT_LEISTE);
@@ -91,9 +95,11 @@ function leisteOderReiter(m: Awaited<ReturnType<typeof messe>>, breite: number, 
     expect(m.reiter, `${fall}: Reiter am Telefon`).toEqual([]);
     for (const h of m.tippflaechen) expect(h, `${fall}: Tippfläche`).toBeGreaterThanOrEqual(44);
   } else {
+    // N1: am Rechner trägt die Seitenleiste dieselben Bereiche — über der Seite steht keine Reihe derselben Bereiche.
     expect(m.leiste, `${fall}: keine Leiste am Rechner`).toBeNull();
-    expect(m.reiter, `${fall}: Reiter`).toEqual(STANDORT_REITER);
-    expect(m.reiterAktiv, `${fall}: offener Reiter`).toEqual([aktiv]);
+    expect(m.seite, `${fall}: Seitenleiste`).toEqual(STANDORT_SEITE);
+    expect(m.seiteAktiv, `${fall}: offener Eintrag`).toBe(aktiv);
+    expect(m.reiter, `${fall}: Reiter`).toEqual([]);
   }
 }
 
@@ -111,7 +117,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       // AP-13 IP-10: jedes Gebäude trägt jetzt seine Karte — der Aufklapper hat ein Ziel (die Blöcke prüft
       // `gebaeude-karte.spec.ts`).
       expect(m.aufklapper).toBe(3);
-      leisteOderReiter(m, breite, 'Gebäude', `gebaeude-${breite}`);
+      leisteOderSeite(m, breite, 'Gebäude', `gebaeude-${breite}`);
       await ablegen(page, `gebaeude-${breite}`, m);
       await ablegen(page, `gebaeude-${breite}-ganz`, m, true);
     }
@@ -149,7 +155,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       await expect(page.getByRole('menuitem', { name: 'VoltPilot-Box hinzufügen' })).toBeVisible();
       await expect(page.getByRole('menuitem', { name: 'Anlage hinzufügen' })).toBeVisible();
       await page.keyboard.press('Escape');
-      leisteOderReiter(m, breite, 'Aufbau', `aufbau-${breite}`);
+      leisteOderSeite(m, breite, 'Aufbau', `aufbau-${breite}`);
       await ablegen(page, `aufbau-${breite}`, m, true);
     }
   });
@@ -235,9 +241,11 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       const m = await messe(page);
       ohneQuerlauf(m, `lindach-leer-${breite}`);
       expect(m.titel).toBe('Gebäude');
-      // AP-10 IP-13: Übersicht · Messstellen · Netzanschlüsse tragen jetzt auch ohne Gebäude die Leiste.
+      // AP-10 IP-13: Übersicht · Messstellen · Netzanschlüsse tragen jetzt auch ohne Gebäude die Leiste. N1: am Rechner
+      // stehen dieselben Bereiche in der Seitenleiste.
       expect(m.leiste).toEqual(breite < 721 ? ['Übersicht', 'Aufbau', 'Messstellen', 'Anschlüsse'] : null);
-      expect(m.reiter).toEqual(breite < 721 ? [] : ['Übersicht', 'Aufbau', 'Messstellen', 'Netzanschlüsse']);
+      expect(m.seite).toEqual(breite < 721 ? [] : ['Übersicht', 'Aufbau', 'Messstellen', 'Netzanschlüsse']);
+      expect(m.reiter).toEqual([]);
       await ablegen(page, `lindach-leer-${breite}`, m);
     }
   });
@@ -289,20 +297,24 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     expect(betrieb.einstiege).toEqual([]);
   });
 
-  test('oberste Ebene (nur Werk Ahrenberg) bei 1440 px: die Reiter tragen Aufbau, Gebäude und Netzanschlüsse — auf ihrer Seite ist „Übersicht“ nicht gewählt', async ({ page }) => {
+  test('oberste Ebene (nur Werk Ahrenberg) bei 1440 px: die Seitenleiste trägt Aufbau, Gebäude und Netzanschlüsse — auf ihrer Seite ist „Übersicht“ nicht gewählt', async ({ page }) => {
     await oeffne(page, 'bild=standort', 1440);
     const m = await messe(page);
     ohneQuerlauf(m, 'oben-1440');
-    expect(m.reiter.slice(0, 4)).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Netzanschlüsse']);
+    // N1: die Bereiche des Standorts stehen in der Seitenleiste, über der Seite nur die Reiter der Übersicht.
+    expect(m.seite).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(m.seiteAktiv).toBe('Übersicht');
+    for (const b of ['Aufbau', 'Gebäude', 'Netzanschlüsse']) expect(m.reiter).not.toContain(b);
     expect(m.reiterAktiv).toEqual(['Übersicht']);
-    await page.getByRole('tab', { name: 'Gebäude' }).click();
+    await page.getByTestId('seitenleiste-gebaeude').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/gebaeude$/);
     await expect(page.locator('[data-testid="ortsbaum"]')).toBeVisible();
     const g = await messe(page);
     ohneQuerlauf(g, 'oben-gebaeude-1440');
-    expect(g.reiterAktiv).toEqual(['Gebäude']);
+    expect(g.seiteAktiv).toBe('Gebäude');
+    expect(g.reiterAktiv).toEqual([]);
     await ablegen(page, 'oben-gebaeude-1440', g);
-    await page.getByRole('tab', { name: 'Übersicht' }).click();
+    await page.getByTestId('seitenleiste-uebersicht').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+$/);
   });
 });

@@ -341,8 +341,12 @@ export function kopfPfad(i: {
     }
     return { vor: [], hier: null };
   }
-  if (route.page === 'portfolio' && ebene.art === 'unternehmen' && ebene.name) {
-    return { vor: [], hier: ebene.name };
+  // N6 (Konzept „Navigation aus einem Guss“): jede Seite einer Ebene nennt in der Kopfzeile den ORT, nie ihren eigenen
+  // Namen — der steht in der Seite, und die Seitenleiste zeigt, wo man ist.
+  if (isPortfolioPage(route.page)) {
+    if (ebene.art === 'unternehmen') return { vor: [], hier: ebene.name ?? i.fleetLabel };
+    if (ebene.art === 'standort') return { vor: [], hier: ebene.standort.name };
+    if (showPortfolioNav(shell) || showOverviewNav(shell)) return { vor: [], hier: i.fleetLabel };
   }
   return { vor: [], hier: null };
 }

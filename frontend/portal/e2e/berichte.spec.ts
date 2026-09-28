@@ -27,7 +27,8 @@ const AM_2036 = new Date('2036-11-02T09:00:00Z');
 const NB = String.fromCharCode(160);
 // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); die Berichte wohnen in „Auswerten“,
 // über der Seite stehen am Telefon nur deren Reiter.
-// K1/D2: die Berichte sind Belege — sie stehen in der Gruppe „Nachweisen“.
+// K1/D2: die Berichte sind Belege — sie stehen in der Gruppe „Nachweisen“. N1: am Rechner stehen dieselben Gruppen in
+// der Seitenleiste.
 const LEISTE = ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen'];
 
 async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
@@ -57,6 +58,7 @@ async function messe(page: Page) {
       .filter((e) => sichtbar(e) && !e.closest('.vp-bereich-tabs, .vp-br-wahl'))
       .filter((e) => e.getBoundingClientRect().right > breite + 0.5)
       .map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`);
+    const eintrag = (e: Element) => text(e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'));
     const reiter = (aktiv: boolean) =>
       [...document.querySelectorAll<HTMLElement>(`[role="tablist"] [role="tab"]${aktiv ? '[aria-selected="true"]' : ''}`)]
         .filter((t) => sichtbar(t) && !t.closest('.vp-br-wahl'))
@@ -70,6 +72,9 @@ async function messe(page: Page) {
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
       reiter: reiter(false),
       reiterAktiv: reiter(true),
+      // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen) — ohne die Frage des offenen Eintrags.
+      seite: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem')].filter((e) => sichtbar(e)).map(eintrag),
+      seiteAktiv: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem[aria-current="page"]')].filter((e) => sichtbar(e)).map(eintrag)[0] ?? null,
       karten: [...document.querySelectorAll('[data-testid="bericht-karte"]')].map((k) => text(k)),
       stand: [...document.querySelectorAll('[data-testid="bericht-stand"]')].map((k) => text(k)),
       titel: text(document.querySelector('.vp-br-kopf h1')),
@@ -135,9 +140,10 @@ test.describe('Berichte — die Liste', () => {
     await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    // K1 (D1): am Rechner die Gruppen, die offene ist „Nachweisen“ — mit nur einem Bereich ohne zweite Reihe.
-    expect(m.reiter).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
-    expect(m.reiterAktiv).toEqual(['Nachweisen']);
+    // N1: am Rechner die Gruppen in der Seitenleiste, die offene ist „Nachweisen“ — mit nur einem Bereich ohne Reihe.
+    expect(m.seite).toEqual(LEISTE);
+    expect(m.seiteAktiv).toBe('Nachweisen');
+    expect(m.reiter).toEqual([]);
     expect(m.stand).toEqual(['Berichtsstand Nr. 2']);
     await ablegen(page, 'liste-1440', m);
     await page.getByTestId('bericht-karte').click();
@@ -224,7 +230,9 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await expect(page.locator('.vp-br-zeile-kopf')).toContainText('Berichtsstand Nr. 1');
     const m = await messe(page);
     ohneQuerlauf(m, 'nr1-1440');
-    expect(m.reiterAktiv).toEqual(['Nachweisen']);
+    expect(m.seiteAktiv).toBe('Nachweisen');
+    // R4: die Berichtsseite zeigt ihren Rückweg statt einer Reihe.
+    expect(m.reiterAktiv).toEqual([]);
     expect(m.kopfZeile).toBe('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(m.abzeichen).toEqual(['ersetzt durch Nr. 2 (16.11.2026)']);
     expect(m.pruefsumme).toBe('sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03');

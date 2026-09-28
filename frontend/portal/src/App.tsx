@@ -46,6 +46,7 @@ import {
   isGeraeteBereich,
   hashForRoute,
   isBootHash,
+  isPortfolioPage,
   pageRoute,
   parseMessstelleWerte,
   PLATFORM_PAGES,
@@ -81,6 +82,7 @@ import { geldAnlagen, type UebersichtEbene } from './uebersicht';
 import { showAddAnlageButton } from './addAnlage';
 import {
   activeAreaKey,
+  aktiverEintrag,
   anlageSidebar,
   ebenenAktiv,
   ebenenBereiche,
@@ -88,11 +90,15 @@ import {
   ebenenOrt,
   ebenenReiter,
   ebenenTitel,
+  EBENEN_SEITEN,
+  flottenEintraege,
+  istDetailseite,
   misstAnlage,
   resolveAnlage,
   standortEinstiege,
   telefonReiterBereiche,
   standortBereichFuer,
+  unternehmensGruppen,
   type EbenenLesemodell,
 } from './ebenenNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
@@ -1193,6 +1199,9 @@ function UnifiedPortal() {
         // `#/anlagen` ist ersatzlos aufgegangen.
         onOpenFleet: fleetLevel ? () => navigate(flottenLandung(shellFrame)) : null,
         pfad: pfad.vor.map(pfadEintrag),
+        // N2 (Konzept „Navigation aus einem Guss“): ganz oben in der Seitenleiste der Weg EINE Ebene höher — der
+        // Standort der Anlage, sonst die Flotte; ohne Ebene darüber keiner.
+        hoch: pfad.vor.length > 0 ? pfadEintrag(pfad.vor[pfad.vor.length - 1]) : null,
         // Composed from the devices list the shell holds (kept current by the
         // silent refresh above - a freshness verdict needs FRESH data, not a
         // clock ticking over a frozen one) plus whatever the Anlagen-Seite
@@ -1220,15 +1229,30 @@ function UnifiedPortal() {
     verbesserung: selbst ? darfVerbesserungSehen(selbst) : null,
     // AP-19 IP-9: „Energiemanagement“ nur mit `energiemanagement.ansehen`.
     energiemanagement: selbst ? darfEnergiemanagementSehen(selbst) : null,
+    // N3: der Eintrag „Erlöse“ der Flotte nur mit Geld — wie bisher der Reiter.
+    geldWelt: hatGeldWelt(geldSites),
   };
-  const ebenenKacheln = ebenenOrtHier ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell) : [];
+  // N3 (Konzept „Navigation aus einem Guss“): die Flotte ohne Standorte („Meine Anlagen“, „Portfolio“) hat dieselben
+  // Einträge wie jede Ebene — Übersicht · Standorte · Energie · Erlöse in Seitenleiste und Telefon-Leiste.
+  const flotteHier = !anlageNav && !ebenenOrtHier && ebene.art === 'heute' && fleetLevel && isPortfolioPage(page);
+  const ebenenKacheln = ebenenOrtHier
+    ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell, EBENEN_SEITEN, page)
+    : flotteHier
+      ? flottenEintraege({ standorte: true, geldWelt: ebenenLesemodell.geldWelt === true, offen: page })
+      : [];
   const standortBereich = standortBereichFuer(route, ebenenLesemodell);
+  const aktivHier = ebenenAktiv(page, standortBereich, route.energiemanagementReiter);
   const ebenenNav =
-    ebenenOrtHier && ebenenKacheln.length > 0
+    (ebenenOrtHier || flotteHier) && ebenenKacheln.length > 0
       ? {
-          titel: ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen'),
+          titel: ebenenOrtHier
+            ? ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen')
+            : `Bereiche von ${flotte}`,
           kacheln: ebenenKacheln,
-          aktiv: ebenenAktiv(page, standortBereich, route.energiemanagementReiter),
+          aktiv: aktivHier,
+          aktivKey: aktiverEintrag(ebenenKacheln, page, aktivHier),
+          // N2: am Standort unter einem Unternehmen der Weg zu ihm; auf der obersten Ebene keiner.
+          hoch: pfad.vor.length > 0 ? pfadEintrag(pfad.vor[pfad.vor.length - 1]) : null,
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
@@ -1249,15 +1273,14 @@ function UnifiedPortal() {
   const verbesserungDa = ebenenFakten ? bereicheHier.includes('verbesserung') : null;
   // AP-19 IP-9: der Reiter „Energiemanagement“ nach derselben Regel mit `energiemanagement.ansehen`.
   const energiemanagementDa = ebenenFakten ? bereicheHier.includes('energiemanagement') : null;
-  // Die Bereiche, die die Telefon-Leiste trägt (am Unternehmen in Gruppen), und die Reiter, die am Telefon über der
-  // offenen Seite bleiben: die Bereiche der Gruppe, in der sie wohnt.
+  // Die Bereiche und Seiten, die Seitenleiste und Telefon-Leiste tragen (am Unternehmen in Gruppen) — über der Seite
+  // stehen sie kein zweites Mal —, und die Reiter der Gruppe, in der die offene Seite wohnt.
   const leisteHier = ebenenKacheln.flatMap((k) => k.bereiche);
-  const telefonReiterHier =
-    ebenenOrtHier?.art === 'unternehmen'
-      ? telefonReiterBereiche(ebenenKacheln, ebenenAktiv(page, standortBereich, route.energiemanagementReiter))
-      : null;
-  // K1 (D1): am Unternehmen stehen die Gruppen auch am Rechner über der Seite, darunter nur die Reiter der offenen.
-  const gruppenHier = ebenenOrtHier?.art === 'unternehmen' && telefonReiterHier !== null ? ebenenKacheln : [];
+  const leisteSeitenHier = ebenenKacheln.flatMap((k) => k.seiten ?? []);
+  const gruppenListe = ebenenOrtHier?.art === 'unternehmen' ? unternehmensGruppen(ebenenLesemodell) : [];
+  const telefonReiterHier = gruppenListe.length > 0 ? telefonReiterBereiche(gruppenListe, aktivHier) : null;
+  // N1: die Gruppen stehen in der Seitenleiste (am Telefon in der Leiste); über der Seite nur die Reiter der offenen.
+  const gruppenHier = telefonReiterHier !== null ? gruppenListe : [];
   // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
   const standortReiter =
@@ -1464,6 +1487,7 @@ function UnifiedPortal() {
             showVerbesserung={verbesserungDa === true}
             showEnergiemanagement={energiemanagementDa === true}
             leiste={leisteHier}
+            leisteSeiten={leisteSeitenHier}
             telefonReiter={telefonReiterHier}
             fleetLabel={flotte}
             onNavigate={navigateSchale}
@@ -1472,6 +1496,9 @@ function UnifiedPortal() {
             onOpenBereich={navigate}
             gruppen={gruppenHier}
             energiemanagementReiter={route.energiemanagementReiter ?? null}
+            verbesserungReiter={route.verbesserungReiter ?? null}
+            // R4: eine Detailseite zeigt ihren Rückweg statt der Reiter des Bereichs.
+            detail={istDetailseite(route)}
           />
           {standortReiter.length > 0 && ebenenOrtHier && (
             <EbenenTabs
@@ -1541,6 +1568,8 @@ function UnifiedPortal() {
               onKennzahl={(id) => navigate(kennzahlRoute(id))}
               onMassnahme={(id) => navigate(massnahmeRoute(id))}
               onAbweichung={(id) => navigate(abweichungRoute(id))}
+              // N1: mit Gruppen stehen die Reiter in der Reihe von „Verbessern“ über der Seite.
+              reiterOben={gruppenHier.length > 0}
             />
           )}
           {/* UEMS AP-19 IP-9/IP-13/IP-20/IP-24: „Unternehmen › Energiemanagement“ (Verzeichnis, Wiedervorlage, Dokumente,
@@ -1574,6 +1603,8 @@ function UnifiedPortal() {
               // AP-13 IP-9: Kostenstellen und Prozesse gehören dem Unternehmen — ihre Reiter nur in dessen Welt Messstellen
               // (auch, wenn der eine Standort oben steht), nie am Standort unter dem Unternehmen, nie in einer Teilansicht.
               organisation={page === 'portfolio-messstellen' && !(ebene.art === 'standort' && ebene.teilansicht)}
+              // N5: mit Gruppen stehen „Kostenstellen“ und „Prozesse“ in der Reihe von „Messen“ über der Seite.
+              reiterOben={gruppenHier.length > 0}
               zone={
                 messstellenEbene.art === 'standort'
                   ? orteQuelle?.liste.standorte.find((s) => s.id === messstellenEbene.id)?.zeitzone

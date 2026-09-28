@@ -866,6 +866,93 @@ describe('AppShell: die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A)', () =
 });
 
 
+describe('AppShell: die Seitenleiste je Ebene (Konzept „Navigation aus einem Guss“, N1/N2/N4)', () => {
+  const lm = {
+    standorte: [werkAhrenberg(), werkLindach()],
+    funktionen: ahrenbergFunktionen(),
+    kennzahlen: ahrenbergKennzahlen(),
+    bewertung: true,
+    verbesserung: true,
+    energiemanagement: true,
+  };
+  const gruppen = ebenenLeiste({ art: 'unternehmen' }, lm);
+  const nav = () => screen.getByLabelText('Hauptnavigation');
+  const eintraege = () => [...nav().querySelectorAll('.vp-navitem')].map((n) => n.textContent);
+  const zeige = (ebenen: React.ComponentProps<typeof AppShell>['ebenen'], anlage: React.ComponentProps<typeof AppShell>['anlage'] = null) =>
+    render(
+      <AppShell {...baseProps} page="portfolio" showPortfolio fleetLabel="Ahrenberg" showAddAnlage={false} onAddAnlage={vi.fn()} anlage={anlage} ebenen={ebenen}>
+        <div>content</div>
+      </AppShell>,
+    );
+
+  it('N1 · am Unternehmen stehen die fünf Gruppen links — dieselben wie in der Telefon-Leiste; der Eintrag der Flotte entfällt', () => {
+    zeige({ titel: 'Bereiche', kacheln: gruppen, aktiv: 'kennzahlen', aktivKey: 'auswerten', onOpen: vi.fn() });
+    expect(eintraege()).toEqual([
+      'Übersicht',
+      'Messen',
+      'AuswertenWo geht die Energie hin, wird es besser?',
+      'Verbessern',
+      'Nachweisen',
+    ]);
+    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    const bar = screen.getByLabelText('Bereiche');
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Verbessern', 'Nachweisen']);
+  });
+
+  it('N4 · die Frage steht als zweite Zeile nur beim offenen Eintrag; der Titel nennt sie immer', () => {
+    zeige({ titel: 'Bereiche', kacheln: gruppen, aktiv: 'messstellen', aktivKey: 'messen', onOpen: vi.fn() });
+    const messen = screen.getByTestId('seitenleiste-messen');
+    expect(messen.getAttribute('aria-current')).toBe('page');
+    expect(messen.querySelector('.vp-nav-frage')?.textContent).toBe('Wird alles erfasst?');
+    expect(screen.getByTestId('seitenleiste-auswerten').querySelector('.vp-nav-frage')).toBeNull();
+    expect(screen.getByTestId('seitenleiste-auswerten').getAttribute('title')).toBe('Auswerten – Wo geht die Energie hin, wird es besser?');
+  });
+
+  it('ein Eintrag navigiert auf sein Ziel — dieselbe Funktion wie die Kachel der Leiste', () => {
+    const onOpen = vi.fn();
+    zeige({ titel: 'Bereiche', kacheln: gruppen, aktiv: 'uebersicht', aktivKey: 'uebersicht', onOpen });
+    fireEvent.click(screen.getByTestId('seitenleiste-nachweisen'));
+    expect(onOpen).toHaveBeenCalledWith(gruppen.find((g) => g.key === 'nachweisen')!.ziel);
+  });
+
+  it('N2 · am Standort steht oben der Weg zum Unternehmen, darunter die Bereiche mit vollem Wort', () => {
+    const hochZu = vi.fn();
+    const standort = ebenenLeiste({ art: 'standort', standortId: werkAhrenberg().id }, lm);
+    zeige({ titel: 'Bereiche des Standorts', kacheln: standort, aktiv: 'aufbau', aktivKey: 'aufbau', hoch: { wert: '__unternehmen__', label: 'Ahrenberg', onOpen: hochZu }, onOpen: vi.fn() });
+    expect(eintraege()).toEqual(['Ahrenberg', 'Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    fireEvent.click(screen.getByTestId('seitenleiste-hoch'));
+    expect(hochZu).toHaveBeenCalled();
+    expect(screen.getByTestId('seitenleiste-hoch').getAttribute('title')).toBe('Zurück zu Ahrenberg');
+  });
+
+  it('N2 · in der Anlage ersetzt der Weg zu ihrem Standort den Eintrag der Flotte — ohne Ebene darüber kein Eintrag', () => {
+    const anlage = {
+      siteId: 's-1',
+      siteName: 'Halle 1',
+      sites: [{ id: 's-1', name: 'Halle 1' }],
+      onSelectSite: vi.fn(),
+      sidebar: anlageSidebar(null, 0),
+      activeKey: 'cockpit',
+      onOpenSub: vi.fn(),
+      onOpenPage: vi.fn(),
+      onOpenFleet: vi.fn(),
+      health: null,
+    };
+    const { unmount } = zeige(null, { ...anlage, hoch: { wert: '__standort__', label: 'Werk Ahrenberg', onOpen: vi.fn() } });
+    expect(eintraege()[0]).toBe('Werk Ahrenberg');
+    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+    unmount();
+    zeige(null, { ...anlage, hoch: null });
+    expect(screen.queryByTestId('seitenleiste-hoch')).toBeNull();
+    expect(screen.queryByTitle('Ahrenberg')).toBeNull();
+  });
+
+  it('ohne Einträge der Ebene und ohne Weg nach oben bleibt der Eintrag der Flotte wie bisher', () => {
+    zeige(null);
+    expect(screen.getByTitle('Ahrenberg')).toBeInTheDocument();
+  });
+});
+
 describe('AP-03 IP-13 · Avatar-Menü Benutzer', () => {
   for (const [person, sichtbar] of [['JW', true], ['IK', true], ['CB', false], ['MD', false]] as const) {
     it(`Benutzer-Eintrag für ${person}: ${sichtbar}`, () => {

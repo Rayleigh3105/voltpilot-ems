@@ -22,8 +22,8 @@ const AM_20_11 = new Date('2026-11-20T09:00:00Z');
 // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); die Bewertung wohnt in „Auswerten“.
 // K1/D2: fünf Gruppen nach Arbeitsfragen; die Berichte stehen in „Nachweisen“.
 const LEISTE = ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen'];
-// K1 (D1): am Rechner die Gruppen, darunter nur die Reiter der offenen Gruppe „Auswerten“.
-const REITER = ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen', 'Kennzahlen', 'Bewertung'];
+// N1: am Rechner stehen die Gruppen in der Seitenleiste; über der Seite nur die Reiter der offenen Gruppe „Auswerten“.
+const REITER = ['Kennzahlen', 'Bewertung'];
 const GRENZE =
   'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
 const LEER = 'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.';
@@ -52,6 +52,10 @@ async function messe(page: Page) {
       [...document.querySelectorAll<HTMLElement>(`[role="tablist"] [role="tab"]${aktiv ? '[aria-selected="true"]' : ''}`)]
         .filter((t) => sichtbar(t))
         .map((t) => (t.textContent ?? '').trim());
+    // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen) — ohne die Frage des offenen Eintrags.
+    const eintrag = (e: Element) =>
+      (e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'))?.textContent?.trim() ?? '';
+    const seite = [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem')].filter((e) => sichtbar(e));
     return {
       route: document.body.dataset.route ?? null,
       dokument: doc.scrollWidth - doc.clientWidth,
@@ -60,6 +64,8 @@ async function messe(page: Page) {
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
       reiter: reiter(false),
       reiterAktiv: reiter(true),
+      seite: seite.map(eintrag),
+      seiteAktiv: seite.filter((e) => e.getAttribute('aria-current') === 'page').map(eintrag)[0] ?? null,
       karten: [...document.querySelectorAll('[data-testid="einsatz-karte"]')].map((k) => (k.textContent ?? '').trim()),
     };
   });
@@ -114,8 +120,10 @@ for (const breite of [375, 1440]) {
         expect(m.leiste).toEqual(LEISTE);
         expect(m.leisteAktiv).toBe('Auswerten');
       } else {
+        expect(m.seite).toEqual(LEISTE);
+        expect(m.seiteAktiv).toBe('Auswerten');
         expect(m.reiter).toEqual(REITER);
-        expect(m.reiterAktiv).toEqual(['Auswerten', 'Bewertung']);
+        expect(m.reiterAktiv).toEqual(['Bewertung']);
       }
       await ablegen(page, `leer-${breite}`, true);
     });

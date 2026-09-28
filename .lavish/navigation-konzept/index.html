@@ -141,6 +141,7 @@
   th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
   tr:last-child td { border-bottom: 0; }
   td.zahl { font-family: var(--font-head); font-weight: 700; font-size: 17px; white-space: nowrap; }
+  td.klar { font-weight: 600; min-width: 170px; }
   .rot { color: var(--warn); }
   .gruen { color: var(--ok); }
   .reihen { display: inline-flex; gap: 3px; vertical-align: middle; margin-right: 6px; }
@@ -244,6 +245,7 @@
       <li><a href="#soll">So sähe es aus</a></li>
       <li><a href="#modi">Beide Modi auf einen Blick</a></li>
       <li><a href="#umsetzung">Umsetzung</a></li>
+      <li><a href="#stand">Umsetzungsstand</a></li>
       <li><a href="#risiken">Risiken</a></li>
       <li><a href="#entscheidungen">Ihre Entscheidungen</a></li>
     </ol>
@@ -255,8 +257,8 @@
       <h1>Navigation aus einem Guss</h1>
       <p class="lead">Heute führt die Seitenleiste nur in einer Anlage. Beim Unternehmen und beim Standort steht dort ein einziger Eintrag, und über der Seite stapeln sich bis zu drei Reiterreihen. Vorschlag: überall das Muster der Anlage – links die Bereiche der Ebene, darüber höchstens eine Reiterreihe. Mit und ohne ISO 50001 gleich.</p>
       <div class="meta">
-        <span class="chip">Stand: <b>Commit 21c8b2d</b></span>
-        <span class="chip"><b>Noch nichts umgesetzt</b> – zur Entscheidung</span>
+        <span class="chip">Entschieden: <b>alle Empfehlungen</b> (N1–N6)</span>
+        <span class="chip"><b>Umgesetzt</b> im Branch uems – siehe <a href="#stand">Umsetzungsstand</a></span>
         <span class="chip">Adressen, Rechte und Seiten <b>bleiben</b></span>
       </div>
       <div class="raster">
@@ -641,6 +643,43 @@
           <p>Browser-Tests mit Reihen und Beschriftungen nachziehen (u. a. startansicht, telefonleiste, kostenstellen, energiemanagement, energiemanagement-managementbewertung, einstieg, shell-layout, mobile-ui). Hilfe-Texte und -Bilder, die die Navigation zeigen, neu erzeugen; <code>docs/portal.md</code> (Orientierung) anpassen. Prüfung wie immer bei 1440 und 375 px.</p>
         </div>
       </div>
+    </section>
+
+    <section id="stand" aria-labelledby="h-stand">
+      <div class="abschnittkopf">
+        <h2 id="h-stand">Umsetzungsstand</h2>
+        <p>Umgesetzt mit den empfohlenen Antworten zu N1–N6. Adressen, Lesezeichen, Rechte und Seiten bleiben. Wo die Umsetzung vom Plan abweicht, steht es in der rechten Spalte.</p>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead><tr><th>Entscheidung</th><th>So steht es im Portal</th><th>Abweichung oder offen</th></tr></thead>
+          <tbody>
+            <tr><td class="klar">N1 · Bereiche links</td><td>Unternehmen: die Gruppen Übersicht · Messen · Auswerten · Verbessern · Nachweisen (je nach Rechten). Standort: Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse. Seitenleiste und Telefon-Leiste tragen dieselben Einträge; was sie tragen, steht nicht noch einmal als Reiter über der Seite.</td><td>Die Seitenleiste zeigt die Einträge erst ab drei (U1 plante ab zwei) – so zeigen Seitenleiste und Leiste immer dasselbe. Darunter bleiben die Reiter der Weg, z.&nbsp;B. an einem Standort mit nur Übersicht · Messstellen.</td></tr>
+            <tr><td class="klar">N2 · Weg nach oben</td><td>Ganz oben „‹ Werk Ahrenberg“ in der Anlage und „‹ Ahrenberg“ am Standort. Der Pfad in der Kopfzeile nennt weiter alle Ebenen.</td><td>Auf der obersten Ebene gibt es keinen Weg nach oben.</td></tr>
+            <tr><td class="klar">N3 · Flotte ohne ISO</td><td>Übersicht · Standorte · Energie in Seitenleiste und Telefon-Leiste, „Erlöse“ nur mit Geld wie bisher der Reiter. Keine Reihe über der Seite.</td><td>–</td></tr>
+            <tr><td class="klar">N4 · Frage der Gruppe</td><td>Zweite Zeile unter dem offenen Eintrag; der Titel des Eintrags nennt Name und Frage, auch in der Symbolleiste am Tablet.</td><td>–</td></tr>
+            <tr><td class="klar">N5 · Kostenstellen und Prozesse</td><td>In der Reihe von „Messen“: Messstellen · Kostenstellen · Prozesse · Bezugsgrößen, nur wenn es sie gibt. Die Seite zeigt dann keine eigene Reihe. Ein Wechsel behält wie bisher den Zeitraum und ersetzt die Adresse (<code>?reiter=</code>), statt einen Verlaufseintrag anzulegen.</td><td>Beide Kataloge werden einmal geladen und von Reihe und Seite gemeinsam gelesen.</td></tr>
+            <tr><td class="klar">N6 · Kopfzeile</td><td>Auf allen Seiten einer Ebene steht der Ort (Unternehmen, Standort oder „Meine Anlagen“), nie der Seitenname.</td><td>Umgesetzt in der Ableitung des Pfads (<code>kopfPfad</code>) statt in einer eigenen Komponente.</td></tr>
+            <tr><td class="klar">R4 · Detailseiten</td><td>Kennzahl, Bericht, Energieeinsatz, Energieziel, Maßnahme, Abweichung, Dokument, Person, Audit, Feststellung, Managementbewertung und Messstelle zeigen ihren Rückweg statt der Reihe der Gruppe.</td><td>Im Browser einzeln geprüft: Kennzahl und Bericht; die übrigen über dieselbe Regel und die Browser-Tests ihrer Seiten.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead><tr><th>Seite</th><th>Seitenleiste</th><th>Reihen über der Seite (Rechner)</th><th>Telefon</th></tr></thead>
+          <tbody>
+            <tr><td>Unternehmen › Übersicht</td><td>5 Gruppen, Frage unter „Übersicht“</td><td class="zahl gruen"><span class="reihen gut"><i></i></span>1</td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Unternehmen › Messstellen</td><td>5 Gruppen</td><td class="zahl gruen"><span class="reihen gut"><i></i></span>1</td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Unternehmen › Kennzahl</td><td>5 Gruppen</td><td class="zahl gruen"><span class="reihen gut"><i></i></span>1 <span class="muted" style="font:400 13px var(--font-body)">die Reiter der Kennzahl</span></td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Unternehmen › Energiemanagement</td><td>Gruppen</td><td class="zahl gruen"><span class="reihen gut"><i></i></span>1</td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Unternehmen › Ziele und Maßnahmen</td><td>5 Gruppen</td><td class="zahl gruen"><span class="reihen gut"><i></i></span>1</td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Standort › Übersicht</td><td>‹ Ahrenberg + 5 Bereiche</td><td class="zahl gruen">0</td><td>Leiste, keine Reihe</td></tr>
+            <tr><td>Anlage › Cockpit</td><td>‹ Werk Ahrenberg + 5 Bereiche</td><td class="zahl gruen">0</td><td>Leiste</td></tr>
+            <tr><td>Flotte ohne ISO („Meine Anlagen“)</td><td>Übersicht · Standorte · Energie</td><td class="zahl gruen">0</td><td>Leiste, keine Reihe</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">Gezählt auf denselben Testbühnen wie oben bei 1440 und 375 px; kein seitlicher Überlauf, keine Seitenfehler. Zeitraum-Umschalter zählen nicht als Reihe.</p>
     </section>
 
     <section id="risiken" aria-labelledby="h-risiken">

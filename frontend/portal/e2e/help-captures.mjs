@@ -9,6 +9,7 @@ export const captures = [
   ] },
   { id: 'orientierung', title: 'Navigation auf dem Rechner', hash: plant(), viewportOnly: true, points: [
     point('.vp-anlagenav', 'Die Bereiche führen zu den täglichen Aufgaben dieser Anlage.'),
+    point('[data-testid="seitenleiste-hoch"]', 'Der Eintrag mit „‹“ ganz oben führt eine Ebene höher.'),
     point('.vp-topbar-anlage', 'Der Anlagenname oben ist zugleich der Anlagenwechsler.'),
     point('.vp-avatar-btn', 'Das Konto-Menü enthält Hilfe & Kontakt, die App-Einrichtung und Abmelden.'),
   ] },

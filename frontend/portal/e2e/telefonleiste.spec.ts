@@ -47,8 +47,9 @@ const FAELLE: Fall[] = [
   },
   { name: 'standort-kuenftig', query: 'bild=unternehmen&ansicht=werk&seiten=kuenftig', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
   { name: 'lindach-kuenftig', query: 'bild=unternehmen&ansicht=lindach&seiten=kuenftig', leiste: ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'], aktiv: 'Übersicht' },
-  // Der Betriebskunde ohne „Messen": auch mit allen Seiten nur Übersicht · Standorte — keine Leiste.
-  { name: 'betriebskunde-kuenftig', query: 'bild=unternehmen&messen=bestand&seiten=kuenftig', leiste: null },
+  // N3: der Betriebskunde ohne „Messen" hat die Einträge der Flotte — Übersicht · Standorte · Energie (Erlöse nur mit
+  // Geld); drei Einträge tragen die Leiste, dieselben wie die Seitenleiste am Rechner.
+  { name: 'betriebskunde-kuenftig', query: 'bild=unternehmen&messen=bestand&seiten=kuenftig', leiste: ['Übersicht', 'Standorte', 'Energie'], aktiv: 'Übersicht' },
 ];
 
 async function oeffne(page: Page, query: string) {
@@ -127,7 +128,8 @@ test('Telefon, heute: die Kachel „Messen" führt auf „Unternehmen › Messst
   await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
   await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Messen');
   await expect(page.locator('[data-testid="messstellen"] .vp-ms-karte')).toHaveCount(22);
-  expect(await sichtbareReiter(page)).toEqual(['Messstellen', 'Bezugsgrößen']);
+  // N5: Kostenstellen und Prozesse stehen in derselben Reihe, sobald ihre Kataloge da sind.
+  await expect.poll(() => sichtbareReiter(page)).toEqual(['Messstellen', 'Kostenstellen', 'Prozesse', 'Bezugsgrößen']);
 });
 
 test('Telefon, heute: die Kacheln „Gebäude" und „Aufbau" führen auf die Seiten des Standorts', async ({ page }) => {

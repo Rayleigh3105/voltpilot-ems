@@ -5,7 +5,7 @@ import { keycloak } from '../src/auth';
 import { benutzerApi } from '../src/benutzer';
 import { heute } from '../src/bewertung';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
-import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche } from '../src/ebenenNav';
+import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche, istDetailseite } from '../src/ebenenNav';
 import { darfAnsehen } from '../src/energieziele';
 import { darfAnsehen as darfBewertungSehen } from '../src/bewertung';
 import {
@@ -146,12 +146,16 @@ function Ansicht() {
         // K1 wie `App.tsx`: die Gruppen auch am Rechner, das Energiemanagement in „Nachweisen“.
         gruppen={kacheln}
         energiemanagementReiter={route.energiemanagementReiter ?? null}
+        // Wie `App.tsx`: „Verbessern“ trägt die Reiter von „Ziele und Maßnahmen“; Detailseiten zeigen ihren Rückweg.
+        verbesserungReiter={route.verbesserungReiter ?? null}
+        detail={istDetailseite(route)}
         onOpenBereich={navigate}
         fleetLabel="Unternehmen"
         onNavigate={(p) => navigate(pageRoute(p))}
       />
       {route.page === 'portfolio-verbesserung' ? (
         <VerbesserungBereich
+          reiterOben={kacheln.length > 0}
           reiter={route.verbesserungReiter ?? 'energieziele'}
           energiezielId={route.energiezielId ?? null}
           massnahmeId={route.massnahmeId ?? null}

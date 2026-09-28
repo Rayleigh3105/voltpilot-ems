@@ -176,7 +176,10 @@ describe('UEMS AP-01 IP-5 · Randfälle der Weiche und des Pfades', () => {
     expect(shell.ebene).toEqual(EBENE_HEUTE);
     expect(landung(shell, ids)).toEqual(pageRoute('portfolio'));
     expect(pfad(shell, anlageRoute(an1))).toEqual({ vor: [MEINE_ANLAGEN], hier: null });
-    expect(pfad(shell, pageRoute('portfolio'), null)).toEqual({ vor: [], hier: null });
+    // N6 (Konzept „Navigation aus einem Guss“): auch die Flotte nennt in der Kopfzeile ihren Ort — dasselbe Wort, das
+    // die Kopfzeile auf der Übersicht schon zeigte, jetzt auf jeder ihrer Seiten.
+    expect(pfad(shell, pageRoute('portfolio'), null)).toEqual({ vor: [], hier: 'Meine Anlagen' });
+    expect(pfad(shell, pageRoute('portfolio-messwerte'), null)).toEqual({ vor: [], hier: 'Meine Anlagen' });
   });
 
   it('eine noch nicht zugeordnete Anlage hält die Unternehmensebene offen', () => {

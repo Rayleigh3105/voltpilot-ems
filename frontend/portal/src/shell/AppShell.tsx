@@ -93,6 +93,11 @@ export interface AnlageNav {
    * (`onOpenFleet` unter `fleetLabel`).
    */
   pfad?: PfadEintrag[];
+  /**
+   * N2 (Konzept „Navigation aus einem Guss“): der Weg EINE Ebene höher, ganz oben in der Seitenleiste („‹ Werk
+   * Ahrenberg“) — er ersetzt dort den Eintrag der Flotte. `null` = es gibt keine Ebene darüber; absent = wie bisher.
+   */
+  hoch?: PfadEintrag | null;
   /** The aggregated plant state; null = not known yet (no badge is shown). */
   health: HealthBadge | null;
 }
@@ -109,6 +114,13 @@ export interface EbenenLeisteNav {
   kacheln: EbenenLeistenKachel[];
   /** Welcher Bereich gerade offen ist (`ebenenAktiv`) — hervorgehoben ist die Kachel, die ihn trägt. */
   aktiv: EbenenBereichId | null;
+  /**
+   * Welcher Eintrag leuchtet (`ebenenNav.aktiverEintrag`) — die Einträge der Flotte meinen Seiten, nicht Bereiche.
+   * Absent = der Eintrag, der `aktiv` trägt.
+   */
+  aktivKey?: string | null;
+  /** N2: der Weg eine Ebene höher über den Einträgen („‹ Ahrenberg“ am Standort); `null`/absent = keiner. */
+  hoch?: PfadEintrag | null;
   onOpen: (ziel: Route) => void;
 }
 
@@ -304,6 +316,15 @@ export function AppShell({
   };
 
   /**
+   * Leuchtet ein Eintrag der Ebene? Nach `aktivKey`, wo der Aufrufer ihn kennt (die Einträge der Flotte meinen Seiten),
+   * sonst nach dem Bereich, den er trägt — Seitenleiste und Telefon-Leiste fragen dieselbe Funktion.
+   */
+  const eintragAktiv = (kachel: EbenenLeistenKachel) =>
+    ebenen?.aktivKey !== undefined
+      ? ebenen.aktivKey === kachel.key
+      : ebenen?.aktiv != null && kachel.bereiche.includes(ebenen.aktiv);
+
+  /**
    * Die Telefon-Leiste: in einer Anlage ihre fünf Bereiche (E4), auf der
    * Unternehmens- oder Standort-Ebene deren Bereiche mit Seite, erst ab drei
    * (UEMS AP-01 IP-7) — sonst keine: dann navigieren die Reiter der Seite, eine
@@ -321,10 +342,10 @@ export function AppShell({
         }))
       : (ebenen?.kacheln ?? []).map((kachel) => ({
           key: kachel.key,
-          label: kachel.label,
+          label: kachel.kurz ?? kachel.label,
           icon: kachel.icon,
           badge: null,
-          aktiv: ebenen?.aktiv != null && kachel.bereiche.includes(ebenen.aktiv),
+          aktiv: eintragAktiv(kachel),
           oeffnen: () => ebenen?.onOpen(kachel.ziel),
         }));
   const barName = anlage ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim() : ebenen?.titel ?? '';
@@ -387,6 +408,51 @@ export function AppShell({
     <div className="vp-anlagenav">{anlage.sidebar.bereiche.map(navEntry)}</div>
   );
 
+  /**
+   * Konzept „Navigation aus einem Guss“ (N1): auf der Unternehmens-, Standort- und Flotten-Ebene trägt die Seitenleiste
+   * die EINTRÄGE der Ebene — dieselben wie die Telefon-Leiste, wie in der Anlage ihre fünf Bereiche. Der offene
+   * Eintrag nennt seine Frage in einer zweiten Zeile (N4); der Titel nennt sie immer (Symbolleiste am Tablet).
+   */
+  const ebenenEintraege = !anlage && ebenen && ebenen.kacheln.length > 0 ? ebenen.kacheln : null;
+  const ebenenNavEintrag = (kachel: EbenenLeistenKachel) => {
+    const an = eintragAktiv(kachel);
+    return (
+      <NavItem
+        key={kachel.key}
+        icon={<Icon name={kachel.icon} size={18} />}
+        label={
+          an && kachel.frage ? (
+            <span className="vp-nav-lbl vp-nav-zwei">
+              <span>{kachel.label}</span>
+              <span className="vp-nav-frage">{kachel.frage}</span>
+            </span>
+          ) : (
+            <span className="vp-nav-lbl">{kachel.label}</span>
+          )
+        }
+        title={kachel.frage ? `${kachel.label} – ${kachel.frage}` : kachel.label}
+        active={an}
+        data-testid={`seitenleiste-${kachel.key}`}
+        onClick={() => ebenen?.onOpen(kachel.ziel)}
+      />
+    );
+  };
+  /**
+   * N2: der Weg EINE Ebene höher, ganz oben — in der Anlage zu ihrem Standort, am Standort zum Unternehmen. Er ersetzt
+   * den Eintrag der Flotte; der Pfad der Kopfzeile nennt weiter alle Ebenen. Absent (ältere Aufrufer) = wie bisher.
+   */
+  const hochEintrag: PfadEintrag | null | undefined = anlage ? anlage.hoch : ebenenEintraege ? (ebenen?.hoch ?? null) : undefined;
+  const hochNav = hochEintrag ? (
+    <NavItem
+      className="vp-nav-hoch"
+      icon={<Icon name="chevron-left" size={16} />}
+      label={<span className="vp-nav-lbl">{hochEintrag.label}</span>}
+      title={`Zurück zu ${hochEintrag.label}`}
+      data-testid="seitenleiste-hoch"
+      onClick={hochEintrag.onOpen}
+    />
+  ) : null;
+
   const sidebar = (
     // Desktop (>=1024px) and the tablet icon rail (721-1023px) are unchanged.
     // The phone slide-over is GONE since Mobil-Umbau Stufe 1: the bottom bar
@@ -397,7 +463,7 @@ export function AppShell({
         <img src={logoUrl} alt="VoltPilot EMS" />
       </div>
       <nav aria-label="Hauptnavigation">
-        {showPortfolio && (
+        {hochEintrag !== undefined ? hochNav : showPortfolio && (
           // Die FLOTTEN-Ebene führt die Leiste. Ihre zwei Welten (Messwerte ·
           // Erlöse) sind seit E3 REITER der Portfolio-Seite — die frühere
           // Gruppe der Flotten-Welten ist dort aufgegangen.
@@ -409,7 +475,7 @@ export function AppShell({
             onClick={() => onNavigate(PORTFOLIO_PAGE.id)}
           />
         )}
-        {MAIN_PAGES.filter((p) => !ohneStandort && (p.id !== 'uebersicht' || showOverview)).map((p) => (
+        {hochEintrag === undefined && MAIN_PAGES.filter((p) => !ohneStandort && (p.id !== 'uebersicht' || showOverview)).map((p) => (
           <NavItem
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}
@@ -420,6 +486,7 @@ export function AppShell({
           />
         ))}
         {anlageNav}
+        {ebenenEintraege && <div className="vp-ebenennav">{ebenenEintraege.map(ebenenNavEintrag)}</div>}
         {isAdmin && (
           // Admin-Umbau Stufe 1 „Ordnung": die elf flachen Punkte sind vier
           // benannte Gruppen hinter der LANDUNG (Plattform-Übersicht). Seit S8

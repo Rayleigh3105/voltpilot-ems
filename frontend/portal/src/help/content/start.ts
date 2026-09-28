@@ -62,7 +62,7 @@ export const startArticles: HelpArticle[] = [
         "Melden Sie sich mit Ihrem Konto an oder registrieren Sie sich mit Name, E-Mail-Adresse und Passwort. Neue Konten starten mit der ersten Anlage. Fehlt eine bestehende Anlage, prüfen Sie zuerst das angemeldete Konto.",
       ] },
       { id: 'navigation', title: 'Ein Ort für jede Frage', paragraphs: [
-        "Am Rechner stehen die Bereiche in der Seitenleiste, innerhalb einer Anlage am Telefon unten. Über den Anlagennamen wechseln Sie den Standort. Je nach Ausstattung erscheinen weitere Reiter oder Ladevorgänge anstelle eines Speicher-Fahrplans.",
+        "Am Rechner stehen die Bereiche in der Seitenleiste, am Telefon in der Leiste unten. Ganz oben in der Seitenleiste führt der Eintrag mit „‹“ eine Ebene höher. Über den Anlagennamen wechseln Sie den Standort. Je nach Ausstattung erscheinen weitere Reiter oder Ladevorgänge anstelle eines Speicher-Fahrplans.",
       ], figure: 'orientierung' },
       { id: 'mobil', title: 'Hilfe auf dem Telefon', paragraphs: [
         "Hilfe & Kontakt, „Als App auf dem Handy“ und Abmelden stehen im Konto-Menü hinter dem Avatar. Ein Hilfelink öffnet die passende Erklärung; beim Schließen bleibt Ihre Eingabe erhalten. Bei vergessenem Passwort hilft Ihr VoltPilot-Ansprechpartner.",

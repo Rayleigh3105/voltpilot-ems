@@ -215,47 +215,7 @@ html.vp-vt-fade .vp-welt-strich {
   visibility: visible;
 }
 
-/* UEMS AP-04 IP-5: am Telefon trägt die Leiste der Ebene (ab drei Kacheln) die
-   BEREICHE — ein Reiter, der dort schon Kachel ist, entfällt hier (`vp-nur-rechner`
-   aus `PortfolioTabs`/`EbenenTabs`). Die Leiste selbst blendet oberhalb von 720 px
-   aus; dieselbe Grenze, damit am Rechner kein Weg fehlt. */
-@media (max-width: 720px) {
-  .vp-bereich-tabs.vp-nur-rechner,
-  .vp-bereich-tab.vp-nur-rechner {
-    display: none;
-  }
-}
-
-/* K1 (Konzept „Energiemanagement ohne Fachsprache“, D1): am Unternehmen stehen die GRUPPEN als obere Reihe,
-   darunter ihre Arbeitsfrage und nur die Reiter der offenen Gruppe. Am Telefon trägt die Leiste die Gruppen —
-   Reihe und Frage entfallen dort (dieselbe Grenze wie die Leiste). */
-.vp-gruppen {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.vp-gruppen .vp-gruppen-reihe {
-  margin-bottom: var(--vp-space-1, 0.25rem);
-}
-.vp-gruppen-reihe .vp-bereich-tab {
-  font-size: var(--vp-c-fs-16, 16px);
-}
-.vp-gruppe-strich {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--vp-c-primary, #2563eb);
-}
-.vp-gruppen-frage {
-  margin: 0 0 var(--vp-space-2, 0.5rem);
-  color: var(--vp-c-muted-fg, #475569);
-  font-size: var(--vp-c-fs-14, 14px);
-  overflow-wrap: anywhere;
-}
-@media (max-width: 720px) {
-  .vp-gruppen-frage.vp-nur-rechner {
-    display: none;
-  }
-}
+/* Konzept „Navigation aus einem Guss“ (N1/R3): Gruppen und Bereiche einer Ebene stehen in der Seitenleiste und in der
+   Telefon-Leiste; über der Seite steht höchstens EINE Reihe — die Reiter der offenen Gruppe (`.vp-gruppen-reiter`)
+   oder die Seiten, die keine Leiste trägt. Die frühere Gruppenreihe mit Fragezeile (K1) und das Ausblenden am Telefon
+   (`vp-nur-rechner`) sind entfallen: was eine Leiste trägt, wird gar nicht erst Reiter. */

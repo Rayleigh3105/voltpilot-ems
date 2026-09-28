@@ -90,8 +90,9 @@ for (const breite of [375, 1440]) {
       await grenzHinweisZeigt(page.getByTestId('verbesserung-bereich'), GRENZE);
       const m = await messe(page);
       expect(m.reiter).toEqual(expect.arrayContaining(['Energieziele', 'Maßnahmen', 'Abweichungen']));
-      // K1: am Rechner steht die Gruppe „Verbessern“; mit nur einem Bereich ohne zweite Reihe.
-      if (breite >= 720) expect(m.reiter).toContain('Verbessern');
+      // N1: die Gruppe „Verbessern“ steht am Rechner in der Seitenleiste; über der Seite nur ihre Reiter — eine Reihe.
+      if (breite >= 720) await expect(page.getByTestId('seitenleiste-verbessern')).toHaveAttribute('aria-current', 'page');
+      expect(m.reiter).toEqual(['Energieziele', 'Maßnahmen', 'Abweichungen']);
       ohneQuerlauf(m, 'leer');
       await ablegen(page, `leer-${breite}`, true);
       await page.getByTestId('verbesserung-reiter-abweichungen').click();

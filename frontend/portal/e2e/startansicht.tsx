@@ -27,6 +27,7 @@ import { showAddAnlageButton } from '../src/addAnlage';
 import { ohneGeld } from '../src/anlageGeld';
 import {
   activeAreaKey,
+  aktiverEintrag,
   anlageSidebar,
   ebenenAktiv,
   ebenenBereiche,
@@ -34,11 +35,14 @@ import {
   ebenenOrt,
   ebenenReiter,
   ebenenTitel,
+  flottenEintraege,
+  istDetailseite,
   type EbenenLesemodell,
   type EbenenSeiten,
   standortEinstiege,
   standortBereichFuer,
   telefonReiterBereiche,
+  unternehmensGruppen,
 } from '../src/ebenenNav';
 import { anlagenOptionen } from '../src/anlagenWahl';
 import {
@@ -63,6 +67,7 @@ import {
   anlageRoute,
   berichtRoute,
   hashForRoute,
+  isPortfolioPage,
   kennzahlRoute,
   messstelleRoute,
   pageRoute,
@@ -1398,13 +1403,22 @@ function Vorschau() {
   };
   const standortBereich = standortBereichFuer(route, lesemodell);
   const ort = site ? null : ebenenOrt(route, ebene);
-  const kacheln = (ort ? ebenenLeiste(ort, lesemodell, KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined) : []).filter(k => ansicht !== 'bezugsgroessen-b' || k.key !== 'bezugsgroessen');
+  const seiten = KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined;
+  // N3 wie `App.tsx`: die Flotte ohne Standorte hat dieselben Einträge wie jede Ebene.
+  const flotteHier = !site && !ort && ebene.art === 'heute' && flotte && isPortfolioPage(route.page);
+  const kacheln = (
+    ort ? ebenenLeiste(ort, lesemodell, seiten, route.page) : flotteHier ? flottenEintraege({ standorte: true, geldWelt: false, offen: route.page }) : []
+  ).filter(k => ansicht !== 'bezugsgroessen-b' || k.key !== 'bezugsgroessen');
+  const aktivHier = ansicht === 'bezugsgroessen-b' ? 'messstellen' as const : ebenenAktiv(route.page, standortBereich);
   const ebenenNav =
-    ort && kacheln.length > 0
+    (ort || flotteHier) && kacheln.length > 0
       ? {
-          titel: ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? ''),
+          titel: ort ? ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? '') : `Bereiche von ${FLOTTE}`,
           kacheln,
-          aktiv: ansicht === 'bezugsgroessen-b' ? 'messstellen' as const : ebenenAktiv(route.page, standortBereich),
+          aktiv: aktivHier,
+          aktivKey: aktiverEintrag(kacheln, route.page, aktivHier),
+          // N2 wie `App.tsx`: am Standort unter dem Unternehmen der Weg zu ihm.
+          hoch: pfad.vor.length > 0 ? eintrag(pfad.vor[pfad.vor.length - 1]) : null,
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
@@ -1412,11 +1426,11 @@ function Vorschau() {
   // entfallen die Reiter, die die Leiste trägt. `&reiter=alle` = Variante A der Vorschau (alle bleiben).
   const bereiche = ort ? ebenenBereiche(ort, lesemodell).map((b) => b.key) : [];
   const leiste = params.get('reiter') === 'alle' ? [] : kacheln.flatMap((k) => k.bereiche);
-  // Wie `App.tsx`: mit der Gruppen-Leiste des Unternehmens zeigen die Reiter am Telefon nur die offene Gruppe.
-  const telefonReiter =
-    ort?.art === 'unternehmen' && params.get('reiter') !== 'alle'
-      ? telefonReiterBereiche(kacheln, ebenenAktiv(route.page, standortBereich))
-      : null;
+  const leisteSeiten = params.get('reiter') === 'alle' ? [] : kacheln.flatMap((k) => k.seiten ?? []);
+  // Wie `App.tsx`: mit Gruppen stehen über der Seite nur die Reiter der offenen Gruppe.
+  const gruppenListe =
+    ort?.art === 'unternehmen' && params.get('reiter') !== 'alle' ? unternehmensGruppen(lesemodell, seiten) : [];
+  const telefonReiter = gruppenListe.length > 0 ? telefonReiterBereiche(gruppenListe, ebenenAktiv(route.page, standortBereich)) : null;
   const standortReiter =
     route.page === 'standort' && ebene.art !== 'standort' && ort?.art === 'standort' ? ebenenReiter(ort, lesemodell) : [];
   // AP-13 IP-2, wie `App.tsx`: als oberste Ebene bringt der Standort Gebäude · Anlagen in die Reiter mit;
@@ -1436,14 +1450,16 @@ function Vorschau() {
       showKennzahlen={bereiche.includes('kennzahlen')}
       showBerichte={bereiche.includes('berichte')}
       leiste={leiste}
+      leisteSeiten={leisteSeiten}
       telefonReiter={telefonReiter}
       fleetLabel={FLOTTE}
       onNavigate={navigateSchale}
       standortBereiche={standortObenReiter}
       standortAktiv={ebenenAktiv(route.page, standortBereich)}
       onOpenBereich={navigate}
-      // K1 wie `App.tsx`: am Unternehmen die Gruppen auch am Rechner.
-      gruppen={telefonReiter !== null ? kacheln : []}
+      // N1 wie `App.tsx`: die Gruppen stehen in der Seitenleiste, hier nur die Reiter der offenen.
+      gruppen={telefonReiter !== null ? gruppenListe : []}
+      detail={istDetailseite(route)}
     />
   );
   const messstellenEbene =
@@ -1492,6 +1508,8 @@ function Vorschau() {
               onOpenFleet: flotte ? () => navigate(flottenLandung(shell)) : null,
               health: healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 } }),
               pfad: pfad.vor.map(eintrag),
+              // N2 wie `App.tsx`: ganz oben der Weg eine Ebene höher.
+              hoch: pfad.vor.length > 0 ? eintrag(pfad.vor[pfad.vor.length - 1]) : null,
             }
           : null
       }
@@ -1624,6 +1642,8 @@ function Vorschau() {
           bereichDa={bereiche.includes('messstellen')}
           // AP-13 IP-9, wie `App.tsx`: die Reiter Kostenstellen · Prozesse nur in der Welt Messstellen des Unternehmens.
           organisation={route.page === 'portfolio-messstellen' && !(ebene.art === 'standort' && ebene.teilansicht)}
+          // N5 wie `App.tsx`: mit Gruppen stehen Kostenstellen · Prozesse in der Reihe von „Messen“.
+          reiterOben={telefonReiter !== null}
           onUebersicht={() =>
             navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
           }
