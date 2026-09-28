@@ -1,0 +1,844 @@
+<title>Navigation aus einem Guss</title>
+<meta name="description" content="Konzept: eine Navigation für Unternehmen, Standort und Anlage – mit und ohne ISO 50001.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@600;700&display=swap">
+<style>
+  /* VoltPilot-Designsystem (frontend/portal/designsystem/tokens): Cornflower-Blau, Navy als Handlungsfarbe,
+     helle Flächen, Inter / Inter Tight. Gleiche Tokens wie das Konzept „Energiemanagement ohne Fachsprache“. */
+  :root {
+    --bg: #F8F9FA;
+    --surface: #FFFFFF;
+    --surface-2: #F4F6F9;
+    --ink: #1A1A1A;
+    --muted: #66717C;
+    --line: #E9ECEF;
+    --line-strong: #CED4DA;
+    --action: #2C5282;
+    --action-ink: #FFFFFF;
+    --brand: #95B9FF;
+    --brand-deep: #5A8DE8;
+    --tint: rgba(149, 185, 255, 0.16);
+    --tint-strong: rgba(149, 185, 255, 0.32);
+    --ok: #2E7D32;
+    --ok-dot: #4CAF50;
+    --ok-soft: #E8F5E9;
+    --warn: #B45309;
+    --warn-soft: #FFF7ED;
+    --overlay: rgba(9, 16, 28, 0.9);
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.07);
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-head: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --r-sm: 10px;
+    --r-btn: 12px;
+    --r-md: 16px;
+    --r-lg: 24px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0F1620;
+      --surface: #16202C;
+      --surface-2: #1B2735;
+      --ink: #E8EDF3;
+      --muted: #9DA9B7;
+      --line: #263345;
+      --line-strong: #34465E;
+      --action: #A9C6FF;
+      --action-ink: #0F1620;
+      --brand: #95B9FF;
+      --brand-deep: #B8D4FF;
+      --tint: rgba(149, 185, 255, 0.12);
+      --tint-strong: rgba(149, 185, 255, 0.24);
+      --ok: #86D993;
+      --ok-dot: #5CC46C;
+      --ok-soft: rgba(92, 196, 108, 0.14);
+      --warn: #F3B56B;
+      --warn-soft: rgba(243, 181, 107, 0.14);
+      --overlay: rgba(4, 8, 14, 0.94);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0F1620;
+    --surface: #16202C;
+    --surface-2: #1B2735;
+    --ink: #E8EDF3;
+    --muted: #9DA9B7;
+    --line: #263345;
+    --line-strong: #34465E;
+    --action: #A9C6FF;
+    --action-ink: #0F1620;
+    --brand: #95B9FF;
+    --brand-deep: #B8D4FF;
+    --tint: rgba(149, 185, 255, 0.12);
+    --tint-strong: rgba(149, 185, 255, 0.24);
+    --ok: #86D993;
+    --ok-dot: #5CC46C;
+    --ok-soft: rgba(92, 196, 108, 0.14);
+    --warn: #F3B56B;
+    --warn-soft: rgba(243, 181, 107, 0.14);
+    --overlay: rgba(4, 8, 14, 0.94);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    padding-inline: 16px;
+    padding-block: 0 64px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.lupe-offen { overflow: hidden; }
+  a { color: var(--action); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 4px; }
+  h1, h2, h3, h4 { font-family: var(--font-head); color: var(--ink); text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.08; letter-spacing: -0.02em; font-weight: 700; }
+  h2 { font-size: clamp(23px, 2.6vw, 29px); line-height: 1.2; letter-spacing: -0.01em; font-weight: 700; }
+  h3 { font-size: 19px; line-height: 1.3; font-weight: 700; }
+  h4 { font-size: 15px; line-height: 1.35; font-weight: 700; }
+  p { margin: 0; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+  .muted { color: var(--muted); }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .seite { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  @media (min-width: 1100px) { .seite { grid-template-columns: 200px minmax(0, 1fr); gap: 56px; } }
+  .toc { display: none; }
+  @media (min-width: 1100px) {
+    .toc { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 32px); align-self: start; padding-top: 48px; }
+    .toc ol { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 2px; }
+    .toc a { display: block; padding: 6px 10px; border-radius: var(--r-sm); color: var(--muted); text-decoration: none; font-size: 14px; line-height: 1.35; }
+    .toc a:hover { background: var(--tint); color: var(--ink); }
+  }
+  main { min-width: 0; display: grid; gap: 72px; }
+  section { min-width: 0; display: grid; gap: 22px; scroll-margin-top: 24px; }
+  .abschnittkopf { display: grid; gap: 8px; max-width: 70ch; }
+  .abschnittkopf p { color: var(--muted); }
+  .prosa { max-width: 68ch; display: grid; gap: 12px; }
+  .kopf { padding-top: 48px; display: grid; gap: 18px; }
+  .kopf .lead { font-size: 19px; line-height: 1.55; max-width: 64ch; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-block; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; color: var(--muted); line-height: 1.4; }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .karte { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px; min-width: 0; }
+  .raster { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+  .kurz { display: grid; gap: 8px; align-content: start; }
+  .kurz .id { font-family: var(--font-mono); font-size: 12px; color: var(--action); font-weight: 600; }
+  .kurz p { color: var(--muted); font-size: 15px; }
+  .liste { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  .kasten { background: var(--surface-2); border-radius: var(--r-md); padding: 14px 16px; display: grid; gap: 6px; font-size: 14.5px; }
+  /* Tabellen */
+  .tabelle-rahmen { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+  table.breit { min-width: 720px; }
+  th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td.zahl { font-family: var(--font-head); font-weight: 700; font-size: 17px; white-space: nowrap; }
+  .rot { color: var(--warn); }
+  .gruen { color: var(--ok); }
+  .reihen { display: inline-flex; gap: 3px; vertical-align: middle; margin-right: 6px; }
+  .reihen i { display: block; width: 18px; height: 4px; border-radius: 2px; background: var(--warn); }
+  .reihen.gut i { background: var(--ok-dot); }
+  /* Bilder */
+  figure { margin: 0; display: grid; gap: 8px; min-width: 0; align-content: start; }
+  figcaption { font-size: 13px; color: var(--muted); line-height: 1.45; }
+  .bild { display: block; width: 100%; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); overflow: hidden; cursor: zoom-in; box-shadow: var(--shadow); }
+  .bild img { display: block; width: 100%; height: auto; }
+  .telefon .bild { border-radius: 18px; }
+  .paar { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 820px) { .paar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  .paar-tel { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 640px; }
+  .marke { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; margin-right: 6px; }
+  .marke.ist { color: var(--warn); background: var(--warn-soft); }
+  .marke.soll { color: var(--ok); background: var(--ok-soft); }
+  .beispiel { display: grid; gap: 14px; padding-block: 22px; border-top: 1px solid var(--line); }
+  .beispiel:first-of-type { border-top: 0; padding-top: 0; }
+  .beispiel-kopf { display: grid; gap: 4px; max-width: 72ch; }
+  .beispiel-kopf p { color: var(--muted); font-size: 15px; }
+  .zaehlung { font-size: 13.5px; font-weight: 600; }
+  /* Diagramm */
+  .diagramm { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; min-width: 0; display: grid; gap: 16px; }
+  .diagramm-scroll { overflow-x: auto; }
+  .diagramm svg { display: block; width: 100%; min-width: 640px; height: auto; }
+  .d-rahmen { fill: var(--bg); stroke: var(--line-strong); stroke-width: 1.5; }
+  .d-flaeche { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+  .d-linie { stroke: var(--line); stroke-width: 1; fill: none; }
+  .d-block { fill: var(--surface-2); }
+  .d-akt { fill: var(--tint-strong); }
+  .d-strich { fill: var(--action); }
+  .d-text { font-family: var(--font-body); font-size: 11px; fill: var(--ink); }
+  .d-fett { font-family: var(--font-head); font-weight: 700; font-size: 13px; fill: var(--ink); }
+  .d-klein { font-family: var(--font-body); font-size: 9px; fill: var(--muted); }
+  .d-akt-text { font-family: var(--font-body); font-size: 11px; font-weight: 600; fill: var(--action); }
+  .d-leiste { font-family: var(--font-body); font-size: 8px; fill: var(--muted); }
+  .d-leiste-akt { font-family: var(--font-body); font-size: 8px; font-weight: 600; fill: var(--action); }
+  .d-nr { fill: var(--action); }
+  .d-nr-text { font-family: var(--font-head); font-weight: 700; font-size: 11px; fill: var(--action-ink); }
+  .d-pfeil { stroke: var(--brand-deep); stroke-width: 1.8; fill: none; stroke-dasharray: 5 4; }
+  .d-spitze { fill: var(--brand-deep); }
+  .d-hinweis { font-family: var(--font-body); font-size: 11px; font-weight: 600; fill: var(--brand-deep); }
+  .legende { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); margin: 0; padding: 0; list-style: none; }
+  .legende li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 14.5px; }
+  .legende .n { width: 22px; height: 22px; border-radius: 50%; background: var(--action); color: var(--action-ink); display: grid; place-items: center; font: 700 12px/1 var(--font-head); margin-top: 2px; }
+  .legende b { display: block; }
+  .legende span.t { color: var(--muted); font-size: 14px; }
+  .regeln { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .regeln li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: baseline; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 12px 14px; }
+  .regeln .id { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--action); }
+  .regeln span.t { color: var(--muted); font-size: 14px; display: block; }
+  /* Schritte */
+  .schritte { display: grid; gap: 12px; }
+  .schritt { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 18px; display: grid; gap: 8px; min-width: 0; }
+  .schritt-kopf { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .schritt-kopf .id { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--action); }
+  .schritt p { font-size: 15px; }
+  .dateien { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+  /* Entscheidungen */
+  .entscheidung { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 18px 20px; display: grid; gap: 12px; min-width: 0; }
+  .entscheidung legend { padding: 0; font-family: var(--font-head); font-weight: 700; font-size: 17px; }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 8px; }
+  .option { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; }
+  .option:hover { border-color: var(--line-strong); }
+  .option:has(input:checked) { border-color: var(--action); background: var(--tint); }
+  .option input { margin: 3px 0 0; accent-color: var(--action); width: 16px; height: 16px; }
+  .option span { font-size: 14.5px; }
+  .option small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .empfohlen { font-size: 11px; font-weight: 700; color: var(--ok); letter-spacing: 0.04em; text-transform: uppercase; margin-left: 6px; }
+  .entscheidung .zeile { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .vorgemerkt { font-size: 13px; color: var(--ok); font-weight: 600; }
+  textarea { width: 100%; min-height: 96px; font: inherit; font-size: 15px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 10px 12px; resize: vertical; }
+  button { font: inherit; cursor: pointer; }
+  .knopf { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: var(--r-btn); font: 600 14px/1 var(--font-body); border: 1px solid transparent; }
+  .knopf.primaer { background: var(--action); color: var(--action-ink); }
+  .knopf.zweit { background: var(--surface); color: var(--action); border-color: var(--action); }
+  .kopieren { display: grid; gap: 10px; justify-items: start; }
+  [data-lavish-copy-all-status] { font-size: 14px; color: var(--muted); }
+  .fuss { font-size: 13.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 6px; }
+  /* Lupe */
+  .lupe { position: fixed; inset: 0; z-index: 50; background: var(--overlay); display: flex; flex-direction: column; }
+  .lupe-leiste { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; color: #E9EFF7; }
+  .lupe-leiste p { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+  .lupe-zu { flex: none; font: 600 14px/1 var(--font-body); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.08); color: #FFFFFF; }
+  .lupe-flaeche { flex: 1; overflow: auto; padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: flex-start; justify-content: flex-start; }
+  .lupe-flaeche img { max-width: none; width: auto; height: auto; margin: 0 auto; flex: none; border-radius: 6px; background: #FFFFFF; }
+  @media (prefers-reduced-motion: no-preference) {
+    .option, .toc a { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+  }
+</style>
+
+<div class="seite">
+  <nav class="toc" aria-label="Inhalt">
+    <div class="eyebrow">Inhalt</div>
+    <ol>
+      <li><a href="#kurzfassung">Kurzfassung</a></li>
+      <li><a href="#heute">Was man heute sieht</a></li>
+      <li><a href="#anlage">Was die Anlage schon richtig macht</a></li>
+      <li><a href="#regel">Die gemeinsame Regel</a></li>
+      <li><a href="#soll">So sähe es aus</a></li>
+      <li><a href="#modi">Beide Modi auf einen Blick</a></li>
+      <li><a href="#umsetzung">Umsetzung</a></li>
+      <li><a href="#risiken">Risiken</a></li>
+      <li><a href="#entscheidungen">Ihre Entscheidungen</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="kopf" id="kurzfassung">
+      <p class="eyebrow">Konzept · VoltPilot-Portal · Branch uems</p>
+      <h1>Navigation aus einem Guss</h1>
+      <p class="lead">Heute führt die Seitenleiste nur in einer Anlage. Beim Unternehmen und beim Standort steht dort ein einziger Eintrag, und über der Seite stapeln sich bis zu drei Reiterreihen. Vorschlag: überall das Muster der Anlage – links die Bereiche der Ebene, darüber höchstens eine Reiterreihe. Mit und ohne ISO 50001 gleich.</p>
+      <div class="meta">
+        <span class="chip">Stand: <b>Commit 21c8b2d</b></span>
+        <span class="chip"><b>Noch nichts umgesetzt</b> – zur Entscheidung</span>
+        <span class="chip">Adressen, Rechte und Seiten <b>bleiben</b></span>
+      </div>
+      <div class="raster">
+        <div class="karte kurz">
+          <span class="id">Befund</span>
+          <h3>Zwei Muster nebeneinander</h3>
+          <p>In der Anlage: fünf Bereiche links, eine Reiterreihe. Beim Unternehmen und Standort: fast leere Seitenleiste, Gruppen und Reiter als Reihen über der Seite.</p>
+        </div>
+        <div class="karte kurz">
+          <span class="id">Vorschlag</span>
+          <h3>Eine Regel für jede Ebene</h3>
+          <p>Links stehen die Bereiche der offenen Ebene, am Telefon dieselben unten. Über der Seite steht höchstens eine Reiterreihe, in der Kopfzeile immer der Ort.</p>
+        </div>
+        <div class="karte kurz">
+          <span class="id">Wirkung</span>
+          <h3>Höchstens eine Reihe</h3>
+          <p>Auf der Kennzahl und bei den Messstellen stehen am Rechner heute drei Reihen, sonst oft zwei. Danach ist es überall höchstens eine.</p>
+        </div>
+      </div>
+    </header>
+
+    <section id="heute" aria-labelledby="h-heute">
+      <div class="abschnittkopf">
+        <h2 id="h-heute">Was man heute sieht</h2>
+        <p>Gezählt am echten Portal (Testbühnen mit fiktiven Daten, 1440 px und 375 px). Als Reiterreihe zählt jede Reihe, die zwischen Seiten wechselt. Umschalter wie „Tag · Monat · Jahr“ zählen nicht.</p>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead>
+            <tr><th>Seite</th><th>Seitenleiste</th><th>Reihen über der Seite (Rechner)</th><th>Telefon</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Unternehmen › Kennzahl</td><td>1 Eintrag („Ahrenberg“)</td><td class="zahl rot"><span class="reihen"><i></i><i></i><i></i></span>3</td><td>Leiste + 2 Reihen</td></tr>
+            <tr><td>Unternehmen › Messstellen</td><td>1 Eintrag</td><td class="zahl rot"><span class="reihen"><i></i><i></i><i></i></span>3</td><td>Leiste + 2 Reihen</td></tr>
+            <tr><td>Unternehmen › Übersicht</td><td>1 Eintrag</td><td class="zahl rot"><span class="reihen"><i></i><i></i></span>2 <span class="muted" style="font:400 13px var(--font-body)">+ Fragezeile</span></td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Unternehmen › Energiemanagement</td><td>1 Eintrag</td><td class="zahl rot"><span class="reihen"><i></i><i></i></span>2</td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Unternehmen › Ziele und Maßnahmen</td><td>1 Eintrag</td><td class="zahl rot"><span class="reihen"><i></i><i></i></span>2</td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Standort › Übersicht</td><td>1 Eintrag („Ahrenberg“)</td><td class="zahl"><span class="reihen"><i></i></span>1 <span class="muted" style="font:400 13px var(--font-body)">die Bereiche</span></td><td>Leiste, keine Reihe</td></tr>
+            <tr><td>Anlage › Verlauf (beide Modi)</td><td><b>5 Bereiche</b> (+ Weg nach oben)</td><td class="zahl gruen"><span class="reihen gut"><i></i></span>1</td><td>Leiste + 1 Reihe</td></tr>
+            <tr><td>Flotte ohne ISO („Meine Anlagen“)</td><td>1 Eintrag</td><td class="zahl"><span class="reihen"><i></i></span>1 <span class="muted" style="font:400 13px var(--font-body)">die Bereiche</span></td><td>keine Leiste, 1 Reihe</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="prosa">
+        <p>Dazu wechselt die Kopfzeile ihre Bedeutung: am Standort zeigt sie den Ort („Ahrenberg › Werk Ahrenberg“), auf „Messstellen“ oder „Kennzahlen“ den Seitennamen.</p>
+        <p class="muted">Wie es dazu kam: Die Navigations-Runde „zwei Ebenen“ (Entscheide E3/E4) gab der Anlage fünf feste Bereiche in der Seitenleiste; die Flotte navigierte mit Reitern. Mit ISO 50001 kamen Unternehmen und Standort mit bis zu neun Bereichen dazu – ebenfalls als Reiter („am Rechner der einzige Weg in einen Bereich“, <code>ebenenNav.ts</code>). Die Gruppen aus K1 haben neun Reiter geordnet, dafür aber eine zweite Reihe gebracht.</p>
+      </div>
+      <div class="paar">
+        <figure>
+          <button type="button" class="bild" data-titel="Heute: Unternehmen › Kennzahl – drei Reihen"><img src="ist-kennzahl.jpg" width="1440" height="640" alt="Kennzahl-Seite heute: Gruppenreihe, Frage, Reihe Kennzahlen und Bewertung, Rückweg, dann Reihe Kennzahl, Bezugsbasis, Vergleich"></button>
+          <figcaption><span class="marke ist">heute</span>Kennzahl: Gruppen · Kennzahlen/Bewertung · Kennzahl/Bezugsbasis/Vergleich. Links nur „Ahrenberg“.</figcaption>
+        </figure>
+        <figure>
+          <button type="button" class="bild" data-titel="Heute: Unternehmen › Messstellen – drei Reihen"><img src="ist-messstellen.jpg" width="1440" height="440" alt="Messstellen heute: Gruppenreihe, Frage, Reihe Messstellen und Bezugsgrößen, Reihe Liste, Kostenstellen, Prozesse"></button>
+          <figcaption><span class="marke ist">heute</span>Messstellen: Gruppen · Messstellen/Bezugsgrößen · Liste/Kostenstellen/Prozesse.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="anlage" aria-labelledby="h-anlage">
+      <div class="abschnittkopf">
+        <h2 id="h-anlage">Was die Anlage schon richtig macht</h2>
+        <p>Im Betrieb ohne ISO 50001 arbeitet man fast nur in der Anlage – und dort ist die Navigation ruhig. Dieses Muster soll überall gelten.</p>
+      </div>
+      <ul class="regeln">
+        <li><span class="id">A1</span><span>Fünf feste Bereiche links: Cockpit · Fahrplan · Verlauf · Steuerung · Anlage. <span class="t">Die Seitenleiste ändert ihre Form nie; ein Bereich ohne Inhalt fehlt, statt leer zu stehen.</span></span></li>
+        <li><span class="id">A2</span><span>Am Telefon dieselben fünf unten. <span class="t">Kein zweites Menü, kein „Mehr“.</span></span></li>
+        <li><span class="id">A3</span><span>Ein Bereich hat höchstens eine Reiterreihe. <span class="t">Verlauf: Energie · Energiebilanz · Messwerte; Anlage: Aufbau · Einstellungen.</span></span></li>
+        <li><span class="id">A4</span><span>Detailseiten zeigen den Rückweg statt Reiter. <span class="t">Box und Gerät: „Anlage › Aufbau › VoltPilot-Box“.</span></span></li>
+        <li><span class="id">A5</span><span>Der Ort steht im Pfad der Kopfzeile, mit Umschalter. <span class="t">„Ahrenberg › Werk Ahrenberg › Halle 1 ▾“</span></span></li>
+      </ul>
+      <div class="paar">
+        <figure>
+          <button type="button" class="bild" data-titel="Anlage › Verlauf: fünf Bereiche links, eine Reihe"><img src="anlage-verlauf.jpg" width="1440" height="520" alt="Anlage Verlauf: links Cockpit, Fahrplan, Verlauf, Steuerung, Anlage; oben eine Reihe Energie, Energiebilanz, Messwerte"></button>
+          <figcaption>Anlage › Verlauf: fünf Bereiche links, darüber genau eine Reihe.</figcaption>
+        </figure>
+        <figure class="telefon" style="max-width:300px">
+          <button type="button" class="bild" data-titel="Anlage am Telefon: dieselben fünf Bereiche unten"><img src="tel-anlage.jpg" width="600" height="1299" alt="Anlage am Telefon: unten Cockpit, Fahrplan, Verlauf, Steuerung, Anlage; oben eine Reihe"></button>
+          <figcaption>Am Telefon: dieselben fünf unten, oben eine Reihe.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="regel" aria-labelledby="h-regel">
+      <div class="abschnittkopf">
+        <h2 id="h-regel">Die gemeinsame Regel</h2>
+        <p>Vier Orte, jeder mit genau einer Aufgabe – am Rechner und am Telefon dieselben Einträge.</p>
+      </div>
+      <div class="diagramm">
+        <div class="diagramm-scroll">
+          <svg viewBox="0 0 900 430" role="img" aria-labelledby="d-titel d-besch">
+            <title id="d-titel">Aufbau des Bildschirms nach der Regel</title>
+            <desc id="d-besch">Links ein Rechner-Bildschirm mit Seitenleiste, Kopfzeile, einer Reiterreihe und Seite; rechts ein Telefon mit Kopf, einer Reiterreihe und Leiste unten. Die Einträge der Seitenleiste stehen am Telefon in der Leiste.</desc>
+            <!-- Rechner -->
+            <g id="rechner">
+              <title>Rechner</title>
+              <rect class="d-rahmen" x="20" y="30" width="560" height="350" rx="14"/>
+              <rect class="d-flaeche" x="21" y="31" width="130" height="348" rx="13"/>
+              <text class="d-fett" x="36" y="56">VoltPilot</text>
+              <text class="d-klein" x="36" y="84">‹ Ahrenberg</text>
+              <line class="d-linie" x1="32" y1="94" x2="140" y2="94"/>
+              <g id="bereiche">
+                <title>Bereiche der Ebene</title>
+                <rect class="d-block" x="36" y="106" width="9" height="9" rx="2"/><text class="d-text" x="52" y="114">Übersicht</text>
+                <rect class="d-akt" x="28" y="126" width="116" height="36" rx="8"/>
+                <rect class="d-strich" x="36" y="133" width="9" height="9" rx="2"/><text class="d-akt-text" x="52" y="141">Messen</text>
+                <text class="d-klein" x="52" y="154">Wird alles erfasst?</text>
+                <rect class="d-block" x="36" y="174" width="9" height="9" rx="2"/><text class="d-text" x="52" y="182">Auswerten</text>
+                <rect class="d-block" x="36" y="198" width="9" height="9" rx="2"/><text class="d-text" x="52" y="206">Verbessern</text>
+                <rect class="d-block" x="36" y="222" width="9" height="9" rx="2"/><text class="d-text" x="52" y="230">Nachweisen</text>
+              </g>
+              <text class="d-klein" x="36" y="364">Hilfe &amp; Kontakt</text>
+              <line class="d-linie" x1="151" y1="66" x2="579" y2="66"/>
+              <text class="d-text" x="168" y="53">Ahrenberg</text>
+              <circle class="d-block" cx="558" cy="48" r="9"/>
+              <g id="reiterreihe">
+                <title>Eine Reiterreihe</title>
+                <text class="d-text" x="168" y="90">Messstellen</text>
+                <text class="d-akt-text" x="244" y="90">Kostenstellen</text>
+                <text class="d-text" x="330" y="90">Prozesse</text>
+                <text class="d-text" x="390" y="90">Bezugsgrößen</text>
+                <line class="d-linie" x1="168" y1="99" x2="562" y2="99"/>
+                <rect class="d-strich" x="244" y="97" width="72" height="2.5" rx="1"/>
+              </g>
+              <text class="d-fett" x="168" y="126">Messstellen</text>
+              <g id="umschalter">
+                <title>Umschalter in der Seite</title>
+                <rect class="d-block" x="452" y="112" width="110" height="20" rx="6"/>
+                <rect class="d-flaeche" x="488" y="114" width="38" height="16" rx="5"/>
+                <text class="d-klein" x="462" y="125">Tag</text>
+                <text class="d-klein" x="493" y="125">Monat</text>
+                <text class="d-klein" x="534" y="125">Jahr</text>
+              </g>
+              <rect class="d-block" x="168" y="146" width="394" height="36" rx="8"/>
+              <rect class="d-block" x="168" y="190" width="394" height="36" rx="8"/>
+              <rect class="d-block" x="168" y="234" width="394" height="36" rx="8"/>
+              <rect class="d-block" x="168" y="278" width="260" height="36" rx="8"/>
+              <circle class="d-nr" cx="258" cy="48" r="10"/><text class="d-nr-text" x="258" y="52" text-anchor="middle">1</text>
+              <circle class="d-nr" cx="156" cy="144" r="10"/><text class="d-nr-text" x="156" y="148" text-anchor="middle">2</text>
+              <circle class="d-nr" cx="478" cy="90" r="10"/><text class="d-nr-text" x="478" y="94" text-anchor="middle">3</text>
+              <circle class="d-nr" cx="440" cy="122" r="10"/><text class="d-nr-text" x="440" y="126" text-anchor="middle">4</text>
+            </g>
+            <!-- Telefon -->
+            <g id="telefon">
+              <title>Telefon</title>
+              <defs><clipPath id="tel-clip"><rect x="641" y="31" width="228" height="348" rx="23"/></clipPath></defs>
+              <rect class="d-rahmen" x="640" y="30" width="230" height="350" rx="24"/>
+              <g clip-path="url(#tel-clip)">
+                <rect class="d-flaeche" x="640" y="30" width="230" height="36"/>
+                <text class="d-text" x="656" y="53">Ahrenberg</text>
+                <circle class="d-block" cx="850" cy="48" r="9"/>
+                <text class="d-text" x="656" y="88">Messstellen</text>
+                <text class="d-akt-text" x="726" y="88">Kostenstellen</text>
+                <text class="d-text" x="808" y="88">Prozesse</text>
+                <line class="d-linie" x1="652" y1="97" x2="870" y2="97"/>
+                <rect class="d-strich" x="726" y="95" width="72" height="2.5" rx="1"/>
+                <text class="d-fett" x="656" y="122">Messstellen</text>
+                <rect class="d-block" x="656" y="134" width="198" height="34" rx="8"/>
+                <rect class="d-block" x="656" y="176" width="198" height="34" rx="8"/>
+                <rect class="d-block" x="656" y="218" width="198" height="34" rx="8"/>
+                <rect class="d-block" x="656" y="260" width="198" height="34" rx="8"/>
+                <g id="leiste">
+                  <title>Leiste unten</title>
+                  <rect class="d-flaeche" x="640" y="334" width="230" height="46"/>
+                  <rect class="d-block" x="658" y="342" width="10" height="10" rx="2"/><text class="d-leiste" x="663" y="366" text-anchor="middle">Übersicht</text>
+                  <rect class="d-strich" x="704" y="342" width="10" height="10" rx="2"/><text class="d-leiste-akt" x="709" y="366" text-anchor="middle">Messen</text>
+                  <rect class="d-block" x="750" y="342" width="10" height="10" rx="2"/><text class="d-leiste" x="755" y="366" text-anchor="middle">Auswerten</text>
+                  <rect class="d-block" x="796" y="342" width="10" height="10" rx="2"/><text class="d-leiste" x="801" y="366" text-anchor="middle">Verbessern</text>
+                  <rect class="d-block" x="842" y="342" width="10" height="10" rx="2"/><text class="d-leiste" x="847" y="366" text-anchor="middle">Nachweisen</text>
+                </g>
+              </g>
+              <circle class="d-nr" cx="730" cy="48" r="10"/><text class="d-nr-text" x="730" y="52" text-anchor="middle">1</text>
+              <circle class="d-nr" cx="846" cy="110" r="10"/><text class="d-nr-text" x="846" y="114" text-anchor="middle">3</text>
+              <circle class="d-nr" cx="628" cy="357" r="10"/><text class="d-nr-text" x="628" y="361" text-anchor="middle">2</text>
+            </g>
+            <g id="gleich">
+              <title>Dieselben Einträge</title>
+              <path class="d-pfeil" d="M86 384 C 86 414, 520 414, 612 372"/>
+              <path class="d-spitze" d="M616 368 L 604 368 L 612 378 Z"/>
+              <text class="d-hinweis" x="300" y="422" text-anchor="middle">dieselben Einträge, dieselbe Reihenfolge</text>
+            </g>
+          </svg>
+        </div>
+        <ol class="legende">
+          <li><span class="n">1</span><span><b>Kopfzeile: der Ort</b><span class="t">Immer der Pfad mit Umschalter („Ahrenberg › Werk Ahrenberg › Halle 1 ▾“), nie ein Seitenname.</span></span></li>
+          <li><span class="n">2</span><span><b>Bereiche der Ebene</b><span class="t">Höchstens fünf, links am Rechner, unten am Telefon. Darüber der Weg eine Ebene höher.</span></span></li>
+          <li><span class="n">3</span><span><b>Eine Reiterreihe</b><span class="t">Die Seiten des offenen Bereichs – oder auf einer Detailseite deren Abschnitte.</span></span></li>
+          <li><span class="n">4</span><span><b>Umschalter in der Seite</b><span class="t">Zeitraum und Ansicht sind Knöpfe in der Werkzeugzeile, keine Reiter.</span></span></li>
+        </ol>
+      </div>
+      <ul class="regeln">
+        <li><span class="id">R1</span><span>Jede Ebene hat höchstens fünf Bereiche. <span class="t">Anlage: Cockpit · Fahrplan · Verlauf · Steuerung · Anlage. Standort: Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse. Unternehmen: Übersicht · Messen · Auswerten · Verbessern · Nachweisen. Flotte ohne ISO: Übersicht · Energie · Erlöse (und Standorte).</span></span></li>
+        <li><span class="id">R2</span><span>Die Bereiche der offenen Ebene stehen links und am Telefon unten. <span class="t">Eine Ableitung für beide, damit sie nie auseinanderlaufen. Auf dem Tablet bleibt es die Symbolleiste.</span></span></li>
+        <li><span class="id">R3</span><span>Ein Bereich hat höchstens eine Reiterreihe, direkt unter der Kopfzeile. <span class="t">Keine Gruppenreihe, keine Fragezeile dazwischen.</span></span></li>
+        <li><span class="id">R4</span><span>Eine Detailseite zeigt den Rückweg statt der Reihe des Bereichs. <span class="t">„‹ Alle Kennzahlen“, darunter höchstens ihre eigenen Abschnitte.</span></span></li>
+        <li><span class="id">R5</span><span>Zeitraum und Ansicht sind Umschalter, keine Reiter. <span class="t">„Tag · Monat · Jahr“ bleibt, wie es ist.</span></span></li>
+        <li><span class="id">R6</span><span>Die Kopfzeile zeigt immer den Ort. <span class="t">Der Seitenname steht in der Seite selbst.</span></span></li>
+      </ul>
+    </section>
+
+    <section id="soll" aria-labelledby="h-soll">
+      <div class="abschnittkopf">
+        <h2 id="h-soll">So sähe es aus</h2>
+        <p>Jede Skizze ist die echte Seite, im Browser umgestellt – noch kein Code. Bild antippen zum Vergrößern.</p>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Unternehmen › Kennzahl</h3>
+          <p>Die Gruppen wandern nach links, die Frage steht klein unter „Auswerten“. Weil es eine Detailseite ist, entfällt die Reihe „Kennzahlen · Bewertung“ – der Rückweg „‹ Alle Kennzahlen“ reicht.</p>
+          <span class="zaehlung"><span class="rot">3 Reihen</span> → <span class="gruen">1 Reihe</span></span>
+        </div>
+        <div class="paar">
+          <figure><button type="button" class="bild" data-titel="Heute: Kennzahl"><img src="ist-kennzahl.jpg" width="1440" height="640" alt="Kennzahl heute mit drei Reihen"></button><figcaption><span class="marke ist">heute</span></figcaption></figure>
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Kennzahl"><img src="soll-kennzahl.jpg" width="1440" height="640" alt="Kennzahl im Vorschlag: Gruppen links, oben nur der Rückweg und eine Reihe"></button><figcaption><span class="marke soll">Vorschlag</span></figcaption></figure>
+        </div>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Unternehmen › Messstellen</h3>
+          <p>Kostenstellen und Prozesse rücken in dieselbe Reihe wie Messstellen und Bezugsgrößen – alles beantwortet „Wird alles erfasst?“. Die Adressen (<code>?reiter=kostenstellen</code>) bleiben.</p>
+          <span class="zaehlung"><span class="rot">3 Reihen</span> → <span class="gruen">1 Reihe</span></span>
+        </div>
+        <div class="paar">
+          <figure><button type="button" class="bild" data-titel="Heute: Messstellen"><img src="ist-messstellen.jpg" width="1440" height="440" alt="Messstellen heute mit drei Reihen"></button><figcaption><span class="marke ist">heute</span></figcaption></figure>
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Messstellen"><img src="soll-messstellen.jpg" width="1440" height="440" alt="Messstellen im Vorschlag: eine Reihe Messstellen, Kostenstellen, Prozesse, Bezugsgrößen"></button><figcaption><span class="marke soll">Vorschlag</span></figcaption></figure>
+        </div>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Unternehmen › Übersicht</h3>
+          <p>Links die fünf Gruppen, oben nur die Seiten der Übersicht: Übersicht · Standorte · Energie · Wiedervorlage.</p>
+          <span class="zaehlung"><span class="rot">2 Reihen + Frage</span> → <span class="gruen">1 Reihe</span></span>
+        </div>
+        <div class="paar">
+          <figure><button type="button" class="bild" data-titel="Heute: Übersicht"><img src="ist-uebersicht.jpg" width="1440" height="520" alt="Übersicht heute mit Gruppenreihe, Frage und Reiterreihe"></button><figcaption><span class="marke ist">heute</span></figcaption></figure>
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Übersicht"><img src="soll-uebersicht.jpg" width="1440" height="520" alt="Übersicht im Vorschlag: Gruppen links, eine Reiterreihe"></button><figcaption><span class="marke soll">Vorschlag</span></figcaption></figure>
+        </div>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Standort</h3>
+          <p>Die fünf Bereiche des Standorts stehen links, oben „‹ Ahrenberg“ als Weg zum Unternehmen. Über der Seite bleibt keine Reihe.</p>
+          <span class="zaehlung">1 Reihe → <span class="gruen">0 Reihen</span></span>
+        </div>
+        <div class="paar">
+          <figure><button type="button" class="bild" data-titel="Heute: Standort"><img src="ist-standort.jpg" width="1440" height="520" alt="Standort heute: links nur Ahrenberg, oben die Reihe der Bereiche"></button><figcaption><span class="marke ist">heute</span></figcaption></figure>
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Standort"><img src="soll-standort.jpg" width="1440" height="520" alt="Standort im Vorschlag: links Rückweg Ahrenberg und die fünf Bereiche"></button><figcaption><span class="marke soll">Vorschlag</span></figcaption></figure>
+        </div>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Anlage</h3>
+          <p>Bleibt, wie sie ist. Nur der Eintrag ganz oben führt eine Ebene höher („‹ Werk Ahrenberg“) statt immer zum Unternehmen – siehe N2.</p>
+        </div>
+        <div class="paar">
+          <figure><button type="button" class="bild" data-titel="Heute: Anlage (klassischer Betrieb)"><img src="klassik-einzel.jpg" width="1440" height="420" alt="Anlage heute im Betrieb ohne ISO: fünf Bereiche links"></button><figcaption><span class="marke ist">heute</span> ohne ISO, eine Anlage: keine Ebene darüber, nichts ändert sich.</figcaption></figure>
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Anlage mit Weg zum Standort"><img src="soll-anlage.jpg" width="1440" height="420" alt="Anlage im Vorschlag: oben ‹ Werk Ahrenberg, darunter die fünf Bereiche"></button><figcaption><span class="marke soll">Vorschlag</span> mit ISO: oben der Weg zum Standort.</figcaption></figure>
+        </div>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Flotte ohne ISO 50001 („Meine Anlagen“, „Portfolio“)</h3>
+          <p>Auch hier war die Seitenleiste fast leer. Mit N3 stehen Übersicht · Standorte · Energie (mit Geld auch Erlöse) links und am Telefon unten – wie auf jeder anderen Ebene.</p>
+          <span class="zaehlung">1 Reihe → <span class="gruen">0 Reihen</span></span>
+        </div>
+        <div class="paar">
+          <figure><button type="button" class="bild" data-titel="Heute: Meine Anlagen"><img src="ist-flotte.jpg" width="1440" height="520" alt="Meine Anlagen heute: links ein Eintrag, oben Reiter"></button><figcaption><span class="marke ist">heute</span></figcaption></figure>
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Meine Anlagen"><img src="soll-flotte.jpg" width="1440" height="520" alt="Meine Anlagen im Vorschlag: Übersicht, Standorte, Energie links"></button><figcaption><span class="marke soll">Vorschlag</span></figcaption></figure>
+        </div>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Energiemanagement und Ziele</h3>
+          <p>„Nachweisen“ und „Verbessern“ links; oben je genau eine Reihe. Bei Ziele und Maßnahmen rückt die Reihe an dieselbe Stelle wie überall: direkt unter die Kopfzeile.</p>
+          <span class="zaehlung"><span class="rot">2 Reihen</span> → <span class="gruen">1 Reihe</span></span>
+        </div>
+        <div class="paar">
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Energiemanagement"><img src="soll-em.jpg" width="1440" height="480" alt="Energiemanagement im Vorschlag: Nachweisen links, eine Reihe"></button><figcaption><span class="marke soll">Vorschlag</span> Energiemanagement (heute: <a href="ist-em.jpg" data-lupe>Bild</a>)</figcaption></figure>
+          <figure><button type="button" class="bild" data-titel="Vorschlag: Ziele und Maßnahmen"><img src="soll-ziele.jpg" width="1440" height="480" alt="Ziele und Maßnahmen im Vorschlag: Verbessern links, eine Reihe oben"></button><figcaption><span class="marke soll">Vorschlag</span> Ziele und Maßnahmen (heute: <a href="ist-ziele.jpg" data-lupe>Bild</a>)</figcaption></figure>
+        </div>
+      </div>
+
+      <div class="beispiel">
+        <div class="beispiel-kopf">
+          <h3>Am Telefon</h3>
+          <p>Die Leiste unten bleibt, wie sie ist. Es fällt nur jeweils die zweite Reihe weg; die Flotte ohne ISO bekommt eine Leiste wie jede andere Ebene.</p>
+        </div>
+        <div class="raster" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));">
+          <div class="paar-tel telefon">
+            <figure><button type="button" class="bild" data-titel="Heute: Messstellen am Telefon"><img src="tel-ist-messstellen.jpg" width="600" height="1299" alt="Messstellen am Telefon heute mit zwei Reihen"></button><figcaption><span class="marke ist">heute</span> 2 Reihen</figcaption></figure>
+            <figure><button type="button" class="bild" data-titel="Vorschlag: Messstellen am Telefon"><img src="tel-soll-messstellen.jpg" width="600" height="1299" alt="Messstellen am Telefon im Vorschlag mit einer Reihe"></button><figcaption><span class="marke soll">Vorschlag</span> 1 Reihe</figcaption></figure>
+          </div>
+          <div class="paar-tel telefon">
+            <figure><button type="button" class="bild" data-titel="Heute: Kennzahl am Telefon"><img src="tel-ist-kennzahl.jpg" width="600" height="1299" alt="Kennzahl am Telefon heute mit zwei Reihen"></button><figcaption><span class="marke ist">heute</span> 2 Reihen</figcaption></figure>
+            <figure><button type="button" class="bild" data-titel="Vorschlag: Kennzahl am Telefon"><img src="tel-soll-kennzahl.jpg" width="600" height="1299" alt="Kennzahl am Telefon im Vorschlag mit Rückweg und einer Reihe"></button><figcaption><span class="marke soll">Vorschlag</span> Rückweg + 1 Reihe</figcaption></figure>
+          </div>
+          <div class="paar-tel telefon">
+            <figure><button type="button" class="bild" data-titel="Heute: Meine Anlagen am Telefon"><img src="tel-ist-flotte.jpg" width="600" height="1299" alt="Meine Anlagen am Telefon heute ohne Leiste, mit Reihe oben"></button><figcaption><span class="marke ist">heute</span> keine Leiste</figcaption></figure>
+            <figure><button type="button" class="bild" data-titel="Vorschlag: Meine Anlagen am Telefon"><img src="tel-soll-flotte.jpg" width="600" height="1299" alt="Meine Anlagen am Telefon im Vorschlag mit Leiste unten"></button><figcaption><span class="marke soll">Vorschlag</span> Leiste mit 3</figcaption></figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="modi" aria-labelledby="h-modi">
+      <div class="abschnittkopf">
+        <h2 id="h-modi">Beide Modi auf einen Blick</h2>
+        <p>„Mit ISO 50001“ heißt im Portal: mindestens ein Standort misst („Messen &amp; Auswerten“). Dann haben Unternehmen und Standort eigene Bereiche.</p>
+      </div>
+      <div class="tabelle-rahmen">
+        <table class="breit">
+          <thead><tr><th>Ebene</th><th>Ohne ISO 50001</th><th>Mit ISO 50001</th></tr></thead>
+          <tbody>
+            <tr><td><b>Oberste Ebene</b><br><span class="muted">Flotte bzw. Unternehmen</span></td><td>Links: Übersicht · Standorte · Energie · Erlöse – jeweils nur, wenn es die Seite heute als Reiter gibt<br><span class="muted">heute: 1 Eintrag + Reiter</span></td><td>Links: Übersicht · Messen · Auswerten · Verbessern · Nachweisen, Frage unter dem offenen Eintrag; oben die Seiten der Gruppe<br><span class="muted">heute: 1 Eintrag + 2 Reihen</span></td></tr>
+            <tr><td><b>Standort</b></td><td>Links: ‹ oberste Ebene · Übersicht (· Gebäude, falls angelegt)<br><span class="muted">mehr Bereiche hat ein Standort ohne Messfunktion nicht</span></td><td>Links: ‹ Ahrenberg · Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse<br><span class="muted">heute: 1 Eintrag + 1 Reihe</span></td></tr>
+            <tr><td><b>Anlage</b></td><td>Wie heute: ‹ Meine Anlagen bzw. ‹ Portfolio (ab 2 Anlagen) · fünf Bereiche</td><td>‹ Werk Ahrenberg · fünf Bereiche<br><span class="muted">heute: ‹ Ahrenberg</span></td></tr>
+            <tr><td><b>Telefon</b></td><td>Leiste: die Bereiche der Ebene ab 3 (neu auch für die Flotte)</td><td>Wie heute; die zweite Reihe fällt weg</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="kasten">
+        <b>Was bleibt</b>
+        <ul class="liste">
+          <li>Alle Adressen und Lesezeichen (<code>nav.ts</code>), alle Rechte, alle Seiten und ihr Inhalt.</li>
+          <li>Die Leiste am Telefon: höchstens fünf, erst ab drei Einträgen.</li>
+          <li>Der Pfad mit Umschalter in der Kopfzeile, „Hilfe &amp; Kontakt“ unten, die Gruppe „Plattform“ für Admins.</li>
+          <li>Kennzahlen und Berichte eines Standorts bleiben Einstiege auf seiner Übersicht (keine sechsten Bereiche).</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="umsetzung" aria-labelledby="h-umsetzung">
+      <div class="abschnittkopf">
+        <h2 id="h-umsetzung">Umsetzung</h2>
+        <p>In dieser Reihenfolge; nach U3 ist das Wichtigste sichtbar. Schätzung: mittlerer Umfang – etwa zehn Quelldateien, dazu Tests, Hilfe-Bilder und Doku.</p>
+      </div>
+      <div class="schritte">
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U1</span><h4>Eine Ableitung für Seitenleiste und Leiste</h4></div>
+          <p>Neue reine Funktion: die Einträge der Ebene – Unternehmen nach Gruppen, Standort nach Bereichen, Flotte nach ihren Welten. Die Seitenleiste zeigt sie ab zwei Einträgen, die Leiste wie heute ab drei. Ein Test prüft, dass beide dieselben Einträge in derselben Reihenfolge zeigen.</p>
+          <p class="dateien">src/ebenenNav.ts (neben ebenenLeiste, UNTERNEHMEN_GRUPPEN) · src/ebenenNav.test.ts</p>
+        </div>
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U2</span><h4>Seitenleiste zeigt die Bereiche jeder Ebene</h4></div>
+          <p>Die Schale rendert die Einträge wie heute die fünf Bereiche der Anlage (NavItem, aktiv, Symbol). Oben der Weg eine Ebene höher (N2), die Frage der Gruppe als zweite Zeile unter dem offenen Eintrag (N4). Die Symbolleiste am Tablet nutzt dieselben Symbole, der Titel nennt Name und Frage.</p>
+          <p class="dateien">src/shell/AppShell.tsx · src/shell/Shell.css · src/App.tsx · src/shell/AppShell.test.tsx · src/shell/PortfolioNav.test.tsx</p>
+        </div>
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U3</span><h4>Nur noch eine Reihe über der Seite</h4></div>
+          <p>Die Gruppenreihe und die Fragezeile entfallen; oben stehen die Reiter der offenen Gruppe (heute schon die Logik am Telefon). Am Standort entfällt die Reihe der Bereiche am Rechner.</p>
+          <p class="dateien">src/components/PortfolioTabs.tsx · src/components/EbenenTabs.tsx · src/components/BereichTabs.css · src/components/PortfolioTabsGruppen.test.tsx</p>
+        </div>
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U4</span><h4>Messstellen: eine Reihe</h4></div>
+          <p>Kostenstellen und Prozesse werden Reiter der Gruppe „Messen“, nur wenn es sie gibt. Die Seite zeigt ihre eigene Reihe dann nicht mehr; <code>?reiter=</code> bleibt.</p>
+          <p class="dateien">src/ebenenNav.ts · src/components/PortfolioTabs.tsx · src/pages/MessstellenPage.tsx</p>
+        </div>
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U5</span><h4>Detailseiten ohne Bereichsreihe</h4></div>
+          <p>Auf Detailseiten (eine Kennzahl, ein Bericht, ein Eintrag des Energiemanagements) steht der Rückweg statt der Reihe der Gruppe. Jede Detailseite wird dabei einzeln geprüft.</p>
+          <p class="dateien">src/components/PortfolioTabs.tsx · src/pages/KennzahlSeite.tsx · Detailseiten unter src/pages/</p>
+        </div>
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U6</span><h4>Kopfzeile zeigt immer den Ort</h4></div>
+          <p>Alle Seiten einer Ebene bekommen den Pfad statt des Seitennamens.</p>
+          <p class="dateien">src/App.tsx (ortsPfad) · src/shell/AppShell.tsx · src/shell/Ortspfad.test.tsx</p>
+        </div>
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U7</span><h4>Flotte ohne ISO</h4></div>
+          <p>Übersicht · Standorte · Energie · Erlöse als Einträge der Flotte (N3); am Telefon die Leiste ab drei. Die Reiter oben entfallen.</p>
+          <p class="dateien">src/ebenenNav.ts · src/components/PortfolioTabs.tsx · src/App.tsx</p>
+        </div>
+        <div class="schritt">
+          <div class="schritt-kopf"><span class="id">U8</span><h4>Tests, Hilfe, Doku</h4></div>
+          <p>Browser-Tests mit Reihen und Beschriftungen nachziehen (u. a. startansicht, telefonleiste, kostenstellen, energiemanagement, energiemanagement-managementbewertung, einstieg, shell-layout, mobile-ui). Hilfe-Texte und -Bilder, die die Navigation zeigen, neu erzeugen; <code>docs/portal.md</code> (Orientierung) anpassen. Prüfung wie immer bei 1440 und 375 px.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="risiken" aria-labelledby="h-risiken">
+      <div class="abschnittkopf">
+        <h2 id="h-risiken">Risiken</h2>
+      </div>
+      <div class="raster">
+        <div class="karte kurz"><h4>Gewohnheit</h4><p>Bestandskunden ohne ISO finden Energie und Erlöse links statt oben (nur mit N3 = A).</p></div>
+        <div class="karte kurz"><h4>Tablet</h4><p>Zwischen 721 und 1023 px zeigt die Seitenleiste nur Symbole. Die Symbole der Gruppen müssen eindeutig sein; der Titel nennt Name und Frage.</p></div>
+        <div class="karte kurz"><h4>Viele Tests</h4><p>Reine Nachzieharbeit, aber viele Stellen. Wird die Reihenfolge U1–U8 eingehalten, bleibt jeder Schritt einzeln prüfbar.</p></div>
+        <div class="karte kurz"><h4>Wenige Einträge</h4><p>Mit wenigen Rechten hat eine Ebene nur ein oder zwei Bereiche. Dann steht links nur der Weg nach oben und die Übersicht – nie ein leerer Eintrag.</p></div>
+      </div>
+    </section>
+
+    <section id="entscheidungen" aria-labelledby="h-entscheidungen">
+      <div class="abschnittkopf">
+        <h2 id="h-entscheidungen">Ihre Entscheidungen</h2>
+        <p>Sechs Fragen, je eine Empfehlung. Auswählen und am Ende alle Antworten kopieren und in den Chat einfügen – oder einfach „alle Empfehlungen“ schreiben.</p>
+      </div>
+
+      <form class="entscheidung" data-lavish-question="N1 Bereiche von Unternehmen und Standort am Rechner">
+        <fieldset>
+          <legend>N1 · Wo stehen die Bereiche von Unternehmen und Standort am Rechner?</legend>
+          <label class="option"><input type="radio" name="N1" value="In der Seitenleiste wie in der Anlage" checked><span>In der Seitenleiste, wie in der Anlage <span class="empfohlen">empfohlen</span><small>Ein Muster überall; höchstens eine Reihe über der Seite.</small></span></label>
+          <label class="option"><input type="radio" name="N1" value="Oben als eine flache Reihe ohne Gruppen"><span>Oben als eine flache Reihe, ohne Gruppen<small>Wieder bis zu neun Reiter nebeneinander; die Seitenleiste bleibt leer.</small></span></label>
+          <label class="option"><input type="radio" name="N1" value="So lassen wie heute"><span>So lassen wie heute</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" data-lavish-question="N2 Oberster Eintrag der Seitenleiste">
+        <fieldset>
+          <legend>N2 · Was steht ganz oben in der Seitenleiste, wenn man nicht auf der obersten Ebene ist?</legend>
+          <label class="option"><input type="radio" name="N2" value="Der Weg eine Ebene höher" checked><span>Der Weg eine Ebene höher <span class="empfohlen">empfohlen</span><small>In der Anlage „‹ Werk Ahrenberg“, am Standort „‹ Ahrenberg“. Der Pfad oben zeigt weiter alle Ebenen.</small></span></label>
+          <label class="option"><input type="radio" name="N2" value="Immer die oberste Ebene wie heute"><span>Immer die oberste Ebene, wie heute („Ahrenberg“)</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" data-lavish-question="N3 Flotte ohne ISO 50001">
+        <fieldset>
+          <legend>N3 · Flotte ohne ISO 50001 („Meine Anlagen“, „Portfolio“)</legend>
+          <label class="option"><input type="radio" name="N3" value="Übersicht, Standorte, Energie, Erlöse in die Seitenleiste, Telefon-Leiste ab drei" checked><span>Übersicht · Standorte · Energie · Erlöse in die Seitenleiste, am Telefon die Leiste ab drei <span class="empfohlen">empfohlen</span><small>Ein Muster für beide Modi; ändert die Gewohnheit von Bestandskunden.</small></span></label>
+          <label class="option"><input type="radio" name="N3" value="Reiter oben wie heute"><span>Reiter oben wie heute<small>Ohne ISO ändert sich nichts; die Flotte bleibt die Ausnahme.</small></span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" data-lavish-question="N4 Frage der Gruppe">
+        <fieldset>
+          <legend>N4 · Die Frage der Gruppe („Wird alles erfasst?“)</legend>
+          <label class="option"><input type="radio" name="N4" value="Zweite Zeile unter dem offenen Eintrag der Seitenleiste" checked><span>Als zweite Zeile unter dem offenen Eintrag der Seitenleiste <span class="empfohlen">empfohlen</span><small>Sichtbar, wo man die Gruppe wählt; keine Zeile über der Seite.</small></span></label>
+          <label class="option"><input type="radio" name="N4" value="Kleine Zeile über dem Seitentitel"><span>Als kleine Zeile über dem Seitentitel</span></label>
+          <label class="option"><input type="radio" name="N4" value="Nur als Tooltip"><span>Nur als Tooltip</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" data-lavish-question="N5 Kostenstellen und Prozesse">
+        <fieldset>
+          <legend>N5 · Kostenstellen und Prozesse der Messstellen</legend>
+          <label class="option"><input type="radio" name="N5" value="In dieselbe Reihe wie Messstellen und Bezugsgrößen" checked><span>In dieselbe Reihe wie Messstellen und Bezugsgrößen <span class="empfohlen">empfohlen</span></span></label>
+          <label class="option"><input type="radio" name="N5" value="Als Umschalter Ansicht in der Werkzeugzeile"><span>Als Umschalter „Ansicht: Liste · Kostenstellen · Prozesse“ in der Werkzeugzeile</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" data-lavish-question="N6 Kopfzeile">
+        <fieldset>
+          <legend>N6 · Kopfzeile</legend>
+          <label class="option"><input type="radio" name="N6" value="Immer der Ort mit Umschalter, nie der Seitenname" checked><span>Immer der Ort mit Umschalter, nie der Seitenname <span class="empfohlen">empfohlen</span></span></label>
+          <label class="option"><input type="radio" name="N6" value="Wie heute"><span>Wie heute (mal Ort, mal Seitenname)</span></label>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Antwort vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <form class="entscheidung" data-lavish-question="Anmerkungen">
+        <fieldset>
+          <legend>Anmerkungen</legend>
+          <textarea name="Anmerkungen" aria-label="Anmerkungen" placeholder="Was fehlt, was soll anders sein?"></textarea>
+        </fieldset>
+        <div class="zeile"><button type="submit" class="knopf zweit">Anmerkung vormerken</button><span class="vorgemerkt" hidden>vorgemerkt</span></div>
+      </form>
+
+      <div class="kopieren">
+        <button type="button" class="knopf primaer" id="alle-kopieren">Alle Antworten kopieren</button>
+        <span data-lavish-copy-all-status role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <footer class="fuss">
+      <p><b>Grundlage:</b> <code>src/ebenenNav.ts</code> (Bereiche, Gruppen, Leiste), <code>src/shell/AppShell.tsx</code> (Seitenleiste, Pfad, Leiste), <code>src/components/PortfolioTabs.tsx</code>, <code>EbenenTabs.tsx</code>, <code>BereichTabs.tsx</code>, <code>docs/portal.md</code>.</p>
+      <p><b>Methode:</b> Zählung und Bilder aus den E2E-Testbühnen (<code>startansicht</code>, <code>energiemanagement</code>, <code>energieziele</code>) mit fiktiven Daten, Chromium bei 1440 × 900 und 375 × 812 px. Die Vorschlagsbilder sind dieselben Seiten, im Browser umgestellt; sie zeigen die Anordnung, nicht jedes Detail.</p>
+      <p><b>Nicht enthalten:</b> neue Seiten, neue Rechte, geänderte Adressen, die Plattform-Verwaltung für Admins.</p>
+    </footer>
+  </main>
+</div>
+
+<div class="lupe" id="lupe" hidden role="dialog" aria-modal="true" aria-labelledby="lupe-titel">
+  <div class="lupe-leiste"><p id="lupe-titel"></p><button type="button" class="lupe-zu">Schließen</button></div>
+  <div class="lupe-flaeche"><img alt=""></div>
+</div>
+
+<script>
+  (function () {
+    // Lupe: Bild in voller Größe; Escape oder Schließen führt zum Auslöser zurück.
+    var lupe = document.getElementById('lupe');
+    var gross = lupe.querySelector('.lupe-flaeche img');
+    var titel = document.getElementById('lupe-titel');
+    var zu = lupe.querySelector('.lupe-zu');
+    var ausloeser = null;
+    function oeffnen(quelle, text, knopf) {
+      ausloeser = knopf;
+      gross.src = quelle;
+      gross.alt = text;
+      titel.textContent = text;
+      lupe.hidden = false;
+      document.body.classList.add('lupe-offen');
+      zu.focus();
+    }
+    function schliessen() {
+      lupe.hidden = true;
+      gross.removeAttribute('src');
+      document.body.classList.remove('lupe-offen');
+      if (ausloeser) ausloeser.focus();
+    }
+    document.addEventListener('click', function (e) {
+      var knopf = e.target.closest('button.bild');
+      if (knopf) { var bild = knopf.querySelector('img'); oeffnen(bild.currentSrc || bild.src, knopf.dataset.titel || bild.alt, knopf); return; }
+      var link = e.target.closest('a[data-lupe]');
+      if (link) { e.preventDefault(); oeffnen(link.getAttribute('href'), link.closest('figure').querySelector('button.bild').dataset.titel.replace('Vorschlag', 'Heute'), link); }
+    });
+    zu.addEventListener('click', schliessen);
+    lupe.addEventListener('click', function (e) { if (e.target === lupe || e.target.classList.contains('lupe-flaeche')) schliessen(); });
+    document.addEventListener('keydown', function (e) {
+      if (lupe.hidden) return;
+      if (e.key === 'Escape') schliessen();
+      if (e.key === 'Tab') { e.preventDefault(); zu.focus(); }
+    });
+
+    // Eine Antwort je Frage: lokal auswählen, beim Vormerken genau einmal senden (Lavish-Playbook „input“).
+    document.querySelectorAll('form[data-lavish-question]').forEach(function (form) {
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var frage = form.getAttribute('data-lavish-question');
+        var antwort = '';
+        new FormData(form).forEach(function (wert) { if (String(wert).trim()) antwort = String(wert).trim(); });
+        if (!antwort) return;
+        if (window.lavish && typeof window.lavish.queuePrompt === 'function') {
+          window.lavish.queuePrompt('Entscheidung ' + frage + ': ' + antwort, {
+            tag: 'choice', text: frage + ': ' + antwort, element: form, queueKey: frage,
+            data: { question: frage, answer: antwort },
+          });
+        }
+        var marke = form.querySelector('.vorgemerkt');
+        if (marke) marke.hidden = false;
+      });
+      form.addEventListener('change', function () {
+        var marke = form.querySelector('.vorgemerkt');
+        if (marke) marke.hidden = true;
+      });
+    });
+
+    // Alle Antworten als Text in die Zwischenablage; ohne Zwischenablage zum Markieren anzeigen.
+    var knopf = document.getElementById('alle-kopieren');
+    knopf.addEventListener('click', function () {
+      var status = document.querySelector('[data-lavish-copy-all-status]');
+      var zeilen = [];
+      document.querySelectorAll('form[data-lavish-question]').forEach(function (form) {
+        var frage = form.getAttribute('data-lavish-question');
+        var gewaehlt = form.querySelector('input:checked');
+        var text = form.querySelector('textarea');
+        if (gewaehlt) zeilen.push(frage + ': ' + gewaehlt.value);
+        if (text && text.value.trim()) zeilen.push(frage + ': ' + text.value.trim());
+      });
+      var inhalt = zeilen.join('\n');
+      var alt = document.getElementById('antworten-manuell');
+      if (alt) alt.remove();
+      var zeigen = function () {
+        var feld = document.createElement('textarea');
+        feld.id = 'antworten-manuell';
+        feld.readOnly = true;
+        feld.value = inhalt;
+        feld.rows = Math.min(10, zeilen.length + 1);
+        feld.setAttribute('aria-label', 'Antworten zum Kopieren');
+        knopf.insertAdjacentElement('afterend', feld);
+        feld.focus();
+        feld.select();
+        status.textContent = 'Kopieren ging nicht automatisch – markiert, bitte selbst kopieren.';
+      };
+      try {
+        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') throw new Error('keine Zwischenablage');
+        navigator.clipboard.writeText(inhalt).then(function () {
+          status.textContent = 'Antworten kopiert – bitte in den Chat einfügen.';
+        }, zeigen);
+      } catch (e) {
+        zeigen();
+      }
+    });
+  })();
+</script>
