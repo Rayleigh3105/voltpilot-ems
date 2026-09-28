@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -16,7 +17,6 @@ import {
   type StandorteAmStichtag,
 } from '../api';
 import { laeuft } from '../bewertung';
-import { UEMS_NORMGRENZE } from '../glossar';
 import { groesseOptionen, ortHinweis, ortOptionen, ortWahlen, richtungOptionen, type OrtWahl } from '../messstelleDialog';
 import {
   bearbeitenVorbelegung,
@@ -165,7 +165,7 @@ export function MessbedarfKarte({ einsatz, verwalten }: { einsatz: Energieeinsat
       )}
       {!verwalten && <p className="vp-bw-leise">{MESSPLANUNG.nurLesen}</p>}
       {verwalten && !laeuft(einsatz) && <p className="vp-bw-leise">{MESSPLANUNG.beendet}</p>}
-      <p className="vp-bw-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-bw-grenze" />
 
       {dialog?.art === 'erfassen' && (
         <MessbedarfErfassenDialog
@@ -641,7 +641,7 @@ export function MessplanungStandorte({
           </div>
         ))
       )}
-      <p className="vp-bw-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-bw-grenze" />
     </section>
   );
 }

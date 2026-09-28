@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type Bezugsbasis, type BezugsbasisFassung, type Kennzahl } from '../api';
 import * as B from '../bezugsbasisAnlegen';
-import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
 import { BezugsbasisAssistent } from './BezugsbasisAssistent';
 import { BezugsbasisFassungen, type NeueFassung } from './BezugsbasisFassungen';
@@ -136,7 +136,7 @@ export function BezugsbasisReiter({
           {lage.fassung && <BezugsbasisModellAnFassung kennzahl={kennzahl} fassung={lage.fassung} />}
         </div>
       )}
-      <p className="vp-bb-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-bb-grenze" />
       {assistent && (
         <BezugsbasisAssistent
           kennzahl={kennzahl}

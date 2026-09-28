@@ -18,8 +18,13 @@
  * Bei zwei und mehr Boxen hängen deshalb die angelegten Geräte unter der Box,
  * an die die Liste ging; Ladesäulen tragen ihre Box selbst; ein neu gemeldetes
  * Gerät, dessen Box niemand kennt, steht ehrlich unter der Anlage statt unter
- * einer geratenen Box (UEMS AP-06, Datenquellen je Box, ist im Server gebaut,
- * aber noch nicht angeschlossen).
+ * einer geratenen Box.
+ *
+ * Was eine Box LIEST, weiß das Portal dagegen sicher: die Datenquellen (UEMS
+ * AP-06) tragen ihre zuständige Box. Sie stehen deshalb als eigene Zeilen unter
+ * ihrer Box (`AufbauBox.quellen`) — so zeigt der EINE Aufbau bei mehreren Boxen,
+ * welche Box welchen Zähler-Weg liest, statt „0 Geräte" an einer Box, die längst
+ * Daten liefert.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
 import type {
@@ -28,13 +33,15 @@ import type {
   OverviewSite,
   StandortAdresse,
   StandorteAmStichtag,
+  UemsDatenquelle,
 } from './api';
+import { quellZeile } from './boxUebersicht';
 import { technicalDeviceName } from './entityLabel';
 import { siteLiveFresh } from './fleet';
 import { fmtNum } from './format';
 import type { GeraetTon } from './geraetSeite';
 import type { ComponentRole, PlantComponent } from './komponenten';
-import { chargerGeraetId } from './geraetAdresse';
+import { chargerGeraetId, fuehrendeBoxOf } from './geraetAdresse';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
 import { gridState } from './live';
 import { boxSeiteHash } from './nav';
@@ -90,6 +97,22 @@ export interface AufbauGeraet {
   karte: GeraeteKarte;
 }
 
+/**
+ * Eine DATENQUELLE im Baum (UEMS AP-06): ein Weg, den diese Box liest — Adresse plus Protokoll, hinter dem ein
+ * oder mehrere Zähler antworten. Mit ihr zeigt der Aufbau bei mehreren Boxen, WELCHE Box WAS liest; die
+ * Zuständigkeit ist am Server je Quelle geführt (`zustaendige_box`), nicht geraten.
+ */
+export interface AufbauQuelle {
+  id: string;
+  /** „DQ-3 · Unterzähler Halle 1“ bzw. „DQ-3 · Modbus TCP 192.168.10.31“. */
+  titel: string;
+  /** „Modbus TCP · 192.168.10.31 · Geräte-IDs 1–5“. */
+  weg: string;
+  ton: GeraetTon;
+  zustandWort: string;
+  zustandZeit: string | null;
+}
+
 export interface AufbauBox {
   id: string;
   ref: string;
@@ -103,6 +126,8 @@ export interface AufbauBox {
   fuehrend: boolean;
   href: string;
   geraete: AufbauGeraet[];
+  /** Die Datenquellen, für die diese Box heute zuständig ist; leer = keine (oder unbekannt). */
+  quellen: AufbauQuelle[];
 }
 
 /** Wie aktuell die Live-Werte einer Anlage sind. */
@@ -159,6 +184,8 @@ export interface AufbauEingabe {
   overview: OverviewSite[] | null;
   /** Karten weiterer Anlagen am Standort, sobald sie aufgeklappt geladen sind. */
   nachbarKarten?: Record<string, GeraeteKarte[] | undefined>;
+  /** Die Datenquellen der Anlagen im Baum (UEMS AP-06); null/fehlend = unbekannt, dann trägt keine Box welche. */
+  datenquellen?: readonly UemsDatenquelle[] | null;
   now: number;
 }
 
@@ -415,6 +442,17 @@ function verteilen(
   return { jeBox, ohneBox };
 }
 
+/** Die Datenquellen, für die eine Box heute zuständig ist — archivierte zählen nicht. */
+function quellenDerBox(datenquellen: readonly UemsDatenquelle[] | null | undefined, boxId: string): AufbauQuelle[] {
+  return (datenquellen ?? [])
+    .filter((q) => q.archiviert_am == null && q.zustaendige_box?.id === boxId)
+    .map((q) => {
+      const z = quellZeile(q);
+      return { id: q.id, titel: z.titel, weg: z.weg, ton: z.ton, zustandWort: z.zustand, zustandZeit: z.seit };
+    })
+    .sort((a, b) => a.titel.localeCompare(b.titel, 'de', { numeric: true }));
+}
+
 function anlageKnoten(
   input: AufbauEingabe,
   id: string,
@@ -424,9 +462,13 @@ function anlageKnoten(
   const boxenRoh = (input.devices ?? []).filter((d) => d.siteId === id);
   const mehrere = boxenRoh.length > 1;
   const registryBoxId = aktuell ? input.registryBoxId : null;
+  // „führend“ an der offenen Anlage: die Box, an die ihre Geräteliste geht. An den übrigen Anlagen des Standorts
+  // das Server-Fakt `fuehrtAnlage` (dieselbe Regel wie `fuehrendeBoxOf`, nie die Reihenfolge) — es markiert nur,
+  // Geräte verteilt es nicht.
+  const fuehrendeId = registryBoxId ?? (aktuell ? null : fuehrendeBoxOf(boxenRoh, id)?.id ?? null);
   // Die führende Box steht oben; sonst bleibt die Reihenfolge der Liste.
   const boxenSortiert = [...boxenRoh].sort(
-    (a, b) => Number(b.id === registryBoxId) - Number(a.id === registryBoxId),
+    (a, b) => Number(b.id === fuehrendeId) - Number(a.id === fuehrendeId),
   );
   const karten = aktuell ? input.karten : input.nachbarKarten?.[id] ?? null;
   const kontext = aktuell ? { localSetup: input.localSetup, charging: input.charging } : {};
@@ -457,9 +499,10 @@ function anlageKnoten(
         zustand: lage.zustand,
         zustandWort: lage.zustandWort,
         zustandZeit: lage.zustandZeit,
-        fuehrend: mehrere && b.id === registryBoxId,
+        fuehrend: mehrere && b.id === fuehrendeId,
         href: boxSeiteHash(id, b.externalRef),
         geraete: jeBox.get(b.id) ?? [],
+        quellen: quellenDerBox(input.datenquellen, b.id),
       };
     }),
     ohneBox,

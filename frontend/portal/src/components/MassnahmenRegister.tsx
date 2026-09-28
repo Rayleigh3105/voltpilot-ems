@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { api, type Massnahme } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
+import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import * as M from '../massnahmen';
 import { MassnahmeAnlegen } from './MassnahmeDialoge';
 import { ErrorState, Skeleton } from './States';
@@ -43,9 +44,12 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
     <section className="vp-ez" data-testid="massnahmen-register">
       {anlegen}
       {lage.liste.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="massnahmen-leer">
-          {UEMS_VERBESSERUNG_SAETZE.leer()}
-        </p>
+        <>
+          <p className="vp-ez-wozu" data-testid="massnahmen-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>
+          <p className="vp-ez-satz" data-testid="massnahmen-leer">
+            {UEMS_VERBESSERUNG_SAETZE.leer()}
+          </p>
+        </>
       ) : (
         <>
           <div className="vp-ez-filter" data-testid="massnahmen-filter">
@@ -75,51 +79,53 @@ export function MassnahmenRegister({ onOeffnen }: { onOeffnen: (id: string) => v
           {zeilen.length === 0 ? (
             <p className="vp-ez-satz">{M.LEER_GEFILTERT}</p>
           ) : (
-            <table className="vp-ez-tafel" data-testid="massnahmen-tafel">
-              <thead>
-                <tr>
-                  <th scope="col">{M.SPALTEN.kennzeichen}</th>
-                  <th scope="col">{M.SPALTEN.zustand}</th>
-                  <th scope="col">{M.SPALTEN.termin}</th>
-                  <th scope="col">{M.SPALTEN.verantwortlich}</th>
-                  <th scope="col">{M.SPALTEN.messgrundlage}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {zeilen.map((m) => {
-                  const ueberfaellig = M.ueberfaelligText(m);
-                  return (
-                    <tr key={m.id} data-testid={`massnahme-zeile-${m.kennzeichen}`}>
-                      <th scope="row">
-                        <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(m.id)}>
-                          {m.kennzeichen}
-                        </button>
-                        <span className="vp-ez-unter">{m.titel}</span>
-                      </th>
-                      <td data-label={M.SPALTEN.zustand} data-testid="zustand">
-                        {M.ZUSTAND_WORT[m.zustand]}
-                      </td>
-                      <td data-label={M.SPALTEN.termin} data-testid="termin">
-                        {Z.tag(m.termin)}
-                        {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
-                      </td>
-                      <td data-label={M.SPALTEN.verantwortlich}>{m.verantwortlich.name}</td>
-                      <td data-label={M.SPALTEN.messgrundlage} data-testid="messgrundlage">
-                        {m.messgrundlage ? (
-                          `${m.messgrundlage.kennzahl.kennzeichen} ${m.messgrundlage.kennzahl.name ?? ''}`.trim()
-                        ) : (
-                          <span className="vp-ez-ohne">{m.ohne_messgrundlage?.kennzeichen}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="vp-ez-tafel-rahmen">
+              <table className="vp-ez-tafel" data-testid="massnahmen-tafel">
+                <thead>
+                  <tr>
+                    <th scope="col">{M.SPALTEN.kennzeichen}</th>
+                    <th scope="col">{M.SPALTEN.zustand}</th>
+                    <th scope="col">{M.SPALTEN.termin}</th>
+                    <th scope="col">{M.SPALTEN.verantwortlich}</th>
+                    <th scope="col">{M.SPALTEN.messgrundlage}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeilen.map((m) => {
+                    const ueberfaellig = M.ueberfaelligText(m);
+                    return (
+                      <tr key={m.id} data-testid={`massnahme-zeile-${m.kennzeichen}`}>
+                        <th scope="row">
+                          <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(m.id)}>
+                            {m.kennzeichen}
+                          </button>
+                          <span className="vp-ez-unter">{m.titel}</span>
+                        </th>
+                        <td data-label={M.SPALTEN.zustand} data-testid="zustand">
+                          {M.ZUSTAND_WORT[m.zustand]}
+                        </td>
+                        <td data-label={M.SPALTEN.termin} data-testid="termin">
+                          {Z.tag(m.termin)}
+                          {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
+                        </td>
+                        <td data-label={M.SPALTEN.verantwortlich}>{m.verantwortlich.name}</td>
+                        <td data-label={M.SPALTEN.messgrundlage} data-testid="messgrundlage">
+                          {m.messgrundlage ? (
+                            `${m.messgrundlage.kennzahl.kennzeichen} ${m.messgrundlage.kennzahl.name ?? ''}`.trim()
+                          ) : (
+                            <span className="vp-ez-ohne">{m.ohne_messgrundlage?.kennzeichen}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}
-      <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-ez-grenze" />
     </section>
   );
 }

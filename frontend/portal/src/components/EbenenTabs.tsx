@@ -1,17 +1,15 @@
 import type { EbenenBereichId, EbenenKachel } from '../ebenenNav';
+import { useReiterRand } from '../reiterRand';
 import type { Route } from '../nav';
 import './BereichTabs.css';
 
 /**
- * Die REITER der Standort-Ebene unter einem Unternehmen (UEMS AP-04 IP-5):
- * Übersicht · Messstellen — die Bereiche MIT Seite aus `ebenenNav.ebenenReiter`,
- * ab zwei. Am Rechner sind sie der einzige Weg in „Standort › Messstellen“ (die
- * Ebene hat dort keine Seitenleisten-Bereiche); am Telefon trägt die Leiste,
- * sobald es drei Bereiche sind, dieselben Ziele — was dort Kachel ist, blendet
- * CSS hier aus (`vp-nur-rechner`).
+ * Die REITER der Standort-Ebene unter einem Unternehmen (UEMS AP-04 IP-5): die Bereiche MIT Seite aus
+ * `ebenenNav.ebenenReiter`, ab zwei. Seit dem Konzept „Navigation aus einem Guss“ (N1) tragen Seitenleiste und
+ * Telefon-Leiste dieselben Bereiche, sobald es drei sind — was sie tragen, steht hier kein zweites Mal, und dann bleibt
+ * keine Reihe. Darunter (ohne Messfunktion: Übersicht · Gebäude) sind diese Reiter der Weg.
  *
- * Ist der Standort die OBERSTE Ebene, gibt es diese Reiter nicht: dort trägt
- * `PortfolioTabs` den Reiter „Messstellen“.
+ * Ist der Standort die OBERSTE Ebene, gibt es diese Reiter nicht: dort trägt `PortfolioTabs` die übrigen Seiten.
  */
 export function EbenenTabs({
   reiter,
@@ -22,17 +20,18 @@ export function EbenenTabs({
 }: {
   reiter: EbenenKachel[];
   aktiv: EbenenBereichId | null;
-  /** Die Bereiche, die die Telefon-Leiste dieser Ebene gerade trägt (leer = keine Leiste). */
+  /** Die Bereiche, die Seitenleiste und Telefon-Leiste dieser Ebene tragen (leer = keine Leiste). */
   leiste?: readonly EbenenBereichId[];
   /** Zugänglicher Name („Reiter des Standorts Werk Ahrenberg“). */
   label: string;
   onOpen: (ziel: Route) => void;
 }) {
-  if (reiter.length < 2) return null;
-  const alleInLeiste = reiter.every((r) => leiste.includes(r.key));
+  const reiterRand = useReiterRand<HTMLDivElement>();
+  const uebrig = reiter.filter((r) => !leiste.includes(r.key));
+  if (uebrig.length < 2) return null;
   return (
-    <div className={`vp-bereich-tabs${alleInLeiste ? ' vp-nur-rechner' : ''}`} role="tablist" aria-label={label}>
-      {reiter.map((r) => {
+    <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={label}>
+      {uebrig.map((r) => {
         const ist = r.key === aktiv;
         return (
           <button
@@ -40,7 +39,7 @@ export function EbenenTabs({
             type="button"
             role="tab"
             aria-selected={ist}
-            className={`vp-bereich-tab${ist ? ' active' : ''}${leiste.includes(r.key) ? ' vp-nur-rechner' : ''}`}
+            className={`vp-bereich-tab${ist ? ' active' : ''}`}
             onClick={() => onOpen(r.ziel)}
           >
             {r.label}

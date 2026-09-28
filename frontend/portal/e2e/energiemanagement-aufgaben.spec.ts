@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Energiemanagement › Aufgaben“, „Wer ist wofür verantwortlich“, die Personen-Seite und die Rolle „Einsicht“
@@ -112,8 +113,7 @@ for (const breite of [375, 1440]) {
       );
       await expect(page.getByTestId('zuordnung-energiemanagement_leiten-IK')).toContainText('Beleg: Bestellung Energiemanagement vom 28.09.2026, unterschrieben · Personalakte (Personalabteilung)');
       await expect(page.getByTestId('personen-liste').getByTestId('person-zeile-RF')).toContainText('ohne Konto');
-      await expect(page.getByText(GRENZE)).toBeVisible();
-      await expect(page.getByText(VERANTWORTUNG)).toBeVisible();
+      await grenzHinweisZeigt(page, GRENZE, VERANTWORTUNG);
       await ohneQuerlauf(page, 'Aufgaben 12.02.2029');
       await ablegen(page, `a-aufgaben-${breite}`, true);
 
@@ -181,7 +181,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('verantwortung-art-bezugsbasis')).toContainText('Verantwortlich an den Bezugsbasen: die Verantwortlichen der Kennzahlen.');
       await expect(page.getByTestId('verantwortung-freigaben-satz')).toHaveText('Alle 5 Bezugsbasen hat Ines Kaltenbach freigegeben.');
       await expect(page.getByTestId('verantwortung-freigaben').locator('tbody tr')).toHaveCount(8);
-      await expect(page.getByText(GRENZE)).toBeVisible();
+      await grenzHinweisZeigt(page, GRENZE);
       await ohneQuerlauf(page, 'Wer ist wofür verantwortlich');
       await ablegen(page, `d-verantwortung-${breite}`, true);
 
@@ -191,8 +191,7 @@ for (const breite of [375, 1440]) {
       await expect(seite.getByRole('heading', { level: 1 })).toHaveText('Robert Falk');
       await expect(page.getByTestId('person-ohne-konto')).toHaveText('Robert Falk · Geschäftsführer · ohne Konto — erscheint als ‚entschieden von‘.');
       await expect(page.getByTestId('person-aufgabe-unternehmensleitung')).toContainText('Leitung des Unternehmens seit 01.10.2026.');
-      await expect(seite.getByText(GRENZE)).toBeVisible();
-      await expect(seite.getByText(VERANTWORTUNG)).toBeVisible();
+      await grenzHinweisZeigt(seite, GRENZE, VERANTWORTUNG);
       await expect(page.getByTestId('person-aendern')).toBeVisible();
       await ohneQuerlauf(page, 'Personen-Seite Robert Falk');
       await ablegen(page, `e-person-rf-${breite}`, true);

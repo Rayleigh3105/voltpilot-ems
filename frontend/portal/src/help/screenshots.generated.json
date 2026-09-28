@@ -36,6 +36,11 @@
         "text": "Die Bereiche führen zu den täglichen Aufgaben dieser Anlage."
       },
       {
+        "x": 2.22,
+        "y": 10.2,
+        "text": "Der Eintrag mit „‹“ ganz oben führt eine Ebene höher."
+      },
+      {
         "x": 20.83,
         "y": 3.35,
         "text": "Der Anlagenname oben ist zugleich der Anlagenwechsler."
@@ -113,7 +118,7 @@
         "text": "Prüfen Sie die Anlage, der die Box zugeordnet werden soll."
       },
       {
-        "x": 68.57,
+        "x": 59.91,
         "y": 90.06,
         "text": "Das Hinzufügen ordnet die Box zu; die Datenverbindung prüfen Sie anschließend."
       }

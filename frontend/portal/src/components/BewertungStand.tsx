@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -21,7 +22,6 @@ import {
   standSatz,
   standZeilen,
 } from '../bewertungStand';
-import { UEMS_NORMGRENZE } from '../glossar';
 import { BerichtAnlegenDialog } from './BerichtAnlegenDialog';
 import { BerichtFreigebenDialog } from './BerichtFreigebenDialog';
 import { ErrorState, Skeleton } from './States';
@@ -204,7 +204,7 @@ export function BewertungStand({
           )}
         </>
       )}
-      <p className="vp-bw-leise">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-bw-leise" />
 
       {dialog === 'anlegen' && (
         <BerichtAnlegenDialog

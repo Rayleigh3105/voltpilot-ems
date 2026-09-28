@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { vermerkeJeMonat } from '../abweichungen';
 import { api, type Auffaelligkeit } from '../api';
 import {
@@ -21,7 +22,6 @@ import {
   type MonatBild,
   type ZeitraumBild,
 } from '../bezugsbasisVergleich';
-import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
 import { AbweichungVonHand, VermerkZeile } from './AuffaelligkeitZeile';
 import { ErrorState, Skeleton } from './States';
@@ -176,7 +176,7 @@ export function BezugsbasisVergleich({ kennzahlId, standort }: { kennzahlId: str
           {bild.standSatz}
         </p>
       )}
-      <p className="vp-bbv-grenze" data-testid="vergleich-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-bbv-grenze" testId="vergleich-grenze" />
     </section>
   );
 }
@@ -245,85 +245,87 @@ function Kennzeichen({ liste }: { liste: string[] }) {
  */
 export function MonateTafel({ monate, zusatz }: { monate: MonatBild[]; zusatz?: (m: MonatBild) => ReactNode }) {
   return (
-    <table className="vp-bbv-tafel" data-testid="vergleich-monate">
-      <thead>
-        <tr>
-          <th scope="col" rowSpan={2}>
-            {VERGLEICH_SPALTEN.monat}
-          </th>
-          <th scope="col" rowSpan={2}>
-            {VERGLEICH_SPALTEN.gemessen}
-          </th>
-          <th scope="colgroup" colSpan={2} className="vp-bbv-roh-kopf">
-            {VERGLEICH_ROH}
-          </th>
-          <th scope="colgroup" colSpan={5} className="vp-bbv-ber-kopf">
-            {VERGLEICH_BEREINIGT}
-          </th>
-        </tr>
-        <tr>
-          <th scope="col">{VERGLEICH_SPALTEN.vormonat}</th>
-          <th scope="col">{VERGLEICH_SPALTEN.urteil}</th>
-          <th scope="col">{VERGLEICH_SPALTEN.bedingung}</th>
-          <th scope="col">{VERGLEICH_SPALTEN.erwartet}</th>
-          <th scope="col">{VERGLEICH_SPALTEN.delta}</th>
-          <th scope="col">{VERGLEICH_SPALTEN.urteil}</th>
-          <th scope="col">{VERGLEICH_SPALTEN.kennzeichen}</th>
-        </tr>
-      </thead>
-      {monate.map((m) => (
-        <tbody key={m.periode} className="vp-bbv-monat" data-testid={`monat-${m.periode}`}>
+    <div className="vp-bbv-rahmen">
+      <table className="vp-bbv-tafel" data-testid="vergleich-monate">
+        <thead>
           <tr>
-            <th scope="row" className="vp-bbv-monat-name">
-              {m.beschriftung}
+            <th scope="col" rowSpan={2}>
+              {VERGLEICH_SPALTEN.monat}
             </th>
-            <td className="vp-bbv-gemessen" data-label={VERGLEICH_SPALTEN.gemessen} data-testid="gemessen">
-              {m.roh.gemessen}
-              {m.version && <span className="vp-bbv-neben">{m.version}</span>}
-            </td>
-            <td className="vp-bbv-roh" data-label={`${VERGLEICH_ROH} · ${VERGLEICH_SPALTEN.vormonat}`} data-testid="roh">
-              {m.roh.veraenderung ?? '—'}
-              {m.roh.bedingung && <span className="vp-bbv-neben">{m.roh.bedingung}</span>}
-            </td>
-            <td className="vp-bbv-roh vp-bbv-ohne" data-label={`${VERGLEICH_ROH} · ${VERGLEICH_SPALTEN.urteil}`} data-testid="roh-urteil">
-              {m.roh.ohneUrteil}
-            </td>
-            {m.bereinigt.art === 'grund' ? (
-              <td colSpan={5} className="vp-bbv-grund" data-label={VERGLEICH_BEREINIGT} data-testid="grund">
-                {m.satz}
-                <Kennzeichen liste={m.bereinigt.kennzeichen} />
+            <th scope="col" rowSpan={2}>
+              {VERGLEICH_SPALTEN.gemessen}
+            </th>
+            <th scope="colgroup" colSpan={2} className="vp-bbv-roh-kopf">
+              {VERGLEICH_ROH}
+            </th>
+            <th scope="colgroup" colSpan={5} className="vp-bbv-ber-kopf">
+              {VERGLEICH_BEREINIGT}
+            </th>
+          </tr>
+          <tr>
+            <th scope="col">{VERGLEICH_SPALTEN.vormonat}</th>
+            <th scope="col">{VERGLEICH_SPALTEN.urteil}</th>
+            <th scope="col">{VERGLEICH_SPALTEN.bedingung}</th>
+            <th scope="col">{VERGLEICH_SPALTEN.erwartet}</th>
+            <th scope="col">{VERGLEICH_SPALTEN.delta}</th>
+            <th scope="col">{VERGLEICH_SPALTEN.urteil}</th>
+            <th scope="col">{VERGLEICH_SPALTEN.kennzeichen}</th>
+          </tr>
+        </thead>
+        {monate.map((m) => (
+          <tbody key={m.periode} className="vp-bbv-monat" data-testid={`monat-${m.periode}`}>
+            <tr>
+              <th scope="row" className="vp-bbv-monat-name">
+                {m.beschriftung}
+              </th>
+              <td className="vp-bbv-gemessen" data-label={VERGLEICH_SPALTEN.gemessen} data-testid="gemessen">
+                {m.roh.gemessen}
+                {m.version && <span className="vp-bbv-neben">{m.version}</span>}
               </td>
-            ) : (
-              <>
-                <td className="vp-bbv-ber" data-label={`${VERGLEICH_BEREINIGT} · ${VERGLEICH_SPALTEN.bedingung}`} data-testid="bedingung">
-                  {m.bereinigt.bedingung}
-                </td>
-                <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.erwartet} data-testid="erwartet">
-                  {m.bereinigt.erwartet}
-                </td>
-                <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.delta} data-testid="delta">
-                  {m.bereinigt.delta ?? '—'}
-                </td>
-                <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.urteil}>
-                  <UrteilWort klasse={m.bereinigt.urteilKlasse} wort={m.bereinigt.urteil} band={m.bereinigt.band} />
-                </td>
-                <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.kennzeichen}>
+              <td className="vp-bbv-roh" data-label={`${VERGLEICH_ROH} · ${VERGLEICH_SPALTEN.vormonat}`} data-testid="roh">
+                {m.roh.veraenderung ?? '—'}
+                {m.roh.bedingung && <span className="vp-bbv-neben">{m.roh.bedingung}</span>}
+              </td>
+              <td className="vp-bbv-roh vp-bbv-ohne" data-label={`${VERGLEICH_ROH} · ${VERGLEICH_SPALTEN.urteil}`} data-testid="roh-urteil">
+                {m.roh.ohneUrteil}
+              </td>
+              {m.bereinigt.art === 'grund' ? (
+                <td colSpan={5} className="vp-bbv-grund" data-label={VERGLEICH_BEREINIGT} data-testid="grund">
+                  {m.satz}
                   <Kennzeichen liste={m.bereinigt.kennzeichen} />
                 </td>
-              </>
-            )}
-          </tr>
-          {m.bereinigt.art === 'zahl' && (
-            <tr className="vp-bbv-satz-zeile">
-              <td colSpan={9} data-testid="satz">
-                {m.satz}
-              </td>
+              ) : (
+                <>
+                  <td className="vp-bbv-ber" data-label={`${VERGLEICH_BEREINIGT} · ${VERGLEICH_SPALTEN.bedingung}`} data-testid="bedingung">
+                    {m.bereinigt.bedingung}
+                  </td>
+                  <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.erwartet} data-testid="erwartet">
+                    {m.bereinigt.erwartet}
+                  </td>
+                  <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.delta} data-testid="delta">
+                    {m.bereinigt.delta ?? '—'}
+                  </td>
+                  <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.urteil}>
+                    <UrteilWort klasse={m.bereinigt.urteilKlasse} wort={m.bereinigt.urteil} band={m.bereinigt.band} />
+                  </td>
+                  <td className="vp-bbv-ber" data-label={VERGLEICH_SPALTEN.kennzeichen}>
+                    <Kennzeichen liste={m.bereinigt.kennzeichen} />
+                  </td>
+                </>
+              )}
             </tr>
-          )}
-          {zusatz && <ZusatzZeile inhalt={zusatz(m)} />}
-        </tbody>
-      ))}
-    </table>
+            {m.bereinigt.art === 'zahl' && (
+              <tr className="vp-bbv-satz-zeile">
+                <td colSpan={9} data-testid="satz">
+                  {m.satz}
+                </td>
+              </tr>
+            )}
+            {zusatz && <ZusatzZeile inhalt={zusatz(m)} />}
+          </tbody>
+        ))}
+      </table>
+    </div>
   );
 }
 

@@ -78,7 +78,7 @@ describe('setupPath - die drei Schritte', () => {
     const view = setupPath({ deviceCount: 0, reported: [], adoptedCount: 0 });
     expect(view.currentId).toBe('geraet');
     expect(view.steps.map((s) => s.state)).toEqual(['current', 'todo', 'todo']);
-    expect(view.steps[0].action).toEqual({ kind: 'claim', label: 'Gerät verbinden' });
+    expect(view.steps[0].action).toEqual({ kind: 'claim', label: 'VoltPilot-Box hinzufügen' });
     // Kein Schritt verspricht etwas, das noch nicht geht.
     expect(view.steps[1].action).toBeNull();
     expect(view.steps[2].action).toBeNull();
@@ -91,7 +91,7 @@ describe('setupPath - die drei Schritte', () => {
       adoptedCount: 0,
     });
     expect(view.steps[0].state).toBe('done');
-    expect(view.steps[0].title).toBe('Gerät verbunden');
+    expect(view.steps[0].title).toBe('VoltPilot-Box verbunden');
     expect(view.currentId).toBe('uebernehmen');
     expect(view.steps[1].line).toContain('go-e · go-e Charger und Deye · Wechselrichter');
     expect(view.steps[1].action).toEqual({ kind: 'adopt', label: '2 Geräte übernehmen' });

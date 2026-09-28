@@ -24,6 +24,15 @@
   overflow-wrap: break-word;
 }
 
+/* K5: das Kennzeichen steht klein hinter dem Namen — zum Wiederfinden, nicht zum Lesen. */
+.vp-kz-kennzeichen {
+  font-family: var(--vp-c-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600, 600);
+  color: var(--vp-c-muted-fg);
+  white-space: nowrap;
+}
+
 .vp-kz-kopf p {
   margin: 4px 0 0;
   display: flex;
@@ -251,6 +260,30 @@
 
 .vp-kz-leise {
   color: var(--vp-c-muted-fg);
+}
+
+/* K5: der Rechenweg in Kennzeichen — aufklappbar unter dem Satz in Worten. */
+.vp-kz-klartext {
+  overflow-wrap: anywhere;
+}
+.vp-kz-rechenweg {
+  margin-top: var(--vp-c-space-2);
+  border-top: 1px solid var(--vp-c-border);
+  padding-top: var(--vp-c-space-2);
+}
+.vp-kz-rechenweg > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-600, 600);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-kz-rechenweg > p {
+  margin: 6px 0 0;
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: anywhere;
 }
 
 .vp-kz-ehrlich {

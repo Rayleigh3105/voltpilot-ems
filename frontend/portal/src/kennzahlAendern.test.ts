@@ -179,7 +179,7 @@ describe('Vorschau: neu und bisher nebeneinander (§5.4)', () => {
 describe('die Karte nach dem Speichern (K17)', () => {
   it('„Fassung 2 gilt seit 01.03.2027“ mit „rückwirkend (19 Tage)“; Fassung 1 bleibt lesbar mit Ende', () => {
     const b = berechnung(kz0004('nachher'), fassungenK17('nachher'), ZONE)!;
-    expect(b.satz).toBe('Menge je Bezugsgröße · MS-24 je BZ-1 · Fassung 2 gilt seit 01.03.2027');
+    expect(b.satz).toBe('Menge je Bezugsgröße · Spritzguss inkl. Kühlung (MS-24) je Produktionsmenge Spritzguss (BZ-1) · Fassung 2 gilt seit 01.03.2027');
     expect(b.abzeichen).toBe('rückwirkend (19 Tage)');
     expect(b.fassungen.map((f) => [f.titel, f.zeitraum, f.abzeichen, f.warum])).toEqual([
       ['Fassung 2', 'seit 01.03.2027', 'rückwirkend (19 Tage)', `„${K17_BEGRUENDUNG}“`],

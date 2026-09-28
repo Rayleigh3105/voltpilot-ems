@@ -18,7 +18,8 @@ import {
 } from '../api';
 import { fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
-import { anlageRoute, pageRoute, standortRoute, type Route } from '../nav';
+import { anlageRoute, aufbauHash, pageRoute, standortAufbauHash, standortRoute, type AufbauNeu, type Route } from '../nav';
+import { misst } from '../ebenenNav';
 import { hatHauptzaehler } from '../anlageEnergiebilanz';
 import {
   CANONICAL_PORTFOLIO,
@@ -51,12 +52,19 @@ import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
 import { AnlagenTabelle } from './AnlagenTabelle';
 import { AnlageStandortDialog } from './AnlageStandortDialog';
 import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
-import { AddDeviceDrawer } from './DeviceDrawers';
 import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { FunktionenKarte } from './FunktionenKarte';
 import { SteuernAssistent } from './SteuernAssistent';
-import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
+import {
+  bausteinBilder,
+  bausteinDa,
+  traegtSaetze,
+  UEBERSICHT_REIHENFOLGE,
+  UebersichtBausteine,
+  useUebersichtBausteine,
+} from './UebersichtBausteine';
+import { einstiegFuer, obenBausteine } from '../einstieg';
 import { useRollen } from '../rollen';
 import { browserSpeicher, entwurfLesen, messenEinstiegeDerKarte } from '../messenAssistent';
 import { useMessenEinstieg } from '../messenEinstieg';
@@ -152,7 +160,6 @@ export function EbenenCockpit({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
-  const [deviceDrawer, setDeviceDrawer] = useState(false);
   const [steuernStandort, setSteuernStandort] = useState<string | null>(null);
   const [offen, setOffen] = useState<string | null>(null);
   /** `undefined` = lädt noch, `null` = nicht abrufbar (fail-soft). */
@@ -268,7 +275,11 @@ export function EbenenCockpit({
   const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht, funktionen ?? null);
   // UEMS AP-13 IP-8 (Ü7, versprochen von IP-2): „Standort › Anlagen“ trägt je Zeile den Weg „Energiebilanz“ — nur für eine
   // Anlage mit Hauptzähler in der Stellung (dieselbe Frage wie der Reiter). Die Übersicht fragt nichts und bleibt gleich.
-  const mitBilanzWeg = nurAnlagen && ebene?.art === 'standort';
+  // Seit „Standort › Anlagen“ im Aufbau aufgegangen ist, trägt die Standort-Übersicht diese Wege selbst — nur, wo der
+  // Standort misst: ein Betriebskunde bekommt weder das Wort noch die Abfragen je Anlage (O18).
+  const mitBilanzWeg =
+    ebene?.art === 'standort' &&
+    misst({ standorte: null, funktionen: funktionen ?? null, kennzahlen: null }, ebene.standort.id);
   const [energiebilanz, setEnergiebilanz] = useState<ReadonlySet<string> | null>(null);
   useEffect(() => {
     if (!mitBilanzWeg) return;
@@ -337,18 +348,26 @@ export function EbenenCockpit({
 
   const vorschau = useVorschau(offen, overview, now);
 
-  const aktionen = [
-    {
-      label: 'Anlage anlegen', recht: 'anlage.verwalten',
-      icon: 'plus' as const,
-      onClick: () => setSiteDrawer(true),
-    },
-    {
-      label: 'Gerät hinzufügen', recht: 'geraet.einrichten',
-      icon: 'cpu' as const,
-      onClick: () => setDeviceDrawer(true),
-    },
-  ];
+  // EIN Ort für Anlagen, VoltPilot-Boxen und Geräte: der Aufbau des Standorts. Das Menü führt dorthin und öffnet
+  // die Handlung dort (`?neu=`), statt eigene Dialoge zu stapeln. Misst der Standort nicht (dann hat er keinen
+  // Reiter „Aufbau“), ist es der Aufbau seiner ersten Anlage — derselbe Baum. Am Unternehmen gibt es keinen
+  // einen Aufbau: dort führt der Weg über den Standort; nur die ERSTE Anlage entsteht direkt (Leerzustand).
+  const standortHier = ebene.art === 'standort' ? ebene.standort : null;
+  const ersteAnlage = standortHier?.anlagen[0]?.id ?? null;
+  const zumAufbau = (neu: AufbauNeu) => {
+    if (!standortHier) return;
+    const standortMisst = misst({ standorte: null, funktionen: funktionen ?? null, kennzahlen: null }, standortHier.id);
+    const ziel = standortMisst ? standortAufbauHash(standortHier.id, { neu }) : ersteAnlage ? aufbauHash(ersteAnlage, neu) : null;
+    if (ziel) window.location.hash = ziel;
+  };
+  const aktionen = !standortHier
+    ? []
+    : ersteAnlage
+      ? [
+          { label: 'Anlage hinzufügen', recht: 'anlage.verwalten', icon: 'plus' as const, onClick: () => zumAufbau('anlage') },
+          { label: 'VoltPilot-Box hinzufügen', recht: 'geraet.einrichten', icon: 'wifi' as const, onClick: () => zumAufbau('box') },
+        ]
+      : [{ label: 'Anlage hinzufügen', recht: 'anlage.verwalten', icon: 'plus' as const, onClick: () => setSiteDrawer(true) }];
 
   const aussage = blick ? flottenAussage(blick.sites, now) : null;
   const kopf =
@@ -413,7 +432,7 @@ export function EbenenCockpit({
             Anpassen
           </Button></Recht>
         )}
-        <RowMenu items={aktionen} label="Weitere Aktionen" />
+        {aktionen.length > 0 && <RowMenu items={aktionen} label="Weitere Aktionen" />}
       </div>
     </div>
   );
@@ -424,17 +443,9 @@ export function EbenenCockpit({
         open={siteDrawer}
         onClose={() => setSiteDrawer(false)}
         existingSites={sites}
+        standortId={standortHier?.id ?? null}
         onChanged={(createdSiteId) => {
           onReload(createdSiteId);
-          setReloadKey((k) => k + 1);
-        }}
-      />
-      <AddDeviceDrawer
-        open={deviceDrawer}
-        onClose={() => setDeviceDrawer(false)}
-        sites={sites}
-        onClaimed={() => {
-          onReload();
           setReloadKey((k) => k + 1);
         }}
       />
@@ -532,6 +543,14 @@ export function EbenenCockpit({
       : null;
   const spalten = tabellenSpalten(zeilen, layout.resolved.order);
   const ruhe = ruheSatz(layout.resolved.order);
+  // K6/K8 (Konzept „Energiemanagement ohne Fachsprache“): am Unternehmen steht oben, was die Rolle zuerst fragt — am
+  // Telefon zuerst „Was steht an“, Abweichungen und Datenlage. Was oben steht, steht unten nicht noch einmal. Der
+  // Hinweis „Was VoltPilot leistet“ (K7) steht einmal auf der Seite: unter den Bausteinen, ohne sie oben.
+  const obenWunsch = uems && ebene?.art === 'unternehmen' ? obenBausteine(einstiegFuer(rollen.selbst), isPhone) : [];
+  const bilder = uems ? bausteinBilder(uems, layout.resolved.order) : null;
+  const oben = bilder ? obenWunsch.filter((id) => bausteinDa(bilder, id)) : [];
+  const saetze = bilder ? traegtSaetze(bilder, oben) : false;
+  const untenDa = bilder ? UEBERSICHT_REIHENFOLGE.some((id) => !oben.includes(id) && bausteinDa(bilder, id)) : false;
   // AP-01 IP-8: ein Standort ohne Anlage zeigt Grund und nächsten Schritt statt
   // einer leeren Tabelle.
   const leerStandort = ebene?.art === 'standort' ? standortLeerzustand(ebene.standort) : null;
@@ -539,6 +558,9 @@ export function EbenenCockpit({
   return (
     <>
       {head}
+      {uems && oben.length > 0 && (
+        <UebersichtBausteine daten={uems} zeigen={layout.resolved.order} nur={oben} grenzHinweis={saetze && !untenDa} onNavigate={onNavigate} />
+      )}
       {standortVorschlag && (
         <NochNichtZugeordnetKarte vorschau={standortVorschlag} onOeffnen={() => setStandortVorschauOffen(true)} />
       )}
@@ -626,7 +648,15 @@ export function EbenenCockpit({
       </section>
 
       {/* UEMS AP-13 IP-7 (Ü1): die Bausteine der Messstellen-Welt — unter der Tabelle, vor der Karte „Funktionen“. */}
-      {uems && <UebersichtBausteine daten={uems} zeigen={layout.resolved.order} onNavigate={onNavigate} />}
+      {uems && (
+        <UebersichtBausteine
+          daten={uems}
+          zeigen={layout.resolved.order}
+          ohne={oben}
+          grenzHinweis={oben.length > 0 ? saetze : undefined}
+          onNavigate={onNavigate}
+        />
+      )}
 
       {/* AP-01 IP-8: die Karte „Funktionen" — nur auf einer Ebene; das Portfolio
           eines Betreibers bleibt zeichengleich. */}
@@ -650,22 +680,18 @@ export function EbenenCockpit({
         <SteuernAssistent standortId={steuernStandort} onClose={() => setSteuernStandort(null)} />
       )}
 
-      {isPhone && (
+      {/* Am Telefon dieselben Handlungen wie im „···“-Menü, als große Knöpfe — sie führen in den Aufbau. */}
+      {isPhone && aktionen.length > 0 && (
         <div className="vp-portfolio-fuss">
-          <Recht aktion="anlage.verwalten"><Button
-            variant="outline"
-            iconLeft={<Icon name="plus" size={18} />}
-            onClick={() => setSiteDrawer(true)}
-          >
-            Anlage anlegen
-          </Button></Recht>
-          <Recht aktion="geraet.einrichten"><Button
-            variant="primary"
-            iconLeft={<Icon name="plus" size={18} />}
-            onClick={() => setDeviceDrawer(true)}
-          >
-            Gerät hinzufügen
-          </Button></Recht>
+          {aktionen.map((a, i) => (
+            <Recht key={a.label} aktion={a.recht}><Button
+              variant={i === aktionen.length - 1 ? 'primary' : 'outline'}
+              iconLeft={<Icon name="plus" size={18} />}
+              onClick={a.onClick}
+            >
+              {a.label}
+            </Button></Recht>
+          ))}
         </div>
       )}
       <StandortVorschau

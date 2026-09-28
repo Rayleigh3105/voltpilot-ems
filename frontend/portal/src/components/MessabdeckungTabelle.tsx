@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type BewertungMessabdeckung, type BewertungMessabdeckungOrt } from '../api';
-import { UEMS_MESSABDECKUNG, UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_MESSABDECKUNG } from '../glossar';
 import { ABDECKUNG_SPALTEN, abdeckungSumme, einsatzZeilen, ortZeilen, type AbdeckungZeile } from '../uemsMessabdeckung';
 import { MESSPLANUNG } from '../uemsMessplanung';
 import './MessabdeckungTabelle.css';
@@ -72,7 +73,7 @@ export function MessabdeckungTabelle({
       <Tabelle zeilen={einsatzZeilen(daten)} mitMenge testId="messabdeckung-einsaetze" titel="Energieeinsatz" onRestErfassen={onRestErfassen} />
       <h3 className="vp-ma-unter">Je Ort</h3>
       <Tabelle zeilen={ortZeilen(daten)} testId="messabdeckung-orte" titel="Ort" />
-      <p className="vp-bw-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-bw-grenze" />
     </section>
   );
 }

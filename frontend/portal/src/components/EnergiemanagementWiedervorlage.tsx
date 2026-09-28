@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api } from '../api';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_WIEDERVORLAGE } from '../glossar';
+import { UEMS_WIEDERVORLAGE } from '../glossar';
 import type { Route } from '../nav';
 import {
   ART_WORT,
@@ -110,8 +111,7 @@ export function EnergiemanagementWiedervorlage({ onSprung, saetze = false }: { o
       )}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </section>

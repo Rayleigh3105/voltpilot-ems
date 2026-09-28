@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { GrenzSatz } from './GrenzSatz';
 import * as M from '../managementbewertung';
 
 /**
@@ -138,8 +138,7 @@ export function ManagementbewertungEingaben({
       ))}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </div>

@@ -197,7 +197,7 @@ export function GemeinsameSteuerungEinrichten({
   const bild = nachher == null ? ergebnis : null;
   const hinweise = bild && frage === 6 ? ergebnisHinweise(bild.einrichten, bild.zustand, namen) : [];
   const netzWeg = standortId ? hashForRoute(standortBereichRoute(standortId, 'netzanschluesse')) : null;
-  const boxWeg = standortId ? hashForRoute(standortBereichRoute(standortId, 'boxen')) : null;
+  const boxWeg = standortId ? hashForRoute(standortBereichRoute(standortId, 'aufbau')) : null;
   const titel = aendern ? 'Gemeinsame Steuerung ändern' : 'Gemeinsame Steuerung einrichten';
 
   const fuss = nachher != null

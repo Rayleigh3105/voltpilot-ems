@@ -1,11 +1,12 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type MessmittelAngaben } from '../api';
-import { UEMS_MESSMITTEL, UEMS_NICHT_ERHOBEN, UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_MESSMITTEL, UEMS_NICHT_ERHOBEN } from '../glossar';
 import {
   blattZeilen,
   herstellerZeilen,
@@ -110,7 +111,7 @@ export function MessmittelBlatt({ geraetId, heute }: { geraetId: string; heute?:
           {notiz}
         </p>
       )}
-      <p className="vp-mm-grenze">{UEMS_NORMGRENZE}</p>
+      <GrenzSatz className="vp-mm-grenze" />
       {offen && (
         <MessmittelDialog
           angaben={angaben}

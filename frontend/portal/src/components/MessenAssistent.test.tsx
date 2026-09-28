@@ -312,28 +312,25 @@ describe('MessenAssistent — die bestehenden Dialoge', () => {
     expect(await screen.findByRole('dialog', { name: 'Standort vervollständigen' })).toBeInTheDocument();
   });
 
-  it('Schritt 2 öffnet je Anlage „Gerät verbinden" und den Komponenten-Assistenten — und steht danach wieder da', async () => {
+  it('Schritt 2 führt „VoltPilot-Box hinzufügen“ und „Gerät hinzufügen“ in den Aufbau der Anlage — der Entwurf bleibt', async () => {
     vi.mocked(api.funktionen).mockResolvedValue(lindachImEntwurf());
-    zeige({ standortId: LINDACH });
+    window.location.hash = '#/portfolio';
+    const { onClose, ablage } = zeige({ standortId: LINDACH });
     await schritt2();
     expect(await within(assistent()).findByText('2 Komponenten angebunden')).toBeInTheDocument();
 
-    klick('Gerät verbinden für Werk Lindach');
-    const geraet = await screen.findByRole('dialog', { name: /Gerät hinzufügen/ });
-    expect(screen.queryByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toBeNull();
-    fireEvent.click(within(geraet).getByRole('button', { name: 'Abbrechen' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Gerät hinzufügen/ })).toBeNull());
-    await schritt2();
-    expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
+    // EIN Ort für Boxen und Geräte: kein zweiter Dialog im Assistenten, sondern der Aufbau mit der Handlung.
+    klick('VoltPilot-Box hinzufügen für Werk Lindach');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe(`#/anlage/${FIXTURE_IDS.an3}/modell?neu=box`);
+    expect(screen.queryByRole('dialog', { name: /VoltPilot-Box hinzufügen/ })).toBeNull();
+    // Schließen ist Abbrechen: der Entwurf steht auf Schritt 2, der Aufbau bietet „Einrichtung fortsetzen“ an.
+    expect(entwurfLesen(ablage)).toEqual({ standortId: LINDACH, schritt: 2 });
 
-    // „Gerät anbinden" beginnt seit dem Gerätekatalog (main e70b57b76) im Katalog.
-    klick('Gerät anbinden für Werk Lindach');
-    const anbinden = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
-    expect(within(anbinden).getByRole('searchbox', { name: 'Katalog durchsuchen' })).toBeInTheDocument();
-    expect(screen.queryByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toBeNull();
-    fireEvent.click(within(anbinden).getByRole('button', { name: 'Schließen' }));
-    await schritt2();
-    expect(ansage()).toBe('Schritt 2 von 5: Datenquelle');
+    klick('Gerät hinzufügen für Werk Lindach');
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(window.location.hash).toBe(`#/anlage/${FIXTURE_IDS.an3}/modell?neu=geraet`);
+    expect(screen.queryByRole('dialog', { name: 'Gerät hinzufügen' })).toBeNull();
   });
 });
 

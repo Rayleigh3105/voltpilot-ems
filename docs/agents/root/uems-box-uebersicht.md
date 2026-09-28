@@ -1,7 +1,8 @@
 # Box-Übersicht je Standort
 
-AP-06 IP-16 bündelt die vorhandenen Box-Fakten auf `Standort › Boxen` und auf der Box-Seite.
-Der Bereich erscheint nur, wenn die Messfunktion des Standorts eingerichtet, angehalten oder aktiv ist;
+AP-06 IP-16 bündelt die vorhandenen Box-Fakten auf der Box-Seite; im `Standort › Aufbau` steht jede Box mit
+ihren Datenquellen (Protokoll, Adresse, Geräte-IDs, Rückmeldung). Die frühere Seite `Standort › Boxen` ist darin
+aufgegangen, ihre Adresse leitet um. Der Bereich erscheint nur, wenn die Messfunktion des Standorts eingerichtet, angehalten oder aktiv ist;
 ein Betriebskunde ohne Messfunktion behält nach O18 seine bisherige Standort-Navigation ohne neuen Reiter.
 Die Fläche liest keine neue Route: `/api/v1/devices` kennzeichnet additiv die führende Box,
 `/api/v1/sites/{siteId}/data-sources` liefert additiv die jüngste Quell-Rückmeldung aus
@@ -14,9 +15,10 @@ werden über `uemsDatenquelle.fehlerklasse` in Kundenwörter übersetzt; eine Be
 Quellblock bleibt „Box meldet noch nicht je Quelle“.
 
 Der Software-Hinweis folgt der Fähigkeitstabelle `docs/contracts/v2/edge-capabilities.json` und
-führt zur bestehenden Seite `edge-updates`. Die neue Fläche liegt in `boxUebersicht.ts`,
-`pages/StandortBoxenPage.tsx` und `boxSeite.ts`; ihre reine Abnahme steht in
-`boxUebersicht.test.ts`, die 375/1440-Abnahme in `e2e/standort-ebenen.spec.ts`.
+führt zur bestehenden Seite `edge-updates`. Die Ableitung liegt in `boxUebersicht.ts` (`quellZeile`: Titel ohne
+doppeltes Kennzeichen, Weg aus Protokoll, Adresse und Geräte-IDs), `aufbauBaum.ts` (`quellen` je Box) und
+`boxSeite.ts`; ihre reine Abnahme steht in `boxUebersicht.test.ts`, die 375/1440-Abnahme in
+`e2e/standort-ebenen.spec.ts`. `pages/StandortBoxenPage.tsx` ist nicht mehr eingehängt.
 
 AP-06 IP-12 ergänzt auf derselben Box-Seite den bestätigten Quellenwechsel und den Box-Tausch.
 `DatenquelleWechselDialog` prüft die Ziel-Box, plant auf die Minute, zeigt Budgetablehnungen und

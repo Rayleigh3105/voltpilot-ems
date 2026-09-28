@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type Feststellung } from '../api';
 import * as A from '../auditFeststellung';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_FESTSTELLUNGEN, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_FESTSTELLUNGEN } from '../glossar';
 import { EinsichtRecht } from './EinsichtRecht';
 import { FeststellungErfassenDialog } from './FeststellungDialoge';
 import { ablehnung } from './InternesAuditDialoge';
@@ -45,37 +46,39 @@ export function EnergiemanagementFeststellungen({ onFeststellung, saetze = false
       ) : liste.length === 0 ? (
         <p className="vp-ez-satz" data-testid="feststellungen-leer">{SAETZE.verzeichnis_leer}</p>
       ) : (
-        <table className="vp-ez-tafel">
-          <thead>
-            <tr>
-              <th scope="col">Feststellung</th>
-              <th scope="col">Quelle</th>
-              <th scope="col">Verantwortlich</th>
-              <th scope="col">Frist</th>
-              <th scope="col">Zustand</th>
-            </tr>
-          </thead>
-          <tbody>
-            {liste.map((f) => (
-              <tr key={f.id} data-testid={`feststellung-zeile-${f.kennzeichen}`}>
-                <td>
-                  <button type="button" className="vp-ez-zeile-knopf" onClick={() => onFeststellung(f.id)}>
-                    {f.kennzeichen}
-                  </button>
-                  <span className="vp-ez-leise vp-em-zeile-text">{f.wortlaut}</span>
-                </td>
-                <td data-label="Quelle">{A.quelleWort(f.quelle)}</td>
-                <td data-label="Verantwortlich">{f.verantwortlich.name}</td>
-                <td data-label="Frist">
-                  {f.zustand === 'offen' ? `${E.tagText(f.frist)}${f.lage.satz ? ` · ${f.lage.satz}` : ''}` : '—'}
-                </td>
-                <td data-label="Zustand">
-                  {f.zustand === 'abgeschlossen' && f.ergebnis ? `abgeschlossen: ${A.ERGEBNIS_WORT[f.ergebnis]}` : A.FESTSTELLUNG_ZUSTAND_WORT[f.zustand]}
-                </td>
+        <div className="vp-ez-tafel-rahmen">
+          <table className="vp-ez-tafel">
+            <thead>
+              <tr>
+                <th scope="col">Feststellung</th>
+                <th scope="col">Quelle</th>
+                <th scope="col">Verantwortlich</th>
+                <th scope="col">Frist</th>
+                <th scope="col">Zustand</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {liste.map((f) => (
+                <tr key={f.id} data-testid={`feststellung-zeile-${f.kennzeichen}`}>
+                  <td>
+                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onFeststellung(f.id)}>
+                      {f.kennzeichen}
+                    </button>
+                    <span className="vp-ez-leise vp-em-zeile-text">{f.wortlaut}</span>
+                  </td>
+                  <td data-label="Quelle">{A.quelleWort(f.quelle)}</td>
+                  <td data-label="Verantwortlich">{f.verantwortlich.name}</td>
+                  <td data-label="Frist">
+                    {f.zustand === 'offen' ? `${E.tagText(f.frist)}${f.lage.satz ? ` · ${f.lage.satz}` : ''}` : '—'}
+                  </td>
+                  <td data-label="Zustand">
+                    {f.zustand === 'abgeschlossen' && f.ergebnis ? `abgeschlossen: ${A.ERGEBNIS_WORT[f.ergebnis]}` : A.FESTSTELLUNG_ZUSTAND_WORT[f.zustand]}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {erfassen && (
         <FeststellungErfassenDialog
@@ -89,8 +92,7 @@ export function EnergiemanagementFeststellungen({ onFeststellung, saetze = false
       )}
       {saetze && (
         <div className="vp-em-saetze">
-          <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-          <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+          <GrenzSatz className="vp-ez-grenze" verantwortung />
         </div>
       )}
     </section>

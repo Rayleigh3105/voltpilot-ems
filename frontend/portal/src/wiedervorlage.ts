@@ -84,7 +84,29 @@ export type EnergiemanagementBausteinBild = {
   summe: string;
   /** Etwas ist fällig — die Summe trägt den Warnton; nur Vorschau bleibt ruhig. */
   faellig: boolean;
+  /**
+   * K8: die ersten Zeilen der Wiedervorlage — die am längsten fälligen zuerst (die Reihenfolge des Servers), dann die
+   * nächsten; je Art, Kennzeichen, Titel, Frist-Satz und Sprung (WV3).
+   */
+  zeilen: WasStehtAnZeile[];
 };
+
+export type WasStehtAnZeile = {
+  key: string;
+  art: string;
+  kennzeichen: string;
+  titel: string;
+  satz: string;
+  faellig: boolean;
+  ziel: Route | null;
+};
+
+/** K8 (Konzept „Energiemanagement ohne Fachsprache“): der Titel des Bausteins ist die Frage, die er beantwortet. */
+export const WAS_STEHT_AN = 'Was steht an';
+/** Der Sprung in die ganze Wiedervorlage — sie steht seit K1 in der Übersicht, ihre Adresse bleibt. */
+export const ZUR_WIEDERVORLAGE = 'Zur Wiedervorlage';
+/** So viele Zeilen zeigt der Baustein; alle stehen in der Wiedervorlage. */
+export const WAS_STEHT_AN_ZEILEN = 3;
 
 const TITEL_PRAEFIX = `${ENERGIEMANAGEMENT_TITEL} — `;
 
@@ -125,6 +147,15 @@ export function energiemanagementBaustein(w: Wiedervorlage | null): Energiemanag
   return {
     summe: voll.startsWith(TITEL_PRAEFIX) ? voll.slice(TITEL_PRAEFIX.length) : voll,
     faellig: w.anzahl_faellig > 0,
+    zeilen: [...w.faellig, ...w.vorschau].slice(0, WAS_STEHT_AN_ZEILEN).map((z) => ({
+      key: `${z.art}/${z.kennzeichen}`,
+      art: ART_WORT[z.art] ?? z.art,
+      kennzeichen: z.kennzeichen,
+      titel: z.titel,
+      satz: z.satz,
+      faellig: z.tage > 0,
+      ziel: wiedervorlageSprung(z),
+    })),
   };
 }
 

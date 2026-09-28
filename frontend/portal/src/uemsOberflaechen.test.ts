@@ -171,18 +171,21 @@ describe('uemsOberflaechen · Kacheln je Lesemodell über ebenenBereiche — O17
     expect(u.kacheln.filter(k => k !== 'bezugsgroessen')).toHaveLength(fall('O17').erwartet.kacheln_u);
   });
 
-  it('Werk Ahrenberg vor IP-2: vier Bereiche, zwei Kacheln (Reiter), keine Leiste', () => {
+  /** Der Referenzfall nennt die Bereiche von AP-13 IP-2; „Anlagen“ ist seitdem im EINEN Ort „Aufbau“ aufgegangen. */
+  const imAufbau = (bereiche: string[]) => bereiche.filter((b) => b !== 'anlagen').slice(1);
+
+  it('Werk Ahrenberg vor IP-2: Bereiche mit Aufbau, zwei Kacheln (Reiter), keine Leiste', () => {
     const g = fall('O17').gegeben;
-    expect(kacheln(WERK, MESSKUNDE, VOR_IP2)).toEqual({ bereiche: ['uebersicht', 'boxen', ...g.bereiche_st1.slice(1), 'netzanschluesse'], kacheln: g.kacheln_st1_heute, leiste: g.leiste_st1_heute });
+    expect(kacheln(WERK, MESSKUNDE, VOR_IP2)).toEqual({ bereiche: ['uebersicht', 'aufbau', ...imAufbau(g.bereiche_st1), 'netzanschluesse'], kacheln: g.kacheln_st1_heute, leiste: g.leiste_st1_heute });
   });
 
-  it('seit IP-2 (die Seiten von heute): Werk Ahrenberg vier Kacheln, Werk Lindach drei — beide mit Leiste', () => {
+  it('seit IP-2 (die Seiten von heute): Werk Ahrenberg und Werk Lindach je fünf Kacheln — beide mit Leiste', () => {
     const g = fall('O17').gegeben;
     const werk = kacheln(WERK, MESSKUNDE);
-    expect(werk).toEqual({ bereiche: ['uebersicht', 'boxen', ...g.bereiche_st1.slice(1), 'netzanschluesse'], kacheln: ['uebersicht', 'boxen', ...g.kacheln_st1_nach_ip2.slice(1), 'netzanschluesse'], leiste: g.leiste_st1_nach_ip2 });
-    expect(werk.kacheln).toHaveLength(6);
+    expect(werk).toEqual({ bereiche: ['uebersicht', 'aufbau', ...imAufbau(g.bereiche_st1), 'netzanschluesse'], kacheln: ['uebersicht', 'aufbau', ...imAufbau(g.kacheln_st1_nach_ip2), 'netzanschluesse'], leiste: g.leiste_st1_nach_ip2 });
+    expect(werk.kacheln).toHaveLength(5);
     const lindach = kacheln(LINDACH, MESSKUNDE);
-    expect([lindach.kacheln, lindach.leiste]).toEqual([['uebersicht', 'boxen', ...g.kacheln_st2_nach_ip2.slice(1), 'netzanschluesse'], g.leiste_st2_nach_ip2]);
+    expect([lindach.kacheln, lindach.leiste]).toEqual([['uebersicht', 'aufbau', ...imAufbau(g.kacheln_st2_nach_ip2), 'netzanschluesse'], g.leiste_st2_nach_ip2]);
   });
 
   it('O18: ein reiner Betriebskunde ohne Gebäude hat auf keiner Ebene eine Leiste', () => {
@@ -193,7 +196,8 @@ describe('uemsOberflaechen · Kacheln je Lesemodell über ebenenBereiche — O17
       kennzahlen: [],
     };
     expect(kacheln(UNTERNEHMEN, betrieb).bereiche).toEqual(g.betriebskunde_bereiche_u);
-    expect(kacheln(WERK, betrieb).bereiche).toEqual(g.betriebskunde_bereiche_st);
+    // Der Referenzfall nennt noch „anlagen“; seit dem Aufbau trägt der Standort eines Betriebskunden nur seine Übersicht.
+    expect(kacheln(WERK, betrieb).bereiche).toEqual(g.betriebskunde_bereiche_st.filter((b: string) => b !== 'anlagen'));
     for (const ort of [UNTERNEHMEN, WERK]) expect(kacheln(ort, betrieb).leiste).toBe(g.betriebskunde_leiste);
     // Zwei Standorte ohne Messen: am Unternehmen Übersicht · Standorte — ebenfalls keine Leiste.
     expect(kacheln(UNTERNEHMEN, BETRIEBSKUNDE).leiste).toBe(false);

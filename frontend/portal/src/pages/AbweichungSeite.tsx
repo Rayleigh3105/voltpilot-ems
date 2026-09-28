@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
+import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -10,7 +11,7 @@ import { MonateTafel } from '../components/BezugsbasisVergleich';
 import { Recht } from '../components/Recht';
 import { ErrorState, Skeleton } from '../components/States';
 import * as Z from '../energieziele';
-import { UEMS_AUFFAELLIGKEIT, UEMS_BEZUGSBASIS, UEMS_MASSNAHME, UEMS_NORMGRENZE, UEMS_VERANTWORTLICH, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
+import { UEMS_AUFFAELLIGKEIT, UEMS_BEZUGSBASIS, UEMS_MASSNAHME, UEMS_VERANTWORTLICH, UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import '../components/BezugsbasisVergleich.css';
 import './Verbesserung.css';
 
@@ -161,7 +162,7 @@ export function AbweichungSeite({
         ) : (
           <ErrorState message={A.LADEFEHLER_SEITE} onRetry={() => setVersuch((v) => v + 1)} />
         )}
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+        <GrenzSatz className="vp-ez-grenze" />
       </div>
     );
   }
@@ -177,158 +178,160 @@ export function AbweichungSeite({
   const kennzahl = A.kennzahlText(a.kennzahl);
 
   return (
-    <div className="vp-ez" data-testid="abweichung-seite">
-      {zurueck}
-      <header className="vp-ez-kopf">
-        <div className="vp-ez-kopf-zeile">
-          <h1>{`${A.SPALTEN.kennzeichen} ${a.kennzeichen}`}</h1>
-          <Badge variant="tint">{A.ZUSTAND_WORT[a.zustand]}</Badge>
-        </div>
-        <p className="vp-ez-satz" data-testid="abweichung-kopf">
-          {A.kopfZeile(a, Z.tag)}
-        </p>
-        <p className="vp-ez-herkunft" data-testid="abweichung-herkunft">
-          <span>{A.HERKUNFT_WORT[a.herkunft.art]}</span>
-          {onKennzahl ? (
-            <button type="button" className="vp-ez-sprung" onClick={() => onKennzahl(a.kennzahl.id)} data-testid="abweichung-sprung-kennzahl">
-              {kennzahl}
-            </button>
-          ) : (
-            <span>{kennzahl}</span>
-          )}
-          <span>{`${UEMS_BEZUGSBASIS} ${a.bezugsbasis.kennzeichen ?? ''}, Fassung ${a.fassung}`}</span>
-          <span data-testid="abweichung-verantwortlich">{`${UEMS_VERANTWORTLICH} ${a.verantwortlich.name}`}</span>
-          <span data-testid="abweichung-frist-tag">{`${A.FRIST} ${Z.tag(a.frist.termin)}`}</span>
-        </p>
-        {a.herkunft.wortlaut && (
-          <p className="vp-ez-leise" data-testid="abweichung-wortlaut">
-            ‚{a.herkunft.wortlaut}‘
-          </p>
-        )}
-        {ueberfaellig && (
-          <p className="vp-ez-frist" data-testid="abweichung-ueberfaellig">
-            {ueberfaellig}
-          </p>
-        )}
-        {A.offen(a) && (
-          <div className="vp-ez-aktionen">
-            <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
-              <Button size="sm" variant="outline" onClick={() => setDialog('frist')} data-testid="abweichung-frist-knopf">
-                {A.KNOPF_FRIST}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setDialog('verantwortlich')} data-testid="abweichung-verantwortlich-knopf">
-                {A.KNOPF_VERANTWORTLICH}
-              </Button>
-            </Recht>
+    <GrenzSatzBereich>
+      <div className="vp-ez" data-testid="abweichung-seite">
+        {zurueck}
+        <header className="vp-ez-kopf">
+          <div className="vp-ez-kopf-zeile">
+            <h1>{`${A.SPALTEN.kennzeichen} ${a.kennzeichen}`}</h1>
+            <Badge variant="tint">{A.ZUSTAND_WORT[a.zustand]}</Badge>
           </div>
-        )}
-      </header>
-
-      <div className="vp-aw-spalten">
-        <section className="vp-ez-karte" aria-labelledby="aw-anlass" data-testid="abweichung-anlass">
-          <h2 id="aw-anlass">{A.ANLASS}</h2>
-          {saetze.map((s) => (
-            <p key={s} className="vp-ez-satz" data-testid="anlass-satz">
-              {s}
-            </p>
-          ))}
-          {a.vorbehalte.length > 0 && (
-            <p className="vp-ez-herkunft" data-testid="abweichung-vorbehalte">
-              <span>{`${A.VORBEHALTE}:`}</span>
-              {a.vorbehalte.map((x) => (
-                <span key={x} className="vp-aw-vorbehalt">
-                  {x}
-                </span>
-              ))}
-            </p>
-          )}
-          {a.vermerke && a.vermerke.length > 0 && (
-            <ul className="vp-aw-liste" data-testid="abweichung-vermerke">
-              {a.vermerke.map((v) => (
-                <li key={v.id}>{`${UEMS_AUFFAELLIGKEIT} ${monatWort(v.periode)} — vermerkt am ${Z.tag(v.vermerkt_am)}`}</li>
-              ))}
-            </ul>
-          )}
-          <details className="vp-ez-kopie" data-testid="abweichung-anlass-kopie">
-            <summary>{A.ANLASS_KOPIE}</summary>
-            <pre>{a.anlass}</pre>
-          </details>
-          <p className="vp-ez-pruefsumme" data-testid="abweichung-pruefsumme">
-            {`${A.PRUEFSUMME} ${a.anlass_pruefsumme}`}
+          <p className="vp-ez-satz" data-testid="abweichung-kopf">
+            {A.kopfZeile(a, Z.tag)}
           </p>
+          <p className="vp-ez-herkunft" data-testid="abweichung-herkunft">
+            <span>{A.HERKUNFT_WORT[a.herkunft.art]}</span>
+            {onKennzahl ? (
+              <button type="button" className="vp-ez-sprung" onClick={() => onKennzahl(a.kennzahl.id)} data-testid="abweichung-sprung-kennzahl">
+                {kennzahl}
+              </button>
+            ) : (
+              <span>{kennzahl}</span>
+            )}
+            <span>{`${UEMS_BEZUGSBASIS} ${a.bezugsbasis.kennzeichen ?? ''}, Fassung ${a.fassung}`}</span>
+            <span data-testid="abweichung-verantwortlich">{`${UEMS_VERANTWORTLICH} ${a.verantwortlich.name}`}</span>
+            <span data-testid="abweichung-frist-tag">{`${A.FRIST} ${Z.tag(a.frist.termin)}`}</span>
+          </p>
+          {a.herkunft.wortlaut && (
+            <p className="vp-ez-leise" data-testid="abweichung-wortlaut">
+              ‚{a.herkunft.wortlaut}‘
+            </p>
+          )}
+          {ueberfaellig && (
+            <p className="vp-ez-frist" data-testid="abweichung-ueberfaellig">
+              {ueberfaellig}
+            </p>
+          )}
+          {A.offen(a) && (
+            <div className="vp-ez-aktionen">
+              <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
+                <Button size="sm" variant="outline" onClick={() => setDialog('frist')} data-testid="abweichung-frist-knopf">
+                  {A.KNOPF_FRIST}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setDialog('verantwortlich')} data-testid="abweichung-verantwortlich-knopf">
+                  {A.KNOPF_VERANTWORTLICH}
+                </Button>
+              </Recht>
+            </div>
+          )}
+          <GrenzHinweis />
+        </header>
+
+        <div className="vp-aw-spalten">
+          <section className="vp-ez-karte" aria-labelledby="aw-anlass" data-testid="abweichung-anlass">
+            <h2 id="aw-anlass">{A.ANLASS}</h2>
+            {saetze.map((s) => (
+              <p key={s} className="vp-ez-satz" data-testid="anlass-satz">
+                {s}
+              </p>
+            ))}
+            {a.vorbehalte.length > 0 && (
+              <p className="vp-ez-herkunft" data-testid="abweichung-vorbehalte">
+                <span>{`${A.VORBEHALTE}:`}</span>
+                {a.vorbehalte.map((x) => (
+                  <span key={x} className="vp-aw-vorbehalt">
+                    {x}
+                  </span>
+                ))}
+              </p>
+            )}
+            {a.vermerke && a.vermerke.length > 0 && (
+              <ul className="vp-aw-liste" data-testid="abweichung-vermerke">
+                {a.vermerke.map((v) => (
+                  <li key={v.id}>{`${UEMS_AUFFAELLIGKEIT} ${monatWort(v.periode)} — vermerkt am ${Z.tag(v.vermerkt_am)}`}</li>
+                ))}
+              </ul>
+            )}
+            <details className="vp-ez-kopie" data-testid="abweichung-anlass-kopie">
+              <summary>{A.ANLASS_KOPIE}</summary>
+              <pre>{a.anlass}</pre>
+            </details>
+            <p className="vp-ez-pruefsumme" data-testid="abweichung-pruefsumme">
+              {`${A.PRUEFSUMME} ${a.anlass_pruefsumme}`}
+            </p>
+          </section>
+
+          <section className="vp-ez-karte vp-aw-vergleich" aria-labelledby="aw-vergleich" data-testid="abweichung-vergleich">
+            <h2 id="aw-vergleich">{A.VERGLEICH_JETZT}</h2>
+            {vergleich.art === 'laedt' ? (
+              <Skeleton height={120} />
+            ) : bild && bild.art === 'vergleich' ? (
+              <>
+                <p className="vp-ez-leise">{bild.basisZeile}</p>
+                <MonateTafel monate={bild.monate} />
+              </>
+            ) : (
+              <p className="vp-ez-leise">{bild?.art === 'leer' ? bild.satz : A.VERGLEICH_FEHLT}</p>
+            )}
+          </section>
+        </div>
+
+        <section className="vp-ez-karte" aria-labelledby="aw-verlauf" data-testid="abweichung-verlauf">
+          <h2 id="aw-verlauf">{A.VERLAUF}</h2>
+          {a.verlauf && a.verlauf.length > 0 && (
+            <ol className="vp-ez-verlauf">
+              {a.verlauf.map((e) => (
+                <VerlaufZeile key={e.nr} e={e} />
+              ))}
+            </ol>
+          )}
+          {A.offen(a) && (
+            <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
+              <p className="vp-ez-leise">{A.AUSSAGE_HINWEIS}</p>
+              <div className="vp-ez-aktionen">
+                <Button size="sm" variant="outline" onClick={() => setDialog('aussage')} data-testid="abweichung-aussage-knopf">
+                  {A.KNOPF_AUSSAGE}
+                </Button>
+              </div>
+              <Kommentar a={a} onNeu={(x) => setLage({ art: 'da', a: x })} />
+            </Recht>
+          )}
         </section>
 
-        <section className="vp-ez-karte vp-aw-vergleich" aria-labelledby="aw-vergleich" data-testid="abweichung-vergleich">
-          <h2 id="aw-vergleich">{A.VERGLEICH_JETZT}</h2>
-          {vergleich.art === 'laedt' ? (
-            <Skeleton height={120} />
-          ) : bild && bild.art === 'vergleich' ? (
+        <section className="vp-ez-karte" aria-labelledby="aw-abschluss" data-testid="abweichung-abschluss">
+          <h2 id="aw-abschluss">{A.ABSCHLUSS}</h2>
+          {a.abschluss ? (
             <>
-              <p className="vp-ez-leise">{bild.basisZeile}</p>
-              <MonateTafel monate={bild.monate} />
+              <p className="vp-ez-satz" data-testid="abschluss-satz">
+                {a.abschluss.satz ??
+                  `Abgeschlossen am ${Z.tag(a.abschluss.am)} von ${a.abschluss.person}: ${A.ERGEBNIS_WORT[a.abschluss.ergebnis]} — ‚${a.abschluss.begruendung}‘`}
+              </p>
+              {a.abschluss.massnahme &&
+                (onMassnahme ? (
+                  <button type="button" className="vp-ez-sprung" onClick={() => onMassnahme(a.abschluss!.massnahme!.id)} data-testid="abschluss-sprung-massnahme">
+                    {`${UEMS_MASSNAHME} ${a.abschluss.massnahme.kennzeichen ?? ''} öffnen`}
+                  </button>
+                ) : (
+                  <span>{`${UEMS_MASSNAHME} ${a.abschluss.massnahme.kennzeichen ?? ''}`}</span>
+                ))}
             </>
           ) : (
-            <p className="vp-ez-leise">{bild?.art === 'leer' ? bild.satz : A.VERGLEICH_FEHLT}</p>
+            <div className="vp-ez-aktionen">
+              <Recht aktion="verbesserung.abschliessen" standort={a.standort_id}>
+                <Button size="sm" onClick={() => setDialog('abschliessen')} data-testid="abweichung-abschliessen-knopf">
+                  {A.KNOPF_ABSCHLIESSEN}
+                </Button>
+              </Recht>
+            </div>
           )}
         </section>
+
+
+        {dialog === 'aussage' && <UrsacheAussageDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'frist' && <FristDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'verantwortlich' && <VerantwortlicherDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'abschliessen' && <AbschliessenDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
       </div>
-
-      <section className="vp-ez-karte" aria-labelledby="aw-verlauf" data-testid="abweichung-verlauf">
-        <h2 id="aw-verlauf">{A.VERLAUF}</h2>
-        {a.verlauf && a.verlauf.length > 0 && (
-          <ol className="vp-ez-verlauf">
-            {a.verlauf.map((e) => (
-              <VerlaufZeile key={e.nr} e={e} />
-            ))}
-          </ol>
-        )}
-        {A.offen(a) && (
-          <Recht aktion="verbesserung.verwalten" standort={a.standort_id}>
-            <p className="vp-ez-leise">{A.AUSSAGE_HINWEIS}</p>
-            <div className="vp-ez-aktionen">
-              <Button size="sm" variant="outline" onClick={() => setDialog('aussage')} data-testid="abweichung-aussage-knopf">
-                {A.KNOPF_AUSSAGE}
-              </Button>
-            </div>
-            <Kommentar a={a} onNeu={(x) => setLage({ art: 'da', a: x })} />
-          </Recht>
-        )}
-      </section>
-
-      <section className="vp-ez-karte" aria-labelledby="aw-abschluss" data-testid="abweichung-abschluss">
-        <h2 id="aw-abschluss">{A.ABSCHLUSS}</h2>
-        {a.abschluss ? (
-          <>
-            <p className="vp-ez-satz" data-testid="abschluss-satz">
-              {a.abschluss.satz ??
-                `Abgeschlossen am ${Z.tag(a.abschluss.am)} von ${a.abschluss.person}: ${A.ERGEBNIS_WORT[a.abschluss.ergebnis]} — ‚${a.abschluss.begruendung}‘`}
-            </p>
-            {a.abschluss.massnahme &&
-              (onMassnahme ? (
-                <button type="button" className="vp-ez-sprung" onClick={() => onMassnahme(a.abschluss!.massnahme!.id)} data-testid="abschluss-sprung-massnahme">
-                  {`${UEMS_MASSNAHME} ${a.abschluss.massnahme.kennzeichen ?? ''} öffnen`}
-                </button>
-              ) : (
-                <span>{`${UEMS_MASSNAHME} ${a.abschluss.massnahme.kennzeichen ?? ''}`}</span>
-              ))}
-          </>
-        ) : (
-          <div className="vp-ez-aktionen">
-            <Recht aktion="verbesserung.abschliessen" standort={a.standort_id}>
-              <Button size="sm" onClick={() => setDialog('abschliessen')} data-testid="abweichung-abschliessen-knopf">
-                {A.KNOPF_ABSCHLIESSEN}
-              </Button>
-            </Recht>
-          </div>
-        )}
-      </section>
-
-      <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
-
-      {dialog === 'aussage' && <UrsacheAussageDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
-      {dialog === 'frist' && <FristDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
-      {dialog === 'verantwortlich' && <VerantwortlicherDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
-      {dialog === 'abschliessen' && <AbschliessenDialog abweichung={a} onClose={() => setDialog(null)} onFertig={neu} />}
-    </div>
+    </GrenzSatzBereich>
   );
 }

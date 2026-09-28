@@ -111,14 +111,14 @@ for (const breite of [375, 1440]) {
   test(`${breite} px — K17 am 01.04.2027: KZ-0004 ab 01.03.2027 mit MS-24, neu und bisher nebeneinander, vor „Speichern“ nichts gespeichert`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0004&welt=k17&person=IK', breite, AM_1_APRIL);
     const berechnung = page.getByTestId('kennzahl-berechnung');
-    await expect(berechnung).toContainText('Menge je Bezugsgröße · MS-20 je BZ-1 · Fassung 1 gilt seit Beginn');
+    await expect(berechnung).toContainText('Menge je Bezugsgröße · Prozess Spritzguss gesamt (MS-20) je Produktionsmenge Spritzguss (BZ-1) · Fassung 1 gilt seit Beginn');
     await expect(page.getByTestId('werte-karte')).toContainText(`0,29${NB}kWh je kg`);
     await pruefeUndFotografiere(page, breite, 'k17-seite-vorher', { seite: true });
 
     await page.getByTestId('berechnung-aendern-knopf').click();
     const dialog = page.getByRole('dialog', { name: /^(Berechnung ändern|Fertig)$/ });
     await expect(dialog.getByText('Schritt 1 von 4 · Gilt ab')).toBeVisible();
-    await expect(dialog.getByTestId('kennzahl-heute-gilt')).toHaveText('Heute gilt: Menge je Bezugsgröße · MS-20 je BZ-1 · Fassung 1 gilt seit Beginn');
+    await expect(dialog.getByTestId('kennzahl-heute-gilt')).toHaveText('Heute gilt: Menge je Bezugsgröße · Prozess Spritzguss gesamt (MS-20) je Produktionsmenge Spritzguss (BZ-1) · Fassung 1 gilt seit Beginn');
     await expect(dialog.getByTestId('kennzahl-gilt-ab')).toHaveText('Fassung 2 gilt ab heute — Fassung 1 endet am 31.03.2027.');
     await pruefeUndFotografiere(page, breite, 'k17-s1-heute');
     await dialog.getByRole('combobox', { name: 'Gilt ab', exact: true }).click();
@@ -174,7 +174,7 @@ for (const breite of [375, 1440]) {
     await dialog.getByRole('button', { name: 'Fertig', exact: true }).click();
     await expect(page.locator('.vp-modal')).toHaveCount(0);
 
-    await expect(berechnung).toContainText('Menge je Bezugsgröße · MS-24 je BZ-1 · Fassung 2 gilt seit 01.03.2027');
+    await expect(berechnung).toContainText('Menge je Bezugsgröße · Spritzguss inkl. Kühlung (MS-24) je Produktionsmenge Spritzguss (BZ-1) · Fassung 2 gilt seit 01.03.2027');
     await expect(berechnung).toContainText('rückwirkend (31 Tage)');
     await expect(berechnung.locator('.vp-kz-fassung')).toHaveCount(2);
     await expect(berechnung.locator('.vp-kz-fassung').first()).toContainText(`„${K17_BEGRUENDUNG}“`);
@@ -184,7 +184,7 @@ for (const breite of [375, 1440]) {
   test(`${breite} px — K17 am 20.03.2027: „Fassung 2 seit 01.03.2027 · rückwirkend (19 Tage)“; derselbe Tag noch einmal ist „Ab diesem Tag gilt schon Fassung 2.“`, async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahl&kz=KZ-0004&welt=k17-fassung2&person=IK', breite, AM_20_MAERZ);
     const berechnung = page.getByTestId('kennzahl-berechnung');
-    await expect(berechnung).toContainText('Menge je Bezugsgröße · MS-24 je BZ-1 · Fassung 2 gilt seit 01.03.2027');
+    await expect(berechnung).toContainText('Menge je Bezugsgröße · Spritzguss inkl. Kühlung (MS-24) je Produktionsmenge Spritzguss (BZ-1) · Fassung 2 gilt seit 01.03.2027');
     await expect(berechnung).toContainText('rückwirkend (19 Tage)');
     await expect(berechnung.locator('.vp-kz-fassung').nth(1)).toContainText('seit Beginn bis 28.02.2027');
     await expect(page.getByTestId('werte-karte')).toContainText(`0,30${NB}kWh je kg`);

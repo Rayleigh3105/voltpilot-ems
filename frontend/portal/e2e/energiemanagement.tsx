@@ -4,7 +4,7 @@ import { api } from '../src/api';
 import { benutzerApi } from '../src/benutzer';
 import { keycloak } from '../src/auth';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
-import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell } from '../src/ebenenNav';
+import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche, istDetailseite } from '../src/ebenenNav';
 import { darfAnsehen } from '../src/energiemanagementPortal';
 import {
   auditRoute,
@@ -190,7 +190,7 @@ function Ansicht() {
       ebenen={{
         titel: ebenenTitel(UNTERNEHMEN, lesemodell, 'Kunststoffwerk Ahrenberg GmbH'),
         kacheln,
-        aktiv: ebenenAktiv(route.page),
+        aktiv: ebenenAktiv(route.page, undefined, route.energiemanagementReiter),
         onOpen: navigate,
       }}
       page={route.page}
@@ -214,7 +214,17 @@ function Ansicht() {
         showKennzahlen={bereiche.includes('kennzahlen')}
         showBerichte={bereiche.includes('berichte')}
         showEnergiemanagement={bereiche.includes('energiemanagement')}
-        leiste={kacheln.map((k) => k.key)}
+        // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
+        // über der Seite stehen dort nur die Reiter der offenen Gruppe.
+        leiste={kacheln.flatMap((k) => k.bereiche)}
+        telefonReiter={telefonReiterBereiche(kacheln, ebenenAktiv(route.page, undefined, route.energiemanagementReiter))}
+        // K1 wie `App.tsx`: die Gruppen auch am Rechner, das Energiemanagement in „Nachweisen“.
+        gruppen={kacheln}
+        energiemanagementReiter={route.energiemanagementReiter ?? null}
+        // Wie `App.tsx`: „Verbessern“ trägt die Reiter von „Ziele und Maßnahmen“; Detailseiten zeigen ihren Rückweg.
+        verbesserungReiter={route.verbesserungReiter ?? null}
+        detail={istDetailseite(route)}
+        onOpenBereich={navigate}
         fleetLabel="Unternehmen"
         onNavigate={(p) => navigate(pageRoute(p))}
       />
@@ -226,6 +236,7 @@ function Ansicht() {
           auditId={route.auditId ?? null}
           feststellungId={route.feststellungId ?? null}
           managementbewertungKennung={route.managementbewertungKennung ?? null}
+          reiterOben={kacheln.length > 0}
           onReiter={(r) => navigate(energiemanagementRoute(r))}
           onDokument={(id) => navigate(dokumentRoute(id))}
           onPerson={(id) => navigate(personRoute(id))}

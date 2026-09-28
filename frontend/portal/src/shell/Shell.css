@@ -28,6 +28,49 @@
   min-width: 0;
 }
 
+/* ---------- Die Einträge einer Ebene über der Anlage ----------
+   Konzept „Navigation aus einem Guss“ (N1): am Unternehmen, am Standort und in der Flotte trägt die Seitenleiste
+   die Einträge der Ebene — dieselben wie die Telefon-Leiste. Über ihnen steht, wo es eine Ebene darüber gibt, der Weg
+   dorthin (N2, „‹ Ahrenberg“); die Trennlinie setzt ihn ab wie in der Anlage. */
+.vp-ebenennav {
+  min-width: 0;
+}
+.vp-nav-hoch + .vp-ebenennav {
+  margin-top: var(--vp-space-4);
+  padding-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border);
+}
+.vp-app .vp-sidebar .vp-navitem.vp-nav-hoch {
+  color: var(--vp-text-gray);
+}
+.vp-app .vp-sidebar .vp-navitem.vp-nav-hoch .ic {
+  color: inherit;
+}
+/* N4: die Frage der offenen Gruppe als zweite Zeile ihres Eintrags; der Titel nennt sie immer. */
+.vp-navitem .vp-nav-lbl.vp-nav-zwei {
+  display: grid;
+  gap: 1px;
+  padding-block: var(--vp-space-1, 0.25rem);
+  white-space: normal;
+}
+.vp-nav-zwei > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-nav-zwei > .vp-nav-frage {
+  font-size: var(--vp-text-badge, 0.75rem);
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+  color: var(--vp-text-gray);
+}
+.vp-navitem.active .vp-nav-zwei > .vp-nav-frage {
+  color: inherit;
+  opacity: 0.8;
+}
+
 /* ---------- Gruppen-Überschriften (nur noch „Plattform") ----------
    Die farbigen Anwendungs-Gruppen sind mit E3 entfallen; ihre Ansichten sind
    Reiter geworden. Geblieben sind die Plattform-Überschriften. */
@@ -818,14 +861,6 @@
   }
 }
 
-/* AP-09: sechs Unternehmenswelten; AP-10: langer Netzanschluss-Reiter. Andere Bestandsleisten bleiben unverändert. */
-.vp-bottombar:has(> .vp-bottombar-item:nth-child(6)) .lbl,
-.vp-bottombar:has(> .vp-bottombar-netzanschluesse) .lbl {
-  white-space: normal;
-  overflow: visible;
-  overflow-wrap: anywhere;
-  hyphens: auto;
-  text-align: center;
-  line-height: 1.2;
-  min-height: 2.4em;
-}
+/* Die Leiste trägt höchstens fünf Kacheln (`ebenenNav.LEISTE_HOECHSTENS`): am Unternehmen Gruppen, am
+   Standort „Anschlüsse“ statt „Netzanschlüsse“. Das frühere Umbruch-Pflaster für sechs und mehr Kacheln brach
+   „Messstell|en“ mitten im Wort und ist entfallen; eine Beschriftung bleibt einzeilig. */

@@ -8,7 +8,8 @@ import { ahrenbergProzessMessstellen } from '../src/test/kostenstellenFixtures';
  * 1440 px auf der Bühne `startansicht.html?bild=unternehmen&ansicht=kostenstellen` (Referenzunternehmen Ahrenberg, Uhr
  * 05.11.2026): O9 (4200 9 700 · 4 770 · 14 470; 4100 mit der Doppelzählungs-Warnung), „nicht verteilt“ EINMAL, KEINE
  * Summe über Kostenstellen mit dem Satz, warum; F12 (9000 „gültig bis 31.12.2026“, am 15.01.2027 vorher beendet); die
- * Prozess-Summe MS-20; ohne Kostenstelle und Prozess keine Reiter. Kein Querlauf, Tippflächen ≥ 44 px, keine
+ * Prozess-Summe MS-20; ohne Kostenstelle und Prozess keine Reiter dafür (N5: die Reihe von „Messen“ ist dann
+ * Messstellen · Bezugsgrößen). Kein Querlauf, Tippflächen ≥ 44 px, keine
  * Konsolenfehler.
  *
  * Mit `KOSTENSTELLEN_BILDER=<Ordner>` legt der Lauf je Fall die Fläche als Bild und die Messwerte ab.
@@ -49,7 +50,8 @@ async function messe(page: Page, testid: string) {
       .filter((el) => el.getBoundingClientRect().width > 0)
       .map((el) => ({ text: el.textContent?.trim() ?? el.getAttribute('aria-label'), h: Math.round(el.getBoundingClientRect().height) }))
       .filter((x) => x.h < 44);
-    const reiter = [...document.querySelectorAll('[role="tablist"][aria-label="Reiter der Messstellen"] [role="tab"]')].map((el) =>
+    // N5 (Konzept „Navigation aus einem Guss“): Kostenstellen und Prozesse stehen in der Reihe der Gruppe „Messen“.
+    const reiter = [...document.querySelectorAll('[role="tablist"][aria-label="Reiter der Gruppe Messen"] [role="tab"]')].map((el) =>
       el.textContent?.trim(),
     );
     return { dokument: doc.scrollWidth - doc.clientWidth, draussen, kleine, reiter, hoehe: Math.round(flaeche?.getBoundingClientRect().height ?? 0) };
@@ -125,7 +127,7 @@ for (const breite of BREITEN) {
       await expect(karte(page, '9000').getByTestId('kostenstelle-gueltig')).toHaveText('gültig bis 31.12.2026');
 
       const m = await messe(page, 'kostenstellen');
-      expect(m.reiter).toEqual(['Liste', 'Kostenstellen', 'Prozesse']);
+      expect(m.reiter).toEqual(['Messstellen', 'Kostenstellen', 'Prozesse', 'Bezugsgrößen']);
       ohneQuerlauf(m, 'o9-kostenstellen', breite);
       await ablegen(page, 'o9-kostenstellen', breite, m);
       expect(fehler).toEqual([]);
@@ -187,7 +189,7 @@ for (const breite of BREITEN) {
       );
       await expect(page.getByTestId('prozess-summe')).toHaveCount(1);
       const m = await messe(page, 'prozesse');
-      expect(m.reiter).toEqual(['Liste', 'Kostenstellen', 'Prozesse']);
+      expect(m.reiter).toEqual(['Messstellen', 'Kostenstellen', 'Prozesse', 'Bezugsgrößen']);
       ohneQuerlauf(m, 'prozesse', breite);
       await ablegen(page, 'prozesse', breite, m);
 
@@ -195,16 +197,17 @@ for (const breite of BREITEN) {
       await page.getByRole('tab', { name: 'Kostenstellen', exact: true }).click();
       await expect(page.getByTestId('kostenstellen')).toBeVisible();
       await expect(page).toHaveURL(/#\/portfolio\/messstellen\?reiter=kostenstellen&periode=monat&am=2026-10-01$/);
-      await page.getByRole('tab', { name: 'Liste', exact: true }).click();
+      await page.getByRole('tab', { name: 'Messstellen', exact: true }).click();
       await expect(page.getByTestId('messstellen')).toBeVisible();
       await expect(page).toHaveURL(/#\/portfolio\/messstellen$/);
       expect(fehler).toEqual([]);
     });
 
-    test('Bestand: ohne Kostenstelle und ohne Prozess gibt es keine Reiter — das Register steht wie zuvor', async ({ page }) => {
+    test('Bestand: ohne Kostenstelle und ohne Prozess gibt es keine Reiter dafür — das Register steht wie zuvor', async ({ page }) => {
       const fehler: string[] = [];
       await oeffne(page, 'ansicht=messstellen&organisation=leer', breite, fehler, 'messstellen');
       await expect(page.locator('[role="tablist"][aria-label="Reiter der Messstellen"]')).toHaveCount(0);
+      await expect(page.getByRole('tablist', { name: 'Reiter der Gruppe Messen' }).getByRole('tab')).toHaveText(['Messstellen', 'Bezugsgrößen']);
       await expect(page.getByTestId('messstellen-organisation')).toHaveCount(0);
       expect(fehler).toEqual([]);
     });

@@ -184,6 +184,20 @@ describe('Herkunft, Berechnung, Stammdaten und Kopf', () => {
     expect(h?.fehlt).toBeNull();
   });
 
+  it('K5: der Rechenweg in Worten nennt die Namen aus den Fassungen; der Name der Messstelle springt, die Bezugsgröße bleibt Text', () => {
+    const h = KK.herkunftAnzeige(K1, K1_OKTOBER, KK.eingangsNamen(fassungenVon(KZ.kz1)));
+    expect(h?.klartext).toBe(
+      `Gerechnet aus 6.100${NB}kWh (Montage Linie M1) geteilt durch 41.000${NB}Stück (Gutteile Montage Halle 2).`,
+    );
+    const spruenge = h?.klartextStuecke.filter((s) => s.sprung) ?? [];
+    expect(spruenge.map((s) => s.text)).toEqual(['Montage Linie M1']);
+    expect(spruenge[0].sprung?.hash).toContain('MS-12');
+    // Ohne Namen steht das Kennzeichen — nie ein leerer Satz.
+    expect(KK.herkunftAnzeige(K1, K1_OKTOBER)?.klartext).toBe(
+      `Gerechnet aus 6.100${NB}kWh (MS-12) geteilt durch 41.000${NB}Stück (BZ-6).`,
+    );
+  });
+
   it('K10 und K11: der unvollständige Eingang sagt seinen Zustand, seinen Verlauf und seine Kennzeichen', () => {
     expect(KK.herkunftAnzeige(K10, K10_TAG)?.eingaenge).toBe(
       `Menge 5.550${NB}kWh (MS-19, unvollständig, Verlauf 67${NB}%, Version 1, berechnet (Summe), 2 von 3 Systemen) je 180${NB}Personen (Mitarbeitende (U), Stichtag 05.11.2026)`,
@@ -237,6 +251,8 @@ describe('Herkunft, Berechnung, Stammdaten und Kopf', () => {
   it('eine Herkunft ohne Satz sagt, was fehlt — nie eine halbe', () => {
     const jahr = { ...K1_OKTOBER, herkunft: { satz: null, fehlt: ['eingaenge' as const] } };
     expect(KK.herkunftAnzeige(K1, jahr)).toEqual({
+      klartext: null,
+      klartextStuecke: [],
       eingaenge: null,
       paare: [],
       // AP-13 IP-11: ohne Satz gibt es auch keine Sprünge — die Stücke sind leer, nicht erfunden.
@@ -254,9 +270,9 @@ describe('Herkunft, Berechnung, Stammdaten und Kopf', () => {
     expect(KK.kopf({ ...kz1, archiviert_am: '2027-01-10T09:00:00+01:00' }).archiviert).toBe('archiviert');
   });
 
-  it('Berechnung: „Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn“ — der Verlauf erst ab zwei Fassungen', () => {
+  it('Berechnung: der Name zuerst, das Kennzeichen dahinter (K5) — der Verlauf erst ab zwei Fassungen', () => {
     const b = KK.berechnung(kz1, fassungenVon(KZ.kz1), 'Europe/Berlin');
-    expect(b?.satz).toBe('Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn');
+    expect(b?.satz).toBe('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn');
     expect(b?.wer).toBe('eingetragen von Ines Kaltenbach · 01.10.2026 08:00');
     expect(b?.fassungen).toEqual([]);
     const [eins] = fassungenVon(KZ.kz1);
@@ -265,14 +281,14 @@ describe('Herkunft, Berechnung, Stammdaten und Kopf', () => {
       { ...eins, nummer: 2, gueltig_ab: '2027-03-01', rueckwirkend: true, abzeichen: 'rückwirkend (19 Tage)', begruendung: 'Nenner jetzt Gutteile ohne Nacharbeit', herkunft: 'eintrag', eingetragen_am: '2027-03-20T09:12:00+01:00' },
     ];
     const b2 = KK.berechnung({ ...kz1, fassung: 2 }, zwei, 'Europe/Berlin');
-    expect(b2?.satz).toBe('Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 2 gilt seit 01.03.2027');
+    expect(b2?.satz).toBe('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 2 gilt seit 01.03.2027');
     expect(b2?.abzeichen).toBe('rückwirkend (19 Tage)');
     expect(b2?.fassungen.map((f) => [f.titel, f.zeitraum, f.gilt, f.warum])).toEqual([
       ['Fassung 2', 'seit 01.03.2027', true, '„Nenner jetzt Gutteile ohne Nacharbeit“'],
       ['Fassung 1', 'seit Beginn bis 28.02.2027', false, null],
     ]);
     expect(KK.berechnung(ahrenbergKennzahlen()[2], fassungenVon(KZ.kz3), 'Europe/Berlin')?.satz).toBe(
-      'Kennzahlen zusammenfassen · KZ-0001, KZ-0002 · Fassung 1 gilt seit Beginn',
+      'Kennzahlen zusammenfassen · Stromeinsatz Montage je Stück — Halle 2 (KZ-0001), Stromeinsatz Montage je Stück — Montagehalle Lindach (KZ-0002) · Fassung 1 gilt seit Beginn',
     );
   });
 

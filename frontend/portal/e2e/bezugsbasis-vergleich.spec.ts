@@ -1,6 +1,11 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
+
+/** K7: der Grenz-Satz steht einmal im Kopf der Kennzahl-Seite („Was VoltPilot leistet“). */
+const GRENZE =
+  'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.';
 
 /**
  * UEMS AP-17 IP-20 (NW-4, §8): der Reiter „Vergleich mit Bezugsbasis“ an KZ-0001 auf der Bühne `startansicht` — die
@@ -61,7 +66,7 @@ for (const breite of [375, 1440]) {
       const urteilKasten = (await dez.getByTestId('urteil').boundingBox())!;
       if (breite >= 960) expect(Math.abs(rohKasten.y - urteilKasten.y)).toBeLessThan(40);
       else expect(urteilKasten.y).toBeGreaterThan(rohKasten.y);
-      await expect(page.getByTestId('vergleich-grenze')).toBeVisible();
+      await grenzHinweisZeigt(page, GRENZE);
       expect(await querlauf(page)).toEqual({ dokument: 0, ueberstehend: [] });
       await bild(page, `r2-${breite}`);
     });
@@ -91,7 +96,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('vergleich-leer')).toContainText('Noch keine Bezugsbasis.');
       await expect(page.getByTestId('vergleich-monate')).toHaveCount(0);
       await expect(page.getByTestId('urteil')).toHaveCount(0);
-      await expect(page.getByTestId('vergleich-grenze')).toBeVisible();
+      await grenzHinweisZeigt(page, GRENZE);
       expect(await querlauf(page)).toEqual({ dokument: 0, ueberstehend: [] });
       await bild(page, `leer-${breite}`);
     });

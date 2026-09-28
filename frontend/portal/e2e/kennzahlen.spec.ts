@@ -73,6 +73,14 @@ async function messe(page: Page) {
       reiterAktiv: [...document.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"][aria-selected="true"]')]
         .filter((t) => sichtbar(t) && !t.closest('.vp-kz-perioden, .vp-kz-reiter'))
         .map((t) => text(t)),
+      // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen) — ohne die Frage des offenen Eintrags.
+      seite: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem')]
+        .filter((e) => sichtbar(e))
+        .map((e) => (e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'))?.textContent?.trim() ?? ''),
+      seiteAktiv:
+        [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem[aria-current="page"]')]
+          .filter((e) => sichtbar(e))
+          .map((e) => (e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'))?.textContent?.trim() ?? '')[0] ?? null,
       kennzahlReiter: [...document.querySelectorAll<HTMLElement>('.vp-kz-reiter [role="tab"]')].map(
         (t) => `${text(t)}${t.getAttribute('aria-selected') === 'true' ? ' (gewählt)' : ''}`,
       ),
@@ -107,15 +115,18 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 }
 
 test.describe('Kennzahlen — die Liste', () => {
-  test('bei 375 px am 03.12.2026: fünf Karten, die Leiste mit „Kennzahlen“ offen, keine doppelten Reiter', async ({ page }) => {
+  test('bei 375 px am 03.12.2026: fünf Karten, die Leiste mit „Auswerten“ offen', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen', 375, DEZEMBER);
     await warteAufListe(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-375');
     expect(m.route).toBe('#/portfolio/kennzahlen');
     expect(m.titel).toBe('Kennzahlen');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
-    expect(m.leisteAktiv).toBe('Kennzahlen');
+    // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); über der Seite stehen am Telefon
+    // nur die Reiter der offenen Gruppe.
+    expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(m.leisteAktiv).toBe('Auswerten');
+    // K1/D2: „Auswerten“ trägt hier nur die Kennzahlen (die Berichte stehen in „Nachweisen“) — keine zweite Reihe.
     expect(m.reiter).toEqual([]);
     expect(m.karten).toHaveLength(5);
     expect(m.karten[0]).toContain('keine Werte');
@@ -125,13 +136,15 @@ test.describe('Kennzahlen — die Liste', () => {
     await ablegen(page, 'liste-375-ganz', m, true);
   });
 
-  test('bei 1440 px: Reiter „Kennzahlen“ neben „Messstellen“, Karten im Raster; ein Klick öffnet die Kennzahl', async ({ page }) => {
+  test('bei 1440 px: Gruppe „Auswerten“ offen, Karten im Raster; ein Klick öffnet die Kennzahl', async ({ page }) => {
     await oeffne(page, 'ansicht=kennzahlen', 1440, NOVEMBER);
     await warteAufListe(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
-    expect(m.reiterAktiv).toEqual(['Kennzahlen']);
+    // N1: am Rechner die Gruppen in der Seitenleiste; „Auswerten“ ist offen und trägt hier nur die Kennzahlen — keine Reihe.
+    expect(m.seite).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(m.seiteAktiv).toBe('Auswerten');
+    expect(m.reiter).toEqual([]);
     expect(m.leiste).toBeNull();
     expect(m.karten[0]).toContain(`0,15${NB}kWh je Stück`);
     expect(m.karten[0]).toContain('Oktober 2026 · endgültig');
@@ -159,19 +172,24 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     const m = await messe(page);
     ohneQuerlauf(m, 'k1-375');
     expect(m.route).toBe(`#/portfolio/kennzahlen/${KZ.kz1}`);
-    expect(`${m.titel} · ${m.unter}`).toBe('KZ-0001 · Stromeinsatz Montage je Stück — Halle 2 · Gebäude Halle 2 · verantwortlich Ines Kaltenbach');
-    expect(m.leisteAktiv).toBe('Kennzahlen');
+    // K5: der Name zuerst, das Kennzeichen klein dahinter.
+    expect(`${m.titel} · ${m.unter}`).toBe('Stromeinsatz Montage je Stück — Halle 2 KZ-0001 · Gebäude Halle 2 · verantwortlich Ines Kaltenbach');
+    expect(m.leisteAktiv).toBe('Auswerten');
     expect(m.perioden).toEqual(['Monat', 'Jahr']);
     expect(m.zahl).toBe(`0,15${NB}kWh je Stück`);
     expect(m.abzeichen).toEqual(['vollständig', `Verlauf 100${NB}%`]);
     expect(m.kartenKopf).toBe('Oktober 2026endgültig');
     expect(m.kennzeichen).toEqual(['berechnet (Kennzahl)']);
     expect(m.versionen).toBe('');
+    // K5: der Rechenweg in Worten zuerst; der Satz in Kennzeichen und die zwei Erklärsätze stehen im Aufklapper.
     expect(m.herkunft).toEqual([
+      `Gerechnet aus 6.100${NB}kWh (Montage Linie M1) geteilt durch 41.000${NB}Stück (Gutteile Montage Halle 2).`,
       `Menge 6.100${NB}kWh (MS-12, vollständig, Version 1) je 41.000${NB}Stück (BZ-6, Fassung 1)`,
       'Berechnung Fassung 1 · gerechnet 01.11.2026 00:20',
+      'Fassung: ein festgehaltener Stand einer Eintragung — einer Berechnung ab einem Tag oder eines eingegebenen Werts. Eine Änderung ergibt eine neue Fassung, die alte bleibt lesbar.',
+      'Version: ein Rechenstand des Werts einer Periode. Er wird neu gebildet, wenn sich ein Eingang ändert, etwa nach einer Korrektur.',
     ]);
-    expect(m.berechnung[0]).toBe('Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn');
+    expect(m.berechnung[0]).toBe('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn');
     expect(m.stammdaten).toEqual([
       'Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.',
       'Ines Kaltenbach',
@@ -190,7 +208,9 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     await warteAufKarte(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'k1-1440');
-    expect(m.reiterAktiv).toEqual(['Kennzahlen']);
+    // N1/R4: „Auswerten“ leuchtet in der Seitenleiste; die Kennzahl zeigt ihren Rückweg statt der Reihe der Gruppe.
+    expect(m.seiteAktiv).toBe('Auswerten');
+    expect(m.reiterAktiv).toEqual([]);
     // AP-17 IP-9/IP-20 (§5.1, §6.3): an einer Quotient-Kennzahl stehen „Bezugsbasis“ und „Vergleich mit Bezugsbasis“ —
     // vorgewählt bleibt „Kennzahl“ mit dem Inhalt von vorher.
     expect(m.kennzahlReiter).toEqual(['Kennzahl (gewählt)', 'Bezugsbasis', 'Vergleich mit Bezugsbasis']);
@@ -218,7 +238,8 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     const k7 = await messe(page);
     ohneQuerlauf(k7, 'k7-375');
     expect(k7.kennzeichen).toEqual(['berechnet (Kennzahl)', 'korrigiert (Version 2)']);
-    expect(k7.herkunft[1]).toBe('Berechnung Fassung 1 · gerechnet 12.11.2026 10:05:33 · Anlass K-2026-0007 (freigegeben 12.11.2026)');
+    // K5: vor der Berechnungs-Fassung stehen der Rechenweg in Worten und der Satz in Kennzeichen.
+    expect(k7.herkunft[2]).toBe('Berechnung Fassung 1 · gerechnet 12.11.2026 10:05:33 · Anlass K-2026-0007 (freigegeben 12.11.2026)');
     await ablegen(page, 'k7-375', k7);
     await page.getByTestId('werte-versionen').click();
     const dialog = page.getByTestId('versionen-dialog');
@@ -245,14 +266,16 @@ test.describe('Kennzahlen — die Kennzahl-Seite (§5.3, §5.5)', () => {
     const herkunft = page.getByTestId('kennzahl-herkunft');
     const spruenge = herkunft.locator('a');
     await expect(spruenge).toHaveCount(1);
-    await expect(spruenge).toHaveText('MS-12');
+    // K5: der Name der Messstelle ist der Sprung — dasselbe Ziel wie vorher ihr Kennzeichen.
+    await expect(spruenge).toHaveText('Montage Linie M1');
     await expect(spruenge).toHaveAttribute('href', '#/portfolio/messstellen/MS-12?periode=2026-10&version=2');
     // Die Bezugsgröße steht im selben Satz und ist KEIN Link — AP-09 hat keine Kundenfläche.
     await expect(herkunft).toContainText('BZ-6');
     const m = await messe(page);
     ohneQuerlauf(m, 'o10-375');
-    // Der Satz ist zeichengleich der von vorher: die Zeile bekam Kanten, keinen neuen Wortlaut.
-    expect(m.herkunft[0]).toBe(`Menge 6.040${NB}kWh (MS-12, vollständig, Version 2, korrigiert (Version 2)) je 41.000${NB}Stück (BZ-6, Fassung 1)`);
+    expect(m.herkunft[0]).toBe(`Gerechnet aus 6.040${NB}kWh (Montage Linie M1) geteilt durch 41.000${NB}Stück (Gutteile Montage Halle 2).`);
+    // Der Satz in Kennzeichen ist zeichengleich der von vorher — er steht im Aufklapper „Wie wird gerechnet?“.
+    expect(m.herkunft[1]).toBe(`Menge 6.040${NB}kWh (MS-12, vollständig, Version 2, korrigiert (Version 2)) je 41.000${NB}Stück (BZ-6, Fassung 1)`);
     await page.getByTestId('kennzahl-herkunft').evaluate((e) => e.scrollIntoView({ block: 'center' }));
     await ablegen(page, 'o10-375', m);
   });

@@ -27,6 +27,7 @@ import { showAddAnlageButton } from '../src/addAnlage';
 import { ohneGeld } from '../src/anlageGeld';
 import {
   activeAreaKey,
+  aktiverEintrag,
   anlageSidebar,
   ebenenAktiv,
   ebenenBereiche,
@@ -34,15 +35,20 @@ import {
   ebenenOrt,
   ebenenReiter,
   ebenenTitel,
+  flottenEintraege,
+  istDetailseite,
   type EbenenLesemodell,
   type EbenenSeiten,
   standortEinstiege,
   standortBereichFuer,
+  telefonReiterBereiche,
+  unternehmensGruppen,
 } from '../src/ebenenNav';
 import { anlagenOptionen } from '../src/anlagenWahl';
 import {
   canonicalShellRoute,
   flottenLandung,
+  flottenName,
   kopfPfad,
   orteAus,
   pfadWert,
@@ -61,6 +67,7 @@ import {
   anlageRoute,
   berichtRoute,
   hashForRoute,
+  isPortfolioPage,
   kennzahlRoute,
   messstelleRoute,
   pageRoute,
@@ -91,6 +98,8 @@ import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergDatenquellen, ahrenbergUemsGeraete } from '../src/test/datenquellenFixtures';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { ahrenbergUmfangVorgabe } from '../src/test/bewertungFixtures';
+import { energiemanagementBuehne } from '../src/test/energiemanagementFixtures';
 import { quellenDerMessstellenBuehne } from '../src/test/messstelleQuellenFixtures';
 import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte } from '../src/test/kostenstellenFixtures';
 import {
@@ -110,10 +119,9 @@ import { mitEnergiebilanz } from '../src/anlageEnergiebilanz';
 import { ahrenbergBilanz } from '../src/test/bilanzFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from '../src/test/ortsbaumFixtures';
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
-import { StandortAnlagenPage } from '../src/pages/StandortAnlagenPage';
 import { StandortGebaeudePage } from '../src/pages/StandortGebaeudePage';
 import { StandortePage } from '../src/pages/StandortePage';
-import { StandortBoxenPage } from '../src/pages/StandortBoxenPage';
+import { StandortAufbauPage } from '../src/pages/StandortAufbauPage';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSurface } from '../src/surface';
 import {
@@ -459,9 +467,9 @@ const ALLE_SEITEN_KUENFTIG: EbenenSeiten = (ort) => {
   return {
     uebersicht: hier,
     standorte: pageRoute('portfolio-standorte'),
+    aufbau: hier,
     netzanschluesse: hier,
     gebaeude: hier,
-    anlagen: hier,
     messstellen: hier,
     bezugsgroessen: hier,
     kennzahlen: hier,
@@ -866,6 +874,12 @@ Object.assign(api, {
     },
     faellig: [],
   }),
+  // K2: der Fahrplan fragt Umfang, Energieeinsätze und Verzeichnis — die Bühne hat noch keinen Umfang, keinen
+  // Energieeinsatz und ein leeres Verzeichnis; kein Abruf geht an den (nicht laufenden) Server.
+  bewertungUmfang: async () => ahrenbergUmfangVorgabe('2026-10-20'),
+  energieeinsaetze: async () => ({ energieeinsaetze: [] }),
+  energiemanagementVerzeichnis: energiemanagementBuehne('start', { kennung: 'IK', name: 'Ines Kaltenbach' }, () => '2026-10-20T10:00:00+02:00')
+    .routen.energiemanagementVerzeichnis,
   // AP-19 IP-21: keine Frist im Energiemanagement — der Baustein „Energiemanagement“ bleibt weg (WV5), und kein Abruf
   // geht an den (nicht laufenden) Server.
   energiemanagementWiedervorlage: async () => ({
@@ -1122,6 +1136,9 @@ Object.assign(api, {
   // Der Einstieg mit nur einer Anlage kann deren Cockpit vor der E1-Weiche laden.
   // Die Standort-Bühne liefert diese Zusatzdaten nicht; auch dieser Pfad bleibt isoliert.
   topology: nichtGestellt,
+  // Der Aufbau des Standorts: die Anlagen der Bühne verwaltet das Portal (wie eine neu angelegte Anlage) — so steht
+  // „Gerät hinzufügen“ bereit wie in der App.
+  siteComponents: async () => ({ componentAuthority: 'portal', components: [] }),
   siteEarnings: nichtGestellt,
   controlStatus: nichtGestellt,
   siteSources: nichtGestellt,
@@ -1268,13 +1285,13 @@ function surfaceVon(id: string) {
   return mitEnergiebilanz(s, bilanzDerBuehne(id, 'tag'));
 }
 
-const FLOTTE = 'Meine Anlagen';
-
 function Vorschau() {
   const [, setRevision] = useState(0);
   const rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde' as const };
   const orte = orteAus(szene.liste, szene.unternehmen);
   const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit });
+  // D6 wie `App.tsx`: mit mehreren Standorten heißt die Flotten-Ebene wie das Unternehmen.
+  const FLOTTE = flottenName(rahmen.betriebsart, ebene);
   const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };
   const kanonisch = (r: Route) => canonicalShellRoute({ shell, route: r, siteIds }) ?? r;
   /**
@@ -1309,20 +1326,21 @@ function Vorschau() {
             // AP-13 IP-2: die Seiten des Standorts.
             : ansicht === 'werk-gebaeude'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude')
-            : ansicht === 'werk-boxen'
-              ? standortBereichRoute(FIXTURE_IDS.st1, 'boxen')
+            // „Boxen“ und „Anlagen“ sind im Aufbau aufgegangen; die alten Namen der Bühne führen dorthin.
+            : ansicht === 'werk-aufbau' || ansicht === 'werk-boxen'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'aufbau')
             : ansicht === 'werk-netzanschluesse'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'netzanschluesse')
             : ansicht === 'werk-anlagen'
-              ? standortBereichRoute(FIXTURE_IDS.st1, 'anlagen')
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'aufbau')
             : ansicht === 'werk-kennzahlen'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'kennzahlen')
             : ansicht === 'werk-berichte'
               ? standortBereichRoute(FIXTURE_IDS.st1, 'berichte')
             : ansicht === 'lindach-gebaeude'
               ? standortBereichRoute(st2, 'gebaeude')
-            : ansicht === 'lindach-anlagen'
-              ? standortBereichRoute(st2, 'anlagen')
+            : ansicht === 'lindach-anlagen' || ansicht === 'lindach-aufbau'
+              ? standortBereichRoute(st2, 'aufbau')
             // AP-13 IP-13: die Stationen Zahl · Verlauf · Vergleich stehen auf der Messstellen-Seite.
             : WEG_ANSICHT
               ? messstelleRoute(wegMessstelleId())
@@ -1385,20 +1403,34 @@ function Vorschau() {
   };
   const standortBereich = standortBereichFuer(route, lesemodell);
   const ort = site ? null : ebenenOrt(route, ebene);
-  const kacheln = (ort ? ebenenLeiste(ort, lesemodell, KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined) : []).filter(k => ansicht !== 'bezugsgroessen-b' || k.key !== 'bezugsgroessen');
+  const seiten = KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined;
+  // N3 wie `App.tsx`: die Flotte ohne Standorte hat dieselben Einträge wie jede Ebene.
+  const flotteHier = !site && !ort && ebene.art === 'heute' && flotte && isPortfolioPage(route.page);
+  const kacheln = (
+    ort ? ebenenLeiste(ort, lesemodell, seiten, route.page) : flotteHier ? flottenEintraege({ standorte: true, geldWelt: false, offen: route.page }) : []
+  ).filter(k => ansicht !== 'bezugsgroessen-b' || k.key !== 'bezugsgroessen');
+  const aktivHier = ansicht === 'bezugsgroessen-b' ? 'messstellen' as const : ebenenAktiv(route.page, standortBereich);
   const ebenenNav =
-    ort && kacheln.length > 0
+    (ort || flotteHier) && kacheln.length > 0
       ? {
-          titel: ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? ''),
+          titel: ort ? ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? '') : `Bereiche von ${FLOTTE}`,
           kacheln,
-          aktiv: ansicht === 'bezugsgroessen-b' ? 'messstellen' as const : ebenenAktiv(route.page, standortBereich),
+          aktiv: aktivHier,
+          aktivKey: aktiverEintrag(kacheln, route.page, aktivHier),
+          // N2 wie `App.tsx`: am Standort unter dem Unternehmen der Weg zu ihm.
+          hoch: pfad.vor.length > 0 ? eintrag(pfad.vor[pfad.vor.length - 1]) : null,
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
   // AP-04 IP-5, wie `App.tsx`: der Reiter „Messstellen" nur, wo gemessen wird; am Telefon
   // entfallen die Reiter, die die Leiste trägt. `&reiter=alle` = Variante A der Vorschau (alle bleiben).
   const bereiche = ort ? ebenenBereiche(ort, lesemodell).map((b) => b.key) : [];
-  const leiste = params.get('reiter') === 'alle' ? [] : kacheln.map((k) => k.key);
+  const leiste = params.get('reiter') === 'alle' ? [] : kacheln.flatMap((k) => k.bereiche);
+  const leisteSeiten = params.get('reiter') === 'alle' ? [] : kacheln.flatMap((k) => k.seiten ?? []);
+  // Wie `App.tsx`: mit Gruppen stehen über der Seite nur die Reiter der offenen Gruppe.
+  const gruppenListe =
+    ort?.art === 'unternehmen' && params.get('reiter') !== 'alle' ? unternehmensGruppen(lesemodell, seiten) : [];
+  const telefonReiter = gruppenListe.length > 0 ? telefonReiterBereiche(gruppenListe, ebenenAktiv(route.page, standortBereich)) : null;
   const standortReiter =
     route.page === 'standort' && ebene.art !== 'standort' && ort?.art === 'standort' ? ebenenReiter(ort, lesemodell) : [];
   // AP-13 IP-2, wie `App.tsx`: als oberste Ebene bringt der Standort Gebäude · Anlagen in die Reiter mit;
@@ -1406,7 +1438,7 @@ function Vorschau() {
   const standortObenReiter =
     ebene.art === 'standort' && ort?.art === 'standort'
       ? ebenenReiter(ort, lesemodell)
-          .filter((r) => r.key === 'boxen' || r.key === 'gebaeude' || r.key === 'anlagen')
+          .filter((r) => r.key === 'aufbau' || r.key === 'gebaeude' || r.key === 'netzanschluesse')
       : [];
   const einstiege = ort?.art === 'standort' ? standortEinstiege(ort, lesemodell) : [];
   const portfolioReiter = (page: PageId) => (
@@ -1418,11 +1450,16 @@ function Vorschau() {
       showKennzahlen={bereiche.includes('kennzahlen')}
       showBerichte={bereiche.includes('berichte')}
       leiste={leiste}
+      leisteSeiten={leisteSeiten}
+      telefonReiter={telefonReiter}
       fleetLabel={FLOTTE}
       onNavigate={navigateSchale}
       standortBereiche={standortObenReiter}
       standortAktiv={ebenenAktiv(route.page, standortBereich)}
       onOpenBereich={navigate}
+      // N1 wie `App.tsx`: die Gruppen stehen in der Seitenleiste, hier nur die Reiter der offenen.
+      gruppen={telefonReiter !== null ? gruppenListe : []}
+      detail={istDetailseite(route)}
     />
   );
   const messstellenEbene =
@@ -1471,6 +1508,8 @@ function Vorschau() {
               onOpenFleet: flotte ? () => navigate(flottenLandung(shell)) : null,
               health: healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 } }),
               pfad: pfad.vor.map(eintrag),
+              // N2 wie `App.tsx`: ganz oben der Weg eine Ebene höher.
+              hoch: pfad.vor.length > 0 ? eintrag(pfad.vor[pfad.vor.length - 1]) : null,
             }
           : null
       }
@@ -1520,12 +1559,14 @@ function Vorschau() {
               einstiege={einstiege}
             />
           )}
-          {standortBereich === 'boxen' && (
-            <StandortBoxenPage
+          {standortBereich === 'aufbau' && (
+            <StandortAufbauPage
               key={standort.id}
               standort={standort}
               sites={sites}
               devices={geraeteAhrenberg(new Date(Date.now()))}
+              devicesFetchedAt={Date.now()}
+              onReload={() => undefined}
             />
           )}
           {standortBereich === 'gebaeude' && (
@@ -1543,9 +1584,6 @@ function Vorschau() {
             />
           )}
           {standortBereich === 'netzanschluesse' && <StandortNetzanschluessePage key={standort.id} standort={standort} onGeaendert={() => undefined} />}
-          {standortBereich === 'anlagen' && (
-            <StandortAnlagenPage standort={standort} sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
-          )}
           {standortBereich === 'kennzahlen' && (
             <KennzahlenPage
               key={standort.id}
@@ -1604,6 +1642,8 @@ function Vorschau() {
           bereichDa={bereiche.includes('messstellen')}
           // AP-13 IP-9, wie `App.tsx`: die Reiter Kostenstellen · Prozesse nur in der Welt Messstellen des Unternehmens.
           organisation={route.page === 'portfolio-messstellen' && !(ebene.art === 'standort' && ebene.teilansicht)}
+          // N5 wie `App.tsx`: mit Gruppen stehen Kostenstellen · Prozesse in der Reihe von „Messen“.
+          reiterOben={telefonReiter !== null}
           onUebersicht={() =>
             navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
           }

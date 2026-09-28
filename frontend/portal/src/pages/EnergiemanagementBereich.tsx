@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
+import { BegriffeZeile } from '../components/BegriffeZeile';
+import { useReiterRand } from '../reiterRand';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type EnergiemanagementDokumentKurz } from '../api';
 import { DokumentAnlegenDialog } from '../components/DokumentDialoge';
@@ -14,7 +17,7 @@ import { ZuschnittHilfe } from '../components/ZuschnittHilfe';
 import '../components/BereichTabs.css';
 import { SAETZE } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
-import { UEMS_DOKUMENTE, UEMS_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_DOKUMENTE, UEMS_ENERGIEMANAGEMENT } from '../glossar';
 import type { EnergiemanagementReiter, Route } from '../nav';
 import { useRollen } from '../rollen';
 import { AuditSeite } from './AuditSeite';
@@ -54,6 +57,7 @@ export function EnergiemanagementBereich({
   onFeststellung,
   onManagementbewertung,
   onSprung,
+  reiterOben = false,
 }: {
   reiter: EnergiemanagementReiter;
   dokumentId: string | null;
@@ -69,7 +73,13 @@ export function EnergiemanagementBereich({
   onManagementbewertung?: (kennung: string) => void;
   /** Der Sprung einer Wiedervorlage-Zeile (WV3) — auch auf Seiten außerhalb des Bereichs; ohne ihn springt keine Zeile. */
   onSprung?: (ziel: Route) => void;
+  /**
+   * K1 (D2): die Reiter stehen schon über der Seite — in der Gruppe „Nachweisen“, die Wiedervorlage in der Übersicht
+   * (`PortfolioTabs` mit Gruppen). Dann entfällt die zweite Reiterreihe hier.
+   */
+  reiterOben?: boolean;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   const rollen = useRollen();
   if (dokumentId) return <DokumentSeite id={dokumentId} onListe={() => onReiter('dokumente')} />;
   if (personId) return <EnergiemanagementPersonSeite id={personId} onListe={() => onReiter('aufgaben')} />;
@@ -83,55 +93,57 @@ export function EnergiemanagementBereich({
   // „Wer ist wofür verantwortlich“ steht unter dem Reiter „Aufgaben“ (§6.3 nennt sieben Reiter, diese Ansicht ist keiner).
   const aktiv = reiter === 'verantwortung' ? 'aufgaben' : reiter;
   return (
-    <div className="vp-ez" data-testid="energiemanagement-bereich">
-      <div className="vp-em-kopf">
-        <h1>{UEMS_ENERGIEMANAGEMENT}</h1>
-        <button type="button" className="vp-em-hilfe" onClick={() => onReiter('zuschnitt')} data-testid="energiemanagement-zuschnitt-link">
-          {SAETZE.zuschnitt_titel}
-        </button>
-      </div>
-      {E.mitEinsicht(rollen.selbst) && (
-        <p className="vp-ez-satz" data-testid="einsicht-rolle">
-          {SAETZE.einsicht_rolle}
-        </p>
-      )}
-      <div className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
-        {E.REITER.map((r) => (
-          <button
-            key={r.key}
-            type="button"
-            role="tab"
-            aria-selected={aktiv === r.key}
-            className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
-            data-testid={`energiemanagement-reiter-${r.key}`}
-            onClick={() => onReiter(r.key)}
-          >
-            {r.label}
+    <GrenzSatzBereich>
+      <div className="vp-ez" data-testid="energiemanagement-bereich">
+        <div className="vp-em-kopf">
+          <h1>{UEMS_ENERGIEMANAGEMENT}</h1>
+          <button type="button" className="vp-em-hilfe" onClick={() => onReiter('zuschnitt')} data-testid="energiemanagement-zuschnitt-link">
+            {SAETZE.zuschnitt_titel}
           </button>
-        ))}
+        </div>
+        <BegriffeZeile begriffe={['verzeichnis', 'wiedervorlage', 'audit', 'feststellung', 'managementbewertung']} />
+        <GrenzHinweis />
+        {E.mitEinsicht(rollen.selbst) && (
+          <p className="vp-ez-satz" data-testid="einsicht-rolle">
+            {SAETZE.einsicht_rolle}
+          </p>
+        )}
+        {!reiterOben && (
+          <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={UEMS_ENERGIEMANAGEMENT}>
+            {E.REITER.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                role="tab"
+                aria-selected={aktiv === r.key}
+                className={`vp-bereich-tab${aktiv === r.key ? ' active' : ''}`}
+                data-testid={`energiemanagement-reiter-${r.key}`}
+                onClick={() => onReiter(r.key)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {reiter === 'dokumente' ? (
+          <DokumenteRegister onOeffnen={onDokument} />
+        ) : reiter === 'aufgaben' ? (
+          <EnergiemanagementAufgaben onPerson={onPerson} onVerantwortung={() => onReiter('verantwortung')} />
+        ) : reiter === 'verantwortung' ? (
+          <EnergiemanagementVerantwortung onPerson={onPerson} onZurueck={() => onReiter('aufgaben')} />
+        ) : reiter === 'audits' ? (
+          <EnergiemanagementAudits onAudit={zumAudit} />
+        ) : reiter === 'feststellungen' ? (
+          <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
+        ) : reiter === 'wiedervorlage' ? (
+          <EnergiemanagementWiedervorlage onSprung={onSprung} />
+        ) : reiter === 'managementbewertung' ? (
+          <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
+        ) : (
+          <VerzeichnisTabelle onDokument={onDokument} onSprung={onSprung} />
+        )}
       </div>
-      {reiter === 'dokumente' ? (
-        <DokumenteRegister onOeffnen={onDokument} />
-      ) : reiter === 'aufgaben' ? (
-        <EnergiemanagementAufgaben onPerson={onPerson} onVerantwortung={() => onReiter('verantwortung')} />
-      ) : reiter === 'verantwortung' ? (
-        <EnergiemanagementVerantwortung onPerson={onPerson} onZurueck={() => onReiter('aufgaben')} />
-      ) : reiter === 'audits' ? (
-        <EnergiemanagementAudits onAudit={zumAudit} />
-      ) : reiter === 'feststellungen' ? (
-        <EnergiemanagementFeststellungen onFeststellung={zurFeststellung} />
-      ) : reiter === 'wiedervorlage' ? (
-        <EnergiemanagementWiedervorlage onSprung={onSprung} />
-      ) : reiter === 'managementbewertung' ? (
-        <EnergiemanagementManagementbewertung onOeffnen={zurManagementbewertung} />
-      ) : (
-        <VerzeichnisTabelle onDokument={onDokument} />
-      )}
-      <div className="vp-em-saetze" data-testid="energiemanagement-saetze">
-        <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
-      </div>
-    </div>
+    </GrenzSatzBereich>
   );
 }
 
@@ -167,37 +179,39 @@ function DokumenteRegister({ onOeffnen }: { onOeffnen: (id: string) => void }) {
       ) : liste.length === 0 ? (
         <p className="vp-ez-satz" data-testid="dokumente-leer">{SAETZE.verzeichnis_leer}</p>
       ) : (
-        <table className="vp-ez-tafel">
-          <thead>
-            <tr>
-              <th scope="col">Dokument</th>
-              <th scope="col">Art</th>
-              <th scope="col">Bezug</th>
-              <th scope="col">Zustand</th>
-              <th scope="col">Überprüfung</th>
-            </tr>
-          </thead>
-          <tbody>
-            {liste.map((d) => (
-              <tr key={d.id} data-testid={`dokument-zeile-${d.kennzeichen}`}>
-                <td>
-                  <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(d.id)}>
-                    {d.kennzeichen} {d.titel}
-                  </button>
-                </td>
-                <td data-label="Art">{d.art_wort}</td>
-                <td data-label="Bezug">{E.bezugWort(d.bezug)}</td>
-                <td data-label="Zustand">
-                  {E.ZUSTAND_WORT[d.zustand]}
-                  {d.gueltige_fassung ? ` · Fassung ${d.gueltige_fassung}` : ''}
-                </td>
-                <td data-label="Überprüfung">
-                  {d.ueberpruefung?.satz ?? (d.ueberpruefung?.faellig_am ? `fällig am ${E.tagText(d.ueberpruefung.faellig_am)}` : '—')}
-                </td>
+        <div className="vp-ez-tafel-rahmen">
+          <table className="vp-ez-tafel">
+            <thead>
+              <tr>
+                <th scope="col">Dokument</th>
+                <th scope="col">Art</th>
+                <th scope="col">Bezug</th>
+                <th scope="col">Zustand</th>
+                <th scope="col">Überprüfung</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {liste.map((d) => (
+                <tr key={d.id} data-testid={`dokument-zeile-${d.kennzeichen}`}>
+                  <td>
+                    <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(d.id)}>
+                      {d.kennzeichen} {d.titel}
+                    </button>
+                  </td>
+                  <td data-label="Art">{d.art_wort}</td>
+                  <td data-label="Bezug">{E.bezugWort(d.bezug)}</td>
+                  <td data-label="Zustand">
+                    {E.ZUSTAND_WORT[d.zustand]}
+                    {d.gueltige_fassung ? ` · Fassung ${d.gueltige_fassung}` : ''}
+                  </td>
+                  <td data-label="Überprüfung">
+                    {d.ueberpruefung?.satz ?? (d.ueberpruefung?.faellig_am ? `fällig am ${E.tagText(d.ueberpruefung.faellig_am)}` : '—')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {anlegen && (
         <DokumentAnlegenDialog

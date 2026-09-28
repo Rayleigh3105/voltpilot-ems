@@ -14,6 +14,11 @@
   min-width: 0;
 }
 
+/* K2: steht der Fahrplan ganz, zeigt er nichts — dann bleibt oben auch kein leerer Abstand. */
+.vp-ub:empty {
+  display: none;
+}
+
 .vp-ub-baustein {
   padding: var(--vp-space-5, 20px);
   background: #fff;
@@ -167,6 +172,14 @@
 
 .vp-ub-zeile:hover {
   background: #f8fafc;
+}
+
+/* K8: eine Zeile ohne Sprung (etwa ein Messbedarf) steht als Text — gleich gebaut, ohne Zeiger. */
+.vp-ub-zeile-text {
+  cursor: default;
+}
+.vp-ub-zeile-text:hover {
+  background: none;
 }
 
 .vp-ub-zeile:focus-visible,

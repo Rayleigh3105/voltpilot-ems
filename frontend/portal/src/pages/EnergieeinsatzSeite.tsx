@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -38,7 +39,6 @@ import { MassnahmeAnlegen } from '../components/MassnahmeDialoge';
 import { MessbedarfKarte } from '../components/Messplanung';
 import { NachweiseAmEinsatz } from '../components/Nachweise';
 import { ErrorState, Skeleton } from '../components/States';
-import { UEMS_NORMGRENZE } from '../glossar';
 import { useRollen } from '../rollen';
 
 /**
@@ -91,153 +91,155 @@ export function EnergieeinsatzSeite({ id, onListe }: { id: string; onListe: () =
   };
 
   return (
-    <div className="vp-bw" data-testid="einsatz-seite">
-      <button type="button" className="vp-bw-zurueck" onClick={onListe}>
-        <Icon name="chevron-left" size={16} />
-        {ZURUECK}
-      </button>
-      {fehler ? (
-        fehler.erneut ? (
-          <ErrorState message={fehler.satz} onRetry={() => setVersuch((v) => v + 1)} />
-        ) : (
-          <p className="vp-bw-hinweis" role="status">
-            {fehler.satz}
-          </p>
-        )
-      ) : !einsatz ? (
-        <div aria-busy="true">
-          <Skeleton height={160} />
-        </div>
-      ) : (
-        <>
-          <header className="vp-bw-kopf">
-            <div>
-              <p className="vp-bw-kz">{einsatz.kennzeichen}</p>
-              <h1>{einsatz.name}</h1>
-              <p className="vp-bw-abzeichen">
-                <Badge variant="tint">{einsatz.traeger}</Badge>
-                <Badge variant={laeuft(einsatz) ? 'ok' : 'off'} data-testid="einsatz-zustand">
-                  {zustandText(einsatz)}
-                </Badge>
-                {einsatz.keine_werte && <Badge variant="off">{KEINE_WERTE}</Badge>}
-              </p>
-            </div>
-            {verwalten && laeuft(einsatz) && (
-              <div className="vp-bw-aktionen">
-                <Button size="sm" variant="outline" iconLeft={<Icon name="pencil" size={16} />} onClick={() => setDialog('bearbeiten')} data-testid="einsatz-bearbeiten-knopf">
-                  Bearbeiten
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setDialog('beenden')} data-testid="einsatz-beenden-knopf">
-                  {BEENDEN_KNOPF}
-                </Button>
-              </div>
-            )}
-          </header>
-          {/* UEMS AP-18 IP-13 (§5.4): „Maßnahme anlegen“ am Energieeinsatz — Herkunft `einsatz` mit der freigegebenen
-              Einstufungs-Fassung; ohne Kennzahl öffnet der Dialog auf „ohne Messgrundlage“ (E2 = A). */}
-          {laeuft(einsatz) && (
-            <MassnahmeAnlegen
-              vorbelegung={{ herkunft: 'einsatz', einsatz: einsatz.id, einstufungFassung: freigegebeneFassung(einstufungen) }}
-              standort={null}
-            />
-          )}
-
-          <section className="vp-bw-karte" aria-label="Stammdaten">
-            <dl className="vp-bw-felder">
-              <dt>{PROZESS}</dt>
-              <dd data-testid="einsatz-prozess">{prozessText(einsatz.prozess)}</dd>
-              <dt>{TRAEGER}</dt>
-              <dd>{einsatz.traeger === 'Strom' ? 'Strom' : `${einsatz.traeger} — im Umfang, ohne Anteil`}</dd>
-              <dt>{VERBRAUCHER}</dt>
-              <dd>{einsatz.verbraucher_wortlaut || 'nicht beschrieben'}</dd>
-              <dt>{VERANTWORTLICH}</dt>
-              <dd data-testid="einsatz-verantwortlich">{verantwortlichText(einsatz.verantwortlich)}</dd>
-            </dl>
-          </section>
-
-          <div className="vp-bw-karte-kopf">
-            <span className="vp-bw-leise">Vorschläge sind keine Einstufung.</span>
-            {einstufen && rang && <Button size="sm" onClick={() => setDialog('einstufen')} data-testid="einsatz-einstufen-knopf">Einstufen</Button>}
+    <GrenzSatzBereich>
+      <div className="vp-bw" data-testid="einsatz-seite">
+        <button type="button" className="vp-bw-zurueck" onClick={onListe}>
+          <Icon name="chevron-left" size={16} />
+          {ZURUECK}
+        </button>
+        {fehler ? (
+          fehler.erneut ? (
+            <ErrorState message={fehler.satz} onRetry={() => setVersuch((v) => v + 1)} />
+          ) : (
+            <p className="vp-bw-hinweis" role="status">
+              {fehler.satz}
+            </p>
+          )
+        ) : !einsatz ? (
+          <div aria-busy="true">
+            <Skeleton height={160} />
           </div>
-          <EinstufungHistorie
-            einsatzId={id}
-            fassungen={einstufungen}
-            darfBestaetigen={einstufen}
-            onBestaetigt={(f) => setEinstufungen((alt) => alt.map((x) => x.fassung === f.fassung ? f : x))}
-          />
-
-          <section className="vp-bw-karte" aria-labelledby="ee-einfluss">
-            <h2 id="ee-einfluss">{EINFLUSSGROESSEN}</h2>
-            {einsatz.einflussgroessen.length === 0 ? (
-              <p className="vp-bw-leise">{KEINE_EINFLUSSGROESSEN}</p>
-            ) : (
-              <ul className="vp-bw-zeilen" data-testid="einsatz-einfluesse-liste">
-                {einsatz.einflussgroessen.map((e, i) => (
-                  <li key={i}>{einflussText(e)}</li>
-                ))}
-              </ul>
+        ) : (
+          <>
+            <header className="vp-bw-kopf">
+              <div>
+                <p className="vp-bw-kz">{einsatz.kennzeichen}</p>
+                <h1>{einsatz.name}</h1>
+                <p className="vp-bw-abzeichen">
+                  <Badge variant="tint">{einsatz.traeger}</Badge>
+                  <Badge variant={laeuft(einsatz) ? 'ok' : 'off'} data-testid="einsatz-zustand">
+                    {zustandText(einsatz)}
+                  </Badge>
+                  {einsatz.keine_werte && <Badge variant="off">{KEINE_WERTE}</Badge>}
+                </p>
+              </div>
+              {verwalten && laeuft(einsatz) && (
+                <div className="vp-bw-aktionen">
+                  <Button size="sm" variant="outline" iconLeft={<Icon name="pencil" size={16} />} onClick={() => setDialog('bearbeiten')} data-testid="einsatz-bearbeiten-knopf">
+                    Bearbeiten
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setDialog('beenden')} data-testid="einsatz-beenden-knopf">
+                    {BEENDEN_KNOPF}
+                  </Button>
+                </div>
+              )}
+              <GrenzHinweis />
+            </header>
+            {/* UEMS AP-18 IP-13 (§5.4): „Maßnahme anlegen“ am Energieeinsatz — Herkunft `einsatz` mit der freigegebenen
+                Einstufungs-Fassung; ohne Kennzahl öffnet der Dialog auf „ohne Messgrundlage“ (E2 = A). */}
+            {laeuft(einsatz) && (
+              <MassnahmeAnlegen
+                vorbelegung={{ herkunft: 'einsatz', einsatz: einsatz.id, einstufungFassung: freigegebeneFassung(einstufungen) }}
+                standort={null}
+              />
             )}
-          </section>
 
-          <section className="vp-bw-karte" aria-labelledby="ee-messstellen">
-            <h2 id="ee-messstellen">{MESSSTELLEN}</h2>
-            {einsatz.keine_werte && <p className="vp-bw-leise">{KEINE_WERTE_SATZ}</p>}
-            {einsatz.messstellen.length === 0 ? (
-              <p className="vp-bw-leise">{KEINE_MESSSTELLEN}</p>
-            ) : (
-              <ul className="vp-bw-zeilen" data-testid="einsatz-messstellen">
-                {einsatz.messstellen.map((m) => (
-                  <li key={m.id} className="vp-bw-ms">
-                    <span className="vp-bw-kz">{m.kennzeichen}</span>
-                    <span className="vp-bw-ms-name">{m.name}</span>
-                    <span className="vp-bw-leise">
-                      {messstelleOrt(m)} · {messstelleZustand(m)}
-                      {m.art === 'berechnet' ? ' · berechnet' : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+            <section className="vp-bw-karte" aria-label="Stammdaten">
+              <dl className="vp-bw-felder">
+                <dt>{PROZESS}</dt>
+                <dd data-testid="einsatz-prozess">{prozessText(einsatz.prozess)}</dd>
+                <dt>{TRAEGER}</dt>
+                <dd>{einsatz.traeger === 'Strom' ? 'Strom' : `${einsatz.traeger} — im Umfang, ohne Anteil`}</dd>
+                <dt>{VERBRAUCHER}</dt>
+                <dd>{einsatz.verbraucher_wortlaut || 'nicht beschrieben'}</dd>
+                <dt>{VERANTWORTLICH}</dt>
+                <dd data-testid="einsatz-verantwortlich">{verantwortlichText(einsatz.verantwortlich)}</dd>
+              </dl>
+            </section>
 
-          {/* AP-16 IP-20 (§5.3, R5): Messbedarf erfassen, einlösen (Sprung in den Messstellen-Dialog), verwerfen. */}
-          <MessbedarfKarte einsatz={einsatz} verwalten={verwalten} />
+            <div className="vp-bw-karte-kopf">
+              <span className="vp-bw-leise">Vorschläge sind keine Einstufung.</span>
+              {einstufen && rang && <Button size="sm" onClick={() => setDialog('einstufen')} data-testid="einsatz-einstufen-knopf">Einstufen</Button>}
+            </div>
+            <EinstufungHistorie
+              einsatzId={id}
+              fassungen={einstufungen}
+              darfBestaetigen={einstufen}
+              onBestaetigt={(f) => setEinstufungen((alt) => alt.map((x) => x.fassung === f.fassung ? f : x))}
+            />
 
-          <EinsatzMessmittel einsatz={`${einsatz.kennzeichen} ${einsatz.name}`} messstellen={einsatz.messstellen} wesentlich={istWesentlich(einstufungen)} />
+            <section className="vp-bw-karte" aria-labelledby="ee-einfluss">
+              <h2 id="ee-einfluss">{EINFLUSSGROESSEN}</h2>
+              {einsatz.einflussgroessen.length === 0 ? (
+                <p className="vp-bw-leise">{KEINE_EINFLUSSGROESSEN}</p>
+              ) : (
+                <ul className="vp-bw-zeilen" data-testid="einsatz-einfluesse-liste">
+                  {einsatz.einflussgroessen.map((e, i) => (
+                    <li key={i}>{einflussText(e)}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
-          {/* AP-19 IP-15 (§5.3, R7): die Dokumente am Einsatz — Betrieb und Instandhaltung, Auslegung, Beschaffung — mit Ort
-              und Überprüfung; „Nachweis festhalten“ mit vorbelegtem Bezug. Nur mit `energiemanagement.ansehen`. */}
-          <NachweiseAmEinsatz einsatz={einsatz} />
+            <section className="vp-bw-karte" aria-labelledby="ee-messstellen">
+              <h2 id="ee-messstellen">{MESSSTELLEN}</h2>
+              {einsatz.keine_werte && <p className="vp-bw-leise">{KEINE_WERTE_SATZ}</p>}
+              {einsatz.messstellen.length === 0 ? (
+                <p className="vp-bw-leise">{KEINE_MESSSTELLEN}</p>
+              ) : (
+                <ul className="vp-bw-zeilen" data-testid="einsatz-messstellen">
+                  {einsatz.messstellen.map((m) => (
+                    <li key={m.id} className="vp-bw-ms">
+                      <span className="vp-bw-kz">{m.kennzeichen}</span>
+                      <span className="vp-bw-ms-name">{m.name}</span>
+                      <span className="vp-bw-leise">
+                        {messstelleOrt(m)} · {messstelleZustand(m)}
+                        {m.art === 'berechnet' ? ' · berechnet' : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
-          <section className="vp-bw-karte" aria-labelledby="ee-protokoll">
-            <h2 id="ee-protokoll">{PROTOKOLL}</h2>
-            {protokoll === null ? (
-              <p className="vp-bw-leise">{VERSUCHEN}</p>
-            ) : (
-              <ol className="vp-bw-zeilen" data-testid="einsatz-protokoll">
-                {[...protokoll].reverse().map((a) => (
-                  <li key={a.id}>{protokollZeile(a)}</li>
-                ))}
-              </ol>
-            )}
-          </section>
-        </>
-      )}
+            {/* AP-16 IP-20 (§5.3, R5): Messbedarf erfassen, einlösen (Sprung in den Messstellen-Dialog), verwerfen. */}
+            <MessbedarfKarte einsatz={einsatz} verwalten={verwalten} />
 
-      <p className="vp-bw-grenze">{UEMS_NORMGRENZE}</p>
+            <EinsatzMessmittel einsatz={`${einsatz.kennzeichen} ${einsatz.name}`} messstellen={einsatz.messstellen} wesentlich={istWesentlich(einstufungen)} />
 
-      {dialog === 'bearbeiten' && einsatz && (
-        <EnergieeinsatzBearbeitenDialog einsatz={einsatz} onClose={() => setDialog(null)} onGespeichert={neu} />
-      )}
-      {dialog === 'beenden' && einsatz && (
-        <EnergieeinsatzBeendenDialog einsatz={einsatz} onClose={() => setDialog(null)} onBeendet={neu} />
-      )}
-      {dialog === 'einstufen' && rang && (
-        <EinstufungDialog einsatz={rang} onClose={() => setDialog(null)} onGespeichert={(f) => {
-          setEinstufungen((alt) => [f, ...alt]);
-          setDialog(null);
-        }} />
-      )}
-    </div>
+            {/* AP-19 IP-15 (§5.3, R7): die Dokumente am Einsatz — Betrieb und Instandhaltung, Auslegung, Beschaffung — mit Ort
+                und Überprüfung; „Nachweis festhalten“ mit vorbelegtem Bezug. Nur mit `energiemanagement.ansehen`. */}
+            <NachweiseAmEinsatz einsatz={einsatz} />
+
+            <section className="vp-bw-karte" aria-labelledby="ee-protokoll">
+              <h2 id="ee-protokoll">{PROTOKOLL}</h2>
+              {protokoll === null ? (
+                <p className="vp-bw-leise">{VERSUCHEN}</p>
+              ) : (
+                <ol className="vp-bw-zeilen" data-testid="einsatz-protokoll">
+                  {[...protokoll].reverse().map((a) => (
+                    <li key={a.id}>{protokollZeile(a)}</li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          </>
+        )}
+
+
+        {dialog === 'bearbeiten' && einsatz && (
+          <EnergieeinsatzBearbeitenDialog einsatz={einsatz} onClose={() => setDialog(null)} onGespeichert={neu} />
+        )}
+        {dialog === 'beenden' && einsatz && (
+          <EnergieeinsatzBeendenDialog einsatz={einsatz} onClose={() => setDialog(null)} onBeendet={neu} />
+        )}
+        {dialog === 'einstufen' && rang && (
+          <EinstufungDialog einsatz={rang} onClose={() => setDialog(null)} onGespeichert={(f) => {
+            setEinstufungen((alt) => [f, ...alt]);
+            setDialog(null);
+          }} />
+        )}
+      </div>
+    </GrenzSatzBereich>
   );
 }

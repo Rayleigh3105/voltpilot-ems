@@ -97,7 +97,9 @@ export function normalizeDeviceIdInput(value: string): string {
 export const DEVICE_ID_FIELD = {
   label: 'Geräte-ID',
   placeholder: 'z. B. edge-k7m2xqp',
-  help: 'Die Geräte-ID zeigt Ihnen Ihr VoltPilot-Gerät direkt an - in der Geräte-App unter „Gerät verbinden". Manche Geräte tragen sie zusätzlich auf einem Aufkleber.',
+  // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`);
+  // einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
+  help: 'Die Geräte-ID zeigt Ihre VoltPilot-Box auf ihrer Einrichtungsseite als „Referenz-ID“ an. Manche Boxen tragen sie zusätzlich auf einem Aufkleber.',
 } as const;
 
 /** One 422 message for both gates (unknown sticker OR mistyped edge reference). */

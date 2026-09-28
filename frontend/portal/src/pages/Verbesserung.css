@@ -112,6 +112,15 @@
   overflow-wrap: anywhere;
 }
 
+/* K4 (Konzept „Energiemanagement ohne Fachsprache“): im leeren Zustand steht zuerst, wozu die Fläche da ist. */
+.vp-ez-wozu {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600, 600);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
 .vp-ez-vorschlag,
 .vp-ez-frist {
   margin: 0;
@@ -148,6 +157,14 @@
 
 /* ------------------------------------------------------------------ Tabellen (Register, Monate) */
 
+/* Ein breites Register scrollt in SEINEM Rahmen, statt die Seite zu verbreitern (gemessen: das Verzeichnis
+   ragte bei 800 px 146 px über den Rand). Am Telefon werden die Zeilen ohnehin zu Blöcken (unten). */
+.vp-ez-tafel-rahmen {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
 .vp-ez-tafel {
   width: 100%;
   border-collapse: collapse;
@@ -173,6 +190,15 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Als Tabelle bricht eine Zelle zwischen Wörtern, nie mitten im Wort („in VoltPilo|t“ bei 1440 px): der Rahmen
+   oben fängt die Breite. Nur die Block-Darstellung am Telefon darf überall brechen. */
+@media (min-width: 720px) {
+  .vp-ez-tafel th,
+  .vp-ez-tafel td {
+    overflow-wrap: break-word;
+  }
 }
 
 .vp-ez-tafel tr.vp-ez-summe th,

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * Reiter „Bezugsbasis“ an der Kennzahl (UEMS AP-17 IP-9, NW-4) bei 375 px und 1440 px auf der eigenen Bühne
@@ -66,7 +67,7 @@ for (const breite of [375, 1440]) {
       await reiterBezugsbasis(page).click();
       await expect(page.getByText(LEER)).toBeVisible();
       await expect(anlegenKnopf(page)).toBeVisible();
-      await expect(page.getByTestId('bezugsbasis-reiter').getByText(GRENZE)).toBeVisible();
+      await grenzHinweisZeigt(page, GRENZE);
       await ohneQuerlauf(page);
 
       await oeffne(page, 'person=CB', breite);

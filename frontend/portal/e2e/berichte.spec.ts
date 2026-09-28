@@ -25,7 +25,11 @@ const AM_20_11 = new Date('2026-11-20T08:00:00Z');
 const AM_03_12 = new Date('2026-12-03T08:00:00Z');
 const AM_2036 = new Date('2036-11-02T09:00:00Z');
 const NB = String.fromCharCode(160);
-const LEISTE = ['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte'];
+// Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`); die Berichte wohnen in „Auswerten“,
+// über der Seite stehen am Telefon nur deren Reiter.
+// K1/D2: die Berichte sind Belege — sie stehen in der Gruppe „Nachweisen“. N1: am Rechner stehen dieselben Gruppen in
+// der Seitenleiste.
+const LEISTE = ['Übersicht', 'Messen', 'Auswerten', 'Nachweisen'];
 
 async function oeffne(page: Page, query: string, breite: number, jetzt: Date) {
   await page.clock.setFixedTime(jetzt);
@@ -54,6 +58,7 @@ async function messe(page: Page) {
       .filter((e) => sichtbar(e) && !e.closest('.vp-bereich-tabs, .vp-br-wahl'))
       .filter((e) => e.getBoundingClientRect().right > breite + 0.5)
       .map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`);
+    const eintrag = (e: Element) => text(e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'));
     const reiter = (aktiv: boolean) =>
       [...document.querySelectorAll<HTMLElement>(`[role="tablist"] [role="tab"]${aktiv ? '[aria-selected="true"]' : ''}`)]
         .filter((t) => sichtbar(t) && !t.closest('.vp-br-wahl'))
@@ -67,6 +72,9 @@ async function messe(page: Page) {
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
       reiter: reiter(false),
       reiterAktiv: reiter(true),
+      // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen) — ohne die Frage des offenen Eintrags.
+      seite: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem')].filter((e) => sichtbar(e)).map(eintrag),
+      seiteAktiv: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem[aria-current="page"]')].filter((e) => sichtbar(e)).map(eintrag)[0] ?? null,
       karten: [...document.querySelectorAll('[data-testid="bericht-karte"]')].map((k) => text(k)),
       stand: [...document.querySelectorAll('[data-testid="bericht-stand"]')].map((k) => text(k)),
       titel: text(document.querySelector('.vp-br-kopf h1')),
@@ -110,28 +118,32 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
 }
 
 test.describe('Berichte — die Liste', () => {
-  test('bei 375 px am 13.11.2026: BR-2026-0001 mit „Revision nötig — Korrektur K-2026-0007“, die Leiste mit „Berichte“ offen', async ({ page }) => {
+  test('bei 375 px am 13.11.2026: BR-2026-0001 mit „Revision nötig — Korrektur K-2026-0007“, die Leiste mit „Nachweisen“ offen', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte', 375, AM_13_11);
     await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-375');
     expect(m.route).toBe('#/portfolio/berichte');
     expect(m.leiste).toEqual(LEISTE);
-    expect(m.leisteAktiv).toBe('Berichte');
+    expect(m.leisteAktiv).toBe('Nachweisen');
+    // Ohne Energiemanagement trägt „Nachweisen“ nur die Berichte — eine zweite Reihe mit einem Reiter gibt es nicht.
     expect(m.reiter).toEqual([]);
+    expect(m.reiterAktiv).toEqual([]);
     expect(m.stand).toEqual(['Revision nötig — Korrektur K-2026-0007']);
     expect(m.karten[0]).toContain('Monatsbericht Werk Ahrenberg Oktober 2026');
     expect(m.karten[0]).toContain('Monatsbericht Standort · Fassung 1');
     await ablegen(page, 'liste-375', m);
   });
 
-  test('bei 1440 px am 20.11.2026: Reiter „Berichte“ neben „Kennzahlen“; ein Klick öffnet den Bericht', async ({ page }) => {
+  test('bei 1440 px am 20.11.2026: Gruppe „Nachweisen“ offen; ein Klick öffnet den Bericht', async ({ page }) => {
     await oeffne(page, 'ansicht=berichte', 1440, AM_20_11);
     await expect(page.getByTestId('bericht-karte')).toHaveCount(1);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte', 'Energie']); // „Energie“ seit main 3e95cc604
-    expect(m.reiterAktiv).toEqual(['Berichte']);
+    // N1: am Rechner die Gruppen in der Seitenleiste, die offene ist „Nachweisen“ — mit nur einem Bereich ohne Reihe.
+    expect(m.seite).toEqual(LEISTE);
+    expect(m.seiteAktiv).toBe('Nachweisen');
+    expect(m.reiter).toEqual([]);
     expect(m.stand).toEqual(['Berichtsstand Nr. 2']);
     await ablegen(page, 'liste-1440', m);
     await page.getByTestId('bericht-karte').click();
@@ -146,7 +158,7 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await warteAufSeite(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'seite-375');
-    expect(m.leisteAktiv).toBe('Berichte');
+    expect(m.leisteAktiv).toBe('Nachweisen');
     expect(m.titel).toBe('Monatsbericht Werk Ahrenberg Oktober 2026');
     expect(m.stände).toEqual(['Nr. 1', 'Nr. 2', 'Entwurf']);
     expect(m.standAktiv).toBe('Nr. 2');
@@ -218,7 +230,9 @@ test.describe('Berichte — die Berichtsseite (§5.1–§5.6)', () => {
     await expect(page.locator('.vp-br-zeile-kopf')).toContainText('Berichtsstand Nr. 1');
     const m = await messe(page);
     ohneQuerlauf(m, 'nr1-1440');
-    expect(m.reiterAktiv).toEqual(['Berichte']);
+    expect(m.seiteAktiv).toBe('Nachweisen');
+    // R4: die Berichtsseite zeigt ihren Rückweg statt einer Reihe.
+    expect(m.reiterAktiv).toEqual([]);
     expect(m.kopfZeile).toBe('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
     expect(m.abzeichen).toEqual(['ersetzt durch Nr. 2 (16.11.2026)']);
     expect(m.pruefsumme).toBe('sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03');

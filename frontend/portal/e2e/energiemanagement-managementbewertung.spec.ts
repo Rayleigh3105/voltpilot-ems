@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Energiemanagement › Wiedervorlage“ und „› Managementbewertung“ (UEMS AP-19 IP-24, §5.5, WV1–WV4, MG1–MG7, R12, R13)
@@ -90,11 +91,18 @@ for (const breite of [375, 1440]) {
   test.describe(`Energiemanagement › Wiedervorlage und Managementbewertung bei ${breite} px`, () => {
     test('R12: Wiedervorlage am 12.02.2029 — acht fällig, am längsten fällig zuerst, eine Vorschau, Kalender-Abzug und Sprung', async ({ page }) => {
       await oeffne(page, 'lage=ahrenberg&mb=r13', breite, AM_12_02_2029_MORGEN);
-      // §6.3: die Wiedervorlage ist der zweite Reiter.
-      const reiter = page.getByTestId('energiemanagement-bereich').locator('.vp-bereich-tabs [role="tab"]');
-      await expect(reiter).toHaveText(['Verzeichnis', 'Wiedervorlage', 'Dokumente', 'Aufgaben', 'Audits', 'Feststellungen', 'Managementbewertung']);
+      // K1/D2: die Reiter des Energiemanagements stehen in der Gruppe „Nachweisen“, neben den Berichten — ohne zweite
+      // Reihe im Bereich. Die Wiedervorlage beantwortet „Was steht an?“ und steht in der Übersicht; ihre Adresse bleibt.
+      // N1: die Gruppen stehen am Rechner in der Seitenleiste, am Telefon in der Leiste.
+      await expect(page.getByTestId('energiemanagement-bereich').locator('.vp-bereich-tabs')).toHaveCount(0);
+      const reiter = page.getByRole('tablist', { name: 'Reiter der Gruppe Nachweisen' }).getByRole('tab');
+      await expect(reiter).toHaveText(['Verzeichnis', 'Berichte', 'Dokumente', 'Aufgaben', 'Audits', 'Feststellungen', 'Managementbewertung']);
+      if (breite < 720) await page.locator('.vp-bottombar').getByRole('button', { name: 'Übersicht', exact: true }).click();
+      else await page.getByTestId('seitenleiste-uebersicht').click();
       await page.getByTestId('energiemanagement-reiter-wiedervorlage').click();
       await expect(page).toHaveURL(/#\/portfolio\/energiemanagement\/wiedervorlage$/);
+      await expect(page.getByTestId('energiemanagement-reiter-wiedervorlage')).toHaveAttribute('aria-selected', 'true');
+      if (breite >= 720) await expect(page.getByTestId('seitenleiste-uebersicht')).toHaveAttribute('aria-current', 'page');
       const w = page.getByTestId('wiedervorlage');
       await expect(w.getByTestId('wiedervorlage-summe')).toHaveText('Stand 12.02.2029: 8 fällig · 1 in den nächsten 30 Tagen.');
       const faellig = w.getByTestId('wiedervorlage-faellig').locator('li');
@@ -110,8 +118,7 @@ for (const breite of [375, 1440]) {
       await expect(vorschau.first()).toContainText('fällig in 16 Tagen');
       await expect(vorschau.first()).toContainText('Verantwortlich Jonas Wendlinger');
       await expect(w.getByTestId('wiedervorlage-vermerk')).toContainText(KALENDER);
-      await expect(page.getByTestId('energiemanagement-saetze')).toContainText(VERANTWORTUNG);
-      await expect(page.getByTestId('energiemanagement-saetze')).toContainText(GRENZE);
+      await grenzHinweisZeigt(page, VERANTWORTUNG, GRENZE);
       await ohneQuerlauf(page, 'Wiedervorlage');
       await ablegen(page, `w1-wiedervorlage-${breite}`);
 
@@ -165,8 +172,7 @@ for (const breite of [375, 1440]) {
         'Aufgaben im Energiemanagement: 10 laufende Zuordnungen; keine Person festgelegt für Bezugsbasen pflegen und freigeben.',
       );
       await expect(seite.getByTestId('mb-abschnitt-wiedervorlage')).toContainText('Stichtag 12.02.2029: 8 fällig · 1 in den nächsten 30 Tagen');
-      await expect(seite).toContainText(VERANTWORTUNG);
-      await expect(seite).toContainText(GRENZE);
+      await grenzHinweisZeigt(seite, VERANTWORTUNG, GRENZE);
       await ohneQuerlauf(page, 'Entwurf');
       await ablegen(page, `m3-entwurf-${breite}`);
 

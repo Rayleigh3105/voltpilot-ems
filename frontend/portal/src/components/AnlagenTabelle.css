@@ -543,6 +543,15 @@
   outline-offset: 2px;
 }
 
+/* Am Telefon ist der Weg selbst eine volle Tippfläche (≥ 44 px) — die Standort-Übersicht trägt ihn je Karte. */
+@media (max-width: 720px) {
+  .vp-at-weg {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
 .vp-at-karte-wege {
   display: inline-flex;
   align-items: center;

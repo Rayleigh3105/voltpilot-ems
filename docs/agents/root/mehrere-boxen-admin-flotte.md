@@ -11,7 +11,7 @@ diese Ableitung.
 - `/api/v1/devices` liefert `fuehrtAnlage` für die Kundenfläche. Verbindung folgt der
   Status-Ankunft in `device.device_status_seen_at`; nur bis zum ersten Status-Herzschlag gilt
   die letzte Telemetrie-Ankunft als Bestandsschutz.
-- `Standort › Boxen` und die Box-Seite ordnen Quell-Rückmeldung und Budget über
+- `Standort › Aufbau` und die Box-Seite ordnen Quell-Rückmeldung und Budget über
   `zustaendige_box` zu. Details und Leerzustände stehen in [Box-Übersicht](uems-box-uebersicht.md).
 - `GET /api/v1/admin/fleet` bleibt ein einziger, mit dem vorhandenen Plattform-Admin-Recht
   geschützter Cross-Tenant-Read. `sites[]` sind die Anlagen-Gruppen; ihr additives `boxes[]`

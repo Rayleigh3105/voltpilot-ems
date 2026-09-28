@@ -101,7 +101,8 @@ describe('KennzahlSeite (§5.3, §5.5)', () => {
     verdrahte('2026-11-10T09:00:00+01:00');
     render(<KennzahlenPage kennzahlId={KZ.kz1} onOeffnen={vi.fn()} onListe={vi.fn()} />);
     const karte = await screen.findByTestId('werte-karte');
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('KZ-0001 · Stromeinsatz Montage je Stück — Halle 2');
+    // K5: der Name zuerst, das Kennzeichen klein dahinter.
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Stromeinsatz Montage je Stück — Halle 2 KZ-0001');
     expect(screen.getByText('Gebäude Halle 2 · verantwortlich Ines Kaltenbach')).toBeTruthy();
     expect(karte.textContent).toContain(`0,15${NB}kWh je Stück`);
     expect(karte.textContent).toContain('vollständig');
@@ -110,10 +111,16 @@ describe('KennzahlSeite (§5.3, §5.5)', () => {
     expect(within(karte).getByTestId('werte-fassung').textContent).toBe('endgültig');
     expect(within(karte).queryByTestId('werte-versionen')).toBeNull();
     expect(screen.getByRole('tablist', { name: 'Periode' }).textContent).toBe('MonatJahr');
-    expect(screen.getByTestId('kennzahl-herkunft').textContent).toContain(
+    expect(screen.getByTestId('kennzahl-klartext').textContent).toBe(
+      `Gerechnet aus 6.100${NB}kWh (Montage Linie M1) geteilt durch 41.000${NB}Stück (Gutteile Montage Halle 2).`,
+    );
+    // Der Satz in Kennzeichen steht weiter da — im Aufklapper „Wie wird gerechnet?“.
+    expect(screen.getByTestId('kennzahl-rechenweg').textContent).toContain(
       `Menge 6.100${NB}kWh (MS-12, vollständig, Version 1) je 41.000${NB}Stück (BZ-6, Fassung 1)`,
     );
-    expect(screen.getByTestId('kennzahl-berechnung').textContent).toContain('Menge je Bezugsgröße · MS-12 je BZ-6 · Fassung 1 gilt seit Beginn');
+    expect(screen.getByTestId('kennzahl-berechnung').textContent).toContain(
+      'Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn',
+    );
     expect(screen.getByTestId('kennzahl-stammdaten').textContent).toContain('Geltungsbereich');
   });
 

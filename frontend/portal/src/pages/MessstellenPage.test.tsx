@@ -220,7 +220,8 @@ describe('MessstellenPage · Filter und Leerzustände', () => {
     verdrahte(() => leeresRegister());
     render(<MessstellenPage ebene={{ art: 'standort', id: FIXTURE_IDS.st2, name: 'Werk Lindach' }} bereichDa />);
     expect(await screen.findByText('Noch keine Messstelle in Werk Lindach.')).toBeInTheDocument();
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Messstelle anlegen']);
+    // Die Begriffs-Erklärungen (K3) sind ⓘ-Knöpfe mit eigenem Ziel — gezählt werden die Handlungen der Seite.
+    expect(screen.getAllByRole('button').filter((b) => !b.closest('[data-testid="begriffe"]')).map((b) => b.textContent)).toEqual(['Messstelle anlegen']);
   });
 
   it('ein Ladefehler wird genannt und lässt sich wiederholen', async () => {

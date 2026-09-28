@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { grenzHinweisZeigt } from './grenzHinweis';
 
 /**
  * „Unternehmen › Energiemanagement“ (UEMS AP-19 IP-9) bei 375 px und 1440 px auf der eigenen Bühne
@@ -121,12 +122,15 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('energiemanagement-reiter-verzeichnis')).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByTestId('verzeichnis-gruppe-grundlagen')).toContainText(LEER);
       await expect(page.getByTestId('verzeichnis-gruppe-grundlagen')).toContainText('Energiepolitik — Wortlaut in VoltPilot, Original bei Ihnen');
-      await expect(page.getByTestId('energiemanagement-saetze')).toContainText(GRENZE);
-      await expect(page.getByTestId('energiemanagement-saetze')).toContainText(VERANTWORTUNG);
+      await grenzHinweisZeigt(page, GRENZE, VERANTWORTUNG);
       const m0 = await messe(page);
       expect(m0.reiter).toEqual(expect.arrayContaining(['Verzeichnis', 'Dokumente']));
       expect(m0.reiter.indexOf('Verzeichnis')).toBeLessThan(m0.reiter.indexOf('Dokumente'));
-      if (breite >= 720) expect(m0.reiter).toContain('Energiemanagement');
+      // K1/D2: die Reiter der Gruppe „Nachweisen“ sind die des Energiemanagements und die Berichte. N1: die Gruppe selbst
+      // steht am Rechner in der Seitenleiste, nicht als Reiter.
+      if (breite >= 720) await expect(page.getByTestId('seitenleiste-nachweisen')).toHaveAttribute('aria-current', 'page');
+      expect(m0.reiter).not.toContain('Nachweisen');
+      expect(m0.reiter).not.toContain('Energiemanagement');
       ohneQuerlauf(m0, 'Verzeichnis leer');
       await ablegen(page, `a-verzeichnis-leer-${breite}`);
 
@@ -195,7 +199,7 @@ for (const breite of [375, 1440]) {
       await expect(page.getByTestId('dokument-fassung-1')).toContainText('Robert Falk (Geschäftsführer)');
       await expect(page.getByTestId('dokument-fassung-1')).toContainText(/sha256|[0-9a-f]{4}…[0-9a-f]{4}/);
       await expect(page.getByTestId('dokument-ueberpruefung')).toHaveText('Überprüfung fällig am 15.12.2027.');
-      await expect(seite.getByText(VERANTWORTUNG)).toBeVisible();
+      await grenzHinweisZeigt(seite, VERANTWORTUNG);
       ohneQuerlauf(await messe(page), 'Dokument-Seite');
       await ablegen(page, `g-dokument-${breite}`, true);
 

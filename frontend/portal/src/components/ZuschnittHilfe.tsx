@@ -1,6 +1,7 @@
 import { Icon } from '../../designsystem/components/core/Icon';
+import { GrenzSatz } from './GrenzSatz';
 import { SAETZE } from '../energiemanagement';
-import { UEMS_ENERGIEMANAGEMENT, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';
+import { UEMS_ENERGIEMANAGEMENT } from '../glossar';
 
 const GEFUEHRT = 'in VoltPilot geführt';
 const WORTLAUT = 'Wortlaut in VoltPilot, Original bei Ihnen';
@@ -50,30 +51,32 @@ const NACHBARN: readonly Teil[] = [
 
 function Tafel({ teile, testid }: { teile: readonly Teil[]; testid: string }) {
   return (
-    <table className="vp-ez-tafel" data-testid={testid}>
-      <thead>
-        <tr>
-          <th scope="col">Teil</th>
-          <th scope="col">VoltPilot hält</th>
-          <th scope="col">Bleibt bei Ihnen</th>
-          <th scope="col">Typisch bei Ihnen in</th>
-        </tr>
-      </thead>
-      <tbody>
-        {teile.map((t) => (
-          <tr key={t.teil}>
-            <th scope="row">
-              <span>{t.teil}</span>
-              <br />
-              <span className="vp-em-stufe">{t.stufe}</span>
-            </th>
-            <td data-label="VoltPilot hält">{t.haelt}</td>
-            <td data-label="Bleibt bei Ihnen">{t.bleibt}</td>
-            <td data-label="Typisch bei Ihnen in">{t.system}</td>
+    <div className="vp-ez-tafel-rahmen">
+      <table className="vp-ez-tafel" data-testid={testid}>
+        <thead>
+          <tr>
+            <th scope="col">Teil</th>
+            <th scope="col">VoltPilot hält</th>
+            <th scope="col">Bleibt bei Ihnen</th>
+            <th scope="col">Typisch bei Ihnen in</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {teile.map((t) => (
+            <tr key={t.teil}>
+              <th scope="row">
+                <span>{t.teil}</span>
+                <br />
+                <span className="vp-em-stufe">{t.stufe}</span>
+              </th>
+              <td data-label="VoltPilot hält">{t.haelt}</td>
+              <td data-label="Bleibt bei Ihnen">{t.bleibt}</td>
+              <td data-label="Typisch bei Ihnen in">{t.system}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -119,8 +122,7 @@ export function ZuschnittHilfe({ onZurueck }: { onZurueck?: () => void }) {
         <Tafel teile={NACHBARN} testid="zuschnitt-nachbarn" />
       </section>
       <div className="vp-em-saetze">
-        <p className="vp-ez-grenze">{UEMS_VERANTWORTUNG}</p>
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
+        <GrenzSatz className="vp-ez-grenze" verantwortung />
       </div>
     </div>
   );

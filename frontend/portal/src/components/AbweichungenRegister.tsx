@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { GrenzSatz } from './GrenzSatz';
 import * as A from '../abweichungen';
 import { api, type Abweichung } from '../api';
 import * as Z from '../energieziele';
-import { UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_VERBESSERUNG_SAETZE } from '../glossar';
 import { ErrorState, Skeleton } from './States';
 import { VpPicker } from './VpPicker';
 import '../pages/Verbesserung.css';
@@ -46,9 +47,12 @@ export function AbweichungenRegister({
   return (
     <section className="vp-ez" data-testid="abweichungen-register">
       {lage.liste.length === 0 ? (
-        <p className="vp-ez-satz" data-testid="abweichungen-leer">
-          {A.LEER}
-        </p>
+        <>
+          <p className="vp-ez-wozu" data-testid="abweichungen-wozu">{UEMS_VERBESSERUNG_SAETZE.wozu()}</p>
+          <p className="vp-ez-satz" data-testid="abweichungen-leer">
+            {A.LEER}
+          </p>
+        </>
       ) : (
         <>
           <div className="vp-ez-filter" data-testid="abweichungen-filter">
@@ -78,47 +82,49 @@ export function AbweichungenRegister({
           {zeilen.length === 0 ? (
             <p className="vp-ez-satz">{A.LEER_GEFILTERT}</p>
           ) : (
-            <table className="vp-ez-tafel" data-testid="abweichungen-tafel">
-              <thead>
-                <tr>
-                  <th scope="col">{A.SPALTEN.kennzeichen}</th>
-                  <th scope="col">{A.SPALTEN.zustand}</th>
-                  <th scope="col">{A.SPALTEN.frist}</th>
-                  <th scope="col">{A.SPALTEN.verantwortlich}</th>
-                  <th scope="col">{A.SPALTEN.ergebnis}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {zeilen.map((a) => {
-                  const ueberfaellig = A.ueberfaelligText(a);
-                  return (
-                    <tr key={a.id} data-testid={`abweichung-zeile-${a.kennzeichen}`}>
-                      <th scope="row">
-                        <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(a.id)}>
-                          {a.kennzeichen}
-                        </button>
-                        <span className="vp-ez-unter">{`${A.kennzahlText(a.kennzahl)} · ${A.monateDerAbweichung(a.monate)}`}</span>
-                      </th>
-                      <td data-label={A.SPALTEN.zustand} data-testid="zustand">
-                        {A.ZUSTAND_WORT[a.zustand]}
-                      </td>
-                      <td data-label={A.SPALTEN.frist} data-testid="frist">
-                        {Z.tag(a.frist.termin)}
-                        {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
-                      </td>
-                      <td data-label={A.SPALTEN.verantwortlich}>{a.verantwortlich.name}</td>
-                      <td data-label={A.SPALTEN.ergebnis} data-testid="ergebnis">
-                        {A.ergebnisText(a) ?? '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="vp-ez-tafel-rahmen">
+              <table className="vp-ez-tafel" data-testid="abweichungen-tafel">
+                <thead>
+                  <tr>
+                    <th scope="col">{A.SPALTEN.kennzeichen}</th>
+                    <th scope="col">{A.SPALTEN.zustand}</th>
+                    <th scope="col">{A.SPALTEN.frist}</th>
+                    <th scope="col">{A.SPALTEN.verantwortlich}</th>
+                    <th scope="col">{A.SPALTEN.ergebnis}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeilen.map((a) => {
+                    const ueberfaellig = A.ueberfaelligText(a);
+                    return (
+                      <tr key={a.id} data-testid={`abweichung-zeile-${a.kennzeichen}`}>
+                        <th scope="row">
+                          <button type="button" className="vp-ez-zeile-knopf" onClick={() => onOeffnen(a.id)}>
+                            {a.kennzeichen}
+                          </button>
+                          <span className="vp-ez-unter">{`${A.kennzahlText(a.kennzahl)} · ${A.monateDerAbweichung(a.monate)}`}</span>
+                        </th>
+                        <td data-label={A.SPALTEN.zustand} data-testid="zustand">
+                          {A.ZUSTAND_WORT[a.zustand]}
+                        </td>
+                        <td data-label={A.SPALTEN.frist} data-testid="frist">
+                          {Z.tag(a.frist.termin)}
+                          {ueberfaellig && <span className="vp-ez-frist vp-ez-unter">{ueberfaellig}</span>}
+                        </td>
+                        <td data-label={A.SPALTEN.verantwortlich}>{a.verantwortlich.name}</td>
+                        <td data-label={A.SPALTEN.ergebnis} data-testid="ergebnis">
+                          {A.ergebnisText(a) ?? '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}
-      {grenze && <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>}
+      {grenze && <GrenzSatz className="vp-ez-grenze" />}
     </section>
   );
 }

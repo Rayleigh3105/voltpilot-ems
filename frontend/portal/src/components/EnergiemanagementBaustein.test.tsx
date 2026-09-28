@@ -60,7 +60,22 @@ const leer = (): Wiedervorlage => ({ ...r12(), faellig: [], vorschau: [], anzahl
 describe('Wiedervorlage — das reine Bild des Bausteins „Energiemanagement“ (WV5, E10)', () => {
   it('R12: der §5.8-Satz „Baustein“ wörtlich, am Baustein ohne den Titel davor, mit Warnton', () => {
     expect(bausteinSatz(r12())).toBe('Energiemanagement — 8 fällig · 1 in den nächsten 30 Tagen.');
-    expect(energiemanagementBaustein(r12())).toEqual({ summe: '8 fällig · 1 in den nächsten 30 Tagen.', faellig: true });
+    expect(energiemanagementBaustein(r12())).toMatchObject({ summe: '8 fällig · 1 in den nächsten 30 Tagen.', faellig: true });
+  });
+
+  it('K8: die ersten drei Punkte — die am längsten fälligen zuerst, mit Art, Satz und Sprung', () => {
+    const zeilen = energiemanagementBaustein(r12())!.zeilen;
+    expect(zeilen.map((z) => `${z.art} ${z.kennzeichen} · ${z.satz}`)).toEqual([
+      'Bezugsbasis BB-0002 · seit 457 Tagen fällig',
+      'Bezugsbasis BB-0005 · seit 450 Tagen fällig',
+      'Bezugsbasis BB-0003 · seit 344 Tagen fällig',
+    ]);
+    expect(zeilen.every((z) => z.faellig)).toBe(true);
+    // Ohne Kennzahl hat die Bezugsbasis keine Seite — die Zeile springt nicht (WV3).
+    expect(zeilen[0].ziel).toBeNull();
+    // Nur eine Vorschau: ihre Zeile steht, ruhig.
+    const nurVorschau = energiemanagementBaustein({ ...r12(), faellig: [], anzahl_faellig: 0 })!;
+    expect(nurVorschau.zeilen.map((z) => [z.kennzeichen, z.faellig])).toEqual([['M-2029-0001', false]]);
   });
 
   it('ohne Inhalt kein Bild: nichts fällig und keine Vorschau — oder keine Antwort', () => {
@@ -81,7 +96,7 @@ describe('Wiedervorlage — das reine Bild des Bausteins „Energiemanagement“
 
   it('nur eine Vorschau: die Kachel steht, ruhig — nichts ist fällig', () => {
     const nurVorschau = { ...r12(), faellig: [], anzahl_faellig: 0 };
-    expect(energiemanagementBaustein(nurVorschau)).toEqual({ summe: '0 fällig · 1 in den nächsten 30 Tagen.', faellig: false });
+    expect(energiemanagementBaustein(nurVorschau)).toMatchObject({ summe: '0 fällig · 1 in den nächsten 30 Tagen.', faellig: false });
   });
 
   it('der Stand-Vermerk des Kalender-Abzugs (§5.8) mit dem Tag des Abrufs', () => {
@@ -103,7 +118,10 @@ describe('EnergiemanagementBaustein — die Kachel', () => {
     expect(kachel.textContent).toContain('VoltPilot verschickt nichts.');
     fireEvent.click(screen.getByTestId('energiemanagement-kalender'));
     expect(onKalender).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Zum Energiemanagement' }));
+    // K8: der Titel ist die Frage, der Sprung führt in die ganze Wiedervorlage.
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Was steht an');
+    expect(screen.getByTestId('was-steht-an').querySelectorAll('li')).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Zur Wiedervorlage' }));
     expect(onOeffnen).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -149,7 +167,7 @@ describe('Übersichts-Baustein „Energiemanagement“ am Unternehmen', () => {
     render(<Uebersicht art="unternehmen" onNavigate={onNavigate} />);
     await act(async () => {});
     expect(screen.getByTestId('energiemanagement-summe').textContent).toBe('8 fällig · 1 in den nächsten 30 Tagen.');
-    fireEvent.click(screen.getByRole('button', { name: 'Zum Energiemanagement' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zur Wiedervorlage' }));
     expect(onNavigate).toHaveBeenLastCalledWith(energiemanagementRoute('wiedervorlage'));
   });
 

@@ -41,9 +41,16 @@ for (const breite of [375, 1440]) {
       api.wetterBinden = async (id: string, body: { von: string }) => { w.wetterAufrufe.push(`PUT ${id} ${body.von}`); gebunden = true; return { moeglich: true, koordinaten: true, bindung }; };
       api.wetterLoesen = async (id: string) => { w.wetterAufrufe.push(`DELETE ${id}`); gebunden = false; };
     }, LINDACH);
-    await page.getByRole(breite === 375 ? 'button' : 'tab', { name: 'Kennzahlen', exact: true }).first().click();
+    // Am Telefon trägt die Leiste Gruppen („Auswerten“ öffnet die Kennzahlen, „Messen“ die Messstellen); die Reiter
+    // der offenen Gruppe stehen über der Seite.
+    const leiste = page.locator('.vp-bottombar');
+    // N1: am Rechner stehen dieselben Gruppen in der Seitenleiste.
+    if (breite === 375) await leiste.getByRole('button', { name: 'Auswerten', exact: true }).click();
+    else await page.getByTestId('seitenleiste-auswerten').click();
     await expect(page.getByRole('heading', { name: 'Kennzahlen', exact: true })).toBeVisible();
-    await page.getByRole(breite === 375 ? 'button' : 'tab', { name: 'Bezugsgrößen', exact: true }).first().click();
+    if (breite === 375) await leiste.getByRole('button', { name: 'Messen', exact: true }).click();
+    else await page.getByTestId('seitenleiste-messen').click();
+    await page.getByRole('tab', { name: 'Bezugsgrößen', exact: true }).first().click();
     const karten = page.getByTestId('bezugsgroesse-karte');
     await expect(karten).toHaveCount(2);
 

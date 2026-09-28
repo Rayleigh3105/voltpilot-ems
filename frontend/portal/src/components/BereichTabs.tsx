@@ -1,4 +1,5 @@
 import type { BereichTab } from '../ebenenNav';
+import { useReiterRand } from '../reiterRand';
 import type { AnlagenSub } from '../nav';
 import './BereichTabs.css';
 
@@ -29,9 +30,10 @@ export function BereichTabs({
   label: string;
   onOpen: (sub: AnlagenSub) => void;
 }) {
+  const reiterRand = useReiterRand<HTMLDivElement>();
   if (tabs.length === 0) return null;
   return (
-    <div className="vp-bereich-tabs" role="tablist" aria-label={label}>
+    <div ref={reiterRand} className="vp-bereich-tabs" role="tablist" aria-label={label}>
       {tabs.map((t) => {
         const ist = t.sub === active;
         return (

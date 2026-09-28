@@ -49,7 +49,7 @@ export function DeviceStatusBadge({ device }: { device: Device }) {
 }
 
 /**
- * ZERO-TOUCH "Gerät hinzufügen" drawer: the customer enters ONLY the
+ * ZERO-TOUCH "VoltPilot-Box hinzufügen" drawer: the customer enters ONLY the
  * Edge-Referenz and picks the Anlage - no IDs, no commands, no connection
  * panel. The cloud provisions the physical device over the MQTT handshake
  * (docs/contracts/mqtt-provisioning.schema.json); the row flips to online as
@@ -62,7 +62,9 @@ export function AddDeviceDrawer({
   onClaimed,
   nachfolgerVon = null,
   datenquellen = [],
-  title = 'Gerät hinzufügen',
+  // EIN Name je Handlung: eine Box anmelden heißt überall „VoltPilot-Box hinzufügen“ — „Gerät hinzufügen“
+  // ist der Gerätekatalog (Zähler, Wechselrichter, Ladesäule hinter der Box).
+  title = 'VoltPilot-Box hinzufügen',
 }: {
   open: boolean;
   onClose: () => void;
@@ -112,7 +114,7 @@ export function AddDeviceDrawer({
             ? 'Diese Geräte-ID ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Schreibweise - oder kontaktieren Sie unseren Support.'
             : e instanceof ApiError && e.status === 404
               ? 'Die gewählte Anlage wurde nicht gefunden. Bitte laden Sie die Seite neu.'
-              : 'Das Gerät konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
+              : 'Die Box konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
       setBusy(false);
@@ -182,7 +184,7 @@ export function AddDeviceDrawer({
                   ? 'Box-Tausch abgeschlossen. Die neue Box übernimmt die Aufgaben.'
                   : 'Box-Tausch vorbereitet. Die Änderung wird zugestellt, sobald die Box erreichbar ist.'
                 : <>Neue Box <b>{claimed.externalRef}</b> verbunden. Der Tausch ist noch nicht bestätigt.</>
-              : <>Gerät <b>{claimed.externalRef}</b> wurde der Anlage <b>{siteName(claimed.siteId)}</b> zugeordnet.</>}
+              : <>VoltPilot-Box <b>{claimed.externalRef}</b> wurde der Anlage <b>{siteName(claimed.siteId)}</b> zugeordnet.</>}
           </div>
           {nachfolgerVon && !tausch ? (
             <section className="vp-dqa-folgen" aria-label="Folgen des Box-Tauschs">
@@ -196,8 +198,8 @@ export function AddDeviceDrawer({
               <p>Bestätigen Sie erst nach dieser Prüfung. Bis dahin bleibt die bisherige Box zuständig.</p>
             </section>
           ) : !nachfolgerVon ? <p style={{ margin: 'var(--vp-space-4) 0' }}>
-            Mehr ist nicht zu tun: sobald das Gerät mit dieser Referenz online geht,
-            erhält es seine Konfiguration automatisch und beginnt zu senden.
+            Mehr ist nicht zu tun: sobald die Box mit dieser Referenz online geht,
+            erhält sie ihre Konfiguration automatisch und beginnt zu senden.
           </p> : null}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
           {!nachfolgerVon && (
@@ -207,7 +209,7 @@ export function AddDeviceDrawer({
                 <Icon name="check" size={13} strokeWidth={3} />
               </span>
               <div>
-                <b>Gerät registriert</b>
+                <b>Box registriert</b>
                 <div className="vp-note">
                   Zugeordnet zur Anlage {siteName(claimed.siteId)}.
                 </div>
@@ -216,9 +218,9 @@ export function AddDeviceDrawer({
             <li>
               <span className="mk todo">2</span>
               <div>
-                <b>Gerät einschalten</b>
+                <b>Box einschalten</b>
                 <div className="vp-note">
-                  Das Gerät meldet sich mit seiner Referenz an und wird automatisch
+                  Die Box meldet sich mit ihrer Referenz an und wird automatisch
                   konfiguriert - keine IDs, kein Kopieren.
                 </div>
               </div>
@@ -248,7 +250,7 @@ export function AddDeviceDrawer({
           <p className="vp-note" style={{ marginTop: 0 }}>
             {nachfolgerVon
               ? `Verbinden Sie die neue Box mit ihrer Geräte-ID als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
-              : <>{DEVICE_ID_FIELD.help} Das Gerät verbindet sich selbst - Sie müssen keine IDs übertragen.</>}
+              : <>{DEVICE_ID_FIELD.help} Die Box verbindet sich selbst - Sie müssen keine IDs übertragen.</>}
           </p>
           <HelpLink article="box-verbinden">Hilfe beim Verbinden</HelpLink>
           <div className="vp-form-stack">
@@ -279,7 +281,7 @@ export function AddDeviceDrawer({
           </div>
           {sites.length === 0 && (
             <div className="vp-alert vp-alert-info">
-              Sie haben noch keine Anlage - legen Sie zuerst unter „Meine Anlage“ eine an.
+              Sie haben noch keine Anlage - legen Sie zuerst eine Anlage an; die Box gehört immer zu einer Anlage.
             </div>
           )}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}

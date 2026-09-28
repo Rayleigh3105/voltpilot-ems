@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EBENE_HEUTE,
+  fleetLabel,
+  flottenName,
   isBetreiberShell,
   isFleetShell,
   redirectAdminToPlattform,
@@ -183,5 +186,25 @@ describe('redirectAdminToPlattform', () => {
   it('fasst einen Kunden nie an', () => {
     expect(redirectAdminToPlattform({ isAdmin: false, bootHash: true })).toBe(false);
     expect(redirectAdminToPlattform({ isAdmin: false, bootHash: false })).toBe(false);
+  });
+});
+
+describe('D6 · der Name der Flotten-Ebene in der Seitenleiste', () => {
+  const standorte = [
+    { id: 's1', name: 'Werk Ahrenberg', anlagen: ['a1', 'a2'] },
+    { id: 's2', name: 'Lager Süd', anlagen: ['a3'] },
+  ];
+  it('mehrere Standorte: der Name des Unternehmens — wie das erste Glied des Pfads', () => {
+    expect(flottenName('endkunde', { art: 'unternehmen', name: 'Ahrenberg', standorte })).toBe('Ahrenberg');
+    expect(flottenName(null, { art: 'unternehmen', name: '  Ahrenberg  ', standorte })).toBe('Ahrenberg');
+  });
+  it('ohne Standorte, mit einem Standort oder ohne Namen bleibt „Meine Anlagen“ — ein Betreiber behält „Portfolio“', () => {
+    expect(flottenName('endkunde', EBENE_HEUTE)).toBe(fleetLabel('endkunde'));
+    expect(flottenName('endkunde', { art: 'anlage' })).toBe('Meine Anlagen');
+    expect(flottenName('endkunde', { art: 'standort', standort: standorte[0], teilansicht: false })).toBe('Meine Anlagen');
+    expect(flottenName('endkunde', { art: 'unternehmen', name: null, standorte })).toBe('Meine Anlagen');
+    expect(flottenName('endkunde', { art: 'unternehmen', name: ' ', standorte })).toBe('Meine Anlagen');
+    expect(flottenName('endkunde', null)).toBe('Meine Anlagen');
+    expect(flottenName('betreiber', { art: 'unternehmen', name: 'Ahrenberg', standorte })).toBe('Portfolio');
   });
 });
