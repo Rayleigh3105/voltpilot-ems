@@ -34,6 +34,8 @@ Die [Portal-Hilfe](../frontend/portal/src/help/README.md) erklärt Kundenaufgabe
 
 [Cockpit als Tagesfilm](konzepte/cockpit-tagesfilm/README.md): Konzept vom 29.09.2026 für das neue Anlagen-Cockpit mit klickbarem Prototyp; im Portal umgesetzt.
 
+[Preise und Wetter am Telefon](konzepte/preise-und-wetter/README.md): Konzeptentwurf vom 29.09.2026 für die Reiter Preise und Wetter mit klickbarem Prototyp; noch nicht abgenommen.
+
 ## Ergänzungen auf dem aktuellen Hauptzweig
 
 [Fachmodell und UEMS-Begriffe](fachmodell/README.md), [Backup und Wiederherstellung](backup-restore.md), [OCPP-Steuerung](ocpp-control.md) und [ergänzende Arbeitsregeln](agents/README.md) werden eigenständig gepflegt. Die folgenden Vertragsübersichten verlinken auch die neueren UEMS-Schnittstellen.

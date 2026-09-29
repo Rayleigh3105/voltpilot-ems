@@ -1,0 +1,195 @@
+<div class="pg" id="konzept">
+  <header class="pagebar">
+    <p class="eyebrow">Konzeptentwurf · 29.09.2026 <span class="chip-ex">Alle Zahlen sind erfunden</span></p>
+    <h1>Preise und Wetter, in fünf Sekunden verstanden</h1>
+    <p class="lede">Zwei Reiter im Fahrplan, neu gebaut fürs Telefon. Jede Seite beantwortet oben eine Frage, bevor sie etwas zum Bedienen anbietet. Die Preise sagen, was Strom jetzt kostet und wann er günstig wird. Das Wetter sagt, wie viel Sonne die Anlage bekommt.</p>
+    <ul class="goal" aria-label="Vorgaben">
+      <li><b>1</b> Telefon zuerst</li>
+      <li><b>2</b> Nach fünf Sekunden klar, was die Seite zeigt</li>
+      <li><b>3</b> Ruhig und seriös</li>
+      <li><b>4</b> Nur Wetter und Börsenpreise</li>
+    </ul>
+  </header>
+
+  <section aria-label="Prototyp">
+    <div class="ctrls">
+      <div class="ctrl"><span id="lbl-seite">Seite</span><div class="seg" id="seg-seite" role="group" aria-labelledby="lbl-seite"></div></div>
+      <div class="ctrl"><span id="lbl-fall">Beispiel</span><div class="seg" id="seg-fall" role="group" aria-labelledby="lbl-fall"></div></div>
+    </div>
+    <div class="stagewrap">
+      <div class="phone" id="phone">
+        <div class="notch" aria-hidden="true"></div>
+        <div class="screen" id="screen"></div>
+        <div class="sheet-host" id="sheet-host" hidden></div>
+      </div>
+      <aside class="aside" id="aside">
+        <div data-fuer="preise">
+          <h2>Was kostet Strom jetzt, und wann wird er günstig?</h2>
+          <p>Der Blick läuft von oben nach unten. Nach vier Schritten ist die Frage beantwortet, ohne dass jemand etwas antippen muss.</p>
+          <ol class="lese">
+            <li><span><b>Die Zahl mit Urteil.</b> <span class="sek">Der Börsenpreis dieser Viertelstunde, daneben günstig, mittel oder teuer im Vergleich zum Tag. Die Leiste darunter zeigt, warum.</span></span></li>
+            <li><span><b>Der Satz nach vorn.</b> <span class="sek">Was als Nächstes kommt: das günstige oder teure Fenster heute, sonst morgen. Ein Fenster, das schon vorbei ist, steht hier nie.</span></span></li>
+            <li><span><b>Die Kurve mit Jetzt.</b> <span class="sek">Eine Treppe je Viertelstunde. Vergangenes ist grau, Kommendes blau, die zwei Fenster tragen ihr Wort.</span></span></li>
+            <li><span><b>Die Folge für die Anlage.</b> <span class="sek">Wann der Speicher laut Plan lädt und abgibt, und was Sie selbst gerade zahlen.</span></span></li>
+          </ol>
+          <p class="try"><b>Ausprobieren:</b> Finger auf die Kurve legen und ziehen, dann steht jede Viertelstunde mit Preis darüber. „Morgen“ ist erst nach der Veröffentlichung wählbar. „Rückblick“ öffnet Woche, Monat und Jahr.</p>
+        </div>
+        <div data-fuer="wetter" hidden>
+          <h2>Wie viel Sonne bekommt die Anlage?</h2>
+          <p>Wer „Wetter“ antippt, erwartet zuerst den Himmel. Darum stehen Himmel und Temperatur oben, der Sonnenstrom gleich darunter.</p>
+          <ol class="lese">
+            <li><span><b>Himmel und Temperatur.</b> <span class="sek">Ein Wort, ein Symbol, die Spanne des Tages. Drei Wörter reichen: sonnig, wechselnd, bewölkt.</span></span></li>
+            <li><span><b>Der Satz zum Sonnenstrom.</b> <span class="sek">Wie viel die Anlage heute erzeugt und wann am meisten. Ohne Prognose sagt er nur, wann die Sonne am stärksten ist.</span></span></li>
+            <li><span><b>Das Tagesbild.</b> <span class="sek">Bis jetzt gemessen und gefüllt, danach erwartet und schraffiert. Der Himmel steht als benannte Blöcke darüber.</span></span></li>
+            <li><span><b>Die nächsten Tage.</b> <span class="sek">Heute, morgen und übermorgen in einer Liste. Stunde für Stunde folgt darunter.</span></span></li>
+          </ol>
+          <p class="try"><b>Ausprobieren:</b> Über die Kurve wischen zeigt jede Viertelstunde. Ein Tag in der Liste schaltet das Bild um. Das Beispiel „Ohne Prognose“ zeigt die Seite, solange es für die Anlage noch keine Leistungsprognose gibt.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="sec" id="erster-blick">
+    <h2>Der erste Bildschirm, heute und neu</h2>
+    <p class="intro">Aufgenommen bei 375 × 812 Pixeln. Links das heutige Portal mit den fiktiven Test-Daten vom 10.09.2026, 12:00 Uhr. Rechts der Prototyp. Gezählt wird nur, was ohne Scrollen zu sehen ist. Die Test-Daten enthalten fürs Wetter nur einen Tag; im Betrieb reicht die Kurve bis zu drei Tage.</p>
+    <div class="vgl">
+      <div>
+        <h3>Preise</h3>
+        <div class="vgl-paar">
+          <figure><img alt="Heutige Seite Preise am Telefon: oben Zeitraum-Bedienung, dann Börsenpreis und Kurve" src="data:image/jpeg;base64,/*IMG:heute-preise*/" width="375" height="812" loading="lazy">
+            <figcaption><b>Heute</b><ul><li>Drei Bedienelemente vor der Antwort</li><li>Satz nennt 05:45–08:00, um 12 Uhr vorbei</li><li>Kein Jetzt in der Kurve</li></ul></figcaption></figure>
+          <figure><img alt="Neue Seite Preise am Telefon: Preis jetzt mit Urteil, Satz nach vorn und Kurve mit Jetzt" src="data:image/jpeg;base64,/*IMG:neu-preise*/" width="375" height="812" loading="lazy">
+            <figcaption><b>Neu</b><ul><li>Preis, Urteil und Leiste zuerst</li><li>Satz schaut nach vorn</li><li>Kurve mit Jetzt und benannten Fenstern</li></ul></figcaption></figure>
+        </div>
+      </div>
+      <div>
+        <h3>Wetter</h3>
+        <div class="vgl-paar">
+          <figure><img alt="Heutige Seite Wetter am Telefon: große Zahl 8,0 kW, darunter Himmel sonnig und Kurve" src="data:image/jpeg;base64,/*IMG:heute-wetter*/" width="375" height="812" loading="lazy">
+            <figcaption><b>Heute</b><ul><li>Große Zahl „8,0 kW“ statt Wetter</li><li>Himmel und Temperatur klein darunter</li><li>Achse links abgeschnitten</li></ul></figcaption></figure>
+          <figure><img alt="Neue Seite Wetter am Telefon: Sonnig mit Temperaturspanne, Satz zum Sonnenstrom, Tagesbild" src="data:image/jpeg;base64,/*IMG:neu-wetter*/" width="375" height="812" loading="lazy">
+            <figcaption><b>Neu</b><ul><li>Himmel und Temperatur zuerst</li><li>Sonnenstrom in einem Satz</li><li>Gemessen und erwartet getrennt</li></ul></figcaption></figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="befunde">
+    <h2>Was heute stört</h2>
+    <p class="intro">Befunde aus den Aufnahmen oben und aus dem Code der beiden Reiter (<code>MarktpreisePage</code> und <code>WetterSection</code> in <code>src/pages/DataPages.tsx</code>).</p>
+    <div class="tabwrap">
+      <table class="doc">
+        <thead><tr><th scope="col">Thema</th><th scope="col">Heute</th><th scope="col">Im Konzept</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Preise: erster Blick</th><td>Zeitraum (Tag, Woche, Monat, Jahr), Blättern und „Heute“ stehen vor der Antwort.</td><td>Oben steht die Antwort. Der Rückblick zieht in eine eigene Zeile weiter unten.</td></tr>
+          <tr><th scope="row">Preise: Kernsatz</th><td>Er rechnet über den ganzen Tag. Um 12:00 Uhr nennt er „05:45 bis 08:00 Uhr“, das Fenster ist vorbei.</td><td>Der Satz schaut nur nach vorn: das nächste Fenster heute, sonst morgen, sonst wann die Preise für morgen kommen.</td></tr>
+          <tr><th scope="row">Preise: Jetzt</th><td>Die Kurve hat keine Jetzt-Marke. Vergangenes sieht aus wie Kommendes.</td><td>Jetzt-Linie mit Punkt. Vergangenes grau, Kommendes blau.</td></tr>
+          <tr><th scope="row">Preise: Urteil</th><td>„Normal“ nach festen Schwellen (bis 5 ct günstig, ab 15 ct teuer). Am Testtag liegen alle Preise zwischen 3 und 10 ct, „teuer“ kommt nie vor.</td><td>Urteil im Vergleich zum Tag, sichtbar auf der Preisleiter. Bei weniger als 5 ct Tagesspanne gibt es kein Urteil, wie heute bei den Fenstern.</td></tr>
+          <tr><th scope="row">Preise: Wörter</th><td>„Day-Ahead heute &amp; morgen · DE-LU“, „15 min“, „Profi-Detail“.</td><td>Kundensprache oben. Fachbegriffe und EUR/MWh stehen in der Erklärung.</td></tr>
+          <tr><th scope="row">Preise: Zahlen</th><td>Fünf Zeilen, zwei sagen fast dasselbe („die günstigsten 2½ Stunden“ und „Günstigste Zeit“).</td><td>Drei Zeilen: am günstigsten, am teuersten, Durchschnitt. Vergangene Fenster tragen „vorbei“.</td></tr>
+          <tr><th scope="row">Preise: Folge</th><td>Nur der Verweis „Ihr Fahrplan nutzt genau diese Preise“.</td><td>Unter der Kurve steht, wann der Speicher laut Plan lädt und abgibt.</td></tr>
+          <tr><th scope="row">Wetter: erster Blick</th><td>Die große Zahl ist „8,0 kW“. Himmel und Temperatur stehen klein darunter.</td><td>Himmel und Temperatur zuerst, in Wort und Symbol, darunter ein Satz zum Sonnenstrom.</td></tr>
+          <tr><th scope="row">Wetter: Tage</th><td>Ein Bild über die ganze Vorhersage, bis zu drei Tage auf gut 300 Pixeln. Die kW-Linie endet, wo der Fahrplan endet. Einen Überblick je Tag gibt es nicht.</td><td>Heute und morgen je als eigenes Bild, drei Tage als Liste.</td></tr>
+          <tr><th scope="row">Wetter: Messung</th><td>Die Kurve zeigt nur die Prognose.</td><td>Bis jetzt gemessen und gefüllt, danach erwartet und schraffiert, wie im Cockpit.</td></tr>
+          <tr><th scope="row">Wetter: Achse</th><td>Erste Beschriftung abgeschnitten („o, 00 Uhr“), lange Beschriftungen („Do, 07 Uhr“), Stunden ohne Sonne nehmen etwa die Hälfte der Breite ein.</td><td>Nur die Stunden mit Sonne, kurz beschriftet (9, 12, 15 Uhr).</td></tr>
+          <tr><th scope="row">Wetter: doppelt</th><td>Am Testtag nennen die große Zahl und „Spitze heute“ denselben Wert (8,0 kW). „Vorhersagehorizont“ ist eine Systemangabe.</td><td>Jede Angabe steht einmal. Der Horizont steht in der Erklärung.</td></tr>
+          <tr><th scope="row">Wetter: ohne Prognose</th><td>W/m² als große Zahl und ein langer Satz, warum.</td><td>Himmel und Temperatur bleiben gleich. Die Kurve zeigt die Sonneneinstrahlung, ein kurzer Hinweis nennt den Grund.</td></tr>
+          <tr><th scope="row">Wetter: Wörter</th><td>Zwei Wörter für dieselbe Klasse: „bedeckt“ in der Himmel-Reihe, „bewölkt“ im Morgen-Ausblick.</td><td>Ein Wortsatz für alles: sonnig, wechselnd, bewölkt.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="regeln">
+    <h2>Regeln im Bild</h2>
+    <p class="intro">Sie gelten schon heute im Portal. Das Konzept macht sie sichtbar.</p>
+    <ul class="regeln">
+      <li><b>Nie ein vergangenes Fenster als Rat.</b><span>Der Satz oben schaut nur nach vorn. Vergangene Fenster stehen in den Zeilen mit „vorbei“.</span></li>
+      <li><b>Unbekannt ist keine Null.</b><span>Fehlt ein Wert, steht „—“ mit Grund. Fehlt der Folgetag, steht, wann er kommt.</span></li>
+      <li><b>Gemessen, erwartet und geplant sehen verschieden aus.</b><span>Gefüllt heißt gemessen, schraffiert heißt erwartet, „laut Plan“ heißt Plan.</span></li>
+      <li><b>Börsenpreis und Ihr Preis bleiben getrennt.</b><span>Ihr Preis kommt aus dem Fahrplan (<code>importPriceCtKwh</code>) und wird nie aus Tariffeldern gerechnet. Ohne Fahrplan entfällt die Zeile.</span></li>
+      <li><b>Ein Urteil braucht eine Spanne.</b><span>Unter 5 ct/kWh Tagesspanne gibt es kein günstig oder teuer und keine Fenster.</span></li>
+      <li><b>Keine zweite Erzeugungsprognose.</b><span>Die kW kommen aus der gespeicherten PV-Prognose, nie aus Bewölkung und kWp.</span></li>
+      <li><b>Farbe nie allein.</b><span>Jedes Fenster trägt sein Wort, jede Fläche ihre Legende, jedes Urteil sein Wort.</span></li>
+      <li><b>Die Einheit steht am Wert.</b><span>ct/kWh für Preise, kW für Leistung, kWh für Energie, °C für Temperatur.</span></li>
+    </ul>
+  </section>
+
+  <section class="sec" id="rechner">
+    <h2>Am Rechner</h2>
+    <p class="intro">Dieselbe Seite ab 820 Pixeln Inhaltsbreite: links Antwort und Tagesbild, rechts die Angaben zum Nachschlagen. Gezeigt ist nur der Inhaltsbereich, verkleinert. Seite und Beispiel folgen der Auswahl oben.</p>
+    <div class="deskwrap">
+      <div class="desk-outer" id="desk-outer"><div class="desk" id="desk"></div></div>
+      <p class="desk-note">Verkleinerte Vorschau von 1180 Pixeln Breite.</p>
+    </div>
+  </section>
+
+  <section class="sec" id="umsetzung">
+    <h2>Daten und Umsetzung</h2>
+    <p class="intro">Fast alles gibt es schon. Neu ist ein Lese-Endpunkt für die PV-Prognose, damit das Wetter nicht vom Fahrplan abhängt.</p>
+    <div class="tabwrap">
+      <table class="doc">
+        <thead><tr><th scope="col">Angabe</th><th scope="col">Quelle heute</th><th scope="col">Stand</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Börsenpreis je Viertelstunde</th><td><code>/price-history?range=day</code>, Daten von energy-charts.info (Fraunhofer ISE)</td><td>vorhanden</td></tr>
+          <tr><th scope="row">Ihr Preis jetzt</th><td><code>/schedule</code> → <code>importPriceCtKwh</code></td><td>vorhanden</td></tr>
+          <tr><th scope="row">Speicher laut Plan</th><td><code>/schedule</code> → <code>batteryKw</code>, <code>slotRole</code></td><td>vorhanden</td></tr>
+          <tr><th scope="row">Rückblick</th><td><code>/price-history?range=week|month|year</code></td><td>vorhanden</td></tr>
+          <tr><th scope="row">Himmel und Temperatur</th><td><code>/weather</code>, Open-Meteo, drei Tage, stündlich</td><td>vorhanden</td></tr>
+          <tr><th scope="row">PV gemessen heute</th><td><code>/history?range=day</code></td><td>vorhanden, neu auf dieser Seite</td></tr>
+          <tr><th scope="row">PV erwartet</th><td>Heute nur über <code>/schedule</code> → <code>pvKw</code>. Gespeichert ist sie in der Tabelle <code>forecast</code> (<code>kind = 'pv'</code>, 15 Minuten, bis 48 h).</td><td>neuer Endpunkt, Entscheidung E4</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3 style="margin-top:28px">Schritte</h3>
+    <ol class="schritte">
+      <li><span><b>Preise, Antwortkopf.</b> <span>Urteil im Tagesvergleich und „nächstes Fenster“ als reine Ableitungen in <code>marktpreise.ts</code>, mit Tests. <code>preisFenster.ts</code> bleibt die eine Fenster-Grammatik für Seite und Cockpit.</span></span></li>
+      <li><span><b>Preise, Kurve.</b> <span>Treppe je Viertelstunde, Jetzt-Linie, Vergangenes grau, Wischen mit Anzeige darüber, Pfeiltasten am Rechner (<code>PriceHistoryChart.tsx</code>).</span></span></li>
+      <li><span><b>Preise, Plan und Ihr Preis.</b> <span>Plan-Streifen aus <code>/schedule</code>, nur mit Speicher. „Ihr Preis“ wie heute aus <code>importPriceCtKwh</code>.</span></span></li>
+      <li><span><b>Preise, Rückblick.</b> <span>Woche, Monat, Jahr als eigene Ansicht. Die Adressen mit <code>z=</code> und <code>at=</code> bleiben gültig und öffnen sie direkt.</span></span></li>
+      <li><span><b>Wetter, Seite.</b> <span>Antwortkopf, Tagesbild mit gemessen und erwartet, nächste Tage, Stunden (<code>WetterSection</code>, <code>wetterKarte.ts</code>, <code>WeatherChart.tsx</code>). Ein Wortsatz für den Himmel.</span></span></li>
+      <li><span><b>Wetter, PV-Prognose.</b> <span>Lese-Endpunkt auf <code>forecast</code> für das aktive PV-Modell der Anlage, jüngster Lauf, mandantengetrennt wie die übrigen <code>/sites</code>-Routen. Zu prüfen: ob Anlagen ohne Speicher dort Werte haben.</span></span></li>
+      <li><span><b>Prüfen.</b> <span>375 und 1440 Pixel im Layout-Wächter, Tastatur, reduzierte Bewegung. Hilfe-Aufnahmen <code>marktpreise</code> und <code>wetter</code> neu erzeugen, neue Wörter ins Glossar.</span></span></li>
+    </ol>
+  </section>
+
+  <section class="sec" id="entscheidungen">
+    <h2>Offene Entscheidungen</h2>
+    <p class="intro">Der Prototyp zeigt jeweils die empfohlene Wahl. Antworten auswählen und übernehmen; außerhalb von Lavish werden sie kopiert und können in den Chat eingefügt werden.</p>
+    <form id="ent-form" class="ents">
+      <fieldset class="ent" data-lavish-question="E1 Große Zahl">
+        <legend><span class="id">E1</span>Welche Zahl steht groß auf der Preisseite?</legend>
+        <label class="opt"><input type="radio" name="E1" value="A: Börsenpreis groß, Ihr Preis darunter" checked><span><b>A · Börsenpreis</b><span class="emp">empfohlen</span><span>Die Seite heißt Börsenpreise, und die Kurve zeigt ihn. Ihr Preis steht als Zeile darunter.</span></span></label>
+        <label class="opt"><input type="radio" name="E1" value="B: Ihr Preis groß, Börsenpreis darunter"><span><b>B · Ihr Preis</b><span>Näher an der Rechnung. Fehlt ohne Fahrplan, dann wäre oben nichts.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-lavish-question="E2 Urteil">
+        <legend><span class="id">E2</span>Woran misst sich „günstig“ und „teuer“?</legend>
+        <label class="opt"><input type="radio" name="E2" value="A: im Vergleich zum Tag (Drittel)" checked><span><b>A · Im Vergleich zum Tag</b><span class="emp">empfohlen</span><span>Unteres Drittel günstig, oberes teuer, Negativpreise immer „unter null“. Passt zur Frage „jetzt oder später?“.</span></span></label>
+        <label class="opt"><input type="radio" name="E2" value="B: feste Schwellen wie heute (5 und 15 ct)"><span><b>B · Feste Schwellen wie heute</b><span>Bis 5 ct günstig, ab 15 ct teuer. An vielen Tagen steht dann nur „normal“.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-lavish-question="E3 Rückblick">
+        <legend><span class="id">E3</span>Wo stehen Woche, Monat und Jahr?</legend>
+        <label class="opt"><input type="radio" name="E3" value="A: eigene Ansicht über die Zeile Rückblick" checked><span><b>A · Eigene Ansicht</b><span class="emp">empfohlen</span><span>Eine Zeile unter der Kurve öffnet den Rückblick. Oben bleibt die Antwort.</span></span></label>
+        <label class="opt"><input type="radio" name="E3" value="B: Zeitleiste oben wie heute"><span><b>B · Zeitleiste oben wie heute</b><span>Wie auf Energie und Erlösen. Die Antwort rutscht dann um etwa 140 Pixel nach unten.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-lavish-question="E4 PV-Prognose">
+        <legend><span class="id">E4</span>Woher kommt die erwartete Leistung auf dem Wetter?</legend>
+        <label class="opt"><input type="radio" name="E4" value="A: neuer Lese-Endpunkt auf forecast" checked><span><b>A · Neuer Lese-Endpunkt</b><span class="emp">empfohlen</span><span>Direkt aus der gespeicherten PV-Prognose, bis 48 h. Morgen ist dann auch am Vormittag da.</span></span></label>
+        <label class="opt"><input type="radio" name="E4" value="B: weiter nur über den Fahrplan"><span><b>B · Weiter über den Fahrplan</b><span>Kein Backend. Morgen erscheint erst, wenn der Plan so weit reicht (meist ab etwa 13 Uhr). Ohne Speicher keine Leistung.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-lavish-question="E5 Plan unter der Kurve">
+        <legend><span class="id">E5</span>Steht der Speicher-Plan unter der Preiskurve?</legend>
+        <label class="opt"><input type="radio" name="E5" value="A: ja, lädt und gibt ab laut Plan" checked><span><b>A · Ja</b><span class="emp">empfohlen</span><span>Zeigt, was die Anlage mit den Preisen macht. Nur mit Speicher.</span></span></label>
+        <label class="opt"><input type="radio" name="E5" value="B: nein, nur der Verweis zum Fahrplan"><span><b>B · Nein</b><span>Die Seite bleibt reine Börse. Der Plan steht im Fahrplan.</span></span></label>
+      </fieldset>
+      <div class="ent-send">
+        <button type="submit" class="btn" id="ent-go">Antworten übernehmen</button>
+        <span class="ent-status" id="ent-status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+  </section>
+
+  <footer class="fuss">
+    <p>Prototyp, kein Teil des Portal-Bundles. Alle Zahlen sind erfunden; die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures. Neu bauen mit <code>python3 docs/konzepte/preise-und-wetter/build.py</code>.</p>
+  </footer>
+</div>
