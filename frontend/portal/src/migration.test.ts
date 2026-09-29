@@ -1098,7 +1098,8 @@ describe('Steuerung Stufen 1+2: eine Anlage OHNE Daten bleibt ehrlich leer', () 
   });
 
   it('die Jetzt-Zone speichert nichts im Browser', () => {
-    for (const name of ['steuerungJetzt.ts', 'components/JetztZone.tsx', 'regeln/folgen.ts']) {
+    // Seit den Reitern trägt `steuerung/` den Jetzt-Kopf.
+    for (const name of ['steuerungJetzt.ts', 'steuerung/GeraeteReiter.tsx', 'steuerung/bild.ts', 'regeln/folgen.ts']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }
@@ -1163,7 +1164,7 @@ describe('Steuerung Stufe 5: eine Anlage OHNE aktives Betriebsmodell ist unberü
   });
 
   it('die Zone speichert nichts im Browser', () => {
-    for (const name of ['betriebsmodelle.ts', 'components/Betriebsmodelle.tsx']) {
+    for (const name of ['betriebsmodelle.ts', 'steuerung/Blaetter.tsx']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }
@@ -1181,8 +1182,8 @@ describe('Steuerung Stufe 5 — Abbau-Invarianten', () => {
   it('coOptimization / socReservationStack / CoOptimizationStrip existieren nicht mehr', () => {
     const dateien = [
       'steuerungArea.ts',
-      'components/SteuerungParts.tsx',
       'pages/SteuerungSection.tsx',
+      'steuerung/SteuerungSeite.tsx',
     ];
     for (const name of dateien) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
@@ -1236,7 +1237,7 @@ describe('Steuerung Stufe 6: ohne Zutaten gibt es keine Vorschlags-Karte', () =>
   it('die Vorschlags-Fläche speichert nichts im Browser', () => {
     // Die Ablehnung ist server-seitig (§7 `localStorage`-Verbot) - sonst
     // überlebte sie den Gerätewechsel nicht und wäre keine Entscheidung.
-    for (const name of ['vorschlaege.ts', 'components/VorschlagsKarten.tsx']) {
+    for (const name of ['vorschlaege.ts', 'steuerung/neu.ts', 'steuerung/GeraeteReiter.tsx']) {
       const code = ohneKommentare(readFileSync(join(SRC, name), 'utf8'));
       expect(code, name).not.toMatch(/localStorage|sessionStorage/);
     }

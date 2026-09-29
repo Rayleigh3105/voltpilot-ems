@@ -1,0 +1,138 @@
+import { expect, test, type Page } from '@playwright/test';
+
+/**
+ * **Die Steuerung im Browser** (Konzept `docs/konzepte/steuerung`).
+ *
+ * Daten: die Beispielanlage `e2e/steuerung.*` - derselbe Tag wie der Prototyp
+ * (Dienstag 29.09.2026, 13:10 Uhr). Geprüft wird Geometrie und Bedienung,
+ * kein Pixelvergleich: nichts ragt über den Rand, die Reiter stehen, das Blatt
+ * öffnet und schließt mit Rückkehr zum Auslöser, der Satzbaukasten führt bis
+ * zu den Folgen. Breiten nach Portal-Regel: 1440 am Rechner, 375 am Telefon.
+ */
+
+const GERAETE = '/e2e/steuerung.html#/anlage/help-site/steuerung';
+const LADEN = '/e2e/steuerung.html#/anlage/help-site/laden';
+const REGELN = '/e2e/steuerung.html#/anlage/help-site/regeln';
+
+test.use({ locale: 'de-DE', timezoneId: 'Europe/Berlin' });
+
+test.beforeEach(async ({ page }, testInfo) => {
+  await page.clock.setFixedTime(new Date('2026-09-29T11:10:00Z'));
+  const name = testInfo.project.name;
+  if (name.startsWith('mobile')) await page.setViewportSize({ width: 375, height: 812 });
+  else if (name.startsWith('desktop')) await page.setViewportSize({ width: 1440, height: 1000 });
+});
+
+async function oeffnen(page: Page, url: string) {
+  const fehler: string[] = [];
+  page.on('pageerror', (e) => fehler.push(e.message));
+  await page.goto(url);
+  await page.locator('.stn').first().waitFor();
+  await page.evaluate(() => document.fonts.ready);
+  return fehler;
+}
+
+const ueberlauf = (page: Page) =>
+  page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+/** Ragt ein Element einer Karte über deren Rand? (Liste der Übeltäter) */
+const ueberstehend = (page: Page) =>
+  page.evaluate(() => {
+    const out: string[] = [];
+    for (const karte of document.querySelectorAll<HTMLElement>('.stn .card, .stn .devs > .dev')) {
+      const r = karte.getBoundingClientRect();
+      for (const kind of karte.querySelectorAll<HTMLElement>('*')) {
+        const k = kind.getBoundingClientRect();
+        if (k.width === 0 || getComputedStyle(kind).position === 'absolute') continue;
+        if (k.right > r.right + 1.5 || k.left < r.left - 1.5) out.push(`${karte.className} > ${kind.tagName}.${String(kind.getAttribute('class'))}`);
+      }
+    }
+    return out.slice(0, 5);
+  });
+
+test('Geräte: Kopf, Reiter, Jetzt, Tagesbild und Liste ohne Überlauf', async ({ page }) => {
+  const fehler = await oeffnen(page, GERAETE);
+  await expect(page.getByRole('heading', { level: 1, name: 'Steuerung' })).toBeVisible();
+  const reiter = page.getByRole('tablist', { name: 'Reiter der Steuerung' });
+  await expect(reiter.getByRole('tab')).toHaveText([/Geräte/, /Laden/, /Regeln/]);
+  await expect(page.getByRole('region', { name: 'Jetzt' })).toContainText('Sonne 8,0 kW');
+  await expect(page.getByRole('region', { name: 'Jetzt' })).toContainText('Wohin geht der Sonnenstrom?');
+  await expect(page.getByRole('region', { name: 'Neu in Ihrer Anlage: Spülmaschine' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Tagesbild' })).toBeVisible();
+  await expect(page.locator('#devs .dev .rk')).toHaveCount(9);
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
+  expect(fehler).toEqual([]);
+});
+
+test('Geräte: das Tagesbild wählt eine Viertelstunde, „Jetzt" kehrt zurück', async ({ page }) => {
+  await oeffnen(page, GERAETE);
+  const band = page.getByRole('slider', { name: 'Viertelstunde wählen' });
+  await band.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('region', { name: 'Jetzt' })).toContainText('Laut Plan · 13:30');
+  await page.getByRole('button', { name: 'Jetzt', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Jetzt' })).toContainText('Jetzt · 13:10');
+});
+
+test('Geräte: das Blatt eines Geräts öffnet, hält den Fokus und gibt ihn zurück', async ({ page }) => {
+  await oeffnen(page, GERAETE);
+  const knopf = page.locator('#dev-e-hs');
+  await knopf.click();
+  const blatt = page.getByRole('dialog', { name: /Heizstab Warmwasser/ });
+  await expect(blatt).toBeVisible();
+  await expect(blatt).toContainText('Box hat angenommen');
+  await blatt.getByRole('button', { name: 'Ein', exact: true }).click();
+  await expect(blatt).toContainText('Das passiert:');
+  // Das Blatt ragt nicht über den Bildschirm.
+  const box = await blatt.boundingBox();
+  const vp = page.viewportSize()!;
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(vp.width + 0.5);
+  await page.keyboard.press('Escape');
+  await expect(blatt).toBeHidden();
+  await expect(knopf).toBeFocused();
+});
+
+test('Geräte: die Reihenfolge lässt sich mit Pfeilen ändern und speichern', async ({ page }) => {
+  await oeffnen(page, GERAETE);
+  await page.getByRole('button', { name: /Ändern/ }).click();
+  await page.getByRole('button', { name: 'Poolpumpe nach oben' }).click();
+  await expect(page.getByText(/Poolpumpe Platz 4 statt 5/)).toBeVisible();
+  await page.getByRole('button', { name: 'Reihenfolge speichern' }).click();
+  await expect(page.getByRole('status')).toContainText('Reihenfolge gespeichert');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+});
+
+test('Laden: Ladepunkte, Womit laden und Ladeziel ohne Überlauf', async ({ page }) => {
+  const fehler = await oeffnen(page, LADEN);
+  await expect(page.getByRole('region', { name: 'Netzanschluss' })).toContainText('Netzanschluss 22,0 kW');
+  const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
+  await expect(wb.getByRole('button', { name: /Smart/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(wb.getByRole('group', { name: 'Womit laden' })).toBeVisible();
+  await page.getByRole('region', { name: 'Ladepunkt Carport' }).locator('.lziel').click();
+  const ziel = page.getByRole('dialog', { name: /Ladeziel/ });
+  await expect(ziel).toContainText('Kein Auto angesteckt');
+  await page.keyboard.press('Escape');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(fehler).toEqual([]);
+});
+
+test('Regeln: Satzbaukasten mit Probelauf, Folgen und Aktivieren', async ({ page }) => {
+  const fehler = await oeffnen(page, REGELN);
+  await expect(page.locator('article.rule')).toHaveCount(2);
+  await page.getByRole('button', { name: /Neue Regel/ }).click();
+  const blatt = page.getByRole('dialog', { name: 'Neue Regel' });
+  await expect(blatt.getByLabel('Regel als Satz')).toContainText('Börsenpreis');
+  await blatt.locator('.tok.val').click();
+  await expect(blatt.getByRole('slider', { name: 'Börsenpreis' })).toBeVisible();
+  await expect(blatt).toContainText('Probelauf ab jetzt bis morgen Abend');
+  await blatt.getByRole('button', { name: 'Weiter: Folgen' }).click();
+  const folgen = page.getByRole('dialog', { name: 'Folgen prüfen' });
+  await expect(folgen).toContainText('Das passiert');
+  await folgen.getByRole('button', { name: /Regel aktivieren/ }).click();
+  await expect(page.getByRole('status')).toContainText('ist aktiv');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(fehler).toEqual([]);
+});
