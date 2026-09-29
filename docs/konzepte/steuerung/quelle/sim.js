@@ -27,6 +27,7 @@ const SIM = (() => {
       abstandPct: 10,
       verteilung: 'reihenfolge',
       speicherBis: null,
+      offen: clone(OFFEN),
     };
   }
 
@@ -299,7 +300,9 @@ const SIM = (() => {
           if (bekannt && preis(t) < a.grenze) soll[id] = { kw: nenn(g), why: { k: 'guenstig', preis: preis(t), grenze: a.grenze }, pflicht: true };
           else sperre[id] = { why: { k: bekannt ? 'teuer' : 'preis-unbekannt', preis: bekannt ? preis(t) : null, grenze: a.grenze }, weich: true };
         } else if (a.art === 'sofort') {
-          soll[id] = { kw: nenn(g), why: { k: 'selbst' }, pflicht: true, selbst: true };
+          /* Ohne Steuerung: ein Programmgerät läuft, wann es selbst will; das kennt der Plan nicht */
+          if (g.form === 'programm') sperre[id] = { why: { k: 'selbst' }, weich: true };
+          else soll[id] = { kw: nenn(g), why: { k: 'selbst' }, pflicht: true, selbst: true };
         } else if (a.art === 'frist' && plan) {
           const p = plan[id];
           if (p && p.slots.has(t)) {

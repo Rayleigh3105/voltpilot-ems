@@ -83,7 +83,7 @@ function geheZu(ziel) {
     else if (ziel === 'regel') { S.tab = 'regeln'; S.reo = null; renderApp(); blattAuf({ art: 'regel', d: neuerEntwurf('v-billig'), edit: null, schritt: 'bau', fokus: 'w0w' }); }
     else if (ziel === 'laden') { S.tab = 'laden'; S.reo = null; renderApp(); scrollOben(); }
     else if (ziel === 'heizstab') { S.tab = 'geraete'; renderApp(); blattAuf({ art: 'geraet', id: 'hs', d: kopie(S.cfg.geraete.hs) }); }
-    else if (ziel === 'katalog') { blattAuf({ art: 'katalog', wahl: null }); }
+    else if (ziel === 'neu') { S.tab = 'geraete'; S.reo = null; renderApp(); const k = document.getElementById('neu-spuel') || document.getElementById('devs'); if (k) k.scrollIntoView({ block: 'center' }); }
     else if (ziel === 'szene') { S.tab = 'regeln'; renderApp(); blattAuf({ art: 'szene', id: 'urlaub' }); }
   }, 60);
 }

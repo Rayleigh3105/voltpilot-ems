@@ -35,6 +35,7 @@ Aufgenommen mit den Hilfe-Fixtures bei 375 × 812 Pixeln (`e2e/help.html#/anlage
 | Bild | Zeilen mit Zustand und Grund, aber kein Bild vom Tag. Die Jetzt-Zone lädt nicht nach, Fehler bei Eingriffen werden verschluckt. | Jetzt-Kopf mit Sonnenstrom-Leiste und „wer wartet“; Tagesbild mit Plan und Ist aller Geräte, gefärbt nach Herkunft. |
 | Baukasten | Höchstens 3 Bedingungen, nur über/unter, Rohnamen wie `soc_pct`, kein Wetter, kein anderes Gerät, keine günstigsten Stunden. Der Börsenpreis ist an die Marktoptimierung gekoppelt. „Solar-Überschuss“ springt auf das falsche Gerät (`templateConsumer()`). | Satzbaukasten mit farbigen Bausteinen, Probelauf über heute und morgen, Hinweise zu Konflikten und Unbekanntem. |
 | Laden | Verteilt auf Steuerung, Fahrplan › Ladevorgänge und Geräteseite. Der Anlagen-Standard ist nur lesbar, `priorityChargePointIds` hat keinen Schreibweg, Fahrzeugprofile kennen kein Ziel. Eine go-e aus dem Gerätekatalog wird zur `generic-load` und fehlt im Ladepark. | Reiter „Laden“ mit Aus · Smart · Schnell, Quelle, Ladeziel mit Plan, Netzanschluss-Band, Speicher-Vorrang bis Ladestand und Fahrzeugen. |
+| Anlegen | Die Steuerung legt selbst Komponenten an: „Komponente anlegen“ in der Regeln-Kapsel und im Dialog „Neue Regel“ öffnet `VerbraucherAnlegenDrawer` (verbunden oder als Entwurf), neben Anlage › Aufbau. | Die Steuerung legt nichts an. Was in der Anlage verbunden ist, erscheint von selbst; die Steuerung entscheidet nur, was es tut. |
 | Ungenutzt | `POST /steuerung-vorschau` nutzen nur die Vorschläge; „Was bringt das?“ erscheint nie. `/consumer-deviation` und der Setzwert beim Eingriff haben keine Oberfläche. | Vorschau für Folgen, Reihenfolge und Probelauf. |
 | Schalter | Verbrauchersteuerung ist in API, Optimierer und Box standardmäßig aus: `VOLTPILOT_CONSUMER_CONTROL_ENABLED`, `VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED`, `OPTIMIZER_CONTROLLABLE_LOADS_ENABLED`, `VOLTPILOT_V2_PLAN_SITES`, `VP_CONTROL_ENABLED`, `VP_CONSUMER_CONTROL_ENABLED`. | Vor jeder Stufe die Produktionswerte prüfen. |
 
@@ -58,10 +59,33 @@ Schutz › Ihr Eingriff › Regel › Frist und feste Zeit › Reihenfolge. Das 
 
 Das Blatt jedes laufenden Geräts zeigt vier getrennte Schritte: Wunsch (Plan, Regel, Eingriff), Box hat angenommen (Go-Core, Schutzgrenzen), Gerät hat bestätigt (Relais, Register, OCPP) und Wirkung (gemessen oder „nicht gemessen“). Die SG-Ready-Wärmepumpe zeigt „Freigabe“, nie kW.
 
+### Die Anlage verbindet, die Steuerung entscheidet
+
+Ein Gerät wird genau einmal angelegt, in Anlage › Aufbau:
+
+1. **Anlegen und verbinden.** Dort sagt der Kunde, was es ist (Gerätevorlage, etwa „Spülmaschine“), und wie es angebunden ist.
+2. **Schalten freigeben.** Das geschieht bei freigegebenen Modellen von selbst, bei eigenen Schaltgeräten mit dem Schalttest (30 Sekunden).
+3. **In der Steuerung entscheiden.** Die Komponente erscheint dort von selbst als Karte „Neu in Ihrer Anlage“. Die Karte enthält einen Vorschlag aus der Gerätevorlage mit seinen Folgen. Der Kunde tippt auf „Übernehmen“, „Anders einstellen“ oder „Nicht steuern, nur messen“.
+
+| Zustand in der Steuerung | Was man sieht | Wo es sich löst |
+|---|---|---|
+| Neu, noch ohne Auftrag | Karte „Neu in Ihrer Anlage“ mit Vorschlag | hier: Übernehmen, Anders einstellen, Nur messen |
+| Gesteuert | Karte in der Liste, Aus · Smart · Ein | hier |
+| Nur gemessen | Zeile unter „in der Anlage, noch nicht gesteuert“ | hier: „Steuern“ |
+| Schalten nicht freigegeben | Zeile mit Grund („misst nur“) | Anlage › Aufbau: Steuern freigeben |
+| Nicht verbunden | Zeile mit Grund | Anlage › Aufbau: Verbindung prüfen |
+
+Der Knopf am Ende der Liste heißt „Gerät fehlt? In der Anlage anbinden“. Er erklärt die drei Schritte und führt nach Anlage › Aufbau.
+
+Die Daten liefern `/verbraucher` (Steuerart, `optionen.schreibbar`) und die Komponenten der Anlage. Ob eine Steuerart schon bewusst gewählt wurde, braucht ein eigenes Merkmal; das heutige `herkunft` unterscheidet nur Anlagen-Standard und abweichend.
+
+Im Prototyp ist die Spülmaschine neu, die Lüftung Werkstatt misst nur und die Sauna ist nicht verbunden.
+
 ## Aufbau am Telefon
 
 **Reiter „Geräte“**
 
+- **Neu in Ihrer Anlage.** Karten für frisch verbundene Komponenten, mit Vorschlag und Folgen (siehe oben).
 - **Jetzt.** Oben steht ein kurzer Satz („Sonne 8,0 kW: Werkstatt, Heizstab, Pool und Waschen laufen. Der Speicher ist voll.“). Darunter stehen Zusätze: negativer Börsenpreis, greifende Regel, Eingriff, Pause.
   - Eine Leiste zeigt, wohin der Sonnenstrom geht, in dieser Folge: Haus mit den nicht gemessenen Geräten, Pflichten, dann nach Reihenfolge, Speicher, Einspeisung.
   - Wer als Nächstes dran wäre, steht dabei („Wärmepumpe wartet (Platz 4): braucht 2,0 kW, frei sind 0,0 kW“).
@@ -72,6 +96,7 @@ Das Blatt jedes laufenden Geräts zeigt vier getrennte Schritte: Wunsch (Plan, R
 - **Geräteliste = Reihenfolge.** Die Geräte, die Sonnenstrom nach Reihenfolge bekommen, stehen mit Platznummer oben. Darunter folgt „nach Zeit, Frist oder Preis“.
   - Jede Karte zeigt Zustand, kW, die Warum-Zeile mit nächstem Ereignis („endet um 16:00“) und den Smart-Satz.
   - „Ändern“ öffnet den Reihenfolge-Modus mit Folgen ab jetzt.
+  - Am Ende stehen die Komponenten, die in der Anlage vorhanden, aber noch nicht gesteuert sind, und der Weg in die Anlage.
 - **Was immer gilt.** Wer gewinnt?, Speicher mit Betriebsmodell, Netzanschluss, § 14a, Negativpreis-Abregelung.
 
 **Reiter „Laden“** (nur mit Ladepunkten)
@@ -105,7 +130,8 @@ Das Blatt jedes laufenden Geräts zeigt vier getrennte Schritte: Wunsch (Plan, R
 - **Speicher:** Betriebsmodell und Reserve.
 - **Wer gewinnt?**
 - **Szene.**
-- **Weiteres Gerät steuern:** alle Gerätevorlagen.
+- **Neues Gerät steuern:** Auftrag für eine neu verbundene Komponente wählen.
+- **Gerät fehlt?** Der Weg über Anlage › Aufbau in drei Schritten.
 - **Automatik pausieren.**
 
 Blätter nutzen die Form `BottomSheet` am Telefon und `Modal` am Rechner. Auswahlen sind Chips und Stepper, keine nativen Felder (`VpPicker`-Regel).
@@ -184,7 +210,7 @@ Die sieben steuerbaren Komponententypen aus `services/api/src/main/resources/ent
 | Speicher `battery-hybrid` | Sollwert, Grenze | Leistung, Ladestand | Betriebsmodell, Rangliste | Vorrang bis Ladestand; Halten/Laden als Eingriff |
 | PV `producer` | Grenze kW oder % | Leistung | nur Schutz | bleibt Schutz, sichtbar |
 
-Kunden denken nicht in Typen. Das Konzept schlägt deshalb **27 Gerätevorlagen** in Kundensprache vor (`quelle/geraete.js`, `KATALOG`), jede mit Typ, Fähigkeiten, Smart-Vorschlag, Anbindung und Stand:
+Kunden denken nicht in Typen. Das Konzept schlägt deshalb **27 Gerätevorlagen** in Kundensprache vor (`quelle/geraete.js`, `KATALOG`). Der Kunde wählt sie beim Anlegen in der Anlage („Was ist das?“); die Steuerung macht daraus den Smart-Vorschlag. Jede Vorlage hat Typ, Fähigkeiten, Smart-Vorschlag, Anbindung und Stand:
 
 - **Laden:** Wallbox (go-e), Ladepunkt (OCPP), E-Bike-/Rollerlader.
 - **Wärme und Kälte:** Heizstab, Wärmepumpe (SG-Ready), Warmwasser-Wärmepumpe, Infrarot-/Elektroheizung, Klimagerät, Nachtspeicherheizung.
@@ -264,6 +290,7 @@ Die Stufen sind so geschnitten, dass jede allein ausgeliefert werden kann:
    - Reiter, Jetzt-Kopf mit Leiste, Warum-Zeile aus den Grundcodes, Nachladen alle 10 s, sichtbare Fehler.
    - Geräteliste als Rangliste mit ▲ ▼ und Griff, Folgen über `/steuerung-vorschau`.
    - Aus · Smart · Ein auf die vorhandenen Eingriffe gelegt; die Einführungskästen entfallen.
+   - „Komponente anlegen“ verlässt die Steuerung. Neue Komponenten erscheinen als „Neu in Ihrer Anlage“, nicht steuerbare mit Grund und Weg in die Anlage.
 2. **Tagesbild.** Gemessen aus dem Verlauf, geplant aus `/consumer-schedule`, dazu Bedienung per Wischen und Tasten. Zu prüfen sind die Last und leere Pläne ohne v2.
 3. **Laden an einem Ort.**
    - Reiter Laden.
@@ -299,7 +326,7 @@ Der Prototyp zeigt jeweils Option A.
 - **E5 · Börsenpreis für jede Anlage.** A: ja, mit Hinweis auf den eigenen Tarif. B: nur mit Marktoptimierung wie heute.
 - **E6 · Szenen.** A: Urlaub, Unterwegs, Sparen mit Ende. B: keine.
 - **E7 · Ladeziel.** A: kWh bis Uhrzeit. B: Ladestand in %, wo das Auto ihn meldet.
-- **E8 · Anlegen.** A: Gerätevorlagen in Kundensprache. B: technischer Typ wie heute.
+- **E8 · Was der Kunde beim Anlegen in der Anlage sagt.** A: Gerätevorlage in Kundensprache; die Steuerung macht daraus den Vorschlag. B: technischer Typ wie heute, ohne Vorschlag.
 
 ## Prototyp
 

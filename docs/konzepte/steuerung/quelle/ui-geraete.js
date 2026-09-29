@@ -376,7 +376,37 @@ function listeKarte() {
     + rang.map((id, i) => geraetKarte(id, i + 1)).join('')
     + '<div class="linie">nach Zeit, Frist oder Preis</div>'
     + rest.map((id) => geraetKarte(id, null)).join('')
-    + '<button class="add-dev" data-act="katalog">' + ic('plus', 18) + 'Weiteres Gerät steuern</button></section>';
+    + offenListe()
+    + '<button class="add-dev" data-act="blatt" data-art="anbinden">' + ic('plus', 18) + 'Gerät fehlt? In der Anlage anbinden</button></section>';
+}
+
+/* Neu in der Anlage verbunden: die Steuerung fragt, was das Gerät tun soll. */
+function neuKarten() {
+  return S.cfg.offen.filter((o) => o.zustand === 'neu').map((o) => {
+    const cfg = uebernehmen(kopie(S.cfg), o.id, o.vorschlag);
+    const V = vorschau(cfg);
+    const laeufe = SIM.laeufe(V, o.id, S.now, SIM.N);
+    const s = SIM.summe(V, o.id, S.now, SIM.N);
+    return '<section class="card neu-karte links" id="neu-' + o.id + '" aria-label="Neu in Ihrer Anlage: ' + esc(o.name) + '">'
+      + '<div class="nk-kopf"><span class="ico">' + ic(o.icon, 23) + '</span><span class="nk-t"><span class="nk-eye">Neu in Ihrer Anlage</span><b>' + esc(o.name) + '</b><small>' + esc(o.anschluss) + ' · ' + esc(o.seit) + '</small></span></div>'
+      + '<p class="nk-frage">Was soll VoltPilot mit der ' + esc(o.name) + ' tun?</p>'
+      + '<div class="nk-vorschlag"><small>Vorschlag für eine ' + esc(o.vorlage) + '</small><b>' + esc(auftragKurz(o.id, cfg)) + '</b><span>' + (laeufe.length ? 'Läuft dann ' + spannenText(laeufe, 2) + ' · ' + fKwh(s.kwh) + ', ≈ ' + fEur(s.eur) + ' zum Börsenpreis' : 'Bis morgen Abend kein Lauf nötig') + '</span></div>'
+      + '<div class="nk-knoepfe"><button class="btn" data-act="neu-ok" data-id="' + o.id + '">' + ic('check', 18) + 'Übernehmen</button><button class="btn sek" data-act="neu-anders" data-id="' + o.id + '">Anders einstellen</button></div>'
+      + '<button class="lnk" data-act="neu-nicht" data-id="' + o.id + '">Nicht steuern, nur messen</button></section>';
+  }).join('');
+}
+
+/* In der Anlage vorhanden, aber (noch) nicht gesteuert: mit Grund und Weg dorthin, wo er sich lösen lässt. */
+function offenListe() {
+  const rest = S.cfg.offen.filter((o) => o.zustand !== 'neu');
+  if (!rest.length) return '';
+  return '<div class="linie">in der Anlage, noch nicht gesteuert</div>' + rest.map((o) => {
+    const knopf = o.zustand === 'nur'
+      ? '<button class="tbtn" data-act="neu-wieder" data-id="' + o.id + '">Steuern</button>'
+      : '<button class="tbtn" data-act="anlage" data-id="' + o.id + '">' + esc(o.knopf) + ic('chevR', 16) + '</button>';
+    const grund = o.zustand === 'nur' ? 'Nur gemessen, auf Ihren Wunsch.' : o.grund;
+    return '<div class="dev offen" id="offen-' + o.id + '"><span class="ico">' + ic(o.icon, 23) + '</span><span class="d-mid"><span class="d-name"><b>' + esc(o.name) + '</b></span><span class="d-satz">' + esc(grund) + '</span><span class="d-satz">' + esc(o.anschluss) + '</span>' + knopf + '</span></div>';
+  }).join('');
 }
 
 /* Reihenfolge ändern: Ziehen am Griff oder ▲ ▼ (44 px), Folgen vor dem Speichern */
@@ -470,5 +500,5 @@ function immerKarte() {
 }
 
 function tabGeraete() {
-  return jetztKarte() + tagesbildKarte() + listeKarte() + immerKarte();
+  return jetztKarte() + neuKarten() + tagesbildKarte() + listeKarte() + immerKarte();
 }

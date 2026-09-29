@@ -412,6 +412,26 @@ table.doc td.leise{color:var(--c-muted-fg)}
 .add-dev{display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;border-radius:18px;border:1.5px dashed #94a3b8;background:transparent;font:700 14.5px var(--font);color:var(--action);cursor:pointer}
 .add-dev svg{width:18px;height:18px}
 
+.neu-karte{display:grid;gap:10px;border:1.5px solid var(--c-primary);box-shadow:0 8px 24px color-mix(in srgb,var(--c-primary) 12%,transparent)}
+.nk-kopf{display:flex;gap:12px;align-items:center;min-width:0}
+.nk-kopf .ico{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--price-soft);color:#1d4ed8;flex:none}
+.nk-kopf .ico svg{width:23px;height:23px}
+.nk-t{display:grid;min-width:0}
+.nk-eye{font:800 11.5px/1.3 var(--font);letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8}
+.nk-t b{font:800 16.5px/1.25 var(--font)}
+.nk-t small{font:500 12.5px/1.35 var(--font);color:var(--c-muted-fg)}
+.nk-frage{margin:0;font:700 15px/1.4 var(--font)}
+.nk-vorschlag{display:grid;gap:2px;padding:10px 12px;border-radius:14px;background:var(--c-bg);border:1px solid var(--c-border)}
+.nk-vorschlag small{font:700 11.5px var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--c-muted-fg)}
+.nk-vorschlag b{font:800 15px/1.35 var(--font)}
+.nk-vorschlag span{font:500 13px/1.4 var(--font);color:var(--c-muted-fg)}
+.nk-knoepfe{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.neu-karte .lnk{justify-self:start;min-height:36px}
+.dev.offen{cursor:default;background:var(--c-bg);border-style:dashed}
+.dev.offen .ico{background:transparent;box-shadow:inset 0 0 0 1.5px #cbd5e1;color:#64748b}
+.dev.offen{grid-template-columns:auto minmax(0,1fr)}
+.dev.offen .tbtn{justify-self:start;margin-top:6px;min-height:40px}
+.nk-knoepfe .btn{padding:0 10px;font-size:14.5px;white-space:nowrap}
 .immer{display:grid;gap:0;padding:6px 14px}
 .immer-r{display:flex;align-items:center;gap:12px;min-height:54px;padding:8px 0;border:0;background:none;text-align:left;width:100%;font:inherit;color:inherit;cursor:pointer}
 .immer-r+.immer-r{border-top:1px solid var(--c-border)}

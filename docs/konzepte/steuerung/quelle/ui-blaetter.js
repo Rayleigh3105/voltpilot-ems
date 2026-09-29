@@ -8,7 +8,7 @@ function renderBlatt() {
   const f = document.activeElement;
   const fokusKey = f && host.contains(f) ? (f.id || (f.dataset && (f.dataset.act + '|' + (f.dataset.k || f.dataset.v || f.dataset.i || f.dataset.m || f.dataset.q || f.dataset.o || f.dataset.w || f.dataset.g || f.dataset.a || '')))) : null;
   const art = S.sheet.art;
-  const fn = { geraet: blattGeraet, regel: blattRegel, ziel: blattZiel, lastmgmt: blattRahmen, speicher: blattSpeicher, immer: blattImmer, katalog: blattKatalog, szene: blattSzene, fahrzeug: blattFahrzeug, pause: blattPause }[art];
+  const fn = { geraet: blattGeraet, regel: blattRegel, ziel: blattZiel, lastmgmt: blattRahmen, speicher: blattSpeicher, immer: blattImmer, anbinden: blattAnbinden, neu: blattNeu, szene: blattSzene, fahrzeug: blattFahrzeug, pause: blattPause }[art];
   const b = fn();
   host.innerHTML = '<div class="sheet-scrim" data-act="zu"></div><div class="sheet' + (b.voll ? ' voll' : '') + '" role="dialog" aria-modal="true" aria-labelledby="sh-titel"><div class="sh-head"><div class="grip"></div>' + b.head.replace('<h2>', '<h2 id="sh-titel">') + '</div><div class="sh-body">' + b.body + '</div>' + (b.foot ? '<div class="sh-foot">' + b.foot + '</div>' : '') + '</div>';
   const nb = host.querySelector('.sh-body');
@@ -157,7 +157,7 @@ function paramPanel(g, d) {
   if (a.art === 'frist') {
     const prog = g.form === 'programm';
     return '<div class="param">' + (prog ? '<p class="leise">Ein Programm läuft am Stück, etwa ' + dauer(g.profil.length) + '. VoltPilot wählt den besten Start.</p>' : '<div class="prow"><span>Laufzeit</span>' + stp('std', dauer((a.stunden || 1) * 4), 'kürzer', 'länger') + '</div>')
-      + '<div class="prow"><span>fertig bis</span>' + stp('bis', uhr(a.bis), 'früher', 'später') + '</div>'
+      + '<div class="prow"><span>fertig bis</span>' + stp('bis', uhrTag(a.bis), 'früher', 'später') + '</div>'
       + '<div class="chips">' + [['sonne', 'Sonne zuerst, dann günstig'], ['guenstig', 'nur günstig']].map(([k, l]) => '<button data-act="fquelle" data-v="' + k + '" aria-pressed="' + ((a.quelle || 'sonne') === k) + '">' + l + '</button>').join('') + '</div></div>';
   }
   return '<p class="leise">' + (g.form === 'freigabe' ? 'Die Wärmepumpe läuft nach ihrem eigenen Regler; VoltPilot hebt nicht an.' : 'Das Gerät läuft, wie es selbst will. VoltPilot misst nur.') + '</p>';
@@ -252,22 +252,34 @@ function blattImmer() {
   return { head: kopf('info', 'Hinweis'), body: '' };
 }
 
-/* ---------- Katalog aller Gerätearten ---------- */
-function blattKatalog() {
-  const w = S.sheet.wahl;
-  const head = kopf('plus', 'Weiteres Gerät steuern', 'Was möchten Sie steuern?');
-  if (w) {
-    const v = KATALOG.find((x) => x.id === w);
-    const body = '<div class="kk" style="border:0;padding:0"><div class="kk-h"><span class="ico">' + ic(v.icon, 22) + '</span><span><b>' + esc(v.name) + '</b><small>wird angelegt als: ' + esc(TYP_LABEL[v.typ] || v.typ) + '</small></span></div>'
-      + '<p>' + esc(v.text) + '</p><div class="caps">' + v.kann.map((k) => '<span>' + esc(k) + '</span>').join('') + (v.nicht || []).map((k) => '<span class="x">' + esc(k) + '</span>').join('') + '</div>'
-      + '<div class="blk"><h3>Vorschlag für Smart</h3><div class="satz" style="font-size:15px;font-weight:600">' + esc(v.smart) + '</div></div>'
-      + '<div class="blk"><h3>So wird es angebunden</h3><p>' + esc(v.weg) + '</p></div></div>';
-    return { head, body, foot: '<button class="btn sek" data-act="kat-zurueck">Zurück</button><button class="btn" data-act="hinweis" data-text="Im Portal: Anlage › Aufbau › Komponente anlegen, mit dieser Vorlage">' + ic('arrowR', 18) + 'Im Aufbau anlegen</button>', voll: true };
-  }
-  const gruppen = [...new Set(KATALOG.map((x) => x.gruppe))];
-  const body = '<p class="leise" style="color:var(--c-fg)">Wählen Sie, was Sie kennen. VoltPilot legt den passenden Typ mit sinnvollen Vorgaben an.</p>'
-    + gruppen.map((gr) => '<div class="blk"><h3>' + esc(gr) + '</h3><div class="cat-grid">' + KATALOG.filter((x) => x.gruppe === gr).map((x) => '<button class="cat" data-act="kat" data-id="' + x.id + '"><span class="ico">' + ic(x.icon, 20) + '</span><b>' + esc(x.name) + '</b><small>' + esc(x.kurz) + '</small></button>').join('') + '</div></div>').join('');
-  return { head, body, voll: true };
+/* ---------- Wie ein Gerät in die Steuerung kommt (angelegt wird in der Anlage) ---------- */
+function blattAnbinden() {
+  const head = kopf('plus', 'Ein Gerät kommt in die Steuerung', 'angelegt und verbunden wird in der Anlage');
+  const schritte = [
+    ['layers', 'In der Anlage anlegen und verbinden', 'Anlage › Aufbau › Komponente anlegen. Dort sagen Sie, was es ist (Waschmaschine, Poolpumpe, Wallbox …) und wie es angebunden ist.'],
+    ['shield', 'Schalten freigeben', 'Je nach Gerät von selbst (freigegebenes Modell) oder mit einem Schalttest von 30 Sekunden (eigenes Schaltgerät).'],
+    ['zap', 'Hier erscheint es von selbst', 'Oben als „Neu in Ihrer Anlage“ mit einem Vorschlag. Sie übernehmen ihn, stellen ihn anders ein oder lassen das Gerät nur messen.'],
+  ];
+  const body = '<ol class="kette">' + schritte.map(([i, t, x]) => '<li><span class="k-dot" style="background:var(--price-soft);color:#1d4ed8">' + ic(i, 15) + '</span><span><b>' + t + '</b><span>' + x + '</span></span></li>').join('') + '</ol>'
+    + '<div class="warum">Die Steuerung legt keine Geräte an. So gibt es jedes Gerät nur einmal, und was angeschlossen ist, steht an einem Ort. Die Steuerung entscheidet nur, was es tut.</div>';
+  return { head, body, foot: '<button class="btn" data-act="hinweis" data-text="Im Portal: Anlage › Aufbau › Komponente anlegen">' + ic('arrowR', 18) + 'Zu Anlage › Aufbau</button>' };
+}
+
+/* ---------- Neu verbunden: Auftrag wählen ---------- */
+function blattNeu() {
+  const sh = S.sheet; const d = sh.d;
+  const cfg = kopie(S.cfg);
+  cfg.offen = cfg.offen.map((x) => (x.id === sh.id ? { ...x, vorschlag: d.auftrag } : x));
+  uebernehmen(cfg, sh.id, d.auftrag);
+  const V = vorschau(cfg);
+  const laeufe = SIM.laeufe(V, sh.id, S.now, SIM.N);
+  const s = SIM.summe(V, sh.id, S.now, SIM.N);
+  const head = kopf(d.icon, d.name + ' steuern', 'in der Anlage angelegt als ' + d.vorlage + ' · ' + d.anschluss);
+  const body = '<div class="warum">Angelegt und verbunden ist die ' + esc(d.name) + ' in der Anlage. Hier entscheiden Sie nur, was sie tut.</div>'
+    + '<div class="blk"><h3>Smart heißt hier</h3><div class="arten" role="group" aria-label="Womit läuft das Gerät?">' + artenFuer(d).map((x) => '<button class="art" data-act="art" data-k="' + x.k + '" aria-pressed="' + (d.auftrag.art === x.k) + '">' + ic(x.icon, 20) + '<b>' + x.t + '</b><small>' + x.s + '</small>' + (x.neu ? '<span class="gesp" style="color:#1d4ed8">neu für diesen Typ</span>' : '') + '</button>').join('') + '</div>' + paramPanel(d, d) + '</div>'
+    + '<div class="ok-note" style="background:var(--c-bg);border:1px solid var(--c-border);color:var(--c-fg)">' + ic('info', 18) + '<span><b>Folgen:</b> ' + (laeufe.length ? 'läuft ' + spannenText(laeufe, 3) + ', ' + fKwh(s.kwh) + ' (≈ ' + fEur(s.eur) + ' zum Börsenpreis).' : 'bis morgen Abend kein Lauf.') + ' Danach steht sie in der Liste und hat Aus · Smart · Ein.</span></div>';
+  const foot = '<button class="btn sek" data-act="neu-nicht" data-id="' + sh.id + '">Nur messen</button><button class="btn" data-act="neu-start" data-id="' + sh.id + '">' + ic('check', 18) + 'Steuern beginnen</button>';
+  return { head, body, foot, voll: true };
 }
 
 /* ---------- Szene ---------- */

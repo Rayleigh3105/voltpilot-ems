@@ -69,9 +69,18 @@ function klick(e) {
       else blattAuf({ art: 'immer', k });
       break;
     }
-    case 'katalog': blattAuf({ art: 'katalog', wahl: null }); break;
-    case 'kat': sh.wahl = id; renderBlatt(); break;
-    case 'kat-zurueck': sh.wahl = null; renderBlatt(); break;
+    /* Neu in der Anlage verbunden: übernehmen, anders einstellen oder nur messen */
+    case 'neu-ok': {
+      const o = S.cfg.offen.find((x) => x.id === id);
+      uebernehmen(S.cfg, id, o.vorschlag);
+      nachher(esc(o.name) + ' wird ab jetzt gesteuert: ' + esc(auftragKurz(id)) + '.');
+      break;
+    }
+    case 'neu-anders': { const o = S.cfg.offen.find((x) => x.id === id); blattAuf({ art: 'neu', id, d: { ...kopie(o), auftrag: kopie(o.vorschlag) } }); break; }
+    case 'neu-start': { const n = name0(id); uebernehmen(S.cfg, id, sh.d.auftrag); blattZu(); nachher(esc(n) + ' wird ab jetzt gesteuert: ' + esc(auftragKurz(id)) + '.'); break; }
+    case 'neu-nicht': { const o = S.cfg.offen.find((x) => x.id === id); o.zustand = 'nur'; if (S.sheet) blattZu(); renderApp(); toast(esc(o.name) + ' wird nur gemessen. Unter „noch nicht gesteuert“ lässt sich das jederzeit ändern.'); break; }
+    case 'neu-wieder': { const o = S.cfg.offen.find((x) => x.id === id); o.zustand = 'neu'; renderApp(); const k = document.getElementById('neu-' + id); if (k) k.scrollIntoView({ block: 'center' }); break; }
+    case 'anlage': { const o = S.cfg.offen.find((x) => x.id === id); toast('Im Portal: ' + esc(o.weg)); break; }
     case 'blatt': {
       const art = el.dataset.art;
       if (art === 'lastmgmt') blattAuf({ art, d: { anschlussKw: S.cfg.anschlussKw, verteilung: S.cfg.verteilung } });
@@ -79,6 +88,7 @@ function klick(e) {
         const a = S.cfg.geraete[id].auftrag;
         blattAuf({ art, id, d: a.art === 'frist' ? { kwh: a.kwh, bis: a.bis, quelle: a.quelle } : { kwh: 20, bis: id === 'lp' ? 124 : 64, quelle: 'sonne' } });
       } else if (art === 'fahrzeug') blattAuf({ art, n: el.dataset.n });
+      else if (art === 'anbinden') blattAuf({ art });
       break;
     }
     case 'hinweis': toast(esc(el.dataset.text)); break;
@@ -116,7 +126,7 @@ function klick(e) {
     case 'von': d.auftrag.von = (d.auftrag.von + 2 * Number(el.dataset.d) + 96) % 96; renderBlatt(); break;
     case 'bis': {
       const a = d.auftrag; const lo = a.art === 'frist' ? Math.max(S.now + 2, 28) : 0;
-      a.bis = a.art === 'frist' ? Math.max(lo, Math.min(95, a.bis + 2 * Number(el.dataset.d))) : (a.bis + 2 * Number(el.dataset.d) + 96) % 96;
+      a.bis = a.art === 'frist' ? Math.max(lo, Math.min(a.bis >= 96 ? 190 : 95, a.bis + 2 * Number(el.dataset.d))) : (a.bis + 2 * Number(el.dataset.d) + 96) % 96;
       renderBlatt(); break;
     }
     case 'std': d.auftrag.stunden = Math.max(0.5, Math.min(12, (d.auftrag.stunden || 1) + 0.5 * Number(el.dataset.d))); renderBlatt(); break;
@@ -218,6 +228,7 @@ function klick(e) {
     default: break;
   }
 }
+function name0(id) { const o = S.cfg.offen.find((x) => x.id === id); return o ? o.name : name(id); }
 function scrollOben() {
   const scr = document.querySelector('.phone>.screen');
   if (scr && getComputedStyle(scr).overflowY !== 'visible') scr.scrollTop = 0;

@@ -136,9 +136,10 @@ function eingriff(id, t) {
 }
 
 /* Der Auftrag als kurzer Satz (Karte) und als ganzer Satz (Blatt). */
-function auftragKurz(id) {
-  if (id === 'sp') return S.cfg.speicher.modell === 'markt' ? 'Marktoptimierung' : 'Eigenverbrauch';
-  const { g, a, ziel, aus } = SIM.wirk(S.cfg, id);
+function auftragKurz(id, cfg) {
+  cfg = cfg || S.cfg;
+  if (id === 'sp') return cfg.speicher.modell === 'markt' ? 'Marktoptimierung' : 'Eigenverbrauch';
+  const { g, a, ziel, aus } = SIM.wirk(cfg, id);
   if (aus) return 'Szene: aus';
   let s = '';
   if (a.art === 'sonne') {
@@ -149,7 +150,7 @@ function auftragKurz(id) {
   else if (a.art === 'zeiten') s = uhr(a.von) + '–' + uhr(a.bis) + (a.tage === 'werktags' ? ' werktags' : '');
   else if (a.art === 'frist') {
     const menge = g.fahrzeug ? '+' + NF0.format(a.kwh) + ' kWh' : (g.form === 'programm' ? 'Programm' : dauer(a.stunden * 4));
-    s = menge + ' bis ' + uhr(a.bis) + (a.quelle === 'sonne' ? ', Sonne zuerst' : ', günstig');
+    s = menge + ' bis ' + uhrTag(a.bis) + (a.quelle === 'sonne' ? ', Sonne zuerst' : ', günstig');
   } else if (a.art === 'sofort') s = g.fahrzeug ? 'Sofort laden' : 'Ohne Steuerung';
   if (ziel && ziel.art === 'temp') s += ', bis ' + fGrad(ziel.grad);
   const b = (g.bedingungen || [])[0];
@@ -294,4 +295,16 @@ function blattZu() {
   S.sheet = null;
   setTimeout(() => { if (!S.sheet) host.innerHTML = ''; }, 320);
   if (blattFokus && blattFokus.isConnected) blattFokus.focus({ preventScroll: true });
+}
+
+/* Eine Komponente aus der Anlage bekommt ihren Auftrag und wird ab jetzt gesteuert. */
+function uebernehmen(cfg, id, auftrag) {
+  const i = cfg.offen.findIndex((x) => x.id === id);
+  const g = kopie(cfg.offen[i]);
+  ['zustand', 'vorschlag', 'seit', 'grund', 'knopf', 'weg'].forEach((k) => delete g[k]);
+  g.auftrag = kopie(auftrag);
+  cfg.geraete[id] = g;
+  cfg.offen.splice(i, 1);
+  if (!cfg.reihenfolge.includes(id)) cfg.reihenfolge.push(id);
+  return cfg;
 }

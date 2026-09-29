@@ -175,3 +175,25 @@ const KATALOG = [
     text: 'Wird nur gedrosselt, etwa bei negativen Preisen oder einer Einspeisegrenze.', kann: ['Grenze in kW oder %'], nicht: [],
     smart: 'Schutz, keine Regel: Negativpreis-Abregelung und Einspeisegrenze laufen immer mit.', weg: 'Wechselrichter im Aufbau.' },
 ];
+
+/* Komponenten aus Anlage › Aufbau, die in der Steuerung noch keinen Auftrag haben.
+   Die Steuerung legt nichts an: Sie zeigt, was in der Anlage verbunden ist, und fragt, was es tun soll.
+   zustand: neu = verbunden und schaltbar, noch nichts gewählt; nur = bewusst nur messen;
+   freigabe = misst, Schalten nicht freigegeben; getrennt = angelegt, aber nicht verbunden. */
+const OFFEN = [
+  {
+    id: 'spuel', typ: 'generic-load', vorlage: 'Spülmaschine', name: 'Spülmaschine', kurz: 'Spülen', gruppe: 'haus', icon: 'dish',
+    anschluss: 'Shelly Plug S · misst', form: 'programm', profil: [1.9, 1.8, 0.2, 0.2, 0.2, 1.6, 0.3, 0.1], gemessen: true,
+    zustand: 'neu', seit: 'heute 11:52 in der Anlage verbunden', vorschlag: { art: 'frist', stunden: 2, amStueck: true, bis: 124, quelle: 'guenstig' },
+  },
+  {
+    id: 'lueft', typ: 'modbus-generic', vorlage: 'Lüftung', name: 'Lüftung Werkstatt', kurz: 'Lüftung', gruppe: 'betrieb', icon: 'fan',
+    anschluss: 'Modbus TCP · Messgerät', zustand: 'freigabe', grund: 'Misst nur. Schalten ist noch nicht freigegeben.',
+    knopf: 'In der Anlage freigeben', weg: 'Anlage › Aufbau › Lüftung Werkstatt › Steuern freigeben (Schalttest, 30 Sekunden)',
+  },
+  {
+    id: 'sauna', typ: 'generic-load', vorlage: 'Sauna', name: 'Sauna', kurz: 'Sauna', gruppe: 'haus', icon: 'sauna',
+    anschluss: 'Shelly Pro 3 · Entwurf', zustand: 'getrennt', grund: 'Angelegt, aber nicht verbunden: Die Box findet den Shelly nicht.',
+    knopf: 'In der Anlage verbinden', weg: 'Anlage › Aufbau › Sauna › Verbindung prüfen',
+  },
+];

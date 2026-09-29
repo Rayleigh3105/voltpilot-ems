@@ -30,7 +30,7 @@
           <li><span><b>Ihre Regel bauen.</b><span class="sek">„Wenn der Börsenpreis unter 10 ct/kWh liegt, Heizstab einschalten“, mit Probelauf über heute und morgen. <button class="go" data-go="regel">Regel bauen</button></span></span></li>
           <li><span><b>Ein Gerät öffnen.</b><span class="sek">Aus · Smart · Ein, der Weg vom Wunsch zur gemessenen Wirkung, Smart-Auftrag, Bedingungen. <button class="go" data-go="heizstab">Heizstab öffnen</button></span></span></li>
           <li><span><b>Laden.</b><span class="sek">Beide Ladepunkte, Ladeziel mit Plan, Netzanschluss, Speicher-Vorrang bis zu einem Ladestand. <button class="go" data-go="laden">Zum Laden</button></span></span></li>
-          <li><span><b>Mehr.</b><span class="sek"><button class="go" data-go="szene">Szene „Urlaub“</button> · <button class="go" data-go="katalog">weiteres Gerät steuern</button></span></span></li>
+          <li><span><b>Mehr.</b><span class="sek"><button class="go" data-go="szene">Szene „Urlaub“</button> · <button class="go" data-go="neu">neu verbundene Spülmaschine übernehmen</button></span></span></li>
         </ol>
         <div class="simbox">
           <b>Uhrzeit der Vorschau</b>
@@ -58,6 +58,7 @@
         <li><span><b>Der Baukasten ist eng.</b><span>Höchstens drei Bedingungen, nur „über/unter“, Rohnamen wie <code>soc_pct</code>, kein Wetter, kein anderes Gerät, keine „günstigsten Stunden“. Der Börsenpreis ist an die Marktoptimierung gekoppelt. „Solar-Überschuss“ springt auf das falsche Gerät.</span></span></li>
         <li><span><b>Laden ist über drei Orte verteilt.</b><span>Steuerung, Fahrplan › Ladevorgänge und Geräteseite. Der Anlagen-Standard ist nur lesbar, Vorrang-Ladepunkte haben keinen Schreibweg, ein Fahrzeug kennt kein Ziel. Eine go-e aus dem Gerätekatalog wird zur „Steuerbaren Last“ und fehlt im Ladepark.</span></span></li>
         <li><span><b>Vorhandenes bleibt ungenutzt.</b><span><code>POST /steuerung-vorschau</code> rechnet Folgen, nur die Vorschläge nutzen es; der Knopf „Was bringt das?“ erscheint nie. Plan-Ist-Abweichung (<code>/consumer-deviation</code>) und Setzwert beim Eingriff sind ohne Oberfläche.</span></span></li>
+        <li><span><b>Die Steuerung legt selbst Geräte an.</b><span>„Komponente anlegen“ in der Regeln-Kapsel und im Dialog „Neue Regel“ öffnet <code>VerbraucherAnlegenDrawer</code> (verbunden oder als Entwurf). Neben Anlage › Aufbau gibt es so einen zweiten Weg, Komponenten zu erzeugen.</span></span></li>
         <li><span><b>Alles hängt an sechs Schaltern.</b><span>Verbrauchersteuerung ist in API, Optimierer und Box standardmäßig aus (<code>VOLTPILOT_CONSUMER_CONTROL_ENABLED</code>, <code>…_POLICY_COMPILER_ENABLED</code>, <code>OPTIMIZER_CONTROLLABLE_LOADS_ENABLED</code>, <code>VOLTPILOT_V2_PLAN_SITES</code>, <code>VP_CONTROL_ENABLED</code>, <code>VP_CONSUMER_CONTROL_ENABLED</code>). Die Produktionswerte stehen nicht im Repo.</span></span></li>
       </ol>
     </div>
@@ -138,9 +139,48 @@
     </div>
   </section>
 
+  <section class="sec" id="anlage-steuerung">
+    <h2>Die Anlage verbindet, die Steuerung entscheidet</h2>
+    <p class="intro">Ein Gerät wird genau einmal angelegt, in der Anlage. Dort wird es verbunden und gesagt, was es ist. Die Steuerung legt nichts an: Alles, was in der Anlage steht, erscheint hier von selbst, und hier wird nur entschieden, was es tut.</p>
+    <div class="figs zwei">
+      <figure class="fig" id="abb-weg">
+        <svg viewBox="0 0 560 250" role="img" aria-labelledby="abb-weg-t">
+          <title id="abb-weg-t">Der Weg eines Geräts: in der Anlage anlegen und verbinden, Schalten freigeben, in der Steuerung den Auftrag wählen.</title>
+          <text x="20" y="24" font-size="12" font-weight="800" fill="#475569" letter-spacing=".06em">ANLAGE › AUFBAU</text>
+          <text x="400" y="24" font-size="12" font-weight="800" fill="#1d4ed8" letter-spacing=".06em">STEUERUNG</text>
+          <line x1="382" y1="10" x2="382" y2="240" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <g id="weg-1"><title>Anlegen und verbinden</title><rect x="20" y="40" width="160" height="96" rx="14" fill="#e9eff8"/><text x="36" y="66" font-size="13.5" font-weight="800" fill="#1E3A5F">1 · Anlegen</text><text x="36" y="88" font-size="12" font-weight="600" fill="#475569">Was ist das?</text><text x="36" y="106" font-size="12" font-weight="600" fill="#475569">Spülmaschine</text><text x="36" y="124" font-size="12" font-weight="600" fill="#475569">Shelly Plug S, verbunden</text></g>
+          <g id="weg-2"><title>Schalten freigeben</title><rect x="200" y="40" width="160" height="96" rx="14" fill="#e9eff8"/><text x="216" y="66" font-size="13.5" font-weight="800" fill="#1E3A5F">2 · Freigeben</text><text x="216" y="88" font-size="12" font-weight="600" fill="#475569">freigegebenes Modell</text><text x="216" y="106" font-size="12" font-weight="600" fill="#475569">oder Schalttest</text><text x="216" y="124" font-size="12" font-weight="600" fill="#475569">(30 Sekunden)</text></g>
+          <g id="weg-3"><title>Auftrag wählen</title><rect x="400" y="40" width="140" height="96" rx="14" fill="#dbe6fd" stroke="#2563eb" stroke-width="1.5"/><text x="416" y="66" font-size="13.5" font-weight="800" fill="#1d4ed8">3 · Entscheiden</text><text x="416" y="88" font-size="12" font-weight="600" fill="#1e293b">„Neu in Ihrer</text><text x="416" y="106" font-size="12" font-weight="600" fill="#1e293b">Anlage“ mit</text><text x="416" y="124" font-size="12" font-weight="600" fill="#1e293b">Vorschlag</text></g>
+          <path d="M180 88 H200 M360 88 H400" stroke="#94a3b8" stroke-width="2"/>
+          <text x="20" y="176" font-size="12.5" font-weight="600" fill="#475569">Fehlt die Verbindung oder die Freigabe, zeigt die Steuerung</text>
+          <text x="20" y="194" font-size="12.5" font-weight="600" fill="#475569">das Gerät unter „noch nicht gesteuert“, mit Grund und einem</text>
+          <text x="20" y="212" font-size="12.5" font-weight="600" fill="#475569">Knopf zurück in die Anlage. Anlegen kann man hier nichts.</text>
+        </svg>
+        <figcaption>Heute gibt es zwei Wege: Anlage › Aufbau und „Komponente anlegen“ in der Steuerung. Das Konzept lässt nur den ersten; der Knopf in der Steuerung heißt „Gerät fehlt? In der Anlage anbinden“ und führt dorthin.</figcaption>
+      </figure>
+      <div class="fig" id="zustaende">
+        <h3>Wo eine Komponente in der Steuerung steht</h3>
+        <div class="tabwrap" style="border:0">
+          <table class="doc" style="min-width:0">
+            <thead><tr><th>Zustand</th><th>Was man sieht</th><th>Wo es sich löst</th></tr></thead>
+            <tbody>
+              <tr><th>Neu, noch ohne Auftrag</th><td>Karte „Neu in Ihrer Anlage“ oben, mit Vorschlag aus der Gerätevorlage und seinen Folgen</td><td class="leise">hier: Übernehmen, Anders einstellen, Nur messen</td></tr>
+              <tr><th>Gesteuert</th><td>Karte in der Liste, Aus · Smart · Ein</td><td class="leise">hier</td></tr>
+              <tr><th>Nur gemessen</th><td>Zeile unter „noch nicht gesteuert“, auf Wunsch des Kunden</td><td class="leise">hier: „Steuern“</td></tr>
+              <tr><th>Schalten nicht freigegeben</th><td>Zeile mit Grund („misst nur“)</td><td class="leise">Anlage › Aufbau: Steuern freigeben</td></tr>
+              <tr><th>Nicht verbunden</th><td>Zeile mit Grund („Box findet den Shelly nicht“)</td><td class="leise">Anlage › Aufbau: Verbindung prüfen</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="cap">Im Prototyp: die Spülmaschine ist neu, die Lüftung Werkstatt misst nur, die Sauna ist nicht verbunden. Die Daten dafür liefern <code>/verbraucher</code> (Steuerart, <code>optionen.schreibbar</code>) und die Komponenten der Anlage; ob eine Steuerart schon bewusst gewählt wurde, braucht ein eigenes Merkmal.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="sec" id="geraetearten">
     <h2>Alle Gerätearten und was die Steuerung mit ihnen kann</h2>
-    <p class="intro">Technisch kennt VoltPilot sieben steuerbare Komponententypen (<code>entitytypes/catalog.json</code>), dazu Speicher, PV-Erzeuger und Schaltausgänge. Kunden denken aber an Waschmaschine und Poolpumpe. Das Konzept schlägt deshalb Gerätevorlagen vor: Der Kunde wählt, was er kennt, VoltPilot legt den passenden Typ mit einem Smart-Vorschlag an.</p>
+    <p class="intro">Technisch kennt VoltPilot sieben steuerbare Komponententypen (<code>entitytypes/catalog.json</code>), dazu Speicher, PV-Erzeuger und Schaltausgänge. Kunden denken aber an Waschmaschine und Poolpumpe. Das Konzept schlägt deshalb Gerätevorlagen vor. Der Kunde wählt sie beim Anlegen in der Anlage („Was ist das?“); VoltPilot legt daraus den passenden Typ an, und die Steuerung macht daraus den Vorschlag für Smart.</p>
     <div class="tabwrap" style="margin-bottom:24px">
       <table class="doc">
         <thead><tr><th>Typ</th><th>Befehle</th><th>Gemessen</th><th>Smart heute (Steuerart)</th><th>Neu im Konzept</th></tr></thead>
@@ -372,7 +412,7 @@
       </table>
     </div>
     <ol class="schritte">
-      <li><span><b>Reiter und Jetzt, ohne neues Backend.</b> <span>Reiter Geräte · Laden · Regeln. Jetzt-Kopf mit Sonnenstrom-Leiste, Warum-Zeile aus den Grundcodes, Nachladen alle 10 s, sichtbare Fehler. Geräteliste = Rangliste mit ▲ ▼ und Griff, Folgen über <code>/steuerung-vorschau</code>. Aus · Smart · Ein auf die vorhandenen Eingriffe gelegt. Die zwei Einführungskästen entfallen.</span></span></li>
+      <li><span><b>Reiter und Jetzt, ohne neues Backend.</b> <span>Reiter Geräte · Laden · Regeln. Jetzt-Kopf mit Sonnenstrom-Leiste, Warum-Zeile aus den Grundcodes, Nachladen alle 10 s, sichtbare Fehler. Geräteliste = Rangliste mit ▲ ▼ und Griff, Folgen über <code>/steuerung-vorschau</code>. Aus · Smart · Ein auf die vorhandenen Eingriffe gelegt. „Komponente anlegen“ verlässt die Steuerung; neue Komponenten erscheinen als „Neu in Ihrer Anlage“, nicht steuerbare mit Grund und Weg in die Anlage. Die zwei Einführungskästen entfallen.</span></span></li>
       <li><span><b>Tagesbild.</b> <span>Gemessen aus dem Verlauf, geplant aus <code>/consumer-schedule</code>, gefärbt nach Herkunft; Wischen, Tasten, Auswahl. Zu prüfen: Last des Verlaufs je Komponente und ob Anlagen ohne v2-Plan ein leeres Bild ehrlich erklären.</span></span></li>
       <li><span><b>Laden an einem Ort.</b> <span>Reiter Laden mit Aus · Smart · Schnell, Quelle, Ladeziel mit Plan, Netzanschluss-Band. <code>PUT /charging-config</code> für Vorrang-Ladepunkte und Speicher-Vorrang nutzen; Schwelle „Speicher bis x %“ neu (Box-Spur, Migration). go-e aus dem Katalog als <code>wallbox</code> anlegen.</span></span></li>
       <li><span><b>Satzbaukasten am Telefon.</b> <span>Ein Baukasten auf <code>consumer_policy</code> statt zwei (Flow-Builder und Verbraucher-Regel); Probelauf und Folgenkarte im Blatt; Aktivieren am Telefon. Börsenpreis als Bedingung ohne Kopplung an die Marktoptimierung (E5). Der freie Editor bleibt für Fortgeschrittene.</span></span></li>
@@ -428,9 +468,9 @@
         <label class="opt"><input type="radio" name="E7" value="B: Ladestand in % bis Uhrzeit, wo gemeldet"><span><b>B · Prozent, wo gemeldet</b><span>Nur mit Fahrzeug-Schnittstelle oder ISO 15118; sonst zurück auf kWh.</span></span></label>
       </fieldset>
       <fieldset class="ent" data-id="E8" data-lavish-question="E8 Gerätevorlagen">
-        <legend><span class="id">E8</span>Womit legt der Kunde ein Gerät an?</legend>
-        <label class="opt"><input type="radio" name="E8" value="A: Gerätevorlagen in Kundensprache" checked><span><b>A · Gerätevorlagen</b><span class="emp">empfohlen</span><span>Waschmaschine, Poolpumpe, Klimagerät … legen den Typ und einen Smart-Vorschlag an.</span></span></label>
-        <label class="opt"><input type="radio" name="E8" value="B: technischer Typ wie heute"><span><b>B · Technischer Typ</b><span>Sieben Typen mit „Was ist das?“.</span></span></label>
+        <legend><span class="id">E8</span>Was sagt der Kunde beim Anlegen in der Anlage?</legend>
+        <label class="opt"><input type="radio" name="E8" value="A: Gerätevorlage in Kundensprache, Steuerung schlägt daraus vor" checked><span><b>A · Gerätevorlage</b><span class="emp">empfohlen</span><span>Waschmaschine, Poolpumpe, Klimagerät … legen den Typ an; die Steuerung macht daraus den Smart-Vorschlag.</span></span></label>
+        <label class="opt"><input type="radio" name="E8" value="B: technischer Typ wie heute"><span><b>B · Technischer Typ</b><span>Sieben Typen mit „Was ist das?“; die Steuerung schlägt nichts vor.</span></span></label>
       </fieldset>
       <div class="ent-send">
         <button type="submit" class="btn">Antworten übernehmen</button>
