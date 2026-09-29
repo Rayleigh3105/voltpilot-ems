@@ -19,7 +19,7 @@ Jede Seite beantwortet oben eine Frage und ist zugleich ein Werkzeug für „Wan
 ### Fassungen
 
 - **Fassung 1 (verworfen am 29.09.2026):** Preise als ruhige Linie mit zwei benannten Fenstern, Preisleiter und drei Kennzahlen-Zeilen; Wetter mit Himmel und Temperatur als Kopf, Tagesbild und Tagesliste. Rückmeldung: Die Börsenpreis-Seite gefiel nicht, beide Seiten sollten interaktiver sein.
-- **Fassung 2 (dieser Stand):** Die große Zahl folgt dem Finger, die Preise als Balken in drei Stufen, ein Rechner „Wann starten?“ bzw. „Wann ist am meisten Sonne?“, ein Schalter „Börse“/„Ihr Preis“, wischbare Tageskarten und antippbare Stunden beim Wetter.
+- **Fassung 2 (dieser Stand):** Die große Zahl folgt dem Finger, die Preise als Balken in drei Stufen, ein Rechner „Wann starten?“ bzw. „Wann ist am meisten Sonne?“, wischbare Tageskarten und antippbare Stunden beim Wetter.
 
 ## Befunde heute
 
@@ -55,9 +55,9 @@ Beide Seiten haben dieselbe Bedienung:
 
 ### Preise
 
-- **Moment:** „Börsenpreis · jetzt 10:30–10:45“, der Preis groß, daneben günstig, mittel oder teuer im Vergleich zum Tag. Darunter der Satz nach vorn („Am günstigsten wird es heute 12:00–14:30 Uhr.“, leise „Teuer wird es 18:00–20:30 Uhr.“) und Ihr Preis. Beim Wischen: „14:15–14:30 · in 3 Std 35 Min“, Preis, Urteil und was der Speicher laut Plan in dieser Viertelstunde tut. Für morgen ohne Auswahl: der Tagesdurchschnitt und die Fenster des Tages.
+- **Moment:** „Börsenpreis · jetzt 10:30–10:45“, der Preis groß, daneben günstig, mittel oder teuer im Vergleich zum Tag. Darunter der Satz nach vorn („Am günstigsten wird es heute 12:00–14:30 Uhr.“, leise „Teuer wird es 18:00–20:30 Uhr.“) und der Satz „Dazu kommen bei Ihnen Aufschlag, Netzentgelt, Abgaben und Steuern.“ Beim Wischen: „14:15–14:30 · in 3 Std 35 Min“, Preis, Urteil und was der Speicher laut Plan in dieser Viertelstunde tut. Für morgen ohne Auswahl: der Tagesdurchschnitt und die Fenster des Tages.
 - **Balken je Viertelstunde** in drei Stufen: grün günstig, grau mittel, rot teuer, jeweils Drittel des Tages; Negativpreise in Petrol als „unter null“. Unter 5 ct/kWh Tagesspanne gibt es keine Stufen. Die Balken wachsen beim Wechsel von Tag oder Preisart kurz auf, bei reduzierter Bewegung nicht.
-- **Schalter „Börse“/„Ihr Preis“:** dieselben Balken als Endpreis aus dem Fahrplan (`importPriceCtKwh`). Die jeweils andere Zahl steht unter dem Moment („Davon Börse: −4,1 ct/kWh …“). Bei Negativpreisen heißt das Urteil dann „Börse unter null“.
+- **Nur der Börsenpreis (entschieden am 29.09.2026):** kein Schalter und kein Endpreis. Der Schalter „Börse“/„Ihr Preis“ aus einem Zwischenstand war nicht verständlich. Die bisherige Zeile „Ihr Bezugspreis“ entfällt ebenfalls.
 - **Plan-Streifen** unter den Balken: Speicher lädt, gibt ab, laut Plan. Nur mit Speicher.
 - **Wann starten?** Günstigster zusammenhängender Block der gewählten Dauer unter den bekannten kommenden Viertelstunden, heute ab jetzt und morgen, sobald veröffentlicht. Ergebnis für 3 Stunden um 10:40 Uhr: „Start heute 11:45 Uhr, fertig 14:45 Uhr · Ø 2,1 ct/kWh“, dazu „1,1 ct/kWh weniger als bei Start jetzt“ oder „Später wird es für diese Dauer nicht günstiger.“ Liegt das Fenster morgen, wechselt das Bild auf morgen. „In den Balken zeigen“ setzt den Moment auf den Start.
 - **Kennzahlen** als eine Zeile unter dem Bild (Ø, günstigste, teuerste). Rückblick und Erklärung wie in Fassung 1.
@@ -82,7 +82,7 @@ Ab 820 Pixeln Inhaltsbreite stehen Moment und Tagesbild links, Rechner und Angab
 - Erzeugung ist kein Überschuss: „Wann ist am meisten Sonne?“ sagt das dazu.
 - Unbekannt ist keine Null: „—“ mit Grund, und fehlt der Folgetag, steht, wann er kommt.
 - Gemessen gefüllt, erwartet schraffiert, geplant mit „laut Plan“.
-- Börsenpreis und Ihr Preis getrennt; Ihr Preis wird gelesen, nie aus Tariffeldern gerechnet.
+- Nur der Börsenpreis; kein Endpreis, nichts aus Tariffeldern gerechnet.
 - Ein Urteil braucht eine Spanne: unter 5 ct/kWh Tagesspanne kein günstig oder teuer und keine Fenster (`MIN_SPANNE_CT`).
 - Keine zweite Erzeugungsprognose: kW nur aus der gespeicherten PV-Prognose, nie aus Bewölkung und kWp.
 - Farbe nie allein: Balkenfarben mit Legende, das Urteil des gewählten Balkens als Wort. Vor der Umsetzung die drei Stufen mit dem Dataviz-Validator prüfen (Rot/Grün bei Farbsehschwäche).
@@ -93,7 +93,6 @@ Ab 820 Pixeln Inhaltsbreite stehen Moment und Tagesbild links, Rechner und Angab
 | Angabe | Quelle | Stand |
 |---|---|---|
 | Börsenpreis je Viertelstunde | `/price-history?range=day` (energy-charts.info, Fraunhofer ISE) | vorhanden |
-| Ihr Preis jetzt | `/schedule` → `importPriceCtKwh` | vorhanden |
 | Speicher laut Plan | `/schedule` → `batteryKw`, `slotRole` | vorhanden |
 | Rückblick | `/price-history?range=week|month|year` | vorhanden |
 | Himmel und Temperatur | `/weather` (Open-Meteo, drei Tage, stündlich) | vorhanden |
@@ -103,7 +102,7 @@ Ab 820 Pixeln Inhaltsbreite stehen Moment und Tagesbild links, Rechner und Angab
 ## Umsetzung in Schritten
 
 1. **Ableitungen:** Stufen im Tagesvergleich, Satz nach vorn, „Wann starten?“ und „Wann ist am meisten Sonne?“ als reine Module mit Tests (etwa `marktpreise.ts`, neu `startfenster.ts`). `preisFenster.ts` bleibt die Grammatik für den Satz und das Cockpit.
-2. **Preise, Moment und Balken:** Balken je Viertelstunde mit Stufen, Jetzt, Auswahl per Wischen, Maus und Tasten (`PriceHistoryChart.tsx` oder eigenes SVG), Moment oben, Schalter „Börse“/„Ihr Preis“, Plan-Streifen aus `/schedule`.
+2. **Preise, Moment und Balken:** Balken je Viertelstunde mit Stufen, Jetzt, Auswahl per Wischen, Maus und Tasten (`PriceHistoryChart.tsx` oder eigenes SVG), Moment oben, Plan-Streifen aus `/schedule`.
 3. **Preise, Rechner und Rückblick:** Karte „Wann starten?“, Rückblick als Blatt (`BottomSheet`) bzw. Modal am Rechner. Adressen mit `z=`/`at=` bleiben gültig.
 4. **Wetter:** Tageskarten mit Wischen, Moment, Tagesbild mit gemessen und erwartet (`/history?range=day`), Rechner, antippbare Stunden (`WetterSection`, `wetterKarte.ts`, `WeatherChart.tsx`). Ein Wortsatz für den Himmel in `weather.ts` und `wetterLeistung.ts`.
 5. **PV-Prognose (E4):** Lese-Endpunkt auf `forecast` für das aktive PV-Modell der Anlage, jüngster Lauf, mandantengetrennt wie die übrigen `/sites`-Routen. Zu prüfen, ob Anlagen ohne Speicher dort Werte haben.
@@ -113,7 +112,7 @@ Ab 820 Pixeln Inhaltsbreite stehen Moment und Tagesbild links, Rechner und Angab
 
 Der Prototyp zeigt jeweils Option A.
 
-- **E1 · Was der Schalter zuerst zeigt.** A: Börse, Ihr Preis als Zeile darunter und einen Tipp entfernt. B: Ihr Preis (ohne Fahrplan gibt es ihn nicht, dann fällt der Schalter weg).
+- **E1 · Welcher Preis:** entschieden, nur der Börsenpreis.
 - **E2 · Wie die Kurve günstig und teuer zeigt.** A: Balken in drei Stufen im Tagesvergleich (Fassung 2). Weicht von der heutigen Regel ab, die nur zwei benannte Fenster auf einer Linie erlaubt (`preisFenster.ts`, kein Ampel-Verlauf). B: Linie mit zwei Fenstern wie Fassung 1 und heute.
 - **E3 · Ort des Rückblicks.** A: eigene Ansicht über die Zeile „Rückblick“. B: Zeitleiste oben wie heute; die Antwort rutscht um etwa 140 Pixel nach unten.
 - **E4 · Quelle der erwarteten Leistung.** A: neuer Lese-Endpunkt auf `forecast` (bis 48 h, morgen auch am Vormittag). B: weiter nur über den Fahrplan; morgen erscheint erst, wenn der Plan so weit reicht, ohne Speicher gibt es keine Leistung.

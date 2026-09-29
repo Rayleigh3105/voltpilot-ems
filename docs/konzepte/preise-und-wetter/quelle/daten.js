@@ -51,10 +51,6 @@ const DATEN = (() => {
     negativ: { label: 'Negativpreise', minute: 12 * 60 + 50, heute: PREIS.negativ, morgen: null },
   };
 
-  /* Ihr Preis: im Portal aus dem Fahrplan GELESEN (importPriceCtKwh). Hier nur fürs Beispiel
-     aus den fiktiven Tariffeldern der Test-Fixtures gebildet (Aufschlag 4,5 ct, Netz 8 ct,
-     Abgaben 2 ct, 19 % MwSt.). */
-  const ihrPreis = (ct) => Math.round((ct + 4.5 + 8 + 2) * 1.19 * 10) / 10;
 
   /* Speicher laut Plan (nur kommende Viertelstunden): laden im günstigen Drittel bei Tag,
      abgeben im teuren Drittel. +1 lädt, −1 gibt ab, 0 ruht. */
@@ -163,5 +159,5 @@ const DATEN = (() => {
     ohne: { label: 'Ohne Prognose', ...wetterFall('sonnig', 31), ohnePrognose: true },
   };
 
-  return { TAGE, PREIS_FAELLE, WETTER_FAELLE, ihrPreis, plan, rueckblick: rueckblick() };
+  return { TAGE, PREIS_FAELLE, WETTER_FAELLE, plan, rueckblick: rueckblick() };
 })();

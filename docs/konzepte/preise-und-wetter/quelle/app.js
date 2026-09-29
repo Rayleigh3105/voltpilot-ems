@@ -3,7 +3,7 @@
    und folgen den Regeln des Portals (preisFenster.ts, weather.ts, wetterLeistung.ts); wo sie neu
    sind, steht es dabei. */
 (() => {
-  const { TAGE, PREIS_FAELLE, WETTER_FAELLE, ihrPreis, plan: planAus, rueckblick } = DATEN;
+  const { TAGE, PREIS_FAELLE, WETTER_FAELLE, plan: planAus, rueckblick } = DATEN;
   const NBSP = ' ';
 
   /* ---------- Format ---------- */
@@ -248,7 +248,7 @@
   /* ---------- Zustand ---------- */
   const S = {
     seite: 'preise', blatt: false, rb: 'woche',
-    preisFall: 'vormittag', preisTag: 0, preisSel: null, preisReihe: 'boerse', preisDauer: null,
+    preisFall: 'vormittag', preisTag: 0, preisSel: null, preisDauer: null,
     wetterFall: 'sonnig', wetterTag: 0, wetterSel: null, wetterDauer: null,
   };
 
@@ -282,7 +282,7 @@
     if (!fall.morgen) S.preisTag = 0;
     const jetzt = Math.floor(fall.minute / 15);
     const roh = S.preisTag === 1 ? fall.morgen : fall.heute;
-    const wert = S.preisReihe === 'ihr' ? ihrPreis : (v) => v;
+    const wert = (v) => v;
     return {
       fall, jetzt, roh, wert,
       werte: roh.map(wert),
@@ -291,7 +291,7 @@
       finder: S.preisDauer ? startfenster(fall, jetzt, S.preisDauer, wert) : null,
     };
   }
-  const reiheWort = () => (S.preisReihe === 'ihr' ? 'Ihr Preis' : 'Börsenpreis');
+  const reiheWort = () => 'Börsenpreis';
 
   // Der Moment oben: jetzt, oder die Viertelstunde, auf der der Finger liegt.
   function momentPreis(root, sel) {
@@ -326,7 +326,7 @@
     q('num').innerHTML = `${zahl(k.wert(roh))}<small>ct/kWh</small>`;
     chip.hidden = false;
     chip.className = `verdict v-${u}`;
-    chip.innerHTML = `<i></i>${u === 'negativ' && S.preisReihe === 'ihr' ? 'Börse unter null' : URTEIL[u]}`;
+    chip.innerHTML = `<i></i>${URTEIL[u]}`;
     let say;
     if (heute && i === k.jetzt) {
       const { s1, s2 } = preisSaetze(k.fall, k.jetzt);
@@ -339,9 +339,7 @@
           : 'Laut Plan ruht Ihr Speicher in dieser Viertelstunde.';
     }
     q('say').innerHTML = say;
-    q('own').innerHTML = S.preisReihe === 'boerse'
-      ? `Ihr Preis: <b>${ctW(ihrPreis(roh))}</b> mit Netzentgelt, Abgaben und Steuern`
-      : `Davon Börse: <b>${ctW(roh)}</b>. Dazu kommen Aufschlag, Netzentgelt, Abgaben und Steuern.`;
+    q('own').textContent = 'Dazu kommen bei Ihnen Aufschlag, Netzentgelt, Abgaben und Steuern.';
   }
 
   function finderPreisHtml(k) {
@@ -363,7 +361,7 @@
         ${spar}
         <button type="button" class="f-zeig" data-act="pzeig">In den Balken zeigen ${ico('right')}</button>
       </div>
-      <p class="f-note">${bis} ${S.preisReihe === 'ihr' ? 'Gerechnet mit Ihrem Preis.' : 'Gerechnet mit dem Börsenpreis.'}</p>`;
+      <p class="f-note">${bis} </p>`;
   }
 
   function preisSeite() {
@@ -386,10 +384,6 @@
         </section>
         <section class="card" aria-label="Tagesverlauf">
           <div class="card-h"><h2>Tagesverlauf</h2>
-            <div class="mini-seg" role="group" aria-label="Preisart">
-              <button type="button" aria-pressed="${S.preisReihe === 'boerse'}" data-act="reihe" data-r="boerse">Börse</button>
-              <button type="button" aria-pressed="${S.preisReihe === 'ihr'}" data-act="reihe" data-r="ihr">Ihr Preis</button>
-            </div>
           </div>
           <div class="daysw" role="tablist" aria-label="Tag">
             <button type="button" role="tab" aria-selected="${S.preisTag === 0}" data-act="ptag" data-tag="0">Heute<small>${TAGE[0].kurz}</small></button>
@@ -401,7 +395,7 @@
             <span><i style="background:var(--lvl-guenstig)"></i>günstig</span>
             <span><i style="background:var(--lvl-mittel)"></i>mittel</span>
             <span><i style="background:var(--lvl-teuer)"></i>teuer</span>
-            ${hatNeg ? `<span><i style="background:var(--neg)"></i>${S.preisReihe === 'ihr' ? 'Börse unter null' : 'unter null'}</span>` : ''}
+            ${hatNeg ? `<span><i style="background:var(--neg)"></i>unter null</span>` : ''}
             <span class="leg-note">im Vergleich zum Tag</span>
           </div>
           <div class="legend">
@@ -427,7 +421,7 @@
           <summary><span>Was ist der Börsenstrompreis?</span>${ico('right')}</summary>
           <div class="ex">
             <p>Er entsteht jeden Tag in der Day-Ahead-Auktion für die Gebotszone Deutschland-Luxemburg (DE-LU) und gilt je Viertelstunde. Die Preise für morgen stehen gegen 13 Uhr fest.</p>
-            <p><b>Ihr Preis</b> enthält zusätzlich den Aufschlag Ihres Anbieters, Netzentgelte, Abgaben und Steuern. VoltPilot liest ihn aus Ihrem Fahrplan.</p>
+            <p><b>Was Sie zahlen</b> ist höher: Zum Börsenpreis kommen der Aufschlag Ihres Anbieters, Netzentgelte, Abgaben und Steuern. Sie steigen und fallen aber mit dem Börsenpreis; günstige Zeiten bleiben günstig.</p>
             <p><b>Günstig, mittel, teuer</b> gelten im Vergleich zum Tag: unteres, mittleres und oberes Drittel der Viertelstunden. Unter null ist immer „unter null“.</p>
             <p><b>Wann starten?</b> rechnet nur mit Preisen, die schon feststehen, und nur nach vorn. Es plant und schaltet nichts.</p>
             <table class="profi"><caption class="sr">Werte für Fachleute, ${tagName.wort}</caption>${profi}</table>
@@ -1066,7 +1060,6 @@
     if (act === 'rb') { S.rb = el.dataset.rb; blattOeffnen(); return; }
     // Preise
     if (act === 'ptag') { S.preisTag = Number(el.dataset.tag); S.preisSel = null; animieren = true; alles(false); return; }
-    if (act === 'reihe') { S.preisReihe = el.dataset.r; animieren = true; alles(false); return; }
     if (act === 'pjetzt') {
       if (S.preisTag !== 0) { S.preisTag = 0; S.preisSel = null; animieren = true; alles(false); return; }
       root.querySelector('[data-chart="preis"]')?._waehle(null);
