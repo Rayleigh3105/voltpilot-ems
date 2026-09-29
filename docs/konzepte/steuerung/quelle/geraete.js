@@ -17,13 +17,13 @@ const GERAETE = [
   },
   {
     id: 'hs', typ: 'heating-rod', vorlage: 'Heizstab', name: 'Heizstab Warmwasser', kurz: 'Heizstab', gruppe: 'waerme', icon: 'flame',
-    anschluss: 'I/O-Modul · drei Schaltausgänge', form: 'stufig', stufen: [1, 2, 3], gemessen: true,
+    anschluss: 'I/O-Modul Technikraum · DO1–DO3', form: 'stufig', stufen: [1, 2, 3], gemessen: true,
     fuehler: 'Warmwasser-Fühler (Modbus, °C)',
     auftrag: { art: 'sonne', ab: 1 }, ziel: { art: 'temp', grad: 60 },
   },
   {
     id: 'wp', typ: 'heat-pump-sgready', vorlage: 'Wärmepumpe', name: 'Wärmepumpe', kurz: 'Wärmepumpe', gruppe: 'waerme', icon: 'heatpump',
-    anschluss: 'I/O-Modul · SG-Ready-Eingang 2', form: 'freigabe', gemessen: false, mehrKw: 1.5,
+    anschluss: 'I/O-Modul Technikraum · Erweiterung DO9 → SG-Ready-Eingang 2', form: 'freigabe', gemessen: false, mehrKw: 1.5,
     auftrag: { art: 'sonne', ab: 2 },
   },
   {

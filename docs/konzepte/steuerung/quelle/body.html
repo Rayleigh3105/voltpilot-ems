@@ -1,4 +1,4 @@
-<div class="pg">
+<div class="pg" lang="de">
   <header class="pagebar" id="kopf">
     <p class="eyebrow">Konzeptentwurf · Steuerung · Fassung 1 · 29.09.2026 <span class="chip-ex">Beispieldaten</span></p>
     <h1>Sagen, was laufen soll. <em>Sehen, was passiert.</em></h1>
@@ -30,7 +30,7 @@
           <li><span><b>Ihre Regel bauen.</b><span class="sek">„Wenn der Börsenpreis unter 10 ct/kWh liegt, Heizstab einschalten“, mit Probelauf über heute und morgen. <button class="go" data-go="regel">Regel bauen</button></span></span></li>
           <li><span><b>Ein Gerät öffnen.</b><span class="sek">Aus · Smart · Ein, der Weg vom Wunsch zur gemessenen Wirkung, Smart-Auftrag, Bedingungen. <button class="go" data-go="heizstab">Heizstab öffnen</button></span></span></li>
           <li><span><b>Laden.</b><span class="sek">Beide Ladepunkte, Ladeziel mit Plan, Netzanschluss, Speicher-Vorrang bis zu einem Ladestand. <button class="go" data-go="laden">Zum Laden</button></span></span></li>
-          <li><span><b>Mehr.</b><span class="sek"><button class="go" data-go="szene">Szene „Urlaub“</button> · <button class="go" data-go="neu">neu verbundene Spülmaschine übernehmen</button></span></span></li>
+          <li><span><b>Mehr.</b><span class="sek"><button class="go" data-go="szene">Szene „Urlaub“</button> · <button class="go" data-go="neu">neu verbundene Spülmaschine übernehmen</button> · <button class="go" data-go="io">I/O-Modul mit acht Ausgängen</button></span></span></li>
         </ol>
         <div class="simbox">
           <b>Uhrzeit der Vorschau</b>
@@ -175,6 +175,25 @@
         </div>
         <p class="cap">Im Prototyp: die Spülmaschine ist neu, die Lüftung Werkstatt misst nur, die Sauna ist nicht verbunden. Die Daten dafür liefern <code>/verbraucher</code> (Steuerart, <code>optionen.schreibbar</code>) und die Komponenten der Anlage; ob eine Steuerart schon bewusst gewählt wurde, braucht ein eigenes Merkmal.</p>
       </div>
+    </div>
+  </section>
+
+  <section class="sec" id="io-modul">
+    <h2>Ein Modul, viele Geräte</h2>
+    <p class="intro">Hinten ein I/O-Modul (Ebyte M31) mit acht Relais-Ausgängen, vorne verschiedene Verbraucher. Die Ausgänge werden in der Anlage den Geräten zugeordnet: drei Ausgänge für die drei Stufen eines Heizstabs, die übrigen fünf für Pumpen über potenzialfreie Kontakte. In der Steuerung taucht das Modul nicht auf, nur die Geräte dahinter: ein Heizstab mit Stufen und fünf Pumpen, jede mit eigenem Auftrag. Ausgänge antippen und umbelegen.</p>
+    <div class="io-wrap" id="io-demo"></div>
+    <div class="tabwrap" style="margin-top:24px">
+      <table class="doc">
+        <thead><tr><th>Thema</th><th>Heute im Code</th><th>Im Konzept</th></tr></thead>
+        <tbody>
+          <tr><th>Ausgang je Gerät</th><td class="leise">Ein Verbraucher bindet genau einen Ausgang (<code>consumer_profile.io_entity_id</code> + <code>io_channel</code>, <code>V20260924120000</code>); ein Ausgang gehört höchstens einem Verbraucher.</td><td>Ein Gerät darf mehrere Ausgänge belegen, jeder mit seiner Leistung. Ein Ausgang gehört weiter höchstens einem Gerät.</td></tr>
+          <tr><th>Stufen</th><td class="leise">Steuerform „stufenweise“ gibt es, aber ohne Eingabe der Stufen („Es fehlen die Leistungsstufen.“). Der Box-Treiber schaltet je Ausgang nur ein oder aus; ein Sollwert unter der Nennleistung heißt aus (<code>ebyte/control.go</code>, <code>PlanFor</code>).</td><td>Die Stufen ergeben sich aus den Ausgängen (1 / 2 / 3 kW). Die Box macht aus dem Sollwert die höchste passende Stufe und schließt die Ausgänge der Reihe nach.</td></tr>
+          <tr><th>Behelf heute</th><td class="leise">Drei einzelne Verbraucher „Heizstab Stufe 1/2/3“. Jeder liest denselben Überschuss für sich; das führt zu Takten und kann alle drei gleichzeitig schalten.</td><td>Nicht nötig. Ein Gerät, eine Karte, eine Warum-Zeile („Stufe 2 von 3, 2 kW Sonnenstrom“).</td></tr>
+          <tr><th>Pumpen</th><td class="leise">Geht heute: je Ausgang ein Verbraucher (Typ Pumpe oder Steuerbare Last), Energie angenommen (Nennleistung × Zeit), wenn kein Zähler misst.</td><td>Gleich, dazu Gerätevorlagen (Zirkulation, Brunnen, Zisterne …) mit passendem Vorschlag für Smart.</td></tr>
+          <tr><th>Schutz</th><td class="leise">Einschalten nur mit eingerichtetem Watchdog des Moduls (60 s); ohne Verbindung fallen die Ausgänge ab. Zyklenwächter je Verbraucher.</td><td>Dazu: Stufen einzeln mit Abstand zuschalten, sofort abschalten; Mindestlaufzeit und Starts je Ausgang; ein Eingang kann einen ausgelösten Sicherheitstemperaturbegrenzer melden.</td></tr>
+          <tr><th>Umbau</th><td colspan="2">Neue Tabelle für die Ausgänge eines Verbrauchers (Ausgang, Leistung, Reihenfolge; eindeutig je Modul und Ausgang), die bestehende Einzelbindung wird übernommen (neue Flyway-Version, alte Migration bleibt). Registry-Treiber mit Liste der Ausgänge als additive Vertragsänderung; <code>PlanFor</code> für mehrere Ausgänge mit Tests. In Anlage › Aufbau die Klemmleiste als Oberfläche.</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -471,6 +490,11 @@
         <legend><span class="id">E8</span>Was sagt der Kunde beim Anlegen in der Anlage?</legend>
         <label class="opt"><input type="radio" name="E8" value="A: Gerätevorlage in Kundensprache, Steuerung schlägt daraus vor" checked><span><b>A · Gerätevorlage</b><span class="emp">empfohlen</span><span>Waschmaschine, Poolpumpe, Klimagerät … legen den Typ an; die Steuerung macht daraus den Smart-Vorschlag.</span></span></label>
         <label class="opt"><input type="radio" name="E8" value="B: technischer Typ wie heute"><span><b>B · Technischer Typ</b><span>Sieben Typen mit „Was ist das?“; die Steuerung schlägt nichts vor.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E9" data-lavish-question="E9 Mehrere Ausgänge">
+        <legend><span class="id">E9</span>Darf ein Gerät mehrere Ausgänge belegen?</legend>
+        <label class="opt"><input type="radio" name="E9" value="A: ja, Stufen über mehrere Ausgänge" checked><span><b>A · Ja, mit Stufen</b><span class="emp">empfohlen</span><span>Heizstab mit drei Stufen auf DO1–DO3 ist ein Gerät. Braucht Tabelle, Vertrag und Box-Treiber.</span></span></label>
+        <label class="opt"><input type="radio" name="E9" value="B: je Ausgang ein Gerät wie heute"><span><b>B · Je Ausgang ein Gerät</b><span>Wie heute. Ein Stufen-Heizstab bleibt drei einzelne Geräte, die sich nicht abstimmen.</span></span></label>
       </fieldset>
       <div class="ent-send">
         <button type="submit" class="btn">Antworten übernehmen</button>

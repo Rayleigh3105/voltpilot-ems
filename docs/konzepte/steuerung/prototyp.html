@@ -214,6 +214,49 @@ table.doc td.leise{color:var(--c-muted-fg)}
 .muster li{padding:12px 14px;border-radius:14px;background:var(--c-card);border:1px solid var(--c-border);font-size:15px;color:var(--c-muted-fg)}
 .muster li b{color:var(--c-fg);font-family:var(--font)}
 
+/* Ein Modul, viele Geräte */
+.io-wrap{display:grid;gap:18px;grid-template-columns:minmax(0,1fr);font-family:var(--font)}
+@media (min-width:960px){.io-wrap{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}}
+.io-karte{background:var(--c-card);border:1px solid var(--c-border);border-radius:20px;padding:16px;display:grid;gap:14px;align-content:start;min-width:0}
+.io-pfad{margin:0;font:700 12px/1.3 var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--c-muted-fg)}
+.io-kopf{display:flex;gap:12px;align-items:center;min-width:0}
+.io-kopf .ico{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--c-muted);color:var(--navy);flex:none}
+.io-kopf .ico svg{width:23px;height:23px}
+.io-kopf b{display:block;font:800 16.5px/1.25 var(--font)}
+.io-kopf small{display:block;font:500 13px/1.35 var(--font);color:var(--c-muted-fg)}
+.io-leiste{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px;border-radius:16px;background:#e9eef4;border:1px solid #d5dde8}
+.io-do{position:relative;display:grid;gap:2px;align-content:start;min-height:92px;padding:8px 8px 8px 11px;border-radius:12px;border:1.5px solid var(--c-border);background:var(--c-card);text-align:left;cursor:pointer;font:inherit;color:inherit;min-width:0}
+.io-do::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:4px;border-radius:0 3px 3px 0;background:var(--farbe,#cbd5e1)}
+.io-do .nr{font:800 12px var(--mono);color:var(--c-muted-fg)}
+.io-do .lampe{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:#cbd5e1}
+.io-do .lampe.an{background:var(--st-on);box-shadow:0 0 0 3px color-mix(in srgb,var(--st-on) 25%,transparent)}
+.io-do b{font:800 13px/1.2 var(--font);overflow-wrap:anywhere;hyphens:auto}
+@media (max-width:480px){.io-leiste{gap:6px;padding:8px}.io-do{padding:8px 6px 8px 9px;min-height:84px}.io-do b{font-size:12px}}
+.io-do small{font:600 11.5px/1.3 var(--font);color:var(--c-muted-fg)}
+.io-do.frei b{color:var(--c-muted-fg);font-weight:600}
+.io-do[aria-pressed="true"]{border-color:var(--c-fg);box-shadow:inset 0 0 0 1px var(--c-fg)}
+.io-panel{display:grid;gap:10px;padding:14px;border-radius:16px;border:1px solid var(--c-border);background:var(--c-bg)}
+.io-panel h3{margin:0;font:800 15px var(--font)}
+.io-panel p{margin:0;font:500 13.5px/1.45 var(--font);color:var(--c-muted-fg)}
+.io-stufen{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.io-stufen li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px;border-radius:12px;background:var(--c-card);border:1px solid var(--c-border);font:600 14px var(--font)}
+.io-liste{display:grid;gap:8px}
+.io-g{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;padding:12px;border-radius:16px;background:var(--c-card);border:1px solid var(--c-border)}
+.io-g .ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--c-muted);color:var(--navy)}
+.io-g .ico svg{width:21px;height:21px}
+.io-g b{font:800 15px/1.25 var(--font)}
+.io-g small{display:block;font:500 13px/1.4 var(--font);color:var(--c-muted-fg)}
+.io-g .smart{display:block;margin-top:3px;font:600 13px/1.4 var(--font);color:var(--c-fg)}
+.io-probe{display:grid;gap:8px;padding:14px;border-radius:16px;background:var(--pv-soft);border:1px solid color-mix(in srgb,var(--pv) 30%,transparent)}
+.io-probe b{font:800 14.5px var(--font)}
+.io-probe input{width:100%;accent-color:var(--pv)}
+.io-probe p{margin:0;font:600 13.5px/1.45 var(--font);color:#7c2d12}
+.io-lampen{display:flex;gap:6px;flex-wrap:wrap}
+.io-lampen span{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;background:var(--c-card);font:700 12px var(--mono);color:var(--c-muted-fg)}
+.io-lampen span i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.io-lampen span.an{color:var(--st-on)}
+.io-lampen span.an i{background:var(--st-on)}
+
 /* Rechner-Vorschau */
 .deskwrap{min-width:0}
 .desk-outer{position:relative;overflow:hidden;border-radius:18px;border:1px solid var(--c-border);background:var(--c-bg);box-shadow:0 24px 60px color-mix(in srgb,var(--navy) 12%,transparent)}
@@ -672,7 +715,7 @@ details.fein .in{padding:0 12px 12px;display:grid;gap:4px}
 </style>
 </head>
 <body>
-<div class="pg">
+<div class="pg" lang="de">
   <header class="pagebar" id="kopf">
     <p class="eyebrow">Konzeptentwurf · Steuerung · Fassung 1 · 29.09.2026 <span class="chip-ex">Beispieldaten</span></p>
     <h1>Sagen, was laufen soll. <em>Sehen, was passiert.</em></h1>
@@ -704,7 +747,7 @@ details.fein .in{padding:0 12px 12px;display:grid;gap:4px}
           <li><span><b>Ihre Regel bauen.</b><span class="sek">„Wenn der Börsenpreis unter 10 ct/kWh liegt, Heizstab einschalten“, mit Probelauf über heute und morgen. <button class="go" data-go="regel">Regel bauen</button></span></span></li>
           <li><span><b>Ein Gerät öffnen.</b><span class="sek">Aus · Smart · Ein, der Weg vom Wunsch zur gemessenen Wirkung, Smart-Auftrag, Bedingungen. <button class="go" data-go="heizstab">Heizstab öffnen</button></span></span></li>
           <li><span><b>Laden.</b><span class="sek">Beide Ladepunkte, Ladeziel mit Plan, Netzanschluss, Speicher-Vorrang bis zu einem Ladestand. <button class="go" data-go="laden">Zum Laden</button></span></span></li>
-          <li><span><b>Mehr.</b><span class="sek"><button class="go" data-go="szene">Szene „Urlaub“</button> · <button class="go" data-go="neu">neu verbundene Spülmaschine übernehmen</button></span></span></li>
+          <li><span><b>Mehr.</b><span class="sek"><button class="go" data-go="szene">Szene „Urlaub“</button> · <button class="go" data-go="neu">neu verbundene Spülmaschine übernehmen</button> · <button class="go" data-go="io">I/O-Modul mit acht Ausgängen</button></span></span></li>
         </ol>
         <div class="simbox">
           <b>Uhrzeit der Vorschau</b>
@@ -849,6 +892,25 @@ details.fein .in{padding:0 12px 12px;display:grid;gap:4px}
         </div>
         <p class="cap">Im Prototyp: die Spülmaschine ist neu, die Lüftung Werkstatt misst nur, die Sauna ist nicht verbunden. Die Daten dafür liefern <code>/verbraucher</code> (Steuerart, <code>optionen.schreibbar</code>) und die Komponenten der Anlage; ob eine Steuerart schon bewusst gewählt wurde, braucht ein eigenes Merkmal.</p>
       </div>
+    </div>
+  </section>
+
+  <section class="sec" id="io-modul">
+    <h2>Ein Modul, viele Geräte</h2>
+    <p class="intro">Hinten ein I/O-Modul (Ebyte M31) mit acht Relais-Ausgängen, vorne verschiedene Verbraucher. Die Ausgänge werden in der Anlage den Geräten zugeordnet: drei Ausgänge für die drei Stufen eines Heizstabs, die übrigen fünf für Pumpen über potenzialfreie Kontakte. In der Steuerung taucht das Modul nicht auf, nur die Geräte dahinter: ein Heizstab mit Stufen und fünf Pumpen, jede mit eigenem Auftrag. Ausgänge antippen und umbelegen.</p>
+    <div class="io-wrap" id="io-demo"></div>
+    <div class="tabwrap" style="margin-top:24px">
+      <table class="doc">
+        <thead><tr><th>Thema</th><th>Heute im Code</th><th>Im Konzept</th></tr></thead>
+        <tbody>
+          <tr><th>Ausgang je Gerät</th><td class="leise">Ein Verbraucher bindet genau einen Ausgang (<code>consumer_profile.io_entity_id</code> + <code>io_channel</code>, <code>V20260924120000</code>); ein Ausgang gehört höchstens einem Verbraucher.</td><td>Ein Gerät darf mehrere Ausgänge belegen, jeder mit seiner Leistung. Ein Ausgang gehört weiter höchstens einem Gerät.</td></tr>
+          <tr><th>Stufen</th><td class="leise">Steuerform „stufenweise“ gibt es, aber ohne Eingabe der Stufen („Es fehlen die Leistungsstufen.“). Der Box-Treiber schaltet je Ausgang nur ein oder aus; ein Sollwert unter der Nennleistung heißt aus (<code>ebyte/control.go</code>, <code>PlanFor</code>).</td><td>Die Stufen ergeben sich aus den Ausgängen (1 / 2 / 3 kW). Die Box macht aus dem Sollwert die höchste passende Stufe und schließt die Ausgänge der Reihe nach.</td></tr>
+          <tr><th>Behelf heute</th><td class="leise">Drei einzelne Verbraucher „Heizstab Stufe 1/2/3“. Jeder liest denselben Überschuss für sich; das führt zu Takten und kann alle drei gleichzeitig schalten.</td><td>Nicht nötig. Ein Gerät, eine Karte, eine Warum-Zeile („Stufe 2 von 3, 2 kW Sonnenstrom“).</td></tr>
+          <tr><th>Pumpen</th><td class="leise">Geht heute: je Ausgang ein Verbraucher (Typ Pumpe oder Steuerbare Last), Energie angenommen (Nennleistung × Zeit), wenn kein Zähler misst.</td><td>Gleich, dazu Gerätevorlagen (Zirkulation, Brunnen, Zisterne …) mit passendem Vorschlag für Smart.</td></tr>
+          <tr><th>Schutz</th><td class="leise">Einschalten nur mit eingerichtetem Watchdog des Moduls (60 s); ohne Verbindung fallen die Ausgänge ab. Zyklenwächter je Verbraucher.</td><td>Dazu: Stufen einzeln mit Abstand zuschalten, sofort abschalten; Mindestlaufzeit und Starts je Ausgang; ein Eingang kann einen ausgelösten Sicherheitstemperaturbegrenzer melden.</td></tr>
+          <tr><th>Umbau</th><td colspan="2">Neue Tabelle für die Ausgänge eines Verbrauchers (Ausgang, Leistung, Reihenfolge; eindeutig je Modul und Ausgang), die bestehende Einzelbindung wird übernommen (neue Flyway-Version, alte Migration bleibt). Registry-Treiber mit Liste der Ausgänge als additive Vertragsänderung; <code>PlanFor</code> für mehrere Ausgänge mit Tests. In Anlage › Aufbau die Klemmleiste als Oberfläche.</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -1146,6 +1208,11 @@ details.fein .in{padding:0 12px 12px;display:grid;gap:4px}
         <label class="opt"><input type="radio" name="E8" value="A: Gerätevorlage in Kundensprache, Steuerung schlägt daraus vor" checked><span><b>A · Gerätevorlage</b><span class="emp">empfohlen</span><span>Waschmaschine, Poolpumpe, Klimagerät … legen den Typ an; die Steuerung macht daraus den Smart-Vorschlag.</span></span></label>
         <label class="opt"><input type="radio" name="E8" value="B: technischer Typ wie heute"><span><b>B · Technischer Typ</b><span>Sieben Typen mit „Was ist das?“; die Steuerung schlägt nichts vor.</span></span></label>
       </fieldset>
+      <fieldset class="ent" data-id="E9" data-lavish-question="E9 Mehrere Ausgänge">
+        <legend><span class="id">E9</span>Darf ein Gerät mehrere Ausgänge belegen?</legend>
+        <label class="opt"><input type="radio" name="E9" value="A: ja, Stufen über mehrere Ausgänge" checked><span><b>A · Ja, mit Stufen</b><span class="emp">empfohlen</span><span>Heizstab mit drei Stufen auf DO1–DO3 ist ein Gerät. Braucht Tabelle, Vertrag und Box-Treiber.</span></span></label>
+        <label class="opt"><input type="radio" name="E9" value="B: je Ausgang ein Gerät wie heute"><span><b>B · Je Ausgang ein Gerät</b><span>Wie heute. Ein Stufen-Heizstab bleibt drei einzelne Geräte, die sich nicht abstimmen.</span></span></label>
+      </fieldset>
       <div class="ent-send">
         <button type="submit" class="btn">Antworten übernehmen</button>
         <span class="ent-status" id="ent-status" role="status" aria-live="polite"></span>
@@ -1273,13 +1340,13 @@ const GERAETE = [
   },
   {
     id: 'hs', typ: 'heating-rod', vorlage: 'Heizstab', name: 'Heizstab Warmwasser', kurz: 'Heizstab', gruppe: 'waerme', icon: 'flame',
-    anschluss: 'I/O-Modul · drei Schaltausgänge', form: 'stufig', stufen: [1, 2, 3], gemessen: true,
+    anschluss: 'I/O-Modul Technikraum · DO1–DO3', form: 'stufig', stufen: [1, 2, 3], gemessen: true,
     fuehler: 'Warmwasser-Fühler (Modbus, °C)',
     auftrag: { art: 'sonne', ab: 1 }, ziel: { art: 'temp', grad: 60 },
   },
   {
     id: 'wp', typ: 'heat-pump-sgready', vorlage: 'Wärmepumpe', name: 'Wärmepumpe', kurz: 'Wärmepumpe', gruppe: 'waerme', icon: 'heatpump',
-    anschluss: 'I/O-Modul · SG-Ready-Eingang 2', form: 'freigabe', gemessen: false, mehrKw: 1.5,
+    anschluss: 'I/O-Modul Technikraum · Erweiterung DO9 → SG-Ready-Eingang 2', form: 'freigabe', gemessen: false, mehrKw: 1.5,
     auftrag: { art: 'sonne', ab: 2 },
   },
   {
@@ -3696,13 +3763,14 @@ function zumTelefon() {
 }
 function geheZu(ziel) {
   if (S.sheet) blattZu();
-  zumTelefon();
+  if (ziel !== 'io') zumTelefon();
   setTimeout(() => {
     if (ziel === 'tagesbild') { S.tab = 'geraete'; S.reo = null; renderApp(); const el = document.getElementById('tl-host'); if (el) el.scrollIntoView({ block: 'center' }); }
     else if (ziel === 'reo') { S.tab = 'geraete'; S.reo = S.cfg.reihenfolge.filter((x) => SIM.sonnig(S.cfg, x)); renderApp(); zuListe(); }
     else if (ziel === 'regel') { S.tab = 'regeln'; S.reo = null; renderApp(); blattAuf({ art: 'regel', d: neuerEntwurf('v-billig'), edit: null, schritt: 'bau', fokus: 'w0w' }); }
     else if (ziel === 'laden') { S.tab = 'laden'; S.reo = null; renderApp(); scrollOben(); }
     else if (ziel === 'heizstab') { S.tab = 'geraete'; renderApp(); blattAuf({ art: 'geraet', id: 'hs', d: kopie(S.cfg.geraete.hs) }); }
+    else if (ziel === 'io') { const el = document.getElementById('io-modul'); if (el) el.scrollIntoView({ block: 'start' }); }
     else if (ziel === 'neu') { S.tab = 'geraete'; S.reo = null; renderApp(); const k = document.getElementById('neu-spuel') || document.getElementById('devs'); if (k) k.scrollIntoView({ block: 'center' }); }
     else if (ziel === 'szene') { S.tab = 'regeln'; renderApp(); blattAuf({ art: 'szene', id: 'urlaub' }); }
   }, 60);
@@ -3718,7 +3786,88 @@ function setzeFall(k) {
   document.querySelectorAll('#fall button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === k)));
 }
 
+/* Ein I/O-Modul, viele Geräte: Ausgänge in der Anlage zuordnen, Wirkung in der Steuerung sehen */
+const IO_GERAETE = {
+  hs: { name: 'Heizstab Warmwasser', kurz: 'Heizstab', icon: 'flame', farbe: '#e65100', typ: 'heating-rod', stufen: true, smart: 'Mit Sonnenstrom in Stufen, bis 60 °C; Negativpreise mitnehmen' },
+  zirk: { name: 'Zirkulationspumpe', kurz: 'Zirkulation', icon: 'history', farbe: '#0e7490', typ: 'pump', smart: 'Feste Zeiten 6–8 und 18–21 Uhr' },
+  heizkreis: { name: 'Heizkreispumpe Werkstatt', kurz: 'Heizkreis', icon: 'thermo', farbe: '#b45309', typ: 'pump', smart: 'Werktags 6–17 Uhr, nur unter 15 °C draußen' },
+  brunnen: { name: 'Brunnenpumpe', kurz: 'Brunnen', icon: 'sprout', farbe: '#15803d', typ: 'pump', smart: 'Jeden Morgen 5:30–6:00, nicht nach Regen' },
+  zisterne: { name: 'Zisternenpumpe', kurz: 'Zisterne', icon: 'droplet', farbe: '#2563eb', typ: 'pump', smart: 'Mit Sonnenstrom, höchstens 2 Std am Tag' },
+  teich: { name: 'Teichfilter', kurz: 'Teichfilter', icon: 'waves', farbe: '#6d28d9', typ: 'pump', smart: '8 Std am Tag zwischen 8 und 20 Uhr, Sonne zuerst' },
+};
+const IO = {
+  sel: 4, ueberschuss: 2.4,
+  belegung: { 1: { g: 'hs', kw: 1 }, 2: { g: 'hs', kw: 1 }, 3: { g: 'hs', kw: 1 }, 4: { g: 'zirk' }, 5: { g: 'heizkreis' }, 6: { g: 'brunnen' }, 7: { g: 'zisterne' }, 8: { g: 'teich' } },
+};
+function ioStufen() {
+  const aus = Object.keys(IO.belegung).map(Number).filter((k) => IO.belegung[k].g === 'hs').sort((a, b) => a - b);
+  let sum = 0;
+  return aus.map((k) => { sum += IO.belegung[k].kw || 1; return { k, kw: IO.belegung[k].kw || 1, stufe: Math.round(sum * 10) / 10 }; });
+}
+function renderIo() {
+  const host = document.getElementById('io-demo');
+  if (!host) return;
+  const stufen = ioStufen();
+  const n = stufen.filter((x) => x.stufe <= IO.ueberschuss + 1e-9).length;
+  const an = new Set(stufen.slice(0, n).map((x) => x.k));
+  const kacheln = [1, 2, 3, 4, 5, 6, 7, 8].map((k) => {
+    const b = IO.belegung[k]; const g = b && IO_GERAETE[b.g];
+    const st = b && b.g === 'hs' ? stufen.findIndex((x) => x.k === k) + 1 : 0;
+    return '<button type="button" class="io-do' + (g ? '' : ' frei') + '" data-io="' + k + '" aria-pressed="' + (IO.sel === k) + '" style="--farbe:' + (g ? g.farbe : '#cbd5e1') + '"><span class="nr">DO' + k + '</span><span class="lampe' + (an.has(k) ? ' an' : '') + '" aria-hidden="true"></span><b>' + (g ? esc(g.kurz) : 'frei') + '</b><small>' + (st ? 'Stufe ' + st + ' · +' + NF1.format(b.kw) + ' kW' : g ? 'potenzialfrei' : 'nicht belegt') + '</small></button>';
+  }).join('');
+  const b = IO.belegung[IO.sel];
+  const wahl = ['frei', ...Object.keys(IO_GERAETE)].map((id) => '<button type="button" data-io-g="' + id + '" aria-pressed="' + ((b ? b.g : 'frei') === id) + '">' + (id === 'frei' ? 'frei lassen' : esc(IO_GERAETE[id].name)) + '</button>').join('');
+  let detail = '';
+  if (b && b.g === 'hs') {
+    detail = '<p>Dieser Ausgang ist eine Stufe des Heizstabs. Die Stufen addieren sich, je Ausgang ein Heizelement über ein Schütz.</p><ul class="io-stufen">' + stufen.map((x, i) => '<li><span>DO' + x.k + ' · Stufe ' + (i + 1) + '</span>' + (x.k === IO.sel ? '<span class="stp"><button type="button" data-io-kw="-1" aria-label="weniger">' + ic('minus', 18) + '</button><output>+' + NF1.format(x.kw) + ' kW</output><button type="button" data-io-kw="1" aria-label="mehr">' + ic('plus', 18) + '</button></span>' : '<span>+' + NF1.format(x.kw) + ' kW → ' + NF1.format(x.stufe) + ' kW</span>') + '</li>').join('') + '</ul>';
+  } else if (b) {
+    detail = '<p>Der Kontakt schaltet die Pumpe über ein Koppelrelais oder Schütz. Ohne eigenen Zähler ist die Energie angenommen (Nennleistung × Zeit). Ein Eingang (DI) kann melden, dass die Pumpe wirklich läuft.</p>';
+  } else detail = '<p>Frei. Von Hand schaltbar, aber keinem Gerät zugeordnet und deshalb in der Steuerung unsichtbar.</p>';
+  const geraete = Object.keys(IO_GERAETE).map((id) => {
+    const aus = Object.keys(IO.belegung).map(Number).filter((k) => IO.belegung[k].g === id).sort((x, y) => x - y);
+    if (!aus.length) return '';
+    const g = IO_GERAETE[id];
+    const technik = id === 'hs' ? 'Ausgänge ' + aus.map((k) => 'DO' + k).join(', ') + ' · in Stufen ' + stufen.map((x) => NF1.format(x.stufe)).join(' / ') + ' kW' : 'Ausgang DO' + aus[0] + (aus.length > 1 ? ' und weitere' : '') + ' · ein/aus';
+    return '<div class="io-g"><span class="ico">' + ic(g.icon, 21) + '</span><span><b>' + esc(g.name) + '</b><small>' + technik + '</small><span class="smart">Smart: ' + esc(g.smart) + '</span></span></div>';
+  }).join('');
+  const frei = [1, 2, 3, 4, 5, 6, 7, 8].filter((k) => !IO.belegung[k]).length;
+  const probe = stufen.length ? '<div class="io-probe"><b>Wie die Box den Heizstab schaltet</b><label style="display:grid;gap:4px;font:600 13.5px var(--font)">Sonnen-Überschuss: ' + NF1.format(IO.ueberschuss) + ' kW<input type="range" id="io-ueb" min="0" max="' + Math.max(4, stufen[stufen.length - 1].stufe + 1) + '" step="0.1" value="' + IO.ueberschuss + '"></label>'
+    + '<div class="io-lampen">' + stufen.map((x) => '<span class="' + (an.has(x.k) ? 'an' : '') + '"><i></i>DO' + x.k + '</span>').join('') + '</div>'
+    + '<p>' + (n ? 'Stufe ' + n + ' (' + NF1.format(stufen[n - 1].stufe) + ' kW): ' + stufen.slice(0, n).map((x) => 'DO' + x.k).join(' und ') + ' geschlossen' + (n < stufen.length ? ', ' + stufen.slice(n).map((x) => 'DO' + x.k).join(' und ') + ' offen' : '') + '.' : 'Zu wenig für Stufe 1: alle Stufen offen.') + ' Die Box schaltet Stufen einzeln mit Abstand zu und sofort ab; fällt die Verbindung weg, öffnet der Watchdog nach 60 Sekunden alle Ausgänge.</p></div>' : '';
+  host.innerHTML = '<div class="io-karte"><p class="io-pfad">Anlage › Aufbau › I/O-Modul Technikraum</p><div class="io-kopf"><span class="ico">' + ic('cpu', 23) + '</span><span><b>I/O-Modul Technikraum</b><small>Ebyte M31 · 8 Eingänge, 8 Relais-Ausgänge · Watchdog eingerichtet</small></span></div>'
+    + '<div class="io-leiste" role="group" aria-label="Relais-Ausgänge DO1 bis DO8">' + kacheln + '</div>'
+    + '<div class="io-panel"><h3>Ausgang DO' + IO.sel + ': was hängt daran?</h3><div class="chips" role="group" aria-label="Gerät am Ausgang">' + wahl + '</div>' + detail
+    + '<p style="color:var(--c-fg);font-weight:600">Neu zugeordnete Ausgänge gehen mit einem Schalttest von 30 Sekunden in Betrieb.</p></div></div>'
+    + '<div class="io-karte" style="background:var(--c-bg)"><p class="io-pfad">So erscheint es in der Steuerung</p><div class="io-liste">' + geraete + '</div>'
+    + (frei ? '<p class="leise">' + frei + (frei === 1 ? ' Ausgang ist' : ' Ausgänge sind') + ' frei und erscheinen nicht.</p>' : '') + probe + '</div>';
+}
+function ioStart() {
+  const host = document.getElementById('io-demo');
+  if (!host) return;
+  host.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-io]');
+    if (t) { IO.sel = Number(t.dataset.io); renderIo(); host.querySelector('[data-io="' + IO.sel + '"]').focus({ preventScroll: true }); return; }
+    const g = e.target.closest('[data-io-g]');
+    if (g) {
+      const id = g.dataset.ioG;
+      if (id === 'frei') delete IO.belegung[IO.sel];
+      else IO.belegung[IO.sel] = id === 'hs' ? { g: 'hs', kw: (IO.belegung[IO.sel] && IO.belegung[IO.sel].kw) || 1 } : { g: id };
+      renderIo(); return;
+    }
+    const kw = e.target.closest('[data-io-kw]');
+    if (kw) { const b = IO.belegung[IO.sel]; b.kw = Math.max(0.5, Math.min(6, (b.kw || 1) + 0.5 * Number(kw.dataset.ioKw))); renderIo(); }
+  });
+  host.addEventListener('input', (e) => {
+    if (e.target.id !== 'io-ueb') return;
+    IO.ueberschuss = Number(e.target.value);
+    clearTimeout(ioStart.t);
+    ioStart.t = setTimeout(() => { renderIo(); const r = document.getElementById('io-ueb'); if (r) r.focus({ preventScroll: true }); }, 30);
+  });
+  renderIo();
+}
+
 function konzeptStart() {
+  ioStart();
   document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => geheZu(b.dataset.go)));
   const fall = document.getElementById('fall');
   if (fall) fall.addEventListener('click', (e) => { const b = e.target.closest('button[data-k]'); if (b) setzeFall(b.dataset.k); });

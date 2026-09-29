@@ -81,6 +81,33 @@ Die Daten liefern `/verbraucher` (Steuerart, `optionen.schreibbar`) und die Komp
 
 Im Prototyp ist die Spülmaschine neu, die Lüftung Werkstatt misst nur und die Sauna ist nicht verbunden.
 
+### Ein Modul, viele Geräte
+
+Beispiel: I/O-Modul Ebyte M31 mit acht Relais-Ausgängen. Drei Ausgänge schalten die drei Stufen eines Heizstabs, fünf weitere Pumpen über potenzialfreie Kontakte.
+
+- **Anlage › Aufbau:** Das Modul zeigt seine Ausgänge als Klemmleiste (DO1–DO8). Je Ausgang wählt man, was daran hängt: „Heizstab Warmwasser, Stufe 1, +1 kW“, „Zirkulationspumpe“ oder „frei“. Neu zugeordnete Ausgänge gehen mit einem Schalttest von 30 Sekunden in Betrieb.
+- **Steuerung:** Das Modul taucht dort nicht auf, nur die Geräte dahinter.
+  - Der Heizstab ist ein Gerät mit Stufen (1 / 2 / 3 kW) und einer Karte. Die Warum-Zeile lautet etwa „Stufe 2 von 3, 2 kW Sonnenstrom“.
+  - Zirkulation, Heizkreis, Brunnen, Zisterne und Teichfilter sind fünf einzelne Geräte mit eigenem Auftrag.
+  - Die Ausgangsnummern stehen nur unter „Technik“.
+- **Box:** Aus dem Sollwert wird die höchste passende Stufe; die Ausgänge schließen der Reihe nach.
+  - Zuschalten einzeln mit Abstand, Abschalten sofort.
+  - Mindestlaufzeit und Starts je Ausgang.
+  - Der Watchdog öffnet nach 60 Sekunden ohne Verbindung alle Ausgänge.
+  - Ein Eingang kann einen ausgelösten Sicherheitstemperaturbegrenzer oder die Rückmeldung einer Pumpe melden.
+
+Heute ist die Grenze: Ein Verbraucher bindet genau einen Ausgang (`consumer_profile.io_entity_id` + `io_channel`, `V20260924120000`). Der Box-Treiber schaltet je Ausgang nur ein oder aus; ein Sollwert unter der Nennleistung heißt aus (`ebyte/control.go`, `PlanFor`).
+
+- **Pumpen** auf fünf Ausgängen gehen also heute schon.
+- **Der Stufen-Heizstab** ginge nur als drei einzelne Verbraucher, die denselben Überschuss für sich lesen und dabei takten.
+
+Umbau:
+
+- neue Tabelle für die Ausgänge eines Verbrauchers (Ausgang, Leistung, Reihenfolge; eindeutig je Modul und Ausgang), in die die bestehende Einzelbindung übernommen wird (neue Flyway-Version)
+- Registry-Treiber mit einer Liste von Ausgängen (additive Vertragsänderung)
+- `PlanFor` für mehrere Ausgänge, mit Tests
+- die Klemmleiste als Oberfläche in Anlage › Aufbau
+
 ## Aufbau am Telefon
 
 **Reiter „Geräte“**
@@ -326,6 +353,7 @@ Der Prototyp zeigt jeweils Option A.
 - **E5 · Börsenpreis für jede Anlage.** A: ja, mit Hinweis auf den eigenen Tarif. B: nur mit Marktoptimierung wie heute.
 - **E6 · Szenen.** A: Urlaub, Unterwegs, Sparen mit Ende. B: keine.
 - **E7 · Ladeziel.** A: kWh bis Uhrzeit. B: Ladestand in %, wo das Auto ihn meldet.
+- **E9 · Mehrere Ausgänge je Gerät.** A: ja, ein Gerät mit Stufen über mehrere Ausgänge. B: je Ausgang ein Gerät wie heute.
 - **E8 · Was der Kunde beim Anlegen in der Anlage sagt.** A: Gerätevorlage in Kundensprache; die Steuerung macht daraus den Vorschlag. B: technischer Typ wie heute, ohne Vorschlag.
 
 ## Prototyp

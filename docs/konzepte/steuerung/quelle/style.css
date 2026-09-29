@@ -207,6 +207,49 @@ table.doc td.leise{color:var(--c-muted-fg)}
 .muster li{padding:12px 14px;border-radius:14px;background:var(--c-card);border:1px solid var(--c-border);font-size:15px;color:var(--c-muted-fg)}
 .muster li b{color:var(--c-fg);font-family:var(--font)}
 
+/* Ein Modul, viele Geräte */
+.io-wrap{display:grid;gap:18px;grid-template-columns:minmax(0,1fr);font-family:var(--font)}
+@media (min-width:960px){.io-wrap{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}}
+.io-karte{background:var(--c-card);border:1px solid var(--c-border);border-radius:20px;padding:16px;display:grid;gap:14px;align-content:start;min-width:0}
+.io-pfad{margin:0;font:700 12px/1.3 var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--c-muted-fg)}
+.io-kopf{display:flex;gap:12px;align-items:center;min-width:0}
+.io-kopf .ico{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--c-muted);color:var(--navy);flex:none}
+.io-kopf .ico svg{width:23px;height:23px}
+.io-kopf b{display:block;font:800 16.5px/1.25 var(--font)}
+.io-kopf small{display:block;font:500 13px/1.35 var(--font);color:var(--c-muted-fg)}
+.io-leiste{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px;border-radius:16px;background:#e9eef4;border:1px solid #d5dde8}
+.io-do{position:relative;display:grid;gap:2px;align-content:start;min-height:92px;padding:8px 8px 8px 11px;border-radius:12px;border:1.5px solid var(--c-border);background:var(--c-card);text-align:left;cursor:pointer;font:inherit;color:inherit;min-width:0}
+.io-do::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:4px;border-radius:0 3px 3px 0;background:var(--farbe,#cbd5e1)}
+.io-do .nr{font:800 12px var(--mono);color:var(--c-muted-fg)}
+.io-do .lampe{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:#cbd5e1}
+.io-do .lampe.an{background:var(--st-on);box-shadow:0 0 0 3px color-mix(in srgb,var(--st-on) 25%,transparent)}
+.io-do b{font:800 13px/1.2 var(--font);overflow-wrap:anywhere;hyphens:auto}
+@media (max-width:480px){.io-leiste{gap:6px;padding:8px}.io-do{padding:8px 6px 8px 9px;min-height:84px}.io-do b{font-size:12px}}
+.io-do small{font:600 11.5px/1.3 var(--font);color:var(--c-muted-fg)}
+.io-do.frei b{color:var(--c-muted-fg);font-weight:600}
+.io-do[aria-pressed="true"]{border-color:var(--c-fg);box-shadow:inset 0 0 0 1px var(--c-fg)}
+.io-panel{display:grid;gap:10px;padding:14px;border-radius:16px;border:1px solid var(--c-border);background:var(--c-bg)}
+.io-panel h3{margin:0;font:800 15px var(--font)}
+.io-panel p{margin:0;font:500 13.5px/1.45 var(--font);color:var(--c-muted-fg)}
+.io-stufen{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.io-stufen li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px;border-radius:12px;background:var(--c-card);border:1px solid var(--c-border);font:600 14px var(--font)}
+.io-liste{display:grid;gap:8px}
+.io-g{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;padding:12px;border-radius:16px;background:var(--c-card);border:1px solid var(--c-border)}
+.io-g .ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--c-muted);color:var(--navy)}
+.io-g .ico svg{width:21px;height:21px}
+.io-g b{font:800 15px/1.25 var(--font)}
+.io-g small{display:block;font:500 13px/1.4 var(--font);color:var(--c-muted-fg)}
+.io-g .smart{display:block;margin-top:3px;font:600 13px/1.4 var(--font);color:var(--c-fg)}
+.io-probe{display:grid;gap:8px;padding:14px;border-radius:16px;background:var(--pv-soft);border:1px solid color-mix(in srgb,var(--pv) 30%,transparent)}
+.io-probe b{font:800 14.5px var(--font)}
+.io-probe input{width:100%;accent-color:var(--pv)}
+.io-probe p{margin:0;font:600 13.5px/1.45 var(--font);color:#7c2d12}
+.io-lampen{display:flex;gap:6px;flex-wrap:wrap}
+.io-lampen span{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;background:var(--c-card);font:700 12px var(--mono);color:var(--c-muted-fg)}
+.io-lampen span i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.io-lampen span.an{color:var(--st-on)}
+.io-lampen span.an i{background:var(--st-on)}
+
 /* Rechner-Vorschau */
 .deskwrap{min-width:0}
 .desk-outer{position:relative;overflow:hidden;border-radius:18px;border:1px solid var(--c-border);background:var(--c-bg);box-shadow:0 24px 60px color-mix(in srgb,var(--navy) 12%,transparent)}
