@@ -66,12 +66,13 @@ describe('Die Leitkachel neben dem Fluss (Konzept „Cockpit als Tagesfilm“)',
     expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).toBeNull();
   });
 
-  it('ohne Leitkachel gibt es keine leere zweite Spalte', async () => {
+  it('am Rechner steht rechts „Dieser Moment“ auch ohne Leitkachel', async () => {
     const { container } = renderStage();
-    expect(container.querySelector('.vp-hero-side')).toBeNull();
-    expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).not.toBeNull();
-    // Die Bühne lädt nach (eigenes Stück); der Fluss ist danach da.
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).not.toBeNull());
+    // Die Bühne schreibt die vier Werte des Moments in die rechte Spalte.
+    await waitFor(() => expect(container.querySelector('.vp-hero-side .vp-eb-moment')).not.toBeNull());
+    expect(container.querySelector('.vp-hero-side .vp-eb-moment-h')?.textContent).toMatch(/^Jetzt \d{2}:\d{2}$/);
+    expect(container.querySelector('.vp-hero-leit')).toBeNull();
   });
 
   it('am Telefon (showRail = false) steht sie nicht in der Bühne, sondern im Raster', () => {

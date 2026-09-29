@@ -34,6 +34,10 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Netz heute, Steuerspalten). Börsenpreis und Laden tragen die Hülle selbst (`kachel`-Prop). Der
   Börsenpreis zeigt Stundenbalken (`strompreis.boersenKachel`: Mittel je Berliner Stunde, Drittel wie das
   Urteil, Lücke bleibt Lücke) und die zwei Fenster aus `streifenFenster` mit Ø-Preis.
+- **Rechte Spalte der Bühne (Rechner):** oben „Dieser Moment“ - die vier Werte der gewählten Uhrzeit,
+  von der Bühne per Portal in `.vp-hero-moment` geschrieben -, darunter die Leitkachel. Unter der
+  Tagesleiste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
+  Sans) wie der Prototyp; der Zustand ist eine schmale Zeile ohne Modus-Fuß (`ZustandCard kompakt`).
 - **Leitkachel:** am Rechner rechts neben dem Fluss (`CockpitHero seite`), am Telefon erste Kachel:
   Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, sonst „Unterm Strich“. Sie steht dann
   nicht noch einmal im Raster.
@@ -46,7 +50,11 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   `CockpitLayoutService.validateGroessen`. Wählbar im Anpassen-Modus unter der Kachel (`GroessenWahl`).
 - **Voreinstellung je Betriebsmodell:** `cockpitLayout.betriebAus(blocks)` + `canonicalFuer(isPhone,
   betrieb)` aus `TAGESFILM` (Rechner und Telefon gleich); die Kacheln im Baustein `kacheln` folgen
-  `KACHEL_REIHE` in `AnlagenPage` (Prototyp `DEFAULTS`). Gespeicherte Schichten gewinnen.
+  `KACHEL_REIHE` in `AnlagenPage` (Prototyp `DEFAULTS`), „@geld“ setzt „Unterm Strich“ an seinen Platz im
+  Raster, solange `geld` direkt hinter `kacheln` steht. `verstecktFuer(betrieb)` blendet bei
+  Marktoptimierung und Lastspitze den Fahrplan vor (zurückholbar über `shown`). „Unterm Strich“ ist
+  kompakt (Zahl, Zeitraum, Zurechnung, „Zwischenstand“), die Langform steht auf der Erlöse-Seite.
+  Gespeicherte Schichten gewinnen.
 - **Beweise:** `leitungsplan.test.ts`, `tagesleiste.test.ts`, `flussListen.test.ts`, `kacheln.test.ts`,
   `kacheln/CockpitKacheln.test.tsx`, `kachelGroessen.test.ts`, `AnlagenPage.test.tsx`; E2E
   `cockpit-buehne`, `cockpit-rollen`, `laden-bei-bezug`, `summenwert-abnahme` (Rollen im Blatt),

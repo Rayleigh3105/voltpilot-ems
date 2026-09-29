@@ -366,7 +366,8 @@
 
 /* Die Leitkachel neben dem Fluss (Konzept „Cockpit als Tagesfilm“): ohne
    eigenen Rahmen - die Bühne ist die Karte. */
-.vp-hero-side > .vp-k-platz > .vp-k {
+.vp-hero-side > .vp-k-platz > .vp-k,
+.vp-hero-leit > .vp-k-platz > .vp-k {
   border: 0;
   border-radius: 0;
   padding: 0;
@@ -375,7 +376,19 @@
 @media (min-width: 900px) {
   .vp-hero-side {
     justify-content: flex-start;
+    gap: 14px;
   }
+}
+/* Die Leitkachel unter „Dieser Moment“, durch eine Linie getrennt. */
+.vp-hero-moment:not(:empty) + .vp-hero-leit {
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  padding-top: 14px;
+}
+/* Wie im Prototyp: das Cockpit spricht in Plus Jakarta Sans (Variante C). */
+.vp-cockpit-hero,
+.vp-kraster,
+.vp-cockpit-health {
+  font-family: var(--vp-c-font, var(--vp-font-body));
 }
 
 .vp-rail-blk {

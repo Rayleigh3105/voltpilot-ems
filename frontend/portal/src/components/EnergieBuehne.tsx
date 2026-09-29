@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { KNOWN_ROLES, roleLabel, type SlotRole } from '../fahrplanWhy';
@@ -63,6 +64,7 @@ export function EnergieBuehne({
   now = new Date(),
   onBlatt,
   onOpenSub,
+  momentZiel = null,
 }: {
   jetzt: JetztFluss;
   stale?: boolean;
@@ -82,6 +84,11 @@ export function EnergieBuehne({
   onBlatt?: (art: Rolle | null) => void;
   /** Absprung aus dem Blatt (Energie-Verlauf, Ihre Geräte). */
   onOpenSub?: (sub: AnlagenSub) => void;
+  /**
+   * Am Rechner: der Platz rechts neben dem Fluss für „Dieser Moment“ (die vier
+   * Werte der gewählten Uhrzeit, Konzept „Cockpit als Tagesfilm“).
+   */
+  momentZiel?: HTMLElement | null;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('jetzt');
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
@@ -291,6 +298,24 @@ export function EnergieBuehne({
         </div>
       )}
 
+      <ZahlenAlsListe werte={werte} heute={heute} zeit={zeit} uhr={uhr} tag={tag} jetztUhr={uhrText(now)} />
+
+      {momentZiel &&
+        createPortal(
+          <div className="vp-eb-moment">
+            <p className="vp-eb-moment-h">
+              {heute ? `Heute bis ${uhr}` : zeit === 'plan' ? `Plan ${uhr}` : zeit === 'live' ? `Jetzt ${uhr}` : `Gemessen ${uhr}`}
+            </p>
+            <div className="vp-eb-moment-kpis">
+              <MomentWert ton="pv" icon="sun" text={texte.pv} />
+              <MomentWert ton="load" icon="home" text={texte.load} />
+              {jetzt.hat.batt && <MomentWert ton="batt" icon="battery" text={texte.batt} />}
+              <MomentWert ton="grid" icon="pole" text={texte.grid} />
+            </div>
+          </div>,
+          momentZiel,
+        )}
+
       <Blatt
         offen={blatt != null}
         isPhone={isPhone}
@@ -326,6 +351,85 @@ const BLATT_TITEL: Record<Rolle, string> = {
   batt: 'Speicher',
   grid: 'Netz',
 };
+
+function MomentWert({ ton, icon, text }: { ton: Rolle; icon: 'sun' | 'home' | 'battery' | 'pole'; text: { wert: string; zeilen: string[] } }) {
+  return (
+    <div className={`vp-eb-mk is-${ton}`}>
+      <span className="vp-eb-mk-ico" aria-hidden="true">
+        <Icon name={icon} size={16} />
+      </span>
+      <div>
+        <b>{text.wert}</b>
+        <span>{text.zeilen[0]}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * „Zahlen als Liste“ (wie im Prototyp): dieselben Werte als Tabelle - für
+ * Vorlesen und für alle, die Zahlen lieber lesen als Spuren. Der gewählte
+ * Moment und der Tag bis jetzt stehen nebeneinander; fehlend ist „—“.
+ */
+function ZahlenAlsListe({
+  werte,
+  heute,
+  zeit,
+  uhr,
+  tag,
+  jetztUhr,
+}: {
+  werte: FlussWerte;
+  heute: boolean;
+  zeit: Zeitbezug;
+  uhr: string;
+  tag: Tag | null;
+  jetztUhr: string;
+}) {
+  const f = heute ? kwh : kw;
+  const b = werte.batt;
+  const g = werte.grid;
+  const pos = (x: number | null) => (x == null ? null : Math.max(0, x));
+  const neg = (x: number | null) => (x == null ? null : Math.max(0, -x));
+  const e = tag ? energieBis(tag, tag.jetzt).energie : null;
+  const zeilen: [string, number | null, number | null][] = [
+    ['Erzeugung', werte.pv, e?.pv ?? null],
+    ['Verbrauch', werte.load, e?.load ?? null],
+    ['Speicher laden', pos(b), e?.laden ?? null],
+    ['Speicher abgeben', neg(b), e?.abgeben ?? null],
+    ['Netzbezug', pos(g), e?.bezug ?? null],
+    ['Einspeisung', neg(g), e?.einspeisung ?? null],
+  ];
+  return (
+    <details className="vp-eb-zahlen">
+      <summary>
+        <Icon name="list" size={16} />
+        Zahlen als Liste
+      </summary>
+      <div className="vp-eb-zahlen-wrap">
+        <table>
+          <caption className="vp-sr-only">Werte für {uhr}</caption>
+          <thead>
+            <tr>
+              <th scope="col" />
+              <th scope="col">{heute ? `Heute bis ${uhr}` : `${uhr}${zeit === 'plan' ? ' (Plan)' : ''}`}</th>
+              <th scope="col">Heute bis {jetztUhr}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zeilen.map(([name, moment, tagWert]) => (
+              <tr key={name}>
+                <th scope="row">{name}</th>
+                <td>{f(moment)}</td>
+                <td>{kwh(tagWert)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
 
 function uhrText(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;

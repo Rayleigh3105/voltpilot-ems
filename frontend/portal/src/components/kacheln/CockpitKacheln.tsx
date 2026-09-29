@@ -19,7 +19,7 @@ import type { PeakBandView } from '../../peakBand';
 import type { PlanWordingKind } from '../../schedule';
 import type { Tag } from '../../tagesleiste';
 import type { VerbrauchTeil } from '../../verbrauchKomposition';
-import { CockpitErgebnis } from '../erloese/CockpitErgebnis';
+import { SwapNumber } from '../SwapNumber';
 import { roleMark } from '../FahrplanWhy';
 import { LadenKachel as Laden } from '../LadenKachel';
 import { StrompreisStrip as Strompreis } from '../StrompreisStrip';
@@ -69,20 +69,35 @@ function Legende({ teile }: { teile: { key: keyof typeof FARBE; label: string; w
 export function GeldKachel({
   money,
   periodSeg,
-  nachtragHref,
   ...b
 }: Basis & { money: HeroMoney | null; periodSeg?: ReactNode; nachtragHref?: string }) {
   if (!money && !periodSeg) return null;
+  // Wie im Prototyp: die eine Zahl groß, der Zeitraum daneben, darunter ein
+  // Satz zur Zurechnung und die Marke „Zwischenstand“. Die Langform (Speicher,
+  // Rechenweg) steht auf der Erlöse-Seite, ein Tipp auf den Kopf führt hin.
+  const zeitraum = money ? money.label.replace(/^Unterm Strich\s*·\s*/, '') : null;
   return (
     <Kachel {...b} id="geld" name="Unterm Strich" icon="euro" ton="geld" ziel="Erlöse" groesse={b.groesse ?? 'breit'}>
-      {money ? (
-        <CockpitErgebnis money={money} periodSeg={periodSeg} rings={[]} ringsNote={null} nachtragHref={nachtragHref} />
-      ) : (
-        <div className="vp-c-ck">
-          {periodSeg && <div className="vp-c-ck-seg">{periodSeg}</div>}
-          <p className="vp-k-sub">Für diesen Zeitraum liegt noch kein Ergebnis vor.</p>
+      <div className="vp-k-zeile vp-k-geld">
+        <div>
+          {money ? (
+            <p className={`vp-c-stm-zahl vp-k-geldzahl${money.kosten ? ' is-kosten' : ''}`}>
+              <SwapNumber value={money.value} />
+            </p>
+          ) : (
+            <p className="vp-k-sub">Für diesen Zeitraum liegt noch kein Ergebnis vor.</p>
+          )}
+          {zeitraum && <p className="vp-k-sub">{zeitraum}</p>}
         </div>
+        {periodSeg && <div className="vp-k-zeitraum">{periodSeg}</div>}
+      </div>
+      {money?.attribution && (
+        <p className="vp-k-sub" title={money.attributionTitel ?? undefined}>
+          {money.attribution}
+        </p>
       )}
+      {money?.winterSatz && <p className="vp-k-sub">{money.winterSatz}</p>}
+      {money?.attributionInterim && <Marke>Zwischenstand</Marke>}
     </Kachel>
   );
 }

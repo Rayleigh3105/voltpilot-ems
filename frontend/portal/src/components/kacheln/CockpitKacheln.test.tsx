@@ -39,14 +39,19 @@ describe('Die Hülle', () => {
 });
 
 describe('Unterm Strich', () => {
-  it('die eine Geldzahl, der gemessene Speicherbestand steht als eigene Zeile, nie in der Kasse', () => {
-    const { container } = render(<GeldKachel money={MONEY} periodSeg={<div className="vp-seg" />} />);
+  it('kompakt wie im Prototyp: die eine Geldzahl, der Zeitraum daneben, die Zurechnung als Satz', () => {
+    const { container } = render(
+      <GeldKachel money={{ ...MONEY, attributionInterim: true }} periodSeg={<div className="vp-seg" />} />,
+    );
     expect(container.querySelector('.vp-k-platz.is-breit')).not.toBeNull();
     expect(container.querySelector('.vp-c-stm-zahl')?.textContent).toBe('371,43 €');
-    const bestand = container.querySelector('.vp-c-sp-bestand');
-    expect(bestand?.textContent).toContain('35,8');
-    expect(bestand?.querySelector('.vp-chip')?.textContent).toBe('Kein Abzug');
+    expect(container.querySelector('.vp-k-zeitraum .vp-seg')).not.toBeNull();
+    expect(container.textContent).toContain('Heute');
+    expect(container.textContent).toContain('Steuerung + 12,10 €');
+    expect(container.querySelector('.vp-k-marke')?.textContent).toBe('Zwischenstand');
+    // Die Langform (Speicher-Sektion, Rechenweg) steht auf der Erlöse-Seite;
     // Autarkie und Eigenverbrauch sind eigene Kacheln - keine Ringe hier.
+    expect(container.querySelector('.vp-c-speicher')).toBeNull();
     expect(container.querySelector('.vp-c-ck-ring')).toBeNull();
   });
 

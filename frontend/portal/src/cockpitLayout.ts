@@ -269,8 +269,25 @@ export function betriebAus(blocks: readonly CockpitBlock[] | null | undefined): 
 const TAGESFILM: Record<CockpitBetrieb, BausteinId[]> = {
   eigenverbrauch: ['status', 'energiefluss', 'geld', 'steuerung', 'kacheln', 'laden', 'fahrplan', 'strompreis', 'komponenten', 'zustand'],
   markt: ['status', 'energiefluss', 'strompreis', 'steuerung', 'kacheln', 'geld', 'laden', 'fahrplan', 'komponenten', 'zustand'],
-  spitze: ['status', 'energiefluss', 'steuerung', 'kacheln', 'geld', 'laden', 'fahrplan', 'strompreis', 'komponenten', 'zustand'],
+  spitze: ['status', 'energiefluss', 'steuerung', 'kacheln', 'geld', 'laden', 'strompreis', 'fahrplan', 'komponenten', 'zustand'],
 };
+
+/**
+ * Was die Voreinstellung je Betriebsmodell ausblendet (Prototyp `DEFAULTS`):
+ * bei Marktoptimierung trägt der Börsenpreis mit Handel den Plan, bei der
+ * Lastspitzenkappung die Lastspitze - eine eigene Fahrplan-Kachel wäre dort
+ * die zweite Plan-Anzeige. Über „Cockpit anpassen“ jederzeit zurückzuholen.
+ */
+const VOREINSTELLUNG_VERSTECKT: Record<CockpitBetrieb, BausteinId[]> = {
+  eigenverbrauch: [],
+  markt: ['fahrplan'],
+  spitze: ['fahrplan'],
+};
+
+/** Die je Betriebsmodell ausgeblendeten Bausteine der Voreinstellung. */
+export function verstecktFuer(betrieb: CockpitBetrieb): readonly BausteinId[] {
+  return VOREINSTELLUNG_VERSTECKT[betrieb];
+}
 
 const KANONISCH: Record<'rechner' | 'telefon', Record<CockpitBetrieb, BausteinId[]>> = {
   rechner: TAGESFILM,
@@ -433,6 +450,12 @@ export interface LayoutResolveInput<T extends string = BausteinId> {
    * `cockpit`, damit jeder bestehende Aufrufer zeichengleich bleibt.
    */
   flaeche?: Flaeche;
+  /**
+   * Bausteine, die die Voreinstellung ausblendet (je Betriebsmodell, Konzept
+   * „Cockpit als Tagesfilm“). Jede Schicht darüber kann sie mit `shown`
+   * zurückholen - sie stehen im Anpassen-Modus unter „Ausgeblendet“.
+   */
+  versteckt?: readonly T[];
   /** Die kunden-weite Vorgabe des Betreibers (E1). */
   tenantVorgabe?: LayoutDocument | null;
   /** Die Vorgabe DIESER Anlage — sie schlägt die kunden-weite (E1). */
@@ -555,7 +578,7 @@ export function layoutResolve<T extends string = BausteinId>(
 ): ResolvedLayout<T> {
   const verfuegbar = new Set<string>(input.verfuegbar);
   let order = input.canonical.filter((id) => verfuegbar.has(id));
-  const hidden = new Set<T>();
+  const hidden = new Set<T>((input.versteckt ?? []).filter((id) => verfuegbar.has(id)));
   let lead: string | null = null;
   let quelle: LayoutQuelle = 'katalog';
   const groessen: Record<string, KachelGroesse> = {};

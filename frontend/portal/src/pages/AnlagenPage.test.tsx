@@ -626,15 +626,12 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(container.querySelector('[data-kachel="handel"]')).toBeNull();
   });
 
-  it('schließt mit der ruhigen Toolbox-Zeile, ohne eine Anwendung zu bewerben', async () => {
+  it('schließt wie im Prototyp mit EINER ruhigen Zustandszeile - ohne Werbezeile', async () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-toolbox-line')).toBeTruthy());
-    const line = container.querySelector('.vp-toolbox-line')?.textContent ?? '';
-    expect(line).toContain('Ihre Anlage kann mehr');
-    expect(line).toContain('Betriebsmodell wählen');
-    expect(line).not.toMatch(/Lastspitzen|Marktvermarktung|Eigenverbrauch/);
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-health .vp-zustand')).toBeTruthy());
+    expect(container.querySelector('.vp-toolbox-line')).toBeNull();
   });
 
   // Markt & Tag (vp-cockpit-unten-ux-n3, PR 1): der Börsenpreis-Streifen führt
@@ -676,7 +673,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
   // (Speicher vorhanden); der volle Chart lebt nur auf der Fahrplan-Seite.
   it('der Fahrplan ist eine Kachel (Tagesuhr); ohne Plan sagt sie es ruhig', async () => {
     mockAdaptive(true, TOPO);
-    mockSurface(MULTI);
+    mockSurface(PRIVAT);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).toBeTruthy());
     const kachel = container.querySelector('[data-kachel="fahrplan"]') as HTMLElement;
@@ -787,7 +784,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('[data-kachel="geld"] .vp-c-ck-seg .vp-seg.vp-seg-compact')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('[data-kachel="geld"] .vp-k-zeitraum .vp-seg.vp-seg-compact')).toBeTruthy());
     expect(container.querySelector('.vp-period-tabs')).toBeNull();
   });
 
@@ -938,8 +935,9 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     expect(card?.textContent).toContain('Alles in Ordnung');
     expect(card?.querySelector('.vp-zustand.befund')).toBeNull();
     expect(card?.querySelector('.vp-health-list')).toBeNull();
-    // … und die Modus-Zeile wohnt als Fuß IN der Fläche — kein Baumler mehr.
-    expect(card?.querySelector('.vp-zustand-foot .vp-toolbox-line')).not.toBeNull();
+    // … schmal wie im Prototyp (Konzept „Cockpit als Tagesfilm“), ohne Modus-Fuß.
+    expect(card?.querySelector('.vp-zustand.is-kompakt')).not.toBeNull();
+    expect(card?.querySelector('.vp-toolbox-line')).toBeNull();
     expect(container.querySelector('.vp-stack-foot')).toBeNull();
   });
 
@@ -1073,7 +1071,7 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
   it('am Telefon sind Fahrplan und Börsenpreis Kacheln wie am Rechner', async () => {
     stubPhone(true);
     mockAdaptive(true, TOPO);
-    mockSurface(MULTI);
+    mockSurface(PRIVAT);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).toBeTruthy());
     expect(container.querySelectorAll('.vp-mob-row')).toHaveLength(0);
@@ -1294,7 +1292,7 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
 
   it('blendet einen Baustein aus, lässt ihn erreichbar und speichert die Absicht', async () => {
     mockAdaptive(true, TOPO);
-    mockSurface(MULTI);
+    mockSurface(PRIVAT);
     stubLayout();
     const save = vi.spyOn(api, 'saveCockpitLayout').mockResolvedValue({
       surface: 'cockpit',
@@ -1348,7 +1346,7 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
 
   it('ordnet mit den Tastatur-Knöpfen um — ohne Maus und ohne Drag-and-Drop', async () => {
     mockAdaptive(true, TOPO);
-    mockSurface(MULTI);
+    mockSurface(PRIVAT);
     stubLayout();
     const { container, getByLabelText } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());

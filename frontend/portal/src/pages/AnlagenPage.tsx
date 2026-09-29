@@ -81,6 +81,7 @@ import { useCockpitLayout } from '../useCockpitLayout';
 import {
   betriebAus,
   canonicalFuer,
+  verstecktFuer,
   kachelDef,
   kachelGroesse,
   ortsHinweis,
@@ -1583,6 +1584,7 @@ export function AnlageSeite({
     isPhone,
     // Die Voreinstellung je Betriebsmodell (Konzept „Cockpit als Tagesfilm“).
     canonical: canonicalFuer(isPhone, betriebAus(blocks)),
+    versteckt: verstecktFuer(betriebAus(blocks)),
   });
 
   // --- Anwendungs-Programm Stufe 5 · die EIGENEN Auswertungen ---------------
@@ -1770,8 +1772,13 @@ export function AnlageSeite({
   // Ein Raster: jede Kachel hat Kopf (Absprung), Inhalt und eine Größe. Eine
   // Zahl hat einen Ort (R2): was an den Knoten der Bühne steht, wiederholt
   // keine Kachel.
-  const groesseVon = (id: string, standard: RasterGroesse = 'klein'): RasterGroesse =>
-    kachelDef(id) ? kachelGroesse(id, layout.resolved.groessen) : standard;
+  const groesseVon = (id: string, standard: RasterGroesse = 'klein'): RasterGroesse => {
+    if (!kachelDef(id)) return standard;
+    // Wie im Prototyp: die Sonne ist beim Eigenverbrauch breit, sonst klein -
+    // solange niemand eine Größe gewählt hat.
+    if (id === 'sonne' && buehneBetrieb !== 'eigenverbrauch' && !layout.resolved.groessen[id]) return 'klein';
+    return kachelGroesse(id, layout.resolved.groessen);
+  };
   const groessenFuss = (id: string, label: string): ReactNode => {
     const def = kachelDef(id);
     if (!layout.anpassen || !def) return null;
@@ -1864,11 +1871,21 @@ export function AnlageSeite({
     );
   };
   const waerme = buehneVerbrauch?.gruppen.find((g) => g.id === 'waerme' && !g.collapsed)?.teile[0] ?? null;
+  // Die Reihenfolge der Kacheln je Betriebsmodell - wie im Prototyp
+  // (`DEFAULTS`). „@geld“ ist der Platz von „Unterm Strich“, wenn der Baustein
+  // `geld` direkt hinter den Kennzahlen steht (so die Voreinstellung).
   const KACHEL_REIHE: Record<Betrieb, string[]> = {
     eigenverbrauch: ['autarkie', 'eigenverbrauch', 'speicher', 'waermepumpe', 'sonne', 'handel', 'lastspitze', 'automatik'],
-    markt: ['sonne', 'speicher', 'handel', 'netz', 'waermepumpe', 'automatik', 'wetter'],
-    spitze: ['lastspitze', 'sonne', 'netz', 'speicher', 'handel', 'waermepumpe', 'automatik', 'wetter'],
+    markt: ['sonne', 'speicher', 'handel', '@geld', 'netz', 'wetter', 'waermepumpe', 'automatik'],
+    spitze: ['lastspitze', 'sonne', '@geld', 'netz', 'speicher', 'handel', 'waermepumpe', 'automatik', 'wetter'],
   };
+  const reihe = layout.resolved.order;
+  const geldImRaster =
+    !layout.anpassen &&
+    !inSeite('geld') &&
+    KACHEL_REIHE[buehneBetrieb].includes('@geld') &&
+    reihe.indexOf('geld') === reihe.indexOf('kacheln') + 1 &&
+    reihe.includes('kacheln');
   const kachelKnoten = (id: string): ReactNode => {
     const basis = { groesse: groesseVon(id), fuss: groessenFuss(id, kachelDef(id)?.label ?? id) };
     switch (id) {
@@ -2000,7 +2017,7 @@ export function AnlageSeite({
       ),
     /* Die Kacheln (Konzept „Cockpit als Tagesfilm“). Die Leitkachel steht
        am Rechner in der Bühne und deshalb nicht noch einmal im Raster. */
-    geld: inSeite('geld') ? null : geldKachel(false),
+    geld: inSeite('geld') || geldImRaster ? null : geldKachel(false),
     fahrplan: fahrplanVerfuegbar ? (
       <KachelSpaet
         art="fahrplan"
@@ -2025,7 +2042,9 @@ export function AnlageSeite({
     ) : null,
     kacheln: (
       <div className={layout.anpassen ? 'vp-kraster' : 'vp-k-gruppe'}>
-        {KACHEL_REIHE[buehneBetrieb].map((id) => <Fragment key={id}>{kachelKnoten(id)}</Fragment>)}
+        {KACHEL_REIHE[buehneBetrieb].map((id) => (
+          <Fragment key={id}>{id === '@geld' ? (geldImRaster ? geldKachel(false) : null) : kachelKnoten(id)}</Fragment>
+        ))}
       </div>
     ),
     /* Zustand (vp-cockpit-unten-ux-n3 PR 3): leise, wenn gesund — EINE
@@ -2040,6 +2059,7 @@ export function AnlageSeite({
         <div className="vp-cockpit-health" id="zustand">
           <ZustandCard
             items={healthOhneDoppel}
+            kompakt
             onOpenSub={onOpenSub}
             onOpenModus={() => onOpenSub('steuerung')}
           />

@@ -68,3 +68,17 @@ describe('Voreinstellung je Betriebsmodell', () => {
   });
 
 });
+
+import { layoutResolve as aufloesen, verstecktFuer } from './cockpitLayout';
+
+describe('Voreinstellung: Fahrplan bei Marktoptimierung und Lastspitze ausgeblendet (wie im Prototyp)', () => {
+  it('blendet vor, und der Kunde holt ihn mit „shown“ zurück', () => {
+    expect(verstecktFuer('eigenverbrauch')).toEqual([]);
+    const basis = { canonical: canonicalFuer(false, 'markt'), verfuegbar: canonicalFuer(false, 'markt'), versteckt: verstecktFuer('markt') };
+    const r = aufloesen(basis);
+    expect(r.order).not.toContain('fahrplan');
+    expect(r.hidden).toEqual(['fahrplan']);
+    const zurueck = aufloesen({ ...basis, eigen: { order: [], hidden: [], shown: ['fahrplan'], lead: null } });
+    expect(zurueck.order).toContain('fahrplan');
+  });
+});

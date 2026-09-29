@@ -423,3 +423,52 @@ button.vp-k-kopf:focus-visible {
 .vp-k-stunden {
   min-width: 0;
 }
+
+/* „Unterm Strich“: die eine Geldzahl groß, der Zeitraum daneben. */
+.vp-k-geld {
+  align-items: flex-start;
+}
+.vp-k .vp-k-geldzahl {
+  margin: 0;
+  font: 800 2.25rem/1.05 var(--vp-c-font, var(--vp-font-heading));
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-k .vp-k-geldzahl.is-kosten {
+  color: var(--vp-c-destructive, #dc2626);
+}
+
+/* Der Zeitraum in „Unterm Strich“: klein wie im Prototyp (Fingerziele am
+   Telefon bleiben 44 px, `CockpitBlocks.css`). */
+.vp-k-zeitraum {
+  flex: none;
+  min-width: 0;
+}
+.vp-k-zeitraum .vp-seg.vp-seg-compact {
+  padding: 2px;
+  border-radius: 10px;
+}
+.vp-k-zeitraum .vp-seg.vp-seg-compact button {
+  min-height: 32px;
+  padding: 0 10px;
+  font: 600 0.75rem var(--vp-c-font, var(--vp-font-heading));
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-k-zeitraum .vp-seg.vp-seg-compact button {
+    min-height: 44px;
+  }
+}
+
+/* „Cockpit anpassen“ am Ende: ein ruhiger Knopf mit Rahmen. */
+.vp-cockpit-anpassen-reihe > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--vp-c-card, #fff);
+  font: 700 0.875rem var(--vp-c-font, var(--vp-font-heading));
+}
