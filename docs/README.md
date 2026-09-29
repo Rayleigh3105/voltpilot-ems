@@ -32,6 +32,8 @@ Die [Portal-Hilfe](../frontend/portal/src/help/README.md) erklärt Kundenaufgabe
 
 [Arbitrage-Partnermodell](../VoltPilot_Arbitrage-Partnermodell.pdf): Gesprächsunterlage vom 01.09.2026 zu einem möglichen Vertriebsmodell. Als Original erhalten; daraus folgt keine implementierte Vergütungs- oder Abrechnungsfunktion. [Drei-Töpfe-Zuordnung](attribution-three-pot.md) bleibt ausdrücklich ein fachlicher Entwurf.
 
+[Cockpit als Tagesfilm](konzepte/cockpit-tagesfilm/README.md): Konzeptentwurf vom 29.09.2026 für ein neues Anlagen-Cockpit mit klickbarem Prototyp. Entwurf, nicht umgesetzt.
+
 ## Ergänzungen auf dem aktuellen Hauptzweig
 
 [Fachmodell und UEMS-Begriffe](fachmodell/README.md), [Backup und Wiederherstellung](backup-restore.md), [OCPP-Steuerung](ocpp-control.md) und [ergänzende Arbeitsregeln](agents/README.md) werden eigenständig gepflegt. Die folgenden Vertragsübersichten verlinken auch die neueren UEMS-Schnittstellen.
