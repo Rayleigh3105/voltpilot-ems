@@ -192,6 +192,8 @@ const SUB_BEREICH: Record<AnlagenSub, BereichId> = {
   prognose: 'anlage',
   wetter: 'verlauf',
   steuerung: 'steuerung',
+  laden: 'steuerung',
+  regeln: 'steuerung',
   modell: 'anlage',
   technik: 'anlage',
   // Die BEFEHLE-Seite, die GERÄTE-DETAILSEITE und die BOX-Seite haben KEINEN
@@ -281,8 +283,15 @@ export function anlageBereiche(
   }
   out.push(bereich('verlauf', 'Verlauf', 'history', verlaufTabs[0].sub, verlaufTabs));
 
+  // Die Steuerung hat seit dem Konzept „Steuerung neu" (E4 = A) drei Reiter:
+  // „Geräte" (die Route `steuerung` selbst, damit jedes Lesezeichen gilt),
+  // „Laden" nur, wo es Ladepunkte gibt (dasselbe Signal wie die Ladevorgänge),
+  // und „Regeln". Das Ziel des Bereichs bleibt `steuerung`.
+  const steuerungTabs: BereichTab[] = [{ key: 'steuerung', label: 'Geräte', sub: 'steuerung' }];
+  if (hatLade) steuerungTabs.push({ key: 'laden', label: 'Laden', sub: 'laden' });
+  steuerungTabs.push({ key: 'regeln', label: 'Regeln', sub: 'regeln' });
   out.push(
-    bereich('steuerung', 'Steuerung', 'zap', 'steuerung', [], badge,
+    bereich('steuerung', 'Steuerung', 'zap', 'steuerung', steuerungTabs, badge,
       badge == null ? null : (badgeTitel ?? null)),
   );
   const anlageTabs = mitPrognosen && views.includes('prognosequalitaet')
@@ -361,7 +370,7 @@ const OHNE_BEREICHS_REITER: ReadonlySet<AnlagenSub> = new Set(['geraet', 'box'])
 
 /**
  * Die Reiter, die über einer offenen Unterseite stehen — leer, wo der Bereich
- * EINE Seite ist (Cockpit, Steuerung), wo er nur einen Reiter hätte oder wo die
+ * EINE Seite ist (Cockpit), wo er nur einen Reiter hätte oder wo die
  * Unterseite eine Ebene unter ihm wohnt ({@link OHNE_BEREICHS_REITER}).
  *
  * ⚠ Sie kommen aus DEMSELBEN Modell wie die Seitenleiste. Eine zweite

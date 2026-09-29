@@ -1,0 +1,130 @@
+/**
+ * DAS BLATT der Steuerung: am Telefon von unten, am Rechner zentriert - nie
+ * eine Seitenleiste (`keineSeitenleisten.test.ts`).
+ *
+ * Es hält die Zusagen des Hauses (`BottomSheet`, `Modal`): Fokusfalle,
+ * Escape, Rückkehr zum Auslöser (auch auf iOS, wo ein angetippter Knopf nicht
+ * fokussiert wird - der Auslöser wird beim Öffnen AUSDRÜCKLICH gemerkt),
+ * Scroll-Sperre der Seite darunter und ein Ausblenden in der Dauer der
+ * Bewegungs-Familie.
+ */
+import { useEffect, useId, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { fokussierbare } from '../components/VpPanel';
+import { Ic, type IcName } from './Ic';
+
+export interface BlattProps {
+  /** Symbol im Kopf. */
+  symbol?: IcName | string;
+  titel: string;
+  unter?: string | null;
+  /** Ein eigener Kopf statt Symbol/Titel (z. B. mit Zurück-Pfeil). */
+  kopf?: ReactNode;
+  fuss?: ReactNode;
+  voll?: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+const AUSBLENDEN_MS = 280;
+
+export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, children }: BlattProps) {
+  const [offen, setOffen] = useState(false);
+  const titelId = useId();
+  const blattRef = useRef<HTMLDivElement>(null);
+  const ausloeser = useRef<HTMLElement | null>(null);
+  const zu = useRef(false);
+
+  useEffect(() => {
+    ausloeser.current = (document.activeElement as HTMLElement | null) ?? null;
+    const alt = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const raf = requestAnimationFrame(() => setOffen(true));
+    const fokus = window.setTimeout(() => {
+      const f = blattRef.current?.querySelector<HTMLElement>('.sh-head button, .sh-body button, .sh-body input');
+      f?.focus({ preventScroll: true });
+    }, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(fokus);
+      document.body.style.overflow = alt;
+      const a = ausloeser.current;
+      if (a && a.isConnected) a.focus({ preventScroll: true });
+    };
+  }, []);
+
+  const schliessen = () => {
+    if (zu.current) return;
+    zu.current = true;
+    setOffen(false);
+    window.setTimeout(onClose, AUSBLENDEN_MS);
+  };
+
+  const taste = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      schliessen();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const f = fokussierbare(blattRef.current);
+    if (!f.length) return;
+    const erstes = f[0];
+    const letztes = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === erstes) {
+      e.preventDefault();
+      letztes.focus();
+    } else if (!e.shiftKey && document.activeElement === letztes) {
+      e.preventDefault();
+      erstes.focus();
+    }
+  };
+
+  return createPortal(
+    <div className={`stn-blatt${offen ? ' open' : ''}`} onKeyDown={taste}>
+      <div className="sheet-scrim" onClick={schliessen} aria-hidden="true" />
+      <div
+        ref={blattRef}
+        className={`sheet${voll ? ' voll' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titelId}
+      >
+        <div className="sh-head">
+          <div className="grip" aria-hidden="true" />
+          {kopf ? (
+            <div className="sh-t">
+              {kopf}
+              <span id={titelId} className="sr">{titel}</span>
+              <button type="button" className="ibtn" onClick={schliessen} aria-label="Schließen">
+                <Ic n="x" s={22} />
+              </button>
+            </div>
+          ) : (
+            <div className="sh-t">
+              {symbol && (
+                <span className="ico">
+                  <Ic n={symbol} s={22} />
+                </span>
+              )}
+              <h2 id={titelId}>
+                {titel}
+                {unter && <small>{unter}</small>}
+              </h2>
+              <button type="button" className="ibtn" onClick={schliessen} aria-label="Schließen">
+                <Ic n="x" s={22} />
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="sh-body">{children}</div>
+        {fuss && <div className="sh-foot">{fuss}</div>}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Ein Blatt schliesst sich auch von innen (z. B. nach „Übernehmen“). */
+export type Schliessen = () => void;

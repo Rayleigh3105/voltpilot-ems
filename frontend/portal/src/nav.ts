@@ -53,6 +53,11 @@ export type AnlagenSub =
   | 'technik'
   | 'modell'
   | 'steuerung'
+  // Die Reiter der Steuerung (Konzept `docs/konzepte/steuerung`, E4 = A):
+  // „Geräte" ist `steuerung` selbst (jedes Lesezeichen gilt weiter), „Laden"
+  // steht nur, wo es Ladepunkte gibt, „Regeln" immer.
+  | 'laden'
+  | 'regeln'
   | 'lastspitzen'
   | 'ladevorgaenge'
   | 'befehle'
@@ -61,7 +66,7 @@ export type AnlagenSub =
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'wetter',
-  'technik', 'modell', 'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle',
+  'technik', 'modell', 'steuerung', 'laden', 'regeln', 'lastspitzen', 'ladevorgaenge', 'befehle',
   'geraet', 'box',
 ]);
 
@@ -590,6 +595,14 @@ export function canonicalAnlageHash(hash: string): string | null {
   // `messwerte` die Energie-Seite. Die Parameter reisen mit.
   if (raw === 'messwerte' && !segments[3] && /(?:^|[?&])m=/.test(query)) {
     return `#/anlage/${segments[1]}/einzelwerte${query}`;
+  }
+  // Die Regel-Deep-Links (`?vorlage=`, `?verbraucher=`, `?komponente=`)
+  // meinten die Regel-Kapsel der alten Steuerungsseite; seit den Reitern wohnt
+  // sie im Reiter „Regeln". Die Parameter reisen mit - der Baukasten öffnet
+  // also weiterhin genau die Regel, die das Lesezeichen meint.
+  const regelLink = /(?:^|[?&])(vorlage|verbraucher|komponente)=/.test(query);
+  if ((raw === 'steuerung' || raw === 'verbraucher') && !segments[3] && regelLink) {
+    return `#/anlage/${segments[1]}/regeln${query}`;
   }
   if (!raw || !(raw in LEGACY_SUBS)) return null;
   const alt = LEGACY_SUBS[raw];

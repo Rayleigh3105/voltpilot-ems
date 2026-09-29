@@ -545,14 +545,13 @@ const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>
     title: 'Aufbau',
     subtitle: 'Ihre Geräte, Boxen und Anlagen.',
   },
-  steuerung: {
-    title: 'Steuerung',
-    // EIN Satz, kein Technik-Vokabular: „Steuerungs-Flows" ist unser Wort fuer
-    // die Regel-Dokumente, nicht das des Kunden - und vier Zeilen Untertitel
-    // schoben am Telefon die Kapseln unter den Falz (Mobil-Umbau Stufe 4).
-    subtitle: 'Was Ihre Anlage automatisch tut - und was es bringt.',
-  },
+  // Die STEUERUNG trägt Kopf und Reiter selbst (Konzept `docs/konzepte/steuerung`):
+  // „Steuerung" mit dem Automatik-Knopf daneben und Reiter mit Zahlen - für
+  // alle drei Reiter derselbe Kopf, die Leiste springt also nicht.
 };
+
+/** Die Unterseiten der Steuerung (Reiter Geräte · Laden · Regeln). */
+const STEUERUNG_SUBS: ReadonlySet<AnlagenSub> = new Set<AnlagenSub>(['steuerung', 'laden', 'regeln']);
 
 /** One deep view of an Anlage, with the way back always in sight. */
 function AnlagenSubPage({
@@ -655,12 +654,14 @@ function AnlagenSubPage({
           </div>
         </div>
       )}
-      <BereichTabs
-        tabs={tabs}
-        active={sub}
-        label={`Reiter des Bereichs ${bereichLabel(sidebar, sub)}`}
-        onOpen={oeffneReiter}
-      />
+      {!STEUERUNG_SUBS.has(sub) && (
+        <BereichTabs
+          tabs={tabs}
+          active={sub}
+          label={`Reiter des Bereichs ${bereichLabel(sidebar, sub)}`}
+          onOpen={oeffneReiter}
+        />
+      )}
       <LazyBoundary>
         {sub === 'fahrplan' && <FahrplanSection site={site} />}
         {sub === 'messwerte' && (
@@ -743,12 +744,12 @@ function AnlagenSubPage({
             geraetRef={parseBefehleGeraet(window.location.hash)}
           />
         )}
-        {sub === 'steuerung' && (
+        {STEUERUNG_SUBS.has(sub) && (
           <SteuerungSection
             site={site}
-            isAdmin={isAdmin}
+            reiter={sub as 'steuerung' | 'laden' | 'regeln'}
+            tabs={tabs}
             onOpenSub={onOpenSub}
-            onSiteSaved={(updated) => onReload(updated.id)}
           />
         )}
         {sub === 'technik' && (

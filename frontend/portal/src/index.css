@@ -6044,6 +6044,13 @@ span.vp-swap-out {
     animation: none;
   }
 
+  /* Die Zustands-Pille der Steuerung („läuft"): derselbe Herzschlag wie der
+     Flotten-Punkt - das Wort „läuft" trägt die Aussage auch ohne ihn. */
+  .stn .pill.on i,
+  .stn-blatt .pill.on i {
+    animation: none;
+  }
+
   .vp-flow-on,
   .vp-flow-rev,
   .vp-boot-spinner,

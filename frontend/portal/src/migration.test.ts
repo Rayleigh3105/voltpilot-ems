@@ -304,8 +304,10 @@ describe('Verlauf-Sprache P1 · das Chrome der sechs Reiter', () => {
    *
    * Seit Preise und Wetter Reiter des FAHRPLANS sind, gilt dasselbe für ihn
    * (25.09.2026): ein Kopf nur über „Fahrplan" ließ genau diese Leiste
-   * springen. Die übrigen Bereiche (Einstellungen, Komponenten, Steuerung)
-   * behalten ihren Kopf — dort trägt jeder Reiter einen, nichts springt.
+   * springen. Die übrigen Bereiche (Einstellungen, Aufbau) behalten ihren
+   * Kopf — dort trägt jeder Reiter einen, nichts springt. Die STEUERUNG trägt
+   * Kopf und Reiter selbst (für alle drei Reiter derselbe), sie steht deshalb
+   * gar nicht in `SUB_PAGES`.
    */
   it('kein Verlauf- oder Fahrplan-Reiter trägt einen sichtbaren Seitenkopf', () => {
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/AnlagenPage.tsx'), 'utf8'));
@@ -316,7 +318,7 @@ describe('Verlauf-Sprache P1 · das Chrome der sechs Reiter', () => {
     }
     // Nicht-vakuum: die übrigen Bereiche stehen weiterhin drin.
     expect(gedeckelt).toMatch(/\n\s*technik\s*:/);
-    expect(gedeckelt).toMatch(/\n\s*steuerung\s*:/);
+    expect(gedeckelt).toMatch(/\n\s*modell\s*:/);
   });
 
   /**
@@ -1201,7 +1203,10 @@ describe('Steuerung Stufe 5 — Abbau-Invarianten', () => {
   it('die alte Profil-ZEILE (ProfileRowView) ist durch die Karten ersetzt', () => {
     const code = ohneKommentare(readFileSync(join(SRC, 'pages/SteuerungSection.tsx'), 'utf8'));
     expect(code).not.toMatch(/ProfileRowView/);
-    expect(code).toMatch(/Betriebsmodelle/);
+    // Seit den Reitern wählt man das Betriebsmodell im Blatt „Speicher".
+    const blatt = ohneKommentare(readFileSync(join(SRC, 'steuerung/Blaetter.tsx'), 'utf8'));
+    expect(blatt).not.toMatch(/ProfileRowView/);
+    expect(blatt).toMatch(/Betriebsmodell/);
   });
 });
 
