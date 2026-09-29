@@ -286,6 +286,77 @@ export function streifenFenster(view: StrompreisView): StreifenFenster[] {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Stundenbalken der Kachel „Börsenpreis“ (Konzept „Cockpit als Tagesfilm“)
+// ---------------------------------------------------------------------------
+
+/** Ein Balken je Stunde des heutigen (Berliner) Tages. */
+export interface StundenBalken {
+  /** „07“ - die Stunde nach Berliner Uhr. */
+  stunde: string;
+  /** Mittlerer Preis der Stunde (ct/kWh); null = keine Preise in der Stunde. */
+  ct: number | null;
+  /** Einordnung in die heutige Spanne; `flach` = kaum Schwankung, keine Farbe. */
+  klasse: 'guenstig' | 'mittel' | 'teuer' | 'flach';
+  vergangen: boolean;
+  jetzt: boolean;
+}
+
+export interface BoersenKachelView {
+  balken: StundenBalken[];
+  /** Das günstigste bzw. teuerste Fenster des Tages - DIESELBE Ableitung wie die Marktpreise-Seite. */
+  fenster: { art: FensterArt; wort: string; zeit: string; mittelCt: number | null }[];
+}
+
+function berlinStunde(iso: string): string {
+  return new Date(iso).toLocaleString('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false });
+}
+
+/**
+ * Die Kachel „Börsenpreis“ als Stundenbalken: je Stunde der mittlere Preis,
+ * eingeordnet wie das Urteil (unteres Drittel günstig, oberes teuer). Eine
+ * Stunde ohne Preis bleibt eine Lücke. Darunter die zwei benannten Fenster
+ * mit ihrem Durchschnittspreis.
+ */
+export function boersenKachel(view: StrompreisView): BoersenKachelView {
+  const heute = view.morgenAb >= 0 ? view.bars.slice(0, view.morgenAb) : view.bars;
+  const cts = heute.map((b) => b.ct).filter((c): c is number => c != null);
+  const min = cts.length ? Math.min(...cts) : 0;
+  const max = cts.length ? Math.max(...cts) : 0;
+  const flach = max - min < FLACH_SPANNE_CT;
+  const balken: StundenBalken[] = [];
+  let summe = 0;
+  let anzahl = 0;
+  let akt: StundenBalken | null = null;
+  const schliesse = () => {
+    if (!akt) return;
+    akt.ct = anzahl ? summe / anzahl : null;
+    if (akt.ct != null && !flach) {
+      const p = (akt.ct - min) / (max - min);
+      akt.klasse = akt.ct < 0 || p <= 1 / 3 ? 'guenstig' : p >= 2 / 3 ? 'teuer' : 'mittel';
+    }
+    balken.push(akt);
+  };
+  for (const b of heute) {
+    const stunde = berlinStunde(b.ts);
+    if (!akt || akt.stunde !== stunde) {
+      schliesse();
+      akt = { stunde, ct: null, klasse: 'flach', vergangen: true, jetzt: false };
+      summe = 0;
+      anzahl = 0;
+    }
+    if (b.ct != null) { summe += b.ct; anzahl++; }
+    akt.vergangen = akt.vergangen && b.vergangen;
+    akt.jetzt = akt.jetzt || b.jetzt;
+  }
+  schliesse();
+  const fenster = streifenFenster(view).map((f) => {
+    const werte = heute.slice(f.von, f.bis + 1).map((b) => b.ct).filter((c): c is number => c != null);
+    return { art: f.art, wort: f.wort, zeit: f.zeit, mittelCt: werte.length ? werte.reduce((a, c) => a + c, 0) / werte.length : null };
+  });
+  return { balken, fenster };
+}
+
 /**
  * Der zugängliche Name der Kurve — sie war `aria-hidden` und damit für
  * Vorlesesoftware gar nicht vorhanden, obwohl sie die Tagesform trägt.

@@ -385,3 +385,41 @@ button.vp-k-kopf:focus-visible {
     width: 100%;
   }
 }
+
+/* Börsenpreis: die zwei benannten Fenster des Tages */
+.vp-k-fenster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.vp-k-fenster > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-fenster b {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.vp-k-fenster .is-guenstig,
+.vp-k-fenster .is-negativ {
+  background: var(--vp-k-batt-soft);
+}
+.vp-k-fenster .is-guenstig b,
+.vp-k-fenster .is-negativ b {
+  color: var(--vp-chart-guenstig, #15803d);
+}
+.vp-k-fenster .is-teuer {
+  background: color-mix(in srgb, var(--vp-chart-discharge, #e53935) 9%, var(--vp-c-card, #fff));
+}
+.vp-k-fenster .is-teuer b {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-k-stunden {
+  min-width: 0;
+}

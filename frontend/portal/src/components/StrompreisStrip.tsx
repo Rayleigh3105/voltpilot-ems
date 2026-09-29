@@ -6,6 +6,7 @@ import { chartTheme } from '../chartTheme';
 import { PROVENIENZ } from '../provenienz';
 import type { PlanWordingKind } from '../schedule';
 import {
+  boersenKachel,
   bezugspreisKontext,
   KOPPLUNG_PREFIX,
   kurveBeschreibung,
@@ -135,6 +136,7 @@ export function StrompreisStrip({
   const fenster = streifenFenster(view);
 
   if (kachel) {
+    const boerse = boersenKachel(view);
     return (
       <Kachel
         id="strompreis"
@@ -171,19 +173,17 @@ export function StrompreisStrip({
               </p>
             )}
             {bezug?.warning && <p className="vp-k-sub">{bezug.warning}</p>}
-            <Kurve view={view} />
-            {fenster.length > 0 && (
-              <p className="vp-k-legende">
-                {fenster.map((f) => (
-                  <span key={f.art} className={`vp-sp-fenster-item art-${f.art}`}>
-                    <i aria-hidden="true" />
-                    {f.wort} · {f.zeit}
-                  </span>
+            <StundenBild view={view} />
+            {boerse.fenster.length > 0 && (
+              <div className="vp-k-fenster">
+                {boerse.fenster.map((f) => (
+                  <div key={f.art} className={`is-${f.art}`}>
+                    <span>{f.art === 'teuer' ? 'am teuersten' : f.art === 'negativ' ? 'unter null' : 'am günstigsten'}</span>
+                    <b>{f.zeit}</b>
+                    {f.mittelCt != null && <span>Ø {ctText(f.mittelCt)}</span>}
+                  </div>
                 ))}
-              </p>
-            )}
-            {view.anker != null && (
-              <p className="vp-k-sub">{view.anker.tief} · {view.anker.hoch}</p>
+              </div>
             )}
             {praemie != null && <p className="vp-k-sub">{praemie}</p>}
             {view.morgenNote != null && <p className="vp-k-sub">{view.morgenNote}</p>}
@@ -285,6 +285,58 @@ export function StrompreisStrip({
         </div>
       )}
     </Card>
+  );
+}
+
+function ctText(v: number): string {
+  return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}\u00a0ct`;
+}
+
+/**
+ * Die Stundenbalken der Kachel (Konzept „Cockpit als Tagesfilm“, Entwurf A):
+ * je Stunde ein Balken in der Farbe seiner Einordnung (günstig · mittel ·
+ * teuer), Vergangenes blass, die laufende Stunde umrandet. Negative Preise
+ * hängen unter der Nulllinie. Die Wörter stehen daneben (Urteil, Fenster) -
+ * die Farbe ist nie allein.
+ */
+function StundenBild({ view }: { view: ReturnType<typeof strompreisView> }) {
+  const t = chartTheme();
+  const [wrapRef, gemessen] = useContainerWidth<HTMLDivElement>();
+  const { balken } = boersenKachel(view);
+  const W = gemessen > 0 ? gemessen : 320;
+  const H = 86;
+  const werte = balken.map((b) => b.ct).filter((c): c is number => c != null);
+  if (werte.length === 0) return <div ref={wrapRef} />;
+  const lo = Math.min(0, ...werte);
+  const hi = Math.max(0.1, ...werte);
+  const y = (v: number) => 4 + (H - 8) * (1 - (v - lo) / (hi - lo || 1));
+  const y0 = y(0);
+  const bw = W / 24;
+  const farbe = (k: string) => (k === 'guenstig' ? t.guenstig : k === 'teuer' ? t.discharge : t.neutral);
+  return (
+    <div ref={wrapRef} className="vp-k-stunden">
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={kurveBeschreibung(view)}>
+        <line x1={0} x2={W} y1={y0} y2={y0} stroke={t.axisLine} strokeWidth={1} />
+        {balken.map((b, i) => {
+          if (b.ct == null) return null;
+          const x = i * bw + 1.5;
+          const top = Math.min(y(b.ct), y0 - 2);
+          const h = Math.max(2, Math.abs(y0 - y(b.ct)));
+          const yy = b.ct < 0 ? y0 : top;
+          return (
+            <g key={b.stunde + i}>
+              <rect x={x} y={yy} width={Math.max(1, bw - 3)} height={h} rx={2} fill={farbe(b.klasse)} opacity={b.vergangen ? 0.3 : b.jetzt ? 1 : 0.75} />
+              {b.jetzt && (
+                <rect x={x - 1.5} y={yy - 1.5} width={Math.max(1, bw - 3) + 3} height={h + 3} rx={3} fill="none" stroke={t.ink} strokeWidth={1.5} />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="vp-k-achse" aria-hidden="true">
+        <span>0</span><span>6</span><span>12</span><span>18</span><span>24 Uhr</span>
+      </div>
+    </div>
   );
 }
 

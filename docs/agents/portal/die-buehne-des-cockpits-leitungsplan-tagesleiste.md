@@ -28,7 +28,9 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Hülle `components/kacheln/Kachel.tsx` (Kopf = Absprung, Stern = Leitkachel), Inhalte im nachgeladenen
   Stück `components/kacheln/CockpitKacheln.tsx`, Ableitungen in `kacheln.ts` (Autarkie/Eigenverbrauch mit
   den Server-Kennzahlen des Tages und bilanzieller Aufteilung, Speicher, Fahrplan-Tagesuhr, Handel, Sonne,
-  Netz heute, Steuerspalten). Börsenpreis und Laden tragen die Hülle selbst (`kachel`-Prop).
+  Netz heute, Steuerspalten). Börsenpreis und Laden tragen die Hülle selbst (`kachel`-Prop). Der
+  Börsenpreis zeigt Stundenbalken (`strompreis.boersenKachel`: Mittel je Berliner Stunde, Drittel wie das
+  Urteil, Lücke bleibt Lücke) und die zwei Fenster aus `streifenFenster` mit Ø-Preis.
 - **Leitkachel:** am Rechner rechts neben dem Fluss (`CockpitHero seite`), am Telefon erste Kachel:
   Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, sonst „Unterm Strich“. Sie steht dann
   nicht noch einmal im Raster.
