@@ -6036,6 +6036,14 @@ span.vp-swap-out {
     --vp-motion-scale: 0;
   }
 
+  /* Leitungsplan (Cockpit-Bühne): die Punkte SIND die Aussage „live“ -
+     unter reduzierter Bewegung entfallen sie ganz; die Richtung trägt dort
+     die Herkunftsfarbe der Spur (Grün kommt immer aus dem Speicher …). */
+  .vp-lp.is-live .vp-lp-punkte {
+    display: none;
+    animation: none;
+  }
+
   .vp-flow-on,
   .vp-flow-rev,
   .vp-boot-spinner,

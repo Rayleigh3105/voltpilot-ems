@@ -10,7 +10,7 @@ for (const width of [375, 1440]) {
       page.on('pageerror', e => fehler.push(e.message));
       await page.goto(`/e2e/laden-bei-bezug.html?stand=${stand}`);
       await expect(page.getByRole('heading', { name: 'Anlage mit Speicher' })).toBeVisible();
-      const svg = page.locator('.vp-hero-flow svg').first();
+      const svg = page.locator('.vp-hero-flow .vp-lp').first();
       if (stand === 'vorher') {
         await expect(svg.getByText('26,2 kW', { exact: true })).toBeVisible();
         await expect(page.locator('.vp-flow-confirm')).toHaveCount(1);

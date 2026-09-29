@@ -327,11 +327,18 @@
   min-width: 0;
 }
 
-/* Der Fluss sitzt mittig in seiner (gestreckten) Bühnenspalte. */
+/* Die Bühne (Kopf, Satz, Fluss, Listen, Tagesleiste) liest sich von oben:
+   sie beginnt oben in ihrer Spalte, statt mittig zu schweben. */
 .vp-hero-flow {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: var(--vp-space-3, 12px);
+}
+/* Platzhalter, solange die Bühne nachlädt: etwa die Höhe von Kopf, Satz und
+   Fluss, damit die Kacheln darunter nicht springen. */
+.vp-eb-warten {
+  min-height: 420px;
 }
 
 .vp-hero-side {

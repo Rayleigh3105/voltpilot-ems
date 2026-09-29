@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { RollenKanonischerWert, SiteEntity, SiteSource, SiteTopology } from '../api';
@@ -6,14 +6,19 @@ import type { CockpitHeroView } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
 import { flowHasValues } from '../liveDetail';
-import type { ConsumerStripView } from '../consumers/fulfillment';
 import type { ChargingNodeOpts } from '../adaptiveFlow';
-import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
-import { EnergyFlow } from './EnergyFlow';
-import { PvBreakdownLine } from './PvBreakdown';
 import { RollenBreakdown } from './RollenBreakdown';
 import { cockpitRollenTopologie } from '../pvRolle';
-import { ConsumerStrip } from './ConsumerStrip';
+import { pvComposition } from '../pvComposition';
+import { jetztFluss } from '../flussJetzt';
+import type { Betrieb } from '../leitungsplan';
+import type { PlanWordingKind } from '../schedule';
+import type { Tag } from '../tagesleiste';
+import type { VerbrauchKomposition } from '../verbrauchKomposition';
+// Die Bühne ist ein eigenes, nachgeladenes Stück: der Einstieg bleibt unter
+// seiner Grenze (`test/bundle-smoke.sh`), und der Platzhalter hält ihre Höhe,
+// damit beim Nachladen nichts springt.
+const EnergieBuehne = lazy(() => import('./EnergieBuehne').then((m) => ({ default: m.EnergieBuehne })));
 import { CockpitErgebnis, ErgebnisRing } from './erloese/CockpitErgebnis';
 import './CockpitBlocks.css';
 
@@ -64,16 +69,12 @@ export function CockpitHero({
   periodSeg = null,
   controlConfirmed = false,
   ladenHinweis = null,
-  charging = null,
-  chargingOwn = null,
   showRail = true,
   nachtragHref,
-  rename = null,
-  consumers = null,
-  onOpenConsumers,
   pvRollen = null,
   verbrauchRollen = null,
   netzRollen = null,
+  buehne = null,
 }: {
   view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
@@ -145,12 +146,19 @@ export function CockpitHero({
    */
   rename?: { siteId: string; boxRef: string | null; onRenamed: () => void } | null;
   /**
-   * Der Cockpit-Verbraucherstreifen (§14.10): eine Zeile je steuerbarem
-   * Verbraucher unter dem Energiefluss. null (keine Verbraucher / älteres
-   * Backend) rendert nichts - das Cockpit ist dann byte-identisch zu vorher.
+   * Die Eingaben der Bühne (Konzept „Cockpit als Tagesfilm“): Betriebsmodell,
+   * der heutige Tag (Verlauf + Plan), das Lastspitzen-Ziel und „Verbrauch im
+   * Detail“. Fehlt sie, zeigt die Bühne nur „jetzt“, ohne Tagesleiste.
    */
-  consumers?: ConsumerStripView | null;
-  onOpenConsumers?: () => void;
+  buehne?: {
+    betrieb: Betrieb;
+    tag: Tag | null;
+    zielKw: number | null;
+    verbrauch: VerbrauchKomposition | null;
+    planKind: PlanWordingKind;
+    isPhone: boolean;
+    now: Date;
+  } | null;
   /**
    * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Existiert eine
    * Standort-PV-Zuordnung, trägt die Cockpit-Zahl ein dezentes „berechnet" und ein Tipp öffnet die
@@ -166,6 +174,10 @@ export function CockpitHero({
   // Existiert eine kanonische PV-Zuordnung, ist SIE die Herkunft der Cockpit-Zahl - dann tritt die
   // rohe Quellen-Aufteilung (`PvBreakdownLine`) zurück, sie erklärte sonst eine andere Zahl.
   const pvRolleAktiv = pvRollen?.zuordnung_vorhanden === true;
+  // Die EINE Ableitung der PV-Zusammensetzung: sie liefert die Zahl am
+  // Sonnen-Knoten UND „Erzeugung im Detail“ - beide können sich nicht
+  // widersprechen. Mit kanonischer PV-Rolle ist deren Wert die Zahl.
+  const composition = topology && !pvRolleAktiv ? pvComposition(rollenTopologie, sources, pins) : null;
   // ⚠ SEIT P5 wohnen die Ringe IN der Erlöskarte (Konzept §3.7): Label · Zahl
   //   · Zeitraum-Segment · Speicher-Sektion · Ringe. Sie sind deshalb kein
   //   eigener Leisten-Block mehr — ein zweiter Block hätte dieselbe Kennzahl
@@ -187,44 +199,38 @@ export function CockpitHero({
     >
       <div className="vp-hero-flow">
         {hasFlow ? (
-          topology ? (
-            <AdaptiveEnergyFlow
-              topology={rollenTopologie!}
-              kanonischePv={pvRolleAktiv}
-              stale={stale}
-              size="hero"
-              sources={sources}
-              pins={pins}
-              controlConfirmed={controlConfirmed}
-              charging={charging}
-              chargingOwn={chargingOwn}
-              rename={rename}
-            />
-          ) : (
-            <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />
-          )
+          <Suspense fallback={<div className="vp-eb-warten" aria-hidden="true" />}>
+          <EnergieBuehne
+            jetzt={jetztFluss(rollenTopologie, snapshot, {
+              pvTotalKw: composition?.totalKw ?? null,
+              loadKanonisch: verbrauchRollen?.zuordnung_vorhanden ? { wert: verbrauchRollen.wert } : null,
+            })}
+            stale={stale}
+            betrieb={buehne?.betrieb ?? 'eigenverbrauch'}
+            tag={buehne?.tag ?? null}
+            zielKw={buehne?.zielKw ?? null}
+            bestaetigt={controlConfirmed}
+            verbrauch={buehne?.verbrauch ?? null}
+            pv={composition}
+            planKind={buehne?.planKind ?? 'eigenverbrauch'}
+            isPhone={buehne?.isPhone ?? false}
+            now={buehne?.now ?? new Date()}
+          />
+          </Suspense>
         ) : (
           <NoFlowGuidance onOpenSub={onOpenSub} />
         )}
-        {/* Auf einer migrierten Anlage trägt der PV-Knoten seine Zusammensetzung
-            selbst (ein Tipp darauf öffnet sie) - die immer sichtbare Zeile wäre
-            dann eine zweite, widersprechbare Wahrheit. Die v1-Anlage behält sie:
-            ihr Fluss hat keinen anklickbaren PV-Knoten. Existiert eine kanonische
-            PV-Rolle, tritt die rohe Quellen-Aufteilung zurück (sie erklärte sonst
-            eine andere Zahl als die gezeigte). */}
-        {hasFlow && !topology && !pvRolleAktiv && <PvBreakdownLine sources={sources} />}
-        {/* vp-agg §2.4/B: die kanonische PV-Rolle - „berechnet" + Aufschlüsselung
-            je Gerät auf Tipp. Ohne Zuordnung rendert sie nichts. */}
         {hasFlow && ladenHinweis && (
           <p className="vp-hero-hinweis" role="status">
             <Icon name="info" size={14} />
             <span>{ladenHinweis}</span>
           </p>
         )}
+        {/* vp-agg §2.4/B: die kanonische PV-Rolle - „berechnet" + Aufschlüsselung
+            je Gerät auf Tipp. Ohne Zuordnung rendert sie nichts. */}
         <RollenBreakdown wert={pvRollen} />
         <RollenBreakdown wert={verbrauchRollen} />
         <RollenBreakdown wert={netzRollen} />
-        <ConsumerStrip view={consumers} onOpen={onOpenConsumers} />
       </div>
 
       {hasRail && (

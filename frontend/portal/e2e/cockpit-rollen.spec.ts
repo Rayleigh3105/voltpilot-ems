@@ -12,7 +12,7 @@ for (const width of [375, 1440]) {
       const rollen = page.locator('.vp-pvrolle');
       if (zustand === 'rueckfall') {
         await expect(rollen).toHaveCount(0);
-        await expect(page.locator('svg').getByText('148,6 kW', { exact: true })).toBeVisible();
+        await expect(page.locator('.vp-lp').getByText('148,6 kW', { exact: true })).toBeVisible();
       } else {
         await expect(rollen).toHaveCount(3);
         for (const rolle of await rollen.all()) {
@@ -23,12 +23,12 @@ for (const width of [375, 1440]) {
         }
         if (zustand === 'zugeordnet') {
           await expect(page.locator('.vp-rolle-stand').first()).toHaveText('Stand 10:15 Uhr');
-          await expect(page.locator('svg').getByText('213,5 kW', { exact: true })).toBeVisible();
+          await expect(page.locator('.vp-lp').getByText('213,5 kW', { exact: true })).toBeVisible();
           await expect(page.getByText('Unterzähler Kühlung', { exact: true })).toBeVisible();
         } else {
           await expect(page.getByText('Stand unbekannt', { exact: true })).toHaveCount(3);
           await expect(page.getByText('liefert gerade nicht', { exact: true })).toHaveCount(5);
-          await expect(page.locator('svg').getByText('148,6 kW', { exact: true })).toHaveCount(0);
+          await expect(page.locator('.vp-lp').getByText('148,6 kW', { exact: true })).toHaveCount(0);
         }
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
