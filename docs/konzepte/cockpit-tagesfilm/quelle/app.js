@@ -184,18 +184,16 @@
   var SVGNS = 'http://www.w3.org/2000/svg';
   function svgEl(tag, attrs, parent) { var e = document.createElementNS(SVGNS, tag); for (var a in attrs) e.setAttribute(a, attrs[a]); if (parent) parent.appendChild(e); return e; }
 
-  /* ================= Die Bühne: Energiebilanz + Tagesleiste =================
-     Oben „Woher kommt der Strom?“, unten „Wohin fließt er?“, dazwischen ruhige Bänder
-     in der Farbe der Herkunft. Beide Balken sind gleich lang: Was ankommt, fließt ab.
+  /* ================= Die Bühne: Energiefluss + Tagesleiste =================
+     Vier Knoten wie auf einem Leitungsplan: Sonne oben, Speicher links, Netz rechts, Haus unten.
+     Jede Verbindung ist eine eigene Spur in der Farbe ihrer Herkunft und so breit wie ihre Leistung.
+     Die Spuren laufen gebündelt zum Hausanschluss in der Mitte und biegen dort ab.
+     Punkte laufen nur, solange das Bild „jetzt“ zeigt; sonst steht es still.
      Die Geräte stehen darunter als sortierte Liste, damit beliebig viele Platz haben. */
-  var ROLES = {
-    pv: { name: 'Sonne', icon: 'sun', col: 'var(--pv)', soft: 'var(--pv-soft)' },
-    batt: { name: 'Speicher', icon: 'battery', col: 'var(--batt)', soft: 'var(--batt-soft)' },
-    grid: { name: 'Netz', icon: 'pole', col: 'var(--grid)', soft: 'var(--grid-soft)' },
-    load: { name: 'Verbrauch', icon: 'house', col: 'var(--load)', soft: 'var(--load-soft)' }
-  };
-  var SRC_ORDER = ['pv', 'batt', 'grid'], DST_ORDER = ['load', 'batt', 'grid'];
   var PAIRS = ['pv>load', 'pv>batt', 'pv>grid', 'batt>load', 'batt>grid', 'grid>load', 'grid>batt'];
+  var PAIR_TXT = { 'pv>load': 'Sonne ins Haus', 'pv>batt': 'Sonne in den Speicher', 'pv>grid': 'Sonne ins Netz', 'batt>load': 'Speicher ins Haus', 'batt>grid': 'Speicher ins Netz', 'grid>load': 'Netz ins Haus', 'grid>batt': 'Netz in den Speicher' };
+  // Zeichenreihenfolge: die waagrechten Spuren zuerst, die senkrechte kreuzt darüber
+  var Z_ORDER = ['batt>grid', 'grid>batt', 'pv>load', 'pv>batt', 'pv>grid', 'batt>load', 'grid>load'];
 
   function Flow(root, v, opts) {
     this.root = root; this.v = v; this.opts = opts || {};
@@ -207,7 +205,10 @@
     this.buildStrip();
     this.setQ(v.nowQ);
     var self = this;
-    this.ro = new ResizeObserver(function () { self.buildStrip(); self.updateStrip(); self.labels(); });
+    this.ro = new ResizeObserver(function () {
+      if ((self.el.clientWidth || 0) !== self.g.w0) { self.geom(); if (self.cur) self.paint(self.cur); }
+      self.buildStrip(); self.updateStrip();
+    });
     this.ro.observe(this.el);
   }
   Flow.prototype.destroy = function () {
@@ -215,36 +216,92 @@
     if (this.ro) this.ro.disconnect();
   };
   Flow.prototype.build = function () {
-    var self = this;
-    var seg = function (side, r) {
-      return '<button type="button" class="seg-b ' + side + '" data-role="' + r + '" style="--hue:' + ROLES[r].col + ';--soft:' + ROLES[r].soft + '"><span class="seg-in">' + ic(ROLES[r].icon, 16) + '<span class="seg-t"></span></span></button>';
+    var self = this, v = this.v, key = v.key;
+    var hatch = function (r) {
+      return '<pattern id="hp-' + r + '-' + key + '" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="' + SRC_COL[r] + '" opacity=".25"/><rect width="3" height="6" fill="' + SRC_COL[r] + '"/></pattern>';
     };
     this.el.innerHTML =
-      '<div class="bal-h"><span>Woher kommt der Strom?</span><b data-tot="src"></b></div>' +
-      '<p class="bal-more" data-more="src" hidden></p>' +
-      '<div class="bal-bar src">' + SRC_ORDER.map(function (r) { return seg('src', r); }).join('') + '</div>' +
-      '<svg class="bal-links" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true"><defs>' +
-      SRC_ORDER.map(function (r) { return '<linearGradient id="lg-' + r + '-' + self.v.key + '" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="' + SRC_COL[r] + '" stop-opacity="1"/><stop offset="1" stop-color="' + SRC_COL[r] + '" stop-opacity=".45"/></linearGradient>'; }).join('') +
-      '</defs>' + PAIRS.map(function (p) { return '<path data-pair="' + p + '"/>'; }).join('') + '</svg>' +
-      '<div class="bal-bar dst">' + DST_ORDER.map(function (r) { return seg('dst', r); }).join('') + '</div>' +
-      '<p class="bal-more" data-more="dst" hidden></p>' +
-      '<div class="bal-h"><span>Wohin fließt er?</span><b data-tot="dst"></b></div>' +
-      '<p class="bal-status"></p>';
-    this.segs = { src: {}, dst: {} };
-    $$('.seg-b', this.el).forEach(function (b) {
-      self.segs[b.classList.contains('src') ? 'src' : 'dst'][b.getAttribute('data-role')] = b;
-      b.addEventListener('click', function () { self.opts.onNode && self.opts.onNode(b.getAttribute('data-role'), 0, self.m, b); });
+      '<svg class="fx" aria-hidden="true"><defs>' + ['pv', 'batt', 'grid'].map(hatch).join('') + '</defs>' +
+      '<g class="rails"><path data-rail="v"/><path data-rail="h"/></g>' +
+      Z_ORDER.map(function (k) {
+        return (k === 'pv>load' ? '<path class="casing"/>' : '') + '<g data-pair="' + k + '"><path class="lane"><title></title></path><path class="dot"/></g>';
+      }).join('') + '</svg>' +
+      '<span class="glow" aria-hidden="true"></span>' +
+      '<button type="button" class="fnode sun" data-node="pv" style="--hue:var(--pv)">' + ic('sun', 22) + '</button>' +
+      '<div class="flab r" data-l="pv"></div>' +
+      '<button type="button" class="fbatt" data-node="batt"><span class="lvl"></span>' + (v.batt.reserve ? '<span class="res"></span>' : '') + '</button>' +
+      '<div class="flab" data-l="batt"></div>' +
+      '<button type="button" class="fnode" data-node="grid" style="--hue:var(--grid)">' + ic('pole', 20) + '</button>' +
+      '<div class="flab" data-l="grid"></div>' +
+      '<button type="button" class="fnode" data-node="load" style="--hue:var(--load)">' + ic('house', 22) + '</button>' +
+      '<div class="flab r" data-l="load"></div>';
+    this.svg = $('svg.fx', this.el);
+    this.rails = { v: $('[data-rail="v"]', this.el), h: $('[data-rail="h"]', this.el) };
+    this.casing = $('.casing', this.el);
+    this.lanes = {};
+    $$('g[data-pair]', this.el).forEach(function (gEl) {
+      var k = gEl.getAttribute('data-pair');
+      self.lanes[k] = { g: gEl, lane: $('.lane', gEl), dot: $('.dot', gEl), tip: $('title', gEl), src: k.split('>')[0] };
     });
-    this.paths = {};
-    $$('.bal-links path', this.el).forEach(function (p) {
-      var k = p.getAttribute('data-pair');
-      self.paths[k] = p; p.setAttribute('fill', 'url(#lg-' + k.split('>')[0] + '-' + self.v.key + ')'); p.setAttribute('stroke', SRC_COL[k.split('>')[0]]);
+    this.nodes = {};
+    this.lab = {};
+    $$('[data-node]', this.el).forEach(function (b) {
+      var r = b.getAttribute('data-node');
+      self.nodes[r] = b;
+      b.addEventListener('click', function () { self.opts.onNode && self.opts.onNode(r, 0, self.m, b); });
     });
+    $$('[data-l]', this.el).forEach(function (n) { self.lab[n.getAttribute('data-l')] = n; });
+    this.glow = $('.glow', this.el); this.lvl = $('.lvl', this.el); this.res = $('.res', this.el);
     this.det.addEventListener('click', function (e) {
       var b = e.target.closest('[data-node]'); if (!b || !self.det.contains(b)) return;
       self.opts.onNode && self.opts.onNode(b.getAttribute('data-node'), +(b.getAttribute('data-i') || 0), self.m, b);
     });
+    this.geom();
   };
+
+  /* Lage der Knoten: am Telefon eng, am Rechner breiter */
+  Flow.prototype.geom = function () {
+    var raw = this.el.clientWidth || 320, w = Math.max(220, raw), c = w < 560, tight = w < 300, cx = Math.round(w / 2);
+    var g = !c
+      ? { R: 32, bw: 36, bh: 56, sunY: 48, hubY: 180, hausY: 318, h: 364, battX: Math.round(w * 0.17), gridX: Math.round(w * 0.83), maxW: 34, gap: 3, rad: 22, lo: 12 }
+      : tight
+        ? { R: 22, bw: 26, bh: 40, sunY: 34, hubY: 138, hausY: 280, h: 312, battX: 24, gridX: w - 24, maxW: 20, gap: 2, rad: 12, lo: 8 }
+        : { R: 26, bw: 30, bh: 46, sunY: 40, hubY: 150, hausY: 272, h: 306, battX: 34, gridX: w - 34, maxW: 24, gap: 2, rad: 16, lo: 12 };
+    g.w = w; g.w0 = raw; g.c = c; g.cx = cx;
+    this.g = g;
+    this.el.style.height = g.h + 'px';
+    this.el.classList.toggle('wide', !c);
+    this.el.classList.toggle('tight', tight);
+    this.svg.setAttribute('viewBox', '0 0 ' + w + ' ' + g.h);
+    this.svg.setAttribute('width', w); this.svg.setAttribute('height', g.h);
+    this.rails.v.setAttribute('d', 'M' + cx + ',' + g.sunY + 'V' + g.hausY);
+    this.rails.h.setAttribute('d', 'M' + g.battX + ',' + g.hubY + 'H' + g.gridX);
+    var pos = function (el, x, y, wd, ht) { el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = wd + 'px'; el.style.height = ht + 'px'; };
+    pos(this.nodes.pv, cx, g.sunY, 2 * g.R, 2 * g.R);
+    pos(this.nodes.load, cx, g.hausY, 2 * g.R, 2 * g.R);
+    pos(this.nodes.grid, g.gridX, g.hubY, 2 * g.R, 2 * g.R);
+    pos(this.nodes.batt, g.battX, g.hubY, g.bw, g.bh);
+    this.glow.style.left = cx + 'px'; this.glow.style.top = g.sunY + 'px';
+    this.glow.style.setProperty('--d', 2 * g.R + 'px');
+    if (this.res) this.res.style.bottom = (3 + (g.bh - 10) * this.v.batt.reserve / 100) + 'px';
+    // Sonne und Haus rechts daneben, Speicher und Netz darunter
+    var L = this.lab, below = g.hubY + Math.max(g.R, g.bh / 2) + 10;
+    L.pv.style.left = L.load.style.left = (cx + g.R + g.lo) + 'px';
+    L.pv.style.top = g.sunY + 'px'; L.load.style.top = g.hausY + 'px';
+    L.batt.style.top = L.grid.style.top = below + 'px';
+    L.batt.classList.toggle('c', !c); L.grid.classList.toggle('c', !c); L.grid.classList.toggle('e', c);
+    if (c) {
+      var bl = Math.max(2, g.battX - g.bw / 2 - 2);
+      L.batt.style.left = bl + 'px';
+      L.grid.style.left = ''; L.grid.style.right = Math.max(2, w - g.gridX - g.R) + 'px';
+      // Auf schmalen Telefonen brechen die Texte um, bevor sie die Spuren in der Mitte erreichen
+      L.batt.style.maxWidth = L.grid.style.maxWidth = tight ? Math.round(cx - g.maxW - g.gap - 8 - bl) + 'px' : '';
+    } else {
+      L.batt.style.maxWidth = L.grid.style.maxWidth = '';
+      L.batt.style.left = g.battX + 'px'; L.grid.style.left = g.gridX + 'px'; L.grid.style.right = '';
+    }
+  };
+
   Flow.prototype.setMode = function (mode) {
     this.mode = mode;
     if (mode === 'heute' && this.q > this.v.nowQ) this.q = this.v.nowQ;
@@ -252,108 +309,107 @@
     this.setQ(this.q);
   };
   Flow.prototype.setQ = function (q) {
-    var v = this.v;
+    var v = this.v, self = this;
     q = clamp(Math.round(q), 0, this.mode === 'heute' ? v.nowQ : QH - 1);
     this.q = q;
     var m = momentAt(v, q, this.mode);
     this.m = m;
     this.el.classList.toggle('plan', m.fut);
     this.el.classList.toggle('heute', m.heute);
-    this.animateTo(this.layout(m));
+    this.el.classList.toggle('live', m.live && !m.heute);
+    PAIRS.forEach(function (k) { var o = self.lanes[k]; o.lane.setAttribute('stroke', m.fut ? 'url(#hp-' + o.src + '-' + v.key + ')' : SRC_COL[o.src]); });
+    this.animateTo(this.target(m));
     this.labels();
     this.details();
     this.updateStrip();
     if (this.opts.onMoment) this.opts.onMoment(m, this);
   };
 
-  /* Lage der Segmente und Bänder in einem Raster von 0 bis 1000 */
-  Flow.prototype.layout = function (m) {
-    var P = m.pairs, W = 1000;
-    var sv = { pv: P['pv>load'] + P['pv>batt'] + P['pv>grid'], batt: P['batt>load'] + P['batt>grid'], grid: P['grid>load'] + P['grid>batt'] };
-    var dv = { load: P['pv>load'] + P['batt>load'] + P['grid>load'], batt: P['pv>batt'] + P['grid>batt'], grid: P['pv>grid'] + P['batt>grid'] };
-    var tot = sv.pv + sv.batt + sv.grid, L = { tot: tot, src: {}, dst: {}, links: {} };
-    var sc = function (x) { return tot > 0 ? W * x / tot : 0; };
-    var x = 0; SRC_ORDER.forEach(function (r) { L.src[r] = [x, sc(sv[r]), sv[r]]; x += sc(sv[r]); });
-    x = 0; DST_ORDER.forEach(function (r) { L.dst[r] = [x, sc(dv[r]), dv[r]]; x += sc(dv[r]); });
-    var so = {}, di = {};
-    SRC_ORDER.forEach(function (r) { so[r] = L.src[r][0]; });
-    DST_ORDER.forEach(function (r) { di[r] = L.dst[r][0]; });
-    SRC_ORDER.forEach(function (s) { DST_ORDER.forEach(function (d) { var k = s + '>' + d; if (!(k in P)) return; var w = sc(P[k]); L.links[k] = { a0: so[s], a1: so[s] + w }; so[s] += w; }); });
-    DST_ORDER.forEach(function (d) { SRC_ORDER.forEach(function (s) { var k = s + '>' + d; if (!(k in P)) return; var w = sc(P[k]); L.links[k].b0 = di[d]; L.links[k].b1 = di[d] + w; di[d] += w; }); });
-    return L;
+  /* Breite je Spur als Anteil der größten Leistung des Tages (Energie: des größten Tageswerts) */
+  Flow.prototype.target = function (m) {
+    var v = this.v, sc = m.heute ? v.kMax : v.fMax, th = m.heute ? 0.05 : DB, T = { f: {} };
+    PAIRS.forEach(function (k) { var x = m.pairs[k] || 0; T.f[k] = x > th && sc > 0 ? x / sc : 0; });
+    return T;
   };
-  function lerpLayout(A, B, e) {
-    var o = { tot: B.tot, src: {}, dst: {}, links: {} };
-    ['src', 'dst'].forEach(function (s) { Object.keys(B[s]).forEach(function (r) { var a = A[s][r] || B[s][r], b = B[s][r]; o[s][r] = [a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e, b[2]]; }); });
-    Object.keys(B.links).forEach(function (k) { var a = A.links[k] || B.links[k], b = B.links[k]; o.links[k] = { a0: a.a0 + (b.a0 - a.a0) * e, a1: a.a1 + (b.a1 - a.a1) * e, b0: a.b0 + (b.b0 - a.b0) * e, b1: a.b1 + (b.b1 - a.b1) * e }; });
-    return o;
-  }
   /* Werte gleiten nur beim Wechsel (200 ms), sonst steht das Bild still */
-  Flow.prototype.animateTo = function (L) {
+  Flow.prototype.animateTo = function (T) {
     var self = this, from = this.cur;
-    this.tgt = L;
+    this.tgt = T;
     cancelAnimationFrame(this.raf);
-    if (!from || RM.matches) { this.cur = L; this.paint(L); return; }
+    if (!from || RM.matches) { this.cur = T; this.paint(T); return; }
     var t0 = performance.now(), D = 200;
     var step = function (t) {
-      var k = Math.min(1, (t - t0) / D), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-      self.cur = lerpLayout(from, L, e); self.paint(self.cur);
+      var k = Math.min(1, (t - t0) / D), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2, o = { f: {} };
+      PAIRS.forEach(function (p) { var a = from.f[p], b = T.f[p]; o.f[p] = a + (b - a) * e; });
+      self.cur = o; self.paint(o);
       if (k < 1 && self.alive) self.raf = requestAnimationFrame(step);
     };
     this.raf = requestAnimationFrame(step);
   };
-  Flow.prototype.paint = function (L) {
-    var self = this;
-    ['src', 'dst'].forEach(function (side) {
-      Object.keys(L[side]).forEach(function (r) {
-        var b = self.segs[side][r], s = L[side][r], vis = s[1] > 0.5;
-        b.style.left = 'calc(' + (s[0] / 10).toFixed(3) + '% + 1px)';
-        b.style.width = vis ? 'calc(' + (s[1] / 10).toFixed(3) + '% - 2px)' : '0px';
-        b.style.visibility = vis ? 'visible' : 'hidden';
-      });
+
+  /* Spuren legen: Die Spur Sonne → Haus bleibt in der senkrechten Mitte, Speicher ↔ Netz in der
+     waagrechten. Die übrigen liegen außen daneben und biegen am Hausanschluss mit Radius ab. */
+  Flow.prototype.paint = function (T) {
+    var g = this.g, gp = g.gap, cx = g.cx, hy = g.hubY, self = this, W = {}, D = {};
+    PAIRS.forEach(function (k) { var f = T.f[k]; W[k] = f > 0.0005 ? Math.max(1.5, g.maxW * f) : 0; });
+    var r1 = function (x) { return Math.round(x * 10) / 10; };
+    var wpl = W['pv>load'], wbg = W['batt>grid'], wgb = W['grid>batt'];
+    var vL = wpl ? cx - wpl / 2 - gp : cx - gp / 2, vR = wpl ? cx + wpl / 2 + gp : cx + gp / 2;
+    var M = wbg + wgb + (wbg && wgb ? gp : 0);
+    var hT = M ? hy - M / 2 - gp : hy - gp / 2, hB = M ? hy + M / 2 + gp : hy + gp / 2;
+    D['pv>load'] = 'M' + cx + ',' + g.sunY + 'V' + g.hausY;
+    D['batt>grid'] = 'M' + g.battX + ',' + r1(hy - M / 2 + wbg / 2) + 'H' + g.gridX;
+    D['grid>batt'] = 'M' + g.gridX + ',' + r1(hy + M / 2 - wgb / 2) + 'H' + g.battX;
+    var w, x, y, r;
+    w = W['pv>batt']; x = r1(vL - w / 2); y = r1(hT - w / 2); r = g.rad + w / 2;
+    D['pv>batt'] = 'M' + x + ',' + g.sunY + 'V' + r1(y - r) + 'Q' + x + ',' + y + ' ' + r1(x - r) + ',' + y + 'H' + g.battX;
+    w = W['pv>grid']; x = r1(vR + w / 2); y = r1(hT - w / 2); r = g.rad + w / 2;
+    D['pv>grid'] = 'M' + x + ',' + g.sunY + 'V' + r1(y - r) + 'Q' + x + ',' + y + ' ' + r1(x + r) + ',' + y + 'H' + g.gridX;
+    w = W['batt>load']; x = r1(vL - w / 2); y = r1(hB + w / 2); r = g.rad + w / 2;
+    D['batt>load'] = 'M' + g.battX + ',' + y + 'H' + r1(x - r) + 'Q' + x + ',' + y + ' ' + x + ',' + r1(y + r) + 'V' + g.hausY;
+    w = W['grid>load']; x = r1(vR + w / 2); y = r1(hB + w / 2); r = g.rad + w / 2;
+    D['grid>load'] = 'M' + g.gridX + ',' + y + 'H' + r1(x + r) + 'Q' + x + ',' + y + ' ' + x + ',' + r1(y + r) + 'V' + g.hausY;
+    PAIRS.forEach(function (k) {
+      var o = self.lanes[k], wk = W[k];
+      if (!wk) { o.g.style.display = 'none'; return; }
+      o.g.style.display = '';
+      o.lane.setAttribute('d', D[k]); o.lane.setAttribute('stroke-width', r1(wk));
+      // Punkte nur auf Spuren, die breit genug sind; auf dünnen sähen sie wie eine gestrichelte Planlinie aus
+      o.dot.style.display = wk < 3 ? 'none' : '';
+      o.dot.setAttribute('d', D[k]); o.dot.setAttribute('stroke-width', r1(clamp(wk * 0.42, 1.4, 4.2)));
     });
-    Object.keys(this.paths).forEach(function (k) {
-      var l = L.links[k], p = self.paths[k];
-      if (!l || l.a1 - l.a0 < 0.4) { p.setAttribute('d', ''); return; }
-      var f = function (x) { return x.toFixed(1); }, g = Math.min(3, (l.a1 - l.a0) / 4);
-      l = { a0: l.a0 + g, a1: l.a1 - g, b0: l.b0 + g, b1: l.b1 - g };
-      p.setAttribute('d', 'M' + f(l.a0) + ',0 C' + f(l.a0) + ',55 ' + f(l.b0) + ',45 ' + f(l.b0) + ',100 L' + f(l.b1) + ',100 C' + f(l.b1) + ',45 ' + f(l.a1) + ',55 ' + f(l.a1) + ',0 Z');
-    });
+    // Kreuzung: die senkrechte Spur bekommt einen hellen Rand, damit sie über der waagrechten liegt
+    if (wpl && M) {
+      this.casing.style.display = '';
+      this.casing.setAttribute('d', 'M' + cx + ',' + r1(hy - M / 2 - 0.5) + 'V' + r1(hy + M / 2 + 0.5));
+      this.casing.setAttribute('stroke-width', r1(wpl + 2 * gp + 1));
+    } else this.casing.style.display = 'none';
   };
-  function segName(r, side) { return r === 'grid' ? (side === 'src' ? 'Netz' : 'ins Netz') : r === 'batt' ? (side === 'src' ? 'Speicher' : 'in den Speicher') : ROLES[r].name; }
+
+  /* Beschriftung an den Knoten: Wert fett, darunter der Zustand in Worten */
   Flow.prototype.labels = function () {
-    var m = this.m, L = this.tgt, v = this.v, self = this; if (!m || !L) return;
-    var f = m.heute ? kwh : kw, Wpx = this.el.clientWidth || 320, more = { src: [], dst: [] };
-    var need = function (txt) { return 16 + 16 + 5 + txt.length * 7.3; };
-    ['src', 'dst'].forEach(function (side) {
-      Object.keys(L[side]).forEach(function (r) {
-        var b = self.segs[side][r], s = L[side][r], px = s[1] / 1000 * Wpx - 2, name = segName(r, side), val = f(s[2]);
-        var t = $('.seg-t', b);
-        b.classList.remove('no-ico', 'tiny');
-        b.setAttribute('aria-label', name + ' ' + val);
-        if (s[1] <= 0.5) { t.textContent = ''; return; }
-        if (px >= need(name + ' ' + val)) t.innerHTML = '<span class="seg-n">' + name + '</span> ' + val;
-        else if (px >= need(val)) t.textContent = val;
-        else if (px >= need(val) - 21) { t.textContent = val; b.classList.add('no-ico'); }
-        else {
-          t.textContent = ''; more[side].push([r, name, s[2]]);
-          if (px < 30) b.classList.add('no-ico', 'tiny');
-        }
-      });
-    });
-    ['src', 'dst'].forEach(function (side) {
-      var p = $('[data-more="' + side + '"]', self.el);
-      p.innerHTML = more[side].map(function (x) { return '<span><i style="background:' + ROLES[x[0]].col + '"></i>' + x[1] + ' ' + f(x[2]) + '</span>'; }).join('');
-      p.hidden = !more[side].length;
-    });
-    $('[data-tot="src"]', this.el).textContent = f(L.tot);
-    $('[data-tot="dst"]', this.el).textContent = f(L.tot);
-    var st = [];
-    st.push(ic('battery', 15) + 'Speicher ' + pct(m.soc) + (m.heute ? '' : m.chg > DB ? ', lädt' : m.dis > DB ? ', entlädt' : ', ruht'));
-    st.push(ic('pole', 15) + (m.heute ? 'Netzbezug ' + kwh(m.imp) + ', Einspeisung ' + kwh(m.exp) : m.imp > DB ? 'Netzbezug' : m.exp > DB ? 'Einspeisung ins Netz' : 'Netz ausgeglichen'));
-    if (v.ziel && !m.heute) st.push(ic('gauge', 15) + 'Ziel ' + kw(v.ziel));
-    if (m.price != null && !m.heute) st.push(ic('euro', 15) + 'Börsenpreis ' + ct(m.price));
-    $('.bal-status', this.el).innerHTML = st.map(function (x) { return '<span>' + x + '</span>'; }).join('');
+    var m = this.m; if (!m) return;
+    var v = this.v, L = this.lab, N = this.nodes, f = m.heute ? kwh : kw, self = this;
+    var put = function (r, name, val, lines) {
+      L[r].innerHTML = '<b>' + val + '</b>' + lines.join('<br>');
+      N[r].setAttribute('aria-label', name + ': ' + val + ', ' + lines.join(', ').replace(/<[^>]+>/g, ''));
+    };
+    var erw = m.fut ? ' erwartet' : '', plan = m.fut ? ' · Plan' : '';
+    put('pv', 'Sonne', f(m.pv), [m.heute ? 'erzeugt' : (m.pv > DB ? 'Erzeugung' : 'keine Erzeugung') + erw]);
+    put('load', 'Haus', f(m.load), [m.heute ? 'verbraucht' : 'Verbrauch' + erw]);
+    put('batt', 'Speicher', pct(m.soc), m.heute ? ['geladen ' + kwh(m.chg), 'abgegeben ' + kwh(m.dis)] :
+      [(m.chg > DB ? 'lädt ' + kw(m.chg) : m.dis > DB ? 'entlädt ' + kw(m.dis) : 'ruht') + plan]);
+    if (m.heute) put('grid', 'Netz', kwh(m.imp), ['bezogen', kwh(m.exp) + ' eingespeist']);
+    else {
+      var gl = [(m.imp > DB ? 'Bezug' : m.exp > DB ? 'Einspeisung' : 'ausgeglichen') + plan];
+      if (v.ziel) gl.push('<span class="gz" aria-hidden="true"><i style="width:' + (100 * clamp(m.imp / v.ziel, 0, 1)).toFixed(1) + '%"></i></span>Ziel ' + kw(v.ziel));
+      if (v.key === 'markt') gl.push('Börse ' + ct(m.price));
+      put('grid', 'Netz', kw(m.imp > DB ? m.imp : m.exp), gl);
+    }
+    N.pv.classList.toggle('idle', !m.heute && m.pv <= DB);
+    this.glow.style.setProperty('--k', m.heute ? 0 : clamp(m.irr / 860, 0, 1).toFixed(3));
+    this.lvl.style.height = 'calc((100% - 6px) * ' + clamp(m.soc / 100, 0, 1).toFixed(3) + ')';
+    PAIRS.forEach(function (k) { self.lanes[k].tip.textContent = PAIR_TXT[k] + ': ' + f(m.pairs[k] || 0); });
   };
 
   /* Geräte als sortierte Liste: am Telefon bis zu vier Zeilen, am Rechner bis zu sechs,
@@ -1140,18 +1196,20 @@
 
   var ASIDE = {
     privat: { h: 'Privathaus mit Eigenverbrauchs-Fahrplan', p: 'Sonnenhof: PV auf Dach und Carport, 15-kWh-Speicher, Wallbox, Wärmepumpe (SG-Ready), Heizstab und eine Waschmaschine am Zwischenstecker.', li: [
-      '<b>Oben woher, unten wohin.</b> Die Sonne liefert alles, der Strom fließt in den Verbrauch und in den Speicher. Beide Balken sind gleich lang: Was ankommt, fließt ab.',
+      '<b>Sonne oben, Haus unten, Speicher links, Netz rechts.</b> Jede Spur trägt die Farbe ihrer Herkunft und ist so breit wie die Leistung. Gerade fließt Sonnenstrom ins Haus und in den Speicher.',
+      '<b>Punkte laufen nur live.</b> Ziehen Sie die Tagesleiste zurück, steht das Bild still: Dann sehen Sie Messwerte, nicht das Jetzt.',
       '<b>Verbrauch im Detail</b> zeigt die größten Geräte zuerst, darunter „2 weitere“. So bleibt es bei beliebig vielen Geräten ruhig. Antippen öffnet die ganze Liste, nach Art gruppiert.',
-      '<b>Ziehen Sie die Tagesleiste auf 07:00.</b> Dann kommt alles aus dem Netz. Rechts von „Jetzt“ sind die Balken schraffiert, denn das ist der Plan.',
-      '<b>„Heute · kWh“</b> zeigt die Tagesbilanz. Speicher und Netz stehen dann oben und unten, weil sie heute in beide Richtungen geflossen sind.'] },
+      '<b>Ziehen Sie die Tagesleiste auf 07:00.</b> Dann kommt alles aus dem Netz: eine petrolfarbene Spur von rechts ins Haus. Rechts von „Jetzt“ sind die Spuren schraffiert, denn das ist der Plan.',
+      '<b>„Heute · kWh“</b> zeigt alle Wege des Tages bis jetzt nebeneinander, auch die 0,6 kWh, die heute ins Netz gingen.'] },
     markt: { h: 'Gewerbe mit Marktoptimierung', p: 'Gewerbehof Lindenau: Speicher mit 250 kW und 500 kWh, PV auf Werkhalle und Carport, Börsenpreise für heute und morgen.', li: [
-      '<b>Das petrolfarbene Band vom Netz in den Speicher</b> zeigt: Der Speicher lädt gerade günstig aus dem Netz, dazu mit Sonnenstrom.',
+      '<b>Die petrolfarbene Spur vom Netz in den Speicher</b> zeigt: Der Speicher lädt gerade günstig aus dem Netz, dazu mit Sonnenstrom. Sie kreuzt die Sonnen-Spur ins Haus, ohne sich mit ihr zu mischen.',
       '<b>Ziehen Sie auf 19:00.</b> Dann fließt der Speicher ins Netz, der Plan sagt „Verkaufen“. Oben in der Tagesleiste steht der Börsenpreis.',
-      'Unter der Bilanz folgen <b>Börsenpreis, Sonne und Speicher</b>, genau in dieser Reihenfolge.'] },
+      'Unter dem Fluss folgen <b>Börsenpreis, Sonne und Speicher</b>, genau in dieser Reihenfolge.'] },
     spitze: { h: 'Werk mit Lastspitzenkappung', p: 'Werk Ahrenberg, Halle 1: neun Verbraucher, PV auf zwei Hallen, Speicher mit 200 kW, Ziel 300 kW Netzbezug.', li: [
+      '<b>Die breite petrolfarbene Spur</b> ist der Netzbezug: 300 kW, genau am Ziel. Die kleine Skala am Netz zeigt, wie nah der Bezug am Ziel liegt.',
       '<b>Neun Verbraucher, drei Zeilen.</b> Die Liste zeigt die größten, der Rest steht unter „weitere“. Das funktioniert genauso mit 50 Geräten.',
       '<b>Die Kühlung meldet sich seit 13:31 Uhr nicht.</b> Ihr Anteil steht mit dem Rest als „nicht aufgeteilt“. Das Cockpit erfindet keine Aufteilung.',
-      '<b>Ziehen Sie auf 06:15.</b> Beim Anlauf der Frühschicht gibt der Speicher ab, und das Netz bleibt beim Ziel.'] }
+      '<b>Ziehen Sie auf 06:15.</b> Beim Anlauf der Frühschicht gibt der Speicher 78 kW ab, und das Netz bleibt beim Ziel.'] }
   };
   function renderAside(v) {
     var a = ASIDE[v.key];
