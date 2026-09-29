@@ -96,7 +96,7 @@ class CockpitLayoutServiceTest {
         assertThat(bausteine.stream().filter(b -> b.pflicht()).map(b -> b.id()))
                 .containsExactly("status", "zustand");
         assertThat(bausteine.stream().filter(b -> !b.beweglich()).map(b -> b.id()))
-                .containsExactly("status", "energiefluss", "geld", "steuerung");
+                .containsExactly("status", "energiefluss", "steuerung");
         // „Beigesteuert von" ist ABGELEITET aus den Anwendungen, nie eine Liste.
         assertThat(katalog.beigesteuertVon("kacheln"))
                 .contains("marktvermarktung", "lastspitzenkappung");

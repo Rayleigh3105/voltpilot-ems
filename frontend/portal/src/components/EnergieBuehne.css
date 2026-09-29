@@ -5,6 +5,8 @@
    --vp-flow-grid), Flächen in den -soft-Tönen. Keine zweite Palette.
    ========================================================================== */
 
+/* Die Blätter stehen außerhalb der Bühne (Portal) - sie brauchen dieselben Rollen-Töne. */
+.vp-eb-blatt,
 .vp-eb {
   --vp-lp-pv: var(--vp-c-chart-pv, #e65100);
   --vp-lp-batt: var(--vp-c-chart-soc, #166534);
@@ -327,6 +329,16 @@
 }
 .vp-eb-liste li:first-child .vp-eb-zeile {
   border-top: 0;
+}
+/* Im Blatt: eine Zeile ohne Geräteseite ist Text, ein Link bleibt Link. */
+.vp-eb-zeile.is-still-zeile {
+  cursor: default;
+}
+a.vp-eb-zeile {
+  text-decoration: none;
+}
+.vp-eb-liste > .vp-eb-note {
+  margin-top: 6px;
 }
 .vp-eb-zeile:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color);

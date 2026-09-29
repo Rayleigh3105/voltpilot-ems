@@ -6,7 +6,7 @@ import type { PlanWordingKind } from '../schedule';
 import type { RollenKanonischerWert } from '../api';
 import type { AnlagenSub } from '../nav';
 import type { JetztFluss } from '../flussJetzt';
-import { erzeugungListe, ohneAufteilung, verbrauchListe, type Liste } from '../flussListen';
+import { erzeugungListe, ohneAufteilung, rollenListe, verbrauchListe, type Liste } from '../flussListen';
 import {
   herkunftMoment,
   knotenTexte,
@@ -31,10 +31,7 @@ import { energieBis, hoechsterBezug, tagesSkala, uhrzeit, type Tag } from '../ta
 import type { VerbrauchKomposition } from '../verbrauchKomposition';
 import { BottomSheet } from './BottomSheet';
 import { Leitungsplan } from './Leitungsplan';
-import { PvCompositionDetails } from './PvBreakdown';
-import { RollenBreakdown } from './RollenBreakdown';
 import { Tagesleiste } from './Tagesleiste';
-import { VerbrauchDetails } from './VerbrauchDetails';
 import './EnergieBuehne.css';
 
 const ROLLEN = new Set<string>(KNOWN_ROLES);
@@ -185,15 +182,14 @@ export function EnergieBuehne({
 
   // --- Listen „im Detail“ ---------------------------------------------------
   const max = isPhone ? 4 : 6;
-  let vListe: Liste | null;
-  let pListe: Liste | null;
-  if (heute || zeit === 'live') {
-    vListe = verbrauchListe(verbrauch, { heute, max, hausKw: heute ? null : werte.load });
-    pListe = heute ? null : erzeugungListe(pv, { max });
-  } else {
-    vListe = verbrauch ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan') : null;
-    pListe = pv && pv.parts.length > 1 ? ohneAufteilung('Erzeugung im Detail', kw(werte.pv), zeit === 'plan') : null;
-  }
+  // Unter dem Fluss steht nur der Verbrauch; die Erzeugung je Gerät öffnet
+  // sich im Blatt des Sonnen-Knotens (dieselbe Listenform).
+  const vListe: Liste | null =
+    heute || zeit === 'live'
+      ? verbrauchListe(verbrauch, { heute, max, hausKw: heute ? null : werte.load })
+      : verbrauch
+        ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan')
+        : null;
 
   const oeffne = (art: Rolle, el: HTMLElement) => {
     ausloeser.current = el;
@@ -255,10 +251,9 @@ export function EnergieBuehne({
         onKnoten={(r, el) => oeffne(r, el)}
       />
 
-      {(vListe || pListe) && (
+      {vListe && (
         <div className="vp-eb-listen">
-          {vListe && <ListeBlock liste={vListe} onOpen={(el) => oeffne('load', el)} />}
-          {pListe && <ListeBlock liste={pListe} onOpen={(el) => oeffne('pv', el)} />}
+          <ListeBlock liste={vListe} onOpen={(el) => oeffne('load', el)} />
         </div>
       )}
 
@@ -317,7 +312,6 @@ export function EnergieBuehne({
             rollen={rollen}
             zielKw={zielKw}
             rolle={rolle}
-            now={now}
             onOpenSub={onOpenSub ? (sub) => { schliesse(); onOpenSub(sub); } : undefined}
           />
         )}
@@ -337,9 +331,31 @@ function uhrText(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function ListeBlock({ liste, onOpen }: { liste: Liste; onOpen: (el: HTMLElement) => void }) {
+/**
+ * Eine Liste „im Detail“. Unter dem Fluss öffnet jede Zeile das Blatt; im
+ * Blatt selbst steht dieselbe Liste vollständig, und eine Zeile führt - wo es
+ * eine gibt - auf ihre Geräteseite.
+ */
+function ListeBlock({ liste, onOpen, className }: { liste: Liste; onOpen?: (el: HTMLElement) => void; className?: string }) {
+  const inhalt = (z: Liste['zeilen'][number]) => (
+    <>
+      <span className="vp-eb-zi" aria-hidden="true">
+        <Icon name={z.icon} size={15} />
+      </span>
+      <span className="vp-eb-zn">
+        {z.name}
+        {z.sub && <small> {z.sub}</small>}
+      </span>
+      <span className="vp-eb-zw">{z.wert}</span>
+      {z.art !== 'weitere' && (
+        <span className="vp-eb-zb" aria-hidden="true">
+          <i style={{ width: `${((z.anteil ?? 0) * 100).toFixed(1)}%` }} />
+        </span>
+      )}
+    </>
+  );
   return (
-    <section className="vp-eb-liste" aria-label={liste.titel}>
+    <section className={`vp-eb-liste${className ? ` ${className}` : ''}`} aria-label={liste.titel}>
       <div className="vp-eb-lk">
         <span>{liste.titel}</span>
         <b>{liste.summe}</b>
@@ -347,24 +363,25 @@ function ListeBlock({ liste, onOpen }: { liste: Liste; onOpen: (el: HTMLElement)
       <ul>
         {liste.zeilen.map((z) => (
           <li key={z.key}>
-            <button type="button" className={`vp-eb-zeile is-${z.art}`} onClick={(e) => onOpen(e.currentTarget)} title={z.title ?? undefined}>
-              <span className="vp-eb-zi" aria-hidden="true">
-                <Icon name={z.icon} size={15} />
-              </span>
-              <span className="vp-eb-zn">
-                {z.name}
-                {z.sub && <small> {z.sub}</small>}
-              </span>
-              <span className="vp-eb-zw">{z.wert}</span>
-              {z.art !== 'weitere' && (
-                <span className="vp-eb-zb" aria-hidden="true">
-                  <i style={{ width: `${((z.anteil ?? 0) * 100).toFixed(1)}%` }} />
-                </span>
-              )}
-            </button>
+            {onOpen ? (
+              <button type="button" className={`vp-eb-zeile is-${z.art}`} onClick={(e) => onOpen(e.currentTarget)} title={z.title ?? undefined}>
+                {inhalt(z)}
+              </button>
+            ) : z.href ? (
+              <a className={`vp-eb-zeile is-${z.art}`} href={z.href} title={z.title ?? undefined}>
+                {inhalt(z)}
+              </a>
+            ) : (
+              <div className={`vp-eb-zeile is-${z.art} is-still-zeile`} title={z.title ?? undefined}>
+                {inhalt(z)}
+              </div>
+            )}
           </li>
         ))}
       </ul>
+      {liste.fuss?.map((f) => (
+        <p key={f} className="vp-eb-note">{f}</p>
+      ))}
     </section>
   );
 }
@@ -432,7 +449,6 @@ function BlattInhalt({
   rollen,
   zielKw,
   rolle,
-  now,
   onOpenSub,
 }: {
   art: Rolle;
@@ -448,7 +464,6 @@ function BlattInhalt({
   rollen: { pv: RollenKanonischerWert | null; load: RollenKanonischerWert | null; grid: RollenKanonischerWert | null } | null;
   zielKw: number | null;
   rolle: string | null;
-  now: Date;
   onOpenSub?: (sub: AnlagenSub) => void;
 }) {
   const f = heute ? kwh : kw;
@@ -481,8 +496,11 @@ function BlattInhalt({
       <>
         <div className="vp-eb-kpis">{kpi(`Erzeugung ${wann}`, f(werte.pv))}</div>
         {wegZeilen(wege((p) => p.startsWith('pv>')))}
-        {!heute && zeit === 'live' && pv && pv.parts.length + pv.unmeasured.length > 1 && <PvCompositionDetails composition={pv} now={now} />}
-        {!heute && zeit === 'live' && <RollenBreakdown wert={rollen?.pv ?? null} anfangsOffen />}
+        {!heute && zeit === 'live' && (() => {
+          // Dieselbe Listenform wie unter dem Fluss, hier vollständig.
+          const liste = rollenListe(rollen?.pv) ?? erzeugungListe(pv, { max: Number.MAX_SAFE_INTEGER });
+          return liste ? <ListeBlock liste={liste} className="vp-rolle-pv" /> : null;
+        })()}
         {zeit === 'plan' && <p className="vp-eb-note">Die Prognose gilt für die ganze Anlage, nicht je Fläche.</p>}
         {zeit === 'gemessen' && !heute && <p className="vp-eb-note">Die Aufteilung je Gerät gibt es nur für jetzt.</p>}
         {weiter}
@@ -498,8 +516,12 @@ function BlattInhalt({
         <div className="vp-eb-kpis">{kpi(`Verbrauch ${wann}`, f(werte.load))}</div>
         {teile.length > 0 && <p className="vp-eb-zw-titel">Herkunft {heute ? 'heute' : wann}</p>}
         <Herkunftsbalken teile={teile} />
-        {(zeit === 'live' || heute) && verbrauch && <VerbrauchDetails komposition={verbrauch} now={now} />}
-        {!heute && zeit === 'live' && <RollenBreakdown wert={rollen?.load ?? null} anfangsOffen />}
+        {(zeit === 'live' || heute) && (() => {
+          const liste =
+            (!heute ? rollenListe(rollen?.load) : null) ??
+            verbrauchListe(verbrauch, { heute, max: Number.MAX_SAFE_INTEGER, hausKw: heute ? null : werte.load });
+          return liste ? <ListeBlock liste={liste} className="vp-rolle-consumer" /> : null;
+        })()}
         {zeit === 'plan' && <p className="vp-eb-note">Für den Plan gibt es keine Aufteilung je Gerät.</p>}
         {zeit === 'gemessen' && !heute && <p className="vp-eb-note">Die Aufteilung je Gerät gibt es nur für jetzt und heute.</p>}
         <p className="vp-eb-note">
@@ -535,7 +557,10 @@ function BlattInhalt({
         {zielKw != null && kpi('Ziel Netzbezug', kw(zielKw))}
       </div>
       {wegZeilen(wege((p) => p.includes('grid')))}
-      {!heute && zeit === 'live' && <RollenBreakdown wert={rollen?.grid ?? null} anfangsOffen />}
+      {!heute && zeit === 'live' && (() => {
+        const liste = rollenListe(rollen?.grid);
+        return liste ? <ListeBlock liste={liste} className="vp-rolle-grid" /> : null;
+      })()}
       <p className="vp-eb-note">Eingespeist ist, was den Netzanschluss verlässt, nicht was den Speicher verlässt.</p>
       {weiter}
     </>

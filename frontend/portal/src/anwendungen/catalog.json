@@ -274,10 +274,10 @@
     },
     {
       "id": "geld",
-      "label": "Erlöse",
+      "label": "Unterm Strich",
       "flaeche": "cockpit",
       "pflicht": false,
-      "beweglich": false,
+      "beweglich": true,
       "lead_block": "erloes-komposition",
       "bloecke": ["erloes-komposition"]
     },

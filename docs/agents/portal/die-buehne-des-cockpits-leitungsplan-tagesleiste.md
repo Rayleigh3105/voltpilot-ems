@@ -17,11 +17,14 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Nachkommastelle wie überall im Portal.
 - **Bewegung heißt live:** Punkte (`.vp-lp-punkte`, benannter Loop `vp-flow`) laufen nur bei `is-live`;
   unter `prefers-reduced-motion` entfallen sie im EINEN Block am Ende von `index.css`.
-- **Ein Gerät, eine Stelle:** „Verbrauch/Erzeugung im Detail“ unter dem Fluss sind der EINE Ort der
-  Geräte (auch der Ladepunkte, `ladenKachelSichtbar: false`); Komponenten-Board (`KomponentenSection`) und
+- **Ein Gerät, eine Stelle:** Unter dem Fluss steht nur „Verbrauch im Detail“ (auch die Ladepunkte,
+  `ladenKachelSichtbar: false`); die Erzeugung je Gerät steht nur im Blatt des Sonnen-Knotens. Die Blätter
+  zeigen dieselbe Listenform vollständig (`ListeBlock` ohne `onOpen`, Zeilen verlinken auf Geräteseiten),
+  kanonische Rollen über `flussListen.rollenListe` - die alten Panels `PvCompositionDetails`,
+  `VerbrauchDetails`, `RollenBreakdown` rendern im Cockpit nicht mehr; Komponenten-Board (`KomponentenSection`) und
   Verbraucherstreifen rendern im Cockpit nicht mehr (`komponenten` ist nicht mehr `verfuegbar`, die Id
   bleibt im Katalog für gespeicherte Layouts). Jede Zeile und jeder Knoten öffnet ein Blatt mit Herkunft,
-  Aufschlüsselung je Gerät (auch der kanonischen Rollen, `RollenBreakdown anfangsOffen`) und den Wegen
+  Aufschlüsselung je Gerät und den Wegen
   „Verlauf ansehen“/„Ihre Geräte“. Tagessummen je Gerät werden erst mit „Heute“ bzw. dem Blatt geholt.
 - **Kachelraster wie im Prototyp:** aufeinanderfolgende Bausteine `geld`, `strompreis`, `fahrplan`,
   `laden`, `kacheln` teilen EIN Raster (`stapelMitRaster` in `AnlagenPage`, 2 Spalten Telefon, 4 Rechner).

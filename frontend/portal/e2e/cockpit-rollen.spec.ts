@@ -16,19 +16,17 @@ for (const width of [375, 1440]) {
         await expect(page.locator('.vp-lp').getByText('148,6 kW', { exact: true })).toBeVisible();
         await page.locator('.vp-lp-k-pv').click();
         await expect(page.getByRole('dialog')).toBeVisible();
-        await expect(page.getByRole('dialog').locator('.vp-pvrolle')).toHaveCount(0);
+        await expect(page.getByRole('dialog').locator('.vp-rolle-pv')).toHaveCount(0);
         await page.keyboard.press('Escape');
       } else {
         const gesehen: string[] = [];
         for (const knoten of ['pv', 'load', 'grid']) {
           await page.locator(`.vp-lp-k-${knoten}`).click();
           const blatt = page.getByRole('dialog');
-          await expect(blatt.locator('.vp-pvrolle')).toHaveCount(1);
-          // Im Blatt ist die Aufschlüsselung schon offen - sie ist der Grund, es zu öffnen.
-          const button = blatt.locator('.vp-pvrolle').getByRole('button');
-          expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-          await expect(button).toHaveAttribute('aria-expanded', 'true');
-          gesehen.push((await blatt.locator('.vp-pvrolle').textContent()) ?? '');
+          // Dieselbe Listenform wie „Verbrauch im Detail“ unter dem Fluss, vollständig.
+          const liste = blatt.locator('.vp-eb-liste');
+          await expect(liste).toHaveCount(1);
+          gesehen.push((await liste.textContent()) ?? '');
           await page.keyboard.press('Escape');
           await expect(blatt).toHaveCount(0);
         }

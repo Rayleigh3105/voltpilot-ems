@@ -91,7 +91,6 @@ for (const width of [375, 1440]) {
         await cockpit.locator(`.vp-lp-k-${knoten}`).click();
         const blatt = page.getByRole('dialog');
         await expect(blatt.locator(`.vp-rolle-${f.rolle}`)).toBeVisible();
-        await expect(blatt.locator(`.vp-rolle-${f.rolle} button`)).toHaveAttribute('aria-expanded', 'true');
         if (new Set(f.register.map((r) => r.entityId)).size > 1) await expect(blatt.getByText(/Er zählt in der Anlagenzahl einmal/)).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(blatt).toHaveCount(0);
