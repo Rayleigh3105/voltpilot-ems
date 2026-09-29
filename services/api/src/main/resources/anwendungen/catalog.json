@@ -461,36 +461,16 @@
     }
   ],
   "kacheln": [
-    {
-      "id": "lastspitze",
-      "label": "Lastspitze",
-      "groessen": ["klein", "breit"],
-      "standard": "klein"
-    },
-    {
-      "id": "handel",
-      "label": "Handel",
-      "groessen": ["klein", "breit"],
-      "standard": "klein"
-    },
-    {
-      "id": "eigenverbrauch",
-      "label": "Eigenverbrauch",
-      "groessen": ["klein", "breit"],
-      "standard": "klein"
-    },
-    {
-      "id": "automatik",
-      "label": "Geräte-Automatik",
-      "groessen": ["klein", "breit"],
-      "standard": "klein"
-    },
-    {
-      "id": "wetter",
-      "label": "Wetter",
-      "groessen": ["klein", "breit"],
-      "standard": "klein"
-    }
+    { "id": "autarkie", "label": "Autarkie", "groessen": ["klein"], "standard": "klein" },
+    { "id": "eigenverbrauch", "label": "Eigenverbrauch", "groessen": ["klein"], "standard": "klein" },
+    { "id": "speicher", "label": "Speicher", "groessen": ["klein", "breit"], "standard": "klein" },
+    { "id": "waermepumpe", "label": "Wärmepumpe", "groessen": ["klein"], "standard": "klein" },
+    { "id": "sonne", "label": "Sonne", "groessen": ["klein", "breit"], "standard": "breit" },
+    { "id": "handel", "label": "Handel", "groessen": ["breit"], "standard": "breit" },
+    { "id": "lastspitze", "label": "Lastspitze", "groessen": ["breit"], "standard": "breit" },
+    { "id": "netz", "label": "Netz heute", "groessen": ["klein"], "standard": "klein" },
+    { "id": "automatik", "label": "Geräte-Automatik", "groessen": ["klein", "breit"], "standard": "klein" },
+    { "id": "wetter", "label": "Wetter", "groessen": ["klein", "breit"], "standard": "klein" }
   ],
   "presets": [
     {

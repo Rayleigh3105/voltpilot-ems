@@ -1,4 +1,4 @@
-import { Fragment, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { SUB_CHUNK } from '../pageChunks';
 import { useVerlaufVorladen } from '../verlaufVorladen';
@@ -43,6 +43,7 @@ import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
 import { tagAus } from '../tagesleiste';
 import type { Betrieb } from '../leitungsplan';
 import { verbrauchKomposition } from '../verbrauchKomposition';
+import { useVerbrauchHeute } from '../useVerbrauchHeute';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE für alles Gemessene (Cockpit, Steuerung, Viertelstunden-Band), LIST für
 // die Zeitraum-Aggregate der Historie.
@@ -51,7 +52,7 @@ import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
 import { nextHourIndex, weatherWhy } from '../weather';
-import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook, steuerungKurz } from '../control';
+import { controlReasonSlot, controlStrip, isWrAutomatik, nextChargeStart, planOutlook } from '../control';
 import { curtailTruth, curtailTruthForSlot, exportGuardView } from '../curtailment';
 import { flowConflict, flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import {
@@ -70,7 +71,6 @@ import { AUFBAU_REITER, resolveAnlage } from '../anlageNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { ladeFlussKnoten, ladenKachel } from '../ladenKachel';
-import { LadenKachel } from '../components/LadenKachel';
 import type { ConsumerRuntimeStatus } from '../consumers/status';
 import { ControlStrip } from '../components/ControlStrip';
 import { useAdaptiveLive } from '../useAdaptiveLive';
@@ -78,7 +78,19 @@ import { liveState, type LiveState } from '../adaptiveLive';
 import { flowHasValues, headSentenceVisible, liveChip } from '../liveDetail';
 import { leadBlock } from '../leadSlot';
 import { useCockpitLayout } from '../useCockpitLayout';
-import { betriebAus, canonicalFuer, ortsHinweis, type BausteinId } from '../cockpitLayout';
+import {
+  betriebAus,
+  canonicalFuer,
+  kachelDef,
+  kachelGroesse,
+  ortsHinweis,
+  type BausteinId,
+} from '../cockpitLayout';
+import { GroessenWahl, type RasterGroesse } from '../components/kacheln/Kachel';
+import type { KachelAuftrag } from '../components/kacheln/CockpitKacheln';
+import { jetztFluss } from '../flussJetzt';
+import { steuerSpalten } from '../kacheln';
+import type { WeatherPoint } from '../api';
 import {
   LEER_SATZ as EIGEN_LEER_SATZ,
   deckelSatz as eigenDeckelSatz,
@@ -103,25 +115,16 @@ import {
   cockpitHero,
   cockpitWidgets,
   historyRangeForCockpit,
-  mobileWidgets,
   stickyHead,
   type CockpitWidgetsInput,
-  type WidgetDef,
 } from '../cockpitWidgets';
 import { CockpitHero } from '../components/CockpitHero';
-import {
-  MobileMoneyCard,
-  MobileStickyHead,
-} from '../components/CockpitBlocks';
-import { KomponentenSection } from '../components/KomponentenSection';
+import { MobileStickyHead } from '../components/CockpitBlocks';
 import { ZustandCard } from '../components/ZustandCard';
-import { StrompreisStrip } from '../components/StrompreisStrip';
 import { gateStrompreis } from '../strompreis';
-import { WidgetGrid } from '../components/WidgetGrid';
 import { AnlageSetup } from '../components/AnlageSetup';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
 import { peakBand, quarterHourMeanImportKw } from '../peakBand';
-import { FahrplanBand } from '../components/FahrplanBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
@@ -160,6 +163,67 @@ const GeraetSeiteSection = lazy(() =>
 const BoxSeiteSection = lazy(() =>
   SUB_CHUNK.box().then((m) => ({ default: m.BoxSeiteSection })),
 );
+/** Die Bausteine, die im Kachelraster unter der Bühne stehen. */
+const RASTER_BAUSTEINE = new Set<string>(['geld', 'strompreis', 'fahrplan', 'laden', 'kacheln']);
+const LEIT_BAUSTEIN: Record<'strompreis' | 'lastspitze' | 'geld', string> = {
+  strompreis: 'strompreis',
+  lastspitze: 'kacheln',
+  geld: 'geld',
+};
+
+/**
+ * Der Stapel des Cockpits (Konzept „Cockpit als Tagesfilm“): aufeinander
+ * folgende Kachel-Bausteine teilen EIN Raster, alles andere (Kopf, Bühne,
+ * Zustand) steht über die volle Breite. Die Reihenfolge bleibt die aufgelöste;
+ * am Telefon rückt die Leitkachel an den Anfang ihres Rasters.
+ */
+function stapelMitRaster(
+  order: readonly string[],
+  knoten: (id: string) => ReactNode,
+  leit: 'strompreis' | 'lastspitze' | 'geld' | null,
+): ReactNode[] {
+  const out: ReactNode[] = [];
+  let lauf: { id: string; node: ReactNode }[] = [];
+  const schliesse = () => {
+    if (lauf.length === 0) return;
+    const vorn = leit ? LEIT_BAUSTEIN[leit] : null;
+    const i = vorn ? lauf.findIndex((x) => x.id === vorn) : -1;
+    if (i > 0) lauf.unshift(...lauf.splice(i, 1));
+    out.push(
+      <section key={`raster-${lauf[0].id}`} className="vp-kraster" aria-label="Kacheln">
+        {lauf.map((x) => (
+          <Fragment key={x.id}>{x.node}</Fragment>
+        ))}
+      </section>,
+    );
+    lauf = [];
+  };
+  for (const id of order) {
+    const node = knoten(id);
+    if (node == null) continue;
+    if (RASTER_BAUSTEINE.has(id)) {
+      lauf.push({ id, node });
+    } else if (istEigen(id)) {
+      lauf.push({ id, node: <div className="vp-k-platz is-breit">{node}</div> });
+    } else {
+      schliesse();
+      out.push(<Fragment key={id}>{node}</Fragment>);
+    }
+  }
+  schliesse();
+  return out;
+}
+
+// Die Kacheln unter der Bühne laden als eigenes Stück nach (Einstiegs-Budget).
+const KachelStueck = lazy(() => import('../components/kacheln/CockpitKacheln'));
+function KachelSpaet(auftrag: KachelAuftrag) {
+  const groesse = 'kachel' in auftrag && auftrag.kachel ? auftrag.kachel.groesse : 'groesse' in auftrag ? auftrag.groesse : null;
+  return (
+    <Suspense fallback={<div className={`vp-k-platz is-${groesse ?? 'klein'}`} aria-hidden="true" />}>
+      <KachelStueck {...auftrag} />
+    </Suspense>
+  );
+}
 const LadevorgaengeSection = lazy(() =>
   SUB_CHUNK.ladevorgaenge().then((m) => ({ default: m.LadevorgaengeSection })),
 );
@@ -743,6 +807,7 @@ export function AnlageSeite({
   const [at, setAt] = useState<string | null>(null);
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [weatherWhyText, setWeatherWhyText] = useState<string | null>(null);
+  const [wetterPunkte, setWetterPunkte] = useState<WeatherPoint[] | null>(null);
   const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
   // Die Abregel-Wahrheit (PR 3): setzt die Anlage eine geplante Drosselung
   // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
@@ -934,6 +999,7 @@ export function AnlageSeite({
         const idx = nextHourIndex(w.points, Date.now());
         setNextHourTempC(idx >= 0 ? (w.points[idx].temperatureC ?? null) : null);
         setWeatherWhyText(weatherWhy(w.points, new Date()));
+        setWetterPunkte(w.points);
       },
       () => {},
     );
@@ -1399,12 +1465,6 @@ export function AnlageSeite({
     weather: { nextHourTempC, why: weatherWhyText },
   };
   const widgets = cockpitWidgets(widgetInput);
-  // Mobil-Umbau Stufe 2 (`<= 720px`): dieselben Kacheln minus die, deren
-  // Aussage auf demselben Telefon-Bildschirm schon steht. Die Regel ist rein
-  // (`mobileWidgets`), hier wird nur gewählt.
-  const shownWidgets = isPhone
-    ? mobileWidgets(widgets, { hasRings: heroView.rings.length > 0 })
-    : widgets;
   // ONE freshness truth (G3/R4): the three-state `liveState` drives BOTH the
   // head chip and the hero/board dimming. `site-only` (the Anlage delivers,
   // the per-device breakdown does not) gets its own honest chip wording and
@@ -1439,51 +1499,16 @@ export function AnlageSeite({
     setAt(null);
   };
 
-  // „Eine Kachel ist ein Absprung" (V2): ein Tipp navigiert direkt zum Ziel der
-  // Kachel — kein Modal. Seit dem Cockpit+Live-Merge sind alle Kacheln Geld-/
-  // Modus-Kacheln und öffnen ihre Seite; die Verlauf-Sprünge (mit Zeitraum-
-  // Übernahme) leben auf den Komponenten-Board-Zeilen.
-  const jumpToWidget = (widget: WidgetDef) => onOpenSub(widget.target.sub);
-
   // --- Mobil-Umbau Stufe 2 --------------------------------------------------
   // Dieselben zwei Bausteine, nur in zwei Kleidern und zwei Reihenfolgen: am
   // Rechner Preis → Fahrplan als Karten, am Telefon Fahrplan → Preis als je
   // EINE Zeile mit Absprung. Sie werden hier EINMAL gebaut, damit die zwei
   // Fassungen nicht auseinanderlaufen können.
-  const strompreisRow = gateStrompreis(modes, site.tarifArt) ? (
-    <StrompreisStrip
-      siteId={site.id}
-      isDv={site.plantKind === 'direktvermarktung'}
-      tarifArt={site.tarifArt}
-      kind={site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch'}
-      slots={planSlots}
-      slotMinutes={plan?.slotMinutes ?? 15}
-      activeSlot={activePlanSlot}
-      onOpenMarktpreise={() => onOpenSub('marktpreise')}
-      compact={isPhone}
-    />
-  ) : null;
-  // ①b Speicher-Fahrplan (PR 4, Konzept §4b). Gated wie die Fahrplan-Ansicht
-  // selbst; der volle Chart lebt nur auf der Fahrplan-Seite (D7). Am Telefon
-  // trägt die Zeile zusätzlich den Wetter-Satz — die Wetter-Kachel entfällt
-  // dafür, und ohne erklärenden Satz erscheint gar nichts.
-  // V-04 (UX-Review 24.09.2026): im reinen Normalfall trägt am Telefon die
-  // Fahrplan-Zeile die Bestätigung, und die Steuerungs-Karte entfällt; jeder
-  // Befund behält die Karte (`steuerungKurz`).
-  const steuerungKurzSatz = isPhone ? steuerungKurz(controlView, guardView != null) : null;
-  const fahrplanRow = (surface?.deepViews ?? []).includes('fahrplan') ? (
-    <FahrplanBand
-      plan={plan}
-      plantKind={site.plantKind}
-      now={now}
-      loading={planLoading && plan == null}
-      failed={planFailed}
-      onOpen={() => onOpenSub('fahrplan')}
-      compact={isPhone}
-      weatherWhy={weatherWhyText}
-      bestaetigung={steuerungKurzSatz}
-    />
-  ) : null;
+  // Der Börsenpreis ist eine Kachel des Rasters (Konzept „Cockpit als
+  // Tagesfilm“); hier steht nur, OB es ihn gibt.
+  const strompreisVerfuegbar = gateStrompreis(modes, site.tarifArt);
+  // Der Fahrplan ist eine Kachel (Tagesuhr); gated wie die Fahrplan-Ansicht.
+  const fahrplanVerfuegbar = (surface?.deepViews ?? []).includes('fahrplan');
   // Die geschrumpfte Kopfzahl beim Scrollen: die zwei Anker (Geld + Zustand).
   const sticky = isPhone
     ? stickyHead({ money: heroView.money, status: showSetup ? null : (sentence ?? null) })
@@ -1521,25 +1546,29 @@ export function AnlageSeite({
   // --- Anwendungs-Programm Stufe 3 · das anpassbare Cockpit ------------------
   // Welche BAUSTEINE diese Anlage GERADE hat: dieselbe Ehrlichkeit wie bisher -
   // was keine Quelle hat, ist gar nicht erst verfügbar (und lässt sich damit
-  // auch nicht anordnen oder ausblenden). Der Status-Kopf, die Bühne und das
-  // Komponenten-Board gehören zu jedem Cockpit, das überhaupt rendert.
+  // auch nicht anordnen oder ausblenden). Der Status-Kopf und die Bühne
+  // gehören zu jedem Cockpit, das überhaupt rendert. Das frühere
+  // Komponenten-Board ist NICHT mehr verfügbar: es wiederholte die Knoten der
+  // Bühne; deren Details öffnen sich jetzt im Blatt des Knotens (R2). Die Id
+  // bleibt im Katalog, damit gespeicherte Layouts gültig bleiben.
   const verfuegbar = useMemo<BausteinId[]>(() => {
     // `geld` ist IMMER dabei: die Geld-Fläche (Rechner-Leiste bzw. Telefon-
     // Karte) rendert auch ohne Erlös-Komposition ehrlich - nur ihr
     // Zeitraum-Segment hängt an dem Block, genau wie vor dieser Stufe.
     const out: BausteinId[] = ['status', 'energiefluss', 'geld'];
     if (controlView || guardView) out.push('steuerung');
-    if (fahrplanRow) out.push('fahrplan');
-    if (strompreisRow) out.push('strompreis');
+    if (fahrplanVerfuegbar) out.push('fahrplan');
+    if (strompreisVerfuegbar) out.push('strompreis');
     // Die Kachel „Laden" erscheint, sobald ein Ladepunkt EXISTIERT - nicht
     // erst mit einem Budget, sonst fehlte sie genau während der Einrichtung
     // (Konzept `vp-verbraucher-cockpit-k1` §5.1). Abwählbar über „Anpassen".
     if (ladenView) out.push('laden');
-    if (shownWidgets.length > 0) out.push('kacheln');
-    out.push('komponenten');
+    // Die Kacheln (Autarkie, Sonne, Speicher …) gibt es auf jedem Cockpit mit
+    // Projektion; eine Kachel ohne Daten rendert sich selbst weg.
+    if ((blocks ?? []).length > 0) out.push('kacheln');
     if (ovSite != null && health.length > 0) out.push('zustand');
     return out;
-  }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health, ladenView]);
+  }, [blocks, controlView, guardView, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, health, ladenView]);
   // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
   // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
   // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine
@@ -1663,14 +1692,6 @@ export function AnlageSeite({
   // Vorgabe -> Eigen); ohne gespeicherte Zeile ist das exakt die M0-Regel
   // peak -> Geld -> Fluss, die `leadBlock` oben schon liefert.
   const effektiverLead = layout.resolved.lead;
-  const widgetsMitLead = ((): WidgetDef[] => {
-    if (effektiverLead === lead) return shownWidgets;
-    // Der Lead markiert nur EINE Kachel; die Menge bleibt dieselbe. Deshalb
-    // wird die Kachel-Ableitung mit dem wirksamen Lead erneut gefahren und
-    // danach DIESELBE Telefon-Dedupe angewandt - nie eine zweite Regel.
-    const neu = cockpitWidgets({ ...widgetInput, lead: effektiverLead });
-    return isPhone ? mobileWidgets(neu, { hasRings: heroView.rings.length > 0 }) : neu;
-  })();
   const zeigt = (id: BausteinId) => layout.resolved.order.includes(id);
 
   /**
@@ -1715,21 +1736,207 @@ export function AnlageSeite({
     [dayHistoryEffective, plan, now],
   );
   const buehneBetrieb: Betrieb = betriebAus(blocks);
-  // „Verbrauch im Detail“: dieselbe Ableitung wie die Aufschlüsselung der
-  // Komponenten - eine Zahl, eine Herkunft.
+  // Das Blatt „Verbrauch“: woraus sich der Verbrauch zusammensetzt. Zwei
+  // Durchläufe mit Absicht (wie früher im Komponenten-Board): der erste sagt,
+  // WELCHE Geräte eine Tagessumme brauchen, der zweite trägt sie. Die
+  // Tagessummen werden erst geholt, wenn das Blatt aufgeht.
+  const [verbrauchBlattOffen, setVerbrauchBlattOffen] = useState(false);
+  const verbrauchEingabe = useMemo(
+    () => ({
+      topology: adaptiveLive.adaptive ? adaptiveLive.topology : null,
+      chargers: charging?.chargers ?? null,
+      consumerStatus,
+      hausTodayKwh: dayTotalsEffective?.consumptionKwh ?? null,
+      // Die Ladepunkte stehen wie im Prototyp auch in „Verbrauch im Detail“.
+      ladenKachelSichtbar: false,
+      links: {
+        charger: (id: string) => (boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null),
+        komponente: (entityId: string) => komponenteHash(site.id, entityId),
+      },
+    }),
+    [adaptiveLive.adaptive, adaptiveLive.topology, charging, consumerStatus, dayTotalsEffective, boxRef, site.id],
+  );
+  const buehneVerbrauchRoh = useMemo(() => verbrauchKomposition(verbrauchEingabe), [verbrauchEingabe]);
+  const verbrauchHeuteKwh = useVerbrauchHeute(site.id, buehneVerbrauchRoh, charging?.chargers ?? null, verbrauchBlattOffen);
   const buehneVerbrauch = useMemo(
     () =>
-      verbrauchKomposition({
-        topology: adaptiveLive.adaptive ? adaptiveLive.topology : null,
-        chargers: charging?.chargers ?? null,
-        consumerStatus,
-        hausTodayKwh: dayTotalsEffective?.consumptionKwh ?? null,
-        links: {
-          charger: (id) => (boxRef ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(id)) : null),
-          komponente: (entityId) => komponenteHash(site.id, entityId),
-        },
-      }),
-    [adaptiveLive.adaptive, adaptiveLive.topology, charging, consumerStatus, dayTotalsEffective, boxRef, site.id],
+      verbrauchHeuteKwh == null
+        ? buehneVerbrauchRoh
+        : verbrauchKomposition({ ...verbrauchEingabe, todayKwh: verbrauchHeuteKwh }),
+    [buehneVerbrauchRoh, verbrauchHeuteKwh, verbrauchEingabe],
+  );
+
+  // --- Die Kacheln unter der Bühne (Konzept „Cockpit als Tagesfilm“) --------
+  // Ein Raster: jede Kachel hat Kopf (Absprung), Inhalt und eine Größe. Eine
+  // Zahl hat einen Ort (R2): was an den Knoten der Bühne steht, wiederholt
+  // keine Kachel.
+  const groesseVon = (id: string, standard: RasterGroesse = 'klein'): RasterGroesse =>
+    kachelDef(id) ? kachelGroesse(id, layout.resolved.groessen) : standard;
+  const groessenFuss = (id: string, label: string): ReactNode => {
+    const def = kachelDef(id);
+    if (!layout.anpassen || !def) return null;
+    return (
+      <GroessenWahl
+        label={label}
+        groessen={def.groessen}
+        aktuell={kachelGroesse(id, layout.resolved.groessen)}
+        onWahl={(g) => layout.setGroesse(id, g)}
+      />
+    );
+  };
+  const jetztWerte = ovSite
+    ? jetztFluss(adaptiveLive.topology, siteSnapshot(ovSite.live), { pvTotalKw: null, loadKanonisch: null })
+    : null;
+  const widgetIds = new Set(widgets.map((w) => w.id));
+  const geldDa = heroView.money != null || hasBlock(blocks, 'erloes-komposition');
+  // Die LEITKACHEL: am Rechner rechts neben dem Fluss, am Telefon die erste
+  // Kachel. Marktoptimierung führt mit dem Börsenpreis, Lastspitzenkappung
+  // mit der Lastspitze, sonst „Unterm Strich“.
+  const leitArt: 'strompreis' | 'lastspitze' | 'geld' | null =
+    buehneBetrieb === 'markt' && zeigt('strompreis') && strompreisVerfuegbar
+      ? 'strompreis'
+      : effektiverLead === 'peak-band' && peakView != null && zeigt('kacheln')
+        ? 'lastspitze'
+        : zeigt('geld') && geldDa
+          ? 'geld'
+          : null;
+  const inSeite = (art: string) => !isPhone && leitArt === art;
+  const geldKachel = (seite: boolean) =>
+    zeigt('geld') && geldDa ? (
+      <KachelSpaet
+        art="geld"
+        money={heroView.money}
+        periodSeg={
+          hasBlock(blocks, 'erloes-komposition') ? (
+            <PeriodTabs range={range} onRange={switchRange} variant="seg" />
+          ) : null
+        }
+        nachtragHref={`#/anlage/${site.id}/technik`}
+        lead={leitArt === 'geld'}
+        groesse={seite ? 'breit' : 'breit'}
+        onOpen={() => onOpenSub('erloese')}
+        platzRef={isPhone ? moneyRef : undefined}
+      />
+    ) : null;
+  const strompreisKachel = (seite: boolean) =>
+    strompreisVerfuegbar ? (
+      <KachelSpaet
+        art="strompreis"
+        siteId={site.id}
+        isDv={site.plantKind === 'direktvermarktung'}
+        tarifArt={site.tarifArt}
+        kind={planKind}
+        slots={planSlots}
+        slotMinutes={plan?.slotMinutes ?? 15}
+        activeSlot={activePlanSlot}
+        onOpenMarktpreise={() => onOpenSub('marktpreise')}
+        kachel={{ lead: leitArt === 'strompreis', groesse: 'breit', fuss: seite ? null : groessenFuss('strompreis', 'Börsenpreis') }}
+      />
+    ) : null;
+  const lastspitzeKachel = () =>
+    peakView ? (
+      <KachelSpaet
+        art="lastspitze"
+        peak={peakView}
+        tag={buehneTag}
+        zielKw={plan?.peakTargetKw ?? null}
+        lead={leitArt === 'lastspitze'}
+        groesse={isPhone ? 'breit' : 'hoch'}
+        onOpen={() => onOpenSub('lastspitzen')}
+      />
+    ) : null;
+  const wertWidget = (id: 'automatik' | 'wetter') => {
+    const w = widgets.find((x) => x.id === id);
+    if (!w) return null;
+    return (
+      <KachelSpaet
+        art="wert"
+        id={id}
+        name={w.label}
+        icon={id === 'wetter' ? 'thermometer' : 'settings'}
+        ton={id === 'wetter' ? 'neutral' : 'load'}
+        wert={w.value}
+        sub={w.sub}
+        groesse={groesseVon(id)}
+        fuss={groessenFuss(id, w.label)}
+        onOpen={() => onOpenSub(w.target.sub)}
+      />
+    );
+  };
+  const waerme = buehneVerbrauch?.gruppen.find((g) => g.id === 'waerme' && !g.collapsed)?.teile[0] ?? null;
+  const KACHEL_REIHE: Record<Betrieb, string[]> = {
+    eigenverbrauch: ['autarkie', 'eigenverbrauch', 'speicher', 'waermepumpe', 'sonne', 'handel', 'lastspitze', 'automatik'],
+    markt: ['sonne', 'speicher', 'handel', 'netz', 'waermepumpe', 'automatik', 'wetter'],
+    spitze: ['lastspitze', 'sonne', 'netz', 'speicher', 'handel', 'waermepumpe', 'automatik', 'wetter'],
+  };
+  const kachelKnoten = (id: string): ReactNode => {
+    const basis = { groesse: groesseVon(id), fuss: groessenFuss(id, kachelDef(id)?.label ?? id) };
+    switch (id) {
+      case 'autarkie':
+        return <KachelSpaet {...basis} art="autarkie" totals={dayTotalsEffective} tag={buehneTag} onOpen={() => onOpenSub('messwerte')} />;
+      case 'eigenverbrauch':
+        return <KachelSpaet {...basis} art="eigenverbrauch" totals={dayTotalsEffective} tag={buehneTag} onOpen={() => onOpenSub('messwerte')} />;
+      case 'netz':
+        return <KachelSpaet {...basis} art="netz" totals={dayTotalsEffective} onOpen={() => onOpenSub('messwerte')} />;
+      case 'speicher':
+        return (
+          <KachelSpaet
+            {...basis}
+            art="speicher"
+            tag={buehneTag}
+            kind={planKind}
+            socPct={jetztWerte?.socPct ?? null}
+            battKw={jetztWerte?.werte.batt ?? null}
+            onOpen={() => onOpenSub('fahrplan')}
+          />
+        );
+      case 'waermepumpe':
+        return waerme ? <KachelSpaet {...basis} art="waermepumpe" teil={waerme} onOpen={() => onOpenSub('steuerung')} /> : null;
+      case 'sonne':
+        return (
+          <KachelSpaet
+            {...basis}
+            art="sonne"
+            points={wetterPunkte}
+            now={now}
+            totals={dayTotalsEffective}
+            tag={buehneTag}
+            onOpen={() => onOpenSub('wetter')}
+          />
+        );
+      case 'handel':
+        return widgetIds.has('handel') ? (
+          <KachelSpaet {...basis} art="handel" tag={buehneTag} kind={planKind} onOpen={() => onOpenSub('fahrplan')} />
+        ) : null;
+      case 'lastspitze':
+        return inSeite('lastspitze') ? null : lastspitzeKachel();
+      case 'automatik':
+      case 'wetter':
+        return wertWidget(id);
+      default:
+        return null;
+    }
+  };
+  // Die Steuerzeile am Fuß der Bühne: Auftrag · Gerät · Wirkung - nur, wenn
+  // es einen Sollwert gibt und kein Flussbefund den Satz braucht.
+  const steuerSpaltenView =
+    controlStatus && controlView && cockpitFlow == null &&
+    (controlView.state === 'healthy' || controlView.state === 'mismatch' || controlView.state === 'stale')
+      ? steuerSpalten({
+          commandedKw: controlStatus.commandedKw,
+          confirmedKw: controlStatus.confirmedKw,
+          allMatch: controlStatus.allMatch,
+          checkedAt: controlStatus.checkedAt,
+          stale: controlView.state === 'stale',
+          automatik: isWrAutomatik(controlStatus.executionMode),
+          gemessenKw: jetztWerte?.werte.batt ?? null,
+        })
+      : null;
+  const steuerzeileSichtbar = zeigt('steuerung') && (controlView != null || guardView != null);
+  // Der Zustand nennt nur, was nicht schon an seinem eigenen Ort steht: die
+  // Steuerung steht in der Steuerzeile, der Plan in der Fahrplan-Kachel.
+  const healthOhneDoppel = health.filter(
+    (h) => !(h.key === 'control' && steuerzeileSichtbar) && !(h.key === 'plan' && zeigt('fahrplan') && fahrplanVerfuegbar),
   );
 
   const bausteinNodes: Partial<Record<BausteinId, ReactNode>> = {
@@ -1738,8 +1945,6 @@ export function AnlageSeite({
         <Skeleton height={320} radius="var(--vp-radius-lg)" />
       ) : (
         <CockpitHero
-          view={heroView}
-          nachtragHref={`#/anlage/${site.id}/technik`}
           topology={adaptiveLive.topology}
           snapshot={siteSnapshot(ovSite.live)}
           stale={heroStale}
@@ -1757,19 +1962,13 @@ export function AnlageSeite({
             planKind,
             isPhone,
             now,
+            onBlatt: (art) => { if (art === 'load') setVerbrauchBlattOffen(true); },
           }}
-          /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
-             Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle
-             Seitenzeile für vier Knöpfe. Ohne Geld-Modus gibt es keinen
-             Zeitraum zu wählen.
-             Am Telefon (Stufe 2) trägt die EINE Geld-Karte darunter das
-             Segment - dort gibt es keine Leiste. */
-          periodSeg={
-            !isPhone && zeigt('geld') && hasBlock(blocks, 'erloes-komposition') ? (
-              <PeriodTabs range={range} onRange={switchRange} variant="seg" />
-            ) : null
+          /* Rechts neben dem Fluss: die Leitkachel (am Rechner). */
+          showRail={!isPhone}
+          seite={
+            inSeite('geld') ? geldKachel(true) : inSeite('strompreis') ? strompreisKachel(true) : inSeite('lastspitze') ? lastspitzeKachel() : null
           }
-          showRail={!isPhone && zeigt('geld')}
           /* Der Stift in der PV-Zusammensetzung — die Abkürzung zum
              Umbenennen dort, wo der Wunsch entsteht. Nach dem Speichern
              dieselbe Auffrischung wie jeder „Erneut versuchen"-Klick, damit
@@ -1779,17 +1978,6 @@ export function AnlageSeite({
             boxRef: boxRefOf(devices, site.id),
             onRenamed: () => setReloadKey((k) => k + 1),
           }}
-          /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
-             der Bühnenfuß liefert Satz und Grund. Ein Flusskonflikt
-             (register-bestätigt, aber nicht fließend) entzieht den Haken -
-             er wäre sonst genau die „lädt 3,3 kW ✓"-Lüge aus Pilsting. */
-          controlConfirmed={
-            controlView?.state === 'healthy' &&
-            cockpitFlow?.severity !== 'warn' &&
-            // Laden bei Bezug (K8/B2): kein „lädt … kW ✓", solange Netzstrom
-            // in den Speicher fließt - der Satz unter dem Fluss erklärt es.
-            ladenHinweis == null
-          }
           ladenHinweis={ladenHinweis?.text ?? null}
           /* Die Lade-Kreise (Konzept §6, E3; Phase 1 / C2) - der Abzweig VOM
              HAUS und, für Säulen an einem EIGENEN Anschluss, ein Kreis am HUB.
@@ -1800,73 +1988,45 @@ export function AnlageSeite({
              sind beide null und das Diagramm zeichengleich zu vorher. */
           charging={ladeKreise.haus}
           chargingOwn={ladeKreise.eigen}
-          /* Am Telefon steht die Geld-Karte „direkt unterm Fluss"
-             (Konzept) — der Bühnenfuß wandert deshalb unter die
-             Fahrplan-Zeile, deren Aussage er fortsetzt (was ist geplant →
-             was bestätigt der Wechselrichter). Er entfällt NICHT: er ist
-             die einzige Fläche, die einen abweichenden Sollwert meldet. */
+          /* Die Steuerzeile am Fuß der Bühne - am Telefon und am Rechner
+             (Konzept „Cockpit als Tagesfilm“). Sie ist die einzige Fläche,
+             die einen abweichenden Sollwert meldet. */
           footer={
-            !isPhone && zeigt('steuerung') && (controlView || guardView) ? (
-              <ControlStrip view={controlView} variant="bare" guard={guardView} />
+            steuerzeileSichtbar ? (
+              <ControlStrip view={controlView} variant="bare" guard={guardView} spalten={steuerSpaltenView} />
             ) : null
           }
         />
       ),
-    /* Mobil-Umbau Stufe 2: die EINE Geld-Karte direkt unter dem Fluss —
-       Zahl, Zurechnung, Zeitraum-Segment und die Ringe als Chips. Sie
-       ersetzt am Telefon die Bilanz-Leiste UND die zwei Geld-Kacheln
-       (dieselbe Aussage stand dort bis zu viermal auf 550 px). Am Rechner
-       wohnt sie IN der Bühne (`showRail`), deshalb hier nur am Telefon. */
-    geld: isPhone ? (
-      <div ref={moneyRef}>
-        <MobileMoneyCard
-          view={heroView}
-          nachtragHref={`#/anlage/${site.id}/technik`}
-          periodSeg={
-            hasBlock(blocks, 'erloes-komposition') ? (
-              <PeriodTabs range={range} onRange={switchRange} variant="seg" />
-            ) : null
-          }
-        />
-      </div>
+    /* Die Kacheln (Konzept „Cockpit als Tagesfilm“). Die Leitkachel steht
+       am Rechner in der Bühne und deshalb nicht noch einmal im Raster. */
+    geld: inSeite('geld') ? null : geldKachel(false),
+    fahrplan: fahrplanVerfuegbar ? (
+      <KachelSpaet
+        art="fahrplan"
+        tag={buehneTag}
+        kind={planKind}
+        leer={planLoading && plan == null ? 'Der Plan wird geladen …' : planFailed ? 'Der Plan ist gerade nicht erreichbar.' : null}
+        groesse="breit"
+        onOpen={() => onOpenSub('fahrplan')}
+      />
     ) : null,
-    fahrplan: fahrplanRow,
-    steuerung:
-      isPhone && (controlView || guardView) && !(steuerungKurzSatz && fahrplanRow) ? (
-        <ControlStrip view={controlView} variant="card" guard={guardView} />
-      ) : null,
-    strompreis: strompreisRow,
-    /* Die Kachel „Laden": reine Anzeige, der Kopf springt auf „Ladevorgänge",
-       jede Zeile auf ihre Geräteseite. Ihre Fusszeile IST das Netzanschluss-
-       Band, das dafür aus den Kennzahlen hierher gezogen ist. */
-    laden: ladenView ? <LadenKachel view={ladenView} /> : null,
-    /* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
-       Ziel der Kachel - kein Modal mehr. */
+    // Die Steuerung steht als Steuerzeile IN der Bühne (am Telefon und am Rechner).
+    steuerung: null,
+    strompreis: inSeite('strompreis') ? null : strompreisKachel(false),
+    /* Die Kachel „Laden": reine Anzeige, der Kopf springt auf
+       „Ladevorgänge“, jede Zeile auf ihre Geräteseite. */
+    laden: ladenView ? (
+      <KachelSpaet
+        art="laden"
+        view={ladenView}
+        kachel={{ groesse: 'breit', onOpen: () => onOpenSub('ladevorgaenge') }}
+      />
+    ) : null,
     kacheln: (
-      <WidgetGrid
-        widgets={widgetsMitLead}
-        onSelect={jumpToWidget}
-        groessen={layout.resolved.groessen}
-        onGroesse={layout.anpassen ? layout.setGroesse : null}
-      />
-    ),
-    /* Merge Option A · Stratum 3: Komponenten im Detail — das Board
-       (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die
-       Abrufe starten erst nahe dem Viewport (lazy-mount). */
-    komponenten: (
-      <KomponentenSection
-        site={site}
-        topology={adaptiveLive.topology}
-        adaptive={adaptiveLive.adaptive}
-        stale={heroStale}
-        range={range}
-        at={at}
-        dayTotals={dayTotalsEffective}
-        charging={charging}
-        consumerStatus={consumerStatus}
-        ladenKachelSichtbar={zeigt('laden')}
-        boxRef={boxRef}
-      />
+      <div className={layout.anpassen ? 'vp-kraster' : 'vp-k-gruppe'}>
+        {KACHEL_REIHE[buehneBetrieb].map((id) => <Fragment key={id}>{kachelKnoten(id)}</Fragment>)}
+      </div>
     ),
     /* Zustand (vp-cockpit-unten-ux-n3 PR 3): leise, wenn gesund — EINE
        Zeile; laut nur mit Befund (Ursache + Hebel je Zeile). Der
@@ -1876,10 +2036,10 @@ export function AnlageSeite({
        „noch nicht verbunden"-Befunde. id="zustand" bleibt das
        Sprungziel des Schalen-Abzeichens. */
     zustand:
-      ovSite != null && health.length > 0 ? (
+      ovSite != null && healthOhneDoppel.length > 0 ? (
         <div className="vp-cockpit-health" id="zustand">
           <ZustandCard
-            items={health}
+            items={healthOhneDoppel}
             onOpenSub={onOpenSub}
             onOpenModus={() => onOpenSub('steuerung')}
           />
@@ -2129,34 +2289,35 @@ export function AnlageSeite({
           {/* Der Stapel entsteht aus der AUFGELÖSTEN Reihenfolge (Katalog ->
               Preset -> Vorgabe -> Eigen). Ohne gespeicherte Zeile ist das
               Zeichen für Zeichen die frühere hart codierte Folge. */}
-          {layout.resolved.order.map((id) => {
-            const node = istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id];
-            const zeile = layout.anpassen && !isPhone
-              ? layout.zeilen.find((z) => z.id === id)
-              : undefined;
-            if (zeile) {
-              return (
-                <AnpassenHuelle
-                  key={id}
-                  zeile={zeile}
-                  /* Am Rechner wohnen Geld-Leiste und Steuerungs-Fuß IN der
-                     Bühne und haben deshalb keinen eigenen Knoten. Ihre ZEILE
-                     erscheint trotzdem - sonst wären sie die einzigen zwei
-                     Bausteine, die man am Rechner nicht ausblenden oder
-                     hervorheben könnte. */
-                  note={node == null ? ortsHinweis(id) : null}
-                  onVerschieben={layout.verschieben}
-                  onSichtbar={layout.setSichtbar}
-                  onLead={layout.setLead}
-                  extra={eigenStift(zeile)}
-                >
-                  {node ?? undefined}
-                </AnpassenHuelle>
-              );
-            }
-            if (node == null) return null;
-            return <Fragment key={id}>{node}</Fragment>;
-          })}
+          {layout.anpassen
+            ? layout.resolved.order.map((id) => {
+                const node = istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id];
+                const zeile = !isPhone ? layout.zeilen.find((z) => z.id === id) : undefined;
+                if (zeile) {
+                  return (
+                    <AnpassenHuelle
+                      key={id}
+                      zeile={zeile}
+                      /* Status und Steuerung wohnen im Kopf bzw. in der
+                         Bühne und haben keinen eigenen Knoten. Ihre ZEILE
+                         erscheint trotzdem - sonst ließen sie sich am Rechner
+                         nicht ausblenden. */
+                      note={node == null ? ortsHinweis(id) : null}
+                      onVerschieben={layout.verschieben}
+                      onSichtbar={layout.setSichtbar}
+                      onLead={layout.setLead}
+                      extra={eigenStift(zeile)}
+                    >
+                      {node ?? undefined}
+                    </AnpassenHuelle>
+                  );
+                }
+                if (node == null) return null;
+                return <Fragment key={id}>{node}</Fragment>;
+              })
+            : stapelMitRaster(layout.resolved.order, (id) =>
+                istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id as BausteinId],
+              isPhone ? leitArt : null)}
 
           {/* „Ausgeblendet (n)" bleibt erreichbar (§3.4) - ausblenden darf
               kein Weg ohne Rückweg sein. Am Telefon steht die Reihe schon in
@@ -2169,6 +2330,17 @@ export function AnlageSeite({
               onLead={layout.setLead}
               extra={eigenStift}
             />
+          )}
+
+          {/* Der zweite Weg ins Anpassen (Konzept „Cockpit als Tagesfilm“): am
+              Ende des Cockpits, wo der Blick nach den Kacheln ankommt. */}
+          {!layout.anpassen && (
+            <div className="vp-cockpit-anpassen-reihe">
+              <Button variant="ghost" onClick={layout.start}>
+                <Icon name="sliders" size={18} />
+                Cockpit anpassen
+              </Button>
+            </div>
           )}
 
           {/* vp-agg §2.5/C: die zusammengestellten Werte (Gesamtwerte) sind aus

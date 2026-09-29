@@ -1,0 +1,387 @@
+/* ==========================================================================
+   Die Kacheln unter der Bühne (Konzept docs/konzepte/cockpit-tagesfilm,
+   „Kachelkatalog“). Ein Raster: am Telefon zwei Spalten, am Rechner vier.
+   Farben aus den Rollen-Tokens des Flusses - keine zweite Palette.
+   ========================================================================== */
+
+.vp-kraster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.vp-kraster > .vp-k-gruppe {
+  display: contents;
+}
+
+.vp-k-platz {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vp-k-platz.is-breit,
+.vp-k-platz.is-hoch {
+  grid-column: span 2;
+}
+.vp-k-platz > .vp-k {
+  flex: 1;
+}
+
+.vp-k,
+.vp-k-farben {
+  --vp-k-pv: var(--vp-c-chart-pv, #e65100);
+  --vp-k-pv-fill: var(--vp-flow-pv, #f59e0b);
+  --vp-k-pv-soft: var(--vp-flow-pv-soft, #fef3e2);
+  --vp-k-batt: var(--vp-c-chart-soc, #166534);
+  --vp-k-batt-fill: var(--vp-flow-batt, #16a34a);
+  --vp-k-batt-soft: var(--vp-flow-batt-soft, #e7f6ec);
+  --vp-k-grid: var(--vp-flow-grid, #0ea5a3);
+  --vp-k-grid-line: var(--vp-chart-grid-line, #036672);
+  --vp-k-grid-soft: var(--vp-flow-grid-soft, #e2f6f5);
+  --vp-k-load: var(--vp-flow-load, #8b5cf6);
+  --vp-k-load-soft: var(--vp-flow-load-soft, #f1ecfd);
+  --vp-k-plan: var(--vp-chart-plan, #1e3a5f);
+  --vp-k-price: var(--vp-chart-price, #2563eb);
+  --vp-k-base: var(--vp-flow-base, #e3e9f1);
+}
+.vp-k {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 18px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  --vp-k-hue: var(--vp-c-fg, #1e293b);
+  --vp-k-soft: var(--vp-c-muted, #e9eff8);
+}
+.vp-k.is-lead {
+  border-color: color-mix(in srgb, var(--vp-navy, #1e3a5f) 35%, var(--vp-c-border, #e2e8f0));
+}
+.vp-k.ton-pv { --vp-k-hue: var(--vp-k-pv); --vp-k-soft: var(--vp-k-pv-soft); }
+.vp-k.ton-batt { --vp-k-hue: var(--vp-k-batt); --vp-k-soft: var(--vp-k-batt-soft); }
+.vp-k.ton-grid { --vp-k-hue: var(--vp-k-grid-line); --vp-k-soft: var(--vp-k-grid-soft); }
+.vp-k.ton-load { --vp-k-hue: var(--vp-k-load); --vp-k-soft: var(--vp-k-load-soft); }
+.vp-k.ton-geld { --vp-k-hue: var(--vp-navy, #1e3a5f); --vp-k-soft: var(--vp-c-muted, #e9eff8); }
+.vp-k.ton-plan { --vp-k-hue: var(--vp-k-plan); --vp-k-soft: var(--vp-c-muted, #e9eff8); }
+
+/* --- Kopf ----------------------------------------------------------------- */
+.vp-k-kopf {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 700 0.9rem/1.2 var(--vp-font-heading);
+  color: inherit;
+  text-align: left;
+}
+button.vp-k-kopf {
+  cursor: pointer;
+}
+button.vp-k-kopf::before {
+  content: '';
+  position: absolute;
+  inset: -8px -6px;
+}
+button.vp-k-kopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2563eb));
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+.vp-k-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--vp-k-soft);
+  color: var(--vp-k-hue);
+}
+.vp-k-name {
+  min-width: 0;
+  overflow-wrap: break-word;
+  hyphens: manual;
+}
+.vp-k-stern {
+  flex: none;
+  display: inline-flex;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-k-stern svg {
+  fill: currentColor;
+}
+.vp-k-chev {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* --- Inhalt --------------------------------------------------------------- */
+.vp-k-gross {
+  font: 800 1.5rem/1.1 var(--vp-font-heading);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-k-gross.is-xl {
+  font-size: 2.25rem;
+  letter-spacing: -0.03em;
+}
+.vp-k-einheit {
+  margin-left: 3px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-sub {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-k-zustand {
+  margin: 0;
+  font: 600 0.8125rem/1.3 var(--vp-font-heading);
+  overflow-wrap: anywhere;
+}
+.vp-k-reihe {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+.vp-k-reihe > * {
+  min-width: 0;
+}
+.vp-k-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.vp-k-bild {
+  display: block;
+  overflow: visible;
+  max-width: 100%;
+}
+.vp-k-marke {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: var(--vp-radius-pill, 999px);
+  font: 600 0.75rem/1.3 var(--vp-font-heading);
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-marke.is-plan {
+  padding: 1px 7px;
+  border: 1px dashed var(--vp-k-plan);
+  background: transparent;
+  color: var(--vp-k-plan);
+}
+.vp-k-marke.is-ok {
+  background: var(--vp-k-batt-soft);
+  color: var(--vp-k-batt);
+}
+.vp-k-marke.is-warn {
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-k-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-legende span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.vp-k-legende i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.vp-k-legende i.is-linie {
+  height: 2px;
+  border-radius: 1px;
+}
+.vp-k-minis {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-k-mini {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  font-size: 0.8125rem;
+}
+.vp-k-mini > span:first-child {
+  white-space: nowrap;
+  min-width: 0;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-mini > b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Wörter statt Zahlen (Tätigkeiten des Plans) dürfen umbrechen. */
+.vp-k-mini > b.is-text {
+  white-space: normal;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+/* „Unterm Strich“: der Kopf der Kachel nennt die Zahl schon - das Etikett
+   der Erlöskarte darunter entfällt, das Segment sagt den Zeitraum. */
+.vp-k .vp-c-label {
+  display: none;
+}
+.vp-k-spur {
+  grid-column: 1 / -1;
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--vp-k-base);
+}
+.vp-k-spur > i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--vp-k-hue);
+}
+.vp-k-spur.is-erwartet {
+  background: repeating-linear-gradient(135deg, var(--vp-k-pv-soft) 0 4px, var(--vp-c-card, #fff) 4px 7px);
+  box-shadow: inset 0 0 0 1px var(--vp-k-pv-soft);
+}
+.vp-k-achse {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Handel: die Fenster des Tages */
+.vp-k-handel {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vp-k-handel li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.8125rem;
+}
+.vp-k-handel li:first-child {
+  border-top: 0;
+}
+.vp-k-pfeil {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+.vp-k-pfeil.is-laden {
+  background: var(--vp-k-batt-soft);
+  color: var(--vp-k-batt);
+}
+.vp-k-pfeil.is-verkaufen {
+  background: color-mix(in srgb, var(--vp-chart-battdischarge, #8b1e3f) 12%, var(--vp-c-card, #fff));
+  color: var(--vp-chart-battdischarge, #8b1e3f);
+}
+.vp-k-handel b {
+  font-variant-numeric: tabular-nums;
+}
+.vp-k-handel small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-handel .is-preis {
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Die Zustandszeile unter dem Raster */
+.vp-cockpit-anpassen-reihe {
+  display: flex;
+  justify-content: center;
+}
+
+@media (min-width: 1024px) {
+  .vp-kraster {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .vp-k {
+    padding: 16px;
+  }
+  .vp-kraster .vp-k-platz.is-hoch {
+    grid-row: span 2;
+  }
+}
+
+/* Beschriftung in den Bildern */
+.vp-k-uhrzahl {
+  font: 600 8px var(--vp-font-heading);
+  fill: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-ziel {
+  font: 700 11px var(--vp-font-heading);
+  fill: var(--vp-k-plan);
+}
+.vp-k-tacho-zahl {
+  font: 800 26px var(--vp-font-heading);
+  letter-spacing: -0.02em;
+  fill: var(--vp-c-fg, #1e293b);
+}
+.vp-k-tacho-text {
+  font: 500 12px var(--vp-font-heading);
+  fill: var(--vp-c-muted-fg, #475569);
+}
+
+/* Die Tagesuhr am Telefon: Uhr über der Liste, damit die Tätigkeiten Platz haben. */
+@media (max-width: 520px) {
+  .vp-k-fahrplan .vp-k-reihe {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+  .vp-k-fahrplan .vp-k-reihe > .vp-k-minis {
+    width: 100%;
+  }
+}

@@ -571,8 +571,14 @@
   font-size: 0.82rem;
   color: var(--vp-c-muted-fg, #475569);
 }
+.vp-eb-weiter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
 
-/* Am Rechner: die beiden Listen nebeneinander. */
+/* Am Rechner: die beiden Listen nebeneinander, Uhr und Satz etwas größer. */
 @media (min-width: 1024px) {
   .vp-eb-listen {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -584,5 +590,30 @@
   }
   .vp-eb-satz {
     font-size: 1rem;
+  }
+}
+
+/* --- Aufschlüsselungen im Blatt ------------------------------------------ */
+/* Das Blatt ist schmal (Telefon) bzw. ein Modal von ~600 px: die Gruppen des
+   Verbrauchs stehen deshalb immer untereinander, und der Name behält eine
+   Mindestbreite - das Zustandswort bricht um, nicht der Name. */
+.vp-eb-blatt .vp-vbcomp {
+  margin: 0;
+}
+.vp-eb-blatt .vp-vbcomp-groups {
+  grid-template-columns: 1fr;
+}
+.vp-eb-blatt .vp-vbcomp-row {
+  grid-template-columns: 8px minmax(6.5em, 1fr) minmax(0, max-content) auto;
+}
+.vp-eb-blatt .vp-vbcomp-link {
+  grid-template-columns: 8px minmax(6.5em, 1fr) minmax(0, max-content) auto auto;
+}
+@media (max-width: 520px) {
+  .vp-eb-blatt .vp-vbcomp-row {
+    grid-template-columns: 8px minmax(6.5em, 1fr) minmax(0, max-content);
+  }
+  .vp-eb-blatt .vp-vbcomp-link {
+    grid-template-columns: 8px minmax(6.5em, 1fr) minmax(0, max-content) 16px;
   }
 }

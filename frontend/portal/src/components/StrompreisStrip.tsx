@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type PricePoint, type ScheduleSlot, type TarifArt } from '../api';
@@ -23,6 +23,7 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 import { MobileRowCard } from './CockpitBlocks';
 import './StrompreisStrip.css';
 import { SwapNumber } from './SwapNumber';
+import { Kachel, Marke, type RasterGroesse } from './kacheln/Kachel';
 
 /**
  * Der Börsenpreis-Streifen (Konzept `vp-cockpit-unten-ux-n3`, PR 1) — der
@@ -60,6 +61,7 @@ export function StrompreisStrip({
   activeSlot,
   onOpenMarktpreise,
   compact = false,
+  kachel = null,
 }: {
   siteId: string;
   /** Direktvermarktungs-Anlage (nur dort gibt es die § 51-Prämien-Zeile). */
@@ -81,6 +83,12 @@ export function StrompreisStrip({
    * Aussage der Fahrplan-Zeile.
    */
   compact?: boolean;
+  /**
+   * Die Kachel-Fassung (Konzept „Cockpit als Tagesfilm“): dieselben Aussagen in
+   * der Hülle des Kachelrasters. Die Plan-Kopplung („Ihr Fahrplan: …“) entfällt
+   * dort - den Plan trägt die Fahrplan- bzw. Speicher-Kachel (R2).
+   */
+  kachel?: { lead?: boolean; groesse?: RasterGroesse; fuss?: ReactNode } | null;
 }) {
   const [points, setPoints] = useState<PricePoint[] | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -125,6 +133,65 @@ export function StrompreisStrip({
   const bezug = bezugspreisKontext(tarifArt, activeSlot);
   const praemie = praemieRuhtNote(view.urteil, isDv);
   const fenster = streifenFenster(view);
+
+  if (kachel) {
+    return (
+      <Kachel
+        id="strompreis"
+        name="Börsenpreis"
+        icon="euro"
+        ton="neutral"
+        groesse={kachel.groesse ?? 'breit'}
+        lead={kachel.lead}
+        fuss={kachel.fuss}
+        onOpen={onOpenMarktpreise}
+        ziel="Marktpreise"
+      >
+        {view.state === 'leer' ? (
+          <p className="vp-k-sub">{LEER_TEXT}</p>
+        ) : (
+          <>
+            {view.jetztWert != null && (
+              <div className="vp-k-zeile">
+                <div>
+                  <span className="vp-k-gross"><SwapNumber value={view.jetztWert} /></span>
+                  <p className="vp-k-sub">Börsenpreis jetzt</p>
+                </div>
+                {view.urteilLabel && (
+                  <Marke art={view.urteil === 'teuer' ? 'warn' : view.urteil === 'guenstig' || view.urteil === 'negativ' ? 'ok' : 'neutral'}>
+                    {view.urteilLabel}
+                  </Marke>
+                )}
+              </div>
+            )}
+            {bezug != null && bezug.wert != null && (
+              <p className="vp-k-sub">
+                Ihr Bezugspreis jetzt: <b>{bezug.wert}</b>
+                {bezug.detail && <> · {bezug.detail}</>}
+              </p>
+            )}
+            {bezug?.warning && <p className="vp-k-sub">{bezug.warning}</p>}
+            <Kurve view={view} />
+            {fenster.length > 0 && (
+              <p className="vp-k-legende">
+                {fenster.map((f) => (
+                  <span key={f.art} className={`vp-sp-fenster-item art-${f.art}`}>
+                    <i aria-hidden="true" />
+                    {f.wort} · {f.zeit}
+                  </span>
+                ))}
+              </p>
+            )}
+            {view.anker != null && (
+              <p className="vp-k-sub">{view.anker.tief} · {view.anker.hoch}</p>
+            )}
+            {praemie != null && <p className="vp-k-sub">{praemie}</p>}
+            {view.morgenNote != null && <p className="vp-k-sub">{view.morgenNote}</p>}
+          </>
+        )}
+      </Kachel>
+    );
+  }
 
   if (compact) {
     if (view.state === 'leer') return null;

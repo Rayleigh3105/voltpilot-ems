@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { fmtNum } from '../format';
 import type { LadenKachel as LadenKachelView, LadenZeile } from '../ladenKachel';
 import { MiniShareBar } from './MiniChart';
+import { Kachel, type RasterGroesse } from './kacheln/Kachel';
 
 import './LadenKachel.css';
 
@@ -20,8 +22,75 @@ import './LadenKachel.css';
  * Thin + render-only - jede Zahl und jedes Wort kommt aus der getesteten
  * {@link ../ladenKachel}.
  */
-export function LadenKachel({ view }: { view: LadenKachelView }) {
-  const { band } = view;
+export function LadenKachel({
+  view,
+  kachel = null,
+}: {
+  view: LadenKachelView;
+  /** Die Kachel-Fassung im Raster (Konzept „Cockpit als Tagesfilm“): Kopf mit Absprung „Ladevorgänge“. */
+  kachel?: { groesse?: RasterGroesse; onOpen?: (() => void) | null; lead?: boolean; fuss?: ReactNode } | null;
+}) {
+  if (kachel) {
+    const band = view.band;
+    // Der wichtigste Ladepunkt: der ladende, sonst der erste.
+    const haupt = view.zeilen.find((z) => z.kw != null && z.kw > 0.05) ?? view.zeilen[0] ?? null;
+    return (
+      <Kachel
+        id="laden"
+        name="Laden"
+        icon="car"
+        ton="load"
+        groesse={kachel.groesse ?? 'breit'}
+        onOpen={kachel.onOpen ?? (view.href ? () => { window.location.hash = view.href!.replace(/^#/, ''); } : null)}
+        ziel="Ladevorgänge"
+        lead={kachel.lead}
+        fuss={kachel.fuss}
+      >
+        {/* Wie im Prototyp: die Leistung groß, der eine Satz zum wichtigsten
+            Ladepunkt, darunter das Ladebudget. Die Säulen im Einzelnen stehen
+            auf „Ladevorgänge“ und in „Verbrauch im Detail“. */}
+        <div className="vp-k-reihe">
+          <span className="vp-k-ico vp-laden-kachel-ico" aria-hidden="true">
+            <Icon name="car" size={22} />
+          </span>
+          <div>
+            {view.ladenKw != null ? (
+              <span className="vp-k-gross">
+                {fmtNum(view.ladenKw, '').trim()}
+                <span className="vp-k-einheit">kW</span>
+              </span>
+            ) : (
+              <span className="vp-k-zustand">{view.kopf}</span>
+            )}
+            {haupt && (
+              <p className="vp-k-zustand">
+                {haupt.label} {haupt.word.charAt(0).toLowerCase() + haupt.word.slice(1)}
+                {haupt.note ? ` · ${haupt.note}` : ''}
+              </p>
+            )}
+          </div>
+        </div>
+        {view.zeilen.length > 1 && <p className="vp-k-sub">{view.unterzeile ?? `${view.zeilen.length} Ladepunkte`}</p>}
+        {band && band.headline != null && (
+          <div className="vp-laden-fuss">
+            <span className="vp-laden-fuss-kopf">
+              <span>Ladebudget {band.headline}</span>
+              {band.blind && <span className="vp-laden-blind">geschätzt</span>}
+            </span>
+            <MiniShareBar
+              className="vp-laden-band"
+              segments={band.segments.map((sg) => ({
+                key: sg.id,
+                weight: Math.max(sg.kw, 0.001),
+                className: `vp-laden-seg is-${sg.id}`,
+                title: sg.label,
+              }))}
+            />
+          </div>
+        )}
+      </Kachel>
+    );
+  }
   return (
     <section className="vp-laden" aria-label="Laden">
       <div className="vp-laden-kopf">
@@ -38,6 +107,16 @@ export function LadenKachel({ view }: { view: LadenKachelView }) {
         )}
       </div>
 
+      <LadenInhalt view={view} />
+    </section>
+  );
+}
+
+/** Zeilen, ruhende Ladepunkte und das Ladebudget - in Karte und Kachel gleich. */
+function LadenInhalt({ view }: { view: LadenKachelView }) {
+  const { band } = view;
+  return (
+    <>
       {view.zeilen.length > 0 && (
         <ul className="vp-laden-zeilen">
           {view.zeilen.map((z) => (
@@ -69,7 +148,7 @@ export function LadenKachel({ view }: { view: LadenKachelView }) {
           <span className="vp-laden-fuss-satz">{band.sourceLine ?? band.line}</span>
         </div>
       )}
-    </section>
+    </>
   );
 }
 

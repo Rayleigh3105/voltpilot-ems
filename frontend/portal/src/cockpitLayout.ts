@@ -259,42 +259,22 @@ export function betriebAus(blocks: readonly CockpitBlock[] | null | undefined): 
   return 'eigenverbrauch';
 }
 
-/** Rückt `id` direkt hinter `nach` (sonst unverändert). */
-function hinter(liste: readonly BausteinId[], id: BausteinId, nach: BausteinId): BausteinId[] {
-  const ohne = liste.filter((x) => x !== id);
-  const i = ohne.indexOf(nach);
-  if (i < 0 || !liste.includes(id)) return [...liste];
-  return [...ohne.slice(0, i + 1), id, ...ohne.slice(i + 1)];
-}
-
 /**
- * **Die Voreinstellung je Betriebsmodell** (Konzept „Cockpit als Tagesfilm“):
- * dieselben Bausteine, eine andere kanonische Reihenfolge. Bei der
- * Marktoptimierung folgt der Börsenpreis direkt der Bühne, bei der
- * Lastspitzenkappung die Kacheln mit der Lastspitze. Eigenverbrauch bleibt
- * Zeichen für Zeichen die bisherige Reihenfolge (`migration.test.ts`).
- * Gespeicherte Schichten (Vorgabe, eigen) liegen darüber und gewinnen.
+ * Die Reihenfolge des Kachelrasters je Betriebsmodell (Konzept „Cockpit als
+ * Tagesfilm“, `DEFAULTS` im Prototyp): Eigenverbrauch - die Tageskacheln,
+ * dann Laden und Fahrplan; Marktoptimierung - der Börsenpreis führt;
+ * Lastspitzenkappung - die Kacheln mit der Lastspitze vorn. Rechner und
+ * Telefon teilen die Folge; am Rechner steht die Leitkachel neben dem Fluss.
  */
-function kanonischFuer(basis: readonly BausteinId[], betrieb: CockpitBetrieb): BausteinId[] {
-  // Die unbeweglichen Bausteine der Bühne (Geld, Steuerung) bleiben, wo sie
-  // sind; eingereiht wird hinter dem letzten von ihnen, der vorn steht.
-  const buehne = basis.indexOf('steuerung') < basis.indexOf('laden') ? 'steuerung' : 'geld';
-  if (betrieb === 'markt') return hinter(basis, 'strompreis', buehne);
-  if (betrieb === 'spitze') return hinter(basis, 'kacheln', buehne);
-  return [...basis];
-}
+const TAGESFILM: Record<CockpitBetrieb, BausteinId[]> = {
+  eigenverbrauch: ['status', 'energiefluss', 'geld', 'steuerung', 'kacheln', 'laden', 'fahrplan', 'strompreis', 'komponenten', 'zustand'],
+  markt: ['status', 'energiefluss', 'strompreis', 'steuerung', 'kacheln', 'geld', 'laden', 'fahrplan', 'komponenten', 'zustand'],
+  spitze: ['status', 'energiefluss', 'steuerung', 'kacheln', 'geld', 'laden', 'fahrplan', 'strompreis', 'komponenten', 'zustand'],
+};
 
 const KANONISCH: Record<'rechner' | 'telefon', Record<CockpitBetrieb, BausteinId[]>> = {
-  rechner: {
-    eigenverbrauch: CANONICAL_DESKTOP,
-    markt: kanonischFuer(CANONICAL_DESKTOP, 'markt'),
-    spitze: kanonischFuer(CANONICAL_DESKTOP, 'spitze'),
-  },
-  telefon: {
-    eigenverbrauch: CANONICAL_PHONE,
-    markt: kanonischFuer(CANONICAL_PHONE, 'markt'),
-    spitze: kanonischFuer(CANONICAL_PHONE, 'spitze'),
-  },
+  rechner: TAGESFILM,
+  telefon: TAGESFILM,
 };
 
 /** Die kanonische Reihenfolge für Bildschirm und Betriebsmodell (stabile Referenz). */

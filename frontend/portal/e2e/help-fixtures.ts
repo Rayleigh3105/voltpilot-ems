@@ -164,6 +164,8 @@ export function installHelpFixtures() {
   const error = params.get('state') === 'error';
   const single = params.get('state') === 'single';
   const admin = params.get('state') === 'admin';
+  // Die Eigenverbrauchs-Fassung des Cockpits (ohne Marktoptimierung) für Browserprüfungen.
+  const eigen = params.get('betrieb') === 'eigen';
   Object.assign(keycloak, { token: 'help-fixture-token', authenticated: true, updateToken: async () => false,
     tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', tenant_id: 'help-tenant', realm_access: { roles: [admin ? 'platform-admin' : 'operator'] } } });
   // All API methods are isolated, including mutation buttons in captured screens.
@@ -231,7 +233,7 @@ export function installHelpFixtures() {
     siteForecastModels: result({ kinds: [], history: [] }), supplyPrice: result({ tarifArt: 'dynamisch', fixedPriceCtKwh: null, spotMarkupCtKwh: 4.5, gridFeeCtKwh: 8, taxesCtKwh: 2, vatPct: 19, source: 'manual' }),
     consumerSchedule: result({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
     siteProfiles: result({ profiles: [
-      ['marktvermarktung','Marktoptimierung',!location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],
+      ['marktvermarktung','Marktoptimierung',!eigen && !location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],
       ['atypische-netznutzung','Atypische Netznutzung',false], ['lastmanagement','Ladepark-Lastmanagement',true],
     ].map(([id,label,active]) => ({ id,label,active, state: active ? 'an' : 'aus', derivedActive: active,
       unlocks: { views: [], widgets: [], moneyStream: null }, requirements: [], blockedReason: null, origin: 'masterdata',

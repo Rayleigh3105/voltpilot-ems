@@ -113,6 +113,13 @@ const MULTI: AnlageSurfaceInput = {
 };
 
 /** Keine Entitäten, keine Modi — die nie migrierte v1-Anlage. */
+/** Eine Privat-Anlage ohne Leistungspreis und ohne Marktvermarktung: Betriebsmodell Eigenverbrauch. */
+const PRIVAT: AnlageSurfaceInput = {
+  ...MULTI,
+  signals: { ...MULTI.signals!, hasLeistungspreis: false },
+  config: { plantKind: 'eigenverbrauch', tarifArt: 'fest', netzladenErlaubt: false },
+};
+
 const LEER: AnlageSurfaceInput = {
   signals: {
     hasStorage: false,
@@ -525,28 +532,22 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy());
   });
 
-  it('zeigt Autarkie und Eigenverbrauch als Ringe, die dem Zeitraum folgen', async () => {
-    // v3.2 M1: die Ring-Kennzahlen tragen die Periode wie die Geld-Zeile (nicht
-    // mehr das feste „heute"). Der Energiefluss selbst bleibt „jetzt gerade".
+  it('Eigenverbrauch: Autarkie und Eigenverbrauch sind eigene Kacheln für heute', async () => {
+    // Konzept „Cockpit als Tagesfilm“: keine Ringe mehr in der Geldkarte -
+    // die Tageskennzahlen stehen als eigene Kacheln im Raster (eine Kennzahl,
+    // ein Ort). Der Energiefluss selbst bleibt „jetzt gerade“.
     mockAdaptive(true);
-    mockSurface(MULTI);
+    mockSurface(PRIVAT);
     const { container } = renderSeite();
-    // Seit P5 wohnen die Ringe IN der Erlöskarte (`vp-c-ck-ring`); der leere
-    // Platz trägt stattdessen den ehrlichen Satz (`vp-c-note`) - abgewartet
-    // wird deshalb die ECHTE Ring-Beschriftung, nicht nur der Container.
-    await waitFor(() => expect(container.querySelectorAll('.vp-c-ck-ring-label')).toHaveLength(2));
-    const labels = [...container.querySelectorAll('.vp-c-ck-ring-label')].map((n) => n.textContent);
-    // Default-Tab „Heute" (Captain 2026-07-30): die Ringe tragen die Periode
-    // des gewählten Zeitraums.
-    const now = new Date();
-    const period = periodLabel('day', now, now);
-    expect(period).toBe('Heute');
-    expect(labels).toEqual([`Autarkie · ${period}`, `Eigenverbrauch · ${period}`]);
-    // Nie das zeitraum-blinde kleingeschriebene „heute".
-    expect(labels.join(' ')).not.toContain('· heute');
+    await waitFor(() => expect(container.querySelector('[data-kachel="autarkie"]')).toBeTruthy());
+    const autarkie = container.querySelector('[data-kachel="autarkie"]') as HTMLElement;
+    expect(autarkie.textContent).toContain('82');
+    expect(autarkie.textContent).toContain('heute selbst gedeckt');
+    expect(container.querySelector('[data-kachel="eigenverbrauch"]')?.textContent).toContain('heute selbst genutzt');
+    expect(container.querySelector('.vp-c-ck-ring')).toBeNull();
   });
 
-  it('lässt die Ringe WEG, wenn der Tageswert fehlt (nie „0 %")', async () => {
+  it('ohne Tageswert gibt es keine Autarkie-Kachel (nie „0 %")', async () => {
     vi.restoreAllMocks();
     stubApi();
     vi.spyOn(api, 'history').mockResolvedValue({
@@ -556,98 +557,73 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
       plan: [],
     } as never);
     mockAdaptive(true);
-    mockSurface(MULTI);
+    mockSurface(PRIVAT);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-    // V13: KEIN Ring (nie „0 %") - aber der Platz bleibt reserviert und sagt,
-    // warum er leer ist, damit die Seitenhöhe beim Tab-Wechsel nicht springt.
-    expect(container.querySelector('.vp-c-ck-ring')).toBeNull();
-    expect(container.querySelector('.vp-c-note')).toBeTruthy();
+    await waitFor(() => expect(container.querySelector('[data-kachel="automatik"]')).toBeTruthy());
+    expect(container.querySelector('[data-kachel="autarkie"]')).toBeNull();
+    expect(container.querySelector('[data-kachel="eigenverbrauch"]')).toBeNull();
     expect(container.textContent).not.toContain('0 %');
   });
 
-  it('rendert das Widget-Raster in kanonischer Reihenfolge', async () => {
+  it('Lastspitzenkappung: die Lastspitze führt als Leitkachel neben dem Fluss', async () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
-    const labels = [...container.querySelectorAll('.vp-widget-label')].map((n) => n.textContent);
-    // Peak führt (leadBlock), dann die Fluss-Kacheln, dann die Modus-Kacheln.
-    expect(labels[0]).toBe('Lastspitze');
-    expect(labels).toContain('Geräte-Automatik');
-    expect(container.querySelectorAll('.vp-widget.is-lead')).toHaveLength(1);
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel="lastspitze"]')).toBeTruthy());
+    const leit = container.querySelector('.vp-hero-side [data-kachel="lastspitze"]') as HTMLElement;
+    expect(leit.querySelector('.vp-k-stern')).toBeTruthy();
+    // Die Leitkachel steht nur EINMAL: nicht noch einmal im Raster.
+    expect(container.querySelector('.vp-kraster [data-kachel="lastspitze"]')).toBeNull();
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel="automatik"]')).toBeTruthy());
   });
 
-  it('Merge: das Komponenten-Board rendert im Cockpit — die Fluss-Kacheln sind weg', async () => {
-    // Option A (R2): das Board ist die EINE Live-Wert-Fläche des Cockpits;
-    // die vier früheren Fluss-Kacheln existieren im Widget-Raster nicht mehr.
+  it('keine zweite Live-Wert-Fläche: kein Komponenten-Board, keine Fluss-Kacheln', async () => {
+    // Die Knoten der Bühne sind die EINE Live-Wert-Fläche; ihre Details öffnen
+    // sich im Blatt des Knotens (Konzept „Cockpit als Tagesfilm“).
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-puls')).toBeTruthy());
-    // Board rows für die Topologie-Rollen (Speicher, Netz).
-    const rowNames = [...container.querySelectorAll('.vp-puls-name')].map((n) => n.textContent);
-    expect(rowNames).toContain('Netz');
-    // Keine Fluss-Kacheln im Raster.
-    const widgetLabels = [...container.querySelectorAll('.vp-widget-label')].map(
-      (n) => n.textContent,
-    );
-    for (const gone of ['Erzeugung', 'Speicher', 'Haus', 'Netz']) {
-      expect(widgetLabels).not.toContain(gone);
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel]')).toBeTruthy());
+    expect(container.querySelector('.vp-puls')).toBeNull();
+    expect(container.querySelector('.vp-komponenten')).toBeNull();
+    for (const gone of ['erzeugung', 'haus', 'verbrauch']) {
+      expect(container.querySelector(`[data-kachel="${gone}"]`)).toBeNull();
     }
-    // Der Verlauf ist eingeklappt (Q2): Toggle zu, kein Chart-Fenster-Seg.
-    const toggle = container.querySelector('.vp-verlauf-toggle');
-    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('Merge: ein Board-Zeilen-Sprung navigiert in den Verlauf mit Zeitraum-Übernahme', async () => {
-    mockAdaptive(true, TOPO);
-    mockSurface(MULTI);
-    const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-puls')).toBeTruthy());
-    window.location.hash = '';
-    // Die Netz-Zeile antippen — die ganze Zeile IST der Absprung (PR 2).
-    const netzRow = [...container.querySelectorAll('.vp-puls-row')].find(
-      (b) => b.querySelector('.vp-puls-name')?.textContent === 'Netz',
-    ) as HTMLButtonElement;
-    fireEvent.click(netzRow);
-    // Der Hash trägt den Verlauf-Deeplink (Messwert + übernommener Zeitraum).
-    expect(window.location.hash).toContain('/anlage/s-1/einzelwerte');
-    expect(window.location.hash).toContain('m=e-grid:power_kw');
-    expect(window.location.hash).toContain('z=tag'); // Default „Heute" → Tag
-    // NIE ein Modal — weder am body noch im Container.
-    expect(document.body.querySelector('.vp-wmodal')).toBeNull();
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
-  });
-
-  it('V2: eine Modus-Kachel öffnet ihre Seite über onOpenSub', async () => {
+  it('das Blatt eines Knotens führt in den Verlauf - ohne zweite Fläche im Cockpit', async () => {
     const opened: string[] = [];
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite((sub) => opened.push(sub));
-    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
-    const automatik = [...container.querySelectorAll('.vp-widget')].find(
-      (w) => w.querySelector('.vp-widget-label')?.textContent === 'Geräte-Automatik',
-    ) as HTMLButtonElement;
-    fireEvent.click(automatik);
+    await waitFor(() => expect(container.querySelector('.vp-lp-k-grid')).toBeTruthy());
+    fireEvent.click(container.querySelector('.vp-lp-k-grid') as Element);
+    const weiter = await waitFor(() => {
+      const b = [...document.body.querySelectorAll('button')].find((x) => x.textContent?.includes('Verlauf ansehen'));
+      expect(b).toBeTruthy();
+      return b as HTMLButtonElement;
+    });
+    fireEvent.click(weiter);
+    expect(opened).toContain('messwerte');
+  });
+
+  it('V2: der Kopf einer Kachel öffnet ihre Seite über onOpenSub', async () => {
+    const opened: string[] = [];
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite((sub) => opened.push(sub));
+    await waitFor(() => expect(container.querySelector('[data-kachel="automatik"] .vp-k-kopf')).toBeTruthy());
+    fireEvent.click(container.querySelector('[data-kachel="automatik"] .vp-k-kopf') as Element);
     expect(opened).toContain('steuerung');
   });
 
   it('eine Privat-Anlage hat weder Lastspitze- noch Handel-Kachel', async () => {
     mockAdaptive(true);
-    mockSurface({
-      ...MULTI,
-      signals: { ...MULTI.signals!, hasLeistungspreis: false },
-      config: { plantKind: 'eigenverbrauch', tarifArt: 'fest', netzladenErlaubt: false },
-    });
+    mockSurface(PRIVAT);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
-    const labels = [...container.querySelectorAll('.vp-widget-label')].map((n) => n.textContent);
-    expect(labels).not.toContain('Lastspitze');
-    expect(labels).not.toContain('Handel');
-    // Eigenverbrauch is base behaviour (report §3.3): no mode card, no EV widget -
-    // its value shows in the hero rings / MoneyView instead.
-    expect(labels).not.toContain('Eigenverbrauch');
+    await waitFor(() => expect(container.querySelector('[data-kachel="autarkie"]')).toBeTruthy());
+    expect(container.querySelector('[data-kachel="lastspitze"]')).toBeNull();
+    expect(container.querySelector('[data-kachel="handel"]')).toBeNull();
   });
 
   it('schließt mit der ruhigen Toolbox-Zeile, ohne eine Anwendung zu bewerben', async () => {
@@ -664,7 +640,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
   // Markt & Tag (vp-cockpit-unten-ux-n3, PR 1): der Börsenpreis-Streifen führt
   // die untere Hälfte an — gated auf die Marktpreise-Regel (Markt-Modus ∨
   // dynamischer Tarif; die Fixture-Anlage trägt `tarifArt: 'dynamisch'`).
-  it('trägt den Börsenpreis-Streifen mit Wert, Urteil und Absprung', async () => {
+  it('trägt die Börsenpreis-Kachel mit Wert, Urteil und Absprung', async () => {
     const base = new Date(Date.now() - 60 * 60 * 1000);
     const points = Array.from({ length: 8 }, (_, i) => {
       const ts = new Date(base.getTime() + i * 15 * 60_000);
@@ -680,47 +656,33 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
       currency: 'EUR',
       points,
     } as never);
+    const opened: string[] = [];
     mockAdaptive(true);
     mockSurface(MULTI);
-    const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-strompreis')).toBeTruthy());
-    const strip = container.querySelector('.vp-strompreis') as HTMLElement;
-    expect(strip.textContent).toContain('Börsenpreis');
-    expect(strip.textContent).toContain('ct/kWh');
-    expect(strip.textContent).toContain('Marktpreise');
-    // Der Streifen sitzt VOR der Komponenten-Sektion (Kopf der unteren Hälfte).
-    const komponenten = container.querySelector('.vp-komponenten');
-    expect(komponenten).toBeTruthy();
-    expect(
-      strip.compareDocumentPosition(komponenten as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const { container } = renderSeite((sub) => opened.push(sub));
+    await waitFor(() => expect(container.querySelector('[data-kachel="strompreis"]')?.textContent).toContain('ct/kWh'));
+    const kachel = container.querySelector('[data-kachel="strompreis"]') as HTMLElement;
+    expect(kachel.textContent).toContain('Börsenpreis');
+    // Die Plan-Kopplung („Ihr Fahrplan: …“) steht hier nicht - den Plan trägt
+    // die Fahrplan-Kachel.
+    expect(kachel.textContent).not.toContain('Ihr Fahrplan');
+    fireEvent.click(kachel.querySelector('.vp-k-kopf') as Element);
+    expect(opened).toContain('marktpreise');
   });
 
   // PR 4 (Konzept §4b): die kurze Speicher-Fahrplan-Karte sitzt DIREKT unter
   // dem Börsenpreis-Streifen — ① Markt (warum) → ①b Speicher-Fahrplan (was
   // der Plan draus macht) → ② Komponenten. Gated wie die Fahrplan-Ansicht
   // (Speicher vorhanden); der volle Chart lebt nur auf der Fahrplan-Seite.
-  it('trägt die kurze Speicher-Fahrplan-Karte zwischen Preis-Streifen und Komponenten', async () => {
+  it('der Fahrplan ist eine Kachel (Tagesuhr); ohne Plan sagt sie es ruhig', async () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-fp-band')).toBeTruthy());
-    const band = container.querySelector('.vp-fp-band') as HTMLElement;
-    expect(band.textContent).toContain('Speicher-Fahrplan');
-    // Ohne Plan (Standard-Stub): die ruhige Leere, kein voller Chart.
-    expect(band.textContent).toContain('Für heute liegt noch kein Fahrplan vor.');
-    expect(band.querySelector('.vp-chart')).toBeNull();
-    // Reihenfolge: Streifen → Karte → Komponenten.
-    const strip = container.querySelector('.vp-strompreis');
-    const komponenten = container.querySelector('.vp-komponenten');
-    expect(strip).toBeTruthy();
-    expect(komponenten).toBeTruthy();
-    expect(
-      (strip as Node).compareDocumentPosition(band) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      band.compareDocumentPosition(komponenten as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).toBeTruthy());
+    const kachel = container.querySelector('[data-kachel="fahrplan"]') as HTMLElement;
+    expect(kachel.textContent).toContain('Fahrplan');
+    expect(kachel.textContent).toContain('Für heute liegt noch kein Plan vor.');
+    expect(container.querySelector('.vp-fp-band')).toBeNull();
   });
 
   /*
@@ -728,17 +690,20 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     Komponenten-Karte. Bewusst EINE Zeile unter dem Board und kein zweites Ziel
     je Zeile - die Zeile hat schon eine Bedeutung („Verlauf").
   */
-  it('führt vom Komponenten-Board in die Zentrale - genau EINMAL', async () => {
+  it('führt aus dem Blatt eines Knotens zu „Ihre Geräte“ - genau EINMAL', async () => {
+    const opened: string[] = [];
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
-    const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-komponenten')).toBeTruthy());
-    const komponenten = container.querySelector('.vp-komponenten') as HTMLElement;
-    const links = [...komponenten.querySelectorAll('a')].filter((a) =>
-      (a.getAttribute('href') ?? '').includes('/modell'),
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0].textContent).toContain('Woher kommt jede Zahl?');
+    const { container } = renderSeite((sub) => opened.push(sub));
+    await waitFor(() => expect(container.querySelector('.vp-lp-k-load')).toBeTruthy());
+    fireEvent.click(container.querySelector('.vp-lp-k-load') as Element);
+    const knoepfe = await waitFor(() => {
+      const b = [...document.body.querySelectorAll('button')].filter((x) => x.textContent?.includes('Ihre Geräte'));
+      expect(b).toHaveLength(1);
+      return b;
+    });
+    fireEvent.click(knoepfe[0]);
+    expect(opened).toContain('modell');
   });
 
   it('der Nicht-zugeordnet-Zustand kennt keinen Börsenpreis-Streifen — und ruft die Preise gar nicht ab', async () => {
@@ -746,7 +711,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     mockSurface(LEER);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
-    expect(container.querySelector('.vp-strompreis')).toBeNull();
+    expect(container.querySelector('[data-kachel="strompreis"]')).toBeNull();
     expect(api.prices).not.toHaveBeenCalled();
   });
 });
@@ -787,42 +752,15 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
     return [...container.querySelectorAll('.vp-c-ck-ring svg text')].map((n) => n.textContent);
   }
 
-  it('wechselt Kennzahl UND Etikett mit Heute/Monat/Jahr — Gesamt hat keinen Ring', async () => {
+  it('die Tageskacheln bleiben beim Zeitraum-Wechsel der Geldzahl „heute“', async () => {
     rangeAwareHistory();
     mockAdaptive(true);
-    mockSurface(MULTI);
+    mockSurface(PRIVAT);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-c-ck-ring')).toBeTruthy());
-
-    const now = new Date();
-
-    // Default „Heute" (Captain 2026-07-30): der Tageswert unter dem Tagesetikett.
-    await waitFor(() => expect(ringValues(container)[0]).toContain('40'));
-    expect(ringLabels(container)[0]).toBe('Autarkie · Heute');
-
-    // „Jahr": der Wert UND das Etikett folgen dem Tab.
-    fireEvent.click(tab(container, 'Jahr'));
-    await waitFor(() => expect(ringValues(container)[0]).toContain('71'));
-    expect(ringLabels(container)).toEqual([
-      `Autarkie · ${periodLabel('year', now, now)}`,
-      `Eigenverbrauch · ${periodLabel('year', now, now)}`,
-    ]);
-
-    // „Monat": das Monatsetikett, der Monatswert.
-    fireEvent.click(tab(container, 'Monat'));
-    await waitFor(() => expect(ringValues(container)[0]).toContain('64'));
-    expect(ringLabels(container)).toEqual([
-      `Autarkie · ${periodLabel('month', now, now)}`,
-      `Eigenverbrauch · ${periodLabel('month', now, now)}`,
-    ]);
-
-    // „Gesamt": kein All-Zeit-Historie-Endpunkt → keine Ringe (nie ein falscher
-    // Wert), aber der Energiefluss bleibt live sichtbar.
-    fireEvent.click(tab(container, 'Gesamt'));
-    await waitFor(() => expect(container.querySelector('.vp-c-ck-ring')).toBeNull());
-    // V13: statt eines Höhensprungs steht dort der ehrliche Satz.
-    expect(container.querySelector('.vp-c-note')?.textContent).toContain('Monat oder Jahr');
-    expect(container.textContent).not.toContain('0 %');
+    await waitFor(() => expect(container.querySelector('[data-kachel="autarkie"]')?.textContent).toContain('40'));
+    // Der Zeitraum regiert nur die Geldzahl; die Kachel trägt den Tageswert,
+    // nie den des Monats oder Jahres.
+    expect(container.querySelector('[data-kachel="autarkie"]')?.textContent).not.toMatch(/64|71/);
     expect(container.querySelector('.vp-hero-flow .vp-lp')).toBeTruthy();
   });
 
@@ -845,17 +783,11 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
 });
 
 describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
-  it('stellt den Zeitraum IN die Bilanz-Leiste - keine vollbreite Zeile für vier Knöpfe mehr', async () => {
+  it('der Zeitraum steht in der Kachel „Unterm Strich“, direkt unter der Zahl', async () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-    // Seit P5 steht das Segment DIREKT unter der Zahl, die es regiert — die
-    // frühere Kopfzeile „Bilanz" ist entfallen (das Label sagt es schon).
-    const seg = container.querySelector('.vp-hero-side .vp-c-ck-seg .vp-seg.vp-seg-compact');
-    expect(seg).toBeTruthy();
-    expect(container.querySelector('.vp-hero-side')?.textContent).not.toContain('Bilanz');
-    // ... und die alte Seitenzeile gibt es auf der Bühne nicht mehr (P2).
+    await waitFor(() => expect(container.querySelector('[data-kachel="geld"] .vp-c-ck-seg .vp-seg.vp-seg-compact')).toBeTruthy());
     expect(container.querySelector('.vp-period-tabs')).toBeNull();
   });
 
@@ -863,12 +795,10 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-hero-side .vp-seg')).toBeTruthy());
-    const active = container.querySelector('.vp-hero-side .vp-seg button.active');
+    await waitFor(() => expect(container.querySelector('[data-kachel="geld"] .vp-seg')).toBeTruthy());
+    const active = container.querySelector('[data-kachel="geld"] .vp-seg button.active');
     expect(active?.textContent).toBe('Heute');
     expect([...container.querySelectorAll('[role="tab"][aria-selected="true"]')]).toHaveLength(1);
-    // Die Kennzahlen, die der Umschalter regiert, tragen dieselbe Periode.
-    expect(container.querySelector('.vp-c-ck-ring-label')?.textContent).toBe('Autarkie · Heute');
   });
 
   it('der Kopfsatz schweigt im Normalfall - der Fluss IST der Satz', async () => {
@@ -895,7 +825,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     expect(p.textContent).toContain('meldet sich nicht');
   });
 
-  it('trägt die Steuerung als Bühnenfuß und den Bestätigungs-Haken am Speicher', async () => {
+  it('trägt die Steuerung als Bühnenfuß: Auftrag, Gerät und Wirkung getrennt', async () => {
     vi.restoreAllMocks();
     sessionStorage.clear();
     stubApi();
@@ -913,19 +843,18 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stage-foot')).toBeTruthy());
-    const foot = container.querySelector('.vp-stage-foot')!;
-    // Sollwert → Bestätigung, über die volle Breite und ohne Karte-in-Karte.
-    // Variante B: die Richtung ist ein Wort (2,1 kW Ladung), nie „regelt auf".
-    expect(foot.querySelector('.vp-control-foot')).toBeTruthy();
-    expect(foot.textContent).toContain('lädt gerade mit 2,1');
-    expect(foot.textContent).toContain('vom Wechselrichter bestätigt');
-    expect(foot.textContent).not.toContain('regelt gerade auf');
+    await waitFor(() => expect(container.querySelector('.vp-stage-foot .vp-control-spalten')).toBeTruthy());
+    const foot = container.querySelector('.vp-stage-foot') as HTMLElement;
+    const text = (foot.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
+    expect(text).toContain('Auftrag');
+    expect(text).toContain('Speicher laden 2,1 kW');
+    expect(text).toContain('bestätigt');
+    expect(text).toContain('Wirkung');
     expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
-    // Verzahnung: die Bestätigung ist AM Diagramm ablesbar.
-    await waitFor(() => expect(container.querySelector('.vp-flow-confirm')).toBeTruthy());
-    // Der Speicher-Knoten nennt die Bestätigung auch im Titel (Vorlesen, Hover).
-    expect(container.querySelector('.vp-hero-flow .vp-lp-batt')?.getAttribute('title')).toContain('Sollwert bestätigt');
+    // Die Bestätigung steht EINMAL - in der Steuerzeile, nicht noch am Speicher-Knoten.
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp-batt')).toBeTruthy());
+    expect(container.querySelector('.vp-flow-confirm')).toBeNull();
+    expect(container.querySelector('.vp-hero-flow .vp-lp-batt')?.getAttribute('title')).not.toContain('Sollwert bestätigt');
   });
 
   it('setzt KEINEN Haken, solange der Wechselrichter nichts bestätigt hat', async () => {
@@ -1078,40 +1007,21 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     delete (window as unknown as { matchMedia?: unknown }).matchMedia;
   });
 
-  it('trägt EINE Geld-Karte statt Bilanz-Leiste + zwei Geld-Kacheln', async () => {
+  it('am Telefon: keine Leiste, die Leitkachel steht als erste Kachel unter der Bühne', async () => {
     stubPhone(true);
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-mob-money')).toBeTruthy());
-
-    // Die Bühnen-Leiste gibt es am Telefon nicht - ihre Blöcke wohnen in der
-    // einen Karte darunter.
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel="lastspitze"]')).toBeTruthy());
     expect(container.querySelector('.vp-hero-side')).toBeNull();
-    // … und die zwei Geld-Kacheln sind ersatzlos weg (Dedupe: ihr Tap-Ziel
-    // sitzt seit Mobil-Stufe 1 in der Bottom-Bar).
-    const tiles = [...container.querySelectorAll('.vp-widget-label')].map((e) => e.textContent);
-    expect(tiles).not.toContain('Erlöse');
-    expect(tiles).not.toContain('Handel');
-    expect(tiles).not.toContain('Wetter');
-    // Die Modus-Kachel bleibt: sie trägt ihre EIGENE Aussage.
-    expect(tiles).toContain('Lastspitze');
-    // Die verdiente Zahl steht danach GENAU EINMAL auf der Seite - der
-    // gemessene Befund des Konzepts war „dreimal untereinander". Der
-    // Sticky-Kopf trägt sie ebenfalls, ist aber `aria-hidden`, solange er
-    // nicht ausgelöst wurde.
-    // Seit V-04 (UX-Review) entfällt der Sticky-Kopf ganz, wenn er nur einen
-    // guten Zustand wiederholen würde - dann gibt es erst recht keine Dopplung.
+    const erste = container.querySelector('.vp-kraster [data-kachel]') as HTMLElement;
+    expect(erste.getAttribute('data-kachel')).toBe('lastspitze');
+    // Die Geldzahl steht in EINER Kachel; der Sticky-Kopf bleibt verborgen,
+    // solange er nicht ausgelöst wurde.
+    expect(container.querySelectorAll('[data-kachel="geld"]')).toHaveLength(1);
     const sticky = container.querySelector('.vp-mob-sticky');
     expect(sticky == null || sticky.getAttribute('aria-hidden') === 'true').toBe(true);
-    // Die Karte trägt das Zeitraum-Segment UND die Ringe - beide Blöcke der
-    // abgelösten Leiste, in EINER Karte direkt unterm Fluss. Seit P5 sind die
-    // Ringe echte Ringe (kein zweites Chip-Vokabular über derselben Zahl).
-    const money = container.querySelector('.vp-mob-money') as HTMLElement;
-    expect(money.querySelector('.vp-c-ck-seg .vp-seg')).toBeTruthy();
-    expect(money.querySelectorAll('.vp-c-ck-ring').length).toBe(2);
-    // Und sie stehen nur noch dort - kein zweites Ringpaar daneben.
-    expect(container.querySelectorAll('.vp-c-ck-ring').length).toBe(2);
+    expect(container.querySelector('.vp-c-ck-ring')).toBeNull();
   });
 
   /**
@@ -1147,7 +1057,7 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
 
     // … und nachdem die Daten da sind, ist es DIESELBE Zeile — kein zweiter
     // Behälter, der daneben aufginge.
-    await waitFor(() => expect(container.querySelector('.vp-mob-money')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('[data-kachel="geld"]')).toBeTruthy());
     expect(container.querySelectorAll('.vp-anlage-chipzeile').length).toBe(1);
   });
 
@@ -1160,35 +1070,14 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     expect(container.querySelector('.vp-anlage-chipzeile')).toBeNull();
   });
 
-  it('macht Fahrplan und Börsenpreis zu je EINER Zeile mit Absprung', async () => {
+  it('am Telefon sind Fahrplan und Börsenpreis Kacheln wie am Rechner', async () => {
     stubPhone(true);
-    const base = new Date(Date.now() - 60 * 60 * 1000);
-    vi.spyOn(api, 'prices').mockResolvedValue({
-      biddingZone: 'DE-LU',
-      resolution: 'PT15M',
-      currency: 'EUR',
-      points: Array.from({ length: 8 }, (_, i) => {
-        const ts = new Date(base.getTime() + i * 15 * 60_000);
-        return {
-          ts: ts.toISOString(),
-          end: new Date(ts.getTime() + 15 * 60_000).toISOString(),
-          priceEurMwh: i % 2 === 0 ? 5 : 140,
-        };
-      }),
-    } as never);
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelectorAll('.vp-mob-row').length).toBe(2));
-
-    // Die vollen Karten (Kurve, Ministreifen) gibt es am Telefon nicht mehr -
-    // sie wohnen auf den Zielseiten, die einen Daumen entfernt sind.
-    expect(container.querySelector('.vp-strompreis')).toBeNull();
+    await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).toBeTruthy());
+    expect(container.querySelectorAll('.vp-mob-row')).toHaveLength(0);
     expect(container.querySelector('.vp-fp-band')).toBeNull();
-    const rows = [...container.querySelectorAll('.vp-mob-row')].map((e) => e.textContent ?? '');
-    expect(rows[0]).toContain('Fahrplan');
-    expect(rows[1]).toContain('Börsenpreis');
-    expect(rows[1]).toContain('Marktpreise');
   });
 
   it('lässt den Seitenkopf weg — die Topbar trägt die Identität (Stufe 1)', async () => {
@@ -1196,7 +1085,7 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-mob-money')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('[data-kachel="geld"]')).toBeTruthy());
     const head = container.querySelector('.vp-anlage-head') as HTMLElement;
     expect(head.className).toContain('is-phone');
     // Die Überschrift bleibt für Screenreader stehen (0 px hoch), die
@@ -1207,23 +1096,13 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     expect(head.textContent).not.toContain('Netzladen');
   });
 
-  it('ändert am Rechner NICHTS: Leiste, Bühnenfuß und alle Kacheln bleiben', async () => {
+  it('am Rechner: die Leitkachel steht in der Bühne, kein Telefon-Knoten', async () => {
     stubPhone(false);
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-    expect(container.querySelector('.vp-hero-side')).toBeTruthy();
-    // Die Ringe leben am Rechner weiter als SVG in der Erlöskarte der Leiste.
-    expect(container.querySelectorAll('.vp-hero-side .vp-c-ck-ring').length).toBe(2);
-    // Kein einziger Telefon-Knoten - die Bühne ist unangetastet.
+    await waitFor(() => expect(container.querySelector('.vp-hero-side [data-kachel]')).toBeTruthy());
     expect(container.querySelectorAll('[class*="vp-mob-"]').length).toBe(0);
-    const tiles = [...container.querySelectorAll('.vp-widget-label')].map((e) => e.textContent);
-    // ⚠ „Erlöse" steht hier NICHT mehr: die Kachel ist mit P5 entfallen
-    // (E11 = a) — sie trug den Gesamtertrag brutto als ZWEITE Geldzahl neben
-    // „Unterm Strich" derselben Bühne (Befund B14).
-    expect(tiles).not.toContain('Erlöse');
-    expect(tiles).toContain('Lastspitze');
     const head = container.querySelector('.vp-anlage-head') as HTMLElement;
     expect(head.className).not.toContain('is-phone');
     expect(head.querySelector('h1.vp-sr-only')).toBeNull();
@@ -1351,11 +1230,9 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
     expect(await ausgeschwungen(neu.container)).toBe(ohneRoute);
   });
 
-  it('die Geld-Fläche bleibt auch OHNE Erlös-Komposition — nur ihr Zeitraum-Segment hängt daran', async () => {
+  it('ohne Erlös-Komposition und ohne Geldzahl gibt es keine Geld-Kachel (kein leerer Rahmen)', async () => {
     // Eine reine Regel-Anlage (Wallbox + eine Automation, kein Speicher, kein
-    // Geld-Modus) hat KEINEN `erloes-komposition`-Block. Vor Stufe 3 rendert
-    // das Telefon die Geld-Karte trotzdem und ließ nur das Segment weg; der
-    // Layout-Speicher darf daran nichts ändern.
+    // Geld-Modus): nichts zu rechnen, also auch keine Kachel „Unterm Strich“.
     const OHNE_GELD: AnlageSurfaceInput = {
       signals: {
         hasStorage: false,
@@ -1387,25 +1264,13 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
       ],
       entities: [entity('e-wb', 'wallbox', ['power_kw'])],
     };
-    (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
-      matches: query.includes('720px'),
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    });
     mockAdaptive(true, TOPO);
     mockSurface(OHNE_GELD);
     stubLayout();
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-    expect(container.querySelector('.vp-mob-money')).toBeTruthy();
-    // ... und ohne den Block gibt es dort kein Zeitraum-Segment.
-    expect(container.querySelector('.vp-mob-money .vp-seg')).toBeNull();
-    delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+    await waitFor(() => expect(container.querySelector('.vp-kraster [data-kachel]')).toBeTruthy());
+    expect(container.querySelector('[data-kachel="geld"]')).toBeNull();
   });
 
   it('bietet „Cockpit anpassen" erst, wenn es einen Stapel zum Anordnen gibt', async () => {
@@ -1446,10 +1311,10 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
 
     fireEvent.click(getByLabelText('Cockpit anpassen'));
     await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
-    // Das Komponenten-Board ist da — und wird ausgeblendet.
-    expect(container.querySelector('.vp-komponenten')).toBeTruthy();
-    fireEvent.click(getByLabelText('Komponenten ausblenden'));
-    await waitFor(() => expect(container.querySelector('.vp-komponenten')).toBeNull());
+    // Die Fahrplan-Kachel ist da — und wird ausgeblendet.
+    await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).toBeTruthy());
+    fireEvent.click(getByLabelText('Speicher-Fahrplan ausblenden'));
+    await waitFor(() => expect(container.querySelector('[data-kachel="fahrplan"]')).toBeNull());
     // ... bleibt aber in der Reihe „Ausgeblendet (n)" erreichbar.
     expect(container.querySelector('.vp-anpassen-versteckt')?.textContent).toContain(
       'Ausgeblendet (1)',
@@ -1464,9 +1329,9 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
     ];
     // Der Kunde schreibt SEINE Schicht — nie die Vorgabe.
     expect(layer).toBe('eigen');
-    expect(doc.hidden).toEqual(['komponenten']);
+    expect(doc.hidden).toEqual(['fahrplan']);
     // Das Dokument nennt die volle Reihenfolge, inklusive des Ausgeblendeten.
-    expect(doc.order).toContain('komponenten');
+    expect(doc.order).toContain('fahrplan');
   });
 
   it('ein Pflicht-Baustein bekommt gar keinen Auge-Knopf, sondern die ehrliche Zeile', async () => {
@@ -1494,17 +1359,14 @@ describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
       [...container.querySelectorAll('.vp-anpassen-huelle > .vp-anpassen-ctrl > .vp-anpassen-name')]
         .map((n) => n.textContent);
     const vorher = namen();
-    expect(vorher).toContain('Komponenten');
-    fireEvent.click(getByLabelText('Komponenten nach oben'));
+    expect(vorher).toContain('Speicher-Fahrplan');
+    fireEvent.click(getByLabelText('Speicher-Fahrplan nach oben'));
     await waitFor(() => expect(namen()).not.toEqual(vorher));
     const nachher = namen();
-    expect(nachher.indexOf('Komponenten')).toBeLessThan(vorher.indexOf('Komponenten'));
+    expect(nachher.indexOf('Speicher-Fahrplan')).toBeLessThan(vorher.indexOf('Speicher-Fahrplan'));
     // Kopf und Bühne bleiben oben — sie sind unbeweglich, damit ein
     // Lead-Wechsel oder eine Umsortierung sie nie zerlegt.
     expect(nachher.slice(0, 2)).toEqual(['Status & Warnungen', 'Energiefluss']);
-    // Ein Baustein, der am Rechner IN der Bühne wohnt, bekommt trotzdem seine
-    // Zeile — sonst wäre er dort der einzige, den man nicht anfassen kann.
-    expect(container.textContent).toContain('Wird am Rechner in der Bühne angezeigt.');
   });
 
   it('sagt beim Zurücksetzen, WORAUF es fällt — und nennt die Vorgabe, wenn es eine gibt', async () => {
@@ -1770,9 +1632,11 @@ it('H-3 lädt alle drei Rollen und erhält Verbrauch/Netz auch bei fehlgeschlage
       geraete: [{ entity_id: role, name: 'Rollenquelle', art: 'gesamtwert', wert: role === 'grid' ? -3.5 : 213.5, liefernd: true, grund: null }] };
   });
   const { container } = renderSeite();
-  await waitFor(() => expect(container.querySelectorAll('.vp-pvrolle')).toHaveLength(2));
+  await waitFor(() => expect(lesen).toHaveBeenCalledTimes(3));
   for (const role of ['pv', 'consumer', 'grid']) expect(lesen).toHaveBeenCalledWith('s-1', role);
-  expect(container.querySelector('.vp-rolle-pv')).toBeNull();
-  expect(container.querySelector('.vp-rolle-consumer')?.textContent).toContain('Stand 10:15 Uhr');
-  expect(container.querySelector('.vp-rolle-grid')?.textContent).toContain('3,50');
+  // Die Aufschlüsselung je Gerät steht im Blatt des jeweiligen Knotens.
+  await waitFor(() => expect(container.querySelector('.vp-lp-k-load')).toBeTruthy());
+  fireEvent.click(container.querySelector('.vp-lp-k-load') as Element);
+  await waitFor(() => expect(document.body.querySelector('.vp-rolle-consumer')?.textContent).toContain('Stand 10:15 Uhr'));
+  expect(document.body.querySelector('.vp-rolle-pv')).toBeNull();
 });
