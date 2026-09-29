@@ -20,6 +20,9 @@
   --pv:#e65100; --pv-fill:#f59e0b; --pv-soft:#fef3e2; --sun:#d97706; --cloud:#64748b; --cloud-soft:#eef1f5;
   /* Speicher laut Plan */
   --batt:#16a34a; --battdis:#8b1e3f; --ok:#16a34a;
+  /* Preisstufen der Balken (im Vergleich zum Tag); Wort und Legende tragen die Bedeutung mit */
+  --lvl-guenstig:#15803d; --lvl-mittel:#a8b4c3; --lvl-teuer:#ef4444;
+  --fund:#fff6e8; --fund-ink:#9a4a07;
   --font:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --font-doc:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --ease:cubic-bezier(0.4,0,0.2,1); --m-fast:120ms; --m-base:200ms;
@@ -144,7 +147,7 @@ code{font:500 .92em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;backgro
 /* ---------- Portal (Produkt) ---------- */
 .app{container:app/inline-size;font-family:var(--font);color:var(--c-fg);background:var(--c-bg);font-size:15px;line-height:1.45;position:relative;min-height:100%;display:flex;flex-direction:column}
 .app-top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;display:flex;align-items:center;gap:10px;min-height:64px;padding:8px 16px;background:var(--c-card);border-bottom:1px solid var(--c-border)}
-.phone .app-top{padding-top:46px}
+@media (min-width:780px){.phone .app-top{padding-top:46px}}
 .site{display:flex;flex-direction:column;gap:1px;min-width:0}
 .site-name{display:inline-flex;align-items:center;gap:4px;font:800 18px/1.15 var(--font);letter-spacing:-.01em}
 .site-name svg{width:18px;height:18px;color:var(--c-muted-fg)}
@@ -163,21 +166,27 @@ code{font:500 .92em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;backgro
 
 .app-main{flex:1;padding:18px 16px 28px;min-width:0}
 .app-dock{position:sticky;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));background:var(--c-card);border-top:1px solid var(--c-border);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
-.phone .app-dock{padding-bottom:22px}
+@media (min-width:780px){.phone .app-dock{padding-bottom:22px}}
 .app-dock span{display:flex;flex-direction:column;align-items:center;gap:3px;font:600 11.5px var(--font);color:var(--c-muted-fg);min-width:0}
 .app-dock span svg{width:23px;height:23px}
 .app-dock span.on{color:var(--c-primary)}
+.toast{position:absolute;left:16px;right:16px;bottom:96px;padding:12px 14px;border-radius:14px;background:var(--c-fg);color:#fff;font:600 14px var(--font);text-align:center}
 
 .pv{container:pv/inline-size;min-width:0}
 .pv-grid{display:grid;gap:18px;grid-template-columns:minmax(0,1fr)}
 .pv-col{display:grid;gap:18px;min-width:0;align-content:start}
 
-/* Die Antwort: auf der Fläche, nicht in einer Karte */
+/* Der Moment: jetzt, oder die Viertelstunde unter dem Finger */
 .ans{min-width:0;padding:2px 2px 0}
-.ans-eye{margin:0 0 6px;font:700 12px/1.3 var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--c-muted-fg)}
-.ans-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
-.ans-num{margin:0;font:800 46px/1 var(--font);letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.m-top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:32px}
+.ans-eye{margin:0;font:700 12px/1.3 var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--c-muted-fg);font-variant-numeric:tabular-nums;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-jetzt{position:relative;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px 0 10px;border-radius:999px;border:1px solid var(--c-border);background:var(--c-card);font:700 13px var(--font);color:var(--c-primary);cursor:pointer;flex:none}
+.m-jetzt::before{content:"";position:absolute;inset:-6px}
+.m-jetzt svg{width:15px;height:15px}
+.ans-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:4px}
+.ans-num{margin:0;font:800 48px/1 var(--font);letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
 .ans-num small{font:700 19px var(--font);letter-spacing:0;color:var(--c-muted-fg);margin-left:6px}
+.ans-num .pre{font:700 28px var(--font);color:var(--c-muted-fg);margin-right:6px;letter-spacing:0}
 .verdict{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 12px;border-radius:999px;font:700 14px var(--font);white-space:nowrap}
 .verdict i{width:8px;height:8px;border-radius:50%;background:currentColor}
 .v-guenstig{background:var(--cheap-soft);color:var(--cheap-ink)}
@@ -185,61 +194,92 @@ code{font:500 .92em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;backgro
 .v-teuer{background:var(--dear-soft);color:var(--dear-ink)}
 .v-negativ{background:var(--neg-soft);color:var(--neg-ink)}
 .v-ruhig{background:var(--c-muted);color:#334155}
-.ans-say{margin:14px 0 0;font:600 17px/1.42 var(--font);text-wrap:pretty;max-width:34ch}
+.ans-say{margin:12px 0 0;font:600 17px/1.42 var(--font);text-wrap:pretty;max-width:36ch;min-height:2.84em}
 .ans-say b{font-weight:800}
 .ans-say .leise{display:block;font-weight:500;color:var(--c-muted-fg);font-size:15px;margin-top:4px}
-.ans-own{margin:10px 0 0;font:500 14px/1.4 var(--font);color:var(--c-muted-fg)}
+.ans-own{margin:8px 0 0;font:500 14px/1.4 var(--font);color:var(--c-muted-fg);min-height:1.4em}
 .ans-own b{color:var(--c-fg);font-weight:800;font-variant-numeric:tabular-nums}
 
-/* Preisleiter: wo „jetzt" zwischen dem günstigsten und dem teuersten Preis des Tages liegt */
-.ladder{margin-top:14px;max-width:420px}
-.ladder-bar{position:relative;height:8px;border-radius:4px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px}
-.ladder-bar span{border-radius:2px}
-.ladder-bar span:first-child{background:color-mix(in srgb,var(--cheap) 38%,var(--c-card));border-radius:4px 2px 2px 4px}
-.ladder-bar span:nth-child(2){background:#cfd8e3}
-.ladder-bar span:nth-child(3){background:color-mix(in srgb,var(--dear) 34%,var(--c-card));border-radius:2px 4px 4px 2px}
-.ladder-bar b{position:absolute;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:var(--c-card);border:3px solid var(--c-fg);box-shadow:0 1px 3px color-mix(in srgb,var(--c-fg) 30%,transparent)}
-.ladder-lbl{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font:600 12.5px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
-
-/* Wetter-Antwort */
-.wx{display:flex;align-items:center;gap:14px}
-.wx-ico{width:54px;height:54px;flex:none;border-radius:16px;display:grid;place-items:center;background:var(--pv-soft);color:var(--sun)}
-.wx-ico.w-wechselnd{background:#fdf3e1;color:#b45309}
-.wx-ico.w-bewoelkt{background:var(--cloud-soft);color:var(--cloud)}
-.wx-ico svg{width:34px;height:34px}
-.wx-word{margin:0;font:800 34px/1.05 var(--font);letter-spacing:-.025em}
-.wx-temp{margin:4px 0 0;font:600 16px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
-
-/* Karte mit Tagesbild */
-.card{background:var(--c-card);border:1px solid var(--c-border);border-radius:20px;padding:14px 14px 6px;min-width:0}
-.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 10px}
-.card-h h2{margin:0;font:700 16px/1.3 var(--font)}
-.card-h span{font:600 13px var(--font);color:var(--c-muted-fg)}
+/* Karten */
+.card{background:var(--c-card);border:1px solid var(--c-border);border-radius:20px;padding:14px 14px 10px;min-width:0}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;min-height:32px}
+.card-h h2{display:inline-flex;align-items:center;gap:8px;margin:0;font:700 16px/1.3 var(--font)}
+.card-h h2 svg{width:18px;height:18px;color:var(--c-muted-fg)}
+.card-h>span{font:600 13px var(--font);color:var(--c-muted-fg)}
+.mini-seg{display:inline-flex;background:var(--c-muted);border-radius:10px;padding:2px;flex:none}
+.mini-seg button{position:relative;min-height:32px;padding:0 11px;border:0;border-radius:8px;background:transparent;font:700 13px var(--font);color:var(--c-muted-fg);cursor:pointer;white-space:nowrap}
+.mini-seg button::before{content:"";position:absolute;inset:-6px -1px}
+.mini-seg button[aria-pressed="true"]{background:var(--c-card);color:var(--c-fg);box-shadow:0 1px 2px color-mix(in srgb,var(--c-fg) 14%,transparent)}
 .daysw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;padding:3px;border-radius:12px;background:var(--c-muted)}
 .daysw button{min-height:48px;border:0;border-radius:9px;background:transparent;font:700 15px/1.15 var(--font);color:var(--c-muted-fg);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px}
 .daysw button small{font:600 12px var(--font);color:inherit;opacity:.85}
 .daysw button[aria-selected="true"]{background:var(--c-card);color:var(--c-fg);box-shadow:0 1px 2px color-mix(in srgb,var(--c-fg) 14%,transparent)}
 .daysw button:disabled{cursor:default;color:#64748b}
-.daysw button:disabled small{opacity:1}
-.readout{display:flex;align-items:center;gap:8px;min-height:40px;margin:8px 2px 0;font:600 13.5px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
-.readout.on{color:var(--c-fg)}
-.readout svg{width:15px;height:15px;flex:none}
-.chart{position:relative;width:100%;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.hint{display:flex;align-items:center;gap:7px;margin:12px 2px 2px;font:600 13px var(--font);color:var(--c-muted-fg)}
+.hint-zeile{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;margin-top:6px}
+.hint-zeile .hint{margin:0 2px}
+.hint svg{width:15px;height:15px;flex:none}
+.chart{position:relative;width:100%;touch-action:pan-y;user-select:none;-webkit-user-select:none;cursor:crosshair}
 .chart svg{display:block;width:100%;overflow:visible}
 .chart:focus-visible{outline:2px solid var(--c-primary);outline-offset:4px;border-radius:8px}
 .chart text{font-family:var(--font)}
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 2px 4px;font:600 13px var(--font);color:var(--c-muted-fg)}
+.wachse .b{transform-box:fill-box;transform-origin:50% 100%;animation:wachsen .46s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--d)}
+.wachse .b.neg{transform-origin:50% 0%}
+@keyframes wachsen{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@media (prefers-reduced-motion:reduce){.wachse .b{animation:none}}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:8px 2px 0;font:600 13px var(--font);color:var(--c-muted-fg)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
-.legend i{width:14px;height:10px;border-radius:3px;display:inline-block}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.legend i.flach{width:16px;height:6px;border-radius:2px}
+.legend .leg-note{font-weight:500}
 .legend .tot{margin-left:auto;color:var(--c-fg);font-variant-numeric:tabular-nums}
+.stat{margin:10px 2px 4px;padding-top:10px;border-top:1px solid var(--c-border);font:600 13px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
 
-.rows{list-style:none;margin:6px 0 0;padding:0}
-.rows li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:13px 2px;border-top:1px solid var(--c-border);align-items:baseline}
-.rows .rn{font:600 15px var(--font);display:inline-flex;align-items:center;gap:8px;min-width:0}
-.rows .rn i{width:10px;height:10px;border-radius:3px;flex:none}
-.rows .rv{font:800 16px var(--font);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
-.rows .rs{grid-column:1 / -1;font:500 13.5px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
-.rows li.vorbei .rv,.rows li.vorbei .rn{color:var(--c-muted-fg)}
+/* Wann starten? / Wann ist am meisten Sonne? */
+.finder{border-color:color-mix(in srgb,var(--fund-ink) 22%,var(--c-border))}
+.f-frage{margin:0 0 8px;font:600 14px var(--font);color:var(--c-muted-fg)}
+.chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.chips button{min-height:44px;border-radius:12px;border:1px solid var(--c-border);background:var(--c-card);font:700 15px var(--font);color:var(--c-fg);cursor:pointer;font-variant-numeric:tabular-nums;transition:background-color var(--m-fast) var(--ease),border-color var(--m-fast) var(--ease)}
+.chips button[aria-pressed="true"]{background:var(--fund);border-color:var(--fund-ink);color:var(--fund-ink);box-shadow:inset 0 0 0 1px var(--fund-ink)}
+.fund{margin-top:12px}
+.f-box{padding:12px 14px;border-radius:14px;background:var(--fund)}
+.f-kopf{margin:0;font:800 20px/1.2 var(--font);color:var(--c-fg);font-variant-numeric:tabular-nums}
+.f-zeile{margin:4px 0 0;font:600 15px var(--font);color:var(--c-fg);font-variant-numeric:tabular-nums}
+.f-spar{margin:4px 0 0;font:700 14px var(--font);color:var(--cheap-ink)}
+.f-zeig{display:inline-flex;align-items:center;gap:4px;min-height:40px;margin-top:6px;padding:0;border:0;background:none;font:700 14px var(--font);color:var(--fund-ink);cursor:pointer}
+.f-zeig svg{width:16px;height:16px}
+.f-note,.f-leer{margin:8px 2px 2px;font:500 13.5px/1.45 var(--font);color:var(--c-muted-fg)}
+
+/* Wetter: Tageskarten zum Wischen */
+.tagwahl{min-width:0}
+.tagwahl .ans-eye{margin:0 2px 10px}
+.tage{display:grid;grid-auto-flow:column;grid-auto-columns:80%;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:2px;padding:2px 2px 8px;scrollbar-width:none;overscroll-behavior-x:contain}
+.tage::-webkit-scrollbar{display:none}
+.tagk{scroll-snap-align:start;display:grid;gap:10px;align-content:start;text-align:left;padding:14px;border-radius:20px;border:1px solid var(--c-border);background:var(--c-card);color:inherit;font:inherit;cursor:pointer;min-width:0;transition:border-color var(--m-fast) var(--ease),box-shadow var(--m-fast) var(--ease)}
+.tagk[aria-selected="true"]{border-color:var(--c-primary);box-shadow:inset 0 0 0 1px var(--c-primary)}
+.tk-kopf{display:flex;align-items:baseline;gap:8px}
+.tk-kopf b{font:800 16px var(--font)}
+.tk-kopf small{font:600 13px var(--font);color:var(--c-muted-fg)}
+.tagk[aria-selected="true"] .tk-kopf b{color:var(--c-primary)}
+.tk-mitte{display:flex;align-items:center;gap:12px}
+.tk-ico,.wm-ico{width:48px;height:48px;flex:none;border-radius:14px;display:grid;place-items:center;background:var(--pv-soft);color:var(--sun)}
+.tk-ico svg,.wm-ico svg{width:30px;height:30px}
+.w-wechselnd{background:#fdf3e1;color:#b45309}
+.w-bewoelkt{background:var(--cloud-soft);color:var(--cloud)}
+.w-nacht{background:#eef1f8;color:#3b4a6b}
+.tk-txt{display:flex;flex-direction:column;min-width:0}
+.tk-wort{font:800 24px/1.1 var(--font);letter-spacing:-.02em}
+.tk-temp{font:600 14px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
+.tk-pv{font:800 18px var(--font);font-variant-numeric:tabular-nums}
+.tk-pv small{display:block;font:600 12.5px var(--font);color:var(--c-muted-fg)}
+.tag-satz{margin:8px 2px 0}
+
+/* Wetter: der Moment in der Karte */
+.wm{display:flex;align-items:center;gap:12px;min-height:64px}
+.wm-txt{flex:1;min-width:0}
+.wm-eye{margin:0;font:700 12px/1.3 var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--c-muted-fg);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wm-main{margin:2px 0 0;font:800 22px/1.2 var(--font);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.wm-pv{margin:2px 0 0;font:700 14px var(--font);color:var(--pv);font-variant-numeric:tabular-nums}
 
 .links{display:grid;gap:0;border:1px solid var(--c-border);border-radius:18px;background:var(--c-card);overflow:hidden}
 .linkrow{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 14px;border:0;background:transparent;text-align:left;font:600 15px/1.3 var(--font);color:var(--c-fg);cursor:pointer;text-decoration:none;width:100%}
@@ -265,31 +305,23 @@ code{font:500 .92em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;backgro
 
 .note{margin:0;padding:12px 14px;border-radius:14px;background:var(--c-warn-bg);color:var(--c-warn-fg);font:600 14px/1.45 var(--font)}
 
-/* Stunde für Stunde */
-.hours{display:grid;grid-auto-flow:column;grid-auto-columns:62px;gap:6px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;scrollbar-width:thin}
-.hour{scroll-snap-align:start;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;border-radius:14px;background:var(--c-bg);font-variant-numeric:tabular-nums}
-.hour.now{background:color-mix(in srgb,var(--c-primary) 8%,var(--c-card));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c-primary) 35%,transparent)}
+/* Stunde für Stunde: antippen wählt die Stunde in der Kurve */
+.hours{display:grid;grid-auto-flow:column;grid-auto-columns:64px;gap:6px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;scrollbar-width:thin}
+.hour{scroll-snap-align:start;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;border-radius:14px;border:1px solid transparent;background:var(--c-bg);font:inherit;color:inherit;cursor:pointer;font-variant-numeric:tabular-nums}
+.hour.sel{background:color-mix(in srgb,var(--c-primary) 8%,var(--c-card));border-color:color-mix(in srgb,var(--c-primary) 45%,transparent)}
 .hour .h{font:600 12.5px var(--font);color:var(--c-muted-fg)}
 .hour svg{width:26px;height:26px}
 .hour .t{font:800 15px var(--font)}
 .hour .k{font:700 12px var(--font);color:var(--pv)}
 .hour .k.leer{color:var(--c-muted-fg);font-weight:600}
 
-/* Die nächsten Tage */
-.days{list-style:none;margin:0;padding:0}
-.days li+li{border-top:1px solid var(--c-border)}
-.dayrow{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:2px 12px;align-items:center;width:100%;min-height:64px;padding:10px 2px;border:0;background:transparent;text-align:left;cursor:pointer;color:inherit;font:inherit}
-.dayrow[aria-disabled="true"]{cursor:default}
-.dayrow .di{grid-row:1 / span 2;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--pv-soft);color:var(--sun)}
-.dayrow .di.w-wechselnd{background:#fdf3e1;color:#b45309}
-.dayrow .di.w-bewoelkt{background:var(--cloud-soft);color:var(--cloud)}
-.dayrow .di svg{width:24px;height:24px}
-.dayrow .dn{font:700 15px var(--font)}
-.dayrow .dn small{font:600 13px var(--font);color:var(--c-muted-fg);margin-left:6px}
-.dayrow .dv{grid-row:1 / span 2;grid-column:3;text-align:right;font:800 16px var(--font);font-variant-numeric:tabular-nums}
-.dayrow .dv small{display:block;font:600 12.5px var(--font);color:var(--c-muted-fg)}
-.dayrow .dw{font:500 14px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
-.dayrow.sel .dn{color:var(--c-primary)}
+/* Kennzahlen-Zeilen (Rückblick) */
+.rows{list-style:none;margin:6px 0 0;padding:0}
+.rows li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:13px 2px;border-top:1px solid var(--c-border);align-items:baseline}
+.rows .rn{font:600 15px var(--font);display:inline-flex;align-items:center;gap:8px;min-width:0}
+.rows .rn i{width:10px;height:10px;border-radius:3px;flex:none}
+.rows .rv{font:800 16px var(--font);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.rows .rs{grid-column:1 / -1;font:500 13.5px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
 
 /* Blatt (Rückblick) */
 .sheet-scrim{position:absolute;inset:0;background:color-mix(in srgb,var(--c-fg) 42%,transparent);opacity:0;transition:opacity var(--m-base) var(--ease)}
@@ -303,12 +335,12 @@ code{font:500 .92em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;backgro
 .sheet p.leise{margin:10px 0 0;font:500 13.5px/1.45 var(--font);color:var(--c-muted-fg)}
 
 /* ---------- Rechner: dieselbe Seite, zweispaltig ---------- */
-.nur-breit{display:none}
+@container pv (min-width:560px){
+  .tage{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-columns:auto;overflow:visible}
+}
 @container pv (min-width:820px){
-  .nur-breit{display:block}
-  .nur-schmal{display:none}
   .pv-grid{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:24px;align-items:start}
-  .ans-num{font-size:56px}
+  .ans-num{font-size:58px}
   .ans-say{max-width:44ch}
-  .card{padding:18px 18px 8px}
+  .card{padding:18px 18px 12px}
 }

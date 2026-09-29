@@ -1,5 +1,7 @@
-/* Prototyp „Preise und Wetter": Ableitungen (rein) und Darstellung. Die Ableitungen folgen den
-   Regeln des Portals (preisFenster.ts, weather.ts, wetterLeistung.ts) und nennen, wo sie neu sind. */
+/* Prototyp „Preise und Wetter", Fassung 2: Die große Zahl folgt dem Finger, ein Rechner „Wann?“
+   sucht das passende Zeitfenster, das Wetter hat wischbare Tageskarten. Die Ableitungen sind rein
+   und folgen den Regeln des Portals (preisFenster.ts, weather.ts, wetterLeistung.ts); wo sie neu
+   sind, steht es dabei. */
 (() => {
   const { TAGE, PREIS_FAELLE, WETTER_FAELLE, ihrPreis, plan: planAus, rueckblick } = DATEN;
   const NBSP = ' ';
@@ -17,7 +19,23 @@
   const spanne = (f) => `${uhr(f.von)}–${uhr(f.bis + 1)}${NBSP}Uhr`;
   const summe = (arr) => arr.reduce((s, v) => s + (v ?? 0), 0);
   const kwhAus = (arr) => (arr ? summe(arr) * 0.25 : 0);
+  const dauerWort = (min) => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (!h) return `${m}${NBSP}Min`;
+    return m ? `${h}${NBSP}Std ${m}${NBSP}Min` : `${h}${NBSP}Std`;
+  };
   let UID = 0;
+  let animieren = false;
+
+  /* Feste Farben für SVG (Safari-sicher ohne var() in Attributen); dieselben Werte wie style.css. */
+  const F = {
+    preis: '#2563eb', vergangen: '#8494a7', gitter: '#e2e8f0', achse: '#475569', tinte: '#1e293b',
+    guenstig: '#15803d', mittel: '#a8b4c3', teuer: '#ef4444', negativ: '#0e7490',
+    laden: '#16a34a', abgeben: '#8b1e3f', planGrund: '#eef2f7',
+    pv: '#e65100', pvFill: '#f59e0b', pvSoft: '#fef3e2', sonne: '#d97706', sonneSoft: '#fde9c7',
+    fund: '#fff6e8', fundTinte: '#9a4a07', weiss: '#ffffff',
+  };
 
   /* ---------- Symbole (Lucide, ISC; dieselben Pfade wie designsystem/components/core/Icon.jsx) ---------- */
   const ICON = {
@@ -34,7 +52,8 @@
     down: '<path d="m6 9 6 6 6-6"/>',
     right: '<path d="m9 18 6-6-6-6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-    info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+    timer: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
     wisch: '<path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/>',
   };
   const ico = (name) =>
@@ -82,16 +101,15 @@
   }
   const guenstigstes = (fs) => fs.find((f) => f.art === 'negativ') ?? fs.find((f) => f.art === 'guenstig') ?? null;
 
-  // NEU: das Urteil im Vergleich zum Tag (Entscheidung E2 = A). Negativ ist immer „unter null";
+  // NEU: das Urteil im Vergleich zum Tag (E2). Negativ ist immer „unter null";
   // unter 5 ct Tagesspanne gibt es kein Urteil (dieselbe Schwelle wie die Fenster).
   const URTEIL = { negativ: 'unter null', guenstig: 'günstig', mittel: 'mittel', teuer: 'teuer', ruhig: 'gleichmäßig' };
-  function urteil(v, cts) {
-    if (v < 0) return 'negativ';
+  function stufen(cts) {
     const s = [...cts].sort((a, b) => a - b);
-    if (s[s.length - 1] - s[0] < MIN_SPANNE_CT) return 'ruhig';
-    if (v <= s[Math.floor(s.length / 3)]) return 'guenstig';
-    if (v >= s[Math.floor((2 * s.length) / 3)]) return 'teuer';
-    return 'mittel';
+    const ruhig = s[s.length - 1] - s[0] < MIN_SPANNE_CT;
+    const t1 = s[Math.floor(s.length / 3)];
+    const t2 = s[Math.floor((2 * s.length) / 3)];
+    return (v) => (v < 0 ? 'negativ' : ruhig ? 'ruhig' : v <= t1 ? 'guenstig' : v >= t2 ? 'teuer' : 'mittel');
   }
 
   // NEU: der Satz nach vorn. Er nennt nie ein vergangenes Fenster.
@@ -103,20 +121,18 @@
     const drin = (f) => f && jetzt >= f.von && jetzt <= f.bis;
     const kommt = (f) => f && f.von > jetzt;
     if (!g && !t) return { s1: 'Heute bleibt der Preis den ganzen Tag ähnlich.', s2: null };
-    let s1 = null;
+    let s1;
     let um = null;
     if (drin(g)) {
       s1 = g.art === 'negativ'
-        ? `Der Börsenpreis liegt unter null, noch bis <b>${uhr(g.bis + 1)}${NBSP}Uhr</b>.`
-        : `Jetzt ist die günstigste Zeit des Tages, noch bis <b>${uhr(g.bis + 1)}${NBSP}Uhr</b>.`;
+        ? `Börsenpreis unter null, noch bis <b>${uhr(g.bis + 1)}${NBSP}Uhr</b>.`
+        : `Die günstigste Zeit des Tages, noch bis <b>${uhr(g.bis + 1)}${NBSP}Uhr</b>.`;
       um = 'g';
     } else if (drin(t)) {
-      s1 = `Jetzt ist die teuerste Zeit des Tages, noch bis <b>${uhr(t.bis + 1)}${NBSP}Uhr</b>.`;
+      s1 = `Die teuerste Zeit des Tages, noch bis <b>${uhr(t.bis + 1)}${NBSP}Uhr</b>.`;
       um = 't';
     } else if (kommt(g) && (!kommt(t) || g.von < t.von)) {
-      s1 = g.art === 'negativ'
-        ? `Unter null fällt der Preis heute <b>${spanne(g)}</b>.`
-        : `Am günstigsten wird es heute <b>${spanne(g)}</b>.`;
+      s1 = `Am günstigsten wird es heute <b>${spanne(g)}</b>.`;
       um = 'g';
     } else if (kommt(t)) {
       s1 = `Teuer wird es heute <b>${spanne(t)}</b>.`;
@@ -130,6 +146,24 @@
     else if (um !== 'g' && gm) s2 = `Morgen am günstigsten: ${spanne(gm)}.`;
     else if (um !== 'g' && !fall.morgen) s2 = 'Die Preise für morgen kommen gegen 13 Uhr.';
     return { s1, s2 };
+  }
+
+  // NEU: „Wann starten?". Günstigster zusammenhängender Block der gewählten Dauer unter den
+  // bekannten kommenden Viertelstunden (heute ab jetzt, morgen, sobald veröffentlicht).
+  // Nur Rechnung auf bekannten Preisen; kein Plan, schaltet nichts.
+  function startfenster(fall, jetzt, stunden, wert) {
+    const len = stunden * 4;
+    const folge = [];
+    for (let i = jetzt; i < 96; i++) folge.push({ tag: 0, i, v: wert(fall.heute[i]) });
+    if (fall.morgen) for (let i = 0; i < 96; i++) folge.push({ tag: 1, i, v: wert(fall.morgen[i]) });
+    if (folge.length < len) return null;
+    let best = null;
+    for (let k = 0; k + len <= folge.length; k++) {
+      const m = summe(folge.slice(k, k + len).map((x) => x.v)) / len;
+      if (!best || m < best.m - 1e-9) best = { k, m };
+    }
+    const jetztM = summe(folge.slice(0, len).map((x) => x.v)) / len;
+    return { start: folge[best.k], ende: folge[best.k + len - 1], m: best.m, jetztM };
   }
 
   /* ---------- Ableitungen: Wetter ---------- */
@@ -169,16 +203,6 @@
     }
     return b;
   }
-  function staerksteFenster(werte) {
-    let best = null;
-    for (let i = 0; i + FENSTER_SLOTS <= werte.length; i++) {
-      const teil = werte.slice(i, i + FENSTER_SLOTS);
-      if (teil.some((v) => v == null)) continue;
-      const m = summe(teil) / FENSTER_SLOTS;
-      if (!best || m > best.m) best = { von: i, bis: i + FENSTER_SLOTS - 1, m };
-    }
-    return best && best.m > 0.05 ? best : null;
-  }
   const verbinde = (gem, erw) => Array.from({ length: 96 }, (_, i) => gem?.[i] ?? erw?.[i] ?? null);
   const ghi96 = (stunden) =>
     Array.from({ length: 96 }, (_, i) => {
@@ -188,9 +212,45 @@
       const f = h - Math.floor(h);
       return Math.round(a.ghi * (1 - f) + b.ghi * f);
     });
+  // Der stärkste Block einer Reihe ab einem Index (nur lückenlose Blöcke).
+  function staerkster(werte, len, ab = 0) {
+    let best = null;
+    for (let i = ab; i + len <= werte.length; i++) {
+      const teil = werte.slice(i, i + len);
+      if (teil.some((v) => v == null)) continue;
+      const m = summe(teil) / len;
+      if (!best || m > best.m + 1e-9) best = { von: i, bis: i + len - 1, m };
+    }
+    return best && best.m > 0.05 ? best : null;
+  }
+  // NEU: „Wann ist am meisten Sonne?" über heute (ab jetzt) und morgen. Erwartete Erzeugung,
+  // kein Überschuss: Haus und Speicher brauchen einen Teil davon.
+  function sonnenfenster(fall, stunden) {
+    const len = stunden * 4;
+    const ohne = !!fall.ohnePrognose;
+    const jetzt = Math.floor(fall.minute / 15);
+    const r0 = ohne ? ghi96(fall.tage[0].stunden) : fall.pv[0].erwartet;
+    const r1 = ohne ? ghi96(fall.tage[1].stunden) : fall.pv[1].erwartet;
+    const folge = [];
+    for (let i = jetzt; i < 96; i++) folge.push({ tag: 0, i, v: r0[i] });
+    for (let i = 0; i < 96; i++) folge.push({ tag: 1, i, v: r1[i] });
+    let best = null;
+    for (let k = 0; k + len <= folge.length; k++) {
+      const teil = folge.slice(k, k + len);
+      if (teil.some((x) => x.v == null)) continue;
+      const m = summe(teil.map((x) => x.v)) / len;
+      if (!best || m > best.m + 1e-9) best = { k, m };
+    }
+    if (!best) return null;
+    return { start: folge[best.k], ende: folge[best.k + len - 1], m: best.m, ohne };
+  }
 
   /* ---------- Zustand ---------- */
-  const S = { seite: 'preise', preisFall: 'vormittag', wetterFall: 'sonnig', preisTag: 0, wetterTag: 0, blatt: false, rb: 'woche' };
+  const S = {
+    seite: 'preise', blatt: false, rb: 'woche',
+    preisFall: 'vormittag', preisTag: 0, preisSel: null, preisReihe: 'boerse', preisDauer: null,
+    wetterFall: 'sonnig', wetterTag: 0, wetterSel: null, wetterDauer: null,
+  };
 
   /* ---------- Rahmen des Portals ---------- */
   function reiter() {
@@ -216,74 +276,148 @@
     </div>`;
   }
 
-  /* ---------- Seite: Preise ---------- */
-  function preisSeite() {
+  /* ---------- Preise: Kontext, Moment, Seite ---------- */
+  function preisKontext() {
     const fall = PREIS_FAELLE[S.preisFall];
     if (!fall.morgen) S.preisTag = 0;
     const jetzt = Math.floor(fall.minute / 15);
-    const v = fall.heute[jetzt];
-    const u = urteil(v, fall.heute);
-    const lo = Math.min(...fall.heute);
-    const hi = Math.max(...fall.heute);
-    const pos = Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
-    const { s1, s2 } = preisSaetze(fall, jetzt);
-    const tag = S.preisTag === 1 ? fall.morgen : fall.heute;
-    const fs = fenster(tag);
-    const vorbei = (f) => S.preisTag === 0 && f.bis < jetzt;
-    const laeuft = (f) => S.preisTag === 0 && jetzt >= f.von && jetzt <= f.bis;
-    const zustand = (f) => (vorbei(f) ? ' · vorbei' : laeuft(f) ? ' · jetzt' : '');
-    const zeilen = [];
-    const g = guenstigstes(fs);
-    const t = fs.find((f) => f.art === 'teuer');
-    if (g && g.art === 'negativ') zeilen.push({ cls: vorbei(g) ? 'vorbei' : '', farbe: 'var(--neg)', name: 'Unter null', wert: spanne(g), sek: `tiefster Wert ${ctW(g.tief)}${zustand(g)}` });
-    else if (g) zeilen.push({ cls: vorbei(g) ? 'vorbei' : '', farbe: 'var(--cheap)', name: 'Am günstigsten', wert: spanne(g), sek: `im Schnitt ${ctW(g.ct)}${zustand(g)}` });
-    if (t) zeilen.push({ cls: vorbei(t) ? 'vorbei' : '', farbe: 'var(--dear)', name: 'Am teuersten', wert: spanne(t), sek: `im Schnitt ${ctW(t.ct)}${zustand(t)}` });
-    if (!g && !t) {
-      zeilen.push({ name: 'Tiefster Preis', wert: ctW(Math.min(...tag)) });
-      zeilen.push({ name: 'Höchster Preis', wert: ctW(Math.max(...tag)) });
-    }
-    zeilen.push({ name: 'Durchschnitt', wert: ctW(summe(tag) / tag.length), sek: 'über alle Viertelstunden des Tages' });
-    const tagName = S.preisTag === 1 ? TAGE[1] : TAGE[0];
-    const zeilenHtml = zeilen.map((z) => `<li class="${z.cls ?? ''}"><span class="rn">${z.farbe ? `<i style="background:${z.farbe}"></i>` : ''}${z.name}</span><span class="rv">${z.wert}</span>${z.sek ? `<span class="rs">${z.sek}</span>` : ''}</li>`).join('');
-    const profi = [
-      ['Minimum', Math.min(...tag) * 10], ['Durchschnitt', (summe(tag) / tag.length) * 10],
-      ['Maximum', Math.max(...tag) * 10], ['Spanne', (Math.max(...tag) - Math.min(...tag)) * 10],
-    ].map(([n, w]) => `<tr><th scope="row">${n}</th><td>${zahl(w, 2)}${NBSP}EUR/MWh</td></tr>`).join('');
+    const roh = S.preisTag === 1 ? fall.morgen : fall.heute;
+    const wert = S.preisReihe === 'ihr' ? ihrPreis : (v) => v;
+    return {
+      fall, jetzt, roh, wert,
+      werte: roh.map(wert),
+      stufe: stufen(roh),
+      plan: planAus(roh, S.preisTag === 0 ? jetzt : 0),
+      finder: S.preisDauer ? startfenster(fall, jetzt, S.preisDauer, wert) : null,
+    };
+  }
+  const reiheWort = () => (S.preisReihe === 'ihr' ? 'Ihr Preis' : 'Börsenpreis');
 
+  // Der Moment oben: jetzt, oder die Viertelstunde, auf der der Finger liegt.
+  function momentPreis(root, sel) {
+    const q = (n) => root.querySelector(`[data-m="${n}"]`);
+    if (!q('num')) return;
+    const k = preisKontext();
+    const heute = S.preisTag === 0;
+    const i = sel ?? (heute ? k.jetzt : null);
+    q('jetzt').hidden = heute && (sel == null || sel === k.jetzt);
+    const chip = q('chip');
+    if (i == null) {
+      const fs = fenster(k.roh);
+      const g = guenstigstes(fs);
+      const t = fs.find((f) => f.art === 'teuer');
+      q('eye').textContent = `${reiheWort()} · morgen · ${TAGE[1].kurz}`;
+      q('num').innerHTML = `<span class="pre">Ø</span>${zahl(summe(k.werte) / k.werte.length)}<small>ct/kWh</small>`;
+      chip.hidden = true;
+      q('say').innerHTML = g && t
+        ? `Morgen am günstigsten <b>${spanne(g)}</b>.<span class="leise">Am teuersten ${spanne(t)}. Wischen zeigt jede Viertelstunde.</span>`
+        : 'Morgen bleibt der Preis den ganzen Tag ähnlich.';
+      q('own').innerHTML = '';
+      return;
+    }
+    const roh = k.roh[i];
+    const u = k.stufe(roh);
+    let eye;
+    if (heute && i === k.jetzt) eye = `${reiheWort()} · jetzt ${uhr(i)}–${uhr(i + 1)}`;
+    else if (heute && i < k.jetzt) eye = `${uhr(i)}–${uhr(i + 1)} · vorbei`;
+    else if (heute) eye = `${uhr(i)}–${uhr(i + 1)} · in ${dauerWort(i * 15 - k.fall.minute)}`;
+    else eye = `Morgen ${uhr(i)}–${uhr(i + 1)}`;
+    q('eye').textContent = eye;
+    q('num').innerHTML = `${zahl(k.wert(roh))}<small>ct/kWh</small>`;
+    chip.hidden = false;
+    chip.className = `verdict v-${u}`;
+    chip.innerHTML = `<i></i>${u === 'negativ' && S.preisReihe === 'ihr' ? 'Börse unter null' : URTEIL[u]}`;
+    let say;
+    if (heute && i === k.jetzt) {
+      const { s1, s2 } = preisSaetze(k.fall, k.jetzt);
+      say = `${s1}${s2 ? `<span class="leise">${s2}</span>` : ''}`;
+    } else if (heute && i < k.jetzt) say = 'Diese Viertelstunde ist vorbei.';
+    else {
+      const p = k.plan[i];
+      say = p === 1 ? 'Laut Plan lädt Ihr Speicher in dieser Viertelstunde.'
+        : p === -1 ? 'Laut Plan gibt Ihr Speicher in dieser Viertelstunde ab.'
+          : 'Laut Plan ruht Ihr Speicher in dieser Viertelstunde.';
+    }
+    q('say').innerHTML = say;
+    q('own').innerHTML = S.preisReihe === 'boerse'
+      ? `Ihr Preis: <b>${ctW(ihrPreis(roh))}</b> mit Netzentgelt, Abgaben und Steuern`
+      : `Davon Börse: <b>${ctW(roh)}</b>. Dazu kommen Aufschlag, Netzentgelt, Abgaben und Steuern.`;
+  }
+
+  function finderPreisHtml(k) {
+    if (!S.preisDauer) return '<p class="f-leer">Dauer antippen. Die günstigste Startzeit erscheint hier und in den Balken.</p>';
+    const f = k.finder;
+    if (!f) return `<p class="f-leer">Für ${S.preisDauer}${NBSP}Stunden reichen die bekannten Preise nicht mehr. Die Preise für morgen kommen gegen 13 Uhr.</p>`;
+    const tagWort = (x) => (x.tag === 0 ? 'heute' : 'morgen');
+    const sofort = f.start.tag === 0 && f.start.i === k.jetzt;
+    const kopf = sofort ? 'Jetzt starten' : `Start ${tagWort(f.start)} ${uhr(f.start.i)}${NBSP}Uhr`;
+    const ende = `fertig ${f.ende.tag !== f.start.tag ? 'morgen ' : ''}${uhr(f.ende.i + 1)}${NBSP}Uhr`;
+    const diff = f.jetztM - f.m;
+    const spar = !sofort && diff >= 0.05
+      ? `<p class="f-spar">${zahl(diff)}${NBSP}ct/kWh weniger als bei Start jetzt</p>`
+      : sofort ? '<p class="f-spar">Später wird es für diese Dauer nicht günstiger.</p>' : '';
+    const bis = k.fall.morgen ? 'Gesucht bis morgen 24 Uhr.' : 'Gesucht bis heute 24 Uhr. Die Preise für morgen kommen gegen 13 Uhr.';
+    return `<div class="f-box">
+        <p class="f-kopf">${kopf}</p>
+        <p class="f-zeile">${ende} · Ø ${ctW(f.m)}</p>
+        ${spar}
+        <button type="button" class="f-zeig" data-act="pzeig">In den Balken zeigen ${ico('right')}</button>
+      </div>
+      <p class="f-note">${bis} ${S.preisReihe === 'ihr' ? 'Gerechnet mit Ihrem Preis.' : 'Gerechnet mit dem Börsenpreis.'}</p>`;
+  }
+
+  function preisSeite() {
+    const k = preisKontext();
+    const fall = k.fall;
+    const chips = [1, 2, 3, 4].map((n) => `<button type="button" aria-pressed="${S.preisDauer === n}" data-act="pdauer" data-n="${n}">${n}${NBSP}Std</button>`).join('');
+    const hatNeg = k.roh.some((v) => v < 0);
+    const tagName = S.preisTag === 1 ? TAGE[1] : TAGE[0];
+    const profi = [
+      ['Minimum', Math.min(...k.roh) * 10], ['Durchschnitt', (summe(k.roh) / k.roh.length) * 10],
+      ['Maximum', Math.max(...k.roh) * 10], ['Spanne', (Math.max(...k.roh) - Math.min(...k.roh)) * 10],
+    ].map(([n, w]) => `<tr><th scope="row">${n}</th><td>${zahl(w, 2)}${NBSP}EUR/MWh</td></tr>`).join('');
     return `<div class="pv"><div class="pv-grid">
       <div class="pv-col">
-        <section class="ans" aria-label="Börsenpreis jetzt">
-          <p class="ans-eye">Börsenstrompreis · jetzt ${uhr(jetzt)}–${uhr(jetzt + 1)}</p>
-          <div class="ans-line">
-            <p class="ans-num">${zahl(v)}<small>ct/kWh</small></p>
-            <span class="verdict v-${u}"><i></i>${URTEIL[u]}</span>
-          </div>
-          <div class="ladder" role="img" aria-label="Heute zwischen ${ctW(lo)} und ${ctW(hi)}; jetzt ${ctW(v)}">
-            <div class="ladder-bar"><span></span><span></span><span></span><b style="left:${pos}%"></b></div>
-            <div class="ladder-lbl"><span>günstigste ${zahl(lo)} ct</span><span>teuerste ${zahl(hi)} ct</span></div>
-          </div>
-          <p class="ans-say">${s1}${s2 ? `<span class="leise">${s2}</span>` : ''}</p>
-          <p class="ans-own">Ihr Preis jetzt: <b>${ctW(ihrPreis(v))}</b> mit Netzentgelt, Abgaben und Steuern</p>
+        <section class="ans" aria-label="Preis der gewählten Viertelstunde">
+          <div class="m-top"><p class="ans-eye" data-m="eye"></p><button type="button" class="m-jetzt" data-act="pjetzt" data-m="jetzt" hidden>${ico('reset')}Jetzt</button></div>
+          <div class="ans-line"><p class="ans-num" data-m="num"></p><span class="verdict" data-m="chip"></span></div>
+          <p class="ans-say" data-m="say"></p>
+          <p class="ans-own" data-m="own"></p>
         </section>
-        <section class="card" aria-label="Börsenpreis im Tagesverlauf">
+        <section class="card" aria-label="Tagesverlauf">
+          <div class="card-h"><h2>Tagesverlauf</h2>
+            <div class="mini-seg" role="group" aria-label="Preisart">
+              <button type="button" aria-pressed="${S.preisReihe === 'boerse'}" data-act="reihe" data-r="boerse">Börse</button>
+              <button type="button" aria-pressed="${S.preisReihe === 'ihr'}" data-act="reihe" data-r="ihr">Ihr Preis</button>
+            </div>
+          </div>
           <div class="daysw" role="tablist" aria-label="Tag">
             <button type="button" role="tab" aria-selected="${S.preisTag === 0}" data-act="ptag" data-tag="0">Heute<small>${TAGE[0].kurz}</small></button>
             <button type="button" role="tab" aria-selected="${S.preisTag === 1}" data-act="ptag" data-tag="1" ${fall.morgen ? '' : 'disabled'}>Morgen<small>${fall.morgen ? TAGE[1].kurz : 'ab ca. 13 Uhr'}</small></button>
           </div>
-          <p class="readout" data-readout data-leer="Wischen zeigt jede Viertelstunde">${ico('wisch')}<span>Wischen zeigt jede Viertelstunde</span></p>
-          <div class="chart" data-chart="preis" tabindex="0" role="slider" aria-label="Börsenpreis ${tagName.wort.toLowerCase()} je Viertelstunde" aria-valuemin="0" aria-valuemax="95"></div>
+          <p class="hint">${ico('wisch')}Über die Balken wischen</p>
+          <div class="chart" data-chart="preis" tabindex="0" role="slider" aria-label="${reiheWort()} ${tagName.wort.toLowerCase()} je Viertelstunde" aria-valuemin="0" aria-valuemax="95"></div>
           <div class="legend">
-            <span><i style="background:var(--batt)"></i>Speicher lädt</span>
-            <span><i style="background:var(--battdis)"></i>gibt ab</span>
-            <span>laut Plan</span>
+            <span><i style="background:var(--lvl-guenstig)"></i>günstig</span>
+            <span><i style="background:var(--lvl-mittel)"></i>mittel</span>
+            <span><i style="background:var(--lvl-teuer)"></i>teuer</span>
+            ${hatNeg ? `<span><i style="background:var(--neg)"></i>${S.preisReihe === 'ihr' ? 'Börse unter null' : 'unter null'}</span>` : ''}
+            <span class="leg-note">im Vergleich zum Tag</span>
           </div>
-          <ul class="rows nur-schmal">${zeilenHtml}</ul>
+          <div class="legend">
+            <span><i class="flach" style="background:var(--batt)"></i>Speicher lädt</span>
+            <span><i class="flach" style="background:var(--battdis)"></i>gibt ab</span>
+            <span class="leg-note">laut Plan</span>
+          </div>
+          <p class="stat">Ø ${zahl(summe(k.werte) / 96)} · günstigste ${zahl(Math.min(...k.werte))} · teuerste ${zahl(Math.max(...k.werte))}${NBSP}ct/kWh</p>
         </section>
       </div>
       <div class="pv-col">
-        <section class="card nur-breit" aria-label="Kennzahlen">
-          <div class="card-h"><h2>${S.preisTag === 1 ? 'Morgen' : 'Heute'} in Zahlen</h2><span>${tagName.kurz}</span></div>
-          <ul class="rows">${zeilenHtml}</ul>
+        <section class="card finder" aria-label="Startzeit finden">
+          <div class="card-h"><h2>${ico('timer')}Wann starten?</h2></div>
+          <p class="f-frage">Wie lange läuft Ihr Gerät?</p>
+          <div class="chips" role="group" aria-label="Dauer">${chips}</div>
+          <div class="fund">${finderPreisHtml(k)}</div>
         </section>
         <nav class="links" aria-label="Weiter">
           <a class="linkrow" href="#" data-act="nicht"><span class="li">${ico('calendar')}</span><span class="lt">So nutzt Ihr Speicher diese Preise<small>Zum Fahrplan</small></span>${ico('right')}</a>
@@ -294,8 +428,9 @@
           <div class="ex">
             <p>Er entsteht jeden Tag in der Day-Ahead-Auktion für die Gebotszone Deutschland-Luxemburg (DE-LU) und gilt je Viertelstunde. Die Preise für morgen stehen gegen 13 Uhr fest.</p>
             <p><b>Ihr Preis</b> enthält zusätzlich den Aufschlag Ihres Anbieters, Netzentgelte, Abgaben und Steuern. VoltPilot liest ihn aus Ihrem Fahrplan.</p>
-            <p><b>Günstig und teuer</b> gelten im Vergleich zum Tag: das untere und das obere Drittel der Viertelstunden. Die Fenster sind die günstigsten und die teuersten 2½ Stunden am Stück.</p>
-            <table class="profi"><caption class="sr">Werte für Fachleute</caption>${profi}</table>
+            <p><b>Günstig, mittel, teuer</b> gelten im Vergleich zum Tag: unteres, mittleres und oberes Drittel der Viertelstunden. Unter null ist immer „unter null“.</p>
+            <p><b>Wann starten?</b> rechnet nur mit Preisen, die schon feststehen, und nur nach vorn. Es plant und schaltet nichts.</p>
+            <table class="profi"><caption class="sr">Werte für Fachleute, ${tagName.wort}</caption>${profi}</table>
             <p style="margin-top:10px">Quelle: energy-charts.info (Fraunhofer ISE).</p>
           </div>
         </details>
@@ -303,104 +438,158 @@
     </div></div>`;
   }
 
-  function preisDaten() {
-    const fall = PREIS_FAELLE[S.preisFall];
-    const heute = S.preisTag === 0;
-    const cts = heute ? fall.heute : fall.morgen;
-    const jetztSlot = Math.floor(fall.minute / 15);
+  /* ---------- Wetter: Kontext, Moment, Seite ---------- */
+  function wetterKontext() {
+    const fall = WETTER_FAELLE[S.wetterFall];
+    const t = S.wetterTag;
+    const tag = fall.tage[t];
+    const ohne = !!fall.ohnePrognose;
+    const ghiModus = ohne || !fall.pv[t];
+    const gem = t === 0 ? fall.pv[0].gemessen : null;
+    const erw = ghiModus ? null : fall.pv[t].erwartet;
     return {
-      cts,
-      jetzt: heute ? fall.minute : null,
-      fenster: fenster(cts),
-      // Der Plan beginnt bei der laufenden Viertelstunde; morgen nur, wenn die Preise feststehen.
-      plan: planAus(cts, heute ? jetztSlot : 0),
+      fall, t, tag, ohne, ghiModus, gem, erw,
+      reihe: ghiModus ? ghi96(tag.stunden) : verbinde(gem, erw),
+      jetzt: t === 0 ? Math.floor(fall.minute / 15) : null,
+      finder: S.wetterDauer ? sonnenfenster(fall, S.wetterDauer) : null,
     };
   }
 
-  /* ---------- Seite: Wetter ---------- */
-  function wetterSeite() {
-    const fall = WETTER_FAELLE[S.wetterFall];
-    const ohne = !!fall.ohnePrognose;
-    const t0 = fall.tage[0];
-    const art = tagHimmel(t0.stunden);
-    const temp = tempSpanne(t0.stunden);
-    const jetzt = Math.floor(fall.minute / 15);
-    const heuteReihe = verbinde(fall.pv[0].gemessen, ohne ? null : fall.pv[0].erwartet);
-    const gemKwh = kwhAus(fall.pv[0].gemessen);
-    const erwKwh = ohne ? 0 : kwhAus(fall.pv[0].erwartet);
-    const stark = ohne ? staerksteFenster(ghi96(t0.stunden).map((v) => v / 1000)) : staerksteFenster(heuteReihe);
-    const art1 = tagHimmel(fall.tage[1].stunden);
-    const morgenKwh = ohne ? null : kwhAus(fall.pv[1].erwartet);
-
-    const satz = ohne
-      ? `Die Sonne ist heute am stärksten <b>${spanne(stark)}</b>.`
-      : `Sonnenstrom heute: <b>≈${NBSP}${zahl(gemKwh + erwKwh, 0)}${NBSP}kWh</b>, am meisten <b>${spanne(stark)}</b>.`;
-    const leise = ohne
-      ? 'Eine Leistungsprognose für Ihre Anlage gibt es noch nicht.'
-      : `Morgen ${HIMMEL[art1]}, ≈${NBSP}${zahl(morgenKwh, 0)}${NBSP}kWh.`;
-
-    const tagZeilen = fall.tage.map((tg, i) => {
-      const a = tagHimmel(tg.stunden);
-      const tp = tempSpanne(tg.stunden);
-      let wert;
-      if (ohne) wert = i === 0 ? `${zahl(gemKwh, 1)}${NBSP}kWh<small>bisher gemessen</small>` : `—<small>keine Prognose</small>`;
-      else if (i === 0) wert = `≈${NBSP}${zahl(gemKwh + erwKwh, 0)}${NBSP}kWh<small>${zahl(gemKwh, 1)} schon erzeugt</small>`;
-      else if (fall.pv[i]) wert = `≈${NBSP}${zahl(kwhAus(fall.pv[i].erwartet), 0)}${NBSP}kWh<small>erwartet</small>`;
-      else wert = `—<small>Prognose folgt</small>`;
-      const waehlbar = i < 2;
-      return `<li><button type="button" class="dayrow${S.wetterTag === i ? ' sel' : ''}" ${waehlbar ? `data-act="wtag" data-tag="${i}"` : 'aria-disabled="true"'}>
-        <span class="di w-${a}">${ico(HIMMEL_ICO[a])}</span>
-        <span class="dn">${TAGE[i].wort}<small>${TAGE[i].kurz}</small></span>
-        <span class="dw">${HIMMEL[a]} · ${tp.tief} bis ${tp.hoch}${NBSP}°C</span>
-        <span class="dv">${wert}</span>
-      </button></li>`;
-    }).join('');
-
-    const vonStunde = Math.floor(fall.minute / 60);
-    const stunden = [];
-    for (let h = vonStunde; h < Math.min(24, vonStunde + 12); h++) {
-      const st = t0.stunden[h];
-      const nacht = h < 7 || h >= 19;
-      const a = himmel(st.cloud);
-      const name = nacht && a !== 'bewoelkt' ? 'moon' : HIMMEL_ICO[a];
-      const teil = heuteReihe.slice(h * 4, h * 4 + 4).filter((v) => v != null);
-      const kwStunde = !ohne && teil.length ? summe(teil) / teil.length : null;
-      stunden.push(`<div class="hour${h === vonStunde ? ' now' : ''}" role="listitem" aria-label="${h} Uhr, ${HIMMEL[a]}, ${zahl(st.temp, 0)} Grad, Bewölkung ${st.cloud} Prozent">
-        <span class="h">${h === vonStunde ? 'Jetzt' : `${h} Uhr`}</span>${ico(name)}<span class="t">${zahl(st.temp, 0)}°</span>
-        <span class="k${kwStunde != null && kwStunde > 0.05 ? '' : ' leer'}">${kwStunde != null && kwStunde > 0.05 ? kwW(kwStunde) : NBSP}</span></div>`);
+  function momentWetter(root, sel) {
+    const q = (n) => root.querySelector(`[data-w="${n}"]`);
+    if (!q('main')) return;
+    const k = wetterKontext();
+    const heute = k.t === 0;
+    const i = sel ?? (heute ? k.jetzt : null);
+    q('jetzt').hidden = heute && (sel == null || sel === k.jetzt);
+    if (i == null) {
+      const a = tagHimmel(k.tag.stunden);
+      const tp = tempSpanne(k.tag.stunden);
+      q('ico').className = `wm-ico w-${a}`;
+      q('ico').innerHTML = ico(HIMMEL_ICO[a]);
+      q('eye').textContent = `${TAGE[k.t].wort} · ${TAGE[k.t].kurz} · ganzer Tag`;
+      q('main').textContent = `${HIMMEL_GROSS[a]} · ${tp.tief} bis ${tp.hoch}${NBSP}°C`;
+      q('pv').textContent = k.ghiModus ? 'Leistungsprognose reicht noch nicht so weit' : `≈${NBSP}${zahl(kwhAus(k.erw), 0)}${NBSP}kWh Sonnenstrom erwartet`;
+      return;
     }
+    const h = Math.floor(i / 4);
+    const st = k.tag.stunden[h];
+    const a = himmel(st.cloud);
+    const nacht = h < 7 || h >= 19;
+    q('ico').className = `wm-ico w-${nacht && a !== 'bewoelkt' ? 'nacht' : a}`;
+    q('ico').innerHTML = ico(nacht && a !== 'bewoelkt' ? 'moon' : HIMMEL_ICO[a]);
+    let zeit;
+    if (heute && i === k.jetzt) zeit = `Jetzt · ${minUhr(k.fall.minute)}`;
+    else if (heute && i < k.jetzt) zeit = `${uhr(i)}–${uhr(i + 1)} · vorbei`;
+    else if (heute) zeit = `${uhr(i)}–${uhr(i + 1)} · in ${dauerWort(i * 15 - k.fall.minute)}`;
+    else zeit = `${TAGE[k.t].wort} ${uhr(i)}–${uhr(i + 1)}`;
+    q('eye').textContent = zeit;
+    q('main').textContent = `${zahl(st.temp, 0)}${NBSP}°C · ${HIMMEL[a]}`;
+    const v = k.reihe[i];
+    if (k.ghiModus) q('pv').textContent = `Sonne ${v}${NBSP}W/m²`;
+    else if (v == null) q('pv').textContent = 'Sonnenstrom: keine Angabe';
+    else q('pv').textContent = `${kwW(v)} Sonnenstrom · ${k.gem && k.gem[i] != null ? 'gemessen' : 'erwartet'}`;
+  }
 
-    const tagWahl = S.wetterTag;
+  function tagKarte(fall, t) {
+    const tg = fall.tage[t];
+    const a = tagHimmel(tg.stunden);
+    const tp = tempSpanne(tg.stunden);
+    const ohne = !!fall.ohnePrognose;
+    const gem = kwhAus(fall.pv[0].gemessen);
+    let pv;
+    if (ohne) pv = t === 0 ? `${zahl(gem, 1)}${NBSP}kWh<small>bisher gemessen</small>` : '—<small>keine Prognose</small>';
+    else if (t === 0) pv = `≈${NBSP}${zahl(gem + kwhAus(fall.pv[0].erwartet), 0)}${NBSP}kWh<small>${zahl(gem, 1)} schon erzeugt</small>`;
+    else if (fall.pv[t]) pv = `≈${NBSP}${zahl(kwhAus(fall.pv[t].erwartet), 0)}${NBSP}kWh<small>erwartet</small>`;
+    else pv = '—<small>Prognose folgt</small>';
+    return `<button type="button" role="tab" aria-selected="${S.wetterTag === t}" class="tagk" data-act="wtag" data-tag="${t}">
+      <span class="tk-kopf"><b>${TAGE[t].wort}</b><small>${TAGE[t].kurz}</small></span>
+      <span class="tk-mitte"><span class="tk-ico w-${a}">${ico(HIMMEL_ICO[a])}</span><span class="tk-txt"><span class="tk-wort">${HIMMEL_GROSS[a]}</span><span class="tk-temp">${tp.tief} bis ${tp.hoch}${NBSP}°C</span></span></span>
+      <span class="tk-pv">${pv}</span>
+    </button>`;
+  }
+
+  function wetterSatz(k) {
+    const wort = k.t === 0 ? 'heute' : k.t === 1 ? 'morgen' : `am ${TAGE[k.t].name}`;
+    const ab = k.t === 0 ? k.jetzt : 0;
+    let spitze = null;
+    k.reihe.forEach((v, i) => { if (i >= ab && v != null && v > (k.ghiModus ? 4 : 0.05) && (!spitze || v > spitze.v)) spitze = { i, v }; });
+    const gegen = (i) => `gegen <b>${Math.round((i * 15 + 7) / 60)}${NBSP}Uhr</b>`;
+    if (!spitze) return `Die Sonne ist für ${wort} durch.`;
+    if (k.ghiModus) {
+      const grund = k.ohne ? 'Eine Leistungsprognose für Ihre Anlage gibt es noch nicht.' : `Die Leistungsprognose reicht noch nicht bis ${TAGE[k.t].name}.`;
+      return `Die Sonne ist ${wort} ${gegen(spitze.i)} am stärksten.<span class="leise">${grund}</span>`;
+    }
+    if (k.t === 0 && spitze.i <= ab + 1) {
+      return `Die stärkste Sonne ist für heute vorbei.<span class="leise">Noch ≈${NBSP}${zahl(kwhAus(k.erw), 0)}${NBSP}kWh bis zum Abend.</span>`;
+    }
+    return `Am meisten Sonnenstrom ${wort} ${gegen(spitze.i)}, bis ${kwW(spitze.v)}.`;
+  }
+
+  function finderWetterHtml(k) {
+    if (!S.wetterDauer) return '<p class="f-leer">Dauer antippen. Das sonnigste Zeitfenster erscheint hier und in der Kurve.</p>';
+    const f = k.finder;
+    if (!f) return '<p class="f-leer">In den bekannten Stunden gibt es kein Zeitfenster mit Sonne.</p>';
+    const tagWort = f.start.tag === 0 ? 'Heute' : 'Morgen';
+    const ende = `${f.ende.tag !== f.start.tag ? 'morgen ' : ''}${uhr(f.ende.i + 1)}`;
+    const wert = f.ohne ? `Ø ${Math.round(f.m)}${NBSP}W/m² Sonneneinstrahlung` : `Ø ${kwW(f.m)} erwartet`;
+    return `<div class="f-box">
+        <p class="f-kopf">${tagWort} ${uhr(f.start.i)}–${ende}${NBSP}Uhr</p>
+        <p class="f-zeile">${wert}</p>
+        <button type="button" class="f-zeig" data-act="wzeig">In der Kurve zeigen ${ico('right')}</button>
+      </div>
+      <p class="f-note">${f.ohne ? 'Ohne Leistungsprognose zählt die Sonneneinstrahlung am Standort.' : 'Erwartete Erzeugung der Anlage. Haus und Speicher brauchen einen Teil davon.'}</p>`;
+  }
+
+  function wetterSeite() {
+    const k = wetterKontext();
+    const fall = k.fall;
+    const chips = [1, 2, 3, 4].map((n) => `<button type="button" aria-pressed="${S.wetterDauer === n}" data-act="wdauer" data-n="${n}">${n}${NBSP}Std</button>`).join('');
+    const von = k.t === 0 ? Math.floor(fall.minute / 60) : 6;
+    const bis = k.t === 0 ? Math.min(24, von + 12) : 21;
+    const stunden = [];
+    for (let h = von; h < bis; h++) {
+      const st = k.tag.stunden[h];
+      const a = himmel(st.cloud);
+      const nacht = h < 7 || h >= 19;
+      const jetztStunde = k.t === 0 && h === von;
+      const teil = k.reihe.slice(h * 4, h * 4 + 4).filter((v) => v != null);
+      const mittel = teil.length ? summe(teil) / teil.length : null;
+      const unten = k.ghiModus ? `${st.cloud}${NBSP}%` : mittel != null && mittel > 0.05 ? kwW(mittel) : NBSP;
+      const slot = jetztStunde ? '' : String(h * 4);
+      const gewaehlt = jetztStunde ? S.wetterSel == null : S.wetterSel != null && Math.floor(S.wetterSel / 4) === h;
+      stunden.push(`<button type="button" class="hour${gewaehlt ? ' sel' : ''}" data-act="stunde" data-slot="${slot}" aria-pressed="${gewaehlt}" aria-label="${h} Uhr, ${HIMMEL[a]}, ${zahl(st.temp, 0)} Grad">
+        <span class="h">${jetztStunde ? 'Jetzt' : `${h} Uhr`}</span>${ico(nacht && a !== 'bewoelkt' ? 'moon' : HIMMEL_ICO[a])}<span class="t">${zahl(st.temp, 0)}°</span>
+        <span class="k${k.ghiModus ? ' leer' : ''}">${unten}</span></button>`);
+    }
     return `<div class="pv"><div class="pv-grid">
       <div class="pv-col">
-        <section class="ans" aria-label="Wetter heute">
-          <p class="ans-eye">Wetter heute · ${TAGE[0].kurz}</p>
-          <div class="wx">
-            <span class="wx-ico w-${art}">${ico(HIMMEL_ICO[art])}</span>
-            <div><p class="wx-word">${HIMMEL_GROSS[art]}</p><p class="wx-temp">${temp.tief} bis ${temp.hoch}${NBSP}°C</p></div>
-          </div>
-          <p class="ans-say">${satz}<span class="leise">${leise}</span></p>
+        <section class="tagwahl" aria-label="Die nächsten Tage">
+          <p class="ans-eye">Wetter am Standort · Stand ${minUhr(fall.minute)}</p>
+          <div class="tage" role="tablist" aria-label="Tag" data-tage>${fall.tage.map((_, t) => tagKarte(fall, t)).join('')}</div>
+          <p class="ans-say tag-satz">${wetterSatz(k)}</p>
         </section>
-        <section class="card" aria-label="${ohne ? 'Sonne' : 'Sonnenstrom'} im Tagesverlauf">
-          <div class="card-h"><h2>${ohne ? 'Sonne' : 'Sonnenstrom'} im Tagesverlauf</h2></div>
-          <div class="daysw" role="tablist" aria-label="Tag">
-            <button type="button" role="tab" aria-selected="${tagWahl === 0}" data-act="wtag" data-tag="0">Heute<small>${TAGE[0].kurz}</small></button>
-            <button type="button" role="tab" aria-selected="${tagWahl === 1}" data-act="wtag" data-tag="1">Morgen<small>${TAGE[1].kurz}</small></button>
+        <section class="card" aria-label="Tagesverlauf">
+          <div class="wm">
+            <span class="wm-ico" data-w="ico"></span>
+            <div class="wm-txt"><p class="wm-eye" data-w="eye"></p><p class="wm-main" data-w="main"></p><p class="wm-pv" data-w="pv"></p></div>
           </div>
-          <p class="readout" data-readout data-leer="Wischen zeigt jede Viertelstunde">${ico('wisch')}<span>Wischen zeigt jede Viertelstunde</span></p>
-          <div class="chart" data-chart="wetter" tabindex="0" role="slider" aria-label="${ohne ? 'Sonneneinstrahlung' : 'Sonnenstrom'} je Viertelstunde" aria-valuemin="0" aria-valuemax="95"></div>
+          <div class="hint-zeile"><p class="hint">${ico('wisch')}Über die Kurve wischen</p><button type="button" class="m-jetzt" data-act="wjetzt" data-w="jetzt" hidden>${ico('reset')}Jetzt</button></div>
+          <div class="chart" data-chart="wetter" tabindex="0" role="slider" aria-label="${k.ghiModus ? 'Sonneneinstrahlung' : 'Sonnenstrom'} je Viertelstunde" aria-valuemin="0" aria-valuemax="95"></div>
           <div class="legend" data-wlegende></div>
-          ${ohne ? '<p class="note" style="margin:6px 0 10px">Für Ihre Anlage liegt noch keine Leistungsprognose vor. Bis dahin zeigt die Kurve die Sonneneinstrahlung am Standort.</p>' : ''}
+          ${k.ghiModus ? `<p class="note" style="margin:6px 0 10px">${k.ohne ? 'Für Ihre Anlage liegt noch keine Leistungsprognose vor. Bis dahin zeigt die Kurve die Sonneneinstrahlung am Standort.' : `Die Leistungsprognose reicht 48 Stunden. Für ${TAGE[k.t].name} zeigt die Kurve die Sonneneinstrahlung am Standort.`}</p>` : ''}
         </section>
       </div>
       <div class="pv-col">
-        <section class="card" aria-label="Die nächsten Tage">
-          <div class="card-h"><h2>Die nächsten Tage</h2><span>${ohne ? 'Sonnenstrom' : 'Sonnenstrom'}</span></div>
-          <ul class="days">${tagZeilen}</ul>
+        <section class="card finder" aria-label="Sonniges Zeitfenster finden">
+          <div class="card-h"><h2>${ico('timer')}Wann ist am meisten Sonne?</h2></div>
+          <p class="f-frage">Wie lange läuft Ihr Gerät?</p>
+          <div class="chips" role="group" aria-label="Dauer">${chips}</div>
+          <div class="fund">${finderWetterHtml(k)}</div>
         </section>
         <section class="card" aria-label="Stunde für Stunde">
-          <div class="card-h"><h2>Stunde für Stunde</h2><span>heute</span></div>
-          <div class="hours" role="list">${stunden.join('')}</div>
+          <div class="card-h"><h2>Stunde für Stunde</h2><span>${TAGE[k.t].wort}</span></div>
+          <div class="hours">${stunden.join('')}</div>
         </section>
         <details class="explain">
           <summary><span>Woher kommen diese Werte?</span>${ico('right')}</summary>
@@ -408,227 +597,221 @@
             <p><b>Wetter:</b> Open-Meteo für den Standort Ihrer Anlage, stündlich aktualisiert, drei Tage voraus.</p>
             <p><b>Sonnenstrom erwartet:</b> die PV-Prognose Ihrer Anlage, bis 48 Stunden voraus. Mit ihr rechnet auch Ihr Fahrplan. <b>Gemessen:</b> die Messwerte Ihrer Anlage bis jetzt.</p>
             <p><b>Himmel:</b> sonnig bis 40 % Bewölkung, bewölkt ab 65 %, dazwischen wechselnd. Für den ganzen Tag zählt das Mittel von 6 bis 21 Uhr.</p>
+            <p><b>Wann ist am meisten Sonne?</b> sucht das Zeitfenster mit der höchsten erwarteten Erzeugung, heute ab jetzt und morgen. Es sagt nicht, wie viel davon für Ihr Gerät übrig bleibt.</p>
           </div>
         </details>
       </div>
     </div></div>`;
   }
 
-  function wetterDaten() {
-    const fall = WETTER_FAELLE[S.wetterFall];
-    const i = S.wetterTag;
-    const tag = fall.tage[i];
-    const ohne = !!fall.ohnePrognose;
-    return {
-      ohne,
-      stunden: tag.stunden,
-      jetzt: i === 0 ? fall.minute : null,
-      gem: i === 0 ? fall.pv[0].gemessen : null,
-      erw: ohne ? null : fall.pv[i]?.erwartet ?? null,
-      ghi: ohne ? ghi96(tag.stunden) : null,
-    };
-  }
-
   /* ---------- Zeichnen: gemeinsame Teile ---------- */
   const lbl = (x, y, text, o = {}) =>
-    `<text x="${x}" y="${y}" font-size="${o.size ?? 11}" font-weight="${o.weight ?? 600}" fill="${o.fill ?? '#475569'}" text-anchor="${o.anchor ?? 'middle'}"${o.halo ? ' stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke"' : ''}>${text}</text>`;
+    `<text x="${x}" y="${y}" font-size="${o.size ?? 11}" font-weight="${o.weight ?? 600}" fill="${o.fill ?? F.achse}" text-anchor="${o.anchor ?? 'middle'}"${o.halo ? ` stroke="${F.weiss}" stroke-width="4" stroke-linejoin="round" paint-order="stroke"` : ''}>${text}</text>`;
   const breite = (text, size = 11) => text.length * size * 0.56;
-  function klemm(mitte, text, links, rechts, size) {
+  const klemm = (mitte, text, links, rechts, size) => {
     const b = breite(text, size) / 2;
     return Math.max(links + b, Math.min(rechts - b, mitte));
-  }
-  // Schiebt Beschriftungen auseinander, bis sie sich nicht mehr berühren, und hält sie im Bild.
-  function platziere(marken, links, rechts, size) {
-    marken.sort((p, q) => p.x - q.x);
-    for (let runde = 0; runde < 4; runde++) {
-      for (let i = 1; i < marken.length; i++) {
-        const p = marken[i - 1];
-        const q = marken[i];
-        const noetig = (breite(p.text, size) + breite(q.text, size)) / 2 + 8;
-        if (q.x - p.x < noetig) { const d = (noetig - (q.x - p.x)) / 2; p.x -= d; q.x += d; }
-      }
-      marken.forEach((mk) => { mk.x = klemm(mk.x, mk.text, links, rechts, size); });
-    }
-    return marken;
+  };
+  // Klammer über einem Zeitfenster mit Beschriftung (der Fund des Rechners „Wann?").
+  function klammer(x0, x1, y, text, links, rechts, farbe) {
+    const mitte = klemm((x0 + x1) / 2, text, links, rechts, 11.5);
+    return `<path d="M${x0 + 1},${y + 6}V${y}H${x1 - 1}V${y + 6}" fill="none" stroke="${farbe}" stroke-width="1.6" stroke-linejoin="round"/>`
+      + lbl(mitte, y - 5, text, { size: 11.5, weight: 800, fill: farbe, halo: true });
   }
 
-  function scrubben(host, n, anzeige, x0, x1) {
+  /* Wischen, Zeigen, Tasten. Die Auswahl bleibt nach dem Loslassen stehen; mit der Maus zeigt
+     Überfahren eine Vorschau, Klicken setzt sie. „Jetzt" setzt zurück. */
+  function interaktiv(host, n, x0, x1, geo, bei, start) {
     const svg = host.querySelector('svg');
     const cur = svg.querySelector('[data-cur]');
-    const dot = svg.querySelector('[data-dot]');
-    const readout = host.closest('.card').querySelector('[data-readout]');
-    const leer = readout.dataset.leer;
     const zeige = (i) => {
       if (i == null) {
         cur.setAttribute('visibility', 'hidden');
-        dot.setAttribute('visibility', 'hidden');
-        readout.classList.remove('on');
-        readout.querySelector('span').textContent = leer;
         host.removeAttribute('aria-valuenow');
         host.removeAttribute('aria-valuetext');
         return;
       }
-      const a = anzeige(i);
-      cur.setAttribute('x1', a.x); cur.setAttribute('x2', a.x); cur.setAttribute('visibility', 'visible');
-      if (a.y != null) { dot.setAttribute('cx', a.x); dot.setAttribute('cy', a.y); dot.setAttribute('visibility', 'visible'); }
-      else dot.setAttribute('visibility', 'hidden');
-      readout.classList.add('on');
-      readout.querySelector('span').textContent = a.text;
+      const g = geo(i);
+      for (const [name, attrs] of Object.entries(g)) {
+        if (name === 'text') continue;
+        const el = cur.querySelector(`[data-c="${name}"]`);
+        if (el) for (const [a, v] of Object.entries(attrs)) el.setAttribute(a, v);
+      }
+      cur.setAttribute('visibility', 'visible');
       host.setAttribute('aria-valuenow', String(i));
-      host.setAttribute('aria-valuetext', a.text);
+      host.setAttribute('aria-valuetext', g.text);
     };
-    let aktuell = null;
+    let fest = start;
+    let stunde = null;
+    const tick = (i) => {
+      const h = Math.floor(i / 4);
+      if (h === stunde) return;
+      stunde = h;
+      try { navigator.vibrate?.(4); } catch { /* Haptik ist optional */ }
+    };
     const ausZeiger = (e) => {
       const r = svg.getBoundingClientRect();
-      const vb = svg.viewBox.baseVal;
-      const x = ((e.clientX - r.left) / r.width) * vb.width;
-      if (x < x0 - 6 || x > x1 + 6) return null;
+      const x = ((e.clientX - r.left) / r.width) * svg.viewBox.baseVal.width;
+      if (x < x0 - 10 || x > x1 + 10) return null;
       return Math.max(0, Math.min(n - 1, Math.floor(((x - x0) / (x1 - x0)) * n)));
     };
-    host.onpointerdown = host.onpointermove = (e) => {
-      if (e.pointerType === 'mouse' || e.buttons || e.type === 'pointerdown') {
-        aktuell = ausZeiger(e);
-        zeige(aktuell);
-      }
+    const setze = (i) => { fest = i; zeige(i); bei(i, true); };
+    host.onpointerdown = (e) => {
+      const i = ausZeiger(e);
+      if (i == null) return;
+      tick(i);
+      setze(i);
     };
-    host.onpointerleave = (e) => { if (e.pointerType === 'mouse') { aktuell = null; zeige(null); } };
+    host.onpointermove = (e) => {
+      const i = ausZeiger(e);
+      if (i == null) return;
+      if (e.pointerType === 'mouse' && !e.buttons) { zeige(i); bei(i, false); return; }
+      if (e.buttons && i !== fest) { tick(i); setze(i); }
+    };
+    host.onpointerleave = (e) => {
+      if (e.pointerType === 'mouse') { zeige(fest); bei(fest, false); }
+    };
     host.onkeydown = (e) => {
       const schritt = e.shiftKey ? 4 : 1;
-      if (e.key === 'ArrowRight') aktuell = Math.min(n - 1, (aktuell ?? -1) + schritt);
-      else if (e.key === 'ArrowLeft') aktuell = Math.max(0, (aktuell ?? n) - schritt);
-      else if (e.key === 'Home') aktuell = 0;
-      else if (e.key === 'End') aktuell = n - 1;
-      else if (e.key === 'Escape') aktuell = null;
+      let i = fest;
+      if (e.key === 'ArrowRight') i = Math.min(n - 1, (fest ?? -1) + schritt);
+      else if (e.key === 'ArrowLeft') i = Math.max(0, (fest ?? n) - schritt);
+      else if (e.key === 'Home') i = 0;
+      else if (e.key === 'End') i = n - 1;
+      else if (e.key === 'Escape') i = null;
       else return;
       e.preventDefault();
-      zeige(aktuell);
+      setze(i);
     };
+    host._waehle = setze;
+    zeige(fest);
+    bei(fest, false);
   }
 
-  /* ---------- Zeichnen: Preis ---------- */
-  function zeichnePreis(host) {
-    const d = preisDaten();
+  /* ---------- Zeichnen: Preis als Balken je Viertelstunde ---------- */
+  function zeichnePreis(host, root) {
+    const k = preisKontext();
     const W = Math.max(280, Math.round(host.clientWidth));
     const breit = W > 560;
-    const hatPlan = d.plan.some((p) => p != null);
-    const m = { l: 30, r: 10, t: 24, b: hatPlan ? 42 : 26 };
-    const H = (breit ? 250 : 206) + (hatPlan ? 16 : 0);
+    const hatPlan = k.plan.some((p) => p != null);
+    const m = { l: 30, r: 8, t: 30, b: hatPlan ? 42 : 26 };
+    const H = (breit ? 270 : 224) + (hatPlan ? 16 : 0);
     const pw = W - m.l - m.r;
     const ph = H - m.t - m.b;
-    const n = d.cts.length;
-    const lo = Math.min(0, ...d.cts);
-    const hi = Math.max(...d.cts);
+    const n = k.werte.length;
+    const lo = Math.min(0, ...k.werte);
+    const hi = Math.max(...k.werte);
     const step = hi - lo > 26 ? 10 : 5;
     const y0 = Math.floor(lo / step) * step;
     const y1 = Math.max(step, Math.ceil((hi + 0.4) / step) * step);
     const X = (i) => m.l + (i / n) * pw;
     const Y = (v) => m.t + (1 - (v - y0) / (y1 - y0)) * ph;
-    const id = `p${++UID}`;
-    const xNow = d.jetzt != null ? m.l + (d.jetzt / 1440) * pw : null;
+    const jetzt = S.preisTag === 0 ? k.jetzt : -1;
+    const f = k.finder;
+    const fw = f
+      ? { von: f.start.tag === S.preisTag ? f.start.i : f.start.tag < S.preisTag ? 0 : null, bis: f.ende.tag === S.preisTag ? f.ende.i : f.ende.tag > S.preisTag ? n - 1 : null }
+      : null;
+    const fund = fw && fw.von != null && fw.bis != null ? fw : null;
 
-    let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><defs>
-      <clipPath id="${id}v"><rect x="0" y="0" width="${xNow ?? 0}" height="${H}"/></clipPath>
-      <clipPath id="${id}k"><rect x="${xNow ?? 0}" y="0" width="${W}" height="${H}"/></clipPath>
-      <clipPath id="${id}n"><rect x="0" y="${Y(0)}" width="${W}" height="${H}"/></clipPath></defs>`;
+    let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true" class="${animieren ? 'wachse' : ''}">`;
     for (let v = y0; v <= y1 + 1e-9; v += step) {
-      const null0 = v === 0 && lo < 0;
-      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${null0 ? '#64748b' : '#e2e8f0'}" stroke-width="1"/>`;
+      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 0 && lo < 0 ? '#64748b' : F.gitter}" stroke-width="1"/>`;
       s += lbl(m.l - 6, Y(v) + 4, zahl(v, 0), { anchor: 'end', weight: 500 });
     }
     s += lbl(0, 11, 'ct/kWh', { anchor: 'start', weight: 600 });
-    const namen = { guenstig: 'günstig', teuer: 'teuer', negativ: 'unter null' };
-    const flaeche = { guenstig: 'var(--cheap-soft)', teuer: 'var(--dear-soft)', negativ: 'var(--neg-soft)' };
-    const tinte = { guenstig: 'var(--cheap-ink)', teuer: 'var(--dear-ink)', negativ: 'var(--neg-ink)' };
-    const jetztSlot = d.jetzt != null ? Math.floor(d.jetzt / 15) : -1;
-    const marken = [];
-    for (const f of d.fenster) {
-      const vorbei = f.bis < jetztSlot;
-      s += `<rect x="${X(f.von)}" y="${m.t}" width="${X(f.bis + 1) - X(f.von)}" height="${ph}" fill="${flaeche[f.art]}"${vorbei ? ' fill-opacity=".5"' : ''}/>`;
-      marken.push({ x: (X(f.von) + X(f.bis + 1)) / 2, text: namen[f.art], fill: vorbei ? '#64748b' : tinte[f.art] });
-    }
-    for (const mk of platziere(marken, m.l + 44, W - m.r, 11.5)) s += lbl(mk.x, m.t - 8, mk.text, { size: 11.5, weight: 700, fill: mk.fill });
-    let linie = `M${X(0)},${Y(d.cts[0])}`;
+    if (fund) s += `<rect x="${X(fund.von)}" y="${m.t}" width="${X(fund.bis + 1) - X(fund.von)}" height="${ph}" fill="${F.fund}" opacity=".8"/>`;
+    const farbe = { guenstig: F.guenstig, mittel: F.mittel, teuer: F.teuer, negativ: F.negativ, ruhig: F.mittel };
+    s += '<g class="bars">';
     for (let i = 0; i < n; i++) {
-      linie += `H${X(i + 1)}`;
-      if (i + 1 < n) linie += `V${Y(d.cts[i + 1])}`;
+      const v = k.werte[i];
+      const x = X(i) + 0.55;
+      const w = Math.max(1.2, X(i + 1) - X(i) - 1.1);
+      const y = v >= 0 ? Y(v) : Y(0);
+      const h = Math.max(1, Math.abs(Y(v) - Y(0)));
+      const vorbei = i < jetzt;
+      const aussen = fund && (i < fund.von || i > fund.bis);
+      const op = vorbei ? 0.3 : aussen ? 0.72 : 1;
+      s += `<rect class="b${v < 0 ? ' neg' : ''}" style="--d:${i * 3}ms" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" rx="1" fill="${farbe[k.stufe(k.roh[i])]}" opacity="${op}"/>`;
     }
-    const area = `${linie}V${Y(0)}H${X(0)}Z`;
-    if (xNow != null) {
-      s += `<path d="${area}" fill="var(--past-soft)" clip-path="url(#${id}v)"/>`;
-      s += `<path d="${area}" fill="var(--price-soft)" fill-opacity=".75" clip-path="url(#${id}k)"/>`;
-    } else s += `<path d="${area}" fill="var(--price-soft)" fill-opacity=".75"/>`;
-    if (lo < 0) s += `<path d="${area}" fill="var(--neg)" fill-opacity=".28" clip-path="url(#${id}n)"/>`;
-    if (xNow != null) {
-      s += `<path d="${linie}" fill="none" stroke="var(--past)" stroke-width="2" stroke-linejoin="round" clip-path="url(#${id}v)"/>`;
-      s += `<path d="${linie}" fill="none" stroke="var(--price)" stroke-width="2.2" stroke-linejoin="round" clip-path="url(#${id}k)"/>`;
-      const jv = d.cts[Math.floor(d.jetzt / 15)];
-      s += `<line x1="${xNow}" x2="${xNow}" y1="${m.t - 2}" y2="${m.t + ph}" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="3 3"/>`;
-      s += `<circle cx="${xNow}" cy="${Y(jv)}" r="5.5" fill="#ffffff" stroke="#1e293b" stroke-width="2.5"/>`;
+    s += '</g>';
+    if (jetzt >= 0) {
+      const xNow = m.l + (k.fall.minute / 1440) * pw;
+      const oben = Y(k.werte[jetzt]) > m.t + ph * 0.45;
+      s += `<line x1="${xNow}" x2="${xNow}" y1="${m.t}" y2="${m.t + ph}" stroke="${F.tinte}" stroke-width="1.5" stroke-dasharray="3 3"/>`;
       const rechtsFrei = xNow < W - 60;
-      const oben = Y(jv) > m.t + ph * 0.45;
-      s += lbl(rechtsFrei ? xNow + 6 : xNow - 6, oben ? m.t + 14 : m.t + ph - 7, 'jetzt', { anchor: rechtsFrei ? 'start' : 'end', weight: 700, fill: '#1e293b', halo: true, size: 11.5 });
-    } else s += `<path d="${linie}" fill="none" stroke="var(--price)" stroke-width="2.2" stroke-linejoin="round"/>`;
+      s += lbl(rechtsFrei ? xNow + 6 : xNow - 6, oben ? m.t + 13 : m.t + ph - 7, 'jetzt', { anchor: rechtsFrei ? 'start' : 'end', weight: 700, fill: F.tinte, halo: true, size: 11.5 });
+    }
+    if (fund) s += klammer(X(fund.von), X(fund.bis + 1), m.t - 9, `${S.preisDauer}${NBSP}Std · Ø ${zahl(f.m)}`, m.l + 46, W - m.r, F.fundTinte);
     if (hatPlan) {
       const yP = m.t + ph + 7;
-      const erster = d.plan.findIndex((p) => p != null);
-      s += `<rect x="${X(erster)}" y="${yP}" width="${X(n) - X(erster)}" height="8" rx="2" fill="#eef2f7"/>`;
+      const erster = k.plan.findIndex((p) => p != null);
+      s += `<rect x="${X(erster)}" y="${yP}" width="${X(n) - X(erster)}" height="8" rx="2" fill="${F.planGrund}"/>`;
       let i = 0;
       while (i < n) {
-        const p = d.plan[i];
+        const p = k.plan[i];
         if (p !== 1 && p !== -1) { i++; continue; }
         let j = i;
-        while (j + 1 < n && d.plan[j + 1] === p) j++;
-        s += `<rect x="${X(i)}" y="${yP}" width="${X(j + 1) - X(i)}" height="8" rx="2" fill="${p === 1 ? 'var(--batt)' : 'var(--battdis)'}"/>`;
+        while (j + 1 < n && k.plan[j + 1] === p) j++;
+        s += `<rect x="${X(i)}" y="${yP}" width="${X(j + 1) - X(i)}" height="8" rx="2" fill="${p === 1 ? F.laden : F.abgeben}"/>`;
         i = j + 1;
       }
     }
-    const yX = H - 8;
     [0, 6, 12, 18, 24].forEach((h) => {
-      s += lbl(X(h * 4), yX, h === 24 ? '24 Uhr' : String(h), { anchor: h === 0 ? 'start' : h === 24 ? 'end' : 'middle', weight: 500 });
+      s += lbl(X(h * 4), H - 8, h === 24 ? '24 Uhr' : String(h), { anchor: h === 0 ? 'start' : h === 24 ? 'end' : 'middle', weight: 500 });
     });
-    s += `<line data-cur x1="0" x2="0" y1="${m.t - 2}" y2="${m.t + ph}" stroke="var(--price)" stroke-width="1.5" visibility="hidden"/>`;
-    s += `<circle data-dot r="5" fill="var(--price)" stroke="#ffffff" stroke-width="2" visibility="hidden"/>`;
+    s += `<g data-cur visibility="hidden" pointer-events="none">
+      <line data-c="line" y1="${m.t - 4}" y2="${m.t + ph + (hatPlan ? 17 : 2)}" stroke="${F.tinte}" stroke-width="1"/>
+      <rect data-c="bar" fill="none" stroke="${F.tinte}" stroke-width="1.8" rx="2"/></g>`;
     s += '</svg>';
     host.innerHTML = s;
-    const tagWort = d.jetzt != null ? 'heute' : 'morgen';
-    host.setAttribute('aria-label', `Börsenpreis ${tagWort} je Viertelstunde, von ${ctW(Math.min(...d.cts))} bis ${ctW(Math.max(...d.cts))}. Pfeiltasten wählen eine Viertelstunde.`);
-    scrubben(host, n, (i) => {
-      const v = d.cts[i];
-      const p = d.plan[i];
-      const plan = p === 1 ? ' · Speicher lädt' : p === -1 ? ' · Speicher gibt ab' : '';
-      return { x: (X(i) + X(i + 1)) / 2, y: Y(v), text: `${uhr(i)}–${uhr(i + 1)} Uhr · ${ctW(v, 2)}${plan}` };
-    }, m.l, W - m.r);
+    host.setAttribute('aria-label', `${reiheWort()} ${S.preisTag === 0 ? 'heute' : 'morgen'} je Viertelstunde, von ${ctW(Math.min(...k.werte))} bis ${ctW(Math.max(...k.werte))}. Pfeiltasten wählen eine Viertelstunde, Escape springt zu jetzt.`);
+    interaktiv(host, n, m.l, W - m.r, (i) => {
+      const v = k.werte[i];
+      const y = v >= 0 ? Y(v) : Y(0);
+      const h = Math.max(1, Math.abs(Y(v) - Y(0)));
+      const x = X(i);
+      const w = X(i + 1) - X(i);
+      return {
+        line: { x1: x + w / 2, x2: x + w / 2 },
+        bar: { x: x - 1, y: y - 2, width: w + 2, height: h + 4 },
+        text: `${uhr(i)}–${uhr(i + 1)} Uhr, ${ctW(v, 2)}, ${URTEIL[k.stufe(k.roh[i])]}`,
+      };
+    }, (i, gesetzt) => {
+      if (gesetzt) S.preisSel = i;
+      momentPreis(root, i);
+    }, S.preisSel);
   }
 
   /* ---------- Zeichnen: Wetter ---------- */
-  function zeichneWetter(host) {
-    const d = wetterDaten();
+  function zeichneWetter(host, root) {
+    const k = wetterKontext();
     const W = Math.max(280, Math.round(host.clientWidth));
     const breit = W > 560;
-    const reihe = d.ohne ? d.ghi : verbinde(d.gem, d.erw);
-    const hatWert = reihe.map((v) => v != null && v > (d.ohne ? 4 : 0.02));
+    const reihe = k.reihe;
+    const hatWert = reihe.map((v) => v != null && v > (k.ghiModus ? 4 : 0.02));
     const erster = hatWert.indexOf(true);
     const letzter = hatWert.lastIndexOf(true);
     const hVon = Math.max(0, Math.floor(erster / 4) - 1);
     const hBis = Math.min(24, Math.ceil((letzter + 1) / 4) + 1);
     const a = hVon * 4;
     const z = hBis * 4;
-    const m = { l: 30, r: 10, t: 46, b: 24 };
-    const H = breit ? 272 : 232;
+    const m = { l: 30, r: 10, t: 52, b: 24 };
+    const H = breit ? 280 : 240;
     const pw = W - m.l - m.r;
     const ph = H - m.t - m.b;
     const X = (i) => m.l + ((i - a) / (z - a)) * pw;
-    const werte = reihe.filter((v) => v != null);
-    const top = Math.max(...werte);
-    const step = d.ohne ? 200 : top > 8 ? 4 : 2;
+    const top = Math.max(...reihe.filter((v) => v != null));
+    const step = k.ghiModus ? 200 : top > 8 ? 4 : 2;
     const y1 = Math.max(step, Math.ceil((top * 1.12) / step) * step);
     const Y = (v) => m.t + (1 - v / y1) * ph;
     const id = `w${++UID}`;
+    const f = k.finder;
+    const fund = f && f.start.tag === k.t ? { von: f.start.i, bis: f.ende.tag === k.t ? f.ende.i : 95 } : null;
+
     let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><defs>
-      <pattern id="${id}h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fef3e2"/><line x1="0" y1="0" x2="0" y2="6" stroke="#f59e0b" stroke-width="2.4" stroke-opacity=".6"/></pattern></defs>`;
-    // Himmel als benannte Blöcke über dem Bild
+      <pattern id="${id}h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${F.pvSoft}"/><line x1="0" y1="0" x2="0" y2="6" stroke="${F.pvFill}" stroke-width="2.4" stroke-opacity=".6"/></pattern></defs>`;
     const farben = { sonnig: ['#fef3e2', '#9a4a07'], wechselnd: ['#fdf3e1', '#92400e'], bewoelkt: ['#eef1f5', '#334155'] };
-    for (const b of himmelBloecke(d.stunden, hVon, hBis)) {
+    for (const b of himmelBloecke(k.tag.stunden, hVon, hBis)) {
       const x = X(b.von * 4) + 1;
       const w = X((b.bis + 1) * 4) - X(b.von * 4) - 2;
       s += `<rect x="${x}" y="2" width="${w}" height="24" rx="7" fill="${farben[b.art][0]}"/>`;
@@ -637,19 +820,14 @@
       else if (w >= 18) s += `<g transform="translate(${x + w / 2 - 8},6) scale(${16 / 24})" fill="none" stroke="${farben[b.art][1]}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[HIMMEL_ICO[b.art]]}</g>`;
     }
     for (let v = 0; v <= y1 + 1e-9; v += step) {
-      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e2e8f0" stroke-width="1"/>`;
-      s += lbl(m.l - 6, Y(v) + 4, d.ohne ? String(v) : zahl(v, 0), { anchor: 'end', weight: 500 });
+      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${F.gitter}" stroke-width="1"/>`;
+      s += lbl(m.l - 6, Y(v) + 4, k.ghiModus ? String(v) : zahl(v, 0), { anchor: 'end', weight: 500 });
     }
-    s += lbl(W - m.r, m.t - 8, d.ohne ? 'W/m²' : 'kW', { anchor: 'end', weight: 600 });
-    // Die stärksten 2½ Stunden, dieselbe Fensterlänge wie bei den Preisen
-    const stark = staerksteFenster(d.ohne ? reihe.map((v) => v / 1000) : reihe);
-    if (stark) {
-      s += `<rect x="${X(stark.von)}" y="${m.t}" width="${X(stark.bis + 1) - X(stark.von)}" height="${ph}" fill="#fff6e8"/>`;
-      s += lbl((X(stark.von) + X(stark.bis + 1)) / 2, m.t - 8, 'am stärksten', { size: 11.5, weight: 700, fill: '#9a4a07' });
-    }
+    s += lbl(W - m.r, m.t - 26, k.ghiModus ? 'W/m²' : 'kW', { anchor: 'end', weight: 600 });
+    if (fund) s += `<rect x="${X(fund.von)}" y="${m.t}" width="${X(fund.bis + 1) - X(fund.von)}" height="${ph}" fill="${F.fund}"/>`;
     const pfad = (arr, von, bis) => {
       let p = '';
-      for (let i = von; i <= bis; i++) p += `${p ? 'L' : 'M'}${X(i + 0.5)},${Y(arr[i])}`;
+      for (let i = von; i <= bis; i++) p += `${p ? 'L' : 'M'}${X(i + 0.5).toFixed(2)},${Y(arr[i]).toFixed(2)}`;
       return p;
     };
     const lauf = (arr) => {
@@ -657,70 +835,87 @@
       return idx.length ? [idx[0], idx[idx.length - 1]] : null;
     };
     let peak = null;
-    if (d.ohne) {
+    if (k.ghiModus) {
       const l = lauf(reihe);
       const p = pfad(reihe, l[0], l[1]);
-      s += `<path d="${p}L${X(l[1] + 0.5)},${Y(0)}L${X(l[0] + 0.5)},${Y(0)}Z" fill="#fde9c7" fill-opacity=".8"/>`;
-      s += `<path d="${p}" fill="none" stroke="var(--sun)" stroke-width="2.2" stroke-linejoin="round"/>`;
+      s += `<path d="${p}L${X(l[1] + 0.5)},${Y(0)}L${X(l[0] + 0.5)},${Y(0)}Z" fill="${F.sonneSoft}" fill-opacity=".85"/>`;
+      s += `<path d="${p}" fill="none" stroke="${F.sonne}" stroke-width="2.2" stroke-linejoin="round"/>`;
     } else {
-      const lg = d.gem ? lauf(d.gem) : null;
+      const lg = k.gem ? lauf(k.gem) : null;
       if (lg) {
-        const p = pfad(d.gem, lg[0], lg[1]);
-        s += `<path d="${p}L${X(lg[1] + 0.5)},${Y(0)}L${X(lg[0] + 0.5)},${Y(0)}Z" fill="var(--pv-fill)" fill-opacity=".55"/>`;
-        s += `<path d="${p}" fill="none" stroke="var(--pv)" stroke-width="2.2" stroke-linejoin="round"/>`;
+        const p = pfad(k.gem, lg[0], lg[1]);
+        s += `<path d="${p}L${X(lg[1] + 0.5)},${Y(0)}L${X(lg[0] + 0.5)},${Y(0)}Z" fill="${F.pvFill}" fill-opacity=".55"/>`;
+        s += `<path d="${p}" fill="none" stroke="${F.pv}" stroke-width="2.2" stroke-linejoin="round"/>`;
       }
-      const le = d.erw ? lauf(d.erw) : null;
+      const le = k.erw ? lauf(k.erw) : null;
       if (le) {
         // Die Prognose schließt an den letzten Messpunkt an, damit keine Lücke entsteht.
-        const start = lg ? lg[1] : le[0];
-        const arr = d.erw.map((v, i) => (i === start && lg ? d.gem[i] : v));
-        const p = pfad(arr, start, le[1]);
-        s += `<path d="${p}L${X(le[1] + 0.5)},${Y(0)}L${X(start + 0.5)},${Y(0)}Z" fill="url(#${id}h)"/>`;
-        s += `<path d="${p}" fill="none" stroke="var(--pv)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>`;
+        const beginn = lg ? lg[1] : le[0];
+        const arr = k.erw.map((v, i) => (i === beginn && lg ? k.gem[i] : v));
+        const p = pfad(arr, beginn, le[1]);
+        s += `<path d="${p}L${X(le[1] + 0.5)},${Y(0)}L${X(beginn + 0.5)},${Y(0)}Z" fill="url(#${id}h)"/>`;
+        s += `<path d="${p}" fill="none" stroke="${F.pv}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>`;
       }
       reihe.forEach((v, i) => { if (v != null && (!peak || v > peak.v)) peak = { i, v }; });
     }
     if (peak) {
-      s += `<circle cx="${X(peak.i + 0.5)}" cy="${Y(peak.v)}" r="4.5" fill="#ffffff" stroke="var(--pv)" stroke-width="2.5"/>`;
-      s += lbl(klemm(X(peak.i + 0.5), kwW(peak.v), m.l, W - m.r, 11.5), Y(peak.v) - 10, kwW(peak.v), { size: 11.5, weight: 800, fill: '#1e293b', halo: true });
+      s += `<circle cx="${X(peak.i + 0.5)}" cy="${Y(peak.v)}" r="4.5" fill="${F.weiss}" stroke="${F.pv}" stroke-width="2.5"/>`;
+      s += lbl(klemm(X(peak.i + 0.5), kwW(peak.v), m.l, W - m.r, 11.5), Y(peak.v) - 10, kwW(peak.v), { size: 11.5, weight: 800, fill: F.tinte, halo: true });
     }
-    if (d.jetzt != null) {
-      const xNow = X(d.jetzt / 15);
+    if (k.jetzt != null) {
+      const xNow = X(k.fall.minute / 15);
       if (xNow > m.l && xNow < W - m.r) {
-        s += `<line x1="${xNow}" x2="${xNow}" y1="${m.t - 2}" y2="${m.t + ph}" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="3 3"/>`;
-        s += lbl(xNow - 6, m.t + ph - 7, 'jetzt', { anchor: 'end', weight: 700, fill: '#1e293b', halo: true, size: 11.5 });
+        s += `<line x1="${xNow}" x2="${xNow}" y1="${m.t - 2}" y2="${m.t + ph}" stroke="${F.tinte}" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+        s += lbl(xNow - 6, m.t + ph - 7, 'jetzt', { anchor: 'end', weight: 700, fill: F.tinte, halo: true, size: 11.5 });
       }
     }
+    if (fund) s += klammer(X(fund.von), X(fund.bis + 1), m.t - 8, `${S.wetterDauer}${NBSP}Std · Ø ${f.ohne ? `${Math.round(f.m)} W/m²` : kwW(f.m)}`, m.l, W - m.r - 30, F.fundTinte);
     for (let h = Math.ceil(hVon / 3) * 3; h <= hBis; h += 3) {
       const x = X(h * 4);
       if (x < m.l - 1 || x > W - m.r + 1) continue;
-      s += lbl(x, H - 7, h === 18 || (h + 3 > hBis) ? `${h} Uhr` : String(h), { anchor: x > W - m.r - 20 ? 'end' : 'middle', weight: 500 });
+      s += lbl(x, H - 7, h + 3 > hBis ? `${h} Uhr` : String(h), { anchor: x > W - m.r - 20 ? 'end' : 'middle', weight: 500 });
     }
-    s += `<line data-cur x1="0" x2="0" y1="${m.t - 2}" y2="${m.t + ph}" stroke="#9a4a07" stroke-width="1.5" visibility="hidden"/>`;
-    s += `<circle data-dot r="5" fill="var(--pv)" stroke="#ffffff" stroke-width="2" visibility="hidden"/>`;
+    s += `<g data-cur visibility="hidden" pointer-events="none">
+      <line data-c="line" y1="${m.t - 2}" y2="${m.t + ph}" stroke="${F.fundTinte}" stroke-width="1.5"/>
+      <circle data-c="dot" r="5.5" fill="${F.pv}" stroke="${F.weiss}" stroke-width="2"/></g>`;
     s += '</svg>';
     host.innerHTML = s;
 
     const leg = host.closest('.card').querySelector('[data-wlegende]');
-    if (d.ohne) {
-      const gem = kwhAus(WETTER_FAELLE[S.wetterFall].pv[0].gemessen);
-      leg.innerHTML = `<span><i style="background:#fde9c7;border:1px solid var(--sun)"></i>Sonneneinstrahlung</span>${S.wetterTag === 0 ? `<span class="tot">bisher erzeugt ${zahl(gem, 1)}${NBSP}kWh</span>` : ''}`;
+    if (k.ghiModus) {
+      const gem = kwhAus(k.fall.pv[0].gemessen);
+      leg.innerHTML = `<span><i style="background:${F.sonneSoft};border:1px solid ${F.sonne}"></i>Sonneneinstrahlung</span>${k.t === 0 ? `<span class="tot">bisher erzeugt ${zahl(gem, 1)}${NBSP}kWh</span>` : ''}`;
     } else {
-      const gem = kwhAus(d.gem);
-      const erw = kwhAus(d.erw);
-      leg.innerHTML = `${d.gem ? '<span><i style="background:var(--pv-fill);opacity:.7"></i>gemessen</span>' : ''}<span><i style="background:repeating-linear-gradient(45deg,#fef3e2 0 2px,#f5b54a 2px 4px)"></i>erwartet</span>`
-        + `<span class="tot">${d.gem ? `${zahl(gem, 1)} + ≈${NBSP}${zahl(erw, 0)}${NBSP}kWh` : `≈${NBSP}${zahl(erw, 0)}${NBSP}kWh`}</span>`;
+      const gem = kwhAus(k.gem);
+      const erw = kwhAus(k.erw);
+      leg.innerHTML = `${k.gem ? '<span><i style="background:var(--pv-fill);opacity:.7"></i>gemessen</span>' : ''}<span><i style="background:repeating-linear-gradient(45deg,#fef3e2 0 2px,#f5b54a 2px 4px)"></i>erwartet</span>`
+        + `<span class="tot">${k.gem ? `${zahl(gem, 1)} + ≈${NBSP}${zahl(erw, 0)}${NBSP}kWh` : `≈${NBSP}${zahl(erw, 0)}${NBSP}kWh`}</span>`;
     }
-    host.setAttribute('aria-label', `${d.ohne ? 'Sonneneinstrahlung' : 'Sonnenstrom'} ${S.wetterTag === 0 ? 'heute' : 'morgen'} je Viertelstunde. Pfeiltasten wählen eine Viertelstunde.`);
-    scrubben(host, z - a, (k) => {
-      const i = a + k;
+    host.setAttribute('aria-label', `${k.ghiModus ? 'Sonneneinstrahlung' : 'Sonnenstrom'} ${TAGE[k.t].wort.toLowerCase()} je Viertelstunde. Pfeiltasten wählen eine Viertelstunde, Escape springt zu jetzt.`);
+    interaktiv(host, z - a, m.l, W - m.r, (kk) => {
+      const i = a + kk;
       const v = reihe[i];
-      const st = d.stunden[Math.floor(i / 4)];
-      const art = ` · ${HIMMEL[himmel(st.cloud)]} · ${zahl(st.temp, 0)}${NBSP}°C`;
-      if (v == null) return { x: X(i + 0.5), y: null, text: `${uhr(i)}–${uhr(i + 1)} Uhr · keine Angabe${art}` };
-      const was = d.ohne ? `${v}${NBSP}W/m²` : `${kwW(v)} ${d.gem && d.gem[i] != null ? 'gemessen' : 'erwartet'}`;
-      return { x: X(i + 0.5), y: Y(v), text: `${uhr(i)}–${uhr(i + 1)} Uhr · ${was}${art}` };
-    }, m.l, W - m.r);
+      const st = k.tag.stunden[Math.floor(i / 4)];
+      const x = X(i + 0.5);
+      return {
+        line: { x1: x, x2: x },
+        dot: v == null ? { visibility: 'hidden' } : { cx: x, cy: Y(v), visibility: 'visible' },
+        text: `${uhr(i)}–${uhr(i + 1)} Uhr, ${v == null ? 'keine Angabe' : k.ghiModus ? `${v} Watt je Quadratmeter` : kwW(v)}, ${HIMMEL[himmel(st.cloud)]}, ${zahl(st.temp, 0)} Grad`,
+      };
+    }, (kk, gesetzt) => {
+      const i = kk == null ? null : a + kk;
+      if (gesetzt) {
+        S.wetterSel = i;
+        root.querySelectorAll('.hour').forEach((b) => {
+          const slot = b.dataset.slot;
+          const an = slot === '' ? i == null : i != null && Math.floor(Number(slot) / 4) === Math.floor(i / 4);
+          b.classList.toggle('sel', an);
+          b.setAttribute('aria-pressed', String(an));
+        });
+      }
+      momentWetter(root, i);
+    }, S.wetterSel == null ? null : Math.max(0, Math.min(z - a - 1, S.wetterSel - a)));
+    host._slotZuIndex = (slot) => (slot == null ? null : Math.max(0, Math.min(z - a - 1, slot - a)));
   }
 
   /* ---------- Rückblick (Blatt) ---------- */
@@ -742,14 +937,14 @@
     let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Durchschnittspreis je ${S.rb === 'jahr' ? 'Monat' : 'Tag'}">`;
     for (let v = 0; v <= y1; v += 5) {
       const y = m.t + (1 - v / y1) * ph;
-      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="#e2e8f0"/>` + lbl(m.l - 5, y + 4, String(v), { anchor: 'end', weight: 500, size: 10.5 });
+      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="${F.gitter}"/>` + lbl(m.l - 5, y + 4, String(v), { anchor: 'end', weight: 500, size: 10.5 });
     }
     werte.forEach((v, i) => {
       const h = (v / y1) * ph;
       const x = m.l + i * bw + bw * 0.18;
-      s += `<rect x="${x}" y="${m.t + ph - h}" width="${bw * 0.64}" height="${h}" rx="${Math.min(3, bw * 0.2)}" fill="var(--price)" fill-opacity="${i === werte.length - 1 && S.rb !== 'jahr' ? 1 : 0.7}"/>`;
+      s += `<rect x="${x}" y="${m.t + ph - h}" width="${bw * 0.64}" height="${h}" rx="${Math.min(3, bw * 0.2)}" fill="${F.preis}" fill-opacity="${i === werte.length - 1 && S.rb !== 'jahr' ? 1 : 0.7}"/>`;
       if (namen[i]) s += lbl(m.l + i * bw + bw / 2, H - 6, namen[i], { weight: 500, size: 10.5 });
-      if (werte.length <= 12) s += lbl(m.l + i * bw + bw / 2, m.t + ph - h - 5, zahl(v, 1), { weight: 700, size: 10, fill: '#1e293b' });
+      if (werte.length <= 12) s += lbl(m.l + i * bw + bw / 2, m.t + ph - h - 5, zahl(v, 1), { weight: 700, size: 10, fill: F.tinte });
     });
     s += '</svg>';
     const iMin = werte.indexOf(Math.min(...werte));
@@ -757,18 +952,18 @@
     const wann = (t) => (t.datum ? t.datum.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }) : `${t.label} ${t.jahr}`);
     const einheit = S.rb === 'jahr' ? 'Monat' : 'Tag';
     const seg = [['woche', 'Woche'], ['monat', 'Monat'], ['jahr', 'Jahr']]
-      .map(([k, l]) => `<button type="button" aria-pressed="${S.rb === k}" data-act="rb" data-rb="${k}">${l}</button>`).join('');
+      .map(([k2, l]) => `<button type="button" aria-pressed="${S.rb === k2}" data-act="rb" data-rb="${k2}">${l}</button>`).join('');
     return `<div class="sheet-scrim" data-act="blatt-zu"></div>
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rb-titel">
         <div class="grip" aria-hidden="true"></div>
         <div class="sheet-h"><h2 id="rb-titel">Rückblick</h2><button type="button" class="ibtn" aria-label="Schließen" data-act="blatt-zu">${ico('x')}</button></div>
         <div class="seg" role="group" aria-label="Zeitraum">${seg}</div>
-        <p class="readout on" style="margin-top:14px">Durchschnitt je ${einheit}, in ct/kWh</p>
+        <p class="hint" style="margin-top:14px">Durchschnitt je ${einheit}, in ct/kWh</p>
         ${s}
         <ul class="rows">
           <li><span class="rn">Durchschnitt</span><span class="rv">${ctW(summe(werte) / werte.length)}</span></li>
-          <li><span class="rn"><i style="background:var(--cheap)"></i>Günstigster ${einheit}</span><span class="rv">${ctW(werte[iMin])}</span><span class="rs">${wann(reihe[iMin])}</span></li>
-          <li><span class="rn"><i style="background:var(--dear)"></i>Teuerster ${einheit}</span><span class="rv">${ctW(werte[iMax])}</span><span class="rs">${wann(reihe[iMax])}</span></li>
+          <li><span class="rn"><i style="background:var(--lvl-guenstig)"></i>Günstigster ${einheit}</span><span class="rv">${ctW(werte[iMin])}</span><span class="rs">${wann(reihe[iMin])}</span></li>
+          <li><span class="rn"><i style="background:var(--lvl-teuer)"></i>Teuerster ${einheit}</span><span class="rv">${ctW(werte[iMax])}</span><span class="rs">${wann(reihe[iMax])}</span></li>
         </ul>
         <p class="leise">Mittel aller Viertelstunden. Preise liegen ab dem Tag vor, an dem VoltPilot sie zum ersten Mal geladen hat; der Rückblick füllt sich Tag für Tag.</p>
       </div>`;
@@ -778,7 +973,7 @@
   const beobachter = new Map();
   function zeichneIn(root) {
     root.querySelectorAll('[data-chart]').forEach((host) => {
-      const male = () => (host.dataset.chart === 'preis' ? zeichnePreis(host) : zeichneWetter(host));
+      const male = () => (host.dataset.chart === 'preis' ? zeichnePreis(host, root) : zeichneWetter(host, root));
       male();
       if ('ResizeObserver' in window) {
         let letzte = host.clientWidth;
@@ -789,15 +984,42 @@
         (beobachter.get(root) ?? beobachter.set(root, []).get(root)).push(ro);
       }
     });
-  }
-  function seiteHtml() {
-    return S.seite === 'preise' ? preisSeite() : wetterSeite();
+    tageWischen(root);
   }
   function render(root, mitRahmen) {
     (beobachter.get(root) ?? []).forEach((ro) => ro.disconnect());
     beobachter.set(root, []);
-    root.innerHTML = mitRahmen ? rahmen(seiteHtml()) : `<div class="app" style="min-height:0">${reiter()}<div class="app-main">${seiteHtml()}</div></div>`;
+    const seite = S.seite === 'preise' ? preisSeite() : wetterSeite();
+    root.innerHTML = mitRahmen ? rahmen(seite) : `<div class="app" style="min-height:0">${reiter()}<div class="app-main">${seite}</div></div>`;
     zeichneIn(root);
+  }
+
+  // Tageskarten: Wischen wählt die Karte, die danach am meisten zu sehen ist.
+  function tageWischen(root) {
+    const el = root.querySelector('[data-tage]');
+    if (!el || el.scrollWidth <= el.clientWidth + 4) return;
+    let uhrzeit = null;
+    el.addEventListener('scroll', () => {
+      clearTimeout(uhrzeit);
+      uhrzeit = setTimeout(() => {
+        const box = el.getBoundingClientRect();
+        let best = S.wetterTag;
+        let anteil = -1;
+        el.querySelectorAll('.tagk').forEach((c, i) => {
+          const r = c.getBoundingClientRect();
+          const sicht = Math.max(0, Math.min(r.right, box.right) - Math.max(r.left, box.left)) / r.width;
+          if (sicht > anteil + 0.01) { anteil = sicht; best = i; }
+        });
+        if (best !== S.wetterTag) { S.wetterTag = best; S.wetterSel = null; alles(false, 'tage'); }
+      }, 140);
+    }, { passive: true });
+  }
+  function zeigeTagKarte(root, sanft) {
+    const el = root.querySelector('[data-tage]');
+    const c = el?.querySelectorAll('.tagk')[S.wetterTag];
+    if (!el || !c || el.scrollWidth <= el.clientWidth + 4) return;
+    const ziel = Math.min(el.scrollWidth - el.clientWidth, c.offsetLeft - el.firstElementChild.offsetLeft);
+    el.scrollTo({ left: ziel, behavior: sanft && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto' });
   }
 
   let toastUhr = null;
@@ -806,7 +1028,7 @@
     if (!host) return;
     host.hidden = false;
     host.classList.remove('open');
-    host.innerHTML = `<div role="status" style="position:absolute;left:16px;right:16px;bottom:96px;padding:12px 14px;border-radius:14px;background:#1e293b;color:#fff;font:600 14px var(--font);text-align:center">${text}</div>`;
+    host.innerHTML = `<div role="status" class="toast">${text}</div>`;
     clearTimeout(toastUhr);
     toastUhr = setTimeout(() => { if (!S.blatt) { host.innerHTML = ''; host.hidden = true; } }, 2200);
   }
@@ -835,14 +1057,70 @@
   function handle(e) {
     const el = e.target.closest('[data-act]');
     if (!el) return;
+    const root = e.currentTarget;
     const act = el.dataset.act;
     if (act === 'nicht') { e.preventDefault(); toast('Nicht Teil dieses Konzepts.'); return; }
-    if (act === 'seite') { S.seite = el.dataset.seite; alles(true); return; }
-    if (act === 'ptag') { S.preisTag = Number(el.dataset.tag); alles(false); return; }
-    if (act === 'wtag') { S.wetterTag = Number(el.dataset.tag); alles(false); return; }
+    if (act === 'seite') { S.seite = el.dataset.seite; animieren = true; alles(true); return; }
     if (act === 'blatt') { blattOeffnen(el); return; }
     if (act === 'blatt-zu') { blattSchliessen(); return; }
     if (act === 'rb') { S.rb = el.dataset.rb; blattOeffnen(); return; }
+    // Preise
+    if (act === 'ptag') { S.preisTag = Number(el.dataset.tag); S.preisSel = null; animieren = true; alles(false); return; }
+    if (act === 'reihe') { S.preisReihe = el.dataset.r; animieren = true; alles(false); return; }
+    if (act === 'pjetzt') {
+      if (S.preisTag !== 0) { S.preisTag = 0; S.preisSel = null; animieren = true; alles(false); return; }
+      root.querySelector('[data-chart="preis"]')?._waehle(null);
+      return;
+    }
+    if (act === 'pdauer') {
+      const n = Number(el.dataset.n);
+      S.preisDauer = S.preisDauer === n ? null : n;
+      const k = preisKontext();
+      if (k.finder && k.finder.start.tag !== S.preisTag) { S.preisTag = k.finder.start.tag; S.preisSel = null; animieren = true; }
+      alles(false);
+      return;
+    }
+    if (act === 'pzeig') {
+      const f = preisKontext().finder;
+      if (!f) return;
+      animieren = f.start.tag !== S.preisTag;
+      S.preisTag = f.start.tag;
+      S.preisSel = f.start.i;
+      alles(false);
+      root.querySelector('[data-chart="preis"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+    // Wetter
+    if (act === 'wtag') { S.wetterTag = Number(el.dataset.tag); S.wetterSel = null; alles(false, 'tage'); return; }
+    if (act === 'wjetzt') {
+      if (S.wetterTag !== 0) { S.wetterTag = 0; S.wetterSel = null; alles(false, 'tage'); return; }
+      root.querySelector('[data-chart="wetter"]')?._waehle(null);
+      return;
+    }
+    if (act === 'wdauer') {
+      const n = Number(el.dataset.n);
+      S.wetterDauer = S.wetterDauer === n ? null : n;
+      const f = wetterKontext().finder;
+      if (f && f.start.tag !== S.wetterTag) { S.wetterTag = f.start.tag; S.wetterSel = null; alles(false, 'tage'); return; }
+      alles(false);
+      return;
+    }
+    if (act === 'wzeig') {
+      const f = wetterKontext().finder;
+      if (!f) return;
+      const tagWechsel = f.start.tag !== S.wetterTag;
+      S.wetterTag = f.start.tag;
+      S.wetterSel = f.start.i;
+      alles(false, tagWechsel ? 'tage' : undefined);
+      root.querySelector('[data-chart="wetter"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+    if (act === 'stunde') {
+      const host = root.querySelector('[data-chart="wetter"]');
+      const slot = el.dataset.slot === '' ? null : Number(el.dataset.slot);
+      host?._waehle(host._slotZuIndex(slot));
+      return;
+    }
   }
 
   /* ---------- Konzept-Hülle ---------- */
@@ -879,16 +1157,22 @@
     }
   }
 
-  function alles(nachOben) {
+  function alles(nachOben, wegen) {
     const screen = document.getElementById('screen');
     if (screen) {
       const y = screen.scrollTop;
+      const tageLinks = screen.querySelector('[data-tage]')?.scrollLeft ?? 0;
       render(screen, true);
-      if (nachOben) screen.scrollTop = 0;
-      else screen.scrollTop = y;
+      screen.scrollTop = nachOben ? 0 : y;
+      const tage = screen.querySelector('[data-tage]');
+      if (tage) {
+        tage.scrollLeft = tageLinks;
+        zeigeTagKarte(screen, wegen === 'tage');
+      }
     }
     steuerung();
     desktop();
+    animieren = false;
   }
 
   function start() {
@@ -919,14 +1203,16 @@
       if (!b) return;
       if (S.blatt) blattSchliessen();
       S.seite = b.dataset.k;
+      animieren = true;
       alles(true);
     });
     document.getElementById('seg-fall').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-k]');
       if (!b) return;
       if (S.blatt) blattSchliessen();
-      if (S.seite === 'preise') { S.preisFall = b.dataset.k; S.preisTag = 0; }
-      else { S.wetterFall = b.dataset.k; S.wetterTag = 0; }
+      if (S.seite === 'preise') { S.preisFall = b.dataset.k; S.preisTag = 0; S.preisSel = null; }
+      else { S.wetterFall = b.dataset.k; S.wetterTag = 0; S.wetterSel = null; }
+      animieren = true;
       alles(true);
     });
     entscheidungen();

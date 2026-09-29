@@ -1,6 +1,6 @@
 # Preise und Wetter am Telefon (Konzeptentwurf)
 
-**Status: Entwurf vom 29.09.2026, noch nicht abgenommen.** Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei im Browser öffnen; sie funktioniert ohne Server. Alle Zahlen darin sind erfunden. Die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures.
+**Status: Entwurf vom 29.09.2026, Fassung 2 (interaktiv), noch nicht abgenommen.** Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei im Browser öffnen; sie funktioniert ohne Server. Alle Zahlen darin sind erfunden. Die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures.
 
 ## Zweck
 
@@ -11,10 +11,15 @@ Die Reiter „Preise“ und „Wetter“ im Fahrplan (ohne Speicher: im Verlauf)
 - Intuitiv, ruhig und seriös.
 - Nur diese zwei Seiten.
 
-Jede Seite beantwortet oben eine Frage, bevor sie etwas zum Bedienen anbietet:
+Jede Seite beantwortet oben eine Frage und ist zugleich ein Werkzeug für „Wann?“:
 
-- **Preise:** Was kostet Strom jetzt, und wann wird er günstig?
-- **Wetter:** Wie viel Sonne bekommt die Anlage heute und in den nächsten Tagen?
+- **Preise:** Was kostet Strom jetzt, und wann startet ein Gerät am günstigsten?
+- **Wetter:** Wie viel Sonne bekommt die Anlage heute und in den nächsten Tagen, und wann am meisten?
+
+### Fassungen
+
+- **Fassung 1 (verworfen am 29.09.2026):** Preise als ruhige Linie mit zwei benannten Fenstern, Preisleiter und drei Kennzahlen-Zeilen; Wetter mit Himmel und Temperatur als Kopf, Tagesbild und Tagesliste. Rückmeldung: Die Börsenpreis-Seite gefiel nicht, beide Seiten sollten interaktiver sein.
+- **Fassung 2 (dieser Stand):** Die große Zahl folgt dem Finger, die Preise als Balken in drei Stufen, ein Rechner „Wann starten?“ bzw. „Wann ist am meisten Sonne?“, ein Schalter „Börse“/„Ihr Preis“, wischbare Tageskarten und antippbare Stunden beim Wetter.
 
 ## Befunde heute
 
@@ -37,51 +42,50 @@ Aufgenommen bei 375 × 812 Pixeln mit den fiktiven Fixtures (`e2e/verlauf.html`,
 | Wetter: ohne Prognose | W/m² als große Zahl und `OHNE_FAHRPLAN_SATZ`. | Himmel und Temperatur bleiben gleich. Die Kurve zeigt die Sonneneinstrahlung, ein kurzer Hinweis nennt den Grund. |
 | Wetter: Wörter | „bedeckt“ in den Himmelsblöcken (`wetterLeistung.ts`), „bewölkt“ im Morgen-Ausblick (`weather.ts`). | Ein Wortsatz: sonnig, wechselnd, bewölkt. |
 
-Seitenhöhe bei 375 Pixeln: Preise heute 1.629 px, im Prototyp 1.285 px; Wetter heute 1.234 px, im Prototyp 1.356 px (dafür drei Tage und Stunden statt nur heute).
+Seitenhöhe bei 375 Pixeln: Preise heute 1.629 px, im Prototyp 1.391 px (mit Rechner); Wetter heute 1.234 px, im Prototyp 1.382 px (dafür drei Tage, Rechner und Stunden).
 
-## Die Idee
+## Die Idee (Fassung 2)
 
-Beide Seiten folgen derselben Reihenfolge. Sie ist die Aussage:
+Beide Seiten haben dieselbe Bedienung:
 
-1. **Antwort auf der Fläche**, nicht in einer Karte: eine Zahl oder ein Wort, dazu ein Satz.
-2. **Tagesbild** mit Jetzt, Heute/Morgen als Umschalter direkt darüber.
-3. **Zeilen zum Nachschlagen**, jede Angabe einmal.
+1. **Der Moment oben folgt dem Finger.** Zuerst zeigt er jetzt. Wischen über das Bild, eine Stunde antippen oder die Pfeiltasten wählen eine andere Viertelstunde; die Auswahl bleibt nach dem Loslassen stehen, „Jetzt“ springt zurück. Mit der Maus zeigt Überfahren eine Vorschau, Klicken setzt die Auswahl. Das Telefon gibt beim Wechsel der Stunde einen kurzen Impuls, wo es das kann.
+2. **Das Tagesbild** mit Jetzt-Linie, Vergangenes blass, Heute/Morgen als Umschalter.
+3. **Ein Rechner „Wann?“:** Dauer antippen (1 bis 4 Stunden), das beste Zeitfenster erscheint als Klammer im Bild und als Zahl. Ohne Auswahl bleibt das Bild ruhig.
 4. **Wege und Erklärung** am Ende.
 
 ### Preise
 
-- **Kopf:** „Börsenstrompreis · jetzt 10:30–10:45“, der Preis groß in ct/kWh, daneben das Urteil (günstig, mittel, teuer, unter null, gleichmäßig). Darunter die Preisleiter: günstigster und teuerster Preis des Tages mit einem Punkt für jetzt.
-- **Satz nach vorn:** höchstens zwei Sätze. Der erste nennt, was jetzt gilt oder als Nächstes kommt, der zweite das Gegenstück („Teuer wird es heute 18:00–20:30 Uhr.“ und „Morgen am günstigsten: 11:45–14:15 Uhr.“). Vor der Veröffentlichung heißt es „Die Preise für morgen kommen gegen 13 Uhr.“
-- **Ihr Preis:** „Ihr Preis jetzt: 24,2 ct/kWh mit Netzentgelt, Abgaben und Steuern“. Gelesen aus `importPriceCtKwh`, ohne Fahrplan entfällt die Zeile.
-- **Kurve:** Treppe je Viertelstunde (der Preis gilt die ganze Viertelstunde), Vergangenes grau, Kommendes blau, Jetzt als Linie mit Punkt. Die Fenster aus `preisFenster.ts` tragen ihr Wort über dem Bild („günstig“, „teuer“, „unter null“), vergangene Fenster leiser. Die Nulllinie wird nur betont, wenn es darunter geht.
-- **Wischen:** Über der Kurve steht die gewählte Viertelstunde mit Preis und Plan („13:15–13:30 Uhr · 1,42 ct/kWh · Speicher lädt“). Am Rechner Pfeiltasten, mit Umschalt eine Stunde. Kein Zoom durch Ziehen (E7 vom 03.09.2026 bleibt).
-- **Plan-Streifen:** unter der Kurve, auf derselben Zeitachse: Speicher lädt (grün), gibt ab (dunkelrot), laut Plan. Nur mit Speicher.
-- **Zeilen:** am günstigsten (bzw. unter null), am teuersten, Durchschnitt. Am Rechner als eigene Karte „Heute in Zahlen“ rechts.
-- **Rückblick:** eine Zeile öffnet Woche, Monat und Jahr als Blatt, mit Tages- bzw. Monatsmitteln und dem günstigsten und teuersten Tag. Adressen mit `z=` und `at=` öffnen ihn direkt.
-- **Erklärung:** „Was ist der Börsenstrompreis?“ mit Day-Ahead, Gebotszone DE-LU, Viertelstunde, Veröffentlichung gegen 13 Uhr, Ihr Preis, Regel für günstig und teuer, EUR/MWh-Werte und Quelle.
+- **Moment:** „Börsenpreis · jetzt 10:30–10:45“, der Preis groß, daneben günstig, mittel oder teuer im Vergleich zum Tag. Darunter der Satz nach vorn („Am günstigsten wird es heute 12:00–14:30 Uhr.“, leise „Teuer wird es 18:00–20:30 Uhr.“) und Ihr Preis. Beim Wischen: „14:15–14:30 · in 3 Std 35 Min“, Preis, Urteil und was der Speicher laut Plan in dieser Viertelstunde tut. Für morgen ohne Auswahl: der Tagesdurchschnitt und die Fenster des Tages.
+- **Balken je Viertelstunde** in drei Stufen: grün günstig, grau mittel, rot teuer, jeweils Drittel des Tages; Negativpreise in Petrol als „unter null“. Unter 5 ct/kWh Tagesspanne gibt es keine Stufen. Die Balken wachsen beim Wechsel von Tag oder Preisart kurz auf, bei reduzierter Bewegung nicht.
+- **Schalter „Börse“/„Ihr Preis“:** dieselben Balken als Endpreis aus dem Fahrplan (`importPriceCtKwh`). Die jeweils andere Zahl steht unter dem Moment („Davon Börse: −4,1 ct/kWh …“). Bei Negativpreisen heißt das Urteil dann „Börse unter null“.
+- **Plan-Streifen** unter den Balken: Speicher lädt, gibt ab, laut Plan. Nur mit Speicher.
+- **Wann starten?** Günstigster zusammenhängender Block der gewählten Dauer unter den bekannten kommenden Viertelstunden, heute ab jetzt und morgen, sobald veröffentlicht. Ergebnis für 3 Stunden um 10:40 Uhr: „Start heute 11:45 Uhr, fertig 14:45 Uhr · Ø 2,1 ct/kWh“, dazu „1,1 ct/kWh weniger als bei Start jetzt“ oder „Später wird es für diese Dauer nicht günstiger.“ Liegt das Fenster morgen, wechselt das Bild auf morgen. „In den Balken zeigen“ setzt den Moment auf den Start.
+- **Kennzahlen** als eine Zeile unter dem Bild (Ø, günstigste, teuerste). Rückblick und Erklärung wie in Fassung 1.
 
 ### Wetter
 
-- **Kopf:** „Wetter heute · Di. 29.09.“, Symbol und Wort („Sonnig“) groß, darunter die Temperaturspanne. Der Tag bekommt sein Wort aus dem Mittel der Bewölkung von 6 bis 21 Uhr (dieselbe Regel wie `weatherWhyTomorrow`).
-- **Satz:** „Sonnenstrom heute: ≈ 46 kWh, am meisten 11:45–14:15 Uhr.“ und leise „Morgen wechselnd, ≈ 39 kWh.“ Die kWh sind gemessen bis jetzt plus erwartet danach. Ohne Prognose: „Die Sonne ist heute am stärksten 11:45–14:15 Uhr.“
-- **Tagesbild:** Himmel als benannte Blöcke über dem Bild (sonnig, wechselnd, bewölkt; Blöcke unter zwei Stunden gehen im Nachbarn auf). Darunter die Leistung in kW: gemessen gefüllt, erwartet schraffiert und gestrichelt, Jetzt als Linie, die Spitze mit Wert, „am stärksten“ als Fenster derselben Länge wie bei den Preisen. Nur die Stunden mit Sonne und eine Stunde davor und danach.
-- **Die nächsten Tage:** heute, morgen, übermorgen mit Symbol, Wort, Temperatur und Sonnenstrom. Wo die Prognose nicht hinreicht: „— Prognose folgt“.
-- **Stunde für Stunde:** waagrecht wischbar, ab jetzt zwölf Stunden: Symbol, Temperatur, erwartete Leistung.
-- **Erklärung:** Quellen (Open-Meteo, PV-Prognose, Messwerte) und die Regel für den Himmel.
+- **Tageskarten** für heute, morgen und übermorgen: Symbol, Himmel als Wort, Temperaturspanne, Sonnenstrom (heute gemessen plus erwartet, morgen erwartet, übermorgen „Prognose folgt“). Am Telefon zum Wischen, die gewählte Karte ist umrandet; ab 560 Pixeln stehen alle drei nebeneinander. Die Karte wählt den Tag für alles darunter.
+- **Satz zum Tag:** „Am meisten Sonnenstrom heute gegen 13 Uhr, bis 6,5 kW.“ Ist die stärkste Sonne vorbei, nennt er die kWh bis zum Abend.
+- **Moment in der Karte:** „Jetzt · 10:40“, Symbol, „17 °C · sonnig“, „4,9 kW Sonnenstrom · erwartet“. Beim Wischen oder Antippen einer Stunde die gewählte Viertelstunde, gemessen oder erwartet.
+- **Tagesbild:** Himmel als benannte Blöcke, Leistung gemessen (gefüllt) und erwartet (schraffiert), Spitze mit Wert. Übermorgen und ohne Prognose zeigt es die Sonneneinstrahlung in W/m² mit Hinweis.
+- **Wann ist am meisten Sonne?** Das Zeitfenster der gewählten Dauer mit der höchsten erwarteten Erzeugung, heute ab jetzt und morgen. Dabei steht: „Erwartete Erzeugung der Anlage. Haus und Speicher brauchen einen Teil davon.“
+- **Stunde für Stunde:** antippbar, wählt die Stunde im Bild.
 
 ### Am Rechner
 
-Ab 820 Pixeln Inhaltsbreite stehen Antwort und Tagesbild links, die Angaben zum Nachschlagen rechts. Es ist dieselbe Seite, umgeschaltet per Container-Abfrage.
+Ab 820 Pixeln Inhaltsbreite stehen Moment und Tagesbild links, Rechner und Angaben rechts. Es ist dieselbe Seite, umgeschaltet per Container-Abfrage.
 
 ## Regeln im Bild
 
-- Nie ein vergangenes Fenster als Rat. Vergangene Fenster stehen in den Zeilen mit „vorbei“.
+- Nie ein vergangenes Fenster als Rat. Der Satz oben und beide Rechner schauen nur nach vorn; vergangene Viertelstunden sind blass und heißen „vorbei“.
+- Rechnen, nicht planen: „Wann starten?“ nutzt nur feststehende Preise und schaltet nichts. Die Ersparnis steht in ct/kWh, nicht in Euro, weil der Verbrauch des Geräts unbekannt ist.
+- Erzeugung ist kein Überschuss: „Wann ist am meisten Sonne?“ sagt das dazu.
 - Unbekannt ist keine Null: „—“ mit Grund, und fehlt der Folgetag, steht, wann er kommt.
 - Gemessen gefüllt, erwartet schraffiert, geplant mit „laut Plan“.
 - Börsenpreis und Ihr Preis getrennt; Ihr Preis wird gelesen, nie aus Tariffeldern gerechnet.
 - Ein Urteil braucht eine Spanne: unter 5 ct/kWh Tagesspanne kein günstig oder teuer und keine Fenster (`MIN_SPANNE_CT`).
 - Keine zweite Erzeugungsprognose: kW nur aus der gespeicherten PV-Prognose, nie aus Bewölkung und kWp.
-- Farbe nie allein: jedes Fenster, jede Fläche und jedes Urteil trägt ein Wort.
+- Farbe nie allein: Balkenfarben mit Legende, das Urteil des gewählten Balkens als Wort. Vor der Umsetzung die drei Stufen mit dem Dataviz-Validator prüfen (Rot/Grün bei Farbsehschwäche).
 - Die Einheit steht am Wert: ct/kWh, kW, kWh, °C.
 
 ## Daten
@@ -98,23 +102,23 @@ Ab 820 Pixeln Inhaltsbreite stehen Antwort und Tagesbild links, die Angaben zum 
 
 ## Umsetzung in Schritten
 
-1. **Preise, Kopf:** Urteil im Tagesvergleich und „nächstes Fenster“ als reine Ableitungen in `marktpreise.ts`, mit Tests. `preisFenster.ts` bleibt die eine Fenster-Grammatik für Seite und Cockpit. Kein Backend.
-2. **Preise, Kurve:** Treppe, Jetzt-Linie, Vergangenes grau, Wischen mit Anzeige, Pfeiltasten (`PriceHistoryChart.tsx`).
-3. **Preise, Plan und Ihr Preis:** Plan-Streifen aus `/schedule`, nur mit Speicher. Ihr Preis wie heute.
-4. **Preise, Rückblick:** Woche, Monat, Jahr als Blatt (`BottomSheet`) bzw. Modal am Rechner. Adressen mit `z=`/`at=` bleiben gültig.
-5. **Wetter, Seite:** Kopf, Tagesbild mit gemessen und erwartet, nächste Tage, Stunden (`WetterSection`, `wetterKarte.ts`, `WeatherChart.tsx`). Ein Wortsatz für den Himmel in `weather.ts` und `wetterLeistung.ts`.
-6. **Wetter, PV-Prognose (E4):** Lese-Endpunkt auf `forecast` für das aktive PV-Modell der Anlage, jüngster Lauf, mandantengetrennt wie die übrigen `/sites`-Routen. Zu prüfen, ob Anlagen ohne Speicher dort Werte haben.
-7. **Prüfen:** 375 und 1440 Pixel im Layout-Wächter, Tastatur, reduzierte Bewegung. Hilfe-Aufnahmen `marktpreise` und `wetter` neu erzeugen (`e2e/help-captures.mjs`), neue Kundenwörter ins Glossar.
+1. **Ableitungen:** Stufen im Tagesvergleich, Satz nach vorn, „Wann starten?“ und „Wann ist am meisten Sonne?“ als reine Module mit Tests (etwa `marktpreise.ts`, neu `startfenster.ts`). `preisFenster.ts` bleibt die Grammatik für den Satz und das Cockpit.
+2. **Preise, Moment und Balken:** Balken je Viertelstunde mit Stufen, Jetzt, Auswahl per Wischen, Maus und Tasten (`PriceHistoryChart.tsx` oder eigenes SVG), Moment oben, Schalter „Börse“/„Ihr Preis“, Plan-Streifen aus `/schedule`.
+3. **Preise, Rechner und Rückblick:** Karte „Wann starten?“, Rückblick als Blatt (`BottomSheet`) bzw. Modal am Rechner. Adressen mit `z=`/`at=` bleiben gültig.
+4. **Wetter:** Tageskarten mit Wischen, Moment, Tagesbild mit gemessen und erwartet (`/history?range=day`), Rechner, antippbare Stunden (`WetterSection`, `wetterKarte.ts`, `WeatherChart.tsx`). Ein Wortsatz für den Himmel in `weather.ts` und `wetterLeistung.ts`.
+5. **PV-Prognose (E4):** Lese-Endpunkt auf `forecast` für das aktive PV-Modell der Anlage, jüngster Lauf, mandantengetrennt wie die übrigen `/sites`-Routen. Zu prüfen, ob Anlagen ohne Speicher dort Werte haben.
+6. **Prüfen:** 375 und 1440 Pixel im Layout-Wächter, Wischen und Tasten, reduzierte Bewegung, Haptik nur über `haptik.ts`. Hilfe-Aufnahmen `marktpreise` und `wetter` neu erzeugen (`e2e/help-captures.mjs`), neue Kundenwörter ins Glossar.
 
 ## Offene Entscheidungen
 
 Der Prototyp zeigt jeweils Option A.
 
-- **E1 · Große Zahl auf der Preisseite.** A: Börsenpreis, Ihr Preis als Zeile darunter. B: Ihr Preis groß (fehlt ohne Fahrplan).
-- **E2 · Maßstab für günstig und teuer.** A: im Vergleich zum Tag (unteres und oberes Drittel, Negativpreise immer „unter null“). B: feste Schwellen wie heute (5 und 15 ct/kWh).
+- **E1 · Was der Schalter zuerst zeigt.** A: Börse, Ihr Preis als Zeile darunter und einen Tipp entfernt. B: Ihr Preis (ohne Fahrplan gibt es ihn nicht, dann fällt der Schalter weg).
+- **E2 · Wie die Kurve günstig und teuer zeigt.** A: Balken in drei Stufen im Tagesvergleich (Fassung 2). Weicht von der heutigen Regel ab, die nur zwei benannte Fenster auf einer Linie erlaubt (`preisFenster.ts`, kein Ampel-Verlauf). B: Linie mit zwei Fenstern wie Fassung 1 und heute.
 - **E3 · Ort des Rückblicks.** A: eigene Ansicht über die Zeile „Rückblick“. B: Zeitleiste oben wie heute; die Antwort rutscht um etwa 140 Pixel nach unten.
 - **E4 · Quelle der erwarteten Leistung.** A: neuer Lese-Endpunkt auf `forecast` (bis 48 h, morgen auch am Vormittag). B: weiter nur über den Fahrplan; morgen erscheint erst, wenn der Plan so weit reicht, ohne Speicher gibt es keine Leistung.
-- **E5 · Speicher-Plan unter der Preiskurve.** A: ja, nur mit Speicher. B: nein, nur der Verweis zum Fahrplan.
+- **E5 · Speicher-Plan unter den Balken.** A: ja, nur mit Speicher. B: nein, nur der Verweis zum Fahrplan.
+- **E6 · Womit der Rechner nach der Dauer fragt.** A: 1 bis 4 Stunden. B: Gerätevorlagen (Waschmaschine, Spülmaschine, Trockner, Auto).
 
 ## Prototyp neu bauen
 
