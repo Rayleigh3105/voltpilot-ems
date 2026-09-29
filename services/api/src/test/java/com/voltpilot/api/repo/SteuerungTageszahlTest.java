@@ -6,11 +6,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.optimizer.OptimizerProperties;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -66,6 +68,12 @@ class SteuerungTageszahlTest {
     private static final UUID ABENDS = UUID.fromString("5e000000-0000-0000-0000-0000000000a1");
     /** Handgerechnet über die Monatsgrenze April/Mai 2026. */
     private static final UUID GRENZE = UUID.fromString("5e000000-0000-0000-0000-0000000000b1");
+    /** Die Referenzanlage des Vektors {@code band_und_plan} (M1 + M2). */
+    private static final UUID BAND = UUID.fromString("5e000000-0000-0000-0000-0000000000c1");
+    /** Die Auswahl des Betriebsbereichs aus {@code stur-speicher-vectors.json}. */
+    private static final UUID AUSWAHL = UUID.fromString("5e000000-0000-0000-0000-0000000000d1");
+    private static final Path STUR_VECTORS =
+            Path.of("..", "..", "docs", "contracts", "stur-speicher-vectors.json");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -76,8 +84,8 @@ class SteuerungTageszahlTest {
             .withPassword("voltpilot_dev_pw");
 
     private static JsonNode vektor;
+    private static JsonNode band;
     private static EarningsRepository earnings;
-    private static HistoryRepository history;
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
@@ -92,6 +100,7 @@ class SteuerungTageszahlTest {
                 .load()
                 .migrate();
         vektor = MAPPER.readTree(Files.readString(VECTORS)).path("abends_geleert");
+        band = MAPPER.readTree(Files.readString(VECTORS)).path("band_und_plan");
 
         DriverManagerDataSource superuser = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
@@ -99,6 +108,8 @@ class SteuerungTageszahlTest {
             exec(c, "INSERT INTO tenant (id, name) VALUES ('" + TENANT + "', 'Tageszahl')");
             seedAbendsGeleert(c);
             seedMonatsgrenze(c);
+            seedBandUndPlan(c);
+            seedAuswahl(c);
         }
 
         SingleConnectionDataSource app = new SingleConnectionDataSource(
@@ -110,7 +121,6 @@ class SteuerungTageszahlTest {
         }
         OptimizerProperties props = new OptimizerProperties(4.0, 0.3, null, null, false);
         earnings = new EarningsRepository(new JdbcTemplate(app), props);
-        history = new HistoryRepository(new JdbcTemplate(app), props);
     }
 
     // ---------------------------------------------------------------- abends geleert
@@ -169,13 +179,22 @@ class SteuerungTageszahlTest {
         assertThat(t.steuerungMonatBisherEur().doubleValue())
                 .isCloseTo(e.path("steuerung_monat_bisher_eur").asDouble(), eur);
 
-        // Der Fahrplan-Planwert kommt aus derselben Slot-Menge wie
-        // history.totals.steuerungPlannedEur - einzeln und flottenweit.
-        BigDecimal plan = history.plannedSavings(ABENDS, from(day), to(day)).steuerungEur();
-        assertThat(plan).isEqualByComparingTo(
-                vektor.path("plan_steuerung_eur").path("2026-09-24").decimalValue());
-        assertThat(history.plannedSteuerungPerSite(from(day), to(day)).get(ABENDS))
-                .isEqualByComparingTo(plan);
+        // M2: der Planwert rechnet gegen DENSELBEN Vergleichsspeicher. Der
+        // Fahrplan des Vektors ist genau so eingetreten, also ist der Planwert
+        // die Tageszahl - einzeln, flottenweit und in der Einordnung.
+        BigDecimal plan = earnings.steuerungGeplantForSite(ABENDS, from(day), to(day));
+        assertThat(plan.doubleValue()).isCloseTo(
+                vektor.path("plan_steuerung_eur").path("2026-09-24").asDouble(), eur);
+        assertThat(plan.doubleValue()).isCloseTo(e.path("steuerung_eur").asDouble(),
+                Offset.offset(0.001));
+        assertThat(earnings.tageseinordnung(from(day), to(day)).get(ABENDS)
+                .steuerungGeplantEur()).isEqualByComparingTo(plan);
+        assertThat(earnings.tageseinordnungForSite(ABENDS, from(day), to(day))
+                .steuerungGeplantEur()).isEqualByComparingTo(plan);
+        LocalDate verkauf = LocalDate.parse("2026-09-23");
+        assertThat(earnings.steuerungGeplantForSite(ABENDS, from(verkauf), to(verkauf))
+                .doubleValue()).isCloseTo(
+                        vektor.path("plan_steuerung_eur").path("2026-09-23").asDouble(), eur);
 
         List<String> erwartet = new ArrayList<>();
         e.path("gruende").forEach(n -> erwartet.add(n.asText()));
@@ -281,6 +300,89 @@ class SteuerungTageszahlTest {
                 .containsExactly(SteuerungGrund.WENIG_SONNE);
     }
 
+    // ---------------------------------------------------------------- band und plan (M1, M2)
+
+    /**
+     * Die Live-Werte des 28./29.09.2026 ({@code band_und_plan}): der
+     * Vergleichsspeicher fährt den gemessenen Betriebsbereich 2-100 % (M1),
+     * also steht am 29.09. um 17:24 kein Vorsprung von 3,25 kWh mehr da, und
+     * der Planwert eines eingetretenen Fahrplans ist die Tageszahl (M2) -
+     * −0,21 € statt +11,09 € nach der alten Regel.
+     */
+    @Test
+    void bandUndPlanDerNeunundzwanzigste() {
+        JsonNode erwartet = band.path("erwartet");
+        Offset<Double> eur = Offset.offset(erwartet.path("$toleranz_eur").asDouble());
+        Offset<Double> kwh = Offset.offset(0.0005);
+        for (String d : List.of("2026-09-28", "2026-09-29")) {
+            LocalDate day = LocalDate.parse(d);
+            JsonNode e = erwartet.path("tage").path(d);
+            EarningsRepository.Tageseinordnung t =
+                    earnings.tageseinordnungForSite(BAND, from(day), to(day));
+            assertThat(saved(BAND, day).doubleValue()).as("saved %s", d)
+                    .isCloseTo(e.path("saved_eur").asDouble(), eur);
+            assertThat(t.speicherEur().doubleValue()).as("speicher %s", d)
+                    .isCloseTo(e.path("speicher_eur").asDouble(), eur);
+            assertThat(t.steuerungEur().doubleValue()).as("steuerung %s", d)
+                    .isCloseTo(e.path("steuerung_eur").asDouble(), eur);
+            assertThat(t.vergleichSocStartKwh().doubleValue()).as("Vergleich 00:00 %s", d)
+                    .isCloseTo(e.path("vergleich_soc_start_kwh").asDouble(), kwh);
+            assertThat(t.vergleichSocEndKwh().doubleValue()).as("Vergleich Ende %s", d)
+                    .isCloseTo(e.path("vergleich_soc_ende_kwh").asDouble(), kwh);
+            assertThat(t.echtSocEndKwh().doubleValue()).as("echt Ende %s", d)
+                    .isCloseTo(e.path("echt_soc_ende_kwh").asDouble(), kwh);
+            assertThat(t.steuerungGeplantEur().doubleValue()).as("Planwert %s", d)
+                    .isCloseTo(e.path("plan_steuerung_eur").asDouble(), eur);
+            assertThat(earnings.steuerungGeplantForSite(BAND, from(day), to(day)))
+                    .as("Planwert-Fenster %s", d).isEqualByComparingTo(t.steuerungGeplantEur());
+        }
+        JsonNode e = erwartet.path("tage").path("2026-09-29");
+        EarningsRepository.Tageseinordnung t = earnings.tageseinordnungForSite(BAND,
+                from(LocalDate.parse("2026-09-29")), to(LocalDate.parse("2026-09-29")));
+        // M1: beide Speicher bei 100 % - kein Vorsprung mehr.
+        assertThat(t.speicherVorsprungKwh().doubleValue())
+                .isCloseTo(e.path("speicher_vorsprung_kwh").asDouble(), kwh);
+        assertThat(t.echtSocStartKwh().doubleValue())
+                .isCloseTo(e.path("echt_soc_start_kwh").asDouble(), kwh);
+        List<String> gruende = new ArrayList<>();
+        e.path("gruende").forEach(n -> gruende.add(n.asText()));
+        assertThat(SteuerungGrund.fuer(t.steuerungEur(), t, t.steuerungGeplantEur()))
+                .containsExactlyElementsOf(gruende);
+        // Σ Tage = Zwei-Tage-Fenster, auch für den Planwert.
+        BigDecimal zweiTage = earnings.steuerungGeplantForSite(BAND,
+                from(LocalDate.parse("2026-09-28")), to(LocalDate.parse("2026-09-29")));
+        assertThat(zweiTage.doubleValue()).isCloseTo(
+                erwartet.path("tage").path("2026-09-28").path("plan_steuerung_eur").asDouble()
+                        + e.path("plan_steuerung_eur").asDouble(), eur);
+    }
+
+    /**
+     * Die Auswahl des Betriebsbereichs je Monat an der Rechenstelle selbst
+     * ({@code stur-speicher-vectors.json}, {@code betriebsbereich.auswahl}):
+     * erst der vierte Eimer zählt, ein einzelner Ausreißer nicht.
+     */
+    @Test
+    void betriebsbereichZaehltErstAbVierEimern() throws Exception {
+        JsonNode auswahl = MAPPER.readTree(Files.readString(STUR_VECTORS))
+                .path("betriebsbereich").path("auswahl");
+        Map<LocalDate, EarningsRepository.Betriebsbereich> monate = earnings.monthBetriebsbereich(
+                LocalDate.of(2026, 7, 1).atStartOfDay(BERLIN).toInstant(),
+                LocalDate.of(2026, 7, 2).atStartOfDay(BERLIN).toInstant(), AUSWAHL).get(AUSWAHL);
+        EarningsRepository.Betriebsbereich juni = monate.get(LocalDate.of(2026, 6, 1));
+        assertThat(juni.tiefPct()).isEqualByComparingTo(auswahl.path("tief").decimalValue());
+        assertThat(juni.hochPct()).isEqualByComparingTo(auswahl.path("hoch").decimalValue());
+        // Der Juli hat nur einen Eimer: keine Seite belegt, kein Eintrag.
+        assertThat(monate).doesNotContainKey(LocalDate.of(2026, 7, 1));
+        // Band und Planwert der BAND-Anlage: September 2-100 % aus den Eimern.
+        JsonNode bereich = band.path("erwartet").path("band_pct");
+        EarningsRepository.Betriebsbereich september = earnings.monthBetriebsbereich(
+                LocalDate.of(2026, 9, 28).atStartOfDay(BERLIN).toInstant(),
+                LocalDate.of(2026, 9, 30).atStartOfDay(BERLIN).toInstant(), BAND)
+                .get(BAND).get(LocalDate.of(2026, 9, 1));
+        assertThat(september.tiefPct()).isEqualByComparingTo(bereich.path("tief").decimalValue());
+        assertThat(september.hochPct()).isEqualByComparingTo(bereich.path("hoch").decimalValue());
+    }
+
     // ---------------------------------------------------------------- helpers
 
     /**
@@ -367,19 +469,86 @@ class SteuerungTageszahlTest {
             rollup(c, ABENDS, t, e.get(1).decimalValue(), e.get(2).decimalValue(),
                     e.get(3).decimalValue(), e.get(4).decimalValue(), e.get(5).decimalValue());
         }
-        // Ein Fahrplan-Slot trägt den Planwert des 24.09. (stur − cost).
-        BigDecimal plan = vektor.path("plan_steuerung_eur").path("2026-09-24").decimalValue();
+        // M2: je Eimer ein Fahrplan-Slot mit den GEMESSENEN Flüssen (siehe $plan).
+        for (JsonNode e : vektor.path("eimer")) {
+            planSlot(c, ABENDS, e.get(0).asText(), e.get(1).decimalValue(),
+                    e.get(2).decimalValue(), e.get(3).decimalValue(), e.get(4).decimalValue(),
+                    e.get(6).decimalValue());
+        }
+    }
+
+    private static void seedBandUndPlan(Connection c) throws Exception {
+        exec(c, "INSERT INTO site (id, tenant_id, name, bidding_zone, tarif_art, tarif_param_ct_kwh)"
+                + " VALUES ('" + BAND + "', '" + TENANT + "', 'Band und Plan', 'DE-LU',"
+                + " 'fest', 25)");
+        exec(c, "INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw,"
+                + " max_discharge_kw) VALUES ('" + TENANT + "', '" + BAND
+                + "', 'battery', 65, 30, 30)");
+        JsonNode anker = band.path("monatsanker");
+        rollup(c, BAND, Instant.parse(anker.path("bucket").asText()), null, null, null, null,
+                null, null, anker.path("soc_last_pct").decimalValue());
+        for (JsonNode e : band.path("eimer")) {
+            Instant t = Instant.parse(e.get(0).asText());
+            // Die Anlage ABENDS bringt nur die Preise des 23./24.09. mit.
+            try (PreparedStatement ps = c.prepareStatement(
+                    "INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
+                            + " currency, source) VALUES (?, 'DE-LU', 'PT15M', ?, 'EUR', 'test')")) {
+                ps.setTimestamp(1, Timestamp.from(t));
+                ps.setBigDecimal(2, e.get(8).decimalValue());
+                ps.execute();
+            }
+            rollup(c, BAND, t, e.get(1).decimalValue(), e.get(2).decimalValue(),
+                    e.get(3).decimalValue(), e.get(4).decimalValue(), e.get(5).decimalValue(),
+                    e.get(6).decimalValue(), e.get(7).decimalValue());
+            planSlot(c, BAND, e.get(0).asText(), e.get(1).decimalValue(),
+                    e.get(2).decimalValue(), e.get(3).decimalValue(), e.get(4).decimalValue(),
+                    e.get(8).decimalValue());
+        }
+    }
+
+    /** Juni 2026: acht Eimer der Auswahl-Regel, dazu ein einzelner Eimer im Juli. */
+    private static void seedAuswahl(Connection c) throws Exception {
+        exec(c, "INSERT INTO site (id, tenant_id, name, bidding_zone, tarif_art, tarif_param_ct_kwh)"
+                + " VALUES ('" + AUSWAHL + "', '" + TENANT + "', 'Auswahl', 'DE-LU', 'fest', 25)");
+        JsonNode auswahl = MAPPER.readTree(Files.readString(STUR_VECTORS))
+                .path("betriebsbereich").path("auswahl");
+        Instant t = Instant.parse("2026-06-10T10:00:00Z");
+        for (int i = 0; i < auswahl.path("soc_min_pct").size(); i++) {
+            rollup(c, AUSWAHL, t.plus(Duration.ofMinutes(15L * i)), null, null, null, null,
+                    auswahl.path("soc_min_pct").get(i).decimalValue(),
+                    auswahl.path("soc_max_pct").get(i).decimalValue(), null);
+        }
+        rollup(c, AUSWAHL, Instant.parse("2026-07-01T10:00:00Z"), null, null, null, null,
+                BigDecimal.ONE, BigDecimal.valueOf(99), null);
+    }
+
+    /**
+     * Ein Fahrplan-Slot des jüngsten Laufs, der genau so eintritt wie
+     * gemessen: Leistungen = Energie × 4 auf 4 Stellen, Baseline und Kosten
+     * mit Bezug 25 ct und Einspeisung zum Spot auf 6 Stellen.
+     */
+    private static void planSlot(Connection c, UUID site, String bucket, BigDecimal pvKwh,
+            BigDecimal loadKwh, BigDecimal importKwh, BigDecimal exportKwh, BigDecimal spot)
+            throws Exception {
+        Instant t = Instant.parse(bucket);
+        double pv = pvKwh.doubleValue();
+        double load = loadKwh.doubleValue();
+        double ev = spot.doubleValue() / 1000.0;
+        double baseline = Math.max(load - pv, 0) * 0.25 - Math.max(pv - load, 0) * ev;
+        double cost = importKwh.doubleValue() * 0.25 - exportKwh.doubleValue() * ev;
         try (PreparedStatement ps = c.prepareStatement(
                 "INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw,"
-                        + " cost_eur, baseline_cost_eur, stur_cost_eur)"
-                        + " VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0)")) {
-            ps.setTimestamp(1, Timestamp.from(Instant.parse("2026-09-24T06:00:00Z")));
+                        + " pv_kw, load_kw, cost_eur, baseline_cost_eur, stur_cost_eur)"
+                        + " VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 0)")) {
+            ps.setTimestamp(1, Timestamp.from(t));
             ps.setObject(2, TENANT);
-            ps.setObject(3, ABENDS);
+            ps.setObject(3, site);
             ps.setObject(4, UUID.randomUUID());
-            ps.setTimestamp(5, Timestamp.from(Instant.parse("2026-09-23T20:00:00Z")));
-            ps.setBigDecimal(6, plan.negate());
-            ps.setBigDecimal(7, plan.negate());
+            ps.setTimestamp(5, Timestamp.from(t.minusSeconds(60)));
+            ps.setBigDecimal(6, pvKwh.multiply(BigDecimal.valueOf(4)).setScale(4, RoundingMode.HALF_UP));
+            ps.setBigDecimal(7, loadKwh.multiply(BigDecimal.valueOf(4)).setScale(4, RoundingMode.HALF_UP));
+            ps.setBigDecimal(8, BigDecimal.valueOf(cost).setScale(6, RoundingMode.HALF_UP));
+            ps.setBigDecimal(9, BigDecimal.valueOf(baseline).setScale(6, RoundingMode.HALF_UP));
             ps.execute();
         }
     }
@@ -419,10 +588,17 @@ class SteuerungTageszahlTest {
     private static void rollup(Connection c, UUID site, Instant bucket, BigDecimal pv,
             BigDecimal load, BigDecimal imp, BigDecimal exp, BigDecimal socLastPct)
             throws Exception {
+        rollup(c, site, bucket, pv, load, imp, exp, null, null, socLastPct);
+    }
+
+    private static void rollup(Connection c, UUID site, Instant bucket, BigDecimal pv,
+            BigDecimal load, BigDecimal imp, BigDecimal exp, BigDecimal socMinPct,
+            BigDecimal socMaxPct, BigDecimal socLastPct) throws Exception {
         try (PreparedStatement ps = c.prepareStatement(
                 "INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
-                        + " grid_import_kwh, grid_export_kwh, soc_last_pct, n_samples)"
-                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 90)")) {
+                        + " grid_import_kwh, grid_export_kwh, soc_min_pct, soc_max_pct,"
+                        + " soc_last_pct, n_samples)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 90)")) {
             ps.setTimestamp(1, Timestamp.from(bucket));
             ps.setObject(2, TENANT);
             ps.setObject(3, site);
@@ -430,7 +606,9 @@ class SteuerungTageszahlTest {
             ps.setBigDecimal(5, load);
             ps.setBigDecimal(6, imp);
             ps.setBigDecimal(7, exp);
-            ps.setBigDecimal(8, socLastPct);
+            ps.setBigDecimal(8, socMinPct);
+            ps.setBigDecimal(9, socMaxPct);
+            ps.setBigDecimal(10, socLastPct);
             ps.execute();
         }
     }

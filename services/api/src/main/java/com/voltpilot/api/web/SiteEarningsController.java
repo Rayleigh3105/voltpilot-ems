@@ -2,7 +2,6 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EarningsRepository;
-import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.SpeicherBank;
@@ -64,17 +63,15 @@ public class SiteEarningsController {
     private final SiteRepository sites;
     private final EarningsRepository earnings;
     private final PeakShavingRepository peaks;
-    private final HistoryRepository history;
     private final String activePvModel;
 
     public SiteEarningsController(SiteRepository sites, EarningsRepository earnings,
-            PeakShavingRepository peaks, HistoryRepository history,
+            PeakShavingRepository peaks,
             @org.springframework.beans.factory.annotation.Value(
                     "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
         this.peaks = peaks;
-        this.history = history;
         this.activePvModel = activePvModel;
     }
 
@@ -201,9 +198,9 @@ public class SiteEarningsController {
         // Die EINORDNUNG des Tages (Captain 24.09.2026 E1-E7 = A): ein Minus
         // steht nie allein - Vorsprung vor dem Vergleichsspeicher, bewertet mit
         // demselben λ wie das Bestandskonto, Vortag, Monat bisher, Grund.
-        BigDecimal geplant = einordnung != null
-                ? history.plannedSavings(siteId, from, to).steuerungEur()
-                : null;
+        // Der Planwert rechnet seit M2 gegen DENSELBEN Vergleichsspeicher und
+        // kommt deshalb aus demselben Walk wie die Einordnung.
+        BigDecimal geplant = einordnung != null ? einordnung.steuerungGeplantEur() : null;
         BigDecimal vorsprungKwh = einordnung == null ? null : einordnung.speicherVorsprungKwh();
         BigDecimal vorsprungEur = vorsprungKwh == null || bank.wertCtKwh() == null ? null
                 : vorsprungKwh.multiply(bank.wertCtKwh())

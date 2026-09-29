@@ -2,6 +2,7 @@ package com.voltpilot.api.history;
 
 import com.voltpilot.api.optimizer.OptimizerDiagnosticsService;
 import com.voltpilot.api.optimizer.SlotEconomics;
+import com.voltpilot.api.repo.EarningsRepository;
 import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.web.dto.HistoryBucketDto;
 import com.voltpilot.api.web.dto.HistoryCoverageDto;
@@ -44,9 +45,18 @@ public class HistoryService {
      */
     private final OptimizerDiagnosticsService diagnostics;
 
-    public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics) {
+    /**
+     * Der Planwert der Steuerung (M2): gegen denselben durchlaufenden
+     * Vergleichsspeicher wie die gemessene Zahl, deshalb aus dem Walk der
+     * Erlös-Rechnung und nicht mehr aus {@code stur_cost_eur}.
+     */
+    private final EarningsRepository earnings;
+
+    public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics,
+            EarningsRepository earnings) {
         this.repo = repo;
         this.diagnostics = diagnostics;
+        this.earnings = earnings;
     }
 
     public HistoryDto history(UUID siteId, String biddingZone, HistoryRange range, LocalDate at) {
@@ -62,7 +72,9 @@ public class HistoryService {
         List<HistoryBucketDto> buckets = buckets(siteId, biddingZone, range, window, cutover);
 
         HistoryTotalsDto totals = totals(buckets,
-                repo.plannedSavings(siteId, window.from(), window.to()),
+                new HistoryRepository.PlannedSavings(
+                        repo.savings(siteId, window.from(), window.to()),
+                        earnings.steuerungGeplantForSite(siteId, window.from(), window.to())),
                 repo.tariffContext(siteId));
 
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY

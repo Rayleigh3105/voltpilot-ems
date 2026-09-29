@@ -398,3 +398,126 @@ def test_the_log_line_names_both_measuring_sticks_and_omits_a_missing_one():
     old_line = CycleSummary(planned=[old]).line()
     assert "vs. no-battery baseline" in old_line
     assert "steuerung=" not in old_line
+
+
+# ---------------------------------------------------------------------------
+# 4. M1: der gemessene Betriebsbereich weitet das Band der Messlatte
+# ---------------------------------------------------------------------------
+
+
+def _betriebsbereich() -> dict:
+    return json.loads(VECTORS.read_text())["betriebsbereich"]
+
+
+def _vereint(*bereiche) -> tuple[float | None, float | None]:
+    """Die SQL-Vereinigung von Monat und Vormonat (``min(tief)``, ``max(hoch)``,
+    NULL zaehlt nicht) - wie ``inputs._betriebsbereich_pct``."""
+    tiefs = [b["tief"] for b in bereiche if b and b.get("tief") is not None]
+    hochs = [b["hoch"] for b in bereiche if b and b.get("hoch") is not None]
+    return (min(tiefs) if tiefs else None, max(hochs) if hochs else None)
+
+
+def test_the_operating_range_uses_the_same_bucket_count_as_the_java_twin():
+    from voltpilot_optimization.stur import BETRIEBSBEREICH_EIMER
+
+    assert BETRIEBSBEREICH_EIMER == _betriebsbereich()["eimer_mindestens"]
+
+
+@pytest.mark.parametrize(
+    "case", _betriebsbereich()["faelle"], ids=lambda c: c["name"]
+)
+def test_the_shared_vectors_pin_the_widened_band_of_the_stur_battery(case):
+    from voltpilot_optimization.inputs import _soc_band
+    from voltpilot_optimization.stur import stur_battery
+
+    soc_min, soc_max = _soc_band(
+        "vektor", case["band_pct"]["min"], case["band_pct"]["max"]
+    )
+    battery = BatteryParams(
+        capacity_kwh=case["capacity_kwh"], max_charge_kw=1.0, max_discharge_kw=1.0,
+        soc_min_fraction=soc_min, soc_max_fraction=soc_max,
+        backup_reserve_pct=case["reserve_pct"]["backup"],
+        peak_reserve_pct=case["reserve_pct"]["peak"],
+    )
+    gemessen = case["gemessen_pct"]
+    inp = make_input(
+        prices=[50.0], load=0.0, pv=0.0, battery=battery,
+        soc0_kwh=battery.soc_max_kwh,
+        stur_betriebsbereich_pct=_vereint(gemessen["vormonat"], gemessen["monat"]),
+    )
+    stur = stur_battery(inp)
+    assert stur.soc_min_fraction == pytest.approx(case["soc_min_fraction"])
+    assert stur.soc_max_fraction == pytest.approx(case["soc_max_fraction"])
+    assert stur.soc_max_kwh == pytest.approx(case["soc_max_kwh"])
+    # Voll gestartet, damit der relaxierte Boden nicht greift: der Stack hebt
+    # den geweiteten Boden wie beim Plan.
+    assert stur.soc_floor_kwh(stur.soc_max_kwh) == pytest.approx(case["soc_floor_kwh"])
+
+
+def test_the_widened_band_moves_only_the_messlatte_never_the_plan():
+    """Pilsting 29.09.: der echte Deye laedt auf 100 %, der Plan fuer 5-95 %.
+    Mit dem gemessenen Bereich laedt die Messlatte ebenfalls bis 100 %; die
+    Batterie des Plans bleibt dieselbe."""
+    battery = BatteryParams(capacity_kwh=65.0, max_charge_kw=30.0, max_discharge_kw=30.0)
+    ohne = make_input(prices=[50.0] * 20, load=0.0, pv=40.0, battery=battery, soc0_kwh=30.0)
+    mit = make_input(
+        prices=[50.0] * 20, load=0.0, pv=40.0, battery=battery, soc0_kwh=30.0,
+        stur_betriebsbereich_pct=(2.0, 100.0),
+    )
+    assert max(stur_dispatch(ohne).soc_kwh) == pytest.approx(61.75)
+    assert max(stur_dispatch(mit).soc_kwh) == pytest.approx(65.0)
+    assert mit.battery == battery
+
+
+def test_the_optimizer_reads_the_operating_range_of_this_and_the_previous_month(
+    monkeypatch,
+):
+    """Dieselbe Abfrage wie ``EarningsRepository.monthBetriebsbereich``: der
+    laufende und der Vormonat (Berlin), der vierte Eimer je Seite; ohne
+    Messwert kein Bereich, und ein Lesefehler kostet nie den Plan."""
+    import sys
+    from types import SimpleNamespace
+    from zoneinfo import ZoneInfo
+
+    from voltpilot_optimization.inputs import _betriebsbereich_pct
+
+    seen: dict = {}
+
+    class _Cur:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, sql, params=()):
+            seen["sql"] = " ".join(sql.split())
+            seen["params"] = params
+
+        def fetchone(self):
+            if isinstance(seen.get("row"), Exception):
+                raise seen["row"]
+            return seen.get("row")
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cursor(self):
+            return _Cur()
+
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: _Conn()))
+    jetzt = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)  # 1. Oktober, 10:00 Berlin
+    seen["row"] = (2.0, 100.0)
+    assert _betriebsbereich_pct("dsn", uuid4(), jetzt) == (2.0, 100.0)
+    _, von, bis = seen["params"]
+    assert von == datetime(2026, 9, 1, tzinfo=ZoneInfo("Europe/Berlin"))
+    assert bis == jetzt
+    assert "[4]" in seen["sql"] and "soc_min_pct" in seen["sql"]
+    seen["row"] = (None, None)
+    assert _betriebsbereich_pct("dsn", uuid4(), jetzt) is None
+    seen["row"] = RuntimeError("Datenbank weg")
+    assert _betriebsbereich_pct("dsn", uuid4(), jetzt) is None

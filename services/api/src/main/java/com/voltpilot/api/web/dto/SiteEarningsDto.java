@@ -123,13 +123,15 @@ import java.util.UUID;
  *     Tages - dieselbe Zahl wie {@code range=month} zum selben Stand
  * @param steuerungPlannedEur nur {@code range=day}: der Fahrplan-Planwert
  *     desselben Tages ({@code history.totals.steuerungPlannedEur}, EX-ANTE
- *     geplant - eine Fläche nennt ihn „geplant“)
+ *     geplant - eine Fläche nennt ihn „geplant“), seit M2 gegen denselben
+ *     durchlaufenden Vergleichsspeicher wie {@code savedSteuerungEur}
  * @param steuerungGruende nur {@code range=day} mit Dreiteilung: warum der Tag
  *     unter Null liegt, höchstens zwei Kennungen der geschlossenen Liste
  *     ({@code gestern_verkauft}, {@code haelt_energie_fuer_morgen},
- *     {@code so_geplant}, {@code wenig_sonne}, {@code anders_als_geplant}; Regeln
- *     in {@code docs/contracts/steuerung-tag-vectors.json}) - leer bei einem
- *     Tag ab Null oder wenn keine Regel greift (nie geraten), null wenn nicht
+ *     {@code so_geplant}, {@code wenig_sonne}, {@code anders_als_geplant},
+ *     Rückfall {@code anders_geladen}; Regeln in
+ *     {@code docs/contracts/steuerung-tag-vectors.json}) - leer nur bei einem
+ *     Tag ab Null (ein Minus trägt seit A1 immer einen Grund), null wenn nicht
  *     berechnet
  * @param series the money per Berlin bucket (hour for a day, day for week and
  *     month, month for year/all) - the stacked bars + the cumulative line
