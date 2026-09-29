@@ -1,0 +1,445 @@
+<div class="pg">
+  <header class="pagebar" id="kopf">
+    <p class="eyebrow">Konzeptentwurf · Steuerung · Fassung 1 · 29.09.2026 <span class="chip-ex">Beispieldaten</span></p>
+    <h1>Sagen, was laufen soll. <em>Sehen, was passiert.</em></h1>
+    <p class="lede">Die neue Steuerung bringt alle Geräte, Regeln, die Reihenfolge und das Laden auf eine Seite, gebaut fürs Telefon. Jedes Gerät hat drei Zustände: Aus, Smart, Ein. Smart ist ein Auftrag, den man in einem Satz lesen kann. Ein Tagesbild zeigt vorher, was die Anlage damit tut. Jede Regel läuft vor dem Aktivieren einmal zur Probe.</p>
+    <ul class="goal" aria-label="Ziele">
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>Telefon zuerst</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>Aus · Smart · Ein je Gerät</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Eine Reihenfolge für Sonnenstrom</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>Regeln als Satz, mit Probelauf</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>Laden an einem Ort</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Alle Gerätearten</li>
+    </ul>
+  </header>
+
+  <section aria-label="Prototyp" id="prototyp">
+    <div class="stagewrap">
+      <div class="phone" id="phone">
+        <div class="notch" aria-hidden="true"></div>
+        <div class="screen"><div id="app"></div></div>
+        <div class="sheet-host" id="sheet-host"></div>
+        <div id="toast-host" aria-live="polite"></div>
+      </div>
+      <div class="aside">
+        <h2>Zum Ausprobieren</h2>
+        <p>Die Beispielanlage „Sonnenhof“ hat zehn gesteuerte Geräte mit den echten Komponententypen, dazu Speicher und PV. Eine kleine Rechnung verteilt je Viertelstunde den Sonnenstrom nach Reihenfolge, Fristen und Regeln. Jede Änderung wirkt ab „jetzt“; Gemessenes bleibt, wie es war.</p>
+        <ol class="lese">
+          <li><span><b>Jetzt lesen.</b><span class="sek">Oben steht in einem Satz, was läuft und warum, darunter wohin der Sonnenstrom geht. Wer als Nächstes dran wäre, steht dabei. <button class="go" data-go="tagesbild">Tagesbild antippen</button> und mit dem Finger über den Tag wischen.</span></span></li>
+          <li><span><b>Reihenfolge ändern.</b><span class="sek">Die Geräteliste ist die Reihenfolge. Ziehen oder ▲ ▼, die Folgen stehen vor dem Speichern da. <button class="go" data-go="reo">Reihenfolge öffnen</button></span></span></li>
+          <li><span><b>Ihre Regel bauen.</b><span class="sek">„Wenn der Börsenpreis unter 10 ct/kWh liegt, Heizstab einschalten“, mit Probelauf über heute und morgen. <button class="go" data-go="regel">Regel bauen</button></span></span></li>
+          <li><span><b>Ein Gerät öffnen.</b><span class="sek">Aus · Smart · Ein, der Weg vom Wunsch zur gemessenen Wirkung, Smart-Auftrag, Bedingungen. <button class="go" data-go="heizstab">Heizstab öffnen</button></span></span></li>
+          <li><span><b>Laden.</b><span class="sek">Beide Ladepunkte, Ladeziel mit Plan, Netzanschluss, Speicher-Vorrang bis zu einem Ladestand. <button class="go" data-go="laden">Zum Laden</button></span></span></li>
+          <li><span><b>Mehr.</b><span class="sek"><button class="go" data-go="szene">Szene „Urlaub“</button> · <button class="go" data-go="katalog">weiteres Gerät steuern</button></span></span></li>
+        </ol>
+        <div class="simbox">
+          <b>Uhrzeit der Vorschau</b>
+          <div class="seg" id="fall" role="group" aria-label="Uhrzeit"><button data-k="morgen" aria-pressed="false">07:40</button><button data-k="mittag" aria-pressed="true">13:10</button><button data-k="abend" aria-pressed="false">19:40</button><button data-k="nacht" aria-pressed="false">23:20</button></div>
+          <p>Vor 13 Uhr fehlen die Börsenpreise für morgen; Regeln auf den Preis schalten dort nicht, der Ladeplan ist vorläufig.</p>
+          <button class="btn sek" id="zuruecksetzen" type="button">Beispiel zurücksetzen</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="heute">
+    <h2>Warum die Seite heute nicht trägt</h2>
+    <p class="intro">Aufgenommen mit den fiktiven Hilfe-Fixtures bei 375 Pixeln Breite (<code>e2e/help.html#/anlage/help-site/steuerung</code>). Die Befunde stammen aus dem Code (Portal, API, Box) und den Aufnahmen.</p>
+    <div class="vgl">
+      <div class="vgl-bild">
+        <figure><div class="strip" tabindex="0" aria-label="Heutige Steuerungsseite, ganze Länge, zum Scrollen"><img src="data:image/jpeg;base64,/*IMG:heute-seite*/" alt="Die heutige Steuerungsseite am Telefon: Einführungskasten, Jetzt-Liste, zweiter Einführungskasten, Verbraucher, leere Regeln, Betriebsmodelle, Ladepark-Rahmen." width="375" loading="lazy"></div><figcaption><b>Heute: 4.349 Pixel lang</b>Gut fünf Bildschirme, zwei Einführungskästen, kein Bild vom Tag.</figcaption></figure>
+        <figure><div class="strip" style="height:auto"><img src="data:image/jpeg;base64,/*IMG:heute-regel*/" alt="Heutiger Regel-Dialog: Name, WENN-Zeilen mit Auswahlfeldern, DANN, Weiter zur Prüfung." width="375" loading="lazy"></div><figcaption><b>Heute: Regel erstellen</b>Auswahlfelder statt Satz, keine Vorschau. Die Prüfung erscheint nur am großen Bildschirm.</figcaption></figure>
+      </div>
+      <ol class="befunde">
+        <li><span><b>Vier Mechanismen überlagern sich.</b><span>Regel, Verbraucher-Regel, Steuerart und Betriebsmodell steuern dieselben Geräte. Der Kunde muss wissen, welcher gilt; zwei Einführungskästen versuchen es zu erklären (<code>SteuerungIntro</code> nennt noch drei Zonen, die Seite hat vier).</span></span></li>
+        <li><span><b>Neue Regeln lassen sich am Telefon nicht aktivieren.</b><span>Unter 720 Pixeln fehlt die Prüfung zum Ausrollen (<code>FlowEditorPage.tsx</code>); der Schalter auf der Karte scheitert dann mit „Bitte zuerst simulieren“ (409). Dort steht auch noch „Automation“.</span></span></li>
+        <li><span><b>Die Reihenfolge wirkt nur beim Laden.</b><span>Auf der Box teilen sich nur Ladepunkte (und go-e) den Überschuss nach Rang. Heizstab, Pumpe und Lasten lesen denselben Überschuss unabhängig voneinander. In der Oberfläche steckt die Reihenfolge in einem Aufklapper, die Knöpfe sind 34 Pixel groß.</span></span></li>
+        <li><span><b>Kein Bild vom Tag, kein „Warum“ mit Zeit.</b><span>Es gibt Zeilen mit Zustand und Grund, aber nicht, wann ein Gerät laufen wird. Die Jetzt-Zone lädt nicht nach (nur die Uhr tickt), Fehler bei Eingriffen werden verschluckt.</span></span></li>
+        <li><span><b>Der Baukasten ist eng.</b><span>Höchstens drei Bedingungen, nur „über/unter“, Rohnamen wie <code>soc_pct</code>, kein Wetter, kein anderes Gerät, keine „günstigsten Stunden“. Der Börsenpreis ist an die Marktoptimierung gekoppelt. „Solar-Überschuss“ springt auf das falsche Gerät.</span></span></li>
+        <li><span><b>Laden ist über drei Orte verteilt.</b><span>Steuerung, Fahrplan › Ladevorgänge und Geräteseite. Der Anlagen-Standard ist nur lesbar, Vorrang-Ladepunkte haben keinen Schreibweg, ein Fahrzeug kennt kein Ziel. Eine go-e aus dem Gerätekatalog wird zur „Steuerbaren Last“ und fehlt im Ladepark.</span></span></li>
+        <li><span><b>Vorhandenes bleibt ungenutzt.</b><span><code>POST /steuerung-vorschau</code> rechnet Folgen, nur die Vorschläge nutzen es; der Knopf „Was bringt das?“ erscheint nie. Plan-Ist-Abweichung (<code>/consumer-deviation</code>) und Setzwert beim Eingriff sind ohne Oberfläche.</span></span></li>
+        <li><span><b>Alles hängt an sechs Schaltern.</b><span>Verbrauchersteuerung ist in API, Optimierer und Box standardmäßig aus (<code>VOLTPILOT_CONSUMER_CONTROL_ENABLED</code>, <code>…_POLICY_COMPILER_ENABLED</code>, <code>OPTIMIZER_CONTROLLABLE_LOADS_ENABLED</code>, <code>VOLTPILOT_V2_PLAN_SITES</code>, <code>VP_CONTROL_ENABLED</code>, <code>VP_CONSUMER_CONTROL_ENABLED</code>). Die Produktionswerte stehen nicht im Repo.</span></span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sec" id="modell">
+    <h2>Das Modell: ein Gerät, drei Zustände, ein Auftrag</h2>
+    <p class="intro">Kunden denken pro Gerät: „Was macht mein Heizstab?“ Deshalb bündelt das Konzept Steuerart, Verbraucher-Regel und Wenn/Dann-Regel eines Geräts zu seinem Smart-Auftrag. Aus und Ein sind Eingriffe mit Ende. Die Wörter folgen dem, was passiert, wie bei evcc seit September 2026.</p>
+    <div class="figs zwei">
+      <figure class="fig" id="abb-drei">
+        <svg viewBox="0 0 560 300" role="img" aria-labelledby="abb-drei-t">
+          <title id="abb-drei-t">Ein Gerät hat drei Zustände; Smart ist ein Auftrag aus vier Teilen.</title>
+          <g id="drei-geraet"><title>Das Gerät</title><rect x="20" y="118" width="120" height="64" rx="16" fill="#e9eff8"/><text x="80" y="146" text-anchor="middle" font-size="15" font-weight="800" fill="#1e293b">Heizstab</text><text x="80" y="166" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">Warmwasser</text></g>
+          <g id="drei-schalter"><title>Drei Zustände</title>
+            <rect x="180" y="30" width="120" height="44" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="240" y="57" text-anchor="middle" font-size="14" font-weight="800" fill="#475569">Aus</text>
+            <rect x="180" y="128" width="120" height="44" rx="12" fill="#1e293b"/><text x="240" y="155" text-anchor="middle" font-size="14" font-weight="800" fill="#fff">Smart</text>
+            <rect x="180" y="226" width="120" height="44" rx="12" fill="#fff" stroke="#cbd5e1"/><text x="240" y="253" text-anchor="middle" font-size="14" font-weight="800" fill="#475569">Ein</text>
+            <path d="M140 150 H180 M160 150 V52 H180 M160 150 V248 H180" fill="none" stroke="#94a3b8" stroke-width="2"/>
+          </g>
+          <text x="240" y="92" text-anchor="middle" font-size="11.5" font-weight="600" fill="#6d28d9">Eingriff, mit Ende</text>
+          <text x="240" y="290" text-anchor="middle" font-size="11.5" font-weight="600" fill="#6d28d9">Eingriff, mit Ende</text>
+          <g id="drei-auftrag"><title>Der Smart-Auftrag</title>
+            <path d="M300 150 H330" stroke="#94a3b8" stroke-width="2"/>
+            <rect x="330" y="40" width="210" height="220" rx="16" fill="#fff" stroke="#1e293b" stroke-width="1.5"/>
+            <text x="348" y="68" font-size="12" font-weight="800" fill="#475569" letter-spacing=".06em">SMART HEISST</text>
+            <rect x="346" y="80" width="178" height="36" rx="10" fill="#fef3e2"/><text x="358" y="103" font-size="13" font-weight="700" fill="#9a3412">Womit: Sonnenstrom</text>
+            <rect x="346" y="124" width="178" height="36" rx="10" fill="#dcf0f5"/><text x="358" y="147" font-size="13" font-weight="700" fill="#0e6178">Ziel: bis 60 °C</text>
+            <rect x="346" y="168" width="178" height="36" rx="10" fill="#dbe6fd"/><text x="358" y="191" font-size="13" font-weight="700" fill="#1d4ed8">Auch wenn: unter 0 ct</text>
+            <rect x="346" y="212" width="178" height="36" rx="10" fill="#f1ecfd"/><text x="358" y="235" font-size="13" font-weight="700" fill="#6d28d9">Platz 3 für Sonne</text>
+          </g>
+        </svg>
+        <figcaption>Aus und Ein gelten nur für eine gewählte Zeit (30 Min bis 4 Std, beim Laden „bis Abstecken“); danach übernimmt wieder Smart. So kann ein Eingriff nicht vergessen werden.</figcaption>
+      </figure>
+      <figure class="fig" id="abb-satz">
+        <div class="satzbau" aria-label="Der Auftrag als Satz">
+          <span class="t g"><small>Gerät</small>Heizstab</span><span class="w">läuft</span>
+          <span class="t a"><small>Womit</small>mit Sonnenstrom</span>
+          <span class="t z"><small>Ziel</small>bis 60 °C</span>
+          <span class="t b"><small>Auch wenn</small>Börsenpreis unter 0 ct</span>
+          <span class="t r"><small>Reihenfolge</small>Platz 3</span>
+        </div>
+        <ul class="legendeliste">
+          <li><i style="background:#fef3e2;box-shadow:inset 0 0 0 1.5px #e65100"></i><span><b>Womit</b> ist die bisherige Steuerart: Sonnenstrom, günstige Stunden, feste Zeiten, „fertig bis“ oder ohne Steuerung.</span></li>
+          <li><i style="background:#dcf0f5;box-shadow:inset 0 0 0 1.5px #0e7490"></i><span><b>Ziel</b> ist eine Menge, eine Laufzeit oder eine Temperatur bis zu einer Uhrzeit. Ziele gehen der Reihenfolge vor.</span></li>
+          <li><i style="background:#dbe6fd;box-shadow:inset 0 0 0 1.5px #2563eb"></i><span><b>Auch wenn / nie wenn / nur wenn / danach</b> sind die Regeln dieses Geräts, gebaut im Satzbaukasten.</span></li>
+          <li><i style="background:#f1ecfd;box-shadow:inset 0 0 0 1.5px #8b5cf6"></i><span><b>Platz</b> in der Reihenfolge entscheidet, wer Sonnenstrom zuerst bekommt, der Speicher eingeschlossen.</span></li>
+        </ul>
+        <figcaption>Die Karte in der Liste zeigt den Satz in Kurzform („Mit Sonnenstrom, bis 60 °C“), das Blatt den ganzen Auftrag.</figcaption>
+      </figure>
+      <figure class="fig" id="abb-vorrang">
+        <svg viewBox="0 0 560 290" role="img" aria-labelledby="abb-vorrang-t">
+          <title id="abb-vorrang-t">Wer gewinnt: fünf Stufen, die obere schlägt die untere.</title>
+          <g font-family="inherit">
+            <g id="v1"><title>Stufe 1</title><rect x="80" y="14" width="400" height="44" rx="12" fill="#fcebea"/><text x="100" y="41" font-size="14" font-weight="800" fill="#b91c1c">1 · Schutz</text><text x="460" y="41" font-size="12" font-weight="600" fill="#475569" text-anchor="end">Anschluss, § 14a, Geräteschutz · Box</text></g>
+            <g id="v2"><title>Stufe 2</title><rect x="100" y="68" width="360" height="44" rx="12" fill="#efe9fd"/><text x="120" y="95" font-size="14" font-weight="800" fill="#6d28d9">2 · Ihr Eingriff</text><text x="440" y="95" font-size="12" font-weight="600" fill="#475569" text-anchor="end">Aus / Ein mit Ende</text></g>
+            <g id="v3"><title>Stufe 3</title><rect x="120" y="122" width="320" height="44" rx="12" fill="#f1ecfd"/><text x="140" y="149" font-size="14" font-weight="800" fill="#7c3aed">3 · Regel</text><text x="420" y="149" font-size="12" font-weight="600" fill="#475569" text-anchor="end">„bleibt aus“ vor „ein“</text></g>
+            <g id="v4"><title>Stufe 4</title><rect x="140" y="176" width="280" height="44" rx="12" fill="#dcf0f5"/><text x="160" y="203" font-size="14" font-weight="800" fill="#0e6178">4 · Frist, feste Zeit</text><text x="400" y="203" font-size="12" font-weight="600" fill="#475569" text-anchor="end">auch mit Netz</text></g>
+            <g id="v5"><title>Stufe 5</title><rect x="160" y="230" width="240" height="44" rx="12" fill="#fef3e2"/><text x="180" y="257" font-size="14" font-weight="800" fill="#9a3412">5 · Reihenfolge</text><text x="380" y="257" font-size="12" font-weight="600" fill="#475569" text-anchor="end">Sonnenstrom</text></g>
+            <path d="M40 260 V30" stroke="#94a3b8" stroke-width="2" marker-end="url(#pf)"/>
+            <defs><marker id="pf" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#94a3b8"/></marker></defs>
+            <text x="30" y="150" font-size="11.5" font-weight="700" fill="#475569" transform="rotate(-90 30 150)" text-anchor="middle">gewinnt</text>
+          </g>
+        </svg>
+        <figcaption>Das entspricht den Rängen auf der Box (<code>edge-desired-arbitration.md</code>: Schutz 100, Netz 90, Vertrag 80, Handeingriff 75, Regel mit Pflicht 70, Plan 60, Fristersatz 50, Wunsch 40). Jede Warum-Zeile nennt die Stufe, die gerade gewinnt.</figcaption>
+      </figure>
+      <figure class="fig" id="abb-kette">
+        <svg viewBox="0 0 560 200" role="img" aria-labelledby="abb-kette-t">
+          <title id="abb-kette-t">Vom Wunsch zur Wirkung: vier getrennte Schritte.</title>
+          <g id="k1"><title>Wunsch</title><rect x="10" y="40" width="118" height="90" rx="14" fill="#f1ecfd"/><text x="69" y="72" text-anchor="middle" font-size="13.5" font-weight="800" fill="#6d28d9">Wunsch</text><text x="69" y="92" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">Cloud plant,</text><text x="69" y="108" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">Regel, Eingriff</text></g>
+          <g id="k2"><title>Box</title><rect x="150" y="40" width="118" height="90" rx="14" fill="#e9eff8"/><text x="209" y="72" text-anchor="middle" font-size="13.5" font-weight="800" fill="#1E3A5F">Box nimmt an</text><text x="209" y="92" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">Go-Core prüft</text><text x="209" y="108" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">Schutzgrenzen</text></g>
+          <g id="k3"><title>Gerät</title><rect x="290" y="40" width="118" height="90" rx="14" fill="#e3f3e8"/><text x="349" y="72" text-anchor="middle" font-size="13.5" font-weight="800" fill="#15803d">Gerät bestätigt</text><text x="349" y="92" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">Relais, Register,</text><text x="349" y="108" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">OCPP-Antwort</text></g>
+          <g id="k4"><title>Wirkung</title><rect x="430" y="40" width="118" height="90" rx="14" fill="#fef3e2"/><text x="489" y="72" text-anchor="middle" font-size="13.5" font-weight="800" fill="#9a3412">Wirkung</text><text x="489" y="92" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">gemessen, oder</text><text x="489" y="108" text-anchor="middle" font-size="11.5" font-weight="600" fill="#475569">„nicht gemessen“</text></g>
+          <path d="M128 85 H150 M268 85 H290 M408 85 H430" stroke="#94a3b8" stroke-width="2"/>
+          <text x="280" y="170" text-anchor="middle" font-size="12.5" font-weight="600" fill="#475569">Unbekannt ist keine Null: Die Wärmepumpe (SG-Ready) zeigt „Freigabe“, nie kW.</text>
+        </svg>
+        <figcaption>Diese Kette steht im Blatt jedes laufenden Geräts. Sie trennt Plan, angenommenen Auftrag, Registerantwort und gemessene Wirkung, wie es die Arbeitsregeln verlangen.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="sec" id="geraetearten">
+    <h2>Alle Gerätearten und was die Steuerung mit ihnen kann</h2>
+    <p class="intro">Technisch kennt VoltPilot sieben steuerbare Komponententypen (<code>entitytypes/catalog.json</code>), dazu Speicher, PV-Erzeuger und Schaltausgänge. Kunden denken aber an Waschmaschine und Poolpumpe. Das Konzept schlägt deshalb Gerätevorlagen vor: Der Kunde wählt, was er kennt, VoltPilot legt den passenden Typ mit einem Smart-Vorschlag an.</p>
+    <div class="tabwrap" style="margin-bottom:24px">
+      <table class="doc">
+        <thead><tr><th>Typ</th><th>Befehle</th><th>Gemessen</th><th>Smart heute (Steuerart)</th><th>Neu im Konzept</th></tr></thead>
+        <tbody>
+          <tr><th>Wallbox <code>wallbox</code></th><td>Ladestrom, ein/aus, Grenze; go-e: 1-/3-phasig</td><td>Leistung, Energie</td><td>Sofort, Überschuss (nur Sonne / Sonne + Minimum), günstig; Ziel kWh bis Uhrzeit</td><td>Aus · Smart · Schnell; go-e aus dem Katalog als Wallbox</td></tr>
+          <tr><th>Ladepunkt <code>ev-charger</code></th><td>Ladegrenze (OCPP 1.6J), Start/Stopp, Karten</td><td>Leistung, Energie, Ladestand je Ladung</td><td>wie Wallbox</td><td>Ziel je Fahrzeug, Vorrang bis Speicher-Ladestand</td></tr>
+          <tr><th>Heizstab <code>heating-rod</code></th><td>ein/aus, Sollwert, Grenze</td><td>Leistung</td><td>Überschuss, feste Zeiten, günstig, ohne; Laufzeit bis</td><td>Ziel in °C (mit Fühler), Stufen eingeben</td></tr>
+          <tr><th>Wärmepumpe <code>heat-pump-sgready</code></th><td>Anheben (SG-Ready 3)</td><td>nichts</td><td>Freigabe bei Überschuss / günstig, ohne</td><td>„Normal · Smart · Anheben“; Freigabe im Tagesbild ohne kW</td></tr>
+          <tr><th>Pumpe <code>pump</code></th><td>ein/aus, Sollwert, Grenze</td><td>Leistung</td><td>feste Zeiten, ohne; Laufzeit bis</td><td>Sonne zuerst mit Laufzeit bis Uhrzeit</td></tr>
+          <tr><th>Steuerbare Last <code>generic-load</code></th><td>ein/aus, Grenze kW oder %</td><td>Leistung</td><td>Überschuss, feste Zeiten, günstig, ohne</td><td>„Fertig bis“ (Frist), Programm am Stück, „danach“</td></tr>
+          <tr><th>Eigenes Schaltgerät <code>modbus-load</code></th><td>ein/aus oder Sollwert nach Schalttest</td><td>selbst definiert</td><td>wie Steuerbare Last</td><td>wie Steuerbare Last</td></tr>
+          <tr><th>Speicher <code>battery-hybrid</code></th><td>Sollwert, Grenze</td><td>Leistung, Ladestand</td><td>Betriebsmodell, Rangliste</td><td>Vorrang bis Ladestand; Halten/Laden als Eingriff</td></tr>
+          <tr><th>PV <code>producer</code></th><td>Grenze kW oder %</td><td>Leistung</td><td>nur Schutz (Abregelung)</td><td>bleibt Schutz, sichtbar unter „Was immer gilt“</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="katfilter" id="kat-filter" role="group" aria-label="Gruppe"></div>
+    <p class="leise" id="kat-zahl" style="margin:0 0 12px"></p>
+    <div class="kat" id="kat-grid"></div>
+    <p class="leise" style="margin-top:14px">Nicht angebunden sind heute EEBus, SG-Ready-Zustände 1 und 4, Hersteller-Schnittstellen von Wärmepumpen, stufenlose Heizstab-Regler (my-PV, Ohmpilot), ein § 14a-Empfänger, ISO 15118 und V2G. Treiber gibt es für go-e, Shelly, Ebyte M31, OCPP und selbst gebaute Modbus-Schalter.</p>
+  </section>
+
+  <section class="sec" id="bewirken">
+    <h2>Was Steuerung im EMS bewirken kann</h2>
+    <p class="intro">Sechs Ziele, jeweils mit Sätzen in der neuen Sprache. Die Marke sagt, ob es heute geht, ob einzelne Bausteine fehlen oder ob es neu gebaut werden muss.</p>
+    <div class="ucs">
+      <article class="uc"><h3><span class="ico" style="background:var(--pv-soft);color:var(--pv)"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>Sonne selbst nutzen</h3><ul>
+        <li><b>„Heizstab läuft mit Sonnenstrom, bis 60 °C.“</b>Überschuss in Wärme, der billigste Speicher.<span class="st teil"><i></i>Ziel in °C neu</span></li>
+        <li><b>„Auto: nur Sonne.“</b>Laden mit reinem Überschuss, 1- oder 3-phasig.<span class="st da"><i></i>geht heute</span></li>
+        <li><b>„Wärmepumpe anheben ab 2 kW Überschuss.“</b>SG-Ready 3, Estrich oder Puffer als Speicher.<span class="st da"><i></i>geht heute</span></li>
+        <li><b>„Überschuss nach Reihenfolge verteilen.“</b>Kein Gerät nimmt dem anderen den Strom weg.<span class="st neu"><i></i>Box verteilt heute nur an Ladepunkte</span></li>
+      </ul></article>
+      <article class="uc"><h3><span class="ico" style="background:var(--price-soft);color:#1d4ed8"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h12M4 14h9M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg></span>Kosten senken</h3><ul>
+        <li><b>„Wenn der Börsenpreis unter 10 ct/kWh liegt, Heizstab ein.“</b>Ihre Beispielregel, mit Probelauf.<span class="st teil"><i></i>heute an Marktoptimierung gekoppelt</span></li>
+        <li><b>„Waschmaschine in den 3 günstigsten Stunden.“</b>Relativ statt fester Schwelle, funktioniert jeden Tag.<span class="st teil"><i></i>Baustein neu</span></li>
+        <li><b>„Negativpreise mitnehmen.“</b>Heizstab und Auto voll, statt abzuregeln.<span class="st da"><i></i>geht heute</span></li>
+        <li><b>„Speicher lädt nachts günstig, gibt abends teuer ab.“</b>Betriebsmodell Marktoptimierung.<span class="st da"><i></i>geht heute</span></li>
+      </ul></article>
+      <article class="uc"><h3><span class="ico" style="background:var(--st-done-soft);color:var(--st-done)"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/></svg></span>Komfort sichern</h3><ul>
+        <li><b>„Familienauto +30 kWh bis 7:00.“</b>Sonne zuerst, Rest günstig, pünktlich.<span class="st da"><i></i>geht heute</span></li>
+        <li><b>„Poolpumpe 6 Std am Tag zwischen 6 und 20 Uhr.“</b>Pflicht mit Sonne zuerst.<span class="st teil"><i></i>Sonne für Pumpen neu</span></li>
+        <li><b>„Waschmaschine fertig bis 17:00, danach Trockner.“</b>Programm am Stück, Folge-Gerät.<span class="st neu"><i></i>„danach“ neu</span></li>
+        <li><b>„Szene Urlaub: Warmwasser 45 °C, Pool aus.“</b>Ein Tipp, mehrere Geräte, mit Ende.<span class="st neu"><i></i>neu</span></li>
+      </ul></article>
+      <article class="uc"><h3><span class="ico" style="background:var(--grid-soft);color:var(--grid-line)"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M2 5h20M3 3v2M7 3v2M17 3v2M21 3v2M19 5l-7 7-7-7"/></svg></span>Netz schonen, Pflichten</h3><ul>
+        <li><b>Netzanschluss nie überschreiten.</b>Ladepunkte werden gekürzt, bevor die Sicherung fällt.<span class="st da"><i></i>geht heute</span></li>
+        <li><b>§ 14a: Dimmung mit Band und Verlauf.</b>Kürzen nach Reihenfolge von unten, mindestens 4,2 kW.<span class="st neu"><i></i>heute nur beobachtet</span></li>
+        <li><b>Einspeisegrenze und Negativpreis-Abregelung.</b>Laufen immer mit.<span class="st da"><i></i>geht heute</span></li>
+        <li><b>„Nie gleichzeitig: Sauna und Schnellladen.“</b>Verriegelung für kleine Anschlüsse.<span class="st neu"><i></i>neu</span></li>
+      </ul></article>
+      <article class="uc"><h3><span class="ico" style="background:var(--batt-soft);color:var(--batt)"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg></span>Speicher klug einsetzen</h3><ul>
+        <li><b>„Speicher zuerst bis 50 %, dann die Autos.“</b>Die Frage „Wohin geht der Überschuss zuerst?“ als Satz.<span class="st teil"><i></i>Schwelle neu, Vorrang da</span></li>
+        <li><b>„Speicher nicht ins Auto entladen.“</b>Je Gerät: darf der Speicher aushelfen?<span class="st teil"><i></i>im Auftrag da, Oberfläche neu</span></li>
+        <li><b>„Wenn der Speicher unter 20 % hat, Pool-Wärmepumpe sperren.“</b>Reserve für den Abend.<span class="st da"><i></i>geht heute</span></li>
+        <li><b>Halten oder Laden als Eingriff.</b>Mit Ende, etwa vor einem Gewitter.<span class="st da"><i></i>geht heute</span></li>
+      </ul></article>
+      <article class="uc"><h3><span class="ico" style="background:var(--c-muted);color:var(--navy)"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg></span>Gewerbe</h3><ul>
+        <li><b>Lastspitze kappen: Speicher, dann Lastabwurf.</b>Kälte, Druckluft und Lüftung kurz aus, in umgekehrter Reihenfolge.<span class="st teil"><i></i>Speicher da, Lastabwurf neu</span></li>
+        <li><b>Ladepark: Firmenwagen vor Gästen.</b>Vorrang-Ladepunkte und Ladekarten.<span class="st teil"><i></i>Box da, Oberfläche neu</span></li>
+        <li><b>Kälte als Speicher.</b>Mittags tiefer kühlen, abends ruhen lassen.<span class="st neu"><i></i>neu</span></li>
+        <li><b>Prozesswärme fertig bis Schichtbeginn.</b>Frist mit Sonne zuerst.<span class="st da"><i></i>geht heute</span></li>
+      </ul></article>
+    </div>
+  </section>
+
+  <section class="sec" id="satzbaukasten">
+    <h2>Der Satzbaukasten</h2>
+    <p class="intro">Eine Regel ist ein Satz aus antippbaren Bausteinen. Jeder Baustein hat eine Farbe; der fertige Satz steht darunter in ganzen Worten. Vor dem Aktivieren läuft die Regel über heute und morgen zur Probe, danach kommt die Folgenkarte. Beides funktioniert am Telefon.</p>
+    <div class="gram">
+      <div class="gb"><span class="k">Wenn</span><b>Bedingung</b><span>Baustein, Vergleich, Wert: „Börsenpreis unter 10 ct/kWh“.</span></div>
+      <div class="gb"><span class="k">und / oder</span><b>weitere Bedingungen</b><span>Bis zu vier; ein Tipp wechselt zwischen „und“ und „oder“. Verschachtelt nur im Expertenweg.</span></div>
+      <div class="gb"><span class="k">dann</span><b>Gerät und Tat</b><span>einschalten, voll einschalten, sperren; beim Auto schnell laden oder nicht laden; bei der Wärmepumpe anheben.</span></div>
+      <div class="gb"><span class="k">nie wenn</span><b>Sperre</b><span>„Pool-Wärmepumpe nie, wenn der Speicher unter 20 % hat.“ Sperren gewinnt vor Einschalten.</span></div>
+      <div class="gb"><span class="k">nur wenn</span><b>Bedingung am Auftrag</b><span>„Klima nur, wenn über 24 °C.“ Gilt für Smart, nicht für Ihren Eingriff.</span></div>
+      <div class="gb"><span class="k">danach</span><b>Folge</b><span>„Trockner nach der Waschmaschine.“ Fertig heißt: Leistung gemessen unter der Ruheschwelle.</span></div>
+      <div class="gb"><span class="k">mindestens</span><b>Mindestlaufzeit</b><span>Verhindert Takten. Den Schaltabstand (Hysterese) wählt VoltPilot selbst und nennt ihn.</span></div>
+      <div class="gb"><span class="k">Probelauf</span><b>Pflicht vor dem Aktivieren</b><span>Wann die Bedingung erfüllt ist, wie lange das Gerät läuft, Energie und Netzkosten, Hinweise.</span></div>
+    </div>
+    <div class="tabwrap" style="margin-top:22px">
+      <table class="doc">
+        <thead><tr><th>Baustein</th><th>Einheit</th><th>Woher</th><th>Stand</th></tr></thead>
+        <tbody>
+          <tr><th>Börsenpreis</th><td>ct/kWh</td><td class="leise">Signal <code>market.spot_price_ct_kwh</code>; Flow-Knoten <code>vp.price.current</code></td><td><span class="st teil"><i></i>da, im Baukasten an Marktoptimierung gekoppelt</span></td></tr>
+          <tr><th>Mein Bezugspreis</th><td>ct/kWh</td><td class="leise"><code>market.import_price_ct_kwh</code></td><td><span class="st da"><i></i>da</span></td></tr>
+          <tr><th>Günstigste Stunden</th><td>Std</td><td class="leise">aus den Börsenpreisen vorberechnet wie Preisfenster (36 h)</td><td><span class="st teil"><i></i>Rechnung da, Baustein neu</span></td></tr>
+          <tr><th>Sonnen-Überschuss</th><td>kW</td><td class="leise"><code>site.pv_surplus_kw</code>; muss den Eigenverbrauch des gesteuerten Geräts herausrechnen</td><td><span class="st teil"><i></i>da, Rechnung korrigieren</span></td></tr>
+          <tr><th>Ladestand Speicher</th><td>%</td><td class="leise"><code>storage.soc_pct</code></td><td><span class="st da"><i></i>da</span></td></tr>
+          <tr><th>Netzbezug / Einspeisung</th><td>kW</td><td class="leise"><code>site.grid_power_kw</code></td><td><span class="st da"><i></i>da</span></td></tr>
+          <tr><th>Uhrzeit, Wochentage</th><td>Uhr</td><td class="leise">heute nur als Zeitfenster, nicht als Bedingung; halboffen, über Mitternacht erlaubt</td><td><span class="st teil"><i></i>als Baustein neu</span></td></tr>
+          <tr><th>Außentemperatur</th><td>°C</td><td class="leise"><code>/weather</code> (Open-Meteo, <code>WeatherPointDto</code>)</td><td><span class="st neu"><i></i>Daten da, Signal neu</span></td></tr>
+          <tr><th>Anderes Gerät läuft</th><td>ja/nein</td><td class="leise"><code>/consumer-status</code> als lokales Signal auf der Box</td><td><span class="st neu"><i></i>neu</span></td></tr>
+          <tr><th>Auto angesteckt</th><td>ja/nein</td><td class="leise"><code>consumer.vehicle_connected</code>; kein echter Treiber meldet es bisher</td><td><span class="st teil"><i></i>Signal da, Treiber fehlt</span></td></tr>
+          <tr><th>Messwert (Fühler)</th><td>°C, bar, l/min</td><td class="leise">selbst gebaute Modbus-Sensoren, <code>vp.entity.read</code></td><td><span class="st teil"><i></i>im Expertenweg da</span></td></tr>
+          <tr><th>Szene</th><td>an/aus</td><td class="leise">Zustand der Anlage</td><td><span class="st neu"><i></i>neu</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="reihenfolge">
+    <h2>Reihenfolge und Abhängigkeiten</h2>
+    <p class="intro">Die Geräteliste ist die Reihenfolge. Wer oben steht, bekommt den Sonnenstrom zuerst; der Speicher steht mitten drin und darf ab einem Ladestand hinter die Autos rutschen. Passt ein großes Gerät nicht mehr, darf ein kleineres weiter unten vor. Das sagt die Warum-Zeile.</p>
+    <div class="figs zwei">
+      <figure class="fig" id="abb-wasserfall">
+        <svg viewBox="0 0 560 250" role="img" aria-labelledby="abb-wf-t">
+          <title id="abb-wf-t">Sonnenstrom wird der Reihe nach verteilt; ein zu großes Gerät wird übersprungen.</title>
+          <rect x="20" y="20" width="520" height="34" rx="10" fill="#fef3e2" stroke="#e65100"/><text x="34" y="42" font-size="13" font-weight="800" fill="#9a3412">Sonne 7,9 kW</text>
+          <g id="wf-haus"><title>Haus</title><rect x="20" y="70" width="46" height="30" rx="7" fill="#94a3b8"/><text x="43" y="90" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">Haus</text></g>
+          <g id="wf-pflicht"><title>Pflichten</title><rect x="70" y="70" width="170" height="30" rx="7" fill="#0e7490"/><text x="155" y="90" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">Pflichten: Regel, Frist</text></g>
+          <g id="wf-1"><title>Platz 1</title><rect x="244" y="70" width="10" height="30" rx="3" fill="#16a34a"/></g>
+          <g id="wf-2"><title>Platz 2</title><rect x="258" y="70" width="170" height="30" rx="7" fill="#f59e0b"/><text x="343" y="90" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">2 · Auto 3,1 kW</text></g>
+          <text x="248" y="122" font-size="11.5" font-weight="700" fill="#166534">1 · Speicher voll</text>
+          <g id="wf-4"><title>Platz 4 übersprungen</title><rect x="258" y="140" width="130" height="30" rx="7" fill="#fff" stroke="#b45309" stroke-dasharray="4 3"/><text x="323" y="160" text-anchor="middle" font-size="11" font-weight="800" fill="#b45309">4 · Wärmepumpe 2 kW</text></g>
+          <text x="400" y="160" font-size="11.5" font-weight="700" fill="#b45309">passt nicht, wartet</text>
+          <g id="wf-5"><title>Platz 5 darf vor</title><rect x="432" y="70" width="40" height="30" rx="7" fill="#f59e0b"/><text x="452" y="90" text-anchor="middle" font-size="10.5" font-weight="800" fill="#fff">5</text></g>
+          <text x="432" y="122" font-size="11.5" font-weight="700" fill="#9a3412">5 · Pool 0,75 kW darf vor</text>
+          <rect x="476" y="70" width="64" height="30" rx="7" fill="#e2f6f5"/><text x="508" y="90" text-anchor="middle" font-size="11" font-weight="800" fill="#036672">Netz</text>
+          <text x="20" y="210" font-size="12.5" font-weight="600" fill="#475569">Ein Gerät startet ab seiner Schwelle und hört unter ¾ davon auf. Der Überschuss</text>
+          <text x="20" y="228" font-size="12.5" font-weight="600" fill="#475569">rechnet das gesteuerte Gerät heraus, sonst schaltet es sich selbst wieder ab.</text>
+        </svg>
+        <figcaption>Heute verteilt die Box nur an Ladepunkte nach Rang; alle anderen Geräte lesen denselben Überschuss für sich. Das Konzept braucht einen Verteiler für alle Geräte in der Box (Stufe 5).</figcaption>
+      </figure>
+      <div class="fig" id="abh">
+        <h3>Sechs Arten, Dinge voneinander abhängig zu machen</h3>
+        <div class="tabwrap" style="border:0">
+          <table class="doc" style="min-width:0">
+            <tbody>
+              <tr><th>Reihenfolge</th><td>Wer Sonnenstrom zuerst bekommt; bei knapper Leistung auch am Netzanschluss und bei § 14a (dann von unten gekürzt).</td></tr>
+              <tr><th>Nur wenn</th><td>Bedingung am Auftrag: „Pool-Wärmepumpe nur, wenn die Poolpumpe läuft.“</td></tr>
+              <tr><th>Nie wenn</th><td>Sperre: „Klima nie, wenn der Speicher unter 20 % hat.“</td></tr>
+              <tr><th>Danach</th><td>Folge: „Trockner nach der Waschmaschine.“ Der Plan legt den Trockner hinter das Ende.</td></tr>
+              <tr><th>Nie gleichzeitig</th><td>Verriegelung zweier Geräte für kleine Anschlüsse. Neu.</td></tr>
+              <tr><th>Szene</th><td>Ein Zustand der Anlage, den Regeln abfragen können: „wenn Szene Urlaub an ist“.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="cap">Abhängigkeiten sind Wünsche. Die Box entscheidet vor Ort und hält ihre Schutzgrenzen (Mindestlaufzeit, Pause, Starts je Tag) immer ein.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="laden">
+    <h2>Laden an einem Ort</h2>
+    <p class="intro">Der Reiter „Laden“ erscheint, sobald es einen Ladepunkt gibt. Er ersetzt die verstreuten Teile (Steuerung, Fahrplan › Ladevorgänge, Geräteseite) für die tägliche Bedienung; die Ladevorgänge bleiben als Verlauf erreichbar.</p>
+    <div class="tabwrap">
+      <table class="doc">
+        <thead><tr><th>Im Konzept</th><th>Bedeutung</th><th>Heute im System</th></tr></thead>
+        <tbody>
+          <tr><th>Aus</th><td>Pausiert bis zum Abstecken oder zur gewählten Zeit, dann wieder Smart.</td><td class="leise"><code>POST /charging-boost</code> Aktion <code>pause</code> (höchstens 240 Min)</td></tr>
+          <tr><th>Smart · nur Sonne</th><td>Lädt nur mit Überschuss, pausiert sonst.</td><td class="leise">Steuerart <code>ueberschuss</code>, Modus <code>pausieren</code>; Box-Spur <code>nur_sonne</code></td></tr>
+          <tr><th>Smart · Sonne + Minimum</th><td>Immer mindestens 1,4 kW, Sonne kommt dazu.</td><td class="leise"><code>ueberschuss</code> + <code>mindestleistung</code>; Spur <code>sonne_zuerst</code></td></tr>
+          <tr><th>Smart · günstig</th><td>Lädt unter einer Preisgrenze.</td><td class="leise">Steuerart <code>guenstig</code></td></tr>
+          <tr><th>Ladeziel</th><td>+kWh bis Uhrzeit: Sonne zuerst, Rest in den günstigsten Stunden; Plan sofort sichtbar.</td><td class="leise">Ziel <code>bis_uhrzeit</code> (<code>flexible_task</code>, <code>required_by_deadline</code>)</td></tr>
+          <tr><th>Schnell</th><td>So schnell es geht, nur für diese Ladung; „immer so“ ist die Steuerart Sofort.</td><td class="leise">Boost <code>voll</code> bzw. Steuerart <code>sofort</code>; Spur <code>schnell</code></td></tr>
+          <tr><th>Speicher zuerst bis …</th><td>„Der Speicher hat Vorrang, solange er unter 50 % ist.“</td><td class="leise"><code>storage_priority</code> nur ja/nein; Schwelle neu</td></tr>
+          <tr><th>Fahrzeuge</th><td>Einstellung und Ziel je Ladekarte.</td><td class="leise">Profil je Karte (<code>tagref_…</code>) nur Sofort/Überschuss; Ziel neu</td></tr>
+          <tr><th>Netzanschluss</th><td>Band mit Haus, Laden, frei, Abstand; Verteilung nach Reihenfolge oder im Wechsel.</td><td class="leise"><code>/chargers</code>, <code>/charging-config</code>; <code>PUT</code> nimmt <code>priorityChargePointIds</code> schon an, die Oberfläche schreibt nur die Grenze</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="leise" style="margin-top:12px">Ehrlich bleiben: Den Ladestand des Autos kennt VoltPilot nicht (OCPP meldet ihn höchstens je Ladung). Das Ziel ist deshalb eine Menge in kWh, mit ungefähren Kilometern. Die Aufschrift „Sonne zuerst, Netz wenn günstig“ der Box verspricht eine Preislogik, die <code>lastmgmt</code> nicht hat; das Konzept trennt „Sonne + Minimum“ und „günstig“.</p>
+  </section>
+
+  <section class="sec" id="wettbewerb">
+    <h2>Wie es andere machen</h2>
+    <p class="intro">Aus Anleitungen, Versionshinweisen, Übersetzungsdateien und Foren (Stand 29.09.2026). Die Bildschirme sind aus diesen Quellen erschlossen, nicht selbst bedient.</p>
+    <div class="wett">
+      <article class="wk"><h3>evcc</h3><p>Seit v0.316 (September 2026) drei Zustände je Gerät, benannt nach dem Ergebnis: Aus · Smart · Schnell, bei Wärmepumpen Normal · Smart · Boost. Ein Sonnenanteil-Regler ersetzt Watt-Schwellen. Speicher-Vorrang als Satz.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Drei Zustände, Warum-Zeile mit Countdown, „Wohin geht der Überschuss zuerst?“, § 14a-Band mit Verlauf.</span></div><div class="lassen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg><span>Prioritäten als Zahlen in der Konfigurationsdatei.</span></div><a href="https://docs.evcc.io/en/blog/2026/09/25/highlights-smart-battery-solar-share/" rel="noopener">docs.evcc.io</a></article>
+      <article class="wk"><h3>SMA Sunny Home Manager</h3><p>Laufzeitfenster je Gerät: „muss laufen“ oder „kann laufen“. Die Tagesansicht zeigt helle Balken für angefragt, dunkle für gelaufen.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Pflicht vor Reihenfolge; Plan und Ist in einem Bild.</span></div><div class="lassen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg><span>Priorität als Regler „hoch … niedrig“, ohne die entstehende Reihenfolge zu zeigen.</span></div><a href="https://manuals.sma.de/HM-20/en-US/9297587467.html" rel="noopener">manuals.sma.de</a></article>
+      <article class="wk"><h3>SOLARWATT Manager flex</h3><p>Prioritätsliste mit Ziehgriff, Batterie fest oben. Je Gerät Schaltschwelle, Mindestlaufzeit, Mindestruhezeit, Laufzeit pro Tag.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Eine Liste mit Griff.</span></div><div class="lassen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg><span>Speicher unverrückbar; bei VoltPilot verschiebbar, mit Schwelle.</span></div><a href="https://www.solarwatt.de/betriebsanleitungen/solarwatt-manager/solarwatt-manager-portal/optimierung" rel="noopener">solarwatt.de</a></article>
+      <article class="wk"><h3>Solar Manager</h3><p>Priorität per Griff. Die Regelung schaltet immer das oberste Gerät, dessen Einschaltleistung verfügbar ist; ein kleineres darf vor.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>„Vorrücken“ erklären statt verschweigen.</span></div><a href="https://solarmanager.zohodesk.com/portal/de/kb/articles/wie-funktioniert-die-regelung-vom-energiemanager" rel="noopener">solarmanager.ch</a></article>
+      <article class="wk"><h3>SolarEdge ONE</h3><p>Die Rangfolge der Gerätemodi ist veröffentlicht: Manuell vor Zeitplan vor „Smart Save“ vor Überschuss.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>„Wer gewinnt?“ sichtbar machen.</span></div><a href="https://knowledge-center.solaredge.com/sites/kc/files/se-smart-energy-configurations-and-operations-application-note-row.pdf" rel="noopener">solaredge.com</a></article>
+      <article class="wk"><h3>Home Assistant 2026.7</h3><p>Automationen nach Absicht mit Zweck-Bausteinen; Verlauf der letzten fünf Läufe; Vorlagen (Blueprints), deren Updates weitergegeben werden.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Vorlagen vor freier Regel; Verlauf je Regel.</span></div><div class="lassen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg><span>Leere Leinwand als Einstieg.</span></div><a href="https://www.home-assistant.io/blog/2026/07/01/release-20267/" rel="noopener">home-assistant.io</a></article>
+      <article class="wk"><h3>Homey</h3><p>Wenn/Und/Dann-Karten; Nutzer bestimmen, was „günstig“ heißt. Klage: Und- und Dann-Karten sehen gleich aus.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Farbige Bausteine: Bedingung blau, Gerät violett.</span></div><a href="https://community.homey.app/t/advanced-flow-ux-improvement-different-colour-cards-for-when-and-then/70110" rel="noopener">community.homey.app</a></article>
+      <article class="wk"><h3>OpenEMS / FEMS</h3><p>Betriebsweisen als „Apps“; beim dynamischen Tarif farbige Bänder über den Preisbalken, Ladestand als Linie.</p><div class="nehmen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Preis, Plan und Ladestand in einem Band.</span></div><a href="https://docs.fenecon.de/de/fems/fems-app/App_TOU.html" rel="noopener">docs.fenecon.de</a></article>
+      <article class="wk"><h3>Tibber, Octopus, Victron, Enphase</h3><p>Ziel und Abfahrt mit Plan nach dem Anstecken sind gelernt. Zugleich die häufigsten Klagen: Auto morgens nicht geladen, fremde Zeitpläne, KI ohne Warum.</p><div class="lassen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg><span>Blackbox. Jede Entscheidung braucht einen Satz.</span></div><a href="https://octopus.energy/blog/intelligent-go-faqs/" rel="noopener">octopus.energy</a></article>
+    </div>
+    <ul class="muster">
+      <li><b>Benannt nach dem Ergebnis.</b> Aus · Smart · Ein statt Quellenwörtern; Feineinstellung steckt in Smart.</li>
+      <li><b>Ziele statt Mechanik.</b> „+30 kWh bis 7:00“ und „60 °C“, nicht Watt und Verzögerung.</li>
+      <li><b>Eine sortierbare Liste</b> beantwortet „Wohin geht der Überschuss zuerst?“, mit Griff und Pfeilen.</li>
+      <li><b>Folgen live.</b> Probelauf beim Bauen, Folgenkarte vor dem Aktivieren.</li>
+      <li><b>Warum mit Zeit.</b> Jede Zeile nennt Grund und nächstes Ereignis.</li>
+      <li><b>Eingriffe laufen aus.</b> „Nur für diese Ladung“, sonst eine Dauer.</li>
+      <li><b>Netzbetreiber-Ereignisse sichtbar.</b> § 14a als Band mit Ende und Verlauf.</li>
+      <li><b>Vorlagen vor freien Regeln.</b> Der Expertenweg bleibt für Sonderfälle.</li>
+    </ul>
+  </section>
+
+  <section class="sec" id="regeln-im-bild">
+    <h2>Regeln im Bild</h2>
+    <ul class="regeln">
+      <li><b>Wunsch, Auftrag, Antwort, Wirkung getrennt</b><span>Die Kette im Geräteblatt; nie ein Häkchen für eine Wirkung, die niemand gemessen hat.</span></li>
+      <li><b>Unbekannt ist keine Null</b><span>„nicht gemessen“ statt kW, „—“ mit Grund. Fehlen die Preise für morgen, schaltet eine Preisregel dort nicht.</span></li>
+      <li><b>Gemessenes ändert sich nie</b><span>Neue Einstellungen rechnen ab jetzt. Das Tagesbild links von „jetzt“ bleibt.</span></li>
+      <li><b>Folgen vor jedem Aktivieren</b><span>Regel, Szene, Eingriff, Reihenfolge, Betriebsmodell. Ausschalten fragt nie nach.</span></li>
+      <li><b>Jeder Eingriff hat ein Ende</b><span>30 Min bis 4 Std oder „bis Abstecken“; danach Smart. Die Box begrenzt ohnehin auf 4 Std.</span></li>
+      <li><b>Farbe heißt Herkunft</b><span>Sonne orange, Speicher grün, Netz petrol; schraffiert ist Plan. Wort und Legende tragen die Bedeutung mit.</span></li>
+      <li><b>Keine Taste, die nicht wirken kann</b><span>Ohne Schreibfreigabe oder Verbindung steht statt der Taste der Grund.</span></li>
+      <li><b>Kundensprache</b><span>Regel, Betriebsmodell, Komponente, Ladestand, Börsenpreis. Kein Slot, Edge, SoC, Automation.</span></li>
+      <li><b>Bedienbar ohne Ziehen</b><span>Pfeile mit 44 Pixeln, Tastatur im Tagesbild (Pfeile, Pos1, Ende, Esc), Haptik nur als Zugabe.</span></li>
+      <li><b>Keine Zahl ohne Einheit</b><span>kW für jetzt, kWh für Mengen, ct/kWh für Preise, € nur als Börsenpreis-Näherung.</span></li>
+    </ul>
+  </section>
+
+  <section class="sec" id="rechner">
+    <h2>Am Rechner</h2>
+    <p class="intro">Dieselbe Seite ab 900 Pixeln Inhaltsbreite: links Jetzt, Tagesbild und „Was immer gilt“, rechts die Geräte in ihrer Reihenfolge. Blätter werden zum zentrierten Dialog. Die Vorschau folgt dem gewählten Reiter.</p>
+    <div class="deskwrap"><div class="desk-outer" id="desk-outer" inert><div class="desk" id="desk"><div id="desk-app"></div></div></div><p class="desk-note">Verkleinerte Vorschau von 1200 Pixeln Breite, nicht bedienbar.</p></div>
+  </section>
+
+  <section class="sec" id="umsetzung">
+    <h2>Daten und Umsetzung</h2>
+    <p class="intro">Vieles liegt schon im Backend. Die Stufen bauen so auf, dass jede allein ausgeliefert werden kann. Neue Tabellenfelder brauchen neue Flyway-Versionen, neue Signale eine additive Vertragsversion.</p>
+    <div class="tabwrap" style="margin-bottom:24px">
+      <table class="doc">
+        <thead><tr><th>Angabe</th><th>Quelle</th><th>Stand</th></tr></thead>
+        <tbody>
+          <tr><th>Jetzt, Warum</th><td class="leise"><code>/consumer-status</code> (etwa 20 Grundcodes), <code>/control-status</code>, <code>/schedule</code></td><td><span class="st da"><i></i>vorhanden</span></td></tr>
+          <tr><th>Tagesbild, gemessen</th><td class="leise"><code>/history?range=day</code>, Verlauf je Komponente</td><td><span class="st teil"><i></i>vorhanden, Last prüfen</span></td></tr>
+          <tr><th>Tagesbild, Plan</th><td class="leise"><code>/consumer-schedule</code> (v2-Plan, 15 Min, <code>on_off</code>/<code>setpoint_kw</code>)</td><td><span class="st teil"><i></i>vorhanden, im Portal ungenutzt</span></td></tr>
+          <tr><th>Reihenfolge</th><td class="leise"><code>/verbraucher</code> (Rangliste), <code>PUT /rangliste</code></td><td><span class="st da"><i></i>vorhanden</span></td></tr>
+          <tr><th>Folgen und Probelauf</th><td class="leise"><code>POST /steuerung-vorschau</code>; Flow-Simulation</td><td><span class="st teil"><i></i>vorhanden, erweitern auf Regelentwurf</span></td></tr>
+          <tr><th>Eingriffe</th><td class="leise"><code>/consumers/{id}/override</code>, <code>/charging-boost</code>, <code>/battery-override</code>, <code>/automation-pause</code></td><td><span class="st da"><i></i>vorhanden</span></td></tr>
+          <tr><th>Laden</th><td class="leise"><code>/chargers</code>, <code>/charging-config</code>, <code>/fahrzeuge</code></td><td><span class="st teil"><i></i>Backend da, Oberfläche neu</span></td></tr>
+          <tr><th>Smart-Auftrag</th><td class="leise"><code>PUT /verbraucher/{id}/steuerart</code>, <code>consumer_policy</code> (Baum mit <code>any</code>/<code>all</code>/<code>not</code>, <code>reset_value</code>)</td><td><span class="st teil"><i></i>vorhanden, Baukasten neu</span></td></tr>
+          <tr><th>Neue Signale</th><td class="leise">Außentemperatur, anderes Gerät, günstigste Stunden, Szene, fertig-Erkennung</td><td><span class="st neu"><i></i>neu</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ol class="schritte">
+      <li><span><b>Reiter und Jetzt, ohne neues Backend.</b> <span>Reiter Geräte · Laden · Regeln. Jetzt-Kopf mit Sonnenstrom-Leiste, Warum-Zeile aus den Grundcodes, Nachladen alle 10 s, sichtbare Fehler. Geräteliste = Rangliste mit ▲ ▼ und Griff, Folgen über <code>/steuerung-vorschau</code>. Aus · Smart · Ein auf die vorhandenen Eingriffe gelegt. Die zwei Einführungskästen entfallen.</span></span></li>
+      <li><span><b>Tagesbild.</b> <span>Gemessen aus dem Verlauf, geplant aus <code>/consumer-schedule</code>, gefärbt nach Herkunft; Wischen, Tasten, Auswahl. Zu prüfen: Last des Verlaufs je Komponente und ob Anlagen ohne v2-Plan ein leeres Bild ehrlich erklären.</span></span></li>
+      <li><span><b>Laden an einem Ort.</b> <span>Reiter Laden mit Aus · Smart · Schnell, Quelle, Ladeziel mit Plan, Netzanschluss-Band. <code>PUT /charging-config</code> für Vorrang-Ladepunkte und Speicher-Vorrang nutzen; Schwelle „Speicher bis x %“ neu (Box-Spur, Migration). go-e aus dem Katalog als <code>wallbox</code> anlegen.</span></span></li>
+      <li><span><b>Satzbaukasten am Telefon.</b> <span>Ein Baukasten auf <code>consumer_policy</code> statt zwei (Flow-Builder und Verbraucher-Regel); Probelauf und Folgenkarte im Blatt; Aktivieren am Telefon. Börsenpreis als Bedingung ohne Kopplung an die Marktoptimierung (E5). Der freie Editor bleibt für Fortgeschrittene.</span></span></li>
+      <li><span><b>Neue Bausteine und Verteiler.</b> <span>Signale für Außentemperatur, anderes Gerät, günstigste Stunden, fertig. Auf der Box: Überschuss nach Rang für alle Geräte, <code>site.pv_surplus_kw</code> ohne das gesteuerte Gerät. Ziele in °C mit Fühler; Frist für Steuerbare Lasten; Sonne für Pumpen.</span></span></li>
+      <li><span><b>Szenen, Gewerbe, Netzbetreiber.</b> <span>Szenen mit Ende, Verriegelung „nie gleichzeitig“, Lastabwurf bei Lastspitze, § 14a-Band mit Verlauf (Empfänger später), Benachrichtigungen, sobald es einen Zustellweg gibt.</span></span></li>
+    </ol>
+    <h3 style="margin-top:28px">Risiken</h3>
+    <ul class="regeln">
+      <li><b>Sechs Schalter</b><span>Vor jeder Stufe die tatsächliche Produktionskonfiguration der sechs Flags prüfen; sonst zeigt die Seite Wünsche, die nie ankommen.</span></li>
+      <li><b>Ohne Cloud</b><span>Offline führt die Box heute nur Fristen aus. Neue Regeln müssen als lokale Knoten auf der Box laufen oder ihr Offline-Verhalten nennen.</span></li>
+      <li><b>Schreibfreigabe</b><span>Steuern nur für freigegebene Modelle; Simulator-Nachweise ersetzen keinen Prüfstand. Die meisten Typen sind <code>simulator_only</code>.</span></li>
+      <li><b>Eine Regel je Gerät (V-5)</b><span>Bleibt gewahrt: Alle Bedingungen eines Geräts landen in seinem einen Auftrag.</span></li>
+    </ul>
+  </section>
+
+  <section class="sec" id="entscheidungen">
+    <h2>Offene Entscheidungen</h2>
+    <p class="intro">Der Prototyp zeigt jeweils Option A. Antworten auswählen und übernehmen; in Lavish landen sie als Rückmeldung, sonst werden sie kopiert und können in den Chat eingefügt werden.</p>
+    <form id="ent-form" class="ents">
+      <fieldset class="ent" data-id="E1" data-lavish-question="E1 Drei Zustände">
+        <legend><span class="id">E1</span>Wie bedient man ein Gerät?</legend>
+        <label class="opt"><input type="radio" name="E1" value="A: Aus · Smart · Ein je Gerät" checked><span><b>A · Aus · Smart · Ein</b><span class="emp">empfohlen</span><span>Wie evcc seit September 2026. Aus und Ein sind Eingriffe mit Ende, Smart ist der Auftrag.</span></span></label>
+        <label class="opt"><input type="radio" name="E1" value="B: Steuerart-Karten wie heute"><span><b>B · Steuerart-Karten wie heute</b><span>Fünf Arten zur Auswahl, Eingriffe getrennt im Menü „Eingreifen“.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E2" data-lavish-question="E2 Reihenfolge">
+        <legend><span class="id">E2</span>Für wen gilt die Reihenfolge?</legend>
+        <label class="opt"><input type="radio" name="E2" value="A: alle Geräte und Speicher, Verteiler in der Box" checked><span><b>A · Für alle Geräte</b><span class="emp">empfohlen</span><span>Eine Liste mit Speicher; die Box verteilt den Überschuss nach Rang an alle. Braucht den Verteiler in der Box (Stufe 5).</span></span></label>
+        <label class="opt"><input type="radio" name="E2" value="B: nur Ladepunkte und Speicher wie heute"><span><b>B · Nur Laden und Speicher</b><span>Wie heute. Andere Geräte schalten nur nach eigener Schwelle und können sich gegenseitig Strom nehmen.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E3" data-lavish-question="E3 Regeln im Auftrag">
+        <legend><span class="id">E3</span>Wo leben Regeln?</legend>
+        <label class="opt"><input type="radio" name="E3" value="A: im Auftrag des Geräts, Liste im Reiter Regeln" checked><span><b>A · Im Auftrag des Geräts</b><span class="emp">empfohlen</span><span>„Auch wenn“, „nie wenn“, „nur wenn“, „danach“ gehören zum Gerät; der Reiter Regeln zeigt alle. Ein Steuerer je Gerät bleibt gewahrt.</span></span></label>
+        <label class="opt"><input type="radio" name="E3" value="B: eigene Objekte wie heute"><span><b>B · Eigene Objekte</b><span>Regeln bleiben neben der Steuerart; höchstens eine je Gerät.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E4" data-lavish-question="E4 Reiter">
+        <legend><span class="id">E4</span>Eine Seite oder Reiter?</legend>
+        <label class="opt"><input type="radio" name="E4" value="A: Reiter Geräte · Laden · Regeln" checked><span><b>A · Drei Reiter</b><span class="emp">empfohlen</span><span>Laden nur, wenn es Ladepunkte gibt. Kurze Seiten am Telefon.</span></span></label>
+        <label class="opt"><input type="radio" name="E4" value="B: eine lange Seite"><span><b>B · Eine Seite</b><span>Alles untereinander mit Sprungmarken.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E5" data-lavish-question="E5 Börsenpreis">
+        <legend><span class="id">E5</span>Darf jede Anlage auf den Börsenpreis reagieren?</legend>
+        <label class="opt"><input type="radio" name="E5" value="A: ja, mit Hinweis auf den eigenen Tarif" checked><span><b>A · Ja</b><span class="emp">empfohlen</span><span>Der Börsenpreis ist als Signal da. Ohne dynamischen Tarif sagt der Probelauf, dass es nur um die Börse geht.</span></span></label>
+        <label class="opt"><input type="radio" name="E5" value="B: nur mit Marktoptimierung wie heute"><span><b>B · Nur mit Marktoptimierung</b><span>Wie heute gesperrt mit „sprechen Sie uns an“.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E6" data-lavish-question="E6 Szenen">
+        <legend><span class="id">E6</span>Szenen?</legend>
+        <label class="opt"><input type="radio" name="E6" value="A: Urlaub, Unterwegs, Sparen mit Ende" checked><span><b>A · Ja, mit Ende</b><span class="emp">empfohlen</span><span>Ein Tipp, mehrere Geräte; Ende als Datum; Regeln können eine Szene abfragen.</span></span></label>
+        <label class="opt"><input type="radio" name="E6" value="B: keine Szenen"><span><b>B · Keine</b><span>Nur Regeln und Eingriffe.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E7" data-lavish-question="E7 Ladeziel">
+        <legend><span class="id">E7</span>Wie lautet ein Ladeziel?</legend>
+        <label class="opt"><input type="radio" name="E7" value="A: Menge in kWh bis Uhrzeit" checked><span><b>A · kWh bis Uhrzeit</b><span class="emp">empfohlen</span><span>Ehrlich, weil der Ladestand des Autos unbekannt ist; mit ungefähren Kilometern.</span></span></label>
+        <label class="opt"><input type="radio" name="E7" value="B: Ladestand in % bis Uhrzeit, wo gemeldet"><span><b>B · Prozent, wo gemeldet</b><span>Nur mit Fahrzeug-Schnittstelle oder ISO 15118; sonst zurück auf kWh.</span></span></label>
+      </fieldset>
+      <fieldset class="ent" data-id="E8" data-lavish-question="E8 Gerätevorlagen">
+        <legend><span class="id">E8</span>Womit legt der Kunde ein Gerät an?</legend>
+        <label class="opt"><input type="radio" name="E8" value="A: Gerätevorlagen in Kundensprache" checked><span><b>A · Gerätevorlagen</b><span class="emp">empfohlen</span><span>Waschmaschine, Poolpumpe, Klimagerät … legen den Typ und einen Smart-Vorschlag an.</span></span></label>
+        <label class="opt"><input type="radio" name="E8" value="B: technischer Typ wie heute"><span><b>B · Technischer Typ</b><span>Sieben Typen mit „Was ist das?“.</span></span></label>
+      </fieldset>
+      <div class="ent-send">
+        <button type="submit" class="btn">Antworten übernehmen</button>
+        <span class="ent-status" id="ent-status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+  </section>
+
+  <footer class="fuss">
+    <p>Prototyp, kein Teil des Portal-Bundles. Alle Zahlen sind erfunden; die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures. Neu bauen mit <code>python3 docs/konzepte/steuerung/build.py</code>; besprechen mit <code>npx -y lavish-axi docs/konzepte/steuerung/prototyp.html</code>.</p>
+  </footer>
+</div>
