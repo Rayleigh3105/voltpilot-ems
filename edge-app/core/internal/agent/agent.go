@@ -2259,6 +2259,90 @@ func applyControlConfirm(info *state.ControlInfo, prev *state.ControlInfo, cycle
 	}
 }
 
+// controlReadbackMsg is the primary control readback as the core parses it
+// from edge/control/readback. Layer 1 publishes it through the palette node
+// vp-control-readback, whose shape() forwards a FIXED field list: a JSON name
+// read here that shape() cannot emit never arrives (Herzogau F11, 29.09.2026).
+// TestControlReadbackReadsOnlyWhatThePaletteForwards pins both against
+// docs/contracts/v2/control-readback-vectors.json.
+type controlReadbackMsg struct {
+	Ts             string `json:"ts"`
+	Family         string `json:"family"`
+	Source         string `json:"source"`
+	SlotStart      string `json:"slot_start"`
+	Mode           string `json:"mode"`
+	ControlEnabled bool   `json:"control_enabled"`
+	Certified      bool   `json:"certified"`
+	// AllMatch is TRI-STATE since the flap fix: nil = the cycle produced NO
+	// verdict (the inverter did not answer the readback). An older Layer-1 build
+	// sends a plain bool, so nil there means "no verdict" too - never "mismatch".
+	AllMatch *bool `json:"all_match"`
+	// Verify / UnreadRoles / VerifyReason are the Layer-1 cycle verdict
+	// (readback-verify.js). Absent on an older build -> derived from AllMatch.
+	Verify        string   `json:"verify"`
+	UnreadRoles   []string `json:"unread_roles"`
+	VerifyReason  string   `json:"verify_reason"`
+	MismatchRoles []string `json:"mismatch_roles"`
+	// ControlPath names WHICH Deye control surface drove this write - "remote"
+	// (the Tier-2 register block 1100-1121) or "tou" (the legacy Time-of-Use
+	// synthesis). Empty for every other adapter. Purely informational.
+	ControlPath string `json:"control_path"`
+	// RemoteStatusRaw is the Deye remote-control STATUS register (1121), a
+	// read-only OBSERVATION deliberately kept OUT of Registers so it can never
+	// fabricate or break all_match. nil = not read (not the remote path).
+	RemoteStatusRaw *int `json:"remote_status_raw"`
+	// Blocked/Reason: the control plan was EMPTY because something is WRONG
+	// (unknown nameplate / power scale). A blocked readback carries no registers
+	// (there was nothing to write/read) - it exists to show the CAUSE on the
+	// :8484 card instead of an eternal "warte auf Rückmeldung" (Defect 2).
+	Blocked        bool   `json:"blocked"`
+	Reason         string `json:"reason"`
+	DualController struct {
+		OnlyControllerRequired bool   `json:"only_controller_required"`
+		PossibleConflict       bool   `json:"possible_conflict"`
+		Reason                 string `json:"reason"`
+	} `json:"dual_controller"`
+	// Native is the additive evidence block of the native self-regulation:
+	// Layer 1 states whether it really ran the native primitive and what the
+	// device answered about its own grid-charging configuration. Absent for
+	// every other cycle and for an older Layer-1 build.
+	Native struct {
+		GridChargeBlocked *bool `json:"grid_charge_blocked"`
+		// Intent (K4b) is the intent word the executed primitive realises.
+		Intent string `json:"intent"`
+		// CurtailsOwnPv / Candidate (K5): the proven primitive's PV side
+		// effect and which hand-over candidate ran.
+		CurtailsOwnPv bool   `json:"curtails_own_pv"`
+		Candidate     string `json:"candidate"`
+	} `json:"native"`
+	// NativeRefusal (K5) is Layer 1's reason why a wanted native mode did
+	// not engage (absent on an older Layer 1 and on every native cycle).
+	NativeRefusal string `json:"native_refusal"`
+	// Wrote (Deye executor) - did this cycle write a register (K5 pilot).
+	Wrote bool `json:"wrote"`
+	// NativeCapabilities (K4b) is Layer 1's report of the CERTIFIED levers
+	// of the current selection; absent on a pre-K4b Layer 1.
+	NativeCapabilities *state.NativeCapabilities `json:"native_capabilities"`
+	// NativePrecondition is the same device answer read BEFORE the hand-over
+	// (the executor's precondition read on a cycle the follower still
+	// carried). Absent on every other cycle and on an older Layer-1 build.
+	NativePrecondition struct {
+		GridChargeBlocked *bool `json:"grid_charge_blocked"`
+	} `json:"native_precondition"`
+	Registers []struct {
+		Role         string   `json:"role"`
+		Fc           int      `json:"fc"`
+		Addr         int      `json:"addr"`
+		CommandedRaw int      `json:"commanded_raw"`
+		CommandedKw  *float64 `json:"commanded_kw"`
+		ActualRaw    *int     `json:"actual_raw"`
+		ActualKw     *float64 `json:"actual_kw"`
+		Match        bool     `json:"match"`
+		Verdict      string   `json:"verdict"`
+		Note         string   `json:"note"`
+	} `json:"registers"`
+}
+
 // onControlReadback ingests one control readback from Layer 1 (edge/control/
 // readback): the per-register commanded-vs-actual result of a control write. It
 // is stored in the Snapshot for the :8484 "Steuerung & Bestätigung" card and
@@ -2275,83 +2359,7 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		a.onCurtailReadback(payload)
 		return
 	}
-	var m struct {
-		Ts             string `json:"ts"`
-		Family         string `json:"family"`
-		Source         string `json:"source"`
-		SlotStart      string `json:"slot_start"`
-		Mode           string `json:"mode"`
-		ControlEnabled bool   `json:"control_enabled"`
-		Certified      bool   `json:"certified"`
-		// AllMatch is TRI-STATE since the flap fix: nil = the cycle produced NO
-		// verdict (the inverter did not answer the readback). An older Layer-1 build
-		// sends a plain bool, so nil there means "no verdict" too - never "mismatch".
-		AllMatch *bool `json:"all_match"`
-		// Verify / UnreadRoles / VerifyReason are the Layer-1 cycle verdict
-		// (readback-verify.js). Absent on an older build -> derived from AllMatch.
-		Verify        string   `json:"verify"`
-		UnreadRoles   []string `json:"unread_roles"`
-		VerifyReason  string   `json:"verify_reason"`
-		MismatchRoles []string `json:"mismatch_roles"`
-		// ControlPath names WHICH Deye control surface drove this write - "remote"
-		// (the Tier-2 register block 1100-1121) or "tou" (the legacy Time-of-Use
-		// synthesis). Empty for every other adapter. Purely informational.
-		ControlPath string `json:"control_path"`
-		// RemoteStatusRaw is the Deye remote-control STATUS register (1121), a
-		// read-only OBSERVATION deliberately kept OUT of Registers so it can never
-		// fabricate or break all_match. nil = not read (not the remote path).
-		RemoteStatusRaw *int `json:"remote_status_raw"`
-		// Blocked/Reason: the control plan was EMPTY because something is WRONG
-		// (unknown nameplate / power scale). A blocked readback carries no registers
-		// (there was nothing to write/read) - it exists to show the CAUSE on the
-		// :8484 card instead of an eternal "warte auf Rückmeldung" (Defect 2).
-		Blocked        bool   `json:"blocked"`
-		Reason         string `json:"reason"`
-		DualController struct {
-			OnlyControllerRequired bool   `json:"only_controller_required"`
-			PossibleConflict       bool   `json:"possible_conflict"`
-			Reason                 string `json:"reason"`
-		} `json:"dual_controller"`
-		// Native is the additive evidence block of the native self-regulation:
-		// Layer 1 states whether it really ran the native primitive and what the
-		// device answered about its own grid-charging configuration. Absent for
-		// every other cycle and for an older Layer-1 build.
-		Native struct {
-			GridChargeBlocked *bool `json:"grid_charge_blocked"`
-			// Intent (K4b) is the intent word the executed primitive realises.
-			Intent string `json:"intent"`
-			// CurtailsOwnPv / Candidate (K5): the proven primitive's PV side
-			// effect and which hand-over candidate ran.
-			CurtailsOwnPv bool   `json:"curtails_own_pv"`
-			Candidate     string `json:"candidate"`
-		} `json:"native"`
-		// NativeRefusal (K5) is Layer 1's reason why a wanted native mode did
-		// not engage (absent on an older Layer 1 and on every native cycle).
-		NativeRefusal string `json:"native_refusal"`
-		// Wrote (Deye executor) - did this cycle write a register (K5 pilot).
-		Wrote bool `json:"wrote"`
-		// NativeCapabilities (K4b) is Layer 1's report of the CERTIFIED levers
-		// of the current selection; absent on a pre-K4b Layer 1.
-		NativeCapabilities *state.NativeCapabilities `json:"native_capabilities"`
-		// NativePrecondition is the same device answer read BEFORE the hand-over
-		// (the executor's precondition read on a cycle the follower still
-		// carried). Absent on every other cycle and on an older Layer-1 build.
-		NativePrecondition struct {
-			GridChargeBlocked *bool `json:"grid_charge_blocked"`
-		} `json:"native_precondition"`
-		Registers []struct {
-			Role         string   `json:"role"`
-			Fc           int      `json:"fc"`
-			Addr         int      `json:"addr"`
-			CommandedRaw int      `json:"commanded_raw"`
-			CommandedKw  *float64 `json:"commanded_kw"`
-			ActualRaw    *int     `json:"actual_raw"`
-			ActualKw     *float64 `json:"actual_kw"`
-			Match        bool     `json:"match"`
-			Verdict      string   `json:"verdict"`
-			Note         string   `json:"note"`
-		} `json:"registers"`
-	}
+	var m controlReadbackMsg
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("control readback malformed; skipped")
 		return
@@ -2471,11 +2479,10 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		strings.EqualFold(strings.TrimSpace(m.Source), gridTestSource) {
 		a.gridNoteReadback(cycle == controlCycleHeld, checkedAt)
 	}
-	// K5 Pilotfenster: nur ein Zyklus DIESER Quelle zaehlt, ein blockierter hat
-	// nichts geschrieben.
-	if !m.Blocked {
-		a.nativePilotNoteReadback(info, cycle == controlCycleUnconfirmed, checkedAt)
-	}
+	// K5 Pilotfenster: nur ein Zyklus DIESER Quelle zaehlt. Ein blockierter hat
+	// nichts geschrieben und belegt nichts, ist aber angekommen und nennt seinen
+	// Grund (der Pilot unterscheidet „keine Rueckmeldung" von „kein Beleg").
+	a.nativePilotNoteReadback(info, cycle == controlCycleUnconfirmed, checkedAt)
 	// Sticky-path backfill (2026-07-28): a NORMAL driving readback names the surface
 	// a device-granted family is actually controlled on. For a grant certified before
 	// the path field existed (the live pilot) this records the proven path ONCE, so

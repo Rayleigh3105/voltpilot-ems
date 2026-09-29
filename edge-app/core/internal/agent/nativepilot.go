@@ -98,18 +98,24 @@ func (a *Agent) nativePilotNoteReadback(info *state.ControlInfo, unconfirmed boo
 	if info == nil || !strings.EqualFold(strings.TrimSpace(info.Source), nativePilotSource) {
 		return
 	}
-	gcb := info.NativePreconditionGridChargeBlocked
-	if info.Mode == batteryModeNative {
-		gcb = info.NativeGridChargeBlocked
-	}
-	rb := nativepilot.Readback{
-		Native:            info.Mode == batteryModeNative && info.AllMatch,
-		Intent:            info.NativeIntent,
-		Candidate:         info.NativeCandidate,
-		GridChargeBlocked: gcb,
-		Refusal:           info.NativeRefusal,
-		Wrote:             info.Wrote,
-		Mismatch:          !unconfirmed && !info.AllMatch,
+	// A blocked cycle wrote nothing: it proves and fails nothing, but it
+	// arrived and names why.
+	rb := nativepilot.Readback{Mode: info.Mode, Blocked: true, Refusal: info.Reason}
+	if !info.Blocked {
+		gcb := info.NativePreconditionGridChargeBlocked
+		if info.Mode == batteryModeNative {
+			gcb = info.NativeGridChargeBlocked
+		}
+		rb = nativepilot.Readback{
+			Mode:              info.Mode,
+			Native:            info.Mode == batteryModeNative && info.AllMatch,
+			Intent:            info.NativeIntent,
+			Candidate:         info.NativeCandidate,
+			GridChargeBlocked: gcb,
+			Refusal:           info.NativeRefusal,
+			Wrote:             info.Wrote,
+			Mismatch:          !unconfirmed && !info.AllMatch,
+		}
 	}
 	a.pilotMu.Lock()
 	active := a.pilot.Active()
